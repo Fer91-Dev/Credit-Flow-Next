@@ -1,0 +1,116 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+}
+
+model clientes {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  created_at   DateTime @default(now()) @db.Timestamptz(6)
+  nombre       String
+  documento    String?
+  email        String?
+  telefono     String?
+  direccion    String?
+  estado       String   @default("activo")
+  tipo_credito String   @default("personal")
+  monto_total  Float    @default(0)
+  user_id      String   @db.Uuid
+
+  creditos    creditos[]
+  solicitudes solicitudes[]
+}
+
+model creditos {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  created_at      DateTime  @default(now()) @db.Timestamptz(6)
+  cliente_id      String    @db.Uuid
+  solicitud_id    String?   @db.Uuid
+  tipo_credito    String
+  monto_original  Float
+  saldo_pendiente Float
+  tasa            Float     @default(0)
+  plazo_meses     Int       @default(12)
+  fecha_inicio    DateTime  @default(now()) @db.Date
+  proximo_pago    DateTime? @db.Date
+  dias_mora       Int       @default(0)
+  estado          String    @default("activo")
+  user_id         String    @db.Uuid
+
+  cliente   clientes     @relation(fields: [cliente_id], references: [id], onDelete: Cascade)
+  solicitud solicitudes? @relation(fields: [solicitud_id], references: [id], onDelete: SetNull)
+  pagos     pagos[]
+}
+
+model pagos {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  created_at       DateTime @default(now()) @db.Timestamptz(6)
+  credito_id       String   @db.Uuid
+  monto            Float
+  fecha            DateTime @default(now()) @db.Date
+  metodo           String   @default("efectivo")
+  notas            String?
+  user_id          String   @db.Uuid
+  aplicado_mora    Float    @default(0)
+  aplicado_interes Float    @default(0)
+  aplicado_capital Float    @default(0)
+  excedente        Float    @default(0)
+
+  credito creditos @relation(fields: [credito_id], references: [id], onDelete: Cascade)
+}
+
+model solicitudes {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  created_at   DateTime  @default(now()) @db.Timestamptz(6)
+  cliente_id   String    @db.Uuid
+  tipo_credito String
+  monto        Float
+  plazo_meses  Int       @default(12)
+  score        Int       @default(0)
+  estado       String    @default("pendiente")
+  notas        String?
+  decided_at   DateTime? @db.Timestamptz(6)
+  user_id      String    @db.Uuid
+
+  cliente  clientes   @relation(fields: [cliente_id], references: [id], onDelete: Cascade)
+  creditos creditos[]
+}
+
+model profiles {
+  id         String   @id @db.Uuid
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  full_name  String?
+}
+
+/// Traza de auditoría: registra eventos de negocio por tenant (user_id).
+/// Tabla aditiva, solo escritura desde el backend y lectura en la vista.
+model auditoria {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  created_at  DateTime @default(now()) @db.Timestamptz(6)
+  user_id     String   @db.Uuid
+  entidad     String   // clientes | creditos | pagos | configuracion
+  entidad_id  String?  @db.Uuid
+  accion      String   // crear | actualizar | eliminar | cancelar | registrar_pago | actualizar_config
+  descripcion String
+  meta        Json?
+
+  @@index([user_id, created_at])
+}
+
+/// Configuración del motor financiero por financiera (tenant = user_id).
+model configuraciones {
+  user_id              String   @id @db.Uuid
+  convencion_tasa      String   @default("nominal_anual")
+  sistema_amortizacion String   @default("frances")
+  mora_activa          Boolean  @default(true)
+  tasa_mora_diaria     Float    @default(0.01)
+  base_mora            String   @default("cuota")
+  orden_imputacion     String   @default("mora,interes,capital")
+  moneda               String   @default("ARS")
+  locale               String   @default("es-AR")
+  updated_at           DateTime @updatedAt @db.Timestamptz(6)
+}

@@ -1,0 +1,21 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: creditflow-next
+    ports:
+      - "3003:3000"
+    volumes:
+      - .:/app
+      - /app/node_modules
+    env_file:
+      - .env.local
+    environment:
+      - NODE_ENV=development
+      - DEV_BYPASS_AUTH=true
+      # HMR en bind mounts de Windows->Docker: inotify no propaga eventos,
+      # así que forzamos polling para que los cambios recompilen solos.
+      - WATCHPACK_POLLING=true
+      - CHOKIDAR_USEPOLLING=true
+      - CHOKIDAR_INTERVAL=400

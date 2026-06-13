@@ -1,0 +1,425 @@
+"use client";
+
+import { useState, useMemo } from "react";
+import { mutate as globalMutate } from "swr";
+import { Plus, Trash2, Edit2, Eye, FileText, Wallet, AlertCircle, CheckCircle, Search, ChevronDown, X } from "lucide-react";
+import { CreditoForm } from "./CreditoForm";
+import { CreditoDetail } from "./CreditoDetail";
+import { useCreditos, KEYS, type Credito } from "@/lib/swr";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { KpiCard } from "@/components/ui/KpiCard";
+import { StatusBadge } from "@/components/ui/StatusBadge";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader,
+  AlertDialogTitle, AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import { Skeleton } from "@/components/ui/skeleton";
+
+function n0(x: number) {
+  return new Intl.NumberFormat("es-AR", { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(x);
+}
+
+const SEL =
+  "h-10 rounded-lg border border-border bg-muted/40 pl-3 pr-8 text-sm text-foreground " +
+  "outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/20 " +
+  "appearance-none cursor-pointer [&>option]:bg-card [&>option]:text-foreground";
+
+function estadoBadge(estado: string): { label: string; variant: "primary" | "success" | "muted" } {
+  if (estado === "activo")  return { label: "Activo",    variant: "primary" };
+  if (estado === "pagado")  return { label: "Pagado",    variant: "success" };
+  return                           { label: estado,      variant: "muted" };
+}
+
+export function CreditosTable() {
+  const { creditos, error, isLoading, mutate } = useCreditos();
+  const [dialogOpen, setDialog]   = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [detail, setDetail]       = useState<Credito | null>(null);
+  const [search, setSearch]       = useState("");
+  const [estadoFilter, setEstado] = useState("all");
+  const [tipoFilter, setTipo]     = useState("all");
+
+  const handleDelete = async (id: string) => {
+    await mutate(
+      async (current) => {
+        await fetch(`/api/creditos/${id}`, { method: "DELETE" });
+        return { creditos: (current?.creditos ?? []).filter(c => c.id !== id) };
+      },
+      { optimisticData: { creditos: creditos.filter(c => c.id !== id) }, rollbackOnError: true },
+    ).catch(() => { /* error silencioso */ });
+    globalMutate(KEYS.dashboard);
+  };
+
+  const openNew  = () => { setEditingId(null); setDialog(true); };
+  const openEdit = (id: string) => { setEditingId(id); setDialog(true); };
+  const handleFormClose = (success?: boolean) => {
+    setDialog(false); setEditingId(null);
+    if (success) { mutate(); globalMutate(KEYS.dashboard); }
+  };
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return creditos.filter(c =>
+      (!q || c.cliente.nombre.toLowerCase().includes(q)) &&
+      (estadoFilter === "all" || c.estado === estadoFilter) &&
+      (tipoFilter === "all" || c.tipo_credito === tipoFilter)
+    );
+  }, [creditos, search, estadoFilter, tipoFilter]);
+
+  // KPIs from all credits (portfolio picture, not filter-dependent)
+  const kpis = useMemo(() => ({
+    activos:      creditos.filter(c => c.estado === "activo").length,
+    cartera:      creditos.filter(c => c.estado === "activo").reduce((s, c) => s + c.saldo_pendiente, 0),
+    moraCritica:  creditos.filter(c => c.dias_mora > 30).length,
+    pagados:      creditos.filter(c => c.estado === "pagado").length,
+  }), [creditos]);
+
+  const totals = useMemo(() => ({
+    monto:  filtered.reduce((s, c) => s + c.monto_original, 0),
+    saldo:  filtered.reduce((s, c) => s + c.saldo_pendiente, 0),
+  }), [filtered]);
+
+  const hasFilters = !!(search || estadoFilter !== "all" || tipoFilter !== "all");
+  const clearFilters = () => { setSearch(""); setEstado("all"); setTipo("all"); };
+
+  const cta = (
+    <button
+      onClick={openNew}
+      className="flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:opacity-90 transition-opacity text-sm font-medium whitespace-nowrap"
+    >
+      <Plus className="h-4 w-4" />
+      Nuevo crédito
+    </button>
+  );
+
+  return (
+    <>
+      <div className="space-y-6">
+        <PageHeader
+          icon={FileText}
+          title="Créditos"
+          subtitle="Créditos otorgados y seguimiento de saldos"
+          accent="primary"
+          actions={cta}
+        />
+
+        {isLoading ? (
+          <BodySkeleton />
+        ) : error ? (
+          <div className="rounded-xl bg-destructive/10 border border-destructive/30 p-4 text-destructive text-sm">
+            Error al cargar créditos: {error.message}
+          </div>
+        ) : (
+        <div className="space-y-5">
+
+        {/* ── KPI Strip ── */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <KpiCard icon={FileText}    label="Créditos activos"  value={String(kpis.activos)}     accent="primary" />
+          <KpiCard icon={Wallet}      label="Cartera activa"    value={`$${n0(kpis.cartera)}`}   accent="success" mono />
+          <KpiCard icon={AlertCircle} label="Mora crítica"      value={String(kpis.moraCritica)} accent={kpis.moraCritica > 0 ? "destructive" : "muted"} sub={kpis.moraCritica > 0 ? "más de 30 días" : "sin atrasos críticos"} />
+          <KpiCard icon={CheckCircle} label="Créditos pagados"  value={String(kpis.pagados)}     accent="muted" />
+        </div>
+
+        {/* ── Filter Toolbar ── */}
+        <div className="flex flex-col sm:flex-row gap-3">
+          <div className="relative flex-1">
+            <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <input
+              type="text"
+              placeholder="Buscar por cliente…"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="h-10 w-full rounded-lg border border-border bg-muted/40 pl-9 pr-3 text-sm text-foreground placeholder:text-muted-foreground/40 outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/20"
+            />
+          </div>
+          <div className="relative">
+            <select value={estadoFilter} onChange={e => setEstado(e.target.value)} className={SEL}>
+              <option value="all">Todos los estados</option>
+              <option value="activo">Activos</option>
+              <option value="pagado">Pagados</option>
+              <option value="cancelado">Cancelados</option>
+            </select>
+            <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          </div>
+          <div className="relative">
+            <select value={tipoFilter} onChange={e => setTipo(e.target.value)} className={SEL}>
+              <option value="all">Todos los tipos</option>
+              <option value="personal">Personal</option>
+              <option value="empresarial">Empresarial</option>
+              <option value="otro">Otro</option>
+            </select>
+            <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          </div>
+        </div>
+
+        {/* Count + clear */}
+        <div className="flex items-center justify-between">
+          <p className="text-xs text-muted-foreground">
+            {hasFilters
+              ? `${filtered.length} de ${creditos.length} créditos`
+              : `${creditos.length} crédito${creditos.length !== 1 ? "s" : ""} en total`}
+          </p>
+          {hasFilters && (
+            <button onClick={clearFilters} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors">
+              <X className="h-3 w-3" /> Limpiar filtros
+            </button>
+          )}
+        </div>
+
+        {/* ── Content ── */}
+        {filtered.length === 0 ? (
+          <EmptyState hasFilters={hasFilters} onNew={openNew} onClear={clearFilters} />
+        ) : (
+          <>
+            {/* Desktop table */}
+            <div className="hidden md:block rounded-xl border border-border overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm border-separate border-spacing-0">
+                  <thead>
+                    <tr className="bg-muted/30">
+                      <th className="px-4 py-3 text-left  text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">Cliente</th>
+                      <th className="px-4 py-3 text-left  text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">Tipo</th>
+                      <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">Monto orig.</th>
+                      <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">Saldo</th>
+                      <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">Tasa</th>
+                      <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">Mora</th>
+                      <th className="px-4 py-3 text-left  text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">Estado</th>
+                      <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border pr-5">Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filtered.map((c, idx) => {
+                      const est = estadoBadge(c.estado);
+                      return (
+                        <tr key={c.id} className={`hover:bg-muted/20 transition-colors ${idx % 2 === 1 ? "bg-muted/5" : ""}`}>
+                          <td className="px-4 py-3 font-medium text-foreground border-b border-border/40">{c.cliente.nombre}</td>
+                          <td className="px-4 py-3 border-b border-border/40">
+                            <StatusBadge label={c.tipo_credito} variant="muted" />
+                          </td>
+                          <td className="px-4 py-3 text-right font-mono text-sm text-foreground border-b border-border/40">
+                            ${n0(c.monto_original)}
+                          </td>
+                          <td className="px-4 py-3 text-right font-mono text-sm border-b border-border/40">
+                            <span className={c.saldo_pendiente > 0 ? "text-warning font-semibold" : "text-success"}>
+                              ${n0(c.saldo_pendiente)}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-right font-mono text-xs text-muted-foreground border-b border-border/40">
+                            {c.tasa}%
+                          </td>
+                          <td className="px-4 py-3 text-center border-b border-border/40">
+                            {c.dias_mora > 0 ? (
+                              <StatusBadge
+                                label={`${c.dias_mora}d`}
+                                variant={c.dias_mora > 30 ? "destructive" : "warning"}
+                              />
+                            ) : (
+                              <span className="text-xs font-medium text-success">Al día</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 border-b border-border/40">
+                            <StatusBadge label={est.label} variant={est.variant} />
+                          </td>
+                          <td className="px-4 py-3 pr-5 text-right border-b border-border/40">
+                            <div className="flex justify-end gap-1">
+                              <button
+                                onClick={() => setDetail(c)}
+                                className="p-1.5 rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+                                title="Ver detalle"
+                              >
+                                <Eye className="h-3.5 w-3.5" />
+                              </button>
+                              <button
+                                onClick={() => openEdit(c.id)}
+                                className="p-1.5 rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+                                title="Editar"
+                              >
+                                <Edit2 className="h-3.5 w-3.5" />
+                              </button>
+                              <AlertDialog>
+                                <AlertDialogTrigger asChild>
+                                  <button className="p-1.5 rounded-lg hover:bg-destructive/10 transition-colors text-muted-foreground hover:text-destructive" title="Cancelar crédito">
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </button>
+                                </AlertDialogTrigger>
+                                <AlertDialogContent>
+                                  <AlertDialogHeader>
+                                    <AlertDialogTitle>¿Cancelar crédito?</AlertDialogTitle>
+                                    <AlertDialogDescription>
+                                      Se cancelará el crédito de <strong>{c.cliente.nombre}</strong> por <strong>${n0(c.monto_original)}</strong>. Los pagos se conservan.
+                                    </AlertDialogDescription>
+                                  </AlertDialogHeader>
+                                  <AlertDialogFooter>
+                                    <AlertDialogCancel>Volver</AlertDialogCancel>
+                                    <AlertDialogAction onClick={() => handleDelete(c.id)} className="bg-destructive text-white hover:bg-destructive/90">Cancelar crédito</AlertDialogAction>
+                                  </AlertDialogFooter>
+                                </AlertDialogContent>
+                              </AlertDialog>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                  <tfoot>
+                    <tr className="bg-muted/20">
+                      <td colSpan={2} className="px-4 py-3 text-[10px] font-bold text-muted-foreground uppercase tracking-widest border-t border-border">
+                        Totales ({filtered.length})
+                      </td>
+                      <td className="px-4 py-3 text-right font-mono font-bold text-foreground border-t border-border">${n0(totals.monto)}</td>
+                      <td className="px-4 py-3 text-right font-mono font-bold text-warning border-t border-border">${n0(totals.saldo)}</td>
+                      <td colSpan={4} className="border-t border-border pr-5" />
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </div>
+
+            {/* Mobile cards */}
+            <div className="block md:hidden space-y-3">
+              {filtered.map(c => {
+                const est = estadoBadge(c.estado);
+                return (
+                  <div key={c.id} className="rounded-xl bg-card border border-border p-4 space-y-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <p className="font-medium text-foreground text-sm">{c.cliente.nombre}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">{c.tipo_credito} · {c.tasa}% TNA · {c.plazo_meses}m</p>
+                      </div>
+                      <StatusBadge label={est.label} variant={est.variant} />
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <p className="text-[10px] text-muted-foreground">Monto original</p>
+                        <p className="font-mono font-semibold text-foreground">${n0(c.monto_original)}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-muted-foreground">Saldo pendiente</p>
+                        <p className={`font-mono font-bold ${c.saldo_pendiente > 0 ? "text-warning" : "text-success"}`}>
+                          ${n0(c.saldo_pendiente)}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between pt-2 border-t border-border/50">
+                      {c.dias_mora > 0
+                        ? <StatusBadge label={`${c.dias_mora}d mora`} variant={c.dias_mora > 30 ? "destructive" : "warning"} />
+                        : <span className="text-xs font-medium text-success">Al día</span>}
+                      <div className="flex gap-1">
+                        <button onClick={() => setDetail(c)} className="p-1.5 rounded-lg hover:bg-muted transition-colors text-muted-foreground">
+                          <Eye className="h-3.5 w-3.5" />
+                        </button>
+                        <button onClick={() => openEdit(c.id)} className="p-1.5 rounded-lg hover:bg-muted transition-colors text-muted-foreground">
+                          <Edit2 className="h-3.5 w-3.5" />
+                        </button>
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <button className="p-1.5 rounded-lg hover:bg-destructive/10 transition-colors text-muted-foreground hover:text-destructive">
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>¿Cancelar crédito?</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                Se cancelará el crédito de <strong>{c.cliente.nombre}</strong>.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Volver</AlertDialogCancel>
+                              <AlertDialogAction onClick={() => handleDelete(c.id)} className="bg-destructive text-white hover:bg-destructive/90">Cancelar</AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        )}
+        </div>
+        )}
+      </div>
+
+      <Dialog open={dialogOpen} onOpenChange={open => { if (!open) handleFormClose(false); }}>
+        <DialogContent className="w-full max-w-[92vw] lg:max-w-4xl h-[88vh] max-h-[88vh] p-0 gap-0 flex flex-col overflow-hidden">
+          <DialogHeader className="px-6 py-4 border-b border-border shrink-0">
+            <DialogTitle>{editingId ? "Editar crédito" : "Simulador de crédito"}</DialogTitle>
+          </DialogHeader>
+          <div className="flex-1 min-h-0 overflow-hidden">
+            <CreditoForm creditoId={editingId} onClose={handleFormClose} />
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!detail} onOpenChange={open => { if (!open) setDetail(null); }}>
+        <DialogContent className="w-full max-w-[92vw] lg:max-w-3xl h-[88vh] max-h-[88vh] p-0 gap-0 flex flex-col overflow-hidden">
+          <DialogHeader className="px-5 py-4 border-b border-border shrink-0">
+            <DialogTitle>Detalle del crédito</DialogTitle>
+          </DialogHeader>
+          <div className="flex-1 min-h-0 overflow-hidden">
+            {detail && <CreditoDetail credito={detail} />}
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
+function EmptyState({ hasFilters, onNew, onClear }: { hasFilters: boolean; onNew: () => void; onClear: () => void }) {
+  return (
+    <div className="rounded-xl border border-dashed border-border/60 p-12 flex flex-col items-center gap-4 text-center">
+      <div className="h-16 w-16 rounded-2xl bg-muted/20 border border-border/50 flex items-center justify-center">
+        <FileText className="h-7 w-7 text-muted-foreground/20" />
+      </div>
+      <div className="space-y-1.5">
+        <p className="text-sm font-semibold text-muted-foreground">
+          {hasFilters ? "Sin resultados para los filtros aplicados" : "Sin créditos registrados"}
+        </p>
+        <p className="text-xs text-muted-foreground/50 max-w-xs leading-relaxed">
+          {hasFilters ? "Probá ajustando o limpiando los filtros." : "Usá el simulador para crear y calcular el primer crédito."}
+        </p>
+      </div>
+      {hasFilters ? (
+        <button onClick={onClear} className="px-4 py-2 rounded-lg bg-muted text-muted-foreground text-sm hover:bg-muted/80 transition-colors">
+          Limpiar filtros
+        </button>
+      ) : (
+        <button onClick={onNew} className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm hover:opacity-90 transition-opacity">
+          <Plus className="h-4 w-4" /> Nuevo crédito
+        </button>
+      )}
+    </div>
+  );
+}
+
+function BodySkeleton() {
+  return (
+    <div className="space-y-5">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-24 rounded-xl" />)}
+      </div>
+      <div className="flex gap-3">
+        <Skeleton className="h-10 flex-1 rounded-lg" />
+        <Skeleton className="h-10 w-44 rounded-lg" />
+        <Skeleton className="h-10 w-40 rounded-lg" />
+        <Skeleton className="h-10 w-36 rounded-lg" />
+      </div>
+      <div className="rounded-xl border border-border overflow-hidden">
+        <div className="bg-muted/30 border-b border-border px-4 py-3 grid grid-cols-8 gap-4">
+          {[...Array(8)].map((_, i) => <Skeleton key={i} className="h-3" />)}
+        </div>
+        {[...Array(5)].map((_, i) => (
+          <div key={i} className="border-b border-border/40 px-4 py-3.5 grid grid-cols-8 gap-4">
+            {[...Array(8)].map((_, j) => <Skeleton key={j} className="h-4" />)}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
