@@ -4,7 +4,8 @@ import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import {
   cuotaMensualFrancesa,
-  tasaMensualSegunConvencion,
+  tasaPeriodicaSegunConvencion,
+  normalizarFrecuencia,
   interesMora,
 } from "@/lib/domain";
 import { getConfiguracion } from "@/lib/config";
@@ -40,7 +41,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
       where: { ...withTenant(userId) },
       select: {
         estado: true, monto_original: true, saldo_pendiente: true,
-        tasa: true, plazo_meses: true, dias_mora: true,
+        tasa: true, plazo_meses: true, frecuencia: true, dias_mora: true,
       },
     }),
     getConfiguracion(userId),
@@ -84,8 +85,9 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   let interesMoraTotal = 0;
   for (const c of enMora) {
     if (config.moraActiva && c.monto_original > 0 && c.plazo_meses >= 1) {
-      const tasaMensual = tasaMensualSegunConvencion(c.tasa, config.convencionTasa);
-      const cuota = cuotaMensualFrancesa(c.monto_original, tasaMensual, c.plazo_meses);
+      const frec = normalizarFrecuencia(c.frecuencia);
+      const tasaPeriodica = tasaPeriodicaSegunConvencion(c.tasa, config.convencionTasa, frec);
+      const cuota = cuotaMensualFrancesa(c.monto_original, tasaPeriodica, c.plazo_meses);
       interesMoraTotal += interesMora(cuota, c.dias_mora, { tasaDiaria: config.tasaMoraDiaria });
     }
   }

@@ -6,8 +6,8 @@
  * Al inicio pesa más el interés; hacia el final pesa más el capital.
  */
 import { round2, toCents, fromCents } from "./money";
-import { tasaMensualSegunConvencion } from "./rates";
 import type { ConvencionTasa } from "./config";
+import { tasaPeriodicaSegunConvencion, sumarPeriodos, type Frecuencia } from "./frequency";
 
 export interface CuotaPlan {
   nro: number;
@@ -20,7 +20,10 @@ export interface CuotaPlan {
 }
 
 export interface PlanAmortizacion {
-  cuotaMensual: number; // valor de la cuota fija (la última puede variar por ajuste)
+  /** Valor de la cuota fija del período (la última puede variar por ajuste). */
+  cuota: number;
+  /** @deprecated Alias histórico de `cuota`; conservado por compatibilidad. */
+  cuotaMensual: number;
   totalIntereses: number;
   totalPagado: number;
   cuotas: CuotaPlan[];
@@ -63,21 +66,26 @@ export function sumarMeses(fecha: Date, n: number): Date {
  * Trabaja en centavos para que la suma de capitales sea EXACTAMENTE el principal;
  * la última cuota absorbe el ajuste de redondeo.
  *
+ * Generalizado por frecuencia: la tasa se convierte a la tasa PERIÓDICA equivalente
+ * (mensual/semanal/diaria) y las fechas avanzan un período por cuota.
+ *
  * @param principal Monto del crédito.
  * @param tasaPct Tasa en % según la convención indicada.
- * @param meses Plazo en cuotas.
- * @param fechaInicio Fecha de desembolso; la 1ª cuota vence un mes después.
+ * @param nCuotas Plazo en número de cuotas.
+ * @param fechaInicio Fecha de desembolso; la 1ª cuota vence un período después.
  * @param convencion Convención de la tasa (default nominal_anual).
+ * @param frecuencia Período de cada cuota (default mensual).
  */
 export function construirPlanAmortizacion(
   principal: number,
   tasaPct: number,
-  meses: number,
+  nCuotas: number,
   fechaInicio: Date,
-  convencion: ConvencionTasa = "nominal_anual"
+  convencion: ConvencionTasa = "nominal_anual",
+  frecuencia: Frecuencia = "mensual"
 ): PlanAmortizacion {
-  const i = tasaMensualSegunConvencion(tasaPct, convencion);
-  const cuota = cuotaMensualFrancesa(principal, i, meses);
+  const i = tasaPeriodicaSegunConvencion(tasaPct, convencion, frecuencia);
+  const cuota = cuotaMensualFrancesa(principal, i, nCuotas);
 
   const cuotaCents = toCents(cuota);
   let saldoCents = toCents(principal);
@@ -86,14 +94,14 @@ export function construirPlanAmortizacion(
   let totalInteresCents = 0;
   let totalPagadoCents = 0;
 
-  for (let nro = 1; nro <= meses; nro++) {
+  for (let nro = 1; nro <= nCuotas; nro++) {
     const saldoInicialCents = saldoCents;
     const interesCents = Math.round(saldoCents * i);
     let capitalCents = cuotaCents - interesCents;
     let pagoCents = cuotaCents;
 
     // Última cuota (o si el capital excede el saldo): liquidar el saldo exacto.
-    if (nro === meses || capitalCents >= saldoCents) {
+    if (nro === nCuotas || capitalCents >= saldoCents) {
       capitalCents = saldoCents;
       pagoCents = capitalCents + interesCents;
     }
@@ -104,7 +112,7 @@ export function construirPlanAmortizacion(
 
     cuotas.push({
       nro,
-      fecha: sumarMeses(fechaInicio, nro),
+      fecha: sumarPeriodos(fechaInicio, nro, frecuencia),
       saldoInicial: fromCents(saldoInicialCents),
       cuota: fromCents(pagoCents),
       interes: fromCents(interesCents),
@@ -116,6 +124,7 @@ export function construirPlanAmortizacion(
   }
 
   return {
+    cuota,
     cuotaMensual: cuota,
     totalIntereses: fromCents(totalInteresCents),
     totalPagado: fromCents(totalPagadoCents),

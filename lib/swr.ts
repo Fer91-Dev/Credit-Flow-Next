@@ -40,6 +40,7 @@ export interface Credito {
   saldo_pendiente: number;
   tasa: number;
   plazo_meses: number;
+  frecuencia: "mensual" | "semanal" | "diario";
   dias_mora: number;
   estado: string;
   created_at: string;
@@ -66,11 +67,15 @@ export interface Amortizacion {
     monto: number;
     tasa_ingresada: number;
     convencion_tasa: string;
-    tasa_mensual: number;
+    frecuencia: "mensual" | "semanal" | "diario";
+    frecuencia_label: { cuotaSingular: string; cuotaPlural: string; adjetivo: string; unidad: string };
+    tasa_periodica: number;
     tasa_efectiva_anual: number;
     plazo_meses: number;
+    n_cuotas: number;
   };
   resumen: {
+    cuota: number;
     cuota_mensual: number;
     total_intereses: number;
     total_pagado: number;

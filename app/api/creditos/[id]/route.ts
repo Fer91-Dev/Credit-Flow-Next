@@ -73,7 +73,7 @@ export const PATCH = withErrorHandler(async (req: NextRequest, { params }: Route
 
   // Preparar datos para actualizar
   const updateData: Record<string, any> = {};
-  const allowedFields = ["saldo_pendiente", "tasa", "proximo_pago", "dias_mora", "estado"];
+  const allowedFields = ["saldo_pendiente", "tasa", "proximo_pago", "dias_mora", "estado", "frecuencia"];
 
   allowedFields.forEach((field) => {
     if (field in body) {

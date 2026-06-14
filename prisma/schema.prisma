@@ -34,7 +34,8 @@ model creditos {
   monto_original  Float
   saldo_pendiente Float
   tasa            Float     @default(0)
-  plazo_meses     Int       @default(12)
+  plazo_meses     Int       @default(12) // número de cuotas (el período lo da `frecuencia`)
+  frecuencia      String    @default("mensual") // mensual | semanal | diario
   fecha_inicio    DateTime  @default(now()) @db.Date
   proximo_pago    DateTime? @db.Date
   dias_mora       Int       @default(0)

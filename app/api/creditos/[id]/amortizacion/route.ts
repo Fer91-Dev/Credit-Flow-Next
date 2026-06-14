@@ -4,8 +4,10 @@ import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import {
   construirPlanAmortizacion,
-  tasaMensualSegunConvencion,
-  efectivaAnualDesdeMensual,
+  tasaPeriodicaSegunConvencion,
+  efectivaAnualDesdePeriodica,
+  normalizarFrecuencia,
+  FRECUENCIA_LABEL,
 } from "@/lib/domain";
 import { getConfiguracion } from "@/lib/config";
 import type { NextRequest } from "next/server";
@@ -31,6 +33,7 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
       monto_original: true,
       tasa: true,
       plazo_meses: true,
+      frecuencia: true,
       fecha_inicio: true,
       cliente: { select: { nombre: true } },
     },
@@ -42,14 +45,16 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
 
   // La convención de tasa la define la financiera en su configuración.
   const config = await getConfiguracion(userId);
-  const tasaMensual = tasaMensualSegunConvencion(credito.tasa, config.convencionTasa);
+  const frecuencia = normalizarFrecuencia(credito.frecuencia);
+  const tasaPeriodica = tasaPeriodicaSegunConvencion(credito.tasa, config.convencionTasa, frecuencia);
 
   const plan = construirPlanAmortizacion(
     credito.monto_original,
     credito.tasa,
     credito.plazo_meses,
     credito.fecha_inicio,
-    config.convencionTasa
+    config.convencionTasa,
+    frecuencia
   );
 
   return successResponse({
@@ -59,11 +64,15 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
       monto: credito.monto_original,
       tasa_ingresada: credito.tasa,
       convencion_tasa: config.convencionTasa,
-      tasa_mensual: tasaMensual,
-      tasa_efectiva_anual: efectivaAnualDesdeMensual(tasaMensual),
+      frecuencia,
+      frecuencia_label: FRECUENCIA_LABEL[frecuencia],
+      tasa_periodica: tasaPeriodica,
+      tasa_efectiva_anual: efectivaAnualDesdePeriodica(tasaPeriodica, frecuencia),
       plazo_meses: credito.plazo_meses,
+      n_cuotas: credito.plazo_meses,
     },
     resumen: {
+      cuota: plan.cuota,
       cuota_mensual: plan.cuotaMensual,
       total_intereses: plan.totalIntereses,
       total_pagado: plan.totalPagado,

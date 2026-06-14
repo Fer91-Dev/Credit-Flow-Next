@@ -4,8 +4,10 @@ import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import {
   cuotaMensualFrancesa,
-  tasaMensualSegunConvencion,
+  tasaPeriodicaSegunConvencion,
   interesMora,
+  normalizarFrecuencia,
+  sumarPeriodos,
 } from "@/lib/domain";
 import { getConfiguracion } from "@/lib/config";
 import { registrarAuditoria } from "@/lib/audit";
@@ -60,8 +62,9 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
       c.monto_original > 0 &&
       c.plazo_meses >= 1
     ) {
-      const tasaMensual = tasaMensualSegunConvencion(c.tasa, config.convencionTasa);
-      const cuota = cuotaMensualFrancesa(c.monto_original, tasaMensual, c.plazo_meses);
+      const frec = normalizarFrecuencia(c.frecuencia);
+      const tasaPeriodica = tasaPeriodicaSegunConvencion(c.tasa, config.convencionTasa, frec);
+      const cuota = cuotaMensualFrancesa(c.monto_original, tasaPeriodica, c.plazo_meses);
       interes_mora = interesMora(cuota, c.dias_mora, { tasaDiaria: config.tasaMoraDiaria });
     }
     return { ...c, interes_mora };
@@ -120,6 +123,15 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     return errorResponse("Montos inválidos", "INVALID_INPUT", 400);
   }
 
+  // Frecuencia de pago (default mensual). El período de cada cuota lo da este campo.
+  const frecuencia = normalizarFrecuencia(body.frecuencia);
+
+  // Fecha de desembolso y vencimiento de la 1ª cuota (un período después).
+  const fechaInicio = body.fecha_inicio ? new Date(body.fecha_inicio) : new Date();
+  const proximoPago = body.proximo_pago
+    ? new Date(body.proximo_pago)
+    : sumarPeriodos(fechaInicio, 1, frecuencia);
+
   // Si hay solicitud_id, verificar que existe
   if (body.solicitud_id) {
     const solicitud = await prisma.solicitudes.findFirst({
@@ -138,8 +150,9 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
       saldo_pendiente: body.monto_original,
       tasa: body.tasa,
       plazo_meses: body.plazo_meses,
-      fecha_inicio: body.fecha_inicio ? new Date(body.fecha_inicio) : new Date(),
-      proximo_pago: body.proximo_pago ? new Date(body.proximo_pago) : undefined,
+      frecuencia,
+      fecha_inicio: fechaInicio,
+      proximo_pago: proximoPago,
       solicitud_id: body.solicitud_id || null,
       ...withTenant(userId),
     },
@@ -152,7 +165,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     entidadId: credito.id,
     accion: "crear",
     descripcion: `Crédito otorgado a ${cliente.nombre} por $${credito.monto_original.toLocaleString("es-AR")}`,
-    meta: { monto: credito.monto_original, tasa: credito.tasa, plazo_meses: credito.plazo_meses, tipo: credito.tipo_credito },
+    meta: { monto: credito.monto_original, tasa: credito.tasa, plazo_meses: credito.plazo_meses, frecuencia: credito.frecuencia, tipo: credito.tipo_credito },
   });
 
   return successResponse(credito, 201);

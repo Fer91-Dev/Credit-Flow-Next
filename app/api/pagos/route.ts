@@ -6,8 +6,9 @@ import {
   evaluarMora,
   imputarPago,
   cuotaMensualFrancesa,
-  sumarMeses,
-  tasaMensualSegunConvencion,
+  sumarPeriodos,
+  tasaPeriodicaSegunConvencion,
+  normalizarFrecuencia,
   round2,
 } from "@/lib/domain";
 import { getConfiguracion } from "@/lib/config";
@@ -112,20 +113,21 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
   // ── Motor financiero ──────────────────────────────────────────────────────
 
   const config = await getConfiguracion(userId);
-  const tasaMensual = tasaMensualSegunConvencion(credito.tasa, config.convencionTasa);
+  const frecuencia = normalizarFrecuencia(credito.frecuencia);
+  const tasaPeriodica = tasaPeriodicaSegunConvencion(credito.tasa, config.convencionTasa, frecuencia);
 
-  // Cuota fija del crédito (PMT del sistema francés)
+  // Cuota fija del crédito (PMT del sistema francés, por período)
   const cuotaValor = cuotaMensualFrancesa(
     credito.monto_original,
-    tasaMensual,
+    tasaPeriodica,
     credito.plazo_meses
   );
 
-  // Fecha de vencimiento: proximo_pago o inferida como fecha_inicio + 1 mes
+  // Fecha de vencimiento: proximo_pago o inferida como fecha_inicio + 1 período
   const fechaVencimiento: Date =
     credito.proximo_pago instanceof Date && !isNaN(credito.proximo_pago.getTime())
       ? credito.proximo_pago
-      : sumarMeses(credito.fecha_inicio, 1);
+      : sumarPeriodos(credito.fecha_inicio, 1, frecuencia);
 
   // Mora acumulada al día de hoy
   const estadoMora = config.moraActiva
@@ -134,8 +136,8 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
       })
     : { dias: 0, severidad: "al_dia" as const, interesMora: 0 };
 
-  // Interés corriente del período = saldo pendiente × tasa mensual
-  const interesDelPeriodo = round2(credito.saldo_pendiente * tasaMensual);
+  // Interés corriente del período = saldo pendiente × tasa periódica
+  const interesDelPeriodo = round2(credito.saldo_pendiente * tasaPeriodica);
 
   // Imputar pago en orden: Mora → Interés → Capital
   const deuda = {
@@ -177,7 +179,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
   // Determinar próxima fecha de pago (avanza solo si se cubrió capital)
   let nuevoProximoPago: Date | null = credito.proximo_pago;
   if (resultado.aplicadoCapital > 0 && resultado.nuevoSaldoCapital > 0) {
-    nuevoProximoPago = sumarMeses(fechaVencimiento, 1);
+    nuevoProximoPago = sumarPeriodos(fechaVencimiento, 1, frecuencia);
   }
 
   await prisma.creditos.update({
