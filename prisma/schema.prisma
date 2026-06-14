@@ -44,6 +44,7 @@ model creditos {
   cliente   clientes     @relation(fields: [cliente_id], references: [id], onDelete: Cascade)
   solicitud solicitudes? @relation(fields: [solicitud_id], references: [id], onDelete: SetNull)
   pagos     pagos[]
+  acciones  acciones_cobranza[]
 }
 
 model pagos {
@@ -84,6 +85,26 @@ model profiles {
   id         String   @id @db.Uuid
   created_at DateTime @default(now()) @db.Timestamptz(6)
   full_name  String?
+}
+
+/// Gestiones de cobranza sobre un crédito en mora (llamadas, promesas de pago, etc.).
+/// Tabla aditiva, multi-tenant. Permite historial + recordatorios (proximo_contacto).
+model acciones_cobranza {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  created_at       DateTime  @default(now()) @db.Timestamptz(6)
+  user_id          String    @db.Uuid
+  credito_id       String    @db.Uuid
+  tipo             String    // llamada | whatsapp | email | visita | otro
+  resultado        String    // contactado | no_contesta | promesa_pago | renegociacion | ilocalizable | otro
+  nota             String?
+  promesa_monto    Float?
+  promesa_fecha    DateTime? @db.Date
+  proximo_contacto DateTime? @db.Date
+
+  credito creditos @relation(fields: [credito_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id, credito_id])
+  @@index([user_id, proximo_contacto])
 }
 
 /// Traza de auditoría: registra eventos de negocio por tenant (user_id).

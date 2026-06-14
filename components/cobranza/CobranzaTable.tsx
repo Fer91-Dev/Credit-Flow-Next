@@ -1,15 +1,21 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { AlertCircle, Phone, Mail, Clock, Copy, CheckCheck, Search, DollarSign, ShieldAlert } from "lucide-react";
-import { useCreditos, type Credito } from "@/lib/swr";
+import { AlertCircle, Phone, Mail, Clock, Copy, CheckCheck, Search, DollarSign, ShieldAlert, MessageSquarePlus, CalendarClock } from "lucide-react";
+import { useCreditos, useAccionesCobranza, type Credito, type AccionCobranza } from "@/lib/swr";
+import { GestionForm } from "./GestionForm";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { KpiCard } from "@/components/ui/KpiCard";
 import { StatusBadge } from "@/components/ui/StatusBadge";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 
 function n0(x: number) {
   return new Intl.NumberFormat("es-AR", { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(x);
+}
+
+function fmtDate(s: string) {
+  return new Date(s).toLocaleDateString("es-AR", { day: "2-digit", month: "short" });
 }
 
 type Severidad = "critica" | "alta" | "todas";
@@ -20,11 +26,34 @@ function severidadConfig(dias: number): { label: string; variant: "destructive" 
   return              { label: "Media",    variant: "muted" };
 }
 
+const resultadoLabel: Record<AccionCobranza["resultado"], string> = {
+  contactado:    "Contactado",
+  no_contesta:   "No contesta",
+  promesa_pago:  "Promesa de pago",
+  renegociacion: "Renegociación",
+  ilocalizable:  "Ilocalizable",
+  otro:          "Otro",
+};
+
 export function CobranzaTable() {
   const { creditos: allCreditos, error, isLoading } = useCreditos();
+  const { acciones, mutate: mutateAcciones } = useAccionesCobranza();
   const [filterMora, setFilter] = useState<Severidad>("critica");
   const [search, setSearch]     = useState("");
   const [copiedId, setCopied]   = useState<string | null>(null);
+  const [gestion, setGestion]   = useState<Credito | null>(null);
+
+  // Última gestión por crédito (acciones vienen ordenadas por fecha desc).
+  const ultimaPorCredito = useMemo(() => {
+    const map = new Map<string, AccionCobranza>();
+    for (const a of acciones) if (!map.has(a.credito_id)) map.set(a.credito_id, a);
+    return map;
+  }, [acciones]);
+
+  const handleGestionClose = (success?: boolean) => {
+    setGestion(null);
+    if (success) mutateAcciones();
+  };
 
   // Solo créditos activos en mora — comparten caché con la sección Créditos.
   const creditos = useMemo(
@@ -155,7 +184,23 @@ export function CobranzaTable() {
                   const sev = severidadConfig(c.dias_mora);
                   return (
                     <tr key={c.id} className={`hover:bg-muted/20 transition-colors ${idx % 2 === 1 ? "bg-muted/5" : ""}`}>
-                      <td className="px-4 py-3 font-medium text-foreground border-b border-border/40">{c.cliente.nombre}</td>
+                      <td className="px-4 py-3 border-b border-border/40">
+                        <p className="font-medium text-foreground">{c.cliente.nombre}</p>
+                        {(() => {
+                          const u = ultimaPorCredito.get(c.id);
+                          if (!u) return null;
+                          return (
+                            <p className="mt-0.5 flex items-center gap-1 text-[11px] text-muted-foreground/70">
+                              {resultadoLabel[u.resultado]}
+                              {u.proximo_contacto && (
+                                <span className="flex items-center gap-0.5 text-primary">
+                                  · <CalendarClock className="h-3 w-3" /> {fmtDate(u.proximo_contacto)}
+                                </span>
+                              )}
+                            </p>
+                          );
+                        })()}
+                      </td>
                       <td className="px-4 py-3 border-b border-border/40">
                         <div className="flex flex-col gap-1">
                           {c.cliente.email && (
@@ -190,14 +235,23 @@ export function CobranzaTable() {
                         <StatusBadge label={sev.label} variant={sev.variant} />
                       </td>
                       <td className="px-4 py-3 pr-5 border-b border-border/40">
-                        <button
-                          onClick={() => handleGestionar(c)}
-                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 text-xs font-medium transition-colors border border-primary/20"
-                        >
-                          {copiedId === c.id
-                            ? <><CheckCheck className="h-3 w-3" /> Copiado</>
-                            : <><Copy className="h-3 w-3" /> Gestionar</>}
-                        </button>
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            onClick={() => setGestion(c)}
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 text-xs font-medium transition-colors border border-primary/20"
+                          >
+                            <MessageSquarePlus className="h-3 w-3" /> Gestionar
+                          </button>
+                          <button
+                            onClick={() => handleGestionar(c)}
+                            title="Copiar datos del cliente"
+                            className="flex items-center justify-center h-7 w-7 rounded-lg text-muted-foreground hover:bg-muted transition-colors"
+                          >
+                            {copiedId === c.id
+                              ? <CheckCheck className="h-3.5 w-3.5 text-success" />
+                              : <Copy className="h-3.5 w-3.5" />}
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -258,14 +312,35 @@ export function CobranzaTable() {
                       )}
                     </div>
                   )}
-                  <button
-                    onClick={() => handleGestionar(c)}
-                    className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 text-sm font-medium transition-colors border border-primary/20"
-                  >
-                    {copiedId === c.id
-                      ? <><CheckCheck className="h-4 w-4" /> Info copiada</>
-                      : <><Copy className="h-4 w-4" /> Copiar para gestión</>}
-                  </button>
+                  {(() => {
+                    const u = ultimaPorCredito.get(c.id);
+                    if (!u) return null;
+                    return (
+                      <div className="flex items-center justify-between pt-2 border-t border-border/50 text-[11px]">
+                        <span className="text-muted-foreground/70">Última: {resultadoLabel[u.resultado]}</span>
+                        {u.proximo_contacto && (
+                          <span className="flex items-center gap-1 text-primary">
+                            <CalendarClock className="h-3 w-3" /> próx {fmtDate(u.proximo_contacto)}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })()}
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setGestion(c)}
+                      className="flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 text-sm font-medium transition-colors border border-primary/20"
+                    >
+                      <MessageSquarePlus className="h-4 w-4" /> Gestionar
+                    </button>
+                    <button
+                      onClick={() => handleGestionar(c)}
+                      title="Copiar datos"
+                      className="flex items-center justify-center h-10 w-10 rounded-lg border border-border text-muted-foreground hover:bg-muted transition-colors"
+                    >
+                      {copiedId === c.id ? <CheckCheck className="h-4 w-4 text-success" /> : <Copy className="h-4 w-4" />}
+                    </button>
+                  </div>
                 </div>
               );
             })}
@@ -274,6 +349,15 @@ export function CobranzaTable() {
       )}
       </div>
       )}
+
+      <Dialog open={!!gestion} onOpenChange={open => { if (!open) setGestion(null); }}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Registrar gestión de cobranza</DialogTitle>
+          </DialogHeader>
+          {gestion && <GestionForm credito={gestion} onClose={handleGestionClose} />}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

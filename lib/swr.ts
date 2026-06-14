@@ -78,6 +78,52 @@ export interface Amortizacion {
   cuotas: CuotaAmortizacion[];
 }
 
+export interface AccionCobranza {
+  id: string;
+  created_at: string;
+  credito_id: string;
+  tipo: "llamada" | "whatsapp" | "email" | "visita" | "otro";
+  resultado: "contactado" | "no_contesta" | "promesa_pago" | "renegociacion" | "ilocalizable" | "otro";
+  nota: string | null;
+  promesa_monto: number | null;
+  promesa_fecha: string | null;
+  proximo_contacto: string | null;
+  credito: { id: string; cliente: { nombre: string } };
+}
+
+export interface Reporte {
+  periodo: { desde: string; hasta: string };
+  moneda: string;
+  cobranzas: {
+    cantidad: number;
+    total_cobrado: number;
+    total_capital: number;
+    total_interes: number;
+    total_mora: number;
+  };
+  cobranzas_por_metodo: { metodo: string; cantidad: number; monto: number }[];
+  cartera: {
+    por_estado: { estado: string; cantidad: number; monto_original: number; saldo_pendiente: number }[];
+    saldo_activo_total: number;
+  };
+  morosidad: {
+    en_mora: number;
+    saldo_expuesto: number;
+    interes_mora_total: number;
+    por_severidad: { critica: number; alta: number; media: number };
+  };
+  detalle_pagos: {
+    fecha: string;
+    cliente: string;
+    monto: number;
+    aplicado_capital: number;
+    aplicado_interes: number;
+    aplicado_mora: number;
+    excedente: number;
+    metodo: string;
+  }[];
+}
+
 export interface EventoAuditoria {
   id: string;
   created_at: string;
@@ -141,6 +187,7 @@ export const KEYS = {
   dashboard:     "/api/dashboard",
   configuracion: "/api/configuracion",
   auditoria:     "/api/auditoria?limit=500",
+  acciones:      "/api/cobranza/acciones?limit=500",
 } as const;
 
 // ── Hooks tipados ─────────────────────────────────────────────────────────────
@@ -189,4 +236,17 @@ export function useConfiguracion() {
 export function useAuditoria() {
   const { data, error, isLoading, mutate } = useSWR<{ eventos: EventoAuditoria[] }>(KEYS.auditoria);
   return { eventos: data?.eventos ?? [], error, isLoading, mutate };
+}
+
+export function useAccionesCobranza() {
+  const { data, error, isLoading, mutate } = useSWR<{ acciones: AccionCobranza[] }>(KEYS.acciones);
+  return { acciones: data?.acciones ?? [], error, isLoading, mutate };
+}
+
+/** Reporte financiero por rango de fechas (key parametrizada por desde/hasta). */
+export function useReportes(desde: string, hasta: string) {
+  const { data, error, isLoading } = useSWR<Reporte>(
+    desde && hasta ? `/api/reportes?desde=${desde}&hasta=${hasta}` : null,
+  );
+  return { reporte: data, error, isLoading };
 }

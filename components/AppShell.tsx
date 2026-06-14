@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import {
   Home, Users, FileText, Wallet, Bell, Search, LogOut, Menu, X,
-  Terminal, ShieldAlert, BarChart3, PlusCircle, Settings, History
+  Terminal, ShieldAlert, BarChart3, PlusCircle, Settings, History, FileBarChart
 } from "lucide-react";
 import { useEffect, useState } from "react";
 
@@ -81,33 +81,33 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     <div className="flex min-h-screen flex-col bg-background text-foreground">
       {/* HEADER */}
       <header className="sticky top-0 z-40 border-b border-border bg-card/95 backdrop-blur-sm">
-      <div className="mx-auto flex h-14 max-w-screen-xl items-center gap-3 px-4 md:gap-6 md:px-6 lg:px-8">
+      <div className="mx-auto flex h-14 max-w-screen-xl items-center gap-3 px-4 md:px-6 lg:px-8 xl:gap-4">
         <button
           onClick={() => setMobileOpen(true)}
-          className="flex h-10 w-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent md:hidden"
+          className="flex h-10 w-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent xl:hidden"
           aria-label="Abrir menú"
         >
           <Menu className="h-5 w-5" />
         </button>
 
-        <div className="flex items-center gap-2.5">
+        <div className="flex shrink-0 items-center gap-2.5">
           <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-success text-white">
             <Terminal className="h-5 w-5" />
           </div>
           <span className="text-base md:text-lg font-bold tracking-tight text-foreground font-mono">CreditFlow</span>
         </div>
 
-        <nav className="hidden items-center gap-7 md:flex">
+        <nav className="hidden min-w-0 items-center gap-5 xl:flex">
           {NAV_ITEMS.map((i) => (
             <TopNavLink key={i.to} {...i} isActive={isActive(i.to)} />
           ))}
         </nav>
 
-        <div className="ml-auto flex items-center gap-2 md:gap-3">
+        <div className="ml-auto flex shrink-0 items-center gap-2 md:gap-3">
           {/* BOTÓN SEARCH PALETTE */}
           <button
             onClick={() => setPaletteOpen(true)}
-            className="relative hidden lg:flex items-center gap-2 h-10 w-64 rounded-lg border border-border bg-background pl-3 pr-2 text-left text-sm text-muted-foreground hover:border-primary transition-all"
+            className="relative hidden 2xl:flex items-center gap-2 h-10 w-56 rounded-lg border border-border bg-background pl-3 pr-2 text-left text-sm text-muted-foreground hover:border-primary transition-all"
           >
             <Search className="h-4 w-4 text-muted-foreground" />
             <span className="flex-1">Buscar (Cmd+K)</span>
@@ -115,6 +115,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               ⌘K
             </kbd>
           </button>
+
+          <Link
+            href="/reportes"
+            title="Reportes"
+            className={`relative hidden h-10 w-10 items-center justify-center rounded-lg hover:bg-accent sm:flex ${
+              isActive("/reportes") ? "text-foreground" : "text-muted-foreground"
+            }`}
+          >
+            <FileBarChart className="h-5 w-5" />
+          </Link>
 
           <Link
             href="/auditoria"
@@ -141,7 +151,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </button>
 
           <div className="flex items-center gap-2 md:gap-3 md:border-l md:border-border md:pl-3">
-            <div className="hidden text-right lg:block">
+            <div className="hidden text-right 2xl:block">
               <p className="text-sm font-semibold text-foreground">{user?.full_name ?? "Usuario"}</p>
               <p className="text-xs text-muted-foreground">{user?.email}</p>
             </div>
@@ -206,6 +216,19 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   </div>
                 </Link>
               ))}
+
+              <Link href="/reportes" onClick={() => setMobileOpen(false)} className="block">
+                <div
+                  className={`flex items-center gap-3 rounded-lg px-3 py-3 text-sm font-medium transition-all ${
+                    isActive("/reportes")
+                      ? "bg-muted border border-primary text-foreground"
+                      : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                  }`}
+                >
+                  <FileBarChart className="h-5 w-5" />
+                  <span>Reportes</span>
+                </div>
+              </Link>
 
               <Link href="/auditoria" onClick={() => setMobileOpen(false)} className="block">
                 <div
@@ -311,8 +334,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       )}
 
       {/* MAIN CONTAINER */}
-      <main className="flex-1 bg-background py-6 md:py-8">
-        <div className="mx-auto max-w-screen-xl px-4 md:px-6 lg:px-8 space-y-6">
+      <main className="flex-1 overflow-x-hidden bg-background py-6 md:py-8">
+        <div className="mx-auto w-full max-w-screen-xl min-w-0 px-4 md:px-6 lg:px-8 space-y-6">
           {children}
         </div>
       </main>
