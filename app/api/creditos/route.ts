@@ -7,7 +7,9 @@ import {
   tasaPeriodicaSegunConvencion,
   interesMora,
   normalizarFrecuencia,
+  resolverFrecuencia,
   sumarPeriodos,
+  type FrecuenciaDef,
 } from "@/lib/domain";
 import { getConfiguracion } from "@/lib/config";
 import { registrarAuditoria } from "@/lib/audit";
@@ -63,7 +65,8 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
       c.plazo_meses >= 1
     ) {
       const frec = normalizarFrecuencia(c.frecuencia);
-      const tasaPeriodica = tasaPeriodicaSegunConvencion(c.tasa, config.convencionTasa, frec);
+      const catFrec = c.frecuencia_def ? [c.frecuencia_def as unknown as FrecuenciaDef] : config.simulador.frecuencias;
+      const tasaPeriodica = tasaPeriodicaSegunConvencion(c.tasa, config.convencionTasa, frec, catFrec);
       const cuota = cuotaMensualFrancesa(c.monto_original, tasaPeriodica, c.plazo_meses);
       interes_mora = interesMora(cuota, c.dias_mora, { tasaDiaria: config.tasaMoraDiaria });
     }
@@ -126,11 +129,18 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
   // Frecuencia de pago (default mensual). El período de cada cuota lo da este campo.
   const frecuencia = normalizarFrecuencia(body.frecuencia);
 
+  // Snapshot de cargos vigentes: congela las reglas de cargos del tenant en el
+  // crédito, para que cambios futuros de configuración no lo alteren.
+  const configActual = await getConfiguracion(userId);
+  const cargosSnapshot = configActual.simulador.cargos;
+  // Snapshot de la definición de frecuencia: congela días/períodos del crédito.
+  const frecuenciaDef = resolverFrecuencia(frecuencia, configActual.simulador.frecuencias);
+
   // Fecha de desembolso y vencimiento de la 1ª cuota (un período después).
   const fechaInicio = body.fecha_inicio ? new Date(body.fecha_inicio) : new Date();
   const proximoPago = body.proximo_pago
     ? new Date(body.proximo_pago)
-    : sumarPeriodos(fechaInicio, 1, frecuencia);
+    : sumarPeriodos(fechaInicio, 1, frecuencia, configActual.simulador.frecuencias);
 
   // Si hay solicitud_id, verificar que existe
   if (body.solicitud_id) {
@@ -151,6 +161,8 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
       tasa: body.tasa,
       plazo_meses: body.plazo_meses,
       frecuencia,
+      frecuencia_def: frecuenciaDef as object,
+      cargos: cargosSnapshot as object,
       fecha_inicio: fechaInicio,
       proximo_pago: proximoPago,
       solicitud_id: body.solicitud_id || null,

@@ -35,6 +35,7 @@ export async function getConfiguracion(
       .split(",")
       .map((s) => s.trim())
       .filter(Boolean) as ComponenteDeuda[],
+    imputarCargos: row.imputar_cargos as ConfiguracionFinanciera["imputarCargos"],
     moneda: row.moneda,
     locale: row.locale,
     simulador: resolverSimulador(row.simulador as Partial<SimuladorConfig> | null),
@@ -53,6 +54,7 @@ export async function guardarConfiguracion(
     tasa_mora_diaria: config.tasaMoraDiaria,
     base_mora: config.baseMora,
     orden_imputacion: config.ordenImputacion.join(","),
+    imputar_cargos: config.imputarCargos,
     moneda: config.moneda,
     locale: config.locale,
     simulador: config.simulador as unknown as Prisma.InputJsonValue,

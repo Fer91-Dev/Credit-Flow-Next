@@ -3,9 +3,14 @@
 import { useState, useEffect } from "react";
 import { Field, Input, Select } from "@/components/ui/field";
 
+/** Cliente recién creado, devuelto a quien abrió el formulario. */
+export interface ClienteCreado { id: string; nombre: string; documento?: string | null }
+
 interface ClienteFormProps {
   clienteId?: string | null;
-  onClose: (success?: boolean) => void;
+  /** DNI/documento para precargar en un alta rápida. */
+  initialDocumento?: string;
+  onClose: (success?: boolean, creado?: ClienteCreado) => void;
 }
 
 const EMPTY = {
@@ -21,8 +26,8 @@ function toDateInput(s?: string | null) {
   return s ? String(s).slice(0, 10) : "";
 }
 
-export function ClienteForm({ clienteId, onClose }: ClienteFormProps) {
-  const [formData, setFormData] = useState({ ...EMPTY });
+export function ClienteForm({ clienteId, initialDocumento, onClose }: ClienteFormProps) {
+  const [formData, setFormData] = useState({ ...EMPTY, documento: initialDocumento ?? "" });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -66,7 +71,7 @@ export function ClienteForm({ clienteId, onClose }: ClienteFormProps) {
         body: JSON.stringify(formData),
       });
       const json = await res.json();
-      if (json.ok) onClose(true);
+      if (json.ok) onClose(true, json.data as ClienteCreado);
       else setError(json.error);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error");

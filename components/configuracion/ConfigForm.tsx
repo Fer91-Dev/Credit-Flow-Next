@@ -3,17 +3,11 @@
 import { useEffect, useState } from "react";
 import { Settings, Check, Loader2, Percent, Plus, X } from "lucide-react";
 import { useConfiguracion, type ConfiguracionFinanciera } from "@/lib/swr";
-import type { SimuladorConfig, CargosConfig } from "@/lib/domain";
+import type { SimuladorConfig, CargosConfig, FrecuenciaOpcion } from "@/lib/domain";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Field, Input, Select } from "@/components/ui/field";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Skeleton } from "@/components/ui/skeleton";
-
-const FRECUENCIAS: { value: SimuladorConfig["frecuenciaDefault"]; label: string }[] = [
-  { value: "mensual", label: "Mensual" },
-  { value: "semanal", label: "Semanal" },
-  { value: "diario", label: "Diaria" },
-];
 
 const ordenLabel: Record<string, string> = {
   mora: "Mora",
@@ -167,29 +161,19 @@ export function ConfigForm() {
           </Section>
 
           {/* Simulador · Frecuencias */}
-          <Section title="Frecuencias de pago" desc="Qué frecuencias se permiten y cuál viene por defecto."
+          <Section title="Frecuencias de pago" desc="Frecuencias ofrecidas en el simulador. Las base no se editan; podés agregar propias (ej. quincenal)."
             onSave={() => saveSim("frecuencias")} saving={savingKey === "frecuencias"} saved={savedKey === "frecuencias"}>
-            <div className="flex flex-wrap items-center gap-2 mb-4">
-              {FRECUENCIAS.map(f => {
-                const on = form.simulador.frecuenciasPermitidas.includes(f.value);
-                return (
-                  <button
-                    key={f.value} type="button"
-                    onClick={() => setSim("frecuenciasPermitidas",
-                      on ? form.simulador.frecuenciasPermitidas.filter(x => x !== f.value) : [...form.simulador.frecuenciasPermitidas, f.value])}
-                    className={`rounded-lg border px-3 py-1.5 text-sm transition-colors ${on ? "border-primary bg-primary/10 text-primary" : "border-border bg-muted/30 text-muted-foreground hover:text-foreground"}`}
-                  >
-                    {f.label}
-                  </button>
-                );
-              })}
-            </div>
-            <div className="max-w-xs">
-              <Field label="Frecuencia por defecto">
-                <Select value={form.simulador.frecuenciaDefault} onChange={e => setSim("frecuenciaDefault", e.target.value as SimuladorConfig["frecuenciaDefault"])}>
-                  {FRECUENCIAS.filter(f => form.simulador.frecuenciasPermitidas.includes(f.value)).map(f => (
-                    <option key={f.value} value={f.value}>{f.label}</option>
+            <FrecuenciasEditor
+              frecuencias={form.simulador.frecuencias}
+              onChange={f => setSim("frecuencias", f)}
+            />
+            <div className="mt-4 max-w-xs">
+              <Field label="Frecuencia por defecto" hint="Preseleccionada en el simulador">
+                <Select value={form.simulador.frecuenciaDefault} onChange={e => setSim("frecuenciaDefault", e.target.value)}>
+                  {form.simulador.frecuencias.filter(f => f.activo).map(f => (
+                    <option key={f.clave} value={f.clave}>{cap(f.label)}</option>
                   ))}
+                  {form.simulador.frecuencias.filter(f => f.activo).length === 0 && <option value="">— sin frecuencias activas —</option>}
                 </Select>
               </Field>
             </div>
@@ -356,7 +340,9 @@ export function ConfigForm() {
           </Section>
 
           {/* Imputación */}
-          <Section title="Orden de imputación de pagos" desc="Cómo se aplica cada pago recibido sobre la deuda.">
+          <Section title="Orden de imputación de pagos" desc="Cómo se aplica cada pago recibido sobre la deuda."
+            onSave={() => save("imputacion", { imputarCargos: form.imputarCargos })}
+            saving={savingKey === "imputacion"} saved={savedKey === "imputacion"}>
             <div className="flex items-center gap-2 flex-wrap">
               {form.ordenImputacion.map((c, i) => (
                 <div key={c} className="flex items-center gap-2">
@@ -369,8 +355,17 @@ export function ConfigForm() {
               ))}
             </div>
             <p className="text-xs text-muted-foreground/60 mt-3">
-              El reordenamiento configurable llegará en una fase próxima. Hoy el motor aplica este orden.
+              El reordenamiento de mora/interés/capital llegará en una fase próxima. Hoy el motor aplica este orden.
             </p>
+
+            <div className="mt-4 max-w-md border-t border-border pt-4">
+              <Field label="Imputación de cargos" hint="Dónde entran IVA/seguro/gastos del período al imputar un pago">
+                <Select value={form.imputarCargos} onChange={e => set("imputarCargos", e.target.value as ConfiguracionFinanciera["imputarCargos"])}>
+                  <option value="integrado">Integrado — Mora → Interés → Cargos → Capital</option>
+                  <option value="separado">Separado — Mora → Cargos → Interés → Capital</option>
+                </Select>
+              </Field>
+            </div>
           </Section>
 
           {/* Presentación */}
@@ -464,6 +459,106 @@ function PlazosEditor({ plazos, onChange }: { plazos: SimuladorConfig["plazos"];
           onChange={e => setNuevo(e.target.value)}
           onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); add(); } }} />
         <button type="button" onClick={add} className="inline-flex items-center gap-1 rounded-lg border border-border px-2.5 py-2 text-xs text-muted-foreground hover:bg-muted hover:text-foreground transition-colors whitespace-nowrap">
+          <Plus className="h-3.5 w-3.5" /> Agregar
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function cap(s: string) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : s; }
+
+function slugFrecuencia(s: string): string {
+  return s
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
+/** Editor de frecuencias: built-in fijas (solo activar), personalizadas agregar/editar/eliminar. */
+function FrecuenciasEditor({ frecuencias, onChange }: {
+  frecuencias: FrecuenciaOpcion[]; onChange: (f: FrecuenciaOpcion[]) => void;
+}) {
+  const [label, setLabel] = useState("");
+  const [dias, setDias] = useState("");
+
+  const toggle = (clave: string) => onChange(frecuencias.map(f => f.clave === clave ? { ...f, activo: !f.activo } : f));
+  const remove = (clave: string) => onChange(frecuencias.filter(f => f.clave !== clave));
+  const setField = (clave: string, patch: Partial<FrecuenciaOpcion>) =>
+    onChange(frecuencias.map(f => f.clave === clave ? { ...f, ...patch } : f));
+  const setDiasFrec = (clave: string, d: number) =>
+    setField(clave, { dias: d, periodosAnio: Math.round((365 / Math.max(1, d)) * 100) / 100 });
+
+  const add = () => {
+    const l = label.trim();
+    const d = parseInt(dias);
+    if (!l || !d || d < 1) return;
+    let clave = slugFrecuencia(l) || `freq_${frecuencias.length}`;
+    if (frecuencias.some(f => f.clave === clave)) clave = `${clave}_${frecuencias.length}`;
+    onChange([...frecuencias, {
+      clave, label: l.toLowerCase(), dias: d,
+      periodosAnio: Math.round((365 / d) * 100) / 100,
+      esMensual: false, activo: true, builtin: false,
+    }]);
+    setLabel(""); setDias("");
+  };
+
+  return (
+    <div className="space-y-2">
+      {frecuencias.map(f => (
+        <div key={f.clave} className="flex items-center gap-3 rounded-lg border border-border bg-muted/20 px-3 py-2">
+          <div className="min-w-0 flex-1">
+            {f.builtin ? (
+              <p className="text-sm font-medium text-foreground">{cap(f.label)}</p>
+            ) : (
+              <input
+                value={f.label}
+                onChange={e => setField(f.clave, { label: e.target.value })}
+                className="w-full rounded-md border border-border bg-muted/40 px-2 py-1 text-sm text-foreground outline-none focus:border-primary"
+              />
+            )}
+            <p className="mt-0.5 text-[11px] text-muted-foreground/70">
+              {f.esMensual ? "mensual (calendario)" : `cada ${f.dias} día${f.dias !== 1 ? "s" : ""}`} · ≈ {f.periodosAnio} pagos/año
+            </p>
+          </div>
+          {!f.builtin && !f.esMensual && (
+            <div className="w-24 shrink-0">
+              <Input type="number" min="1" step="1" value={f.dias}
+                onChange={e => setDiasFrec(f.clave, parseInt(e.target.value) || 1)} />
+            </div>
+          )}
+          <Toggle checked={f.activo} onChange={() => toggle(f.clave)} />
+          {!f.builtin ? (
+            <button type="button" onClick={() => remove(f.clave)} title="Eliminar frecuencia"
+              className="shrink-0 text-muted-foreground/40 hover:text-destructive transition-colors">
+              <X className="h-4 w-4" />
+            </button>
+          ) : (
+            <span className="w-4 shrink-0" />
+          )}
+        </div>
+      ))}
+
+      {/* Agregar frecuencia personalizada */}
+      <div className="flex items-end gap-2 border-t border-border/60 pt-3">
+        <div className="flex-1">
+          <Field label="Nueva frecuencia">
+            <Input placeholder="Ej: Quincenal" value={label}
+              onChange={e => setLabel(e.target.value)}
+              onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); add(); } }} />
+          </Field>
+        </div>
+        <div className="w-24">
+          <Field label="Cada (días)">
+            <Input type="number" min="1" step="1" placeholder="15" value={dias}
+              onChange={e => setDias(e.target.value)}
+              onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); add(); } }} />
+          </Field>
+        </div>
+        <button type="button" onClick={add}
+          className="inline-flex h-10 items-center gap-1 rounded-lg border border-border px-3 text-xs text-muted-foreground hover:bg-muted hover:text-foreground transition-colors whitespace-nowrap">
           <Plus className="h-3.5 w-3.5" /> Agregar
         </button>
       </div>

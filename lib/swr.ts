@@ -61,6 +61,7 @@ export interface PagoImputado {
   notas?: string | null;
   aplicado_mora: number;
   aplicado_interes: number;
+  aplicado_cargos: number;
   aplicado_capital: number;
   excedente: number;
 }
@@ -73,7 +74,7 @@ export interface CreditoConFinanzas {
   saldo_pendiente: number;
   tasa: number;
   plazo_meses: number;
-  frecuencia: "mensual" | "semanal" | "diario";
+  frecuencia: string;
   dias_mora: number;
   estado: string;
   created_at: string;
@@ -115,7 +116,7 @@ export interface Credito {
   saldo_pendiente: number;
   tasa: number;
   plazo_meses: number;
-  frecuencia: "mensual" | "semanal" | "diario";
+  frecuencia: string;
   dias_mora: number;
   estado: string;
   created_at: string;
@@ -146,7 +147,7 @@ export interface Amortizacion {
     monto: number;
     tasa_ingresada: number;
     convencion_tasa: string;
-    frecuencia: "mensual" | "semanal" | "diario";
+    frecuencia: string;
     frecuencia_label: { cuotaSingular: string; cuotaPlural: string; adjetivo: string; unidad: string };
     tasa_periodica: number;
     tasa_efectiva_anual: number;
@@ -233,6 +234,7 @@ export interface ConfiguracionFinanciera {
   tasaMoraDiaria: number;
   baseMora: "cuota" | "saldo";
   ordenImputacion: Array<"mora" | "interes" | "capital">;
+  imputarCargos: "integrado" | "separado";
   moneda: string;
   locale: string;
   simulador: SimuladorConfig;
@@ -247,6 +249,7 @@ export interface Pago {
   notas?: string;
   aplicado_mora: number;
   aplicado_interes: number;
+  aplicado_cargos: number;
   aplicado_capital: number;
   excedente: number;
   credito: { id: string; cliente: { nombre: string } };

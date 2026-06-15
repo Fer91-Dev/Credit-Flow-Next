@@ -55,11 +55,13 @@ model creditos {
   saldo_pendiente Float
   tasa            Float     @default(0)
   plazo_meses     Int       @default(12) // número de cuotas (el período lo da `frecuencia`)
-  frecuencia      String    @default("mensual") // mensual | semanal | diario
+  frecuencia      String    @default("mensual") // clave de frecuencia (built-in o personalizada)
+  frecuencia_def  Json?     // snapshot de la definición de frecuencia vigente al otorgar (congela días/períodos)
   fecha_inicio    DateTime  @default(now()) @db.Date
   proximo_pago    DateTime? @db.Date
   dias_mora       Int       @default(0)
   estado          String    @default("activo")
+  cargos          Json?     // snapshot de CargosConfig vigente al otorgar (congela los cargos del crédito)
   user_id         String    @db.Uuid
 
   cliente   clientes     @relation(fields: [cliente_id], references: [id], onDelete: Cascade)
@@ -79,6 +81,7 @@ model pagos {
   user_id          String   @db.Uuid
   aplicado_mora    Float    @default(0)
   aplicado_interes Float    @default(0)
+  aplicado_cargos  Float    @default(0)
   aplicado_capital Float    @default(0)
   excedente        Float    @default(0)
 
@@ -152,6 +155,7 @@ model configuraciones {
   tasa_mora_diaria     Float    @default(0.01)
   base_mora            String   @default("cuota")
   orden_imputacion     String   @default("mora,interes,capital")
+  imputar_cargos       String   @default("integrado")
   moneda               String   @default("ARS")
   locale               String   @default("es-AR")
   simulador            Json?    // SimuladorConfig (parámetros del motor de cuota por tenant)

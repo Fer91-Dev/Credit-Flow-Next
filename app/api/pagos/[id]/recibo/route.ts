@@ -48,6 +48,7 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
       notas: pago.notas,
       aplicado_mora: pago.aplicado_mora,
       aplicado_interes: pago.aplicado_interes,
+      aplicado_cargos: pago.aplicado_cargos,
       aplicado_capital: pago.aplicado_capital,
       excedente: pago.excedente,
       created_at: pago.created_at,

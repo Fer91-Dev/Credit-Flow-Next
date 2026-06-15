@@ -6,6 +6,9 @@
  * fuera del cálculo, de modo que el motor siga siendo testeable en aislamiento.
  */
 
+import type { ModoImputacionCargos } from "./payments";
+import type { FrecuenciaDef } from "./frequency";
+
 /** Cómo se interpreta el campo `tasa` de un crédito. */
 export type ConvencionTasa = "nominal_anual" | "efectiva_anual" | "mensual";
 
@@ -18,8 +21,13 @@ export type ComponenteDeuda = "mora" | "interes" | "capital";
 /** Sistema de amortización (por ahora solo francés; extensible). */
 export type SistemaAmortizacion = "frances";
 
-/** Frecuencia de pago (espejo del tipo de frequency.ts; literal para evitar ciclo de imports). */
-export type FrecuenciaConfig = "mensual" | "semanal" | "diario";
+/** Una frecuencia ofrecida por el tenant: definición del motor + estado en la UI. */
+export interface FrecuenciaOpcion extends FrecuenciaDef {
+  /** Si se ofrece en el simulador. */
+  activo: boolean;
+  /** Built-in (mensual/semanal/diario): no editable ni eliminable. */
+  builtin: boolean;
+}
 
 /** Cómo se redondea la cuota total. */
 export type RedondeoModo = "ninguno" | "entero" | "multiplo";
@@ -59,9 +67,9 @@ export interface SimuladorConfig {
   /** Plazos ofrecidos (con activar/desactivar) + plazo por defecto. */
   plazos: PlazoOpcion[];
   plazoDefault: number;
-  /** Frecuencias permitidas + frecuencia por defecto. */
-  frecuenciasPermitidas: FrecuenciaConfig[];
-  frecuenciaDefault: FrecuenciaConfig;
+  /** Frecuencias ofrecidas (built-in + personalizadas) + frecuencia por defecto (clave). */
+  frecuencias: FrecuenciaOpcion[];
+  frecuenciaDefault: string;
   /** Redondeo de la cuota total. */
   redondeoCuota: { modo: RedondeoModo; multiplo: number };
   /** Cronograma: día fijo de vencimiento (1..28) o null (un período desde el inicio). */
@@ -87,6 +95,8 @@ export interface ConfiguracionFinanciera {
 
   /** Orden de imputación de un pago. Default: mora -> interes -> capital. */
   ordenImputacion: ComponenteDeuda[];
+  /** Cómo se imputan los cargos del período respecto del interés. Default: integrado. */
+  imputarCargos: ModoImputacionCargos;
 
   /** Formato de presentación (no afecta cálculos). */
   moneda: string; // ISO 4217, ej: "ARS", "COP"
@@ -114,7 +124,11 @@ export const SIMULADOR_DEFAULT: SimuladorConfig = {
     { cuotas: 24, activo: true },
   ],
   plazoDefault: 12,
-  frecuenciasPermitidas: ["mensual", "semanal", "diario"],
+  frecuencias: [
+    { clave: "mensual", label: "mensual", dias: 30, periodosAnio: 12, esMensual: true, activo: true, builtin: true },
+    { clave: "semanal", label: "semanal", dias: 7, periodosAnio: 52, activo: true, builtin: true },
+    { clave: "diario", label: "diaria", dias: 1, periodosAnio: 365, activo: true, builtin: true },
+  ],
   frecuenciaDefault: "mensual",
   redondeoCuota: { modo: "ninguno", multiplo: 100 },
   diaVencimientoFijo: null,
@@ -134,6 +148,7 @@ export const CONFIG_DEFAULT: ConfiguracionFinanciera = {
   tasaMoraDiaria: 0.01, // 1% diario sobre la cuota
   baseMora: "cuota",
   ordenImputacion: ["mora", "interes", "capital"],
+  imputarCargos: "integrado",
   moneda: "ARS",
   locale: "es-AR",
   simulador: SIMULADOR_DEFAULT,
@@ -155,10 +170,10 @@ export function resolverSimulador(
       Array.isArray(parcial.plazos) && parcial.plazos.length > 0
         ? parcial.plazos
         : SIMULADOR_DEFAULT.plazos,
-    frecuenciasPermitidas:
-      Array.isArray(parcial.frecuenciasPermitidas) && parcial.frecuenciasPermitidas.length > 0
-        ? parcial.frecuenciasPermitidas
-        : SIMULADOR_DEFAULT.frecuenciasPermitidas,
+    frecuencias:
+      Array.isArray(parcial.frecuencias) && parcial.frecuencias.length > 0
+        ? parcial.frecuencias
+        : SIMULADOR_DEFAULT.frecuencias,
     redondeoCuota: { ...SIMULADOR_DEFAULT.redondeoCuota, ...parcial.redondeoCuota },
     cargos: {
       comisionOtorgamiento: { ...SIMULADOR_DEFAULT.cargos.comisionOtorgamiento, ...c?.comisionOtorgamiento },

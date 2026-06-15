@@ -1,21 +1,22 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-import { CalendarDays, DollarSign, Eye, EyeOff, Info, Percent, TrendingUp } from "lucide-react";
+import { CalendarDays, DollarSign, Eye, EyeOff, Info, Percent, Search, TrendingUp, UserPlus, X } from "lucide-react";
 import { Field, Input, Select } from "@/components/ui/field";
+import { ClienteForm, type ClienteCreado } from "@/components/clientes/ClienteForm";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useConfiguracion } from "@/lib/swr";
 import {
   construirPlanAmortizacion,
   tasaPeriodicaSegunConvencion,
   efectivaAnualDesdePeriodica,
-  FRECUENCIA_LABEL,
-  FRECUENCIAS,
+  frecuenciaLabel,
   type Frecuencia,
   type ConvencionTasa,
   type PlanAmortizacion,
 } from "@/lib/domain";
 
-interface Cliente { id: string; nombre: string }
+interface Cliente { id: string; nombre: string; documento?: string | null }
 
 interface CreditoFormProps {
   creditoId?: string | null;
@@ -77,8 +78,9 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
 
   // Parámetros del simulador definidos por el tenant en Configuración.
   const simCfg = config?.simulador;
+  const catalogoFrec = simCfg?.frecuencias ?? [];
   const plazosActivos = (simCfg?.plazos ?? []).filter(p => p.activo).map(p => p.cuotas);
-  const frecsPermitidas = (simCfg?.frecuenciasPermitidas?.length ? simCfg.frecuenciasPermitidas : FRECUENCIAS) as Frecuencia[];
+  const frecsActivas = catalogoFrec.filter(f => f.activo);
   const hayCargos = !!simCfg && (
     simCfg.cargos.iva.activo || simCfg.cargos.seguro.activo ||
     simCfg.cargos.gastosAdministrativos.activo || simCfg.cargos.comisionOtorgamiento.activo
@@ -94,6 +96,20 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
   const [error, setError] = useState<string | null>(null);
   const [vista, setVista] = useState<"operador" | "cliente">("operador");
   const [prefilled, setPrefilled] = useState(false);
+  // Alta rápida de cliente desde el buscador (cuando el DNI no existe).
+  const [alta, setAlta] = useState<{ open: boolean; doc: string }>({ open: false, doc: "" });
+
+  const abrirAlta = (query: string) => {
+    const doc = /\d/.test(query) ? query.trim() : "";
+    setAlta({ open: true, doc });
+  };
+  const handleAltaClose = (success?: boolean, creado?: ClienteCreado) => {
+    setAlta({ open: false, doc: "" });
+    if (success && creado) {
+      setClientes(prev => [{ id: creado.id, nombre: creado.nombre, documento: creado.documento ?? null }, ...prev]);
+      setFormData(p => ({ ...p, cliente_id: creado.id }));
+    }
+  };
 
   useEffect(() => {
     fetch("/api/clientes?limit=1000")
@@ -117,6 +133,18 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
     }));
     setPrefilled(true);
   }, [simCfg, creditoId, prefilled]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Solo la frecuencia mensual usa los plazos preset; las demás llevan un N° de cuotas FIJO.
+  const esMensual = formData.frecuencia === "mensual";
+  const plazoFijoNoMensual = simCfg?.plazoDefault || 12;
+
+  // Al pasar a una frecuencia no mensual, fijamos el N° de cuotas (no se elige).
+  useEffect(() => {
+    if (!esMensual) {
+      const fijo = String(plazoFijoNoMensual);
+      setFormData(p => (p.plazo_meses === fijo ? p : { ...p, plazo_meses: fijo }));
+    }
+  }, [esMensual, plazoFijoNoMensual]);
 
   const fetchCredito = async () => {
     try {
@@ -145,6 +173,11 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
     setLoading(true);
     setError(null);
     try {
+      if (!formData.cliente_id) {
+        setError("Seleccioná un cliente");
+        setLoading(false);
+        return;
+      }
       const monto = parseMonto(formData.monto_original);
       if (monto <= 0) {
         setError("Ingresá un capital válido");
@@ -195,7 +228,7 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
     sim.plazo !== formData.plazo_meses ||
     sim.frecuencia !== formData.frecuencia;
 
-  const lbl = FRECUENCIA_LABEL[formData.frecuencia];
+  const lbl = frecuenciaLabel(formData.frecuencia, catalogoFrec);
 
   const plan = useMemo<PlanAmortizacion | null>(() => {
     const monto = parseMonto(sim.monto);
@@ -204,7 +237,8 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
     if (monto <= 0 || isNaN(n) || n < 1) return null;
     try {
       return construirPlanAmortizacion(monto, tasa, n, new Date(), convencion, sim.frecuencia,
-        simCfg ? { cargos: simCfg.cargos, redondeo: simCfg.redondeoCuota } : undefined);
+        simCfg ? { cargos: simCfg.cargos, redondeo: simCfg.redondeoCuota } : undefined,
+        catalogoFrec);
     } catch {
       return null;
     }
@@ -214,9 +248,9 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
   const tasaEA = useMemo(() => {
     const tasa = parseFloat(sim.tasa) || 0;
     if (tasa <= 0) return 0;
-    const ip = tasaPeriodicaSegunConvencion(tasa, convencion, sim.frecuencia);
-    return efectivaAnualDesdePeriodica(ip, sim.frecuencia);
-  }, [sim.tasa, sim.frecuencia, convencion]);
+    const ip = tasaPeriodicaSegunConvencion(tasa, convencion, sim.frecuencia, catalogoFrec);
+    return efectivaAnualDesdePeriodica(ip, sim.frecuencia, catalogoFrec);
+  }, [sim.tasa, sim.frecuencia, convencion, catalogoFrec]);
 
   const capPct = plan && plan.totalPagado > 0
     ? Math.round((montoNum / plan.totalPagado) * 100)
@@ -229,6 +263,7 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
   const totalCuotasCliente = plan ? plan.cuotas.reduce((s, r) => s + r.cuotaTotal, 0) : 0;
 
   return (
+    <>
     <div className="flex h-full min-h-0">
 
       {/* ── IZQUIERDA: parámetros del crédito ── */}
@@ -245,11 +280,13 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
         {/* Prestatario */}
         <section className="space-y-3">
           <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Prestatario</p>
-          <Field label="Cliente" required>
-            <Select name="cliente_id" value={formData.cliente_id} onChange={set("cliente_id")} required>
-              <option value="">Seleccionar cliente…</option>
-              {clientes.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
-            </Select>
+          <Field label="Cliente" required hint="Buscá por DNI o por apellido y nombre">
+            <ClienteCombobox
+              clientes={clientes}
+              value={formData.cliente_id}
+              onSelect={id => setFormData(p => ({ ...p, cliente_id: id }))}
+              onAlta={abrirAlta}
+            />
           </Field>
           <Field label="Tipo de crédito">
             <Select name="tipo_credito" value={formData.tipo_credito} onChange={set("tipo_credito")}>
@@ -276,9 +313,9 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
 
           <Field label="Frecuencia de pago">
             <Select name="frecuencia" value={formData.frecuencia} onChange={set("frecuencia")}>
-              {frecsPermitidas.map(f => (
-                <option key={f} value={f}>
-                  {FRECUENCIA_LABEL[f].adjetivo.charAt(0).toUpperCase() + FRECUENCIA_LABEL[f].adjetivo.slice(1)}
+              {frecsActivas.map(f => (
+                <option key={f.clave} value={f.clave}>
+                  {f.label.charAt(0).toUpperCase() + f.label.slice(1)}
                 </option>
               ))}
             </Select>
@@ -298,8 +335,11 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
                 <Percent className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
               </div>
             </Field>
-            <Field label="N° de cuotas" hint={lbl.cuotaPlural}>
-              {plazosActivos.length > 0 ? (
+            <Field label="N° de cuotas" hint={esMensual ? lbl.cuotaPlural : `fijo · ${lbl.cuotaPlural}`}>
+              {!esMensual ? (
+                // Frecuencia no mensual: N° de cuotas fijo (no se elige).
+                <Input value={formData.plazo_meses} readOnly disabled className="opacity-60 cursor-not-allowed" />
+              ) : plazosActivos.length > 0 ? (
                 <Select name="plazo_meses" value={formData.plazo_meses} onChange={set("plazo_meses")}>
                   {plazosActivos.map(p => <option key={p} value={p}>{p}</option>)}
                 </Select>
@@ -536,6 +576,136 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
           </div>
         )}
       </div>
+    </div>
+
+    {/* Alta rápida de cliente (cuando el DNI buscado no existe) */}
+    <Dialog open={alta.open} onOpenChange={open => { if (!open) handleAltaClose(false); }}>
+      <DialogContent className="sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Nuevo cliente</DialogTitle>
+        </DialogHeader>
+        <ClienteForm initialDocumento={alta.doc} onClose={handleAltaClose} />
+      </DialogContent>
+    </Dialog>
+    </>
+  );
+}
+
+/**
+ * Buscador de cliente para el otorgamiento: filtra por DNI (normalizando dígitos)
+ * o por apellido y nombre. Reemplaza el viejo desplegable de opciones.
+ */
+function ClienteCombobox({ clientes, value, onSelect, onAlta }: {
+  clientes: Cliente[]; value: string; onSelect: (id: string) => void; onAlta: (query: string) => void;
+}) {
+  const [query, setQuery] = useState("");
+  // `searched` = término efectivamente buscado (al tocar la lupa). null = nada buscado aún.
+  const [searched, setSearched] = useState<string | null>(null);
+  const [open, setOpen] = useState(false);
+  const selected = clientes.find(c => c.id === value) ?? null;
+
+  // Resultados sobre el término BUSCADO (no mientras se tipea).
+  const results = useMemo(() => {
+    if (!searched) return [];
+    const s = searched.toLowerCase();
+    const sd = s.replace(/\D/g, "");
+    return clientes.filter(c => {
+      const nombre = c.nombre.toLowerCase();
+      const doc = (c.documento || "").toLowerCase();
+      const docd = doc.replace(/\D/g, "");
+      return nombre.includes(s) || doc.includes(s) || (sd.length > 0 && docd.includes(sd));
+    }).slice(0, 8);
+  }, [clientes, searched]);
+
+  const doSearch = () => {
+    const t = query.trim();
+    if (!t) { setSearched(null); setOpen(false); return; }
+    setSearched(t);
+    setOpen(true);
+  };
+  const pick = (c: Cliente) => { onSelect(c.id); setQuery(""); setSearched(null); setOpen(false); };
+  const lanzarAlta = () => { onAlta(searched ?? query.trim()); setQuery(""); setSearched(null); setOpen(false); };
+
+  if (selected) {
+    return (
+      <div className="flex h-10 items-center justify-between gap-2 rounded-lg border border-border bg-muted/40 px-3">
+        <span className="truncate text-sm text-foreground">
+          {selected.nombre}
+          {selected.documento && <span className="text-muted-foreground"> · DNI {selected.documento}</span>}
+        </span>
+        <button
+          type="button"
+          onClick={() => { onSelect(""); setQuery(""); setSearched(null); }}
+          title="Cambiar cliente"
+          className="shrink-0 text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <X className="h-3.5 w-3.5" />
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative">
+      {/* Campo único: input con la lupa integrada a la derecha (acción de buscar). */}
+      <div className="group relative flex h-10 items-center rounded-lg border border-border bg-muted/40 transition-all focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20">
+        <input
+          type="text"
+          autoComplete="off"
+          placeholder="Ingresá DNI o apellido y nombre…"
+          value={query}
+          // Al editar, se ocultan resultados previos hasta volver a buscar con la lupa.
+          onChange={e => { setQuery(e.target.value); setSearched(null); setOpen(false); }}
+          onBlur={() => setTimeout(() => setOpen(false), 150)}
+          onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); doSearch(); } }}
+          className="h-full flex-1 rounded-lg bg-transparent pl-3 pr-1 text-sm text-foreground placeholder:text-muted-foreground/40 outline-none"
+        />
+        <button
+          type="button"
+          onClick={doSearch}
+          onMouseDown={e => e.preventDefault()}
+          title="Buscar cliente"
+          aria-label="Buscar cliente"
+          className="mr-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-background hover:text-primary"
+        >
+          <Search className="h-4 w-4" />
+        </button>
+      </div>
+
+      {open && searched !== null && (
+        <div className="absolute z-20 mt-1 max-h-64 w-full overflow-y-auto rounded-lg border border-border bg-card shadow-lg">
+          {results.length > 0 ? (
+            results.map(c => (
+              <button
+                key={c.id}
+                type="button"
+                onMouseDown={e => e.preventDefault()}
+                onClick={() => pick(c)}
+                className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left hover:bg-muted/50 transition-colors"
+              >
+                <span className="truncate text-sm text-foreground">{c.nombre}</span>
+                <span className="shrink-0 font-mono text-xs text-muted-foreground">{c.documento || "—"}</span>
+              </button>
+            ))
+          ) : (
+            /* Sin coincidencias → el cliente no existe → ofrecer alta. */
+            <>
+              <p className="px-3 py-2.5 text-xs text-muted-foreground/60">
+                «{searched}» no pertenece a ningún cliente.
+              </p>
+              <button
+                type="button"
+                onMouseDown={e => e.preventDefault()}
+                onClick={lanzarAlta}
+                className="flex w-full items-center gap-2 border-t border-border px-3 py-2.5 text-left text-sm text-primary hover:bg-primary/5 transition-colors"
+              >
+                <UserPlus className="h-3.5 w-3.5 shrink-0" />
+                Dar de alta nuevo cliente · «{searched}»
+              </button>
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }

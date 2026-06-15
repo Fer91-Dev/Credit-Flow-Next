@@ -18,6 +18,7 @@ export interface ReciboData {
     notas: string | null;
     aplicado_mora: number;
     aplicado_interes: number;
+    aplicado_cargos: number;
     aplicado_capital: number;
     excedente: number;
     created_at: Date;
@@ -137,16 +138,17 @@ export async function generarReciboPDF(data: ReciboData): Promise<Uint8Array> {
     textRight(fmtMoney(value), right, y, font, 10, color);
     y -= 18;
   };
-  rowImput("1. Interés por mora", pago.aplicado_mora, pago.aplicado_mora > 0 ? rgb(0.94, 0.27, 0.27) : MUTED);
-  rowImput("2. Interés del período", pago.aplicado_interes, pago.aplicado_interes > 0 ? rgb(0.96, 0.62, 0.04) : MUTED);
-  rowImput("3. Capital", pago.aplicado_capital, pago.aplicado_capital > 0 ? PRIMARY : MUTED);
+  rowImput("Interés por mora", pago.aplicado_mora, pago.aplicado_mora > 0 ? rgb(0.94, 0.27, 0.27) : MUTED);
+  rowImput("Interés del período", pago.aplicado_interes, pago.aplicado_interes > 0 ? rgb(0.96, 0.62, 0.04) : MUTED);
+  if (pago.aplicado_cargos > 0) rowImput("Cargos (IVA / seguro / gastos)", pago.aplicado_cargos, rgb(0.55, 0.55, 0.95));
+  rowImput("Capital", pago.aplicado_capital, pago.aplicado_capital > 0 ? PRIMARY : MUTED);
   if (pago.excedente > 0) rowImput("Excedente (saldo a favor)", pago.excedente, MUTED);
 
   y -= 4;
   hr(y);
   y -= 20;
   text("TOTAL IMPUTADO", M, y, bold, 10, INK);
-  textRight(fmtMoney(pago.aplicado_mora + pago.aplicado_interes + pago.aplicado_capital + pago.excedente),
+  textRight(fmtMoney(pago.aplicado_mora + pago.aplicado_interes + pago.aplicado_cargos + pago.aplicado_capital + pago.excedente),
     right, y, bold, 11, INK);
   y -= 36;
 

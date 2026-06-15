@@ -10,6 +10,7 @@ import {
   tasaPeriodicaSegunConvencion,
   normalizarFrecuencia,
   round2,
+  type CargosConfig,
 } from "@/lib/domain";
 import { getConfiguracion } from "@/lib/config";
 import { registrarAuditoria } from "@/lib/audit";
@@ -113,8 +114,12 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
   // ── Motor financiero ──────────────────────────────────────────────────────
 
   const config = await getConfiguracion(userId);
+  // Catálogo: snapshot del crédito si existe (blindado); si no, config vigente.
+  const catalogo = credito.frecuencia_def
+    ? [credito.frecuencia_def as unknown as typeof config.simulador.frecuencias[number]]
+    : config.simulador.frecuencias;
   const frecuencia = normalizarFrecuencia(credito.frecuencia);
-  const tasaPeriodica = tasaPeriodicaSegunConvencion(credito.tasa, config.convencionTasa, frecuencia);
+  const tasaPeriodica = tasaPeriodicaSegunConvencion(credito.tasa, config.convencionTasa, frecuencia, catalogo);
 
   // Cuota fija del crédito (PMT del sistema francés, por período)
   const cuotaValor = cuotaMensualFrancesa(
@@ -127,7 +132,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
   const fechaVencimiento: Date =
     credito.proximo_pago instanceof Date && !isNaN(credito.proximo_pago.getTime())
       ? credito.proximo_pago
-      : sumarPeriodos(credito.fecha_inicio, 1, frecuencia);
+      : sumarPeriodos(credito.fecha_inicio, 1, frecuencia, catalogo);
 
   // Mora acumulada al día de hoy
   const estadoMora = config.moraActiva
@@ -139,13 +144,36 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
   // Interés corriente del período = saldo pendiente × tasa periódica
   const interesDelPeriodo = round2(credito.saldo_pendiente * tasaPeriodica);
 
-  // Imputar pago en orden: Mora → Interés → Capital
+  // Cargos del período según el snapshot congelado en el crédito (IVA/seguro/gastos).
+  // La comisión de otorgamiento NO entra acá (es upfront/financiada al otorgar).
+  const cargos = (credito.cargos as CargosConfig | null) ?? null;
+  let cargosDelPeriodo = 0;
+  if (cargos) {
+    let iva = 0, seguro = 0, gastos = 0;
+    if (cargos.iva.activo) iva = round2(interesDelPeriodo * cargos.iva.tasa);
+    if (cargos.seguro.activo) {
+      const s = cargos.seguro;
+      seguro = round2(
+        s.modo === "porcentaje_saldo" ? credito.saldo_pendiente * s.valor
+        : s.modo === "porcentaje_monto" ? credito.monto_original * s.valor
+        : s.valor
+      );
+    }
+    if (cargos.gastosAdministrativos.activo) {
+      const g = cargos.gastosAdministrativos;
+      gastos = round2(g.modo === "porcentaje" ? cuotaValor * g.valor : g.valor);
+    }
+    cargosDelPeriodo = round2(iva + seguro + gastos);
+  }
+
+  // Imputar pago. Orden: Mora → (Interés/Cargos según modo) → Capital.
   const deuda = {
     mora: estadoMora.interesMora,
     interes: interesDelPeriodo,
     capital: credito.saldo_pendiente,
+    cargos: cargosDelPeriodo,
   };
-  const resultado = imputarPago(body.monto, deuda);
+  const resultado = imputarPago(body.monto, deuda, config.imputarCargos);
 
   // ── Persistencia ─────────────────────────────────────────────────────────
 
@@ -160,6 +188,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
       notas: body.notas?.trim() || null,
       aplicado_mora: resultado.aplicadoMora,
       aplicado_interes: resultado.aplicadoInteres,
+      aplicado_cargos: resultado.aplicadoCargos,
       aplicado_capital: resultado.aplicadoCapital,
       excedente: resultado.excedente,
       ...withTenant(userId),
@@ -179,7 +208,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
   // Determinar próxima fecha de pago (avanza solo si se cubrió capital)
   let nuevoProximoPago: Date | null = credito.proximo_pago;
   if (resultado.aplicadoCapital > 0 && resultado.nuevoSaldoCapital > 0) {
-    nuevoProximoPago = sumarPeriodos(fechaVencimiento, 1, frecuencia);
+    nuevoProximoPago = sumarPeriodos(fechaVencimiento, 1, frecuencia, catalogo);
   }
 
   await prisma.creditos.update({
@@ -203,6 +232,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
       metodo: body.metodo,
       aplicado_mora: resultado.aplicadoMora,
       aplicado_interes: resultado.aplicadoInteres,
+      aplicado_cargos: resultado.aplicadoCargos,
       aplicado_capital: resultado.aplicadoCapital,
       excedente: resultado.excedente,
       saldo_anterior: credito.saldo_pendiente,
@@ -216,6 +246,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
       imputacion: {
         aplicadoMora: resultado.aplicadoMora,
         aplicadoInteres: resultado.aplicadoInteres,
+        aplicadoCargos: resultado.aplicadoCargos,
         aplicadoCapital: resultado.aplicadoCapital,
         excedente: resultado.excedente,
         saldoAnterior: credito.saldo_pendiente,

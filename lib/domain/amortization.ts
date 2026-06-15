@@ -7,7 +7,7 @@
  */
 import { round2, toCents, fromCents } from "./money";
 import type { ConvencionTasa, CargosConfig, RedondeoModo } from "./config";
-import { tasaPeriodicaSegunConvencion, sumarPeriodos, type Frecuencia } from "./frequency";
+import { tasaPeriodicaSegunConvencion, sumarPeriodos, type Frecuencia, type FrecuenciaDef } from "./frequency";
 
 export interface CuotaPlan {
   nro: number;
@@ -112,7 +112,8 @@ export function construirPlanAmortizacion(
   fechaInicio: Date,
   convencion: ConvencionTasa = "nominal_anual",
   frecuencia: Frecuencia = "mensual",
-  opciones?: OpcionesPlan
+  opciones?: OpcionesPlan,
+  catalogoFrecuencias?: FrecuenciaDef[]
 ): PlanAmortizacion {
   const cargos = opciones?.cargos;
 
@@ -125,7 +126,7 @@ export function construirPlanAmortizacion(
   const comisionFinanciada = !!cargos?.comisionOtorgamiento.activo && cargos.comisionOtorgamiento.financiada;
   const principalAmortizar = comisionFinanciada ? round2(principal + comision) : principal;
 
-  const i = tasaPeriodicaSegunConvencion(tasaPct, convencion, frecuencia);
+  const i = tasaPeriodicaSegunConvencion(tasaPct, convencion, frecuencia, catalogoFrecuencias);
   const cuota = cuotaMensualFrancesa(principalAmortizar, i, nCuotas);
 
   const cuotaCents = toCents(cuota);
@@ -180,7 +181,7 @@ export function construirPlanAmortizacion(
 
     cuotas.push({
       nro,
-      fecha: sumarPeriodos(fechaInicio, nro, frecuencia),
+      fecha: sumarPeriodos(fechaInicio, nro, frecuencia, catalogoFrecuencias),
       saldoInicial,
       cuota: cuotaPura,
       interes,

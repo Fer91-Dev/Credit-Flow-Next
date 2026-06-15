@@ -7,7 +7,7 @@ import {
   tasaPeriodicaSegunConvencion,
   efectivaAnualDesdePeriodica,
   normalizarFrecuencia,
-  FRECUENCIA_LABEL,
+  frecuenciaLabel,
 } from "@/lib/domain";
 import { getConfiguracion } from "@/lib/config";
 import type { NextRequest } from "next/server";
@@ -34,6 +34,8 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
       tasa: true,
       plazo_meses: true,
       frecuencia: true,
+      frecuencia_def: true,
+      cargos: true,
       fecha_inicio: true,
       cliente: { select: { nombre: true } },
     },
@@ -45,8 +47,12 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
 
   // La convención de tasa la define la financiera en su configuración.
   const config = await getConfiguracion(userId);
+  // Catálogo: snapshot del crédito si existe (blindado); si no, config vigente.
+  const catalogo = credito.frecuencia_def
+    ? [credito.frecuencia_def as unknown as typeof config.simulador.frecuencias[number]]
+    : config.simulador.frecuencias;
   const frecuencia = normalizarFrecuencia(credito.frecuencia);
-  const tasaPeriodica = tasaPeriodicaSegunConvencion(credito.tasa, config.convencionTasa, frecuencia);
+  const tasaPeriodica = tasaPeriodicaSegunConvencion(credito.tasa, config.convencionTasa, frecuencia, catalogo);
 
   const plan = construirPlanAmortizacion(
     credito.monto_original,
@@ -55,7 +61,12 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
     credito.fecha_inicio,
     config.convencionTasa,
     frecuencia,
-    { cargos: config.simulador.cargos, redondeo: config.simulador.redondeoCuota }
+    {
+      // Snapshot del crédito si existe; si no (créditos previos), config vigente.
+      cargos: (credito.cargos as typeof config.simulador.cargos | null) ?? config.simulador.cargos,
+      redondeo: config.simulador.redondeoCuota,
+    },
+    catalogo
   );
 
   return successResponse({
@@ -66,9 +77,9 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
       tasa_ingresada: credito.tasa,
       convencion_tasa: config.convencionTasa,
       frecuencia,
-      frecuencia_label: FRECUENCIA_LABEL[frecuencia],
+      frecuencia_label: frecuenciaLabel(frecuencia, catalogo),
       tasa_periodica: tasaPeriodica,
-      tasa_efectiva_anual: efectivaAnualDesdePeriodica(tasaPeriodica, frecuencia),
+      tasa_efectiva_anual: efectivaAnualDesdePeriodica(tasaPeriodica, frecuencia, catalogo),
       plazo_meses: credito.plazo_meses,
       n_cuotas: credito.plazo_meses,
     },

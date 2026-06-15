@@ -41,7 +41,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
       where: { ...withTenant(userId) },
       select: {
         estado: true, monto_original: true, saldo_pendiente: true,
-        tasa: true, plazo_meses: true, frecuencia: true, dias_mora: true,
+        tasa: true, plazo_meses: true, frecuencia: true, frecuencia_def: true, dias_mora: true,
       },
     }),
     getConfiguracion(userId),
@@ -86,7 +86,8 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   for (const c of enMora) {
     if (config.moraActiva && c.monto_original > 0 && c.plazo_meses >= 1) {
       const frec = normalizarFrecuencia(c.frecuencia);
-      const tasaPeriodica = tasaPeriodicaSegunConvencion(c.tasa, config.convencionTasa, frec);
+      const catFrec = c.frecuencia_def ? [c.frecuencia_def as unknown as typeof config.simulador.frecuencias[number]] : config.simulador.frecuencias;
+      const tasaPeriodica = tasaPeriodicaSegunConvencion(c.tasa, config.convencionTasa, frec, catFrec);
       const cuota = cuotaMensualFrancesa(c.monto_original, tasaPeriodica, c.plazo_meses);
       interesMoraTotal += interesMora(cuota, c.dias_mora, { tasaDiaria: config.tasaMoraDiaria });
     }

@@ -48,6 +48,7 @@ export function CreditoDetail({ credito }: { credito: Credito }) {
 
   const est = estadoBadge(credito.estado);
   const totalCobrado = pagos.reduce((s, p) => s + p.monto, 0);
+  const hayCargos = pagos.some(p => p.aplicado_cargos > 0);
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -108,6 +109,7 @@ export function CreditoDetail({ credito }: { credito: Credito }) {
                     <th className="px-3 py-2.5 text-right font-semibold text-success      border-b border-border">Monto</th>
                     <th className="px-3 py-2.5 text-right font-semibold text-destructive  border-b border-border">Mora</th>
                     <th className="px-3 py-2.5 text-right font-semibold text-warning      border-b border-border">Interés</th>
+                    {hayCargos && <th className="px-3 py-2.5 text-right font-semibold text-muted-foreground border-b border-border">Cargos</th>}
                     <th className="px-3 py-2.5 text-right font-semibold text-primary      border-b border-border">Capital</th>
                     <th className="px-3 py-2.5 text-left  font-semibold text-muted-foreground border-b border-border">Método</th>
                     <th className="px-3 py-2.5 text-right font-semibold text-muted-foreground border-b border-border pr-4">Recibo</th>
@@ -124,6 +126,11 @@ export function CreditoDetail({ credito }: { credito: Credito }) {
                       <td className="px-3 py-2 text-right font-mono border-b border-border/40">
                         {p.aplicado_interes > 0 ? <span className="text-warning">${n2(p.aplicado_interes)}</span> : <span className="text-muted-foreground/20">—</span>}
                       </td>
+                      {hayCargos && (
+                        <td className="px-3 py-2 text-right font-mono border-b border-border/40">
+                          {p.aplicado_cargos > 0 ? <span className="text-muted-foreground">${n2(p.aplicado_cargos)}</span> : <span className="text-muted-foreground/20">—</span>}
+                        </td>
+                      )}
                       <td className="px-3 py-2 text-right font-mono border-b border-border/40">
                         {p.aplicado_capital > 0 ? <span className="text-primary">${n2(p.aplicado_capital)}</span> : <span className="text-muted-foreground/20">—</span>}
                       </td>

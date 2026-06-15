@@ -9,8 +9,8 @@ const CONVENCIONES = ["nominal_anual", "efectiva_anual", "mensual"];
 const BASES_MORA = ["cuota", "saldo"];
 const SISTEMAS = ["frances"];
 const COMPONENTES = ["mora", "interes", "capital"];
-const FRECUENCIAS = ["mensual", "semanal", "diario"];
 const REDONDEOS = ["ninguno", "entero", "multiplo"];
+const MODOS_CARGOS = ["integrado", "separado"];
 
 /** Valida el bloque `simulador`. Devuelve un mensaje de error o null si está OK. */
 function validarSimulador(s: any): string | null {
@@ -31,13 +31,17 @@ function validarSimulador(s: any): string | null {
       return "simulador.plazos debe ser un array de { cuotas>=1, activo:boolean }";
     }
   }
-  if (s.frecuenciasPermitidas !== undefined) {
-    if (!Array.isArray(s.frecuenciasPermitidas) || s.frecuenciasPermitidas.some((f: any) => !FRECUENCIAS.includes(f))) {
-      return `simulador.frecuenciasPermitidas debe contener solo: ${FRECUENCIAS.join(", ")}`;
+  if (s.frecuencias !== undefined) {
+    if (!Array.isArray(s.frecuencias) || s.frecuencias.some((f: any) =>
+      !f || typeof f.clave !== "string" || !f.clave.trim() ||
+      typeof f.label !== "string" || typeof f.dias !== "number" || f.dias < 1 ||
+      typeof f.periodosAnio !== "number" || f.periodosAnio <= 0 || typeof f.activo !== "boolean"
+    )) {
+      return "simulador.frecuencias debe ser un array de { clave, label, dias>=1, periodosAnio>0, activo }";
     }
   }
-  if (s.frecuenciaDefault !== undefined && !FRECUENCIAS.includes(s.frecuenciaDefault)) {
-    return `simulador.frecuenciaDefault debe ser una de: ${FRECUENCIAS.join(", ")}`;
+  if (s.frecuenciaDefault !== undefined && typeof s.frecuenciaDefault !== "string") {
+    return "simulador.frecuenciaDefault debe ser la clave de una frecuencia";
   }
   if (s.redondeoCuota?.modo !== undefined && !REDONDEOS.includes(s.redondeoCuota.modo)) {
     return `simulador.redondeoCuota.modo debe ser uno de: ${REDONDEOS.join(", ")}`;
@@ -102,6 +106,9 @@ export const PUT = withErrorHandler(async (req: NextRequest) => {
     if (!Array.isArray(orden) || orden.length === 0 || !orden.every((c) => COMPONENTES.includes(c as string))) {
       return errorResponse(`ordenImputacion debe ser un array no vacío de: ${COMPONENTES.join(", ")}`, "INVALID_INPUT", 400);
     }
+  }
+  if (body.imputarCargos !== undefined && !MODOS_CARGOS.includes(body.imputarCargos)) {
+    return errorResponse(`imputarCargos debe ser uno de: ${MODOS_CARGOS.join(", ")}`, "INVALID_INPUT", 400);
   }
   const errSim = validarSimulador(body.simulador);
   if (errSim) return errorResponse(errSim, "INVALID_INPUT", 400);
