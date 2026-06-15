@@ -3,6 +3,14 @@ import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api"
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { registrarAuditoria } from "@/lib/audit";
+import {
+  cuotaMensualFrancesa,
+  tasaPeriodicaSegunConvencion,
+  normalizarFrecuencia,
+  interesMora,
+  round2,
+} from "@/lib/domain";
+import { getConfiguracion } from "@/lib/config";
 import type { NextRequest } from "next/server";
 
 interface RouteParams {
@@ -25,6 +33,9 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
     include: {
       creditos: {
         orderBy: { created_at: "desc" },
+        include: {
+          pagos: { orderBy: { fecha: "desc" } },
+        },
       },
       solicitudes: {
         orderBy: { created_at: "desc" },
@@ -36,7 +47,47 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
     return errorResponse("Cliente no encontrado", "NOT_FOUND", 404);
   }
 
-  return successResponse(cliente);
+  // ── Estado de cuenta consolidado (calculado por el motor de dominio) ──
+  // Mismo criterio que /api/creditos y /api/reportes: cuota por frecuencia,
+  // interés moratorio = cuota × tasa diaria × días, solo créditos activos en mora.
+  const config = await getConfiguracion(userId);
+
+  const creditosConFinanzas = cliente.creditos.map((c) => {
+    const enMora = c.dias_mora > 0 && c.estado === "activo";
+    let cuota = 0;
+    let interes_mora = 0;
+    if (c.monto_original > 0 && c.plazo_meses >= 1) {
+      const frec = normalizarFrecuencia(c.frecuencia);
+      const tasaPeriodica = tasaPeriodicaSegunConvencion(c.tasa, config.convencionTasa, frec);
+      cuota = cuotaMensualFrancesa(c.monto_original, tasaPeriodica, c.plazo_meses);
+      if (config.moraActiva && enMora) {
+        interes_mora = interesMora(cuota, c.dias_mora, { tasaDiaria: config.tasaMoraDiaria });
+      }
+    }
+    const total_cobrado = c.pagos.reduce((s, p) => s + p.monto, 0);
+    return { ...c, cuota, interes_mora, total_cobrado };
+  });
+
+  const activos = creditosConFinanzas.filter((c) => c.estado === "activo");
+  const enMora = activos.filter((c) => c.dias_mora > 0);
+
+  const estado_cuenta = {
+    creditos_total: creditosConFinanzas.length,
+    creditos_activos: activos.length,
+    deuda_total: round2(activos.reduce((s, c) => s + c.saldo_pendiente, 0)),
+    total_cobrado: round2(creditosConFinanzas.reduce((s, c) => s + c.total_cobrado, 0)),
+    en_mora: enMora.length > 0,
+    creditos_en_mora: enMora.length,
+    dias_mora_max: enMora.reduce((m, c) => Math.max(m, c.dias_mora), 0),
+    interes_mora_total: round2(enMora.reduce((s, c) => s + c.interes_mora, 0)),
+    proximo_pago: activos
+      .map((c) => c.proximo_pago)
+      .filter((d): d is Date => d instanceof Date)
+      .sort((a, b) => a.getTime() - b.getTime())[0] ?? null,
+    cuota_total_activos: round2(activos.reduce((s, c) => s + c.cuota, 0)),
+  };
+
+  return successResponse({ ...cliente, creditos: creditosConFinanzas, estado_cuenta });
 });
 
 /**
@@ -83,7 +134,7 @@ export const PATCH = withErrorHandler(async (req: NextRequest, { params }: Route
 
   // Preparar datos para actualizar (no actualizar user_id)
   const updateData: Record<string, any> = {};
-  const allowedFields = [
+  const stringFields = [
     "nombre",
     "documento",
     "email",
@@ -91,18 +142,36 @@ export const PATCH = withErrorHandler(async (req: NextRequest, { params }: Route
     "direccion",
     "estado",
     "tipo_credito",
+    "cuit_cuil",
+    "estado_civil",
+    "nacionalidad",
+    "situacion_laboral",
+    "ocupacion",
+    "empleador",
+    "telefono_laboral",
+    "direccion_laboral",
   ];
 
-  allowedFields.forEach((field) => {
+  stringFields.forEach((field) => {
     if (field in body) {
       const value = body[field];
-      if (typeof value === "string") {
-        updateData[field] = value.trim() || null;
-      } else {
-        updateData[field] = value;
-      }
+      updateData[field] = typeof value === "string" ? value.trim() || null : value;
     }
   });
+
+  // Campos tipados (fecha y numéricos)
+  if ("fecha_nacimiento" in body) {
+    updateData.fecha_nacimiento = body.fecha_nacimiento ? new Date(body.fecha_nacimiento) : null;
+  }
+  if ("antiguedad_laboral_meses" in body) {
+    updateData.antiguedad_laboral_meses = numOrNull(body.antiguedad_laboral_meses, true);
+  }
+  if ("ingreso_mensual" in body) {
+    updateData.ingreso_mensual = numOrNull(body.ingreso_mensual);
+  }
+  if ("otros_ingresos" in body) {
+    updateData.otros_ingresos = numOrNull(body.otros_ingresos);
+  }
 
   if (Object.keys(updateData).length === 0) {
     return errorResponse("No hay campos para actualizar", "INVALID_INPUT", 400);
@@ -164,4 +233,12 @@ export const DELETE = withErrorHandler(async (req: NextRequest, { params }: Rout
 function isValidEmail(email: string): boolean {
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   return emailRegex.test(email);
+}
+
+/** Normaliza un valor numérico opcional del body (string o number) a número o null. */
+function numOrNull(value: unknown, integer = false): number | null {
+  if (value === null || value === undefined || value === "") return null;
+  const n = typeof value === "number" ? value : parseFloat(String(value));
+  if (isNaN(n)) return null;
+  return integer ? Math.trunc(n) : n;
 }

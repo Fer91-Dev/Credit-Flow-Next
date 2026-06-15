@@ -90,6 +90,22 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
       direccion: body.direccion?.trim() || null,
       estado: body.estado || "activo",
       tipo_credito: body.tipo_credito || "personal",
+      // Datos personales ampliados
+      fecha_nacimiento: body.fecha_nacimiento ? new Date(body.fecha_nacimiento) : null,
+      cuit_cuil: body.cuit_cuil?.trim() || null,
+      estado_civil: body.estado_civil?.trim() || null,
+      nacionalidad: body.nacionalidad?.trim() || null,
+      // Situación laboral
+      situacion_laboral: body.situacion_laboral?.trim() || null,
+      ocupacion: body.ocupacion?.trim() || null,
+      empleador: body.empleador?.trim() || null,
+      antiguedad_laboral_meses: numOrNull(body.antiguedad_laboral_meses, true),
+      // Ingresos
+      ingreso_mensual: numOrNull(body.ingreso_mensual),
+      otros_ingresos: numOrNull(body.otros_ingresos),
+      // Contacto laboral
+      telefono_laboral: body.telefono_laboral?.trim() || null,
+      direccion_laboral: body.direccion_laboral?.trim() || null,
       ...withTenant(userId),
     },
   });
@@ -108,4 +124,12 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
 function isValidEmail(email: string): boolean {
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   return emailRegex.test(email);
+}
+
+/** Normaliza un valor numérico opcional del body (string o number) a número o null. */
+function numOrNull(value: unknown, integer = false): number | null {
+  if (value === null || value === undefined || value === "") return null;
+  const n = typeof value === "number" ? value : parseFloat(String(value));
+  if (isNaN(n)) return null;
+  return integer ? Math.trunc(n) : n;
 }

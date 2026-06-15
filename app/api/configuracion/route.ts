@@ -9,6 +9,49 @@ const CONVENCIONES = ["nominal_anual", "efectiva_anual", "mensual"];
 const BASES_MORA = ["cuota", "saldo"];
 const SISTEMAS = ["frances"];
 const COMPONENTES = ["mora", "interes", "capital"];
+const FRECUENCIAS = ["mensual", "semanal", "diario"];
+const REDONDEOS = ["ninguno", "entero", "multiplo"];
+
+/** Valida el bloque `simulador`. Devuelve un mensaje de error o null si está OK. */
+function validarSimulador(s: any): string | null {
+  if (s === undefined) return null;
+  if (typeof s !== "object" || s === null) return "simulador debe ser un objeto";
+
+  const numFields = ["montoMin", "montoMax", "montoDefault", "tasaBase", "desfasajePrimeraCuotaDias"];
+  for (const f of numFields) {
+    if (s[f] !== undefined && (typeof s[f] !== "number" || s[f] < 0)) {
+      return `simulador.${f} debe ser un número >= 0`;
+    }
+  }
+  if (typeof s.montoMin === "number" && typeof s.montoMax === "number" && s.montoMax > 0 && s.montoMin > s.montoMax) {
+    return "simulador.montoMin no puede ser mayor que montoMax";
+  }
+  if (s.plazos !== undefined) {
+    if (!Array.isArray(s.plazos) || s.plazos.some((p: any) => typeof p?.cuotas !== "number" || p.cuotas < 1 || typeof p?.activo !== "boolean")) {
+      return "simulador.plazos debe ser un array de { cuotas>=1, activo:boolean }";
+    }
+  }
+  if (s.frecuenciasPermitidas !== undefined) {
+    if (!Array.isArray(s.frecuenciasPermitidas) || s.frecuenciasPermitidas.some((f: any) => !FRECUENCIAS.includes(f))) {
+      return `simulador.frecuenciasPermitidas debe contener solo: ${FRECUENCIAS.join(", ")}`;
+    }
+  }
+  if (s.frecuenciaDefault !== undefined && !FRECUENCIAS.includes(s.frecuenciaDefault)) {
+    return `simulador.frecuenciaDefault debe ser una de: ${FRECUENCIAS.join(", ")}`;
+  }
+  if (s.redondeoCuota?.modo !== undefined && !REDONDEOS.includes(s.redondeoCuota.modo)) {
+    return `simulador.redondeoCuota.modo debe ser uno de: ${REDONDEOS.join(", ")}`;
+  }
+  if (s.diaVencimientoFijo !== undefined && s.diaVencimientoFijo !== null) {
+    if (typeof s.diaVencimientoFijo !== "number" || s.diaVencimientoFijo < 1 || s.diaVencimientoFijo > 28) {
+      return "simulador.diaVencimientoFijo debe ser null o un entero entre 1 y 28";
+    }
+  }
+  if (s.cargos !== undefined && (typeof s.cargos !== "object" || s.cargos === null)) {
+    return "simulador.cargos debe ser un objeto";
+  }
+  return null;
+}
 
 /**
  * GET /api/configuracion
@@ -60,12 +103,15 @@ export const PUT = withErrorHandler(async (req: NextRequest) => {
       return errorResponse(`ordenImputacion debe ser un array no vacío de: ${COMPONENTES.join(", ")}`, "INVALID_INPUT", 400);
     }
   }
+  const errSim = validarSimulador(body.simulador);
+  if (errSim) return errorResponse(errSim, "INVALID_INPUT", 400);
 
   // Mezclamos lo enviado sobre lo actual y resolvemos contra defaults.
   const nueva = resolverConfig({
     ...actual,
     ...body,
     ordenImputacion: (body.ordenImputacion as ComponenteDeuda[]) ?? actual.ordenImputacion,
+    simulador: body.simulador ?? actual.simulador,
   });
 
   const guardada = await guardarConfiguracion(userId, nueva);

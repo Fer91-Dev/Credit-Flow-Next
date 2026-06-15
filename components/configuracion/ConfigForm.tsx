@@ -1,12 +1,19 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Settings, Check, Loader2, Percent } from "lucide-react";
+import { Settings, Check, Loader2, Percent, Plus, X } from "lucide-react";
 import { useConfiguracion, type ConfiguracionFinanciera } from "@/lib/swr";
+import type { SimuladorConfig, CargosConfig } from "@/lib/domain";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Field, Input, Select } from "@/components/ui/field";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Skeleton } from "@/components/ui/skeleton";
+
+const FRECUENCIAS: { value: SimuladorConfig["frecuenciaDefault"]; label: string }[] = [
+  { value: "mensual", label: "Mensual" },
+  { value: "semanal", label: "Semanal" },
+  { value: "diario", label: "Diaria" },
+];
 
 const ordenLabel: Record<string, string> = {
   mora: "Mora",
@@ -18,8 +25,9 @@ export function ConfigForm() {
   const { config, error, isLoading, mutate } = useConfiguracion();
 
   const [form, setForm] = useState<ConfiguracionFinanciera | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
+  // Guardado por bloque: qué bloque se está guardando / acaba de guardarse.
+  const [savingKey, setSavingKey] = useState<string | null>(null);
+  const [savedKey, setSavedKey] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
 
   // Hidratar el form local cuando llega la config.
@@ -27,52 +35,59 @@ export function ConfigForm() {
     if (config) setForm(config);
   }, [config]);
 
+  const touch = () => setSavedKey(null);
   const set = <K extends keyof ConfiguracionFinanciera>(key: K, value: ConfiguracionFinanciera[K]) => {
     setForm(prev => (prev ? { ...prev, [key]: value } : prev));
-    setSaved(false);
+    touch();
   };
 
-  const handleSave = async () => {
-    if (!form) return;
-    setSaving(true);
+  // Setters anidados para el bloque del simulador.
+  const setSim = <K extends keyof SimuladorConfig>(key: K, value: SimuladorConfig[K]) => {
+    setForm(prev => (prev ? { ...prev, simulador: { ...prev.simulador, [key]: value } } : prev));
+    touch();
+  };
+  const setCargo = <C extends keyof CargosConfig, F extends keyof CargosConfig[C]>(
+    cargo: C, field: F, value: CargosConfig[C][F]
+  ) => {
+    setForm(prev => prev ? {
+      ...prev,
+      simulador: { ...prev.simulador, cargos: { ...prev.simulador.cargos, [cargo]: { ...prev.simulador.cargos[cargo], [field]: value } } },
+    } : prev);
+    touch();
+  };
+
+  // Guarda un subconjunto de la config; el PUT hace merge parcial sobre lo actual.
+  const save = async (key: string, patch: Partial<ConfiguracionFinanciera>) => {
+    setSavingKey(key);
     setSaveError(null);
+    setSavedKey(null);
     try {
       const res = await fetch("/api/configuracion", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        body: JSON.stringify(patch),
       });
       const json = await res.json();
       if (!json.ok) throw new Error(json.error || "No se pudo guardar");
       await mutate(json.data, { revalidate: false });
-      setSaved(true);
-      setTimeout(() => setSaved(false), 2500);
+      setSavedKey(key);
+      setTimeout(() => setSavedKey(k => (k === key ? null : k)), 2500);
     } catch (e) {
       setSaveError(e instanceof Error ? e.message : "Error al guardar");
     } finally {
-      setSaving(false);
+      setSavingKey(null);
     }
   };
-
-  const saveBtn = (
-    <button
-      onClick={handleSave}
-      disabled={saving || !form}
-      className="flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50 transition-opacity text-sm font-medium whitespace-nowrap"
-    >
-      {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : saved ? <Check className="h-4 w-4" /> : null}
-      {saving ? "Guardando…" : saved ? "Guardado" : "Guardar cambios"}
-    </button>
-  );
+  // Los bloques del simulador comparten la misma columna JSON: cada uno guarda todo el bloque.
+  const saveSim = (key: string) => { if (form) save(key, { simulador: form.simulador }); };
 
   return (
     <div className="space-y-6">
       <PageHeader
         icon={Settings}
         title="Configuración"
-        subtitle="Reglas del motor financiero de tu financiera"
+        subtitle="Reglas del motor financiero. Cada bloque se guarda por separado."
         accent="primary"
-        actions={saveBtn}
       />
 
       {isLoading || !form ? (
@@ -90,7 +105,9 @@ export function ConfigForm() {
           )}
 
           {/* Motor financiero */}
-          <Section title="Motor financiero" desc="Cómo se interpreta la tasa y el sistema de cálculo.">
+          <Section title="Motor financiero" desc="Cómo se interpreta la tasa y el sistema de cálculo."
+            onSave={() => save("motor", { convencionTasa: form.convencionTasa, sistemaAmortizacion: form.sistemaAmortizacion })}
+            saving={savingKey === "motor"} saved={savedKey === "motor"}>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Field label="Convención de tasa" hint="Cómo se interpreta el campo «tasa» de cada crédito">
                 <Select value={form.convencionTasa} onChange={e => set("convencionTasa", e.target.value as ConfiguracionFinanciera["convencionTasa"])}>
@@ -107,8 +124,208 @@ export function ConfigForm() {
             </div>
           </Section>
 
+          {/* Simulador · Financiación */}
+          <Section title="Financiación del simulador" desc="Rango de monto y valores que el simulador prellena. 0 = sin restricción / sin valor por defecto."
+            onSave={() => saveSim("financiacion")} saving={savingKey === "financiacion"} saved={savedKey === "financiacion"}>
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+              <Field label="Monto mínimo ($)">
+                <Input type="number" min="0" step="1000" value={form.simulador.montoMin}
+                  onChange={e => setSim("montoMin", parseFloat(e.target.value) || 0)} />
+              </Field>
+              <Field label="Monto máximo ($)" hint="0 = sin tope">
+                <Input type="number" min="0" step="1000" value={form.simulador.montoMax}
+                  onChange={e => setSim("montoMax", parseFloat(e.target.value) || 0)} />
+              </Field>
+              <Field label="Monto por defecto ($)">
+                <Input type="number" min="0" step="1000" value={form.simulador.montoDefault}
+                  onChange={e => setSim("montoDefault", parseFloat(e.target.value) || 0)} />
+              </Field>
+              <Field label="Tasa base (%)" hint="Prellena la tasa del simulador">
+                <div className="relative">
+                  <Input type="number" min="0" step="0.5" value={form.simulador.tasaBase}
+                    onChange={e => setSim("tasaBase", parseFloat(e.target.value) || 0)} className="pr-7" />
+                  <Percent className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
+                </div>
+              </Field>
+            </div>
+          </Section>
+
+          {/* Simulador · Plazos */}
+          <Section title="Plazos disponibles" desc="Cuotas que se ofrecen en el simulador. Tocá un plazo para activarlo o desactivarlo."
+            onSave={() => saveSim("plazos")} saving={savingKey === "plazos"} saved={savedKey === "plazos"}>
+            <PlazosEditor plazos={form.simulador.plazos} onChange={p => setSim("plazos", p)} />
+            <div className="mt-4 max-w-xs">
+              <Field label="Plazo por defecto" hint="Preseleccionado en el simulador">
+                <Select value={String(form.simulador.plazoDefault)} onChange={e => setSim("plazoDefault", parseInt(e.target.value))}>
+                  {form.simulador.plazos.filter(p => p.activo).map(p => (
+                    <option key={p.cuotas} value={p.cuotas}>{p.cuotas} cuotas</option>
+                  ))}
+                  {form.simulador.plazos.filter(p => p.activo).length === 0 && <option value="">— sin plazos activos —</option>}
+                </Select>
+              </Field>
+            </div>
+          </Section>
+
+          {/* Simulador · Frecuencias */}
+          <Section title="Frecuencias de pago" desc="Qué frecuencias se permiten y cuál viene por defecto."
+            onSave={() => saveSim("frecuencias")} saving={savingKey === "frecuencias"} saved={savedKey === "frecuencias"}>
+            <div className="flex flex-wrap items-center gap-2 mb-4">
+              {FRECUENCIAS.map(f => {
+                const on = form.simulador.frecuenciasPermitidas.includes(f.value);
+                return (
+                  <button
+                    key={f.value} type="button"
+                    onClick={() => setSim("frecuenciasPermitidas",
+                      on ? form.simulador.frecuenciasPermitidas.filter(x => x !== f.value) : [...form.simulador.frecuenciasPermitidas, f.value])}
+                    className={`rounded-lg border px-3 py-1.5 text-sm transition-colors ${on ? "border-primary bg-primary/10 text-primary" : "border-border bg-muted/30 text-muted-foreground hover:text-foreground"}`}
+                  >
+                    {f.label}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="max-w-xs">
+              <Field label="Frecuencia por defecto">
+                <Select value={form.simulador.frecuenciaDefault} onChange={e => setSim("frecuenciaDefault", e.target.value as SimuladorConfig["frecuenciaDefault"])}>
+                  {FRECUENCIAS.filter(f => form.simulador.frecuenciasPermitidas.includes(f.value)).map(f => (
+                    <option key={f.value} value={f.value}>{f.label}</option>
+                  ))}
+                </Select>
+              </Field>
+            </div>
+          </Section>
+
+          {/* Simulador · Redondeo y vencimientos */}
+          <Section title="Redondeo y vencimientos" desc="Ajuste de la cuota y armado del cronograma."
+            onSave={() => saveSim("redondeo")} saving={savingKey === "redondeo"} saved={savedKey === "redondeo"}>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <Field label="Redondeo de cuota">
+                <Select value={form.simulador.redondeoCuota.modo}
+                  onChange={e => setSim("redondeoCuota", { ...form.simulador.redondeoCuota, modo: e.target.value as SimuladorConfig["redondeoCuota"]["modo"] })}>
+                  <option value="ninguno">Ninguno (exacta)</option>
+                  <option value="entero">Al entero</option>
+                  <option value="multiplo">A múltiplo</option>
+                </Select>
+              </Field>
+              <Field label="Múltiplo" hint="Solo si redondea a múltiplo">
+                <Input type="number" min="1" step="1" value={form.simulador.redondeoCuota.multiplo}
+                  disabled={form.simulador.redondeoCuota.modo !== "multiplo"}
+                  onChange={e => setSim("redondeoCuota", { ...form.simulador.redondeoCuota, multiplo: parseInt(e.target.value) || 1 })} />
+              </Field>
+              <Field label="Día de vencimiento" hint="1–28, vacío = + un período">
+                <Input type="number" min="1" max="28" step="1"
+                  value={form.simulador.diaVencimientoFijo ?? ""}
+                  onChange={e => setSim("diaVencimientoFijo", e.target.value === "" ? null : Math.min(28, Math.max(1, parseInt(e.target.value) || 1)))} />
+              </Field>
+              <Field label="Gracia 1ª cuota (días)">
+                <Input type="number" min="0" step="1" value={form.simulador.desfasajePrimeraCuotaDias}
+                  onChange={e => setSim("desfasajePrimeraCuotaDias", parseInt(e.target.value) || 0)} />
+              </Field>
+            </div>
+          </Section>
+
+          {/* Simulador · Cargos */}
+          <Section title="Cargos del crédito" desc="Comisiones e impuestos que se suman a la cuota o al costo total. Todo desactivado = cuota pura.">
+            <div className="space-y-3">
+              {/* Comisión de otorgamiento */}
+              <CargoBlock title="Comisión de otorgamiento" desc="Cargo único por dar el crédito."
+                activo={form.simulador.cargos.comisionOtorgamiento.activo}
+                onToggle={v => setCargo("comisionOtorgamiento", "activo", v)}
+                onSave={() => saveSim("cargo-comision")} saving={savingKey === "cargo-comision"} saved={savedKey === "cargo-comision"}>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <Field label="Modo">
+                    <Select value={form.simulador.cargos.comisionOtorgamiento.modo}
+                      onChange={e => setCargo("comisionOtorgamiento", "modo", e.target.value as CargosConfig["comisionOtorgamiento"]["modo"])}>
+                      <option value="porcentaje">% del monto</option>
+                      <option value="fijo">Monto fijo</option>
+                    </Select>
+                  </Field>
+                  <Field label="Valor">
+                    <Input type="number" min="0" step="0.5" value={form.simulador.cargos.comisionOtorgamiento.valor}
+                      onChange={e => setCargo("comisionOtorgamiento", "valor", parseFloat(e.target.value) || 0)} />
+                  </Field>
+                  <Field label="¿Financiada?" hint="Se suma al capital y se amortiza">
+                    <Select value={form.simulador.cargos.comisionOtorgamiento.financiada ? "si" : "no"}
+                      onChange={e => setCargo("comisionOtorgamiento", "financiada", e.target.value === "si")}>
+                      <option value="no">No (se cobra al inicio)</option>
+                      <option value="si">Sí (financiada)</option>
+                    </Select>
+                  </Field>
+                </div>
+              </CargoBlock>
+
+              {/* IVA */}
+              <CargoBlock title="IVA sobre interés" desc="Impuesto sobre el interés de cada cuota."
+                activo={form.simulador.cargos.iva.activo}
+                onToggle={v => setCargo("iva", "activo", v)}
+                onSave={() => saveSim("cargo-iva")} saving={savingKey === "cargo-iva"} saved={savedKey === "cargo-iva"}>
+                <div className="max-w-[12rem]">
+                  <Field label="Tasa de IVA (%)">
+                    <Input type="number" min="0" step="0.5" value={Number((form.simulador.cargos.iva.tasa * 100).toFixed(2))}
+                      onChange={e => setCargo("iva", "tasa", (parseFloat(e.target.value) || 0) / 100)} />
+                  </Field>
+                </div>
+              </CargoBlock>
+
+              {/* Seguro */}
+              <CargoBlock title="Seguro" desc="Cobertura aplicada por período."
+                activo={form.simulador.cargos.seguro.activo}
+                onToggle={v => setCargo("seguro", "activo", v)}
+                onSave={() => saveSim("cargo-seguro")} saving={savingKey === "cargo-seguro"} saved={savedKey === "cargo-seguro"}>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <Field label="Base">
+                    <Select value={form.simulador.cargos.seguro.modo}
+                      onChange={e => setCargo("seguro", "modo", e.target.value as CargosConfig["seguro"]["modo"])}>
+                      <option value="porcentaje_saldo">% del saldo</option>
+                      <option value="porcentaje_monto">% del monto original</option>
+                      <option value="fijo">Monto fijo por cuota</option>
+                    </Select>
+                  </Field>
+                  <Field label={form.simulador.cargos.seguro.modo === "fijo" ? "Valor ($)" : "Valor (%)"}>
+                    <Input type="number" min="0" step="0.01"
+                      value={form.simulador.cargos.seguro.modo === "fijo"
+                        ? form.simulador.cargos.seguro.valor
+                        : Number((form.simulador.cargos.seguro.valor * 100).toFixed(4))}
+                      onChange={e => {
+                        const raw = parseFloat(e.target.value) || 0;
+                        setCargo("seguro", "valor", form.simulador.cargos.seguro.modo === "fijo" ? raw : raw / 100);
+                      }} />
+                  </Field>
+                </div>
+              </CargoBlock>
+
+              {/* Gastos administrativos */}
+              <CargoBlock title="Gastos administrativos" desc="Cargo por cuota."
+                activo={form.simulador.cargos.gastosAdministrativos.activo}
+                onToggle={v => setCargo("gastosAdministrativos", "activo", v)}
+                onSave={() => saveSim("cargo-gastos")} saving={savingKey === "cargo-gastos"} saved={savedKey === "cargo-gastos"}>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <Field label="Modo">
+                    <Select value={form.simulador.cargos.gastosAdministrativos.modo}
+                      onChange={e => setCargo("gastosAdministrativos", "modo", e.target.value as CargosConfig["gastosAdministrativos"]["modo"])}>
+                      <option value="fijo">Monto fijo por cuota</option>
+                      <option value="porcentaje">% de la cuota</option>
+                    </Select>
+                  </Field>
+                  <Field label={form.simulador.cargos.gastosAdministrativos.modo === "fijo" ? "Valor ($)" : "Valor (%)"}>
+                    <Input type="number" min="0" step="0.01"
+                      value={form.simulador.cargos.gastosAdministrativos.modo === "fijo"
+                        ? form.simulador.cargos.gastosAdministrativos.valor
+                        : Number((form.simulador.cargos.gastosAdministrativos.valor * 100).toFixed(4))}
+                      onChange={e => {
+                        const raw = parseFloat(e.target.value) || 0;
+                        setCargo("gastosAdministrativos", "valor", form.simulador.cargos.gastosAdministrativos.modo === "fijo" ? raw : raw / 100);
+                      }} />
+                  </Field>
+                </div>
+              </CargoBlock>
+            </div>
+          </Section>
+
           {/* Mora */}
-          <Section title="Interés por mora" desc="Recargo aplicado por días de atraso.">
+          <Section title="Interés por mora" desc="Recargo aplicado por días de atraso."
+            onSave={() => save("mora", { moraActiva: form.moraActiva, tasaMoraDiaria: form.tasaMoraDiaria, baseMora: form.baseMora })}
+            saving={savingKey === "mora"} saved={savedKey === "mora"}>
             <div className="flex items-center justify-between rounded-lg border border-border bg-muted/30 px-4 py-3 mb-4">
               <div>
                 <p className="text-sm font-medium text-foreground">Cobrar mora</p>
@@ -157,7 +374,9 @@ export function ConfigForm() {
           </Section>
 
           {/* Presentación */}
-          <Section title="Presentación" desc="Formato de moneda y región (no afecta los cálculos).">
+          <Section title="Presentación" desc="Formato de moneda y región (no afecta los cálculos)."
+            onSave={() => save("presentacion", { moneda: form.moneda, locale: form.locale })}
+            saving={savingKey === "presentacion"} saved={savedKey === "presentacion"}>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Field label="Moneda" hint="Código ISO 4217">
                 <Select value={form.moneda} onChange={e => set("moneda", e.target.value)}>
@@ -182,14 +401,93 @@ export function ConfigForm() {
   );
 }
 
-function Section({ title, desc, children }: { title: string; desc?: string; children: React.ReactNode }) {
+function Section({ title, desc, children, onSave, saving, saved }: {
+  title: string; desc?: string; children: React.ReactNode;
+  onSave?: () => void; saving?: boolean; saved?: boolean;
+}) {
   return (
     <div className="rounded-xl bg-card border border-border p-5">
-      <div className="mb-4">
-        <h3 className="text-sm font-semibold text-foreground">{title}</h3>
-        {desc && <p className="text-xs text-muted-foreground mt-0.5">{desc}</p>}
+      <div className="mb-4 flex items-start justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-semibold text-foreground">{title}</h3>
+          {desc && <p className="text-xs text-muted-foreground mt-0.5">{desc}</p>}
+        </div>
+        {onSave && <SaveButton saving={!!saving} saved={!!saved} onClick={onSave} />}
       </div>
       {children}
+    </div>
+  );
+}
+
+function SaveButton({ saving, saved, onClick }: { saving: boolean; saved: boolean; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={saving}
+      className="flex shrink-0 items-center gap-1.5 rounded-lg border border-primary/20 bg-primary/10 px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/15 disabled:opacity-50 transition-colors"
+    >
+      {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : saved ? <Check className="h-3.5 w-3.5" /> : null}
+      {saving ? "Guardando…" : saved ? "Guardado" : "Guardar"}
+    </button>
+  );
+}
+
+function PlazosEditor({ plazos, onChange }: { plazos: SimuladorConfig["plazos"]; onChange: (p: SimuladorConfig["plazos"]) => void }) {
+  const [nuevo, setNuevo] = useState("");
+  const add = () => {
+    const n = parseInt(nuevo);
+    if (!n || n < 1 || plazos.some(p => p.cuotas === n)) { setNuevo(""); return; }
+    onChange([...plazos, { cuotas: n, activo: true }].sort((a, b) => a.cuotas - b.cuotas));
+    setNuevo("");
+  };
+  return (
+    <div>
+      <div className="flex flex-wrap items-center gap-2">
+        {plazos.length === 0 && <span className="text-xs text-muted-foreground/60">Sin plazos definidos.</span>}
+        {plazos.map(p => (
+          <span
+            key={p.cuotas}
+            className={`group inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-sm transition-colors ${p.activo ? "border-primary bg-primary/10 text-primary" : "border-border bg-muted/30 text-muted-foreground"}`}
+          >
+            <button type="button" onClick={() => onChange(plazos.map(x => x.cuotas === p.cuotas ? { ...x, activo: !x.activo } : x))} title={p.activo ? "Desactivar" : "Activar"}>
+              {p.cuotas} cuotas
+            </button>
+            <button type="button" onClick={() => onChange(plazos.filter(x => x.cuotas !== p.cuotas))} title="Quitar" className="opacity-40 hover:opacity-100">
+              <X className="h-3 w-3" />
+            </button>
+          </span>
+        ))}
+      </div>
+      <div className="mt-3 flex items-center gap-2 max-w-[14rem]">
+        <Input type="number" min="1" step="1" placeholder="N° de cuotas" value={nuevo}
+          onChange={e => setNuevo(e.target.value)}
+          onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); add(); } }} />
+        <button type="button" onClick={add} className="inline-flex items-center gap-1 rounded-lg border border-border px-2.5 py-2 text-xs text-muted-foreground hover:bg-muted hover:text-foreground transition-colors whitespace-nowrap">
+          <Plus className="h-3.5 w-3.5" /> Agregar
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function CargoBlock({ title, desc, activo, onToggle, children, onSave, saving, saved }: {
+  title: string; desc?: string; activo: boolean; onToggle: (v: boolean) => void; children: React.ReactNode;
+  onSave?: () => void; saving?: boolean; saved?: boolean;
+}) {
+  return (
+    <div className="rounded-lg border border-border bg-muted/20 p-4">
+      <div className="flex items-center justify-between gap-3 mb-3">
+        <div className="min-w-0">
+          <p className="text-sm font-medium text-foreground">{title}</p>
+          {desc && <p className="text-xs text-muted-foreground">{desc}</p>}
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <Toggle checked={activo} onChange={onToggle} />
+          {onSave && <SaveButton saving={!!saving} saved={!!saved} onClick={onSave} />}
+        </div>
+      </div>
+      <div className={activo ? "" : "pointer-events-none opacity-40"}>{children}</div>
     </div>
   );
 }
@@ -201,10 +499,10 @@ function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean
       role="switch"
       aria-checked={checked}
       onClick={() => onChange(!checked)}
-      className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${checked ? "bg-primary" : "bg-muted"}`}
+      className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full px-0.5 transition-colors ${checked ? "bg-primary" : "bg-muted"}`}
     >
       <span
-        className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition-transform ${checked ? "translate-x-[22px]" : "translate-x-0.5"}`}
+        className={`inline-block h-5 w-5 rounded-full bg-white shadow-sm transition-transform duration-200 ${checked ? "translate-x-5" : "translate-x-0"}`}
       />
     </button>
   );

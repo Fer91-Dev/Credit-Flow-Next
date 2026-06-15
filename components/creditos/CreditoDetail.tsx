@@ -5,6 +5,7 @@ import { CalendarDays, Wallet, TrendingUp, AlertCircle, Info, ArrowUpRight, Rece
 import { useAmortizacion, usePagosByCredito, type Credito } from "@/lib/swr";
 import { abrirRecibo } from "@/lib/recibo";
 import { StatusBadge } from "@/components/ui/StatusBadge";
+import { Stat } from "@/components/ui/Stat";
 import { Skeleton } from "@/components/ui/skeleton";
 
 function n2(x: number) {
@@ -201,37 +202,6 @@ export function CreditoDetail({ credito }: { credito: Credito }) {
           )}
         </section>
       </div>
-    </div>
-  );
-}
-
-function Stat({
-  icon: Icon, label, value, sub, accent,
-}: {
-  icon: React.ComponentType<{ className?: string }>;
-  label: string;
-  value: string;
-  sub?: string;
-  accent: "muted" | "success" | "primary" | "warning" | "destructive";
-}) {
-  const c = {
-    muted:       { text: "text-foreground",  bg: "bg-muted/40",       border: "border-border" },
-    success:     { text: "text-success",     bg: "bg-success/10",     border: "border-success/20" },
-    primary:     { text: "text-primary",     bg: "bg-primary/10",     border: "border-primary/20" },
-    warning:     { text: "text-warning",     bg: "bg-warning/10",     border: "border-warning/20" },
-    destructive: { text: "text-destructive", bg: "bg-destructive/10", border: "border-destructive/20" },
-  }[accent];
-
-  return (
-    <div className="rounded-xl bg-card border border-border p-3">
-      <div className="flex items-start justify-between mb-1.5">
-        <p className="text-[11px] font-medium text-muted-foreground leading-tight pr-1">{label}</p>
-        <div className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md ${c.bg} border ${c.border}`}>
-          <Icon className={`h-3 w-3 ${c.text}`} />
-        </div>
-      </div>
-      <p className={`text-lg font-bold font-mono ${c.text}`}>{value}</p>
-      {sub && <p className="text-[10px] text-muted-foreground/60 mt-0.5">{sub}</p>}
     </div>
   );
 }

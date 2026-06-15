@@ -54,7 +54,8 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
     credito.plazo_meses,
     credito.fecha_inicio,
     config.convencionTasa,
-    frecuencia
+    frecuencia,
+    { cargos: config.simulador.cargos, redondeo: config.simulador.redondeoCuota }
   );
 
   return successResponse({
@@ -74,8 +75,16 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
     resumen: {
       cuota: plan.cuota,
       cuota_mensual: plan.cuotaMensual,
+      cuota_total: plan.cuotaTotal,
       total_intereses: plan.totalIntereses,
       total_pagado: plan.totalPagado,
+      comision: plan.comision,
+      comision_financiada: plan.comisionFinanciada,
+      total_iva: plan.totalIva,
+      total_seguro: plan.totalSeguro,
+      total_gastos: plan.totalGastos,
+      total_cargos: plan.totalCargos,
+      total_con_cargos: plan.totalConCargos,
     },
     cuotas: plan.cuotas,
   });

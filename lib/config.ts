@@ -6,12 +6,15 @@ import { prisma } from "@/lib/prisma";
 import {
   CONFIG_DEFAULT,
   resolverConfig,
+  resolverSimulador,
   type ConfiguracionFinanciera,
   type ComponenteDeuda,
   type ConvencionTasa,
   type BaseMora,
   type SistemaAmortizacion,
+  type SimuladorConfig,
 } from "@/lib/domain";
+import type { Prisma } from "@prisma/client";
 
 /** Devuelve la config de la financiera, mezclada con defaults. */
 export async function getConfiguracion(
@@ -34,6 +37,7 @@ export async function getConfiguracion(
       .filter(Boolean) as ComponenteDeuda[],
     moneda: row.moneda,
     locale: row.locale,
+    simulador: resolverSimulador(row.simulador as Partial<SimuladorConfig> | null),
   });
 }
 
@@ -51,6 +55,7 @@ export async function guardarConfiguracion(
     orden_imputacion: config.ordenImputacion.join(","),
     moneda: config.moneda,
     locale: config.locale,
+    simulador: config.simulador as unknown as Prisma.InputJsonValue,
   };
 
   await prisma.configuraciones.upsert({

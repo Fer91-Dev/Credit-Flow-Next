@@ -75,6 +75,15 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
   const { config } = useConfiguracion();
   const convencion: ConvencionTasa = config?.convencionTasa ?? "nominal_anual";
 
+  // Parámetros del simulador definidos por el tenant en Configuración.
+  const simCfg = config?.simulador;
+  const plazosActivos = (simCfg?.plazos ?? []).filter(p => p.activo).map(p => p.cuotas);
+  const frecsPermitidas = (simCfg?.frecuenciasPermitidas?.length ? simCfg.frecuenciasPermitidas : FRECUENCIAS) as Frecuencia[];
+  const hayCargos = !!simCfg && (
+    simCfg.cargos.iva.activo || simCfg.cargos.seguro.activo ||
+    simCfg.cargos.gastosAdministrativos.activo || simCfg.cargos.comisionOtorgamiento.activo
+  );
+
   const [formData, setFormData] = useState({
     cliente_id: "", tipo_credito: "personal",
     monto_original: "", tasa: "", plazo_meses: "12",
@@ -84,6 +93,7 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [vista, setVista] = useState<"operador" | "cliente">("operador");
+  const [prefilled, setPrefilled] = useState(false);
 
   useEffect(() => {
     fetch("/api/clientes?limit=1000")
@@ -91,6 +101,22 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
       .then(j => { if (j.ok) setClientes(j.data.clientes || []); });
     if (creditoId) fetchCredito();
   }, [creditoId]);
+
+  // Prellenar el simulador con los valores por defecto del tenant (solo crédito nuevo, una vez).
+  useEffect(() => {
+    if (creditoId || prefilled || !simCfg) return;
+    const plazoDef = plazosActivos.includes(simCfg.plazoDefault)
+      ? simCfg.plazoDefault
+      : (plazosActivos[0] ?? simCfg.plazoDefault);
+    setFormData(p => ({
+      ...p,
+      monto_original: p.monto_original || (simCfg.montoDefault > 0 ? numeroAInput(simCfg.montoDefault) : ""),
+      tasa: p.tasa || (simCfg.tasaBase > 0 ? String(simCfg.tasaBase) : ""),
+      plazo_meses: String(plazoDef),
+      frecuencia: simCfg.frecuenciaDefault as Frecuencia,
+    }));
+    setPrefilled(true);
+  }, [simCfg, creditoId, prefilled]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fetchCredito = async () => {
     try {
@@ -122,6 +148,16 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
       const monto = parseMonto(formData.monto_original);
       if (monto <= 0) {
         setError("Ingresá un capital válido");
+        setLoading(false);
+        return;
+      }
+      if (simCfg && simCfg.montoMin > 0 && monto < simCfg.montoMin) {
+        setError(`El capital mínimo es $${n0(simCfg.montoMin)}`);
+        setLoading(false);
+        return;
+      }
+      if (simCfg && simCfg.montoMax > 0 && monto > simCfg.montoMax) {
+        setError(`El capital máximo es $${n0(simCfg.montoMax)}`);
         setLoading(false);
         return;
       }
@@ -167,11 +203,12 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
     const n = parseInt(sim.plazo);
     if (monto <= 0 || isNaN(n) || n < 1) return null;
     try {
-      return construirPlanAmortizacion(monto, tasa, n, new Date(), convencion, sim.frecuencia);
+      return construirPlanAmortizacion(monto, tasa, n, new Date(), convencion, sim.frecuencia,
+        simCfg ? { cargos: simCfg.cargos, redondeo: simCfg.redondeoCuota } : undefined);
     } catch {
       return null;
     }
-  }, [sim, convencion]);
+  }, [sim, convencion, simCfg]);
 
   const montoNum = parseMonto(sim.monto);
   const tasaEA = useMemo(() => {
@@ -184,6 +221,12 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
   const capPct = plan && plan.totalPagado > 0
     ? Math.round((montoNum / plan.totalPagado) * 100)
     : 0;
+
+  const montoHint = simCfg && (simCfg.montoMin > 0 || simCfg.montoMax > 0)
+    ? `Permitido: $${n0(simCfg.montoMin)}${simCfg.montoMax > 0 ? ` – $${n0(simCfg.montoMax)}` : " o más"}`
+    : "Aceptá miles y decimales: 350.000,52";
+  // Total de cuotas (con cargos) para la vista cliente.
+  const totalCuotasCliente = plan ? plan.cuotas.reduce((s, r) => s + r.cuotaTotal, 0) : 0;
 
   return (
     <div className="flex h-full min-h-0">
@@ -220,7 +263,7 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
         {/* Condiciones */}
         <section className="space-y-3">
           <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Condiciones financieras</p>
-          <Field label="Capital ($)" required hint="Aceptá miles y decimales: 350.000,52">
+          <Field label="Capital ($)" required hint={montoHint}>
             <div className="relative">
               <DollarSign className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
               <Input
@@ -233,7 +276,7 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
 
           <Field label="Frecuencia de pago">
             <Select name="frecuencia" value={formData.frecuencia} onChange={set("frecuencia")}>
-              {FRECUENCIAS.map(f => (
+              {frecsPermitidas.map(f => (
                 <option key={f} value={f}>
                   {FRECUENCIA_LABEL[f].adjetivo.charAt(0).toUpperCase() + FRECUENCIA_LABEL[f].adjetivo.slice(1)}
                 </option>
@@ -256,11 +299,17 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
               </div>
             </Field>
             <Field label="N° de cuotas" hint={lbl.cuotaPlural}>
-              <Input
-                name="plazo_meses" type="number" placeholder="12"
-                value={formData.plazo_meses} onChange={set("plazo_meses")}
-                min="1" max="3650" required
-              />
+              {plazosActivos.length > 0 ? (
+                <Select name="plazo_meses" value={formData.plazo_meses} onChange={set("plazo_meses")}>
+                  {plazosActivos.map(p => <option key={p} value={p}>{p}</option>)}
+                </Select>
+              ) : (
+                <Input
+                  name="plazo_meses" type="number" placeholder="12"
+                  value={formData.plazo_meses} onChange={set("plazo_meses")}
+                  min="1" max="3650" required
+                />
+              )}
             </Field>
           </div>
         </section>
@@ -276,8 +325,13 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
             </div>
 
             <div className="text-center pb-3 border-b border-primary/15">
-              <p className="text-xs text-muted-foreground mb-1">{lbl.cuotaSingular} fija</p>
-              <p className="text-3xl font-bold text-foreground font-mono tracking-tight">${n2(plan.cuota)}</p>
+              <p className="text-xs text-muted-foreground mb-1">{lbl.cuotaSingular} {hayCargos ? "(con cargos)" : "fija"}</p>
+              <p className="text-3xl font-bold text-foreground font-mono tracking-tight">${n2(hayCargos ? plan.cuotaTotal : plan.cuota)}</p>
+              {hayCargos && (
+                <p className="text-[10px] text-muted-foreground/60 mt-1">
+                  Cuota pura ${n2(plan.cuota)} + cargos ${n2(plan.cuotaTotal - plan.cuota)}
+                </p>
+              )}
               {tasaEA > 0 && (
                 <p className="text-[10px] text-muted-foreground/60 mt-1">
                   T.E.A. equivalente {n2(tasaEA * 100)}%
@@ -292,9 +346,25 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
               </div>
               <div className="rounded-lg bg-muted/40 border border-border p-2.5 text-center">
                 <p className="text-[10px] text-muted-foreground">Total a pagar</p>
-                <p className="text-sm font-bold text-foreground font-mono mt-0.5">${n0(plan.totalPagado)}</p>
+                <p className="text-sm font-bold text-foreground font-mono mt-0.5">${n0(hayCargos ? plan.totalConCargos : plan.totalPagado)}</p>
               </div>
             </div>
+
+            {/* Desglose de cargos (solo si hay) */}
+            {hayCargos && (
+              <div className="rounded-lg bg-muted/30 border border-border p-2.5 space-y-1">
+                {plan.comision > 0 && (
+                  <CargoLinea label={`Comisión${plan.comisionFinanciada ? " (financiada)" : ""}`} valor={plan.comision} />
+                )}
+                {plan.totalIva > 0 && <CargoLinea label="IVA" valor={plan.totalIva} />}
+                {plan.totalSeguro > 0 && <CargoLinea label="Seguro" valor={plan.totalSeguro} />}
+                {plan.totalGastos > 0 && <CargoLinea label="Gastos admin." valor={plan.totalGastos} />}
+                <div className="flex justify-between pt-1 border-t border-border/60 text-[11px] font-semibold">
+                  <span className="text-muted-foreground">Total cargos</span>
+                  <span className="text-foreground font-mono">${n2(plan.totalCargos)}</span>
+                </div>
+              </div>
+            )}
 
             {/* Barra capital vs interés */}
             <div>
@@ -393,6 +463,8 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
                     <th className="px-3 py-2.5 text-right font-semibold text-muted-foreground border-b border-border">Cuota</th>
                     <th className="px-3 py-2.5 text-right font-semibold text-warning border-b border-border">Interés</th>
                     <th className="px-3 py-2.5 text-right font-semibold text-primary border-b border-border">Capital</th>
+                    {hayCargos && <th className="px-3 py-2.5 text-right font-semibold text-muted-foreground border-b border-border">Cargos</th>}
+                    {hayCargos && <th className="px-3 py-2.5 text-right font-semibold text-foreground border-b border-border">Total</th>}
                     <th className="px-3 py-2.5 text-right font-semibold text-muted-foreground border-b border-border pr-5">Saldo</th>
                   </tr>
                 </thead>
@@ -404,6 +476,8 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
                       <td className="px-3 py-2 text-right font-mono text-foreground tabular-nums">${n2(row.cuota)}</td>
                       <td className="px-3 py-2 text-right font-mono text-warning tabular-nums">${n2(row.interes)}</td>
                       <td className="px-3 py-2 text-right font-mono text-primary tabular-nums">${n2(row.capital)}</td>
+                      {hayCargos && <td className="px-3 py-2 text-right font-mono text-muted-foreground tabular-nums">${n2(row.iva + row.seguro + row.gastos)}</td>}
+                      {hayCargos && <td className="px-3 py-2 text-right font-mono font-semibold text-foreground tabular-nums">${n2(row.cuotaTotal)}</td>}
                       <td className="px-3 py-2 pr-5 text-right font-mono text-muted-foreground tabular-nums">${n2(row.saldo)}</td>
                     </tr>
                   ))}
@@ -414,6 +488,8 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
                     <td className="px-3 py-3 text-right font-bold font-mono text-foreground tabular-nums">${n2(plan.totalPagado)}</td>
                     <td className="px-3 py-3 text-right font-bold font-mono text-warning tabular-nums">${n2(plan.totalIntereses)}</td>
                     <td className="px-3 py-3 text-right font-bold font-mono text-primary tabular-nums">${n2(montoNum)}</td>
+                    {hayCargos && <td className="px-3 py-3 text-right font-bold font-mono text-muted-foreground tabular-nums">${n2(plan.totalIva + plan.totalSeguro + plan.totalGastos)}</td>}
+                    {hayCargos && <td className="px-3 py-3 text-right font-bold font-mono text-foreground tabular-nums">${n2(totalCuotasCliente)}</td>}
                     <td className="px-3 py-3 pr-5 text-right font-mono text-muted-foreground/30 tabular-nums">$ 0,00</td>
                   </tr>
                 </tfoot>
@@ -433,14 +509,14 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
                     <tr key={row.nro} className={`hover:bg-muted/20 transition-colors ${idx % 2 === 1 ? "bg-muted/5" : ""}`}>
                       <td className="px-4 py-2.5 text-muted-foreground font-mono tabular-nums">{row.nro}/{plan.cuotas.length}</td>
                       <td className="px-4 py-2.5 text-foreground tabular-nums">{fmtDate(row.fecha)}</td>
-                      <td className="px-4 py-2.5 pr-6 text-right font-mono font-semibold text-foreground tabular-nums">${n2(row.cuota)}</td>
+                      <td className="px-4 py-2.5 pr-6 text-right font-mono font-semibold text-foreground tabular-nums">${n2(row.cuotaTotal)}</td>
                     </tr>
                   ))}
                 </tbody>
                 <tfoot className="sticky bottom-0 z-10 bg-card">
                   <tr className="border-t border-border">
                     <td colSpan={2} className="px-4 py-3 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Total a pagar</td>
-                    <td className="px-4 py-3 pr-6 text-right font-bold font-mono text-foreground tabular-nums">${n2(plan.totalPagado)}</td>
+                    <td className="px-4 py-3 pr-6 text-right font-bold font-mono text-foreground tabular-nums">${n2(totalCuotasCliente)}</td>
                   </tr>
                 </tfoot>
               </table>
@@ -460,6 +536,15 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function CargoLinea({ label, valor }: { label: string; valor: number }) {
+  return (
+    <div className="flex justify-between text-[11px]">
+      <span className="text-muted-foreground">{label}</span>
+      <span className="text-foreground font-mono">${n2(valor)}</span>
     </div>
   );
 }

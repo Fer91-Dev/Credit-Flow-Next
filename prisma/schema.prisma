@@ -21,6 +21,26 @@ model clientes {
   monto_total  Float    @default(0)
   user_id      String   @db.Uuid
 
+  // Datos personales ampliados
+  fecha_nacimiento DateTime? @db.Date
+  cuit_cuil        String?
+  estado_civil     String?
+  nacionalidad     String?
+
+  // Situación laboral
+  situacion_laboral        String? // relacion_dependencia | autonomo | monotributista | jubilado | desempleado | otro
+  ocupacion                String?
+  empleador                String?
+  antiguedad_laboral_meses Int?
+
+  // Ingresos / capacidad de pago
+  ingreso_mensual Float?
+  otros_ingresos  Float?
+
+  // Contacto laboral
+  telefono_laboral  String?
+  direccion_laboral String?
+
   creditos    creditos[]
   solicitudes solicitudes[]
 }
@@ -134,5 +154,6 @@ model configuraciones {
   orden_imputacion     String   @default("mora,interes,capital")
   moneda               String   @default("ARS")
   locale               String   @default("es-AR")
+  simulador            Json?    // SimuladorConfig (parámetros del motor de cuota por tenant)
   updated_at           DateTime @updatedAt @db.Timestamptz(6)
 }

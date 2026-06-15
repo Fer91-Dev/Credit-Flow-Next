@@ -9,6 +9,9 @@
  * components/providers/SWRProvider.tsx, montado en el layout autenticado.
  */
 import useSWR from "swr";
+import type { SimuladorConfig } from "@/lib/domain";
+
+export type { SimuladorConfig };
 
 export async function apiFetcher<T = unknown>(url: string): Promise<T> {
   const res = await fetch(url);
@@ -24,11 +27,83 @@ export async function apiFetcher<T = unknown>(url: string): Promise<T> {
 export interface Cliente {
   id: string;
   nombre: string;
-  documento?: string;
-  email?: string;
-  telefono?: string;
+  documento?: string | null;
+  email?: string | null;
+  telefono?: string | null;
+  direccion?: string | null;
+  estado: string;
+  tipo_credito?: string;
+  created_at: string;
+  // Datos personales ampliados
+  fecha_nacimiento?: string | null;
+  cuit_cuil?: string | null;
+  estado_civil?: string | null;
+  nacionalidad?: string | null;
+  // Situación laboral
+  situacion_laboral?: string | null;
+  ocupacion?: string | null;
+  empleador?: string | null;
+  antiguedad_laboral_meses?: number | null;
+  // Ingresos
+  ingreso_mensual?: number | null;
+  otros_ingresos?: number | null;
+  // Contacto laboral
+  telefono_laboral?: string | null;
+  direccion_laboral?: string | null;
+}
+
+/** Pago imputado tal como viene anidado en el detalle de un cliente/crédito. */
+export interface PagoImputado {
+  id: string;
+  monto: number;
+  metodo: string;
+  fecha: string;
+  notas?: string | null;
+  aplicado_mora: number;
+  aplicado_interes: number;
+  aplicado_capital: number;
+  excedente: number;
+}
+
+/** Crédito enriquecido con sus finanzas, dentro del detalle del cliente. */
+export interface CreditoConFinanzas {
+  id: string;
+  tipo_credito: string;
+  monto_original: number;
+  saldo_pendiente: number;
+  tasa: number;
+  plazo_meses: number;
+  frecuencia: "mensual" | "semanal" | "diario";
+  dias_mora: number;
   estado: string;
   created_at: string;
+  fecha_inicio: string;
+  proximo_pago?: string | null;
+  cuota: number;
+  interes_mora: number;
+  total_cobrado: number;
+  pagos: PagoImputado[];
+}
+
+/** Estado de cuenta consolidado del cliente (calculado en el servidor). */
+export interface EstadoCuenta {
+  creditos_total: number;
+  creditos_activos: number;
+  deuda_total: number;
+  total_cobrado: number;
+  en_mora: boolean;
+  creditos_en_mora: number;
+  dias_mora_max: number;
+  interes_mora_total: number;
+  proximo_pago: string | null;
+  cuota_total_activos: number;
+}
+
+/** Detalle completo del cliente devuelto por GET /api/clientes/[id]. */
+export interface ClienteDetalle extends Cliente {
+  monto_total?: number;
+  creditos: CreditoConFinanzas[];
+  estado_cuenta: EstadoCuenta;
 }
 
 export interface Credito {
@@ -58,6 +133,10 @@ export interface CuotaAmortizacion {
   interes: number;
   capital: number;
   saldo: number;
+  iva: number;
+  seguro: number;
+  gastos: number;
+  cuotaTotal: number;
 }
 
 export interface Amortizacion {
@@ -77,8 +156,16 @@ export interface Amortizacion {
   resumen: {
     cuota: number;
     cuota_mensual: number;
+    cuota_total: number;
     total_intereses: number;
     total_pagado: number;
+    comision: number;
+    comision_financiada: boolean;
+    total_iva: number;
+    total_seguro: number;
+    total_gastos: number;
+    total_cargos: number;
+    total_con_cargos: number;
   };
   cuotas: CuotaAmortizacion[];
 }
@@ -148,6 +235,7 @@ export interface ConfiguracionFinanciera {
   ordenImputacion: Array<"mora" | "interes" | "capital">;
   moneda: string;
   locale: string;
+  simulador: SimuladorConfig;
 }
 
 export interface Pago {
@@ -231,6 +319,14 @@ export function usePagosByCredito(creditoId: string | null) {
     creditoId ? `/api/pagos?credito_id=${creditoId}&limit=1000` : null,
   );
   return { pagos: data?.pagos ?? [], error, isLoading };
+}
+
+/** Detalle/ficha de un cliente. Key condicional: no fetch si id es nulo. */
+export function useClienteDetalle(clienteId: string | null) {
+  const { data, error, isLoading, mutate } = useSWR<ClienteDetalle>(
+    clienteId ? `/api/clientes/${clienteId}` : null,
+  );
+  return { cliente: data, error, isLoading, mutate };
 }
 
 export function useConfiguracion() {

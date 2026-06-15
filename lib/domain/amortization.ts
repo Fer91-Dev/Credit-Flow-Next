@@ -6,27 +6,56 @@
  * Al inicio pesa más el interés; hacia el final pesa más el capital.
  */
 import { round2, toCents, fromCents } from "./money";
-import type { ConvencionTasa } from "./config";
+import type { ConvencionTasa, CargosConfig, RedondeoModo } from "./config";
 import { tasaPeriodicaSegunConvencion, sumarPeriodos, type Frecuencia } from "./frequency";
 
 export interface CuotaPlan {
   nro: number;
   fecha: Date;
   saldoInicial: number; // capital pendiente al inicio del período
-  cuota: number; // pago total del período
+  cuota: number; // cuota pura francesa (interés + capital)
   interes: number; // porción de interés
   capital: number; // porción de abono a capital
   saldo: number; // saldo restante luego de pagar esta cuota
+  // Cargos del período (0 si no hay configuración de cargos)
+  iva: number; // IVA sobre el interés
+  seguro: number; // seguro del período
+  gastos: number; // gastos administrativos del período
+  cuotaTotal: number; // cuota + iva + seguro + gastos (con redondeo aplicado)
 }
 
 export interface PlanAmortizacion {
-  /** Valor de la cuota fija del período (la última puede variar por ajuste). */
+  /** Valor de la cuota PURA del período (la última puede variar por ajuste). */
   cuota: number;
   /** @deprecated Alias histórico de `cuota`; conservado por compatibilidad. */
   cuotaMensual: number;
+  /** Cuota TOTAL del período (incluye cargos y redondeo). = cuota si no hay cargos. */
+  cuotaTotal: number;
   totalIntereses: number;
-  totalPagado: number;
+  totalPagado: number; // suma de cuotas puras
+  // Cargos (0 si no hay configuración de cargos)
+  comision: number; // comisión de otorgamiento
+  comisionFinanciada: boolean;
+  totalIva: number;
+  totalSeguro: number;
+  totalGastos: number;
+  totalCargos: number; // iva + seguro + gastos + (comisión si NO financiada)
+  totalConCargos: number; // total efectivo que paga el cliente
   cuotas: CuotaPlan[];
+}
+
+/** Opciones de cálculo del plan (cargos + redondeo). Si se omite, plan puro. */
+export interface OpcionesPlan {
+  cargos?: CargosConfig;
+  redondeo?: { modo: RedondeoModo; multiplo: number };
+}
+
+/** Aplica el modo de redondeo configurado al valor de la cuota total. */
+function aplicarRedondeo(valor: number, redondeo?: OpcionesPlan["redondeo"]): number {
+  if (!redondeo || redondeo.modo === "ninguno") return round2(valor);
+  if (redondeo.modo === "entero") return Math.round(valor);
+  const m = redondeo.multiplo && redondeo.multiplo > 0 ? redondeo.multiplo : 1;
+  return Math.round(valor / m) * m;
 }
 
 /**
@@ -82,17 +111,30 @@ export function construirPlanAmortizacion(
   nCuotas: number,
   fechaInicio: Date,
   convencion: ConvencionTasa = "nominal_anual",
-  frecuencia: Frecuencia = "mensual"
+  frecuencia: Frecuencia = "mensual",
+  opciones?: OpcionesPlan
 ): PlanAmortizacion {
+  const cargos = opciones?.cargos;
+
+  // Comisión de otorgamiento: si está financiada, se suma al capital a amortizar.
+  let comision = 0;
+  if (cargos?.comisionOtorgamiento.activo) {
+    const co = cargos.comisionOtorgamiento;
+    comision = round2(co.modo === "porcentaje" ? (principal * co.valor) / 100 : co.valor);
+  }
+  const comisionFinanciada = !!cargos?.comisionOtorgamiento.activo && cargos.comisionOtorgamiento.financiada;
+  const principalAmortizar = comisionFinanciada ? round2(principal + comision) : principal;
+
   const i = tasaPeriodicaSegunConvencion(tasaPct, convencion, frecuencia);
-  const cuota = cuotaMensualFrancesa(principal, i, nCuotas);
+  const cuota = cuotaMensualFrancesa(principalAmortizar, i, nCuotas);
 
   const cuotaCents = toCents(cuota);
-  let saldoCents = toCents(principal);
+  let saldoCents = toCents(principalAmortizar);
 
   const cuotas: CuotaPlan[] = [];
   let totalInteresCents = 0;
   let totalPagadoCents = 0;
+  let totalIva = 0, totalSeguro = 0, totalGastos = 0;
 
   for (let nro = 1; nro <= nCuotas; nro++) {
     const saldoInicialCents = saldoCents;
@@ -110,24 +152,65 @@ export function construirPlanAmortizacion(
     totalInteresCents += interesCents;
     totalPagadoCents += pagoCents;
 
+    const interes = fromCents(interesCents);
+    const capital = fromCents(capitalCents);
+    const cuotaPura = fromCents(pagoCents);
+    const saldoInicial = fromCents(saldoInicialCents);
+
+    // Cargos del período (sobre la cuota pura ya calculada).
+    let iva = 0, seguro = 0, gastos = 0;
+    if (cargos?.iva.activo) iva = round2(interes * cargos.iva.tasa);
+    if (cargos?.seguro.activo) {
+      const s = cargos.seguro;
+      seguro = round2(
+        s.modo === "porcentaje_saldo" ? saldoInicial * s.valor
+        : s.modo === "porcentaje_monto" ? principal * s.valor
+        : s.valor
+      );
+    }
+    if (cargos?.gastosAdministrativos.activo) {
+      const g = cargos.gastosAdministrativos;
+      gastos = round2(g.modo === "porcentaje" ? cuotaPura * g.valor : g.valor);
+    }
+    const cuotaTotal = aplicarRedondeo(cuotaPura + iva + seguro + gastos, opciones?.redondeo);
+
+    totalIva = round2(totalIva + iva);
+    totalSeguro = round2(totalSeguro + seguro);
+    totalGastos = round2(totalGastos + gastos);
+
     cuotas.push({
       nro,
       fecha: sumarPeriodos(fechaInicio, nro, frecuencia),
-      saldoInicial: fromCents(saldoInicialCents),
-      cuota: fromCents(pagoCents),
-      interes: fromCents(interesCents),
-      capital: fromCents(capitalCents),
+      saldoInicial,
+      cuota: cuotaPura,
+      interes,
+      capital,
       saldo: fromCents(Math.max(0, saldoCents)),
+      iva, seguro, gastos, cuotaTotal,
     });
 
     if (saldoCents <= 0) break;
   }
 
+  const totalPagado = fromCents(totalPagadoCents);
+  // Comisión NO financiada = costo extra cobrado al inicio (no entra en las cuotas).
+  const comisionUpfront = comision > 0 && !comisionFinanciada ? comision : 0;
+  const totalCargos = round2(totalIva + totalSeguro + totalGastos + comisionUpfront);
+  const totalConCargos = round2(totalPagado + totalIva + totalSeguro + totalGastos + comisionUpfront);
+
   return {
     cuota,
     cuotaMensual: cuota,
+    cuotaTotal: cuotas.length > 0 ? cuotas[0].cuotaTotal : cuota,
     totalIntereses: fromCents(totalInteresCents),
-    totalPagado: fromCents(totalPagadoCents),
+    totalPagado,
+    comision,
+    comisionFinanciada,
+    totalIva,
+    totalSeguro,
+    totalGastos,
+    totalCargos,
+    totalConCargos,
     cuotas,
   };
 }
