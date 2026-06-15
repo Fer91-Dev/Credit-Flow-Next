@@ -9,6 +9,8 @@ import {
   normalizarFrecuencia,
   resolverFrecuencia,
   sumarPeriodos,
+  construirPlanAmortizacion,
+  planACuotas,
   type FrecuenciaDef,
 } from "@/lib/domain";
 import { getConfiguracion } from "@/lib/config";
@@ -152,23 +154,61 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     }
   }
 
-  const credito = await prisma.creditos.create({
-    data: {
-      cliente_id: body.cliente_id,
-      tipo_credito: body.tipo_credito,
-      monto_original: body.monto_original,
-      saldo_pendiente: body.monto_original,
-      tasa: body.tasa,
-      plazo_meses: body.plazo_meses,
-      frecuencia,
-      frecuencia_def: frecuenciaDef as object,
-      cargos: cargosSnapshot as object,
-      fecha_inicio: fechaInicio,
-      proximo_pago: proximoPago,
-      solicitud_id: body.solicitud_id || null,
-      ...withTenant(userId),
+  // Plan de cuotas persistido (Fase 6A): se congela el cronograma al otorgar,
+  // reusando el mismo motor y los mismos snapshots (frecuencia/cargos/redondeo).
+  const plan = construirPlanAmortizacion(
+    body.monto_original,
+    body.tasa,
+    body.plazo_meses,
+    fechaInicio,
+    configActual.convencionTasa,
+    frecuencia,
+    {
+      cargos: cargosSnapshot,
+      redondeo: configActual.simulador.redondeoCuota,
     },
-    include: { cliente: true },
+    configActual.simulador.frecuencias
+  );
+  const filasCuota = planACuotas(plan);
+
+  // Crédito + cuotas en una transacción: un crédito nunca queda sin cronograma.
+  const credito = await prisma.$transaction(async (tx) => {
+    const c = await tx.creditos.create({
+      data: {
+        cliente_id: body.cliente_id,
+        tipo_credito: body.tipo_credito,
+        monto_original: body.monto_original,
+        saldo_pendiente: body.monto_original,
+        tasa: body.tasa,
+        plazo_meses: body.plazo_meses,
+        frecuencia,
+        frecuencia_def: frecuenciaDef as object,
+        cargos: cargosSnapshot as object,
+        fecha_inicio: fechaInicio,
+        proximo_pago: proximoPago,
+        solicitud_id: body.solicitud_id || null,
+        ...withTenant(userId),
+      },
+      include: { cliente: true },
+    });
+
+    await tx.cuotas.createMany({
+      data: filasCuota.map((f) => ({
+        ...withTenant(userId),
+        credito_id: c.id,
+        nro: f.nro,
+        fecha_vencimiento: f.fecha_vencimiento,
+        saldo_inicial: f.saldo_inicial,
+        capital: f.capital,
+        interes: f.interes,
+        iva: f.iva,
+        seguro: f.seguro,
+        gastos: f.gastos,
+        cuota_total: f.cuota_total,
+      })),
+    });
+
+    return c;
   });
 
   await registrarAuditoria({

@@ -201,6 +201,7 @@ function CreditosTabla({ creditos, mostrarProximo }: { creditos: CreditoConFinan
             <th className="px-3 py-2.5 text-right font-semibold text-muted-foreground border-b border-border">Monto</th>
             <th className="px-3 py-2.5 text-right font-semibold text-warning          border-b border-border">Saldo</th>
             <th className="px-3 py-2.5 text-right font-semibold text-primary          border-b border-border">Cuota</th>
+            <th className="px-3 py-2.5 text-center font-semibold text-muted-foreground border-b border-border">Cuotas</th>
             {mostrarProximo && <th className="px-3 py-2.5 text-left font-semibold text-muted-foreground border-b border-border">Próx. venc.</th>}
             <th className="px-3 py-2.5 text-left  font-semibold text-muted-foreground border-b border-border pr-4">Estado</th>
           </tr>
@@ -217,11 +218,23 @@ function CreditosTabla({ creditos, mostrarProximo }: { creditos: CreditoConFinan
                 <td className="px-3 py-2 text-right font-mono text-muted-foreground tabular-nums border-b border-border/40">${n0(c.monto_original)}</td>
                 <td className="px-3 py-2 text-right font-mono text-warning tabular-nums border-b border-border/40">${n0(c.saldo_pendiente)}</td>
                 <td className="px-3 py-2 text-right font-mono text-primary tabular-nums border-b border-border/40">${n0(c.cuota)}</td>
+                <td className="px-3 py-2 text-center tabular-nums border-b border-border/40">
+                  {c.cuotas_resumen && c.cuotas_resumen.total > 0 ? (
+                    <span className="font-mono text-muted-foreground">
+                      {c.cuotas_resumen.pagadas}/{c.cuotas_resumen.total}
+                      {c.cuotas_resumen.vencidas > 0 && (
+                        <span className="text-destructive"> · {c.cuotas_resumen.vencidas} venc.</span>
+                      )}
+                    </span>
+                  ) : (
+                    <span className="text-muted-foreground/30">—</span>
+                  )}
+                </td>
                 {mostrarProximo && (
                   <td className="px-3 py-2 tabular-nums border-b border-border/40">
                     {c.dias_mora > 0
                       ? <span className="text-destructive">{c.dias_mora}d mora</span>
-                      : <span className="text-muted-foreground">{fmtDate(c.proximo_pago)}</span>}
+                      : <span className="text-muted-foreground">{fmtDate(c.cuotas_resumen?.proxima_vencimiento ?? c.proximo_pago)}</span>}
                   </td>
                 )}
                 <td className="px-3 py-2 pr-4 border-b border-border/40">

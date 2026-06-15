@@ -68,6 +68,37 @@ model creditos {
   solicitud solicitudes? @relation(fields: [solicitud_id], references: [id], onDelete: SetNull)
   pagos     pagos[]
   acciones  acciones_cobranza[]
+  cuotas    cuotas[]
+}
+
+/// Plan de cuotas PERSISTIDO de un crédito (Fase 6A). Tabla aditiva, multi-tenant.
+/// Se genera al otorgar desde construirPlanAmortizacion (congela el cronograma).
+/// En 6A las columnas `estado`/`pagado` se DERIVAN en lectura desde los pagos del
+/// crédito (capa paralela); quedan persistidas para la imputación cuota-dirigida (6B).
+model cuotas {
+  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  created_at        DateTime @default(now()) @db.Timestamptz(6)
+  user_id           String   @db.Uuid
+  credito_id        String   @db.Uuid
+  nro               Int      // número de cuota (1..n)
+  fecha_vencimiento DateTime @db.Date
+  // Plan congelado (desde construirPlanAmortizacion al generar)
+  saldo_inicial     Float    // capital pendiente al inicio del período
+  capital           Float    // abono a capital planificado
+  interes           Float    // interés planificado del período
+  iva               Float    @default(0)
+  seguro            Float    @default(0)
+  gastos            Float    @default(0)
+  cuota_total       Float    // cuota total planificada (con redondeo)
+  // Estado — en 6A se DERIVA en lectura; estas columnas quedan para 6B
+  estado            String   @default("pendiente") // pendiente | parcial | pagada | vencida
+  pagado            Float    @default(0)
+
+  credito creditos @relation(fields: [credito_id], references: [id], onDelete: Cascade)
+
+  @@unique([credito_id, nro])
+  @@index([user_id, credito_id])
+  @@index([user_id, fecha_vencimiento])
 }
 
 model pagos {

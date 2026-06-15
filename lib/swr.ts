@@ -84,6 +84,16 @@ export interface CreditoConFinanzas {
   interes_mora: number;
   total_cobrado: number;
   pagos: PagoImputado[];
+  /** Resumen del cronograma persistido (Fase 6A), derivado de los pagos reales. */
+  cuotas_resumen?: {
+    total: number;
+    pagadas: number;
+    pendientes: number;
+    parciales: number;
+    vencidas: number;
+    proxima_nro: number | null;
+    proxima_vencimiento: string | null;
+  };
 }
 
 /** Estado de cuenta consolidado del cliente (calculado en el servidor). */
@@ -169,6 +179,43 @@ export interface Amortizacion {
     total_con_cargos: number;
   };
   cuotas: CuotaAmortizacion[];
+}
+
+/** Estado derivado de una cuota del cronograma persistido (Fase 6A). */
+export type EstadoCuota = "pendiente" | "parcial" | "pagada" | "vencida";
+
+/** Cuota PERSISTIDA con su estado derivado, de GET /api/creditos/[id]/cuotas. */
+export interface CuotaPersistida {
+  nro: number;
+  fecha_vencimiento: string;
+  saldo_inicial: number;
+  capital: number;
+  interes: number;
+  iva: number;
+  seguro: number;
+  gastos: number;
+  cuota_total: number;
+  estado: EstadoCuota;
+  pagado_capital: number;
+  restante_capital: number;
+}
+
+/** Libro mayor de cuotas de un crédito (cronograma persistido + resumen). */
+export interface CuotasCredito {
+  credito_id: string;
+  cliente: string | null;
+  frecuencia: string;
+  frecuencia_label: { cuotaSingular: string; cuotaPlural: string; adjetivo: string; unidad: string };
+  resumen: {
+    total: number;
+    pagadas: number;
+    parciales: number;
+    pendientes: number;
+    vencidas: number;
+    proxima_cuota: { nro: number; fecha_vencimiento: string; cuota_total: number } | null;
+    saldo_capital: number;
+  };
+  cuotas: CuotaPersistida[];
 }
 
 export interface AccionCobranza {
@@ -314,6 +361,14 @@ export function useAmortizacion(creditoId: string | null) {
     creditoId ? `/api/creditos/${creditoId}/amortizacion` : null,
   );
   return { amortizacion: data, error, isLoading };
+}
+
+/** Cronograma de cuotas PERSISTIDO de un crédito. Key condicional. */
+export function useCuotas(creditoId: string | null) {
+  const { data, error, isLoading, mutate } = useSWR<CuotasCredito>(
+    creditoId ? `/api/creditos/${creditoId}/cuotas` : null,
+  );
+  return { cuotas: data?.cuotas ?? [], resumen: data?.resumen, meta: data, error, isLoading, mutate };
 }
 
 /** Pagos de un crédito puntual. Key condicional. */

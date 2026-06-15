@@ -2,9 +2,9 @@
 
 import { useState } from "react";
 import { CalendarDays, Wallet, TrendingUp, AlertCircle, Info, ArrowUpRight, Receipt, Loader2 } from "lucide-react";
-import { useAmortizacion, usePagosByCredito, type Credito } from "@/lib/swr";
+import { useAmortizacion, useCuotas, usePagosByCredito, type Credito, type EstadoCuota } from "@/lib/swr";
 import { abrirRecibo } from "@/lib/recibo";
-import { StatusBadge } from "@/components/ui/StatusBadge";
+import { StatusBadge, type BadgeVariant } from "@/components/ui/StatusBadge";
 import { Stat } from "@/components/ui/Stat";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -24,6 +24,13 @@ function estadoBadge(estado: string): { label: string; variant: "primary" | "suc
   return { label: estado, variant: "muted" };
 }
 
+const CUOTA_BADGE: Record<EstadoCuota, { label: string; variant: BadgeVariant }> = {
+  pagada:    { label: "Pagada",    variant: "success" },
+  parcial:   { label: "Parcial",   variant: "warning" },
+  vencida:   { label: "Vencida",   variant: "destructive" },
+  pendiente: { label: "Pendiente", variant: "muted" },
+};
+
 const metodoLabel: Record<string, string> = {
   efectivo: "Efectivo",
   transferencia: "Transferencia",
@@ -36,7 +43,8 @@ const metodoLabel: Record<string, string> = {
  * amortización (/amortizacion) y sus pagos imputados (/pagos?credito_id=).
  */
 export function CreditoDetail({ credito }: { credito: Credito }) {
-  const { amortizacion, isLoading: loadingPlan } = useAmortizacion(credito.id);
+  const { amortizacion } = useAmortizacion(credito.id);
+  const { cuotas, resumen, isLoading: loadingCuotas } = useCuotas(credito.id);
   const { pagos, isLoading: loadingPagos } = usePagosByCredito(credito.id);
 
   const [reciboBusy, setReciboBusy] = useState<string | null>(null);
@@ -157,19 +165,26 @@ export function CreditoDetail({ credito }: { credito: Credito }) {
           )}
         </section>
 
-        {/* Plan de cuotas proyectado */}
+        {/* Plan de cuotas (cronograma persistido con estado real) */}
         <section className="space-y-2">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <CalendarDays className="h-4 w-4 text-muted-foreground" />
               <h3 className="text-sm font-semibold text-foreground">Plan de cuotas</h3>
             </div>
-            <span className="flex items-center gap-1 text-[11px] text-muted-foreground/60">
-              <Info className="h-3 w-3" /> Cronograma proyectado (sistema francés)
-            </span>
+            {resumen && (
+              <span className="text-[11px] text-muted-foreground/70 tabular-nums">
+                {resumen.pagadas}/{resumen.total} pagadas
+                {resumen.vencidas > 0 && <span className="text-destructive"> · {resumen.vencidas} vencida{resumen.vencidas !== 1 ? "s" : ""}</span>}
+              </span>
+            )}
           </div>
-          {loadingPlan || !amortizacion ? (
+          {loadingCuotas ? (
             <Skeleton className="h-48 rounded-xl" />
+          ) : cuotas.length === 0 ? (
+            <p className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground/60 rounded-lg border border-dashed border-border/60 px-4 py-6 text-center">
+              <Info className="h-3.5 w-3.5" /> Sin cronograma persistido para este crédito.
+            </p>
           ) : (
             <div className="rounded-xl border border-border overflow-hidden">
               <table className="w-full text-xs border-separate border-spacing-0">
@@ -177,30 +192,33 @@ export function CreditoDetail({ credito }: { credito: Credito }) {
                   <tr className="bg-muted/30">
                     <th className="px-3 py-2.5 text-left  font-semibold text-muted-foreground border-b border-border w-9">#</th>
                     <th className="px-3 py-2.5 text-left  font-semibold text-muted-foreground border-b border-border">Vencimiento</th>
-                    <th className="px-3 py-2.5 text-right font-semibold text-muted-foreground border-b border-border">Cuota</th>
-                    <th className="px-3 py-2.5 text-right font-semibold text-warning          border-b border-border">Interés</th>
+                    <th className="px-3 py-2.5 text-right font-semibold text-foreground          border-b border-border">Cuota</th>
+                    <th className="px-3 py-2.5 text-right font-semibold text-warning          border-b border-border hidden sm:table-cell">Interés</th>
                     <th className="px-3 py-2.5 text-right font-semibold text-primary          border-b border-border">Capital</th>
-                    <th className="px-3 py-2.5 text-right font-semibold text-muted-foreground border-b border-border pr-4">Saldo</th>
+                    <th className="px-3 py-2.5 text-left  font-semibold text-muted-foreground border-b border-border pr-4">Estado</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {amortizacion.cuotas.map((q, idx) => (
-                    <tr key={q.nro} className={idx % 2 === 1 ? "bg-muted/5" : ""}>
-                      <td className="px-3 py-2 font-mono text-muted-foreground/50 tabular-nums border-b border-border/40">{q.nro}</td>
-                      <td className="px-3 py-2 text-muted-foreground tabular-nums border-b border-border/40">{fmtDate(q.fecha)}</td>
-                      <td className="px-3 py-2 text-right font-mono text-foreground tabular-nums border-b border-border/40">${n2(q.cuota)}</td>
-                      <td className="px-3 py-2 text-right font-mono text-warning tabular-nums border-b border-border/40">${n2(q.interes)}</td>
-                      <td className="px-3 py-2 text-right font-mono text-primary tabular-nums border-b border-border/40">${n2(q.capital)}</td>
-                      <td className="px-3 py-2 pr-4 text-right font-mono text-muted-foreground tabular-nums border-b border-border/40">${n2(q.saldo)}</td>
-                    </tr>
-                  ))}
+                  {cuotas.map((q, idx) => {
+                    const b = CUOTA_BADGE[q.estado];
+                    return (
+                      <tr key={q.nro} className={idx % 2 === 1 ? "bg-muted/5" : ""}>
+                        <td className="px-3 py-2 font-mono text-muted-foreground/50 tabular-nums border-b border-border/40">{q.nro}</td>
+                        <td className="px-3 py-2 text-muted-foreground tabular-nums border-b border-border/40">{fmtDate(q.fecha_vencimiento)}</td>
+                        <td className="px-3 py-2 text-right font-mono text-foreground tabular-nums border-b border-border/40">${n2(q.cuota_total)}</td>
+                        <td className="px-3 py-2 text-right font-mono text-warning tabular-nums border-b border-border/40 hidden sm:table-cell">${n2(q.interes)}</td>
+                        <td className="px-3 py-2 text-right font-mono text-primary tabular-nums border-b border-border/40">${n2(q.capital)}</td>
+                        <td className="px-3 py-2 pr-4 border-b border-border/40"><StatusBadge label={b.label} variant={b.variant} /></td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
                 <tfoot>
                   <tr className="bg-muted/20">
                     <td colSpan={2} className="px-3 py-2.5 text-[10px] font-bold text-muted-foreground uppercase tracking-widest border-t border-border">Totales</td>
-                    <td className="px-3 py-2.5 text-right font-mono font-bold text-foreground border-t border-border">${n2(amortizacion.resumen.total_pagado)}</td>
-                    <td className="px-3 py-2.5 text-right font-mono font-bold text-warning border-t border-border">${n2(amortizacion.resumen.total_intereses)}</td>
-                    <td className="px-3 py-2.5 text-right font-mono font-bold text-primary border-t border-border">${n2(amortizacion.parametros.monto)}</td>
+                    <td className="px-3 py-2.5 text-right font-mono font-bold text-foreground border-t border-border">${n2(cuotas.reduce((s, q) => s + q.cuota_total, 0))}</td>
+                    <td className="px-3 py-2.5 text-right font-mono font-bold text-warning border-t border-border hidden sm:table-cell">${n2(cuotas.reduce((s, q) => s + q.interes, 0))}</td>
+                    <td className="px-3 py-2.5 text-right font-mono font-bold text-primary border-t border-border">${n2(cuotas.reduce((s, q) => s + q.capital, 0))}</td>
                     <td className="border-t border-border pr-4" />
                   </tr>
                 </tfoot>

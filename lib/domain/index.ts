@@ -14,3 +14,4 @@ export * from "./amortization";
 export * from "./frequency";
 export * from "./mora";
 export * from "./payments";
+export * from "./cuotas";

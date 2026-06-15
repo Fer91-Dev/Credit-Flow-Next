@@ -8,6 +8,7 @@ import {
   tasaPeriodicaSegunConvencion,
   normalizarFrecuencia,
   interesMora,
+  derivarEstadoCuotas,
   round2,
 } from "@/lib/domain";
 import { getConfiguracion } from "@/lib/config";
@@ -35,6 +36,7 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
         orderBy: { created_at: "desc" },
         include: {
           pagos: { orderBy: { fecha: "desc" } },
+          cuotas: { orderBy: { nro: "asc" } },
         },
       },
       solicitudes: {
@@ -65,7 +67,28 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
       }
     }
     const total_cobrado = c.pagos.reduce((s, p) => s + p.monto, 0);
-    return { ...c, cuota, interes_mora, total_cobrado };
+
+    // Cronograma persistido (Fase 6A): estado derivado de los pagos reales.
+    const capitalPagado = c.pagos.reduce((s, p) => s + p.aplicado_capital, 0);
+    const estadosCuota = derivarEstadoCuotas(c.cuotas, capitalPagado);
+    const proximaCuota = c.cuotas
+      .map((q) => ({ q, e: estadosCuota.find((e) => e.nro === q.nro) }))
+      .find(({ e }) => e && e.estado !== "pagada");
+    const cuotas_resumen = {
+      total: c.cuotas.length,
+      pagadas: estadosCuota.filter((e) => e.estado === "pagada").length,
+      pendientes: estadosCuota.filter((e) => e.estado === "pendiente").length,
+      parciales: estadosCuota.filter((e) => e.estado === "parcial").length,
+      vencidas: estadosCuota.filter((e) => e.estado === "vencida").length,
+      proxima_nro: proximaCuota?.q.nro ?? null,
+      proxima_vencimiento: proximaCuota?.q.fecha_vencimiento ?? null,
+    };
+
+    // No exponemos las filas de cuotas completas en la ficha (las trae /cuotas),
+    // solo el resumen; quitamos `cuotas` del payload del crédito.
+    const { cuotas: _omit, ...rest } = c;
+    void _omit;
+    return { ...rest, cuota, interes_mora, total_cobrado, cuotas_resumen };
   });
 
   const activos = creditosConFinanzas.filter((c) => c.estado === "activo");
