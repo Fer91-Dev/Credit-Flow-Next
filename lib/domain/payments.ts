@@ -138,12 +138,22 @@ export interface OpcionesImputacionCuotas {
   tasaMoraDiaria?: number;
   /** Fecha de referencia para mora (default hoy). */
   hoy?: Date;
+  /**
+   * Quita de intereses de mora por campaña de recuperación (Fase 7B), en % [0–100].
+   * Reduce la mora devengada de cada cuota antes de imputar el pago: el cliente
+   * paga menos mora, así más del pago baja interés/capital. Default 0 (sin quita).
+   */
+  descuentoMoraPct?: number;
+  /** Días de gracia: tolerancia tras el vencimiento antes de que corra la mora. Default 0. */
+  diasGracia?: number;
 }
 
 export interface ResultadoImputacionCuotas {
   aplicaciones: AplicacionCuota[];
   totales: { mora: number; interes: number; cargos: number; capital: number };
   excedente: number;
+  /** Mora condonada por la quita de campaña ($ que el cliente se ahorró). */
+  ahorroMora: number;
 }
 
 /**
@@ -168,11 +178,15 @@ export function imputarPagoEnCuotas(
   const modoCargos = opciones.modoCargos ?? "integrado";
   const moraActiva = opciones.moraActiva ?? true;
   const tasaMoraDiaria = opciones.tasaMoraDiaria;
+  const diasGracia = opciones.diasGracia;
   const hoy = opciones.hoy ?? new Date();
+  // Quita de mora por campaña (Fase 7B), acotada a [0, 100].
+  const factorMora = 1 - Math.min(100, Math.max(0, opciones.descuentoMoraPct ?? 0)) / 100;
 
   let restante = round2(monto);
   const aplicaciones: AplicacionCuota[] = [];
   const totales = { mora: 0, interes: 0, cargos: 0, capital: 0 };
+  let ahorroMora = 0;
 
   const ordenadas = [...cuotas].sort((a, b) => a.nro - b.nro);
 
@@ -186,7 +200,9 @@ export function imputarPagoEnCuotas(
 
     // Mora dinámica de la cuota (solo si está vencida y la mora está activa).
     const dias = diasAtraso(c.fechaVencimiento, hoy);
-    const moraDevengada = moraActiva ? interesMora(c.cuotaTotal, dias, { tasaDiaria: tasaMoraDiaria }) : 0;
+    const moraPlena = moraActiva ? interesMora(c.cuotaTotal, dias, { tasaDiaria: tasaMoraDiaria, diasGracia }) : 0;
+    // La quita de campaña reduce la mora devengada (lo condonado se reporta como ahorro).
+    const moraDevengada = round2(moraPlena * factorMora);
     const moraPend = noNegativo(round2(moraDevengada - c.pagadoMora));
 
     // Cuota ya saldada por completo (sin mora pendiente) → se salta.
@@ -228,7 +244,9 @@ export function imputarPagoEnCuotas(
     totales.interes = round2(totales.interes + aInteres);
     totales.cargos = round2(totales.cargos + aCargos);
     totales.capital = round2(totales.capital + aCapital);
+    // Mora condonada por la quita en esta cuota (informativo).
+    ahorroMora = round2(ahorroMora + noNegativo(round2(moraPlena - moraDevengada)));
   }
 
-  return { aplicaciones, totales, excedente: round2(restante) };
+  return { aplicaciones, totales, excedente: round2(restante), ahorroMora };
 }

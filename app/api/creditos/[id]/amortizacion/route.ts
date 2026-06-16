@@ -8,6 +8,7 @@ import {
   efectivaAnualDesdePeriodica,
   normalizarFrecuencia,
   frecuenciaLabel,
+  type CronogramaConfig,
 } from "@/lib/domain";
 import { getConfiguracion } from "@/lib/config";
 import type { NextRequest } from "next/server";
@@ -36,6 +37,7 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
       frecuencia: true,
       frecuencia_def: true,
       cargos: true,
+      cronograma: true,
       fecha_inicio: true,
       cliente: { select: { nombre: true } },
     },
@@ -65,6 +67,14 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
       // Snapshot del crédito si existe; si no (créditos previos), config vigente.
       cargos: (credito.cargos as typeof config.simulador.cargos | null) ?? config.simulador.cargos,
       redondeo: config.simulador.redondeoCuota,
+      // Cronograma: snapshot del crédito si existe; si no, config vigente (mensual).
+      cronograma: (credito.cronograma as CronogramaConfig | null) ?? {
+        diaCorte: config.simulador.diaCorte,
+        diaVencimiento: config.simulador.diaVencimientoFijo,
+        diasGracia: config.simulador.diasGracia,
+        incluirSabado: config.simulador.incluirSabadoNoHabil,
+        feriados: config.simulador.feriados,
+      },
     },
     catalogo
   );

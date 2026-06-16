@@ -122,6 +122,23 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
   const config = await getConfiguracion(userId);
   const fechaPago = body.fecha ? new Date(body.fecha) : new Date();
 
+  // ── Campañas de recuperación activas (Fase 7B) ─────────────────────────────
+  // Si el crédito es objetivo de una campaña ACTIVA con quita de intereses vigente
+  // (sin fecha de corte o aún dentro del plazo), se aplica el % al cobrar.
+  const objetivosActivos = await prisma.campana_objetivo.findMany({
+    where: {
+      ...withTenant(userId),
+      credito_id: body.credito_id,
+      campana: { estado: "activa" },
+    },
+    include: { campana: { select: { promo_tipo: true, promo_valor: true, promo_vence: true } } },
+  });
+  const descuentoMoraPct = objetivosActivos.reduce((max, o) => {
+    const c = o.campana;
+    const vigente = c.promo_tipo === "quita_interes" && (!c.promo_vence || c.promo_vence >= fechaPago);
+    return vigente ? Math.max(max, c.promo_valor) : max;
+  }, 0);
+
   const cuotasDom: CuotaParaImputar[] = credito.cuotas.map((c) => ({
     id: c.id,
     nro: c.nro,
@@ -136,11 +153,15 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     pagadoCargos: c.pagado_cargos,
   }));
 
+  const graciaCred = (credito.cronograma as { diasGracia?: number } | null)?.diasGracia ?? config.simulador.diasGracia;
+
   const resultado = imputarPagoEnCuotas(body.monto, cuotasDom, {
     modoCargos: config.imputarCargos,
     moraActiva: config.moraActiva,
     tasaMoraDiaria: config.tasaMoraDiaria,
     hoy: fechaPago,
+    descuentoMoraPct,
+    diasGracia: graciaCred,
   });
 
   const aplicacionPorCuota = new Map(resultado.aplicaciones.map((a) => [a.id, a]));
@@ -256,6 +277,14 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
       },
     });
 
+    // Campañas activas (Fase 7B): acumular lo recuperado en cada objetivo del crédito.
+    if (objetivosActivos.length > 0) {
+      await tx.campana_objetivo.updateMany({
+        where: { id: { in: objetivosActivos.map((o) => o.id) } },
+        data: { monto_recuperado: { increment: Math.abs(body.monto) } },
+      });
+    }
+
     return p;
   });
 
@@ -276,6 +305,8 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
       saldo_anterior: saldoAnterior,
       nuevo_saldo: saldoCapital,
       cuotas_afectadas: resultado.aplicaciones.map((a) => a.nro),
+      descuento_mora_pct: descuentoMoraPct,
+      ahorro_mora: resultado.ahorroMora,
     },
   });
 
@@ -288,6 +319,8 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
         aplicadoCargos: resultado.totales.cargos,
         aplicadoCapital: resultado.totales.capital,
         excedente: resultado.excedente,
+        descuentoMoraPct,
+        ahorroMora: resultado.ahorroMora,
         saldoAnterior,
         nuevoSaldo: saldoCapital,
         cuotasAfectadas: resultado.aplicaciones.map((a) => ({

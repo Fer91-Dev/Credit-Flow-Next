@@ -71,7 +71,8 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
       const catFrec = c.frecuencia_def ? [c.frecuencia_def as unknown as FrecuenciaDef] : config.simulador.frecuencias;
       const tasaPeriodica = tasaPeriodicaSegunConvencion(c.tasa, config.convencionTasa, frec, catFrec);
       const cuota = cuotaMensualFrancesa(c.monto_original, tasaPeriodica, c.plazo_meses);
-      interes_mora = interesMora(cuota, c.dias_mora, { tasaDiaria: config.tasaMoraDiaria });
+      const graciaCred = (c.cronograma as { diasGracia?: number } | null)?.diasGracia ?? config.simulador.diasGracia;
+      interes_mora = interesMora(cuota, c.dias_mora, { tasaDiaria: config.tasaMoraDiaria, diasGracia: graciaCred });
     }
     return { ...c, interes_mora, tiene_pagos: c.pagos.length > 0 };
   });
@@ -138,6 +139,15 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
   const cargosSnapshot = configActual.simulador.cargos;
   // Snapshot de la definición de frecuencia: congela días/períodos del crédito.
   const frecuenciaDef = resolverFrecuencia(frecuencia, configActual.simulador.frecuencias);
+  // Snapshot del cronograma (corte/día de vencimiento/gracia/feriados): congela las
+  // fechas de cobranza y la tolerancia de mora del crédito ante cambios de config.
+  const cronogramaSnapshot = {
+    diaCorte: configActual.simulador.diaCorte,
+    diaVencimiento: configActual.simulador.diaVencimientoFijo,
+    diasGracia: configActual.simulador.diasGracia,
+    incluirSabado: configActual.simulador.incluirSabadoNoHabil,
+    feriados: configActual.simulador.feriados,
+  };
 
   // Fecha de desembolso y vencimiento de la 1ª cuota (un período después).
   const fechaInicio = body.fecha_inicio ? new Date(body.fecha_inicio) : new Date();
@@ -167,10 +177,13 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     {
       cargos: cargosSnapshot,
       redondeo: configActual.simulador.redondeoCuota,
+      cronograma: cronogramaSnapshot,
     },
     configActual.simulador.frecuencias
   );
   const filasCuota = planACuotas(plan);
+  // El próximo pago = 1ª cuota del plan (respeta el cronograma de corte/vencimiento).
+  const proximoPagoFinal = body.proximo_pago ? new Date(body.proximo_pago) : (plan.cuotas[0]?.fecha ?? proximoPago);
 
   // Crédito + cuotas en una transacción: un crédito nunca queda sin cronograma.
   const credito = await prisma.$transaction(async (tx) => {
@@ -193,8 +206,9 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
         frecuencia,
         frecuencia_def: frecuenciaDef as object,
         cargos: cargosSnapshot as object,
+        cronograma: cronogramaSnapshot as object,
         fecha_inicio: fechaInicio,
-        proximo_pago: proximoPago,
+        proximo_pago: proximoPagoFinal,
         solicitud_id: body.solicitud_id || null,
         ...withTenant(userId),
       },

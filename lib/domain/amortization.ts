@@ -7,7 +7,8 @@
  */
 import { round2, toCents, fromCents } from "./money";
 import type { ConvencionTasa, CargosConfig, RedondeoModo } from "./config";
-import { tasaPeriodicaSegunConvencion, sumarPeriodos, type Frecuencia, type FrecuenciaDef } from "./frequency";
+import { tasaPeriodicaSegunConvencion, sumarPeriodos, resolverFrecuencia, type Frecuencia, type FrecuenciaDef } from "./frequency";
+import { calcularVencimientos, type CronogramaConfig } from "./calendar";
 
 export interface CuotaPlan {
   nro: number;
@@ -44,10 +45,12 @@ export interface PlanAmortizacion {
   cuotas: CuotaPlan[];
 }
 
-/** Opciones de cálculo del plan (cargos + redondeo). Si se omite, plan puro. */
+/** Opciones de cálculo del plan (cargos + redondeo + cronograma). Si se omite, plan puro. */
 export interface OpcionesPlan {
   cargos?: CargosConfig;
   redondeo?: { modo: RedondeoModo; multiplo: number };
+  /** Cronograma de fechas (corte/día de vencimiento/feriados). Solo aplica a frecuencia mensual. */
+  cronograma?: CronogramaConfig;
 }
 
 /** Aplica el modo de redondeo configurado al valor de la cuota total. */
@@ -129,6 +132,13 @@ export function construirPlanAmortizacion(
   const i = tasaPeriodicaSegunConvencion(tasaPct, convencion, frecuencia, catalogoFrecuencias);
   const cuota = cuotaMensualFrancesa(principalAmortizar, i, nCuotas);
 
+  // Cronograma de vencimientos (corte + día fijo). Solo mensual; si no, fechas por período.
+  const esMensual = resolverFrecuencia(frecuencia, catalogoFrecuencias).esMensual ?? false;
+  const vencimientos =
+    opciones?.cronograma && esMensual
+      ? calcularVencimientos(fechaInicio, nCuotas, opciones.cronograma)
+      : null;
+
   const cuotaCents = toCents(cuota);
   let saldoCents = toCents(principalAmortizar);
 
@@ -181,7 +191,7 @@ export function construirPlanAmortizacion(
 
     cuotas.push({
       nro,
-      fecha: sumarPeriodos(fechaInicio, nro, frecuencia, catalogoFrecuencias),
+      fecha: vencimientos ? vencimientos[nro - 1] : sumarPeriodos(fechaInicio, nro, frecuencia, catalogoFrecuencias),
       saldoInicial,
       cuota: cuotaPura,
       interes,

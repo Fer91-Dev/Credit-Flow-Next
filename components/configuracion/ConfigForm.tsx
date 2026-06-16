@@ -179,10 +179,10 @@ export function ConfigForm() {
             </div>
           </Section>
 
-          {/* Simulador · Redondeo y vencimientos */}
-          <Section title="Redondeo y vencimientos" desc="Ajuste de la cuota y armado del cronograma."
+          {/* Simulador · Redondeo */}
+          <Section title="Redondeo de cuota" desc="Ajuste del valor de la cuota total."
             onSave={() => saveSim("redondeo")} saving={savingKey === "redondeo"} saved={savedKey === "redondeo"}>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Field label="Redondeo de cuota">
                 <Select value={form.simulador.redondeoCuota.modo}
                   onChange={e => setSim("redondeoCuota", { ...form.simulador.redondeoCuota, modo: e.target.value as SimuladorConfig["redondeoCuota"]["modo"] })}>
@@ -196,16 +196,46 @@ export function ConfigForm() {
                   disabled={form.simulador.redondeoCuota.modo !== "multiplo"}
                   onChange={e => setSim("redondeoCuota", { ...form.simulador.redondeoCuota, multiplo: parseInt(e.target.value) || 1 })} />
               </Field>
-              <Field label="Día de vencimiento" hint="1–28, vacío = + un período">
+            </div>
+          </Section>
+
+          {/* Simulador · Cronograma de cobranza */}
+          <Section title="Cronograma de cobranza" desc="Fecha de corte, día de vencimiento fijo, gracia y feriados. Solo aplica a créditos mensuales; se congela al otorgar."
+            onSave={() => saveSim("cronograma")} saving={savingKey === "cronograma"} saved={savedKey === "cronograma"}>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              <Field label="Día de corte" hint="1–28. Vacío = sin corte (1ª cuota al mes siguiente)">
+                <Input type="number" min="1" max="28" step="1"
+                  value={form.simulador.diaCorte ?? ""}
+                  onChange={e => setSim("diaCorte", e.target.value === "" ? null : Math.min(28, Math.max(1, parseInt(e.target.value) || 1)))} />
+              </Field>
+              <Field label="Día de vencimiento" hint="1–28. Vacío = un período desde el desembolso">
                 <Input type="number" min="1" max="28" step="1"
                   value={form.simulador.diaVencimientoFijo ?? ""}
                   onChange={e => setSim("diaVencimientoFijo", e.target.value === "" ? null : Math.min(28, Math.max(1, parseInt(e.target.value) || 1)))} />
               </Field>
-              <Field label="Gracia 1ª cuota (días)">
-                <Input type="number" min="0" step="1" value={form.simulador.desfasajePrimeraCuotaDias}
-                  onChange={e => setSim("desfasajePrimeraCuotaDias", parseInt(e.target.value) || 0)} />
+              <Field label="Días de gracia" hint="Tolerancia tras el vencimiento antes de la mora">
+                <Input type="number" min="0" step="1" value={form.simulador.diasGracia}
+                  onChange={e => setSim("diasGracia", Math.max(0, parseInt(e.target.value) || 0))} />
               </Field>
             </div>
+
+            <div className="mt-4 flex items-center justify-between rounded-lg border border-border bg-muted/30 px-4 py-3">
+              <div>
+                <p className="text-sm font-medium text-foreground">Sábado no hábil</p>
+                <p className="text-xs text-muted-foreground">Si está activo, los vencimientos que caen sábado también se corren al lunes.</p>
+              </div>
+              <Toggle checked={form.simulador.incluirSabadoNoHabil} onChange={v => setSim("incluirSabadoNoHabil", v)} />
+            </div>
+
+            <div className="mt-4">
+              <FeriadosEditor feriados={form.simulador.feriados} onChange={f => setSim("feriados", f)} />
+            </div>
+
+            {(form.simulador.diaCorte || form.simulador.diaVencimientoFijo) && (
+              <p className="mt-4 rounded-lg bg-muted/20 border border-border/60 px-3 py-2 text-[11px] text-muted-foreground/80">
+                Ejemplo: corte <b>{form.simulador.diaCorte ?? "—"}</b>, vencimiento <b>{form.simulador.diaVencimientoFijo ?? "—"}</b>. Un crédito otorgado después del corte pasa su 1ª cuota a la liquidación siguiente; si el vencimiento cae domingo/feriado, se corre al día hábil siguiente.
+              </p>
+            )}
           </Section>
 
           {/* Simulador · Cargos */}
@@ -457,6 +487,43 @@ function PlazosEditor({ plazos, onChange }: { plazos: SimuladorConfig["plazos"];
       <div className="mt-3 flex items-center gap-2 max-w-[14rem]">
         <Input type="number" min="1" step="1" placeholder="N° de cuotas" value={nuevo}
           onChange={e => setNuevo(e.target.value)}
+          onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); add(); } }} />
+        <button type="button" onClick={add} className="inline-flex items-center gap-1 rounded-lg border border-border px-2.5 py-2 text-xs text-muted-foreground hover:bg-muted hover:text-foreground transition-colors whitespace-nowrap">
+          <Plus className="h-3.5 w-3.5" /> Agregar
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** Editor de feriados (fechas no hábiles). Las fechas se guardan como "YYYY-MM-DD". */
+function FeriadosEditor({ feriados, onChange }: { feriados: string[]; onChange: (f: string[]) => void }) {
+  const [nuevo, setNuevo] = useState("");
+  const add = () => {
+    if (!nuevo || feriados.includes(nuevo)) { setNuevo(""); return; }
+    onChange([...feriados, nuevo].sort());
+    setNuevo("");
+  };
+  const fmt = (s: string) => {
+    const d = new Date(`${s}T00:00:00Z`);
+    return d.toLocaleDateString("es-AR", { day: "2-digit", month: "short", year: "2-digit", timeZone: "UTC" });
+  };
+  return (
+    <div>
+      <p className="text-xs font-medium text-muted-foreground mb-2">Feriados (días no hábiles)</p>
+      <div className="flex flex-wrap items-center gap-2">
+        {feriados.length === 0 && <span className="text-xs text-muted-foreground/60">Sin feriados cargados.</span>}
+        {feriados.map(f => (
+          <span key={f} className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-muted/30 px-2.5 py-1.5 text-sm text-foreground">
+            <span className="tabular-nums">{fmt(f)}</span>
+            <button type="button" onClick={() => onChange(feriados.filter(x => x !== f))} title="Quitar" className="opacity-40 hover:opacity-100">
+              <X className="h-3 w-3" />
+            </button>
+          </span>
+        ))}
+      </div>
+      <div className="mt-3 flex items-center gap-2 max-w-[18rem]">
+        <Input type="date" value={nuevo} onChange={e => setNuevo(e.target.value)}
           onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); add(); } }} />
         <button type="button" onClick={add} className="inline-flex items-center gap-1 rounded-lg border border-border px-2.5 py-2 text-xs text-muted-foreground hover:bg-muted hover:text-foreground transition-colors whitespace-nowrap">
           <Plus className="h-3.5 w-3.5" /> Agregar

@@ -294,7 +294,7 @@ export interface CajaData {
 export interface EventoAuditoria {
   id: string;
   created_at: string;
-  entidad: "clientes" | "creditos" | "pagos" | "configuracion" | "caja";
+  entidad: "clientes" | "creditos" | "pagos" | "configuracion" | "caja" | "campana";
   entidad_id: string | null;
   accion: "crear" | "actualizar" | "eliminar" | "cancelar" | "anular" | "registrar_pago" | "actualizar_config";
   descripcion: string;
@@ -329,6 +329,55 @@ export interface Pago {
   credito: { id: string; cliente: { nombre: string } };
 }
 
+// ── Campañas de recuperación de cobranza (Fase 7A) ──────────────────────────
+
+export type CanalCampana = "whatsapp" | "email" | "sms";
+export type EstadoCampana = "borrador" | "activa" | "finalizada";
+export type PromoTipo = "ninguna" | "quita_interes";
+
+export interface CampanaMetricas {
+  alcance: number;
+  promesas: number;
+  recuperado: number;
+}
+
+export interface CampanaCobranza {
+  id: string;
+  created_at: string;
+  nombre: string;
+  descripcion: string | null;
+  canal: CanalCampana;
+  estado: EstadoCampana;
+  promo_tipo: PromoTipo;
+  promo_valor: number;
+  promo_vence: string | null;
+  mensaje_template: string | null;
+  metricas: CampanaMetricas;
+}
+
+export interface CampanaObjetivo {
+  id: string;
+  campana_id: string;
+  credito_id: string;
+  saldo: number;
+  dias_mora: number;
+  interes_mora: number;
+  oferta_monto: number;
+  oferta_descuento: number;
+  promesa_generada: boolean;
+  monto_recuperado: number;
+  credito: {
+    id: string;
+    numero: number | null;
+    dias_mora: number;
+    cliente: { id: string; nombre: string; telefono: string | null; email: string | null };
+  };
+}
+
+export interface CampanaDetalle extends CampanaCobranza {
+  objetivos: CampanaObjetivo[];
+}
+
 export interface DashboardData {
   resumen: {
     clientes_activos: number;
@@ -358,6 +407,7 @@ export const KEYS = {
   configuracion: "/api/configuracion",
   auditoria:     "/api/auditoria?limit=500",
   acciones:      "/api/cobranza/acciones?limit=500",
+  campanas:      "/api/cobranza/campanas",
 } as const;
 
 // ── Hooks tipados ─────────────────────────────────────────────────────────────
@@ -443,4 +493,18 @@ export function useCaja(desde: string, hasta: string, tipo = "all") {
     desde && hasta ? `/api/caja?desde=${desde}&hasta=${hasta}&tipo=${tipo}` : null,
   );
   return { caja: data, error, isLoading, mutate };
+}
+
+/** Campañas de recuperación del tenant, con métricas agregadas. */
+export function useCampanas() {
+  const { data, error, isLoading, mutate } = useSWR<{ campanas: CampanaCobranza[] }>(KEYS.campanas);
+  return { campanas: data?.campanas ?? [], error, isLoading, mutate };
+}
+
+/** Detalle de una campaña (objetivos + métricas). Key condicional. */
+export function useCampana(id: string | null) {
+  const { data, error, isLoading, mutate } = useSWR<CampanaDetalle>(
+    id ? `/api/cobranza/campanas/${id}` : null,
+  );
+  return { campana: data, error, isLoading, mutate };
 }

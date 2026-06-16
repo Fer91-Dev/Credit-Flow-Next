@@ -1,10 +1,13 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { AlertCircle, Phone, Mail, Clock, Copy, CheckCheck, Search, DollarSign, ShieldAlert, MessageSquarePlus, CalendarClock } from "lucide-react";
-import { useCreditos, useAccionesCobranza, type Credito, type AccionCobranza } from "@/lib/swr";
+import { useSWRConfig } from "swr";
+import { AlertCircle, Phone, Mail, Clock, Copy, CheckCheck, Search, DollarSign, ShieldAlert, MessageSquarePlus, CalendarClock, Megaphone, X, Users } from "lucide-react";
+import { useCreditos, useAccionesCobranza, KEYS, type Credito, type AccionCobranza } from "@/lib/swr";
 import { GestionForm } from "./GestionForm";
 import { CobranzaDetail } from "./CobranzaDetail";
+import { CampaignModal } from "./CampaignModal";
+import { CampanasView } from "./CampanasView";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { KpiCard } from "@/components/ui/KpiCard";
 import { StatusBadge } from "@/components/ui/StatusBadge";
@@ -36,14 +39,27 @@ const resultadoLabel: Record<AccionCobranza["resultado"], string> = {
   otro:          "Otro",
 };
 
+type Tab = "morosos" | "campanas";
+
 export function CobranzaTable() {
   const { creditos: allCreditos, error, isLoading } = useCreditos();
   const { acciones, mutate: mutateAcciones } = useAccionesCobranza();
+  const { mutate: globalMutate } = useSWRConfig();
+  const [tab, setTab]           = useState<Tab>("morosos");
   const [filterMora, setFilter] = useState<Severidad>("critica");
   const [search, setSearch]     = useState("");
   const [copiedId, setCopied]   = useState<string | null>(null);
   const [gestion, setGestion]   = useState<Credito | null>(null);
   const [detalle, setDetalle]   = useState<Credito | null>(null);
+  const [seleccion, setSeleccion] = useState<Set<string>>(new Set());
+  const [campaignOpen, setCampaignOpen] = useState(false);
+
+  const toggleSel = (id: string) =>
+    setSeleccion(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
 
   // Última gestión por crédito (acciones vienen ordenadas por fecha desc).
   const ultimaPorCredito = useMemo(() => {
@@ -92,6 +108,28 @@ export function CobranzaTable() {
 
   const sortedFiltered = [...filtered].sort((a, b) => b.dias_mora - a.dias_mora);
 
+  // ── Selección de audiencia para campañas ──
+  const seleccionados = useMemo(() => creditos.filter(c => seleccion.has(c.id)), [creditos, seleccion]);
+  const visiblesIds = sortedFiltered.map(c => c.id);
+  const todasVisiblesSel = visiblesIds.length > 0 && visiblesIds.every(id => seleccion.has(id));
+
+  const toggleTodasVisibles = () =>
+    setSeleccion(prev => {
+      const next = new Set(prev);
+      if (todasVisiblesSel) visiblesIds.forEach(id => next.delete(id));
+      else visiblesIds.forEach(id => next.add(id));
+      return next;
+    });
+
+  const handleCampaignClose = (success?: boolean) => {
+    setCampaignOpen(false);
+    if (success) {
+      setSeleccion(new Set());
+      globalMutate(KEYS.campanas);
+      setTab("campanas");
+    }
+  };
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -101,6 +139,25 @@ export function CobranzaTable() {
         accent="destructive"
       />
 
+      {/* ── Tabs Morosos | Campañas ── */}
+      <div className="flex gap-1 border-b border-border -mt-2">
+        {([["morosos", "Morosos", ShieldAlert], ["campanas", "Campañas", Megaphone]] as [Tab, string, typeof ShieldAlert][]).map(([key, label, Icon]) => (
+          <button
+            key={key}
+            onClick={() => setTab(key)}
+            className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${
+              tab === key ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <Icon className="h-4 w-4" /> {label}
+          </button>
+        ))}
+      </div>
+
+      {tab === "campanas" ? (
+        <CampanasView />
+      ) : (
+      <>
       {isLoading ? (
         <BodySkeleton />
       ) : error ? (
@@ -172,6 +229,15 @@ export function CobranzaTable() {
             <table className="w-full text-sm border-separate border-spacing-0">
               <thead>
                 <tr className="bg-muted/30">
+                  <th className="px-4 py-3 w-10 border-b border-border">
+                    <input
+                      type="checkbox"
+                      checked={todasVisiblesSel}
+                      onChange={toggleTodasVisibles}
+                      title="Seleccionar todos los visibles"
+                      className="h-4 w-4 rounded border-border accent-primary cursor-pointer"
+                    />
+                  </th>
                   <th className="px-4 py-3 text-left  text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">Cliente</th>
                   <th className="px-4 py-3 text-left  text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">Contacto</th>
                   <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">Saldo</th>
@@ -185,7 +251,15 @@ export function CobranzaTable() {
                 {sortedFiltered.map((c, idx) => {
                   const sev = severidadConfig(c.dias_mora);
                   return (
-                    <tr key={c.id} onClick={() => setDetalle(c)} className={`cursor-pointer hover:bg-muted/20 transition-colors ${idx % 2 === 1 ? "bg-muted/5" : ""}`}>
+                    <tr key={c.id} onClick={() => setDetalle(c)} className={`cursor-pointer hover:bg-muted/20 transition-colors ${seleccion.has(c.id) ? "bg-primary/5" : idx % 2 === 1 ? "bg-muted/5" : ""}`}>
+                      <td className="px-4 py-3 border-b border-border/40" onClick={(e) => e.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          checked={seleccion.has(c.id)}
+                          onChange={() => toggleSel(c.id)}
+                          className="h-4 w-4 rounded border-border accent-primary cursor-pointer"
+                        />
+                      </td>
                       <td className="px-4 py-3 border-b border-border/40">
                         <p className="font-medium text-foreground">{c.cliente.nombre}</p>
                         {(() => {
@@ -261,7 +335,7 @@ export function CobranzaTable() {
               </tbody>
               <tfoot>
                 <tr className="bg-muted/20">
-                  <td colSpan={2} className="px-4 py-3 text-[10px] font-bold text-muted-foreground uppercase tracking-widest border-t border-border">
+                  <td colSpan={3} className="px-4 py-3 text-[10px] font-bold text-muted-foreground uppercase tracking-widest border-t border-border">
                     Total ({sortedFiltered.length})
                   </td>
                   <td className="px-4 py-3 text-right font-mono font-bold text-destructive border-t border-border">
@@ -281,9 +355,17 @@ export function CobranzaTable() {
             {sortedFiltered.map(c => {
               const sev = severidadConfig(c.dias_mora);
               return (
-                <div key={c.id} onClick={() => setDetalle(c)} className="rounded-xl bg-card border border-border p-4 space-y-3 cursor-pointer active:bg-muted/20 transition-colors">
+                <div key={c.id} onClick={() => setDetalle(c)} className={`rounded-xl bg-card border p-4 space-y-3 cursor-pointer active:bg-muted/20 transition-colors ${seleccion.has(c.id) ? "border-primary/40" : "border-border"}`}>
                   <div className="flex items-start justify-between gap-2">
-                    <p className="font-medium text-foreground text-sm">{c.cliente.nombre}</p>
+                    <div className="flex items-center gap-2.5 min-w-0" onClick={(e) => e.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        checked={seleccion.has(c.id)}
+                        onChange={() => toggleSel(c.id)}
+                        className="h-4 w-4 rounded border-border accent-primary cursor-pointer shrink-0"
+                      />
+                      <p className="font-medium text-foreground text-sm truncate">{c.cliente.nombre}</p>
+                    </div>
                     <StatusBadge label={sev.label} variant={sev.variant} />
                   </div>
                   <div className="flex items-center justify-between">
@@ -368,6 +450,45 @@ export function CobranzaTable() {
           </DialogHeader>
           <div className="flex-1 min-h-0 overflow-y-auto">
             {detalle && <CobranzaDetail credito={detalle} acciones={acciones} />}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── ActionToolbar: acciones masivas sobre la selección ── */}
+      {seleccionados.length > 0 && (
+        <div className="fixed inset-x-0 bottom-4 z-40 flex justify-center px-4 pointer-events-none">
+          <div className="pointer-events-auto flex items-center gap-3 rounded-xl border border-border bg-card/95 backdrop-blur px-4 py-3 shadow-lg shadow-black/40">
+            <span className="flex items-center gap-2 text-sm text-foreground">
+              <Users className="h-4 w-4 text-primary" />
+              <span className="font-semibold">{seleccionados.length}</span> seleccionado{seleccionados.length !== 1 ? "s" : ""}
+            </span>
+            <button
+              onClick={() => setCampaignOpen(true)}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 transition-opacity"
+            >
+              <Megaphone className="h-4 w-4" /> Iniciar campaña
+            </button>
+            <button
+              onClick={() => setSeleccion(new Set())}
+              title="Limpiar selección"
+              className="flex items-center justify-center h-8 w-8 rounded-lg text-muted-foreground hover:bg-muted transition-colors"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      )}
+      </>
+      )}
+
+      {/* Modal de configuración de campaña */}
+      <Dialog open={campaignOpen} onOpenChange={open => { if (!open) setCampaignOpen(false); }}>
+        <DialogContent className="w-[95vw] sm:max-w-xl max-h-[90dvh] flex flex-col overflow-hidden">
+          <DialogHeader className="shrink-0">
+            <DialogTitle>Nueva campaña de recuperación</DialogTitle>
+          </DialogHeader>
+          <div className="flex-1 min-h-0 overflow-y-auto">
+            {campaignOpen && <CampaignModal creditos={seleccionados} onClose={handleCampaignClose} />}
           </div>
         </DialogContent>
       </Dialog>

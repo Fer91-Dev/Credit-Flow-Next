@@ -76,6 +76,14 @@ export interface SimuladorConfig {
   diaVencimientoFijo: number | null;
   /** Desfasaje (días de gracia) de la primera cuota. */
   desfasajePrimeraCuotaDias: number;
+  /** Día de corte (1..28) o null. Si se otorga después, la 1ª cuota pasa a la liquidación siguiente. */
+  diaCorte: number | null;
+  /** Días de gracia: tolerancia tras el vencimiento antes de que corra la mora. */
+  diasGracia: number;
+  /** Si el sábado se considera no hábil (además del domingo) para correr vencimientos. */
+  incluirSabadoNoHabil: boolean;
+  /** Feriados (no hábiles) en ISO "YYYY-MM-DD"; los vencimientos que caen ahí se corren. */
+  feriados: string[];
   /** Cargos que afectan la cuota / costo total. */
   cargos: CargosConfig;
 }
@@ -133,6 +141,10 @@ export const SIMULADOR_DEFAULT: SimuladorConfig = {
   redondeoCuota: { modo: "ninguno", multiplo: 100 },
   diaVencimientoFijo: null,
   desfasajePrimeraCuotaDias: 0,
+  diaCorte: null,
+  diasGracia: 0,
+  incluirSabadoNoHabil: false,
+  feriados: [],
   cargos: {
     comisionOtorgamiento: { activo: false, modo: "porcentaje", valor: 0, financiada: false },
     iva: { activo: false, tasa: 0.21 },
@@ -175,6 +187,7 @@ export function resolverSimulador(
         ? parcial.frecuencias
         : SIMULADOR_DEFAULT.frecuencias,
     redondeoCuota: { ...SIMULADOR_DEFAULT.redondeoCuota, ...parcial.redondeoCuota },
+    feriados: Array.isArray(parcial.feriados) ? parcial.feriados : SIMULADOR_DEFAULT.feriados,
     cargos: {
       comisionOtorgamiento: { ...SIMULADOR_DEFAULT.cargos.comisionOtorgamiento, ...c?.comisionOtorgamiento },
       iva: { ...SIMULADOR_DEFAULT.cargos.iva, ...c?.iva },

@@ -64,6 +64,7 @@ model creditos {
   dias_mora       Int       @default(0)
   estado          String    @default("activo")
   cargos          Json?     // snapshot de CargosConfig vigente al otorgar (congela los cargos del crédito)
+  cronograma      Json?     // snapshot del cronograma (corte/día venc/gracia/feriados) vigente al otorgar
   user_id         String    @db.Uuid
 
   cliente   clientes     @relation(fields: [cliente_id], references: [id], onDelete: Cascade)
@@ -72,8 +73,60 @@ model creditos {
   acciones  acciones_cobranza[]
   cuotas    cuotas[]
   movimientos movimientos_caja[]
+  objetivos_campana campana_objetivo[]
 
   @@unique([user_id, numero])
+}
+
+/// Campaña de recuperación de cobranza (Fase 7A). Tabla aditiva, multi-tenant.
+/// Agrupa créditos en mora para aplicar acciones masivas (WhatsApp/Email/SMS) y
+/// una promoción opcional (quita de interés de mora). La APLICACIÓN automática de
+/// la quita al cobrar es Fase 7B (no toca el motor de pagos todavía).
+model campanas_cobranza {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  created_at       DateTime @default(now()) @db.Timestamptz(6)
+  user_id          String   @db.Uuid
+  nombre           String
+  descripcion      String?
+  canal            String   @default("whatsapp") // whatsapp | email | sms
+  estado           String   @default("borrador") // borrador | activa | finalizada
+  promo_tipo       String   @default("ninguna")  // ninguna | quita_interes
+  promo_valor      Float    @default(0)          // % de descuento sobre el interés de mora
+  promo_vence      DateTime? @db.Date            // plazo límite para acogerse a la promo
+  mensaje_template String?                       // plantilla del mensaje (con [Nombre], [Monto], etc.)
+
+  objetivos campana_objetivo[]
+
+  @@index([user_id, created_at])
+}
+
+/// Vínculo campaña ↔ crédito en mora (tabla intermedia, Fase 7A). Multi-tenant.
+/// Congela un snapshot de la situación de mora al incorporar el crédito a la campaña
+/// y la oferta de recuperación calculada. `monto_recuperado` se actualiza con los
+/// pagos imputados a ese crédito mientras la campaña esté activa.
+model campana_objetivo {
+  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  created_at        DateTime @default(now()) @db.Timestamptz(6)
+  user_id           String   @db.Uuid
+  campana_id        String   @db.Uuid
+  credito_id        String   @db.Uuid
+  // Snapshot de la mora al incorporar a la campaña
+  saldo             Float    @default(0)
+  dias_mora         Int      @default(0)
+  interes_mora      Float    @default(0)
+  // Oferta de recuperación calculada (calculateRecoveryOffer)
+  oferta_monto      Float    @default(0) // monto a cancelar con descuento aplicado
+  oferta_descuento  Float    @default(0) // $ de descuento (ahorro) ofrecido
+  // Seguimiento
+  promesa_generada  Boolean  @default(false)
+  monto_recuperado  Float    @default(0)
+
+  campana campanas_cobranza @relation(fields: [campana_id], references: [id], onDelete: Cascade)
+  credito creditos          @relation(fields: [credito_id], references: [id], onDelete: Cascade)
+
+  @@unique([campana_id, credito_id])
+  @@index([user_id, campana_id])
+  @@index([user_id, credito_id])
 }
 
 /// Libro de movimientos de efectivo (Caja) por tenant. Tabla aditiva, multi-tenant.

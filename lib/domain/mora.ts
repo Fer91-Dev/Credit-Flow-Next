@@ -17,6 +17,8 @@ export const TASA_MORA_DIARIA = 0.01;
 export interface ConfigMora {
   /** Fracción diaria sobre la cuota. Default 0.01 (1%). */
   tasaDiaria?: number;
+  /** Días de gracia: tolerancia tras el vencimiento sin mora. Default 0. */
+  diasGracia?: number;
 }
 
 /**
@@ -47,9 +49,13 @@ export function interesMora(
   dias: number,
   config: ConfigMora = {}
 ): number {
-  if (dias <= 0 || valorCuota <= 0) return 0;
+  if (valorCuota <= 0) return 0;
+  // Días de gracia: la mora recién corre pasada la tolerancia (cuenta desde el vencimiento).
+  const gracia = config.diasGracia && config.diasGracia > 0 ? config.diasGracia : 0;
+  const diasEfectivos = dias - gracia;
+  if (diasEfectivos <= 0) return 0;
   const tasa = config.tasaDiaria ?? TASA_MORA_DIARIA;
-  return round2(valorCuota * tasa * dias);
+  return round2(valorCuota * tasa * diasEfectivos);
 }
 
 /** Severidad de la mora, alineada con la vista de Cobranza. */
