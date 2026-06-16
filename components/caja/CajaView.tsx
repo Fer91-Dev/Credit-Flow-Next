@@ -11,6 +11,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field, Input, Select, Textarea } from "@/components/ui/field";
 import { formatCreditoNumero } from "@/lib/utils";
+import { MovimientoDetail } from "./MovimientoDetail";
 
 function n0(x: number) {
   return new Intl.NumberFormat("es-AR", { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(x);
@@ -66,6 +67,7 @@ export function CajaView() {
   const [hasta, setHasta] = useState(ymd(today));
   const [tipo, setTipo] = useState("all");
   const [ajusteOpen, setAjusteOpen] = useState(false);
+  const [detalle, setDetalle] = useState<MovimientoCaja | null>(null);
 
   const { caja, error, isLoading, mutate } = useCaja(desde, hasta, tipo);
 
@@ -178,7 +180,7 @@ export function CajaView() {
                       const meta = TIPO_META[m.tipo];
                       const ingreso = m.monto >= 0;
                       return (
-                        <tr key={m.id} className={idx % 2 === 1 ? "bg-muted/5" : ""}>
+                        <tr key={m.id} onClick={() => setDetalle(m)} className={`cursor-pointer hover:bg-muted/20 transition-colors ${idx % 2 === 1 ? "bg-muted/5" : ""}`}>
                           <td className="px-4 py-2.5 text-muted-foreground tabular-nums whitespace-nowrap border-b border-border/40">{fmtDate(m.fecha)}</td>
                           <td className="px-4 py-2.5 border-b border-border/40"><StatusBadge label={meta.label} variant={meta.variant} /></td>
                           <td className="px-4 py-2.5 text-foreground border-b border-border/40">{m.descripcion}</td>
@@ -206,6 +208,17 @@ export function CajaView() {
           if (ok) { mutate(); globalMutate("/api/dashboard"); }
         }}
       />
+
+      <Dialog open={!!detalle} onOpenChange={(o) => { if (!o) setDetalle(null); }}>
+        <DialogContent className="w-[95vw] sm:max-w-md max-h-[90dvh] flex flex-col overflow-hidden">
+          <DialogHeader className="shrink-0">
+            <DialogTitle>Detalle del movimiento</DialogTitle>
+          </DialogHeader>
+          <div className="flex-1 min-h-0 overflow-y-auto">
+            {detalle && <MovimientoDetail mov={detalle} />}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

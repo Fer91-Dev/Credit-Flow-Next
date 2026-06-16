@@ -294,7 +294,7 @@ export interface CajaData {
 export interface EventoAuditoria {
   id: string;
   created_at: string;
-  entidad: "clientes" | "creditos" | "pagos" | "configuracion";
+  entidad: "clientes" | "creditos" | "pagos" | "configuracion" | "caja";
   entidad_id: string | null;
   accion: "crear" | "actualizar" | "eliminar" | "cancelar" | "anular" | "registrar_pago" | "actualizar_config";
   descripcion: string;

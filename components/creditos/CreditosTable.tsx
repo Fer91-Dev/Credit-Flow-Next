@@ -234,7 +234,7 @@ export function CreditosTable() {
                     {filtered.map((c, idx) => {
                       const est = estadoBadge(c.estado);
                       return (
-                        <tr key={c.id} className={`hover:bg-muted/20 transition-colors ${idx % 2 === 1 ? "bg-muted/5" : ""}`}>
+                        <tr key={c.id} onClick={() => setDetail(c)} className={`cursor-pointer hover:bg-muted/20 transition-colors ${idx % 2 === 1 ? "bg-muted/5" : ""}`}>
                           <td className="px-4 py-3 font-mono text-xs text-muted-foreground border-b border-border/40 whitespace-nowrap">{formatCreditoNumero(c.numero)}</td>
                           <td className="px-4 py-3 font-medium text-foreground border-b border-border/40">{c.cliente.nombre}</td>
                           <td className="px-4 py-3 border-b border-border/40">
@@ -265,7 +265,7 @@ export function CreditosTable() {
                             <StatusBadge label={est.label} variant={est.variant} />
                           </td>
                           <td className="px-4 py-3 pr-5 text-right border-b border-border/40">
-                            <div className="flex justify-end gap-1">
+                            <div className="flex justify-end gap-1" onClick={(e) => e.stopPropagation()}>
                               <button
                                 onClick={() => setDetail(c)}
                                 className="p-1.5 rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
@@ -337,7 +337,7 @@ export function CreditosTable() {
               {filtered.map(c => {
                 const est = estadoBadge(c.estado);
                 return (
-                  <div key={c.id} className="rounded-xl bg-card border border-border p-4 space-y-3">
+                  <div key={c.id} onClick={() => setDetail(c)} className="rounded-xl bg-card border border-border p-4 space-y-3 cursor-pointer active:bg-muted/20 transition-colors">
                     <div className="flex items-start justify-between gap-2">
                       <div>
                         <p className="font-mono text-[11px] text-muted-foreground">{formatCreditoNumero(c.numero)}</p>
@@ -362,7 +362,7 @@ export function CreditosTable() {
                       {c.dias_mora > 0
                         ? <StatusBadge label={`${c.dias_mora}d mora`} variant={c.dias_mora > 30 ? "destructive" : "warning"} />
                         : <span className="text-xs font-medium text-success">Al día</span>}
-                      <div className="flex gap-1">
+                      <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
                         <button onClick={() => setDetail(c)} className="p-1.5 rounded-lg hover:bg-muted transition-colors text-muted-foreground">
                           <Eye className="h-3.5 w-3.5" />
                         </button>

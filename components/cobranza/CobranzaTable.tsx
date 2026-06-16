@@ -4,6 +4,7 @@ import { useState, useMemo } from "react";
 import { AlertCircle, Phone, Mail, Clock, Copy, CheckCheck, Search, DollarSign, ShieldAlert, MessageSquarePlus, CalendarClock } from "lucide-react";
 import { useCreditos, useAccionesCobranza, type Credito, type AccionCobranza } from "@/lib/swr";
 import { GestionForm } from "./GestionForm";
+import { CobranzaDetail } from "./CobranzaDetail";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { KpiCard } from "@/components/ui/KpiCard";
 import { StatusBadge } from "@/components/ui/StatusBadge";
@@ -42,6 +43,7 @@ export function CobranzaTable() {
   const [search, setSearch]     = useState("");
   const [copiedId, setCopied]   = useState<string | null>(null);
   const [gestion, setGestion]   = useState<Credito | null>(null);
+  const [detalle, setDetalle]   = useState<Credito | null>(null);
 
   // Última gestión por crédito (acciones vienen ordenadas por fecha desc).
   const ultimaPorCredito = useMemo(() => {
@@ -183,7 +185,7 @@ export function CobranzaTable() {
                 {sortedFiltered.map((c, idx) => {
                   const sev = severidadConfig(c.dias_mora);
                   return (
-                    <tr key={c.id} className={`hover:bg-muted/20 transition-colors ${idx % 2 === 1 ? "bg-muted/5" : ""}`}>
+                    <tr key={c.id} onClick={() => setDetalle(c)} className={`cursor-pointer hover:bg-muted/20 transition-colors ${idx % 2 === 1 ? "bg-muted/5" : ""}`}>
                       <td className="px-4 py-3 border-b border-border/40">
                         <p className="font-medium text-foreground">{c.cliente.nombre}</p>
                         {(() => {
@@ -237,13 +239,13 @@ export function CobranzaTable() {
                       <td className="px-4 py-3 pr-5 border-b border-border/40">
                         <div className="flex items-center gap-1.5">
                           <button
-                            onClick={() => setGestion(c)}
+                            onClick={(e) => { e.stopPropagation(); setGestion(c); }}
                             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 text-xs font-medium transition-colors border border-primary/20"
                           >
                             <MessageSquarePlus className="h-3 w-3" /> Gestionar
                           </button>
                           <button
-                            onClick={() => handleGestionar(c)}
+                            onClick={(e) => { e.stopPropagation(); handleGestionar(c); }}
                             title="Copiar datos del cliente"
                             className="flex items-center justify-center h-7 w-7 rounded-lg text-muted-foreground hover:bg-muted transition-colors"
                           >
@@ -279,7 +281,7 @@ export function CobranzaTable() {
             {sortedFiltered.map(c => {
               const sev = severidadConfig(c.dias_mora);
               return (
-                <div key={c.id} className="rounded-xl bg-card border border-border p-4 space-y-3">
+                <div key={c.id} onClick={() => setDetalle(c)} className="rounded-xl bg-card border border-border p-4 space-y-3 cursor-pointer active:bg-muted/20 transition-colors">
                   <div className="flex items-start justify-between gap-2">
                     <p className="font-medium text-foreground text-sm">{c.cliente.nombre}</p>
                     <StatusBadge label={sev.label} variant={sev.variant} />
@@ -328,13 +330,13 @@ export function CobranzaTable() {
                   })()}
                   <div className="flex gap-2">
                     <button
-                      onClick={() => setGestion(c)}
+                      onClick={(e) => { e.stopPropagation(); setGestion(c); }}
                       className="flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 text-sm font-medium transition-colors border border-primary/20"
                     >
                       <MessageSquarePlus className="h-4 w-4" /> Gestionar
                     </button>
                     <button
-                      onClick={() => handleGestionar(c)}
+                      onClick={(e) => { e.stopPropagation(); handleGestionar(c); }}
                       title="Copiar datos"
                       className="flex items-center justify-center h-10 w-10 rounded-lg border border-border text-muted-foreground hover:bg-muted transition-colors"
                     >
@@ -356,6 +358,17 @@ export function CobranzaTable() {
             <DialogTitle>Registrar gestión de cobranza</DialogTitle>
           </DialogHeader>
           {gestion && <GestionForm credito={gestion} onClose={handleGestionClose} />}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!detalle} onOpenChange={open => { if (!open) setDetalle(null); }}>
+        <DialogContent className="w-[95vw] sm:max-w-lg max-h-[90dvh] flex flex-col overflow-hidden">
+          <DialogHeader className="shrink-0">
+            <DialogTitle>Detalle de cobranza</DialogTitle>
+          </DialogHeader>
+          <div className="flex-1 min-h-0 overflow-y-auto">
+            {detalle && <CobranzaDetail credito={detalle} acciones={acciones} />}
+          </div>
         </DialogContent>
       </Dialog>
     </div>

@@ -8,6 +8,8 @@ import { KpiCard } from "@/components/ui/KpiCard";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import type { BadgeVariant } from "@/components/ui/StatusBadge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { AuditoriaDetail } from "./AuditoriaDetail";
 
 const SEL =
   "h-10 rounded-lg border border-border bg-muted/40 pl-3 pr-8 text-sm text-foreground " +
@@ -20,19 +22,21 @@ function fmtDateTime(s: string) {
   });
 }
 
-const entidadLabel: Record<EventoAuditoria["entidad"], string> = {
+const entidadLabel: Record<string, string> = {
   clientes: "Cliente",
   creditos: "Crédito",
   pagos: "Pago",
   configuracion: "Configuración",
+  caja: "Caja",
 };
 
 function accionConfig(a: EventoAuditoria["accion"]): { label: string; variant: BadgeVariant } {
   switch (a) {
     case "crear":             return { label: "Creado",      variant: "success" };
     case "actualizar":        return { label: "Actualizado", variant: "primary" };
-    case "eliminar":          return { label: "Baja",        variant: "muted" };
-    case "cancelar":          return { label: "Cancelado",   variant: "destructive" };
+    case "eliminar":          return { label: "Eliminado",   variant: "destructive" };
+    case "cancelar":          return { label: "Cancelado",   variant: "muted" };
+    case "anular":            return { label: "Anulado",     variant: "warning" };
     case "registrar_pago":    return { label: "Pago",        variant: "success" };
     case "actualizar_config": return { label: "Config",      variant: "warning" };
     default:                  return { label: a,             variant: "muted" };
@@ -47,6 +51,7 @@ export function AuditoriaTable() {
   const { eventos, error, isLoading } = useAuditoria();
   const [search, setSearch]     = useState("");
   const [entidad, setEntidad]   = useState("all");
+  const [detalle, setDetalle]   = useState<EventoAuditoria | null>(null);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -153,7 +158,7 @@ export function AuditoriaTable() {
                     {filtered.map((e, idx) => {
                       const acc = accionConfig(e.accion);
                       return (
-                        <tr key={e.id} className={idx % 2 === 1 ? "bg-muted/5" : ""}>
+                        <tr key={e.id} onClick={() => setDetalle(e)} className={`cursor-pointer hover:bg-muted/20 transition-colors ${idx % 2 === 1 ? "bg-muted/5" : ""}`}>
                           <td className="px-4 py-3 text-xs text-muted-foreground tabular-nums border-b border-border/40 whitespace-nowrap">{fmtDateTime(e.created_at)}</td>
                           <td className="px-4 py-3 border-b border-border/40">
                             <span className="text-xs text-muted-foreground">{entidadLabel[e.entidad] ?? e.entidad}</span>
@@ -174,7 +179,7 @@ export function AuditoriaTable() {
                 {filtered.map(e => {
                   const acc = accionConfig(e.accion);
                   return (
-                    <div key={e.id} className="rounded-xl bg-card border border-border p-4 space-y-2">
+                    <div key={e.id} onClick={() => setDetalle(e)} className="rounded-xl bg-card border border-border p-4 space-y-2 cursor-pointer active:bg-muted/20 transition-colors">
                       <div className="flex items-start justify-between gap-2">
                         <StatusBadge label={acc.label} variant={acc.variant} />
                         <span className="text-[11px] text-muted-foreground/60 tabular-nums shrink-0">{fmtDateTime(e.created_at)}</span>
@@ -189,6 +194,17 @@ export function AuditoriaTable() {
           )}
         </div>
       )}
+
+      <Dialog open={!!detalle} onOpenChange={(o) => { if (!o) setDetalle(null); }}>
+        <DialogContent className="w-[95vw] sm:max-w-lg max-h-[90dvh] flex flex-col overflow-hidden">
+          <DialogHeader className="shrink-0">
+            <DialogTitle>Detalle del evento</DialogTitle>
+          </DialogHeader>
+          <div className="flex-1 min-h-0 overflow-y-auto">
+            {detalle && <AuditoriaDetail evento={detalle} />}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

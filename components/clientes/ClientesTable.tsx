@@ -191,15 +191,9 @@ export function ClientesTable() {
                 </thead>
                 <tbody>
                   {filtered.map((c, idx) => (
-                    <tr key={c.id} className={`hover:bg-muted/20 transition-colors ${idx % 2 === 1 ? "bg-muted/5" : ""}`}>
+                    <tr key={c.id} onClick={() => openDetail(c.id)} className={`cursor-pointer hover:bg-muted/20 transition-colors ${idx % 2 === 1 ? "bg-muted/5" : ""}`}>
                       <td className="px-4 py-3 border-b border-border/40">
-                        <button
-                          onClick={() => openDetail(c.id)}
-                          className="font-medium text-foreground hover:text-primary transition-colors text-left"
-                          title="Ver ficha del cliente"
-                        >
-                          {c.nombre}
-                        </button>
+                        <span className="font-medium text-foreground hover:text-primary transition-colors">{c.nombre}</span>
                       </td>
                       <td className="px-4 py-3 font-mono text-xs text-muted-foreground border-b border-border/40">
                         {c.documento || <span className="opacity-20">—</span>}
@@ -228,7 +222,7 @@ export function ClientesTable() {
                         {fmtDate(c.created_at)}
                       </td>
                       <td className="px-4 py-3 pr-5 text-right border-b border-border/40">
-                        <div className="flex justify-end gap-1">
+                        <div className="flex justify-end gap-1" onClick={(e) => e.stopPropagation()}>
                           <button
                             onClick={() => openDetail(c.id)}
                             className="p-1.5 rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
@@ -278,11 +272,9 @@ export function ClientesTable() {
             {/* Mobile cards */}
             <div className="block md:hidden space-y-3">
               {filtered.map(c => (
-                <div key={c.id} className="rounded-xl bg-card border border-border p-4 space-y-3">
+                <div key={c.id} onClick={() => openDetail(c.id)} className="rounded-xl bg-card border border-border p-4 space-y-3 cursor-pointer active:bg-muted/20 transition-colors">
                   <div className="flex items-start justify-between gap-2">
-                    <button onClick={() => openDetail(c.id)} className="font-medium text-foreground text-sm leading-tight text-left hover:text-primary transition-colors">
-                      {c.nombre}
-                    </button>
+                    <span className="font-medium text-foreground text-sm leading-tight hover:text-primary transition-colors">{c.nombre}</span>
                     <StatusBadge label={c.estado} variant={c.estado === "activo" ? "success" : "muted"} />
                   </div>
                   {c.documento && (
@@ -302,7 +294,7 @@ export function ClientesTable() {
                   </div>
                   <div className="flex items-center justify-between pt-2 border-t border-border/50">
                     <span className="text-[11px] text-muted-foreground/50">Alta: {fmtDate(c.created_at)}</span>
-                    <div className="flex gap-1">
+                    <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
                       <button onClick={() => openDetail(c.id)} className="p-1.5 rounded-lg hover:bg-muted transition-colors text-muted-foreground">
                         <Eye className="h-3.5 w-3.5" />
                       </button>

@@ -6,7 +6,8 @@ import {
   Plus, Search, Wallet, TrendingUp, ArrowUpRight, Percent, X, ChevronDown, Receipt, Loader2,
 } from "lucide-react";
 import { PagoForm } from "./PagoForm";
-import { usePagos, KEYS } from "@/lib/swr";
+import { PagoDetail } from "./PagoDetail";
+import { usePagos, KEYS, type Pago } from "@/lib/swr";
 import { abrirRecibo } from "@/lib/recibo";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { KpiCard } from "@/components/ui/KpiCard";
@@ -65,6 +66,7 @@ export function PagosTable() {
   const [periodo, setPeriodo]   = useState("all");
   const [reciboBusy, setReciboBusy] = useState<string | null>(null);
   const [reciboError, setReciboError] = useState<string | null>(null);
+  const [detalle, setDetalle] = useState<Pago | null>(null);
 
   const handleRecibo = async (pagoId: string) => {
     setReciboBusy(pagoId);
@@ -271,7 +273,7 @@ export function PagosTable() {
                       const m = metodoConfig(pago.metodo);
                       const odd = idx % 2 === 1;
                       return (
-                        <tr key={pago.id} className={`hover:bg-muted/20 transition-colors ${odd ? "bg-muted/5" : ""}`}>
+                        <tr key={pago.id} onClick={() => setDetalle(pago)} className={`cursor-pointer hover:bg-muted/20 transition-colors ${odd ? "bg-muted/5" : ""}`}>
                           <td className="px-4 py-3 font-medium text-foreground border-b border-border/40 max-w-[180px]">
                             <span className="truncate block">{pago.credito.cliente.nombre}</span>
                           </td>
@@ -309,7 +311,7 @@ export function PagosTable() {
                           </td>
                           <td className="px-4 py-3 pr-5 text-right border-b border-border/40">
                             <button
-                              onClick={() => handleRecibo(pago.id)}
+                              onClick={(e) => { e.stopPropagation(); handleRecibo(pago.id); }}
                               disabled={reciboBusy === pago.id}
                               title="Descargar comprobante PDF"
                               className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-border text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50 transition-colors"
@@ -357,7 +359,7 @@ export function PagosTable() {
               {filtered.map(pago => {
                 const m = metodoConfig(pago.metodo);
                 return (
-                  <div key={pago.id} className="rounded-xl bg-card border border-border p-4 space-y-3">
+                  <div key={pago.id} onClick={() => setDetalle(pago)} className="rounded-xl bg-card border border-border p-4 space-y-3 cursor-pointer active:bg-muted/20 transition-colors">
                     <div className="flex items-start justify-between gap-2">
                       <p className="font-medium text-foreground text-sm leading-tight">{pago.credito.cliente.nombre}</p>
                       <p className="text-xs text-muted-foreground tabular-nums shrink-0">{fmtDate(pago.fecha)}</p>
@@ -391,7 +393,7 @@ export function PagosTable() {
                       </p>
                     )}
                     <button
-                      onClick={() => handleRecibo(pago.id)}
+                      onClick={(e) => { e.stopPropagation(); handleRecibo(pago.id); }}
                       disabled={reciboBusy === pago.id}
                       className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg border border-border text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50 transition-colors"
                     >
@@ -416,6 +418,17 @@ export function PagosTable() {
             <DialogTitle>Registrar pago</DialogTitle>
           </DialogHeader>
           <PagoForm onClose={handleFormClose} />
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!detalle} onOpenChange={open => { if (!open) setDetalle(null); }}>
+        <DialogContent className="w-[95vw] sm:max-w-lg max-h-[90dvh] flex flex-col overflow-hidden">
+          <DialogHeader className="shrink-0">
+            <DialogTitle>Detalle del pago</DialogTitle>
+          </DialogHeader>
+          <div className="flex-1 min-h-0 overflow-y-auto">
+            {detalle && <PagoDetail pago={detalle} />}
+          </div>
         </DialogContent>
       </Dialog>
     </>
