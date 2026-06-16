@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import {
   Home, Users, FileText, Wallet, Bell, Search, LogOut, Menu, X,
-  Terminal, ShieldAlert, BarChart3, PlusCircle, Settings, History, FileBarChart
+  Terminal, ShieldAlert, BarChart3, PlusCircle, Settings, History, FileBarChart, Landmark
 } from "lucide-react";
 import { useEffect, useState } from "react";
 
@@ -117,6 +117,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </button>
 
           <Link
+            href="/caja"
+            title="Caja"
+            className={`relative hidden h-10 w-10 items-center justify-center rounded-lg hover:bg-accent sm:flex ${
+              isActive("/caja") ? "text-foreground" : "text-muted-foreground"
+            }`}
+          >
+            <Landmark className="h-5 w-5" />
+          </Link>
+
+          <Link
             href="/reportes"
             title="Reportes"
             className={`relative hidden h-10 w-10 items-center justify-center rounded-lg hover:bg-accent sm:flex ${
@@ -216,6 +226,19 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   </div>
                 </Link>
               ))}
+
+              <Link href="/caja" onClick={() => setMobileOpen(false)} className="block">
+                <div
+                  className={`flex items-center gap-3 rounded-lg px-3 py-3 text-sm font-medium transition-all ${
+                    isActive("/caja")
+                      ? "bg-muted border border-primary text-foreground"
+                      : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                  }`}
+                >
+                  <Landmark className="h-5 w-5" />
+                  <span>Caja</span>
+                </div>
+              </Link>
 
               <Link href="/reportes" onClick={() => setMobileOpen(false)} className="block">
                 <div

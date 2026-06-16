@@ -217,6 +217,18 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
       })),
     });
 
+    // Movimiento de caja: desembolso (egreso) al otorgar.
+    await tx.movimientos_caja.create({
+      data: {
+        ...withTenant(userId),
+        fecha: fechaInicio,
+        tipo: "desembolso",
+        monto: -Math.abs(c.monto_original),
+        credito_id: c.id,
+        descripcion: `Desembolso ${formatCreditoNumero(c.numero)} · ${cliente.nombre}`,
+      },
+    });
+
     return c;
   });
 

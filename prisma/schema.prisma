@@ -49,6 +49,7 @@ model creditos {
   id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   created_at      DateTime  @default(now()) @db.Timestamptz(6)
   numero          Int?      // identificador legible secuencial por tenant (se muestra como CRD-000123)
+  motivo_anulacion String?  // motivo registrado al anular el crédito
   cliente_id      String    @db.Uuid
   solicitud_id    String?   @db.Uuid
   tipo_credito    String
@@ -70,8 +71,30 @@ model creditos {
   pagos     pagos[]
   acciones  acciones_cobranza[]
   cuotas    cuotas[]
+  movimientos movimientos_caja[]
 
   @@unique([user_id, numero])
+}
+
+/// Libro de movimientos de efectivo (Caja) por tenant. Tabla aditiva, multi-tenant.
+/// monto con SIGNO: ingreso > 0, egreso < 0. El saldo de caja = suma de monto.
+model movimientos_caja {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  created_at  DateTime @default(now()) @db.Timestamptz(6)
+  user_id     String   @db.Uuid
+  fecha       DateTime @default(now()) @db.Date
+  tipo        String   // desembolso | cobro | devolucion | reversa_desembolso | ajuste
+  monto       Float    // con signo: ingreso > 0, egreso < 0
+  metodo      String?
+  descripcion String
+  credito_id  String?  @db.Uuid
+  pago_id     String?  @db.Uuid
+
+  credito creditos? @relation(fields: [credito_id], references: [id], onDelete: Cascade)
+  pago    pagos?    @relation(fields: [pago_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id, fecha])
+  @@index([user_id, credito_id])
 }
 
 /// Plan de cuotas PERSISTIDO de un crédito (Fase 6A). Tabla aditiva, multi-tenant.
@@ -147,6 +170,7 @@ model pagos {
 
   credito      creditos    @relation(fields: [credito_id], references: [id], onDelete: Cascade)
   aplicaciones pago_cuota[]
+  movimientos  movimientos_caja[]
 }
 
 model solicitudes {

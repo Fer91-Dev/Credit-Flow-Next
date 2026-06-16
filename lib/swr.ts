@@ -271,6 +271,26 @@ export interface Reporte {
   }[];
 }
 
+export interface MovimientoCaja {
+  id: string;
+  fecha: string;
+  tipo: "desembolso" | "cobro" | "devolucion" | "reversa_desembolso" | "ajuste";
+  monto: number; // con signo: ingreso > 0, egreso < 0
+  metodo: string | null;
+  descripcion: string;
+  credito_numero: number | null;
+  cliente: string | null;
+}
+
+export interface CajaData {
+  periodo: { desde: string; hasta: string };
+  saldo_total: number;
+  ingresos: number;
+  egresos: number;
+  neto: number;
+  movimientos: MovimientoCaja[];
+}
+
 export interface EventoAuditoria {
   id: string;
   created_at: string;
@@ -415,4 +435,12 @@ export function useReportes(desde: string, hasta: string) {
     desde && hasta ? `/api/reportes?desde=${desde}&hasta=${hasta}` : null,
   );
   return { reporte: data, error, isLoading };
+}
+
+/** Caja: movimientos del rango + saldo total (key parametrizada). */
+export function useCaja(desde: string, hasta: string, tipo = "all") {
+  const { data, error, isLoading, mutate } = useSWR<CajaData>(
+    desde && hasta ? `/api/caja?desde=${desde}&hasta=${hasta}&tipo=${tipo}` : null,
+  );
+  return { caja: data, error, isLoading, mutate };
 }

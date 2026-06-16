@@ -49,14 +49,20 @@ export function CreditosTable() {
   const [actionError, setActionError] = useState<string | null>(null);
 
   // Anular: deja el crédito sin efecto pero conserva el registro (estado anulado).
-  const handleAnular = async (id: string) => {
+  // Cuadra la caja (reversa del desembolso + devolución/conservación de lo cobrado).
+  const handleAnular = async (id: string, motivo: string, accionPagos: "devolver" | "conservar") => {
     setActionError(null);
     try {
-      const res = await fetch(`/api/creditos/${id}/anular`, { method: "POST" });
+      const res = await fetch(`/api/creditos/${id}/anular`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ motivo, accion_pagos: accionPagos }),
+      });
       const json = await res.json();
       if (!json.ok) { setActionError(json.error); return; }
       mutate();
       globalMutate(KEYS.dashboard);
+      globalMutate((k) => typeof k === "string" && k.startsWith("/api/caja"), undefined, { revalidate: true });
     } catch {
       setActionError("No se pudo anular el crédito");
     }
@@ -274,28 +280,8 @@ export function CreditosTable() {
                               >
                                 <Edit2 className="h-3.5 w-3.5" />
                               </button>
-                              {/* Anular: conserva el registro */}
-                              {c.estado !== "anulado" && (
-                                <AlertDialog>
-                                  <AlertDialogTrigger asChild>
-                                    <button className="p-1.5 rounded-lg hover:bg-warning/10 transition-colors text-muted-foreground hover:text-warning" title="Anular crédito">
-                                      <Ban className="h-3.5 w-3.5" />
-                                    </button>
-                                  </AlertDialogTrigger>
-                                  <AlertDialogContent>
-                                    <AlertDialogHeader>
-                                      <AlertDialogTitle>¿Anular crédito {formatCreditoNumero(c.numero)}?</AlertDialogTitle>
-                                      <AlertDialogDescription>
-                                        El crédito de <strong>{c.cliente.nombre}</strong> por <strong>${n0(c.monto_original)}</strong> quedará <strong>anulado</strong> (sin efecto), pero se conservan el registro, las cuotas y los pagos.
-                                      </AlertDialogDescription>
-                                    </AlertDialogHeader>
-                                    <AlertDialogFooter>
-                                      <AlertDialogCancel>Volver</AlertDialogCancel>
-                                      <AlertDialogAction onClick={() => handleAnular(c.id)} className="bg-warning text-white hover:bg-warning/90">Anular crédito</AlertDialogAction>
-                                    </AlertDialogFooter>
-                                  </AlertDialogContent>
-                                </AlertDialog>
-                              )}
+                              {/* Anular: conserva el registro y cuadra la caja */}
+                              {c.estado !== "anulado" && <AnularButton credito={c} onAnular={handleAnular} />}
                               {/* Eliminar: hard delete, bloqueado si tiene pagos */}
                               {c.tiene_pagos ? (
                                 <button
@@ -383,27 +369,7 @@ export function CreditosTable() {
                         <button onClick={() => openEdit(c.id)} className="p-1.5 rounded-lg hover:bg-muted transition-colors text-muted-foreground">
                           <Edit2 className="h-3.5 w-3.5" />
                         </button>
-                        {c.estado !== "anulado" && (
-                          <AlertDialog>
-                            <AlertDialogTrigger asChild>
-                              <button className="p-1.5 rounded-lg hover:bg-warning/10 transition-colors text-muted-foreground hover:text-warning" title="Anular">
-                                <Ban className="h-3.5 w-3.5" />
-                              </button>
-                            </AlertDialogTrigger>
-                            <AlertDialogContent>
-                              <AlertDialogHeader>
-                                <AlertDialogTitle>¿Anular crédito {formatCreditoNumero(c.numero)}?</AlertDialogTitle>
-                                <AlertDialogDescription>
-                                  El crédito de <strong>{c.cliente.nombre}</strong> quedará anulado; se conservan registro, cuotas y pagos.
-                                </AlertDialogDescription>
-                              </AlertDialogHeader>
-                              <AlertDialogFooter>
-                                <AlertDialogCancel>Volver</AlertDialogCancel>
-                                <AlertDialogAction onClick={() => handleAnular(c.id)} className="bg-warning text-white hover:bg-warning/90">Anular</AlertDialogAction>
-                              </AlertDialogFooter>
-                            </AlertDialogContent>
-                          </AlertDialog>
-                        )}
+                        {c.estado !== "anulado" && <AnularButton credito={c} onAnular={handleAnular} />}
                         {c.tiene_pagos ? (
                           <button disabled title="Tiene pagos; anulalo en su lugar" className="p-1.5 rounded-lg text-muted-foreground/30 cursor-not-allowed">
                             <Trash2 className="h-3.5 w-3.5" />
@@ -463,6 +429,70 @@ export function CreditosTable() {
         </DialogContent>
       </Dialog>
     </>
+  );
+}
+
+/** Botón + diálogo de anulación con motivo y decisión sobre lo cobrado (cuadra la caja). */
+function AnularButton({ credito, onAnular }: { credito: Credito; onAnular: (id: string, motivo: string, accion: "devolver" | "conservar") => void }) {
+  const [motivo, setMotivo] = useState("");
+  const [accion, setAccion] = useState<"devolver" | "conservar">("devolver");
+  const tienePagos = !!credito.tiene_pagos;
+
+  return (
+    <AlertDialog>
+      <AlertDialogTrigger asChild>
+        <button className="p-1.5 rounded-lg hover:bg-warning/10 transition-colors text-muted-foreground hover:text-warning" title="Anular crédito">
+          <Ban className="h-3.5 w-3.5" />
+        </button>
+      </AlertDialogTrigger>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>¿Anular crédito {formatCreditoNumero(credito.numero)}?</AlertDialogTitle>
+          <AlertDialogDescription>
+            El crédito de <strong>{credito.cliente.nombre}</strong> por <strong>${n0(credito.monto_original)}</strong> quedará <strong>anulado</strong>; se conservan registro, cuotas y pagos. Se revierte el desembolso en la caja.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+
+        <div className="space-y-3">
+          <label className="block space-y-1">
+            <span className="text-xs font-medium text-muted-foreground">Motivo (opcional)</span>
+            <textarea
+              value={motivo} onChange={(e) => setMotivo(e.target.value)} rows={2}
+              placeholder="Ej: cargado por error, no cumplió requisitos…"
+              className="w-full rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm text-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+            />
+          </label>
+
+          {tienePagos && (
+            <div className="space-y-1.5">
+              <span className="text-xs font-medium text-muted-foreground">El crédito tiene pagos. ¿Qué hacés con lo cobrado?</span>
+              <div className="grid grid-cols-2 gap-2">
+                <button type="button" onClick={() => setAccion("devolver")}
+                  className={`rounded-lg border px-3 py-2 text-xs font-medium transition-colors ${accion === "devolver" ? "border-primary bg-primary/10 text-foreground" : "border-border text-muted-foreground hover:bg-muted"}`}>
+                  Devolver al cliente
+                </button>
+                <button type="button" onClick={() => setAccion("conservar")}
+                  className={`rounded-lg border px-3 py-2 text-xs font-medium transition-colors ${accion === "conservar" ? "border-primary bg-primary/10 text-foreground" : "border-border text-muted-foreground hover:bg-muted"}`}>
+                  Conservar en caja
+                </button>
+              </div>
+              <p className="text-[11px] text-muted-foreground/70">
+                {accion === "devolver"
+                  ? "Se registra una devolución (egreso) por lo cobrado."
+                  : "Lo cobrado queda como ingreso en la caja."}
+              </p>
+            </div>
+          )}
+        </div>
+
+        <AlertDialogFooter>
+          <AlertDialogCancel>Volver</AlertDialogCancel>
+          <AlertDialogAction onClick={() => onAnular(credito.id, motivo, accion)} className="bg-warning text-white hover:bg-warning/90">
+            Anular crédito
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }
 

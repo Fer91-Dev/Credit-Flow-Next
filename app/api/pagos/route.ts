@@ -242,6 +242,20 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
       },
     });
 
+    // Movimiento de caja: cobro (ingreso).
+    await tx.movimientos_caja.create({
+      data: {
+        ...withTenant(userId),
+        fecha: fechaPago,
+        tipo: "cobro",
+        monto: Math.abs(body.monto),
+        metodo: body.metodo,
+        credito_id: body.credito_id,
+        pago_id: p.id,
+        descripcion: `Cobro de ${credito.cliente.nombre}`,
+      },
+    });
+
     return p;
   });
 
