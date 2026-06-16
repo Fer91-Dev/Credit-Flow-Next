@@ -2,7 +2,7 @@ import { requireAuth } from "@/lib/auth";
 import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
-import { derivarEstadoCuotas, frecuenciaLabel, normalizarFrecuencia, type FrecuenciaDef } from "@/lib/domain";
+import { frecuenciaLabel, normalizarFrecuencia, diasAtraso, round2, type FrecuenciaDef } from "@/lib/domain";
 import type { NextRequest } from "next/server";
 
 interface RouteParams {
@@ -11,10 +11,11 @@ interface RouteParams {
 
 /**
  * GET /api/creditos/[id]/cuotas
- * Libro mayor PERSISTIDO de cuotas del crédito (Fase 6A). A diferencia de
- * `/amortizacion` (proyección/simulación al vuelo), esto lee la tabla `cuotas`
- * congelada al otorgar y deriva el estado de cada cuota a partir de los pagos
- * REALES del crédito (capa de lectura; no toca el motor de pagos).
+ * Libro mayor PERSISTIDO de cuotas del crédito. Lee el estado AUTORITATIVO que
+ * escribe el motor de pagos cuota-dirigido (Fase 6B): `pagado_*` y `estado`. El
+ * estado `vencida` se recalcula dinámicamente en lectura (depende de la fecha de
+ * hoy y no lo "toca" el motor hasta que llega un pago). `/amortizacion` se conserva
+ * como proyección/simulación al vuelo.
  */
 export const GET = withErrorHandler(async (req: NextRequest, { params }: RouteParams) => {
   const { userId } = await requireAuth(req);
@@ -28,7 +29,6 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
       frecuencia_def: true,
       cliente: { select: { nombre: true } },
       cuotas: { orderBy: { nro: "asc" } },
-      pagos: { select: { aplicado_capital: true } },
     },
   });
 
@@ -41,12 +41,17 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
     ? [credito.frecuencia_def as unknown as FrecuenciaDef]
     : undefined;
 
-  const totalCapitalPagado = credito.pagos.reduce((s, p) => s + p.aplicado_capital, 0);
-  const estados = derivarEstadoCuotas(credito.cuotas, totalCapitalPagado);
-  const estadoPorNro = new Map(estados.map((e) => [e.nro, e]));
-
+  const hoy = new Date();
   const cuotas = credito.cuotas.map((c) => {
-    const e = estadoPorNro.get(c.nro);
+    const restante_capital = round2(Math.max(0, c.capital - c.pagado_capital));
+    const capitalSaldado = c.pagado_capital >= round2(c.capital);
+    // Estado de presentación: capital saldado = pagada; si no, vencida si ya
+    // venció; parcial si hubo alguna imputación; sino pendiente.
+    let estado: string;
+    if (capitalSaldado) estado = "pagada";
+    else if (diasAtraso(c.fecha_vencimiento, hoy) > 0) estado = "vencida";
+    else if (c.pagado_capital > 0 || c.pagado_interes > 0 || c.pagado_mora > 0 || c.pagado_cargos > 0) estado = "parcial";
+    else estado = "pendiente";
     return {
       nro: c.nro,
       fecha_vencimiento: c.fecha_vencimiento,
@@ -57,9 +62,12 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
       seguro: c.seguro,
       gastos: c.gastos,
       cuota_total: c.cuota_total,
-      estado: e?.estado ?? "pendiente",
-      pagado_capital: e?.pagado_capital ?? 0,
-      restante_capital: e?.restante_capital ?? c.capital,
+      estado,
+      pagado_capital: c.pagado_capital,
+      pagado_interes: c.pagado_interes,
+      pagado_mora: c.pagado_mora,
+      pagado_cargos: c.pagado_cargos,
+      restante_capital,
     };
   });
 

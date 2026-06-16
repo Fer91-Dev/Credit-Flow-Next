@@ -5,6 +5,7 @@ import { CalendarDays, Wallet, TrendingUp, AlertCircle, Info, ArrowUpRight, Rece
 import { useAmortizacion, useCuotas, usePagosByCredito, type Credito, type EstadoCuota } from "@/lib/swr";
 import { abrirRecibo } from "@/lib/recibo";
 import { StatusBadge, type BadgeVariant } from "@/components/ui/StatusBadge";
+import { formatCreditoNumero } from "@/lib/utils";
 import { Stat } from "@/components/ui/Stat";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -64,6 +65,7 @@ export function CreditoDetail({ credito }: { credito: Credito }) {
       <div className="shrink-0 border-b border-border px-5 py-4">
         <div className="flex items-start justify-between gap-3 mb-4">
           <div>
+            <p className="font-mono text-[11px] text-muted-foreground">{formatCreditoNumero(credito.numero)}</p>
             <p className="text-base font-semibold text-foreground">{credito.cliente.nombre}</p>
             <p className="text-xs text-muted-foreground mt-0.5">
               {credito.tipo_credito} · {credito.tasa}% TNA · {credito.plazo_meses} meses

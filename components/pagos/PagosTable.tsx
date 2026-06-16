@@ -411,8 +411,8 @@ export function PagosTable() {
       </div>
 
       <Dialog open={dialogOpen} onOpenChange={open => { if (!open) handleFormClose(false); }}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
+        <DialogContent className="w-[95vw] sm:max-w-lg max-h-[90dvh] flex flex-col overflow-hidden">
+          <DialogHeader className="shrink-0">
             <DialogTitle>Registrar pago</DialogTitle>
           </DialogHeader>
           <PagoForm onClose={handleFormClose} />

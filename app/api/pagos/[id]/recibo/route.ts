@@ -25,6 +25,7 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
       credito: {
         select: {
           id: true,
+          numero: true,
           tipo_credito: true,
           saldo_pendiente: true,
           cliente: { select: { nombre: true, documento: true } },
@@ -55,6 +56,7 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
     },
     credito: {
       id: pago.credito.id,
+      numero: pago.credito.numero,
       tipo_credito: pago.credito.tipo_credito,
       saldo_pendiente: pago.credito.saldo_pendiente,
     },

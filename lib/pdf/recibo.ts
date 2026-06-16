@@ -25,6 +25,7 @@ export interface ReciboData {
   };
   credito: {
     id: string;
+    numero: number | null;
     tipo_credito: string;
     saldo_pendiente: number;
   };
@@ -114,7 +115,8 @@ export async function generarReciboPDF(data: ReciboData): Promise<Uint8Array> {
   pair("Documento", cliente.documento || "—", colL, y);
   pair("Método de pago", metodoLabel[pago.metodo] ?? pago.metodo, colR, y);
   y -= 40;
-  pair("Crédito", `${credito.id.slice(0, 8).toUpperCase()} · ${credito.tipo_credito}`, colL, y);
+  const numeroCredito = credito.numero != null ? `CRD-${String(credito.numero).padStart(6, "0")}` : credito.id.slice(0, 8).toUpperCase();
+  pair("Crédito", `${numeroCredito} · ${credito.tipo_credito}`, colL, y);
   pair("Saldo pendiente actual", fmtMoney(credito.saldo_pendiente), colR, y);
   y -= 44;
 

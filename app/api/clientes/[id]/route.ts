@@ -8,7 +8,7 @@ import {
   tasaPeriodicaSegunConvencion,
   normalizarFrecuencia,
   interesMora,
-  derivarEstadoCuotas,
+  diasAtraso,
   round2,
 } from "@/lib/domain";
 import { getConfiguracion } from "@/lib/config";
@@ -68,20 +68,25 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
     }
     const total_cobrado = c.pagos.reduce((s, p) => s + p.monto, 0);
 
-    // Cronograma persistido (Fase 6A): estado derivado de los pagos reales.
-    const capitalPagado = c.pagos.reduce((s, p) => s + p.aplicado_capital, 0);
-    const estadosCuota = derivarEstadoCuotas(c.cuotas, capitalPagado);
-    const proximaCuota = c.cuotas
-      .map((q) => ({ q, e: estadosCuota.find((e) => e.nro === q.nro) }))
-      .find(({ e }) => e && e.estado !== "pagada");
+    // Cronograma persistido: estado AUTORITATIVO (escrito por el motor cuota-dirigido,
+    // Fase 6B); `vencida` se recalcula dinámicamente (depende de hoy).
+    const hoy = new Date();
+    const estadosCuota = c.cuotas.map((q) => {
+      const capitalSaldado = q.pagado_capital >= round2(q.capital);
+      if (capitalSaldado) return "pagada";
+      if (diasAtraso(q.fecha_vencimiento, hoy) > 0) return "vencida";
+      if (q.pagado_capital > 0 || q.pagado_interes > 0 || q.pagado_mora > 0 || q.pagado_cargos > 0) return "parcial";
+      return "pendiente";
+    });
+    const proximaIdx = estadosCuota.findIndex((e) => e !== "pagada");
     const cuotas_resumen = {
       total: c.cuotas.length,
-      pagadas: estadosCuota.filter((e) => e.estado === "pagada").length,
-      pendientes: estadosCuota.filter((e) => e.estado === "pendiente").length,
-      parciales: estadosCuota.filter((e) => e.estado === "parcial").length,
-      vencidas: estadosCuota.filter((e) => e.estado === "vencida").length,
-      proxima_nro: proximaCuota?.q.nro ?? null,
-      proxima_vencimiento: proximaCuota?.q.fecha_vencimiento ?? null,
+      pagadas: estadosCuota.filter((e) => e === "pagada").length,
+      pendientes: estadosCuota.filter((e) => e === "pendiente").length,
+      parciales: estadosCuota.filter((e) => e === "parcial").length,
+      vencidas: estadosCuota.filter((e) => e === "vencida").length,
+      proxima_nro: proximaIdx >= 0 ? c.cuotas[proximaIdx].nro : null,
+      proxima_vencimiento: proximaIdx >= 0 ? c.cuotas[proximaIdx].fecha_vencimiento : null,
     };
 
     // No exponemos las filas de cuotas completas en la ficha (las trae /cuotas),

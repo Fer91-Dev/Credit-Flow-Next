@@ -2,10 +2,11 @@
 
 import { useState, useMemo } from "react";
 import { mutate as globalMutate } from "swr";
-import { Plus, Trash2, Edit2, Eye, FileText, Wallet, AlertCircle, CheckCircle, Search, ChevronDown, X } from "lucide-react";
+import { Plus, Trash2, Edit2, Eye, FileText, Wallet, AlertCircle, CheckCircle, Search, ChevronDown, X, Ban } from "lucide-react";
 import { CreditoForm } from "./CreditoForm";
 import { CreditoDetail } from "./CreditoDetail";
 import { useCreditos, KEYS, type Credito } from "@/lib/swr";
+import { formatCreditoNumero } from "@/lib/utils";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { KpiCard } from "@/components/ui/KpiCard";
 import { StatusBadge } from "@/components/ui/StatusBadge";
@@ -28,10 +29,12 @@ const SEL =
   "outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/20 " +
   "appearance-none cursor-pointer [&>option]:bg-card [&>option]:text-foreground";
 
-function estadoBadge(estado: string): { label: string; variant: "primary" | "success" | "muted" } {
-  if (estado === "activo")  return { label: "Activo",    variant: "primary" };
-  if (estado === "pagado")  return { label: "Pagado",    variant: "success" };
-  return                           { label: estado,      variant: "muted" };
+function estadoBadge(estado: string): { label: string; variant: "primary" | "success" | "muted" | "destructive" } {
+  if (estado === "activo")    return { label: "Activo",    variant: "primary" };
+  if (estado === "pagado")    return { label: "Pagado",    variant: "success" };
+  if (estado === "anulado")   return { label: "Anulado",   variant: "destructive" };
+  if (estado === "cancelado") return { label: "Cancelado", variant: "muted" };
+  return                             { label: estado,      variant: "muted" };
 }
 
 export function CreditosTable() {
@@ -43,15 +46,34 @@ export function CreditosTable() {
   const [estadoFilter, setEstado] = useState("all");
   const [tipoFilter, setTipo]     = useState("all");
 
-  const handleDelete = async (id: string) => {
-    await mutate(
-      async (current) => {
-        await fetch(`/api/creditos/${id}`, { method: "DELETE" });
-        return { creditos: (current?.creditos ?? []).filter(c => c.id !== id) };
-      },
-      { optimisticData: { creditos: creditos.filter(c => c.id !== id) }, rollbackOnError: true },
-    ).catch(() => { /* error silencioso */ });
-    globalMutate(KEYS.dashboard);
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  // Anular: deja el crédito sin efecto pero conserva el registro (estado anulado).
+  const handleAnular = async (id: string) => {
+    setActionError(null);
+    try {
+      const res = await fetch(`/api/creditos/${id}/anular`, { method: "POST" });
+      const json = await res.json();
+      if (!json.ok) { setActionError(json.error); return; }
+      mutate();
+      globalMutate(KEYS.dashboard);
+    } catch {
+      setActionError("No se pudo anular el crédito");
+    }
+  };
+
+  // Eliminar: borrado definitivo (bloqueado por el server si tiene pagos).
+  const handleEliminar = async (id: string) => {
+    setActionError(null);
+    try {
+      const res = await fetch(`/api/creditos/${id}`, { method: "DELETE" });
+      const json = await res.json();
+      if (!json.ok) { setActionError(json.error); return; }
+      mutate();
+      globalMutate(KEYS.dashboard);
+    } catch {
+      setActionError("No se pudo eliminar el crédito");
+    }
   };
 
   const openNew  = () => { setEditingId(null); setDialog(true); };
@@ -63,8 +85,12 @@ export function CreditosTable() {
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
+    const qNum = q.replace(/[^0-9]/g, ""); // dígitos del término (para buscar por número)
     return creditos.filter(c =>
-      (!q || c.cliente.nombre.toLowerCase().includes(q)) &&
+      (!q
+        || c.cliente.nombre.toLowerCase().includes(q)
+        || formatCreditoNumero(c.numero).toLowerCase().includes(q)
+        || (!!qNum && c.numero != null && String(c.numero).includes(qNum))) &&
       (estadoFilter === "all" || c.estado === estadoFilter) &&
       (tipoFilter === "all" || c.tipo_credito === tipoFilter)
     );
@@ -116,6 +142,12 @@ export function CreditosTable() {
         ) : (
         <div className="space-y-5">
 
+        {actionError && (
+          <div className="rounded-lg bg-destructive/10 border border-destructive/20 px-3 py-2.5 text-sm text-destructive">
+            {actionError}
+          </div>
+        )}
+
         {/* ── KPI Strip ── */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <KpiCard icon={FileText}    label="Créditos activos"  value={String(kpis.activos)}     accent="primary" />
@@ -130,7 +162,7 @@ export function CreditosTable() {
             <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <input
               type="text"
-              placeholder="Buscar por cliente…"
+              placeholder="Buscar por cliente o N° (CRD-…)…"
               value={search}
               onChange={e => setSearch(e.target.value)}
               className="h-10 w-full rounded-lg border border-border bg-muted/40 pl-9 pr-3 text-sm text-foreground placeholder:text-muted-foreground/40 outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/20"
@@ -141,7 +173,7 @@ export function CreditosTable() {
               <option value="all">Todos los estados</option>
               <option value="activo">Activos</option>
               <option value="pagado">Pagados</option>
-              <option value="cancelado">Cancelados</option>
+              <option value="anulado">Anulados</option>
             </select>
             <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           </div>
@@ -181,6 +213,7 @@ export function CreditosTable() {
                 <table className="w-full text-sm border-separate border-spacing-0">
                   <thead>
                     <tr className="bg-muted/30">
+                      <th className="px-4 py-3 text-left  text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">N°</th>
                       <th className="px-4 py-3 text-left  text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">Cliente</th>
                       <th className="px-4 py-3 text-left  text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">Tipo</th>
                       <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">Monto orig.</th>
@@ -196,6 +229,7 @@ export function CreditosTable() {
                       const est = estadoBadge(c.estado);
                       return (
                         <tr key={c.id} className={`hover:bg-muted/20 transition-colors ${idx % 2 === 1 ? "bg-muted/5" : ""}`}>
+                          <td className="px-4 py-3 font-mono text-xs text-muted-foreground border-b border-border/40 whitespace-nowrap">{formatCreditoNumero(c.numero)}</td>
                           <td className="px-4 py-3 font-medium text-foreground border-b border-border/40">{c.cliente.nombre}</td>
                           <td className="px-4 py-3 border-b border-border/40">
                             <StatusBadge label={c.tipo_credito} variant="muted" />
@@ -240,25 +274,58 @@ export function CreditosTable() {
                               >
                                 <Edit2 className="h-3.5 w-3.5" />
                               </button>
-                              <AlertDialog>
-                                <AlertDialogTrigger asChild>
-                                  <button className="p-1.5 rounded-lg hover:bg-destructive/10 transition-colors text-muted-foreground hover:text-destructive" title="Cancelar crédito">
-                                    <Trash2 className="h-3.5 w-3.5" />
-                                  </button>
-                                </AlertDialogTrigger>
-                                <AlertDialogContent>
-                                  <AlertDialogHeader>
-                                    <AlertDialogTitle>¿Cancelar crédito?</AlertDialogTitle>
-                                    <AlertDialogDescription>
-                                      Se cancelará el crédito de <strong>{c.cliente.nombre}</strong> por <strong>${n0(c.monto_original)}</strong>. Los pagos se conservan.
-                                    </AlertDialogDescription>
-                                  </AlertDialogHeader>
-                                  <AlertDialogFooter>
-                                    <AlertDialogCancel>Volver</AlertDialogCancel>
-                                    <AlertDialogAction onClick={() => handleDelete(c.id)} className="bg-destructive text-white hover:bg-destructive/90">Cancelar crédito</AlertDialogAction>
-                                  </AlertDialogFooter>
-                                </AlertDialogContent>
-                              </AlertDialog>
+                              {/* Anular: conserva el registro */}
+                              {c.estado !== "anulado" && (
+                                <AlertDialog>
+                                  <AlertDialogTrigger asChild>
+                                    <button className="p-1.5 rounded-lg hover:bg-warning/10 transition-colors text-muted-foreground hover:text-warning" title="Anular crédito">
+                                      <Ban className="h-3.5 w-3.5" />
+                                    </button>
+                                  </AlertDialogTrigger>
+                                  <AlertDialogContent>
+                                    <AlertDialogHeader>
+                                      <AlertDialogTitle>¿Anular crédito {formatCreditoNumero(c.numero)}?</AlertDialogTitle>
+                                      <AlertDialogDescription>
+                                        El crédito de <strong>{c.cliente.nombre}</strong> por <strong>${n0(c.monto_original)}</strong> quedará <strong>anulado</strong> (sin efecto), pero se conservan el registro, las cuotas y los pagos.
+                                      </AlertDialogDescription>
+                                    </AlertDialogHeader>
+                                    <AlertDialogFooter>
+                                      <AlertDialogCancel>Volver</AlertDialogCancel>
+                                      <AlertDialogAction onClick={() => handleAnular(c.id)} className="bg-warning text-white hover:bg-warning/90">Anular crédito</AlertDialogAction>
+                                    </AlertDialogFooter>
+                                  </AlertDialogContent>
+                                </AlertDialog>
+                              )}
+                              {/* Eliminar: hard delete, bloqueado si tiene pagos */}
+                              {c.tiene_pagos ? (
+                                <button
+                                  disabled
+                                  title="No se puede eliminar: el crédito tiene pagos. Anulalo en su lugar."
+                                  className="p-1.5 rounded-lg text-muted-foreground/30 cursor-not-allowed"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </button>
+                              ) : (
+                                <AlertDialog>
+                                  <AlertDialogTrigger asChild>
+                                    <button className="p-1.5 rounded-lg hover:bg-destructive/10 transition-colors text-muted-foreground hover:text-destructive" title="Eliminar crédito">
+                                      <Trash2 className="h-3.5 w-3.5" />
+                                    </button>
+                                  </AlertDialogTrigger>
+                                  <AlertDialogContent>
+                                    <AlertDialogHeader>
+                                      <AlertDialogTitle>¿Eliminar crédito {formatCreditoNumero(c.numero)}?</AlertDialogTitle>
+                                      <AlertDialogDescription>
+                                        Se eliminará <strong>definitivamente</strong> el crédito de <strong>{c.cliente.nombre}</strong> por <strong>${n0(c.monto_original)}</strong>, junto con su plan de cuotas. Esta acción no se puede deshacer.
+                                      </AlertDialogDescription>
+                                    </AlertDialogHeader>
+                                    <AlertDialogFooter>
+                                      <AlertDialogCancel>Volver</AlertDialogCancel>
+                                      <AlertDialogAction onClick={() => handleEliminar(c.id)} className="bg-destructive text-white hover:bg-destructive/90">Eliminar definitivamente</AlertDialogAction>
+                                    </AlertDialogFooter>
+                                  </AlertDialogContent>
+                                </AlertDialog>
+                              )}
                             </div>
                           </td>
                         </tr>
@@ -267,7 +334,7 @@ export function CreditosTable() {
                   </tbody>
                   <tfoot>
                     <tr className="bg-muted/20">
-                      <td colSpan={2} className="px-4 py-3 text-[10px] font-bold text-muted-foreground uppercase tracking-widest border-t border-border">
+                      <td colSpan={3} className="px-4 py-3 text-[10px] font-bold text-muted-foreground uppercase tracking-widest border-t border-border">
                         Totales ({filtered.length})
                       </td>
                       <td className="px-4 py-3 text-right font-mono font-bold text-foreground border-t border-border">${n0(totals.monto)}</td>
@@ -287,6 +354,7 @@ export function CreditosTable() {
                   <div key={c.id} className="rounded-xl bg-card border border-border p-4 space-y-3">
                     <div className="flex items-start justify-between gap-2">
                       <div>
+                        <p className="font-mono text-[11px] text-muted-foreground">{formatCreditoNumero(c.numero)}</p>
                         <p className="font-medium text-foreground text-sm">{c.cliente.nombre}</p>
                         <p className="text-xs text-muted-foreground mt-0.5">{c.tipo_credito} · {c.tasa}% TNA · {c.plazo_meses}m</p>
                       </div>
@@ -315,25 +383,52 @@ export function CreditosTable() {
                         <button onClick={() => openEdit(c.id)} className="p-1.5 rounded-lg hover:bg-muted transition-colors text-muted-foreground">
                           <Edit2 className="h-3.5 w-3.5" />
                         </button>
-                        <AlertDialog>
-                          <AlertDialogTrigger asChild>
-                            <button className="p-1.5 rounded-lg hover:bg-destructive/10 transition-colors text-muted-foreground hover:text-destructive">
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </button>
-                          </AlertDialogTrigger>
-                          <AlertDialogContent>
-                            <AlertDialogHeader>
-                              <AlertDialogTitle>¿Cancelar crédito?</AlertDialogTitle>
-                              <AlertDialogDescription>
-                                Se cancelará el crédito de <strong>{c.cliente.nombre}</strong>.
-                              </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                              <AlertDialogCancel>Volver</AlertDialogCancel>
-                              <AlertDialogAction onClick={() => handleDelete(c.id)} className="bg-destructive text-white hover:bg-destructive/90">Cancelar</AlertDialogAction>
-                            </AlertDialogFooter>
-                          </AlertDialogContent>
-                        </AlertDialog>
+                        {c.estado !== "anulado" && (
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <button className="p-1.5 rounded-lg hover:bg-warning/10 transition-colors text-muted-foreground hover:text-warning" title="Anular">
+                                <Ban className="h-3.5 w-3.5" />
+                              </button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>¿Anular crédito {formatCreditoNumero(c.numero)}?</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  El crédito de <strong>{c.cliente.nombre}</strong> quedará anulado; se conservan registro, cuotas y pagos.
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>Volver</AlertDialogCancel>
+                                <AlertDialogAction onClick={() => handleAnular(c.id)} className="bg-warning text-white hover:bg-warning/90">Anular</AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                        )}
+                        {c.tiene_pagos ? (
+                          <button disabled title="Tiene pagos; anulalo en su lugar" className="p-1.5 rounded-lg text-muted-foreground/30 cursor-not-allowed">
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        ) : (
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <button className="p-1.5 rounded-lg hover:bg-destructive/10 transition-colors text-muted-foreground hover:text-destructive" title="Eliminar">
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>¿Eliminar crédito {formatCreditoNumero(c.numero)}?</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  Se eliminará definitivamente el crédito de <strong>{c.cliente.nombre}</strong> y su plan de cuotas. No se puede deshacer.
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>Volver</AlertDialogCancel>
+                                <AlertDialogAction onClick={() => handleEliminar(c.id)} className="bg-destructive text-white hover:bg-destructive/90">Eliminar</AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                        )}
                       </div>
                     </div>
                   </div>

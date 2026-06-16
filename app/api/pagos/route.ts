@@ -3,14 +3,10 @@ import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api"
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import {
-  evaluarMora,
-  imputarPago,
-  cuotaMensualFrancesa,
-  sumarPeriodos,
-  tasaPeriodicaSegunConvencion,
-  normalizarFrecuencia,
+  imputarPagoEnCuotas,
+  diasAtraso,
   round2,
-  type CargosConfig,
+  type CuotaParaImputar,
 } from "@/lib/domain";
 import { getConfiguracion } from "@/lib/config";
 import { registrarAuditoria } from "@/lib/audit";
@@ -100,7 +96,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
 
   const credito = await prisma.creditos.findFirst({
     where: { ...withTenant(userId), id: body.credito_id },
-    include: { cliente: true },
+    include: { cliente: true, cuotas: { orderBy: { nro: "asc" } } },
   });
 
   if (!credito) {
@@ -111,114 +107,142 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     return errorResponse("El crédito ya está cancelado", "INVALID_STATE", 400);
   }
 
-  // ── Motor financiero ──────────────────────────────────────────────────────
+  if (credito.cuotas.length === 0) {
+    return errorResponse(
+      "El crédito no tiene cronograma de cuotas; regeneralo antes de cobrar",
+      "INVALID_STATE",
+      400
+    );
+  }
+
+  // ── Motor financiero cuota-dirigido (Fase 6B) ──────────────────────────────
+  // El pago se imputa cuota por cuota (la más vieja primero). El interés es el
+  // CONGELADO del plan; el atraso se castiga con mora por cuota vencida.
 
   const config = await getConfiguracion(userId);
-  // Catálogo: snapshot del crédito si existe (blindado); si no, config vigente.
-  const catalogo = credito.frecuencia_def
-    ? [credito.frecuencia_def as unknown as typeof config.simulador.frecuencias[number]]
-    : config.simulador.frecuencias;
-  const frecuencia = normalizarFrecuencia(credito.frecuencia);
-  const tasaPeriodica = tasaPeriodicaSegunConvencion(credito.tasa, config.convencionTasa, frecuencia, catalogo);
-
-  // Cuota fija del crédito (PMT del sistema francés, por período)
-  const cuotaValor = cuotaMensualFrancesa(
-    credito.monto_original,
-    tasaPeriodica,
-    credito.plazo_meses
-  );
-
-  // Fecha de vencimiento: proximo_pago o inferida como fecha_inicio + 1 período
-  const fechaVencimiento: Date =
-    credito.proximo_pago instanceof Date && !isNaN(credito.proximo_pago.getTime())
-      ? credito.proximo_pago
-      : sumarPeriodos(credito.fecha_inicio, 1, frecuencia, catalogo);
-
-  // Mora acumulada al día de hoy
-  const estadoMora = config.moraActiva
-    ? evaluarMora(cuotaValor, fechaVencimiento, new Date(), {
-        tasaDiaria: config.tasaMoraDiaria,
-      })
-    : { dias: 0, severidad: "al_dia" as const, interesMora: 0 };
-
-  // Interés corriente del período = saldo pendiente × tasa periódica
-  const interesDelPeriodo = round2(credito.saldo_pendiente * tasaPeriodica);
-
-  // Cargos del período según el snapshot congelado en el crédito (IVA/seguro/gastos).
-  // La comisión de otorgamiento NO entra acá (es upfront/financiada al otorgar).
-  const cargos = (credito.cargos as CargosConfig | null) ?? null;
-  let cargosDelPeriodo = 0;
-  if (cargos) {
-    let iva = 0, seguro = 0, gastos = 0;
-    if (cargos.iva.activo) iva = round2(interesDelPeriodo * cargos.iva.tasa);
-    if (cargos.seguro.activo) {
-      const s = cargos.seguro;
-      seguro = round2(
-        s.modo === "porcentaje_saldo" ? credito.saldo_pendiente * s.valor
-        : s.modo === "porcentaje_monto" ? credito.monto_original * s.valor
-        : s.valor
-      );
-    }
-    if (cargos.gastosAdministrativos.activo) {
-      const g = cargos.gastosAdministrativos;
-      gastos = round2(g.modo === "porcentaje" ? cuotaValor * g.valor : g.valor);
-    }
-    cargosDelPeriodo = round2(iva + seguro + gastos);
-  }
-
-  // Imputar pago. Orden: Mora → (Interés/Cargos según modo) → Capital.
-  const deuda = {
-    mora: estadoMora.interesMora,
-    interes: interesDelPeriodo,
-    capital: credito.saldo_pendiente,
-    cargos: cargosDelPeriodo,
-  };
-  const resultado = imputarPago(body.monto, deuda, config.imputarCargos);
-
-  // ── Persistencia ─────────────────────────────────────────────────────────
-
   const fechaPago = body.fecha ? new Date(body.fecha) : new Date();
 
-  const pago = await prisma.pagos.create({
-    data: {
-      credito_id: body.credito_id,
-      monto: body.monto,
-      metodo: body.metodo,
-      fecha: fechaPago,
-      notas: body.notas?.trim() || null,
-      aplicado_mora: resultado.aplicadoMora,
-      aplicado_interes: resultado.aplicadoInteres,
-      aplicado_cargos: resultado.aplicadoCargos,
-      aplicado_capital: resultado.aplicadoCapital,
-      excedente: resultado.excedente,
-      ...withTenant(userId),
-    },
-    include: {
-      credito: {
-        select: {
-          id: true,
-          monto_original: true,
-          saldo_pendiente: true,
-          cliente: { select: { nombre: true } },
-        },
-      },
-    },
+  const cuotasDom: CuotaParaImputar[] = credito.cuotas.map((c) => ({
+    id: c.id,
+    nro: c.nro,
+    fechaVencimiento: c.fecha_vencimiento,
+    capital: c.capital,
+    interes: c.interes,
+    cargos: round2(c.iva + c.seguro + c.gastos),
+    cuotaTotal: c.cuota_total,
+    pagadoCapital: c.pagado_capital,
+    pagadoInteres: c.pagado_interes,
+    pagadoMora: c.pagado_mora,
+    pagadoCargos: c.pagado_cargos,
+  }));
+
+  const resultado = imputarPagoEnCuotas(body.monto, cuotasDom, {
+    modoCargos: config.imputarCargos,
+    moraActiva: config.moraActiva,
+    tasaMoraDiaria: config.tasaMoraDiaria,
+    hoy: fechaPago,
   });
 
-  // Determinar próxima fecha de pago (avanza solo si se cubrió capital)
-  let nuevoProximoPago: Date | null = credito.proximo_pago;
-  if (resultado.aplicadoCapital > 0 && resultado.nuevoSaldoCapital > 0) {
-    nuevoProximoPago = sumarPeriodos(fechaVencimiento, 1, frecuencia, catalogo);
-  }
+  const aplicacionPorCuota = new Map(resultado.aplicaciones.map((a) => [a.id, a]));
+  const saldoAnterior = credito.saldo_pendiente;
 
-  await prisma.creditos.update({
-    where: { id: body.credito_id },
-    data: {
-      saldo_pendiente: resultado.nuevoSaldoCapital,
-      estado: resultado.nuevoSaldoCapital === 0 ? "pagado" : credito.estado,
-      dias_mora: resultado.restante.mora === 0 ? 0 : estadoMora.dias,
-      proximo_pago: resultado.nuevoSaldoCapital === 0 ? null : nuevoProximoPago,
-    },
+  // Estado proyectado de cada cuota tras aplicar este pago (para crédito + persistencia).
+  const cuotasActualizadas = credito.cuotas.map((c) => {
+    const a = aplicacionPorCuota.get(c.id);
+    const pagadoCapital = round2(c.pagado_capital + (a?.aplicadoCapital ?? 0));
+    const pagadoInteres = round2(c.pagado_interes + (a?.aplicadoInteres ?? 0));
+    const pagadoMora = round2(c.pagado_mora + (a?.aplicadoMora ?? 0));
+    const pagadoCargos = round2(c.pagado_cargos + (a?.aplicadoCargos ?? 0));
+    const capitalSaldado = pagadoCapital >= round2(c.capital);
+    const dias = diasAtraso(c.fecha_vencimiento, fechaPago);
+    let estado: string;
+    if (capitalSaldado) estado = "pagada";
+    else if (pagadoCapital > 0 || pagadoInteres > 0 || pagadoMora > 0 || pagadoCargos > 0) estado = "parcial";
+    else if (dias > 0) estado = "vencida";
+    else estado = "pendiente";
+    return {
+      c, a, pagadoCapital, pagadoInteres, pagadoMora, pagadoCargos, capitalSaldado, dias, estado,
+    };
+  });
+
+  // Agregados del crédito derivados del libro mayor de cuotas.
+  const saldoCapital = round2(
+    cuotasActualizadas.reduce((s, x) => s + noNeg(x.c.capital - x.pagadoCapital), 0)
+  );
+  const todasSaldadas = cuotasActualizadas.every((x) => x.capitalSaldado);
+  const pendientes = cuotasActualizadas.filter((x) => !x.capitalSaldado);
+  const diasMoraMax = pendientes.reduce((m, x) => Math.max(m, x.dias), 0);
+  const proximaCuota = pendientes[0] ?? null;
+
+  // ── Persistencia (transacción) ─────────────────────────────────────────────
+  const pago = await prisma.$transaction(async (tx) => {
+    const p = await tx.pagos.create({
+      data: {
+        credito_id: body.credito_id,
+        monto: body.monto,
+        metodo: body.metodo,
+        fecha: fechaPago,
+        notas: body.notas?.trim() || null,
+        aplicado_mora: resultado.totales.mora,
+        aplicado_interes: resultado.totales.interes,
+        aplicado_cargos: resultado.totales.cargos,
+        aplicado_capital: resultado.totales.capital,
+        excedente: resultado.excedente,
+        ...withTenant(userId),
+      },
+      include: {
+        credito: {
+          select: {
+            id: true,
+            monto_original: true,
+            saldo_pendiente: true,
+            cliente: { select: { nombre: true } },
+          },
+        },
+      },
+    });
+
+    if (resultado.aplicaciones.length > 0) {
+      await tx.pago_cuota.createMany({
+        data: resultado.aplicaciones.map((a) => ({
+          ...withTenant(userId),
+          pago_id: p.id,
+          cuota_id: a.id,
+          aplicado_capital: a.aplicadoCapital,
+          aplicado_interes: a.aplicadoInteres,
+          aplicado_mora: a.aplicadoMora,
+          aplicado_cargos: a.aplicadoCargos,
+        })),
+      });
+    }
+
+    // Actualizar solo las cuotas tocadas por este pago.
+    for (const x of cuotasActualizadas) {
+      if (!x.a) continue;
+      await tx.cuotas.update({
+        where: { id: x.c.id },
+        data: {
+          pagado_capital: x.pagadoCapital,
+          pagado_interes: x.pagadoInteres,
+          pagado_mora: x.pagadoMora,
+          pagado_cargos: x.pagadoCargos,
+          pagado: round2(x.pagadoCapital + x.pagadoInteres + x.pagadoMora + x.pagadoCargos),
+          estado: x.estado,
+        },
+      });
+    }
+
+    await tx.creditos.update({
+      where: { id: body.credito_id },
+      data: {
+        saldo_pendiente: saldoCapital,
+        estado: todasSaldadas ? "pagado" : credito.estado,
+        dias_mora: todasSaldadas ? 0 : diasMoraMax,
+        proximo_pago: todasSaldadas ? null : (proximaCuota?.c.fecha_vencimiento ?? null),
+      },
+    });
+
+    return p;
   });
 
   await registrarAuditoria({
@@ -230,13 +254,14 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     meta: {
       monto: body.monto,
       metodo: body.metodo,
-      aplicado_mora: resultado.aplicadoMora,
-      aplicado_interes: resultado.aplicadoInteres,
-      aplicado_cargos: resultado.aplicadoCargos,
-      aplicado_capital: resultado.aplicadoCapital,
+      aplicado_mora: resultado.totales.mora,
+      aplicado_interes: resultado.totales.interes,
+      aplicado_cargos: resultado.totales.cargos,
+      aplicado_capital: resultado.totales.capital,
       excedente: resultado.excedente,
-      saldo_anterior: credito.saldo_pendiente,
-      nuevo_saldo: resultado.nuevoSaldoCapital,
+      saldo_anterior: saldoAnterior,
+      nuevo_saldo: saldoCapital,
+      cuotas_afectadas: resultado.aplicaciones.map((a) => a.nro),
     },
   });
 
@@ -244,16 +269,28 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     {
       pago,
       imputacion: {
-        aplicadoMora: resultado.aplicadoMora,
-        aplicadoInteres: resultado.aplicadoInteres,
-        aplicadoCargos: resultado.aplicadoCargos,
-        aplicadoCapital: resultado.aplicadoCapital,
+        aplicadoMora: resultado.totales.mora,
+        aplicadoInteres: resultado.totales.interes,
+        aplicadoCargos: resultado.totales.cargos,
+        aplicadoCapital: resultado.totales.capital,
         excedente: resultado.excedente,
-        saldoAnterior: credito.saldo_pendiente,
-        nuevoSaldo: resultado.nuevoSaldoCapital,
-        moraEvaluada: estadoMora,
+        saldoAnterior,
+        nuevoSaldo: saldoCapital,
+        cuotasAfectadas: resultado.aplicaciones.map((a) => ({
+          nro: a.nro,
+          mora: a.aplicadoMora,
+          interes: a.aplicadoInteres,
+          cargos: a.aplicadoCargos,
+          capital: a.aplicadoCapital,
+          dias_atraso: a.diasAtraso,
+        })),
       },
     },
     201
   );
 });
+
+/** Máximo con 0 (evita negativos por redondeo). */
+function noNeg(x: number): number {
+  return x > 0 ? x : 0;
+}

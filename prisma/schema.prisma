@@ -48,6 +48,7 @@ model clientes {
 model creditos {
   id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   created_at      DateTime  @default(now()) @db.Timestamptz(6)
+  numero          Int?      // identificador legible secuencial por tenant (se muestra como CRD-000123)
   cliente_id      String    @db.Uuid
   solicitud_id    String?   @db.Uuid
   tipo_credito    String
@@ -69,6 +70,8 @@ model creditos {
   pagos     pagos[]
   acciones  acciones_cobranza[]
   cuotas    cuotas[]
+
+  @@unique([user_id, numero])
 }
 
 /// Plan de cuotas PERSISTIDO de un crédito (Fase 6A). Tabla aditiva, multi-tenant.
@@ -90,15 +93,41 @@ model cuotas {
   seguro            Float    @default(0)
   gastos            Float    @default(0)
   cuota_total       Float    // cuota total planificada (con redondeo)
-  // Estado — en 6A se DERIVA en lectura; estas columnas quedan para 6B
+  // Estado autoritativo (escrito por el motor de pagos en 6B; en 6A se derivaba).
   estado            String   @default("pendiente") // pendiente | parcial | pagada | vencida
-  pagado            Float    @default(0)
+  pagado            Float    @default(0) // total aplicado a la cuota (capital+interes+mora+cargos)
+  // Desglose de lo aplicado por componente (Fase 6B)
+  pagado_capital    Float    @default(0)
+  pagado_interes    Float    @default(0)
+  pagado_mora       Float    @default(0)
+  pagado_cargos     Float    @default(0)
 
-  credito creditos @relation(fields: [credito_id], references: [id], onDelete: Cascade)
+  credito     creditos     @relation(fields: [credito_id], references: [id], onDelete: Cascade)
+  aplicaciones pago_cuota[]
 
   @@unique([credito_id, nro])
   @@index([user_id, credito_id])
   @@index([user_id, fecha_vencimiento])
+}
+
+/// Aplicación de un pago a una cuota concreta (libro mayor pago↔cuota, Fase 6B).
+/// Tabla aditiva, multi-tenant. Permite saber exactamente qué pago canceló qué cuota.
+model pago_cuota {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  created_at       DateTime @default(now()) @db.Timestamptz(6)
+  user_id          String   @db.Uuid
+  pago_id          String   @db.Uuid
+  cuota_id         String   @db.Uuid
+  aplicado_capital Float    @default(0)
+  aplicado_interes Float    @default(0)
+  aplicado_mora    Float    @default(0)
+  aplicado_cargos  Float    @default(0)
+
+  pago  pagos  @relation(fields: [pago_id], references: [id], onDelete: Cascade)
+  cuota cuotas @relation(fields: [cuota_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id, pago_id])
+  @@index([user_id, cuota_id])
 }
 
 model pagos {
@@ -116,7 +145,8 @@ model pagos {
   aplicado_capital Float    @default(0)
   excedente        Float    @default(0)
 
-  credito creditos @relation(fields: [credito_id], references: [id], onDelete: Cascade)
+  credito      creditos    @relation(fields: [credito_id], references: [id], onDelete: Cascade)
+  aplicaciones pago_cuota[]
 }
 
 model solicitudes {

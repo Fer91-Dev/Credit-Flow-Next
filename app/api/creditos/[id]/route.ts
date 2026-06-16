@@ -3,6 +3,7 @@ import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api"
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { registrarAuditoria } from "@/lib/audit";
+import { formatCreditoNumero } from "@/lib/utils";
 import type { NextRequest } from "next/server";
 
 interface RouteParams {
@@ -109,35 +110,41 @@ export const PATCH = withErrorHandler(async (req: NextRequest, { params }: Route
 
 /**
  * DELETE /api/creditos/[id]
- * Marca un crédito como cancelado (soft delete).
+ * Eliminación DEFINITIVA del crédito (hard delete): borra crédito + cuotas +
+ * pago_cuota por cascade. Bloqueado si el crédito tiene pagos registrados
+ * (en ese caso debe ANULARSE para preservar el historial financiero).
  */
 export const DELETE = withErrorHandler(async (req: NextRequest, { params }: RouteParams) => {
   const { userId } = await requireAuth(req);
   const { id } = await params;
 
   const existing = await prisma.creditos.findFirst({
-    where: {
-      ...withTenant(userId),
-      id,
-    },
+    where: { ...withTenant(userId), id },
+    include: { _count: { select: { pagos: true } } },
   });
 
   if (!existing) {
     return errorResponse("Crédito no encontrado", "NOT_FOUND", 404);
   }
 
-  await prisma.creditos.update({
-    where: { id },
-    data: { estado: "cancelado" },
-  });
+  if (existing._count.pagos > 0) {
+    return errorResponse(
+      "El crédito tiene pagos registrados; anulalo en lugar de eliminarlo",
+      "INVALID_STATE",
+      409
+    );
+  }
+
+  await prisma.creditos.delete({ where: { id } });
 
   await registrarAuditoria({
     userId,
     entidad: "creditos",
     entidadId: id,
-    accion: "cancelar",
-    descripcion: "Crédito cancelado",
+    accion: "eliminar",
+    descripcion: `Crédito ${formatCreditoNumero(existing.numero)} eliminado definitivamente`,
+    meta: { numero: existing.numero, monto: existing.monto_original },
   });
 
-  return successResponse(null, 204);
+  return successResponse({ deleted: true });
 });

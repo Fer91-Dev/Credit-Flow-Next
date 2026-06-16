@@ -15,6 +15,7 @@ import {
 } from "@/lib/domain";
 import { getConfiguracion } from "@/lib/config";
 import { registrarAuditoria } from "@/lib/audit";
+import { formatCreditoNumero } from "@/lib/utils";
 import type { NextRequest } from "next/server";
 
 /**
@@ -72,7 +73,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
       const cuota = cuotaMensualFrancesa(c.monto_original, tasaPeriodica, c.plazo_meses);
       interes_mora = interesMora(cuota, c.dias_mora, { tasaDiaria: config.tasaMoraDiaria });
     }
-    return { ...c, interes_mora };
+    return { ...c, interes_mora, tiene_pagos: c.pagos.length > 0 };
   });
 
   return successResponse({
@@ -173,8 +174,16 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
 
   // Crédito + cuotas en una transacción: un crédito nunca queda sin cronograma.
   const credito = await prisma.$transaction(async (tx) => {
+    // Número identificador legible, secuencial por tenant (CRD-000123).
+    const maxNum = await tx.creditos.aggregate({
+      where: { ...withTenant(userId) },
+      _max: { numero: true },
+    });
+    const numero = (maxNum._max.numero ?? 0) + 1;
+
     const c = await tx.creditos.create({
       data: {
+        numero,
         cliente_id: body.cliente_id,
         tipo_credito: body.tipo_credito,
         monto_original: body.monto_original,
@@ -216,8 +225,8 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     entidad: "creditos",
     entidadId: credito.id,
     accion: "crear",
-    descripcion: `Crédito otorgado a ${cliente.nombre} por $${credito.monto_original.toLocaleString("es-AR")}`,
-    meta: { monto: credito.monto_original, tasa: credito.tasa, plazo_meses: credito.plazo_meses, frecuencia: credito.frecuencia, tipo: credito.tipo_credito },
+    descripcion: `Crédito ${formatCreditoNumero(credito.numero)} otorgado a ${cliente.nombre} por $${credito.monto_original.toLocaleString("es-AR")}`,
+    meta: { numero: credito.numero, monto: credito.monto_original, tasa: credito.tasa, plazo_meses: credito.plazo_meses, frecuencia: credito.frecuencia, tipo: credito.tipo_credito },
   });
 
   return successResponse(credito, 201);

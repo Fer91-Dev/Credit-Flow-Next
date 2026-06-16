@@ -69,6 +69,7 @@ export interface PagoImputado {
 /** Crédito enriquecido con sus finanzas, dentro del detalle del cliente. */
 export interface CreditoConFinanzas {
   id: string;
+  numero?: number | null;
   tipo_credito: string;
   monto_original: number;
   saldo_pendiente: number;
@@ -119,6 +120,7 @@ export interface ClienteDetalle extends Cliente {
 
 export interface Credito {
   id: string;
+  numero?: number | null;
   cliente_id: string;
   cliente: { nombre: string; email?: string; telefono?: string };
   tipo_credito: string;
@@ -133,6 +135,8 @@ export interface Credito {
   proximo_pago?: string | null;
   /** Interés moratorio calculado en el servidor (solo créditos con mora). */
   interes_mora?: number;
+  /** True si el crédito tiene al menos un pago registrado (bloquea eliminar). */
+  tiene_pagos?: boolean;
 }
 
 /** Cuota del plan de amortización devuelta por /api/creditos/[id]/amortizacion. */
@@ -197,6 +201,9 @@ export interface CuotaPersistida {
   cuota_total: number;
   estado: EstadoCuota;
   pagado_capital: number;
+  pagado_interes?: number;
+  pagado_mora?: number;
+  pagado_cargos?: number;
   restante_capital: number;
 }
 
@@ -269,7 +276,7 @@ export interface EventoAuditoria {
   created_at: string;
   entidad: "clientes" | "creditos" | "pagos" | "configuracion";
   entidad_id: string | null;
-  accion: "crear" | "actualizar" | "eliminar" | "cancelar" | "registrar_pago" | "actualizar_config";
+  accion: "crear" | "actualizar" | "eliminar" | "cancelar" | "anular" | "registrar_pago" | "actualizar_config";
   descripcion: string;
   meta: Record<string, unknown> | null;
 }
