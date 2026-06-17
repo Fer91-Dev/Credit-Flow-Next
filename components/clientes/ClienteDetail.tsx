@@ -2,14 +2,19 @@
 
 import { useState } from "react";
 import {
-  Wallet, AlertCircle, Layers, ArrowUpRight, User, Briefcase, Pencil,
-  CalendarClock, HandCoins, FileText, ChevronRight, Loader2,
+  Wallet, AlertCircle, Layers, ArrowUpRight, User, Briefcase, Pencil, Trash2,
+  CalendarClock, HandCoins, FileText, ChevronRight, Loader2, Mail, Phone, MapPin,
 } from "lucide-react";
 import { useClienteDetalle, useAccionesCobranza, useCuotas, type CreditoConFinanzas, type EstadoCuota } from "@/lib/swr";
 import { StatusBadge, type BadgeVariant } from "@/components/ui/StatusBadge";
 import { Stat } from "@/components/ui/Stat";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatCreditoNumero } from "@/lib/utils";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader,
+  AlertDialogTitle, AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 function n2(x: number) {
   return new Intl.NumberFormat("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(x);
@@ -59,9 +64,24 @@ function creditoBadge(estado: string): { label: string; variant: "primary" | "su
  * crediticios + el estado de cuenta calculado en el servidor, más los
  * compromisos de pago vigentes (promesas tomadas en gestiones de cobranza).
  */
-export function ClienteDetail({ clienteId, onEditar }: { clienteId: string; onEditar?: () => void }) {
+export function ClienteDetail({
+  clienteId,
+  variant = "full",
+  onEditar,
+  onEliminar,
+}: {
+  clienteId: string;
+  /** "pagos" = solo créditos + plan de cuotas + historial. "cliente" = solo datos personales/laborales. */
+  variant?: "full" | "pagos" | "cliente";
+  onEditar?: () => void;
+  onEliminar?: () => void;
+}) {
   const { cliente, isLoading } = useClienteDetalle(clienteId);
   const { acciones } = useAccionesCobranza();
+
+  // Qué secciones se muestran según el contexto.
+  const showPersonal = variant !== "pagos";   // datos personales/laborales
+  const showCreditos = variant !== "cliente"; // estado de cuenta + créditos + compromisos
 
   if (isLoading || !cliente) {
     return (
@@ -90,80 +110,130 @@ export function ClienteDetail({ clienteId, onEditar }: { clienteId: string; onEd
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      {/* ── Encabezado ── */}
-      <div className="shrink-0 border-b border-border px-5 py-4">
-        <div className="flex items-start justify-between gap-3 mb-4">
-          <div className="min-w-0">
-            <p className="text-base font-semibold text-foreground truncate">{cliente.nombre}</p>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              {cliente.documento ? `DNI ${cliente.documento}` : "Sin documento"}
-              {" · "}Alta {fmtDate(cliente.created_at)}
-            </p>
+      {/* ── Encabezado de perfil ── */}
+      <div className="shrink-0 border-b border-border px-5 py-5 sm:px-6">
+        <div className="flex items-start gap-4">
+          {/* Avatar / monograma */}
+          <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/30 to-primary/5 text-lg font-bold text-primary ring-1 ring-primary/20">
+            {iniciales(cliente.nombre)}
           </div>
-          <div className="flex items-center gap-2 shrink-0">
-            <StatusBadge label={cliente.estado} variant={cliente.estado === "activo" ? "success" : "muted"} />
-            {onEditar && (
-              <button
-                onClick={onEditar}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-              >
-                <Pencil className="h-3.5 w-3.5" /> Editar
-              </button>
-            )}
+
+          <div className="min-w-0 flex-1">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <h2 className="truncate text-xl font-semibold leading-tight text-foreground">{cliente.nombre}</h2>
+                <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                  <StatusBadge label={cliente.estado} variant={cliente.estado === "activo" ? "success" : "muted"} />
+                  {cliente.documento && (
+                    <span className="font-mono text-xs text-muted-foreground">DNI {cliente.documento}</span>
+                  )}
+                </div>
+              </div>
+
+              {(onEditar || onEliminar) && (
+                <div className="flex shrink-0 items-center gap-2">
+                  {onEditar && (
+                    <button
+                      onClick={onEditar}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                    >
+                      <Pencil className="h-3.5 w-3.5" /> Editar
+                    </button>
+                  )}
+                  {onEliminar && (
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <button className="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-xs text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors">
+                          <Trash2 className="h-3.5 w-3.5" /> Eliminar
+                        </button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>¿Eliminar cliente?</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            Se marcará a <strong>{cliente.nombre}</strong> como inactivo. Sus créditos asociados se conservan.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                          <AlertDialogAction onClick={onEliminar} className="bg-destructive text-white hover:bg-destructive/90">
+                            Eliminar
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Metadata secundaria */}
+            <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground/80">
+              <span>Cliente desde {fmtDate(cliente.created_at)}</span>
+              {edad(cliente.fecha_nacimiento) && <span className="flex items-center gap-1"><span className="text-muted-foreground/30">·</span>{edad(cliente.fecha_nacimiento)}</span>}
+              {cliente.nacionalidad && <span className="flex items-center gap-1"><span className="text-muted-foreground/30">·</span>{cliente.nacionalidad}</span>}
+            </div>
           </div>
         </div>
 
-        {/* Estado de cuenta */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          <Stat icon={Wallet} label="Deuda total" accent={ec.deuda_total > 0 ? "warning" : "success"} value={`$${n0(ec.deuda_total)}`} sub="saldo de créditos activos" />
-          <Stat
-            icon={AlertCircle}
-            label={ec.en_mora ? "En mora" : "Situación"}
-            accent={ec.dias_mora_max > 30 ? "destructive" : ec.en_mora ? "warning" : "success"}
-            value={ec.en_mora ? `${ec.dias_mora_max}d` : "Al día"}
-            sub={ec.en_mora ? `mora $${n0(ec.interes_mora_total)} · ${ec.creditos_en_mora} créd.` : "sin atrasos"}
-          />
-          <Stat icon={Layers} label="Créditos activos" accent="primary" value={String(ec.creditos_activos)} sub={`${ec.creditos_total} en total`} />
-          <Stat icon={ArrowUpRight} label="Total cobrado" accent="success" value={`$${n0(ec.total_cobrado)}`} sub="histórico" />
-        </div>
+        {/* Estado de cuenta (solo cuando se muestran créditos) */}
+        {showCreditos && (
+          <div className="mt-5 grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <Stat icon={Wallet} label="Deuda total" accent={ec.deuda_total > 0 ? "warning" : "success"} value={`$${n0(ec.deuda_total)}`} sub="saldo de créditos activos" />
+            <Stat
+              icon={AlertCircle}
+              label={ec.en_mora ? "En mora" : "Situación"}
+              accent={ec.dias_mora_max > 30 ? "destructive" : ec.en_mora ? "warning" : "success"}
+              value={ec.en_mora ? `${ec.dias_mora_max}d` : "Al día"}
+              sub={ec.en_mora ? `mora $${n0(ec.interes_mora_total)} · ${ec.creditos_en_mora} créd.` : "sin atrasos"}
+            />
+            <Stat icon={Layers} label="Créditos activos" accent="primary" value={String(ec.creditos_activos)} sub={`${ec.creditos_total} en total`} />
+            <Stat icon={ArrowUpRight} label="Total cobrado" accent="success" value={`$${n0(ec.total_cobrado)}`} sub="histórico" />
+          </div>
+        )}
       </div>
 
       {/* ── Cuerpo scrolleable ── */}
       <div className="flex-1 min-h-0 overflow-y-auto px-5 py-4 space-y-6">
 
-        {/* Datos personales + laborales */}
+        {/* Datos personales (presentación editorial por bloques) */}
+        {showPersonal && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <section className="space-y-2">
-            <SectionTitle icon={User} text="Datos personales" />
-            <DataGrid rows={[
-              ["DNI / Documento", cliente.documento],
-              ["CUIT / CUIL", cliente.cuit_cuil],
-              ["Nacimiento", cliente.fecha_nacimiento ? `${fmtDate(cliente.fecha_nacimiento)}${edad(cliente.fecha_nacimiento) ? ` (${edad(cliente.fecha_nacimiento)})` : ""}` : null],
-              ["Estado civil", cliente.estado_civil ? ESTADO_CIVIL[cliente.estado_civil] ?? cliente.estado_civil : null],
-              ["Nacionalidad", cliente.nacionalidad],
-              ["Dirección", cliente.direccion],
-              ["Email", cliente.email],
-              ["Teléfono", cliente.telefono],
-            ]} />
-          </section>
+          <InfoBlock icon={User} title="Identidad" emptyText="Sin datos de identidad cargados." items={[
+            { label: "DNI / Documento", value: cliente.documento, mono: true },
+            { label: "CUIT / CUIL", value: cliente.cuit_cuil, mono: true },
+            { label: "Nacimiento", value: cliente.fecha_nacimiento ? `${fmtDate(cliente.fecha_nacimiento)}${edad(cliente.fecha_nacimiento) ? ` · ${edad(cliente.fecha_nacimiento)}` : ""}` : null },
+            { label: "Estado civil", value: cliente.estado_civil ? ESTADO_CIVIL[cliente.estado_civil] ?? cliente.estado_civil : null },
+            { label: "Nacionalidad", value: cliente.nacionalidad },
+          ]} />
 
-          <section className="space-y-2">
-            <SectionTitle icon={Briefcase} text="Datos laborales" />
-            <DataGrid rows={[
-              ["Situación", cliente.situacion_laboral ? SITUACION_LABORAL[cliente.situacion_laboral] ?? cliente.situacion_laboral : null],
-              ["Ocupación", cliente.ocupacion],
-              ["Empleador", cliente.empleador],
-              ["Antigüedad", cliente.antiguedad_laboral_meses != null ? `${cliente.antiguedad_laboral_meses} meses` : null],
-              ["Ingreso mensual", cliente.ingreso_mensual != null ? `$${n0(cliente.ingreso_mensual)}` : null],
-              ["Otros ingresos", cliente.otros_ingresos != null ? `$${n0(cliente.otros_ingresos)}` : null],
-              ["Teléfono laboral", cliente.telefono_laboral],
-              ["Dirección laboral", cliente.direccion_laboral],
+          <div className="space-y-4">
+            <InfoBlock icon={Mail} title="Contacto" emptyText="Sin datos de contacto cargados." onEditar={onEditar} items={[
+              { label: "Email", value: cliente.email, icon: Mail, href: cliente.email ? `mailto:${cliente.email}` : undefined },
+              { label: "Teléfono", value: cliente.telefono, icon: Phone, href: cliente.telefono ? `tel:${cliente.telefono}` : undefined },
             ]} />
-          </section>
+            <InfoBlock icon={MapPin} title="Domicilio" emptyText="Sin domicilio cargado." items={[
+              { label: "Dirección", value: cliente.direccion },
+            ]} />
+          </div>
+
+          <div className="lg:col-span-2">
+            <InfoBlock icon={Briefcase} title="Laboral e ingresos" emptyText="Sin datos laborales cargados." items={[
+              { label: "Situación", value: cliente.situacion_laboral ? SITUACION_LABORAL[cliente.situacion_laboral] ?? cliente.situacion_laboral : null },
+              { label: "Ocupación", value: cliente.ocupacion },
+              { label: "Empleador", value: cliente.empleador },
+              { label: "Antigüedad", value: cliente.antiguedad_laboral_meses != null ? `${cliente.antiguedad_laboral_meses} meses` : null },
+              { label: "Ingreso mensual", value: cliente.ingreso_mensual != null ? `$${n0(cliente.ingreso_mensual)}` : null, mono: true },
+              { label: "Otros ingresos", value: cliente.otros_ingresos != null ? `$${n0(cliente.otros_ingresos)}` : null, mono: true },
+              { label: "Teléfono laboral", value: cliente.telefono_laboral, icon: Phone, href: cliente.telefono_laboral ? `tel:${cliente.telefono_laboral}` : undefined },
+              { label: "Dirección laboral", value: cliente.direccion_laboral },
+            ]} />
+          </div>
         </div>
+        )}
 
         {/* Compromisos vigentes */}
-        {compromisos.length > 0 && (
+        {showCreditos && compromisos.length > 0 && (
           <section className="space-y-2">
             <SectionTitle icon={HandCoins} text="Compromisos de pago vigentes" />
             <div className="rounded-xl border border-success/20 bg-success/[0.04] divide-y divide-border/50">
@@ -183,17 +253,19 @@ export function ClienteDetail({ clienteId, onEditar }: { clienteId: string; onEd
         )}
 
         {/* Créditos activos */}
-        <section className="space-y-2">
-          <SectionTitle icon={Layers} text={`Créditos activos${activos.length ? ` (${activos.length})` : ""}`} />
-          {activos.length === 0 ? (
-            <EmptyRow text="El cliente no tiene créditos activos." />
-          ) : (
-            <CreditosTabla creditos={activos} mostrarProximo />
-          )}
-        </section>
+        {showCreditos && (
+          <section className="space-y-2">
+            <SectionTitle icon={Layers} text={`Créditos activos${activos.length ? ` (${activos.length})` : ""}`} />
+            {activos.length === 0 ? (
+              <EmptyRow text="El cliente no tiene créditos activos." />
+            ) : (
+              <CreditosTabla creditos={activos} mostrarProximo />
+            )}
+          </section>
+        )}
 
         {/* Historial de créditos */}
-        {historicos.length > 0 && (
+        {showCreditos && historicos.length > 0 && (
           <section className="space-y-2">
             <SectionTitle icon={FileText} text={`Historial de créditos (${historicos.length})`} />
             <CreditosTabla creditos={historicos} />
@@ -367,18 +439,71 @@ function SectionTitle({ icon: Icon, text }: { icon: React.ComponentType<{ classN
   );
 }
 
-function DataGrid({ rows }: { rows: [string, string | null | undefined][] }) {
+/** Iniciales para el monograma del avatar (hasta 2 palabras). */
+function iniciales(nombre: string): string {
+  const partes = nombre.trim().split(/\s+/).filter(Boolean);
+  if (partes.length === 0) return "?";
+  if (partes.length === 1) return partes[0].slice(0, 2).toUpperCase();
+  return (partes[0][0] + partes[partes.length - 1][0]).toUpperCase();
+}
+
+interface CampoItem {
+  label: string;
+  value?: string | null;
+  mono?: boolean;
+  href?: string;
+  icon?: React.ComponentType<{ className?: string }>;
+}
+
+/** Bloque editorial de datos: título con ícono + grilla de campos. Oculta vacíos. */
+function InfoBlock({
+  icon: Icon, title, items, emptyText, onEditar,
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  title: string;
+  items: CampoItem[];
+  emptyText: string;
+  onEditar?: () => void;
+}) {
+  const visibles = items.filter((it) => it.value != null && it.value !== "");
   return (
-    <dl className="rounded-xl border border-border divide-y divide-border/50">
-      {rows.map(([label, value]) => (
-        <div key={label} className="flex items-start justify-between gap-3 px-4 py-2">
-          <dt className="text-xs text-muted-foreground shrink-0">{label}</dt>
-          <dd className={`text-xs text-right ${value ? "text-foreground" : "text-muted-foreground/30"}`}>
-            {value || "—"}
-          </dd>
+    <section className="overflow-hidden rounded-xl border border-border bg-muted/[0.12]">
+      <div className="flex items-center gap-2 border-b border-border/50 px-4 py-2.5">
+        <Icon className="h-4 w-4 text-muted-foreground" />
+        <h3 className="text-sm font-semibold text-foreground">{title}</h3>
+      </div>
+      {visibles.length === 0 ? (
+        <div className="flex items-center justify-between gap-3 px-4 py-4">
+          <p className="text-xs text-muted-foreground/50">{emptyText}</p>
+          {onEditar && (
+            <button onClick={onEditar} className="text-xs text-primary/80 hover:text-primary transition-colors whitespace-nowrap">
+              Completar
+            </button>
+          )}
         </div>
-      ))}
-    </dl>
+      ) : (
+        <div className="grid grid-cols-1 gap-x-6 gap-y-4 px-4 py-4 sm:grid-cols-2">
+          {visibles.map((it) => <Campo key={it.label} {...it} />)}
+        </div>
+      )}
+    </section>
+  );
+}
+
+/** Campo individual: label chico arriba, valor destacado abajo (clicable si hay href). */
+function Campo({ label, value, mono, href, icon: Icon }: CampoItem) {
+  return (
+    <div className="min-w-0">
+      <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">{label}</p>
+      <div className="mt-1 flex items-center gap-1.5">
+        {Icon && <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground/50" />}
+        {href ? (
+          <a href={href} className={`truncate text-sm text-foreground hover:text-primary transition-colors ${mono ? "font-mono" : ""}`}>{value}</a>
+        ) : (
+          <span className={`truncate text-sm text-foreground ${mono ? "font-mono" : ""}`}>{value}</span>
+        )}
+      </div>
+    </div>
   );
 }
 

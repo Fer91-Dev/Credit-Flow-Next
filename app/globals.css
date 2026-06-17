@@ -78,33 +78,33 @@
   --ring:   #6366F1;
 }
 
-/* ─── DARK MODE (Bloomberg Terminal) ───────────────────────────────────── */
+/* ─── DARK MODE (Navy — fondo #0A1018 con degradado) ───────────────────── */
 .dark {
   color-scheme: dark;
 
-  /* Fondos y superficies */
-  --background:       #0A0A0A;
+  /* Fondos y superficies — paleta navy anclada en #0A1018 */
+  --background:       #0A1018;  /* fondo principal del sistema (base del degradado) */
   --foreground:       #FFFFFF;
-  --card:             #141414;
+  --card:             #111A28;  /* tarjetas: navy un escalón más claro (elevación) */
   --card-foreground:  #FFFFFF;
-  --popover:          #141414;
+  --popover:          #111A28;
   --popover-foreground: #FFFFFF;
-  --surface:          #141414;
+  --surface:          #111A28;
 
   /* Acción primaria — Indigo */
   --primary:            #6366F1;
   --primary-foreground: #FFFFFF;
 
   /* Secundario / estados inactivos */
-  --secondary:            #2A2A2A;
+  --secondary:            #1B2738;
   --secondary-foreground: #FFFFFF;
 
   /* Muted — texto y fondos apagados */
-  --muted:            #1A1A1A;
-  --muted-foreground: #A0A0A0;
+  --muted:            #131D2C;
+  --muted-foreground: #8A94A6;
 
   /* Accent — superficies hover */
-  --accent:            #2A2A2A;
+  --accent:            #1B2738;
   --accent-foreground: #FFFFFF;
 
   /* Semánticos financieros */
@@ -113,9 +113,18 @@
   --destructive: #EF4444;  /* mora crítica / error */
 
   /* Bordes e inputs */
-  --border: #2A2A2A;
-  --input:  #1A1A1A;
+  --border: #1E2A3C;
+  --input:  #131D2C;
   --ring:   #6366F1;
+}
+
+/* Degradado de fondo del sistema (solo modo oscuro). Fijo: no scrollea. */
+.dark body {
+  background-color: #0A1018;
+  background-image:
+    radial-gradient(1200px 620px at 50% -260px, rgba(60, 86, 130, 0.22), transparent 62%),
+    linear-gradient(180deg, #0D1626 0%, #0A1018 52%);
+  background-attachment: fixed;
 }
 
 /* ─── Reset base ───────────────────────────────────────────────────────── */

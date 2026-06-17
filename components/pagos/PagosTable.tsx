@@ -1,506 +1,181 @@
 "use client";
 
-import { useState, useMemo } from "react";
-import { mutate as globalMutate } from "swr";
-import {
-  Plus, Search, Wallet, TrendingUp, ArrowUpRight, Percent, X, ChevronDown, Receipt, Loader2,
-} from "lucide-react";
+import { useMemo, useState } from "react";
+import { useSWRConfig } from "swr";
+import { Wallet, Search, User, Phone, IdCard, ArrowLeft, Plus, ChevronRight, X } from "lucide-react";
+import { useClientes, KEYS, type Cliente } from "@/lib/swr";
+import { ClienteDetail } from "@/components/clientes/ClienteDetail";
 import { PagoForm } from "./PagoForm";
-import { PagoDetail } from "./PagoDetail";
-import { usePagos, KEYS, type Pago } from "@/lib/swr";
-import { abrirRecibo } from "@/lib/recibo";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { KpiCard } from "@/components/ui/KpiCard";
 import { StatusBadge } from "@/components/ui/StatusBadge";
-import type { BadgeVariant } from "@/components/ui/StatusBadge";
-import {
-  Dialog, DialogContent, DialogHeader, DialogTitle,
-} from "@/components/ui/dialog";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
-// ── Helpers ─────────────────────────────────────────────────────────────────
-
-function n0(x: number) {
-  return new Intl.NumberFormat("es-AR", { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(x);
-}
-function n2(x: number) {
-  return new Intl.NumberFormat("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(x);
-}
-function fmtDate(s: string) {
-  return new Date(s).toLocaleDateString("es-AR", { day: "2-digit", month: "short", year: "2-digit" });
-}
-
-function metodoConfig(m: string): { label: string; variant: BadgeVariant } {
-  switch (m.toLowerCase()) {
-    case "efectivo":      return { label: "Efectivo",       variant: "success" };
-    case "transferencia": return { label: "Transferencia",  variant: "primary" };
-    case "cheque":        return { label: "Cheque",         variant: "warning" };
-    default:              return { label: m,                variant: "muted" };
-  }
-}
-
-function inPeriod(dateStr: string, period: string): boolean {
-  if (period === "all") return true;
-  const d = new Date(dateStr);
-  const now = new Date();
-  if (period === "week")  return d >= new Date(now.getTime() - 7 * 86_400_000);
-  if (period === "month") return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
-  if (period === "year")  return d.getFullYear() === now.getFullYear();
-  return true;
-}
-
-// ── Select style (filter toolbar) ────────────────────────────────────────────
-
-const filterSelect =
-  "h-10 rounded-lg border border-border bg-muted/40 pl-3 pr-8 text-sm text-foreground outline-none " +
-  "transition-all focus:border-primary focus:ring-2 focus:ring-primary/20 appearance-none cursor-pointer " +
-  "[&>option]:bg-card [&>option]:text-foreground";
-
-// ── Main component ────────────────────────────────────────────────────────────
-
+/**
+ * Terminal de pagos: flujo "buscar primero". No se lista nada hasta que el
+ * operador ingresa un DNI o nombre; al elegir el cliente se muestra su ficha
+ * 360 a pantalla completa, desde donde se registra el cobro.
+ */
 export function PagosTable() {
-  const { pagos, error, isLoading, mutate } = usePagos();
-  const [dialogOpen, setDialog] = useState(false);
-  const [search, setSearch]     = useState("");
-  const [metodo, setMetodo]     = useState("all");
-  const [periodo, setPeriodo]   = useState("all");
-  const [reciboBusy, setReciboBusy] = useState<string | null>(null);
-  const [reciboError, setReciboError] = useState<string | null>(null);
-  const [detalle, setDetalle] = useState<Pago | null>(null);
+  const { clientes, isLoading } = useClientes();
+  const { mutate: globalMutate } = useSWRConfig();
 
-  const handleRecibo = async (pagoId: string) => {
-    setReciboBusy(pagoId);
-    setReciboError(null);
-    try {
-      await abrirRecibo(pagoId);
-    } catch (e) {
-      setReciboError(e instanceof Error ? e.message : "No se pudo generar el recibo");
-    } finally {
-      setReciboBusy(null);
-    }
-  };
+  const [query, setQuery] = useState("");
+  const [selected, setSelected] = useState<Cliente | null>(null);
+  const [pagoOpen, setPagoOpen] = useState(false);
 
-  const handleFormClose = (success?: boolean) => {
-    setDialog(false);
-    if (success) {
-      // Un pago modifica saldos de créditos y métricas del dashboard.
-      mutate();
+  // Búsqueda DNI-aware: matchea por nombre o por documento (también en su forma
+  // "solo dígitos", para que 20.123.456 encuentre al guardado como 20123456).
+  const resultados = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return [];
+    const qDigits = q.replace(/\D/g, "");
+    return clientes.filter((c) => {
+      const nombre = c.nombre.toLowerCase();
+      const doc = (c.documento || "").toLowerCase();
+      const docDigits = doc.replace(/\D/g, "");
+      return nombre.includes(q) || doc.includes(q) || (qDigits.length > 0 && docDigits.includes(qDigits));
+    });
+  }, [clientes, query]);
+
+  const elegir = (c: Cliente) => { setSelected(c); setQuery(""); };
+
+  const handlePagoClose = (success?: boolean) => {
+    setPagoOpen(false);
+    if (success && selected) {
+      // Refrescar la ficha + cachés de cartera/pagos/caja.
+      globalMutate(`/api/clientes/${selected.id}`);
       globalMutate(KEYS.creditos);
+      globalMutate(KEYS.pagos);
       globalMutate(KEYS.dashboard);
+      globalMutate("/api/caja");
     }
   };
 
-  // Filtered slice
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return pagos.filter(p =>
-      (!q || p.credito.cliente.nombre.toLowerCase().includes(q)) &&
-      (metodo === "all" || p.metodo.toLowerCase() === metodo) &&
-      inPeriod(p.fecha, periodo)
+  // ── Vista de ficha (cliente seleccionado) ──
+  if (selected) {
+    return (
+      <div className="space-y-5">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <button
+            onClick={() => setSelected(null)}
+            className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <ArrowLeft className="h-4 w-4" /> Buscar otro cliente
+          </button>
+          <button
+            onClick={() => setPagoOpen(true)}
+            className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 transition-opacity"
+          >
+            <Plus className="h-4 w-4" /> Registrar pago
+          </button>
+        </div>
+
+        <div className="rounded-xl bg-card border border-border overflow-hidden">
+          <ClienteDetail clienteId={selected.id} variant="pagos" />
+        </div>
+
+        <Dialog open={pagoOpen} onOpenChange={(o) => { if (!o) setPagoOpen(false); }}>
+          <DialogContent className="w-[95vw] sm:max-w-lg max-h-[90dvh] flex flex-col overflow-hidden">
+            <DialogHeader className="shrink-0">
+              <DialogTitle>Registrar pago · {selected.nombre}</DialogTitle>
+            </DialogHeader>
+            <div className="flex-1 min-h-0 overflow-y-auto">
+              {pagoOpen && <PagoForm clienteId={selected.id} onClose={handlePagoClose} />}
+            </div>
+          </DialogContent>
+        </Dialog>
+      </div>
     );
-  }, [pagos, search, metodo, periodo]);
+  }
 
-  // KPIs (reactive to filters)
-  const kpis = useMemo(() => ({
-    count:           filtered.length,
-    totalCobrado:    filtered.reduce((s, p) => s + p.monto, 0),
-    totalCapital:    filtered.reduce((s, p) => s + p.aplicado_capital, 0),
-    totalInterMora:  filtered.reduce((s, p) => s + p.aplicado_interes + p.aplicado_mora, 0),
-  }), [filtered]);
-
-  // Table footer totals
-  const totals = useMemo(() => ({
-    monto:   filtered.reduce((s, p) => s + p.monto, 0),
-    mora:    filtered.reduce((s, p) => s + p.aplicado_mora, 0),
-    interes: filtered.reduce((s, p) => s + p.aplicado_interes, 0),
-    capital: filtered.reduce((s, p) => s + p.aplicado_capital, 0),
-  }), [filtered]);
-
-  const hasFilters = !!(search || metodo !== "all" || periodo !== "all");
-
-  const clearFilters = () => { setSearch(""); setMetodo("all"); setPeriodo("all"); };
-
-  // ── Render ────────────────────────────────────────────────────────────────
-
-  const cta = (
-    <button
-      onClick={() => setDialog(true)}
-      className="flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-success text-white hover:opacity-90 transition-opacity text-sm font-medium whitespace-nowrap"
-    >
-      <Plus className="h-4 w-4" />
-      Registrar pago
-    </button>
-  );
-
+  // ── Vista de búsqueda (sin cliente seleccionado) ──
+  const q = query.trim();
   return (
-    <>
-      <div className="space-y-6">
-        <PageHeader
-          icon={Wallet}
-          title="Pagos"
-          subtitle="Historial de cobros e imputación automática Mora → Interés → Capital"
-          accent="success"
-          actions={cta}
+    <div className="space-y-6">
+      <PageHeader
+        icon={Wallet}
+        title="Pagos"
+        subtitle="Buscá un cliente por DNI o nombre para ver su estado de cuenta y registrar el cobro."
+        accent="primary"
+      />
+
+      {/* Buscador */}
+      <div className="relative max-w-2xl">
+        <Search className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+        <input
+          autoFocus
+          type="text"
+          inputMode="search"
+          placeholder="DNI o nombre del cliente…"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter" && resultados.length === 1) elegir(resultados[0]); }}
+          className="h-14 w-full rounded-xl border border-border bg-card pl-12 pr-12 text-base text-foreground placeholder:text-muted-foreground/50 outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/20"
         />
-
-        {isLoading ? (
-          <BodySkeleton />
-        ) : error ? (
-          <div className="rounded-xl bg-destructive/10 border border-destructive/30 p-4 text-destructive text-sm">
-            Error al cargar pagos: {error.message}
-          </div>
-        ) : (
-        <div className="space-y-5">
-
-        {/* ── KPI Strip ── */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <KpiCard
-            icon={Wallet}
-            label="Pagos registrados"
-            value={String(kpis.count)}
-            accent="muted"
-            sub={hasFilters ? `de ${pagos.length} totales` : undefined}
-          />
-          <KpiCard
-            icon={ArrowUpRight}
-            label="Total cobrado"
-            value={`$${n0(kpis.totalCobrado)}`}
-            accent="success"
-            mono
-          />
-          <KpiCard
-            icon={TrendingUp}
-            label="Imputado a capital"
-            value={`$${n0(kpis.totalCapital)}`}
-            accent="primary"
-            mono
-          />
-          <KpiCard
-            icon={Percent}
-            label="Interés + mora"
-            value={`$${n0(kpis.totalInterMora)}`}
-            accent="warning"
-            mono
-          />
-        </div>
-
-        {/* ── Filter Toolbar ── */}
-        <div className="flex flex-col sm:flex-row gap-3">
-          {/* Search */}
-          <div className="relative flex-1">
-            <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <input
-              type="text"
-              placeholder="Buscar por cliente…"
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              className="h-10 w-full rounded-lg border border-border bg-muted/40 pl-9 pr-3 text-sm text-foreground placeholder:text-muted-foreground/40 outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/20"
-            />
-          </div>
-
-          {/* Método */}
-          <div className="relative">
-            <select value={metodo} onChange={e => setMetodo(e.target.value)} className={filterSelect}>
-              <option value="all">Todos los métodos</option>
-              <option value="efectivo">Efectivo</option>
-              <option value="transferencia">Transferencia</option>
-              <option value="cheque">Cheque</option>
-              <option value="otro">Otro</option>
-            </select>
-            <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          </div>
-
-          {/* Período */}
-          <div className="relative">
-            <select value={periodo} onChange={e => setPeriodo(e.target.value)} className={filterSelect}>
-              <option value="all">Todo el tiempo</option>
-              <option value="week">Esta semana</option>
-              <option value="month">Este mes</option>
-              <option value="year">Este año</option>
-            </select>
-            <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          </div>
-        </div>
-
-        {/* Count + clear */}
-        <div className="flex items-center justify-between">
-          <p className="text-xs text-muted-foreground">
-            {hasFilters
-              ? `${filtered.length} de ${pagos.length} pagos`
-              : `${pagos.length} pago${pagos.length !== 1 ? "s" : ""} en total`}
-          </p>
-          {hasFilters && (
-            <button
-              onClick={clearFilters}
-              className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
-            >
-              <X className="h-3 w-3" />
-              Limpiar filtros
-            </button>
-          )}
-        </div>
-
-        {reciboError && (
-          <div className="rounded-lg bg-destructive/10 border border-destructive/30 px-3 py-2 text-destructive text-xs">
-            {reciboError}
-          </div>
-        )}
-
-        {/* ── Content: empty / table / cards ── */}
-        {filtered.length === 0 ? (
-          <EmptyState hasFilters={hasFilters} onNew={() => setDialog(true)} onClear={clearFilters} />
-        ) : (
-          <>
-            {/* Desktop: tabla */}
-            <div className="hidden md:block rounded-xl border border-border overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm border-separate border-spacing-0">
-                  <thead>
-                    <tr className="bg-muted/30">
-                      <th className="px-4 py-3 text-left   text-xs font-semibold text-muted-foreground  uppercase tracking-wide border-b border-border">Cliente</th>
-                      <th className="px-4 py-3 text-right  text-xs font-semibold text-muted-foreground  uppercase tracking-wide border-b border-border">Monto</th>
-                      <th className="px-4 py-3 text-right  text-xs font-semibold text-destructive       uppercase tracking-wide border-b border-border">Mora</th>
-                      <th className="px-4 py-3 text-right  text-xs font-semibold text-warning           uppercase tracking-wide border-b border-border">Interés</th>
-                      <th className="px-4 py-3 text-right  text-xs font-semibold text-primary           uppercase tracking-wide border-b border-border">Capital</th>
-                      <th className="px-4 py-3 text-left   text-xs font-semibold text-muted-foreground  uppercase tracking-wide border-b border-border">Método</th>
-                      <th className="px-4 py-3 text-left   text-xs font-semibold text-muted-foreground  uppercase tracking-wide border-b border-border">Fecha</th>
-                      <th className="px-4 py-3 text-left   text-xs font-semibold text-muted-foreground  uppercase tracking-wide border-b border-border">Notas</th>
-                      <th className="px-4 py-3 text-right  text-xs font-semibold text-muted-foreground  uppercase tracking-wide border-b border-border pr-5">Recibo</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filtered.map((pago, idx) => {
-                      const m = metodoConfig(pago.metodo);
-                      const odd = idx % 2 === 1;
-                      return (
-                        <tr key={pago.id} onClick={() => setDetalle(pago)} className={`cursor-pointer hover:bg-muted/20 transition-colors ${odd ? "bg-muted/5" : ""}`}>
-                          <td className="px-4 py-3 font-medium text-foreground border-b border-border/40 max-w-[180px]">
-                            <span className="truncate block">{pago.credito.cliente.nombre}</span>
-                          </td>
-                          <td className="px-4 py-3 text-right border-b border-border/40">
-                            <span className="font-mono font-bold text-success">+${n0(pago.monto)}</span>
-                            {pago.excedente > 0 && (
-                              <span className="ml-1.5 inline-flex items-center rounded-full bg-warning/10 border border-warning/20 px-1.5 py-0.5 text-[10px] font-medium text-warning">
-                                EXC
-                              </span>
-                            )}
-                          </td>
-                          <td className="px-4 py-3 text-right font-mono text-xs border-b border-border/40">
-                            {pago.aplicado_mora > 0
-                              ? <span className="text-destructive">${n2(pago.aplicado_mora)}</span>
-                              : <span className="text-muted-foreground/20">—</span>}
-                          </td>
-                          <td className="px-4 py-3 text-right font-mono text-xs border-b border-border/40">
-                            {pago.aplicado_interes > 0
-                              ? <span className="text-warning">${n2(pago.aplicado_interes)}</span>
-                              : <span className="text-muted-foreground/20">—</span>}
-                          </td>
-                          <td className="px-4 py-3 text-right font-mono text-xs border-b border-border/40">
-                            {pago.aplicado_capital > 0
-                              ? <span className="text-primary">${n2(pago.aplicado_capital)}</span>
-                              : <span className="text-muted-foreground/20">—</span>}
-                          </td>
-                          <td className="px-4 py-3 border-b border-border/40">
-                            <StatusBadge label={m.label} variant={m.variant} />
-                          </td>
-                          <td className="px-4 py-3 text-xs text-muted-foreground tabular-nums border-b border-border/40">
-                            {fmtDate(pago.fecha)}
-                          </td>
-                          <td className="px-4 py-3 text-xs text-muted-foreground max-w-[130px] truncate border-b border-border/40">
-                            {pago.notas || <span className="opacity-20">—</span>}
-                          </td>
-                          <td className="px-4 py-3 pr-5 text-right border-b border-border/40">
-                            <button
-                              onClick={(e) => { e.stopPropagation(); handleRecibo(pago.id); }}
-                              disabled={reciboBusy === pago.id}
-                              title="Descargar comprobante PDF"
-                              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-border text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50 transition-colors"
-                            >
-                              {reciboBusy === pago.id
-                                ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                : <Receipt className="h-3.5 w-3.5" />}
-                              Recibo
-                            </button>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                  <tfoot>
-                    <tr className="bg-muted/20">
-                      <td className="px-4 py-3 text-[10px] font-bold text-muted-foreground uppercase tracking-widest border-t border-border">
-                        Totales
-                      </td>
-                      <td className="px-4 py-3 text-right font-mono font-bold text-success border-t border-border">
-                        ${n0(totals.monto)}
-                      </td>
-                      <td className="px-4 py-3 text-right font-mono font-bold border-t border-border">
-                        {totals.mora > 0
-                          ? <span className="text-destructive">${n2(totals.mora)}</span>
-                          : <span className="text-muted-foreground/20">—</span>}
-                      </td>
-                      <td className="px-4 py-3 text-right font-mono font-bold border-t border-border">
-                        {totals.interes > 0
-                          ? <span className="text-warning">${n2(totals.interes)}</span>
-                          : <span className="text-muted-foreground/20">—</span>}
-                      </td>
-                      <td className="px-4 py-3 text-right font-mono font-bold text-primary border-t border-border">
-                        ${n0(totals.capital)}
-                      </td>
-                      <td colSpan={4} className="border-t border-border pr-5" />
-                    </tr>
-                  </tfoot>
-                </table>
-              </div>
-            </div>
-
-            {/* Mobile: card list */}
-            <div className="block md:hidden space-y-3">
-              {filtered.map(pago => {
-                const m = metodoConfig(pago.metodo);
-                return (
-                  <div key={pago.id} onClick={() => setDetalle(pago)} className="rounded-xl bg-card border border-border p-4 space-y-3 cursor-pointer active:bg-muted/20 transition-colors">
-                    <div className="flex items-start justify-between gap-2">
-                      <p className="font-medium text-foreground text-sm leading-tight">{pago.credito.cliente.nombre}</p>
-                      <p className="text-xs text-muted-foreground tabular-nums shrink-0">{fmtDate(pago.fecha)}</p>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="font-mono font-bold text-success text-xl">+${n0(pago.monto)}</span>
-                      <StatusBadge label={m.label} variant={m.variant} />
-                    </div>
-                    <div className="flex items-center gap-3 text-[11px] font-mono pt-2 border-t border-border/50">
-                      <span className="text-muted-foreground/60">
-                        M:&nbsp;
-                        <span className={pago.aplicado_mora > 0 ? "text-destructive" : "opacity-25"}>
-                          {pago.aplicado_mora > 0 ? `$${n2(pago.aplicado_mora)}` : "—"}
-                        </span>
-                      </span>
-                      <span className="text-muted-foreground/25">·</span>
-                      <span className="text-muted-foreground/60">
-                        I:&nbsp;
-                        <span className={pago.aplicado_interes > 0 ? "text-warning" : "opacity-25"}>
-                          {pago.aplicado_interes > 0 ? `$${n2(pago.aplicado_interes)}` : "—"}
-                        </span>
-                      </span>
-                      <span className="text-muted-foreground/25">·</span>
-                      <span className="text-muted-foreground/60">
-                        C:&nbsp;<span className="text-primary">${n2(pago.aplicado_capital)}</span>
-                      </span>
-                    </div>
-                    {pago.notas && (
-                      <p className="text-xs text-muted-foreground/50 pt-2 border-t border-border/50 truncate">
-                        {pago.notas}
-                      </p>
-                    )}
-                    <button
-                      onClick={(e) => { e.stopPropagation(); handleRecibo(pago.id); }}
-                      disabled={reciboBusy === pago.id}
-                      className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg border border-border text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50 transition-colors"
-                    >
-                      {reciboBusy === pago.id
-                        ? <Loader2 className="h-4 w-4 animate-spin" />
-                        : <Receipt className="h-4 w-4" />}
-                      Descargar recibo
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          </>
-        )}
-        </div>
+        {query && (
+          <button
+            onClick={() => setQuery("")}
+            className="absolute right-3 top-1/2 -translate-y-1/2 flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted transition-colors"
+            aria-label="Limpiar"
+          >
+            <X className="h-4 w-4" />
+          </button>
         )}
       </div>
 
-      <Dialog open={dialogOpen} onOpenChange={open => { if (!open) handleFormClose(false); }}>
-        <DialogContent className="w-[95vw] sm:max-w-lg max-h-[90dvh] flex flex-col overflow-hidden">
-          <DialogHeader className="shrink-0">
-            <DialogTitle>Registrar pago</DialogTitle>
-          </DialogHeader>
-          <PagoForm onClose={handleFormClose} />
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={!!detalle} onOpenChange={open => { if (!open) setDetalle(null); }}>
-        <DialogContent className="w-[95vw] sm:max-w-lg max-h-[90dvh] flex flex-col overflow-hidden">
-          <DialogHeader className="shrink-0">
-            <DialogTitle>Detalle del pago</DialogTitle>
-          </DialogHeader>
-          <div className="flex-1 min-h-0 overflow-y-auto">
-            {detalle && <PagoDetail pago={detalle} />}
-          </div>
-        </DialogContent>
-      </Dialog>
-    </>
-  );
-}
-
-// ── Sub-components ─────────────────────────────────────────────────────────
-
-function EmptyState({
-  hasFilters, onNew, onClear,
-}: {
-  hasFilters: boolean; onNew: () => void; onClear: () => void;
-}) {
-  return (
-    <div className="rounded-xl border border-dashed border-border/60 p-12 flex flex-col items-center gap-4 text-center">
-      <div className="h-16 w-16 rounded-2xl bg-muted/20 border border-border/50 flex items-center justify-center">
-        <Wallet className="h-7 w-7 text-muted-foreground/20" />
-      </div>
-      <div className="space-y-1.5">
-        <p className="text-sm font-semibold text-muted-foreground">
-          {hasFilters ? "Sin resultados para los filtros aplicados" : "Sin pagos registrados"}
-        </p>
-        <p className="text-xs text-muted-foreground/50 max-w-xs leading-relaxed">
-          {hasFilters
-            ? "Probá ajustando o limpiando los filtros para ver más registros."
-            : "Registrá el primer cobro para comenzar el historial de imputaciones."}
-        </p>
-      </div>
-      {hasFilters ? (
-        <button
-          onClick={onClear}
-          className="px-4 py-2 rounded-lg bg-muted text-muted-foreground text-sm hover:bg-muted/80 transition-colors"
-        >
-          Limpiar filtros
-        </button>
+      {/* Estados */}
+      {!q ? (
+        <HeroVacio />
+      ) : isLoading ? (
+        <p className="text-sm text-muted-foreground">Buscando…</p>
+      ) : resultados.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-border/60 p-10 flex flex-col items-center gap-2 text-center">
+          <User className="h-8 w-8 text-muted-foreground/20" />
+          <p className="text-sm font-semibold text-muted-foreground">Sin coincidencias</p>
+          <p className="text-xs text-muted-foreground/50">No se encontró ningún cliente para «{q}».</p>
+        </div>
       ) : (
-        <button
-          onClick={onNew}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-success text-white text-sm hover:opacity-90 transition-opacity"
-        >
-          <Plus className="h-4 w-4" />
-          Registrar primer pago
-        </button>
+        <div className="space-y-2 max-w-2xl">
+          <p className="text-xs text-muted-foreground">
+            {resultados.length} resultado{resultados.length !== 1 ? "s" : ""}
+          </p>
+          {resultados.slice(0, 20).map((c) => (
+            <button
+              key={c.id}
+              onClick={() => elegir(c)}
+              className="group flex w-full items-center gap-3 rounded-xl border border-border bg-card px-4 py-3 text-left transition-all hover:border-primary/40 hover:bg-card/80"
+            >
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary/30 to-primary/10 text-sm font-bold text-primary">
+                {c.nombre.slice(0, 1).toUpperCase()}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="font-medium text-foreground truncate">{c.nombre}</p>
+                <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                  {c.documento && <span className="flex items-center gap-1 font-mono"><IdCard className="h-3 w-3" />{c.documento}</span>}
+                  {c.telefono && <span className="flex items-center gap-1"><Phone className="h-3 w-3" />{c.telefono}</span>}
+                </div>
+              </div>
+              <StatusBadge label={c.estado} variant={c.estado === "activo" ? "success" : "muted"} />
+              <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground/40 group-hover:text-primary transition-colors" />
+            </button>
+          ))}
+        </div>
       )}
     </div>
   );
 }
 
-function BodySkeleton() {
+function HeroVacio() {
   return (
-    <div className="space-y-5">
-      {/* KPI strip */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-24 rounded-xl" />)}
+    <div className="rounded-xl border border-dashed border-border/60 p-12 flex flex-col items-center gap-4 text-center">
+      <div className="h-16 w-16 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center">
+        <Search className="h-7 w-7 text-primary/60" />
       </div>
-      {/* Toolbar */}
-      <div className="flex gap-3">
-        <Skeleton className="h-10 flex-1 rounded-lg" />
-        <Skeleton className="h-10 w-44 rounded-lg" />
-        <Skeleton className="h-10 w-40 rounded-lg" />
-        <Skeleton className="h-10 w-36 rounded-lg" />
-      </div>
-      {/* Table */}
-      <div className="rounded-xl border border-border overflow-hidden">
-        <div className="bg-muted/30 border-b border-border px-4 py-3 grid grid-cols-8 gap-4">
-          {[...Array(8)].map((_, i) => <Skeleton key={i} className="h-3" />)}
-        </div>
-        {[...Array(5)].map((_, i) => (
-          <div key={i} className="border-b border-border/40 px-4 py-3.5 grid grid-cols-8 gap-4">
-            {[...Array(8)].map((_, j) => <Skeleton key={j} className="h-4" />)}
-          </div>
-        ))}
+      <div className="space-y-1.5">
+        <p className="text-sm font-semibold text-foreground">Buscá un cliente para empezar</p>
+        <p className="text-xs text-muted-foreground/60 max-w-sm leading-relaxed">
+          Ingresá el DNI o el nombre del cliente. Vas a ver su estado de cuenta completo y vas a poder registrar el cobro desde su ficha.
+        </p>
       </div>
     </div>
   );

@@ -22,10 +22,10 @@ const COLORS: Record<KpiAccent, { text: string; bg: string; border: string }> = 
 export function KpiCard({ icon: Icon, label, value, accent = "muted", mono, sub }: KpiCardProps) {
   const c = COLORS[accent];
   return (
-    <div className="rounded-xl bg-card border border-border p-5">
+    <div className="group rounded-xl bg-card border border-border p-5 transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/30 hover:bg-card/80 hover:shadow-lg hover:shadow-black/30">
       <div className="flex items-start justify-between mb-3">
         <p className="text-xs font-medium text-muted-foreground leading-tight pr-2">{label}</p>
-        <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${c.bg} border ${c.border}`}>
+        <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${c.bg} border ${c.border} transition-transform duration-200 group-hover:scale-110`}>
           <Icon className={`h-4 w-4 ${c.text}`} />
         </div>
       </div>

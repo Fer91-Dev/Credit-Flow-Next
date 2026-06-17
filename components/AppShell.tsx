@@ -7,6 +7,7 @@ import {
   Terminal, ShieldAlert, BarChart3, PlusCircle, Settings, History, FileBarChart, Landmark
 } from "lucide-react";
 import { useEffect, useState } from "react";
+import { Footer } from "./Footer";
 
 const NAV_ITEMS = [
   { icon: Home, label: "Command Center", to: "/" },
@@ -78,10 +79,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   if (!mounted) return null;
 
   return (
-    <div className="flex min-h-screen flex-col bg-background text-foreground">
+    <div className="flex min-h-screen flex-col text-foreground">
       {/* HEADER */}
       <header className="sticky top-0 z-40 border-b border-border bg-card/95 backdrop-blur-sm">
-      <div className="mx-auto flex h-14 max-w-screen-xl items-center gap-3 px-4 md:px-6 lg:px-8 xl:gap-4">
+      <div className="mx-auto flex h-14 w-full max-w-screen-2xl items-center gap-3 px-4 md:px-6 lg:px-8 xl:gap-4">
         <button
           onClick={() => setMobileOpen(true)}
           className="flex h-10 w-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent xl:hidden"
@@ -357,11 +358,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       )}
 
       {/* MAIN CONTAINER */}
-      <main className="flex-1 overflow-x-hidden bg-background py-6 md:py-8">
-        <div className="mx-auto w-full max-w-screen-xl min-w-0 px-4 md:px-6 lg:px-8 space-y-6">
+      <main className="flex-1 overflow-x-hidden py-6 md:py-8">
+        <div className="mx-auto w-full max-w-screen-2xl min-w-0 px-4 md:px-6 lg:px-8 space-y-8">
           {children}
         </div>
       </main>
+
+      <Footer />
     </div>
   );
 }

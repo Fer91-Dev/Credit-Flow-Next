@@ -8,6 +8,7 @@ import type { CuotaPersistida, EstadoCuota } from "@/lib/swr";
 
 interface Credito {
   id: string;
+  cliente_id: string;
   cliente: { nombre: string };
   saldo_pendiente: number;
   tasa: number;
@@ -17,6 +18,8 @@ interface Credito {
 interface PagoFormProps {
   /** Si viene, el form arranca con ese crédito preseleccionado y bloqueado. */
   creditoId?: string;
+  /** Si viene, la lista de créditos se acota a este cliente (se autoselecciona si hay uno solo). */
+  clienteId?: string;
   onClose: (success?: boolean) => void;
 }
 
@@ -44,7 +47,7 @@ function importePendiente(c: CuotaPersistida): number {
   return Math.max(0, round2(c.cuota_total - pagadoProg));
 }
 
-export function PagoForm({ creditoId, onClose }: PagoFormProps) {
+export function PagoForm({ creditoId, clienteId, onClose }: PagoFormProps) {
   const [creditos, setCreditos] = useState<Credito[]>([]);
   const [selected, setSelected] = useState<Credito | null>(null);
   const [creditoSel, setCreditoSel] = useState(creditoId ?? "");
@@ -61,18 +64,27 @@ export function PagoForm({ creditoId, onClose }: PagoFormProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Lista de créditos activos.
+  // Lista de créditos activos (acotada al cliente si se indica).
   useEffect(() => {
     fetch("/api/creditos?estado=activo&limit=1000")
       .then((r) => r.json())
       .then((j) => {
         if (j.ok) {
-          const list: Credito[] = j.data.creditos || [];
+          const todos: Credito[] = j.data.creditos || [];
+          const list = clienteId ? todos.filter((c) => c.cliente_id === clienteId) : todos;
           setCreditos(list);
-          if (creditoId) setSelected(list.find((c) => c.id === creditoId) || null);
+          if (creditoId) {
+            const c = list.find((x) => x.id === creditoId) || null;
+            setSelected(c);
+            if (c) setCreditoSel(c.id);
+          } else if (clienteId && list.length === 1) {
+            // Un solo crédito del cliente: preseleccionar automáticamente.
+            setSelected(list[0]);
+            setCreditoSel(list[0].id);
+          }
         }
       });
-  }, [creditoId]);
+  }, [creditoId, clienteId]);
 
   // Cuotas del crédito seleccionado.
   useEffect(() => {
