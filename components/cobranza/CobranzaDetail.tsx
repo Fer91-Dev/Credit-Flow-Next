@@ -4,13 +4,12 @@ import { ShieldAlert, MessageSquare, CalendarClock, HandCoins } from "lucide-rea
 import type { Credito, AccionCobranza } from "@/lib/swr";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { DetailSection, DetailGrid } from "@/components/ui/DetailGrid";
+import { formatFecha } from "@/lib/utils";
 
 function n0(x: number) {
   return new Intl.NumberFormat("es-AR", { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(x);
 }
-function fmtDate(s?: string | null) {
-  return s ? new Date(s).toLocaleDateString("es-AR", { day: "2-digit", month: "short", year: "2-digit" }) : "—";
-}
+const fmtDate = (s?: string | null) => formatFecha(s);
 
 const TIPO_LABEL: Record<AccionCobranza["tipo"], string> = {
   llamada: "Llamada", whatsapp: "WhatsApp", email: "Email", visita: "Visita", otro: "Otro",

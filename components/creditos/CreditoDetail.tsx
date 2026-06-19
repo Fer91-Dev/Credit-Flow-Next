@@ -5,7 +5,7 @@ import { CalendarDays, Wallet, TrendingUp, AlertCircle, Info, ArrowUpRight, Rece
 import { useAmortizacion, useCuotas, usePagosByCredito, type Credito, type EstadoCuota } from "@/lib/swr";
 import { abrirRecibo } from "@/lib/recibo";
 import { StatusBadge, type BadgeVariant } from "@/components/ui/StatusBadge";
-import { formatCreditoNumero } from "@/lib/utils";
+import { formatCreditoNumero, formatFecha } from "@/lib/utils";
 import { Stat } from "@/components/ui/Stat";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -15,9 +15,7 @@ function n2(x: number) {
 function n0(x: number) {
   return new Intl.NumberFormat("es-AR", { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(x);
 }
-function fmtDate(s: string) {
-  return new Date(s).toLocaleDateString("es-AR", { day: "2-digit", month: "short", year: "2-digit" });
-}
+const fmtDate = (s: string) => formatFecha(s);
 
 function estadoBadge(estado: string): { label: string; variant: "primary" | "success" | "muted" } {
   if (estado === "activo") return { label: "Activo", variant: "primary" };
@@ -62,16 +60,20 @@ export function CreditoDetail({ credito }: { credito: Credito }) {
   return (
     <div className="flex h-full min-h-0 flex-col">
       {/* ── Resumen ── */}
-      <div className="shrink-0 border-b border-border px-5 py-4">
-        <div className="flex items-start justify-between gap-3 mb-4">
-          <div>
-            <p className="font-mono text-[11px] text-muted-foreground">{formatCreditoNumero(credito.numero)}</p>
-            <p className="text-base font-semibold text-foreground">{credito.cliente.nombre}</p>
-            <p className="text-xs text-muted-foreground mt-0.5">
+      <div className="shrink-0 border-b border-border px-7 py-5">
+        <div className="flex items-start justify-between gap-4 mb-5">
+          <div className="space-y-1.5">
+            <div className="flex items-center gap-3">
+              <span className="font-mono text-2xl font-black text-primary tracking-tight leading-none">
+                {formatCreditoNumero(credito.numero)}
+              </span>
+              <StatusBadge label={est.label} variant={est.variant} />
+            </div>
+            <p className="text-sm font-semibold text-foreground">{credito.cliente.nombre}</p>
+            <p className="text-xs text-muted-foreground">
               {credito.tipo_credito} · {credito.tasa}% TNA · {credito.plazo_meses} meses
             </p>
           </div>
-          <StatusBadge label={est.label} variant={est.variant} />
         </div>
 
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -96,7 +98,7 @@ export function CreditoDetail({ credito }: { credito: Credito }) {
       </div>
 
       {/* ── Cuerpo scrolleable ── */}
-      <div className="flex-1 min-h-0 overflow-y-auto px-5 py-4 space-y-6">
+      <div className="flex-1 min-h-0 overflow-y-auto px-7 py-5 space-y-6">
 
         {/* Pagos registrados */}
         <section className="space-y-2">

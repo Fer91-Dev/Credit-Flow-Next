@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { Field, Input, Select } from "@/components/ui/field";
+import { maskMontoInput, parseMontoInput, numeroAInput } from "@/lib/utils";
 
 /** Cliente recién creado, devuelto a quien abrió el formulario. */
 export interface ClienteCreado { id: string; nombre: string; documento?: string | null }
@@ -49,8 +50,8 @@ export function ClienteForm({ clienteId, initialDocumento, onClose }: ClienteFor
           situacion_laboral: d.situacion_laboral ?? "", ocupacion: d.ocupacion ?? "",
           empleador: d.empleador ?? "",
           antiguedad_laboral_meses: d.antiguedad_laboral_meses != null ? String(d.antiguedad_laboral_meses) : "",
-          ingreso_mensual: d.ingreso_mensual != null ? String(d.ingreso_mensual) : "",
-          otros_ingresos: d.otros_ingresos != null ? String(d.otros_ingresos) : "",
+          ingreso_mensual: d.ingreso_mensual != null ? numeroAInput(d.ingreso_mensual) : "",
+          otros_ingresos: d.otros_ingresos != null ? numeroAInput(d.otros_ingresos) : "",
           telefono_laboral: d.telefono_laboral ?? "", direccion_laboral: d.direccion_laboral ?? "",
         });
       }
@@ -60,15 +61,25 @@ export function ClienteForm({ clienteId, initialDocumento, onClose }: ClienteFor
   const set = (field: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
     setFormData((p) => ({ ...p, [field]: e.target.value }));
 
+  // Campos de monto (es-AR): se enmascaran en vivo y se parsean a número al enviar.
+  const setMonto = (field: "ingreso_mensual" | "otros_ingresos") => (e: React.ChangeEvent<HTMLInputElement>) =>
+    setFormData((p) => ({ ...p, [field]: maskMontoInput(e.target.value) }));
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
     try {
+      // Los montos viajan como número (el texto enmascarado "850.000,00" rompería parseFloat en el server).
+      const body = {
+        ...formData,
+        ingreso_mensual: formData.ingreso_mensual ? parseMontoInput(formData.ingreso_mensual) : "",
+        otros_ingresos: formData.otros_ingresos ? parseMontoInput(formData.otros_ingresos) : "",
+      };
       const res = await fetch(clienteId ? `/api/clientes/${clienteId}` : "/api/clientes", {
         method: clienteId ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(body),
       });
       const json = await res.json();
       if (json.ok) onClose(true, json.data as ClienteCreado);
@@ -155,10 +166,10 @@ export function ClienteForm({ clienteId, initialDocumento, onClose }: ClienteFor
         <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Ingresos / capacidad de pago</p>
         <div className="grid grid-cols-2 gap-3">
           <Field label="Ingreso mensual ($)">
-            <Input name="ingreso_mensual" type="number" min="0" step="1000" placeholder="Ej: 850000" value={formData.ingreso_mensual} onChange={set("ingreso_mensual")} />
+            <Input name="ingreso_mensual" type="text" inputMode="decimal" placeholder="850.000,00" value={formData.ingreso_mensual} onChange={setMonto("ingreso_mensual")} className="text-right font-mono tabular-nums" />
           </Field>
           <Field label="Otros ingresos ($)">
-            <Input name="otros_ingresos" type="number" min="0" step="1000" placeholder="Ej: 150000" value={formData.otros_ingresos} onChange={set("otros_ingresos")} />
+            <Input name="otros_ingresos" type="text" inputMode="decimal" placeholder="150.000,00" value={formData.otros_ingresos} onChange={setMonto("otros_ingresos")} className="text-right font-mono tabular-nums" />
           </Field>
         </div>
       </section>

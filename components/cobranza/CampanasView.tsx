@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { useCampanas, useCampana, KEYS, type CampanaCobranza, type CampanaObjetivo, type CanalCampana, type EstadoCampana } from "@/lib/swr";
 import { construirMensajeCampana, linkWhatsapp, TEMPLATE_DEFAULT } from "@/lib/domain";
+import { formatFecha } from "@/lib/utils";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { SummaryStrip } from "@/components/ui/SummaryStrip";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -15,9 +16,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 function n0(x: number) {
   return new Intl.NumberFormat("es-AR", { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(x);
 }
-function fmtDate(s?: string | null) {
-  return s ? new Date(s).toLocaleDateString("es-AR", { day: "2-digit", month: "short", year: "2-digit" }) : "—";
-}
+const fmtDate = (s?: string | null) => formatFecha(s);
 
 const ESTADO_META: Record<EstadoCampana, { label: string; variant: "muted" | "success" | "primary" }> = {
   borrador: { label: "Borrador", variant: "muted" },

@@ -10,6 +10,7 @@ import {
   interesMora,
   diasAtraso,
   round2,
+  estadoCoherente,
 } from "@/lib/domain";
 import { getConfiguracion } from "@/lib/config";
 import type { NextRequest } from "next/server";
@@ -55,7 +56,10 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
   const config = await getConfiguracion(userId);
 
   const creditosConFinanzas = cliente.creditos.map((c) => {
-    const enMora = c.dias_mora > 0 && c.estado === "activo";
+    // Estado reconciliado: nunca mostrar un terminal SALDADO (pagado/cancelado)
+    // si el ledger todavía tiene deuda. Defensa ante datos legacy inconsistentes.
+    const estadoReal = estadoCoherente(c.estado, c.saldo_pendiente, c.cuotas);
+    const enMora = c.dias_mora > 0 && estadoReal === "activo";
     let cuota = 0;
     let interes_mora = 0;
     if (c.monto_original > 0 && c.plazo_meses >= 1) {
@@ -93,7 +97,7 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
     // solo el resumen; quitamos `cuotas` del payload del crédito.
     const { cuotas: _omit, ...rest } = c;
     void _omit;
-    return { ...rest, cuota, interes_mora, total_cobrado, cuotas_resumen };
+    return { ...rest, estado: estadoReal, cuota, interes_mora, total_cobrado, cuotas_resumen };
   });
 
   const activos = creditosConFinanzas.filter((c) => c.estado === "activo");

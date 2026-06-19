@@ -27,6 +27,12 @@ export interface FrecuenciaOpcion extends FrecuenciaDef {
   activo: boolean;
   /** Built-in (mensual/semanal/diario): no editable ni eliminable. */
   builtin: boolean;
+  /**
+   * N° de cuotas fijo para esta frecuencia (solo frecuencias no-mensuales).
+   * Cuando está configurado, el simulador bloquea el campo y no permite edición manual.
+   * Undefined = el operador puede ingresarlo libremente.
+   */
+  cuotasFijas?: number;
 }
 
 /** Cómo se redondea la cuota total. */

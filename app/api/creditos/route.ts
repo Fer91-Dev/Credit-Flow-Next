@@ -11,6 +11,7 @@ import {
   sumarPeriodos,
   construirPlanAmortizacion,
   planACuotas,
+  estadoCoherente,
   type FrecuenciaDef,
 } from "@/lib/domain";
 import { getConfiguracion } from "@/lib/config";
@@ -74,7 +75,10 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
       const graciaCred = (c.cronograma as { diasGracia?: number } | null)?.diasGracia ?? config.simulador.diasGracia;
       interes_mora = interesMora(cuota, c.dias_mora, { tasaDiaria: config.tasaMoraDiaria, diasGracia: graciaCred });
     }
-    return { ...c, interes_mora, tiene_pagos: c.pagos.length > 0 };
+    // Estado reconciliado: defensa de lectura ante datos legacy. La lista no carga
+    // cuotas, así que se valida contra el saldo (autoritativo, derivado del ledger).
+    const estado = estadoCoherente(c.estado, c.saldo_pendiente);
+    return { ...c, estado, interes_mora, tiene_pagos: c.pagos.length > 0 };
   });
 
   return successResponse({

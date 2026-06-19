@@ -103,8 +103,12 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     return errorResponse("Crédito no encontrado", "INVALID_REFERENCE", 400);
   }
 
-  if (credito.estado === "pagado") {
-    return errorResponse("El crédito ya está cancelado", "INVALID_STATE", 400);
+  if (credito.estado === "pagado" || credito.estado === "cancelado") {
+    return errorResponse("El crédito ya está saldado; no admite más cobros", "INVALID_STATE", 400);
+  }
+
+  if (credito.estado === "anulado") {
+    return errorResponse("El crédito está anulado; no admite cobros", "INVALID_STATE", 400);
   }
 
   if (credito.cuotas.length === 0) {

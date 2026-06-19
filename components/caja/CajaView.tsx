@@ -4,6 +4,7 @@ import { useState } from "react";
 import { mutate as globalMutate } from "swr";
 import { Landmark, ArrowDownLeft, ArrowUpRight, Scale, Download, Plus, ChevronDown } from "lucide-react";
 import { useCaja, type CajaData, type MovimientoCaja } from "@/lib/swr";
+import { formatFecha } from "@/lib/utils";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { KpiCard } from "@/components/ui/KpiCard";
 import { StatusBadge, type BadgeVariant } from "@/components/ui/StatusBadge";
@@ -22,9 +23,7 @@ function n2(x: number) {
 function ymd(d: Date) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
-function fmtDate(s: string) {
-  return new Date(s).toLocaleDateString("es-AR", { day: "2-digit", month: "short", year: "2-digit" });
-}
+const fmtDate = (s: string) => formatFecha(s);
 
 const TIPO_META: Record<MovimientoCaja["tipo"], { label: string; variant: BadgeVariant }> = {
   desembolso:         { label: "Desembolso",  variant: "warning" },

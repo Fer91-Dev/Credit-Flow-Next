@@ -10,17 +10,14 @@ import type { BadgeVariant } from "@/components/ui/StatusBadge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AuditoriaDetail } from "./AuditoriaDetail";
+import { formatFechaHora } from "@/lib/utils";
 
 const SEL =
   "h-10 rounded-lg border border-border bg-muted/40 pl-3 pr-8 text-sm text-foreground " +
   "outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/20 " +
   "appearance-none cursor-pointer [&>option]:bg-card [&>option]:text-foreground";
 
-function fmtDateTime(s: string) {
-  return new Date(s).toLocaleString("es-AR", {
-    day: "2-digit", month: "short", year: "2-digit", hour: "2-digit", minute: "2-digit",
-  });
-}
+const fmtDateTime = (s: string) => formatFechaHora(s);
 
 const entidadLabel: Record<string, string> = {
   clientes: "Cliente",

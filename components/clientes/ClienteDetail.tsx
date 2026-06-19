@@ -9,7 +9,7 @@ import { useClienteDetalle, useAccionesCobranza, useCuotas, type CreditoConFinan
 import { StatusBadge, type BadgeVariant } from "@/components/ui/StatusBadge";
 import { Stat } from "@/components/ui/Stat";
 import { Skeleton } from "@/components/ui/skeleton";
-import { formatCreditoNumero } from "@/lib/utils";
+import { formatCreditoNumero, formatFecha } from "@/lib/utils";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader,
@@ -30,9 +30,7 @@ const CUOTA_BADGE: Record<EstadoCuota, { label: string; variant: BadgeVariant }>
 function n0(x: number) {
   return new Intl.NumberFormat("es-AR", { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(x);
 }
-function fmtDate(s?: string | null) {
-  return s ? new Date(s).toLocaleDateString("es-AR", { day: "2-digit", month: "short", year: "2-digit" }) : "—";
-}
+const fmtDate = (s?: string | null) => formatFecha(s);
 function edad(fechaNac?: string | null): string {
   if (!fechaNac) return "";
   const d = new Date(fechaNac);

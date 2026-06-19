@@ -6,13 +6,12 @@ import type { Pago } from "@/lib/swr";
 import { abrirRecibo } from "@/lib/recibo";
 import { StatusBadge, type BadgeVariant } from "@/components/ui/StatusBadge";
 import { DetailSection, DetailGrid } from "@/components/ui/DetailGrid";
+import { formatFecha } from "@/lib/utils";
 
 function n2(x: number) {
   return new Intl.NumberFormat("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(x);
 }
-function fmtDate(s: string) {
-  return new Date(s).toLocaleDateString("es-AR", { day: "2-digit", month: "long", year: "numeric" });
-}
+const fmtDate = (s: string) => formatFecha(s);
 function metodoConfig(m: string): { label: string; variant: BadgeVariant } {
   switch (m.toLowerCase()) {
     case "efectivo":      return { label: "Efectivo",      variant: "success" };

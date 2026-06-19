@@ -408,9 +408,22 @@ export function CreditosTable() {
       </div>
 
       <Dialog open={dialogOpen} onOpenChange={open => { if (!open) handleFormClose(false); }}>
-        <DialogContent className="w-full max-w-[92vw] lg:max-w-4xl h-[88vh] max-h-[88vh] p-0 gap-0 flex flex-col overflow-hidden">
+        <DialogContent className="w-full max-w-[96vw] xl:max-w-6xl h-[94vh] max-h-[94vh] p-0 gap-0 flex flex-col overflow-hidden">
           <DialogHeader className="px-6 py-4 border-b border-border shrink-0">
-            <DialogTitle>{editingId ? "Editar crédito" : "Simulador de crédito"}</DialogTitle>
+            <div className="flex items-center gap-4">
+              {/* Badge tipográfico sin iconos Lucide */}
+              <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-primary/20 to-primary/5 border border-primary/20 flex items-center justify-center shrink-0">
+                <span className="font-mono text-base font-black text-primary leading-none">$</span>
+              </div>
+              <div>
+                <DialogTitle className="text-base font-semibold leading-tight">
+                  {editingId ? "Editar crédito" : "Simulador de crédito"}
+                </DialogTitle>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Sistema Francés · amortización por cuotas iguales
+                </p>
+              </div>
+            </div>
           </DialogHeader>
           <div className="flex-1 min-h-0 overflow-hidden">
             <CreditoForm creditoId={editingId} onClose={handleFormClose} />
@@ -419,8 +432,8 @@ export function CreditosTable() {
       </Dialog>
 
       <Dialog open={!!detail} onOpenChange={open => { if (!open) setDetail(null); }}>
-        <DialogContent className="w-full max-w-[92vw] lg:max-w-3xl h-[88vh] max-h-[88vh] p-0 gap-0 flex flex-col overflow-hidden">
-          <DialogHeader className="px-5 py-4 border-b border-border shrink-0">
+        <DialogContent className="w-full max-w-[96vw] lg:max-w-5xl h-[90vh] max-h-[90vh] p-0 gap-0 flex flex-col overflow-hidden">
+          <DialogHeader className="px-6 py-4 border-b border-border shrink-0">
             <DialogTitle>Detalle del crédito</DialogTitle>
           </DialogHeader>
           <div className="flex-1 min-h-0 overflow-hidden">

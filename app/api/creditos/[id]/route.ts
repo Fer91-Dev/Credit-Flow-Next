@@ -4,6 +4,7 @@ import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { registrarAuditoria } from "@/lib/audit";
 import { formatCreditoNumero } from "@/lib/utils";
+import { validarTransicionEstado, estadoCoherente } from "@/lib/domain";
 import type { NextRequest } from "next/server";
 
 interface RouteParams {
@@ -27,6 +28,7 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
       cliente: true,
       solicitud: true,
       pagos: { orderBy: { fecha: "desc" } },
+      cuotas: { select: { estado: true, pagado_capital: true, capital: true } },
     },
   });
 
@@ -34,7 +36,10 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
     return errorResponse("Crédito no encontrado", "NOT_FOUND", 404);
   }
 
-  return successResponse(credito);
+  // Estado reconciliado: nunca exponer un terminal saldado con deuda viva.
+  const { cuotas, ...rest } = credito;
+  const estado = estadoCoherente(credito.estado, credito.saldo_pendiente, cuotas);
+  return successResponse({ ...rest, estado });
 });
 
 /**
@@ -88,6 +93,32 @@ export const PATCH = withErrorHandler(async (req: NextRequest, { params }: Route
 
   if (Object.keys(updateData).length === 0) {
     return errorResponse("No hay campos para actualizar", "INVALID_INPUT", 400);
+  }
+
+  // ── Defensa de consistencia de estado ──────────────────────────────────────
+  // Un estado terminal SALDADO (pagado/cancelado) no puede convivir con deuda.
+  // El void administrativo (`anulado`) tiene su propio endpoint (/anular) que
+  // cuadra la caja; no se permite setearlo por PATCH para no descuadrar el libro.
+  if ("estado" in updateData) {
+    const objetivo = String(updateData.estado);
+    if (objetivo === "anulado") {
+      return errorResponse(
+        "Para anular un crédito usá POST /api/creditos/[id]/anular (cuadra la caja).",
+        "INVALID_STATE",
+        400
+      );
+    }
+    // Saldo efectivo tras este PATCH (puede venir junto en el mismo body).
+    const saldoEfectivo =
+      "saldo_pendiente" in updateData ? Number(updateData.saldo_pendiente) : existing.saldo_pendiente;
+    const cuotas = await prisma.cuotas.findMany({
+      where: { credito_id: id },
+      select: { estado: true, pagado_capital: true, capital: true },
+    });
+    const motivoRechazo = validarTransicionEstado(objetivo, saldoEfectivo, cuotas);
+    if (motivoRechazo) {
+      return errorResponse(motivoRechazo, "INVALID_STATE", 409);
+    }
   }
 
   const updated = await prisma.creditos.update({

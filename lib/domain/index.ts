@@ -15,6 +15,7 @@ export * from "./frequency";
 export * from "./mora";
 export * from "./payments";
 export * from "./cuotas";
+export * from "./credito-estado";
 export * from "./caja";
 export * from "./campanas";
 export * from "./calendar";

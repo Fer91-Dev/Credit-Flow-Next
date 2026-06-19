@@ -5,6 +5,7 @@ import {
   FileBarChart, ArrowUpRight, TrendingUp, Percent, AlertCircle, Download, Wallet,
 } from "lucide-react";
 import { useReportes } from "@/lib/swr";
+import { formatFecha } from "@/lib/utils";
 import type { Reporte } from "@/lib/swr";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { KpiCard } from "@/components/ui/KpiCard";
@@ -17,9 +18,7 @@ function n0(x: number) {
 function ymd(d: Date) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
-function fmtDate(s: string) {
-  return new Date(s).toLocaleDateString("es-AR", { day: "2-digit", month: "short", year: "2-digit" });
-}
+const fmtDate = (s: string) => formatFecha(s);
 
 const estadoLabel: Record<string, string> = {
   activo: "Activos", pagado: "Pagados", cancelado: "Cancelados", vencido: "Vencidos",

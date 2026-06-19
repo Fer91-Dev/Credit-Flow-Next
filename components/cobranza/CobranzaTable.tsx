@@ -4,6 +4,7 @@ import { useState, useMemo } from "react";
 import { useSWRConfig } from "swr";
 import { AlertCircle, Phone, Mail, Clock, Copy, CheckCheck, Search, DollarSign, ShieldAlert, MessageSquarePlus, CalendarClock, Megaphone, X, Users } from "lucide-react";
 import { useCreditos, useAccionesCobranza, KEYS, type Credito, type AccionCobranza } from "@/lib/swr";
+import { formatFecha } from "@/lib/utils";
 import { GestionForm } from "./GestionForm";
 import { CobranzaDetail } from "./CobranzaDetail";
 import { CampaignModal } from "./CampaignModal";
@@ -18,9 +19,7 @@ function n0(x: number) {
   return new Intl.NumberFormat("es-AR", { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(x);
 }
 
-function fmtDate(s: string) {
-  return new Date(s).toLocaleDateString("es-AR", { day: "2-digit", month: "short" });
-}
+const fmtDate = (s: string) => formatFecha(s);
 
 type Severidad = "critica" | "alta" | "todas";
 

@@ -3,13 +3,10 @@
 import { History, Database, Activity } from "lucide-react";
 import type { EventoAuditoria } from "@/lib/swr";
 import { StatusBadge, type BadgeVariant } from "@/components/ui/StatusBadge";
+import { formatFechaHora } from "@/lib/utils";
 import { DetailSection, DetailGrid } from "@/components/ui/DetailGrid";
 
-function fmtDateTime(s: string) {
-  return new Date(s).toLocaleString("es-AR", {
-    day: "2-digit", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit",
-  });
-}
+const fmtDateTime = (s: string) => formatFechaHora(s);
 
 const ENTIDAD_LABEL: Record<string, string> = {
   clientes: "Cliente", creditos: "Crédito", pagos: "Pago", configuracion: "Configuración", caja: "Caja",

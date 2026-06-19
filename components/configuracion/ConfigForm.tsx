@@ -8,6 +8,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { Field, Input, Select } from "@/components/ui/field";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { formatFecha } from "@/lib/utils";
 
 const ordenLabel: Record<string, string> = {
   mora: "Mora",
@@ -504,10 +505,7 @@ function FeriadosEditor({ feriados, onChange }: { feriados: string[]; onChange: 
     onChange([...feriados, nuevo].sort());
     setNuevo("");
   };
-  const fmt = (s: string) => {
-    const d = new Date(`${s}T00:00:00Z`);
-    return d.toLocaleDateString("es-AR", { day: "2-digit", month: "short", year: "2-digit", timeZone: "UTC" });
-  };
+  const fmt = (s: string) => formatFecha(`${s}T00:00:00Z`);
   return (
     <div>
       <p className="text-xs font-medium text-muted-foreground mb-2">Feriados (días no hábiles)</p>
@@ -574,6 +572,16 @@ function FrecuenciasEditor({ frecuencias, onChange }: {
 
   return (
     <div className="space-y-2">
+      {/* Cabecera de columnas */}
+      <div className="flex items-center gap-3 px-3 pb-1">
+        <p className="min-w-0 flex-1 text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60">Frecuencia</p>
+        <div className="flex items-center gap-2 shrink-0">
+          <p className="w-20 text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60 text-center">Días</p>
+          <p className="w-20 text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60 text-center">Cuotas fijas</p>
+        </div>
+        <span className="w-4 shrink-0" />
+        <span className="w-4 shrink-0" />
+      </div>
       {frecuencias.map(f => (
         <div key={f.clave} className="flex items-center gap-3 rounded-lg border border-border bg-muted/20 px-3 py-2">
           <div className="min-w-0 flex-1">
@@ -590,10 +598,26 @@ function FrecuenciasEditor({ frecuencias, onChange }: {
               {f.esMensual ? "mensual (calendario)" : `cada ${f.dias} día${f.dias !== 1 ? "s" : ""}`} · ≈ {f.periodosAnio} pagos/año
             </p>
           </div>
-          {!f.builtin && !f.esMensual && (
-            <div className="w-24 shrink-0">
-              <Input type="number" min="1" step="1" value={f.dias}
-                onChange={e => setDiasFrec(f.clave, parseInt(e.target.value) || 1)} />
+          {!f.esMensual && (
+            <div className="flex items-center gap-2 shrink-0">
+              {!f.builtin && (
+                <div className="w-20">
+                  <Input type="number" min="1" step="1" value={f.dias} title="Días por período"
+                    onChange={e => setDiasFrec(f.clave, parseInt(e.target.value) || 1)} />
+                </div>
+              )}
+              <div className="w-20">
+                <Input
+                  type="number" min="1" step="1"
+                  placeholder="cuotas"
+                  title="N° de cuotas fijas para esta frecuencia"
+                  value={f.cuotasFijas ?? ""}
+                  onChange={e => {
+                    const v = parseInt(e.target.value);
+                    setField(f.clave, { cuotasFijas: v > 0 ? v : undefined });
+                  }}
+                />
+              </div>
             </div>
           )}
           <Toggle checked={f.activo} onChange={() => toggle(f.clave)} />
