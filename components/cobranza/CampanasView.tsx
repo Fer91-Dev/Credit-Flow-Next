@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState } from "react";
 import { useSWRConfig } from "swr";
@@ -193,18 +193,18 @@ function CampanaDetalle({ id, onBack }: { id: string; onBack: () => void }) {
             <tbody>
               {campana.objetivos.map((o, idx) => (
                 <tr key={o.id} className={idx % 2 === 1 ? "bg-muted/5" : ""}>
-                  <td className="px-4 py-3 border-b border-border/40">
+                  <td className="px-4 py-3 border-b border-border/70">
                     <p className="font-medium text-foreground">{o.credito.cliente.nombre}</p>
                     <p className="text-[11px] text-muted-foreground/60">{o.credito.cliente.telefono || "sin teléfono"}</p>
                   </td>
-                  <td className="px-4 py-3 text-center border-b border-border/40">
+                  <td className="px-4 py-3 text-center border-b border-border/70">
                     <span className={`font-mono text-sm font-bold ${o.dias_mora > 30 ? "text-destructive" : "text-warning"}`}>{o.dias_mora}d</span>
                   </td>
-                  <td className="px-4 py-3 text-right font-mono font-bold text-foreground border-b border-border/40">${n0(o.oferta_monto)}</td>
-                  <td className="px-4 py-3 text-right font-mono border-b border-border/40">
+                  <td className="px-4 py-3 text-right font-mono font-bold text-foreground border-b border-border/70">${n0(o.oferta_monto)}</td>
+                  <td className="px-4 py-3 text-right font-mono border-b border-border/70">
                     {o.oferta_descuento > 0 ? <span className="text-success">−${n0(o.oferta_descuento)}</span> : <span className="text-muted-foreground/20">—</span>}
                   </td>
-                  <td className="px-4 py-3 text-center border-b border-border/40">
+                  <td className="px-4 py-3 text-center border-b border-border/70">
                     <button onClick={() => togglePromesa(o)} title="Marcar promesa de pago"
                       className={`h-6 w-6 rounded-md border inline-flex items-center justify-center transition-colors ${
                         o.promesa_generada ? "bg-success/15 border-success/40 text-success" : "border-border text-muted-foreground/40 hover:bg-muted"
@@ -212,7 +212,7 @@ function CampanaDetalle({ id, onBack }: { id: string; onBack: () => void }) {
                       <Check className="h-3.5 w-3.5" />
                     </button>
                   </td>
-                  <td className="px-4 py-3 text-right border-b border-border/40 pr-5">
+                  <td className="px-4 py-3 text-right border-b border-border/70 pr-5">
                     <button onClick={() => abrirWhatsapp(o)}
                       className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
                         abiertos.has(o.id) ? "bg-success/10 text-success border-success/30" : "text-primary border-primary/20 hover:bg-primary/10"

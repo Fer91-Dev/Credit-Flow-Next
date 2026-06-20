@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState } from "react";
 import { mutate as globalMutate } from "swr";
@@ -180,13 +180,13 @@ export function CajaView() {
                       const ingreso = m.monto >= 0;
                       return (
                         <tr key={m.id} onClick={() => setDetalle(m)} className={`cursor-pointer hover:bg-muted/20 transition-colors ${idx % 2 === 1 ? "bg-muted/5" : ""}`}>
-                          <td className="px-4 py-2.5 text-muted-foreground tabular-nums whitespace-nowrap border-b border-border/40">{fmtDate(m.fecha)}</td>
-                          <td className="px-4 py-2.5 border-b border-border/40"><StatusBadge label={meta.label} variant={meta.variant} /></td>
-                          <td className="px-4 py-2.5 text-foreground border-b border-border/40">{m.descripcion}</td>
-                          <td className="px-4 py-2.5 font-mono text-xs text-muted-foreground border-b border-border/40 hidden md:table-cell">
+                          <td className="px-4 py-2.5 text-muted-foreground tabular-nums whitespace-nowrap border-b border-border/70">{fmtDate(m.fecha)}</td>
+                          <td className="px-4 py-2.5 border-b border-border/70"><StatusBadge label={meta.label} variant={meta.variant} /></td>
+                          <td className="px-4 py-2.5 text-foreground border-b border-border/70">{m.descripcion}</td>
+                          <td className="px-4 py-2.5 font-mono text-xs text-muted-foreground border-b border-border/70 hidden md:table-cell">
                             {m.credito_numero != null ? formatCreditoNumero(m.credito_numero) : "—"}
                           </td>
-                          <td className={`px-4 py-2.5 pr-5 text-right font-mono font-semibold border-b border-border/40 ${ingreso ? "text-success" : "text-destructive"}`}>
+                          <td className={`px-4 py-2.5 pr-5 text-right font-mono font-semibold border-b border-border/70 ${ingreso ? "text-success" : "text-destructive"}`}>
                             {ingreso ? "+" : "−"}${n2(Math.abs(m.monto))}
                           </td>
                         </tr>

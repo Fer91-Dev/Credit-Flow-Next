@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState } from "react";
 import {
@@ -309,7 +309,7 @@ function CreditosTabla({ creditos, mostrarProximo }: { creditos: CreditoConFinan
                   className={`${idx % 2 === 1 ? "bg-muted/5" : ""} ${tieneCuotas ? "cursor-pointer hover:bg-muted/20" : ""}`}
                   onClick={tieneCuotas ? () => toggle(c.id) : undefined}
                 >
-                  <td className="px-3 py-2 text-foreground border-b border-border/40">
+                  <td className="px-3 py-2 text-foreground border-b border-border/70">
                     <span className="inline-flex items-center gap-1.5">
                       {tieneCuotas
                         ? <ChevronRight className={`h-3.5 w-3.5 text-muted-foreground transition-transform ${abierto ? "rotate-90" : ""}`} />
@@ -319,10 +319,10 @@ function CreditosTabla({ creditos, mostrarProximo }: { creditos: CreditoConFinan
                       <span className="text-muted-foreground/60"> · {c.tasa}% · {c.plazo_meses} cuotas</span>
                     </span>
                   </td>
-                  <td className="px-3 py-2 text-right font-mono text-muted-foreground tabular-nums border-b border-border/40">${n0(c.monto_original)}</td>
-                  <td className="px-3 py-2 text-right font-mono text-warning tabular-nums border-b border-border/40">${n0(c.saldo_pendiente)}</td>
-                  <td className="px-3 py-2 text-right font-mono text-primary tabular-nums border-b border-border/40">${n0(c.cuota)}</td>
-                  <td className="px-3 py-2 text-center tabular-nums border-b border-border/40">
+                  <td className="px-3 py-2 text-right font-mono text-muted-foreground tabular-nums border-b border-border/70">${n0(c.monto_original)}</td>
+                  <td className="px-3 py-2 text-right font-mono text-warning tabular-nums border-b border-border/70">${n0(c.saldo_pendiente)}</td>
+                  <td className="px-3 py-2 text-right font-mono text-primary tabular-nums border-b border-border/70">${n0(c.cuota)}</td>
+                  <td className="px-3 py-2 text-center tabular-nums border-b border-border/70">
                     {tieneCuotas ? (
                       <span className="font-mono text-muted-foreground">
                         {c.cuotas_resumen!.pagadas}/{c.cuotas_resumen!.total}
@@ -335,19 +335,19 @@ function CreditosTabla({ creditos, mostrarProximo }: { creditos: CreditoConFinan
                     )}
                   </td>
                   {mostrarProximo && (
-                    <td className="px-3 py-2 tabular-nums border-b border-border/40">
+                    <td className="px-3 py-2 tabular-nums border-b border-border/70">
                       {c.dias_mora > 0
                         ? <span className="text-destructive">{c.dias_mora}d mora</span>
                         : <span className="text-muted-foreground">{fmtDate(c.cuotas_resumen?.proxima_vencimiento ?? c.proximo_pago)}</span>}
                     </td>
                   )}
-                  <td className="px-3 py-2 pr-4 border-b border-border/40">
+                  <td className="px-3 py-2 pr-4 border-b border-border/70">
                     <StatusBadge label={b.label} variant={b.variant} />
                   </td>
                 </tr>
                 {abierto && (
                   <tr>
-                    <td colSpan={cols} className="border-b border-border/40 bg-muted/[0.03] p-0">
+                    <td colSpan={cols} className="border-b border-border/70 bg-muted/[0.03] p-0">
                       <CuotasInline creditoId={c.id} />
                     </td>
                   </tr>
@@ -466,7 +466,7 @@ function InfoBlock({
   const visibles = items.filter((it) => it.value != null && it.value !== "");
   return (
     <section className="overflow-hidden rounded-xl border border-border bg-muted/[0.12]">
-      <div className="flex items-center gap-2 border-b border-border/50 px-4 py-2.5">
+      <div className="flex items-center gap-2 border-b border-border/70 px-4 py-2.5">
         <Icon className="h-4 w-4 text-muted-foreground" />
         <h3 className="text-sm font-semibold text-foreground">{title}</h3>
       </div>

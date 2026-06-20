@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState, useMemo } from "react";
 import { mutate as globalMutate } from "swr";
@@ -235,23 +235,23 @@ export function CreditosTable() {
                       const est = estadoBadge(c.estado);
                       return (
                         <tr key={c.id} onClick={() => setDetail(c)} className={`cursor-pointer hover:bg-muted/20 transition-colors ${idx % 2 === 1 ? "bg-muted/5" : ""}`}>
-                          <td className="px-4 py-3 font-mono text-xs text-muted-foreground border-b border-border/40 whitespace-nowrap">{formatCreditoNumero(c.numero)}</td>
-                          <td className="px-4 py-3 font-medium text-foreground border-b border-border/40">{c.cliente.nombre}</td>
-                          <td className="px-4 py-3 border-b border-border/40">
+                          <td className="px-4 py-3 font-mono text-xs text-muted-foreground border-b border-border/70 whitespace-nowrap">{formatCreditoNumero(c.numero)}</td>
+                          <td className="px-4 py-3 font-medium text-foreground border-b border-border/70">{c.cliente.nombre}</td>
+                          <td className="px-4 py-3 border-b border-border/70">
                             <StatusBadge label={c.tipo_credito} variant="muted" />
                           </td>
-                          <td className="px-4 py-3 text-right font-mono text-sm text-foreground border-b border-border/40">
+                          <td className="px-4 py-3 text-right font-mono text-sm text-foreground border-b border-border/70">
                             ${n0(c.monto_original)}
                           </td>
-                          <td className="px-4 py-3 text-right font-mono text-sm border-b border-border/40">
+                          <td className="px-4 py-3 text-right font-mono text-sm border-b border-border/70">
                             <span className={c.saldo_pendiente > 0 ? "text-warning font-semibold" : "text-success"}>
                               ${n0(c.saldo_pendiente)}
                             </span>
                           </td>
-                          <td className="px-4 py-3 text-right font-mono text-xs text-muted-foreground border-b border-border/40">
+                          <td className="px-4 py-3 text-right font-mono text-xs text-muted-foreground border-b border-border/70">
                             {c.tasa}%
                           </td>
-                          <td className="px-4 py-3 text-center border-b border-border/40">
+                          <td className="px-4 py-3 text-center border-b border-border/70">
                             {c.dias_mora > 0 ? (
                               <StatusBadge
                                 label={`${c.dias_mora}d`}
@@ -261,10 +261,10 @@ export function CreditosTable() {
                               <span className="text-xs font-medium text-success">Al día</span>
                             )}
                           </td>
-                          <td className="px-4 py-3 border-b border-border/40">
+                          <td className="px-4 py-3 border-b border-border/70">
                             <StatusBadge label={est.label} variant={est.variant} />
                           </td>
-                          <td className="px-4 py-3 pr-5 text-right border-b border-border/40">
+                          <td className="px-4 py-3 pr-5 text-right border-b border-border/70">
                             <div className="flex justify-end gap-1" onClick={(e) => e.stopPropagation()}>
                               <button
                                 onClick={() => setDetail(c)}
@@ -358,7 +358,7 @@ export function CreditosTable() {
                         </p>
                       </div>
                     </div>
-                    <div className="flex items-center justify-between pt-2 border-t border-border/50">
+                    <div className="flex items-center justify-between pt-2 border-t border-border/70">
                       {c.dias_mora > 0
                         ? <StatusBadge label={`${c.dias_mora}d mora`} variant={c.dias_mora > 30 ? "destructive" : "warning"} />
                         : <span className="text-xs font-medium text-success">Al día</span>}
@@ -512,7 +512,7 @@ function AnularButton({ credito, onAnular }: { credito: Credito; onAnular: (id: 
 function EmptyState({ hasFilters, onNew, onClear }: { hasFilters: boolean; onNew: () => void; onClear: () => void }) {
   return (
     <div className="rounded-xl border border-dashed border-border/60 p-12 flex flex-col items-center gap-4 text-center">
-      <div className="h-16 w-16 rounded-2xl bg-muted/20 border border-border/50 flex items-center justify-center">
+      <div className="h-16 w-16 rounded-2xl bg-muted/20 border border-border/70 flex items-center justify-center">
         <FileText className="h-7 w-7 text-muted-foreground/20" />
       </div>
       <div className="space-y-1.5">
@@ -553,7 +553,7 @@ function BodySkeleton() {
           {[...Array(8)].map((_, i) => <Skeleton key={i} className="h-3" />)}
         </div>
         {[...Array(5)].map((_, i) => (
-          <div key={i} className="border-b border-border/40 px-4 py-3.5 grid grid-cols-8 gap-4">
+          <div key={i} className="border-b border-border/70 px-4 py-3.5 grid grid-cols-8 gap-4">
             {[...Array(8)].map((_, j) => <Skeleton key={j} className="h-4" />)}
           </div>
         ))}

@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState } from "react";
 import { CalendarDays, Wallet, TrendingUp, AlertCircle, Info, ArrowUpRight, Receipt, Loader2 } from "lucide-react";
@@ -130,26 +130,26 @@ export function CreditoDetail({ credito }: { credito: Credito }) {
                 <tbody>
                   {pagos.map((p, idx) => (
                     <tr key={p.id} className={idx % 2 === 1 ? "bg-muted/5" : ""}>
-                      <td className="px-3 py-2 text-muted-foreground tabular-nums border-b border-border/40">{fmtDate(p.fecha)}</td>
-                      <td className="px-3 py-2 text-right font-mono font-semibold text-success border-b border-border/40">+${n0(p.monto)}</td>
-                      <td className="px-3 py-2 text-right font-mono border-b border-border/40">
+                      <td className="px-3 py-2 text-muted-foreground tabular-nums border-b border-border/70">{fmtDate(p.fecha)}</td>
+                      <td className="px-3 py-2 text-right font-mono font-semibold text-success border-b border-border/70">+${n0(p.monto)}</td>
+                      <td className="px-3 py-2 text-right font-mono border-b border-border/70">
                         {p.aplicado_mora > 0 ? <span className="text-destructive">${n2(p.aplicado_mora)}</span> : <span className="text-muted-foreground/20">—</span>}
                       </td>
-                      <td className="px-3 py-2 text-right font-mono border-b border-border/40">
+                      <td className="px-3 py-2 text-right font-mono border-b border-border/70">
                         {p.aplicado_interes > 0 ? <span className="text-warning">${n2(p.aplicado_interes)}</span> : <span className="text-muted-foreground/20">—</span>}
                       </td>
                       {hayCargos && (
-                        <td className="px-3 py-2 text-right font-mono border-b border-border/40">
+                        <td className="px-3 py-2 text-right font-mono border-b border-border/70">
                           {p.aplicado_cargos > 0 ? <span className="text-muted-foreground">${n2(p.aplicado_cargos)}</span> : <span className="text-muted-foreground/20">—</span>}
                         </td>
                       )}
-                      <td className="px-3 py-2 text-right font-mono border-b border-border/40">
+                      <td className="px-3 py-2 text-right font-mono border-b border-border/70">
                         {p.aplicado_capital > 0 ? <span className="text-primary">${n2(p.aplicado_capital)}</span> : <span className="text-muted-foreground/20">—</span>}
                       </td>
-                      <td className="px-3 py-2 text-muted-foreground border-b border-border/40">
+                      <td className="px-3 py-2 text-muted-foreground border-b border-border/70">
                         {metodoLabel[p.metodo] ?? p.metodo}
                       </td>
-                      <td className="px-3 py-2 pr-4 text-right border-b border-border/40">
+                      <td className="px-3 py-2 pr-4 text-right border-b border-border/70">
                         <button
                           onClick={() => handleRecibo(p.id)}
                           disabled={reciboBusy === p.id}
@@ -207,12 +207,12 @@ export function CreditoDetail({ credito }: { credito: Credito }) {
                     const b = CUOTA_BADGE[q.estado];
                     return (
                       <tr key={q.nro} className={idx % 2 === 1 ? "bg-muted/5" : ""}>
-                        <td className="px-3 py-2 font-mono text-muted-foreground/50 tabular-nums border-b border-border/40">{q.nro}</td>
-                        <td className="px-3 py-2 text-muted-foreground tabular-nums border-b border-border/40">{fmtDate(q.fecha_vencimiento)}</td>
-                        <td className="px-3 py-2 text-right font-mono text-foreground tabular-nums border-b border-border/40">${n2(q.cuota_total)}</td>
-                        <td className="px-3 py-2 text-right font-mono text-warning tabular-nums border-b border-border/40 hidden sm:table-cell">${n2(q.interes)}</td>
-                        <td className="px-3 py-2 text-right font-mono text-primary tabular-nums border-b border-border/40">${n2(q.capital)}</td>
-                        <td className="px-3 py-2 pr-4 border-b border-border/40"><StatusBadge label={b.label} variant={b.variant} /></td>
+                        <td className="px-3 py-2 font-mono text-muted-foreground/50 tabular-nums border-b border-border/70">{q.nro}</td>
+                        <td className="px-3 py-2 text-muted-foreground tabular-nums border-b border-border/70">{fmtDate(q.fecha_vencimiento)}</td>
+                        <td className="px-3 py-2 text-right font-mono text-foreground tabular-nums border-b border-border/70">${n2(q.cuota_total)}</td>
+                        <td className="px-3 py-2 text-right font-mono text-warning tabular-nums border-b border-border/70 hidden sm:table-cell">${n2(q.interes)}</td>
+                        <td className="px-3 py-2 text-right font-mono text-primary tabular-nums border-b border-border/70">${n2(q.capital)}</td>
+                        <td className="px-3 py-2 pr-4 border-b border-border/70"><StatusBadge label={b.label} variant={b.variant} /></td>
                       </tr>
                     );
                   })}

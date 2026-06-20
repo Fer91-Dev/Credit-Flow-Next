@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState, useMemo } from "react";
 import { useSWRConfig } from "swr";
@@ -251,7 +251,7 @@ export function CobranzaTable() {
                   const sev = severidadConfig(c.dias_mora);
                   return (
                     <tr key={c.id} onClick={() => setDetalle(c)} className={`cursor-pointer hover:bg-muted/20 transition-colors ${seleccion.has(c.id) ? "bg-primary/5" : idx % 2 === 1 ? "bg-muted/5" : ""}`}>
-                      <td className="px-4 py-3 border-b border-border/40" onClick={(e) => e.stopPropagation()}>
+                      <td className="px-4 py-3 border-b border-border/70" onClick={(e) => e.stopPropagation()}>
                         <input
                           type="checkbox"
                           checked={seleccion.has(c.id)}
@@ -259,7 +259,7 @@ export function CobranzaTable() {
                           className="h-4 w-4 rounded border-border accent-primary cursor-pointer"
                         />
                       </td>
-                      <td className="px-4 py-3 border-b border-border/40">
+                      <td className="px-4 py-3 border-b border-border/70">
                         <p className="font-medium text-foreground">{c.cliente.nombre}</p>
                         {(() => {
                           const u = ultimaPorCredito.get(c.id);
@@ -276,7 +276,7 @@ export function CobranzaTable() {
                           );
                         })()}
                       </td>
-                      <td className="px-4 py-3 border-b border-border/40">
+                      <td className="px-4 py-3 border-b border-border/70">
                         <div className="flex flex-col gap-1">
                           {c.cliente.email && (
                             <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -291,25 +291,25 @@ export function CobranzaTable() {
                           {!c.cliente.email && !c.cliente.telefono && <span className="text-xs text-muted-foreground/20">—</span>}
                         </div>
                       </td>
-                      <td className="px-4 py-3 text-right font-mono font-bold border-b border-border/40">
+                      <td className="px-4 py-3 text-right font-mono font-bold border-b border-border/70">
                         <span className={c.dias_mora > 30 ? "text-destructive" : "text-warning"}>
                           ${n0(c.saldo_pendiente)}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-right font-mono border-b border-border/40">
+                      <td className="px-4 py-3 text-right font-mono border-b border-border/70">
                         {c.interes_mora && c.interes_mora > 0
                           ? <span className="text-destructive font-semibold">${n0(c.interes_mora)}</span>
                           : <span className="text-muted-foreground/20">—</span>}
                       </td>
-                      <td className="px-4 py-3 text-center border-b border-border/40">
+                      <td className="px-4 py-3 text-center border-b border-border/70">
                         <span className={`font-mono font-bold text-sm ${c.dias_mora > 30 ? "text-destructive" : "text-warning"}`}>
                           {c.dias_mora}d
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-center border-b border-border/40">
+                      <td className="px-4 py-3 text-center border-b border-border/70">
                         <StatusBadge label={sev.label} variant={sev.variant} />
                       </td>
-                      <td className="px-4 py-3 pr-5 border-b border-border/40">
+                      <td className="px-4 py-3 pr-5 border-b border-border/70">
                         <div className="flex items-center gap-1.5">
                           <button
                             onClick={(e) => { e.stopPropagation(); setGestion(c); }}
@@ -382,7 +382,7 @@ export function CobranzaTable() {
                     </div>
                   )}
                   {(c.cliente.email || c.cliente.telefono) && (
-                    <div className="flex flex-col gap-1 pt-2 border-t border-border/50">
+                    <div className="flex flex-col gap-1 pt-2 border-t border-border/70">
                       {c.cliente.email && (
                         <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                           <Mail className="h-3 w-3 shrink-0" />{c.cliente.email}
@@ -399,7 +399,7 @@ export function CobranzaTable() {
                     const u = ultimaPorCredito.get(c.id);
                     if (!u) return null;
                     return (
-                      <div className="flex items-center justify-between pt-2 border-t border-border/50 text-[11px]">
+                      <div className="flex items-center justify-between pt-2 border-t border-border/70 text-[11px]">
                         <span className="text-muted-foreground/70">Última: {resultadoLabel[u.resultado]}</span>
                         {u.proximo_contacto && (
                           <span className="flex items-center gap-1 text-primary">
@@ -538,7 +538,7 @@ function BodySkeleton() {
           {[...Array(6)].map((_, i) => <Skeleton key={i} className="h-3" />)}
         </div>
         {[...Array(5)].map((_, i) => (
-          <div key={i} className="border-b border-border/40 px-4 py-3.5 grid grid-cols-6 gap-4">
+          <div key={i} className="border-b border-border/70 px-4 py-3.5 grid grid-cols-6 gap-4">
             {[...Array(6)].map((_, j) => <Skeleton key={j} className="h-4" />)}
           </div>
         ))}

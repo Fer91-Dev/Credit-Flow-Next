@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState, useEffect } from "react";
 import { ArrowRight, Check, Loader2, Search, X } from "lucide-react";
@@ -413,15 +413,15 @@ export function PagoForm({ creditoId, clienteId, onClose }: PagoFormProps) {
                             className={`${manual ? "opacity-50" : "cursor-pointer hover:bg-muted/20"} ${incluida ? "bg-primary/5" : ""}`}
                             title={manual ? "Desactivá «Monto personalizado» para elegir cuotas" : "Cobrar hasta esta cuota"}
                           >
-                            <td className="px-2 py-2 text-center border-b border-border/40">
+                            <td className="px-2 py-2 text-center border-b border-border/70">
                               <span className={`inline-flex h-4 w-4 items-center justify-center rounded border ${incluida ? "bg-primary border-primary text-primary-foreground" : "border-border"}`}>
                                 {incluida && <Check className="h-3 w-3" />}
                               </span>
                             </td>
-                            <td className="px-2 py-2 font-mono text-muted-foreground/60 border-b border-border/40">{c.nro}</td>
-                            <td className="px-3 py-2 text-muted-foreground tabular-nums border-b border-border/40">{fmtDate(c.fecha_vencimiento)}</td>
-                            <td className="px-3 py-2 text-right font-mono text-foreground tabular-nums border-b border-border/40">${fmt2(importePendiente(c))}</td>
-                            <td className="px-3 py-2 pr-3 border-b border-border/40"><StatusBadge label={b.label} variant={b.variant} /></td>
+                            <td className="px-2 py-2 font-mono text-muted-foreground/60 border-b border-border/70">{c.nro}</td>
+                            <td className="px-3 py-2 text-muted-foreground tabular-nums border-b border-border/70">{fmtDate(c.fecha_vencimiento)}</td>
+                            <td className="px-3 py-2 text-right font-mono text-foreground tabular-nums border-b border-border/70">${fmt2(importePendiente(c))}</td>
+                            <td className="px-3 py-2 pr-3 border-b border-border/70"><StatusBadge label={b.label} variant={b.variant} /></td>
                           </tr>
                         );
                       })}

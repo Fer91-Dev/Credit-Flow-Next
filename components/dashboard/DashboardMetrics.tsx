@@ -1,8 +1,7 @@
 "use client";
 
-import { AlertCircle, TrendingUp, Users, Wallet, ArrowUpRight, Clock, BarChart3 } from "lucide-react";
+import { AlertCircle, TrendingUp, Users, Wallet, ArrowUpRight, Clock } from "lucide-react";
 import { useDashboard, type DashboardData } from "@/lib/swr";
-import { PageHeader } from "@/components/ui/PageHeader";
 import { KpiCard } from "@/components/ui/KpiCard";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -13,26 +12,13 @@ function n0(num: number) {
 export function DashboardMetrics() {
   const { data, error, isLoading } = useDashboard();
 
-  return (
-    <div className="space-y-6">
-      <PageHeader
-        icon={BarChart3}
-        title="Cartera"
-        subtitle="Resumen financiero y métricas de la cartera"
-        accent="primary"
-      />
-
-      {isLoading ? (
-        <BodySkeleton />
-      ) : error || !data ? (
-        <div className="rounded-xl bg-destructive/10 border border-destructive/30 p-4 text-destructive text-sm">
-          {error?.message || "Sin datos disponibles"}
-        </div>
-      ) : (
-        <CarteraBody data={data} />
-      )}
+  if (isLoading) return <BodySkeleton />;
+  if (error || !data) return (
+    <div className="rounded-xl bg-destructive/10 border border-destructive/30 p-4 text-destructive text-sm">
+      {error?.message || "Sin datos disponibles"}
     </div>
   );
+  return <CarteraBody data={data} />;
 }
 
 function BodySkeleton() {

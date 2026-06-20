@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState } from "react";
 import {
@@ -143,7 +143,7 @@ export function ReportesView() {
                   </thead>
                   <tbody>
                     {reporte.cobranzas_por_metodo.map((m) => (
-                      <tr key={m.metodo} className="border-t border-border/40">
+                      <tr key={m.metodo} className="border-t border-border/70">
                         <td className="py-2"><StatusBadge label={metodoLabel[m.metodo] ?? m.metodo} variant="muted" /></td>
                         <td className="py-2 text-right tabular-nums text-muted-foreground">{m.cantidad}</td>
                         <td className="py-2 text-right font-mono font-semibold text-success">${n0(m.monto)}</td>
@@ -166,7 +166,7 @@ export function ReportesView() {
                 </thead>
                 <tbody>
                   {reporte.cartera.por_estado.map((e) => (
-                    <tr key={e.estado} className="border-t border-border/40">
+                    <tr key={e.estado} className="border-t border-border/70">
                       <td className="py-2 capitalize">{estadoLabel[e.estado] ?? e.estado}</td>
                       <td className="py-2 text-right tabular-nums text-muted-foreground">{e.cantidad}</td>
                       <td className="py-2 text-right font-mono font-semibold text-foreground">${n0(e.saldo_pendiente)}</td>
@@ -213,7 +213,7 @@ export function ReportesView() {
                   </thead>
                   <tbody>
                     {reporte.detalle_pagos.map((p, i) => (
-                      <tr key={i} className="border-t border-border/40">
+                      <tr key={i} className="border-t border-border/70">
                         <td className="py-2 text-muted-foreground tabular-nums whitespace-nowrap">{fmtDate(p.fecha)}</td>
                         <td className="py-2 text-foreground">{p.cliente}</td>
                         <td className="py-2 text-right font-mono font-semibold text-success">${n0(p.monto)}</td>

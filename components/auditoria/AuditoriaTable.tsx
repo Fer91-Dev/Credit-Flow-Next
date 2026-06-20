@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState, useMemo } from "react";
 import { History, Activity, CalendarClock, Wallet, Search, ChevronDown, X } from "lucide-react";
@@ -156,14 +156,14 @@ export function AuditoriaTable() {
                       const acc = accionConfig(e.accion);
                       return (
                         <tr key={e.id} onClick={() => setDetalle(e)} className={`cursor-pointer hover:bg-muted/20 transition-colors ${idx % 2 === 1 ? "bg-muted/5" : ""}`}>
-                          <td className="px-4 py-3 text-xs text-muted-foreground tabular-nums border-b border-border/40 whitespace-nowrap">{fmtDateTime(e.created_at)}</td>
-                          <td className="px-4 py-3 border-b border-border/40">
+                          <td className="px-4 py-3 text-xs text-muted-foreground tabular-nums border-b border-border/70 whitespace-nowrap">{fmtDateTime(e.created_at)}</td>
+                          <td className="px-4 py-3 border-b border-border/70">
                             <span className="text-xs text-muted-foreground">{entidadLabel[e.entidad] ?? e.entidad}</span>
                           </td>
-                          <td className="px-4 py-3 border-b border-border/40">
+                          <td className="px-4 py-3 border-b border-border/70">
                             <StatusBadge label={acc.label} variant={acc.variant} />
                           </td>
-                          <td className="px-4 py-3 pr-5 text-foreground border-b border-border/40">{e.descripcion}</td>
+                          <td className="px-4 py-3 pr-5 text-foreground border-b border-border/70">{e.descripcion}</td>
                         </tr>
                       );
                     })}
@@ -209,7 +209,7 @@ export function AuditoriaTable() {
 function EmptyState({ hasFilters }: { hasFilters: boolean }) {
   return (
     <div className="rounded-xl border border-dashed border-border/60 p-12 flex flex-col items-center gap-4 text-center">
-      <div className="h-16 w-16 rounded-2xl bg-muted/20 border border-border/50 flex items-center justify-center">
+      <div className="h-16 w-16 rounded-2xl bg-muted/20 border border-border/70 flex items-center justify-center">
         <History className="h-7 w-7 text-muted-foreground/20" />
       </div>
       <div className="space-y-1.5">
@@ -241,7 +241,7 @@ function BodySkeleton() {
           {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-3" />)}
         </div>
         {[...Array(6)].map((_, i) => (
-          <div key={i} className="border-b border-border/40 px-4 py-3.5 grid grid-cols-4 gap-4">
+          <div key={i} className="border-b border-border/70 px-4 py-3.5 grid grid-cols-4 gap-4">
             {[...Array(4)].map((_, j) => <Skeleton key={j} className="h-4" />)}
           </div>
         ))}
