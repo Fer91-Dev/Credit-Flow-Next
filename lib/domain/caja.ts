@@ -11,7 +11,24 @@ export type TipoMovimiento =
   | "cobro"             // ingreso: pago del cliente
   | "devolucion"        // egreso: devolución al cliente (p. ej. al anular)
   | "reversa_desembolso"// ingreso: se deshace el desembolso (al anular)
-  | "ajuste";           // manual (ingreso o egreso)
+  | "ajuste"            // manual (ingreso o egreso)
+  | "transferencia";    // movimiento de saldo entre cuentas (signo explícito)
+
+/** Cuentas de tesorería disponibles. */
+export type Cuenta = "efectivo" | "banco" | "dolares";
+
+export const CUENTAS: readonly Cuenta[] = ["efectivo", "banco", "dolares"] as const;
+
+export const CUENTA_LABEL: Record<Cuenta, string> = {
+  efectivo: "Efectivo",
+  banco: "Banco",
+  dolares: "Dólares",
+};
+
+/** True si el string es una cuenta válida. */
+export function esCuentaValida(v: unknown): v is Cuenta {
+  return typeof v === "string" && (CUENTAS as readonly string[]).includes(v);
+}
 
 /** Tipos cuyo signo natural es egreso (monto negativo). */
 const EGRESOS: ReadonlySet<TipoMovimiento> = new Set(["desembolso", "devolucion"]);
@@ -34,6 +51,21 @@ export function montoConSigno(tipo: TipoMovimiento, importe: number, ingreso = t
 /** Saldo de caja = suma de los montos (ya firmados). */
 export function saldoDe(movimientos: { monto: number }[]): number {
   return round2(movimientos.reduce((s, m) => s + m.monto, 0));
+}
+
+/**
+ * Saldo desglosado por cuenta a partir de los movimientos (ya firmados).
+ * Devuelve siempre las tres cuentas, aunque alguna esté en 0.
+ */
+export function saldosPorCuenta(
+  movimientos: { monto: number; cuenta?: string | null }[]
+): Record<Cuenta, number> {
+  const acc: Record<Cuenta, number> = { efectivo: 0, banco: 0, dolares: 0 };
+  for (const m of movimientos) {
+    const c = esCuentaValida(m.cuenta) ? m.cuenta : "efectivo";
+    acc[c] = round2(acc[c] + m.monto);
+  }
+  return acc;
 }
 
 /** Totales de un conjunto de movimientos: ingresos, egresos (positivo) y neto. */

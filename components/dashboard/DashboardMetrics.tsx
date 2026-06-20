@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertCircle, TrendingUp, Users, Wallet, ArrowUpRight, Clock } from "lucide-react";
+import { AlertCircle, TrendingUp, Users, Wallet, ArrowUpRight, Clock, Target } from "lucide-react";
 import { useDashboard, type DashboardData } from "@/lib/swr";
 import { KpiCard } from "@/components/ui/KpiCard";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -35,11 +35,18 @@ function BodySkeleton() {
 }
 
 function CarteraBody({ data }: { data: DashboardData }) {
-  const { resumen, mora, transacciones } = data;
+  const { resumen, mora, transacciones, cobranza_mes } = data;
   const totalMoraItems = mora.detalle.dias_1_30 + mora.detalle.dias_31_60 + mora.detalle.dias_60_mas;
 
   return (
     <div className="space-y-6">
+
+      {/* ── Avance de cobranzas del mes ── */}
+      <AvanceCobranzas
+        esperado={cobranza_mes.esperado}
+        cobrado={cobranza_mes.cobrado}
+        cuotas={cobranza_mes.cuotas_total}
+      />
 
       {/* ── KPI Strip ── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -152,6 +159,68 @@ function CarteraBody({ data }: { data: DashboardData }) {
         </div>
 
       </div>
+    </div>
+  );
+}
+
+function AvanceCobranzas({
+  esperado, cobrado, cuotas,
+}: {
+  esperado: number; cobrado: number; cuotas: number;
+}) {
+  const pct = esperado > 0 ? Math.min(100, Math.round((cobrado / esperado) * 100)) : 0;
+  const pendiente = Math.max(0, esperado - cobrado);
+
+  // Color del progreso según avance
+  const barColor =
+    pct >= 80 ? "bg-success" : pct >= 50 ? "bg-warning" : "bg-destructive";
+  const pctColor =
+    pct >= 80 ? "text-success" : pct >= 50 ? "text-warning" : "text-destructive";
+
+  return (
+    <div className="rounded-xl bg-card border border-border p-5">
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-muted/40 border border-border">
+            <Target className="h-3.5 w-3.5 text-muted-foreground" />
+          </div>
+          <div>
+            <h3 className="text-sm font-semibold text-foreground">Avance de cobranzas</h3>
+            <p className="text-[11px] text-muted-foreground">
+              Mes en curso · {cuotas} {cuotas === 1 ? "cuota" : "cuotas"}
+            </p>
+          </div>
+        </div>
+        <span className={`text-2xl font-bold font-mono ${pctColor}`}>{pct}%</span>
+      </div>
+
+      {/* Barra de progreso */}
+      <div className="h-2.5 w-full rounded-full bg-muted/40 overflow-hidden">
+        <div
+          className={`h-full rounded-full transition-all duration-700 ${barColor}`}
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+
+      {/* Cifras */}
+      <div className="grid grid-cols-3 gap-3 mt-4">
+        <div>
+          <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-1">Cobrado</p>
+          <p className="text-sm font-bold text-success font-mono">${n0(cobrado)}</p>
+        </div>
+        <div>
+          <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-1">Esperado</p>
+          <p className="text-sm font-bold text-foreground font-mono">${n0(esperado)}</p>
+        </div>
+        <div>
+          <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-1">Pendiente</p>
+          <p className="text-sm font-bold text-warning font-mono">${n0(pendiente)}</p>
+        </div>
+      </div>
+
+      {esperado === 0 && (
+        <p className="text-xs text-muted-foreground mt-3">Sin cuotas con vencimiento este mes</p>
+      )}
     </div>
   );
 }

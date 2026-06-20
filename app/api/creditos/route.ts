@@ -46,6 +46,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
       where,
       include: {
         cliente: { select: { id: true, nombre: true, documento: true } },
+        vendedor: { select: { id: true, nombre: true } },
         pagos: { orderBy: { fecha: "desc" }, take: 5 },
       },
       orderBy: { created_at: "desc" },
@@ -134,6 +135,19 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     return errorResponse("Montos inválidos", "INVALID_INPUT", 400);
   }
 
+  // Validar vendedor (opcional): debe existir y pertenecer al tenant.
+  let vendedorId: string | null = null;
+  if (body.vendedor_id) {
+    const vendedor = await prisma.vendedores.findFirst({
+      where: { ...withTenant(userId), id: body.vendedor_id },
+      select: { id: true },
+    });
+    if (!vendedor) {
+      return errorResponse("Vendedor no encontrado o sin permisos", "INVALID_REFERENCE", 400);
+    }
+    vendedorId = vendedor.id;
+  }
+
   // Frecuencia de pago (default mensual). El período de cada cuota lo da este campo.
   const frecuencia = normalizarFrecuencia(body.frecuencia);
 
@@ -214,6 +228,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
         fecha_inicio: fechaInicio,
         proximo_pago: proximoPagoFinal,
         solicitud_id: body.solicitud_id || null,
+        vendedor_id: vendedorId,
         ...withTenant(userId),
       },
       include: { cliente: true },

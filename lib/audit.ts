@@ -7,7 +7,7 @@
  */
 import { prisma } from "@/lib/prisma";
 
-export type AuditEntidad = "clientes" | "creditos" | "pagos" | "configuracion" | "caja" | "campana";
+export type AuditEntidad = "clientes" | "creditos" | "pagos" | "configuracion" | "caja" | "campana" | "vendedores" | "proveedores";
 export type AuditAccion =
   | "crear"
   | "actualizar"

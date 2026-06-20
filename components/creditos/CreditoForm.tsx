@@ -63,8 +63,10 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
     cliente_id: "", tipo_credito: "personal",
     monto_original: "", tasa: "", plazo_meses: "",
     frecuencia: "mensual" as Frecuencia,
+    vendedor_id: "",
   });
   const [clientes, setClientes] = useState<Cliente[]>([]);
+  const [vendedores, setVendedores] = useState<{ id: string; nombre: string }[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [vista, setVista] = useState<"operador" | "cliente">("operador");
@@ -88,6 +90,9 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
     fetch("/api/clientes?limit=1000")
       .then(r => r.json())
       .then(j => { if (j.ok) setClientes(j.data.clientes || []); });
+    fetch("/api/vendedores?activo=true")
+      .then(r => r.json())
+      .then(j => { if (j.ok) setVendedores((j.data.vendedores || []).map((v: { id: string; nombre: string }) => ({ id: v.id, nombre: v.nombre }))); });
     if (creditoId) fetchCredito();
   }, [creditoId]);
 
@@ -112,12 +117,13 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
       const res = await fetch(`/api/creditos/${creditoId}`);
       const json = await res.json();
       if (json.ok) {
-        const { cliente_id, tipo_credito, monto_original, tasa, plazo_meses, frecuencia } = json.data;
+        const { cliente_id, tipo_credito, monto_original, tasa, plazo_meses, frecuencia, vendedor_id } = json.data;
         setFormData({
           cliente_id, tipo_credito,
           monto_original: numeroAInput(monto_original),
           tasa: String(tasa), plazo_meses: String(plazo_meses),
           frecuencia: (frecuencia ?? "mensual") as Frecuencia,
+          vendedor_id: vendedor_id ?? "",
         });
       }
     } catch { setError("Error al cargar crédito"); }
@@ -162,6 +168,7 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
         tasa: parseFloat(formData.tasa) || 0,
         plazo_meses: parseInt(formData.plazo_meses),
         frecuencia: formData.frecuencia,
+        vendedor_id: formData.vendedor_id || null,
       };
       const res = await fetch(creditoId ? `/api/creditos/${creditoId}` : "/api/creditos", {
         method: creditoId ? "PATCH" : "POST",
@@ -380,6 +387,16 @@ tfoot td{padding:16px 18px;font-weight:700;color:#fff;font-size:15px}
               <option value="otro">Otro</option>
             </Select>
           </Field>
+          {vendedores.length > 0 && (
+            <Field label="Vendedor" hint="Quién otorga el crédito (para comisiones)">
+              <Select name="vendedor_id" value={formData.vendedor_id} onChange={set("vendedor_id")}>
+                <option value="">Sin asignar</option>
+                {vendedores.map(v => (
+                  <option key={v.id} value={v.id}>{v.nombre}</option>
+                ))}
+              </Select>
+            </Field>
+          )}
         </section>
 
         {/* Condiciones */}

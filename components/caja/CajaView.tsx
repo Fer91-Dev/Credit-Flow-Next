@@ -2,8 +2,8 @@
 
 import { useState } from "react";
 import { mutate as globalMutate } from "swr";
-import { Landmark, ArrowDownLeft, ArrowUpRight, Scale, Download, Plus, ChevronDown } from "lucide-react";
-import { useCaja, type CajaData, type MovimientoCaja } from "@/lib/swr";
+import { Landmark, ArrowDownLeft, ArrowUpRight, Scale, Download, Plus, ChevronDown, ArrowLeftRight, ClipboardCheck, Wallet, Banknote, CircleDollarSign } from "lucide-react";
+import { useCaja, type CajaData, type MovimientoCaja, type CuentaCaja } from "@/lib/swr";
 import { formatFecha } from "@/lib/utils";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { KpiCard } from "@/components/ui/KpiCard";
@@ -26,11 +26,19 @@ function ymd(d: Date) {
 const fmtDate = (s: string) => formatFecha(s);
 
 const TIPO_META: Record<MovimientoCaja["tipo"], { label: string; variant: BadgeVariant }> = {
-  desembolso:         { label: "Desembolso",  variant: "warning" },
-  cobro:              { label: "Cobro",        variant: "success" },
-  devolucion:         { label: "Devolución",   variant: "destructive" },
-  reversa_desembolso: { label: "Reversa",      variant: "primary" },
-  ajuste:             { label: "Ajuste",       variant: "muted" },
+  desembolso:         { label: "Desembolso",   variant: "warning" },
+  cobro:              { label: "Cobro",         variant: "success" },
+  devolucion:         { label: "Devolución",    variant: "destructive" },
+  reversa_desembolso: { label: "Reversa",       variant: "primary" },
+  ajuste:             { label: "Ajuste",        variant: "muted" },
+  transferencia:      { label: "Transferencia", variant: "primary" },
+};
+
+const CUENTAS: CuentaCaja[] = ["efectivo", "banco", "dolares"];
+const CUENTA_META: Record<CuentaCaja, { label: string; icon: typeof Wallet }> = {
+  efectivo: { label: "Efectivo", icon: Wallet },
+  banco:    { label: "Banco",    icon: Banknote },
+  dolares:  { label: "Dólares",  icon: CircleDollarSign },
 };
 
 const INPUT =
@@ -65,10 +73,15 @@ export function CajaView() {
   const [desde, setDesde] = useState(ymd(firstOfMonth));
   const [hasta, setHasta] = useState(ymd(today));
   const [tipo, setTipo] = useState("all");
+  const [cuenta, setCuenta] = useState<CuentaCaja | "all">("all");
   const [ajusteOpen, setAjusteOpen] = useState(false);
+  const [transferOpen, setTransferOpen] = useState(false);
+  const [arqueoOpen, setArqueoOpen] = useState(false);
   const [detalle, setDetalle] = useState<MovimientoCaja | null>(null);
 
-  const { caja, error, isLoading, mutate } = useCaja(desde, hasta, tipo);
+  const { caja, error, isLoading, mutate } = useCaja(desde, hasta, tipo, cuenta);
+
+  const refrescar = () => { mutate(); globalMutate("/api/dashboard"); };
 
   const preset = (d: Date, h: Date) => { setDesde(ymd(d)); setHasta(ymd(h)); };
   const presets = [
@@ -79,12 +92,24 @@ export function CajaView() {
   ];
 
   const actions = (
-    <div className="flex gap-2">
+    <div className="flex flex-wrap gap-2">
       <button
         onClick={() => setAjusteOpen(true)}
         className="flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:opacity-90 transition-opacity text-sm font-medium whitespace-nowrap"
       >
-        <Plus className="h-4 w-4" /> Ajuste manual
+        <Plus className="h-4 w-4" /> Ajuste
+      </button>
+      <button
+        onClick={() => setTransferOpen(true)}
+        className="flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-border text-foreground hover:bg-muted transition-colors text-sm font-medium whitespace-nowrap"
+      >
+        <ArrowLeftRight className="h-4 w-4" /> Transferir
+      </button>
+      <button
+        onClick={() => setArqueoOpen(true)}
+        className="flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-border text-foreground hover:bg-muted transition-colors text-sm font-medium whitespace-nowrap"
+      >
+        <ClipboardCheck className="h-4 w-4" /> Arqueo
       </button>
       <button
         onClick={() => caja && exportarCSV(caja)}
@@ -127,6 +152,19 @@ export function CajaView() {
                 <option value="devolucion">Devoluciones</option>
                 <option value="reversa_desembolso">Reversas</option>
                 <option value="ajuste">Ajustes</option>
+                <option value="transferencia">Transferencias</option>
+              </select>
+              <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            </div>
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-xs font-medium text-muted-foreground">Cuenta</span>
+            <div className="relative">
+              <select value={cuenta} onChange={(e) => setCuenta(e.target.value as CuentaCaja | "all")} className={SEL}>
+                <option value="all">Todas</option>
+                <option value="efectivo">Efectivo</option>
+                <option value="banco">Banco</option>
+                <option value="dolares">Dólares</option>
               </select>
               <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             </div>
@@ -150,9 +188,38 @@ export function CajaView() {
         </div>
       ) : (
         <div className="space-y-5">
-          {/* KPIs */}
+          {/* Saldos por cuenta (clickeables: filtran la tabla) */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            {CUENTAS.map((c) => {
+              const meta = CUENTA_META[c];
+              const Icon = meta.icon;
+              const saldo = caja.saldos_por_cuenta[c] ?? 0;
+              const active = cuenta === c;
+              return (
+                <button
+                  key={c}
+                  onClick={() => setCuenta(active ? "all" : c)}
+                  className={`text-left rounded-xl border p-4 transition-colors ${
+                    active ? "border-primary bg-primary/5" : "border-border bg-card hover:bg-muted/20"
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="flex items-center gap-2 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                      <Icon className="h-4 w-4" /> {meta.label}
+                    </span>
+                    {active && <span className="text-[10px] font-semibold text-primary uppercase tracking-widest">Filtrando</span>}
+                  </div>
+                  <p className={`text-xl font-bold font-mono ${saldo >= 0 ? "text-foreground" : "text-destructive"}`}>
+                    {c === "dolares" ? "US$" : "$"}{n2(saldo)}
+                  </p>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* KPIs del período */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <KpiCard icon={Scale} label="Saldo de caja" value={`$${n0(caja.saldo_total)}`} accent={caja.saldo_total >= 0 ? "success" : "destructive"} mono sub="acumulado total" />
+            <KpiCard icon={Scale} label="Saldo total" value={`$${n0(caja.saldo_total)}`} accent={caja.saldo_total >= 0 ? "success" : "destructive"} mono sub="suma de cuentas" />
             <KpiCard icon={ArrowDownLeft} label="Ingresos del período" value={`$${n0(caja.ingresos)}`} accent="success" mono />
             <KpiCard icon={ArrowUpRight} label="Egresos del período" value={`$${n0(caja.egresos)}`} accent="warning" mono />
             <KpiCard icon={Scale} label="Neto del período" value={`$${n0(caja.neto)}`} accent={caja.neto >= 0 ? "primary" : "destructive"} mono />
@@ -169,6 +236,7 @@ export function CajaView() {
                     <tr className="bg-muted/30">
                       <th className="px-4 py-3 text-left  text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">Fecha</th>
                       <th className="px-4 py-3 text-left  text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">Tipo</th>
+                      <th className="px-4 py-3 text-left  text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border hidden sm:table-cell">Cuenta</th>
                       <th className="px-4 py-3 text-left  text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">Descripción</th>
                       <th className="px-4 py-3 text-left  text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border hidden md:table-cell">Crédito</th>
                       <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border pr-5">Monto</th>
@@ -182,6 +250,7 @@ export function CajaView() {
                         <tr key={m.id} onClick={() => setDetalle(m)} className={`cursor-pointer hover:bg-muted/20 transition-colors ${idx % 2 === 1 ? "bg-muted/5" : ""}`}>
                           <td className="px-4 py-2.5 text-muted-foreground tabular-nums whitespace-nowrap border-b border-border/70">{fmtDate(m.fecha)}</td>
                           <td className="px-4 py-2.5 border-b border-border/70"><StatusBadge label={meta.label} variant={meta.variant} /></td>
+                          <td className="px-4 py-2.5 text-muted-foreground border-b border-border/70 hidden sm:table-cell">{CUENTA_META[m.cuenta]?.label ?? m.cuenta}</td>
                           <td className="px-4 py-2.5 text-foreground border-b border-border/70">{m.descripcion}</td>
                           <td className="px-4 py-2.5 font-mono text-xs text-muted-foreground border-b border-border/70 hidden md:table-cell">
                             {m.credito_numero != null ? formatCreditoNumero(m.credito_numero) : "—"}
@@ -204,7 +273,25 @@ export function CajaView() {
         open={ajusteOpen}
         onClose={(ok) => {
           setAjusteOpen(false);
-          if (ok) { mutate(); globalMutate("/api/dashboard"); }
+          if (ok) refrescar();
+        }}
+      />
+
+      <TransferenciaDialog
+        open={transferOpen}
+        saldos={caja?.saldos_por_cuenta}
+        onClose={(ok) => {
+          setTransferOpen(false);
+          if (ok) refrescar();
+        }}
+      />
+
+      <ArqueoDialog
+        open={arqueoOpen}
+        saldos={caja?.saldos_por_cuenta}
+        onClose={(ok) => {
+          setArqueoOpen(false);
+          if (ok) refrescar();
         }}
       />
 
@@ -227,10 +314,11 @@ function AjusteDialog({ open, onClose }: { open: boolean; onClose: (ok?: boolean
   const [sentido, setSentido] = useState("ingreso");
   const [descripcion, setDescripcion] = useState("");
   const [metodo, setMetodo] = useState("efectivo");
+  const [cuenta, setCuenta] = useState<CuentaCaja>("efectivo");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const reset = () => { setMonto(""); setSentido("ingreso"); setDescripcion(""); setMetodo("efectivo"); setError(null); };
+  const reset = () => { setMonto(""); setSentido("ingreso"); setDescripcion(""); setMetodo("efectivo"); setCuenta("efectivo"); setError(null); };
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -239,7 +327,7 @@ function AjusteDialog({ open, onClose }: { open: boolean; onClose: (ok?: boolean
       const res = await fetch("/api/caja", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ monto: parseFloat(monto), sentido, descripcion, metodo }),
+        body: JSON.stringify({ monto: parseFloat(monto), sentido, descripcion, metodo, cuenta }),
       });
       const json = await res.json();
       if (json.ok) { reset(); onClose(true); }
@@ -269,9 +357,16 @@ function AjusteDialog({ open, onClose }: { open: boolean; onClose: (ok?: boolean
               </Select>
             </Field>
             <Field label="Monto ($)" required>
-              <Input type="number" min="1" step="100" value={monto} onChange={(e) => setMonto(e.target.value)} placeholder="Ej: 50000" required />
+              <Input type="number" min="1" step="any" value={monto} onChange={(e) => setMonto(e.target.value)} placeholder="Ej: 50000" required />
             </Field>
           </div>
+          <Field label="Cuenta" required>
+            <Select value={cuenta} onChange={(e) => setCuenta(e.target.value as CuentaCaja)}>
+              <option value="efectivo">Efectivo</option>
+              <option value="banco">Banco</option>
+              <option value="dolares">Dólares</option>
+            </Select>
+          </Field>
           <Field label="Descripción" required>
             <Textarea value={descripcion} onChange={(e) => setDescripcion(e.target.value)} rows={2} placeholder="Motivo del ajuste…" />
           </Field>
@@ -295,9 +390,199 @@ function AjusteDialog({ open, onClose }: { open: boolean; onClose: (ok?: boolean
   );
 }
 
+function TransferenciaDialog({
+  open, onClose, saldos,
+}: {
+  open: boolean;
+  onClose: (ok?: boolean) => void;
+  saldos?: Record<CuentaCaja, number>;
+}) {
+  const [origen, setOrigen] = useState<CuentaCaja>("efectivo");
+  const [destino, setDestino] = useState<CuentaCaja>("banco");
+  const [monto, setMonto] = useState("");
+  const [descripcion, setDescripcion] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const reset = () => { setOrigen("efectivo"); setDestino("banco"); setMonto(""); setDescripcion(""); setError(null); };
+
+  const mismaCuenta = origen === destino;
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (mismaCuenta) { setError("Origen y destino deben ser distintos"); return; }
+    setLoading(true); setError(null);
+    try {
+      const res = await fetch("/api/caja/transferencia", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ origen, destino, monto: parseFloat(monto), descripcion }),
+      });
+      const json = await res.json();
+      if (json.ok) { reset(); onClose(true); }
+      else setError(json.error);
+    } catch {
+      setError("No se pudo registrar la transferencia");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => { if (!o) { reset(); onClose(false); } }}>
+      <DialogContent className="w-[95vw] sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Transferir entre cuentas</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={submit} className="space-y-4">
+          {error && (
+            <div className="rounded-lg bg-destructive/10 border border-destructive/20 px-3 py-2.5 text-sm text-destructive">{error}</div>
+          )}
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Desde" required>
+              <Select value={origen} onChange={(e) => setOrigen(e.target.value as CuentaCaja)}>
+                <option value="efectivo">Efectivo</option>
+                <option value="banco">Banco</option>
+                <option value="dolares">Dólares</option>
+              </Select>
+            </Field>
+            <Field label="Hacia" required>
+              <Select value={destino} onChange={(e) => setDestino(e.target.value as CuentaCaja)}>
+                <option value="efectivo">Efectivo</option>
+                <option value="banco">Banco</option>
+                <option value="dolares">Dólares</option>
+              </Select>
+            </Field>
+          </div>
+          {saldos && (
+            <p className="text-xs text-muted-foreground">
+              Saldo disponible en {CUENTA_META[origen].label}:{" "}
+              <span className="font-mono font-semibold text-foreground">${n2(saldos[origen] ?? 0)}</span>
+            </p>
+          )}
+          <Field label="Monto ($)" required>
+            <Input type="number" min="1" step="any" value={monto} onChange={(e) => setMonto(e.target.value)} placeholder="Ej: 50000" required />
+          </Field>
+          <Field label="Descripción">
+            <Textarea value={descripcion} onChange={(e) => setDescripcion(e.target.value)} rows={2} placeholder="Detalle opcional…" />
+          </Field>
+          <div className="flex justify-end gap-2 pt-1 border-t border-border">
+            <button type="button" onClick={() => { reset(); onClose(false); }} className="px-4 py-2 rounded-lg text-sm text-muted-foreground hover:bg-muted transition-colors">Cancelar</button>
+            <button type="submit" disabled={loading || !monto || mismaCuenta} className="px-5 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 disabled:opacity-40 transition-opacity">
+              {loading ? "Transfiriendo…" : "Transferir"}
+            </button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function ArqueoDialog({
+  open, onClose, saldos,
+}: {
+  open: boolean;
+  onClose: (ok?: boolean) => void;
+  saldos?: Record<CuentaCaja, number>;
+}) {
+  const [cuenta, setCuenta] = useState<CuentaCaja>("efectivo");
+  const [fisico, setFisico] = useState("");
+  const [descripcion, setDescripcion] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [resultado, setResultado] = useState<{ sistema: number; fisico: number; diferencia: number } | null>(null);
+
+  const reset = () => { setCuenta("efectivo"); setFisico(""); setDescripcion(""); setError(null); setResultado(null); };
+
+  const sistema = saldos?.[cuenta] ?? 0;
+  const fisicoNum = parseFloat(fisico);
+  const difPreview = Number.isFinite(fisicoNum) ? Math.round((fisicoNum - sistema) * 100) / 100 : null;
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true); setError(null);
+    try {
+      const res = await fetch("/api/caja/arqueo", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cuenta, monto_fisico: parseFloat(fisico), descripcion }),
+      });
+      const json = await res.json();
+      if (json.ok) { setResultado(json.data); onClose(true); }
+      else setError(json.error);
+    } catch {
+      setError("No se pudo registrar el arqueo");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => { if (!o) { reset(); onClose(false); } }}>
+      <DialogContent className="w-[95vw] sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Arqueo de caja</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={submit} className="space-y-4">
+          {error && (
+            <div className="rounded-lg bg-destructive/10 border border-destructive/20 px-3 py-2.5 text-sm text-destructive">{error}</div>
+          )}
+          <Field label="Cuenta" required>
+            <Select value={cuenta} onChange={(e) => { setCuenta(e.target.value as CuentaCaja); setResultado(null); }}>
+              <option value="efectivo">Efectivo</option>
+              <option value="banco">Banco</option>
+              <option value="dolares">Dólares</option>
+            </Select>
+          </Field>
+
+          <div className="rounded-lg bg-muted/30 border border-border px-3 py-2.5 flex items-center justify-between text-sm">
+            <span className="text-muted-foreground">Saldo de sistema</span>
+            <span className="font-mono font-semibold text-foreground">${n2(sistema)}</span>
+          </div>
+
+          <Field label="Conteo físico ($)" required>
+            <Input type="number" min="0" step="any" value={fisico} onChange={(e) => setFisico(e.target.value)} placeholder="Lo que hay realmente" required />
+          </Field>
+
+          {difPreview !== null && (
+            <div className={`rounded-lg px-3 py-2.5 flex items-center justify-between text-sm border ${
+              difPreview === 0
+                ? "bg-success/10 border-success/30 text-success"
+                : "bg-warning/10 border-warning/30 text-warning"
+            }`}>
+              <span>{difPreview === 0 ? "Cuadra exacto" : difPreview > 0 ? "Sobrante" : "Faltante"}</span>
+              <span className="font-mono font-bold">{difPreview > 0 ? "+" : ""}${n2(difPreview)}</span>
+            </div>
+          )}
+
+          {difPreview !== null && difPreview !== 0 && (
+            <p className="text-xs text-muted-foreground">
+              Se registrará un ajuste de {difPreview > 0 ? "ingreso" : "egreso"} para que el sistema cuadre con el conteo físico.
+            </p>
+          )}
+
+          <Field label="Observación">
+            <Textarea value={descripcion} onChange={(e) => setDescripcion(e.target.value)} rows={2} placeholder="Detalle opcional…" />
+          </Field>
+
+          <div className="flex justify-end gap-2 pt-1 border-t border-border">
+            <button type="button" onClick={() => { reset(); onClose(false); }} className="px-4 py-2 rounded-lg text-sm text-muted-foreground hover:bg-muted transition-colors">Cancelar</button>
+            <button type="submit" disabled={loading || fisico === ""} className="px-5 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 disabled:opacity-40 transition-opacity">
+              {loading ? "Registrando…" : "Confirmar arqueo"}
+            </button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function BodySkeleton() {
   return (
     <div className="space-y-5">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-20 rounded-xl" />)}
+      </div>
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-24 rounded-xl" />)}
       </div>

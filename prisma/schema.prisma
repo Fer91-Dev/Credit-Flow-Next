@@ -67,8 +67,11 @@ model creditos {
   cronograma      Json?     // snapshot del cronograma (corte/día venc/gracia/feriados) vigente al otorgar
   user_id         String    @db.Uuid
 
+  vendedor_id String?   @db.Uuid // vendedor que otorgó el crédito (Fase 5, opcional)
+
   cliente   clientes     @relation(fields: [cliente_id], references: [id], onDelete: Cascade)
   solicitud solicitudes? @relation(fields: [solicitud_id], references: [id], onDelete: SetNull)
+  vendedor  vendedores?  @relation(fields: [vendedor_id], references: [id], onDelete: SetNull)
   pagos     pagos[]
   acciones  acciones_cobranza[]
   cuotas    cuotas[]
@@ -76,6 +79,27 @@ model creditos {
   objetivos_campana campana_objetivo[]
 
   @@unique([user_id, numero])
+  @@index([user_id, vendedor_id])
+}
+
+/// Personal de ventas/cobranza (Fase 5). Tabla aditiva, multi-tenant.
+/// Cada vendedor puede tener un % de comisión sobre las ventas (créditos) que otorga
+/// y una meta de venta para el seguimiento de objetivos por equipo.
+model vendedores {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  created_at   DateTime @default(now()) @db.Timestamptz(6)
+  user_id      String   @db.Uuid
+  nombre       String
+  email        String?
+  telefono     String?
+  rol          String   @default("vendedor") // vendedor | supervisor | cobrador | admin
+  comision_pct Float    @default(0)          // % de comisión sobre el monto otorgado
+  meta_venta   Float    @default(0)          // meta de venta del período (0 = sin meta)
+  activo       Boolean  @default(true)
+
+  creditos creditos[]
+
+  @@index([user_id])
 }
 
 /// Campaña de recuperación de cobranza (Fase 7A). Tabla aditiva, multi-tenant.
@@ -136,9 +160,10 @@ model movimientos_caja {
   created_at  DateTime @default(now()) @db.Timestamptz(6)
   user_id     String   @db.Uuid
   fecha       DateTime @default(now()) @db.Date
-  tipo        String   // desembolso | cobro | devolucion | reversa_desembolso | ajuste
+  tipo        String   // desembolso | cobro | devolucion | reversa_desembolso | ajuste | transferencia
   monto       Float    // con signo: ingreso > 0, egreso < 0
   metodo      String?
+  cuenta      String   @default("efectivo") // efectivo | banco | dolares
   descripcion String
   credito_id  String?  @db.Uuid
   pago_id     String?  @db.Uuid
@@ -148,6 +173,7 @@ model movimientos_caja {
 
   @@index([user_id, fecha])
   @@index([user_id, credito_id])
+  @@index([user_id, cuenta])
 }
 
 /// Plan de cuotas PERSISTIDO de un crédito (Fase 6A). Tabla aditiva, multi-tenant.
@@ -282,6 +308,48 @@ model auditoria {
   meta        Json?
 
   @@index([user_id, created_at])
+}
+
+/// Proveedores / acreedores (Fase 6). Tabla aditiva, multi-tenant.
+/// Cubren tanto gastos operativos como fondeo de la financiera. Cada proveedor
+/// tiene una cuenta corriente (movimientos_proveedor) con su saldo.
+model proveedores {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  user_id    String   @db.Uuid
+  nombre     String
+  cuit       String?
+  email      String?
+  telefono   String?
+  direccion  String?
+  rubro      String?  // rubro/categoría (servicios, fondeo, insumos, etc.)
+  notas      String?
+  activo     Boolean  @default(true)
+
+  movimientos movimientos_proveedor[]
+
+  @@index([user_id])
+}
+
+/// Cuenta corriente de un proveedor (Fase 6). Tabla aditiva, multi-tenant.
+/// monto con SIGNO: cargo > 0 (aumenta lo que le debemos), pago < 0 (lo cancela).
+/// El saldo de la cuenta = suma de los montos (positivo = deuda pendiente con el proveedor).
+model movimientos_proveedor {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  created_at   DateTime @default(now()) @db.Timestamptz(6)
+  user_id      String   @db.Uuid
+  proveedor_id String   @db.Uuid
+  fecha        DateTime @default(now()) @db.Date
+  tipo         String   // cargo (factura/gasto/fondeo recibido) | pago (cancelación)
+  monto        Float    // con signo: cargo > 0, pago < 0
+  concepto     String
+  comprobante  String?  // N° de factura/comprobante
+  metodo       String?  // medio de pago (efectivo, transferencia, etc.)
+
+  proveedor proveedores @relation(fields: [proveedor_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id, proveedor_id])
+  @@index([user_id, fecha])
 }
 
 /// Configuración del motor financiero por financiera (tenant = user_id).

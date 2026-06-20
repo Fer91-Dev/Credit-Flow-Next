@@ -50,6 +50,16 @@ export interface Cliente {
   // Contacto laboral
   telefono_laboral?: string | null;
   direccion_laboral?: string | null;
+  // Derivados calculados por la API (no persistidos)
+  ultimo_movimiento?: string | null;
+  score?: ClienteScore;
+}
+
+/** Calificación crediticia derivada del comportamiento (ver lib/domain/scoring). */
+export interface ClienteScore {
+  categoria: "A" | "B" | "C" | "D" | "sin_historial";
+  label: string;
+  puntaje: number | null;
 }
 
 /** Pago imputado tal como viene anidado en el detalle de un cliente/crédito. */
@@ -123,6 +133,8 @@ export interface Credito {
   numero?: number | null;
   cliente_id: string;
   cliente: { nombre: string; email?: string; telefono?: string };
+  vendedor_id?: string | null;
+  vendedor?: { id: string; nombre: string } | null;
   tipo_credito: string;
   monto_original: number;
   saldo_pendiente: number;
@@ -137,6 +149,69 @@ export interface Credito {
   interes_mora?: number;
   /** True si el crédito tiene al menos un pago registrado (bloquea eliminar). */
   tiene_pagos?: boolean;
+}
+
+/** Resumen de ventas/comisión de un vendedor (derivado en el servidor). */
+export interface ResumenVendedor {
+  creditos_otorgados: number;
+  monto_vendido: number;
+  comision_total: number;
+  avance_meta: number;
+}
+
+export interface Vendedor {
+  id: string;
+  created_at: string;
+  nombre: string;
+  email: string | null;
+  telefono: string | null;
+  rol: "vendedor" | "supervisor" | "cobrador" | "admin";
+  comision_pct: number;
+  meta_venta: number;
+  activo: boolean;
+  resumen?: ResumenVendedor;
+}
+
+export interface VendedorDetalle extends Vendedor {
+  resumen: ResumenVendedor;
+  creditos: Array<{
+    id: string;
+    numero: number | null;
+    monto_original: number;
+    estado: string;
+    created_at: string;
+    cliente: { nombre: string };
+  }>;
+}
+
+export interface Proveedor {
+  id: string;
+  created_at: string;
+  nombre: string;
+  cuit: string | null;
+  email: string | null;
+  telefono: string | null;
+  direccion: string | null;
+  rubro: string | null;
+  notas: string | null;
+  activo: boolean;
+  /** Saldo de la cuenta corriente (positivo = deuda pendiente con el proveedor). */
+  saldo?: number;
+}
+
+export interface MovimientoProveedor {
+  id: string;
+  fecha: string;
+  tipo: "cargo" | "pago";
+  monto: number; // con signo: cargo > 0, pago < 0
+  concepto: string;
+  comprobante: string | null;
+  metodo: string | null;
+}
+
+export interface ProveedorDetalle extends Proveedor {
+  totales: { cargos: number; pagos: number; saldo: number };
+  movimientos: MovimientoProveedor[];
 }
 
 /** Cuota del plan de amortización devuelta por /api/creditos/[id]/amortizacion. */
@@ -271,12 +346,15 @@ export interface Reporte {
   }[];
 }
 
+export type CuentaCaja = "efectivo" | "banco" | "dolares";
+
 export interface MovimientoCaja {
   id: string;
   fecha: string;
-  tipo: "desembolso" | "cobro" | "devolucion" | "reversa_desembolso" | "ajuste";
+  tipo: "desembolso" | "cobro" | "devolucion" | "reversa_desembolso" | "ajuste" | "transferencia";
   monto: number; // con signo: ingreso > 0, egreso < 0
   metodo: string | null;
+  cuenta: CuentaCaja;
   descripcion: string;
   credito_numero: number | null;
   cliente: string | null;
@@ -285,6 +363,7 @@ export interface MovimientoCaja {
 export interface CajaData {
   periodo: { desde: string; hasta: string };
   saldo_total: number;
+  saldos_por_cuenta: Record<CuentaCaja, number>;
   ingresos: number;
   egresos: number;
   neto: number;
@@ -394,6 +473,11 @@ export interface DashboardData {
     total_pagos_registrados: number;
     monto_pagos_total: number;
   };
+  cobranza_mes: {
+    esperado: number;
+    cobrado: number;
+    cuotas_total: number;
+  };
 }
 
 // ── Claves de caché compartidas ──────────────────────────────────────────────
@@ -408,6 +492,8 @@ export const KEYS = {
   auditoria:     "/api/auditoria?limit=500",
   acciones:      "/api/cobranza/acciones?limit=500",
   campanas:      "/api/cobranza/campanas",
+  vendedores:    "/api/vendedores",
+  proveedores:   "/api/proveedores",
 } as const;
 
 // ── Hooks tipados ─────────────────────────────────────────────────────────────
@@ -425,6 +511,23 @@ export function useCreditos() {
 export function usePagos() {
   const { data, error, isLoading, mutate } = useSWR<{ pagos: Pago[] }>(KEYS.pagos);
   return { pagos: data?.pagos ?? [], error, isLoading, mutate };
+}
+
+export function useVendedores() {
+  const { data, error, isLoading, mutate } = useSWR<{ vendedores: Vendedor[] }>(KEYS.vendedores);
+  return { vendedores: data?.vendedores ?? [], error, isLoading, mutate };
+}
+
+export function useProveedores() {
+  const { data, error, isLoading, mutate } = useSWR<{ proveedores: Proveedor[]; deuda_total: number }>(KEYS.proveedores);
+  return { proveedores: data?.proveedores ?? [], deudaTotal: data?.deuda_total ?? 0, error, isLoading, mutate };
+}
+
+export function useProveedor(id: string | null) {
+  const { data, error, isLoading, mutate } = useSWR<ProveedorDetalle>(
+    id ? `/api/proveedores/${id}` : null,
+  );
+  return { proveedor: data, error, isLoading, mutate };
 }
 
 export function useDashboard() {
@@ -488,9 +591,10 @@ export function useReportes(desde: string, hasta: string) {
 }
 
 /** Caja: movimientos del rango + saldo total (key parametrizada). */
-export function useCaja(desde: string, hasta: string, tipo = "all") {
+export function useCaja(desde: string, hasta: string, tipo = "all", cuenta = "all") {
+  const cuentaQs = cuenta && cuenta !== "all" ? `&cuenta=${cuenta}` : "";
   const { data, error, isLoading, mutate } = useSWR<CajaData>(
-    desde && hasta ? `/api/caja?desde=${desde}&hasta=${hasta}&tipo=${tipo}` : null,
+    desde && hasta ? `/api/caja?desde=${desde}&hasta=${hasta}&tipo=${tipo}${cuentaQs}` : null,
   );
   return { caja: data, error, isLoading, mutate };
 }

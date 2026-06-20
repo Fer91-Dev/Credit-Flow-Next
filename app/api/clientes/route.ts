@@ -3,6 +3,7 @@ import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api"
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { registrarAuditoria } from "@/lib/audit";
+import { calcularScore } from "@/lib/domain";
 import type { NextRequest } from "next/server";
 
 /**
@@ -26,7 +27,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     where.estado = estado;
   }
 
-  const [clientes, total] = await Promise.all([
+  const [clientesRows, total] = await Promise.all([
     prisma.clientes.findMany({
       where,
       orderBy: { created_at: "desc" },
@@ -36,6 +37,8 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     prisma.clientes.count({ where }),
   ]);
 
+  const clientes = await enriquecerClientes(userId, clientesRows);
+
   return successResponse({
     clientes,
     total,
@@ -43,6 +46,104 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     offset,
   });
 });
+
+/**
+ * Agrega a cada cliente de la página dos derivados calculados (no persistidos):
+ * - `ultimo_movimiento`: fecha del último pago o del último crédito otorgado.
+ * - `score`: calificación crediticia derivada del comportamiento (ver lib/domain/scoring).
+ *
+ * Acotado a los IDs de la página, así no escanea toda la cartera del tenant.
+ */
+async function enriquecerClientes(
+  userId: string,
+  rows: Array<{ id: string; created_at: Date }>
+) {
+  if (rows.length === 0) return rows;
+
+  const clienteIds = rows.map((c) => c.id);
+
+  const creditos = await prisma.creditos.findMany({
+    where: { ...withTenant(userId), cliente_id: { in: clienteIds } },
+    select: { id: true, cliente_id: true, estado: true, dias_mora: true, created_at: true },
+  });
+
+  const creditoIds = creditos.map((c) => c.id);
+  const creditoACliente = new Map(creditos.map((c) => [c.id, c.cliente_id]));
+
+  const [pagos, cuotas] = await Promise.all([
+    creditoIds.length
+      ? prisma.pagos.findMany({
+          where: { ...withTenant(userId), credito_id: { in: creditoIds } },
+          select: { credito_id: true, fecha: true },
+        })
+      : Promise.resolve([] as Array<{ credito_id: string; fecha: Date }>),
+    creditoIds.length
+      ? prisma.cuotas.findMany({
+          where: { ...withTenant(userId), credito_id: { in: creditoIds } },
+          select: { credito_id: true, estado: true, fecha_vencimiento: true },
+        })
+      : Promise.resolve([] as Array<{ credito_id: string; estado: string; fecha_vencimiento: Date }>),
+  ]);
+
+  // Acumuladores por cliente
+  type Agg = {
+    tieneCreditos: boolean;
+    maxDiasMora: number;
+    cuotasVencidas: number;
+    cuotasCumplidas: number;
+    ultimoMovimiento: number; // epoch ms
+  };
+  const agg = new Map<string, Agg>();
+  for (const c of rows) {
+    agg.set(c.id, {
+      tieneCreditos: false,
+      maxDiasMora: 0,
+      cuotasVencidas: 0,
+      cuotasCumplidas: 0,
+      ultimoMovimiento: c.created_at.getTime(),
+    });
+  }
+
+  for (const cr of creditos) {
+    const a = agg.get(cr.cliente_id);
+    if (!a) continue;
+    a.tieneCreditos = true;
+    if (cr.estado === "activo" && cr.dias_mora > a.maxDiasMora) a.maxDiasMora = cr.dias_mora;
+    a.ultimoMovimiento = Math.max(a.ultimoMovimiento, cr.created_at.getTime());
+  }
+
+  for (const p of pagos) {
+    const clienteId = creditoACliente.get(p.credito_id);
+    const a = clienteId ? agg.get(clienteId) : undefined;
+    if (a) a.ultimoMovimiento = Math.max(a.ultimoMovimiento, p.fecha.getTime());
+  }
+
+  const hoy = Date.now();
+  for (const q of cuotas) {
+    const clienteId = creditoACliente.get(q.credito_id);
+    const a = clienteId ? agg.get(clienteId) : undefined;
+    if (!a) continue;
+    if (q.fecha_vencimiento.getTime() < hoy) {
+      a.cuotasVencidas += 1;
+      if (q.estado === "pagada") a.cuotasCumplidas += 1;
+    }
+  }
+
+  return rows.map((c) => {
+    const a = agg.get(c.id)!;
+    const score = calcularScore({
+      maxDiasMora: a.maxDiasMora,
+      cuotasVencidas: a.cuotasVencidas,
+      cuotasCumplidas: a.cuotasCumplidas,
+      tieneCreditos: a.tieneCreditos,
+    });
+    return {
+      ...c,
+      ultimo_movimiento: new Date(a.ultimoMovimiento).toISOString(),
+      score: { categoria: score.categoria, label: score.label, puntaje: score.puntaje },
+    };
+  });
+}
 
 /**
  * POST /api/clientes

@@ -124,15 +124,15 @@ export function ConfigForm() {
             onSave={() => saveSim("financiacion")} saving={savingKey === "financiacion"} saved={savedKey === "financiacion"}>
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
               <Field label="Monto mínimo ($)">
-                <Input type="number" min="0" step="1000" value={form.simulador.montoMin}
+                <Input type="number" min="0" step="any" value={form.simulador.montoMin}
                   onChange={e => setSim("montoMin", parseFloat(e.target.value) || 0)} />
               </Field>
               <Field label="Monto máximo ($)" hint="0 = sin tope">
-                <Input type="number" min="0" step="1000" value={form.simulador.montoMax}
+                <Input type="number" min="0" step="any" value={form.simulador.montoMax}
                   onChange={e => setSim("montoMax", parseFloat(e.target.value) || 0)} />
               </Field>
               <Field label="Monto por defecto ($)">
-                <Input type="number" min="0" step="1000" value={form.simulador.montoDefault}
+                <Input type="number" min="0" step="any" value={form.simulador.montoDefault}
                   onChange={e => setSim("montoDefault", parseFloat(e.target.value) || 0)} />
               </Field>
               <Field label="Tasa base (%)" hint="Prellena la tasa del simulador">

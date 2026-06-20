@@ -5,14 +5,14 @@ import { useRouter, usePathname } from "next/navigation";
 import {
   Home, Users, FileText, Wallet, Bell, Search, LogOut, Menu, X,
   Terminal, ShieldAlert, BarChart3, PlusCircle, Settings, History,
-  FileBarChart, Landmark, Sun, Moon,
+  FileBarChart, Landmark, Sun, Moon, UserCog, Truck,
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useEffect, useState } from "react";
 import { Footer } from "./Footer";
 
 const NAV_PRIMARY = [
-  { icon: Home,        label: "Command Center", to: "/" },
+  { icon: Home,        label: "Home",           to: "/" },
   { icon: BarChart3,   label: "Cartera",        to: "/cartera" },
   { icon: Users,       label: "Clientes",       to: "/clientes" },
   { icon: FileText,    label: "Créditos",       to: "/creditos" },
@@ -22,6 +22,8 @@ const NAV_PRIMARY = [
 
 const NAV_SECONDARY = [
   { icon: Landmark,     label: "Caja",          to: "/caja" },
+  { icon: UserCog,      label: "Personal",      to: "/personal" },
+  { icon: Truck,        label: "Proveedores",   to: "/proveedores" },
   { icon: FileBarChart, label: "Reportes",      to: "/reportes" },
   { icon: History,      label: "Auditoría",     to: "/auditoria" },
   { icon: Settings,     label: "Configuración", to: "/configuracion" },

@@ -7,7 +7,7 @@ export default function DashboardPage() {
     <div className="space-y-6">
       <PageHeader
         icon={Home}
-        title="Command Center"
+        title="Home"
         subtitle="Panel de control · CreditFlow"
         accent="primary"
       />

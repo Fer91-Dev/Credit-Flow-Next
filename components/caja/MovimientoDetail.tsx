@@ -16,6 +16,13 @@ const TIPO_META: Record<MovimientoCaja["tipo"], { label: string; variant: BadgeV
   devolucion:         { label: "Devolución",   variant: "destructive" },
   reversa_desembolso: { label: "Reversa de desembolso", variant: "primary" },
   ajuste:             { label: "Ajuste",       variant: "muted" },
+  transferencia:      { label: "Transferencia", variant: "primary" },
+};
+
+const CUENTA_LABEL: Record<MovimientoCaja["cuenta"], string> = {
+  efectivo: "Efectivo",
+  banco: "Banco",
+  dolares: "Dólares",
 };
 
 export function MovimientoDetail({ mov }: { mov: MovimientoCaja }) {
@@ -38,6 +45,7 @@ export function MovimientoDetail({ mov }: { mov: MovimientoCaja }) {
         rows={[
           ["Tipo", meta.label],
           ["Sentido", ingreso ? "Ingreso" : "Egreso"],
+          ["Cuenta", CUENTA_LABEL[mov.cuenta] ?? mov.cuenta],
           ["Monto", <span key="m" className={`font-mono ${ingreso ? "text-success" : "text-destructive"}`}>{ingreso ? "+" : "−"}${n2(Math.abs(mov.monto))}</span>],
           ["Fecha", fmtDate(mov.fecha)],
           ["Método", mov.metodo || null],

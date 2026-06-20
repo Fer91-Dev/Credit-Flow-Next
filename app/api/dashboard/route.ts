@@ -12,7 +12,12 @@ import type { NextRequest } from "next/server";
 export const GET = withErrorHandler(async (req: NextRequest) => {
   const { userId } = await requireAuth(req);
 
-  const [clientes, creditos, pagosTotal] = await Promise.all([
+  // Rango del mes en curso (para el avance de cobranzas)
+  const ahora = new Date();
+  const inicioMes = new Date(ahora.getFullYear(), ahora.getMonth(), 1);
+  const inicioMesSiguiente = new Date(ahora.getFullYear(), ahora.getMonth() + 1, 1);
+
+  const [clientes, creditos, pagosTotal, cuotasMes] = await Promise.all([
     // Total de clientes activos
     prisma.clientes.count({
       where: { ...withTenant(userId), estado: "activo" },
@@ -36,6 +41,15 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
       _sum: { monto: true },
       _count: true,
     }),
+
+    // Cuotas que vencen en el mes en curso (esperado vs cobrado)
+    prisma.cuotas.findMany({
+      where: {
+        ...withTenant(userId),
+        fecha_vencimiento: { gte: inicioMes, lt: inicioMesSiguiente },
+      },
+      select: { cuota_total: true, pagado: true },
+    }),
   ]);
 
   // Procesar créditos para agregados
@@ -54,6 +68,14 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     dias_31_60: creditos.filter((c) => c.dias_mora > 30 && c.dias_mora <= 60).length,
     dias_60_mas: creditos.filter((c) => c.dias_mora > 60).length,
   };
+
+  // Avance de cobranzas del mes: esperado (cuotas que vencen) vs cobrado.
+  // Cobrado se topea por cuota a su total para no superar 100% por intereses de mora.
+  const cobranzaEsperado = cuotasMes.reduce((sum, c) => sum + c.cuota_total, 0);
+  const cobranzaCobrado = cuotasMes.reduce(
+    (sum, c) => sum + Math.min(c.pagado, c.cuota_total),
+    0
+  );
 
   // Montos en mora
   const montosMora = {
@@ -80,6 +102,11 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     transacciones: {
       total_pagos_registrados: pagosTotal._count,
       monto_pagos_total: pagosTotal._sum.monto || 0,
+    },
+    cobranza_mes: {
+      esperado: cobranzaEsperado,
+      cobrado: cobranzaCobrado,
+      cuotas_total: cuotasMes.length,
     },
   });
 });

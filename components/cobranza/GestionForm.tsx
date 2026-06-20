@@ -122,7 +122,7 @@ export function GestionForm({ credito, onClose }: GestionFormProps) {
         </p>
         <div className="grid grid-cols-2 gap-3">
           <Field label="Monto comprometido">
-            <Input type="number" min="0" step="1000" placeholder="0" value={form.promesa_monto} onChange={set("promesa_monto")} />
+            <Input type="number" min="0" step="any" placeholder="0" value={form.promesa_monto} onChange={set("promesa_monto")} />
           </Field>
           <Field label="Fecha comprometida">
             <Input type="date" value={form.promesa_fecha} onChange={set("promesa_fecha")} />

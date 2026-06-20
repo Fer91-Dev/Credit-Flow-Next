@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from "react";
 import { useSWRConfig } from "swr";
-import { AlertCircle, Phone, Mail, Clock, Copy, CheckCheck, Search, DollarSign, ShieldAlert, MessageSquarePlus, CalendarClock, Megaphone, X, Users } from "lucide-react";
+import { AlertCircle, Phone, Mail, Clock, Copy, CheckCheck, Search, DollarSign, ShieldAlert, MessageSquarePlus, CalendarClock, Megaphone, X, Users, MessageCircle, TrendingUp } from "lucide-react";
 import { useCreditos, useAccionesCobranza, KEYS, type Credito, type AccionCobranza } from "@/lib/swr";
 import { formatFecha } from "@/lib/utils";
 import { GestionForm } from "./GestionForm";
@@ -20,6 +20,22 @@ function n0(x: number) {
 }
 
 const fmtDate = (s: string) => formatFecha(s);
+
+/** Sanitiza un teléfono a solo dígitos para usar en un enlace wa.me. */
+function telDigits(tel?: string | null): string {
+  return (tel ?? "").replace(/\D/g, "");
+}
+
+/** Construye el enlace de WhatsApp con un mensaje de reclamo prellenado. */
+function whatsappLink(c: Credito): string | null {
+  const num = telDigits(c.cliente.telefono);
+  if (!num) return null;
+  const msg =
+    `Hola ${c.cliente.nombre}, le escribimos por su crédito con ${c.dias_mora} ` +
+    `día${c.dias_mora !== 1 ? "s" : ""} de atraso y un saldo de $${n0(c.saldo_pendiente)}. ` +
+    `Por favor comuníquese para regularizar su situación. ¡Gracias!`;
+  return `https://wa.me/${num}?text=${encodeURIComponent(msg)}`;
+}
 
 type Severidad = "critica" | "alta" | "todas";
 
@@ -98,6 +114,14 @@ export function CobranzaTable() {
     alta:        creditos.filter(c => c.dias_mora > 15 && c.dias_mora <= 30).length,
   }), [creditos]);
 
+  // Total Esperado (saldo de toda la cartera activa) vs Total en Mora (saldo vencido)
+  const panel = useMemo(() => {
+    const activos = allCreditos.filter(c => c.estado === "activo");
+    const esperado = activos.reduce((s, c) => s + c.saldo_pendiente, 0);
+    const enMora = creditos.reduce((s, c) => s + c.saldo_pendiente, 0);
+    return { esperado, enMora, alDia: Math.max(0, esperado - enMora) };
+  }, [allCreditos, creditos]);
+
   const handleGestionar = async (c: Credito) => {
     const msg = `${c.cliente.nombre} | Mora: ${c.dias_mora}d | Saldo: $${n0(c.saldo_pendiente)}${c.cliente.telefono ? ` | Tel: ${c.cliente.telefono}` : ""}`;
     await navigator.clipboard.writeText(msg);
@@ -165,6 +189,9 @@ export function CobranzaTable() {
         </div>
       ) : (
       <div className="space-y-5">
+
+      {/* ── Panel Total Esperado vs Mora ── */}
+      <EsperadoVsMora esperado={panel.esperado} enMora={panel.enMora} alDia={panel.alDia} />
 
       {/* ── KPI Strip ── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -317,6 +344,26 @@ export function CobranzaTable() {
                           >
                             <MessageSquarePlus className="h-3 w-3" /> Gestionar
                           </button>
+                          {(() => {
+                            const wa = whatsappLink(c);
+                            return (
+                              <a
+                                href={wa ?? undefined}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                onClick={(e) => { e.stopPropagation(); if (!wa) e.preventDefault(); }}
+                                title={wa ? "Reclamar por WhatsApp" : "Sin teléfono cargado"}
+                                aria-disabled={!wa}
+                                className={`flex items-center justify-center h-7 w-7 rounded-lg transition-colors ${
+                                  wa
+                                    ? "text-success hover:bg-success/10"
+                                    : "text-muted-foreground/20 cursor-not-allowed"
+                                }`}
+                              >
+                                <MessageCircle className="h-3.5 w-3.5" />
+                              </a>
+                            );
+                          })()}
                           <button
                             onClick={(e) => { e.stopPropagation(); handleGestionar(c); }}
                             title="Copiar datos del cliente"
@@ -416,6 +463,22 @@ export function CobranzaTable() {
                     >
                       <MessageSquarePlus className="h-4 w-4" /> Gestionar
                     </button>
+                    {(() => {
+                      const wa = whatsappLink(c);
+                      if (!wa) return null;
+                      return (
+                        <a
+                          href={wa}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                          title="Reclamar por WhatsApp"
+                          className="flex items-center justify-center h-10 w-10 rounded-lg border border-success/30 bg-success/10 text-success hover:bg-success/20 transition-colors"
+                        >
+                          <MessageCircle className="h-4 w-4" />
+                        </a>
+                      );
+                    })()}
                     <button
                       onClick={(e) => { e.stopPropagation(); handleGestionar(c); }}
                       title="Copiar datos"
@@ -491,6 +554,58 @@ export function CobranzaTable() {
           </div>
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+function EsperadoVsMora({
+  esperado, enMora, alDia,
+}: {
+  esperado: number; enMora: number; alDia: number;
+}) {
+  const pctMora = esperado > 0 ? Math.min(100, Math.round((enMora / esperado) * 100)) : 0;
+  const pctAlDia = 100 - pctMora;
+
+  return (
+    <div className="rounded-xl bg-card border border-border p-5">
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-muted/40 border border-border">
+            <TrendingUp className="h-3.5 w-3.5 text-muted-foreground" />
+          </div>
+          <h3 className="text-sm font-semibold text-foreground">Exposición de cartera</h3>
+        </div>
+        <span className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground/70">
+          {pctMora}% en mora
+        </span>
+      </div>
+
+      {/* Barra apilada: al día (success) + en mora (destructive) */}
+      <div className="flex h-2.5 w-full rounded-full overflow-hidden bg-muted/40">
+        <div
+          className="h-full bg-success transition-all duration-700"
+          style={{ width: `${pctAlDia}%` }}
+        />
+        <div
+          className="h-full bg-destructive transition-all duration-700"
+          style={{ width: `${pctMora}%` }}
+        />
+      </div>
+
+      <div className="grid grid-cols-3 gap-3 mt-4">
+        <div>
+          <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-1">Total esperado</p>
+          <p className="text-sm font-bold text-foreground font-mono">${n0(esperado)}</p>
+        </div>
+        <div>
+          <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-1">Al día</p>
+          <p className="text-sm font-bold text-success font-mono">${n0(alDia)}</p>
+        </div>
+        <div>
+          <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-1">En mora</p>
+          <p className="text-sm font-bold text-destructive font-mono">${n0(enMora)}</p>
+        </div>
+      </div>
     </div>
   );
 }

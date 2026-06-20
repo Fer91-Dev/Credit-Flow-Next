@@ -3,7 +3,7 @@ import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api"
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { registrarAuditoria } from "@/lib/audit";
-import { montoConSigno, totalesCaja } from "@/lib/domain";
+import { montoConSigno, totalesCaja, saldosPorCuenta, esCuentaValida } from "@/lib/domain";
 import type { NextRequest } from "next/server";
 
 /**
@@ -21,6 +21,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     || new Date(hoy.getFullYear(), hoy.getMonth(), 1).toISOString().slice(0, 10);
   const hastaStr = url.searchParams.get("hasta") || hoy.toISOString().slice(0, 10);
   const tipo = url.searchParams.get("tipo");
+  const cuentaParam = url.searchParams.get("cuenta");
 
   const desde = new Date(`${desdeStr}T00:00:00.000Z`);
   const hasta = new Date(`${hastaStr}T23:59:59.999Z`);
@@ -30,22 +31,30 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     fecha: { gte: desde, lte: hasta },
   };
   if (tipo && tipo !== "all") whereRango.tipo = tipo;
+  if (esCuentaValida(cuentaParam)) whereRango.cuenta = cuentaParam;
 
-  const [movimientos, saldoAgg] = await Promise.all([
+  const [movimientos, saldoMovs] = await Promise.all([
     prisma.movimientos_caja.findMany({
       where: whereRango,
       include: { credito: { select: { numero: true, cliente: { select: { nombre: true } } } } },
       orderBy: [{ fecha: "desc" }, { created_at: "desc" }],
       take: 1000,
     }),
-    prisma.movimientos_caja.aggregate({ where: { ...withTenant(userId) }, _sum: { monto: true } }),
+    // Todos los movimientos del tenant (sin filtros) para el saldo por cuenta y total.
+    prisma.movimientos_caja.findMany({
+      where: { ...withTenant(userId) },
+      select: { monto: true, cuenta: true },
+    }),
   ]);
 
   const periodo = totalesCaja(movimientos);
+  const saldosCuenta = saldosPorCuenta(saldoMovs);
+  const saldoTotal = Math.round((saldosCuenta.efectivo + saldosCuenta.banco + saldosCuenta.dolares) * 100) / 100;
 
   return successResponse({
     periodo: { desde: desdeStr, hasta: hastaStr },
-    saldo_total: Math.round((saldoAgg._sum.monto ?? 0) * 100) / 100,
+    saldo_total: saldoTotal,
+    saldos_por_cuenta: saldosCuenta,
     ingresos: periodo.ingresos,
     egresos: periodo.egresos,
     neto: periodo.neto,
@@ -55,6 +64,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
       tipo: m.tipo,
       monto: m.monto,
       metodo: m.metodo,
+      cuenta: m.cuenta,
       descripcion: m.descripcion,
       credito_numero: m.credito?.numero ?? null,
       cliente: m.credito?.cliente?.nombre ?? null,
@@ -70,7 +80,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
 export const POST = withErrorHandler(async (req: NextRequest) => {
   const { userId } = await requireAuth(req);
 
-  let body: { monto?: number; sentido?: string; descripcion?: string; fecha?: string; metodo?: string };
+  let body: { monto?: number; sentido?: string; descripcion?: string; fecha?: string; metodo?: string; cuenta?: string };
   try {
     body = await req.json();
   } catch {
@@ -85,6 +95,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     return errorResponse("La descripción es requerida", "INVALID_INPUT", 400);
   }
   const ingreso = body.sentido !== "egreso";
+  const cuenta = esCuentaValida(body.cuenta) ? body.cuenta : "efectivo";
 
   const mov = await prisma.movimientos_caja.create({
     data: {
@@ -93,6 +104,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
       tipo: "ajuste",
       monto: montoConSigno("ajuste", monto, ingreso),
       metodo: body.metodo?.trim() || null,
+      cuenta,
       descripcion: body.descripcion.trim(),
     },
   });
@@ -102,8 +114,8 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     entidad: "caja",
     entidadId: mov.id,
     accion: "crear",
-    descripcion: `Ajuste de caja (${ingreso ? "ingreso" : "egreso"}) $${monto.toLocaleString("es-AR")} — ${mov.descripcion}`,
-    meta: { monto: mov.monto, tipo: "ajuste" },
+    descripcion: `Ajuste de caja (${ingreso ? "ingreso" : "egreso"}) $${monto.toLocaleString("es-AR")} en ${cuenta} — ${mov.descripcion}`,
+    meta: { monto: mov.monto, tipo: "ajuste", cuenta },
   });
 
   return successResponse(mov, 201);
