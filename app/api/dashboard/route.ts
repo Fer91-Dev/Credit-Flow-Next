@@ -7,25 +7,48 @@ import type { NextRequest } from "next/server";
 /**
  * GET /api/dashboard
  * Agregados financieros para el panel de control.
- * Retorna: cartera total, créditos activos, mora crítica, etc.
+ *
+ * Filtros globales opcionales (query):
+ *  - ?desde=YYYY-MM-DD&hasta=YYYY-MM-DD — rango para el avance de cobranzas (default: mes en curso)
+ *  - ?vendedor_id=uuid — limita los créditos a los otorgados por ese vendedor
+ *  - ?zona=string — limita a los créditos de clientes de esa zona
  */
 export const GET = withErrorHandler(async (req: NextRequest) => {
   const { userId } = await requireAuth(req);
 
-  // Rango del mes en curso (para el avance de cobranzas)
-  const ahora = new Date();
-  const inicioMes = new Date(ahora.getFullYear(), ahora.getMonth(), 1);
-  const inicioMesSiguiente = new Date(ahora.getFullYear(), ahora.getMonth() + 1, 1);
+  const url = new URL(req.url);
+  const vendedorId = url.searchParams.get("vendedor_id");
+  const zona = url.searchParams.get("zona");
+  const desdeStr = url.searchParams.get("desde");
+  const hastaStr = url.searchParams.get("hasta");
 
-  const [clientes, creditos, pagosTotal, cuotasMes] = await Promise.all([
-    // Total de clientes activos
+  // Rango del avance de cobranzas: el indicado o, por defecto, el mes en curso.
+  const ahora = new Date();
+  const desde = desdeStr ? new Date(`${desdeStr}T00:00:00.000Z`) : new Date(ahora.getFullYear(), ahora.getMonth(), 1);
+  const hasta = hastaStr
+    ? new Date(`${hastaStr}T23:59:59.999Z`)
+    : new Date(ahora.getFullYear(), ahora.getMonth() + 1, 1);
+
+  // Filtro de créditos por vendedor y/o zona del cliente (se reutiliza en varias queries).
+  const creditoFiltro: Record<string, unknown> = { ...withTenant(userId) };
+  if (vendedorId) creditoFiltro.vendedor_id = vendedorId;
+  if (zona) creditoFiltro.cliente = { zona };
+
+  // Filtro equivalente para queries que llegan a créditos vía relación (cuotas, pagos).
+  const tieneFiltroCredito = !!vendedorId || !!zona;
+  const creditoRel: Record<string, unknown> = {};
+  if (vendedorId) creditoRel.vendedor_id = vendedorId;
+  if (zona) creditoRel.cliente = { zona };
+
+  const [clientes, creditos, pagosTotal, cuotasPeriodo] = await Promise.all([
+    // Clientes activos (filtra por zona si corresponde)
     prisma.clientes.count({
-      where: { ...withTenant(userId), estado: "activo" },
+      where: { ...withTenant(userId), estado: "activo", ...(zona ? { zona } : {}) },
     }),
 
-    // Créditos agrupados por estado
+    // Créditos (con filtro de vendedor/zona)
     prisma.creditos.findMany({
-      where: { ...withTenant(userId) },
+      where: creditoFiltro as never,
       select: {
         id: true,
         estado: true,
@@ -35,49 +58,44 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
       },
     }),
 
-    // Pagos totales registrados
+    // Pagos del período (filtra por fecha y por crédito si hay filtro)
     prisma.pagos.aggregate({
-      where: { ...withTenant(userId) },
+      where: {
+        ...withTenant(userId),
+        ...(tieneFiltroCredito ? { credito: creditoRel as never } : {}),
+      },
       _sum: { monto: true },
       _count: true,
     }),
 
-    // Cuotas que vencen en el mes en curso (esperado vs cobrado)
+    // Cuotas que vencen en el período (esperado vs cobrado)
     prisma.cuotas.findMany({
       where: {
         ...withTenant(userId),
-        fecha_vencimiento: { gte: inicioMes, lt: inicioMesSiguiente },
+        fecha_vencimiento: { gte: desde, lte: hasta },
+        ...(tieneFiltroCredito ? { credito: creditoRel as never } : {}),
       },
       select: { cuota_total: true, pagado: true },
     }),
   ]);
 
-  // Procesar créditos para agregados
   const creditosActivos = creditos.filter((c) => c.estado === "activo").length;
   const creditosPagados = creditos.filter((c) => c.estado === "pagado").length;
-
-  // Cartera total = suma de saldos pendientes
   const carteraTotal = creditos.reduce((sum, c) => sum + c.saldo_pendiente, 0);
-
-  // Mora crítica = créditos con dias_mora > 30
   const moraCritica = creditos.filter((c) => c.dias_mora > 30).length;
 
-  // Detalle por rango de mora
   const detalleMotaAlerta = {
     dias_1_30: creditos.filter((c) => c.dias_mora > 0 && c.dias_mora <= 30).length,
     dias_31_60: creditos.filter((c) => c.dias_mora > 30 && c.dias_mora <= 60).length,
     dias_60_mas: creditos.filter((c) => c.dias_mora > 60).length,
   };
 
-  // Avance de cobranzas del mes: esperado (cuotas que vencen) vs cobrado.
-  // Cobrado se topea por cuota a su total para no superar 100% por intereses de mora.
-  const cobranzaEsperado = cuotasMes.reduce((sum, c) => sum + c.cuota_total, 0);
-  const cobranzaCobrado = cuotasMes.reduce(
+  const cobranzaEsperado = cuotasPeriodo.reduce((sum, c) => sum + c.cuota_total, 0);
+  const cobranzaCobrado = cuotasPeriodo.reduce(
     (sum, c) => sum + Math.min(c.pagado, c.cuota_total),
     0
   );
 
-  // Montos en mora
   const montosMora = {
     total_mora: creditos
       .filter((c) => c.dias_mora > 0)
@@ -106,7 +124,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     cobranza_mes: {
       esperado: cobranzaEsperado,
       cobrado: cobranzaCobrado,
-      cuotas_total: cuotasMes.length,
+      cuotas_total: cuotasPeriodo.length,
     },
   });
 });

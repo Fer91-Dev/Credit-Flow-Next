@@ -189,6 +189,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
       email: body.email?.toLowerCase().trim() || null,
       telefono: body.telefono?.trim() || null,
       direccion: body.direccion?.trim() || null,
+      zona: body.zona?.trim() || null,
       estado: body.estado || "activo",
       tipo_credito: body.tipo_credito || "personal",
       // Datos personales ampliados

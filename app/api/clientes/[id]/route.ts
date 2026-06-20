@@ -172,6 +172,7 @@ export const PATCH = withErrorHandler(async (req: NextRequest, { params }: Route
     "email",
     "telefono",
     "direccion",
+    "zona",
     "estado",
     "tipo_credito",
     "cuit_cuil",

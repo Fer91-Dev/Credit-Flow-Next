@@ -19,6 +19,7 @@ model clientes {
   estado       String   @default("activo")
   tipo_credito String   @default("personal")
   monto_total  Float    @default(0)
+  zona         String?  // zona/barrio para segmentación geográfica (Fase Home)
   user_id      String   @db.Uuid
 
   // Datos personales ampliados

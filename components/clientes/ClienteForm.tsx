@@ -15,7 +15,7 @@ interface ClienteFormProps {
 }
 
 const EMPTY = {
-  nombre: "", documento: "", email: "", telefono: "", direccion: "",
+  nombre: "", documento: "", email: "", telefono: "", direccion: "", zona: "",
   fecha_nacimiento: "", cuit_cuil: "", estado_civil: "", nacionalidad: "",
   situacion_laboral: "", ocupacion: "", empleador: "", antiguedad_laboral_meses: "",
   ingreso_mensual: "", otros_ingresos: "",
@@ -44,7 +44,7 @@ export function ClienteForm({ clienteId, initialDocumento, onClose }: ClienteFor
         const d = json.data;
         setFormData({
           nombre: d.nombre ?? "", documento: d.documento ?? "", email: d.email ?? "",
-          telefono: d.telefono ?? "", direccion: d.direccion ?? "",
+          telefono: d.telefono ?? "", direccion: d.direccion ?? "", zona: d.zona ?? "",
           fecha_nacimiento: toDateInput(d.fecha_nacimiento), cuit_cuil: d.cuit_cuil ?? "",
           estado_civil: d.estado_civil ?? "", nacionalidad: d.nacionalidad ?? "",
           situacion_laboral: d.situacion_laboral ?? "", ocupacion: d.ocupacion ?? "",
@@ -130,6 +130,9 @@ export function ClienteForm({ clienteId, initialDocumento, onClose }: ClienteFor
           </Field>
           <Field label="Dirección">
             <Input name="direccion" type="text" placeholder="Calle y número" value={formData.direccion} onChange={set("direccion")} />
+          </Field>
+          <Field label="Zona / Barrio">
+            <Input name="zona" type="text" placeholder="Ej: Centro, Norte…" value={formData.zona} onChange={set("zona")} />
           </Field>
         </div>
       </section>

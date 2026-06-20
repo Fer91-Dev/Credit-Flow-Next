@@ -1,6 +1,6 @@
 import { Home } from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { DashboardMetrics } from "@/components/dashboard/DashboardMetrics";
+import { HomeView } from "@/components/dashboard/HomeView";
 
 export default function DashboardPage() {
   return (
@@ -11,7 +11,7 @@ export default function DashboardPage() {
         subtitle="Panel de control · CreditFlow"
         accent="primary"
       />
-      <DashboardMetrics />
+      <HomeView />
     </div>
   );
 }

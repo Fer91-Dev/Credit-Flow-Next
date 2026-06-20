@@ -31,6 +31,7 @@ export interface Cliente {
   email?: string | null;
   telefono?: string | null;
   direccion?: string | null;
+  zona?: string | null;
   estado: string;
   tipo_credito?: string;
   created_at: string;
@@ -530,8 +531,22 @@ export function useProveedor(id: string | null) {
   return { proveedor: data, error, isLoading, mutate };
 }
 
-export function useDashboard() {
-  const { data, error, isLoading, mutate } = useSWR<DashboardData>(KEYS.dashboard);
+export interface DashboardFiltros {
+  desde?: string;
+  hasta?: string;
+  vendedor_id?: string;
+  zona?: string;
+}
+
+export function useDashboard(filtros?: DashboardFiltros) {
+  const qs = new URLSearchParams();
+  if (filtros?.desde) qs.set("desde", filtros.desde);
+  if (filtros?.hasta) qs.set("hasta", filtros.hasta);
+  if (filtros?.vendedor_id) qs.set("vendedor_id", filtros.vendedor_id);
+  if (filtros?.zona) qs.set("zona", filtros.zona);
+  const query = qs.toString();
+  const key = query ? `${KEYS.dashboard}?${query}` : KEYS.dashboard;
+  const { data, error, isLoading, mutate } = useSWR<DashboardData>(key);
   return { data, error, isLoading, mutate };
 }
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { AlertCircle, TrendingUp, Users, Wallet, ArrowUpRight, Clock, Target } from "lucide-react";
-import { useDashboard, type DashboardData } from "@/lib/swr";
+import { useDashboard, type DashboardData, type DashboardFiltros } from "@/lib/swr";
 import { KpiCard } from "@/components/ui/KpiCard";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -9,8 +9,8 @@ function n0(num: number) {
   return new Intl.NumberFormat("es-AR", { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(num);
 }
 
-export function DashboardMetrics() {
-  const { data, error, isLoading } = useDashboard();
+export function DashboardMetrics({ filtros }: { filtros?: DashboardFiltros }) {
+  const { data, error, isLoading } = useDashboard(filtros);
 
   if (isLoading) return <BodySkeleton />;
   if (error || !data) return (
