@@ -1,4 +1,5 @@
 import type { ComponentType, ReactNode } from "react";
+import { SystemControls } from "./SystemControls";
 
 export type PageHeaderAccent = "primary" | "success" | "warning" | "destructive";
 
@@ -35,11 +36,14 @@ export function PageHeader({ icon: Icon, title, subtitle, accent = "primary", ac
           {subtitle && <p className="mt-0.5 text-xs text-muted-foreground">{subtitle}</p>}
         </div>
       </div>
-      {actions && (
-        <div className="flex shrink-0 items-center gap-2 [&>button]:flex-1 sm:[&>button]:flex-none">
-          {actions}
-        </div>
-      )}
+      <div className="flex w-full shrink-0 items-center gap-2 sm:w-auto sm:gap-3">
+        <SystemControls />
+        {actions && (
+          <div className="flex flex-1 items-center justify-end gap-2 [&>button]:flex-1 sm:[&>button]:flex-none">
+            {actions}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

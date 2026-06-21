@@ -18,10 +18,10 @@ import type { Prisma } from "@prisma/client";
 
 /** Devuelve la config de la financiera, mezclada con defaults. */
 export async function getConfiguracion(
-  userId: string
+  tenantId: string
 ): Promise<ConfiguracionFinanciera> {
   const row = await prisma.configuraciones.findUnique({
-    where: { user_id: userId },
+    where: { tenant_id: tenantId },
   });
   if (!row) return { ...CONFIG_DEFAULT };
 
@@ -44,7 +44,7 @@ export async function getConfiguracion(
 
 /** Persiste (upsert) la config de la financiera. */
 export async function guardarConfiguracion(
-  userId: string,
+  tenantId: string,
   config: ConfiguracionFinanciera
 ): Promise<ConfiguracionFinanciera> {
   const data = {
@@ -61,8 +61,8 @@ export async function guardarConfiguracion(
   };
 
   await prisma.configuraciones.upsert({
-    where: { user_id: userId },
-    create: { user_id: userId, ...data },
+    where: { tenant_id: tenantId },
+    create: { tenant_id: tenantId, ...data },
     update: data,
   });
 

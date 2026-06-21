@@ -1,4 +1,4 @@
-import { requireAuth } from "@/lib/auth";
+import { requireRole } from "@/lib/auth";
 import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
@@ -12,12 +12,13 @@ import type { NextRequest } from "next/server";
  * Query: ?activo=true para filtrar solo activos.
  */
 export const GET = withErrorHandler(async (req: NextRequest) => {
-  const { userId } = await requireAuth(req);
+  // Personal/vendedores: solo admin.
+  const { tenantId } = await requireRole(["admin"], req);
 
   const url = new URL(req.url);
   const soloActivos = url.searchParams.get("activo") === "true";
 
-  const where: Record<string, unknown> = { ...withTenant(userId) };
+  const where: Record<string, unknown> = { ...withTenant(tenantId) };
   if (soloActivos) where.activo = true;
 
   const vendedores = await prisma.vendedores.findMany({
@@ -27,7 +28,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
 
   // Créditos otorgados (no anulados) agrupados por vendedor, para el resumen de comisiones.
   const creditos = await prisma.creditos.findMany({
-    where: { ...withTenant(userId), vendedor_id: { not: null }, estado: { not: "anulado" } },
+    where: { ...withTenant(tenantId), vendedor_id: { not: null }, estado: { not: "anulado" } },
     select: { vendedor_id: true, monto_original: true },
   });
 
@@ -53,7 +54,8 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
  * Body: { nombre, email?, telefono?, rol?, comision_pct?, meta_venta?, activo? }
  */
 export const POST = withErrorHandler(async (req: NextRequest) => {
-  const { userId } = await requireAuth(req);
+  // Alta de personal: solo admin.
+  const { tenantId } = await requireRole(["admin"], req);
 
   let body: {
     nombre?: string; email?: string; telefono?: string; rol?: string;
@@ -74,7 +76,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
 
   const vendedor = await prisma.vendedores.create({
     data: {
-      ...withTenant(userId),
+      ...withTenant(tenantId),
       nombre: body.nombre.trim(),
       email: body.email?.trim() || null,
       telefono: body.telefono?.trim() || null,
@@ -86,7 +88,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
   });
 
   await registrarAuditoria({
-    userId,
+    tenantId,
     entidad: "vendedores",
     entidadId: vendedor.id,
     accion: "crear",

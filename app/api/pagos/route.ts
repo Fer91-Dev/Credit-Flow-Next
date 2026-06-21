@@ -1,4 +1,4 @@
-import { requireAuth } from "@/lib/auth";
+import { requireRole } from "@/lib/auth";
 import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
@@ -21,14 +21,15 @@ import type { NextRequest } from "next/server";
  * - ?offset=0
  */
 export const GET = withErrorHandler(async (req: NextRequest) => {
-  const { userId } = await requireAuth(req);
+  // Terminal de cobros: admin y cobrador (el vendedor no opera pagos).
+  const { tenantId } = await requireRole(["admin", "cobrador"], req);
 
   const url = new URL(req.url);
   const creditoId = url.searchParams.get("credito_id");
   const limit = Math.min(parseInt(url.searchParams.get("limit") || "100"), 1000);
   const offset = parseInt(url.searchParams.get("offset") || "0");
 
-  const where: Record<string, any> = { ...withTenant(userId) };
+  const where: Record<string, any> = { ...withTenant(tenantId) };
   if (creditoId) where.credito_id = creditoId;
 
   const [pagos, total] = await Promise.all([
@@ -73,7 +74,8 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
  * }
  */
 export const POST = withErrorHandler(async (req: NextRequest) => {
-  const { userId } = await requireAuth(req);
+  // Registrar un cobro: admin y cobrador (el vendedor NO registra cobros).
+  const { tenantId } = await requireRole(["admin", "cobrador"], req);
 
   let body: any;
   try {
@@ -95,7 +97,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
   }
 
   const credito = await prisma.creditos.findFirst({
-    where: { ...withTenant(userId), id: body.credito_id },
+    where: { ...withTenant(tenantId), id: body.credito_id },
     include: { cliente: true, cuotas: { orderBy: { nro: "asc" } } },
   });
 
@@ -123,7 +125,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
   // El pago se imputa cuota por cuota (la más vieja primero). El interés es el
   // CONGELADO del plan; el atraso se castiga con mora por cuota vencida.
 
-  const config = await getConfiguracion(userId);
+  const config = await getConfiguracion(tenantId);
   const fechaPago = body.fecha ? new Date(body.fecha) : new Date();
 
   // ── Campañas de recuperación activas (Fase 7B) ─────────────────────────────
@@ -131,7 +133,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
   // (sin fecha de corte o aún dentro del plazo), se aplica el % al cobrar.
   const objetivosActivos = await prisma.campana_objetivo.findMany({
     where: {
-      ...withTenant(userId),
+      ...withTenant(tenantId),
       credito_id: body.credito_id,
       campana: { estado: "activa" },
     },
@@ -213,7 +215,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
         aplicado_cargos: resultado.totales.cargos,
         aplicado_capital: resultado.totales.capital,
         excedente: resultado.excedente,
-        ...withTenant(userId),
+        ...withTenant(tenantId),
       },
       include: {
         credito: {
@@ -230,7 +232,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     if (resultado.aplicaciones.length > 0) {
       await tx.pago_cuota.createMany({
         data: resultado.aplicaciones.map((a) => ({
-          ...withTenant(userId),
+          ...withTenant(tenantId),
           pago_id: p.id,
           cuota_id: a.id,
           aplicado_capital: a.aplicadoCapital,
@@ -270,7 +272,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     // Movimiento de caja: cobro (ingreso).
     await tx.movimientos_caja.create({
       data: {
-        ...withTenant(userId),
+        ...withTenant(tenantId),
         fecha: fechaPago,
         tipo: "cobro",
         monto: Math.abs(body.monto),
@@ -293,7 +295,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
   });
 
   await registrarAuditoria({
-    userId,
+    tenantId,
     entidad: "pagos",
     entidadId: pago.id,
     accion: "registrar_pago",

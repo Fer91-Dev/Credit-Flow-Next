@@ -14,11 +14,17 @@ import type { NextRequest } from "next/server";
  *  - ?zona=string — limita a los créditos de clientes de esa zona
  */
 export const GET = withErrorHandler(async (req: NextRequest) => {
-  const { userId } = await requireAuth(req);
+  const { tenantId, role, vendedorId: miVendedorId } = await requireAuth(req);
 
   const url = new URL(req.url);
-  const vendedorId = url.searchParams.get("vendedor_id");
+  const vendedorParam = url.searchParams.get("vendedor_id");
   const zona = url.searchParams.get("zona");
+
+  // Anti-IDOR: si quien consulta es vendedor, se fuerza su propio vendedor_id e
+  // ignora el query param (no puede ver agregados de otro vendedor). Sin vendedor
+  // asignado → sentinel imposible (no ve nada). Admin/cobrador ven todo el tenant.
+  const vendedorId =
+    role === "vendedor" ? (miVendedorId ?? "00000000-0000-0000-0000-000000000000") : vendedorParam;
   const desdeStr = url.searchParams.get("desde");
   const hastaStr = url.searchParams.get("hasta");
 
@@ -30,7 +36,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     : new Date(ahora.getFullYear(), ahora.getMonth() + 1, 1);
 
   // Filtro de créditos por vendedor y/o zona del cliente (se reutiliza en varias queries).
-  const creditoFiltro: Record<string, unknown> = { ...withTenant(userId) };
+  const creditoFiltro: Record<string, unknown> = { ...withTenant(tenantId) };
   if (vendedorId) creditoFiltro.vendedor_id = vendedorId;
   if (zona) creditoFiltro.cliente = { zona };
 
@@ -43,7 +49,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   const [clientes, creditos, pagosTotal, cuotasPeriodo] = await Promise.all([
     // Clientes activos (filtra por zona si corresponde)
     prisma.clientes.count({
-      where: { ...withTenant(userId), estado: "activo", ...(zona ? { zona } : {}) },
+      where: { ...withTenant(tenantId), estado: "activo", ...(zona ? { zona } : {}) },
     }),
 
     // Créditos (con filtro de vendedor/zona)
@@ -61,7 +67,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     // Pagos del período (filtra por fecha y por crédito si hay filtro)
     prisma.pagos.aggregate({
       where: {
-        ...withTenant(userId),
+        ...withTenant(tenantId),
         ...(tieneFiltroCredito ? { credito: creditoRel as never } : {}),
       },
       _sum: { monto: true },
@@ -71,7 +77,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     // Cuotas que vencen en el período (esperado vs cobrado)
     prisma.cuotas.findMany({
       where: {
-        ...withTenant(userId),
+        ...withTenant(tenantId),
         fecha_vencimiento: { gte: desde, lte: hasta },
         ...(tieneFiltroCredito ? { credito: creditoRel as never } : {}),
       },

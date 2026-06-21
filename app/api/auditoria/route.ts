@@ -1,4 +1,4 @@
-import { requireAuth } from "@/lib/auth";
+import { requireRole } from "@/lib/auth";
 import { successResponse, withErrorHandler } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
@@ -13,14 +13,15 @@ import type { NextRequest } from "next/server";
  * - ?offset=0
  */
 export const GET = withErrorHandler(async (req: NextRequest) => {
-  const { userId } = await requireAuth(req);
+  // Traza de auditoría: solo admin.
+  const { tenantId } = await requireRole(["admin"], req);
 
   const url = new URL(req.url);
   const entidad = url.searchParams.get("entidad");
   const limit = Math.min(parseInt(url.searchParams.get("limit") || "200"), 1000);
   const offset = parseInt(url.searchParams.get("offset") || "0");
 
-  const where: Record<string, any> = { ...withTenant(userId) };
+  const where: Record<string, any> = { ...withTenant(tenantId) };
   if (entidad) where.entidad = entidad;
 
   const [eventos, total] = await Promise.all([

@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { CalendarDays, MapPin, UserCog, X, Target, Trophy } from "lucide-react";
-import { useClientes, useVendedores, type DashboardFiltros } from "@/lib/swr";
+import { useZonas, useVendedores, type DashboardFiltros } from "@/lib/swr";
 import { DashboardMetrics } from "./DashboardMetrics";
 
 function n0(x: number) {
@@ -16,19 +16,12 @@ const SEL = INPUT + " pr-8 appearance-none cursor-pointer [&>option]:bg-card [&>
 
 export function HomeView() {
   const { vendedores } = useVendedores();
-  const { clientes } = useClientes();
+  const { zonas } = useZonas();
 
   const [desde, setDesde] = useState("");
   const [hasta, setHasta] = useState("");
   const [vendedorId, setVendedorId] = useState("");
   const [zona, setZona] = useState("");
-
-  // Zonas distintas cargadas en los clientes (para el dropdown).
-  const zonas = useMemo(() => {
-    const set = new Set<string>();
-    for (const c of clientes) if (c.zona?.trim()) set.add(c.zona.trim());
-    return [...set].sort((a, b) => a.localeCompare(b, "es"));
-  }, [clientes]);
 
   const filtros: DashboardFiltros = useMemo(() => ({
     desde: desde || undefined,

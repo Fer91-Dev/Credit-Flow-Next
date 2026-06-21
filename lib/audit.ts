@@ -7,7 +7,7 @@
  */
 import { prisma } from "@/lib/prisma";
 
-export type AuditEntidad = "clientes" | "creditos" | "pagos" | "configuracion" | "caja" | "campana" | "vendedores" | "proveedores";
+export type AuditEntidad = "clientes" | "creditos" | "pagos" | "configuracion" | "caja" | "campana" | "vendedores" | "proveedores" | "usuarios";
 export type AuditAccion =
   | "crear"
   | "actualizar"
@@ -18,7 +18,7 @@ export type AuditAccion =
   | "actualizar_config";
 
 export interface AuditInput {
-  userId: string;
+  tenantId: string;
   entidad: AuditEntidad;
   entidadId?: string | null;
   accion: AuditAccion;
@@ -30,7 +30,7 @@ export async function registrarAuditoria(input: AuditInput): Promise<void> {
   try {
     await prisma.auditoria.create({
       data: {
-        user_id: input.userId,
+        tenant_id: input.tenantId,
         entidad: input.entidad,
         entidad_id: input.entidadId ?? null,
         accion: input.accion,

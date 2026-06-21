@@ -1,4 +1,4 @@
-import { requireAuth } from "@/lib/auth";
+import { requireRole } from "@/lib/auth";
 import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
@@ -24,7 +24,8 @@ interface RouteParams {
  *    "conservar": no se devuelve (lo cobrado queda en caja).
  */
 export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteParams) => {
-  const { userId } = await requireAuth(req);
+  // Anular un crédito cuadra la caja (reversa de desembolso): solo admin.
+  const { tenantId } = await requireRole(["admin"], req);
   const { id } = await params;
 
   let body: { motivo?: string; accion_pagos?: string } = {};
@@ -35,7 +36,7 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
   }
 
   const existing = await prisma.creditos.findFirst({
-    where: { ...withTenant(userId), id },
+    where: { ...withTenant(tenantId), id },
     include: { cliente: { select: { nombre: true } }, pagos: { select: { monto: true } } },
   });
 
@@ -61,7 +62,7 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
     // Reversa del desembolso (ingreso): la plata no se considera prestada.
     await tx.movimientos_caja.create({
       data: {
-        ...withTenant(userId),
+        ...withTenant(tenantId),
         fecha: new Date(),
         tipo: "reversa_desembolso",
         monto: Math.abs(existing.monto_original),
@@ -74,7 +75,7 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
     if (devolver && totalCobrado > 0) {
       await tx.movimientos_caja.create({
         data: {
-          ...withTenant(userId),
+          ...withTenant(tenantId),
           fecha: new Date(),
           tipo: "devolucion",
           monto: -totalCobrado,
@@ -88,7 +89,7 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
   });
 
   await registrarAuditoria({
-    userId,
+    tenantId,
     entidad: "creditos",
     entidadId: id,
     accion: "anular",

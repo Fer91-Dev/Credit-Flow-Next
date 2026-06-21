@@ -13,9 +13,10 @@ services:
       - .env.local
     environment:
       - NODE_ENV=development
-      - DEV_BYPASS_AUTH=true
+      - DEV_BYPASS_AUTH=false
       # HMR en bind mounts de Windows->Docker: inotify no propaga eventos,
-      # así que forzamos polling para que los cambios recompilen solos.
-      - WATCHPACK_POLLING=true
+      # así que forzamos polling. Intervalo amplio (1500ms) para no recalentar la
+      # CPU escaneando el filesystem — igual el flujo es restart manual tras editar.
+      - WATCHPACK_POLLING=1500
       - CHOKIDAR_USEPOLLING=true
-      - CHOKIDAR_INTERVAL=400
+      - CHOKIDAR_INTERVAL=1500

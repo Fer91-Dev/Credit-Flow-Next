@@ -41,6 +41,13 @@ const CUENTA_META: Record<CuentaCaja, { label: string; icon: typeof Wallet }> = 
   dolares:  { label: "Dólares",  icon: CircleDollarSign },
 };
 
+// Estilo de las tarjetas de saldo (gradiente fuerte + prefijo de moneda).
+const CUENTA_CARD: Record<CuentaCaja, { gradient: string; prefix: string }> = {
+  efectivo: { gradient: "linear-gradient(135deg, #10b981 0%, #0d9488 100%)", prefix: "$" },
+  banco:    { gradient: "linear-gradient(135deg, #818cf8 0%, #4f46e5 100%)", prefix: "$" },
+  dolares:  { gradient: "linear-gradient(135deg, #f59e0b 0%, #ea580c 100%)", prefix: "u$s" },
+};
+
 const INPUT =
   "h-10 rounded-lg border border-border bg-muted/40 px-3 text-sm text-foreground outline-none " +
   "transition-all focus:border-primary focus:ring-2 focus:ring-primary/20";
@@ -192,26 +199,49 @@ export function CajaView() {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             {CUENTAS.map((c) => {
               const meta = CUENTA_META[c];
+              const card = CUENTA_CARD[c];
               const Icon = meta.icon;
-              const saldo = caja.saldos_por_cuenta[c] ?? 0;
+              const d = caja.saldos_detalle?.[c] ?? { saldo: caja.saldos_por_cuenta[c] ?? 0, anterior: 0, ingresos: 0, egresos: 0 };
               const active = cuenta === c;
               return (
                 <button
                   key={c}
                   onClick={() => setCuenta(active ? "all" : c)}
-                  className={`text-left rounded-xl border p-4 transition-colors ${
-                    active ? "border-primary bg-primary/5" : "border-border bg-card hover:bg-muted/20"
+                  title={active ? "Quitar filtro" : `Ver solo ${meta.label}`}
+                  style={{ backgroundImage: card.gradient }}
+                  className={`group relative overflow-hidden text-left rounded-2xl p-5 text-white shadow-lg shadow-black/20 transition-all ${
+                    active ? "ring-2 ring-white/80 ring-offset-2 ring-offset-background" : "hover:brightness-105"
                   }`}
                 >
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="flex items-center gap-2 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                      <Icon className="h-4 w-4" /> {meta.label}
-                    </span>
-                    {active && <span className="text-[10px] font-semibold text-primary uppercase tracking-widest">Filtrando</span>}
+                  {/* Header: nombre + ícono */}
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold uppercase tracking-widest text-white/80">{meta.label}</span>
+                    <Icon className="h-4 w-4 text-white/70" />
                   </div>
-                  <p className={`text-xl font-bold font-mono ${saldo >= 0 ? "text-foreground" : "text-destructive"}`}>
-                    {c === "dolares" ? "US$" : "$"}{n2(saldo)}
+
+                  {/* Balance */}
+                  <p className="mt-3 text-2xl font-bold font-mono tracking-tight">
+                    {card.prefix} {n2(d.saldo)}
                   </p>
+
+                  {/* Divisor */}
+                  <div className="my-4 h-px w-full bg-white/20" />
+
+                  {/* Anterior / Ingresos / Egresos */}
+                  <div className="grid grid-cols-3 gap-2">
+                    <div>
+                      <p className="text-[9px] font-semibold uppercase tracking-widest text-white/60">Anterior</p>
+                      <p className="mt-0.5 text-[11px] font-mono font-semibold text-white/90">{card.prefix}{n0(d.anterior)}</p>
+                    </div>
+                    <div>
+                      <p className="text-[9px] font-semibold uppercase tracking-widest text-white/60">Ingresos</p>
+                      <p className="mt-0.5 text-[11px] font-mono font-semibold text-white/90">↑ {n0(d.ingresos)}</p>
+                    </div>
+                    <div>
+                      <p className="text-[9px] font-semibold uppercase tracking-widest text-white/60">Egresos</p>
+                      <p className="mt-0.5 text-[11px] font-mono font-semibold text-white/90">↓ {n0(d.egresos)}</p>
+                    </div>
+                  </div>
                 </button>
               );
             })}

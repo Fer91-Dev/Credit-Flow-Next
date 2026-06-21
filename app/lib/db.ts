@@ -1,21 +1,22 @@
 /**
- * Helper para filtro obligatorio de tenant (user_id).
- * NUNCA omitir este filtro en queries de negocio.
+ * Helper para el filtro obligatorio de tenant (Modelo Org: tenant_id).
+ * NUNCA omitir este filtro en queries de negocio. El valor debe provenir del
+ * contexto de sesión: withTenant(ctx.tenantId).
  */
-export function withTenant(userId: string) {
-  if (!userId || typeof userId !== 'string') {
-    throw new Error('withTenant: userId inválido');
+export function withTenant(tenantId: string) {
+  if (!tenantId || typeof tenantId !== 'string') {
+    throw new Error('withTenant: tenantId inválido');
   }
-  return { user_id: userId };
+  return { tenant_id: tenantId };
 }
 
 /**
- * Helper para combinar filtros de tenant con filtros adicionales.
- * Uso: { ...withTenant(userId), estado: 'activo' }
+ * Helper para combinar el filtro de tenant con filtros adicionales.
+ * Uso: { ...withTenant(tenantId), estado: 'activo' }
  */
-export function withTenantAnd(userId: string, ...filters: Record<string, any>[]) {
+export function withTenantAnd(tenantId: string, ...filters: Record<string, any>[]) {
   return {
-    ...withTenant(userId),
+    ...withTenant(tenantId),
     ...filters.reduce((acc, f) => ({ ...acc, ...f }), {}),
   };
 }

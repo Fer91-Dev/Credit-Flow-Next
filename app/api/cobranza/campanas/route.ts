@@ -1,4 +1,4 @@
-import { requireAuth } from "@/lib/auth";
+import { requireRole } from "@/lib/auth";
 import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
@@ -64,10 +64,11 @@ function metricasDe(objetivos: { promesa_generada: boolean; monto_recuperado: nu
  * Lista de campañas del tenant con métricas agregadas (alcance/promesas/recuperado).
  */
 export const GET = withErrorHandler(async (req: NextRequest) => {
-  const { userId } = await requireAuth(req);
+  // Campañas de cobranza: admin y cobrador.
+  const { tenantId } = await requireRole(["admin", "cobrador"], req);
 
   const campanas = await prisma.campanas_cobranza.findMany({
-    where: { ...withTenant(userId) },
+    where: { ...withTenant(tenantId) },
     include: { objetivos: { select: { promesa_generada: true, monto_recuperado: true } } },
     orderBy: { created_at: "desc" },
   });
@@ -89,7 +90,8 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
  * }
  */
 export const POST = withErrorHandler(async (req: NextRequest) => {
-  const { userId } = await requireAuth(req);
+  // Crear campaña de cobranza: admin y cobrador.
+  const { tenantId } = await requireRole(["admin", "cobrador"], req);
 
   let body: any;
   try {
@@ -119,7 +121,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
 
   // Créditos del tenant entre los solicitados (multi-tenant: nunca por id suelto).
   const creditos = await prisma.creditos.findMany({
-    where: { ...withTenant(userId), id: { in: body.credito_ids } },
+    where: { ...withTenant(tenantId), id: { in: body.credito_ids } },
     select: {
       id: true, saldo_pendiente: true, dias_mora: true, estado: true,
       monto_original: true, plazo_meses: true, tasa: true,
@@ -130,7 +132,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     return errorResponse("Ningún crédito válido del tenant en credito_ids", "INVALID_REFERENCE", 400);
   }
 
-  const config = await getConfiguracion(userId);
+  const config = await getConfiguracion(tenantId);
 
   // Snapshot de mora + oferta de recuperación por crédito.
   const objetivosData = creditos.map((c) => {
@@ -154,7 +156,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
   const campana = await prisma.$transaction(async (tx) => {
     const camp = await tx.campanas_cobranza.create({
       data: {
-        ...withTenant(userId),
+        ...withTenant(tenantId),
         nombre: body.nombre.trim(),
         descripcion: body.descripcion?.trim() || null,
         canal,
@@ -167,14 +169,14 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     });
 
     await tx.campana_objetivo.createMany({
-      data: objetivosData.map((o) => ({ ...withTenant(userId), campana_id: camp.id, ...o })),
+      data: objetivosData.map((o) => ({ ...withTenant(tenantId), campana_id: camp.id, ...o })),
     });
 
     return camp;
   });
 
   await registrarAuditoria({
-    userId,
+    tenantId,
     entidad: "campana",
     entidadId: campana.id,
     accion: "crear",

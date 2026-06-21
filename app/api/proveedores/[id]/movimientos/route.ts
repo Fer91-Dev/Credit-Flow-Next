@@ -1,4 +1,4 @@
-import { requireAuth } from "@/lib/auth";
+import { requireRole } from "@/lib/auth";
 import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
@@ -18,10 +18,10 @@ interface RouteParams {
  *  - pago:  cancela parte de la deuda
  */
 export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteParams) => {
-  const { userId } = await requireAuth(req);
+  const { tenantId } = await requireRole(["admin"], req);
   const { id } = await params;
 
-  const proveedor = await prisma.proveedores.findFirst({ where: { ...withTenant(userId), id } });
+  const proveedor = await prisma.proveedores.findFirst({ where: { ...withTenant(tenantId), id } });
   if (!proveedor) {
     return errorResponse("Proveedor no encontrado", "NOT_FOUND", 404);
   }
@@ -46,7 +46,7 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
 
   const mov = await prisma.movimientos_proveedor.create({
     data: {
-      ...withTenant(userId),
+      ...withTenant(tenantId),
       proveedor_id: id,
       fecha: body.fecha ? new Date(body.fecha) : new Date(),
       tipo: body.tipo,
@@ -58,7 +58,7 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
   });
 
   await registrarAuditoria({
-    userId,
+    tenantId,
     entidad: "proveedores",
     entidadId: id,
     accion: "actualizar",

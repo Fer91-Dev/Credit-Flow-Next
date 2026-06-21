@@ -1,4 +1,4 @@
-import { requireAuth } from "@/lib/auth";
+import { requireRole } from "@/lib/auth";
 import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
@@ -12,12 +12,13 @@ import type { NextRequest } from "next/server";
  * Query: ?activo=true para filtrar solo activos.
  */
 export const GET = withErrorHandler(async (req: NextRequest) => {
-  const { userId } = await requireAuth(req);
+  // Proveedores: solo admin.
+  const { tenantId } = await requireRole(["admin"], req);
 
   const url = new URL(req.url);
   const soloActivos = url.searchParams.get("activo") === "true";
 
-  const where: Record<string, unknown> = { ...withTenant(userId) };
+  const where: Record<string, unknown> = { ...withTenant(tenantId) };
   if (soloActivos) where.activo = true;
 
   const proveedores = await prisma.proveedores.findMany({
@@ -27,7 +28,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
 
   // Saldo por proveedor (suma de movimientos firmados).
   const movs = await prisma.movimientos_proveedor.findMany({
-    where: { ...withTenant(userId) },
+    where: { ...withTenant(tenantId) },
     select: { proveedor_id: true, monto: true },
   });
   const porProveedor = new Map<string, number>();
@@ -51,7 +52,8 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
  * Body: { nombre, cuit?, email?, telefono?, direccion?, rubro?, notas?, activo? }
  */
 export const POST = withErrorHandler(async (req: NextRequest) => {
-  const { userId } = await requireAuth(req);
+  // Alta de proveedor: solo admin.
+  const { tenantId } = await requireRole(["admin"], req);
 
   let body: {
     nombre?: string; cuit?: string; email?: string; telefono?: string;
@@ -69,7 +71,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
 
   const proveedor = await prisma.proveedores.create({
     data: {
-      ...withTenant(userId),
+      ...withTenant(tenantId),
       nombre: body.nombre.trim(),
       cuit: body.cuit?.trim() || null,
       email: body.email?.trim() || null,
@@ -82,7 +84,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
   });
 
   await registrarAuditoria({
-    userId,
+    tenantId,
     entidad: "proveedores",
     entidadId: proveedor.id,
     accion: "crear",

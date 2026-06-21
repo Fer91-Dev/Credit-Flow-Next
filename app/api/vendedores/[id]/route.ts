@@ -1,4 +1,4 @@
-import { requireAuth } from "@/lib/auth";
+import { requireRole } from "@/lib/auth";
 import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
@@ -15,18 +15,18 @@ interface RouteParams {
  * Ficha del vendedor con su resumen de ventas/comisión y créditos otorgados.
  */
 export const GET = withErrorHandler(async (req: NextRequest, { params }: RouteParams) => {
-  const { userId } = await requireAuth(req);
+  const { tenantId } = await requireRole(["admin"], req);
   const { id } = await params;
 
   const vendedor = await prisma.vendedores.findFirst({
-    where: { ...withTenant(userId), id },
+    where: { ...withTenant(tenantId), id },
   });
   if (!vendedor) {
     return errorResponse("Vendedor no encontrado", "NOT_FOUND", 404);
   }
 
   const creditos = await prisma.creditos.findMany({
-    where: { ...withTenant(userId), vendedor_id: id, estado: { not: "anulado" } },
+    where: { ...withTenant(tenantId), vendedor_id: id, estado: { not: "anulado" } },
     select: {
       id: true, numero: true, monto_original: true, estado: true, created_at: true,
       cliente: { select: { nombre: true } },
@@ -48,10 +48,10 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
  * Actualiza datos del vendedor. Campos: nombre, email, telefono, rol, comision_pct, meta_venta, activo.
  */
 export const PATCH = withErrorHandler(async (req: NextRequest, { params }: RouteParams) => {
-  const { userId } = await requireAuth(req);
+  const { tenantId } = await requireRole(["admin"], req);
   const { id } = await params;
 
-  const existing = await prisma.vendedores.findFirst({ where: { ...withTenant(userId), id } });
+  const existing = await prisma.vendedores.findFirst({ where: { ...withTenant(tenantId), id } });
   if (!existing) {
     return errorResponse("Vendedor no encontrado", "NOT_FOUND", 404);
   }
@@ -82,7 +82,7 @@ export const PATCH = withErrorHandler(async (req: NextRequest, { params }: Route
   });
 
   await registrarAuditoria({
-    userId,
+    tenantId,
     entidad: "vendedores",
     entidadId: id,
     accion: "actualizar",
@@ -98,10 +98,10 @@ export const PATCH = withErrorHandler(async (req: NextRequest, { params }: Route
  * Elimina un vendedor. Los créditos vinculados quedan con vendedor_id NULL (onDelete: SetNull).
  */
 export const DELETE = withErrorHandler(async (req: NextRequest, { params }: RouteParams) => {
-  const { userId } = await requireAuth(req);
+  const { tenantId } = await requireRole(["admin"], req);
   const { id } = await params;
 
-  const existing = await prisma.vendedores.findFirst({ where: { ...withTenant(userId), id } });
+  const existing = await prisma.vendedores.findFirst({ where: { ...withTenant(tenantId), id } });
   if (!existing) {
     return errorResponse("Vendedor no encontrado", "NOT_FOUND", 404);
   }
@@ -109,7 +109,7 @@ export const DELETE = withErrorHandler(async (req: NextRequest, { params }: Rout
   await prisma.vendedores.delete({ where: { id } });
 
   await registrarAuditoria({
-    userId,
+    tenantId,
     entidad: "vendedores",
     entidadId: id,
     accion: "eliminar",

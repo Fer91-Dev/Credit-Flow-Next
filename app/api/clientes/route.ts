@@ -1,4 +1,4 @@
-import { requireAuth, ApiError } from "@/lib/auth";
+import { requireAuth, requireRole, ApiError } from "@/lib/auth";
 import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
@@ -15,14 +15,17 @@ import type { NextRequest } from "next/server";
  * - ?offset=0 — paginación
  */
 export const GET = withErrorHandler(async (req: NextRequest) => {
-  const { userId } = await requireAuth(req);
+  const { tenantId } = await requireAuth(req);
 
   const url = new URL(req.url);
   const estado = url.searchParams.get("estado");
   const limit = Math.min(parseInt(url.searchParams.get("limit") || "100"), 1000);
   const offset = parseInt(url.searchParams.get("offset") || "0");
+  // El scoring derivado (3 queries extra) solo se calcula si se pide explícitamente.
+  // Así los pickers de cliente (créditos, pagos) y el resto traen la lista liviana.
+  const scored = url.searchParams.get("scored") === "true";
 
-  const where: Record<string, any> = { ...withTenant(userId) };
+  const where: Record<string, any> = { ...withTenant(tenantId) };
   if (estado) {
     where.estado = estado;
   }
@@ -37,7 +40,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     prisma.clientes.count({ where }),
   ]);
 
-  const clientes = await enriquecerClientes(userId, clientesRows);
+  const clientes = scored ? await enriquecerClientes(tenantId, clientesRows) : clientesRows;
 
   return successResponse({
     clientes,
@@ -55,7 +58,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
  * Acotado a los IDs de la página, así no escanea toda la cartera del tenant.
  */
 async function enriquecerClientes(
-  userId: string,
+  tenantId: string,
   rows: Array<{ id: string; created_at: Date }>
 ) {
   if (rows.length === 0) return rows;
@@ -63,7 +66,7 @@ async function enriquecerClientes(
   const clienteIds = rows.map((c) => c.id);
 
   const creditos = await prisma.creditos.findMany({
-    where: { ...withTenant(userId), cliente_id: { in: clienteIds } },
+    where: { ...withTenant(tenantId), cliente_id: { in: clienteIds } },
     select: { id: true, cliente_id: true, estado: true, dias_mora: true, created_at: true },
   });
 
@@ -73,13 +76,13 @@ async function enriquecerClientes(
   const [pagos, cuotas] = await Promise.all([
     creditoIds.length
       ? prisma.pagos.findMany({
-          where: { ...withTenant(userId), credito_id: { in: creditoIds } },
+          where: { ...withTenant(tenantId), credito_id: { in: creditoIds } },
           select: { credito_id: true, fecha: true },
         })
       : Promise.resolve([] as Array<{ credito_id: string; fecha: Date }>),
     creditoIds.length
       ? prisma.cuotas.findMany({
-          where: { ...withTenant(userId), credito_id: { in: creditoIds } },
+          where: { ...withTenant(tenantId), credito_id: { in: creditoIds } },
           select: { credito_id: true, estado: true, fecha_vencimiento: true },
         })
       : Promise.resolve([] as Array<{ credito_id: string; estado: string; fecha_vencimiento: Date }>),
@@ -158,7 +161,8 @@ async function enriquecerClientes(
  * }
  */
 export const POST = withErrorHandler(async (req: NextRequest) => {
-  const { userId } = await requireAuth(req);
+  // Alta de clientes: admin y vendedor (el cobrador es solo-lectura sobre clientes).
+  const { tenantId } = await requireRole(["admin", "vendedor"], req);
 
   let body: any;
   try {
@@ -208,12 +212,12 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
       // Contacto laboral
       telefono_laboral: body.telefono_laboral?.trim() || null,
       direccion_laboral: body.direccion_laboral?.trim() || null,
-      ...withTenant(userId),
+      ...withTenant(tenantId),
     },
   });
 
   await registrarAuditoria({
-    userId,
+    tenantId,
     entidad: "clientes",
     entidadId: cliente.id,
     accion: "crear",

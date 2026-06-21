@@ -28,7 +28,7 @@ function esInactivo(c: Cliente): boolean {
  * con editar/eliminar. El alta de clientes está siempre disponible.
  */
 export function ClientesTable() {
-  const { clientes, isLoading, mutate } = useClientes();
+  const { clientes, isLoading, mutate } = useClientes({ scored: true });
   const { mutate: globalMutate } = useSWRConfig();
 
   const [query, setQuery] = useState("");
@@ -108,15 +108,27 @@ export function ClientesTable() {
 
   // ── Vista de ficha (cliente seleccionado) ──
   if (selected) {
-    return (
-      <div className="space-y-5">
-        <button
-          onClick={() => setSelected(null)}
-          className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
-        >
-          <ArrowLeft className="h-4 w-4" /> Buscar otro cliente
-        </button>
+    const volver = (
+      <button
+        onClick={() => setSelected(null)}
+        className="flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg border border-border text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors whitespace-nowrap"
+      >
+        <ArrowLeft className="h-4 w-4" /> Buscar otro cliente
+      </button>
+    );
 
+    return (
+      <div className="space-y-6">
+        {/* Header contextual de la página + acción secundaria */}
+        <PageHeader
+          icon={Users}
+          title="Clientes"
+          subtitle="Ficha del cliente"
+          accent="primary"
+          actions={volver}
+        />
+
+        {/* Ficha principal del cliente */}
         <div className="rounded-xl bg-card border border-border overflow-hidden">
           <ClienteDetail
             clienteId={selected.id}

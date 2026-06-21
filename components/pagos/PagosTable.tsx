@@ -53,23 +53,35 @@ export function PagosTable() {
 
   // ── Vista de ficha (cliente seleccionado) ──
   if (selected) {
-    return (
-      <div className="space-y-5">
-        <div className="flex items-center justify-between gap-3 flex-wrap">
-          <button
-            onClick={() => setSelected(null)}
-            className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
-          >
-            <ArrowLeft className="h-4 w-4" /> Buscar otro cliente
-          </button>
-          <button
-            onClick={() => setPagoOpen(true)}
-            className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 transition-opacity"
-          >
-            <Plus className="h-4 w-4" /> Registrar pago
-          </button>
-        </div>
+    const acciones = (
+      <>
+        <button
+          onClick={() => setSelected(null)}
+          className="flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg border border-border text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors whitespace-nowrap"
+        >
+          <ArrowLeft className="h-4 w-4" /> Buscar otro cliente
+        </button>
+        <button
+          onClick={() => setPagoOpen(true)}
+          className="flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 transition-opacity whitespace-nowrap"
+        >
+          <Plus className="h-4 w-4" /> Registrar pago
+        </button>
+      </>
+    );
 
+    return (
+      <div className="space-y-6">
+        {/* Header contextual de la página + acciones */}
+        <PageHeader
+          icon={Wallet}
+          title="Pagos"
+          subtitle="Ficha del cliente · registrar cobro"
+          accent="primary"
+          actions={acciones}
+        />
+
+        {/* Ficha principal del cliente */}
         <div className="rounded-xl bg-card border border-border overflow-hidden">
           <ClienteDetail clienteId={selected.id} variant="pagos" />
         </div>

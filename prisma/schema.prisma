@@ -8,6 +8,58 @@ datasource db {
   url       = env("DATABASE_URL")
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// MODELO ORG (multi-usuario por financiera)
+//
+// `tenants`  = la financiera (organización). Es el TENANT real del sistema.
+// `profiles` = la persona que loguea (= auth.users.id), pertenece a un tenant y
+//              tiene un ROL. Fuente de verdad del control de acceso.
+//
+// Toda tabla operativa se aísla por `tenant_id` (antes `user_id`, resignificado).
+// El aislamiento se aplica en la capa app (`withTenant`) + RLS de Postgres.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Roles de acceso dentro de una financiera (tenant). Deny-by-default: un profile
+/// sin rol (role = null) o inactivo NO tiene acceso a nada.
+enum Role {
+  admin    // Dueño/gerente: acceso total (Reportes, Caja, Configuración, Auditoría)
+  vendedor // Comercial: ABM clientes + alta/simulación de créditos
+  cobrador // Mora y cobro: Pagos + Cobranza; ve clientes/créditos, no crea créditos
+}
+
+/// Financiera / organización. Es el "tenant" del sistema multi-tenant.
+/// Toda la data operativa pertenece a un tenant; las personas (profiles) también.
+model tenants {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  nombre     String
+  activo     Boolean  @default(true)
+
+  profiles profiles[]
+}
+
+/// Identidad de un usuario autenticado (= auth.users.id) dentro de una financiera.
+/// Fuente de verdad del ROL. La FK profiles.id → auth.users(id) y el trigger de
+/// alta (handle_new_user) se manejan a nivel SQL (Supabase no es modelable por Prisma).
+///
+/// Deny-by-default: un profile recién creado nace con tenant_id = null, role = null
+/// y activo = false → sin acceso a nada hasta que un admin lo asigne y active.
+model profiles {
+  id          String   @id @db.Uuid // = auth.users.id (Supabase Auth)
+  created_at  DateTime @default(now()) @db.Timestamptz(6)
+  full_name   String?
+  email       String?
+  tenant_id   String?  @db.Uuid // nullable: deny-by-default hasta asignar
+  role        Role? // nullable: sin rol = acceso denegado
+  activo      Boolean  @default(false) // inerte hasta que el admin lo active
+  vendedor_id String?  @db.Uuid // vínculo opcional al registro comercial (si role = vendedor)
+
+  tenant   tenants?    @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  vendedor vendedores? @relation(fields: [vendedor_id], references: [id], onDelete: SetNull)
+
+  @@index([tenant_id])
+}
+
 model clientes {
   id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   created_at   DateTime @default(now()) @db.Timestamptz(6)
@@ -20,7 +72,7 @@ model clientes {
   tipo_credito String   @default("personal")
   monto_total  Float    @default(0)
   zona         String?  // zona/barrio para segmentación geográfica (Fase Home)
-  user_id      String   @db.Uuid
+  tenant_id    String   @db.Uuid
 
   // Datos personales ampliados
   fecha_nacimiento DateTime? @db.Date
@@ -44,63 +96,67 @@ model clientes {
 
   creditos    creditos[]
   solicitudes solicitudes[]
+
+  @@index([tenant_id])
 }
 
 model creditos {
-  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  created_at      DateTime  @default(now()) @db.Timestamptz(6)
-  numero          Int?      // identificador legible secuencial por tenant (se muestra como CRD-000123)
-  motivo_anulacion String?  // motivo registrado al anular el crédito
-  cliente_id      String    @db.Uuid
-  solicitud_id    String?   @db.Uuid
-  tipo_credito    String
-  monto_original  Float
-  saldo_pendiente Float
-  tasa            Float     @default(0)
-  plazo_meses     Int       @default(12) // número de cuotas (el período lo da `frecuencia`)
-  frecuencia      String    @default("mensual") // clave de frecuencia (built-in o personalizada)
-  frecuencia_def  Json?     // snapshot de la definición de frecuencia vigente al otorgar (congela días/períodos)
-  fecha_inicio    DateTime  @default(now()) @db.Date
-  proximo_pago    DateTime? @db.Date
-  dias_mora       Int       @default(0)
-  estado          String    @default("activo")
-  cargos          Json?     // snapshot de CargosConfig vigente al otorgar (congela los cargos del crédito)
-  cronograma      Json?     // snapshot del cronograma (corte/día venc/gracia/feriados) vigente al otorgar
-  user_id         String    @db.Uuid
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  created_at       DateTime  @default(now()) @db.Timestamptz(6)
+  numero           Int? // identificador legible secuencial por tenant (se muestra como CRD-000123)
+  motivo_anulacion String? // motivo registrado al anular el crédito
+  cliente_id       String    @db.Uuid
+  solicitud_id     String?   @db.Uuid
+  tipo_credito     String
+  monto_original   Float
+  saldo_pendiente  Float
+  tasa             Float     @default(0)
+  plazo_meses      Int       @default(12) // número de cuotas (el período lo da `frecuencia`)
+  frecuencia       String    @default("mensual") // clave de frecuencia (built-in o personalizada)
+  frecuencia_def   Json? // snapshot de la definición de frecuencia vigente al otorgar (congela días/períodos)
+  fecha_inicio     DateTime  @default(now()) @db.Date
+  proximo_pago     DateTime? @db.Date
+  dias_mora        Int       @default(0)
+  estado           String    @default("activo")
+  cargos           Json? // snapshot de CargosConfig vigente al otorgar (congela los cargos del crédito)
+  cronograma       Json? // snapshot del cronograma (corte/día venc/gracia/feriados) vigente al otorgar
+  tenant_id        String    @db.Uuid
 
-  vendedor_id String?   @db.Uuid // vendedor que otorgó el crédito (Fase 5, opcional)
+  vendedor_id String? @db.Uuid // vendedor que otorgó el crédito (Fase 5, opcional)
 
-  cliente   clientes     @relation(fields: [cliente_id], references: [id], onDelete: Cascade)
-  solicitud solicitudes? @relation(fields: [solicitud_id], references: [id], onDelete: SetNull)
-  vendedor  vendedores?  @relation(fields: [vendedor_id], references: [id], onDelete: SetNull)
-  pagos     pagos[]
-  acciones  acciones_cobranza[]
-  cuotas    cuotas[]
-  movimientos movimientos_caja[]
+  cliente           clientes           @relation(fields: [cliente_id], references: [id], onDelete: Cascade)
+  solicitud         solicitudes?       @relation(fields: [solicitud_id], references: [id], onDelete: SetNull)
+  vendedor          vendedores?        @relation(fields: [vendedor_id], references: [id], onDelete: SetNull)
+  pagos             pagos[]
+  acciones          acciones_cobranza[]
+  cuotas            cuotas[]
+  movimientos       movimientos_caja[]
   objetivos_campana campana_objetivo[]
 
-  @@unique([user_id, numero])
-  @@index([user_id, vendedor_id])
+  @@unique([tenant_id, numero])
+  @@index([tenant_id, vendedor_id])
 }
 
 /// Personal de ventas/cobranza (Fase 5). Tabla aditiva, multi-tenant.
-/// Cada vendedor puede tener un % de comisión sobre las ventas (créditos) que otorga
-/// y una meta de venta para el seguimiento de objetivos por equipo.
+/// Registro COMERCIAL del vendedor (comisión, meta). La identidad de login y el rol
+/// real viven en `profiles` (profiles.vendedor_id → vendedores.id).
+/// `rol` (texto) queda por retrocompatibilidad; se deprecará en una fase posterior.
 model vendedores {
   id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   created_at   DateTime @default(now()) @db.Timestamptz(6)
-  user_id      String   @db.Uuid
+  tenant_id    String   @db.Uuid
   nombre       String
   email        String?
   telefono     String?
-  rol          String   @default("vendedor") // vendedor | supervisor | cobrador | admin
-  comision_pct Float    @default(0)          // % de comisión sobre el monto otorgado
-  meta_venta   Float    @default(0)          // meta de venta del período (0 = sin meta)
+  rol          String   @default("vendedor") // DEPRECADO (ver profiles.role): vendedor | supervisor | cobrador | admin
+  comision_pct Float    @default(0) // % de comisión sobre el monto otorgado
+  meta_venta   Float    @default(0) // meta de venta del período (0 = sin meta)
   activo       Boolean  @default(true)
 
   creditos creditos[]
+  profiles profiles[] // back-relation del vínculo profiles.vendedor_id
 
-  @@index([user_id])
+  @@index([tenant_id])
 }
 
 /// Campaña de recuperación de cobranza (Fase 7A). Tabla aditiva, multi-tenant.
@@ -108,21 +164,21 @@ model vendedores {
 /// una promoción opcional (quita de interés de mora). La APLICACIÓN automática de
 /// la quita al cobrar es Fase 7B (no toca el motor de pagos todavía).
 model campanas_cobranza {
-  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  created_at       DateTime @default(now()) @db.Timestamptz(6)
-  user_id          String   @db.Uuid
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  created_at       DateTime  @default(now()) @db.Timestamptz(6)
+  tenant_id        String    @db.Uuid
   nombre           String
   descripcion      String?
-  canal            String   @default("whatsapp") // whatsapp | email | sms
-  estado           String   @default("borrador") // borrador | activa | finalizada
-  promo_tipo       String   @default("ninguna")  // ninguna | quita_interes
-  promo_valor      Float    @default(0)          // % de descuento sobre el interés de mora
-  promo_vence      DateTime? @db.Date            // plazo límite para acogerse a la promo
-  mensaje_template String?                       // plantilla del mensaje (con [Nombre], [Monto], etc.)
+  canal            String    @default("whatsapp") // whatsapp | email | sms
+  estado           String    @default("borrador") // borrador | activa | finalizada
+  promo_tipo       String    @default("ninguna") // ninguna | quita_interes
+  promo_valor      Float     @default(0) // % de descuento sobre el interés de mora
+  promo_vence      DateTime? @db.Date // plazo límite para acogerse a la promo
+  mensaje_template String? // plantilla del mensaje (con [Nombre], [Monto], etc.)
 
   objetivos campana_objetivo[]
 
-  @@index([user_id, created_at])
+  @@index([tenant_id, created_at])
 }
 
 /// Vínculo campaña ↔ crédito en mora (tabla intermedia, Fase 7A). Multi-tenant.
@@ -130,28 +186,28 @@ model campanas_cobranza {
 /// y la oferta de recuperación calculada. `monto_recuperado` se actualiza con los
 /// pagos imputados a ese crédito mientras la campaña esté activa.
 model campana_objetivo {
-  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  created_at        DateTime @default(now()) @db.Timestamptz(6)
-  user_id           String   @db.Uuid
-  campana_id        String   @db.Uuid
-  credito_id        String   @db.Uuid
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  created_at       DateTime @default(now()) @db.Timestamptz(6)
+  tenant_id        String   @db.Uuid
+  campana_id       String   @db.Uuid
+  credito_id       String   @db.Uuid
   // Snapshot de la mora al incorporar a la campaña
-  saldo             Float    @default(0)
-  dias_mora         Int      @default(0)
-  interes_mora      Float    @default(0)
+  saldo            Float    @default(0)
+  dias_mora        Int      @default(0)
+  interes_mora     Float    @default(0)
   // Oferta de recuperación calculada (calculateRecoveryOffer)
-  oferta_monto      Float    @default(0) // monto a cancelar con descuento aplicado
-  oferta_descuento  Float    @default(0) // $ de descuento (ahorro) ofrecido
+  oferta_monto     Float    @default(0) // monto a cancelar con descuento aplicado
+  oferta_descuento Float    @default(0) // $ de descuento (ahorro) ofrecido
   // Seguimiento
-  promesa_generada  Boolean  @default(false)
-  monto_recuperado  Float    @default(0)
+  promesa_generada Boolean  @default(false)
+  monto_recuperado Float    @default(0)
 
   campana campanas_cobranza @relation(fields: [campana_id], references: [id], onDelete: Cascade)
   credito creditos          @relation(fields: [credito_id], references: [id], onDelete: Cascade)
 
   @@unique([campana_id, credito_id])
-  @@index([user_id, campana_id])
-  @@index([user_id, credito_id])
+  @@index([tenant_id, campana_id])
+  @@index([tenant_id, credito_id])
 }
 
 /// Libro de movimientos de efectivo (Caja) por tenant. Tabla aditiva, multi-tenant.
@@ -159,10 +215,10 @@ model campana_objetivo {
 model movimientos_caja {
   id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   created_at  DateTime @default(now()) @db.Timestamptz(6)
-  user_id     String   @db.Uuid
+  tenant_id   String   @db.Uuid
   fecha       DateTime @default(now()) @db.Date
-  tipo        String   // desembolso | cobro | devolucion | reversa_desembolso | ajuste | transferencia
-  monto       Float    // con signo: ingreso > 0, egreso < 0
+  tipo        String // desembolso | cobro | devolucion | reversa_desembolso | ajuste | transferencia
+  monto       Float // con signo: ingreso > 0, egreso < 0
   metodo      String?
   cuenta      String   @default("efectivo") // efectivo | banco | dolares
   descripcion String
@@ -172,9 +228,9 @@ model movimientos_caja {
   credito creditos? @relation(fields: [credito_id], references: [id], onDelete: Cascade)
   pago    pagos?    @relation(fields: [pago_id], references: [id], onDelete: Cascade)
 
-  @@index([user_id, fecha])
-  @@index([user_id, credito_id])
-  @@index([user_id, cuenta])
+  @@index([tenant_id, fecha])
+  @@index([tenant_id, credito_id])
+  @@index([tenant_id, cuenta])
 }
 
 /// Plan de cuotas PERSISTIDO de un crédito (Fase 6A). Tabla aditiva, multi-tenant.
@@ -184,18 +240,18 @@ model movimientos_caja {
 model cuotas {
   id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   created_at        DateTime @default(now()) @db.Timestamptz(6)
-  user_id           String   @db.Uuid
+  tenant_id         String   @db.Uuid
   credito_id        String   @db.Uuid
-  nro               Int      // número de cuota (1..n)
+  nro               Int // número de cuota (1..n)
   fecha_vencimiento DateTime @db.Date
   // Plan congelado (desde construirPlanAmortizacion al generar)
-  saldo_inicial     Float    // capital pendiente al inicio del período
-  capital           Float    // abono a capital planificado
-  interes           Float    // interés planificado del período
+  saldo_inicial     Float // capital pendiente al inicio del período
+  capital           Float // abono a capital planificado
+  interes           Float // interés planificado del período
   iva               Float    @default(0)
   seguro            Float    @default(0)
   gastos            Float    @default(0)
-  cuota_total       Float    // cuota total planificada (con redondeo)
+  cuota_total       Float // cuota total planificada (con redondeo)
   // Estado autoritativo (escrito por el motor de pagos en 6B; en 6A se derivaba).
   estado            String   @default("pendiente") // pendiente | parcial | pagada | vencida
   pagado            Float    @default(0) // total aplicado a la cuota (capital+interes+mora+cargos)
@@ -205,12 +261,12 @@ model cuotas {
   pagado_mora       Float    @default(0)
   pagado_cargos     Float    @default(0)
 
-  credito     creditos     @relation(fields: [credito_id], references: [id], onDelete: Cascade)
+  credito      creditos     @relation(fields: [credito_id], references: [id], onDelete: Cascade)
   aplicaciones pago_cuota[]
 
   @@unique([credito_id, nro])
-  @@index([user_id, credito_id])
-  @@index([user_id, fecha_vencimiento])
+  @@index([tenant_id, credito_id])
+  @@index([tenant_id, fecha_vencimiento])
 }
 
 /// Aplicación de un pago a una cuota concreta (libro mayor pago↔cuota, Fase 6B).
@@ -218,7 +274,7 @@ model cuotas {
 model pago_cuota {
   id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   created_at       DateTime @default(now()) @db.Timestamptz(6)
-  user_id          String   @db.Uuid
+  tenant_id        String   @db.Uuid
   pago_id          String   @db.Uuid
   cuota_id         String   @db.Uuid
   aplicado_capital Float    @default(0)
@@ -229,8 +285,8 @@ model pago_cuota {
   pago  pagos  @relation(fields: [pago_id], references: [id], onDelete: Cascade)
   cuota cuotas @relation(fields: [cuota_id], references: [id], onDelete: Cascade)
 
-  @@index([user_id, pago_id])
-  @@index([user_id, cuota_id])
+  @@index([tenant_id, pago_id])
+  @@index([tenant_id, cuota_id])
 }
 
 model pagos {
@@ -241,16 +297,18 @@ model pagos {
   fecha            DateTime @default(now()) @db.Date
   metodo           String   @default("efectivo")
   notas            String?
-  user_id          String   @db.Uuid
+  tenant_id        String   @db.Uuid
   aplicado_mora    Float    @default(0)
   aplicado_interes Float    @default(0)
   aplicado_cargos  Float    @default(0)
   aplicado_capital Float    @default(0)
   excedente        Float    @default(0)
 
-  credito      creditos    @relation(fields: [credito_id], references: [id], onDelete: Cascade)
+  credito      creditos           @relation(fields: [credito_id], references: [id], onDelete: Cascade)
   aplicaciones pago_cuota[]
   movimientos  movimientos_caja[]
+
+  @@index([tenant_id])
 }
 
 model solicitudes {
@@ -264,16 +322,12 @@ model solicitudes {
   estado       String    @default("pendiente")
   notas        String?
   decided_at   DateTime? @db.Timestamptz(6)
-  user_id      String    @db.Uuid
+  tenant_id    String    @db.Uuid
 
   cliente  clientes   @relation(fields: [cliente_id], references: [id], onDelete: Cascade)
   creditos creditos[]
-}
 
-model profiles {
-  id         String   @id @db.Uuid
-  created_at DateTime @default(now()) @db.Timestamptz(6)
-  full_name  String?
+  @@index([tenant_id])
 }
 
 /// Gestiones de cobranza sobre un crédito en mora (llamadas, promesas de pago, etc.).
@@ -281,10 +335,10 @@ model profiles {
 model acciones_cobranza {
   id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   created_at       DateTime  @default(now()) @db.Timestamptz(6)
-  user_id          String    @db.Uuid
+  tenant_id        String    @db.Uuid
   credito_id       String    @db.Uuid
-  tipo             String    // llamada | whatsapp | email | visita | otro
-  resultado        String    // contactado | no_contesta | promesa_pago | renegociacion | ilocalizable | otro
+  tipo             String // llamada | whatsapp | email | visita | otro
+  resultado        String // contactado | no_contesta | promesa_pago | renegociacion | ilocalizable | otro
   nota             String?
   promesa_monto    Float?
   promesa_fecha    DateTime? @db.Date
@@ -292,23 +346,23 @@ model acciones_cobranza {
 
   credito creditos @relation(fields: [credito_id], references: [id], onDelete: Cascade)
 
-  @@index([user_id, credito_id])
-  @@index([user_id, proximo_contacto])
+  @@index([tenant_id, credito_id])
+  @@index([tenant_id, proximo_contacto])
 }
 
-/// Traza de auditoría: registra eventos de negocio por tenant (user_id).
+/// Traza de auditoría: registra eventos de negocio por tenant (tenant_id).
 /// Tabla aditiva, solo escritura desde el backend y lectura en la vista.
 model auditoria {
   id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   created_at  DateTime @default(now()) @db.Timestamptz(6)
-  user_id     String   @db.Uuid
-  entidad     String   // clientes | creditos | pagos | configuracion
+  tenant_id   String   @db.Uuid
+  entidad     String // clientes | creditos | pagos | configuracion
   entidad_id  String?  @db.Uuid
-  accion      String   // crear | actualizar | eliminar | cancelar | registrar_pago | actualizar_config
+  accion      String // crear | actualizar | eliminar | cancelar | registrar_pago | actualizar_config
   descripcion String
   meta        Json?
 
-  @@index([user_id, created_at])
+  @@index([tenant_id, created_at])
 }
 
 /// Proveedores / acreedores (Fase 6). Tabla aditiva, multi-tenant.
@@ -317,19 +371,19 @@ model auditoria {
 model proveedores {
   id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   created_at DateTime @default(now()) @db.Timestamptz(6)
-  user_id    String   @db.Uuid
+  tenant_id  String   @db.Uuid
   nombre     String
   cuit       String?
   email      String?
   telefono   String?
   direccion  String?
-  rubro      String?  // rubro/categoría (servicios, fondeo, insumos, etc.)
+  rubro      String? // rubro/categoría (servicios, fondeo, insumos, etc.)
   notas      String?
   activo     Boolean  @default(true)
 
   movimientos movimientos_proveedor[]
 
-  @@index([user_id])
+  @@index([tenant_id])
 }
 
 /// Cuenta corriente de un proveedor (Fase 6). Tabla aditiva, multi-tenant.
@@ -338,24 +392,24 @@ model proveedores {
 model movimientos_proveedor {
   id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   created_at   DateTime @default(now()) @db.Timestamptz(6)
-  user_id      String   @db.Uuid
+  tenant_id    String   @db.Uuid
   proveedor_id String   @db.Uuid
   fecha        DateTime @default(now()) @db.Date
-  tipo         String   // cargo (factura/gasto/fondeo recibido) | pago (cancelación)
-  monto        Float    // con signo: cargo > 0, pago < 0
+  tipo         String // cargo (factura/gasto/fondeo recibido) | pago (cancelación)
+  monto        Float // con signo: cargo > 0, pago < 0
   concepto     String
-  comprobante  String?  // N° de factura/comprobante
-  metodo       String?  // medio de pago (efectivo, transferencia, etc.)
+  comprobante  String? // N° de factura/comprobante
+  metodo       String? // medio de pago (efectivo, transferencia, etc.)
 
   proveedor proveedores @relation(fields: [proveedor_id], references: [id], onDelete: Cascade)
 
-  @@index([user_id, proveedor_id])
-  @@index([user_id, fecha])
+  @@index([tenant_id, proveedor_id])
+  @@index([tenant_id, fecha])
 }
 
-/// Configuración del motor financiero por financiera (tenant = user_id).
+/// Configuración del motor financiero por financiera (tenant = tenant_id).
 model configuraciones {
-  user_id              String   @id @db.Uuid
+  tenant_id            String   @id @db.Uuid
   convencion_tasa      String   @default("nominal_anual")
   sistema_amortizacion String   @default("frances")
   mora_activa          Boolean  @default(true)
@@ -365,6 +419,6 @@ model configuraciones {
   imputar_cargos       String   @default("integrado")
   moneda               String   @default("ARS")
   locale               String   @default("es-AR")
-  simulador            Json?    // SimuladorConfig (parámetros del motor de cuota por tenant)
+  simulador            Json? // SimuladorConfig (parámetros del motor de cuota por tenant)
   updated_at           DateTime @updatedAt @db.Timestamptz(6)
 }

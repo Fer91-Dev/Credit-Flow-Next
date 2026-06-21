@@ -1,4 +1,4 @@
-import { requireAuth } from "@/lib/auth";
+import { requireRole } from "@/lib/auth";
 import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
@@ -13,7 +13,8 @@ import type { NextRequest } from "next/server";
  *  - periodo: ingresos/egresos/neto de los movimientos del rango.
  */
 export const GET = withErrorHandler(async (req: NextRequest) => {
-  const { userId } = await requireAuth(req);
+  // Caja: solo admin.
+  const { tenantId } = await requireRole(["admin"], req);
 
   const url = new URL(req.url);
   const hoy = new Date();
@@ -27,7 +28,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   const hasta = new Date(`${hastaStr}T23:59:59.999Z`);
 
   const whereRango: Record<string, unknown> = {
-    ...withTenant(userId),
+    ...withTenant(tenantId),
     fecha: { gte: desde, lte: hasta },
   };
   if (tipo && tipo !== "all") whereRango.tipo = tipo;
@@ -42,8 +43,8 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     }),
     // Todos los movimientos del tenant (sin filtros) para el saldo por cuenta y total.
     prisma.movimientos_caja.findMany({
-      where: { ...withTenant(userId) },
-      select: { monto: true, cuenta: true },
+      where: { ...withTenant(tenantId) },
+      select: { monto: true, cuenta: true, fecha: true },
     }),
   ]);
 
@@ -51,10 +52,32 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   const saldosCuenta = saldosPorCuenta(saldoMovs);
   const saldoTotal = Math.round((saldosCuenta.efectivo + saldosCuenta.banco + saldosCuenta.dolares) * 100) / 100;
 
+  // Desglose por cuenta: saldo actual, ingresos/egresos del período y saldo anterior.
+  type Detalle = { saldo: number; anterior: number; ingresos: number; egresos: number };
+  const r2 = (n: number) => Math.round(n * 100) / 100;
+  const saldosDetalle: Record<"efectivo" | "banco" | "dolares", Detalle> = {
+    efectivo: { saldo: saldosCuenta.efectivo, anterior: 0, ingresos: 0, egresos: 0 },
+    banco:    { saldo: saldosCuenta.banco,    anterior: 0, ingresos: 0, egresos: 0 },
+    dolares:  { saldo: saldosCuenta.dolares,  anterior: 0, ingresos: 0, egresos: 0 },
+  };
+  for (const m of saldoMovs) {
+    const cta = esCuentaValida(m.cuenta) ? m.cuenta : "efectivo";
+    const t = m.fecha.getTime();
+    if (t >= desde.getTime() && t <= hasta.getTime()) {
+      if (m.monto >= 0) saldosDetalle[cta].ingresos = r2(saldosDetalle[cta].ingresos + m.monto);
+      else saldosDetalle[cta].egresos = r2(saldosDetalle[cta].egresos + Math.abs(m.monto));
+    }
+  }
+  for (const cta of ["efectivo", "banco", "dolares"] as const) {
+    const d = saldosDetalle[cta];
+    d.anterior = r2(d.saldo - (d.ingresos - d.egresos));
+  }
+
   return successResponse({
     periodo: { desde: desdeStr, hasta: hastaStr },
     saldo_total: saldoTotal,
     saldos_por_cuenta: saldosCuenta,
+    saldos_detalle: saldosDetalle,
     ingresos: periodo.ingresos,
     egresos: periodo.egresos,
     neto: periodo.neto,
@@ -78,7 +101,8 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
  * crédito/pago). Body: { monto > 0, sentido: "ingreso"|"egreso", descripcion, fecha?, metodo? }
  */
 export const POST = withErrorHandler(async (req: NextRequest) => {
-  const { userId } = await requireAuth(req);
+  // Ajuste manual de caja: solo admin.
+  const { tenantId } = await requireRole(["admin"], req);
 
   let body: { monto?: number; sentido?: string; descripcion?: string; fecha?: string; metodo?: string; cuenta?: string };
   try {
@@ -99,7 +123,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
 
   const mov = await prisma.movimientos_caja.create({
     data: {
-      ...withTenant(userId),
+      ...withTenant(tenantId),
       fecha: body.fecha ? new Date(body.fecha) : new Date(),
       tipo: "ajuste",
       monto: montoConSigno("ajuste", monto, ingreso),
@@ -110,7 +134,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
   });
 
   await registrarAuditoria({
-    userId,
+    tenantId,
     entidad: "caja",
     entidadId: mov.id,
     accion: "crear",

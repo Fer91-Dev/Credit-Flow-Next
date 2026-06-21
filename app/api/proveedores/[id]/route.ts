@@ -1,4 +1,4 @@
-import { requireAuth } from "@/lib/auth";
+import { requireRole } from "@/lib/auth";
 import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
@@ -15,18 +15,18 @@ interface RouteParams {
  * Ficha del proveedor con su cuenta corriente (movimientos + totales).
  */
 export const GET = withErrorHandler(async (req: NextRequest, { params }: RouteParams) => {
-  const { userId } = await requireAuth(req);
+  const { tenantId } = await requireRole(["admin"], req);
   const { id } = await params;
 
   const proveedor = await prisma.proveedores.findFirst({
-    where: { ...withTenant(userId), id },
+    where: { ...withTenant(tenantId), id },
   });
   if (!proveedor) {
     return errorResponse("Proveedor no encontrado", "NOT_FOUND", 404);
   }
 
   const movimientos = await prisma.movimientos_proveedor.findMany({
-    where: { ...withTenant(userId), proveedor_id: id },
+    where: { ...withTenant(tenantId), proveedor_id: id },
     orderBy: [{ fecha: "desc" }, { created_at: "desc" }],
     take: 500,
   });
@@ -41,10 +41,10 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
  * Actualiza datos del proveedor.
  */
 export const PATCH = withErrorHandler(async (req: NextRequest, { params }: RouteParams) => {
-  const { userId } = await requireAuth(req);
+  const { tenantId } = await requireRole(["admin"], req);
   const { id } = await params;
 
-  const existing = await prisma.proveedores.findFirst({ where: { ...withTenant(userId), id } });
+  const existing = await prisma.proveedores.findFirst({ where: { ...withTenant(tenantId), id } });
   if (!existing) {
     return errorResponse("Proveedor no encontrado", "NOT_FOUND", 404);
   }
@@ -70,7 +70,7 @@ export const PATCH = withErrorHandler(async (req: NextRequest, { params }: Route
   const proveedor = await prisma.proveedores.update({ where: { id }, data });
 
   await registrarAuditoria({
-    userId,
+    tenantId,
     entidad: "proveedores",
     entidadId: id,
     accion: "actualizar",
@@ -86,10 +86,10 @@ export const PATCH = withErrorHandler(async (req: NextRequest, { params }: Route
  * Elimina un proveedor y su cuenta corriente (onDelete: Cascade en movimientos).
  */
 export const DELETE = withErrorHandler(async (req: NextRequest, { params }: RouteParams) => {
-  const { userId } = await requireAuth(req);
+  const { tenantId } = await requireRole(["admin"], req);
   const { id } = await params;
 
-  const existing = await prisma.proveedores.findFirst({ where: { ...withTenant(userId), id } });
+  const existing = await prisma.proveedores.findFirst({ where: { ...withTenant(tenantId), id } });
   if (!existing) {
     return errorResponse("Proveedor no encontrado", "NOT_FOUND", 404);
   }
@@ -97,7 +97,7 @@ export const DELETE = withErrorHandler(async (req: NextRequest, { params }: Rout
   await prisma.proveedores.delete({ where: { id } });
 
   await registrarAuditoria({
-    userId,
+    tenantId,
     entidad: "proveedores",
     entidadId: id,
     accion: "eliminar",

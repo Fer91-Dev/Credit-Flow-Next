@@ -1,4 +1,4 @@
-import { requireAuth } from "@/lib/auth";
+import { requireRole } from "@/lib/auth";
 import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
@@ -15,7 +15,7 @@ import type { NextRequest } from "next/server";
  * Body: { origen, destino, monto > 0, descripcion?, fecha? }
  */
 export const POST = withErrorHandler(async (req: NextRequest) => {
-  const { userId } = await requireAuth(req);
+  const { tenantId } = await requireRole(["admin"], req);
 
   let body: { origen?: string; destino?: string; monto?: number; descripcion?: string; fecha?: string };
   try {
@@ -45,7 +45,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
   const [salida, entrada] = await prisma.$transaction([
     prisma.movimientos_caja.create({
       data: {
-        ...withTenant(userId),
+        ...withTenant(tenantId),
         fecha,
         tipo: "transferencia",
         monto: -monto, // egreso de la cuenta origen
@@ -55,7 +55,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     }),
     prisma.movimientos_caja.create({
       data: {
-        ...withTenant(userId),
+        ...withTenant(tenantId),
         fecha,
         tipo: "transferencia",
         monto: monto, // ingreso en la cuenta destino
@@ -66,7 +66,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
   ]);
 
   await registrarAuditoria({
-    userId,
+    tenantId,
     entidad: "caja",
     entidadId: salida.id,
     accion: "crear",

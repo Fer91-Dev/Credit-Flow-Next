@@ -1,4 +1,4 @@
-import { requireAuth } from "@/lib/auth";
+import { requireRole } from "@/lib/auth";
 import { errorResponse, withErrorHandler } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
@@ -16,11 +16,11 @@ interface RouteParams {
  * Scope multi-tenant: solo pagos del usuario autenticado.
  */
 export const GET = withErrorHandler(async (req: NextRequest, { params }: RouteParams) => {
-  const { userId } = await requireAuth(req);
+  const { tenantId } = await requireRole(["admin", "cobrador"], req);
   const { id } = await params;
 
   const pago = await prisma.pagos.findFirst({
-    where: { ...withTenant(userId), id },
+    where: { ...withTenant(tenantId), id },
     include: {
       credito: {
         select: {
@@ -38,7 +38,7 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
     return errorResponse("Pago no encontrado", "NOT_FOUND", 404);
   }
 
-  const config = await getConfiguracion(userId);
+  const config = await getConfiguracion(tenantId);
 
   const pdf = await generarReciboPDF({
     pago: {

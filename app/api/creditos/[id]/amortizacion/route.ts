@@ -1,4 +1,4 @@
-import { requireAuth } from "@/lib/auth";
+import { requireAuth, scopeCreditosVendedor } from "@/lib/auth";
 import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
@@ -24,11 +24,11 @@ interface RouteParams {
  * fecha_inicio. La 1ª cuota vence un mes después del desembolso.
  */
 export const GET = withErrorHandler(async (req: NextRequest, { params }: RouteParams) => {
-  const { userId } = await requireAuth(req);
+  const { tenantId, role, vendedorId } = await requireAuth(req);
   const { id } = await params;
 
   const credito = await prisma.creditos.findFirst({
-    where: { ...withTenant(userId), id },
+    where: { ...withTenant(tenantId), ...scopeCreditosVendedor({ role, vendedorId }), id },
     select: {
       id: true,
       monto_original: true,
@@ -48,7 +48,7 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
   }
 
   // La convención de tasa la define la financiera en su configuración.
-  const config = await getConfiguracion(userId);
+  const config = await getConfiguracion(tenantId);
   // Catálogo: snapshot del crédito si existe (blindado); si no, config vigente.
   const catalogo = credito.frecuencia_def
     ? [credito.frecuencia_def as unknown as typeof config.simulador.frecuencias[number]]

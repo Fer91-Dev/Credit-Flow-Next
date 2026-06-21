@@ -1,4 +1,4 @@
-import { requireAuth } from "@/lib/auth";
+import { requireRole } from "@/lib/auth";
 import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api";
 import { getConfiguracion, guardarConfiguracion } from "@/lib/config";
 import { resolverConfig, type ComponenteDeuda } from "@/lib/domain";
@@ -62,8 +62,9 @@ function validarSimulador(s: any): string | null {
  * Devuelve la configuración del motor financiero de la financiera (o defaults).
  */
 export const GET = withErrorHandler(async (req: NextRequest) => {
-  const { userId } = await requireAuth(req);
-  const config = await getConfiguracion(userId);
+  // Configuración del motor financiero: solo admin.
+  const { tenantId } = await requireRole(["admin"], req);
+  const config = await getConfiguracion(tenantId);
   return successResponse(config);
 });
 
@@ -73,7 +74,8 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
  * los no enviados conservan su valor actual.
  */
 export const PUT = withErrorHandler(async (req: NextRequest) => {
-  const { userId } = await requireAuth(req);
+  // Modificar la configuración del motor financiero: solo admin.
+  const { tenantId } = await requireRole(["admin"], req);
 
   let body: any;
   try {
@@ -83,7 +85,7 @@ export const PUT = withErrorHandler(async (req: NextRequest) => {
   }
 
   // Partimos de la config actual para que sea un update parcial.
-  const actual = await getConfiguracion(userId);
+  const actual = await getConfiguracion(tenantId);
 
   // Validaciones de cada campo enviado
   if (body.convencionTasa !== undefined && !CONVENCIONES.includes(body.convencionTasa)) {
@@ -121,10 +123,10 @@ export const PUT = withErrorHandler(async (req: NextRequest) => {
     simulador: body.simulador ?? actual.simulador,
   });
 
-  const guardada = await guardarConfiguracion(userId, nueva);
+  const guardada = await guardarConfiguracion(tenantId, nueva);
 
   await registrarAuditoria({
-    userId,
+    tenantId,
     entidad: "configuracion",
     accion: "actualizar_config",
     descripcion: "Configuración del motor financiero actualizada",

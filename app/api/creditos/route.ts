@@ -1,4 +1,4 @@
-import { requireAuth } from "@/lib/auth";
+import { requireAuth, requireRole, scopeCreditosVendedor } from "@/lib/auth";
 import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
@@ -29,7 +29,7 @@ import type { NextRequest } from "next/server";
  * - ?offset=0
  */
 export const GET = withErrorHandler(async (req: NextRequest) => {
-  const { userId } = await requireAuth(req);
+  const { tenantId, role, vendedorId } = await requireAuth(req);
 
   const url = new URL(req.url);
   const estado = url.searchParams.get("estado");
@@ -37,7 +37,8 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   const limit = Math.min(parseInt(url.searchParams.get("limit") || "100"), 1000);
   const offset = parseInt(url.searchParams.get("offset") || "0");
 
-  const where: Record<string, any> = { ...withTenant(userId) };
+  // Anti-IDOR: el vendedor solo ve SUS créditos; admin/cobrador ven todo el tenant.
+  const where: Record<string, any> = { ...withTenant(tenantId), ...scopeCreditosVendedor({ role, vendedorId }) };
   if (estado) where.estado = estado;
   if (clienteId) where.cliente_id = clienteId;
 
@@ -59,7 +60,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   // Enriquecemos con el interés moratorio calculado por el motor de dominio
   // (mismo criterio que el endpoint de pagos: cuota francesa × tasa diaria × días).
   // Solo se calcula para créditos activos en mora; el resto queda en 0.
-  const config = await getConfiguracion(userId);
+  const config = await getConfiguracion(tenantId);
   const creditosConMora = creditos.map((c) => {
     let interes_mora = 0;
     if (
@@ -104,7 +105,8 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
  * }
  */
 export const POST = withErrorHandler(async (req: NextRequest) => {
-  const { userId } = await requireAuth(req);
+  // Otorgar créditos: admin y vendedor. El cobrador NO puede otorgar.
+  const { tenantId, role, vendedorId: miVendedorId } = await requireRole(["admin", "vendedor"], req);
 
   let body: any;
   try {
@@ -123,7 +125,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
 
   // Validar que el cliente existe y pertenece al usuario
   const cliente = await prisma.clientes.findFirst({
-    where: { ...withTenant(userId), id: body.cliente_id },
+    where: { ...withTenant(tenantId), id: body.cliente_id },
   });
 
   if (!cliente) {
@@ -135,11 +137,19 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     return errorResponse("Montos inválidos", "INVALID_INPUT", 400);
   }
 
-  // Validar vendedor (opcional): debe existir y pertenecer al tenant.
+  // Atribución del vendedor.
+  //  - Si quien otorga ES vendedor: se fuerza su propio vendedor_id (anti-IDOR;
+  //    no puede atribuir el crédito a otro). Su perfil debe estar vinculado.
+  //  - Si es admin: puede elegir vendedor_id (opcional), validado contra el tenant.
   let vendedorId: string | null = null;
-  if (body.vendedor_id) {
+  if (role === "vendedor") {
+    if (!miVendedorId) {
+      return errorResponse("Tu perfil no está vinculado a un vendedor", "FORBIDDEN", 403);
+    }
+    vendedorId = miVendedorId;
+  } else if (body.vendedor_id) {
     const vendedor = await prisma.vendedores.findFirst({
-      where: { ...withTenant(userId), id: body.vendedor_id },
+      where: { ...withTenant(tenantId), id: body.vendedor_id },
       select: { id: true },
     });
     if (!vendedor) {
@@ -153,7 +163,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
 
   // Snapshot de cargos vigentes: congela las reglas de cargos del tenant en el
   // crédito, para que cambios futuros de configuración no lo alteren.
-  const configActual = await getConfiguracion(userId);
+  const configActual = await getConfiguracion(tenantId);
   const cargosSnapshot = configActual.simulador.cargos;
   // Snapshot de la definición de frecuencia: congela días/períodos del crédito.
   const frecuenciaDef = resolverFrecuencia(frecuencia, configActual.simulador.frecuencias);
@@ -176,7 +186,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
   // Si hay solicitud_id, verificar que existe
   if (body.solicitud_id) {
     const solicitud = await prisma.solicitudes.findFirst({
-      where: { ...withTenant(userId), id: body.solicitud_id },
+      where: { ...withTenant(tenantId), id: body.solicitud_id },
     });
     if (!solicitud) {
       return errorResponse("Solicitud no encontrada", "INVALID_REFERENCE", 400);
@@ -207,7 +217,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
   const credito = await prisma.$transaction(async (tx) => {
     // Número identificador legible, secuencial por tenant (CRD-000123).
     const maxNum = await tx.creditos.aggregate({
-      where: { ...withTenant(userId) },
+      where: { ...withTenant(tenantId) },
       _max: { numero: true },
     });
     const numero = (maxNum._max.numero ?? 0) + 1;
@@ -229,14 +239,14 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
         proximo_pago: proximoPagoFinal,
         solicitud_id: body.solicitud_id || null,
         vendedor_id: vendedorId,
-        ...withTenant(userId),
+        ...withTenant(tenantId),
       },
       include: { cliente: true },
     });
 
     await tx.cuotas.createMany({
       data: filasCuota.map((f) => ({
-        ...withTenant(userId),
+        ...withTenant(tenantId),
         credito_id: c.id,
         nro: f.nro,
         fecha_vencimiento: f.fecha_vencimiento,
@@ -253,7 +263,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     // Movimiento de caja: desembolso (egreso) al otorgar.
     await tx.movimientos_caja.create({
       data: {
-        ...withTenant(userId),
+        ...withTenant(tenantId),
         fecha: fechaInicio,
         tipo: "desembolso",
         monto: -Math.abs(c.monto_original),
@@ -266,7 +276,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
   });
 
   await registrarAuditoria({
-    userId,
+    tenantId,
     entidad: "creditos",
     entidadId: credito.id,
     accion: "crear",

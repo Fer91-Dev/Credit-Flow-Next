@@ -109,21 +109,21 @@ export function ClienteDetail({
   return (
     <div className="flex h-full min-h-0 flex-col">
       {/* ── Encabezado de perfil ── */}
-      <div className="shrink-0 border-b border-border px-5 py-5 sm:px-6">
+      <div className="shrink-0 border-b border-border px-5 py-6 sm:px-6">
         <div className="flex items-start gap-4">
           {/* Avatar / monograma */}
-          <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/30 to-primary/5 text-lg font-bold text-primary ring-1 ring-primary/20">
+          <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/30 to-primary/5 text-xl font-bold text-primary ring-1 ring-primary/20">
             {iniciales(cliente.nombre)}
           </div>
 
           <div className="min-w-0 flex-1">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
-                <h2 className="truncate text-xl font-semibold leading-tight text-foreground">{cliente.nombre}</h2>
-                <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                <h2 className="truncate text-2xl font-semibold leading-tight tracking-tight text-foreground">{cliente.nombre}</h2>
+                <div className="mt-2 flex flex-wrap items-center gap-2.5">
                   <StatusBadge label={cliente.estado} variant={cliente.estado === "activo" ? "success" : "muted"} />
                   {cliente.documento && (
-                    <span className="font-mono text-xs text-muted-foreground">DNI {cliente.documento}</span>
+                    <span className="font-mono text-[13px] text-muted-foreground">DNI {cliente.documento}</span>
                   )}
                 </div>
               </div>
@@ -198,8 +198,8 @@ export function ClienteDetail({
         {showPersonal && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <InfoBlock icon={User} title="Identidad" emptyText="Sin datos de identidad cargados." items={[
-            { label: "DNI / Documento", value: cliente.documento, mono: true },
-            { label: "CUIT / CUIL", value: cliente.cuit_cuil, mono: true },
+            { label: "DNI / Documento", value: cliente.documento, mono: true, emphasis: true },
+            { label: "CUIT / CUIL", value: cliente.cuit_cuil, mono: true, emphasis: true },
             { label: "Nacimiento", value: cliente.fecha_nacimiento ? `${fmtDate(cliente.fecha_nacimiento)}${edad(cliente.fecha_nacimiento) ? ` · ${edad(cliente.fecha_nacimiento)}` : ""}` : null },
             { label: "Estado civil", value: cliente.estado_civil ? ESTADO_CIVIL[cliente.estado_civil] ?? cliente.estado_civil : null },
             { label: "Nacionalidad", value: cliente.nacionalidad },
@@ -207,8 +207,8 @@ export function ClienteDetail({
 
           <div className="space-y-4">
             <InfoBlock icon={Mail} title="Contacto" emptyText="Sin datos de contacto cargados." onEditar={onEditar} items={[
-              { label: "Email", value: cliente.email, icon: Mail, href: cliente.email ? `mailto:${cliente.email}` : undefined },
-              { label: "Teléfono", value: cliente.telefono, icon: Phone, href: cliente.telefono ? `tel:${cliente.telefono}` : undefined },
+              { label: "Email", value: cliente.email, icon: Mail, href: cliente.email ? `mailto:${cliente.email}` : undefined, emphasis: true },
+              { label: "Teléfono", value: cliente.telefono, icon: Phone, href: cliente.telefono ? `tel:${cliente.telefono}` : undefined, emphasis: true },
             ]} />
             <InfoBlock icon={MapPin} title="Domicilio" emptyText="Sin domicilio cargado." items={[
               { label: "Dirección", value: cliente.direccion },
@@ -221,7 +221,7 @@ export function ClienteDetail({
               { label: "Ocupación", value: cliente.ocupacion },
               { label: "Empleador", value: cliente.empleador },
               { label: "Antigüedad", value: cliente.antiguedad_laboral_meses != null ? `${cliente.antiguedad_laboral_meses} meses` : null },
-              { label: "Ingreso mensual", value: cliente.ingreso_mensual != null ? `$${n0(cliente.ingreso_mensual)}` : null, mono: true },
+              { label: "Ingreso mensual", value: cliente.ingreso_mensual != null ? `$${n0(cliente.ingreso_mensual)}` : null, mono: true, emphasis: true },
               { label: "Otros ingresos", value: cliente.otros_ingresos != null ? `$${n0(cliente.otros_ingresos)}` : null, mono: true },
               { label: "Teléfono laboral", value: cliente.telefono_laboral, icon: Phone, href: cliente.telefono_laboral ? `tel:${cliente.telefono_laboral}` : undefined },
               { label: "Dirección laboral", value: cliente.direccion_laboral },
@@ -451,6 +451,8 @@ interface CampoItem {
   mono?: boolean;
   href?: string;
   icon?: React.ComponentType<{ className?: string }>;
+  /** Datos clave: valor con más peso tipográfico que el resto. */
+  emphasis?: boolean;
 }
 
 /** Bloque editorial de datos: título con ícono + grilla de campos. Oculta vacíos. */
@@ -465,13 +467,13 @@ function InfoBlock({
 }) {
   const visibles = items.filter((it) => it.value != null && it.value !== "");
   return (
-    <section className="overflow-hidden rounded-xl border border-border bg-muted/[0.12]">
-      <div className="flex items-center gap-2 border-b border-border/70 px-4 py-2.5">
-        <Icon className="h-4 w-4 text-muted-foreground" />
-        <h3 className="text-sm font-semibold text-foreground">{title}</h3>
+    <section className="rounded-xl border border-border/60 bg-card/40 px-4 py-4 sm:px-5 sm:py-5">
+      <div className="mb-4 flex items-center gap-2 border-b border-border/40 pb-3">
+        <Icon className="h-3.5 w-3.5 text-muted-foreground/70" />
+        <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70">{title}</h3>
       </div>
       {visibles.length === 0 ? (
-        <div className="flex items-center justify-between gap-3 px-4 py-4">
+        <div className="flex items-center justify-between gap-3">
           <p className="text-xs text-muted-foreground/50">{emptyText}</p>
           {onEditar && (
             <button onClick={onEditar} className="text-xs text-primary/80 hover:text-primary transition-colors whitespace-nowrap">
@@ -480,7 +482,7 @@ function InfoBlock({
           )}
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-x-6 gap-y-4 px-4 py-4 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-x-6 gap-y-5 sm:grid-cols-2">
           {visibles.map((it) => <Campo key={it.label} {...it} />)}
         </div>
       )}
@@ -489,16 +491,17 @@ function InfoBlock({
 }
 
 /** Campo individual: label chico arriba, valor destacado abajo (clicable si hay href). */
-function Campo({ label, value, mono, href, icon: Icon }: CampoItem) {
+function Campo({ label, value, mono, href, icon: Icon, emphasis }: CampoItem) {
+  const valueClass = `truncate text-foreground ${emphasis ? "text-[15px] font-medium" : "text-sm"} ${mono ? "font-mono" : ""}`;
   return (
     <div className="min-w-0">
       <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">{label}</p>
-      <div className="mt-1 flex items-center gap-1.5">
+      <div className="mt-1.5 flex items-center gap-1.5">
         {Icon && <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground/50" />}
         {href ? (
-          <a href={href} className={`truncate text-sm text-foreground hover:text-primary transition-colors ${mono ? "font-mono" : ""}`}>{value}</a>
+          <a href={href} className={`${valueClass} hover:text-primary transition-colors`}>{value}</a>
         ) : (
-          <span className={`truncate text-sm text-foreground ${mono ? "font-mono" : ""}`}>{value}</span>
+          <span className={valueClass}>{value}</span>
         )}
       </div>
     </div>

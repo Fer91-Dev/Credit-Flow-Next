@@ -173,6 +173,19 @@ export interface Vendedor {
   resumen?: ResumenVendedor;
 }
 
+/** Usuario del sistema (profiles): acceso de login + rol. */
+export type RolUsuario = "admin" | "vendedor" | "cobrador";
+export interface Usuario {
+  id: string;
+  email: string | null;
+  full_name: string | null;
+  role: RolUsuario | null;
+  activo: boolean;
+  vendedor_id: string | null;
+  vendedor_nombre: string | null;
+  created_at: string;
+}
+
 export interface VendedorDetalle extends Vendedor {
   resumen: ResumenVendedor;
   creditos: Array<{
@@ -361,10 +374,18 @@ export interface MovimientoCaja {
   cliente: string | null;
 }
 
+export interface SaldoCuentaDetalle {
+  saldo: number;
+  anterior: number;
+  ingresos: number;
+  egresos: number;
+}
+
 export interface CajaData {
   periodo: { desde: string; hasta: string };
   saldo_total: number;
   saldos_por_cuenta: Record<CuentaCaja, number>;
+  saldos_detalle: Record<CuentaCaja, SaldoCuentaDetalle>;
   ingresos: number;
   egresos: number;
   neto: number;
@@ -495,13 +516,26 @@ export const KEYS = {
   campanas:      "/api/cobranza/campanas",
   vendedores:    "/api/vendedores",
   proveedores:   "/api/proveedores",
+  usuarios:      "/api/usuarios",
+  zonas:         "/api/clientes/zonas",
 } as const;
 
 // ── Hooks tipados ─────────────────────────────────────────────────────────────
 
-export function useClientes() {
-  const { data, error, isLoading, mutate } = useSWR<{ clientes: Cliente[] }>(KEYS.clientes);
+/**
+ * Lista de clientes. Por defecto liviana (sin scoring). Pasar `{ scored: true }`
+ * para incluir el score derivado y `ultimo_movimiento` (3 queries extra en el server).
+ */
+export function useClientes(opts?: { scored?: boolean }) {
+  const key = opts?.scored ? `${KEYS.clientes}&scored=true` : KEYS.clientes;
+  const { data, error, isLoading, mutate } = useSWR<{ clientes: Cliente[] }>(key);
   return { clientes: data?.clientes ?? [], error, isLoading, mutate };
+}
+
+/** Zonas distintas cargadas en los clientes (para filtros). Query liviano. */
+export function useZonas() {
+  const { data, error, isLoading } = useSWR<{ zonas: string[] }>(KEYS.zonas);
+  return { zonas: data?.zonas ?? [], error, isLoading };
 }
 
 export function useCreditos() {
@@ -517,6 +551,11 @@ export function usePagos() {
 export function useVendedores() {
   const { data, error, isLoading, mutate } = useSWR<{ vendedores: Vendedor[] }>(KEYS.vendedores);
   return { vendedores: data?.vendedores ?? [], error, isLoading, mutate };
+}
+
+export function useUsuarios() {
+  const { data, error, isLoading, mutate } = useSWR<{ usuarios: Usuario[] }>(KEYS.usuarios);
+  return { usuarios: data?.usuarios ?? [], error, isLoading, mutate };
 }
 
 export function useProveedores() {

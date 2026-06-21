@@ -1,4 +1,4 @@
-import { requireAuth } from "@/lib/auth";
+import { requireAuth, requireRole } from "@/lib/auth";
 import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
@@ -24,12 +24,12 @@ interface RouteParams {
  * Retorna un cliente específico.
  */
 export const GET = withErrorHandler(async (req: NextRequest, { params }: RouteParams) => {
-  const { userId } = await requireAuth(req);
+  const { tenantId } = await requireAuth(req);
   const { id } = await params;
 
   const cliente = await prisma.clientes.findFirst({
     where: {
-      ...withTenant(userId),
+      ...withTenant(tenantId),
       id,
     },
     include: {
@@ -53,7 +53,7 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
   // ── Estado de cuenta consolidado (calculado por el motor de dominio) ──
   // Mismo criterio que /api/creditos y /api/reportes: cuota por frecuencia,
   // interés moratorio = cuota × tasa diaria × días, solo créditos activos en mora.
-  const config = await getConfiguracion(userId);
+  const config = await getConfiguracion(tenantId);
 
   const creditosConFinanzas = cliente.creditos.map((c) => {
     // Estado reconciliado: nunca mostrar un terminal SALDADO (pagado/cancelado)
@@ -137,13 +137,13 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
  * }
  */
 export const PATCH = withErrorHandler(async (req: NextRequest, { params }: RouteParams) => {
-  const { userId } = await requireAuth(req);
+  const { tenantId } = await requireRole(["admin", "vendedor"], req);
   const { id } = await params;
 
   // Verificar que el cliente existe y pertenece al usuario
   const existing = await prisma.clientes.findFirst({
     where: {
-      ...withTenant(userId),
+      ...withTenant(tenantId),
       id,
     },
   });
@@ -164,7 +164,7 @@ export const PATCH = withErrorHandler(async (req: NextRequest, { params }: Route
     return errorResponse("Email inválido", "INVALID_INPUT", 400);
   }
 
-  // Preparar datos para actualizar (no actualizar user_id)
+  // Preparar datos para actualizar (no actualizar tenant_id)
   const updateData: Record<string, any> = {};
   const stringFields = [
     "nombre",
@@ -216,7 +216,7 @@ export const PATCH = withErrorHandler(async (req: NextRequest, { params }: Route
   });
 
   await registrarAuditoria({
-    userId,
+    tenantId,
     entidad: "clientes",
     entidadId: id,
     accion: "actualizar",
@@ -231,13 +231,13 @@ export const PATCH = withErrorHandler(async (req: NextRequest, { params }: Route
  * Elimina un cliente (soft delete: marcar como inactivo).
  */
 export const DELETE = withErrorHandler(async (req: NextRequest, { params }: RouteParams) => {
-  const { userId } = await requireAuth(req);
+  const { tenantId } = await requireRole(["admin", "vendedor"], req);
   const { id } = await params;
 
   // Verificar que pertenece al usuario
   const existing = await prisma.clientes.findFirst({
     where: {
-      ...withTenant(userId),
+      ...withTenant(tenantId),
       id,
     },
   });
@@ -253,14 +253,15 @@ export const DELETE = withErrorHandler(async (req: NextRequest, { params }: Rout
   });
 
   await registrarAuditoria({
-    userId,
+    tenantId,
     entidad: "clientes",
     entidadId: id,
     accion: "eliminar",
     descripcion: `Cliente dado de baja: ${existing.nombre}`,
   });
 
-  return successResponse(null, 204);
+  // 200 con cuerpo (no 204: un Response 204 con body lanza TypeError).
+  return successResponse({ deleted: true });
 });
 
 function isValidEmail(email: string): boolean {

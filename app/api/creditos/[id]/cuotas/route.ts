@@ -1,4 +1,4 @@
-import { requireAuth } from "@/lib/auth";
+import { requireAuth, scopeCreditosVendedor } from "@/lib/auth";
 import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
@@ -18,11 +18,11 @@ interface RouteParams {
  * como proyección/simulación al vuelo.
  */
 export const GET = withErrorHandler(async (req: NextRequest, { params }: RouteParams) => {
-  const { userId } = await requireAuth(req);
+  const { tenantId, role, vendedorId } = await requireAuth(req);
   const { id } = await params;
 
   const credito = await prisma.creditos.findFirst({
-    where: { ...withTenant(userId), id },
+    where: { ...withTenant(tenantId), ...scopeCreditosVendedor({ role, vendedorId }), id },
     select: {
       id: true,
       frecuencia: true,

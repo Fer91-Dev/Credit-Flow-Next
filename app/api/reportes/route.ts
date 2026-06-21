@@ -1,4 +1,4 @@
-import { requireAuth } from "@/lib/auth";
+import { requireRole } from "@/lib/auth";
 import { successResponse, withErrorHandler } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
@@ -20,7 +20,8 @@ import type { NextRequest } from "next/server";
  *  - Detalle de pagos del período (para exportar)
  */
 export const GET = withErrorHandler(async (req: NextRequest) => {
-  const { userId } = await requireAuth(req);
+  // Reportes financieros: solo admin.
+  const { tenantId } = await requireRole(["admin"], req);
 
   const url = new URL(req.url);
   const hoy = new Date();
@@ -33,18 +34,18 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
 
   const [pagos, creditos, config] = await Promise.all([
     prisma.pagos.findMany({
-      where: { ...withTenant(userId), fecha: { gte: desde, lte: hasta } },
+      where: { ...withTenant(tenantId), fecha: { gte: desde, lte: hasta } },
       include: { credito: { select: { cliente: { select: { nombre: true } } } } },
       orderBy: { fecha: "desc" },
     }),
     prisma.creditos.findMany({
-      where: { ...withTenant(userId) },
+      where: { ...withTenant(tenantId) },
       select: {
         estado: true, monto_original: true, saldo_pendiente: true,
         tasa: true, plazo_meses: true, frecuencia: true, frecuencia_def: true, dias_mora: true,
       },
     }),
-    getConfiguracion(userId),
+    getConfiguracion(tenantId),
   ]);
 
   // ── Cobranzas del período ──────────────────────────────────────────────

@@ -1,4 +1,4 @@
-import { requireAuth } from "@/lib/auth";
+import { requireRole } from "@/lib/auth";
 import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
@@ -16,7 +16,7 @@ import type { NextRequest } from "next/server";
  * Responde: { sistema, fisico, diferencia, ajuste_id | null }
  */
 export const POST = withErrorHandler(async (req: NextRequest) => {
-  const { userId } = await requireAuth(req);
+  const { tenantId } = await requireRole(["admin"], req);
 
   let body: { cuenta?: string; monto_fisico?: number; descripcion?: string; fecha?: string };
   try {
@@ -37,7 +37,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
 
   // Saldo de sistema actual de la cuenta.
   const movs = await prisma.movimientos_caja.findMany({
-    where: { ...withTenant(userId) },
+    where: { ...withTenant(tenantId) },
     select: { monto: true, cuenta: true },
   });
   const sistema = saldosPorCuenta(movs)[cuenta];
@@ -49,7 +49,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     const detalle = body.descripcion?.trim();
     const mov = await prisma.movimientos_caja.create({
       data: {
-        ...withTenant(userId),
+        ...withTenant(tenantId),
         fecha: body.fecha ? new Date(body.fecha) : new Date(),
         tipo: "ajuste",
         monto: diferencia, // ya viene con signo (sobrante > 0, faltante < 0)
@@ -60,7 +60,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     ajusteId = mov.id;
 
     await registrarAuditoria({
-      userId,
+      tenantId,
       entidad: "caja",
       entidadId: mov.id,
       accion: "crear",

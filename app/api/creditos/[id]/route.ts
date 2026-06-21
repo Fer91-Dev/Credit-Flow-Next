@@ -1,4 +1,4 @@
-import { requireAuth } from "@/lib/auth";
+import { requireAuth, requireRole, scopeCreditosVendedor } from "@/lib/auth";
 import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
@@ -16,12 +16,14 @@ interface RouteParams {
  * Retorna un crédito específico con historial de pagos.
  */
 export const GET = withErrorHandler(async (req: NextRequest, { params }: RouteParams) => {
-  const { userId } = await requireAuth(req);
+  const { tenantId, role, vendedorId } = await requireAuth(req);
   const { id } = await params;
 
+  // Anti-IDOR: el vendedor solo accede a sus créditos (otro dueño → 404).
   const credito = await prisma.creditos.findFirst({
     where: {
-      ...withTenant(userId),
+      ...withTenant(tenantId),
+      ...scopeCreditosVendedor({ role, vendedorId }),
       id,
     },
     include: {
@@ -55,13 +57,14 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
  * }
  */
 export const PATCH = withErrorHandler(async (req: NextRequest, { params }: RouteParams) => {
-  const { userId } = await requireAuth(req);
+  // Alteración del estado/saldo de un crédito: solo admin (gestión financiera).
+  const { tenantId } = await requireRole(["admin"], req);
   const { id } = await params;
 
   // Verificar que existe y pertenece al usuario
   const existing = await prisma.creditos.findFirst({
     where: {
-      ...withTenant(userId),
+      ...withTenant(tenantId),
       id,
     },
   });
@@ -128,7 +131,7 @@ export const PATCH = withErrorHandler(async (req: NextRequest, { params }: Route
   });
 
   await registrarAuditoria({
-    userId,
+    tenantId,
     entidad: "creditos",
     entidadId: id,
     accion: "actualizar",
@@ -146,11 +149,12 @@ export const PATCH = withErrorHandler(async (req: NextRequest, { params }: Route
  * (en ese caso debe ANULARSE para preservar el historial financiero).
  */
 export const DELETE = withErrorHandler(async (req: NextRequest, { params }: RouteParams) => {
-  const { userId } = await requireAuth(req);
+  // Eliminación definitiva: solo admin.
+  const { tenantId } = await requireRole(["admin"], req);
   const { id } = await params;
 
   const existing = await prisma.creditos.findFirst({
-    where: { ...withTenant(userId), id },
+    where: { ...withTenant(tenantId), id },
     include: { _count: { select: { pagos: true } } },
   });
 
@@ -169,7 +173,7 @@ export const DELETE = withErrorHandler(async (req: NextRequest, { params }: Rout
   await prisma.creditos.delete({ where: { id } });
 
   await registrarAuditoria({
-    userId,
+    tenantId,
     entidad: "creditos",
     entidadId: id,
     accion: "eliminar",

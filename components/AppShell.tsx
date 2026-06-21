@@ -4,12 +4,15 @@ import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import {
   Home, Users, FileText, Wallet, Bell, Search, LogOut, Menu, X,
-  Terminal, ShieldAlert, BarChart3, PlusCircle, Settings, History,
-  FileBarChart, Landmark, Sun, Moon, UserCog, Truck,
+  ShieldAlert, BarChart3, PlusCircle, Settings, History,
+  FileBarChart, Landmark, Sun, Moon, UserCog, Truck, ShieldCheck,
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useEffect, useState } from "react";
 import { Footer } from "./Footer";
+import { SystemActionsProvider } from "./system-actions";
+import { canAccess, type Role } from "@/lib/auth/roles";
+import { createClient } from "@/lib/supabase/client";
 
 const NAV_PRIMARY = [
   { icon: Home,        label: "Home",           to: "/" },
@@ -24,6 +27,7 @@ const NAV_SECONDARY = [
   { icon: Landmark,     label: "Caja",          to: "/caja" },
   { icon: UserCog,      label: "Personal",      to: "/personal" },
   { icon: Truck,        label: "Proveedores",   to: "/proveedores" },
+  { icon: ShieldCheck,  label: "Usuarios",      to: "/usuarios" },
   { icon: FileBarChart, label: "Reportes",      to: "/reportes" },
   { icon: History,      label: "Auditoría",     to: "/auditoria" },
   { icon: Settings,     label: "Configuración", to: "/configuracion" },
@@ -36,24 +40,35 @@ function SideNavLink({ icon: Icon, label, to, isActive, onClick }: NavItem & { i
     <Link
       href={to}
       onClick={onClick}
-      className={`relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
+      className={`group relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200 ease-out ${
         isActive
-          ? "bg-primary/10 text-primary"
-          : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+          ? "bg-primary/10 text-foreground shadow-md shadow-primary/10"
+          : "text-muted-foreground hover:bg-muted/40 hover:text-foreground hover:translate-x-0.5"
       }`}
     >
-      {isActive && (
-        <span className="absolute left-0 top-1/2 -translate-y-1/2 h-5 w-[3px] rounded-r-full bg-primary" />
-      )}
-      <Icon className="h-4 w-4 shrink-0" />
-      <span>{label}</span>
+      {/* Indicador izquierdo del item activo (animado) */}
+      <span
+        className={`absolute left-0 top-1/2 -translate-y-1/2 w-1 rounded-r-full bg-primary transition-all duration-200 ease-out ${
+          isActive ? "h-5 opacity-100" : "h-0 opacity-0"
+        }`}
+      />
+      <Icon
+        className={`h-[18px] w-[18px] shrink-0 transition-colors duration-200 ${
+          isActive ? "text-primary" : "group-hover:text-foreground"
+        }`}
+      />
+      <span className={isActive ? "font-semibold" : ""}>{label}</span>
     </Link>
   );
 }
 
-export function AppShell({ children }: { children: React.ReactNode }) {
+export function AppShell({ children, role }: { children: React.ReactNode; role: Role }) {
   const router = useRouter();
   const pathname = usePathname();
+
+  // Menú filtrado por rol (cosmético: la barrera real es el guard server + API).
+  const navPrimary = NAV_PRIMARY.filter((i) => canAccess(role, i.to));
+  const navSecondary = NAV_SECONDARY.filter((i) => canAccess(role, i.to));
   const { resolvedTheme, setTheme } = useTheme();
   const [user, setUser] = useState<{ email?: string; full_name?: string } | null>(null);
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -82,8 +97,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }, []);
 
   async function signOut() {
-    // TODO Fase 2+: implementar sign out con Supabase
-    router.push("/auth");
+    // Logout real: invalida la sesión en Supabase (limpia cookies) y redirige.
+    try {
+      await createClient().auth.signOut();
+    } finally {
+      router.push("/auth");
+      router.refresh();
+    }
   }
 
   const initials = (user?.full_name ?? "U").split(" ").map((s) => s[0]).slice(0, 2).join("").toUpperCase();
@@ -100,47 +120,46 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   if (!mounted) return null;
 
-  const allNavItems = [...NAV_PRIMARY, ...NAV_SECONDARY];
-  const pageTitle = allNavItems.find(item => isActive(item.to))?.label ?? "CreditFlow";
+  const allNavItems = [...navPrimary, ...navSecondary];
   const isDark = resolvedTheme === "dark";
   const toggleTheme = () => setTheme(isDark ? "light" : "dark");
 
   return (
-    <div className="flex min-h-screen text-foreground">
+    <div className="flex h-screen overflow-hidden text-foreground">
 
       {/* ── SIDEBAR DESKTOP (lg+) ─────────────────────────────────────────── */}
-      <aside className="hidden lg:flex fixed inset-y-0 left-0 z-30 w-60 flex-col bg-card border-r border-border">
-        {/* Logo */}
-        <div className="flex h-16 shrink-0 items-center gap-2.5 border-b border-border px-4">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-success text-white">
-            <Terminal className="h-5 w-5" />
+      <aside className="hidden lg:flex fixed inset-y-0 left-0 z-30 w-64 flex-col bg-card border-r border-border shadow-[2px_0_24px_rgba(0,0,0,0.28)]">
+        {/* Branding — alto alineado con la línea inferior del PageHeader del contenido */}
+        <Link href="/" className="flex h-[98px] shrink-0 items-center gap-3.5 border-b border-border/70 px-5 transition-opacity hover:opacity-80">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-success text-white shadow-lg shadow-primary/30 ring-1 ring-white/15">
+            <span className="text-xl font-bold font-mono leading-none -tracking-[0.02em]">C</span>
           </div>
           <span className="text-base font-bold tracking-tight text-foreground font-mono">CreditFlow</span>
-        </div>
+        </Link>
 
         {/* Nav */}
-        <nav className="flex-1 overflow-y-auto p-3 space-y-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          <p className="px-3 pb-1.5 pt-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70">
+        <nav className="flex-1 overflow-y-auto p-3 space-y-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <p className="px-3 pb-2 pt-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/50">
             Principal
           </p>
-          {NAV_PRIMARY.map((item) => (
+          {navPrimary.map((item) => (
             <SideNavLink key={item.to} {...item} isActive={isActive(item.to)} />
           ))}
 
-          <div className="my-3 border-t border-border" />
+          <div className="my-4 mx-3 border-t border-border/50" />
 
-          <p className="px-3 pb-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70">
+          <p className="px-3 pb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/50">
             Sistema
           </p>
-          {NAV_SECONDARY.map((item) => (
+          {navSecondary.map((item) => (
             <SideNavLink key={item.to} {...item} isActive={isActive(item.to)} />
           ))}
         </nav>
 
         {/* User + signout */}
-        <div className="shrink-0 border-t border-border p-3">
-          <div className="flex items-center gap-2.5 rounded-lg px-2 py-2">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary to-muted text-sm font-bold text-white">
+        <div className="shrink-0 border-t border-border/60 p-3">
+          <div className="flex items-center gap-3 rounded-xl px-2.5 py-2.5 transition-colors duration-200 hover:bg-muted/30">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary to-muted text-sm font-bold text-white shadow-md shadow-black/25">
               {initials}
             </div>
             <div className="flex-1 min-w-0">
@@ -150,7 +169,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <button
               onClick={signOut}
               title="Cerrar sesión"
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground/70 hover:bg-accent hover:text-foreground transition-colors"
             >
               <LogOut className="h-4 w-4" />
             </button>
@@ -159,10 +178,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </aside>
 
       {/* ── COLUMNA DERECHA ───────────────────────────────────────────────── */}
-      <div className="flex flex-1 flex-col lg:pl-60">
+      <div className="flex flex-1 flex-col lg:pl-64 min-w-0 overflow-hidden">
 
-        {/* TOPBAR */}
-        <header className="sticky top-0 z-40 flex h-14 items-center gap-3 border-b border-border bg-card/95 backdrop-blur-sm px-4 lg:px-6">
+        {/* TOPBAR — solo mobile (en desktop los controles viven en el PageHeader) */}
+        <header className="lg:hidden sticky top-0 z-40 flex h-14 items-center gap-3 border-b border-border bg-card/95 backdrop-blur-sm px-4">
           {/* Burger — solo mobile */}
           <button
             onClick={() => setMobileOpen(true)}
@@ -173,33 +192,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </button>
 
           {/* Logo — solo mobile */}
-          <div className="flex shrink-0 items-center gap-2 lg:hidden">
-            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-success text-white">
-              <Terminal className="h-4 w-4" />
+          <Link href="/" className="flex shrink-0 items-center gap-2 lg:hidden transition-opacity hover:opacity-80">
+            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-success text-white shadow-md shadow-primary/30 ring-1 ring-white/15">
+              <span className="text-base font-bold font-mono leading-none -tracking-[0.02em]">C</span>
             </div>
             <span className="text-sm font-bold tracking-tight text-foreground font-mono">CreditFlow</span>
-          </div>
-
-          {/* Título de página — solo desktop */}
-          <h2 className="hidden lg:block text-sm font-semibold text-foreground">{pageTitle}</h2>
+          </Link>
 
           <div className="ml-auto flex items-center gap-1.5">
-            {/* Search — desktop */}
+            {/* Search icon */}
             <button
               onClick={() => setPaletteOpen(true)}
-              className="hidden lg:flex items-center gap-2 h-9 w-56 rounded-lg border border-border bg-background pl-3 pr-2 text-left text-sm text-muted-foreground hover:border-primary transition-colors"
-            >
-              <Search className="h-4 w-4 shrink-0" />
-              <span className="flex-1">Buscar</span>
-              <kbd className="rounded bg-muted px-1.5 font-mono text-[10px] font-medium border border-border text-foreground">
-                ⌘K
-              </kbd>
-            </button>
-
-            {/* Search icon — solo mobile */}
-            <button
-              onClick={() => setPaletteOpen(true)}
-              className="flex h-10 w-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent lg:hidden"
+              className="flex h-10 w-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent"
               aria-label="Buscar"
             >
               <Search className="h-5 w-5" />
@@ -226,9 +230,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </header>
 
         {/* MAIN */}
-        <main className="flex-1 overflow-x-hidden py-6 md:py-8">
+        <main className="flex-1 overflow-y-auto overflow-x-hidden py-6 md:py-8 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           <div className="mx-auto w-full max-w-screen-2xl min-w-0 px-4 md:px-6 lg:px-8 space-y-8">
-            {children}
+            <SystemActionsProvider openSearch={() => setPaletteOpen(true)}>
+              {children}
+            </SystemActionsProvider>
           </div>
         </main>
 
@@ -244,12 +250,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           />
           <aside className="absolute inset-y-0 left-0 flex w-[82%] max-w-xs flex-col bg-card border-r border-border shadow-xl">
             <div className="flex h-16 shrink-0 items-center justify-between border-b border-border px-4">
-              <div className="flex items-center gap-2.5">
-                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-success text-white">
-                  <Terminal className="h-5 w-5" />
+              <Link href="/" onClick={() => setMobileOpen(false)} className="flex items-center gap-2.5 transition-opacity hover:opacity-80">
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-success text-white shadow-md shadow-primary/30 ring-1 ring-white/15">
+                  <span className="text-[17px] font-bold font-mono leading-none -tracking-[0.02em]">C</span>
                 </div>
                 <span className="text-base font-bold text-foreground font-mono">CreditFlow</span>
-              </div>
+              </Link>
               <button
                 onClick={() => setMobileOpen(false)}
                 className="flex h-10 w-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent"
@@ -273,7 +279,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <p className="px-3 pb-1.5 pt-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70">
                 Principal
               </p>
-              {NAV_PRIMARY.map((item) => (
+              {navPrimary.map((item) => (
                 <SideNavLink
                   key={item.to}
                   {...item}
@@ -285,7 +291,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <p className="px-3 pb-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70">
                 Sistema
               </p>
-              {NAV_SECONDARY.map((item) => (
+              {navSecondary.map((item) => (
                 <SideNavLink
                   key={item.to}
                   {...item}

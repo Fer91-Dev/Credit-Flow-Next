@@ -1,4 +1,4 @@
-import { requireAuth } from "@/lib/auth";
+import { requireRole } from "@/lib/auth";
 import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
@@ -14,14 +14,15 @@ const RESULTADOS = ["contactado", "no_contesta", "promesa_pago", "renegociacion"
  * Query: ?credito_id=uuid · ?limit=500 · ?offset=0
  */
 export const GET = withErrorHandler(async (req: NextRequest) => {
-  const { userId } = await requireAuth(req);
+  // Gestiones de cobranza: admin y cobrador.
+  const { tenantId } = await requireRole(["admin", "cobrador"], req);
 
   const url = new URL(req.url);
   const creditoId = url.searchParams.get("credito_id");
   const limit = Math.min(parseInt(url.searchParams.get("limit") || "500"), 1000);
   const offset = parseInt(url.searchParams.get("offset") || "0");
 
-  const where: Record<string, any> = { ...withTenant(userId) };
+  const where: Record<string, any> = { ...withTenant(tenantId) };
   if (creditoId) where.credito_id = creditoId;
 
   const [acciones, total] = await Promise.all([
@@ -44,7 +45,8 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
  * Body: { credito_id, tipo, resultado, nota?, promesa_monto?, promesa_fecha?, proximo_contacto? }
  */
 export const POST = withErrorHandler(async (req: NextRequest) => {
-  const { userId } = await requireAuth(req);
+  // Registrar gestión de cobranza: admin y cobrador.
+  const { tenantId } = await requireRole(["admin", "cobrador"], req);
 
   let body: any;
   try {
@@ -65,7 +67,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
 
   // El crédito debe existir y pertenecer al tenant.
   const credito = await prisma.creditos.findFirst({
-    where: { ...withTenant(userId), id: body.credito_id },
+    where: { ...withTenant(tenantId), id: body.credito_id },
     include: { cliente: { select: { nombre: true } } },
   });
   if (!credito) {
@@ -81,13 +83,13 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
       promesa_monto: typeof body.promesa_monto === "number" && body.promesa_monto > 0 ? body.promesa_monto : null,
       promesa_fecha: body.promesa_fecha ? new Date(body.promesa_fecha) : null,
       proximo_contacto: body.proximo_contacto ? new Date(body.proximo_contacto) : null,
-      ...withTenant(userId),
+      ...withTenant(tenantId),
     },
     include: { credito: { select: { id: true, cliente: { select: { nombre: true } } } } },
   });
 
   await registrarAuditoria({
-    userId,
+    tenantId,
     entidad: "creditos",
     entidadId: body.credito_id,
     accion: "actualizar",
