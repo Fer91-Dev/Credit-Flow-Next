@@ -104,9 +104,38 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
  *   "solicitud_id": "uuid (optional)"
  * }
  */
+/**
+ * Asegura que un usuario-vendedor tenga su ficha comercial (`vendedores`).
+ * Si su perfil aún no está vinculado, crea la ficha desde sus datos y la vincula.
+ * Devuelve el `vendedores.id` a usar para atribuir el crédito y la comisión.
+ *
+ * Garantiza que CUALQUIER usuario con rol vendedor pueda otorgar créditos sin
+ * depender de un alta manual previa en Personal.
+ */
+async function asegurarFichaVendedor(
+  tenantId: string,
+  userId: string,
+  nombre: string | null,
+  email: string | null
+): Promise<string> {
+  const ficha = await prisma.vendedores.create({
+    data: {
+      ...withTenant(tenantId),
+      nombre: nombre?.trim() || email?.split("@")[0] || "Vendedor",
+      email: email ?? null,
+      activo: true,
+      comision_pct: 0,
+      meta_venta: 0,
+    },
+    select: { id: true },
+  });
+  await prisma.profiles.update({ where: { id: userId }, data: { vendedor_id: ficha.id } });
+  return ficha.id;
+}
+
 export const POST = withErrorHandler(async (req: NextRequest) => {
   // Otorgar créditos: admin y vendedor. El cobrador NO puede otorgar.
-  const { tenantId, role, vendedorId: miVendedorId } = await requireRole(["admin", "vendedor"], req);
+  const { tenantId, role, vendedorId: miVendedorId, userId, nombre, email } = await requireRole(["admin", "vendedor"], req);
 
   let body: any;
   try {
@@ -143,10 +172,10 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
   //  - Si es admin: puede elegir vendedor_id (opcional), validado contra el tenant.
   let vendedorId: string | null = null;
   if (role === "vendedor") {
-    if (!miVendedorId) {
-      return errorResponse("Tu perfil no está vinculado a un vendedor", "FORBIDDEN", 403);
-    }
-    vendedorId = miVendedorId;
+    // Un vendedor SIEMPRE puede otorgar (es su función). Si su perfil aún no está
+    // vinculado a una ficha comercial, se autoprovisiona y vincula al vuelo: nunca
+    // queda bloqueado por un tema de setup.
+    vendedorId = miVendedorId ?? (await asegurarFichaVendedor(tenantId, userId, nombre, email));
   } else if (body.vendedor_id) {
     const vendedor = await prisma.vendedores.findFirst({
       where: { ...withTenant(tenantId), id: body.vendedor_id },

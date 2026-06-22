@@ -1,4 +1,4 @@
-import { requireRole } from "@/lib/auth";
+import { requireAuth, requireRole } from "@/lib/auth";
 import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api";
 import { getConfiguracion, guardarConfiguracion } from "@/lib/config";
 import { resolverConfig, type ComponenteDeuda } from "@/lib/domain";
@@ -62,8 +62,11 @@ function validarSimulador(s: any): string | null {
  * Devuelve la configuración del motor financiero de la financiera (o defaults).
  */
 export const GET = withErrorHandler(async (req: NextRequest) => {
-  // Configuración del motor financiero: solo admin.
-  const { tenantId } = await requireRole(["admin"], req);
+  // Lectura: cualquier miembro del tenant. El simulador de crédito (frecuencias,
+  // plazos, montos, cargos) la necesita para originar créditos, y eso lo hace
+  // también el vendedor. La config del motor no es información sensible admin-only.
+  // La ESCRITURA (PUT) sigue siendo solo admin.
+  const { tenantId } = await requireAuth(req);
   const config = await getConfiguracion(tenantId);
   return successResponse(config);
 });
