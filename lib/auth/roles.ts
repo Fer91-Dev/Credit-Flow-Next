@@ -14,7 +14,9 @@ export type { Role };
  *
  * Política de los 3 roles:
  *  - admin:    todo (Reportes, Caja, Configuración, Auditoría, Personal, Proveedores).
- *  - vendedor: Clientes (ABM) + Créditos (alta/simulación). Nada de config/reportes.
+ *  - vendedor: Clientes (ABM) + Créditos (alta/simulación) + Pagos (cobra las cuotas
+ *              de SUS créditos) + Cobranza (gestiona la mora de SUS créditos), todo
+ *              scopeado. Nada de Caja/config/reportes/campañas.
  *  - cobrador: Pagos + Cobranza; ve Clientes/Créditos (la negativa a crear créditos
  *              se aplica a nivel API, no de ruta).
  *
@@ -28,8 +30,8 @@ const ACCESO_RUTAS: { prefix: string; roles: Role[] }[] = [
   { prefix: "/caja", roles: ["admin"] },
   { prefix: "/personal", roles: ["admin"] },
   { prefix: "/proveedores", roles: ["admin"] },
-  { prefix: "/cobranza", roles: ["admin", "cobrador"] },
-  { prefix: "/pagos", roles: ["admin", "cobrador"] },
+  { prefix: "/cobranza", roles: ["admin", "cobrador", "vendedor"] },
+  { prefix: "/pagos", roles: ["admin", "cobrador", "vendedor"] },
   { prefix: "/cartera", roles: ["admin", "cobrador"] },
   { prefix: "/creditos", roles: ["admin", "vendedor", "cobrador"] },
   { prefix: "/clientes", roles: ["admin", "vendedor", "cobrador"] },

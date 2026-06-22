@@ -1,4 +1,4 @@
-import { requireRole } from "@/lib/auth";
+import { requireRole, scopeCreditosVendedor } from "@/lib/auth";
 import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
@@ -21,8 +21,8 @@ import type { NextRequest } from "next/server";
  * - ?offset=0
  */
 export const GET = withErrorHandler(async (req: NextRequest) => {
-  // Terminal de cobros: admin y cobrador (el vendedor no opera pagos).
-  const { tenantId } = await requireRole(["admin", "cobrador"], req);
+  // Terminal de cobros: admin, cobrador y vendedor (este último, solo SUS créditos).
+  const { tenantId, role, vendedorId } = await requireRole(["admin", "cobrador", "vendedor"], req);
 
   const url = new URL(req.url);
   const creditoId = url.searchParams.get("credito_id");
@@ -31,6 +31,9 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
 
   const where: Record<string, any> = { ...withTenant(tenantId) };
   if (creditoId) where.credito_id = creditoId;
+  // Anti-IDOR: el vendedor solo ve los pagos de los créditos que él otorgó.
+  const scope = scopeCreditosVendedor({ role, vendedorId });
+  if (scope.vendedor_id) where.credito = { vendedor_id: scope.vendedor_id };
 
   const [pagos, total] = await Promise.all([
     prisma.pagos.findMany({
@@ -74,8 +77,8 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
  * }
  */
 export const POST = withErrorHandler(async (req: NextRequest) => {
-  // Registrar un cobro: admin y cobrador (el vendedor NO registra cobros).
-  const { tenantId } = await requireRole(["admin", "cobrador"], req);
+  // Registrar un cobro: admin, cobrador y vendedor (este último, solo SUS créditos).
+  const { tenantId, role, vendedorId } = await requireRole(["admin", "cobrador", "vendedor"], req);
 
   let body: any;
   try {
@@ -96,8 +99,9 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     return errorResponse("Monto debe ser mayor a 0", "INVALID_INPUT", 400);
   }
 
+  // Anti-IDOR: un vendedor solo puede cobrar sobre créditos que él otorgó.
   const credito = await prisma.creditos.findFirst({
-    where: { ...withTenant(tenantId), id: body.credito_id },
+    where: { ...withTenant(tenantId), ...scopeCreditosVendedor({ role, vendedorId }), id: body.credito_id },
     include: { cliente: true, cuotas: { orderBy: { nro: "asc" } } },
   });
 

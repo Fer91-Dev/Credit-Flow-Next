@@ -1,4 +1,4 @@
-import { requireRole } from "@/lib/auth";
+import { requireRole, scopeCreditosVendedor } from "@/lib/auth";
 import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
@@ -14,8 +14,8 @@ const RESULTADOS = ["contactado", "no_contesta", "promesa_pago", "renegociacion"
  * Query: ?credito_id=uuid · ?limit=500 · ?offset=0
  */
 export const GET = withErrorHandler(async (req: NextRequest) => {
-  // Gestiones de cobranza: admin y cobrador.
-  const { tenantId } = await requireRole(["admin", "cobrador"], req);
+  // Gestiones de cobranza: admin, cobrador y vendedor (este último, solo SUS créditos).
+  const { tenantId, role, vendedorId } = await requireRole(["admin", "cobrador", "vendedor"], req);
 
   const url = new URL(req.url);
   const creditoId = url.searchParams.get("credito_id");
@@ -24,6 +24,9 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
 
   const where: Record<string, any> = { ...withTenant(tenantId) };
   if (creditoId) where.credito_id = creditoId;
+  // Anti-IDOR: el vendedor solo ve gestiones de los créditos que él otorgó.
+  const scope = scopeCreditosVendedor({ role, vendedorId });
+  if (scope.vendedor_id) where.credito = { vendedor_id: scope.vendedor_id };
 
   const [acciones, total] = await Promise.all([
     prisma.acciones_cobranza.findMany({
@@ -45,8 +48,8 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
  * Body: { credito_id, tipo, resultado, nota?, promesa_monto?, promesa_fecha?, proximo_contacto? }
  */
 export const POST = withErrorHandler(async (req: NextRequest) => {
-  // Registrar gestión de cobranza: admin y cobrador.
-  const { tenantId } = await requireRole(["admin", "cobrador"], req);
+  // Registrar gestión de cobranza: admin, cobrador y vendedor (este último, solo SUS créditos).
+  const { tenantId, role, vendedorId } = await requireRole(["admin", "cobrador", "vendedor"], req);
 
   let body: any;
   try {
@@ -65,9 +68,10 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     return errorResponse(`resultado debe ser uno de: ${RESULTADOS.join(", ")}`, "INVALID_INPUT", 400);
   }
 
-  // El crédito debe existir y pertenecer al tenant.
+  // El crédito debe existir y pertenecer al tenant. Anti-IDOR: un vendedor solo
+  // puede gestionar la mora de créditos que él otorgó.
   const credito = await prisma.creditos.findFirst({
-    where: { ...withTenant(tenantId), id: body.credito_id },
+    where: { ...withTenant(tenantId), ...scopeCreditosVendedor({ role, vendedorId }), id: body.credito_id },
     include: { cliente: { select: { nombre: true } } },
   });
   if (!credito) {

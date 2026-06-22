@@ -1,4 +1,4 @@
-import { requireRole } from "@/lib/auth";
+import { requireRole, scopeCreditosVendedor } from "@/lib/auth";
 import { errorResponse, withErrorHandler } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
@@ -16,11 +16,16 @@ interface RouteParams {
  * Scope multi-tenant: solo pagos del usuario autenticado.
  */
 export const GET = withErrorHandler(async (req: NextRequest, { params }: RouteParams) => {
-  const { tenantId } = await requireRole(["admin", "cobrador"], req);
+  const { tenantId, role, vendedorId } = await requireRole(["admin", "cobrador", "vendedor"], req);
   const { id } = await params;
 
+  // Anti-IDOR: el vendedor solo descarga recibos de pagos de SUS créditos.
+  const scope = scopeCreditosVendedor({ role, vendedorId });
+  const where: Record<string, unknown> = { ...withTenant(tenantId), id };
+  if (scope.vendedor_id) where.credito = { vendedor_id: scope.vendedor_id };
+
   const pago = await prisma.pagos.findFirst({
-    where: { ...withTenant(tenantId), id },
+    where,
     include: {
       credito: {
         select: {
