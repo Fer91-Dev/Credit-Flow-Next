@@ -408,7 +408,11 @@ export function CreditosTable() {
       </div>
 
       <Dialog open={dialogOpen} onOpenChange={open => { if (!open) handleFormClose(false); }}>
-        <DialogContent className="w-full max-w-[96vw] xl:max-w-6xl h-[94vh] max-h-[94vh] p-0 gap-0 flex flex-col overflow-hidden">
+        <DialogContent
+          className="w-full max-w-[96vw] xl:max-w-6xl h-[94vh] max-h-[94vh] p-0 gap-0 flex flex-col overflow-hidden"
+          onInteractOutside={(e) => e.preventDefault()}
+          onEscapeKeyDown={(e) => e.preventDefault()}
+        >
           <DialogHeader className="px-6 py-4 border-b border-border shrink-0">
             <div className="flex items-center gap-4">
               {/* Badge tipográfico sin iconos Lucide */}

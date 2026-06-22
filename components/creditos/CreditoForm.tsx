@@ -1,12 +1,16 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-import { CalendarDays, DollarSign, Eye, EyeOff, Info, Percent, Search, TrendingUp, UserPlus, X } from "lucide-react";
+import { CalendarDays, CheckCircle2, DollarSign, Eye, EyeOff, Info, Percent, Printer, Search, TrendingUp, UserPlus, X } from "lucide-react";
 import { Field, Input, Select } from "@/components/ui/field";
 import { ClienteForm, type ClienteCreado } from "@/components/clientes/ClienteForm";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogFooter,
+  AlertDialogTitle, AlertDialogDescription, AlertDialogCancel,
+} from "@/components/ui/alert-dialog";
 import { useConfiguracion } from "@/lib/swr";
-import { formatNumero, parseMontoInput, maskMontoInput, numeroAInput, formatFecha, formatMonto } from "@/lib/utils";
+import { formatNumero, parseMontoInput, maskMontoInput, numeroAInput, formatFecha, formatMonto, formatCreditoNumero } from "@/lib/utils";
 import {
   construirPlanAmortizacion,
   tasaPeriodicaSegunConvencion,
@@ -73,6 +77,10 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
   const [prefilled, setPrefilled] = useState(false);
   // Alta rápida de cliente desde el buscador (cuando el DNI no existe).
   const [alta, setAlta] = useState<{ open: boolean; doc: string }>({ open: false, doc: "" });
+  // Aviso de confirmación previo al otorgamiento (evita crear el crédito por un Enter o clic accidental).
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  // Crédito ya creado → pantalla de éxito (numero generado).
+  const [created, setCreated] = useState<{ numero: number | null; monto_original: number } | null>(null);
 
   const abrirAlta = (query: string) => {
     const doc = /\d/.test(query) ? query.trim() : "";
@@ -135,32 +143,36 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
   const setMonto = (e: React.ChangeEvent<HTMLInputElement>) =>
     setFormData(p => ({ ...p, monto_original: formatMontoInput(e.target.value) }));
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  /** Valida los datos del crédito. Devuelve el mensaje de error, o null si está OK. */
+  const validar = (): string | null => {
+    if (!formData.cliente_id) return "Seleccioná un cliente";
+    const monto = parseMonto(formData.monto_original);
+    if (monto <= 0) return "Ingresá un capital válido";
+    if (simCfg && simCfg.montoMin > 0 && monto < simCfg.montoMin) return `El capital mínimo es $${n0(simCfg.montoMin)}`;
+    if (simCfg && simCfg.montoMax > 0 && monto > simCfg.montoMax) return `El capital máximo es $${n0(simCfg.montoMax)}`;
+    const n = parseInt(formData.plazo_meses);
+    if (isNaN(n) || n < 1) return "Indicá el número de cuotas";
+    if (!plan) return "Completá los datos para simular el plan";
+    return null;
+  };
+
+  // Submit del form. En ALTA no crea directo: abre el aviso de confirmación, de modo
+  // que un Enter o un clic accidental nunca otorga el crédito. En edición guarda directo.
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    const err = validar();
+    if (err) { setError(err); return; }
+    setError(null);
+    if (creditoId) { persist(); return; }
+    setConfirmOpen(true);
+  };
+
+  // Persiste el crédito (POST en alta, PATCH en edición). Al crear muestra la pantalla de éxito.
+  const persist = async () => {
     setLoading(true);
     setError(null);
     try {
-      if (!formData.cliente_id) {
-        setError("Seleccioná un cliente");
-        setLoading(false);
-        return;
-      }
       const monto = parseMonto(formData.monto_original);
-      if (monto <= 0) {
-        setError("Ingresá un capital válido");
-        setLoading(false);
-        return;
-      }
-      if (simCfg && simCfg.montoMin > 0 && monto < simCfg.montoMin) {
-        setError(`El capital mínimo es $${n0(simCfg.montoMin)}`);
-        setLoading(false);
-        return;
-      }
-      if (simCfg && simCfg.montoMax > 0 && monto > simCfg.montoMax) {
-        setError(`El capital máximo es $${n0(simCfg.montoMax)}`);
-        setLoading(false);
-        return;
-      }
       const body = {
         cliente_id: formData.cliente_id,
         tipo_credito: formData.tipo_credito,
@@ -176,9 +188,19 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
         body: JSON.stringify(body),
       });
       const json = await res.json();
-      if (json.ok) onClose(true);
-      else setError(json.error);
+      if (json.ok) {
+        if (creditoId) {
+          onClose(true);
+        } else {
+          setConfirmOpen(false);
+          setCreated({ numero: json.data?.numero ?? null, monto_original: json.data?.monto_original ?? monto });
+        }
+      } else {
+        setConfirmOpen(false);
+        setError(json.error);
+      }
     } catch (err) {
+      setConfirmOpen(false);
       setError(err instanceof Error ? err.message : "Error");
     } finally {
       setLoading(false);
@@ -350,6 +372,75 @@ tfoot td{padding:16px 18px;font-weight:700;color:#fff;font-size:15px}
 </html>`);
     w.document.close();
     setTimeout(() => w.print(), 600);
+  }
+
+  // ── Pantalla de éxito: el crédito ya se otorgó (reemplaza el simulador) ──
+  if (created) {
+    const totalFinal = hayCargos ? totalCuotasCliente : (plan?.totalPagado ?? 0);
+    return (
+      <div className="flex h-full min-h-0 flex-col items-center justify-center gap-6 p-8 text-center">
+        <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-success/30 bg-success/15">
+          <CheckCircle2 className="h-8 w-8 text-success" />
+        </div>
+        <div className="space-y-1.5">
+          <h3 className="text-lg font-semibold text-foreground">Crédito otorgado con éxito</h3>
+          <p className="text-sm text-muted-foreground">La operación se registró correctamente.</p>
+        </div>
+
+        <div className="w-full max-w-sm space-y-4 rounded-xl border border-border bg-card p-5">
+          <div className="text-center">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">N° de crédito</p>
+            <p className="mt-1 font-mono text-3xl font-black text-primary">{formatCreditoNumero(created.numero)}</p>
+          </div>
+          <div className="border-t border-border" />
+          <dl className="space-y-2 text-sm">
+            <div className="flex items-center justify-between gap-3">
+              <dt className="text-muted-foreground">Cliente</dt>
+              <dd className="truncate font-medium text-foreground">{clienteSel?.nombre ?? "—"}</dd>
+            </div>
+            {clienteSel?.documento && (
+              <div className="flex items-center justify-between gap-3">
+                <dt className="text-muted-foreground">DNI</dt>
+                <dd className="font-mono text-foreground">{clienteSel.documento}</dd>
+              </div>
+            )}
+            <div className="flex items-center justify-between gap-3">
+              <dt className="text-muted-foreground">Capital</dt>
+              <dd className="font-mono font-semibold text-foreground">{formatMonto(created.monto_original)}</dd>
+            </div>
+            {plan && (
+              <>
+                <div className="flex items-center justify-between gap-3">
+                  <dt className="text-muted-foreground">Plan</dt>
+                  <dd className="text-foreground">{plan.cuotas.length} {lbl.cuotaPlural}</dd>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <dt className="text-muted-foreground">Total a pagar</dt>
+                  <dd className="font-mono font-semibold text-foreground">{formatMonto(totalFinal)}</dd>
+                </div>
+              </>
+            )}
+          </dl>
+        </div>
+
+        <div className="flex w-full max-w-sm flex-col items-center gap-2 sm:flex-row">
+          <button
+            type="button"
+            onClick={() => imprimirPlan("cliente")}
+            className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-border px-4 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted/40 hover:text-foreground sm:flex-1"
+          >
+            <Printer className="h-4 w-4" /> Imprimir plan
+          </button>
+          <button
+            type="button"
+            onClick={() => onClose(true)}
+            className="w-full rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 sm:flex-1"
+          >
+            Cerrar
+          </button>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -535,7 +626,7 @@ tfoot td{padding:16px 18px;font-weight:700;color:#fff;font-size:15px}
             type="submit" disabled={loading}
             className="px-5 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 disabled:opacity-50 transition-opacity"
           >
-            {loading ? "Guardando..." : creditoId ? "Actualizar" : "Crear crédito"}
+            {loading ? "Guardando..." : creditoId ? "Actualizar" : "Otorgar crédito"}
           </button>
         </div>
       </form>
@@ -695,6 +786,40 @@ tfoot td{padding:16px 18px;font-weight:700;color:#fff;font-size:15px}
         <ClienteForm initialDocumento={alta.doc} onClose={handleAltaClose} />
       </DialogContent>
     </Dialog>
+
+    {/* Aviso de confirmación previo al otorgamiento */}
+    <AlertDialog open={confirmOpen} onOpenChange={(o) => { if (!loading) setConfirmOpen(o); }}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>¿Otorgar el crédito a {clienteSel?.nombre ?? "este cliente"}?</AlertDialogTitle>
+          <AlertDialogDescription>
+            Revisá los datos. Al confirmar se otorga el crédito y se registra el desembolso en caja.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+
+        <div className="space-y-2.5 rounded-xl border border-border bg-card p-4">
+          <DetalleRow label="Cliente" value={clienteSel?.nombre ?? "—"} />
+          {clienteSel?.documento && <DetalleRow label="DNI" value={clienteSel.documento} mono />}
+          <div className="border-t border-border" />
+          <DetalleRow label="Capital" value={formatMonto(montoNum)} mono strong />
+          {plan && <DetalleRow label={`Cuota (${lbl.cuotaSingular})`} value={formatMonto(hayCargos ? plan.cuotaTotal : plan.cuota)} mono />}
+          {plan && <DetalleRow label="Plan" value={`${plan.cuotas.length} ${lbl.cuotaPlural}`} />}
+          {plan && <DetalleRow label="Total a pagar" value={formatMonto(hayCargos ? totalCuotasCliente : plan.totalPagado)} mono strong />}
+        </div>
+
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={loading}>Cancelar</AlertDialogCancel>
+          <button
+            type="button"
+            onClick={persist}
+            disabled={loading}
+            className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-primary px-5 py-2 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
+          >
+            {loading ? "Otorgando..." : "Confirmar y otorgar"}
+          </button>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
     </>
   );
 }
@@ -814,6 +939,16 @@ function ClienteCombobox({ clientes, value, onSelect, onAlta }: {
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+/** Fila etiqueta/valor del detalle del aviso de confirmación. */
+function DetalleRow({ label, value, mono, strong }: { label: string; value: string; mono?: boolean; strong?: boolean }) {
+  return (
+    <div className="flex items-center justify-between gap-3 text-sm">
+      <span className="text-muted-foreground">{label}</span>
+      <span className={`${mono ? "font-mono" : ""} ${strong ? "font-semibold" : ""} truncate text-foreground`}>{value}</span>
     </div>
   );
 }
