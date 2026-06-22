@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from "react";
 import { mutate as globalMutate } from "swr";
-import { Plus, Trash2, Edit2, Eye, FileText, Wallet, AlertCircle, CheckCircle, Search, ChevronDown, X, Ban } from "lucide-react";
+import { Plus, Trash2, Edit2, FileText, Wallet, AlertCircle, CheckCircle, Search, ChevronDown, X, Ban } from "lucide-react";
 import { CreditoForm } from "./CreditoForm";
 import { CreditoDetail } from "./CreditoDetail";
 import { useCreditos, KEYS, type Credito } from "@/lib/swr";
@@ -194,19 +194,17 @@ export function CreditosTable() {
           </div>
         </div>
 
-        {/* Count + clear */}
-        <div className="flex items-center justify-between">
-          <p className="text-xs text-muted-foreground">
-            {hasFilters
-              ? `${filtered.length} de ${creditos.length} créditos`
-              : `${creditos.length} crédito${creditos.length !== 1 ? "s" : ""} en total`}
-          </p>
-          {hasFilters && (
+        {/* Conteo + limpiar — solo cuando hay filtros (el total ya lo da el KPI). */}
+        {hasFilters && (
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-muted-foreground">
+              {filtered.length} de {creditos.length} créditos
+            </p>
             <button onClick={clearFilters} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors">
               <X className="h-3 w-3" /> Limpiar filtros
             </button>
-          )}
-        </div>
+          </div>
+        )}
 
         {/* ── Content ── */}
         {filtered.length === 0 ? (
@@ -266,13 +264,6 @@ export function CreditosTable() {
                           </td>
                           <td className="px-4 py-3 pr-5 text-right border-b border-border/70">
                             <div className="flex justify-end gap-1" onClick={(e) => e.stopPropagation()}>
-                              <button
-                                onClick={() => setDetail(c)}
-                                className="p-1.5 rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
-                                title="Ver detalle"
-                              >
-                                <Eye className="h-3.5 w-3.5" />
-                              </button>
                               <button
                                 onClick={() => openEdit(c.id)}
                                 className="p-1.5 rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
@@ -363,9 +354,6 @@ export function CreditosTable() {
                         ? <StatusBadge label={`${c.dias_mora}d mora`} variant={c.dias_mora > 30 ? "destructive" : "warning"} />
                         : <span className="text-xs font-medium text-success">Al día</span>}
                       <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
-                        <button onClick={() => setDetail(c)} className="p-1.5 rounded-lg hover:bg-muted transition-colors text-muted-foreground">
-                          <Eye className="h-3.5 w-3.5" />
-                        </button>
                         <button onClick={() => openEdit(c.id)} className="p-1.5 rounded-lg hover:bg-muted transition-colors text-muted-foreground">
                           <Edit2 className="h-3.5 w-3.5" />
                         </button>

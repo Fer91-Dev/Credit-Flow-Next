@@ -1,9 +1,10 @@
 ﻿"use client";
 
 import { useState } from "react";
-import { CalendarDays, Wallet, TrendingUp, AlertCircle, Info, ArrowUpRight, Receipt, Loader2 } from "lucide-react";
+import { CalendarDays, Wallet, TrendingUp, AlertCircle, Info, ArrowUpRight, Receipt, Loader2, Printer } from "lucide-react";
 import { useAmortizacion, useCuotas, usePagosByCredito, type Credito, type EstadoCuota } from "@/lib/swr";
 import { abrirRecibo } from "@/lib/recibo";
+import { imprimirPlanPagos } from "@/lib/plan-print";
 import { StatusBadge, type BadgeVariant } from "@/components/ui/StatusBadge";
 import { formatCreditoNumero, formatFecha } from "@/lib/utils";
 import { Stat } from "@/components/ui/Stat";
@@ -56,6 +57,31 @@ export function CreditoDetail({ credito }: { credito: Credito }) {
   const est = estadoBadge(credito.estado);
   const totalCobrado = pagos.reduce((s, p) => s + p.monto, 0);
   const hayCargos = pagos.some(p => p.aplicado_cargos > 0);
+
+  // Reimprime el mismo PDF "Plan de pagos" (vista cliente) que se ve al otorgar.
+  // Reusa el plan de amortización ya cargado en el detalle.
+  const imprimirPlan = () => {
+    const a = amortizacion;
+    if (!a) return;
+    imprimirPlanPagos({
+      capital: a.parametros.monto,
+      tasa: a.parametros.tasa_ingresada,
+      convencion: a.parametros.convencion_tasa,
+      freqLabelPlural: a.parametros.frecuencia_label.cuotaPlural,
+      hayCargos: a.resumen.total_cargos > 0,
+      cuotas: a.cuotas.map((r) => ({
+        nro: r.nro, fecha: r.fecha, cuota: r.cuota, interes: r.interes, capital: r.capital,
+        iva: r.iva, seguro: r.seguro, gastos: r.gastos, cuotaTotal: r.cuotaTotal, saldo: r.saldo,
+      })),
+      totales: {
+        cuota: a.resumen.total_pagado,
+        interes: a.resumen.total_intereses,
+        capital: a.parametros.monto,
+        cargos: a.resumen.total_iva + a.resumen.total_seguro + a.resumen.total_gastos,
+        cuotaTotal: a.resumen.total_con_cargos,
+      },
+    }, "cliente");
+  };
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -176,12 +202,22 @@ export function CreditoDetail({ credito }: { credito: Credito }) {
               <CalendarDays className="h-4 w-4 text-muted-foreground" />
               <h3 className="text-sm font-semibold text-foreground">Plan de cuotas</h3>
             </div>
-            {resumen && (
-              <span className="text-[11px] text-muted-foreground/70 tabular-nums">
-                {resumen.pagadas}/{resumen.total} pagadas
-                {resumen.vencidas > 0 && <span className="text-destructive"> · {resumen.vencidas} vencida{resumen.vencidas !== 1 ? "s" : ""}</span>}
-              </span>
-            )}
+            <div className="flex items-center gap-3">
+              {resumen && (
+                <span className="text-[11px] text-muted-foreground/70 tabular-nums">
+                  {resumen.pagadas}/{resumen.total} pagadas
+                  {resumen.vencidas > 0 && <span className="text-destructive"> · {resumen.vencidas} vencida{resumen.vencidas !== 1 ? "s" : ""}</span>}
+                </span>
+              )}
+              <button
+                onClick={imprimirPlan}
+                disabled={!amortizacion}
+                title="Reimprimir el plan de cuotas (PDF)"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-40"
+              >
+                <Printer className="h-3.5 w-3.5" /> Imprimir plan
+              </button>
+            </div>
           </div>
           {loadingCuotas ? (
             <Skeleton className="h-48 rounded-xl" />
