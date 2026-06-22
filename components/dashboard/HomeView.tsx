@@ -1,8 +1,9 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { CalendarDays, MapPin, UserCog, X, Target, Trophy } from "lucide-react";
-import { useZonas, useVendedores, type DashboardFiltros } from "@/lib/swr";
+import type { Role } from "@prisma/client";
+import { CalendarDays, MapPin, UserCog, X, Target, Trophy, Users2, AlertTriangle } from "lucide-react";
+import { useZonas, useVendedores, useDashboard, type DashboardFiltros, type VendedorRendimiento } from "@/lib/swr";
 import { DashboardMetrics } from "./DashboardMetrics";
 
 function n0(x: number) {
@@ -14,7 +15,8 @@ const INPUT =
   "transition-all focus:border-primary focus:ring-2 focus:ring-primary/20";
 const SEL = INPUT + " pr-8 appearance-none cursor-pointer [&>option]:bg-card [&>option]:text-foreground";
 
-export function HomeView() {
+export function HomeView({ role }: { role: Role }) {
+  const esAdmin = role === "admin";
   const { vendedores } = useVendedores();
   const { zonas } = useZonas();
 
@@ -26,11 +28,14 @@ export function HomeView() {
   const filtros: DashboardFiltros = useMemo(() => ({
     desde: desde || undefined,
     hasta: hasta || undefined,
-    vendedor_id: vendedorId || undefined,
+    // El filtro por vendedor solo aplica a admin; un vendedor siempre ve lo suyo (lo fuerza la API).
+    vendedor_id: esAdmin ? (vendedorId || undefined) : undefined,
     zona: zona || undefined,
-  }), [desde, hasta, vendedorId, zona]);
+  }), [desde, hasta, vendedorId, zona, esAdmin]);
 
-  const hayFiltros = !!(desde || hasta || vendedorId || zona);
+  const { data } = useDashboard(filtros);
+
+  const hayFiltros = !!(desde || hasta || (esAdmin && vendedorId) || zona);
   const limpiar = () => { setDesde(""); setHasta(""); setVendedorId(""); setZona(""); };
 
   return (
@@ -45,13 +50,15 @@ export function HomeView() {
           <span className="text-[11px] font-medium text-muted-foreground flex items-center gap-1"><CalendarDays className="h-3 w-3" /> Hasta</span>
           <input type="date" value={hasta} min={desde || undefined} onChange={(e) => setHasta(e.target.value)} className={INPUT} />
         </label>
-        <label className="flex flex-col gap-1 min-w-[160px]">
-          <span className="text-[11px] font-medium text-muted-foreground flex items-center gap-1"><UserCog className="h-3 w-3" /> Empleado</span>
-          <select value={vendedorId} onChange={(e) => setVendedorId(e.target.value)} className={SEL}>
-            <option value="">Todos</option>
-            {vendedores.map((v) => <option key={v.id} value={v.id}>{v.nombre}</option>)}
-          </select>
-        </label>
+        {esAdmin && (
+          <label className="flex flex-col gap-1 min-w-[160px]">
+            <span className="text-[11px] font-medium text-muted-foreground flex items-center gap-1"><UserCog className="h-3 w-3" /> Empleado</span>
+            <select value={vendedorId} onChange={(e) => setVendedorId(e.target.value)} className={SEL}>
+              <option value="">Todos</option>
+              {vendedores.map((v) => <option key={v.id} value={v.id}>{v.nombre}</option>)}
+            </select>
+          </label>
+        )}
         <label className="flex flex-col gap-1 min-w-[140px]">
           <span className="text-[11px] font-medium text-muted-foreground flex items-center gap-1"><MapPin className="h-3 w-3" /> Zona</span>
           <select value={zona} onChange={(e) => setZona(e.target.value)} className={SEL}>
@@ -69,8 +76,72 @@ export function HomeView() {
       {/* ── Métricas (reaccionan a los filtros) ── */}
       <DashboardMetrics filtros={filtros} />
 
-      {/* ── Objetivos de venta por equipo ── */}
-      <ObjetivosEquipo vendedores={vendedores} />
+      {/* ── Rendimiento + morosidad por vendedor (solo admin) ── */}
+      {esAdmin && <RendimientoVendedores filas={data?.por_vendedor ?? []} />}
+
+      {/* ── Objetivos de venta por equipo (solo admin) ── */}
+      {esAdmin && <ObjetivosEquipo vendedores={vendedores} />}
+    </div>
+  );
+}
+
+/**
+ * Tabla de rendimiento por vendedor (solo admin): créditos otorgados, cartera y
+ * morosidad de la cartera de cada vendedor (según la mora de sus clientes).
+ */
+function RendimientoVendedores({ filas }: { filas: VendedorRendimiento[] }) {
+  if (filas.length === 0) return null;
+
+  // Color de la morosidad: verde sana, ámbar elevada, rojo crítica.
+  const moraColor = (pct: number) =>
+    pct >= 30 ? "text-destructive" : pct >= 15 ? "text-warning" : "text-success";
+
+  return (
+    <div className="rounded-xl bg-card border border-border p-5">
+      <div className="flex items-center gap-2 mb-4">
+        <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-muted/40 border border-border">
+          <Users2 className="h-3.5 w-3.5 text-muted-foreground" />
+        </div>
+        <h3 className="text-sm font-semibold text-foreground">Rendimiento por vendedor</h3>
+      </div>
+
+      <div className="overflow-x-auto -mx-1">
+        <table className="w-full min-w-[640px] text-sm">
+          <thead>
+            <tr className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">
+              <th className="text-left font-semibold py-2 px-1">Vendedor</th>
+              <th className="text-right font-semibold py-2 px-1">Créditos</th>
+              <th className="text-right font-semibold py-2 px-1">Otorgado</th>
+              <th className="text-right font-semibold py-2 px-1">Cartera</th>
+              <th className="text-right font-semibold py-2 px-1">En mora</th>
+              <th className="text-right font-semibold py-2 px-1">Crítica</th>
+              <th className="text-right font-semibold py-2 px-1">Morosidad</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filas.map((v) => (
+              <tr key={v.vendedor_id ?? "sin"} className="border-b border-border/50 hover:bg-muted/20">
+                <td className="py-2.5 px-1 font-medium text-foreground">{v.nombre}</td>
+                <td className="py-2.5 px-1 text-right font-mono text-foreground">{v.creditos_otorgados}</td>
+                <td className="py-2.5 px-1 text-right font-mono text-foreground">${n0(v.monto_otorgado)}</td>
+                <td className="py-2.5 px-1 text-right font-mono text-foreground">${n0(v.cartera)}</td>
+                <td className="py-2.5 px-1 text-right font-mono text-warning">${n0(v.en_mora_monto)}</td>
+                <td className="py-2.5 px-1 text-right font-mono">
+                  <span className={v.mora_critica_count > 0 ? "text-destructive font-semibold" : "text-muted-foreground/40"}>
+                    {v.mora_critica_count}
+                  </span>
+                </td>
+                <td className="py-2.5 px-1 text-right">
+                  <span className={`inline-flex items-center gap-1 font-mono font-semibold ${moraColor(v.pct_morosidad)}`}>
+                    {v.pct_morosidad >= 30 && <AlertTriangle className="h-3 w-3" />}
+                    {v.pct_morosidad}%
+                  </span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

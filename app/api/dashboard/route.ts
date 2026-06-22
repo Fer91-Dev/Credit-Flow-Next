@@ -46,7 +46,10 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   if (vendedorId) creditoRel.vendedor_id = vendedorId;
   if (zona) creditoRel.cliente = { zona };
 
-  const [clientes, creditos, pagosTotal, cuotasPeriodo] = await Promise.all([
+  // El desglose por vendedor (rendimiento + morosidad) es solo para admin.
+  const esAdmin = role === "admin";
+
+  const [clientes, creditos, pagosTotal, cuotasPeriodo, personal] = await Promise.all([
     // Clientes activos (filtra por zona si corresponde)
     prisma.clientes.count({
       where: { ...withTenant(tenantId), estado: "activo", ...(zona ? { zona } : {}) },
@@ -61,6 +64,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
         monto_original: true,
         saldo_pendiente: true,
         dias_mora: true,
+        vendedor_id: true,
       },
     }),
 
@@ -83,6 +87,14 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
       },
       select: { cuota_total: true, pagado: true },
     }),
+
+    // Personal del tenant (solo admin; sirve para nombrar el desglose por vendedor)
+    esAdmin
+      ? prisma.vendedores.findMany({
+          where: { ...withTenant(tenantId) },
+          select: { id: true, nombre: true },
+        })
+      : Promise.resolve([] as { id: string; nombre: string }[]),
   ]);
 
   const creditosActivos = creditos.filter((c) => c.estado === "activo").length;
@@ -111,6 +123,44 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
       .reduce((sum, c) => sum + c.saldo_pendiente, 0),
   };
 
+  // ── Rendimiento + morosidad por vendedor (solo admin) ──────────────────────
+  // Agrega los créditos (ya filtrados por zona/fecha) por vendedor_id. La cartera
+  // y la mora son del saldo pendiente; la morosidad % = saldo en mora / cartera.
+  let porVendedor: PorVendedor[] | undefined;
+  if (esAdmin) {
+    const SIN_ASIGNAR = "sin_asignar";
+    const nombrePorId = new Map(personal.map((p) => [p.id, p.nombre]));
+    const grupos = new Map<string, typeof creditos>();
+    for (const c of creditos) {
+      const key = c.vendedor_id ?? SIN_ASIGNAR;
+      const arr = grupos.get(key) ?? [];
+      arr.push(c);
+      grupos.set(key, arr);
+    }
+
+    porVendedor = Array.from(grupos.entries())
+      .map(([key, lista]) => {
+        const cartera = lista.reduce((s, c) => s + c.saldo_pendiente, 0);
+        const enMora = lista
+          .filter((c) => c.dias_mora > 0)
+          .reduce((s, c) => s + c.saldo_pendiente, 0);
+        return {
+          vendedor_id: key === SIN_ASIGNAR ? null : key,
+          nombre: key === SIN_ASIGNAR ? "Sin asignar" : nombrePorId.get(key) ?? "—",
+          creditos_otorgados: lista.filter((c) => c.estado !== "anulado").length,
+          monto_otorgado: lista
+            .filter((c) => c.estado !== "anulado")
+            .reduce((s, c) => s + c.monto_original, 0),
+          cartera,
+          en_mora_monto: enMora,
+          mora_critica_count: lista.filter((c) => c.dias_mora > 30).length,
+          pct_morosidad: cartera > 0 ? Math.round((enMora / cartera) * 100) : 0,
+        };
+      })
+      // Más expuestos primero (mayor monto en mora), luego mayor cartera.
+      .sort((a, b) => b.en_mora_monto - a.en_mora_monto || b.cartera - a.cartera);
+  }
+
   return successResponse({
     resumen: {
       clientes_activos: clientes,
@@ -132,5 +182,17 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
       cobrado: cobranzaCobrado,
       cuotas_total: cuotasPeriodo.length,
     },
+    ...(porVendedor ? { por_vendedor: porVendedor } : {}),
   });
 });
+
+type PorVendedor = {
+  vendedor_id: string | null;
+  nombre: string;
+  creditos_otorgados: number;
+  monto_otorgado: number;
+  cartera: number;
+  en_mora_monto: number;
+  mora_critica_count: number;
+  pct_morosidad: number;
+};

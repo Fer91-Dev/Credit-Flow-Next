@@ -29,6 +29,8 @@ export type AuthContext = {
   tenantId: string;
   role: Role;
   vendedorId: string | null; // profiles.vendedor_id (solo relevante si role = vendedor)
+  nombre: string | null; // profiles.full_name (para saludo / identidad en UI)
+  email: string | null; // profiles.email
 };
 
 /**
@@ -40,7 +42,7 @@ export type AuthContext = {
 async function cargarContexto(userId: string): Promise<AuthContext> {
   const profile = await prisma.profiles.findUnique({
     where: { id: userId },
-    select: { tenant_id: true, role: true, activo: true, vendedor_id: true },
+    select: { tenant_id: true, role: true, activo: true, vendedor_id: true, full_name: true, email: true },
   });
 
   if (!profile || !profile.activo || !profile.tenant_id || !profile.role) {
@@ -52,6 +54,8 @@ async function cargarContexto(userId: string): Promise<AuthContext> {
     tenantId: profile.tenant_id,
     role: profile.role,
     vendedorId: profile.vendedor_id ?? null,
+    nombre: profile.full_name ?? null,
+    email: profile.email ?? null,
   };
 }
 

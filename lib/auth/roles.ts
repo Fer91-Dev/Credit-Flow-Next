@@ -56,6 +56,13 @@ export function canAccess(role: Role | null | undefined, pathname: string): bool
   return roles ? roles.includes(role) : false;
 }
 
+/** Etiqueta legible del rol para mostrar en la UI. */
+export const ROLE_LABEL: Record<Role, string> = {
+  admin: "Administrador",
+  vendedor: "Vendedor",
+  cobrador: "Cobrador",
+};
+
 /** Pantalla de aterrizaje por rol (para redirigir tras un acceso denegado). */
 export function homeFor(role: Role): string {
   switch (role) {

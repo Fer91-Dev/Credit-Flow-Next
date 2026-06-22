@@ -500,6 +500,19 @@ export interface DashboardData {
     cobrado: number;
     cuotas_total: number;
   };
+  /** Desglose de rendimiento + morosidad por vendedor. Solo presente para admin. */
+  por_vendedor?: VendedorRendimiento[];
+}
+
+export interface VendedorRendimiento {
+  vendedor_id: string | null;
+  nombre: string;
+  creditos_otorgados: number;
+  monto_otorgado: number;
+  cartera: number;
+  en_mora_monto: number;
+  mora_critica_count: number;
+  pct_morosidad: number;
 }
 
 // ── Claves de caché compartidas ──────────────────────────────────────────────
