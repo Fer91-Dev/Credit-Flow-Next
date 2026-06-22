@@ -87,6 +87,8 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
       promesa_monto: typeof body.promesa_monto === "number" && body.promesa_monto > 0 ? body.promesa_monto : null,
       promesa_fecha: body.promesa_fecha ? new Date(body.promesa_fecha) : null,
       proximo_contacto: body.proximo_contacto ? new Date(body.proximo_contacto) : null,
+      // Si es una promesa de pago, nace en estado pendiente
+      promesa_estado: body.resultado === "promesa_pago" ? "pendiente" : null,
       ...withTenant(tenantId),
     },
     include: { credito: { select: { id: true, cliente: { select: { nombre: true } } } } },

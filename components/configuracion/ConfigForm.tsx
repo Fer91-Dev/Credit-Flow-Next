@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Settings, Check, Loader2, Percent, Plus, X } from "lucide-react";
+import { Settings, Check, Loader2, Percent, Plus, X, MessageSquare, Phone, Mail } from "lucide-react";
 import { useConfiguracion, type ConfiguracionFinanciera } from "@/lib/swr";
 import type { SimuladorConfig, CargosConfig, FrecuenciaOpcion } from "@/lib/domain";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -24,6 +24,7 @@ export function ConfigForm() {
   const [savingKey, setSavingKey] = useState<string | null>(null);
   const [savedKey, setSavedKey] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<"motor" | "simulador" | "comunicaciones">("motor");
 
   // Hidratar el form local cuando llega la config.
   useEffect(() => {
@@ -99,7 +100,29 @@ export function ConfigForm() {
             </div>
           )}
 
-          {/* Motor financiero */}
+          {/* ─ Tabs ─ */}
+          <div className="flex gap-1 bg-muted/30 rounded-lg p-1 w-fit">
+            {([
+              { key: "motor",          label: "Motor" },
+              { key: "simulador",      label: "Simulador" },
+              { key: "comunicaciones", label: "Comunicaciones" },
+            ] as const).map(tab => (
+              <button
+                key={tab.key}
+                onClick={() => setActiveTab(tab.key)}
+                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                  activeTab === tab.key
+                    ? "bg-card text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+
+          {/* ─── Motor tab: Motor financiero (primero) ─── */}
+          {activeTab === "motor" && (
           <Section title="Motor financiero" desc="Cómo se interpreta la tasa y el sistema de cálculo."
             onSave={() => save("motor", { convencionTasa: form.convencionTasa, sistemaAmortizacion: form.sistemaAmortizacion })}
             saving={savingKey === "motor"} saved={savedKey === "motor"}>
@@ -118,6 +141,10 @@ export function ConfigForm() {
               </Field>
             </div>
           </Section>
+          )}
+
+          {/* ─── Simulador tab ─── */}
+          {activeTab === "simulador" && <>
 
           {/* Simulador · Financiación */}
           <Section title="Financiación del simulador" desc="Rango de monto y valores que el simulador prellena. 0 = sin restricción / sin valor por defecto."
@@ -337,6 +364,11 @@ export function ConfigForm() {
             </div>
           </Section>
 
+          </>}
+
+          {/* ─── Motor tab: Mora, Imputación, Presentación ─── */}
+          {activeTab === "motor" && <>
+
           {/* Mora */}
           <Section title="Interés por mora" desc="Recargo aplicado por días de atraso."
             onSave={() => save("mora", { moraActiva: form.moraActiva, tasaMoraDiaria: form.tasaMoraDiaria, baseMora: form.baseMora })}
@@ -421,11 +453,172 @@ export function ConfigForm() {
               </Field>
             </div>
           </Section>
+
+          </>}
+
+          {/* ─── Comunicaciones tab ─── */}
+          {activeTab === "comunicaciones" && (
+          <Section
+            title="Canales de comunicación"
+            desc="Configura los canales para notificaciones automáticas de cobranza (recordatorios, mora, vencimientos)."
+          >
+            <div className="space-y-4">
+              {/* WhatsApp Cloud API */}
+              <CanalesBlock
+                icon={<MessageSquare className="w-4 h-4 text-success" />}
+                title="WhatsApp Cloud API (Meta)"
+                enabled={!!form.whatsappConfig?.enabled}
+                onToggle={(v) => set("whatsappConfig", { ...(form.whatsappConfig ?? defaultWhatsapp()), enabled: v })}
+                onSave={() => save("canal-whatsapp", { whatsappConfig: form.whatsappConfig ?? null } as any)}
+                saving={savingKey === "canal-whatsapp"}
+                saved={savedKey === "canal-whatsapp"}
+              >
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
+                  <Field label="Token de acceso permanente">
+                    <Input
+                      type="password"
+                      placeholder="EAAxxxxxx..."
+                      value={(form.whatsappConfig as any)?.token ?? ""}
+                      onChange={e => set("whatsappConfig", { ...(form.whatsappConfig ?? defaultWhatsapp()), token: e.target.value })}
+                    />
+                  </Field>
+                  <Field label="Phone Number ID">
+                    <Input
+                      placeholder="123456789012345"
+                      value={(form.whatsappConfig as any)?.phone_number_id ?? ""}
+                      onChange={e => set("whatsappConfig", { ...(form.whatsappConfig ?? defaultWhatsapp()), phone_number_id: e.target.value })}
+                    />
+                  </Field>
+                  <Field label="Business Account ID (opcional)">
+                    <Input
+                      placeholder="987654321098765"
+                      value={(form.whatsappConfig as any)?.business_account_id ?? ""}
+                      onChange={e => set("whatsappConfig", { ...(form.whatsappConfig ?? defaultWhatsapp()), business_account_id: e.target.value })}
+                    />
+                  </Field>
+                </div>
+                <p className="text-xs text-muted-foreground mt-3">
+                  Plantillas de mensaje (nombre exacto aprobado en Meta Business Manager):
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-2">
+                  {(["recordatorio", "vencimiento", "mora_temprana", "mora_media", "mora_critica"] as const).map(evento => (
+                    <Field key={evento} label={eventoLabel(evento)}>
+                      <Input
+                        placeholder={`creditflow_${evento}`}
+                        value={(form.whatsappConfig as any)?.templates?.[evento] ?? ""}
+                        onChange={e => {
+                          const base = form.whatsappConfig ?? defaultWhatsapp();
+                          set("whatsappConfig", { ...base, templates: { ...(base as any).templates, [evento]: e.target.value } });
+                        }}
+                      />
+                    </Field>
+                  ))}
+                </div>
+              </CanalesBlock>
+
+              {/* SMS */}
+              <CanalesBlock
+                icon={<Phone className="w-4 h-4 text-warning" />}
+                title="SMS Gateway"
+                enabled={!!form.smsConfig?.enabled}
+                onToggle={(v) => set("smsConfig", { ...(form.smsConfig ?? defaultSms()), enabled: v })}
+                onSave={() => save("canal-sms", { smsConfig: form.smsConfig ?? null } as any)}
+                saving={savingKey === "canal-sms"}
+                saved={savedKey === "canal-sms"}
+              >
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
+                  <Field label="Proveedor">
+                    <Select
+                      value={(form.smsConfig as any)?.provider ?? "twilio"}
+                      onChange={e => set("smsConfig", { ...(form.smsConfig ?? defaultSms()), provider: e.target.value })}
+                    >
+                      <option value="twilio">Twilio</option>
+                      <option value="sms_masivos">SMS Masivos</option>
+                      <option value="otro">Otro</option>
+                    </Select>
+                  </Field>
+                  <Field label="API Key">
+                    <Input
+                      type="password"
+                      placeholder="SK..."
+                      value={(form.smsConfig as any)?.api_key ?? ""}
+                      onChange={e => set("smsConfig", { ...(form.smsConfig ?? defaultSms()), api_key: e.target.value })}
+                    />
+                  </Field>
+                </div>
+              </CanalesBlock>
+
+              {/* Email */}
+              <CanalesBlock
+                icon={<Mail className="w-4 h-4 text-primary" />}
+                title="Email"
+                enabled={!!form.emailConfig?.enabled}
+                onToggle={(v) => set("emailConfig", { ...(form.emailConfig ?? defaultEmail()), enabled: v })}
+                onSave={() => save("canal-email", { emailConfig: form.emailConfig ?? null } as any)}
+                saving={savingKey === "canal-email"}
+                saved={savedKey === "canal-email"}
+              >
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
+                  <Field label="Proveedor">
+                    <Select
+                      value={(form.emailConfig as any)?.provider ?? "smtp"}
+                      onChange={e => set("emailConfig", { ...(form.emailConfig ?? defaultEmail()), provider: e.target.value })}
+                    >
+                      <option value="smtp">SMTP</option>
+                      <option value="resend">Resend</option>
+                      <option value="sendgrid">SendGrid</option>
+                    </Select>
+                  </Field>
+                  {(form.emailConfig as any)?.provider === "smtp" || !(form.emailConfig as any)?.provider ? (
+                    <>
+                      <Field label="Host SMTP"><Input placeholder="smtp.ejemplo.com" value={(form.emailConfig as any)?.host ?? ""} onChange={e => set("emailConfig", { ...(form.emailConfig ?? defaultEmail()), host: e.target.value })} /></Field>
+                      <Field label="Puerto"><Input type="number" placeholder="587" value={(form.emailConfig as any)?.port ?? ""} onChange={e => set("emailConfig", { ...(form.emailConfig ?? defaultEmail()), port: parseInt(e.target.value) || 587 })} /></Field>
+                      <Field label="Usuario"><Input placeholder="user@ejemplo.com" value={(form.emailConfig as any)?.user ?? ""} onChange={e => set("emailConfig", { ...(form.emailConfig ?? defaultEmail()), user: e.target.value })} /></Field>
+                      <Field label="Contraseña"><Input type="password" value={(form.emailConfig as any)?.pass ?? ""} onChange={e => set("emailConfig", { ...(form.emailConfig ?? defaultEmail()), pass: e.target.value })} /></Field>
+                    </>
+                  ) : (
+                    <Field label="API Key"><Input type="password" placeholder="re_xxxx / SG.xxxx" value={(form.emailConfig as any)?.api_key ?? ""} onChange={e => set("emailConfig", { ...(form.emailConfig ?? defaultEmail()), api_key: e.target.value })} /></Field>
+                  )}
+                </div>
+              </CanalesBlock>
+            </div>
+          </Section>
+          )}
+
         </div>
       )}
     </div>
   );
 }
+
+function CanalesBlock({ icon, title, enabled, onToggle, children, onSave, saving, saved }: {
+  icon: React.ReactNode; title: string; enabled: boolean; onToggle: (v: boolean) => void; children: React.ReactNode;
+  onSave?: () => void; saving?: boolean; saved?: boolean;
+}) {
+  return (
+    <div className="rounded-lg border border-border bg-muted/20 p-4">
+      <div className="flex items-center justify-between gap-3 mb-1">
+        <div className="flex items-center gap-2">
+          {icon}
+          <p className="text-sm font-medium text-foreground">{title}</p>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <Toggle checked={enabled} onChange={onToggle} />
+          {onSave && <SaveButton saving={!!saving} saved={!!saved} onClick={onSave} />}
+        </div>
+      </div>
+      <div className={enabled ? "" : "pointer-events-none opacity-40"}>{children}</div>
+    </div>
+  );
+}
+
+function eventoLabel(evento: string): string {
+  return { recordatorio: "Recordatorio (3d antes)", vencimiento: "Vencimiento hoy", mora_temprana: "Mora temprana (5d)", mora_media: "Mora media (15d)", mora_critica: "Mora crítica (30d+)" }[evento] ?? evento;
+}
+
+function defaultWhatsapp() { return { enabled: false, token: "", phone_number_id: "", business_account_id: "", templates: {} }; }
+function defaultSms()       { return { enabled: false, api_key: "", provider: "twilio" }; }
+function defaultEmail()     { return { enabled: false, provider: "smtp", host: "", port: 587, user: "", pass: "" }; }
 
 function Section({ title, desc, children, onSave, saving, saved }: {
   title: string; desc?: string; children: React.ReactNode;

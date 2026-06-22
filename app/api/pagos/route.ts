@@ -320,6 +320,9 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     },
   });
 
+  // Auto-conciliación de promesas de pago pendientes (no bloquea la respuesta)
+  conciliarPromesas(body.credito_id, tenantId, body.monto).catch(() => {});
+
   return successResponse(
     {
       pago,
@@ -350,4 +353,30 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
 /** Máximo con 0 (evita negativos por redondeo). */
 function noNeg(x: number): number {
   return x > 0 ? x : 0;
+}
+
+/**
+ * Concilia automáticamente las promesas de pago pendientes de un crédito.
+ * Si el monto cobrado cubre la promesa, la marca como "cumplida".
+ * Se llama como fire-and-forget para no bloquear la respuesta del cobro.
+ */
+async function conciliarPromesas(creditoId: string, tenantId: string, montoPagado: number) {
+  const promesasPendientes = await prisma.acciones_cobranza.findMany({
+    where: {
+      tenant_id: tenantId,
+      credito_id: creditoId,
+      resultado: "promesa_pago",
+      promesa_estado: "pendiente",
+    },
+  });
+
+  for (const promesa of promesasPendientes) {
+    const montoCumple = !promesa.promesa_monto || montoPagado >= promesa.promesa_monto;
+    if (montoCumple) {
+      await prisma.acciones_cobranza.update({
+        where: { id: promesa.id },
+        data: { promesa_estado: "cumplida" },
+      });
+    }
+  }
 }

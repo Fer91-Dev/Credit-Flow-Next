@@ -19,7 +19,7 @@ const NAV_PRIMARY = [
   { icon: BarChart3,   label: "Cartera",        to: "/cartera" },
   { icon: Users,       label: "Clientes",       to: "/clientes" },
   { icon: FileText,    label: "Créditos",       to: "/creditos" },
-  { icon: ShieldAlert, label: "Cobranza",       to: "/cobranza" },
+  { icon: ShieldAlert, label: "Cobranzas y Recupero", to: "/cobranza" },
   { icon: Wallet,      label: "Pagos",          to: "/pagos" },
 ] as const;
 

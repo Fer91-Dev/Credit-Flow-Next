@@ -402,6 +402,36 @@ export interface EventoAuditoria {
   meta: Record<string, unknown> | null;
 }
 
+export interface WhatsappConfig {
+  enabled: boolean;
+  token: string;
+  phone_number_id: string;
+  business_account_id?: string;
+  templates?: {
+    recordatorio?: string;
+    vencimiento?: string;
+    mora_temprana?: string;
+    mora_media?: string;
+    mora_critica?: string;
+  };
+}
+
+export interface SmsConfig {
+  enabled: boolean;
+  api_key: string;
+  provider: string;
+}
+
+export interface EmailConfig {
+  enabled: boolean;
+  host?: string;
+  port?: number;
+  user?: string;
+  pass?: string;
+  api_key?: string;
+  provider?: string;
+}
+
 export interface ConfiguracionFinanciera {
   convencionTasa: "nominal_anual" | "efectiva_anual" | "mensual";
   sistemaAmortizacion: "frances";
@@ -413,6 +443,9 @@ export interface ConfiguracionFinanciera {
   moneda: string;
   locale: string;
   simulador: SimuladorConfig;
+  whatsappConfig?: WhatsappConfig | null;
+  smsConfig?: SmsConfig | null;
+  emailConfig?: EmailConfig | null;
 }
 
 export interface Pago {

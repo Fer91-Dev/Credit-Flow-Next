@@ -10,6 +10,7 @@ import { GestionForm } from "./GestionForm";
 import { CobranzaDetail } from "./CobranzaDetail";
 import { CampaignModal } from "./CampaignModal";
 import { CampanasView } from "./CampanasView";
+import { PromesasTab } from "./PromesasTab";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { KpiCard } from "@/components/ui/KpiCard";
 import { StatusBadge } from "@/components/ui/StatusBadge";
@@ -55,7 +56,7 @@ const resultadoLabel: Record<AccionCobranza["resultado"], string> = {
   otro:          "Otro",
 };
 
-type Tab = "morosos" | "campanas";
+type Tab = "morosos" | "promesas" | "campanas";
 
 export function CobranzaTable({ role }: { role: Role }) {
   // Las campañas (selección masiva + ActionToolbar + pestaña) son admin/cobrador.
@@ -161,30 +162,34 @@ export function CobranzaTable({ role }: { role: Role }) {
     <div className="space-y-6">
       <PageHeader
         icon={ShieldAlert}
-        title="Cobranza"
-        subtitle="Créditos en mora y seguimiento de recuperación"
+        title="Cobranzas y Recupero"
+        subtitle="Créditos en mora, promesas de pago y recuperación"
         accent="destructive"
       />
 
-      {/* ── Tabs Morosos | Campañas (campañas solo admin/cobrador) ── */}
-      {puedeCampanas && (
-        <div className="flex gap-1 border-b border-border -mt-2">
-          {([["morosos", "Morosos", ShieldAlert], ["campanas", "Campañas", Megaphone]] as [Tab, string, typeof ShieldAlert][]).map(([key, label, Icon]) => (
-            <button
-              key={key}
-              onClick={() => setTab(key)}
-              className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${
-                tab === key ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              <Icon className="h-4 w-4" /> {label}
-            </button>
-          ))}
-        </div>
-      )}
+      {/* ── Tabs: Morosos | Promesas | Campañas (campañas solo admin/cobrador) ── */}
+      <div className="flex gap-1 border-b border-border -mt-2">
+        {([
+          ["morosos",  "Morosos",  ShieldAlert],
+          ["promesas", "Promesas", MessageSquarePlus],
+          ...(puedeCampanas ? [["campanas", "Campañas", Megaphone]] : []),
+        ] as [Tab, string, typeof ShieldAlert][]).map(([key, label, Icon]) => (
+          <button
+            key={key}
+            onClick={() => setTab(key)}
+            className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${
+              tab === key ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <Icon className="h-4 w-4" /> {label}
+          </button>
+        ))}
+      </div>
 
       {tab === "campanas" ? (
         <CampanasView />
+      ) : tab === "promesas" ? (
+        <PromesasTab role={role} />
       ) : (
       <>
       {isLoading ? (

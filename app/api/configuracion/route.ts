@@ -1,9 +1,36 @@
 import { requireAuth, requireRole } from "@/lib/auth";
 import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api";
-import { getConfiguracion, guardarConfiguracion } from "@/lib/config";
+import { getConfiguracion, guardarConfiguracion, getComunicacionConfig, guardarComunicacionConfig, type ComunicacionConfig } from "@/lib/config";
 import { resolverConfig, type ComponenteDeuda } from "@/lib/domain";
 import { registrarAuditoria } from "@/lib/audit";
 import type { NextRequest } from "next/server";
+
+// Sentinel used to mask sensitive fields in GET responses.
+// When PUT receives this value for a field, the stored value is kept unchanged.
+const MASKED = "__masked__";
+
+function maskFields(obj: object | null, fields: string[]): object | null {
+  if (!obj) return null;
+  const result = { ...(obj as Record<string, unknown>) };
+  for (const f of fields) {
+    if (result[f]) result[f] = MASKED;
+  }
+  return result;
+}
+
+function maskCommConfig(comm: ComunicacionConfig) {
+  return {
+    whatsappConfig: maskFields(comm.whatsappConfig, ["token"]),
+    smsConfig:      maskFields(comm.smsConfig,      ["api_key"]),
+    emailConfig:    maskFields(comm.emailConfig,     ["api_key", "pass"]),
+  };
+}
+
+function resolveMasked(incoming: Record<string, unknown>, existing: Record<string, unknown>, fields: string[]) {
+  for (const f of fields) {
+    if (incoming[f] === MASKED) incoming[f] = existing[f] ?? "";
+  }
+}
 
 const CONVENCIONES = ["nominal_anual", "efectiva_anual", "mensual"];
 const BASES_MORA = ["cuota", "saldo"];
@@ -67,8 +94,11 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   // también el vendedor. La config del motor no es información sensible admin-only.
   // La ESCRITURA (PUT) sigue siendo solo admin.
   const { tenantId } = await requireAuth(req);
-  const config = await getConfiguracion(tenantId);
-  return successResponse(config);
+  const [config, comm] = await Promise.all([
+    getConfiguracion(tenantId),
+    getComunicacionConfig(tenantId),
+  ]);
+  return successResponse({ ...config, ...maskCommConfig(comm) });
 });
 
 /**
@@ -128,6 +158,36 @@ export const PUT = withErrorHandler(async (req: NextRequest) => {
 
   const guardada = await guardarConfiguracion(tenantId, nueva);
 
+  // Canales de comunicación (opcionales, guardados por separado del motor financiero)
+  const commPatch: Record<string, object | null> = {};
+  const hasComm = body.whatsappConfig !== undefined || body.smsConfig !== undefined || body.emailConfig !== undefined;
+  if (hasComm) {
+    // Resolve any masked sentinel fields against the stored values
+    const existingComm = await getComunicacionConfig(tenantId);
+    if (body.whatsappConfig) {
+      const wc = { ...(body.whatsappConfig as Record<string, unknown>) };
+      resolveMasked(wc, (existingComm.whatsappConfig ?? {}) as Record<string, unknown>, ["token"]);
+      body.whatsappConfig = wc;
+    }
+    if (body.smsConfig) {
+      const sc = { ...(body.smsConfig as Record<string, unknown>) };
+      resolveMasked(sc, (existingComm.smsConfig ?? {}) as Record<string, unknown>, ["api_key"]);
+      body.smsConfig = sc;
+    }
+    if (body.emailConfig) {
+      const ec = { ...(body.emailConfig as Record<string, unknown>) };
+      resolveMasked(ec, (existingComm.emailConfig ?? {}) as Record<string, unknown>, ["api_key", "pass"]);
+      body.emailConfig = ec;
+    }
+
+    if (body.whatsappConfig !== undefined) commPatch.whatsapp_config = body.whatsappConfig ?? null;
+    if (body.smsConfig      !== undefined) commPatch.sms_config      = body.smsConfig      ?? null;
+    if (body.emailConfig    !== undefined) commPatch.email_config     = body.emailConfig    ?? null;
+    await guardarComunicacionConfig(tenantId, commPatch);
+  }
+
+  const comm = await getComunicacionConfig(tenantId);
+
   await registrarAuditoria({
     tenantId,
     entidad: "configuracion",
@@ -136,5 +196,5 @@ export const PUT = withErrorHandler(async (req: NextRequest) => {
     meta: { campos: Object.keys(body) },
   });
 
-  return successResponse(guardada);
+  return successResponse({ ...guardada, ...maskCommConfig(comm) });
 });

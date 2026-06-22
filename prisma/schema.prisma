@@ -343,11 +343,14 @@ model acciones_cobranza {
   promesa_monto    Float?
   promesa_fecha    DateTime? @db.Date
   proximo_contacto DateTime? @db.Date
+  automatico       Boolean   @default(false) // true = enviado por el motor automático (cron)
+  promesa_estado   String? // pendiente | cumplida | incumplida (solo cuando resultado = promesa_pago)
 
   credito creditos @relation(fields: [credito_id], references: [id], onDelete: Cascade)
 
   @@index([tenant_id, credito_id])
   @@index([tenant_id, proximo_contacto])
+  @@index([tenant_id, promesa_estado])
 }
 
 /// Traza de auditoría: registra eventos de negocio por tenant (tenant_id).
@@ -420,5 +423,8 @@ model configuraciones {
   moneda               String   @default("ARS")
   locale               String   @default("es-AR")
   simulador            Json? // SimuladorConfig (parámetros del motor de cuota por tenant)
+  whatsapp_config      Json? // { enabled, token, phone_number_id, business_account_id, templates: { recordatorio, vencimiento, mora_temprana, mora_media, mora_critica } }
+  sms_config           Json? // { enabled, api_key, provider }
+  email_config         Json? // { enabled, host, port, user, pass } o { enabled, api_key, provider }
   updated_at           DateTime @updatedAt @db.Timestamptz(6)
 }

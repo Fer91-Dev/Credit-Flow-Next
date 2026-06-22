@@ -68,3 +68,37 @@ export async function guardarConfiguracion(
 
   return config;
 }
+
+// ─── Canales de comunicación (WhatsApp, SMS, Email) ─────────────────────────
+
+export type ComunicacionConfig = {
+  whatsappConfig: object | null;
+  smsConfig: object | null;
+  emailConfig: object | null;
+};
+
+/** Lee los bloques de comunicación del tenant (null si no configurados). */
+export async function getComunicacionConfig(tenantId: string): Promise<ComunicacionConfig> {
+  const row = await prisma.configuraciones.findUnique({
+    where: { tenant_id: tenantId },
+    select: { whatsapp_config: true, sms_config: true, email_config: true },
+  });
+  return {
+    whatsappConfig: (row?.whatsapp_config as object | null) ?? null,
+    smsConfig:      (row?.sms_config      as object | null) ?? null,
+    emailConfig:    (row?.email_config     as object | null) ?? null,
+  };
+}
+
+/** Persiste los bloques de comunicación (upsert parcial). */
+export async function guardarComunicacionConfig(
+  tenantId: string,
+  patch: Partial<{ whatsapp_config: object | null; sms_config: object | null; email_config: object | null }>
+): Promise<void> {
+  const patchJson = patch as Prisma.InputJsonObject;
+  await prisma.configuraciones.upsert({
+    where:  { tenant_id: tenantId },
+    create: { tenant_id: tenantId, ...(patchJson as object) } as Prisma.configuracionesUncheckedCreateInput,
+    update: patchJson as Prisma.configuracionesUncheckedUpdateInput,
+  });
+}

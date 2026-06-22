@@ -1,8 +1,9 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { MessageCircle, Mail, Smartphone, Sparkles, ExternalLink, Check } from "lucide-react";
+import { MessageCircle, Mail, Smartphone, Sparkles, ExternalLink, Check, Zap, Loader2 } from "lucide-react";
 import type { Credito } from "@/lib/swr";
+import { useConfiguracion } from "@/lib/swr";
 import {
   calculateRecoveryOffer,
   construirMensajeCampana,
@@ -28,6 +29,9 @@ interface CampaignModalProps {
 }
 
 export function CampaignModal({ creditos, onClose }: CampaignModalProps) {
+  const { config } = useConfiguracion();
+  const whatsappApiActiva = !!(config?.whatsappConfig?.enabled);
+
   const [form, setForm] = useState({
     nombre: "",
     descripcion: "",
@@ -38,8 +42,10 @@ export function CampaignModal({ creditos, onClose }: CampaignModalProps) {
     mensaje_template: TEMPLATE_DEFAULT,
   });
   const [loading, setLoading] = useState(false);
+  const [enviandoApi, setEnviandoApi] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [launched, setLaunched] = useState(false);
+  const [campanaId, setCampanaId] = useState<string | null>(null);
   const [enviados, setEnviados] = useState<Set<string>>(new Set());
 
   const descuentoPct = form.promoActiva ? Math.min(100, Math.max(0, parseFloat(form.promo_valor) || 0)) : 0;
@@ -94,9 +100,11 @@ export function CampaignModal({ creditos, onClose }: CampaignModalProps) {
         setError(json.error || "No se pudo crear la campaña");
         return;
       }
-      // Para WhatsApp pasamos al paso de lanzamiento; otros canales cierran.
-      if (form.canal === "whatsapp") setLaunched(true);
-      else onClose(true);
+      // WhatsApp y Email pasan al paso de lanzamiento; SMS cierra directamente.
+      if (form.canal === "whatsapp" || form.canal === "email") {
+        setCampanaId(json.data?.id ?? null);
+        setLaunched(true);
+      } else onClose(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error");
     } finally {
@@ -118,15 +126,63 @@ export function CampaignModal({ creditos, onClose }: CampaignModalProps) {
     setEnviados((prev) => new Set(prev).add(o.credito.id));
   };
 
-  // ── Paso 2: lanzamiento WhatsApp ──
+  const enviarPorApi = async () => {
+    if (!campanaId) return;
+    setEnviandoApi(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/cobranza/campanas/${campanaId}/enviar`, { method: "POST" });
+      const json = await res.json();
+      if (!json.ok) { setError(json.error || "Error al enviar"); return; }
+      // Marcar todos como enviados
+      const todos = new Set(objetivos.map(o => o.credito.id));
+      setEnviados(todos);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Error");
+    } finally {
+      setEnviandoApi(false);
+    }
+  };
+
+  // ── Paso 2: lanzamiento ──
   if (launched) {
+    const todosMarcados = objetivos.length > 0 && objetivos.every(o => enviados.has(o.credito.id));
+    const esEmail = form.canal === "email";
     return (
       <div className="flex flex-col gap-4">
         <div className="rounded-lg border border-success/30 bg-success/5 px-4 py-3 flex items-center gap-2.5">
           <Check className="h-4 w-4 text-success shrink-0" />
-          <p className="text-sm text-success">Campaña creada. Abrí el WhatsApp de cada cliente.</p>
+          <p className="text-sm text-success">
+            Campaña creada.{" "}
+            {esEmail
+              ? `Enviá los emails a los ${objetivos.length} cliente${objetivos.length !== 1 ? "s" : ""} de la campaña.`
+              : whatsappApiActiva
+                ? "Podés enviar todo vía API de WhatsApp o abrir cada conversación manualmente."
+                : "Abrí el WhatsApp de cada cliente para enviar el mensaje."}
+          </p>
         </div>
-        <div className="space-y-2 max-h-[45vh] overflow-y-auto pr-1">
+
+        {error && (
+          <div className="rounded-lg bg-destructive/10 border border-destructive/20 px-3 py-2 text-sm text-destructive">{error}</div>
+        )}
+
+        {/* Botón de envío masivo vía API */}
+        {(esEmail || whatsappApiActiva) && !todosMarcados && (
+          <button
+            onClick={enviarPorApi}
+            disabled={enviandoApi}
+            className="flex items-center justify-center gap-2 w-full py-2.5 rounded-lg bg-success text-white text-sm font-medium hover:bg-success/90 disabled:opacity-50 transition-colors"
+          >
+            {enviandoApi ? <Loader2 className="h-4 w-4 animate-spin" /> : <Zap className="h-4 w-4" />}
+            {enviandoApi
+              ? "Enviando…"
+              : esEmail
+                ? `Enviar ${objetivos.length} email${objetivos.length !== 1 ? "s" : ""}`
+                : `Enviar ${objetivos.length} mensajes vía WhatsApp API`}
+          </button>
+        )}
+
+        <div className="space-y-2 max-h-[40vh] overflow-y-auto pr-1">
           {objetivos.map((o) => {
             const enviado = enviados.has(o.credito.id);
             const sinTel = !o.credito.cliente.telefono;
@@ -140,17 +196,29 @@ export function CampaignModal({ creditos, onClose }: CampaignModalProps) {
                     {sinTel && <span className="text-warning"> · sin teléfono</span>}
                   </p>
                 </div>
-                <button
-                  onClick={() => abrirWhatsapp(o)}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border shrink-0 ${
-                    enviado
-                      ? "bg-success/10 text-success border-success/30"
-                      : "bg-primary/10 text-primary border-primary/20 hover:bg-primary/20"
-                  }`}
-                >
-                  {enviado ? <Check className="h-3.5 w-3.5" /> : <ExternalLink className="h-3.5 w-3.5" />}
-                  {enviado ? "Abierto" : "Abrir"}
-                </button>
+                {/* Manual WhatsApp (solo para canal whatsapp) */}
+                {!esEmail && (
+                  <button
+                    onClick={() => abrirWhatsapp(o)}
+                    disabled={sinTel}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border shrink-0 ${
+                      enviado
+                        ? "bg-success/10 text-success border-success/30"
+                        : sinTel
+                          ? "opacity-40 cursor-not-allowed border-border text-muted-foreground"
+                          : "bg-primary/10 text-primary border-primary/20 hover:bg-primary/20"
+                    }`}
+                  >
+                    {enviado ? <Check className="h-3.5 w-3.5" /> : <ExternalLink className="h-3.5 w-3.5" />}
+                    {enviado ? "Enviado" : "Manual"}
+                  </button>
+                )}
+                {/* Estado de envío para email */}
+                {esEmail && enviado && (
+                  <span className="flex items-center gap-1 text-xs text-success font-medium">
+                    <Check className="h-3.5 w-3.5" /> Enviado
+                  </span>
+                )}
               </div>
             );
           })}
