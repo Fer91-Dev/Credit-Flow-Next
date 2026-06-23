@@ -11,7 +11,7 @@ import { useTheme } from "next-themes";
 import { useEffect, useState } from "react";
 import { Footer } from "./Footer";
 import { SystemActionsProvider } from "./system-actions";
-import { canAccess, type Role } from "@/lib/auth/roles";
+import { canAccess, ROLE_LABEL, type Role } from "@/lib/auth/roles";
 import { createClient } from "@/lib/supabase/client";
 
 const NAV_PRIMARY = [
@@ -62,7 +62,7 @@ function SideNavLink({ icon: Icon, label, to, isActive, onClick }: NavItem & { i
   );
 }
 
-export function AppShell({ children, role }: { children: React.ReactNode; role: Role }) {
+export function AppShell({ children, role, nombre, email }: { children: React.ReactNode; role: Role; nombre: string | null; email: string | null }) {
   const router = useRouter();
   const pathname = usePathname();
 
@@ -70,15 +70,18 @@ export function AppShell({ children, role }: { children: React.ReactNode; role: 
   const navPrimary = NAV_PRIMARY.filter((i) => canAccess(role, i.to));
   const navSecondary = NAV_SECONDARY.filter((i) => canAccess(role, i.to));
   const { resolvedTheme, setTheme } = useTheme();
-  const [user, setUser] = useState<{ email?: string; full_name?: string } | null>(null);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [mounted, setMounted] = useState(false);
 
+  // Identidad del usuario: server-sourced (profiles vía requireAuth en el layout).
+  // Fuente única de verdad — el perfil edita profiles.full_name y un router.refresh()
+  // tras guardar re-ejecuta el layout y baja el nombre actualizado hasta acá.
+  const displayName = nombre?.trim() || "Usuario";
+
   useEffect(() => {
     setMounted(true);
-    // TODO Fase 2+: cargar datos del usuario desde Supabase SSR
   }, []);
 
   useEffect(() => {
@@ -106,7 +109,7 @@ export function AppShell({ children, role }: { children: React.ReactNode; role: 
     }
   }
 
-  const initials = (user?.full_name ?? "U").split(" ").map((s) => s[0]).slice(0, 2).join("").toUpperCase();
+  const initials = (nombre?.trim() || email || "U").split(" ").map((s) => s[0]).slice(0, 2).join("").toUpperCase();
 
   const handlePaletteAction = (to: string) => {
     setPaletteOpen(false);
@@ -128,7 +131,7 @@ export function AppShell({ children, role }: { children: React.ReactNode; role: 
     <div className="flex h-screen overflow-hidden text-foreground">
 
       {/* ── SIDEBAR DESKTOP (lg+) ─────────────────────────────────────────── */}
-      <aside className="hidden lg:flex fixed inset-y-0 left-0 z-30 w-64 flex-col bg-card border-r border-border shadow-[2px_0_24px_rgba(0,0,0,0.28)]">
+      <aside className="hidden lg:flex fixed inset-y-0 left-0 z-30 w-64 flex-col bg-card/60 backdrop-blur-xl border-r border-border/50 shadow-[2px_0_32px_rgba(0,0,0,0.15)] dark:shadow-[2px_0_32px_rgba(0,0,0,0.5)]">
         {/* Branding — alto alineado con la línea inferior del PageHeader del contenido */}
         <Link href="/" className="flex h-[98px] shrink-0 items-center gap-3.5 border-b border-border/70 px-5 transition-opacity hover:opacity-80">
           <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-success text-white shadow-lg shadow-primary/30 ring-1 ring-white/15">
@@ -158,21 +161,30 @@ export function AppShell({ children, role }: { children: React.ReactNode; role: 
 
         {/* User + signout */}
         <div className="shrink-0 border-t border-border/60 p-3">
-          <div className="flex items-center gap-3 rounded-xl px-2.5 py-2.5 transition-colors duration-200 hover:bg-muted/30">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary to-muted text-sm font-bold text-white shadow-md shadow-black/25">
+          <div className="flex items-start gap-3 rounded-xl px-2.5 py-2.5 transition-colors duration-200 hover:bg-muted/30">
+            <Link href="/perfil" title="Ver mi perfil" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary to-muted text-sm font-bold text-white shadow-md shadow-black/25 hover:opacity-80 transition-opacity">
               {initials}
-            </div>
+            </Link>
             <div className="flex-1 min-w-0">
-              <p className="truncate text-sm font-semibold text-foreground">{user?.full_name ?? "Usuario"}</p>
-              <p className="truncate text-xs text-muted-foreground">{user?.email ?? ""}</p>
+              <div className="flex items-center gap-2 flex-wrap">
+                <p className="text-sm font-semibold text-foreground break-words leading-snug">
+                  {displayName}
+                </p>
+                <span className="shrink-0 rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
+                  {ROLE_LABEL[role]}
+                </span>
+              </div>
+              <p className="text-xs text-muted-foreground break-all leading-snug mt-0.5">
+                {email ?? ""}
+              </p>
+              <button
+                onClick={signOut}
+                className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground/70 hover:text-destructive transition-colors"
+              >
+                <LogOut className="h-3 w-3" />
+                Cerrar sesión
+              </button>
             </div>
-            <button
-              onClick={signOut}
-              title="Cerrar sesión"
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground/70 hover:bg-accent hover:text-foreground transition-colors"
-            >
-              <LogOut className="h-4 w-4" />
-            </button>
           </div>
         </div>
       </aside>
@@ -222,10 +234,6 @@ export function AppShell({ children, role }: { children: React.ReactNode; role: 
               {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
             </button>
 
-            {/* Avatar — solo mobile */}
-            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-primary to-muted text-sm font-bold text-white lg:hidden">
-              {initials}
-            </div>
           </div>
         </header>
 
@@ -248,7 +256,7 @@ export function AppShell({ children, role }: { children: React.ReactNode; role: 
             className="absolute inset-0 bg-black/70 backdrop-blur-sm"
             onClick={() => setMobileOpen(false)}
           />
-          <aside className="absolute inset-y-0 left-0 flex w-[82%] max-w-xs flex-col bg-card border-r border-border shadow-xl">
+          <aside className="absolute inset-y-0 left-0 flex w-[82%] max-w-xs flex-col bg-card/70 backdrop-blur-xl border-r border-border/50 shadow-2xl">
             <div className="flex h-16 shrink-0 items-center justify-between border-b border-border px-4">
               <Link href="/" onClick={() => setMobileOpen(false)} className="flex items-center gap-2.5 transition-opacity hover:opacity-80">
                 <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-success text-white shadow-md shadow-primary/30 ring-1 ring-white/15">
@@ -270,8 +278,8 @@ export function AppShell({ children, role }: { children: React.ReactNode; role: 
                 {initials}
               </div>
               <div className="min-w-0">
-                <p className="truncate text-sm font-semibold text-foreground">{user?.full_name ?? "Usuario"}</p>
-                <p className="truncate text-xs text-muted-foreground">{user?.email ?? ""}</p>
+                <p className="truncate text-sm font-semibold text-foreground">{displayName}</p>
+                <p className="truncate text-xs text-muted-foreground">{email ?? ""}</p>
               </div>
             </div>
 

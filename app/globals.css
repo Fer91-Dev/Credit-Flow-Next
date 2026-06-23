@@ -40,90 +40,85 @@
 /* ─── LIGHT MODE (defecto) ─────────────────────────────────────────────── */
 :root {
   color-scheme: light;
-  --radius: 0.375rem;
+  --radius: 0.5rem;
 
-  /* Fondos y superficies — paleta clara profesional */
-  --background:       #FFFFFF;
-  --foreground:       #1F2937;
-  --card:             #F9FAFB;
-  --card-foreground:  #1F2937;
-  --popover:          #FFFFFF;
-  --popover-foreground: #1F2937;
-  --surface:          #F3F4F6;
+  --background:         #F6F8FC;
+  --foreground:         #0F172A;
+  --card:               #FFFFFF;
+  --card-foreground:    #0F172A;
+  --popover:            #FFFFFF;
+  --popover-foreground: #0F172A;
+  --surface:            #FFFFFF;
 
-  /* Acción primaria — Indigo (igual en ambos modos) */
   --primary:            #6366F1;
   --primary-foreground: #FFFFFF;
 
-  /* Secundario / estados inactivos */
-  --secondary:            #E5E7EB;
-  --secondary-foreground: #1F2937;
+  --secondary:            #EEF2FF;
+  --secondary-foreground: #0F172A;
 
-  /* Muted — texto y fondos apagados */
-  --muted:            #F3F4F6;
-  --muted-foreground: #6B7280;
+  --muted:            #F1F5F9;
+  --muted-foreground: #64748B;
 
-  /* Accent — superficies hover */
-  --accent:            #E5E7EB;
-  --accent-foreground: #1F2937;
+  --accent:            #EEF2FF;
+  --accent-foreground: #0F172A;
 
-  /* Semánticos financieros (iguales en ambos modos) */
-  --success:     #10B981;  /* al día / aprobado */
-  --warning:     #F59E0B;  /* mora media */
-  --destructive: #EF4444;  /* mora crítica / error */
+  --success:     #059669;
+  --warning:     #D97706;
+  --destructive: #E11D48;
 
-  /* Bordes e inputs */
-  --border: #E5E7EB;
-  --input:  #F9FAFB;
+  --border: #E2E8F0;
+  --input:  #F1F5F9;
   --ring:   #6366F1;
 }
 
-/* ─── DARK MODE (Navy — fondo #0A1018 con degradado) ───────────────────── */
+/* Fondo modo claro — leve gradiente indigo en la parte superior */
+body {
+  background-color: #F6F8FC;
+  background-image:
+    radial-gradient(ellipse 80% 40% at 50% -5%, rgba(99,102,241,0.06) 0%, transparent 65%);
+  background-attachment: fixed;
+}
+
+/* ─── DARK MODE ─────────────────────────────────────────────────────────── */
 .dark {
   color-scheme: dark;
 
-  /* Fondos y superficies — paleta navy anclada en #0A1018 */
-  --background:       #0A1018;  /* fondo principal del sistema (base del degradado) */
-  --foreground:       #FFFFFF;
-  --card:             #111A28;  /* tarjetas: navy un escalón más claro (elevación) */
-  --card-foreground:  #FFFFFF;
-  --popover:          #111A28;
-  --popover-foreground: #FFFFFF;
-  --surface:          #111A28;
+  --background:         #060A12;
+  --foreground:         #F1F5F9;
+  --card:               #0C1220;
+  --card-foreground:    #F1F5F9;
+  --popover:            #0C1220;
+  --popover-foreground: #F1F5F9;
+  --surface:            #0C1220;
 
-  /* Acción primaria — Indigo */
   --primary:            #6366F1;
   --primary-foreground: #FFFFFF;
 
-  /* Secundario / estados inactivos */
-  --secondary:            #1B2738;
-  --secondary-foreground: #FFFFFF;
+  --secondary:            #151F30;
+  --secondary-foreground: #F1F5F9;
 
-  /* Muted — texto y fondos apagados */
-  --muted:            #131D2C;
-  --muted-foreground: #8A94A6;
+  --muted:            #0F1825;
+  --muted-foreground: #7B8DA6;
 
-  /* Accent — superficies hover */
-  --accent:            #1B2738;
-  --accent-foreground: #FFFFFF;
+  --accent:            #151F30;
+  --accent-foreground: #F1F5F9;
 
-  /* Semánticos financieros */
-  --success:     #10B981;  /* al día / aprobado */
-  --warning:     #F59E0B;  /* mora media */
-  --destructive: #EF4444;  /* mora crítica / error */
+  --success:     #10B981;
+  --warning:     #F59E0B;
+  --destructive: #F43F5E;
 
-  /* Bordes e inputs */
-  --border: #283D55;
-  --input:  #131D2C;
+  --border: #1A2740;
+  --input:  #0F1825;
   --ring:   #6366F1;
 }
 
-/* Degradado de fondo del sistema (solo modo oscuro). Fijo: no scrollea. */
+/* Aurora de fondo — SOLO en modo oscuro */
 .dark body {
-  background-color: #0A1018;
+  background-color: #060A12;
   background-image:
-    radial-gradient(1200px 620px at 50% -260px, rgba(60, 86, 130, 0.22), transparent 62%),
-    linear-gradient(180deg, #0D1626 0%, #0A1018 52%);
+    radial-gradient(ellipse 90% 55% at 50% -10%, rgba(99,102,241,0.16) 0%, transparent 70%),
+    radial-gradient(ellipse 50% 35% at 85% 20%, rgba(79,70,229,0.09) 0%, transparent 60%),
+    radial-gradient(ellipse 40% 30% at 15% 80%, rgba(16,185,129,0.05) 0%, transparent 55%);
   background-attachment: fixed;
 }
 
@@ -138,4 +133,9 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+button:not(:disabled),
+[role="button"]:not(:disabled) {
+  cursor: pointer;
 }

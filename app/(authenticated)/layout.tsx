@@ -44,7 +44,9 @@ export default async function AuthenticatedLayout({
 
   return (
     <SWRProvider>
-      <AppShell role={ctx!.role}>{children}</AppShell>
+      <AppShell role={ctx!.role} nombre={ctx!.nombre} email={ctx!.email}>
+        {children}
+      </AppShell>
     </SWRProvider>
   );
 }

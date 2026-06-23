@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { motion } from "framer-motion";
 import { Settings, Check, Loader2, Percent, Plus, X, MessageSquare, Phone, Mail } from "lucide-react";
 import { useConfiguracion, type ConfiguracionFinanciera } from "@/lib/swr";
 import type { SimuladorConfig, CargosConfig, FrecuenciaOpcion } from "@/lib/domain";
@@ -25,6 +26,8 @@ export function ConfigForm() {
   const [savedKey, setSavedKey] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"motor" | "simulador" | "comunicaciones">("motor");
+  const [mounted, setMounted]    = useState(false);
+  useEffect(() => setMounted(true), []);
 
   // Hidratar el form local cuando llega la config.
   useEffect(() => {
@@ -101,7 +104,7 @@ export function ConfigForm() {
           )}
 
           {/* ─ Tabs ─ */}
-          <div className="flex gap-1 bg-muted/30 rounded-lg p-1 w-fit">
+          <div className="relative flex gap-1 bg-muted/30 rounded-lg p-1 w-fit">
             {([
               { key: "motor",          label: "Motor" },
               { key: "simulador",      label: "Simulador" },
@@ -110,13 +113,21 @@ export function ConfigForm() {
               <button
                 key={tab.key}
                 onClick={() => setActiveTab(tab.key)}
-                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
-                  activeTab === tab.key
-                    ? "bg-card text-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground"
+                className={`relative px-3 py-1.5 rounded-md text-xs font-medium transition-colors duration-200 ${
+                  activeTab === tab.key ? "text-foreground" : "text-muted-foreground hover:text-foreground"
                 }`}
               >
-                {tab.label}
+                {activeTab === tab.key && mounted && (
+                  <motion.div
+                    layoutId="config-tab-capsule"
+                    className="absolute inset-0 rounded-md bg-card shadow-sm"
+                    transition={{ type: "spring", stiffness: 400, damping: 35 }}
+                  />
+                )}
+                {activeTab === tab.key && !mounted && (
+                  <div className="absolute inset-0 rounded-md bg-card shadow-sm" />
+                )}
+                <span className="relative">{tab.label}</span>
               </button>
             ))}
           </div>

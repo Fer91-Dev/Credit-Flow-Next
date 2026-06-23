@@ -1,6 +1,7 @@
 ﻿"use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
+import { motion } from "framer-motion";
 import { useSWRConfig } from "swr";
 import { AlertCircle, Phone, Mail, Clock, Copy, CheckCheck, Search, DollarSign, ShieldAlert, MessageSquarePlus, CalendarClock, Megaphone, X, Users, MessageCircle, TrendingUp } from "lucide-react";
 import { useCreditos, useAccionesCobranza, KEYS, type Credito, type AccionCobranza } from "@/lib/swr";
@@ -66,6 +67,8 @@ export function CobranzaTable({ role }: { role: Role }) {
   const { acciones, mutate: mutateAcciones } = useAccionesCobranza();
   const { mutate: globalMutate } = useSWRConfig();
   const [tab, setTab]           = useState<Tab>("morosos");
+  const [mounted, setMounted]   = useState(false);
+  useEffect(() => setMounted(true), []);
   const [filterMora, setFilter] = useState<Severidad>("critica");
   const [search, setSearch]     = useState("");
   const [copiedId, setCopied]   = useState<string | null>(null);
@@ -168,7 +171,7 @@ export function CobranzaTable({ role }: { role: Role }) {
       />
 
       {/* ── Tabs: Morosos | Promesas | Campañas (campañas solo admin/cobrador) ── */}
-      <div className="flex gap-1 border-b border-border -mt-2">
+      <div className="relative flex gap-1 border-b border-border -mt-2">
         {([
           ["morosos",  "Morosos",  ShieldAlert],
           ["promesas", "Promesas", MessageSquarePlus],
@@ -177,11 +180,23 @@ export function CobranzaTable({ role }: { role: Role }) {
           <button
             key={key}
             onClick={() => setTab(key)}
-            className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${
-              tab === key ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"
+            className={`relative flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium transition-colors duration-200 ${
+              tab === key ? "text-foreground" : "text-muted-foreground hover:text-foreground"
             }`}
           >
-            <Icon className="h-4 w-4" /> {label}
+            {tab === key && mounted && (
+              <motion.div
+                layoutId="cobranza-tab-capsule"
+                className="absolute inset-0 rounded-t-lg bg-primary/10 border-b-2 border-primary"
+                transition={{ type: "spring", stiffness: 400, damping: 35 }}
+              />
+            )}
+            {tab === key && !mounted && (
+              <div className="absolute inset-0 rounded-t-lg bg-primary/10 border-b-2 border-primary" />
+            )}
+            <span className="relative flex items-center gap-1.5">
+              <Icon className="h-4 w-4" /> {label}
+            </span>
           </button>
         ))}
       </div>
