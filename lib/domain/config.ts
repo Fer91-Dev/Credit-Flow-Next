@@ -59,6 +59,34 @@ export interface CargosConfig {
   gastosAdministrativos: { activo: boolean; modo: GastoModo; valor: number };
 }
 
+/** Una columna de cargo per-cuota a discriminar en el detalle del operador. */
+export type CargoCuotaCol = { key: "iva" | "seguro" | "gastos"; label: string };
+
+/**
+ * Columnas de cargos per-cuota ACTIVAS según la config, en orden y con su rótulo.
+ * El IVA incluye su alícuota (ej. "IVA 21%"). La comisión de otorgamiento NO entra:
+ * es un cargo único (upfront/financiado al capital), no se prorratea por cuota.
+ *
+ * Punto único de verdad para que el detalle del operador y el PDF muestren las
+ * mismas columnas que el operador activó en Configuración.
+ */
+export function cargoColumnasActivas(cargos: CargosConfig): CargoCuotaCol[] {
+  const cols: CargoCuotaCol[] = [];
+  const pct = (f: number) => (f * 100).toLocaleString("es-AR", { maximumFractionDigits: 2 });
+  if (cargos.iva.activo) {
+    cols.push({ key: "iva", label: `IVA ${pct(cargos.iva.tasa)}%` });
+  }
+  if (cargos.seguro.activo) {
+    const s = cargos.seguro;
+    cols.push({ key: "seguro", label: s.modo === "fijo" ? "Seguro" : `Seguro ${pct(s.valor)}%` });
+  }
+  if (cargos.gastosAdministrativos.activo) {
+    const g = cargos.gastosAdministrativos;
+    cols.push({ key: "gastos", label: g.modo === "fijo" ? "Gastos administrativos" : `Gastos administrativos ${pct(g.valor)}%` });
+  }
+  return cols;
+}
+
 /**
  * Parámetros del simulador / motor de cuota configurables por tenant.
  * Defaults neutros: con todo en cero/desactivado el motor calcula igual que hoy.

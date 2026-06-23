@@ -1,6 +1,7 @@
 ﻿"use client";
 
 import { useState, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import { mutate as globalMutate } from "swr";
 import { Plus, Trash2, Edit2, FileText, Wallet, AlertCircle, CheckCircle, Search, ChevronDown, X, Ban } from "lucide-react";
 import { CreditoForm } from "./CreditoForm";
@@ -38,6 +39,7 @@ function estadoBadge(estado: string): { label: string; variant: "primary" | "suc
 }
 
 export function CreditosTable() {
+  const router = useRouter();
   const { creditos, error, isLoading, mutate } = useCreditos();
   const [dialogOpen, setDialog]   = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -82,7 +84,8 @@ export function CreditosTable() {
     }
   };
 
-  const openNew  = () => { setEditingId(null); setDialog(true); };
+  // Nuevo crédito → ruta dedicada (vista a pantalla completa, no modal).
+  const openNew  = () => router.push("/creditos/nuevo");
   const openEdit = (id: string) => { setEditingId(id); setDialog(true); };
   const handleFormClose = (success?: boolean) => {
     setDialog(false); setEditingId(null);
@@ -397,7 +400,7 @@ export function CreditosTable() {
 
       <Dialog open={dialogOpen} onOpenChange={open => { if (!open) handleFormClose(false); }}>
         <DialogContent
-          className="w-full max-w-[96vw] xl:max-w-6xl h-[94vh] max-h-[94vh] p-0 gap-0 flex flex-col overflow-hidden"
+          className="w-screen max-w-none h-[100dvh] max-h-[100dvh] rounded-none border-0 p-0 gap-0 flex flex-col overflow-hidden"
           onInteractOutside={(e) => e.preventDefault()}
           onEscapeKeyDown={(e) => e.preventDefault()}
         >

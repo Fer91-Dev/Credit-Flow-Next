@@ -139,3 +139,9 @@ button:not(:disabled),
 [role="button"]:not(:disabled) {
   cursor: pointer;
 }
+
+/* Shimmer de "recalculando" — barrido suave de izquierda a derecha. */
+@keyframes shimmer-sweep {
+  0%   { transform: translateX(-120%); }
+  100% { transform: translateX(420%); }
+}

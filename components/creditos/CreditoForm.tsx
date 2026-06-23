@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
+import { motion } from "framer-motion";
 import { CalendarDays, CheckCircle2, DollarSign, Eye, EyeOff, Info, Percent, Printer, Search, TrendingUp, UserPlus, X } from "lucide-react";
 import { Field, Input, Select } from "@/components/ui/field";
 import { ClienteForm, type ClienteCreado } from "@/components/clientes/ClienteForm";
@@ -17,6 +18,7 @@ import {
   tasaPeriodicaSegunConvencion,
   efectivaAnualDesdePeriodica,
   frecuenciaLabel,
+  cargoColumnasActivas,
   type Frecuencia,
   type ConvencionTasa,
   type PlanAmortizacion,
@@ -62,6 +64,10 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
     simCfg.cargos.iva.activo || simCfg.cargos.seguro.activo ||
     simCfg.cargos.gastosAdministrativos.activo || simCfg.cargos.comisionOtorgamiento.activo
   );
+  // Columnas de cargos per-cuota activas (IVA / Seguro / Gastos) para discriminarlas
+  // en el detalle del operador. La comisión es upfront → no genera columna.
+  const cargoCols = simCfg ? cargoColumnasActivas(simCfg.cargos) : [];
+  const hayCargoCols = cargoCols.length > 0;
 
   // Estado inicial vacío: el simulador no muestra ningún plan hasta que el operador complete todos los campos.
   const [formData, setFormData] = useState({
@@ -75,6 +81,8 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [vista, setVista] = useState<"operador" | "cliente">("operador");
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
   const [prefilled, setPrefilled] = useState(false);
   // Alta rápida de cliente desde el buscador (cuando el DNI no existe).
   const [alta, setAlta] = useState<{ open: boolean; doc: string }>({ open: false, doc: "" });
@@ -144,15 +152,20 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
   const setMonto = (e: React.ChangeEvent<HTMLInputElement>) =>
     setFormData(p => ({ ...p, monto_original: formatMontoInput(e.target.value) }));
 
-  /** Valida los datos del crédito. Devuelve el mensaje de error, o null si está OK. */
+  /** Valida los datos del crédito. Todos los campos son obligatorios. */
   const validar = (): string | null => {
     if (!formData.cliente_id) return "Seleccioná un cliente";
+    if (!formData.tipo_credito) return "Seleccioná el tipo de crédito";
+    if (vendedores.length > 0 && !formData.vendedor_id) return "Seleccioná un vendedor";
     const monto = parseMonto(formData.monto_original);
     if (monto <= 0) return "Ingresá un capital válido";
     if (simCfg && simCfg.montoMin > 0 && monto < simCfg.montoMin) return `El capital mínimo es $${n0(simCfg.montoMin)}`;
     if (simCfg && simCfg.montoMax > 0 && monto > simCfg.montoMax) return `El capital máximo es $${n0(simCfg.montoMax)}`;
+    if (!formData.frecuencia) return "Seleccioná la frecuencia";
     const n = parseInt(formData.plazo_meses);
     if (isNaN(n) || n < 1) return "Indicá el número de cuotas";
+    const t = parseFloat(formData.tasa);
+    if (isNaN(t) || t <= 0) return "Ingresá la tasa de interés";
     if (!plan) return "Completá los datos para simular el plan";
     return null;
   };
@@ -263,6 +276,7 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
       convencion,
       freqLabelPlural: lbl.cuotaPlural,
       hayCargos,
+      cargoCols,
       cuotas: plan.cuotas.map((r) => ({
         nro: r.nro, fecha: r.fecha, cuota: r.cuota, interes: r.interes, capital: r.capital,
         iva: r.iva, seguro: r.seguro, gastos: r.gastos, cuotaTotal: r.cuotaTotal, saldo: r.saldo,
@@ -353,18 +367,18 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
       {/* ── IZQUIERDA: parámetros del crédito ── */}
       <form
         onSubmit={handleSubmit}
-        className="flex flex-col w-[380px] xl:w-[420px] shrink-0 border-r border-border"
+        className="flex flex-col w-[300px] xl:w-[330px] shrink-0 border-r border-border"
       >
         {/* Área de campos — scroll interno */}
-        <div className="flex-1 min-h-0 overflow-y-auto p-5 space-y-4">
+        <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3">
         {error && (
-          <div className="rounded-lg bg-destructive/10 border border-destructive/20 px-3 py-2 text-sm text-destructive">
+          <div className="rounded-lg bg-destructive/10 border border-destructive/20 px-2.5 py-2 text-sm text-destructive">
             {error}
           </div>
         )}
 
         {/* Prestatario */}
-        <section className="space-y-2.5">
+        <section className="space-y-2">
           <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Prestatario</p>
           <Field label="Cliente" required>
             <ClienteCombobox
@@ -374,30 +388,32 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
               onAlta={abrirAlta}
             />
           </Field>
-          <Field label="Tipo de crédito">
-            <Select name="tipo_credito" value={formData.tipo_credito} onChange={set("tipo_credito")}>
-              <option value="personal">Personal</option>
-              <option value="empresarial">Empresarial</option>
-              <option value="otro">Otro</option>
-            </Select>
-          </Field>
-          {vendedores.length > 0 && (
-            <Field label="Vendedor" hint="Quién otorga el crédito (para comisiones)">
-              <Select name="vendedor_id" value={formData.vendedor_id} onChange={set("vendedor_id")}>
-                <option value="">Sin asignar</option>
-                {vendedores.map(v => (
-                  <option key={v.id} value={v.id}>{v.nombre}</option>
-                ))}
+          <div className={vendedores.length > 0 ? "grid grid-cols-2 gap-3" : ""}>
+            <Field label="Tipo de crédito" required>
+              <Select name="tipo_credito" value={formData.tipo_credito} onChange={set("tipo_credito")} required>
+                <option value="personal">Personal</option>
+                <option value="empresarial">Empresarial</option>
+                <option value="otro">Otro</option>
               </Select>
             </Field>
-          )}
+            {vendedores.length > 0 && (
+              <Field label="Vendedor" required>
+                <Select name="vendedor_id" value={formData.vendedor_id} onChange={set("vendedor_id")} required>
+                  <option value="">Seleccioná…</option>
+                  {vendedores.map(v => (
+                    <option key={v.id} value={v.id}>{v.nombre}</option>
+                  ))}
+                </Select>
+              </Field>
+            )}
+          </div>
         </section>
 
         {/* Condiciones */}
-        <section className="space-y-2.5">
+        <section className="space-y-2">
           <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Condiciones financieras</p>
 
-          {/* Capital */}
+          {/* Capital — valor grande, ancho completo */}
           <Field label="Capital ($)" required hint={montoHint}>
             <div className="relative">
               <DollarSign className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
@@ -409,111 +425,50 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
             </div>
           </Field>
 
-          {/* Frecuencia + N° cuotas en la misma fila */}
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Frecuencia">
-              <Select name="frecuencia" value={formData.frecuencia} onChange={set("frecuencia")}>
-                {frecsActivas.map(f => (
-                  <option key={f.clave} value={f.clave}>
-                    {f.label.charAt(0).toUpperCase() + f.label.slice(1)}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-            <Field label="N° de cuotas" hint={lbl.cuotaPlural}>
-              {plazosActivos.length > 0 ? (
-                <Select name="plazo_meses" value={formData.plazo_meses} onChange={set("plazo_meses")}>
-                  {!formData.plazo_meses && <option value="">—</option>}
-                  {plazosActivos.map(p => <option key={p} value={p}>{p}</option>)}
+          {/* Frecuencia (ancha) · Cuotas (chica) · Tasa (chica) — tamaño según el valor */}
+          <div className="grid grid-cols-4 gap-2.5">
+            <div className="col-span-2">
+              <Field label="Frecuencia" required>
+                <Select name="frecuencia" value={formData.frecuencia} onChange={set("frecuencia")} required>
+                  {frecsActivas.map(f => (
+                    <option key={f.clave} value={f.clave}>
+                      {f.label.charAt(0).toUpperCase() + f.label.slice(1)}
+                    </option>
+                  ))}
                 </Select>
-              ) : (
-                <Input
-                  name="plazo_meses" type="number" placeholder="—"
-                  value={formData.plazo_meses} onChange={set("plazo_meses")}
-                  min="1" max="3650" required
-                  className="text-right font-mono tabular-nums"
-                />
-              )}
-            </Field>
-          </div>
-
-          {/* Tasa */}
-          <Field
-            label="Tasa anual (%)"
-            hint={convencion === "mensual" ? "Tasa mensual" : convencion === "efectiva_anual" ? "T.E.A." : "T.N.A."}
-          >
-            <div className="relative">
-              <Input
-                name="tasa" type="number" placeholder="48"
-                value={formData.tasa} onChange={set("tasa")}
-                min="0" step="0.5" className="pr-6"
-              />
-              <Percent className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
+              </Field>
             </div>
-          </Field>
+            <div className="col-span-1">
+              <Field label="Cuotas" required>
+                {plazosActivos.length > 0 ? (
+                  <Select name="plazo_meses" value={formData.plazo_meses} onChange={set("plazo_meses")} required>
+                    {!formData.plazo_meses && <option value="">—</option>}
+                    {plazosActivos.map(p => <option key={p} value={p}>{p}</option>)}
+                  </Select>
+                ) : (
+                  <Input
+                    name="plazo_meses" type="number" placeholder="—"
+                    value={formData.plazo_meses} onChange={set("plazo_meses")}
+                    min="1" max="3650" required
+                    className="text-center font-mono tabular-nums px-1"
+                  />
+                )}
+              </Field>
+            </div>
+            <div className="col-span-1">
+              <Field label="Tasa %" required hint={convencion === "mensual" ? "T.M." : convencion === "efectiva_anual" ? "T.E.A." : "T.N.A."}>
+                <div className="relative">
+                  <Input
+                    name="tasa" type="number" placeholder="48"
+                    value={formData.tasa} onChange={set("tasa")}
+                    min="0" step="0.5" required className="pr-5 text-center font-mono tabular-nums px-1"
+                  />
+                  <Percent className="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
+                </div>
+              </Field>
+            </div>
+          </div>
         </section>
-
-        {/* Resumen financiero compacto */}
-        {plan ? (
-          <div className={`rounded-xl border border-primary/25 bg-primary/[0.04] p-3.5 space-y-3 transition-opacity ${calculando ? "opacity-50" : "opacity-100"}`}>
-
-            {/* Header + cuota principal en una fila */}
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-1.5">
-                <TrendingUp className="h-3.5 w-3.5 text-primary shrink-0" />
-                <span className="text-[10px] font-bold text-primary uppercase tracking-widest">
-                  Sist. Francés
-                </span>
-              </div>
-              <div className="text-right">
-                <p className="text-[10px] text-muted-foreground/70">{lbl.cuotaSingular} {hayCargos ? "c/cargos" : "fija"}</p>
-                <p className="text-xl font-bold text-foreground font-mono leading-tight">${n2(hayCargos ? plan.cuotaTotal : plan.cuota)}</p>
-              </div>
-            </div>
-
-            {/* Stats en una fila de 3 */}
-            <div className="grid grid-cols-3 gap-2">
-              <div className="rounded-lg bg-muted/40 border border-border p-2 text-center">
-                <p className="text-[9px] text-muted-foreground leading-tight">Intereses</p>
-                <p className="text-xs font-bold text-warning font-mono mt-0.5">${n0(plan.totalIntereses)}</p>
-              </div>
-              <div className="rounded-lg bg-muted/40 border border-border p-2 text-center">
-                <p className="text-[9px] text-muted-foreground leading-tight">Total</p>
-                <p className="text-xs font-bold text-foreground font-mono mt-0.5">${n0(hayCargos ? plan.totalConCargos : plan.totalPagado)}</p>
-              </div>
-              <div className="rounded-lg bg-muted/40 border border-border p-2 text-center">
-                <p className="text-[9px] text-muted-foreground leading-tight">T.E.A.</p>
-                <p className="text-xs font-bold text-foreground font-mono mt-0.5">{tasaEA > 0 ? `${n2(tasaEA * 100)}%` : "—"}</p>
-              </div>
-            </div>
-
-            {/* Cargos (solo si hay, en una línea) */}
-            {hayCargos && (
-              <div className="flex justify-between text-[11px] border-t border-primary/15 pt-2">
-                <span className="text-muted-foreground">Cargos totales</span>
-                <span className="font-mono text-foreground font-medium">${n2(plan.totalCargos)}</span>
-              </div>
-            )}
-
-            {/* Barra capital vs interés */}
-            <div>
-              <div className="flex justify-between text-[10px] mb-1">
-                <span className="text-primary font-semibold">Capital {capPct}%</span>
-                <span className="text-warning font-semibold">Interés {100 - capPct}%</span>
-              </div>
-              <div className="h-1.5 rounded-full bg-warning/25 overflow-hidden">
-                <div className="h-full bg-primary rounded-full transition-all duration-300" style={{ width: `${capPct}%` }} />
-              </div>
-            </div>
-          </div>
-        ) : (
-          <div className="rounded-xl border border-dashed border-border/60 p-4 flex items-center gap-3">
-            <TrendingUp className="h-5 w-5 text-muted-foreground/25 shrink-0" />
-            <p className="text-xs text-muted-foreground/50">
-              Completá capital, tasa y cuotas para simular
-            </p>
-          </div>
-        )}
 
         </div>{/* fin área scrolleable */}
 
@@ -535,40 +490,53 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
       </form>
 
       {/* ── DERECHA: plan de pagos ── */}
-      <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+      <div className="relative flex-1 flex flex-col min-h-0 overflow-hidden">
+        {/* Barra de progreso de recálculo — no ocupa layout, no choca con nada */}
+        {calculando && (
+          <div className="absolute top-0 inset-x-0 h-0.5 z-30 overflow-hidden">
+            <div className="h-full w-1/3 bg-primary animate-[shimmer-sweep_1.1s_ease-in-out_infinite]" />
+          </div>
+        )}
         {/* Sub-header con toggle de vista */}
         <div className="flex items-center justify-between gap-3 px-5 py-3 border-b border-border shrink-0">
           <div className="flex items-center gap-2 min-w-0">
             <CalendarDays className="h-4 w-4 text-muted-foreground shrink-0" />
-            <span className="text-sm font-semibold text-foreground">Plan de pagos</span>
+            <span className="text-sm font-semibold text-foreground whitespace-nowrap shrink-0">Plan de pagos</span>
             {plan && (
-              <span className="text-[11px] font-mono bg-muted/60 text-muted-foreground rounded-full px-2 py-0.5 shrink-0">
+              <span className="text-[11px] font-mono bg-muted/60 text-muted-foreground rounded-full px-2 py-0.5 shrink-0 whitespace-nowrap">
                 {plan.cuotas.length} {lbl.cuotaPlural}
               </span>
             )}
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
-            {/* Toggle Operador / Cliente */}
-            <div className="flex items-center rounded-lg border border-border bg-muted/30 p-0.5">
-              <button
-                type="button"
-                onClick={() => setVista("operador")}
-                className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors ${
-                  vista === "operador" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                <Eye className="h-3 w-3" /> Operador
-              </button>
-              <button
-                type="button"
-                onClick={() => setVista("cliente")}
-                className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors ${
-                  vista === "cliente" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                <EyeOff className="h-3 w-3" /> Cliente
-              </button>
+            {/* Toggle Operador / Cliente con cápsula deslizante */}
+            <div className="relative flex items-center rounded-lg border border-border bg-muted/30 p-1">
+              {([
+                { key: "operador", label: "Operador", Icon: Eye },
+                { key: "cliente",  label: "Cliente",  Icon: EyeOff },
+              ] as const).map(({ key, label, Icon }) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setVista(key)}
+                  className={`relative flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition-colors duration-200 ${
+                    vista === key ? "text-foreground" : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {vista === key && mounted && (
+                    <motion.div
+                      layoutId="vista-plan-capsule"
+                      className="absolute inset-0 rounded-md bg-card shadow-sm border border-border/60"
+                      transition={{ type: "spring", stiffness: 400, damping: 35 }}
+                    />
+                  )}
+                  {vista === key && !mounted && (
+                    <div className="absolute inset-0 rounded-md bg-card shadow-sm border border-border/60" />
+                  )}
+                  <span className="relative flex items-center gap-1.5"><Icon className="h-3.5 w-3.5" /> {label}</span>
+                </button>
+              ))}
             </div>
 
             {/* Botón imprimir */}
@@ -577,9 +545,9 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
                 type="button"
                 onClick={() => imprimirPlan(vista)}
                 title={`Imprimir vista ${vista}`}
-                className="h-7 px-3 rounded-lg border border-border bg-muted/30 text-[11px] font-medium text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
+                className="flex items-center gap-1.5 h-9 px-3.5 rounded-lg border border-border bg-muted/30 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
               >
-                ⎙ Imprimir
+                <Printer className="h-3.5 w-3.5" /> Imprimir
               </button>
             )}
           </div>
@@ -594,45 +562,58 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
         )}
 
         {plan ? (
-          <div className={`flex-1 overflow-y-auto transition-opacity ${calculando ? "opacity-60" : "opacity-100"}`}>
+          <div className="relative flex-1 min-h-0">
+            {/* Shimmer de recálculo — barrido suave mientras se recalcula el plan */}
+            {calculando && (
+              <div className="pointer-events-none absolute inset-0 z-20 overflow-hidden">
+                <div className="absolute inset-y-0 left-0 w-1/4 bg-gradient-to-r from-transparent via-foreground/[0.06] to-transparent animate-[shimmer-sweep_1.1s_ease-in-out_infinite]" />
+              </div>
+            )}
+            <div className={`h-full overflow-y-auto transition-opacity duration-200 ${calculando ? "opacity-50" : "opacity-100"}`}>
             {vista === "operador" ? (
               /* ── Vista operador: desglose completo ── */
               <table className="w-full text-xs border-separate border-spacing-0">
                 <thead className="sticky top-0 z-10 bg-card">
                   <tr>
-                    <th className="px-3 py-2.5 text-left font-semibold text-muted-foreground border-b border-border w-9">#</th>
-                    <th className="px-3 py-2.5 text-left font-semibold text-muted-foreground border-b border-border">Vencimiento</th>
-                    <th className="px-3 py-2.5 text-right font-semibold text-muted-foreground border-b border-border">Cuota</th>
-                    <th className="px-3 py-2.5 text-right font-semibold text-warning border-b border-border">Interés</th>
-                    <th className="px-3 py-2.5 text-right font-semibold text-primary border-b border-border">Capital</th>
-                    {hayCargos && <th className="px-3 py-2.5 text-right font-semibold text-muted-foreground border-b border-border">Cargos</th>}
-                    {hayCargos && <th className="px-3 py-2.5 text-right font-semibold text-foreground border-b border-border">Total</th>}
-                    <th className="px-3 py-2.5 text-right font-semibold text-muted-foreground border-b border-border pr-5">Saldo</th>
+                    <th className="px-2.5 py-2.5 text-left font-semibold text-muted-foreground border-b border-border w-9">#</th>
+                    <th className="px-2.5 py-2.5 text-left font-semibold text-muted-foreground border-b border-border">Vencimiento</th>
+                    <th className="px-2.5 py-2.5 text-right font-semibold text-muted-foreground border-b border-border">Cuota</th>
+                    <th className="px-2.5 py-2.5 text-right font-semibold text-warning border-b border-border">Interés</th>
+                    <th className="px-2.5 py-2.5 text-right font-semibold text-primary border-b border-border">Capital</th>
+                    {cargoCols.map(col => (
+                      <th key={col.key} className="px-2.5 py-2.5 text-right font-semibold text-foreground bg-warning/5 border-b border-border whitespace-nowrap">{col.label}</th>
+                    ))}
+                    {hayCargoCols && <th className="px-2.5 py-2.5 text-right font-semibold text-foreground border-b border-border">Total</th>}
+                    <th className="px-2.5 py-2.5 text-right font-semibold text-muted-foreground border-b border-border pr-5">Saldo</th>
                   </tr>
                 </thead>
                 <tbody>
                   {plan.cuotas.map((row, idx) => (
                     <tr key={row.nro} className={`hover:bg-muted/20 transition-colors ${idx % 2 === 1 ? "bg-muted/5" : ""}`}>
-                      <td className="px-3 py-2 text-muted-foreground/50 font-mono tabular-nums">{row.nro}</td>
-                      <td className="px-3 py-2 text-muted-foreground tabular-nums">{fmtDate(row.fecha)}</td>
-                      <td className="px-3 py-2 text-right font-mono text-foreground tabular-nums">${n2(row.cuota)}</td>
-                      <td className="px-3 py-2 text-right font-mono text-warning tabular-nums">${n2(row.interes)}</td>
-                      <td className="px-3 py-2 text-right font-mono text-primary tabular-nums">${n2(row.capital)}</td>
-                      {hayCargos && <td className="px-3 py-2 text-right font-mono text-muted-foreground tabular-nums">${n2(row.iva + row.seguro + row.gastos)}</td>}
-                      {hayCargos && <td className="px-3 py-2 text-right font-mono font-semibold text-foreground tabular-nums">${n2(row.cuotaTotal)}</td>}
-                      <td className="px-3 py-2 pr-5 text-right font-mono text-muted-foreground tabular-nums">${n2(row.saldo)}</td>
+                      <td className="px-2.5 py-2 text-muted-foreground/50 font-mono tabular-nums">{row.nro}</td>
+                      <td className="px-2.5 py-2 text-muted-foreground tabular-nums">{fmtDate(row.fecha)}</td>
+                      <td className="px-2.5 py-2 text-right font-mono text-foreground tabular-nums">${n2(row.cuota)}</td>
+                      <td className="px-2.5 py-2 text-right font-mono text-warning tabular-nums">${n2(row.interes)}</td>
+                      <td className="px-2.5 py-2 text-right font-mono text-primary tabular-nums">${n2(row.capital)}</td>
+                      {cargoCols.map(col => (
+                        <td key={col.key} className="px-2.5 py-2 text-right font-mono text-foreground/80 bg-warning/5 tabular-nums">${n2(row[col.key])}</td>
+                      ))}
+                      {hayCargoCols && <td className="px-2.5 py-2 text-right font-mono font-semibold text-foreground tabular-nums">${n2(row.cuotaTotal)}</td>}
+                      <td className="px-2.5 py-2 pr-5 text-right font-mono text-muted-foreground tabular-nums">${n2(row.saldo)}</td>
                     </tr>
                   ))}
                 </tbody>
                 <tfoot className="sticky bottom-0 z-10 bg-card">
-                  <tr className="border-t border-border">
-                    <td colSpan={2} className="px-3 py-3 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Totales</td>
-                    <td className="px-3 py-3 text-right font-bold font-mono text-foreground tabular-nums">${n2(plan.totalPagado)}</td>
-                    <td className="px-3 py-3 text-right font-bold font-mono text-warning tabular-nums">${n2(plan.totalIntereses)}</td>
-                    <td className="px-3 py-3 text-right font-bold font-mono text-primary tabular-nums">${n2(montoNum)}</td>
-                    {hayCargos && <td className="px-3 py-3 text-right font-bold font-mono text-muted-foreground tabular-nums">${n2(plan.totalIva + plan.totalSeguro + plan.totalGastos)}</td>}
-                    {hayCargos && <td className="px-3 py-3 text-right font-bold font-mono text-foreground tabular-nums">${n2(totalCuotasCliente)}</td>}
-                    <td className="px-3 py-3 pr-5 text-right font-mono text-muted-foreground/30 tabular-nums">$ 0,00</td>
+                  <tr className="border-t-2 border-border bg-muted/40">
+                    <td colSpan={2} className="px-2.5 py-3.5 text-[10px] font-bold text-foreground uppercase tracking-widest">Totales</td>
+                    <td className="px-2.5 py-3.5 text-right font-bold font-mono text-sm text-foreground tabular-nums">${n2(plan.totalPagado)}</td>
+                    <td className="px-2.5 py-3.5 text-right font-bold font-mono text-sm text-warning tabular-nums">${n2(plan.totalIntereses)}</td>
+                    <td className="px-2.5 py-3.5 text-right font-bold font-mono text-sm text-primary tabular-nums">${n2(montoNum)}</td>
+                    {cargoCols.map(col => (
+                      <td key={col.key} className="px-2.5 py-3.5 text-right font-bold font-mono text-sm text-foreground bg-warning/10 tabular-nums">${n2(col.key === "iva" ? plan.totalIva : col.key === "seguro" ? plan.totalSeguro : plan.totalGastos)}</td>
+                    ))}
+                    {hayCargoCols && <td className="px-2.5 py-3.5 text-right font-bold font-mono text-sm text-foreground tabular-nums">${n2(totalCuotasCliente)}</td>}
+                    <td className="px-2.5 py-3.5 pr-5 text-right font-mono text-muted-foreground/30 tabular-nums">$ 0,00</td>
                   </tr>
                 </tfoot>
               </table>
@@ -656,13 +637,14 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
                   ))}
                 </tbody>
                 <tfoot className="sticky bottom-0 z-10 bg-card">
-                  <tr className="border-t border-border">
-                    <td colSpan={2} className="px-4 py-3 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Total a pagar</td>
-                    <td className="px-4 py-3 pr-6 text-right font-bold font-mono text-foreground tabular-nums">${n2(totalCuotasCliente)}</td>
+                  <tr className="border-t-2 border-border bg-muted/40">
+                    <td colSpan={2} className="px-4 py-3.5 text-[10px] font-bold text-foreground uppercase tracking-widest">Total a pagar</td>
+                    <td className="px-4 py-3.5 pr-6 text-right font-bold font-mono text-base text-foreground tabular-nums">${n2(totalCuotasCliente)}</td>
                   </tr>
                 </tfoot>
               </table>
             )}
+            </div>{/* fin scroll tabla */}
           </div>
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center gap-4 px-8 text-center">
@@ -674,6 +656,63 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
               <p className="text-xs text-muted-foreground/50 max-w-[280px] leading-relaxed">
                 Completá capital, tasa, frecuencia y número de cuotas para ver el cronograma completo.
               </p>
+            </div>
+          </div>
+        )}
+
+        {/* ── Resumen financiero — barra horizontal al pie de la tabla ── */}
+        {plan && (
+          <div className={`shrink-0 border-t-2 border-border bg-card px-5 py-3 transition-opacity ${calculando ? "opacity-50" : "opacity-100"}`}>
+            <div className="flex items-center gap-x-6 gap-y-3 flex-wrap">
+
+              {/* Cuota principal */}
+              <div className="flex items-center gap-2.5 shrink-0">
+                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 border border-primary/20 shrink-0">
+                  <TrendingUp className="h-4 w-4 text-primary" />
+                </div>
+                <div>
+                  <p className="text-[10px] text-muted-foreground/80 leading-tight">
+                    {lbl.cuotaSingular.charAt(0).toUpperCase() + lbl.cuotaSingular.slice(1)} {hayCargos ? "c/cargos" : "fija"} · Sist. Francés
+                  </p>
+                  <p className="text-xl font-bold text-foreground font-mono leading-tight">${n2(hayCargos ? plan.cuotaTotal : plan.cuota)}</p>
+                </div>
+              </div>
+
+              <div className="h-9 w-px bg-border shrink-0" />
+
+              {/* Stats */}
+              <div className="flex items-center gap-5 shrink-0">
+                <div>
+                  <p className="text-[10px] text-muted-foreground leading-tight">Intereses</p>
+                  <p className="text-sm font-bold text-warning font-mono leading-tight mt-0.5">${n0(plan.totalIntereses)}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-muted-foreground leading-tight">Total a pagar</p>
+                  <p className="text-sm font-bold text-foreground font-mono leading-tight mt-0.5">${n0(hayCargos ? plan.totalConCargos : plan.totalPagado)}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-muted-foreground leading-tight">T.E.A.</p>
+                  <p className="text-sm font-bold text-foreground font-mono leading-tight mt-0.5">{tasaEA > 0 ? `${n2(tasaEA * 100)}%` : "—"}</p>
+                </div>
+                {hayCargos && (
+                  <div>
+                    <p className="text-[10px] text-muted-foreground leading-tight">Cargos totales</p>
+                    <p className="text-sm font-bold text-foreground font-mono leading-tight mt-0.5">${n0(plan.totalCargos)}</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Barra capital vs interés — ocupa el resto */}
+              <div className="flex-1 min-w-[180px]">
+                <div className="flex justify-between text-[10px] mb-1">
+                  <span className="text-primary font-semibold">Capital {capPct}%</span>
+                  <span className="text-warning font-semibold">Interés {100 - capPct}%</span>
+                </div>
+                <div className="h-1.5 rounded-full bg-warning/25 overflow-hidden">
+                  <div className="h-full bg-primary rounded-full transition-all duration-300" style={{ width: `${capPct}%` }} />
+                </div>
+              </div>
+
             </div>
           </div>
         )}
@@ -817,7 +856,7 @@ function ClienteCombobox({ clientes, value, onSelect, onAlta }: {
                 type="button"
                 onMouseDown={e => e.preventDefault()}
                 onClick={() => pick(c)}
-                className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left hover:bg-muted/50 transition-colors"
+                className="flex w-full items-center justify-between gap-2 px-2.5 py-2 text-left hover:bg-muted/50 transition-colors"
               >
                 <span className="truncate text-sm text-foreground">{c.nombre}</span>
                 <span className="shrink-0 font-mono text-xs text-muted-foreground">{c.documento || "—"}</span>
@@ -826,14 +865,14 @@ function ClienteCombobox({ clientes, value, onSelect, onAlta }: {
           ) : (
             /* Sin coincidencias → el cliente no existe → ofrecer alta. */
             <>
-              <p className="px-3 py-2.5 text-xs text-muted-foreground/60">
+              <p className="px-2.5 py-2.5 text-xs text-muted-foreground/60">
                 «{searched}» no pertenece a ningún cliente.
               </p>
               <button
                 type="button"
                 onMouseDown={e => e.preventDefault()}
                 onClick={lanzarAlta}
-                className="flex w-full items-center gap-2 border-t border-border px-3 py-2.5 text-left text-sm text-primary hover:bg-primary/5 transition-colors"
+                className="flex w-full items-center gap-2 border-t border-border px-2.5 py-2.5 text-left text-sm text-primary hover:bg-primary/5 transition-colors"
               >
                 <UserPlus className="h-3.5 w-3.5 shrink-0" />
                 Dar de alta nuevo cliente · «{searched}»

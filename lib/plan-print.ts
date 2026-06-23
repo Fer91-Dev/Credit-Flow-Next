@@ -6,6 +6,7 @@
  * sigue las reglas permanentes del documento (ver CLAUDE.md → PDF "Plan de pagos").
  */
 import { formatMonto, formatFecha } from "@/lib/utils";
+import type { CargoCuotaCol } from "@/lib/domain";
 
 export type VistaPlan = "operador" | "cliente";
 
@@ -31,6 +32,12 @@ export interface PlanPrintData {
   /** Etiqueta plural de la frecuencia (ej. "cuotas mensuales" → "mensuales"). */
   freqLabelPlural: string;
   hayCargos: boolean;
+  /**
+   * Columnas de cargos per-cuota a discriminar en la vista operador (IVA/Seguro/
+   * Gastos). Si se omite o viene vacía, se usa una única columna "Cargos" (modo
+   * histórico). La comisión de otorgamiento no entra acá (es upfront).
+   */
+  cargoCols?: CargoCuotaCol[];
   cuotas: FilaPlanPrint[];
   totales: { cuota: number; interes: number; capital: number; cargos: number; cuotaTotal: number };
 }
@@ -52,20 +59,36 @@ export function imprimirPlanPagos(data: PlanPrintData, vista: VistaPlan): void {
   const seccionLabel = esOp ? "Cronograma de pagos" : "Su plan de cuotas";
   const nCuotas = data.cuotas.length;
 
+  // Columnas de cargos a discriminar. Si se pasan cargoCols, una por tipo activo;
+  // si no, modo histórico (una sola columna "Cargos") cuando hayCargos.
+  const cols = data.cargoCols ?? [];
+  const discriminar = cols.length > 0;
+  const totalPorKey = (key: "iva" | "seguro" | "gastos") =>
+    data.cuotas.reduce((s, r) => s + r[key], 0);
+
+  const cargosHead = discriminar
+    ? cols.map(c => `<th class="r cg">${c.label}</th>`).join('') + '<th class="r">Total</th>'
+    : (hayCargos ? '<th class="r">Cargos</th><th class="r">Total</th>' : '');
   const headCols = esOp
-    ? `<th class="c">#</th><th>Vencimiento</th><th class="r">Cuota</th><th class="r">Interés</th><th class="r">Capital</th>${hayCargos ? '<th class="r">Cargos</th><th class="r">Total</th>' : ''}<th class="r">Saldo</th>`
+    ? `<th class="c">#</th><th>Vencimiento</th><th class="r">Cuota</th><th class="r">Interés</th><th class="r">Capital</th>${cargosHead}<th class="r">Saldo</th>`
     : `<th class="c">N°</th><th>Vencimiento</th><th class="r">A pagar</th>`;
 
   const rows = data.cuotas.map((r, idx) => {
     const ev = idx % 2 === 0 ? ' class="ev"' : '';
     if (esOp) {
-      return `<tr${ev}><td class="nm c">${r.nro}</td><td>${formatFecha(r.fecha)}</td><td class="r mn">${formatMonto(r.cuota)}</td><td class="r mn">${formatMonto(r.interes)}</td><td class="r mn">${formatMonto(r.capital)}</td>${hayCargos ? `<td class="r mn">${formatMonto(r.iva + r.seguro + r.gastos)}</td><td class="r mn fw">${formatMonto(r.cuotaTotal)}</td>` : ''}<td class="r mn">${formatMonto(r.saldo)}</td></tr>`;
+      const cargosCells = discriminar
+        ? cols.map(c => `<td class="r mn cg">${formatMonto(r[c.key])}</td>`).join('') + `<td class="r mn fw">${formatMonto(r.cuotaTotal)}</td>`
+        : (hayCargos ? `<td class="r mn">${formatMonto(r.iva + r.seguro + r.gastos)}</td><td class="r mn fw">${formatMonto(r.cuotaTotal)}</td>` : '');
+      return `<tr${ev}><td class="nm c">${r.nro}</td><td>${formatFecha(r.fecha)}</td><td class="r mn">${formatMonto(r.cuota)}</td><td class="r mn">${formatMonto(r.interes)}</td><td class="r mn">${formatMonto(r.capital)}</td>${cargosCells}<td class="r mn">${formatMonto(r.saldo)}</td></tr>`;
     }
     return `<tr${ev}><td class="nm c">${r.nro} de ${nCuotas}</td><td>${formatFecha(r.fecha)}</td><td class="r mn fw">${formatMonto(r.cuotaTotal)}</td></tr>`;
   }).join('');
 
+  const cargosTotalCells = discriminar
+    ? cols.map(c => `<td class="r mn cg">${formatMonto(totalPorKey(c.key))}</td>`).join('') + `<td class="r mn fw">${formatMonto(data.totales.cuotaTotal)}</td>`
+    : (hayCargos ? `<td class="r mn">${formatMonto(data.totales.cargos)}</td><td class="r mn fw">${formatMonto(data.totales.cuotaTotal)}</td>` : '');
   const totalRow = esOp
-    ? `<tr><td colspan="2" class="fl">Totales</td><td class="r mn">${formatMonto(data.totales.cuota)}</td><td class="r mn">${formatMonto(data.totales.interes)}</td><td class="r mn">${formatMonto(capital)}</td>${hayCargos ? `<td class="r mn">${formatMonto(data.totales.cargos)}</td><td class="r mn fw">${formatMonto(data.totales.cuotaTotal)}</td>` : ''}<td class="r mn">$ 0,00</td></tr>`
+    ? `<tr><td colspan="2" class="fl">Totales</td><td class="r mn">${formatMonto(data.totales.cuota)}</td><td class="r mn">${formatMonto(data.totales.interes)}</td><td class="r mn">${formatMonto(capital)}</td>${cargosTotalCells}<td class="r mn">$ 0,00</td></tr>`
     : `<tr><td colspan="2" class="fl">Total a pagar</td><td class="r mn fw">${formatMonto(totalFinal)}</td></tr>`;
 
   w.document.write(`<!DOCTYPE html>
@@ -111,9 +134,24 @@ tfoot td{padding:16px 18px;font-weight:700;color:#fff;font-size:15px}
 .fw{font-weight:700}
 .nm{font-size:13px;color:#111827}
 .fl{font-size:10px;text-transform:uppercase;letter-spacing:.8px;font-weight:600;color:rgba(255,255,255,.55)}
+/* Columnas de cargos: fondo cálido tenue para agruparlas y leerlas como cargos. */
+thead th.cg{background:#2A2113}
+tbody td.cg{background:#FFF7EA}
+tbody tr.ev td.cg{background:#FBEFD9}
+tfoot td.cg{background:#2A2113}
 .footer{margin:26px 56px 0;padding-top:18px;border-top:1px solid #E5E7EB;padding-bottom:36px;text-align:center}
 .ftxt{font-size:11px;line-height:1.6;color:#374151}
-@page{size:A4;margin:10mm 8mm}
+/* Vista operador: muchas columnas (cargos discriminados). Página ancha y tabla
+   compacta para que entre todo sin cortarse; los importes nunca se parten. */
+.op .page{max-width:1180px}
+.op .tw{padding:24px 36px 0}
+.op table{font-size:12px}
+.op thead th{padding:9px 10px;font-size:9.5px;letter-spacing:.4px}
+.op tbody td{padding:8px 10px;font-size:11.5px}
+.op tfoot td{padding:11px 10px;font-size:11.5px}
+.op .nm{font-size:10.5px}
+.op td.mn,.op th.r,.op td.r{white-space:nowrap}
+@page{size:${esOp ? "A4 landscape" : "A4"};margin:${esOp ? "7mm" : "10mm 8mm"}}
 @media print{
   body{background:#fff}
   .btn{display:none}
@@ -122,10 +160,14 @@ tfoot td{padding:16px 18px;font-weight:700;color:#fff;font-size:15px}
   .band{padding:14px 40px}
   .tw{padding:18px 40px 0}
   .footer{margin:18px 40px 0;padding-bottom:24px}
+  .op .hd{padding:16px 24px 12px}
+  .op .band{padding:10px 24px}
+  .op .tw{padding:14px 20px 0}
+  .op .footer{margin:14px 24px 0;padding-bottom:16px}
 }
 </style>
 </head>
-<body>
+<body class="${esOp ? "op" : ""}">
 <button class="btn" onclick="window.print()">⎎ &nbsp;Imprimir documento</button>
 <div class="page">
   <div class="hd">
