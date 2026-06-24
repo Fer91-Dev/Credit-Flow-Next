@@ -1,11 +1,34 @@
 ﻿"use client";
 
 import { useState, useEffect } from "react";
-import { ArrowRight, Check, Loader2, Search, X } from "lucide-react";
+import { ArrowRight, Check, CheckCircle2, Loader2, Printer, Search, X } from "lucide-react";
 import { Field, Input, Select, Textarea } from "@/components/ui/field";
 import { StatusBadge, type BadgeVariant } from "@/components/ui/StatusBadge";
+import {
+  AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogFooter,
+  AlertDialogTitle, AlertDialogDescription, AlertDialogCancel,
+} from "@/components/ui/alert-dialog";
+import { abrirRecibo } from "@/lib/recibo";
 import { formatNumero, maskMontoInput, parseMontoInput, formatFecha, formatCreditoNumero, cn } from "@/lib/utils";
 import type { CuotaPersistida, EstadoCuota } from "@/lib/swr";
+
+/** Desglose de imputación que devuelve POST /api/pagos. */
+type Imputacion = {
+  aplicadoMora: number; aplicadoInteres: number; aplicadoCargos: number; aplicadoCapital: number;
+  excedente: number; nuevoSaldo: number; ahorroMora: number;
+};
+
+/** Fila etiqueta/valor para los resúmenes de confirmación y éxito. */
+function Row({ label, value, mono, strong, accent }: {
+  label: string; value: string; mono?: boolean; strong?: boolean; accent?: string;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3 text-sm">
+      <span className="text-muted-foreground">{label}</span>
+      <span className={cn("tabular-nums", mono && "font-mono", strong ? "font-bold text-foreground" : "text-foreground", accent)}>{value}</span>
+    </div>
+  );
+}
 
 interface Credito {
   id: string;
@@ -189,6 +212,9 @@ export function PagoForm({ creditoId, clienteId, onClose }: PagoFormProps) {
   const [notas,        setNotas]        = useState("");
   const [loading,      setLoading]      = useState(false);
   const [error,        setError]        = useState<string | null>(null);
+  const [confirmOpen,  setConfirmOpen]  = useState(false);
+  const [result,       setResult]       = useState<{ pagoId: string; imp: Imputacion } | null>(null);
+  const [reciboBusy,   setReciboBusy]   = useState(false);
 
   // Carga inicial de créditos activos
   useEffect(() => {
@@ -262,9 +288,17 @@ export function PagoForm({ creditoId, clienteId, onClose }: PagoFormProps) {
   const excede       = selected ? monto > selected.saldo_pendiente : false;
   const hayMora      = cobrables.some(c => c.estado === "vencida");
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  // Submit NO cobra directo: abre la confirmación para que un Enter o clic
+  // accidental nunca registre un pago.
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!creditoSel || monto <= 0) return;
+    setError(null);
+    setConfirmOpen(true);
+  };
+
+  // Persiste el pago (POST). Al éxito muestra el modal de confirmación de pago.
+  const persist = async () => {
     setLoading(true);
     setError(null);
     try {
@@ -274,16 +308,81 @@ export function PagoForm({ creditoId, clienteId, onClose }: PagoFormProps) {
         body: JSON.stringify({ credito_id: creditoSel, monto, metodo, notas }),
       });
       const json = await res.json();
-      if (json.ok) onClose(true);
-      else setError(json.error);
+      if (json.ok) {
+        setConfirmOpen(false);
+        setResult({ pagoId: json.data.pago.id, imp: json.data.imputacion as Imputacion });
+      } else {
+        setConfirmOpen(false);
+        setError(json.error);
+      }
     } catch (err) {
+      setConfirmOpen(false);
       setError(err instanceof Error ? err.message : "Error");
     } finally {
       setLoading(false);
     }
   };
 
+  const verRecibo = async () => {
+    if (!result) return;
+    setReciboBusy(true);
+    try { await abrirRecibo(result.pagoId); } catch { /* error silencioso */ }
+    finally { setReciboBusy(false); }
+  };
+
+  // ── Modal de éxito: el pago ya se registró ──
+  if (result) {
+    const { imp } = result;
+    const imputado = [
+      { label: "Mora",    value: imp.aplicadoMora,    accent: "text-destructive" },
+      { label: "Interés", value: imp.aplicadoInteres, accent: "text-warning" },
+      { label: "Cargos",  value: imp.aplicadoCargos,  accent: "text-muted-foreground" },
+      { label: "Capital", value: imp.aplicadoCapital, accent: "text-primary" },
+    ].filter(x => x.value > 0);
+    return (
+      <div className="flex flex-col items-center justify-center gap-6 px-2 py-8 text-center">
+        <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-success/30 bg-success/15">
+          <CheckCircle2 className="h-8 w-8 text-success" />
+        </div>
+        <div className="space-y-1.5">
+          <h3 className="text-lg font-semibold text-foreground">¡Pago registrado con éxito!</h3>
+          <p className="text-sm text-muted-foreground">El cobro se imputó correctamente a las cuotas.</p>
+        </div>
+
+        <div className="w-full max-w-sm space-y-3 rounded-xl border border-border bg-card p-5 text-left">
+          {selected && <Row label="Crédito" value={formatCreditoNumero(selected.numero)} mono />}
+          {selected && <Row label="Cliente" value={selected.cliente.nombre} />}
+          <div className="border-t border-border" />
+          <Row label="Monto cobrado" value={`$${fmt2(monto)}`} mono strong accent="text-success" />
+          {imputado.map(x => (
+            <Row key={x.label} label={`Imputado a ${x.label.toLowerCase()}`} value={`$${fmt2(x.value)}`} mono accent={x.accent} />
+          ))}
+          {imp.ahorroMora > 0 && <Row label="Ahorro por promoción" value={`-$${fmt2(imp.ahorroMora)}`} mono accent="text-success" />}
+          {imp.excedente > 0 && <Row label="Excedente a favor" value={`$${fmt2(imp.excedente)}`} mono accent="text-success" />}
+          <div className="border-t border-border" />
+          <Row label="Nuevo saldo" value={`$${fmt2(imp.nuevoSaldo)}`} mono strong />
+        </div>
+
+        <div className="flex w-full max-w-sm flex-col items-center gap-2 sm:flex-row">
+          <button
+            type="button" onClick={verRecibo} disabled={reciboBusy}
+            className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-border px-4 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted/40 hover:text-foreground disabled:opacity-50 sm:flex-1"
+          >
+            {reciboBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />} Ver recibo
+          </button>
+          <button
+            type="button" onClick={() => onClose(true)}
+            className="w-full rounded-lg bg-success px-4 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90 sm:flex-1"
+          >
+            Listo
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
+    <>
     <form onSubmit={handleSubmit} className="flex flex-col min-h-0 flex-1 gap-0 overflow-hidden">
       <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden space-y-5 px-1">
 
@@ -501,13 +600,50 @@ export function PagoForm({ creditoId, clienteId, onClose }: PagoFormProps) {
           Cancelar
         </button>
         <button
-          type="submit" disabled={loading || !creditoSel || monto <= 0}
+          type="submit" disabled={!creditoSel || monto <= 0}
           className="px-5 py-2 rounded-lg bg-success text-white text-sm font-medium hover:opacity-90 disabled:opacity-40 transition-opacity inline-flex items-center gap-1.5"
         >
-          {loading && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-          {loading ? "Registrando..." : "Registrar pago"}
+          Registrar pago
         </button>
       </div>
     </form>
+
+    {/* Confirmación previa al cobro */}
+    <AlertDialog open={confirmOpen} onOpenChange={(o) => { if (!loading) setConfirmOpen(o); }}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>¿Confirmar el cobro?</AlertDialogTitle>
+          <AlertDialogDescription>
+            Revisá el detalle. Al confirmar se registra el pago y se imputa a las cuotas.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+
+        <div className="space-y-2.5 rounded-xl border border-border bg-card p-4">
+          {selected && <Row label="Crédito" value={formatCreditoNumero(selected.numero)} mono />}
+          {selected && <Row label="Cliente" value={selected.cliente.nombre} />}
+          <Row label="Método" value={metodo.charAt(0).toUpperCase() + metodo.slice(1)} />
+          {!manual && seleccionadas.length > 0 && (
+            <Row label="Cuotas" value={`${seleccionadas.length} (hasta #${hasta})`} />
+          )}
+          <div className="border-t border-border" />
+          <Row label="Monto a cobrar" value={`$${fmt2(monto)}`} mono strong accent="text-success" />
+          {excede && (
+            <p className="text-[11px] text-warning">⚠ Supera el saldo — el excedente quedará a favor del cliente.</p>
+          )}
+        </div>
+
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={loading}>Cancelar</AlertDialogCancel>
+          <button
+            type="button" onClick={persist} disabled={loading}
+            className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-success px-5 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+          >
+            {loading && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+            {loading ? "Registrando…" : "Confirmar pago"}
+          </button>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+    </>
   );
 }

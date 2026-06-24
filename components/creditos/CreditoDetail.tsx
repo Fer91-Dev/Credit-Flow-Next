@@ -1,11 +1,14 @@
 ﻿"use client";
 
 import { useState } from "react";
+import { useSWRConfig } from "swr";
 import { CalendarDays, Wallet, TrendingUp, AlertCircle, Info, ArrowUpRight, Receipt, Loader2, Printer } from "lucide-react";
-import { useAmortizacion, useCuotas, usePagosByCredito, type Credito, type EstadoCuota } from "@/lib/swr";
+import { useAmortizacion, useCuotas, usePagosByCredito, KEYS, type Credito, type EstadoCuota } from "@/lib/swr";
 import { abrirRecibo } from "@/lib/recibo";
 import { imprimirPlanPagos } from "@/lib/plan-print";
+import { PagoForm } from "@/components/pagos/PagoForm";
 import { StatusBadge, type BadgeVariant } from "@/components/ui/StatusBadge";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { formatCreditoNumero, formatFecha } from "@/lib/utils";
 import { Stat } from "@/components/ui/Stat";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -47,12 +50,33 @@ export function CreditoDetail({ credito }: { credito: Credito }) {
   const { cuotas, resumen, isLoading: loadingCuotas } = useCuotas(credito.id);
   const { pagos, isLoading: loadingPagos } = usePagosByCredito(credito.id);
 
+  const { mutate: globalMutate } = useSWRConfig();
   const [reciboBusy, setReciboBusy] = useState<string | null>(null);
+  const [pagoOpen, setPagoOpen] = useState(false);
+
   const handleRecibo = async (pagoId: string) => {
     setReciboBusy(pagoId);
     try { await abrirRecibo(pagoId); } catch { /* error silencioso en el detalle */ }
     finally { setReciboBusy(null); }
   };
+
+  // Cobro desde el detalle: al confirmar el pago, revalida cuotas/pagos del
+  // crédito + las cachés globales de cartera/pagos/dashboard/caja.
+  const handlePagoClose = (success?: boolean) => {
+    setPagoOpen(false);
+    if (success) {
+      globalMutate(`/api/creditos/${credito.id}/cuotas`);
+      globalMutate(`/api/creditos/${credito.id}/amortizacion`);
+      globalMutate(`/api/pagos?credito_id=${credito.id}&limit=1000`);
+      globalMutate(KEYS.creditos);
+      globalMutate(KEYS.pagos);
+      globalMutate(KEYS.dashboard);
+      globalMutate("/api/caja");
+    }
+  };
+
+  // Solo se puede cobrar un crédito activo con saldo pendiente.
+  const puedeCobrar = credito.estado === "activo" && credito.saldo_pendiente > 0;
 
   const est = estadoBadge(credito.estado);
   const totalCobrado = pagos.reduce((s, p) => s + p.monto, 0);
@@ -217,6 +241,15 @@ export function CreditoDetail({ credito }: { credito: Credito }) {
               >
                 <Printer className="h-3.5 w-3.5" /> Imprimir plan
               </button>
+              {puedeCobrar && (
+                <button
+                  onClick={() => setPagoOpen(true)}
+                  title="Registrar un cobro para este crédito"
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-success px-3 py-1 text-[11px] font-semibold text-white transition-opacity hover:opacity-90"
+                >
+                  <Wallet className="h-3.5 w-3.5" /> Registrar pago
+                </button>
+              )}
             </div>
           </div>
           {loadingCuotas ? (
@@ -267,6 +300,18 @@ export function CreditoDetail({ credito }: { credito: Credito }) {
           )}
         </section>
       </div>
+
+      {/* Cobro del crédito — formulario de pago preseleccionado a este crédito */}
+      <Dialog open={pagoOpen} onOpenChange={(o) => { if (!o) setPagoOpen(false); }}>
+        <DialogContent className="w-[95vw] sm:max-w-xl max-h-[90dvh] flex flex-col overflow-hidden">
+          <DialogHeader className="shrink-0">
+            <DialogTitle>Registrar pago · {formatCreditoNumero(credito.numero)}</DialogTitle>
+          </DialogHeader>
+          <div className="flex-1 min-h-0 overflow-y-auto">
+            {pagoOpen && <PagoForm creditoId={credito.id} onClose={handlePagoClose} />}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
