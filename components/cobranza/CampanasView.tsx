@@ -8,7 +8,7 @@ import {
 } from "lucide-react";
 import { useCampanas, useCampana, KEYS, type CampanaCobranza, type CampanaObjetivo, type CanalCampana, type EstadoCampana } from "@/lib/swr";
 import { construirMensajeCampana, linkWhatsapp, TEMPLATE_DEFAULT } from "@/lib/domain";
-import { formatFecha } from "@/lib/utils";
+import { formatFecha, nombreCompleto } from "@/lib/utils";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { SummaryStrip } from "@/components/ui/SummaryStrip";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -121,7 +121,7 @@ function CampanaDetalle({ id, onBack }: { id: string; onBack: () => void }) {
   const abrirWhatsapp = (o: CampanaObjetivo) => {
     const template = campana?.mensaje_template || TEMPLATE_DEFAULT;
     const texto = construirMensajeCampana(template, {
-      nombre: o.credito.cliente.nombre, monto: o.oferta_monto,
+      nombre: nombreCompleto(o.credito.cliente), monto: o.oferta_monto,
       saldo: o.saldo, dias: o.dias_mora, descuento: o.oferta_descuento,
     });
     window.open(linkWhatsapp(o.credito.cliente.telefono, texto), "_blank");
@@ -194,7 +194,7 @@ function CampanaDetalle({ id, onBack }: { id: string; onBack: () => void }) {
               {campana.objetivos.map((o, idx) => (
                 <tr key={o.id} className={idx % 2 === 1 ? "bg-muted/5" : ""}>
                   <td className="px-4 py-3 border-b border-border/70">
-                    <p className="font-medium text-foreground">{o.credito.cliente.nombre}</p>
+                    <p className="font-medium text-foreground">{nombreCompleto(o.credito.cliente)}</p>
                     <p className="text-[11px] text-muted-foreground/60">{o.credito.cliente.telefono || "sin teléfono"}</p>
                   </td>
                   <td className="px-4 py-3 text-center border-b border-border/70">
@@ -232,7 +232,7 @@ function CampanaDetalle({ id, onBack }: { id: string; onBack: () => void }) {
             <div key={o.id} className="p-4 space-y-2">
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
-                  <p className="font-medium text-foreground text-sm truncate">{o.credito.cliente.nombre}</p>
+                  <p className="font-medium text-foreground text-sm truncate">{nombreCompleto(o.credito.cliente)}</p>
                   <p className="text-[11px] text-muted-foreground/60">{o.credito.cliente.telefono || "sin teléfono"}</p>
                 </div>
                 <span className={`font-mono text-sm font-bold ${o.dias_mora > 30 ? "text-destructive" : "text-warning"}`}>{o.dias_mora}d</span>

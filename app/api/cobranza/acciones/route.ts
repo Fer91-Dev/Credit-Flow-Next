@@ -3,6 +3,7 @@ import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api"
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { registrarAuditoria } from "@/lib/audit";
+import { nombreCompleto } from "@/lib/utils";
 import type { NextRequest } from "next/server";
 
 const TIPOS = ["llamada", "whatsapp", "email", "visita", "otro"];
@@ -31,7 +32,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   const [acciones, total] = await Promise.all([
     prisma.acciones_cobranza.findMany({
       where,
-      include: { credito: { select: { id: true, cliente: { select: { nombre: true } } } } },
+      include: { credito: { select: { id: true, cliente: { select: { nombre: true, apellido: true } } } } },
       orderBy: { created_at: "desc" },
       take: limit,
       skip: offset,
@@ -72,7 +73,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
   // puede gestionar la mora de créditos que él otorgó.
   const credito = await prisma.creditos.findFirst({
     where: { ...withTenant(tenantId), ...scopeCreditosVendedor({ role, vendedorId }), id: body.credito_id },
-    include: { cliente: { select: { nombre: true } } },
+    include: { cliente: { select: { nombre: true, apellido: true } } },
   });
   if (!credito) {
     return errorResponse("Crédito no encontrado", "INVALID_REFERENCE", 400);
@@ -91,7 +92,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
       promesa_estado: body.resultado === "promesa_pago" ? "pendiente" : null,
       ...withTenant(tenantId),
     },
-    include: { credito: { select: { id: true, cliente: { select: { nombre: true } } } } },
+    include: { credito: { select: { id: true, cliente: { select: { nombre: true, apellido: true } } } } },
   });
 
   await registrarAuditoria({
@@ -99,7 +100,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     entidad: "creditos",
     entidadId: body.credito_id,
     accion: "actualizar",
-    descripcion: `Gestión de cobranza (${body.tipo} · ${body.resultado}) sobre ${credito.cliente.nombre}`,
+    descripcion: `Gestión de cobranza (${body.tipo} · ${body.resultado}) sobre ${nombreCompleto(credito.cliente)}`,
     meta: {
       gestion_id: accion.id,
       tipo: body.tipo,

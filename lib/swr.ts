@@ -27,6 +27,7 @@ export async function apiFetcher<T = unknown>(url: string): Promise<T> {
 export interface Cliente {
   id: string;
   nombre: string;
+  apellido?: string | null;
   documento?: string | null;
   email?: string | null;
   telefono?: string | null;
@@ -133,7 +134,7 @@ export interface Credito {
   id: string;
   numero?: number | null;
   cliente_id: string;
-  cliente: { nombre: string; email?: string; telefono?: string };
+  cliente: { nombre: string; apellido?: string | null; email?: string; telefono?: string };
   vendedor_id?: string | null;
   vendedor?: { id: string; nombre: string } | null;
   tipo_credito: string;
@@ -194,7 +195,7 @@ export interface VendedorDetalle extends Vendedor {
     monto_original: number;
     estado: string;
     created_at: string;
-    cliente: { nombre: string };
+    cliente: { nombre: string; apellido?: string | null };
   }>;
 }
 
@@ -324,7 +325,7 @@ export interface AccionCobranza {
   promesa_monto: number | null;
   promesa_fecha: string | null;
   proximo_contacto: string | null;
-  credito: { id: string; cliente: { nombre: string } };
+  credito: { id: string; cliente: { nombre: string; apellido?: string | null } };
 }
 
 export interface Reporte {
@@ -460,7 +461,7 @@ export interface Pago {
   aplicado_cargos: number;
   aplicado_capital: number;
   excedente: number;
-  credito: { id: string; cliente: { nombre: string } };
+  credito: { id: string; cliente: { nombre: string; apellido?: string | null } };
 }
 
 // ── Campañas de recuperación de cobranza (Fase 7A) ──────────────────────────
@@ -504,7 +505,7 @@ export interface CampanaObjetivo {
     id: string;
     numero: number | null;
     dias_mora: number;
-    cliente: { id: string; nombre: string; telefono: string | null; email: string | null };
+    cliente: { id: string; nombre: string; apellido?: string | null; telefono: string | null; email: string | null };
   };
 }
 

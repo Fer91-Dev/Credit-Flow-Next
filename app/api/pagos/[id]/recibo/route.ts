@@ -4,6 +4,7 @@ import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { getConfiguracion } from "@/lib/config";
 import { generarReciboPDF } from "@/lib/pdf/recibo";
+import { nombreCompleto } from "@/lib/utils";
 import type { NextRequest } from "next/server";
 
 interface RouteParams {
@@ -33,7 +34,7 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
           numero: true,
           tipo_credito: true,
           saldo_pendiente: true,
-          cliente: { select: { nombre: true, documento: true } },
+          cliente: { select: { nombre: true, apellido: true, documento: true } },
         },
       },
     },
@@ -66,7 +67,7 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
       saldo_pendiente: pago.credito.saldo_pendiente,
     },
     cliente: {
-      nombre: pago.credito.cliente.nombre,
+      nombre: nombreCompleto(pago.credito.cliente),
       documento: pago.credito.cliente.documento,
     },
     moneda: config.moneda,

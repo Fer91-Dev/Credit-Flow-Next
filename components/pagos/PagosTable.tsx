@@ -9,6 +9,7 @@ import { PagoForm } from "./PagoForm";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { nombreCompleto } from "@/lib/utils";
 
 /**
  * Terminal de pagos: flujo "buscar primero". No se lista nada hasta que el
@@ -30,7 +31,7 @@ export function PagosTable() {
     if (!q) return [];
     const qDigits = q.replace(/\D/g, "");
     return clientes.filter((c) => {
-      const nombre = c.nombre.toLowerCase();
+      const nombre = nombreCompleto(c).toLowerCase();
       const doc = (c.documento || "").toLowerCase();
       const docDigits = doc.replace(/\D/g, "");
       return nombre.includes(q) || doc.includes(q) || (qDigits.length > 0 && docDigits.includes(qDigits));
@@ -89,7 +90,7 @@ export function PagosTable() {
         <Dialog open={pagoOpen} onOpenChange={(o) => { if (!o) setPagoOpen(false); }}>
           <DialogContent className="w-[95vw] sm:max-w-xl max-h-[90dvh] flex flex-col overflow-hidden">
             <DialogHeader className="shrink-0">
-              <DialogTitle>Registrar pago · {selected.nombre}</DialogTitle>
+              <DialogTitle>Registrar pago · {nombreCompleto(selected)}</DialogTitle>
             </DialogHeader>
             <div className="flex-1 min-h-0 overflow-y-auto">
               {pagoOpen && <PagoForm clienteId={selected.id} onClose={handlePagoClose} />}
@@ -161,7 +162,7 @@ export function PagosTable() {
                 {c.nombre.slice(0, 1).toUpperCase()}
               </div>
               <div className="min-w-0 flex-1">
-                <p className="font-medium text-foreground truncate">{c.nombre}</p>
+                <p className="font-medium text-foreground truncate">{nombreCompleto(c)}</p>
                 <div className="flex items-center gap-3 text-xs text-muted-foreground">
                   {c.documento && <span className="flex items-center gap-1 font-mono"><IdCard className="h-3 w-3" />{c.documento}</span>}
                   {c.telefono && <span className="flex items-center gap-1"><Phone className="h-3 w-3" />{c.telefono}</span>}

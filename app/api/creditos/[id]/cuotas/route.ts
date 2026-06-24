@@ -3,6 +3,7 @@ import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api"
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { frecuenciaLabel, normalizarFrecuencia, diasAtraso, round2, type FrecuenciaDef } from "@/lib/domain";
+import { nombreCompleto } from "@/lib/utils";
 import type { NextRequest } from "next/server";
 
 interface RouteParams {
@@ -27,7 +28,7 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
       id: true,
       frecuencia: true,
       frecuencia_def: true,
-      cliente: { select: { nombre: true } },
+      cliente: { select: { nombre: true, apellido: true } },
       cuotas: { orderBy: { nro: "asc" } },
     },
   });
@@ -80,7 +81,7 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
 
   return successResponse({
     credito_id: credito.id,
-    cliente: credito.cliente?.nombre ?? null,
+    cliente: credito.cliente ? nombreCompleto(credito.cliente) : null,
     frecuencia,
     frecuencia_label: frecuenciaLabel(frecuencia, catalogo),
     resumen: {

@@ -4,6 +4,7 @@ import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { getComunicacionConfig } from "@/lib/config";
 import { construirMensajeCampana, linkWhatsapp } from "@/lib/domain";
+import { nombreCompleto } from "@/lib/utils";
 import { Resend } from "resend";
 import type { NextRequest } from "next/server";
 
@@ -28,7 +29,7 @@ export const POST = withErrorHandler(async (
         include: {
           credito: {
             include: {
-              cliente: { select: { nombre: true, telefono: true, email: true } },
+              cliente: { select: { nombre: true, apellido: true, telefono: true, email: true } },
             },
           },
         },
@@ -56,7 +57,7 @@ export const POST = withErrorHandler(async (
   const resultados: Resultado[] = [];
 
   for (const objetivo of campana.objetivos) {
-    const nombre   = objetivo.credito.cliente.nombre;
+    const nombre   = nombreCompleto(objetivo.credito.cliente);
     const telefono = objetivo.credito.cliente.telefono;
     const email    = objetivo.credito.cliente.email;
     const clienteId = objetivo.credito.cliente_id ?? objetivo.credito_id;

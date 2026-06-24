@@ -16,7 +16,7 @@ import {
 } from "@/lib/domain";
 import { getConfiguracion } from "@/lib/config";
 import { registrarAuditoria } from "@/lib/audit";
-import { formatCreditoNumero } from "@/lib/utils";
+import { formatCreditoNumero, nombreCompleto } from "@/lib/utils";
 import type { NextRequest } from "next/server";
 
 /**
@@ -46,7 +46,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     prisma.creditos.findMany({
       where,
       include: {
-        cliente: { select: { id: true, nombre: true, documento: true } },
+        cliente: { select: { id: true, nombre: true, apellido: true, documento: true } },
         vendedor: { select: { id: true, nombre: true } },
         pagos: { orderBy: { fecha: "desc" }, take: 5 },
       },
@@ -297,7 +297,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
         tipo: "desembolso",
         monto: -Math.abs(c.monto_original),
         credito_id: c.id,
-        descripcion: `Desembolso ${formatCreditoNumero(c.numero)} · ${cliente.nombre}`,
+        descripcion: `Desembolso ${formatCreditoNumero(c.numero)} · ${nombreCompleto(cliente)}`,
       },
     });
 
@@ -309,7 +309,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     entidad: "creditos",
     entidadId: credito.id,
     accion: "crear",
-    descripcion: `Crédito ${formatCreditoNumero(credito.numero)} otorgado a ${cliente.nombre} por $${credito.monto_original.toLocaleString("es-AR")}`,
+    descripcion: `Crédito ${formatCreditoNumero(credito.numero)} otorgado a ${nombreCompleto(cliente)} por $${credito.monto_original.toLocaleString("es-AR")}`,
     meta: { numero: credito.numero, monto: credito.monto_original, tasa: credito.tasa, plazo_meses: credito.plazo_meses, frecuencia: credito.frecuencia, tipo: credito.tipo_credito },
   });
 

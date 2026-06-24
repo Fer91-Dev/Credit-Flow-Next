@@ -3,7 +3,7 @@
 import { useState } from "react";
 import useSWR, { mutate } from "swr";
 import { HandshakeIcon, CheckCircle2, XCircle, Clock, ExternalLink } from "lucide-react";
-import { formatMonto, formatFecha, formatCreditoNumero } from "@/lib/utils";
+import { formatMonto, formatFecha, formatCreditoNumero, nombreCompleto } from "@/lib/utils";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import type { Role } from "@/lib/auth/roles";
 
@@ -21,7 +21,7 @@ type Promesa = {
     numero: number | null;
     saldo_pendiente: number;
     dias_mora: number;
-    cliente: { id: string; nombre: string; documento: string | null };
+    cliente: { id: string; nombre: string; apellido?: string | null; documento: string | null };
   };
 };
 
@@ -135,7 +135,7 @@ export function PromesasTab({ role }: { role: Role }) {
                 {promesas.map((p) => (
                   <tr key={p.id} className="hover:bg-muted/20 transition-colors">
                     <td className="px-4 py-3">
-                      <p className="font-medium text-foreground">{p.credito.cliente.nombre}</p>
+                      <p className="font-medium text-foreground">{nombreCompleto(p.credito.cliente)}</p>
                       <p className="text-xs text-muted-foreground">{p.credito.cliente.documento ?? "—"}</p>
                     </td>
                     <td className="px-4 py-3">
@@ -193,7 +193,7 @@ export function PromesasTab({ role }: { role: Role }) {
               <div key={p.id} className="rounded-xl bg-card border border-border p-4 space-y-2">
                 <div className="flex items-start justify-between gap-2">
                   <div>
-                    <p className="font-medium text-sm text-foreground">{p.credito.cliente.nombre}</p>
+                    <p className="font-medium text-sm text-foreground">{nombreCompleto(p.credito.cliente)}</p>
                     <p className="text-xs text-muted-foreground font-mono">{formatCreditoNumero(p.credito.numero)}</p>
                   </div>
                   {estadoBadge(p.promesa_estado)}

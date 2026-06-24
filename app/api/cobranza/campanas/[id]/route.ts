@@ -31,7 +31,7 @@ export const GET = withErrorHandler(async (req: NextRequest, ctx: { params: Prom
           credito: {
             select: {
               id: true, numero: true, dias_mora: true,
-              cliente: { select: { id: true, nombre: true, telefono: true, email: true } },
+              cliente: { select: { id: true, nombre: true, apellido: true, telefono: true, email: true } },
             },
           },
         },

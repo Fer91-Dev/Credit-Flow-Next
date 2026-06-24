@@ -63,7 +63,8 @@ model profiles {
 model clientes {
   id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   created_at   DateTime @default(now()) @db.Timestamptz(6)
-  nombre       String
+  nombre       String   // nombre(s) de pila
+  apellido     String?  // apellido(s) — separado de nombre (modelo normalizado)
   documento    String?
   email        String?
   telefono     String?

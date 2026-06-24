@@ -4,7 +4,7 @@ import { ShieldAlert, MessageSquare, CalendarClock, HandCoins } from "lucide-rea
 import type { Credito, AccionCobranza } from "@/lib/swr";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { DetailSection, DetailGrid } from "@/components/ui/DetailGrid";
-import { formatFecha } from "@/lib/utils";
+import { formatFecha, nombreCompleto } from "@/lib/utils";
 
 function n0(x: number) {
   return new Intl.NumberFormat("es-AR", { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(x);
@@ -30,7 +30,7 @@ export function CobranzaDetail({ credito, acciones }: { credito: Credito; accion
     <div className="space-y-5">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-base font-semibold text-foreground">{credito.cliente.nombre}</p>
+          <p className="text-base font-semibold text-foreground">{nombreCompleto(credito.cliente)}</p>
           <p className="text-xs text-muted-foreground mt-0.5">{credito.tipo_credito} · {credito.tasa}% · {credito.plazo_meses} cuotas</p>
         </div>
         <StatusBadge label={`${credito.dias_mora}d · ${sevLabel}`} variant={sevVariant} />

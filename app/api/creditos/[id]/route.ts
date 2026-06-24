@@ -3,7 +3,7 @@ import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api"
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { registrarAuditoria } from "@/lib/audit";
-import { formatCreditoNumero } from "@/lib/utils";
+import { formatCreditoNumero, nombreCompleto } from "@/lib/utils";
 import { validarTransicionEstado, estadoCoherente } from "@/lib/domain";
 import type { NextRequest } from "next/server";
 
@@ -135,7 +135,7 @@ export const PATCH = withErrorHandler(async (req: NextRequest, { params }: Route
     entidad: "creditos",
     entidadId: id,
     accion: "actualizar",
-    descripcion: `Crédito de ${updated.cliente.nombre} actualizado`,
+    descripcion: `Crédito de ${nombreCompleto(updated.cliente)} actualizado`,
     meta: updateData,
   });
 

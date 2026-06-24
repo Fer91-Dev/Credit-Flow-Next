@@ -5,11 +5,13 @@ interface FieldProps {
   label: string;
   required?: boolean;
   hint?: string;
+  /** Mensaje de error de validación. Si está presente, reemplaza al hint y se ve en rojo. */
+  error?: string;
   children: React.ReactNode;
   className?: string;
 }
 
-export function Field({ label, required, hint, children, className }: FieldProps) {
+export function Field({ label, required, hint, error, children, className }: FieldProps) {
   return (
     <div className={cn("flex flex-col gap-1.5", className)}>
       <label className="text-xs font-medium text-muted-foreground">
@@ -17,7 +19,9 @@ export function Field({ label, required, hint, children, className }: FieldProps
         {required && <span className="text-destructive ml-0.5">*</span>}
       </label>
       {children}
-      {hint && <p className="text-xs text-muted-foreground/60">{hint}</p>}
+      {error
+        ? <p className="text-xs text-destructive">{error}</p>
+        : hint && <p className="text-xs text-muted-foreground/60">{hint}</p>}
     </div>
   );
 }

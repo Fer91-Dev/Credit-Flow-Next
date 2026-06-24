@@ -9,7 +9,7 @@ import { useClienteDetalle, useAccionesCobranza, useCuotas, type CreditoConFinan
 import { StatusBadge, type BadgeVariant } from "@/components/ui/StatusBadge";
 import { Stat } from "@/components/ui/Stat";
 import { Skeleton } from "@/components/ui/skeleton";
-import { formatCreditoNumero, formatFecha } from "@/lib/utils";
+import { formatCreditoNumero, formatFecha, nombreCompleto } from "@/lib/utils";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader,
@@ -113,13 +113,13 @@ export function ClienteDetail({
         <div className="flex items-start gap-4">
           {/* Avatar / monograma */}
           <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/30 to-primary/5 text-xl font-bold text-primary ring-1 ring-primary/20">
-            {iniciales(cliente.nombre)}
+            {iniciales(nombreCompleto(cliente))}
           </div>
 
           <div className="min-w-0 flex-1">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
-                <h2 className="truncate text-2xl font-semibold leading-tight tracking-tight text-foreground">{cliente.nombre}</h2>
+                <h2 className="truncate text-2xl font-semibold leading-tight tracking-tight text-foreground">{nombreCompleto(cliente)}</h2>
                 <div className="mt-2 flex flex-wrap items-center gap-2.5">
                   <StatusBadge label={cliente.estado} variant={cliente.estado === "activo" ? "success" : "muted"} />
                   {cliente.documento && (
@@ -149,7 +149,7 @@ export function ClienteDetail({
                         <AlertDialogHeader>
                           <AlertDialogTitle>¿Eliminar cliente?</AlertDialogTitle>
                           <AlertDialogDescription>
-                            Se marcará a <strong>{cliente.nombre}</strong> como inactivo. Sus créditos asociados se conservan.
+                            Se marcará a <strong>{nombreCompleto(cliente)}</strong> como inactivo. Sus créditos asociados se conservan.
                           </AlertDialogDescription>
                         </AlertDialogHeader>
                         <AlertDialogFooter>

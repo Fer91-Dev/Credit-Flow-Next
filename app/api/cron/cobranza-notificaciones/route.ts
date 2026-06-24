@@ -68,7 +68,7 @@ export async function POST(req: NextRequest) {
             : { dias_mora: regla.dias === 0 ? { gt: 0, lte: 1 } : regla.dias }),
         },
         include: {
-          cliente: { select: { nombre: true, telefono: true, email: true } },
+          cliente: { select: { nombre: true, apellido: true, telefono: true, email: true } },
         },
         take: 500, // límite de seguridad por regla/tenant
       });

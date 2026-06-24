@@ -9,7 +9,7 @@ import {
   AlertDialogTitle, AlertDialogDescription, AlertDialogCancel,
 } from "@/components/ui/alert-dialog";
 import { abrirRecibo } from "@/lib/recibo";
-import { formatNumero, maskMontoInput, parseMontoInput, formatFecha, formatCreditoNumero, cn } from "@/lib/utils";
+import { formatNumero, maskMontoInput, parseMontoInput, formatFecha, formatCreditoNumero, nombreCompleto, cn } from "@/lib/utils";
 import type { CuotaPersistida, EstadoCuota } from "@/lib/swr";
 
 /** Desglose de imputación que devuelve POST /api/pagos. */
@@ -34,7 +34,7 @@ interface Credito {
   id: string;
   numero: number | null;
   cliente_id: string;
-  cliente: { nombre: string; documento?: string | null };
+  cliente: { nombre: string; apellido?: string | null; documento?: string | null };
   saldo_pendiente: number;
   tasa: number;
   plazo_meses: number;
@@ -143,7 +143,7 @@ function CreditoOption({ c, onClick, showCliente, prioritario }: {
           </div>
           {showCliente && (
             <p className="truncate text-xs text-muted-foreground">
-              {c.cliente.nombre}{c.cliente.documento ? ` · DNI ${c.cliente.documento}` : ""}
+              {nombreCompleto(c.cliente)}{c.cliente.documento ? ` · DNI ${c.cliente.documento}` : ""}
             </p>
           )}
         </div>
@@ -172,7 +172,7 @@ function CreditoSeleccionado({ c, onCambiar }: { c: Credito; onCambiar?: () => v
             <span className="font-mono text-sm font-bold text-foreground">{formatCreditoNumero(c.numero)}</span>
             <StatusBadge label={est.label} variant={est.variant} />
           </div>
-          <p className="truncate text-xs text-muted-foreground">{c.cliente.nombre}</p>
+          <p className="truncate text-xs text-muted-foreground">{nombreCompleto(c.cliente)}</p>
           <div className="flex items-baseline gap-1.5">
             <span className="text-[10px] uppercase tracking-wide text-muted-foreground/70">Saldo pendiente</span>
             <span className="font-mono text-sm font-bold text-foreground tabular-nums">${fmt(c.saldo_pendiente)}</span>
@@ -351,7 +351,7 @@ export function PagoForm({ creditoId, clienteId, onClose }: PagoFormProps) {
 
         <div className="w-full max-w-sm space-y-3 rounded-xl border border-border bg-card p-5 text-left">
           {selected && <Row label="Crédito" value={formatCreditoNumero(selected.numero)} mono />}
-          {selected && <Row label="Cliente" value={selected.cliente.nombre} />}
+          {selected && <Row label="Cliente" value={nombreCompleto(selected.cliente)} />}
           <div className="border-t border-border" />
           <Row label="Monto cobrado" value={`$${fmt2(monto)}`} mono strong accent="text-success" />
           {imputado.map(x => (
@@ -620,7 +620,7 @@ export function PagoForm({ creditoId, clienteId, onClose }: PagoFormProps) {
 
         <div className="space-y-2.5 rounded-xl border border-border bg-card p-4">
           {selected && <Row label="Crédito" value={formatCreditoNumero(selected.numero)} mono />}
-          {selected && <Row label="Cliente" value={selected.cliente.nombre} />}
+          {selected && <Row label="Cliente" value={nombreCompleto(selected.cliente)} />}
           <Row label="Método" value={metodo.charAt(0).toUpperCase() + metodo.slice(1)} />
           {!manual && seleccionadas.length > 0 && (
             <Row label="Cuotas" value={`${seleccionadas.length} (hasta #${hasta})`} />

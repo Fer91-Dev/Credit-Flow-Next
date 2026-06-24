@@ -6,7 +6,7 @@ import type { Pago } from "@/lib/swr";
 import { abrirRecibo } from "@/lib/recibo";
 import { StatusBadge, type BadgeVariant } from "@/components/ui/StatusBadge";
 import { DetailSection, DetailGrid } from "@/components/ui/DetailGrid";
-import { formatFecha } from "@/lib/utils";
+import { formatFecha, nombreCompleto } from "@/lib/utils";
 
 function n2(x: number) {
   return new Intl.NumberFormat("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(x);
@@ -38,7 +38,7 @@ export function PagoDetail({ pago }: { pago: Pago }) {
       {/* Encabezado */}
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-base font-semibold text-foreground">{pago.credito.cliente.nombre}</p>
+          <p className="text-base font-semibold text-foreground">{nombreCompleto(pago.credito.cliente)}</p>
           <p className="text-xs text-muted-foreground mt-0.5">{fmtDate(pago.fecha)}</p>
         </div>
         <p className="font-mono font-bold text-success text-xl">+${n2(pago.monto)}</p>
@@ -61,7 +61,7 @@ export function PagoDetail({ pago }: { pago: Pago }) {
           rows={[
             ["Método", <StatusBadge key="m" label={m.label} variant={m.variant} />],
             ["Fecha", fmtDate(pago.fecha)],
-            ["Cliente", pago.credito.cliente.nombre],
+            ["Cliente", nombreCompleto(pago.credito.cliente)],
             ["Notas", pago.notas || null],
           ]}
         />

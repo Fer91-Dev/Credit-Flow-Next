@@ -7,7 +7,7 @@ import { Plus, Trash2, Edit2, FileText, Wallet, AlertCircle, CheckCircle, Search
 import { CreditoForm } from "./CreditoForm";
 import { CreditoDetail } from "./CreditoDetail";
 import { useCreditos, KEYS, type Credito } from "@/lib/swr";
-import { formatCreditoNumero } from "@/lib/utils";
+import { formatCreditoNumero, nombreCompleto } from "@/lib/utils";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { KpiCard } from "@/components/ui/KpiCard";
 import { StatusBadge } from "@/components/ui/StatusBadge";
@@ -97,7 +97,7 @@ export function CreditosTable() {
     const qNum = q.replace(/[^0-9]/g, ""); // dígitos del término (para buscar por número)
     return creditos.filter(c =>
       (!q
-        || c.cliente.nombre.toLowerCase().includes(q)
+        || nombreCompleto(c.cliente).toLowerCase().includes(q)
         || formatCreditoNumero(c.numero).toLowerCase().includes(q)
         || (!!qNum && c.numero != null && String(c.numero).includes(qNum))) &&
       (estadoFilter === "all" || c.estado === estadoFilter) &&
@@ -237,7 +237,7 @@ export function CreditosTable() {
                       return (
                         <tr key={c.id} onClick={() => setDetail(c)} className={`cursor-pointer hover:bg-muted/20 transition-colors ${idx % 2 === 1 ? "bg-muted/5" : ""}`}>
                           <td className="px-4 py-3 font-mono text-xs text-muted-foreground border-b border-border/70 whitespace-nowrap">{formatCreditoNumero(c.numero)}</td>
-                          <td className="px-4 py-3 font-medium text-foreground border-b border-border/70">{c.cliente.nombre}</td>
+                          <td className="px-4 py-3 font-medium text-foreground border-b border-border/70">{nombreCompleto(c.cliente)}</td>
                           <td className="px-4 py-3 border-b border-border/70">
                             <StatusBadge label={c.tipo_credito} variant="muted" />
                           </td>
@@ -296,7 +296,7 @@ export function CreditosTable() {
                                     <AlertDialogHeader>
                                       <AlertDialogTitle>¿Eliminar crédito {formatCreditoNumero(c.numero)}?</AlertDialogTitle>
                                       <AlertDialogDescription>
-                                        Se eliminará <strong>definitivamente</strong> el crédito de <strong>{c.cliente.nombre}</strong> por <strong>${n0(c.monto_original)}</strong>, junto con su plan de cuotas. Esta acción no se puede deshacer.
+                                        Se eliminará <strong>definitivamente</strong> el crédito de <strong>{nombreCompleto(c.cliente)}</strong> por <strong>${n0(c.monto_original)}</strong>, junto con su plan de cuotas. Esta acción no se puede deshacer.
                                       </AlertDialogDescription>
                                     </AlertDialogHeader>
                                     <AlertDialogFooter>
@@ -335,7 +335,7 @@ export function CreditosTable() {
                     <div className="flex items-start justify-between gap-2">
                       <div>
                         <p className="font-mono text-[11px] text-muted-foreground">{formatCreditoNumero(c.numero)}</p>
-                        <p className="font-medium text-foreground text-sm">{c.cliente.nombre}</p>
+                        <p className="font-medium text-foreground text-sm">{nombreCompleto(c.cliente)}</p>
                         <p className="text-xs text-muted-foreground mt-0.5">{c.tipo_credito} · {c.tasa}% TNA · {c.plazo_meses}m</p>
                       </div>
                       <StatusBadge label={est.label} variant={est.variant} />
@@ -376,7 +376,7 @@ export function CreditosTable() {
                               <AlertDialogHeader>
                                 <AlertDialogTitle>¿Eliminar crédito {formatCreditoNumero(c.numero)}?</AlertDialogTitle>
                                 <AlertDialogDescription>
-                                  Se eliminará definitivamente el crédito de <strong>{c.cliente.nombre}</strong> y su plan de cuotas. No se puede deshacer.
+                                  Se eliminará definitivamente el crédito de <strong>{nombreCompleto(c.cliente)}</strong> y su plan de cuotas. No se puede deshacer.
                                 </AlertDialogDescription>
                               </AlertDialogHeader>
                               <AlertDialogFooter>
@@ -457,7 +457,7 @@ function AnularButton({ credito, onAnular }: { credito: Credito; onAnular: (id: 
         <AlertDialogHeader>
           <AlertDialogTitle>¿Anular crédito {formatCreditoNumero(credito.numero)}?</AlertDialogTitle>
           <AlertDialogDescription>
-            El crédito de <strong>{credito.cliente.nombre}</strong> por <strong>${n0(credito.monto_original)}</strong> quedará <strong>anulado</strong>; se conservan registro, cuotas y pagos. Se revierte el desembolso en la caja.
+            El crédito de <strong>{nombreCompleto(credito.cliente)}</strong> por <strong>${n0(credito.monto_original)}</strong> quedará <strong>anulado</strong>; se conservan registro, cuotas y pagos. Se revierte el desembolso en la caja.
           </AlertDialogDescription>
         </AlertDialogHeader>
 

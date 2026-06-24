@@ -2,6 +2,7 @@ import { requireRole } from "@/lib/auth";
 import { successResponse, withErrorHandler } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
+import { nombreCompleto } from "@/lib/utils";
 import {
   cuotaMensualFrancesa,
   tasaPeriodicaSegunConvencion,
@@ -35,7 +36,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   const [pagos, creditos, config] = await Promise.all([
     prisma.pagos.findMany({
       where: { ...withTenant(tenantId), fecha: { gte: desde, lte: hasta } },
-      include: { credito: { select: { cliente: { select: { nombre: true } } } } },
+      include: { credito: { select: { cliente: { select: { nombre: true, apellido: true } } } } },
       orderBy: { fecha: "desc" },
     }),
     prisma.creditos.findMany({
@@ -107,7 +108,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   // ── Detalle de pagos (para exportar) ────────────────────────────────────
   const detalle_pagos = pagos.map((p) => ({
     fecha: p.fecha,
-    cliente: p.credito.cliente.nombre,
+    cliente: nombreCompleto(p.credito.cliente),
     monto: p.monto,
     aplicado_capital: p.aplicado_capital,
     aplicado_interes: p.aplicado_interes,

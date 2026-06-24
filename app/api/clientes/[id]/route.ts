@@ -3,6 +3,7 @@ import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api"
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { registrarAuditoria } from "@/lib/audit";
+import { nombreCompleto } from "@/lib/utils";
 import {
   cuotaMensualFrancesa,
   tasaPeriodicaSegunConvencion,
@@ -168,6 +169,7 @@ export const PATCH = withErrorHandler(async (req: NextRequest, { params }: Route
   const updateData: Record<string, any> = {};
   const stringFields = [
     "nombre",
+    "apellido",
     "documento",
     "email",
     "telefono",
@@ -220,7 +222,7 @@ export const PATCH = withErrorHandler(async (req: NextRequest, { params }: Route
     entidad: "clientes",
     entidadId: id,
     accion: "actualizar",
-    descripcion: `Cliente actualizado: ${updated.nombre}`,
+    descripcion: `Cliente actualizado: ${nombreCompleto(updated)}`,
   });
 
   return successResponse(updated);
@@ -257,7 +259,7 @@ export const DELETE = withErrorHandler(async (req: NextRequest, { params }: Rout
     entidad: "clientes",
     entidadId: id,
     accion: "eliminar",
-    descripcion: `Cliente dado de baja: ${existing.nombre}`,
+    descripcion: `Cliente dado de baja: ${nombreCompleto(existing)}`,
   });
 
   // 200 con cuerpo (no 204: un Response 204 con body lanza TypeError).

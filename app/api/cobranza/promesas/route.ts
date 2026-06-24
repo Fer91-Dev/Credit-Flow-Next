@@ -37,7 +37,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
           numero: true,
           saldo_pendiente: true,
           dias_mora: true,
-          cliente: { select: { id: true, nombre: true, documento: true } },
+          cliente: { select: { id: true, nombre: true, apellido: true, documento: true } },
         },
       },
     },

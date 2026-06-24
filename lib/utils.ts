@@ -11,6 +11,15 @@ export function formatCreditoNumero(n?: number | null): string {
   return `CRD-${String(n).padStart(6, "0")}`;
 }
 
+/**
+ * Nombre completo de un cliente: "Nombre Apellido".
+ * Modelo normalizado: `nombre` (pila) y `apellido` viven en columnas separadas.
+ * Punto único de verdad para mostrar el nombre completo en toda la app.
+ */
+export function nombreCompleto(c: { nombre: string; apellido?: string | null }): string {
+  return `${c.nombre}${c.apellido ? ` ${c.apellido}` : ""}`.trim();
+}
+
 /* ── Formato de números y moneda (localización es-AR) ──────────────────────────
  * Estándar único del sistema: miles con punto y decimales con coma (ej: 350.000,25).
  * Se usa tanto en la VISUALIZACIÓN (tablas, listas, resúmenes) como en la MÁSCARA

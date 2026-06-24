@@ -2,6 +2,7 @@ import { requireRole, scopeCreditosVendedor } from "@/lib/auth";
 import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
+import { nombreCompleto } from "@/lib/utils";
 import {
   imputarPagoEnCuotas,
   diasAtraso,
@@ -45,7 +46,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
             cliente_id: true,
             monto_original: true,
             saldo_pendiente: true,
-            cliente: { select: { nombre: true } },
+            cliente: { select: { nombre: true, apellido: true } },
           },
         },
       },
@@ -227,7 +228,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
             id: true,
             monto_original: true,
             saldo_pendiente: true,
-            cliente: { select: { nombre: true } },
+            cliente: { select: { nombre: true, apellido: true } },
           },
         },
       },
@@ -283,7 +284,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
         metodo: body.metodo,
         credito_id: body.credito_id,
         pago_id: p.id,
-        descripcion: `Cobro de ${credito.cliente.nombre}`,
+        descripcion: `Cobro de ${nombreCompleto(credito.cliente)}`,
       },
     });
 
@@ -303,7 +304,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     entidad: "pagos",
     entidadId: pago.id,
     accion: "registrar_pago",
-    descripcion: `Pago de $${Number(body.monto).toLocaleString("es-AR")} registrado para ${credito.cliente.nombre}`,
+    descripcion: `Pago de $${Number(body.monto).toLocaleString("es-AR")} registrado para ${nombreCompleto(credito.cliente)}`,
     meta: {
       monto: body.monto,
       metodo: body.metodo,

@@ -2,6 +2,7 @@ import { requireAuth, scopeCreditosVendedor } from "@/lib/auth";
 import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
+import { nombreCompleto } from "@/lib/utils";
 import {
   construirPlanAmortizacion,
   tasaPeriodicaSegunConvencion,
@@ -39,7 +40,7 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
       cargos: true,
       cronograma: true,
       fecha_inicio: true,
-      cliente: { select: { nombre: true } },
+      cliente: { select: { nombre: true, apellido: true } },
     },
   });
 
@@ -81,7 +82,7 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
 
   return successResponse({
     credito_id: credito.id,
-    cliente: credito.cliente?.nombre ?? null,
+    cliente: credito.cliente ? nombreCompleto(credito.cliente) : null,
     parametros: {
       monto: credito.monto_original,
       tasa_ingresada: credito.tasa,

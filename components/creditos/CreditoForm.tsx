@@ -11,7 +11,7 @@ import {
   AlertDialogTitle, AlertDialogDescription, AlertDialogCancel,
 } from "@/components/ui/alert-dialog";
 import { useConfiguracion } from "@/lib/swr";
-import { formatNumero, parseMontoInput, maskMontoInput, numeroAInput, formatFecha, formatMonto, formatCreditoNumero } from "@/lib/utils";
+import { formatNumero, parseMontoInput, maskMontoInput, numeroAInput, formatFecha, formatMonto, formatCreditoNumero, nombreCompleto } from "@/lib/utils";
 import { imprimirPlanPagos } from "@/lib/plan-print";
 import {
   construirPlanAmortizacion,
@@ -24,7 +24,7 @@ import {
   type PlanAmortizacion,
 } from "@/lib/domain";
 
-interface Cliente { id: string; nombre: string; documento?: string | null }
+interface Cliente { id: string; nombre: string; apellido?: string | null; documento?: string | null }
 
 interface CreditoFormProps {
   creditoId?: string | null;
@@ -92,13 +92,14 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
   const [created, setCreated] = useState<{ numero: number | null; monto_original: number } | null>(null);
 
   const abrirAlta = (query: string) => {
-    const doc = /\d/.test(query) ? query.trim() : "";
+    // Solo los dígitos del término van al campo DNI (nunca el nombre).
+    const doc = query.replace(/\D/g, "").slice(0, 8);
     setAlta({ open: true, doc });
   };
   const handleAltaClose = (success?: boolean, creado?: ClienteCreado) => {
     setAlta({ open: false, doc: "" });
     if (success && creado) {
-      setClientes(prev => [{ id: creado.id, nombre: creado.nombre, documento: creado.documento ?? null }, ...prev]);
+      setClientes(prev => [{ id: creado.id, nombre: creado.nombre, apellido: creado.apellido ?? null, documento: creado.documento ?? null }, ...prev]);
       setFormData(p => ({ ...p, cliente_id: creado.id }));
     }
   };
@@ -313,7 +314,7 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
           <dl className="space-y-2 text-sm">
             <div className="flex items-center justify-between gap-3">
               <dt className="text-muted-foreground">Cliente</dt>
-              <dd className="truncate font-medium text-foreground">{clienteSel?.nombre ?? "—"}</dd>
+              <dd className="truncate font-medium text-foreground">{clienteSel ? nombreCompleto(clienteSel) : "—"}</dd>
             </div>
             {clienteSel?.documento && (
               <div className="flex items-center justify-between gap-3">
@@ -733,14 +734,14 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
     <AlertDialog open={confirmOpen} onOpenChange={(o) => { if (!loading) setConfirmOpen(o); }}>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>¿Otorgar el crédito a {clienteSel?.nombre ?? "este cliente"}?</AlertDialogTitle>
+          <AlertDialogTitle>¿Otorgar el crédito a {clienteSel ? nombreCompleto(clienteSel) : "este cliente"}?</AlertDialogTitle>
           <AlertDialogDescription>
             Revisá los datos. Al confirmar se otorga el crédito y se registra el desembolso en caja.
           </AlertDialogDescription>
         </AlertDialogHeader>
 
         <div className="space-y-2.5 rounded-xl border border-border bg-card p-4">
-          <DetalleRow label="Cliente" value={clienteSel?.nombre ?? "—"} />
+          <DetalleRow label="Cliente" value={clienteSel ? nombreCompleto(clienteSel) : "—"} />
           {clienteSel?.documento && <DetalleRow label="DNI" value={clienteSel.documento} mono />}
           <div className="border-t border-border" />
           <DetalleRow label="Capital" value={formatMonto(montoNum)} mono strong />
@@ -785,7 +786,7 @@ function ClienteCombobox({ clientes, value, onSelect, onAlta }: {
     const s = searched.toLowerCase();
     const sd = s.replace(/\D/g, "");
     return clientes.filter(c => {
-      const nombre = c.nombre.toLowerCase();
+      const nombre = nombreCompleto(c).toLowerCase();
       const doc = (c.documento || "").toLowerCase();
       const docd = doc.replace(/\D/g, "");
       return nombre.includes(s) || doc.includes(s) || (sd.length > 0 && docd.includes(sd));
@@ -805,7 +806,7 @@ function ClienteCombobox({ clientes, value, onSelect, onAlta }: {
     return (
       <div className="flex h-10 items-center justify-between gap-2 rounded-lg border border-border bg-muted/40 px-3">
         <span className="truncate text-sm text-foreground">
-          {selected.nombre}
+          {nombreCompleto(selected)}
           {selected.documento && <span className="text-muted-foreground"> · DNI {selected.documento}</span>}
         </span>
         <button
@@ -858,7 +859,7 @@ function ClienteCombobox({ clientes, value, onSelect, onAlta }: {
                 onClick={() => pick(c)}
                 className="flex w-full items-center justify-between gap-2 px-2.5 py-2 text-left hover:bg-muted/50 transition-colors"
               >
-                <span className="truncate text-sm text-foreground">{c.nombre}</span>
+                <span className="truncate text-sm text-foreground">{nombreCompleto(c)}</span>
                 <span className="shrink-0 font-mono text-xs text-muted-foreground">{c.documento || "—"}</span>
               </button>
             ))

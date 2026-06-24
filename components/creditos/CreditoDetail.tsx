@@ -9,7 +9,7 @@ import { imprimirPlanPagos } from "@/lib/plan-print";
 import { PagoForm } from "@/components/pagos/PagoForm";
 import { StatusBadge, type BadgeVariant } from "@/components/ui/StatusBadge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { formatCreditoNumero, formatFecha } from "@/lib/utils";
+import { formatCreditoNumero, formatFecha, nombreCompleto } from "@/lib/utils";
 import { Stat } from "@/components/ui/Stat";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -119,7 +119,7 @@ export function CreditoDetail({ credito }: { credito: Credito }) {
               </span>
               <StatusBadge label={est.label} variant={est.variant} />
             </div>
-            <p className="text-sm font-semibold text-foreground">{credito.cliente.nombre}</p>
+            <p className="text-sm font-semibold text-foreground">{nombreCompleto(credito.cliente)}</p>
             <p className="text-xs text-muted-foreground">
               {credito.tipo_credito} · {credito.tasa}% TNA · {credito.plazo_meses} meses
             </p>

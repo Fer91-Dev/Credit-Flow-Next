@@ -4,6 +4,7 @@ import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { registrarAuditoria } from "@/lib/audit";
 import { calcularScore } from "@/lib/domain";
+import { nombreCompleto } from "@/lib/utils";
 import type { NextRequest } from "next/server";
 
 /**
@@ -189,6 +190,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
   const cliente = await prisma.clientes.create({
     data: {
       nombre: body.nombre.trim(),
+      apellido: body.apellido?.trim() || null,
       documento: body.documento?.trim() || null,
       email: body.email?.toLowerCase().trim() || null,
       telefono: body.telefono?.trim() || null,
@@ -221,7 +223,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     entidad: "clientes",
     entidadId: cliente.id,
     accion: "crear",
-    descripcion: `Cliente creado: ${cliente.nombre}`,
+    descripcion: `Cliente creado: ${nombreCompleto(cliente)}`,
   });
 
   return successResponse(cliente, 201);

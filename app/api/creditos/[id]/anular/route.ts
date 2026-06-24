@@ -3,7 +3,7 @@ import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api"
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { registrarAuditoria } from "@/lib/audit";
-import { formatCreditoNumero } from "@/lib/utils";
+import { formatCreditoNumero, nombreCompleto } from "@/lib/utils";
 import { round2 } from "@/lib/domain";
 import type { NextRequest } from "next/server";
 
@@ -37,7 +37,7 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
 
   const existing = await prisma.creditos.findFirst({
     where: { ...withTenant(tenantId), id },
-    include: { cliente: { select: { nombre: true } }, pagos: { select: { monto: true } } },
+    include: { cliente: { select: { nombre: true, apellido: true } }, pagos: { select: { monto: true } } },
   });
 
   if (!existing) {
@@ -80,7 +80,7 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
           tipo: "devolucion",
           monto: -totalCobrado,
           credito_id: id,
-          descripcion: `Devolución a ${existing.cliente.nombre} (anulación ${numeroFmt})`,
+          descripcion: `Devolución a ${nombreCompleto(existing.cliente)} (anulación ${numeroFmt})`,
         },
       });
     }

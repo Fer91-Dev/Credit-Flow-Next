@@ -10,6 +10,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { ScoreBadge } from "@/components/ui/ScoreBadge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { nombreCompleto } from "@/lib/utils";
 
 type Sel = { id: string; nombre: string };
 
@@ -43,7 +44,7 @@ export function ClientesTable() {
     if (!q) return [];
     const qDigits = q.replace(/\D/g, "");
     return clientes.filter((c) => {
-      const nombre = c.nombre.toLowerCase();
+      const nombre = nombreCompleto(c).toLowerCase();
       const doc = (c.documento || "").toLowerCase();
       const docDigits = doc.replace(/\D/g, "");
       const match = nombre.includes(q) || doc.includes(q) || (qDigits.length > 0 && docDigits.includes(qDigits));
@@ -59,7 +60,7 @@ export function ClientesTable() {
     [clientes],
   );
 
-  const elegir = (c: Cliente) => { setSelected({ id: c.id, nombre: c.nombre }); setQuery(""); };
+  const elegir = (c: Cliente) => { setSelected({ id: c.id, nombre: nombreCompleto(c) }); setQuery(""); };
 
   const openNew = () => { setEditingId(null); setDialog(true); };
   const openEdit = (id: string) => { setEditingId(id); setDialog(true); };
@@ -70,7 +71,7 @@ export function ClientesTable() {
     if (!success) return;
     mutate(); globalMutate(KEYS.dashboard);
     if (wasEditing) globalMutate(`/api/clientes/${wasEditing}`); // refrescar la ficha abierta
-    if (creado) setSelected({ id: creado.id, nombre: creado.nombre }); // saltar a la ficha del nuevo
+    if (creado) setSelected({ id: creado.id, nombre: nombreCompleto(creado) }); // saltar a la ficha del nuevo
   };
 
   const handleDelete = async (id: string) => {
@@ -275,7 +276,7 @@ function ClienteRow({
         {c.nombre.slice(0, 1).toUpperCase()}
       </div>
       <div className="min-w-0 flex-1">
-        <p className="font-medium text-foreground truncate">{c.nombre}</p>
+        <p className="font-medium text-foreground truncate">{nombreCompleto(c)}</p>
         <div className="flex items-center gap-3 text-xs text-muted-foreground">
           {c.documento && <span className="flex items-center gap-1 font-mono"><IdCard className="h-3 w-3" />{c.documento}</span>}
           {c.telefono && <span className="flex items-center gap-1"><Phone className="h-3 w-3" />{c.telefono}</span>}

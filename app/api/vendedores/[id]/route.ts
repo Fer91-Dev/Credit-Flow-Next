@@ -29,7 +29,7 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
     where: { ...withTenant(tenantId), vendedor_id: id, estado: { not: "anulado" } },
     select: {
       id: true, numero: true, monto_original: true, estado: true, created_at: true,
-      cliente: { select: { nombre: true } },
+      cliente: { select: { nombre: true, apellido: true } },
     },
     orderBy: { created_at: "desc" },
   });

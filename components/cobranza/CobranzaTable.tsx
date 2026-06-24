@@ -6,7 +6,7 @@ import { useSWRConfig } from "swr";
 import { AlertCircle, Phone, Mail, Clock, Copy, CheckCheck, Search, DollarSign, ShieldAlert, MessageSquarePlus, CalendarClock, Megaphone, X, Users, MessageCircle, TrendingUp } from "lucide-react";
 import { useCreditos, useAccionesCobranza, KEYS, type Credito, type AccionCobranza } from "@/lib/swr";
 import { type Role } from "@/lib/auth/roles";
-import { formatFecha } from "@/lib/utils";
+import { formatFecha, nombreCompleto } from "@/lib/utils";
 import { GestionForm } from "./GestionForm";
 import { CobranzaDetail } from "./CobranzaDetail";
 import { CampaignModal } from "./CampaignModal";
@@ -34,7 +34,7 @@ function whatsappLink(c: Credito): string | null {
   const num = telDigits(c.cliente.telefono);
   if (!num) return null;
   const msg =
-    `Hola ${c.cliente.nombre}, le escribimos por su crédito con ${c.dias_mora} ` +
+    `Hola ${nombreCompleto(c.cliente)}, le escribimos por su crédito con ${c.dias_mora} ` +
     `día${c.dias_mora !== 1 ? "s" : ""} de atraso y un saldo de $${n0(c.saldo_pendiente)}. ` +
     `Por favor comuníquese para regularizar su situación. ¡Gracias!`;
   return `https://wa.me/${num}?text=${encodeURIComponent(msg)}`;
@@ -110,7 +110,7 @@ export function CobranzaTable({ role }: { role: Role }) {
     });
     const q = search.trim().toLowerCase();
     return q
-      ? bySeveridad.filter(c => c.cliente.nombre.toLowerCase().includes(q))
+      ? bySeveridad.filter(c => nombreCompleto(c.cliente).toLowerCase().includes(q))
       : bySeveridad;
   }, [creditos, filterMora, search]);
 
@@ -131,7 +131,7 @@ export function CobranzaTable({ role }: { role: Role }) {
   }, [allCreditos, creditos]);
 
   const handleGestionar = async (c: Credito) => {
-    const msg = `${c.cliente.nombre} | Mora: ${c.dias_mora}d | Saldo: $${n0(c.saldo_pendiente)}${c.cliente.telefono ? ` | Tel: ${c.cliente.telefono}` : ""}`;
+    const msg = `${nombreCompleto(c.cliente)} | Mora: ${c.dias_mora}d | Saldo: $${n0(c.saldo_pendiente)}${c.cliente.telefono ? ` | Tel: ${c.cliente.telefono}` : ""}`;
     await navigator.clipboard.writeText(msg);
     setCopied(c.id);
     setTimeout(() => setCopied(null), 2000);
@@ -317,7 +317,7 @@ export function CobranzaTable({ role }: { role: Role }) {
                         </td>
                       )}
                       <td className="px-4 py-3 border-b border-border/70">
-                        <p className="font-medium text-foreground">{c.cliente.nombre}</p>
+                        <p className="font-medium text-foreground">{nombreCompleto(c.cliente)}</p>
                         {(() => {
                           const u = ultimaPorCredito.get(c.id);
                           if (!u) return null;
@@ -442,7 +442,7 @@ export function CobranzaTable({ role }: { role: Role }) {
                           className="h-4 w-4 rounded border-border accent-primary cursor-pointer shrink-0"
                         />
                       )}
-                      <p className="font-medium text-foreground text-sm truncate">{c.cliente.nombre}</p>
+                      <p className="font-medium text-foreground text-sm truncate">{nombreCompleto(c.cliente)}</p>
                     </div>
                     <StatusBadge label={sev.label} variant={sev.variant} />
                   </div>

@@ -2,10 +2,11 @@
 
 import { useState } from "react";
 import { Field, Input, Select, Textarea } from "@/components/ui/field";
+import { nombreCompleto } from "@/lib/utils";
 
 interface CreditoCtx {
   id: string;
-  cliente: { nombre: string; telefono?: string };
+  cliente: { nombre: string; apellido?: string | null; telefono?: string };
   saldo_pendiente: number;
   dias_mora: number;
 }
@@ -69,7 +70,7 @@ export function GestionForm({ credito, onClose }: GestionFormProps) {
     <form onSubmit={handleSubmit} className="flex flex-col gap-4">
       {/* Contexto del crédito */}
       <div className="rounded-lg border border-border bg-muted/30 px-3 py-2.5">
-        <p className="text-sm font-medium text-foreground">{credito.cliente.nombre}</p>
+        <p className="text-sm font-medium text-foreground">{nombreCompleto(credito.cliente)}</p>
         <p className="text-xs text-muted-foreground mt-0.5">
           Saldo <span className="font-mono text-warning">${n0(credito.saldo_pendiente)}</span>
           {" · "}

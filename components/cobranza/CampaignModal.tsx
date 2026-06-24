@@ -12,6 +12,7 @@ import {
   type CanalCampana,
 } from "@/lib/domain";
 import { Field, Input, Select, Textarea } from "@/components/ui/field";
+import { nombreCompleto } from "@/lib/utils";
 
 function n0(x: number) {
   return new Intl.NumberFormat("es-AR", { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(x);
@@ -114,7 +115,7 @@ export function CampaignModal({ creditos, onClose }: CampaignModalProps) {
 
   const mensajePara = (o: (typeof objetivos)[number]) =>
     construirMensajeCampana(form.mensaje_template, {
-      nombre: o.credito.cliente.nombre,
+      nombre: nombreCompleto(o.credito.cliente),
       monto: o.oferta.montoConDescuento,
       saldo: o.credito.saldo_pendiente,
       dias: o.credito.dias_mora,
@@ -189,7 +190,7 @@ export function CampaignModal({ creditos, onClose }: CampaignModalProps) {
             return (
               <div key={o.credito.id} className="flex items-center justify-between gap-3 rounded-lg border border-border bg-muted/10 px-3 py-2.5">
                 <div className="min-w-0">
-                  <p className="text-sm font-medium text-foreground truncate">{o.credito.cliente.nombre}</p>
+                  <p className="text-sm font-medium text-foreground truncate">{nombreCompleto(o.credito.cliente)}</p>
                   <p className="text-[11px] text-muted-foreground">
                     Oferta <span className="font-mono text-foreground">${n0(o.oferta.montoConDescuento)}</span>
                     {o.oferta.ahorro > 0 && <span className="text-success"> · ahorra ${n0(o.oferta.ahorro)}</span>}
@@ -310,7 +311,7 @@ export function CampaignModal({ creditos, onClose }: CampaignModalProps) {
         <div className="max-h-[28vh] overflow-y-auto divide-y divide-border/50">
           {objetivos.map((o) => (
             <div key={o.credito.id} className="flex items-center justify-between gap-3 px-3 py-2 text-xs">
-              <span className="text-foreground truncate">{o.credito.cliente.nombre}</span>
+              <span className="text-foreground truncate">{nombreCompleto(o.credito.cliente)}</span>
               <span className="flex items-center gap-3 shrink-0 font-mono">
                 {o.oferta.ahorro > 0 && <span className="text-success">−${n0(o.oferta.ahorro)}</span>}
                 <span className="font-semibold text-foreground">${n0(o.oferta.montoConDescuento)}</span>

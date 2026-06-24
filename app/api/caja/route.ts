@@ -4,6 +4,7 @@ import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { registrarAuditoria } from "@/lib/audit";
 import { montoConSigno, totalesCaja, saldosPorCuenta, esCuentaValida } from "@/lib/domain";
+import { nombreCompleto } from "@/lib/utils";
 import type { NextRequest } from "next/server";
 
 /**
@@ -37,7 +38,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   const [movimientos, saldoMovs] = await Promise.all([
     prisma.movimientos_caja.findMany({
       where: whereRango,
-      include: { credito: { select: { numero: true, cliente: { select: { nombre: true } } } } },
+      include: { credito: { select: { numero: true, cliente: { select: { nombre: true, apellido: true } } } } },
       orderBy: [{ fecha: "desc" }, { created_at: "desc" }],
       take: 1000,
     }),
@@ -90,7 +91,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
       cuenta: m.cuenta,
       descripcion: m.descripcion,
       credito_numero: m.credito?.numero ?? null,
-      cliente: m.credito?.cliente?.nombre ?? null,
+      cliente: m.credito?.cliente ? nombreCompleto(m.credito.cliente) : null,
     })),
   });
 });
