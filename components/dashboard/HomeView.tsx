@@ -2,9 +2,10 @@
 
 import { useMemo, useState } from "react";
 import type { Role } from "@prisma/client";
-import { CalendarDays, MapPin, UserCog, X, Target, Trophy, Users2, AlertTriangle } from "lucide-react";
-import { useZonas, useVendedores, useDashboard, type DashboardFiltros, type VendedorRendimiento } from "@/lib/swr";
-import { DashboardMetrics } from "./DashboardMetrics";
+import { CalendarDays, MapPin, UserCog, X, Target, Trophy, Users2, AlertTriangle, Percent, ShieldCheck, Layers, DollarSign, Sparkles } from "lucide-react";
+import { useZonas, useVendedores, useDashboard, useMiPerfilVendedor, useMisLogros, type DashboardFiltros, type VendedorRendimiento, type MiPerfilVendedor } from "@/lib/swr";
+import { DashboardKpis, DashboardCobranzaAvance, DashboardMoraGrid, DashboardKpisSkeleton } from "./DashboardMetrics";
+import { MedallaBadge, RangoBadge, InsigniaChip } from "@/components/ui/Medalla";
 
 function n0(x: number) {
   return new Intl.NumberFormat("es-AR", { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(x);
@@ -19,6 +20,8 @@ export function HomeView({ role }: { role: Role }) {
   const esAdmin = role === "admin";
   const { vendedores } = useVendedores();
   const { zonas } = useZonas();
+  // Parametrización propia del usuario (vendedor/cobrador): comisión, límite, meta.
+  const { perfil } = useMiPerfilVendedor();
 
   const [desde, setDesde] = useState("");
   const [hasta, setHasta] = useState("");
@@ -33,14 +36,28 @@ export function HomeView({ role }: { role: Role }) {
     zona: zona || undefined,
   }), [desde, hasta, vendedorId, zona, esAdmin]);
 
-  const { data } = useDashboard(filtros);
+  const { data, error, isLoading } = useDashboard(filtros);
 
   const hayFiltros = !!(desde || hasta || (esAdmin && vendedorId) || zona);
   const limpiar = () => { setDesde(""); setHasta(""); setVendedorId(""); setZona(""); };
 
   return (
     <div className="space-y-6">
-      {/* ── Barra de filtros globales ── */}
+      {/* ── 1 · KPIs · 2 · Avance de cobranzas (reaccionan a los filtros) ── */}
+      {isLoading ? (
+        <DashboardKpisSkeleton />
+      ) : error || !data ? (
+        <div className="rounded-xl bg-destructive/10 border border-destructive/30 p-4 text-destructive text-sm">
+          {error?.message || "Sin datos disponibles"}
+        </div>
+      ) : (
+        <>
+          <DashboardKpis data={data} />
+          <DashboardCobranzaAvance data={data} />
+        </>
+      )}
+
+      {/* ── 3 · Barra de filtros globales ── */}
       <div className="rounded-xl bg-card border border-border p-3.5 flex flex-wrap items-end gap-3">
         <label className="flex flex-col gap-1">
           <span className="text-[11px] font-medium text-muted-foreground flex items-center gap-1"><CalendarDays className="h-3 w-3" /> Desde</span>
@@ -73,14 +90,14 @@ export function HomeView({ role }: { role: Role }) {
         )}
       </div>
 
-      {/* ── Métricas (reaccionan a los filtros) ── */}
-      <DashboardMetrics filtros={filtros} />
-
-      {/* ── Rendimiento + morosidad por vendedor (solo admin) ── */}
+      {/* ── 3 · Rendimiento · Comisiones · Metas ── */}
+      {/* Admin: vista del equipo. No-admin: su propia parametrización configurada por el admin. */}
       {esAdmin && <RendimientoVendedores filas={data?.por_vendedor ?? []} />}
-
-      {/* ── Objetivos de venta por equipo (solo admin) ── */}
       {esAdmin && <ObjetivosEquipo vendedores={vendedores} />}
+      {!esAdmin && perfil && <MiConfiguracionVendedor perfil={perfil} />}
+
+      {/* ── 4 · Distribución de mora · Exposición en mora · Cobros registrados ── */}
+      {data && <DashboardMoraGrid data={data} />}
     </div>
   );
 }
@@ -141,6 +158,177 @@ function RendimientoVendedores({ filas }: { filas: VendedorRendimiento[] }) {
             ))}
           </tbody>
         </table>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Panel personal del empleado (vendedor/cobrador): cómo están configuradas SUS
+ * comisiones, su límite de otorgamiento, su meta vigente y su rendimiento.
+ * Es de solo lectura — lo configura el admin desde la sección Personal.
+ */
+function MiConfiguracionVendedor({ perfil }: { perfil: MiPerfilVendedor }) {
+  const r = perfil.resumen;
+  const cfg = perfil.comision_config;
+  const { logros } = useMisLogros();
+
+  const chips = logros ? [
+    logros.insignias.en_racha >= 3 ? <InsigniaChip key="r" tipo="en_racha" detalle={`${logros.insignias.en_racha} meses`} /> : null,
+    logros.insignias.cartera_sana ? <InsigniaChip key="cs" tipo="cartera_sana" /> : null,
+    logros.insignias.top_del_mes ? <InsigniaChip key="t" tipo="top_del_mes" /> : null,
+    logros.insignias.rompe_metas ? <InsigniaChip key="rm" tipo="rompe_metas" /> : null,
+  ].filter(Boolean) : [];
+
+  // Reglas de comisión legibles.
+  const reglas: { label: string; valor: string }[] = [];
+  reglas.push({ label: "Comisión base", valor: `${perfil.comision_pct}%` });
+  if (cfg?.por_tipo) {
+    const partes = (["personal", "empresarial", "otro"] as const)
+      .filter((k) => cfg.por_tipo?.[k] != null)
+      .map((k) => `${k.charAt(0).toUpperCase() + k.slice(1)} ${cfg.por_tipo![k]}%`);
+    if (partes.length) reglas.push({ label: "Por tipo de crédito", valor: partes.join(" · ") });
+  }
+  if (cfg?.tramos?.length) {
+    reglas.push({ label: "Escalonada por volumen", valor: cfg.tramos.map((t) => `desde $${n0(t.desde)} → ${t.pct}%`).join(" · ") });
+  }
+  if (cfg?.bonus_meta) {
+    reglas.push({ label: "Bonus por meta", valor: cfg.bonus_meta.tipo === "monto" ? `$${n0(cfg.bonus_meta.valor)}` : `${cfg.bonus_meta.valor}% sobre lo vendido` });
+  }
+
+  const m = perfil.meta_vigente;
+
+  return (
+    <div className="rounded-xl bg-card border border-border p-5 space-y-5">
+      <div className="flex items-center gap-2">
+        <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10 border border-primary/20">
+          <UserCog className="h-3.5 w-3.5 text-primary" />
+        </div>
+        <div>
+          <h3 className="text-sm font-semibold text-foreground">Mi configuración y rendimiento</h3>
+          <p className="text-[11px] text-muted-foreground">Parámetros definidos por la administración para {perfil.nombre}</p>
+        </div>
+      </div>
+
+      {/* Mi rango y medalla */}
+      {logros && (
+        <div className="rounded-xl border border-primary/20 bg-primary/5 p-4 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <RangoBadge rango={logros.rango.rango} label={logros.rango.label} />
+            <div>
+              <p className="text-sm font-semibold text-foreground">{logros.puntos} pts</p>
+              {logros.rango.siguiente && (
+                <p className="text-[11px] text-muted-foreground">Faltan {logros.rango.siguiente.faltan} pts para {logros.rango.siguiente.label}</p>
+              )}
+            </div>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap justify-end">
+            {logros.vigente && (
+              <span className="flex items-center gap-1.5">
+                <span className="text-[11px] text-muted-foreground">Este mes:</span>
+                <MedallaBadge medalla={logros.vigente.medalla} size="sm" />
+              </span>
+            )}
+            {chips}
+          </div>
+        </div>
+      )}
+
+      {/* Rendimiento propio */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <MiStat icon={Layers} label="Créditos otorgados" value={String(r.creditos_otorgados)} />
+        <MiStat icon={DollarSign} label="Vendido" value={`$${n0(r.monto_vendido)}`} accent="success" />
+        <MiStat icon={Percent} label="Comisión devengada" value={`$${n0(r.comision_total)}`} accent="warning" />
+        <MiStat icon={Target} label="Avance meta" value={`${perfil.meta_vigente?.cumplimiento.avance_monto ?? 0}%`} accent="primary" />
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Comisiones */}
+        <div className="rounded-xl border border-border bg-muted/10 p-4">
+          <div className="flex items-center gap-1.5 mb-3">
+            <Percent className="h-3.5 w-3.5 text-muted-foreground" />
+            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Mis comisiones</p>
+          </div>
+          <div className="space-y-2">
+            {reglas.map((rg) => (
+              <div key={rg.label} className="flex items-start justify-between gap-3 text-sm">
+                <span className="text-muted-foreground shrink-0">{rg.label}</span>
+                <span className="text-foreground font-medium text-right">{rg.valor}</span>
+              </div>
+            ))}
+            {!cfg && <p className="text-[11px] text-muted-foreground/60">Comisión simple (sin reglas avanzadas).</p>}
+          </div>
+        </div>
+
+        {/* Límite de otorgamiento */}
+        <div className="rounded-xl border border-border bg-muted/10 p-4">
+          <div className="flex items-center gap-1.5 mb-3">
+            <ShieldCheck className="h-3.5 w-3.5 text-muted-foreground" />
+            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Límite de otorgamiento</p>
+          </div>
+          {perfil.limite_aprobacion != null ? (
+            <>
+              <p className="text-2xl font-bold font-mono text-foreground">${n0(perfil.limite_aprobacion)}</p>
+              <p className="text-[11px] text-muted-foreground/70 mt-1">Monto máximo que podés otorgar sin autorización de un superior.</p>
+            </>
+          ) : (
+            <>
+              <p className="text-lg font-semibold text-success">Sin límite</p>
+              <p className="text-[11px] text-muted-foreground/70 mt-1">No tenés un tope de otorgamiento configurado.</p>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Meta vigente */}
+      <div className="rounded-xl border border-border bg-muted/10 p-4">
+        <div className="flex items-center gap-1.5 mb-3">
+          <Sparkles className="h-3.5 w-3.5 text-muted-foreground" />
+          <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
+            Meta vigente {m ? `· ${m.periodo}` : ""}
+          </p>
+        </div>
+        {m ? (
+          <div className="space-y-3">
+            <MiMetaBarra label="Monto otorgado" actual={m.cumplimiento.monto} meta={m.meta_monto} avance={m.cumplimiento.avance_monto} money />
+            <MiMetaBarra label="Cantidad de créditos" actual={m.cumplimiento.cantidad} meta={m.meta_cantidad} avance={m.cumplimiento.avance_cantidad} />
+            <MiMetaBarra label="Cobranza / recupero" actual={m.cumplimiento.cobrado} meta={m.meta_cobranza} avance={m.cumplimiento.avance_cobranza} money />
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground">No tenés una meta de período asignada.</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function MiStat({ icon: Icon, label, value, accent }: { icon: typeof Target; label: string; value: string; accent?: "success" | "warning" | "primary" }) {
+  const color = accent === "success" ? "text-success" : accent === "warning" ? "text-warning" : accent === "primary" ? "text-primary" : "text-foreground";
+  return (
+    <div className="rounded-xl border border-border bg-muted/10 p-3">
+      <div className="flex items-center gap-1.5 text-[10px] font-medium text-muted-foreground uppercase tracking-wide">
+        <Icon className="h-3 w-3" /> {label}
+      </div>
+      <p className={`mt-1 font-mono font-bold text-lg ${color}`}>{value}</p>
+    </div>
+  );
+}
+
+function MiMetaBarra({ label, actual, meta, avance, money }: { label: string; actual: number; meta: number; avance: number; money?: boolean }) {
+  const fmt = (v: number) => (money ? `$${n0(v)}` : String(v));
+  const pct = Math.min(100, avance);
+  const color = avance >= 100 ? "bg-success" : avance >= 60 ? "bg-warning" : "bg-primary";
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center justify-between text-xs">
+        <span className="text-muted-foreground">{label}</span>
+        <span className="font-mono text-foreground">
+          {fmt(actual)} <span className="text-muted-foreground/60">/ {meta > 0 ? fmt(meta) : "—"}</span>
+          {meta > 0 && <span className={`ml-1.5 font-semibold ${avance >= 100 ? "text-success" : "text-foreground"}`}>{avance}%</span>}
+        </span>
+      </div>
+      <div className="h-1.5 w-full rounded-full bg-muted/40 overflow-hidden">
+        <div className={`h-full rounded-full transition-all duration-500 ${color}`} style={{ width: `${meta > 0 ? pct : 0}%` }} />
       </div>
     </div>
   );

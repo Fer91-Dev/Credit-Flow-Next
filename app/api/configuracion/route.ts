@@ -1,7 +1,7 @@
 import { requireAuth, requireRole } from "@/lib/auth";
 import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api";
-import { getConfiguracion, guardarConfiguracion, getComunicacionConfig, guardarComunicacionConfig, type ComunicacionConfig } from "@/lib/config";
-import { resolverConfig, type ComponenteDeuda } from "@/lib/domain";
+import { getConfiguracion, guardarConfiguracion, getComunicacionConfig, guardarComunicacionConfig, getGamificacionConfig, guardarGamificacionConfig, type ComunicacionConfig } from "@/lib/config";
+import { resolverConfig, resolverGamificacion, type ComponenteDeuda } from "@/lib/domain";
 import { registrarAuditoria } from "@/lib/audit";
 import type { NextRequest } from "next/server";
 
@@ -94,11 +94,12 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   // también el vendedor. La config del motor no es información sensible admin-only.
   // La ESCRITURA (PUT) sigue siendo solo admin.
   const { tenantId } = await requireAuth(req);
-  const [config, comm] = await Promise.all([
+  const [config, comm, gamificacion] = await Promise.all([
     getConfiguracion(tenantId),
     getComunicacionConfig(tenantId),
+    getGamificacionConfig(tenantId),
   ]);
-  return successResponse({ ...config, ...maskCommConfig(comm) });
+  return successResponse({ ...config, ...maskCommConfig(comm), gamificacionConfig: gamificacion });
 });
 
 /**
@@ -188,6 +189,16 @@ export const PUT = withErrorHandler(async (req: NextRequest) => {
 
   const comm = await getComunicacionConfig(tenantId);
 
+  // Gamificación (medallas/logros), guardada por separado del motor.
+  if (body.gamificacionConfig !== undefined) {
+    const g = resolverGamificacion(body.gamificacionConfig);
+    if (!(g.umbrales.oro >= g.umbrales.plata && g.umbrales.plata >= g.umbrales.bronce)) {
+      return errorResponse("Los umbrales deben cumplir oro ≥ plata ≥ bronce", "INVALID_INPUT", 400);
+    }
+    await guardarGamificacionConfig(tenantId, g);
+  }
+  const gamificacion = await getGamificacionConfig(tenantId);
+
   await registrarAuditoria({
     tenantId,
     entidad: "configuracion",
@@ -196,5 +207,5 @@ export const PUT = withErrorHandler(async (req: NextRequest) => {
     meta: { campos: Object.keys(body) },
   });
 
-  return successResponse({ ...guardada, ...maskCommConfig(comm) });
+  return successResponse({ ...guardada, ...maskCommConfig(comm), gamificacionConfig: gamificacion });
 });

@@ -187,6 +187,23 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     vendedorId = vendedor.id;
   }
 
+  // Límite de otorgamiento (autoritativo): un vendedor no puede otorgar por encima
+  // de su tope configurado sin autorización de un superior. El admin no tiene tope.
+  if (role === "vendedor" && vendedorId) {
+    const ficha = await prisma.vendedores.findFirst({
+      where: { ...withTenant(tenantId), id: vendedorId },
+      select: { limite_aprobacion: true },
+    });
+    const limite = ficha?.limite_aprobacion;
+    if (limite != null && body.monto_original > limite) {
+      return errorResponse(
+        `El monto ($${Number(body.monto_original).toLocaleString("es-AR")}) supera tu límite de otorgamiento ($${limite.toLocaleString("es-AR")}). Requiere autorización de un administrador.`,
+        "LIMIT_EXCEEDED",
+        403,
+      );
+    }
+  }
+
   // Frecuencia de pago (default mensual). El período de cada cuota lo da este campo.
   const frecuencia = normalizarFrecuencia(body.frecuencia);
 

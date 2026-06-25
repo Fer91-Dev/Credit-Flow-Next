@@ -12,6 +12,8 @@ import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field, Input, Select } from "@/components/ui/field";
+import { useConfirm } from "@/components/ui/confirm";
+import { useToast } from "@/components/ui/toast";
 
 const ROL_META: Record<RolUsuario, { label: string; variant: "primary" | "success" | "warning" | "muted" }> = {
   admin:    { label: "Administrador", variant: "success" },
@@ -26,6 +28,8 @@ function genPassword(): string {
 
 export function UsuariosView() {
   const { usuarios, isLoading, error, mutate } = useUsuarios();
+  const confirm = useConfirm();
+  const toast = useToast();
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Usuario | null>(null);
 
@@ -42,13 +46,21 @@ export function UsuariosView() {
 
   const toggleActivo = async (u: Usuario) => {
     const accion = u.activo ? "desactivar" : "reactivar";
-    if (!confirm(`¿Querés ${accion} el acceso de ${u.email}?`)) return;
-    await fetch(`/api/usuarios/${u.id}`, {
+    const ok = await confirm({
+      title: u.activo ? "¿Desactivar acceso?" : "¿Reactivar acceso?",
+      description: `Se ${accion}á el acceso de ${u.email}.`,
+      confirmLabel: u.activo ? "Desactivar" : "Reactivar",
+      tone: u.activo ? "danger" : "default",
+    });
+    if (!ok) return;
+    const res = await fetch(`/api/usuarios/${u.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ activo: !u.activo }),
     });
+    if (!res.ok) { toast.error("No se pudo actualizar el acceso"); return; }
     refrescar();
+    toast.success(u.activo ? `Acceso de ${u.email} desactivado` : `Acceso de ${u.email} reactivado`);
   };
 
   const cta = (
@@ -191,6 +203,8 @@ function UsuarioForm({
 }) {
   const editing = !!usuario;
   const { vendedores } = useVendedores();
+  const confirm = useConfirm();
+  const toast = useToast();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -225,6 +239,14 @@ function UsuarioForm({
       if (!email.trim()) { setError("El email es requerido"); return; }
       if (password.length < 6) { setError("La contraseña debe tener al menos 6 caracteres"); return; }
     }
+    const ok = await confirm({
+      title: editing ? "¿Guardar cambios?" : "¿Crear usuario?",
+      description: editing
+        ? `Se actualizará el acceso de ${usuario!.email}.`
+        : `Se creará el acceso para ${email.trim()} con rol ${role}.`,
+      confirmLabel: editing ? "Guardar cambios" : "Crear usuario",
+    });
+    if (!ok) return;
     setLoading(true);
     try {
       const vinc = role === "vendedor" && vendedorId ? vendedorId : null;
@@ -242,6 +264,7 @@ function UsuarioForm({
       const json = await res.json();
       if (json.ok) {
         globalMutate(KEYS.usuarios);
+        toast.success(editing ? "Usuario actualizado" : `Usuario ${email.trim()} creado`);
         onClose(true);
       } else {
         setError(json.error);

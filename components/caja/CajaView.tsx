@@ -12,6 +12,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field, Input, Select, Textarea } from "@/components/ui/field";
 import { formatCreditoNumero } from "@/lib/utils";
+import { useConfirm } from "@/components/ui/confirm";
+import { useToast } from "@/components/ui/toast";
 import { MovimientoDetail } from "./MovimientoDetail";
 
 function n0(x: number) {
@@ -340,6 +342,8 @@ export function CajaView() {
 }
 
 function AjusteDialog({ open, onClose }: { open: boolean; onClose: (ok?: boolean) => void }) {
+  const confirm = useConfirm();
+  const toast = useToast();
   const [monto, setMonto] = useState("");
   const [sentido, setSentido] = useState("ingreso");
   const [descripcion, setDescripcion] = useState("");
@@ -352,6 +356,12 @@ function AjusteDialog({ open, onClose }: { open: boolean; onClose: (ok?: boolean
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const ok = await confirm({
+      title: "¿Registrar ajuste de caja?",
+      description: `Se registrará un ${sentido === "ingreso" ? "ingreso" : "egreso"} de $${n2(parseFloat(monto) || 0)} en ${cuenta}.`,
+      confirmLabel: "Registrar ajuste",
+    });
+    if (!ok) return;
     setLoading(true); setError(null);
     try {
       const res = await fetch("/api/caja", {
@@ -360,7 +370,7 @@ function AjusteDialog({ open, onClose }: { open: boolean; onClose: (ok?: boolean
         body: JSON.stringify({ monto: parseFloat(monto), sentido, descripcion, metodo, cuenta }),
       });
       const json = await res.json();
-      if (json.ok) { reset(); onClose(true); }
+      if (json.ok) { reset(); toast.success("Ajuste registrado"); onClose(true); }
       else setError(json.error);
     } catch {
       setError("No se pudo registrar el ajuste");
@@ -427,6 +437,8 @@ function TransferenciaDialog({
   onClose: (ok?: boolean) => void;
   saldos?: Record<CuentaCaja, number>;
 }) {
+  const confirm = useConfirm();
+  const toast = useToast();
   const [origen, setOrigen] = useState<CuentaCaja>("efectivo");
   const [destino, setDestino] = useState<CuentaCaja>("banco");
   const [monto, setMonto] = useState("");
@@ -441,6 +453,12 @@ function TransferenciaDialog({
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (mismaCuenta) { setError("Origen y destino deben ser distintos"); return; }
+    const ok = await confirm({
+      title: "¿Registrar transferencia?",
+      description: `Se transferirán $${n2(parseFloat(monto) || 0)} de ${origen} a ${destino}.`,
+      confirmLabel: "Transferir",
+    });
+    if (!ok) return;
     setLoading(true); setError(null);
     try {
       const res = await fetch("/api/caja/transferencia", {
@@ -449,7 +467,7 @@ function TransferenciaDialog({
         body: JSON.stringify({ origen, destino, monto: parseFloat(monto), descripcion }),
       });
       const json = await res.json();
-      if (json.ok) { reset(); onClose(true); }
+      if (json.ok) { reset(); toast.success("Transferencia registrada"); onClose(true); }
       else setError(json.error);
     } catch {
       setError("No se pudo registrar la transferencia");
@@ -515,6 +533,8 @@ function ArqueoDialog({
   onClose: (ok?: boolean) => void;
   saldos?: Record<CuentaCaja, number>;
 }) {
+  const confirm = useConfirm();
+  const toast = useToast();
   const [cuenta, setCuenta] = useState<CuentaCaja>("efectivo");
   const [fisico, setFisico] = useState("");
   const [descripcion, setDescripcion] = useState("");
@@ -530,6 +550,14 @@ function ArqueoDialog({
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const ok = await confirm({
+      title: "¿Registrar arqueo?",
+      description: difPreview !== null && difPreview !== 0
+        ? `Hay una diferencia de $${n2(Math.abs(difPreview))} (${difPreview > 0 ? "sobrante" : "faltante"}). Se registrará el ajuste correspondiente en ${cuenta}.`
+        : `Se registrará el arqueo de ${cuenta} sin diferencias.`,
+      confirmLabel: "Registrar arqueo",
+    });
+    if (!ok) return;
     setLoading(true); setError(null);
     try {
       const res = await fetch("/api/caja/arqueo", {
@@ -538,7 +566,7 @@ function ArqueoDialog({
         body: JSON.stringify({ cuenta, monto_fisico: parseFloat(fisico), descripcion }),
       });
       const json = await res.json();
-      if (json.ok) { setResultado(json.data); onClose(true); }
+      if (json.ok) { setResultado(json.data); toast.success("Arqueo registrado"); onClose(true); }
       else setError(json.error);
     } catch {
       setError("No se pudo registrar el arqueo");

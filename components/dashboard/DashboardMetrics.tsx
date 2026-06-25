@@ -34,131 +34,114 @@ function BodySkeleton() {
   );
 }
 
+/** Skeleton solo de los 4 KPIs (para el Home, que reordena las piezas). */
+export function DashboardKpisSkeleton() {
+  return (
+    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-28 rounded-xl" />)}
+    </div>
+  );
+}
+
 function CarteraBody({ data }: { data: DashboardData }) {
-  const { resumen, mora, transacciones, cobranza_mes } = data;
+  return (
+    <div className="space-y-6">
+      <DashboardCobranzaAvance data={data} />
+      <DashboardKpis data={data} />
+      <DashboardMoraGrid data={data} />
+    </div>
+  );
+}
+
+/* ── Piezas reutilizables (el Home las reordena; la Cartera usa el orden de arriba) ── */
+
+/** Los 4 KPIs principales. */
+export function DashboardKpis({ data }: { data: DashboardData }) {
+  const { resumen } = data;
+  return (
+    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <KpiCard icon={Users} label="Clientes activos" value={String(resumen.clientes_activos)} accent="primary" />
+      <KpiCard icon={TrendingUp} label="Créditos activos" value={String(resumen.creditos_activos)} sub={`${resumen.creditos_pagados} pagados`} accent="primary" />
+      <KpiCard icon={Wallet} label="Cartera total" value={`$${n0(resumen.cartera_total)}`} accent="success" mono />
+      <KpiCard icon={AlertCircle} label="Mora crítica" value={String(resumen.mora_critica_count)} sub={resumen.mora_critica_count > 0 ? "requieren gestión urgente" : "sin atrasos críticos"} accent={resumen.mora_critica_count > 0 ? "destructive" : "success"} />
+    </div>
+  );
+}
+
+/** Barra de avance de cobranzas del mes. */
+export function DashboardCobranzaAvance({ data }: { data: DashboardData }) {
+  const { cobranza_mes } = data;
+  return <AvanceCobranzas esperado={cobranza_mes.esperado} cobrado={cobranza_mes.cobrado} cuotas={cobranza_mes.cuotas_total} />;
+}
+
+/** Fila secundaria: distribución de mora · exposición en mora · cobros registrados. */
+export function DashboardMoraGrid({ data }: { data: DashboardData }) {
+  const { mora, transacciones } = data;
   const totalMoraItems = mora.detalle.dias_1_30 + mora.detalle.dias_31_60 + mora.detalle.dias_60_mas;
 
   return (
-    <div className="space-y-6">
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
 
-      {/* ── Avance de cobranzas del mes ── */}
-      <AvanceCobranzas
-        esperado={cobranza_mes.esperado}
-        cobrado={cobranza_mes.cobrado}
-        cuotas={cobranza_mes.cuotas_total}
-      />
-
-      {/* ── KPI Strip ── */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <KpiCard
-          icon={Users}
-          label="Clientes activos"
-          value={String(resumen.clientes_activos)}
-          accent="primary"
-        />
-        <KpiCard
-          icon={TrendingUp}
-          label="Créditos activos"
-          value={String(resumen.creditos_activos)}
-          sub={`${resumen.creditos_pagados} pagados`}
-          accent="primary"
-        />
-        <KpiCard
-          icon={Wallet}
-          label="Cartera total"
-          value={`$${n0(resumen.cartera_total)}`}
-          accent="success"
-          mono
-        />
-        <KpiCard
-          icon={AlertCircle}
-          label="Mora crítica"
-          value={String(resumen.mora_critica_count)}
-          sub={resumen.mora_critica_count > 0 ? "requieren gestión urgente" : "sin atrasos críticos"}
-          accent={resumen.mora_critica_count > 0 ? "destructive" : "success"}
-        />
+      {/* Distribución mora */}
+      <div className="rounded-xl bg-card border border-border p-5">
+        <div className="flex items-center gap-2 mb-4">
+          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-muted/40 border border-border">
+            <Clock className="h-3.5 w-3.5 text-muted-foreground" />
+          </div>
+          <h3 className="text-sm font-semibold text-foreground">Distribución de mora</h3>
+        </div>
+        <div className="space-y-3">
+          <MoraRow label="1–30 días" count={mora.detalle.dias_1_30} total={totalMoraItems} variant="warning" />
+          <MoraRow label="31–60 días" count={mora.detalle.dias_31_60} total={totalMoraItems} variant="destructive" />
+          <MoraRow label="60+ días" count={mora.detalle.dias_60_mas} total={totalMoraItems} variant="destructive" bold />
+        </div>
+        {totalMoraItems === 0 && (
+          <p className="text-xs text-success mt-3">Sin créditos en mora</p>
+        )}
       </div>
 
-      {/* ── Secondary row ── */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-
-        {/* Distribución mora */}
-        <div className="rounded-xl bg-card border border-border p-5">
-          <div className="flex items-center gap-2 mb-4">
-            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-muted/40 border border-border">
-              <Clock className="h-3.5 w-3.5 text-muted-foreground" />
-            </div>
-            <h3 className="text-sm font-semibold text-foreground">Distribución de mora</h3>
+      {/* Montos en mora */}
+      <div className="rounded-xl bg-card border border-border p-5">
+        <div className="flex items-center gap-2 mb-4">
+          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-muted/40 border border-border">
+            <AlertCircle className="h-3.5 w-3.5 text-muted-foreground" />
           </div>
-          <div className="space-y-3">
-            <MoraRow
-              label="1–30 días"
-              count={mora.detalle.dias_1_30}
-              total={totalMoraItems}
-              variant="warning"
-            />
-            <MoraRow
-              label="31–60 días"
-              count={mora.detalle.dias_31_60}
-              total={totalMoraItems}
-              variant="destructive"
-            />
-            <MoraRow
-              label="60+ días"
-              count={mora.detalle.dias_60_mas}
-              total={totalMoraItems}
-              variant="destructive"
-              bold
-            />
-          </div>
-          {totalMoraItems === 0 && (
-            <p className="text-xs text-success mt-3">Sin créditos en mora</p>
-          )}
+          <h3 className="text-sm font-semibold text-foreground">Exposición en mora</h3>
         </div>
-
-        {/* Montos en mora */}
-        <div className="rounded-xl bg-card border border-border p-5">
-          <div className="flex items-center gap-2 mb-4">
-            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-muted/40 border border-border">
-              <AlertCircle className="h-3.5 w-3.5 text-muted-foreground" />
-            </div>
-            <h3 className="text-sm font-semibold text-foreground">Exposición en mora</h3>
+        <div className="space-y-4">
+          <div>
+            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-1.5">Total en mora</p>
+            <p className="text-2xl font-bold text-warning font-mono">${n0(mora.montos.total_mora)}</p>
           </div>
-          <div className="space-y-4">
-            <div>
-              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-1.5">Total en mora</p>
-              <p className="text-2xl font-bold text-warning font-mono">${n0(mora.montos.total_mora)}</p>
-            </div>
-            <div className="border-t border-border" />
-            <div>
-              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-1.5">Mora crítica (30+ días)</p>
-              <p className="text-2xl font-bold text-destructive font-mono">${n0(mora.montos.mora_critica)}</p>
-            </div>
+          <div className="border-t border-border" />
+          <div>
+            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-1.5">Mora crítica (30+ días)</p>
+            <p className="text-2xl font-bold text-destructive font-mono">${n0(mora.montos.mora_critica)}</p>
           </div>
         </div>
-
-        {/* Cobros */}
-        <div className="rounded-xl bg-card border border-border p-5">
-          <div className="flex items-center gap-2 mb-4">
-            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-muted/40 border border-border">
-              <ArrowUpRight className="h-3.5 w-3.5 text-muted-foreground" />
-            </div>
-            <h3 className="text-sm font-semibold text-foreground">Cobros registrados</h3>
-          </div>
-          <div className="space-y-4">
-            <div>
-              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-1.5">Cantidad de pagos</p>
-              <p className="text-3xl font-bold text-foreground">{transacciones.total_pagos_registrados}</p>
-            </div>
-            <div className="border-t border-border" />
-            <div>
-              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-1.5">Monto total cobrado</p>
-              <p className="text-2xl font-bold text-success font-mono">${n0(transacciones.monto_pagos_total)}</p>
-            </div>
-          </div>
-        </div>
-
       </div>
+
+      {/* Cobros */}
+      <div className="rounded-xl bg-card border border-border p-5">
+        <div className="flex items-center gap-2 mb-4">
+          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-muted/40 border border-border">
+            <ArrowUpRight className="h-3.5 w-3.5 text-muted-foreground" />
+          </div>
+          <h3 className="text-sm font-semibold text-foreground">Cobros registrados</h3>
+        </div>
+        <div className="space-y-4">
+          <div>
+            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-1.5">Cantidad de pagos</p>
+            <p className="text-3xl font-bold text-foreground">{transacciones.total_pagos_registrados}</p>
+          </div>
+          <div className="border-t border-border" />
+          <div>
+            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-1.5">Monto total cobrado</p>
+            <p className="text-2xl font-bold text-success font-mono">${n0(transacciones.monto_pagos_total)}</p>
+          </div>
+        </div>
+      </div>
+
     </div>
   );
 }

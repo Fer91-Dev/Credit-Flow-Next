@@ -11,6 +11,8 @@ import { StatusBadge } from "@/components/ui/StatusBadge";
 import { ScoreBadge } from "@/components/ui/ScoreBadge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { nombreCompleto } from "@/lib/utils";
+import { useConfirm } from "@/components/ui/confirm";
+import { useToast } from "@/components/ui/toast";
 
 type Sel = { id: string; nombre: string };
 
@@ -31,6 +33,8 @@ function esInactivo(c: Cliente): boolean {
 export function ClientesTable() {
   const { clientes, isLoading, mutate } = useClientes({ scored: true });
   const { mutate: globalMutate } = useSWRConfig();
+  const confirm = useConfirm();
+  const toast = useToast();
 
   const [query, setQuery] = useState("");
   const [soloInactivos, setSoloInactivos] = useState(false);
@@ -74,15 +78,27 @@ export function ClientesTable() {
     if (creado) setSelected({ id: creado.id, nombre: nombreCompleto(creado) }); // saltar a la ficha del nuevo
   };
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = async (id: string, nombre: string) => {
+    const ok = await confirm({
+      title: "¿Eliminar cliente?",
+      description: `Se marcará a ${nombre} como inactivo. Sus créditos asociados se conservan.`,
+      confirmLabel: "Eliminar",
+      tone: "danger",
+    });
+    if (!ok) return;
+
+    let fallo = false;
     await mutate(
       async (current) => {
-        await fetch(`/api/clientes/${id}`, { method: "DELETE" });
+        const res = await fetch(`/api/clientes/${id}`, { method: "DELETE" });
+        if (!res.ok) { fallo = true; throw new Error("delete failed"); }
         return { clientes: (current?.clientes ?? []).filter((c) => c.id !== id) };
       },
       { optimisticData: { clientes: clientes.filter((c) => c.id !== id) }, rollbackOnError: true },
     ).catch(() => {});
+    if (fallo) { toast.error("No se pudo eliminar el cliente"); return; }
     globalMutate(KEYS.dashboard);
+    toast.success(`Cliente ${nombre} eliminado`);
     setSelected(null);
   };
 
@@ -135,7 +151,7 @@ export function ClientesTable() {
             clienteId={selected.id}
             variant="cliente"
             onEditar={() => openEdit(selected.id)}
-            onEliminar={() => handleDelete(selected.id)}
+            onEliminar={() => handleDelete(selected.id, selected.nombre)}
           />
         </div>
 

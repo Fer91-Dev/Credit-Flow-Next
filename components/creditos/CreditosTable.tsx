@@ -20,6 +20,8 @@ import {
   AlertDialogTitle, AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useConfirm } from "@/components/ui/confirm";
+import { useToast } from "@/components/ui/toast";
 
 function n0(x: number) {
   return new Intl.NumberFormat("es-AR", { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(x);
@@ -41,6 +43,8 @@ function estadoBadge(estado: string): { label: string; variant: "primary" | "suc
 export function CreditosTable() {
   const router = useRouter();
   const { creditos, error, isLoading, mutate } = useCreditos();
+  const confirm = useConfirm();
+  const toast = useToast();
   const [dialogOpen, setDialog]   = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [detail, setDetail]       = useState<Credito | null>(null);
@@ -64,23 +68,35 @@ export function CreditosTable() {
       if (!json.ok) { setActionError(json.error); return; }
       mutate();
       globalMutate(KEYS.dashboard);
+      globalMutate(KEYS.vendedores); // las stats del vendedor excluyen anulados → refrescar Personal
       globalMutate((k) => typeof k === "string" && k.startsWith("/api/caja"), undefined, { revalidate: true });
+      toast.success("Crédito anulado");
     } catch {
       setActionError("No se pudo anular el crédito");
     }
   };
 
   // Eliminar: borrado definitivo (bloqueado por el server si tiene pagos).
-  const handleEliminar = async (id: string) => {
+  // Confirmación previa con el detalle del crédito (N°, cliente, monto).
+  const handleEliminar = async (c: Credito) => {
+    const ok = await confirm({
+      title: `¿Eliminar crédito ${formatCreditoNumero(c.numero)}?`,
+      description: `Se eliminará definitivamente el crédito de ${nombreCompleto(c.cliente)} por $${n0(c.monto_original)}, junto con su plan de cuotas. Esta acción no se puede deshacer.`,
+      confirmLabel: "Eliminar definitivamente",
+      tone: "danger",
+    });
+    if (!ok) return;
     setActionError(null);
     try {
-      const res = await fetch(`/api/creditos/${id}`, { method: "DELETE" });
+      const res = await fetch(`/api/creditos/${c.id}`, { method: "DELETE" });
       const json = await res.json();
-      if (!json.ok) { setActionError(json.error); return; }
+      if (!json.ok) { setActionError(json.error); toast.error(json.error || "No se pudo eliminar"); return; }
       mutate();
       globalMutate(KEYS.dashboard);
+      toast.success(`Crédito ${formatCreditoNumero(c.numero)} eliminado`);
     } catch {
       setActionError("No se pudo eliminar el crédito");
+      toast.error("No se pudo eliminar el crédito");
     }
   };
 
@@ -286,25 +302,13 @@ export function CreditosTable() {
                                   <Trash2 className="h-3.5 w-3.5" />
                                 </button>
                               ) : (
-                                <AlertDialog>
-                                  <AlertDialogTrigger asChild>
-                                    <button className="p-1.5 rounded-lg hover:bg-destructive/10 transition-colors text-muted-foreground hover:text-destructive" title="Eliminar crédito">
-                                      <Trash2 className="h-3.5 w-3.5" />
-                                    </button>
-                                  </AlertDialogTrigger>
-                                  <AlertDialogContent>
-                                    <AlertDialogHeader>
-                                      <AlertDialogTitle>¿Eliminar crédito {formatCreditoNumero(c.numero)}?</AlertDialogTitle>
-                                      <AlertDialogDescription>
-                                        Se eliminará <strong>definitivamente</strong> el crédito de <strong>{nombreCompleto(c.cliente)}</strong> por <strong>${n0(c.monto_original)}</strong>, junto con su plan de cuotas. Esta acción no se puede deshacer.
-                                      </AlertDialogDescription>
-                                    </AlertDialogHeader>
-                                    <AlertDialogFooter>
-                                      <AlertDialogCancel>Volver</AlertDialogCancel>
-                                      <AlertDialogAction onClick={() => handleEliminar(c.id)} className="bg-destructive text-white hover:bg-destructive/90">Eliminar definitivamente</AlertDialogAction>
-                                    </AlertDialogFooter>
-                                  </AlertDialogContent>
-                                </AlertDialog>
+                                <button
+                                  onClick={() => handleEliminar(c)}
+                                  className="p-1.5 rounded-lg hover:bg-destructive/10 transition-colors text-muted-foreground hover:text-destructive"
+                                  title="Eliminar crédito"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </button>
                               )}
                             </div>
                           </td>
@@ -366,25 +370,13 @@ export function CreditosTable() {
                             <Trash2 className="h-3.5 w-3.5" />
                           </button>
                         ) : (
-                          <AlertDialog>
-                            <AlertDialogTrigger asChild>
-                              <button className="p-1.5 rounded-lg hover:bg-destructive/10 transition-colors text-muted-foreground hover:text-destructive" title="Eliminar">
-                                <Trash2 className="h-3.5 w-3.5" />
-                              </button>
-                            </AlertDialogTrigger>
-                            <AlertDialogContent>
-                              <AlertDialogHeader>
-                                <AlertDialogTitle>¿Eliminar crédito {formatCreditoNumero(c.numero)}?</AlertDialogTitle>
-                                <AlertDialogDescription>
-                                  Se eliminará definitivamente el crédito de <strong>{nombreCompleto(c.cliente)}</strong> y su plan de cuotas. No se puede deshacer.
-                                </AlertDialogDescription>
-                              </AlertDialogHeader>
-                              <AlertDialogFooter>
-                                <AlertDialogCancel>Volver</AlertDialogCancel>
-                                <AlertDialogAction onClick={() => handleEliminar(c.id)} className="bg-destructive text-white hover:bg-destructive/90">Eliminar</AlertDialogAction>
-                              </AlertDialogFooter>
-                            </AlertDialogContent>
-                          </AlertDialog>
+                          <button
+                            onClick={() => handleEliminar(c)}
+                            className="p-1.5 rounded-lg hover:bg-destructive/10 transition-colors text-muted-foreground hover:text-destructive"
+                            title="Eliminar"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
                         )}
                       </div>
                     </div>

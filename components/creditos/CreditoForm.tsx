@@ -10,7 +10,9 @@ import {
   AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogFooter,
   AlertDialogTitle, AlertDialogDescription, AlertDialogCancel,
 } from "@/components/ui/alert-dialog";
-import { useConfiguracion } from "@/lib/swr";
+import { useConfiguracion, useMiPerfilVendedor } from "@/lib/swr";
+import { useConfirm } from "@/components/ui/confirm";
+import { useToast } from "@/components/ui/toast";
 import { formatNumero, parseMontoInput, maskMontoInput, numeroAInput, formatFecha, formatMonto, formatCreditoNumero, nombreCompleto } from "@/lib/utils";
 import { imprimirPlanPagos } from "@/lib/plan-print";
 import {
@@ -53,6 +55,9 @@ function useDebounced<T>(value: T, delay = 350): T {
 
 export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
   const { config } = useConfiguracion();
+  const { perfil } = useMiPerfilVendedor(); // límite de otorgamiento del usuario (null si es admin/sin tope)
+  const confirm = useConfirm();
+  const toast = useToast();
   const convencion: ConvencionTasa = config?.convencionTasa ?? "nominal_anual";
 
   // Parámetros del simulador definidos por el tenant en Configuración.
@@ -162,6 +167,9 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
     if (monto <= 0) return "Ingresá un capital válido";
     if (simCfg && simCfg.montoMin > 0 && monto < simCfg.montoMin) return `El capital mínimo es $${n0(simCfg.montoMin)}`;
     if (simCfg && simCfg.montoMax > 0 && monto > simCfg.montoMax) return `El capital máximo es $${n0(simCfg.montoMax)}`;
+    // Límite de otorgamiento del vendedor (al otorgar, no en edición). El admin no tiene tope.
+    if (!creditoId && perfil?.limite_aprobacion != null && monto > perfil.limite_aprobacion)
+      return `El capital supera tu límite de otorgamiento ($${n0(perfil.limite_aprobacion)}). Requiere autorización de un administrador.`;
     if (!formData.frecuencia) return "Seleccioná la frecuencia";
     const n = parseInt(formData.plazo_meses);
     if (isNaN(n) || n < 1) return "Indicá el número de cuotas";
@@ -173,12 +181,22 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
 
   // Submit del form. En ALTA no crea directo: abre el aviso de confirmación, de modo
   // que un Enter o un clic accidental nunca otorga el crédito. En edición guarda directo.
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const err = validar();
     if (err) { setError(err); return; }
     setError(null);
-    if (creditoId) { persist(); return; }
+    if (creditoId) {
+      // Edición: confirmar antes de guardar (el alta usa su propio aviso enriquecido).
+      const ok = await confirm({
+        title: "¿Guardar cambios del crédito?",
+        description: "Se actualizarán los parámetros del crédito.",
+        confirmLabel: "Guardar cambios",
+      });
+      if (!ok) return;
+      persist();
+      return;
+    }
     setConfirmOpen(true);
   };
 
@@ -205,6 +223,7 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
       const json = await res.json();
       if (json.ok) {
         if (creditoId) {
+          toast.success("Crédito actualizado");
           onClose(true);
         } else {
           setConfirmOpen(false);
@@ -368,7 +387,7 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
       {/* ── IZQUIERDA: parámetros del crédito ── */}
       <form
         onSubmit={handleSubmit}
-        className="flex flex-col w-[300px] xl:w-[330px] shrink-0 border-r border-border"
+        className="flex flex-col w-[300px] xl:w-[330px] shrink-0 border-r border-border bg-card/40"
       >
         {/* Área de campos — scroll interno */}
         <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3">
@@ -389,7 +408,7 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
               onAlta={abrirAlta}
             />
           </Field>
-          <div className={vendedores.length > 0 ? "grid grid-cols-2 gap-3" : ""}>
+          <div className={vendedores.length > 0 ? "grid grid-cols-2 gap-2.5" : ""}>
             <Field label="Tipo de crédito" required>
               <Select name="tipo_credito" value={formData.tipo_credito} onChange={set("tipo_credito")} required>
                 <option value="personal">Personal</option>
@@ -417,11 +436,11 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
           {/* Capital — valor grande, ancho completo */}
           <Field label="Capital ($)" required hint={montoHint}>
             <div className="relative">
-              <DollarSign className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+              <DollarSign className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
                 name="monto_original" type="text" inputMode="decimal" placeholder="350.000,00"
                 value={formData.monto_original} onChange={setMonto}
-                required className="pl-8 font-mono tabular-nums"
+                required className="pl-9 text-lg font-bold font-mono tabular-nums"
               />
             </div>
           </Field>
@@ -473,8 +492,8 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
 
         </div>{/* fin área scrolleable */}
 
-        {/* Acciones — fijas al fondo del panel */}
-        <div className="shrink-0 flex gap-2 justify-end border-t border-border px-5 py-3.5">
+        {/* Acciones — barra fija al fondo del panel, separada de la zona de carga */}
+        <div className="shrink-0 flex gap-2 justify-end border-t border-border bg-muted/10 px-5 py-3.5">
           <button
             type="button" onClick={() => onClose(false)}
             className="px-4 py-2 rounded-lg text-sm text-muted-foreground hover:bg-muted transition-colors"
@@ -521,7 +540,7 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
                   key={key}
                   type="button"
                   onClick={() => setVista(key)}
-                  className={`relative flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition-colors duration-200 ${
+                  className={`relative flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-semibold transition-colors duration-200 ${
                     vista === key ? "text-foreground" : "text-muted-foreground hover:text-foreground"
                   }`}
                 >
@@ -709,7 +728,7 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
                   <span className="text-primary font-semibold">Capital {capPct}%</span>
                   <span className="text-warning font-semibold">Interés {100 - capPct}%</span>
                 </div>
-                <div className="h-1.5 rounded-full bg-warning/25 overflow-hidden">
+                <div className="h-1 rounded-full bg-warning/40 overflow-hidden">
                   <div className="h-full bg-primary rounded-full transition-all duration-300" style={{ width: `${capPct}%` }} />
                 </div>
               </div>

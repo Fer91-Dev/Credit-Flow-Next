@@ -2,8 +2,9 @@ import { requireRole } from "@/lib/auth";
 import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@prisma/client";
 import { registrarAuditoria } from "@/lib/audit";
-import { esRolValido, resumirVendedor, normalizarComisionPct, normalizarMonto } from "@/lib/domain";
+import { esRolValido, resumirVendedor, normalizarComisionPct, normalizarMonto, normalizarComisionConfig } from "@/lib/domain";
 import type { NextRequest } from "next/server";
 
 /**
@@ -29,20 +30,25 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   // Créditos otorgados (no anulados) agrupados por vendedor, para el resumen de comisiones.
   const creditos = await prisma.creditos.findMany({
     where: { ...withTenant(tenantId), vendedor_id: { not: null }, estado: { not: "anulado" } },
-    select: { vendedor_id: true, monto_original: true },
+    select: { vendedor_id: true, monto_original: true, tipo_credito: true },
   });
 
-  const porVendedor = new Map<string, { monto_original: number }[]>();
+  const porVendedor = new Map<string, { monto_original: number; tipo_credito: string }[]>();
   for (const c of creditos) {
     if (!c.vendedor_id) continue;
     const arr = porVendedor.get(c.vendedor_id) ?? [];
-    arr.push({ monto_original: c.monto_original });
+    arr.push({ monto_original: c.monto_original, tipo_credito: c.tipo_credito });
     porVendedor.set(c.vendedor_id, arr);
   }
 
   const enriquecidos = vendedores.map((v) => ({
     ...v,
-    resumen: resumirVendedor(porVendedor.get(v.id) ?? [], v.comision_pct, v.meta_venta),
+    resumen: resumirVendedor(
+      porVendedor.get(v.id) ?? [],
+      v.comision_pct,
+      v.meta_venta,
+      normalizarComisionConfig(v.comision_config, v.comision_pct),
+    ),
   }));
 
   return successResponse({ vendedores: enriquecidos, total: enriquecidos.length });
@@ -60,6 +66,9 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
   let body: {
     nombre?: string; email?: string; telefono?: string; rol?: string;
     comision_pct?: number; meta_venta?: number; activo?: boolean;
+    documento?: string; fecha_ingreso?: string; direccion?: string;
+    zona?: string; notas?: string; limite_aprobacion?: number | null;
+    comision_config?: unknown;
   };
   try {
     body = await req.json();
@@ -73,6 +82,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
   const rol = esRolValido(body.rol) ? body.rol : "vendedor";
   const comision = normalizarComisionPct(body.comision_pct);
   const meta = normalizarMonto(body.meta_venta);
+  const comisionConfig = normalizarComisionConfig(body.comision_config, comision);
 
   const vendedor = await prisma.vendedores.create({
     data: {
@@ -84,6 +94,14 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
       comision_pct: comision,
       meta_venta: meta,
       activo: body.activo !== false,
+      // Datos laborales (Fase 1)
+      documento: body.documento?.trim() || null,
+      fecha_ingreso: body.fecha_ingreso ? new Date(body.fecha_ingreso) : null,
+      direccion: body.direccion?.trim() || null,
+      zona: body.zona?.trim() || null,
+      notas: body.notas?.trim() || null,
+      limite_aprobacion: body.limite_aprobacion != null ? normalizarMonto(body.limite_aprobacion) : null,
+      comision_config: comisionConfig ? (comisionConfig as unknown as Prisma.InputJsonValue) : undefined,
     },
   });
 

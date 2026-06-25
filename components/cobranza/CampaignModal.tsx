@@ -13,6 +13,8 @@ import {
 } from "@/lib/domain";
 import { Field, Input, Select, Textarea } from "@/components/ui/field";
 import { nombreCompleto } from "@/lib/utils";
+import { useConfirm } from "@/components/ui/confirm";
+import { useToast } from "@/components/ui/toast";
 
 function n0(x: number) {
   return new Intl.NumberFormat("es-AR", { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(x);
@@ -31,6 +33,8 @@ interface CampaignModalProps {
 
 export function CampaignModal({ creditos, onClose }: CampaignModalProps) {
   const { config } = useConfiguracion();
+  const confirm = useConfirm();
+  const toast = useToast();
   const whatsappApiActiva = !!(config?.whatsappConfig?.enabled);
 
   const [form, setForm] = useState({
@@ -78,6 +82,12 @@ export function CampaignModal({ creditos, onClose }: CampaignModalProps) {
       setError("Poné un nombre a la campaña");
       return;
     }
+    const ok = await confirm({
+      title: "¿Crear campaña?",
+      description: `Se creará la campaña "${form.nombre.trim()}" con ${creditos.length} crédito${creditos.length !== 1 ? "s" : ""} en mora por ${CANAL_META[form.canal].label}.`,
+      confirmLabel: "Crear campaña",
+    });
+    if (!ok) return;
     setLoading(true);
     setError(null);
     try {
@@ -105,7 +115,7 @@ export function CampaignModal({ creditos, onClose }: CampaignModalProps) {
       if (form.canal === "whatsapp" || form.canal === "email") {
         setCampanaId(json.data?.id ?? null);
         setLaunched(true);
-      } else onClose(true);
+      } else { toast.success("Campaña creada"); onClose(true); }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error");
     } finally {
@@ -129,15 +139,22 @@ export function CampaignModal({ creditos, onClose }: CampaignModalProps) {
 
   const enviarPorApi = async () => {
     if (!campanaId) return;
+    const ok = await confirm({
+      title: "¿Enviar la campaña?",
+      description: `Se enviará el mensaje a ${objetivos.length} cliente${objetivos.length !== 1 ? "s" : ""} por ${CANAL_META[form.canal].label}. Esta acción contacta a los clientes y no se puede deshacer.`,
+      confirmLabel: "Enviar ahora",
+    });
+    if (!ok) return;
     setEnviandoApi(true);
     setError(null);
     try {
       const res = await fetch(`/api/cobranza/campanas/${campanaId}/enviar`, { method: "POST" });
       const json = await res.json();
-      if (!json.ok) { setError(json.error || "Error al enviar"); return; }
+      if (!json.ok) { setError(json.error || "Error al enviar"); toast.error(json.error || "Error al enviar"); return; }
       // Marcar todos como enviados
       const todos = new Set(objetivos.map(o => o.credito.id));
       setEnviados(todos);
+      toast.success(`Campaña enviada a ${objetivos.length} cliente${objetivos.length !== 1 ? "s" : ""}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Error");
     } finally {

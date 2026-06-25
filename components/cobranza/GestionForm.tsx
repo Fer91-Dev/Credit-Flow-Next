@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { Field, Input, Select, Textarea } from "@/components/ui/field";
 import { nombreCompleto } from "@/lib/utils";
+import { useConfirm } from "@/components/ui/confirm";
+import { useToast } from "@/components/ui/toast";
 
 interface CreditoCtx {
   id: string;
@@ -21,6 +23,8 @@ function n0(x: number) {
 }
 
 export function GestionForm({ credito, onClose }: GestionFormProps) {
+  const confirm = useConfirm();
+  const toast = useToast();
   const [form, setForm] = useState({
     tipo: "llamada",
     resultado: "contactado",
@@ -39,6 +43,12 @@ export function GestionForm({ credito, onClose }: GestionFormProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const ok = await confirm({
+      title: "¿Registrar gestión?",
+      description: `Se registrará la gestión de cobranza sobre el crédito de ${nombreCompleto(credito.cliente)}.`,
+      confirmLabel: "Registrar gestión",
+    });
+    if (!ok) return;
     setLoading(true);
     setError(null);
     try {
@@ -57,7 +67,7 @@ export function GestionForm({ credito, onClose }: GestionFormProps) {
         body: JSON.stringify(body),
       });
       const json = await res.json();
-      if (json.ok) onClose(true);
+      if (json.ok) { toast.success("Gestión registrada"); onClose(true); }
       else setError(json.error);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error");

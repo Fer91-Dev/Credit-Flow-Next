@@ -3,7 +3,9 @@
 import { useState, useEffect } from "react";
 import { User, Briefcase, Wallet, Phone } from "lucide-react";
 import { Field, Input, Select } from "@/components/ui/field";
-import { maskMontoInput, parseMontoInput, numeroAInput } from "@/lib/utils";
+import { maskMontoInput, parseMontoInput, numeroAInput, nombreCompleto } from "@/lib/utils";
+import { useConfirm } from "@/components/ui/confirm";
+import { useToast } from "@/components/ui/toast";
 
 /** Cliente recién creado, devuelto a quien abrió el formulario. */
 export interface ClienteCreado { id: string; nombre: string; apellido?: string | null; documento?: string | null }
@@ -70,6 +72,8 @@ export function ClienteForm({ clienteId, initialDocumento, onClose }: ClienteFor
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const confirm = useConfirm();
+  const toast = useToast();
 
   useEffect(() => {
     if (clienteId) fetchCliente();
@@ -160,6 +164,24 @@ export function ClienteForm({ clienteId, initialDocumento, onClose }: ClienteFor
       return;
     }
     setErrors({});
+
+    // Confirmación previa: nombre completo para que el operador verifique a quién afecta.
+    const nombreFull = nombreCompleto({ nombre: formData.nombre.trim(), apellido: formData.apellido.trim() });
+    const ok = await confirm(
+      clienteId
+        ? {
+            title: "¿Guardar cambios?",
+            description: `Se actualizarán los datos de ${nombreFull}.`,
+            confirmLabel: "Guardar cambios",
+          }
+        : {
+            title: "¿Crear cliente?",
+            description: `Se dará de alta a ${nombreFull} (DNI ${formData.documento.trim()}).`,
+            confirmLabel: "Crear cliente",
+          },
+    );
+    if (!ok) return;
+
     setLoading(true);
     setError(null);
     try {
@@ -186,8 +208,10 @@ export function ClienteForm({ clienteId, initialDocumento, onClose }: ClienteFor
         body: JSON.stringify(body),
       });
       const json = await res.json();
-      if (json.ok) onClose(true, json.data as ClienteCreado);
-      else setError(json.error);
+      if (json.ok) {
+        toast.success(clienteId ? `Cliente ${nombreFull} actualizado` : `Cliente ${nombreFull} creado`);
+        onClose(true, json.data as ClienteCreado);
+      } else setError(json.error);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error");
     } finally {

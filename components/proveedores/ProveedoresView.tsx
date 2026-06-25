@@ -17,6 +17,8 @@ import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field, Input, Select, Textarea } from "@/components/ui/field";
+import { useConfirm } from "@/components/ui/confirm";
+import { useToast } from "@/components/ui/toast";
 
 function n0(x: number) {
   return new Intl.NumberFormat("es-AR", { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(x);
@@ -28,6 +30,8 @@ const fmtDate = (s: string) => formatFecha(s);
 
 export function ProveedoresView() {
   const { proveedores, deudaTotal, isLoading, error, mutate } = useProveedores();
+  const confirm = useConfirm();
+  const toast = useToast();
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Proveedor | null>(null);
   const [fichaId, setFichaId] = useState<string | null>(null);
@@ -49,10 +53,18 @@ export function ProveedoresView() {
   };
 
   const handleDelete = async (p: Proveedor) => {
-    if (!confirm(`¿Eliminar a ${p.nombre}? Se borrará también su cuenta corriente.`)) return;
-    await fetch(`/api/proveedores/${p.id}`, { method: "DELETE" });
+    const ok = await confirm({
+      title: "¿Eliminar proveedor?",
+      description: `Se eliminará a ${p.nombre} y se borrará también su cuenta corriente.`,
+      confirmLabel: "Eliminar",
+      tone: "danger",
+    });
+    if (!ok) return;
+    const res = await fetch(`/api/proveedores/${p.id}`, { method: "DELETE" });
+    if (!res.ok) { toast.error("No se pudo eliminar el proveedor"); return; }
     if (fichaId === p.id) setFichaId(null);
     refrescar();
+    toast.success(`Proveedor ${p.nombre} eliminado`);
   };
 
   const cta = (
@@ -302,6 +314,8 @@ function MovRow({ mov, idx }: { mov: MovimientoProveedor; idx: number }) {
 }
 
 function MovimientoDialog({ open, proveedorId, onClose }: { open: boolean; proveedorId: string; onClose: (ok?: boolean) => void }) {
+  const confirm = useConfirm();
+  const toast = useToast();
   const [tipo, setTipo] = useState<"cargo" | "pago">("cargo");
   const [monto, setMonto] = useState("");
   const [concepto, setConcepto] = useState("");
@@ -314,6 +328,12 @@ function MovimientoDialog({ open, proveedorId, onClose }: { open: boolean; prove
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const ok = await confirm({
+      title: tipo === "pago" ? "¿Registrar pago?" : "¿Registrar cargo?",
+      description: `Se registrará un ${tipo === "pago" ? "pago" : "cargo"} de $${n2(parseFloat(monto) || 0)} en la cuenta corriente.`,
+      confirmLabel: "Registrar",
+    });
+    if (!ok) return;
     setLoading(true); setError(null);
     try {
       const res = await fetch(`/api/proveedores/${proveedorId}/movimientos`, {
@@ -322,7 +342,7 @@ function MovimientoDialog({ open, proveedorId, onClose }: { open: boolean; prove
         body: JSON.stringify({ tipo, monto: parseFloat(monto), concepto, comprobante, metodo }),
       });
       const json = await res.json();
-      if (json.ok) { reset(); onClose(true); }
+      if (json.ok) { reset(); toast.success("Movimiento registrado"); onClose(true); }
       else setError(json.error);
     } catch {
       setError("No se pudo registrar el movimiento");
@@ -382,6 +402,8 @@ function MovimientoDialog({ open, proveedorId, onClose }: { open: boolean; prove
 /* ── Alta / edición de proveedor ──────────────────────────────────────────── */
 
 function ProveedorForm({ open, proveedor, onClose }: { open: boolean; proveedor: Proveedor | null; onClose: (ok?: boolean) => void }) {
+  const confirm = useConfirm();
+  const toast = useToast();
   const editing = !!proveedor;
   const [nombre, setNombre] = useState("");
   const [cuit, setCuit] = useState("");
@@ -412,6 +434,14 @@ function ProveedorForm({ open, proveedor, onClose }: { open: boolean; proveedor:
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!nombre.trim()) { setError("El nombre es requerido"); return; }
+    const ok = await confirm({
+      title: editing ? "¿Guardar cambios?" : "¿Crear proveedor?",
+      description: editing
+        ? `Se actualizarán los datos de ${nombre.trim()}.`
+        : `Se dará de alta al proveedor ${nombre.trim()}.`,
+      confirmLabel: editing ? "Guardar cambios" : "Crear proveedor",
+    });
+    if (!ok) return;
     setLoading(true); setError(null);
     try {
       const body = { nombre, cuit, email, telefono, direccion, rubro, notas, activo };
@@ -421,7 +451,7 @@ function ProveedorForm({ open, proveedor, onClose }: { open: boolean; proveedor:
         body: JSON.stringify(body),
       });
       const json = await res.json();
-      if (json.ok) onClose(true);
+      if (json.ok) { toast.success(editing ? `Proveedor ${nombre.trim()} actualizado` : `Proveedor ${nombre.trim()} creado`); onClose(true); }
       else setError(json.error);
     } catch {
       setError("No se pudo guardar");

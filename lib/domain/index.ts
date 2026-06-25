@@ -22,3 +22,4 @@ export * from "./calendar";
 export * from "./scoring";
 export * from "./comisiones";
 export * from "./proveedores";
+export * from "./logros";

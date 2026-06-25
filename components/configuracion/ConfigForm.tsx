@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { Settings, Check, Loader2, Percent, Plus, X, MessageSquare, Phone, Mail } from "lucide-react";
-import { useConfiguracion, type ConfiguracionFinanciera } from "@/lib/swr";
+import { useConfiguracion, type ConfiguracionFinanciera, type GamificacionConfig } from "@/lib/swr";
 import type { SimuladorConfig, CargosConfig, FrecuenciaOpcion } from "@/lib/domain";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Field, Input, Select } from "@/components/ui/field";
@@ -25,7 +25,7 @@ export function ConfigForm() {
   const [savingKey, setSavingKey] = useState<string | null>(null);
   const [savedKey, setSavedKey] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"motor" | "simulador" | "comunicaciones">("motor");
+  const [activeTab, setActiveTab] = useState<"motor" | "simulador" | "comunicaciones" | "gamificacion">("motor");
   const [mounted, setMounted]    = useState(false);
   useEffect(() => setMounted(true), []);
 
@@ -80,6 +80,13 @@ export function ConfigForm() {
   // Los bloques del simulador comparten la misma columna JSON: cada uno guarda todo el bloque.
   const saveSim = (key: string) => { if (form) save(key, { simulador: form.simulador }); };
 
+  // Gamificación: config con fallback a defaults + setter parcial (merge profundo de pesos/umbrales).
+  const g = form?.gamificacionConfig ?? defaultGamificacion();
+  const setGam = (patch: Partial<GamificacionConfig>) => {
+    setForm(prev => prev ? { ...prev, gamificacionConfig: { ...defaultGamificacion(), ...prev.gamificacionConfig, ...patch } } : prev);
+    touch();
+  };
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -109,6 +116,7 @@ export function ConfigForm() {
               { key: "motor",          label: "Motor" },
               { key: "simulador",      label: "Simulador" },
               { key: "comunicaciones", label: "Comunicaciones" },
+              { key: "gamificacion",   label: "Gamificación" },
             ] as const).map(tab => (
               <button
                 key={tab.key}
@@ -596,10 +604,80 @@ export function ConfigForm() {
           </Section>
           )}
 
+          {/* ─── Gamificación ─── */}
+          {activeTab === "gamificacion" && (
+          <Section
+            title="Gamificación (medallas y logros)"
+            desc="Cómo se calcula la medalla del vendedor: período, pesos de cada objetivo y umbrales de Oro/Plata/Bronce."
+            onSave={() => save("gamificacion", { gamificacionConfig: g } as Partial<ConfiguracionFinanciera>)}
+            saving={savingKey === "gamificacion"} saved={savedKey === "gamificacion"}
+          >
+            <div className="space-y-5">
+              {/* Habilitado + período */}
+              <div className="flex flex-wrap items-end justify-between gap-4">
+                <Field label="Período de evaluación" hint="Largo de cada meta/medalla">
+                  <Select value={g.periodo} onChange={e => setGam({ periodo: e.target.value as GamificacionConfig["periodo"] })}>
+                    <option value="mensual">Mensual</option>
+                    <option value="trimestral">Trimestral</option>
+                    <option value="semestral">Semestral</option>
+                  </Select>
+                </Field>
+                <label className="flex items-center gap-2 text-sm text-foreground">
+                  <Toggle checked={g.habilitado} onChange={(v) => setGam({ habilitado: v })} />
+                  Gamificación habilitada
+                </label>
+              </div>
+
+              <div className={g.habilitado ? "space-y-5" : "space-y-5 pointer-events-none opacity-40"}>
+                {/* Pesos */}
+                <div>
+                  <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2">Pesos del score (%)</p>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    {([
+                      ["monto", "Monto"], ["cantidad", "Cantidad"], ["cobranza", "Cobranza"], ["calidad", "Calidad (mora)"],
+                    ] as const).map(([k, label]) => (
+                      <Field key={k} label={label}>
+                        <Input type="number" min="0" step="1" value={g.pesos[k]}
+                          onChange={e => setGam({ pesos: { ...g.pesos, [k]: parseFloat(e.target.value) || 0 } })}
+                          className="font-mono tabular-nums text-center" />
+                      </Field>
+                    ))}
+                  </div>
+                  <p className="text-[11px] text-muted-foreground/60 mt-1">Se normalizan automáticamente. "Calidad" premia baja morosidad (0 = no influye).</p>
+                </div>
+
+                {/* Umbrales */}
+                <div>
+                  <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2">Umbrales de medalla (score 0–100)</p>
+                  <div className="grid grid-cols-3 gap-3">
+                    {([["oro", "🥇 Oro"], ["plata", "🥈 Plata"], ["bronce", "🥉 Bronce"]] as const).map(([k, label]) => (
+                      <Field key={k} label={label}>
+                        <Input type="number" min="0" max="100" step="1" value={g.umbrales[k]}
+                          onChange={e => setGam({ umbrales: { ...g.umbrales, [k]: parseFloat(e.target.value) || 0 } })}
+                          className="font-mono tabular-nums text-center" />
+                      </Field>
+                    ))}
+                  </div>
+                  <p className="text-[11px] text-muted-foreground/60 mt-1">Debe cumplirse Oro ≥ Plata ≥ Bronce.</p>
+                </div>
+              </div>
+            </div>
+          </Section>
+          )}
+
         </div>
       )}
     </div>
   );
+}
+
+function defaultGamificacion(): GamificacionConfig {
+  return {
+    habilitado: true,
+    periodo: "mensual",
+    pesos: { monto: 50, cantidad: 30, cobranza: 20, calidad: 0 },
+    umbrales: { oro: 100, plata: 85, bronce: 70 },
+  };
 }
 
 function CanalesBlock({ icon, title, enabled, onToggle, children, onSave, saving, saved }: {

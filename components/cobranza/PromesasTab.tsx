@@ -5,6 +5,8 @@ import useSWR, { mutate } from "swr";
 import { HandshakeIcon, CheckCircle2, XCircle, Clock, ExternalLink } from "lucide-react";
 import { formatMonto, formatFecha, formatCreditoNumero, nombreCompleto } from "@/lib/utils";
 import { StatusBadge } from "@/components/ui/StatusBadge";
+import { useConfirm } from "@/components/ui/confirm";
+import { useToast } from "@/components/ui/toast";
 import type { Role } from "@/lib/auth/roles";
 
 type Promesa = {
@@ -53,6 +55,8 @@ function diasRestantes(fechaStr: string | null): string {
 }
 
 export function PromesasTab({ role }: { role: Role }) {
+  const confirm = useConfirm();
+  const toast = useToast();
   const [estadoTab, setEstadoTab] = useState<EstadoTab>("pendiente");
   const [cambiando, setCambiando] = useState<string | null>(null);
 
@@ -62,14 +66,24 @@ export function PromesasTab({ role }: { role: Role }) {
   const puedeEditar = role === "admin" || role === "cobrador";
 
   async function cambiarEstado(id: string, nuevoEstado: string) {
+    const label = nuevoEstado === "cumplida" ? "cumplida" : "rota";
+    const ok = await confirm({
+      title: nuevoEstado === "cumplida" ? "¿Marcar promesa como cumplida?" : "¿Marcar promesa como rota?",
+      description: `La promesa de pago quedará marcada como ${label}.`,
+      confirmLabel: nuevoEstado === "cumplida" ? "Marcar cumplida" : "Marcar rota",
+      tone: nuevoEstado === "incumplida" ? "danger" : "default",
+    });
+    if (!ok) return;
     setCambiando(id);
     try {
-      await fetch(`/api/cobranza/promesas?id=${id}`, {
+      const res = await fetch(`/api/cobranza/promesas?id=${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ promesa_estado: nuevoEstado }),
       });
+      if (!res.ok) { toast.error("No se pudo actualizar la promesa"); return; }
       mutate(swrKey);
+      toast.success(nuevoEstado === "cumplida" ? "Promesa marcada como cumplida" : "Promesa marcada como rota");
     } finally {
       setCambiando(null);
     }

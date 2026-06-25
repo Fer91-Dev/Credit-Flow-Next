@@ -3,15 +3,18 @@
 import { useMemo, useState } from "react";
 import { mutate as globalMutate } from "swr";
 import {
-  UserCog, Plus, Users, DollarSign, Target, Pencil, Trash2, Mail, Phone, Percent,
+  UserCog, Plus, Users, DollarSign, Target, Pencil, Trash2, Mail, Phone, Percent, ArrowLeft, ChevronRight,
 } from "lucide-react";
 import { useVendedores, KEYS, type Vendedor } from "@/lib/swr";
+import { VendedorDetail } from "./VendedorDetail";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { KpiCard } from "@/components/ui/KpiCard";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field, Input, Select } from "@/components/ui/field";
+import { useConfirm } from "@/components/ui/confirm";
+import { useToast } from "@/components/ui/toast";
 
 function n0(x: number) {
   return new Intl.NumberFormat("es-AR", { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(x);
@@ -26,8 +29,11 @@ const ROL_META: Record<Vendedor["rol"], { label: string; variant: "primary" | "s
 
 export function PersonalView() {
   const { vendedores, isLoading, error, mutate } = useVendedores();
+  const confirm = useConfirm();
+  const toast = useToast();
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Vendedor | null>(null);
+  const [selected, setSelected] = useState<{ id: string; nombre: string } | null>(null);
 
   const totales = useMemo(() => {
     const activos = vendedores.filter(v => v.activo);
@@ -42,7 +48,6 @@ export function PersonalView() {
   const refrescar = () => { mutate(); globalMutate(KEYS.creditos); };
 
   const openNew = () => { setEditing(null); setFormOpen(true); };
-  const openEdit = (v: Vendedor) => { setEditing(v); setFormOpen(true); };
 
   const handleClose = (ok?: boolean) => {
     setFormOpen(false); setEditing(null);
@@ -50,10 +55,21 @@ export function PersonalView() {
   };
 
   const handleDelete = async (v: Vendedor) => {
-    if (!confirm(`¿Eliminar a ${v.nombre}? Los créditos vinculados quedarán sin vendedor.`)) return;
-    await fetch(`/api/vendedores/${v.id}`, { method: "DELETE" });
+    const ok = await confirm({
+      title: "¿Eliminar personal?",
+      description: `Se eliminará a ${v.nombre}. Los créditos vinculados quedarán sin vendedor.`,
+      confirmLabel: "Eliminar",
+      tone: "danger",
+    });
+    if (!ok) return;
+    const res = await fetch(`/api/vendedores/${v.id}`, { method: "DELETE" });
+    if (!res.ok) { toast.error("No se pudo eliminar"); return; }
+    if (selected?.id === v.id) setSelected(null);
     refrescar();
+    toast.success(`${v.nombre} eliminado`);
   };
+
+  const abrirFicha = (v: Vendedor) => setSelected({ id: v.id, nombre: v.nombre });
 
   const cta = (
     <button
@@ -63,6 +79,33 @@ export function PersonalView() {
       <Plus className="h-4 w-4" /> Nuevo personal
     </button>
   );
+
+  // ── Vista de ficha (empleado seleccionado) ──
+  if (selected) {
+    const volver = (
+      <button
+        onClick={() => setSelected(null)}
+        className="flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg border border-border text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors whitespace-nowrap"
+      >
+        <ArrowLeft className="h-4 w-4" /> Volver al personal
+      </button>
+    );
+    return (
+      <div className="space-y-6">
+        <PageHeader icon={UserCog} title="Personal" subtitle="Ficha del empleado" accent="primary" actions={volver} />
+        <div className="rounded-xl bg-card border border-border overflow-hidden">
+          <VendedorDetail
+            vendedorId={selected.id}
+            onChanged={refrescar}
+            onEliminar={() => {
+              const v = vendedores.find((x) => x.id === selected.id);
+              if (v) handleDelete(v);
+            }}
+          />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -115,7 +158,7 @@ export function PersonalView() {
                       const rol = ROL_META[v.rol];
                       const r = v.resumen;
                       return (
-                        <tr key={v.id} className={`hover:bg-muted/20 transition-colors ${idx % 2 === 1 ? "bg-muted/5" : ""} ${!v.activo ? "opacity-50" : ""}`}>
+                        <tr key={v.id} onClick={() => abrirFicha(v)} className={`cursor-pointer hover:bg-muted/20 transition-colors ${idx % 2 === 1 ? "bg-muted/5" : ""} ${!v.activo ? "opacity-50" : ""}`}>
                           <td className="px-4 py-3 border-b border-border/70">
                             <p className="font-medium text-foreground">{v.nombre}</p>
                             <div className="flex items-center gap-3 text-[11px] text-muted-foreground mt-0.5">
@@ -134,14 +177,15 @@ export function PersonalView() {
                           <td className="px-4 py-3 border-b border-border/70 min-w-[140px]">
                             <MetaBar vendido={r?.monto_vendido ?? 0} meta={v.meta_venta} avance={r?.avance_meta ?? 0} />
                           </td>
-                          <td className="px-4 py-3 pr-5 border-b border-border/70">
+                          <td className="px-4 py-3 pr-5 border-b border-border/70" onClick={(e) => e.stopPropagation()}>
                             <div className="flex items-center justify-end gap-1.5">
-                              <button onClick={() => openEdit(v)} title="Editar" className="flex items-center justify-center h-7 w-7 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors">
+                              <button onClick={() => abrirFicha(v)} title="Abrir ficha" className="flex items-center justify-center h-7 w-7 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors">
                                 <Pencil className="h-3.5 w-3.5" />
                               </button>
                               <button onClick={() => handleDelete(v)} title="Eliminar" className="flex items-center justify-center h-7 w-7 rounded-lg text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors">
                                 <Trash2 className="h-3.5 w-3.5" />
                               </button>
+                              <ChevronRight className="h-4 w-4 text-muted-foreground/40" />
                             </div>
                           </td>
                         </tr>
@@ -157,14 +201,14 @@ export function PersonalView() {
                   const rol = ROL_META[v.rol];
                   const r = v.resumen;
                   return (
-                    <div key={v.id} className={`rounded-xl bg-card border border-border p-4 space-y-3 ${!v.activo ? "opacity-50" : ""}`}>
+                    <div key={v.id} onClick={() => abrirFicha(v)} className={`rounded-xl bg-card border border-border p-4 space-y-3 cursor-pointer active:bg-muted/20 transition-colors ${!v.activo ? "opacity-50" : ""}`}>
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
                           <p className="font-medium text-foreground truncate">{v.nombre}</p>
                           <div className="mt-1"><StatusBadge label={rol.label} variant={rol.variant} /></div>
                         </div>
-                        <div className="flex gap-1.5 shrink-0">
-                          <button onClick={() => openEdit(v)} className="flex items-center justify-center h-9 w-9 rounded-lg border border-border text-muted-foreground"><Pencil className="h-4 w-4" /></button>
+                        <div className="flex gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
+                          <button onClick={() => abrirFicha(v)} className="flex items-center justify-center h-9 w-9 rounded-lg border border-border text-muted-foreground"><Pencil className="h-4 w-4" /></button>
                           <button onClick={() => handleDelete(v)} className="flex items-center justify-center h-9 w-9 rounded-lg border border-border text-destructive"><Trash2 className="h-4 w-4" /></button>
                         </div>
                       </div>
@@ -233,6 +277,8 @@ function PersonalForm({
   vendedor: Vendedor | null;
   onClose: (ok?: boolean) => void;
 }) {
+  const confirm = useConfirm();
+  const toast = useToast();
   const editing = !!vendedor;
   const [nombre, setNombre] = useState("");
   const [email, setEmail] = useState("");
@@ -262,6 +308,14 @@ function PersonalForm({
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!nombre.trim()) { setError("El nombre es requerido"); return; }
+    const ok = await confirm({
+      title: editing ? "¿Guardar cambios?" : "¿Crear personal?",
+      description: editing
+        ? `Se actualizarán los datos de ${nombre.trim()}.`
+        : `Se dará de alta a ${nombre.trim()}.`,
+      confirmLabel: editing ? "Guardar cambios" : "Crear",
+    });
+    if (!ok) return;
     setLoading(true); setError(null);
     try {
       const body = {
@@ -276,7 +330,7 @@ function PersonalForm({
         body: JSON.stringify(body),
       });
       const json = await res.json();
-      if (json.ok) onClose(true);
+      if (json.ok) { toast.success(editing ? `${nombre.trim()} actualizado` : `${nombre.trim()} creado`); onClose(true); }
       else setError(json.error);
     } catch {
       setError("No se pudo guardar");

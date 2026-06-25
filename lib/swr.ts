@@ -161,6 +161,14 @@ export interface ResumenVendedor {
   avance_meta: number;
 }
 
+/** Comisión avanzada por vendedor (Fase 2). null = % plano (comision_pct). */
+export interface ComisionConfig {
+  base_pct: number;
+  por_tipo?: { personal?: number; empresarial?: number; otro?: number };
+  tramos?: { desde: number; pct: number }[];
+  bonus_meta?: { tipo: "monto" | "porcentaje"; valor: number } | null;
+}
+
 export interface Vendedor {
   id: string;
   created_at: string;
@@ -171,6 +179,14 @@ export interface Vendedor {
   comision_pct: number;
   meta_venta: number;
   activo: boolean;
+  // Datos laborales / parametrización (Fase 1)
+  documento?: string | null;
+  fecha_ingreso?: string | null;
+  direccion?: string | null;
+  zona?: string | null;
+  notas?: string | null;
+  limite_aprobacion?: number | null;
+  comision_config?: ComisionConfig | null;
   resumen?: ResumenVendedor;
 }
 
@@ -187,12 +203,35 @@ export interface Usuario {
   created_at: string;
 }
 
+/** Meta de período de un vendedor con su cumplimiento derivado (Fase 3). */
+export interface MetaVendedor {
+  id: string;
+  created_at: string;
+  vendedor_id: string;
+  periodo: string;
+  fecha_desde: string;
+  fecha_hasta: string;
+  meta_monto: number;
+  meta_cantidad: number;
+  meta_cobranza: number;
+  estado: "vigente" | "cerrada";
+  cumplimiento: {
+    monto: number;
+    cantidad: number;
+    cobrado: number;
+    avance_monto: number;
+    avance_cantidad: number;
+    avance_cobranza: number;
+  };
+}
+
 export interface VendedorDetalle extends Vendedor {
   resumen: ResumenVendedor;
   creditos: Array<{
     id: string;
     numero: number | null;
     monto_original: number;
+    tipo_credito: string;
     estado: string;
     created_at: string;
     cliente: { nombre: string; apellido?: string | null };
@@ -433,6 +472,14 @@ export interface EmailConfig {
   provider?: string;
 }
 
+export type PeriodoGamificacion = "mensual" | "trimestral" | "semestral";
+export interface GamificacionConfig {
+  habilitado: boolean;
+  periodo: PeriodoGamificacion;
+  pesos: { monto: number; cantidad: number; cobranza: number; calidad: number };
+  umbrales: { oro: number; plata: number; bronce: number };
+}
+
 export interface ConfiguracionFinanciera {
   convencionTasa: "nominal_anual" | "efectiva_anual" | "mensual";
   sistemaAmortizacion: "frances";
@@ -447,6 +494,7 @@ export interface ConfiguracionFinanciera {
   whatsappConfig?: WhatsappConfig | null;
   smsConfig?: SmsConfig | null;
   emailConfig?: EmailConfig | null;
+  gamificacionConfig?: GamificacionConfig | null;
 }
 
 export interface Pago {
@@ -598,6 +646,79 @@ export function usePagos() {
 export function useVendedores() {
   const { data, error, isLoading, mutate } = useSWR<{ vendedores: Vendedor[] }>(KEYS.vendedores);
   return { vendedores: data?.vendedores ?? [], error, isLoading, mutate };
+}
+
+export function useVendedorDetalle(id: string | null) {
+  const { data, error, isLoading, mutate } = useSWR<VendedorDetalle>(
+    id ? `/api/vendedores/${id}` : null,
+  );
+  return { vendedor: data, error, isLoading, mutate };
+}
+
+export function useMetasVendedor(id: string | null) {
+  const { data, error, isLoading, mutate } = useSWR<{ metas: MetaVendedor[] }>(
+    id ? `/api/vendedores/${id}/metas` : null,
+  );
+  return { metas: data?.metas ?? [], error, isLoading, mutate };
+}
+
+/** Parametrización del usuario logueado como vendedor (su propio Home). */
+export interface MiPerfilVendedor {
+  nombre: string;
+  rol: string;
+  zona: string | null;
+  comision_pct: number;
+  comision_config: ComisionConfig | null;
+  limite_aprobacion: number | null;
+  resumen: ResumenVendedor;
+  meta_vigente: {
+    periodo: string;
+    meta_monto: number;
+    meta_cantidad: number;
+    meta_cobranza: number;
+    cumplimiento: MetaVendedor["cumplimiento"];
+  } | null;
+}
+
+export function useMiPerfilVendedor() {
+  const { data, error, isLoading } = useSWR<MiPerfilVendedor | null>("/api/me/vendedor");
+  return { perfil: data ?? null, error, isLoading };
+}
+
+// ── Logros / medallas del vendedor (gamificación) ────────────────────────────
+export type Medalla = "oro" | "plata" | "bronce" | null;
+export type Rango = "novato" | "bronce" | "plata" | "oro" | "platino" | "diamante";
+
+export interface LogroPeriodo {
+  periodo: string;
+  estado: string;
+  score: number | null;
+  medalla: Medalla;
+  meta_monto: number;
+  meta_cantidad: number;
+  meta_cobranza: number;
+  cumplimiento: MetaVendedor["cumplimiento"];
+}
+
+export interface LogrosVendedor {
+  nombre: string;
+  puntos: number;
+  rango: { rango: Rango; label: string; puntos: number; siguiente: { label: string; faltan: number; min: number } | null };
+  vigente: LogroPeriodo | null;
+  historial: LogroPeriodo[];
+  insignias: { en_racha: number; cartera_sana: boolean; top_del_mes: boolean; rompe_metas: boolean; morosidad: number };
+}
+
+export function useLogrosVendedor(id: string | null) {
+  const { data, error, isLoading, mutate } = useSWR<LogrosVendedor | null>(
+    id ? `/api/vendedores/${id}/logros` : null,
+  );
+  return { logros: data ?? null, error, isLoading, mutate };
+}
+
+export function useMisLogros() {
+  const { data, error, isLoading } = useSWR<LogrosVendedor | null>("/api/me/logros");
+  return { logros: data ?? null, error, isLoading };
 }
 
 export function useUsuarios() {

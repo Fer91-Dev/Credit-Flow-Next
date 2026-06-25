@@ -10,11 +10,6 @@ import { StatusBadge, type BadgeVariant } from "@/components/ui/StatusBadge";
 import { Stat } from "@/components/ui/Stat";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatCreditoNumero, formatFecha, nombreCompleto } from "@/lib/utils";
-import {
-  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
-  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader,
-  AlertDialogTitle, AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
 
 function n2(x: number) {
   return new Intl.NumberFormat("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(x);
@@ -139,27 +134,12 @@ export function ClienteDetail({
                     </button>
                   )}
                   {onEliminar && (
-                    <AlertDialog>
-                      <AlertDialogTrigger asChild>
-                        <button className="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-xs text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors">
-                          <Trash2 className="h-3.5 w-3.5" /> Eliminar
-                        </button>
-                      </AlertDialogTrigger>
-                      <AlertDialogContent>
-                        <AlertDialogHeader>
-                          <AlertDialogTitle>¿Eliminar cliente?</AlertDialogTitle>
-                          <AlertDialogDescription>
-                            Se marcará a <strong>{nombreCompleto(cliente)}</strong> como inactivo. Sus créditos asociados se conservan.
-                          </AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                          <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                          <AlertDialogAction onClick={onEliminar} className="bg-destructive text-white hover:bg-destructive/90">
-                            Eliminar
-                          </AlertDialogAction>
-                        </AlertDialogFooter>
-                      </AlertDialogContent>
-                    </AlertDialog>
+                    <button
+                      onClick={onEliminar}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-xs text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" /> Eliminar
+                    </button>
                   )}
                 </div>
               )}

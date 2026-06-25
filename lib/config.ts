@@ -7,12 +7,14 @@ import {
   CONFIG_DEFAULT,
   resolverConfig,
   resolverSimulador,
+  resolverGamificacion,
   type ConfiguracionFinanciera,
   type ComponenteDeuda,
   type ConvencionTasa,
   type BaseMora,
   type SistemaAmortizacion,
   type SimuladorConfig,
+  type GamificacionConfig,
 } from "@/lib/domain";
 import type { Prisma } from "@prisma/client";
 
@@ -101,4 +103,26 @@ export async function guardarComunicacionConfig(
     create: { tenant_id: tenantId, ...(patchJson as object) } as Prisma.configuracionesUncheckedCreateInput,
     update: patchJson as Prisma.configuracionesUncheckedUpdateInput,
   });
+}
+
+// ─── Gamificación (medallas/logros) ─────────────────────────────────────────
+
+/** Config de gamificación del tenant (mezclada con defaults). */
+export async function getGamificacionConfig(tenantId: string): Promise<GamificacionConfig> {
+  const row = await prisma.configuraciones.findUnique({
+    where: { tenant_id: tenantId },
+    select: { gamificacion_config: true },
+  });
+  return resolverGamificacion(row?.gamificacion_config ?? null);
+}
+
+/** Persiste (upsert) la config de gamificación. */
+export async function guardarGamificacionConfig(tenantId: string, config: GamificacionConfig): Promise<GamificacionConfig> {
+  const value = config as unknown as Prisma.InputJsonValue;
+  await prisma.configuraciones.upsert({
+    where:  { tenant_id: tenantId },
+    create: { tenant_id: tenantId, gamificacion_config: value },
+    update: { gamificacion_config: value },
+  });
+  return config;
 }

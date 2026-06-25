@@ -12,6 +12,8 @@ import { formatFecha, nombreCompleto } from "@/lib/utils";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { SummaryStrip } from "@/components/ui/SummaryStrip";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useConfirm } from "@/components/ui/confirm";
+import { useToast } from "@/components/ui/toast";
 
 function n0(x: number) {
   return new Intl.NumberFormat("es-AR", { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(x);
@@ -95,18 +97,28 @@ function CampanaCard({ campana: c, onOpen }: { campana: CampanaCobranza; onOpen:
 function CampanaDetalle({ id, onBack }: { id: string; onBack: () => void }) {
   const { campana, isLoading, mutate } = useCampana(id);
   const { mutate: globalMutate } = useSWRConfig();
+  const confirm = useConfirm();
+  const toast = useToast();
   const [busy, setBusy] = useState(false);
   const [abiertos, setAbiertos] = useState<Set<string>>(new Set());
 
   const refresh = () => { mutate(); globalMutate(KEYS.campanas); };
 
   const cambiarEstado = async (estado: EstadoCampana) => {
+    const ok = await confirm({
+      title: estado === "activa" ? "¿Activar campaña?" : estado === "finalizada" ? "¿Finalizar campaña?" : "¿Cambiar estado?",
+      description: `La campaña pasará al estado "${ESTADO_META[estado]?.label ?? estado}".`,
+      confirmLabel: "Confirmar",
+    });
+    if (!ok) return;
     setBusy(true);
     try {
-      await fetch(`/api/cobranza/campanas/${id}`, {
+      const res = await fetch(`/api/cobranza/campanas/${id}`, {
         method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ estado }),
       });
+      if (!res.ok) { toast.error("No se pudo cambiar el estado"); return; }
       refresh();
+      toast.success(`Campaña ${ESTADO_META[estado]?.label.toLowerCase() ?? "actualizada"}`);
     } finally { setBusy(false); }
   };
 
