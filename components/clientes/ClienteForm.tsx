@@ -73,12 +73,44 @@ export function ClienteForm({ clienteId, initialDocumento, onClose }: ClienteFor
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [dniDup, setDniDup] = useState<{ nombre: string } | null>(null);  // otro cliente con ese DNI
+  const [cuitDup, setCuitDup] = useState<{ nombre: string } | null>(null); // otro cliente con ese CUIT
   const confirm = useConfirm();
   const toast = useToast();
 
   useEffect(() => {
     if (clienteId) fetchCliente();
   }, [clienteId]);
+
+  // Chequeo en vivo (debounce): prioridad DNI; si el DNI ya existe se diferencia por
+  // CUIT. Avisa al instante para no cargar datos de un DNI repetido sin CUIT.
+  useEffect(() => {
+    const dni = formData.documento.trim();
+    const cuit = formData.cuit_cuil.trim();
+    const dniValido = RE.dni.test(dni);
+    const cuitValido = RE.cuit.test(cuit);
+    if (!dniValido && !cuitValido) { setDniDup(null); setCuitDup(null); return; }
+    const ctrl = new AbortController();
+    const t = setTimeout(async () => {
+      try {
+        const params = new URLSearchParams();
+        if (dniValido) params.set("documento", dni);
+        if (cuitValido) params.set("cuit", cuit);
+        if (clienteId) params.set("excluir", clienteId);
+        const res = await fetch(`/api/clientes/existe?${params.toString()}`, { signal: ctrl.signal });
+        const json = await res.json();
+        if (json.ok) {
+          setDniDup(dniValido && json.data.dni.existe ? json.data.dni.cliente : null);
+          setCuitDup(cuitValido && json.data.cuit.existe ? json.data.cuit.cliente : null);
+        }
+      } catch { /* abort o red: ignorar */ }
+    }, 400);
+    return () => { clearTimeout(t); ctrl.abort(); };
+  }, [formData.documento, formData.cuit_cuil, clienteId]);
+
+  // DNI repetido + sin CUIT válido → hay que diferenciar con el CUIT.
+  const necesitaCuit = !!dniDup && !RE.cuit.test(formData.cuit_cuil.trim());
+  const bloqueadoDup = !!cuitDup || necesitaCuit;
 
   const fetchCliente = async () => {
     try {
@@ -158,6 +190,8 @@ export function ClienteForm({ clienteId, initialDocumento, onClose }: ClienteFor
 
   const handleSubmit = async (ev: React.FormEvent) => {
     ev.preventDefault();
+    if (cuitDup) { setError(`Ya existe un cliente con el CUIT ${formData.cuit_cuil.trim()}: ${cuitDup.nombre}.`); return; }
+    if (necesitaCuit) { setError(`Ya existe un cliente con el DNI ${formData.documento.trim()}: ${dniDup?.nombre}. Cargá el CUIL para diferenciarla.`); return; }
     const errs = validar();
     if (Object.keys(errs).length > 0) {
       setErrors(errs);
@@ -242,13 +276,23 @@ export function ClienteForm({ clienteId, initialDocumento, onClose }: ClienteFor
             <Input name="apellido" type="text" placeholder="Ej: Rodríguez" value={formData.apellido}
               onChange={set("apellido")} className={errCls("apellido")} />
           </Field>
-          <Field label="DNI" required error={errors.documento} hint="Solo números, sin puntos">
+          <Field
+            label="DNI"
+            required
+            error={errors.documento || (necesitaCuit ? `Ya existe un cliente con este DNI: ${dniDup?.nombre}. Si es OTRA persona, cargá el CUIL para diferenciarla.` : undefined)}
+            hint={dniDup && !necesitaCuit ? "DNI repetido — diferenciado por el CUIT" : "Solo números, sin puntos"}
+          >
             <Input name="documento" type="text" inputMode="numeric" placeholder="Ej: 36049884" value={formData.documento}
-              onChange={setDni} className={cnMono(errCls("documento"))} />
+              onChange={setDni} className={cnMono(necesitaCuit ? "border-destructive focus:border-destructive focus:ring-destructive/20" : errCls("documento"))} />
           </Field>
-          <Field label="CUIT / CUIL" error={errors.cuit_cuil}>
+          <Field
+            label={necesitaCuit ? "CUIL / CUIT (requerido)" : "CUIT / CUIL"}
+            required={necesitaCuit}
+            error={errors.cuit_cuil || (cuitDup ? `Ya existe un cliente con este CUIT: ${cuitDup.nombre}.` : undefined)}
+            hint={necesitaCuit ? "Cargalo para diferenciar la persona del DNI repetido" : undefined}
+          >
             <Input name="cuit_cuil" type="text" inputMode="numeric" placeholder="Ej: 20-36049884-3" value={formData.cuit_cuil}
-              onChange={setCuit} className={cnMono(errCls("cuit_cuil"))} />
+              onChange={setCuit} className={cnMono((cuitDup || necesitaCuit) ? "border-destructive focus:border-destructive focus:ring-destructive/20" : errCls("cuit_cuil"))} />
           </Field>
           <Field label="Fecha de nacimiento">
             <Input name="fecha_nacimiento" type="date" value={formData.fecha_nacimiento} onChange={set("fecha_nacimiento")} />
@@ -344,6 +388,7 @@ export function ClienteForm({ clienteId, initialDocumento, onClose }: ClienteFor
         <FormActions
           onCancel={() => onClose(false)}
           loading={loading}
+          disabled={bloqueadoDup}
           submitLabel={clienteId ? "Actualizar cliente" : "Crear cliente"}
         />
       </div>

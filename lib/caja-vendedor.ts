@@ -1,9 +1,19 @@
 import { prisma } from "@/lib/prisma";
 import { withTenant } from "@/app/lib/db";
+import { ApiError } from "@/lib/auth";
 import { registrarAuditoria } from "@/lib/audit";
 import { saldosPorCuenta, totalesCaja, round2, CUENTA_LABEL, etiquetaCaja, type Cuenta } from "@/lib/domain";
 import { siguienteNumeroComprobante, formatComprobante, type SerieComprobante } from "@/lib/comprobantes";
 import { nombreCompleto } from "@/lib/utils";
+
+/** Saldo de una cuenta de una caja (vendedor o principal con vendedorId = null). */
+async function saldoCuenta(tenantId: string, vendedorId: string | null, cuenta: Cuenta): Promise<number> {
+  const agg = await prisma.movimientos_caja.aggregate({
+    where: { ...withTenant(tenantId), vendedor_id: vendedorId, cuenta },
+    _sum: { monto: true },
+  });
+  return round2(agg._sum.monto ?? 0);
+}
 
 /**
  * Caja personal de un vendedor: todos los movimientos cuyo `vendedor_id` apunta a él.
@@ -72,6 +82,19 @@ export async function registrarMovimientoCajaVendedor(opts: {
   const abs = round2(Math.abs(monto));
   const signoVendedor = accion === "entrega" ? abs : -abs; // entrega ingresa al vendedor; rendición egresa
 
+  // No se puede sacar más de lo que hay en la cuenta de origen (no quedan negativos).
+  if (accion === "rendicion") {
+    const disp = await saldoCuenta(tenantId, vendedorId, cuentaVendedor);
+    if (abs > disp) {
+      throw new ApiError(`No podés rendir más de lo que tenés en ${CUENTA_LABEL[cuentaVendedor]} (disponible $${disp.toLocaleString("es-AR")}).`, "INSUFFICIENT_FUNDS", 400);
+    }
+  } else {
+    const disp = await saldoCuenta(tenantId, null, cuentaPrincipal);
+    if (abs > disp) {
+      throw new ApiError(`La caja principal no tiene saldo suficiente en ${CUENTA_LABEL[cuentaPrincipal]} (disponible $${disp.toLocaleString("es-AR")}).`, "INSUFFICIENT_FUNDS", 400);
+    }
+  }
+
   // Descripciones detalladas con el flujo origen → destino (una por cada pata).
   const vend = await prisma.vendedores.findFirst({ where: { ...withTenant(tenantId), id: vendedorId }, select: { nombre: true } });
   const nombre = vend?.nombre ?? "vendedor";
@@ -96,10 +119,9 @@ export async function registrarMovimientoCajaVendedor(opts: {
     origenPrincipal = cajaVendedorLbl; destinoPrincipal = cajaPrincipalLbl;
   }
 
-  // Las 2 patas (vendedor + principal) comparten el mismo N° de comprobante.
+  // Cada pata (vendedor + principal) es un comprobante propio con su número único.
   const serie: SerieComprobante = accion === "entrega" ? "ENT" : "REN";
   const movVendedor = await prisma.$transaction(async (tx) => {
-    const numero = await siguienteNumeroComprobante(tx, tenantId, serie);
     const mv = await tx.movimientos_caja.create({
       data: {
         ...withTenant(tenantId),
@@ -110,7 +132,7 @@ export async function registrarMovimientoCajaVendedor(opts: {
         origen: origenVendedor,
         destino: destinoVendedor,
         serie,
-        numero,
+        numero: await siguienteNumeroComprobante(tx, tenantId, serie),
         descripcion: descVendedor,
       },
     });
@@ -124,7 +146,7 @@ export async function registrarMovimientoCajaVendedor(opts: {
         origen: origenPrincipal,
         destino: destinoPrincipal,
         serie,
-        numero,
+        numero: await siguienteNumeroComprobante(tx, tenantId, serie),
         descripcion: descPrincipal,
       },
     });
@@ -158,6 +180,11 @@ export async function registrarGastoCajaVendedor(opts: {
   const abs = round2(Math.abs(opts.monto));
   const motivo = opts.descripcion.trim();
 
+  const disp = await saldoCuenta(tenantId, vendedorId, cuenta);
+  if (abs > disp) {
+    throw new ApiError(`No podés gastar más de lo que tenés en ${CUENTA_LABEL[cuenta]} (disponible $${disp.toLocaleString("es-AR")}).`, "INSUFFICIENT_FUNDS", 400);
+  }
+
   const mov = await prisma.$transaction(async (tx) => {
     const numero = await siguienteNumeroComprobante(tx, tenantId, "GAS");
     return tx.movimientos_caja.create({
@@ -186,4 +213,76 @@ export async function registrarGastoCajaVendedor(opts: {
   });
 
   return mov;
+}
+
+/**
+ * Transferencia INTERNA entre cuentas de la caja del vendedor (efectivo/banco/dólares).
+ * No afecta el total de su caja; solo mueve saldo de una cuenta a otra. Dos filas
+ * (egreso/ingreso), cada una con su comprobante TRF.
+ */
+export async function registrarTransferenciaCajaVendedor(opts: {
+  tenantId: string;
+  vendedorId: string;
+  origen: Cuenta;
+  destino: Cuenta;
+  monto: number;
+  descripcion?: string;
+}) {
+  const { tenantId, vendedorId, origen, destino, descripcion } = opts;
+  const abs = round2(Math.abs(opts.monto));
+  if (origen === destino) {
+    throw new ApiError("La cuenta de origen y destino deben ser distintas", "INVALID_INPUT", 400);
+  }
+  const disp = await saldoCuenta(tenantId, vendedorId, origen);
+  if (abs > disp) {
+    throw new ApiError(`No podés transferir más de lo que tenés en ${CUENTA_LABEL[origen]} (disponible $${disp.toLocaleString("es-AR")}).`, "INSUFFICIENT_FUNDS", 400);
+  }
+
+  const note = descripcion?.trim();
+  const glosa = `Transferencia ${CUENTA_LABEL[origen]} → ${CUENTA_LABEL[destino]}${note ? ` · ${note}` : ""}`;
+  const origenLbl = etiquetaCaja(true, origen);
+  const destinoLbl = etiquetaCaja(true, destino);
+
+  const movSalida = await prisma.$transaction(async (tx) => {
+    const s = await tx.movimientos_caja.create({
+      data: {
+        ...withTenant(tenantId),
+        tipo: "transferencia",
+        monto: -abs,
+        cuenta: origen,
+        vendedor_id: vendedorId,
+        origen: origenLbl,
+        destino: destinoLbl,
+        serie: "TRF",
+        numero: await siguienteNumeroComprobante(tx, tenantId, "TRF"),
+        descripcion: glosa,
+      },
+    });
+    await tx.movimientos_caja.create({
+      data: {
+        ...withTenant(tenantId),
+        tipo: "transferencia",
+        monto: abs,
+        cuenta: destino,
+        vendedor_id: vendedorId,
+        origen: origenLbl,
+        destino: destinoLbl,
+        serie: "TRF",
+        numero: await siguienteNumeroComprobante(tx, tenantId, "TRF"),
+        descripcion: glosa,
+      },
+    });
+    return s;
+  });
+
+  await registrarAuditoria({
+    tenantId,
+    entidad: "caja",
+    entidadId: movSalida.id,
+    accion: "crear",
+    descripcion: `Transferencia interna de $${abs.toLocaleString("es-AR")} ${CUENTA_LABEL[origen]} → ${CUENTA_LABEL[destino]} — vendedor ${vendedorId}`,
+    meta: { monto: abs, tipo: "transferencia", origen, destino, vendedor_id: vendedorId },
+  });
+
+  return movSalida;
 }

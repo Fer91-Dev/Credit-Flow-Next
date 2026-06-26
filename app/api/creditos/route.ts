@@ -13,6 +13,9 @@ import {
   planACuotas,
   estadoCoherente,
   etiquetaCaja,
+  esCuentaValida,
+  CUENTA_LABEL,
+  type Cuenta,
   type FrecuenciaDef,
 } from "@/lib/domain";
 import { siguienteNumeroComprobante } from "@/lib/comprobantes";
@@ -189,6 +192,9 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     vendedorId = vendedor.id;
   }
 
+  // Cuenta de desembolso elegida (efectivo | banco [transferencia] | dolares).
+  const cuentaDesembolso: Cuenta = esCuentaValida(body.cuenta_desembolso) ? body.cuenta_desembolso : "efectivo";
+
   // Límite de otorgamiento (autoritativo): un vendedor no puede otorgar por encima
   // de su tope configurado sin autorización de un superior. El admin no tiene tope.
   if (role === "vendedor" && vendedorId) {
@@ -205,17 +211,17 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
       );
     }
 
-    // Fondos disponibles (autoritativo): el desembolso sale de la caja EFECTIVO del
-    // vendedor; no puede prestar más de lo que tiene. Si no le alcanza, debe pedir
-    // una entrega al administrador.
-    const saldoEfectivo = await prisma.movimientos_caja.aggregate({
-      where: { ...withTenant(tenantId), vendedor_id: vendedorId, cuenta: "efectivo" },
+    // Fondos disponibles (autoritativo): el desembolso sale de la cuenta elegida
+    // (efectivo/banco/dólares) de la caja del vendedor; no puede prestar más de lo
+    // que tiene en esa cuenta. Si no le alcanza, debe pedir una entrega al admin.
+    const saldoCuenta = await prisma.movimientos_caja.aggregate({
+      where: { ...withTenant(tenantId), vendedor_id: vendedorId, cuenta: cuentaDesembolso },
       _sum: { monto: true },
     });
-    const disponible = Math.round((saldoEfectivo._sum.monto ?? 0) * 100) / 100;
+    const disponible = Math.round((saldoCuenta._sum.monto ?? 0) * 100) / 100;
     if (body.monto_original > disponible) {
       return errorResponse(
-        `No tenés saldo suficiente en tu caja de efectivo. Disponible: $${disponible.toLocaleString("es-AR")} — necesitás $${Number(body.monto_original).toLocaleString("es-AR")}. Pedí una entrega al administrador para poder otorgar.`,
+        `No tenés saldo suficiente en tu caja de ${CUENTA_LABEL[cuentaDesembolso]}. Disponible: $${disponible.toLocaleString("es-AR")} — necesitás $${Number(body.monto_original).toLocaleString("es-AR")}. Pedí una entrega al administrador para poder otorgar.`,
         "INSUFFICIENT_FUNDS",
         403,
       );
@@ -332,10 +338,10 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
         fecha: fechaInicio,
         tipo: "desembolso",
         monto: -Math.abs(c.monto_original),
-        cuenta: "efectivo", // el desembolso sale del efectivo (coincide con el control de fondos del vendedor)
+        cuenta: cuentaDesembolso, // el desembolso sale de la cuenta elegida (coincide con el control de fondos)
         credito_id: c.id,
         vendedor_id: vendedorId, // sale de la caja personal del vendedor que otorga (null = caja principal)
-        origen: etiquetaCaja(!!vendedorId, "efectivo"),
+        origen: etiquetaCaja(!!vendedorId, cuentaDesembolso),
         destino: nombreCompleto(cliente),
         serie: "DES",
         numero: numComp,

@@ -10,7 +10,7 @@ import {
   AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogFooter,
   AlertDialogTitle, AlertDialogDescription, AlertDialogCancel,
 } from "@/components/ui/alert-dialog";
-import { useConfiguracion, useMiPerfilVendedor, useMiCaja } from "@/lib/swr";
+import { useConfiguracion, useMiPerfilVendedor, useMiCaja, type CuentaCaja } from "@/lib/swr";
 import { useConfirm } from "@/components/ui/confirm";
 import { useToast } from "@/components/ui/toast";
 import { formatNumero, parseMontoInput, maskMontoInput, numeroAInput, formatFecha, formatMonto, formatCreditoNumero, nombreCompleto } from "@/lib/utils";
@@ -25,6 +25,12 @@ import {
   type ConvencionTasa,
   type PlanAmortizacion,
 } from "@/lib/domain";
+
+const CUENTA_DESEMBOLSO_LABEL: Record<CuentaCaja, string> = {
+  efectivo: "Efectivo",
+  banco: "Transferencia (Banco)",
+  dolares: "Dólares",
+};
 
 interface Cliente { id: string; nombre: string; apellido?: string | null; documento?: string | null }
 
@@ -81,6 +87,7 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
     monto_original: "", tasa: "", plazo_meses: "",
     frecuencia: "mensual" as Frecuencia,
     vendedor_id: "",
+    cuenta_desembolso: "efectivo" as CuentaCaja,
   });
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [vendedores, setVendedores] = useState<{ id: string; nombre: string }[]>([]);
@@ -148,16 +155,21 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
           tasa: String(tasa), plazo_meses: String(plazo_meses),
           frecuencia: (frecuencia ?? "mensual") as Frecuencia,
           vendedor_id: vendedor_id ?? "",
+          cuenta_desembolso: "efectivo",
         });
       }
     } catch { setError("Error al cargar crédito"); }
   };
 
-  const set = (field: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
+  const set = (field: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    setError(null); // el aviso de validación se limpia al editar
     setFormData(p => ({ ...p, [field]: e.target.value }));
+  };
 
-  const setMonto = (e: React.ChangeEvent<HTMLInputElement>) =>
+  const setMonto = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setError(null);
     setFormData(p => ({ ...p, monto_original: formatMontoInput(e.target.value) }));
+  };
 
   /** Valida los datos del crédito. Todos los campos son obligatorios. */
   const validar = (): string | null => {
@@ -171,9 +183,9 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
     // Límite de otorgamiento del vendedor (al otorgar, no en edición). El admin no tiene tope.
     if (!creditoId && perfil?.limite_aprobacion != null && monto > perfil.limite_aprobacion)
       return `El capital supera tu límite de otorgamiento ($${n0(perfil.limite_aprobacion)}). Requiere autorización de un administrador.`;
-    // Fondos disponibles en la caja del vendedor (el desembolso sale de su efectivo).
-    if (!creditoId && miCaja && monto > (miCaja.saldos_por_cuenta.efectivo ?? 0))
-      return `No tenés saldo suficiente en tu caja de efectivo ($${n0(miCaja.saldos_por_cuenta.efectivo ?? 0)}). Pedí una entrega al administrador para poder otorgar.`;
+    // Fondos disponibles en la cuenta de desembolso elegida (efectivo/banco/dólares).
+    if (!creditoId && miCaja && monto > (miCaja.saldos_por_cuenta[formData.cuenta_desembolso] ?? 0))
+      return `No tenés saldo suficiente en tu caja de ${CUENTA_DESEMBOLSO_LABEL[formData.cuenta_desembolso]} ($${n0(miCaja.saldos_por_cuenta[formData.cuenta_desembolso] ?? 0)}). Pedí una entrega al administrador o cambiá la forma de desembolso.`;
     if (!formData.frecuencia) return "Seleccioná la frecuencia";
     const n = parseInt(formData.plazo_meses);
     if (isNaN(n) || n < 1) return "Indicá el número de cuotas";
@@ -218,6 +230,7 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
         plazo_meses: parseInt(formData.plazo_meses),
         frecuencia: formData.frecuencia,
         vendedor_id: formData.vendedor_id || null,
+        cuenta_desembolso: formData.cuenta_desembolso,
       };
       const res = await fetch(creditoId ? `/api/creditos/${creditoId}` : "/api/creditos", {
         method: creditoId ? "PATCH" : "POST",
@@ -273,6 +286,12 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
   }, [sim, convencion, simCfg]);
 
   const montoNum = parseMonto(sim.monto);
+
+  // Aviso reactivo de fondos: depende del monto INGRESADO y de la cuenta elegida.
+  const montoIngresado = parseMonto(formData.monto_original);
+  const dispDesembolso = miCaja ? (miCaja.saldos_por_cuenta[formData.cuenta_desembolso] ?? 0) : null;
+  const fondosInsuficientes = !creditoId && dispDesembolso != null && montoIngresado > dispDesembolso;
+
   const tasaEA = useMemo(() => {
     const tasa = parseFloat(sim.tasa) || 0;
     if (tasa <= 0) return 0;
@@ -449,6 +468,24 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
             </div>
           </Field>
 
+          {/* Forma de desembolso → valida fondos contra esa cuenta de la caja del vendedor */}
+          <Field
+            label="Forma de desembolso"
+            required
+            hint={miCaja ? `Disponible en ${CUENTA_DESEMBOLSO_LABEL[formData.cuenta_desembolso]}: $${n0(miCaja.saldos_por_cuenta[formData.cuenta_desembolso] ?? 0)}` : "Cuenta de la que sale el dinero prestado"}
+          >
+            <Select name="cuenta_desembolso" value={formData.cuenta_desembolso} onChange={set("cuenta_desembolso")} required>
+              <option value="efectivo">Efectivo</option>
+              <option value="banco">Transferencia (Banco)</option>
+              <option value="dolares">Dólares</option>
+            </Select>
+          </Field>
+          {fondosInsuficientes && (
+            <p className="text-xs text-destructive">
+              El capital (${n0(montoIngresado)}) supera tu saldo en {CUENTA_DESEMBOLSO_LABEL[formData.cuenta_desembolso]} (${n0(dispDesembolso ?? 0)}). Pedí una entrega al administrador o cambiá la forma de desembolso.
+            </p>
+          )}
+
           {/* Frecuencia (ancha) · Cuotas (chica) · Tasa (chica) — tamaño según el valor */}
           <div className="grid grid-cols-4 gap-2.5">
             <div className="col-span-2">
@@ -505,7 +542,8 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
             Cancelar
           </button>
           <button
-            type="submit" disabled={loading}
+            type="submit" disabled={loading || fondosInsuficientes}
+            title={fondosInsuficientes ? "Saldo insuficiente en la cuenta de desembolso" : undefined}
             className="px-5 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 disabled:opacity-50 transition-opacity"
           >
             {loading ? "Guardando..." : creditoId ? "Actualizar" : "Otorgar crédito"}

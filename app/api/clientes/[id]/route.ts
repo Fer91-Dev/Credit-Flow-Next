@@ -4,6 +4,7 @@ import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { registrarAuditoria } from "@/lib/audit";
 import { nombreCompleto } from "@/lib/utils";
+import { normalizarCuit, validarDuplicadoCliente } from "@/lib/clientes-validacion";
 import {
   cuotaMensualFrancesa,
   tasaPeriodicaSegunConvencion,
@@ -211,6 +212,13 @@ export const PATCH = withErrorHandler(async (req: NextRequest, { params }: Route
   if (Object.keys(updateData).length === 0) {
     return errorResponse("No hay campos para actualizar", "INVALID_INPUT", 400);
   }
+
+  // Normalizar y validar unicidad (DNI prioritario; CUIT diferencia DNI repetidos).
+  if ("cuit_cuil" in updateData) updateData.cuit_cuil = normalizarCuit(updateData.cuit_cuil);
+  const docFinal = ("documento" in updateData ? updateData.documento : existing.documento) as string | null;
+  const cuitFinal = ("cuit_cuil" in updateData ? updateData.cuit_cuil : existing.cuit_cuil) as string | null;
+  const dupError = await validarDuplicadoCliente(tenantId, docFinal, cuitFinal, id);
+  if (dupError) return dupError;
 
   const updated = await prisma.clientes.update({
     where: { id },

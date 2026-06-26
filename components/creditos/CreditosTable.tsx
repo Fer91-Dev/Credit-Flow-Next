@@ -3,9 +3,10 @@
 import { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { mutate as globalMutate } from "swr";
-import { Plus, Trash2, Edit2, FileText, Wallet, AlertCircle, CheckCircle, Search, ChevronDown, X, Ban } from "lucide-react";
+import { Plus, Trash2, Edit2, FileText, Wallet, AlertCircle, CheckCircle, Search, ChevronDown, X, Ban, ShieldCheck } from "lucide-react";
 import { CreditoForm } from "./CreditoForm";
 import { CreditoDetail } from "./CreditoDetail";
+import { LibreDeudaDialog } from "./LibreDeudaDialog";
 import { useCreditos, KEYS, type Credito } from "@/lib/swr";
 import { formatCreditoNumero, nombreCompleto } from "@/lib/utils";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -48,6 +49,7 @@ export function CreditosTable() {
   const [dialogOpen, setDialog]   = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [detail, setDetail]       = useState<Credito | null>(null);
+  const [libreDeudaId, setLibreDeudaId] = useState<string | null>(null);
   const [search, setSearch]       = useState("");
   const [estadoFilter, setEstado] = useState("all");
   const [tipoFilter, setTipo]     = useState("all");
@@ -283,6 +285,15 @@ export function CreditosTable() {
                           </td>
                           <td className="px-4 py-3 pr-5 text-right border-b border-border/70">
                             <div className="flex justify-end gap-1" onClick={(e) => e.stopPropagation()}>
+                              {c.estado === "pagado" && (
+                                <button
+                                  onClick={() => setLibreDeudaId(c.id)}
+                                  className="p-1.5 rounded-lg hover:bg-success/10 transition-colors text-success"
+                                  title="Libre deuda (crédito cancelado)"
+                                >
+                                  <ShieldCheck className="h-3.5 w-3.5" />
+                                </button>
+                              )}
                               <button
                                 onClick={() => openEdit(c.id)}
                                 className="p-1.5 rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
@@ -428,6 +439,8 @@ export function CreditosTable() {
           </div>
         </DialogContent>
       </Dialog>
+
+      <LibreDeudaDialog creditoId={libreDeudaId} onClose={() => setLibreDeudaId(null)} />
     </>
   );
 }

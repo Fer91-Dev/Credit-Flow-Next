@@ -56,6 +56,10 @@ export function withErrorHandler<A extends any[]>(
         const msg = err.message.toLowerCase();
 
         if (msg.includes('unique constraint')) {
+          // Mensaje amable para los casos de negocio más comunes.
+          if (msg.includes('documento')) {
+            return errorResponse('Ya existe un cliente con ese DNI.', 'DUPLICATE_DOCUMENTO', 409);
+          }
           return errorResponse('Recurso duplicado', 'DUPLICATE_RECORD', 409);
         }
         if (msg.includes('foreign key constraint')) {

@@ -3,13 +3,14 @@
 import { useState } from "react";
 import {
   Wallet, AlertCircle, Layers, ArrowUpRight, User, Briefcase, Pencil, Trash2,
-  CalendarClock, HandCoins, FileText, ChevronRight, Loader2, Mail, Phone, MapPin,
+  CalendarClock, HandCoins, FileText, ChevronRight, Loader2, Mail, Phone, MapPin, Printer, ShieldCheck,
 } from "lucide-react";
-import { useClienteDetalle, useAccionesCobranza, useCuotas, type CreditoConFinanzas, type EstadoCuota } from "@/lib/swr";
+import { useClienteDetalle, useAccionesCobranza, useCuotas, type CreditoConFinanzas, type EstadoCuota, type CuotaPersistida } from "@/lib/swr";
 import { StatusBadge, type BadgeVariant } from "@/components/ui/StatusBadge";
 import { Stat } from "@/components/ui/Stat";
 import { Skeleton } from "@/components/ui/skeleton";
-import { formatCreditoNumero, formatFecha, nombreCompleto } from "@/lib/utils";
+import { LibreDeudaDialog } from "@/components/creditos/LibreDeudaDialog";
+import { formatCreditoNumero, formatFecha, formatFechaHora, nombreCompleto } from "@/lib/utils";
 
 function n2(x: number) {
   return new Intl.NumberFormat("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(x);
@@ -26,6 +27,64 @@ function n0(x: number) {
   return new Intl.NumberFormat("es-AR", { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(x);
 }
 const fmtDate = (s?: string | null) => formatFecha(s);
+
+function escHtml(s: string) {
+  return s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c] ?? c));
+}
+
+/** Abre un recibo imprimible de una cuota (con los comprobantes que la imputaron) y lanza la impresión. */
+function imprimirReciboCuota(cuota: CuotaPersistida, ctx: { cliente: string | null; creditoNumero: number | null | undefined }) {
+  const comps = cuota.comprobantes ?? [];
+  const pagado = comps.reduce((s, c) => s + c.monto, 0);
+  const badge = CUOTA_BADGE[cuota.estado];
+  // Fecha y hora del último pago imputado a la cuota.
+  const ultimoPago = comps.reduce<string | null>((acc, c) => (acc && acc > c.fecha_hora ? acc : c.fecha_hora), null);
+  const filas: [string, string][] = [
+    ["Cliente", ctx.cliente ?? "—"],
+    ["Crédito", formatCreditoNumero(ctx.creditoNumero)],
+    ["Cuota N°", String(cuota.nro)],
+    ["Vencimiento", fmtDate(cuota.fecha_vencimiento)],
+    ["Pagado el", ultimoPago ? formatFechaHora(ultimoPago) : "—"],
+    ["Estado", badge.label],
+    ["Interés", `$${n2(cuota.interes)}`],
+    ["Capital", `$${n2(cuota.capital)}`],
+    ["Cuota total", `$${n2(cuota.cuota_total)}`],
+  ];
+  const win = window.open("", "_blank", "width=520,height=760");
+  if (!win) return;
+  const compRows = comps.length
+    ? comps.map((c) => `<tr><td class="k">${escHtml(c.comprobante ?? "—")}</td><td class="v">${escHtml(formatFechaHora(c.fecha_hora))} · $${escHtml(n2(c.monto))}</td></tr>`).join("")
+    : `<tr><td class="k">—</td><td class="v">Sin comprobantes</td></tr>`;
+  win.document.write(`<!doctype html><html lang="es"><head><meta charset="utf-8" />
+    <title>Recibo de cuota</title>
+    <style>
+      * { box-sizing: border-box; }
+      body { font-family: ui-sans-serif, system-ui, "Segoe UI", Arial, sans-serif; color: #0f172a; margin: 0; padding: 32px; }
+      .doc { max-width: 460px; margin: 0 auto; }
+      h1 { font-size: 16px; margin: 0; letter-spacing: .02em; }
+      .sub { color: #64748b; font-size: 12px; margin-top: 2px; }
+      .monto { font-size: 28px; font-weight: 700; font-variant-numeric: tabular-nums; margin: 20px 0; color: #15803d; }
+      table { width: 100%; border-collapse: collapse; font-size: 13px; }
+      td { padding: 8px 0; border-bottom: 1px solid #e2e8f0; vertical-align: top; }
+      td.k { color: #64748b; width: 42%; }
+      td.v { text-align: right; font-weight: 500; }
+      .sec { margin-top: 18px; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: #94a3b8; }
+      .ft { margin-top: 24px; color: #94a3b8; font-size: 11px; text-align: center; }
+      @media print { body { padding: 0; } }
+    </style></head><body><div class="doc">
+      <h1>CreditFlow · Recibo de cuota</h1>
+      <div class="sub">${escHtml(formatCreditoNumero(ctx.creditoNumero))} · Cuota N° ${cuota.nro}</div>
+      <div class="monto">$${escHtml(n2(pagado > 0 ? pagado : cuota.cuota_total))}</div>
+      <table>${filas.map(([k, v]) => `<tr><td class="k">${escHtml(k)}</td><td class="v">${escHtml(v)}</td></tr>`).join("")}</table>
+      <p class="sec">Comprobantes imputados</p>
+      <table>${compRows}</table>
+      <div class="ft">Generado el ${escHtml(formatFecha(new Date()))}</div>
+    </div>
+    <script>window.onload = function(){ window.print(); }</script>
+    </body></html>`);
+  win.document.close();
+  win.focus();
+}
 function edad(fechaNac?: string | null): string {
   if (!fechaNac) return "";
   const d = new Date(fechaNac);
@@ -256,6 +315,7 @@ export function ClienteDetail({
 
 function CreditosTabla({ creditos, mostrarProximo }: { creditos: CreditoConFinanzas[]; mostrarProximo?: boolean }) {
   const [abiertos, setAbiertos] = useState<Set<string>>(new Set());
+  const [libreDeudaId, setLibreDeudaId] = useState<string | null>(null);
   const toggle = (id: string) =>
     setAbiertos((prev) => {
       const next = new Set(prev);
@@ -322,13 +382,24 @@ function CreditosTabla({ creditos, mostrarProximo }: { creditos: CreditoConFinan
                     </td>
                   )}
                   <td className="px-3 py-2 pr-4 border-b border-border/70">
-                    <StatusBadge label={b.label} variant={b.variant} />
+                    <div className="flex items-center gap-2">
+                      <StatusBadge label={b.label} variant={b.variant} />
+                      {c.estado === "pagado" && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setLibreDeudaId(c.id); }}
+                          title="Ver / imprimir el libre deuda del crédito cancelado"
+                          className="inline-flex items-center gap-1 rounded-md border border-success/30 bg-success/10 px-2 py-1 text-[11px] font-medium text-success transition-colors hover:bg-success/20"
+                        >
+                          <ShieldCheck className="h-3 w-3" /> Libre deuda
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
                 {abierto && (
                   <tr>
                     <td colSpan={cols} className="border-b border-border/70 bg-muted/[0.03] p-0">
-                      <CuotasInline creditoId={c.id} />
+                      <CuotasInline creditoId={c.id} creditoNumero={c.numero} />
                     </td>
                   </tr>
                 )}
@@ -337,6 +408,8 @@ function CreditosTabla({ creditos, mostrarProximo }: { creditos: CreditoConFinan
           })}
         </tbody>
       </table>
+
+      <LibreDeudaDialog creditoId={libreDeudaId} onClose={() => setLibreDeudaId(null)} />
     </div>
   );
 }
@@ -346,9 +419,11 @@ function FragmentRow({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+
 /** Plan de cuotas detallado de un crédito, embebido en la fila expandida. */
-function CuotasInline({ creditoId }: { creditoId: string }) {
-  const { cuotas, resumen, isLoading } = useCuotas(creditoId);
+function CuotasInline({ creditoId, creditoNumero }: { creditoId: string; creditoNumero: number | null | undefined }) {
+  const { cuotas, resumen, meta, isLoading } = useCuotas(creditoId);
+  const cliente = meta?.cliente ?? null;
 
   if (isLoading) {
     return (
@@ -383,12 +458,17 @@ function CuotasInline({ creditoId }: { creditoId: string }) {
                 <th className="px-2 py-1.5 text-right font-semibold text-foreground          border-b border-border">Cuota</th>
                 <th className="px-2 py-1.5 text-right font-semibold text-warning          border-b border-border hidden sm:table-cell">Interés</th>
                 <th className="px-2 py-1.5 text-right font-semibold text-primary          border-b border-border">Capital</th>
-                <th className="px-2 py-1.5 text-left  font-semibold text-muted-foreground border-b border-border pr-3">Estado</th>
+                <th className="px-2 py-1.5 text-left  font-semibold text-muted-foreground border-b border-border">Estado</th>
+                <th className="px-2 py-1.5 text-left  font-semibold text-muted-foreground border-b border-border hidden md:table-cell">Pago</th>
+                <th className="px-2 py-1.5 text-right font-semibold text-muted-foreground border-b border-border pr-3">Recibo</th>
               </tr>
             </thead>
             <tbody>
               {cuotas.map((q, i) => {
                 const bb = CUOTA_BADGE[q.estado];
+                const comps = q.comprobantes ?? [];
+                const tieneRecibo = comps.length > 0;
+                const ultimoPago = comps.reduce<string | null>((acc, c) => (acc && acc > c.fecha_hora ? acc : c.fecha_hora), null);
                 return (
                   <tr key={q.nro} className={i % 2 === 1 ? "bg-muted/5" : ""}>
                     <td className="px-2 py-1.5 font-mono text-muted-foreground/50 tabular-nums border-b border-border/30">{q.nro}</td>
@@ -396,7 +476,21 @@ function CuotasInline({ creditoId }: { creditoId: string }) {
                     <td className="px-2 py-1.5 text-right font-mono text-foreground tabular-nums border-b border-border/30">${n2(q.cuota_total)}</td>
                     <td className="px-2 py-1.5 text-right font-mono text-warning tabular-nums border-b border-border/30 hidden sm:table-cell">${n2(q.interes)}</td>
                     <td className="px-2 py-1.5 text-right font-mono text-primary tabular-nums border-b border-border/30">${n2(q.capital)}</td>
-                    <td className="px-2 py-1.5 pr-3 border-b border-border/30"><StatusBadge label={bb.label} variant={bb.variant} /></td>
+                    <td className="px-2 py-1.5 border-b border-border/30"><StatusBadge label={bb.label} variant={bb.variant} /></td>
+                    <td className="px-2 py-1.5 text-muted-foreground tabular-nums border-b border-border/30 hidden md:table-cell whitespace-nowrap">{ultimoPago ? formatFechaHora(ultimoPago) : <span className="text-muted-foreground/30">—</span>}</td>
+                    <td className="px-2 py-1.5 pr-3 text-right border-b border-border/30">
+                      {tieneRecibo ? (
+                        <button
+                          onClick={() => imprimirReciboCuota(q, { cliente, creditoNumero })}
+                          title="Imprimir / reimprimir recibo de la cuota"
+                          className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                        >
+                          <Printer className="h-3 w-3" /> Recibo
+                        </button>
+                      ) : (
+                        <span className="text-muted-foreground/30">—</span>
+                      )}
+                    </td>
                   </tr>
                 );
               })}

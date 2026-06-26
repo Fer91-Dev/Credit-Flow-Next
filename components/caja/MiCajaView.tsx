@@ -3,11 +3,11 @@
 import { useState } from "react";
 import { mutate as globalMutate } from "swr";
 import {
-  Wallet, Banknote, CircleDollarSign, ArrowUpRight, ArrowDownLeft, Scale, Send, MinusCircle, FileText, ArrowRight,
+  Wallet, Banknote, CircleDollarSign, ArrowUpRight, ArrowDownLeft, Scale, Send, MinusCircle, FileText, ArrowRight, ArrowLeftRight,
 } from "lucide-react";
 import { useMiCaja, type CuentaCaja, type MovimientoCaja } from "@/lib/swr";
 import { formatFechaHora, parseMontoInput } from "@/lib/utils";
-import { MoneyInput, Segmented, IconTextarea, FieldLabel, FormActions, simboloCuenta } from "./caja-form";
+import { MoneyInput, Segmented, IconSelect, IconTextarea, FieldLabel, FormActions, simboloCuenta } from "./caja-form";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { KpiCard } from "@/components/ui/KpiCard";
 import { StatusBadge, type BadgeVariant } from "@/components/ui/StatusBadge";
@@ -17,11 +17,17 @@ import { MovimientoDetail } from "./MovimientoDetail";
 import { useConfirm } from "@/components/ui/confirm";
 import { useToast } from "@/components/ui/toast";
 
+// Normaliza el "−0": si redondea a cero, se muestra 0 (positivo).
+function sinCeroNegativo(x: number, decimales: number) {
+  const f = 10 ** decimales;
+  const r = Math.round(x * f) / f;
+  return r === 0 ? 0 : r;
+}
 function n0(x: number) {
-  return new Intl.NumberFormat("es-AR", { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(x);
+  return new Intl.NumberFormat("es-AR", { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(sinCeroNegativo(x, 0));
 }
 function n2(x: number) {
-  return new Intl.NumberFormat("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(x);
+  return new Intl.NumberFormat("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(sinCeroNegativo(x, 2));
 }
 
 const CUENTAS: CuentaCaja[] = ["efectivo", "banco", "dolares"];
@@ -46,6 +52,7 @@ export function MiCajaView() {
   const { caja, error, isLoading, mutate } = useMiCaja();
   const [rendirOpen, setRendirOpen] = useState(false);
   const [gastoOpen, setGastoOpen] = useState(false);
+  const [transferOpen, setTransferOpen] = useState(false);
   const [detalle, setDetalle] = useState<MovimientoCaja | null>(null);
 
   const refrescar = () => { mutate(); globalMutate("/api/dashboard"); };
@@ -66,6 +73,12 @@ export function MiCajaView() {
           className="flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:opacity-90 transition-opacity text-sm font-medium whitespace-nowrap"
         >
           <Send className="h-4 w-4" /> Rendir efectivo
+        </button>
+        <button
+          onClick={() => setTransferOpen(true)}
+          className="flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-border text-foreground hover:bg-muted transition-colors text-sm font-medium whitespace-nowrap"
+        >
+          <ArrowLeftRight className="h-4 w-4" /> Transferir
         </button>
         <button
           onClick={() => setGastoOpen(true)}
@@ -173,6 +186,12 @@ export function MiCajaView() {
         onClose={(ok) => { setGastoOpen(false); if (ok) refrescar(); }}
       />
 
+      <TransferDialog
+        open={transferOpen}
+        saldos={caja?.saldos_por_cuenta}
+        onClose={(ok) => { setTransferOpen(false); if (ok) refrescar(); }}
+      />
+
       <Dialog open={!!detalle} onOpenChange={(o) => { if (!o) setDetalle(null); }}>
         <DialogContent className="w-[95vw] sm:max-w-md max-h-[90dvh] flex flex-col overflow-hidden">
           <DialogHeader className="shrink-0">
@@ -272,6 +291,9 @@ function GastoDialog({
             <span className="text-muted-foreground">Saldo disponible en {CUENTA_META[cuenta].label}</span>
             <span className={`font-mono font-semibold ${disponible < 0 ? "text-destructive" : "text-foreground"}`}>{simbolo} {n2(disponible)}</span>
           </div>
+          {montoNum > disponible && (
+            <p className="text-xs text-destructive">El monto supera el saldo disponible en {CUENTA_META[cuenta].label}.</p>
+          )}
 
           {/* Monto */}
           <div className="flex flex-col gap-1.5">
@@ -288,7 +310,7 @@ function GastoDialog({
           <FormActions
             onCancel={() => { reset(); onClose(false); }}
             loading={loading}
-            disabled={!montoNum || !descripcion.trim()}
+            disabled={!montoNum || !descripcion.trim() || montoNum > disponible}
             submitLabel="Registrar gasto"
             loadingLabel="Registrando…"
           />
@@ -382,6 +404,9 @@ function RendirDialog({
             <span className="text-muted-foreground">Saldo disponible en {CUENTA_META[cuenta].label}</span>
             <span className={`font-mono font-semibold ${disponible < 0 ? "text-destructive" : "text-foreground"}`}>{simbolo} {n2(disponible)}</span>
           </div>
+          {montoNum > disponible && (
+            <p className="text-xs text-destructive">El monto supera el saldo disponible en {CUENTA_META[cuenta].label}.</p>
+          )}
 
           {/* Monto */}
           <div className="flex flex-col gap-1.5">
@@ -398,9 +423,135 @@ function RendirDialog({
           <FormActions
             onCancel={() => { reset(); onClose(false); }}
             loading={loading}
-            disabled={!montoNum}
+            disabled={!montoNum || montoNum > disponible}
             submitLabel="Rendir"
             loadingLabel="Rindiendo…"
+          />
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/** Transferencia interna entre las cuentas del propio vendedor. */
+function TransferDialog({
+  open, onClose, saldos,
+}: {
+  open: boolean;
+  onClose: (ok?: boolean) => void;
+  saldos?: Record<CuentaCaja, number>;
+}) {
+  const confirm = useConfirm();
+  const toast = useToast();
+  const [origen, setOrigen] = useState<CuentaCaja>("efectivo");
+  const [destino, setDestino] = useState<CuentaCaja>("banco");
+  const [monto, setMonto] = useState("");
+  const [descripcion, setDescripcion] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const reset = () => { setOrigen("efectivo"); setDestino("banco"); setMonto(""); setDescripcion(""); setError(null); };
+  const mismaCuenta = origen === destino;
+  const montoNum = parseMontoInput(monto);
+  const simbolo = simboloCuenta(origen);
+  const disponible = saldos?.[origen] ?? 0;
+  const excede = montoNum > disponible;
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (mismaCuenta) { setError("Origen y destino deben ser distintos"); return; }
+    const ok = await confirm({
+      title: "¿Transferir entre tus cuentas?",
+      description: `Se moverán ${simbolo} ${n2(montoNum)} de ${origen} a ${destino}. El total de tu caja no cambia.`,
+      confirmLabel: "Transferir",
+    });
+    if (!ok) return;
+    setLoading(true); setError(null);
+    try {
+      const res = await fetch("/api/me/caja", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ accion: "transferencia", origen, destino, monto: montoNum, descripcion }),
+      });
+      const json = await res.json();
+      if (json.ok) { reset(); toast.success("Transferencia registrada"); onClose(true); }
+      else setError(json.error);
+    } catch {
+      setError("No se pudo registrar la transferencia");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => { if (!o) { reset(); onClose(false); } }}>
+      <DialogContent className="w-[95vw] sm:max-w-xl sm:p-7 max-h-[90dvh] overflow-y-auto">
+        <DialogHeader className="pr-8">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-primary">
+              <ArrowLeftRight className="h-5 w-5" />
+            </div>
+            <div>
+              <DialogTitle>Transferir entre mis cuentas</DialogTitle>
+              <p className="mt-0.5 text-xs text-muted-foreground">Mové saldo entre Efectivo, Banco y Dólares sin cambiar el total de tu caja.</p>
+            </div>
+          </div>
+        </DialogHeader>
+
+        <form onSubmit={submit} className="space-y-5">
+          {error && (
+            <div className="rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-2.5 text-sm text-destructive">{error}</div>
+          )}
+
+          {/* Origen → Destino */}
+          <div className="grid grid-cols-[1fr_auto_1fr] items-end gap-3">
+            <div className="flex flex-col gap-1.5">
+              <FieldLabel required>Desde</FieldLabel>
+              <IconSelect icon={Wallet} value={origen} onChange={(e) => setOrigen(e.target.value as CuentaCaja)}>
+                <option value="efectivo">Efectivo</option>
+                <option value="banco">Banco</option>
+                <option value="dolares">Dólares</option>
+              </IconSelect>
+            </div>
+            <div className="flex h-12 items-center justify-center text-muted-foreground">
+              <ArrowRight className="h-4 w-4" />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <FieldLabel required>Hacia</FieldLabel>
+              <IconSelect icon={Wallet} value={destino} onChange={(e) => setDestino(e.target.value as CuentaCaja)}>
+                <option value="efectivo">Efectivo</option>
+                <option value="banco">Banco</option>
+                <option value="dolares">Dólares</option>
+              </IconSelect>
+            </div>
+          </div>
+
+          {mismaCuenta && <p className="text-xs text-warning">Origen y destino deben ser distintos.</p>}
+
+          <div className="rounded-lg border border-border bg-muted/30 px-3 py-2.5 flex items-center justify-between text-sm">
+            <span className="text-muted-foreground">Saldo disponible en {CUENTA_META[origen].label}</span>
+            <span className={`font-mono font-semibold ${disponible < 0 ? "text-destructive" : "text-foreground"}`}>{simbolo} {n2(disponible)}</span>
+          </div>
+
+          {/* Monto */}
+          <div className="flex flex-col gap-1.5">
+            <FieldLabel required>Monto</FieldLabel>
+            <MoneyInput value={monto} onChange={setMonto} currency={simbolo} autoFocus required />
+          </div>
+          {excede && <p className="text-xs text-destructive">El monto supera el saldo disponible en {CUENTA_META[origen].label}.</p>}
+
+          {/* Observación */}
+          <div className="flex flex-col gap-1.5">
+            <FieldLabel>Observación</FieldLabel>
+            <IconTextarea icon={FileText} value={descripcion} onChange={(e) => setDescripcion(e.target.value)} rows={2} placeholder="Detalle opcional…" />
+          </div>
+
+          <FormActions
+            onCancel={() => { reset(); onClose(false); }}
+            loading={loading}
+            disabled={!montoNum || mismaCuenta || excede}
+            submitLabel="Transferir"
+            loadingLabel="Transfiriendo…"
           />
         </form>
       </DialogContent>

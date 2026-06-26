@@ -5,7 +5,7 @@ import { useRouter, usePathname } from "next/navigation";
 import {
   Home, Users, FileText, Wallet, Bell, Search, LogOut, Menu, X,
   ShieldAlert, BarChart3, PlusCircle, Settings, History,
-  FileBarChart, Landmark, Sun, Moon, UserCog, Truck, ShieldCheck,
+  FileBarChart, Landmark, Sun, Moon, UserCog, Truck, ShieldCheck, Receipt,
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useEffect, useState } from "react";
@@ -25,6 +25,7 @@ const NAV_PRIMARY = [
 
 const NAV_SECONDARY = [
   { icon: Landmark,     label: "Caja",          to: "/caja" },
+  { icon: Receipt,      label: "Comprobantes",  to: "/comprobantes" },
   { icon: UserCog,      label: "Personal",      to: "/personal" },
   { icon: Truck,        label: "Proveedores",   to: "/proveedores" },
   { icon: ShieldCheck,  label: "Usuarios",      to: "/usuarios" },

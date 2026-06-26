@@ -15,11 +15,17 @@ import { useConfirm } from "@/components/ui/confirm";
 import { useToast } from "@/components/ui/toast";
 import { MovimientoDetail } from "./MovimientoDetail";
 
+// Normaliza el "−0": si redondea a cero, se muestra 0 (positivo).
+function sinCeroNegativo(x: number, decimales: number) {
+  const f = 10 ** decimales;
+  const r = Math.round(x * f) / f;
+  return r === 0 ? 0 : r;
+}
 function n0(x: number) {
-  return new Intl.NumberFormat("es-AR", { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(x);
+  return new Intl.NumberFormat("es-AR", { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(sinCeroNegativo(x, 0));
 }
 function n2(x: number) {
-  return new Intl.NumberFormat("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(x);
+  return new Intl.NumberFormat("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(sinCeroNegativo(x, 2));
 }
 function ymd(d: Date) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;

@@ -98,6 +98,10 @@ model clientes {
   creditos    creditos[]
   solicitudes solicitudes[]
 
+  // El identificador ÚNICO es el CUIT/CUIL (en AR puede haber DNI repetidos). Los
+  // null se permiten (Postgres los trata como distintos): clientes sin CUIT cargado.
+  // El DNI repetido se admite si el CUIT lo diferencia (validado en la API).
+  @@unique([tenant_id, cuit_cuil])
   @@index([tenant_id])
 }
 

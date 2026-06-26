@@ -334,6 +334,8 @@ export interface CuotaPersistida {
   pagado_mora?: number;
   pagado_cargos?: number;
   restante_capital: number;
+  /** Recibos que imputaron a la cuota (comprobante REC + fecha/hora del pago + monto aplicado). */
+  comprobantes?: { comprobante: string | null; fecha: string; fecha_hora: string; monto: number }[];
 }
 
 /** Libro mayor de cuotas de un crédito (cronograma persistido + resumen). */
@@ -419,6 +421,12 @@ export interface MovimientoCaja {
   descripcion: string;
   credito_numero: number | null;
   cliente: string | null;
+}
+
+/** Fila del registro central de comprobantes (movimiento numerado). */
+export interface Comprobante extends MovimientoCaja {
+  serie: string | null;
+  vendedor: string | null; // null = caja principal
 }
 
 /** Caja personal de un vendedor (su porción del libro de caja). */
@@ -753,6 +761,21 @@ export function useMiCaja() {
   return { caja: data ?? null, error, isLoading, mutate };
 }
 
+/** Registro central de comprobantes (admin). Filtros opcionales por texto/serie/fechas/cuenta. */
+export function useComprobantes(filtros: { q?: string; serie?: string; cuenta?: string; desde?: string; hasta?: string }) {
+  const params = new URLSearchParams();
+  if (filtros.q) params.set("q", filtros.q);
+  if (filtros.serie && filtros.serie !== "all") params.set("serie", filtros.serie);
+  if (filtros.cuenta && filtros.cuenta !== "all") params.set("cuenta", filtros.cuenta);
+  if (filtros.desde) params.set("desde", filtros.desde);
+  if (filtros.hasta) params.set("hasta", filtros.hasta);
+  const qs = params.toString();
+  const { data, error, isLoading, mutate } = useSWR<{ comprobantes: Comprobante[]; total: number }>(
+    `/api/comprobantes${qs ? `?${qs}` : ""}`,
+  );
+  return { comprobantes: data?.comprobantes ?? [], total: data?.total ?? 0, error, isLoading, mutate };
+}
+
 export function useMisLogros() {
   const { data, error, isLoading } = useSWR<LogrosVendedor | null>("/api/me/logros");
   return { logros: data ?? null, error, isLoading };
@@ -800,6 +823,30 @@ export function useAmortizacion(creditoId: string | null) {
     creditoId ? `/api/creditos/${creditoId}/amortizacion` : null,
   );
   return { amortizacion: data, error, isLoading };
+}
+
+/** Certificado de libre deuda de un crédito cancelado. */
+export interface LibreDeuda {
+  empresa: string;
+  emitido_en: string;
+  cliente: { nombre: string; documento: string | null };
+  credito: {
+    numero: number | null;
+    tipo: string;
+    monto_original: number;
+    tasa: number;
+    plazo_meses: number;
+    frecuencia: string;
+    fecha_otorgamiento: string;
+  };
+  totales: { total_pagado: number; cuotas: number; fecha_cancelacion: string | null };
+}
+
+export function useLibreDeuda(creditoId: string | null) {
+  const { data, error, isLoading } = useSWR<LibreDeuda>(
+    creditoId ? `/api/creditos/${creditoId}/libre-deuda` : null,
+  );
+  return { libreDeuda: data, error, isLoading };
 }
 
 /** Cronograma de cuotas PERSISTIDO de un crédito. Key condicional. */

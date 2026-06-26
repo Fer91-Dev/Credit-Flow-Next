@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { registrarAuditoria } from "@/lib/audit";
 import { calcularScore } from "@/lib/domain";
 import { nombreCompleto } from "@/lib/utils";
+import { normalizarCuit, validarDuplicadoCliente } from "@/lib/clientes-validacion";
 import type { NextRequest } from "next/server";
 
 /**
@@ -186,6 +187,13 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     return errorResponse("Email inválido", "INVALID_INPUT", 400);
   }
 
+  // Unicidad por CUIT/CUIL (en AR puede haber DNI repetidos). Si el DNI ya existe,
+  // se exige el CUIT para diferenciar a la persona.
+  const doc = body.documento?.trim() || null;
+  const cuit = normalizarCuit(body.cuit_cuil);
+  const dupError = await validarDuplicadoCliente(tenantId, doc, cuit, null);
+  if (dupError) return dupError;
+
   // Crear cliente
   const cliente = await prisma.clientes.create({
     data: {
@@ -200,7 +208,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
       tipo_credito: body.tipo_credito || "personal",
       // Datos personales ampliados
       fecha_nacimiento: body.fecha_nacimiento ? new Date(body.fecha_nacimiento) : null,
-      cuit_cuil: body.cuit_cuil?.trim() || null,
+      cuit_cuil: cuit,
       estado_civil: body.estado_civil?.trim() || null,
       nacionalidad: body.nacionalidad?.trim() || null,
       // Situación laboral

@@ -1,7 +1,7 @@
 import { requireAuth } from "@/lib/auth";
 import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api";
 import { esCuentaValida } from "@/lib/domain";
-import { cajaDeVendedor, registrarMovimientoCajaVendedor, registrarGastoCajaVendedor } from "@/lib/caja-vendedor";
+import { cajaDeVendedor, registrarMovimientoCajaVendedor, registrarGastoCajaVendedor, registrarTransferenciaCajaVendedor } from "@/lib/caja-vendedor";
 import type { NextRequest } from "next/server";
 
 /**
@@ -20,14 +20,15 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
  * El vendedor opera SU caja:
  *  - accion "rendicion": rinde efectivo a la caja principal (default).
  *  - accion "gasto": registra un egreso/gasto de su caja (motivo obligatorio).
+ *  - accion "transferencia": mueve saldo entre sus propias cuentas (origen → destino).
  * No puede auto-entregarse plata: la entrega de capital la hace el admin.
- * Body: { accion?: "rendicion"|"gasto", monto > 0, cuenta?, descripcion? }
+ * Body: { accion?, monto > 0, cuenta?, origen?, destino?, descripcion? }
  */
 export const POST = withErrorHandler(async (req: NextRequest) => {
   const { tenantId, vendedorId } = await requireAuth(req);
   if (!vendedorId) return errorResponse("Tu usuario no está vinculado a un vendedor", "NO_VENDEDOR", 400);
 
-  let body: { accion?: string; monto?: number; cuenta?: string; descripcion?: string };
+  let body: { accion?: string; monto?: number; cuenta?: string; origen?: string; destino?: string; descripcion?: string };
   try {
     body = await req.json();
   } catch {
@@ -35,14 +36,22 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
   }
 
   const accion = body.accion ?? "rendicion";
-  if (accion !== "rendicion" && accion !== "gasto") {
-    return errorResponse("Acción inválida (rendicion | gasto)", "INVALID_INPUT", 400);
+  if (accion !== "rendicion" && accion !== "gasto" && accion !== "transferencia") {
+    return errorResponse("Acción inválida (rendicion | gasto | transferencia)", "INVALID_INPUT", 400);
   }
   const monto = Number(body.monto);
   if (!monto || monto <= 0) {
     return errorResponse("El monto debe ser mayor a 0", "INVALID_INPUT", 400);
   }
   const cuenta = esCuentaValida(body.cuenta) ? body.cuenta : "efectivo";
+
+  if (accion === "transferencia") {
+    if (!esCuentaValida(body.origen) || !esCuentaValida(body.destino)) {
+      return errorResponse("Cuenta de origen o destino inválida", "INVALID_INPUT", 400);
+    }
+    const mov = await registrarTransferenciaCajaVendedor({ tenantId, vendedorId, origen: body.origen, destino: body.destino, monto, descripcion: body.descripcion });
+    return successResponse(mov, 201);
+  }
 
   if (accion === "gasto") {
     if (!body.descripcion?.trim()) {

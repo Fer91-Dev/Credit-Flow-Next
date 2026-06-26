@@ -45,9 +45,8 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
   const origenLbl = `Caja principal (${CUENTA_LABEL[origen]})`;
   const destinoLbl = `Caja principal (${CUENTA_LABEL[destino]})`;
 
-  // Las 2 patas (egreso/ingreso) comparten el mismo N° de comprobante TRF.
+  // Cada pata (egreso/ingreso) es un comprobante propio con su número único TRF.
   const { salida, entrada } = await prisma.$transaction(async (tx) => {
-    const numero = await siguienteNumeroComprobante(tx, tenantId, "TRF");
     const s = await tx.movimientos_caja.create({
       data: {
         ...withTenant(tenantId),
@@ -58,7 +57,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
         origen: origenLbl,
         destino: destinoLbl,
         serie: "TRF",
-        numero,
+        numero: await siguienteNumeroComprobante(tx, tenantId, "TRF"),
         descripcion: glosa,
       },
     });
@@ -72,7 +71,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
         origen: origenLbl,
         destino: destinoLbl,
         serie: "TRF",
-        numero,
+        numero: await siguienteNumeroComprobante(tx, tenantId, "TRF"),
         descripcion: glosa,
       },
     });
