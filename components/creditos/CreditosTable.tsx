@@ -3,12 +3,13 @@
 import { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { mutate as globalMutate } from "swr";
-import { Plus, Trash2, Edit2, FileText, Wallet, AlertCircle, CheckCircle, Search, ChevronDown, X, Ban, ShieldCheck } from "lucide-react";
+import { Plus, Trash2, Edit2, FileText, Wallet, AlertCircle, CheckCircle, Search, ChevronDown, X, Ban, ShieldCheck, RefreshCw } from "lucide-react";
 import { CreditoForm } from "./CreditoForm";
 import { CreditoDetail } from "./CreditoDetail";
 import { LibreDeudaDialog } from "./LibreDeudaDialog";
+import { RefinanciarDialog } from "./RefinanciarDialog";
 import { useCreditos, KEYS, type Credito } from "@/lib/swr";
-import { formatCreditoNumero, nombreCompleto } from "@/lib/utils";
+import { formatCreditoNumero, nombreCompleto, formatFecha } from "@/lib/utils";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { KpiCard } from "@/components/ui/KpiCard";
 import { StatusBadge } from "@/components/ui/StatusBadge";
@@ -33,12 +34,13 @@ const SEL =
   "outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/20 " +
   "appearance-none cursor-pointer [&>option]:bg-card [&>option]:text-foreground";
 
-function estadoBadge(estado: string): { label: string; variant: "primary" | "success" | "muted" | "destructive" } {
-  if (estado === "activo")    return { label: "Activo",    variant: "primary" };
-  if (estado === "pagado")    return { label: "Pagado",    variant: "success" };
-  if (estado === "anulado")   return { label: "Anulado",   variant: "destructive" };
-  if (estado === "cancelado") return { label: "Cancelado", variant: "muted" };
-  return                             { label: estado,      variant: "muted" };
+function estadoBadge(estado: string): { label: string; variant: "primary" | "success" | "muted" | "destructive" | "warning" } {
+  if (estado === "activo")       return { label: "Activo",       variant: "primary" };
+  if (estado === "pagado")       return { label: "Pagado",       variant: "success" };
+  if (estado === "anulado")      return { label: "Anulado",      variant: "destructive" };
+  if (estado === "cancelado")    return { label: "Cancelado",    variant: "muted" };
+  if (estado === "refinanciado") return { label: "Refinanciado", variant: "warning" };
+  return                                { label: estado,         variant: "muted" };
 }
 
 export function CreditosTable() {
@@ -50,9 +52,11 @@ export function CreditosTable() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [detail, setDetail]       = useState<Credito | null>(null);
   const [libreDeudaId, setLibreDeudaId] = useState<string | null>(null);
+  const [refinanciar, setRefinanciar] = useState<Credito | null>(null);
   const [search, setSearch]       = useState("");
   const [estadoFilter, setEstado] = useState("all");
   const [tipoFilter, setTipo]     = useState("all");
+  const [tab, setTab]             = useState<"creditos" | "refinanciados">("creditos");
 
   const [actionError, setActionError] = useState<string | null>(null);
 
@@ -136,6 +140,9 @@ export function CreditosTable() {
     saldo:  filtered.reduce((s, c) => s + c.saldo_pendiente, 0),
   }), [filtered]);
 
+  // Cantidad de créditos nacidos de una refinanciación (badge de la pestaña).
+  const refiCount = useMemo(() => creditos.filter((c) => c.es_refinanciacion).length, [creditos]);
+
   const hasFilters = !!(search || estadoFilter !== "all" || tipoFilter !== "all");
   const clearFilters = () => { setSearch(""); setEstado("all"); setTipo("all"); };
 
@@ -158,7 +165,29 @@ export function CreditosTable() {
           subtitle="Créditos otorgados y seguimiento de saldos"
           accent="primary"
         />
-        <div className="flex flex-wrap items-center justify-end gap-2">{cta}</div>
+
+        {/* ── Tabs (Créditos / Refinanciados) + CTA ── */}
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="inline-flex rounded-lg border border-border bg-muted/30 p-0.5">
+            <button
+              onClick={() => setTab("creditos")}
+              className={`rounded-md px-3.5 py-1.5 text-sm font-medium transition-colors ${tab === "creditos" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+            >
+              Créditos
+            </button>
+            <button
+              onClick={() => setTab("refinanciados")}
+              className={`flex items-center gap-1.5 rounded-md px-3.5 py-1.5 text-sm font-medium transition-colors ${tab === "refinanciados" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+            >
+              <RefreshCw className="h-3.5 w-3.5" />
+              Refinanciados
+              {refiCount > 0 && (
+                <span className="rounded-full bg-warning/15 px-1.5 text-[10px] font-bold text-warning">{refiCount}</span>
+              )}
+            </button>
+          </div>
+          {tab === "creditos" && cta}
+        </div>
 
         {isLoading ? (
           <BodySkeleton />
@@ -166,6 +195,8 @@ export function CreditosTable() {
           <div className="rounded-xl bg-destructive/10 border border-destructive/30 p-4 text-destructive text-sm">
             Error al cargar créditos: {error.message}
           </div>
+        ) : tab === "refinanciados" ? (
+          <RefinanciadosView creditos={creditos} onOpen={setDetail} />
         ) : (
         <div className="space-y-5">
 
@@ -200,6 +231,7 @@ export function CreditosTable() {
               <option value="all">Todos los estados</option>
               <option value="activo">Activos</option>
               <option value="pagado">Pagados</option>
+              <option value="refinanciado">Refinanciados</option>
               <option value="anulado">Anulados</option>
             </select>
             <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -254,7 +286,16 @@ export function CreditosTable() {
                       const est = estadoBadge(c.estado);
                       return (
                         <tr key={c.id} onClick={() => setDetail(c)} className={`cursor-pointer hover:bg-muted/20 transition-colors ${idx % 2 === 1 ? "bg-muted/5" : ""}`}>
-                          <td className="px-4 py-3 font-mono text-xs text-muted-foreground border-b border-border/70 whitespace-nowrap">{formatCreditoNumero(c.numero)}</td>
+                          <td className="px-4 py-3 font-mono text-xs text-muted-foreground border-b border-border/70 whitespace-nowrap">
+                            <div className="flex items-center gap-1.5">
+                              {formatCreditoNumero(c.numero)}
+                              {c.es_refinanciacion && (
+                                <span className="inline-flex items-center gap-1 rounded-full bg-warning/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-warning" title="Crédito nacido de una refinanciación">
+                                  <RefreshCw className="h-2.5 w-2.5" /> Refi
+                                </span>
+                              )}
+                            </div>
+                          </td>
                           <td className="px-4 py-3 font-medium text-foreground border-b border-border/70">{nombreCompleto(c.cliente)}</td>
                           <td className="px-4 py-3 border-b border-border/70">
                             <StatusBadge label={c.tipo_credito} variant="muted" />
@@ -285,6 +326,15 @@ export function CreditosTable() {
                           </td>
                           <td className="px-4 py-3 pr-5 text-right border-b border-border/70">
                             <div className="flex justify-end gap-1" onClick={(e) => e.stopPropagation()}>
+                              {c.estado === "activo" && c.dias_mora > 0 && (
+                                <button
+                                  onClick={() => setRefinanciar(c)}
+                                  className="p-1.5 rounded-lg hover:bg-warning/10 transition-colors text-muted-foreground hover:text-warning"
+                                  title="Refinanciar / reestructurar deuda"
+                                >
+                                  <RefreshCw className="h-3.5 w-3.5" />
+                                </button>
+                              )}
                               {c.estado === "pagado" && (
                                 <button
                                   onClick={() => setLibreDeudaId(c.id)}
@@ -372,6 +422,11 @@ export function CreditosTable() {
                         ? <StatusBadge label={`${c.dias_mora}d mora`} variant={c.dias_mora > 30 ? "destructive" : "warning"} />
                         : <span className="text-xs font-medium text-success">Al día</span>}
                       <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
+                        {c.estado === "activo" && c.dias_mora > 0 && (
+                          <button onClick={() => setRefinanciar(c)} className="p-1.5 rounded-lg hover:bg-warning/10 transition-colors text-muted-foreground hover:text-warning" title="Refinanciar">
+                            <RefreshCw className="h-3.5 w-3.5" />
+                          </button>
+                        )}
                         <button onClick={() => openEdit(c.id)} className="p-1.5 rounded-lg hover:bg-muted transition-colors text-muted-foreground">
                           <Edit2 className="h-3.5 w-3.5" />
                         </button>
@@ -441,6 +496,14 @@ export function CreditosTable() {
       </Dialog>
 
       <LibreDeudaDialog creditoId={libreDeudaId} onClose={() => setLibreDeudaId(null)} />
+
+      <RefinanciarDialog
+        credito={refinanciar}
+        onClose={(success) => {
+          setRefinanciar(null);
+          if (success) { mutate(); globalMutate(KEYS.dashboard); }
+        }}
+      />
     </>
   );
 }
@@ -506,6 +569,115 @@ function AnularButton({ credito, onAnular }: { credito: Credito; onAnular: (id: 
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
+  );
+}
+
+/**
+ * Vista "Refinanciados": registro de las reestructuraciones (operaciones origen → nuevo).
+ * Cada fila es una refinanciación: el crédito nuevo (es_refinanciacion) y su crédito
+ * origen resuelto desde la misma lista. Click → abre el detalle del crédito nuevo.
+ */
+function RefinanciadosView({ creditos, onOpen }: { creditos: Credito[]; onOpen: (c: Credito) => void }) {
+  const porId = useMemo(() => new Map(creditos.map((c) => [c.id, c])), [creditos]);
+  const pares = useMemo(
+    () =>
+      creditos
+        .filter((c) => c.es_refinanciacion)
+        .map((nuevo) => ({ nuevo, origen: nuevo.refinancia_a ? porId.get(nuevo.refinancia_a) : undefined }))
+        .sort((a, b) => new Date(b.nuevo.created_at).getTime() - new Date(a.nuevo.created_at).getTime()),
+    [creditos, porId],
+  );
+
+  if (pares.length === 0) {
+    return (
+      <div className="rounded-xl border border-dashed border-border/60 p-12 flex flex-col items-center gap-4 text-center">
+        <div className="h-16 w-16 rounded-2xl bg-muted/20 border border-border/70 flex items-center justify-center">
+          <RefreshCw className="h-7 w-7 text-muted-foreground/20" />
+        </div>
+        <div className="space-y-1.5">
+          <p className="text-sm font-semibold text-muted-foreground">Sin refinanciaciones</p>
+          <p className="text-xs text-muted-foreground/50 max-w-xs leading-relaxed">
+            Cuando reestructures un crédito moroso (botón ↻ en la lista de créditos), la operación aparecerá acá: deuda consolidada en un crédito nuevo.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  const totalConsolidado = pares.reduce((s, p) => s + p.nuevo.monto_original, 0);
+
+  return (
+    <div className="space-y-4">
+      <p className="text-xs text-muted-foreground">
+        {pares.length} refinanciaci{pares.length !== 1 ? "ones" : "ón"} · capital consolidado total <span className="font-mono font-semibold text-foreground">${n0(totalConsolidado)}</span>
+      </p>
+
+      {/* Desktop */}
+      <div className="hidden md:block rounded-xl border border-border overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm border-separate border-spacing-0">
+            <thead>
+              <tr className="bg-muted/30">
+                <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">Origen</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">Crédito nuevo</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">Cliente</th>
+                <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">Capital consolidado</th>
+                <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">Saldo</th>
+                <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">Mora</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">Fecha</th>
+              </tr>
+            </thead>
+            <tbody>
+              {pares.map(({ nuevo, origen }, idx) => (
+                <tr key={nuevo.id} onClick={() => onOpen(nuevo)} className={`cursor-pointer hover:bg-muted/20 transition-colors ${idx % 2 === 1 ? "bg-muted/5" : ""}`}>
+                  <td className="px-4 py-3 border-b border-border/70 whitespace-nowrap">
+                    <span className="font-mono text-xs text-muted-foreground">{origen ? formatCreditoNumero(origen.numero) : "—"}</span>
+                  </td>
+                  <td className="px-4 py-3 border-b border-border/70 whitespace-nowrap">
+                    <span className="inline-flex items-center gap-1.5 font-mono text-xs text-warning">
+                      <RefreshCw className="h-3 w-3" />{formatCreditoNumero(nuevo.numero)}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 font-medium text-foreground border-b border-border/70">{nombreCompleto(nuevo.cliente)}</td>
+                  <td className="px-4 py-3 text-right font-mono text-sm text-foreground border-b border-border/70">${n0(nuevo.monto_original)}</td>
+                  <td className="px-4 py-3 text-right font-mono text-sm border-b border-border/70">
+                    <span className={nuevo.saldo_pendiente > 0 ? "text-warning font-semibold" : "text-success"}>${n0(nuevo.saldo_pendiente)}</span>
+                  </td>
+                  <td className="px-4 py-3 text-center border-b border-border/70">
+                    {nuevo.dias_mora > 0
+                      ? <StatusBadge label={`${nuevo.dias_mora}d`} variant={nuevo.dias_mora > 30 ? "destructive" : "warning"} />
+                      : <span className="text-xs font-medium text-success">Al día</span>}
+                  </td>
+                  <td className="px-4 py-3 text-xs text-muted-foreground border-b border-border/70 whitespace-nowrap">{formatFecha(nuevo.created_at)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Mobile */}
+      <div className="block md:hidden space-y-3">
+        {pares.map(({ nuevo, origen }) => (
+          <div key={nuevo.id} onClick={() => onOpen(nuevo)} className="rounded-xl bg-card border border-border p-4 space-y-2 cursor-pointer active:bg-muted/20 transition-colors">
+            <div className="flex items-center justify-between gap-2">
+              <span className="inline-flex items-center gap-1.5 font-mono text-xs text-warning">
+                <RefreshCw className="h-3 w-3" />{formatCreditoNumero(nuevo.numero)}
+              </span>
+              {nuevo.dias_mora > 0
+                ? <StatusBadge label={`${nuevo.dias_mora}d mora`} variant={nuevo.dias_mora > 30 ? "destructive" : "warning"} />
+                : <span className="text-xs font-medium text-success">Al día</span>}
+            </div>
+            <p className="font-medium text-foreground text-sm">{nombreCompleto(nuevo.cliente)}</p>
+            <p className="text-[11px] text-muted-foreground">Origen: {origen ? formatCreditoNumero(origen.numero) : "—"} · {formatFecha(nuevo.created_at)}</p>
+            <div className="flex items-center justify-between pt-1 border-t border-border/70">
+              <span className="text-[10px] text-muted-foreground">Capital consolidado</span>
+              <span className="font-mono font-semibold text-foreground">${n0(nuevo.monto_original)}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 

@@ -7,21 +7,23 @@
  * no se escribe a mano.
  *
  * Vocabulario terminal:
- *  - `pagado`    → saldado por el cronograma normal (todas las cuotas pagas).
- *  - `cancelado` → cierre administrativo SALDADO (solo válido con deuda cero).
- *  - `anulado`   → void administrativo (puede tener residual; se excluye de cartera).
+ *  - `pagado`       → saldado por el cronograma normal (todas las cuotas pagas).
+ *  - `cancelado`    → cierre administrativo SALDADO (solo válido con deuda cero).
+ *  - `anulado`      → void administrativo (puede tener residual; se excluye de cartera).
+ *  - `refinanciado` → la deuda se trasladó a un crédito nuevo (reestructuración);
+ *                     queda cerrado con saldo cero y fuera de cartera.
  */
 
 import { round2 } from "./money";
 
-export const ESTADOS_CREDITO = ["activo", "pagado", "vencido", "anulado", "cancelado"] as const;
+export const ESTADOS_CREDITO = ["activo", "pagado", "vencido", "anulado", "cancelado", "refinanciado"] as const;
 export type EstadoCredito = (typeof ESTADOS_CREDITO)[number];
 
 /** Estados terminales que EXIGEN deuda saldada (no pueden coexistir con saldo/cuotas pendientes). */
 export const ESTADOS_SALDADOS: readonly EstadoCredito[] = ["pagado", "cancelado"];
 
 /** Estados de void administrativo (se respetan aunque haya residual; fuera de cartera). */
-export const ESTADOS_VOID: readonly EstadoCredito[] = ["anulado"];
+export const ESTADOS_VOID: readonly EstadoCredito[] = ["anulado", "refinanciado"];
 
 /** Tolerancia de centavos para comparaciones de saldo. */
 const EPS = 0.01;

@@ -2,8 +2,8 @@
 
 import { useState } from "react";
 import { useSWRConfig } from "swr";
-import { CalendarDays, Wallet, TrendingUp, AlertCircle, Info, ArrowUpRight, Receipt, Loader2, Printer } from "lucide-react";
-import { useAmortizacion, useCuotas, usePagosByCredito, KEYS, type Credito, type EstadoCuota } from "@/lib/swr";
+import { CalendarDays, Wallet, TrendingUp, AlertCircle, Info, ArrowUpRight, Receipt, Loader2, Printer, RefreshCw, ArrowRight } from "lucide-react";
+import { useAmortizacion, useCuotas, usePagosByCredito, useCreditos, KEYS, type Credito, type EstadoCuota } from "@/lib/swr";
 import { abrirRecibo } from "@/lib/recibo";
 import { imprimirPlanPagos } from "@/lib/plan-print";
 import { PagoForm } from "@/components/pagos/PagoForm";
@@ -21,9 +21,10 @@ function n0(x: number) {
 }
 const fmtDate = (s: string) => formatFecha(s);
 
-function estadoBadge(estado: string): { label: string; variant: "primary" | "success" | "muted" } {
+function estadoBadge(estado: string): { label: string; variant: "primary" | "success" | "muted" | "warning" } {
   if (estado === "activo") return { label: "Activo", variant: "primary" };
   if (estado === "pagado") return { label: "Pagado", variant: "success" };
+  if (estado === "refinanciado") return { label: "Refinanciado", variant: "warning" };
   return { label: estado, variant: "muted" };
 }
 
@@ -49,6 +50,11 @@ export function CreditoDetail({ credito }: { credito: Credito }) {
   const { amortizacion } = useAmortizacion(credito.id);
   const { cuotas, resumen, isLoading: loadingCuotas } = useCuotas(credito.id);
   const { pagos, isLoading: loadingPagos } = usePagosByCredito(credito.id);
+  // Trazabilidad de refinanciación: resuelve el N° del crédito vinculado (origen/destino)
+  // desde la lista ya cargada, sin pedir nada extra al server.
+  const { creditos } = useCreditos();
+  const origenRefi = credito.refinancia_a ? creditos.find((c) => c.id === credito.refinancia_a) : undefined;
+  const destinoRefi = credito.refinanciado_en ? creditos.find((c) => c.id === credito.refinanciado_en) : undefined;
 
   const { mutate: globalMutate } = useSWRConfig();
   const [reciboBusy, setReciboBusy] = useState<string | null>(null);
@@ -149,6 +155,35 @@ export function CreditoDetail({ credito }: { credito: Credito }) {
 
       {/* ── Cuerpo scrolleable ── */}
       <div className="flex-1 min-h-0 overflow-y-auto px-7 py-5 space-y-6">
+
+        {/* Trazabilidad de refinanciación (origen ↔ destino) */}
+        {(credito.es_refinanciacion || credito.refinanciado_en) && (
+          <div className="flex items-center gap-3 rounded-xl border border-warning/30 bg-warning/5 px-4 py-3">
+            <RefreshCw className="h-4 w-4 shrink-0 text-warning" />
+            <div className="text-xs text-foreground">
+              {credito.es_refinanciacion && (
+                <p className="flex flex-wrap items-center gap-1.5">
+                  <span className="text-muted-foreground">Proviene de refinanciar</span>
+                  <ArrowRight className="h-3 w-3 text-warning" />
+                  <span className="font-mono font-semibold text-warning">
+                    {origenRefi ? formatCreditoNumero(origenRefi.numero) : "crédito anterior"}
+                  </span>
+                  {origenRefi && <span className="text-muted-foreground">· {nombreCompleto(origenRefi.cliente)}</span>}
+                </p>
+              )}
+              {credito.refinanciado_en && (
+                <p className="flex flex-wrap items-center gap-1.5">
+                  <span className="text-muted-foreground">Refinanciado en</span>
+                  <ArrowRight className="h-3 w-3 text-warning" />
+                  <span className="font-mono font-semibold text-warning">
+                    {destinoRefi ? formatCreditoNumero(destinoRefi.numero) : "crédito nuevo"}
+                  </span>
+                  <span className="text-muted-foreground">— la deuda viva pasó a ese crédito.</span>
+                </p>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Pagos registrados */}
         <section className="space-y-2">

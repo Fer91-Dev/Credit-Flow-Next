@@ -30,6 +30,10 @@ export async function POST(req: NextRequest) {
   const hoy = new Date();
   hoy.setHours(0, 0, 0, 0);
 
+  // Promesas de pago vencidas: se procesan SIEMPRE (es una actualización de estado,
+  // no depende de tener canales de notificación configurados).
+  const promesas = await procesarPromesasVencidas(hoy);
+
   // Obtener todos los tenants con configuración de canales activa
   const configs = await prisma.configuraciones.findMany({
     where: {
@@ -116,7 +120,82 @@ export async function POST(req: NextRequest) {
     resultados.push({ tenant_id: config.tenant_id, enviados, errores });
   }
 
-  return NextResponse.json({ ok: true, procesados: configs.length, resultados });
+  return NextResponse.json({ ok: true, promesas, procesados: configs.length, resultados });
+}
+
+// ─── Promesas de pago vencidas (automatización de incumplimiento) ─────────────
+
+/** Formatea una fecha a DD/MM/AAAA (UTC-safe) para la nota de la gestión. */
+function fmtFechaCorta(d: Date | null): string {
+  if (!d) return "—";
+  return `${String(d.getUTCDate()).padStart(2, "0")}/${String(d.getUTCMonth() + 1).padStart(2, "0")}/${d.getUTCFullYear()}`;
+}
+
+/**
+ * Marca como INCUMPLIDA (rota) toda promesa de pago pendiente cuya fecha límite ya
+ * pasó y que no fue cubierta por pagos. Auto-corrección: si hubo pagos posteriores a
+ * la promesa que la cubren, la rescata como CUMPLIDA (por si la conciliación al cobrar
+ * no la marcó). Por cada promesa rota registra una gestión automática como "alerta" en
+ * el historial del crédito, con próximo contacto = hoy. Corre para TODOS los tenants.
+ */
+async function procesarPromesasVencidas(hoy: Date): Promise<{ rotas: number; rescatadas: number }> {
+  const vencidas = await prisma.acciones_cobranza.findMany({
+    where: {
+      resultado: "promesa_pago",
+      promesa_estado: "pendiente",
+      promesa_fecha: { lt: hoy }, // fecha límite estrictamente anterior a hoy (vencía ayer o antes)
+    },
+    take: 2000, // límite de seguridad
+  });
+
+  let rotas = 0;
+  let rescatadas = 0;
+
+  for (const promesa of vencidas) {
+    // ¿Hubo pagos desde que se hizo la promesa que la cubran? (auto-corrección)
+    const desde = new Date(promesa.created_at);
+    desde.setHours(0, 0, 0, 0);
+    const agg = await prisma.pagos.aggregate({
+      where: { tenant_id: promesa.tenant_id, credito_id: promesa.credito_id, fecha: { gte: desde } },
+      _sum: { monto: true },
+    });
+    const pagado = agg._sum.monto ?? 0;
+    const cubierta = promesa.promesa_monto ? pagado >= promesa.promesa_monto : pagado > 0;
+
+    if (cubierta) {
+      await prisma.acciones_cobranza.update({
+        where: { id: promesa.id },
+        data: { promesa_estado: "cumplida" },
+      });
+      rescatadas++;
+      continue;
+    }
+
+    // Romper la promesa + registrar la alerta (gestión automática) en una transacción.
+    const montoTxt = promesa.promesa_monto
+      ? ` por $${promesa.promesa_monto.toLocaleString("es-AR")}`
+      : "";
+    await prisma.$transaction([
+      prisma.acciones_cobranza.update({
+        where: { id: promesa.id },
+        data: { promesa_estado: "incumplida" },
+      }),
+      prisma.acciones_cobranza.create({
+        data: {
+          tenant_id: promesa.tenant_id,
+          credito_id: promesa.credito_id,
+          tipo: "otro",
+          resultado: "otro",
+          nota: `[AUTO] Promesa de pago INCUMPLIDA — vencía ${fmtFechaCorta(promesa.promesa_fecha)}${montoTxt}; no se registró el pago. Recontactar al cliente.`,
+          automatico: true,
+          proximo_contacto: hoy, // sugiere recontacto inmediato
+        },
+      }),
+    ]);
+    rotas++;
+  }
+
+  return { rotas, rescatadas };
 }
 
 // ─── Tipos de configuración ───────────────────────────────────────────────────

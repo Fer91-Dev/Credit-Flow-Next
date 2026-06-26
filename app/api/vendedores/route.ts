@@ -27,9 +27,11 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     orderBy: [{ activo: "desc" }, { created_at: "desc" }],
   });
 
-  // Créditos otorgados (no anulados) agrupados por vendedor, para el resumen de comisiones.
+  // Créditos otorgados (no anulados, sin refinanciaciones) agrupados por vendedor,
+  // para el resumen de comisiones. Una refinanciación no es plata nueva otorgada → no
+  // genera comisión ni cuenta para la meta (no inflar el rendimiento del vendedor).
   const creditos = await prisma.creditos.findMany({
-    where: { ...withTenant(tenantId), vendedor_id: { not: null }, estado: { not: "anulado" } },
+    where: { ...withTenant(tenantId), vendedor_id: { not: null }, estado: { not: "anulado" }, es_refinanciacion: false },
     select: { vendedor_id: true, monto_original: true, tipo_credito: true },
   });
 

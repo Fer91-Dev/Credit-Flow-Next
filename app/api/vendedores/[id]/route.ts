@@ -26,8 +26,10 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
     return errorResponse("Vendedor no encontrado", "NOT_FOUND", 404);
   }
 
+  // Excluye refinanciaciones: no son plata nueva otorgada (no suman a comisión/meta ni
+  // al "otorgado" de la ficha). El crédito original ya quedó contado en su momento.
   const creditos = await prisma.creditos.findMany({
-    where: { ...withTenant(tenantId), vendedor_id: id, estado: { not: "anulado" } },
+    where: { ...withTenant(tenantId), vendedor_id: id, estado: { not: "anulado" }, es_refinanciacion: false },
     select: {
       id: true, numero: true, monto_original: true, tipo_credito: true, estado: true, created_at: true,
       cliente: { select: { nombre: true, apellido: true } },

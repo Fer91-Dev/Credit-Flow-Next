@@ -65,6 +65,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
         saldo_pendiente: true,
         dias_mora: true,
         vendedor_id: true,
+        es_refinanciacion: true,
       },
     }),
 
@@ -147,9 +148,11 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
         return {
           vendedor_id: key === SIN_ASIGNAR ? null : key,
           nombre: key === SIN_ASIGNAR ? "Sin asignar" : nombrePorId.get(key) ?? "—",
-          creditos_otorgados: lista.filter((c) => c.estado !== "anulado").length,
+          // Otorgado: excluye anulados y refinanciaciones (no es plata nueva colocada).
+          // Cartera y mora SÍ incluyen la refinanciación: es deuda viva real a cobrar.
+          creditos_otorgados: lista.filter((c) => c.estado !== "anulado" && !c.es_refinanciacion).length,
           monto_otorgado: lista
-            .filter((c) => c.estado !== "anulado")
+            .filter((c) => c.estado !== "anulado" && !c.es_refinanciacion)
             .reduce((s, c) => s + c.monto_original, 0),
           cartera,
           en_mora_monto: enMora,

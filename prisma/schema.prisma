@@ -129,6 +129,14 @@ model creditos {
 
   vendedor_id String? @db.Uuid // vendedor que otorgó el crédito (Fase 5, opcional)
 
+  // Refinanciación / reestructuración: un crédito moroso se cierra y su deuda viva
+  // se consolida como capital de un crédito NUEVO. No mueve plata real (no hay
+  // desembolso). Los punteros vinculan ambos créditos; el flag excluye al nuevo del
+  // cómputo de comisión/meta (no es plata nueva otorgada).
+  es_refinanciacion Boolean @default(false) // true = nació de una reestructuración
+  refinancia_a      String? @db.Uuid // (en el nuevo) crédito original que reemplaza
+  refinanciado_en   String? @db.Uuid // (en el viejo) refinanciación que lo reemplazó
+
   cliente           clientes           @relation(fields: [cliente_id], references: [id], onDelete: Cascade)
   solicitud         solicitudes?       @relation(fields: [solicitud_id], references: [id], onDelete: SetNull)
   vendedor          vendedores?        @relation(fields: [vendedor_id], references: [id], onDelete: SetNull)

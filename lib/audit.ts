@@ -15,6 +15,7 @@ export type AuditAccion =
   | "eliminar"
   | "cancelar"
   | "anular"
+  | "refinanciar"
   | "registrar_pago"
   | "actualizar_config";
 

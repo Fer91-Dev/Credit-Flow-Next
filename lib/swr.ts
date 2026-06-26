@@ -151,6 +151,12 @@ export interface Credito {
   interes_mora?: number;
   /** True si el crédito tiene al menos un pago registrado (bloquea eliminar). */
   tiene_pagos?: boolean;
+  /** True si nació de una refinanciación (no es plata nueva otorgada). */
+  es_refinanciacion?: boolean;
+  /** (En el nuevo) crédito original que esta refinanciación reemplaza. */
+  refinancia_a?: string | null;
+  /** (En el viejo) refinanciación que reemplazó a este crédito. */
+  refinanciado_en?: string | null;
 }
 
 /** Resumen de ventas/comisión de un vendedor (derivado en el servidor). */
@@ -847,6 +853,30 @@ export function useLibreDeuda(creditoId: string | null) {
     creditoId ? `/api/creditos/${creditoId}/libre-deuda` : null,
   );
   return { libreDeuda: data, error, isLoading };
+}
+
+/** Desglose de la deuda viva a consolidar al refinanciar un crédito. */
+export interface DeudaConsolidada {
+  capital: number;
+  interes: number;
+  cargos: number;
+  mora: number;
+  total: number;
+}
+
+/** Previsualización de refinanciación: deuda consolidada + valores sugeridos. */
+export interface RefinanciacionPreview {
+  credito: { id: string; numero: number | null; cliente: string; tasa: number; plazo_meses: number; frecuencia: string; dias_mora: number };
+  deuda: DeudaConsolidada;
+  sugerido: { tasa: number; plazo_meses: number; frecuencia: string };
+}
+
+/** Preview de la deuda a consolidar al refinanciar. Key condicional. */
+export function useRefinanciacionPreview(creditoId: string | null) {
+  const { data, error, isLoading } = useSWR<RefinanciacionPreview>(
+    creditoId ? `/api/creditos/${creditoId}/refinanciar` : null,
+  );
+  return { preview: data, error, isLoading };
 }
 
 /** Cronograma de cuotas PERSISTIDO de un crédito. Key condicional. */

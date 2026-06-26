@@ -39,8 +39,10 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
       where: { ...withTenant(tenantId), vendedor_id: id },
       orderBy: { fecha_desde: "desc" },
     }),
+    // Cumplimiento de meta por monto otorgado: excluye refinanciaciones (no es plata
+    // nueva; no debe contar para alcanzar la meta ni gatillar el bonus por meta).
     prisma.creditos.findMany({
-      where: { ...withTenant(tenantId), vendedor_id: id, estado: { not: "anulado" } },
+      where: { ...withTenant(tenantId), vendedor_id: id, estado: { not: "anulado" }, es_refinanciacion: false },
       select: { created_at: true, monto_original: true },
     }),
     prisma.pagos.findMany({
