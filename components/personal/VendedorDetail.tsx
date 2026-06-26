@@ -4,16 +4,18 @@ import { useState, useMemo, useEffect } from "react";
 import { mutate as globalMutate } from "swr";
 import {
   UserCog, Trash2, TrendingUp, DollarSign, Target, Percent,
-  MapPin, Layers, Plus, X, Sparkles, Award,
+  MapPin, Layers, Plus, X, Sparkles, Award, Wallet, Send, ArrowDownToLine, Scale,
 } from "lucide-react";
-import { useVendedorDetalle, useMetasVendedor, useLogrosVendedor, useConfiguracion, KEYS, type VendedorDetalle, type ComisionConfig, type MetaVendedor, type PeriodoGamificacion } from "@/lib/swr";
+import { useVendedorDetalle, useMetasVendedor, useLogrosVendedor, useConfiguracion, useVendedorCaja, KEYS, type VendedorDetalle, type ComisionConfig, type MetaVendedor, type PeriodoGamificacion, type CuentaCaja, type MovimientoCaja } from "@/lib/swr";
 import { calcularComisionTotal, comisionDeVenta, rangoDePeriodo, periodoActual } from "@/lib/domain";
 import { MedallaBadge, RangoBadge, InsigniaChip } from "@/components/ui/Medalla";
+import { MovimientoDetail } from "@/components/caja/MovimientoDetail";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field, Input, Select, Textarea } from "@/components/ui/field";
 import {
-  formatMonto, formatFecha, formatCreditoNumero, nombreCompleto,
+  formatMonto, formatFecha, formatFechaHora, formatCreditoNumero, nombreCompleto,
   numeroAInput, maskMontoInput, parseMontoInput,
 } from "@/lib/utils";
 import { useConfirm } from "@/components/ui/confirm";
@@ -35,6 +37,7 @@ const TABS = [
   { key: "comisiones",  label: "Comisiones",  icon: Percent },
   { key: "metas",       label: "Metas",       icon: Target },
   { key: "logros",      label: "Logros",      icon: Award },
+  { key: "caja",        label: "Caja / Operación", icon: Wallet },
   { key: "datos",       label: "Datos",       icon: UserCog },
 ] as const;
 
@@ -170,6 +173,7 @@ export function VendedorDetail({ vendedorId, onChanged, onEliminar }: VendedorDe
         {tab === "comisiones" && <ComisionesTab vendedor={vendedor} guardar={guardar} />}
         {tab === "metas" && <MetasTab vendedor={vendedor} onMetaChanged={onMetaChanged} />}
         {tab === "logros" && <LogrosTab vendedorId={vendedor.id} />}
+        {tab === "caja" && <CajaOperacionTab vendedor={vendedor} guardar={guardar} />}
         {tab === "datos" && <DatosTab vendedor={vendedor} guardar={guardar} />}
       </div>
     </div>
@@ -751,6 +755,243 @@ function LogrosTab({ vendedorId }: { vendedorId: string }) {
   );
 }
 
+/* ── Pestaña Caja / Operación (límite de aprobación + caja personal) ── */
+
+const CAJA_TIPO_META: Record<MovimientoCaja["tipo"], { label: string; variant: "primary" | "success" | "warning" | "destructive" | "muted" }> = {
+  desembolso:         { label: "Desembolso",   variant: "warning" },
+  cobro:              { label: "Cobro",         variant: "success" },
+  devolucion:         { label: "Devolución",    variant: "destructive" },
+  reversa_desembolso: { label: "Reversa",       variant: "primary" },
+  ajuste:             { label: "Ajuste",        variant: "muted" },
+  transferencia:      { label: "Transferencia", variant: "primary" },
+  entrega:            { label: "Entrega",       variant: "warning" },
+  rendicion:          { label: "Rendición",     variant: "success" },
+};
+const CAJA_CUENTA_LABEL: Record<CuentaCaja, string> = { efectivo: "Efectivo", banco: "Banco", dolares: "Dólares" };
+
+function CajaOperacionTab({ vendedor, guardar }: { vendedor: VendedorDetalle; guardar: (b: Record<string, unknown>, m: SaveMsgs) => Promise<boolean> }) {
+  const { caja, isLoading, mutate } = useVendedorCaja(vendedor.id);
+  const [limite, setLimite] = useState(vendedor.limite_aprobacion != null ? numeroAInput(vendedor.limite_aprobacion) : "");
+  const [savingLimite, setSavingLimite] = useState(false);
+  const [dialog, setDialog] = useState<null | "entrega" | "rendicion">(null);
+  const [detalle, setDetalle] = useState<MovimientoCaja | null>(null);
+
+  const guardarLimite = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSavingLimite(true);
+    await guardar(
+      { limite_aprobacion: limite ? parseMontoInput(limite) : null },
+      {
+        title: "¿Guardar límite de aprobación?",
+        description: limite ? `El vendedor no podrá otorgar por encima de $${limite} sin autorización.` : "El vendedor quedará sin límite de otorgamiento.",
+        confirm: "Guardar límite",
+        success: "Límite actualizado",
+      },
+    );
+    setSavingLimite(false);
+  };
+
+  const refrescarCaja = () => { mutate(); globalMutate("/api/dashboard"); };
+
+  return (
+    <div className="space-y-5 max-w-3xl">
+      {/* Límite de aprobación */}
+      <form onSubmit={guardarLimite} className="rounded-xl border border-border bg-muted/10 p-4">
+        <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-3">Límite de aprobación</p>
+        <div className="flex flex-col sm:flex-row sm:items-end gap-3">
+          <div className="flex-1">
+            <Field label="Monto máx. sin autorización ($)" hint="Vacío = sin límite">
+              <Input type="text" inputMode="decimal" placeholder="Ej: 1.000.000,00" value={limite}
+                onChange={(e) => setLimite(maskMontoInput(e.target.value))} className="text-right font-mono tabular-nums" />
+            </Field>
+          </div>
+          <button type="submit" disabled={savingLimite} className="px-5 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 disabled:opacity-50 transition-opacity whitespace-nowrap">
+            {savingLimite ? "Guardando…" : "Guardar límite"}
+          </button>
+        </div>
+      </form>
+
+      {/* Caja personal */}
+      <section className="space-y-3">
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Caja personal</p>
+          <div className="flex gap-2">
+            <button onClick={() => setDialog("entrega")} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-medium hover:opacity-90 transition-opacity">
+              <ArrowDownToLine className="h-3.5 w-3.5" /> Entregar efectivo
+            </button>
+            <button onClick={() => setDialog("rendicion")} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-foreground text-xs font-medium hover:bg-muted transition-colors">
+              <Send className="h-3.5 w-3.5" /> Rendir
+            </button>
+          </div>
+        </div>
+
+        {isLoading || !caja ? (
+          <Skeleton className="h-40 rounded-xl" />
+        ) : (
+          <>
+            {/* Saldos */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <MiniStat icon={Scale} label="Saldo de su caja" value={`$${n0(caja.saldo_total)}`} accent={caja.saldo_total >= 0 ? "success" : undefined} />
+              {(["efectivo", "banco", "dolares"] as CuentaCaja[]).map((c) => (
+                <MiniStat key={c} icon={Wallet} label={CAJA_CUENTA_LABEL[c]} value={`$${n0(caja.saldos_por_cuenta[c] ?? 0)}`} />
+              ))}
+            </div>
+
+            {/* Movimientos */}
+            {caja.movimientos.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-border/60 p-8 text-center text-sm text-muted-foreground">
+                Sin movimientos en la caja de este vendedor.
+              </div>
+            ) : (
+              <div className="rounded-xl border border-border overflow-hidden">
+                <table className="w-full text-sm border-separate border-spacing-0">
+                  <thead>
+                    <tr className="bg-muted/30">
+                      <th className="px-4 py-2.5 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">Comprobante</th>
+                      <th className="px-4 py-2.5 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">Fecha y hora</th>
+                      <th className="px-4 py-2.5 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">Tipo</th>
+                      <th className="px-4 py-2.5 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">Origen</th>
+                      <th className="px-4 py-2.5 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">Destino</th>
+                      <th className="px-4 py-2.5 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border pr-5">Monto</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {caja.movimientos.map((m, idx) => {
+                      const meta = CAJA_TIPO_META[m.tipo];
+                      const ingreso = m.monto >= 0;
+                      return (
+                        <tr key={m.id} onClick={() => setDetalle(m)} className={`cursor-pointer transition-colors hover:bg-muted/20 ${idx % 2 === 1 ? "bg-muted/5" : ""}`}>
+                          <td className="px-4 py-2.5 font-mono text-xs text-muted-foreground whitespace-nowrap border-b border-border/60">{m.comprobante ?? "—"}</td>
+                          <td className="px-4 py-2.5 text-muted-foreground tabular-nums whitespace-nowrap border-b border-border/60">{formatFechaHora(m.created_at ?? m.fecha)}</td>
+                          <td className="px-4 py-2.5 border-b border-border/60"><StatusBadge label={meta.label} variant={meta.variant} /></td>
+                          <td className="px-4 py-2.5 text-muted-foreground border-b border-border/60">{m.origen ?? "—"}</td>
+                          <td className="px-4 py-2.5 text-foreground border-b border-border/60">{m.destino ?? "—"}</td>
+                          <td className={`px-4 py-2.5 pr-5 text-right font-mono font-semibold border-b border-border/60 ${ingreso ? "text-success" : "text-destructive"}`}>
+                            {ingreso ? "+" : "−"}${n0(Math.abs(m.monto))}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </>
+        )}
+      </section>
+
+      <EntregaRendirDialog
+        vendedorId={vendedor.id}
+        accion={dialog}
+        saldos={caja?.saldos_por_cuenta}
+        onClose={(ok) => { setDialog(null); if (ok) refrescarCaja(); }}
+      />
+
+      <Dialog open={!!detalle} onOpenChange={(o) => { if (!o) setDetalle(null); }}>
+        <DialogContent className="w-[95vw] sm:max-w-md max-h-[90dvh] flex flex-col overflow-hidden">
+          <DialogHeader className="shrink-0">
+            <DialogTitle>Detalle del movimiento</DialogTitle>
+          </DialogHeader>
+          <div className="flex-1 min-h-0 overflow-y-auto">
+            {detalle && <MovimientoDetail mov={detalle} />}
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+function EntregaRendirDialog({
+  vendedorId, accion, onClose, saldos,
+}: {
+  vendedorId: string;
+  accion: "entrega" | "rendicion" | null;
+  onClose: (ok?: boolean) => void;
+  saldos?: Record<CuentaCaja, number>;
+}) {
+  const confirm = useConfirm();
+  const toast = useToast();
+  const [cuenta, setCuenta] = useState<CuentaCaja>("efectivo");
+  const [monto, setMonto] = useState("");
+  const [descripcion, setDescripcion] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const open = accion !== null;
+  const esEntrega = accion === "entrega";
+  const reset = () => { setCuenta("efectivo"); setMonto(""); setDescripcion(""); setError(null); };
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!accion) return;
+    const m = parseMontoInput(monto) || 0;
+    const ok = await confirm({
+      title: esEntrega ? "¿Entregar efectivo?" : "¿Registrar rendición?",
+      description: esEntrega
+        ? `Se entregarán $${numeroAInput(m)} de la caja principal a la caja del vendedor (${cuenta}).`
+        : `Se rendirán $${numeroAInput(m)} de la caja del vendedor a la principal (${cuenta}).`,
+      confirmLabel: esEntrega ? "Entregar" : "Rendir",
+    });
+    if (!ok) return;
+    setLoading(true); setError(null);
+    try {
+      const res = await fetch(`/api/vendedores/${vendedorId}/caja`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ accion, monto: m, cuenta, descripcion }),
+      });
+      const json = await res.json();
+      if (json.ok) { reset(); toast.success(esEntrega ? "Entrega registrada" : "Rendición registrada"); onClose(true); }
+      else setError(json.error);
+    } catch {
+      setError("No se pudo registrar el movimiento");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => { if (!o) { reset(); onClose(false); } }}>
+      <DialogContent className="w-[95vw] sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>{esEntrega ? "Entregar efectivo al vendedor" : "Rendir a caja principal"}</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={submit} className="space-y-4">
+          {error && (
+            <div className="rounded-lg bg-destructive/10 border border-destructive/20 px-3 py-2.5 text-sm text-destructive">{error}</div>
+          )}
+          <Field label="Cuenta" required>
+            <Select value={cuenta} onChange={(e) => setCuenta(e.target.value as CuentaCaja)}>
+              <option value="efectivo">Efectivo</option>
+              <option value="banco">Banco</option>
+              <option value="dolares">Dólares</option>
+            </Select>
+          </Field>
+          {saldos && (
+            <p className="text-xs text-muted-foreground">
+              Saldo del vendedor en {CAJA_CUENTA_LABEL[cuenta]}:{" "}
+              <span className={`font-mono font-semibold ${(saldos[cuenta] ?? 0) < 0 ? "text-destructive" : "text-foreground"}`}>${numeroAInput(saldos[cuenta] ?? 0)}</span>
+            </p>
+          )}
+          <Field label="Monto ($)" required>
+            <Input type="text" inputMode="decimal" placeholder="50.000,00" value={monto}
+              onChange={(e) => setMonto(maskMontoInput(e.target.value))} className="text-right font-mono tabular-nums" required />
+          </Field>
+          <Field label="Observación">
+            <Textarea value={descripcion} onChange={(e) => setDescripcion(e.target.value)} rows={2} placeholder="Detalle opcional…" />
+          </Field>
+          <div className="flex justify-end gap-2 pt-1 border-t border-border">
+            <button type="button" onClick={() => { reset(); onClose(false); }} className="px-4 py-2 rounded-lg text-sm text-muted-foreground hover:bg-muted transition-colors">Cancelar</button>
+            <button type="submit" disabled={loading || !monto} className="px-5 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 disabled:opacity-40 transition-opacity">
+              {loading ? "Guardando…" : esEntrega ? "Entregar" : "Rendir"}
+            </button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 /* ── Pestaña Datos (laborales + parametrización) ── */
 function DatosTab({ vendedor, guardar }: { vendedor: VendedorDetalle; guardar: (b: Record<string, unknown>, m: SaveMsgs) => Promise<boolean> }) {
   const [f, setF] = useState({
@@ -764,7 +1005,6 @@ function DatosTab({ vendedor, guardar }: { vendedor: VendedorDetalle; guardar: (
     direccion: vendedor.direccion ?? "",
     zona: vendedor.zona ?? "",
     notas: vendedor.notas ?? "",
-    limite_aprobacion: vendedor.limite_aprobacion != null ? numeroAInput(vendedor.limite_aprobacion) : "",
   });
   const [saving, setSaving] = useState(false);
   const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
@@ -786,7 +1026,6 @@ function DatosTab({ vendedor, guardar }: { vendedor: VendedorDetalle; guardar: (
         direccion: f.direccion,
         zona: f.zona,
         notas: f.notas,
-        limite_aprobacion: f.limite_aprobacion ? parseMontoInput(f.limite_aprobacion) : null,
       },
       {
         title: "¿Guardar cambios?",
@@ -845,11 +1084,6 @@ function DatosTab({ vendedor, guardar }: { vendedor: VendedorDetalle; guardar: (
           </Field>
           <Field label="Dirección">
             <Input value={f.direccion} onChange={set("direccion")} placeholder="Calle y número" />
-          </Field>
-          <Field label="Límite de aprobación ($)" hint="Monto máx. sin autorización (vacío = sin límite)">
-            <Input type="text" inputMode="decimal" placeholder="Ej: 1.000.000,00" value={f.limite_aprobacion}
-              onChange={(e) => setF((p) => ({ ...p, limite_aprobacion: maskMontoInput(e.target.value) }))}
-              className="text-right font-mono tabular-nums" />
           </Field>
         </div>
         <div className="mt-3">

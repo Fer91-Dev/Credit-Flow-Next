@@ -163,9 +163,10 @@ model vendedores {
   limite_aprobacion Float?    // monto máximo que puede otorgar sin autorización (null = sin límite)
   comision_config   Json?     // comisión avanzada (Fase 2): { base_pct, por_tipo, tramos, bonus_meta }. null = % plano
 
-  creditos creditos[]
-  profiles profiles[] // back-relation del vínculo profiles.vendedor_id
-  metas    metas_vendedor[]
+  creditos         creditos[]
+  profiles         profiles[] // back-relation del vínculo profiles.vendedor_id
+  metas            metas_vendedor[]
+  movimientos_caja movimientos_caja[] // caja personal del vendedor (Fase caja por vendedor)
 
   @@index([tenant_id])
 }
@@ -250,20 +251,28 @@ model movimientos_caja {
   created_at  DateTime @default(now()) @db.Timestamptz(6)
   tenant_id   String   @db.Uuid
   fecha       DateTime @default(now()) @db.Date
-  tipo        String // desembolso | cobro | devolucion | reversa_desembolso | ajuste | transferencia
+  tipo        String // desembolso | cobro | devolucion | reversa_desembolso | ajuste | transferencia | entrega | rendicion
   monto       Float // con signo: ingreso > 0, egreso < 0
   metodo      String?
   cuenta      String   @default("efectivo") // efectivo | banco | dolares
   descripcion String
+  origen      String?  // de dónde sale la plata (etiqueta legible: cliente, caja, ajuste…)
+  destino     String?  // a dónde va la plata (etiqueta legible)
+  serie       String?  // serie del comprobante (REC, DES, ENT, …)
+  numero      Int?     // número correlativo dentro de la serie (por tenant) → REC-000123
   credito_id  String?  @db.Uuid
   pago_id     String?  @db.Uuid
+  vendedor_id String?  @db.Uuid // dueño de la caja: null = caja principal (tesorería); set = caja personal del vendedor
 
-  credito creditos? @relation(fields: [credito_id], references: [id], onDelete: Cascade)
-  pago    pagos?    @relation(fields: [pago_id], references: [id], onDelete: Cascade)
+  credito  creditos?   @relation(fields: [credito_id], references: [id], onDelete: Cascade)
+  pago     pagos?      @relation(fields: [pago_id], references: [id], onDelete: Cascade)
+  vendedor vendedores? @relation(fields: [vendedor_id], references: [id], onDelete: SetNull)
 
+  @@unique([tenant_id, serie, numero])
   @@index([tenant_id, fecha])
   @@index([tenant_id, credito_id])
   @@index([tenant_id, cuenta])
+  @@index([tenant_id, vendedor_id])
 }
 
 /// Plan de cuotas PERSISTIDO de un crédito (Fase 6A). Tabla aditiva, multi-tenant.
@@ -397,6 +406,9 @@ model auditoria {
   accion      String // crear | actualizar | eliminar | cancelar | registrar_pago | actualizar_config
   descripcion String
   meta        Json?
+  usuario_id     String? @db.Uuid // actor que ejecutó la acción (capturado al escribir)
+  usuario_nombre String? // nombre del actor (inmutable, al momento del evento)
+  usuario_email  String? // email del actor (inmutable)
 
   @@index([tenant_id, created_at])
 }

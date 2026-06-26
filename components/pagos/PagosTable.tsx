@@ -79,8 +79,8 @@ export function PagosTable() {
           title="Pagos"
           subtitle="Ficha del cliente · registrar cobro"
           accent="primary"
-          actions={acciones}
         />
+        <div className="flex flex-wrap items-center justify-end gap-2">{acciones}</div>
 
         {/* Ficha principal del cliente */}
         <div className="rounded-xl bg-card border border-border overflow-hidden">

@@ -8,11 +8,12 @@ import {
 import { useVendedores, KEYS, type Vendedor } from "@/lib/swr";
 import { VendedorDetail } from "./VendedorDetail";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { KpiCard } from "@/components/ui/KpiCard";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Field, Input, Select } from "@/components/ui/field";
+import { ModalHeader, MoneyInput, FormActions, MODAL_CONTENT } from "@/components/ui/form-kit";
+import { maskMontoInput, parseMontoInput, numeroAInput } from "@/lib/utils";
 import { useConfirm } from "@/components/ui/confirm";
 import { useToast } from "@/components/ui/toast";
 
@@ -92,7 +93,8 @@ export function PersonalView() {
     );
     return (
       <div className="space-y-6">
-        <PageHeader icon={UserCog} title="Personal" subtitle="Ficha del empleado" accent="primary" actions={volver} />
+        <PageHeader icon={UserCog} title="Personal" subtitle="Ficha del empleado" accent="primary" />
+        <div className="flex flex-wrap items-center gap-2">{volver}</div>
         <div className="rounded-xl bg-card border border-border overflow-hidden">
           <VendedorDetail
             vendedorId={selected.id}
@@ -114,8 +116,8 @@ export function PersonalView() {
         title="Personal"
         subtitle="Equipo de ventas y cobranza · comisiones y objetivos"
         accent="primary"
-        actions={cta}
       />
+      <div className="flex flex-wrap items-center justify-end gap-2">{cta}</div>
 
       {isLoading ? (
         <BodySkeleton />
@@ -124,13 +126,13 @@ export function PersonalView() {
           Error al cargar el personal: {error.message}
         </div>
       ) : (
-        <div className="space-y-5">
+        <div className="space-y-6">
           {/* KPIs */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <KpiCard icon={Users} label="Personal" value={String(totales.personal)} sub={`${totales.activos} activos`} accent="primary" />
-            <KpiCard icon={DollarSign} label="Vendido (total)" value={`$${n0(totales.vendido)}`} accent="success" mono />
-            <KpiCard icon={Percent} label="Comisiones" value={`$${n0(totales.comision)}`} accent="warning" mono />
-            <KpiCard icon={Target} label="Vendedores activos" value={String(totales.activos)} accent="primary" />
+            <StatCard icon={Users} label="Personal" value={String(totales.personal)} sub={`${totales.activos} activos`} accent="primary" />
+            <StatCard icon={DollarSign} label="Vendido (total)" value={`$${n0(totales.vendido)}`} sub="acumulado del equipo" accent="success" mono />
+            <StatCard icon={Percent} label="Comisiones" value={`$${n0(totales.comision)}`} sub="a liquidar" accent="warning" mono />
+            <StatCard icon={Target} label="Vendedores activos" value={String(totales.activos)} sub={`de ${totales.personal} totales`} accent="primary" />
           </div>
 
           {/* Lista */}
@@ -139,53 +141,72 @@ export function PersonalView() {
           ) : (
             <>
               {/* Desktop */}
-              <div className="hidden md:block rounded-xl border border-border overflow-hidden">
-                <table className="w-full text-sm border-separate border-spacing-0">
+              <div className="hidden md:block rounded-xl border border-border bg-card overflow-hidden shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)]">
+                <table className="w-full table-fixed text-sm border-separate border-spacing-0">
+                  <colgroup>
+                    <col />{/* Personal — flexible, ocupa el resto */}
+                    <col className="w-28" />{/* Rol */}
+                    <col className="w-24" />{/* Comisión % */}
+                    <col className="w-24" />{/* Créditos */}
+                    <col className="w-32" />{/* Vendido */}
+                    <col className="w-32" />{/* Comisión $ */}
+                    <col className="w-40" />{/* Avance de meta */}
+                    <col className="w-28" />{/* Acciones */}
+                  </colgroup>
                   <thead>
                     <tr className="bg-muted/30">
-                      <th className="px-4 py-3 text-left  text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">Nombre</th>
-                      <th className="px-4 py-3 text-left  text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">Rol</th>
-                      <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">Comisión</th>
-                      <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">Créditos</th>
-                      <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">Vendido</th>
-                      <th className="px-4 py-3 text-right text-xs font-semibold text-warning uppercase tracking-wide border-b border-border">Comisión $</th>
-                      <th className="px-4 py-3 text-left  text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">Meta</th>
-                      <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border pr-5">Acciones</th>
+                      <th className="px-5 py-3.5 text-left  text-[11px] font-semibold text-muted-foreground uppercase tracking-wider border-b border-border">Personal</th>
+                      <th className="px-4 py-3.5 text-left  text-[11px] font-semibold text-muted-foreground uppercase tracking-wider border-b border-border">Rol</th>
+                      <th className="px-4 py-3.5 text-right text-[11px] font-semibold text-muted-foreground uppercase tracking-wider border-b border-border">Comisión</th>
+                      <th className="px-4 py-3.5 text-right text-[11px] font-semibold text-muted-foreground uppercase tracking-wider border-b border-border">Créditos</th>
+                      <th className="px-4 py-3.5 text-right text-[11px] font-semibold text-muted-foreground uppercase tracking-wider border-b border-border">Vendido</th>
+                      <th className="px-4 py-3.5 text-right text-[11px] font-semibold text-warning uppercase tracking-wider border-b border-border">Comisión $</th>
+                      <th className="px-4 py-3.5 text-left  text-[11px] font-semibold text-muted-foreground uppercase tracking-wider border-b border-border">Avance de meta</th>
+                      <th className="pl-4 pr-6 py-3.5 text-right text-[11px] font-semibold text-muted-foreground uppercase tracking-wider border-b border-border">Acciones</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {vendedores.map((v, idx) => {
+                    {vendedores.map((v) => {
                       const rol = ROL_META[v.rol];
                       const r = v.resumen;
                       return (
-                        <tr key={v.id} onClick={() => abrirFicha(v)} className={`cursor-pointer hover:bg-muted/20 transition-colors ${idx % 2 === 1 ? "bg-muted/5" : ""} ${!v.activo ? "opacity-50" : ""}`}>
-                          <td className="px-4 py-3 border-b border-border/70">
-                            <p className="font-medium text-foreground">{v.nombre}</p>
-                            <div className="flex items-center gap-3 text-[11px] text-muted-foreground mt-0.5">
-                              {v.email && <span className="flex items-center gap-1"><Mail className="h-3 w-3" />{v.email}</span>}
-                              {v.telefono && <span className="flex items-center gap-1"><Phone className="h-3 w-3" />{v.telefono}</span>}
+                        <tr key={v.id} onClick={() => abrirFicha(v)} className={`group cursor-pointer transition-colors hover:bg-muted/20 ${!v.activo ? "opacity-50" : ""}`}>
+                          {/* 1 · Identidad */}
+                          <td className="px-5 py-4 border-b border-border/60">
+                            <div className="flex items-center gap-3">
+                              <Avatar nombre={v.nombre} activo={v.activo} />
+                              <div className="min-w-0">
+                                <p className="font-semibold text-foreground leading-tight truncate">{v.nombre}</p>
+                                <div className="flex items-center gap-2.5 text-[11px] text-muted-foreground mt-1">
+                                  {v.email && <span className="flex items-center gap-1 truncate"><Mail className="h-3 w-3 shrink-0" />{v.email}</span>}
+                                  {v.telefono && <span className="flex items-center gap-1 shrink-0"><Phone className="h-3 w-3 shrink-0" />{v.telefono}</span>}
+                                </div>
+                              </div>
                             </div>
                           </td>
-                          <td className="px-4 py-3 border-b border-border/70">
+                          <td className="px-4 py-4 border-b border-border/60">
                             <StatusBadge label={rol.label} variant={rol.variant} />
-                            {!v.activo && <span className="ml-1.5 text-[10px] text-muted-foreground/60 uppercase">inactivo</span>}
+                            {!v.activo && <span className="ml-1.5 text-[10px] text-muted-foreground/50 uppercase">inactivo</span>}
                           </td>
-                          <td className="px-4 py-3 text-right font-mono border-b border-border/70">{v.comision_pct}%</td>
-                          <td className="px-4 py-3 text-right font-mono text-muted-foreground border-b border-border/70">{r?.creditos_otorgados ?? 0}</td>
-                          <td className="px-4 py-3 text-right font-mono border-b border-border/70">${n0(r?.monto_vendido ?? 0)}</td>
-                          <td className="px-4 py-3 text-right font-mono font-semibold text-warning border-b border-border/70">${n0(r?.comision_total ?? 0)}</td>
-                          <td className="px-4 py-3 border-b border-border/70 min-w-[140px]">
+                          {/* 2 · Desempeño económico */}
+                          <td className="px-4 py-4 text-right font-mono tabular-nums text-muted-foreground border-b border-border/60">{v.comision_pct}%</td>
+                          <td className="px-4 py-4 text-right font-mono tabular-nums text-muted-foreground border-b border-border/60">{r?.creditos_otorgados ?? 0}</td>
+                          <td className="px-4 py-4 text-right font-mono tabular-nums font-semibold text-foreground border-b border-border/60">${n0(r?.monto_vendido ?? 0)}</td>
+                          <td className="px-4 py-4 text-right font-mono tabular-nums font-semibold text-warning border-b border-border/60">${n0(r?.comision_total ?? 0)}</td>
+                          {/* 3 · Meta / avance */}
+                          <td className="px-4 py-4 border-b border-border/60">
                             <MetaBar vendido={r?.monto_vendido ?? 0} meta={v.meta_venta} avance={r?.avance_meta ?? 0} />
                           </td>
-                          <td className="px-4 py-3 pr-5 border-b border-border/70" onClick={(e) => e.stopPropagation()}>
-                            <div className="flex items-center justify-end gap-1.5">
-                              <button onClick={() => abrirFicha(v)} title="Abrir ficha" className="flex items-center justify-center h-7 w-7 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors">
+                          {/* 4 · Acciones */}
+                          <td className="pl-4 pr-6 py-4 border-b border-border/60 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                            <div className="flex items-center justify-end gap-1">
+                              <button onClick={() => abrirFicha(v)} title="Abrir ficha" className="flex items-center justify-center h-8 w-8 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors">
                                 <Pencil className="h-3.5 w-3.5" />
                               </button>
-                              <button onClick={() => handleDelete(v)} title="Eliminar" className="flex items-center justify-center h-7 w-7 rounded-lg text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors">
+                              <button onClick={() => handleDelete(v)} title="Eliminar" className="flex items-center justify-center h-8 w-8 rounded-lg text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors">
                                 <Trash2 className="h-3.5 w-3.5" />
                               </button>
-                              <ChevronRight className="h-4 w-4 text-muted-foreground/40" />
+                              <ChevronRight className="h-4 w-4 ml-1 text-muted-foreground/30 transition-all group-hover:text-muted-foreground/70 group-hover:translate-x-0.5" />
                             </div>
                           </td>
                         </tr>
@@ -203,9 +224,12 @@ export function PersonalView() {
                   return (
                     <div key={v.id} onClick={() => abrirFicha(v)} className={`rounded-xl bg-card border border-border p-4 space-y-3 cursor-pointer active:bg-muted/20 transition-colors ${!v.activo ? "opacity-50" : ""}`}>
                       <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0">
-                          <p className="font-medium text-foreground truncate">{v.nombre}</p>
-                          <div className="mt-1"><StatusBadge label={rol.label} variant={rol.variant} /></div>
+                        <div className="flex items-center gap-3 min-w-0">
+                          <Avatar nombre={v.nombre} activo={v.activo} />
+                          <div className="min-w-0">
+                            <p className="font-semibold text-foreground truncate">{v.nombre}</p>
+                            <div className="mt-1"><StatusBadge label={rol.label} variant={rol.variant} /></div>
+                          </div>
                         </div>
                         <div className="flex gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
                           <button onClick={() => abrirFicha(v)} className="flex items-center justify-center h-9 w-9 rounded-lg border border-border text-muted-foreground"><Pencil className="h-4 w-4" /></button>
@@ -228,6 +252,53 @@ export function PersonalView() {
       )}
 
       <PersonalForm open={formOpen} vendedor={editing} onClose={handleClose} />
+    </div>
+  );
+}
+
+type StatAccent = "primary" | "success" | "warning";
+
+const STAT_ACCENT: Record<StatAccent, { text: string; iconBg: string; iconBorder: string; glow: string; hoverBorder: string }> = {
+  primary: { text: "text-primary", iconBg: "bg-primary/10", iconBorder: "border-primary/20", glow: "hover:shadow-primary/10", hoverBorder: "hover:border-primary/30" },
+  success: { text: "text-success", iconBg: "bg-success/10", iconBorder: "border-success/20", glow: "hover:shadow-success/10", hoverBorder: "hover:border-success/30" },
+  warning: { text: "text-warning", iconBg: "bg-warning/10", iconBorder: "border-warning/20", glow: "hover:shadow-warning/10", hoverBorder: "hover:border-warning/30" },
+};
+
+/** Tarjeta de métrica con jerarquía premium: el valor domina sobre el rótulo y la descripción. */
+function StatCard({ icon: Icon, label, value, sub, accent, mono }: {
+  icon: React.ComponentType<{ className?: string }>;
+  label: string; value: string; sub?: string; accent: StatAccent; mono?: boolean;
+}) {
+  const c = STAT_ACCENT[accent];
+  return (
+    <div className={`group relative overflow-hidden rounded-xl border border-border bg-card p-6 transition-all duration-300
+      hover:-translate-y-0.5 hover:shadow-xl ${c.glow} ${c.hoverBorder}
+      shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)]`}>
+      <div className="pointer-events-none absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500
+        bg-[radial-gradient(ellipse_80%_50%_at_50%_-20%,rgba(99,102,241,0.05),transparent)]" />
+      <div className="relative flex items-center justify-between">
+        <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">{label}</p>
+        <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${c.iconBg} border ${c.iconBorder}
+          transition-transform duration-300 group-hover:scale-110`}>
+          <Icon className={`h-4 w-4 ${c.text}`} />
+        </div>
+      </div>
+      <p className={`relative mt-5 text-2xl font-bold leading-none tracking-tight ${c.text} ${mono ? "font-mono tabular-nums text-xl sm:text-2xl" : ""}`}>{value}</p>
+      {sub && <p className="relative mt-2 text-xs text-muted-foreground/50">{sub}</p>}
+    </div>
+  );
+}
+
+function iniciales(nombre: string) {
+  return nombre.trim().split(/\s+/).slice(0, 2).map((p) => p[0]?.toUpperCase() ?? "").join("") || "?";
+}
+
+/** Avatar con iniciales para reforzar la identidad del personal. */
+function Avatar({ nombre, activo }: { nombre: string; activo: boolean }) {
+  return (
+    <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full border text-xs font-semibold
+      ${activo ? "bg-primary/10 border-primary/20 text-primary" : "bg-muted/60 border-border text-muted-foreground"}`}>
+      {iniciales(nombre)}
     </div>
   );
 }
@@ -285,7 +356,7 @@ function PersonalForm({
   const [telefono, setTelefono] = useState("");
   const [rol, setRol] = useState<Vendedor["rol"]>("vendedor");
   const [comision, setComision] = useState("0");
-  const [meta, setMeta] = useState("0");
+  const [meta, setMeta] = useState("");
   const [activo, setActivo] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -300,7 +371,7 @@ function PersonalForm({
     setTelefono(vendedor?.telefono ?? "");
     setRol(vendedor?.rol ?? "vendedor");
     setComision(String(vendedor?.comision_pct ?? 0));
-    setMeta(String(vendedor?.meta_venta ?? 0));
+    setMeta(vendedor?.meta_venta ? numeroAInput(vendedor.meta_venta) : "");
     setActivo(vendedor?.activo ?? true);
     setError(null);
   }
@@ -321,7 +392,7 @@ function PersonalForm({
       const body = {
         nombre, email, telefono, rol,
         comision_pct: parseFloat(comision) || 0,
-        meta_venta: parseFloat(meta) || 0,
+        meta_venta: parseMontoInput(meta),
         activo,
       };
       const res = await fetch(editing ? `/api/vendedores/${vendedor!.id}` : "/api/vendedores", {
@@ -341,13 +412,15 @@ function PersonalForm({
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(false); }}>
-      <DialogContent className="w-[95vw] sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>{editing ? "Editar personal" : "Nuevo personal"}</DialogTitle>
-        </DialogHeader>
+      <DialogContent className={MODAL_CONTENT}>
+        <ModalHeader
+          icon={UserCog}
+          title={editing ? "Editar personal" : "Nuevo personal"}
+          subtitle={editing ? "Actualizá los datos del empleado." : "Sumá un integrante al equipo de ventas y cobranza."}
+        />
         <form onSubmit={submit} className="space-y-4">
           {error && (
-            <div className="rounded-lg bg-destructive/10 border border-destructive/20 px-3 py-2.5 text-sm text-destructive">{error}</div>
+            <div className="rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-2.5 text-sm text-destructive">{error}</div>
           )}
           <Field label="Nombre" required>
             <Input value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Nombre y apellido" required />
@@ -370,12 +443,12 @@ function PersonalForm({
               </Select>
             </Field>
             <Field label="Comisión (%)" hint="sobre el monto otorgado">
-              <Input type="number" min="0" max="100" step="any" value={comision} onChange={(e) => setComision(e.target.value)} />
+              <Input type="number" min="0" max="100" step="any" value={comision} onChange={(e) => setComision(e.target.value)} className="font-mono tabular-nums" />
             </Field>
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Meta de venta ($)" hint="0 = sin meta">
-              <Input type="number" min="0" step="any" value={meta} onChange={(e) => setMeta(e.target.value)} />
+            <Field label="Meta de venta" hint="vacío = sin meta">
+              <MoneyInput value={meta} onChange={setMeta} />
             </Field>
             <Field label="Estado">
               <Select value={activo ? "activo" : "inactivo"} onChange={(e) => setActivo(e.target.value === "activo")}>
@@ -384,12 +457,12 @@ function PersonalForm({
               </Select>
             </Field>
           </div>
-          <div className="flex justify-end gap-2 pt-1 border-t border-border">
-            <button type="button" onClick={() => onClose(false)} className="px-4 py-2 rounded-lg text-sm text-muted-foreground hover:bg-muted transition-colors">Cancelar</button>
-            <button type="submit" disabled={loading || !nombre.trim()} className="px-5 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 disabled:opacity-40 transition-opacity">
-              {loading ? "Guardando…" : editing ? "Guardar cambios" : "Crear"}
-            </button>
-          </div>
+          <FormActions
+            onCancel={() => onClose(false)}
+            loading={loading}
+            disabled={!nombre.trim()}
+            submitLabel={editing ? "Guardar cambios" : "Crear"}
+          />
         </form>
       </DialogContent>
     </Dialog>

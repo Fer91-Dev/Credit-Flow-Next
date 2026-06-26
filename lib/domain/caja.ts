@@ -12,7 +12,9 @@ export type TipoMovimiento =
   | "devolucion"        // egreso: devolución al cliente (p. ej. al anular)
   | "reversa_desembolso"// ingreso: se deshace el desembolso (al anular)
   | "ajuste"            // manual (ingreso o egreso)
-  | "transferencia";    // movimiento de saldo entre cuentas (signo explícito)
+  | "transferencia"     // movimiento de saldo entre cuentas (signo explícito)
+  | "entrega"           // caja principal → vendedor (signo explícito por cada pata del par)
+  | "rendicion";        // vendedor → caja principal (signo explícito por cada pata del par)
 
 /** Cuentas de tesorería disponibles. */
 export type Cuenta = "efectivo" | "banco" | "dolares";
@@ -28,6 +30,12 @@ export const CUENTA_LABEL: Record<Cuenta, string> = {
 /** True si el string es una cuenta válida. */
 export function esCuentaValida(v: unknown): v is Cuenta {
   return typeof v === "string" && (CUENTAS as readonly string[]).includes(v);
+}
+
+/** Etiqueta legible de una caja para las columnas Origen/Destino. */
+export function etiquetaCaja(esVendedor: boolean, cuenta: string): string {
+  const c = esCuentaValida(cuenta) ? CUENTA_LABEL[cuenta] : cuenta;
+  return `${esVendedor ? "Caja del vendedor" : "Caja principal"} (${c})`;
 }
 
 /** Tipos cuyo signo natural es egreso (monto negativo). */

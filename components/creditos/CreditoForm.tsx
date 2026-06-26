@@ -10,7 +10,7 @@ import {
   AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogFooter,
   AlertDialogTitle, AlertDialogDescription, AlertDialogCancel,
 } from "@/components/ui/alert-dialog";
-import { useConfiguracion, useMiPerfilVendedor } from "@/lib/swr";
+import { useConfiguracion, useMiPerfilVendedor, useMiCaja } from "@/lib/swr";
 import { useConfirm } from "@/components/ui/confirm";
 import { useToast } from "@/components/ui/toast";
 import { formatNumero, parseMontoInput, maskMontoInput, numeroAInput, formatFecha, formatMonto, formatCreditoNumero, nombreCompleto } from "@/lib/utils";
@@ -56,6 +56,7 @@ function useDebounced<T>(value: T, delay = 350): T {
 export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
   const { config } = useConfiguracion();
   const { perfil } = useMiPerfilVendedor(); // límite de otorgamiento del usuario (null si es admin/sin tope)
+  const { caja: miCaja } = useMiCaja(); // caja personal del vendedor (null si es admin); fondos para otorgar
   const confirm = useConfirm();
   const toast = useToast();
   const convencion: ConvencionTasa = config?.convencionTasa ?? "nominal_anual";
@@ -170,6 +171,9 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
     // Límite de otorgamiento del vendedor (al otorgar, no en edición). El admin no tiene tope.
     if (!creditoId && perfil?.limite_aprobacion != null && monto > perfil.limite_aprobacion)
       return `El capital supera tu límite de otorgamiento ($${n0(perfil.limite_aprobacion)}). Requiere autorización de un administrador.`;
+    // Fondos disponibles en la caja del vendedor (el desembolso sale de su efectivo).
+    if (!creditoId && miCaja && monto > (miCaja.saldos_por_cuenta.efectivo ?? 0))
+      return `No tenés saldo suficiente en tu caja de efectivo ($${n0(miCaja.saldos_por_cuenta.efectivo ?? 0)}). Pedí una entrega al administrador para poder otorgar.`;
     if (!formData.frecuencia) return "Seleccioná la frecuencia";
     const n = parseInt(formData.plazo_meses);
     if (isNaN(n) || n < 1) return "Indicá el número de cuotas";

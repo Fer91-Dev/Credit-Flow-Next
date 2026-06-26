@@ -4,6 +4,7 @@ import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { registrarAuditoria } from "@/lib/audit";
 import { esCuentaValida, CUENTA_LABEL, round2, type Cuenta } from "@/lib/domain";
+import { siguienteNumeroComprobante } from "@/lib/comprobantes";
 import type { NextRequest } from "next/server";
 
 /**
@@ -41,29 +42,42 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
   const fecha = body.fecha ? new Date(body.fecha) : new Date();
   const detalle = body.descripcion?.trim();
   const glosa = `Transferencia ${CUENTA_LABEL[origen]} → ${CUENTA_LABEL[destino]}${detalle ? ` · ${detalle}` : ""}`;
+  const origenLbl = `Caja principal (${CUENTA_LABEL[origen]})`;
+  const destinoLbl = `Caja principal (${CUENTA_LABEL[destino]})`;
 
-  const [salida, entrada] = await prisma.$transaction([
-    prisma.movimientos_caja.create({
+  // Las 2 patas (egreso/ingreso) comparten el mismo N° de comprobante TRF.
+  const { salida, entrada } = await prisma.$transaction(async (tx) => {
+    const numero = await siguienteNumeroComprobante(tx, tenantId, "TRF");
+    const s = await tx.movimientos_caja.create({
       data: {
         ...withTenant(tenantId),
         fecha,
         tipo: "transferencia",
         monto: -monto, // egreso de la cuenta origen
         cuenta: origen,
+        origen: origenLbl,
+        destino: destinoLbl,
+        serie: "TRF",
+        numero,
         descripcion: glosa,
       },
-    }),
-    prisma.movimientos_caja.create({
+    });
+    const e = await tx.movimientos_caja.create({
       data: {
         ...withTenant(tenantId),
         fecha,
         tipo: "transferencia",
         monto: monto, // ingreso en la cuenta destino
         cuenta: destino,
+        origen: origenLbl,
+        destino: destinoLbl,
+        serie: "TRF",
+        numero,
         descripcion: glosa,
       },
-    }),
-  ]);
+    });
+    return { salida: s, entrada: e };
+  });
 
   await registrarAuditoria({
     tenantId,

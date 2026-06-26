@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { Field, Input, Select, Textarea } from "@/components/ui/field";
-import { nombreCompleto } from "@/lib/utils";
+import { MoneyInput, FormActions } from "@/components/ui/form-kit";
+import { nombreCompleto, parseMontoInput } from "@/lib/utils";
 import { useConfirm } from "@/components/ui/confirm";
 import { useToast } from "@/components/ui/toast";
 
@@ -57,7 +58,7 @@ export function GestionForm({ credito, onClose }: GestionFormProps) {
         tipo: form.tipo,
         resultado: form.resultado,
         nota: form.nota.trim() || undefined,
-        promesa_monto: form.promesa_monto ? parseFloat(form.promesa_monto) : undefined,
+        promesa_monto: form.promesa_monto ? parseMontoInput(form.promesa_monto) : undefined,
         promesa_fecha: form.promesa_fecha || undefined,
         proximo_contacto: form.proximo_contacto || undefined,
       };
@@ -133,7 +134,7 @@ export function GestionForm({ credito, onClose }: GestionFormProps) {
         </p>
         <div className="grid grid-cols-2 gap-3">
           <Field label="Monto comprometido">
-            <Input type="number" min="0" step="any" placeholder="0" value={form.promesa_monto} onChange={set("promesa_monto")} />
+            <MoneyInput value={form.promesa_monto} onChange={(v) => setForm((p) => ({ ...p, promesa_monto: v }))} />
           </Field>
           <Field label="Fecha comprometida">
             <Input type="date" value={form.promesa_fecha} onChange={set("promesa_fecha")} />
@@ -145,20 +146,11 @@ export function GestionForm({ credito, onClose }: GestionFormProps) {
         <Input type="date" value={form.proximo_contacto} onChange={set("proximo_contacto")} />
       </Field>
 
-      <div className="flex gap-2 justify-end pt-1 border-t border-border">
-        <button
-          type="button" onClick={() => onClose(false)}
-          className="px-4 py-2 rounded-lg text-sm text-muted-foreground hover:bg-muted transition-colors"
-        >
-          Cancelar
-        </button>
-        <button
-          type="submit" disabled={loading}
-          className="px-5 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 disabled:opacity-50 transition-opacity"
-        >
-          {loading ? "Guardando..." : "Registrar gestión"}
-        </button>
-      </div>
+      <FormActions
+        onCancel={() => onClose(false)}
+        loading={loading}
+        submitLabel="Registrar gestión"
+      />
     </form>
   );
 }

@@ -4,7 +4,8 @@ import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { registrarAuditoria } from "@/lib/audit";
 import { formatCreditoNumero, nombreCompleto } from "@/lib/utils";
-import { round2 } from "@/lib/domain";
+import { round2, etiquetaCaja } from "@/lib/domain";
+import { siguienteNumeroComprobante } from "@/lib/comprobantes";
 import type { NextRequest } from "next/server";
 
 interface RouteParams {
@@ -60,6 +61,7 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
     });
 
     // Reversa del desembolso (ingreso): la plata no se considera prestada.
+    const numRev = await siguienteNumeroComprobante(tx, tenantId, "REV");
     await tx.movimientos_caja.create({
       data: {
         ...withTenant(tenantId),
@@ -67,12 +69,18 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
         tipo: "reversa_desembolso",
         monto: Math.abs(existing.monto_original),
         credito_id: id,
+        vendedor_id: existing.vendedor_id, // revierte dentro de la caja del vendedor que otorgó
+        origen: `Anulación ${numeroFmt}`,
+        destino: etiquetaCaja(!!existing.vendedor_id, "efectivo"),
+        serie: "REV",
+        numero: numRev,
         descripcion: `Reversa desembolso ${numeroFmt} (anulación)`,
       },
     });
 
     // Devolución de lo cobrado (egreso), si corresponde.
     if (devolver && totalCobrado > 0) {
+      const numDev = await siguienteNumeroComprobante(tx, tenantId, "DEV");
       await tx.movimientos_caja.create({
         data: {
           ...withTenant(tenantId),
@@ -80,6 +88,11 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
           tipo: "devolucion",
           monto: -totalCobrado,
           credito_id: id,
+          vendedor_id: existing.vendedor_id, // la devolución sale de la misma caja del vendedor
+          origen: etiquetaCaja(!!existing.vendedor_id, "efectivo"),
+          destino: nombreCompleto(existing.cliente),
+          serie: "DEV",
+          numero: numDev,
           descripcion: `Devolución a ${nombreCompleto(existing.cliente)} (anulación ${numeroFmt})`,
         },
       });

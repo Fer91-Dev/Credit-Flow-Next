@@ -56,6 +56,7 @@ export function AuditoriaDetail({ evento }: { evento: EventoAuditoria }) {
             ["Fecha y hora", fmtDateTime(evento.created_at)],
             ["Entidad", ENTIDAD_LABEL[evento.entidad] ?? evento.entidad],
             ["Acción", <StatusBadge key="a" label={acc.label} variant={acc.variant} />],
+            ["Usuario", evento.usuario_nombre || evento.usuario_email || null],
             ["Descripción", evento.descripcion],
             ["ID de entidad", evento.entidad_id ? <span className="font-mono text-[11px]">{evento.entidad_id}</span> : null],
           ]}

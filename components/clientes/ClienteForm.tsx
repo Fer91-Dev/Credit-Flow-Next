@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { User, Briefcase, Wallet, Phone } from "lucide-react";
 import { Field, Input, Select } from "@/components/ui/field";
+import { FormActions } from "@/components/ui/form-kit";
 import { maskMontoInput, parseMontoInput, numeroAInput, nombreCompleto } from "@/lib/utils";
 import { useConfirm } from "@/components/ui/confirm";
 import { useToast } from "@/components/ui/toast";
@@ -339,19 +340,12 @@ export function ClienteForm({ clienteId, initialDocumento, onClose }: ClienteFor
       </SectionCard>
 
       {/* Acciones */}
-      <div className="flex gap-2 justify-end pt-3 border-t border-border sticky bottom-0 bg-card">
-        <button
-          type="button" onClick={() => onClose(false)}
-          className="px-4 py-2 rounded-lg text-sm text-muted-foreground hover:bg-muted transition-colors"
-        >
-          Cancelar
-        </button>
-        <button
-          type="submit" disabled={loading}
-          className="px-5 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 disabled:opacity-50 transition-opacity"
-        >
-          {loading ? "Guardando..." : clienteId ? "Actualizar cliente" : "Crear cliente"}
-        </button>
+      <div className="sticky bottom-0 border-t border-border bg-card">
+        <FormActions
+          onCancel={() => onClose(false)}
+          loading={loading}
+          submitLabel={clienteId ? "Actualizar cliente" : "Crear cliente"}
+        />
       </div>
     </form>
   );

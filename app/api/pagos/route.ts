@@ -2,13 +2,15 @@ import { requireRole, scopeCreditosVendedor } from "@/lib/auth";
 import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
-import { nombreCompleto } from "@/lib/utils";
+import { nombreCompleto, formatCreditoNumero } from "@/lib/utils";
 import {
   imputarPagoEnCuotas,
   diasAtraso,
   round2,
+  etiquetaCaja,
   type CuotaParaImputar,
 } from "@/lib/domain";
+import { siguienteNumeroComprobante } from "@/lib/comprobantes";
 import { getConfiguracion } from "@/lib/config";
 import { registrarAuditoria } from "@/lib/audit";
 import type { NextRequest } from "next/server";
@@ -275,6 +277,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     });
 
     // Movimiento de caja: cobro (ingreso).
+    const numComp = await siguienteNumeroComprobante(tx, tenantId, "REC");
     await tx.movimientos_caja.create({
       data: {
         ...withTenant(tenantId),
@@ -284,7 +287,14 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
         metodo: body.metodo,
         credito_id: body.credito_id,
         pago_id: p.id,
-        descripcion: `Cobro de ${nombreCompleto(credito.cliente)}`,
+        // La cobranza entra a la caja de QUIEN cobra: un vendedor cobra a SU caja;
+        // un admin/cobrador cobra para la empresa → caja principal (vendedor_id null).
+        vendedor_id: role === "vendedor" ? vendedorId : null,
+        origen: nombreCompleto(credito.cliente),
+        destino: etiquetaCaja(role === "vendedor", "efectivo"),
+        serie: "REC",
+        numero: numComp,
+        descripcion: `Cobro ${formatCreditoNumero(credito.numero)} · ${nombreCompleto(credito.cliente)}`,
       },
     });
 

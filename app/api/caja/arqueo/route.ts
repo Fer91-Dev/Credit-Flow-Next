@@ -4,6 +4,7 @@ import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { registrarAuditoria } from "@/lib/audit";
 import { esCuentaValida, saldosPorCuenta, round2, CUENTA_LABEL, type Cuenta } from "@/lib/domain";
+import { siguienteNumeroComprobante } from "@/lib/comprobantes";
 import type { NextRequest } from "next/server";
 
 /**
@@ -35,9 +36,9 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     return errorResponse("El monto físico debe ser un número mayor o igual a 0", "INVALID_INPUT", 400);
   }
 
-  // Saldo de sistema actual de la cuenta.
+  // Saldo de sistema actual de la cuenta — solo caja principal (vendedor_id null).
   const movs = await prisma.movimientos_caja.findMany({
-    where: { ...withTenant(tenantId) },
+    where: { ...withTenant(tenantId), vendedor_id: null },
     select: { monto: true, cuenta: true },
   });
   const sistema = saldosPorCuenta(movs)[cuenta];
@@ -47,15 +48,22 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
 
   if (diferencia !== 0) {
     const detalle = body.descripcion?.trim();
-    const mov = await prisma.movimientos_caja.create({
-      data: {
-        ...withTenant(tenantId),
-        fecha: body.fecha ? new Date(body.fecha) : new Date(),
-        tipo: "ajuste",
-        monto: diferencia, // ya viene con signo (sobrante > 0, faltante < 0)
-        cuenta,
-        descripcion: `Arqueo ${CUENTA_LABEL[cuenta]}: conciliación de ${diferencia > 0 ? "sobrante" : "faltante"}${detalle ? ` · ${detalle}` : ""}`,
-      },
+    const mov = await prisma.$transaction(async (tx) => {
+      const numero = await siguienteNumeroComprobante(tx, tenantId, "ARQ");
+      return tx.movimientos_caja.create({
+        data: {
+          ...withTenant(tenantId),
+          fecha: body.fecha ? new Date(body.fecha) : new Date(),
+          tipo: "ajuste",
+          monto: diferencia, // ya viene con signo (sobrante > 0, faltante < 0)
+          cuenta,
+          origen: diferencia > 0 ? `Arqueo (sobrante)` : `Caja principal (${CUENTA_LABEL[cuenta]})`,
+          destino: diferencia > 0 ? `Caja principal (${CUENTA_LABEL[cuenta]})` : `Arqueo (faltante)`,
+          serie: "ARQ",
+          numero,
+          descripcion: `Arqueo ${CUENTA_LABEL[cuenta]}: conciliación de ${diferencia > 0 ? "sobrante" : "faltante"}${detalle ? ` · ${detalle}` : ""}`,
+        },
+      });
     });
     ajusteId = mov.id;
 

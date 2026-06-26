@@ -2,16 +2,15 @@
 
 import { useState } from "react";
 import { mutate as globalMutate } from "swr";
-import { Landmark, ArrowDownLeft, ArrowUpRight, Scale, Download, Plus, ChevronDown, ArrowLeftRight, ClipboardCheck, Wallet, Banknote, CircleDollarSign } from "lucide-react";
-import { useCaja, type CajaData, type MovimientoCaja, type CuentaCaja } from "@/lib/swr";
-import { formatFecha } from "@/lib/utils";
+import { Landmark, ArrowDownLeft, ArrowUpRight, Scale, Download, Plus, ChevronDown, ArrowLeftRight, ClipboardCheck, Wallet, Banknote, CircleDollarSign, FileText, CreditCard, ArrowRight, Users } from "lucide-react";
+import { useCaja, useVendedores, type CajaData, type MovimientoCaja, type CuentaCaja } from "@/lib/swr";
+import { formatFechaHora, parseMontoInput } from "@/lib/utils";
+import { MoneyInput, Segmented, IconSelect, IconTextarea, FieldLabel, FormActions, simboloCuenta } from "./caja-form";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { KpiCard } from "@/components/ui/KpiCard";
 import { StatusBadge, type BadgeVariant } from "@/components/ui/StatusBadge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Field, Input, Select, Textarea } from "@/components/ui/field";
-import { formatCreditoNumero } from "@/lib/utils";
 import { useConfirm } from "@/components/ui/confirm";
 import { useToast } from "@/components/ui/toast";
 import { MovimientoDetail } from "./MovimientoDetail";
@@ -25,8 +24,6 @@ function n2(x: number) {
 function ymd(d: Date) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
-const fmtDate = (s: string) => formatFecha(s);
-
 const TIPO_META: Record<MovimientoCaja["tipo"], { label: string; variant: BadgeVariant }> = {
   desembolso:         { label: "Desembolso",   variant: "warning" },
   cobro:              { label: "Cobro",         variant: "success" },
@@ -34,6 +31,8 @@ const TIPO_META: Record<MovimientoCaja["tipo"], { label: string; variant: BadgeV
   reversa_desembolso: { label: "Reversa",       variant: "primary" },
   ajuste:             { label: "Ajuste",        variant: "muted" },
   transferencia:      { label: "Transferencia", variant: "primary" },
+  entrega:            { label: "Entrega",       variant: "warning" },
+  rendicion:          { label: "Rendición",     variant: "success" },
 };
 
 const CUENTAS: CuentaCaja[] = ["efectivo", "banco", "dolares"];
@@ -55,19 +54,28 @@ const INPUT =
   "transition-all focus:border-primary focus:ring-2 focus:ring-primary/20";
 const SEL = INPUT + " pr-8 appearance-none cursor-pointer [&>option]:bg-card [&>option]:text-foreground";
 
+// Separador es-AR: Excel en español usa ";" (la "," es el decimal). Se quotea
+// cualquier celda que contenga el separador, comillas o saltos de línea.
+const CSV_SEP = ";";
 function csvCell(v: string | number) {
   const s = String(v ?? "");
-  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  return /[";\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 function exportarCSV(caja: CajaData) {
-  const head = ["Fecha", "Tipo", "Descripción", "Crédito", "Cliente", "Monto"];
+  // Mismas columnas que la tabla de movimientos.
+  const head = ["Comprobante", "Fecha y hora", "Tipo", "Origen", "Destino", "Detalle", "Monto"];
   const rows = caja.movimientos.map((m) => [
-    String(m.fecha).slice(0, 10), m.tipo, m.descripcion,
-    m.credito_numero != null ? formatCreditoNumero(m.credito_numero) : "",
-    m.cliente ?? "", m.monto,
+    m.comprobante ?? "",
+    formatFechaHora(m.created_at ?? m.fecha),
+    TIPO_META[m.tipo]?.label ?? m.tipo,
+    m.origen ?? "",
+    m.destino ?? "",
+    m.descripcion,
+    n2(m.monto), // formato es-AR ("-2.000.000,00") → Excel lo lee como número
   ]);
-  const csv = [head, ...rows].map((r) => r.map(csvCell).join(",")).join("\n");
-  const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" });
+  const body = [head, ...rows].map((r) => r.map(csvCell).join(CSV_SEP)).join("\r\n");
+  // BOM (UTF-8) + directiva "sep=;" para que Excel use el separador correcto en cualquier configuración regional.
+  const blob = new Blob(["﻿" + `sep=${CSV_SEP}\r\n` + body], { type: "text/csv;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
@@ -86,6 +94,7 @@ export function CajaView() {
   const [ajusteOpen, setAjusteOpen] = useState(false);
   const [transferOpen, setTransferOpen] = useState(false);
   const [arqueoOpen, setArqueoOpen] = useState(false);
+  const [vendedorOpen, setVendedorOpen] = useState(false);
   const [detalle, setDetalle] = useState<MovimientoCaja | null>(null);
 
   const { caja, error, isLoading, mutate } = useCaja(desde, hasta, tipo, cuenta);
@@ -100,36 +109,6 @@ export function CajaView() {
     { label: "Este año", run: () => preset(new Date(today.getFullYear(), 0, 1), today) },
   ];
 
-  const actions = (
-    <div className="flex flex-wrap gap-2">
-      <button
-        onClick={() => setAjusteOpen(true)}
-        className="flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:opacity-90 transition-opacity text-sm font-medium whitespace-nowrap"
-      >
-        <Plus className="h-4 w-4" /> Ajuste
-      </button>
-      <button
-        onClick={() => setTransferOpen(true)}
-        className="flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-border text-foreground hover:bg-muted transition-colors text-sm font-medium whitespace-nowrap"
-      >
-        <ArrowLeftRight className="h-4 w-4" /> Transferir
-      </button>
-      <button
-        onClick={() => setArqueoOpen(true)}
-        className="flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-border text-foreground hover:bg-muted transition-colors text-sm font-medium whitespace-nowrap"
-      >
-        <ClipboardCheck className="h-4 w-4" /> Arqueo
-      </button>
-      <button
-        onClick={() => caja && exportarCSV(caja)}
-        disabled={!caja || caja.movimientos.length === 0}
-        className="flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-border text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-40 transition-colors text-sm font-medium whitespace-nowrap"
-      >
-        <Download className="h-4 w-4" /> CSV
-      </button>
-    </div>
-  );
-
   return (
     <div className="space-y-6">
       <PageHeader
@@ -137,8 +116,42 @@ export function CajaView() {
         title="Caja"
         subtitle="Movimientos de efectivo y saldo"
         accent="primary"
-        actions={actions}
       />
+
+      {/* Barra de acciones (fuera del header) */}
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          onClick={() => setAjusteOpen(true)}
+          className="flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:opacity-90 transition-opacity text-sm font-medium whitespace-nowrap"
+        >
+          <Plus className="h-4 w-4" /> Ajuste
+        </button>
+        <button
+          onClick={() => setTransferOpen(true)}
+          className="flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-border text-foreground hover:bg-muted transition-colors text-sm font-medium whitespace-nowrap"
+        >
+          <ArrowLeftRight className="h-4 w-4" /> Transferir
+        </button>
+        <button
+          onClick={() => setVendedorOpen(true)}
+          className="flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-border text-foreground hover:bg-muted transition-colors text-sm font-medium whitespace-nowrap"
+        >
+          <Users className="h-4 w-4" /> Caja vendedores
+        </button>
+        <button
+          onClick={() => setArqueoOpen(true)}
+          className="flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-border text-foreground hover:bg-muted transition-colors text-sm font-medium whitespace-nowrap"
+        >
+          <ClipboardCheck className="h-4 w-4" /> Arqueo
+        </button>
+        <button
+          onClick={() => caja && exportarCSV(caja)}
+          disabled={!caja || caja.movimientos.length === 0}
+          className="ml-auto flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-border text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-40 transition-colors text-sm font-medium whitespace-nowrap"
+        >
+          <Download className="h-4 w-4" /> CSV
+        </button>
+      </div>
 
       {/* Rango + filtro */}
       <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
@@ -251,10 +264,10 @@ export function CajaView() {
 
           {/* KPIs del período */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <KpiCard icon={Scale} label="Saldo total" value={`$${n0(caja.saldo_total)}`} accent={caja.saldo_total >= 0 ? "success" : "destructive"} mono sub="suma de cuentas" />
+            <KpiCard icon={Scale} label="Saldo caja principal" value={`$${n0(caja.saldo_total)}`} accent={caja.saldo_total >= 0 ? "success" : "destructive"} mono sub="tesorería (sin vendedores)" />
+            <KpiCard icon={Users} label="En poder de vendedores" value={`$${n0(caja.en_vendedores ?? 0)}`} accent="primary" mono sub="suma de sus cajas" />
             <KpiCard icon={ArrowDownLeft} label="Ingresos del período" value={`$${n0(caja.ingresos)}`} accent="success" mono />
             <KpiCard icon={ArrowUpRight} label="Egresos del período" value={`$${n0(caja.egresos)}`} accent="warning" mono />
-            <KpiCard icon={Scale} label="Neto del período" value={`$${n0(caja.neto)}`} accent={caja.neto >= 0 ? "primary" : "destructive"} mono />
           </div>
 
           {/* Tabla de movimientos */}
@@ -266,11 +279,12 @@ export function CajaView() {
                 <table className="w-full text-sm border-separate border-spacing-0">
                   <thead>
                     <tr className="bg-muted/30">
-                      <th className="px-4 py-3 text-left  text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">Fecha</th>
+                      <th className="px-4 py-3 text-left  text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">Comprobante</th>
+                      <th className="px-4 py-3 text-left  text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">Fecha y hora</th>
                       <th className="px-4 py-3 text-left  text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">Tipo</th>
-                      <th className="px-4 py-3 text-left  text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border hidden sm:table-cell">Cuenta</th>
-                      <th className="px-4 py-3 text-left  text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">Descripción</th>
-                      <th className="px-4 py-3 text-left  text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border hidden md:table-cell">Crédito</th>
+                      <th className="px-4 py-3 text-left  text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">Origen</th>
+                      <th className="px-4 py-3 text-left  text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">Destino</th>
+                      <th className="px-4 py-3 text-left  text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border hidden lg:table-cell">Detalle</th>
                       <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border pr-5">Monto</th>
                     </tr>
                   </thead>
@@ -280,13 +294,14 @@ export function CajaView() {
                       const ingreso = m.monto >= 0;
                       return (
                         <tr key={m.id} onClick={() => setDetalle(m)} className={`cursor-pointer hover:bg-muted/20 transition-colors ${idx % 2 === 1 ? "bg-muted/5" : ""}`}>
-                          <td className="px-4 py-2.5 text-muted-foreground tabular-nums whitespace-nowrap border-b border-border/70">{fmtDate(m.fecha)}</td>
+                          <td className="px-4 py-2.5 font-mono text-xs text-muted-foreground whitespace-nowrap border-b border-border/70">{m.comprobante ?? "—"}</td>
+                          <td className="px-4 py-2.5 text-muted-foreground tabular-nums whitespace-nowrap border-b border-border/70">{formatFechaHora(m.created_at ?? m.fecha)}</td>
                           <td className="px-4 py-2.5 border-b border-border/70"><StatusBadge label={meta.label} variant={meta.variant} /></td>
-                          <td className="px-4 py-2.5 text-muted-foreground border-b border-border/70 hidden sm:table-cell">{CUENTA_META[m.cuenta]?.label ?? m.cuenta}</td>
-                          <td className="px-4 py-2.5 text-foreground border-b border-border/70">{m.descripcion}</td>
-                          <td className="px-4 py-2.5 font-mono text-xs text-muted-foreground border-b border-border/70 hidden md:table-cell">
-                            {m.credito_numero != null ? formatCreditoNumero(m.credito_numero) : "—"}
+                          <td className="px-4 py-2.5 text-muted-foreground border-b border-border/70">{m.origen ?? "—"}</td>
+                          <td className="px-4 py-2.5 text-foreground border-b border-border/70">
+                            <span className="flex items-center gap-1.5"><ArrowRight className="h-3 w-3 shrink-0 text-muted-foreground/50" />{m.destino ?? "—"}</span>
                           </td>
+                          <td className="px-4 py-2.5 text-muted-foreground border-b border-border/70 hidden lg:table-cell">{m.descripcion}</td>
                           <td className={`px-4 py-2.5 pr-5 text-right font-mono font-semibold border-b border-border/70 ${ingreso ? "text-success" : "text-destructive"}`}>
                             {ingreso ? "+" : "−"}${n2(Math.abs(m.monto))}
                           </td>
@@ -327,6 +342,14 @@ export function CajaView() {
         }}
       />
 
+      <CajaVendedorDialog
+        open={vendedorOpen}
+        onClose={(ok) => {
+          setVendedorOpen(false);
+          if (ok) refrescar();
+        }}
+      />
+
       <Dialog open={!!detalle} onOpenChange={(o) => { if (!o) setDetalle(null); }}>
         <DialogContent className="w-[95vw] sm:max-w-md max-h-[90dvh] flex flex-col overflow-hidden">
           <DialogHeader className="shrink-0">
@@ -345,7 +368,7 @@ function AjusteDialog({ open, onClose }: { open: boolean; onClose: (ok?: boolean
   const confirm = useConfirm();
   const toast = useToast();
   const [monto, setMonto] = useState("");
-  const [sentido, setSentido] = useState("ingreso");
+  const [sentido, setSentido] = useState<"ingreso" | "egreso">("ingreso");
   const [descripcion, setDescripcion] = useState("");
   const [metodo, setMetodo] = useState("efectivo");
   const [cuenta, setCuenta] = useState<CuentaCaja>("efectivo");
@@ -353,12 +376,14 @@ function AjusteDialog({ open, onClose }: { open: boolean; onClose: (ok?: boolean
   const [error, setError] = useState<string | null>(null);
 
   const reset = () => { setMonto(""); setSentido("ingreso"); setDescripcion(""); setMetodo("efectivo"); setCuenta("efectivo"); setError(null); };
+  const montoNum = parseMontoInput(monto);
+  const simbolo = simboloCuenta(cuenta);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     const ok = await confirm({
       title: "¿Registrar ajuste de caja?",
-      description: `Se registrará un ${sentido === "ingreso" ? "ingreso" : "egreso"} de $${n2(parseFloat(monto) || 0)} en ${cuenta}.`,
+      description: `Se registrará un ${sentido === "ingreso" ? "ingreso" : "egreso"} de ${simbolo} ${n2(montoNum)} en ${cuenta}.`,
       confirmLabel: "Registrar ajuste",
     });
     if (!ok) return;
@@ -367,7 +392,7 @@ function AjusteDialog({ open, onClose }: { open: boolean; onClose: (ok?: boolean
       const res = await fetch("/api/caja", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ monto: parseFloat(monto), sentido, descripcion, metodo, cuenta }),
+        body: JSON.stringify({ monto: montoNum, sentido, descripcion, metodo, cuenta }),
       });
       const json = await res.json();
       if (json.ok) { reset(); toast.success("Ajuste registrado"); onClose(true); }
@@ -381,49 +406,81 @@ function AjusteDialog({ open, onClose }: { open: boolean; onClose: (ok?: boolean
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) { reset(); onClose(false); } }}>
-      <DialogContent className="w-[95vw] sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>Ajuste manual de caja</DialogTitle>
-        </DialogHeader>
-        <form onSubmit={submit} className="space-y-4">
-          {error && (
-            <div className="rounded-lg bg-destructive/10 border border-destructive/20 px-3 py-2.5 text-sm text-destructive">{error}</div>
-          )}
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Sentido" required>
-              <Select value={sentido} onChange={(e) => setSentido(e.target.value)}>
-                <option value="ingreso">Ingreso (+)</option>
-                <option value="egreso">Egreso (−)</option>
-              </Select>
-            </Field>
-            <Field label="Monto ($)" required>
-              <Input type="number" min="1" step="any" value={monto} onChange={(e) => setMonto(e.target.value)} placeholder="Ej: 50000" required />
-            </Field>
+      <DialogContent className="w-[95vw] sm:max-w-xl sm:p-7 max-h-[90dvh] overflow-y-auto">
+        <DialogHeader className="pr-8">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-primary">
+              <Scale className="h-5 w-5" />
+            </div>
+            <div>
+              <DialogTitle>Ajuste manual de caja</DialogTitle>
+              <p className="mt-0.5 text-xs text-muted-foreground">Registrá un ingreso o egreso que no proviene de un crédito.</p>
+            </div>
           </div>
-          <Field label="Cuenta" required>
-            <Select value={cuenta} onChange={(e) => setCuenta(e.target.value as CuentaCaja)}>
-              <option value="efectivo">Efectivo</option>
-              <option value="banco">Banco</option>
-              <option value="dolares">Dólares</option>
-            </Select>
-          </Field>
-          <Field label="Descripción" required>
-            <Textarea value={descripcion} onChange={(e) => setDescripcion(e.target.value)} rows={2} placeholder="Motivo del ajuste…" />
-          </Field>
-          <Field label="Método">
-            <Select value={metodo} onChange={(e) => setMetodo(e.target.value)}>
+        </DialogHeader>
+
+        <form onSubmit={submit} className="space-y-5">
+          {error && (
+            <div className="rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-2.5 text-sm text-destructive">{error}</div>
+          )}
+
+          {/* Sentido */}
+          <div className="flex flex-col gap-1.5">
+            <FieldLabel required>Sentido</FieldLabel>
+            <Segmented
+              value={sentido}
+              onChange={setSentido}
+              options={[
+                { value: "ingreso", label: "Ingreso", icon: ArrowDownLeft },
+                { value: "egreso", label: "Egreso", icon: ArrowUpRight },
+              ]}
+            />
+          </div>
+
+          {/* Monto */}
+          <div className="flex flex-col gap-1.5">
+            <FieldLabel required>Monto</FieldLabel>
+            <MoneyInput value={monto} onChange={setMonto} currency={simbolo} autoFocus required />
+          </div>
+
+          {/* Cuenta */}
+          <div className="flex flex-col gap-1.5">
+            <FieldLabel required>Cuenta</FieldLabel>
+            <Segmented
+              value={cuenta}
+              onChange={setCuenta}
+              options={[
+                { value: "efectivo", label: "Efectivo", icon: Wallet },
+                { value: "banco", label: "Banco", icon: Banknote },
+                { value: "dolares", label: "Dólares", icon: CircleDollarSign },
+              ]}
+            />
+          </div>
+
+          {/* Método */}
+          <div className="flex flex-col gap-1.5">
+            <FieldLabel>Método</FieldLabel>
+            <IconSelect icon={CreditCard} value={metodo} onChange={(e) => setMetodo(e.target.value)}>
               <option value="efectivo">Efectivo</option>
               <option value="transferencia">Transferencia</option>
               <option value="cheque">Cheque</option>
               <option value="otro">Otro</option>
-            </Select>
-          </Field>
-          <div className="flex justify-end gap-2 pt-1 border-t border-border">
-            <button type="button" onClick={() => { reset(); onClose(false); }} className="px-4 py-2 rounded-lg text-sm text-muted-foreground hover:bg-muted transition-colors">Cancelar</button>
-            <button type="submit" disabled={loading || !monto || !descripcion.trim()} className="px-5 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 disabled:opacity-40 transition-opacity">
-              {loading ? "Registrando…" : "Registrar ajuste"}
-            </button>
+            </IconSelect>
           </div>
+
+          {/* Descripción */}
+          <div className="flex flex-col gap-1.5">
+            <FieldLabel required>Descripción</FieldLabel>
+            <IconTextarea icon={FileText} value={descripcion} onChange={(e) => setDescripcion(e.target.value)} rows={2} placeholder="Motivo del ajuste…" />
+          </div>
+
+          <FormActions
+            onCancel={() => { reset(); onClose(false); }}
+            loading={loading}
+            disabled={!montoNum || !descripcion.trim()}
+            submitLabel="Registrar ajuste"
+            loadingLabel="Registrando…"
+          />
         </form>
       </DialogContent>
     </Dialog>
@@ -449,13 +506,15 @@ function TransferenciaDialog({
   const reset = () => { setOrigen("efectivo"); setDestino("banco"); setMonto(""); setDescripcion(""); setError(null); };
 
   const mismaCuenta = origen === destino;
+  const montoNum = parseMontoInput(monto);
+  const simbolo = simboloCuenta(origen);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (mismaCuenta) { setError("Origen y destino deben ser distintos"); return; }
     const ok = await confirm({
       title: "¿Registrar transferencia?",
-      description: `Se transferirán $${n2(parseFloat(monto) || 0)} de ${origen} a ${destino}.`,
+      description: `Se transferirán ${simbolo} ${n2(montoNum)} de ${origen} a ${destino}.`,
       confirmLabel: "Transferir",
     });
     if (!ok) return;
@@ -464,7 +523,7 @@ function TransferenciaDialog({
       const res = await fetch("/api/caja/transferencia", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ origen, destino, monto: parseFloat(monto), descripcion }),
+        body: JSON.stringify({ origen, destino, monto: montoNum, descripcion }),
       });
       const json = await res.json();
       if (json.ok) { reset(); toast.success("Transferencia registrada"); onClose(true); }
@@ -478,48 +537,77 @@ function TransferenciaDialog({
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) { reset(); onClose(false); } }}>
-      <DialogContent className="w-[95vw] sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>Transferir entre cuentas</DialogTitle>
+      <DialogContent className="w-[95vw] sm:max-w-xl sm:p-7 max-h-[90dvh] overflow-y-auto">
+        <DialogHeader className="pr-8">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-primary">
+              <ArrowLeftRight className="h-5 w-5" />
+            </div>
+            <div>
+              <DialogTitle>Transferir entre cuentas</DialogTitle>
+              <p className="mt-0.5 text-xs text-muted-foreground">Mové saldo de una cuenta a otra sin afectar el total.</p>
+            </div>
+          </div>
         </DialogHeader>
-        <form onSubmit={submit} className="space-y-4">
+
+        <form onSubmit={submit} className="space-y-5">
           {error && (
-            <div className="rounded-lg bg-destructive/10 border border-destructive/20 px-3 py-2.5 text-sm text-destructive">{error}</div>
+            <div className="rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-2.5 text-sm text-destructive">{error}</div>
           )}
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Desde" required>
-              <Select value={origen} onChange={(e) => setOrigen(e.target.value as CuentaCaja)}>
+
+          {/* Origen → Destino */}
+          <div className="grid grid-cols-[1fr_auto_1fr] items-end gap-3">
+            <div className="flex flex-col gap-1.5">
+              <FieldLabel required>Desde</FieldLabel>
+              <IconSelect icon={Wallet} value={origen} onChange={(e) => setOrigen(e.target.value as CuentaCaja)}>
                 <option value="efectivo">Efectivo</option>
                 <option value="banco">Banco</option>
                 <option value="dolares">Dólares</option>
-              </Select>
-            </Field>
-            <Field label="Hacia" required>
-              <Select value={destino} onChange={(e) => setDestino(e.target.value as CuentaCaja)}>
+              </IconSelect>
+            </div>
+            <div className="flex h-12 items-center justify-center text-muted-foreground">
+              <ArrowRight className="h-4 w-4" />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <FieldLabel required>Hacia</FieldLabel>
+              <IconSelect icon={Wallet} value={destino} onChange={(e) => setDestino(e.target.value as CuentaCaja)}>
                 <option value="efectivo">Efectivo</option>
                 <option value="banco">Banco</option>
                 <option value="dolares">Dólares</option>
-              </Select>
-            </Field>
+              </IconSelect>
+            </div>
           </div>
+
+          {mismaCuenta && (
+            <p className="text-xs text-warning">Origen y destino deben ser distintos.</p>
+          )}
+
           {saldos && (
-            <p className="text-xs text-muted-foreground">
-              Saldo disponible en {CUENTA_META[origen].label}:{" "}
-              <span className="font-mono font-semibold text-foreground">${n2(saldos[origen] ?? 0)}</span>
-            </p>
+            <div className="rounded-lg border border-border bg-muted/30 px-3 py-2.5 flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">Saldo disponible en {CUENTA_META[origen].label}</span>
+              <span className="font-mono font-semibold text-foreground">{simbolo} {n2(saldos[origen] ?? 0)}</span>
+            </div>
           )}
-          <Field label="Monto ($)" required>
-            <Input type="number" min="1" step="any" value={monto} onChange={(e) => setMonto(e.target.value)} placeholder="Ej: 50000" required />
-          </Field>
-          <Field label="Descripción">
-            <Textarea value={descripcion} onChange={(e) => setDescripcion(e.target.value)} rows={2} placeholder="Detalle opcional…" />
-          </Field>
-          <div className="flex justify-end gap-2 pt-1 border-t border-border">
-            <button type="button" onClick={() => { reset(); onClose(false); }} className="px-4 py-2 rounded-lg text-sm text-muted-foreground hover:bg-muted transition-colors">Cancelar</button>
-            <button type="submit" disabled={loading || !monto || mismaCuenta} className="px-5 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 disabled:opacity-40 transition-opacity">
-              {loading ? "Transfiriendo…" : "Transferir"}
-            </button>
+
+          {/* Monto */}
+          <div className="flex flex-col gap-1.5">
+            <FieldLabel required>Monto</FieldLabel>
+            <MoneyInput value={monto} onChange={setMonto} currency={simbolo} autoFocus required />
           </div>
+
+          {/* Descripción */}
+          <div className="flex flex-col gap-1.5">
+            <FieldLabel>Descripción</FieldLabel>
+            <IconTextarea icon={FileText} value={descripcion} onChange={(e) => setDescripcion(e.target.value)} rows={2} placeholder="Detalle opcional…" />
+          </div>
+
+          <FormActions
+            onCancel={() => { reset(); onClose(false); }}
+            loading={loading}
+            disabled={!montoNum || mismaCuenta}
+            submitLabel="Transferir"
+            loadingLabel="Transfiriendo…"
+          />
         </form>
       </DialogContent>
     </Dialog>
@@ -545,15 +633,16 @@ function ArqueoDialog({
   const reset = () => { setCuenta("efectivo"); setFisico(""); setDescripcion(""); setError(null); setResultado(null); };
 
   const sistema = saldos?.[cuenta] ?? 0;
-  const fisicoNum = parseFloat(fisico);
-  const difPreview = Number.isFinite(fisicoNum) ? Math.round((fisicoNum - sistema) * 100) / 100 : null;
+  const simbolo = simboloCuenta(cuenta);
+  const fisicoNum = parseMontoInput(fisico);
+  const difPreview = fisico.trim() !== "" ? Math.round((fisicoNum - sistema) * 100) / 100 : null;
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     const ok = await confirm({
       title: "¿Registrar arqueo?",
       description: difPreview !== null && difPreview !== 0
-        ? `Hay una diferencia de $${n2(Math.abs(difPreview))} (${difPreview > 0 ? "sobrante" : "faltante"}). Se registrará el ajuste correspondiente en ${cuenta}.`
+        ? `Hay una diferencia de ${simbolo} ${n2(Math.abs(difPreview))} (${difPreview > 0 ? "sobrante" : "faltante"}). Se registrará el ajuste correspondiente en ${cuenta}.`
         : `Se registrará el arqueo de ${cuenta} sin diferencias.`,
       confirmLabel: "Registrar arqueo",
     });
@@ -563,7 +652,7 @@ function ArqueoDialog({
       const res = await fetch("/api/caja/arqueo", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ cuenta, monto_fisico: parseFloat(fisico), descripcion }),
+        body: JSON.stringify({ cuenta, monto_fisico: fisicoNum, descripcion }),
       });
       const json = await res.json();
       if (json.ok) { setResultado(json.data); toast.success("Arqueo registrado"); onClose(true); }
@@ -577,30 +666,49 @@ function ArqueoDialog({
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) { reset(); onClose(false); } }}>
-      <DialogContent className="w-[95vw] sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>Arqueo de caja</DialogTitle>
+      <DialogContent className="w-[95vw] sm:max-w-xl sm:p-7 max-h-[90dvh] overflow-y-auto">
+        <DialogHeader className="pr-8">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-primary">
+              <ClipboardCheck className="h-5 w-5" />
+            </div>
+            <div>
+              <DialogTitle>Arqueo de caja</DialogTitle>
+              <p className="mt-0.5 text-xs text-muted-foreground">Compará el conteo físico con el saldo de sistema y cuadrá la diferencia.</p>
+            </div>
+          </div>
         </DialogHeader>
-        <form onSubmit={submit} className="space-y-4">
-          {error && (
-            <div className="rounded-lg bg-destructive/10 border border-destructive/20 px-3 py-2.5 text-sm text-destructive">{error}</div>
-          )}
-          <Field label="Cuenta" required>
-            <Select value={cuenta} onChange={(e) => { setCuenta(e.target.value as CuentaCaja); setResultado(null); }}>
-              <option value="efectivo">Efectivo</option>
-              <option value="banco">Banco</option>
-              <option value="dolares">Dólares</option>
-            </Select>
-          </Field>
 
-          <div className="rounded-lg bg-muted/30 border border-border px-3 py-2.5 flex items-center justify-between text-sm">
-            <span className="text-muted-foreground">Saldo de sistema</span>
-            <span className="font-mono font-semibold text-foreground">${n2(sistema)}</span>
+        <form onSubmit={submit} className="space-y-5">
+          {error && (
+            <div className="rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-2.5 text-sm text-destructive">{error}</div>
+          )}
+
+          {/* Cuenta */}
+          <div className="flex flex-col gap-1.5">
+            <FieldLabel required>Cuenta</FieldLabel>
+            <Segmented
+              value={cuenta}
+              onChange={(v) => { setCuenta(v); setResultado(null); }}
+              options={[
+                { value: "efectivo", label: "Efectivo", icon: Wallet },
+                { value: "banco", label: "Banco", icon: Banknote },
+                { value: "dolares", label: "Dólares", icon: CircleDollarSign },
+              ]}
+            />
           </div>
 
-          <Field label="Conteo físico ($)" required>
-            <Input type="number" min="0" step="any" value={fisico} onChange={(e) => setFisico(e.target.value)} placeholder="Lo que hay realmente" required />
-          </Field>
+          {/* Saldo de sistema */}
+          <div className="rounded-lg border border-border bg-muted/30 px-3 py-2.5 flex items-center justify-between text-sm">
+            <span className="text-muted-foreground">Saldo de sistema</span>
+            <span className="font-mono font-semibold text-foreground">{simbolo} {n2(sistema)}</span>
+          </div>
+
+          {/* Conteo físico */}
+          <div className="flex flex-col gap-1.5">
+            <FieldLabel required>Conteo físico</FieldLabel>
+            <MoneyInput value={fisico} onChange={setFisico} currency={simbolo} placeholder="Lo que hay realmente" autoFocus required />
+          </div>
 
           {difPreview !== null && (
             <div className={`rounded-lg px-3 py-2.5 flex items-center justify-between text-sm border ${
@@ -609,7 +717,7 @@ function ArqueoDialog({
                 : "bg-warning/10 border-warning/30 text-warning"
             }`}>
               <span>{difPreview === 0 ? "Cuadra exacto" : difPreview > 0 ? "Sobrante" : "Faltante"}</span>
-              <span className="font-mono font-bold">{difPreview > 0 ? "+" : ""}${n2(difPreview)}</span>
+              <span className="font-mono font-bold">{difPreview > 0 ? "+" : difPreview < 0 ? "−" : ""}{simbolo} {n2(Math.abs(difPreview))}</span>
             </div>
           )}
 
@@ -619,16 +727,165 @@ function ArqueoDialog({
             </p>
           )}
 
-          <Field label="Observación">
-            <Textarea value={descripcion} onChange={(e) => setDescripcion(e.target.value)} rows={2} placeholder="Detalle opcional…" />
-          </Field>
-
-          <div className="flex justify-end gap-2 pt-1 border-t border-border">
-            <button type="button" onClick={() => { reset(); onClose(false); }} className="px-4 py-2 rounded-lg text-sm text-muted-foreground hover:bg-muted transition-colors">Cancelar</button>
-            <button type="submit" disabled={loading || fisico === ""} className="px-5 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 disabled:opacity-40 transition-opacity">
-              {loading ? "Registrando…" : "Confirmar arqueo"}
-            </button>
+          {/* Observación */}
+          <div className="flex flex-col gap-1.5">
+            <FieldLabel>Observación</FieldLabel>
+            <IconTextarea icon={FileText} value={descripcion} onChange={(e) => setDescripcion(e.target.value)} rows={2} placeholder="Detalle opcional…" />
           </div>
+
+          <FormActions
+            onCancel={() => { reset(); onClose(false); }}
+            loading={loading}
+            disabled={fisico.trim() === ""}
+            submitLabel="Confirmar arqueo"
+            loadingLabel="Registrando…"
+          />
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/** Entrega/recibe efectivo directo entre la caja principal y la caja de un vendedor. */
+function CajaVendedorDialog({ open, onClose }: { open: boolean; onClose: (ok?: boolean) => void }) {
+  const confirm = useConfirm();
+  const toast = useToast();
+  const { vendedores } = useVendedores();
+  const activos = vendedores.filter((v) => v.activo);
+  const [vendedorId, setVendedorId] = useState("");
+  const [accion, setAccion] = useState<"entrega" | "rendicion">("entrega");
+  const [cuentaPrincipal, setCuentaPrincipal] = useState<CuentaCaja>("efectivo");
+  const [cuentaVendedor, setCuentaVendedor] = useState<CuentaCaja>("efectivo");
+  const [monto, setMonto] = useState("");
+  const [descripcion, setDescripcion] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Selecciona el primer vendedor activo al abrir si no hay uno elegido.
+  const sel = vendedorId || activos[0]?.id || "";
+  const reset = () => { setVendedorId(""); setAccion("entrega"); setCuentaPrincipal("efectivo"); setCuentaVendedor("efectivo"); setMonto(""); setDescripcion(""); setError(null); };
+  const montoNum = parseMontoInput(monto);
+  const simbolo = simboloCuenta(cuentaPrincipal);
+  const esEntrega = accion === "entrega";
+  const nombreSel = activos.find((v) => v.id === sel)?.nombre ?? "el vendedor";
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!sel) { setError("Elegí un vendedor"); return; }
+    const ok = await confirm({
+      title: esEntrega ? "¿Entregar efectivo?" : "¿Recibir efectivo?",
+      description: esEntrega
+        ? `Se entregarán ${simbolo} ${n2(montoNum)} de la caja principal (${cuentaPrincipal}) a la caja de ${nombreSel} (${cuentaVendedor}).`
+        : `Se recibirán ${simbolo} ${n2(montoNum)} de la caja de ${nombreSel} (${cuentaVendedor}) a la caja principal (${cuentaPrincipal}).`,
+      confirmLabel: esEntrega ? "Entregar" : "Recibir",
+    });
+    if (!ok) return;
+    setLoading(true); setError(null);
+    try {
+      const res = await fetch(`/api/vendedores/${sel}/caja`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ accion, monto: montoNum, cuenta_principal: cuentaPrincipal, cuenta_vendedor: cuentaVendedor, descripcion }),
+      });
+      const json = await res.json();
+      if (json.ok) { reset(); toast.success(esEntrega ? "Entrega registrada" : "Recepción registrada"); onClose(true); }
+      else setError(json.error);
+    } catch {
+      setError("No se pudo registrar el movimiento");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => { if (!o) { reset(); onClose(false); } }}>
+      <DialogContent className="w-[95vw] sm:max-w-xl sm:p-7 max-h-[90dvh] overflow-y-auto">
+        <DialogHeader className="pr-8">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-primary">
+              <Users className="h-5 w-5" />
+            </div>
+            <div>
+              <DialogTitle>Caja de vendedores</DialogTitle>
+              <p className="mt-0.5 text-xs text-muted-foreground">Entregá o recibí efectivo directo entre la caja principal y la de un vendedor.</p>
+            </div>
+          </div>
+        </DialogHeader>
+
+        <form onSubmit={submit} className="space-y-5">
+          {error && (
+            <div className="rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-2.5 text-sm text-destructive">{error}</div>
+          )}
+
+          {/* Dirección */}
+          <div className="flex flex-col gap-1.5">
+            <FieldLabel required>Operación</FieldLabel>
+            <Segmented
+              value={accion}
+              onChange={setAccion}
+              options={[
+                { value: "entrega", label: "Entregar al vendedor", icon: ArrowUpRight },
+                { value: "rendicion", label: "Recibir del vendedor", icon: ArrowDownLeft },
+              ]}
+            />
+          </div>
+
+          {/* Vendedor */}
+          <div className="flex flex-col gap-1.5">
+            <FieldLabel required>Vendedor</FieldLabel>
+            <IconSelect icon={Users} value={sel} onChange={(e) => setVendedorId(e.target.value)}>
+              {activos.length === 0 && <option value="">— sin vendedores activos —</option>}
+              {activos.map((v) => <option key={v.id} value={v.id}>{v.nombre}</option>)}
+            </IconSelect>
+          </div>
+
+          {/* Cuenta de la caja principal (origen en entrega, destino en rendición) */}
+          <div className="flex flex-col gap-1.5">
+            <FieldLabel required>{esEntrega ? "Sale de la caja principal" : "Entra a la caja principal"}</FieldLabel>
+            <Segmented
+              value={cuentaPrincipal}
+              onChange={setCuentaPrincipal}
+              options={[
+                { value: "efectivo", label: "Efectivo", icon: Wallet },
+                { value: "banco", label: "Banco", icon: Banknote },
+                { value: "dolares", label: "Dólares", icon: CircleDollarSign },
+              ]}
+            />
+          </div>
+
+          {/* Cuenta del vendedor (destino en entrega, origen en rendición) */}
+          <div className="flex flex-col gap-1.5">
+            <FieldLabel required>{esEntrega ? "Entra a la cuenta del vendedor" : "Sale de la cuenta del vendedor"}</FieldLabel>
+            <Segmented
+              value={cuentaVendedor}
+              onChange={setCuentaVendedor}
+              options={[
+                { value: "efectivo", label: "Efectivo", icon: Wallet },
+                { value: "banco", label: "Banco", icon: Banknote },
+                { value: "dolares", label: "Dólares", icon: CircleDollarSign },
+              ]}
+            />
+          </div>
+
+          {/* Monto */}
+          <div className="flex flex-col gap-1.5">
+            <FieldLabel required>Monto</FieldLabel>
+            <MoneyInput value={monto} onChange={setMonto} currency={simbolo} autoFocus required />
+          </div>
+
+          {/* Descripción */}
+          <div className="flex flex-col gap-1.5">
+            <FieldLabel>Observación</FieldLabel>
+            <IconTextarea icon={FileText} value={descripcion} onChange={(e) => setDescripcion(e.target.value)} rows={2} placeholder="Detalle opcional…" />
+          </div>
+
+          <FormActions
+            onCancel={() => { reset(); onClose(false); }}
+            loading={loading}
+            disabled={!montoNum || !sel}
+            submitLabel={esEntrega ? "Entregar" : "Recibir"}
+            loadingLabel="Registrando…"
+          />
         </form>
       </DialogContent>
     </Dialog>

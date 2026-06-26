@@ -155,8 +155,8 @@ export function CreditosTable() {
           title="Créditos"
           subtitle="Créditos otorgados y seguimiento de saldos"
           accent="primary"
-          actions={cta}
         />
+        <div className="flex flex-wrap items-center justify-end gap-2">{cta}</div>
 
         {isLoading ? (
           <BodySkeleton />

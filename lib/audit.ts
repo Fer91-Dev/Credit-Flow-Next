@@ -6,6 +6,7 @@
  * mutación sigue su curso normal. Por eso cada llamada va envuelta en try/catch.
  */
 import { prisma } from "@/lib/prisma";
+import { getAuditActor } from "@/lib/audit-context";
 
 export type AuditEntidad = "clientes" | "creditos" | "pagos" | "configuracion" | "caja" | "campana" | "vendedores" | "proveedores" | "usuarios";
 export type AuditAccion =
@@ -28,6 +29,7 @@ export interface AuditInput {
 
 export async function registrarAuditoria(input: AuditInput): Promise<void> {
   try {
+    const actor = getAuditActor(); // quién ejecutó la acción (seteado en requireAuth)
     await prisma.auditoria.create({
       data: {
         tenant_id: input.tenantId,
@@ -36,6 +38,9 @@ export async function registrarAuditoria(input: AuditInput): Promise<void> {
         accion: input.accion,
         descripcion: input.descripcion,
         meta: input.meta === undefined ? undefined : (input.meta as object),
+        usuario_id: actor?.userId ?? null,
+        usuario_nombre: actor?.nombre ?? null,
+        usuario_email: actor?.email ?? null,
       },
     });
   } catch (err) {

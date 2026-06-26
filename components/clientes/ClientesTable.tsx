@@ -9,7 +9,8 @@ import { useClientes, KEYS, type Cliente } from "@/lib/swr";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { ScoreBadge } from "@/components/ui/ScoreBadge";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { ModalHeader } from "@/components/ui/form-kit";
 import { nombreCompleto } from "@/lib/utils";
 import { useConfirm } from "@/components/ui/confirm";
 import { useToast } from "@/components/ui/toast";
@@ -114,10 +115,12 @@ export function ClientesTable() {
   // Diálogo de alta/edición (compartido por ambas vistas).
   const formDialog = (
     <Dialog open={dialogOpen} onOpenChange={(open) => { if (!open) handleFormClose(false); }}>
-      <DialogContent className="sm:max-w-2xl">
-        <DialogHeader>
-          <DialogTitle>{editingId ? "Editar cliente" : "Nuevo cliente"}</DialogTitle>
-        </DialogHeader>
+      <DialogContent className="w-[95vw] sm:max-w-2xl sm:p-7">
+        <ModalHeader
+          icon={User}
+          title={editingId ? "Editar cliente" : "Nuevo cliente"}
+          subtitle={editingId ? "Actualizá la ficha del cliente." : "Cargá los datos del nuevo cliente."}
+        />
         <ClienteForm clienteId={editingId} onClose={handleFormClose} />
       </DialogContent>
     </Dialog>
@@ -142,8 +145,8 @@ export function ClientesTable() {
           title="Clientes"
           subtitle="Ficha del cliente"
           accent="primary"
-          actions={volver}
         />
+        <div className="flex flex-wrap items-center gap-2">{volver}</div>
 
         {/* Ficha principal del cliente */}
         <div className="rounded-xl bg-card border border-border overflow-hidden">
@@ -169,8 +172,8 @@ export function ClientesTable() {
         title="Clientes"
         subtitle="Buscá un cliente por DNI o nombre para ver su ficha, o creá uno nuevo."
         accent="primary"
-        actions={cta}
       />
+      <div className="flex flex-wrap items-center justify-end gap-2">{cta}</div>
 
       {/* Buscador */}
       <div className="relative max-w-2xl">

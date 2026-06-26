@@ -16,6 +16,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { KpiCard } from "@/components/ui/KpiCard";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { ModalHeader } from "@/components/ui/form-kit";
 import { Skeleton } from "@/components/ui/skeleton";
 
 function n0(x: number) {
@@ -529,10 +530,12 @@ export function CobranzaTable({ role }: { role: Role }) {
       )}
 
       <Dialog open={!!gestion} onOpenChange={open => { if (!open) setGestion(null); }}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Registrar gestión de cobranza</DialogTitle>
-          </DialogHeader>
+        <DialogContent className="w-[95vw] sm:max-w-lg sm:p-7">
+          <ModalHeader
+            icon={MessageSquarePlus}
+            title="Registrar gestión de cobranza"
+            subtitle="Dejá registro del contacto y, si corresponde, la promesa de pago."
+          />
           {gestion && <GestionForm credito={gestion} onClose={handleGestionClose} />}
         </DialogContent>
       </Dialog>
@@ -578,11 +581,15 @@ export function CobranzaTable({ role }: { role: Role }) {
       {/* Modal de configuración de campaña (solo admin/cobrador) */}
       {puedeCampanas && (
         <Dialog open={campaignOpen} onOpenChange={open => { if (!open) setCampaignOpen(false); }}>
-          <DialogContent className="w-[95vw] sm:max-w-xl max-h-[90dvh] flex flex-col overflow-hidden">
-            <DialogHeader className="shrink-0">
-              <DialogTitle>Nueva campaña de recuperación</DialogTitle>
-            </DialogHeader>
-            <div className="flex-1 min-h-0 overflow-y-auto">
+          <DialogContent className="w-[95vw] sm:max-w-xl sm:p-7 max-h-[90dvh] flex flex-col overflow-hidden">
+            <div className="shrink-0">
+              <ModalHeader
+                icon={Megaphone}
+                title="Nueva campaña de recuperación"
+                subtitle="Configurá el mensaje y el canal para los créditos seleccionados."
+              />
+            </div>
+            <div className="flex-1 min-h-0 overflow-y-auto pt-1">
               {campaignOpen && <CampaignModal creditos={seleccionados} onClose={handleCampaignClose} />}
             </div>
           </DialogContent>

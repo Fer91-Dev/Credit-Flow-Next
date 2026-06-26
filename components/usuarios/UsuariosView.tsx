@@ -10,8 +10,9 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { KpiCard } from "@/components/ui/KpiCard";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Field, Input, Select } from "@/components/ui/field";
+import { ModalHeader, FormActions, MODAL_CONTENT } from "@/components/ui/form-kit";
 import { useConfirm } from "@/components/ui/confirm";
 import { useToast } from "@/components/ui/toast";
 
@@ -79,8 +80,8 @@ export function UsuariosView() {
         title="Usuarios y accesos"
         subtitle="Altas de acceso, roles y privilegios del equipo"
         accent="primary"
-        actions={cta}
       />
+      <div className="flex flex-wrap items-center justify-end gap-2">{cta}</div>
 
       {isLoading ? (
         <BodySkeleton />
@@ -278,13 +279,15 @@ function UsuarioForm({
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(false); }}>
-      <DialogContent className="w-[95vw] sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>{editing ? "Editar usuario" : "Nuevo usuario"}</DialogTitle>
-        </DialogHeader>
+      <DialogContent className={MODAL_CONTENT}>
+        <ModalHeader
+          icon={ShieldCheck}
+          title={editing ? "Editar usuario" : "Nuevo usuario"}
+          subtitle={editing ? "Actualizá el acceso y el rol del usuario." : "Creá un acceso de login y asignale un rol."}
+        />
         <form onSubmit={submit} className="space-y-4">
           {error && (
-            <div className="rounded-lg bg-destructive/10 border border-destructive/20 px-3 py-2.5 text-sm text-destructive">{error}</div>
+            <div className="rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-2.5 text-sm text-destructive">{error}</div>
           )}
 
           <Field label="Email" required>
@@ -351,12 +354,11 @@ function UsuarioForm({
             </Field>
           )}
 
-          <div className="flex justify-end gap-2 pt-1 border-t border-border">
-            <button type="button" onClick={() => onClose(false)} className="px-4 py-2 rounded-lg text-sm text-muted-foreground hover:bg-muted transition-colors">Cancelar</button>
-            <button type="submit" disabled={loading} className="px-5 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 disabled:opacity-40 transition-opacity">
-              {loading ? "Guardando…" : editing ? "Guardar cambios" : "Crear usuario"}
-            </button>
-          </div>
+          <FormActions
+            onCancel={() => onClose(false)}
+            loading={loading}
+            submitLabel={editing ? "Guardar cambios" : "Crear usuario"}
+          />
         </form>
       </DialogContent>
     </Dialog>

@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
+import { setAuditActor } from "@/lib/audit-context";
 import type { Role } from "@prisma/client";
 
 // UUID fijo para el usuario de desarrollo (usado cuando DEV_BYPASS_AUTH=true).
@@ -48,6 +49,9 @@ async function cargarContexto(userId: string): Promise<AuthContext> {
   if (!profile || !profile.activo || !profile.tenant_id || !profile.role) {
     throw new ApiError("Acceso denegado", "FORBIDDEN", 403);
   }
+
+  // Actor para la auditoría: disponible automáticamente en registrarAuditoria.
+  setAuditActor({ userId, nombre: profile.full_name ?? null, email: profile.email ?? null });
 
   return {
     userId,

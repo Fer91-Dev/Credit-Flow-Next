@@ -12,6 +12,7 @@ import {
   type CanalCampana,
 } from "@/lib/domain";
 import { Field, Input, Select, Textarea } from "@/components/ui/field";
+import { FormActions } from "@/components/ui/form-kit";
 import { nombreCompleto } from "@/lib/utils";
 import { useConfirm } from "@/components/ui/confirm";
 import { useToast } from "@/components/ui/toast";
@@ -338,18 +339,12 @@ export function CampaignModal({ creditos, onClose }: CampaignModalProps) {
         </div>
       </div>
 
-      <div className="flex gap-2 justify-end pt-1 border-t border-border">
-        <button type="button" onClick={() => onClose(false)} className="px-4 py-2 rounded-lg text-sm text-muted-foreground hover:bg-muted transition-colors">
-          Cancelar
-        </button>
-        <button
-          type="submit"
-          disabled={loading}
-          className="px-5 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 disabled:opacity-50 transition-opacity"
-        >
-          {loading ? "Creando…" : "Crear campaña"}
-        </button>
-      </div>
+      <FormActions
+        onCancel={() => onClose(false)}
+        loading={loading}
+        submitLabel="Crear campaña"
+        loadingLabel="Creando…"
+      />
     </form>
   );
 }

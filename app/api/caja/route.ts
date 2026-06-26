@@ -3,7 +3,8 @@ import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api"
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { registrarAuditoria } from "@/lib/audit";
-import { montoConSigno, totalesCaja, saldosPorCuenta, esCuentaValida } from "@/lib/domain";
+import { montoConSigno, totalesCaja, saldosPorCuenta, esCuentaValida, etiquetaCaja } from "@/lib/domain";
+import { siguienteNumeroComprobante, formatComprobante } from "@/lib/comprobantes";
 import { nombreCompleto } from "@/lib/utils";
 import type { NextRequest } from "next/server";
 
@@ -28,30 +29,39 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   const desde = new Date(`${desdeStr}T00:00:00.000Z`);
   const hasta = new Date(`${hastaStr}T23:59:59.999Z`);
 
+  // La caja del admin representa la CAJA PRINCIPAL (tesorería): solo movimientos sin
+  // vendedor. Lo que está en poder de los vendedores vive en sus cajas personales.
   const whereRango: Record<string, unknown> = {
     ...withTenant(tenantId),
+    vendedor_id: null,
     fecha: { gte: desde, lte: hasta },
   };
   if (tipo && tipo !== "all") whereRango.tipo = tipo;
   if (esCuentaValida(cuentaParam)) whereRango.cuenta = cuentaParam;
 
-  const [movimientos, saldoMovs] = await Promise.all([
+  const [movimientos, saldoMovs, enVendedores] = await Promise.all([
     prisma.movimientos_caja.findMany({
       where: whereRango,
       include: { credito: { select: { numero: true, cliente: { select: { nombre: true, apellido: true } } } } },
       orderBy: [{ fecha: "desc" }, { created_at: "desc" }],
       take: 1000,
     }),
-    // Todos los movimientos del tenant (sin filtros) para el saldo por cuenta y total.
+    // Movimientos de la caja principal (sin filtros de período) para el saldo por cuenta.
     prisma.movimientos_caja.findMany({
-      where: { ...withTenant(tenantId) },
+      where: { ...withTenant(tenantId), vendedor_id: null },
       select: { monto: true, cuenta: true, fecha: true },
+    }),
+    // Total en poder de vendedores (suma de las cajas personales).
+    prisma.movimientos_caja.aggregate({
+      where: { ...withTenant(tenantId), vendedor_id: { not: null } },
+      _sum: { monto: true },
     }),
   ]);
 
   const periodo = totalesCaja(movimientos);
   const saldosCuenta = saldosPorCuenta(saldoMovs);
   const saldoTotal = Math.round((saldosCuenta.efectivo + saldosCuenta.banco + saldosCuenta.dolares) * 100) / 100;
+  const enPoderVendedores = Math.round((enVendedores._sum.monto ?? 0) * 100) / 100;
 
   // Desglose por cuenta: saldo actual, ingresos/egresos del período y saldo anterior.
   type Detalle = { saldo: number; anterior: number; ingresos: number; egresos: number };
@@ -77,6 +87,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   return successResponse({
     periodo: { desde: desdeStr, hasta: hastaStr },
     saldo_total: saldoTotal,
+    en_vendedores: enPoderVendedores,
     saldos_por_cuenta: saldosCuenta,
     saldos_detalle: saldosDetalle,
     ingresos: periodo.ingresos,
@@ -85,10 +96,14 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     movimientos: movimientos.map((m) => ({
       id: m.id,
       fecha: m.fecha,
+      created_at: m.created_at,
       tipo: m.tipo,
       monto: m.monto,
       metodo: m.metodo,
       cuenta: m.cuenta,
+      origen: m.origen,
+      destino: m.destino,
+      comprobante: formatComprobante(m.serie, m.numero),
       descripcion: m.descripcion,
       credito_numero: m.credito?.numero ?? null,
       cliente: m.credito?.cliente ? nombreCompleto(m.credito.cliente) : null,
@@ -121,17 +136,27 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
   }
   const ingreso = body.sentido !== "egreso";
   const cuenta = esCuentaValida(body.cuenta) ? body.cuenta : "efectivo";
+  const descripcion = body.descripcion.trim();
+  const metodo = body.metodo?.trim() || null;
+  const fecha = body.fecha ? new Date(body.fecha) : new Date();
 
-  const mov = await prisma.movimientos_caja.create({
-    data: {
-      ...withTenant(tenantId),
-      fecha: body.fecha ? new Date(body.fecha) : new Date(),
-      tipo: "ajuste",
-      monto: montoConSigno("ajuste", monto, ingreso),
-      metodo: body.metodo?.trim() || null,
-      cuenta,
-      descripcion: body.descripcion.trim(),
-    },
+  const mov = await prisma.$transaction(async (tx) => {
+    const numero = await siguienteNumeroComprobante(tx, tenantId, "AJU");
+    return tx.movimientos_caja.create({
+      data: {
+        ...withTenant(tenantId),
+        fecha,
+        tipo: "ajuste",
+        monto: montoConSigno("ajuste", monto, ingreso),
+        metodo,
+        cuenta,
+        origen: ingreso ? "Ajuste manual" : etiquetaCaja(false, cuenta),
+        destino: ingreso ? etiquetaCaja(false, cuenta) : "Ajuste manual",
+        serie: "AJU",
+        numero,
+        descripcion,
+      },
+    });
   });
 
   await registrarAuditoria({

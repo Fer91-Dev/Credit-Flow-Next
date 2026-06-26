@@ -12,8 +12,10 @@ import {
   construirPlanAmortizacion,
   planACuotas,
   estadoCoherente,
+  etiquetaCaja,
   type FrecuenciaDef,
 } from "@/lib/domain";
+import { siguienteNumeroComprobante } from "@/lib/comprobantes";
 import { getConfiguracion } from "@/lib/config";
 import { registrarAuditoria } from "@/lib/audit";
 import { formatCreditoNumero, nombreCompleto } from "@/lib/utils";
@@ -202,6 +204,22 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
         403,
       );
     }
+
+    // Fondos disponibles (autoritativo): el desembolso sale de la caja EFECTIVO del
+    // vendedor; no puede prestar más de lo que tiene. Si no le alcanza, debe pedir
+    // una entrega al administrador.
+    const saldoEfectivo = await prisma.movimientos_caja.aggregate({
+      where: { ...withTenant(tenantId), vendedor_id: vendedorId, cuenta: "efectivo" },
+      _sum: { monto: true },
+    });
+    const disponible = Math.round((saldoEfectivo._sum.monto ?? 0) * 100) / 100;
+    if (body.monto_original > disponible) {
+      return errorResponse(
+        `No tenés saldo suficiente en tu caja de efectivo. Disponible: $${disponible.toLocaleString("es-AR")} — necesitás $${Number(body.monto_original).toLocaleString("es-AR")}. Pedí una entrega al administrador para poder otorgar.`,
+        "INSUFFICIENT_FUNDS",
+        403,
+      );
+    }
   }
 
   // Frecuencia de pago (default mensual). El período de cada cuota lo da este campo.
@@ -307,13 +325,20 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     });
 
     // Movimiento de caja: desembolso (egreso) al otorgar.
+    const numComp = await siguienteNumeroComprobante(tx, tenantId, "DES");
     await tx.movimientos_caja.create({
       data: {
         ...withTenant(tenantId),
         fecha: fechaInicio,
         tipo: "desembolso",
         monto: -Math.abs(c.monto_original),
+        cuenta: "efectivo", // el desembolso sale del efectivo (coincide con el control de fondos del vendedor)
         credito_id: c.id,
+        vendedor_id: vendedorId, // sale de la caja personal del vendedor que otorga (null = caja principal)
+        origen: etiquetaCaja(!!vendedorId, "efectivo"),
+        destino: nombreCompleto(cliente),
+        serie: "DES",
+        numero: numComp,
         descripcion: `Desembolso ${formatCreditoNumero(c.numero)} · ${nombreCompleto(cliente)}`,
       },
     });

@@ -405,13 +405,30 @@ export type CuentaCaja = "efectivo" | "banco" | "dolares";
 export interface MovimientoCaja {
   id: string;
   fecha: string;
-  tipo: "desembolso" | "cobro" | "devolucion" | "reversa_desembolso" | "ajuste" | "transferencia";
+  /** Timestamp con hora (para mostrar fecha + hora del movimiento). */
+  created_at?: string;
+  tipo: "desembolso" | "cobro" | "devolucion" | "reversa_desembolso" | "ajuste" | "transferencia" | "entrega" | "rendicion";
   monto: number; // con signo: ingreso > 0, egreso < 0
   metodo: string | null;
   cuenta: CuentaCaja;
+  /** Etiquetas legibles de origen y destino del movimiento. */
+  origen?: string | null;
+  destino?: string | null;
+  /** N° de comprobante (serie + correlativo): REC-000123. null en movimientos viejos. */
+  comprobante?: string | null;
   descripcion: string;
   credito_numero: number | null;
   cliente: string | null;
+}
+
+/** Caja personal de un vendedor (su porción del libro de caja). */
+export interface CajaVendedor {
+  saldo_total: number;
+  saldos_por_cuenta: Record<CuentaCaja, number>;
+  ingresos: number;
+  egresos: number;
+  neto: number;
+  movimientos: MovimientoCaja[];
 }
 
 export interface SaldoCuentaDetalle {
@@ -424,6 +441,8 @@ export interface SaldoCuentaDetalle {
 export interface CajaData {
   periodo: { desde: string; hasta: string };
   saldo_total: number;
+  /** Total en poder de los vendedores (suma de sus cajas personales). */
+  en_vendedores?: number;
   saldos_por_cuenta: Record<CuentaCaja, number>;
   saldos_detalle: Record<CuentaCaja, SaldoCuentaDetalle>;
   ingresos: number;
@@ -440,6 +459,9 @@ export interface EventoAuditoria {
   accion: "crear" | "actualizar" | "eliminar" | "cancelar" | "anular" | "registrar_pago" | "actualizar_config";
   descripcion: string;
   meta: Record<string, unknown> | null;
+  /** Actor que ejecutó la acción (capturado al escribir el evento). */
+  usuario_nombre?: string | null;
+  usuario_email?: string | null;
 }
 
 export interface WhatsappConfig {
@@ -714,6 +736,21 @@ export function useLogrosVendedor(id: string | null) {
     id ? `/api/vendedores/${id}/logros` : null,
   );
   return { logros: data ?? null, error, isLoading, mutate };
+}
+
+// ── Caja personal del vendedor ───────────────────────────────────────────────
+/** Caja personal de un vendedor (admin, desde la ficha). */
+export function useVendedorCaja(id: string | null) {
+  const { data, error, isLoading, mutate } = useSWR<CajaVendedor | null>(
+    id ? `/api/vendedores/${id}/caja` : null,
+  );
+  return { caja: data ?? null, error, isLoading, mutate };
+}
+
+/** Mi caja personal (vendedor logueado). */
+export function useMiCaja() {
+  const { data, error, isLoading, mutate } = useSWR<CajaVendedor | null>("/api/me/caja");
+  return { caja: data ?? null, error, isLoading, mutate };
 }
 
 export function useMisLogros() {

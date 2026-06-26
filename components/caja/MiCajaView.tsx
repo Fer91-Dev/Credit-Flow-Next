@@ -1,0 +1,423 @@
+"use client";
+
+import { useState } from "react";
+import { mutate as globalMutate } from "swr";
+import {
+  Wallet, Banknote, CircleDollarSign, ArrowUpRight, ArrowDownLeft, Scale, Send, MinusCircle, FileText, ArrowRight,
+} from "lucide-react";
+import { useMiCaja, type CuentaCaja, type MovimientoCaja } from "@/lib/swr";
+import { formatFechaHora, parseMontoInput } from "@/lib/utils";
+import { MoneyInput, Segmented, IconTextarea, FieldLabel, FormActions, simboloCuenta } from "./caja-form";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { KpiCard } from "@/components/ui/KpiCard";
+import { StatusBadge, type BadgeVariant } from "@/components/ui/StatusBadge";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { MovimientoDetail } from "./MovimientoDetail";
+import { useConfirm } from "@/components/ui/confirm";
+import { useToast } from "@/components/ui/toast";
+
+function n0(x: number) {
+  return new Intl.NumberFormat("es-AR", { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(x);
+}
+function n2(x: number) {
+  return new Intl.NumberFormat("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(x);
+}
+
+const CUENTAS: CuentaCaja[] = ["efectivo", "banco", "dolares"];
+const CUENTA_META: Record<CuentaCaja, { label: string; icon: typeof Wallet; prefix: string }> = {
+  efectivo: { label: "Efectivo", icon: Wallet, prefix: "$" },
+  banco:    { label: "Banco",    icon: Banknote, prefix: "$" },
+  dolares:  { label: "Dólares",  icon: CircleDollarSign, prefix: "u$s" },
+};
+
+const TIPO_META: Record<MovimientoCaja["tipo"], { label: string; variant: BadgeVariant }> = {
+  desembolso:         { label: "Desembolso",   variant: "warning" },
+  cobro:              { label: "Cobro",         variant: "success" },
+  devolucion:         { label: "Devolución",    variant: "destructive" },
+  reversa_desembolso: { label: "Reversa",       variant: "primary" },
+  ajuste:             { label: "Ajuste",        variant: "muted" },
+  transferencia:      { label: "Transferencia", variant: "primary" },
+  entrega:            { label: "Entrega",       variant: "warning" },
+  rendicion:          { label: "Rendición",     variant: "success" },
+};
+
+export function MiCajaView() {
+  const { caja, error, isLoading, mutate } = useMiCaja();
+  const [rendirOpen, setRendirOpen] = useState(false);
+  const [gastoOpen, setGastoOpen] = useState(false);
+  const [detalle, setDetalle] = useState<MovimientoCaja | null>(null);
+
+  const refrescar = () => { mutate(); globalMutate("/api/dashboard"); };
+
+  return (
+    <div className="space-y-6">
+      <PageHeader
+        icon={Wallet}
+        title="Mi caja"
+        subtitle="Efectivo que manejás · desembolsos, cobros y rendiciones"
+        accent="primary"
+      />
+
+      {/* Barra de acciones (fuera del header) */}
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          onClick={() => setRendirOpen(true)}
+          className="flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:opacity-90 transition-opacity text-sm font-medium whitespace-nowrap"
+        >
+          <Send className="h-4 w-4" /> Rendir efectivo
+        </button>
+        <button
+          onClick={() => setGastoOpen(true)}
+          className="flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-border text-foreground hover:bg-muted transition-colors text-sm font-medium whitespace-nowrap"
+        >
+          <MinusCircle className="h-4 w-4" /> Registrar gasto
+        </button>
+      </div>
+
+      {isLoading ? (
+        <BodySkeleton />
+      ) : error ? (
+        <div className="rounded-xl bg-destructive/10 border border-destructive/30 p-4 text-destructive text-sm">
+          Error al cargar tu caja: {error.message}
+        </div>
+      ) : !caja ? (
+        <div className="rounded-xl border border-dashed border-border/60 p-8 text-center text-sm text-muted-foreground">
+          Tu usuario todavía no está vinculado a un vendedor.
+        </div>
+      ) : (
+        <div className="space-y-5">
+          {/* Saldos por cuenta */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            {CUENTAS.map((c) => {
+              const meta = CUENTA_META[c];
+              const Icon = meta.icon;
+              const saldo = caja.saldos_por_cuenta[c] ?? 0;
+              return (
+                <div key={c} className="rounded-xl border border-border bg-card p-5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold uppercase tracking-widest text-muted-foreground">{meta.label}</span>
+                    <Icon className="h-4 w-4 text-muted-foreground" />
+                  </div>
+                  <p className={`mt-3 text-2xl font-bold font-mono tabular-nums tracking-tight ${saldo < 0 ? "text-destructive" : "text-foreground"}`}>
+                    {meta.prefix} {n2(saldo)}
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* KPIs */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <KpiCard icon={Scale} label="Saldo de mi caja" value={`$${n0(caja.saldo_total)}`} accent={caja.saldo_total >= 0 ? "success" : "destructive"} mono sub="suma de cuentas" />
+            <KpiCard icon={ArrowDownLeft} label="Ingresos" value={`$${n0(caja.ingresos)}`} accent="success" mono sub="cobros + entregas" />
+            <KpiCard icon={ArrowUpRight} label="Egresos" value={`$${n0(caja.egresos)}`} accent="warning" mono sub="desembolsos + rendiciones" />
+            <KpiCard icon={Scale} label="Neto" value={`$${n0(caja.neto)}`} accent={caja.neto >= 0 ? "primary" : "destructive"} mono />
+          </div>
+
+          {/* Movimientos */}
+          <div className="rounded-xl border border-border overflow-hidden">
+            {caja.movimientos.length === 0 ? (
+              <p className="text-xs text-muted-foreground/60 py-12 text-center">Todavía no hay movimientos en tu caja.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm border-separate border-spacing-0">
+                  <thead>
+                    <tr className="bg-muted/30">
+                      <th className="px-4 py-3 text-left  text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">Comprobante</th>
+                      <th className="px-4 py-3 text-left  text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">Fecha y hora</th>
+                      <th className="px-4 py-3 text-left  text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">Tipo</th>
+                      <th className="px-4 py-3 text-left  text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">Origen</th>
+                      <th className="px-4 py-3 text-left  text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">Destino</th>
+                      <th className="px-4 py-3 text-left  text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border hidden lg:table-cell">Detalle</th>
+                      <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border pr-5">Monto</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {caja.movimientos.map((m, idx) => {
+                      const meta = TIPO_META[m.tipo];
+                      const ingreso = m.monto >= 0;
+                      return (
+                        <tr key={m.id} onClick={() => setDetalle(m)} className={`cursor-pointer transition-colors hover:bg-muted/20 ${idx % 2 === 1 ? "bg-muted/5" : ""}`}>
+                          <td className="px-4 py-2.5 font-mono text-xs text-muted-foreground whitespace-nowrap border-b border-border/70">{m.comprobante ?? "—"}</td>
+                          <td className="px-4 py-2.5 text-muted-foreground tabular-nums whitespace-nowrap border-b border-border/70">{formatFechaHora(m.created_at ?? m.fecha)}</td>
+                          <td className="px-4 py-2.5 border-b border-border/70"><StatusBadge label={meta.label} variant={meta.variant} /></td>
+                          <td className="px-4 py-2.5 text-muted-foreground border-b border-border/70">{m.origen ?? "—"}</td>
+                          <td className="px-4 py-2.5 text-foreground border-b border-border/70">
+                            <span className="flex items-center gap-1.5"><ArrowRight className="h-3 w-3 shrink-0 text-muted-foreground/50" />{m.destino ?? "—"}</span>
+                          </td>
+                          <td className="px-4 py-2.5 text-muted-foreground border-b border-border/70 hidden lg:table-cell">{m.descripcion}</td>
+                          <td className={`px-4 py-2.5 pr-5 text-right font-mono font-semibold border-b border-border/70 ${ingreso ? "text-success" : "text-destructive"}`}>
+                            {ingreso ? "+" : "−"}${n2(Math.abs(m.monto))}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      <RendirDialog
+        open={rendirOpen}
+        saldos={caja?.saldos_por_cuenta}
+        onClose={(ok) => { setRendirOpen(false); if (ok) refrescar(); }}
+      />
+
+      <GastoDialog
+        open={gastoOpen}
+        saldos={caja?.saldos_por_cuenta}
+        onClose={(ok) => { setGastoOpen(false); if (ok) refrescar(); }}
+      />
+
+      <Dialog open={!!detalle} onOpenChange={(o) => { if (!o) setDetalle(null); }}>
+        <DialogContent className="w-[95vw] sm:max-w-md max-h-[90dvh] flex flex-col overflow-hidden">
+          <DialogHeader className="shrink-0">
+            <DialogTitle>Detalle del movimiento</DialogTitle>
+          </DialogHeader>
+          <div className="flex-1 min-h-0 overflow-y-auto">
+            {detalle && <MovimientoDetail mov={detalle} />}
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+function GastoDialog({
+  open, onClose, saldos,
+}: {
+  open: boolean;
+  onClose: (ok?: boolean) => void;
+  saldos?: Record<CuentaCaja, number>;
+}) {
+  const confirm = useConfirm();
+  const toast = useToast();
+  const [cuenta, setCuenta] = useState<CuentaCaja>("efectivo");
+  const [monto, setMonto] = useState("");
+  const [descripcion, setDescripcion] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const reset = () => { setCuenta("efectivo"); setMonto(""); setDescripcion(""); setError(null); };
+  const disponible = saldos?.[cuenta] ?? 0;
+  const montoNum = parseMontoInput(monto);
+  const simbolo = simboloCuenta(cuenta);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!descripcion.trim()) { setError("El motivo del gasto es requerido"); return; }
+    const ok = await confirm({
+      title: "¿Registrar gasto?",
+      description: `Se registrará un egreso de ${simbolo} ${n2(montoNum)} de tu caja (${cuenta}). Esta plata sale del sistema.`,
+      confirmLabel: "Registrar gasto",
+    });
+    if (!ok) return;
+    setLoading(true); setError(null);
+    try {
+      const res = await fetch("/api/me/caja", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ accion: "gasto", monto: montoNum, cuenta, descripcion }),
+      });
+      const json = await res.json();
+      if (json.ok) { reset(); toast.success("Gasto registrado"); onClose(true); }
+      else setError(json.error);
+    } catch {
+      setError("No se pudo registrar el gasto");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => { if (!o) { reset(); onClose(false); } }}>
+      <DialogContent className="w-[95vw] sm:max-w-xl sm:p-7 max-h-[90dvh] overflow-y-auto">
+        <DialogHeader className="pr-8">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-warning/20 bg-warning/10 text-warning">
+              <MinusCircle className="h-5 w-5" />
+            </div>
+            <div>
+              <DialogTitle>Registrar gasto de mi caja</DialogTitle>
+              <p className="mt-0.5 text-xs text-muted-foreground">Egreso por gastos operativos (sale del sistema).</p>
+            </div>
+          </div>
+        </DialogHeader>
+
+        <form onSubmit={submit} className="space-y-5">
+          {error && (
+            <div className="rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-2.5 text-sm text-destructive">{error}</div>
+          )}
+
+          {/* Cuenta */}
+          <div className="flex flex-col gap-1.5">
+            <FieldLabel required>Cuenta</FieldLabel>
+            <Segmented
+              value={cuenta}
+              onChange={setCuenta}
+              options={[
+                { value: "efectivo", label: "Efectivo", icon: Wallet },
+                { value: "banco", label: "Banco", icon: Banknote },
+                { value: "dolares", label: "Dólares", icon: CircleDollarSign },
+              ]}
+            />
+          </div>
+
+          {/* Saldo disponible */}
+          <div className="rounded-lg border border-border bg-muted/30 px-3 py-2.5 flex items-center justify-between text-sm">
+            <span className="text-muted-foreground">Saldo disponible en {CUENTA_META[cuenta].label}</span>
+            <span className={`font-mono font-semibold ${disponible < 0 ? "text-destructive" : "text-foreground"}`}>{simbolo} {n2(disponible)}</span>
+          </div>
+
+          {/* Monto */}
+          <div className="flex flex-col gap-1.5">
+            <FieldLabel required>Monto del gasto</FieldLabel>
+            <MoneyInput value={monto} onChange={setMonto} currency={simbolo} autoFocus required />
+          </div>
+
+          {/* Motivo */}
+          <div className="flex flex-col gap-1.5">
+            <FieldLabel required>Motivo</FieldLabel>
+            <IconTextarea icon={FileText} value={descripcion} onChange={(e) => setDescripcion(e.target.value)} rows={2} placeholder="Ej: combustible, viáticos…" required />
+          </div>
+
+          <FormActions
+            onCancel={() => { reset(); onClose(false); }}
+            loading={loading}
+            disabled={!montoNum || !descripcion.trim()}
+            submitLabel="Registrar gasto"
+            loadingLabel="Registrando…"
+          />
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function RendirDialog({
+  open, onClose, saldos,
+}: {
+  open: boolean;
+  onClose: (ok?: boolean) => void;
+  saldos?: Record<CuentaCaja, number>;
+}) {
+  const confirm = useConfirm();
+  const toast = useToast();
+  const [cuenta, setCuenta] = useState<CuentaCaja>("efectivo");
+  const [monto, setMonto] = useState("");
+  const [descripcion, setDescripcion] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const reset = () => { setCuenta("efectivo"); setMonto(""); setDescripcion(""); setError(null); };
+  const disponible = saldos?.[cuenta] ?? 0;
+  const montoNum = parseMontoInput(monto);
+  const simbolo = simboloCuenta(cuenta);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const ok = await confirm({
+      title: "¿Rendir efectivo?",
+      description: `Se rendirán ${simbolo} ${n2(montoNum)} de ${cuenta} a la caja principal. Tu saldo bajará y el de la caja principal subirá.`,
+      confirmLabel: "Rendir",
+    });
+    if (!ok) return;
+    setLoading(true); setError(null);
+    try {
+      const res = await fetch("/api/me/caja", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ monto: montoNum, cuenta, descripcion }),
+      });
+      const json = await res.json();
+      if (json.ok) { reset(); toast.success("Rendición registrada"); onClose(true); }
+      else setError(json.error);
+    } catch {
+      setError("No se pudo registrar la rendición");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => { if (!o) { reset(); onClose(false); } }}>
+      <DialogContent className="w-[95vw] sm:max-w-xl sm:p-7 max-h-[90dvh] overflow-y-auto">
+        <DialogHeader className="pr-8">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-primary">
+              <Send className="h-5 w-5" />
+            </div>
+            <div>
+              <DialogTitle>Rendir efectivo a caja principal</DialogTitle>
+              <p className="mt-0.5 text-xs text-muted-foreground">Entregás parte de tu caja a la tesorería de la empresa.</p>
+            </div>
+          </div>
+        </DialogHeader>
+
+        <form onSubmit={submit} className="space-y-5">
+          {error && (
+            <div className="rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-2.5 text-sm text-destructive">{error}</div>
+          )}
+
+          {/* Cuenta */}
+          <div className="flex flex-col gap-1.5">
+            <FieldLabel required>Cuenta</FieldLabel>
+            <Segmented
+              value={cuenta}
+              onChange={setCuenta}
+              options={[
+                { value: "efectivo", label: "Efectivo", icon: Wallet },
+                { value: "banco", label: "Banco", icon: Banknote },
+                { value: "dolares", label: "Dólares", icon: CircleDollarSign },
+              ]}
+            />
+          </div>
+
+          {/* Saldo disponible */}
+          <div className="rounded-lg border border-border bg-muted/30 px-3 py-2.5 flex items-center justify-between text-sm">
+            <span className="text-muted-foreground">Saldo disponible en {CUENTA_META[cuenta].label}</span>
+            <span className={`font-mono font-semibold ${disponible < 0 ? "text-destructive" : "text-foreground"}`}>{simbolo} {n2(disponible)}</span>
+          </div>
+
+          {/* Monto */}
+          <div className="flex flex-col gap-1.5">
+            <FieldLabel required>Monto a rendir</FieldLabel>
+            <MoneyInput value={monto} onChange={setMonto} currency={simbolo} autoFocus required />
+          </div>
+
+          {/* Observación */}
+          <div className="flex flex-col gap-1.5">
+            <FieldLabel>Observación</FieldLabel>
+            <IconTextarea icon={FileText} value={descripcion} onChange={(e) => setDescripcion(e.target.value)} rows={2} placeholder="Detalle opcional…" />
+          </div>
+
+          <FormActions
+            onCancel={() => { reset(); onClose(false); }}
+            loading={loading}
+            disabled={!montoNum}
+            submitLabel="Rendir"
+            loadingLabel="Rindiendo…"
+          />
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function BodySkeleton() {
+  return (
+    <div className="space-y-5">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-20 rounded-xl" />)}
+      </div>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-24 rounded-xl" />)}
+      </div>
+      <Skeleton className="h-72 rounded-xl" />
+    </div>
+  );
+}

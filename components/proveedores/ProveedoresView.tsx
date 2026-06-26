@@ -4,19 +4,20 @@ import { useMemo, useState } from "react";
 import { mutate as globalMutate } from "swr";
 import {
   Truck, Plus, Building2, Wallet, ArrowDownLeft, ArrowUpRight, Pencil, Trash2,
-  Mail, Phone, IdCard, X,
+  Mail, Phone, IdCard, X, FileText,
 } from "lucide-react";
 import {
   useProveedores, useProveedor, KEYS,
   type Proveedor, type MovimientoProveedor,
 } from "@/lib/swr";
-import { formatFecha } from "@/lib/utils";
+import { formatFecha, parseMontoInput } from "@/lib/utils";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { KpiCard } from "@/components/ui/KpiCard";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field, Input, Select, Textarea } from "@/components/ui/field";
+import { ModalHeader, MoneyInput, IconTextarea, FormActions, Segmented, FieldLabel, MODAL_CONTENT } from "@/components/ui/form-kit";
 import { useConfirm } from "@/components/ui/confirm";
 import { useToast } from "@/components/ui/toast";
 
@@ -83,8 +84,8 @@ export function ProveedoresView() {
         title="Proveedores"
         subtitle="Gastos, fondeo y cuenta corriente"
         accent="primary"
-        actions={cta}
       />
+      <div className="flex flex-wrap items-center justify-end gap-2">{cta}</div>
 
       {isLoading ? (
         <BodySkeleton />
@@ -326,11 +327,13 @@ function MovimientoDialog({ open, proveedorId, onClose }: { open: boolean; prove
 
   const reset = () => { setTipo("cargo"); setMonto(""); setConcepto(""); setComprobante(""); setMetodo(""); setError(null); };
 
+  const montoNum = parseMontoInput(monto);
+
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     const ok = await confirm({
       title: tipo === "pago" ? "¿Registrar pago?" : "¿Registrar cargo?",
-      description: `Se registrará un ${tipo === "pago" ? "pago" : "cargo"} de $${n2(parseFloat(monto) || 0)} en la cuenta corriente.`,
+      description: `Se registrará un ${tipo === "pago" ? "pago" : "cargo"} de $${n2(montoNum)} en la cuenta corriente.`,
       confirmLabel: "Registrar",
     });
     if (!ok) return;
@@ -339,7 +342,7 @@ function MovimientoDialog({ open, proveedorId, onClose }: { open: boolean; prove
       const res = await fetch(`/api/proveedores/${proveedorId}/movimientos`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tipo, monto: parseFloat(monto), concepto, comprobante, metodo }),
+        body: JSON.stringify({ tipo, monto: montoNum, concepto, comprobante, metodo }),
       });
       const json = await res.json();
       if (json.ok) { reset(); toast.success("Movimiento registrado"); onClose(true); }
@@ -353,26 +356,40 @@ function MovimientoDialog({ open, proveedorId, onClose }: { open: boolean; prove
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) { reset(); onClose(false); } }}>
-      <DialogContent className="w-[95vw] sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>Nuevo movimiento</DialogTitle>
-        </DialogHeader>
-        <form onSubmit={submit} className="space-y-4">
-          {error && <div className="rounded-lg bg-destructive/10 border border-destructive/20 px-3 py-2.5 text-sm text-destructive">{error}</div>}
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Tipo" required>
-              <Select value={tipo} onChange={(e) => setTipo(e.target.value as "cargo" | "pago")}>
-                <option value="cargo">Cargo (deuda)</option>
-                <option value="pago">Pago (cancela)</option>
-              </Select>
-            </Field>
-            <Field label="Monto ($)" required>
-              <Input type="number" min="1" step="any" value={monto} onChange={(e) => setMonto(e.target.value)} placeholder="Ej: 50000" required />
-            </Field>
+      <DialogContent className={MODAL_CONTENT}>
+        <ModalHeader
+          icon={Wallet}
+          title="Nuevo movimiento"
+          subtitle="Cargá un cargo (deuda) o un pago en la cuenta corriente del proveedor."
+        />
+        <form onSubmit={submit} className="space-y-5">
+          {error && <div className="rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-2.5 text-sm text-destructive">{error}</div>}
+
+          {/* Tipo */}
+          <div className="flex flex-col gap-1.5">
+            <FieldLabel required>Tipo</FieldLabel>
+            <Segmented
+              value={tipo}
+              onChange={setTipo}
+              options={[
+                { value: "cargo", label: "Cargo (deuda)", icon: ArrowUpRight },
+                { value: "pago", label: "Pago (cancela)", icon: ArrowDownLeft },
+              ]}
+            />
           </div>
-          <Field label="Concepto" required>
-            <Textarea value={concepto} onChange={(e) => setConcepto(e.target.value)} rows={2} placeholder="Factura, gasto, fondeo, pago…" />
-          </Field>
+
+          {/* Monto */}
+          <div className="flex flex-col gap-1.5">
+            <FieldLabel required>Monto</FieldLabel>
+            <MoneyInput value={monto} onChange={setMonto} autoFocus required />
+          </div>
+
+          {/* Concepto */}
+          <div className="flex flex-col gap-1.5">
+            <FieldLabel required>Concepto</FieldLabel>
+            <IconTextarea icon={FileText} value={concepto} onChange={(e) => setConcepto(e.target.value)} rows={2} placeholder="Factura, gasto, fondeo, pago…" />
+          </div>
+
           <div className="grid grid-cols-2 gap-3">
             <Field label="Comprobante">
               <Input value={comprobante} onChange={(e) => setComprobante(e.target.value)} placeholder="N° factura" />
@@ -387,12 +404,14 @@ function MovimientoDialog({ open, proveedorId, onClose }: { open: boolean; prove
               </Select>
             </Field>
           </div>
-          <div className="flex justify-end gap-2 pt-1 border-t border-border">
-            <button type="button" onClick={() => { reset(); onClose(false); }} className="px-4 py-2 rounded-lg text-sm text-muted-foreground hover:bg-muted transition-colors">Cancelar</button>
-            <button type="submit" disabled={loading || !monto || !concepto.trim()} className="px-5 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 disabled:opacity-40 transition-opacity">
-              {loading ? "Registrando…" : "Registrar"}
-            </button>
-          </div>
+
+          <FormActions
+            onCancel={() => { reset(); onClose(false); }}
+            loading={loading}
+            disabled={!montoNum || !concepto.trim()}
+            submitLabel="Registrar"
+            loadingLabel="Registrando…"
+          />
         </form>
       </DialogContent>
     </Dialog>
@@ -462,12 +481,16 @@ function ProveedorForm({ open, proveedor, onClose }: { open: boolean; proveedor:
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(false); }}>
-      <DialogContent className="w-[95vw] sm:max-w-lg max-h-[90dvh] flex flex-col overflow-hidden">
-        <DialogHeader className="shrink-0">
-          <DialogTitle>{editing ? "Editar proveedor" : "Nuevo proveedor"}</DialogTitle>
-        </DialogHeader>
-        <form onSubmit={submit} className="space-y-4 overflow-y-auto">
-          {error && <div className="rounded-lg bg-destructive/10 border border-destructive/20 px-3 py-2.5 text-sm text-destructive">{error}</div>}
+      <DialogContent className="w-[95vw] sm:max-w-lg sm:p-7 max-h-[90dvh] flex flex-col overflow-hidden">
+        <div className="shrink-0">
+          <ModalHeader
+            icon={Truck}
+            title={editing ? "Editar proveedor" : "Nuevo proveedor"}
+            subtitle={editing ? "Actualizá los datos del proveedor." : "Registrá un proveedor para su cuenta corriente."}
+          />
+        </div>
+        <form onSubmit={submit} className="space-y-4 overflow-y-auto pt-1">
+          {error && <div className="rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-2.5 text-sm text-destructive">{error}</div>}
           <Field label="Nombre / Razón social" required>
             <Input value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Nombre del proveedor" required />
           </Field>
@@ -499,12 +522,12 @@ function ProveedorForm({ open, proveedor, onClose }: { open: boolean; proveedor:
               <option value="inactivo">Inactivo</option>
             </Select>
           </Field>
-          <div className="flex justify-end gap-2 pt-1 border-t border-border">
-            <button type="button" onClick={() => onClose(false)} className="px-4 py-2 rounded-lg text-sm text-muted-foreground hover:bg-muted transition-colors">Cancelar</button>
-            <button type="submit" disabled={loading || !nombre.trim()} className="px-5 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 disabled:opacity-40 transition-opacity">
-              {loading ? "Guardando…" : editing ? "Guardar cambios" : "Crear"}
-            </button>
-          </div>
+          <FormActions
+            onCancel={() => onClose(false)}
+            loading={loading}
+            disabled={!nombre.trim()}
+            submitLabel={editing ? "Guardar cambios" : "Crear"}
+          />
         </form>
       </DialogContent>
     </Dialog>

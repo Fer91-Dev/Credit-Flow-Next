@@ -86,8 +86,8 @@ export function ReportesView() {
         title="Reportes"
         subtitle="Métricas financieras por período y exportación"
         accent="primary"
-        actions={exportBtn}
       />
+      <div className="flex flex-wrap items-center justify-end gap-2">{exportBtn}</div>
 
       {/* Selector de rango */}
       <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">

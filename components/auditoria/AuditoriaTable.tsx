@@ -148,6 +148,7 @@ export function AuditoriaTable() {
                       <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border w-44">Fecha y hora</th>
                       <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">Entidad</th>
                       <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">Acción</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">Usuario</th>
                       <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border pr-5">Descripción</th>
                     </tr>
                   </thead>
@@ -162,6 +163,9 @@ export function AuditoriaTable() {
                           </td>
                           <td className="px-4 py-3 border-b border-border/70">
                             <StatusBadge label={acc.label} variant={acc.variant} />
+                          </td>
+                          <td className="px-4 py-3 border-b border-border/70 whitespace-nowrap">
+                            <span className="text-xs text-foreground">{e.usuario_nombre || e.usuario_email || "—"}</span>
                           </td>
                           <td className="px-4 py-3 pr-5 text-foreground border-b border-border/70">{e.descripcion}</td>
                         </tr>
@@ -182,7 +186,7 @@ export function AuditoriaTable() {
                         <span className="text-[11px] text-muted-foreground/60 tabular-nums shrink-0">{fmtDateTime(e.created_at)}</span>
                       </div>
                       <p className="text-sm text-foreground leading-snug">{e.descripcion}</p>
-                      <p className="text-[11px] text-muted-foreground/50">{entidadLabel[e.entidad] ?? e.entidad}</p>
+                      <p className="text-[11px] text-muted-foreground/50">{entidadLabel[e.entidad] ?? e.entidad}{(e.usuario_nombre || e.usuario_email) ? ` · ${e.usuario_nombre || e.usuario_email}` : ""}</p>
                     </div>
                   );
                 })}
