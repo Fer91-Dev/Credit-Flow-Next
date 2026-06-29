@@ -242,6 +242,7 @@ export function CreditosTable() {
               <option value="all">Todos los tipos</option>
               <option value="personal">Personal</option>
               <option value="empresarial">Empresarial</option>
+              <option value="productos">Producto</option>
               <option value="otro">Otro</option>
             </select>
             <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -284,7 +285,7 @@ export function CreditosTable() {
               { header: "Cliente",
                 cell: (c) => <span className="font-medium text-foreground">{nombreCompleto(c.cliente)}</span> },
               { header: "Tipo",
-                cell: (c) => <StatusBadge label={c.tipo_credito} variant="muted" /> },
+                cell: (c) => <StatusBadge label={c.tipo_credito === "productos" ? "Producto" : c.tipo_credito} variant={c.tipo_credito === "productos" ? "primary" : "muted"} /> },
               { header: "Monto orig.", mono: true,
                 cell: (c) => <span className="text-foreground">${n0(c.monto_original)}</span> },
               { header: "Saldo", mono: true,
@@ -344,7 +345,7 @@ export function CreditosTable() {
                     <div>
                       <p className="font-mono text-[11px] text-muted-foreground">{formatCreditoNumero(c.numero)}</p>
                       <p className="font-medium text-foreground text-sm">{nombreCompleto(c.cliente)}</p>
-                      <p className="text-xs text-muted-foreground mt-0.5">{c.tipo_credito} · {c.tasa}% TNA · {c.plazo_meses}m</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">{c.tipo_credito === "productos" ? "Producto" : c.tipo_credito} · {c.tasa}% TNA · {c.plazo_meses}m</p>
                     </div>
                     <StatusBadge label={est.label} variant={est.variant} />
                   </div>

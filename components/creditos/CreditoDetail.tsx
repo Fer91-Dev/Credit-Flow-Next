@@ -127,8 +127,14 @@ export function CreditoDetail({ credito }: { credito: Credito }) {
             </div>
             <p className="text-sm font-semibold text-foreground">{nombreCompleto(credito.cliente)}</p>
             <p className="text-xs text-muted-foreground">
-              {credito.tipo_credito} · {credito.tasa}% TNA · {credito.plazo_meses} meses
+              {credito.tipo_credito === "productos" ? "Producto" : credito.tipo_credito} · {credito.tasa}% TNA · {credito.plazo_meses} meses
             </p>
+            {credito.tipo_credito === "productos" && credito.producto && (
+              <p className="text-xs text-foreground flex items-center gap-1.5">
+                <span className="inline-flex items-center rounded-md bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary ring-1 ring-inset ring-primary/20">Producto</span>
+                {credito.producto.nombre}{credito.producto_cantidad && credito.producto_cantidad > 1 ? ` ×${credito.producto_cantidad}` : ""}
+              </p>
+            )}
           </div>
         </div>
 

@@ -3,6 +3,7 @@ import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api"
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { registrarAuditoria } from "@/lib/audit";
+import { aplicarYRegistrarStock } from "@/lib/stock";
 import { formatCreditoNumero, nombreCompleto } from "@/lib/utils";
 import { round2, etiquetaCaja } from "@/lib/domain";
 import { siguienteNumeroComprobante } from "@/lib/comprobantes";
@@ -60,23 +61,34 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
       data: { estado: "anulado", proximo_pago: null, motivo_anulacion: motivo },
     });
 
-    // Reversa del desembolso (ingreso): la plata no se considera prestada.
-    const numRev = await siguienteNumeroComprobante(tx, tenantId, "REV");
-    await tx.movimientos_caja.create({
-      data: {
-        ...withTenant(tenantId),
-        fecha: new Date(),
-        tipo: "reversa_desembolso",
-        monto: Math.abs(existing.monto_original),
-        credito_id: id,
-        vendedor_id: existing.vendedor_id, // revierte dentro de la caja del vendedor que otorgó
-        origen: `Anulación ${numeroFmt}`,
-        destino: etiquetaCaja(!!existing.vendedor_id, "efectivo"),
-        serie: "REV",
-        numero: numRev,
-        descripcion: `Reversa desembolso ${numeroFmt} (anulación)`,
-      },
-    });
+    if (existing.producto_id && existing.producto_cantidad) {
+      // Crédito de producto: no hubo desembolso de efectivo → no hay reversa de caja.
+      // El producto vuelve al inventario (se repone el stock descontado al otorgar) y
+      // queda asentado en el kardex como devolución por anulación.
+      await aplicarYRegistrarStock(tx, {
+        tenantId, productoId: existing.producto_id, tipo: "devolucion_anulacion",
+        cantidad: existing.producto_cantidad, creditoId: id,
+        motivo: `Anulación ${numeroFmt}`,
+      });
+    } else {
+      // Reversa del desembolso (ingreso): la plata no se considera prestada.
+      const numRev = await siguienteNumeroComprobante(tx, tenantId, "REV");
+      await tx.movimientos_caja.create({
+        data: {
+          ...withTenant(tenantId),
+          fecha: new Date(),
+          tipo: "reversa_desembolso",
+          monto: Math.abs(existing.monto_original),
+          credito_id: id,
+          vendedor_id: existing.vendedor_id, // revierte dentro de la caja del vendedor que otorgó
+          origen: `Anulación ${numeroFmt}`,
+          destino: etiquetaCaja(!!existing.vendedor_id, "efectivo"),
+          serie: "REV",
+          numero: numRev,
+          descripcion: `Reversa desembolso ${numeroFmt} (anulación)`,
+        },
+      });
+    }
 
     // Devolución de lo cobrado (egreso), si corresponde.
     if (devolver && totalCobrado > 0) {

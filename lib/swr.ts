@@ -157,6 +157,10 @@ export interface Credito {
   refinancia_a?: string | null;
   /** (En el viejo) refinanciación que reemplazó a este crédito. */
   refinanciado_en?: string | null;
+  /** Crédito de producto: unidades financiadas (capital = precio × cantidad). */
+  producto_cantidad?: number | null;
+  /** Crédito de producto: producto financiado (el cliente se lo lleva en vez de dinero). */
+  producto?: { id: string; nombre: string; categoria?: string | null; imagen_url?: string | null } | null;
 }
 
 /** Resumen de ventas/comisión de un vendedor (derivado en el servidor). */
@@ -267,6 +271,48 @@ export interface MovimientoProveedor {
   concepto: string;
   comprobante: string | null;
   metodo: string | null;
+}
+
+export interface Producto {
+  id: string;
+  created_at: string;
+  nombre: string;
+  categoria: string | null;
+  descripcion: string | null;
+  sku: string | null;
+  precio: number; // precio de venta = capital del crédito
+  stock: number; // unidades disponibles
+  stock_minimo: number | null;
+  imagen_url: string | null; // portada (= imagenes[0])
+  imagenes: string[]; // galería de hasta 5 fotos
+  activo: boolean;
+  /** Solo en la ficha: cantidad de créditos asociados. */
+  creditos_count?: number;
+  /** Solo en la ficha: créditos donde se vendió este producto. */
+  creditos?: ProductoCreditoRef[];
+  /** Solo en la ficha: kardex (movimientos de stock). */
+  movimientos?: MovimientoStock[];
+}
+
+export interface ProductoCreditoRef {
+  id: string;
+  numero: number | null;
+  cantidad: number | null;
+  monto: number;
+  estado: string;
+  fecha: string;
+  cliente: string;
+}
+
+export interface MovimientoStock {
+  id: string;
+  created_at: string;
+  tipo: "alta_inicial" | "entrada" | "venta_credito" | "devolucion_anulacion" | "ajuste";
+  cantidad: number; // con signo
+  stock_resultante: number;
+  motivo: string | null;
+  credito_id: string | null;
+  usuario_nombre: string | null;
 }
 
 export interface ProveedorDetalle extends Proveedor {
@@ -647,6 +693,7 @@ export const KEYS = {
   campanas:      "/api/cobranza/campanas",
   vendedores:    "/api/vendedores",
   proveedores:   "/api/proveedores",
+  productos:     "/api/productos",
   usuarios:      "/api/usuarios",
   zonas:         "/api/clientes/zonas",
 } as const;
@@ -802,6 +849,27 @@ export function useProveedor(id: string | null) {
     id ? `/api/proveedores/${id}` : null,
   );
   return { proveedor: data, error, isLoading, mutate };
+}
+
+export function useProductos() {
+  const { data, error, isLoading, mutate } = useSWR<{
+    productos: Producto[]; categorias: string[];
+    total: number; unidades_stock: number; valor_inventario: number;
+  }>(KEYS.productos);
+  return {
+    productos: data?.productos ?? [],
+    categorias: data?.categorias ?? [],
+    unidadesStock: data?.unidades_stock ?? 0,
+    valorInventario: data?.valor_inventario ?? 0,
+    error, isLoading, mutate,
+  };
+}
+
+export function useProducto(id: string | null) {
+  const { data, error, isLoading, mutate } = useSWR<Producto>(
+    id ? `/api/productos/${id}` : null,
+  );
+  return { producto: data, error, isLoading, mutate };
 }
 
 export interface DashboardFiltros {

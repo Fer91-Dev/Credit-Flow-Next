@@ -38,6 +38,8 @@ interface DataTableProps<T> {
   /** Muestra el skeleton en vez de las filas. */
   loading?: boolean;
   skeletonRows?: number;
+  /** Clave de una fila puntual que debe mostrarse como skeleton (feedback al clickear). */
+  loadingRowKey?: string | null;
   /** Mensaje de error (reemplaza la tabla). */
   error?: string | null;
   /** Estado vacío (cuando `rows` está vacío y no hay loading/error). */
@@ -61,7 +63,7 @@ const TH_BASE = "px-4 py-3 text-xs font-semibold uppercase tracking-wide text-mu
 const TD_BASE = "px-4 py-3 border-b border-border/50 align-middle";
 
 export function DataTable<T>({
-  columns, rows, rowKey, onRowClick, loading, skeletonRows = 6,
+  columns, rows, rowKey, onRowClick, loading, skeletonRows = 6, loadingRowKey,
   error, empty, zebra, stickyHeader, footer, renderMobileCard,
 }: DataTableProps<T>) {
   const shell = "rounded-xl border border-border bg-card overflow-hidden";
@@ -136,19 +138,24 @@ export function DataTable<T>({
               </tr>
             </thead>
             <tbody>
-              {rows.map((row, idx) => (
-                <tr
-                  key={rowKey(row)}
-                  onClick={onRowClick ? () => onRowClick(row) : undefined}
-                  className={`transition-colors ${onRowClick ? "cursor-pointer" : ""} hover:bg-muted/20 ${zebra && idx % 2 === 1 ? "bg-muted/5" : ""}`}
-                >
-                  {columns.map((c, i) => (
-                    <td key={i} className={`${TD_BASE} ${alignClass(c)} ${c.mono ? "font-mono tabular-nums" : ""} ${c.className ?? ""}`}>
-                      {c.cell(row)}
-                    </td>
-                  ))}
-                </tr>
-              ))}
+              {rows.map((row, idx) => {
+                const isLoadingRow = loadingRowKey != null && rowKey(row) === loadingRowKey;
+                return (
+                  <tr
+                    key={rowKey(row)}
+                    onClick={onRowClick ? () => onRowClick(row) : undefined}
+                    className={`transition-colors ${onRowClick ? "cursor-pointer" : ""} hover:bg-muted/20 ${zebra && idx % 2 === 1 ? "bg-muted/5" : ""}`}
+                  >
+                    {columns.map((c, i) => (
+                      <td key={i} className={`${TD_BASE} ${alignClass(c)} ${c.mono ? "font-mono tabular-nums" : ""} ${c.className ?? ""}`}>
+                        {isLoadingRow
+                          ? <Skeleton className={`h-4 ${c.mono || c.align === "right" ? "ml-auto w-16" : "w-24"}`} />
+                          : c.cell(row)}
+                      </td>
+                    ))}
+                  </tr>
+                );
+              })}
             </tbody>
             {footer && <tfoot>{footer}</tfoot>}
           </table>

@@ -49,6 +49,7 @@ const NAV_GROUPS: NavGroup[] = [
     label: "Administración",
     items: [
       { icon: "office-worker",   label: "Personal",    to: "/personal" },
+      { icon: "package",         label: "Productos",   to: "/productos" },
       { icon: "delivery-truck",  label: "Proveedores", to: "/proveedores" },
       { icon: "locked-with-key", label: "Usuarios",    to: "/usuarios" },
     ],

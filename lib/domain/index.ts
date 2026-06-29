@@ -24,3 +24,4 @@ export * from "./scoring";
 export * from "./comisiones";
 export * from "./proveedores";
 export * from "./logros";
+export * from "./stock";

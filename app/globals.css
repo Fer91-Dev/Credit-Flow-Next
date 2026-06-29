@@ -140,6 +140,35 @@ button:not(:disabled),
   cursor: pointer;
 }
 
+/* ─── Scrollbar global (estilo TailGrids: fino, redondeado, color de marca) ───
+   Aplica a TODOS los scrolls del SaaS (body, modales, tablas, sidebar, etc.) y a
+   los que se agreguen a futuro. Sin dependencias ni cambios de DOM. Usa los tokens
+   semánticos → se adapta solo a claro/oscuro. El `border` transparente + clip hace
+   que el thumb se vea más delgado, con aire respecto del borde. */
+* {
+  scrollbar-width: thin;                                /* Firefox */
+  scrollbar-color: var(--border) transparent;           /* thumb / track */
+}
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background-color: var(--border);
+  border-radius: 9999px;
+  border: 2px solid transparent;                        /* aire alrededor del thumb */
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--muted-foreground);            /* feedback al pasar el mouse */
+}
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
 /* Shimmer de "recalculando" — barrido suave de izquierda a derecha. */
 @keyframes shimmer-sweep {
   0%   { transform: translateX(-120%); }

@@ -137,17 +137,76 @@ model creditos {
   refinancia_a      String? @db.Uuid // (en el nuevo) crédito original que reemplaza
   refinanciado_en   String? @db.Uuid // (en el viejo) refinanciación que lo reemplazó
 
+  // Crédito de PRODUCTO (tipo_credito = "productos"): en vez de desembolsar dinero, el
+  // cliente se lleva un producto del inventario. El capital = precio × cantidad y NO mueve
+  // caja (sin desembolso); el control es el descuento de stock. El valor ya queda snapshot
+  // en monto_original, por eso el SetNull no rompe el histórico financiero.
+  producto_id       String? @db.Uuid // producto financiado (null = crédito de dinero)
+  producto_cantidad Int? // unidades financiadas (capital = precio × cantidad)
+
   cliente           clientes           @relation(fields: [cliente_id], references: [id], onDelete: Cascade)
   solicitud         solicitudes?       @relation(fields: [solicitud_id], references: [id], onDelete: SetNull)
   vendedor          vendedores?        @relation(fields: [vendedor_id], references: [id], onDelete: SetNull)
+  producto          productos?         @relation(fields: [producto_id], references: [id], onDelete: SetNull)
   pagos             pagos[]
   acciones          acciones_cobranza[]
   cuotas            cuotas[]
   movimientos       movimientos_caja[]
+  movimientos_stock movimientos_stock[]
   objetivos_campana campana_objetivo[]
 
   @@unique([tenant_id, numero])
   @@index([tenant_id, vendedor_id])
+  @@index([tenant_id, producto_id])
+}
+
+/// Catálogo de productos vendidos a crédito (inventario). Tabla aditiva, multi-tenant.
+/// Un crédito de tipo "productos" financia un producto en vez de dinero: el cliente se
+/// lleva el producto y el `precio` se toma como capital. Otorgar descuenta `stock`;
+/// anular/eliminar lo repone. No mueve caja (no hay desembolso de efectivo).
+model productos {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  created_at   DateTime @default(now()) @db.Timestamptz(6)
+  tenant_id    String   @db.Uuid
+  nombre       String
+  categoria    String? // texto; el simulador arma el selector con las categorías existentes
+  descripcion  String?
+  sku          String? // código interno opcional
+  precio       Float    @default(0) // precio de venta = capital del crédito
+  stock        Int      @default(0) // unidades disponibles
+  stock_minimo Int? // umbral de alerta de bajo stock (opcional)
+  imagen_url   String? // foto de PORTADA (= imagenes[0]); se mantiene para miniaturas/listas
+  imagenes     String[] @default([]) // galería de hasta 5 fotos (la 1ª es la portada)
+  activo       Boolean  @default(true)
+
+  creditos    creditos[]
+  movimientos movimientos_stock[]
+
+  @@index([tenant_id])
+}
+
+/// Kardex de stock: libro mayor de movimientos de inventario por producto.
+/// Igual que `movimientos_caja` (con signo), es la FUENTE DE VERDAD auditable del stock;
+/// `productos.stock` es un cache sincronizado en la misma transacción. Todo cambio de
+/// stock (alta, entrada/reposición, venta a crédito, devolución por anulación, ajuste)
+/// queda registrado acá → trazable y reconciliable, sin ediciones silenciosas.
+model movimientos_stock {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  created_at       DateTime @default(now()) @db.Timestamptz(6)
+  tenant_id        String   @db.Uuid
+  producto_id      String   @db.Uuid
+  tipo             String // alta_inicial | entrada | venta_credito | devolucion_anulacion | ajuste
+  cantidad         Int // CON SIGNO: entrada/devolución/alta > 0, venta < 0, ajuste ±
+  stock_resultante Int // snapshot del stock luego de aplicar (kardex con saldo)
+  motivo           String? // obligatorio en ajuste; nota/proveedor en entrada
+  credito_id       String?  @db.Uuid // venta_credito / devolucion_anulacion
+  usuario_id       String?  @db.Uuid // actor (capturado al escribir, igual que auditoria)
+  usuario_nombre   String?
+
+  producto productos @relation(fields: [producto_id], references: [id], onDelete: Cascade)
+  credito  creditos? @relation(fields: [credito_id], references: [id], onDelete: SetNull)
+
+  @@index([tenant_id, producto_id, created_at])
 }
 
 /// Personal de ventas/cobranza (Fase 5). Tabla aditiva, multi-tenant.

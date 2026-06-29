@@ -3,6 +3,7 @@ import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api"
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { registrarAuditoria } from "@/lib/audit";
+import { aplicarYRegistrarStock } from "@/lib/stock";
 import { formatCreditoNumero, nombreCompleto } from "@/lib/utils";
 import { validarTransicionEstado, estadoCoherente } from "@/lib/domain";
 import type { NextRequest } from "next/server";
@@ -31,6 +32,7 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
       solicitud: true,
       pagos: { orderBy: { fecha: "desc" } },
       cuotas: { select: { estado: true, pagado_capital: true, capital: true } },
+      producto: { select: { id: true, nombre: true, categoria: true, imagen_url: true } },
     },
   });
 
@@ -170,7 +172,22 @@ export const DELETE = withErrorHandler(async (req: NextRequest, { params }: Rout
     );
   }
 
-  await prisma.creditos.delete({ where: { id } });
+  // Crédito de producto: al borrarlo se repone el stock que se descontó al otorgar.
+  // Excepción: si ya estaba ANULADO, la anulación ya lo repuso → no duplicar.
+  const reponerStock = !!existing.producto_id && !!existing.producto_cantidad && existing.estado !== "anulado";
+
+  await prisma.$transaction(async (tx) => {
+    if (reponerStock) {
+      // Repone el stock y lo asienta en el kardex ANTES de borrar el crédito (al borrarlo,
+      // el credito_id del movimiento queda en null por SetNull, pero el asiento persiste).
+      await aplicarYRegistrarStock(tx, {
+        tenantId, productoId: existing.producto_id!, tipo: "devolucion_anulacion",
+        cantidad: existing.producto_cantidad!, creditoId: id,
+        motivo: `Eliminación ${formatCreditoNumero(existing.numero)}`,
+      });
+    }
+    await tx.creditos.delete({ where: { id } });
+  });
 
   await registrarAuditoria({
     tenantId,

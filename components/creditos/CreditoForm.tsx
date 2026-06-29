@@ -11,7 +11,7 @@ import {
   AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogFooter,
   AlertDialogTitle, AlertDialogDescription, AlertDialogCancel,
 } from "@/components/ui/alert-dialog";
-import { useConfiguracion, useMiPerfilVendedor, useMiCaja, type CuentaCaja } from "@/lib/swr";
+import { useConfiguracion, useMiPerfilVendedor, useMiCaja, type CuentaCaja, type Producto } from "@/lib/swr";
 import { useConfirm } from "@/components/ui/confirm";
 import { useToast } from "@/components/ui/toast";
 import { formatNumero, parseMontoInput, maskMontoInput, numeroAInput, formatFecha, formatMonto, formatCreditoNumero, nombreCompleto } from "@/lib/utils";
@@ -89,7 +89,10 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
     frecuencia: "mensual" as Frecuencia,
     vendedor_id: "",
     cuenta_desembolso: "efectivo" as CuentaCaja,
+    // Crédito de PRODUCTO: el cliente se lleva un producto en vez de dinero.
+    producto_categoria: "", producto_id: "", producto_cantidad: "1",
   });
+  const [productos, setProductos] = useState<Producto[]>([]);
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [vendedores, setVendedores] = useState<{ id: string; nombre: string }[]>([]);
   const [loading, setLoading] = useState(false);
@@ -125,6 +128,9 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
     fetch("/api/vendedores?activo=true")
       .then(r => r.json())
       .then(j => { if (j.ok) setVendedores((j.data.vendedores || []).map((v: { id: string; nombre: string }) => ({ id: v.id, nombre: v.nombre }))); });
+    fetch("/api/productos?disponible=true&activo=true")
+      .then(r => r.json())
+      .then(j => { if (j.ok) setProductos(j.data.productos || []); });
     if (creditoId) fetchCredito();
   }, [creditoId]);
 
@@ -144,12 +150,36 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
   // Los plazos disponibles vienen de Configuración (el operador puede agregar 15 para quincenal, etc.)
   const esMensual = formData.frecuencia === "mensual";
 
+  // ── Crédito de PRODUCTO ───────────────────────────────────────────────────
+  // El cliente se lleva un producto en vez de dinero: el capital = precio × cantidad
+  // (read-only) y NO hay desembolso de efectivo (no se valida caja). El control es el stock.
+  const esProducto = formData.tipo_credito === "productos";
+  const categoriasProd = useMemo(
+    () => Array.from(new Set(productos.map(p => p.categoria).filter((c): c is string => !!c))).sort(),
+    [productos],
+  );
+  const productosFiltrados = formData.producto_categoria
+    ? productos.filter(p => p.categoria === formData.producto_categoria)
+    : productos;
+  const productoSel = productos.find(p => p.id === formData.producto_id);
+  const cantidadProd = Math.max(1, parseInt(formData.producto_cantidad) || 1);
+
+  // Cuando es producto, el capital queda fijado al precio × cantidad del producto elegido.
+  useEffect(() => {
+    if (!esProducto || !productoSel) return;
+    const capital = productoSel.precio * cantidadProd;
+    setFormData(p => {
+      const nuevo = numeroAInput(capital);
+      return p.monto_original === nuevo ? p : { ...p, monto_original: nuevo };
+    });
+  }, [esProducto, productoSel, cantidadProd]);
+
   const fetchCredito = async () => {
     try {
       const res = await fetch(`/api/creditos/${creditoId}`);
       const json = await res.json();
       if (json.ok) {
-        const { cliente_id, tipo_credito, monto_original, tasa, plazo_meses, frecuencia, vendedor_id } = json.data;
+        const { cliente_id, tipo_credito, monto_original, tasa, plazo_meses, frecuencia, vendedor_id, producto_id, producto_cantidad } = json.data;
         setFormData({
           cliente_id, tipo_credito,
           monto_original: numeroAInput(monto_original),
@@ -157,6 +187,9 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
           frecuencia: (frecuencia ?? "mensual") as Frecuencia,
           vendedor_id: vendedor_id ?? "",
           cuenta_desembolso: "efectivo",
+          producto_categoria: "",
+          producto_id: producto_id ?? "",
+          producto_cantidad: producto_cantidad != null ? String(producto_cantidad) : "1",
         });
       }
     } catch { setError("Error al cargar crédito"); }
@@ -177,6 +210,12 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
     if (!formData.cliente_id) return "Seleccioná un cliente";
     if (!formData.tipo_credito) return "Seleccioná el tipo de crédito";
     if (vendedores.length > 0 && !formData.vendedor_id) return "Seleccioná un vendedor";
+    // Crédito de producto: validar elección y stock (el capital lo fija el producto).
+    if (esProducto) {
+      if (!formData.producto_id || !productoSel) return "Seleccioná un producto";
+      if (cantidadProd < 1) return "La cantidad debe ser al menos 1";
+      if (cantidadProd > productoSel.stock) return `No hay stock suficiente (${productoSel.stock} u. disponibles)`;
+    }
     const monto = parseMonto(formData.monto_original);
     if (monto <= 0) return "Ingresá un capital válido";
     if (simCfg && simCfg.montoMin > 0 && monto < simCfg.montoMin) return `El capital mínimo es $${n0(simCfg.montoMin)}`;
@@ -184,8 +223,8 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
     // Límite de otorgamiento del vendedor (al otorgar, no en edición). El admin no tiene tope.
     if (!creditoId && perfil?.limite_aprobacion != null && monto > perfil.limite_aprobacion)
       return `El capital supera tu límite de otorgamiento ($${n0(perfil.limite_aprobacion)}). Requiere autorización de un administrador.`;
-    // Fondos disponibles en la cuenta de desembolso elegida (efectivo/banco/dólares).
-    if (!creditoId && miCaja && monto > (miCaja.saldos_por_cuenta[formData.cuenta_desembolso] ?? 0))
+    // Fondos disponibles en la cuenta de desembolso (solo créditos de dinero; el producto no desembolsa).
+    if (!esProducto && !creditoId && miCaja && monto > (miCaja.saldos_por_cuenta[formData.cuenta_desembolso] ?? 0))
       return `No tenés saldo suficiente en tu caja de ${CUENTA_DESEMBOLSO_LABEL[formData.cuenta_desembolso]} ($${n0(miCaja.saldos_por_cuenta[formData.cuenta_desembolso] ?? 0)}). Pedí una entrega al administrador o cambiá la forma de desembolso.`;
     if (!formData.frecuencia) return "Seleccioná la frecuencia";
     const n = parseInt(formData.plazo_meses);
@@ -232,6 +271,8 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
         frecuencia: formData.frecuencia,
         vendedor_id: formData.vendedor_id || null,
         cuenta_desembolso: formData.cuenta_desembolso,
+        // Crédito de producto: el backend recalcula el capital (precio × cantidad) y descuenta stock.
+        ...(esProducto ? { producto_id: formData.producto_id, producto_cantidad: cantidadProd } : {}),
       };
       const res = await fetch(creditoId ? `/api/creditos/${creditoId}` : "/api/creditos", {
         method: creditoId ? "PATCH" : "POST",
@@ -291,7 +332,8 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
   // Aviso reactivo de fondos: depende del monto INGRESADO y de la cuenta elegida.
   const montoIngresado = parseMonto(formData.monto_original);
   const dispDesembolso = miCaja ? (miCaja.saldos_por_cuenta[formData.cuenta_desembolso] ?? 0) : null;
-  const fondosInsuficientes = !creditoId && dispDesembolso != null && montoIngresado > dispDesembolso;
+  // Crédito de producto: no hay desembolso de efectivo → nunca hay "fondos insuficientes".
+  const fondosInsuficientes = !esProducto && !creditoId && dispDesembolso != null && montoIngresado > dispDesembolso;
 
   const tasaEA = useMemo(() => {
     const tasa = parseFloat(sim.tasa) || 0;
@@ -437,6 +479,7 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
               <Select name="tipo_credito" value={formData.tipo_credito} onChange={set("tipo_credito")} required>
                 <option value="personal">Personal</option>
                 <option value="empresarial">Empresarial</option>
+                <option value="productos">Productos</option>
                 <option value="otro">Otro</option>
               </Select>
             </Field>
@@ -451,40 +494,101 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
               </Field>
             )}
           </div>
+
+          {/* Producto a financiar (solo tipo = Productos): el cliente se lleva el producto. */}
+          {esProducto && (
+            <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 space-y-2.5">
+              <p className="text-[11px] text-muted-foreground flex items-center gap-1.5">
+                <Emoji name="package" className="h-3.5 w-3.5" />
+                El cliente se lleva el producto. El precio es el capital y se descuenta del stock.
+              </p>
+              {productos.length === 0 ? (
+                <p className="text-xs text-warning">No hay productos con stock disponible. Cargá inventario en la sección Productos.</p>
+              ) : (
+                <>
+                  <div className="grid grid-cols-2 gap-2.5">
+                    <Field label="Categoría">
+                      <Select
+                        name="producto_categoria"
+                        value={formData.producto_categoria}
+                        onChange={(e) => setFormData(p => ({ ...p, producto_categoria: e.target.value, producto_id: "" }))}
+                      >
+                        <option value="">Todas</option>
+                        {categoriasProd.map(c => <option key={c} value={c}>{c}</option>)}
+                      </Select>
+                    </Field>
+                    <Field label="Cantidad" required>
+                      <Input
+                        name="producto_cantidad" type="number" min="1"
+                        max={productoSel ? String(productoSel.stock) : undefined}
+                        value={formData.producto_cantidad} onChange={set("producto_cantidad")}
+                        className="text-center font-mono tabular-nums"
+                      />
+                    </Field>
+                  </div>
+                  <Field label="Producto" required hint={productoSel ? `Stock disponible: ${productoSel.stock} u.` : undefined}>
+                    <Select
+                      name="producto_id"
+                      value={formData.producto_id}
+                      onChange={set("producto_id")}
+                      required
+                    >
+                      <option value="">Seleccioná un producto…</option>
+                      {productosFiltrados.map(p => (
+                        <option key={p.id} value={p.id} disabled={p.stock <= 0}>
+                          {p.nombre} — ${n0(p.precio)} ({p.stock} u.)
+                        </option>
+                      ))}
+                    </Select>
+                  </Field>
+                  {productoSel && cantidadProd > productoSel.stock && (
+                    <p className="text-xs text-destructive">
+                      No hay stock suficiente: pediste {cantidadProd} u. y hay {productoSel.stock} disponibles.
+                    </p>
+                  )}
+                </>
+              )}
+            </div>
+          )}
         </section>
 
         {/* Condiciones */}
         <section className="space-y-2">
           <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Condiciones financieras</p>
 
-          {/* Capital — valor grande, ancho completo */}
-          <Field label="Capital ($)" required hint={montoHint}>
+          {/* Capital — valor grande, ancho completo. En crédito de producto es read-only (= precio × cantidad). */}
+          <Field label="Capital ($)" required hint={esProducto ? "Definido por el producto (precio × cantidad)" : montoHint}>
             <div className="relative">
               <DollarSign className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
                 name="monto_original" type="text" inputMode="decimal" placeholder="350.000,00"
                 value={formData.monto_original} onChange={setMonto}
-                required className="pl-9 text-lg font-bold font-mono tabular-nums"
+                required readOnly={esProducto}
+                className={`pl-9 text-lg font-bold font-mono tabular-nums ${esProducto ? "opacity-70 cursor-not-allowed" : ""}`}
               />
             </div>
           </Field>
 
-          {/* Forma de desembolso → valida fondos contra esa cuenta de la caja del vendedor */}
-          <Field
-            label="Forma de desembolso"
-            required
-            hint={miCaja ? `Disponible en ${CUENTA_DESEMBOLSO_LABEL[formData.cuenta_desembolso]}: $${n0(miCaja.saldos_por_cuenta[formData.cuenta_desembolso] ?? 0)}` : "Cuenta de la que sale el dinero prestado"}
-          >
-            <Select name="cuenta_desembolso" value={formData.cuenta_desembolso} onChange={set("cuenta_desembolso")} required>
-              <option value="efectivo">Efectivo</option>
-              <option value="banco">Transferencia (Banco)</option>
-              <option value="dolares">Dólares</option>
-            </Select>
-          </Field>
-          {fondosInsuficientes && (
-            <p className="text-xs text-destructive">
-              El capital (${n0(montoIngresado)}) supera tu saldo en {CUENTA_DESEMBOLSO_LABEL[formData.cuenta_desembolso]} (${n0(dispDesembolso ?? 0)}). Pedí una entrega al administrador o cambiá la forma de desembolso.
-            </p>
+          {/* Forma de desembolso → solo en créditos de dinero (el producto no desembolsa efectivo). */}
+          {!esProducto && (
+            <>
+              <Field
+                label="Forma de desembolso"
+                required
+                hint={miCaja ? `Disponible en ${CUENTA_DESEMBOLSO_LABEL[formData.cuenta_desembolso]}: $${n0(miCaja.saldos_por_cuenta[formData.cuenta_desembolso] ?? 0)}` : "Cuenta de la que sale el dinero prestado"}
+              >
+                <Select name="cuenta_desembolso" value={formData.cuenta_desembolso} onChange={set("cuenta_desembolso")} required>
+                  <option value="efectivo">Efectivo</option>
+                  <option value="banco">Transferencia (Banco)</option>
+                  <option value="dolares">Dólares</option>
+                </Select>
+              </Field>
+              {fondosInsuficientes && (
+                <p className="text-xs text-destructive">
+                  El capital (${n0(montoIngresado)}) supera tu saldo en {CUENTA_DESEMBOLSO_LABEL[formData.cuenta_desembolso]} (${n0(dispDesembolso ?? 0)}). Pedí una entrega al administrador o cambiá la forma de desembolso.
+                </p>
+              )}
+            </>
           )}
 
           {/* Frecuencia (ancha) · Cuotas (chica) · Tasa (chica) — tamaño según el valor */}

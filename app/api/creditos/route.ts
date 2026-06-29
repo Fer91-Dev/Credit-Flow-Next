@@ -1,4 +1,4 @@
-import { requireAuth, requireRole, scopeCreditosVendedor } from "@/lib/auth";
+import { requireAuth, requireRole, scopeCreditosVendedor, ApiError } from "@/lib/auth";
 import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
@@ -21,6 +21,7 @@ import {
 import { siguienteNumeroComprobante } from "@/lib/comprobantes";
 import { getConfiguracion } from "@/lib/config";
 import { registrarAuditoria } from "@/lib/audit";
+import { registrarMovimientoStock } from "@/lib/stock";
 import { formatCreditoNumero, nombreCompleto } from "@/lib/utils";
 import type { NextRequest } from "next/server";
 
@@ -54,6 +55,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
         cliente: { select: { id: true, nombre: true, apellido: true, documento: true } },
         vendedor: { select: { id: true, nombre: true } },
         pagos: { orderBy: { fecha: "desc" }, take: 5 },
+        producto: { select: { id: true, nombre: true, categoria: true, imagen_url: true } },
       },
       orderBy: { created_at: "desc" },
       take: limit,
@@ -166,6 +168,38 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     return errorResponse("Cliente no encontrado o no tiene permisos", "INVALID_REFERENCE", 400);
   }
 
+  // Crédito de PRODUCTO: en vez de desembolsar dinero, el cliente se lleva un producto.
+  // El capital lo fija el producto (precio × cantidad, autoritativo: no se confía en el
+  // monto del cliente) y NO mueve caja; el control es el descuento de stock.
+  const esProducto = body.tipo_credito === "productos";
+  let producto: { id: string; nombre: string; precio: number; stock: number; activo: boolean } | null = null;
+  let productoCantidad = 0;
+  if (esProducto) {
+    if (!body.producto_id) {
+      return errorResponse("Falta el producto a financiar", "INVALID_INPUT", 400);
+    }
+    productoCantidad = Math.trunc(Number(body.producto_cantidad) || 0);
+    if (productoCantidad < 1) {
+      return errorResponse("La cantidad debe ser al menos 1", "INVALID_INPUT", 400);
+    }
+    producto = await prisma.productos.findFirst({
+      where: { ...withTenant(tenantId), id: body.producto_id },
+      select: { id: true, nombre: true, precio: true, stock: true, activo: true },
+    });
+    if (!producto || !producto.activo) {
+      return errorResponse("Producto no encontrado o inactivo", "INVALID_REFERENCE", 400);
+    }
+    if (producto.stock < productoCantidad) {
+      return errorResponse(
+        `Stock insuficiente de "${producto.nombre}": hay ${producto.stock} u. y se piden ${productoCantidad}.`,
+        "INSUFFICIENT_STOCK",
+        409,
+      );
+    }
+    // Capital autoritativo = precio × cantidad (snapshot del valor en monto_original).
+    body.monto_original = Math.round(producto.precio * productoCantidad * 100) / 100;
+  }
+
   // Validar montos
   if (body.monto_original <= 0 || body.tasa < 0 || body.plazo_meses < 1) {
     return errorResponse("Montos inválidos", "INVALID_INPUT", 400);
@@ -214,17 +248,20 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     // Fondos disponibles (autoritativo): el desembolso sale de la cuenta elegida
     // (efectivo/banco/dólares) de la caja del vendedor; no puede prestar más de lo
     // que tiene en esa cuenta. Si no le alcanza, debe pedir una entrega al admin.
-    const saldoCuenta = await prisma.movimientos_caja.aggregate({
-      where: { ...withTenant(tenantId), vendedor_id: vendedorId, cuenta: cuentaDesembolso },
-      _sum: { monto: true },
-    });
-    const disponible = Math.round((saldoCuenta._sum.monto ?? 0) * 100) / 100;
-    if (body.monto_original > disponible) {
-      return errorResponse(
-        `No tenés saldo suficiente en tu caja de ${CUENTA_LABEL[cuentaDesembolso]}. Disponible: $${disponible.toLocaleString("es-AR")} — necesitás $${Number(body.monto_original).toLocaleString("es-AR")}. Pedí una entrega al administrador para poder otorgar.`,
-        "INSUFFICIENT_FUNDS",
-        403,
-      );
+    // Los créditos de producto NO desembolsan efectivo → se omite este control.
+    if (!esProducto) {
+      const saldoCuenta = await prisma.movimientos_caja.aggregate({
+        where: { ...withTenant(tenantId), vendedor_id: vendedorId, cuenta: cuentaDesembolso },
+        _sum: { monto: true },
+      });
+      const disponible = Math.round((saldoCuenta._sum.monto ?? 0) * 100) / 100;
+      if (body.monto_original > disponible) {
+        return errorResponse(
+          `No tenés saldo suficiente en tu caja de ${CUENTA_LABEL[cuentaDesembolso]}. Disponible: $${disponible.toLocaleString("es-AR")} — necesitás $${Number(body.monto_original).toLocaleString("es-AR")}. Pedí una entrega al administrador para poder otorgar.`,
+          "INSUFFICIENT_FUNDS",
+          403,
+        );
+      }
     }
   }
 
@@ -309,6 +346,8 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
         proximo_pago: proximoPagoFinal,
         solicitud_id: body.solicitud_id || null,
         vendedor_id: vendedorId,
+        producto_id: esProducto ? producto!.id : null,
+        producto_cantidad: esProducto ? productoCantidad : null,
         ...withTenant(tenantId),
       },
       include: { cliente: true },
@@ -330,24 +369,44 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
       })),
     });
 
-    // Movimiento de caja: desembolso (egreso) al otorgar.
-    const numComp = await siguienteNumeroComprobante(tx, tenantId, "DES");
-    await tx.movimientos_caja.create({
-      data: {
-        ...withTenant(tenantId),
-        fecha: fechaInicio,
-        tipo: "desembolso",
-        monto: -Math.abs(c.monto_original),
-        cuenta: cuentaDesembolso, // el desembolso sale de la cuenta elegida (coincide con el control de fondos)
-        credito_id: c.id,
-        vendedor_id: vendedorId, // sale de la caja personal del vendedor que otorga (null = caja principal)
-        origen: etiquetaCaja(!!vendedorId, cuentaDesembolso),
-        destino: nombreCompleto(cliente),
-        serie: "DES",
-        numero: numComp,
-        descripcion: `Desembolso ${formatCreditoNumero(c.numero)} · ${nombreCompleto(cliente)}`,
-      },
-    });
+    if (esProducto) {
+      // Crédito de producto: NO mueve caja (el cliente se lleva el producto, no efectivo).
+      // El control es el descuento de stock, con guard de carrera (gte) para no sobrevender.
+      const upd = await tx.productos.updateMany({
+        where: { ...withTenant(tenantId), id: producto!.id, stock: { gte: productoCantidad } },
+        data: { stock: { decrement: productoCantidad } },
+      });
+      if (upd.count === 0) {
+        // Otro otorgamiento consumió el stock entre la validación y la transacción.
+        throw new ApiError("Stock insuficiente al confirmar (otra operación lo consumió)", "INSUFFICIENT_STOCK", 409);
+      }
+      // Kardex: registra la salida ligada al crédito (el cache ya bajó atómicamente arriba).
+      const prodPost = await tx.productos.findUnique({ where: { id: producto!.id }, select: { stock: true } });
+      await registrarMovimientoStock(tx, {
+        tenantId, productoId: producto!.id, tipo: "venta_credito",
+        cantidad: -productoCantidad, stockResultante: prodPost?.stock ?? 0,
+        creditoId: c.id, motivo: `Venta ${formatCreditoNumero(c.numero)}`,
+      });
+    } else {
+      // Movimiento de caja: desembolso (egreso) al otorgar.
+      const numComp = await siguienteNumeroComprobante(tx, tenantId, "DES");
+      await tx.movimientos_caja.create({
+        data: {
+          ...withTenant(tenantId),
+          fecha: fechaInicio,
+          tipo: "desembolso",
+          monto: -Math.abs(c.monto_original),
+          cuenta: cuentaDesembolso, // el desembolso sale de la cuenta elegida (coincide con el control de fondos)
+          credito_id: c.id,
+          vendedor_id: vendedorId, // sale de la caja personal del vendedor que otorga (null = caja principal)
+          origen: etiquetaCaja(!!vendedorId, cuentaDesembolso),
+          destino: nombreCompleto(cliente),
+          serie: "DES",
+          numero: numComp,
+          descripcion: `Desembolso ${formatCreditoNumero(c.numero)} · ${nombreCompleto(cliente)}`,
+        },
+      });
+    }
 
     return c;
   });
@@ -357,8 +416,14 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     entidad: "creditos",
     entidadId: credito.id,
     accion: "crear",
-    descripcion: `Crédito ${formatCreditoNumero(credito.numero)} otorgado a ${nombreCompleto(cliente)} por $${credito.monto_original.toLocaleString("es-AR")}`,
-    meta: { numero: credito.numero, monto: credito.monto_original, tasa: credito.tasa, plazo_meses: credito.plazo_meses, frecuencia: credito.frecuencia, tipo: credito.tipo_credito },
+    descripcion: esProducto
+      ? `Crédito ${formatCreditoNumero(credito.numero)} otorgado a ${nombreCompleto(cliente)} — ${producto!.nombre} ×${productoCantidad} ($${credito.monto_original.toLocaleString("es-AR")})`
+      : `Crédito ${formatCreditoNumero(credito.numero)} otorgado a ${nombreCompleto(cliente)} por $${credito.monto_original.toLocaleString("es-AR")}`,
+    meta: {
+      numero: credito.numero, monto: credito.monto_original, tasa: credito.tasa,
+      plazo_meses: credito.plazo_meses, frecuencia: credito.frecuencia, tipo: credito.tipo_credito,
+      ...(esProducto ? { producto_id: producto!.id, producto: producto!.nombre, cantidad: productoCantidad } : {}),
+    },
   });
 
   return successResponse(credito, 201);

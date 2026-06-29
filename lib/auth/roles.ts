@@ -30,6 +30,7 @@ const ACCESO_RUTAS: { prefix: string; roles: Role[] }[] = [
   { prefix: "/comprobantes", roles: ["admin"] },
   { prefix: "/caja", roles: ["admin", "vendedor"] }, // admin → caja principal; vendedor → su caja personal
   { prefix: "/personal", roles: ["admin"] },
+  { prefix: "/productos", roles: ["admin"] },
   { prefix: "/proveedores", roles: ["admin"] },
   { prefix: "/cobranza", roles: ["admin", "cobrador", "vendedor"] },
   { prefix: "/pagos", roles: ["admin", "cobrador", "vendedor"] },
