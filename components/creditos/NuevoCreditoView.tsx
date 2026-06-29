@@ -25,7 +25,7 @@ export function NuevoCreditoView() {
   };
 
   return (
-    <div className="-mx-4 -my-6 md:-mx-6 md:-my-8 lg:-mx-8 flex h-[calc(100dvh-3rem)] flex-col bg-background">
+    <div className="-mx-4 -mb-6 md:-mx-6 md:-mb-8 lg:-mx-8 flex h-[calc(100dvh-3rem)] flex-col bg-background">
       {/* Header de la sección — misma fila de controles que el resto del SaaS */}
       <div className="flex items-center justify-between gap-3 border-b border-border px-5 py-3 shrink-0">
         <div className="flex items-center gap-3 min-w-0">

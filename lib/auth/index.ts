@@ -32,6 +32,7 @@ export type AuthContext = {
   vendedorId: string | null; // profiles.vendedor_id (solo relevante si role = vendedor)
   nombre: string | null; // profiles.full_name (para saludo / identidad en UI)
   email: string | null; // profiles.email
+  avatarUrl: string | null; // user_metadata.avatar_url (avatar elegido por el usuario)
 };
 
 /**
@@ -40,7 +41,7 @@ export type AuthContext = {
  * Deny-by-default (OWASP — Mínimo Privilegio): si no hay profile, está inactivo,
  * o le falta tenant_id o role → 403. Nunca se asume un rol por defecto.
  */
-async function cargarContexto(userId: string): Promise<AuthContext> {
+async function cargarContexto(userId: string, avatarUrl: string | null = null): Promise<AuthContext> {
   const profile = await prisma.profiles.findUnique({
     where: { id: userId },
     select: { tenant_id: true, role: true, activo: true, vendedor_id: true, full_name: true, email: true },
@@ -60,6 +61,7 @@ async function cargarContexto(userId: string): Promise<AuthContext> {
     vendedorId: profile.vendedor_id ?? null,
     nombre: profile.full_name ?? null,
     email: profile.email ?? null,
+    avatarUrl,
   };
 }
 
@@ -90,7 +92,7 @@ export async function requireAuth(_request?: Request): Promise<AuthContext> {
     throw new ApiError("No autenticado", "UNAUTHORIZED", 401);
   }
 
-  return cargarContexto(user.id);
+  return cargarContexto(user.id, (user.user_metadata?.avatar_url as string | undefined) ?? null);
 }
 
 /**

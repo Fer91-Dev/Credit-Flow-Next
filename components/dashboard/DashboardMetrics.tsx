@@ -60,10 +60,10 @@ export function DashboardKpis({ data }: { data: DashboardData }) {
   const { resumen } = data;
   return (
     <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-      <KpiCard icon={Users} label="Clientes activos" value={String(resumen.clientes_activos)} accent="primary" />
-      <KpiCard icon={TrendingUp} label="Créditos activos" value={String(resumen.creditos_activos)} sub={`${resumen.creditos_pagados} pagados`} accent="primary" />
-      <KpiCard icon={Wallet} label="Cartera total" value={`$${n0(resumen.cartera_total)}`} accent="success" mono />
-      <KpiCard icon={AlertCircle} label="Mora crítica" value={String(resumen.mora_critica_count)} sub={resumen.mora_critica_count > 0 ? "requieren gestión urgente" : "sin atrasos críticos"} accent={resumen.mora_critica_count > 0 ? "destructive" : "success"} />
+      <KpiCard icon="busts-in-silhouette" label="Clientes activos" value={String(resumen.clientes_activos)} accent="primary" />
+      <KpiCard icon="chart-increasing" label="Créditos activos" value={String(resumen.creditos_activos)} sub={`${resumen.creditos_pagados} pagados`} accent="primary" />
+      <KpiCard icon="money-bag" label="Cartera total" value={`$${n0(resumen.cartera_total)}`} accent="success" mono />
+      <KpiCard icon="warning" label="Mora crítica" value={String(resumen.mora_critica_count)} sub={resumen.mora_critica_count > 0 ? "requieren gestión urgente" : "sin atrasos críticos"} accent={resumen.mora_critica_count > 0 ? "destructive" : "success"} />
     </div>
   );
 }

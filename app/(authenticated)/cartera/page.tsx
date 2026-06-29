@@ -6,7 +6,7 @@ export default function CarteraPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        icon={BarChart3}
+        icon="chart-increasing"
         title="Cartera"
         subtitle="Métricas generales de la cartera"
         accent="primary"

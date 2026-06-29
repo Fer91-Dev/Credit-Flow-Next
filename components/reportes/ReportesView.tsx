@@ -9,6 +9,7 @@ import { formatFecha } from "@/lib/utils";
 import type { Reporte } from "@/lib/swr";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { KpiCard } from "@/components/ui/KpiCard";
+import { Emoji } from "@/components/ui/Emoji";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -82,7 +83,7 @@ export function ReportesView() {
   return (
     <div className="space-y-6">
       <PageHeader
-        icon={FileBarChart}
+        icon="bar-chart"
         title="Reportes"
         subtitle="Métricas financieras por período y exportación"
         accent="primary"
@@ -121,15 +122,15 @@ export function ReportesView() {
         <div className="space-y-5">
           {/* KPIs de cobranzas del período */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <KpiCard icon={ArrowUpRight} label="Cobrado en el período" value={`$${n0(reporte.cobranzas.total_cobrado)}`} accent="success" mono sub={`${reporte.cobranzas.cantidad} pago${reporte.cobranzas.cantidad !== 1 ? "s" : ""}`} />
-            <KpiCard icon={TrendingUp}   label="Imputado a capital"    value={`$${n0(reporte.cobranzas.total_capital)}`} accent="primary" mono />
-            <KpiCard icon={Percent}      label="Interés + mora"        value={`$${n0(reporte.cobranzas.total_interes + reporte.cobranzas.total_mora)}`} accent="warning" mono />
-            <KpiCard icon={AlertCircle}  label="Saldo en mora"         value={`$${n0(reporte.morosidad.saldo_expuesto)}`} accent={reporte.morosidad.en_mora > 0 ? "destructive" : "muted"} mono sub={`${reporte.morosidad.en_mora} en mora`} />
+            <KpiCard icon="chart-increasing" label="Cobrado en el período" value={`$${n0(reporte.cobranzas.total_cobrado)}`} accent="success" mono sub={`${reporte.cobranzas.cantidad} pago${reporte.cobranzas.cantidad !== 1 ? "s" : ""}`} />
+            <KpiCard icon="chart-increasing"   label="Imputado a capital"    value={`$${n0(reporte.cobranzas.total_capital)}`} accent="primary" mono />
+            <KpiCard icon="bar-chart"      label="Interés + mora"        value={`$${n0(reporte.cobranzas.total_interes + reporte.cobranzas.total_mora)}`} accent="warning" mono />
+            <KpiCard icon="warning"  label="Saldo en mora"         value={`$${n0(reporte.morosidad.saldo_expuesto)}`} accent={reporte.morosidad.en_mora > 0 ? "destructive" : "muted"} mono sub={`${reporte.morosidad.en_mora} en mora`} />
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             {/* Cobranzas por método */}
-            <Section title="Cobranzas por método" icon={Wallet}>
+            <Section title="Cobranzas por método" icon="money-bag">
               {reporte.cobranzas_por_metodo.length === 0 ? (
                 <Empty>Sin pagos en el período seleccionado.</Empty>
               ) : (
@@ -155,7 +156,7 @@ export function ReportesView() {
             </Section>
 
             {/* Cartera por estado */}
-            <Section title="Cartera por estado" icon={TrendingUp}>
+            <Section title="Cartera por estado" icon="chart-increasing">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="text-left text-xs text-muted-foreground uppercase tracking-wide">
@@ -185,7 +186,7 @@ export function ReportesView() {
           </div>
 
           {/* Morosidad */}
-          <Section title="Morosidad (estado actual)" icon={AlertCircle}>
+          <Section title="Morosidad (estado actual)" icon="warning">
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
               <Mini label="Créditos en mora" value={String(reporte.morosidad.en_mora)} tone="destructive" />
               <Mini label="Interés de mora" value={`$${n0(reporte.morosidad.interes_mora_total)}`} tone="destructive" mono />
@@ -195,7 +196,7 @@ export function ReportesView() {
           </Section>
 
           {/* Detalle de pagos */}
-          <Section title={`Detalle de pagos · ${fmtDate(reporte.periodo.desde)} → ${fmtDate(reporte.periodo.hasta)}`} icon={ArrowUpRight}>
+          <Section title={`Detalle de pagos · ${fmtDate(reporte.periodo.desde)} → ${fmtDate(reporte.periodo.hasta)}`} icon="chart-increasing">
             {reporte.detalle_pagos.length === 0 ? (
               <Empty>No se registraron pagos en este período.</Empty>
             ) : (
@@ -233,11 +234,13 @@ export function ReportesView() {
   );
 }
 
-function Section({ title, icon: Icon, children }: { title: string; icon: React.ComponentType<{ className?: string }>; children: React.ReactNode }) {
+function Section({ title, icon, children }: { title: string; icon: React.ComponentType<{ className?: string }> | string; children: React.ReactNode }) {
+  const isEmoji = typeof icon === "string";
+  const Icon = isEmoji ? null : icon;
   return (
     <div className="rounded-xl bg-card border border-border p-5">
       <div className="flex items-center gap-2 mb-4">
-        <Icon className="h-4 w-4 text-muted-foreground" />
+        {isEmoji ? <Emoji name={icon} className="h-4 w-4" /> : Icon && <Icon className="h-4 w-4 text-muted-foreground" />}
         <h3 className="text-sm font-semibold text-foreground">{title}</h3>
       </div>
       {children}

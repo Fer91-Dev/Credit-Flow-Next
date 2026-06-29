@@ -48,7 +48,7 @@ export default async function AuthenticatedLayout({
     <SWRProvider>
       <ToastProvider>
         <ConfirmProvider>
-          <AppShell role={ctx!.role} nombre={ctx!.nombre} email={ctx!.email}>
+          <AppShell role={ctx!.role} nombre={ctx!.nombre} email={ctx!.email} avatarUrl={ctx!.avatarUrl}>
             {children}
           </AppShell>
         </ConfirmProvider>

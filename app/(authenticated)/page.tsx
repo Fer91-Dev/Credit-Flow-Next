@@ -9,7 +9,7 @@ export default async function DashboardPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        icon={Home}
+        icon="house"
         title="Home"
         subtitle="Panel de control · CreditFlow"
         accent="primary"

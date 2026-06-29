@@ -13,6 +13,7 @@ import { formatCreditoNumero, nombreCompleto, formatFecha } from "@/lib/utils";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { KpiCard } from "@/components/ui/KpiCard";
 import { StatusBadge } from "@/components/ui/StatusBadge";
+import { DataTable } from "@/components/ui/DataTable";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
@@ -160,7 +161,7 @@ export function CreditosTable() {
     <>
       <div className="space-y-6">
         <PageHeader
-          icon={FileText}
+          icon="credit-card"
           title="Créditos"
           subtitle="Créditos otorgados y seguimiento de saldos"
           accent="primary"
@@ -208,10 +209,10 @@ export function CreditosTable() {
 
         {/* ── KPI Strip ── */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <KpiCard icon={FileText}    label="Créditos activos"  value={String(kpis.activos)}     accent="primary" />
-          <KpiCard icon={Wallet}      label="Cartera activa"    value={`$${n0(kpis.cartera)}`}   accent="success" mono />
-          <KpiCard icon={AlertCircle} label="Mora crítica"      value={String(kpis.moraCritica)} accent={kpis.moraCritica > 0 ? "destructive" : "muted"} sub={kpis.moraCritica > 0 ? "más de 30 días" : "sin atrasos críticos"} />
-          <KpiCard icon={CheckCircle} label="Créditos pagados"  value={String(kpis.pagados)}     accent="muted" />
+          <KpiCard icon="page-facing-up"    label="Créditos activos"  value={String(kpis.activos)}     accent="primary" />
+          <KpiCard icon="money-bag"      label="Cartera activa"    value={`$${n0(kpis.cartera)}`}   accent="success" mono />
+          <KpiCard icon="warning" label="Mora crítica"      value={String(kpis.moraCritica)} accent={kpis.moraCritica > 0 ? "destructive" : "muted"} sub={kpis.moraCritica > 0 ? "más de 30 días" : "sin atrasos críticos"} />
+          <KpiCard icon="check-mark-button" label="Créditos pagados"  value={String(kpis.pagados)}     accent="muted" />
         </div>
 
         {/* ── Filter Toolbar ── */}
@@ -263,194 +264,131 @@ export function CreditosTable() {
         {filtered.length === 0 ? (
           <EmptyState hasFilters={hasFilters} onNew={openNew} onClear={clearFilters} />
         ) : (
-          <>
-            {/* Desktop table */}
-            <div className="hidden md:block rounded-xl border border-border overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm border-separate border-spacing-0">
-                  <thead>
-                    <tr className="bg-muted/30">
-                      <th className="px-4 py-3 text-left  text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">N°</th>
-                      <th className="px-4 py-3 text-left  text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">Cliente</th>
-                      <th className="px-4 py-3 text-left  text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">Tipo</th>
-                      <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">Monto orig.</th>
-                      <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">Saldo</th>
-                      <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">Tasa</th>
-                      <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">Mora</th>
-                      <th className="px-4 py-3 text-left  text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">Estado</th>
-                      <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border pr-5">Acciones</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filtered.map((c, idx) => {
-                      const est = estadoBadge(c.estado);
-                      return (
-                        <tr key={c.id} onClick={() => setDetail(c)} className={`cursor-pointer hover:bg-muted/20 transition-colors ${idx % 2 === 1 ? "bg-muted/5" : ""}`}>
-                          <td className="px-4 py-3 font-mono text-xs text-muted-foreground border-b border-border/70 whitespace-nowrap">
-                            <div className="flex items-center gap-1.5">
-                              {formatCreditoNumero(c.numero)}
-                              {c.es_refinanciacion && (
-                                <span className="inline-flex items-center gap-1 rounded-full bg-warning/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-warning" title="Crédito nacido de una refinanciación">
-                                  <RefreshCw className="h-2.5 w-2.5" /> Refi
-                                </span>
-                              )}
-                            </div>
-                          </td>
-                          <td className="px-4 py-3 font-medium text-foreground border-b border-border/70">{nombreCompleto(c.cliente)}</td>
-                          <td className="px-4 py-3 border-b border-border/70">
-                            <StatusBadge label={c.tipo_credito} variant="muted" />
-                          </td>
-                          <td className="px-4 py-3 text-right font-mono text-sm text-foreground border-b border-border/70">
-                            ${n0(c.monto_original)}
-                          </td>
-                          <td className="px-4 py-3 text-right font-mono text-sm border-b border-border/70">
-                            <span className={c.saldo_pendiente > 0 ? "text-warning font-semibold" : "text-success"}>
-                              ${n0(c.saldo_pendiente)}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 text-right font-mono text-xs text-muted-foreground border-b border-border/70">
-                            {c.tasa}%
-                          </td>
-                          <td className="px-4 py-3 text-center border-b border-border/70">
-                            {c.dias_mora > 0 ? (
-                              <StatusBadge
-                                label={`${c.dias_mora}d`}
-                                variant={c.dias_mora > 30 ? "destructive" : "warning"}
-                              />
-                            ) : (
-                              <span className="text-xs font-medium text-success">Al día</span>
-                            )}
-                          </td>
-                          <td className="px-4 py-3 border-b border-border/70">
-                            <StatusBadge label={est.label} variant={est.variant} />
-                          </td>
-                          <td className="px-4 py-3 pr-5 text-right border-b border-border/70">
-                            <div className="flex justify-end gap-1" onClick={(e) => e.stopPropagation()}>
-                              {c.estado === "activo" && c.dias_mora > 0 && (
-                                <button
-                                  onClick={() => setRefinanciar(c)}
-                                  className="p-1.5 rounded-lg hover:bg-warning/10 transition-colors text-muted-foreground hover:text-warning"
-                                  title="Refinanciar / reestructurar deuda"
-                                >
-                                  <RefreshCw className="h-3.5 w-3.5" />
-                                </button>
-                              )}
-                              {c.estado === "pagado" && (
-                                <button
-                                  onClick={() => setLibreDeudaId(c.id)}
-                                  className="p-1.5 rounded-lg hover:bg-success/10 transition-colors text-success"
-                                  title="Libre deuda (crédito cancelado)"
-                                >
-                                  <ShieldCheck className="h-3.5 w-3.5" />
-                                </button>
-                              )}
-                              <button
-                                onClick={() => openEdit(c.id)}
-                                className="p-1.5 rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
-                                title="Editar"
-                              >
-                                <Edit2 className="h-3.5 w-3.5" />
-                              </button>
-                              {/* Anular: conserva el registro y cuadra la caja */}
-                              {c.estado !== "anulado" && <AnularButton credito={c} onAnular={handleAnular} />}
-                              {/* Eliminar: hard delete, bloqueado si tiene pagos */}
-                              {c.tiene_pagos ? (
-                                <button
-                                  disabled
-                                  title="No se puede eliminar: el crédito tiene pagos. Anulalo en su lugar."
-                                  className="p-1.5 rounded-lg text-muted-foreground/30 cursor-not-allowed"
-                                >
-                                  <Trash2 className="h-3.5 w-3.5" />
-                                </button>
-                              ) : (
-                                <button
-                                  onClick={() => handleEliminar(c)}
-                                  className="p-1.5 rounded-lg hover:bg-destructive/10 transition-colors text-muted-foreground hover:text-destructive"
-                                  title="Eliminar crédito"
-                                >
-                                  <Trash2 className="h-3.5 w-3.5" />
-                                </button>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                  <tfoot>
-                    <tr className="bg-muted/20">
-                      <td colSpan={3} className="px-4 py-3 text-[10px] font-bold text-muted-foreground uppercase tracking-widest border-t border-border">
-                        Totales ({filtered.length})
-                      </td>
-                      <td className="px-4 py-3 text-right font-mono font-bold text-foreground border-t border-border">${n0(totals.monto)}</td>
-                      <td className="px-4 py-3 text-right font-mono font-bold text-warning border-t border-border">${n0(totals.saldo)}</td>
-                      <td colSpan={4} className="border-t border-border pr-5" />
-                    </tr>
-                  </tfoot>
-                </table>
-              </div>
-            </div>
-
-            {/* Mobile cards */}
-            <div className="block md:hidden space-y-3">
-              {filtered.map(c => {
-                const est = estadoBadge(c.estado);
-                return (
-                  <div key={c.id} onClick={() => setDetail(c)} className="rounded-xl bg-card border border-border p-4 space-y-3 cursor-pointer active:bg-muted/20 transition-colors">
-                    <div className="flex items-start justify-between gap-2">
-                      <div>
-                        <p className="font-mono text-[11px] text-muted-foreground">{formatCreditoNumero(c.numero)}</p>
-                        <p className="font-medium text-foreground text-sm">{nombreCompleto(c.cliente)}</p>
-                        <p className="text-xs text-muted-foreground mt-0.5">{c.tipo_credito} · {c.tasa}% TNA · {c.plazo_meses}m</p>
-                      </div>
-                      <StatusBadge label={est.label} variant={est.variant} />
+          <DataTable
+            rows={filtered}
+            rowKey={(c) => c.id}
+            onRowClick={(c) => setDetail(c)}
+            zebra
+            columns={[
+              { header: "N°", className: "whitespace-nowrap",
+                cell: (c) => (
+                  <div className="flex items-center gap-1.5 font-mono text-xs text-muted-foreground">
+                    {formatCreditoNumero(c.numero)}
+                    {c.es_refinanciacion && (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-warning/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-warning" title="Crédito nacido de una refinanciación">
+                        <RefreshCw className="h-2.5 w-2.5" /> Refi
+                      </span>
+                    )}
+                  </div>
+                ) },
+              { header: "Cliente",
+                cell: (c) => <span className="font-medium text-foreground">{nombreCompleto(c.cliente)}</span> },
+              { header: "Tipo",
+                cell: (c) => <StatusBadge label={c.tipo_credito} variant="muted" /> },
+              { header: "Monto orig.", mono: true,
+                cell: (c) => <span className="text-foreground">${n0(c.monto_original)}</span> },
+              { header: "Saldo", mono: true,
+                cell: (c) => <span className={c.saldo_pendiente > 0 ? "text-warning font-semibold" : "text-success"}>${n0(c.saldo_pendiente)}</span> },
+              { header: "Tasa", mono: true,
+                cell: (c) => <span className="text-xs text-muted-foreground">{c.tasa}%</span> },
+              { header: "Mora", align: "center",
+                cell: (c) => c.dias_mora > 0
+                  ? <StatusBadge label={`${c.dias_mora}d`} variant={c.dias_mora > 30 ? "destructive" : "warning"} />
+                  : <span className="text-xs font-medium text-success">Al día</span> },
+              { header: "Estado",
+                cell: (c) => { const est = estadoBadge(c.estado); return <StatusBadge label={est.label} variant={est.variant} />; } },
+              { header: "Acciones", align: "right", className: "pr-5",
+                cell: (c) => (
+                  <div className="flex justify-end gap-1" onClick={(e) => e.stopPropagation()}>
+                    {c.estado === "activo" && c.dias_mora > 0 && (
+                      <button onClick={() => setRefinanciar(c)} className="p-1.5 rounded-lg hover:bg-warning/10 transition-colors text-muted-foreground hover:text-warning" title="Refinanciar / reestructurar deuda">
+                        <RefreshCw className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                    {c.estado === "pagado" && (
+                      <button onClick={() => setLibreDeudaId(c.id)} className="p-1.5 rounded-lg hover:bg-success/10 transition-colors text-success" title="Libre deuda (crédito cancelado)">
+                        <ShieldCheck className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                    <button onClick={() => openEdit(c.id)} className="p-1.5 rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-foreground" title="Editar">
+                      <Edit2 className="h-3.5 w-3.5" />
+                    </button>
+                    {c.estado !== "anulado" && <AnularButton credito={c} onAnular={handleAnular} />}
+                    {c.tiene_pagos ? (
+                      <button disabled title="No se puede eliminar: el crédito tiene pagos. Anulalo en su lugar." className="p-1.5 rounded-lg text-muted-foreground/30 cursor-not-allowed">
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    ) : (
+                      <button onClick={() => handleEliminar(c)} className="p-1.5 rounded-lg hover:bg-destructive/10 transition-colors text-muted-foreground hover:text-destructive" title="Eliminar crédito">
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                  </div>
+                ) },
+            ]}
+            footer={
+              <tr className="bg-muted/20">
+                <td colSpan={3} className="px-4 py-3 text-[10px] font-bold text-muted-foreground uppercase tracking-widest border-t border-border">
+                  Totales ({filtered.length})
+                </td>
+                <td className="px-4 py-3 text-right font-mono font-bold text-foreground border-t border-border">${n0(totals.monto)}</td>
+                <td className="px-4 py-3 text-right font-mono font-bold text-warning border-t border-border">${n0(totals.saldo)}</td>
+                <td colSpan={4} className="border-t border-border pr-5" />
+              </tr>
+            }
+            renderMobileCard={(c) => {
+              const est = estadoBadge(c.estado);
+              return (
+                <div onClick={() => setDetail(c)} className="rounded-xl bg-card border border-border p-4 space-y-3 cursor-pointer active:bg-muted/20 transition-colors">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <p className="font-mono text-[11px] text-muted-foreground">{formatCreditoNumero(c.numero)}</p>
+                      <p className="font-medium text-foreground text-sm">{nombreCompleto(c.cliente)}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">{c.tipo_credito} · {c.tasa}% TNA · {c.plazo_meses}m</p>
                     </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <p className="text-[10px] text-muted-foreground">Monto original</p>
-                        <p className="font-mono font-semibold text-foreground">${n0(c.monto_original)}</p>
-                      </div>
-                      <div>
-                        <p className="text-[10px] text-muted-foreground">Saldo pendiente</p>
-                        <p className={`font-mono font-bold ${c.saldo_pendiente > 0 ? "text-warning" : "text-success"}`}>
-                          ${n0(c.saldo_pendiente)}
-                        </p>
-                      </div>
+                    <StatusBadge label={est.label} variant={est.variant} />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <p className="text-[10px] text-muted-foreground">Monto original</p>
+                      <p className="font-mono font-semibold text-foreground">${n0(c.monto_original)}</p>
                     </div>
-                    <div className="flex items-center justify-between pt-2 border-t border-border/70">
-                      {c.dias_mora > 0
-                        ? <StatusBadge label={`${c.dias_mora}d mora`} variant={c.dias_mora > 30 ? "destructive" : "warning"} />
-                        : <span className="text-xs font-medium text-success">Al día</span>}
-                      <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
-                        {c.estado === "activo" && c.dias_mora > 0 && (
-                          <button onClick={() => setRefinanciar(c)} className="p-1.5 rounded-lg hover:bg-warning/10 transition-colors text-muted-foreground hover:text-warning" title="Refinanciar">
-                            <RefreshCw className="h-3.5 w-3.5" />
-                          </button>
-                        )}
-                        <button onClick={() => openEdit(c.id)} className="p-1.5 rounded-lg hover:bg-muted transition-colors text-muted-foreground">
-                          <Edit2 className="h-3.5 w-3.5" />
-                        </button>
-                        {c.estado !== "anulado" && <AnularButton credito={c} onAnular={handleAnular} />}
-                        {c.tiene_pagos ? (
-                          <button disabled title="Tiene pagos; anulalo en su lugar" className="p-1.5 rounded-lg text-muted-foreground/30 cursor-not-allowed">
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
-                        ) : (
-                          <button
-                            onClick={() => handleEliminar(c)}
-                            className="p-1.5 rounded-lg hover:bg-destructive/10 transition-colors text-muted-foreground hover:text-destructive"
-                            title="Eliminar"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
-                        )}
-                      </div>
+                    <div>
+                      <p className="text-[10px] text-muted-foreground">Saldo pendiente</p>
+                      <p className={`font-mono font-bold ${c.saldo_pendiente > 0 ? "text-warning" : "text-success"}`}>
+                        ${n0(c.saldo_pendiente)}
+                      </p>
                     </div>
                   </div>
-                );
-              })}
-            </div>
-          </>
+                  <div className="flex items-center justify-between pt-2 border-t border-border/70">
+                    {c.dias_mora > 0
+                      ? <StatusBadge label={`${c.dias_mora}d mora`} variant={c.dias_mora > 30 ? "destructive" : "warning"} />
+                      : <span className="text-xs font-medium text-success">Al día</span>}
+                    <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
+                      {c.estado === "activo" && c.dias_mora > 0 && (
+                        <button onClick={() => setRefinanciar(c)} className="p-1.5 rounded-lg hover:bg-warning/10 transition-colors text-muted-foreground hover:text-warning" title="Refinanciar">
+                          <RefreshCw className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                      <button onClick={() => openEdit(c.id)} className="p-1.5 rounded-lg hover:bg-muted transition-colors text-muted-foreground">
+                        <Edit2 className="h-3.5 w-3.5" />
+                      </button>
+                      {c.estado !== "anulado" && <AnularButton credito={c} onAnular={handleAnular} />}
+                      {c.tiene_pagos ? (
+                        <button disabled title="Tiene pagos; anulalo en su lugar" className="p-1.5 rounded-lg text-muted-foreground/30 cursor-not-allowed">
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      ) : (
+                        <button onClick={() => handleEliminar(c)} className="p-1.5 rounded-lg hover:bg-destructive/10 transition-colors text-muted-foreground hover:text-destructive" title="Eliminar">
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            }}
+          />
         )}
         </div>
         )}
@@ -612,71 +550,48 @@ function RefinanciadosView({ creditos, onOpen }: { creditos: Credito[]; onOpen: 
         {pares.length} refinanciaci{pares.length !== 1 ? "ones" : "ón"} · capital consolidado total <span className="font-mono font-semibold text-foreground">${n0(totalConsolidado)}</span>
       </p>
 
-      {/* Desktop */}
-      <div className="hidden md:block rounded-xl border border-border overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm border-separate border-spacing-0">
-            <thead>
-              <tr className="bg-muted/30">
-                <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">Origen</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">Crédito nuevo</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">Cliente</th>
-                <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">Capital consolidado</th>
-                <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">Saldo</th>
-                <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">Mora</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">Fecha</th>
-              </tr>
-            </thead>
-            <tbody>
-              {pares.map(({ nuevo, origen }, idx) => (
-                <tr key={nuevo.id} onClick={() => onOpen(nuevo)} className={`cursor-pointer hover:bg-muted/20 transition-colors ${idx % 2 === 1 ? "bg-muted/5" : ""}`}>
-                  <td className="px-4 py-3 border-b border-border/70 whitespace-nowrap">
-                    <span className="font-mono text-xs text-muted-foreground">{origen ? formatCreditoNumero(origen.numero) : "—"}</span>
-                  </td>
-                  <td className="px-4 py-3 border-b border-border/70 whitespace-nowrap">
-                    <span className="inline-flex items-center gap-1.5 font-mono text-xs text-warning">
-                      <RefreshCw className="h-3 w-3" />{formatCreditoNumero(nuevo.numero)}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 font-medium text-foreground border-b border-border/70">{nombreCompleto(nuevo.cliente)}</td>
-                  <td className="px-4 py-3 text-right font-mono text-sm text-foreground border-b border-border/70">${n0(nuevo.monto_original)}</td>
-                  <td className="px-4 py-3 text-right font-mono text-sm border-b border-border/70">
-                    <span className={nuevo.saldo_pendiente > 0 ? "text-warning font-semibold" : "text-success"}>${n0(nuevo.saldo_pendiente)}</span>
-                  </td>
-                  <td className="px-4 py-3 text-center border-b border-border/70">
-                    {nuevo.dias_mora > 0
-                      ? <StatusBadge label={`${nuevo.dias_mora}d`} variant={nuevo.dias_mora > 30 ? "destructive" : "warning"} />
-                      : <span className="text-xs font-medium text-success">Al día</span>}
-                  </td>
-                  <td className="px-4 py-3 text-xs text-muted-foreground border-b border-border/70 whitespace-nowrap">{formatFecha(nuevo.created_at)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* Mobile */}
-      <div className="block md:hidden space-y-3">
-        {pares.map(({ nuevo, origen }) => (
-          <div key={nuevo.id} onClick={() => onOpen(nuevo)} className="rounded-xl bg-card border border-border p-4 space-y-2 cursor-pointer active:bg-muted/20 transition-colors">
+      <DataTable
+        rows={pares}
+        rowKey={(p) => p.nuevo.id}
+        onRowClick={(p) => onOpen(p.nuevo)}
+        zebra
+        columns={[
+          { header: "Origen", className: "whitespace-nowrap",
+            cell: (p) => <span className="font-mono text-xs text-muted-foreground">{p.origen ? formatCreditoNumero(p.origen.numero) : "—"}</span> },
+          { header: "Crédito nuevo", className: "whitespace-nowrap",
+            cell: (p) => <span className="inline-flex items-center gap-1.5 font-mono text-xs text-warning"><RefreshCw className="h-3 w-3" />{formatCreditoNumero(p.nuevo.numero)}</span> },
+          { header: "Cliente",
+            cell: (p) => <span className="font-medium text-foreground">{nombreCompleto(p.nuevo.cliente)}</span> },
+          { header: "Capital consolidado", mono: true,
+            cell: (p) => <span className="text-foreground">${n0(p.nuevo.monto_original)}</span> },
+          { header: "Saldo", mono: true,
+            cell: (p) => <span className={p.nuevo.saldo_pendiente > 0 ? "text-warning font-semibold" : "text-success"}>${n0(p.nuevo.saldo_pendiente)}</span> },
+          { header: "Mora", align: "center",
+            cell: (p) => p.nuevo.dias_mora > 0
+              ? <StatusBadge label={`${p.nuevo.dias_mora}d`} variant={p.nuevo.dias_mora > 30 ? "destructive" : "warning"} />
+              : <span className="text-xs font-medium text-success">Al día</span> },
+          { header: "Fecha", className: "whitespace-nowrap",
+            cell: (p) => <span className="text-xs text-muted-foreground">{formatFecha(p.nuevo.created_at)}</span> },
+        ]}
+        renderMobileCard={(p) => (
+          <div onClick={() => onOpen(p.nuevo)} className="rounded-xl bg-card border border-border p-4 space-y-2 cursor-pointer active:bg-muted/20 transition-colors">
             <div className="flex items-center justify-between gap-2">
               <span className="inline-flex items-center gap-1.5 font-mono text-xs text-warning">
-                <RefreshCw className="h-3 w-3" />{formatCreditoNumero(nuevo.numero)}
+                <RefreshCw className="h-3 w-3" />{formatCreditoNumero(p.nuevo.numero)}
               </span>
-              {nuevo.dias_mora > 0
-                ? <StatusBadge label={`${nuevo.dias_mora}d mora`} variant={nuevo.dias_mora > 30 ? "destructive" : "warning"} />
+              {p.nuevo.dias_mora > 0
+                ? <StatusBadge label={`${p.nuevo.dias_mora}d mora`} variant={p.nuevo.dias_mora > 30 ? "destructive" : "warning"} />
                 : <span className="text-xs font-medium text-success">Al día</span>}
             </div>
-            <p className="font-medium text-foreground text-sm">{nombreCompleto(nuevo.cliente)}</p>
-            <p className="text-[11px] text-muted-foreground">Origen: {origen ? formatCreditoNumero(origen.numero) : "—"} · {formatFecha(nuevo.created_at)}</p>
+            <p className="font-medium text-foreground text-sm">{nombreCompleto(p.nuevo.cliente)}</p>
+            <p className="text-[11px] text-muted-foreground">Origen: {p.origen ? formatCreditoNumero(p.origen.numero) : "—"} · {formatFecha(p.nuevo.created_at)}</p>
             <div className="flex items-center justify-between pt-1 border-t border-border/70">
               <span className="text-[10px] text-muted-foreground">Capital consolidado</span>
-              <span className="font-mono font-semibold text-foreground">${n0(nuevo.monto_original)}</span>
+              <span className="font-mono font-semibold text-foreground">${n0(p.nuevo.monto_original)}</span>
             </div>
           </div>
-        ))}
-      </div>
+        )}
+      />
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import type { ComponentType } from "react";
+import { Emoji } from "./Emoji";
 
 /**
  * Tira horizontal de métricas resumidas (estilo Bloomberg). Más compacta que un
@@ -20,7 +21,7 @@ export interface StripItem {
   value: string;
   accent?: StripAccent;
   mono?: boolean;
-  icon?: ComponentType<{ className?: string }>;
+  icon?: ComponentType<{ className?: string }> | string;
 }
 
 export function SummaryStrip({ items }: { items: StripItem[] }) {
@@ -28,12 +29,13 @@ export function SummaryStrip({ items }: { items: StripItem[] }) {
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 divide-y sm:divide-y-0 sm:divide-x divide-border rounded-xl border border-border bg-card overflow-hidden">
       {items.map((it, i) => {
         const color = TEXT[it.accent ?? "muted"];
-        const Icon = it.icon;
+        const isEmoji = typeof it.icon === "string";
+        const Icon = isEmoji ? null : it.icon;
         return (
           <div key={i} className="flex items-center gap-3 px-5 py-4">
-            {Icon && (
+            {it.icon && (
               <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted/40 border border-border">
-                <Icon className={`h-4 w-4 ${color}`} />
+                {isEmoji ? <Emoji name={it.icon as string} className="h-5 w-5" /> : Icon && <Icon className={`h-4 w-4 ${color}`} />}
               </div>
             )}
             <div className="min-w-0">

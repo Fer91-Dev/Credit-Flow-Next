@@ -1,10 +1,11 @@
 ﻿"use client";
 
 import { useState, useMemo } from "react";
-import { History, Activity, CalendarClock, Wallet, Search, ChevronDown, X } from "lucide-react";
+import { Search, ChevronDown, X } from "lucide-react";
 import { useAuditoria, type EventoAuditoria } from "@/lib/swr";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { KpiCard } from "@/components/ui/KpiCard";
+import { DataTable } from "@/components/ui/DataTable";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import type { BadgeVariant } from "@/components/ui/StatusBadge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -75,7 +76,7 @@ export function AuditoriaTable() {
   return (
     <div className="space-y-6">
       <PageHeader
-        icon={History}
+        icon="scroll"
         title="Auditoría"
         subtitle="Trazabilidad de eventos del sistema"
         accent="primary"
@@ -91,10 +92,10 @@ export function AuditoriaTable() {
         <div className="space-y-5">
           {/* KPIs */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <KpiCard icon={Activity}      label="Eventos totales" value={String(kpis.total)}  accent="muted" />
-            <KpiCard icon={CalendarClock} label="Hoy"             value={String(kpis.hoy)}    accent="primary" />
-            <KpiCard icon={CalendarClock} label="Últimos 7 días"  value={String(kpis.semana)} accent="muted" />
-            <KpiCard icon={Wallet}        label="Pagos registrados" value={String(kpis.pagos)} accent="success" />
+            <KpiCard icon="bar-chart"      label="Eventos totales" value={String(kpis.total)}  accent="muted" />
+            <KpiCard icon="calendar" label="Hoy"             value={String(kpis.hoy)}    accent="primary" />
+            <KpiCard icon="calendar" label="Últimos 7 días"  value={String(kpis.semana)} accent="muted" />
+            <KpiCard icon="money-bag"        label="Pagos registrados" value={String(kpis.pagos)} accent="success" />
           </div>
 
           {/* Toolbar */}
@@ -136,63 +137,44 @@ export function AuditoriaTable() {
           </div>
 
           {/* Content */}
-          {filtered.length === 0 ? (
-            <EmptyState hasFilters={hasFilters} />
-          ) : (
-            <>
-              {/* Desktop table */}
-              <div className="hidden md:block rounded-xl border border-border overflow-hidden">
-                <table className="w-full text-sm border-separate border-spacing-0">
-                  <thead>
-                    <tr className="bg-muted/30">
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border w-44">Fecha y hora</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">Entidad</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">Acción</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">Usuario</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border pr-5">Descripción</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filtered.map((e, idx) => {
-                      const acc = accionConfig(e.accion);
-                      return (
-                        <tr key={e.id} onClick={() => setDetalle(e)} className={`cursor-pointer hover:bg-muted/20 transition-colors ${idx % 2 === 1 ? "bg-muted/5" : ""}`}>
-                          <td className="px-4 py-3 text-xs text-muted-foreground tabular-nums border-b border-border/70 whitespace-nowrap">{fmtDateTime(e.created_at)}</td>
-                          <td className="px-4 py-3 border-b border-border/70">
-                            <span className="text-xs text-muted-foreground">{entidadLabel[e.entidad] ?? e.entidad}</span>
-                          </td>
-                          <td className="px-4 py-3 border-b border-border/70">
-                            <StatusBadge label={acc.label} variant={acc.variant} />
-                          </td>
-                          <td className="px-4 py-3 border-b border-border/70 whitespace-nowrap">
-                            <span className="text-xs text-foreground">{e.usuario_nombre || e.usuario_email || "—"}</span>
-                          </td>
-                          <td className="px-4 py-3 pr-5 text-foreground border-b border-border/70">{e.descripcion}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Mobile cards */}
-              <div className="block md:hidden space-y-3">
-                {filtered.map(e => {
-                  const acc = accionConfig(e.accion);
-                  return (
-                    <div key={e.id} onClick={() => setDetalle(e)} className="rounded-xl bg-card border border-border p-4 space-y-2 cursor-pointer active:bg-muted/20 transition-colors">
-                      <div className="flex items-start justify-between gap-2">
-                        <StatusBadge label={acc.label} variant={acc.variant} />
-                        <span className="text-[11px] text-muted-foreground/60 tabular-nums shrink-0">{fmtDateTime(e.created_at)}</span>
-                      </div>
-                      <p className="text-sm text-foreground leading-snug">{e.descripcion}</p>
-                      <p className="text-[11px] text-muted-foreground/50">{entidadLabel[e.entidad] ?? e.entidad}{(e.usuario_nombre || e.usuario_email) ? ` · ${e.usuario_nombre || e.usuario_email}` : ""}</p>
-                    </div>
-                  );
-                })}
-              </div>
-            </>
-          )}
+          <DataTable
+            rows={filtered}
+            rowKey={(e) => e.id}
+            onRowClick={(e) => setDetalle(e)}
+            zebra
+            empty={{
+              icon: "scroll",
+              title: hasFilters ? "Sin eventos para los filtros aplicados" : "Sin eventos registrados todavía",
+              hint: hasFilters
+                ? "Probá ajustando o limpiando los filtros."
+                : "Las acciones sobre clientes, créditos, pagos y configuración quedarán registradas acá.",
+            }}
+            columns={[
+              { header: "Fecha y hora", className: "w-44 whitespace-nowrap",
+                cell: (e) => <span className="text-xs text-muted-foreground tabular-nums">{fmtDateTime(e.created_at)}</span> },
+              { header: "Entidad",
+                cell: (e) => <span className="text-xs text-muted-foreground">{entidadLabel[e.entidad] ?? e.entidad}</span> },
+              { header: "Acción",
+                cell: (e) => { const acc = accionConfig(e.accion); return <StatusBadge label={acc.label} variant={acc.variant} />; } },
+              { header: "Usuario", className: "whitespace-nowrap",
+                cell: (e) => <span className="text-xs text-foreground">{e.usuario_nombre || e.usuario_email || "—"}</span> },
+              { header: "Descripción", className: "pr-5",
+                cell: (e) => <span className="text-foreground">{e.descripcion}</span> },
+            ]}
+            renderMobileCard={(e) => {
+              const acc = accionConfig(e.accion);
+              return (
+                <div onClick={() => setDetalle(e)} className="rounded-xl bg-card border border-border p-4 space-y-2 cursor-pointer active:bg-muted/20 transition-colors">
+                  <div className="flex items-start justify-between gap-2">
+                    <StatusBadge label={acc.label} variant={acc.variant} />
+                    <span className="text-[11px] text-muted-foreground/60 tabular-nums shrink-0">{fmtDateTime(e.created_at)}</span>
+                  </div>
+                  <p className="text-sm text-foreground leading-snug">{e.descripcion}</p>
+                  <p className="text-[11px] text-muted-foreground/50">{entidadLabel[e.entidad] ?? e.entidad}{(e.usuario_nombre || e.usuario_email) ? ` · ${e.usuario_nombre || e.usuario_email}` : ""}</p>
+                </div>
+              );
+            }}
+          />
         </div>
       )}
 
@@ -206,26 +188,6 @@ export function AuditoriaTable() {
           </div>
         </DialogContent>
       </Dialog>
-    </div>
-  );
-}
-
-function EmptyState({ hasFilters }: { hasFilters: boolean }) {
-  return (
-    <div className="rounded-xl border border-dashed border-border/60 p-12 flex flex-col items-center gap-4 text-center">
-      <div className="h-16 w-16 rounded-2xl bg-muted/20 border border-border/70 flex items-center justify-center">
-        <History className="h-7 w-7 text-muted-foreground/20" />
-      </div>
-      <div className="space-y-1.5">
-        <p className="text-sm font-semibold text-muted-foreground">
-          {hasFilters ? "Sin eventos para los filtros aplicados" : "Sin eventos registrados todavía"}
-        </p>
-        <p className="text-xs text-muted-foreground/50 max-w-xs leading-relaxed">
-          {hasFilters
-            ? "Probá ajustando o limpiando los filtros."
-            : "Las acciones sobre clientes, créditos, pagos y configuración quedarán registradas acá."}
-        </p>
-      </div>
     </div>
   );
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { User, Briefcase, Wallet, Phone } from "lucide-react";
+import { Emoji } from "@/components/ui/Emoji";
 import { Field, Input, Select } from "@/components/ui/field";
 import { FormActions } from "@/components/ui/form-kit";
 import { maskMontoInput, parseMontoInput, numeroAInput, nombreCompleto } from "@/lib/utils";
@@ -52,12 +52,12 @@ function soloDigitos(v: string, max: number) {
   return v.replace(/\D/g, "").slice(0, max);
 }
 
-function SectionCard({ icon: Icon, title, children }: { icon: typeof User; title: string; children: React.ReactNode }) {
+function SectionCard({ icon, title, children }: { icon: string; title: string; children: React.ReactNode }) {
   return (
     <section className="rounded-xl border border-border bg-muted/10 p-4">
       <div className="flex items-center gap-2 mb-3">
-        <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10 border border-primary/20">
-          <Icon className="h-3.5 w-3.5 text-primary" />
+        <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-muted/40 border border-border/60">
+          <Emoji name={icon} className="h-4 w-4" />
         </div>
         <p className="text-xs font-semibold text-foreground uppercase tracking-wider">{title}</p>
       </div>
@@ -266,7 +266,7 @@ export function ClienteForm({ clienteId, initialDocumento, onClose }: ClienteFor
       )}
 
       {/* Datos personales */}
-      <SectionCard icon={User} title="Datos personales">
+      <SectionCard icon="bust-in-silhouette" title="Datos personales">
         <div className="grid grid-cols-2 gap-3">
           <Field label="Nombre" required error={errors.nombre}>
             <Input name="nombre" type="text" placeholder="Ej: Juan" value={formData.nombre}
@@ -320,7 +320,7 @@ export function ClienteForm({ clienteId, initialDocumento, onClose }: ClienteFor
       </SectionCard>
 
       {/* Situación laboral */}
-      <SectionCard icon={Briefcase} title="Situación laboral">
+      <SectionCard icon="briefcase" title="Situación laboral">
         <div className="grid grid-cols-2 gap-3">
           <Field label="Situación">
             <Select name="situacion_laboral" value={formData.situacion_laboral} onChange={set("situacion_laboral")}>
@@ -351,7 +351,7 @@ export function ClienteForm({ clienteId, initialDocumento, onClose }: ClienteFor
       </SectionCard>
 
       {/* Ingresos */}
-      <SectionCard icon={Wallet} title="Ingresos / capacidad de pago">
+      <SectionCard icon="money-bag" title="Ingresos / capacidad de pago">
         <div className="grid grid-cols-2 gap-3">
           <Field label="Ingreso mensual ($)">
             <Input name="ingreso_mensual" type="text" inputMode="decimal" placeholder="850.000,00" value={formData.ingreso_mensual} onChange={setMonto("ingreso_mensual")} className="text-right font-mono tabular-nums" />
@@ -363,7 +363,7 @@ export function ClienteForm({ clienteId, initialDocumento, onClose }: ClienteFor
       </SectionCard>
 
       {/* Contacto */}
-      <SectionCard icon={Phone} title="Contacto">
+      <SectionCard icon="mobile-phone" title="Contacto">
         <div className="grid grid-cols-2 gap-3">
           <Field label="Email" error={errors.email}>
             <Input name="email" type="email" placeholder="ejemplo@correo.com" value={formData.email}

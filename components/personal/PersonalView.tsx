@@ -3,12 +3,14 @@
 import { useMemo, useState } from "react";
 import { mutate as globalMutate } from "swr";
 import {
-  UserCog, Plus, Users, DollarSign, Target, Pencil, Trash2, Mail, Phone, Percent, ArrowLeft, ChevronRight,
+  UserCog, Plus, Pencil, Trash2, Mail, Phone, ArrowLeft, ChevronRight,
 } from "lucide-react";
 import { useVendedores, KEYS, type Vendedor } from "@/lib/swr";
 import { VendedorDetail } from "./VendedorDetail";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { StatusBadge } from "@/components/ui/StatusBadge";
+import { Avatar } from "@/components/ui/Avatar";
+import { Emoji } from "@/components/ui/Emoji";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Field, Input, Select } from "@/components/ui/field";
@@ -93,7 +95,7 @@ export function PersonalView() {
     );
     return (
       <div className="space-y-6">
-        <PageHeader icon={UserCog} title="Personal" subtitle="Ficha del empleado" accent="primary" />
+        <PageHeader icon="office-worker" title="Personal" subtitle="Ficha del empleado" accent="primary" />
         <div className="flex flex-wrap items-center gap-2">{volver}</div>
         <div className="rounded-xl bg-card border border-border overflow-hidden">
           <VendedorDetail
@@ -112,7 +114,7 @@ export function PersonalView() {
   return (
     <div className="space-y-6">
       <PageHeader
-        icon={UserCog}
+        icon="office-worker"
         title="Personal"
         subtitle="Equipo de ventas y cobranza · comisiones y objetivos"
         accent="primary"
@@ -129,10 +131,10 @@ export function PersonalView() {
         <div className="space-y-6">
           {/* KPIs */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <StatCard icon={Users} label="Personal" value={String(totales.personal)} sub={`${totales.activos} activos`} accent="primary" />
-            <StatCard icon={DollarSign} label="Vendido (total)" value={`$${n0(totales.vendido)}`} sub="acumulado del equipo" accent="success" mono />
-            <StatCard icon={Percent} label="Comisiones" value={`$${n0(totales.comision)}`} sub="a liquidar" accent="warning" mono />
-            <StatCard icon={Target} label="Vendedores activos" value={String(totales.activos)} sub={`de ${totales.personal} totales`} accent="primary" />
+            <StatCard icon="busts-in-silhouette" label="Personal" value={String(totales.personal)} sub={`${totales.activos} activos`} accent="primary" />
+            <StatCard icon="dollar-banknote" label="Vendido (total)" value={`$${n0(totales.vendido)}`} sub="acumulado del equipo" accent="success" mono />
+            <StatCard icon="bar-chart" label="Comisiones" value={`$${n0(totales.comision)}`} sub="a liquidar" accent="warning" mono />
+            <StatCard icon="bullseye" label="Vendedores activos" value={String(totales.activos)} sub={`de ${totales.personal} totales`} accent="primary" />
           </div>
 
           {/* Lista */}
@@ -174,7 +176,7 @@ export function PersonalView() {
                           {/* 1 · Identidad */}
                           <td className="px-5 py-4 border-b border-border/60">
                             <div className="flex items-center gap-3">
-                              <Avatar nombre={v.nombre} activo={v.activo} />
+                              <Avatar name={v.nombre} size="sm" status={v.activo ? "online" : "offline"} />
                               <div className="min-w-0">
                                 <p className="font-semibold text-foreground leading-tight truncate">{v.nombre}</p>
                                 <div className="flex items-center gap-2.5 text-[11px] text-muted-foreground mt-1">
@@ -225,7 +227,7 @@ export function PersonalView() {
                     <div key={v.id} onClick={() => abrirFicha(v)} className={`rounded-xl bg-card border border-border p-4 space-y-3 cursor-pointer active:bg-muted/20 transition-colors ${!v.activo ? "opacity-50" : ""}`}>
                       <div className="flex items-start justify-between gap-2">
                         <div className="flex items-center gap-3 min-w-0">
-                          <Avatar nombre={v.nombre} activo={v.activo} />
+                          <Avatar name={v.nombre} size="sm" status={v.activo ? "online" : "offline"} />
                           <div className="min-w-0">
                             <p className="font-semibold text-foreground truncate">{v.nombre}</p>
                             <div className="mt-1"><StatusBadge label={rol.label} variant={rol.variant} /></div>
@@ -265,11 +267,13 @@ const STAT_ACCENT: Record<StatAccent, { text: string; iconBg: string; iconBorder
 };
 
 /** Tarjeta de métrica con jerarquía premium: el valor domina sobre el rótulo y la descripción. */
-function StatCard({ icon: Icon, label, value, sub, accent, mono }: {
-  icon: React.ComponentType<{ className?: string }>;
+function StatCard({ icon, label, value, sub, accent, mono }: {
+  icon: React.ComponentType<{ className?: string }> | string;
   label: string; value: string; sub?: string; accent: StatAccent; mono?: boolean;
 }) {
   const c = STAT_ACCENT[accent];
+  const isEmoji = typeof icon === "string";
+  const Icon = isEmoji ? null : icon;
   return (
     <div className={`group relative overflow-hidden rounded-xl border border-border bg-card p-6 transition-all duration-300
       hover:-translate-y-0.5 hover:shadow-xl ${c.glow} ${c.hoverBorder}
@@ -280,7 +284,7 @@ function StatCard({ icon: Icon, label, value, sub, accent, mono }: {
         <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">{label}</p>
         <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${c.iconBg} border ${c.iconBorder}
           transition-transform duration-300 group-hover:scale-110`}>
-          <Icon className={`h-4 w-4 ${c.text}`} />
+          {isEmoji ? <Emoji name={icon} className="h-5 w-5" /> : Icon && <Icon className={`h-4 w-4 ${c.text}`} />}
         </div>
       </div>
       <p className={`relative mt-5 text-2xl font-bold leading-none tracking-tight ${c.text} ${mono ? "font-mono tabular-nums text-xl sm:text-2xl" : ""}`}>{value}</p>
@@ -289,19 +293,6 @@ function StatCard({ icon: Icon, label, value, sub, accent, mono }: {
   );
 }
 
-function iniciales(nombre: string) {
-  return nombre.trim().split(/\s+/).slice(0, 2).map((p) => p[0]?.toUpperCase() ?? "").join("") || "?";
-}
-
-/** Avatar con iniciales para reforzar la identidad del personal. */
-function Avatar({ nombre, activo }: { nombre: string; activo: boolean }) {
-  return (
-    <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full border text-xs font-semibold
-      ${activo ? "bg-primary/10 border-primary/20 text-primary" : "bg-muted/60 border-border text-muted-foreground"}`}>
-      {iniciales(nombre)}
-    </div>
-  );
-}
 
 function MetaBar({ vendido, meta, avance }: { vendido: number; meta: number; avance: number }) {
   if (!meta || meta <= 0) {
@@ -414,7 +405,7 @@ function PersonalForm({
     <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(false); }}>
       <DialogContent className={MODAL_CONTENT}>
         <ModalHeader
-          icon={UserCog}
+          icon="office-worker"
           title={editing ? "Editar personal" : "Nuevo personal"}
           subtitle={editing ? "Actualizá los datos del empleado." : "Sumá un integrante al equipo de ventas y cobranza."}
         />

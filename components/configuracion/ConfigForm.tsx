@@ -90,7 +90,7 @@ export function ConfigForm() {
   return (
     <div className="space-y-6">
       <PageHeader
-        icon={Settings}
+        icon="gear"
         title="Configuración"
         subtitle="Reglas del motor financiero. Cada bloque se guarda por separado."
         accent="primary"

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useSWRConfig } from "swr";
-import { CalendarDays, Wallet, TrendingUp, AlertCircle, Info, ArrowUpRight, Receipt, Loader2, Printer, RefreshCw, ArrowRight } from "lucide-react";
+import { CalendarDays, Wallet, Info, ArrowUpRight, Receipt, Loader2, Printer, RefreshCw, ArrowRight } from "lucide-react";
 import { useAmortizacion, useCuotas, usePagosByCredito, useCreditos, KEYS, type Credito, type EstadoCuota } from "@/lib/swr";
 import { abrirRecibo } from "@/lib/recibo";
 import { imprimirPlanPagos } from "@/lib/plan-print";
@@ -133,14 +133,14 @@ export function CreditoDetail({ credito }: { credito: Credito }) {
         </div>
 
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          <Stat icon={Wallet} label="Saldo pendiente" accent={credito.saldo_pendiente > 0 ? "warning" : "success"}
+          <Stat icon="money-bag" label="Saldo pendiente" accent={credito.saldo_pendiente > 0 ? "warning" : "success"}
             value={`$${n0(credito.saldo_pendiente)}`} />
-          <Stat icon={TrendingUp} label="Cuota mensual" accent="primary"
+          <Stat icon="chart-increasing" label="Cuota mensual" accent="primary"
             value={amortizacion ? `$${n0(amortizacion.resumen.cuota_mensual)}` : "—"} />
-          <Stat icon={ArrowUpRight} label="Total cobrado" accent="success"
+          <Stat icon="chart-increasing" label="Total cobrado" accent="success"
             value={`$${n0(totalCobrado)}`} sub={`${pagos.length} pago${pagos.length !== 1 ? "s" : ""}`} />
           <Stat
-            icon={AlertCircle}
+            icon="warning"
             label={credito.dias_mora > 0 ? "En mora" : "Próximo pago"}
             accent={credito.dias_mora > 30 ? "destructive" : credito.dias_mora > 0 ? "warning" : "muted"}
             value={

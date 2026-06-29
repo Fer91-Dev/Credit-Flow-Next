@@ -1,10 +1,12 @@
 "use client";
 import type { ComponentType } from "react";
+import { Emoji } from "./Emoji";
 
 export type KpiAccent = "muted" | "success" | "primary" | "warning" | "destructive";
 
 interface KpiCardProps {
-  icon: ComponentType<{ className?: string }>;
+  /** Componente Lucide, o nombre de un Fluent Emoji (`public/emoji/<icon>.svg`). */
+  icon: ComponentType<{ className?: string }> | string;
   label: string;
   value: string;
   accent?: KpiAccent;
@@ -20,8 +22,10 @@ const COLORS: Record<KpiAccent, { text: string; iconBg: string; iconBorder: stri
   destructive: { text: "text-destructive", iconBg: "bg-destructive/10", iconBorder: "border-destructive/20", glow: "hover:shadow-destructive/10", hoverBorder: "hover:border-destructive/30" },
 };
 
-export function KpiCard({ icon: Icon, label, value, accent = "muted", mono, sub }: KpiCardProps) {
+export function KpiCard({ icon, label, value, accent = "muted", mono, sub }: KpiCardProps) {
   const c = COLORS[accent];
+  const isEmoji = typeof icon === "string";
+  const Icon = isEmoji ? null : icon;
   return (
     <div className={`group relative overflow-hidden rounded-xl border border-border bg-card p-5 transition-all duration-300
       hover:-translate-y-0.5 hover:shadow-xl ${c.glow} ${c.hoverBorder}
@@ -30,9 +34,9 @@ export function KpiCard({ icon: Icon, label, value, accent = "muted", mono, sub 
         bg-[radial-gradient(ellipse_80%_50%_at_50%_-20%,rgba(99,102,241,0.05),transparent)]" />
       <div className="relative flex items-start justify-between mb-3">
         <p className="text-xs font-medium text-muted-foreground leading-tight pr-2 tracking-wide">{label}</p>
-        <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${c.iconBg} border ${c.iconBorder}
+        <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border ${isEmoji ? "bg-muted/40 border-border" : `${c.iconBg} ${c.iconBorder}`}
           transition-transform duration-300 group-hover:-translate-y-0.5 group-hover:scale-110`}>
-          <Icon className={`h-4 w-4 ${c.text}`} />
+          {isEmoji ? <Emoji name={icon} className="h-5 w-5" /> : Icon && <Icon className={`h-4 w-4 ${c.text}`} />}
         </div>
       </div>
       <p className={`relative text-2xl font-bold tracking-tight ${c.text} ${mono ? "font-mono" : ""}`}>{value}</p>

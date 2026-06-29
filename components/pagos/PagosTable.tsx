@@ -75,7 +75,7 @@ export function PagosTable() {
       <div className="space-y-6">
         {/* Header contextual de la página + acciones */}
         <PageHeader
-          icon={Wallet}
+          icon="dollar-banknote"
           title="Pagos"
           subtitle="Ficha del cliente · registrar cobro"
           accent="primary"
@@ -106,7 +106,7 @@ export function PagosTable() {
   return (
     <div className="space-y-6">
       <PageHeader
-        icon={Wallet}
+        icon="dollar-banknote"
         title="Pagos"
         subtitle="Buscá un cliente por DNI o nombre para ver su estado de cuenta y registrar el cobro."
         accent="primary"

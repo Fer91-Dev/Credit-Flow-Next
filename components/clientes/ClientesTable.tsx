@@ -2,13 +2,14 @@
 
 import { useMemo, useState } from "react";
 import { useSWRConfig } from "swr";
-import { Users, Search, User, Phone, IdCard, Mail, ArrowLeft, Plus, ChevronRight, X, Clock } from "lucide-react";
+import { Search, User, Phone, Mail, ArrowLeft, Plus, ChevronRight, X, Clock } from "lucide-react";
 import { ClienteForm } from "./ClienteForm";
 import { ClienteDetail } from "./ClienteDetail";
 import { useClientes, KEYS, type Cliente } from "@/lib/swr";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { ScoreBadge } from "@/components/ui/ScoreBadge";
+import { Avatar } from "@/components/ui/Avatar";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { ModalHeader } from "@/components/ui/form-kit";
 import { nombreCompleto } from "@/lib/utils";
@@ -103,21 +104,12 @@ export function ClientesTable() {
     setSelected(null);
   };
 
-  const cta = (
-    <button
-      onClick={openNew}
-      className="flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:opacity-90 transition-opacity text-sm font-medium whitespace-nowrap"
-    >
-      <Plus className="h-4 w-4" /> Nuevo cliente
-    </button>
-  );
-
   // Diálogo de alta/edición (compartido por ambas vistas).
   const formDialog = (
     <Dialog open={dialogOpen} onOpenChange={(open) => { if (!open) handleFormClose(false); }}>
       <DialogContent className="w-[95vw] sm:max-w-2xl sm:p-7">
         <ModalHeader
-          icon={User}
+          icon="bust-in-silhouette"
           title={editingId ? "Editar cliente" : "Nuevo cliente"}
           subtitle={editingId ? "Actualizá la ficha del cliente." : "Cargá los datos del nuevo cliente."}
         />
@@ -128,12 +120,13 @@ export function ClientesTable() {
 
   // ── Vista de ficha (cliente seleccionado) ──
   if (selected) {
+    // "Volver al listado": arriba a la izquierda, alineado al contenedor de la ficha.
     const volver = (
       <button
         onClick={() => setSelected(null)}
-        className="flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg border border-border text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors whitespace-nowrap"
+        className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
       >
-        <ArrowLeft className="h-4 w-4" /> Buscar otro cliente
+        <ArrowLeft className="h-4 w-4" /> Volver al listado
       </button>
     );
 
@@ -141,23 +134,24 @@ export function ClientesTable() {
       <div className="space-y-6">
         {/* Header contextual de la página + acción secundaria */}
         <PageHeader
-          icon={Users}
+          icon="busts-in-silhouette"
           title="Clientes"
           subtitle="Ficha del cliente"
           accent="primary"
         />
-        <div className="flex flex-wrap items-center gap-2">{volver}</div>
 
-        {/* Ficha principal del cliente */}
-        <div className="rounded-xl bg-card border border-border overflow-hidden">
-          <ClienteDetail
-            clienteId={selected.id}
-            variant="cliente"
-            onEditar={() => openEdit(selected.id)}
-            onEliminar={() => handleDelete(selected.id, selected.nombre)}
-          />
+        {/* Ficha centrada y con ancho controlado — protagonista de la vista */}
+        <div className="mx-auto w-full max-w-4xl space-y-3">
+          {volver}
+          <div className="overflow-hidden rounded-xl border border-border bg-card">
+            <ClienteDetail
+              clienteId={selected.id}
+              variant="cliente"
+              onEditar={() => openEdit(selected.id)}
+              onEliminar={() => handleDelete(selected.id, selected.nombre)}
+            />
+          </div>
         </div>
-
         {formDialog}
       </div>
     );
@@ -168,12 +162,11 @@ export function ClientesTable() {
   return (
     <div className="space-y-6">
       <PageHeader
-        icon={Users}
+        icon="busts-in-silhouette"
         title="Clientes"
         subtitle="Buscá un cliente por DNI o nombre para ver su ficha, o creá uno nuevo."
         accent="primary"
       />
-      <div className="flex flex-wrap items-center justify-end gap-2">{cta}</div>
 
       {/* Buscador */}
       <div className="relative max-w-2xl">
@@ -265,6 +258,15 @@ export function ClientesTable() {
         </div>
       )}
 
+      {/* FAB — Nuevo cliente (flotante: no pisa las credenciales) */}
+      <button
+        onClick={openNew}
+        title="Nuevo cliente"
+        className="fixed bottom-6 right-6 z-40 flex items-center gap-2 rounded-full bg-primary px-5 py-3.5 text-sm font-semibold text-primary-foreground shadow-lg shadow-primary/30 transition-all hover:scale-105 hover:shadow-xl hover:shadow-primary/40 active:scale-95"
+      >
+        <Plus className="h-5 w-5" /> Nuevo cliente
+      </button>
+
       {formDialog}
     </div>
   );
@@ -286,28 +288,40 @@ function ClienteRow({
   mostrarInactividad?: boolean;
 }) {
   const dias = mostrarInactividad ? diasSinMovimiento(c) : null;
+  const activo = c.estado === "activo";
   return (
     <button
       onClick={onClick}
-      className="group flex w-full items-center gap-3 rounded-xl border border-border bg-card px-4 py-3 text-left transition-all hover:border-primary/40 hover:bg-card/80"
+      className="group relative flex w-full items-center gap-3.5 overflow-hidden rounded-xl border border-border bg-card py-2.5 pl-4 pr-3 text-left transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md hover:shadow-primary/10"
     >
-      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary/30 to-primary/10 text-sm font-bold text-primary">
-        {c.nombre.slice(0, 1).toUpperCase()}
-      </div>
+      {/* Acento de color a la izquierda */}
+      <span className="absolute inset-y-0 left-0 w-1 bg-gradient-to-b from-primary to-success" />
+
+      {/* Avatar TailGrids (con dot de estado activo/inactivo) */}
+      <Avatar name={nombreCompleto(c)} size="md" status={activo ? "online" : "offline"} />
+
+      {/* Datos del titular */}
       <div className="min-w-0 flex-1">
-        <p className="font-medium text-foreground truncate">{nombreCompleto(c)}</p>
-        <div className="flex items-center gap-3 text-xs text-muted-foreground">
-          {c.documento && <span className="flex items-center gap-1 font-mono"><IdCard className="h-3 w-3" />{c.documento}</span>}
-          {c.telefono && <span className="flex items-center gap-1"><Phone className="h-3 w-3" />{c.telefono}</span>}
-          {!c.documento && !c.telefono && c.email && <span className="flex items-center gap-1 truncate"><Mail className="h-3 w-3" />{c.email}</span>}
-          {dias !== null && (
-            <span className="flex items-center gap-1 text-warning"><Clock className="h-3 w-3" />{dias}d sin mov.</span>
+        <div className="flex items-center gap-2">
+          <p className="truncate font-semibold text-foreground">{nombreCompleto(c)}</p>
+          <StatusBadge label={c.estado} variant={activo ? "success" : "muted"} />
+        </div>
+        <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs">
+          {c.documento && (
+            <span className="flex items-baseline gap-1">
+              <span className="text-[9px] font-bold uppercase tracking-wider text-primary/70">DNI</span>
+              <span className="font-mono font-medium text-foreground">{c.documento}</span>
+            </span>
           )}
+          {c.telefono && <span className="flex items-center gap-1 text-muted-foreground"><Phone className="h-3 w-3" />{c.telefono}</span>}
+          {!c.documento && !c.telefono && c.email && <span className="flex items-center gap-1 truncate text-muted-foreground"><Mail className="h-3 w-3" />{c.email}</span>}
+          {dias !== null && <span className="flex items-center gap-1 text-warning"><Clock className="h-3 w-3" />{dias}d</span>}
         </div>
       </div>
+
+      {/* Score + chevron */}
       <ScoreBadge score={c.score} size="sm" />
-      <StatusBadge label={c.estado} variant={c.estado === "activo" ? "success" : "muted"} />
-      <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground/40 group-hover:text-primary transition-colors" />
+      <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground/40 transition-all group-hover:translate-x-0.5 group-hover:text-primary" />
     </button>
   );
 }

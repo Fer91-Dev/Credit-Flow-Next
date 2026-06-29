@@ -4,12 +4,12 @@ import { PerfilForm } from "@/components/perfil/PerfilForm";
 import { requireAuth } from "@/lib/auth";
 
 export default async function PerfilPage() {
-  const { nombre, email } = await requireAuth();
+  const { nombre, email, avatarUrl } = await requireAuth();
 
   return (
     <div className="space-y-6">
       <PageHeader
-        icon={UserCircle}
+        icon="bust-in-silhouette"
         title="Mi perfil"
         subtitle="Administrá tus datos personales y credenciales de acceso"
         accent="primary"
@@ -17,6 +17,7 @@ export default async function PerfilPage() {
       <PerfilForm
         initialName={nombre ?? ""}
         initialEmail={email ?? ""}
+        initialAvatarUrl={avatarUrl}
       />
     </div>
   );

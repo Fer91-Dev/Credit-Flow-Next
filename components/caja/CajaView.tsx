@@ -118,7 +118,7 @@ export function CajaView() {
   return (
     <div className="space-y-6">
       <PageHeader
-        icon={Landmark}
+        icon="bank"
         title="Caja"
         subtitle="Movimientos de efectivo y saldo"
         accent="primary"
@@ -270,10 +270,10 @@ export function CajaView() {
 
           {/* KPIs del período */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <KpiCard icon={Scale} label="Saldo caja principal" value={`$${n0(caja.saldo_total)}`} accent={caja.saldo_total >= 0 ? "success" : "destructive"} mono sub="tesorería (sin vendedores)" />
-            <KpiCard icon={Users} label="En poder de vendedores" value={`$${n0(caja.en_vendedores ?? 0)}`} accent="primary" mono sub="suma de sus cajas" />
-            <KpiCard icon={ArrowDownLeft} label="Ingresos del período" value={`$${n0(caja.ingresos)}`} accent="success" mono />
-            <KpiCard icon={ArrowUpRight} label="Egresos del período" value={`$${n0(caja.egresos)}`} accent="warning" mono />
+            <KpiCard icon="balance-scale" label="Saldo caja principal" value={`$${n0(caja.saldo_total)}`} accent={caja.saldo_total >= 0 ? "success" : "destructive"} mono sub="tesorería (sin vendedores)" />
+            <KpiCard icon="busts-in-silhouette" label="En poder de vendedores" value={`$${n0(caja.en_vendedores ?? 0)}`} accent="primary" mono sub="suma de sus cajas" />
+            <KpiCard icon="inbox-tray" label="Ingresos del período" value={`$${n0(caja.ingresos)}`} accent="success" mono />
+            <KpiCard icon="outbox-tray" label="Egresos del período" value={`$${n0(caja.egresos)}`} accent="warning" mono />
           </div>
 
           {/* Tabla de movimientos */}

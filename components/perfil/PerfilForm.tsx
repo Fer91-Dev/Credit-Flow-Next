@@ -2,13 +2,15 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { User, Mail, Lock, Check, Loader2, ShieldAlert } from "lucide-react";
+import { User, Mail, Lock, Check, Loader2, ShieldAlert, Image as ImageIcon } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { Field, Input } from "@/components/ui/field";
+import { Avatar, generatedAvatarUrl, AVATAR_SEEDS } from "@/components/ui/Avatar";
 
 interface PerfilFormProps {
   initialName: string;
   initialEmail: string;
+  initialAvatarUrl?: string | null;
 }
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -52,9 +54,31 @@ function traducirError(msg: string): string {
   return msg;
 }
 
-export function PerfilForm({ initialName, initialEmail }: PerfilFormProps) {
+export function PerfilForm({ initialName, initialEmail, initialAvatarUrl }: PerfilFormProps) {
   const router = useRouter();
   const supabase = createClient();
+
+  // ── Avatar ──
+  const [avatar, setAvatar] = useState(initialAvatarUrl ?? "");
+  const [savingAvatar, setSavingAvatar] = useState(false);
+  const [savedAvatar, setSavedAvatar] = useState(false);
+  const [errorAvatar, setErrorAvatar] = useState<string | null>(null);
+
+  const guardarAvatar = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSavingAvatar(true);
+    setErrorAvatar(null);
+    try {
+      const { error } = await supabase.auth.updateUser({ data: { avatar_url: avatar } });
+      if (error) throw error;
+      setSavedAvatar(true);
+      router.refresh(); // re-ejecuta el layout → el sidebar muestra el avatar nuevo
+    } catch (err) {
+      setErrorAvatar(err instanceof Error ? traducirError(err.message) : "No se pudo guardar el avatar.");
+    } finally {
+      setSavingAvatar(false);
+    }
+  };
 
   // ── Datos personales ──
   const [nombre, setNombre] = useState(initialName);
@@ -176,6 +200,39 @@ export function PerfilForm({ initialName, initialEmail }: PerfilFormProps) {
 
   return (
     <div className="space-y-5 max-w-xl">
+
+      {/* Avatar */}
+      <SectionCard icon={ImageIcon} title="Avatar">
+        <form onSubmit={guardarAvatar} className="space-y-4">
+          <div className="flex items-center gap-4">
+            <Avatar name={initialName} src={avatar || undefined} size="xl" />
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              Elegí un avatar para tu perfil. Se muestra en el menú lateral y en tu ficha.
+            </p>
+          </div>
+          <div className="grid grid-cols-6 gap-2.5 sm:grid-cols-8">
+            {AVATAR_SEEDS.map((seed) => {
+              const url = generatedAvatarUrl(seed);
+              const sel = url === avatar;
+              return (
+                <button
+                  key={seed}
+                  type="button"
+                  onClick={() => { setAvatar(url); setSavedAvatar(false); }}
+                  title={`Avatar ${seed}`}
+                  className={`rounded-full transition-all ${sel ? "ring-2 ring-primary ring-offset-2 ring-offset-card" : "opacity-80 hover:scale-105 hover:opacity-100"}`}
+                >
+                  <Avatar src={url} name={seed} size="sm" />
+                </button>
+              );
+            })}
+          </div>
+          {errorAvatar && <p className="text-xs text-destructive">{errorAvatar}</p>}
+          <div className="flex justify-end">
+            <SaveButton saving={savingAvatar} saved={savedAvatar} label="Guardar avatar" />
+          </div>
+        </form>
+      </SectionCard>
 
       {/* Datos personales */}
       <SectionCard icon={User} title="Datos personales">

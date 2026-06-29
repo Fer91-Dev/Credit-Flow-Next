@@ -73,7 +73,7 @@ export function ComprobantesView() {
   return (
     <div className="space-y-6">
       <PageHeader
-        icon={Receipt}
+        icon="receipt"
         title="Comprobantes"
         subtitle="Registro central de comprobantes de caja · principal y vendedores"
         accent="primary"

@@ -2,10 +2,11 @@
 
 import { useMemo, useState } from "react";
 import type { Role } from "@prisma/client";
-import { CalendarDays, MapPin, UserCog, X, Target, Trophy, Users2, AlertTriangle, Percent, ShieldCheck, Layers, DollarSign, Sparkles } from "lucide-react";
+import { CalendarDays, MapPin, UserCog, X, Target, Trophy, Users2, AlertTriangle, Percent, ShieldCheck, Sparkles } from "lucide-react";
 import { useZonas, useVendedores, useDashboard, useMiPerfilVendedor, useMisLogros, type DashboardFiltros, type VendedorRendimiento, type MiPerfilVendedor } from "@/lib/swr";
 import { DashboardKpis, DashboardCobranzaAvance, DashboardMoraGrid, DashboardKpisSkeleton } from "./DashboardMetrics";
 import { MedallaBadge, RangoBadge, InsigniaChip } from "@/components/ui/Medalla";
+import { Emoji } from "@/components/ui/Emoji";
 
 function n0(x: number) {
   return new Intl.NumberFormat("es-AR", { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(x);
@@ -236,10 +237,10 @@ function MiConfiguracionVendedor({ perfil }: { perfil: MiPerfilVendedor }) {
 
       {/* Rendimiento propio */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <MiStat icon={Layers} label="Créditos otorgados" value={String(r.creditos_otorgados)} />
-        <MiStat icon={DollarSign} label="Vendido" value={`$${n0(r.monto_vendido)}`} accent="success" />
-        <MiStat icon={Percent} label="Comisión devengada" value={`$${n0(r.comision_total)}`} accent="warning" />
-        <MiStat icon={Target} label="Avance meta" value={`${perfil.meta_vigente?.cumplimiento.avance_monto ?? 0}%`} accent="primary" />
+        <MiStat icon="credit-card" label="Créditos otorgados" value={String(r.creditos_otorgados)} />
+        <MiStat icon="dollar-banknote" label="Vendido" value={`$${n0(r.monto_vendido)}`} accent="success" />
+        <MiStat icon="bar-chart" label="Comisión devengada" value={`$${n0(r.comision_total)}`} accent="warning" />
+        <MiStat icon="bullseye" label="Avance meta" value={`${perfil.meta_vigente?.cumplimiento.avance_monto ?? 0}%`} accent="primary" />
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -302,12 +303,14 @@ function MiConfiguracionVendedor({ perfil }: { perfil: MiPerfilVendedor }) {
   );
 }
 
-function MiStat({ icon: Icon, label, value, accent }: { icon: typeof Target; label: string; value: string; accent?: "success" | "warning" | "primary" }) {
+function MiStat({ icon, label, value, accent }: { icon: typeof Target | string; label: string; value: string; accent?: "success" | "warning" | "primary" }) {
+  const isEmoji = typeof icon === "string";
+  const Icon = isEmoji ? null : icon;
   const color = accent === "success" ? "text-success" : accent === "warning" ? "text-warning" : accent === "primary" ? "text-primary" : "text-foreground";
   return (
     <div className="rounded-xl border border-border bg-muted/10 p-3">
       <div className="flex items-center gap-1.5 text-[10px] font-medium text-muted-foreground uppercase tracking-wide">
-        <Icon className="h-3 w-3" /> {label}
+        {isEmoji ? <Emoji name={icon} className="h-3.5 w-3.5" /> : Icon && <Icon className="h-3 w-3" />} {label}
       </div>
       <p className={`mt-1 font-mono font-bold text-lg ${color}`}>{value}</p>
     </div>

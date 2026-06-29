@@ -165,7 +165,7 @@ export function CobranzaTable({ role }: { role: Role }) {
   return (
     <div className="space-y-6">
       <PageHeader
-        icon={ShieldAlert}
+        icon="megaphone"
         title="Cobranzas y Recupero"
         subtitle="Créditos en mora, promesas de pago y recuperación"
         accent="destructive"
@@ -222,10 +222,10 @@ export function CobranzaTable({ role }: { role: Role }) {
 
       {/* ── KPI Strip ── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <KpiCard icon={AlertCircle} label="Total en gestión"   value={String(kpis.total)}        accent={kpis.total > 0 ? "destructive" : "muted"} />
-        <KpiCard icon={DollarSign}  label="Saldo expuesto"     value={`$${n0(kpis.saldo)}`}      accent={kpis.saldo > 0 ? "warning" : "muted"} mono />
-        <KpiCard icon={ShieldAlert} label="Mora crítica (+30d)" value={String(kpis.critica)}     accent={kpis.critica > 0 ? "destructive" : "muted"} />
-        <KpiCard icon={Clock}       label="Mora alta (15–30d)" value={String(kpis.alta)}          accent={kpis.alta > 0 ? "warning" : "muted"} />
+        <KpiCard icon="warning" label="Total en gestión"   value={String(kpis.total)}        accent={kpis.total > 0 ? "destructive" : "muted"} />
+        <KpiCard icon="dollar-banknote"  label="Saldo expuesto"     value={`$${n0(kpis.saldo)}`}      accent={kpis.saldo > 0 ? "warning" : "muted"} mono />
+        <KpiCard icon="shield" label="Mora crítica (+30d)" value={String(kpis.critica)}     accent={kpis.critica > 0 ? "destructive" : "muted"} />
+        <KpiCard icon="alarm-clock"       label="Mora alta (15–30d)" value={String(kpis.alta)}          accent={kpis.alta > 0 ? "warning" : "muted"} />
       </div>
 
       {/* ── Filter Toolbar ── */}
@@ -532,7 +532,7 @@ export function CobranzaTable({ role }: { role: Role }) {
       <Dialog open={!!gestion} onOpenChange={open => { if (!open) setGestion(null); }}>
         <DialogContent className="w-[95vw] sm:max-w-lg sm:p-7">
           <ModalHeader
-            icon={MessageSquarePlus}
+            icon="speech-balloon"
             title="Registrar gestión de cobranza"
             subtitle="Dejá registro del contacto y, si corresponde, la promesa de pago."
           />
@@ -584,7 +584,7 @@ export function CobranzaTable({ role }: { role: Role }) {
           <DialogContent className="w-[95vw] sm:max-w-xl sm:p-7 max-h-[90dvh] flex flex-col overflow-hidden">
             <div className="shrink-0">
               <ModalHeader
-                icon={Megaphone}
+                icon="megaphone"
                 title="Nueva campaña de recuperación"
                 subtitle="Configurá el mensaje y el canal para los créditos seleccionados."
               />

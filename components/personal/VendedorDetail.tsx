@@ -3,14 +3,16 @@
 import { useState, useMemo, useEffect } from "react";
 import { mutate as globalMutate } from "swr";
 import {
-  UserCog, Trash2, TrendingUp, DollarSign, Target, Percent,
-  MapPin, Layers, Plus, X, Sparkles, Award, Wallet, Send, ArrowDownToLine, Scale,
+  UserCog, Trash2, TrendingUp, Target, Percent,
+  MapPin, Layers, Plus, X, Award, Wallet, Send, ArrowDownToLine,
 } from "lucide-react";
 import { useVendedorDetalle, useMetasVendedor, useLogrosVendedor, useConfiguracion, useVendedorCaja, KEYS, type VendedorDetalle, type ComisionConfig, type MetaVendedor, type PeriodoGamificacion, type CuentaCaja, type MovimientoCaja } from "@/lib/swr";
 import { calcularComisionTotal, comisionDeVenta, rangoDePeriodo, periodoActual } from "@/lib/domain";
 import { MedallaBadge, RangoBadge, InsigniaChip } from "@/components/ui/Medalla";
 import { MovimientoDetail } from "@/components/caja/MovimientoDetail";
 import { StatusBadge } from "@/components/ui/StatusBadge";
+import { Avatar } from "@/components/ui/Avatar";
+import { Emoji } from "@/components/ui/Emoji";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field, Input, Select, Textarea } from "@/components/ui/field";
@@ -115,9 +117,7 @@ export function VendedorDetail({ vendedorId, onChanged, onEliminar }: VendedorDe
       {/* ── Cabecera ── */}
       <div className="flex flex-col gap-4 p-5 border-b border-border md:flex-row md:items-start md:justify-between">
         <div className="flex items-center gap-3 min-w-0">
-          <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/30 to-primary/5 border border-primary/20 text-xl font-bold text-primary">
-            {vendedor.nombre.slice(0, 1).toUpperCase()}
-          </div>
+          <Avatar name={vendedor.nombre} size="lg" square status={vendedor.activo ? "online" : "offline"} />
           <div className="min-w-0">
             <h2 className="truncate text-2xl font-semibold leading-tight tracking-tight text-foreground">{vendedor.nombre}</h2>
             <div className="mt-1.5 flex flex-wrap items-center gap-2">
@@ -142,10 +142,10 @@ export function VendedorDetail({ vendedorId, onChanged, onEliminar }: VendedorDe
 
       {/* KPIs propios del empleado */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 p-5 border-b border-border">
-        <MiniStat icon={Layers} label="Créditos otorgados" value={String(r?.creditos_otorgados ?? 0)} />
-        <MiniStat icon={DollarSign} label="Vendido" value={`$${n0(r?.monto_vendido ?? 0)}`} accent="success" />
-        <MiniStat icon={Percent} label="Comisión devengada" value={`$${n0(r?.comision_total ?? 0)}`} accent="warning" />
-        <MiniStat icon={Target} label="Avance meta" value={`${r?.avance_meta ?? 0}%`} accent="primary" />
+        <MiniStat icon="credit-card" label="Créditos otorgados" value={String(r?.creditos_otorgados ?? 0)} />
+        <MiniStat icon="dollar-banknote" label="Vendido" value={`$${n0(r?.monto_vendido ?? 0)}`} accent="success" />
+        <MiniStat icon="bar-chart" label="Comisión devengada" value={`$${n0(r?.comision_total ?? 0)}`} accent="warning" />
+        <MiniStat icon="bullseye" label="Avance meta" value={`${r?.avance_meta ?? 0}%`} accent="primary" />
       </div>
 
       {/* ── Navegación de pestañas ── */}
@@ -181,12 +181,14 @@ export function VendedorDetail({ vendedorId, onChanged, onEliminar }: VendedorDe
 }
 
 /* ── Mini-stat de cabecera ── */
-function MiniStat({ icon: Icon, label, value, accent }: { icon: typeof Layers; label: string; value: string; accent?: "success" | "warning" | "primary" }) {
+function MiniStat({ icon, label, value, accent }: { icon: typeof Layers | string; label: string; value: string; accent?: "success" | "warning" | "primary" }) {
+  const isEmoji = typeof icon === "string";
+  const Icon = isEmoji ? null : icon;
   const color = accent === "success" ? "text-success" : accent === "warning" ? "text-warning" : accent === "primary" ? "text-primary" : "text-foreground";
   return (
     <div className="rounded-xl border border-border bg-card p-3">
       <div className="flex items-center gap-1.5 text-[10px] font-medium text-muted-foreground uppercase tracking-wide">
-        <Icon className="h-3 w-3" /> {label}
+        {isEmoji ? <Emoji name={icon} className="h-3.5 w-3.5" /> : Icon && <Icon className="h-3 w-3" />} {label}
       </div>
       <p className={`mt-1 font-mono font-bold text-lg ${color}`}>{value}</p>
     </div>
@@ -293,14 +295,16 @@ function RendimientoTab({ vendedor }: { vendedor: VendedorDetalle }) {
 /* ── Pestaña Comisiones (Fase 2: base + por tipo + tramos + bonus) ── */
 
 /** Cabecera de bloque con toggle de habilitado. */
-function BloqueToggle({ titulo, hint, on, onToggle, icon: Icon, children }: {
-  titulo: string; hint?: string; on: boolean; onToggle: (v: boolean) => void; icon: typeof Percent; children: React.ReactNode;
+function BloqueToggle({ titulo, hint, on, onToggle, icon, children }: {
+  titulo: string; hint?: string; on: boolean; onToggle: (v: boolean) => void; icon: typeof Percent | string; children: React.ReactNode;
 }) {
+  const isEmoji = typeof icon === "string";
+  const Icon = isEmoji ? null : icon;
   return (
     <section className="rounded-xl border border-border bg-muted/10 p-4">
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-2">
-          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10 border border-primary/20"><Icon className="h-3.5 w-3.5 text-primary" /></div>
+          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10 border border-primary/20">{isEmoji ? <Emoji name={icon} className="h-4 w-4" /> : Icon && <Icon className="h-3.5 w-3.5 text-primary" />}</div>
           <div>
             <p className="text-sm font-semibold text-foreground">{titulo}</p>
             {hint && <p className="text-[11px] text-muted-foreground/70">{hint}</p>}
@@ -396,7 +400,7 @@ function ComisionesTab({ vendedor, guardar }: { vendedor: VendedorDetalle; guard
       </section>
 
       {/* Por tipo de crédito */}
-      <BloqueToggle titulo="% por tipo de crédito" hint="Tiene prioridad sobre la base y los tramos" on={porTipoOn} onToggle={setPorTipoOn} icon={Layers}>
+      <BloqueToggle titulo="% por tipo de crédito" hint="Tiene prioridad sobre la base y los tramos" on={porTipoOn} onToggle={setPorTipoOn} icon="credit-card">
         <div className="grid grid-cols-3 gap-3">
           {(["personal", "empresarial", "otro"] as const).map((k) => (
             <Field key={k} label={k.charAt(0).toUpperCase() + k.slice(1) + " (%)"}>
@@ -409,7 +413,7 @@ function ComisionesTab({ vendedor, guardar }: { vendedor: VendedorDetalle; guard
       </BloqueToggle>
 
       {/* Escalonada por volumen */}
-      <BloqueToggle titulo="Escalonada por volumen" hint="% según el monto total vendido en el período" on={tramosOn} onToggle={setTramosOn} icon={TrendingUp}>
+      <BloqueToggle titulo="Escalonada por volumen" hint="% según el monto total vendido en el período" on={tramosOn} onToggle={setTramosOn} icon="chart-increasing">
         <div className="space-y-2">
           {tramos.map((t, i) => (
             <div key={i} className="flex items-center gap-2">
@@ -436,7 +440,7 @@ function ComisionesTab({ vendedor, guardar }: { vendedor: VendedorDetalle; guard
       </BloqueToggle>
 
       {/* Bonus por meta */}
-      <BloqueToggle titulo="Bonus por meta cumplida" hint="Extra cuando alcanza su meta del período" on={bonusOn} onToggle={setBonusOn} icon={Sparkles}>
+      <BloqueToggle titulo="Bonus por meta cumplida" hint="Extra cuando alcanza su meta del período" on={bonusOn} onToggle={setBonusOn} icon="sparkles">
         <div className="grid grid-cols-2 gap-3">
           <Field label="Tipo de bonus">
             <Select value={bonusTipo} onChange={(e) => setBonusTipo(e.target.value as "monto" | "porcentaje")}>
@@ -831,9 +835,9 @@ function CajaOperacionTab({ vendedor, guardar }: { vendedor: VendedorDetalle; gu
           <>
             {/* Saldos */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <MiniStat icon={Scale} label="Saldo de su caja" value={`$${n0(caja.saldo_total)}`} accent={caja.saldo_total >= 0 ? "success" : undefined} />
+              <MiniStat icon="balance-scale" label="Saldo de su caja" value={`$${n0(caja.saldo_total)}`} accent={caja.saldo_total >= 0 ? "success" : undefined} />
               {(["efectivo", "banco", "dolares"] as CuentaCaja[]).map((c) => (
-                <MiniStat key={c} icon={Wallet} label={CAJA_CUENTA_LABEL[c]} value={`$${n0(caja.saldos_por_cuenta[c] ?? 0)}`} />
+                <MiniStat key={c} icon="money-bag" label={CAJA_CUENTA_LABEL[c]} value={`$${n0(caja.saldos_por_cuenta[c] ?? 0)}`} />
               ))}
             </div>
 

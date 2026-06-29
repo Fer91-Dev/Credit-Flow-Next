@@ -3,6 +3,7 @@
 import { ChevronDown, type LucideIcon } from "lucide-react";
 import { maskMontoInput, cn } from "@/lib/utils";
 import { DialogHeader, DialogTitle } from "./dialog";
+import { Emoji } from "./Emoji";
 
 /**
  * Form-kit compartido del SaaS: primitivas para que TODOS los modales de
@@ -28,18 +29,21 @@ const HEADER_ACCENT: Record<Accent, string> = {
 
 /** Cabecera estándar de modal: badge con ícono + título + subtítulo. */
 export function ModalHeader({
-  icon: Icon, title, subtitle, accent = "primary",
+  icon, title, subtitle, accent = "primary",
 }: {
-  icon: LucideIcon;
+  /** Componente Lucide, o nombre de un Fluent Emoji (`public/emoji/<icon>.svg`). */
+  icon: LucideIcon | string;
   title: string;
   subtitle?: string;
   accent?: Accent;
 }) {
+  const isEmoji = typeof icon === "string";
+  const Icon = isEmoji ? null : icon;
   return (
     <DialogHeader className="pr-8">
       <div className="flex items-center gap-3">
-        <div className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border", HEADER_ACCENT[accent])}>
-          <Icon className="h-5 w-5" />
+        <div className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border", isEmoji ? "border-border/60 bg-muted/40" : HEADER_ACCENT[accent])}>
+          {isEmoji ? <Emoji name={icon} className="h-6 w-6" /> : Icon && <Icon className="h-5 w-5" />}
         </div>
         <div className="min-w-0">
           <DialogTitle>{title}</DialogTitle>

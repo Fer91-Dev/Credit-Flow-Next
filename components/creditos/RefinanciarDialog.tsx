@@ -105,7 +105,7 @@ function RefinanciarForm({ credito, onClose }: { credito: Credito; onClose: (suc
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
       <ModalHeader
-        icon={RefreshCw}
+        icon="counterclockwise-arrows-button"
         title={`Refinanciar ${formatCreditoNumero(credito.numero)}`}
         subtitle="Consolida la deuda viva en un crédito nuevo (no mueve caja)"
         accent="warning"

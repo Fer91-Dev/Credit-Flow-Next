@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { motion } from "framer-motion";
-import { CalendarDays, CheckCircle2, DollarSign, Eye, EyeOff, Info, Percent, Printer, Search, TrendingUp, UserPlus, X } from "lucide-react";
+import { DollarSign, Eye, EyeOff, Info, Percent, Search, UserPlus, X } from "lucide-react";
+import { Emoji } from "@/components/ui/Emoji";
 import { Field, Input, Select } from "@/components/ui/field";
 import { ClienteForm, type ClienteCreado } from "@/components/clientes/ClienteForm";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -340,7 +341,7 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
     return (
       <div className="flex h-full min-h-0 flex-col items-center justify-center gap-6 p-8 text-center">
         <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-success/30 bg-success/15">
-          <CheckCircle2 className="h-8 w-8 text-success" />
+          <Emoji name="check-mark-button" className="h-8 w-8" />
         </div>
         <div className="space-y-1.5">
           <h3 className="text-lg font-semibold text-foreground">Crédito otorgado con éxito</h3>
@@ -389,7 +390,7 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
             onClick={() => imprimirPlan("cliente")}
             className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-border px-4 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted/40 hover:text-foreground sm:flex-1"
           >
-            <Printer className="h-4 w-4" /> Imprimir plan
+            <Emoji name="printer" className="h-4 w-4" /> Imprimir plan
           </button>
           <button
             type="button"
@@ -562,7 +563,7 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
         {/* Sub-header con toggle de vista */}
         <div className="flex items-center justify-between gap-3 px-5 py-3 border-b border-border shrink-0">
           <div className="flex items-center gap-2 min-w-0">
-            <CalendarDays className="h-4 w-4 text-muted-foreground shrink-0" />
+            <Emoji name="calendar" className="h-4 w-4 shrink-0" />
             <span className="text-sm font-semibold text-foreground whitespace-nowrap shrink-0">Plan de pagos</span>
             {plan && (
               <span className="text-[11px] font-mono bg-muted/60 text-muted-foreground rounded-full px-2 py-0.5 shrink-0 whitespace-nowrap">
@@ -609,7 +610,7 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
                 title={`Imprimir vista ${vista}`}
                 className="flex items-center gap-1.5 h-9 px-3.5 rounded-lg border border-border bg-muted/30 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
               >
-                <Printer className="h-3.5 w-3.5" /> Imprimir
+                <Emoji name="printer" className="h-3.5 w-3.5" /> Imprimir
               </button>
             )}
           </div>
@@ -711,7 +712,7 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center gap-4 px-8 text-center">
             <div className="h-20 w-20 rounded-2xl bg-muted/20 border border-border/50 flex items-center justify-center">
-              <CalendarDays className="h-9 w-9 text-muted-foreground/20" />
+              <Emoji name="calendar" className="h-9 w-9 opacity-40" />
             </div>
             <div className="space-y-1.5">
               <p className="text-sm font-semibold text-muted-foreground">Simulá el plan de pagos</p>
@@ -730,7 +731,7 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
               {/* Cuota principal */}
               <div className="flex items-center gap-2.5 shrink-0">
                 <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 border border-primary/20 shrink-0">
-                  <TrendingUp className="h-4 w-4 text-primary" />
+                  <Emoji name="chart-increasing" className="h-4 w-4" />
                 </div>
                 <div>
                   <p className="text-[10px] text-muted-foreground/80 leading-tight">

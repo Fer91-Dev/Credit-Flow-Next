@@ -23,7 +23,7 @@ export function LegalPage({
 }) {
   return (
     <div className="space-y-6">
-      <PageHeader icon={FileText} title={titulo} subtitle={`Última actualización: ${actualizado}`} accent="primary" />
+      <PageHeader icon="page-facing-up" title={titulo} subtitle={`Última actualización: ${actualizado}`} accent="primary" />
 
       <div className="flex items-start gap-2.5 rounded-xl border border-warning/30 bg-warning/[0.06] px-4 py-3">
         <AlertTriangle className="h-4 w-4 shrink-0 text-warning mt-0.5" />

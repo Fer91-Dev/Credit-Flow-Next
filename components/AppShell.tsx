@@ -3,9 +3,7 @@
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import {
-  Home, Users, FileText, Wallet, Bell, Search, LogOut, Menu, X,
-  ShieldAlert, BarChart3, PlusCircle, Settings, History,
-  FileBarChart, Landmark, Sun, Moon, UserCog, Truck, ShieldCheck, Receipt,
+  Bell, Search, LogOut, Menu, X, ChevronDown, PlusCircle, Sun, Moon,
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useEffect, useState } from "react";
@@ -13,68 +11,132 @@ import { Footer } from "./Footer";
 import { SystemActionsProvider } from "./system-actions";
 import { canAccess, ROLE_LABEL, type Role } from "@/lib/auth/roles";
 import { createClient } from "@/lib/supabase/client";
+import { Emoji } from "@/components/ui/Emoji";
+import { Avatar } from "@/components/ui/Avatar";
 
-const NAV_PRIMARY = [
-  { icon: Home,        label: "Home",           to: "/" },
-  { icon: BarChart3,   label: "Cartera",        to: "/cartera" },
-  { icon: Users,       label: "Clientes",       to: "/clientes" },
-  { icon: FileText,    label: "Créditos",       to: "/creditos" },
-  { icon: ShieldAlert, label: "Cobranzas y Recupero", to: "/cobranza" },
-  { icon: Wallet,      label: "Pagos",          to: "/pagos" },
-] as const;
+/** `icon`: nombre del SVG Fluent Emoji en `public/emoji/<icon>.svg` (Microsoft, vía Iconify). */
+type NavItem = { icon: string; label: string; to: string };
+type NavGroup = { label: string; items: NavItem[] };
 
-const NAV_SECONDARY = [
-  { icon: Landmark,     label: "Caja",          to: "/caja" },
-  { icon: Receipt,      label: "Comprobantes",  to: "/comprobantes" },
-  { icon: UserCog,      label: "Personal",      to: "/personal" },
-  { icon: Truck,        label: "Proveedores",   to: "/proveedores" },
-  { icon: ShieldCheck,  label: "Usuarios",      to: "/usuarios" },
-  { icon: FileBarChart, label: "Reportes",      to: "/reportes" },
-  { icon: History,      label: "Auditoría",     to: "/auditoria" },
-  { icon: Settings,     label: "Configuración", to: "/configuracion" },
-] as const;
+/** Home queda suelto arriba (no entra en ningún grupo colapsable). */
+const HOME_ITEM: NavItem = { icon: "house", label: "Home", to: "/" };
 
-type NavItem = { icon: React.ElementType; label: string; to: string };
+/**
+ * Menús agrupados por dominio (colapsables). El filtrado por rol vacía grupos
+ * que el rol no puede ver y se ocultan enteros (ver `groups` en AppShell):
+ *  - vendedor → Operación + Caja; cobrador → solo Operación; admin → todo.
+ * "Cartera" se quitó del menú a pedido (la ruta sigue viva, sin enlace).
+ */
+const NAV_GROUPS: NavGroup[] = [
+  {
+    label: "Operación",
+    items: [
+      { icon: "busts-in-silhouette", label: "Clientes",             to: "/clientes" },
+      { icon: "credit-card",         label: "Créditos",             to: "/creditos" },
+      { icon: "dollar-banknote",     label: "Pagos",                to: "/pagos" },
+      { icon: "megaphone",           label: "Cobranzas y Recupero", to: "/cobranza" },
+    ],
+  },
+  {
+    label: "Finanzas",
+    items: [
+      { icon: "bank",      label: "Caja",         to: "/caja" },
+      { icon: "receipt",   label: "Comprobantes", to: "/comprobantes" },
+      { icon: "bar-chart", label: "Reportes",     to: "/reportes" },
+    ],
+  },
+  {
+    label: "Administración",
+    items: [
+      { icon: "office-worker",   label: "Personal",    to: "/personal" },
+      { icon: "delivery-truck",  label: "Proveedores", to: "/proveedores" },
+      { icon: "locked-with-key", label: "Usuarios",    to: "/usuarios" },
+    ],
+  },
+  {
+    label: "Sistema",
+    items: [
+      { icon: "gear",   label: "Configuración", to: "/configuracion" },
+      { icon: "scroll", label: "Auditoría",     to: "/auditoria" },
+    ],
+  },
+];
 
-function SideNavLink({ icon: Icon, label, to, isActive, onClick }: NavItem & { isActive: boolean; onClick?: () => void }) {
+function SideNavLink({ icon, label, to, isActive, onClick, nested = false }: NavItem & { isActive: boolean; onClick?: () => void; nested?: boolean }) {
   return (
     <Link
       href={to}
       onClick={onClick}
-      className={`group relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200 ease-out ${
+      className={`group flex items-center rounded-lg font-medium transition-colors duration-200 ease-out ${
+        nested ? "gap-2.5 px-2.5 py-1.5 text-[13px]" : "gap-3 px-3 py-2.5 text-sm"
+      } ${
         isActive
-          ? "bg-primary/10 text-foreground shadow-md shadow-primary/10"
-          : "text-muted-foreground hover:bg-muted/40 hover:text-foreground hover:translate-x-0.5"
+          ? "bg-primary/10 text-foreground ring-1 ring-inset ring-primary/30"
+          : "text-muted-foreground hover:bg-muted/10 hover:text-foreground"
       }`}
     >
-      {/* Indicador izquierdo del item activo (animado) */}
-      <span
-        className={`absolute left-0 top-1/2 -translate-y-1/2 w-1 rounded-r-full bg-primary transition-all duration-200 ease-out ${
-          isActive ? "h-5 opacity-100" : "h-0 opacity-0"
-        }`}
-      />
-      <Icon
-        className={`h-[18px] w-[18px] shrink-0 transition-colors duration-200 ${
-          isActive ? "text-primary" : "group-hover:text-foreground"
-        }`}
-      />
+      <Emoji name={icon} className={nested ? "h-[18px] w-[18px]" : "h-5 w-5"} />
       <span className={isActive ? "font-semibold" : ""}>{label}</span>
     </Link>
   );
 }
 
-export function AppShell({ children, role, nombre, email }: { children: React.ReactNode; role: Role; nombre: string | null; email: string | null }) {
+/** Grupo colapsable del sidebar: cabecera con chevron + sus items. */
+function NavSection({
+  group, open, groupActive, isActive, onToggle, onNavigate,
+}: {
+  group: NavGroup;
+  open: boolean;
+  groupActive: boolean;
+  isActive: (to: string) => boolean;
+  onToggle: () => void;
+  onNavigate?: () => void;
+}) {
+  return (
+    <div className="pt-3 first:pt-0">
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={open}
+        className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-[10px] font-bold uppercase tracking-[0.15em] transition-colors ${
+          groupActive ? "text-foreground" : "text-muted-foreground/70 hover:text-foreground"
+        }`}
+      >
+        <span>{group.label}</span>
+        <ChevronDown className={`h-3.5 w-3.5 shrink-0 transition-transform duration-200 ${open ? "" : "-rotate-90"}`} />
+      </button>
+      {/* Despliegue suave: grid-rows 0fr→1fr anima la altura sin saltos. */}
+      <div className={`grid transition-[grid-template-rows] duration-300 ease-out ${open ? "grid-rows-[1fr]" : "grid-rows-[0fr]"}`}>
+        <div className="overflow-hidden">
+          <div className={`ml-4 mt-0.5 space-y-0.5 border-l border-border/40 pl-2 transition-opacity duration-200 ${open ? "opacity-100" : "opacity-0"}`}>
+            {group.items.map((item) => (
+              <SideNavLink key={item.to} {...item} isActive={isActive(item.to)} onClick={onNavigate} nested />
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function AppShell({ children, role, nombre, email, avatarUrl }: { children: React.ReactNode; role: Role; nombre: string | null; email: string | null; avatarUrl: string | null }) {
   const router = useRouter();
   const pathname = usePathname();
 
-  // Menú filtrado por rol (cosmético: la barrera real es el guard server + API).
-  const navPrimary = NAV_PRIMARY.filter((i) => canAccess(role, i.to));
-  const navSecondary = NAV_SECONDARY.filter((i) => canAccess(role, i.to));
+  // Menú agrupado, filtrado por rol (cosmético: la barrera real es el guard
+  // server + API). Cada grupo se queda solo con los items accesibles; los
+  // grupos que quedan vacíos no se renderizan.
+  const groups = NAV_GROUPS
+    .map((g) => ({ ...g, items: g.items.filter((i) => canAccess(role, i.to)) }))
+    .filter((g) => g.items.length > 0);
   const { resolvedTheme, setTheme } = useTheme();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [mounted, setMounted] = useState(false);
+  // Colapso por grupo. Valor explícito tras togglear; si no hay, el grupo se
+  // abre por defecto solo si contiene la ruta activa (ver `renderNav`).
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
 
   // Identidad del usuario: server-sourced (profiles vía requireAuth en el layout).
   // Fuente única de verdad — el perfil edita profiles.full_name y un router.refresh()
@@ -83,7 +145,20 @@ export function AppShell({ children, role, nombre, email }: { children: React.Re
 
   useEffect(() => {
     setMounted(true);
+    // Restaura el colapso de grupos que el usuario fijó manualmente.
+    try {
+      const saved = localStorage.getItem("cf:navGroups");
+      if (saved) setOpenGroups(JSON.parse(saved));
+    } catch { /* sin persistencia, se usan los defaults */ }
   }, []);
+
+  const setGroupOpen = (label: string, open: boolean) => {
+    setOpenGroups((prev) => {
+      const next = { ...prev, [label]: open };
+      try { localStorage.setItem("cf:navGroups", JSON.stringify(next)); } catch { /* noop */ }
+      return next;
+    });
+  };
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -110,7 +185,6 @@ export function AppShell({ children, role, nombre, email }: { children: React.Re
     }
   }
 
-  const initials = (nombre?.trim() || email || "U").split(" ").map((s) => s[0]).slice(0, 2).join("").toUpperCase();
 
   const handlePaletteAction = (to: string) => {
     setPaletteOpen(false);
@@ -124,15 +198,38 @@ export function AppShell({ children, role, nombre, email }: { children: React.Re
 
   if (!mounted) return null;
 
-  const allNavItems = [...navPrimary, ...navSecondary];
+  const allNavItems = [HOME_ITEM, ...groups.flatMap((g) => g.items)];
   const isDark = resolvedTheme === "dark";
   const toggleTheme = () => setTheme(isDark ? "light" : "dark");
+
+  // Navegación compartida desktop/mobile: Home suelto + grupos colapsables.
+  // `onNavigate` cierra el drawer en mobile (no-op en desktop).
+  const renderNav = (onNavigate?: () => void) => (
+    <>
+      <SideNavLink {...HOME_ITEM} isActive={isActive(HOME_ITEM.to)} onClick={onNavigate} />
+      {groups.map((g) => {
+        const groupActive = g.items.some((i) => isActive(i.to));
+        const open = openGroups[g.label] ?? groupActive;
+        return (
+          <NavSection
+            key={g.label}
+            group={g}
+            open={open}
+            groupActive={groupActive}
+            isActive={isActive}
+            onToggle={() => setGroupOpen(g.label, !open)}
+            onNavigate={onNavigate}
+          />
+        );
+      })}
+    </>
+  );
 
   return (
     <div className="flex h-screen overflow-hidden text-foreground">
 
       {/* ── SIDEBAR DESKTOP (lg+) ─────────────────────────────────────────── */}
-      <aside className="hidden lg:flex fixed inset-y-0 left-0 z-30 w-64 flex-col bg-card/60 backdrop-blur-xl border-r border-border/50 shadow-[2px_0_32px_rgba(0,0,0,0.15)] dark:shadow-[2px_0_32px_rgba(0,0,0,0.5)]">
+      <aside className="hidden lg:flex fixed inset-y-0 left-0 z-30 w-64 flex-col bg-card/50 backdrop-blur-xl border-r border-border/40">
         {/* Branding — alto alineado con la línea inferior del PageHeader del contenido */}
         <Link href="/" className="flex h-[98px] shrink-0 items-center gap-3.5 border-b border-border/70 px-5 transition-opacity hover:opacity-80">
           <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-success text-white shadow-lg shadow-primary/30 ring-1 ring-white/15">
@@ -141,51 +238,38 @@ export function AppShell({ children, role, nombre, email }: { children: React.Re
           <span className="text-base font-bold tracking-tight text-foreground font-mono">CreditFlow</span>
         </Link>
 
-        {/* Nav */}
+        {/* Nav — Home suelto + grupos colapsables */}
         <nav className="flex-1 overflow-y-auto p-3 space-y-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          <p className="px-3 pb-2 pt-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/50">
-            Principal
-          </p>
-          {navPrimary.map((item) => (
-            <SideNavLink key={item.to} {...item} isActive={isActive(item.to)} />
-          ))}
-
-          <div className="my-4 mx-3 border-t border-border/50" />
-
-          <p className="px-3 pb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/50">
-            Sistema
-          </p>
-          {navSecondary.map((item) => (
-            <SideNavLink key={item.to} {...item} isActive={isActive(item.to)} />
-          ))}
+          {renderNav()}
         </nav>
 
-        {/* User + signout */}
-        <div className="shrink-0 border-t border-border/60 p-3">
-          <div className="flex items-start gap-3 rounded-xl px-2.5 py-2.5 transition-colors duration-200 hover:bg-muted/30">
-            <Link href="/perfil" title="Ver mi perfil" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary to-muted text-sm font-bold text-white shadow-md shadow-black/25 hover:opacity-80 transition-opacity">
-              {initials}
+        {/* User — mini-tarjeta integrada */}
+        <div className="shrink-0 p-3">
+          <div className="flex items-center gap-2.5 rounded-xl border border-border/50 bg-muted/20 p-2 transition-colors duration-200 hover:bg-muted/30">
+            <Link href="/perfil" title="Ver mi perfil" className="shrink-0 transition-opacity hover:opacity-80">
+              <Avatar name={displayName} src={avatarUrl} size="xs" />
             </Link>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <p className="text-sm font-semibold text-foreground break-words leading-snug">
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-1.5">
+                <p className="truncate text-sm font-semibold leading-tight text-foreground">
                   {displayName}
                 </p>
-                <span className="shrink-0 rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
+                <span className="shrink-0 rounded-full border border-primary/20 bg-primary/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-primary">
                   {ROLE_LABEL[role]}
                 </span>
               </div>
-              <p className="text-xs text-muted-foreground break-all leading-snug mt-0.5">
+              <p className="mt-0.5 truncate text-xs text-muted-foreground leading-tight">
                 {email ?? ""}
               </p>
-              <button
-                onClick={signOut}
-                className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground/70 hover:text-destructive transition-colors"
-              >
-                <LogOut className="h-3 w-3" />
-                Cerrar sesión
-              </button>
             </div>
+            <button
+              onClick={signOut}
+              title="Cerrar sesión"
+              aria-label="Cerrar sesión"
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground/70 transition-colors hover:bg-destructive/10 hover:text-destructive"
+            >
+              <LogOut className="h-4 w-4" />
+            </button>
           </div>
         </div>
       </aside>
@@ -238,9 +322,11 @@ export function AppShell({ children, role, nombre, email }: { children: React.Re
           </div>
         </header>
 
-        {/* MAIN */}
-        <main className="flex-1 overflow-y-auto overflow-x-hidden py-6 md:py-8 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          <div className="mx-auto w-full max-w-screen-2xl min-w-0 px-4 md:px-6 lg:px-8 space-y-8">
+        {/* MAIN — sin padding vertical en el scrollport, así el PageHeader sticky se
+            pega al borde superior real (con padding, el sticky quedaba 32px abajo y
+            el contenido se colaba por la franja de arriba). El padding va al contenido. */}
+        <main className="flex-1 overflow-y-auto overflow-x-hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <div className="mx-auto w-full max-w-screen-2xl min-w-0 px-4 pb-6 md:px-6 md:pb-8 lg:px-8 space-y-8">
             <SystemActionsProvider openSearch={() => setPaletteOpen(true)}>
               {children}
             </SystemActionsProvider>
@@ -275,39 +361,15 @@ export function AppShell({ children, role, nombre, email }: { children: React.Re
             </div>
 
             <div className="flex items-center gap-3 border-b border-border px-4 py-4">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary to-muted text-sm font-bold text-white">
-                {initials}
-              </div>
+              <Avatar name={displayName} src={avatarUrl} size="sm" />
               <div className="min-w-0">
                 <p className="truncate text-sm font-semibold text-foreground">{displayName}</p>
                 <p className="truncate text-xs text-muted-foreground">{email ?? ""}</p>
               </div>
             </div>
 
-            <nav className="flex-1 overflow-y-auto p-3 space-y-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-              <p className="px-3 pb-1.5 pt-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70">
-                Principal
-              </p>
-              {navPrimary.map((item) => (
-                <SideNavLink
-                  key={item.to}
-                  {...item}
-                  isActive={isActive(item.to)}
-                  onClick={() => setMobileOpen(false)}
-                />
-              ))}
-              <div className="my-3 border-t border-border" />
-              <p className="px-3 pb-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70">
-                Sistema
-              </p>
-              {navSecondary.map((item) => (
-                <SideNavLink
-                  key={item.to}
-                  {...item}
-                  isActive={isActive(item.to)}
-                  onClick={() => setMobileOpen(false)}
-                />
-              ))}
+            <nav className="flex-1 overflow-y-auto p-3 space-y-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              {renderNav(() => setMobileOpen(false))}
             </nav>
 
             <div className="shrink-0 border-t border-border p-3">
@@ -350,19 +412,16 @@ export function AppShell({ children, role, nombre, email }: { children: React.Re
                 Navegación rápida
               </p>
               <div className="space-y-0.5">
-                {allNavItems.map((item) => {
-                  const Icon = item.icon;
-                  return (
-                    <button
-                      key={item.to}
-                      onClick={() => handlePaletteAction(item.to)}
-                      className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm text-muted-foreground hover:bg-muted hover:text-foreground transition-all"
-                    >
-                      <Icon className="h-4 w-4" />
-                      <span>Ir a {item.label}</span>
-                    </button>
-                  );
-                })}
+                {allNavItems.map((item) => (
+                  <button
+                    key={item.to}
+                    onClick={() => handlePaletteAction(item.to)}
+                    className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm text-muted-foreground hover:bg-muted hover:text-foreground transition-all"
+                  >
+                    <Emoji name={item.icon} className="h-5 w-5" />
+                    <span>Ir a {item.label}</span>
+                  </button>
+                ))}
               </div>
 
               <p className="mt-4 px-3 py-1.5 text-[10px] font-semibold tracking-wider text-muted-foreground uppercase">

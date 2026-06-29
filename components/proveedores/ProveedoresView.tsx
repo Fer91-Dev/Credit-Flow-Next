@@ -80,7 +80,7 @@ export function ProveedoresView() {
   return (
     <div className="space-y-6">
       <PageHeader
-        icon={Truck}
+        icon="delivery-truck"
         title="Proveedores"
         subtitle="Gastos, fondeo y cuenta corriente"
         accent="primary"
@@ -97,10 +97,10 @@ export function ProveedoresView() {
         <div className="space-y-5">
           {/* KPIs */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <KpiCard icon={Building2} label="Proveedores" value={String(totales.total)} sub={`${totales.activos} activos`} accent="primary" />
-            <KpiCard icon={Wallet} label="Deuda total" value={`$${n0(deudaTotal)}`} accent={deudaTotal > 0 ? "warning" : "success"} mono sub="saldo a pagar" />
-            <KpiCard icon={ArrowUpRight} label="Con saldo pendiente" value={String(totales.conDeuda)} accent={totales.conDeuda > 0 ? "warning" : "muted"} />
-            <KpiCard icon={Building2} label="Activos" value={String(totales.activos)} accent="primary" />
+            <KpiCard icon="office-building" label="Proveedores" value={String(totales.total)} sub={`${totales.activos} activos`} accent="primary" />
+            <KpiCard icon="money-bag" label="Deuda total" value={`$${n0(deudaTotal)}`} accent={deudaTotal > 0 ? "warning" : "success"} mono sub="saldo a pagar" />
+            <KpiCard icon="outbox-tray" label="Con saldo pendiente" value={String(totales.conDeuda)} accent={totales.conDeuda > 0 ? "warning" : "muted"} />
+            <KpiCard icon="office-building" label="Activos" value={String(totales.activos)} accent="primary" />
           </div>
 
           {proveedores.length === 0 ? (
@@ -358,7 +358,7 @@ function MovimientoDialog({ open, proveedorId, onClose }: { open: boolean; prove
     <Dialog open={open} onOpenChange={(o) => { if (!o) { reset(); onClose(false); } }}>
       <DialogContent className={MODAL_CONTENT}>
         <ModalHeader
-          icon={Wallet}
+          icon="money-bag"
           title="Nuevo movimiento"
           subtitle="Cargá un cargo (deuda) o un pago en la cuenta corriente del proveedor."
         />
@@ -484,7 +484,7 @@ function ProveedorForm({ open, proveedor, onClose }: { open: boolean; proveedor:
       <DialogContent className="w-[95vw] sm:max-w-lg sm:p-7 max-h-[90dvh] flex flex-col overflow-hidden">
         <div className="shrink-0">
           <ModalHeader
-            icon={Truck}
+            icon="delivery-truck"
             title={editing ? "Editar proveedor" : "Nuevo proveedor"}
             subtitle={editing ? "Actualizá los datos del proveedor." : "Registrá un proveedor para su cuenta corriente."}
           />

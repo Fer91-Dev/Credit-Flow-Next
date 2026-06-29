@@ -9,6 +9,7 @@ import { mutate as globalMutate } from "swr";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { KpiCard } from "@/components/ui/KpiCard";
 import { StatusBadge } from "@/components/ui/StatusBadge";
+import { Avatar } from "@/components/ui/Avatar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Field, Input, Select } from "@/components/ui/field";
@@ -76,7 +77,7 @@ export function UsuariosView() {
   return (
     <div className="space-y-6">
       <PageHeader
-        icon={ShieldCheck}
+        icon="locked-with-key"
         title="Usuarios y accesos"
         subtitle="Altas de acceso, roles y privilegios del equipo"
         accent="primary"
@@ -92,9 +93,9 @@ export function UsuariosView() {
       ) : (
         <div className="space-y-5">
           <div className="grid grid-cols-3 gap-4">
-            <KpiCard icon={Users} label="Usuarios" value={String(totales.total)} sub={`${totales.activos} activos`} accent="primary" />
-            <KpiCard icon={UserCheck} label="Activos" value={String(totales.activos)} accent="success" />
-            <KpiCard icon={ShieldCheck} label="Administradores" value={String(totales.admins)} accent="warning" />
+            <KpiCard icon="busts-in-silhouette" label="Usuarios" value={String(totales.total)} sub={`${totales.activos} activos`} accent="primary" />
+            <KpiCard icon="bust-in-silhouette" label="Activos" value={String(totales.activos)} accent="success" />
+            <KpiCard icon="locked-with-key" label="Administradores" value={String(totales.admins)} accent="warning" />
           </div>
 
           {usuarios.length === 0 ? (
@@ -117,8 +118,13 @@ export function UsuariosView() {
                     {usuarios.map((u, idx) => (
                       <tr key={u.id} className={`hover:bg-muted/20 transition-colors ${idx % 2 === 1 ? "bg-muted/5" : ""} ${!u.activo ? "opacity-50" : ""}`}>
                         <td className="px-4 py-3 border-b border-border/70">
-                          <p className="font-medium text-foreground">{u.full_name || "—"}</p>
-                          <span className="flex items-center gap-1 text-[11px] text-muted-foreground mt-0.5"><Mail className="h-3 w-3" />{u.email}</span>
+                          <div className="flex items-center gap-3">
+                            <Avatar name={u.full_name || u.email} size="sm" status={u.activo ? "online" : "offline"} />
+                            <div className="min-w-0">
+                              <p className="font-medium text-foreground">{u.full_name || "—"}</p>
+                              <span className="flex items-center gap-1 text-[11px] text-muted-foreground mt-0.5"><Mail className="h-3 w-3" />{u.email}</span>
+                            </div>
+                          </div>
                         </td>
                         <td className="px-4 py-3 border-b border-border/70">
                           {u.role ? <StatusBadge label={ROL_META[u.role].label} variant={ROL_META[u.role].variant} /> : <span className="text-xs text-muted-foreground/60">sin rol</span>}
@@ -150,12 +156,15 @@ export function UsuariosView() {
                 {usuarios.map((u) => (
                   <div key={u.id} className={`rounded-xl bg-card border border-border p-4 space-y-3 ${!u.activo ? "opacity-50" : ""}`}>
                     <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <p className="font-medium text-foreground truncate">{u.full_name || u.email}</p>
-                        <span className="flex items-center gap-1 text-[11px] text-muted-foreground mt-0.5 truncate"><Mail className="h-3 w-3" />{u.email}</span>
-                        <div className="mt-1.5 flex items-center gap-1.5">
-                          {u.role && <StatusBadge label={ROL_META[u.role].label} variant={ROL_META[u.role].variant} />}
-                          <StatusBadge label={u.activo ? "Activo" : "Inactivo"} variant={u.activo ? "success" : "muted"} />
+                      <div className="flex min-w-0 items-start gap-3">
+                        <Avatar name={u.full_name || u.email} size="sm" status={u.activo ? "online" : "offline"} />
+                        <div className="min-w-0">
+                          <p className="font-medium text-foreground truncate">{u.full_name || u.email}</p>
+                          <span className="flex items-center gap-1 text-[11px] text-muted-foreground mt-0.5 truncate"><Mail className="h-3 w-3" />{u.email}</span>
+                          <div className="mt-1.5 flex items-center gap-1.5">
+                            {u.role && <StatusBadge label={ROL_META[u.role].label} variant={ROL_META[u.role].variant} />}
+                            <StatusBadge label={u.activo ? "Activo" : "Inactivo"} variant={u.activo ? "success" : "muted"} />
+                          </div>
                         </div>
                       </div>
                       <div className="flex gap-1.5 shrink-0">
@@ -281,7 +290,7 @@ function UsuarioForm({
     <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(false); }}>
       <DialogContent className={MODAL_CONTENT}>
         <ModalHeader
-          icon={ShieldCheck}
+          icon="locked-with-key"
           title={editing ? "Editar usuario" : "Nuevo usuario"}
           subtitle={editing ? "Actualizá el acceso y el rol del usuario." : "Creá un acceso de login y asignale un rol."}
         />
