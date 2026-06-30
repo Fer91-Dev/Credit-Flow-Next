@@ -336,7 +336,7 @@ function UsuarioForm({
             <Input value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="Nombre y apellido (opcional)" />
           </Field>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Field label="Rol" required>
               <Select value={role} onChange={(e) => setRole(e.target.value as RolUsuario)}>
                 <option value="admin">Administrador</option>

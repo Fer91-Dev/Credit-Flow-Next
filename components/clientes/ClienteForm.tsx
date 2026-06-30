@@ -267,7 +267,7 @@ export function ClienteForm({ clienteId, initialDocumento, onClose }: ClienteFor
 
       {/* Datos personales */}
       <SectionCard icon="bust-in-silhouette" title="Datos personales">
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Field label="Nombre" required error={errors.nombre}>
             <Input name="nombre" type="text" placeholder="Ej: Juan" value={formData.nombre}
               onChange={set("nombre")} className={errCls("nombre")} autoFocus />
@@ -321,7 +321,7 @@ export function ClienteForm({ clienteId, initialDocumento, onClose }: ClienteFor
 
       {/* Situación laboral */}
       <SectionCard icon="briefcase" title="Situación laboral">
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Field label="Situación">
             <Select name="situacion_laboral" value={formData.situacion_laboral} onChange={set("situacion_laboral")}>
               <option value="">Sin especificar</option>
@@ -352,7 +352,7 @@ export function ClienteForm({ clienteId, initialDocumento, onClose }: ClienteFor
 
       {/* Ingresos */}
       <SectionCard icon="money-bag" title="Ingresos / capacidad de pago">
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Field label="Ingreso mensual ($)">
             <Input name="ingreso_mensual" type="text" inputMode="decimal" placeholder="850.000,00" value={formData.ingreso_mensual} onChange={setMonto("ingreso_mensual")} className="text-right font-mono tabular-nums" />
           </Field>
@@ -364,7 +364,7 @@ export function ClienteForm({ clienteId, initialDocumento, onClose }: ClienteFor
 
       {/* Contacto */}
       <SectionCard icon="mobile-phone" title="Contacto">
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Field label="Email" error={errors.email}>
             <Input name="email" type="email" placeholder="ejemplo@correo.com" value={formData.email}
               onChange={set("email")} onBlur={blurEmail} className={errCls("email")} />

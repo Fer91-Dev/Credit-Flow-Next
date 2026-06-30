@@ -216,7 +216,7 @@ export function FormActions({
         disabled={loading || disabled}
         className={cn(
           "flex-1 rounded-lg px-5 py-2.5 text-sm font-semibold transition-opacity hover:opacity-90 disabled:opacity-40",
-          tone === "destructive" ? "bg-destructive text-white" : "bg-primary text-primary-foreground",
+          tone === "destructive" ? "bg-destructive text-destructive-foreground" : "bg-primary text-primary-foreground",
         )}
       >
         {loading ? loadingLabel : submitLabel}

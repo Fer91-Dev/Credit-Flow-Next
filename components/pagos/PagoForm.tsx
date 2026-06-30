@@ -372,7 +372,7 @@ export function PagoForm({ creditoId, clienteId, onClose }: PagoFormProps) {
           </button>
           <button
             type="button" onClick={() => onClose(true)}
-            className="w-full rounded-lg bg-success px-4 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90 sm:flex-1"
+            className="w-full rounded-lg bg-success px-4 py-2 text-sm font-medium text-success-foreground transition-opacity hover:opacity-90 sm:flex-1"
           >
             Listo
           </button>
@@ -601,7 +601,7 @@ export function PagoForm({ creditoId, clienteId, onClose }: PagoFormProps) {
         </button>
         <button
           type="submit" disabled={!creditoSel || monto <= 0}
-          className="px-5 py-2 rounded-lg bg-success text-white text-sm font-medium hover:opacity-90 disabled:opacity-40 transition-opacity inline-flex items-center gap-1.5"
+          className="px-5 py-2 rounded-lg bg-success text-success-foreground text-sm font-medium hover:opacity-90 disabled:opacity-40 transition-opacity inline-flex items-center gap-1.5"
         >
           Registrar pago
         </button>
@@ -636,7 +636,7 @@ export function PagoForm({ creditoId, clienteId, onClose }: PagoFormProps) {
           <AlertDialogCancel disabled={loading}>Cancelar</AlertDialogCancel>
           <button
             type="button" onClick={persist} disabled={loading}
-            className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-success px-5 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+            className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-success px-5 py-2 text-sm font-medium text-success-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
           >
             {loading && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
             {loading ? "Registrando…" : "Confirmar pago"}

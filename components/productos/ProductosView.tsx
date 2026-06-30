@@ -251,7 +251,10 @@ function ProductoCard({ producto, loading, onOpen, onEdit, onDelete }: { product
   return (
     <div
       onClick={onOpen}
-      className={`group relative rounded-xl bg-card border border-border overflow-hidden flex flex-col cursor-pointer transition-all duration-200 ease-out hover:-translate-y-1 hover:border-primary/50 hover:shadow-xl hover:shadow-black/25 active:translate-y-0 ${!producto.activo ? "opacity-50" : ""}`}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpen(); } }}
+      className={`group relative rounded-xl bg-card border border-border overflow-hidden flex flex-col cursor-pointer transition-all duration-200 ease-out hover:-translate-y-1 hover:border-primary/50 hover:shadow-xl hover:shadow-black/25 active:translate-y-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background ${!producto.activo ? "opacity-50" : ""}`}
     >
       {/* Skeleton de carga (al clickear, mientras se abre la ficha) */}
       {loading && (
@@ -1001,7 +1004,7 @@ function ProductoForm({
             <Input value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Nombre del producto" required />
           </Field>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Field label="Categoría">
               <Input
                 value={categoria}
@@ -1022,7 +1025,7 @@ function ProductoForm({
             <MoneyInput value={precio} onChange={setPrecio} required />
           </Field>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {editing ? (
               <Field label="Stock actual" hint="Se ajusta desde la ficha (entrada/ajuste)">
                 <div className="flex h-12 items-center rounded-lg border border-border bg-muted/20 px-3 font-mono tabular-nums text-foreground">

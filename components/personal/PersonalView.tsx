@@ -416,7 +416,7 @@ function PersonalForm({
           <Field label="Nombre" required>
             <Input value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Nombre y apellido" required />
           </Field>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Field label="Email">
               <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="opcional" />
             </Field>
@@ -424,7 +424,7 @@ function PersonalForm({
               <Input value={telefono} onChange={(e) => setTelefono(e.target.value)} placeholder="opcional" />
             </Field>
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Field label="Rol" required>
               <Select value={rol} onChange={(e) => setRol(e.target.value as Vendedor["rol"])}>
                 <option value="vendedor">Vendedor</option>
@@ -437,7 +437,7 @@ function PersonalForm({
               <Input type="number" min="0" max="100" step="any" value={comision} onChange={(e) => setComision(e.target.value)} className="font-mono tabular-nums" />
             </Field>
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Field label="Meta de venta" hint="vacío = sin meta">
               <MoneyInput value={meta} onChange={setMeta} />
             </Field>

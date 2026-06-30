@@ -244,9 +244,9 @@ export function CobranzaTable({ role }: { role: Role }) {
           {(["critica", "alta", "todas"] as Severidad[]).map(key => {
             const active = filterMora === key;
             const cfg = {
-              critica: { label: "Crítica (+30d)", activeClass: "bg-destructive text-white" },
-              alta:    { label: "Alta (15–30d)", activeClass: "bg-warning text-black" },
-              todas:   { label: "Todas",         activeClass: "bg-primary text-white" },
+              critica: { label: "Crítica (+30d)", activeClass: "bg-destructive text-destructive-foreground" },
+              alta:    { label: "Alta (15–30d)", activeClass: "bg-warning text-warning-foreground" },
+              todas:   { label: "Todas",         activeClass: "bg-primary text-primary-foreground" },
             }[key];
             return (
               <button

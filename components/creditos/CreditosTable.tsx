@@ -502,7 +502,7 @@ function AnularButton({ credito, onAnular }: { credito: Credito; onAnular: (id: 
 
         <AlertDialogFooter>
           <AlertDialogCancel>Volver</AlertDialogCancel>
-          <AlertDialogAction onClick={() => onAnular(credito.id, motivo, accion)} className="bg-warning text-white hover:bg-warning/90">
+          <AlertDialogAction onClick={() => onAnular(credito.id, motivo, accion)} className="bg-warning text-warning-foreground hover:bg-warning/90">
             Anular crédito
           </AlertDialogAction>
         </AlertDialogFooter>

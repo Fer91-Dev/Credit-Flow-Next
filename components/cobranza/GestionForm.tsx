@@ -96,7 +96,7 @@ export function GestionForm({ credito, onClose }: GestionFormProps) {
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Field label="Tipo de gestión" required>
           <Select value={form.tipo} onChange={set("tipo")}>
             <option value="llamada">Llamada</option>
@@ -132,7 +132,7 @@ export function GestionForm({ credito, onClose }: GestionFormProps) {
         <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
           Promesa de pago {esPromesa ? "" : "(opcional)"}
         </p>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Field label="Monto comprometido">
             <MoneyInput value={form.promesa_monto} onChange={(v) => setForm((p) => ({ ...p, promesa_monto: v }))} />
           </Field>

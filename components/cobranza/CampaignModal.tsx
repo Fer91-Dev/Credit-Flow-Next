@@ -190,7 +190,7 @@ export function CampaignModal({ creditos, onClose }: CampaignModalProps) {
           <button
             onClick={enviarPorApi}
             disabled={enviandoApi}
-            className="flex items-center justify-center gap-2 w-full py-2.5 rounded-lg bg-success text-white text-sm font-medium hover:bg-success/90 disabled:opacity-50 transition-colors"
+            className="flex items-center justify-center gap-2 w-full py-2.5 rounded-lg bg-success text-success-foreground text-sm font-medium hover:bg-success/90 disabled:opacity-50 transition-colors"
           >
             {enviandoApi ? <Loader2 className="h-4 w-4 animate-spin" /> : <Zap className="h-4 w-4" />}
             {enviandoApi
@@ -300,7 +300,7 @@ export function CampaignModal({ creditos, onClose }: CampaignModalProps) {
           </span>
         </label>
         {form.promoActiva && (
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Field label="% de descuento sobre interés">
               <Input type="number" min="0" max="100" step="5" value={form.promo_valor} onChange={set("promo_valor")} />
             </Field>

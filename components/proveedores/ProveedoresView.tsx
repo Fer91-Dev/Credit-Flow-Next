@@ -123,7 +123,7 @@ export function ProveedoresView() {
                     {proveedores.map((p, idx) => {
                       const saldo = p.saldo ?? 0;
                       return (
-                        <tr key={p.id} onClick={() => setFichaId(p.id)} className={`cursor-pointer hover:bg-muted/20 transition-colors ${idx % 2 === 1 ? "bg-muted/5" : ""} ${!p.activo ? "opacity-50" : ""}`}>
+                        <tr key={p.id} onClick={() => setFichaId(p.id)} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setFichaId(p.id); } }} className={`cursor-pointer hover:bg-muted/20 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/50 ${idx % 2 === 1 ? "bg-muted/5" : ""} ${!p.activo ? "opacity-50" : ""}`}>
                           <td className="px-4 py-3 border-b border-border/70">
                             <p className="font-medium text-foreground">{p.nombre}</p>
                             {p.cuit && <p className="text-[11px] font-mono text-muted-foreground mt-0.5 flex items-center gap-1"><IdCard className="h-3 w-3" />{p.cuit}</p>}
@@ -163,7 +163,7 @@ export function ProveedoresView() {
                 {proveedores.map((p) => {
                   const saldo = p.saldo ?? 0;
                   return (
-                    <div key={p.id} onClick={() => setFichaId(p.id)} className={`rounded-xl bg-card border border-border p-4 space-y-2 cursor-pointer active:bg-muted/20 ${!p.activo ? "opacity-50" : ""}`}>
+                    <div key={p.id} onClick={() => setFichaId(p.id)} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setFichaId(p.id); } }} className={`rounded-xl bg-card border border-border p-4 space-y-2 cursor-pointer active:bg-muted/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 ${!p.activo ? "opacity-50" : ""}`}>
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
                           <p className="font-medium text-foreground truncate">{p.nombre}</p>
@@ -390,7 +390,7 @@ function MovimientoDialog({ open, proveedorId, onClose }: { open: boolean; prove
             <IconTextarea icon={FileText} value={concepto} onChange={(e) => setConcepto(e.target.value)} rows={2} placeholder="Factura, gasto, fondeo, pago…" />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Field label="Comprobante">
               <Input value={comprobante} onChange={(e) => setComprobante(e.target.value)} placeholder="N° factura" />
             </Field>
@@ -494,7 +494,7 @@ function ProveedorForm({ open, proveedor, onClose }: { open: boolean; proveedor:
           <Field label="Nombre / Razón social" required>
             <Input value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Nombre del proveedor" required />
           </Field>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Field label="CUIT">
               <Input value={cuit} onChange={(e) => setCuit(e.target.value)} placeholder="opcional" />
             </Field>
@@ -502,7 +502,7 @@ function ProveedorForm({ open, proveedor, onClose }: { open: boolean; proveedor:
               <Input value={rubro} onChange={(e) => setRubro(e.target.value)} placeholder="servicios, fondeo…" />
             </Field>
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Field label="Email">
               <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="opcional" />
             </Field>

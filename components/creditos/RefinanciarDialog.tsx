@@ -159,7 +159,7 @@ function RefinanciarForm({ credito, onClose }: { credito: Credito; onClose: (suc
           </div>
 
           {/* Condiciones del nuevo crédito */}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-1">
               <FieldLabel required>Tasa (%)</FieldLabel>
               <IconInput

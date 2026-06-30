@@ -441,7 +441,7 @@ function ComisionesTab({ vendedor, guardar }: { vendedor: VendedorDetalle; guard
 
       {/* Bonus por meta */}
       <BloqueToggle titulo="Bonus por meta cumplida" hint="Extra cuando alcanza su meta del período" on={bonusOn} onToggle={setBonusOn} icon="sparkles">
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Field label="Tipo de bonus">
             <Select value={bonusTipo} onChange={(e) => setBonusTipo(e.target.value as "monto" | "porcentaje")}>
               <option value="monto">Monto fijo ($)</option>
@@ -612,7 +612,7 @@ function MetasTab({ vendedor, onMetaChanged }: { vendedor: VendedorDetalle; onMe
       {creando && (
         <form onSubmit={crear} className="rounded-xl border border-border bg-muted/10 p-4 space-y-3">
           <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Nueva meta de período</p>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Field label={periodo === "mensual" ? "Período (mes)" : periodo === "trimestral" ? "Período (trimestre)" : "Período (semestre)"} required>
               {periodo === "mensual" ? (
                 <Input type="month" value={`${anio}-${String(indice).padStart(2, "0")}`}

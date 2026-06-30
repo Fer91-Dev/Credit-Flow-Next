@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
+import type { ReactNode, KeyboardEvent } from "react";
 import { Emoji } from "./Emoji";
 import { Skeleton } from "./skeleton";
 
@@ -144,7 +144,16 @@ export function DataTable<T>({
                   <tr
                     key={rowKey(row)}
                     onClick={onRowClick ? () => onRowClick(row) : undefined}
-                    className={`transition-colors ${onRowClick ? "cursor-pointer" : ""} hover:bg-muted/20 ${zebra && idx % 2 === 1 ? "bg-muted/5" : ""}`}
+                    {...(onRowClick
+                      ? {
+                          role: "button" as const,
+                          tabIndex: 0,
+                          onKeyDown: (e: KeyboardEvent) => {
+                            if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onRowClick(row); }
+                          },
+                        }
+                      : {})}
+                    className={`transition-colors ${onRowClick ? "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/50" : ""} hover:bg-muted/20 ${zebra && idx % 2 === 1 ? "bg-muted/5" : ""}`}
                   >
                     {columns.map((c, i) => (
                       <td key={i} className={`${TD_BASE} ${alignClass(c)} ${c.mono ? "font-mono tabular-nums" : ""} ${c.className ?? ""}`}>

@@ -17,6 +17,7 @@
   --color-accent:             var(--accent);
   --color-accent-foreground:  var(--accent-foreground);
   --color-destructive:        var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
   --color-border:             var(--border);
   --color-input:              var(--input);
   --color-ring:               var(--ring);
@@ -24,7 +25,9 @@
   /* Tokens extra CreditFlow */
   --color-surface:  var(--surface);
   --color-success:  var(--success);
+  --color-success-foreground: var(--success-foreground);
   --color-warning:  var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
 
   /* Tipografías */
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
@@ -65,6 +68,11 @@
   --success:     #059669;
   --warning:     #D97706;
   --destructive: #E11D48;
+  /* Texto sobre fondos sólidos semánticos (contraste). Warning usa texto oscuro:
+     sobre ámbar se lee mejor que blanco. Unifica el criterio (antes había mezcla). */
+  --success-foreground:     #FFFFFF;
+  --warning-foreground:     #1A1205;
+  --destructive-foreground: #FFFFFF;
 
   --border: #E2E8F0;
   --input:  #F1F5F9;
@@ -106,6 +114,9 @@ body {
   --success:     #10B981;
   --warning:     #F59E0B;
   --destructive: #F43F5E;
+  --success-foreground:     #FFFFFF;
+  --warning-foreground:     #1A1205;
+  --destructive-foreground: #FFFFFF;
 
   --border: #1A2740;
   --input:  #0F1825;
@@ -167,6 +178,23 @@ button:not(:disabled),
 }
 ::-webkit-scrollbar-corner {
   background: transparent;
+}
+
+/* ─── Foco accesible global (navegación por teclado) ─────────────────────────
+   Anillo de foco consistente en TODO lo interactivo (botones, links, filas/cards
+   con role="button" o tabindex). Solo aparece con teclado (:focus-visible), no al
+   clickear con mouse. El outline sigue el border-radius del elemento. Los inputs y
+   selects ya traen su propio focus:ring → no se incluyen acá para no duplicar.
+   Los componentes base (Button/Input) que setean focus-visible:outline-none ganan
+   por especificidad y conservan su ring; esta regla cubre los ~190 botones a mano
+   que hoy no tienen ningún indicador de foco. */
+button:focus-visible,
+a:focus-visible,
+summary:focus-visible,
+[role="button"]:focus-visible,
+[tabindex]:not([tabindex="-1"]):focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
 }
 
 /* Shimmer de "recalculando" — barrido suave de izquierda a derecha. */

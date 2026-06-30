@@ -286,7 +286,7 @@ export function CreditoDetail({ credito }: { credito: Credito }) {
                 <button
                   onClick={() => setPagoOpen(true)}
                   title="Registrar un cobro para este crédito"
-                  className="inline-flex items-center gap-1.5 rounded-lg bg-success px-3 py-1 text-[11px] font-semibold text-white transition-opacity hover:opacity-90"
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-success px-3 py-1 text-[11px] font-semibold text-success-foreground transition-opacity hover:opacity-90"
                 >
                   <Wallet className="h-3.5 w-3.5" /> Registrar pago
                 </button>
