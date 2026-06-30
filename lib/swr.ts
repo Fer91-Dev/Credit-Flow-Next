@@ -891,6 +891,18 @@ export function useDashboard(filtros?: DashboardFiltros) {
   return { data, error, isLoading, mutate };
 }
 
+/** Serie mensual (12 meses) para el gráfico del Home: cobranzas, morosidad, circulación. */
+export interface DashboardSeries {
+  labels: string[];
+  keys: string[];
+  series: { cobranzas: number[]; morosidad: number[]; circulacion: number[] };
+}
+export function useDashboardSeries(vendedorId?: string) {
+  const key = vendedorId ? `/api/dashboard/series?vendedor_id=${vendedorId}` : "/api/dashboard/series";
+  const { data, error, isLoading } = useSWR<DashboardSeries>(key);
+  return { serie: data, error, isLoading };
+}
+
 /** Plan de amortización de un crédito. Key condicional: no fetch si id es nulo. */
 export function useAmortizacion(creditoId: string | null) {
   const { data, error, isLoading } = useSWR<Amortizacion>(

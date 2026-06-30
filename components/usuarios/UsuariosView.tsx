@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
-  ShieldCheck, Plus, Users, UserCheck, Mail, Pencil, Power, RefreshCw, Link2,
+  ShieldCheck, Plus, Mail, Pencil, Power, RefreshCw, Link2,
+  Search, LayoutGrid, List, Trash2,
 } from "lucide-react";
 import { useUsuarios, useVendedores, KEYS, type Usuario, type RolUsuario } from "@/lib/swr";
 import { mutate as globalMutate } from "swr";
@@ -10,6 +11,8 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { KpiCard } from "@/components/ui/KpiCard";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Avatar } from "@/components/ui/Avatar";
+import { Emoji } from "@/components/ui/Emoji";
+import { DataTable, type Column } from "@/components/ui/DataTable";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Field, Input, Select } from "@/components/ui/field";
@@ -34,6 +37,13 @@ export function UsuariosView() {
   const toast = useToast();
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Usuario | null>(null);
+  const [q, setQ] = useState("");
+  const [vista, setVista] = useState<"cards" | "tabla">("tabla");
+  useEffect(() => {
+    const v = localStorage.getItem("cf:usuariosVista");
+    if (v === "cards" || v === "tabla") setVista(v);
+  }, []);
+  const cambiarVista = (v: "cards" | "tabla") => { setVista(v); localStorage.setItem("cf:usuariosVista", v); };
 
   const totales = useMemo(() => ({
     total: usuarios.length,
@@ -41,10 +51,36 @@ export function UsuariosView() {
     admins: usuarios.filter((u) => u.role === "admin").length,
   }), [usuarios]);
 
+  const filtrados = useMemo(() => {
+    const t = q.trim().toLowerCase();
+    if (!t) return usuarios;
+    return usuarios.filter((u) =>
+      (u.email ?? "").toLowerCase().includes(t) ||
+      (u.full_name ?? "").toLowerCase().includes(t) ||
+      (u.role ? ROL_META[u.role].label.toLowerCase().includes(t) : false) ||
+      (u.vendedor_nombre ?? "").toLowerCase().includes(t)
+    );
+  }, [usuarios, q]);
+
   const refrescar = () => mutate();
   const openNew = () => { setEditing(null); setFormOpen(true); };
   const openEdit = (u: Usuario) => { setEditing(u); setFormOpen(true); };
   const handleClose = (ok?: boolean) => { setFormOpen(false); setEditing(null); if (ok) refrescar(); };
+
+  const handleDelete = async (u: Usuario) => {
+    const ok = await confirm({
+      title: "¿Eliminar usuario?",
+      description: `Se eliminará DEFINITIVAMENTE el acceso de ${u.email}. Esta acción no se puede deshacer.`,
+      confirmLabel: "Eliminar",
+      tone: "danger",
+    });
+    if (!ok) return;
+    const res = await fetch(`/api/usuarios/${u.id}`, { method: "DELETE" });
+    const json = await res.json().catch(() => null);
+    if (!res.ok) { toast.error(json?.error || "No se pudo eliminar el usuario"); return; }
+    refrescar();
+    toast.success(`Usuario ${u.email} eliminado`);
+  };
 
   const toggleActivo = async (u: Usuario) => {
     const accion = u.activo ? "desactivar" : "reactivar";
@@ -82,7 +118,27 @@ export function UsuariosView() {
         subtitle="Altas de acceso, roles y privilegios del equipo"
         accent="primary"
       />
-      <div className="flex flex-wrap items-center justify-end gap-2">{cta}</div>
+      {/* Toolbar: búsqueda + vista + CTA (los headers solo llevan SystemControls) */}
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative flex-1 min-w-[200px]">
+          <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Buscar por nombre, email o rol…"
+            className="h-10 w-full rounded-lg border border-border bg-card pl-9 pr-3 text-sm outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/20"
+          />
+        </div>
+        <div className="flex h-10 items-center rounded-lg border border-border p-0.5">
+          <button onClick={() => cambiarVista("cards")} title="Ver como tarjetas" className={`flex h-9 w-9 items-center justify-center rounded-md transition-colors ${vista === "cards" ? "bg-primary/10 text-foreground" : "text-muted-foreground hover:bg-muted/20"}`}>
+            <LayoutGrid className="h-4 w-4" />
+          </button>
+          <button onClick={() => cambiarVista("tabla")} title="Ver como tabla" className={`flex h-9 w-9 items-center justify-center rounded-md transition-colors ${vista === "tabla" ? "bg-primary/10 text-foreground" : "text-muted-foreground hover:bg-muted/20"}`}>
+            <List className="h-4 w-4" />
+          </button>
+        </div>
+        {cta}
+      </div>
 
       {isLoading ? (
         <BodySkeleton />
@@ -98,89 +154,116 @@ export function UsuariosView() {
             <KpiCard icon="locked-with-key" label="Administradores" value={String(totales.admins)} accent="warning" />
           </div>
 
+          {/* Título de la lista (con ícono, igual que Productos) */}
+          <div className="flex items-center gap-2 border-b border-border pb-2">
+            <Emoji name="locked-with-key" className="h-4 w-4" />
+            <h2 className="text-sm font-semibold text-foreground">Usuarios y accesos</h2>
+          </div>
+
           {usuarios.length === 0 ? (
             <EmptyState onNew={openNew} />
+          ) : filtrados.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-border/60 p-10 text-center text-sm text-muted-foreground">
+              Ningún usuario coincide con la búsqueda.
+            </div>
+          ) : vista === "cards" ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {filtrados.map((u) => (
+                <UserCard key={u.id} u={u} onEdit={() => openEdit(u)} onToggle={() => toggleActivo(u)} onDelete={() => handleDelete(u)} />
+              ))}
+            </div>
           ) : (
-            <>
-              {/* Desktop */}
-              <div className="hidden md:block rounded-xl border border-border overflow-hidden">
-                <table className="w-full text-sm border-separate border-spacing-0">
-                  <thead>
-                    <tr className="bg-muted/30">
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">Usuario</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">Rol</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">Vínculo</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">Estado</th>
-                      <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border pr-5">Acciones</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {usuarios.map((u, idx) => (
-                      <tr key={u.id} className={`hover:bg-muted/20 transition-colors ${idx % 2 === 1 ? "bg-muted/5" : ""} ${!u.activo ? "opacity-50" : ""}`}>
-                        <td className="px-4 py-3 border-b border-border/70">
-                          <div className="flex items-center gap-3">
-                            <Avatar name={u.full_name || u.email} size="sm" status={u.activo ? "online" : "offline"} />
-                            <div className="min-w-0">
-                              <p className="font-medium text-foreground">{u.full_name || "—"}</p>
-                              <span className="flex items-center gap-1 text-[11px] text-muted-foreground mt-0.5"><Mail className="h-3 w-3" />{u.email}</span>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="px-4 py-3 border-b border-border/70">
-                          {u.role ? <StatusBadge label={ROL_META[u.role].label} variant={ROL_META[u.role].variant} /> : <span className="text-xs text-muted-foreground/60">sin rol</span>}
-                        </td>
-                        <td className="px-4 py-3 border-b border-border/70 text-muted-foreground text-xs">
-                          {u.vendedor_nombre ? <span className="flex items-center gap-1"><Link2 className="h-3 w-3" />{u.vendedor_nombre}</span> : "—"}
-                        </td>
-                        <td className="px-4 py-3 border-b border-border/70">
-                          <StatusBadge label={u.activo ? "Activo" : "Inactivo"} variant={u.activo ? "success" : "muted"} />
-                        </td>
-                        <td className="px-4 py-3 pr-5 border-b border-border/70">
-                          <div className="flex items-center justify-end gap-1.5">
-                            <button onClick={() => openEdit(u)} title="Editar" className="flex items-center justify-center h-7 w-7 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors">
-                              <Pencil className="h-3.5 w-3.5" />
-                            </button>
-                            <button onClick={() => toggleActivo(u)} title={u.activo ? "Desactivar acceso" : "Reactivar acceso"} className={`flex items-center justify-center h-7 w-7 rounded-lg transition-colors ${u.activo ? "text-muted-foreground hover:bg-destructive/10 hover:text-destructive" : "text-muted-foreground hover:bg-success/10 hover:text-success"}`}>
-                              <Power className="h-3.5 w-3.5" />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Mobile */}
-              <div className="block md:hidden space-y-3">
-                {usuarios.map((u) => (
-                  <div key={u.id} className={`rounded-xl bg-card border border-border p-4 space-y-3 ${!u.activo ? "opacity-50" : ""}`}>
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex min-w-0 items-start gap-3">
-                        <Avatar name={u.full_name || u.email} size="sm" status={u.activo ? "online" : "offline"} />
-                        <div className="min-w-0">
-                          <p className="font-medium text-foreground truncate">{u.full_name || u.email}</p>
-                          <span className="flex items-center gap-1 text-[11px] text-muted-foreground mt-0.5 truncate"><Mail className="h-3 w-3" />{u.email}</span>
-                          <div className="mt-1.5 flex items-center gap-1.5">
-                            {u.role && <StatusBadge label={ROL_META[u.role].label} variant={ROL_META[u.role].variant} />}
-                            <StatusBadge label={u.activo ? "Activo" : "Inactivo"} variant={u.activo ? "success" : "muted"} />
-                          </div>
-                        </div>
-                      </div>
-                      <div className="flex gap-1.5 shrink-0">
-                        <button onClick={() => openEdit(u)} className="flex items-center justify-center h-9 w-9 rounded-lg border border-border text-muted-foreground"><Pencil className="h-4 w-4" /></button>
-                        <button onClick={() => toggleActivo(u)} className="flex items-center justify-center h-9 w-9 rounded-lg border border-border text-muted-foreground"><Power className="h-4 w-4" /></button>
+            <DataTable<Usuario>
+              rows={filtrados}
+              rowKey={(u) => u.id}
+              rowClassName={(u) => (u.activo ? "" : "opacity-50")}
+              columns={[
+                {
+                  header: "Usuario",
+                  cell: (u) => (
+                    <div className="flex items-center gap-3">
+                      <Avatar name={u.full_name || u.email} size="sm" status={u.activo ? "online" : "offline"} />
+                      <div className="min-w-0">
+                        <p className="font-medium text-foreground">{u.full_name || "—"}</p>
+                        <span className="flex items-center gap-1 text-[11px] text-muted-foreground mt-0.5"><Mail className="h-3 w-3" />{u.email}</span>
                       </div>
                     </div>
-                  </div>
-                ))}
-              </div>
-            </>
+                  ),
+                },
+                {
+                  header: "Rol",
+                  cell: (u) => u.role
+                    ? <StatusBadge label={ROL_META[u.role].label} variant={ROL_META[u.role].variant} />
+                    : <span className="text-xs text-muted-foreground/60">sin rol</span>,
+                },
+                {
+                  header: "Vínculo", className: "hidden lg:table-cell",
+                  cell: (u) => u.vendedor_nombre
+                    ? <span className="flex items-center gap-1 text-xs text-muted-foreground"><Link2 className="h-3 w-3" />{u.vendedor_nombre}</span>
+                    : <span className="text-muted-foreground">—</span>,
+                },
+                {
+                  header: "Estado",
+                  cell: (u) => <StatusBadge label={u.activo ? "Activo" : "Inactivo"} variant={u.activo ? "success" : "muted"} />,
+                },
+                {
+                  header: "Acciones", align: "right",
+                  cell: (u) => <UserActions u={u} onEdit={() => openEdit(u)} onToggle={() => toggleActivo(u)} onDelete={() => handleDelete(u)} />,
+                },
+              ]}
+              renderMobileCard={(u) => <UserCard u={u} onEdit={() => openEdit(u)} onToggle={() => toggleActivo(u)} onDelete={() => handleDelete(u)} />}
+            />
           )}
         </div>
       )}
 
       <UsuarioForm open={formOpen} usuario={editing} onClose={handleClose} />
+    </div>
+  );
+}
+
+/** Botones de acción de un usuario (editar / activar-desactivar / eliminar). */
+function UserActions({ u, onEdit, onToggle, onDelete }: { u: Usuario; onEdit: () => void; onToggle: () => void; onDelete: () => void }) {
+  return (
+    <div className="flex items-center justify-end gap-1.5">
+      <button onClick={onEdit} title="Editar" className="flex items-center justify-center h-7 w-7 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors">
+        <Pencil className="h-3.5 w-3.5" />
+      </button>
+      <button
+        onClick={onToggle}
+        title={u.activo ? "Desactivar acceso" : "Reactivar acceso"}
+        className={`flex items-center justify-center h-7 w-7 rounded-lg transition-colors ${u.activo ? "text-muted-foreground hover:bg-warning/10 hover:text-warning" : "text-muted-foreground hover:bg-success/10 hover:text-success"}`}
+      >
+        <Power className="h-3.5 w-3.5" />
+      </button>
+      <button onClick={onDelete} title="Eliminar" className="flex items-center justify-center h-7 w-7 rounded-lg text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors">
+        <Trash2 className="h-3.5 w-3.5" />
+      </button>
+    </div>
+  );
+}
+
+/** Tarjeta de usuario (vista cards + card mobile de la tabla). */
+function UserCard({ u, onEdit, onToggle, onDelete }: { u: Usuario; onEdit: () => void; onToggle: () => void; onDelete: () => void }) {
+  return (
+    <div className={`rounded-xl bg-card border border-border p-4 flex flex-col gap-3 ${!u.activo ? "opacity-60" : ""}`}>
+      <div className="flex items-center gap-3 min-w-0">
+        <Avatar name={u.full_name || u.email} size="md" status={u.activo ? "online" : "offline"} />
+        <div className="min-w-0">
+          <p className="font-medium text-foreground truncate">{u.full_name || "—"}</p>
+          <span className="flex items-center gap-1 text-[11px] text-muted-foreground truncate"><Mail className="h-3 w-3 shrink-0" />{u.email}</span>
+        </div>
+      </div>
+      <div className="flex flex-wrap items-center gap-1.5">
+        {u.role
+          ? <StatusBadge label={ROL_META[u.role].label} variant={ROL_META[u.role].variant} />
+          : <span className="text-xs text-muted-foreground/60">sin rol</span>}
+        <StatusBadge label={u.activo ? "Activo" : "Inactivo"} variant={u.activo ? "success" : "muted"} />
+        {u.vendedor_nombre && <span className="flex items-center gap-1 text-[11px] text-muted-foreground"><Link2 className="h-3 w-3" />{u.vendedor_nombre}</span>}
+      </div>
+      <div className="mt-auto pt-2 border-t border-border/50">
+        <UserActions u={u} onEdit={onEdit} onToggle={onToggle} onDelete={onDelete} />
+      </div>
     </div>
   );
 }

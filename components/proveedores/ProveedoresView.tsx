@@ -3,8 +3,8 @@
 import { useMemo, useState } from "react";
 import { mutate as globalMutate } from "swr";
 import {
-  Truck, Plus, Building2, Wallet, ArrowDownLeft, ArrowUpRight, Pencil, Trash2,
-  Mail, Phone, IdCard, X, FileText,
+  Plus, Building2, Wallet, ArrowDownLeft, ArrowUpRight, Pencil, Trash2,
+  Mail, Phone, IdCard, X, FileText, MapPin, Tag, Power,
 } from "lucide-react";
 import {
   useProveedores, useProveedor, KEYS,
@@ -15,9 +15,11 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { KpiCard } from "@/components/ui/KpiCard";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Emoji } from "@/components/ui/Emoji";
+import { DataTable, type Column } from "@/components/ui/DataTable";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Field, Input, Select, Textarea } from "@/components/ui/field";
-import { ModalHeader, MoneyInput, IconTextarea, FormActions, Segmented, FieldLabel, MODAL_CONTENT } from "@/components/ui/form-kit";
+import { Field, Input, Select } from "@/components/ui/field";
+import { ModalHeader, MoneyInput, IconInput, IconSelect, IconTextarea, FormActions, Segmented, FieldLabel, MODAL_CONTENT } from "@/components/ui/form-kit";
 import { useConfirm } from "@/components/ui/confirm";
 import { useToast } from "@/components/ui/toast";
 
@@ -103,84 +105,88 @@ export function ProveedoresView() {
             <KpiCard icon="office-building" label="Activos" value={String(totales.activos)} accent="primary" />
           </div>
 
-          {proveedores.length === 0 ? (
-            <EmptyState onNew={openNew} />
-          ) : (
-            <>
-              {/* Desktop */}
-              <div className="hidden md:block rounded-xl border border-border overflow-hidden">
-                <table className="w-full text-sm border-separate border-spacing-0">
-                  <thead>
-                    <tr className="bg-muted/30">
-                      <th className="px-4 py-3 text-left  text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">Proveedor</th>
-                      <th className="px-4 py-3 text-left  text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border hidden lg:table-cell">Rubro</th>
-                      <th className="px-4 py-3 text-left  text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">Contacto</th>
-                      <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">Saldo</th>
-                      <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border pr-5">Acciones</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {proveedores.map((p, idx) => {
-                      const saldo = p.saldo ?? 0;
-                      return (
-                        <tr key={p.id} onClick={() => setFichaId(p.id)} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setFichaId(p.id); } }} className={`cursor-pointer hover:bg-muted/20 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/50 ${idx % 2 === 1 ? "bg-muted/5" : ""} ${!p.activo ? "opacity-50" : ""}`}>
-                          <td className="px-4 py-3 border-b border-border/70">
-                            <p className="font-medium text-foreground">{p.nombre}</p>
-                            {p.cuit && <p className="text-[11px] font-mono text-muted-foreground mt-0.5 flex items-center gap-1"><IdCard className="h-3 w-3" />{p.cuit}</p>}
-                          </td>
-                          <td className="px-4 py-3 text-muted-foreground border-b border-border/70 hidden lg:table-cell">{p.rubro || "—"}</td>
-                          <td className="px-4 py-3 border-b border-border/70">
-                            <div className="flex flex-col gap-0.5 text-[11px] text-muted-foreground">
-                              {p.email && <span className="flex items-center gap-1"><Mail className="h-3 w-3" />{p.email}</span>}
-                              {p.telefono && <span className="flex items-center gap-1"><Phone className="h-3 w-3" />{p.telefono}</span>}
-                              {!p.email && !p.telefono && <span className="text-muted-foreground/30">—</span>}
-                            </div>
-                          </td>
-                          <td className="px-4 py-3 text-right font-mono font-bold border-b border-border/70">
-                            <span className={saldo > 0 ? "text-warning" : saldo < 0 ? "text-success" : "text-muted-foreground"}>
-                              ${n0(saldo)}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 pr-5 border-b border-border/70" onClick={(e) => e.stopPropagation()}>
-                            <div className="flex items-center justify-end gap-1.5">
-                              <button onClick={() => openEdit(p)} title="Editar" className="flex items-center justify-center h-7 w-7 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors">
-                                <Pencil className="h-3.5 w-3.5" />
-                              </button>
-                              <button onClick={() => handleDelete(p)} title="Eliminar" className="flex items-center justify-center h-7 w-7 rounded-lg text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors">
-                                <Trash2 className="h-3.5 w-3.5" />
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+          {/* Título de la lista (con ícono, igual que Productos) */}
+          <div className="flex items-center gap-2 border-b border-border pb-2">
+            <Emoji name="delivery-truck" className="h-4 w-4" />
+            <h2 className="text-sm font-semibold text-foreground">Listado de Proveedores</h2>
+          </div>
 
-              {/* Mobile */}
-              <div className="block md:hidden space-y-3">
-                {proveedores.map((p) => {
+          <DataTable<Proveedor>
+            rows={proveedores}
+            rowKey={(p) => p.id}
+            onRowClick={(p) => setFichaId(p.id)}
+            rowClassName={(p) => (p.activo ? "" : "opacity-50")}
+            zebra
+            empty={{
+              icon: "delivery-truck",
+              title: "Todavía no cargaste proveedores",
+              hint: "Registrá proveedores y acreedores para llevar su cuenta corriente de gastos y fondeo.",
+              action: cta,
+            }}
+            columns={[
+              {
+                header: "Proveedor",
+                cell: (p) => (
+                  <div>
+                    <p className="font-medium text-foreground">{p.nombre}</p>
+                    {p.cuit && <p className="text-[11px] font-mono text-muted-foreground mt-0.5 flex items-center gap-1"><IdCard className="h-3 w-3" />{p.cuit}</p>}
+                  </div>
+                ),
+              },
+              {
+                header: "Rubro", className: "hidden lg:table-cell",
+                cell: (p) => <span className="text-muted-foreground">{p.rubro || "—"}</span>,
+              },
+              {
+                header: "Contacto",
+                cell: (p) => (
+                  <div className="flex flex-col gap-0.5 text-[11px] text-muted-foreground">
+                    {p.email && <span className="flex items-center gap-1"><Mail className="h-3 w-3" />{p.email}</span>}
+                    {p.telefono && <span className="flex items-center gap-1"><Phone className="h-3 w-3" />{p.telefono}</span>}
+                    {!p.email && !p.telefono && <span className="text-muted-foreground/30">—</span>}
+                  </div>
+                ),
+              },
+              {
+                header: "Saldo", mono: true,
+                cell: (p) => {
                   const saldo = p.saldo ?? 0;
-                  return (
-                    <div key={p.id} onClick={() => setFichaId(p.id)} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setFichaId(p.id); } }} className={`rounded-xl bg-card border border-border p-4 space-y-2 cursor-pointer active:bg-muted/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 ${!p.activo ? "opacity-50" : ""}`}>
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0">
-                          <p className="font-medium text-foreground truncate">{p.nombre}</p>
-                          {p.rubro && <p className="text-[11px] text-muted-foreground">{p.rubro}</p>}
-                        </div>
-                        <span className={`font-mono font-bold ${saldo > 0 ? "text-warning" : saldo < 0 ? "text-success" : "text-muted-foreground"}`}>${n0(saldo)}</span>
-                      </div>
-                      <div className="flex gap-2 pt-1" onClick={(e) => e.stopPropagation()}>
-                        <button onClick={() => openEdit(p)} className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg border border-border text-xs text-muted-foreground"><Pencil className="h-3.5 w-3.5" /> Editar</button>
-                        <button onClick={() => handleDelete(p)} className="flex items-center justify-center h-9 w-9 rounded-lg border border-border text-destructive"><Trash2 className="h-4 w-4" /></button>
-                      </div>
+                  return <span className={`font-bold ${saldo > 0 ? "text-warning" : saldo < 0 ? "text-success" : "text-muted-foreground"}`}>${n0(saldo)}</span>;
+                },
+              },
+              {
+                header: "Acciones", align: "right",
+                cell: (p) => (
+                  <div className="flex items-center justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
+                    <button onClick={() => openEdit(p)} title="Editar" className="flex items-center justify-center h-7 w-7 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors">
+                      <Pencil className="h-3.5 w-3.5" />
+                    </button>
+                    <button onClick={() => handleDelete(p)} title="Eliminar" className="flex items-center justify-center h-7 w-7 rounded-lg text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors">
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                ),
+              },
+            ]}
+            renderMobileCard={(p) => {
+              const saldo = p.saldo ?? 0;
+              return (
+                <div onClick={() => setFichaId(p.id)} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setFichaId(p.id); } }} className={`rounded-xl bg-card border border-border p-4 space-y-2 cursor-pointer active:bg-muted/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 ${!p.activo ? "opacity-50" : ""}`}>
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="font-medium text-foreground truncate">{p.nombre}</p>
+                      {p.rubro && <p className="text-[11px] text-muted-foreground">{p.rubro}</p>}
                     </div>
-                  );
-                })}
-              </div>
-            </>
-          )}
+                    <span className={`font-mono font-bold ${saldo > 0 ? "text-warning" : saldo < 0 ? "text-success" : "text-muted-foreground"}`}>${n0(saldo)}</span>
+                  </div>
+                  <div className="flex gap-2 pt-1" onClick={(e) => e.stopPropagation()}>
+                    <button onClick={() => openEdit(p)} className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg border border-border text-xs text-muted-foreground"><Pencil className="h-3.5 w-3.5" /> Editar</button>
+                    <button onClick={() => handleDelete(p)} className="flex items-center justify-center h-9 w-9 rounded-lg border border-border text-destructive"><Trash2 className="h-4 w-4" /></button>
+                  </div>
+                </div>
+              );
+            }}
+          />
         </div>
       )}
 
@@ -190,24 +196,6 @@ export function ProveedoresView() {
   );
 }
 
-function EmptyState({ onNew }: { onNew: () => void }) {
-  return (
-    <div className="rounded-xl border border-dashed border-border/60 p-12 flex flex-col items-center gap-4 text-center">
-      <div className="h-16 w-16 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center">
-        <Truck className="h-7 w-7 text-primary/60" />
-      </div>
-      <div className="space-y-1.5">
-        <p className="text-sm font-semibold text-foreground">Todavía no cargaste proveedores</p>
-        <p className="text-xs text-muted-foreground/60 max-w-sm leading-relaxed">
-          Registrá proveedores y acreedores para llevar su cuenta corriente de gastos y fondeo.
-        </p>
-      </div>
-      <button onClick={onNew} className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm hover:opacity-90 transition-opacity">
-        <Plus className="h-4 w-4" /> Nuevo proveedor
-      </button>
-    </div>
-  );
-}
 
 /* ── Ficha + cuenta corriente ─────────────────────────────────────────────── */
 
@@ -420,6 +408,24 @@ function MovimientoDialog({ open, proveedorId, onClose }: { open: boolean; prove
 
 /* ── Alta / edición de proveedor ──────────────────────────────────────────── */
 
+// Validaciones de formato del proveedor.
+const RE_PROV = {
+  cuit: /^\d{2}-?\d{8}-?\d$/,            // CUIT/CUIL: 11 dígitos (guiones opcionales)
+  email: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
+  tel: /^[\d\s()+-]{6,20}$/,            // teléfono: dígitos y símbolos comunes
+};
+/** Máscara de CUIT en vivo: solo dígitos, formateados XX-XXXXXXXX-X (bloquea letras). */
+function maskCuit(v: string) {
+  const d = v.replace(/\D/g, "").slice(0, 11);
+  if (d.length <= 2) return d;
+  if (d.length <= 10) return `${d.slice(0, 2)}-${d.slice(2)}`;
+  return `${d.slice(0, 2)}-${d.slice(2, 10)}-${d.slice(10)}`;
+}
+/** Teléfono: solo dígitos y símbolos comunes (bloquea letras). */
+function maskTel(v: string) {
+  return v.replace(/[^\d\s()+-]/g, "").slice(0, 20);
+}
+
 function ProveedorForm({ open, proveedor, onClose }: { open: boolean; proveedor: Proveedor | null; onClose: (ok?: boolean) => void }) {
   const confirm = useConfirm();
   const toast = useToast();
@@ -434,6 +440,8 @@ function ProveedorForm({ open, proveedor, onClose }: { open: boolean; proveedor:
   const [activo, setActivo] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [errs, setErrs] = useState<Record<string, string>>({});
+  const clearErr = (k: string) => setErrs((p) => (p[k] ? { ...p, [k]: "" } : p));
 
   const [syncKey, setSyncKey] = useState<string | null>(null);
   const currentKey = open ? (proveedor?.id ?? "new") : null;
@@ -448,11 +456,24 @@ function ProveedorForm({ open, proveedor, onClose }: { open: boolean; proveedor:
     setNotas(proveedor?.notas ?? "");
     setActivo(proveedor?.activo ?? true);
     setError(null);
+    setErrs({});
   }
+
+  /** Valida formato; devuelve el mapa de errores (vacío = OK). */
+  const validar = (): Record<string, string> => {
+    const e: Record<string, string> = {};
+    if (!nombre.trim()) e.nombre = "El nombre es requerido";
+    if (cuit.trim() && !RE_PROV.cuit.test(cuit.trim())) e.cuit = "CUIT inválido (11 dígitos)";
+    if (email.trim() && !RE_PROV.email.test(email.trim())) e.email = "Email con formato inválido";
+    if (telefono.trim() && !RE_PROV.tel.test(telefono.trim())) e.telefono = "Teléfono inválido";
+    return e;
+  };
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!nombre.trim()) { setError("El nombre es requerido"); return; }
+    const v = validar();
+    setErrs(v);
+    if (Object.keys(v).length) return;
     const ok = await confirm({
       title: editing ? "¿Guardar cambios?" : "¿Crear proveedor?",
       description: editing
@@ -489,39 +510,44 @@ function ProveedorForm({ open, proveedor, onClose }: { open: boolean; proveedor:
             subtitle={editing ? "Actualizá los datos del proveedor." : "Registrá un proveedor para su cuenta corriente."}
           />
         </div>
-        <form onSubmit={submit} className="space-y-4 overflow-y-auto pt-1">
+        <form onSubmit={submit} className="space-y-4 overflow-y-auto pt-1" noValidate>
           {error && <div className="rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-2.5 text-sm text-destructive">{error}</div>}
-          <Field label="Nombre / Razón social" required>
-            <Input value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Nombre del proveedor" required />
+
+          {/* Identidad */}
+          <Field label="Nombre / Razón social" required error={errs.nombre}>
+            <IconInput icon={Building2} value={nombre} onChange={(e) => { setNombre(e.target.value); clearErr("nombre"); }} placeholder="Nombre del proveedor" />
           </Field>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <Field label="CUIT">
-              <Input value={cuit} onChange={(e) => setCuit(e.target.value)} placeholder="opcional" />
+            <Field label="CUIT" hint="11 dígitos" error={errs.cuit}>
+              <IconInput icon={IdCard} inputMode="numeric" value={cuit} onChange={(e) => { setCuit(maskCuit(e.target.value)); clearErr("cuit"); }} placeholder="30-71234567-9" />
             </Field>
             <Field label="Rubro">
-              <Input value={rubro} onChange={(e) => setRubro(e.target.value)} placeholder="servicios, fondeo…" />
+              <IconInput icon={Tag} value={rubro} onChange={(e) => setRubro(e.target.value)} placeholder="servicios, fondeo…" />
             </Field>
           </div>
+
+          {/* Contacto */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <Field label="Email">
-              <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="opcional" />
+            <Field label="Email" error={errs.email}>
+              <IconInput icon={Mail} type="email" inputMode="email" value={email} onChange={(e) => { setEmail(e.target.value); clearErr("email"); }} placeholder="ventas@proveedor.com" />
             </Field>
-            <Field label="Teléfono">
-              <Input value={telefono} onChange={(e) => setTelefono(e.target.value)} placeholder="opcional" />
+            <Field label="Teléfono" error={errs.telefono}>
+              <IconInput icon={Phone} inputMode="tel" value={telefono} onChange={(e) => { setTelefono(maskTel(e.target.value)); clearErr("telefono"); }} placeholder="11-4567-8900" />
             </Field>
           </div>
           <Field label="Dirección">
-            <Input value={direccion} onChange={(e) => setDireccion(e.target.value)} placeholder="opcional" />
+            <IconInput icon={MapPin} value={direccion} onChange={(e) => setDireccion(e.target.value)} placeholder="Calle, número, localidad" />
           </Field>
           <Field label="Notas">
-            <Textarea value={notas} onChange={(e) => setNotas(e.target.value)} rows={2} placeholder="Observaciones…" />
+            <IconTextarea icon={FileText} value={notas} onChange={(e) => setNotas(e.target.value)} rows={2} placeholder="Observaciones…" />
           </Field>
           <Field label="Estado">
-            <Select value={activo ? "activo" : "inactivo"} onChange={(e) => setActivo(e.target.value === "activo")}>
+            <IconSelect icon={Power} value={activo ? "activo" : "inactivo"} onChange={(e) => setActivo(e.target.value === "activo")}>
               <option value="activo">Activo</option>
               <option value="inactivo">Inactivo</option>
-            </Select>
+            </IconSelect>
           </Field>
+
           <FormActions
             onCancel={() => onClose(false)}
             loading={loading}

@@ -35,6 +35,8 @@ interface DataTableProps<T> {
   rowKey: (row: T) => string;
   /** Fila clickeable (abre detalle, etc.). */
   onRowClick?: (row: T) => void;
+  /** Clases extra por fila (ej. atenuar inactivos: `(r) => r.activo ? "" : "opacity-50"`). */
+  rowClassName?: (row: T) => string;
   /** Muestra el skeleton en vez de las filas. */
   loading?: boolean;
   skeletonRows?: number;
@@ -63,7 +65,7 @@ const TH_BASE = "px-4 py-3 text-xs font-semibold uppercase tracking-wide text-mu
 const TD_BASE = "px-4 py-3 border-b border-border/50 align-middle";
 
 export function DataTable<T>({
-  columns, rows, rowKey, onRowClick, loading, skeletonRows = 6, loadingRowKey,
+  columns, rows, rowKey, onRowClick, rowClassName, loading, skeletonRows = 6, loadingRowKey,
   error, empty, zebra, stickyHeader, footer, renderMobileCard,
 }: DataTableProps<T>) {
   const shell = "rounded-xl border border-border bg-card overflow-hidden";
@@ -153,7 +155,7 @@ export function DataTable<T>({
                           },
                         }
                       : {})}
-                    className={`transition-colors ${onRowClick ? "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/50" : ""} hover:bg-muted/20 ${zebra && idx % 2 === 1 ? "bg-muted/5" : ""}`}
+                    className={`transition-colors ${onRowClick ? "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/50" : ""} hover:bg-muted/20 ${zebra && idx % 2 === 1 ? "bg-muted/5" : ""} ${rowClassName?.(row) ?? ""}`}
                   >
                     {columns.map((c, i) => (
                       <td key={i} className={`${TD_BASE} ${alignClass(c)} ${c.mono ? "font-mono tabular-nums" : ""} ${c.className ?? ""}`}>

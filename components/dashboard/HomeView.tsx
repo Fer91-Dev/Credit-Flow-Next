@@ -5,6 +5,7 @@ import type { Role } from "@prisma/client";
 import { CalendarDays, MapPin, UserCog, X, Target, Trophy, Users2, AlertTriangle, Percent, ShieldCheck, Sparkles } from "lucide-react";
 import { useZonas, useVendedores, useDashboard, useMiPerfilVendedor, useMisLogros, type DashboardFiltros, type VendedorRendimiento, type MiPerfilVendedor } from "@/lib/swr";
 import { DashboardKpis, DashboardCobranzaAvance, DashboardMoraGrid, DashboardKpisSkeleton } from "./DashboardMetrics";
+import { MetricChart } from "./MetricChart";
 import { MedallaBadge, RangoBadge, InsigniaChip } from "@/components/ui/Medalla";
 import { Emoji } from "@/components/ui/Emoji";
 
@@ -54,6 +55,8 @@ export function HomeView({ role }: { role: Role }) {
       ) : (
         <>
           <DashboardKpis data={data} />
+          {/* Tendencia mensual (12 meses): cobranzas · morosidad · circulación */}
+          <MetricChart vendedorId={esAdmin ? (vendedorId || undefined) : undefined} />
           <DashboardCobranzaAvance data={data} />
         </>
       )}

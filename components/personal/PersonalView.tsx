@@ -1,9 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { mutate as globalMutate } from "swr";
 import {
   UserCog, Plus, Pencil, Trash2, Mail, Phone, ArrowLeft, ChevronRight,
+  Search, LayoutGrid, List,
 } from "lucide-react";
 import { useVendedores, KEYS, type Vendedor } from "@/lib/swr";
 import { VendedorDetail } from "./VendedorDetail";
@@ -37,6 +38,13 @@ export function PersonalView() {
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Vendedor | null>(null);
   const [selected, setSelected] = useState<{ id: string; nombre: string } | null>(null);
+  const [q, setQ] = useState("");
+  const [vista, setVista] = useState<"cards" | "tabla">("tabla");
+  useEffect(() => {
+    const v = localStorage.getItem("cf:personalVista");
+    if (v === "cards" || v === "tabla") setVista(v);
+  }, []);
+  const cambiarVista = (v: "cards" | "tabla") => { setVista(v); localStorage.setItem("cf:personalVista", v); };
 
   const totales = useMemo(() => {
     const activos = vendedores.filter(v => v.activo);
@@ -47,6 +55,17 @@ export function PersonalView() {
       comision: vendedores.reduce((s, v) => s + (v.resumen?.comision_total ?? 0), 0),
     };
   }, [vendedores]);
+
+  const filtrados = useMemo(() => {
+    const t = q.trim().toLowerCase();
+    if (!t) return vendedores;
+    return vendedores.filter((v) =>
+      v.nombre.toLowerCase().includes(t) ||
+      (v.email ?? "").toLowerCase().includes(t) ||
+      (v.telefono ?? "").toLowerCase().includes(t) ||
+      ROL_META[v.rol].label.toLowerCase().includes(t)
+    );
+  }, [vendedores, q]);
 
   const refrescar = () => { mutate(); globalMutate(KEYS.creditos); };
 
@@ -119,7 +138,27 @@ export function PersonalView() {
         subtitle="Equipo de ventas y cobranza · comisiones y objetivos"
         accent="primary"
       />
-      <div className="flex flex-wrap items-center justify-end gap-2">{cta}</div>
+      {/* Toolbar: búsqueda + vista + CTA */}
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative flex-1 min-w-[200px]">
+          <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Buscar por nombre, email o rol…"
+            className="h-10 w-full rounded-lg border border-border bg-card pl-9 pr-3 text-sm outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/20"
+          />
+        </div>
+        <div className="flex h-10 items-center rounded-lg border border-border p-0.5">
+          <button onClick={() => cambiarVista("cards")} title="Ver como tarjetas" className={`flex h-9 w-9 items-center justify-center rounded-md transition-colors ${vista === "cards" ? "bg-primary/10 text-foreground" : "text-muted-foreground hover:bg-muted/20"}`}>
+            <LayoutGrid className="h-4 w-4" />
+          </button>
+          <button onClick={() => cambiarVista("tabla")} title="Ver como tabla" className={`flex h-9 w-9 items-center justify-center rounded-md transition-colors ${vista === "tabla" ? "bg-primary/10 text-foreground" : "text-muted-foreground hover:bg-muted/20"}`}>
+            <List className="h-4 w-4" />
+          </button>
+        </div>
+        {cta}
+      </div>
 
       {isLoading ? (
         <BodySkeleton />
@@ -138,8 +177,23 @@ export function PersonalView() {
           </div>
 
           {/* Lista */}
+          <div className="flex items-center gap-2 border-b border-border pb-2">
+            <Emoji name="office-worker" className="h-4 w-4" />
+            <h2 className="text-sm font-semibold text-foreground">Listado de Personal</h2>
+          </div>
+
           {vendedores.length === 0 ? (
             <EmptyState onNew={openNew} />
+          ) : filtrados.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-border/60 p-10 text-center text-sm text-muted-foreground">
+              Ningún integrante coincide con la búsqueda.
+            </div>
+          ) : vista === "cards" ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {filtrados.map((v) => (
+                <PersonalCard key={v.id} v={v} onOpen={() => abrirFicha(v)} onDelete={() => handleDelete(v)} />
+              ))}
+            </div>
           ) : (
             <>
               {/* Desktop */}
@@ -168,11 +222,11 @@ export function PersonalView() {
                     </tr>
                   </thead>
                   <tbody>
-                    {vendedores.map((v) => {
+                    {filtrados.map((v) => {
                       const rol = ROL_META[v.rol];
                       const r = v.resumen;
                       return (
-                        <tr key={v.id} onClick={() => abrirFicha(v)} className={`group cursor-pointer transition-colors hover:bg-muted/20 ${!v.activo ? "opacity-50" : ""}`}>
+                        <tr key={v.id} onClick={() => abrirFicha(v)} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); abrirFicha(v); } }} className={`group cursor-pointer transition-colors hover:bg-muted/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/50 ${!v.activo ? "opacity-50" : ""}`}>
                           {/* 1 · Identidad */}
                           <td className="px-5 py-4 border-b border-border/60">
                             <div className="flex items-center gap-3">
@@ -220,33 +274,9 @@ export function PersonalView() {
 
               {/* Mobile */}
               <div className="block md:hidden space-y-3">
-                {vendedores.map((v) => {
-                  const rol = ROL_META[v.rol];
-                  const r = v.resumen;
-                  return (
-                    <div key={v.id} onClick={() => abrirFicha(v)} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); abrirFicha(v); } }} className={`rounded-xl bg-card border border-border p-4 space-y-3 cursor-pointer active:bg-muted/20 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 ${!v.activo ? "opacity-50" : ""}`}>
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="flex items-center gap-3 min-w-0">
-                          <Avatar name={v.nombre} size="sm" status={v.activo ? "online" : "offline"} />
-                          <div className="min-w-0">
-                            <p className="font-semibold text-foreground truncate">{v.nombre}</p>
-                            <div className="mt-1"><StatusBadge label={rol.label} variant={rol.variant} /></div>
-                          </div>
-                        </div>
-                        <div className="flex gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
-                          <button onClick={() => abrirFicha(v)} className="flex items-center justify-center h-9 w-9 rounded-lg border border-border text-muted-foreground"><Pencil className="h-4 w-4" /></button>
-                          <button onClick={() => handleDelete(v)} className="flex items-center justify-center h-9 w-9 rounded-lg border border-border text-destructive"><Trash2 className="h-4 w-4" /></button>
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-3 gap-2 text-center">
-                        <div><p className="text-[10px] text-muted-foreground uppercase">Comisión</p><p className="text-sm font-mono font-semibold">{v.comision_pct}%</p></div>
-                        <div><p className="text-[10px] text-muted-foreground uppercase">Vendido</p><p className="text-sm font-mono">${n0(r?.monto_vendido ?? 0)}</p></div>
-                        <div><p className="text-[10px] text-muted-foreground uppercase">Comisión $</p><p className="text-sm font-mono font-semibold text-warning">${n0(r?.comision_total ?? 0)}</p></div>
-                      </div>
-                      <MetaBar vendido={r?.monto_vendido ?? 0} meta={v.meta_venta} avance={r?.avance_meta ?? 0} />
-                    </div>
-                  );
-                })}
+                {filtrados.map((v) => (
+                  <PersonalCard key={v.id} v={v} onOpen={() => abrirFicha(v)} onDelete={() => handleDelete(v)} />
+                ))}
               </div>
             </>
           )}
@@ -254,6 +284,41 @@ export function PersonalView() {
       )}
 
       <PersonalForm open={formOpen} vendedor={editing} onClose={handleClose} />
+    </div>
+  );
+}
+
+/** Tarjeta de un integrante del personal (vista cards + card mobile de la tabla). */
+function PersonalCard({ v, onOpen, onDelete }: { v: Vendedor; onOpen: () => void; onDelete: () => void }) {
+  const rol = ROL_META[v.rol];
+  const r = v.resumen;
+  return (
+    <div
+      onClick={onOpen}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpen(); } }}
+      className={`rounded-xl bg-card border border-border p-4 space-y-3 cursor-pointer transition-colors hover:border-primary/40 active:bg-muted/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 ${!v.activo ? "opacity-50" : ""}`}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex items-center gap-3 min-w-0">
+          <Avatar name={v.nombre} size="sm" status={v.activo ? "online" : "offline"} />
+          <div className="min-w-0">
+            <p className="font-semibold text-foreground truncate">{v.nombre}</p>
+            <div className="mt-1"><StatusBadge label={rol.label} variant={rol.variant} /></div>
+          </div>
+        </div>
+        <div className="flex gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
+          <button onClick={onOpen} title="Abrir ficha" className="flex items-center justify-center h-9 w-9 rounded-lg border border-border text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"><Pencil className="h-4 w-4" /></button>
+          <button onClick={onDelete} title="Eliminar" className="flex items-center justify-center h-9 w-9 rounded-lg border border-border text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors"><Trash2 className="h-4 w-4" /></button>
+        </div>
+      </div>
+      <div className="grid grid-cols-3 gap-2 text-center">
+        <div><p className="text-[10px] text-muted-foreground uppercase">Comisión</p><p className="text-sm font-mono font-semibold">{v.comision_pct}%</p></div>
+        <div><p className="text-[10px] text-muted-foreground uppercase">Vendido</p><p className="text-sm font-mono">${n0(r?.monto_vendido ?? 0)}</p></div>
+        <div><p className="text-[10px] text-muted-foreground uppercase">Comisión $</p><p className="text-sm font-mono font-semibold text-warning">${n0(r?.comision_total ?? 0)}</p></div>
+      </div>
+      <MetaBar vendido={r?.monto_vendido ?? 0} meta={v.meta_venta} avance={r?.avance_meta ?? 0} />
     </div>
   );
 }
