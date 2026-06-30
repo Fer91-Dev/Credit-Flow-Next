@@ -164,7 +164,7 @@ export function AuditoriaTable() {
             renderMobileCard={(e) => {
               const acc = accionConfig(e.accion);
               return (
-                <div onClick={() => setDetalle(e)} className="rounded-xl bg-card border border-border p-4 space-y-2 cursor-pointer active:bg-muted/20 transition-colors">
+                <div onClick={() => setDetalle(e)} role="button" tabIndex={0} onKeyDown={(ev) => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); setDetalle(e); } }} className="rounded-xl bg-card border border-border p-4 space-y-2 cursor-pointer active:bg-muted/20 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50">
                   <div className="flex items-start justify-between gap-2">
                     <StatusBadge label={acc.label} variant={acc.variant} />
                     <span className="text-[11px] text-muted-foreground/60 tabular-nums shrink-0">{fmtDateTime(e.created_at)}</span>

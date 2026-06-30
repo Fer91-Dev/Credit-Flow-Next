@@ -224,7 +224,7 @@ export function PersonalView() {
                   const rol = ROL_META[v.rol];
                   const r = v.resumen;
                   return (
-                    <div key={v.id} onClick={() => abrirFicha(v)} className={`rounded-xl bg-card border border-border p-4 space-y-3 cursor-pointer active:bg-muted/20 transition-colors ${!v.activo ? "opacity-50" : ""}`}>
+                    <div key={v.id} onClick={() => abrirFicha(v)} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); abrirFicha(v); } }} className={`rounded-xl bg-card border border-border p-4 space-y-3 cursor-pointer active:bg-muted/20 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 ${!v.activo ? "opacity-50" : ""}`}>
                       <div className="flex items-start justify-between gap-2">
                         <div className="flex items-center gap-3 min-w-0">
                           <Avatar name={v.nombre} size="sm" status={v.activo ? "online" : "offline"} />
