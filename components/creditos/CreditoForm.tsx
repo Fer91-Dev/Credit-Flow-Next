@@ -736,7 +736,7 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
                 <div className="absolute inset-y-0 left-0 w-1/4 bg-gradient-to-r from-transparent via-foreground/[0.06] to-transparent animate-[shimmer-sweep_1.1s_ease-in-out_infinite]" />
               </div>
             )}
-            <div className={`h-full overflow-y-auto transition-opacity duration-200 ${calculando ? "opacity-50" : "opacity-100"}`}>
+            <div className={`h-full overflow-auto transition-opacity duration-200 ${calculando ? "opacity-50" : "opacity-100"}`}>
             {vista === "operador" ? (
               /* ── Vista operador: desglose completo ── */
               <table className="w-full text-xs border-separate border-spacing-0">
@@ -748,10 +748,10 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
                     <th className="px-2.5 py-2.5 text-right font-semibold text-warning border-b border-border">Interés</th>
                     <th className="px-2.5 py-2.5 text-right font-semibold text-primary border-b border-border">Capital</th>
                     {cargoCols.map(col => (
-                      <th key={col.key} className="px-2.5 py-2.5 text-right font-semibold text-foreground bg-warning/5 border-b border-border whitespace-nowrap">{col.label}</th>
+                      <th key={col.key} className="px-2.5 py-2.5 text-right font-semibold text-foreground bg-warning/5 border-b border-border align-bottom">{col.label}</th>
                     ))}
                     {hayCargoCols && <th className="px-2.5 py-2.5 text-right font-semibold text-foreground border-b border-border">Total</th>}
-                    <th className="px-2.5 py-2.5 text-right font-semibold text-muted-foreground border-b border-border pr-5">Saldo</th>
+                    <th className="px-2.5 py-2.5 text-right font-semibold text-muted-foreground border-b border-border pr-3">Saldo</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -766,7 +766,7 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
                         <td key={col.key} className="px-2.5 py-2 text-right font-mono text-foreground/80 bg-warning/5 tabular-nums">${n2(row[col.key])}</td>
                       ))}
                       {hayCargoCols && <td className="px-2.5 py-2 text-right font-mono font-semibold text-foreground tabular-nums">${n2(row.cuotaTotal)}</td>}
-                      <td className="px-2.5 py-2 pr-5 text-right font-mono text-muted-foreground tabular-nums">${n2(row.saldo)}</td>
+                      <td className="px-2.5 py-2 pr-3 text-right font-mono text-muted-foreground tabular-nums">${n2(row.saldo)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -780,7 +780,7 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
                       <td key={col.key} className="px-2.5 py-3.5 text-right font-bold font-mono text-sm text-foreground bg-warning/10 tabular-nums">${n2(col.key === "iva" ? plan.totalIva : col.key === "seguro" ? plan.totalSeguro : plan.totalGastos)}</td>
                     ))}
                     {hayCargoCols && <td className="px-2.5 py-3.5 text-right font-bold font-mono text-sm text-foreground tabular-nums">${n2(totalCuotasCliente)}</td>}
-                    <td className="px-2.5 py-3.5 pr-5 text-right font-mono text-muted-foreground/30 tabular-nums">$ 0,00</td>
+                    <td className="px-2.5 py-3.5 pr-3 text-right font-mono text-muted-foreground/30 tabular-nums">$ 0,00</td>
                   </tr>
                 </tfoot>
               </table>

@@ -285,7 +285,12 @@ export function PagoForm({ creditoId, clienteId, onClose }: PagoFormProps) {
   const seleccionadas = hasta != null ? cobrables.filter(c => c.nro <= hasta) : [];
   const montoCuotas  = round2(seleccionadas.reduce((s, c) => s + importePendiente(c), 0));
   const monto        = manual ? parseMontoInput(montoManual) : montoCuotas;
-  const excede       = selected ? monto > selected.saldo_pendiente : false;
+  // "Excede" = se paga más que TODO lo adeudado (capital + interés + cargos de las
+  // cuotas pendientes) → el sobrante queda a favor. OJO: NO comparar contra
+  // `saldo_pendiente`, que es solo el CAPITAL: una cuota normal (capital + interés)
+  // ya lo supera y dispararía un falso aviso. El epsilon evita falsos por redondeo.
+  const totalAdeudado = round2(cobrables.reduce((s, c) => s + importePendiente(c), 0));
+  const excede       = monto > totalAdeudado + 0.01;
   const hayMora      = cobrables.some(c => c.estado === "vencida");
 
   // Submit NO cobra directo: abre la confirmación para que un Enter o clic

@@ -138,6 +138,17 @@ body {
   border-color: var(--border);
 }
 
+/* ─── Densidad global (High-Density UI) ──────────────────────────────────────
+   Baja el font-size raíz de 16px → 14.4px (90%). Como Tailwind v4 dimensiona
+   TODO en rem (tipografía, paddings, gaps, anchos como w-64, íconos h-5…), esta
+   única línea encoge el SaaS entero de forma proporcional: es el equivalente
+   "nativo" a tener el zoom del navegador al 90%, sin tocar clases una por una ni
+   romper el design contract. Para ajustar la densidad, cambiar solo este valor
+   (90% ≈ zoom 90% · 87.5% = 14px, más denso · 93.75% = 15px, más suave). */
+html {
+  font-size: 90%;
+}
+
 body {
   background-color: var(--background);
   color: var(--foreground);
