@@ -114,7 +114,7 @@ export function PersonalView() {
     );
     return (
       <div className="space-y-6">
-        <PageHeader icon="office-worker" title="Personal" subtitle="Ficha del empleado" accent="primary" />
+        <PageHeader icon="office-worker" title="Agentes" subtitle="Ficha del agente" accent="primary" />
         <div className="flex flex-wrap items-center gap-2">{volver}</div>
         <div className="rounded-xl bg-card border border-border overflow-hidden">
           <VendedorDetail
@@ -134,8 +134,8 @@ export function PersonalView() {
     <div className="space-y-6">
       <PageHeader
         icon="office-worker"
-        title="Personal"
-        subtitle="Equipo de ventas y cobranza · comisiones y objetivos"
+        title="Agentes"
+        subtitle="Comisiones, límites y rendimiento del equipo"
         accent="primary"
       />
       {/* Toolbar: búsqueda + vista + CTA */}
@@ -170,7 +170,7 @@ export function PersonalView() {
         <div className="space-y-6">
           {/* KPIs */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <StatCard icon="busts-in-silhouette" label="Personal" value={String(totales.personal)} sub={`${totales.activos} activos`} accent="primary" />
+            <StatCard icon="busts-in-silhouette" label="Agentes" value={String(totales.personal)} sub={`${totales.activos} activos`} accent="primary" />
             <StatCard icon="dollar-banknote" label="Vendido (total)" value={`$${n0(totales.vendido)}`} sub="acumulado del equipo" accent="success" mono />
             <StatCard icon="bar-chart" label="Comisiones" value={`$${n0(totales.comision)}`} sub="a liquidar" accent="warning" mono />
             <StatCard icon="bullseye" label="Vendedores activos" value={String(totales.activos)} sub={`de ${totales.personal} totales`} accent="primary" />
@@ -179,7 +179,7 @@ export function PersonalView() {
           {/* Lista */}
           <div className="flex items-center gap-2 border-b border-border pb-2">
             <Emoji name="office-worker" className="h-4 w-4" />
-            <h2 className="text-sm font-semibold text-foreground">Listado de Personal</h2>
+            <h2 className="text-sm font-semibold text-foreground">Listado de Agentes</h2>
           </div>
 
           {vendedores.length === 0 ? (
@@ -200,7 +200,7 @@ export function PersonalView() {
               <div className="hidden md:block rounded-xl border border-border bg-card overflow-hidden shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)]">
                 <table className="w-full table-fixed text-sm border-separate border-spacing-0">
                   <colgroup>
-                    <col />{/* Personal — flexible, ocupa el resto */}
+                    <col />{/* Agente — flexible, ocupa el resto */}
                     <col className="w-28" />{/* Rol */}
                     <col className="w-24" />{/* Comisión % */}
                     <col className="w-24" />{/* Créditos */}
@@ -211,7 +211,7 @@ export function PersonalView() {
                   </colgroup>
                   <thead>
                     <tr className="bg-muted/30">
-                      <th className="px-5 py-3.5 text-left  text-[11px] font-semibold text-muted-foreground uppercase tracking-wider border-b border-border">Personal</th>
+                      <th className="px-5 py-3.5 text-left  text-[11px] font-semibold text-muted-foreground uppercase tracking-wider border-b border-border">Agente</th>
                       <th className="px-4 py-3.5 text-left  text-[11px] font-semibold text-muted-foreground uppercase tracking-wider border-b border-border">Rol</th>
                       <th className="px-4 py-3.5 text-right text-[11px] font-semibold text-muted-foreground uppercase tracking-wider border-b border-border">Comisión</th>
                       <th className="px-4 py-3.5 text-right text-[11px] font-semibold text-muted-foreground uppercase tracking-wider border-b border-border">Créditos</th>
@@ -416,6 +416,10 @@ function PersonalForm({
   const [activo, setActivo] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Cuenta de acceso (solo alta)
+  const [crearCuenta, setCrearCuenta] = useState(false);
+  const [cuentaPassword, setCuentaPassword] = useState("");
+  const [rolAcceso, setRolAcceso] = useState<"vendedor" | "cobrador" | "admin">("vendedor");
 
   // Sincroniza el formulario cuando se abre para editar o crear.
   const [syncKey, setSyncKey] = useState<string | null>(null);
@@ -429,36 +433,59 @@ function PersonalForm({
     setComision(String(vendedor?.comision_pct ?? 0));
     setMeta(vendedor?.meta_venta ? numeroAInput(vendedor.meta_venta) : "");
     setActivo(vendedor?.activo ?? true);
+    setCrearCuenta(false);
+    setCuentaPassword("");
+    setRolAcceso("vendedor");
     setError(null);
   }
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!nombre.trim()) { setError("El nombre es requerido"); return; }
+    if (!editing && crearCuenta) {
+      if (!email.trim()) { setError("El email es requerido para crear la cuenta de acceso"); return; }
+      if (cuentaPassword.length < 6) { setError("La contraseña debe tener al menos 6 caracteres"); return; }
+    }
     const ok = await confirm({
-      title: editing ? "¿Guardar cambios?" : "¿Crear personal?",
+      title: editing ? "¿Guardar cambios?" : "¿Crear agente?",
       description: editing
         ? `Se actualizarán los datos de ${nombre.trim()}.`
-        : `Se dará de alta a ${nombre.trim()}.`,
+        : crearCuenta
+          ? `Se creará el agente ${nombre.trim()} con cuenta de acceso (${email.trim()}).`
+          : `Se dará de alta a ${nombre.trim()} sin cuenta de acceso al sistema.`,
       confirmLabel: editing ? "Guardar cambios" : "Crear",
     });
     if (!ok) return;
     setLoading(true); setError(null);
     try {
-      const body = {
+      const body: Record<string, unknown> = {
         nombre, email, telefono, rol,
         comision_pct: parseFloat(comision) || 0,
         meta_venta: parseMontoInput(meta),
         activo,
       };
+      if (!editing && crearCuenta && email.trim() && cuentaPassword) {
+        body.crear_cuenta = { email: email.trim(), password: cuentaPassword, rol_acceso: rolAcceso };
+      }
       const res = await fetch(editing ? `/api/vendedores/${vendedor!.id}` : "/api/vendedores", {
         method: editing ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
       const json = await res.json();
-      if (json.ok) { toast.success(editing ? `${nombre.trim()} actualizado` : `${nombre.trim()} creado`); onClose(true); }
-      else setError(json.error);
+      if (json.ok) {
+        if (json.data?.cuenta_error) {
+          toast.success(`${nombre.trim()} creado`);
+          setError(`Agente creado, pero la cuenta de acceso falló: ${json.data.cuenta_error}`);
+          onClose(true);
+        } else if (json.data?.cuenta_creada) {
+          toast.success(`${nombre.trim()} creado con cuenta de acceso (${json.data.cuenta_email})`);
+          onClose(true);
+        } else {
+          toast.success(editing ? `${nombre.trim()} actualizado` : `${nombre.trim()} creado`);
+          onClose(true);
+        }
+      } else setError(json.error);
     } catch {
       setError("No se pudo guardar");
     } finally {
@@ -471,8 +498,8 @@ function PersonalForm({
       <DialogContent className={MODAL_CONTENT}>
         <ModalHeader
           icon="office-worker"
-          title={editing ? "Editar personal" : "Nuevo personal"}
-          subtitle={editing ? "Actualizá los datos del empleado." : "Sumá un integrante al equipo de ventas y cobranza."}
+          title={editing ? "Editar agente" : "Nuevo agente"}
+          subtitle={editing ? "Actualizá los datos del agente." : "Sumá un integrante al equipo de ventas y cobranza."}
         />
         <form onSubmit={submit} className="space-y-4">
           {error && (
@@ -513,6 +540,49 @@ function PersonalForm({
               </Select>
             </Field>
           </div>
+          {/* Cuenta de acceso — solo en alta */}
+          {!editing && (
+            <div className="rounded-lg border border-border bg-muted/20 overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setCrearCuenta((v) => !v)}
+                className="flex w-full items-center justify-between gap-3 px-4 py-3 text-sm font-medium text-foreground hover:bg-muted/30 transition-colors"
+              >
+                <div className="flex items-center gap-2">
+                  <Emoji name="locked-with-key" className="h-4 w-4 shrink-0" />
+                  <span>Crear cuenta de acceso al sistema</span>
+                  {crearCuenta && <span className="text-[10px] font-semibold uppercase tracking-wide text-primary bg-primary/10 rounded-full px-2 py-0.5">Activo</span>}
+                </div>
+                <span className={`text-xs text-muted-foreground transition-transform duration-200 ${crearCuenta ? "rotate-180" : ""}`}>▼</span>
+              </button>
+              {crearCuenta && (
+                <div className="border-t border-border px-4 pb-4 pt-3 space-y-3">
+                  <p className="text-[11px] text-muted-foreground">
+                    El agente podrá iniciar sesión con el email y contraseña que definas. El email del agente se usará como usuario de acceso.
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <Field label="Contraseña de acceso" required>
+                      <Input
+                        type="password"
+                        value={cuentaPassword}
+                        onChange={(e) => setCuentaPassword(e.target.value)}
+                        placeholder="Mínimo 6 caracteres"
+                        autoComplete="new-password"
+                      />
+                    </Field>
+                    <Field label="Rol de acceso" required>
+                      <Select value={rolAcceso} onChange={(e) => setRolAcceso(e.target.value as typeof rolAcceso)}>
+                        <option value="vendedor">Vendedor</option>
+                        <option value="cobrador">Cobrador</option>
+                        <option value="admin">Administrador</option>
+                      </Select>
+                    </Field>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           <FormActions
             onCancel={() => onClose(false)}
             loading={loading}

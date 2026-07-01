@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
 import { registrarAuditoria } from "@/lib/audit";
 import { esRolValido, resumirVendedor, normalizarComisionPct, normalizarMonto, normalizarComisionConfig } from "@/lib/domain";
+import { createAdminClient } from "@/lib/supabase/admin";
 import type { NextRequest } from "next/server";
 
 /**
@@ -65,12 +66,16 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
   // Alta de personal: solo admin.
   const { tenantId } = await requireRole(["admin"], req);
 
+  const ROLES_ACCESO = ["admin", "vendedor", "cobrador"] as const;
+  type RolAcceso = (typeof ROLES_ACCESO)[number];
+
   let body: {
     nombre?: string; email?: string; telefono?: string; rol?: string;
     comision_pct?: number; meta_venta?: number; activo?: boolean;
     documento?: string; fecha_ingreso?: string; direccion?: string;
     zona?: string; notas?: string; limite_aprobacion?: number | null;
     comision_config?: unknown;
+    crear_cuenta?: { email?: string; password?: string; rol_acceso?: string };
   };
   try {
     body = await req.json();
@@ -112,9 +117,73 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     entidad: "vendedores",
     entidadId: vendedor.id,
     accion: "crear",
-    descripcion: `Personal creado: ${vendedor.nombre} (${rol})`,
+    descripcion: `Agente creado: ${vendedor.nombre} (${rol})`,
     meta: { rol, comision_pct: comision },
   });
+
+  // Crear cuenta de acceso opcional (email + contraseña) vinculada al vendedor.
+  if (body.crear_cuenta) {
+    const cc = body.crear_cuenta;
+    const ccEmail = cc.email?.trim().toLowerCase();
+    const ccPassword = cc.password ?? "";
+    const ccRol = (ROLES_ACCESO.includes(cc.rol_acceso as RolAcceso) ? cc.rol_acceso : "vendedor") as RolAcceso;
+
+    if (!ccEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(ccEmail)) {
+      return successResponse({ ...vendedor, cuenta_error: "Email de cuenta inválido" }, 201);
+    }
+    if (ccPassword.length < 6) {
+      return successResponse({ ...vendedor, cuenta_error: "La contraseña debe tener al menos 6 caracteres" }, 201);
+    }
+
+    const supabase = createAdminClient();
+    const { data: created, error: authErr } = await supabase.auth.admin.createUser({
+      email: ccEmail,
+      password: ccPassword,
+      email_confirm: true,
+      user_metadata: { full_name: vendedor.nombre },
+    });
+
+    if (authErr || !created?.user) {
+      const msg = authErr?.message ?? "No se pudo crear la cuenta";
+      const dup = /already|registered|exists/i.test(msg);
+      return successResponse({
+        ...vendedor,
+        cuenta_error: dup ? "Ya existe una cuenta con ese email" : msg,
+      }, 201);
+    }
+
+    await prisma.profiles.upsert({
+      where: { id: created.user.id },
+      create: {
+        id: created.user.id,
+        email: ccEmail,
+        full_name: vendedor.nombre,
+        tenant_id: tenantId,
+        role: ccRol,
+        activo: true,
+        vendedor_id: vendedor.id,
+      },
+      update: {
+        email: ccEmail,
+        full_name: vendedor.nombre,
+        tenant_id: tenantId,
+        role: ccRol,
+        activo: true,
+        vendedor_id: vendedor.id,
+      },
+    });
+
+    await registrarAuditoria({
+      tenantId,
+      entidad: "usuarios",
+      entidadId: created.user.id,
+      accion: "crear",
+      descripcion: `Cuenta de acceso creada junto con el agente: ${ccEmail} (${ccRol})`,
+      meta: { email: ccEmail, role: ccRol, vendedor_id: vendedor.id },
+    });
+
+    return successResponse({ ...vendedor, cuenta_creada: true, cuenta_email: ccEmail }, 201);
+  }
 
   return successResponse(vendedor, 201);
 });
