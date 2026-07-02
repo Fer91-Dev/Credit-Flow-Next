@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
+import { sinDeuda } from "@/lib/domain";
 
 // Reglas de mora para disparar notificaciones
 const REGLAS = [
@@ -33,6 +34,11 @@ export async function POST(req: NextRequest) {
   // Promesas de pago vencidas: se procesan SIEMPRE (es una actualización de estado,
   // no depende de tener canales de notificación configurados).
   const promesas = await procesarPromesasVencidas(hoy);
+
+  // Reconciliación de estado: cierra créditos cuyo ledger ya no tiene deuda pero que
+  // quedaron en "activo"/"vencido" (datos legacy o drift). El camino normal ya los pasa
+  // a "pagado" al cobrar la última cuota; esto es la red de seguridad. Corre SIEMPRE.
+  const reconciliacion = await reconciliarCreditosSaldados();
 
   // Obtener todos los tenants con configuración de canales activa
   const configs = await prisma.configuraciones.findMany({
@@ -120,7 +126,28 @@ export async function POST(req: NextRequest) {
     resultados.push({ tenant_id: config.tenant_id, enviados, errores });
   }
 
-  return NextResponse.json({ ok: true, promesas, procesados: configs.length, resultados });
+  return NextResponse.json({ ok: true, promesas, reconciliacion, procesados: configs.length, resultados });
+}
+
+/**
+ * Cierra los créditos que ya no tienen deuda (ledger saldado) pero cuyo `estado` quedó
+ * en "activo"/"vencido". Usa el mismo criterio autoritativo que las lecturas (`sinDeuda`:
+ * saldo ~ 0 y todas las cuotas con capital saldado). Idempotente: solo toca los que hace
+ * falta. Corre para TODOS los tenants (no depende de canales configurados).
+ */
+async function reconciliarCreditosSaldados(): Promise<{ cerrados: number }> {
+  const candidatos = await prisma.creditos.findMany({
+    where: { estado: { in: ["activo", "vencido"] }, saldo_pendiente: { lte: 0.01 } },
+    select: { id: true, saldo_pendiente: true, cuotas: { select: { capital: true, pagado_capital: true } } },
+    take: 2000, // límite de seguridad
+  });
+  const ids = candidatos.filter((c) => sinDeuda(c.saldo_pendiente, c.cuotas)).map((c) => c.id);
+  if (ids.length === 0) return { cerrados: 0 };
+  await prisma.creditos.updateMany({
+    where: { id: { in: ids } },
+    data: { estado: "pagado", dias_mora: 0, proximo_pago: null },
+  });
+  return { cerrados: ids.length };
 }
 
 // ─── Promesas de pago vencidas (automatización de incumplimiento) ─────────────

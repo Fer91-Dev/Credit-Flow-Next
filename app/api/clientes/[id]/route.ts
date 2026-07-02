@@ -256,6 +256,20 @@ export const DELETE = withErrorHandler(async (req: NextRequest, { params }: Rout
     return errorResponse("Cliente no encontrado", "NOT_FOUND", 404);
   }
 
+  // Guard: no inactivar un cliente que todavía tiene créditos vivos (activo/vencido).
+  // Quedarían créditos operativos colgando de un cliente "inactivo" (incoherente y confuso
+  // en reportes). Mismo patrón que el guard de productos con créditos.
+  const creditosVivos = await prisma.creditos.count({
+    where: { ...withTenant(tenantId), cliente_id: id, estado: { in: ["activo", "vencido"] } },
+  });
+  if (creditosVivos > 0) {
+    return errorResponse(
+      `El cliente tiene ${creditosVivos} crédito(s) activo(s). Resolvelos (saldar, anular o refinanciar) antes de inactivarlo.`,
+      "CONFLICT",
+      409,
+    );
+  }
+
   // Soft delete: marcar como inactivo en lugar de borrar
   await prisma.clientes.update({
     where: { id },

@@ -112,10 +112,22 @@ function creditoBadge(estado: string): { label: string; variant: "primary" | "su
   return { label: estado, variant: "muted" };
 }
 
+/** Badge de estado de una promesa de pago para la ficha del cliente. */
+function promesaBadge(
+  estado: "pendiente" | "cumplida" | "incumplida" | null,
+  fecha: string | null,
+  hoy: Date,
+): { label: string; variant: BadgeVariant } {
+  if (estado === "cumplida") return { label: "Cumplida", variant: "success" };
+  if (estado === "incumplida") return { label: "Rota", variant: "destructive" };
+  if (fecha && new Date(fecha) < hoy) return { label: "Vencida", variant: "warning" };
+  return { label: "Vigente", variant: "primary" };
+}
+
 /**
  * Ficha 360° del cliente (solo lectura). Reúne datos personales, laborales y
- * crediticios + el estado de cuenta calculado en el servidor, más los
- * compromisos de pago vigentes (promesas tomadas en gestiones de cobranza).
+ * crediticios + el estado de cuenta calculado en el servidor, más el
+ * historial de promesas de pago (tomadas en gestiones de cobranza).
  */
 export function ClienteDetail({
   clienteId,
@@ -153,13 +165,13 @@ export function ClienteDetail({
   const activos = creditos.filter((c) => c.estado === "activo");
   const historicos = creditos.filter((c) => c.estado !== "activo");
 
-  // Compromisos vigentes: promesas de pago sobre créditos de este cliente, a futuro.
+  // Historial de promesas de pago del cliente (vigentes + cumplidas + rotas), últimas 6.
   const creditoIds = new Set(creditos.map((c) => c.id));
   const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
-  const compromisos = acciones
+  const promesas = acciones
     .filter((a) => creditoIds.has(a.credito_id) && a.resultado === "promesa_pago" && a.promesa_fecha)
-    .filter((a) => new Date(a.promesa_fecha as string) >= hoy)
-    .sort((a, b) => new Date(a.promesa_fecha as string).getTime() - new Date(b.promesa_fecha as string).getTime());
+    .sort((a, b) => new Date(b.promesa_fecha as string).getTime() - new Date(a.promesa_fecha as string).getTime())
+    .slice(0, 6);
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -271,22 +283,28 @@ export function ClienteDetail({
         </div>
         )}
 
-        {/* Compromisos vigentes */}
-        {showCreditos && compromisos.length > 0 && (
+        {/* Historial de promesas de pago (vigentes / cumplidas / rotas) */}
+        {showCreditos && promesas.length > 0 && (
           <section className="space-y-2">
-            <SectionTitle icon="handshake" text="Compromisos de pago vigentes" />
-            <div className="rounded-xl border border-success/20 bg-success/[0.04] divide-y divide-border/50">
-              {compromisos.map((c) => (
-                <div key={c.id} className="flex items-center justify-between gap-3 px-4 py-2.5 text-sm">
-                  <span className="flex items-center gap-2 text-foreground">
-                    <CalendarClock className="h-3.5 w-3.5 text-success" />
-                    Promesa para el {fmtDate(c.promesa_fecha)}
-                  </span>
-                  <span className="font-mono font-semibold text-success">
-                    {c.promesa_monto != null ? `$${n0(c.promesa_monto)}` : "—"}
-                  </span>
-                </div>
-              ))}
+            <SectionTitle icon="handshake" text="Historial de promesas de pago" />
+            <div className="rounded-xl border border-border bg-card divide-y divide-border/50">
+              {promesas.map((p) => {
+                const b = promesaBadge(p.promesa_estado, p.promesa_fecha, hoy);
+                return (
+                  <div key={p.id} className="flex items-center justify-between gap-3 px-4 py-2.5 text-sm">
+                    <span className="flex items-center gap-2 text-foreground">
+                      <CalendarClock className="h-3.5 w-3.5 text-muted-foreground" />
+                      Promesa para el {fmtDate(p.promesa_fecha)}
+                    </span>
+                    <div className="flex items-center gap-2.5">
+                      <span className="font-mono font-semibold text-foreground">
+                        {p.promesa_monto != null ? `$${n0(p.promesa_monto)}` : "—"}
+                      </span>
+                      <StatusBadge label={b.label} variant={b.variant} />
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </section>
         )}

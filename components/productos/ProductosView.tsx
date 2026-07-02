@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { mutate as globalMutate } from "swr";
-import { Plus, Pencil, Trash2, Search, ImagePlus, Loader2, X, Link as LinkIcon, LayoutGrid, List, ArrowDownToLine, SlidersHorizontal, Image as ImageIcon, ChevronLeft, ChevronRight } from "lucide-react";
+import { Plus, Pencil, Trash2, Search, ImagePlus, Loader2, X, Link as LinkIcon, LayoutGrid, List, ArrowDownToLine, SlidersHorizontal, Image as ImageIcon, ChevronLeft, ChevronRight, Info, GripVertical, Star } from "lucide-react";
 import { useProductos, useProducto, KEYS, type Producto, type MovimientoStock } from "@/lib/swr";
 import { parseMontoInput, formatFecha, formatFechaHora, formatCreditoNumero } from "@/lib/utils";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -806,6 +806,11 @@ function ProductoForm({
   const editing = !!producto;
   const fileRef = useRef<HTMLInputElement>(null);
 
+  // Al editar, avisar si el producto ya tiene créditos vivos: cambiar el precio afecta
+  // SOLO a créditos futuros (los otorgados usan su monto snapshot, no cambian).
+  const { producto: fichaEdit } = useProducto(editing ? (producto?.id ?? null) : null);
+  const creditosVivos = (fichaEdit?.creditos ?? []).filter((c) => c.estado === "activo" || c.estado === "vencido").length;
+
   const [nombre, setNombre] = useState("");
   const [categoria, setCategoria] = useState("");
   const [sku, setSku] = useState("");
@@ -817,6 +822,7 @@ function ProductoForm({
   const [urlInput, setUrlInput] = useState("");
   const [activo, setActivo] = useState(true);
   const [uploading, setUploading] = useState(false);
+  const [dragIdx, setDragIdx] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -850,6 +856,14 @@ function ProductoForm({
   };
   const quitarImagen = (idx: number) => setImagenes((prev) => prev.filter((_, i) => i !== idx));
   const hacerPortada = (idx: number) => setImagenes((prev) => (idx === 0 ? prev : [prev[idx], ...prev.filter((_, i) => i !== idx)]));
+  // Reordena moviendo el elemento `from` a la posición `to` (drag & drop). La posición 0 es la portada.
+  const moverImagen = (from: number, to: number) => setImagenes((prev) => {
+    if (from === to || from < 0 || to < 0 || from >= prev.length || to >= prev.length) return prev;
+    const next = [...prev];
+    const [item] = next.splice(from, 1);
+    next.splice(to, 0, item);
+    return next;
+  });
 
   const handleFiles = async (files: FileList) => {
     setError(null);
@@ -924,16 +938,33 @@ function ProductoForm({
           <div className="space-y-2.5">
             <div className="flex items-center justify-between">
               <FieldLabel>Fotos ({imagenes.length}/{MAX_FOTOS_PRODUCTO})</FieldLabel>
-              {imagenes.length > 0 && <span className="text-[11px] text-muted-foreground">La 1ª es la portada</span>}
+              {imagenes.length > 1 && (
+                <span className="text-[11px] text-muted-foreground">Arrastrá para ordenar · ⭐ elige la portada</span>
+              )}
             </div>
             <div className="flex flex-wrap gap-2.5">
               {imagenes.map((url, idx) => (
-                <div key={url} className="group/foto relative h-20 w-20 rounded-lg border border-border bg-muted/30 overflow-hidden">
+                <div
+                  key={url}
+                  draggable
+                  onDragStart={(e) => { setDragIdx(idx); e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", String(idx)); }}
+                  onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; }}
+                  onDrop={(e) => { e.preventDefault(); const from = dragIdx ?? Number(e.dataTransfer.getData("text/plain")); moverImagen(from, idx); setDragIdx(null); }}
+                  onDragEnd={() => setDragIdx(null)}
+                  title="Arrastrá para reordenar"
+                  className={`group/foto relative h-24 w-24 rounded-lg border bg-muted/30 overflow-hidden cursor-grab active:cursor-grabbing transition-all ${
+                    dragIdx === idx ? "opacity-40 ring-2 ring-primary" : dragIdx !== null ? "ring-1 ring-primary/30" : ""
+                  } ${idx === 0 ? "border-primary/50 ring-1 ring-primary/40" : "border-border"}`}
+                >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={url} alt="" className="h-full w-full object-cover" />
-                  {idx === 0 && (
-                    <span className="absolute bottom-0 inset-x-0 bg-primary/80 text-[9px] font-semibold text-primary-foreground text-center py-0.5">Portada</span>
-                  )}
+                  <img src={url} alt="" className="h-full w-full object-cover pointer-events-none select-none" />
+
+                  {/* Handle de arrastre (hint) */}
+                  <span className="absolute top-0.5 left-0.5 flex h-5 w-5 items-center justify-center rounded bg-background/70 text-muted-foreground opacity-0 group-hover/foto:opacity-100 transition-opacity">
+                    <GripVertical className="h-3 w-3" />
+                  </span>
+
+                  {/* Quitar */}
                   <button
                     type="button"
                     onClick={() => quitarImagen(idx)}
@@ -942,14 +973,20 @@ function ProductoForm({
                   >
                     <X className="h-3 w-3" />
                   </button>
-                  {idx !== 0 && (
+
+                  {/* Portada (idx 0) o botón elegir portada (hover) */}
+                  {idx === 0 ? (
+                    <span className="absolute bottom-0 inset-x-0 flex items-center justify-center gap-1 bg-primary/85 text-[9px] font-semibold text-primary-foreground py-0.5">
+                      <Star className="h-2.5 w-2.5 fill-current" /> Portada
+                    </span>
+                  ) : (
                     <button
                       type="button"
                       onClick={() => hacerPortada(idx)}
-                      title="Hacer portada"
-                      className="absolute bottom-0 inset-x-0 bg-background/80 text-[9px] text-foreground py-0.5 opacity-0 group-hover/foto:opacity-100 transition-opacity"
+                      title="Elegir como portada"
+                      className="absolute bottom-0 inset-x-0 flex items-center justify-center gap-1 bg-background/85 text-[9px] font-medium text-foreground py-0.5 opacity-0 group-hover/foto:opacity-100 transition-all hover:bg-primary/85 hover:text-primary-foreground"
                     >
-                      Hacer portada
+                      <Star className="h-2.5 w-2.5" /> Portada
                     </button>
                   )}
                 </div>
@@ -960,7 +997,7 @@ function ProductoForm({
                   type="button"
                   onClick={() => fileRef.current?.click()}
                   disabled={uploading}
-                  className="flex h-20 w-20 flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-border text-muted-foreground hover:border-primary/40 hover:text-foreground transition-colors disabled:opacity-50"
+                  className="flex h-24 w-24 flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-border text-muted-foreground hover:border-primary/40 hover:text-foreground transition-colors disabled:opacity-50"
                 >
                   {uploading ? <Loader2 className="h-5 w-5 animate-spin text-primary" /> : <ImagePlus className="h-5 w-5" />}
                   <span className="text-[10px]">Subir</span>
@@ -1024,6 +1061,15 @@ function ProductoForm({
           <Field label="Precio ($)" required hint="Se toma como capital del crédito">
             <MoneyInput value={precio} onChange={setPrecio} required />
           </Field>
+          {editing && creditosVivos > 0 && (
+            <div className="flex items-start gap-2 rounded-lg border border-warning/20 bg-warning/10 px-3 py-2.5 text-xs text-warning">
+              <Info className="h-4 w-4 shrink-0 mt-px" />
+              <span>
+                Este producto tiene <strong>{creditosVivos}</strong> crédito{creditosVivos !== 1 ? "s" : ""} activo{creditosVivos !== 1 ? "s" : ""}.
+                Cambiar el precio aplica solo a créditos <strong>futuros</strong>; los ya otorgados conservan su monto.
+              </span>
+            </div>
+          )}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {editing ? (

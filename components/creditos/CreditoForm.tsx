@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { motion } from "framer-motion";
-import { DollarSign, Eye, EyeOff, Info, Percent, Search, UserPlus, X } from "lucide-react";
+import { DollarSign, Eye, EyeOff, Info, Percent, Search, UserPlus, X, RefreshCw } from "lucide-react";
 import { Emoji } from "@/components/ui/Emoji";
 import { Field, Input, Select } from "@/components/ui/field";
 import { ClienteForm, type ClienteCreado } from "@/components/clientes/ClienteForm";
@@ -63,7 +63,16 @@ function useDebounced<T>(value: T, delay = 350): T {
 export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
   const { config } = useConfiguracion();
   const { perfil } = useMiPerfilVendedor(); // límite de otorgamiento del usuario (null si es admin/sin tope)
-  const { caja: miCaja } = useMiCaja(); // caja personal del vendedor (null si es admin); fondos para otorgar
+  const { caja: miCaja, mutate: refrescarCaja } = useMiCaja(); // caja de la que desembolsa el usuario (vendedor: su caja; admin: caja principal); fondos para otorgar
+  const [refrescandoCaja, setRefrescandoCaja] = useState(false);
+  // Recarga PARCIAL del saldo: revalida solo /api/me/caja (mi caja) sin recargar la página
+  // ni perder los datos del formulario. Al volver, `dispDesembolso`/`fondosInsuficientes` se
+  // recalculan solos (derivados en el render) → si ya alcanza, el aviso rojo desaparece y el
+  // botón "Otorgar" se habilita.
+  const refrescarSaldo = async () => {
+    setRefrescandoCaja(true);
+    try { await refrescarCaja(); } finally { setRefrescandoCaja(false); }
+  };
   const confirm = useConfirm();
   const toast = useToast();
   const convencion: ConvencionTasa = config?.convencionTasa ?? "nominal_anual";
@@ -224,8 +233,9 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
     if (!creditoId && perfil?.limite_aprobacion != null && monto > perfil.limite_aprobacion)
       return `El capital supera tu límite de otorgamiento ($${n0(perfil.limite_aprobacion)}). Requiere autorización de un administrador.`;
     // Fondos disponibles en la cuenta de desembolso (solo créditos de dinero; el producto no desembolsa).
+    // miCaja = la caja de la que desembolsa el usuario (vendedor: su caja; admin: caja principal).
     if (!esProducto && !creditoId && miCaja && monto > (miCaja.saldos_por_cuenta[formData.cuenta_desembolso] ?? 0))
-      return `No tenés saldo suficiente en tu caja de ${CUENTA_DESEMBOLSO_LABEL[formData.cuenta_desembolso]} ($${n0(miCaja.saldos_por_cuenta[formData.cuenta_desembolso] ?? 0)}). Pedí una entrega al administrador o cambiá la forma de desembolso.`;
+      return `No hay saldo suficiente en la caja de ${CUENTA_DESEMBOLSO_LABEL[formData.cuenta_desembolso]} ($${n0(miCaja.saldos_por_cuenta[formData.cuenta_desembolso] ?? 0)}). Cargá fondos a la caja o cambiá la forma de desembolso.`;
     if (!formData.frecuencia) return "Seleccioná la frecuencia";
     const n = parseInt(formData.plazo_meses);
     if (isNaN(n) || n < 1) return "Indicá el número de cuotas";
@@ -564,28 +574,49 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
                 name="monto_original" type="text" inputMode="decimal" placeholder="350.000,00"
                 value={formData.monto_original} onChange={setMonto}
                 required readOnly={esProducto}
-                className={`pl-9 text-lg font-bold font-mono tabular-nums ${esProducto ? "opacity-70 cursor-not-allowed" : ""}`}
+                className={`pl-9 text-lg font-bold font-mono tabular-nums ${!esProducto && miCaja ? "pr-10" : ""} ${esProducto ? "opacity-70 cursor-not-allowed" : ""}`}
               />
+              {/* Refrescar saldo de la caja: ícono sutil dentro del campo (recarga parcial, sin F5).
+                  Delicado y semitransparente, al estilo de los íconos del sidebar. */}
+              {!esProducto && miCaja && (
+                <button
+                  type="button"
+                  onClick={refrescarSaldo}
+                  disabled={refrescandoCaja}
+                  title="Refrescar saldo de la caja"
+                  aria-label="Refrescar saldo de la caja"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground/40 hover:text-foreground hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 transition-colors disabled:opacity-50"
+                >
+                  <RefreshCw className={`h-4 w-4 ${refrescandoCaja ? "animate-spin text-primary" : ""}`} />
+                </button>
+              )}
             </div>
           </Field>
 
           {/* Forma de desembolso → solo en créditos de dinero (el producto no desembolsa efectivo). */}
           {!esProducto && (
             <>
-              <Field
-                label="Forma de desembolso"
-                required
-                hint={miCaja ? `Disponible en ${CUENTA_DESEMBOLSO_LABEL[formData.cuenta_desembolso]}: $${n0(miCaja.saldos_por_cuenta[formData.cuenta_desembolso] ?? 0)}` : "Cuenta de la que sale el dinero prestado"}
-              >
+              <Field label="Forma de desembolso" required>
                 <Select name="cuenta_desembolso" value={formData.cuenta_desembolso} onChange={set("cuenta_desembolso")} required>
                   <option value="efectivo">Efectivo</option>
                   <option value="banco">Transferencia (Banco)</option>
                   <option value="dolares">Dólares</option>
                 </Select>
               </Field>
+              {/* Disponible en la cuenta elegida (el refrescar vive en el ícono del campo Capital) */}
+              {miCaja ? (
+                <p className="text-xs text-muted-foreground">
+                  Disponible en {CUENTA_DESEMBOLSO_LABEL[formData.cuenta_desembolso]}:{" "}
+                  <span className={`font-mono font-semibold ${fondosInsuficientes ? "text-destructive" : "text-foreground"}`}>${n0(dispDesembolso ?? 0)}</span>
+                </p>
+              ) : (
+                <p className="text-xs text-muted-foreground">Cuenta de la que sale el dinero prestado</p>
+              )}
               {fondosInsuficientes && (
-                <p className="text-xs text-destructive">
-                  El capital (${n0(montoIngresado)}) supera tu saldo en {CUENTA_DESEMBOLSO_LABEL[formData.cuenta_desembolso]} (${n0(dispDesembolso ?? 0)}). Pedí una entrega al administrador o cambiá la forma de desembolso.
+                <p className="flex flex-wrap items-center gap-1 text-xs text-destructive">
+                  El capital (${n0(montoIngresado)}) supera el saldo de la caja en {CUENTA_DESEMBOLSO_LABEL[formData.cuenta_desembolso]} (${n0(dispDesembolso ?? 0)}). Pedí una entrega al administrador y tocá
+                  <RefreshCw className="inline h-3 w-3" aria-hidden />
+                  en el campo Capital para actualizar (sin recargar la página).
                 </p>
               )}
             </>

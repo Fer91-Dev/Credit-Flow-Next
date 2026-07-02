@@ -112,6 +112,9 @@ export const PATCH = withErrorHandler(async (req: NextRequest, { params }: Route
 /**
  * DELETE /api/vendedores/[id]
  * Elimina un vendedor. Los créditos vinculados quedan con vendedor_id NULL (onDelete: SetNull).
+ * Los profiles (cuentas de login) vinculados se desvinculan explícitamente en la misma
+ * transacción: la FK profiles.vendedor_id no tiene SET NULL, así que sin esto quedaría
+ * apuntando a un vendedor inexistente (referencia rota, vendedor_nombre null sin explicación).
  */
 export const DELETE = withErrorHandler(async (req: NextRequest, { params }: RouteParams) => {
   const { tenantId } = await requireRole(["admin"], req);
@@ -122,7 +125,13 @@ export const DELETE = withErrorHandler(async (req: NextRequest, { params }: Rout
     return errorResponse("Vendedor no encontrado", "NOT_FOUND", 404);
   }
 
-  await prisma.vendedores.delete({ where: { id } });
+  await prisma.$transaction([
+    prisma.profiles.updateMany({
+      where: { ...withTenant(tenantId), vendedor_id: id },
+      data: { vendedor_id: null },
+    }),
+    prisma.vendedores.delete({ where: { id } }),
+  ]);
 
   await registrarAuditoria({
     tenantId,

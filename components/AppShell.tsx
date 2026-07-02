@@ -327,7 +327,7 @@ export function AppShell({ children, role, nombre, email, avatarUrl }: { childre
             pega al borde superior real (con padding, el sticky quedaba 32px abajo y
             el contenido se colaba por la franja de arriba). El padding va al contenido. */}
         <main className="flex-1 overflow-y-auto overflow-x-hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          <div className="mx-auto w-full max-w-screen-2xl min-w-0 px-4 pb-6 md:px-6 md:pb-8 lg:px-8 space-y-8">
+          <div className="w-full min-w-0 px-4 pb-6 md:px-6 md:pb-8 lg:px-8 space-y-8">
             <SystemActionsProvider openSearch={() => setPaletteOpen(true)}>
               {children}
             </SystemActionsProvider>

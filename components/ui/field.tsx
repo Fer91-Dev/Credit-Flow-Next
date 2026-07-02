@@ -33,6 +33,57 @@ export function Input({ className, ...props }: React.InputHTMLAttributes<HTMLInp
   return <input className={cn(inputBase, className)} {...props} />;
 }
 
+/** Handlers para impedir copiar / cortar / pegar / arrastrar en campos sensibles (contraseñas). */
+export const bloquearPortapapeles = {
+  onPaste: (e: React.ClipboardEvent) => e.preventDefault(),
+  onCopy: (e: React.ClipboardEvent) => e.preventDefault(),
+  onCut: (e: React.ClipboardEvent) => e.preventDefault(),
+  onDrop: (e: React.DragEvent) => e.preventDefault(),
+} as const;
+
+/** Input de contraseña: SIEMPRE enmascarado (puntos) y sin copiar/pegar. */
+export function PasswordInput({ className, ...props }: React.InputHTMLAttributes<HTMLInputElement>) {
+  return (
+    <input
+      type="password"
+      autoComplete="new-password"
+      className={cn(inputBase, className)}
+      {...bloquearPortapapeles}
+      {...props}
+    />
+  );
+}
+
+/**
+ * Par de campos "contraseña" + "repetir contraseña" para SETEAR una clave nueva.
+ * Ambos enmascarados y sin copiar/pegar; muestra en vivo si no coinciden. La validación
+ * final (largo mínimo + coincidencia) la hace el submit del formulario que lo usa.
+ */
+export function PasswordFields({
+  password, confirm, onPassword, onConfirm,
+  label = "Contraseña", required, minLength = 6,
+}: {
+  password: string;
+  confirm: string;
+  onPassword: (v: string) => void;
+  onConfirm: (v: string) => void;
+  label?: string;
+  required?: boolean;
+  minLength?: number;
+}) {
+  const noCoincide = confirm.length > 0 && password !== confirm;
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <Field label={label} required={required} hint={`mínimo ${minLength} caracteres`}>
+        <PasswordInput value={password} onChange={(e) => onPassword(e.target.value)} placeholder="••••••••" required={required} />
+      </Field>
+      <Field label={`Repetir ${label.toLowerCase()}`} required={required} error={noCoincide ? "Las contraseñas no coinciden" : undefined}>
+        <PasswordInput value={confirm} onChange={(e) => onConfirm(e.target.value)} placeholder="••••••••" required={required} />
+      </Field>
+    </div>
+  );
+}
+
 export function Textarea({ className, ...props }: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
   return (
     <textarea

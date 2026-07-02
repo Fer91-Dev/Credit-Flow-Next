@@ -244,24 +244,29 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
         403,
       );
     }
+  }
 
-    // Fondos disponibles (autoritativo): el desembolso sale de la cuenta elegida
-    // (efectivo/banco/dólares) de la caja del vendedor; no puede prestar más de lo
-    // que tiene en esa cuenta. Si no le alcanza, debe pedir una entrega al admin.
-    // Los créditos de producto NO desembolsan efectivo → se omite este control.
-    if (!esProducto) {
-      const saldoCuenta = await prisma.movimientos_caja.aggregate({
-        where: { ...withTenant(tenantId), vendedor_id: vendedorId, cuenta: cuentaDesembolso },
-        _sum: { monto: true },
-      });
-      const disponible = Math.round((saldoCuenta._sum.monto ?? 0) * 100) / 100;
-      if (body.monto_original > disponible) {
-        return errorResponse(
-          `No tenés saldo suficiente en tu caja de ${CUENTA_LABEL[cuentaDesembolso]}. Disponible: $${disponible.toLocaleString("es-AR")} — necesitás $${Number(body.monto_original).toLocaleString("es-AR")}. Pedí una entrega al administrador para poder otorgar.`,
-          "INSUFFICIENT_FUNDS",
-          403,
-        );
-      }
+  // Fondos disponibles (autoritativo, TODOS los roles): el desembolso sale de la cuenta
+  // elegida (efectivo/banco/dólares) de la caja de quien otorga — vendedor → su caja;
+  // admin → caja principal (vendedor_id null). No se puede prestar más de lo que hay en
+  // esa cuenta. Los créditos de producto NO desembolsan efectivo → se omite este control.
+  // (El chequeo usa el mismo `vendedorId` con el que luego se registra el desembolso.)
+  if (!esProducto) {
+    const saldoCuenta = await prisma.movimientos_caja.aggregate({
+      where: { ...withTenant(tenantId), vendedor_id: vendedorId, cuenta: cuentaDesembolso },
+      _sum: { monto: true },
+    });
+    const disponible = Math.round((saldoCuenta._sum.monto ?? 0) * 100) / 100;
+    if (body.monto_original > disponible) {
+      const dondeCaja = vendedorId ? "tu caja" : "la caja principal";
+      const sugerencia = vendedorId
+        ? "Pedí una entrega al administrador para poder otorgar."
+        : "Registrá un ingreso en la caja antes de otorgar.";
+      return errorResponse(
+        `No hay saldo suficiente en ${dondeCaja} de ${CUENTA_LABEL[cuentaDesembolso]}. Disponible: $${disponible.toLocaleString("es-AR")} — necesitás $${Number(body.monto_original).toLocaleString("es-AR")}. ${sugerencia}`,
+        "INSUFFICIENT_FUNDS",
+        403,
+      );
     }
   }
 

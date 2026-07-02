@@ -198,6 +198,8 @@ export interface Vendedor {
   limite_aprobacion?: number | null;
   comision_config?: ComisionConfig | null;
   resumen?: ResumenVendedor;
+  /** true si el agente ya tiene una cuenta de login (profile) vinculada. */
+  tiene_cuenta?: boolean;
 }
 
 /** Usuario del sistema (profiles): acceso de login + rol. */
@@ -417,6 +419,7 @@ export interface AccionCobranza {
   nota: string | null;
   promesa_monto: number | null;
   promesa_fecha: string | null;
+  promesa_estado: "pendiente" | "cumplida" | "incumplida" | null;
   proximo_contacto: string | null;
   credito: { id: string; cliente: { nombre: string; apellido?: string | null } };
 }

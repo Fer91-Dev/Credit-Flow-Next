@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { mutate as globalMutate } from "swr";
 import {
   UserCog, Plus, Pencil, Trash2, Mail, Phone, ArrowLeft, ChevronRight,
-  Search, LayoutGrid, List,
+  Search, LayoutGrid, List, KeyRound,
 } from "lucide-react";
 import { useVendedores, KEYS, type Vendedor } from "@/lib/swr";
 import { VendedorDetail } from "./VendedorDetail";
@@ -14,7 +14,7 @@ import { Avatar } from "@/components/ui/Avatar";
 import { Emoji } from "@/components/ui/Emoji";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
-import { Field, Input, Select } from "@/components/ui/field";
+import { Field, Input, Select, PasswordFields } from "@/components/ui/field";
 import { ModalHeader, MoneyInput, FormActions, MODAL_CONTENT } from "@/components/ui/form-kit";
 import { maskMontoInput, parseMontoInput, numeroAInput } from "@/lib/utils";
 import { useConfirm } from "@/components/ui/confirm";
@@ -37,6 +37,7 @@ export function PersonalView() {
   const toast = useToast();
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Vendedor | null>(null);
+  const [cuentaFor, setCuentaFor] = useState<Vendedor | null>(null);
   const [selected, setSelected] = useState<{ id: string; nombre: string } | null>(null);
   const [q, setQ] = useState("");
   const [vista, setVista] = useState<"cards" | "tabla">("tabla");
@@ -92,6 +93,11 @@ export function PersonalView() {
   };
 
   const abrirFicha = (v: Vendedor) => setSelected({ id: v.id, nombre: v.nombre });
+
+  const cerrarCuenta = (ok?: boolean) => {
+    setCuentaFor(null);
+    if (ok) { mutate(); globalMutate(KEYS.usuarios); }
+  };
 
   const cta = (
     <button
@@ -191,7 +197,7 @@ export function PersonalView() {
           ) : vista === "cards" ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {filtrados.map((v) => (
-                <PersonalCard key={v.id} v={v} onOpen={() => abrirFicha(v)} onDelete={() => handleDelete(v)} />
+                <PersonalCard key={v.id} v={v} onOpen={() => abrirFicha(v)} onDelete={() => handleDelete(v)} onCrearCuenta={() => setCuentaFor(v)} />
               ))}
             </div>
           ) : (
@@ -232,7 +238,10 @@ export function PersonalView() {
                             <div className="flex items-center gap-3">
                               <Avatar name={v.nombre} size="sm" status={v.activo ? "online" : "offline"} />
                               <div className="min-w-0">
-                                <p className="font-semibold text-foreground leading-tight truncate">{v.nombre}</p>
+                                <div className="flex items-center gap-2">
+                                  <p className="font-semibold text-foreground leading-tight truncate">{v.nombre}</p>
+                                  {!v.tiene_cuenta && <StatusBadge label="Sin acceso" variant="warning" />}
+                                </div>
                                 <div className="flex items-center gap-2.5 text-[11px] text-muted-foreground mt-1">
                                   {v.email && <span className="flex items-center gap-1 truncate"><Mail className="h-3 w-3 shrink-0" />{v.email}</span>}
                                   {v.telefono && <span className="flex items-center gap-1 shrink-0"><Phone className="h-3 w-3 shrink-0" />{v.telefono}</span>}
@@ -256,6 +265,11 @@ export function PersonalView() {
                           {/* 4 · Acciones */}
                           <td className="pl-4 pr-6 py-4 border-b border-border/60 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                             <div className="flex items-center justify-end gap-1">
+                              {!v.tiene_cuenta && (
+                                <button onClick={() => setCuentaFor(v)} title="Crear cuenta de acceso" className="flex items-center justify-center h-8 w-8 rounded-lg text-warning hover:bg-warning/10 transition-colors">
+                                  <KeyRound className="h-3.5 w-3.5" />
+                                </button>
+                              )}
                               <button onClick={() => abrirFicha(v)} title="Abrir ficha" className="flex items-center justify-center h-8 w-8 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors">
                                 <Pencil className="h-3.5 w-3.5" />
                               </button>
@@ -275,7 +289,7 @@ export function PersonalView() {
               {/* Mobile */}
               <div className="block md:hidden space-y-3">
                 {filtrados.map((v) => (
-                  <PersonalCard key={v.id} v={v} onOpen={() => abrirFicha(v)} onDelete={() => handleDelete(v)} />
+                  <PersonalCard key={v.id} v={v} onOpen={() => abrirFicha(v)} onDelete={() => handleDelete(v)} onCrearCuenta={() => setCuentaFor(v)} />
                 ))}
               </div>
             </>
@@ -284,12 +298,13 @@ export function PersonalView() {
       )}
 
       <PersonalForm open={formOpen} vendedor={editing} onClose={handleClose} />
+      <CrearCuentaDialog vendedor={cuentaFor} onClose={cerrarCuenta} />
     </div>
   );
 }
 
 /** Tarjeta de un integrante del personal (vista cards + card mobile de la tabla). */
-function PersonalCard({ v, onOpen, onDelete }: { v: Vendedor; onOpen: () => void; onDelete: () => void }) {
+function PersonalCard({ v, onOpen, onDelete, onCrearCuenta }: { v: Vendedor; onOpen: () => void; onDelete: () => void; onCrearCuenta: () => void }) {
   const rol = ROL_META[v.rol];
   const r = v.resumen;
   return (
@@ -305,10 +320,16 @@ function PersonalCard({ v, onOpen, onDelete }: { v: Vendedor; onOpen: () => void
           <Avatar name={v.nombre} size="sm" status={v.activo ? "online" : "offline"} />
           <div className="min-w-0">
             <p className="font-semibold text-foreground truncate">{v.nombre}</p>
-            <div className="mt-1"><StatusBadge label={rol.label} variant={rol.variant} /></div>
+            <div className="mt-1 flex flex-wrap items-center gap-1.5">
+              <StatusBadge label={rol.label} variant={rol.variant} />
+              {!v.tiene_cuenta && <StatusBadge label="Sin acceso" variant="warning" />}
+            </div>
           </div>
         </div>
         <div className="flex gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
+          {!v.tiene_cuenta && (
+            <button onClick={onCrearCuenta} title="Crear cuenta de acceso" className="flex items-center justify-center h-9 w-9 rounded-lg border border-warning/30 text-warning hover:bg-warning/10 transition-colors"><KeyRound className="h-4 w-4" /></button>
+          )}
           <button onClick={onOpen} title="Abrir ficha" className="flex items-center justify-center h-9 w-9 rounded-lg border border-border text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"><Pencil className="h-4 w-4" /></button>
           <button onClick={onDelete} title="Eliminar" className="flex items-center justify-center h-9 w-9 rounded-lg border border-border text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors"><Trash2 className="h-4 w-4" /></button>
         </div>
@@ -416,9 +437,9 @@ function PersonalForm({
   const [activo, setActivo] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // Cuenta de acceso (solo alta)
-  const [crearCuenta, setCrearCuenta] = useState(false);
+  // Cuenta de acceso (solo alta) — OBLIGATORIA: todo agente nuevo debe poder loguearse.
   const [cuentaPassword, setCuentaPassword] = useState("");
+  const [cuentaPasswordConfirm, setCuentaPasswordConfirm] = useState("");
   const [rolAcceso, setRolAcceso] = useState<"vendedor" | "cobrador" | "admin">("vendedor");
 
   // Sincroniza el formulario cuando se abre para editar o crear.
@@ -433,8 +454,8 @@ function PersonalForm({
     setComision(String(vendedor?.comision_pct ?? 0));
     setMeta(vendedor?.meta_venta ? numeroAInput(vendedor.meta_venta) : "");
     setActivo(vendedor?.activo ?? true);
-    setCrearCuenta(false);
     setCuentaPassword("");
+    setCuentaPasswordConfirm("");
     setRolAcceso("vendedor");
     setError(null);
   }
@@ -442,17 +463,17 @@ function PersonalForm({
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!nombre.trim()) { setError("El nombre es requerido"); return; }
-    if (!editing && crearCuenta) {
-      if (!email.trim()) { setError("El email es requerido para crear la cuenta de acceso"); return; }
-      if (cuentaPassword.length < 6) { setError("La contraseña debe tener al menos 6 caracteres"); return; }
+    // Alta: la cuenta de acceso es obligatoria (el agente necesita loguearse para trabajar).
+    if (!editing) {
+      if (!email.trim()) { setError("El email es requerido: es el usuario de acceso del agente"); return; }
+      if (cuentaPassword.length < 6) { setError("La contraseña de acceso debe tener al menos 6 caracteres"); return; }
+      if (cuentaPassword !== cuentaPasswordConfirm) { setError("Las contraseñas no coinciden"); return; }
     }
     const ok = await confirm({
       title: editing ? "¿Guardar cambios?" : "¿Crear agente?",
       description: editing
         ? `Se actualizarán los datos de ${nombre.trim()}.`
-        : crearCuenta
-          ? `Se creará el agente ${nombre.trim()} con cuenta de acceso (${email.trim()}).`
-          : `Se dará de alta a ${nombre.trim()} sin cuenta de acceso al sistema.`,
+        : `Se creará el agente ${nombre.trim()} con su cuenta de acceso (${email.trim()}).`,
       confirmLabel: editing ? "Guardar cambios" : "Crear",
     });
     if (!ok) return;
@@ -464,7 +485,7 @@ function PersonalForm({
         meta_venta: parseMontoInput(meta),
         activo,
       };
-      if (!editing && crearCuenta && email.trim() && cuentaPassword) {
+      if (!editing) {
         body.crear_cuenta = { email: email.trim(), password: cuentaPassword, rol_acceso: rolAcceso };
       }
       const res = await fetch(editing ? `/api/vendedores/${vendedor!.id}` : "/api/vendedores", {
@@ -474,17 +495,12 @@ function PersonalForm({
       });
       const json = await res.json();
       if (json.ok) {
-        if (json.data?.cuenta_error) {
-          toast.success(`${nombre.trim()} creado`);
-          setError(`Agente creado, pero la cuenta de acceso falló: ${json.data.cuenta_error}`);
-          onClose(true);
-        } else if (json.data?.cuenta_creada) {
+        if (json.data?.cuenta_creada) {
           toast.success(`${nombre.trim()} creado con cuenta de acceso (${json.data.cuenta_email})`);
-          onClose(true);
         } else {
           toast.success(editing ? `${nombre.trim()} actualizado` : `${nombre.trim()} creado`);
-          onClose(true);
         }
+        onClose(true);
       } else setError(json.error);
     } catch {
       setError("No se pudo guardar");
@@ -509,8 +525,8 @@ function PersonalForm({
             <Input value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Nombre y apellido" required />
           </Field>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <Field label="Email">
-              <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="opcional" />
+            <Field label="Email" required={!editing} hint={editing ? undefined : "es el usuario de acceso"}>
+              <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder={editing ? "opcional" : "usuario@financiera.com"} required={!editing} />
             </Field>
             <Field label="Teléfono">
               <Input value={telefono} onChange={(e) => setTelefono(e.target.value)} placeholder="opcional" />
@@ -540,54 +556,150 @@ function PersonalForm({
               </Select>
             </Field>
           </div>
-          {/* Cuenta de acceso — solo en alta */}
+          {/* Cuenta de acceso — OBLIGATORIA en alta (el agente necesita loguearse para trabajar) */}
           {!editing && (
             <div className="rounded-lg border border-border bg-muted/20 overflow-hidden">
-              <button
-                type="button"
-                onClick={() => setCrearCuenta((v) => !v)}
-                className="flex w-full items-center justify-between gap-3 px-4 py-3 text-sm font-medium text-foreground hover:bg-muted/30 transition-colors"
-              >
-                <div className="flex items-center gap-2">
-                  <Emoji name="locked-with-key" className="h-4 w-4 shrink-0" />
-                  <span>Crear cuenta de acceso al sistema</span>
-                  {crearCuenta && <span className="text-[10px] font-semibold uppercase tracking-wide text-primary bg-primary/10 rounded-full px-2 py-0.5">Activo</span>}
-                </div>
-                <span className={`text-xs text-muted-foreground transition-transform duration-200 ${crearCuenta ? "rotate-180" : ""}`}>▼</span>
-              </button>
-              {crearCuenta && (
-                <div className="border-t border-border px-4 pb-4 pt-3 space-y-3">
-                  <p className="text-[11px] text-muted-foreground">
-                    El agente podrá iniciar sesión con el email y contraseña que definas. El email del agente se usará como usuario de acceso.
-                  </p>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <Field label="Contraseña de acceso" required>
-                      <Input
-                        type="password"
-                        value={cuentaPassword}
-                        onChange={(e) => setCuentaPassword(e.target.value)}
-                        placeholder="Mínimo 6 caracteres"
-                        autoComplete="new-password"
-                      />
-                    </Field>
-                    <Field label="Rol de acceso" required>
-                      <Select value={rolAcceso} onChange={(e) => setRolAcceso(e.target.value as typeof rolAcceso)}>
-                        <option value="vendedor">Vendedor</option>
-                        <option value="cobrador">Cobrador</option>
-                        <option value="admin">Administrador</option>
-                      </Select>
-                    </Field>
-                  </div>
-                </div>
-              )}
+              <div className="flex items-center gap-2 px-4 py-3 text-sm font-medium text-foreground border-b border-border">
+                <Emoji name="locked-with-key" className="h-4 w-4 shrink-0" />
+                <span>Cuenta de acceso al sistema</span>
+                <span className="text-[10px] font-semibold uppercase tracking-wide text-primary bg-primary/10 rounded-full px-2 py-0.5">Requerida</span>
+              </div>
+              <div className="px-4 pb-4 pt-3 space-y-3">
+                <p className="text-[11px] text-muted-foreground">
+                  El agente inicia sesión con el <strong>email</strong> de arriba y la contraseña que definas acá. Sin cuenta no podría acceder al sistema para trabajar.
+                </p>
+                <PasswordFields
+                  label="Contraseña de acceso"
+                  password={cuentaPassword}
+                  confirm={cuentaPasswordConfirm}
+                  onPassword={setCuentaPassword}
+                  onConfirm={setCuentaPasswordConfirm}
+                  required
+                />
+                <Field label="Rol de acceso" required>
+                  <Select value={rolAcceso} onChange={(e) => setRolAcceso(e.target.value as typeof rolAcceso)}>
+                    <option value="vendedor">Vendedor</option>
+                    <option value="cobrador">Cobrador</option>
+                    <option value="admin">Administrador</option>
+                  </Select>
+                </Field>
+              </div>
             </div>
           )}
 
           <FormActions
             onCancel={() => onClose(false)}
             loading={loading}
-            disabled={!nombre.trim()}
+            disabled={!nombre.trim() || (!editing && (!email.trim() || cuentaPassword.length < 6 || cuentaPassword !== cuentaPasswordConfirm))}
             submitLabel={editing ? "Guardar cambios" : "Crear"}
+          />
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/**
+ * Diálogo rápido para crear la cuenta de acceso de un agente que quedó sin ella
+ * (agentes viejos, previos a la regla de cuenta obligatoria). Crea el profile de login
+ * vía POST /api/usuarios vinculado al vendedor.
+ */
+function CrearCuentaDialog({ vendedor, onClose }: { vendedor: Vendedor | null; onClose: (ok?: boolean) => void }) {
+  const confirm = useConfirm();
+  const toast = useToast();
+  const open = !!vendedor;
+
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [passwordConfirm, setPasswordConfirm] = useState("");
+  const [rolAcceso, setRolAcceso] = useState<"vendedor" | "cobrador" | "admin">("vendedor");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Sincroniza al abrir con cada agente distinto.
+  const [syncKey, setSyncKey] = useState<string | null>(null);
+  const currentKey = open ? vendedor!.id : null;
+  if (currentKey !== syncKey) {
+    setSyncKey(currentKey);
+    setEmail(vendedor?.email ?? "");
+    setPassword("");
+    setPasswordConfirm("");
+    setRolAcceso("vendedor");
+    setError(null);
+  }
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!vendedor) return;
+    if (!email.trim()) { setError("El email es requerido"); return; }
+    if (password.length < 6) { setError("La contraseña debe tener al menos 6 caracteres"); return; }
+    if (password !== passwordConfirm) { setError("Las contraseñas no coinciden"); return; }
+    const ok = await confirm({
+      title: "¿Crear cuenta de acceso?",
+      description: `Se creará el acceso de ${vendedor.nombre} (${email.trim()}) con rol ${rolAcceso}.`,
+      confirmLabel: "Crear cuenta",
+    });
+    if (!ok) return;
+    setLoading(true); setError(null);
+    try {
+      const res = await fetch("/api/usuarios", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: email.trim(),
+          password,
+          full_name: vendedor.nombre,
+          role: rolAcceso,
+          vendedor_id: rolAcceso === "vendedor" ? vendedor.id : null,
+        }),
+      });
+      const json = await res.json();
+      if (json.ok) {
+        toast.success(`Cuenta de acceso creada para ${vendedor.nombre}`);
+        onClose(true);
+      } else setError(json.error);
+    } catch {
+      setError("No se pudo crear la cuenta");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(false); }}>
+      <DialogContent className={MODAL_CONTENT}>
+        <ModalHeader
+          icon="locked-with-key"
+          title="Crear cuenta de acceso"
+          subtitle={vendedor ? `Dale acceso al sistema a ${vendedor.nombre}.` : ""}
+        />
+        <form onSubmit={submit} className="space-y-4">
+          {error && (
+            <div className="rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-2.5 text-sm text-destructive">{error}</div>
+          )}
+          <Field label="Email" required hint="es el usuario de acceso">
+            <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="usuario@financiera.com" required />
+          </Field>
+          <PasswordFields
+            label="Contraseña de acceso"
+            password={password}
+            confirm={passwordConfirm}
+            onPassword={setPassword}
+            onConfirm={setPasswordConfirm}
+            required
+          />
+          <Field label="Rol de acceso" required hint="'Vendedor' se vincula a esta ficha de agente">
+            <Select value={rolAcceso} onChange={(e) => setRolAcceso(e.target.value as typeof rolAcceso)}>
+              <option value="vendedor">Vendedor</option>
+              <option value="cobrador">Cobrador</option>
+              <option value="admin">Administrador</option>
+            </Select>
+          </Field>
+          <FormActions
+            onCancel={() => onClose(false)}
+            loading={loading}
+            disabled={!email.trim() || password.length < 6 || password !== passwordConfirm}
+            submitLabel="Crear cuenta"
           />
         </form>
       </DialogContent>

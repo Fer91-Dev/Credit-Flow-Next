@@ -16,10 +16,12 @@ async function saldoCuenta(tenantId: string, vendedorId: string | null, cuenta: 
 }
 
 /**
- * Caja personal de un vendedor: todos los movimientos cuyo `vendedor_id` apunta a él.
- * Saldo = suma de los montos (ya firmados). Mismo shape que /api/caja para reusar UI.
+ * Caja de un vendedor: todos los movimientos cuyo `vendedor_id` apunta a él.
+ * Con `vendedorId = null` devuelve la CAJA PRINCIPAL (movimientos sin vendedor), que es
+ * de la que desembolsa el admin. Saldo = suma de los montos (ya firmados). Mismo shape
+ * que /api/caja para reusar UI.
  */
-export async function cajaDeVendedor(tenantId: string, vendedorId: string) {
+export async function cajaDeVendedor(tenantId: string, vendedorId: string | null) {
   const [movimientos, saldoMovs] = await Promise.all([
     prisma.movimientos_caja.findMany({
       where: { ...withTenant(tenantId), vendedor_id: vendedorId },

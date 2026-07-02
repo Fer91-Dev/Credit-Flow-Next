@@ -39,6 +39,22 @@ export const POST = withErrorHandler(async (
 
   if (!campana) return errorResponse("Campaña no encontrada", "NOT_FOUND", 404);
 
+  // Dedup: no reenviar la MISMA campaña el mismo día (evita contactar 2 veces al cliente
+  // y registrar acciones duplicadas). Se identifica por el marcador [CAMPAÑA:<id>] en la nota.
+  const inicioHoy = new Date(); inicioHoy.setHours(0, 0, 0, 0);
+  const yaEnviadaHoy = await prisma.acciones_cobranza.findFirst({
+    where: {
+      ...withTenant(tenantId),
+      automatico: true,
+      created_at: { gte: inicioHoy },
+      nota: { contains: `[CAMPAÑA:${id}]` },
+    },
+    select: { id: true },
+  });
+  if (yaEnviadaHoy) {
+    return errorResponse("Esta campaña ya se envió hoy. Esperá al próximo día para reenviarla.", "ALREADY_SENT", 409);
+  }
+
   const comm = await getComunicacionConfig(tenantId);
   const whatsappCfg = comm.whatsappConfig as WhatsappConfig | null;
   const emailCfg    = comm.emailConfig    as EmailConfig    | null;
@@ -93,7 +109,7 @@ export const POST = withErrorHandler(async (
           credito_id: objetivo.credito_id,
           tipo: "email",
           resultado: ok ? "contactado" : "no_contesta",
-          nota: `[CAMPAÑA ${campana.nombre}] Email ${ok ? "enviado" : `error: ${sendError}`}`,
+          nota: `[CAMPAÑA:${id}] ${campana.nombre} · Email ${ok ? "enviado" : `error: ${sendError}`}`,
           automatico: true,
         },
       });
@@ -125,7 +141,7 @@ export const POST = withErrorHandler(async (
             credito_id: objetivo.credito_id,
             tipo: "whatsapp",
             resultado: ok ? "contactado" : "no_contesta",
-            nota: `[CAMPAÑA ${campana.nombre}] ${ok ? "Enviado vía API" : "Error de envío"}`,
+            nota: `[CAMPAÑA:${id}] ${campana.nombre} · ${ok ? "Enviado vía API" : "Error de envío"}`,
             automatico: true,
           },
         });

@@ -27,11 +27,17 @@ export const PATCH = withErrorHandler(async (req: NextRequest, { params }: Route
   const target = await prisma.profiles.findFirst({ where: { ...withTenant(tenantId), id } });
   if (!target) return errorResponse("Usuario no encontrado", "NOT_FOUND", 404);
 
-  let body: { role?: string; activo?: boolean; full_name?: string; vendedor_id?: string | null };
+  let body: { role?: string; activo?: boolean; full_name?: string; vendedor_id?: string | null; password?: string };
   try {
     body = await req.json();
   } catch {
     return errorResponse("Body JSON inválido", "INVALID_JSON", 400);
+  }
+
+  // Cambio de contraseña (opcional): va directo a Supabase Auth, no a profiles.
+  const nuevaPassword = typeof body.password === "string" ? body.password : null;
+  if (nuevaPassword !== null && nuevaPassword.length < 6) {
+    return errorResponse("La contraseña debe tener al menos 6 caracteres", "INVALID_INPUT", 400);
   }
 
   const data: Record<string, unknown> = {};
@@ -65,6 +71,12 @@ export const PATCH = withErrorHandler(async (req: NextRequest, { params }: Route
         select: { id: true },
       });
       if (!v) return errorResponse("Vendedor no encontrado en tu financiera", "INVALID_REFERENCE", 400);
+      // Un agente tiene UNA sola cuenta: no permitir vincularlo si otro profile ya lo tomó.
+      const yaVinculado = await prisma.profiles.findFirst({
+        where: { ...withTenant(tenantId), vendedor_id: v.id, id: { not: id } },
+        select: { id: true },
+      });
+      if (yaVinculado) return errorResponse("Ese agente ya tiene una cuenta de acceso vinculada", "DUPLICATE_RECORD", 409);
       data.vendedor_id = v.id;
     } else {
       data.vendedor_id = null;
@@ -73,23 +85,62 @@ export const PATCH = withErrorHandler(async (req: NextRequest, { params }: Route
   // Si deja de ser vendedor, se limpia el vínculo.
   if (data.role && data.role !== "vendedor") data.vendedor_id = null;
 
-  if (Object.keys(data).length === 0) {
+  if (Object.keys(data).length === 0 && nuevaPassword === null) {
     return errorResponse("No hay cambios para aplicar", "INVALID_INPUT", 400);
   }
 
-  const updated = await prisma.profiles.update({
-    where: { id },
-    data,
-    select: { id: true, email: true, full_name: true, role: true, activo: true, vendedor_id: true, created_at: true },
-  });
+  const selectProfile = { id: true, email: true, full_name: true, role: true, activo: true, vendedor_id: true, created_at: true } as const;
+  // Solo actualizar el profile si hay campos de profile; un cambio de sola contraseña no lo toca.
+  const updated = Object.keys(data).length > 0
+    ? await prisma.profiles.update({ where: { id }, data, select: selectProfile })
+    : await prisma.profiles.findUniqueOrThrow({ where: { id }, select: selectProfile });
 
+  // Cambio de contraseña en Supabase Auth (si se pidió). No viaja a profiles ni a la auditoría.
+  if (nuevaPassword !== null) {
+    try {
+      const { error: pwErr } = await createAdminClient().auth.admin.updateUserById(id, { password: nuevaPassword });
+      if (pwErr) {
+        const nf = /not found|does not exist/i.test(pwErr.message);
+        return errorResponse(
+          nf ? "El usuario no tiene cuenta de acceso en el sistema de login" : `No se pudo cambiar la contraseña: ${pwErr.message}`,
+          nf ? "NOT_FOUND" : "AUTH_ERROR",
+          nf ? 404 : 400,
+        );
+      }
+    } catch (e) {
+      console.error("[usuarios/PATCH] auth.updateUserById(password) threw:", e);
+      return errorResponse("No se pudo cambiar la contraseña", "AUTH_ERROR", 500);
+    }
+  }
+
+  // Sincronizar el estado de acceso en Supabase Auth cuando cambia `activo`.
+  // requireAuth() ya niega por DB en cada request (activo=false → 403), pero el refresh
+  // token del usuario seguiría vivo: podría refrescar su sesión indefinidamente. Banear en
+  // GoTrue revoca el refresh y bloquea el re-login en el acto; al reactivar hay que LEVANTAR
+  // el ban (si no, un usuario reactivado no podría volver a loguear). Nota: admin.signOut()
+  // requiere el JWT del propio usuario (no disponible server-side), por eso se usa ban/unban.
+  if (typeof data.activo === "boolean" && data.activo !== target.activo) {
+    const ban_duration = data.activo ? "none" : "876000h"; // 'none' = sin ban · ~100 años
+    try {
+      const { error: banErr } = await createAdminClient().auth.admin.updateUserById(id, { ban_duration });
+      if (banErr && !/not found|does not exist/i.test(banErr.message)) {
+        console.error("[usuarios/PATCH] auth.updateUserById(ban):", banErr.message);
+      }
+    } catch (e) {
+      console.error("[usuarios/PATCH] auth.updateUserById(ban) threw:", e);
+    }
+  }
+
+  const cambios = { ...data, ...(nuevaPassword !== null ? { password_changed: true } : {}) };
   await registrarAuditoria({
     tenantId,
     entidad: "usuarios",
     entidadId: id,
     accion: "actualizar",
-    descripcion: `Usuario actualizado: ${target.email ?? id}`,
-    meta: data,
+    descripcion: nuevaPassword !== null && Object.keys(data).length === 0
+      ? `Contraseña cambiada: ${target.email ?? id}`
+      : `Usuario actualizado: ${target.email ?? id}`,
+    meta: cambios,
   });
 
   return successResponse(updated);

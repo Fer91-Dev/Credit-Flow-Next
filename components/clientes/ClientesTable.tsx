@@ -90,15 +90,21 @@ export function ClientesTable() {
     if (!ok) return;
 
     let fallo = false;
+    let motivo: string | null = null;
     await mutate(
       async (current) => {
         const res = await fetch(`/api/clientes/${id}`, { method: "DELETE" });
-        if (!res.ok) { fallo = true; throw new Error("delete failed"); }
+        if (!res.ok) {
+          fallo = true;
+          // Rescatar el mensaje del backend (ej. 409: tiene N créditos activos).
+          motivo = (await res.json().catch(() => null))?.error ?? null;
+          throw new Error("delete failed");
+        }
         return { clientes: (current?.clientes ?? []).filter((c) => c.id !== id) };
       },
       { optimisticData: { clientes: clientes.filter((c) => c.id !== id) }, rollbackOnError: true },
     ).catch(() => {});
-    if (fallo) { toast.error("No se pudo eliminar el cliente"); return; }
+    if (fallo) { toast.error(motivo ?? "No se pudo eliminar el cliente"); return; }
     globalMutate(KEYS.dashboard);
     toast.success(`Cliente ${nombre} eliminado`);
     setSelected(null);

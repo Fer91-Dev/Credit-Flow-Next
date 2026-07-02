@@ -94,6 +94,12 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
       select: { id: true },
     });
     if (!v) return errorResponse("Vendedor no encontrado en tu financiera", "INVALID_REFERENCE", 400);
+    // Un agente tiene UNA sola cuenta de login: no permitir vincular una segunda.
+    const yaVinculado = await prisma.profiles.findFirst({
+      where: { ...withTenant(tenantId), vendedor_id: v.id },
+      select: { id: true },
+    });
+    if (yaVinculado) return errorResponse("Ese agente ya tiene una cuenta de acceso vinculada", "DUPLICATE_RECORD", 409);
     vendedorId = v.id;
   }
 

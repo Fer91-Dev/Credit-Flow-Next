@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { User, Mail, Lock, Check, Loader2, ShieldAlert, Image as ImageIcon } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { Field, Input } from "@/components/ui/field";
+import { Field, Input, PasswordInput } from "@/components/ui/field";
 import { Avatar, generatedAvatarUrl, AVATAR_SEEDS } from "@/components/ui/Avatar";
 
 interface PerfilFormProps {
@@ -300,21 +300,17 @@ export function PerfilForm({ initialName, initialEmail, initialAvatarUrl }: Perf
             />
           </Field>
           <Field label="Nueva contraseña">
-            <Input
-              type="password"
+            <PasswordInput
               value={newPass}
               onChange={e => { setNewPass(e.target.value); setSavedPass(false); setErrorPass(null); }}
               placeholder="Mínimo 6 caracteres"
-              autoComplete="new-password"
             />
           </Field>
           <Field label="Confirmar nueva contraseña">
-            <Input
-              type="password"
+            <PasswordInput
               value={confirmPass}
               onChange={e => { setConfirmPass(e.target.value); setSavedPass(false); setErrorPass(null); }}
               placeholder="Repetí la nueva contraseña"
-              autoComplete="new-password"
             />
           </Field>
           {errorPass && (

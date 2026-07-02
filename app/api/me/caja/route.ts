@@ -6,12 +6,13 @@ import type { NextRequest } from "next/server";
 
 /**
  * GET /api/me/caja
- * Caja personal del usuario logueado (resuelta desde la sesión). null si no está
- * vinculado a un vendedor.
+ * Caja de la que opera/desembolsa el usuario logueado (resuelta desde la sesión):
+ * un vendedor ve SU caja personal; un admin (sin vendedor_id) ve la CAJA PRINCIPAL.
+ * Así el simulador puede validar fondos contra la misma caja de la que saldrá el
+ * desembolso, para cualquier rol. (MiCajaView solo se renderiza para vendedores.)
  */
 export const GET = withErrorHandler(async (req: NextRequest) => {
   const { tenantId, vendedorId } = await requireAuth(req);
-  if (!vendedorId) return successResponse(null);
   return successResponse(await cajaDeVendedor(tenantId, vendedorId));
 });
 
