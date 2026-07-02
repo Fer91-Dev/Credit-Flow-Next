@@ -433,8 +433,26 @@ export interface Reporte {
     total_capital: number;
     total_interes: number;
     total_mora: number;
+    total_cargos: number;
   };
   cobranzas_por_metodo: { metodo: string; cantidad: number; monto: number }[];
+  operaciones: {
+    cantidad: number;
+    monto_otorgado: number;
+    ticket_promedio: number;
+    plazo_promedio: number;
+    tasa_promedio: number;
+  };
+  operaciones_por_tipo: { tipo: string; cantidad: number; monto: number }[];
+  rentabilidad: {
+    habilitado: boolean;
+    ingreso_financiero: number;
+    costo_fondeo: number;
+    otros_costos: number;
+    costo_total: number;
+    rentabilidad_neta: number;
+    margen_neto_pct: number;
+  };
   cartera: {
     por_estado: { estado: string; cantidad: number; monto_original: number; saldo_pendiente: number }[];
     saldo_activo_total: number;
@@ -565,6 +583,13 @@ export interface GamificacionConfig {
   umbrales: { oro: number; plata: number; bronce: number };
 }
 
+/** Costo de capital para calcular rentabilidad NETA en Reportes. */
+export interface RentabilidadConfig {
+  habilitado: boolean;
+  costo_fondeo_anual: number;      // % anual del capital prestado
+  otros_costos_mensuales: number;  // costo operativo fijo por mes (opcional)
+}
+
 export interface ConfiguracionFinanciera {
   convencionTasa: "nominal_anual" | "efectiva_anual" | "mensual";
   sistemaAmortizacion: "frances";
@@ -580,6 +605,7 @@ export interface ConfiguracionFinanciera {
   smsConfig?: SmsConfig | null;
   emailConfig?: EmailConfig | null;
   gamificacionConfig?: GamificacionConfig | null;
+  rentabilidadConfig?: RentabilidadConfig | null;
 }
 
 export interface Pago {
@@ -1007,6 +1033,64 @@ export function useReportes(desde: string, hasta: string) {
     desde && hasta ? `/api/reportes?desde=${desde}&hasta=${hasta}` : null,
   );
   return { reporte: data, error, isLoading };
+}
+
+/** Punto de la serie mensual de Reportes (una fila = un mes). */
+export interface PuntoMensual {
+  mes: string; // "YYYY-MM"
+  otorgado_cantidad: number;
+  otorgado_monto: number;
+  ticket_promedio: number;
+  cobrado_total: number;
+  cobrado_capital: number;
+  cobrado_interes: number;
+  cobrado_mora: number;
+  cobrado_cargos: number;
+  ingreso_financiero: number;
+  costo_fondeo: number;
+  rentabilidad_neta: number;
+  cartera_capital_fin: number;
+  mora_creditos: number;
+  mora_saldo_expuesto: number;
+  mora_pct: number;
+}
+
+export interface ReporteSerie {
+  periodo: { desde: string; hasta: string };
+  moneda: string;
+  rentabilidad_habilitada: boolean;
+  serie: PuntoMensual[];
+  totales: {
+    otorgado_cantidad: number;
+    otorgado_monto: number;
+    cobrado_total: number;
+    ingreso_financiero: number;
+    costo_fondeo: number;
+    rentabilidad_neta: number;
+    cartera_capital_fin: number;
+    mora_saldo_expuesto: number;
+    mora_pct: number;
+  };
+  por_anio: {
+    anio: string;
+    meses: PuntoMensual[];
+    totales: {
+      otorgado_monto: number;
+      otorgado_cantidad: number;
+      cobrado_total: number;
+      ingreso_financiero: number;
+      rentabilidad_neta: number;
+      mora_pct: number;
+    };
+  }[];
+}
+
+/** Serie mensual de Reportes (otorgamiento / cobranza / rentabilidad / mora histórica). */
+export function useReporteSerie(desde: string, hasta: string) {
+  const { data, error, isLoading } = useSWR<ReporteSerie>(
+    desde && hasta ? `/api/reportes/series?desde=${desde}&hasta=${hasta}` : null,
+  );
+  return { serie: data, error, isLoading };
 }
 
 /** Caja: movimientos del rango + saldo total (key parametrizada). */

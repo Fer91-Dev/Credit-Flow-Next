@@ -8,9 +8,14 @@ import {
   tasaPeriodicaSegunConvencion,
   normalizarFrecuencia,
   interesMora,
+  round2,
+  costoFondeo,
+  resumenOperaciones,
 } from "@/lib/domain";
-import { getConfiguracion } from "@/lib/config";
+import { getConfiguracion, getRentabilidadConfig } from "@/lib/config";
 import type { NextRequest } from "next/server";
+
+const MS_DIA = 86_400_000;
 
 /**
  * GET /api/reportes?desde=YYYY-MM-DD&hasta=YYYY-MM-DD
@@ -33,7 +38,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   const desde = new Date(`${desdeStr}T00:00:00.000Z`);
   const hasta = new Date(`${hastaStr}T23:59:59.999Z`);
 
-  const [pagos, creditos, config] = await Promise.all([
+  const [pagos, creditos, config, cfgRent] = await Promise.all([
     prisma.pagos.findMany({
       where: { ...withTenant(tenantId), fecha: { gte: desde, lte: hasta } },
       include: { credito: { select: { cliente: { select: { nombre: true, apellido: true } } } } },
@@ -44,9 +49,11 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
       select: {
         estado: true, monto_original: true, saldo_pendiente: true,
         tasa: true, plazo_meses: true, frecuencia: true, frecuencia_def: true, dias_mora: true,
+        created_at: true, es_refinanciacion: true, tipo_credito: true,
       },
     }),
     getConfiguracion(tenantId),
+    getRentabilidadConfig(tenantId),
   ]);
 
   // ── Cobranzas del período ──────────────────────────────────────────────
@@ -56,7 +63,21 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     total_capital: pagos.reduce((s, p) => s + p.aplicado_capital, 0),
     total_interes: pagos.reduce((s, p) => s + p.aplicado_interes, 0),
     total_mora:    pagos.reduce((s, p) => s + p.aplicado_mora, 0),
+    total_cargos:  pagos.reduce((s, p) => s + p.aplicado_cargos, 0),
   };
+
+  // ── Operaciones otorgadas en el período (plata nueva: excluye refinanciaciones) ──
+  const creditosPeriodo = creditos.filter((c) => c.created_at >= desde && c.created_at <= hasta);
+  const operaciones = resumenOperaciones(creditosPeriodo);
+  const tipoMap = new Map<string, { tipo: string; cantidad: number; monto: number }>();
+  for (const c of creditosPeriodo) {
+    if (c.es_refinanciacion) continue;
+    const cur = tipoMap.get(c.tipo_credito) ?? { tipo: c.tipo_credito, cantidad: 0, monto: 0 };
+    cur.cantidad += 1;
+    cur.monto += c.monto_original;
+    tipoMap.set(c.tipo_credito, cur);
+  }
+  const operaciones_por_tipo = [...tipoMap.values()].sort((a, b) => b.monto - a.monto);
 
   // Cobranzas agrupadas por método
   const porMetodoMap = new Map<string, { metodo: string; cantidad: number; monto: number }>();
@@ -105,6 +126,27 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     },
   };
 
+  // ── Rentabilidad NETA (ingreso financiero cobrado − costo de fondeo) ────
+  // El interés/cargos/mora cobrados son la ganancia intencional del motor. Se descuenta
+  // el costo de fondear el capital en la calle (configurable por tenant) para leer la
+  // ganancia NETA. Sin costo configurado (deshabilitado) el costo es 0 (= margen bruto).
+  const ingreso_financiero = round2(cobranzas.total_interes + cobranzas.total_mora + cobranzas.total_cargos);
+  const diasPeriodo = Math.round((hasta.getTime() - desde.getTime()) / MS_DIA) + 1;
+  const mesesPeriodo = (hasta.getUTCFullYear() - desde.getUTCFullYear()) * 12 + (hasta.getUTCMonth() - desde.getUTCMonth()) + 1;
+  const costo_total = costoFondeo(saldo_activo_total, cfgRent, diasPeriodo, mesesPeriodo);
+  const otros_costos = cfgRent.habilitado ? round2(cfgRent.otros_costos_mensuales * mesesPeriodo) : 0;
+  const costo_fondeo_capital = round2(costo_total - otros_costos);
+  const rentabilidad_neta = round2(ingreso_financiero - costo_total);
+  const rentabilidad = {
+    habilitado: cfgRent.habilitado,
+    ingreso_financiero,
+    costo_fondeo: costo_fondeo_capital,
+    otros_costos,
+    costo_total,
+    rentabilidad_neta,
+    margen_neto_pct: ingreso_financiero > 0 ? round2((rentabilidad_neta / ingreso_financiero) * 100) : 0,
+  };
+
   // ── Detalle de pagos (para exportar) ────────────────────────────────────
   const detalle_pagos = pagos.map((p) => ({
     fecha: p.fecha,
@@ -122,6 +164,9 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     moneda: config.moneda,
     cobranzas,
     cobranzas_por_metodo,
+    operaciones,
+    operaciones_por_tipo,
+    rentabilidad,
     cartera: { por_estado: cartera_por_estado, saldo_activo_total },
     morosidad,
     detalle_pagos,

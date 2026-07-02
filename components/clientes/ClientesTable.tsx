@@ -264,15 +264,6 @@ export function ClientesTable() {
         </div>
       )}
 
-      {/* FAB — Nuevo cliente (flotante: no pisa las credenciales) */}
-      <button
-        onClick={openNew}
-        title="Nuevo cliente"
-        className="fixed bottom-6 right-6 z-40 flex items-center gap-2 rounded-full bg-primary px-5 py-3.5 text-sm font-semibold text-primary-foreground shadow-lg shadow-primary/30 transition-all hover:scale-105 hover:shadow-xl hover:shadow-primary/40 active:scale-95"
-      >
-        <Plus className="h-5 w-5" /> Nuevo cliente
-      </button>
-
       {formDialog}
     </div>
   );
@@ -344,8 +335,8 @@ function HeroVacio({ onNew }: { onNew: () => void }) {
           Ingresá el DNI o el nombre para ver su ficha completa, o creá un cliente nuevo.
         </p>
       </div>
-      <button onClick={onNew} className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm hover:opacity-90 transition-opacity">
-        <Plus className="h-4 w-4" /> Nuevo cliente
+      <button onClick={onNew} className="flex items-center gap-2 rounded-full bg-primary px-5 py-3.5 text-sm font-semibold text-primary-foreground shadow-lg shadow-primary/30 transition-all hover:scale-105 hover:shadow-xl hover:shadow-primary/40 active:scale-95">
+        <Plus className="h-5 w-5" /> Nuevo cliente
       </button>
     </div>
   );

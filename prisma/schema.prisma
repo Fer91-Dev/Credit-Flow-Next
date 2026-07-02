@@ -543,5 +543,6 @@ model configuraciones {
   sms_config           Json? // { enabled, api_key, provider }
   email_config         Json? // { enabled, host, port, user, pass } o { enabled, api_key, provider }
   gamificacion_config  Json? // { habilitado, periodo, pesos:{monto,cantidad,cobranza,calidad}, umbrales:{oro,plata,bronce} }
+  rentabilidad_config  Json? // { habilitado, costo_fondeo_anual, otros_costos_mensuales } — costo de capital para rentabilidad NETA en Reportes
   updated_at           DateTime @updatedAt @db.Timestamptz(6)
 }

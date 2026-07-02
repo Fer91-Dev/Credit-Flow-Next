@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { Settings, Check, Loader2, Percent, Plus, X, MessageSquare, Phone, Mail } from "lucide-react";
-import { useConfiguracion, type ConfiguracionFinanciera, type GamificacionConfig } from "@/lib/swr";
+import { useConfiguracion, type ConfiguracionFinanciera, type GamificacionConfig, type RentabilidadConfig } from "@/lib/swr";
 import type { SimuladorConfig, CargosConfig, FrecuenciaOpcion } from "@/lib/domain";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Field, Input, Select } from "@/components/ui/field";
@@ -25,7 +25,7 @@ export function ConfigForm() {
   const [savingKey, setSavingKey] = useState<string | null>(null);
   const [savedKey, setSavedKey] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"motor" | "simulador" | "comunicaciones" | "gamificacion">("motor");
+  const [activeTab, setActiveTab] = useState<"motor" | "simulador" | "comunicaciones" | "gamificacion" | "rentabilidad">("motor");
   const [mounted, setMounted]    = useState(false);
   useEffect(() => setMounted(true), []);
 
@@ -87,6 +87,13 @@ export function ConfigForm() {
     touch();
   };
 
+  // Rentabilidad: costo de fondeo para la ganancia NETA de Reportes.
+  const rent = form?.rentabilidadConfig ?? defaultRentabilidad();
+  const setRent = (patch: Partial<RentabilidadConfig>) => {
+    setForm(prev => prev ? { ...prev, rentabilidadConfig: { ...defaultRentabilidad(), ...prev.rentabilidadConfig, ...patch } } : prev);
+    touch();
+  };
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -117,6 +124,7 @@ export function ConfigForm() {
               { key: "simulador",      label: "Simulador" },
               { key: "comunicaciones", label: "Comunicaciones" },
               { key: "gamificacion",   label: "Gamificación" },
+              { key: "rentabilidad",   label: "Rentabilidad" },
             ] as const).map(tab => (
               <button
                 key={tab.key}
@@ -665,10 +673,46 @@ export function ConfigForm() {
           </Section>
           )}
 
+          {/* ─── Rentabilidad (costo de fondeo) ─── */}
+          {activeTab === "rentabilidad" && (
+          <Section
+            title="Rentabilidad (costo de fondeo)"
+            desc="Costo del capital que prestás, para calcular la ganancia NETA en Reportes. El ingreso financiero (interés + cargos + mora cobrados) menos este costo = rentabilidad neta."
+            onSave={() => save("rentabilidad", { rentabilidadConfig: rent } as Partial<ConfiguracionFinanciera>)}
+            saving={savingKey === "rentabilidad"} saved={savedKey === "rentabilidad"}
+          >
+            <div className="space-y-5">
+              <label className="flex items-center gap-2 text-sm text-foreground">
+                <Toggle checked={rent.habilitado} onChange={(v) => setRent({ habilitado: v })} />
+                Calcular rentabilidad neta (descontar el costo de fondeo)
+              </label>
+              <div className={rent.habilitado ? "grid grid-cols-1 sm:grid-cols-2 gap-4" : "grid grid-cols-1 sm:grid-cols-2 gap-4 pointer-events-none opacity-40"}>
+                <Field label="Costo de fondeo anual (%)" hint="Cuánto te cuesta por año el capital que prestás">
+                  <Input type="number" min="0" step="0.1" value={rent.costo_fondeo_anual}
+                    onChange={e => setRent({ costo_fondeo_anual: parseFloat(e.target.value) || 0 })}
+                    className="font-mono tabular-nums" />
+                </Field>
+                <Field label="Otros costos mensuales ($)" hint="Costo operativo fijo por mes (opcional)">
+                  <Input type="number" min="0" step="1" value={rent.otros_costos_mensuales}
+                    onChange={e => setRent({ otros_costos_mensuales: parseFloat(e.target.value) || 0 })}
+                    className="font-mono tabular-nums" />
+                </Field>
+              </div>
+              <p className="text-[11px] text-muted-foreground/60">
+                Con esto deshabilitado, Reportes muestra el <strong>margen bruto</strong> (sin costo de capital).
+              </p>
+            </div>
+          </Section>
+          )}
+
         </div>
       )}
     </div>
   );
+}
+
+function defaultRentabilidad(): RentabilidadConfig {
+  return { habilitado: false, costo_fondeo_anual: 0, otros_costos_mensuales: 0 };
 }
 
 function defaultGamificacion(): GamificacionConfig {

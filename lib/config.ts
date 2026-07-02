@@ -15,6 +15,8 @@ import {
   type SistemaAmortizacion,
   type SimuladorConfig,
   type GamificacionConfig,
+  resolverRentabilidad,
+  type RentabilidadConfig,
 } from "@/lib/domain";
 import type { Prisma } from "@prisma/client";
 
@@ -123,6 +125,28 @@ export async function guardarGamificacionConfig(tenantId: string, config: Gamifi
     where:  { tenant_id: tenantId },
     create: { tenant_id: tenantId, gamificacion_config: value },
     update: { gamificacion_config: value },
+  });
+  return config;
+}
+
+// ─── Rentabilidad (costo de fondeo para Reportes) ───────────────────────────
+
+/** Config de rentabilidad del tenant (mezclada con defaults). No es secreto. */
+export async function getRentabilidadConfig(tenantId: string): Promise<RentabilidadConfig> {
+  const row = await prisma.configuraciones.findUnique({
+    where: { tenant_id: tenantId },
+    select: { rentabilidad_config: true },
+  });
+  return resolverRentabilidad(row?.rentabilidad_config ?? null);
+}
+
+/** Persiste (upsert) la config de rentabilidad. */
+export async function guardarRentabilidadConfig(tenantId: string, config: RentabilidadConfig): Promise<RentabilidadConfig> {
+  const value = config as unknown as Prisma.InputJsonValue;
+  await prisma.configuraciones.upsert({
+    where:  { tenant_id: tenantId },
+    create: { tenant_id: tenantId, rentabilidad_config: value },
+    update: { rentabilidad_config: value },
   });
   return config;
 }

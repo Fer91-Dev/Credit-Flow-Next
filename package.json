@@ -7,7 +7,9 @@
     "dev:docker": "next dev --turbopack -H 0.0.0.0",
     "build": "next build",
     "start": "next start",
-    "reset:test": "node prisma/sql/reset_datos_ficticios.mjs"
+    "reset:test": "node prisma/sql/reset_datos_ficticios.mjs",
+    "seed:productos": "node scripts/seed-catalogo.mjs",
+    "seed:reportes": "node scripts/seed-reportes-demo.mjs"
   },
   "dependencies": {
     "@prisma/client": "^6.0.0",
