@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useSWRConfig } from "swr";
-import { CalendarDays, Wallet, Info, ArrowUpRight, Receipt, Loader2, Printer, RefreshCw, ArrowRight } from "lucide-react";
+import { CalendarDays, Wallet, Info, ArrowUpRight, Receipt, Loader2, Printer, RefreshCw, ArrowRight, ShieldCheck } from "lucide-react";
 import { useAmortizacion, useCuotas, usePagosByCredito, useCreditos, KEYS, type Credito, type EstadoCuota } from "@/lib/swr";
 import { abrirRecibo } from "@/lib/recibo";
 import { imprimirPlanPagos } from "@/lib/plan-print";
@@ -190,6 +190,56 @@ export function CreditoDetail({ credito }: { credito: Credito }) {
             </div>
           </div>
         )}
+
+        {/* Evaluación de riesgo/originación congelada al otorgar (feature premium) */}
+        {credito.riesgo_snapshot && (() => {
+          const r = credito.riesgo_snapshot!;
+          const meta = {
+            aprobado:  { ring: "ring-success/30",     text: "text-success",     dot: "bg-success",     label: "Aprobado" },
+            revisar:   { ring: "ring-warning/30",     text: "text-warning",     dot: "bg-warning",     label: "Revisar" },
+            rechazado: { ring: "ring-destructive/30", text: "text-destructive", dot: "bg-destructive", label: "No calificaba" },
+          }[r.semaforo];
+          return (
+            <section className="space-y-2">
+              <div className="flex items-center gap-2">
+                <ShieldCheck className="h-4 w-4 text-primary" />
+                <h3 className="text-sm font-semibold text-foreground">Evaluación de originación</h3>
+                <span className="text-[10px] text-muted-foreground/60">al otorgar</span>
+              </div>
+              <div className={`rounded-xl border border-border bg-card p-4 ring-1 ring-inset ${meta.ring}`}>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className={`inline-flex h-2.5 w-2.5 rounded-full ${meta.dot}`} />
+                    <span className={`text-sm font-semibold ${meta.text}`}>{meta.label}</span>
+                    {r.autorizadoManual && <StatusBadge label="Autorizado por admin" variant="warning" />}
+                  </div>
+                  <span className="text-[11px] text-muted-foreground">Score interno {r.scoreInterno} · {fmtDate(r.evaluadoEl)}</span>
+                </div>
+                {r.motivos?.length > 0 && (
+                  <ul className="mt-2 space-y-1">
+                    {r.motivos.map((m, i) => (
+                      <li key={i} className="flex gap-1.5 text-xs text-muted-foreground"><span className="text-muted-foreground/40">•</span>{m}</li>
+                    ))}
+                  </ul>
+                )}
+                <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 text-[11px]">
+                  <div className="rounded-lg bg-muted/30 px-2.5 py-1.5">
+                    <p className="text-muted-foreground">Ingreso neto</p>
+                    <p className="font-mono font-semibold text-foreground">{r.ingresoNetoMensual > 0 ? `$${n0(r.ingresoNetoMensual)}` : "—"}</p>
+                  </div>
+                  <div className="rounded-lg bg-muted/30 px-2.5 py-1.5">
+                    <p className="text-muted-foreground">Cuota / ingreso</p>
+                    <p className="font-mono font-semibold text-foreground">{r.ratioCuotaIngreso != null ? `${(r.ratioCuotaIngreso * 100).toFixed(0)}%` : "—"}</p>
+                  </div>
+                  <div className="rounded-lg bg-muted/30 px-2.5 py-1.5">
+                    <p className="text-muted-foreground">Cuota máx (capacidad)</p>
+                    <p className="font-mono font-semibold text-foreground">{r.capacidad?.cuotaMaxima > 0 ? `$${n0(r.capacidad.cuotaMaxima)}` : "—"}</p>
+                  </div>
+                </div>
+              </div>
+            </section>
+          );
+        })()}
 
         {/* Pagos registrados */}
         <section className="space-y-2">

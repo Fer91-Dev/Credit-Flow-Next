@@ -40,6 +40,8 @@ export function ClienteBureauPanel({ clienteId }: { clienteId: string }) {
   const toast = useToast();
   const [ultima, setUltima] = useState<Consulta | null>(null);
   const [loading, setLoading] = useState(false);
+  const [manualOpen, setManualOpen] = useState(false);
+  const [manual, setManual] = useState({ situacionBcra: "", scoreExterno: "", chequesRechazados: "", deudaSistemaFinanciero: "" });
 
   useEffect(() => {
     if (!tiene) return;
@@ -74,6 +76,32 @@ export function ClienteBureauPanel({ clienteId }: { clienteId: string }) {
     }
   };
 
+  const guardarManual = async () => {
+    const num = (v: string) => (v.trim() === "" ? null : Number(v));
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/clientes/${clienteId}/bureau`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          proveedor: "manual",
+          senalesManual: {
+            situacionBcra: num(manual.situacionBcra),
+            scoreExterno: num(manual.scoreExterno),
+            chequesRechazados: num(manual.chequesRechazados),
+            deudaSistemaFinanciero: num(manual.deudaSistemaFinanciero),
+          },
+        }),
+      });
+      const j = await res.json();
+      if (j.ok) { setUltima(j.data.consulta); setManualOpen(false); toast.success("Señales cargadas manualmente"); }
+      else toast.error(j.error || "No se pudo guardar");
+    } catch {
+      toast.error("Error al guardar");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <section className="space-y-2">
       <div className="flex items-center gap-2">
@@ -87,15 +115,57 @@ export function ClienteBureauPanel({ clienteId }: { clienteId: string }) {
               ? <>Última consulta: <span className="font-medium text-foreground">{PROVEEDOR_LABEL[ultima.proveedor] ?? ultima.proveedor}</span> · {formatFechaHora(ultima.created_at)}</>
               : "Sin consultas registradas para este cliente."}
           </p>
-          <button
-            onClick={consultar}
-            disabled={loading}
-            className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-primary/10 px-3 py-1.5 text-xs font-medium text-primary ring-1 ring-inset ring-primary/25 transition-colors hover:bg-primary/15 disabled:opacity-50"
-          >
-            {loading ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Search className="h-3.5 w-3.5" />}
-            {loading ? "Consultando…" : "Consultar bureau"}
-          </button>
+          <div className="flex shrink-0 items-center gap-2">
+            <button
+              onClick={() => setManualOpen((o) => !o)}
+              disabled={loading}
+              className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
+            >
+              Cargar manual
+            </button>
+            <button
+              onClick={consultar}
+              disabled={loading}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-primary/10 px-3 py-1.5 text-xs font-medium text-primary ring-1 ring-inset ring-primary/25 transition-colors hover:bg-primary/15 disabled:opacity-50"
+            >
+              {loading ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Search className="h-3.5 w-3.5" />}
+              {loading ? "Consultando…" : "Consultar bureau"}
+            </button>
+          </div>
         </div>
+
+        {manualOpen && (
+          <div className="mt-3 rounded-lg border border-border bg-muted/20 p-3">
+            <p className="mb-2 text-[11px] text-muted-foreground">Cargá las señales a mano (dejá vacío lo que no tengas).</p>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              <label className="text-[11px] text-muted-foreground">Situación BCRA
+                <select value={manual.situacionBcra} onChange={(e) => setManual((m) => ({ ...m, situacionBcra: e.target.value }))}
+                  className="mt-1 h-9 w-full rounded-lg border border-border bg-input px-2 text-sm text-foreground shadow-[inset_0_1px_2px_0_rgba(0,0,0,0.22)] outline-none focus:border-primary">
+                  <option value="">—</option>
+                  {[1, 2, 3, 4, 5, 6].map((n) => <option key={n} value={n}>{n}</option>)}
+                </select>
+              </label>
+              <label className="text-[11px] text-muted-foreground">Score (0–1000)
+                <input type="number" min="0" max="1000" value={manual.scoreExterno} onChange={(e) => setManual((m) => ({ ...m, scoreExterno: e.target.value }))}
+                  className="mt-1 h-9 w-full rounded-lg border border-border bg-input px-2 text-sm text-foreground shadow-[inset_0_1px_2px_0_rgba(0,0,0,0.22)] outline-none focus:border-primary" />
+              </label>
+              <label className="text-[11px] text-muted-foreground">Cheques rech.
+                <input type="number" min="0" value={manual.chequesRechazados} onChange={(e) => setManual((m) => ({ ...m, chequesRechazados: e.target.value }))}
+                  className="mt-1 h-9 w-full rounded-lg border border-border bg-input px-2 text-sm text-foreground shadow-[inset_0_1px_2px_0_rgba(0,0,0,0.22)] outline-none focus:border-primary" />
+              </label>
+              <label className="text-[11px] text-muted-foreground">Deuda sistema ($)
+                <input type="number" min="0" value={manual.deudaSistemaFinanciero} onChange={(e) => setManual((m) => ({ ...m, deudaSistemaFinanciero: e.target.value }))}
+                  className="mt-1 h-9 w-full rounded-lg border border-border bg-input px-2 text-sm text-foreground shadow-[inset_0_1px_2px_0_rgba(0,0,0,0.22)] outline-none focus:border-primary" />
+              </label>
+            </div>
+            <div className="mt-2 flex justify-end">
+              <button onClick={guardarManual} disabled={loading}
+                className="rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50">
+                Guardar señales
+              </button>
+            </div>
+          </div>
+        )}
 
         {ultima && (
           <>

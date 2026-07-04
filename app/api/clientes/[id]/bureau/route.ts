@@ -46,7 +46,7 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
 
   const cliente = await prisma.clientes.findFirst({
     where: { ...withTenant(tenantId), id },
-    select: { id: true, cuit_cuil: true, documento: true },
+    select: { id: true, cuit_cuil: true, documento: true, consentimiento_bureau: true },
   });
   if (!cliente) return errorResponse("Cliente no encontrado", "NOT_FOUND", 404);
 
@@ -55,6 +55,16 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
 
   const { bureau } = await getRiesgoConfig(tenantId);
   const proveedor: BureauProveedor = PROVEEDORES.includes(body.proveedor) ? body.proveedor : bureau.proveedor;
+
+  // Consentimiento del titular (Ley 25.326): obligatorio para consultar bureaus externos.
+  // El modo manual (el analista carga datos que ya posee legítimamente) queda exento.
+  if (proveedor !== "manual" && !cliente.consentimiento_bureau) {
+    return errorResponse(
+      "El cliente no prestó conformidad para la consulta a bureaus de crédito (Ley 25.326). Registrala en la ficha del cliente.",
+      "SIN_CONSENTIMIENTO",
+      409,
+    );
+  }
 
   const cuit = (cliente.cuit_cuil || cliente.documento || "").replace(/\D/g, "");
   if (proveedor !== "manual" && cuit.length < 8) {

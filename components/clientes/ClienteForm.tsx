@@ -7,6 +7,7 @@ import { FormActions } from "@/components/ui/form-kit";
 import { maskMontoInput, parseMontoInput, numeroAInput, nombreCompleto } from "@/lib/utils";
 import { useConfirm } from "@/components/ui/confirm";
 import { useToast } from "@/components/ui/toast";
+import { useHasFeature } from "@/components/providers/FeaturesProvider";
 
 /** Cliente recién creado, devuelto a quien abrió el formulario. */
 export interface ClienteCreado { id: string; nombre: string; apellido?: string | null; documento?: string | null }
@@ -25,6 +26,7 @@ const EMPTY = {
   antiguedad_anios: "", antiguedad_meses: "",
   ingreso_mensual: "", otros_ingresos: "",
   telefono_laboral: "", direccion_laboral: "",
+  consentimiento_bureau: false,
 };
 
 /** Convierte meses totales guardados en años + meses para los inputs. */
@@ -77,6 +79,7 @@ export function ClienteForm({ clienteId, initialDocumento, onClose }: ClienteFor
   const [cuitDup, setCuitDup] = useState<{ nombre: string } | null>(null); // otro cliente con ese CUIT
   const confirm = useConfirm();
   const toast = useToast();
+  const tieneRiesgo = useHasFeature("riesgo_originacion");
 
   useEffect(() => {
     if (clienteId) fetchCliente();
@@ -130,6 +133,7 @@ export function ClienteForm({ clienteId, initialDocumento, onClose }: ClienteFor
           ingreso_mensual: d.ingreso_mensual != null ? numeroAInput(d.ingreso_mensual) : "",
           otros_ingresos: d.otros_ingresos != null ? numeroAInput(d.otros_ingresos) : "",
           telefono_laboral: d.telefono_laboral ?? "", direccion_laboral: d.direccion_laboral ?? "",
+          consentimiento_bureau: (d as { consentimiento_bureau?: boolean }).consentimiento_bureau ?? false,
         });
       }
     } catch { setError("Error al cargar cliente"); }
@@ -360,6 +364,20 @@ export function ClienteForm({ clienteId, initialDocumento, onClose }: ClienteFor
             <Input name="otros_ingresos" type="text" inputMode="decimal" placeholder="150.000,00" value={formData.otros_ingresos} onChange={setMonto("otros_ingresos")} className="text-right font-mono tabular-nums" />
           </Field>
         </div>
+        {tieneRiesgo && (
+          <label className={`mt-3 flex cursor-pointer items-start gap-2 rounded-lg border border-border px-3 py-2.5 transition-colors ${formData.consentimiento_bureau ? "bg-primary/[0.06] ring-1 ring-inset ring-primary/25" : "bg-muted/20"}`}>
+            <input
+              type="checkbox"
+              checked={formData.consentimiento_bureau}
+              onChange={(e) => setFormData((p) => ({ ...p, consentimiento_bureau: e.target.checked }))}
+              className="mt-0.5 accent-primary"
+            />
+            <span className="text-xs text-foreground">
+              El cliente presta conformidad para la consulta a bureaus de crédito (BCRA/Nosis/Veraz).
+              <span className="block text-[11px] text-muted-foreground">Requisito legal (Ley 25.326 — habeas data) para consultas externas.</span>
+            </span>
+          </label>
+        )}
       </SectionCard>
 
       {/* Contacto */}

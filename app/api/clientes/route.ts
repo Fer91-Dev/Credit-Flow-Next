@@ -219,6 +219,8 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
       // Ingresos
       ingreso_mensual: numOrNull(body.ingreso_mensual),
       otros_ingresos: numOrNull(body.otros_ingresos),
+      // Consentimiento para consulta a bureaus (Ley 25.326)
+      consentimiento_bureau: body.consentimiento_bureau === true,
       // Contacto laboral
       telefono_laboral: body.telefono_laboral?.trim() || null,
       direccion_laboral: body.direccion_laboral?.trim() || null,

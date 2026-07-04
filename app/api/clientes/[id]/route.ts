@@ -208,6 +208,9 @@ export const PATCH = withErrorHandler(async (req: NextRequest, { params }: Route
   if ("otros_ingresos" in body) {
     updateData.otros_ingresos = numOrNull(body.otros_ingresos);
   }
+  if ("consentimiento_bureau" in body) {
+    updateData.consentimiento_bureau = body.consentimiento_bureau === true;
+  }
 
   if (Object.keys(updateData).length === 0) {
     return errorResponse("No hay campos para actualizar", "INVALID_INPUT", 400);

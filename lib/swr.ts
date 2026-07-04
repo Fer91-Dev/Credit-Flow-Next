@@ -161,6 +161,22 @@ export interface Credito {
   producto_cantidad?: number | null;
   /** Crédito de producto: producto financiado (el cliente se lo lleva en vez de dinero). */
   producto?: { id: string; nombre: string; categoria?: string | null; imagen_url?: string | null } | null;
+  /** Snapshot de la evaluación de riesgo/originación al otorgar (feature premium). */
+  riesgo_snapshot?: RiesgoSnapshot | null;
+}
+
+/** Evaluación de originación congelada al otorgar el crédito. */
+export interface RiesgoSnapshot {
+  semaforo: "aprobado" | "revisar" | "rechazado";
+  motivos: string[];
+  ratioCuotaIngreso: number | null;
+  cuotaEstimada: number;
+  ingresoNetoMensual: number;
+  deudaCuotaMensualVigente: number;
+  capacidad: { cuotaMaxima: number; montoIndicativo: number };
+  scoreInterno: string;
+  autorizadoManual: boolean;
+  evaluadoEl: string;
 }
 
 /** Resumen de ventas/comisión de un vendedor (derivado en el servidor). */

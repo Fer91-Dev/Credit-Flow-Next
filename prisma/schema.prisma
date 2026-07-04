@@ -94,6 +94,10 @@ model clientes {
   ingreso_mensual Float?
   otros_ingresos  Float?
 
+  // Consentimiento del titular para consultar bureaus de crédito (Ley 25.326 - habeas data).
+  // Requisito legal para consultar BCRA/Nosis/Veraz (no aplica al modo manual).
+  consentimiento_bureau Boolean @default(false)
+
   // Contacto laboral
   telefono_laboral  String?
   direccion_laboral String?
