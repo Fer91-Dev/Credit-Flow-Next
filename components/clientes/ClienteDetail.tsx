@@ -11,6 +11,7 @@ import { Emoji } from "@/components/ui/Emoji";
 import { Avatar } from "@/components/ui/Avatar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { LibreDeudaDialog } from "@/components/creditos/LibreDeudaDialog";
+import { ClienteBureauPanel } from "@/components/clientes/ClienteBureauPanel";
 import { formatCreditoNumero, formatFecha, formatFechaHora, nombreCompleto } from "@/lib/utils";
 
 function n2(x: number) {
@@ -282,6 +283,9 @@ export function ClienteDetail({
           </div>
         </div>
         )}
+
+        {/* Perfil crediticio (bureau) — feature premium; se auto-oculta si no está habilitada */}
+        {showCreditos && <ClienteBureauPanel clienteId={clienteId} />}
 
         {/* Historial de promesas de pago (vigentes / cumplidas / rotas) */}
         {showCreditos && promesas.length > 0 && (

@@ -50,6 +50,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { icon: "office-worker",   label: "Agentes",     to: "/personal" },
       { icon: "package",         label: "Productos",   to: "/productos" },
+      { icon: "counterclockwise-arrows-button", label: "Movimientos de stock", to: "/productos/movimientos" },
       { icon: "delivery-truck",  label: "Proveedores", to: "/proveedores" },
       { icon: "locked-with-key", label: "Usuarios",    to: "/usuarios" },
     ],
@@ -192,14 +193,22 @@ export function AppShell({ children, role, nombre, email, avatarUrl }: { childre
     router.push(to);
   };
 
-  const isActive = (to: string) => {
-    if (to === "/") return pathname === "/";
-    return pathname?.startsWith(to);
-  };
+  const allNavItems = [HOME_ITEM, ...groups.flatMap((g) => g.items)];
+
+  // Coincidencia por PREFIJO MÁS LARGO: cuando dos ítems matchean la ruta actual (ej.
+  // "/productos" y "/productos/movimientos"), solo se resalta el más específico — evita
+  // que ambos queden marcados como activos a la vez en rutas anidadas.
+  const activeTo = (() => {
+    let mejor: string | null = null;
+    for (const item of allNavItems) {
+      const matchea = item.to === "/" ? pathname === "/" : pathname === item.to || pathname?.startsWith(item.to + "/");
+      if (matchea && (!mejor || item.to.length > mejor.length)) mejor = item.to;
+    }
+    return mejor;
+  })();
+  const isActive = (to: string) => to === activeTo;
 
   if (!mounted) return null;
-
-  const allNavItems = [HOME_ITEM, ...groups.flatMap((g) => g.items)];
   const isDark = resolvedTheme === "dark";
   const toggleTheme = () => setTheme(isDark ? "light" : "dark");
 

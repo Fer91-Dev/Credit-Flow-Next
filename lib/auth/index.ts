@@ -33,6 +33,7 @@ export type AuthContext = {
   nombre: string | null; // profiles.full_name (para saludo / identidad en UI)
   email: string | null; // profiles.email
   avatarUrl: string | null; // user_metadata.avatar_url (avatar elegido por el usuario)
+  features: string[]; // tenants.features — entitlements premium del tenant (ver lib/entitlements.ts)
 };
 
 /**
@@ -44,7 +45,10 @@ export type AuthContext = {
 async function cargarContexto(userId: string, avatarUrl: string | null = null): Promise<AuthContext> {
   const profile = await prisma.profiles.findUnique({
     where: { id: userId },
-    select: { tenant_id: true, role: true, activo: true, vendedor_id: true, full_name: true, email: true },
+    select: {
+      tenant_id: true, role: true, activo: true, vendedor_id: true, full_name: true, email: true,
+      tenant: { select: { features: true } }, // entitlements del tenant (premium por plan)
+    },
   });
 
   if (!profile || !profile.activo || !profile.tenant_id || !profile.role) {
@@ -62,6 +66,7 @@ async function cargarContexto(userId: string, avatarUrl: string | null = null): 
     nombre: profile.full_name ?? null,
     email: profile.email ?? null,
     avatarUrl,
+    features: profile.tenant?.features ?? [],
   };
 }
 

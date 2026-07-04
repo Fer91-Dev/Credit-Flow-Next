@@ -1,7 +1,7 @@
 import { requireAuth, requireRole } from "@/lib/auth";
 import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api";
-import { getConfiguracion, guardarConfiguracion, getComunicacionConfig, guardarComunicacionConfig, getGamificacionConfig, guardarGamificacionConfig, getRentabilidadConfig, guardarRentabilidadConfig, type ComunicacionConfig } from "@/lib/config";
-import { resolverConfig, resolverGamificacion, resolverRentabilidad, type ComponenteDeuda } from "@/lib/domain";
+import { getConfiguracion, guardarConfiguracion, getComunicacionConfig, guardarComunicacionConfig, getGamificacionConfig, guardarGamificacionConfig, getRentabilidadConfig, guardarRentabilidadConfig, getRiesgoConfig, guardarRiesgoConfig, type ComunicacionConfig } from "@/lib/config";
+import { resolverConfig, resolverGamificacion, resolverRentabilidad, resolverRiesgo, type ComponenteDeuda } from "@/lib/domain";
 import { registrarAuditoria } from "@/lib/audit";
 import type { NextRequest } from "next/server";
 
@@ -94,13 +94,15 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   // también el vendedor. La config del motor no es información sensible admin-only.
   // La ESCRITURA (PUT) sigue siendo solo admin.
   const { tenantId } = await requireAuth(req);
-  const [config, comm, gamificacion, rentabilidad] = await Promise.all([
+  const [config, comm, gamificacion, rentabilidad, riesgo] = await Promise.all([
     getConfiguracion(tenantId),
     getComunicacionConfig(tenantId),
     getGamificacionConfig(tenantId),
     getRentabilidadConfig(tenantId),
+    getRiesgoConfig(tenantId),
   ]);
-  return successResponse({ ...config, ...maskCommConfig(comm), gamificacionConfig: gamificacion, rentabilidadConfig: rentabilidad });
+  const riesgoMasked = { ...riesgo, bureau: { ...riesgo.bureau, token: riesgo.bureau.token ? MASKED : "" } };
+  return successResponse({ ...config, ...maskCommConfig(comm), gamificacionConfig: gamificacion, rentabilidadConfig: rentabilidad, riesgoConfig: riesgoMasked });
 });
 
 /**
@@ -207,6 +209,33 @@ export const PUT = withErrorHandler(async (req: NextRequest) => {
   }
   const rentabilidad = await getRentabilidadConfig(tenantId);
 
+  // Riesgo / originación (feature premium). Se guarda aunque el tenant no tenga el
+  // entitlement (es solo preferencia); la barrera real está en el otorgamiento.
+  if (body.riesgoConfig !== undefined) {
+    const p = body.riesgoConfig?.politica ?? {};
+    if (p.ratioCuotaIngresoMax !== undefined && (typeof p.ratioCuotaIngresoMax !== "number" || p.ratioCuotaIngresoMax <= 0 || p.ratioCuotaIngresoMax > 1)) {
+      return errorResponse("politica.ratioCuotaIngresoMax debe ser un número entre 0 y 1 (ej. 0.30 = 30%)", "INVALID_INPUT", 400);
+    }
+    if (p.situacionBcraMax !== undefined && ![1, 2, 3, 4, 5, 6].includes(p.situacionBcraMax)) {
+      return errorResponse("politica.situacionBcraMax debe ser un entero entre 1 y 6", "INVALID_INPUT", 400);
+    }
+    if (p.multiploIngresoMax !== undefined && (typeof p.multiploIngresoMax !== "number" || p.multiploIngresoMax < 0)) {
+      return errorResponse("politica.multiploIngresoMax debe ser un número >= 0", "INVALID_INPUT", 400);
+    }
+    if (p.accionAlNoCalificar !== undefined && !["bloquear", "autorizar"].includes(p.accionAlNoCalificar)) {
+      return errorResponse("politica.accionAlNoCalificar debe ser 'bloquear' o 'autorizar'", "INVALID_INPUT", 400);
+    }
+    // El token del bureau es secreto: si llega el sentinel, se preserva el valor guardado.
+    if (body.riesgoConfig?.bureau?.token === MASKED) {
+      const existente = await getRiesgoConfig(tenantId);
+      body.riesgoConfig.bureau.token = existente.bureau.token;
+    }
+    const r = resolverRiesgo(body.riesgoConfig);
+    await guardarRiesgoConfig(tenantId, r);
+  }
+  const riesgoRaw = await getRiesgoConfig(tenantId);
+  const riesgo = { ...riesgoRaw, bureau: { ...riesgoRaw.bureau, token: riesgoRaw.bureau.token ? MASKED : "" } };
+
   await registrarAuditoria({
     tenantId,
     entidad: "configuracion",
@@ -215,5 +244,5 @@ export const PUT = withErrorHandler(async (req: NextRequest) => {
     meta: { campos: Object.keys(body) },
   });
 
-  return successResponse({ ...guardada, ...maskCommConfig(comm), gamificacionConfig: gamificacion, rentabilidadConfig: rentabilidad });
+  return successResponse({ ...guardada, ...maskCommConfig(comm), gamificacionConfig: gamificacion, rentabilidadConfig: rentabilidad, riesgoConfig: riesgo });
 });

@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { motion } from "framer-motion";
-import { Settings, Check, Loader2, Percent, Plus, X, MessageSquare, Phone, Mail } from "lucide-react";
-import { useConfiguracion, type ConfiguracionFinanciera, type GamificacionConfig, type RentabilidadConfig } from "@/lib/swr";
+import { Settings, Check, Loader2, Percent, Plus, X, MessageSquare, Phone, Mail, Lock } from "lucide-react";
+import { useConfiguracion, type ConfiguracionFinanciera, type GamificacionConfig, type RentabilidadConfig, type RiesgoConfig } from "@/lib/swr";
+import { FeatureGate, useHasFeature } from "@/components/providers/FeaturesProvider";
 import type { SimuladorConfig, CargosConfig, FrecuenciaOpcion } from "@/lib/domain";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Field, Input, Select } from "@/components/ui/field";
@@ -25,9 +25,8 @@ export function ConfigForm() {
   const [savingKey, setSavingKey] = useState<string | null>(null);
   const [savedKey, setSavedKey] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"motor" | "simulador" | "comunicaciones" | "gamificacion" | "rentabilidad">("motor");
-  const [mounted, setMounted]    = useState(false);
-  useEffect(() => setMounted(true), []);
+  const [activeTab, setActiveTab] = useState<"motor" | "simulador" | "comunicaciones" | "gamificacion" | "rentabilidad" | "riesgo">("motor");
+  const riesgoHabilitado = useHasFeature("riesgo_originacion");
 
   // Hidratar el form local cuando llega la config.
   useEffect(() => {
@@ -94,6 +93,55 @@ export function ConfigForm() {
     touch();
   };
 
+  // Riesgo / originación (feature premium): política de límites por ingreso + bureau.
+  const riesgo = form?.riesgoConfig ?? defaultRiesgo();
+  const setRiesgo = (patch: Partial<RiesgoConfig["politica"]>) => {
+    setForm(prev => {
+      if (!prev) return prev;
+      const base = prev.riesgoConfig ?? defaultRiesgo();
+      return { ...prev, riesgoConfig: { ...base, politica: { ...defaultRiesgo().politica, ...base.politica, ...patch } } };
+    });
+    touch();
+  };
+  const setBureau = (patch: Partial<RiesgoConfig["bureau"]>) => {
+    setForm(prev => {
+      if (!prev) return prev;
+      const base = prev.riesgoConfig ?? defaultRiesgo();
+      return { ...prev, riesgoConfig: { ...base, bureau: { ...defaultRiesgo().bureau, ...base.bureau, ...patch } } };
+    });
+    touch();
+  };
+
+  // ¿El bloque `key` tiene cambios sin guardar respecto de la config del server?
+  // Alimenta el estado "dirty" del botón Guardar (sólido solo cuando hay algo que guardar).
+  const eq = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+  const isDirty = (key: string): boolean => {
+    if (!config || !form) return false;
+    const f = form, c = config, s = form.simulador, cs = config.simulador;
+    switch (key) {
+      case "motor":         return f.convencionTasa !== c.convencionTasa || f.sistemaAmortizacion !== c.sistemaAmortizacion;
+      case "mora":          return f.moraActiva !== c.moraActiva || f.tasaMoraDiaria !== c.tasaMoraDiaria || f.baseMora !== c.baseMora;
+      case "imputacion":    return f.imputarCargos !== c.imputarCargos;
+      case "presentacion":  return f.moneda !== c.moneda || f.locale !== c.locale;
+      case "gamificacion":  return !eq(f.gamificacionConfig ?? null, c.gamificacionConfig ?? null);
+      case "rentabilidad":  return !eq(f.rentabilidadConfig ?? null, c.rentabilidadConfig ?? null);
+      case "riesgo":        return !eq(f.riesgoConfig ?? null, c.riesgoConfig ?? null);
+      case "financiacion":  return !eq([s.montoMin, s.montoMax, s.montoDefault, s.tasaBase], [cs.montoMin, cs.montoMax, cs.montoDefault, cs.tasaBase]);
+      case "plazos":        return !eq(s.plazos, cs.plazos) || s.plazoDefault !== cs.plazoDefault;
+      case "frecuencias":   return !eq(s.frecuencias, cs.frecuencias) || s.frecuenciaDefault !== cs.frecuenciaDefault;
+      case "redondeo":      return !eq(s.redondeoCuota, cs.redondeoCuota);
+      case "cronograma":    return !eq([s.diaCorte, s.diaVencimientoFijo, s.diasGracia, s.incluirSabadoNoHabil, s.feriados], [cs.diaCorte, cs.diaVencimientoFijo, cs.diasGracia, cs.incluirSabadoNoHabil, cs.feriados]);
+      case "cargo-comision": return !eq(s.cargos.comisionOtorgamiento, cs.cargos.comisionOtorgamiento);
+      case "cargo-iva":      return !eq(s.cargos.iva, cs.cargos.iva);
+      case "cargo-seguro":   return !eq(s.cargos.seguro, cs.cargos.seguro);
+      case "cargo-gastos":   return !eq(s.cargos.gastosAdministrativos, cs.cargos.gastosAdministrativos);
+      case "canal-whatsapp": return !eq(f.whatsappConfig ?? null, c.whatsappConfig ?? null);
+      case "canal-sms":      return !eq(f.smsConfig ?? null, c.smsConfig ?? null);
+      case "canal-email":    return !eq(f.emailConfig ?? null, c.emailConfig ?? null);
+      default:               return false;
+    }
+  };
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -110,49 +158,51 @@ export function ConfigForm() {
           Error al cargar la configuración: {error.message}
         </div>
       ) : (
-        <div className="space-y-4 max-w-3xl">
+        <div className="max-w-5xl">
           {saveError && (
-            <div className="rounded-xl bg-destructive/10 border border-destructive/30 p-3 text-destructive text-sm">
+            <div className="mb-4 rounded-xl bg-destructive/10 border border-destructive/30 p-3 text-destructive text-sm">
               {saveError}
             </div>
           )}
 
-          {/* ─ Tabs ─ */}
-          <div className="relative flex gap-1 bg-muted/30 rounded-lg p-1 w-fit">
-            {([
-              { key: "motor",          label: "Motor" },
-              { key: "simulador",      label: "Simulador" },
-              { key: "comunicaciones", label: "Comunicaciones" },
-              { key: "gamificacion",   label: "Gamificación" },
-              { key: "rentabilidad",   label: "Rentabilidad" },
-            ] as const).map(tab => (
-              <button
-                key={tab.key}
-                onClick={() => setActiveTab(tab.key)}
-                className={`relative px-3 py-1.5 rounded-md text-xs font-medium transition-colors duration-200 ${
-                  activeTab === tab.key ? "text-foreground" : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                {activeTab === tab.key && mounted && (
-                  <motion.div
-                    layoutId="config-tab-capsule"
-                    className="absolute inset-0 rounded-md bg-card shadow-sm"
-                    transition={{ type: "spring", stiffness: 400, damping: 35 }}
-                  />
-                )}
-                {activeTab === tab.key && !mounted && (
-                  <div className="absolute inset-0 rounded-md bg-card shadow-sm" />
-                )}
-                <span className="relative">{tab.label}</span>
-              </button>
-            ))}
-          </div>
+          <div className="grid grid-cols-1 gap-5 md:grid-cols-[190px_1fr]">
+            {/* ─ Rail de secciones (patrón settings: nav lateral) ─ */}
+            <nav className="-mx-1 flex gap-1 overflow-x-auto px-1 md:mx-0 md:flex-col md:overflow-visible md:px-0">
+              {([
+                { key: "motor",          label: "Motor financiero", premium: false },
+                { key: "simulador",      label: "Simulador",         premium: false },
+                { key: "comunicaciones", label: "Comunicaciones",    premium: false },
+                { key: "gamificacion",   label: "Gamificación",      premium: false },
+                { key: "rentabilidad",   label: "Rentabilidad",      premium: false },
+                { key: "riesgo",         label: "Riesgo / Originación", premium: true },
+              ] as const).map(tab => {
+                const active = activeTab === tab.key;
+                const bloqueada = tab.premium && !riesgoHabilitado;
+                return (
+                  <button
+                    key={tab.key}
+                    onClick={() => setActiveTab(tab.key)}
+                    className={`flex shrink-0 items-center justify-between gap-2 whitespace-nowrap rounded-lg px-3 py-2 text-left text-sm font-medium transition-colors md:w-full ${
+                      active
+                        ? "bg-primary/10 text-foreground ring-1 ring-inset ring-primary/30"
+                        : "text-muted-foreground hover:bg-muted/10 hover:text-foreground"
+                    }`}
+                  >
+                    {tab.label}
+                    {bloqueada && <Lock className="h-3.5 w-3.5 shrink-0 text-muted-foreground/50" />}
+                  </button>
+                );
+              })}
+            </nav>
+
+            {/* ─ Contenido de la sección activa ─ */}
+            <div className="min-w-0 space-y-4">
 
           {/* ─── Motor tab: Motor financiero (primero) ─── */}
           {activeTab === "motor" && (
           <Section title="Motor financiero" desc="Cómo se interpreta la tasa y el sistema de cálculo."
             onSave={() => save("motor", { convencionTasa: form.convencionTasa, sistemaAmortizacion: form.sistemaAmortizacion })}
-            saving={savingKey === "motor"} saved={savedKey === "motor"}>
+            saving={savingKey === "motor"} saved={savedKey === "motor"} dirty={isDirty("motor")}>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Field label="Convención de tasa" hint="Cómo se interpreta el campo «tasa» de cada crédito">
                 <Select value={form.convencionTasa} onChange={e => set("convencionTasa", e.target.value as ConfiguracionFinanciera["convencionTasa"])}>
@@ -175,7 +225,7 @@ export function ConfigForm() {
 
           {/* Simulador · Financiación */}
           <Section title="Financiación del simulador" desc="Rango de monto y valores que el simulador prellena. 0 = sin restricción / sin valor por defecto."
-            onSave={() => saveSim("financiacion")} saving={savingKey === "financiacion"} saved={savedKey === "financiacion"}>
+            onSave={() => saveSim("financiacion")} saving={savingKey === "financiacion"} saved={savedKey === "financiacion"} dirty={isDirty("financiacion")}>
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
               <Field label="Monto mínimo ($)">
                 <Input type="number" min="0" step="any" value={form.simulador.montoMin}
@@ -201,7 +251,7 @@ export function ConfigForm() {
 
           {/* Simulador · Plazos */}
           <Section title="Plazos disponibles" desc="Cuotas que se ofrecen en el simulador. Tocá un plazo para activarlo o desactivarlo."
-            onSave={() => saveSim("plazos")} saving={savingKey === "plazos"} saved={savedKey === "plazos"}>
+            onSave={() => saveSim("plazos")} saving={savingKey === "plazos"} saved={savedKey === "plazos"} dirty={isDirty("plazos")}>
             <PlazosEditor plazos={form.simulador.plazos} onChange={p => setSim("plazos", p)} />
             <div className="mt-4 max-w-xs">
               <Field label="Plazo por defecto" hint="Preseleccionado en el simulador">
@@ -217,7 +267,7 @@ export function ConfigForm() {
 
           {/* Simulador · Frecuencias */}
           <Section title="Frecuencias de pago" desc="Frecuencias ofrecidas en el simulador. Las base no se editan; podés agregar propias (ej. quincenal)."
-            onSave={() => saveSim("frecuencias")} saving={savingKey === "frecuencias"} saved={savedKey === "frecuencias"}>
+            onSave={() => saveSim("frecuencias")} saving={savingKey === "frecuencias"} saved={savedKey === "frecuencias"} dirty={isDirty("frecuencias")}>
             <FrecuenciasEditor
               frecuencias={form.simulador.frecuencias}
               onChange={f => setSim("frecuencias", f)}
@@ -236,7 +286,7 @@ export function ConfigForm() {
 
           {/* Simulador · Redondeo */}
           <Section title="Redondeo de cuota" desc="Ajuste del valor de la cuota total."
-            onSave={() => saveSim("redondeo")} saving={savingKey === "redondeo"} saved={savedKey === "redondeo"}>
+            onSave={() => saveSim("redondeo")} saving={savingKey === "redondeo"} saved={savedKey === "redondeo"} dirty={isDirty("redondeo")}>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Field label="Redondeo de cuota">
                 <Select value={form.simulador.redondeoCuota.modo}
@@ -256,7 +306,7 @@ export function ConfigForm() {
 
           {/* Simulador · Cronograma de cobranza */}
           <Section title="Cronograma de cobranza" desc="Fecha de corte, día de vencimiento fijo, gracia y feriados. Solo aplica a créditos mensuales; se congela al otorgar."
-            onSave={() => saveSim("cronograma")} saving={savingKey === "cronograma"} saved={savedKey === "cronograma"}>
+            onSave={() => saveSim("cronograma")} saving={savingKey === "cronograma"} saved={savedKey === "cronograma"} dirty={isDirty("cronograma")}>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               <Field label="Día de corte" hint="1–28. Vacío = sin corte (1ª cuota al mes siguiente)">
                 <Input type="number" min="1" max="28" step="1"
@@ -274,7 +324,7 @@ export function ConfigForm() {
               </Field>
             </div>
 
-            <div className="mt-4 flex items-center justify-between rounded-lg border border-border bg-muted/30 px-4 py-3">
+            <div className={`mt-4 flex items-center justify-between rounded-lg border border-border px-4 py-3 transition-colors ${form.simulador.incluirSabadoNoHabil ? "bg-primary/[0.06] ring-1 ring-inset ring-primary/25" : "bg-muted/30"}`}>
               <div>
                 <p className="text-sm font-medium text-foreground">Sábado no hábil</p>
                 <p className="text-xs text-muted-foreground">Si está activo, los vencimientos que caen sábado también se corren al lunes.</p>
@@ -300,7 +350,7 @@ export function ConfigForm() {
               <CargoBlock title="Comisión de otorgamiento" desc="Cargo único por dar el crédito."
                 activo={form.simulador.cargos.comisionOtorgamiento.activo}
                 onToggle={v => setCargo("comisionOtorgamiento", "activo", v)}
-                onSave={() => saveSim("cargo-comision")} saving={savingKey === "cargo-comision"} saved={savedKey === "cargo-comision"}>
+                onSave={() => saveSim("cargo-comision")} saving={savingKey === "cargo-comision"} saved={savedKey === "cargo-comision"} dirty={isDirty("cargo-comision")}>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <Field label="Modo">
                     <Select value={form.simulador.cargos.comisionOtorgamiento.modo}
@@ -327,7 +377,7 @@ export function ConfigForm() {
               <CargoBlock title="IVA sobre interés" desc="Impuesto sobre el interés de cada cuota."
                 activo={form.simulador.cargos.iva.activo}
                 onToggle={v => setCargo("iva", "activo", v)}
-                onSave={() => saveSim("cargo-iva")} saving={savingKey === "cargo-iva"} saved={savedKey === "cargo-iva"}>
+                onSave={() => saveSim("cargo-iva")} saving={savingKey === "cargo-iva"} saved={savedKey === "cargo-iva"} dirty={isDirty("cargo-iva")}>
                 <div className="max-w-[12rem]">
                   <Field label="Tasa de IVA (%)">
                     <Input type="number" min="0" step="0.5" value={Number((form.simulador.cargos.iva.tasa * 100).toFixed(2))}
@@ -340,7 +390,7 @@ export function ConfigForm() {
               <CargoBlock title="Seguro" desc="Cobertura aplicada por período."
                 activo={form.simulador.cargos.seguro.activo}
                 onToggle={v => setCargo("seguro", "activo", v)}
-                onSave={() => saveSim("cargo-seguro")} saving={savingKey === "cargo-seguro"} saved={savedKey === "cargo-seguro"}>
+                onSave={() => saveSim("cargo-seguro")} saving={savingKey === "cargo-seguro"} saved={savedKey === "cargo-seguro"} dirty={isDirty("cargo-seguro")}>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <Field label="Base">
                     <Select value={form.simulador.cargos.seguro.modo}
@@ -367,7 +417,7 @@ export function ConfigForm() {
               <CargoBlock title="Gastos administrativos" desc="Cargo por cuota."
                 activo={form.simulador.cargos.gastosAdministrativos.activo}
                 onToggle={v => setCargo("gastosAdministrativos", "activo", v)}
-                onSave={() => saveSim("cargo-gastos")} saving={savingKey === "cargo-gastos"} saved={savedKey === "cargo-gastos"}>
+                onSave={() => saveSim("cargo-gastos")} saving={savingKey === "cargo-gastos"} saved={savedKey === "cargo-gastos"} dirty={isDirty("cargo-gastos")}>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <Field label="Modo">
                     <Select value={form.simulador.cargos.gastosAdministrativos.modo}
@@ -397,17 +447,11 @@ export function ConfigForm() {
           {activeTab === "motor" && <>
 
           {/* Mora */}
-          <Section title="Interés por mora" desc="Recargo aplicado por días de atraso."
+          <Section title="Interés por mora" desc="Recargo aplicado por días de atraso. Apagá el switch para no cobrar mora."
+            enabled={form.moraActiva} onToggle={v => set("moraActiva", v)}
             onSave={() => save("mora", { moraActiva: form.moraActiva, tasaMoraDiaria: form.tasaMoraDiaria, baseMora: form.baseMora })}
-            saving={savingKey === "mora"} saved={savedKey === "mora"}>
-            <div className="flex items-center justify-between rounded-lg border border-border bg-muted/30 px-4 py-3 mb-4">
-              <div>
-                <p className="text-sm font-medium text-foreground">Cobrar mora</p>
-                <p className="text-xs text-muted-foreground">Si está desactivado, no se aplica interés moratorio.</p>
-              </div>
-              <Toggle checked={form.moraActiva} onChange={v => set("moraActiva", v)} />
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            saving={savingKey === "mora"} saved={savedKey === "mora"} dirty={isDirty("mora")}>
+            <div className={`grid grid-cols-1 sm:grid-cols-2 gap-4 transition-opacity ${form.moraActiva ? "" : "opacity-50"}`}>
               <Field label="Tasa de mora diaria (%)" hint="Porcentaje diario sobre la base de mora">
                 <div className="relative">
                   <Input
@@ -432,7 +476,7 @@ export function ConfigForm() {
           {/* Imputación */}
           <Section title="Orden de imputación de pagos" desc="Cómo se aplica cada pago recibido sobre la deuda."
             onSave={() => save("imputacion", { imputarCargos: form.imputarCargos })}
-            saving={savingKey === "imputacion"} saved={savedKey === "imputacion"}>
+            saving={savingKey === "imputacion"} saved={savedKey === "imputacion"} dirty={isDirty("imputacion")}>
             <div className="flex items-center gap-2 flex-wrap">
               {form.ordenImputacion.map((c, i) => (
                 <div key={c} className="flex items-center gap-2">
@@ -461,7 +505,7 @@ export function ConfigForm() {
           {/* Presentación */}
           <Section title="Presentación" desc="Formato de moneda y región (no afecta los cálculos)."
             onSave={() => save("presentacion", { moneda: form.moneda, locale: form.locale })}
-            saving={savingKey === "presentacion"} saved={savedKey === "presentacion"}>
+            saving={savingKey === "presentacion"} saved={savedKey === "presentacion"} dirty={isDirty("presentacion")}>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Field label="Moneda" hint="Código ISO 4217">
                 <Select value={form.moneda} onChange={e => set("moneda", e.target.value)}>
@@ -499,6 +543,7 @@ export function ConfigForm() {
                 onSave={() => save("canal-whatsapp", { whatsappConfig: form.whatsappConfig ?? null } as any)}
                 saving={savingKey === "canal-whatsapp"}
                 saved={savedKey === "canal-whatsapp"}
+                dirty={isDirty("canal-whatsapp")}
               >
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
                   <Field label="Token de acceso permanente">
@@ -552,6 +597,7 @@ export function ConfigForm() {
                 onSave={() => save("canal-sms", { smsConfig: form.smsConfig ?? null } as any)}
                 saving={savingKey === "canal-sms"}
                 saved={savedKey === "canal-sms"}
+                dirty={isDirty("canal-sms")}
               >
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
                   <Field label="Proveedor">
@@ -584,6 +630,7 @@ export function ConfigForm() {
                 onSave={() => save("canal-email", { emailConfig: form.emailConfig ?? null } as any)}
                 saving={savingKey === "canal-email"}
                 saved={savedKey === "canal-email"}
+                dirty={isDirty("canal-email")}
               >
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
                   <Field label="Proveedor">
@@ -617,12 +664,13 @@ export function ConfigForm() {
           <Section
             title="Gamificación (medallas y logros)"
             desc="Cómo se calcula la medalla del vendedor: período, pesos de cada objetivo y umbrales de Oro/Plata/Bronce."
+            enabled={g.habilitado} onToggle={(v) => setGam({ habilitado: v })}
             onSave={() => save("gamificacion", { gamificacionConfig: g } as Partial<ConfiguracionFinanciera>)}
-            saving={savingKey === "gamificacion"} saved={savedKey === "gamificacion"}
+            saving={savingKey === "gamificacion"} saved={savedKey === "gamificacion"} dirty={isDirty("gamificacion")}
           >
             <div className="space-y-5">
-              {/* Habilitado + período */}
-              <div className="flex flex-wrap items-end justify-between gap-4">
+              {/* Período */}
+              <div className="max-w-xs">
                 <Field label="Período de evaluación" hint="Largo de cada meta/medalla">
                   <Select value={g.periodo} onChange={e => setGam({ periodo: e.target.value as GamificacionConfig["periodo"] })}>
                     <option value="mensual">Mensual</option>
@@ -630,10 +678,6 @@ export function ConfigForm() {
                     <option value="semestral">Semestral</option>
                   </Select>
                 </Field>
-                <label className="flex items-center gap-2 text-sm text-foreground">
-                  <Toggle checked={g.habilitado} onChange={(v) => setGam({ habilitado: v })} />
-                  Gamificación habilitada
-                </label>
               </div>
 
               <div className={g.habilitado ? "space-y-5" : "space-y-5 pointer-events-none opacity-40"}>
@@ -677,15 +721,12 @@ export function ConfigForm() {
           {activeTab === "rentabilidad" && (
           <Section
             title="Rentabilidad (costo de fondeo)"
-            desc="Costo del capital que prestás, para calcular la ganancia NETA en Reportes. El ingreso financiero (interés + cargos + mora cobrados) menos este costo = rentabilidad neta."
+            desc="Costo del capital que prestás, para calcular la ganancia NETA en Reportes. Ingreso financiero (interés + cargos + mora cobrados) − este costo = rentabilidad neta. Apagá el switch para ver solo el margen bruto."
+            enabled={rent.habilitado} onToggle={(v) => setRent({ habilitado: v })}
             onSave={() => save("rentabilidad", { rentabilidadConfig: rent } as Partial<ConfiguracionFinanciera>)}
-            saving={savingKey === "rentabilidad"} saved={savedKey === "rentabilidad"}
+            saving={savingKey === "rentabilidad"} saved={savedKey === "rentabilidad"} dirty={isDirty("rentabilidad")}
           >
             <div className="space-y-5">
-              <label className="flex items-center gap-2 text-sm text-foreground">
-                <Toggle checked={rent.habilitado} onChange={(v) => setRent({ habilitado: v })} />
-                Calcular rentabilidad neta (descontar el costo de fondeo)
-              </label>
               <div className={rent.habilitado ? "grid grid-cols-1 sm:grid-cols-2 gap-4" : "grid grid-cols-1 sm:grid-cols-2 gap-4 pointer-events-none opacity-40"}>
                 <Field label="Costo de fondeo anual (%)" hint="Cuánto te cuesta por año el capital que prestás">
                   <Input type="number" min="0" step="0.1" value={rent.costo_fondeo_anual}
@@ -705,6 +746,127 @@ export function ConfigForm() {
           </Section>
           )}
 
+          {/* ─── Riesgo / Originación (feature premium) ─── */}
+          {activeTab === "riesgo" && (
+          <FeatureGate feature="riesgo_originacion">
+          <Section
+            title="Política de originación"
+            desc="Límites de crédito según el ingreso del cliente. Si un cliente no califica, la decisión queda en el admin (puede autorizar asumiendo el riesgo). Las señales de bureau (BCRA/Nosis) se conectan en un paso próximo."
+            onSave={() => save("riesgo", { riesgoConfig: riesgo } as Partial<ConfiguracionFinanciera>)}
+            saving={savingKey === "riesgo"} saved={savedKey === "riesgo"} dirty={isDirty("riesgo")}
+          >
+            <div className="space-y-5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <Field label="Ratio cuota / ingreso máx (%)" hint="La cuota no puede superar este % del ingreso neto del cliente">
+                  <div className="relative">
+                    <Input type="number" min="1" max="100" step="1"
+                      value={Number((riesgo.politica.ratioCuotaIngresoMax * 100).toFixed(0))}
+                      onChange={e => setRiesgo({ ratioCuotaIngresoMax: Math.min(100, Math.max(1, parseFloat(e.target.value) || 0)) / 100 })}
+                      className="pr-7" />
+                    <Percent className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
+                  </div>
+                </Field>
+                <Field label="Tope de monto (× ingreso mensual)" hint="Monto máx sugerido = múltiplo del sueldo. 0 = sin tope por múltiplo">
+                  <Input type="number" min="0" step="0.5" value={riesgo.politica.multiploIngresoMax}
+                    onChange={e => setRiesgo({ multiploIngresoMax: Math.max(0, parseFloat(e.target.value) || 0) })}
+                    className="font-mono tabular-nums" />
+                </Field>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <Field label="Situación BCRA máx aceptada" hint="Peor clasificación de deuda que se acepta (1 = normal)">
+                  <Select value={String(riesgo.politica.situacionBcraMax)}
+                    onChange={e => setRiesgo({ situacionBcraMax: parseInt(e.target.value) as RiesgoConfig["politica"]["situacionBcraMax"] })}>
+                    <option value="1">1 — Normal</option>
+                    <option value="2">2 — Riesgo bajo / seguimiento</option>
+                    <option value="3">3 — Con problemas</option>
+                    <option value="4">4 — Riesgo alto</option>
+                    <option value="5">5 — Irrecuperable</option>
+                    <option value="6">6 — Irrecuperable (téc.)</option>
+                  </Select>
+                </Field>
+                <Field label="Límite base sin bureau ($)" hint="Tope de monto cuando no hay consulta a bureau. 0 = sin tope propio">
+                  <Input type="number" min="0" step="1000" value={riesgo.politica.limiteBaseSinBureau}
+                    onChange={e => setRiesgo({ limiteBaseSinBureau: Math.max(0, parseFloat(e.target.value) || 0) })}
+                    className="font-mono tabular-nums" />
+                </Field>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <Field label="Score externo mínimo" hint="0–1000 (Nosis/Veraz). Vacío = no se exige">
+                  <Input type="number" min="0" max="1000" step="10"
+                    value={riesgo.politica.scoreExternoMin ?? ""}
+                    onChange={e => setRiesgo({ scoreExternoMin: e.target.value === "" ? null : Math.max(0, parseInt(e.target.value) || 0) })} />
+                </Field>
+                <Field label="Si el cliente no califica" hint="Qué hace el sistema cuando no cumple la política">
+                  <Select value={riesgo.politica.accionAlNoCalificar}
+                    onChange={e => setRiesgo({ accionAlNoCalificar: e.target.value as RiesgoConfig["politica"]["accionAlNoCalificar"] })}>
+                    <option value="autorizar">Avisar y dejar autorizar (decisión humana)</option>
+                    <option value="bloquear">Bloquear el otorgamiento</option>
+                  </Select>
+                </Field>
+              </div>
+
+              <div className={`flex items-center justify-between rounded-lg border border-border px-4 py-3 transition-colors ${riesgo.politica.rechazaConChequesRechazados ? "bg-primary/[0.06] ring-1 ring-inset ring-primary/25" : "bg-muted/30"}`}>
+                <div>
+                  <p className="text-sm font-medium text-foreground">Rechazar con cheques rechazados</p>
+                  <p className="text-xs text-muted-foreground">Si el bureau informa cheques rechazados sin regularizar, el cliente no califica.</p>
+                </div>
+                <Toggle checked={riesgo.politica.rechazaConChequesRechazados} onChange={v => setRiesgo({ rechazaConChequesRechazados: v })} />
+              </div>
+
+              {/* ── Bureau de crédito (integración por API) ── */}
+              <div className="border-t border-border pt-4">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-3">Bureau de crédito (integración)</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <Field label="Proveedor" hint="Fuente de las señales externas (situación BCRA, score, cheques)">
+                    <Select value={riesgo.bureau.proveedor}
+                      onChange={e => setBureau({ proveedor: e.target.value as RiesgoConfig["bureau"]["proveedor"] })}>
+                      <option value="manual">Manual (el analista carga los valores)</option>
+                      <option value="bcra">BCRA — Central de Deudores (gratis)</option>
+                      <option value="nosis">Nosis (requiere contrato)</option>
+                      <option value="veraz">Veraz / Equifax (requiere contrato)</option>
+                    </Select>
+                  </Field>
+                  <Field label="Consulta automática" hint="Consultar el bureau al evaluar (igual se puede consultar a mano)">
+                    <div className="flex h-10 items-center">
+                      <Toggle checked={riesgo.bureau.enabled} onChange={v => setBureau({ enabled: v })} />
+                    </div>
+                  </Field>
+                </div>
+
+                {(riesgo.bureau.proveedor === "nosis" || riesgo.bureau.proveedor === "veraz") && (
+                  <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <Field label="Endpoint (URL base)">
+                      <Input placeholder="https://api.proveedor.com" value={riesgo.bureau.endpoint}
+                        onChange={e => setBureau({ endpoint: e.target.value })} />
+                    </Field>
+                    <Field label="Usuario (si aplica)">
+                      <Input placeholder="usuario" value={riesgo.bureau.usuario}
+                        onChange={e => setBureau({ usuario: e.target.value })} />
+                    </Field>
+                    <Field label="Token / API key" hint="Secreto: se guarda enmascarado">
+                      <Input type="password" placeholder="••••••••" value={riesgo.bureau.token}
+                        onChange={e => setBureau({ token: e.target.value })} />
+                    </Field>
+                  </div>
+                )}
+
+                <p className="mt-3 rounded-lg bg-muted/20 border border-border/60 px-3 py-2 text-[11px] text-muted-foreground/80">
+                  {riesgo.bureau.proveedor === "bcra"
+                    ? "BCRA es una API pública y gratuita: no requiere credenciales. Consultá el perfil desde la ficha del cliente."
+                    : riesgo.bureau.proveedor === "manual"
+                    ? "Modo manual: el analista carga la situación/score en la ficha del cliente; el motor los usa igual."
+                    : "Nosis/Veraz requieren contrato del cliente. Al cargar las credenciales, se completa el provider en lib/bureau/ para consultas reales."}
+                </p>
+              </div>
+            </div>
+          </Section>
+          </FeatureGate>
+          )}
+
+            </div>{/* /contenido */}
+          </div>{/* /grid rail+contenido */}
         </div>
       )}
     </div>
@@ -713,6 +875,21 @@ export function ConfigForm() {
 
 function defaultRentabilidad(): RentabilidadConfig {
   return { habilitado: false, costo_fondeo_anual: 0, otros_costos_mensuales: 0 };
+}
+
+function defaultRiesgo(): RiesgoConfig {
+  return {
+    politica: {
+      ratioCuotaIngresoMax: 0.30,
+      multiploIngresoMax: 6,
+      limiteBaseSinBureau: 0,
+      situacionBcraMax: 2,
+      scoreExternoMin: null,
+      rechazaConChequesRechazados: true,
+      accionAlNoCalificar: "autorizar",
+    },
+    bureau: { proveedor: "manual", enabled: false, endpoint: "", token: "", usuario: "" },
+  };
 }
 
 function defaultGamificacion(): GamificacionConfig {
@@ -724,12 +901,12 @@ function defaultGamificacion(): GamificacionConfig {
   };
 }
 
-function CanalesBlock({ icon, title, enabled, onToggle, children, onSave, saving, saved }: {
+function CanalesBlock({ icon, title, enabled, onToggle, children, onSave, saving, saved, dirty }: {
   icon: React.ReactNode; title: string; enabled: boolean; onToggle: (v: boolean) => void; children: React.ReactNode;
-  onSave?: () => void; saving?: boolean; saved?: boolean;
+  onSave?: () => void; saving?: boolean; saved?: boolean; dirty?: boolean;
 }) {
   return (
-    <div className="rounded-lg border border-border bg-muted/20 p-4">
+    <div className="rounded-lg border border-border bg-muted/30 p-4 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.03)]">
       <div className="flex items-center justify-between gap-3 mb-1">
         <div className="flex items-center gap-2">
           {icon}
@@ -737,7 +914,7 @@ function CanalesBlock({ icon, title, enabled, onToggle, children, onSave, saving
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <Toggle checked={enabled} onChange={onToggle} />
-          {onSave && <SaveButton saving={!!saving} saved={!!saved} onClick={onSave} />}
+          {onSave && <SaveButton saving={!!saving} saved={!!saved} dirty={dirty} onClick={onSave} />}
         </div>
       </div>
       <div className={enabled ? "" : "pointer-events-none opacity-40"}>{children}</div>
@@ -753,31 +930,43 @@ function defaultWhatsapp() { return { enabled: false, token: "", phone_number_id
 function defaultSms()       { return { enabled: false, api_key: "", provider: "twilio" }; }
 function defaultEmail()     { return { enabled: false, provider: "smtp", host: "", port: 587, user: "", pass: "" }; }
 
-function Section({ title, desc, children, onSave, saving, saved }: {
+function Section({ title, desc, children, onSave, saving, saved, dirty, enabled, onToggle }: {
   title: string; desc?: string; children: React.ReactNode;
-  onSave?: () => void; saving?: boolean; saved?: boolean;
+  onSave?: () => void; saving?: boolean; saved?: boolean; dirty?: boolean;
+  /** Si se pasa `onToggle`, la sección muestra un switch de encendido/apagado en la cabecera. */
+  enabled?: boolean; onToggle?: (v: boolean) => void;
 }) {
   return (
-    <div className="rounded-xl bg-card border border-border p-5">
+    <div className="rounded-xl bg-card border border-border p-5 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)]">
       <div className="mb-4 flex items-start justify-between gap-3">
         <div>
-          <h3 className="text-sm font-semibold text-foreground">{title}</h3>
-          {desc && <p className="text-xs text-muted-foreground mt-0.5">{desc}</p>}
+          <h3 className="text-base font-semibold text-foreground">{title}</h3>
+          {desc && <p className="text-sm text-muted-foreground mt-0.5">{desc}</p>}
         </div>
-        {onSave && <SaveButton saving={!!saving} saved={!!saved} onClick={onSave} />}
+        <div className="flex shrink-0 items-center gap-3">
+          {onToggle && <Toggle checked={!!enabled} onChange={onToggle} />}
+          {onSave && <SaveButton saving={!!saving} saved={!!saved} dirty={dirty} onClick={onSave} />}
+        </div>
       </div>
       {children}
     </div>
   );
 }
 
-function SaveButton({ saving, saved, onClick }: { saving: boolean; saved: boolean; onClick: () => void }) {
+function SaveButton({ saving, saved, dirty, onClick }: { saving: boolean; saved: boolean; dirty?: boolean; onClick: () => void }) {
+  const solid = dirty && !saved && !saving;
   return (
     <button
       type="button"
       onClick={onClick}
       disabled={saving}
-      className="flex shrink-0 items-center gap-1.5 rounded-lg border border-primary/20 bg-primary/10 px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/15 disabled:opacity-50 transition-colors"
+      className={`flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-50 ${
+        saved
+          ? "bg-success/10 text-success ring-1 ring-inset ring-success/25"
+          : solid
+          ? "bg-primary text-primary-foreground shadow-[inset_0_1px_0_0_rgba(255,255,255,0.15)] hover:bg-primary/90"
+          : "bg-primary/[0.06] text-primary ring-1 ring-inset ring-primary/25 hover:bg-primary/10 hover:ring-primary/40"
+      }`}
     >
       {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : saved ? <Check className="h-3.5 w-3.5" /> : null}
       {saving ? "Guardando…" : saved ? "Guardado" : "Guardar"}
@@ -983,12 +1172,12 @@ function FrecuenciasEditor({ frecuencias, onChange }: {
   );
 }
 
-function CargoBlock({ title, desc, activo, onToggle, children, onSave, saving, saved }: {
+function CargoBlock({ title, desc, activo, onToggle, children, onSave, saving, saved, dirty }: {
   title: string; desc?: string; activo: boolean; onToggle: (v: boolean) => void; children: React.ReactNode;
-  onSave?: () => void; saving?: boolean; saved?: boolean;
+  onSave?: () => void; saving?: boolean; saved?: boolean; dirty?: boolean;
 }) {
   return (
-    <div className="rounded-lg border border-border bg-muted/20 p-4">
+    <div className="rounded-lg border border-border bg-muted/30 p-4 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.03)]">
       <div className="flex items-center justify-between gap-3 mb-3">
         <div className="min-w-0">
           <p className="text-sm font-medium text-foreground">{title}</p>
@@ -996,7 +1185,7 @@ function CargoBlock({ title, desc, activo, onToggle, children, onSave, saving, s
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <Toggle checked={activo} onChange={onToggle} />
-          {onSave && <SaveButton saving={!!saving} saved={!!saved} onClick={onSave} />}
+          {onSave && <SaveButton saving={!!saving} saved={!!saved} dirty={dirty} onClick={onSave} />}
         </div>
       </div>
       <div className={activo ? "" : "pointer-events-none opacity-40"}>{children}</div>
@@ -1011,7 +1200,7 @@ function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean
       role="switch"
       aria-checked={checked}
       onClick={() => onChange(!checked)}
-      className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full px-0.5 transition-colors ${checked ? "bg-primary" : "bg-muted"}`}
+      className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full px-0.5 transition-colors ${checked ? "bg-primary" : "bg-white/[0.14] ring-1 ring-inset ring-white/10"}`}
     >
       <span
         className={`inline-block h-5 w-5 rounded-full bg-white shadow-sm transition-transform duration-200 ${checked ? "translate-x-5" : "translate-x-0"}`}
@@ -1022,8 +1211,11 @@ function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean
 
 function BodySkeleton() {
   return (
-    <div className="space-y-4 max-w-3xl">
-      {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-40 rounded-xl" />)}
+    <div className="grid max-w-5xl grid-cols-1 gap-5 md:grid-cols-[190px_1fr]">
+      <Skeleton className="hidden h-56 rounded-xl md:block" />
+      <div className="space-y-4">
+        {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-40 rounded-xl" />)}
+      </div>
     </div>
   );
 }

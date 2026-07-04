@@ -14,6 +14,7 @@ import {
 import { useConfiguracion, useMiPerfilVendedor, useMiCaja, type CuentaCaja, type Producto } from "@/lib/swr";
 import { useConfirm } from "@/components/ui/confirm";
 import { useToast } from "@/components/ui/toast";
+import { useHasFeature } from "@/components/providers/FeaturesProvider";
 import { formatNumero, parseMontoInput, maskMontoInput, numeroAInput, formatFecha, formatMonto, formatCreditoNumero, nombreCompleto } from "@/lib/utils";
 import { imprimirPlanPagos } from "@/lib/plan-print";
 import {
@@ -34,6 +35,18 @@ const CUENTA_DESEMBOLSO_LABEL: Record<CuentaCaja, string> = {
 };
 
 interface Cliente { id: string; nombre: string; apellido?: string | null; documento?: string | null }
+
+/** Resultado de la evaluación de riesgo (preview del simulador). */
+interface EvalRiesgo {
+  semaforo: "aprobado" | "revisar" | "rechazado";
+  motivos: string[];
+  ratioCuotaIngreso: number | null;
+  bloquea: boolean;
+  ingresoNetoMensual: number;
+  cuotaEstimada: number;
+  capacidad: { cuotaMaxima: number; montoIndicativo: number };
+  scoreInterno: { categoria: string; label: string };
+}
 
 interface CreditoFormProps {
   creditoId?: string | null;
@@ -116,6 +129,13 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
   const [confirmOpen, setConfirmOpen] = useState(false);
   // Crédito ya creado → pantalla de éxito (numero generado).
   const [created, setCreated] = useState<{ numero: number | null; monto_original: number } | null>(null);
+
+  // ── Riesgo / originación (feature premium) ──
+  const tieneRiesgo = useHasFeature("riesgo_originacion");
+  const esAdmin = !perfil; // useMiPerfilVendedor devuelve null para admin; el vendedor trae ficha
+  const [riesgoEval, setRiesgoEval] = useState<EvalRiesgo | null>(null);
+  const [riesgoLoading, setRiesgoLoading] = useState(false);
+  const [autorizarRiesgo, setAutorizarRiesgo] = useState(false);
 
   const abrirAlta = (query: string) => {
     // Solo los dígitos del término van al campo DNI (nunca el nombre).
@@ -281,6 +301,8 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
         frecuencia: formData.frecuencia,
         vendedor_id: formData.vendedor_id || null,
         cuenta_desembolso: formData.cuenta_desembolso,
+        // Autorización manual del admin cuando el cliente no califica (feature riesgo).
+        ...(riesgoRechazado && esAdmin && autorizarRiesgo ? { autorizacion_riesgo: true } : {}),
         // Crédito de producto: el backend recalcula el capital (precio × cantidad) y descuenta stock.
         ...(esProducto ? { producto_id: formData.producto_id, producto_cantidad: cantidadProd } : {}),
       };
@@ -320,6 +342,32 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
     sim.tasa !== formData.tasa ||
     sim.plazo !== formData.plazo_meses ||
     sim.frecuencia !== formData.frecuencia;
+
+  // Preview de riesgo/originación: evalúa al cliente contra la política del tenant cuando
+  // cambian cliente/monto/tasa/plazo (feature premium; solo en alta, no en edición).
+  useEffect(() => {
+    if (!tieneRiesgo || creditoId) { setRiesgoEval(null); return; }
+    const monto = parseMonto(sim.monto);
+    const tasa = parseFloat(sim.tasa) || 0;
+    const n = parseInt(sim.plazo);
+    if (!formData.cliente_id || monto <= 0 || !n || n < 1 || tasa <= 0) { setRiesgoEval(null); return; }
+    let cancel = false;
+    setRiesgoLoading(true);
+    fetch("/api/creditos/evaluar-riesgo", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ cliente_id: formData.cliente_id, monto_original: monto, tasa, plazo_meses: n, frecuencia: formData.frecuencia }),
+    })
+      .then(r => r.json())
+      .then(j => { if (cancel) return; setRiesgoEval(j.ok ? j.data : null); setAutorizarRiesgo(false); })
+      .catch(() => { if (!cancel) setRiesgoEval(null); })
+      .finally(() => { if (!cancel) setRiesgoLoading(false); });
+    return () => { cancel = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tieneRiesgo, creditoId, formData.cliente_id, formData.frecuencia, sim.monto, sim.tasa, sim.plazo]);
+
+  const riesgoRechazado = !!(tieneRiesgo && riesgoEval && riesgoEval.semaforo === "rechazado");
+  // El otorgamiento se traba si: política dura (bloquea) o falta la autorización del admin.
+  const riesgoImpide = riesgoRechazado && (riesgoEval!.bloquea || !(esAdmin && autorizarRiesgo));
 
   const lbl = frecuenciaLabel(formData.frecuencia, catalogoFrec);
 
@@ -667,6 +715,59 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
           </div>
         </section>
 
+        {/* ── Riesgo / originación (feature premium) ── */}
+        {tieneRiesgo && !creditoId && (riesgoLoading || riesgoEval) && (
+          <section className="px-5 pb-5">
+            {!riesgoEval ? (
+              <div className="rounded-xl border border-border bg-card p-4 text-xs text-muted-foreground">Evaluando riesgo…</div>
+            ) : (() => {
+              const meta = {
+                aprobado:  { ring: "ring-success/30",     bg: "bg-success/5",     text: "text-success",     dot: "bg-success",     label: "Aprobado" },
+                revisar:   { ring: "ring-warning/30",     bg: "bg-warning/5",     text: "text-warning",     dot: "bg-warning",     label: "Revisar" },
+                rechazado: { ring: "ring-destructive/30", bg: "bg-destructive/5", text: "text-destructive", dot: "bg-destructive", label: "No califica" },
+              }[riesgoEval.semaforo];
+              return (
+                <div className={`rounded-xl border border-border bg-card p-4 ring-1 ring-inset ${meta.ring} ${meta.bg}`}>
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className={`inline-flex h-2.5 w-2.5 rounded-full ${meta.dot}`} />
+                      <span className={`text-sm font-semibold ${meta.text}`}>Originación: {meta.label}</span>
+                    </div>
+                    <span className="text-[11px] text-muted-foreground">Score interno {riesgoEval.scoreInterno.categoria}</span>
+                  </div>
+                  <ul className="mt-2 space-y-1">
+                    {riesgoEval.motivos.map((m, i) => (
+                      <li key={i} className="flex gap-1.5 text-xs text-muted-foreground"><span className="text-muted-foreground/40">•</span>{m}</li>
+                    ))}
+                  </ul>
+                  <div className="mt-3 grid grid-cols-2 gap-2 text-[11px]">
+                    <div className="rounded-lg bg-muted/30 px-2.5 py-1.5">
+                      <p className="text-muted-foreground">Cuota máx (capacidad)</p>
+                      <p className="font-mono font-semibold text-foreground">{riesgoEval.capacidad.cuotaMaxima > 0 ? formatMonto(riesgoEval.capacidad.cuotaMaxima) : "—"}</p>
+                    </div>
+                    <div className="rounded-lg bg-muted/30 px-2.5 py-1.5">
+                      <p className="text-muted-foreground">Ratio cuota / ingreso</p>
+                      <p className="font-mono font-semibold text-foreground">{riesgoEval.ratioCuotaIngreso != null ? `${(riesgoEval.ratioCuotaIngreso * 100).toFixed(0)}%` : "—"}</p>
+                    </div>
+                  </div>
+                  {riesgoRechazado && !riesgoEval.bloquea && esAdmin && (
+                    <label className="mt-3 flex cursor-pointer items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2">
+                      <input type="checkbox" checked={autorizarRiesgo} onChange={e => setAutorizarRiesgo(e.target.checked)} className="mt-0.5 accent-primary" />
+                      <span className="text-xs text-foreground">Autorizo el otorgamiento asumiendo el riesgo (decisión del administrador).</span>
+                    </label>
+                  )}
+                  {riesgoRechazado && !riesgoEval.bloquea && !esAdmin && (
+                    <p className="mt-3 text-xs text-destructive">Requiere autorización de un administrador para otorgar.</p>
+                  )}
+                  {riesgoRechazado && riesgoEval.bloquea && (
+                    <p className="mt-3 text-xs text-destructive">La política bloquea el otorgamiento a clientes que no califican.</p>
+                  )}
+                </div>
+              );
+            })()}
+          </section>
+        )}
+
         </div>{/* fin área scrolleable */}
 
         {/* Acciones — barra fija al fondo del panel, separada de la zona de carga */}
@@ -678,8 +779,8 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
             Cancelar
           </button>
           <button
-            type="submit" disabled={loading || fondosInsuficientes}
-            title={fondosInsuficientes ? "Saldo insuficiente en la cuenta de desembolso" : undefined}
+            type="submit" disabled={loading || fondosInsuficientes || riesgoImpide}
+            title={fondosInsuficientes ? "Saldo insuficiente en la cuenta de desembolso" : riesgoImpide ? "El cliente no califica para este crédito" : undefined}
             className="px-5 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 disabled:opacity-50 transition-opacity"
           >
             {loading ? "Guardando..." : creditoId ? "Actualizar" : "Otorgar crédito"}

@@ -317,6 +317,23 @@ export interface MovimientoStock {
   usuario_nombre: string | null;
 }
 
+/** Movimiento de stock para el registro CENTRAL (todos los productos), con identidad del producto. */
+export interface MovimientoStockGlobal {
+  id: string;
+  created_at: string;
+  tipo: MovimientoStock["tipo"];
+  cantidad: number;
+  stock_resultante: number;
+  motivo: string | null;
+  producto_id: string;
+  producto_nombre: string;
+  producto_sku: string | null;
+  credito_numero: number | null;
+  cliente: string | null;
+  vendedor_atribuido: string | null; // vendedor que cobra comisión (en venta_credito)
+  usuario_nombre: string | null;     // operador que ejecutó el movimiento (auditoría)
+}
+
 export interface ProveedorDetalle extends Proveedor {
   totales: { cargos: number; pagos: number; saldo: number };
   movimientos: MovimientoProveedor[];
@@ -590,6 +607,29 @@ export interface RentabilidadConfig {
   otros_costos_mensuales: number;  // costo operativo fijo por mes (opcional)
 }
 
+/** Política de originación (feature premium): límites por ingreso + reglas de bureau. */
+export interface PoliticaOriginacion {
+  ratioCuotaIngresoMax: number;
+  multiploIngresoMax: number;
+  limiteBaseSinBureau: number;
+  situacionBcraMax: 1 | 2 | 3 | 4 | 5 | 6;
+  scoreExternoMin: number | null;
+  rechazaConChequesRechazados: boolean;
+  accionAlNoCalificar: "bloquear" | "autorizar";
+}
+export type BureauProveedor = "manual" | "bcra" | "nosis" | "veraz";
+export interface BureauConfig {
+  proveedor: BureauProveedor;
+  enabled: boolean;
+  endpoint: string;
+  token: string;
+  usuario: string;
+}
+export interface RiesgoConfig {
+  politica: PoliticaOriginacion;
+  bureau: BureauConfig;
+}
+
 export interface ConfiguracionFinanciera {
   convencionTasa: "nominal_anual" | "efectiva_anual" | "mensual";
   sistemaAmortizacion: "frances";
@@ -606,6 +646,7 @@ export interface ConfiguracionFinanciera {
   emailConfig?: EmailConfig | null;
   gamificacionConfig?: GamificacionConfig | null;
   rentabilidadConfig?: RentabilidadConfig | null;
+  riesgoConfig?: RiesgoConfig | null;
 }
 
 export interface Pago {
@@ -856,6 +897,28 @@ export function useComprobantes(filtros: { q?: string; serie?: string; cuenta?: 
     `/api/comprobantes${qs ? `?${qs}` : ""}`,
   );
   return { comprobantes: data?.comprobantes ?? [], total: data?.total ?? 0, error, isLoading, mutate };
+}
+
+/** Registro central del kardex de stock (admin). Filtros opcionales por texto/tipo/producto/fechas. */
+export function useMovimientosStock(filtros: { q?: string; tipo?: string; producto_id?: string; desde?: string; hasta?: string }) {
+  const params = new URLSearchParams();
+  if (filtros.q) params.set("q", filtros.q);
+  if (filtros.tipo && filtros.tipo !== "all") params.set("tipo", filtros.tipo);
+  if (filtros.producto_id) params.set("producto_id", filtros.producto_id);
+  if (filtros.desde) params.set("desde", filtros.desde);
+  if (filtros.hasta) params.set("hasta", filtros.hasta);
+  const qs = params.toString();
+  const { data, error, isLoading, mutate } = useSWR<{
+    movimientos: MovimientoStockGlobal[];
+    total: number;
+    totales: { movimientos: number; entradas: number; salidas: number };
+  }>(`/api/productos/movimientos${qs ? `?${qs}` : ""}`);
+  return {
+    movimientos: data?.movimientos ?? [],
+    total: data?.total ?? 0,
+    totales: data?.totales ?? { movimientos: 0, entradas: 0, salidas: 0 },
+    error, isLoading, mutate,
+  };
 }
 
 export function useMisLogros() {

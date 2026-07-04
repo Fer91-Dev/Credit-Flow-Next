@@ -2,6 +2,7 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { AppShell } from "@/components/AppShell";
 import { SWRProvider } from "@/components/providers/SWRProvider";
+import { FeaturesProvider } from "@/components/providers/FeaturesProvider";
 import { ToastProvider } from "@/components/ui/toast";
 import { ConfirmProvider } from "@/components/ui/confirm";
 import { requireAuth, ApiError, type AuthContext } from "@/lib/auth";
@@ -48,9 +49,11 @@ export default async function AuthenticatedLayout({
     <SWRProvider>
       <ToastProvider>
         <ConfirmProvider>
-          <AppShell role={ctx!.role} nombre={ctx!.nombre} email={ctx!.email} avatarUrl={ctx!.avatarUrl}>
-            {children}
-          </AppShell>
+          <FeaturesProvider features={ctx!.features}>
+            <AppShell role={ctx!.role} nombre={ctx!.nombre} email={ctx!.email} avatarUrl={ctx!.avatarUrl}>
+              {children}
+            </AppShell>
+          </FeaturesProvider>
         </ConfirmProvider>
       </ToastProvider>
     </SWRProvider>

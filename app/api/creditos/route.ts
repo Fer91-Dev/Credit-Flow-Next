@@ -22,8 +22,11 @@ import { siguienteNumeroComprobante } from "@/lib/comprobantes";
 import { getConfiguracion } from "@/lib/config";
 import { registrarAuditoria } from "@/lib/audit";
 import { registrarMovimientoStock } from "@/lib/stock";
+import { ctxHasFeature } from "@/lib/entitlements-server";
+import { evaluarClienteParaCredito } from "@/lib/riesgo-server";
 import { formatCreditoNumero, nombreCompleto } from "@/lib/utils";
 import type { NextRequest } from "next/server";
+import type { Prisma } from "@prisma/client";
 
 /**
  * GET /api/creditos
@@ -142,7 +145,7 @@ async function asegurarFichaVendedor(
 
 export const POST = withErrorHandler(async (req: NextRequest) => {
   // Otorgar créditos: admin y vendedor. El cobrador NO puede otorgar.
-  const { tenantId, role, vendedorId: miVendedorId, userId, nombre, email } = await requireRole(["admin", "vendedor"], req);
+  const { tenantId, role, vendedorId: miVendedorId, userId, nombre, email, features } = await requireRole(["admin", "vendedor"], req);
 
   let body: any;
   try {
@@ -289,6 +292,45 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     feriados: configActual.simulador.feriados,
   };
 
+  // ─── Riesgo / originación (feature premium) ───
+  // Si el tenant tiene la feature, se evalúa al cliente contra la política ANTES de otorgar.
+  // "rechazado" + política "bloquear" → corta. "rechazado" + "autorizar" → solo un admin puede
+  // seguir con `autorizacion_riesgo: true` (decisión humana asumiendo el riesgo). Se guarda el
+  // snapshot de la evaluación en el crédito (congela la decisión).
+  let riesgoSnapshot: Prisma.InputJsonValue | undefined;
+  if (ctxHasFeature({ features }, "riesgo_originacion")) {
+    const tasaPeriodica = tasaPeriodicaSegunConvencion(body.tasa, configActual.convencionTasa, frecuencia, configActual.simulador.frecuencias);
+    const cuotaEstimada = cuotaMensualFrancesa(body.monto_original, tasaPeriodica, body.plazo_meses);
+    const ev = await evaluarClienteParaCredito({ tenantId, clienteId: body.cliente_id, montoSolicitado: body.monto_original, cuotaEstimada });
+    const autorizadoManual = role === "admin" && body.autorizacion_riesgo === true;
+    if (ev.semaforo === "rechazado") {
+      if (ev.bloquea) {
+        return errorResponse(`El cliente no califica para este crédito. ${ev.motivos.join(" ")}`, "RIESGO_BLOQUEADO", 403);
+      }
+      if (!autorizadoManual) {
+        return errorResponse(
+          role === "admin"
+            ? `El cliente no califica. Podés autorizar el otorgamiento asumiendo el riesgo. ${ev.motivos.join(" ")}`
+            : `El cliente no califica y requiere autorización de un administrador. ${ev.motivos.join(" ")}`,
+          "RIESGO_REQUIERE_AUTORIZACION",
+          409,
+        );
+      }
+    }
+    riesgoSnapshot = {
+      semaforo: ev.semaforo,
+      motivos: ev.motivos,
+      ratioCuotaIngreso: ev.ratioCuotaIngreso,
+      cuotaEstimada,
+      ingresoNetoMensual: ev.ingresoNetoMensual,
+      deudaCuotaMensualVigente: ev.deudaCuotaMensualVigente,
+      capacidad: ev.capacidad,
+      scoreInterno: ev.scoreInterno.categoria,
+      autorizadoManual,
+      evaluadoEl: new Date().toISOString(),
+    } as unknown as Prisma.InputJsonValue;
+  }
+
   // Fecha de desembolso y vencimiento de la 1ª cuota (un período después).
   const fechaInicio = body.fecha_inicio ? new Date(body.fecha_inicio) : new Date();
   const proximoPago = body.proximo_pago
@@ -353,6 +395,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
         vendedor_id: vendedorId,
         producto_id: esProducto ? producto!.id : null,
         producto_cantidad: esProducto ? productoCantidad : null,
+        riesgo_snapshot: riesgoSnapshot,
         ...withTenant(tenantId),
       },
       include: { cliente: true },

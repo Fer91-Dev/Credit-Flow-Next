@@ -1,4 +1,5 @@
 import { ApiError } from '@/lib/auth';
+import { runWithAuditContext } from '@/lib/audit-context';
 import type { NextRequest } from 'next/server';
 
 export interface ApiResponse<T = any> {
@@ -42,7 +43,10 @@ export function errorResponse(
 export function withErrorHandler<A extends any[]>(
   handler: (req: NextRequest, ...args: A) => Promise<Response>
 ) {
-  return async (req: NextRequest, ...args: A) => {
+  // Cada request corre dentro de un contexto de auditoría fresco: requireAuth (dentro del
+  // handler) fija el actor y registrarAuditoria lo lee. run() + contenedor mutable es
+  // robusto ante el snapshotting de contexto async de Next.js (ver lib/audit-context.ts).
+  return async (req: NextRequest, ...args: A) => runWithAuditContext(async () => {
     try {
       return await handler(req, ...args);
     } catch (err) {
@@ -80,5 +84,5 @@ export function withErrorHandler<A extends any[]>(
 
       return errorResponse('Error desconocido', 'UNKNOWN_ERROR', 500);
     }
-  };
+  });
 }

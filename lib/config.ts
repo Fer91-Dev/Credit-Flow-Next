@@ -17,6 +17,8 @@ import {
   type GamificacionConfig,
   resolverRentabilidad,
   type RentabilidadConfig,
+  resolverRiesgo,
+  type RiesgoConfig,
 } from "@/lib/domain";
 import type { Prisma } from "@prisma/client";
 
@@ -147,6 +149,28 @@ export async function guardarRentabilidadConfig(tenantId: string, config: Rentab
     where:  { tenant_id: tenantId },
     create: { tenant_id: tenantId, rentabilidad_config: value },
     update: { rentabilidad_config: value },
+  });
+  return config;
+}
+
+// ─── Riesgo / originación (feature premium) ─────────────────────────────────
+
+/** Política de originación del tenant (mezclada con defaults). No es secreto. */
+export async function getRiesgoConfig(tenantId: string): Promise<RiesgoConfig> {
+  const row = await prisma.configuraciones.findUnique({
+    where: { tenant_id: tenantId },
+    select: { riesgo_config: true },
+  });
+  return resolverRiesgo((row?.riesgo_config as Partial<RiesgoConfig> | null) ?? null);
+}
+
+/** Persiste (upsert) la config de riesgo. */
+export async function guardarRiesgoConfig(tenantId: string, config: RiesgoConfig): Promise<RiesgoConfig> {
+  const value = config as unknown as Prisma.InputJsonValue;
+  await prisma.configuraciones.upsert({
+    where:  { tenant_id: tenantId },
+    create: { tenant_id: tenantId, riesgo_config: value },
+    update: { riesgo_config: value },
   });
   return config;
 }

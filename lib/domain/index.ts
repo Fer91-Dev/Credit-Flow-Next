@@ -21,6 +21,7 @@ export * from "./caja";
 export * from "./campanas";
 export * from "./calendar";
 export * from "./scoring";
+export * from "./riesgo";
 export * from "./comisiones";
 export * from "./proveedores";
 export * from "./logros";

@@ -34,6 +34,9 @@ model tenants {
   created_at DateTime @default(now()) @db.Timestamptz(6)
   nombre     String
   activo     Boolean  @default(true)
+  // Entitlements: claves de features premium habilitadas para este tenant (gating por
+  // plan del SaaS). Ver lib/entitlements.ts (FEATURES). Vacío = solo features base.
+  features   String[] @default([])
 
   profiles profiles[]
 }
@@ -97,12 +100,37 @@ model clientes {
 
   creditos    creditos[]
   solicitudes solicitudes[]
+  consultas_bureau consultas_bureau[]
 
   // El identificador ÚNICO es el CUIT/CUIL (en AR puede haber DNI repetidos). Los
   // null se permiten (Postgres los trata como distintos): clientes sin CUIT cargado.
   // El DNI repetido se admite si el CUIT lo diferencia (validado en la API).
   @@unique([tenant_id, cuit_cuil])
   @@index([tenant_id])
+}
+
+/// Consultas a bureaus de crédito (BCRA/Nosis/Veraz/manual) de un cliente. Snapshot +
+/// cache + auditoría de la evaluación externa. Feature premium (motor de riesgo).
+model consultas_bureau {
+  id                 String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenant_id          String   @db.Uuid
+  cliente_id         String   @db.Uuid
+  created_at         DateTime @default(now()) @db.Timestamptz(6)
+  proveedor          String // bcra | nosis | veraz | manual
+  cuit               String? // documento consultado (11 dígitos)
+  ok                 Boolean  @default(true) // si la consulta se resolvió sin error
+  mensaje            String? // error o nota
+  situacion_bcra     Int? // 1..6 (peor situación informada)
+  score_externo      Int? // 0..1000 (Nosis/Veraz)
+  cheques_rechazados Int?
+  deuda_sistema      Float? // deuda total informada en el sistema financiero
+  crudo              Json? // payload normalizado + crudo del proveedor
+  usuario_id         String? @db.Uuid // quién consultó (auditoría)
+  usuario_nombre     String?
+
+  cliente clientes @relation(fields: [cliente_id], references: [id], onDelete: Cascade)
+
+  @@index([tenant_id, cliente_id, created_at])
 }
 
 model creditos {
@@ -143,6 +171,9 @@ model creditos {
   // en monto_original, por eso el SetNull no rompe el histórico financiero.
   producto_id       String? @db.Uuid // producto financiado (null = crédito de dinero)
   producto_cantidad Int? // unidades financiadas (capital = precio × cantidad)
+  // Snapshot de la evaluación de riesgo/originación al otorgar (feature premium): semáforo,
+  // motivos, ratio, ingreso, score y si se autorizó manualmente. Congela la decisión.
+  riesgo_snapshot   Json?
 
   cliente           clientes           @relation(fields: [cliente_id], references: [id], onDelete: Cascade)
   solicitud         solicitudes?       @relation(fields: [solicitud_id], references: [id], onDelete: SetNull)
@@ -544,5 +575,6 @@ model configuraciones {
   email_config         Json? // { enabled, host, port, user, pass } o { enabled, api_key, provider }
   gamificacion_config  Json? // { habilitado, periodo, pesos:{monto,cantidad,cobranza,calidad}, umbrales:{oro,plata,bronce} }
   rentabilidad_config  Json? // { habilitado, costo_fondeo_anual, otros_costos_mensuales } — costo de capital para rentabilidad NETA en Reportes
+  riesgo_config        Json? // { politica: PoliticaOriginacion } — motor de riesgo/originación (feature premium; ver lib/domain/riesgo.ts)
   updated_at           DateTime @updatedAt @db.Timestamptz(6)
 }
