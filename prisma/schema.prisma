@@ -81,6 +81,9 @@ model profiles {
   role        Role? // nullable: sin rol = acceso denegado
   activo      Boolean  @default(false) // inerte hasta que el admin lo active
   vendedor_id String?  @db.Uuid // vínculo opcional al registro comercial (si role = vendedor)
+  // Dueño de la PLATAFORMA (SaaS), distinto del admin de una financiera. Fuente de verdad
+  // del acceso al área "Administración del SaaS". Se asigna con scripts/set-owner.mjs.
+  es_owner    Boolean  @default(false)
 
   tenant   tenants?    @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
   vendedor vendedores? @relation(fields: [vendedor_id], references: [id], onDelete: SetNull)

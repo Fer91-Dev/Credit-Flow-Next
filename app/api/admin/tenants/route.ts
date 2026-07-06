@@ -1,7 +1,7 @@
 import { requireAuth, ApiError } from "@/lib/auth";
 import { successResponse, withErrorHandler } from "@/app/lib/api";
 import { prisma } from "@/lib/prisma";
-import { esOwner } from "@/lib/saas-owner";
+import { requireOwner } from "@/lib/saas-owner";
 import type { NextRequest } from "next/server";
 
 /**
@@ -12,7 +12,7 @@ import type { NextRequest } from "next/server";
  */
 export const GET = withErrorHandler(async (req: NextRequest) => {
   const ctx = await requireAuth(req);
-  if (!esOwner(ctx.email)) throw new ApiError("Solo el dueño del SaaS puede ver esto", "FORBIDDEN", 403);
+  requireOwner(ctx);
 
   const [tenants, subs] = await Promise.all([
     prisma.tenants.findMany({ select: { id: true, nombre: true, features: true, activo: true }, orderBy: { created_at: "asc" } }),

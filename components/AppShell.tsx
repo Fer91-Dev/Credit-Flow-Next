@@ -46,6 +46,8 @@ type NavGroup = { label: string; items: NavItem[] };
 
 /** Home queda suelto arriba (no entra en ningún grupo colapsable). */
 const HOME_ITEM: NavItem = { icon: "house", label: "Home", to: "/" };
+/** Nav del dueño de la plataforma: solo el área de administración del SaaS. */
+const OWNER_ITEM: NavItem = { icon: "gem-stone", label: "Administración del SaaS", to: "/plataforma" };
 
 /**
  * Menús agrupados por dominio (colapsables). El filtrado por rol vacía grupos
@@ -148,16 +150,19 @@ function NavSection({
   );
 }
 
-export function AppShell({ children, role, nombre, email, avatarUrl, financiera }: { children: React.ReactNode; role: Role; nombre: string | null; email: string | null; avatarUrl: string | null; financiera?: Financiera | null }) {
+export function AppShell({ children, role, nombre, email, avatarUrl, financiera, esOwner = false }: { children: React.ReactNode; role: Role; nombre: string | null; email: string | null; avatarUrl: string | null; financiera?: Financiera | null; esOwner?: boolean }) {
   const router = useRouter();
   const pathname = usePathname();
 
   // Menú agrupado, filtrado por rol (cosmético: la barrera real es el guard
   // server + API). Cada grupo se queda solo con los items accesibles; los
   // grupos que quedan vacíos no se renderizan.
-  const groups = NAV_GROUPS
-    .map((g) => ({ ...g, items: g.items.filter((i) => canAccess(role, i.to)) }))
-    .filter((g) => g.items.length > 0);
+  // El dueño de plataforma NO ve el menú de financiera: solo su área de administración.
+  const groups = esOwner
+    ? []
+    : NAV_GROUPS
+        .map((g) => ({ ...g, items: g.items.filter((i) => canAccess(role, i.to)) }))
+        .filter((g) => g.items.length > 0);
   const { resolvedTheme, setTheme } = useTheme();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -220,7 +225,7 @@ export function AppShell({ children, role, nombre, email, avatarUrl, financiera 
     router.push(to);
   };
 
-  const allNavItems = [HOME_ITEM, ...groups.flatMap((g) => g.items)];
+  const allNavItems = esOwner ? [OWNER_ITEM] : [HOME_ITEM, ...groups.flatMap((g) => g.items)];
 
   // Coincidencia por PREFIJO MÁS LARGO: cuando dos ítems matchean la ruta actual (ej.
   // "/productos" y "/productos/movimientos"), solo se resalta el más específico — evita
@@ -243,6 +248,10 @@ export function AppShell({ children, role, nombre, email, avatarUrl, financiera 
   // `onNavigate` cierra el drawer en mobile (no-op en desktop).
   const renderNav = (onNavigate?: () => void) => (
     <>
+      {esOwner ? (
+        <SideNavLink {...OWNER_ITEM} isActive={isActive(OWNER_ITEM.to)} onClick={onNavigate} />
+      ) : (
+      <>
       <SideNavLink {...HOME_ITEM} isActive={isActive(HOME_ITEM.to)} onClick={onNavigate} />
       {groups.map((g) => {
         const groupActive = g.items.some((i) => isActive(i.to));
@@ -259,6 +268,8 @@ export function AppShell({ children, role, nombre, email, avatarUrl, financiera 
           />
         );
       })}
+      </>
+      )}
     </>
   );
 

@@ -42,18 +42,27 @@ export default async function AuthenticatedLayout({
   }
 
   const pathname = (await headers()).get("x-pathname") ?? "/";
-  if (!canAccess(ctx!.role, pathname)) {
-    redirect(homeFor(ctx!.role)); // sin permiso para esta ruta → a su home
+
+  if (ctx!.esOwner) {
+    // Dueño de plataforma: solo su área de administración del SaaS (+ perfil). No opera financieras.
+    if (!pathname.startsWith("/plataforma") && !pathname.startsWith("/perfil")) {
+      redirect("/plataforma");
+    }
+  } else {
+    // Admin/vendedor/cobrador de una financiera: nunca acceden al área de plataforma.
+    if (pathname.startsWith("/plataforma")) redirect(homeFor(ctx!.role));
+    if (!canAccess(ctx!.role, pathname)) redirect(homeFor(ctx!.role));
   }
 
-  const financiera = await getFinanciera(ctx!.tenantId); // co-branding (logo/nombre)
+  // Co-branding solo para financieras; el dueño ve la marca CreditFlow (Administración).
+  const financiera = ctx!.esOwner ? null : await getFinanciera(ctx!.tenantId);
 
   return (
     <SWRProvider>
       <ToastProvider>
         <ConfirmProvider>
           <FeaturesProvider features={ctx!.features}>
-            <AppShell role={ctx!.role} nombre={ctx!.nombre} email={ctx!.email} avatarUrl={ctx!.avatarUrl} financiera={financiera}>
+            <AppShell role={ctx!.role} nombre={ctx!.nombre} email={ctx!.email} avatarUrl={ctx!.avatarUrl} financiera={financiera} esOwner={ctx!.esOwner}>
               {children}
             </AppShell>
           </FeaturesProvider>

@@ -34,6 +34,7 @@ export type AuthContext = {
   email: string | null; // profiles.email
   avatarUrl: string | null; // user_metadata.avatar_url (avatar elegido por el usuario)
   features: string[]; // tenants.features — entitlements premium del tenant (ver lib/entitlements.ts)
+  esOwner: boolean; // profiles.es_owner — dueño de la plataforma (área de administración del SaaS)
 };
 
 /**
@@ -46,7 +47,7 @@ async function cargarContexto(userId: string, avatarUrl: string | null = null): 
   const profile = await prisma.profiles.findUnique({
     where: { id: userId },
     select: {
-      tenant_id: true, role: true, activo: true, vendedor_id: true, full_name: true, email: true,
+      tenant_id: true, role: true, activo: true, vendedor_id: true, full_name: true, email: true, es_owner: true,
       tenant: { select: { features: true, activo: true } }, // entitlements + estado (suspensión) del tenant
     },
   });
@@ -69,6 +70,7 @@ async function cargarContexto(userId: string, avatarUrl: string | null = null): 
     email: profile.email ?? null,
     avatarUrl,
     features: profile.tenant?.features ?? [],
+    esOwner: profile.es_owner === true,
   };
 }
 

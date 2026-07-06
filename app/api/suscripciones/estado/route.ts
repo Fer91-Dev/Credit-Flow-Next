@@ -1,7 +1,6 @@
 import { requireRole } from "@/lib/auth";
 import { successResponse, withErrorHandler } from "@/app/lib/api";
 import { getSuscripcion } from "@/lib/suscripciones";
-import { esOwner } from "@/lib/saas-owner";
 import type { NextRequest } from "next/server";
 
 /**
@@ -13,5 +12,5 @@ import type { NextRequest } from "next/server";
 export const GET = withErrorHandler(async (req: NextRequest) => {
   const ctx = await requireRole(["admin"], req);
   const suscripcion = await getSuscripcion(ctx.tenantId);
-  return successResponse({ suscripcion, esOwner: esOwner(ctx.email) });
+  return successResponse({ suscripcion, esOwner: ctx.esOwner });
 });

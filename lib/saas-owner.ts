@@ -1,14 +1,16 @@
 /**
- * Dueño del SaaS (platform owner) — distinto del `admin` de un tenant. Puede administrar
- * los planes de TODOS los tenants (activar Pro cuando un cliente paga). Se identifica por
- * email, configurable con la env `SAAS_OWNER_EMAILS` (lista separada por comas). Por
- * defecto, el email del dueño del proyecto, para que funcione sin configurar nada.
+ * Dueño de la PLATAFORMA (SaaS) — distinto del `admin` de una financiera. Puede administrar
+ * todas las financieras (crear/suspender, activar planes) desde el área "Administración del
+ * SaaS". Fuente de verdad: `profiles.es_owner` (flag en DB, más seguro y auditable que por
+ * email). Se asigna con `scripts/set-owner.mjs`.
  */
-const OWNERS = (process.env.SAAS_OWNER_EMAILS ?? "vallefernando884@gmail.com")
-  .split(",")
-  .map((e) => e.trim().toLowerCase())
-  .filter(Boolean);
+import { ApiError, type AuthContext } from "@/lib/auth";
 
-export function esOwner(email?: string | null): boolean {
-  return !!email && OWNERS.includes(email.toLowerCase());
+export function esOwner(ctx: Pick<AuthContext, "esOwner">): boolean {
+  return ctx.esOwner === true;
+}
+
+/** Corta el handler si el usuario NO es dueño de la plataforma (403). */
+export function requireOwner(ctx: Pick<AuthContext, "esOwner">): void {
+  if (!ctx.esOwner) throw new ApiError("Solo el dueño del SaaS puede hacer esto", "FORBIDDEN", 403);
 }

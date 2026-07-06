@@ -1,24 +1,12 @@
 "use client";
 
-import { useState } from "react";
 import useSWR from "swr";
-import { Check, Sparkles, MessageCircle, Mail, Crown, Plus, Ban, RotateCcw, Loader2 } from "lucide-react";
-import { Field, Input } from "@/components/ui/field";
+import { Check, Sparkles, MessageCircle, Mail } from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useToast } from "@/components/ui/toast";
 import { PLANES, PLAN_CLAVES, CONTACTO_SAAS, type PlanClave } from "@/lib/planes";
 import { formatFecha, formatMonto } from "@/lib/utils";
-
-interface TenantRow {
-  id: string;
-  nombre: string;
-  plan: PlanClave;
-  estado: string;
-  periodo_hasta: string | null;
-  activo: boolean;
-}
 
 const MSG_PRO = "Hola! Quiero contratar el plan Pro de CreditFlow (filtro de clientes / motor de riesgo). ¿Cómo coordinamos el pago?";
 const WHATSAPP_URL = `https://wa.me/${CONTACTO_SAAS.whatsapp}?text=${encodeURIComponent(MSG_PRO)}`;
@@ -36,94 +24,16 @@ interface Suscripcion {
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json());
 
+/** Plan del tenant (lo ve el admin de cada financiera). La administración de planes de TODAS
+ *  las financieras vive en /plataforma (solo dueño). */
 export function FacturacionView() {
-  const toast = useToast();
-  const { data, isLoading, mutate: mutateEstado } = useSWR<{ ok: boolean; data: { suscripcion: Suscripcion; esOwner: boolean } }>(
-    "/api/suscripciones/estado",
-    fetcher,
-  );
+  const { data, isLoading } = useSWR<{ ok: boolean; data: { suscripcion: Suscripcion } }>("/api/suscripciones/estado", fetcher);
   const sus = data?.data?.suscripcion;
   const planActual: PlanClave = sus?.plan ?? "free";
-  const esOwner = !!data?.data?.esOwner;
-
-  // Panel del dueño: lista de tenants + activación de planes (solo si esOwner).
-  const { data: tData, mutate: mutateTenants } = useSWR<{ ok: boolean; data: { tenants: TenantRow[] } }>(
-    esOwner ? "/api/admin/tenants" : null,
-    fetcher,
-  );
-  const [busy, setBusy] = useState<string | null>(null);
-
-  const activar = async (tenant_id: string, plan: PlanClave, meses: number) => {
-    setBusy(tenant_id);
-    try {
-      const res = await fetch("/api/admin/planes", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tenant_id, plan, meses }),
-      });
-      const j = await res.json();
-      if (j.ok) {
-        toast.success(`Plan ${plan.toUpperCase()} activado`);
-        mutateTenants();
-        mutateEstado();
-      } else {
-        toast.error(j.error || "No se pudo activar");
-      }
-    } catch {
-      toast.error("Error al activar el plan");
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  const suspender = async (id: string, activo: boolean) => {
-    setBusy(id);
-    try {
-      const res = await fetch(`/api/admin/tenants/${id}`, {
-        method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ activo }),
-      });
-      const j = await res.json();
-      if (j.ok) { toast.success(activo ? "Financiera reactivada" : "Financiera suspendida"); mutateTenants(); }
-      else toast.error(j.error || "No se pudo cambiar el estado");
-    } catch { toast.error("Error al cambiar el estado"); }
-    finally { setBusy(null); }
-  };
-
-  // Crear financiera (alta por invitación: tenant + primer admin).
-  const [crearOpen, setCrearOpen] = useState(false);
-  const [creando, setCreando] = useState(false);
-  const [nueva, setNueva] = useState({ nombre: "", admin_nombre: "", email: "", password: "" });
-
-  const crearFinanciera = async () => {
-    if (!nueva.nombre.trim() || !nueva.email.trim() || nueva.password.length < 6) {
-      toast.error("Completá nombre de la financiera, email del admin y una contraseña de 6+ caracteres");
-      return;
-    }
-    setCreando(true);
-    try {
-      const res = await fetch("/api/admin/financieras", {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(nueva),
-      });
-      const j = await res.json();
-      if (j.ok) {
-        toast.success(`Financiera "${nueva.nombre}" creada`);
-        setNueva({ nombre: "", admin_nombre: "", email: "", password: "" });
-        setCrearOpen(false);
-        mutateTenants();
-      } else {
-        toast.error(j.error || "No se pudo crear la financiera");
-      }
-    } catch { toast.error("Error al crear la financiera"); }
-    finally { setCreando(false); }
-  };
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        icon="gem-stone"
-        title="Plan y facturación"
-        subtitle="Tu plan del SaaS y qué incluye cada nivel."
-        accent="primary"
-      />
+      <PageHeader icon="gem-stone" title="Plan y facturación" subtitle="Tu plan del SaaS y qué incluye cada nivel." accent="primary" />
 
       {isLoading ? (
         <Skeleton className="h-40 rounded-xl" />
@@ -136,10 +46,7 @@ export function FacturacionView() {
                 <p className="text-xs uppercase tracking-widest text-muted-foreground">Plan actual</p>
                 <div className="mt-1 flex items-center gap-2">
                   <h2 className="text-2xl font-bold text-foreground">{PLANES[planActual].label}</h2>
-                  <StatusBadge
-                    label={sus?.estado ?? "activa"}
-                    variant={sus?.estado === "activa" ? "success" : sus?.estado === "vencida" ? "warning" : "muted"}
-                  />
+                  <StatusBadge label={sus?.estado ?? "activa"} variant={sus?.estado === "activa" ? "success" : sus?.estado === "vencida" ? "warning" : "muted"} />
                 </div>
                 <p className="mt-1 text-sm text-muted-foreground">{PLANES[planActual].descripcion}</p>
               </div>
@@ -159,12 +66,7 @@ export function FacturacionView() {
               const esActual = clave === planActual;
               const esPro = clave === "pro";
               return (
-                <div
-                  key={clave}
-                  className={`rounded-xl border bg-card p-5 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)] ${
-                    esActual ? "border-primary/40 ring-1 ring-inset ring-primary/25" : "border-border"
-                  }`}
-                >
+                <div key={clave} className={`rounded-xl border bg-card p-5 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)] ${esActual ? "border-primary/40 ring-1 ring-inset ring-primary/25" : "border-border"}`}>
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2">
                       {esPro && <Sparkles className="h-4 w-4 text-primary" />}
@@ -182,12 +84,7 @@ export function FacturacionView() {
                     ))}
                   </ul>
                   {esPro && !esActual && (
-                    <a
-                      href={WHATSAPP_URL}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
-                    >
+                    <a href={WHATSAPP_URL} target="_blank" rel="noopener noreferrer" className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90">
                       <MessageCircle className="h-4 w-4" /> Quiero el Pro
                     </a>
                   )}
@@ -210,121 +107,12 @@ export function FacturacionView() {
                 Escribinos y coordinamos el pago (transferencia){CONTACTO_SAAS.precioPro > 0 ? <> · <strong className="text-foreground">{formatMonto(CONTACTO_SAAS.precioPro)}/mes</strong></> : ""}. Apenas se confirma, activamos tu plan Pro.
               </p>
               <div className="mt-4 flex flex-col gap-2 sm:flex-row">
-                <a
-                  href={WHATSAPP_URL}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center justify-center gap-2 rounded-lg bg-success px-4 py-2.5 text-sm font-medium text-success-foreground transition-opacity hover:opacity-90 sm:flex-1"
-                >
+                <a href={WHATSAPP_URL} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2 rounded-lg bg-success px-4 py-2.5 text-sm font-medium text-success-foreground transition-opacity hover:opacity-90 sm:flex-1">
                   <MessageCircle className="h-4 w-4" /> WhatsApp {CONTACTO_SAAS.whatsappDisplay}
                 </a>
-                <a
-                  href={EMAIL_URL}
-                  className="flex items-center justify-center gap-2 rounded-lg border border-border px-4 py-2.5 text-sm font-medium text-foreground transition-colors hover:bg-muted sm:flex-1"
-                >
+                <a href={EMAIL_URL} className="flex items-center justify-center gap-2 rounded-lg border border-border px-4 py-2.5 text-sm font-medium text-foreground transition-colors hover:bg-muted sm:flex-1">
                   <Mail className="h-4 w-4" /> {CONTACTO_SAAS.email}
                 </a>
-              </div>
-            </div>
-          )}
-
-          {/* ── Panel del dueño del SaaS: activar planes por tenant ── */}
-          {esOwner && (
-            <div className="rounded-xl border border-warning/30 bg-warning/[0.04] p-5">
-              <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <Crown className="h-4 w-4 text-warning" />
-                  <h3 className="text-sm font-semibold text-foreground">Panel del dueño · financieras y planes</h3>
-                </div>
-                <button onClick={() => setCrearOpen((o) => !o)}
-                  className="inline-flex items-center gap-1.5 rounded-lg bg-foreground/90 px-3 py-1.5 text-xs font-medium text-background hover:opacity-90">
-                  <Plus className="h-3.5 w-3.5" /> Crear financiera
-                </button>
-              </div>
-              <p className="mb-4 text-xs text-muted-foreground">
-                Alta de clientes por invitación + activación de planes cuando te pagan. Solo vos ves esta sección.
-              </p>
-
-              {crearOpen && (
-                <div className="mb-4 rounded-lg border border-border bg-card p-4">
-                  <p className="mb-3 text-xs font-semibold text-foreground">Nueva financiera + su primer administrador</p>
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    <Field label="Nombre de la financiera" required>
-                      <Input value={nueva.nombre} onChange={(e) => setNueva((n) => ({ ...n, nombre: e.target.value }))} placeholder="Créditos del Norte" />
-                    </Field>
-                    <Field label="Nombre del admin">
-                      <Input value={nueva.admin_nombre} onChange={(e) => setNueva((n) => ({ ...n, admin_nombre: e.target.value }))} placeholder="Juan Pérez" />
-                    </Field>
-                    <Field label="Email del admin" required>
-                      <Input type="email" value={nueva.email} onChange={(e) => setNueva((n) => ({ ...n, email: e.target.value }))} placeholder="admin@financiera.com" />
-                    </Field>
-                    <Field label="Contraseña temporal" required hint="Se la pasás al cliente; la cambia al entrar">
-                      <Input type="password" value={nueva.password} onChange={(e) => setNueva((n) => ({ ...n, password: e.target.value }))} placeholder="mínimo 6 caracteres" />
-                    </Field>
-                  </div>
-                  <div className="mt-3 flex justify-end gap-2">
-                    <button onClick={() => setCrearOpen(false)} className="rounded-lg px-3 py-1.5 text-xs text-muted-foreground hover:bg-muted">Cancelar</button>
-                    <button onClick={crearFinanciera} disabled={creando}
-                      className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50">
-                      {creando ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null} Crear financiera
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              <div className="overflow-x-auto rounded-lg border border-border">
-                <table className="w-full text-sm border-separate border-spacing-0">
-                  <thead>
-                    <tr className="bg-muted/30">
-                      <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground border-b border-border">Financiera</th>
-                      <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground border-b border-border">Plan</th>
-                      <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground border-b border-border hidden sm:table-cell">Vence</th>
-                      <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground border-b border-border hidden md:table-cell">Estado</th>
-                      <th className="px-3 py-2.5 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground border-b border-border">Acciones</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(tData?.data?.tenants ?? []).map((t) => (
-                      <tr key={t.id} className={`hover:bg-muted/20 ${!t.activo ? "opacity-60" : ""}`}>
-                        <td className="px-3 py-2.5 border-b border-border/70 font-medium text-foreground">{t.nombre}</td>
-                        <td className="px-3 py-2.5 border-b border-border/70">
-                          <StatusBadge label={PLANES[t.plan]?.label ?? t.plan} variant={t.plan === "pro" ? "primary" : "muted"} />
-                        </td>
-                        <td className="px-3 py-2.5 border-b border-border/70 text-muted-foreground hidden sm:table-cell tabular-nums">
-                          {t.periodo_hasta ? formatFecha(t.periodo_hasta) : "—"}
-                        </td>
-                        <td className="px-3 py-2.5 border-b border-border/70 hidden md:table-cell">
-                          <StatusBadge label={t.activo ? "Activa" : "Suspendida"} variant={t.activo ? "success" : "destructive"} />
-                        </td>
-                        <td className="px-3 py-2.5 border-b border-border/70">
-                          <div className="flex flex-wrap justify-end gap-1.5">
-                            <button onClick={() => activar(t.id, "pro", 1)} disabled={busy === t.id}
-                              className="rounded-lg bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50">
-                              Pro 1 mes
-                            </button>
-                            <button onClick={() => activar(t.id, "pro", 12)} disabled={busy === t.id}
-                              className="rounded-lg bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary ring-1 ring-inset ring-primary/25 hover:bg-primary/15 disabled:opacity-50">
-                              Pro 12m
-                            </button>
-                            <button onClick={() => activar(t.id, "free", 0)} disabled={busy === t.id}
-                              className="rounded-lg border border-border px-2.5 py-1 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50">
-                              Free
-                            </button>
-                            <button onClick={() => suspender(t.id, !t.activo)} disabled={busy === t.id}
-                              title={t.activo ? "Suspender acceso" : "Reactivar"}
-                              className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-medium disabled:opacity-50 ${t.activo ? "border border-border text-muted-foreground hover:bg-destructive/10 hover:text-destructive" : "bg-success/10 text-success ring-1 ring-inset ring-success/25 hover:bg-success/15"}`}>
-                              {t.activo ? <Ban className="h-3.5 w-3.5" /> : <RotateCcw className="h-3.5 w-3.5" />}
-                              {t.activo ? "Suspender" : "Reactivar"}
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                    {(tData?.data?.tenants?.length ?? 0) === 0 && (
-                      <tr><td colSpan={5} className="px-3 py-6 text-center text-xs text-muted-foreground">Cargando financieras…</td></tr>
-                    )}
-                  </tbody>
-                </table>
               </div>
             </div>
           )}

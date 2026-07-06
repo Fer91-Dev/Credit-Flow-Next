@@ -1,6 +1,6 @@
 import { requireAuth, ApiError } from "@/lib/auth";
 import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api";
-import { esOwner } from "@/lib/saas-owner";
+import { requireOwner } from "@/lib/saas-owner";
 import { activarPlan } from "@/lib/suscripciones";
 import { esPlanValido } from "@/lib/planes";
 import type { NextRequest } from "next/server";
@@ -13,7 +13,7 @@ import type { NextRequest } from "next/server";
  */
 export const POST = withErrorHandler(async (req: NextRequest) => {
   const ctx = await requireAuth(req);
-  if (!esOwner(ctx.email)) throw new ApiError("Solo el dueño del SaaS puede cambiar planes", "FORBIDDEN", 403);
+  requireOwner(ctx);
 
   let body: any;
   try { body = await req.json(); } catch { return errorResponse("Body JSON inválido", "INVALID_JSON", 400); }
