@@ -15,8 +15,8 @@ const KEY = "cf:primerospasos:oculto";
  * cuando está todo hecho o el usuario lo oculta. Solo se monta para admin (desde el Home).
  */
 export function PrimerosPasos() {
-  const { financiera } = useFinanciera();
-  const { data: dash } = useSWR<{ resumen?: { clientes_activos?: number; creditos_activos?: number } }>("/api/dashboard", fetcher);
+  const { financiera, isLoading: finLoading } = useFinanciera();
+  const { data: dash, isLoading: dashLoading } = useSWR<{ resumen?: { clientes_activos?: number; creditos_activos?: number } }>("/api/dashboard", fetcher);
   const [oculto, setOculto] = useState(false);
   useEffect(() => { if (localStorage.getItem(KEY) === "1") setOculto(true); }, []);
 
@@ -31,7 +31,9 @@ export function PrimerosPasos() {
   ];
   const hechos = pasos.filter((p) => p.ok).length;
 
-  if (oculto || hechos === pasos.length) return null;
+  // No renderizar hasta tener el estado REAL (evita el parpadeo de checks en cada F5/Home):
+  // mientras SWR carga, financiera/dash llegan de a poco y los ítems se marcarían y desmarcarían.
+  if (oculto || finLoading || dashLoading || hechos === pasos.length) return null;
 
   const ocultar = () => { localStorage.setItem(KEY, "1"); setOculto(true); };
 
