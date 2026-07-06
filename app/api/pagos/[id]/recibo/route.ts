@@ -3,6 +3,7 @@ import { errorResponse, withErrorHandler } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { getConfiguracion } from "@/lib/config";
+import { getFinanciera } from "@/lib/financiera";
 import { generarReciboPDF } from "@/lib/pdf/recibo";
 import { nombreCompleto } from "@/lib/utils";
 import type { NextRequest } from "next/server";
@@ -45,6 +46,7 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
   }
 
   const config = await getConfiguracion(tenantId);
+  const financiera = await getFinanciera(tenantId); // co-branding del recibo
 
   const pdf = await generarReciboPDF({
     pago: {
@@ -72,6 +74,7 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
     },
     moneda: config.moneda,
     locale: config.locale,
+    financiera: { nombre: financiera.nombre, logo_url: financiera.logo_url },
   });
 
   return new Response(Buffer.from(pdf), {

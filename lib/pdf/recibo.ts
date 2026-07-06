@@ -35,6 +35,8 @@ export interface ReciboData {
   };
   moneda: string;
   locale: string;
+  /** Co-branding: identidad de la financiera (nombre + logo PNG/JPG opcional). */
+  financiera?: { nombre?: string | null; logo_url?: string | null };
 }
 
 // Paleta (Bloomberg Terminal del producto) en rgb 0–1.
@@ -91,8 +93,27 @@ export async function generarReciboPDF(data: ReciboData): Promise<Uint8Array> {
   const hr = (yy: number) =>
     page.drawLine({ start: { x: M, y: yy }, end: { x: right, y: yy }, thickness: 1, color: LINE });
 
-  // ── Encabezado ──────────────────────────────────────────────────────────
-  text("CreditFlow", M, y, bold, 20, PRIMARY);
+  // ── Encabezado (co-branding: nombre + logo de la financiera) ─────────────
+  const marca = data.financiera?.nombre?.trim() || "CreditFlow";
+  const logoUrl = data.financiera?.logo_url;
+  let logoImg: Awaited<ReturnType<typeof doc.embedPng>> | null = null;
+  if (logoUrl && /\.(png|jpe?g)$/i.test(logoUrl)) {
+    try {
+      const resp = await fetch(logoUrl);
+      if (resp.ok) {
+        const bytes = new Uint8Array(await resp.arrayBuffer());
+        logoImg = /\.png$/i.test(logoUrl) ? await doc.embedPng(bytes) : await doc.embedJpg(bytes);
+      }
+    } catch { /* si falla el logo, seguimos solo con el nombre */ }
+  }
+  if (logoImg) {
+    const h = 24;
+    const w = (logoImg.width / logoImg.height) * h;
+    page.drawImage(logoImg, { x: M, y: y - 4, width: w, height: h });
+    text(marca, M + w + 10, y, bold, 18, PRIMARY);
+  } else {
+    text(marca, M, y, bold, 20, PRIMARY);
+  }
   textRight("COMPROBANTE DE PAGO", right, y, bold, 13, INK);
   y -= 18;
   textRight(`N° ${pago.id.slice(0, 8).toUpperCase()}`, right, y, font, 10, MUTED);
@@ -183,7 +204,10 @@ export async function generarReciboPDF(data: ReciboData): Promise<Uint8Array> {
     `Comprobante generado el ${new Intl.DateTimeFormat(locale || "es-AR", { dateStyle: "long", timeStyle: "short" }).format(new Date())}`,
     M, footerY, font, 8, MUTED,
   );
-  textRight("CreditFlow · Documento sin valor fiscal", right, footerY, font, 8, MUTED);
+  textRight(
+    marca !== "CreditFlow" ? "powered by CreditFlow · Documento sin valor fiscal" : "CreditFlow · Documento sin valor fiscal",
+    right, footerY, font, 8, MUTED,
+  );
 
   return doc.save();
 }
