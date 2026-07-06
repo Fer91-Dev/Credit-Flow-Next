@@ -22,13 +22,17 @@ interface Suscripcion {
   notas: string | null;
 }
 
-const fetcher = (url: string) => fetch(url).then((r) => r.json());
+// Devuelve el `data` desenvuelto ({ suscripcion, esOwner }). IMPORTANTE: misma forma que el
+// fetcher de SystemControls (la campanita), porque comparten la key SWR "/api/suscripciones/estado".
+// Si difieren, la caché compartida rompe (uno lee la forma del otro).
+const fetcher = (url: string) =>
+  fetch(url).then((r) => (r.ok ? r.json() : null)).then((j) => (j?.ok ? j.data : null));
 
 /** Plan del tenant (lo ve el admin de cada financiera). La administración de planes de TODAS
  *  las financieras vive en /plataforma (solo dueño). */
 export function FacturacionView() {
-  const { data, isLoading } = useSWR<{ ok: boolean; data: { suscripcion: Suscripcion } }>("/api/suscripciones/estado", fetcher);
-  const sus = data?.data?.suscripcion;
+  const { data, isLoading } = useSWR<{ suscripcion: Suscripcion; esOwner?: boolean } | null>("/api/suscripciones/estado", fetcher);
+  const sus = data?.suscripcion;
   const planActual: PlanClave = sus?.plan ?? "free";
 
   return (
