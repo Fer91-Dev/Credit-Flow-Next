@@ -48,7 +48,12 @@ async function cargarContexto(userId: string, avatarUrl: string | null = null): 
     where: { id: userId },
     select: {
       tenant_id: true, role: true, activo: true, vendedor_id: true, full_name: true, email: true, es_owner: true,
-      tenant: { select: { features: true, activo: true } }, // entitlements + estado (suspensión) del tenant
+      tenant: {
+        select: {
+          features: true, activo: true, // entitlements + estado (suspensión) del tenant
+          suscripcion: { select: { plan: true, estado: true, periodo_hasta: true } }, // para vencimiento
+        },
+      },
     },
   });
 
@@ -69,9 +74,16 @@ async function cargarContexto(userId: string, avatarUrl: string | null = null): 
     nombre: profile.full_name ?? null,
     email: profile.email ?? null,
     avatarUrl,
-    features: profile.tenant?.features ?? [],
+    // Entitlements EFECTIVOS: si el plan Pro venció (periodo_hasta pasado), las features
+    // premium se apagan al instante — sin depender de que corra el cron de suscripciones.
+    features: planVencido(profile.tenant?.suscripcion) ? [] : (profile.tenant?.features ?? []),
     esOwner: profile.es_owner === true,
   };
+}
+
+/** ¿La suscripción es un Pro vencido? (periodo_hasta pasado y no cancelado). */
+function planVencido(sus?: { plan: string; estado: string; periodo_hasta: Date | null } | null): boolean {
+  return !!sus && sus.plan === "pro" && sus.estado !== "cancelada" && sus.periodo_hasta != null && sus.periodo_hasta.getTime() < Date.now();
 }
 
 /**

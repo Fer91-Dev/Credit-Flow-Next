@@ -142,7 +142,10 @@ export function PlataformaView() {
                     <tr key={t.id} className={`hover:bg-muted/20 ${!t.activo ? "opacity-60" : ""}`}>
                       <td className="px-4 py-2.5 border-b border-border/70 font-medium text-foreground">{t.nombre}</td>
                       <td className="px-4 py-2.5 border-b border-border/70">
-                        <StatusBadge label={PLANES[t.plan]?.label ?? t.plan} variant={t.plan === "pro" ? "primary" : "muted"} />
+                        <div className="flex items-center gap-2">
+                          <StatusBadge label={PLANES[t.plan]?.label ?? t.plan} variant={t.plan === "pro" ? "primary" : "muted"} />
+                          {t.estado === "vencida" && <span className="text-[10px] font-semibold uppercase tracking-wide text-warning">vencido</span>}
+                        </div>
                       </td>
                       <td className="px-4 py-2.5 border-b border-border/70 text-muted-foreground hidden sm:table-cell tabular-nums">{t.periodo_hasta ? formatFecha(t.periodo_hasta) : "—"}</td>
                       <td className="px-4 py-2.5 border-b border-border/70 hidden md:table-cell">

@@ -47,7 +47,8 @@ model tenants {
   email        String?
   logo_url     String? // logo en Supabase Storage (co-branding)
 
-  profiles profiles[]
+  profiles    profiles[]
+  suscripcion suscripciones?
 }
 
 /// Suscripción del tenant al SaaS (facturación por plan). Una fila por tenant. El plan
@@ -64,6 +65,8 @@ model suscripciones {
   notas         String?
   created_at    DateTime  @default(now()) @db.Timestamptz(6)
   updated_at    DateTime  @updatedAt @db.Timestamptz(6)
+
+  tenant tenants @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
 }
 
 /// Identidad de un usuario autenticado (= auth.users.id) dentro de una financiera.

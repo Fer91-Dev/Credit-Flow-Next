@@ -18,13 +18,20 @@ export interface SuscripcionActual {
   notas: string | null;
 }
 
-/** Suscripción vigente del tenant (default Free si nunca se activó nada). */
+/** ¿Es un Pro cuyo período ya venció? */
+export function estaVencida(row: { plan: string; estado: string; periodo_hasta: Date | null } | null): boolean {
+  return !!row && row.plan === "pro" && row.estado !== "cancelada" && row.periodo_hasta != null && row.periodo_hasta.getTime() < Date.now();
+}
+
+/** Suscripción vigente del tenant (default Free si nunca se activó nada). Reporta "vencida"
+ *  en vivo si el Pro caducó, aunque el cron todavía no lo haya persistido. */
 export async function getSuscripcion(tenantId: string): Promise<SuscripcionActual> {
   const row = await prisma.suscripciones.findUnique({ where: { tenant_id: tenantId } });
   if (!row) {
     return { tenant_id: tenantId, plan: "free", estado: "activa", proveedor: "manual", monto: 0, periodo_desde: null, periodo_hasta: null, notas: null };
   }
-  return { ...row, plan: (row.plan in PLANES ? row.plan : "free") as PlanClave };
+  const estado = estaVencida(row) ? "vencida" : row.estado;
+  return { ...row, estado, plan: (row.plan in PLANES ? row.plan : "free") as PlanClave };
 }
 
 /**
