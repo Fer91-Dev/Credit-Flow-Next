@@ -25,6 +25,7 @@ export type { Role };
 const ACCESO_RUTAS: { prefix: string; roles: Role[] }[] = [
   { prefix: "/usuarios", roles: ["admin"] },
   { prefix: "/configuracion", roles: ["admin"] },
+  { prefix: "/facturacion", roles: ["admin"] },
   { prefix: "/reportes", roles: ["admin"] },
   { prefix: "/auditoria", roles: ["admin"] },
   { prefix: "/comprobantes", roles: ["admin"] },

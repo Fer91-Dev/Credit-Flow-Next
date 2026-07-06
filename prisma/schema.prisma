@@ -41,6 +41,22 @@ model tenants {
   profiles profiles[]
 }
 
+/// Suscripción del tenant al SaaS (facturación por plan). Una fila por tenant. El plan
+/// define qué features premium tiene (ver lib/planes.ts → sincroniza tenants.features).
+/// `proveedor` = manual (activación a mano) | mercadopago | paddle (automáticos, a futuro).
+model suscripciones {
+  tenant_id     String    @id @db.Uuid
+  plan          String    @default("free") // free | pro
+  estado        String    @default("activa") // activa | vencida | cancelada
+  proveedor     String    @default("manual") // manual | mercadopago | paddle
+  monto         Float     @default(0) // importe mensual acordado (informativo en modo manual)
+  periodo_desde DateTime? @db.Timestamptz(6)
+  periodo_hasta DateTime? @db.Timestamptz(6) // vencimiento del período pago (null = sin vencimiento)
+  notas         String?
+  created_at    DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at    DateTime  @updatedAt @db.Timestamptz(6)
+}
+
 /// Identidad de un usuario autenticado (= auth.users.id) dentro de una financiera.
 /// Fuente de verdad del ROL. La FK profiles.id → auth.users(id) y el trigger de
 /// alta (handle_new_user) se manejan a nivel SQL (Supabase no es modelable por Prisma).

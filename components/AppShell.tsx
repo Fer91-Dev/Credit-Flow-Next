@@ -58,8 +58,9 @@ const NAV_GROUPS: NavGroup[] = [
   {
     label: "Sistema",
     items: [
-      { icon: "gear",   label: "Configuración", to: "/configuracion" },
-      { icon: "scroll", label: "Auditoría",     to: "/auditoria" },
+      { icon: "gear",       label: "Configuración",       to: "/configuracion" },
+      { icon: "gem-stone",  label: "Plan y facturación",  to: "/facturacion" },
+      { icon: "scroll",     label: "Auditoría",           to: "/auditoria" },
     ],
   },
 ];
