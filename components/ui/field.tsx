@@ -61,7 +61,7 @@ export function PasswordInput({ className, ...props }: React.InputHTMLAttributes
  */
 export function PasswordFields({
   password, confirm, onPassword, onConfirm,
-  label = "Contraseña", required, minLength = 6,
+  label = "Contraseña", required, minLength = 8,
 }: {
   password: string;
   confirm: string;

@@ -36,8 +36,8 @@ export const PATCH = withErrorHandler(async (req: NextRequest, { params }: Route
 
   // Cambio de contraseña (opcional): va directo a Supabase Auth, no a profiles.
   const nuevaPassword = typeof body.password === "string" ? body.password : null;
-  if (nuevaPassword !== null && nuevaPassword.length < 6) {
-    return errorResponse("La contraseña debe tener al menos 6 caracteres", "INVALID_INPUT", 400);
+  if (nuevaPassword !== null && nuevaPassword.length < 8) {
+    return errorResponse("La contraseña debe tener al menos 8 caracteres", "INVALID_INPUT", 400);
   }
 
   const data: Record<string, unknown> = {};

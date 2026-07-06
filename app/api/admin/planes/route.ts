@@ -3,6 +3,7 @@ import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api"
 import { requireOwner } from "@/lib/saas-owner";
 import { activarPlan } from "@/lib/suscripciones";
 import { esPlanValido } from "@/lib/planes";
+import { registrarAuditoria } from "@/lib/audit";
 import type { NextRequest } from "next/server";
 
 /**
@@ -26,5 +27,15 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
   const meses = Math.max(0, Math.trunc(Number(body.meses) || 0));
 
   const suscripcion = await activarPlan(tenantId, plan, { meses, proveedor: "manual", notas: `Activado por el dueño (${ctx.email})` });
+
+  await registrarAuditoria({
+    tenantId,
+    entidad: "plataforma",
+    entidadId: tenantId,
+    accion: "actualizar",
+    descripcion: `Plan cambiado a ${plan.toUpperCase()} por el dueño${meses ? ` (${meses} mes/es)` : ""}`,
+    meta: { plan, meses },
+  });
+
   return successResponse({ suscripcion });
 });

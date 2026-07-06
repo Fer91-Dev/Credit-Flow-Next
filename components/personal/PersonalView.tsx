@@ -466,7 +466,7 @@ function PersonalForm({
     // Alta: la cuenta de acceso es obligatoria (el agente necesita loguearse para trabajar).
     if (!editing) {
       if (!email.trim()) { setError("El email es requerido: es el usuario de acceso del agente"); return; }
-      if (cuentaPassword.length < 6) { setError("La contraseña de acceso debe tener al menos 6 caracteres"); return; }
+      if (cuentaPassword.length < 8) { setError("La contraseña de acceso debe tener al menos 8 caracteres"); return; }
       if (cuentaPassword !== cuentaPasswordConfirm) { setError("Las contraseñas no coinciden"); return; }
     }
     const ok = await confirm({
@@ -590,7 +590,7 @@ function PersonalForm({
           <FormActions
             onCancel={() => onClose(false)}
             loading={loading}
-            disabled={!nombre.trim() || (!editing && (!email.trim() || cuentaPassword.length < 6 || cuentaPassword !== cuentaPasswordConfirm))}
+            disabled={!nombre.trim() || (!editing && (!email.trim() || cuentaPassword.length < 8 || cuentaPassword !== cuentaPasswordConfirm))}
             submitLabel={editing ? "Guardar cambios" : "Crear"}
           />
         </form>
@@ -632,7 +632,7 @@ function CrearCuentaDialog({ vendedor, onClose }: { vendedor: Vendedor | null; o
     e.preventDefault();
     if (!vendedor) return;
     if (!email.trim()) { setError("El email es requerido"); return; }
-    if (password.length < 6) { setError("La contraseña debe tener al menos 6 caracteres"); return; }
+    if (password.length < 8) { setError("La contraseña debe tener al menos 8 caracteres"); return; }
     if (password !== passwordConfirm) { setError("Las contraseñas no coinciden"); return; }
     const ok = await confirm({
       title: "¿Crear cuenta de acceso?",
@@ -698,7 +698,7 @@ function CrearCuentaDialog({ vendedor, onClose }: { vendedor: Vendedor | null; o
           <FormActions
             onCancel={() => onClose(false)}
             loading={loading}
-            disabled={!email.trim() || password.length < 6 || password !== passwordConfirm}
+            disabled={!email.trim() || password.length < 8 || password !== passwordConfirm}
             submitLabel="Crear cuenta"
           />
         </form>

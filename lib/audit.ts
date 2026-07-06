@@ -8,7 +8,7 @@
 import { prisma } from "@/lib/prisma";
 import { getAuditActor } from "@/lib/audit-context";
 
-export type AuditEntidad = "clientes" | "creditos" | "pagos" | "configuracion" | "caja" | "campana" | "vendedores" | "proveedores" | "productos" | "usuarios";
+export type AuditEntidad = "clientes" | "creditos" | "pagos" | "configuracion" | "caja" | "campana" | "vendedores" | "proveedores" | "productos" | "usuarios" | "plataforma";
 export type AuditAccion =
   | "crear"
   | "actualizar"

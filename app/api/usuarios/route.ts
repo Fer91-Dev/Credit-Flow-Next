@@ -79,8 +79,8 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
   if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     return errorResponse("Email inválido", "INVALID_INPUT", 400);
   }
-  if (password.length < 6) {
-    return errorResponse("La contraseña debe tener al menos 6 caracteres", "INVALID_INPUT", 400);
+  if (password.length < 8) {
+    return errorResponse("La contraseña debe tener al menos 8 caracteres", "INVALID_INPUT", 400);
   }
   if (!ROLES.includes(role)) {
     return errorResponse("Rol inválido", "INVALID_INPUT", 400);

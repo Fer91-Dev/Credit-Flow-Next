@@ -3,6 +3,7 @@ import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api"
 import { prisma } from "@/lib/prisma";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireOwner } from "@/lib/saas-owner";
+import { registrarAuditoria } from "@/lib/audit";
 import type { NextRequest } from "next/server";
 
 /**
@@ -25,7 +26,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
 
   if (!nombre) return errorResponse("El nombre de la financiera es obligatorio", "INVALID_INPUT", 400);
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return errorResponse("Email del admin inválido", "INVALID_INPUT", 400);
-  if (password.length < 6) return errorResponse("La contraseña debe tener al menos 6 caracteres", "INVALID_INPUT", 400);
+  if (password.length < 8) return errorResponse("La contraseña debe tener al menos 8 caracteres", "INVALID_INPUT", 400);
 
   // 1) Tenant
   const tenant = await prisma.tenants.create({ data: { nombre, features: [] }, select: { id: true } });
@@ -61,6 +62,15 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     create: { tenant_id: tenant.id, plan: "free", estado: "activa", proveedor: "manual" },
     update: {},
   }).catch(() => {});
+
+  await registrarAuditoria({
+    tenantId: tenant.id,
+    entidad: "plataforma",
+    entidadId: tenant.id,
+    accion: "crear",
+    descripcion: `Financiera creada por el dueño: "${nombre}" (admin ${email})`,
+    meta: { nombre, admin_email: email },
+  });
 
   return successResponse({ tenant_id: tenant.id, nombre, admin_email: email }, 201);
 });

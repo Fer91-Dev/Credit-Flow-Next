@@ -106,8 +106,8 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
   if (!ccEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(ccEmail)) {
     return errorResponse("Se requiere un email válido para la cuenta de acceso del agente", "INVALID_INPUT", 400);
   }
-  if (ccPassword.length < 6) {
-    return errorResponse("La contraseña de acceso debe tener al menos 6 caracteres", "INVALID_INPUT", 400);
+  if (ccPassword.length < 8) {
+    return errorResponse("La contraseña de acceso debe tener al menos 8 caracteres", "INVALID_INPUT", 400);
   }
 
   const rol = esRolValido(body.rol) ? body.rol : "vendedor";

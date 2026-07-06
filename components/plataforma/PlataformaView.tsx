@@ -58,8 +58,8 @@ export function PlataformaView() {
   const [nueva, setNueva] = useState({ nombre: "", admin_nombre: "", email: "", password: "" });
 
   const crearFinanciera = async () => {
-    if (!nueva.nombre.trim() || !nueva.email.trim() || nueva.password.length < 6) {
-      toast.error("Completá nombre, email del admin y una contraseña de 6+ caracteres");
+    if (!nueva.nombre.trim() || !nueva.email.trim() || nueva.password.length < 8) {
+      toast.error("Completá nombre, email del admin y una contraseña de 8+ caracteres");
       return;
     }
     setCreando(true);
@@ -108,7 +108,7 @@ export function PlataformaView() {
                   <Input type="email" value={nueva.email} onChange={(e) => setNueva((n) => ({ ...n, email: e.target.value }))} placeholder="admin@financiera.com" />
                 </Field>
                 <Field label="Contraseña temporal" required hint="Se la pasás al cliente; la cambia al entrar">
-                  <Input type="password" value={nueva.password} onChange={(e) => setNueva((n) => ({ ...n, password: e.target.value }))} placeholder="mínimo 6 caracteres" />
+                  <Input type="password" value={nueva.password} onChange={(e) => setNueva((n) => ({ ...n, password: e.target.value }))} placeholder="Mínimo 8 caracteres" />
                 </Field>
               </div>
               <div className="mt-3 flex justify-end gap-2">

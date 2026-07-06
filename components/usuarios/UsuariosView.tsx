@@ -349,7 +349,7 @@ function UsuarioForm({
 
     if (!editing) {
       if (!email.trim()) { setError("El email es requerido"); return; }
-      if (password.length < 6) { setError("La contraseña debe tener al menos 6 caracteres"); return; }
+      if (password.length < 8) { setError("La contraseña debe tener al menos 8 caracteres"); return; }
       if (password !== passwordConfirm) { setError("Las contraseñas no coinciden"); return; }
     }
     const ok = await confirm({
@@ -497,7 +497,7 @@ function CambiarPasswordDialog({ usuario, onClose }: { usuario: Usuario | null; 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!usuario) return;
-    if (password.length < 6) { setError("La contraseña debe tener al menos 6 caracteres"); return; }
+    if (password.length < 8) { setError("La contraseña debe tener al menos 8 caracteres"); return; }
     if (password !== passwordConfirm) { setError("Las contraseñas no coinciden"); return; }
     const ok = await confirm({
       title: "¿Cambiar contraseña?",
@@ -547,7 +547,7 @@ function CambiarPasswordDialog({ usuario, onClose }: { usuario: Usuario | null; 
           <FormActions
             onCancel={onClose}
             loading={loading}
-            disabled={password.length < 6 || password !== passwordConfirm}
+            disabled={password.length < 8 || password !== passwordConfirm}
             submitLabel="Cambiar contraseña"
           />
         </form>

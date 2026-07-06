@@ -2,6 +2,7 @@ import { requireAuth, ApiError } from "@/lib/auth";
 import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api";
 import { prisma } from "@/lib/prisma";
 import { requireOwner } from "@/lib/saas-owner";
+import { registrarAuditoria } from "@/lib/audit";
 import type { NextRequest } from "next/server";
 
 interface RouteParams { params: Promise<{ id: string }> }
@@ -26,5 +27,15 @@ export const PATCH = withErrorHandler(async (req: NextRequest, { params }: Route
   }
 
   await prisma.tenants.update({ where: { id }, data: { activo: body.activo } });
+
+  await registrarAuditoria({
+    tenantId: id,
+    entidad: "plataforma",
+    entidadId: id,
+    accion: "actualizar",
+    descripcion: body.activo ? "Financiera reactivada por el dueño" : "Financiera suspendida por el dueño",
+    meta: { activo: body.activo },
+  });
+
   return successResponse({ id, activo: body.activo });
 });

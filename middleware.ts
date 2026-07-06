@@ -50,7 +50,8 @@ export async function middleware(request: NextRequest) {
             request: { headers: requestHeaders },
           });
           cookiesToSet.forEach(({ name, value, options }) =>
-            supabaseResponse.cookies.set(name, value, options)
+            // Anti-CSRF: SameSite=Lax explícito + Secure en producción (HTTPS).
+            supabaseResponse.cookies.set(name, value, { ...options, sameSite: "lax", secure: process.env.NODE_ENV === "production" })
           );
         },
       },

@@ -171,7 +171,7 @@ export function PerfilForm({ initialName, initialEmail, initialAvatarUrl }: Perf
     setErrorPass(null);
     if (!currentPass) { setErrorPass("Ingresá tu contraseña actual."); return; }
     if (!newPass) { setErrorPass("Ingresá la nueva contraseña."); return; }
-    if (newPass.length < 6) { setErrorPass("La nueva contraseña debe tener al menos 6 caracteres."); return; }
+    if (newPass.length < 8) { setErrorPass("La nueva contraseña debe tener al menos 8 caracteres."); return; }
     if (newPass === currentPass) { setErrorPass("La nueva contraseña debe ser distinta de la actual."); return; }
     if (newPass !== confirmPass) { setErrorPass("Las contraseñas no coinciden."); return; }
 
@@ -303,7 +303,7 @@ export function PerfilForm({ initialName, initialEmail, initialAvatarUrl }: Perf
             <PasswordInput
               value={newPass}
               onChange={e => { setNewPass(e.target.value); setSavedPass(false); setErrorPass(null); }}
-              placeholder="Mínimo 6 caracteres"
+              placeholder="Mínimo 8 caracteres"
             />
           </Field>
           <Field label="Confirmar nueva contraseña">
