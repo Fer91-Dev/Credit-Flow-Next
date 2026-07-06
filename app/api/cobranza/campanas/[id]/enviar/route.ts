@@ -127,7 +127,7 @@ export const POST = withErrorHandler(async (
           const body = templateId
             ? { messaging_product: "whatsapp", to: telefono.replace(/\D/g, ""), type: "template", template: { name: templateId, language: { code: "es_AR" } } }
             : { messaging_product: "whatsapp", to: telefono.replace(/\D/g, ""), type: "text", text: { body: mensaje } };
-          const res = await fetch(`https://graph.facebook.com/v19.0/${whatsappCfg.phone_number_id}/messages`, {
+          const res = await fetch(`https://graph.facebook.com/v19.0/${encodeURIComponent(whatsappCfg.phone_number_id)}/messages`, {
             method: "POST",
             headers: { Authorization: `Bearer ${whatsappCfg.token}`, "Content-Type": "application/json" },
             body: JSON.stringify(body),

@@ -1,6 +1,6 @@
 import { requireAuth, requireRole } from "@/lib/auth";
 import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api";
-import { getFinanciera, guardarFinanciera } from "@/lib/financiera";
+import { getFinanciera, guardarFinanciera, esUrlDeStorage } from "@/lib/financiera";
 import { registrarAuditoria } from "@/lib/audit";
 import type { NextRequest } from "next/server";
 
@@ -30,6 +30,11 @@ export const PUT = withErrorHandler(async (req: NextRequest) => {
   }
   if (body.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(body.email).trim())) {
     return errorResponse("Email inválido", "INVALID_INPUT", 400);
+  }
+  // Anti-SSRF: el logo solo puede ser un archivo subido a nuestro Storage (el recibo lo
+  // descarga server-side). Nunca una URL arbitraria.
+  if (body.logo_url && !esUrlDeStorage(String(body.logo_url))) {
+    return errorResponse("El logo debe subirse desde el sistema (URL no permitida)", "INVALID_INPUT", 400);
   }
 
   const datos = await guardarFinanciera(tenantId, body);

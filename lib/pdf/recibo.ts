@@ -96,8 +96,11 @@ export async function generarReciboPDF(data: ReciboData): Promise<Uint8Array> {
   // ── Encabezado (co-branding: nombre + logo de la financiera) ─────────────
   const marca = data.financiera?.nombre?.trim() || "CreditFlow";
   const logoUrl = data.financiera?.logo_url;
+  // Anti-SSRF: solo descargamos logos alojados en NUESTRO Storage público (nunca URLs ajenas).
+  const base = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const logoSeguro = !!logoUrl && !!base && logoUrl.startsWith(`${base}/storage/v1/object/public/`);
   let logoImg: Awaited<ReturnType<typeof doc.embedPng>> | null = null;
-  if (logoUrl && /\.(png|jpe?g)$/i.test(logoUrl)) {
+  if (logoUrl && logoSeguro && /\.(png|jpe?g)$/i.test(logoUrl)) {
     try {
       const resp = await fetch(logoUrl);
       if (resp.ok) {

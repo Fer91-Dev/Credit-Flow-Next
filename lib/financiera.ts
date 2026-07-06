@@ -18,6 +18,17 @@ const SELECT = {
   nombre: true, razon_social: true, cuit: true, direccion: true, telefono: true, email: true, logo_url: true,
 } as const;
 
+/**
+ * ¿La URL del logo pertenece a NUESTRO Supabase Storage público? Se usa para impedir que un
+ * admin guarde una URL arbitraria (anti-SSRF: el recibo PDF hace fetch del logo server-side).
+ * null/"" es válido (sin logo).
+ */
+export function esUrlDeStorage(url: string | null | undefined): boolean {
+  if (!url) return true;
+  const base = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  return !!base && url.startsWith(`${base}/storage/v1/object/public/`);
+}
+
 export async function getFinanciera(tenantId: string): Promise<FinancieraDatos> {
   const t = await prisma.tenants.findUnique({ where: { id: tenantId }, select: SELECT });
   return {
