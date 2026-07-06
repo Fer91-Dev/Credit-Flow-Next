@@ -782,7 +782,19 @@ export const KEYS = {
   productos:     "/api/productos",
   usuarios:      "/api/usuarios",
   zonas:         "/api/clientes/zonas",
+  financiera:    "/api/financiera",
 } as const;
+
+/** Identidad de la financiera (tenant) — co-branding + datos. */
+export interface Financiera {
+  nombre: string;
+  razon_social: string | null;
+  cuit: string | null;
+  direccion: string | null;
+  telefono: string | null;
+  email: string | null;
+  logo_url: string | null;
+}
 
 // ── Hooks tipados ─────────────────────────────────────────────────────────────
 
@@ -1094,6 +1106,11 @@ export function useClienteDetalle(clienteId: string | null) {
 export function useConfiguracion() {
   const { data, error, isLoading, mutate } = useSWR<ConfiguracionFinanciera>(KEYS.configuracion);
   return { config: data, error, isLoading, mutate };
+}
+
+export function useFinanciera() {
+  const { data, error, isLoading, mutate } = useSWR<Financiera>(KEYS.financiera);
+  return { financiera: data, error, isLoading, mutate };
 }
 
 export function useAuditoria() {

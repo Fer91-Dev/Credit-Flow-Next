@@ -12,6 +12,32 @@ import { SystemActionsProvider } from "./system-actions";
 import { canAccess, ROLE_LABEL, type Role } from "@/lib/auth/roles";
 import { createClient } from "@/lib/supabase/client";
 import { Emoji } from "@/components/ui/Emoji";
+import type { Financiera } from "@/lib/swr";
+
+/** Marca co-branded: logo + nombre de la financiera, con "powered by CreditFlow". Fallback
+ *  a la marca CreditFlow si la financiera no cargó nombre/logo. */
+function Brand({ financiera, size = "lg" }: { financiera?: Financiera | null; size?: "lg" | "sm" }) {
+  const nombre = financiera?.nombre?.trim();
+  const marca = nombre || "CreditFlow";
+  const inicial = (nombre?.[0] ?? "C").toUpperCase();
+  const box = size === "lg" ? "h-11 w-11 rounded-2xl text-xl" : "h-9 w-9 rounded-xl text-base";
+  const txt = size === "lg" ? "text-base" : "text-sm";
+  return (
+    <div className="flex min-w-0 items-center gap-3">
+      {financiera?.logo_url ? (
+        <img src={financiera.logo_url} alt={marca} className={`${box} shrink-0 bg-card object-contain p-0.5 ring-1 ring-border`} />
+      ) : (
+        <div className={`${box} flex shrink-0 items-center justify-center bg-gradient-to-br from-primary to-success font-mono font-bold leading-none text-white shadow-lg shadow-primary/30 ring-1 ring-white/15`}>
+          {inicial}
+        </div>
+      )}
+      <div className="min-w-0 leading-tight">
+        <span className={`block truncate ${txt} font-bold tracking-tight text-foreground`}>{marca}</span>
+        {nombre && <span className="block text-[9px] uppercase tracking-wider text-muted-foreground/50">powered by CreditFlow</span>}
+      </div>
+    </div>
+  );
+}
 import { Avatar } from "@/components/ui/Avatar";
 
 /** `icon`: nombre del SVG Fluent Emoji en `public/emoji/<icon>.svg` (Microsoft, vía Iconify). */
@@ -122,7 +148,7 @@ function NavSection({
   );
 }
 
-export function AppShell({ children, role, nombre, email, avatarUrl }: { children: React.ReactNode; role: Role; nombre: string | null; email: string | null; avatarUrl: string | null }) {
+export function AppShell({ children, role, nombre, email, avatarUrl, financiera }: { children: React.ReactNode; role: Role; nombre: string | null; email: string | null; avatarUrl: string | null; financiera?: Financiera | null }) {
   const router = useRouter();
   const pathname = usePathname();
 
@@ -242,11 +268,8 @@ export function AppShell({ children, role, nombre, email, avatarUrl }: { childre
       {/* ── SIDEBAR DESKTOP (lg+) ─────────────────────────────────────────── */}
       <aside className="hidden lg:flex fixed inset-y-0 left-0 z-30 w-64 flex-col bg-card/50 backdrop-blur-xl border-r border-border/40">
         {/* Branding — alto alineado con la línea inferior del PageHeader del contenido */}
-        <Link href="/" className="flex h-[98px] shrink-0 items-center gap-3.5 border-b border-border/70 px-5 transition-opacity hover:opacity-80">
-          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-success text-white shadow-lg shadow-primary/30 ring-1 ring-white/15">
-            <span className="text-xl font-bold font-mono leading-none -tracking-[0.02em]">C</span>
-          </div>
-          <span className="text-base font-bold tracking-tight text-foreground font-mono">CreditFlow</span>
+        <Link href="/" className="flex h-[98px] shrink-0 items-center border-b border-border/70 px-5 transition-opacity hover:opacity-80">
+          <Brand financiera={financiera} size="lg" />
         </Link>
 
         {/* Nav — Home suelto + grupos colapsables */}
@@ -300,11 +323,8 @@ export function AppShell({ children, role, nombre, email, avatarUrl }: { childre
           </button>
 
           {/* Logo — solo mobile */}
-          <Link href="/" className="flex shrink-0 items-center gap-2 lg:hidden transition-opacity hover:opacity-80">
-            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-success text-white shadow-md shadow-primary/30 ring-1 ring-white/15">
-              <span className="text-base font-bold font-mono leading-none -tracking-[0.02em]">C</span>
-            </div>
-            <span className="text-sm font-bold tracking-tight text-foreground font-mono">CreditFlow</span>
+          <Link href="/" className="flex shrink-0 items-center lg:hidden transition-opacity hover:opacity-80">
+            <Brand financiera={financiera} size="sm" />
           </Link>
 
           <div className="ml-auto flex items-center gap-1.5">
@@ -356,11 +376,8 @@ export function AppShell({ children, role, nombre, email, avatarUrl }: { childre
           />
           <aside className="absolute inset-y-0 left-0 flex w-[82%] max-w-xs flex-col bg-card/70 backdrop-blur-xl border-r border-border/50 shadow-2xl">
             <div className="flex h-16 shrink-0 items-center justify-between border-b border-border px-4">
-              <Link href="/" onClick={() => setMobileOpen(false)} className="flex items-center gap-2.5 transition-opacity hover:opacity-80">
-                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-success text-white shadow-md shadow-primary/30 ring-1 ring-white/15">
-                  <span className="text-[17px] font-bold font-mono leading-none -tracking-[0.02em]">C</span>
-                </div>
-                <span className="text-base font-bold text-foreground font-mono">CreditFlow</span>
+              <Link href="/" onClick={() => setMobileOpen(false)} className="flex items-center transition-opacity hover:opacity-80">
+                <Brand financiera={financiera} size="sm" />
               </Link>
               <button
                 onClick={() => setMobileOpen(false)}

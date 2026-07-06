@@ -11,7 +11,7 @@ import {
   AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogFooter,
   AlertDialogTitle, AlertDialogDescription, AlertDialogCancel,
 } from "@/components/ui/alert-dialog";
-import { useConfiguracion, useMiPerfilVendedor, useMiCaja, type CuentaCaja, type Producto } from "@/lib/swr";
+import { useConfiguracion, useMiPerfilVendedor, useMiCaja, useFinanciera, type CuentaCaja, type Producto } from "@/lib/swr";
 import { useConfirm } from "@/components/ui/confirm";
 import { useToast } from "@/components/ui/toast";
 import { useHasFeature } from "@/components/providers/FeaturesProvider";
@@ -75,6 +75,7 @@ function useDebounced<T>(value: T, delay = 350): T {
 
 export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
   const { config } = useConfiguracion();
+  const { financiera } = useFinanciera(); // co-branding del PDF (nombre/logo)
   const { perfil } = useMiPerfilVendedor(); // límite de otorgamiento del usuario (null si es admin/sin tope)
   const { caja: miCaja, mutate: refrescarCaja } = useMiCaja(); // caja de la que desembolsa el usuario (vendedor: su caja; admin: caja principal); fondos para otorgar
   const [refrescandoCaja, setRefrescandoCaja] = useState(false);
@@ -432,6 +433,7 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
         cargos: plan.totalIva + plan.totalSeguro + plan.totalGastos,
         cuotaTotal: totalCuotasCliente,
       },
+      financiera: financiera ? { nombre: financiera.nombre, logo_url: financiera.logo_url } : undefined,
     }, vistaImp);
   }
 

@@ -32,11 +32,20 @@ enum Role {
 model tenants {
   id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   created_at DateTime @default(now()) @db.Timestamptz(6)
-  nombre     String
+  nombre     String // nombre de fantasía / display de la financiera
   activo     Boolean  @default(true)
   // Entitlements: claves de features premium habilitadas para este tenant (gating por
   // plan del SaaS). Ver lib/entitlements.ts (FEATURES). Vacío = solo features base.
   features   String[] @default([])
+
+  // Identidad de la financiera (Datos de la financiera). La edita el admin del tenant;
+  // alimenta el co-branding (sidebar/Home/PDFs) y la facturación futura.
+  razon_social String?
+  cuit         String?
+  direccion    String?
+  telefono     String?
+  email        String?
+  logo_url     String? // logo en Supabase Storage (co-branding)
 
   profiles profiles[]
 }

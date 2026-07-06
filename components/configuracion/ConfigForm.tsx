@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Settings, Check, Loader2, Percent, Plus, X, MessageSquare, Phone, Mail, Lock } from "lucide-react";
 import { useConfiguracion, type ConfiguracionFinanciera, type GamificacionConfig, type RentabilidadConfig, type RiesgoConfig } from "@/lib/swr";
 import { FeatureGate, useHasFeature } from "@/components/providers/FeaturesProvider";
+import { FinancieraForm } from "@/components/configuracion/FinancieraForm";
 import type { SimuladorConfig, CargosConfig, FrecuenciaOpcion } from "@/lib/domain";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Field, Input, Select } from "@/components/ui/field";
@@ -25,7 +26,7 @@ export function ConfigForm() {
   const [savingKey, setSavingKey] = useState<string | null>(null);
   const [savedKey, setSavedKey] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"motor" | "simulador" | "comunicaciones" | "gamificacion" | "rentabilidad" | "riesgo">("motor");
+  const [activeTab, setActiveTab] = useState<"financiera" | "motor" | "simulador" | "comunicaciones" | "gamificacion" | "rentabilidad" | "riesgo">("financiera");
   const riesgoHabilitado = useHasFeature("riesgo_originacion");
 
   // Hidratar el form local cuando llega la config.
@@ -169,6 +170,7 @@ export function ConfigForm() {
             {/* ─ Rail de secciones (patrón settings: nav lateral) ─ */}
             <nav className="-mx-1 flex gap-1 overflow-x-auto px-1 md:mx-0 md:flex-col md:overflow-visible md:px-0">
               {([
+                { key: "financiera",     label: "Datos de la financiera", premium: false },
                 { key: "motor",          label: "Motor financiero", premium: false },
                 { key: "simulador",      label: "Simulador",         premium: false },
                 { key: "comunicaciones", label: "Comunicaciones",    premium: false },
@@ -197,6 +199,9 @@ export function ConfigForm() {
 
             {/* ─ Contenido de la sección activa ─ */}
             <div className="min-w-0 space-y-4">
+
+          {/* ─── Datos de la financiera (identidad del tenant) ─── */}
+          {activeTab === "financiera" && <FinancieraForm />}
 
           {/* ─── Motor tab: Motor financiero (primero) ─── */}
           {activeTab === "motor" && (

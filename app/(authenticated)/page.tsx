@@ -1,6 +1,6 @@
-import { Home } from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { HomeView } from "@/components/dashboard/HomeView";
+import { PrimerosPasos } from "@/components/dashboard/PrimerosPasos";
 import { requireAuth } from "@/lib/auth";
 
 export default async function DashboardPage() {
@@ -14,6 +14,7 @@ export default async function DashboardPage() {
         subtitle="Panel de control · CreditFlow"
         accent="primary"
       />
+      {role === "admin" && <PrimerosPasos />}
       <HomeView role={role} />
     </div>
   );

@@ -40,6 +40,14 @@ export interface PlanPrintData {
   cargoCols?: CargoCuotaCol[];
   cuotas: FilaPlanPrint[];
   totales: { cuota: number; interes: number; capital: number; cargos: number; cuotaTotal: number };
+  /** Co-branding: identidad de la financiera. Si trae nombre/logo, encabeza el documento
+   *  con "powered by CreditFlow" al pie. Sin esto, se muestra la marca CreditFlow. */
+  financiera?: { nombre?: string | null; logo_url?: string | null };
+}
+
+/** Escapa texto para insertarlo seguro en el HTML del PDF. */
+function esc(s: string): string {
+  return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c] as string));
 }
 
 /**
@@ -107,7 +115,9 @@ body{font-family:'Inter',system-ui,-apple-system,sans-serif;background:#F5F7FB;c
 .hd{padding:40px 56px 32px;border-bottom:1px solid #E2E8F0;display:flex;align-items:flex-end;justify-content:space-between;gap:24px}
 .brand{display:inline-flex;align-items:center;gap:10px}
 .bicon{width:34px;height:34px;background:linear-gradient(135deg,#6366F1,#818CF8);border-radius:10px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:17px;font-weight:900;font-family:monospace}
+.blogo{height:34px;width:auto;max-width:150px;object-fit:contain}
 .bname{font-size:18px;font-weight:800;color:#6366F1;letter-spacing:-.4px}
+.pwr{margin-top:6px;font-size:9px;text-transform:uppercase;letter-spacing:.8px;color:#9CA3AF}
 .cotblk{display:flex;flex-direction:column;align-items:flex-end;gap:3px}
 .cotlabel{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#4B5563}
 .cotval{font-size:21px;font-weight:800;color:#111827;font-family:'Courier New',Courier,monospace;letter-spacing:.5px}
@@ -171,7 +181,11 @@ tfoot td.cg{background:#2A2113}
 <button class="btn" onclick="window.print()">⎎ &nbsp;Imprimir documento</button>
 <div class="page">
   <div class="hd">
-    <div class="brand"><div class="bicon">$</div><span class="bname">CreditFlow</span></div>
+    <div class="brand">${
+      data.financiera?.logo_url
+        ? `<img class="blogo" src="${esc(data.financiera.logo_url)}" alt=""/>`
+        : `<div class="bicon">$</div>`
+    }<span class="bname">${esc(data.financiera?.nombre?.trim() || "CreditFlow")}</span></div>
     <div class="cotblk">
       <span class="cotlabel">Fecha de cotización de financiación</span>
       <span class="cotval">${hoy}</span>
@@ -192,6 +206,7 @@ tfoot td.cg{background:#2A2113}
   </div>
   <div class="footer">
     <p class="ftxt">Este documento es un resumen informativo generado al momento de la simulación. Los importes pueden estar sujetos a modificaciones según las condiciones contractuales.</p>
+    ${data.financiera?.nombre?.trim() ? '<p class="pwr">powered by CreditFlow</p>' : ""}
   </div>
 </div>
 </body>

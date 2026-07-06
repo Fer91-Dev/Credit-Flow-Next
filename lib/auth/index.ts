@@ -47,11 +47,13 @@ async function cargarContexto(userId: string, avatarUrl: string | null = null): 
     where: { id: userId },
     select: {
       tenant_id: true, role: true, activo: true, vendedor_id: true, full_name: true, email: true,
-      tenant: { select: { features: true } }, // entitlements del tenant (premium por plan)
+      tenant: { select: { features: true, activo: true } }, // entitlements + estado (suspensión) del tenant
     },
   });
 
-  if (!profile || !profile.activo || !profile.tenant_id || !profile.role) {
+  // Deny-by-default: sin profile / inactivo / sin tenant o rol → 403. Además, si la
+  // financiera (tenant) está suspendida, ningún usuario suyo puede acceder.
+  if (!profile || !profile.activo || !profile.tenant_id || !profile.role || (profile.tenant && !profile.tenant.activo)) {
     throw new ApiError("Acceso denegado", "FORBIDDEN", 403);
   }
 

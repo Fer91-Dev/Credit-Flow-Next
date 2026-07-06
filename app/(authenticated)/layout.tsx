@@ -7,6 +7,7 @@ import { ToastProvider } from "@/components/ui/toast";
 import { ConfirmProvider } from "@/components/ui/confirm";
 import { requireAuth, ApiError, type AuthContext } from "@/lib/auth";
 import { canAccess, homeFor } from "@/lib/auth/roles";
+import { getFinanciera } from "@/lib/financiera";
 
 /**
  * Guard server-side del grupo autenticado. Dos barreras, ninguna confía en el
@@ -45,12 +46,14 @@ export default async function AuthenticatedLayout({
     redirect(homeFor(ctx!.role)); // sin permiso para esta ruta → a su home
   }
 
+  const financiera = await getFinanciera(ctx!.tenantId); // co-branding (logo/nombre)
+
   return (
     <SWRProvider>
       <ToastProvider>
         <ConfirmProvider>
           <FeaturesProvider features={ctx!.features}>
-            <AppShell role={ctx!.role} nombre={ctx!.nombre} email={ctx!.email} avatarUrl={ctx!.avatarUrl}>
+            <AppShell role={ctx!.role} nombre={ctx!.nombre} email={ctx!.email} avatarUrl={ctx!.avatarUrl} financiera={financiera}>
               {children}
             </AppShell>
           </FeaturesProvider>
