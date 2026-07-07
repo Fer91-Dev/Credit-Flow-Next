@@ -4,6 +4,7 @@ import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { registrarAuditoria } from "@/lib/audit";
 import { esTipoMovProveedor, montoConSignoProveedor } from "@/lib/domain";
+import { hoyComercial } from "@/lib/utils";
 import type { NextRequest } from "next/server";
 
 interface RouteParams {
@@ -48,7 +49,7 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
     data: {
       ...withTenant(tenantId),
       proveedor_id: id,
-      fecha: body.fecha ? new Date(body.fecha) : new Date(),
+      fecha: body.fecha ? new Date(body.fecha) : hoyComercial(),
       tipo: body.tipo,
       monto: montoConSignoProveedor(body.tipo, monto),
       concepto: body.concepto.trim(),

@@ -4,7 +4,7 @@ import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { registrarAuditoria } from "@/lib/audit";
 import { aplicarYRegistrarStock } from "@/lib/stock";
-import { formatCreditoNumero, nombreCompleto } from "@/lib/utils";
+import { formatCreditoNumero, nombreCompleto, hoyComercial } from "@/lib/utils";
 import { round2, etiquetaCaja } from "@/lib/domain";
 import { siguienteNumeroComprobante } from "@/lib/comprobantes";
 import type { NextRequest } from "next/server";
@@ -76,7 +76,7 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
       await tx.movimientos_caja.create({
         data: {
           ...withTenant(tenantId),
-          fecha: new Date(),
+          fecha: hoyComercial(),
           tipo: "reversa_desembolso",
           monto: Math.abs(existing.monto_original),
           credito_id: id,
@@ -96,7 +96,7 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
       await tx.movimientos_caja.create({
         data: {
           ...withTenant(tenantId),
-          fecha: new Date(),
+          fecha: hoyComercial(),
           tipo: "devolucion",
           monto: -totalCobrado,
           credito_id: id,

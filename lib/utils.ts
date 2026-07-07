@@ -124,12 +124,14 @@ export function formatFecha(v: string | Date | null | undefined): string {
   }).format(d);
 }
 
-/** Fecha+hora en formato DD/MM/AAAA HH:mm (zona local). Devuelve "—" si es nulo/inválido. */
+/** Fecha+hora en formato DD/MM/AAAA HH:mm, SIEMPRE en zona horaria de Argentina (UTC-3),
+ *  sin importar el navegador ni si renderiza en el servidor. Devuelve "—" si es nulo/inválido. */
 export function formatFechaHora(v: string | Date | null | undefined): string {
   const d = toDate(v);
   if (!d) return "—";
   return new Intl.DateTimeFormat("es-AR", {
     day: "2-digit", month: "2-digit", year: "numeric",
     hour: "2-digit", minute: "2-digit",
+    timeZone: "America/Argentina/Buenos_Aires",
   }).format(d);
 }

@@ -16,7 +16,7 @@ import {
 } from "@/lib/domain";
 import { getConfiguracion } from "@/lib/config";
 import { registrarAuditoria } from "@/lib/audit";
-import { formatCreditoNumero, nombreCompleto } from "@/lib/utils";
+import { formatCreditoNumero, nombreCompleto, hoyComercial } from "@/lib/utils";
 import type { NextRequest } from "next/server";
 
 interface RouteParams {
@@ -161,7 +161,7 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
     incluirSabado: config.simulador.incluirSabadoNoHabil,
     feriados: config.simulador.feriados,
   };
-  const fechaInicio = body.fecha_inicio ? new Date(body.fecha_inicio) : new Date();
+  const fechaInicio = body.fecha_inicio ? new Date(body.fecha_inicio) : hoyComercial();
 
   const plan = construirPlanAmortizacion(
     nuevoCapital,
