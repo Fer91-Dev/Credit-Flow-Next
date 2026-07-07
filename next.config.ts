@@ -11,7 +11,7 @@ const CSP = [
   "default-src 'self'",
   "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
   "style-src 'self' 'unsafe-inline'",
-  `img-src 'self' data: blob: ${SUPA}`.trim(),
+  `img-src 'self' data: blob: https://api.dicebear.com ${SUPA}`.trim(), // dicebear = avatares generados
   "font-src 'self' data:",
   `connect-src 'self' ${SUPA} ${WSS}`.trim(),
   "frame-ancestors 'none'",
