@@ -126,9 +126,15 @@ export function PasswordFields({
   minLength?: number;
 }) {
   const noCoincide = confirm.length > 0 && password !== confirm;
+  const muyCorta = password.length > 0 && password.length < minLength;
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-      <Field label={label} required={required} hint={`mínimo ${minLength} caracteres`}>
+      <Field
+        label={label}
+        required={required}
+        error={muyCorta ? `Mínimo ${minLength} caracteres (llevás ${password.length})` : undefined}
+        hint={muyCorta ? undefined : `mínimo ${minLength} caracteres`}
+      >
         <PasswordInput value={password} onChange={(e) => onPassword(e.target.value)} placeholder="••••••••" required={required} />
       </Field>
       <Field label={`Repetir ${label.toLowerCase()}`} required={required} error={noCoincide ? "Las contraseñas no coinciden" : undefined}>
