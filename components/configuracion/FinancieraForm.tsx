@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { Check, Loader2, Upload, X, Building2 } from "lucide-react";
 import { Field, Input, CuitInput, TelInput } from "@/components/ui/field";
 import { useFinanciera, type Financiera } from "@/lib/swr";
+import { esEmailValido, esCuitValido } from "@/lib/utils";
 import { useToast } from "@/components/ui/toast";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -43,6 +44,8 @@ export function FinancieraForm() {
 
   const guardar = async () => {
     if (!form.nombre.trim()) { toast.error("El nombre de la financiera es obligatorio"); return; }
+    if (form.cuit && !esCuitValido(form.cuit)) { toast.error("El CUIT debe tener 11 dígitos"); return; }
+    if (form.email && !esEmailValido(form.email)) { toast.error("Email inválido (ej. nombre@correo.com)"); return; }
     setSaving(true);
     try {
       const res = await fetch("/api/financiera", {

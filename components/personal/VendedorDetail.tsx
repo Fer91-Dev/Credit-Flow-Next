@@ -15,10 +15,10 @@ import { Avatar } from "@/components/ui/Avatar";
 import { Emoji } from "@/components/ui/Emoji";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Field, Input, Select, Textarea } from "@/components/ui/field";
+import { Field, Input, Select, Textarea, DigitInput, TelInput } from "@/components/ui/field";
 import {
   formatMonto, formatFecha, formatFechaHora, formatCreditoNumero, nombreCompleto,
-  numeroAInput, maskMontoInput, parseMontoInput,
+  numeroAInput, maskMontoInput, parseMontoInput, esEmailValido,
 } from "@/lib/utils";
 import { useConfirm } from "@/components/ui/confirm";
 import { useToast } from "@/components/ui/toast";
@@ -1011,12 +1011,17 @@ function DatosTab({ vendedor, guardar }: { vendedor: VendedorDetalle; guardar: (
     notas: vendedor.notas ?? "",
   });
   const [saving, setSaving] = useState(false);
-  const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
+  const [emailError, setEmailError] = useState<string | null>(null);
+  const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+    if (k === "email") setEmailError(null);
     setF((p) => ({ ...p, [k]: e.target.value }));
+  };
+  const setVal = (k: keyof typeof f) => (v: string) => setF((p) => ({ ...p, [k]: v }));
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!f.nombre.trim()) return;
+    if (f.email.trim() && !esEmailValido(f.email)) { setEmailError("Email inválido (ej. nombre@correo.com)"); return; }
     setSaving(true);
     await guardar(
       {
@@ -1050,14 +1055,14 @@ function DatosTab({ vendedor, guardar }: { vendedor: VendedorDetalle; guardar: (
           <Field label="Nombre" required>
             <Input value={f.nombre} onChange={set("nombre")} placeholder="Nombre y apellido" required />
           </Field>
-          <Field label="DNI / CUIL">
-            <Input value={f.documento} onChange={set("documento")} placeholder="Ej: 20-36049884-3" className="font-mono tabular-nums" />
+          <Field label="DNI / CUIL" hint="solo números">
+            <DigitInput value={f.documento} onValueChange={setVal("documento")} maxLength={11} placeholder="DNI o CUIL" className="font-mono tabular-nums" />
           </Field>
-          <Field label="Email">
+          <Field label="Email" error={emailError ?? undefined}>
             <Input type="email" value={f.email} onChange={set("email")} placeholder="opcional" />
           </Field>
           <Field label="Teléfono">
-            <Input value={f.telefono} onChange={set("telefono")} placeholder="opcional" />
+            <TelInput value={f.telefono} onValueChange={setVal("telefono")} placeholder="10 dígitos (opcional)" />
           </Field>
         </div>
       </section>
