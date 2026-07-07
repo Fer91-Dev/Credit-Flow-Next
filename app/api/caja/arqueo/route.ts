@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { registrarAuditoria } from "@/lib/audit";
 import { esCuentaValida, saldosPorCuenta, round2, CUENTA_LABEL, type Cuenta } from "@/lib/domain";
 import { siguienteNumeroComprobante } from "@/lib/comprobantes";
+import { hoyComercial } from "@/lib/utils";
 import type { NextRequest } from "next/server";
 
 /**
@@ -53,7 +54,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
       return tx.movimientos_caja.create({
         data: {
           ...withTenant(tenantId),
-          fecha: body.fecha ? new Date(body.fecha) : new Date(),
+          fecha: body.fecha ? new Date(body.fecha) : hoyComercial(),
           tipo: "ajuste",
           monto: diferencia, // ya viene con signo (sobrante > 0, faltante < 0)
           cuenta,

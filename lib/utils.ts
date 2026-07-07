@@ -83,6 +83,20 @@ export const esCuitValido = (v: string) => /^\d{11}$/.test(soloDigitos(v)); // 1
 export const esTelValido = (v: string) => soloDigitos(v).length === 10;      // 10 dígitos (AR)
 export const esDniValido = (v: string) => /^\d{7,8}$/.test(soloDigitos(v));  // 7-8 dígitos
 
+/**
+ * Fecha comercial de HOY en Argentina (UTC-3), como `Date` a medianoche UTC. Para las columnas
+ * `@db.Date` (fecha de caja/movimientos): usar ESTO en vez de `new Date()`, que cerca de la
+ * medianoche argentina cae en el día siguiente por UTC (bug real: una entrega a las 23:17 ART
+ * se guardaba con fecha del día siguiente y desaparecía del filtro).
+ */
+export function hoyComercial(): Date {
+  const ymd = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Argentina/Buenos_Aires",
+    year: "numeric", month: "2-digit", day: "2-digit",
+  }).format(new Date());
+  return new Date(`${ymd}T00:00:00.000Z`);
+}
+
 /** Número guardado → texto de input es-AR (para precargar campos en modo edición). */
 export function numeroAInput(n: number): string {
   return n.toLocaleString("es-AR", { maximumFractionDigits: 2 });

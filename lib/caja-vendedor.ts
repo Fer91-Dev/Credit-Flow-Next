@@ -4,7 +4,7 @@ import { ApiError } from "@/lib/auth";
 import { registrarAuditoria } from "@/lib/audit";
 import { saldosPorCuenta, totalesCaja, round2, CUENTA_LABEL, etiquetaCaja, type Cuenta } from "@/lib/domain";
 import { siguienteNumeroComprobante, formatComprobante, type SerieComprobante } from "@/lib/comprobantes";
-import { nombreCompleto } from "@/lib/utils";
+import { nombreCompleto, hoyComercial } from "@/lib/utils";
 
 /** Saldo de una cuenta de una caja (vendedor o principal con vendedorId = null). */
 async function saldoCuenta(tenantId: string, vendedorId: string | null, cuenta: Cuenta): Promise<number> {
@@ -123,10 +123,12 @@ export async function registrarMovimientoCajaVendedor(opts: {
 
   // Cada pata (vendedor + principal) es un comprobante propio con su número único.
   const serie: SerieComprobante = accion === "entrega" ? "ENT" : "REN";
+  const fecha = hoyComercial();
   const movVendedor = await prisma.$transaction(async (tx) => {
     const mv = await tx.movimientos_caja.create({
       data: {
         ...withTenant(tenantId),
+        fecha,
         tipo: accion,
         monto: signoVendedor,
         cuenta: cuentaVendedor,
@@ -141,6 +143,7 @@ export async function registrarMovimientoCajaVendedor(opts: {
     await tx.movimientos_caja.create({
       data: {
         ...withTenant(tenantId),
+        fecha,
         tipo: accion,
         monto: -signoVendedor,
         cuenta: cuentaPrincipal,
@@ -192,6 +195,7 @@ export async function registrarGastoCajaVendedor(opts: {
     return tx.movimientos_caja.create({
       data: {
         ...withTenant(tenantId),
+        fecha: hoyComercial(),
         tipo: "ajuste",
         monto: -abs, // egreso
         cuenta,
@@ -245,10 +249,12 @@ export async function registrarTransferenciaCajaVendedor(opts: {
   const origenLbl = etiquetaCaja(true, origen);
   const destinoLbl = etiquetaCaja(true, destino);
 
+  const fecha = hoyComercial();
   const movSalida = await prisma.$transaction(async (tx) => {
     const s = await tx.movimientos_caja.create({
       data: {
         ...withTenant(tenantId),
+        fecha,
         tipo: "transferencia",
         monto: -abs,
         cuenta: origen,
@@ -263,6 +269,7 @@ export async function registrarTransferenciaCajaVendedor(opts: {
     await tx.movimientos_caja.create({
       data: {
         ...withTenant(tenantId),
+        fecha,
         tipo: "transferencia",
         monto: abs,
         cuenta: destino,

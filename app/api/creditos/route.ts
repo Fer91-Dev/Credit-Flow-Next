@@ -24,7 +24,7 @@ import { registrarAuditoria } from "@/lib/audit";
 import { registrarMovimientoStock } from "@/lib/stock";
 import { ctxHasFeature } from "@/lib/entitlements-server";
 import { evaluarClienteParaCredito } from "@/lib/riesgo-server";
-import { formatCreditoNumero, nombreCompleto } from "@/lib/utils";
+import { formatCreditoNumero, nombreCompleto, hoyComercial } from "@/lib/utils";
 import type { NextRequest } from "next/server";
 import type { Prisma } from "@prisma/client";
 
@@ -332,7 +332,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
   }
 
   // Fecha de desembolso y vencimiento de la 1ª cuota (un período después).
-  const fechaInicio = body.fecha_inicio ? new Date(body.fecha_inicio) : new Date();
+  const fechaInicio = body.fecha_inicio ? new Date(body.fecha_inicio) : hoyComercial();
   const proximoPago = body.proximo_pago
     ? new Date(body.proximo_pago)
     : sumarPeriodos(fechaInicio, 1, frecuencia, configActual.simulador.frecuencias);

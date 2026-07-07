@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { registrarAuditoria } from "@/lib/audit";
 import { montoConSigno, totalesCaja, saldosPorCuenta, esCuentaValida, etiquetaCaja } from "@/lib/domain";
 import { siguienteNumeroComprobante, formatComprobante } from "@/lib/comprobantes";
-import { nombreCompleto } from "@/lib/utils";
+import { nombreCompleto, hoyComercial } from "@/lib/utils";
 import type { NextRequest } from "next/server";
 
 /**
@@ -19,9 +19,9 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   const { tenantId } = await requireRole(["admin"], req);
 
   const url = new URL(req.url);
-  const hoy = new Date();
+  const hoy = hoyComercial(); // fecha de Argentina (evita default de rango corrido por UTC)
   const desdeStr = url.searchParams.get("desde")
-    || new Date(hoy.getFullYear(), hoy.getMonth(), 1).toISOString().slice(0, 10);
+    || new Date(Date.UTC(hoy.getUTCFullYear(), hoy.getUTCMonth(), 1)).toISOString().slice(0, 10);
   const hastaStr = url.searchParams.get("hasta") || hoy.toISOString().slice(0, 10);
   const tipo = url.searchParams.get("tipo");
   const cuentaParam = url.searchParams.get("cuenta");
@@ -138,7 +138,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
   const cuenta = esCuentaValida(body.cuenta) ? body.cuenta : "efectivo";
   const descripcion = body.descripcion.trim();
   const metodo = body.metodo?.trim() || null;
-  const fecha = body.fecha ? new Date(body.fecha) : new Date();
+  const fecha = body.fecha ? new Date(`${body.fecha}T00:00:00.000Z`) : hoyComercial();
 
   const mov = await prisma.$transaction(async (tx) => {
     const numero = await siguienteNumeroComprobante(tx, tenantId, "AJU");

@@ -2,7 +2,7 @@ import { requireRole, scopeCreditosVendedor } from "@/lib/auth";
 import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
-import { nombreCompleto, formatCreditoNumero } from "@/lib/utils";
+import { nombreCompleto, formatCreditoNumero, hoyComercial } from "@/lib/utils";
 import {
   imputarPagoEnCuotas,
   diasAtraso,
@@ -133,7 +133,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
   // CONGELADO del plan; el atraso se castiga con mora por cuota vencida.
 
   const config = await getConfiguracion(tenantId);
-  const fechaPago = body.fecha ? new Date(body.fecha) : new Date();
+  const fechaPago = body.fecha ? new Date(body.fecha) : hoyComercial();
 
   // ── Campañas de recuperación activas (Fase 7B) ─────────────────────────────
   // Si el crédito es objetivo de una campaña ACTIVA con quita de intereses vigente

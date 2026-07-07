@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { registrarAuditoria } from "@/lib/audit";
 import { esCuentaValida, CUENTA_LABEL, round2, type Cuenta } from "@/lib/domain";
 import { siguienteNumeroComprobante } from "@/lib/comprobantes";
+import { hoyComercial } from "@/lib/utils";
 import type { NextRequest } from "next/server";
 
 /**
@@ -39,7 +40,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     return errorResponse("El monto debe ser mayor a 0", "INVALID_INPUT", 400);
   }
 
-  const fecha = body.fecha ? new Date(body.fecha) : new Date();
+  const fecha = body.fecha ? new Date(`${body.fecha}T00:00:00.000Z`) : hoyComercial();
   const detalle = body.descripcion?.trim();
   const glosa = `Transferencia ${CUENTA_LABEL[origen]} → ${CUENTA_LABEL[destino]}${detalle ? ` · ${detalle}` : ""}`;
   const origenLbl = `Caja principal (${CUENTA_LABEL[origen]})`;
