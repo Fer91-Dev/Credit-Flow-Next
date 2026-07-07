@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { Emoji } from "@/components/ui/Emoji";
 import { Field, Input, Select } from "@/components/ui/field";
 import { FormActions } from "@/components/ui/form-kit";
-import { maskMontoInput, parseMontoInput, numeroAInput, nombreCompleto } from "@/lib/utils";
+import { maskMontoInput, parseMontoInput, numeroAInput, nombreCompleto, formatCuit } from "@/lib/utils";
 import { useConfirm } from "@/components/ui/confirm";
 import { useToast } from "@/components/ui/toast";
 import { useHasFeature } from "@/components/providers/FeaturesProvider";
@@ -41,7 +41,7 @@ const RE = {
   dni:   /^\d{7,8}$/,                     // DNI argentino: 7 u 8 dígitos
   cuit:  /^\d{2}-?\d{8}-?\d$/,            // CUIT/CUIL: 11 dígitos (guiones opcionales)
   email: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
-  tel:   /^[\d\s()+-]{6,20}$/,           // teléfono: dígitos y símbolos comunes
+  tel:   /^\d{10}$/,                     // teléfono AR: exactamente 10 dígitos
 };
 
 /** Recorta una fecha ISO a yyyy-mm-dd para el input date. */
@@ -154,15 +154,15 @@ export function ClienteForm({ clienteId, initialDocumento, onClose }: ClienteFor
     clearError("documento");
   };
 
-  // Teléfonos: solo dígitos y símbolos de teléfono (+, -, espacio, paréntesis) en vivo.
+  // Teléfonos: SOLO dígitos, 10 (formato AR), en vivo.
   const setTel = (field: "telefono" | "telefono_laboral") => (e: React.ChangeEvent<HTMLInputElement>) => {
-    setFormData((p) => ({ ...p, [field]: e.target.value.replace(/[^\d\s()+-]/g, "").slice(0, 20) }));
+    setFormData((p) => ({ ...p, [field]: soloDigitos(e.target.value, 10) }));
     clearError(field);
   };
 
-  // CUIT/CUIL: solo dígitos y guiones en vivo (ej. 20-36049884-3).
+  // CUIT/CUIL: solo dígitos, formateado en vivo a 20-36049884-3.
   const setCuit = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setFormData((p) => ({ ...p, cuit_cuil: e.target.value.replace(/[^\d-]/g, "").slice(0, 13) }));
+    setFormData((p) => ({ ...p, cuit_cuil: formatCuit(e.target.value) }));
     clearError("cuit_cuil");
   };
 
@@ -187,8 +187,8 @@ export function ClienteForm({ clienteId, initialDocumento, onClose }: ClienteFor
     else if (!RE.dni.test(dni)) e.documento = "DNI inválido (7 u 8 dígitos)";
     if (formData.cuit_cuil.trim() && !RE.cuit.test(formData.cuit_cuil.trim())) e.cuit_cuil = "CUIT/CUIL inválido (11 dígitos)";
     if (formData.email.trim() && !RE.email.test(formData.email.trim())) e.email = "Email inválido";
-    if (formData.telefono.trim() && !RE.tel.test(formData.telefono.trim())) e.telefono = "Teléfono inválido";
-    if (formData.telefono_laboral.trim() && !RE.tel.test(formData.telefono_laboral.trim())) e.telefono_laboral = "Teléfono inválido";
+    if (formData.telefono.trim() && !RE.tel.test(formData.telefono.trim())) e.telefono = "Debe tener 10 dígitos";
+    if (formData.telefono_laboral.trim() && !RE.tel.test(formData.telefono_laboral.trim())) e.telefono_laboral = "Debe tener 10 dígitos";
     return e;
   };
 

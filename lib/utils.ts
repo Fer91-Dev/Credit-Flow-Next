@@ -64,6 +64,25 @@ export function maskMontoInput(raw: string): string {
   return intFmt;
 }
 
+/** Solo dígitos del valor, recortado a `max` caracteres (DNI/CUIT/teléfono). */
+export function soloDigitos(v: string, max = 20): string {
+  return v.replace(/\D/g, "").slice(0, max);
+}
+
+/** Formatea un CUIT/CUIL en vivo a `XX-XXXXXXXX-X` (acepta cualquier entrada, deja solo dígitos). */
+export function formatCuit(v: string): string {
+  const d = soloDigitos(v, 11);
+  if (d.length <= 2) return d;
+  if (d.length <= 10) return `${d.slice(0, 2)}-${d.slice(2)}`;
+  return `${d.slice(0, 2)}-${d.slice(2, 10)}-${d.slice(10)}`;
+}
+
+/** Validaciones comunes de campos. */
+export const esEmailValido = (v: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim());
+export const esCuitValido = (v: string) => /^\d{11}$/.test(soloDigitos(v)); // 11 dígitos
+export const esTelValido = (v: string) => soloDigitos(v).length === 10;      // 10 dígitos (AR)
+export const esDniValido = (v: string) => /^\d{7,8}$/.test(soloDigitos(v));  // 7-8 dígitos
+
 /** Número guardado → texto de input es-AR (para precargar campos en modo edición). */
 export function numeroAInput(n: number): string {
   return n.toLocaleString("es-AR", { maximumFractionDigits: 2 });

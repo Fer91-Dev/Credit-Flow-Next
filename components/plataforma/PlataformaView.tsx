@@ -10,7 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Field, Input } from "@/components/ui/field";
 import { useToast } from "@/components/ui/toast";
 import { PLANES, type PlanClave } from "@/lib/planes";
-import { formatFecha } from "@/lib/utils";
+import { formatFecha, esEmailValido } from "@/lib/utils";
 
 interface TenantRow {
   id: string;
@@ -62,6 +62,7 @@ export function PlataformaView() {
       toast.error("Completá nombre, email del admin y una contraseña de 8+ caracteres");
       return;
     }
+    if (!esEmailValido(nueva.email)) { toast.error("El email del admin es inválido (ej. nombre@correo.com)"); return; }
     setCreando(true);
     try {
       const res = await fetch("/api/admin/financieras", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(nueva) });

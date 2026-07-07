@@ -6,6 +6,7 @@ import {
   Search, LayoutGrid, List, Trash2, KeyRound,
 } from "lucide-react";
 import { useUsuarios, useVendedores, KEYS, type Usuario, type RolUsuario } from "@/lib/swr";
+import { esEmailValido } from "@/lib/utils";
 import { mutate as globalMutate } from "swr";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { KpiCard } from "@/components/ui/KpiCard";
@@ -349,6 +350,7 @@ function UsuarioForm({
 
     if (!editing) {
       if (!email.trim()) { setError("El email es requerido"); return; }
+      if (!esEmailValido(email)) { setError("Email inválido (ej. nombre@correo.com)"); return; }
       if (password.length < 8) { setError("La contraseña debe tener al menos 8 caracteres"); return; }
       if (password !== passwordConfirm) { setError("Las contraseñas no coinciden"); return; }
     }

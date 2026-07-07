@@ -412,7 +412,7 @@ function MovimientoDialog({ open, proveedorId, onClose }: { open: boolean; prove
 const RE_PROV = {
   cuit: /^\d{2}-?\d{8}-?\d$/,            // CUIT/CUIL: 11 dígitos (guiones opcionales)
   email: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
-  tel: /^[\d\s()+-]{6,20}$/,            // teléfono: dígitos y símbolos comunes
+  tel: /^\d{10}$/,                      // teléfono AR: 10 dígitos exactos
 };
 /** Máscara de CUIT en vivo: solo dígitos, formateados XX-XXXXXXXX-X (bloquea letras). */
 function maskCuit(v: string) {
@@ -421,9 +421,9 @@ function maskCuit(v: string) {
   if (d.length <= 10) return `${d.slice(0, 2)}-${d.slice(2)}`;
   return `${d.slice(0, 2)}-${d.slice(2, 10)}-${d.slice(10)}`;
 }
-/** Teléfono: solo dígitos y símbolos comunes (bloquea letras). */
+/** Teléfono: SOLO dígitos, 10 (formato AR). */
 function maskTel(v: string) {
-  return v.replace(/[^\d\s()+-]/g, "").slice(0, 20);
+  return v.replace(/\D/g, "").slice(0, 10);
 }
 
 function ProveedorForm({ open, proveedor, onClose }: { open: boolean; proveedor: Proveedor | null; onClose: (ok?: boolean) => void }) {
@@ -465,7 +465,7 @@ function ProveedorForm({ open, proveedor, onClose }: { open: boolean; proveedor:
     if (!nombre.trim()) e.nombre = "El nombre es requerido";
     if (cuit.trim() && !RE_PROV.cuit.test(cuit.trim())) e.cuit = "CUIT inválido (11 dígitos)";
     if (email.trim() && !RE_PROV.email.test(email.trim())) e.email = "Email con formato inválido";
-    if (telefono.trim() && !RE_PROV.tel.test(telefono.trim())) e.telefono = "Teléfono inválido";
+    if (telefono.trim() && !RE_PROV.tel.test(telefono.trim())) e.telefono = "Debe tener 10 dígitos";
     return e;
   };
 
@@ -532,7 +532,7 @@ function ProveedorForm({ open, proveedor, onClose }: { open: boolean; proveedor:
               <IconInput icon={Mail} type="email" inputMode="email" value={email} onChange={(e) => { setEmail(e.target.value); clearErr("email"); }} placeholder="ventas@proveedor.com" />
             </Field>
             <Field label="Teléfono" error={errs.telefono}>
-              <IconInput icon={Phone} inputMode="tel" value={telefono} onChange={(e) => { setTelefono(maskTel(e.target.value)); clearErr("telefono"); }} placeholder="11-4567-8900" />
+              <IconInput icon={Phone} inputMode="tel" value={telefono} onChange={(e) => { setTelefono(maskTel(e.target.value)); clearErr("telefono"); }} placeholder="1145678900" />
             </Field>
           </div>
           <Field label="Dirección">

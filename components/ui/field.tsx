@@ -1,5 +1,5 @@
 import { ChevronDown } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, soloDigitos, formatCuit } from "@/lib/utils";
 
 interface FieldProps {
   label: string;
@@ -31,6 +31,60 @@ const inputBase =
 
 export function Input({ className, ...props }: React.InputHTMLAttributes<HTMLInputElement>) {
   return <input className={cn(inputBase, className)} {...props} />;
+}
+
+/** Props comunes de los inputs "value-based" que sanitizan la entrada. */
+type SanitizedProps = Omit<React.InputHTMLAttributes<HTMLInputElement>, "value" | "onChange" | "type"> & {
+  value: string;
+  onValueChange: (v: string) => void;
+};
+
+/**
+ * Input que SOLO admite dígitos (bloquea letras/símbolos al tipear), recortado a `maxLength`.
+ * Para DNI, teléfono, códigos numéricos. Devuelve el string limpio por `onValueChange`.
+ */
+export function DigitInput({ value, onValueChange, maxLength = 20, className, ...props }: SanitizedProps & { maxLength?: number }) {
+  return (
+    <input
+      type="text"
+      inputMode="numeric"
+      className={cn(inputBase, className)}
+      value={value}
+      onChange={(e) => onValueChange(soloDigitos(e.target.value, maxLength))}
+      onKeyDown={(e) => { if (e.key.length === 1 && !/\d/.test(e.key) && !e.ctrlKey && !e.metaKey) e.preventDefault(); }}
+      {...props}
+    />
+  );
+}
+
+/** Input de CUIT/CUIL: solo dígitos, formateado en vivo a `XX-XXXXXXXX-X` (11 dígitos). */
+export function CuitInput({ value, onValueChange, className, ...props }: SanitizedProps) {
+  return (
+    <input
+      type="text"
+      inputMode="numeric"
+      placeholder="20-12345678-9"
+      className={cn(inputBase, "font-mono", className)}
+      value={formatCuit(value)}
+      onChange={(e) => onValueChange(formatCuit(e.target.value))}
+      {...props}
+    />
+  );
+}
+
+/** Input de teléfono: solo dígitos (default 10, formato AR). */
+export function TelInput({ value, onValueChange, maxLength = 10, className, ...props }: SanitizedProps & { maxLength?: number }) {
+  return (
+    <input
+      type="tel"
+      inputMode="numeric"
+      className={cn(inputBase, className)}
+      value={value}
+      onChange={(e) => onValueChange(soloDigitos(e.target.value, maxLength))}
+      onKeyDown={(e) => { if (e.key.length === 1 && !/\d/.test(e.key) && !e.ctrlKey && !e.metaKey) e.preventDefault(); }}
+      {...props}
+    />
+  );
 }
 
 /** Handlers para impedir copiar / cortar / pegar / arrastrar en campos sensibles (contraseñas). */

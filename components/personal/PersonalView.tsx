@@ -16,7 +16,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Field, Input, Select, PasswordFields } from "@/components/ui/field";
 import { ModalHeader, MoneyInput, FormActions, MODAL_CONTENT } from "@/components/ui/form-kit";
-import { maskMontoInput, parseMontoInput, numeroAInput } from "@/lib/utils";
+import { maskMontoInput, parseMontoInput, numeroAInput, soloDigitos, esEmailValido } from "@/lib/utils";
 import { useConfirm } from "@/components/ui/confirm";
 import { useToast } from "@/components/ui/toast";
 
@@ -466,6 +466,7 @@ function PersonalForm({
     // Alta: la cuenta de acceso es obligatoria (el agente necesita loguearse para trabajar).
     if (!editing) {
       if (!email.trim()) { setError("El email es requerido: es el usuario de acceso del agente"); return; }
+      if (!esEmailValido(email)) { setError("Email inválido (ej. nombre@correo.com)"); return; }
       if (cuentaPassword.length < 8) { setError("La contraseña de acceso debe tener al menos 8 caracteres"); return; }
       if (cuentaPassword !== cuentaPasswordConfirm) { setError("Las contraseñas no coinciden"); return; }
     }
@@ -529,7 +530,7 @@ function PersonalForm({
               <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder={editing ? "opcional" : "usuario@financiera.com"} required={!editing} />
             </Field>
             <Field label="Teléfono">
-              <Input value={telefono} onChange={(e) => setTelefono(e.target.value)} placeholder="opcional" />
+              <Input value={telefono} inputMode="numeric" onChange={(e) => setTelefono(soloDigitos(e.target.value, 10))} placeholder="10 dígitos (opcional)" />
             </Field>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -632,6 +633,7 @@ function CrearCuentaDialog({ vendedor, onClose }: { vendedor: Vendedor | null; o
     e.preventDefault();
     if (!vendedor) return;
     if (!email.trim()) { setError("El email es requerido"); return; }
+    if (!esEmailValido(email)) { setError("Email inválido (ej. nombre@correo.com)"); return; }
     if (password.length < 8) { setError("La contraseña debe tener al menos 8 caracteres"); return; }
     if (password !== passwordConfirm) { setError("Las contraseñas no coinciden"); return; }
     const ok = await confirm({

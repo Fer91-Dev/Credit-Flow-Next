@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Check, Loader2, Upload, X, Building2 } from "lucide-react";
-import { Field, Input } from "@/components/ui/field";
+import { Field, Input, CuitInput, TelInput } from "@/components/ui/field";
 import { useFinanciera, type Financiera } from "@/lib/swr";
 import { useToast } from "@/components/ui/toast";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -111,10 +111,10 @@ export function FinancieraForm() {
           <Input value={form.razon_social ?? ""} onChange={(e) => set("razon_social", e.target.value)} placeholder="Créditos del Norte S.A." />
         </Field>
         <Field label="CUIT" hint="11 dígitos">
-          <Input value={form.cuit ?? ""} onChange={(e) => set("cuit", e.target.value)} placeholder="30-12345678-9" className="font-mono" />
+          <CuitInput value={form.cuit ?? ""} onValueChange={(v) => set("cuit", v)} />
         </Field>
-        <Field label="Teléfono">
-          <Input value={form.telefono ?? ""} onChange={(e) => set("telefono", e.target.value)} placeholder="381 412-3693" />
+        <Field label="Teléfono" hint="10 dígitos">
+          <TelInput value={form.telefono ?? ""} onValueChange={(v) => set("telefono", v)} placeholder="3814123693" />
         </Field>
         <Field label="Email">
           <Input type="email" value={form.email ?? ""} onChange={(e) => set("email", e.target.value)} placeholder="contacto@financiera.com" />
