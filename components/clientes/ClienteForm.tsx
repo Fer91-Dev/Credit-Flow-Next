@@ -79,7 +79,8 @@ export function ClienteForm({ clienteId, initialDocumento, onClose }: ClienteFor
   const [cuitDup, setCuitDup] = useState<{ nombre: string } | null>(null); // otro cliente con ese CUIT
   const confirm = useConfirm();
   const toast = useToast();
-  const tieneRiesgo = useHasFeature("riesgo_originacion");
+  // El consentimiento de bureau solo aplica al plan Pro (verificación externa).
+  const tieneRiesgo = useHasFeature("bureau_credito");
 
   useEffect(() => {
     if (clienteId) fetchCliente();

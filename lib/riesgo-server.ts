@@ -19,6 +19,8 @@ export interface EvaluacionRiesgo extends ResultadoOriginacion {
   ingresoNetoMensual: number;
   deudaCuotaMensualVigente: number;
   scoreInterno: ScoreResult;
+  /** Cantidad de créditos vivos (activos + vencidos) del cliente. */
+  creditosActivos: number;
 }
 
 /**
@@ -62,12 +64,15 @@ export async function evaluarClienteParaCredito(params: {
     : [];
 
   const hoy = Date.now();
+  const idsVivosSet = new Set(idsVivos);
   let cuotasVencidas = 0;
   let cuotasCumplidas = 0;
+  let tieneCuotasVencidas = false; // vencida e impaga en un crédito vivo → bloqueo duro
   for (const q of cuotas) {
     if (q.fecha_vencimiento.getTime() < hoy) {
       cuotasVencidas += 1;
       if (q.estado === "pagada") cuotasCumplidas += 1;
+      else if (idsVivosSet.has(q.credito_id)) tieneCuotasVencidas = true;
     }
   }
 
@@ -105,9 +110,14 @@ export async function evaluarClienteParaCredito(params: {
 
   const { politica } = await getRiesgoConfig(tenantId);
   const resultado = evaluarOriginacion(
-    { ingresoNetoMensual, cuotaEstimada, montoSolicitado, deudaCuotaMensualVigente, scoreInterno, senalesBureau },
+    {
+      ingresoNetoMensual, cuotaEstimada, montoSolicitado, deudaCuotaMensualVigente,
+      scoreInterno, senalesBureau,
+      creditosActivos: idsVivos.length,
+      tieneCuotasVencidas,
+    },
     politica,
   );
 
-  return { ...resultado, ingresoNetoMensual, deudaCuotaMensualVigente, scoreInterno };
+  return { ...resultado, ingresoNetoMensual, deudaCuotaMensualVigente, scoreInterno, creditosActivos: idsVivos.length };
 }

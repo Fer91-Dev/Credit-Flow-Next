@@ -495,8 +495,8 @@ export function PagoForm({ creditoId, clienteId, onClose }: PagoFormProps) {
               </p>
             ) : (
               <div className="rounded-xl border border-border overflow-hidden">
-                <div className="max-h-[34vh] overflow-y-auto">
-                  <table className="w-full text-xs border-separate border-spacing-0">
+                <div className="max-h-[34vh] overflow-auto">
+                  <table className="w-full min-w-[26rem] text-xs border-separate border-spacing-0">
                     <thead className="sticky top-0 z-10">
                       <tr className="bg-card">
                         <th className="px-2 py-2 text-center font-semibold text-muted-foreground border-b border-border w-8"></th>

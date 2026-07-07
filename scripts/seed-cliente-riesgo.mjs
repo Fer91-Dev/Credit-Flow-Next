@@ -67,7 +67,7 @@ async function main() {
   console.log("  • Monto 30.000 · 6 cuotas  → 🟢 Aprobado (cuota entra en el 30% del ingreso)");
   console.log("  • Monto 600.000 · 12 cuotas → 🔴 No califica (la cuota supera la capacidad)");
   console.log("  • Cambiá la situación BCRA a 3 (ficha → Cargar manual) → 🔴 por bureau");
-  console.log("\nRecordá tener la feature encendida: node scripts/toggle-feature.mjs on riesgo_originacion");
+  console.log("\nEl motor de originación corre en todos los planes. Para la verificación de bureau (Pro): node scripts/toggle-feature.mjs on bureau_credito");
 }
 
 main()

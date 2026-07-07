@@ -22,7 +22,6 @@ import { siguienteNumeroComprobante } from "@/lib/comprobantes";
 import { getConfiguracion } from "@/lib/config";
 import { registrarAuditoria } from "@/lib/audit";
 import { registrarMovimientoStock } from "@/lib/stock";
-import { ctxHasFeature } from "@/lib/entitlements-server";
 import { evaluarClienteParaCredito } from "@/lib/riesgo-server";
 import { formatCreditoNumero, nombreCompleto, hoyComercial } from "@/lib/utils";
 import type { NextRequest } from "next/server";
@@ -145,7 +144,7 @@ async function asegurarFichaVendedor(
 
 export const POST = withErrorHandler(async (req: NextRequest) => {
   // Otorgar créditos: admin y vendedor. El cobrador NO puede otorgar.
-  const { tenantId, role, vendedorId: miVendedorId, userId, nombre, email, features } = await requireRole(["admin", "vendedor"], req);
+  const { tenantId, role, vendedorId: miVendedorId, userId, nombre, email } = await requireRole(["admin", "vendedor"], req);
 
   let body: any;
   try {
@@ -292,13 +291,15 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     feriados: configActual.simulador.feriados,
   };
 
-  // ─── Riesgo / originación (feature premium) ───
-  // Si el tenant tiene la feature, se evalúa al cliente contra la política ANTES de otorgar.
-  // "rechazado" + política "bloquear" → corta. "rechazado" + "autorizar" → solo un admin puede
-  // seguir con `autorizacion_riesgo: true` (decisión humana asumiendo el riesgo). Se guarda el
-  // snapshot de la evaluación en el crédito (congela la decisión).
+  // ─── Riesgo / originación (motor base, TODOS los planes) ───
+  // Siempre se evalúa al cliente contra la política ANTES de otorgar (capacidad de pago por
+  // sueldo, tope de créditos activos, bloqueo por mora). "rechazado" + política "bloquear" (o
+  // bloqueo duro por mora) → corta. "rechazado" + "autorizar" → solo un admin puede seguir con
+  // `autorizacion_riesgo: true` (decisión humana asumiendo el riesgo). Se guarda el snapshot de
+  // la evaluación en el crédito (congela la decisión). Las señales de bureau solo pesan si el
+  // tenant tiene el plan Pro y consultó (BCRA/Nosis/Veraz); si no, el motor usa datos internos.
   let riesgoSnapshot: Prisma.InputJsonValue | undefined;
-  if (ctxHasFeature({ features }, "riesgo_originacion")) {
+  {
     const tasaPeriodica = tasaPeriodicaSegunConvencion(body.tasa, configActual.convencionTasa, frecuencia, configActual.simulador.frecuencias);
     const cuotaEstimada = cuotaMensualFrancesa(body.monto_original, tasaPeriodica, body.plazo_meses);
     const ev = await evaluarClienteParaCredito({ tenantId, clienteId: body.cliente_id, montoSolicitado: body.monto_original, cuotaEstimada });

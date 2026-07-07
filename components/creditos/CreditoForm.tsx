@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { motion } from "framer-motion";
-import { DollarSign, Eye, EyeOff, Info, Percent, Search, UserPlus, X, RefreshCw } from "lucide-react";
+import { DollarSign, Eye, EyeOff, Info, Percent, Search, UserPlus, X, RefreshCw, PanelLeftClose, PanelLeftOpen, ListOrdered } from "lucide-react";
 import { Emoji } from "@/components/ui/Emoji";
 import { Field, Input, Select } from "@/components/ui/field";
 import { ClienteForm, type ClienteCreado } from "@/components/clientes/ClienteForm";
@@ -14,7 +14,6 @@ import {
 import { useConfiguracion, useMiPerfilVendedor, useMiCaja, useFinanciera, type CuentaCaja, type Producto } from "@/lib/swr";
 import { useConfirm } from "@/components/ui/confirm";
 import { useToast } from "@/components/ui/toast";
-import { useHasFeature } from "@/components/providers/FeaturesProvider";
 import { formatNumero, parseMontoInput, maskMontoInput, numeroAInput, formatFecha, formatMonto, formatCreditoNumero, nombreCompleto } from "@/lib/utils";
 import { imprimirPlanPagos } from "@/lib/plan-print";
 import {
@@ -43,9 +42,15 @@ interface EvalRiesgo {
   ratioCuotaIngreso: number | null;
   bloquea: boolean;
   ingresoNetoMensual: number;
+  /** Suma de cuotas mensuales de otros créditos vivos del cliente. */
+  deudaCuotaMensualVigente: number;
+  /** Cantidad de créditos vivos (activos + vencidos) del cliente. */
+  creditosActivos: number;
   cuotaEstimada: number;
   capacidad: { cuotaMaxima: number; montoIndicativo: number };
   scoreInterno: { categoria: string; label: string };
+  /** Monto máximo sugerido según el sueldo (capacidad de pago + tope por ingreso). 0 = sin margen. */
+  montoMaximoSugerido: number;
 }
 
 interface CreditoFormProps {
@@ -122,6 +127,9 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
   const [error, setError] = useState<string | null>(null);
   const [vista, setVista] = useState<"operador" | "cliente">("operador");
   const [mounted, setMounted] = useState(false);
+  // Calculadora (parámetros) colapsable: se esconde barriendo a la izquierda para dar todo
+  // el ancho al cronograma. Clave para leer el detalle de cuotas en pantallas chicas.
+  const [calcAbierta, setCalcAbierta] = useState(true);
   useEffect(() => setMounted(true), []);
   const [prefilled, setPrefilled] = useState(false);
   // Alta rápida de cliente desde el buscador (cuando el DNI no existe).
@@ -131,8 +139,8 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
   // Crédito ya creado → pantalla de éxito (numero generado).
   const [created, setCreated] = useState<{ numero: number | null; monto_original: number } | null>(null);
 
-  // ── Riesgo / originación (feature premium) ──
-  const tieneRiesgo = useHasFeature("riesgo_originacion");
+  // ── Riesgo / originación (motor base: todos los planes; la verificación de bureau es lo premium) ──
+  const tieneRiesgo = true;
   const esAdmin = !perfil; // useMiPerfilVendedor devuelve null para admin; el vendedor trae ficha
   const [riesgoEval, setRiesgoEval] = useState<EvalRiesgo | null>(null);
   const [riesgoLoading, setRiesgoLoading] = useState(false);
@@ -508,12 +516,15 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
 
   return (
     <>
-    <div className="flex h-full min-h-0">
+    <div className="flex h-full min-h-0 overflow-hidden">
 
-      {/* ── IZQUIERDA: parámetros del crédito ── */}
+      {/* ── IZQUIERDA: parámetros del crédito (calculadora colapsable) ── */}
       <form
         onSubmit={handleSubmit}
-        className="flex flex-col w-[300px] xl:w-[330px] shrink-0 border-r border-border bg-card/40"
+        className={`flex flex-col w-full md:w-[300px] xl:w-[330px] shrink-0 border-r border-border bg-card/40 transition-[margin] duration-300 ease-in-out ${
+          calcAbierta ? "ml-0" : "-ml-[100%] md:-ml-[300px] xl:-ml-[330px]"
+        }`}
+        aria-hidden={!calcAbierta}
       >
         {/* Área de campos — scroll interno */}
         <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3">
@@ -742,6 +753,39 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
                       <li key={i} className="flex gap-1.5 text-xs text-muted-foreground"><span className="text-muted-foreground/40">•</span>{m}</li>
                     ))}
                   </ul>
+                  {/* Compromiso actual del cliente: créditos vivos + suma de sus cuotas mensuales
+                      (esta deuda es la que reduce el monto que se le puede otorgar). */}
+                  {riesgoEval.creditosActivos > 0 && (
+                    <p className="mt-2 text-[11px] text-muted-foreground">
+                      Ya tiene <span className="font-semibold text-foreground">{riesgoEval.creditosActivos}</span> crédito{riesgoEval.creditosActivos === 1 ? "" : "s"} vigente{riesgoEval.creditosActivos === 1 ? "" : "s"} · compromiso mensual <span className="font-mono font-semibold text-foreground">{formatMonto(riesgoEval.deudaCuotaMensualVigente)}</span>
+                    </p>
+                  )}
+                  {/* Monto máximo sugerido por el sueldo del cliente (capacidad de pago). Botón para
+                      cargarlo directo en el campo Capital. Solo si hay ingreso → hay número que sugerir. */}
+                  {riesgoEval.montoMaximoSugerido > 0 ? (
+                    <div className="mt-3 flex items-center justify-between gap-2 rounded-lg border border-primary/25 bg-primary/5 px-3 py-2">
+                      <div>
+                        <p className="text-[11px] text-muted-foreground">Monto máximo sugerido <span className="text-muted-foreground/70">· a {sim.plazo || formData.plazo_meses} cuotas</span></p>
+                        <p className="font-mono text-sm font-bold text-foreground">{formatMonto(riesgoEval.montoMaximoSugerido)}</p>
+                        <p className="text-[10px] text-muted-foreground/70">Cambia con el plazo: más cuotas → mayor monto (cuota más chica)</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => { setError(null); setFormData(p => ({ ...p, monto_original: numeroAInput(riesgoEval.montoMaximoSugerido) })); }}
+                        className="shrink-0 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:opacity-90 transition-opacity"
+                      >
+                        Usar
+                      </button>
+                    </div>
+                  ) : riesgoEval.ingresoNetoMensual <= 0 ? (
+                    <p className="mt-3 rounded-lg bg-muted/30 px-3 py-2 text-[11px] text-muted-foreground">
+                      Cargá el ingreso del cliente en su ficha para calcular el monto máximo sugerido.
+                    </p>
+                  ) : (
+                    <p className="mt-3 rounded-lg border border-destructive/25 bg-destructive/5 px-3 py-2 text-[11px] text-destructive">
+                      Sin margen para nuevo crédito: las cuotas de sus créditos vigentes ({formatMonto(riesgoEval.deudaCuotaMensualVigente)}/mes) ya superan su capacidad de pago ({formatMonto(riesgoEval.ingresoNetoMensual)} de ingreso).
+                    </p>
+                  )}
                   <div className="mt-3 grid grid-cols-2 gap-2 text-[11px]">
                     <div className="rounded-lg bg-muted/30 px-2.5 py-1.5">
                       <p className="text-muted-foreground">Cuota máx (capacidad)</p>
@@ -773,7 +817,14 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
         </div>{/* fin área scrolleable */}
 
         {/* Acciones — barra fija al fondo del panel, separada de la zona de carga */}
-        <div className="shrink-0 flex gap-2 justify-end border-t border-border bg-muted/10 px-5 py-3.5">
+        <div className="shrink-0 flex items-center gap-2 justify-end border-t border-border bg-muted/10 px-5 py-3.5">
+          {/* Mobile: pasar a la vista del cronograma (en desktop se ven lado a lado) */}
+          <button
+            type="button" onClick={() => setCalcAbierta(false)}
+            className="md:hidden mr-auto flex items-center gap-1.5 px-3 py-2 rounded-lg border border-border text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+          >
+            <ListOrdered className="h-4 w-4" /> Ver cuotas
+          </button>
           <button
             type="button" onClick={() => onClose(false)}
             className="px-4 py-2 rounded-lg text-sm text-muted-foreground hover:bg-muted transition-colors"
@@ -799,8 +850,17 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
           </div>
         )}
         {/* Sub-header con toggle de vista */}
-        <div className="flex items-center justify-between gap-3 px-5 py-3 border-b border-border shrink-0">
+        <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-border shrink-0">
           <div className="flex items-center gap-2 min-w-0">
+            <button
+              type="button"
+              onClick={() => setCalcAbierta(v => !v)}
+              title={calcAbierta ? "Ocultar la calculadora (ver cuotas a pantalla completa)" : "Mostrar la calculadora"}
+              aria-label={calcAbierta ? "Ocultar calculadora" : "Mostrar calculadora"}
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border text-muted-foreground hover:bg-muted hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+            >
+              {calcAbierta ? <PanelLeftClose className="h-4 w-4" /> : <PanelLeftOpen className="h-4 w-4" />}
+            </button>
             <Emoji name="calendar" className="h-4 w-4 shrink-0" />
             <span className="text-sm font-semibold text-foreground whitespace-nowrap shrink-0">Plan de pagos</span>
             {plan && (
@@ -835,7 +895,7 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
                   {vista === key && !mounted && (
                     <div className="absolute inset-0 rounded-md bg-card shadow-sm border border-border/60" />
                   )}
-                  <span className="relative flex items-center gap-1.5"><Icon className="h-3.5 w-3.5" /> {label}</span>
+                  <span className="relative flex items-center gap-1.5" title={label}><Icon className="h-3.5 w-3.5" /> <span className="hidden sm:inline">{label}</span></span>
                 </button>
               ))}
             </div>
@@ -846,9 +906,9 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
                 type="button"
                 onClick={() => imprimirPlan(vista)}
                 title={`Imprimir vista ${vista}`}
-                className="flex items-center gap-1.5 h-9 px-3.5 rounded-lg border border-border bg-muted/30 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
+                className="flex items-center gap-1.5 h-9 px-2.5 sm:px-3.5 rounded-lg border border-border bg-muted/30 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors shrink-0"
               >
-                <Emoji name="printer" className="h-3.5 w-3.5" /> Imprimir
+                <Emoji name="printer" className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Imprimir</span>
               </button>
             )}
           </div>

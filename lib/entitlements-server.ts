@@ -13,7 +13,7 @@ export function ctxHasFeature(ctx: Pick<AuthContext, "features">, key: FeatureKe
 /**
  * Corta el handler si el tenant NO tiene la feature habilitada. Úsese después de
  * requireAuth/requireRole en endpoints de una feature premium:
- *   const ctx = await requireRole(["admin"], req); requireFeature(ctx, "riesgo_originacion");
+ *   const ctx = await requireRole(["admin"], req); requireFeature(ctx, "bureau_credito");
  * Devuelve 403 con código FEATURE_NOT_ENABLED (el front muestra el upsell del plan).
  */
 export function requireFeature(ctx: Pick<AuthContext, "features">, key: FeatureKey): void {

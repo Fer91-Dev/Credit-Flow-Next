@@ -254,7 +254,7 @@ export function CreditoDetail({ credito }: { credito: Credito }) {
               Sin pagos registrados todavía.
             </p>
           ) : (
-            <div className="rounded-xl border border-border overflow-hidden">
+            <div className="rounded-xl border border-border overflow-x-auto">
               <table className="w-full text-xs border-separate border-spacing-0">
                 <thead>
                   <tr className="bg-muted/30">
@@ -350,7 +350,7 @@ export function CreditoDetail({ credito }: { credito: Credito }) {
               <Info className="h-3.5 w-3.5" /> Sin cronograma persistido para este crédito.
             </p>
           ) : (
-            <div className="rounded-xl border border-border overflow-hidden">
+            <div className="rounded-xl border border-border overflow-x-auto">
               <table className="w-full text-xs border-separate border-spacing-0">
                 <thead>
                   <tr className="bg-muted/30">

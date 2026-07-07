@@ -44,6 +44,14 @@ export interface PoliticaOriginacion {
   scoreExternoMin: number | null;
   /** Rechazar si el titular registra cheques rechazados. */
   rechazaConChequesRechazados: boolean;
+  /** Máximo de créditos activos simultáneos por cliente. 0 = sin límite. */
+  maxCreditosActivos: number;
+  /**
+   * Bloqueo DURO si el cliente tiene cuotas vencidas impagas en créditos vigentes. Es un
+   * impedimento absoluto: no se puede otorgar ni con autorización del admin (a diferencia
+   * del resto, que respeta `accionAlNoCalificar`). No se le presta a quien ya está en mora.
+   */
+  bloquearConCuotasVencidas: boolean;
   /** Qué hace el sistema si el cliente NO califica: cortar el otorgamiento o permitir con autorización del admin. */
   accionAlNoCalificar: "bloquear" | "autorizar";
 }
@@ -56,6 +64,8 @@ export const POLITICA_ORIGINACION_DEFAULT: PoliticaOriginacion = {
   situacionBcraMax: 2,
   scoreExternoMin: null,
   rechazaConChequesRechazados: true,
+  maxCreditosActivos: 0, // sin límite por defecto (cada financiera define su apetito)
+  bloquearConCuotasVencidas: true, // no se le presta a quien ya está en mora (bloqueo duro)
   // Por defecto avisa y deja autorizar (mismo criterio que el límite de otorgamiento del vendedor).
   accionAlNoCalificar: "autorizar",
 };
@@ -147,6 +157,10 @@ export interface EntradaOriginacion {
   scoreInterno?: ScoreResult | null;
   /** Señales de bureau ya normalizadas. `null` = no se consultó. */
   senalesBureau?: SenalesBureau | null;
+  /** Cantidad de créditos vivos (activos + vencidos) del cliente. Default 0. */
+  creditosActivos?: number;
+  /** true si el cliente tiene al menos una cuota vencida e impaga en un crédito vigente. */
+  tieneCuotasVencidas?: boolean;
 }
 
 export interface ResultadoOriginacion {
@@ -181,6 +195,8 @@ export function evaluarOriginacion(
   const semaforos: SemaforoOriginacion[] = ["aprobado", "revisar", "rechazado"];
   let nivel = 0;
   const escalar = (s: SemaforoOriginacion) => { nivel = Math.max(nivel, orden[s]); };
+  // Impedimento absoluto: rechaza y bloquea aunque la política sea "autorizar" (no hay override).
+  let bloqueoDuro = false;
 
   // 1) Capacidad de pago (afordabilidad).
   const ratio = ingreso > 0 ? round2((entrada.cuotaEstimada + deudaVigente) / ingreso) : null;
@@ -232,9 +248,24 @@ export function evaluarOriginacion(
     motivos.push("Sin historial interno ni consulta a bureau: revisar manualmente.");
   }
 
+  // 8) Cuotas vencidas impagas → BLOQUEO DURO (no se le presta a quien ya está en mora).
+  if (politica.bloquearConCuotasVencidas && entrada.tieneCuotasVencidas) {
+    escalar("rechazado");
+    bloqueoDuro = true;
+    motivos.push("Tiene cuotas vencidas impagas en créditos vigentes: no se puede otorgar.");
+  }
+
+  // 9) Tope de créditos activos simultáneos (respeta accionAlNoCalificar, salvo que ya haya bloqueo duro).
+  const creditosActivos = entrada.creditosActivos ?? 0;
+  if (politica.maxCreditosActivos > 0 && creditosActivos >= politica.maxCreditosActivos) {
+    escalar("rechazado");
+    motivos.push(`Ya tiene ${creditosActivos} crédito${creditosActivos === 1 ? "" : "s"} activo${creditosActivos === 1 ? "" : "s"} (máximo ${politica.maxCreditosActivos}).`);
+  }
+
   if (nivel === 0) motivos.push("Cumple la política de originación.");
 
   const semaforo = semaforos[nivel];
-  const bloquea = semaforo === "rechazado" && politica.accionAlNoCalificar === "bloquear";
+  // Bloquea si: impedimento absoluto (mora) o política dura ("bloquear") ante un rechazo.
+  const bloquea = bloqueoDuro || (semaforo === "rechazado" && politica.accionAlNoCalificar === "bloquear");
   return { semaforo, motivos, ratioCuotaIngreso: ratio, capacidad, bloquea };
 }

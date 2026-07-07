@@ -631,6 +631,8 @@ export interface PoliticaOriginacion {
   situacionBcraMax: 1 | 2 | 3 | 4 | 5 | 6;
   scoreExternoMin: number | null;
   rechazaConChequesRechazados: boolean;
+  maxCreditosActivos: number;
+  bloquearConCuotasVencidas: boolean;
   accionAlNoCalificar: "bloquear" | "autorizar";
 }
 export type BureauProveedor = "manual" | "bcra" | "nosis" | "veraz";

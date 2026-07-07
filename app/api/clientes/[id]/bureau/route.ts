@@ -22,7 +22,7 @@ const PROVEEDORES: BureauProveedor[] = ["manual", "bcra", "nosis", "veraz"];
  */
 export const GET = withErrorHandler(async (req: NextRequest, { params }: RouteParams) => {
   const ctx = await requireRole(["admin"], req);
-  requireFeature(ctx, "riesgo_originacion");
+  requireFeature(ctx, "bureau_credito");
   const { id } = await params;
 
   const ultima = await prisma.consultas_bureau.findFirst({
@@ -40,7 +40,7 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
  */
 export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteParams) => {
   const ctx = await requireRole(["admin"], req);
-  requireFeature(ctx, "riesgo_originacion");
+  requireFeature(ctx, "bureau_credito");
   const { tenantId, userId, nombre } = ctx;
   const { id } = await params;
 

@@ -8,8 +8,8 @@
  *   docker compose exec app node scripts/toggle-feature.mjs list [tenantId]
  *
  * Ejemplos:
- *   docker compose exec app node scripts/toggle-feature.mjs on  riesgo_originacion
- *   docker compose exec app node scripts/toggle-feature.mjs off riesgo_originacion
+ *   docker compose exec app node scripts/toggle-feature.mjs on  bureau_credito
+ *   docker compose exec app node scripts/toggle-feature.mjs off bureau_credito
  *   docker compose exec app node scripts/toggle-feature.mjs list
  *
  * Sin tenantId usa el tenant raíz (donde vive toda la data de desarrollo).
@@ -21,7 +21,7 @@ const prisma = new PrismaClient();
 const TENANT_RAIZ = "00000000-0000-0000-0000-000000000001";
 
 // Espejo del catálogo de lib/entitlements.ts (mantener sincronizado).
-const FEATURE_KEYS = ["riesgo_originacion"];
+const FEATURE_KEYS = ["bureau_credito"];
 
 async function main() {
   const accion = (process.argv[2] || "").toLowerCase();

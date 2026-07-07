@@ -225,6 +225,12 @@ export const PUT = withErrorHandler(async (req: NextRequest) => {
     if (p.accionAlNoCalificar !== undefined && !["bloquear", "autorizar"].includes(p.accionAlNoCalificar)) {
       return errorResponse("politica.accionAlNoCalificar debe ser 'bloquear' o 'autorizar'", "INVALID_INPUT", 400);
     }
+    if (p.maxCreditosActivos !== undefined && (!Number.isInteger(p.maxCreditosActivos) || p.maxCreditosActivos < 0)) {
+      return errorResponse("politica.maxCreditosActivos debe ser un entero >= 0 (0 = sin límite)", "INVALID_INPUT", 400);
+    }
+    if (p.bloquearConCuotasVencidas !== undefined && typeof p.bloquearConCuotasVencidas !== "boolean") {
+      return errorResponse("politica.bloquearConCuotasVencidas debe ser booleano", "INVALID_INPUT", 400);
+    }
     // El token del bureau es secreto: si llega el sentinel, se preserva el valor guardado.
     if (body.riesgoConfig?.bureau?.token === MASKED) {
       const existente = await getRiesgoConfig(tenantId);

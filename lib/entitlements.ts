@@ -9,12 +9,16 @@
  * mañana enganchado a facturación) — sin reescribir la feature.
  */
 
-/** Catálogo de features premium. Agregar acá cada nueva capacidad gateada por plan. */
+/** Catálogo de features premium. Agregar acá cada nueva capacidad gateada por plan.
+ *
+ * NOTA: el MOTOR de originación (capacidad de pago por sueldo, tope de créditos activos,
+ * bloqueo por mora, monto sugerido) NO está acá: es base y corre para TODOS los planes.
+ * Lo único premium es la VERIFICACIÓN EXTERNA contra bureaus (BCRA/Nosis/Veraz). */
 export const FEATURES = {
-  riesgo_originacion: {
-    label: "Motor de riesgo / originación",
+  bureau_credito: {
+    label: "Verificación en bureaus de crédito",
     descripcion:
-      "Límites de crédito por ingreso y consulta a bureaus (BCRA/Nosis/Veraz) al otorgar.",
+      "Consulta externa a BCRA / Nosis / Veraz (situación, score, cheques, deuda) al evaluar al cliente.",
     plan: "Pro",
   },
 } as const;

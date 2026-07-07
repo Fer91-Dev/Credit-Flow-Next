@@ -20,7 +20,7 @@ const prisma = new PrismaClient();
 const TENANT_RAIZ = "00000000-0000-0000-0000-000000000001";
 
 // Espejo de lib/planes.ts (mantener sincronizado).
-const PLAN_FEATURES = { free: [], pro: ["riesgo_originacion"] };
+const PLAN_FEATURES = { free: [], pro: ["bureau_credito"] };
 
 async function main() {
   const arg1 = (process.argv[2] || "").toLowerCase();

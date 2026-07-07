@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Settings, Check, Loader2, Percent, Plus, X, MessageSquare, Phone, Mail, Lock } from "lucide-react";
+import { Settings, Check, Loader2, Percent, Plus, X, MessageSquare, Phone, Mail } from "lucide-react";
 import { useConfiguracion, type ConfiguracionFinanciera, type GamificacionConfig, type RentabilidadConfig, type RiesgoConfig } from "@/lib/swr";
-import { FeatureGate, useHasFeature } from "@/components/providers/FeaturesProvider";
+import { FeatureGate } from "@/components/providers/FeaturesProvider";
 import { FinancieraForm } from "@/components/configuracion/FinancieraForm";
 import type { SimuladorConfig, CargosConfig, FrecuenciaOpcion } from "@/lib/domain";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -27,7 +27,6 @@ export function ConfigForm() {
   const [savedKey, setSavedKey] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"financiera" | "motor" | "simulador" | "comunicaciones" | "gamificacion" | "rentabilidad" | "riesgo">("financiera");
-  const riesgoHabilitado = useHasFeature("riesgo_originacion");
 
   // Hidratar el form local cuando llega la config.
   useEffect(() => {
@@ -170,16 +169,15 @@ export function ConfigForm() {
             {/* ─ Rail de secciones (patrón settings: nav lateral) ─ */}
             <nav className="-mx-1 flex gap-1 overflow-x-auto px-1 md:mx-0 md:flex-col md:overflow-visible md:px-0">
               {([
-                { key: "financiera",     label: "Datos de la financiera", premium: false },
-                { key: "motor",          label: "Motor financiero", premium: false },
-                { key: "simulador",      label: "Simulador",         premium: false },
-                { key: "comunicaciones", label: "Comunicaciones",    premium: false },
-                { key: "gamificacion",   label: "Gamificación",      premium: false },
-                { key: "rentabilidad",   label: "Rentabilidad",      premium: false },
-                { key: "riesgo",         label: "Riesgo / Originación", premium: true },
+                { key: "financiera",     label: "Datos de la financiera" },
+                { key: "motor",          label: "Motor financiero" },
+                { key: "simulador",      label: "Simulador" },
+                { key: "comunicaciones", label: "Comunicaciones" },
+                { key: "gamificacion",   label: "Gamificación" },
+                { key: "rentabilidad",   label: "Rentabilidad" },
+                { key: "riesgo",         label: "Riesgo / Originación" },
               ] as const).map(tab => {
                 const active = activeTab === tab.key;
-                const bloqueada = tab.premium && !riesgoHabilitado;
                 return (
                   <button
                     key={tab.key}
@@ -191,7 +189,6 @@ export function ConfigForm() {
                     }`}
                   >
                     {tab.label}
-                    {bloqueada && <Lock className="h-3.5 w-3.5 shrink-0 text-muted-foreground/50" />}
                   </button>
                 );
               })}
@@ -751,9 +748,8 @@ export function ConfigForm() {
           </Section>
           )}
 
-          {/* ─── Riesgo / Originación (feature premium) ─── */}
+          {/* ─── Riesgo / Originación (motor base para todos; el bureau es premium) ─── */}
           {activeTab === "riesgo" && (
-          <FeatureGate feature="riesgo_originacion">
           <Section
             title="Política de originación"
             desc="Límites de crédito según el ingreso del cliente. Si un cliente no califica, la decisión queda en el admin (puede autorizar asumiendo el riesgo). Las señales de bureau (BCRA/Nosis) se conectan en un paso próximo."
@@ -798,6 +794,14 @@ export function ConfigForm() {
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <Field label="Máx. créditos activos por cliente" hint="Tope de créditos vigentes simultáneos. 0 = sin límite">
+                  <Input type="number" min="0" step="1" value={riesgo.politica.maxCreditosActivos}
+                    onChange={e => setRiesgo({ maxCreditosActivos: Math.max(0, Math.trunc(parseFloat(e.target.value) || 0)) })}
+                    className="font-mono tabular-nums" />
+                </Field>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <Field label="Score externo mínimo" hint="0–1000 (Nosis/Veraz). Vacío = no se exige">
                   <Input type="number" min="0" max="1000" step="10"
                     value={riesgo.politica.scoreExternoMin ?? ""}
@@ -812,6 +816,14 @@ export function ConfigForm() {
                 </Field>
               </div>
 
+              <div className={`flex items-center justify-between rounded-lg border border-border px-4 py-3 transition-colors ${riesgo.politica.bloquearConCuotasVencidas ? "bg-primary/[0.06] ring-1 ring-inset ring-primary/25" : "bg-muted/30"}`}>
+                <div>
+                  <p className="text-sm font-medium text-foreground">Bloquear si tiene cuotas vencidas impagas</p>
+                  <p className="text-xs text-muted-foreground">Impedimento absoluto: no se puede otorgar a un cliente que ya está en mora, ni siquiera con autorización del admin.</p>
+                </div>
+                <Toggle checked={riesgo.politica.bloquearConCuotasVencidas} onChange={v => setRiesgo({ bloquearConCuotasVencidas: v })} />
+              </div>
+
               <div className={`flex items-center justify-between rounded-lg border border-border px-4 py-3 transition-colors ${riesgo.politica.rechazaConChequesRechazados ? "bg-primary/[0.06] ring-1 ring-inset ring-primary/25" : "bg-muted/30"}`}>
                 <div>
                   <p className="text-sm font-medium text-foreground">Rechazar con cheques rechazados</p>
@@ -820,9 +832,10 @@ export function ConfigForm() {
                 <Toggle checked={riesgo.politica.rechazaConChequesRechazados} onChange={v => setRiesgo({ rechazaConChequesRechazados: v })} />
               </div>
 
-              {/* ── Bureau de crédito (integración por API) ── */}
+              {/* ── Bureau de crédito (integración por API) — PREMIUM (plan Pro) ── */}
+              <FeatureGate feature="bureau_credito">
               <div className="border-t border-border pt-4">
-                <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-3">Bureau de crédito (integración)</p>
+                <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-3">Bureau de crédito (verificación externa · Pro)</p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <Field label="Proveedor" hint="Fuente de las señales externas (situación BCRA, score, cheques)">
                     <Select value={riesgo.bureau.proveedor}
@@ -865,9 +878,9 @@ export function ConfigForm() {
                     : "Nosis/Veraz requieren contrato del cliente. Al cargar las credenciales, se completa el provider en lib/bureau/ para consultas reales."}
                 </p>
               </div>
+              </FeatureGate>
             </div>
           </Section>
-          </FeatureGate>
           )}
 
             </div>{/* /contenido */}
@@ -891,6 +904,8 @@ function defaultRiesgo(): RiesgoConfig {
       situacionBcraMax: 2,
       scoreExternoMin: null,
       rechazaConChequesRechazados: true,
+      maxCreditosActivos: 0,
+      bloquearConCuotasVencidas: true,
       accionAlNoCalificar: "autorizar",
     },
     bureau: { proveedor: "manual", enabled: false, endpoint: "", token: "", usuario: "" },

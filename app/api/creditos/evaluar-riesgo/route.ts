@@ -1,8 +1,7 @@
 import { requireRole } from "@/lib/auth";
-import { requireFeature } from "@/lib/entitlements-server";
 import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api";
 import { getConfiguracion } from "@/lib/config";
-import { cuotaMensualFrancesa, tasaPeriodicaSegunConvencion, normalizarFrecuencia } from "@/lib/domain";
+import { cuotaMensualFrancesa, capitalMaximoFrances, tasaPeriodicaSegunConvencion, normalizarFrecuencia } from "@/lib/domain";
 import { evaluarClienteParaCredito } from "@/lib/riesgo-server";
 import type { NextRequest } from "next/server";
 
@@ -11,11 +10,10 @@ import type { NextRequest } from "next/server";
  * Preview de la evaluación de originación para el simulador: dado cliente + monto + tasa +
  * plazo, devuelve el semáforo (aprobado/revisar/rechazado) con motivos y capacidad de pago,
  * SIN otorgar nada. La misma evaluación se re-corre autoritativamente en el POST /creditos.
+ * Motor BASE: disponible en todos los planes (la verificación de bureau es lo premium).
  */
 export const POST = withErrorHandler(async (req: NextRequest) => {
-  const ctx = await requireRole(["admin", "vendedor"], req);
-  requireFeature(ctx, "riesgo_originacion");
-  const { tenantId } = ctx;
+  const { tenantId } = await requireRole(["admin", "vendedor"], req);
 
   let body: any;
   try {
@@ -45,5 +43,13 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     excluirCreditoId: body.excluir_credito_id || undefined,
   });
 
-  return successResponse({ ...evaluacion, cuotaEstimada });
+  // Monto máximo sugerido según el sueldo: el MENOR entre (a) el capital cuya cuota francesa
+  // entra en la capacidad de pago (cuota ≤ % del ingreso, ya neto de deuda vigente) a la
+  // tasa/plazo actuales, y (b) el tope por múltiplo de ingreso de la política. 0 si no hay
+  // ingreso cargado (no se puede sugerir sin sueldo). Es orientativo (capital+interés, sin cargos).
+  const { cuotaMaxima, montoIndicativo } = evaluacion.capacidad;
+  const porCuota = capitalMaximoFrances(cuotaMaxima, tasaPeriodica, plazo);
+  const montoMaximoSugerido = montoIndicativo > 0 ? Math.min(porCuota, montoIndicativo) : porCuota;
+
+  return successResponse({ ...evaluacion, cuotaEstimada, montoMaximoSugerido });
 });

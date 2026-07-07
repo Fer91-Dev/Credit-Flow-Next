@@ -81,6 +81,25 @@ export function cuotaMensualFrancesa(
   return round2((principal * tasaMensual) / (1 - factor));
 }
 
+/**
+ * Capital máximo (principal) que produce una cuota francesa `<= cuotaMaxima`. Es la INVERSA
+ * exacta de `cuotaMensualFrancesa`: dado el techo de cuota que el cliente puede pagar y las
+ * condiciones (tasa/plazo), devuelve cuánto se le puede prestar. Usado por el motor de riesgo
+ * para SUGERIR el monto máximo por capacidad de pago (no incluye cargos: es capital+interés).
+ *   P = cuota * (1 - (1+i)^-n) / i   ; si i = 0  ->  cuota * n
+ */
+export function capitalMaximoFrances(
+  cuotaMaxima: number,
+  tasaMensual: number,
+  meses: number
+): number {
+  if (cuotaMaxima <= 0 || meses < 1) return 0;
+  if (tasaMensual === 0) return round2(cuotaMaxima * meses);
+
+  const factor = Math.pow(1 + tasaMensual, -meses);
+  return round2((cuotaMaxima * (1 - factor)) / tasaMensual);
+}
+
 /** Suma `n` meses a una fecha, ajustando fin de mes (ej: 31 ene + 1 = 28/29 feb). */
 export function sumarMeses(fecha: Date, n: number): Date {
   const d = new Date(fecha.getTime());

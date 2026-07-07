@@ -251,7 +251,7 @@ function FichaDialog({ id, onClose, onChanged }: { id: string | null; onClose: (
               </div>
 
               {/* Movimientos */}
-              <div className="rounded-xl border border-border overflow-hidden">
+              <div className="rounded-xl border border-border overflow-x-auto">
                 {proveedor.movimientos.length === 0 ? (
                   <p className="text-xs text-muted-foreground/60 py-10 text-center">Sin movimientos en la cuenta.</p>
                 ) : (

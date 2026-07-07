@@ -36,7 +36,7 @@ const PROVEEDOR_LABEL: Record<string, string> = { bcra: "BCRA", nosis: "Nosis", 
  * tenant no tiene la feature.
  */
 export function ClienteBureauPanel({ clienteId }: { clienteId: string }) {
-  const tiene = useHasFeature("riesgo_originacion");
+  const tiene = useHasFeature("bureau_credito");
   const toast = useToast();
   const [ultima, setUltima] = useState<Consulta | null>(null);
   const [loading, setLoading] = useState(false);
