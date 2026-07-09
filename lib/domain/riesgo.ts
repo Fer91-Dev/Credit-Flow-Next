@@ -47,6 +47,16 @@ export interface PoliticaOriginacion {
   /** Máximo de créditos activos simultáneos por cliente. 0 = sin límite. */
   maxCreditosActivos: number;
   /**
+   * Anti-fraude del sueldo: cuántas veces puede un VENDEDOR editar el ingreso de un cliente
+   * antes de que se bloquee y requiera reseteo de un admin. 0 = sin límite. El admin no tiene tope.
+   */
+  maxEdicionesSueldoVendedor: number;
+  /**
+   * Si al editar el sueldo el nuevo valor supera al anterior en más de este %, se exige un
+   * motivo (queda auditado para revisión del admin). 0 = sin alerta.
+   */
+  alertaSaltoSueldoPct: number;
+  /**
    * Bloqueo DURO si el cliente tiene cuotas vencidas impagas en créditos vigentes. Es un
    * impedimento absoluto: no se puede otorgar ni con autorización del admin (a diferencia
    * del resto, que respeta `accionAlNoCalificar`). No se le presta a quien ya está en mora.
@@ -65,6 +75,8 @@ export const POLITICA_ORIGINACION_DEFAULT: PoliticaOriginacion = {
   scoreExternoMin: null,
   rechazaConChequesRechazados: true,
   maxCreditosActivos: 0, // sin límite por defecto (cada financiera define su apetito)
+  maxEdicionesSueldoVendedor: 3, // un vendedor puede editar el sueldo 3 veces; luego lo resetea un admin
+  alertaSaltoSueldoPct: 50, // subir el sueldo +50% de golpe exige un motivo (auditado)
   bloquearConCuotasVencidas: true, // no se le presta a quien ya está en mora (bloqueo duro)
   // Por defecto avisa y deja autorizar (mismo criterio que el límite de otorgamiento del vendedor).
   accionAlNoCalificar: "autorizar",

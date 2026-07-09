@@ -40,6 +40,7 @@ export function ClientesTable() {
 
   const [query, setQuery] = useState("");
   const [soloInactivos, setSoloInactivos] = useState(false);
+  const [verTodos, setVerTodos] = useState(false); // F3 en el buscador: lista completa A→Z
   const [selected, setSelected] = useState<Sel | null>(null);
   const [dialogOpen, setDialog] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -66,7 +67,17 @@ export function ClientesTable() {
     [clientes],
   );
 
-  const elegir = (c: Cliente) => { setSelected({ id: c.id, nombre: nombreCompleto(c) }); setQuery(""); };
+  // Todos los clientes ordenados alfabéticamente (para la vista "ver todos" con F3).
+  // Respeta el filtro de inactivos si está activo.
+  const todosOrdenados = useMemo(
+    () =>
+      clientes
+        .filter((c) => !soloInactivos || esInactivo(c))
+        .sort((a, b) => nombreCompleto(a).localeCompare(nombreCompleto(b), "es", { sensitivity: "base" })),
+    [clientes, soloInactivos],
+  );
+
+  const elegir = (c: Cliente) => { setSelected({ id: c.id, nombre: nombreCompleto(c) }); setQuery(""); setVerTodos(false); };
 
   const openNew = () => { setEditingId(null); setDialog(true); };
   const openEdit = (id: string) => { setEditingId(id); setDialog(true); };
@@ -113,7 +124,7 @@ export function ClientesTable() {
   // Diálogo de alta/edición (compartido por ambas vistas).
   const formDialog = (
     <Dialog open={dialogOpen} onOpenChange={(open) => { if (!open) handleFormClose(false); }}>
-      <DialogContent className="w-[95vw] sm:max-w-2xl sm:p-7">
+      <DialogContent className="w-[95vw] sm:max-w-3xl sm:p-7">
         <ModalHeader
           icon="bust-in-silhouette"
           title={editingId ? "Editar cliente" : "Nuevo cliente"}
@@ -184,7 +195,11 @@ export function ClientesTable() {
           placeholder="DNI o nombre del cliente…"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter" && resultados.length === 1) elegir(resultados[0]); }}
+          onKeyDown={(e) => {
+            if (e.key === "F3") { e.preventDefault(); setVerTodos((v) => !v); return; }
+            if (e.key === "Escape" && verTodos) { setVerTodos(false); return; }
+            if (e.key === "Enter" && resultados.length === 1) elegir(resultados[0]);
+          }}
           className="h-14 w-full rounded-xl border border-border bg-card pl-12 pr-12 text-base text-foreground placeholder:text-muted-foreground/50 outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/20"
         />
         {query && (
@@ -197,6 +212,13 @@ export function ClientesTable() {
           </button>
         )}
       </div>
+
+      {/* Hint: F3 abre la lista completa */}
+      <p className="-mt-3 text-xs text-muted-foreground/60">
+        Tip: presioná{" "}
+        <kbd className="rounded border border-border bg-muted/50 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-muted-foreground">F3</kbd>{" "}
+        en el buscador para {verTodos ? "cerrar" : "ver"} la lista completa de clientes.
+      </p>
 
       {/* Filtro: solo inactivos (+90 días sin movimiento) */}
       <button
@@ -237,7 +259,45 @@ export function ClientesTable() {
           </div>
         )
       ) : !q ? (
-        <HeroVacio onNew={openNew} />
+        verTodos ? (
+          <div className="space-y-2 max-w-2xl">
+            <div className="flex items-center justify-between">
+              <p className="text-xs text-muted-foreground">
+                {todosOrdenados.length} cliente{todosOrdenados.length !== 1 ? "s" : ""} · orden alfabético
+              </p>
+              <button
+                onClick={() => setVerTodos(false)}
+                className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <X className="h-3.5 w-3.5" /> Cerrar
+              </button>
+            </div>
+            {isLoading ? (
+              <p className="text-sm text-muted-foreground">Cargando…</p>
+            ) : todosOrdenados.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-border/60 p-10 flex flex-col items-center gap-3 text-center">
+                <User className="h-8 w-8 text-muted-foreground/20" />
+                <p className="text-sm font-semibold text-muted-foreground">No hay clientes cargados todavía</p>
+                <button onClick={openNew} className="mt-1 flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm hover:opacity-90 transition-opacity">
+                  <Plus className="h-4 w-4" /> Dar de alta un cliente
+                </button>
+              </div>
+            ) : (
+              <>
+                {todosOrdenados.slice(0, 100).map((c) => (
+                  <ClienteRow key={c.id} cliente={c} onClick={() => elegir(c)} mostrarInactividad={soloInactivos} />
+                ))}
+                {todosOrdenados.length > 100 && (
+                  <p className="pt-1 text-center text-xs text-muted-foreground/60">
+                    Mostrando 100 de {todosOrdenados.length}. Escribí en el buscador para filtrar.
+                  </p>
+                )}
+              </>
+            )}
+          </div>
+        ) : (
+          <HeroVacio onNew={openNew} />
+        )
       ) : isLoading ? (
         <p className="text-sm text-muted-foreground">Buscando…</p>
       ) : resultados.length === 0 ? (

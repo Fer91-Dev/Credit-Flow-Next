@@ -228,6 +228,12 @@ export const PUT = withErrorHandler(async (req: NextRequest) => {
     if (p.maxCreditosActivos !== undefined && (!Number.isInteger(p.maxCreditosActivos) || p.maxCreditosActivos < 0)) {
       return errorResponse("politica.maxCreditosActivos debe ser un entero >= 0 (0 = sin límite)", "INVALID_INPUT", 400);
     }
+    if (p.maxEdicionesSueldoVendedor !== undefined && (!Number.isInteger(p.maxEdicionesSueldoVendedor) || p.maxEdicionesSueldoVendedor < 0)) {
+      return errorResponse("politica.maxEdicionesSueldoVendedor debe ser un entero >= 0 (0 = sin límite)", "INVALID_INPUT", 400);
+    }
+    if (p.alertaSaltoSueldoPct !== undefined && (typeof p.alertaSaltoSueldoPct !== "number" || p.alertaSaltoSueldoPct < 0)) {
+      return errorResponse("politica.alertaSaltoSueldoPct debe ser un número >= 0 (0 = sin alerta)", "INVALID_INPUT", 400);
+    }
     if (p.bloquearConCuotasVencidas !== undefined && typeof p.bloquearConCuotasVencidas !== "boolean") {
       return errorResponse("politica.bloquearConCuotasVencidas debe ser booleano", "INVALID_INPUT", 400);
     }

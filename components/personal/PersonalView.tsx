@@ -85,11 +85,29 @@ export function PersonalView() {
       tone: "danger",
     });
     if (!ok) return;
-    const res = await fetch(`/api/vendedores/${v.id}`, { method: "DELETE" });
-    if (!res.ok) { toast.error("No se pudo eliminar"); return; }
+
+    // Si el agente tiene cuenta de acceso, preguntar si también se borra el login (opción A).
+    // Conservarlo deja el email ocupado; eliminarlo lo libera para reutilizar.
+    let eliminarCuenta = false;
+    if (v.tiene_cuenta) {
+      eliminarCuenta = await confirm({
+        title: "¿Eliminar también la cuenta de acceso?",
+        description: `${v.nombre} tiene una cuenta de login${v.email ? ` (${v.email})` : ""}. Si la conservás, ese email quedará ocupado y no vas a poder reutilizarlo para otro agente. Si la eliminás, se borra el login por completo.`,
+        confirmLabel: "Sí, eliminar el login",
+        cancelLabel: "No, conservar",
+        tone: "danger",
+      });
+    }
+
+    const res = await fetch(`/api/vendedores/${v.id}${eliminarCuenta ? "?eliminar_cuenta=true" : ""}`, { method: "DELETE" });
+    if (!res.ok) {
+      const j = await res.json().catch(() => null);
+      toast.error(j?.error ?? "No se pudo eliminar");
+      return;
+    }
     if (selected?.id === v.id) setSelected(null);
     refrescar();
-    toast.success(`${v.nombre} eliminado`);
+    toast.success(`${v.nombre} eliminado${eliminarCuenta ? " (con su cuenta de acceso)" : ""}`);
   };
 
   const abrirFicha = (v: Vendedor) => setSelected({ id: v.id, nombre: v.nombre });
@@ -489,14 +507,32 @@ function PersonalForm({
       if (!editing) {
         body.crear_cuenta = { email: email.trim(), password: cuentaPassword, rol_acceso: rolAcceso };
       }
-      const res = await fetch(editing ? `/api/vendedores/${vendedor!.id}` : "/api/vendedores", {
-        method: editing ? "PATCH" : "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      const json = await res.json();
+      const enviar = async (extra?: Record<string, unknown>) => {
+        const res = await fetch(editing ? `/api/vendedores/${vendedor!.id}` : "/api/vendedores", {
+          method: editing ? "PATCH" : "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...body, ...extra }),
+        });
+        return res.json();
+      };
+
+      let json = await enviar();
+
+      // Opción B: el email ya tiene una cuenta huérfana (de un agente eliminado) → ofrecer vincularla.
+      if (!json.ok && json.code === "EMAIL_VINCULABLE") {
+        const vincular = await confirm({
+          title: "Ese email ya tiene una cuenta",
+          description: `Existe una cuenta con ${email.trim()} sin agente asociado (quedó de un agente eliminado). ¿Vincularla a ${nombre.trim()}? Se le asignará la contraseña que ingresaste.`,
+          confirmLabel: "Vincular la cuenta",
+        });
+        if (!vincular) { setLoading(false); return; }
+        json = await enviar({ vincular_existente: true });
+      }
+
       if (json.ok) {
-        if (json.data?.cuenta_creada) {
+        if (json.data?.cuenta_vinculada) {
+          toast.success(`${nombre.trim()} creado vinculando la cuenta ${json.data.cuenta_email}`);
+        } else if (json.data?.cuenta_creada) {
           toast.success(`${nombre.trim()} creado con cuenta de acceso (${json.data.cuenta_email})`);
         } else {
           toast.success(editing ? `${nombre.trim()} actualizado` : `${nombre.trim()} creado`);

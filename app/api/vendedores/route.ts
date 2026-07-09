@@ -85,6 +85,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     zona?: string; notas?: string; limite_aprobacion?: number | null;
     comision_config?: unknown;
     crear_cuenta?: { email?: string; password?: string; rol_acceso?: string };
+    vincular_existente?: boolean;
   };
   try {
     body = await req.json();
@@ -115,9 +116,51 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
   const meta = normalizarMonto(body.meta_venta);
   const comisionConfig = normalizarComisionConfig(body.comision_config, comision);
 
+  // Datos del agente (comunes al alta normal y a la vinculación de una cuenta existente).
+  const datosVendedor = {
+    ...withTenant(tenantId),
+    nombre: body.nombre.trim(),
+    email: ccEmail,
+    telefono: body.telefono?.trim() || null,
+    rol,
+    comision_pct: comision,
+    meta_venta: meta,
+    activo: body.activo !== false,
+    documento: body.documento?.trim() || null,
+    fecha_ingreso: body.fecha_ingreso ? new Date(body.fecha_ingreso) : null,
+    direccion: body.direccion?.trim() || null,
+    zona: body.zona?.trim() || null,
+    notas: body.notas?.trim() || null,
+    limite_aprobacion: body.limite_aprobacion != null ? normalizarMonto(body.limite_aprobacion) : null,
+    comision_config: comisionConfig ? (comisionConfig as unknown as Prisma.InputJsonValue) : undefined,
+  };
+
+  const supabase = createAdminClient();
+
+  // ── Vinculación de una cuenta existente (opción B) ──
+  // Si el admin confirmó vincular, se reusa la cuenta huérfana (login + profile) en vez de
+  // crear una nueva: se le define la contraseña del alta y se enlaza al agente nuevo.
+  if (body.vincular_existente === true) {
+    const prof = await prisma.profiles.findFirst({ where: { ...withTenant(tenantId), email: ccEmail } });
+    if (!prof) return errorResponse("No hay una cuenta con ese email para vincular en esta financiera.", "NOT_FOUND", 404);
+    if (prof.vendedor_id) return errorResponse("Esa cuenta ya está vinculada a otro agente.", "DUPLICATE_RECORD", 409);
+
+    if (ccPassword) await supabase.auth.admin.updateUserById(prof.id, { password: ccPassword }).catch(() => {});
+    const vendedor = await prisma.vendedores.create({ data: datosVendedor });
+    await prisma.profiles.update({
+      where: { id: prof.id },
+      data: { full_name: vendedor.nombre, tenant_id: tenantId, role: ccRol, activo: true, vendedor_id: vendedor.id },
+    });
+    await registrarAuditoria({
+      tenantId, entidad: "vendedores", entidadId: vendedor.id, accion: "crear",
+      descripcion: `Agente creado vinculando la cuenta existente ${ccEmail}: ${vendedor.nombre} (${rol})`,
+      meta: { rol, vinculado: true },
+    });
+    return successResponse({ ...vendedor, cuenta_vinculada: true, cuenta_email: ccEmail }, 201);
+  }
+
   // 1) Crear la cuenta de acceso PRIMERO. Si falla (email duplicado, etc.) no se crea el
   //    agente → nunca queda un agente huérfano sin acceso (atomicidad end-to-end).
-  const supabase = createAdminClient();
   const { data: created, error: authErr } = await supabase.auth.admin.createUser({
     email: ccEmail,
     password: ccPassword,
@@ -128,35 +171,20 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
   if (authErr || !created?.user) {
     const msg = authErr?.message ?? "No se pudo crear la cuenta de acceso";
     const dup = /already|registered|exists/i.test(msg);
-    return errorResponse(
-      dup ? "Ya existe una cuenta con ese email" : msg,
-      dup ? "DUPLICATE_RECORD" : "AUTH_ERROR",
-      dup ? 409 : 400,
-    );
+    if (dup) {
+      // ¿Hay una cuenta huérfana (sin agente) en esta financiera con ese email? → se puede vincular.
+      const prof = await prisma.profiles.findFirst({ where: { ...withTenant(tenantId), email: ccEmail }, select: { vendedor_id: true } });
+      if (prof && !prof.vendedor_id) {
+        return errorResponse("Ese email ya tiene una cuenta sin agente asociado en esta financiera.", "EMAIL_VINCULABLE", 409);
+      }
+      return errorResponse("Ya existe un agente con ese email.", "DUPLICATE_RECORD", 409);
+    }
+    return errorResponse(msg, "AUTH_ERROR", 400);
   }
 
   // 2) Crear el agente + su profile. Si algo falla, revertir la cuenta de Auth recién creada.
   try {
-    const vendedor = await prisma.vendedores.create({
-      data: {
-        ...withTenant(tenantId),
-        nombre: body.nombre.trim(),
-        email: ccEmail,
-        telefono: body.telefono?.trim() || null,
-        rol,
-        comision_pct: comision,
-        meta_venta: meta,
-        activo: body.activo !== false,
-        // Datos laborales (Fase 1)
-        documento: body.documento?.trim() || null,
-        fecha_ingreso: body.fecha_ingreso ? new Date(body.fecha_ingreso) : null,
-        direccion: body.direccion?.trim() || null,
-        zona: body.zona?.trim() || null,
-        notas: body.notas?.trim() || null,
-        limite_aprobacion: body.limite_aprobacion != null ? normalizarMonto(body.limite_aprobacion) : null,
-        comision_config: comisionConfig ? (comisionConfig as unknown as Prisma.InputJsonValue) : undefined,
-      },
-    });
+    const vendedor = await prisma.vendedores.create({ data: datosVendedor });
 
     await prisma.profiles.upsert({
       where: { id: created.user.id },

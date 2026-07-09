@@ -211,6 +211,13 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
       cuit_cuil: cuit,
       estado_civil: body.estado_civil?.trim() || null,
       nacionalidad: body.nacionalidad?.trim() || null,
+      // Domicilio estructurado (georef + CP manual)
+      provincia: body.provincia?.trim() || null,
+      localidad: body.localidad?.trim() || null,
+      codigo_postal: body.codigo_postal?.trim() || null,
+      tipo_domicilio: body.tipo_domicilio?.trim() || null,
+      piso: body.piso?.trim() || null,
+      depto: body.depto?.trim() || null,
       // Situación laboral
       situacion_laboral: body.situacion_laboral?.trim() || null,
       ocupacion: body.ocupacion?.trim() || null,

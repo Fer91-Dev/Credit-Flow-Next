@@ -115,6 +115,15 @@ model clientes {
   estado_civil     String?
   nacionalidad     String?
 
+  // Domicilio estructurado (georef AR: provincia→localidad; CP manual). tipo_domicilio =
+  // casa | departamento; si es departamento se cargan piso y depto (ej. 3° C).
+  provincia      String?
+  localidad      String?
+  codigo_postal  String?
+  tipo_domicilio String?
+  piso           String?
+  depto          String?
+
   // Situación laboral
   situacion_laboral        String? // relacion_dependencia | autonomo | monotributista | jubilado | desempleado | otro
   ocupacion                String?
@@ -124,6 +133,10 @@ model clientes {
   // Ingresos / capacidad de pago
   ingreso_mensual Float?
   otros_ingresos  Float?
+  // Anti-fraude: veces que un VENDEDOR editó el sueldo. Al superar el máximo (política), el
+  // campo se bloquea para vendedores hasta que un ADMIN resetee el contador. El sueldo es la
+  // variable central del motor financiero; sin este control un vendedor podría inflarlo.
+  ingreso_ediciones Int @default(0)
 
   // Consentimiento del titular para consultar bureaus de crédito (Ley 25.326 - habeas data).
   // Requisito legal para consultar BCRA/Nosis/Veraz (no aplica al modo manual).

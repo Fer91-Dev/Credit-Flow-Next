@@ -801,6 +801,26 @@ export function ConfigForm() {
                 </Field>
               </div>
 
+              {/* Integridad del sueldo (anti-fraude del vendedor) */}
+              <div className="border-t border-border pt-4">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-3">Integridad del sueldo</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <Field label="Máx. ediciones del sueldo (vendedor)" hint="Veces que un vendedor puede editar el ingreso antes de que un admin deba resetear. 0 = sin límite">
+                    <Input type="number" min="0" step="1" value={riesgo.politica.maxEdicionesSueldoVendedor}
+                      onChange={e => setRiesgo({ maxEdicionesSueldoVendedor: Math.max(0, Math.trunc(parseFloat(e.target.value) || 0)) })}
+                      className="font-mono tabular-nums" />
+                  </Field>
+                  <Field label="Alerta por salto de sueldo (%)" hint="Si el nuevo sueldo supera al anterior en más de este %, se exige un motivo. 0 = sin alerta">
+                    <div className="relative">
+                      <Input type="number" min="0" step="5" value={riesgo.politica.alertaSaltoSueldoPct}
+                        onChange={e => setRiesgo({ alertaSaltoSueldoPct: Math.max(0, parseFloat(e.target.value) || 0) })}
+                        className="font-mono tabular-nums pr-7" />
+                      <Percent className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
+                    </div>
+                  </Field>
+                </div>
+              </div>
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <Field label="Score externo mínimo" hint="0–1000 (Nosis/Veraz). Vacío = no se exige">
                   <Input type="number" min="0" max="1000" step="10"
@@ -905,6 +925,8 @@ function defaultRiesgo(): RiesgoConfig {
       scoreExternoMin: null,
       rechazaConChequesRechazados: true,
       maxCreditosActivos: 0,
+      maxEdicionesSueldoVendedor: 3,
+      alertaSaltoSueldoPct: 50,
       bloquearConCuotasVencidas: true,
       accionAlNoCalificar: "autorizar",
     },

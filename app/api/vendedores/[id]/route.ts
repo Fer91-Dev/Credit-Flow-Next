@@ -4,6 +4,7 @@ import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
 import { registrarAuditoria } from "@/lib/audit";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { esRolValido, resumirVendedor, normalizarComisionPct, normalizarMonto, normalizarComisionConfig } from "@/lib/domain";
 import type { NextRequest } from "next/server";
 
@@ -117,29 +118,57 @@ export const PATCH = withErrorHandler(async (req: NextRequest, { params }: Route
  * apuntando a un vendedor inexistente (referencia rota, vendedor_nombre null sin explicación).
  */
 export const DELETE = withErrorHandler(async (req: NextRequest, { params }: RouteParams) => {
-  const { tenantId } = await requireRole(["admin"], req);
+  const { tenantId, userId } = await requireRole(["admin"], req);
   const { id } = await params;
+  // ?eliminar_cuenta=true → además del agente, borra el login (auth.users + profile).
+  const eliminarCuenta = new URL(req.url).searchParams.get("eliminar_cuenta") === "true";
 
   const existing = await prisma.vendedores.findFirst({ where: { ...withTenant(tenantId), id } });
   if (!existing) {
     return errorResponse("Vendedor no encontrado", "NOT_FOUND", 404);
   }
 
-  await prisma.$transaction([
-    prisma.profiles.updateMany({
+  // Cuentas de login vinculadas a este agente.
+  const cuentas = await prisma.profiles.findMany({
+    where: { ...withTenant(tenantId), vendedor_id: id },
+    select: { id: true, email: true, role: true },
+  });
+
+  if (eliminarCuenta && cuentas.length > 0) {
+    // Guardas anti-lockout: no borrar tu propia cuenta ni la del último administrador.
+    if (cuentas.some((c) => c.id === userId)) {
+      return errorResponse("No podés eliminar tu propia cuenta de acceso desde acá.", "SELF_DELETE", 400);
+    }
+    const adminsAEliminar = cuentas.filter((c) => c.role === "admin").length;
+    if (adminsAEliminar > 0) {
+      const totalAdmins = await prisma.profiles.count({ where: { ...withTenant(tenantId), role: "admin", activo: true } });
+      if (totalAdmins - adminsAEliminar < 1) {
+        return errorResponse("No podés eliminar la cuenta del último administrador.", "LAST_ADMIN", 400);
+      }
+    }
+    // Borrado definitivo de cada cuenta: profile (corta el acceso) + auth.users (libera el email).
+    const admin = createAdminClient();
+    for (const c of cuentas) {
+      await prisma.profiles.delete({ where: { id: c.id } });
+      await admin.auth.admin.deleteUser(c.id).catch(() => {});
+    }
+  } else {
+    // Comportamiento por defecto: desvincular el/los profile(s) y conservar el login.
+    await prisma.profiles.updateMany({
       where: { ...withTenant(tenantId), vendedor_id: id },
       data: { vendedor_id: null },
-    }),
-    prisma.vendedores.delete({ where: { id } }),
-  ]);
+    });
+  }
+
+  await prisma.vendedores.delete({ where: { id } });
 
   await registrarAuditoria({
     tenantId,
     entidad: "vendedores",
     entidadId: id,
     accion: "eliminar",
-    descripcion: `Personal eliminado: ${existing.nombre}`,
+    descripcion: `Personal eliminado: ${existing.nombre}${eliminarCuenta && cuentas.length > 0 ? " (incluida su cuenta de acceso)" : ""}`,
   });
 
-  return successResponse({ id, deleted: true });
+  return successResponse({ id, deleted: true, cuentas_eliminadas: eliminarCuenta ? cuentas.length : 0 });
 });

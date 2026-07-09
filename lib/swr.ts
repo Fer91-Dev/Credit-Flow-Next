@@ -632,6 +632,8 @@ export interface PoliticaOriginacion {
   scoreExternoMin: number | null;
   rechazaConChequesRechazados: boolean;
   maxCreditosActivos: number;
+  maxEdicionesSueldoVendedor: number;
+  alertaSaltoSueldoPct: number;
   bloquearConCuotasVencidas: boolean;
   accionAlNoCalificar: "bloquear" | "autorizar";
 }

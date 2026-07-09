@@ -14,7 +14,7 @@ import {
   round2,
   estadoCoherente,
 } from "@/lib/domain";
-import { getConfiguracion } from "@/lib/config";
+import { getConfiguracion, getRiesgoConfig } from "@/lib/config";
 import type { NextRequest } from "next/server";
 
 interface RouteParams {
@@ -26,7 +26,7 @@ interface RouteParams {
  * Retorna un cliente específico.
  */
 export const GET = withErrorHandler(async (req: NextRequest, { params }: RouteParams) => {
-  const { tenantId } = await requireAuth(req);
+  const { tenantId, role } = await requireAuth(req);
   const { id } = await params;
 
   const cliente = await prisma.clientes.findFirst({
@@ -121,7 +121,19 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
     cuota_total_activos: round2(activos.reduce((s, c) => s + c.cuota, 0)),
   };
 
-  return successResponse({ ...cliente, creditos: creditosConFinanzas, estado_cuenta });
+  // Control de integridad del sueldo (rol-aware): la UI muestra el contador y bloquea el
+  // campo a los vendedores que agotaron sus ediciones (el backend igual lo hace cumplir).
+  const { politica } = await getRiesgoConfig(tenantId);
+  const maxEd = politica.maxEdicionesSueldoVendedor;
+  const esAdmin = role === "admin";
+  const sueldo_control = {
+    ediciones: cliente.ingreso_ediciones,
+    max: maxEd,
+    esAdmin,
+    puedeEditar: esAdmin || maxEd === 0 || cliente.ingreso_ediciones < maxEd,
+  };
+
+  return successResponse({ ...cliente, creditos: creditosConFinanzas, estado_cuenta, sueldo_control });
 });
 
 /**
@@ -139,7 +151,7 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
  * }
  */
 export const PATCH = withErrorHandler(async (req: NextRequest, { params }: RouteParams) => {
-  const { tenantId } = await requireRole(["admin", "vendedor"], req);
+  const { tenantId, role } = await requireRole(["admin", "vendedor"], req);
   const { id } = await params;
 
   // Verificar que el cliente existe y pertenece al usuario
@@ -181,6 +193,12 @@ export const PATCH = withErrorHandler(async (req: NextRequest, { params }: Route
     "cuit_cuil",
     "estado_civil",
     "nacionalidad",
+    "provincia",
+    "localidad",
+    "codigo_postal",
+    "tipo_domicilio",
+    "piso",
+    "depto",
     "situacion_laboral",
     "ocupacion",
     "empleador",
@@ -216,6 +234,45 @@ export const PATCH = withErrorHandler(async (req: NextRequest, { params }: Route
     return errorResponse("No hay campos para actualizar", "INVALID_INPUT", 400);
   }
 
+  // ── Control de integridad del sueldo (anti-fraude) ──
+  // El sueldo es la variable central del motor financiero. Un vendedor puede editarlo un número
+  // limitado de veces (política); superado el tope, se bloquea hasta que un admin resetee. Un
+  // salto grande exige motivo. Todo cambio de sueldo queda auditado (viejo→nuevo, quién).
+  let sueldoLog: { anterior: number | null; nuevo: number | null; motivo: string | null } | null = null;
+  if ("ingreso_mensual" in updateData) {
+    const nuevo = updateData.ingreso_mensual as number | null;
+    const anterior = existing.ingreso_mensual;
+    if (nuevo !== anterior) {
+      const { politica } = await getRiesgoConfig(tenantId);
+      const motivo = typeof body.motivo_sueldo === "string" ? body.motivo_sueldo.trim() : "";
+
+      // Alerta por salto grande → exige un motivo (queda auditado).
+      if (
+        anterior != null && anterior > 0 && nuevo != null &&
+        politica.alertaSaltoSueldoPct > 0 &&
+        nuevo > anterior * (1 + politica.alertaSaltoSueldoPct / 100) &&
+        !motivo
+      ) {
+        return errorResponse(
+          `El nuevo sueldo supera en más de ${politica.alertaSaltoSueldoPct}% al anterior. Ingresá un motivo del cambio.`,
+          "MOTIVO_SUELDO_REQUERIDO", 400,
+        );
+      }
+
+      // Límite de ediciones para VENDEDORES (el admin no tiene tope).
+      if (role === "vendedor" && politica.maxEdicionesSueldoVendedor > 0) {
+        if (existing.ingreso_ediciones >= politica.maxEdicionesSueldoVendedor) {
+          return errorResponse(
+            `Alcanzaste el límite de ${politica.maxEdicionesSueldoVendedor} ediciones del sueldo de este cliente. Pedí a un administrador que resetee el contador.`,
+            "SUELDO_BLOQUEADO", 403,
+          );
+        }
+        updateData.ingreso_ediciones = existing.ingreso_ediciones + 1;
+      }
+      sueldoLog = { anterior, nuevo, motivo: motivo || null };
+    }
+  }
+
   // Normalizar y validar unicidad (DNI prioritario; CUIT diferencia DNI repetidos).
   if ("cuit_cuil" in updateData) updateData.cuit_cuil = normalizarCuit(updateData.cuit_cuil);
   const docFinal = ("documento" in updateData ? updateData.documento : existing.documento) as string | null;
@@ -235,6 +292,24 @@ export const PATCH = withErrorHandler(async (req: NextRequest, { params }: Route
     accion: "actualizar",
     descripcion: `Cliente actualizado: ${nombreCompleto(updated)}`,
   });
+
+  // Traza específica y forense del cambio de sueldo (viejo → nuevo, motivo, contador).
+  if (sueldoLog) {
+    await registrarAuditoria({
+      tenantId,
+      entidad: "clientes",
+      entidadId: id,
+      accion: "actualizar",
+      descripcion: `Sueldo de ${nombreCompleto(updated)}: $${(sueldoLog.anterior ?? 0).toLocaleString("es-AR")} → $${(sueldoLog.nuevo ?? 0).toLocaleString("es-AR")}${sueldoLog.motivo ? ` — ${sueldoLog.motivo}` : ""}`,
+      meta: {
+        ingreso_anterior: sueldoLog.anterior,
+        ingreso_nuevo: sueldoLog.nuevo,
+        motivo: sueldoLog.motivo,
+        rol: role,
+        ediciones: updated.ingreso_ediciones,
+      },
+    });
+  }
 
   return successResponse(updated);
 });

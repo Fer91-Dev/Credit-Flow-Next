@@ -75,7 +75,7 @@ export function MovimientosStockView() {
       />
 
       {/* KPIs del período filtrado */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <KpiCard icon="counterclockwise-arrows-button" label="Movimientos" value={String(totales.movimientos)} accent="primary" />
         <KpiCard icon="chart-increasing" label="Entradas" value={`+${n0(totales.entradas)} u.`} accent="success" mono />
         <KpiCard icon="warning" label="Salidas" value={`−${n0(totales.salidas)} u.`} accent="warning" mono />

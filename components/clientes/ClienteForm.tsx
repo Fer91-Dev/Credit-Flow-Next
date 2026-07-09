@@ -3,7 +3,6 @@
 import { useState, useEffect } from "react";
 import { Emoji } from "@/components/ui/Emoji";
 import { Field, Input, Select } from "@/components/ui/field";
-import { FormActions } from "@/components/ui/form-kit";
 import { maskMontoInput, parseMontoInput, numeroAInput, nombreCompleto, formatCuit } from "@/lib/utils";
 import { useConfirm } from "@/components/ui/confirm";
 import { useToast } from "@/components/ui/toast";
@@ -22,18 +21,23 @@ interface ClienteFormProps {
 const EMPTY = {
   nombre: "", apellido: "", documento: "", email: "", telefono: "", direccion: "", zona: "",
   fecha_nacimiento: "", cuit_cuil: "", estado_civil: "", nacionalidad: "",
+  provincia: "", localidad: "", codigo_postal: "", tipo_domicilio: "", piso: "", depto: "",
   situacion_laboral: "", ocupacion: "", empleador: "",
-  antiguedad_anios: "", antiguedad_meses: "",
   ingreso_mensual: "", otros_ingresos: "",
   telefono_laboral: "", direccion_laboral: "",
   consentimiento_bureau: false,
 };
 
-/** Convierte meses totales guardados en años + meses para los inputs. */
-function splitMeses(total?: number | null): { anios: string; meses: string } {
-  const m = Number(total);
-  if (!m || m <= 0) return { anios: "", meses: "" };
-  return { anios: String(Math.floor(m / 12)), meses: String(m % 12) };
+/** Edad (años cumplidos) a partir de la fecha de nacimiento (yyyy-mm-dd). null si no es válida. */
+function edadDesde(fechaISO: string): number | null {
+  if (!fechaISO) return null;
+  const d = new Date(fechaISO);
+  if (isNaN(d.getTime())) return null;
+  const hoy = new Date();
+  let edad = hoy.getFullYear() - d.getFullYear();
+  const m = hoy.getMonth() - d.getMonth();
+  if (m < 0 || (m === 0 && hoy.getDate() < d.getDate())) edad--;
+  return edad >= 0 && edad < 130 ? edad : null;
 }
 
 // Validaciones de formato.
@@ -77,10 +81,46 @@ export function ClienteForm({ clienteId, initialDocumento, onClose }: ClienteFor
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [dniDup, setDniDup] = useState<{ nombre: string } | null>(null);  // otro cliente con ese DNI
   const [cuitDup, setCuitDup] = useState<{ nombre: string } | null>(null); // otro cliente con ese CUIT
+  // Control anti-fraude del sueldo (viene del GET, rol-aware).
+  const [sueldoControl, setSueldoControl] = useState<{ ediciones: number; max: number; esAdmin: boolean; puedeEditar: boolean } | null>(null);
+  const [sueldoOriginal, setSueldoOriginal] = useState(""); // valor cargado, para detectar el cambio
+  const [motivoSueldo, setMotivoSueldo] = useState("");
+  const [reseteando, setReseteando] = useState(false);
   const confirm = useConfirm();
   const toast = useToast();
   // El consentimiento de bureau solo aplica al plan Pro (verificación externa).
   const tieneRiesgo = useHasFeature("bureau_credito");
+
+  // Domicilio: provincias/localidades desde el proxy georef (server-side, gratis).
+  const [provincias, setProvincias] = useState<{ id: string; nombre: string }[]>([]);
+  const [localidades, setLocalidades] = useState<{ id: string; nombre: string }[]>([]);
+  const [loadingLoc, setLoadingLoc] = useState(false);
+
+  const cargarLocalidades = async (prov: string) => {
+    if (!prov) { setLocalidades([]); return; }
+    setLoadingLoc(true);
+    try {
+      const r = await fetch(`/api/georef?recurso=localidades&provincia=${encodeURIComponent(prov)}`);
+      const j = await r.json();
+      setLocalidades(j.ok ? j.data.items : []);
+    } catch { setLocalidades([]); }
+    finally { setLoadingLoc(false); }
+  };
+
+  // Provincias una sola vez al montar.
+  useEffect(() => {
+    fetch("/api/georef?recurso=provincias")
+      .then((r) => r.json())
+      .then((j) => { if (j.ok) setProvincias(j.data.items); })
+      .catch(() => {});
+  }, []);
+
+  // Al elegir provincia: se recargan las localidades y se resetea la localidad elegida.
+  const setProvincia = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const prov = e.target.value;
+    setFormData((p) => ({ ...p, provincia: prov, localidad: "" }));
+    cargarLocalidades(prov);
+  };
 
   useEffect(() => {
     if (clienteId) fetchCliente();
@@ -122,20 +162,23 @@ export function ClienteForm({ clienteId, initialDocumento, onClose }: ClienteFor
       const json = await res.json();
       if (json.ok) {
         const d = json.data;
-        const { anios, meses } = splitMeses(d.antiguedad_laboral_meses);
         setFormData({
           nombre: d.nombre ?? "", apellido: d.apellido ?? "", documento: d.documento ?? "", email: d.email ?? "",
           telefono: d.telefono ?? "", direccion: d.direccion ?? "", zona: d.zona ?? "",
           fecha_nacimiento: toDateInput(d.fecha_nacimiento), cuit_cuil: d.cuit_cuil ?? "",
           estado_civil: d.estado_civil ?? "", nacionalidad: d.nacionalidad ?? "",
+          provincia: d.provincia ?? "", localidad: d.localidad ?? "", codigo_postal: d.codigo_postal ?? "",
+          tipo_domicilio: d.tipo_domicilio ?? "", piso: d.piso ?? "", depto: d.depto ?? "",
           situacion_laboral: d.situacion_laboral ?? "", ocupacion: d.ocupacion ?? "",
           empleador: d.empleador ?? "",
-          antiguedad_anios: anios, antiguedad_meses: meses,
           ingreso_mensual: d.ingreso_mensual != null ? numeroAInput(d.ingreso_mensual) : "",
           otros_ingresos: d.otros_ingresos != null ? numeroAInput(d.otros_ingresos) : "",
           telefono_laboral: d.telefono_laboral ?? "", direccion_laboral: d.direccion_laboral ?? "",
           consentimiento_bureau: (d as { consentimiento_bureau?: boolean }).consentimiento_bureau ?? false,
         });
+        if (d.provincia) cargarLocalidades(d.provincia); // poblar el select de localidades
+        setSueldoControl(d.sueldo_control ?? null);
+        setSueldoOriginal(d.ingreso_mensual != null ? numeroAInput(d.ingreso_mensual) : "");
       }
     } catch { setError("Error al cargar cliente"); }
   };
@@ -175,8 +218,10 @@ export function ClienteForm({ clienteId, initialDocumento, onClose }: ClienteFor
   };
 
   // Campos de monto (es-AR): se enmascaran en vivo y se parsean a número al enviar.
-  const setMonto = (field: "ingreso_mensual" | "otros_ingresos") => (e: React.ChangeEvent<HTMLInputElement>) =>
+  const setMonto = (field: "ingreso_mensual" | "otros_ingresos") => (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData((p) => ({ ...p, [field]: maskMontoInput(e.target.value) }));
+    clearError(field);
+  };
 
   /** Valida los campos. Devuelve el mapa de errores (vacío si todo OK). */
   const validar = (): Record<string, string> => {
@@ -190,7 +235,29 @@ export function ClienteForm({ clienteId, initialDocumento, onClose }: ClienteFor
     if (formData.email.trim() && !RE.email.test(formData.email.trim())) e.email = "Email inválido";
     if (formData.telefono.trim() && !RE.tel.test(formData.telefono.trim())) e.telefono = "Debe tener 10 dígitos";
     if (formData.telefono_laboral.trim() && !RE.tel.test(formData.telefono_laboral.trim())) e.telefono_laboral = "Debe tener 10 dígitos";
+    // El ingreso es OBLIGATORIO: es la variable central del motor financiero (capacidad de pago).
+    if (!formData.ingreso_mensual.trim() || parseMontoInput(formData.ingreso_mensual) <= 0)
+      e.ingreso_mensual = "El ingreso es obligatorio (variable clave del motor financiero)";
     return e;
+  };
+
+  // Reseteo del contador de ediciones del sueldo (solo admin; el backend lo hace cumplir).
+  const resetearContador = async () => {
+    if (!clienteId || reseteando) return;
+    setReseteando(true);
+    try {
+      const res = await fetch(`/api/clientes/${clienteId}/reset-ingreso`, { method: "POST" });
+      if (res.ok) {
+        setSueldoControl((c) => (c ? { ...c, ediciones: 0, puedeEditar: true } : c));
+        toast.success("Contador de ediciones del sueldo reseteado");
+      } else {
+        toast.error("No se pudo resetear el contador");
+      }
+    } catch {
+      toast.error("Error de red al resetear");
+    } finally {
+      setReseteando(false);
+    }
   };
 
   const handleSubmit = async (ev: React.FormEvent) => {
@@ -226,10 +293,7 @@ export function ClienteForm({ clienteId, initialDocumento, onClose }: ClienteFor
     setError(null);
     try {
       // Campos solo-UI que NO viajan tal cual al server: se transforman.
-      const { apellido, antiguedad_anios, antiguedad_meses, ...rest } = formData;
-      const anios = parseInt(antiguedad_anios) || 0;
-      const meses = parseInt(antiguedad_meses) || 0;
-      const hayAntiguedad = antiguedad_anios !== "" || antiguedad_meses !== "";
+      const { apellido, ...rest } = formData;
 
       // Los montos viajan como número (el texto enmascarado "850.000,00" rompería parseFloat en el server).
       const body = {
@@ -237,10 +301,10 @@ export function ClienteForm({ clienteId, initialDocumento, onClose }: ClienteFor
         // Modelo normalizado: nombre y apellido viajan en columnas separadas.
         nombre: formData.nombre.trim(),
         apellido: apellido.trim(),
-        // Antigüedad total en meses = años*12 + meses (sin romper el modelo actual).
-        antiguedad_laboral_meses: hayAntiguedad ? anios * 12 + meses : "",
         ingreso_mensual: formData.ingreso_mensual ? parseMontoInput(formData.ingreso_mensual) : "",
         otros_ingresos: formData.otros_ingresos ? parseMontoInput(formData.otros_ingresos) : "",
+        // Motivo del cambio de sueldo (lo exige el backend si el salto supera el % configurado).
+        ...(clienteId && formData.ingreso_mensual !== sueldoOriginal ? { motivo_sueldo: motivoSueldo.trim() } : {}),
       };
       const res = await fetch(clienteId ? `/api/clientes/${clienteId}` : "/api/clientes", {
         method: clienteId ? "PATCH" : "POST",
@@ -251,9 +315,17 @@ export function ClienteForm({ clienteId, initialDocumento, onClose }: ClienteFor
       if (json.ok) {
         toast.success(clienteId ? `Cliente ${nombreFull} actualizado` : `Cliente ${nombreFull} creado`);
         onClose(true, json.data as ClienteCreado);
-      } else setError(json.error);
+      } else {
+        // El banner vive arriba del form (a veces fuera de vista); el toast lo hace siempre visible.
+        setError(json.error);
+        toast.error(json.error ?? "No se pudo guardar");
+        // Si faltó el motivo del salto de sueldo, resaltar ese campo.
+        if (json.code === "MOTIVO_SUELDO_REQUERIDO") setErrors((p) => ({ ...p, motivo_sueldo: json.error }));
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Error");
+      const msg = err instanceof Error ? err.message : "Error";
+      setError(msg);
+      toast.error(msg);
     } finally {
       setLoading(false);
     }
@@ -261,6 +333,11 @@ export function ClienteForm({ clienteId, initialDocumento, onClose }: ClienteFor
 
   // Clase de borde rojo para inputs con error.
   const errCls = (field: string) => errors[field] ? "border-destructive focus:border-destructive focus:ring-destructive/20" : "";
+  const edad = edadDesde(formData.fecha_nacimiento);
+  // Estado del candado del sueldo (para bloquear el campo / pedir motivo).
+  const sueldoCambiado = !!clienteId && formData.ingreso_mensual !== sueldoOriginal;
+  const sueldoBloqueado = !!sueldoControl && !sueldoControl.puedeEditar;
+  const edicionesRestantes = sueldoControl && sueldoControl.max > 0 ? sueldoControl.max - sueldoControl.ediciones : null;
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4 max-h-[72vh] overflow-y-auto pr-1">
@@ -299,7 +376,7 @@ export function ClienteForm({ clienteId, initialDocumento, onClose }: ClienteFor
             <Input name="cuit_cuil" type="text" inputMode="numeric" placeholder="Ej: 20-36049884-3" value={formData.cuit_cuil}
               onChange={setCuit} className={cnMono((cuitDup || necesitaCuit) ? "border-destructive focus:border-destructive focus:ring-destructive/20" : errCls("cuit_cuil"))} />
           </Field>
-          <Field label="Fecha de nacimiento">
+          <Field label="Fecha de nacimiento" hint={edad != null ? `${edad} años` : undefined}>
             <Input name="fecha_nacimiento" type="date" value={formData.fecha_nacimiento} onChange={set("fecha_nacimiento")} />
           </Field>
           <Field label="Estado civil">
@@ -315,12 +392,53 @@ export function ClienteForm({ clienteId, initialDocumento, onClose }: ClienteFor
           <Field label="Nacionalidad">
             <Input name="nacionalidad" type="text" placeholder="Ej: Argentina" value={formData.nacionalidad} onChange={set("nacionalidad")} />
           </Field>
-          <Field label="Dirección">
-            <Input name="direccion" type="text" placeholder="Calle y número" value={formData.direccion} onChange={set("direccion")} />
+        </div>
+      </SectionCard>
+
+      {/* Domicilio (georef AR: provincia→localidad; CP manual) */}
+      <SectionCard icon="house" title="Domicilio">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <Field label="Provincia">
+            <Select name="provincia" value={formData.provincia} onChange={setProvincia}>
+              <option value="">Seleccioná…</option>
+              {provincias.map((p) => <option key={p.id} value={p.nombre}>{p.nombre}</option>)}
+            </Select>
+          </Field>
+          <Field
+            label="Localidad"
+            hint={loadingLoc ? "Cargando localidades…" : (!formData.provincia ? "Elegí primero la provincia" : undefined)}
+          >
+            <Select name="localidad" value={formData.localidad} onChange={set("localidad")} disabled={!formData.provincia || loadingLoc}>
+              <option value="">Seleccioná…</option>
+              {localidades.map((l) => <option key={l.id} value={l.nombre}>{l.nombre}</option>)}
+            </Select>
+          </Field>
+          <Field label="Dirección" hint="Calle y número">
+            <Input name="direccion" type="text" placeholder="Ej: San Martín 1234" value={formData.direccion} onChange={set("direccion")} />
+          </Field>
+          <Field label="Código postal">
+            <Input name="codigo_postal" type="text" inputMode="numeric" placeholder="Ej: 4000" value={formData.codigo_postal} onChange={set("codigo_postal")} className="font-mono tabular-nums" />
+          </Field>
+          <Field label="Tipo de domicilio">
+            <Select name="tipo_domicilio" value={formData.tipo_domicilio} onChange={set("tipo_domicilio")}>
+              <option value="">Sin especificar</option>
+              <option value="casa">Casa</option>
+              <option value="departamento">Departamento</option>
+            </Select>
           </Field>
           <Field label="Zona / Barrio">
             <Input name="zona" type="text" placeholder="Ej: Centro, Norte…" value={formData.zona} onChange={set("zona")} />
           </Field>
+          {formData.tipo_domicilio === "departamento" && (
+            <>
+              <Field label="Piso">
+                <Input name="piso" type="text" inputMode="numeric" placeholder="Ej: 3" value={formData.piso} onChange={set("piso")} className="text-center font-mono tabular-nums" />
+              </Field>
+              <Field label="Departamento" hint="Letra o número de la unidad (ej. C)">
+                <Input name="depto" type="text" placeholder="Ej: C" value={formData.depto} onChange={set("depto")} className="text-center uppercase" />
+              </Field>
+            </>
+          )}
         </div>
       </SectionCard>
 
@@ -338,14 +456,6 @@ export function ClienteForm({ clienteId, initialDocumento, onClose }: ClienteFor
               <option value="otro">Otro</option>
             </Select>
           </Field>
-          <Field label="Antigüedad laboral" hint="Años y meses en el empleo actual">
-            <div className="grid grid-cols-2 gap-2">
-              <Input name="antiguedad_anios" type="number" min="0" step="1" placeholder="Años"
-                value={formData.antiguedad_anios} onChange={set("antiguedad_anios")} className="text-center font-mono tabular-nums" />
-              <Input name="antiguedad_meses" type="number" min="0" max="11" step="1" placeholder="Meses"
-                value={formData.antiguedad_meses} onChange={set("antiguedad_meses")} className="text-center font-mono tabular-nums" />
-            </div>
-          </Field>
           <Field label="Ocupación / Puesto">
             <Input name="ocupacion" type="text" placeholder="Ej: Comerciante" value={formData.ocupacion} onChange={set("ocupacion")} />
           </Field>
@@ -358,13 +468,49 @@ export function ClienteForm({ clienteId, initialDocumento, onClose }: ClienteFor
       {/* Ingresos */}
       <SectionCard icon="money-bag" title="Ingresos / capacidad de pago">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <Field label="Ingreso mensual ($)">
-            <Input name="ingreso_mensual" type="text" inputMode="decimal" placeholder="850.000,00" value={formData.ingreso_mensual} onChange={setMonto("ingreso_mensual")} className="text-right font-mono tabular-nums" />
+          <Field
+            label="Ingreso mensual ($)"
+            required
+            error={errors.ingreso_mensual || (sueldoBloqueado ? "Límite de ediciones alcanzado — un admin debe resetear el contador" : undefined)}
+            hint={sueldoBloqueado ? undefined : (edicionesRestantes != null && !sueldoControl?.esAdmin ? `Te quedan ${edicionesRestantes} edición${edicionesRestantes === 1 ? "" : "es"} del sueldo` : "Variable clave del motor financiero (capacidad de pago)")}
+          >
+            <Input
+              name="ingreso_mensual" type="text" inputMode="decimal" placeholder="850.000,00"
+              value={formData.ingreso_mensual} onChange={setMonto("ingreso_mensual")} readOnly={sueldoBloqueado}
+              className={`text-right font-mono tabular-nums ${errCls("ingreso_mensual")} ${sueldoBloqueado ? "opacity-60 cursor-not-allowed" : ""}`}
+            />
           </Field>
           <Field label="Otros ingresos ($)">
             <Input name="otros_ingresos" type="text" inputMode="decimal" placeholder="150.000,00" value={formData.otros_ingresos} onChange={setMonto("otros_ingresos")} className="text-right font-mono tabular-nums" />
           </Field>
         </div>
+
+        {/* Panel admin: contador de ediciones del sueldo + reseteo (anti-fraude del vendedor) */}
+        {sueldoControl?.esAdmin && sueldoControl.max > 0 && sueldoControl.ediciones > 0 && (
+          <div className="mt-3 flex items-center justify-between gap-2 rounded-lg border border-border bg-muted/20 px-3 py-2">
+            <p className="text-xs text-muted-foreground">
+              Ediciones del sueldo por vendedores: <span className="font-mono font-semibold text-foreground">{sueldoControl.ediciones}/{sueldoControl.max}</span>
+            </p>
+            <button
+              type="button" onClick={resetearContador} disabled={reseteando}
+              className="shrink-0 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50 transition-colors"
+            >
+              {reseteando ? "Reseteando…" : "Resetear contador"}
+            </button>
+          </div>
+        )}
+
+        {/* Motivo del cambio de sueldo: aparece al editar el ingreso (requerido si el salto es grande) */}
+        {sueldoCambiado && !sueldoBloqueado && (
+          <div className="mt-3">
+            <Field label="Motivo del cambio de sueldo" error={errors.motivo_sueldo} hint="Requerido si el aumento supera el % configurado. Queda auditado.">
+              <Input name="motivo_sueldo" type="text" placeholder="Ej: actualización por recibo de sueldo nuevo"
+                value={motivoSueldo}
+                onChange={(e) => { setMotivoSueldo(e.target.value); clearError("motivo_sueldo"); }}
+                className={errCls("motivo_sueldo")} />
+            </Field>
+          </div>
+        )}
         {tieneRiesgo && (
           <label className={`mt-3 flex cursor-pointer items-start gap-2 rounded-lg border border-border px-3 py-2.5 transition-colors ${formData.consentimiento_bureau ? "bg-primary/[0.06] ring-1 ring-inset ring-primary/25" : "bg-muted/20"}`}>
             <input
@@ -402,14 +548,22 @@ export function ClienteForm({ clienteId, initialDocumento, onClose }: ClienteFor
         </div>
       </SectionCard>
 
-      {/* Acciones */}
-      <div className="sticky bottom-0 border-t border-border bg-card">
-        <FormActions
-          onCancel={() => onClose(false)}
-          loading={loading}
-          disabled={bloqueadoDup}
-          submitLabel={clienteId ? "Actualizar cliente" : "Crear cliente"}
-        />
+      {/* Acciones — botones finos y centrados */}
+      <div className="sticky bottom-0 flex items-center justify-center gap-2.5 border-t border-border bg-card pt-3">
+        <button
+          type="button"
+          onClick={() => onClose(false)}
+          className="rounded-lg px-4 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+        >
+          Cancelar
+        </button>
+        <button
+          type="submit"
+          disabled={loading || bloqueadoDup}
+          className="rounded-lg bg-primary px-6 py-2 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-40"
+        >
+          {loading ? "Guardando…" : clienteId ? "Actualizar cliente" : "Crear cliente"}
+        </button>
       </div>
     </form>
   );

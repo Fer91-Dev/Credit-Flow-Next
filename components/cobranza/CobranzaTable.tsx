@@ -689,7 +689,7 @@ function BodySkeleton() {
         <Skeleton className="h-10 w-32 rounded-lg" />
         <Skeleton className="h-10 w-24 rounded-lg" />
       </div>
-      <div className="rounded-xl border border-border overflow-hidden">
+      <div className="rounded-xl border border-border overflow-hidden hidden md:block">
         <div className="bg-muted/30 border-b border-border px-4 py-3 grid grid-cols-6 gap-4">
           {[...Array(6)].map((_, i) => <Skeleton key={i} className="h-3" />)}
         </div>
@@ -698,6 +698,9 @@ function BodySkeleton() {
             {[...Array(6)].map((_, j) => <Skeleton key={j} className="h-4" />)}
           </div>
         ))}
+      </div>
+      <div className="space-y-3 md:hidden">
+        {[...Array(5)].map((_, i) => <Skeleton key={i} className="h-20 rounded-xl" />)}
       </div>
     </div>
   );

@@ -154,7 +154,7 @@ export function UsuariosView() {
         </div>
       ) : (
         <div className="space-y-5">
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <KpiCard icon="busts-in-silhouette" label="Usuarios" value={String(totales.total)} sub={`${totales.activos} activos`} accent="primary" />
             <KpiCard icon="bust-in-silhouette" label="Activos" value={String(totales.activos)} accent="success" />
             <KpiCard icon="locked-with-key" label="Administradores" value={String(totales.admins)} accent="warning" />
@@ -561,7 +561,7 @@ function CambiarPasswordDialog({ usuario, onClose }: { usuario: Usuario | null; 
 function BodySkeleton() {
   return (
     <div className="space-y-5">
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-24 rounded-xl" />)}
       </div>
       <Skeleton className="h-72 rounded-xl" />
