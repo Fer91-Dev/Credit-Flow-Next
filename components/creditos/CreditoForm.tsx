@@ -521,7 +521,7 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
       {/* ── IZQUIERDA: parámetros del crédito (calculadora colapsable) ── */}
       <form
         onSubmit={handleSubmit}
-        className={`flex flex-col w-full md:w-[300px] xl:w-[330px] shrink-0 border-r border-border bg-card/40 transition-[margin] duration-300 ease-in-out ${
+        className={`flex flex-col w-full md:w-[300px] xl:w-[330px] shrink-0 border-r border-edge bg-card/40 transition-[margin] duration-300 ease-in-out ${
           calcAbierta ? "ml-0" : "-ml-[100%] md:-ml-[300px] xl:-ml-[330px]"
         }`}
         aria-hidden={!calcAbierta}
@@ -817,7 +817,7 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
         </div>{/* fin área scrolleable */}
 
         {/* Acciones — barra fija al fondo del panel, separada de la zona de carga */}
-        <div className="shrink-0 flex items-center gap-2 justify-end border-t border-border bg-muted/10 px-5 py-3.5">
+        <div className="shrink-0 flex items-center gap-2 justify-end border-t border-edge bg-muted/10 px-5 py-3.5">
           {/* Mobile: pasar a la vista del cronograma (en desktop se ven lado a lado) */}
           <button
             type="button" onClick={() => setCalcAbierta(false)}
@@ -850,7 +850,7 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
           </div>
         )}
         {/* Sub-header con toggle de vista */}
-        <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-border shrink-0">
+        <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-edge shrink-0">
           <div className="flex items-center gap-2 min-w-0">
             <button
               type="button"

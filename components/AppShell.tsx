@@ -277,9 +277,9 @@ export function AppShell({ children, role, nombre, email, avatarUrl, financiera,
     <div className="flex h-screen overflow-hidden text-foreground">
 
       {/* ── SIDEBAR DESKTOP (lg+) ─────────────────────────────────────────── */}
-      <aside className="hidden lg:flex fixed inset-y-0 left-0 z-30 w-64 flex-col bg-card/50 backdrop-blur-xl border-r border-border/40">
+      <aside className="hidden lg:flex fixed inset-y-0 left-0 z-30 w-64 flex-col bg-sidebar/85 backdrop-blur-xl border-r border-edge">
         {/* Branding — alto alineado con la línea inferior del PageHeader del contenido */}
-        <Link href="/" className="flex h-[98px] shrink-0 items-center border-b border-border/70 px-5 transition-opacity hover:opacity-80">
+        <Link href="/" className="flex h-[64px] shrink-0 items-center border-b border-edge px-5 transition-opacity hover:opacity-80">
           <Brand financiera={financiera} size="lg" />
         </Link>
 
@@ -323,7 +323,7 @@ export function AppShell({ children, role, nombre, email, avatarUrl, financiera,
       <div className="flex flex-1 flex-col lg:pl-64 min-w-0 overflow-hidden">
 
         {/* TOPBAR — solo mobile (en desktop los controles viven en el PageHeader) */}
-        <header className="lg:hidden sticky top-0 z-40 flex h-14 items-center gap-3 border-b border-border bg-card/95 backdrop-blur-sm px-4">
+        <header className="lg:hidden sticky top-0 z-40 flex h-14 items-center gap-3 border-b border-edge bg-sidebar/85 backdrop-blur-md px-4">
           {/* Burger — solo mobile */}
           <button
             onClick={() => setMobileOpen(true)}

@@ -9,7 +9,7 @@ const CONSUMIDOR_EXT = {
 export function Footer() {
   const year = new Date().getFullYear();
   return (
-    <footer className="shrink-0 border-t border-border/50 bg-card/20">
+    <footer className="shrink-0 border-t border-edge bg-sidebar/40">
       <div className="mx-auto w-full max-w-screen-2xl px-4 md:px-6 lg:px-8">
         <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-1 py-3 text-[11px] text-muted-foreground/50">
           <span>© {year} CreditFlow · Todos los derechos reservados.</span>

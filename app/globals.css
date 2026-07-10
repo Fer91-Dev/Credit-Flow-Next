@@ -22,6 +22,12 @@
   --color-input:              var(--input);
   --color-ring:               var(--ring);
 
+  /* Chrome del layout (sidebar/header) — superficie + borde whisper, por tema.
+     El borde se llama `edge` (NO `sidebar-border`): con `sidebar` ya siendo color,
+     Tailwind v4 no generaba la regla `.border-sidebar-border` por colisión de prefijo. */
+  --color-sidebar:            var(--sidebar);
+  --color-edge:               var(--edge);
+
   /* Tokens extra CreditFlow */
   --color-surface:  var(--surface);
   --color-success:  var(--success);
@@ -77,6 +83,10 @@
   --border: #E2E8F0;
   --input:  #F1F5F9;
   --ring:   #6366F1;
+
+  /* Chrome: sidebar/header apenas distintos del fondo + borde hairline */
+  --sidebar: #FFFFFF;
+  --edge:    rgba(15, 23, 42, 0.07);
 }
 
 /* Fondo modo claro — leve gradiente indigo en la parte superior */
@@ -93,11 +103,11 @@ body {
 
   --background:         #060A12;
   --foreground:         #F1F5F9;
-  --card:               #0C1220;
+  --card:               #111A2E;
   --card-foreground:    #F1F5F9;
-  --popover:            #0C1220;
+  --popover:            #111A2E;
   --popover-foreground: #F1F5F9;
-  --surface:            #0C1220;
+  --surface:            #111A2E;
 
   --primary:            #6366F1;
   --primary-foreground: #FFFFFF;
@@ -118,9 +128,14 @@ body {
   --warning-foreground:     #1A1205;
   --destructive-foreground: #FFFFFF;
 
-  --border: #1A2740;
+  --border: #1E2A44;
   --input:  #0F1825;
   --ring:   #6366F1;
+
+  /* Chrome: capa CLARAMENTE distinta del canvas (#060A12) → separa por luz, no por línea.
+     El sidebar/header quedan como un riel elevado y el contenido como lienzo más oscuro. */
+  --sidebar: #0D1728;
+  --edge:    rgba(255, 255, 255, 0.06);
 }
 
 /* Aurora de fondo — SOLO en modo oscuro */
@@ -133,9 +148,17 @@ body {
   background-attachment: fixed;
 }
 
-/* ─── Reset base ───────────────────────────────────────────────────────── */
-*, *::before, *::after {
-  border-color: var(--border);
+/* ─── Reset base ───────────────────────────────────────────────────────────
+   Color de borde por defecto para todo el SaaS. VA EN @layer base a propósito:
+   una regla sin capa le ganaría a TODAS las utilidades de borde de Tailwind
+   (`border-border/40`, `border-sidebar-border`, etc.) y anularía cualquier borde
+   suave — que era justamente por qué los bordes se veían "duros". Dentro de base,
+   las utilidades (capa superior) pueden sobreescribir el color cuando hace falta,
+   pero un `border` pelado sigue tomando `var(--border)`. */
+@layer base {
+  *, *::before, *::after {
+    border-color: var(--border);
+  }
 }
 
 /* ─── Densidad global (High-Density UI) ──────────────────────────────────────

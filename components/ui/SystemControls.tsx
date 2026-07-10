@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import useSWR from "swr";
 import Link from "next/link";
-import { Search, Bell, Sun, Moon, AlertTriangle, CheckCircle2, ArrowRight } from "lucide-react";
+import { Search, Bell, Sun, Moon, AlertTriangle, CheckCircle2, ArrowRight, ArrowDownLeft, ArrowUpRight } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useSystemActions } from "@/components/system-actions";
-import { formatFecha } from "@/lib/utils";
+import { formatFecha, formatFechaHora, formatMonto } from "@/lib/utils";
 
 const fetcher = (u: string) =>
   fetch(u).then((r) => (r.ok ? r.json() : null)).then((j) => (j?.ok ? j.data : null)).catch(() => null);
@@ -15,6 +15,22 @@ interface EstadoSus {
   suscripcion?: { plan: string; estado: string; periodo_hasta: string | null };
   esOwner?: boolean;
 }
+
+interface MovNotif {
+  id: string;
+  created_at: string;
+  tipo: string;
+  monto: number;
+  cuenta: string;
+  descripcion: string;
+  origen: string | null;
+  destino: string | null;
+  caja: string;
+  /** Destino del clic (patrón extensible: cada notificación sabe a dónde lleva). */
+  href: string;
+}
+
+const SEEN_KEY = "cf:notif-caja-seen";
 
 /** Aviso de plan derivado de la suscripción: vencido, o por vencer (≤3 días). null si nada. */
 function calcularAviso(data: EstadoSus | null | undefined) {
@@ -34,10 +50,17 @@ function calcularAviso(data: EstadoSus | null | undefined) {
   return null;
 }
 
+const TIPO_LABEL: Record<string, string> = {
+  desembolso: "Desembolso", cobro: "Cobro", devolucion: "Devolución",
+  reversa_desembolso: "Reversa", ajuste: "Ajuste", transferencia: "Transferencia",
+  entrega: "Entrega", rendicion: "Rendición", gasto: "Gasto",
+};
+
 /**
  * Controles globales del sistema (buscar / notificaciones / tema). Vive en el PageHeader.
- * La campanita avisa el estado del plan (vencido / por vencer) con un dropdown hacia
- * "Plan y facturación".
+ * La campanita avisa: (1) estado del plan (vencido / por vencer) y (2) MOVIMIENTOS DE CAJA
+ * en vivo (admin: todas las cajas; vendedor: la suya). "No leído" = movimiento con
+ * `created_at` posterior al último visto (marcador en localStorage).
  */
 export function SystemControls() {
   const actions = useSystemActions();
@@ -48,7 +71,46 @@ export function SystemControls() {
 
   const { data } = useSWR<EstadoSus | null>("/api/suscripciones/estado", fetcher, { revalidateOnFocus: false });
   const aviso = calcularAviso(data);
+
+  // Movimientos de caja (polling) + marcador de "último visto".
+  const { data: notif } = useSWR<{ movimientos: MovNotif[] } | null>("/api/notificaciones", fetcher, {
+    refreshInterval: 45_000,
+    revalidateOnFocus: true,
+  });
+  const movimientos = useMemo(() => notif?.movimientos ?? [], [notif]);
+
+  const [lastSeen, setLastSeen] = useState<number | null>(null);
+  useEffect(() => {
+    const v = localStorage.getItem(SEEN_KEY);
+    if (v) setLastSeen(Number(v));
+    else {
+      const now = Date.now();
+      localStorage.setItem(SEEN_KEY, String(now)); // primera vez: no floodear con históricos
+      setLastSeen(now);
+    }
+  }, []);
+
+  const nuevas = useMemo(
+    () => (lastSeen == null ? [] : movimientos.filter((m) => new Date(m.created_at).getTime() > lastSeen)),
+    [movimientos, lastSeen],
+  );
+
   const [open, setOpen] = useState(false);
+  // IDs que eran "nuevos" al abrir (para resaltarlos mientras el panel está abierto).
+  const [resaltar, setResaltar] = useState<Set<string>>(new Set());
+
+  const toggle = () => {
+    setOpen((o) => {
+      const next = !o;
+      if (next) {
+        setResaltar(new Set(nuevas.map((m) => m.id)));
+        const now = Date.now();
+        localStorage.setItem(SEEN_KEY, String(now)); // marcar leído al abrir → limpia el badge
+        setLastSeen(now);
+      }
+      return next;
+    });
+  };
 
   return (
     <div className="hidden lg:flex items-center gap-1.5">
@@ -65,26 +127,32 @@ export function SystemControls() {
       {/* Notificaciones */}
       <div className="relative">
         <button
-          onClick={() => setOpen((o) => !o)}
+          onClick={toggle}
           title="Notificaciones"
           className="relative flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent transition-colors"
         >
           <Bell className="h-4 w-4" />
-          {aviso && (
+          {nuevas.length > 0 ? (
+            <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-bold text-primary-foreground ring-2 ring-background">
+              {nuevas.length > 9 ? "9+" : nuevas.length}
+            </span>
+          ) : aviso ? (
             <span className={`absolute right-1.5 top-1.5 h-2 w-2 rounded-full ring-2 ring-background ${aviso.tipo === "vencido" ? "bg-destructive" : "bg-warning"}`} />
-          )}
+          ) : null}
         </button>
 
         {open && (
           <>
             <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-            <div className="absolute right-0 top-11 z-50 w-80 rounded-xl border border-border bg-card p-2 shadow-xl shadow-black/20">
+            <div className="absolute right-0 top-11 z-50 max-h-[70vh] w-96 overflow-y-auto rounded-xl border border-border bg-card p-2 shadow-xl shadow-black/20">
               <p className="px-2 py-1.5 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Notificaciones</p>
-              {aviso ? (
+
+              {/* Aviso de plan */}
+              {aviso && (
                 <Link
                   href="/facturacion"
                   onClick={() => setOpen(false)}
-                  className={`group flex items-start gap-2.5 rounded-lg p-2.5 transition-colors ${aviso.tipo === "vencido" ? "hover:bg-destructive/5" : "hover:bg-warning/5"}`}
+                  className={`group flex items-start gap-2.5 rounded-lg p-2.5 transition-all duration-150 hover:translate-x-0.5 ${aviso.tipo === "vencido" ? "hover:bg-destructive/5" : "hover:bg-warning/5"}`}
                 >
                   <AlertTriangle className={`mt-0.5 h-4 w-4 shrink-0 ${aviso.tipo === "vencido" ? "text-destructive" : "text-warning"}`} />
                   <div className="min-w-0 flex-1">
@@ -95,10 +163,55 @@ export function SystemControls() {
                     </span>
                   </div>
                 </Link>
-              ) : (
+              )}
+
+              {/* Movimientos de caja */}
+              <div className="mt-1 flex items-center justify-between px-2 pt-1">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Movimientos de caja</p>
+                <Link href="/comprobantes" onClick={() => setOpen(false)} className="text-[11px] font-medium text-primary hover:underline">
+                  Ver todo
+                </Link>
+              </div>
+
+              {movimientos.length === 0 ? (
                 <div className="flex items-center gap-2 px-2.5 py-4 text-sm text-muted-foreground">
-                  <CheckCircle2 className="h-4 w-4 text-success" /> Sin novedades.
+                  <CheckCircle2 className="h-4 w-4 text-success" /> Sin movimientos recientes.
                 </div>
+              ) : (
+                <ul className="mt-1 space-y-0.5">
+                  {movimientos.map((m) => {
+                    const ingreso = m.monto >= 0;
+                    const nuevo = resaltar.has(m.id);
+                    return (
+                      <li key={m.id}>
+                        <Link
+                          href={m.href}
+                          onClick={() => setOpen(false)}
+                          className={`group relative flex items-start gap-2.5 rounded-lg p-2.5 transition-all duration-150 hover:bg-accent hover:translate-x-0.5 ${nuevo ? "bg-primary/[0.06]" : ""}`}
+                        >
+                          {/* Barra de acento izquierda que crece al hover (indicador de selección) */}
+                          <span className="absolute left-0 top-1/2 h-0 w-0.5 -translate-y-1/2 rounded-full bg-primary transition-all duration-150 group-hover:h-7" />
+                          <div className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border transition-transform duration-150 group-hover:scale-110 ${ingreso ? "border-success/20 bg-success/10 text-success" : "border-warning/20 bg-warning/10 text-warning"}`}>
+                            {ingreso ? <ArrowDownLeft className="h-3.5 w-3.5" /> : <ArrowUpRight className="h-3.5 w-3.5" />}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center justify-between gap-2">
+                              <p className="truncate text-sm font-medium text-foreground">
+                                {TIPO_LABEL[m.tipo] ?? m.tipo} · <span className="text-muted-foreground">{m.caja}</span>
+                              </p>
+                              <span className={`shrink-0 font-mono text-xs font-semibold ${ingreso ? "text-success" : "text-warning"}`}>
+                                {ingreso ? "+" : "−"}{formatMonto(Math.abs(m.monto))}
+                              </span>
+                            </div>
+                            <p className="mt-0.5 truncate text-xs text-muted-foreground">{m.descripcion}</p>
+                            <p className="mt-0.5 text-[10px] text-muted-foreground/60">{formatFechaHora(m.created_at)}</p>
+                          </div>
+                          {nuevo && <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />}
+                        </Link>
+                      </li>
+                    );
+                  })}
+                </ul>
               )}
             </div>
           </>

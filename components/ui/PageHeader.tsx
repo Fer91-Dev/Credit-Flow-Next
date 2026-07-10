@@ -30,7 +30,7 @@ export function PageHeader({ icon, title, subtitle, accent = "primary", actions 
   const isEmoji = typeof icon === "string";
   const Icon = isEmoji ? null : icon;
   return (
-    <div className="sticky top-0 z-20 -mx-4 flex flex-col gap-4 border-b border-border bg-background/80 px-4 py-4 backdrop-blur-md md:-mx-6 md:px-6 lg:-mx-8 lg:h-[98px] lg:px-8 lg:py-0 sm:flex-row sm:items-center sm:justify-between">
+    <div className="sticky top-0 z-20 -mx-4 flex flex-col gap-4 border-b border-edge bg-background/70 px-4 py-4 backdrop-blur-md md:-mx-6 md:px-6 lg:-mx-8 lg:h-[64px] lg:px-8 lg:py-0 sm:flex-row sm:items-center sm:justify-between">
       <div className="flex items-center gap-3 min-w-0">
         <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border ${isEmoji ? "border-border/60 bg-muted/40" : ACCENT[accent]}`}>
           {isEmoji ? (

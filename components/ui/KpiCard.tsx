@@ -27,11 +27,15 @@ export function KpiCard({ icon, label, value, accent = "muted", mono, sub }: Kpi
   const isEmoji = typeof icon === "string";
   const Icon = isEmoji ? null : icon;
   return (
-    <div className={`group relative overflow-hidden rounded-xl border border-border bg-card p-5 transition-all duration-300
-      hover:-translate-y-0.5 hover:shadow-xl ${c.glow} ${c.hoverBorder}
-      shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)]`}>
+    <div className={`group relative overflow-hidden rounded-2xl border border-border/70 bg-card p-5 transition-all duration-300
+      shadow-[0_1px_2px_rgba(0,0,0,0.3),0_12px_30px_-16px_rgba(0,0,0,0.7)]
+      hover:-translate-y-1 hover:shadow-[0_1px_2px_rgba(0,0,0,0.3),0_20px_45px_-18px_rgba(0,0,0,0.8)] ${c.glow} ${c.hoverBorder}`}>
+      {/* Luz cenital SIEMPRE visible → la card deja de verse plana */}
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-white/10" />
+      <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-white/[0.05] via-transparent to-transparent" />
+      {/* Glow del acento al hover */}
       <div className="pointer-events-none absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500
-        bg-[radial-gradient(ellipse_80%_50%_at_50%_-20%,rgba(99,102,241,0.05),transparent)]" />
+        bg-[radial-gradient(ellipse_80%_50%_at_50%_-20%,rgba(99,102,241,0.07),transparent)]" />
       <div className="relative flex items-start justify-between mb-3">
         <p className="text-xs font-medium text-muted-foreground leading-tight pr-2 tracking-wide">{label}</p>
         <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border ${isEmoji ? "bg-muted/40 border-border" : `${c.iconBg} ${c.iconBorder}`}
