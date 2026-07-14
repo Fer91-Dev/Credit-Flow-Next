@@ -4,6 +4,7 @@ import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { registrarAuditoria } from "@/lib/audit";
+import { esUsernameValido, normalizarUsername } from "@/lib/utils";
 import type { NextRequest } from "next/server";
 
 const ROLES = ["admin", "vendedor", "cobrador"] as const;
@@ -22,6 +23,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     select: {
       id: true,
       email: true,
+      username: true,
       full_name: true,
       role: true,
       activo: true,
@@ -35,6 +37,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   const usuarios = profiles.map((p) => ({
     id: p.id,
     email: p.email,
+    username: p.username,
     full_name: p.full_name,
     role: p.role,
     activo: p.activo,
@@ -65,6 +68,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     full_name?: string;
     role?: string;
     vendedor_id?: string | null;
+    username?: string | null;
   };
   try {
     body = await req.json();
@@ -85,6 +89,17 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
   if (!ROLES.includes(role)) {
     return errorResponse("Rol inválido", "INVALID_INPUT", 400);
   }
+
+  // Nombre de usuario OBLIGATORIO: alias de login que asigna el admin. Único GLOBAL.
+  if (typeof body.username !== "string" || !body.username.trim()) {
+    return errorResponse("El nombre de usuario es requerido", "INVALID_INPUT", 400);
+  }
+  const username = normalizarUsername(body.username);
+  if (!esUsernameValido(username)) {
+    return errorResponse("Usuario inválido: 3–30 caracteres, letras/números y . _ - (sin @ ni espacios)", "INVALID_INPUT", 400);
+  }
+  const usernameTaken = await prisma.profiles.findUnique({ where: { username }, select: { id: true } });
+  if (usernameTaken) return errorResponse("Ese nombre de usuario ya está en uso", "DUPLICATE_RECORD", 409);
 
   // Vínculo al registro comercial (solo para rol vendedor), validado contra el tenant.
   let vendedorId: string | null = null;
@@ -129,6 +144,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     create: {
       id: created.user.id,
       email,
+      username,
       full_name: body.full_name?.trim() || null,
       tenant_id: tenantId,
       role,
@@ -137,13 +153,14 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     },
     update: {
       email,
+      username,
       full_name: body.full_name?.trim() || null,
       tenant_id: tenantId,
       role,
       activo: true,
       vendedor_id: vendedorId,
     },
-    select: { id: true, email: true, full_name: true, role: true, activo: true, vendedor_id: true, created_at: true },
+    select: { id: true, email: true, username: true, full_name: true, role: true, activo: true, vendedor_id: true, created_at: true },
   });
 
   await registrarAuditoria({

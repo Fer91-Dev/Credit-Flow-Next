@@ -4,6 +4,7 @@ import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { registrarAuditoria } from "@/lib/audit";
+import { esUsernameValido, normalizarUsername } from "@/lib/utils";
 import type { NextRequest } from "next/server";
 
 interface RouteParams {
@@ -27,7 +28,7 @@ export const PATCH = withErrorHandler(async (req: NextRequest, { params }: Route
   const target = await prisma.profiles.findFirst({ where: { ...withTenant(tenantId), id } });
   if (!target) return errorResponse("Usuario no encontrado", "NOT_FOUND", 404);
 
-  let body: { role?: string; activo?: boolean; full_name?: string; vendedor_id?: string | null; password?: string };
+  let body: { role?: string; activo?: boolean; full_name?: string; vendedor_id?: string | null; password?: string; username?: string | null };
   try {
     body = await req.json();
   } catch {
@@ -43,6 +44,22 @@ export const PATCH = withErrorHandler(async (req: NextRequest, { params }: Route
   const data: Record<string, unknown> = {};
 
   if ("full_name" in body) data.full_name = body.full_name?.trim() || null;
+
+  // Nombre de usuario (alias de login): asignar, cambiar o quitar. Único GLOBAL.
+  if ("username" in body) {
+    const raw = body.username;
+    if (raw === null || (typeof raw === "string" && raw.trim() === "")) {
+      data.username = null; // quitar el usuario → queda solo con email
+    } else if (typeof raw === "string") {
+      const u = normalizarUsername(raw);
+      if (!esUsernameValido(u)) {
+        return errorResponse("Usuario inválido: 3–30 caracteres, letras/números y . _ - (sin @ ni espacios)", "INVALID_INPUT", 400);
+      }
+      const taken = await prisma.profiles.findFirst({ where: { username: u, id: { not: id } }, select: { id: true } });
+      if (taken) return errorResponse("Ese nombre de usuario ya está en uso", "DUPLICATE_RECORD", 409);
+      data.username = u;
+    }
+  }
 
   if ("role" in body) {
     if (!ROLES.includes(body.role as RoleStr)) return errorResponse("Rol inválido", "INVALID_INPUT", 400);
@@ -89,7 +106,7 @@ export const PATCH = withErrorHandler(async (req: NextRequest, { params }: Route
     return errorResponse("No hay cambios para aplicar", "INVALID_INPUT", 400);
   }
 
-  const selectProfile = { id: true, email: true, full_name: true, role: true, activo: true, vendedor_id: true, created_at: true } as const;
+  const selectProfile = { id: true, email: true, username: true, full_name: true, role: true, activo: true, vendedor_id: true, created_at: true } as const;
   // Solo actualizar el profile si hay campos de profile; un cambio de sola contraseña no lo toca.
   const updated = Object.keys(data).length > 0
     ? await prisma.profiles.update({ where: { id }, data, select: selectProfile })

@@ -223,6 +223,7 @@ export type RolUsuario = "admin" | "vendedor" | "cobrador";
 export interface Usuario {
   id: string;
   email: string | null;
+  username: string | null;
   full_name: string | null;
   role: RolUsuario | null;
   activo: boolean;

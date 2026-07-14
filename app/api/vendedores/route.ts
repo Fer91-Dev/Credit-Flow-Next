@@ -6,6 +6,7 @@ import { Prisma } from "@prisma/client";
 import { registrarAuditoria } from "@/lib/audit";
 import { esRolValido, resumirVendedor, normalizarComisionPct, normalizarMonto, normalizarComisionConfig } from "@/lib/domain";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { esUsernameValido, normalizarUsername } from "@/lib/utils";
 import type { NextRequest } from "next/server";
 
 /**
@@ -84,7 +85,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     documento?: string; fecha_ingreso?: string; direccion?: string;
     zona?: string; notas?: string; limite_aprobacion?: number | null;
     comision_config?: unknown;
-    crear_cuenta?: { email?: string; password?: string; rol_acceso?: string };
+    crear_cuenta?: { email?: string; password?: string; rol_acceso?: string; username?: string | null };
     vincular_existente?: boolean;
   };
   try {
@@ -110,6 +111,17 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
   if (ccPassword.length < 8) {
     return errorResponse("La contraseña de acceso debe tener al menos 8 caracteres", "INVALID_INPUT", 400);
   }
+
+  // Nombre de usuario OBLIGATORIO: alias de login que asigna el admin al crear la cuenta. Único GLOBAL.
+  if (typeof cc?.username !== "string" || !cc.username.trim()) {
+    return errorResponse("El nombre de usuario es requerido para la cuenta de acceso del agente", "INVALID_INPUT", 400);
+  }
+  const ccUsername = normalizarUsername(cc.username);
+  if (!esUsernameValido(ccUsername)) {
+    return errorResponse("Usuario inválido: 3–30 caracteres, letras/números y . _ - (sin @ ni espacios)", "INVALID_INPUT", 400);
+  }
+  const ccUsernameTaken = await prisma.profiles.findUnique({ where: { username: ccUsername }, select: { id: true } });
+  if (ccUsernameTaken) return errorResponse("Ese nombre de usuario ya está en uso", "DUPLICATE_RECORD", 409);
 
   const rol = esRolValido(body.rol) ? body.rol : "vendedor";
   const comision = normalizarComisionPct(body.comision_pct);
@@ -149,7 +161,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     const vendedor = await prisma.vendedores.create({ data: datosVendedor });
     await prisma.profiles.update({
       where: { id: prof.id },
-      data: { full_name: vendedor.nombre, tenant_id: tenantId, role: ccRol, activo: true, vendedor_id: vendedor.id },
+      data: { full_name: vendedor.nombre, tenant_id: tenantId, role: ccRol, activo: true, vendedor_id: vendedor.id, username: ccUsername },
     });
     await registrarAuditoria({
       tenantId, entidad: "vendedores", entidadId: vendedor.id, accion: "crear",
@@ -191,6 +203,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
       create: {
         id: created.user.id,
         email: ccEmail,
+        username: ccUsername,
         full_name: vendedor.nombre,
         tenant_id: tenantId,
         role: ccRol,
@@ -199,6 +212,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
       },
       update: {
         email: ccEmail,
+        username: ccUsername,
         full_name: vendedor.nombre,
         tenant_id: tenantId,
         role: ccRol,

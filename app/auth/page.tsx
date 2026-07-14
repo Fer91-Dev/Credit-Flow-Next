@@ -2,12 +2,11 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
 import { Eye, EyeOff, Loader2, AlertCircle } from "lucide-react";
 
 export default function LoginPage() {
   const router = useRouter();
-  const [email, setEmail] = useState("");
+  const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -18,18 +17,21 @@ export default function LoginPage() {
     setError(null);
     setLoading(true);
 
-    const supabase = createClient();
-    const { error: authError } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-
-    if (authError) {
-      setError(
-        authError.message === "Invalid login credentials"
-          ? "Credenciales incorrectas. Verificá tu email y contraseña."
-          : authError.message
-      );
+    // Login server-side: acepta email o nombre de usuario y setea la sesión por cookies.
+    try {
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ identifier, password }),
+      });
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json?.ok) {
+        setError(json?.error || "No se pudo iniciar sesión. Intentá de nuevo.");
+        setLoading(false);
+        return;
+      }
+    } catch {
+      setError("No se pudo conectar. Revisá tu conexión e intentá de nuevo.");
       setLoading(false);
       return;
     }
@@ -69,22 +71,25 @@ export default function LoginPage() {
         </p>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Email */}
+          {/* Email o usuario */}
           <div className="space-y-1.5">
             <label
-              htmlFor="email"
+              htmlFor="identifier"
               className="text-xs font-medium text-muted-foreground uppercase tracking-widest"
             >
-              Email
+              Email o usuario
             </label>
             <input
-              id="email"
-              type="email"
-              autoComplete="email"
+              id="identifier"
+              type="text"
+              autoComplete="username"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
               required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="tu@email.com"
+              value={identifier}
+              onChange={(e) => setIdentifier(e.target.value)}
+              placeholder="tu@email.com o tu usuario"
               className="w-full h-10 rounded-lg border border-border bg-input px-3 text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors"
             />
           </div>
@@ -148,6 +153,11 @@ export default function LoginPage() {
             )}
           </button>
         </form>
+
+        <p className="mt-5 text-center text-[11px] leading-relaxed text-muted-foreground/70">
+          ¿Olvidaste tu contraseña o tu usuario? Pedile a un administrador de tu
+          financiera que te lo restablezca desde <span className="text-muted-foreground">Usuarios</span>.
+        </p>
       </div>
 
       <p className="mt-6 text-center text-[11px] text-muted-foreground/50">

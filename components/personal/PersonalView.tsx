@@ -15,8 +15,9 @@ import { Emoji } from "@/components/ui/Emoji";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Field, Input, Select, PasswordFields } from "@/components/ui/field";
+import { UsernameField } from "@/components/ui/UsernameField";
 import { ModalHeader, MoneyInput, FormActions, MODAL_CONTENT } from "@/components/ui/form-kit";
-import { maskMontoInput, parseMontoInput, numeroAInput, soloDigitos, esEmailValido } from "@/lib/utils";
+import { maskMontoInput, parseMontoInput, numeroAInput, soloDigitos, esEmailValido, esUsernameValido, normalizarUsername } from "@/lib/utils";
 import { useConfirm } from "@/components/ui/confirm";
 import { useToast } from "@/components/ui/toast";
 
@@ -458,6 +459,8 @@ function PersonalForm({
   // Cuenta de acceso (solo alta) — OBLIGATORIA: todo agente nuevo debe poder loguearse.
   const [cuentaPassword, setCuentaPassword] = useState("");
   const [cuentaPasswordConfirm, setCuentaPasswordConfirm] = useState("");
+  const [cuentaUsername, setCuentaUsername] = useState("");
+  const [cuentaUsernameOk, setCuentaUsernameOk] = useState(false);
   const [rolAcceso, setRolAcceso] = useState<"vendedor" | "cobrador" | "admin">("vendedor");
 
   // Sincroniza el formulario cuando se abre para editar o crear.
@@ -474,6 +477,8 @@ function PersonalForm({
     setActivo(vendedor?.activo ?? true);
     setCuentaPassword("");
     setCuentaPasswordConfirm("");
+    setCuentaUsername("");
+    setCuentaUsernameOk(false);
     setRolAcceso("vendedor");
     setError(null);
   }
@@ -487,6 +492,11 @@ function PersonalForm({
       if (!esEmailValido(email)) { setError("Email inválido (ej. nombre@correo.com)"); return; }
       if (cuentaPassword.length < 8) { setError("La contraseña de acceso debe tener al menos 8 caracteres"); return; }
       if (cuentaPassword !== cuentaPasswordConfirm) { setError("Las contraseñas no coinciden"); return; }
+      if (!cuentaUsername.trim()) { setError("El nombre de usuario es requerido"); return; }
+      if (!esUsernameValido(cuentaUsername)) {
+        setError("Usuario inválido: 3–30 caracteres, letras/números y . _ - (sin @ ni espacios)");
+        return;
+      }
     }
     const ok = await confirm({
       title: editing ? "¿Guardar cambios?" : "¿Crear agente?",
@@ -505,7 +515,12 @@ function PersonalForm({
         activo,
       };
       if (!editing) {
-        body.crear_cuenta = { email: email.trim(), password: cuentaPassword, rol_acceso: rolAcceso };
+        body.crear_cuenta = {
+          email: email.trim(),
+          password: cuentaPassword,
+          rol_acceso: rolAcceso,
+          username: cuentaUsername.trim() ? normalizarUsername(cuentaUsername) : null,
+        };
       }
       const enviar = async (extra?: Record<string, unknown>) => {
         const res = await fetch(editing ? `/api/vendedores/${vendedor!.id}` : "/api/vendedores", {
@@ -613,6 +628,7 @@ function PersonalForm({
                   onConfirm={setCuentaPasswordConfirm}
                   required
                 />
+                <UsernameField value={cuentaUsername} onChange={setCuentaUsername} onValidChange={setCuentaUsernameOk} />
                 <Field label="Rol de acceso" required>
                   <Select value={rolAcceso} onChange={(e) => setRolAcceso(e.target.value as typeof rolAcceso)}>
                     <option value="vendedor">Vendedor</option>
@@ -627,7 +643,7 @@ function PersonalForm({
           <FormActions
             onCancel={() => onClose(false)}
             loading={loading}
-            disabled={!nombre.trim() || (!editing && (!email.trim() || cuentaPassword.length < 8 || cuentaPassword !== cuentaPasswordConfirm))}
+            disabled={!nombre.trim() || (!editing && (!email.trim() || !cuentaUsernameOk || cuentaPassword.length < 8 || cuentaPassword !== cuentaPasswordConfirm))}
             submitLabel={editing ? "Guardar cambios" : "Crear"}
           />
         </form>
@@ -647,6 +663,8 @@ function CrearCuentaDialog({ vendedor, onClose }: { vendedor: Vendedor | null; o
   const open = !!vendedor;
 
   const [email, setEmail] = useState("");
+  const [username, setUsername] = useState("");
+  const [usernameOk, setUsernameOk] = useState(false);
   const [password, setPassword] = useState("");
   const [passwordConfirm, setPasswordConfirm] = useState("");
   const [rolAcceso, setRolAcceso] = useState<"vendedor" | "cobrador" | "admin">("vendedor");
@@ -659,6 +677,8 @@ function CrearCuentaDialog({ vendedor, onClose }: { vendedor: Vendedor | null; o
   if (currentKey !== syncKey) {
     setSyncKey(currentKey);
     setEmail(vendedor?.email ?? "");
+    setUsername("");
+    setUsernameOk(false);
     setPassword("");
     setPasswordConfirm("");
     setRolAcceso("vendedor");
@@ -672,6 +692,11 @@ function CrearCuentaDialog({ vendedor, onClose }: { vendedor: Vendedor | null; o
     if (!esEmailValido(email)) { setError("Email inválido (ej. nombre@correo.com)"); return; }
     if (password.length < 8) { setError("La contraseña debe tener al menos 8 caracteres"); return; }
     if (password !== passwordConfirm) { setError("Las contraseñas no coinciden"); return; }
+    if (!username.trim()) { setError("El nombre de usuario es requerido"); return; }
+    if (!esUsernameValido(username)) {
+      setError("Usuario inválido: 3–30 caracteres, letras/números y . _ - (sin @ ni espacios)");
+      return;
+    }
     const ok = await confirm({
       title: "¿Crear cuenta de acceso?",
       description: `Se creará el acceso de ${vendedor.nombre} (${email.trim()}) con rol ${rolAcceso}.`,
@@ -688,6 +713,7 @@ function CrearCuentaDialog({ vendedor, onClose }: { vendedor: Vendedor | null; o
           password,
           full_name: vendedor.nombre,
           role: rolAcceso,
+          username: username.trim() ? normalizarUsername(username) : null,
           vendedor_id: rolAcceso === "vendedor" ? vendedor.id : null,
         }),
       });
@@ -718,6 +744,7 @@ function CrearCuentaDialog({ vendedor, onClose }: { vendedor: Vendedor | null; o
           <Field label="Email" required hint="es el usuario de acceso">
             <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="usuario@financiera.com" required />
           </Field>
+          <UsernameField value={username} onChange={setUsername} onValidChange={setUsernameOk} />
           <PasswordFields
             label="Contraseña de acceso"
             password={password}
@@ -736,7 +763,7 @@ function CrearCuentaDialog({ vendedor, onClose }: { vendedor: Vendedor | null; o
           <FormActions
             onCancel={() => onClose(false)}
             loading={loading}
-            disabled={!email.trim() || password.length < 8 || password !== passwordConfirm}
+            disabled={!email.trim() || !usernameOk || password.length < 8 || password !== passwordConfirm}
             submitLabel="Crear cuenta"
           />
         </form>

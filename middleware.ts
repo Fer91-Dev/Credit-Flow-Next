@@ -3,10 +3,11 @@ import { NextResponse, type NextRequest } from "next/server";
 
 // Rutas públicas para el middleware de sesión.
 //  - /auth: pantalla de login.
+//  - /api/auth: login server-side (email o usuario). Sin sesión previa: no puede exigir JWT.
 //  - /api/cron: jobs disparados externamente (Vercel Cron / cron local). NO usan
 //    sesión de usuario; se protegen con su propio Bearer CRON_SECRET en el handler.
 //    Sin esta excepción, el middleware (Edge) los redirige al login y nunca corren.
-const PUBLIC_PATHS = ["/auth", "/api/cron"];
+const PUBLIC_PATHS = ["/auth", "/api/auth", "/api/cron"];
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;

@@ -79,6 +79,11 @@ export function formatCuit(v: string): string {
 
 /** Validaciones comunes de campos. */
 export const esEmailValido = (v: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim());
+// Nombre de usuario de login: 3–30 chars, letras/números/._-, empieza y termina en
+// alfanumérico, sin `@` (así se distingue del email al ingresar). Se guarda en minúscula.
+export const esUsernameValido = (v: string) =>
+  /^[a-z0-9](?:[a-z0-9._-]{1,28}[a-z0-9])$/.test(v.trim().toLowerCase());
+export const normalizarUsername = (v: string) => v.trim().toLowerCase();
 export const esCuitValido = (v: string) => /^\d{11}$/.test(soloDigitos(v)); // 11 dígitos
 export const esTelValido = (v: string) => soloDigitos(v).length === 10;      // 10 dígitos (AR)
 export const esDniValido = (v: string) => /^\d{7,8}$/.test(soloDigitos(v));  // 7-8 dígitos

@@ -80,6 +80,10 @@ model profiles {
   created_at  DateTime @default(now()) @db.Timestamptz(6)
   full_name   String?
   email       String?
+  // Alias de login opcional: el admin lo asigna. Permite ingresar con usuario O email.
+  // Único GLOBAL (como el email); se guarda SIEMPRE en minúscula → unicidad case-insensitive.
+  // No reemplaza al email (Supabase autentica por email); es un alias que resolvemos a email.
+  username    String?  @unique
   tenant_id   String?  @db.Uuid // nullable: deny-by-default hasta asignar
   role        Role? // nullable: sin rol = acceso denegado
   activo      Boolean  @default(false) // inerte hasta que el admin lo active

@@ -28,3 +28,9 @@ prisma/*.db
 # Documentación interna — sensible (arquitectura, auditoría, planes)
 # Se mantienen localmente pero NO se publican en el repo público.
 *.md
+
+# Datos reales de clientes + trabajo local de migración (NUNCA publicar: privacidad)
+plantillas-migracion/
+
+# Logs del server de desarrollo (Start-Process)
+dev-server*.log

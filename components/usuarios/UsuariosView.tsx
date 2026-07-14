@@ -6,7 +6,7 @@ import {
   Search, LayoutGrid, List, Trash2, KeyRound,
 } from "lucide-react";
 import { useUsuarios, useVendedores, KEYS, type Usuario, type RolUsuario } from "@/lib/swr";
-import { esEmailValido } from "@/lib/utils";
+import { esEmailValido, esUsernameValido, normalizarUsername } from "@/lib/utils";
 import { mutate as globalMutate } from "swr";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { KpiCard } from "@/components/ui/KpiCard";
@@ -17,6 +17,7 @@ import { DataTable, type Column } from "@/components/ui/DataTable";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Field, Input, Select, PasswordFields } from "@/components/ui/field";
+import { UsernameField } from "@/components/ui/UsernameField";
 import { ModalHeader, FormActions, MODAL_CONTENT } from "@/components/ui/form-kit";
 import { useConfirm } from "@/components/ui/confirm";
 import { useToast } from "@/components/ui/toast";
@@ -55,6 +56,7 @@ export function UsuariosView() {
     if (!t) return usuarios;
     return usuarios.filter((u) =>
       (u.email ?? "").toLowerCase().includes(t) ||
+      (u.username ?? "").toLowerCase().includes(t) ||
       (u.full_name ?? "").toLowerCase().includes(t) ||
       (u.role ? ROL_META[u.role].label.toLowerCase().includes(t) : false) ||
       (u.vendedor_nombre ?? "").toLowerCase().includes(t)
@@ -192,6 +194,7 @@ export function UsuariosView() {
                       <div className="min-w-0">
                         <p className="font-medium text-foreground">{u.full_name || "—"}</p>
                         <span className="flex items-center gap-1 text-[11px] text-muted-foreground mt-0.5"><Mail className="h-3 w-3" />{u.email}</span>
+                        {u.username && <span className="block font-mono text-[11px] text-muted-foreground/70 mt-0.5">@{u.username}</span>}
                       </div>
                     </div>
                   ),
@@ -267,6 +270,7 @@ function UserCard({ u, onEdit, onToggle, onDelete, onPassword, onOpenVendedor }:
         <div className="min-w-0">
           <p className="font-medium text-foreground truncate">{u.full_name || "—"}</p>
           <span className="flex items-center gap-1 text-[11px] text-muted-foreground truncate"><Mail className="h-3 w-3 shrink-0" />{u.email}</span>
+          {u.username && <span className="block font-mono text-[11px] text-muted-foreground/70 truncate">@{u.username}</span>}
         </div>
       </div>
       <div className="flex flex-wrap items-center gap-1.5">
@@ -318,6 +322,8 @@ function UsuarioForm({
   const toast = useToast();
 
   const [email, setEmail] = useState("");
+  const [username, setUsername] = useState("");
+  const [usernameOk, setUsernameOk] = useState(false);
   const [password, setPassword] = useState("");
   const [passwordConfirm, setPasswordConfirm] = useState("");
   const [fullName, setFullName] = useState("");
@@ -333,6 +339,8 @@ function UsuarioForm({
   if (currentKey !== syncKey) {
     setSyncKey(currentKey);
     setEmail(usuario?.email ?? "");
+    setUsername(usuario?.username ?? "");
+    setUsernameOk(false);
     setPassword("");
     setPasswordConfirm("");
     setFullName(usuario?.full_name ?? "");
@@ -354,6 +362,11 @@ function UsuarioForm({
       if (password.length < 8) { setError("La contraseña debe tener al menos 8 caracteres"); return; }
       if (password !== passwordConfirm) { setError("Las contraseñas no coinciden"); return; }
     }
+    if (!username.trim()) { setError("El nombre de usuario es requerido"); return; }
+    if (!esUsernameValido(username)) {
+      setError("Usuario inválido: 3–30 caracteres, letras/números y . _ - (sin @ ni espacios)");
+      return;
+    }
     const ok = await confirm({
       title: editing ? "¿Guardar cambios?" : "¿Crear usuario?",
       description: editing
@@ -365,16 +378,17 @@ function UsuarioForm({
     setLoading(true);
     try {
       const vinc = role === "vendedor" && vendedorId ? vendedorId : null;
+      const usuarioAlias = username.trim() ? normalizarUsername(username) : null;
       const res = editing
         ? await fetch(`/api/usuarios/${usuario!.id}`, {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ full_name: fullName, role, activo, vendedor_id: vinc }),
+            body: JSON.stringify({ full_name: fullName, role, activo, vendedor_id: vinc, username: usuarioAlias }),
           })
         : await fetch("/api/usuarios", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ email, password, full_name: fullName, role, vendedor_id: vinc }),
+            body: JSON.stringify({ email, password, full_name: fullName, role, vendedor_id: vinc, username: usuarioAlias }),
           });
       const json = await res.json();
       if (json.ok) {
@@ -430,6 +444,8 @@ function UsuarioForm({
             <Input value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="Nombre y apellido (opcional)" />
           </Field>
 
+          <UsernameField value={username} onChange={setUsername} excludeId={usuario?.id} onValidChange={setUsernameOk} />
+
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Field label="Rol" required>
               <Select value={role} onChange={(e) => setRole(e.target.value as RolUsuario)}>
@@ -468,6 +484,7 @@ function UsuarioForm({
           <FormActions
             onCancel={() => onClose(false)}
             loading={loading}
+            disabled={!usernameOk}
             submitLabel={editing ? "Guardar cambios" : "Crear usuario"}
           />
         </form>
