@@ -20,7 +20,7 @@ function metricasDe(objetivos: { promesa_generada: boolean; monto_recuperado: nu
  * Detalle de campaña con sus objetivos (crédito + cliente) y métricas.
  */
 export const GET = withErrorHandler(async (req: NextRequest, ctx: { params: Promise<{ id: string }> }) => {
-  const { tenantId } = await requireRole(["admin", "cobrador"], req);
+  const { tenantId } = await requireRole(["admin"], req);
   const { id } = await ctx.params;
 
   const campana = await prisma.campanas_cobranza.findFirst({
@@ -53,7 +53,7 @@ export const GET = withErrorHandler(async (req: NextRequest, ctx: { params: Prom
  * Body: { estado? } | { objetivo_id, promesa_generada }
  */
 export const PATCH = withErrorHandler(async (req: NextRequest, ctx: { params: Promise<{ id: string }> }) => {
-  const { tenantId } = await requireRole(["admin", "cobrador"], req);
+  const { tenantId } = await requireRole(["admin"], req);
   const { id } = await ctx.params;
 
   let body: any;
@@ -112,7 +112,7 @@ export const PATCH = withErrorHandler(async (req: NextRequest, ctx: { params: Pr
  * Elimina la campaña (los objetivos se borran por cascade). No afecta créditos.
  */
 export const DELETE = withErrorHandler(async (req: NextRequest, ctx: { params: Promise<{ id: string }> }) => {
-  const { tenantId } = await requireRole(["admin", "cobrador"], req);
+  const { tenantId } = await requireRole(["admin"], req);
   const { id } = await ctx.params;
 
   const campana = await prisma.campanas_cobranza.findFirst({

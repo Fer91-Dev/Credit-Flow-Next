@@ -12,13 +12,12 @@ export type { Role };
  * aplican ADEMÁS en cada Route Handler con requireRole() — defensa en
  * profundidad. El guard de ruta solo decide si la pantalla es accesible.
  *
- * Política de los 3 roles:
- *  - admin:    todo (Reportes, Caja, Configuración, Auditoría, Personal, Proveedores).
- *  - vendedor: Clientes (ABM) + Créditos (alta/simulación) + Pagos (cobra las cuotas
- *              de SUS créditos) + Cobranza (gestiona la mora de SUS créditos), todo
- *              scopeado. Nada de Caja/config/reportes/campañas.
- *  - cobrador: Pagos + Cobranza; ve Clientes/Créditos (la negativa a crear créditos
- *              se aplica a nivel API, no de ruta).
+ * Política de roles (2 roles activos; "cobrador" DEPRECADO — el vendedor hace la cobranza
+ * de SUS propios clientes, por eso el rol cobrador no se usa más):
+ *  - admin:    todo (Reportes, Caja principal, Configuración, Auditoría, Personal, Proveedores, campañas).
+ *  - vendedor: Clientes (ABM) + Créditos (alta/simulación) + Pagos + Cobranza + su Caja personal,
+ *              todo scopeado a SUS créditos/clientes.
+ *  - cobrador: DEPRECADO — no se crea ni tiene acceso a ninguna ruta (deny-by-default).
  *
  * Deny-by-default: una ruta sin regla que matchee → denegada.
  */
@@ -33,12 +32,12 @@ const ACCESO_RUTAS: { prefix: string; roles: Role[] }[] = [
   { prefix: "/personal", roles: ["admin"] },
   { prefix: "/productos", roles: ["admin"] },
   { prefix: "/proveedores", roles: ["admin"] },
-  { prefix: "/cobranza", roles: ["admin", "cobrador", "vendedor"] },
-  { prefix: "/pagos", roles: ["admin", "cobrador", "vendedor"] },
-  { prefix: "/cartera", roles: ["admin", "cobrador"] },
-  { prefix: "/creditos", roles: ["admin", "vendedor", "cobrador"] },
-  { prefix: "/clientes", roles: ["admin", "vendedor", "cobrador"] },
-  { prefix: "/", roles: ["admin", "vendedor", "cobrador"] },
+  { prefix: "/cobranza", roles: ["admin", "vendedor"] },
+  { prefix: "/pagos", roles: ["admin", "vendedor"] },
+  { prefix: "/cartera", roles: ["admin"] },
+  { prefix: "/creditos", roles: ["admin", "vendedor"] },
+  { prefix: "/clientes", roles: ["admin", "vendedor"] },
+  { prefix: "/", roles: ["admin", "vendedor"] },
 ];
 
 /** Devuelve los roles permitidos para una ruta (match por prefijo más largo). */
@@ -73,8 +72,8 @@ export function homeFor(role: Role): string {
   switch (role) {
     case "admin":
       return "/";
-    case "cobrador":
-      return "/cobranza";
+    case "cobrador": // DEPRECADO — no se crean cobradores; landing seguro por si queda uno legacy
+      return "/";
     case "vendedor":
       return "/clientes";
     default:

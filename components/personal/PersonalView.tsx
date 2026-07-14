@@ -589,7 +589,6 @@ function PersonalForm({
               <Select value={rol} onChange={(e) => setRol(e.target.value as Vendedor["rol"])}>
                 <option value="vendedor">Vendedor</option>
                 <option value="supervisor">Supervisor</option>
-                <option value="cobrador">Cobrador</option>
                 <option value="admin">Administrador</option>
               </Select>
             </Field>
@@ -632,7 +631,6 @@ function PersonalForm({
                 <Field label="Rol de acceso" required>
                   <Select value={rolAcceso} onChange={(e) => setRolAcceso(e.target.value as typeof rolAcceso)}>
                     <option value="vendedor">Vendedor</option>
-                    <option value="cobrador">Cobrador</option>
                     <option value="admin">Administrador</option>
                   </Select>
                 </Field>
@@ -756,7 +754,6 @@ function CrearCuentaDialog({ vendedor, onClose }: { vendedor: Vendedor | null; o
           <Field label="Rol de acceso" required hint="'Vendedor' se vincula a esta ficha de agente">
             <Select value={rolAcceso} onChange={(e) => setRolAcceso(e.target.value as typeof rolAcceso)}>
               <option value="vendedor">Vendedor</option>
-              <option value="cobrador">Cobrador</option>
               <option value="admin">Administrador</option>
             </Select>
           </Field>

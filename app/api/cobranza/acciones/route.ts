@@ -16,7 +16,7 @@ const RESULTADOS = ["contactado", "no_contesta", "promesa_pago", "renegociacion"
  */
 export const GET = withErrorHandler(async (req: NextRequest) => {
   // Gestiones de cobranza: admin, cobrador y vendedor (este último, solo SUS créditos).
-  const { tenantId, role, vendedorId } = await requireRole(["admin", "cobrador", "vendedor"], req);
+  const { tenantId, role, vendedorId } = await requireRole(["admin", "vendedor"], req);
 
   const url = new URL(req.url);
   const creditoId = url.searchParams.get("credito_id");
@@ -50,7 +50,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
  */
 export const POST = withErrorHandler(async (req: NextRequest) => {
   // Registrar gestión de cobranza: admin, cobrador y vendedor (este último, solo SUS créditos).
-  const { tenantId, role, vendedorId } = await requireRole(["admin", "cobrador", "vendedor"], req);
+  const { tenantId, role, vendedorId } = await requireRole(["admin", "vendedor"], req);
 
   let body: any;
   try {

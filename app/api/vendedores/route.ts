@@ -76,7 +76,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
   // Alta de personal: solo admin.
   const { tenantId } = await requireRole(["admin"], req);
 
-  const ROLES_ACCESO = ["admin", "vendedor", "cobrador"] as const;
+  const ROLES_ACCESO = ["admin", "vendedor"] as const; // "cobrador" DEPRECADO
   type RolAcceso = (typeof ROLES_ACCESO)[number];
 
   let body: {

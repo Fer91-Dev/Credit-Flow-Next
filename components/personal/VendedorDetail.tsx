@@ -1075,7 +1075,6 @@ function DatosTab({ vendedor, guardar }: { vendedor: VendedorDetalle; guardar: (
             <Select value={f.rol} onChange={set("rol")}>
               <option value="vendedor">Vendedor</option>
               <option value="supervisor">Supervisor</option>
-              <option value="cobrador">Cobrador</option>
               <option value="admin">Administrador</option>
             </Select>
           </Field>

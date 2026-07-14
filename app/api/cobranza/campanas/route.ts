@@ -65,7 +65,7 @@ function metricasDe(objetivos: { promesa_generada: boolean; monto_recuperado: nu
  */
 export const GET = withErrorHandler(async (req: NextRequest) => {
   // Campañas de cobranza: admin y cobrador.
-  const { tenantId } = await requireRole(["admin", "cobrador"], req);
+  const { tenantId } = await requireRole(["admin"], req);
 
   const campanas = await prisma.campanas_cobranza.findMany({
     where: { ...withTenant(tenantId) },
@@ -91,7 +91,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
  */
 export const POST = withErrorHandler(async (req: NextRequest) => {
   // Crear campaña de cobranza: admin y cobrador.
-  const { tenantId } = await requireRole(["admin", "cobrador"], req);
+  const { tenantId } = await requireRole(["admin"], req);
 
   let body: any;
   try {

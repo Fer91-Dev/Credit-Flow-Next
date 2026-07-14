@@ -298,7 +298,7 @@ function EmptyState({ onNew }: { onNew: () => void }) {
       <div className="space-y-1.5">
         <p className="text-sm font-semibold text-foreground">Todavía no hay usuarios de acceso</p>
         <p className="text-xs text-muted-foreground/60 max-w-sm leading-relaxed">
-          Creá los accesos de tu equipo y asignales un rol (administrador, vendedor o cobrador).
+          Creá los accesos de tu equipo y asignales un rol (administrador o vendedor).
         </p>
       </div>
       <button onClick={onNew} className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm hover:opacity-90 transition-opacity">
@@ -455,7 +455,6 @@ function UsuarioForm({
               <Select value={role} onChange={(e) => setRole(e.target.value as RolUsuario)}>
                 <option value="admin">Administrador</option>
                 <option value="vendedor">Vendedor</option>
-                <option value="cobrador">Cobrador</option>
               </Select>
             </Field>
             {editing && (

@@ -25,7 +25,7 @@ import type { NextRequest } from "next/server";
  */
 export const GET = withErrorHandler(async (req: NextRequest) => {
   // Terminal de cobros: admin, cobrador y vendedor (este último, solo SUS créditos).
-  const { tenantId, role, vendedorId } = await requireRole(["admin", "cobrador", "vendedor"], req);
+  const { tenantId, role, vendedorId } = await requireRole(["admin", "vendedor"], req);
 
   const url = new URL(req.url);
   const creditoId = url.searchParams.get("credito_id");
@@ -81,7 +81,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
  */
 export const POST = withErrorHandler(async (req: NextRequest) => {
   // Registrar un cobro: admin, cobrador y vendedor (este último, solo SUS créditos).
-  const { tenantId, role, vendedorId } = await requireRole(["admin", "cobrador", "vendedor"], req);
+  const { tenantId, role, vendedorId } = await requireRole(["admin", "vendedor"], req);
 
   // Defensa en profundidad: un vendedor SIN ficha de agente vinculada no puede cobrar, porque
   // el movimiento caería en la caja principal (vendedor_id null) en vez de en su caja. Con el

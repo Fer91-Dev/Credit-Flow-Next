@@ -23,8 +23,9 @@ datasource db {
 /// sin rol (role = null) o inactivo NO tiene acceso a nada.
 enum Role {
   admin    // Dueño/gerente: acceso total (Reportes, Caja, Configuración, Auditoría)
-  vendedor // Comercial: ABM clientes + alta/simulación de créditos
-  cobrador // Mora y cobro: Pagos + Cobranza; ve clientes/créditos, no crea créditos
+  vendedor // Comercial: ABM clientes + alta/simulación de créditos + cobranza y caja de SUS clientes
+  cobrador // DEPRECADO — el vendedor hace su propia cobranza. No se crea ni tiene acceso (UI/API/rutas
+           // ya no lo permiten). El valor queda en el enum para no romper filas legacy; no migrar.
 }
 
 /// Financiera / organización. Es el "tenant" del sistema multi-tenant.

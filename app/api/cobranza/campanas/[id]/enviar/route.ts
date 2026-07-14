@@ -19,7 +19,7 @@ export const POST = withErrorHandler(async (
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) => {
-  const { tenantId } = await requireRole(["admin", "cobrador"], req);
+  const { tenantId } = await requireRole(["admin"], req);
   const { id } = await params;
 
   const campana = await prisma.campanas_cobranza.findFirst({

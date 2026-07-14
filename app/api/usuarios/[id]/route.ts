@@ -11,7 +11,7 @@ interface RouteParams {
   params: Promise<{ id: string }>;
 }
 
-const ROLES = ["admin", "vendedor", "cobrador"] as const;
+const ROLES = ["admin", "vendedor"] as const; // "cobrador" DEPRECADO (el vendedor hace su cobranza)
 type RoleStr = (typeof ROLES)[number];
 
 /**

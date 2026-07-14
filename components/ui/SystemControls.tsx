@@ -3,9 +3,11 @@
 import { useEffect, useMemo, useState } from "react";
 import useSWR from "swr";
 import Link from "next/link";
-import { Search, Bell, Sun, Moon, AlertTriangle, CheckCircle2, ArrowRight, ArrowDownLeft, ArrowUpRight } from "lucide-react";
+import { Search, Bell, Sun, Moon, AlertTriangle, CheckCircle2, ArrowRight, ArrowDownLeft, ArrowUpRight, LogOut, ChevronDown, User } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useSystemActions } from "@/components/system-actions";
+import { Avatar } from "@/components/ui/Avatar";
+import { ROLE_LABEL } from "@/lib/auth/roles";
 import { formatFecha, formatFechaHora, formatMonto } from "@/lib/utils";
 
 const fetcher = (u: string) =>
@@ -227,6 +229,72 @@ export function SystemControls() {
         >
           {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
         </button>
+      )}
+
+      {/* Menú de usuario (identidad + perfil + cerrar sesión) */}
+      <UserMenu />
+    </div>
+  );
+}
+
+/** Avatar en el header que despliega la identidad del usuario + acceso al perfil + cerrar sesión.
+ *  Reemplaza a la mini-tarjeta que estaba al pie del sidebar (un nombre largo la apretaba). */
+function UserMenu() {
+  const actions = useSystemActions();
+  const [open, setOpen] = useState(false);
+  if (!actions) return null;
+  const { usuario, signOut } = actions;
+
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        title="Mi cuenta"
+        className="flex h-9 items-center gap-2 rounded-lg pl-1 pr-2 text-muted-foreground transition-colors hover:bg-accent"
+      >
+        <Avatar name={usuario.nombre} src={usuario.avatarUrl} size="xs" />
+        <div className="min-w-0 text-left leading-tight">
+          <p className="max-w-[130px] truncate text-xs font-semibold text-foreground">{usuario.nombre}</p>
+          <p className="text-[9px] font-medium uppercase tracking-wide text-muted-foreground">{ROLE_LABEL[usuario.role]}</p>
+        </div>
+        <ChevronDown className={`h-3.5 w-3.5 shrink-0 transition-transform ${open ? "rotate-180" : ""}`} />
+      </button>
+
+      {open && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+          <div className="absolute right-0 top-11 z-50 w-64 rounded-xl border border-border bg-card p-2 shadow-xl shadow-black/20">
+            {/* Identidad */}
+            <div className="flex items-center gap-2.5 p-2">
+              <Avatar name={usuario.nombre} src={usuario.avatarUrl} size="sm" />
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-1.5">
+                  <p className="truncate text-sm font-semibold leading-tight text-foreground">{usuario.nombre}</p>
+                  <span className="shrink-0 rounded-full border border-primary/20 bg-primary/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-primary">
+                    {ROLE_LABEL[usuario.role]}
+                  </span>
+                </div>
+                <p className="mt-0.5 truncate text-xs leading-tight text-muted-foreground">{usuario.email ?? ""}</p>
+              </div>
+            </div>
+
+            <div className="my-1 h-px bg-border" />
+
+            <Link
+              href="/perfil"
+              onClick={() => setOpen(false)}
+              className="group flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-foreground transition-all duration-150 hover:translate-x-0.5 hover:bg-accent"
+            >
+              <User className="h-4 w-4 text-muted-foreground" /> Mi perfil
+            </Link>
+            <button
+              onClick={() => { setOpen(false); signOut(); }}
+              className="group flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-muted-foreground transition-all duration-150 hover:translate-x-0.5 hover:bg-destructive/10 hover:text-destructive"
+            >
+              <LogOut className="h-4 w-4" /> Cerrar sesión
+            </button>
+          </div>
+        </>
       )}
     </div>
   );

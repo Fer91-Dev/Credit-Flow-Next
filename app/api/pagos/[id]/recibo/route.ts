@@ -18,7 +18,7 @@ interface RouteParams {
  * Scope multi-tenant: solo pagos del usuario autenticado.
  */
 export const GET = withErrorHandler(async (req: NextRequest, { params }: RouteParams) => {
-  const { tenantId, role, vendedorId } = await requireRole(["admin", "cobrador", "vendedor"], req);
+  const { tenantId, role, vendedorId } = await requireRole(["admin", "vendedor"], req);
   const { id } = await params;
 
   // Anti-IDOR: el vendedor solo descarga recibos de pagos de SUS créditos.

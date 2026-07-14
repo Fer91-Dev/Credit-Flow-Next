@@ -12,7 +12,7 @@ const ESTADOS_VALIDOS = ["pendiente", "cumplida", "incumplida"];
  * Query: ?estado=pendiente|cumplida|incumplida  (omitir = todos)
  */
 export const GET = withErrorHandler(async (req: NextRequest) => {
-  const { tenantId, role, vendedorId } = await requireRole(["admin", "cobrador", "vendedor"], req);
+  const { tenantId, role, vendedorId } = await requireRole(["admin", "vendedor"], req);
 
   const url = new URL(req.url);
   const estado = url.searchParams.get("estado");
@@ -52,7 +52,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
  * Body: { promesa_estado: "pendiente" | "cumplida" | "incumplida" }
  */
 export const PATCH = withErrorHandler(async (req: NextRequest) => {
-  const { tenantId, role, vendedorId } = await requireRole(["admin", "cobrador", "vendedor"], req);
+  const { tenantId, role, vendedorId } = await requireRole(["admin", "vendedor"], req);
 
   const url = new URL(req.url);
   const id = url.searchParams.get("id");

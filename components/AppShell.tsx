@@ -9,7 +9,7 @@ import { useTheme } from "next-themes";
 import { useEffect, useState } from "react";
 import { Footer } from "./Footer";
 import { SystemActionsProvider } from "./system-actions";
-import { canAccess, ROLE_LABEL, type Role } from "@/lib/auth/roles";
+import { canAccess, type Role } from "@/lib/auth/roles";
 import { createClient } from "@/lib/supabase/client";
 import { Emoji } from "@/components/ui/Emoji";
 import type { Financiera } from "@/lib/swr";
@@ -283,40 +283,11 @@ export function AppShell({ children, role, nombre, email, avatarUrl, financiera,
           <Brand financiera={financiera} size="lg" />
         </Link>
 
-        {/* Nav — Home suelto + grupos colapsables */}
+        {/* Nav — Home suelto + grupos colapsables. La identidad del usuario + logout viven ahora
+            en el header (menú de usuario en SystemControls), no al pie del sidebar. */}
         <nav className="flex-1 overflow-y-auto p-3 space-y-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {renderNav()}
         </nav>
-
-        {/* User — mini-tarjeta integrada */}
-        <div className="shrink-0 p-3">
-          <div className="flex items-center gap-2.5 rounded-xl border border-border/50 bg-muted/20 p-2 transition-colors duration-200 hover:bg-muted/30">
-            <Link href="/perfil" title="Ver mi perfil" className="shrink-0 transition-opacity hover:opacity-80">
-              <Avatar name={displayName} src={avatarUrl} size="xs" />
-            </Link>
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-1.5">
-                <p className="truncate text-sm font-semibold leading-tight text-foreground">
-                  {displayName}
-                </p>
-                <span className="shrink-0 rounded-full border border-primary/20 bg-primary/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-primary">
-                  {ROLE_LABEL[role]}
-                </span>
-              </div>
-              <p className="mt-0.5 truncate text-xs text-muted-foreground leading-tight">
-                {email ?? ""}
-              </p>
-            </div>
-            <button
-              onClick={signOut}
-              title="Cerrar sesión"
-              aria-label="Cerrar sesión"
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground/70 transition-colors hover:bg-destructive/10 hover:text-destructive"
-            >
-              <LogOut className="h-4 w-4" />
-            </button>
-          </div>
-        </div>
       </aside>
 
       {/* ── COLUMNA DERECHA ───────────────────────────────────────────────── */}
@@ -369,7 +340,11 @@ export function AppShell({ children, role, nombre, email, avatarUrl, financiera,
             el contenido se colaba por la franja de arriba). El padding va al contenido. */}
         <main className="flex-1 overflow-y-auto overflow-x-hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           <div className="w-full min-w-0 px-4 pb-6 md:px-6 md:pb-8 lg:px-8 space-y-8">
-            <SystemActionsProvider openSearch={() => setPaletteOpen(true)}>
+            <SystemActionsProvider
+              openSearch={() => setPaletteOpen(true)}
+              usuario={{ nombre: displayName, email, role, avatarUrl }}
+              signOut={signOut}
+            >
               {children}
             </SystemActionsProvider>
           </div>
