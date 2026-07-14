@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Eye, EyeOff, Loader2, AlertCircle } from "lucide-react";
+import { Eye, EyeOff, Loader2, AlertCircle, LogIn } from "lucide-react";
+import { AuthShell } from "@/components/auth/AuthShell";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -42,129 +43,94 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="w-full max-w-sm">
-      {/* Marca */}
-      <div className="mb-8 text-center">
-        <div className="inline-flex items-center gap-2.5 mb-3">
-          <span
-            className="text-2xl font-black tracking-tight"
-            style={{
-              background: "linear-gradient(135deg, #6366F1, #818CF8)",
-              WebkitBackgroundClip: "text",
-              WebkitTextFillColor: "transparent",
-            }}
-          >
-            CreditFlow
-          </span>
+    <AuthShell
+      left={
+        <p className="text-3xl font-semibold italic leading-snug text-white/90">
+          &ldquo;Ningún logro importante se construye en soledad.&rdquo;
+        </p>
+      }
+    >
+      <h1 className="text-xl font-semibold text-foreground">Introduce tus credenciales</h1>
+      <p className="mt-1 text-sm text-muted-foreground">Bienvenido de nuevo al panel de control</p>
+
+      <form onSubmit={handleSubmit} className="mt-8 space-y-4">
+        {/* Usuario (acepta usuario o email) */}
+        <div className="space-y-1.5">
+          <label htmlFor="identifier" className="text-xs font-medium uppercase tracking-widest text-muted-foreground">
+            Usuario
+          </label>
+          <input
+            id="identifier"
+            type="text"
+            autoComplete="username"
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
+            required
+            value={identifier}
+            onChange={(e) => setIdentifier(e.target.value)}
+            placeholder="Tu usuario o email"
+            className="h-11 w-full rounded-lg border border-border bg-input px-3 text-sm text-foreground placeholder:text-muted-foreground/50 shadow-[inset_0_1px_2px_0_rgba(0,0,0,0.22)] outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/25"
+          />
         </div>
-        <p className="text-xs text-muted-foreground">
-          Sistema de gestión de cartera crediticia
-        </p>
-      </div>
 
-      {/* Card */}
-      <div className="rounded-xl bg-card border border-border p-6 shadow-lg shadow-black/20">
-        <h1 className="text-base font-semibold text-foreground mb-1">
-          Iniciar sesión
-        </h1>
-        <p className="text-xs text-muted-foreground mb-6">
-          Ingresá con tu cuenta de acceso
-        </p>
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Email o usuario */}
-          <div className="space-y-1.5">
-            <label
-              htmlFor="identifier"
-              className="text-xs font-medium text-muted-foreground uppercase tracking-widest"
-            >
-              Email o usuario
-            </label>
+        {/* Contraseña */}
+        <div className="space-y-1.5">
+          <label htmlFor="password" className="text-xs font-medium uppercase tracking-widest text-muted-foreground">
+            Contraseña
+          </label>
+          <div className="relative">
             <input
-              id="identifier"
-              type="text"
-              autoComplete="username"
-              autoCapitalize="none"
-              autoCorrect="off"
-              spellCheck={false}
+              id="password"
+              type={showPassword ? "text" : "password"}
+              autoComplete="current-password"
               required
-              value={identifier}
-              onChange={(e) => setIdentifier(e.target.value)}
-              placeholder="tu@email.com o tu usuario"
-              className="w-full h-10 rounded-lg border border-border bg-input px-3 text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="••••••••"
+              className="h-11 w-full rounded-lg border border-border bg-input px-3 pr-10 text-sm text-foreground placeholder:text-muted-foreground/50 shadow-[inset_0_1px_2px_0_rgba(0,0,0,0.22)] outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/25"
             />
-          </div>
-
-          {/* Password */}
-          <div className="space-y-1.5">
-            <label
-              htmlFor="password"
-              className="text-xs font-medium text-muted-foreground uppercase tracking-widest"
+            <button
+              type="button"
+              onClick={() => setShowPassword((v) => !v)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground"
+              tabIndex={-1}
+              aria-label={showPassword ? "Ocultar contraseña" : "Ver contraseña"}
             >
-              Contraseña
-            </label>
-            <div className="relative">
-              <input
-                id="password"
-                type={showPassword ? "text" : "password"}
-                autoComplete="current-password"
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                className="w-full h-10 rounded-lg border border-border bg-input px-3 pr-10 text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors"
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword((v) => !v)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                tabIndex={-1}
-                aria-label={showPassword ? "Ocultar contraseña" : "Ver contraseña"}
-              >
-                {showPassword ? (
-                  <EyeOff className="h-4 w-4" />
-                ) : (
-                  <Eye className="h-4 w-4" />
-                )}
-              </button>
-            </div>
+              {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            </button>
           </div>
+        </div>
 
-          {/* Error */}
-          {error && (
-            <div className="flex items-start gap-2.5 rounded-lg bg-destructive/10 border border-destructive/30 px-3 py-2.5">
-              <AlertCircle className="h-4 w-4 text-destructive shrink-0 mt-0.5" />
-              <p className="text-xs text-destructive">{error}</p>
-            </div>
-          )}
-
-          {/* Submit */}
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full h-10 rounded-lg bg-primary text-primary-foreground text-sm font-medium flex items-center justify-center gap-2 hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-primary/30 disabled:opacity-50 disabled:cursor-not-allowed transition-colors mt-2"
-          >
-            {loading ? (
-              <>
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Ingresando…
-              </>
-            ) : (
-              "Ingresar"
-            )}
-          </button>
-        </form>
-
-        <p className="mt-5 text-center text-xs text-muted-foreground">
-          <Link href="/auth/recuperar" className="text-primary hover:underline">
-            ¿Olvidaste tu usuario o contraseña?
+        <div className="flex justify-end">
+          <Link href="/auth/recuperar" className="text-xs font-medium text-primary hover:underline">
+            ¿Olvidaste tu contraseña?
           </Link>
-        </p>
-      </div>
+        </div>
 
-      <p className="mt-6 text-center text-[11px] text-muted-foreground/50">
-        © {new Date().getFullYear()} CreditFlow · Todos los derechos reservados
-      </p>
-    </div>
+        {error && (
+          <div className="flex items-start gap-2.5 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2.5">
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+            <p className="text-xs text-destructive">{error}</p>
+          </div>
+        )}
+
+        <button
+          type="submit"
+          disabled={loading}
+          className="flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-primary text-sm font-medium text-primary-foreground shadow-[inset_0_1px_0_0_rgba(255,255,255,0.15)] transition-colors hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-primary/30 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {loading ? (
+            <>
+              <Loader2 className="h-4 w-4 animate-spin" /> Ingresando…
+            </>
+          ) : (
+            <>
+              <LogIn className="h-4 w-4" /> Ingresar
+            </>
+          )}
+        </button>
+      </form>
+    </AuthShell>
   );
 }

@@ -9,9 +9,12 @@ import type { NextRequest } from "next/server";
 // nodemailer necesita el runtime de Node (no Edge).
 export const runtime = "nodejs";
 
-// Respuesta ÚNICA genérica: no revela si el email existe (anti-enumeración).
-const OK_GENERICO = {
-  message: "Si el email está registrado, te enviamos las instrucciones para recuperar tu acceso. Revisá tu correo (y la carpeta de spam).",
+// Mensaje de éxito. NOTA de seguridad: por decisión de producto (herramienta interna, pocos
+// usuarios, cuentas creadas por el admin) se OPTA por revelar si el email existe (mejor UX). El
+// riesgo de enumeración se acota con el rate limit por IP de más abajo. En un SaaS público
+// convendría volver a la respuesta genérica (anti-enumeración, OWASP A07).
+const OK_ENVIADO = {
+  message: "Te enviamos las instrucciones a tu correo. Revisá tu bandeja de entrada (y la carpeta de spam).",
 };
 
 /**
@@ -87,35 +90,38 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     return errorResponse("El envío de emails no está configurado. Avisá al administrador.", "EMAIL_NOT_CONFIGURED", 503);
   }
 
-  // La cuenta debe existir y estar activa. Si no, respondemos genérico igual (no revelar).
+  // La cuenta debe existir y estar activa. Por decisión de producto se INFORMA si el email no
+  // pertenece a ningún usuario (ver nota de OK_ENVIADO). El rate limit de arriba acota el abuso.
   const prof = await prisma.profiles.findFirst({
     where: { email },
     select: { username: true, full_name: true, activo: true },
   });
 
-  if (prof && prof.activo) {
-    try {
-      const admin = createAdminClient();
-      const { data, error } = await admin.auth.admin.generateLink({ type: "recovery", email });
-      const tokenHash = data?.properties?.hashed_token;
-      if (error || !tokenHash) {
-        console.error("[recuperar] generateLink:", error?.message);
-      } else {
-        // Link a NUESTRO endpoint de confirmación (valida el token con verifyOtp server-side).
-        // Evita la ambigüedad hash/PKCE del redirect nativo de Supabase y no depende de la
-        // allowlist de Redirect URLs.
-        const link = `${getBaseUrl(req)}/auth/confirm?token_hash=${tokenHash}&type=recovery`;
-        await enviarEmail({
-          to: email,
-          subject: "Recuperá tu acceso a CreditFlow",
-          html: emailHtml(prof.username, prof.full_name, link),
-        });
-      }
-    } catch (e) {
-      // No propagamos el detalle al cliente (anti-enumeración); queda en el log del server.
-      console.error("[recuperar] fallo al enviar:", e);
-    }
+  if (!prof || !prof.activo) {
+    return errorResponse("Este email no pertenece a ningún usuario del sistema.", "EMAIL_NO_REGISTRADO", 404);
   }
 
-  return successResponse(OK_GENERICO);
+  try {
+    const admin = createAdminClient();
+    const { data, error } = await admin.auth.admin.generateLink({ type: "recovery", email });
+    const tokenHash = data?.properties?.hashed_token;
+    if (error || !tokenHash) {
+      console.error("[recuperar] generateLink:", error?.message);
+    } else {
+      // Link a NUESTRO endpoint de confirmación (valida el token con verifyOtp server-side).
+      // Evita la ambigüedad hash/PKCE del redirect nativo de Supabase y no depende de la
+      // allowlist de Redirect URLs.
+      const link = `${getBaseUrl(req)}/auth/confirm?token_hash=${tokenHash}&type=recovery`;
+      await enviarEmail({
+        to: email,
+        subject: "Recuperá tu acceso a CreditFlow",
+        html: emailHtml(prof.username, prof.full_name, link),
+      });
+    }
+  } catch (e) {
+    // El fallo de envío queda en el log del server (no se expone al cliente).
+    console.error("[recuperar] fallo al enviar:", e);
+  }
+
+  return successResponse(OK_ENVIADO);
 });
