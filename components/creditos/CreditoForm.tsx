@@ -1138,6 +1138,7 @@ function ClienteCombobox({ clientes, value, onSelect, onAlta }: {
   // `searched` = término efectivamente buscado (al tocar la lupa). null = nada buscado aún.
   const [searched, setSearched] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
+  const [verTodos, setVerTodos] = useState(false); // F3: lista completa de clientes A→Z
   const selected = clientes.find(c => c.id === value) ?? null;
 
   // Resultados sobre el término BUSCADO (no mientras se tipea).
@@ -1153,14 +1154,21 @@ function ClienteCombobox({ clientes, value, onSelect, onAlta }: {
     }).slice(0, 8);
   }, [clientes, searched]);
 
+  // Lista completa ordenada (para "ver todos" con F3).
+  const clientesOrdenados = useMemo(
+    () => [...clientes].sort((a, b) => nombreCompleto(a).localeCompare(nombreCompleto(b), "es", { sensitivity: "base" })).slice(0, 200),
+    [clientes],
+  );
+  const lista = verTodos ? clientesOrdenados : results;
+
   const doSearch = () => {
     const t = query.trim();
     if (!t) { setSearched(null); setOpen(false); return; }
     setSearched(t);
     setOpen(true);
   };
-  const pick = (c: Cliente) => { onSelect(c.id); setQuery(""); setSearched(null); setOpen(false); };
-  const lanzarAlta = () => { onAlta(searched ?? query.trim()); setQuery(""); setSearched(null); setOpen(false); };
+  const pick = (c: Cliente) => { onSelect(c.id); setQuery(""); setSearched(null); setOpen(false); setVerTodos(false); };
+  const lanzarAlta = () => { onAlta(searched ?? query.trim()); setQuery(""); setSearched(null); setOpen(false); setVerTodos(false); };
 
   if (selected) {
     return (
@@ -1191,9 +1199,13 @@ function ClienteCombobox({ clientes, value, onSelect, onAlta }: {
           placeholder="Ingresá DNI o apellido y nombre…"
           value={query}
           // Al editar, se ocultan resultados previos hasta volver a buscar con la lupa.
-          onChange={e => { setQuery(e.target.value); setSearched(null); setOpen(false); }}
+          onChange={e => { setQuery(e.target.value); setSearched(null); setOpen(false); setVerTodos(false); }}
           onBlur={() => setTimeout(() => setOpen(false), 150)}
-          onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); doSearch(); } }}
+          onKeyDown={e => {
+            if (e.key === "F3") { e.preventDefault(); setVerTodos(true); setSearched(null); setOpen(true); return; }
+            if (e.key === "Enter") { e.preventDefault(); doSearch(); return; }
+            if (e.key === "Escape") { setOpen(false); setVerTodos(false); }
+          }}
           className="h-full flex-1 rounded-lg bg-transparent pl-3 pr-1 text-sm text-foreground placeholder:text-muted-foreground/40 outline-none"
         />
         <button
@@ -1208,21 +1220,34 @@ function ClienteCombobox({ clientes, value, onSelect, onAlta }: {
         </button>
       </div>
 
-      {open && searched !== null && (
+      <p className="mt-1 text-[10px] text-muted-foreground/50">
+        Tip: <kbd className="rounded border border-border bg-muted/50 px-1 py-0.5 font-mono text-[9px] font-semibold">F3</kbd> para ver todos los clientes.
+      </p>
+
+      {open && (searched !== null || verTodos) && (
         <div className="absolute z-20 mt-1 max-h-64 w-full overflow-y-auto rounded-lg border border-border bg-card shadow-lg">
-          {results.length > 0 ? (
-            results.map(c => (
-              <button
-                key={c.id}
-                type="button"
-                onMouseDown={e => e.preventDefault()}
-                onClick={() => pick(c)}
-                className="flex w-full items-center justify-between gap-2 px-2.5 py-2 text-left hover:bg-muted/50 transition-colors"
-              >
-                <span className="truncate text-sm text-foreground">{nombreCompleto(c)}</span>
-                <span className="shrink-0 font-mono text-xs text-muted-foreground">{c.documento || "—"}</span>
-              </button>
-            ))
+          {lista.length > 0 ? (
+            <>
+              {verTodos && (
+                <p className="px-2.5 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/50">
+                  Todos los clientes · orden alfabético
+                </p>
+              )}
+              {lista.map(c => (
+                <button
+                  key={c.id}
+                  type="button"
+                  onMouseDown={e => e.preventDefault()}
+                  onClick={() => pick(c)}
+                  className="flex w-full items-center justify-between gap-2 px-2.5 py-2 text-left hover:bg-muted/50 transition-colors"
+                >
+                  <span className="truncate text-sm text-foreground">{nombreCompleto(c)}</span>
+                  <span className="shrink-0 font-mono text-xs text-muted-foreground">{c.documento || "—"}</span>
+                </button>
+              ))}
+            </>
+          ) : verTodos ? (
+            <p className="px-2.5 py-2.5 text-xs text-muted-foreground/60">No hay clientes cargados.</p>
           ) : (
             /* Sin coincidencias → el cliente no existe → ofrecer alta. */
             <>

@@ -1,7 +1,8 @@
 ﻿"use client";
 
 import { useState, useMemo } from "react";
-import { Search, ChevronDown, X } from "lucide-react";
+import { ChevronDown, X } from "lucide-react";
+import { BuscadorF3 } from "@/components/ui/BuscadorF3";
 import { useAuditoria, type EventoAuditoria } from "@/lib/swr";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { KpiCard } from "@/components/ui/KpiCard";
@@ -99,17 +100,15 @@ export function AuditoriaTable() {
           </div>
 
           {/* Toolbar */}
-          <div className="flex flex-col sm:flex-row gap-3">
-            <div className="relative flex-1">
-              <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <input
-                type="text"
-                placeholder="Buscar en la descripción…"
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                className="h-10 w-full rounded-lg border border-border bg-muted/40 pl-9 pr-3 text-sm text-foreground placeholder:text-muted-foreground/40 outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/20"
-              />
-            </div>
+          <div className="flex flex-col sm:flex-row sm:items-start gap-3">
+            <BuscadorF3
+              value={search}
+              onChange={setSearch}
+              placeholder="Buscar en la descripción…"
+              onF3={() => setSearch("")}
+              f3Hint="para limpiar el filtro y ver todo"
+              className="flex-1"
+            />
             <div className="relative">
               <select value={entidad} onChange={e => setEntidad(e.target.value)} className={SEL}>
                 <option value="all">Todas las entidades</option>

@@ -83,6 +83,17 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
   // Registrar un cobro: admin, cobrador y vendedor (este último, solo SUS créditos).
   const { tenantId, role, vendedorId } = await requireRole(["admin", "cobrador", "vendedor"], req);
 
+  // Defensa en profundidad: un vendedor SIN ficha de agente vinculada no puede cobrar, porque
+  // el movimiento caería en la caja principal (vendedor_id null) en vez de en su caja. Con el
+  // vínculo obligatorio esto no debería pasar, pero cubre cuentas legacy mal vinculadas.
+  if (role === "vendedor" && !vendedorId) {
+    return errorResponse(
+      "Tu usuario no está vinculado a una ficha de agente; no podés registrar cobros hasta que un administrador lo vincule.",
+      "NO_VENDEDOR",
+      400,
+    );
+  }
+
   let body: any;
   try {
     body = await req.json();

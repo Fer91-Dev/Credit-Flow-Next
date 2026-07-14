@@ -91,9 +91,15 @@ export function MiCajaView() {
       {isLoading ? (
         <BodySkeleton />
       ) : error ? (
-        <div className="rounded-xl bg-destructive/10 border border-destructive/30 p-4 text-destructive text-sm">
-          Error al cargar tu caja: {error.message}
-        </div>
+        /vinculad/i.test(error.message) ? (
+          <div className="rounded-xl border border-dashed border-border/60 p-8 text-center text-sm text-muted-foreground">
+            {error.message}
+          </div>
+        ) : (
+          <div className="rounded-xl bg-destructive/10 border border-destructive/30 p-4 text-destructive text-sm">
+            Error al cargar tu caja: {error.message}
+          </div>
+        )
       ) : !caja ? (
         <div className="rounded-xl border border-dashed border-border/60 p-8 text-center text-sm text-muted-foreground">
           Tu usuario todavía no está vinculado a un vendedor.

@@ -3,8 +3,9 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   ShieldCheck, Plus, Mail, Pencil, Power, Link2,
-  Search, LayoutGrid, List, Trash2, KeyRound,
+  LayoutGrid, List, Trash2, KeyRound,
 } from "lucide-react";
+import { BuscadorF3 } from "@/components/ui/BuscadorF3";
 import { useUsuarios, useVendedores, KEYS, type Usuario, type RolUsuario } from "@/lib/swr";
 import { esEmailValido, esUsernameValido, normalizarUsername } from "@/lib/utils";
 import { mutate as globalMutate } from "swr";
@@ -127,16 +128,15 @@ export function UsuariosView() {
         accent="primary"
       />
       {/* Toolbar: búsqueda + vista + CTA (los headers solo llevan SystemControls) */}
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="relative flex-1 min-w-[200px]">
-          <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="Buscar por nombre, email o rol…"
-            className="h-10 w-full rounded-lg border border-border bg-card pl-9 pr-3 text-sm outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/20"
-          />
-        </div>
+      <div className="flex flex-wrap items-start gap-2">
+        <BuscadorF3
+          value={q}
+          onChange={setQ}
+          placeholder="Buscar por nombre, email o rol…"
+          onF3={() => setQ("")}
+          f3Hint="para limpiar el filtro y ver todos"
+          className="flex-1 min-w-[200px]"
+        />
         <div className="flex h-10 items-center rounded-lg border border-border p-0.5">
           <button onClick={() => cambiarVista("cards")} title="Ver como tarjetas" className={`flex h-9 w-9 items-center justify-center rounded-md transition-colors ${vista === "cards" ? "bg-primary/10 text-foreground" : "text-muted-foreground hover:bg-muted/20"}`}>
             <LayoutGrid className="h-4 w-4" />
@@ -367,6 +367,10 @@ function UsuarioForm({
       setError("Usuario inválido: 3–30 caracteres, letras/números y . _ - (sin @ ni espacios)");
       return;
     }
+    if (role === "vendedor" && !vendedorId) {
+      setError("Un usuario con rol vendedor debe vincularse a una ficha de agente (para tener su propia caja).");
+      return;
+    }
     const ok = await confirm({
       title: editing ? "¿Guardar cambios?" : "¿Crear usuario?",
       description: editing
@@ -418,12 +422,12 @@ function UsuarioForm({
             <div className="rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-2.5 text-sm text-destructive">{error}</div>
           )}
 
-          <Field label="Email" required>
+          <Field label="Email" required hint={editing ? undefined : "Email real del usuario — se usa para ingresar y para recuperar la contraseña"}>
             <Input
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="usuario@financiera.com"
+              placeholder="nombre@email-real.com"
               required={!editing}
               disabled={editing}
             />
@@ -464,27 +468,41 @@ function UsuarioForm({
             )}
           </div>
 
-          {role === "vendedor" && (
-            <Field label="Vincular a vendedor (Personal)" hint="para comisiones y para que vea solo SUS créditos">
-              <Select value={vendedorId} onChange={(e) => setVendedorId(e.target.value)}>
-                <option value="">— sin vincular —</option>
-                {vendedoresActivos.map((v) => {
-                  // Deshabilitar los que ya tienen cuenta, salvo el vinculado a ESTE usuario.
-                  const yaVinculado = linkedVendedorIds.has(v.id) && v.id !== usuario?.vendedor_id;
-                  return (
-                    <option key={v.id} value={v.id} disabled={yaVinculado}>
-                      {v.nombre}{yaVinculado ? " — ya tiene cuenta" : ""}
-                    </option>
-                  );
-                })}
-              </Select>
-            </Field>
-          )}
+          {role === "vendedor" && (() => {
+            const hayDisponibles = vendedoresActivos.some(
+              (v) => !linkedVendedorIds.has(v.id) || v.id === usuario?.vendedor_id,
+            );
+            return (
+              <Field
+                label="Vincular a ficha de agente (Personal)"
+                required
+                hint="obligatorio: es su ficha de agente (comisiones, su caja propia, ve solo SUS créditos)"
+              >
+                <Select value={vendedorId} onChange={(e) => setVendedorId(e.target.value)} required>
+                  <option value="">— elegí un agente —</option>
+                  {vendedoresActivos.map((v) => {
+                    // Deshabilitar los que ya tienen cuenta, salvo el vinculado a ESTE usuario.
+                    const yaVinculado = linkedVendedorIds.has(v.id) && v.id !== usuario?.vendedor_id;
+                    return (
+                      <option key={v.id} value={v.id} disabled={yaVinculado}>
+                        {v.nombre}{yaVinculado ? " — ya tiene cuenta" : ""}
+                      </option>
+                    );
+                  })}
+                </Select>
+                {!hayDisponibles && (
+                  <p className="mt-1.5 text-xs text-warning">
+                    No hay fichas de agente libres. Creá al vendedor directamente desde <strong>Agentes</strong> (ya incluye su cuenta de acceso).
+                  </p>
+                )}
+              </Field>
+            );
+          })()}
 
           <FormActions
             onCancel={() => onClose(false)}
             loading={loading}
-            disabled={!usernameOk}
+            disabled={!usernameOk || (role === "vendedor" && !vendedorId)}
             submitLabel={editing ? "Guardar cambios" : "Crear usuario"}
           />
         </form>

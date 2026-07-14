@@ -12,7 +12,17 @@ import type { NextRequest } from "next/server";
  * desembolso, para cualquier rol. (MiCajaView solo se renderiza para vendedores.)
  */
 export const GET = withErrorHandler(async (req: NextRequest) => {
-  const { tenantId, vendedorId } = await requireAuth(req);
+  const { tenantId, role, vendedorId } = await requireAuth(req);
+  // SEGURIDAD: el fallback `vendedorId = null` → CAJA PRINCIPAL es EXCLUSIVO del admin (lo usa
+  // el simulador para validar fondos). Un vendedor/cobrador sin vínculo NO debe ver la principal
+  // (sería una fuga de la tesorería del tenant). Sin vendedor asignado no tiene caja propia.
+  if (role !== "admin" && !vendedorId) {
+    return errorResponse(
+      "Tu usuario no está vinculado a una ficha de agente, así que todavía no tenés una caja asignada. Pedile a un administrador que vincule tu cuenta.",
+      "NO_VENDEDOR",
+      400,
+    );
+  }
   return successResponse(await cajaDeVendedor(tenantId, vendedorId));
 });
 

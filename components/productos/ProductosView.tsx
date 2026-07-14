@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { mutate as globalMutate } from "swr";
-import { Plus, Pencil, Trash2, Search, ImagePlus, Loader2, X, Link as LinkIcon, LayoutGrid, List, ArrowDownToLine, SlidersHorizontal, Image as ImageIcon, ChevronLeft, ChevronRight, Info, GripVertical, Star } from "lucide-react";
+import { Plus, Pencil, Trash2, ImagePlus, Loader2, X, Link as LinkIcon, LayoutGrid, List, ArrowDownToLine, SlidersHorizontal, Image as ImageIcon, ChevronLeft, ChevronRight, Info, GripVertical, Star } from "lucide-react";
+import { BuscadorF3 } from "@/components/ui/BuscadorF3";
 import { useProductos, useProducto, KEYS, type Producto, type MovimientoStock } from "@/lib/swr";
 import { parseMontoInput, formatFecha, formatFechaHora, formatCreditoNumero } from "@/lib/utils";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -124,16 +125,15 @@ export function ProductosView() {
       />
 
       {/* Toolbar (la regla: el header solo lleva SystemControls; los CTA van acá) */}
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="relative flex-1 min-w-[200px]">
-          <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="Buscar por nombre o SKU…"
-            className="h-10 w-full rounded-lg border border-border bg-card pl-9 pr-3 text-sm outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/20"
-          />
-        </div>
+      <div className="flex flex-wrap items-start gap-2">
+        <BuscadorF3
+          value={q}
+          onChange={setQ}
+          placeholder="Buscar por nombre o SKU…"
+          onF3={() => setQ("")}
+          f3Hint="para limpiar el filtro y ver todos"
+          className="flex-1 min-w-[200px]"
+        />
         <select
           value={catFiltro}
           onChange={(e) => setCatFiltro(e.target.value)}

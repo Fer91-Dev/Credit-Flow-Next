@@ -102,6 +102,21 @@ export const PATCH = withErrorHandler(async (req: NextRequest, { params }: Route
   // Si deja de ser vendedor, se limpia el vínculo.
   if (data.role && data.role !== "vendedor") data.vendedor_id = null;
 
+  // Un usuario con rol vendedor DEBE quedar vinculado a una ficha de agente (si no, no tiene
+  // caja propia y vería la principal). Se valida solo cuando el cambio toca el rol o el vínculo,
+  // para no bloquear ediciones parciales (activar/desactivar, contraseña) de cuentas legacy.
+  if ("role" in body || "vendedor_id" in body) {
+    const rolFinal = (data.role as string) ?? target.role;
+    const vendFinal = "vendedor_id" in data ? (data.vendedor_id as string | null) : target.vendedor_id;
+    if (rolFinal === "vendedor" && !vendFinal) {
+      return errorResponse(
+        "Un usuario con rol vendedor debe estar vinculado a una ficha de agente.",
+        "VENDEDOR_SIN_FICHA",
+        400,
+      );
+    }
+  }
+
   if (Object.keys(data).length === 0 && nuevaPassword === null) {
     return errorResponse("No hay cambios para aplicar", "INVALID_INPUT", 400);
   }

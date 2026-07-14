@@ -118,6 +118,17 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     vendedorId = v.id;
   }
 
+  // Un usuario con rol vendedor DEBE tener ficha de agente vinculada. Sin ella queda sin caja
+  // propia y el sistema lo trataría como caja principal (fuga). Se crea el agente en "Agentes"
+  // (que ya incluye su cuenta) o se vincula uno existente.
+  if (role === "vendedor" && !vendedorId) {
+    return errorResponse(
+      "Un usuario con rol vendedor debe vincularse a una ficha de agente. Creá el agente en 'Agentes' (incluye su cuenta) o vinculá uno existente.",
+      "VENDEDOR_SIN_FICHA",
+      400,
+    );
+  }
+
   // 1) Crear el usuario real en Supabase Auth (email confirmado, sin mail).
   const admin = createAdminClient();
   const { data: created, error: authErr } = await admin.auth.admin.createUser({

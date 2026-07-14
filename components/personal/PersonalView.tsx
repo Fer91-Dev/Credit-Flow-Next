@@ -16,6 +16,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Field, Input, Select, PasswordFields } from "@/components/ui/field";
 import { UsernameField } from "@/components/ui/UsernameField";
+import { BuscadorF3 } from "@/components/ui/BuscadorF3";
 import { ModalHeader, MoneyInput, FormActions, MODAL_CONTENT } from "@/components/ui/form-kit";
 import { maskMontoInput, parseMontoInput, numeroAInput, soloDigitos, esEmailValido, esUsernameValido, normalizarUsername } from "@/lib/utils";
 import { useConfirm } from "@/components/ui/confirm";
@@ -164,16 +165,15 @@ export function PersonalView() {
         accent="primary"
       />
       {/* Toolbar: búsqueda + vista + CTA */}
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="relative flex-1 min-w-[200px]">
-          <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="Buscar por nombre, email o rol…"
-            className="h-10 w-full rounded-lg border border-border bg-card pl-9 pr-3 text-sm outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/20"
-          />
-        </div>
+      <div className="flex flex-wrap items-start gap-2">
+        <BuscadorF3
+          value={q}
+          onChange={setQ}
+          placeholder="Buscar por nombre, email o rol…"
+          onF3={() => setQ("")}
+          f3Hint="para limpiar el filtro y ver todos"
+          className="flex-1 min-w-[200px]"
+        />
         <div className="flex h-10 items-center rounded-lg border border-border p-0.5">
           <button onClick={() => cambiarVista("cards")} title="Ver como tarjetas" className={`flex h-9 w-9 items-center justify-center rounded-md transition-colors ${vista === "cards" ? "bg-primary/10 text-foreground" : "text-muted-foreground hover:bg-muted/20"}`}>
             <LayoutGrid className="h-4 w-4" />
@@ -577,8 +577,8 @@ function PersonalForm({
             <Input value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Nombre y apellido" required />
           </Field>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <Field label="Email" required={!editing} hint={editing ? undefined : "es el usuario de acceso"}>
-              <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder={editing ? "opcional" : "usuario@financiera.com"} required={!editing} />
+            <Field label="Email" required={!editing} hint={editing ? undefined : "Email real del agente — se usa para ingresar y para recuperar la contraseña"}>
+              <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder={editing ? "opcional" : "nombre@email-real.com"} required={!editing} />
             </Field>
             <Field label="Teléfono">
               <Input value={telefono} inputMode="numeric" onChange={(e) => setTelefono(soloDigitos(e.target.value, 10))} placeholder="10 dígitos (opcional)" />
@@ -741,8 +741,8 @@ function CrearCuentaDialog({ vendedor, onClose }: { vendedor: Vendedor | null; o
           {error && (
             <div className="rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-2.5 text-sm text-destructive">{error}</div>
           )}
-          <Field label="Email" required hint="es el usuario de acceso">
-            <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="usuario@financiera.com" required />
+          <Field label="Email" required hint="Email real del agente — se usa para ingresar y para recuperar la contraseña">
+            <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="nombre@email-real.com" required />
           </Field>
           <UsernameField value={username} onChange={setUsername} onValidChange={setUsernameOk} />
           <PasswordFields

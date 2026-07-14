@@ -5,6 +5,7 @@ import { useSWRConfig } from "swr";
 import { Wallet, Search, User, Phone, IdCard, ArrowLeft, Plus, ChevronRight, X } from "lucide-react";
 import { useClientes, KEYS, type Cliente } from "@/lib/swr";
 import { ClienteDetail } from "@/components/clientes/ClienteDetail";
+import { BuscadorF3 } from "@/components/ui/BuscadorF3";
 import { PagoForm } from "./PagoForm";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { StatusBadge } from "@/components/ui/StatusBadge";
@@ -21,6 +22,7 @@ export function PagosTable() {
   const { mutate: globalMutate } = useSWRConfig();
 
   const [query, setQuery] = useState("");
+  const [verTodos, setVerTodos] = useState(false); // F3: lista completa de clientes A→Z
   const [selected, setSelected] = useState<Cliente | null>(null);
   const [pagoOpen, setPagoOpen] = useState(false);
 
@@ -38,7 +40,13 @@ export function PagosTable() {
     });
   }, [clientes, query]);
 
-  const elegir = (c: Cliente) => { setSelected(c); setQuery(""); };
+  // Lista completa ordenada (para "ver todos" con F3).
+  const todosOrdenados = useMemo(
+    () => [...clientes].sort((a, b) => nombreCompleto(a).localeCompare(nombreCompleto(b), "es", { sensitivity: "base" })),
+    [clientes],
+  );
+
+  const elegir = (c: Cliente) => { setSelected(c); setQuery(""); setVerTodos(false); };
 
   const handlePagoClose = (success?: boolean) => {
     setPagoOpen(false);
@@ -103,6 +111,7 @@ export function PagosTable() {
 
   // ── Vista de búsqueda (sin cliente seleccionado) ──
   const q = query.trim();
+  const lista = q ? resultados : todosOrdenados; // con F3 (verTodos) se muestra la lista completa
   return (
     <div className="space-y-6">
       <PageHeader
@@ -113,46 +122,38 @@ export function PagosTable() {
       />
 
       {/* Buscador */}
-      <div className="relative max-w-2xl">
-        <Search className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
-        <input
-          autoFocus
-          type="text"
-          inputMode="search"
-          placeholder="DNI o nombre del cliente…"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter" && resultados.length === 1) elegir(resultados[0]); }}
-          className="h-14 w-full rounded-xl border border-border bg-card pl-12 pr-12 text-base text-foreground placeholder:text-muted-foreground/50 outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/20"
-        />
-        {query && (
-          <button
-            onClick={() => setQuery("")}
-            className="absolute right-3 top-1/2 -translate-y-1/2 flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted transition-colors"
-            aria-label="Limpiar"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        )}
-      </div>
+      <BuscadorF3
+        value={query}
+        onChange={setQuery}
+        placeholder="DNI o nombre del cliente…"
+        size="lg"
+        autoFocus
+        onF3={() => setVerTodos((v) => !v)}
+        onEnter={() => { if (resultados.length === 1) elegir(resultados[0]); }}
+        onEscape={() => { if (verTodos) setVerTodos(false); else setQuery(""); }}
+        f3Hint={`para ${verTodos ? "cerrar" : "ver"} la lista completa de clientes`}
+        className="max-w-2xl"
+      />
 
       {/* Estados */}
-      {!q ? (
+      {!q && !verTodos ? (
         <HeroVacio />
       ) : isLoading ? (
         <p className="text-sm text-muted-foreground">Buscando…</p>
-      ) : resultados.length === 0 ? (
+      ) : lista.length === 0 ? (
         <div className="rounded-xl border border-dashed border-border/60 p-10 flex flex-col items-center gap-2 text-center">
           <User className="h-8 w-8 text-muted-foreground/20" />
-          <p className="text-sm font-semibold text-muted-foreground">Sin coincidencias</p>
-          <p className="text-xs text-muted-foreground/50">No se encontró ningún cliente para «{q}».</p>
+          <p className="text-sm font-semibold text-muted-foreground">{q ? "Sin coincidencias" : "Sin clientes"}</p>
+          <p className="text-xs text-muted-foreground/50">{q ? `No se encontró ningún cliente para «${q}».` : "Todavía no hay clientes cargados."}</p>
         </div>
       ) : (
         <div className="space-y-2 max-w-2xl">
           <p className="text-xs text-muted-foreground">
-            {resultados.length} resultado{resultados.length !== 1 ? "s" : ""}
+            {q
+              ? `${lista.length} resultado${lista.length !== 1 ? "s" : ""}`
+              : `${lista.length} cliente${lista.length !== 1 ? "s" : ""} · orden alfabético`}
           </p>
-          {resultados.slice(0, 20).map((c) => (
+          {lista.slice(0, q ? 20 : 300).map((c) => (
             <button
               key={c.id}
               onClick={() => elegir(c)}

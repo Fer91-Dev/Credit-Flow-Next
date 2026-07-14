@@ -2,6 +2,7 @@ import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api"
 import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
 import { normalizarUsername } from "@/lib/utils";
+import { rateLimit, clientIp, sweepIfNeeded } from "@/lib/rate-limit";
 import type { NextRequest } from "next/server";
 
 // Mensaje ÚNICO para cualquier fallo (usuario inexistente, email inexistente o
@@ -29,6 +30,13 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
   const password = body.password ?? "";
   if (!identifier || !password) {
     return errorResponse("Ingresá tu usuario/email y contraseña", "INVALID_INPUT", 400);
+  }
+
+  // Rate limit por IP: frena la fuerza bruta de contraseñas.
+  sweepIfNeeded();
+  const rl = rateLimit(`login:${clientIp(req)}`, 10, 5 * 60_000);
+  if (!rl.ok) {
+    return errorResponse("Demasiados intentos. Esperá unos minutos e intentá de nuevo.", "RATE_LIMITED", 429);
   }
 
   // Resolver a email. Con `@` = email directo; sin `@` = username → buscar su email.

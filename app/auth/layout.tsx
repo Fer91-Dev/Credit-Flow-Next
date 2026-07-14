@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 
 export default async function AuthLayout({
@@ -9,7 +10,12 @@ export default async function AuthLayout({
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
-  if (user) redirect("/");
+  // La recuperación de contraseña crea una sesión válida (recovery); NO hay que rebotar al
+  // inicio en esa pantalla o el usuario nunca llega a setear su clave nueva.
+  const pathname = (await headers()).get("x-pathname") ?? "";
+  const esReset = pathname.startsWith("/auth/reset-password");
+
+  if (user && !esReset) redirect("/");
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">

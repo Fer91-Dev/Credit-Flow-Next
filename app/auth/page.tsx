@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { Eye, EyeOff, Loader2, AlertCircle } from "lucide-react";
 
 export default function LoginPage() {
@@ -154,9 +155,10 @@ export default function LoginPage() {
           </button>
         </form>
 
-        <p className="mt-5 text-center text-[11px] leading-relaxed text-muted-foreground/70">
-          ¿Olvidaste tu contraseña o tu usuario? Pedile a un administrador de tu
-          financiera que te lo restablezca desde <span className="text-muted-foreground">Usuarios</span>.
+        <p className="mt-5 text-center text-xs text-muted-foreground">
+          <Link href="/auth/recuperar" className="text-primary hover:underline">
+            ¿Olvidaste tu usuario o contraseña?
+          </Link>
         </p>
       </div>
 
