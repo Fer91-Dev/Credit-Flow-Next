@@ -356,6 +356,7 @@ model campanas_cobranza {
   id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   created_at       DateTime  @default(now()) @db.Timestamptz(6)
   tenant_id        String    @db.Uuid
+  vendedor_id      String?   @db.Uuid // dueño de la campaña: vendedor que la creó (null = campaña del admin / toda la financiera)
   nombre           String
   descripcion      String?
   canal            String    @default("whatsapp") // whatsapp | email | sms
@@ -368,6 +369,7 @@ model campanas_cobranza {
   objetivos campana_objetivo[]
 
   @@index([tenant_id, created_at])
+  @@index([tenant_id, vendedor_id])
 }
 
 /// Vínculo campaña ↔ crédito en mora (tabla intermedia, Fase 7A). Multi-tenant.
@@ -629,5 +631,6 @@ model configuraciones {
   gamificacion_config  Json? // { habilitado, periodo, pesos:{monto,cantidad,cobranza,calidad}, umbrales:{oro,plata,bronce} }
   rentabilidad_config  Json? // { habilitado, costo_fondeo_anual, otros_costos_mensuales } — costo de capital para rentabilidad NETA en Reportes
   riesgo_config        Json? // { politica: PoliticaOriginacion } — motor de riesgo/originación (feature premium; ver lib/domain/riesgo.ts)
+  cobranza_config      Json? // { dias_sin_gestion } — agenda de cobranza: cada cuántos días un moroso sin gestión vuelve a la cola
   updated_at           DateTime @updatedAt @db.Timestamptz(6)
 }

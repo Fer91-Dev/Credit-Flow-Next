@@ -6,6 +6,7 @@ import { CalendarDays, MapPin, UserCog, X, Target, Trophy, Users2, AlertTriangle
 import { useZonas, useVendedores, useDashboard, useMiPerfilVendedor, useMisLogros, type DashboardFiltros, type VendedorRendimiento, type MiPerfilVendedor } from "@/lib/swr";
 import { DashboardKpis, DashboardCobranzaAvance, DashboardMoraGrid, DashboardKpisSkeleton } from "./DashboardMetrics";
 import { MetricChart } from "./MetricChart";
+import { CobranzaDelDia } from "./CobranzaDelDia";
 import { MedallaBadge, RangoBadge, InsigniaChip } from "@/components/ui/Medalla";
 import { Emoji } from "@/components/ui/Emoji";
 
@@ -60,6 +61,9 @@ export function HomeView({ role }: { role: Role }) {
           <DashboardCobranzaAvance data={data} />
         </>
       )}
+
+      {/* ── Agenda de cobranza del día (scopeada al vendedor; admin ve todo) ── */}
+      <CobranzaDelDia />
 
       {/* ── 3 · Barra de filtros globales ── */}
       <div className="rounded-xl bg-card border border-border p-3.5 flex flex-wrap items-end gap-3">

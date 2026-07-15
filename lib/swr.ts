@@ -668,6 +668,13 @@ export interface ConfiguracionFinanciera {
   gamificacionConfig?: GamificacionConfig | null;
   rentabilidadConfig?: RentabilidadConfig | null;
   riesgoConfig?: RiesgoConfig | null;
+  cobranzaConfig?: CobranzaConfig | null;
+}
+
+/** Config de la agenda del día de cobranza (parametrizable por el admin). */
+export interface CobranzaConfig {
+  /** Días sin gestión tras los cuales un moroso vuelve a aparecer en la agenda del día. */
+  dias_sin_gestion: number;
 }
 
 export interface Pago {
@@ -1116,6 +1123,30 @@ export function useConfiguracion() {
 export function useFinanciera() {
   const { data, error, isLoading, mutate } = useSWR<Financiera>(KEYS.financiera);
   return { financiera: data, error, isLoading, mutate };
+}
+
+/** Un ítem de la agenda del día de cobranza (a quién contactar hoy). */
+export interface AgendaItem {
+  credito_id: string;
+  credito_numero: number | null;
+  cliente: string;
+  telefono: string | null;
+  saldo_pendiente: number;
+  dias_mora: number;
+  promesa_monto: number | null;
+  bucket: "promesa" | "agendado" | "enfriado";
+  motivo: string;
+  fecha: string | null;
+}
+export interface AgendaCobranza {
+  items: AgendaItem[];
+  totales: { promesa: number; agendado: number; enfriado: number; total: number };
+  dias_sin_gestion: number;
+}
+/** Agenda del día de cobranza (cola priorizada, scopeada al vendedor). */
+export function useAgendaCobranza() {
+  const { data, error, isLoading, mutate } = useSWR<AgendaCobranza>("/api/cobranza/agenda");
+  return { agenda: data, error, isLoading, mutate };
 }
 
 export function useAuditoria() {

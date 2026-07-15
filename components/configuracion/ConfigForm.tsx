@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Settings, Check, Loader2, Percent, Plus, X, MessageSquare, Phone, Mail } from "lucide-react";
-import { useConfiguracion, type ConfiguracionFinanciera, type GamificacionConfig, type RentabilidadConfig, type RiesgoConfig } from "@/lib/swr";
+import { useConfiguracion, type ConfiguracionFinanciera, type GamificacionConfig, type RentabilidadConfig, type RiesgoConfig, type CobranzaConfig } from "@/lib/swr";
 import { FeatureGate } from "@/components/providers/FeaturesProvider";
 import { FinancieraForm } from "@/components/configuracion/FinancieraForm";
 import type { SimuladorConfig, CargosConfig, FrecuenciaOpcion } from "@/lib/domain";
@@ -86,6 +86,13 @@ export function ConfigForm() {
     touch();
   };
 
+  // Cobranza: agenda del día (cada cuántos días un moroso sin gestión reaparece en la cola).
+  const cobranza = form?.cobranzaConfig ?? defaultCobranza();
+  const setCobranza = (patch: Partial<CobranzaConfig>) => {
+    setForm(prev => prev ? { ...prev, cobranzaConfig: { ...defaultCobranza(), ...prev.cobranzaConfig, ...patch } } : prev);
+    touch();
+  };
+
   // Rentabilidad: costo de fondeo para la ganancia NETA de Reportes.
   const rent = form?.rentabilidadConfig ?? defaultRentabilidad();
   const setRent = (patch: Partial<RentabilidadConfig>) => {
@@ -121,6 +128,7 @@ export function ConfigForm() {
     switch (key) {
       case "motor":         return f.convencionTasa !== c.convencionTasa || f.sistemaAmortizacion !== c.sistemaAmortizacion;
       case "mora":          return f.moraActiva !== c.moraActiva || f.tasaMoraDiaria !== c.tasaMoraDiaria || f.baseMora !== c.baseMora;
+      case "cobranza":      return !eq(f.cobranzaConfig ?? null, c.cobranzaConfig ?? null);
       case "imputacion":    return f.imputarCargos !== c.imputarCargos;
       case "presentacion":  return f.moneda !== c.moneda || f.locale !== c.locale;
       case "gamificacion":  return !eq(f.gamificacionConfig ?? null, c.gamificacionConfig ?? null);
@@ -471,6 +479,21 @@ export function ConfigForm() {
                   <option value="cuota">Valor de la cuota</option>
                   <option value="saldo">Saldo pendiente</option>
                 </Select>
+              </Field>
+            </div>
+          </Section>
+
+          {/* Agenda de cobranza */}
+          <Section title="Agenda del día de cobranza" desc="Cada cuántos días un cliente moroso sin gestión vuelve a aparecer en la cola “Hoy” del vendedor."
+            onSave={() => save("cobranza", { cobranzaConfig: cobranza })}
+            saving={savingKey === "cobranza"} saved={savedKey === "cobranza"} dirty={isDirty("cobranza")}>
+            <div className="max-w-md">
+              <Field label="Días sin gestión" hint="Un moroso reaparece en la agenda si nadie lo contactó en esta cantidad de días (1–90).">
+                <Input
+                  type="number" min="1" max="90" step="1"
+                  value={cobranza.dias_sin_gestion}
+                  onChange={e => setCobranza({ dias_sin_gestion: Math.max(1, Math.min(90, Math.round(parseFloat(e.target.value) || 1))) })}
+                />
               </Field>
             </div>
           </Section>
@@ -913,6 +936,10 @@ export function ConfigForm() {
 
 function defaultRentabilidad(): RentabilidadConfig {
   return { habilitado: false, costo_fondeo_anual: 0, otros_costos_mensuales: 0 };
+}
+
+function defaultCobranza(): CobranzaConfig {
+  return { dias_sin_gestion: 7 };
 }
 
 function defaultRiesgo(): RiesgoConfig {

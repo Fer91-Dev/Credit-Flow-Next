@@ -3,7 +3,7 @@
 import { useState, useMemo, useEffect } from "react";
 import { motion } from "framer-motion";
 import { useSWRConfig } from "swr";
-import { AlertCircle, Phone, Mail, Clock, Copy, CheckCheck, Search, DollarSign, ShieldAlert, MessageSquarePlus, CalendarClock, Megaphone, X, Users, MessageCircle, TrendingUp } from "lucide-react";
+import { AlertCircle, Phone, Mail, Clock, Copy, CheckCheck, Search, DollarSign, ShieldAlert, MessageSquarePlus, CalendarClock, Megaphone, X, Users, MessageCircle, TrendingUp, Sun } from "lucide-react";
 import { useCreditos, useAccionesCobranza, KEYS, type Credito, type AccionCobranza } from "@/lib/swr";
 import { type Role } from "@/lib/auth/roles";
 import { formatFecha, nombreCompleto } from "@/lib/utils";
@@ -12,6 +12,7 @@ import { CobranzaDetail } from "./CobranzaDetail";
 import { CampaignModal } from "./CampaignModal";
 import { CampanasView } from "./CampanasView";
 import { PromesasTab } from "./PromesasTab";
+import { AgendaHoy } from "./AgendaHoy";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { KpiCard } from "@/components/ui/KpiCard";
 import { StatusBadge } from "@/components/ui/StatusBadge";
@@ -59,16 +60,16 @@ const resultadoLabel: Record<AccionCobranza["resultado"], string> = {
   otro:          "Otro",
 };
 
-type Tab = "morosos" | "promesas" | "campanas";
+type Tab = "hoy" | "morosos" | "promesas" | "campanas";
 
 export function CobranzaTable({ role }: { role: Role }) {
-  // Las campañas (selección masiva + ActionToolbar + pestaña) son admin/cobrador.
-  // El vendedor gestiona la mora de SUS créditos (gestiones), sin campañas.
-  const puedeCampanas = role !== "vendedor";
+  // Campañas (selección masiva + ActionToolbar + pestaña): admin (toda la cartera) y
+  // vendedor (scopeado a SUS créditos, tanto en la selección como en el backend).
+  const puedeCampanas = role === "admin" || role === "vendedor";
   const { creditos: allCreditos, error, isLoading } = useCreditos();
   const { acciones, mutate: mutateAcciones } = useAccionesCobranza();
   const { mutate: globalMutate } = useSWRConfig();
-  const [tab, setTab]           = useState<Tab>("morosos");
+  const [tab, setTab]           = useState<Tab>("hoy");
   const [mounted, setMounted]   = useState(false);
   useEffect(() => setMounted(true), []);
   const [filterMora, setFilter] = useState<Severidad>("critica");
@@ -95,7 +96,20 @@ export function CobranzaTable({ role }: { role: Role }) {
 
   const handleGestionClose = (success?: boolean) => {
     setGestion(null);
-    if (success) mutateAcciones();
+    if (success) {
+      mutateAcciones();
+      globalMutate("/api/cobranza/agenda"); // la agenda del día depende de las gestiones
+    }
+  };
+
+  // La agenda del día devuelve solo ids; resolvemos el Credito completo para gestionar/ver.
+  const abrirGestionPorId = (id: string) => {
+    const c = allCreditos.find((x) => x.id === id);
+    if (c) setGestion(c);
+  };
+  const abrirDetallePorId = (id: string) => {
+    const c = allCreditos.find((x) => x.id === id);
+    if (c) setDetalle(c);
   };
 
   // Solo créditos activos en mora — comparten caché con la sección Créditos.
@@ -175,6 +189,7 @@ export function CobranzaTable({ role }: { role: Role }) {
       {/* ── Tabs: Morosos | Promesas | Campañas (campañas solo admin/cobrador) ── */}
       <div className="relative flex gap-1 border-b border-border -mt-2">
         {([
+          ["hoy",      "Hoy",      Sun],
           ["morosos",  "Morosos",  ShieldAlert],
           ["promesas", "Promesas", MessageSquarePlus],
           ...(puedeCampanas ? [["campanas", "Campañas", Megaphone]] : []),
@@ -203,7 +218,9 @@ export function CobranzaTable({ role }: { role: Role }) {
         ))}
       </div>
 
-      {tab === "campanas" ? (
+      {tab === "hoy" ? (
+        <AgendaHoy onGestionar={abrirGestionPorId} onDetalle={abrirDetallePorId} />
+      ) : tab === "campanas" ? (
         <CampanasView />
       ) : tab === "promesas" ? (
         <PromesasTab role={role} />

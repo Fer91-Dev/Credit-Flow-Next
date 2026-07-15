@@ -1,4 +1,4 @@
-import { requireRole } from "@/lib/auth";
+import { requireRole, scopeCreditosVendedor } from "@/lib/auth";
 import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
@@ -64,11 +64,12 @@ function metricasDe(objetivos: { promesa_generada: boolean; monto_recuperado: nu
  * Lista de campañas del tenant con métricas agregadas (alcance/promesas/recuperado).
  */
 export const GET = withErrorHandler(async (req: NextRequest) => {
-  // Campañas de cobranza: admin y cobrador.
-  const { tenantId } = await requireRole(["admin"], req);
+  // Campañas de cobranza: admin (todas) y vendedor (solo las suyas).
+  const ctx = await requireRole(["admin", "vendedor"], req);
+  const { tenantId } = ctx;
 
   const campanas = await prisma.campanas_cobranza.findMany({
-    where: { ...withTenant(tenantId) },
+    where: { ...withTenant(tenantId), ...scopeCreditosVendedor(ctx) },
     include: { objetivos: { select: { promesa_generada: true, monto_recuperado: true } } },
     orderBy: { created_at: "desc" },
   });
@@ -90,8 +91,9 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
  * }
  */
 export const POST = withErrorHandler(async (req: NextRequest) => {
-  // Crear campaña de cobranza: admin y cobrador.
-  const { tenantId } = await requireRole(["admin"], req);
+  // Crear campaña de cobranza: admin (cualquier crédito) y vendedor (solo los suyos).
+  const ctx = await requireRole(["admin", "vendedor"], req);
+  const { tenantId } = ctx;
 
   let body: any;
   try {
@@ -120,8 +122,9 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     : 0;
 
   // Créditos del tenant entre los solicitados (multi-tenant: nunca por id suelto).
+  // Scoping anti-IDOR: un vendedor solo puede armar campañas con SUS créditos.
   const creditos = await prisma.creditos.findMany({
-    where: { ...withTenant(tenantId), id: { in: body.credito_ids } },
+    where: { ...withTenant(tenantId), ...scopeCreditosVendedor(ctx), id: { in: body.credito_ids } },
     select: {
       id: true, saldo_pendiente: true, dias_mora: true, estado: true,
       monto_original: true, plazo_meses: true, tasa: true,
@@ -157,6 +160,8 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     const camp = await tx.campanas_cobranza.create({
       data: {
         ...withTenant(tenantId),
+        // Dueño de la campaña: el vendedor que la crea (admin → null = toda la financiera).
+        vendedor_id: ctx.role === "vendedor" ? ctx.vendedorId : null,
         nombre: body.nombre.trim(),
         descripcion: body.descripcion?.trim() || null,
         canal,

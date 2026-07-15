@@ -174,3 +174,40 @@ export async function guardarRiesgoConfig(tenantId: string, config: RiesgoConfig
   });
   return config;
 }
+
+// ─── Cobranza (agenda de gestión del día) ───────────────────────────────────
+
+export interface CobranzaConfig {
+  /** Días sin gestión tras los cuales un moroso vuelve a aparecer en la agenda del día. */
+  dias_sin_gestion: number;
+}
+
+export const COBRANZA_DEFAULT: CobranzaConfig = { dias_sin_gestion: 7 };
+
+/** Mezcla con defaults y acota `dias_sin_gestion` a 1..90. */
+export function resolverCobranza(raw: unknown): CobranzaConfig {
+  const r = (raw ?? {}) as Partial<CobranzaConfig>;
+  const n = Number(r.dias_sin_gestion);
+  const dias = Number.isFinite(n) && n > 0 ? Math.min(90, Math.max(1, Math.round(n))) : COBRANZA_DEFAULT.dias_sin_gestion;
+  return { dias_sin_gestion: dias };
+}
+
+/** Config de agenda de cobranza del tenant (mezclada con defaults). No es secreto. */
+export async function getCobranzaConfig(tenantId: string): Promise<CobranzaConfig> {
+  const row = await prisma.configuraciones.findUnique({
+    where: { tenant_id: tenantId },
+    select: { cobranza_config: true },
+  });
+  return resolverCobranza(row?.cobranza_config ?? null);
+}
+
+/** Persiste (upsert) la config de agenda de cobranza. */
+export async function guardarCobranzaConfig(tenantId: string, config: CobranzaConfig): Promise<CobranzaConfig> {
+  const clean = resolverCobranza(config);
+  await prisma.configuraciones.upsert({
+    where:  { tenant_id: tenantId },
+    create: { tenant_id: tenantId, cobranza_config: clean as unknown as Prisma.InputJsonValue },
+    update: { cobranza_config: clean as unknown as Prisma.InputJsonValue },
+  });
+  return clean;
+}

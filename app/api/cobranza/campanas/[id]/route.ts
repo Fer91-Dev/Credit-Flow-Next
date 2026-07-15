@@ -1,4 +1,4 @@
-import { requireRole } from "@/lib/auth";
+import { requireRole, scopeCreditosVendedor } from "@/lib/auth";
 import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
@@ -20,11 +20,12 @@ function metricasDe(objetivos: { promesa_generada: boolean; monto_recuperado: nu
  * Detalle de campaña con sus objetivos (crédito + cliente) y métricas.
  */
 export const GET = withErrorHandler(async (req: NextRequest, ctx: { params: Promise<{ id: string }> }) => {
-  const { tenantId } = await requireRole(["admin"], req);
+  const auth = await requireRole(["admin", "vendedor"], req);
+  const { tenantId } = auth;
   const { id } = await ctx.params;
 
   const campana = await prisma.campanas_cobranza.findFirst({
-    where: { ...withTenant(tenantId), id },
+    where: { ...withTenant(tenantId), ...scopeCreditosVendedor(auth), id },
     include: {
       objetivos: {
         include: {
@@ -53,7 +54,8 @@ export const GET = withErrorHandler(async (req: NextRequest, ctx: { params: Prom
  * Body: { estado? } | { objetivo_id, promesa_generada }
  */
 export const PATCH = withErrorHandler(async (req: NextRequest, ctx: { params: Promise<{ id: string }> }) => {
-  const { tenantId } = await requireRole(["admin"], req);
+  const auth = await requireRole(["admin", "vendedor"], req);
+  const { tenantId } = auth;
   const { id } = await ctx.params;
 
   let body: any;
@@ -64,7 +66,7 @@ export const PATCH = withErrorHandler(async (req: NextRequest, ctx: { params: Pr
   }
 
   const campana = await prisma.campanas_cobranza.findFirst({
-    where: { ...withTenant(tenantId), id },
+    where: { ...withTenant(tenantId), ...scopeCreditosVendedor(auth), id },
   });
   if (!campana) return errorResponse("Campaña no encontrada", "NOT_FOUND", 404);
 
@@ -112,11 +114,12 @@ export const PATCH = withErrorHandler(async (req: NextRequest, ctx: { params: Pr
  * Elimina la campaña (los objetivos se borran por cascade). No afecta créditos.
  */
 export const DELETE = withErrorHandler(async (req: NextRequest, ctx: { params: Promise<{ id: string }> }) => {
-  const { tenantId } = await requireRole(["admin"], req);
+  const auth = await requireRole(["admin", "vendedor"], req);
+  const { tenantId } = auth;
   const { id } = await ctx.params;
 
   const campana = await prisma.campanas_cobranza.findFirst({
-    where: { ...withTenant(tenantId), id },
+    where: { ...withTenant(tenantId), ...scopeCreditosVendedor(auth), id },
   });
   if (!campana) return errorResponse("Campaña no encontrada", "NOT_FOUND", 404);
 

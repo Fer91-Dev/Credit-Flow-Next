@@ -1,4 +1,4 @@
-import { requireRole } from "@/lib/auth";
+import { requireRole, scopeCreditosVendedor } from "@/lib/auth";
 import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
@@ -19,11 +19,12 @@ export const POST = withErrorHandler(async (
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) => {
-  const { tenantId } = await requireRole(["admin"], req);
+  const auth = await requireRole(["admin", "vendedor"], req);
+  const { tenantId } = auth;
   const { id } = await params;
 
   const campana = await prisma.campanas_cobranza.findFirst({
-    where: { id, ...withTenant(tenantId) },
+    where: { id, ...withTenant(tenantId), ...scopeCreditosVendedor(auth) },
     include: {
       objetivos: {
         include: {
