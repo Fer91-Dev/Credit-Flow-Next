@@ -219,3 +219,90 @@ export function resumenOperaciones(creditos: OperacionCredito[]): ResumenOperaci
     tasa_promedio: n > 0 ? round2(nuevos.reduce((s, c) => s + c.tasa, 0) / n) : 0,
   };
 }
+
+// ─── Efectividad de cobranza (Fase 2 "Reforzar Cobranzas") ──────────────────
+
+/** Resultados de gestión que implican que SÍ se logró contacto efectivo con el cliente. */
+export const RESULTADOS_CONTACTO = new Set(["contactado", "promesa_pago", "renegociacion"]);
+
+/** Una gestión de cobranza HUMANA (automatico = false), normalizada para el embudo. */
+export interface GestionCobranza {
+  resultado: string;
+  /** null | pendiente | cumplida | incumplida (solo cuando resultado = "promesa_pago"). */
+  promesa_estado: string | null;
+  promesa_monto: number | null;
+}
+
+/** Pago del período, para medir lo recuperado. */
+export interface PagoRecupero {
+  monto: number;
+  aplicado_mora: number;
+}
+
+export interface EmbudoCobranza {
+  gestiones: number;
+  contactos: number;
+  promesas: number;
+  promesas_cumplidas: number;
+  promesas_rotas: number;
+  promesas_pendientes: number;
+  /** Σ del monto prometido en las promesas que se cumplieron. */
+  monto_prometido_cumplido: number;
+  /** contactos / gestiones (%). */
+  tasa_contacto: number;
+  /** promesas / contactos (%). */
+  tasa_promesa: number;
+  /** promesas cumplidas / promesas hechas (%). */
+  tasa_cumplimiento: number;
+}
+
+export interface RecuperoCobranza {
+  /** Interés de mora efectivamente cobrado en el período. */
+  mora_cobrada: number;
+  /** Total cobrado en el período (todo concepto). */
+  total_cobrado: number;
+}
+
+/** Porcentaje seguro (0 si el denominador es 0). */
+export function tasaPct(num: number, den: number): number {
+  return den > 0 ? round2((num / den) * 100) : 0;
+}
+
+/**
+ * Embudo de cobranza sobre un conjunto de gestiones HUMANAS: gestión → contacto → promesa →
+ * promesa cumplida, con sus tasas de conversión. Reutilizable por grupo (global, por canal,
+ * por vendedor): basta pasarle el subconjunto correspondiente.
+ */
+export function resumenEmbudoCobranza(gestiones: GestionCobranza[]): EmbudoCobranza {
+  let contactos = 0, promesas = 0, cumplidas = 0, rotas = 0, pendientes = 0, montoCumplido = 0;
+  for (const g of gestiones) {
+    if (RESULTADOS_CONTACTO.has(g.resultado)) contactos += 1;
+    if (g.resultado === "promesa_pago") {
+      promesas += 1;
+      if (g.promesa_estado === "cumplida") { cumplidas += 1; montoCumplido += g.promesa_monto ?? 0; }
+      else if (g.promesa_estado === "incumplida") rotas += 1;
+      else pendientes += 1;
+    }
+  }
+  const total = gestiones.length;
+  return {
+    gestiones: total,
+    contactos,
+    promesas,
+    promesas_cumplidas: cumplidas,
+    promesas_rotas: rotas,
+    promesas_pendientes: pendientes,
+    monto_prometido_cumplido: round2(montoCumplido),
+    tasa_contacto: tasaPct(contactos, total),
+    tasa_promesa: tasaPct(promesas, contactos),
+    tasa_cumplimiento: tasaPct(cumplidas, promesas),
+  };
+}
+
+/** Suma de lo recuperado (mora cobrada + total cobrado) sobre un conjunto de pagos. */
+export function recuperoCobranza(pagos: PagoRecupero[]): RecuperoCobranza {
+  return {
+    mora_cobrada: round2(pagos.reduce((s, p) => s + p.aplicado_mora, 0)),
+    total_cobrado: round2(pagos.reduce((s, p) => s + p.monto, 0)),
+  };
+}

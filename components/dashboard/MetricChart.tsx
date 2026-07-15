@@ -101,16 +101,16 @@ export function MetricChart({ vendedorId }: { vendedorId?: string }) {
       {/* Header: título + valor + toggle de métrica */}
       <div className="flex flex-wrap items-start justify-between gap-3 mb-3">
         <div className="flex items-center gap-2.5 min-w-0">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-muted/40 border border-border shrink-0">
-            <Emoji name={cfg.emoji} className="h-4 w-4" />
+          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-muted/40 border border-border shrink-0">
+            <Emoji name={cfg.emoji} className="h-3.5 w-3.5" />
           </div>
           <div className="min-w-0">
             <h3 className="text-sm font-semibold text-foreground leading-tight">{cfg.label}</h3>
             {isLoading ? (
-              <Skeleton className="h-6 w-28 mt-1" />
+              <Skeleton className="h-5 w-24 mt-1" />
             ) : (
               <p className="flex items-baseline gap-2">
-                <span className="text-xl font-bold font-mono tabular-nums text-foreground leading-none">${n0(hover != null ? valores[hover] : ultimo)}</span>
+                <span className="text-lg font-bold font-mono tabular-nums text-foreground leading-none">${n0(hover != null ? valores[hover] : ultimo)}</span>
                 {hover == null && variacion != null && (
                   <span className={`text-xs font-semibold ${variacion >= 0 ? "text-success" : "text-destructive"}`}>
                     {variacion >= 0 ? "▲" : "▼"} {Math.abs(variacion)}%

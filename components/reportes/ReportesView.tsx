@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Download, Printer } from "lucide-react";
-import { useReportes, useReporteSerie, type Reporte, type ReporteSerie, type PuntoMensual } from "@/lib/swr";
+import { useReportes, useReporteSerie, useReporteCobranza, type Reporte, type ReporteSerie, type PuntoMensual, type ReporteCobranza } from "@/lib/swr";
 import { formatFecha } from "@/lib/utils";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { KpiCard } from "@/components/ui/KpiCard";
@@ -33,6 +33,9 @@ const metodoLabel: Record<string, string> = {
 const tipoLabel: Record<string, string> = {
   personal: "Personal", empresarial: "Empresarial", productos: "Productos", otro: "Otro",
 };
+const canalLabel: Record<string, string> = {
+  llamada: "Llamada", whatsapp: "WhatsApp", email: "Email", visita: "Visita", otro: "Otro",
+};
 
 const INPUT =
   "h-10 rounded-lg border border-border bg-muted/40 px-3 text-sm text-foreground outline-none " +
@@ -43,6 +46,7 @@ const TABS = [
   { id: "operaciones", label: "Operaciones" },
   { id: "rentabilidad", label: "Rentabilidad" },
   { id: "morosidad", label: "Morosidad" },
+  { id: "cobranza", label: "Cobranza" },
   { id: "historico", label: "Histórico" },
 ] as const;
 type TabId = (typeof TABS)[number]["id"];
@@ -71,6 +75,12 @@ function exportarSerie(s: ReporteSerie) {
   descargarCSV(`reporte-mensual_${s.periodo.desde}_${s.periodo.hasta}.csv`, [
     ["Mes", "Operaciones", "Monto otorgado", "Ticket promedio", "Cobrado", "Interés cobrado", "Mora cobrada", "Cargos cobrados", "Ingreso financiero", "Costo fondeo", "Rentabilidad neta", "Cartera fin", "Mora #", "Saldo en mora", "Mora %"],
     ...s.serie.map((p) => [p.mes, p.otorgado_cantidad, p.otorgado_monto, p.ticket_promedio, p.cobrado_total, p.cobrado_interes, p.cobrado_mora, p.cobrado_cargos, p.ingreso_financiero, p.costo_fondeo, p.rentabilidad_neta, p.cartera_capital_fin, p.mora_creditos, p.mora_saldo_expuesto, p.mora_pct]),
+  ]);
+}
+function exportarCobranza(c: ReporteCobranza) {
+  descargarCSV(`reporte-cobranza_${c.periodo.desde}_${c.periodo.hasta}.csv`, [
+    ["Vendedor", "Gestiones", "Contactos", "Promesas", "Promesas cumplidas", "Tasa contacto %", "Cumplimiento %", "Mora recuperada"],
+    ...c.por_vendedor.map((v) => [v.nombre, v.gestiones, v.contactos, v.promesas, v.promesas_cumplidas, v.tasa_contacto, v.tasa_cumplimiento, v.mora_cobrada]),
   ]);
 }
 
@@ -162,6 +172,7 @@ export function ReportesView() {
 
   const { reporte, error, isLoading } = useReportes(desde, hasta);
   const { serie } = useReporteSerie(desde, hasta);
+  const { cobranza } = useReporteCobranza(desde, hasta);
 
   const preset = (d: Date, h: Date) => { setDesde(ymd(d)); setHasta(ymd(h)); };
   const presets = [
@@ -171,11 +182,13 @@ export function ReportesView() {
     { label: "Año pasado", run: () => preset(new Date(today.getFullYear() - 1, 0, 1), new Date(today.getFullYear() - 1, 11, 31)) },
   ];
 
-  const puedeExportar = tab === "resumen"
-    ? !!reporte && reporte.detalle_pagos.length > 0
+  const puedeExportar =
+    tab === "resumen" ? !!reporte && reporte.detalle_pagos.length > 0
+    : tab === "cobranza" ? !!cobranza && cobranza.por_vendedor.length > 0
     : !!serie && serie.serie.length > 0;
   const exportar = () => {
     if (tab === "resumen") { if (reporte) exportarPagos(reporte); }
+    else if (tab === "cobranza") { if (cobranza) exportarCobranza(cobranza); }
     else if (serie) exportarSerie(serie);
   };
 
@@ -239,6 +252,7 @@ export function ReportesView() {
           {tab === "operaciones" && <TabOperaciones r={reporte} s={serie} />}
           {tab === "rentabilidad" && <TabRentabilidad r={reporte} s={serie} />}
           {tab === "morosidad" && <TabMorosidad r={reporte} s={serie} />}
+          {tab === "cobranza" && <TabCobranza c={cobranza} />}
           {tab === "historico" && <TabHistorico s={serie} />}
         </>
       )}
@@ -437,6 +451,105 @@ function FilaMes({ p }: { p: PuntoMensual }) {
       <td className={`py-2 text-right font-mono ${p.rentabilidad_neta >= 0 ? "text-foreground" : "text-destructive"}`}>${n0(p.rentabilidad_neta)}</td>
       <td className="py-2 text-right font-mono text-muted-foreground">{n1(p.mora_pct)}%</td>
     </tr>
+  );
+}
+
+// ─── Tab: Cobranza (efectividad de la gestión) ────────────────────────────────
+
+function TabCobranza({ c }: { c?: ReporteCobranza }) {
+  if (!c) return <BodySkeleton />;
+  const e = c.embudo;
+  const sinDatos = e.gestiones === 0 && c.recupero.total_cobrado === 0;
+  return (
+    <div className="space-y-5">
+      <p className="text-[11px] text-muted-foreground">
+        Métricas sobre gestiones <strong className="text-foreground">manuales</strong> del período
+        (excluye envíos de campaña y alertas automáticas del sistema).
+      </p>
+
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <KpiCard icon="bar-chart" label="Gestiones" value={String(e.gestiones)} accent="primary" sub={`${e.contactos} con contacto`} />
+        <KpiCard icon="handshake" label="Tasa de contacto" value={`${n1(e.tasa_contacto)}%`} accent={e.tasa_contacto >= 50 ? "success" : e.tasa_contacto > 0 ? "warning" : "muted"} sub="contactos / gestiones" />
+        <KpiCard icon="chart-increasing" label="Promesas" value={String(e.promesas)} accent="primary" sub={`${n1(e.tasa_cumplimiento)}% cumplidas`} />
+        <KpiCard icon="money-bag" label="Mora recuperada" value={`$${n0(c.recupero.mora_cobrada)}`} accent="success" mono sub={`cobrado $${n0(c.recupero.total_cobrado)}`} />
+      </div>
+
+      {sinDatos ? (
+        <Empty>No hubo gestiones de cobranza ni cobros en el período.</Empty>
+      ) : (
+        <>
+          <Section title="Embudo de recupero" icon="chart-increasing">
+            <FunnelCobranza e={e} />
+            <p className="mt-3 text-[11px] text-muted-foreground">
+              De cada gestión, cuántas logran contacto, terminan en promesa y finalmente se cumplen.
+            </p>
+          </Section>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <Section title="Efectividad por canal" icon="bar-chart">
+              {c.por_canal.length === 0 ? <Empty>Sin gestiones en el período.</Empty> : (
+                <SimpleTable head={["Canal", "Gestiones", "Contactos", "Promesas", "Tasa contacto"]}
+                  rows={c.por_canal.map((k) => [
+                    <StatusBadge key="b" label={canalLabel[k.canal] ?? k.canal} variant="muted" />,
+                    k.gestiones, k.contactos, k.promesas,
+                    <span key="t" className={`font-mono font-semibold ${k.tasa_contacto >= 50 ? "text-success" : "text-warning"}`}>{n1(k.tasa_contacto)}%</span>,
+                  ])} />
+              )}
+            </Section>
+            <Section title="Promesas del período" icon="handshake">
+              <SimpleTable head={["Estado", "Cantidad"]}
+                rows={[
+                  [<span key="c" className="text-success">Cumplidas</span>, e.promesas_cumplidas],
+                  [<span key="p" className="text-warning">Pendientes</span>, e.promesas_pendientes],
+                  [<span key="r" className="text-destructive">Rotas</span>, e.promesas_rotas],
+                ]}
+                foot={["Monto cumplido", <span key="m" className="font-mono font-bold text-success">${n0(e.monto_prometido_cumplido)}</span>]} />
+            </Section>
+          </div>
+
+          <Section title="Efectividad por vendedor" icon="money-bag">
+            {c.por_vendedor.length === 0 ? <Empty>Sin actividad de cobranza en el período.</Empty> : (
+              <SimpleTable head={["Vendedor", "Gestiones", "Contactos", "Promesas", "Cumplim.", "Mora recuperada"]}
+                rows={c.por_vendedor.map((v) => [
+                  <span key="n" className="font-medium text-foreground">{v.nombre}</span>,
+                  v.gestiones, v.contactos, v.promesas,
+                  <span key="cu" className="font-mono">{n1(v.tasa_cumplimiento)}%</span>,
+                  <span key="mo" className="font-mono font-semibold text-success">${n0(v.mora_cobrada)}</span>,
+                ])} />
+            )}
+          </Section>
+        </>
+      )}
+    </div>
+  );
+}
+
+function FunnelCobranza({ e }: { e: ReporteCobranza["embudo"] }) {
+  const base = Math.max(1, e.gestiones);
+  const etapas = [
+    { label: "Gestiones", value: e.gestiones, accent: "bg-primary" },
+    { label: "Contactos", value: e.contactos, accent: "bg-primary/60" },
+    { label: "Promesas", value: e.promesas, accent: "bg-warning" },
+    { label: "Cumplidas", value: e.promesas_cumplidas, accent: "bg-success" },
+  ];
+  return (
+    <div className="space-y-2.5">
+      {etapas.map((et) => {
+        const pct = (et.value / base) * 100;
+        return (
+          <div key={et.label} className="flex items-center gap-3">
+            <span className="w-24 shrink-0 text-xs text-muted-foreground">{et.label}</span>
+            <div className="flex-1 h-5 rounded-md bg-muted/30 overflow-hidden">
+              <div className={`h-full ${et.accent} rounded-md transition-all duration-500`} style={{ width: `${Math.max(2, pct)}%` }} />
+            </div>
+            <span className="w-28 shrink-0 text-right text-xs">
+              <span className="font-mono font-semibold text-foreground">{et.value}</span>
+              <span className="text-muted-foreground/60"> · {n1(pct)}%</span>
+            </span>
+          </div>
+        );
+      })}
+    </div>
   );
 }
 

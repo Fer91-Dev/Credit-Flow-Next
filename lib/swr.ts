@@ -1167,6 +1167,44 @@ export function useReportes(desde: string, hasta: string) {
   return { reporte: data, error, isLoading };
 }
 
+// ─── Reporte de efectividad de cobranza (Fase 2) ─────────────────────────────
+
+export interface ReporteCobranza {
+  periodo: { desde: string; hasta: string };
+  embudo: {
+    gestiones: number;
+    contactos: number;
+    promesas: number;
+    promesas_cumplidas: number;
+    promesas_rotas: number;
+    promesas_pendientes: number;
+    monto_prometido_cumplido: number;
+    tasa_contacto: number;
+    tasa_promesa: number;
+    tasa_cumplimiento: number;
+  };
+  recupero: { mora_cobrada: number; total_cobrado: number };
+  por_canal: { canal: string; gestiones: number; contactos: number; promesas: number; tasa_contacto: number }[];
+  por_vendedor: {
+    vendedor_id: string | null;
+    nombre: string;
+    gestiones: number;
+    contactos: number;
+    promesas: number;
+    promesas_cumplidas: number;
+    tasa_contacto: number;
+    tasa_cumplimiento: number;
+    mora_cobrada: number;
+  }[];
+}
+
+export function useReporteCobranza(desde: string, hasta: string) {
+  const { data, error, isLoading } = useSWR<ReporteCobranza>(
+    desde && hasta ? `/api/reportes/cobranza?desde=${desde}&hasta=${hasta}` : null,
+  );
+  return { cobranza: data, error, isLoading };
+}
+
 /** Punto de la serie mensual de Reportes (una fila = un mes). */
 export interface PuntoMensual {
   mes: string; // "YYYY-MM"

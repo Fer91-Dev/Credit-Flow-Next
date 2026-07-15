@@ -2,8 +2,8 @@
 
 import { useMemo, useState } from "react";
 import type { Role } from "@prisma/client";
-import { CalendarDays, MapPin, UserCog, X, Target, Trophy, Users2, AlertTriangle, Percent, ShieldCheck, Sparkles } from "lucide-react";
-import { useZonas, useVendedores, useDashboard, useMiPerfilVendedor, useMisLogros, type DashboardFiltros, type VendedorRendimiento, type MiPerfilVendedor } from "@/lib/swr";
+import { CalendarDays, MapPin, UserCog, X, Target, Trophy, Users2, AlertTriangle, Percent, ShieldCheck, Sparkles, PhoneCall, SlidersHorizontal } from "lucide-react";
+import { useZonas, useVendedores, useDashboard, useMiPerfilVendedor, useMisLogros, useReporteCobranza, type DashboardFiltros, type VendedorRendimiento, type MiPerfilVendedor } from "@/lib/swr";
 import { DashboardKpis, DashboardCobranzaAvance, DashboardMoraGrid, DashboardKpisSkeleton } from "./DashboardMetrics";
 import { MetricChart } from "./MetricChart";
 import { CobranzaDelDia } from "./CobranzaDelDia";
@@ -12,6 +12,9 @@ import { Emoji } from "@/components/ui/Emoji";
 
 function n0(x: number) {
   return new Intl.NumberFormat("es-AR", { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(x);
+}
+function n1(x: number) {
+  return new Intl.NumberFormat("es-AR", { minimumFractionDigits: 0, maximumFractionDigits: 1 }).format(x);
 }
 
 const INPUT =
@@ -46,27 +49,11 @@ export function HomeView({ role }: { role: Role }) {
 
   return (
     <div className="space-y-6">
-      {/* ── 1 · KPIs · 2 · Avance de cobranzas (reaccionan a los filtros) ── */}
-      {isLoading ? (
-        <DashboardKpisSkeleton />
-      ) : error || !data ? (
-        <div className="rounded-xl bg-destructive/10 border border-destructive/30 p-4 text-destructive text-sm">
-          {error?.message || "Sin datos disponibles"}
-        </div>
-      ) : (
-        <>
-          <DashboardKpis data={data} />
-          {/* Tendencia mensual (12 meses): cobranzas · morosidad · circulación */}
-          <MetricChart vendedorId={esAdmin ? (vendedorId || undefined) : undefined} />
-          <DashboardCobranzaAvance data={data} />
-        </>
-      )}
-
-      {/* ── Agenda de cobranza del día (scopeada al vendedor; admin ve todo) ── */}
-      <CobranzaDelDia />
-
-      {/* ── 3 · Barra de filtros globales ── */}
+      {/* ── 1 · Filtros globales (fijan el contexto de TODA la vista, por eso van arriba) ── */}
       <div className="rounded-xl bg-card border border-border p-3.5 flex flex-wrap items-end gap-3">
+        <span className="hidden sm:flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-widest text-muted-foreground/70 mr-1 self-center">
+          <SlidersHorizontal className="h-3.5 w-3.5" /> Filtros
+        </span>
         <label className="flex flex-col gap-1">
           <span className="text-[11px] font-medium text-muted-foreground flex items-center gap-1"><CalendarDays className="h-3 w-3" /> Desde</span>
           <input type="date" value={desde} max={hasta || undefined} onChange={(e) => setDesde(e.target.value)} className={INPUT} />
@@ -98,13 +85,33 @@ export function HomeView({ role }: { role: Role }) {
         )}
       </div>
 
-      {/* ── 3 · Rendimiento · Comisiones · Metas ── */}
-      {/* Admin: vista del equipo. No-admin: su propia parametrización configurada por el admin. */}
+      {/* ── 2 · KPIs + avance de cobranzas (reaccionan a los filtros) ── */}
+      {isLoading ? (
+        <DashboardKpisSkeleton />
+      ) : error || !data ? (
+        <div className="rounded-xl bg-destructive/10 border border-destructive/30 p-4 text-destructive text-sm">
+          {error?.message || "Sin datos disponibles"}
+        </div>
+      ) : (
+        <>
+          <DashboardKpis data={data} />
+          <DashboardCobranzaAvance data={data} />
+        </>
+      )}
+
+      {/* ── 3 · Lo accionable de hoy: agenda de cobranza (scopeada al vendedor; admin ve todo) ── */}
+      <CobranzaDelDia />
+
+      {/* ── 4 · Rendimiento del equipo (admin) o del propio usuario (vendedor) ── */}
       {esAdmin && <RendimientoVendedores filas={data?.por_vendedor ?? []} />}
       {esAdmin && <ObjetivosEquipo vendedores={vendedores} />}
       {!esAdmin && perfil && <MiConfiguracionVendedor perfil={perfil} />}
+      {!esAdmin && <MiEfectividadCobranza />}
 
-      {/* ── 4 · Distribución de mora · Exposición en mora · Cobros registrados ── */}
+      {/* ── 5 · Tendencia mensual (analítico: cobranzas · morosidad · circulación) ── */}
+      <MetricChart vendedorId={esAdmin ? (vendedorId || undefined) : undefined} />
+
+      {/* ── 6 · Distribución de mora · Exposición en mora · Cobros registrados ── */}
       {data && <DashboardMoraGrid data={data} />}
     </div>
   );
@@ -306,6 +313,88 @@ function MiConfiguracionVendedor({ perfil }: { perfil: MiPerfilVendedor }) {
           <p className="text-sm text-muted-foreground">No tenés una meta de período asignada.</p>
         )}
       </div>
+    </div>
+  );
+}
+
+/**
+ * Efectividad de cobranza propia del vendedor (Fase 2): su embudo gestión → contacto →
+ * promesa → cumplida + mora recuperada, scopeado a SUS créditos por el backend.
+ */
+function MiEfectividadCobranza() {
+  const [rango, setRango] = useState<"mes" | "anio">("mes");
+  const now = new Date();
+  const mm = String(now.getMonth() + 1).padStart(2, "0");
+  const dd = String(now.getDate()).padStart(2, "0");
+  const desde = rango === "mes" ? `${now.getFullYear()}-${mm}-01` : `${now.getFullYear()}-01-01`;
+  const hasta = `${now.getFullYear()}-${mm}-${dd}`;
+  const { cobranza, isLoading } = useReporteCobranza(desde, hasta);
+  const e = cobranza?.embudo;
+
+  const etapas = e ? [
+    { label: "Gestiones", value: e.gestiones, accent: "bg-primary" },
+    { label: "Contactos", value: e.contactos, accent: "bg-primary/60" },
+    { label: "Promesas", value: e.promesas, accent: "bg-warning" },
+    { label: "Cumplidas", value: e.promesas_cumplidas, accent: "bg-success" },
+  ] : [];
+  const base = Math.max(1, e?.gestiones ?? 1);
+
+  return (
+    <div className="rounded-xl bg-card border border-border p-5 space-y-5">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10 border border-primary/20">
+            <PhoneCall className="h-3.5 w-3.5 text-primary" />
+          </div>
+          <div>
+            <h3 className="text-sm font-semibold text-foreground">Mi efectividad de cobranza</h3>
+            <p className="text-[11px] text-muted-foreground">Tu gestión sobre tus clientes en mora</p>
+          </div>
+        </div>
+        <div className="flex gap-1 bg-muted/30 rounded-lg p-0.5">
+          {(["mes", "anio"] as const).map((r) => (
+            <button key={r} onClick={() => setRango(r)}
+              className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
+                rango === r ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+              }`}>
+              {r === "mes" ? "Este mes" : "Este año"}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {isLoading || !e ? (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          {[...Array(4)].map((_, i) => <div key={i} className="h-16 rounded-xl bg-muted/20 animate-pulse" />)}
+        </div>
+      ) : e.gestiones === 0 && (cobranza?.recupero.total_cobrado ?? 0) === 0 ? (
+        <p className="text-xs text-muted-foreground/60 py-6 text-center">
+          Todavía no registraste gestiones de cobranza en este período.
+        </p>
+      ) : (
+        <>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <MiStat icon="bar-chart" label="Gestiones" value={String(e.gestiones)} />
+            <MiStat icon="handshake" label="Tasa de contacto" value={`${n1(e.tasa_contacto)}%`} accent="primary" />
+            <MiStat icon="bullseye" label="Promesas" value={`${e.promesas} · ${n1(e.tasa_cumplimiento)}%`} accent="warning" />
+            <MiStat icon="dollar-banknote" label="Mora recuperada" value={`$${n0(cobranza!.recupero.mora_cobrada)}`} accent="success" />
+          </div>
+          <div className="space-y-2">
+            {etapas.map((et) => {
+              const pct = (et.value / base) * 100;
+              return (
+                <div key={et.label} className="flex items-center gap-3">
+                  <span className="w-20 shrink-0 text-[11px] text-muted-foreground">{et.label}</span>
+                  <div className="flex-1 h-4 rounded bg-muted/30 overflow-hidden">
+                    <div className={`h-full ${et.accent} rounded transition-all duration-500`} style={{ width: `${Math.max(2, pct)}%` }} />
+                  </div>
+                  <span className="w-8 shrink-0 text-right text-[11px] font-mono text-muted-foreground">{et.value}</span>
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
     </div>
   );
 }
