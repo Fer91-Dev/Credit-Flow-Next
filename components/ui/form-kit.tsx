@@ -96,12 +96,13 @@ export function Segmented<T extends string>({
 }: {
   value: T;
   onChange: (v: T) => void;
-  options: { value: T; label: string; icon?: LucideIcon }[];
+  options: { value: T; label: string; icon?: LucideIcon | string }[];
 }) {
   return (
     <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${options.length}, minmax(0,1fr))` }}>
       {options.map((o) => {
-        const Icon = o.icon;
+        const isEmoji = typeof o.icon === "string";
+        const Icon = isEmoji ? null : o.icon;
         const active = value === o.value;
         return (
           <button
@@ -115,7 +116,7 @@ export function Segmented<T extends string>({
                 : "border-border bg-muted/30 text-muted-foreground hover:bg-muted/50 hover:text-foreground",
             )}
           >
-            {Icon && <Icon className="h-4 w-4 shrink-0" />}
+            {isEmoji ? <Emoji name={o.icon as string} className="h-4 w-4 shrink-0" /> : Icon && <Icon className="h-4 w-4 shrink-0" />}
             {o.label}
           </button>
         );
@@ -126,11 +127,15 @@ export function Segmented<T extends string>({
 
 /** Select con ícono de contexto a la izquierda (mismo alto que MoneyInput). */
 export function IconSelect({
-  icon: Icon, className, children, ...props
-}: { icon: LucideIcon } & React.SelectHTMLAttributes<HTMLSelectElement>) {
+  icon, className, children, ...props
+}: { icon: LucideIcon | string } & React.SelectHTMLAttributes<HTMLSelectElement>) {
+  const isEmoji = typeof icon === "string";
+  const Icon = isEmoji ? null : icon;
   return (
     <div className="relative">
-      <Icon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+      {isEmoji
+        ? <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2"><Emoji name={icon as string} className="h-4 w-4" /></span>
+        : Icon && <Icon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />}
       <select
         className={cn(
           "h-12 w-full appearance-none rounded-lg border border-border bg-muted/40 pl-9 pr-9 text-sm text-foreground outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/20 [&>option]:bg-card [&>option]:text-foreground cursor-pointer",
@@ -147,11 +152,15 @@ export function IconSelect({
 
 /** Input con ícono de contexto a la izquierda (texto/genérico). */
 export function IconInput({
-  icon: Icon, className, ...props
-}: { icon: LucideIcon } & React.InputHTMLAttributes<HTMLInputElement>) {
+  icon, className, ...props
+}: { icon: LucideIcon | string } & React.InputHTMLAttributes<HTMLInputElement>) {
+  const isEmoji = typeof icon === "string";
+  const Icon = isEmoji ? null : icon;
   return (
     <div className="relative">
-      <Icon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+      {isEmoji
+        ? <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2"><Emoji name={icon as string} className="h-4 w-4" /></span>
+        : Icon && <Icon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />}
       <input
         className={cn(
           "h-12 w-full rounded-lg border border-border bg-muted/40 pl-9 pr-3 text-sm text-foreground placeholder:text-muted-foreground/40 outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/20",
@@ -165,11 +174,15 @@ export function IconInput({
 
 /** Textarea con ícono de contexto arriba a la izquierda. */
 export function IconTextarea({
-  icon: Icon, className, ...props
-}: { icon: LucideIcon } & React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
+  icon, className, ...props
+}: { icon: LucideIcon | string } & React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
+  const isEmoji = typeof icon === "string";
+  const Icon = isEmoji ? null : icon;
   return (
     <div className="relative">
-      <Icon className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+      {isEmoji
+        ? <span className="pointer-events-none absolute left-3 top-3"><Emoji name={icon as string} className="h-4 w-4" /></span>
+        : Icon && <Icon className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-muted-foreground" />}
       <textarea
         className={cn(
           "w-full resize-none rounded-lg border border-border bg-muted/40 pl-9 pr-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground/40 outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/20",

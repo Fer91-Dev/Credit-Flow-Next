@@ -2,7 +2,9 @@
 
 import { useState } from "react";
 import { mutate as globalMutate } from "swr";
-import { Landmark, ArrowDownLeft, ArrowUpRight, Scale, Download, Plus, ChevronDown, ArrowLeftRight, ClipboardCheck, Wallet, Banknote, CircleDollarSign, FileText, CreditCard, ArrowRight, Users } from "lucide-react";
+import { Landmark, ArrowDownLeft, ArrowUpRight, Scale, Download, Plus, ChevronDown, ArrowLeftRight, ClipboardCheck, Wallet, Banknote, CircleDollarSign, FileText, CreditCard, ArrowRight, Users, RotateCw } from "lucide-react";
+import { IconBadge } from "@/components/ui/IconBadge";
+import { Emoji } from "@/components/ui/Emoji";
 import { useCaja, useVendedores, type CajaData, type MovimientoCaja, type CuentaCaja } from "@/lib/swr";
 import { formatFechaHora, parseMontoInput } from "@/lib/utils";
 import { MoneyInput, Segmented, IconSelect, IconTextarea, FieldLabel, FormActions, simboloCuenta } from "./caja-form";
@@ -10,6 +12,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { KpiCard } from "@/components/ui/KpiCard";
 import { StatusBadge, type BadgeVariant } from "@/components/ui/StatusBadge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { FiltrosPanel, FiltroChip } from "@/components/ui/FiltrosPanel";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useConfirm } from "@/components/ui/confirm";
 import { useToast } from "@/components/ui/toast";
@@ -42,10 +45,10 @@ const TIPO_META: Record<MovimientoCaja["tipo"], { label: string; variant: BadgeV
 };
 
 const CUENTAS: CuentaCaja[] = ["efectivo", "banco", "dolares"];
-const CUENTA_META: Record<CuentaCaja, { label: string; icon: typeof Wallet }> = {
-  efectivo: { label: "Efectivo", icon: Wallet },
-  banco:    { label: "Banco",    icon: Banknote },
-  dolares:  { label: "Dólares",  icon: CircleDollarSign },
+const CUENTA_META: Record<CuentaCaja, { label: string; icon: string }> = {
+  efectivo: { label: "Efectivo", icon: "money-bag" },
+  banco:    { label: "Banco",    icon: "bank" },
+  dolares:  { label: "Dólares",  icon: "dollar-banknote" },
 };
 
 // Estilo de las tarjetas de saldo (gradiente fuerte + prefijo de moneda).
@@ -104,8 +107,16 @@ export function CajaView() {
   const [detalle, setDetalle] = useState<MovimientoCaja | null>(null);
 
   const { caja, error, isLoading, mutate } = useCaja(desde, hasta, tipo, cuenta);
+  const [refreshing, setRefreshing] = useState<CuentaCaja | null>(null);
 
   const refrescar = () => { mutate(); globalMutate("/api/dashboard"); };
+  // Refresca la caja mostrando el spin en la tarjeta clickeada (feedback individual).
+  const refrescarCaja = async (c: CuentaCaja) => {
+    setRefreshing(c);
+    await Promise.all([mutate(), new Promise((r) => setTimeout(r, 500))]);
+    globalMutate("/api/dashboard");
+    setRefreshing(null);
+  };
 
   const preset = (d: Date, h: Date) => { setDesde(ymd(d)); setHasta(ymd(h)); };
   const presets = [
@@ -124,31 +135,31 @@ export function CajaView() {
         accent="primary"
       />
 
-      {/* Barra de acciones (fuera del header) */}
+      {/* Barra de acciones (fuera del header) — con micro-animación al hover */}
       <div className="flex flex-wrap items-center gap-2">
         <button
           onClick={() => setAjusteOpen(true)}
-          className="flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:opacity-90 transition-opacity text-sm font-medium whitespace-nowrap"
+          className="group flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium whitespace-nowrap transition-all hover:-translate-y-0.5 hover:shadow-lg hover:shadow-primary/25 active:translate-y-0"
         >
-          <Plus className="h-4 w-4" /> Ajuste
+          <Emoji name="gear" className="h-4 w-4 transition-transform group-hover:scale-110 group-hover:rotate-90" /> Ajuste
         </button>
         <button
           onClick={() => setTransferOpen(true)}
-          className="flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-border text-foreground hover:bg-muted transition-colors text-sm font-medium whitespace-nowrap"
+          className="group flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-border text-foreground text-sm font-medium whitespace-nowrap transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:bg-muted hover:shadow-md hover:shadow-black/20 active:translate-y-0"
         >
-          <ArrowLeftRight className="h-4 w-4" /> Transferir
+          <Emoji name="money-with-wings" className="h-4 w-4 transition-transform group-hover:scale-110" /> Transferir
         </button>
         <button
           onClick={() => setVendedorOpen(true)}
-          className="flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-border text-foreground hover:bg-muted transition-colors text-sm font-medium whitespace-nowrap"
+          className="group flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-border text-foreground text-sm font-medium whitespace-nowrap transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:bg-muted hover:shadow-md hover:shadow-black/20 active:translate-y-0"
         >
-          <Users className="h-4 w-4" /> Caja vendedores
+          <Emoji name="busts-in-silhouette" className="h-4 w-4 transition-transform group-hover:scale-110" /> Caja vendedores
         </button>
         <button
           onClick={() => setArqueoOpen(true)}
-          className="flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-border text-foreground hover:bg-muted transition-colors text-sm font-medium whitespace-nowrap"
+          className="group flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-border text-foreground text-sm font-medium whitespace-nowrap transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:bg-muted hover:shadow-md hover:shadow-black/20 active:translate-y-0"
         >
-          <ClipboardCheck className="h-4 w-4" /> Arqueo
+          <Emoji name="balance-scale" className="h-4 w-4 transition-transform group-hover:scale-110" /> Arqueo
         </button>
         <button
           onClick={() => caja && exportarCSV(caja)}
@@ -170,33 +181,42 @@ export function CajaView() {
             <span className="text-xs font-medium text-muted-foreground">Hasta</span>
             <input type="date" value={hasta} min={desde} onChange={(e) => setHasta(e.target.value)} className={INPUT} />
           </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-muted-foreground">Tipo</span>
-            <div className="relative">
-              <select value={tipo} onChange={(e) => setTipo(e.target.value)} className={SEL}>
-                <option value="all">Todos</option>
-                <option value="desembolso">Desembolsos</option>
-                <option value="cobro">Cobros</option>
-                <option value="devolucion">Devoluciones</option>
-                <option value="reversa_desembolso">Reversas</option>
-                <option value="ajuste">Ajustes</option>
-                <option value="transferencia">Transferencias</option>
-              </select>
-              <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            </div>
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-muted-foreground">Cuenta</span>
-            <div className="relative">
-              <select value={cuenta} onChange={(e) => setCuenta(e.target.value as CuentaCaja | "all")} className={SEL}>
-                <option value="all">Todas</option>
-                <option value="efectivo">Efectivo</option>
-                <option value="banco">Banco</option>
-                <option value="dolares">Dólares</option>
-              </select>
-              <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            </div>
-          </label>
+          <FiltrosPanel
+            activos={(tipo !== "all" ? 1 : 0) + (cuenta !== "all" ? 1 : 0)}
+            onLimpiar={() => { setTipo("all"); setCuenta("all"); }}
+            chips={<>
+              {tipo !== "all" && <FiltroChip onClear={() => setTipo("all")}>{TIPO_META[tipo as MovimientoCaja["tipo"]]?.label ?? tipo}</FiltroChip>}
+              {cuenta !== "all" && <FiltroChip onClear={() => setCuenta("all")}>{CUENTA_META[cuenta as CuentaCaja]?.label ?? cuenta}</FiltroChip>}
+            </>}
+          >
+            <label className="flex flex-col gap-1">
+              <span className="text-[11px] font-medium text-muted-foreground">Tipo</span>
+              <div className="relative">
+                <select value={tipo} onChange={(e) => setTipo(e.target.value)} className={SEL}>
+                  <option value="all">Todos</option>
+                  <option value="desembolso">Desembolsos</option>
+                  <option value="cobro">Cobros</option>
+                  <option value="devolucion">Devoluciones</option>
+                  <option value="reversa_desembolso">Reversas</option>
+                  <option value="ajuste">Ajustes</option>
+                  <option value="transferencia">Transferencias</option>
+                </select>
+                <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              </div>
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-[11px] font-medium text-muted-foreground">Cuenta</span>
+              <div className="relative">
+                <select value={cuenta} onChange={(e) => setCuenta(e.target.value as CuentaCaja | "all")} className={SEL}>
+                  <option value="all">Todas</option>
+                  <option value="efectivo">Efectivo</option>
+                  <option value="banco">Banco</option>
+                  <option value="dolares">Dólares</option>
+                </select>
+                <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              </div>
+            </label>
+          </FiltrosPanel>
         </div>
         <div className="flex flex-wrap gap-2">
           {presets.map((p) => (
@@ -221,23 +241,35 @@ export function CajaView() {
             {CUENTAS.map((c) => {
               const meta = CUENTA_META[c];
               const card = CUENTA_CARD[c];
-              const Icon = meta.icon;
               const d = caja.saldos_detalle?.[c] ?? { saldo: caja.saldos_por_cuenta[c] ?? 0, anterior: 0, ingresos: 0, egresos: 0 };
               const active = cuenta === c;
               return (
-                <button
+                <div
                   key={c}
+                  role="button"
+                  tabIndex={0}
                   onClick={() => setCuenta(active ? "all" : c)}
+                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setCuenta(active ? "all" : c); } }}
                   title={active ? "Quitar filtro" : `Ver solo ${meta.label}`}
                   style={{ backgroundImage: card.gradient }}
-                  className={`group relative overflow-hidden text-left rounded-2xl p-5 text-white shadow-lg shadow-black/20 transition-all ${
+                  className={`group relative overflow-hidden text-left rounded-2xl p-5 text-white shadow-lg shadow-black/20 transition-all cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70 ${
                     active ? "ring-2 ring-white/80 ring-offset-2 ring-offset-background" : "hover:brightness-105"
                   }`}
                 >
-                  {/* Header: nombre + ícono */}
+                  {/* Header: nombre + refresh individual + ícono */}
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-bold uppercase tracking-widest text-white/80">{meta.label}</span>
-                    <Icon className="h-4 w-4 text-white/70" />
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); refrescarCaja(c); }}
+                        title="Actualizar esta caja"
+                        className="flex h-6 w-6 items-center justify-center rounded-md bg-white/15 text-white/90 hover:bg-white/30 active:scale-90 transition-all"
+                      >
+                        <RotateCw className={`h-3.5 w-3.5 ${refreshing === c ? "animate-spin" : ""}`} />
+                      </button>
+                      <Emoji name={meta.icon} className="h-4 w-4" />
+                    </div>
                   </div>
 
                   {/* Balance */}
@@ -263,7 +295,7 @@ export function CajaView() {
                       <p className="mt-0.5 text-[11px] font-mono font-semibold text-white/90">↓ {n0(d.egresos)}</p>
                     </div>
                   </div>
-                </button>
+                </div>
               );
             })}
           </div>
@@ -277,6 +309,11 @@ export function CajaView() {
           </div>
 
           {/* Tabla de movimientos */}
+          <section className="space-y-3">
+          <div className="flex items-center gap-2 border-b border-border pb-2">
+            <IconBadge emoji="bank" accent="primary" />
+            <h2 className="text-sm font-semibold text-foreground">Movimientos de caja</h2>
+          </div>
           <div className="rounded-xl border border-border overflow-hidden">
             {caja.movimientos.length === 0 ? (
               <p className="text-xs text-muted-foreground/60 py-12 text-center">Sin movimientos en el período seleccionado.</p>
@@ -319,6 +356,7 @@ export function CajaView() {
               </div>
             )}
           </div>
+          </section>
         </div>
       )}
 
@@ -416,7 +454,7 @@ function AjusteDialog({ open, onClose }: { open: boolean; onClose: (ok?: boolean
         <DialogHeader className="pr-8">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-primary">
-              <Scale className="h-5 w-5" />
+              <Emoji name="gear" className="h-5 w-5" />
             </div>
             <div>
               <DialogTitle>Ajuste manual de caja</DialogTitle>
@@ -437,8 +475,8 @@ function AjusteDialog({ open, onClose }: { open: boolean; onClose: (ok?: boolean
               value={sentido}
               onChange={setSentido}
               options={[
-                { value: "ingreso", label: "Ingreso", icon: ArrowDownLeft },
-                { value: "egreso", label: "Egreso", icon: ArrowUpRight },
+                { value: "ingreso", label: "Ingreso", icon: "inbox-tray" },
+                { value: "egreso", label: "Egreso", icon: "outbox-tray" },
               ]}
             />
           </div>
@@ -456,9 +494,9 @@ function AjusteDialog({ open, onClose }: { open: boolean; onClose: (ok?: boolean
               value={cuenta}
               onChange={setCuenta}
               options={[
-                { value: "efectivo", label: "Efectivo", icon: Wallet },
-                { value: "banco", label: "Banco", icon: Banknote },
-                { value: "dolares", label: "Dólares", icon: CircleDollarSign },
+                { value: "efectivo", label: "Efectivo", icon: "money-bag" },
+                { value: "banco", label: "Banco", icon: "bank" },
+                { value: "dolares", label: "Dólares", icon: "dollar-banknote" },
               ]}
             />
           </div>
@@ -466,7 +504,7 @@ function AjusteDialog({ open, onClose }: { open: boolean; onClose: (ok?: boolean
           {/* Método */}
           <div className="flex flex-col gap-1.5">
             <FieldLabel>Método</FieldLabel>
-            <IconSelect icon={CreditCard} value={metodo} onChange={(e) => setMetodo(e.target.value)}>
+            <IconSelect icon="credit-card" value={metodo} onChange={(e) => setMetodo(e.target.value)}>
               <option value="efectivo">Efectivo</option>
               <option value="transferencia">Transferencia</option>
               <option value="cheque">Cheque</option>
@@ -477,7 +515,7 @@ function AjusteDialog({ open, onClose }: { open: boolean; onClose: (ok?: boolean
           {/* Descripción */}
           <div className="flex flex-col gap-1.5">
             <FieldLabel required>Descripción</FieldLabel>
-            <IconTextarea icon={FileText} value={descripcion} onChange={(e) => setDescripcion(e.target.value)} rows={2} placeholder="Motivo del ajuste…" />
+            <IconTextarea icon="receipt" value={descripcion} onChange={(e) => setDescripcion(e.target.value)} rows={2} placeholder="Motivo del ajuste…" />
           </div>
 
           <FormActions
@@ -547,7 +585,7 @@ function TransferenciaDialog({
         <DialogHeader className="pr-8">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-primary">
-              <ArrowLeftRight className="h-5 w-5" />
+              <Emoji name="money-with-wings" className="h-5 w-5" />
             </div>
             <div>
               <DialogTitle>Transferir entre cuentas</DialogTitle>
@@ -565,7 +603,7 @@ function TransferenciaDialog({
           <div className="grid grid-cols-[1fr_auto_1fr] items-end gap-3">
             <div className="flex flex-col gap-1.5">
               <FieldLabel required>Desde</FieldLabel>
-              <IconSelect icon={Wallet} value={origen} onChange={(e) => setOrigen(e.target.value as CuentaCaja)}>
+              <IconSelect icon={CUENTA_META[origen].icon} value={origen} onChange={(e) => setOrigen(e.target.value as CuentaCaja)}>
                 <option value="efectivo">Efectivo</option>
                 <option value="banco">Banco</option>
                 <option value="dolares">Dólares</option>
@@ -576,7 +614,7 @@ function TransferenciaDialog({
             </div>
             <div className="flex flex-col gap-1.5">
               <FieldLabel required>Hacia</FieldLabel>
-              <IconSelect icon={Wallet} value={destino} onChange={(e) => setDestino(e.target.value as CuentaCaja)}>
+              <IconSelect icon={CUENTA_META[destino].icon} value={destino} onChange={(e) => setDestino(e.target.value as CuentaCaja)}>
                 <option value="efectivo">Efectivo</option>
                 <option value="banco">Banco</option>
                 <option value="dolares">Dólares</option>
@@ -604,7 +642,7 @@ function TransferenciaDialog({
           {/* Descripción */}
           <div className="flex flex-col gap-1.5">
             <FieldLabel>Descripción</FieldLabel>
-            <IconTextarea icon={FileText} value={descripcion} onChange={(e) => setDescripcion(e.target.value)} rows={2} placeholder="Detalle opcional…" />
+            <IconTextarea icon="receipt" value={descripcion} onChange={(e) => setDescripcion(e.target.value)} rows={2} placeholder="Detalle opcional…" />
           </div>
 
           <FormActions
@@ -676,7 +714,7 @@ function ArqueoDialog({
         <DialogHeader className="pr-8">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-primary">
-              <ClipboardCheck className="h-5 w-5" />
+              <Emoji name="balance-scale" className="h-5 w-5" />
             </div>
             <div>
               <DialogTitle>Arqueo de caja</DialogTitle>
@@ -697,9 +735,9 @@ function ArqueoDialog({
               value={cuenta}
               onChange={(v) => { setCuenta(v); setResultado(null); }}
               options={[
-                { value: "efectivo", label: "Efectivo", icon: Wallet },
-                { value: "banco", label: "Banco", icon: Banknote },
-                { value: "dolares", label: "Dólares", icon: CircleDollarSign },
+                { value: "efectivo", label: "Efectivo", icon: "money-bag" },
+                { value: "banco", label: "Banco", icon: "bank" },
+                { value: "dolares", label: "Dólares", icon: "dollar-banknote" },
               ]}
             />
           </div>
@@ -736,7 +774,7 @@ function ArqueoDialog({
           {/* Observación */}
           <div className="flex flex-col gap-1.5">
             <FieldLabel>Observación</FieldLabel>
-            <IconTextarea icon={FileText} value={descripcion} onChange={(e) => setDescripcion(e.target.value)} rows={2} placeholder="Detalle opcional…" />
+            <IconTextarea icon="receipt" value={descripcion} onChange={(e) => setDescripcion(e.target.value)} rows={2} placeholder="Detalle opcional…" />
           </div>
 
           <FormActions
@@ -809,7 +847,7 @@ function CajaVendedorDialog({ open, onClose }: { open: boolean; onClose: (ok?: b
         <DialogHeader className="pr-8">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-primary">
-              <Users className="h-5 w-5" />
+              <Emoji name="briefcase" className="h-5 w-5" />
             </div>
             <div>
               <DialogTitle>Caja de vendedores</DialogTitle>
@@ -830,8 +868,8 @@ function CajaVendedorDialog({ open, onClose }: { open: boolean; onClose: (ok?: b
               value={accion}
               onChange={setAccion}
               options={[
-                { value: "entrega", label: "Entregar al vendedor", icon: ArrowUpRight },
-                { value: "rendicion", label: "Recibir del vendedor", icon: ArrowDownLeft },
+                { value: "entrega", label: "Entregar al vendedor", icon: "outbox-tray" },
+                { value: "rendicion", label: "Recibir del vendedor", icon: "inbox-tray" },
               ]}
             />
           </div>
@@ -839,7 +877,7 @@ function CajaVendedorDialog({ open, onClose }: { open: boolean; onClose: (ok?: b
           {/* Vendedor */}
           <div className="flex flex-col gap-1.5">
             <FieldLabel required>Vendedor</FieldLabel>
-            <IconSelect icon={Users} value={sel} onChange={(e) => setVendedorId(e.target.value)}>
+            <IconSelect icon="busts-in-silhouette" value={sel} onChange={(e) => setVendedorId(e.target.value)}>
               {activos.length === 0 && <option value="">— sin vendedores activos —</option>}
               {activos.map((v) => <option key={v.id} value={v.id}>{v.nombre}</option>)}
             </IconSelect>
@@ -852,9 +890,9 @@ function CajaVendedorDialog({ open, onClose }: { open: boolean; onClose: (ok?: b
               value={cuentaPrincipal}
               onChange={setCuentaPrincipal}
               options={[
-                { value: "efectivo", label: "Efectivo", icon: Wallet },
-                { value: "banco", label: "Banco", icon: Banknote },
-                { value: "dolares", label: "Dólares", icon: CircleDollarSign },
+                { value: "efectivo", label: "Efectivo", icon: "money-bag" },
+                { value: "banco", label: "Banco", icon: "bank" },
+                { value: "dolares", label: "Dólares", icon: "dollar-banknote" },
               ]}
             />
           </div>
@@ -866,9 +904,9 @@ function CajaVendedorDialog({ open, onClose }: { open: boolean; onClose: (ok?: b
               value={cuentaVendedor}
               onChange={setCuentaVendedor}
               options={[
-                { value: "efectivo", label: "Efectivo", icon: Wallet },
-                { value: "banco", label: "Banco", icon: Banknote },
-                { value: "dolares", label: "Dólares", icon: CircleDollarSign },
+                { value: "efectivo", label: "Efectivo", icon: "money-bag" },
+                { value: "banco", label: "Banco", icon: "bank" },
+                { value: "dolares", label: "Dólares", icon: "dollar-banknote" },
               ]}
             />
           </div>
@@ -882,7 +920,7 @@ function CajaVendedorDialog({ open, onClose }: { open: boolean; onClose: (ok?: b
           {/* Descripción */}
           <div className="flex flex-col gap-1.5">
             <FieldLabel>Observación</FieldLabel>
-            <IconTextarea icon={FileText} value={descripcion} onChange={(e) => setDescripcion(e.target.value)} rows={2} placeholder="Detalle opcional…" />
+            <IconTextarea icon="receipt" value={descripcion} onChange={(e) => setDescripcion(e.target.value)} rows={2} placeholder="Detalle opcional…" />
           </div>
 
           <FormActions

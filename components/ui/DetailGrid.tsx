@@ -1,24 +1,27 @@
 import * as React from "react";
+import { Emoji } from "./Emoji";
 
 /**
  * Primitivas de presentación de detalle (solo lectura), compartidas por los
  * modales de detalle de registros (pagos, caja, auditoría, cobranza, etc.).
  */
 
-/** Título de sección dentro de un detalle. */
+/** Título de sección dentro de un detalle. `icon` = nombre de Fluent Emoji o (legacy) componente lucide. */
 export function DetailSection({
-  icon: Icon,
+  icon,
   title,
   children,
 }: {
-  icon?: React.ComponentType<{ className?: string }>;
+  icon?: React.ComponentType<{ className?: string }> | string;
   title: string;
   children: React.ReactNode;
 }) {
+  const isEmoji = typeof icon === "string";
+  const Icon = isEmoji ? null : icon;
   return (
     <section className="space-y-2">
       <div className="flex items-center gap-2">
-        {Icon && <Icon className="h-4 w-4 text-muted-foreground" />}
+        {isEmoji ? <Emoji name={icon as string} className="h-4 w-4" /> : Icon && <Icon className="h-4 w-4 text-muted-foreground" />}
         <h3 className="text-sm font-semibold text-foreground">{title}</h3>
       </div>
       {children}

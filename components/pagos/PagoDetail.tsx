@@ -44,7 +44,7 @@ export function PagoDetail({ pago }: { pago: Pago }) {
         <p className="font-mono font-bold text-success text-xl">+${n2(pago.monto)}</p>
       </div>
 
-      <DetailSection icon={Coins} title="Imputación del pago">
+      <DetailSection icon="money-bag" title="Imputación del pago">
         <DetailGrid
           rows={[
             ["Interés por mora", money(pago.aplicado_mora, "text-destructive")],
@@ -56,7 +56,7 @@ export function PagoDetail({ pago }: { pago: Pago }) {
         />
       </DetailSection>
 
-      <DetailSection icon={ArrowUpRight} title="Datos del pago">
+      <DetailSection icon="receipt" title="Datos del pago">
         <DetailGrid
           rows={[
             ["Método", <StatusBadge key="m" label={m.label} variant={m.variant} />],

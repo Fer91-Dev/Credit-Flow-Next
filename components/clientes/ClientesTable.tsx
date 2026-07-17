@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useRef, useEffect } from "react";
 import { useSWRConfig } from "swr";
+import { motion, AnimatePresence } from "framer-motion";
 import { Search, User, Phone, Mail, ArrowLeft, Plus, ChevronRight, X, Clock } from "lucide-react";
 import { ClienteForm } from "./ClienteForm";
 import { ClienteDetail } from "./ClienteDetail";
@@ -10,9 +11,12 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { ScoreBadge } from "@/components/ui/ScoreBadge";
 import { Avatar } from "@/components/ui/Avatar";
+import { BuscadorF3 } from "@/components/ui/BuscadorF3";
+import { DataTable, type Column } from "@/components/ui/DataTable";
+import { IconBadge } from "@/components/ui/IconBadge";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { ModalHeader } from "@/components/ui/form-kit";
-import { nombreCompleto } from "@/lib/utils";
+import { nombreCompleto, formatFecha } from "@/lib/utils";
 import { useConfirm } from "@/components/ui/confirm";
 import { useToast } from "@/components/ui/toast";
 
@@ -41,6 +45,7 @@ export function ClientesTable() {
   const [query, setQuery] = useState("");
   const [soloInactivos, setSoloInactivos] = useState(false);
   const [verTodos, setVerTodos] = useState(false); // F3 en el buscador: lista completa A→Z
+  const [recientes, setRecientes] = useState<"hoy" | "mes" | "anio" | null>(null); // filtro por fecha de alta
   const [selected, setSelected] = useState<Sel | null>(null);
   const [dialogOpen, setDialog] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -77,7 +82,45 @@ export function ClientesTable() {
     [clientes, soloInactivos],
   );
 
+  // Clientes cargados recientemente (por fecha de alta), según el filtro elegido.
+  const recientesClientes = useMemo(() => {
+    if (!recientes) return [];
+    const now = new Date();
+    const desde =
+      recientes === "hoy" ? new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
+      : recientes === "mes" ? new Date(now.getFullYear(), now.getMonth(), 1).getTime()
+      : new Date(now.getFullYear(), 0, 1).getTime();
+    return clientes
+      .filter((c) => c.created_at && new Date(c.created_at).getTime() >= desde)
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  }, [clientes, recientes]);
+
   const elegir = (c: Cliente) => { setSelected({ id: c.id, nombre: nombreCompleto(c) }); setQuery(""); setVerTodos(false); };
+
+  // La lista completa (F3) se cierra al hacer click afuera (o con Escape en el buscador).
+  const listaRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!verTodos) return;
+    const onDown = (e: MouseEvent) => {
+      if (listaRef.current && !listaRef.current.contains(e.target as Node)) setVerTodos(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [verTodos]);
+
+  // Columnas de la tabla de "recién cargados" (filas clickeables → ficha).
+  const recientesColumns: Column<Cliente>[] = [
+    { header: "Cliente", cell: (c) => (
+      <div className="flex items-center gap-2.5">
+        <Avatar name={nombreCompleto(c)} size="sm" status={c.estado === "activo" ? "online" : "offline"} />
+        <span className="font-medium text-foreground truncate">{nombreCompleto(c)}</span>
+      </div>
+    ) },
+    { header: "DNI", className: "hidden md:table-cell", cell: (c) => <span className="font-mono text-muted-foreground">{c.documento ?? "—"}</span> },
+    { header: "Teléfono", className: "hidden lg:table-cell", cell: (c) => <span className="text-muted-foreground">{c.telefono ?? "—"}</span> },
+    { header: "Estado", align: "center", cell: (c) => <StatusBadge label={c.estado} variant={c.estado === "activo" ? "success" : "muted"} /> },
+    { header: "Cargado", align: "right", cell: (c) => <span className="text-muted-foreground tabular-nums">{formatFecha(c.created_at)}</span> },
+  ];
 
   const openNew = () => { setEditingId(null); setDialog(true); };
   const openEdit = (id: string) => { setEditingId(id); setDialog(true); };
@@ -185,61 +228,88 @@ export function ClientesTable() {
         accent="primary"
       />
 
-      {/* Buscador */}
-      <div className="relative max-w-2xl">
-        <Search className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
-        <input
-          autoFocus
-          type="text"
-          inputMode="search"
-          placeholder="DNI o nombre del cliente…"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "F3") { e.preventDefault(); setVerTodos((v) => !v); return; }
-            if (e.key === "Escape" && verTodos) { setVerTodos(false); return; }
-            if (e.key === "Enter" && resultados.length === 1) elegir(resultados[0]);
-          }}
-          className="h-14 w-full rounded-xl border border-border bg-card pl-12 pr-12 text-base text-foreground placeholder:text-muted-foreground/50 outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/20"
-        />
-        {query && (
-          <button
-            onClick={() => setQuery("")}
-            className="absolute right-3 top-1/2 -translate-y-1/2 flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted transition-colors"
-            aria-label="Limpiar"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        )}
+      {/* Buscador (mismo tamaño que Productos) */}
+      <BuscadorF3
+        value={query}
+        onChange={setQuery}
+        placeholder="DNI o nombre del cliente…"
+        onF3={() => setVerTodos((v) => !v)}
+        f3Hint="para ver la lista completa de clientes"
+        onEnter={() => { if (resultados.length === 1) elegir(resultados[0]); }}
+        onEscape={() => { if (verTodos) setVerTodos(false); else setQuery(""); }}
+        autoFocus
+        className="w-full sm:max-w-sm"
+      />
+
+      {/* Filtros: solo inactivos + recién cargados (por fecha de alta) */}
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          onClick={() => setSoloInactivos((v) => !v)}
+          className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+            soloInactivos
+              ? "bg-warning/15 text-warning border border-warning/40"
+              : "border border-border text-muted-foreground hover:bg-muted"
+          }`}
+        >
+          <Clock className="h-3.5 w-3.5" />
+          Solo inactivos (+{DIAS_INACTIVIDAD}d)
+          {inactivos.length > 0 && (
+            <span className={`font-mono font-bold ${soloInactivos ? "" : "text-foreground"}`}>{inactivos.length}</span>
+          )}
+        </button>
+        <div className="flex items-center gap-1 rounded-lg border border-border p-0.5">
+          <span className="pl-2 pr-1 text-[11px] font-medium text-muted-foreground">Recién cargados:</span>
+          {([["hoy", "Hoy"], ["mes", "Este mes"], ["anio", "Este año"]] as const).map(([key, lbl]) => (
+            <button
+              key={key}
+              onClick={() => setRecientes((r) => (r === key ? null : key))}
+              className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
+                recientes === key ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {lbl}
+            </button>
+          ))}
+        </div>
       </div>
 
-      {/* Hint: F3 abre la lista completa */}
-      <p className="-mt-3 text-xs text-muted-foreground/60">
-        Tip: presioná{" "}
-        <kbd className="rounded border border-border bg-muted/50 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-muted-foreground">F3</kbd>{" "}
-        en el buscador para {verTodos ? "cerrar" : "ver"} la lista completa de clientes.
-      </p>
-
-      {/* Filtro: solo inactivos (+90 días sin movimiento) */}
-      <button
-        onClick={() => setSoloInactivos((v) => !v)}
-        className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors w-fit ${
-          soloInactivos
-            ? "bg-warning/15 text-warning border border-warning/40"
-            : "border border-border text-muted-foreground hover:bg-muted"
-        }`}
-      >
-        <Clock className="h-3.5 w-3.5" />
-        Solo inactivos (+{DIAS_INACTIVIDAD} días sin movimiento)
-        {inactivos.length > 0 && (
-          <span className={`font-mono font-bold ${soloInactivos ? "" : "text-foreground"}`}>
-            {inactivos.length}
-          </span>
+      {/* Tabla de recién cargados (aparece/desaparece con fade; se oculta si hay búsqueda) */}
+      <AnimatePresence initial={false}>
+        {recientes && !q && (
+          <motion.section
+            key="recientes"
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.2, ease: "easeOut" }}
+            className="space-y-3"
+          >
+            <div className="flex items-center gap-2 border-b border-border pb-2">
+              <IconBadge emoji="busts-in-silhouette" accent="primary" />
+              <h2 className="text-sm font-semibold text-foreground">
+                Clientes cargados {recientes === "hoy" ? "hoy" : recientes === "mes" ? "este mes" : "este año"}
+              </h2>
+              <span className="text-xs text-muted-foreground/60">· {recientesClientes.length}</span>
+            </div>
+            {recientesClientes.length === 0 ? (
+              <p className="rounded-xl border border-dashed border-border/60 p-8 text-center text-sm text-muted-foreground">
+                No hay clientes cargados en este período.
+              </p>
+            ) : (
+              <DataTable
+                columns={recientesColumns}
+                rows={recientesClientes}
+                rowKey={(c) => c.id}
+                onRowClick={(c) => elegir(c)}
+                zebra
+              />
+            )}
+          </motion.section>
         )}
-      </button>
+      </AnimatePresence>
 
-      {/* Estados */}
-      {soloInactivos && !q ? (
+      {/* Estados (ocultos en modo "recién cargados" sin búsqueda para que no se apilen listas) */}
+      {(!recientes || q) && (soloInactivos && !q ? (
         isLoading ? (
           <p className="text-sm text-muted-foreground">Cargando…</p>
         ) : inactivos.length === 0 ? (
@@ -249,7 +319,7 @@ export function ClientesTable() {
             <p className="text-xs text-muted-foreground/50">Ningún cliente supera los {DIAS_INACTIVIDAD} días sin movimiento.</p>
           </div>
         ) : (
-          <div className="space-y-2 max-w-2xl">
+          <div className="space-y-2 max-w-[22rem]">
             <p className="text-xs text-muted-foreground">
               {inactivos.length} cliente{inactivos.length !== 1 ? "s" : ""} inactivo{inactivos.length !== 1 ? "s" : ""}
             </p>
@@ -260,18 +330,10 @@ export function ClientesTable() {
         )
       ) : !q ? (
         verTodos ? (
-          <div className="space-y-2 max-w-2xl">
-            <div className="flex items-center justify-between">
-              <p className="text-xs text-muted-foreground">
-                {todosOrdenados.length} cliente{todosOrdenados.length !== 1 ? "s" : ""} · orden alfabético
-              </p>
-              <button
-                onClick={() => setVerTodos(false)}
-                className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
-              >
-                <X className="h-3.5 w-3.5" /> Cerrar
-              </button>
-            </div>
+          <div ref={listaRef} className="space-y-2 max-w-[22rem]">
+            <p className="text-xs text-muted-foreground">
+              {todosOrdenados.length} cliente{todosOrdenados.length !== 1 ? "s" : ""} · orden alfabético
+            </p>
             {isLoading ? (
               <p className="text-sm text-muted-foreground">Cargando…</p>
             ) : todosOrdenados.length === 0 ? (
@@ -295,7 +357,7 @@ export function ClientesTable() {
               </>
             )}
           </div>
-        ) : (
+        ) : recientes ? null : (
           <HeroVacio onNew={openNew} />
         )
       ) : isLoading ? (
@@ -314,7 +376,7 @@ export function ClientesTable() {
           )}
         </div>
       ) : (
-        <div className="space-y-2 max-w-2xl">
+        <div className="space-y-2 max-w-[22rem]">
           <p className="text-xs text-muted-foreground">
             {resultados.length} resultado{resultados.length !== 1 ? "s" : ""}
           </p>
@@ -322,7 +384,7 @@ export function ClientesTable() {
             <ClienteRow key={c.id} cliente={c} onClick={() => elegir(c)} mostrarInactividad={soloInactivos} />
           ))}
         </div>
-      )}
+      ))}
 
       {formDialog}
     </div>
@@ -357,13 +419,10 @@ function ClienteRow({
       {/* Avatar TailGrids (con dot de estado activo/inactivo) */}
       <Avatar name={nombreCompleto(c)} size="md" status={activo ? "online" : "offline"} />
 
-      {/* Datos del titular */}
+      {/* Datos del titular (el estado activo/inactivo ya lo muestra el dot del avatar) */}
       <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <p className="truncate font-semibold text-foreground">{nombreCompleto(c)}</p>
-          <StatusBadge label={c.estado} variant={activo ? "success" : "muted"} />
-        </div>
-        <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs">
+        <p className="truncate font-semibold text-foreground">{nombreCompleto(c)}</p>
+        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
           {c.documento && (
             <span className="flex items-baseline gap-1">
               <span className="text-[9px] font-bold uppercase tracking-wider text-primary/70">DNI</span>
@@ -373,11 +432,10 @@ function ClienteRow({
           {c.telefono && <span className="flex items-center gap-1 text-muted-foreground"><Phone className="h-3 w-3" />{c.telefono}</span>}
           {!c.documento && !c.telefono && c.email && <span className="flex items-center gap-1 truncate text-muted-foreground"><Mail className="h-3 w-3" />{c.email}</span>}
           {dias !== null && <span className="flex items-center gap-1 text-warning"><Clock className="h-3 w-3" />{dias}d</span>}
+          <ScoreBadge score={c.score} size="sm" />
         </div>
       </div>
 
-      {/* Score + chevron */}
-      <ScoreBadge score={c.score} size="sm" />
       <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground/40 transition-all group-hover:translate-x-0.5 group-hover:text-primary" />
     </button>
   );

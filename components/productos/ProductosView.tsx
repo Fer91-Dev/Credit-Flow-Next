@@ -132,45 +132,48 @@ export function ProductosView() {
           placeholder="Buscar por nombre o SKU…"
           onF3={() => setQ("")}
           f3Hint="para limpiar el filtro y ver todos"
-          className="flex-1 min-w-[200px]"
+          className="flex-1 min-w-[200px] sm:max-w-sm"
         />
-        <select
-          value={catFiltro}
-          onChange={(e) => setCatFiltro(e.target.value)}
-          className="h-10 rounded-lg border border-border bg-card px-3 text-sm outline-none focus:border-primary"
-        >
-          <option value="">Todas las categorías</option>
-          {categorias.map((c) => <option key={c} value={c}>{c}</option>)}
-        </select>
-        <button
-          onClick={() => setSoloActivos((v) => !v)}
-          className={`h-10 rounded-lg border px-3 text-sm font-medium transition-colors ${soloActivos ? "border-primary/30 bg-primary/10 text-foreground" : "border-border text-muted-foreground hover:bg-muted/20"}`}
-        >
-          Solo activos
-        </button>
-        {/* Toggle tarjetas / tabla */}
-        <div className="flex h-10 items-center rounded-lg border border-border p-0.5">
-          <button
-            onClick={() => cambiarVista("cards")}
-            title="Ver como tarjetas"
-            className={`flex h-9 w-9 items-center justify-center rounded-md transition-colors ${vista === "cards" ? "bg-primary/10 text-foreground" : "text-muted-foreground hover:bg-muted/20"}`}
+        {/* Filtros inline (son pocos y entran cómodos) + acciones, alineados a la derecha */}
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          <select
+            value={catFiltro}
+            onChange={(e) => setCatFiltro(e.target.value)}
+            className="h-10 rounded-lg border border-border bg-card px-3 text-sm outline-none focus:border-primary"
           >
-            <LayoutGrid className="h-4 w-4" />
+            <option value="">Todas las categorías</option>
+            {categorias.map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
+          <button
+            onClick={() => setSoloActivos((v) => !v)}
+            className={`h-10 rounded-lg border px-3 text-sm font-medium transition-colors ${soloActivos ? "border-primary/30 bg-primary/10 text-foreground" : "border-border text-muted-foreground hover:bg-muted/20"}`}
+          >
+            Solo activos
           </button>
+          {/* Toggle tarjetas / tabla */}
+          <div className="flex h-10 items-center rounded-lg border border-border p-0.5">
+            <button
+              onClick={() => cambiarVista("cards")}
+              title="Ver como tarjetas"
+              className={`flex h-9 w-9 items-center justify-center rounded-md transition-colors ${vista === "cards" ? "bg-primary/10 text-foreground" : "text-muted-foreground hover:bg-muted/20"}`}
+            >
+              <LayoutGrid className="h-4 w-4" />
+            </button>
+            <button
+              onClick={() => cambiarVista("tabla")}
+              title="Ver como tabla"
+              className={`flex h-9 w-9 items-center justify-center rounded-md transition-colors ${vista === "tabla" ? "bg-primary/10 text-foreground" : "text-muted-foreground hover:bg-muted/20"}`}
+            >
+              <List className="h-4 w-4" />
+            </button>
+          </div>
           <button
-            onClick={() => cambiarVista("tabla")}
-            title="Ver como tabla"
-            className={`flex h-9 w-9 items-center justify-center rounded-md transition-colors ${vista === "tabla" ? "bg-primary/10 text-foreground" : "text-muted-foreground hover:bg-muted/20"}`}
+            onClick={openNew}
+            className="flex h-10 items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 whitespace-nowrap"
           >
-            <List className="h-4 w-4" />
+            <Plus className="h-4 w-4" /> Nuevo producto
           </button>
         </div>
-        <button
-          onClick={openNew}
-          className="flex h-10 items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 whitespace-nowrap"
-        >
-          <Plus className="h-4 w-4" /> Nuevo producto
-        </button>
       </div>
 
       {isLoading ? (

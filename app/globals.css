@@ -256,3 +256,22 @@ summary:focus-visible,
 .animate-rise-area {
   animation: rise-area 1.3s cubic-bezier(0.4, 0, 0.2, 1) 0.2s both;
 }
+
+/* Latido (heartbeat) — pulso SUAVE y CONSTANTE para alertas que deben "notarse"
+   (ej. mora crítica). Sin pausas: respira continuamente. */
+@keyframes heartbeat {
+  0%, 100% { transform: scale(1); }
+  50%      { transform: scale(1.1); }
+}
+.animate-heartbeat { animation: heartbeat 1.5s ease-in-out infinite; }
+
+/* Anillo/glow que late (acompaña al latido para dar "presencia" a la alerta). */
+@keyframes pulse-ring {
+  0%, 100% { opacity: 0.25; }
+  50%      { opacity: 0.85; }
+}
+.animate-pulse-ring { animation: pulse-ring 1.5s ease-in-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-heartbeat, .animate-pulse-ring { animation: none; }
+}

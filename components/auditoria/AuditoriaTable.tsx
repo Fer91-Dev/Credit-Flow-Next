@@ -3,6 +3,7 @@
 import { useState, useMemo } from "react";
 import { ChevronDown, X } from "lucide-react";
 import { BuscadorF3 } from "@/components/ui/BuscadorF3";
+import { FiltrosPanel, FiltroChip } from "@/components/ui/FiltrosPanel";
 import { useAuditoria, type EventoAuditoria } from "@/lib/swr";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { KpiCard } from "@/components/ui/KpiCard";
@@ -109,16 +110,26 @@ export function AuditoriaTable() {
               f3Hint="para limpiar el filtro y ver todo"
               className="flex-1"
             />
-            <div className="relative">
-              <select value={entidad} onChange={e => setEntidad(e.target.value)} className={SEL}>
-                <option value="all">Todas las entidades</option>
-                <option value="clientes">Clientes</option>
-                <option value="creditos">Créditos</option>
-                <option value="pagos">Pagos</option>
-                <option value="configuracion">Configuración</option>
-              </select>
-              <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            </div>
+            <FiltrosPanel
+              activos={entidad !== "all" ? 1 : 0}
+              onLimpiar={() => setEntidad("all")}
+              align="right"
+              chips={entidad !== "all" ? <FiltroChip onClear={() => setEntidad("all")}>{entidadLabel[entidad] ?? entidad}</FiltroChip> : undefined}
+            >
+              <label className="flex flex-col gap-1">
+                <span className="text-[11px] font-medium text-muted-foreground">Entidad</span>
+                <div className="relative">
+                  <select value={entidad} onChange={e => setEntidad(e.target.value)} className={SEL}>
+                    <option value="all">Todas las entidades</option>
+                    <option value="clientes">Clientes</option>
+                    <option value="creditos">Créditos</option>
+                    <option value="pagos">Pagos</option>
+                    <option value="configuracion">Configuración</option>
+                  </select>
+                  <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                </div>
+              </label>
+            </FiltrosPanel>
           </div>
 
           {/* Count + clear */}

@@ -50,7 +50,7 @@ export function AuditoriaDetail({ evento }: { evento: EventoAuditoria }) {
 
   return (
     <div className="space-y-5">
-      <DetailSection icon={Activity} title="Evento">
+      <DetailSection icon="bar-chart" title="Evento">
         <DetailGrid
           rows={[
             ["Fecha y hora", fmtDateTime(evento.created_at)],
@@ -64,7 +64,7 @@ export function AuditoriaDetail({ evento }: { evento: EventoAuditoria }) {
       </DetailSection>
 
       {metaEntries.length > 0 && (
-        <DetailSection icon={Database} title="Detalle (meta)">
+        <DetailSection icon="package" title="Detalle (meta)">
           <DetailGrid
             rows={metaEntries.map(([k, v]) => [META_LABEL[k] ?? k, <span key={k} className="font-mono text-[11px]">{fmtMetaValue(v)}</span>])}
           />

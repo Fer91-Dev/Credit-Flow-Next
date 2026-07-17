@@ -10,6 +10,7 @@ import { formatFechaHora, parseMontoInput } from "@/lib/utils";
 import { MoneyInput, Segmented, IconSelect, IconTextarea, FieldLabel, FormActions, simboloCuenta } from "./caja-form";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { KpiCard } from "@/components/ui/KpiCard";
+import { Emoji } from "@/components/ui/Emoji";
 import { StatusBadge, type BadgeVariant } from "@/components/ui/StatusBadge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -31,10 +32,10 @@ function n2(x: number) {
 }
 
 const CUENTAS: CuentaCaja[] = ["efectivo", "banco", "dolares"];
-const CUENTA_META: Record<CuentaCaja, { label: string; icon: typeof Wallet; prefix: string }> = {
-  efectivo: { label: "Efectivo", icon: Wallet, prefix: "$" },
-  banco:    { label: "Banco",    icon: Banknote, prefix: "$" },
-  dolares:  { label: "Dólares",  icon: CircleDollarSign, prefix: "u$s" },
+const CUENTA_META: Record<CuentaCaja, { label: string; icon: string; prefix: string }> = {
+  efectivo: { label: "Efectivo", icon: "money-bag", prefix: "$" },
+  banco:    { label: "Banco",    icon: "bank", prefix: "$" },
+  dolares:  { label: "Dólares",  icon: "dollar-banknote", prefix: "u$s" },
 };
 
 const TIPO_META: Record<MovimientoCaja["tipo"], { label: string; variant: BadgeVariant }> = {
@@ -72,19 +73,19 @@ export function MiCajaView() {
           onClick={() => setRendirOpen(true)}
           className="flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:opacity-90 transition-opacity text-sm font-medium whitespace-nowrap"
         >
-          <Send className="h-4 w-4" /> Rendir efectivo
+          <Emoji name="money-bag" className="h-4 w-4" /> Rendir efectivo
         </button>
         <button
           onClick={() => setTransferOpen(true)}
           className="flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-border text-foreground hover:bg-muted transition-colors text-sm font-medium whitespace-nowrap"
         >
-          <ArrowLeftRight className="h-4 w-4" /> Transferir
+          <Emoji name="money-with-wings" className="h-4 w-4" /> Transferir
         </button>
         <button
           onClick={() => setGastoOpen(true)}
           className="flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-border text-foreground hover:bg-muted transition-colors text-sm font-medium whitespace-nowrap"
         >
-          <MinusCircle className="h-4 w-4" /> Registrar gasto
+          <Emoji name="outbox-tray" className="h-4 w-4" /> Registrar gasto
         </button>
       </div>
 
@@ -110,13 +111,12 @@ export function MiCajaView() {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             {CUENTAS.map((c) => {
               const meta = CUENTA_META[c];
-              const Icon = meta.icon;
               const saldo = caja.saldos_por_cuenta[c] ?? 0;
               return (
                 <div key={c} className="rounded-xl border border-border bg-card p-5">
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-bold uppercase tracking-widest text-muted-foreground">{meta.label}</span>
-                    <Icon className="h-4 w-4 text-muted-foreground" />
+                    <Emoji name={meta.icon} className="h-4 w-4" />
                   </div>
                   <p className={`mt-3 text-2xl font-bold font-mono tabular-nums tracking-tight ${saldo < 0 ? "text-destructive" : "text-foreground"}`}>
                     {meta.prefix} {n2(saldo)}
@@ -264,7 +264,7 @@ function GastoDialog({
         <DialogHeader className="pr-8">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-warning/20 bg-warning/10 text-warning">
-              <MinusCircle className="h-5 w-5" />
+              <Emoji name="outbox-tray" className="h-5 w-5" />
             </div>
             <div>
               <DialogTitle>Registrar gasto de mi caja</DialogTitle>
@@ -285,9 +285,9 @@ function GastoDialog({
               value={cuenta}
               onChange={setCuenta}
               options={[
-                { value: "efectivo", label: "Efectivo", icon: Wallet },
-                { value: "banco", label: "Banco", icon: Banknote },
-                { value: "dolares", label: "Dólares", icon: CircleDollarSign },
+                { value: "efectivo", label: "Efectivo", icon: "money-bag" },
+                { value: "banco", label: "Banco", icon: "bank" },
+                { value: "dolares", label: "Dólares", icon: "dollar-banknote" },
               ]}
             />
           </div>
@@ -310,7 +310,7 @@ function GastoDialog({
           {/* Motivo */}
           <div className="flex flex-col gap-1.5">
             <FieldLabel required>Motivo</FieldLabel>
-            <IconTextarea icon={FileText} value={descripcion} onChange={(e) => setDescripcion(e.target.value)} rows={2} placeholder="Ej: combustible, viáticos…" required />
+            <IconTextarea icon="receipt" value={descripcion} onChange={(e) => setDescripcion(e.target.value)} rows={2} placeholder="Ej: combustible, viáticos…" required />
           </div>
 
           <FormActions
@@ -377,7 +377,7 @@ function RendirDialog({
         <DialogHeader className="pr-8">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-primary">
-              <Send className="h-5 w-5" />
+              <Emoji name="money-bag" className="h-5 w-5" />
             </div>
             <div>
               <DialogTitle>Rendir efectivo a caja principal</DialogTitle>
@@ -398,9 +398,9 @@ function RendirDialog({
               value={cuenta}
               onChange={setCuenta}
               options={[
-                { value: "efectivo", label: "Efectivo", icon: Wallet },
-                { value: "banco", label: "Banco", icon: Banknote },
-                { value: "dolares", label: "Dólares", icon: CircleDollarSign },
+                { value: "efectivo", label: "Efectivo", icon: "money-bag" },
+                { value: "banco", label: "Banco", icon: "bank" },
+                { value: "dolares", label: "Dólares", icon: "dollar-banknote" },
               ]}
             />
           </div>
@@ -423,7 +423,7 @@ function RendirDialog({
           {/* Observación */}
           <div className="flex flex-col gap-1.5">
             <FieldLabel>Observación</FieldLabel>
-            <IconTextarea icon={FileText} value={descripcion} onChange={(e) => setDescripcion(e.target.value)} rows={2} placeholder="Detalle opcional…" />
+            <IconTextarea icon="receipt" value={descripcion} onChange={(e) => setDescripcion(e.target.value)} rows={2} placeholder="Detalle opcional…" />
           </div>
 
           <FormActions
@@ -495,7 +495,7 @@ function TransferDialog({
         <DialogHeader className="pr-8">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-primary">
-              <ArrowLeftRight className="h-5 w-5" />
+              <Emoji name="money-with-wings" className="h-5 w-5" />
             </div>
             <div>
               <DialogTitle>Transferir entre mis cuentas</DialogTitle>
@@ -513,7 +513,7 @@ function TransferDialog({
           <div className="grid grid-cols-[1fr_auto_1fr] items-end gap-3">
             <div className="flex flex-col gap-1.5">
               <FieldLabel required>Desde</FieldLabel>
-              <IconSelect icon={Wallet} value={origen} onChange={(e) => setOrigen(e.target.value as CuentaCaja)}>
+              <IconSelect icon={CUENTA_META[origen].icon} value={origen} onChange={(e) => setOrigen(e.target.value as CuentaCaja)}>
                 <option value="efectivo">Efectivo</option>
                 <option value="banco">Banco</option>
                 <option value="dolares">Dólares</option>
@@ -524,7 +524,7 @@ function TransferDialog({
             </div>
             <div className="flex flex-col gap-1.5">
               <FieldLabel required>Hacia</FieldLabel>
-              <IconSelect icon={Wallet} value={destino} onChange={(e) => setDestino(e.target.value as CuentaCaja)}>
+              <IconSelect icon={CUENTA_META[destino].icon} value={destino} onChange={(e) => setDestino(e.target.value as CuentaCaja)}>
                 <option value="efectivo">Efectivo</option>
                 <option value="banco">Banco</option>
                 <option value="dolares">Dólares</option>
@@ -549,7 +549,7 @@ function TransferDialog({
           {/* Observación */}
           <div className="flex flex-col gap-1.5">
             <FieldLabel>Observación</FieldLabel>
-            <IconTextarea icon={FileText} value={descripcion} onChange={(e) => setDescripcion(e.target.value)} rows={2} placeholder="Detalle opcional…" />
+            <IconTextarea icon="receipt" value={descripcion} onChange={(e) => setDescripcion(e.target.value)} rows={2} placeholder="Detalle opcional…" />
           </div>
 
           <FormActions

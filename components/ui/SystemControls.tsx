@@ -145,7 +145,7 @@ export function SystemControls() {
 
         {open && (
           <>
-            <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+            <div className="fixed inset-0 z-40 cursor-pointer" onClick={() => setOpen(false)} />
             <div className="absolute right-0 top-11 z-50 max-h-[70vh] w-96 overflow-y-auto rounded-xl border border-border bg-card p-2 shadow-xl shadow-black/20">
               <p className="px-2 py-1.5 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Notificaciones</p>
 
@@ -262,7 +262,7 @@ function UserMenu() {
 
       {open && (
         <>
-          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+          <div className="fixed inset-0 z-40 cursor-pointer" onClick={() => setOpen(false)} />
           <div className="absolute right-0 top-11 z-50 w-64 rounded-xl border border-border bg-card p-2 shadow-xl shadow-black/20">
             {/* Identidad */}
             <div className="flex items-center gap-2.5 p-2">

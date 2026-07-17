@@ -6,6 +6,7 @@ import { Wallet, Search, User, Phone, IdCard, ArrowLeft, Plus, ChevronRight, X }
 import { useClientes, KEYS, type Cliente } from "@/lib/swr";
 import { ClienteDetail } from "@/components/clientes/ClienteDetail";
 import { BuscadorF3 } from "@/components/ui/BuscadorF3";
+import { Avatar } from "@/components/ui/Avatar";
 import { PagoForm } from "./PagoForm";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { StatusBadge } from "@/components/ui/StatusBadge";
@@ -126,13 +127,12 @@ export function PagosTable() {
         value={query}
         onChange={setQuery}
         placeholder="DNI o nombre del cliente…"
-        size="lg"
         autoFocus
         onF3={() => setVerTodos((v) => !v)}
         onEnter={() => { if (resultados.length === 1) elegir(resultados[0]); }}
         onEscape={() => { if (verTodos) setVerTodos(false); else setQuery(""); }}
         f3Hint={`para ${verTodos ? "cerrar" : "ver"} la lista completa de clientes`}
-        className="max-w-2xl"
+        className="w-full sm:max-w-sm"
       />
 
       {/* Estados */}
@@ -147,7 +147,7 @@ export function PagosTable() {
           <p className="text-xs text-muted-foreground/50">{q ? `No se encontró ningún cliente para «${q}».` : "Todavía no hay clientes cargados."}</p>
         </div>
       ) : (
-        <div className="space-y-2 max-w-2xl">
+        <div className="space-y-2 max-w-[22rem]">
           <p className="text-xs text-muted-foreground">
             {q
               ? `${lista.length} resultado${lista.length !== 1 ? "s" : ""}`
@@ -159,9 +159,7 @@ export function PagosTable() {
               onClick={() => elegir(c)}
               className="group flex w-full items-center gap-3 rounded-xl border border-border bg-card px-4 py-3 text-left transition-all hover:border-primary/40 hover:bg-card/80"
             >
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary/30 to-primary/10 text-sm font-bold text-primary">
-                {c.nombre.slice(0, 1).toUpperCase()}
-              </div>
+              <Avatar name={nombreCompleto(c)} size="md" status={c.estado === "activo" ? "online" : "offline"} />
               <div className="min-w-0 flex-1">
                 <p className="font-medium text-foreground truncate">{nombreCompleto(c)}</p>
                 <div className="flex items-center gap-3 text-xs text-muted-foreground">

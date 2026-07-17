@@ -42,6 +42,7 @@ export function PersonalView() {
   const [cuentaFor, setCuentaFor] = useState<Vendedor | null>(null);
   const [selected, setSelected] = useState<{ id: string; nombre: string } | null>(null);
   const [q, setQ] = useState("");
+  const [recientes, setRecientes] = useState<"hoy" | "mes" | "anio" | null>(null); // filtro por fecha de alta
   const [vista, setVista] = useState<"cards" | "tabla">("tabla");
   useEffect(() => {
     const v = localStorage.getItem("cf:personalVista");
@@ -60,15 +61,26 @@ export function PersonalView() {
   }, [vendedores]);
 
   const filtrados = useMemo(() => {
+    let base = vendedores;
+    if (recientes) {
+      const now = new Date();
+      const desde =
+        recientes === "hoy" ? new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
+        : recientes === "mes" ? new Date(now.getFullYear(), now.getMonth(), 1).getTime()
+        : new Date(now.getFullYear(), 0, 1).getTime();
+      base = base.filter((v) => v.created_at && new Date(v.created_at).getTime() >= desde);
+    }
     const t = q.trim().toLowerCase();
-    if (!t) return vendedores;
-    return vendedores.filter((v) =>
+    if (!t) return base;
+    return base.filter((v) =>
       v.nombre.toLowerCase().includes(t) ||
       (v.email ?? "").toLowerCase().includes(t) ||
       (v.telefono ?? "").toLowerCase().includes(t) ||
       ROL_META[v.rol].label.toLowerCase().includes(t)
     );
-  }, [vendedores, q]);
+  }, [vendedores, q, recientes]);
+  // Al filtrar por "recién cargados" se fuerza la vista de tabla (como en Clientes).
+  const vistaEfectiva = recientes ? "tabla" : vista;
 
   const refrescar = () => { mutate(); globalMutate(KEYS.creditos); };
 
@@ -172,9 +184,9 @@ export function PersonalView() {
           placeholder="Buscar por nombre, email o rol…"
           onF3={() => setQ("")}
           f3Hint="para limpiar el filtro y ver todos"
-          className="flex-1 min-w-[200px]"
+          className="flex-1 min-w-[200px] sm:max-w-sm"
         />
-        <div className="flex h-10 items-center rounded-lg border border-border p-0.5">
+        <div className="flex h-10 items-center rounded-lg border border-border p-0.5 sm:ml-auto">
           <button onClick={() => cambiarVista("cards")} title="Ver como tarjetas" className={`flex h-9 w-9 items-center justify-center rounded-md transition-colors ${vista === "cards" ? "bg-primary/10 text-foreground" : "text-muted-foreground hover:bg-muted/20"}`}>
             <LayoutGrid className="h-4 w-4" />
           </button>
@@ -202,18 +214,35 @@ export function PersonalView() {
           </div>
 
           {/* Lista */}
-          <div className="flex items-center gap-2 border-b border-border pb-2">
+          <div className="flex flex-wrap items-center gap-2 border-b border-border pb-2">
             <Emoji name="office-worker" className="h-4 w-4" />
-            <h2 className="text-sm font-semibold text-foreground">Listado de Agentes</h2>
+            <h2 className="text-sm font-semibold text-foreground">
+              {recientes ? `Agentes cargados ${recientes === "hoy" ? "hoy" : recientes === "mes" ? "este mes" : "este año"}` : "Listado de Agentes"}
+            </h2>
+            {recientes && <span className="text-xs text-muted-foreground/60">· {filtrados.length}</span>}
+            <div className="ml-auto flex items-center gap-1 rounded-lg border border-border p-0.5">
+              <span className="pl-2 pr-1 text-[11px] font-medium text-muted-foreground">Recién cargados:</span>
+              {([["hoy", "Hoy"], ["mes", "Este mes"], ["anio", "Este año"]] as const).map(([key, lbl]) => (
+                <button
+                  key={key}
+                  onClick={() => setRecientes((r) => (r === key ? null : key))}
+                  className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
+                    recientes === key ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {lbl}
+                </button>
+              ))}
+            </div>
           </div>
 
           {vendedores.length === 0 ? (
             <EmptyState onNew={openNew} />
           ) : filtrados.length === 0 ? (
             <div className="rounded-xl border border-dashed border-border/60 p-10 text-center text-sm text-muted-foreground">
-              Ningún integrante coincide con la búsqueda.
+              {recientes ? "No hay agentes cargados en este período." : "Ningún integrante coincide con la búsqueda."}
             </div>
-          ) : vista === "cards" ? (
+          ) : vistaEfectiva === "cards" ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {filtrados.map((v) => (
                 <PersonalCard key={v.id} v={v} onOpen={() => abrirFicha(v)} onDelete={() => handleDelete(v)} onCrearCuenta={() => setCuentaFor(v)} />

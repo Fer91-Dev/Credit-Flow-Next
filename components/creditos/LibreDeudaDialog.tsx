@@ -1,7 +1,8 @@
 "use client";
 
-import { Printer, ShieldCheck } from "lucide-react";
+import { Printer } from "lucide-react";
 import { useLibreDeuda, type LibreDeuda } from "@/lib/swr";
+import { Emoji } from "@/components/ui/Emoji";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { formatCreditoNumero, formatFecha, formatFechaHora } from "@/lib/utils";
@@ -83,7 +84,7 @@ export function LibreDeudaDialog({ creditoId, onClose }: { creditoId: string | n
         <DialogHeader className="pr-8">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-success/20 bg-success/10 text-success">
-              <ShieldCheck className="h-5 w-5" />
+              <Emoji name="check-mark-button" className="h-5 w-5" />
             </div>
             <div>
               <DialogTitle>Libre deuda</DialogTitle>

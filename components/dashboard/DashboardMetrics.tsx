@@ -1,8 +1,9 @@
 "use client";
 
-import { AlertCircle, TrendingUp, Users, Wallet, ArrowUpRight, Clock, Target } from "lucide-react";
+import { Target } from "lucide-react";
 import { useDashboard, type DashboardData, type DashboardFiltros } from "@/lib/swr";
 import { KpiCard } from "@/components/ui/KpiCard";
+import { IconBadge } from "@/components/ui/IconBadge";
 import { Skeleton } from "@/components/ui/skeleton";
 
 function n0(num: number) {
@@ -63,7 +64,7 @@ export function DashboardKpis({ data }: { data: DashboardData }) {
       <KpiCard icon="busts-in-silhouette" label="Clientes activos" value={String(resumen.clientes_activos)} accent="primary" />
       <KpiCard icon="chart-increasing" label="Créditos activos" value={String(resumen.creditos_activos)} sub={`${resumen.creditos_pagados} pagados`} accent="primary" />
       <KpiCard icon="money-bag" label="Cartera total" value={`$${n0(resumen.cartera_total)}`} accent="success" mono />
-      <KpiCard icon="warning" label="Mora crítica" value={String(resumen.mora_critica_count)} sub={resumen.mora_critica_count > 0 ? "requieren gestión urgente" : "sin atrasos críticos"} accent={resumen.mora_critica_count > 0 ? "destructive" : "success"} />
+      <KpiCard icon="warning" label="Mora crítica" value={String(resumen.mora_critica_count)} sub={resumen.mora_critica_count > 0 ? "requieren gestión urgente" : "sin atrasos críticos"} accent={resumen.mora_critica_count > 0 ? "destructive" : "success"} pulse={resumen.mora_critica_count > 0} />
     </div>
   );
 }
@@ -83,11 +84,9 @@ export function DashboardMoraGrid({ data }: { data: DashboardData }) {
     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
 
       {/* Distribución mora */}
-      <div className="rounded-xl bg-card border border-border p-5">
+      <div className="group rounded-xl bg-card border border-border p-5">
         <div className="flex items-center gap-2 mb-4">
-          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-muted/40 border border-border">
-            <Clock className="h-3.5 w-3.5 text-muted-foreground" />
-          </div>
+          <IconBadge emoji="alarm-clock" accent="warning" hoverable />
           <h3 className="text-sm font-semibold text-foreground">Distribución de mora</h3>
         </div>
         <div className="space-y-3">
@@ -101,11 +100,9 @@ export function DashboardMoraGrid({ data }: { data: DashboardData }) {
       </div>
 
       {/* Montos en mora */}
-      <div className="rounded-xl bg-card border border-border p-5">
+      <div className="group rounded-xl bg-card border border-border p-5">
         <div className="flex items-center gap-2 mb-4">
-          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-muted/40 border border-border">
-            <AlertCircle className="h-3.5 w-3.5 text-muted-foreground" />
-          </div>
+          <IconBadge emoji="money-bag" accent="destructive" hoverable />
           <h3 className="text-sm font-semibold text-foreground">Exposición en mora</h3>
         </div>
         <div className="space-y-4">
@@ -122,11 +119,9 @@ export function DashboardMoraGrid({ data }: { data: DashboardData }) {
       </div>
 
       {/* Cobros */}
-      <div className="rounded-xl bg-card border border-border p-5">
+      <div className="group rounded-xl bg-card border border-border p-5">
         <div className="flex items-center gap-2 mb-4">
-          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-muted/40 border border-border">
-            <ArrowUpRight className="h-3.5 w-3.5 text-muted-foreground" />
-          </div>
+          <IconBadge emoji="dollar-banknote" accent="success" hoverable />
           <h3 className="text-sm font-semibold text-foreground">Cobros registrados</h3>
         </div>
         <div className="space-y-4">
@@ -161,12 +156,10 @@ function AvanceCobranzas({
     pct >= 80 ? "text-success" : pct >= 50 ? "text-warning" : "text-destructive";
 
   return (
-    <div className="rounded-xl bg-card border border-border p-5">
+    <div className="group rounded-xl bg-card border border-border p-5">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
-          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-muted/40 border border-border">
-            <Target className="h-3.5 w-3.5 text-muted-foreground" />
-          </div>
+          <IconBadge emoji="chart-increasing" accent="primary" hoverable />
           <div>
             <h3 className="text-sm font-semibold text-foreground">Avance de cobranzas</h3>
             <p className="text-[11px] text-muted-foreground">

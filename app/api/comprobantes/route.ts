@@ -1,4 +1,4 @@
-import { requireRole } from "@/lib/auth";
+import { requireRole, scopeCreditosVendedor } from "@/lib/auth";
 import { successResponse, withErrorHandler } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
@@ -9,12 +9,14 @@ import type { NextRequest } from "next/server";
 import type { Prisma } from "@prisma/client";
 
 /**
- * GET /api/comprobantes  (admin)
- * Registro central de comprobantes de caja (movimientos numerados): principal +
- * cajas de todos los vendedores. Filtros: q (texto), serie, rango de fechas.
+ * GET /api/comprobantes  (admin + vendedor)
+ * Registro de comprobantes de caja (movimientos numerados). El admin ve TODO
+ * (principal + cajas de todos los vendedores); el vendedor ve SOLO su caja
+ * (scoping anti-IDOR por `vendedor_id`). Solo lectura (no hay borrado acá).
+ * Filtros: q (texto), serie, cuenta, rango de fechas.
  */
 export const GET = withErrorHandler(async (req: NextRequest) => {
-  const { tenantId } = await requireRole(["admin"], req);
+  const { tenantId, role, vendedorId } = await requireRole(["admin", "vendedor"], req);
 
   const url = new URL(req.url);
   const q = url.searchParams.get("q")?.trim() || "";
@@ -25,8 +27,13 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   const limit = Math.min(parseInt(url.searchParams.get("limit") || "500"), 1000);
   const offset = parseInt(url.searchParams.get("offset") || "0");
 
-  // Solo movimientos con comprobante (numerados).
-  const where: Prisma.movimientos_cajaWhereInput = { ...withTenant(tenantId), numero: { not: null } };
+  // Solo movimientos con comprobante (numerados). El vendedor queda scopeado a su caja
+  // (movimientos_caja.vendedor_id = el suyo); el admin ve todas.
+  const where: Prisma.movimientos_cajaWhereInput = {
+    ...withTenant(tenantId),
+    ...scopeCreditosVendedor({ role, vendedorId }),
+    numero: { not: null },
+  };
   if (serie) where.serie = serie;
   if (esCuentaValida(cuentaParam)) where.cuenta = cuentaParam as Cuenta;
   if (desdeStr || hastaStr) {

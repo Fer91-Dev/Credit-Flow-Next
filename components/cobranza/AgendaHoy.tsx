@@ -2,12 +2,14 @@
 
 import { useMemo } from "react";
 import {
-  Sun, HandshakeIcon, CalendarClock, Snowflake, MessageSquarePlus,
+  HandshakeIcon, CalendarClock, Snowflake, MessageSquarePlus,
   MessageCircle, Phone, CheckCheck, AlertCircle,
 } from "lucide-react";
 import { useAgendaCobranza, type AgendaItem } from "@/lib/swr";
 import { formatMonto, formatFecha, formatCreditoNumero } from "@/lib/utils";
 import { StatusBadge } from "@/components/ui/StatusBadge";
+import { KpiCard } from "@/components/ui/KpiCard";
+import { IconBadge } from "@/components/ui/IconBadge";
 import { Skeleton } from "@/components/ui/skeleton";
 
 /** Sanitiza un teléfono a solo dígitos para un enlace wa.me. */
@@ -96,12 +98,10 @@ export function AgendaHoy({
 
   return (
     <div className="space-y-6">
-      {/* Resumen del día */}
-      <div className="rounded-xl bg-card border border-border p-5">
-        <div className="flex items-center gap-2 mb-4">
-          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10 border border-primary/20">
-            <Sun className="h-3.5 w-3.5 text-primary" />
-          </div>
+      {/* Resumen del día: título + KPIs (mismo estilo que el Home) */}
+      <div className="space-y-4">
+        <div className="group flex items-center gap-2.5">
+          <IconBadge emoji="dollar-banknote" accent="primary" pulse={total > 0} hoverable />
           <div>
             <h3 className="text-sm font-semibold text-foreground">Tu agenda de hoy</h3>
             <p className="text-[11px] text-muted-foreground/70">
@@ -109,17 +109,18 @@ export function AgendaHoy({
             </p>
           </div>
         </div>
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-3 gap-4">
           {BUCKETS.map((b) => {
             const n = agenda?.totales[b.key] ?? 0;
             return (
-              <div key={b.key} className={`rounded-lg border p-3 ${n > 0 ? ACCENT_RING[b.accent] : "border-border bg-muted/10 text-muted-foreground/40"}`}>
-                <div className="flex items-center gap-1.5">
-                  <b.icon className="h-3.5 w-3.5" />
-                  <span className="text-lg font-mono font-bold">{n}</span>
-                </div>
-                <p className="text-[10px] font-semibold uppercase tracking-wide mt-0.5 opacity-80">{b.titulo}</p>
-              </div>
+              <KpiCard
+                key={b.key}
+                icon={b.icon}
+                label={b.titulo}
+                value={String(n)}
+                accent={n > 0 ? b.accent : "muted"}
+                pulse={b.key === "promesa" && n > 0}
+              />
             );
           })}
         </div>

@@ -2,8 +2,10 @@
 
 import { useMemo, useState } from "react";
 import type { Role } from "@prisma/client";
-import { CalendarDays, MapPin, UserCog, X, Target, Trophy, Users2, AlertTriangle, Percent, ShieldCheck, Sparkles, PhoneCall, SlidersHorizontal } from "lucide-react";
+import { CalendarDays, MapPin, UserCog, Target, Trophy, Users2, AlertTriangle, Percent, ShieldCheck, Sparkles, PhoneCall } from "lucide-react";
 import { useZonas, useVendedores, useDashboard, useMiPerfilVendedor, useMisLogros, useReporteCobranza, type DashboardFiltros, type VendedorRendimiento, type MiPerfilVendedor } from "@/lib/swr";
+import { FiltrosPanel, FiltroChip } from "@/components/ui/FiltrosPanel";
+import { IconBadge } from "@/components/ui/IconBadge";
 import { DashboardKpis, DashboardCobranzaAvance, DashboardMoraGrid, DashboardKpisSkeleton } from "./DashboardMetrics";
 import { MetricChart } from "./MetricChart";
 import { CobranzaDelDia } from "./CobranzaDelDia";
@@ -44,45 +46,18 @@ export function HomeView({ role }: { role: Role }) {
 
   const { data, error, isLoading } = useDashboard(filtros);
 
-  const hayFiltros = !!(desde || hasta || (esAdmin && vendedorId) || zona);
   const limpiar = () => { setDesde(""); setHasta(""); setVendedorId(""); setZona(""); };
 
   return (
     <div className="space-y-6">
-      {/* ── 1 · Filtros globales (fijan el contexto de TODA la vista, por eso van arriba) ── */}
-      <div className="rounded-xl bg-card border border-border p-3.5 flex flex-wrap items-end gap-3">
-        <span className="hidden sm:flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-widest text-muted-foreground/70 mr-1 self-center">
-          <SlidersHorizontal className="h-3.5 w-3.5" /> Filtros
-        </span>
-        <label className="flex flex-col gap-1">
-          <span className="text-[11px] font-medium text-muted-foreground flex items-center gap-1"><CalendarDays className="h-3 w-3" /> Desde</span>
-          <input type="date" value={desde} max={hasta || undefined} onChange={(e) => setDesde(e.target.value)} className={INPUT} />
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className="text-[11px] font-medium text-muted-foreground flex items-center gap-1"><CalendarDays className="h-3 w-3" /> Hasta</span>
-          <input type="date" value={hasta} min={desde || undefined} onChange={(e) => setHasta(e.target.value)} className={INPUT} />
-        </label>
-        {esAdmin && (
-          <label className="flex flex-col gap-1 min-w-[160px]">
-            <span className="text-[11px] font-medium text-muted-foreground flex items-center gap-1"><UserCog className="h-3 w-3" /> Empleado</span>
-            <select value={vendedorId} onChange={(e) => setVendedorId(e.target.value)} className={SEL}>
-              <option value="">Todos</option>
-              {vendedores.map((v) => <option key={v.id} value={v.id}>{v.nombre}</option>)}
-            </select>
-          </label>
-        )}
-        <label className="flex flex-col gap-1 min-w-[140px]">
-          <span className="text-[11px] font-medium text-muted-foreground flex items-center gap-1"><MapPin className="h-3 w-3" /> Zona</span>
-          <select value={zona} onChange={(e) => setZona(e.target.value)} className={SEL}>
-            <option value="">Todas</option>
-            {zonas.map((z) => <option key={z} value={z}>{z}</option>)}
-          </select>
-        </label>
-        {hayFiltros && (
-          <button onClick={limpiar} className="flex items-center gap-1.5 h-9 px-3 rounded-lg border border-border text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors">
-            <X className="h-3.5 w-3.5" /> Limpiar
-          </button>
-        )}
+      {/* ── 1 · Filtros (compactos, a la derecha) ── */}
+      <div className="flex justify-end">
+        <FiltrosHome
+          esAdmin={esAdmin}
+          desde={desde} hasta={hasta} vendedorId={vendedorId} zona={zona}
+          setDesde={setDesde} setHasta={setHasta} setVendedorId={setVendedorId} setZona={setZona}
+          vendedores={vendedores} zonas={zonas} limpiar={limpiar}
+        />
       </div>
 
       {/* ── 2 · KPIs + avance de cobranzas (reaccionan a los filtros) ── */}
@@ -118,6 +93,68 @@ export function HomeView({ role }: { role: Role }) {
 }
 
 /**
+ * Filtros del Home usando el patrón estándar del SaaS (`FiltrosPanel`): botón compacto
+ * + panel flotante + chips removibles. Cada sección arma sus campos y chips; el shell
+ * (abrir/cerrar, contador, "Limpiar") lo aporta el componente compartido.
+ */
+function FiltrosHome({
+  esAdmin, desde, hasta, vendedorId, zona, vendedores, zonas, limpiar,
+  setDesde, setHasta, setVendedorId, setZona,
+}: {
+  esAdmin: boolean;
+  desde: string; hasta: string; vendedorId: string; zona: string;
+  vendedores: ReturnType<typeof useVendedores>["vendedores"];
+  zonas: string[];
+  limpiar: () => void;
+  setDesde: (v: string) => void; setHasta: (v: string) => void;
+  setVendedorId: (v: string) => void; setZona: (v: string) => void;
+}) {
+  const activos = (desde ? 1 : 0) + (hasta ? 1 : 0) + (esAdmin && vendedorId ? 1 : 0) + (zona ? 1 : 0);
+  const vendNombre = vendedores.find((v) => v.id === vendedorId)?.nombre;
+  const fmt = (s: string) => (s ? s.split("-").reverse().join("/") : "…");
+
+  return (
+    <FiltrosPanel
+      activos={activos}
+      onLimpiar={limpiar}
+      align="right"
+      chips={<>
+        {(desde || hasta) && <FiltroChip onClear={() => { setDesde(""); setHasta(""); }}>{fmt(desde)} → {fmt(hasta)}</FiltroChip>}
+        {esAdmin && vendedorId && <FiltroChip onClear={() => setVendedorId("")}>{vendNombre ?? "Empleado"}</FiltroChip>}
+        {zona && <FiltroChip onClear={() => setZona("")}>{zona}</FiltroChip>}
+      </>}
+    >
+      <div className="grid grid-cols-2 gap-3">
+        <label className="flex flex-col gap-1">
+          <span className="text-[11px] font-medium text-muted-foreground flex items-center gap-1"><CalendarDays className="h-3 w-3" /> Desde</span>
+          <input type="date" value={desde} max={hasta || undefined} onChange={(e) => setDesde(e.target.value)} className={INPUT} />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-[11px] font-medium text-muted-foreground flex items-center gap-1"><CalendarDays className="h-3 w-3" /> Hasta</span>
+          <input type="date" value={hasta} min={desde || undefined} onChange={(e) => setHasta(e.target.value)} className={INPUT} />
+        </label>
+      </div>
+      {esAdmin && (
+        <label className="flex flex-col gap-1">
+          <span className="text-[11px] font-medium text-muted-foreground flex items-center gap-1"><UserCog className="h-3 w-3" /> Empleado</span>
+          <select value={vendedorId} onChange={(e) => setVendedorId(e.target.value)} className={SEL}>
+            <option value="">Todos</option>
+            {vendedores.map((v) => <option key={v.id} value={v.id}>{v.nombre}</option>)}
+          </select>
+        </label>
+      )}
+      <label className="flex flex-col gap-1">
+        <span className="text-[11px] font-medium text-muted-foreground flex items-center gap-1"><MapPin className="h-3 w-3" /> Zona</span>
+        <select value={zona} onChange={(e) => setZona(e.target.value)} className={SEL}>
+          <option value="">Todas</option>
+          {zonas.map((z) => <option key={z} value={z}>{z}</option>)}
+        </select>
+      </label>
+    </FiltrosPanel>
+  );
+}
+
+/**
  * Tabla de rendimiento por vendedor (solo admin): créditos otorgados, cartera y
  * morosidad de la cartera de cada vendedor (según la mora de sus clientes).
  */
@@ -129,11 +166,9 @@ function RendimientoVendedores({ filas }: { filas: VendedorRendimiento[] }) {
     pct >= 30 ? "text-destructive" : pct >= 15 ? "text-warning" : "text-success";
 
   return (
-    <div className="rounded-xl bg-card border border-border p-5">
+    <div className="group rounded-xl bg-card border border-border p-5">
       <div className="flex items-center gap-2 mb-4">
-        <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-muted/40 border border-border">
-          <Users2 className="h-3.5 w-3.5 text-muted-foreground" />
-        </div>
+        <IconBadge emoji="busts-in-silhouette" accent="primary" hoverable />
         <h3 className="text-sm font-semibold text-foreground">Rendimiento por vendedor</h3>
       </div>
 
@@ -452,11 +487,9 @@ function ObjetivosEquipo({ vendedores }: { vendedores: ReturnType<typeof useVend
   if (equipo.length === 0) return null;
 
   return (
-    <div className="rounded-xl bg-card border border-border p-5">
+    <div className="group rounded-xl bg-card border border-border p-5">
       <div className="flex items-center gap-2 mb-4">
-        <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-muted/40 border border-border">
-          <Target className="h-3.5 w-3.5 text-muted-foreground" />
-        </div>
+        <IconBadge emoji="bullseye" accent="primary" hoverable />
         <h3 className="text-sm font-semibold text-foreground">Objetivos de venta por equipo</h3>
       </div>
 

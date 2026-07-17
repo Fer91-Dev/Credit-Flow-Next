@@ -15,6 +15,7 @@ import { KpiCard } from "@/components/ui/KpiCard";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { DataTable } from "@/components/ui/DataTable";
 import { BuscadorF3 } from "@/components/ui/BuscadorF3";
+import { FiltrosPanel, FiltroChip } from "@/components/ui/FiltrosPanel";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
@@ -35,6 +36,10 @@ const SEL =
   "h-10 rounded-lg border border-border bg-muted/40 pl-3 pr-8 text-sm text-foreground " +
   "outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/20 " +
   "appearance-none cursor-pointer [&>option]:bg-card [&>option]:text-foreground";
+
+// Etiquetas de los filtros para los chips del FiltrosPanel.
+const ESTADO_FILTRO_LABEL: Record<string, string> = { activo: "Activos", pagado: "Pagados", refinanciado: "Refinanciados", anulado: "Anulados" };
+const TIPO_FILTRO_LABEL: Record<string, string> = { personal: "Personal", empresarial: "Empresarial", productos: "Producto", otro: "Otro" };
 
 function estadoBadge(estado: string): { label: string; variant: "primary" | "success" | "muted" | "destructive" | "warning" } {
   if (estado === "activo")       return { label: "Activo",       variant: "primary" };
@@ -226,26 +231,42 @@ export function CreditosTable() {
             f3Hint="para limpiar el filtro y ver todos"
             className="flex-1"
           />
-          <div className="relative">
-            <select value={estadoFilter} onChange={e => setEstado(e.target.value)} className={SEL}>
-              <option value="all">Todos los estados</option>
-              <option value="activo">Activos</option>
-              <option value="pagado">Pagados</option>
-              <option value="refinanciado">Refinanciados</option>
-              <option value="anulado">Anulados</option>
-            </select>
-            <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          </div>
-          <div className="relative">
-            <select value={tipoFilter} onChange={e => setTipo(e.target.value)} className={SEL}>
-              <option value="all">Todos los tipos</option>
-              <option value="personal">Personal</option>
-              <option value="empresarial">Empresarial</option>
-              <option value="productos">Producto</option>
-              <option value="otro">Otro</option>
-            </select>
-            <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          </div>
+          <FiltrosPanel
+            activos={(estadoFilter !== "all" ? 1 : 0) + (tipoFilter !== "all" ? 1 : 0)}
+            onLimpiar={() => { setEstado("all"); setTipo("all"); }}
+            align="right"
+            chips={<>
+              {estadoFilter !== "all" && <FiltroChip onClear={() => setEstado("all")}>{ESTADO_FILTRO_LABEL[estadoFilter] ?? estadoFilter}</FiltroChip>}
+              {tipoFilter !== "all" && <FiltroChip onClear={() => setTipo("all")}>{TIPO_FILTRO_LABEL[tipoFilter] ?? tipoFilter}</FiltroChip>}
+            </>}
+          >
+            <label className="flex flex-col gap-1">
+              <span className="text-[11px] font-medium text-muted-foreground">Estado</span>
+              <div className="relative">
+                <select value={estadoFilter} onChange={e => setEstado(e.target.value)} className={SEL}>
+                  <option value="all">Todos los estados</option>
+                  <option value="activo">Activos</option>
+                  <option value="pagado">Pagados</option>
+                  <option value="refinanciado">Refinanciados</option>
+                  <option value="anulado">Anulados</option>
+                </select>
+                <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              </div>
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-[11px] font-medium text-muted-foreground">Tipo</span>
+              <div className="relative">
+                <select value={tipoFilter} onChange={e => setTipo(e.target.value)} className={SEL}>
+                  <option value="all">Todos los tipos</option>
+                  <option value="personal">Personal</option>
+                  <option value="empresarial">Empresarial</option>
+                  <option value="productos">Producto</option>
+                  <option value="otro">Otro</option>
+                </select>
+                <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              </div>
+            </label>
+          </FiltrosPanel>
         </div>
 
         {/* Conteo + limpiar — solo cuando hay filtros (el total ya lo da el KPI). */}

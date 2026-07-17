@@ -16,6 +16,7 @@ import { KpiCard } from "@/components/ui/KpiCard";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Emoji } from "@/components/ui/Emoji";
+import { BuscadorF3 } from "@/components/ui/BuscadorF3";
 import { DataTable, type Column } from "@/components/ui/DataTable";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field, Input, Select } from "@/components/ui/field";
@@ -38,12 +39,34 @@ export function ProveedoresView() {
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Proveedor | null>(null);
   const [fichaId, setFichaId] = useState<string | null>(null);
+  const [q, setQ] = useState("");
+  const [recientes, setRecientes] = useState<"hoy" | "mes" | "anio" | null>(null); // filtro por fecha de alta
 
   const totales = useMemo(() => {
     const activos = proveedores.filter(p => p.activo).length;
     const conDeuda = proveedores.filter(p => (p.saldo ?? 0) > 0).length;
     return { total: proveedores.length, activos, conDeuda };
   }, [proveedores]);
+
+  const filtrados = useMemo(() => {
+    let base = proveedores;
+    if (recientes) {
+      const now = new Date();
+      const desde =
+        recientes === "hoy" ? new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
+        : recientes === "mes" ? new Date(now.getFullYear(), now.getMonth(), 1).getTime()
+        : new Date(now.getFullYear(), 0, 1).getTime();
+      base = base.filter((p) => p.created_at && new Date(p.created_at).getTime() >= desde);
+    }
+    const t = q.trim().toLowerCase();
+    if (!t) return base;
+    return base.filter((p) =>
+      p.nombre.toLowerCase().includes(t) ||
+      (p.cuit ?? "").toLowerCase().includes(t) ||
+      (p.email ?? "").toLowerCase().includes(t) ||
+      (p.rubro ?? "").toLowerCase().includes(t)
+    );
+  }, [proveedores, q, recientes]);
 
   const refrescar = () => { mutate(); globalMutate(KEYS.proveedores); };
 
@@ -87,7 +110,18 @@ export function ProveedoresView() {
         subtitle="Gastos, fondeo y cuenta corriente"
         accent="primary"
       />
-      <div className="flex flex-wrap items-center justify-end gap-2">{cta}</div>
+      {/* Toolbar: buscador (tamaño Productos) + CTA */}
+      <div className="flex flex-wrap items-start gap-2">
+        <BuscadorF3
+          value={q}
+          onChange={setQ}
+          placeholder="Buscar por nombre, CUIT, email o rubro…"
+          onF3={() => setQ("")}
+          f3Hint="para limpiar el filtro y ver todos"
+          className="flex-1 min-w-[200px] sm:max-w-sm"
+        />
+        <div className="sm:ml-auto">{cta}</div>
+      </div>
 
       {isLoading ? (
         <BodySkeleton />
@@ -105,14 +139,31 @@ export function ProveedoresView() {
             <KpiCard icon="office-building" label="Activos" value={String(totales.activos)} accent="primary" />
           </div>
 
-          {/* Título de la lista (con ícono, igual que Productos) */}
-          <div className="flex items-center gap-2 border-b border-border pb-2">
+          {/* Título de la lista + filtro "recién cargados" */}
+          <div className="flex flex-wrap items-center gap-2 border-b border-border pb-2">
             <Emoji name="delivery-truck" className="h-4 w-4" />
-            <h2 className="text-sm font-semibold text-foreground">Listado de Proveedores</h2>
+            <h2 className="text-sm font-semibold text-foreground">
+              {recientes ? `Proveedores cargados ${recientes === "hoy" ? "hoy" : recientes === "mes" ? "este mes" : "este año"}` : "Listado de Proveedores"}
+            </h2>
+            {recientes && <span className="text-xs text-muted-foreground/60">· {filtrados.length}</span>}
+            <div className="ml-auto flex items-center gap-1 rounded-lg border border-border p-0.5">
+              <span className="pl-2 pr-1 text-[11px] font-medium text-muted-foreground">Recién cargados:</span>
+              {([["hoy", "Hoy"], ["mes", "Este mes"], ["anio", "Este año"]] as const).map(([key, lbl]) => (
+                <button
+                  key={key}
+                  onClick={() => setRecientes((r) => (r === key ? null : key))}
+                  className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
+                    recientes === key ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {lbl}
+                </button>
+              ))}
+            </div>
           </div>
 
           <DataTable<Proveedor>
-            rows={proveedores}
+            rows={filtrados}
             rowKey={(p) => p.id}
             onRowClick={(p) => setFichaId(p.id)}
             rowClassName={(p) => (p.activo ? "" : "opacity-50")}
@@ -360,8 +411,8 @@ function MovimientoDialog({ open, proveedorId, onClose }: { open: boolean; prove
               value={tipo}
               onChange={setTipo}
               options={[
-                { value: "cargo", label: "Cargo (deuda)", icon: ArrowUpRight },
-                { value: "pago", label: "Pago (cancela)", icon: ArrowDownLeft },
+                { value: "cargo", label: "Cargo (deuda)", icon: "outbox-tray" },
+                { value: "pago", label: "Pago (cancela)", icon: "inbox-tray" },
               ]}
             />
           </div>
@@ -375,7 +426,7 @@ function MovimientoDialog({ open, proveedorId, onClose }: { open: boolean; prove
           {/* Concepto */}
           <div className="flex flex-col gap-1.5">
             <FieldLabel required>Concepto</FieldLabel>
-            <IconTextarea icon={FileText} value={concepto} onChange={(e) => setConcepto(e.target.value)} rows={2} placeholder="Factura, gasto, fondeo, pago…" />
+            <IconTextarea icon="receipt" value={concepto} onChange={(e) => setConcepto(e.target.value)} rows={2} placeholder="Factura, gasto, fondeo, pago…" />
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -515,34 +566,34 @@ function ProveedorForm({ open, proveedor, onClose }: { open: boolean; proveedor:
 
           {/* Identidad */}
           <Field label="Nombre / Razón social" required error={errs.nombre}>
-            <IconInput icon={Building2} value={nombre} onChange={(e) => { setNombre(e.target.value); clearErr("nombre"); }} placeholder="Nombre del proveedor" />
+            <IconInput icon="office-building" value={nombre} onChange={(e) => { setNombre(e.target.value); clearErr("nombre"); }} placeholder="Nombre del proveedor" />
           </Field>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Field label="CUIT" hint="11 dígitos" error={errs.cuit}>
-              <IconInput icon={IdCard} inputMode="numeric" value={cuit} onChange={(e) => { setCuit(maskCuit(e.target.value)); clearErr("cuit"); }} placeholder="30-71234567-9" />
+              <IconInput icon="credit-card" inputMode="numeric" value={cuit} onChange={(e) => { setCuit(maskCuit(e.target.value)); clearErr("cuit"); }} placeholder="30-71234567-9" />
             </Field>
             <Field label="Rubro">
-              <IconInput icon={Tag} value={rubro} onChange={(e) => setRubro(e.target.value)} placeholder="servicios, fondeo…" />
+              <IconInput icon="briefcase" value={rubro} onChange={(e) => setRubro(e.target.value)} placeholder="servicios, fondeo…" />
             </Field>
           </div>
 
           {/* Contacto */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Field label="Email" error={errs.email}>
-              <IconInput icon={Mail} type="email" inputMode="email" value={email} onChange={(e) => { setEmail(e.target.value); clearErr("email"); }} placeholder="ventas@proveedor.com" />
+              <IconInput icon="envelope" type="email" inputMode="email" value={email} onChange={(e) => { setEmail(e.target.value); clearErr("email"); }} placeholder="ventas@proveedor.com" />
             </Field>
             <Field label="Teléfono" error={errs.telefono}>
-              <IconInput icon={Phone} inputMode="tel" value={telefono} onChange={(e) => { setTelefono(maskTel(e.target.value)); clearErr("telefono"); }} placeholder="1145678900" />
+              <IconInput icon="mobile-phone" inputMode="tel" value={telefono} onChange={(e) => { setTelefono(maskTel(e.target.value)); clearErr("telefono"); }} placeholder="1145678900" />
             </Field>
           </div>
           <Field label="Dirección">
-            <IconInput icon={MapPin} value={direccion} onChange={(e) => setDireccion(e.target.value)} placeholder="Calle, número, localidad" />
+            <IconInput icon="round-pushpin" value={direccion} onChange={(e) => setDireccion(e.target.value)} placeholder="Calle, número, localidad" />
           </Field>
           <Field label="Notas">
-            <IconTextarea icon={FileText} value={notas} onChange={(e) => setNotas(e.target.value)} rows={2} placeholder="Observaciones…" />
+            <IconTextarea icon="receipt" value={notas} onChange={(e) => setNotas(e.target.value)} rows={2} placeholder="Observaciones…" />
           </Field>
           <Field label="Estado">
-            <IconSelect icon={Power} value={activo ? "activo" : "inactivo"} onChange={(e) => setActivo(e.target.value === "activo")}>
+            <IconSelect icon="check-mark-button" value={activo ? "activo" : "inactivo"} onChange={(e) => setActivo(e.target.value === "activo")}>
               <option value="activo">Activo</option>
               <option value="inactivo">Inactivo</option>
             </IconSelect>

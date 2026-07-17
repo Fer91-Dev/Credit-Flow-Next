@@ -1,10 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { Sun, HandshakeIcon, CalendarClock, Snowflake, ArrowRight, CheckCheck } from "lucide-react";
+import { HandshakeIcon, CalendarClock, Snowflake, ArrowRight, CheckCheck } from "lucide-react";
 import { useAgendaCobranza, type AgendaItem } from "@/lib/swr";
 import { formatMonto, formatCreditoNumero } from "@/lib/utils";
 import { StatusBadge } from "@/components/ui/StatusBadge";
+import { IconBadge } from "@/components/ui/IconBadge";
 import { Skeleton } from "@/components/ui/skeleton";
 
 const BUCKET_ICON: Record<AgendaItem["bucket"], typeof HandshakeIcon> = {
@@ -31,11 +32,9 @@ export function CobranzaDelDia() {
 
   return (
     <div className="rounded-xl bg-card border border-border p-5">
-      <div className="flex items-center justify-between gap-3 mb-4">
+      <div className="group flex items-center justify-between gap-3 mb-4">
         <div className="flex items-center gap-2">
-          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10 border border-primary/20">
-            <Sun className="h-3.5 w-3.5 text-primary" />
-          </div>
+          <IconBadge emoji="dollar-banknote" accent="primary" hoverable />
           <div>
             <h3 className="text-sm font-semibold text-foreground">Cobranza del día</h3>
             <p className="text-[11px] text-muted-foreground/70">

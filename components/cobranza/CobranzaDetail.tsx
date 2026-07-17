@@ -36,7 +36,7 @@ export function CobranzaDetail({ credito, acciones }: { credito: Credito; accion
         <StatusBadge label={`${credito.dias_mora}d · ${sevLabel}`} variant={sevVariant} />
       </div>
 
-      <DetailSection icon={ShieldAlert} title="Situación de mora">
+      <DetailSection icon="warning" title="Situación de mora">
         <DetailGrid
           rows={[
             ["Saldo pendiente", <span key="s" className="font-mono text-warning">${n0(credito.saldo_pendiente)}</span>],
@@ -49,7 +49,7 @@ export function CobranzaDetail({ credito, acciones }: { credito: Credito; accion
         />
       </DetailSection>
 
-      <DetailSection icon={MessageSquare} title={`Historial de gestiones${gestiones.length ? ` (${gestiones.length})` : ""}`}>
+      <DetailSection icon="speech-balloon" title={`Historial de gestiones${gestiones.length ? ` (${gestiones.length})` : ""}`}>
         {gestiones.length === 0 ? (
           <p className="text-xs text-muted-foreground/60 rounded-lg border border-dashed border-border/60 px-4 py-6 text-center">
             Sin gestiones registradas todavía.
