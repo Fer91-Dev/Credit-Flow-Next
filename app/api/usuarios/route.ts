@@ -19,7 +19,8 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   const { tenantId } = await requireRole(["admin"], req);
 
   const profiles = await prisma.profiles.findMany({
-    where: { ...withTenant(tenantId) },
+    // Nunca listar al dueño de la plataforma como usuario de la financiera.
+    where: { ...withTenant(tenantId), es_owner: false },
     select: {
       id: true,
       email: true,

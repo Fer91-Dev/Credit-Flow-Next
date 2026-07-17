@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { withSentryConfig } from "@sentry/nextjs";
 
 // ── Security headers (OWASP A05) ─────────────────────────────────────────────
 // CSP afinada para Next + Supabase. script/style con 'unsafe-inline'/'unsafe-eval'
@@ -48,4 +49,16 @@ const nextConfig: NextConfig = {
   allowedDevOrigins: ["*.devtunnels.ms", "*.ngrok-free.app", "*.trycloudflare.com"],
 };
 
-export default nextConfig;
+// Sentry (monitoreo de errores). El upload de source maps solo corre si están las envs
+// SENTRY_ORG/SENTRY_PROJECT/SENTRY_AUTH_TOKEN (build de producción); si faltan, se saltea
+// sin romper. `tunnelRoute` enruta los eventos del navegador por /monitoring (same-origin)
+// → esquiva el CSP (connect-src) y los adblockers. Inerte si no hay DSN.
+export default withSentryConfig(nextConfig, {
+  org: process.env.SENTRY_ORG,
+  project: process.env.SENTRY_PROJECT,
+  authToken: process.env.SENTRY_AUTH_TOKEN,
+  silent: true,
+  tunnelRoute: "/monitoring",
+  disableLogger: true,
+  widenClientFileUpload: true,
+});

@@ -2,15 +2,18 @@
 
 import { useState } from "react";
 import useSWR from "swr";
-import { Crown, Plus, Ban, RotateCcw, Loader2, Building2, Sparkles } from "lucide-react";
+import { Crown, Plus, Ban, RotateCcw, Loader2, Building2, ChevronRight, Clock, Users, History } from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { KpiCard } from "@/components/ui/KpiCard";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Field, Input } from "@/components/ui/field";
+import { Field, Input, Textarea } from "@/components/ui/field";
+import { MoneyInput } from "@/components/ui/form-kit";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/toast";
+import { useConfirm } from "@/components/ui/confirm";
 import { PLANES, type PlanClave } from "@/lib/planes";
-import { formatFecha, esEmailValido } from "@/lib/utils";
+import { formatFecha, formatFechaHora, formatMonto, parseMontoInput, numeroAInput, esEmailValido } from "@/lib/utils";
 
 interface TenantRow {
   id: string;
@@ -23,35 +26,30 @@ interface TenantRow {
 
 const fetcher = (u: string) => fetch(u).then((r) => r.json());
 
+/** Días hasta el vencimiento (negativo = ya venció). null si no tiene fecha. */
+function diasRestantes(fecha: string | null): number | null {
+  if (!fecha) return null;
+  const ms = new Date(fecha).getTime() - Date.now();
+  return Math.ceil(ms / 86_400_000);
+}
+
 /** Área "Administración del SaaS" (solo dueño de plataforma): financieras cliente, planes,
- *  suspensión y métricas del negocio. NO muestra la operación de ninguna financiera. */
+ *  suscripciones y vencimientos. NO muestra la operación de ninguna financiera. */
 export function PlataformaView() {
   const toast = useToast();
   const { data, isLoading, mutate } = useSWR<{ ok: boolean; data: { tenants: TenantRow[] } }>("/api/admin/tenants", fetcher);
   const tenants = data?.data?.tenants ?? [];
-  const [busy, setBusy] = useState<string | null>(null);
 
   const total = tenants.length;
   const enPro = tenants.filter((t) => t.plan === "pro" && t.activo).length;
   const suspendidas = tenants.filter((t) => !t.activo).length;
+  const porVencer = tenants.filter((t) => {
+    if (t.plan !== "pro" || !t.activo || t.estado === "vencida") return false;
+    const d = diasRestantes(t.periodo_hasta);
+    return d !== null && d >= 0 && d <= 7;
+  }).length;
 
-  const activar = async (tenant_id: string, plan: PlanClave, meses: number) => {
-    setBusy(tenant_id);
-    try {
-      const res = await fetch("/api/admin/planes", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tenant_id, plan, meses }) });
-      const j = await res.json();
-      if (j.ok) { toast.success(`Plan ${plan.toUpperCase()} activado`); mutate(); } else toast.error(j.error || "No se pudo activar");
-    } catch { toast.error("Error al activar el plan"); } finally { setBusy(null); }
-  };
-
-  const suspender = async (id: string, activo: boolean) => {
-    setBusy(id);
-    try {
-      const res = await fetch(`/api/admin/tenants/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ activo }) });
-      const j = await res.json();
-      if (j.ok) { toast.success(activo ? "Financiera reactivada" : "Financiera suspendida"); mutate(); } else toast.error(j.error || "No se pudo cambiar el estado");
-    } catch { toast.error("Error al cambiar el estado"); } finally { setBusy(null); }
-  };
+  const [fichaId, setFichaId] = useState<string | null>(null);
 
   const [crearOpen, setCrearOpen] = useState(false);
   const [creando, setCreando] = useState(false);
@@ -89,10 +87,11 @@ export function PlataformaView() {
         <Skeleton className="h-64 rounded-xl" />
       ) : (
         <>
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
             <KpiCard icon="office-building" label="Financieras" value={String(total)} accent="primary" />
             <KpiCard icon="sparkles" label="En plan Pro" value={String(enPro)} accent="success" />
-            <KpiCard icon="warning" label="Suspendidas" value={String(suspendidas)} accent="warning" />
+            <KpiCard icon="alarm-clock" label="Por vencer (≤7 días)" value={String(porVencer)} accent="warning" pulse={porVencer > 0} />
+            <KpiCard icon="warning" label="Suspendidas" value={String(suspendidas)} accent="destructive" />
           </div>
 
           {crearOpen && (
@@ -135,42 +134,217 @@ export function PlataformaView() {
                     <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground border-b border-border">Plan</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground border-b border-border hidden sm:table-cell">Vence</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground border-b border-border hidden md:table-cell">Estado</th>
-                    <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground border-b border-border">Acciones</th>
+                    <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground border-b border-border"></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {tenants.map((t) => (
-                    <tr key={t.id} className={`hover:bg-muted/20 ${!t.activo ? "opacity-60" : ""}`}>
-                      <td className="px-4 py-2.5 border-b border-border/70 font-medium text-foreground">{t.nombre}</td>
-                      <td className="px-4 py-2.5 border-b border-border/70">
-                        <div className="flex items-center gap-2">
-                          <StatusBadge label={PLANES[t.plan]?.label ?? t.plan} variant={t.plan === "pro" ? "primary" : "muted"} />
-                          {t.estado === "vencida" && <span className="text-[10px] font-semibold uppercase tracking-wide text-warning">vencido</span>}
-                        </div>
-                      </td>
-                      <td className="px-4 py-2.5 border-b border-border/70 text-muted-foreground hidden sm:table-cell tabular-nums">{t.periodo_hasta ? formatFecha(t.periodo_hasta) : "—"}</td>
-                      <td className="px-4 py-2.5 border-b border-border/70 hidden md:table-cell">
-                        <StatusBadge label={t.activo ? "Activa" : "Suspendida"} variant={t.activo ? "success" : "destructive"} />
-                      </td>
-                      <td className="px-4 py-2.5 border-b border-border/70">
-                        <div className="flex flex-wrap justify-end gap-1.5">
-                          <button onClick={() => activar(t.id, "pro", 1)} disabled={busy === t.id} className="rounded-lg bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50">Pro 1 mes</button>
-                          <button onClick={() => activar(t.id, "pro", 12)} disabled={busy === t.id} className="rounded-lg bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary ring-1 ring-inset ring-primary/25 hover:bg-primary/15 disabled:opacity-50">Pro 12m</button>
-                          <button onClick={() => activar(t.id, "free", 0)} disabled={busy === t.id} className="rounded-lg border border-border px-2.5 py-1 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50">Free</button>
-                          <button onClick={() => suspender(t.id, !t.activo)} disabled={busy === t.id} title={t.activo ? "Suspender acceso" : "Reactivar"}
-                            className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-medium disabled:opacity-50 ${t.activo ? "border border-border text-muted-foreground hover:bg-destructive/10 hover:text-destructive" : "bg-success/10 text-success ring-1 ring-inset ring-success/25 hover:bg-success/15"}`}>
-                            {t.activo ? <Ban className="h-3.5 w-3.5" /> : <RotateCcw className="h-3.5 w-3.5" />}{t.activo ? "Suspender" : "Reactivar"}
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                  {tenants.map((t) => {
+                    const dias = diasRestantes(t.periodo_hasta);
+                    const vencida = t.estado === "vencida";
+                    const porVencerRow = t.plan === "pro" && t.activo && !vencida && dias !== null && dias >= 0 && dias <= 7;
+                    return (
+                      <tr
+                        key={t.id}
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => setFichaId(t.id)}
+                        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setFichaId(t.id); } }}
+                        className={`group cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/50 ${!t.activo ? "opacity-60" : ""} ${vencida ? "bg-destructive/[0.06] hover:bg-destructive/10" : porVencerRow ? "bg-warning/[0.06] hover:bg-warning/10" : "hover:bg-muted/20"}`}
+                      >
+                        <td className="px-4 py-2.5 border-b border-border/70 font-medium text-foreground">{t.nombre}</td>
+                        <td className="px-4 py-2.5 border-b border-border/70">
+                          <div className="flex items-center gap-2">
+                            <StatusBadge label={PLANES[t.plan]?.label ?? t.plan} variant={t.plan === "pro" ? "primary" : "muted"} />
+                            {vencida && <span className="text-[10px] font-semibold uppercase tracking-wide text-destructive">vencido</span>}
+                            {porVencerRow && <span className="text-[10px] font-semibold uppercase tracking-wide text-warning">{dias === 0 ? "vence hoy" : `${dias}d`}</span>}
+                          </div>
+                        </td>
+                        <td className="px-4 py-2.5 border-b border-border/70 text-muted-foreground hidden sm:table-cell tabular-nums">{t.periodo_hasta ? formatFecha(t.periodo_hasta) : "—"}</td>
+                        <td className="px-4 py-2.5 border-b border-border/70 hidden md:table-cell">
+                          <StatusBadge label={t.activo ? "Activa" : "Suspendida"} variant={t.activo ? "success" : "destructive"} />
+                        </td>
+                        <td className="px-4 py-2.5 border-b border-border/70 text-right">
+                          <ChevronRight className="ml-auto h-4 w-4 text-muted-foreground/40 group-hover:text-primary transition-colors" />
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
           )}
         </>
       )}
+
+      {fichaId && <FinancieraFicha id={fichaId} onClose={() => setFichaId(null)} onChanged={() => mutate()} />}
     </div>
+  );
+}
+
+// ── Ficha de una financiera (drawer/modal) ──────────────────────────────────
+
+interface FichaData {
+  tenant: { id: string; nombre: string; activo: boolean; created_at: string };
+  suscripcion: { plan: PlanClave; estado: string; proveedor: string; monto: number; periodo_hasta: string | null; notas: string | null };
+  usuarios: number;
+  admins: number;
+  historial: { id: string; created_at: string; accion: string; descripcion: string; usuario_nombre: string | null; usuario_email: string | null }[];
+}
+
+function FinancieraFicha({ id, onClose, onChanged }: { id: string; onClose: () => void; onChanged: () => void }) {
+  const toast = useToast();
+  const confirm = useConfirm();
+  const { data, isLoading, mutate } = useSWR<{ ok: boolean; data: FichaData }>(`/api/admin/tenants/${id}`, fetcher);
+  const ficha = data?.data;
+
+  const [busy, setBusy] = useState(false);
+  const [montoStr, setMontoStr] = useState<string | null>(null);
+  const [notas, setNotas] = useState<string | null>(null);
+
+  // Valores efectivos del form (precargados del server hasta que el usuario edita).
+  const montoActual = montoStr ?? (ficha ? numeroAInput(ficha.suscripcion.monto) : "");
+  const notasActual = notas ?? (ficha ? ficha.suscripcion.notas ?? "" : "");
+  const dirty = ficha != null && (
+    parseMontoInput(montoActual) !== ficha.suscripcion.monto ||
+    (notasActual.trim() || null) !== (ficha.suscripcion.notas ?? null)
+  );
+
+  const refrescar = () => { mutate(); onChanged(); };
+
+  const activar = async (plan: PlanClave, meses: number) => {
+    if (plan === "free") {
+      if (!(await confirm({ title: "¿Pasar a Free?", description: "Se apagan las features premium (Pro) de esta financiera.", tone: "danger", confirmLabel: "Pasar a Free" }))) return;
+    }
+    setBusy(true);
+    try {
+      const res = await fetch("/api/admin/planes", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tenant_id: id, plan, meses }) });
+      const j = await res.json();
+      if (j.ok) { toast.success(plan === "free" ? "Plan Free activado" : `Plan Pro activado${meses ? ` · ${meses} mes${meses > 1 ? "es" : ""}` : ""}`); refrescar(); }
+      else toast.error(j.error || "No se pudo activar el plan");
+    } catch { toast.error("Error al activar el plan"); } finally { setBusy(false); }
+  };
+
+  const suspender = async (activo: boolean) => {
+    if (!activo && !(await confirm({ title: "¿Suspender la financiera?", description: "Todos sus usuarios pierden el acceso hasta reactivarla.", tone: "danger", confirmLabel: "Suspender" }))) return;
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/admin/tenants/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ activo }) });
+      const j = await res.json();
+      if (j.ok) { toast.success(activo ? "Financiera reactivada" : "Financiera suspendida"); refrescar(); }
+      else toast.error(j.error || "No se pudo cambiar el estado");
+    } catch { toast.error("Error al cambiar el estado"); } finally { setBusy(false); }
+  };
+
+  const guardarDatos = async () => {
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/admin/tenants/${id}`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ monto: parseMontoInput(montoActual), notas: notasActual.trim() || null }),
+      });
+      const j = await res.json();
+      if (j.ok) { toast.success("Datos de suscripción guardados"); setMontoStr(null); setNotas(null); refrescar(); }
+      else toast.error(j.error || "No se pudo guardar");
+    } catch { toast.error("Error al guardar"); } finally { setBusy(false); }
+  };
+
+  const dias = ficha ? diasRestantes(ficha.suscripcion.periodo_hasta) : null;
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
+      <DialogContent className="w-[95vw] sm:max-w-2xl max-h-[90dvh] flex flex-col overflow-hidden">
+        <DialogHeader className="shrink-0">
+          <DialogTitle className="flex items-center gap-2">
+            {ficha?.tenant.nombre ?? "Financiera"}
+            {ficha && <StatusBadge label={ficha.tenant.activo ? "Activa" : "Suspendida"} variant={ficha.tenant.activo ? "success" : "destructive"} />}
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="flex-1 min-h-0 overflow-y-auto space-y-5 pr-1">
+          {isLoading || !ficha ? (
+            <Skeleton className="h-72 rounded-xl" />
+          ) : (
+            <>
+              {/* Suscripción + vencimiento */}
+              <section className="rounded-xl border border-border bg-card p-4 space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <StatusBadge label={PLANES[ficha.suscripcion.plan]?.label ?? ficha.suscripcion.plan} variant={ficha.suscripcion.plan === "pro" ? "primary" : "muted"} />
+                    <span className="text-xs text-muted-foreground">proveedor: {ficha.suscripcion.proveedor}</span>
+                  </div>
+                  {ficha.suscripcion.periodo_hasta ? (
+                    <div className={`inline-flex items-center gap-1.5 text-xs font-medium ${ficha.suscripcion.estado === "vencida" || (dias !== null && dias < 0) ? "text-destructive" : dias !== null && dias <= 7 ? "text-warning" : "text-muted-foreground"}`}>
+                      <Clock className="h-3.5 w-3.5" />
+                      {dias !== null && dias < 0
+                        ? `Venció el ${formatFecha(ficha.suscripcion.periodo_hasta)}`
+                        : `Vence ${formatFecha(ficha.suscripcion.periodo_hasta)}${dias !== null ? ` · ${dias === 0 ? "hoy" : `${dias} día${dias !== 1 ? "s" : ""}`}` : ""}`}
+                    </div>
+                  ) : (
+                    <span className="text-xs text-muted-foreground">Sin vencimiento</span>
+                  )}
+                </div>
+
+                {/* Acciones de plan */}
+                <div className="flex flex-wrap gap-1.5">
+                  <button onClick={() => activar("pro", 1)} disabled={busy} className="rounded-lg bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50">Pro 1 mes</button>
+                  <button onClick={() => activar("pro", 12)} disabled={busy} className="rounded-lg bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary ring-1 ring-inset ring-primary/25 hover:bg-primary/15 disabled:opacity-50">Pro 12 meses</button>
+                  <button onClick={() => activar("free", 0)} disabled={busy} className="rounded-lg border border-border px-2.5 py-1 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50">Free</button>
+                  <button onClick={() => suspender(ficha.tenant.activo ? false : true)} disabled={busy}
+                    className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-medium disabled:opacity-50 ${ficha.tenant.activo ? "border border-border text-muted-foreground hover:bg-destructive/10 hover:text-destructive" : "bg-success/10 text-success ring-1 ring-inset ring-success/25 hover:bg-success/15"}`}>
+                    {ficha.tenant.activo ? <Ban className="h-3.5 w-3.5" /> : <RotateCcw className="h-3.5 w-3.5" />}{ficha.tenant.activo ? "Suspender" : "Reactivar"}
+                  </button>
+                </div>
+              </section>
+
+              {/* Monto + notas (editable) */}
+              <section className="rounded-xl border border-border bg-card p-4 space-y-3">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <Field label="Monto mensual acordado" hint="Informativo (cobro manual)">
+                    <MoneyInput value={montoActual} onChange={(v) => setMontoStr(v)} />
+                  </Field>
+                  <div className="flex items-end text-xs text-muted-foreground gap-4">
+                    <span className="inline-flex items-center gap-1.5"><Users className="h-3.5 w-3.5" />{ficha.usuarios} usuario{ficha.usuarios !== 1 ? "s" : ""} · {ficha.admins} admin{ficha.admins !== 1 ? "s" : ""}</span>
+                  </div>
+                </div>
+                <Field label="Notas del cliente" hint="Internas del dueño; el cliente no las ve">
+                  <Textarea rows={3} value={notasActual} onChange={(e) => setNotas(e.target.value)} placeholder="Contacto, condiciones acordadas, recordatorios de cobro…" />
+                </Field>
+                <div className="flex justify-end">
+                  <button onClick={guardarDatos} disabled={busy || !dirty}
+                    className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium disabled:opacity-50 ${dirty ? "bg-primary text-primary-foreground hover:bg-primary/90" : "bg-primary/[0.06] text-primary ring-1 ring-inset ring-primary/25"}`}>
+                    {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null} Guardar datos
+                  </button>
+                </div>
+              </section>
+
+              {/* Historial de activaciones */}
+              <section className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <History className="h-4 w-4 text-muted-foreground" />
+                  <h3 className="text-sm font-semibold text-foreground">Historial</h3>
+                </div>
+                {ficha.historial.length === 0 ? (
+                  <p className="rounded-xl border border-dashed border-border/60 p-6 text-center text-xs text-muted-foreground">Sin movimientos registrados todavía.</p>
+                ) : (
+                  <ol className="relative space-y-3 border-l border-border/70 pl-4">
+                    {ficha.historial.map((h) => (
+                      <li key={h.id} className="relative">
+                        <span className="absolute -left-[1.3rem] top-1 h-2 w-2 rounded-full bg-primary/60 ring-2 ring-background" />
+                        <p className="text-sm text-foreground">{h.descripcion}</p>
+                        <p className="text-[11px] text-muted-foreground">
+                          {formatFechaHora(h.created_at)}{h.usuario_nombre || h.usuario_email ? ` · ${h.usuario_nombre ?? h.usuario_email}` : ""}
+                        </p>
+                      </li>
+                    ))}
+                  </ol>
+                )}
+              </section>
+
+              <p className="text-[11px] text-muted-foreground">Financiera creada el {formatFecha(ficha.tenant.created_at)} · monto actual {formatMonto(ficha.suscripcion.monto)}</p>
+            </>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }

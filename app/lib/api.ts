@@ -1,6 +1,41 @@
+import * as Sentry from '@sentry/nextjs';
 import { ApiError } from '@/lib/auth';
-import { runWithAuditContext } from '@/lib/audit-context';
+import { runWithAuditContext, getAuditActor } from '@/lib/audit-context';
 import type { NextRequest } from 'next/server';
+
+/**
+ * Verificación de Origin (defensa en profundidad anti-CSRF). Complementa a SameSite=Lax:
+ * los navegadores mandan `Origin` en las mutaciones (POST/PATCH/DELETE) y NO puede ser
+ * forjado por JS de un sitio atacante. Si viene y no coincide con el host del servidor →
+ * 403. Si falta (algún cliente same-origin lo omite), se confía en SameSite=Lax.
+ * Usar detrás de un proxy: se respeta `x-forwarded-host`. Llamar en handlers que cambian estado.
+ */
+export function assertSameOrigin(req: Request): void {
+  const origin = req.headers.get('origin');
+  if (!origin) return; // sin Origin → no es un POST cross-site con credenciales (SameSite=Lax cubre)
+  const host = req.headers.get('x-forwarded-host') ?? req.headers.get('host');
+  let originHost: string;
+  try {
+    originHost = new URL(origin).host;
+  } catch {
+    throw new ApiError('Origen inválido', 'BAD_ORIGIN', 403);
+  }
+  if (!host || originHost !== host) {
+    throw new ApiError('Origen no permitido (posible CSRF)', 'BAD_ORIGIN', 403);
+  }
+}
+
+/**
+ * Reporta a Sentry un error NO esperado (500). Los ApiError y los errores de negocio
+ * mapeados (unique/fk/not found → 4xx) NO se reportan: son control de flujo normal.
+ * Adjunta el actor del request (usuario que disparó el error) para el soporte multi-tenant.
+ */
+function reportarErrorInterno(err: unknown): void {
+  const actor = getAuditActor();
+  Sentry.captureException(err, actor ? {
+    user: { id: actor.userId, username: actor.nombre ?? undefined, email: actor.email ?? undefined },
+  } : undefined);
+}
 
 export interface ApiResponse<T = any> {
   ok: boolean;
@@ -73,8 +108,9 @@ export function withErrorHandler<A extends any[]>(
           return errorResponse('No encontrado', 'NOT_FOUND', 404);
         }
 
-        // Error genérico
+        // Error genérico (no esperado) → 500 + Sentry.
         console.error('[API Error]', err);
+        reportarErrorInterno(err);
         return errorResponse(
           'Error interno del servidor',
           'INTERNAL_ERROR',
@@ -82,6 +118,7 @@ export function withErrorHandler<A extends any[]>(
         );
       }
 
+      reportarErrorInterno(err);
       return errorResponse('Error desconocido', 'UNKNOWN_ERROR', 500);
     }
   });

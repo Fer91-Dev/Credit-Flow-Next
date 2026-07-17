@@ -1,7 +1,7 @@
 import { requireAuth, ApiError } from "@/lib/auth";
 import { successResponse, withErrorHandler } from "@/app/lib/api";
 import { prisma } from "@/lib/prisma";
-import { requireOwner } from "@/lib/saas-owner";
+import { requireOwner, PLATAFORMA_TENANT_ID } from "@/lib/saas-owner";
 import { estaVencida } from "@/lib/suscripciones";
 import type { NextRequest } from "next/server";
 
@@ -16,7 +16,8 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   requireOwner(ctx);
 
   const [tenants, subs] = await Promise.all([
-    prisma.tenants.findMany({ select: { id: true, nombre: true, features: true, activo: true }, orderBy: { created_at: "asc" } }),
+    // Excluye el tenant de sistema (plataforma): no es una financiera cliente.
+    prisma.tenants.findMany({ where: { id: { not: PLATAFORMA_TENANT_ID } }, select: { id: true, nombre: true, features: true, activo: true }, orderBy: { created_at: "asc" } }),
     prisma.suscripciones.findMany(),
   ]);
   const subMap = new Map(subs.map((s) => [s.tenant_id, s]));

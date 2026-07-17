@@ -1,5 +1,5 @@
 import { requireAuth, ApiError } from "@/lib/auth";
-import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api";
+import { successResponse, errorResponse, withErrorHandler, assertSameOrigin } from "@/app/lib/api";
 import { prisma } from "@/lib/prisma";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireOwner } from "@/lib/saas-owner";
@@ -15,6 +15,7 @@ import type { NextRequest } from "next/server";
 export const POST = withErrorHandler(async (req: NextRequest) => {
   const ctx = await requireAuth(req);
   requireOwner(ctx);
+  assertSameOrigin(req);
 
   let body: any;
   try { body = await req.json(); } catch { return errorResponse("Body JSON inválido", "INVALID_JSON", 400); }

@@ -28,6 +28,14 @@ export const PATCH = withErrorHandler(async (req: NextRequest, { params }: Route
   const target = await prisma.profiles.findFirst({ where: { ...withTenant(tenantId), id } });
   if (!target) return errorResponse("Usuario no encontrado", "NOT_FOUND", 404);
 
+  // El dueño de la plataforma es intocable desde la gestión de usuarios de una financiera
+  // (no puede ser degradado, desactivado, renombrado ni se le puede cambiar la clave). El
+  // owner vive en el tenant de sistema, así que en la práctica el anti-IDOR ya lo aísla;
+  // esto es defensa en profundidad por si alguna vez compartiera tenant.
+  if (target.es_owner) {
+    return errorResponse("No podés modificar la cuenta del dueño de la plataforma", "OWNER_PROTEGIDO", 403);
+  }
+
   let body: { role?: string; activo?: boolean; full_name?: string; vendedor_id?: string | null; password?: string; username?: string | null };
   try {
     body = await req.json();
@@ -194,6 +202,11 @@ export const DELETE = withErrorHandler(async (req: NextRequest, { params }: Rout
 
   const target = await prisma.profiles.findFirst({ where: { ...withTenant(tenantId), id } });
   if (!target) return errorResponse("Usuario no encontrado", "NOT_FOUND", 404);
+
+  // El dueño de la plataforma no se puede eliminar desde una financiera (defensa en profundidad).
+  if (target.es_owner) {
+    return errorResponse("No podés eliminar la cuenta del dueño de la plataforma", "OWNER_PROTEGIDO", 403);
+  }
 
   // Anti-lockout: no dejar a la financiera sin administradores.
   if (target.role === "admin") {

@@ -53,21 +53,26 @@ export async function activarPlan(
   const estado = opts.estado ?? "activa";
   // Si el plan no está activo, no habilita features (aunque el plan sea "pro").
   const features = estado === "activa" ? featuresDePlan(plan) : [];
-  const data = {
+
+  // Campos propios del PLAN (los toca esta función).
+  const base = {
     plan,
     estado,
     proveedor: opts.proveedor ?? "manual",
-    monto: opts.monto ?? 0,
     periodo_desde: desde,
     periodo_hasta: hasta,
-    notas: opts.notas ?? null,
   };
+  // `monto` y `notas` son metadatos del OWNER (editables en el panel de plataforma):
+  // NO se pisan al cambiar de plan — solo se escriben si vienen explícitos en `opts`.
+  const update: Record<string, unknown> = { ...base };
+  if (opts.monto !== undefined) update.monto = opts.monto;
+  if (opts.notas !== undefined) update.notas = opts.notas;
 
   await prisma.$transaction([
     prisma.suscripciones.upsert({
       where: { tenant_id: tenantId },
-      create: { tenant_id: tenantId, ...data },
-      update: data,
+      create: { tenant_id: tenantId, ...base, monto: opts.monto ?? 0, notas: opts.notas ?? null },
+      update,
     }),
     prisma.tenants.update({ where: { id: tenantId }, data: { features } }),
   ]);

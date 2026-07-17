@@ -3,9 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   ShieldCheck, Plus, Mail, Pencil, Power, Link2,
-  LayoutGrid, List, Trash2, KeyRound,
+  LayoutGrid, List, Trash2, KeyRound, Search, X,
 } from "lucide-react";
-import { BuscadorF3 } from "@/components/ui/BuscadorF3";
 import { useUsuarios, useVendedores, KEYS, type Usuario, type RolUsuario } from "@/lib/swr";
 import { esEmailValido, esUsernameValido, normalizarUsername } from "@/lib/utils";
 import { mutate as globalMutate } from "swr";
@@ -128,24 +127,37 @@ export function UsuariosView() {
         accent="primary"
       />
       {/* Toolbar: búsqueda + vista + CTA (los headers solo llevan SystemControls) */}
-      <div className="flex flex-wrap items-start gap-2">
-        <BuscadorF3
-          value={q}
-          onChange={setQ}
-          placeholder="Buscar por nombre, email o rol…"
-          onF3={() => setQ("")}
-          f3Hint="para limpiar el filtro y ver todos"
-          className="flex-1 min-w-[200px]"
-        />
-        <div className="flex h-10 items-center rounded-lg border border-border p-0.5">
-          <button onClick={() => cambiarVista("cards")} title="Ver como tarjetas" className={`flex h-9 w-9 items-center justify-center rounded-md transition-colors ${vista === "cards" ? "bg-primary/10 text-foreground" : "text-muted-foreground hover:bg-muted/20"}`}>
-            <LayoutGrid className="h-4 w-4" />
-          </button>
-          <button onClick={() => cambiarVista("tabla")} title="Ver como tabla" className={`flex h-9 w-9 items-center justify-center rounded-md transition-colors ${vista === "tabla" ? "bg-primary/10 text-foreground" : "text-muted-foreground hover:bg-muted/20"}`}>
-            <List className="h-4 w-4" />
-          </button>
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative w-full sm:max-w-sm">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Buscar por nombre, email o rol…"
+            className="pl-9 pr-9"
+          />
+          {q && (
+            <button
+              type="button"
+              onClick={() => setQ("")}
+              title="Limpiar búsqueda"
+              className="absolute right-2 top-1/2 -translate-y-1/2 flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          )}
         </div>
-        {cta}
+        <div className="flex items-center gap-2 sm:ml-auto">
+          <div className="flex h-10 items-center rounded-lg border border-border p-0.5">
+            <button onClick={() => cambiarVista("cards")} title="Ver como tarjetas" className={`flex h-9 w-9 items-center justify-center rounded-md transition-colors ${vista === "cards" ? "bg-primary/10 text-foreground" : "text-muted-foreground hover:bg-muted/20"}`}>
+              <LayoutGrid className="h-4 w-4" />
+            </button>
+            <button onClick={() => cambiarVista("tabla")} title="Ver como tabla" className={`flex h-9 w-9 items-center justify-center rounded-md transition-colors ${vista === "tabla" ? "bg-primary/10 text-foreground" : "text-muted-foreground hover:bg-muted/20"}`}>
+              <List className="h-4 w-4" />
+            </button>
+          </div>
+          {cta}
+        </div>
       </div>
 
       {isLoading ? (
@@ -184,6 +196,7 @@ export function UsuariosView() {
             <DataTable<Usuario>
               rows={filtrados}
               rowKey={(u) => u.id}
+              onRowClick={(u) => openEdit(u)}
               rowClassName={(u) => (u.activo ? "" : "opacity-50")}
               columns={[
                 {
@@ -208,7 +221,7 @@ export function UsuariosView() {
                 {
                   header: "Vínculo", className: "hidden lg:table-cell",
                   cell: (u) => u.vendedor_nombre && u.vendedor_id
-                    ? <button onClick={() => setVendedorDetailId(u.vendedor_id)} title="Ver ficha del agente" className="flex items-center gap-1 text-xs text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 rounded"><Link2 className="h-3 w-3" />{u.vendedor_nombre}</button>
+                    ? <button onClick={(e) => { e.stopPropagation(); setVendedorDetailId(u.vendedor_id); }} title="Ver ficha del agente" className="flex items-center gap-1 text-xs text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 rounded"><Link2 className="h-3 w-3" />{u.vendedor_nombre}</button>
                     : <span className="text-muted-foreground">—</span>,
                 },
                 {
@@ -239,22 +252,25 @@ export function UsuariosView() {
 
 /** Botones de acción de un usuario (editar / contraseña / activar-desactivar / eliminar). */
 function UserActions({ u, onEdit, onToggle, onDelete, onPassword }: { u: Usuario; onEdit: () => void; onToggle: () => void; onDelete: () => void; onPassword: () => void }) {
+  // stopPropagation: estos botones viven dentro de una fila/tarjeta clickeable (abre editar);
+  // sin esto, un click en "eliminar" también dispararía la edición.
+  const stop = (fn: () => void) => (e: React.MouseEvent) => { e.stopPropagation(); fn(); };
   return (
     <div className="flex items-center justify-end gap-1.5">
-      <button onClick={onEdit} title="Editar" className="flex items-center justify-center h-7 w-7 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors">
+      <button onClick={stop(onEdit)} title="Editar" className="flex items-center justify-center h-7 w-7 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors">
         <Pencil className="h-3.5 w-3.5" />
       </button>
-      <button onClick={onPassword} title="Cambiar contraseña" className="flex items-center justify-center h-7 w-7 rounded-lg text-muted-foreground hover:bg-primary/10 hover:text-primary transition-colors">
+      <button onClick={stop(onPassword)} title="Cambiar contraseña" className="flex items-center justify-center h-7 w-7 rounded-lg text-muted-foreground hover:bg-primary/10 hover:text-primary transition-colors">
         <KeyRound className="h-3.5 w-3.5" />
       </button>
       <button
-        onClick={onToggle}
+        onClick={stop(onToggle)}
         title={u.activo ? "Desactivar acceso" : "Reactivar acceso"}
         className={`flex items-center justify-center h-7 w-7 rounded-lg transition-colors ${u.activo ? "text-muted-foreground hover:bg-warning/10 hover:text-warning" : "text-muted-foreground hover:bg-success/10 hover:text-success"}`}
       >
         <Power className="h-3.5 w-3.5" />
       </button>
-      <button onClick={onDelete} title="Eliminar" className="flex items-center justify-center h-7 w-7 rounded-lg text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors">
+      <button onClick={stop(onDelete)} title="Eliminar" className="flex items-center justify-center h-7 w-7 rounded-lg text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors">
         <Trash2 className="h-3.5 w-3.5" />
       </button>
     </div>
@@ -264,7 +280,13 @@ function UserActions({ u, onEdit, onToggle, onDelete, onPassword }: { u: Usuario
 /** Tarjeta de usuario (vista cards + card mobile de la tabla). */
 function UserCard({ u, onEdit, onToggle, onDelete, onPassword, onOpenVendedor }: { u: Usuario; onEdit: () => void; onToggle: () => void; onDelete: () => void; onPassword: () => void; onOpenVendedor: () => void }) {
   return (
-    <div className={`rounded-xl bg-card border border-border p-4 flex flex-col gap-3 ${!u.activo ? "opacity-60" : ""}`}>
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onEdit}
+      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onEdit(); } }}
+      className={`group rounded-xl bg-card border border-border p-4 flex flex-col gap-3 cursor-pointer transition-all hover:border-primary/40 hover:bg-card/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 ${!u.activo ? "opacity-60" : ""}`}
+    >
       <div className="flex items-center gap-3 min-w-0">
         <Avatar name={u.full_name || u.email} size="md" status={u.activo ? "online" : "offline"} />
         <div className="min-w-0">
@@ -279,7 +301,7 @@ function UserCard({ u, onEdit, onToggle, onDelete, onPassword, onOpenVendedor }:
           : <span className="text-xs text-muted-foreground/60">sin rol</span>}
         <StatusBadge label={u.activo ? "Activo" : "Inactivo"} variant={u.activo ? "success" : "muted"} />
         {u.vendedor_nombre && (u.vendedor_id
-          ? <button onClick={onOpenVendedor} title="Ver ficha del agente" className="flex items-center gap-1 text-[11px] text-primary hover:underline"><Link2 className="h-3 w-3" />{u.vendedor_nombre}</button>
+          ? <button onClick={(e) => { e.stopPropagation(); onOpenVendedor(); }} title="Ver ficha del agente" className="flex items-center gap-1 text-[11px] text-primary hover:underline"><Link2 className="h-3 w-3" />{u.vendedor_nombre}</button>
           : <span className="flex items-center gap-1 text-[11px] text-muted-foreground"><Link2 className="h-3 w-3" />{u.vendedor_nombre}</span>)}
       </div>
       <div className="mt-auto pt-2 border-t border-border/50">

@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { PLATAFORMA_TENANT_ID } from "@/lib/saas-owner";
 
 export type BrandingPublico = { nombre: string | null; logo_url: string | null };
 
@@ -9,7 +10,8 @@ export type BrandingPublico = { nombre: string | null; logo_url: string | null }
  */
 export async function getBrandingPublico(): Promise<BrandingPublico> {
   const t = await prisma.tenants.findFirst({
-    where: { activo: true },
+    // Excluye el tenant de sistema (plataforma): nunca debe mostrarse como financiera pre-login.
+    where: { activo: true, id: { not: PLATAFORMA_TENANT_ID } },
     orderBy: { created_at: "asc" },
     select: { nombre: true, logo_url: true },
   });
