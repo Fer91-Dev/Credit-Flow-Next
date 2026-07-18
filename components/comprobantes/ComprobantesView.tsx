@@ -9,7 +9,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { StatusBadge, type BadgeVariant } from "@/components/ui/StatusBadge";
 import { FiltrosPanel, FiltroChip } from "@/components/ui/FiltrosPanel";
 import { IconBadge } from "@/components/ui/IconBadge";
-import { Skeleton } from "@/components/ui/skeleton";
+import { DataTable } from "@/components/ui/DataTable";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { MovimientoDetail } from "@/components/caja/MovimientoDetail";
 
@@ -152,66 +152,46 @@ export function ComprobantesView() {
         </div>
       </div>
 
-      {isLoading ? (
-        <Skeleton className="h-72 rounded-xl" />
-      ) : error ? (
-        <div className="rounded-xl bg-destructive/10 border border-destructive/30 p-4 text-destructive text-sm">
-          Error al cargar los comprobantes: {error.message}
+      <section className="space-y-3">
+        <div className="flex items-center gap-2 border-b border-border pb-2">
+          <IconBadge emoji="receipt" accent="primary" />
+          <h2 className="text-sm font-semibold text-foreground">Registro de comprobantes</h2>
+          {!isLoading && !error && <span className="text-xs text-muted-foreground/60">· {total}</span>}
         </div>
-      ) : comprobantes.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-border/60 p-12 text-center text-sm text-muted-foreground">
-          No hay comprobantes para los filtros seleccionados.
-        </div>
-      ) : (
-        <section className="space-y-3">
-          <div className="flex items-center gap-2 border-b border-border pb-2">
-            <IconBadge emoji="receipt" accent="primary" />
-            <h2 className="text-sm font-semibold text-foreground">Registro de comprobantes</h2>
-            <span className="text-xs text-muted-foreground/60">· {total}</span>
-          </div>
-          <div className="rounded-xl border border-border overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm border-separate border-spacing-0">
-              <thead>
-                <tr className="bg-muted/30">
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">Comprobante</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">Fecha y hora</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">Tipo</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border hidden md:table-cell">Caja</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border hidden lg:table-cell">Origen</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border hidden lg:table-cell">Destino</th>
-                  <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border pr-5">Monto</th>
-                </tr>
-              </thead>
-              <tbody>
-                {comprobantes.map((m, idx) => {
-                  const meta = TIPO_META[m.tipo];
-                  const ingreso = m.monto >= 0;
-                  return (
-                    <tr key={m.id} onClick={() => setDetalle(m)} className={`cursor-pointer transition-colors hover:bg-muted/20 ${idx % 2 === 1 ? "bg-muted/5" : ""}`}>
-                      <td className="px-4 py-2.5 font-mono text-xs font-semibold text-foreground whitespace-nowrap border-b border-border/70">{m.comprobante ?? "—"}</td>
-                      <td className="px-4 py-2.5 text-muted-foreground tabular-nums whitespace-nowrap border-b border-border/70">{formatFechaHora(m.created_at ?? m.fecha)}</td>
-                      <td className="px-4 py-2.5 border-b border-border/70"><StatusBadge label={meta.label} variant={meta.variant} /></td>
-                      <td className="px-4 py-2.5 border-b border-border/70 hidden md:table-cell">
-                        <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                          {m.vendedor ? <Users className="h-3 w-3" /> : <Landmark className="h-3 w-3" />}
-                          {m.vendedor ?? "Caja principal"}
-                        </span>
-                      </td>
-                      <td className="px-4 py-2.5 text-muted-foreground border-b border-border/70 hidden lg:table-cell">{m.origen ?? "—"}</td>
-                      <td className="px-4 py-2.5 text-foreground border-b border-border/70 hidden lg:table-cell">{m.destino ?? "—"}</td>
-                      <td className={`px-4 py-2.5 pr-5 text-right font-mono font-semibold border-b border-border/70 ${ingreso ? "text-success" : "text-destructive"}`}>
-                        {ingreso ? "+" : "−"}${n2(Math.abs(m.monto))}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-          </div>
-        </section>
-      )}
+        <DataTable<Comprobante>
+          rows={comprobantes}
+          rowKey={(m) => m.id}
+          onRowClick={(m) => setDetalle(m)}
+          loading={isLoading}
+          error={error ? `Error al cargar los comprobantes: ${error.message}` : null}
+          empty={{ icon: "receipt", title: "Sin comprobantes", hint: "No hay comprobantes para los filtros seleccionados." }}
+          zebra
+          pageSize={12}
+          columns={[
+            { header: "Comprobante", cell: (m) => <span className="font-mono text-xs font-semibold text-foreground whitespace-nowrap">{m.comprobante ?? "—"}</span> },
+            { header: "Fecha y hora", cell: (m) => <span className="text-muted-foreground tabular-nums whitespace-nowrap">{formatFechaHora(m.created_at ?? m.fecha)}</span> },
+            { header: "Tipo", cell: (m) => <StatusBadge label={TIPO_META[m.tipo].label} variant={TIPO_META[m.tipo].variant} /> },
+            {
+              header: "Caja", className: "hidden md:table-cell",
+              cell: (m) => (
+                <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  {m.vendedor ? <Users className="h-3 w-3" /> : <Landmark className="h-3 w-3" />}
+                  {m.vendedor ?? "Caja principal"}
+                </span>
+              ),
+            },
+            { header: "Origen", className: "hidden lg:table-cell", cell: (m) => <span className="text-muted-foreground">{m.origen ?? "—"}</span> },
+            { header: "Destino", className: "hidden lg:table-cell", cell: (m) => <span className="text-foreground">{m.destino ?? "—"}</span> },
+            {
+              header: "Monto", align: "right", mono: true,
+              cell: (m) => {
+                const ingreso = m.monto >= 0;
+                return <span className={`font-semibold ${ingreso ? "text-success" : "text-destructive"}`}>{ingreso ? "+" : "−"}${n2(Math.abs(m.monto))}</span>;
+              },
+            },
+          ]}
+        />
+      </section>
 
       <Dialog open={!!detalle} onOpenChange={(o) => { if (!o) setDetalle(null); }}>
         <DialogContent className="w-[95vw] sm:max-w-md max-h-[90dvh] flex flex-col overflow-hidden">

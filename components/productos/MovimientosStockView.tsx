@@ -1,14 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { Search, ChevronDown, Download, Package } from "lucide-react";
+import { Search, ChevronDown, Download } from "lucide-react";
 import { useMovimientosStock, type MovimientoStockGlobal } from "@/lib/swr";
 import { formatFechaHora } from "@/lib/utils";
 import { TIPOS_MOVIMIENTO_STOCK, ETIQUETA_MOVIMIENTO_STOCK, type TipoMovimientoStock } from "@/lib/domain";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { KpiCard } from "@/components/ui/KpiCard";
 import { StatusBadge, type BadgeVariant } from "@/components/ui/StatusBadge";
-import { Skeleton } from "@/components/ui/skeleton";
+import { DataTable } from "@/components/ui/DataTable";
 
 function n0(x: number) {
   return new Intl.NumberFormat("es-AR", { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(x);
@@ -124,70 +124,53 @@ export function MovimientosStockView() {
         </label>
       </div>
 
-      {isLoading ? (
-        <Skeleton className="h-72 rounded-xl" />
-      ) : error ? (
-        <div className="rounded-xl bg-destructive/10 border border-destructive/30 p-4 text-destructive text-sm">
-          Error al cargar los movimientos: {error.message}
-        </div>
-      ) : movimientos.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-border/60 p-12 flex flex-col items-center gap-3 text-center">
-          <Package className="h-8 w-8 text-muted-foreground/20" />
-          <p className="text-sm font-semibold text-muted-foreground">Sin movimientos para los filtros seleccionados</p>
-        </div>
-      ) : (
-        <div className="rounded-xl border border-border overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm border-separate border-spacing-0">
-              <thead>
-                <tr className="bg-muted/30">
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">Fecha y hora</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">Producto</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">Tipo</th>
-                  <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">Cantidad</th>
-                  <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border hidden md:table-cell">Saldo</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border hidden lg:table-cell">Motivo / crédito</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border hidden lg:table-cell pr-5">Responsable</th>
-                </tr>
-              </thead>
-              <tbody>
-                {movimientos.map((m, idx) => {
-                  const ingreso = m.cantidad >= 0;
-                  return (
-                    <tr key={m.id} className={`transition-colors hover:bg-muted/20 ${idx % 2 === 1 ? "bg-muted/5" : ""}`}>
-                      <td className="px-4 py-2.5 text-muted-foreground tabular-nums whitespace-nowrap border-b border-border/70">{formatFechaHora(m.created_at)}</td>
-                      <td className="px-4 py-2.5 border-b border-border/70">
-                        <p className="font-medium text-foreground">{m.producto_nombre}</p>
-                        {m.producto_sku && <span className="text-[11px] text-muted-foreground font-mono">{m.producto_sku}</span>}
-                      </td>
-                      <td className="px-4 py-2.5 border-b border-border/70"><StatusBadge label={ETIQUETA_MOVIMIENTO_STOCK[m.tipo]} variant={TIPO_META[m.tipo].variant} /></td>
-                      <td className={`px-4 py-2.5 text-right font-mono font-semibold border-b border-border/70 ${ingreso ? "text-success" : "text-destructive"}`}>
-                        {ingreso ? "+" : "−"}{Math.abs(m.cantidad)}
-                      </td>
-                      <td className="px-4 py-2.5 text-right font-mono text-muted-foreground border-b border-border/70 hidden md:table-cell">{m.stock_resultante}</td>
-                      <td className="px-4 py-2.5 text-foreground border-b border-border/70 hidden lg:table-cell">
-                        {m.credito_numero
-                          ? <span className="text-xs">CRD-{String(m.credito_numero).padStart(6, "0")} · {m.cliente}</span>
-                          : <span className="text-xs text-muted-foreground">{m.motivo ?? "—"}</span>}
-                      </td>
-                      <td className="px-4 py-2.5 pr-5 border-b border-border/70 hidden lg:table-cell">
-                        {m.tipo === "venta_credito" && m.vendedor_atribuido ? (
-                          <div title={m.usuario_nombre ? `Operado por ${m.usuario_nombre}` : undefined}>
-                            <p className="text-foreground">{m.vendedor_atribuido}</p>
-                            <span className="text-[10px] font-semibold uppercase tracking-wide text-warning">Comisión</span>
-                          </div>
-                        ) : (
-                          <span className="text-muted-foreground">{m.usuario_nombre ?? "—"}</span>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
+      <DataTable<MovimientoStockGlobal>
+        rows={movimientos}
+        rowKey={(m) => m.id}
+        loading={isLoading}
+        error={error ? `Error al cargar los movimientos: ${error.message}` : null}
+        empty={{ icon: "package", title: "Sin movimientos para los filtros seleccionados" }}
+        zebra
+        pageSize={12}
+        columns={[
+          { header: "Fecha y hora", cell: (m) => <span className="text-muted-foreground tabular-nums whitespace-nowrap">{formatFechaHora(m.created_at)}</span> },
+          {
+            header: "Producto",
+            cell: (m) => (
+              <div>
+                <p className="font-medium text-foreground">{m.producto_nombre}</p>
+                {m.producto_sku && <span className="text-[11px] text-muted-foreground font-mono">{m.producto_sku}</span>}
+              </div>
+            ),
+          },
+          { header: "Tipo", cell: (m) => <StatusBadge label={ETIQUETA_MOVIMIENTO_STOCK[m.tipo]} variant={TIPO_META[m.tipo].variant} /> },
+          {
+            header: "Cantidad", align: "right", mono: true,
+            cell: (m) => {
+              const ingreso = m.cantidad >= 0;
+              return <span className={`font-semibold ${ingreso ? "text-success" : "text-destructive"}`}>{ingreso ? "+" : "−"}{Math.abs(m.cantidad)}</span>;
+            },
+          },
+          { header: "Saldo", align: "right", mono: true, className: "hidden md:table-cell", cell: (m) => <span className="text-muted-foreground">{m.stock_resultante}</span> },
+          {
+            header: "Motivo / crédito", className: "hidden lg:table-cell",
+            cell: (m) => m.credito_numero
+              ? <span className="text-xs text-foreground">CRD-{String(m.credito_numero).padStart(6, "0")} · {m.cliente}</span>
+              : <span className="text-xs text-muted-foreground">{m.motivo ?? "—"}</span>,
+          },
+          {
+            header: "Responsable", className: "hidden lg:table-cell",
+            cell: (m) => m.tipo === "venta_credito" && m.vendedor_atribuido ? (
+              <div title={m.usuario_nombre ? `Operado por ${m.usuario_nombre}` : undefined}>
+                <p className="text-foreground">{m.vendedor_atribuido}</p>
+                <span className="text-[10px] font-semibold uppercase tracking-wide text-warning">Comisión</span>
+              </div>
+            ) : (
+              <span className="text-muted-foreground">{m.usuario_nombre ?? "—"}</span>
+            ),
+          },
+        ]}
+      />
     </div>
   );
 }

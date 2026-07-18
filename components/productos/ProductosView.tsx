@@ -368,6 +368,7 @@ function ProductosTabla({
       columns={columns}
       rows={productos}
       rowKey={(p) => p.id}
+      pageSize={12}
       onRowClick={onOpen}
       loadingRowKey={loadingId}
       zebra

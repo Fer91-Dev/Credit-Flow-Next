@@ -300,6 +300,7 @@ export function ClientesTable() {
                 columns={recientesColumns}
                 rows={recientesClientes}
                 rowKey={(c) => c.id}
+                pageSize={12}
                 onRowClick={(c) => elegir(c)}
                 zebra
               />

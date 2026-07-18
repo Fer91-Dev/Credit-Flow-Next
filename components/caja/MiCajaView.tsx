@@ -12,6 +12,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { KpiCard } from "@/components/ui/KpiCard";
 import { Emoji } from "@/components/ui/Emoji";
 import { StatusBadge, type BadgeVariant } from "@/components/ui/StatusBadge";
+import { DataTable } from "@/components/ui/DataTable";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { MovimientoDetail } from "./MovimientoDetail";
@@ -135,48 +136,29 @@ export function MiCajaView() {
           </div>
 
           {/* Movimientos */}
-          <div className="rounded-xl border border-border overflow-hidden">
-            {caja.movimientos.length === 0 ? (
-              <p className="text-xs text-muted-foreground/60 py-12 text-center">Todavía no hay movimientos en tu caja.</p>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm border-separate border-spacing-0">
-                  <thead>
-                    <tr className="bg-muted/30">
-                      <th className="px-4 py-3 text-left  text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">Comprobante</th>
-                      <th className="px-4 py-3 text-left  text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">Fecha y hora</th>
-                      <th className="px-4 py-3 text-left  text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">Tipo</th>
-                      <th className="px-4 py-3 text-left  text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">Origen</th>
-                      <th className="px-4 py-3 text-left  text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">Destino</th>
-                      <th className="px-4 py-3 text-left  text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border hidden lg:table-cell">Detalle</th>
-                      <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border pr-5">Monto</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {caja.movimientos.map((m, idx) => {
-                      const meta = TIPO_META[m.tipo];
-                      const ingreso = m.monto >= 0;
-                      return (
-                        <tr key={m.id} onClick={() => setDetalle(m)} className={`cursor-pointer transition-colors hover:bg-muted/20 ${idx % 2 === 1 ? "bg-muted/5" : ""}`}>
-                          <td className="px-4 py-2.5 font-mono text-xs text-muted-foreground whitespace-nowrap border-b border-border/70">{m.comprobante ?? "—"}</td>
-                          <td className="px-4 py-2.5 text-muted-foreground tabular-nums whitespace-nowrap border-b border-border/70">{formatFechaHora(m.created_at ?? m.fecha)}</td>
-                          <td className="px-4 py-2.5 border-b border-border/70"><StatusBadge label={meta.label} variant={meta.variant} /></td>
-                          <td className="px-4 py-2.5 text-muted-foreground border-b border-border/70">{m.origen ?? "—"}</td>
-                          <td className="px-4 py-2.5 text-foreground border-b border-border/70">
-                            <span className="flex items-center gap-1.5"><ArrowRight className="h-3 w-3 shrink-0 text-muted-foreground/50" />{m.destino ?? "—"}</span>
-                          </td>
-                          <td className="px-4 py-2.5 text-muted-foreground border-b border-border/70 hidden lg:table-cell">{m.descripcion}</td>
-                          <td className={`px-4 py-2.5 pr-5 text-right font-mono font-semibold border-b border-border/70 ${ingreso ? "text-success" : "text-destructive"}`}>
-                            {ingreso ? "+" : "−"}${n2(Math.abs(m.monto))}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
+          <DataTable<MovimientoCaja>
+            rows={caja.movimientos}
+            rowKey={(m) => m.id}
+            onRowClick={(m) => setDetalle(m)}
+            empty={{ icon: "bank", title: "Todavía no hay movimientos en tu caja" }}
+            zebra
+            pageSize={12}
+            columns={[
+              { header: "Comprobante", cell: (m) => <span className="font-mono text-xs text-muted-foreground whitespace-nowrap">{m.comprobante ?? "—"}</span> },
+              { header: "Fecha y hora", cell: (m) => <span className="text-muted-foreground tabular-nums whitespace-nowrap">{formatFechaHora(m.created_at ?? m.fecha)}</span> },
+              { header: "Tipo", cell: (m) => <StatusBadge label={TIPO_META[m.tipo].label} variant={TIPO_META[m.tipo].variant} /> },
+              { header: "Origen", cell: (m) => <span className="text-muted-foreground">{m.origen ?? "—"}</span> },
+              { header: "Destino", cell: (m) => <span className="flex items-center gap-1.5 text-foreground"><ArrowRight className="h-3 w-3 shrink-0 text-muted-foreground/50" />{m.destino ?? "—"}</span> },
+              { header: "Detalle", className: "hidden lg:table-cell", cell: (m) => <span className="text-muted-foreground">{m.descripcion}</span> },
+              {
+                header: "Monto", align: "right", mono: true,
+                cell: (m) => {
+                  const ingreso = m.monto >= 0;
+                  return <span className={`font-semibold ${ingreso ? "text-success" : "text-destructive"}`}>{ingreso ? "+" : "−"}${n2(Math.abs(m.monto))}</span>;
+                },
+              },
+            ]}
+          />
         </div>
       )}
 

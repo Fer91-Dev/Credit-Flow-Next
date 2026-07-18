@@ -288,6 +288,7 @@ export function CreditosTable() {
           <DataTable
             rows={filtered}
             rowKey={(c) => c.id}
+            pageSize={12}
             onRowClick={(c) => setDetail(c)}
             zebra
             columns={[
@@ -574,6 +575,7 @@ function RefinanciadosView({ creditos, onOpen }: { creditos: Credito[]; onOpen: 
       <DataTable
         rows={pares}
         rowKey={(p) => p.nuevo.id}
+        pageSize={12}
         onRowClick={(p) => onOpen(p.nuevo)}
         zebra
         columns={[

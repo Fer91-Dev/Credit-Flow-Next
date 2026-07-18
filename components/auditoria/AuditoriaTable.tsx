@@ -150,6 +150,7 @@ export function AuditoriaTable() {
           <DataTable
             rows={filtered}
             rowKey={(e) => e.id}
+            pageSize={12}
             onRowClick={(e) => setDetalle(e)}
             zebra
             empty={{

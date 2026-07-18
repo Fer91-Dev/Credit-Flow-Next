@@ -165,6 +165,7 @@ export function ProveedoresView() {
           <DataTable<Proveedor>
             rows={filtrados}
             rowKey={(p) => p.id}
+            pageSize={12}
             onRowClick={(p) => setFichaId(p.id)}
             rowClassName={(p) => (p.activo ? "" : "opacity-50")}
             zebra

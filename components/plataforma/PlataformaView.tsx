@@ -6,6 +6,7 @@ import { Crown, Plus, Ban, RotateCcw, Loader2, Building2, ChevronRight, Clock, U
 import { PageHeader } from "@/components/ui/PageHeader";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { KpiCard } from "@/components/ui/KpiCard";
+import { DataTable } from "@/components/ui/DataTable";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Field, Input, Textarea } from "@/components/ui/field";
 import { MoneyInput } from "@/components/ui/form-kit";
@@ -120,59 +121,40 @@ export function PlataformaView() {
             </div>
           )}
 
-          {tenants.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-border/60 p-12 text-center">
-              <Building2 className="mx-auto h-8 w-8 text-muted-foreground/20" />
-              <p className="mt-3 text-sm font-semibold text-muted-foreground">Todavía no hay financieras. Creá la primera.</p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto rounded-xl border border-border">
-              <table className="w-full text-sm border-separate border-spacing-0">
-                <thead>
-                  <tr className="bg-muted/30">
-                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground border-b border-border">Financiera</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground border-b border-border">Plan</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground border-b border-border hidden sm:table-cell">Vence</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground border-b border-border hidden md:table-cell">Estado</th>
-                    <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground border-b border-border"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {tenants.map((t) => {
-                    const dias = diasRestantes(t.periodo_hasta);
-                    const vencida = t.estado === "vencida";
-                    const porVencerRow = t.plan === "pro" && t.activo && !vencida && dias !== null && dias >= 0 && dias <= 7;
-                    return (
-                      <tr
-                        key={t.id}
-                        role="button"
-                        tabIndex={0}
-                        onClick={() => setFichaId(t.id)}
-                        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setFichaId(t.id); } }}
-                        className={`group cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/50 ${!t.activo ? "opacity-60" : ""} ${vencida ? "bg-destructive/[0.06] hover:bg-destructive/10" : porVencerRow ? "bg-warning/[0.06] hover:bg-warning/10" : "hover:bg-muted/20"}`}
-                      >
-                        <td className="px-4 py-2.5 border-b border-border/70 font-medium text-foreground">{t.nombre}</td>
-                        <td className="px-4 py-2.5 border-b border-border/70">
-                          <div className="flex items-center gap-2">
-                            <StatusBadge label={PLANES[t.plan]?.label ?? t.plan} variant={t.plan === "pro" ? "primary" : "muted"} />
-                            {vencida && <span className="text-[10px] font-semibold uppercase tracking-wide text-destructive">vencido</span>}
-                            {porVencerRow && <span className="text-[10px] font-semibold uppercase tracking-wide text-warning">{dias === 0 ? "vence hoy" : `${dias}d`}</span>}
-                          </div>
-                        </td>
-                        <td className="px-4 py-2.5 border-b border-border/70 text-muted-foreground hidden sm:table-cell tabular-nums">{t.periodo_hasta ? formatFecha(t.periodo_hasta) : "—"}</td>
-                        <td className="px-4 py-2.5 border-b border-border/70 hidden md:table-cell">
-                          <StatusBadge label={t.activo ? "Activa" : "Suspendida"} variant={t.activo ? "success" : "destructive"} />
-                        </td>
-                        <td className="px-4 py-2.5 border-b border-border/70 text-right">
-                          <ChevronRight className="ml-auto h-4 w-4 text-muted-foreground/40 group-hover:text-primary transition-colors" />
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
+          <DataTable<TenantRow>
+            rows={tenants}
+            rowKey={(t) => t.id}
+            onRowClick={(t) => setFichaId(t.id)}
+            rowClassName={(t) => {
+              const dias = diasRestantes(t.periodo_hasta);
+              const vencida = t.estado === "vencida";
+              const porVencer = t.plan === "pro" && t.activo && !vencida && dias !== null && dias >= 0 && dias <= 7;
+              return `${!t.activo ? "opacity-60" : ""} ${vencida ? "bg-destructive/[0.06]" : porVencer ? "bg-warning/[0.06]" : ""}`;
+            }}
+            empty={{ icon: "office-building", title: "Todavía no hay financieras. Creá la primera." }}
+            pageSize={10}
+            columns={[
+              { header: "Financiera", cell: (t) => <span className="font-medium text-foreground">{t.nombre}</span> },
+              {
+                header: "Plan",
+                cell: (t) => {
+                  const dias = diasRestantes(t.periodo_hasta);
+                  const vencida = t.estado === "vencida";
+                  const porVencer = t.plan === "pro" && t.activo && !vencida && dias !== null && dias >= 0 && dias <= 7;
+                  return (
+                    <div className="flex items-center gap-2">
+                      <StatusBadge label={PLANES[t.plan]?.label ?? t.plan} variant={t.plan === "pro" ? "primary" : "muted"} />
+                      {vencida && <span className="text-[10px] font-semibold uppercase tracking-wide text-destructive">vencido</span>}
+                      {porVencer && <span className="text-[10px] font-semibold uppercase tracking-wide text-warning">{dias === 0 ? "vence hoy" : `${dias}d`}</span>}
+                    </div>
+                  );
+                },
+              },
+              { header: "Vence", className: "hidden sm:table-cell", cell: (t) => <span className="text-muted-foreground tabular-nums">{t.periodo_hasta ? formatFecha(t.periodo_hasta) : "—"}</span> },
+              { header: "Estado", className: "hidden md:table-cell", cell: (t) => <StatusBadge label={t.activo ? "Activa" : "Suspendida"} variant={t.activo ? "success" : "destructive"} /> },
+              { header: "", align: "right", cell: () => <ChevronRight className="ml-auto h-4 w-4 text-muted-foreground/40" /> },
+            ]}
+          />
         </>
       )}
 

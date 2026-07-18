@@ -196,6 +196,7 @@ export function UsuariosView() {
             <DataTable<Usuario>
               rows={filtrados}
               rowKey={(u) => u.id}
+              pageSize={12}
               onRowClick={(u) => openEdit(u)}
               rowClassName={(u) => (u.activo ? "" : "opacity-50")}
               columns={[

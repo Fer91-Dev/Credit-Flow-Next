@@ -1,6 +1,7 @@
 "use client";
 
-import type { ReactNode, KeyboardEvent } from "react";
+import { useState, useEffect, useRef, type ReactNode, type KeyboardEvent } from "react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Emoji } from "./Emoji";
 import { Skeleton } from "./skeleton";
 
@@ -54,6 +55,67 @@ interface DataTableProps<T> {
   footer?: ReactNode;
   /** Render de cada fila como tarjeta en mobile (<md). La tabla se oculta en <md. */
   renderMobileCard?: (row: T) => ReactNode;
+  /** Filas por página. Si se indica, activa la paginación (cliente) estilo TailGrids. */
+  pageSize?: number;
+}
+
+function rango(a: number, b: number): number[] {
+  const out: number[] = [];
+  for (let i = a; i <= b; i++) out.push(i);
+  return out;
+}
+
+/**
+ * Números de página con longitud CONSTANTE (siempre 7 slots para total>7) para que los
+ * botones no se desplacen al cambiar de página: cerca de los bordes se muestran números
+ * extra en lugar de "…", manteniendo la misma cantidad de slots. (Estilo MUI: boundary=1,
+ * sibling=1.)
+ */
+function itemsDePagina(actual: number, total: number): (number | "dots")[] {
+  if (total <= 7) return rango(1, total);
+  const bc = 1, sc = 1; // boundaryCount, siblingCount
+  const sStart = Math.max(Math.min(actual - sc, total - bc - sc * 2 - 1), bc + 2);
+  const sEnd = Math.min(Math.max(actual + sc, bc + sc * 2 + 2), total - bc - 1);
+  const items: (number | "dots")[] = [1];
+  if (sStart > bc + 2) items.push("dots");
+  else if (bc + 1 < total - bc) items.push(bc + 1);
+  for (let p = sStart; p <= sEnd; p++) items.push(p);
+  if (sEnd < total - bc - 1) items.push("dots");
+  else if (total - bc > bc) items.push(total - bc);
+  items.push(total);
+  return items;
+}
+
+/** Paginador estilo TailGrids: Previous · números con "…" · Next. */
+function TablePagination({ page, totalPages, onChange }: { page: number; totalPages: number; onChange: (p: number) => void }) {
+  const nav = "inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent";
+  return (
+    <div className="flex items-center justify-between gap-2 border-t border-border px-4 py-3">
+      <button type="button" className={nav} disabled={page <= 1} onClick={() => onChange(page - 1)}>
+        <ChevronLeft className="h-4 w-4" /> Previous
+      </button>
+      <div className="flex items-center gap-1">
+        {itemsDePagina(page, totalPages).map((it, i) =>
+          it === "dots" ? (
+            <span key={`d${i}`} className="flex h-8 min-w-8 items-center justify-center text-sm text-muted-foreground select-none">…</span>
+          ) : (
+            <button
+              key={it}
+              type="button"
+              onClick={() => onChange(it)}
+              aria-current={it === page ? "page" : undefined}
+              className={`flex h-8 min-w-8 items-center justify-center rounded-lg px-2 text-sm font-medium transition-colors ${it === page ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}
+            >
+              {it}
+            </button>
+          ),
+        )}
+      </div>
+      <button type="button" className={nav} disabled={page >= totalPages} onClick={() => onChange(page + 1)}>
+        Next <ChevronRight className="h-4 w-4" />
+      </button>
+    </div>
+  );
 }
 
 function alignClass(col: { align?: "left" | "right" | "center"; mono?: boolean }): string {
@@ -66,9 +128,27 @@ const TD_BASE = "px-4 py-3 border-b border-border/50 align-middle";
 
 export function DataTable<T>({
   columns, rows, rowKey, onRowClick, rowClassName, loading, skeletonRows = 6, loadingRowKey,
-  error, empty, zebra, stickyHeader, footer, renderMobileCard,
+  error, empty, zebra, stickyHeader, footer, renderMobileCard, pageSize,
 }: DataTableProps<T>) {
   const shell = "rounded-xl border border-border bg-card overflow-hidden";
+
+  // Paginación cliente (opcional). Los hooks van antes de los early returns.
+  const [page, setPage] = useState(1);
+  const totalPages = pageSize ? Math.max(1, Math.ceil(rows.length / pageSize)) : 1;
+  useEffect(() => { if (page > totalPages) setPage(totalPages); }, [totalPages, page]);
+  const pagedRows = pageSize ? rows.slice((page - 1) * pageSize, page * pageSize) : rows;
+  const showPager = !!pageSize && totalPages > 1;
+
+  // Altura mínima = la de una página LLENA (medida). Se aplica al contenedor de la tabla para
+  // que las páginas cortas (última página, menos filas) se rellenen hasta esa altura y el
+  // paginador quede fijo. Independiente del alto real de cada fila (a prueba de balas).
+  const tableRef = useRef<HTMLTableElement>(null);
+  const [minBodyH, setMinBodyH] = useState(0);
+  useEffect(() => {
+    if (!pageSize) return;
+    const h = tableRef.current?.offsetHeight ?? 0;
+    setMinBodyH((prev) => (h > prev ? h : prev)); // guarda la mayor altura vista (= página llena)
+  }, [pagedRows, pageSize]);
 
   // ── Error ──────────────────────────────────────────────────────────────
   if (error) {
@@ -130,8 +210,8 @@ export function DataTable<T>({
     <>
       {/* Desktop / tablet */}
       <div className={`${renderMobileCard ? "hidden md:block" : ""} ${shell}`}>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm border-separate border-spacing-0">
+        <div className="overflow-x-auto" style={showPager && minBodyH ? { minHeight: minBodyH } : undefined}>
+          <table ref={tableRef} className="w-full text-sm border-separate border-spacing-0">
             <thead>
               <tr className={`bg-muted/30 ${stickyHeader ? "sticky top-0 z-10" : ""}`}>
                 {columns.map((c, i) => (
@@ -140,7 +220,7 @@ export function DataTable<T>({
               </tr>
             </thead>
             <tbody>
-              {rows.map((row, idx) => {
+              {pagedRows.map((row, idx) => {
                 const isLoadingRow = loadingRowKey != null && rowKey(row) === loadingRowKey;
                 return (
                   <tr
@@ -171,12 +251,20 @@ export function DataTable<T>({
             {footer && <tfoot>{footer}</tfoot>}
           </table>
         </div>
+        {showPager && <TablePagination page={page} totalPages={totalPages} onChange={setPage} />}
       </div>
 
       {/* Mobile (tarjetas) */}
       {renderMobileCard && (
-        <div className="block space-y-3 md:hidden">
-          {rows.map((row) => <div key={rowKey(row)}>{renderMobileCard(row)}</div>)}
+        <div className="block md:hidden">
+          <div className="space-y-3">
+            {pagedRows.map((row) => <div key={rowKey(row)}>{renderMobileCard(row)}</div>)}
+          </div>
+          {showPager && (
+            <div className="mt-3 rounded-xl border border-border bg-card">
+              <TablePagination page={page} totalPages={totalPages} onChange={setPage} />
+            </div>
+          )}
         </div>
       )}
     </>
