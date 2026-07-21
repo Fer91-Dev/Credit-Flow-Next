@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { registrarAuditoria } from "@/lib/audit";
 import { montoConSigno, totalesCaja, saldosPorCuenta, esCuentaValida, etiquetaCaja } from "@/lib/domain";
 import { siguienteNumeroComprobante, formatComprobante } from "@/lib/comprobantes";
+import { getDolarBlueVenta } from "@/lib/cotizacion";
 import { nombreCompleto, hoyComercial } from "@/lib/utils";
 import type { NextRequest } from "next/server";
 
@@ -60,7 +61,12 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
 
   const periodo = totalesCaja(movimientos);
   const saldosCuenta = saldosPorCuenta(saldoMovs);
-  const saldoTotal = Math.round((saldosCuenta.efectivo + saldosCuenta.banco + saldosCuenta.dolares) * 100) / 100;
+  // Dólares = cuenta REAL en USD → NO se suma 1:1 con los pesos. El "saldo total" es solo
+  // pesos (efectivo + banco); los dólares van aparte, con su valorización al blue (referencia).
+  const saldoTotal = Math.round((saldosCuenta.efectivo + saldosCuenta.banco) * 100) / 100;
+  const saldoDolares = saldosCuenta.dolares; // en USD
+  const dolarBlue = await getDolarBlueVenta();
+  const valorizacionDolares = dolarBlue != null ? Math.round(saldoDolares * dolarBlue * 100) / 100 : null;
   const enPoderVendedores = Math.round((enVendedores._sum.monto ?? 0) * 100) / 100;
 
   // Desglose por cuenta: saldo actual, ingresos/egresos del período y saldo anterior.
@@ -86,7 +92,10 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
 
   return successResponse({
     periodo: { desde: desdeStr, hasta: hastaStr },
-    saldo_total: saldoTotal,
+    saldo_total: saldoTotal, // solo pesos (efectivo + banco)
+    saldo_dolares: saldoDolares, // en USD
+    dolar_blue: dolarBlue, // cotización usada para valorizar (venta), null si no disponible
+    valorizacion_dolares: valorizacionDolares, // dólares × blue, en pesos (referencia)
     en_vendedores: enPoderVendedores,
     saldos_por_cuenta: saldosCuenta,
     saldos_detalle: saldosDetalle,

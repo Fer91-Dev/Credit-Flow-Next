@@ -543,7 +543,11 @@ export interface Comprobante extends MovimientoCaja {
 
 /** Caja personal de un vendedor (su porción del libro de caja). */
 export interface CajaVendedor {
+  /** Saldo total en PESOS (efectivo + banco). Los dólares van aparte. */
   saldo_total: number;
+  saldo_dolares?: number;
+  dolar_blue?: number | null;
+  valorizacion_dolares?: number | null;
   saldos_por_cuenta: Record<CuentaCaja, number>;
   ingresos: number;
   egresos: number;
@@ -560,7 +564,14 @@ export interface SaldoCuentaDetalle {
 
 export interface CajaData {
   periodo: { desde: string; hasta: string };
+  /** Saldo total en PESOS (efectivo + banco). Los dólares van aparte. */
   saldo_total: number;
+  /** Saldo de la cuenta Dólares, en USD (no se suma 1:1 al total). */
+  saldo_dolares?: number;
+  /** Cotización (venta) usada para valorizar los dólares en pesos. null si no disponible. */
+  dolar_blue?: number | null;
+  /** Dólares × blue, en pesos (referencia). null si no hay cotización. */
+  valorizacion_dolares?: number | null;
   /** Total en poder de los vendedores (suma de sus cajas personales). */
   en_vendedores?: number;
   saldos_por_cuenta: Record<CuentaCaja, number>;
@@ -1115,6 +1126,24 @@ export function usePagosByCredito(creditoId: string | null) {
     creditoId ? `/api/pagos?credito_id=${creditoId}&limit=1000` : null,
   );
   return { pagos: data?.pagos ?? [], error, isLoading };
+}
+
+/** Una cotización del dólar (dolarapi). `compra`/`venta` pueden ser null (ej. tarjeta solo venta). */
+export interface Cotizacion {
+  casa: string;
+  nombre: string;
+  compra: number | null;
+  venta: number | null;
+  fecha: string;
+}
+
+/** Cotizaciones del dólar (proxy /api/cotizacion). Se refresca cada 10 min. */
+export function useCotizacion() {
+  const { data, error, isLoading } = useSWR<{ cotizaciones: Cotizacion[] }>(
+    "/api/cotizacion",
+    { refreshInterval: 600_000, revalidateOnFocus: false },
+  );
+  return { cotizaciones: data?.cotizaciones ?? [], error, isLoading };
 }
 
 /** Detalle/ficha de un cliente. Key condicional: no fetch si id es nulo. */

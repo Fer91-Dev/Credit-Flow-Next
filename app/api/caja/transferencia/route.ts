@@ -19,7 +19,7 @@ import type { NextRequest } from "next/server";
 export const POST = withErrorHandler(async (req: NextRequest) => {
   const { tenantId } = await requireRole(["admin"], req);
 
-  let body: { origen?: string; destino?: string; monto?: number; descripcion?: string; fecha?: string };
+  let body: { origen?: string; destino?: string; monto?: number; monto_destino?: number; descripcion?: string; fecha?: string };
   try {
     body = await req.json();
   } catch {
@@ -34,26 +34,47 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
   if (origen === destino) {
     return errorResponse("La cuenta de origen y destino deben ser distintas", "INVALID_INPUT", 400);
   }
+  // Si cruza monedas (pesos ↔ dólares) es una COMPRA/VENTA de dólares: cada pata tiene su
+  // importe en su propia moneda (no es 1:1). Si es misma moneda, ambos importes son iguales.
+  const cruzaMoneda = (origen === "dolares") !== (destino === "dolares");
 
-  const monto = round2(Number(body.monto));
-  if (!monto || monto <= 0) {
+  const montoOrigen = round2(Number(body.monto));
+  if (!montoOrigen || montoOrigen <= 0) {
     return errorResponse("El monto debe ser mayor a 0", "INVALID_INPUT", 400);
+  }
+  let montoDestino = montoOrigen;
+  if (cruzaMoneda) {
+    montoDestino = round2(Number(body.monto_destino));
+    if (!montoDestino || montoDestino <= 0) {
+      return errorResponse("Falta el importe en la otra moneda (tipo de cambio) para la compra/venta de dólares", "INVALID_INPUT", 400);
+    }
   }
 
   const fecha = body.fecha ? new Date(`${body.fecha}T00:00:00.000Z`) : hoyComercial();
   const detalle = body.descripcion?.trim();
-  const glosa = `Transferencia ${CUENTA_LABEL[origen]} → ${CUENTA_LABEL[destino]}${detalle ? ` · ${detalle}` : ""}`;
   const origenLbl = `Caja principal (${CUENTA_LABEL[origen]})`;
   const destinoLbl = `Caja principal (${CUENTA_LABEL[destino]})`;
 
-  // Cada pata (egreso/ingreso) es un comprobante propio con su número único TRF.
+  // Glosa: transferencia normal o compra/venta de dólares (con el tipo de cambio implícito).
+  let glosa: string;
+  if (cruzaMoneda) {
+    const vende = origen === "dolares";
+    const usd = vende ? montoOrigen : montoDestino;
+    const ars = vende ? montoDestino : montoOrigen;
+    const tc = usd > 0 ? round2(ars / usd) : 0;
+    glosa = `${vende ? "Venta" : "Compra"} de U$S ${usd.toLocaleString("es-AR")} a $${tc.toLocaleString("es-AR")}${detalle ? ` · ${detalle}` : ""}`;
+  } else {
+    glosa = `Transferencia ${CUENTA_LABEL[origen]} → ${CUENTA_LABEL[destino]}${detalle ? ` · ${detalle}` : ""}`;
+  }
+
+  // Cada pata (egreso en origen / ingreso en destino) es un comprobante propio con su número TRF.
   const { salida, entrada } = await prisma.$transaction(async (tx) => {
     const s = await tx.movimientos_caja.create({
       data: {
         ...withTenant(tenantId),
         fecha,
         tipo: "transferencia",
-        monto: -monto, // egreso de la cuenta origen
+        monto: -montoOrigen, // egreso en la moneda de la cuenta origen
         cuenta: origen,
         origen: origenLbl,
         destino: destinoLbl,
@@ -67,7 +88,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
         ...withTenant(tenantId),
         fecha,
         tipo: "transferencia",
-        monto: monto, // ingreso en la cuenta destino
+        monto: montoDestino, // ingreso en la moneda de la cuenta destino
         cuenta: destino,
         origen: origenLbl,
         destino: destinoLbl,
@@ -84,8 +105,8 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     entidad: "caja",
     entidadId: salida.id,
     accion: "crear",
-    descripcion: `${glosa} — $${monto.toLocaleString("es-AR")}`,
-    meta: { monto, origen, destino, tipo: "transferencia", salida_id: salida.id, entrada_id: entrada.id },
+    descripcion: glosa,
+    meta: { origen, destino, monto_origen: montoOrigen, monto_destino: montoDestino, cruza_moneda: cruzaMoneda, tipo: "transferencia", salida_id: salida.id, entrada_id: entrada.id },
   });
 
   return successResponse({ salida, entrada }, 201);

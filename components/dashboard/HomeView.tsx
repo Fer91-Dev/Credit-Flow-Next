@@ -9,6 +9,7 @@ import { IconBadge } from "@/components/ui/IconBadge";
 import { DashboardKpis, DashboardCobranzaAvance, DashboardMoraGrid, DashboardKpisSkeleton } from "./DashboardMetrics";
 import { MetricChart } from "./MetricChart";
 import { CobranzaDelDia } from "./CobranzaDelDia";
+import { CotizacionDolar } from "./CotizacionDolar";
 import { MedallaBadge, RangoBadge, InsigniaChip } from "@/components/ui/Medalla";
 import { Emoji } from "@/components/ui/Emoji";
 
@@ -59,6 +60,9 @@ export function HomeView({ role }: { role: Role }) {
           vendedores={vendedores} zonas={zonas} limpiar={limpiar}
         />
       </div>
+
+      {/* ── Cotización del dólar del día (dolarapi: Blue principal + otras al desplegar) ── */}
+      <CotizacionDolar />
 
       {/* ── 2 · KPIs + avance de cobranzas (reaccionan a los filtros) ── */}
       {isLoading ? (

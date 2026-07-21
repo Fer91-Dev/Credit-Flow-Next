@@ -4,6 +4,7 @@ import { ApiError } from "@/lib/auth";
 import { registrarAuditoria } from "@/lib/audit";
 import { saldosPorCuenta, totalesCaja, round2, CUENTA_LABEL, etiquetaCaja, type Cuenta } from "@/lib/domain";
 import { siguienteNumeroComprobante, formatComprobante, type SerieComprobante } from "@/lib/comprobantes";
+import { getDolarBlueVenta } from "@/lib/cotizacion";
 import { nombreCompleto, hoyComercial } from "@/lib/utils";
 
 /** Saldo de una cuenta de una caja (vendedor o principal con vendedorId = null). */
@@ -36,11 +37,18 @@ export async function cajaDeVendedor(tenantId: string, vendedorId: string | null
   ]);
 
   const saldos = saldosPorCuenta(saldoMovs);
-  const saldoTotal = round2(saldos.efectivo + saldos.banco + saldos.dolares);
+  // Dólares (USD) aparte: el total es solo pesos; se valoriza al blue como referencia.
+  const saldoTotal = round2(saldos.efectivo + saldos.banco);
+  const saldoDolares = saldos.dolares;
+  const dolarBlue = await getDolarBlueVenta();
+  const valorizacionDolares = dolarBlue != null ? round2(saldoDolares * dolarBlue) : null;
   const tot = totalesCaja(saldoMovs);
 
   return {
     saldo_total: saldoTotal,
+    saldo_dolares: saldoDolares,
+    dolar_blue: dolarBlue,
+    valorizacion_dolares: valorizacionDolares,
     saldos_por_cuenta: saldos,
     ingresos: tot.ingresos,
     egresos: tot.egresos,
@@ -238,6 +246,10 @@ export async function registrarTransferenciaCajaVendedor(opts: {
   const abs = round2(Math.abs(opts.monto));
   if (origen === destino) {
     throw new ApiError("La cuenta de origen y destino deben ser distintas", "INVALID_INPUT", 400);
+  }
+  // Pesos↔dólares no es 1:1: requiere tipo de cambio. Hasta ese flujo, solo misma moneda.
+  if ((origen === "dolares") !== (destino === "dolares")) {
+    throw new ApiError("Las transferencias entre pesos y dólares requieren tipo de cambio. Por ahora solo se permite entre cuentas de la misma moneda.", "MONEDA_CRUZADA", 400);
   }
   const disp = await saldoCuenta(tenantId, vendedorId, origen);
   if (abs > disp) {

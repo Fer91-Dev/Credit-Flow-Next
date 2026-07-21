@@ -122,6 +122,12 @@ export function MiCajaView() {
                   <p className={`mt-3 text-2xl font-bold font-mono tabular-nums tracking-tight ${saldo < 0 ? "text-destructive" : "text-foreground"}`}>
                     {meta.prefix} {n2(saldo)}
                   </p>
+                  {c === "dolares" && caja.valorizacion_dolares != null && (
+                    <p className="mt-1 text-[11px] font-mono text-muted-foreground">
+                      ≈ ${n0(caja.valorizacion_dolares)}
+                      {caja.dolar_blue != null && <span className="text-muted-foreground/60"> · blue ${n0(caja.dolar_blue)}</span>}
+                    </p>
+                  )}
                 </div>
               );
             })}

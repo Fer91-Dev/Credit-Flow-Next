@@ -6,7 +6,7 @@ import { Landmark, ArrowDownLeft, ArrowUpRight, Scale, Download, Plus, ChevronDo
 import { IconBadge } from "@/components/ui/IconBadge";
 import { DataTable } from "@/components/ui/DataTable";
 import { Emoji } from "@/components/ui/Emoji";
-import { useCaja, useVendedores, type CajaData, type MovimientoCaja, type CuentaCaja } from "@/lib/swr";
+import { useCaja, useVendedores, useCotizacion, type CajaData, type MovimientoCaja, type CuentaCaja } from "@/lib/swr";
 import { formatFechaHora, parseMontoInput } from "@/lib/utils";
 import { MoneyInput, Segmented, IconSelect, IconTextarea, FieldLabel, FormActions, simboloCuenta } from "./caja-form";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -277,6 +277,12 @@ export function CajaView() {
                   <p className="mt-3 text-2xl font-bold font-mono tracking-tight">
                     {card.prefix} {n2(d.saldo)}
                   </p>
+                  {c === "dolares" && caja.valorizacion_dolares != null && (
+                    <p className="mt-1 text-[11px] font-mono text-white/75">
+                      ≈ ${n0(caja.valorizacion_dolares)}
+                      {caja.dolar_blue != null && <span className="text-white/50"> · blue ${n0(caja.dolar_blue)}</span>}
+                    </p>
+                  )}
 
                   {/* Divisor */}
                   <div className="my-4 h-px w-full bg-white/20" />
@@ -353,6 +359,7 @@ export function CajaView() {
       <TransferenciaDialog
         open={transferOpen}
         saldos={caja?.saldos_por_cuenta}
+        dolarBlue={caja?.dolar_blue}
         onClose={(ok) => {
           setTransferOpen(false);
           if (ok) refrescar();
@@ -514,34 +521,65 @@ function AjusteDialog({ open, onClose }: { open: boolean; onClose: (ok?: boolean
 }
 
 function TransferenciaDialog({
-  open, onClose, saldos,
+  open, onClose, saldos, dolarBlue,
 }: {
   open: boolean;
   onClose: (ok?: boolean) => void;
   saldos?: Record<CuentaCaja, number>;
+  dolarBlue?: number | null;
 }) {
   const confirm = useConfirm();
   const toast = useToast();
+  const { cotizaciones } = useCotizacion();
   const [origen, setOrigen] = useState<CuentaCaja>("efectivo");
   const [destino, setDestino] = useState<CuentaCaja>("banco");
   const [monto, setMonto] = useState("");
+  const [casaSel, setCasaSel] = useState("blue"); // casa de cotización elegida (o "custom")
+  const [tcCustom, setTcCustom] = useState(""); // tipo de cambio manual (si casaSel = custom)
   const [descripcion, setDescripcion] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const reset = () => { setOrigen("efectivo"); setDestino("banco"); setMonto(""); setDescripcion(""); setError(null); };
+  const reset = () => { setOrigen("efectivo"); setDestino("banco"); setMonto(""); setCasaSel("blue"); setTcCustom(""); setDescripcion(""); setError(null); };
 
   const mismaCuenta = origen === destino;
   const montoNum = parseMontoInput(monto);
   const simbolo = simboloCuenta(origen);
 
+  // Cruza monedas (pesos ↔ dólares) = compra/venta de divisa: `monto` es la CANTIDAD de dólares;
+  // el tipo de cambio sale de la casa elegida (o manual). Los pesos se calculan.
+  const cruzaMoneda = !mismaCuenta && ((origen === "dolares") !== (destino === "dolares"));
+  const vende = origen === "dolares"; // saco dólares → recibo pesos
+  // Al COMPRAR dólares se paga la VENTA de la casa; al VENDER se cobra la COMPRA.
+  const precioDe = (c?: { compra: number | null; venta: number | null }) => (vende ? c?.compra : c?.venta) ?? null;
+  const cotSel = cotizaciones.find((c) => c.casa === casaSel);
+  const tcEfectivo = casaSel === "custom" ? (Number(tcCustom) || 0) : (precioDe(cotSel) ?? 0);
+  const montoPesos = Math.round(montoNum * tcEfectivo * 100) / 100;
+
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (mismaCuenta) { setError("Origen y destino deben ser distintos"); return; }
+
+    let payload: { origen: CuentaCaja; destino: CuentaCaja; monto: number; monto_destino?: number; descripcion: string };
+    if (cruzaMoneda) {
+      if (montoNum <= 0 || tcEfectivo <= 0) { setError("Ingresá la cantidad de dólares y el tipo de cambio."); return; }
+      // vende: sale USD (origen=dólares), entra ARS (destino). compra: al revés.
+      payload = {
+        origen, destino, descripcion,
+        monto: vende ? montoNum : montoPesos,
+        monto_destino: vende ? montoPesos : montoNum,
+      };
+    } else {
+      if (montoNum <= 0) { setError("El monto debe ser mayor a 0"); return; }
+      payload = { origen, destino, monto: montoNum, descripcion };
+    }
+
     const ok = await confirm({
-      title: "¿Registrar transferencia?",
-      description: `Se transferirán ${simbolo} ${n2(montoNum)} de ${origen} a ${destino}.`,
-      confirmLabel: "Transferir",
+      title: cruzaMoneda ? (vende ? "¿Vender dólares?" : "¿Comprar dólares?") : "¿Registrar transferencia?",
+      description: cruzaMoneda
+        ? `${vende ? "Vendés" : "Comprás"} U$S ${n2(montoNum)} a $${n0(tcEfectivo)} = $${n0(montoPesos)}.`
+        : `Se transferirán ${simbolo} ${n2(montoNum)} de ${origen} a ${destino}.`,
+      confirmLabel: cruzaMoneda ? (vende ? "Vender" : "Comprar") : "Transferir",
     });
     if (!ok) return;
     setLoading(true); setError(null);
@@ -549,13 +587,16 @@ function TransferenciaDialog({
       const res = await fetch("/api/caja/transferencia", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ origen, destino, monto: montoNum, descripcion }),
+        body: JSON.stringify(payload),
       });
       const json = await res.json();
-      if (json.ok) { reset(); toast.success("Transferencia registrada"); onClose(true); }
-      else setError(json.error);
+      if (json.ok) {
+        reset();
+        toast.success(cruzaMoneda ? (vende ? "Venta de dólares registrada" : "Compra de dólares registrada") : "Transferencia registrada");
+        onClose(true);
+      } else setError(json.error);
     } catch {
-      setError("No se pudo registrar la transferencia");
+      setError("No se pudo registrar la operación");
     } finally {
       setLoading(false);
     }
@@ -570,8 +611,8 @@ function TransferenciaDialog({
               <Emoji name="money-with-wings" className="h-5 w-5" />
             </div>
             <div>
-              <DialogTitle>Transferir entre cuentas</DialogTitle>
-              <p className="mt-0.5 text-xs text-muted-foreground">Mové saldo de una cuenta a otra sin afectar el total.</p>
+              <DialogTitle>{cruzaMoneda ? (vende ? "Vender dólares" : "Comprar dólares") : "Transferir entre cuentas"}</DialogTitle>
+              <p className="mt-0.5 text-xs text-muted-foreground">{cruzaMoneda ? "Compra/venta de divisa: ingresá la cantidad de dólares y el tipo de cambio." : "Mové saldo de una cuenta a otra sin afectar el total."}</p>
             </div>
           </div>
         </DialogHeader>
@@ -615,11 +656,58 @@ function TransferenciaDialog({
             </div>
           )}
 
-          {/* Monto */}
-          <div className="flex flex-col gap-1.5">
-            <FieldLabel required>Monto</FieldLabel>
-            <MoneyInput value={monto} onChange={setMonto} currency={simbolo} autoFocus required />
-          </div>
+          {/* Monto (o compra/venta de dólares si cruza monedas) */}
+          {cruzaMoneda ? (
+            <div className="space-y-3">
+              <div className="flex flex-col gap-1.5">
+                <FieldLabel required>Dólares (U$S)</FieldLabel>
+                <MoneyInput value={monto} onChange={setMonto} currency="U$S" autoFocus required />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="flex flex-col gap-1.5">
+                  <FieldLabel required>Cotización</FieldLabel>
+                  <select
+                    value={casaSel}
+                    onChange={(e) => setCasaSel(e.target.value)}
+                    className="h-11 rounded-lg border border-border bg-input px-3 text-sm text-foreground shadow-[inset_0_1px_2px_0_rgba(0,0,0,0.22)] outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/20 [&>option]:bg-card"
+                  >
+                    {cotizaciones.map((c) => {
+                      const p = precioDe(c);
+                      return p != null ? (
+                        <option key={c.casa} value={c.casa}>{c.nombre} — ${n0(p)}</option>
+                      ) : null;
+                    })}
+                    <option value="custom">Personalizado…</option>
+                  </select>
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <FieldLabel>Total en pesos</FieldLabel>
+                  <div className="flex h-11 items-center rounded-lg border border-border bg-muted/30 px-3 font-mono font-semibold text-foreground">${n0(montoPesos)}</div>
+                </div>
+              </div>
+              {casaSel === "custom" && (
+                <div className="flex flex-col gap-1.5">
+                  <FieldLabel required>Tipo de cambio ($/U$S)</FieldLabel>
+                  <input
+                    type="number" step="0.01" min="0"
+                    value={tcCustom}
+                    onChange={(e) => setTcCustom(e.target.value)}
+                    placeholder={dolarBlue ? String(dolarBlue) : "1500"}
+                    className="h-11 rounded-lg border border-border bg-input px-3 text-sm text-foreground shadow-[inset_0_1px_2px_0_rgba(0,0,0,0.22)] outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/20"
+                  />
+                </div>
+              )}
+              <p className="text-xs text-muted-foreground">
+                {vende ? "Vendés" : "Comprás"} <span className="font-mono font-semibold text-foreground">U$S {n2(montoNum)}</span> a ${n0(tcEfectivo)} → {vende ? "recibís" : "pagás"} <span className="font-mono font-semibold text-foreground">${n0(montoPesos)}</span>.
+                {casaSel !== "custom" && <span className="text-muted-foreground/60"> ({vende ? "compra" : "venta"} {cotSel?.nombre ?? "—"})</span>}
+              </p>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-1.5">
+              <FieldLabel required>Monto</FieldLabel>
+              <MoneyInput value={monto} onChange={setMonto} currency={simbolo} autoFocus required />
+            </div>
+          )}
 
           {/* Descripción */}
           <div className="flex flex-col gap-1.5">
@@ -630,9 +718,9 @@ function TransferenciaDialog({
           <FormActions
             onCancel={() => { reset(); onClose(false); }}
             loading={loading}
-            disabled={!montoNum || mismaCuenta}
-            submitLabel="Transferir"
-            loadingLabel="Transfiriendo…"
+            disabled={mismaCuenta || montoNum <= 0 || (cruzaMoneda && tcEfectivo <= 0)}
+            submitLabel={cruzaMoneda ? (vende ? "Vender dólares" : "Comprar dólares") : "Transferir"}
+            loadingLabel="Registrando…"
           />
         </form>
       </DialogContent>
