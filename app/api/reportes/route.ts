@@ -40,7 +40,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
 
   const [pagos, creditos, config, cfgRent] = await Promise.all([
     prisma.pagos.findMany({
-      where: { ...withTenant(tenantId), fecha: { gte: desde, lte: hasta } },
+      where: { ...withTenant(tenantId), fecha: { gte: desde, lte: hasta }, anulado: false },
       include: { credito: { select: { cliente: { select: { nombre: true, apellido: true } } } } },
       orderBy: { fecha: "desc" },
     }),

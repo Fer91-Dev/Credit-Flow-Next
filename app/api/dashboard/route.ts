@@ -73,6 +73,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     prisma.pagos.aggregate({
       where: {
         ...withTenant(tenantId),
+        anulado: false,
         ...(tieneFiltroCredito ? { credito: creditoRel as never } : {}),
       },
       _sum: { monto: true },

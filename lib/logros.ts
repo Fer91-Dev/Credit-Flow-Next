@@ -55,7 +55,7 @@ export async function construirLogrosVendedor(tenantId: string, vendedorId: stri
       select: { created_at: true, monto_original: true, saldo_pendiente: true, dias_mora: true, estado: true },
     }),
     prisma.pagos.findMany({
-      where: { ...withTenant(tenantId), credito: { vendedor_id: vendedorId } },
+      where: { ...withTenant(tenantId), credito: { vendedor_id: vendedorId }, anulado: false },
       select: { fecha: true, monto: true },
     }),
   ]);
@@ -128,7 +128,7 @@ async function esTopDelMes(
       select: { vendedor_id: true, created_at: true, monto_original: true },
     }),
     prisma.pagos.findMany({
-      where: { ...withTenant(tenantId), credito: { vendedor_id: { in: ids } }, fecha: { gte: minDesde, lt: maxHasta } },
+      where: { ...withTenant(tenantId), credito: { vendedor_id: { in: ids } }, fecha: { gte: minDesde, lt: maxHasta }, anulado: false },
       select: { fecha: true, monto: true, credito: { select: { vendedor_id: true } } },
     }),
   ]);

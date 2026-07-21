@@ -502,6 +502,11 @@ model pagos {
   aplicado_cargos  Float    @default(0)
   aplicado_capital Float    @default(0)
   excedente        Float    @default(0)
+  // Anulación de pago (tesorería): no se borra, se marca anulado + contra-asiento en caja.
+  // Solo dentro de la ventana configurable (cobranza_config.dias_anulacion_pago).
+  anulado          Boolean   @default(false)
+  anulado_motivo   String?
+  anulado_at       DateTime? @db.Timestamptz(6)
 
   credito      creditos           @relation(fields: [credito_id], references: [id], onDelete: Cascade)
   aplicaciones pago_cuota[]

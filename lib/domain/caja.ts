@@ -38,6 +38,19 @@ export function etiquetaCaja(esVendedor: boolean, cuenta: string): string {
   return `${esVendedor ? "Caja del vendedor" : "Caja principal"} (${c})`;
 }
 
+/**
+ * Cuenta de caja donde impacta un cobro según su método de pago:
+ *  - efectivo            → efectivo
+ *  - transferencia/cheque → banco
+ *  - otro (o desconocido) → efectivo
+ * Los cobros en dólares se manejarán con `cuenta` explícita (tipo de cambio, Fase 2).
+ */
+export function cuentaDeMetodo(metodo: string | null | undefined): Cuenta {
+  const m = (metodo ?? "").trim().toLowerCase();
+  if (m === "transferencia" || m === "cheque") return "banco";
+  return "efectivo";
+}
+
 /** Tipos cuyo signo natural es egreso (monto negativo). */
 const EGRESOS: ReadonlySet<TipoMovimiento> = new Set(["desembolso", "devolucion"]);
 

@@ -2,13 +2,16 @@
 
 import { useState } from "react";
 import { useSWRConfig } from "swr";
-import { CalendarDays, Wallet, Info, ArrowUpRight, Receipt, Loader2, Printer, RefreshCw, ArrowRight, ShieldCheck } from "lucide-react";
-import { useAmortizacion, useCuotas, usePagosByCredito, useCreditos, KEYS, type Credito, type EstadoCuota } from "@/lib/swr";
+import { CalendarDays, Wallet, Info, ArrowUpRight, Receipt, Loader2, Printer, RefreshCw, ArrowRight, ShieldCheck, Ban } from "lucide-react";
+import { useAmortizacion, useCuotas, usePagosByCredito, useCreditos, KEYS, type Credito, type EstadoCuota, type Pago } from "@/lib/swr";
+import { type Role } from "@/lib/auth/roles";
 import { abrirRecibo } from "@/lib/recibo";
 import { imprimirPlanPagos } from "@/lib/plan-print";
 import { PagoForm } from "@/components/pagos/PagoForm";
 import { StatusBadge, type BadgeVariant } from "@/components/ui/StatusBadge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Field, Textarea } from "@/components/ui/field";
+import { useToast } from "@/components/ui/toast";
 import { formatCreditoNumero, formatFecha, nombreCompleto } from "@/lib/utils";
 import { Stat } from "@/components/ui/Stat";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -46,7 +49,7 @@ const metodoLabel: Record<string, string> = {
  * Reúne tres fuentes existentes: el crédito (de la lista), su plan de
  * amortización (/amortizacion) y sus pagos imputados (/pagos?credito_id=).
  */
-export function CreditoDetail({ credito }: { credito: Credito }) {
+export function CreditoDetail({ credito, role }: { credito: Credito; role?: Role }) {
   const { amortizacion } = useAmortizacion(credito.id);
   const { cuotas, resumen, isLoading: loadingCuotas } = useCuotas(credito.id);
   const { pagos, isLoading: loadingPagos } = usePagosByCredito(credito.id);
@@ -57,8 +60,44 @@ export function CreditoDetail({ credito }: { credito: Credito }) {
   const destinoRefi = credito.refinanciado_en ? creditos.find((c) => c.id === credito.refinanciado_en) : undefined;
 
   const { mutate: globalMutate } = useSWRConfig();
+  const toast = useToast();
   const [reciboBusy, setReciboBusy] = useState<string | null>(null);
   const [pagoOpen, setPagoOpen] = useState(false);
+  const [anularPago, setAnularPago] = useState<Pago | null>(null);
+  const [anularMotivo, setAnularMotivo] = useState("");
+  const [anularBusy, setAnularBusy] = useState(false);
+
+  // Revalida cuotas/pagos/crédito + cachés globales tras cobrar o anular un pago.
+  const revalidar = () => {
+    globalMutate(`/api/creditos/${credito.id}/cuotas`);
+    globalMutate(`/api/creditos/${credito.id}/amortizacion`);
+    globalMutate(`/api/pagos?credito_id=${credito.id}&limit=1000`);
+    globalMutate(KEYS.creditos);
+    globalMutate(KEYS.pagos);
+    globalMutate(KEYS.dashboard);
+    globalMutate("/api/caja");
+  };
+
+  const handleAnular = async () => {
+    if (!anularPago) return;
+    setAnularBusy(true);
+    try {
+      const res = await fetch(`/api/pagos/${anularPago.id}/anular`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ motivo: anularMotivo.trim() || undefined }),
+      });
+      const json = await res.json();
+      if (!json.ok) { toast.error(json.error || "No se pudo anular el pago"); return; }
+      toast.success("Pago anulado y caja cuadrada");
+      setAnularPago(null); setAnularMotivo("");
+      revalidar();
+    } catch {
+      toast.error("No se pudo anular el pago");
+    } finally {
+      setAnularBusy(false);
+    }
+  };
 
   const handleRecibo = async (pagoId: string) => {
     setReciboBusy(pagoId);
@@ -85,8 +124,9 @@ export function CreditoDetail({ credito }: { credito: Credito }) {
   const puedeCobrar = credito.estado === "activo" && credito.saldo_pendiente > 0;
 
   const est = estadoBadge(credito.estado);
-  const totalCobrado = pagos.reduce((s, p) => s + p.monto, 0);
+  const totalCobrado = pagos.filter(p => !p.anulado).reduce((s, p) => s + p.monto, 0);
   const hayCargos = pagos.some(p => p.aplicado_cargos > 0);
+  const puedeAnular = role === "admin";
 
   // Reimprime el mismo PDF "Plan de pagos" (vista cliente) que se ve al otorgar.
   // Reusa el plan de amortización ya cargado en el detalle.
@@ -270,9 +310,13 @@ export function CreditoDetail({ credito }: { credito: Credito }) {
                 </thead>
                 <tbody>
                   {pagos.map((p, idx) => (
-                    <tr key={p.id} className={idx % 2 === 1 ? "bg-muted/5" : ""}>
+                    <tr key={p.id} className={`${idx % 2 === 1 ? "bg-muted/5" : ""} ${p.anulado ? "opacity-50" : ""}`}>
                       <td className="px-3 py-2 text-muted-foreground tabular-nums border-b border-border/70">{fmtDate(p.fecha)}</td>
-                      <td className="px-3 py-2 text-right font-mono font-semibold text-success border-b border-border/70">+${n0(p.monto)}</td>
+                      <td className="px-3 py-2 text-right font-mono font-semibold border-b border-border/70">
+                        {p.anulado
+                          ? <span className="inline-flex items-center gap-1.5"><StatusBadge label="Anulado" variant="destructive" /><span className="text-muted-foreground line-through">${n0(p.monto)}</span></span>
+                          : <span className="text-success">+${n0(p.monto)}</span>}
+                      </td>
                       <td className="px-3 py-2 text-right font-mono border-b border-border/70">
                         {p.aplicado_mora > 0 ? <span className="text-destructive">${n2(p.aplicado_mora)}</span> : <span className="text-muted-foreground/20">—</span>}
                       </td>
@@ -291,16 +335,27 @@ export function CreditoDetail({ credito }: { credito: Credito }) {
                         {metodoLabel[p.metodo] ?? p.metodo}
                       </td>
                       <td className="px-3 py-2 pr-4 text-right border-b border-border/70">
-                        <button
-                          onClick={() => handleRecibo(p.id)}
-                          disabled={reciboBusy === p.id}
-                          title="Descargar comprobante PDF"
-                          className="inline-flex items-center justify-center h-7 w-7 rounded-md border border-border text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50 transition-colors"
-                        >
-                          {reciboBusy === p.id
-                            ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                            : <Receipt className="h-3.5 w-3.5" />}
-                        </button>
+                        <div className="inline-flex items-center gap-1.5">
+                          <button
+                            onClick={() => handleRecibo(p.id)}
+                            disabled={reciboBusy === p.id}
+                            title="Descargar comprobante PDF"
+                            className="inline-flex items-center justify-center h-7 w-7 rounded-md border border-border text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50 transition-colors"
+                          >
+                            {reciboBusy === p.id
+                              ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              : <Receipt className="h-3.5 w-3.5" />}
+                          </button>
+                          {puedeAnular && !p.anulado && (
+                            <button
+                              onClick={() => { setAnularPago(p); setAnularMotivo(""); }}
+                              title="Anular pago (contra-asiento en caja)"
+                              className="inline-flex items-center justify-center h-7 w-7 rounded-md border border-border text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors"
+                            >
+                              <Ban className="h-3.5 w-3.5" />
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -401,6 +456,31 @@ export function CreditoDetail({ credito }: { credito: Credito }) {
           <div className="flex-1 min-h-0 overflow-y-auto">
             {pagoOpen && <PagoForm creditoId={credito.id} onClose={handlePagoClose} />}
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Anular pago — motivo + contra-asiento en caja (control de tesorería, solo admin) */}
+      <Dialog open={!!anularPago} onOpenChange={(o) => { if (!o) { setAnularPago(null); setAnularMotivo(""); } }}>
+        <DialogContent className="w-[95vw] sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Anular pago</DialogTitle>
+          </DialogHeader>
+          {anularPago && (
+            <div className="space-y-4">
+              <div className="rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-2.5 text-xs text-muted-foreground">
+                Se anulará el cobro de <span className="font-mono font-semibold text-foreground">${n0(anularPago.monto)}</span> del {fmtDate(anularPago.fecha)}: se revierte la imputación en las cuotas, se recalcula el crédito y se hace un <strong className="text-foreground">contra-asiento en la caja</strong>. El pago queda registrado como anulado (no se borra).
+              </div>
+              <Field label="Motivo (opcional)" hint="Queda en la auditoría">
+                <Textarea rows={2} value={anularMotivo} onChange={(e) => setAnularMotivo(e.target.value)} placeholder="Ej.: monto mal cargado, crédito equivocado…" />
+              </Field>
+              <div className="flex justify-end gap-2">
+                <button onClick={() => { setAnularPago(null); setAnularMotivo(""); }} className="rounded-lg px-3 py-1.5 text-xs text-muted-foreground hover:bg-muted">Cancelar</button>
+                <button onClick={handleAnular} disabled={anularBusy} className="inline-flex items-center gap-1.5 rounded-lg bg-destructive px-3 py-1.5 text-xs font-medium text-destructive-foreground hover:bg-destructive/90 disabled:opacity-50">
+                  {anularBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Ban className="h-3.5 w-3.5" />} Anular pago
+                </button>
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>

@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { registrarAuditoria } from "@/lib/audit";
 import { aplicarYRegistrarStock } from "@/lib/stock";
 import { formatCreditoNumero, nombreCompleto, hoyComercial } from "@/lib/utils";
-import { round2, etiquetaCaja } from "@/lib/domain";
+import { round2, etiquetaCaja, esCuentaValida, type Cuenta } from "@/lib/domain";
 import { siguienteNumeroComprobante } from "@/lib/comprobantes";
 import type { NextRequest } from "next/server";
 
@@ -39,7 +39,7 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
 
   const existing = await prisma.creditos.findFirst({
     where: { ...withTenant(tenantId), id },
-    include: { cliente: { select: { nombre: true, apellido: true } }, pagos: { select: { monto: true } } },
+    include: { cliente: { select: { nombre: true, apellido: true } }, pagos: { where: { anulado: false }, select: { monto: true } } },
   });
 
   if (!existing) {
@@ -54,6 +54,23 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
   const devolver = tienePagos && body.accion_pagos === "devolver";
   const motivo = body.motivo?.trim() || null;
   const numeroFmt = formatCreditoNumero(existing.numero);
+
+  // La reversa vuelve a la MISMA cuenta del desembolso; la devolución se reparte por las
+  // cuentas donde entraron los cobros (antes todo caía en efectivo → descuadre por cuenta).
+  const desembolsoMov = existing.producto_id ? null : await prisma.movimientos_caja.findFirst({
+    where: { ...withTenant(tenantId), credito_id: id, tipo: "desembolso" },
+    select: { cuenta: true },
+  });
+  const ctaRev = desembolsoMov?.cuenta;
+  const cuentaReversa: Cuenta = esCuentaValida(ctaRev) ? ctaRev : "efectivo";
+  const cobrosPorCuenta = devolver
+    ? await prisma.movimientos_caja.groupBy({
+        by: ["cuenta"],
+        // Solo cobros de pagos NO anulados (los anulados ya se revirtieron con su contra-asiento).
+        where: { ...withTenant(tenantId), credito_id: id, tipo: "cobro", pago: { anulado: false } },
+        _sum: { monto: true },
+      })
+    : [];
 
   const credito = await prisma.$transaction(async (tx) => {
     const c = await tx.creditos.update({
@@ -79,10 +96,11 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
           fecha: hoyComercial(),
           tipo: "reversa_desembolso",
           monto: Math.abs(existing.monto_original),
+          cuenta: cuentaReversa, // vuelve a la cuenta de la que salió el desembolso
           credito_id: id,
           vendedor_id: existing.vendedor_id, // revierte dentro de la caja del vendedor que otorgó
           origen: `Anulación ${numeroFmt}`,
-          destino: etiquetaCaja(!!existing.vendedor_id, "efectivo"),
+          destino: etiquetaCaja(!!existing.vendedor_id, cuentaReversa),
           serie: "REV",
           numero: numRev,
           descripcion: `Reversa desembolso ${numeroFmt} (anulación)`,
@@ -90,24 +108,31 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
       });
     }
 
-    // Devolución de lo cobrado (egreso), si corresponde.
+    // Devolución de lo cobrado (egreso), si corresponde — una pata por cada cuenta donde
+    // entraron los cobros, para que cada cuenta (efectivo/banco/dólares) se revierta bien.
     if (devolver && totalCobrado > 0) {
-      const numDev = await siguienteNumeroComprobante(tx, tenantId, "DEV");
-      await tx.movimientos_caja.create({
-        data: {
-          ...withTenant(tenantId),
-          fecha: hoyComercial(),
-          tipo: "devolucion",
-          monto: -totalCobrado,
-          credito_id: id,
-          vendedor_id: existing.vendedor_id, // la devolución sale de la misma caja del vendedor
-          origen: etiquetaCaja(!!existing.vendedor_id, "efectivo"),
-          destino: nombreCompleto(existing.cliente),
-          serie: "DEV",
-          numero: numDev,
-          descripcion: `Devolución a ${nombreCompleto(existing.cliente)} (anulación ${numeroFmt})`,
-        },
-      });
+      for (const g of cobrosPorCuenta) {
+        const montoDev = round2(g._sum.monto ?? 0);
+        if (montoDev <= 0) continue;
+        const ctaDev: Cuenta = esCuentaValida(g.cuenta) ? g.cuenta : "efectivo";
+        const numDev = await siguienteNumeroComprobante(tx, tenantId, "DEV");
+        await tx.movimientos_caja.create({
+          data: {
+            ...withTenant(tenantId),
+            fecha: hoyComercial(),
+            tipo: "devolucion",
+            monto: -montoDev,
+            cuenta: ctaDev,
+            credito_id: id,
+            vendedor_id: existing.vendedor_id, // la devolución sale de la misma caja del vendedor
+            origen: etiquetaCaja(!!existing.vendedor_id, ctaDev),
+            destino: nombreCompleto(existing.cliente),
+            serie: "DEV",
+            numero: numDev,
+            descripcion: `Devolución a ${nombreCompleto(existing.cliente)} (anulación ${numeroFmt})`,
+          },
+        });
+      }
     }
 
     return c;

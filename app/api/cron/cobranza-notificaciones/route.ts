@@ -183,7 +183,7 @@ async function procesarPromesasVencidas(hoy: Date): Promise<{ rotas: number; res
     const desde = new Date(promesa.created_at);
     desde.setHours(0, 0, 0, 0);
     const agg = await prisma.pagos.aggregate({
-      where: { tenant_id: promesa.tenant_id, credito_id: promesa.credito_id, fecha: { gte: desde } },
+      where: { tenant_id: promesa.tenant_id, credito_id: promesa.credito_id, fecha: { gte: desde }, anulado: false },
       _sum: { monto: true },
     });
     const pagado = agg._sum.monto ?? 0;

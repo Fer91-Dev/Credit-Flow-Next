@@ -16,6 +16,8 @@ import { AgendaHoy } from "./AgendaHoy";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { KpiCard } from "@/components/ui/KpiCard";
 import { StatusBadge } from "@/components/ui/StatusBadge";
+import { DataTable, type Column } from "@/components/ui/DataTable";
+import { Emoji } from "@/components/ui/Emoji";
 import { BuscadorF3 } from "@/components/ui/BuscadorF3";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ModalHeader } from "@/components/ui/form-kit";
@@ -189,11 +191,11 @@ export function CobranzaTable({ role }: { role: Role }) {
       {/* ── Tabs: Morosos | Promesas | Campañas (campañas solo admin/cobrador) ── */}
       <div className="relative flex gap-1 border-b border-border -mt-2">
         {([
-          ["hoy",      "Hoy",      Sun],
-          ["morosos",  "Morosos",  ShieldAlert],
-          ["promesas", "Promesas", MessageSquarePlus],
-          ...(puedeCampanas ? [["campanas", "Campañas", Megaphone]] : []),
-        ] as [Tab, string, typeof ShieldAlert][]).map(([key, label, Icon]) => (
+          ["hoy",      "Hoy",      "calendar"],
+          ["morosos",  "Morosos",  "money-with-wings"],
+          ["promesas", "Promesas", "handshake"],
+          ...(puedeCampanas ? [["campanas", "Campañas", "megaphone"]] : []),
+        ] as [Tab, string, string][]).map(([key, label, emoji]) => (
           <button
             key={key}
             onClick={() => setTab(key)}
@@ -212,7 +214,7 @@ export function CobranzaTable({ role }: { role: Role }) {
               <div className="absolute inset-0 rounded-t-lg bg-primary/10 border-b-2 border-primary" />
             )}
             <span className="relative flex items-center gap-1.5">
-              <Icon className="h-4 w-4" /> {label}
+              <Emoji name={emoji} className="h-4 w-4" /> {label}
             </span>
           </button>
         ))}
@@ -292,255 +294,190 @@ export function CobranzaTable({ role }: { role: Role }) {
       ) : sortedFiltered.length === 0 ? (
         <EmptyFilterState />
       ) : (
-        <>
-          {/* Desktop table */}
-          <div className="hidden md:block rounded-xl border border-border overflow-hidden">
-            <table className="w-full text-sm border-separate border-spacing-0">
-              <thead>
-                <tr className="bg-muted/30">
-                  {puedeCampanas && (
-                    <th className="px-4 py-3 w-10 border-b border-border">
-                      <input
-                        type="checkbox"
-                        checked={todasVisiblesSel}
-                        onChange={toggleTodasVisibles}
-                        title="Seleccionar todos los visibles"
-                        className="h-4 w-4 rounded border-border accent-primary cursor-pointer"
-                      />
-                    </th>
-                  )}
-                  <th className="px-4 py-3 text-left  text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">Cliente</th>
-                  <th className="px-4 py-3 text-left  text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">Contacto</th>
-                  <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">Saldo</th>
-                  <th className="px-4 py-3 text-right text-xs font-semibold text-destructive uppercase tracking-wide border-b border-border">Interés mora</th>
-                  <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">Días mora</th>
-                  <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">Severidad</th>
-                  <th className="px-4 py-3 text-left  text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border pr-5">Acción</th>
-                </tr>
-              </thead>
-              <tbody>
-                {sortedFiltered.map((c, idx) => {
-                  const sev = severidadConfig(c.dias_mora);
-                  return (
-                    <tr key={c.id} onClick={() => setDetalle(c)} className={`cursor-pointer hover:bg-muted/20 transition-colors ${seleccion.has(c.id) ? "bg-primary/5" : idx % 2 === 1 ? "bg-muted/5" : ""}`}>
-                      {puedeCampanas && (
-                        <td className="px-4 py-3 border-b border-border/70" onClick={(e) => e.stopPropagation()}>
-                          <input
-                            type="checkbox"
-                            checked={seleccion.has(c.id)}
-                            onChange={() => toggleSel(c.id)}
-                            className="h-4 w-4 rounded border-border accent-primary cursor-pointer"
-                          />
-                        </td>
-                      )}
-                      <td className="px-4 py-3 border-b border-border/70">
-                        <p className="font-medium text-foreground">{nombreCompleto(c.cliente)}</p>
-                        {(() => {
-                          const u = ultimaPorCredito.get(c.id);
-                          if (!u) return null;
-                          return (
-                            <p className="mt-0.5 flex items-center gap-1 text-[11px] text-muted-foreground/70">
-                              {resultadoLabel[u.resultado]}
-                              {u.proximo_contacto && (
-                                <span className="flex items-center gap-0.5 text-primary">
-                                  · <CalendarClock className="h-3 w-3" /> {fmtDate(u.proximo_contacto)}
-                                </span>
-                              )}
-                            </p>
-                          );
-                        })()}
-                      </td>
-                      <td className="px-4 py-3 border-b border-border/70">
-                        <div className="flex flex-col gap-1">
-                          {c.cliente.email && (
-                            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                              <Mail className="h-3 w-3 shrink-0 text-muted-foreground/50" />{c.cliente.email}
-                            </div>
-                          )}
-                          {c.cliente.telefono && (
-                            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                              <Phone className="h-3 w-3 shrink-0 text-muted-foreground/50" />{c.cliente.telefono}
-                            </div>
-                          )}
-                          {!c.cliente.email && !c.cliente.telefono && <span className="text-xs text-muted-foreground/20">—</span>}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 text-right font-mono font-bold border-b border-border/70">
-                        <span className={c.dias_mora > 30 ? "text-destructive" : "text-warning"}>
-                          ${n0(c.saldo_pendiente)}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-right font-mono border-b border-border/70">
-                        {c.interes_mora && c.interes_mora > 0
-                          ? <span className="text-destructive font-semibold">${n0(c.interes_mora)}</span>
-                          : <span className="text-muted-foreground/20">—</span>}
-                      </td>
-                      <td className="px-4 py-3 text-center border-b border-border/70">
-                        <span className={`font-mono font-bold text-sm ${c.dias_mora > 30 ? "text-destructive" : "text-warning"}`}>
-                          {c.dias_mora}d
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-center border-b border-border/70">
-                        <StatusBadge label={sev.label} variant={sev.variant} />
-                      </td>
-                      <td className="px-4 py-3 pr-5 border-b border-border/70">
-                        <div className="flex items-center gap-1.5">
-                          <button
-                            onClick={(e) => { e.stopPropagation(); setGestion(c); }}
-                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 text-xs font-medium transition-colors border border-primary/20"
-                          >
-                            <MessageSquarePlus className="h-3 w-3" /> Gestionar
-                          </button>
-                          {(() => {
-                            const wa = whatsappLink(c);
-                            return (
-                              <a
-                                href={wa ?? undefined}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                onClick={(e) => { e.stopPropagation(); if (!wa) e.preventDefault(); }}
-                                title={wa ? "Reclamar por WhatsApp" : "Sin teléfono cargado"}
-                                aria-disabled={!wa}
-                                className={`flex items-center justify-center h-7 w-7 rounded-lg transition-colors ${
-                                  wa
-                                    ? "text-success hover:bg-success/10"
-                                    : "text-muted-foreground/20 cursor-not-allowed"
-                                }`}
-                              >
-                                <MessageCircle className="h-3.5 w-3.5" />
-                              </a>
-                            );
-                          })()}
-                          <button
-                            onClick={(e) => { e.stopPropagation(); handleGestionar(c); }}
-                            title="Copiar datos del cliente"
-                            className="flex items-center justify-center h-7 w-7 rounded-lg text-muted-foreground hover:bg-muted transition-colors"
-                          >
-                            {copiedId === c.id
-                              ? <CheckCheck className="h-3.5 w-3.5 text-success" />
-                              : <Copy className="h-3.5 w-3.5" />}
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-              <tfoot>
-                <tr className="bg-muted/20">
-                  <td colSpan={puedeCampanas ? 3 : 2} className="px-4 py-3 text-[10px] font-bold text-muted-foreground uppercase tracking-widest border-t border-border">
-                    Total ({sortedFiltered.length})
-                  </td>
-                  <td className="px-4 py-3 text-right font-mono font-bold text-destructive border-t border-border">
-                    ${n0(sortedFiltered.reduce((s, c) => s + c.saldo_pendiente, 0))}
-                  </td>
-                  <td className="px-4 py-3 text-right font-mono font-bold text-destructive border-t border-border">
-                    ${n0(sortedFiltered.reduce((s, c) => s + (c.interes_mora ?? 0), 0))}
-                  </td>
-                  <td colSpan={3} className="border-t border-border pr-5" />
-                </tr>
-              </tfoot>
-            </table>
-          </div>
-
-          {/* Mobile cards */}
-          <div className="block md:hidden space-y-3">
-            {sortedFiltered.map(c => {
-              const sev = severidadConfig(c.dias_mora);
-              return (
-                <div key={c.id} onClick={() => setDetalle(c)} className={`rounded-xl bg-card border p-4 space-y-3 cursor-pointer active:bg-muted/20 transition-colors ${seleccion.has(c.id) ? "border-primary/40" : "border-border"}`}>
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex items-center gap-2.5 min-w-0" onClick={(e) => e.stopPropagation()}>
-                      {puedeCampanas && (
-                        <input
-                          type="checkbox"
-                          checked={seleccion.has(c.id)}
-                          onChange={() => toggleSel(c.id)}
-                          className="h-4 w-4 rounded border-border accent-primary cursor-pointer shrink-0"
-                        />
-                      )}
-                      <p className="font-medium text-foreground text-sm truncate">{nombreCompleto(c.cliente)}</p>
-                    </div>
-                    <StatusBadge label={sev.label} variant={sev.variant} />
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className={`font-mono font-bold text-xl ${c.dias_mora > 30 ? "text-destructive" : "text-warning"}`}>
-                      ${n0(c.saldo_pendiente)}
-                    </span>
-                    <span className={`font-mono font-bold text-lg ${c.dias_mora > 30 ? "text-destructive" : "text-warning"}`}>
-                      {c.dias_mora}d mora
-                    </span>
-                  </div>
-                  {c.interes_mora && c.interes_mora > 0 && (
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-muted-foreground">Interés por mora</span>
-                      <span className="font-mono font-semibold text-destructive">${n0(c.interes_mora)}</span>
-                    </div>
-                  )}
-                  {(c.cliente.email || c.cliente.telefono) && (
-                    <div className="flex flex-col gap-1 pt-2 border-t border-border/70">
-                      {c.cliente.email && (
-                        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                          <Mail className="h-3 w-3 shrink-0" />{c.cliente.email}
-                        </div>
-                      )}
-                      {c.cliente.telefono && (
-                        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                          <Phone className="h-3 w-3 shrink-0" />{c.cliente.telefono}
-                        </div>
-                      )}
-                    </div>
-                  )}
+        <DataTable<Credito>
+          rows={sortedFiltered}
+          rowKey={(c) => c.id}
+          onRowClick={(c) => setDetalle(c)}
+          rowClassName={(c) => (seleccion.has(c.id) ? "bg-primary/5" : "")}
+          zebra
+          pageSize={12}
+          footer={
+            <tr className="bg-muted/20">
+              <td colSpan={puedeCampanas ? 3 : 2} className="px-4 py-3 text-[10px] font-bold text-muted-foreground uppercase tracking-widest border-t border-border">
+                Total ({sortedFiltered.length})
+              </td>
+              <td className="px-4 py-3 text-right font-mono font-bold text-destructive border-t border-border">
+                ${n0(sortedFiltered.reduce((s, c) => s + c.saldo_pendiente, 0))}
+              </td>
+              <td className="px-4 py-3 text-right font-mono font-bold text-destructive border-t border-border">
+                ${n0(sortedFiltered.reduce((s, c) => s + (c.interes_mora ?? 0), 0))}
+              </td>
+              <td colSpan={3} className="border-t border-border pr-5" />
+            </tr>
+          }
+          columns={[
+            ...(puedeCampanas ? ([{
+              header: (
+                <input type="checkbox" checked={todasVisiblesSel} onChange={toggleTodasVisibles} title="Seleccionar todos los visibles" className="h-4 w-4 rounded border-border accent-primary cursor-pointer" />
+              ),
+              className: "w-10",
+              cell: (c) => (
+                <input type="checkbox" checked={seleccion.has(c.id)} onChange={() => toggleSel(c.id)} onClick={(e) => e.stopPropagation()} className="h-4 w-4 rounded border-border accent-primary cursor-pointer" />
+              ),
+            }] as Column<Credito>[]) : []),
+            {
+              header: "Cliente",
+              cell: (c) => (
+                <div>
+                  <p className="font-medium text-foreground">{nombreCompleto(c.cliente)}</p>
                   {(() => {
                     const u = ultimaPorCredito.get(c.id);
                     if (!u) return null;
                     return (
-                      <div className="flex items-center justify-between pt-2 border-t border-border/70 text-[11px]">
-                        <span className="text-muted-foreground/70">Última: {resultadoLabel[u.resultado]}</span>
+                      <p className="mt-0.5 flex items-center gap-1 text-[11px] text-muted-foreground/70">
+                        {resultadoLabel[u.resultado]}
                         {u.proximo_contacto && (
-                          <span className="flex items-center gap-1 text-primary">
-                            <CalendarClock className="h-3 w-3" /> próx {fmtDate(u.proximo_contacto)}
+                          <span className="flex items-center gap-0.5 text-primary">
+                            · <CalendarClock className="h-3 w-3" /> {fmtDate(u.proximo_contacto)}
                           </span>
                         )}
-                      </div>
+                      </p>
                     );
                   })()}
-                  <div className="flex gap-2">
-                    <button
-                      onClick={(e) => { e.stopPropagation(); setGestion(c); }}
-                      className="flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 text-sm font-medium transition-colors border border-primary/20"
-                    >
-                      <MessageSquarePlus className="h-4 w-4" /> Gestionar
-                    </button>
-                    {(() => {
-                      const wa = whatsappLink(c);
-                      if (!wa) return null;
-                      return (
-                        <a
-                          href={wa}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          onClick={(e) => e.stopPropagation()}
-                          title="Reclamar por WhatsApp"
-                          className="flex items-center justify-center h-10 w-10 rounded-lg border border-success/30 bg-success/10 text-success hover:bg-success/20 transition-colors"
-                        >
-                          <MessageCircle className="h-4 w-4" />
-                        </a>
-                      );
-                    })()}
-                    <button
-                      onClick={(e) => { e.stopPropagation(); handleGestionar(c); }}
-                      title="Copiar datos"
-                      className="flex items-center justify-center h-10 w-10 rounded-lg border border-border text-muted-foreground hover:bg-muted transition-colors"
-                    >
-                      {copiedId === c.id ? <CheckCheck className="h-4 w-4 text-success" /> : <Copy className="h-4 w-4" />}
-                    </button>
-                  </div>
                 </div>
-              );
-            })}
-          </div>
-        </>
+              ),
+            },
+            {
+              header: "Contacto",
+              cell: (c) => (
+                <div className="flex flex-col gap-1">
+                  {c.cliente.email && (
+                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground"><Mail className="h-3 w-3 shrink-0 text-muted-foreground/50" />{c.cliente.email}</div>
+                  )}
+                  {c.cliente.telefono && (
+                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground"><Phone className="h-3 w-3 shrink-0 text-muted-foreground/50" />{c.cliente.telefono}</div>
+                  )}
+                  {!c.cliente.email && !c.cliente.telefono && <span className="text-xs text-muted-foreground/20">—</span>}
+                </div>
+              ),
+            },
+            {
+              header: "Saldo", align: "right", mono: true,
+              cell: (c) => <span className={`font-bold ${c.dias_mora > 30 ? "text-destructive" : "text-warning"}`}>${n0(c.saldo_pendiente)}</span>,
+            },
+            {
+              header: <span className="text-destructive">Interés mora</span>, align: "right", mono: true,
+              cell: (c) => c.interes_mora && c.interes_mora > 0
+                ? <span className="text-destructive font-semibold">${n0(c.interes_mora)}</span>
+                : <span className="text-muted-foreground/20">—</span>,
+            },
+            {
+              header: "Días mora", align: "center",
+              cell: (c) => <span className={`font-mono font-bold text-sm ${c.dias_mora > 30 ? "text-destructive" : "text-warning"}`}>{c.dias_mora}d</span>,
+            },
+            {
+              header: "Severidad", align: "center",
+              cell: (c) => { const sev = severidadConfig(c.dias_mora); return <StatusBadge label={sev.label} variant={sev.variant} />; },
+            },
+            {
+              header: "Acción",
+              cell: (c) => (
+                <div className="flex items-center gap-1.5">
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setGestion(c); }}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 text-xs font-medium transition-colors border border-primary/20"
+                  >
+                    <MessageSquarePlus className="h-3 w-3" /> Gestionar
+                  </button>
+                  {(() => {
+                    const wa = whatsappLink(c);
+                    return (
+                      <a
+                        href={wa ?? undefined}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={(e) => { e.stopPropagation(); if (!wa) e.preventDefault(); }}
+                        title={wa ? "Reclamar por WhatsApp" : "Sin teléfono cargado"}
+                        aria-disabled={!wa}
+                        className={`flex items-center justify-center h-7 w-7 rounded-lg transition-colors ${wa ? "text-success hover:bg-success/10" : "text-muted-foreground/20 cursor-not-allowed"}`}
+                      >
+                        <MessageCircle className="h-3.5 w-3.5" />
+                      </a>
+                    );
+                  })()}
+                  <button
+                    onClick={(e) => { e.stopPropagation(); handleGestionar(c); }}
+                    title="Copiar datos del cliente"
+                    className="flex items-center justify-center h-7 w-7 rounded-lg text-muted-foreground hover:bg-muted transition-colors"
+                  >
+                    {copiedId === c.id ? <CheckCheck className="h-3.5 w-3.5 text-success" /> : <Copy className="h-3.5 w-3.5" />}
+                  </button>
+                </div>
+              ),
+            },
+          ]}
+          renderMobileCard={(c) => {
+            const sev = severidadConfig(c.dias_mora);
+            return (
+              <div onClick={() => setDetalle(c)} className={`rounded-xl bg-card border p-4 space-y-3 cursor-pointer active:bg-muted/20 transition-colors ${seleccion.has(c.id) ? "border-primary/40" : "border-border"}`}>
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-center gap-2.5 min-w-0" onClick={(e) => e.stopPropagation()}>
+                    {puedeCampanas && (
+                      <input type="checkbox" checked={seleccion.has(c.id)} onChange={() => toggleSel(c.id)} className="h-4 w-4 rounded border-border accent-primary cursor-pointer shrink-0" />
+                    )}
+                    <p className="font-medium text-foreground text-sm truncate">{nombreCompleto(c.cliente)}</p>
+                  </div>
+                  <StatusBadge label={sev.label} variant={sev.variant} />
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className={`font-mono font-bold text-xl ${c.dias_mora > 30 ? "text-destructive" : "text-warning"}`}>${n0(c.saldo_pendiente)}</span>
+                  <span className={`font-mono font-bold text-lg ${c.dias_mora > 30 ? "text-destructive" : "text-warning"}`}>{c.dias_mora}d mora</span>
+                </div>
+                {c.interes_mora && c.interes_mora > 0 && (
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground">Interés por mora</span>
+                    <span className="font-mono font-semibold text-destructive">${n0(c.interes_mora)}</span>
+                  </div>
+                )}
+                {(c.cliente.email || c.cliente.telefono) && (
+                  <div className="flex flex-col gap-1 pt-2 border-t border-border/70">
+                    {c.cliente.email && (<div className="flex items-center gap-1.5 text-xs text-muted-foreground"><Mail className="h-3 w-3 shrink-0" />{c.cliente.email}</div>)}
+                    {c.cliente.telefono && (<div className="flex items-center gap-1.5 text-xs text-muted-foreground"><Phone className="h-3 w-3 shrink-0" />{c.cliente.telefono}</div>)}
+                  </div>
+                )}
+                {(() => {
+                  const u = ultimaPorCredito.get(c.id);
+                  if (!u) return null;
+                  return (
+                    <div className="flex items-center justify-between pt-2 border-t border-border/70 text-[11px]">
+                      <span className="text-muted-foreground/70">Última: {resultadoLabel[u.resultado]}</span>
+                      {u.proximo_contacto && (
+                        <span className="flex items-center gap-1 text-primary"><CalendarClock className="h-3 w-3" /> próx {fmtDate(u.proximo_contacto)}</span>
+                      )}
+                    </div>
+                  );
+                })()}
+                <div className="flex gap-2">
+                  <button onClick={(e) => { e.stopPropagation(); setGestion(c); }} className="flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 text-sm font-medium transition-colors border border-primary/20">
+                    <MessageSquarePlus className="h-4 w-4" /> Gestionar
+                  </button>
+                  {(() => {
+                    const wa = whatsappLink(c);
+                    if (!wa) return null;
+                    return (
+                      <a href={wa} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} title="Reclamar por WhatsApp" className="flex items-center justify-center h-10 w-10 rounded-lg border border-success/30 bg-success/10 text-success hover:bg-success/20 transition-colors">
+                        <MessageCircle className="h-4 w-4" />
+                      </a>
+                    );
+                  })()}
+                  <button onClick={(e) => { e.stopPropagation(); handleGestionar(c); }} title="Copiar datos" className="flex items-center justify-center h-10 w-10 rounded-lg border border-border text-muted-foreground hover:bg-muted transition-colors">
+                    {copiedId === c.id ? <CheckCheck className="h-4 w-4 text-success" /> : <Copy className="h-4 w-4" />}
+                  </button>
+                </div>
+              </div>
+            );
+          }}
+        />
       )}
       </div>
       )}

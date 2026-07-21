@@ -8,6 +8,8 @@ import {
   diasAtraso,
   round2,
   etiquetaCaja,
+  cuentaDeMetodo,
+  esCuentaValida,
   type CuotaParaImputar,
 } from "@/lib/domain";
 import { siguienteNumeroComprobante } from "@/lib/comprobantes";
@@ -145,6 +147,9 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
 
   const config = await getConfiguracion(tenantId);
   const fechaPago = body.fecha ? new Date(body.fecha) : hoyComercial();
+  // Cuenta de caja donde impacta el cobro: explícita si viene en el body, si no derivada
+  // del método (efectivo→efectivo, transferencia/cheque→banco). Antes SIEMPRE caía en efectivo.
+  const cuentaCobro = esCuentaValida(body.cuenta) ? body.cuenta : cuentaDeMetodo(body.metodo);
 
   // ── Campañas de recuperación activas (Fase 7B) ─────────────────────────────
   // Si el crédito es objetivo de una campaña ACTIVA con quita de intereses vigente
@@ -296,13 +301,14 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
         tipo: "cobro",
         monto: Math.abs(body.monto),
         metodo: body.metodo,
+        cuenta: cuentaCobro, // el cobro impacta en efectivo o banco según el método
         credito_id: body.credito_id,
         pago_id: p.id,
         // La cobranza entra a la caja de QUIEN cobra: un vendedor cobra a SU caja;
         // un admin/cobrador cobra para la empresa → caja principal (vendedor_id null).
         vendedor_id: role === "vendedor" ? vendedorId : null,
         origen: nombreCompleto(credito.cliente),
-        destino: etiquetaCaja(role === "vendedor", "efectivo"),
+        destino: etiquetaCaja(role === "vendedor", cuentaCobro),
         serie: "REC",
         numero: numComp,
         descripcion: `Cobro ${formatCreditoNumero(credito.numero)} · ${nombreCompleto(credito.cliente)}`,

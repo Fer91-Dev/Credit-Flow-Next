@@ -17,6 +17,7 @@ export const SERIE_LABEL = {
   ENT: "Entrega a vendedor",
   REN: "Rendición",
   GAS: "Gasto",
+  ANP: "Anulación de cobro",
 } as const;
 
 export type SerieComprobante = keyof typeof SERIE_LABEL;

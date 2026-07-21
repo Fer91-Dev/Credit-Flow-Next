@@ -7,6 +7,7 @@ import { FeatureGate } from "@/components/providers/FeaturesProvider";
 import { FinancieraForm } from "@/components/configuracion/FinancieraForm";
 import type { SimuladorConfig, CargosConfig, FrecuenciaOpcion } from "@/lib/domain";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { Emoji } from "@/components/ui/Emoji";
 import { Field, Input, Select } from "@/components/ui/field";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -177,13 +178,13 @@ export function ConfigForm() {
             {/* ─ Rail de secciones (patrón settings: nav lateral) ─ */}
             <nav className="-mx-1 flex gap-1 overflow-x-auto px-1 md:mx-0 md:flex-col md:overflow-visible md:px-0">
               {([
-                { key: "financiera",     label: "Datos de la financiera" },
-                { key: "motor",          label: "Motor financiero" },
-                { key: "simulador",      label: "Simulador" },
-                { key: "comunicaciones", label: "Comunicaciones" },
-                { key: "gamificacion",   label: "Gamificación" },
-                { key: "rentabilidad",   label: "Rentabilidad" },
-                { key: "riesgo",         label: "Riesgo / Originación" },
+                { key: "financiera",     label: "Datos de la financiera", emoji: "office-building" },
+                { key: "motor",          label: "Motor financiero",       emoji: "gear" },
+                { key: "simulador",      label: "Simulador",              emoji: "bar-chart" },
+                { key: "comunicaciones", label: "Comunicaciones",         emoji: "speech-balloon" },
+                { key: "gamificacion",   label: "Gamificación",           emoji: "trophy" },
+                { key: "rentabilidad",   label: "Rentabilidad",           emoji: "chart-increasing" },
+                { key: "riesgo",         label: "Riesgo / Originación",   emoji: "shield" },
               ] as const).map(tab => {
                 const active = activeTab === tab.key;
                 return (
@@ -196,7 +197,9 @@ export function ConfigForm() {
                         : "text-muted-foreground hover:bg-muted/10 hover:text-foreground"
                     }`}
                   >
-                    {tab.label}
+                    <span className="flex items-center gap-2">
+                      <Emoji name={tab.emoji} className="h-4 w-4" /> {tab.label}
+                    </span>
                   </button>
                 );
               })}
@@ -484,15 +487,22 @@ export function ConfigForm() {
           </Section>
 
           {/* Agenda de cobranza */}
-          <Section title="Agenda del día de cobranza" desc="Cada cuántos días un cliente moroso sin gestión vuelve a aparecer en la cola “Hoy” del vendedor."
+          <Section title="Cobranza y control de pagos" desc="Umbral de la agenda del día y la ventana para anular un pago cargado por error (control de tesorería)."
             onSave={() => save("cobranza", { cobranzaConfig: cobranza })}
             saving={savingKey === "cobranza"} saved={savedKey === "cobranza"} dirty={isDirty("cobranza")}>
-            <div className="max-w-md">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 max-w-xl">
               <Field label="Días sin gestión" hint="Un moroso reaparece en la agenda si nadie lo contactó en esta cantidad de días (1–90).">
                 <Input
                   type="number" min="1" max="90" step="1"
                   value={cobranza.dias_sin_gestion}
                   onChange={e => setCobranza({ dias_sin_gestion: Math.max(1, Math.min(90, Math.round(parseFloat(e.target.value) || 1))) })}
+                />
+              </Field>
+              <Field label="Días para anular un pago" hint="Pasado este plazo desde que se registró el pago, ya no se puede anular (0 = solo el mismo día).">
+                <Input
+                  type="number" min="0" max="365" step="1"
+                  value={cobranza.dias_anulacion_pago}
+                  onChange={e => setCobranza({ dias_anulacion_pago: Math.max(0, Math.min(365, Math.round(parseFloat(e.target.value) || 0))) })}
                 />
               </Field>
             </div>
@@ -939,7 +949,7 @@ function defaultRentabilidad(): RentabilidadConfig {
 }
 
 function defaultCobranza(): CobranzaConfig {
-  return { dias_sin_gestion: 7 };
+  return { dias_sin_gestion: 7, dias_anulacion_pago: 3 };
 }
 
 function defaultRiesgo(): RiesgoConfig {

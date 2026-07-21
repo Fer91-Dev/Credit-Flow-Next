@@ -61,6 +61,8 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
       aplicado_capital: pago.aplicado_capital,
       excedente: pago.excedente,
       created_at: pago.created_at,
+      anulado: pago.anulado,
+      anulado_motivo: pago.anulado_motivo,
     },
     credito: {
       id: pago.credito.id,

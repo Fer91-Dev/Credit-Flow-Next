@@ -9,6 +9,7 @@ import { CreditoDetail } from "./CreditoDetail";
 import { LibreDeudaDialog } from "./LibreDeudaDialog";
 import { RefinanciarDialog } from "./RefinanciarDialog";
 import { useCreditos, KEYS, type Credito } from "@/lib/swr";
+import { type Role } from "@/lib/auth/roles";
 import { formatCreditoNumero, nombreCompleto, formatFecha } from "@/lib/utils";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { KpiCard } from "@/components/ui/KpiCard";
@@ -50,7 +51,7 @@ function estadoBadge(estado: string): { label: string; variant: "primary" | "suc
   return                                { label: estado,         variant: "muted" };
 }
 
-export function CreditosTable() {
+export function CreditosTable({ role }: { role: Role }) {
   const router = useRouter();
   const { creditos, error, isLoading, mutate } = useCreditos();
   const confirm = useConfirm();
@@ -450,7 +451,7 @@ export function CreditosTable() {
             <DialogTitle>Detalle del crédito</DialogTitle>
           </DialogHeader>
           <div className="flex-1 min-h-0 overflow-hidden">
-            {detail && <CreditoDetail credito={detail} />}
+            {detail && <CreditoDetail credito={detail} role={role} />}
           </div>
         </DialogContent>
       </Dialog>

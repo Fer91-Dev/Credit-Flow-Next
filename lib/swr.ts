@@ -76,6 +76,9 @@ export interface PagoImputado {
   aplicado_cargos: number;
   aplicado_capital: number;
   excedente: number;
+  anulado?: boolean;
+  anulado_motivo?: string | null;
+  anulado_at?: string | null;
 }
 
 /** Crédito enriquecido con sus finanzas, dentro del detalle del cliente. */
@@ -128,6 +131,8 @@ export interface ClienteDetalle extends Cliente {
   monto_total?: number;
   creditos: CreditoConFinanzas[];
   estado_cuenta: EstadoCuenta;
+  /** El usuario en sesión puede anular pagos (rol admin). */
+  puede_anular_pago?: boolean;
 }
 
 export interface Credito {
@@ -675,6 +680,8 @@ export interface ConfiguracionFinanciera {
 export interface CobranzaConfig {
   /** Días sin gestión tras los cuales un moroso vuelve a aparecer en la agenda del día. */
   dias_sin_gestion: number;
+  /** Ventana (días desde el registro) para poder anular un pago. 0 = solo el mismo día. */
+  dias_anulacion_pago: number;
 }
 
 export interface Pago {
@@ -689,6 +696,9 @@ export interface Pago {
   aplicado_cargos: number;
   aplicado_capital: number;
   excedente: number;
+  anulado?: boolean;
+  anulado_motivo?: string | null;
+  anulado_at?: string | null;
   credito: { id: string; cliente: { nombre: string; apellido?: string | null } };
 }
 

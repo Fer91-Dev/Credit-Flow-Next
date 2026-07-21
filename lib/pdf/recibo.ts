@@ -7,7 +7,7 @@
  * El recibo es un documento de lectura: refleja el pago y su imputación
  * (Mora → Interés → Capital) tal como los persistió el motor financiero.
  */
-import { PDFDocument, StandardFonts, rgb, type PDFFont } from "pdf-lib";
+import { PDFDocument, StandardFonts, rgb, degrees, type PDFFont } from "pdf-lib";
 
 export interface ReciboData {
   pago: {
@@ -22,6 +22,9 @@ export interface ReciboData {
     aplicado_capital: number;
     excedente: number;
     created_at: Date;
+    /** Si el pago fue anulado: el recibo sale con marca de agua "ANULADO". */
+    anulado?: boolean;
+    anulado_motivo?: string | null;
   };
   credito: {
     id: string;
@@ -82,6 +85,20 @@ export async function generarReciboPDF(data: ReciboData): Promise<Uint8Array> {
   const right = W - M;
   let y = page.getHeight() - M;
 
+  // ── Marca de agua "ANULADO" (diagonal, detrás del contenido) ──────────────
+  const DANGER = rgb(0.9, 0.2, 0.2);
+  if (pago.anulado) {
+    const wmText = "ANULADO";
+    const wmSize = 92;
+    const wmW = bold.widthOfTextAtSize(wmText, wmSize);
+    const diag = Math.SQRT1_2; // cos/sin de 45°
+    page.drawText(wmText, {
+      x: W / 2 - (wmW / 2) * diag,
+      y: page.getHeight() / 2 - (wmW / 2) * diag,
+      font: bold, size: wmSize, color: DANGER, rotate: degrees(45), opacity: 0.13,
+    });
+  }
+
   const text = (s: string, x: number, yy: number, f: PDFFont, size: number, color = INK) =>
     page.drawText(s, { x, y: yy, font: f, size, color });
 
@@ -120,6 +137,11 @@ export async function generarReciboPDF(data: ReciboData): Promise<Uint8Array> {
   textRight("COMPROBANTE DE PAGO", right, y, bold, 13, INK);
   y -= 18;
   textRight(`N° ${pago.id.slice(0, 8).toUpperCase()}`, right, y, font, 10, MUTED);
+  if (pago.anulado) {
+    y -= 16;
+    text("PAGO ANULADO", M, y, bold, 12, DANGER);
+    if (pago.anulado_motivo) textRight(`Motivo: ${pago.anulado_motivo}`, right, y, font, 8, MUTED);
+  }
   y -= 24;
   hr(y);
   y -= 28;

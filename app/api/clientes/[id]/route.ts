@@ -72,7 +72,7 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
         interes_mora = interesMora(cuota, c.dias_mora, { tasaDiaria: config.tasaMoraDiaria });
       }
     }
-    const total_cobrado = c.pagos.reduce((s, p) => s + p.monto, 0);
+    const total_cobrado = c.pagos.filter((p) => !p.anulado).reduce((s, p) => s + p.monto, 0);
 
     // Cronograma persistido: estado AUTORITATIVO (escrito por el motor cuota-dirigido,
     // Fase 6B); `vencida` se recalcula dinámicamente (depende de hoy).
@@ -133,7 +133,7 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
     puedeEditar: esAdmin || maxEd === 0 || cliente.ingreso_ediciones < maxEd,
   };
 
-  return successResponse({ ...cliente, creditos: creditosConFinanzas, estado_cuenta, sueldo_control });
+  return successResponse({ ...cliente, creditos: creditosConFinanzas, estado_cuenta, sueldo_control, puede_anular_pago: esAdmin });
 });
 
 /**

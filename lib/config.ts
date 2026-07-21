@@ -180,16 +180,23 @@ export async function guardarRiesgoConfig(tenantId: string, config: RiesgoConfig
 export interface CobranzaConfig {
   /** Días sin gestión tras los cuales un moroso vuelve a aparecer en la agenda del día. */
   dias_sin_gestion: number;
+  /**
+   * Ventana (en días desde que se REGISTRÓ el pago) para poder anularlo. Control de
+   * tesorería: pasado el plazo, el pago queda inmutable. 0 = solo el mismo día del registro.
+   */
+  dias_anulacion_pago: number;
 }
 
-export const COBRANZA_DEFAULT: CobranzaConfig = { dias_sin_gestion: 7 };
+export const COBRANZA_DEFAULT: CobranzaConfig = { dias_sin_gestion: 7, dias_anulacion_pago: 3 };
 
-/** Mezcla con defaults y acota `dias_sin_gestion` a 1..90. */
+/** Mezcla con defaults y acota `dias_sin_gestion` a 1..90 y `dias_anulacion_pago` a 0..365. */
 export function resolverCobranza(raw: unknown): CobranzaConfig {
   const r = (raw ?? {}) as Partial<CobranzaConfig>;
   const n = Number(r.dias_sin_gestion);
   const dias = Number.isFinite(n) && n > 0 ? Math.min(90, Math.max(1, Math.round(n))) : COBRANZA_DEFAULT.dias_sin_gestion;
-  return { dias_sin_gestion: dias };
+  const a = Number(r.dias_anulacion_pago);
+  const diasAnul = Number.isFinite(a) && a >= 0 ? Math.min(365, Math.max(0, Math.round(a))) : COBRANZA_DEFAULT.dias_anulacion_pago;
+  return { dias_sin_gestion: dias, dias_anulacion_pago: diasAnul };
 }
 
 /** Config de agenda de cobranza del tenant (mezclada con defaults). No es secreto. */

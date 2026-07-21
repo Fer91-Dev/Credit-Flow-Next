@@ -36,7 +36,7 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
 
   const [tenant, pagos, cuotas] = await Promise.all([
     prisma.tenants.findUnique({ where: { id: tenantId }, select: { nombre: true } }),
-    prisma.pagos.findMany({ where: { ...withTenant(tenantId), credito_id: id }, select: { monto: true, created_at: true } }),
+    prisma.pagos.findMany({ where: { ...withTenant(tenantId), credito_id: id, anulado: false }, select: { monto: true, created_at: true } }),
     prisma.cuotas.count({ where: { ...withTenant(tenantId), credito_id: id } }),
   ]);
 

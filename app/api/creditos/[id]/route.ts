@@ -172,6 +172,21 @@ export const DELETE = withErrorHandler(async (req: NextRequest, { params }: Rout
     );
   }
 
+  // Un crédito ya DESEMBOLSADO en caja no se puede hard-deletear: el cascade borraría el
+  // desembolso sin reversa ni traza y la caja quedaría inflada. Debe ANULARSE (la anulación
+  // revierte la caja con comprobante). Los créditos de producto no desembolsan efectivo → sí.
+  const desembolso = await prisma.movimientos_caja.findFirst({
+    where: { ...withTenant(tenantId), credito_id: id, tipo: "desembolso" },
+    select: { id: true },
+  });
+  if (desembolso) {
+    return errorResponse(
+      "El crédito ya tiene un desembolso registrado en caja; anulalo en lugar de eliminarlo (la anulación revierte la caja con comprobante).",
+      "INVALID_STATE",
+      409,
+    );
+  }
+
   // Crédito de producto: al borrarlo se repone el stock que se descontó al otorgar.
   // Excepción: si ya estaba ANULADO, la anulación ya lo repuso → no duplicar.
   const reponerStock = !!existing.producto_id && !!existing.producto_cantidad && existing.estado !== "anulado";
