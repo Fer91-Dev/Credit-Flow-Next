@@ -8,11 +8,13 @@ import {
   interesMora,
   normalizarFrecuencia,
   calculateRecoveryOffer,
+  diasMoraActual,
   type FrecuenciaDef,
   type ConfiguracionFinanciera,
 } from "@/lib/domain";
 import { getConfiguracion } from "@/lib/config";
 import { registrarAuditoria } from "@/lib/audit";
+import { hoyComercial } from "@/lib/utils";
 import type { NextRequest } from "next/server";
 
 const CANALES = ["whatsapp", "email", "sms"];
@@ -126,7 +128,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
   const creditos = await prisma.creditos.findMany({
     where: { ...withTenant(tenantId), ...scopeCreditosVendedor(ctx), id: { in: body.credito_ids } },
     select: {
-      id: true, saldo_pendiente: true, dias_mora: true, estado: true,
+      id: true, saldo_pendiente: true, dias_mora: true, proximo_pago: true, estado: true,
       monto_original: true, plazo_meses: true, tasa: true,
       frecuencia: true, frecuencia_def: true, cronograma: true,
     },
@@ -136,20 +138,23 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
   }
 
   const config = await getConfiguracion(tenantId);
+  const hoyCamp = hoyComercial();
 
-  // Snapshot de mora + oferta de recuperación por crédito.
+  // Snapshot de mora + oferta de recuperación por crédito. Mora EN VIVO desde `proximo_pago`
+  // (no del cache `dias_mora`, que no se avanza día a día) → la oferta refleja la mora de hoy.
   const objetivosData = creditos.map((c) => {
-    const interes = interesMoraDe(c, config);
+    const dm = c.proximo_pago ? diasMoraActual(c.proximo_pago, hoyCamp) : c.dias_mora;
+    const interes = interesMoraDe({ ...c, dias_mora: dm }, config);
     const oferta = calculateRecoveryOffer({
       saldo: c.saldo_pendiente,
       interesMora: interes,
-      diasMora: c.dias_mora,
+      diasMora: dm,
       descuentoPct: promoValor,
     });
     return {
       credito_id: c.id,
       saldo: c.saldo_pendiente,
-      dias_mora: c.dias_mora,
+      dias_mora: dm,
       interes_mora: interes,
       oferta_monto: oferta.montoConDescuento,
       oferta_descuento: oferta.descuento,

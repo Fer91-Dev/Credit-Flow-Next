@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { registrarAuditoria } from "@/lib/audit";
 import { esCuentaValida, CUENTA_LABEL, round2, type Cuenta } from "@/lib/domain";
 import { siguienteNumeroComprobante } from "@/lib/comprobantes";
+import { assertFondosSuficientesTx } from "@/lib/caja-fondos";
 import { hoyComercial } from "@/lib/utils";
 import type { NextRequest } from "next/server";
 
@@ -69,6 +70,12 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
 
   // Cada pata (egreso en origen / ingreso en destino) es un comprobante propio con su número TRF.
   const { salida, entrada } = await prisma.$transaction(async (tx) => {
+    // No se puede transferir/vender más de lo que hay en la cuenta de origen (anti-race con
+    // lock de cuenta): la caja principal no queda negativa. `montoOrigen` es lo que sale.
+    await assertFondosSuficientesTx(tx, {
+      tenantId, vendedorId: null, cuenta: origen, monto: montoOrigen,
+      mensaje: (disp) => `La caja principal no tiene saldo suficiente en ${CUENTA_LABEL[origen]} (disponible $${disp.toLocaleString("es-AR")}, necesitás $${montoOrigen.toLocaleString("es-AR")}).`,
+    });
     const s = await tx.movimientos_caja.create({
       data: {
         ...withTenant(tenantId),

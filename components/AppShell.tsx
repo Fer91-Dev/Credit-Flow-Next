@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import {
-  Bell, Search, LogOut, Menu, X, ChevronDown, PlusCircle, Sun, Moon,
+  Bell, Search, LogOut, Menu, X, ChevronDown, PlusCircle, Sun, Moon, HelpCircle,
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useEffect, useState } from "react";
@@ -12,6 +12,8 @@ import { SystemActionsProvider } from "./system-actions";
 import { canAccess, type Role } from "@/lib/auth/roles";
 import { createClient } from "@/lib/supabase/client";
 import { Emoji } from "@/components/ui/Emoji";
+import { HelpPanel } from "@/components/ui/HelpPanel";
+import { getHelpDoc } from "@/lib/help/content";
 import type { Financiera } from "@/lib/swr";
 
 /** Marca co-branded: logo + nombre de la financiera, con "powered by CreditFlow". Fallback
@@ -168,6 +170,9 @@ export function AppShell({ children, role, nombre, email, avatarUrl, financiera,
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [mounted, setMounted] = useState(false);
+  // Ayuda contextual (mobile): mismo panel que en el header desktop (SystemControls).
+  const [helpOpen, setHelpOpen] = useState(false);
+  const helpDoc = getHelpDoc(pathname);
   // Colapso por grupo. Valor explícito tras togglear; si no hay, el grupo se
   // abre por defecto solo si contiene la ruta activa (ver `renderNav`).
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
@@ -323,6 +328,18 @@ export function AppShell({ children, role, nombre, email, avatarUrl, financiera,
               <Bell className="h-5 w-5" />
             </button>
 
+            {/* Ayuda de la sección (solo si hay documento para esta ruta) */}
+            {helpDoc && (
+              <button
+                onClick={() => setHelpOpen(true)}
+                title={`Ayuda: ${helpDoc.titulo}`}
+                aria-label="Abrir ayuda de la sección"
+                className="flex h-10 w-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent transition-colors"
+              >
+                <HelpCircle className="h-5 w-5" />
+              </button>
+            )}
+
             {/* Toggle claro/oscuro */}
             <button
               onClick={toggleTheme}
@@ -334,6 +351,9 @@ export function AppShell({ children, role, nombre, email, avatarUrl, financiera,
 
           </div>
         </header>
+
+        {/* Panel de ayuda contextual (mobile) */}
+        <HelpPanel doc={helpDoc} open={helpOpen} onClose={() => setHelpOpen(false)} />
 
         {/* MAIN — sin padding vertical en el scrollport, así el PageHeader sticky se
             pega al borde superior real (con padding, el sticky quedaba 32px abajo y

@@ -38,6 +38,10 @@ export async function siguienteNumeroComprobante(
   tenantId: string,
   serie: SerieComprobante,
 ): Promise<number> {
+  // Serializa la asignación del correlativo por (tenant, serie): dos operaciones concurrentes
+  // no pueden calcular el mismo `_max + 1` (antes eso violaba el @@unique → 500 "Recurso
+  // duplicado"). El advisory lock se libera solo al terminar la transacción.
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`comprobante:${tenantId}:${serie}`}, 0))`;
   const max = await tx.movimientos_caja.aggregate({
     where: { tenant_id: tenantId, serie },
     _max: { numero: true },

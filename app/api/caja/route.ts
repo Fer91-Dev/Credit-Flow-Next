@@ -3,8 +3,9 @@ import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api"
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { registrarAuditoria } from "@/lib/audit";
-import { montoConSigno, totalesCaja, saldosPorCuenta, esCuentaValida, etiquetaCaja } from "@/lib/domain";
+import { montoConSigno, totalesCaja, saldosPorCuenta, esCuentaValida, etiquetaCaja, CUENTA_LABEL } from "@/lib/domain";
 import { siguienteNumeroComprobante, formatComprobante } from "@/lib/comprobantes";
+import { assertFondosSuficientesTx } from "@/lib/caja-fondos";
 import { getDolarBlueVenta } from "@/lib/cotizacion";
 import { nombreCompleto, hoyComercial } from "@/lib/utils";
 import type { NextRequest } from "next/server";
@@ -150,6 +151,14 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
   const fecha = body.fecha ? new Date(`${body.fecha}T00:00:00.000Z`) : hoyComercial();
 
   const mov = await prisma.$transaction(async (tx) => {
+    // Un ajuste de EGRESO no puede dejar la caja principal negativa (decisión de tesorería:
+    // se bloquea igual que cobros/desembolsos/transferencias). Para sumar plata está el ingreso.
+    if (!ingreso) {
+      await assertFondosSuficientesTx(tx, {
+        tenantId, vendedorId: null, cuenta, monto,
+        mensaje: (disp) => `El ajuste de egreso ($${monto.toLocaleString("es-AR")}) supera el saldo de ${CUENTA_LABEL[cuenta]} en la caja principal (disponible $${disp.toLocaleString("es-AR")}).`,
+      });
+    }
     const numero = await siguienteNumeroComprobante(tx, tenantId, "AJU");
     return tx.movimientos_caja.create({
       data: {

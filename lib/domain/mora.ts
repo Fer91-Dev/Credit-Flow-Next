@@ -39,6 +39,20 @@ export function diasAtraso(fechaVencimiento: Date, hoy: Date = new Date()): numb
 }
 
 /**
+ * Días de mora ACTUALES de un crédito, computados en vivo desde `proximo_pago` (la fecha de
+ * vencimiento de la cuota más vieja impaga, que se mantiene al día en cada cobro). Equivale a
+ * `diasAtraso(proximo_pago, hoy)` — exactamente la fórmula con la que se persiste `dias_mora`,
+ * pero evaluada HOY. Así la morosidad no depende de que un job avance el contador día a día.
+ * Devuelve 0 si el crédito no tiene próximo pago pendiente (saldado / sin cronograma).
+ */
+export function diasMoraActual(proximoPago: Date | string | null | undefined, hoy: Date = new Date()): number {
+  if (!proximoPago) return 0;
+  const d = proximoPago instanceof Date ? proximoPago : new Date(proximoPago);
+  if (Number.isNaN(d.getTime())) return 0;
+  return diasAtraso(d, hoy);
+}
+
+/**
  * Interés moratorio de UNA cuota vencida.
  * @param valorCuota Valor de la cuota en mora.
  * @param dias Días de atraso.

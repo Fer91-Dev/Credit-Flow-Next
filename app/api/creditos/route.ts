@@ -14,11 +14,14 @@ import {
   estadoCoherente,
   etiquetaCaja,
   esCuentaValida,
+  validarParametrosOtorgamiento,
+  diasMoraActual,
   CUENTA_LABEL,
   type Cuenta,
   type FrecuenciaDef,
 } from "@/lib/domain";
 import { siguienteNumeroComprobante } from "@/lib/comprobantes";
+import { assertFondosSuficientesTx } from "@/lib/caja-fondos";
 import { getConfiguracion } from "@/lib/config";
 import { registrarAuditoria } from "@/lib/audit";
 import { registrarMovimientoStock } from "@/lib/stock";
@@ -70,11 +73,15 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   // (mismo criterio que el endpoint de pagos: cuota francesa × tasa diaria × días).
   // Solo se calcula para créditos activos en mora; el resto queda en 0.
   const config = await getConfiguracion(tenantId);
+  const hoy = hoyComercial();
   const creditosConMora = creditos.map((c) => {
+    // Mora EN VIVO desde `proximo_pago` (no del cache `dias_mora`, que no se avanza día a día):
+    // misma fórmula con la que se persiste, pero evaluada hoy → independiente del cron.
+    const dmora = c.proximo_pago ? diasMoraActual(c.proximo_pago, hoy) : c.dias_mora;
     let interes_mora = 0;
     if (
       config.moraActiva &&
-      c.dias_mora > 0 &&
+      dmora > 0 &&
       c.estado === "activo" &&
       c.monto_original > 0 &&
       c.plazo_meses >= 1
@@ -84,12 +91,12 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
       const tasaPeriodica = tasaPeriodicaSegunConvencion(c.tasa, config.convencionTasa, frec, catFrec);
       const cuota = cuotaMensualFrancesa(c.monto_original, tasaPeriodica, c.plazo_meses);
       const graciaCred = (c.cronograma as { diasGracia?: number } | null)?.diasGracia ?? config.simulador.diasGracia;
-      interes_mora = interesMora(cuota, c.dias_mora, { tasaDiaria: config.tasaMoraDiaria, diasGracia: graciaCred });
+      interes_mora = interesMora(cuota, dmora, { tasaDiaria: config.tasaMoraDiaria, diasGracia: graciaCred });
     }
     // Estado reconciliado: defensa de lectura ante datos legacy. La lista no carga
     // cuotas, así que se valida contra el saldo (autoritativo, derivado del ledger).
     const estado = estadoCoherente(c.estado, c.saldo_pendiente);
-    return { ...c, estado, interes_mora, tiene_pagos: c.pagos.length > 0 };
+    return { ...c, estado, dias_mora: dmora, interes_mora, tiene_pagos: c.pagos.length > 0 };
   });
 
   return successResponse({
@@ -127,19 +134,24 @@ async function asegurarFichaVendedor(
   nombre: string | null,
   email: string | null
 ): Promise<string> {
-  const ficha = await prisma.vendedores.create({
-    data: {
-      ...withTenant(tenantId),
-      nombre: nombre?.trim() || email?.split("@")[0] || "Vendedor",
-      email: email ?? null,
-      activo: true,
-      comision_pct: 0,
-      meta_venta: 0,
-    },
-    select: { id: true },
+  // Ficha + vínculo en una transacción: si el update del profile falla, no queda una ficha
+  // comercial huérfana (M2).
+  const fichaId = await prisma.$transaction(async (tx) => {
+    const ficha = await tx.vendedores.create({
+      data: {
+        ...withTenant(tenantId),
+        nombre: nombre?.trim() || email?.split("@")[0] || "Vendedor",
+        email: email ?? null,
+        activo: true,
+        comision_pct: 0,
+        meta_venta: 0,
+      },
+      select: { id: true },
+    });
+    await tx.profiles.update({ where: { id: userId }, data: { vendedor_id: ficha.id } });
+    return ficha.id;
   });
-  await prisma.profiles.update({ where: { id: userId }, data: { vendedor_id: ficha.id } });
-  return ficha.id;
+  return fichaId;
 }
 
 export const POST = withErrorHandler(async (req: NextRequest) => {
@@ -278,6 +290,16 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
   // Snapshot de cargos vigentes: congela las reglas de cargos del tenant en el
   // crédito, para que cambios futuros de configuración no lo alteren.
   const configActual = await getConfiguracion(tenantId);
+
+  // M1 — Parámetros dentro de lo configurado por el tenant (defensa en profundidad: el
+  // simulador ya acota en la UI, pero la API es la barrera autoritativa). Frecuencia
+  // habilitada, plazo permitido y tasa/monto dentro de rango.
+  const errParam = validarParametrosOtorgamiento(configActual.simulador, {
+    monto: body.monto_original, tasa: body.tasa, plazoMeses: body.plazo_meses,
+    frecuencia, esProducto,
+  });
+  if (errParam) return errorResponse(errParam, "PARAMETROS_INVALIDOS", 400);
+
   const cargosSnapshot = configActual.simulador.cargos;
   // Snapshot de la definición de frecuencia: congela días/períodos del crédito.
   const frecuenciaDef = resolverFrecuencia(frecuencia, configActual.simulador.frecuencias);
@@ -334,6 +356,13 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
 
   // Fecha de desembolso y vencimiento de la 1ª cuota (un período después).
   const fechaInicio = body.fecha_inicio ? new Date(body.fecha_inicio) : hoyComercial();
+  // P2 — El otorgamiento no puede fecharse en el futuro (distorsiona caja, mora y cronograma).
+  if (Number.isNaN(fechaInicio.getTime())) {
+    return errorResponse("Fecha de otorgamiento inválida", "FECHA_INVALIDA", 400);
+  }
+  if (fechaInicio.getTime() > hoyComercial().getTime()) {
+    return errorResponse("La fecha de otorgamiento no puede ser futura.", "FECHA_INVALIDA", 400);
+  }
   const proximoPago = body.proximo_pago
     ? new Date(body.proximo_pago)
     : sumarPeriodos(fechaInicio, 1, frecuencia, configActual.simulador.frecuencias);
@@ -370,7 +399,10 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
 
   // Crédito + cuotas en una transacción: un crédito nunca queda sin cronograma.
   const credito = await prisma.$transaction(async (tx) => {
-    // Número identificador legible, secuencial por tenant (CRD-000123).
+    // Número identificador legible, secuencial por tenant (CRD-000123). Advisory lock por
+    // tenant para que dos otorgamientos concurrentes no calculen el mismo `_max + 1`
+    // (antes eso violaba el @@unique → 500). Se libera al terminar la transacción.
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`credito-numero:${tenantId}`}, 0))`;
     const maxNum = await tx.creditos.aggregate({
       where: { ...withTenant(tenantId) },
       _max: { numero: true },
@@ -437,6 +469,12 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
         creditoId: c.id, motivo: `Venta ${formatCreditoNumero(c.numero)}`,
       });
     } else {
+      // Fondos (anti-race, autoritativo): revalida DENTRO de la tx con lock de la cuenta,
+      // por si otra operación concurrente consumió el saldo tras el pre-chequeo de arriba.
+      await assertFondosSuficientesTx(tx, {
+        tenantId, vendedorId, cuenta: cuentaDesembolso, monto: Math.abs(c.monto_original),
+        mensaje: (disp) => `No hay saldo suficiente en ${vendedorId ? "tu caja" : "la caja principal"} de ${CUENTA_LABEL[cuentaDesembolso]}. Disponible: $${disp.toLocaleString("es-AR")} (otra operación consumió el saldo).`,
+      });
       // Movimiento de caja: desembolso (egreso) al otorgar.
       const numComp = await siguienteNumeroComprobante(tx, tenantId, "DES");
       await tx.movimientos_caja.create({

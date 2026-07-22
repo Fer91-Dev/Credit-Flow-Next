@@ -1,7 +1,7 @@
 ﻿"use client";
 
-import { useState, useEffect } from "react";
-import { ArrowRight, Check, CheckCircle2, Loader2, Printer, Search, X } from "lucide-react";
+import { useState, useEffect, Fragment } from "react";
+import { ArrowRight, Check, CheckCircle2, CornerDownRight, Loader2, Printer, Search, X } from "lucide-react";
 import { Field, Input, Select, Textarea } from "@/components/ui/field";
 import { StatusBadge, type BadgeVariant } from "@/components/ui/StatusBadge";
 import {
@@ -510,9 +510,16 @@ export function PagoForm({ creditoId, clienteId, onClose }: PagoFormProps) {
                       {cobrables.map(c => {
                         const incluida = !manual && hasta != null && c.nro <= hasta;
                         const b = CUOTA_BADGE[c.estado];
+                        // Pago parcial: ya se imputó algo de la cuota programada (capital+interés+cargos)
+                        // pero no la cubre entera → queda un SALDO ("subcuota") para completarla. Se
+                        // detecta por `pagado > 0` (así vale también para una parcial que ya venció).
+                        const pagadoProg = round2(c.pagado_capital + (c.pagado_interes ?? 0) + (c.pagado_cargos ?? 0));
+                        const resta = importePendiente(c);
+                        const parcial = pagadoProg > 0 && resta > 0;
+                        const pctPagado = c.cuota_total > 0 ? Math.min(100, (pagadoProg / c.cuota_total) * 100) : 0;
                         return (
+                          <Fragment key={c.nro}>
                           <tr
-                            key={c.nro}
                             onClick={() => !manual && setHasta(c.nro)}
                             className={`${manual ? "opacity-50" : "cursor-pointer hover:bg-muted/20"} ${incluida ? "bg-primary/5" : ""}`}
                             title={manual ? "Desactivá «Monto personalizado» para elegir cuotas" : "Cobrar hasta esta cuota"}
@@ -524,9 +531,37 @@ export function PagoForm({ creditoId, clienteId, onClose }: PagoFormProps) {
                             </td>
                             <td className="px-2 py-2 font-mono text-muted-foreground/60 border-b border-border/70">{c.nro}</td>
                             <td className="px-3 py-2 text-muted-foreground tabular-nums border-b border-border/70">{fmtDate(c.fecha_vencimiento)}</td>
-                            <td className="px-3 py-2 text-right font-mono text-foreground tabular-nums border-b border-border/70">${fmt2(importePendiente(c))}</td>
+                            <td className="px-3 py-2 text-right font-mono tabular-nums border-b border-border/70">
+                              <span className="text-foreground">${fmt2(resta)}</span>
+                              {parcial && <span className="ml-1 align-middle text-[9px] font-sans font-semibold uppercase tracking-wide text-warning">saldo</span>}
+                            </td>
                             <td className="px-3 py-2 pr-3 border-b border-border/70"><StatusBadge label={b.label} variant={b.variant} /></td>
                           </tr>
+                          {parcial && (
+                            <tr
+                              onClick={() => !manual && setHasta(c.nro)}
+                              className={`${manual ? "opacity-50" : "cursor-pointer"} ${incluida ? "bg-primary/5" : ""}`}
+                            >
+                              <td className="border-b border-border/70"></td>
+                              <td colSpan={4} className="px-3 pb-2 border-b border-border/70">
+                                <div className="rounded-lg border border-warning/20 bg-warning/[0.06] px-2.5 py-1.5">
+                                  <div className="flex items-center justify-between gap-2">
+                                    <span className="flex items-center gap-1 text-[11px] font-medium text-warning">
+                                      <CornerDownRight className="h-3 w-3 shrink-0" /> Subcuota pendiente · completa la cuota #{c.nro}
+                                    </span>
+                                    <span className="shrink-0 font-mono text-[11px] text-foreground">resta <span className="font-bold">${fmt2(resta)}</span></span>
+                                  </div>
+                                  <div className="mt-1.5 flex items-center gap-2">
+                                    <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted/40">
+                                      <div className="h-full rounded-full bg-warning transition-all" style={{ width: `${pctPagado}%` }} />
+                                    </div>
+                                    <span className="shrink-0 text-[10px] text-muted-foreground">pagado ${fmt2(pagadoProg)} de ${fmt2(c.cuota_total)}</span>
+                                  </div>
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                          </Fragment>
                         );
                       })}
                     </tbody>

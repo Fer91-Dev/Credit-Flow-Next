@@ -37,6 +37,13 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     return errorResponse("El monto físico debe ser un número mayor o igual a 0", "INVALID_INPUT", 400);
   }
 
+  // Fecha a medianoche UTC (día comercial), mismo parseo que el resto de la caja (evita el
+  // corrimiento por hora local que tenía `new Date(body.fecha)`).
+  const fechaArqueo = body.fecha ? new Date(`${body.fecha}T00:00:00.000Z`) : hoyComercial();
+  if (Number.isNaN(fechaArqueo.getTime())) {
+    return errorResponse("Fecha de arqueo inválida", "FECHA_INVALIDA", 400);
+  }
+
   // Saldo de sistema actual de la cuenta — solo caja principal (vendedor_id null).
   const movs = await prisma.movimientos_caja.findMany({
     where: { ...withTenant(tenantId), vendedor_id: null },
@@ -54,7 +61,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
       return tx.movimientos_caja.create({
         data: {
           ...withTenant(tenantId),
-          fecha: body.fecha ? new Date(body.fecha) : hoyComercial(),
+          fecha: fechaArqueo,
           tipo: "ajuste",
           monto: diferencia, // ya viene con signo (sobrante > 0, faltante < 0)
           cuenta,

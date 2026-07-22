@@ -3,8 +3,8 @@ import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api"
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { registrarAuditoria } from "@/lib/audit";
-import { calcularScore } from "@/lib/domain";
-import { nombreCompleto } from "@/lib/utils";
+import { calcularScore, diasMoraActual } from "@/lib/domain";
+import { nombreCompleto, hoyComercial } from "@/lib/utils";
 import { normalizarCuit, validarDuplicadoCliente } from "@/lib/clientes-validacion";
 import type { NextRequest } from "next/server";
 
@@ -69,7 +69,7 @@ async function enriquecerClientes(
 
   const creditos = await prisma.creditos.findMany({
     where: { ...withTenant(tenantId), cliente_id: { in: clienteIds } },
-    select: { id: true, cliente_id: true, estado: true, dias_mora: true, created_at: true },
+    select: { id: true, cliente_id: true, estado: true, dias_mora: true, proximo_pago: true, created_at: true },
   });
 
   const creditoIds = creditos.map((c) => c.id);
@@ -109,11 +109,14 @@ async function enriquecerClientes(
     });
   }
 
+  const hoyMora = hoyComercial();
   for (const cr of creditos) {
     const a = agg.get(cr.cliente_id);
     if (!a) continue;
     a.tieneCreditos = true;
-    if (cr.estado === "activo" && cr.dias_mora > a.maxDiasMora) a.maxDiasMora = cr.dias_mora;
+    // Mora EN VIVO desde `proximo_pago` (cron-independiente), no del cache `dias_mora`.
+    const dm = cr.proximo_pago ? diasMoraActual(cr.proximo_pago, hoyMora) : cr.dias_mora;
+    if (cr.estado === "activo" && dm > a.maxDiasMora) a.maxDiasMora = dm;
     a.ultimoMovimiento = Math.max(a.ultimoMovimiento, cr.created_at.getTime());
   }
 

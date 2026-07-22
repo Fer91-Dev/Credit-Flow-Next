@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { motion } from "framer-motion";
 import { Download, Printer } from "lucide-react";
 import { useReportes, useReporteSerie, useReporteCobranza, type Reporte, type ReporteSerie, type PuntoMensual, type ReporteCobranza } from "@/lib/swr";
 import { formatFecha } from "@/lib/utils";
@@ -42,12 +43,12 @@ const INPUT =
   "transition-all focus:border-primary focus:ring-2 focus:ring-primary/20";
 
 const TABS = [
-  { id: "resumen", label: "Resumen" },
-  { id: "operaciones", label: "Operaciones" },
-  { id: "rentabilidad", label: "Rentabilidad" },
-  { id: "morosidad", label: "Morosidad" },
-  { id: "cobranza", label: "Cobranza" },
-  { id: "historico", label: "Histórico" },
+  { id: "resumen", label: "Resumen", emoji: "clipboard" },
+  { id: "operaciones", label: "Operaciones", emoji: "handshake" },
+  { id: "rentabilidad", label: "Rentabilidad", emoji: "money-bag" },
+  { id: "morosidad", label: "Morosidad", emoji: "warning" },
+  { id: "cobranza", label: "Cobranza", emoji: "money-with-wings" },
+  { id: "historico", label: "Histórico", emoji: "calendar" },
 ] as const;
 type TabId = (typeof TABS)[number]["id"];
 
@@ -169,6 +170,9 @@ export function ReportesView() {
   const [desde, setDesde] = useState(ymd(firstOfYear));
   const [hasta, setHasta] = useState(ymd(today));
   const [tab, setTab] = useState<TabId>("resumen");
+  // La cápsula animada del tab activo (framer-motion) solo tras montar, para no saltar en SSR.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
 
   const { reporte, error, isLoading } = useReportes(desde, hasta);
   const { serie } = useReporteSerie(desde, hasta);
@@ -232,10 +236,22 @@ export function ReportesView() {
       <div className="flex flex-wrap gap-1.5 border-b border-border pb-2">
         {TABS.map((t) => (
           <button key={t.id} onClick={() => setTab(t.id)}
-            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-              tab === t.id ? "bg-primary/10 text-foreground ring-1 ring-inset ring-primary/30" : "text-muted-foreground hover:bg-muted/20"
+            className={`group relative flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
+              tab === t.id ? "text-foreground" : "text-muted-foreground hover:text-foreground"
             }`}>
-            {t.label}
+            {tab === t.id && mounted && (
+              <motion.div
+                layoutId="reportes-tab-capsule"
+                className="absolute inset-0 rounded-lg bg-primary/10 ring-1 ring-inset ring-primary/30"
+                transition={{ type: "spring", stiffness: 400, damping: 35 }}
+              />
+            )}
+            {tab === t.id && !mounted && (
+              <div className="absolute inset-0 rounded-lg bg-primary/10 ring-1 ring-inset ring-primary/30" />
+            )}
+            <span className="relative flex items-center gap-1.5">
+              <Emoji name={t.emoji} className="h-4 w-4 transition-transform duration-150 group-hover:scale-110" /> {t.label}
+            </span>
           </button>
         ))}
       </div>

@@ -147,6 +147,13 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
 
   const config = await getConfiguracion(tenantId);
   const fechaPago = body.fecha ? new Date(body.fecha) : hoyComercial();
+  // P2 — Un cobro no puede fecharse en el futuro (distorsiona mora, caja y reportes).
+  if (Number.isNaN(fechaPago.getTime())) {
+    return errorResponse("Fecha de pago inválida", "FECHA_INVALIDA", 400);
+  }
+  if (fechaPago.getTime() > hoyComercial().getTime()) {
+    return errorResponse("La fecha del pago no puede ser futura.", "FECHA_INVALIDA", 400);
+  }
   // Cuenta de caja donde impacta el cobro: explícita si viene en el body, si no derivada
   // del método (efectivo→efectivo, transferencia/cheque→banco). Antes SIEMPRE caía en efectivo.
   const cuentaCobro = esCuentaValida(body.cuenta) ? body.cuenta : cuentaDeMetodo(body.metodo);
@@ -192,6 +199,19 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     descuentoMoraPct,
     diasGracia: graciaCred,
   });
+
+  // P1 — Sobrepago: el cobro no puede exceder la deuda total del crédito. Si la imputación
+  // deja excedente, se rechaza (decisión de tesorería: no inflar la caja ni cerrar el crédito
+  // con plata sin imputar; el vuelto físico queda fuera del sistema). El monto ya considera la
+  // quita de mora de campaña, así que el máximo cobrable = monto − excedente.
+  if (resultado.excedente > 0) {
+    const cobrable = round2(body.monto - resultado.excedente);
+    return errorResponse(
+      `El monto ($${Number(body.monto).toLocaleString("es-AR")}) supera la deuda total del crédito. Cobrá hasta $${cobrable.toLocaleString("es-AR")}.`,
+      "SOBREPAGO",
+      400,
+    );
+  }
 
   const aplicacionPorCuota = new Map(resultado.aplicaciones.map((a) => [a.id, a]));
   const saldoAnterior = credito.saldo_pendiente;
@@ -286,7 +306,10 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
       where: { id: body.credito_id },
       data: {
         saldo_pendiente: saldoCapital,
-        estado: todasSaldadas ? "pagado" : credito.estado,
+        // P3 — Estado coherente con el ledger tras cobrar: saldado → "pagado"; si quedan
+        // cuotas vencidas → "vencido"; si el pago dejó el crédito al día → "activo" (antes
+        // arrastraba "vencido" hasta que lo reconciliaba una lectura o el cron).
+        estado: todasSaldadas ? "pagado" : diasMoraMax > 0 ? "vencido" : "activo",
         dias_mora: todasSaldadas ? 0 : diasMoraMax,
         proximo_pago: todasSaldadas ? null : (proximaCuota?.c.fecha_vencimiento ?? null),
       },

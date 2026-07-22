@@ -135,7 +135,7 @@ export function ConfigForm() {
       case "gamificacion":  return !eq(f.gamificacionConfig ?? null, c.gamificacionConfig ?? null);
       case "rentabilidad":  return !eq(f.rentabilidadConfig ?? null, c.rentabilidadConfig ?? null);
       case "riesgo":        return !eq(f.riesgoConfig ?? null, c.riesgoConfig ?? null);
-      case "financiacion":  return !eq([s.montoMin, s.montoMax, s.montoDefault, s.tasaBase], [cs.montoMin, cs.montoMax, cs.montoDefault, cs.tasaBase]);
+      case "financiacion":  return !eq([s.montoMin, s.montoMax, s.montoDefault, s.tasaBase, s.tasaMin, s.tasaMax], [cs.montoMin, cs.montoMax, cs.montoDefault, cs.tasaBase, cs.tasaMin, cs.tasaMax]);
       case "plazos":        return !eq(s.plazos, cs.plazos) || s.plazoDefault !== cs.plazoDefault;
       case "frecuencias":   return !eq(s.frecuencias, cs.frecuencias) || s.frecuenciaDefault !== cs.frecuenciaDefault;
       case "redondeo":      return !eq(s.redondeoCuota, cs.redondeoCuota);
@@ -256,6 +256,20 @@ export function ConfigForm() {
                 <div className="relative">
                   <Input type="number" min="0" step="0.5" value={form.simulador.tasaBase}
                     onChange={e => setSim("tasaBase", parseFloat(e.target.value) || 0)} className="pr-7" />
+                  <Percent className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
+                </div>
+              </Field>
+              <Field label="Tasa mínima (%)" hint="0 = sin límite. Bloquea otorgar por debajo">
+                <div className="relative">
+                  <Input type="number" min="0" step="0.5" value={form.simulador.tasaMin}
+                    onChange={e => setSim("tasaMin", parseFloat(e.target.value) || 0)} className="pr-7" />
+                  <Percent className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
+                </div>
+              </Field>
+              <Field label="Tasa máxima (%)" hint="0 = sin límite. Bloquea otorgar por encima">
+                <div className="relative">
+                  <Input type="number" min="0" step="0.5" value={form.simulador.tasaMax}
+                    onChange={e => setSim("tasaMax", parseFloat(e.target.value) || 0)} className="pr-7" />
                   <Percent className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
                 </div>
               </Field>

@@ -2,6 +2,8 @@ import { requireAuth } from "@/lib/auth";
 import { successResponse, withErrorHandler } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
+import { diasMoraActual } from "@/lib/domain";
+import { hoyComercial } from "@/lib/utils";
 import type { NextRequest } from "next/server";
 
 /**
@@ -64,6 +66,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
         monto_original: true,
         saldo_pendiente: true,
         dias_mora: true,
+        proximo_pago: true,
         vendedor_id: true,
         es_refinanciacion: true,
       },
@@ -99,15 +102,23 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
       : Promise.resolve([] as { id: string; nombre: string }[]),
   ]);
 
-  const creditosActivos = creditos.filter((c) => c.estado === "activo").length;
-  const creditosPagados = creditos.filter((c) => c.estado === "pagado").length;
-  const carteraTotal = creditos.reduce((sum, c) => sum + c.saldo_pendiente, 0);
-  const moraCritica = creditos.filter((c) => c.dias_mora > 30).length;
+  // Mora EN VIVO desde `proximo_pago` (el cache `dias_mora` no se avanza día a día): misma
+  // fórmula con la que se persiste, pero evaluada hoy → los KPIs de mora no dependen del cron.
+  const hoy = hoyComercial();
+  const creditosDM = creditos.map((c) => ({
+    ...c,
+    dias_mora: c.proximo_pago ? diasMoraActual(c.proximo_pago, hoy) : c.dias_mora,
+  }));
+
+  const creditosActivos = creditosDM.filter((c) => c.estado === "activo").length;
+  const creditosPagados = creditosDM.filter((c) => c.estado === "pagado").length;
+  const carteraTotal = creditosDM.reduce((sum, c) => sum + c.saldo_pendiente, 0);
+  const moraCritica = creditosDM.filter((c) => c.dias_mora > 30).length;
 
   const detalleMotaAlerta = {
-    dias_1_30: creditos.filter((c) => c.dias_mora > 0 && c.dias_mora <= 30).length,
-    dias_31_60: creditos.filter((c) => c.dias_mora > 30 && c.dias_mora <= 60).length,
-    dias_60_mas: creditos.filter((c) => c.dias_mora > 60).length,
+    dias_1_30: creditosDM.filter((c) => c.dias_mora > 0 && c.dias_mora <= 30).length,
+    dias_31_60: creditosDM.filter((c) => c.dias_mora > 30 && c.dias_mora <= 60).length,
+    dias_60_mas: creditosDM.filter((c) => c.dias_mora > 60).length,
   };
 
   const cobranzaEsperado = cuotasPeriodo.reduce((sum, c) => sum + c.cuota_total, 0);
@@ -117,10 +128,10 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   );
 
   const montosMora = {
-    total_mora: creditos
+    total_mora: creditosDM
       .filter((c) => c.dias_mora > 0)
       .reduce((sum, c) => sum + c.saldo_pendiente, 0),
-    mora_critica: creditos
+    mora_critica: creditosDM
       .filter((c) => c.dias_mora > 30)
       .reduce((sum, c) => sum + c.saldo_pendiente, 0),
   };
@@ -132,8 +143,8 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   if (esAdmin) {
     const SIN_ASIGNAR = "sin_asignar";
     const nombrePorId = new Map(personal.map((p) => [p.id, p.nombre]));
-    const grupos = new Map<string, typeof creditos>();
-    for (const c of creditos) {
+    const grupos = new Map<string, typeof creditosDM>();
+    for (const c of creditosDM) {
       const key = c.vendedor_id ?? SIN_ASIGNAR;
       const arr = grupos.get(key) ?? [];
       arr.push(c);

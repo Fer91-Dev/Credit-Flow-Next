@@ -1,81 +1,127 @@
 "use client";
 
-import { useState } from "react";
-import { ChevronDown } from "lucide-react";
 import { useCotizacion, type Cotizacion } from "@/lib/swr";
 import { Emoji } from "@/components/ui/Emoji";
 import { Skeleton } from "@/components/ui/skeleton";
 
-/** Etiquetas cortas y familiares (AR) por casa. */
-const LABEL: Record<string, string> = {
-  blue: "Blue", oficial: "Oficial", bolsa: "MEP", contadoconliqui: "CCL",
-  mayorista: "Mayorista", tarjeta: "Tarjeta", cripto: "Cripto",
+/**
+ * Etiqueta + ícono (Fluent Emoji) por tipo de cotización. El ícono referencia el tipo:
+ * Blue = billete, Oficial = banco, MEP = bolsa, CCL = maletín, Mayorista = corporativo,
+ * Tarjeta = tarjeta, Cripto = gema.
+ */
+const META: Record<string, { label: string; icon: string }> = {
+  blue:            { label: "Blue",      icon: "dollar-banknote" },
+  oficial:         { label: "Oficial",   icon: "bank" },
+  bolsa:           { label: "MEP",       icon: "chart-increasing" },
+  contadoconliqui: { label: "CCL",       icon: "briefcase" },
+  mayorista:       { label: "Mayorista", icon: "office-building" },
+  tarjeta:         { label: "Tarjeta",   icon: "credit-card" },
+  cripto:          { label: "Cripto",    icon: "gem-stone" },
 };
-/** Orden de las cotizaciones secundarias (blue va aparte, como principal). */
-const ORDEN = ["oficial", "bolsa", "contadoconliqui", "mayorista", "tarjeta", "cripto"];
+/** Protagonistas (arriba, cards grandes) y secundarias (cuadrícula, siempre visibles). */
+const PRINCIPALES = ["blue", "oficial"];
+const SECUNDARIAS = ["bolsa", "contadoconliqui", "mayorista", "tarjeta", "cripto"];
 
 function fmt(n: number | null): string {
   if (n == null) return "—";
   return `$${new Intl.NumberFormat("es-AR", { minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(n)}`;
 }
-function fmtHora(iso: string): string {
+function fmtHora(iso?: string): string {
+  if (!iso) return "";
   try {
     return new Intl.DateTimeFormat("es-AR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }).format(new Date(iso));
   } catch { return ""; }
 }
 
 /**
- * Cotización del dólar (dolarapi.com): muestra el **Blue** como principal y, al clickear,
- * despliega los otros tipos de cambio (oficial, MEP, CCL, mayorista, tarjeta, cripto).
+ * Cotización del dólar (dolarapi.com). **Blue y Oficial** van arriba como protagonistas
+ * (cards grandes; Blue es la referencia de valorización del SaaS) y el resto de los tipos
+ * (MEP, CCL, Mayorista, Tarjeta, Cripto) siempre visibles en una cuadrícula compacta.
  */
 export function CotizacionDolar() {
   const { cotizaciones, isLoading, error } = useCotizacion();
-  const [abierto, setAbierto] = useState(false);
 
-  if (isLoading) return <Skeleton className="h-24 rounded-2xl" />;
+  if (isLoading) return <Skeleton className="h-40 rounded-2xl" />;
   if (error || cotizaciones.length === 0) return null; // si el servicio falla, no rompe el Home
 
-  const blue = cotizaciones.find((c) => c.casa === "blue");
-  const otras = ORDEN.map((k) => cotizaciones.find((c) => c.casa === k)).filter(Boolean) as Cotizacion[];
+  const byCasa = new Map(cotizaciones.map((c) => [c.casa, c]));
+  const principales = PRINCIPALES.map((k) => byCasa.get(k)).filter(Boolean) as Cotizacion[];
+  const secundarias = SECUNDARIAS.map((k) => byCasa.get(k)).filter(Boolean) as Cotizacion[];
+  const ultima = cotizaciones.reduce((a, c) => (c.fecha > a ? c.fecha : a), cotizaciones[0].fecha);
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-border bg-card">
-      <button
-        onClick={() => setAbierto((o) => !o)}
-        className="flex w-full items-center gap-4 p-4 text-left transition-colors hover:bg-muted/10"
-        title="Ver todas las cotizaciones"
-      >
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-success/20 bg-success/10">
-          <Emoji name="dollar-banknote" className="h-5 w-5" />
+    <div className="rounded-2xl border border-border bg-card p-4">
+      {/* Cabecera */}
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <Emoji name="dollar-banknote" className="h-4 w-4" />
+          <h2 className="text-sm font-semibold text-foreground">Cotización del dólar</h2>
         </div>
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <p className="text-sm font-semibold text-foreground">Dólar Blue</p>
-            {blue && <span className="text-[10px] text-muted-foreground">· act. {fmtHora(blue.fecha)}</span>}
-          </div>
-          <div className="mt-0.5 flex items-baseline gap-5">
-            <span className="text-xs text-muted-foreground">Compra <span className="font-mono text-sm font-bold text-foreground">{fmt(blue?.compra ?? null)}</span></span>
-            <span className="text-xs text-muted-foreground">Venta <span className="font-mono text-base font-bold text-success">{fmt(blue?.venta ?? null)}</span></span>
-          </div>
-        </div>
-        <span className="hidden text-[11px] text-muted-foreground sm:inline">{abierto ? "Ocultar" : "Ver todas"}</span>
-        <ChevronDown className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform ${abierto ? "rotate-180" : ""}`} />
-      </button>
+        <span className="text-[10px] text-muted-foreground/70">act. {fmtHora(ultima)} · dolarapi.com</span>
+      </div>
 
-      {abierto && (
-        <div className="divide-y divide-border/50 border-t border-border">
-          {otras.map((c) => (
-            <div key={c.casa} className="flex items-center justify-between gap-3 px-4 py-2.5">
-              <span className="text-xs font-medium text-foreground">{LABEL[c.casa] ?? c.nombre}</span>
-              <div className="flex items-baseline gap-5">
-                <span className="text-[11px] text-muted-foreground">Compra <span className="font-mono text-foreground">{fmt(c.compra)}</span></span>
-                <span className="text-[11px] text-muted-foreground">Venta <span className="font-mono text-foreground">{fmt(c.venta)}</span></span>
-              </div>
-            </div>
+      {/* Protagonistas: Blue + Oficial */}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        {principales.map((c) => (
+          <PrincipalCard key={c.casa} c={c} referencia={c.casa === "blue"} />
+        ))}
+      </div>
+
+      {/* Secundarias en cuadrícula (siempre visibles) */}
+      {secundarias.length > 0 && (
+        <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+          {secundarias.map((c) => (
+            <SecundariaTile key={c.casa} c={c} />
           ))}
-          <p className="px-4 py-2 text-[10px] text-muted-foreground/60">Fuente: dolarapi.com · se actualiza cada ~10 min</p>
         </div>
       )}
+    </div>
+  );
+}
+
+function PrincipalCard({ c, referencia }: { c: Cotizacion; referencia: boolean }) {
+  const m = META[c.casa] ?? { label: c.nombre, icon: "dollar-banknote" };
+  // Blue = acento success (referencia de valorización); Oficial = acento primary. Ambos grandes.
+  const wrap = referencia ? "border-success/30 bg-success/[0.06]" : "border-primary/25 bg-primary/[0.05]";
+  const badge = referencia ? "border-success/20 bg-success/10" : "border-primary/20 bg-primary/10";
+  const ventaColor = referencia ? "text-success" : "text-primary";
+  return (
+    <div className={`rounded-xl border ${wrap} p-3.5`}>
+      <div className="flex items-center gap-2.5">
+        <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border ${badge}`}>
+          <Emoji name={m.icon} className="h-5 w-5" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1.5">
+            <p className="text-sm font-semibold text-foreground">Dólar {m.label}</p>
+            {referencia && (
+              <span className="rounded-full border border-success/25 bg-success/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-success">
+                referencia
+              </span>
+            )}
+          </div>
+          <div className="mt-1 flex items-baseline gap-4">
+            <span className="text-[11px] text-muted-foreground">Compra <span className="font-mono text-sm font-bold text-foreground">{fmt(c.compra)}</span></span>
+            <span className="text-[11px] text-muted-foreground">Venta <span className={`font-mono text-lg font-bold ${ventaColor}`}>{fmt(c.venta)}</span></span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SecundariaTile({ c }: { c: Cotizacion }) {
+  const m = META[c.casa] ?? { label: c.nombre, icon: "dollar-banknote" };
+  return (
+    <div className="rounded-xl border border-border bg-muted/10 p-2.5">
+      <div className="flex items-center gap-1.5">
+        <Emoji name={m.icon} className="h-4 w-4" />
+        <span className="text-xs font-medium text-foreground">{m.label}</span>
+      </div>
+      <div className="mt-1.5">
+        <p className="font-mono text-sm font-bold text-foreground">{fmt(c.venta)}</p>
+        <p className="text-[10px] text-muted-foreground/70">compra {fmt(c.compra)}</p>
+      </div>
     </div>
   );
 }

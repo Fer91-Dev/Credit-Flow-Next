@@ -3,6 +3,8 @@ import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api"
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { registrarAuditoria } from "@/lib/audit";
+import { diasMoraActual } from "@/lib/domain";
+import { hoyComercial } from "@/lib/utils";
 import type { NextRequest } from "next/server";
 
 const ESTADOS = ["borrador", "activa", "finalizada"];
@@ -31,20 +33,29 @@ export const GET = withErrorHandler(async (req: NextRequest, ctx: { params: Prom
         include: {
           credito: {
             select: {
-              id: true, numero: true, dias_mora: true,
+              id: true, numero: true, dias_mora: true, proximo_pago: true,
               cliente: { select: { id: true, nombre: true, apellido: true, telefono: true, email: true } },
             },
           },
         },
-        orderBy: { dias_mora: "desc" },
+        orderBy: { dias_mora: "desc" }, // por el snapshot de mora del objetivo (histórico de la campaña)
       },
     },
   });
 
   if (!campana) return errorResponse("Campaña no encontrada", "NOT_FOUND", 404);
 
+  // La mora del snapshot del objetivo (campana_objetivo.dias_mora) es histórica y se conserva.
+  // La mora ACTUAL del crédito anidado se recomputa en vivo desde `proximo_pago` (cron-indep.).
+  const hoy = hoyComercial();
   const { objetivos, ...rest } = campana;
-  return successResponse({ ...rest, objetivos, metricas: metricasDe(objetivos) });
+  const objetivosLive = objetivos.map((o) => ({
+    ...o,
+    credito: o.credito
+      ? { ...o.credito, dias_mora: o.credito.proximo_pago ? diasMoraActual(o.credito.proximo_pago, hoy) : o.credito.dias_mora }
+      : o.credito,
+  }));
+  return successResponse({ ...rest, objetivos: objetivosLive, metricas: metricasDe(objetivos) });
 });
 
 /**

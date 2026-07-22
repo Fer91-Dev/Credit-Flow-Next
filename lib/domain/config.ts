@@ -98,6 +98,9 @@ export interface SimuladorConfig {
   montoDefault: number;
   /** Tasa que el simulador prellena (según la convención configurada). 0 = sin prefill. */
   tasaBase: number;
+  /** Tasa mínima/máxima permitida al otorgar (en %, misma convención). 0 = sin límite. */
+  tasaMin: number;
+  tasaMax: number;
   /** Plazos ofrecidos (con activar/desactivar) + plazo por defecto. */
   plazos: PlazoOpcion[];
   plazoDefault: number;
@@ -158,6 +161,8 @@ export const SIMULADOR_DEFAULT: SimuladorConfig = {
   montoMax: 0, // 0 = sin tope
   montoDefault: 0, // 0 = sin valor por defecto
   tasaBase: 0, // 0 = sin prefill
+  tasaMin: 0, // 0 = sin límite inferior
+  tasaMax: 0, // 0 = sin límite superior
   plazos: [
     { cuotas: 3, activo: true },
     { cuotas: 6, activo: true },
@@ -229,6 +234,54 @@ export function resolverSimulador(
       gastosAdministrativos: { ...SIMULADOR_DEFAULT.cargos.gastosAdministrativos, ...c?.gastosAdministrativos },
     },
   };
+}
+
+/**
+ * Valida que los parámetros de un otorgamiento respeten lo configurado por el tenant.
+ * Defensa en profundidad: el simulador ya acota en la UI, pero la API es la barrera real
+ * (un cliente/script podría mandar tasa 0, un plazo deshabilitado o una frecuencia inválida).
+ * Devuelve un mensaje de error, o null si todo está en orden.
+ */
+export function validarParametrosOtorgamiento(
+  sim: SimuladorConfig,
+  p: { monto: number; tasa: number; plazoMeses: number; frecuencia: string; esProducto: boolean },
+): string | null {
+  // Frecuencia: debe estar ofrecida y activa.
+  const frec = sim.frecuencias.find((f) => f.clave === p.frecuencia);
+  if (!frec || !frec.activo) {
+    return `La frecuencia de pago "${p.frecuencia}" no está habilitada en la configuración.`;
+  }
+  // Plazo (nº de cuotas): si la frecuencia fija las cuotas, debe coincidir; si es mensual,
+  // debe ser un plazo habilitado; otras frecuencias sin cuotas fijas: libre (≥ 1).
+  if (frec.cuotasFijas != null) {
+    if (p.plazoMeses !== frec.cuotasFijas) {
+      return `La frecuencia "${frec.label}" usa ${frec.cuotasFijas} cuotas fijas (se recibió ${p.plazoMeses}).`;
+    }
+  } else if (frec.esMensual) {
+    if (!sim.plazos.some((pl) => pl.activo && pl.cuotas === p.plazoMeses)) {
+      return `El plazo de ${p.plazoMeses} cuotas no está habilitado en la configuración.`;
+    }
+  } else if (p.plazoMeses < 1) {
+    return `El plazo debe ser de al menos 1 cuota.`;
+  }
+  // Tasa dentro del rango configurado (0 = sin límite en cada extremo).
+  if (sim.tasaMin > 0 && p.tasa < sim.tasaMin) {
+    return `La tasa (${p.tasa}%) es menor a la mínima permitida (${sim.tasaMin}%).`;
+  }
+  if (sim.tasaMax > 0 && p.tasa > sim.tasaMax) {
+    return `La tasa (${p.tasa}%) supera la máxima permitida (${sim.tasaMax}%).`;
+  }
+  // Monto dentro del rango (0 = sin límite). Los créditos de producto tienen capital
+  // autoritativo (precio × cantidad) → no se validan contra el rango del simulador.
+  if (!p.esProducto) {
+    if (sim.montoMin > 0 && p.monto < sim.montoMin) {
+      return `El monto ($${p.monto.toLocaleString("es-AR")}) es menor al mínimo permitido ($${sim.montoMin.toLocaleString("es-AR")}).`;
+    }
+    if (sim.montoMax > 0 && p.monto > sim.montoMax) {
+      return `El monto ($${p.monto.toLocaleString("es-AR")}) supera el máximo permitido ($${sim.montoMax.toLocaleString("es-AR")}).`;
+    }
+  }
+  return null;
 }
 
 /**

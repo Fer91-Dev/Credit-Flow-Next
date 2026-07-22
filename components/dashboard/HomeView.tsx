@@ -51,6 +51,9 @@ export function HomeView({ role }: { role: Role }) {
 
   return (
     <div className="space-y-6">
+      {/* ── Cotización del dólar del día (siempre arriba: Blue + Oficial protagonistas, resto en cuadrícula) ── */}
+      <CotizacionDolar />
+
       {/* ── 1 · Filtros (compactos, a la derecha) ── */}
       <div className="flex justify-end">
         <FiltrosHome
@@ -60,9 +63,6 @@ export function HomeView({ role }: { role: Role }) {
           vendedores={vendedores} zonas={zonas} limpiar={limpiar}
         />
       </div>
-
-      {/* ── Cotización del dólar del día (dolarapi: Blue principal + otras al desplegar) ── */}
-      <CotizacionDolar />
 
       {/* ── 2 · KPIs + avance de cobranzas (reaccionan a los filtros) ── */}
       {isLoading ? (

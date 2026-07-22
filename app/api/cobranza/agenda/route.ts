@@ -3,6 +3,7 @@ import { successResponse, withErrorHandler } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { getCobranzaConfig } from "@/lib/config";
+import { diasMoraActual } from "@/lib/domain";
 import { nombreCompleto, hoyComercial } from "@/lib/utils";
 import type { NextRequest } from "next/server";
 
@@ -35,15 +36,18 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   const { tenantId, role, vendedorId } = await requireAuth(req);
   const { dias_sin_gestion } = await getCobranzaConfig(tenantId);
 
-  const hoyMs = hoyComercial().getTime();
+  const hoy = hoyComercial();
+  const hoyMs = hoy.getTime();
   const finHoy = hoyMs + 86_400_000 - 1; // fin del día de hoy (AR)
   const DIA = 86_400_000;
 
-  // Créditos activos en mora, scopeados (vendedor solo los suyos; admin todo).
+  // Créditos activos en mora, scopeados (vendedor solo los suyos; admin todo). En mora = con
+  // `proximo_pago` vencido (filtro EN VIVO, independiente del cache `dias_mora` que no se avanza
+  // día a día); así un moroso nunca cobrado aparece igual en la agenda.
   const creditos = await prisma.creditos.findMany({
-    where: { ...withTenant(tenantId), ...scopeCreditosVendedor({ role, vendedorId }), estado: "activo", dias_mora: { gt: 0 } },
+    where: { ...withTenant(tenantId), ...scopeCreditosVendedor({ role, vendedorId }), estado: "activo", proximo_pago: { lt: hoy } },
     select: {
-      id: true, numero: true, saldo_pendiente: true, dias_mora: true,
+      id: true, numero: true, saldo_pendiente: true, proximo_pago: true,
       cliente: { select: { nombre: true, apellido: true, telefono: true } },
     },
   });
@@ -98,7 +102,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
       cliente: nombreCompleto(c.cliente),
       telefono: c.cliente?.telefono ?? null,
       saldo_pendiente: c.saldo_pendiente,
-      dias_mora: c.dias_mora,
+      dias_mora: diasMoraActual(c.proximo_pago, hoy),
       promesa_monto: bucket === "promesa" ? (promesaPend?.promesa_monto ?? null) : null,
       bucket,
       motivo,

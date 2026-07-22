@@ -3,10 +3,13 @@
 import { useEffect, useMemo, useState } from "react";
 import useSWR from "swr";
 import Link from "next/link";
-import { Search, Bell, Sun, Moon, AlertTriangle, CheckCircle2, ArrowRight, ArrowDownLeft, ArrowUpRight, LogOut, ChevronDown, User } from "lucide-react";
+import { usePathname } from "next/navigation";
+import { Search, Bell, Sun, Moon, AlertTriangle, CheckCircle2, ArrowRight, ArrowDownLeft, ArrowUpRight, LogOut, ChevronDown, User, HelpCircle } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useSystemActions } from "@/components/system-actions";
 import { Avatar } from "@/components/ui/Avatar";
+import { HelpPanel } from "@/components/ui/HelpPanel";
+import { getHelpDoc } from "@/lib/help/content";
 import { ROLE_LABEL } from "@/lib/auth/roles";
 import { formatFecha, formatFechaHora, formatMonto } from "@/lib/utils";
 
@@ -70,6 +73,11 @@ export function SystemControls() {
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
   const isDark = resolvedTheme === "dark";
+
+  // Ayuda contextual: documento de la sección actual (null → no hay ayuda para esta ruta).
+  const pathname = usePathname();
+  const helpDoc = getHelpDoc(pathname);
+  const [helpOpen, setHelpOpen] = useState(false);
 
   const { data } = useSWR<EstadoSus | null>("/api/suscripciones/estado", fetcher, { revalidateOnFocus: false });
   const aviso = calcularAviso(data);
@@ -220,6 +228,18 @@ export function SystemControls() {
         )}
       </div>
 
+      {/* Ayuda de la sección (solo si hay documento para esta ruta) */}
+      {helpDoc && (
+        <button
+          onClick={() => setHelpOpen(true)}
+          title={`Ayuda: ${helpDoc.titulo}`}
+          aria-label="Abrir ayuda de la sección"
+          className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+        >
+          <HelpCircle className="h-4 w-4" />
+        </button>
+      )}
+
       {/* Tema claro / oscuro */}
       {mounted && (
         <button
@@ -233,6 +253,9 @@ export function SystemControls() {
 
       {/* Menú de usuario (identidad + perfil + cerrar sesión) */}
       <UserMenu />
+
+      {/* Panel de ayuda contextual */}
+      <HelpPanel doc={helpDoc} open={helpOpen} onClose={() => setHelpOpen(false)} />
     </div>
   );
 }

@@ -2,7 +2,7 @@ import { requireRole } from "@/lib/auth";
 import { successResponse, withErrorHandler } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
-import { nombreCompleto } from "@/lib/utils";
+import { nombreCompleto, hoyComercial } from "@/lib/utils";
 import {
   cuotaMensualFrancesa,
   tasaPeriodicaSegunConvencion,
@@ -11,6 +11,7 @@ import {
   round2,
   costoFondeo,
   resumenOperaciones,
+  diasMoraActual,
 } from "@/lib/domain";
 import { getConfiguracion, getRentabilidadConfig } from "@/lib/config";
 import type { NextRequest } from "next/server";
@@ -48,7 +49,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
       where: { ...withTenant(tenantId) },
       select: {
         estado: true, monto_original: true, saldo_pendiente: true,
-        tasa: true, plazo_meses: true, frecuencia: true, frecuencia_def: true, dias_mora: true,
+        tasa: true, plazo_meses: true, frecuencia: true, frecuencia_def: true, dias_mora: true, proximo_pago: true,
         created_at: true, es_refinanciacion: true, tipo_credito: true,
       },
     }),
@@ -104,7 +105,14 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     .reduce((s, c) => s + c.saldo_pendiente, 0);
 
   // ── Morosidad (snapshot, interés por el motor de dominio) ───────────────
-  const enMora = creditos.filter((c) => c.estado === "activo" && c.dias_mora > 0);
+  // Mora EN VIVO desde `proximo_pago` (el cache `dias_mora` no se avanza día a día):
+  // misma fórmula persistida, evaluada hoy → la morosidad no depende del cron.
+  const hoyMora = hoyComercial();
+  const dmoraDe = (c: { proximo_pago: Date | null; dias_mora: number }) =>
+    c.proximo_pago ? diasMoraActual(c.proximo_pago, hoyMora) : c.dias_mora;
+  const enMora = creditos
+    .filter((c) => c.estado === "activo" && dmoraDe(c) > 0)
+    .map((c) => ({ ...c, dias_mora: dmoraDe(c) }));
   let interesMoraTotal = 0;
   for (const c of enMora) {
     if (config.moraActiva && c.monto_original > 0 && c.plazo_meses >= 1) {
