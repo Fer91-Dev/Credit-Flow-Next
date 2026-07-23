@@ -141,11 +141,11 @@ export function construirPlanAmortizacion(
 
   // Comisión de otorgamiento: si está financiada, se suma al capital a amortizar.
   let comision = 0;
-  if (cargos?.comisionOtorgamiento.activo) {
+  if (cargos?.comisionOtorgamiento?.activo) {
     const co = cargos.comisionOtorgamiento;
     comision = round2(co.modo === "porcentaje" ? (principal * co.valor) / 100 : co.valor);
   }
-  const comisionFinanciada = !!cargos?.comisionOtorgamiento.activo && cargos.comisionOtorgamiento.financiada;
+  const comisionFinanciada = !!cargos?.comisionOtorgamiento?.activo && cargos.comisionOtorgamiento.financiada;
   const principalAmortizar = comisionFinanciada ? round2(principal + comision) : principal;
 
   const i = tasaPeriodicaSegunConvencion(tasaPct, convencion, frecuencia, catalogoFrecuencias);
@@ -189,8 +189,8 @@ export function construirPlanAmortizacion(
 
     // Cargos del período (sobre la cuota pura ya calculada).
     let iva = 0, seguro = 0, gastos = 0;
-    if (cargos?.iva.activo) iva = round2(interes * cargos.iva.tasa);
-    if (cargos?.seguro.activo) {
+    if (cargos?.iva?.activo) iva = round2(interes * cargos.iva.tasa);
+    if (cargos?.seguro?.activo) {
       const s = cargos.seguro;
       seguro = round2(
         s.modo === "porcentaje_saldo" ? saldoInicial * s.valor
@@ -198,7 +198,7 @@ export function construirPlanAmortizacion(
         : s.valor
       );
     }
-    if (cargos?.gastosAdministrativos.activo) {
+    if (cargos?.gastosAdministrativos?.activo) {
       const g = cargos.gastosAdministrativos;
       gastos = round2(g.modo === "porcentaje" ? cuotaPura * g.valor : g.valor);
     }

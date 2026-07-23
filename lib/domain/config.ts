@@ -206,6 +206,25 @@ export const CONFIG_DEFAULT: ConfiguracionFinanciera = {
 };
 
 /**
+ * Normaliza un snapshot de cargos (posiblemente PARCIAL — créditos viejos/seed que
+ * guardaron un JSON incompleto) mezclándolo sobre una base completa. Garantiza que
+ * TODOS los sub-objetos existan (comisión/iva/seguro/gastos con su `activo`), para que
+ * el motor de amortización nunca lea `.activo` sobre `undefined`.
+ */
+export function resolverCargos(
+  parcial?: Partial<CargosConfig> | null,
+  base: CargosConfig = SIMULADOR_DEFAULT.cargos,
+): CargosConfig {
+  const c = parcial ?? undefined;
+  return {
+    comisionOtorgamiento: { ...base.comisionOtorgamiento, ...c?.comisionOtorgamiento },
+    iva: { ...base.iva, ...c?.iva },
+    seguro: { ...base.seguro, ...c?.seguro },
+    gastosAdministrativos: { ...base.gastosAdministrativos, ...c?.gastosAdministrativos },
+  };
+}
+
+/**
  * Mezcla una config parcial de simulador sobre los defaults, respetando la
  * estructura anidada (cargos). Garantiza un SimuladorConfig completo y válido.
  */

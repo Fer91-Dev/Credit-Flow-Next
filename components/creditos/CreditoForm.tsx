@@ -761,8 +761,10 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
                     </p>
                   )}
                   {/* Monto máximo sugerido por el sueldo del cliente (capacidad de pago). Botón para
-                      cargarlo directo en el campo Capital. Solo si hay ingreso → hay número que sugerir. */}
-                  {riesgoEval.montoMaximoSugerido > 0 ? (
+                      cargarlo directo en el campo Capital. Solo si hay ingreso → hay número que sugerir.
+                      Si el cliente NO CALIFICA (rechazado) NO se ofrece nada: sería incoherente sugerir
+                      un préstamo a quien la política rechaza. Quedan solo los motivos + el aviso de bloqueo. */}
+                  {!riesgoRechazado && (riesgoEval.montoMaximoSugerido > 0 ? (
                     <div className="mt-3 flex items-center justify-between gap-2 rounded-lg border border-primary/25 bg-primary/5 px-3 py-2">
                       <div>
                         <p className="text-[11px] text-muted-foreground">Monto máximo sugerido <span className="text-muted-foreground/70">· a {sim.plazo || formData.plazo_meses} cuotas</span></p>
@@ -785,7 +787,7 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
                     <p className="mt-3 rounded-lg border border-destructive/25 bg-destructive/5 px-3 py-2 text-[11px] text-destructive">
                       Sin margen para nuevo crédito: las cuotas de sus créditos vigentes ({formatMonto(riesgoEval.deudaCuotaMensualVigente)}/mes) ya superan su capacidad de pago ({formatMonto(riesgoEval.ingresoNetoMensual)} de ingreso).
                     </p>
-                  )}
+                  ))}
                   <div className="mt-3 grid grid-cols-2 gap-2 text-[11px]">
                     <div className="rounded-lg bg-muted/30 px-2.5 py-1.5">
                       <p className="text-muted-foreground">Cuota máx (capacidad)</p>

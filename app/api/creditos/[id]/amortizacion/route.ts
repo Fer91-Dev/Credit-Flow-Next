@@ -9,7 +9,9 @@ import {
   efectivaAnualDesdePeriodica,
   normalizarFrecuencia,
   frecuenciaLabel,
+  resolverCargos,
   type CronogramaConfig,
+  type CargosConfig,
 } from "@/lib/domain";
 import { getConfiguracion } from "@/lib/config";
 import type { NextRequest } from "next/server";
@@ -65,8 +67,9 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
     config.convencionTasa,
     frecuencia,
     {
-      // Snapshot del crédito si existe; si no (créditos previos), config vigente.
-      cargos: (credito.cargos as typeof config.simulador.cargos | null) ?? config.simulador.cargos,
+      // Snapshot del crédito (puede ser PARCIAL en créditos viejos/seed) normalizado sobre la
+      // config vigente → todos los sub-cargos existen y el motor no revienta con `.activo`.
+      cargos: resolverCargos(credito.cargos as Partial<CargosConfig> | null, config.simulador.cargos),
       redondeo: config.simulador.redondeoCuota,
       // Cronograma: snapshot del crédito si existe; si no, config vigente (mensual).
       cronograma: (credito.cronograma as CronogramaConfig | null) ?? {

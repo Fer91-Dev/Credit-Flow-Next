@@ -8,6 +8,7 @@ import { CreditoForm } from "./CreditoForm";
 import { CreditoDetail } from "./CreditoDetail";
 import { LibreDeudaDialog } from "./LibreDeudaDialog";
 import { RefinanciarDialog } from "./RefinanciarDialog";
+import { CompararRefiDialog } from "./CompararRefiDialog";
 import { useCreditos, KEYS, type Credito } from "@/lib/swr";
 import { type Role } from "@/lib/auth/roles";
 import { formatCreditoNumero, nombreCompleto, formatFecha } from "@/lib/utils";
@@ -204,7 +205,7 @@ export function CreditosTable({ role }: { role: Role }) {
             Error al cargar créditos: {error.message}
           </div>
         ) : tab === "refinanciados" ? (
-          <RefinanciadosView creditos={creditos} onOpen={setDetail} />
+          <RefinanciadosView creditos={creditos} onOpen={setDetail} onRefinanciar={setRefinanciar} />
         ) : (
         <div className="space-y-5">
 
@@ -451,7 +452,7 @@ export function CreditosTable({ role }: { role: Role }) {
             <DialogTitle>Detalle del crédito</DialogTitle>
           </DialogHeader>
           <div className="flex-1 min-h-0 overflow-hidden">
-            {detail && <CreditoDetail credito={detail} role={role} />}
+            {detail && <CreditoDetail credito={detail} role={role} onRefinanciar={(c) => { setDetail(null); setRefinanciar(c); }} />}
           </div>
         </DialogContent>
       </Dialog>
@@ -538,7 +539,7 @@ function AnularButton({ credito, onAnular }: { credito: Credito; onAnular: (id: 
  * Cada fila es una refinanciación: el crédito nuevo (es_refinanciacion) y su crédito
  * origen resuelto desde la misma lista. Click → abre el detalle del crédito nuevo.
  */
-function RefinanciadosView({ creditos, onOpen }: { creditos: Credito[]; onOpen: (c: Credito) => void }) {
+function RefinanciadosView({ creditos, onOpen, onRefinanciar }: { creditos: Credito[]; onOpen: (c: Credito) => void; onRefinanciar: (c: Credito) => void }) {
   const porId = useMemo(() => new Map(creditos.map((c) => [c.id, c])), [creditos]);
   const pares = useMemo(
     () =>
@@ -549,30 +550,124 @@ function RefinanciadosView({ creditos, onOpen }: { creditos: Credito[]; onOpen: 
     [creditos, porId],
   );
 
-  if (pares.length === 0) {
-    return (
-      <div className="rounded-xl border border-dashed border-border/60 p-12 flex flex-col items-center gap-4 text-center">
-        <div className="h-16 w-16 rounded-2xl bg-muted/20 border border-border/70 flex items-center justify-center">
-          <RefreshCw className="h-7 w-7 text-muted-foreground/20" />
-        </div>
-        <div className="space-y-1.5">
-          <p className="text-sm font-semibold text-muted-foreground">Sin refinanciaciones</p>
-          <p className="text-xs text-muted-foreground/50 max-w-xs leading-relaxed">
-            Cuando reestructures un crédito moroso (botón ↻ en la lista de créditos), la operación aparecerá acá: deuda consolidada en un crédito nuevo.
-          </p>
-        </div>
-      </div>
-    );
-  }
+  // Candidatos a refinanciar = créditos activos en mora (lo que el server permite reestructurar).
+  const candidatos = useMemo(
+    () => creditos.filter((c) => c.estado === "activo" && c.dias_mora > 0).sort((a, b) => b.dias_mora - a.dias_mora),
+    [creditos],
+  );
+  const [busq, setBusq] = useState("");
+  // Comparación original ↔ refinanciación (plan de cuotas + TNA de otorgamiento).
+  const [comparar, setComparar] = useState<{ origen: Credito; nuevo: Credito } | null>(null);
+  const candFiltrados = useMemo(() => {
+    const q = busq.trim().toLowerCase();
+    if (!q) return candidatos;
+    const qDigits = q.replace(/\D/g, "");
+    return candidatos.filter((c) => {
+      const num = formatCreditoNumero(c.numero).toLowerCase();
+      const nombre = nombreCompleto(c.cliente).toLowerCase();
+      const doc = (c.cliente.documento ?? "").replace(/\D/g, "");
+      if (num.includes(q) || nombre.includes(q)) return true;
+      if (qDigits.length >= 2 && (doc.includes(qDigits) || String(c.numero ?? "") === qDigits)) return true;
+      return false;
+    });
+  }, [candidatos, busq]);
 
+  // KPIs de recupero: ¿las refinanciaciones se pagan (al día) o vuelven a mora?
   const totalConsolidado = pares.reduce((s, p) => s + p.nuevo.monto_original, 0);
+  const alDia = pares.filter((p) => p.nuevo.dias_mora === 0).length;
+  const enMora = pares.filter((p) => p.nuevo.dias_mora > 0).length;
+  const tasaRecupero = pares.length > 0 ? Math.round((alDia / pares.length) * 100) : 0;
 
   return (
-    <div className="space-y-4">
-      <p className="text-xs text-muted-foreground">
-        {pares.length} refinanciaci{pares.length !== 1 ? "ones" : "ón"} · capital consolidado total <span className="font-mono font-semibold text-foreground">${n0(totalConsolidado)}</span>
-      </p>
+    <div className="space-y-6">
+      {/* KPIs de la sección (solo si ya hay historial) */}
+      {pares.length > 0 && (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <KpiCard icon="counterclockwise-arrows-button" label="Refinanciaciones" value={String(pares.length)} accent="warning" />
+          <KpiCard icon="money-bag" label="Capital consolidado" value={`$${n0(totalConsolidado)}`} accent="primary" mono />
+          <KpiCard icon="check-mark-button" label="Al día (recuperados)" value={String(alDia)} accent="success" sub={`${tasaRecupero}% de recupero`} />
+          <KpiCard icon="warning" label="Volvieron a mora" value={String(enMora)} accent={enMora > 0 ? "destructive" : "muted"} sub={enMora > 0 ? "reincidencia" : "ninguno"} />
+        </div>
+      )}
 
+      {/* ── Refinanciar un crédito: buscador + candidatos con acción directa ── */}
+      <div className="rounded-xl border border-border bg-card p-5 space-y-3">
+        <div className="flex items-center gap-2">
+          <RefreshCw className="h-4 w-4 text-warning" />
+          <h3 className="text-sm font-semibold text-foreground">Refinanciar un crédito</h3>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Elegí un crédito <strong className="text-foreground">en mora</strong> para consolidar su deuda viva en un crédito nuevo (con quita opcional; no mueve caja).
+        </p>
+
+        {candidatos.length === 0 ? (
+          <p className="rounded-lg border border-dashed border-border/60 px-4 py-6 text-center text-xs text-muted-foreground/60">
+            No hay créditos en mora para refinanciar. 🎉
+          </p>
+        ) : (
+          <>
+            <BuscadorF3
+              value={busq}
+              onChange={setBusq}
+              placeholder="Buscar por N° (CRD-…), DNI o nombre…"
+              onF3={() => setBusq("")}
+              f3Hint="para ver todos los morosos"
+            />
+            {candFiltrados.length === 0 ? (
+              <p className="px-1 py-4 text-center text-xs text-muted-foreground/60">Sin resultados para “{busq}”.</p>
+            ) : (
+              <div className="max-h-[42vh] space-y-2 overflow-auto pr-1">
+                {candFiltrados.map((c) => (
+                  <div key={c.id} className="flex items-center gap-3 rounded-lg border border-border bg-muted/10 px-3 py-2.5">
+                    <button onClick={() => onOpen(c)} className="min-w-0 flex-1 text-left" title="Ver detalle del crédito">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-mono text-xs font-bold text-foreground">{formatCreditoNumero(c.numero)}</span>
+                        <StatusBadge label={`${c.dias_mora}d mora`} variant={c.dias_mora > 30 ? "destructive" : "warning"} />
+                        {c.es_refinanciacion && (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-warning/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-warning" title="Ya proviene de una refinanciación previa: cuidado con encadenar reestructuraciones">
+                            <RefreshCw className="h-2.5 w-2.5" /> re-refi
+                          </span>
+                        )}
+                      </div>
+                      <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                        {nombreCompleto(c.cliente)}{c.cliente.documento ? ` · DNI ${c.cliente.documento}` : ""}
+                      </p>
+                    </button>
+                    <div className="shrink-0 text-right">
+                      <p className="text-[10px] uppercase tracking-wide text-muted-foreground/70">Saldo</p>
+                      <p className="font-mono text-xs font-semibold text-warning tabular-nums">${n0(c.saldo_pendiente)}</p>
+                    </div>
+                    <button
+                      onClick={() => onRefinanciar(c)}
+                      className="shrink-0 inline-flex items-center gap-1.5 rounded-lg bg-warning/15 px-3 py-1.5 text-xs font-medium text-warning transition-colors hover:bg-warning/25"
+                    >
+                      <RefreshCw className="h-3.5 w-3.5" /> Refinanciar
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+
+      {/* ── Historial de refinanciaciones (antes → después) ── */}
+      <div className="space-y-3">
+        <div className="flex items-baseline justify-between gap-2">
+          <h3 className="text-sm font-semibold text-foreground">Historial de refinanciaciones</h3>
+          {pares.length > 0 && <span className="text-[11px] text-muted-foreground">{pares.length} operaci{pares.length !== 1 ? "ones" : "ón"}</span>}
+        </div>
+
+        {pares.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-border/60 p-10 flex flex-col items-center gap-3 text-center">
+            <div className="h-14 w-14 rounded-2xl bg-muted/20 border border-border/70 flex items-center justify-center">
+              <RefreshCw className="h-6 w-6 text-muted-foreground/20" />
+            </div>
+            <p className="text-xs text-muted-foreground/60 max-w-xs leading-relaxed">
+              Todavía no reestructuraste ningún crédito. Cuando refinancies uno (de la lista de arriba), la operación —deuda vieja → crédito nuevo— aparece acá.
+            </p>
+          </div>
+        ) : (
       <DataTable
         rows={pares}
         rowKey={(p) => p.nuevo.id}
@@ -596,6 +691,19 @@ function RefinanciadosView({ creditos, onOpen }: { creditos: Credito[]; onOpen: 
               : <span className="text-xs font-medium text-success">Al día</span> },
           { header: "Fecha", className: "whitespace-nowrap",
             cell: (p) => <span className="text-xs text-muted-foreground">{formatFecha(p.nuevo.created_at)}</span> },
+          { header: "", align: "right", className: "pr-4",
+            cell: (p) => {
+              const og = p.origen;
+              return og ? (
+                <button
+                  onClick={(e) => { e.stopPropagation(); setComparar({ origen: og, nuevo: p.nuevo }); }}
+                  className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                  title="Comparar el crédito original (plan y TNA) con la refinanciación"
+                >
+                  <RefreshCw className="h-3 w-3" /> Comparar
+                </button>
+              ) : <span className="text-xs text-muted-foreground/40">—</span>;
+            } },
         ]}
         renderMobileCard={(p) => (
           <div onClick={() => onOpen(p.nuevo)} className="rounded-xl bg-card border border-border p-4 space-y-2 cursor-pointer active:bg-muted/20 transition-colors">
@@ -613,8 +721,25 @@ function RefinanciadosView({ creditos, onOpen }: { creditos: Credito[]; onOpen: 
               <span className="text-[10px] text-muted-foreground">Capital consolidado</span>
               <span className="font-mono font-semibold text-foreground">${n0(p.nuevo.monto_original)}</span>
             </div>
+            {p.origen && (
+              <button
+                onClick={(e) => { e.stopPropagation(); setComparar({ origen: p.origen!, nuevo: p.nuevo }); }}
+                className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted"
+              >
+                <RefreshCw className="h-3 w-3" /> Comparar con el original
+              </button>
+            )}
           </div>
         )}
+      />
+        )}
+      </div>
+
+      <CompararRefiDialog
+        origen={comparar?.origen ?? null}
+        nuevo={comparar?.nuevo ?? null}
+        onClose={() => setComparar(null)}
+        onOpenCredito={(c) => { setComparar(null); onOpen(c); }}
       />
     </div>
   );

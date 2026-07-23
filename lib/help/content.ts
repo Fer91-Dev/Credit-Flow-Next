@@ -112,7 +112,27 @@ const HELP: Record<string, HelpDoc> = {
         items: [
           { term: "Anular", desc: "Deshace el crédito conservando todo y registrando el motivo; revierte la caja. Es lo recomendado para corregir." },
           { term: "Eliminar", desc: "Borrado definitivo. Se bloquea si el crédito tiene pagos o un desembolso: en ese caso hay que anular." },
-          { term: "Refinanciar", desc: "Solo créditos en mora: consolida la deuda viva en un crédito nuevo con quita opcional. No mueve caja." },
+          { term: "Refinanciar", desc: "Solo créditos en mora: consolida la deuda viva (capital + interés + cargos + mora) en un crédito nuevo, con quita opcional. No mueve caja: la deuda se traslada." },
+        ],
+      },
+      {
+        kind: "pasos",
+        titulo: "Refinanciar / reestructurar deuda",
+        pasos: [
+          "Entrá a la pestaña \"Refinanciados\": buscá el crédito en mora por N°, DNI o nombre y tocá \"Refinanciar\".",
+          "También podés hacerlo desde el detalle de un crédito moroso (botón \"Refinanciar\" arriba a la derecha).",
+          "En el diálogo ves la deuda viva a consolidar; podés renegociar tasa/plazo y aplicar una quita (%, monto o ninguna).",
+          "Al confirmar, el crédito viejo queda \"refinanciado\" (saldo $0) y nace uno nuevo con la deuda consolidada.",
+        ],
+      },
+      {
+        kind: "tips",
+        titulo: "La pestaña Refinanciados",
+        items: [
+          "Arriba muestra KPIs de recupero: cuántas refinanciaciones están al día (se pagan) vs. cuántas volvieron a mora.",
+          "El buscador lista los créditos en mora candidatos, con acción directa para refinanciar cada uno.",
+          "En el historial, \"Comparar\" abre el antes → después: el plan de cuotas y la TNA del crédito original vs. la refinanciación.",
+          "Un crédito marcado \"re-refi\" ya proviene de otra refinanciación: ojo con encadenar reestructuraciones.",
         ],
       },
       {

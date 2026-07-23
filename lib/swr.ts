@@ -139,7 +139,7 @@ export interface Credito {
   id: string;
   numero?: number | null;
   cliente_id: string;
-  cliente: { nombre: string; apellido?: string | null; email?: string; telefono?: string };
+  cliente: { nombre: string; apellido?: string | null; documento?: string | null; email?: string; telefono?: string };
   vendedor_id?: string | null;
   vendedor?: { id: string; nombre: string } | null;
   tipo_credito: string;

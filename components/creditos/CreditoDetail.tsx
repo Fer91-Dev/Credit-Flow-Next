@@ -49,7 +49,9 @@ const metodoLabel: Record<string, string> = {
  * Reúne tres fuentes existentes: el crédito (de la lista), su plan de
  * amortización (/amortizacion) y sus pagos imputados (/pagos?credito_id=).
  */
-export function CreditoDetail({ credito, role }: { credito: Credito; role?: Role }) {
+export function CreditoDetail({ credito, role, onRefinanciar }: { credito: Credito; role?: Role; onRefinanciar?: (c: Credito) => void }) {
+  // Refinanciable = crédito activo y en mora (misma regla que el server exige para reestructurar).
+  const refinanciable = credito.estado === "activo" && credito.dias_mora > 0;
   const { amortizacion } = useAmortizacion(credito.id);
   const { cuotas, resumen, isLoading: loadingCuotas } = useCuotas(credito.id);
   const { pagos, isLoading: loadingPagos } = usePagosByCredito(credito.id);
@@ -176,6 +178,22 @@ export function CreditoDetail({ credito, role }: { credito: Credito; role?: Role
               </p>
             )}
           </div>
+
+          {/* Acción destacada: refinanciar/reestructurar (solo si el crédito está en mora). */}
+          {refinanciable && onRefinanciar && (
+            <div className="shrink-0 flex flex-col items-end gap-1">
+              <button
+                onClick={() => onRefinanciar(credito)}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-warning/30 bg-warning/10 px-3.5 py-2 text-sm font-medium text-warning transition-colors hover:bg-warning/20"
+                title="Consolidar la deuda vencida en un crédito nuevo (no mueve caja)"
+              >
+                <RefreshCw className="h-4 w-4" /> Refinanciar
+              </button>
+              {credito.es_refinanciacion && (
+                <span className="text-[10px] text-warning/80">⚠ ya proviene de otra refinanciación</span>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
