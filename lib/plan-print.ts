@@ -192,7 +192,7 @@ tfoot td.cg{background:#2A2113}
     </div>
   </div>
   <div class="band">
-    <div class="kitem"><span class="klabel">Capital</span><span class="kval">${formatMonto(capital)}</span></div>
+    <div class="kitem"><span class="klabel">Monto solicitado</span><span class="kval">${formatMonto(capital)}</span></div>
     <div class="kitem"><span class="klabel">Tasa</span><span class="kval">${data.tasa}% ${convLabel}</span></div>
     <div class="kitem"><span class="klabel">Cuotas</span><span class="kval">${nCuotas} – ${freqLabel}</span></div>
   </div>

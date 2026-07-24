@@ -151,6 +151,13 @@ model clientes {
   telefono_laboral  String?
   direccion_laboral String?
 
+  // Migración de cartera vieja (planilla del sistema anterior): `migrado` marca el cliente en
+  // la ficha como importado (editable/completar después — apodos por nombre real, DNI, etc.);
+  // `historial_migrado` guarda su HISTORIA CLÍNICA (créditos previos: monto/cuota/estado/saldo
+  // + perfil). Es solo referencia: NO genera caja, cuotas ni mora. Lo nuevo va por el flujo normal.
+  migrado           Boolean @default(false)
+  historial_migrado Json?
+
   creditos    creditos[]
   solicitudes solicitudes[]
   consultas_bureau consultas_bureau[]

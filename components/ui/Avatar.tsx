@@ -63,11 +63,16 @@ export const AVATAR_SEEDS = [
 ] as const;
 
 export function Avatar({
-  name, src, generated = true, size = "md", status, ping, square, className,
+  name, src, seed, generated = true, size = "md", status, ping, square, className,
 }: {
   name?: string | null;
   /** Foto explícita (gana sobre el generado). */
   src?: string | null;
+  /**
+   * Semilla ESTABLE del avatar generado (ej. el ID del cliente). Si se pasa, el dibujo no
+   * cambia aunque se edite el nombre. Sin `seed`, se seedea con el nombre (compat anterior).
+   */
+  seed?: string | null;
   /** Si no hay `src`, genera un avatar ilustrado con DiceBear. */
   generated?: boolean;
   size?: AvatarSize;
@@ -82,7 +87,7 @@ export function Avatar({
   const safeName = name ?? "";
   const [imgError, setImgError] = useState(false);
 
-  const url = src ?? (generated && safeName ? dicebearUrl(safeName) : null);
+  const url = src ?? (generated ? (seed ? generatedAvatarUrl(seed) : (safeName ? dicebearUrl(safeName) : null)) : null);
   const showImg = !!url && !imgError;
 
   return (

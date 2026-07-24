@@ -55,6 +55,9 @@ export interface Cliente {
   // Derivados calculados por la API (no persistidos)
   ultimo_movimiento?: string | null;
   score?: ClienteScore;
+  // Migración de cartera vieja: cliente importado del sistema anterior (editable/completar).
+  migrado?: boolean;
+  historial_migrado?: HistorialMigrado | null;
 }
 
 /** Calificación crediticia derivada del comportamiento (ver lib/domain/scoring). */
@@ -62,6 +65,18 @@ export interface ClienteScore {
   categoria: "A" | "B" | "C" | "D" | "sin_historial";
   label: string;
   puntaje: number | null;
+}
+
+/** Historia clínica del cliente migrado: sus créditos previos de la planilla (solo referencia). */
+export interface HistorialMigrado {
+  importado_el?: string;
+  fuente?: string;
+  perfil: string;
+  resumen: { creditos: number; total_prestado: number; saldo_pendiente: number; terminados: number };
+  historial: Array<{
+    descripcion: string; monto: number; cuota: number;
+    cuotas_pagadas: number; cuotas_pendientes: number; saldo: number; estado: string; revisar?: string;
+  }>;
 }
 
 /** Pago imputado tal como viene anidado en el detalle de un cliente/crédito. */

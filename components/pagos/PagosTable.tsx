@@ -159,7 +159,7 @@ export function PagosTable() {
               onClick={() => elegir(c)}
               className="group flex w-full items-center gap-3 rounded-xl border border-border bg-card px-4 py-3 text-left transition-all hover:border-primary/40 hover:bg-card/80"
             >
-              <Avatar name={nombreCompleto(c)} size="md" status={c.estado === "activo" ? "online" : "offline"} />
+              <Avatar name={nombreCompleto(c)} seed={c.id} size="md" status={c.estado === "activo" ? "online" : "offline"} />
               <div className="min-w-0 flex-1">
                 <p className="font-medium text-foreground truncate">{nombreCompleto(c)}</p>
                 <div className="flex items-center gap-3 text-xs text-muted-foreground">

@@ -112,7 +112,7 @@ export function ClientesTable() {
   const recientesColumns: Column<Cliente>[] = [
     { header: "Cliente", cell: (c) => (
       <div className="flex items-center gap-2.5">
-        <Avatar name={nombreCompleto(c)} size="sm" status={c.estado === "activo" ? "online" : "offline"} />
+        <Avatar name={nombreCompleto(c)} seed={c.id} size="sm" status={c.estado === "activo" ? "online" : "offline"} />
         <span className="font-medium text-foreground truncate">{nombreCompleto(c)}</span>
       </div>
     ) },
@@ -418,11 +418,18 @@ function ClienteRow({
       <span className="absolute inset-y-0 left-0 w-1 bg-gradient-to-b from-primary to-success" />
 
       {/* Avatar TailGrids (con dot de estado activo/inactivo) */}
-      <Avatar name={nombreCompleto(c)} size="md" status={activo ? "online" : "offline"} />
+      <Avatar name={nombreCompleto(c)} seed={c.id} size="md" status={activo ? "online" : "offline"} />
 
       {/* Datos del titular (el estado activo/inactivo ya lo muestra el dot del avatar) */}
       <div className="min-w-0 flex-1">
-        <p className="truncate font-semibold text-foreground">{nombreCompleto(c)}</p>
+        <div className="flex items-center gap-2">
+          <p className="truncate font-semibold text-foreground">{nombreCompleto(c)}</p>
+          {c.migrado && (
+            <span className="shrink-0 rounded-full border border-warning/30 bg-warning/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-warning" title="Importado del sistema anterior">
+              Migrado
+            </span>
+          )}
+        </div>
         <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
           {c.documento && (
             <span className="flex items-baseline gap-1">

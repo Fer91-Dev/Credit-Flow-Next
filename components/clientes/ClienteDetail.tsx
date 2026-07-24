@@ -16,6 +16,7 @@ import { Field, Textarea } from "@/components/ui/field";
 import { useToast } from "@/components/ui/toast";
 import { LibreDeudaDialog } from "@/components/creditos/LibreDeudaDialog";
 import { ClienteBureauPanel } from "@/components/clientes/ClienteBureauPanel";
+import { EditarHistorialDialog } from "@/components/clientes/EditarHistorialDialog";
 import { abrirRecibo } from "@/lib/recibo";
 import { formatCreditoNumero, formatFecha, formatFechaHora, nombreCompleto } from "@/lib/utils";
 
@@ -155,6 +156,7 @@ export function ClienteDetail({
   const [anularPago, setAnularPago] = useState<{ id: string; monto: number; fecha: string; creditoNumero?: number | null } | null>(null);
   const [anularMotivo, setAnularMotivo] = useState("");
   const [anularBusy, setAnularBusy] = useState(false);
+  const [editarHist, setEditarHist] = useState(false);
 
   // Qué secciones se muestran según el contexto.
   const showPersonal = variant !== "pagos";   // datos personales/laborales
@@ -223,7 +225,7 @@ export function ClienteDetail({
       <div className="shrink-0 border-b border-border bg-gradient-to-br from-primary/10 via-transparent to-success/5 px-5 py-4 sm:px-6">
         <div className="flex items-start gap-4">
           {/* Avatar TailGrids (cuadrado, con dot de estado) */}
-          <Avatar name={nombreCompleto(cliente)} size="lg" square status={cliente.estado === "activo" ? "online" : "offline"} />
+          <Avatar name={nombreCompleto(cliente)} seed={cliente.id} size="lg" square status={cliente.estado === "activo" ? "online" : "offline"} />
 
           <div className="min-w-0 flex-1">
             <div className="flex items-start justify-between gap-3">
@@ -231,6 +233,14 @@ export function ClienteDetail({
                 <h2 className="truncate text-2xl font-bold leading-tight tracking-tight text-foreground">{nombreCompleto(cliente)}</h2>
                 <div className="mt-2 flex flex-wrap items-center gap-2.5">
                   <StatusBadge label={cliente.estado} variant={cliente.estado === "activo" ? "success" : "muted"} />
+                  {cliente.migrado && (
+                    <span
+                      className="rounded-full border border-warning/30 bg-warning/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-warning"
+                      title="Cliente importado del sistema anterior — completá sus datos reales (nombre, DNI, sueldo) con Editar"
+                    >
+                      Migrado
+                    </span>
+                  )}
                   {cliente.documento && (
                     <span className="flex items-baseline gap-1.5">
                       <span className="text-[10px] font-bold uppercase tracking-widest text-primary/70">DNI</span>
@@ -290,6 +300,91 @@ export function ClienteDetail({
 
       {/* ── Cuerpo scrolleable ── */}
       <div className="flex-1 min-h-0 overflow-y-auto px-5 py-4 space-y-5">
+
+        {/* Historial previo (cliente migrado del sistema anterior) — solo referencia */}
+        {cliente.migrado && cliente.historial_migrado && (() => {
+          const h = cliente.historial_migrado!;
+          const HB: Record<string, { l: string; v: BadgeVariant }> = {
+            al_dia: { l: "Al día", v: "success" }, debe: { l: "Debe", v: "destructive" },
+            muy_deudor: { l: "Muy deudor", v: "destructive" }, parcial: { l: "Parcial", v: "warning" },
+            terminado: { l: "Pagado", v: "muted" }, recien: { l: "Reciente", v: "primary" },
+          };
+          const tiles: [string, string, string][] = [
+            ["Créditos previos", String(h.resumen.creditos), "text-foreground"],
+            ["Total prestado", `$${n0(h.resumen.total_prestado)}`, "text-foreground"],
+            ["Saldo pendiente", `$${n0(h.resumen.saldo_pendiente)}`, h.resumen.saldo_pendiente > 0 ? "text-warning" : "text-success"],
+            ["Ya pagados", String(h.resumen.terminados), "text-foreground"],
+          ];
+          return (
+            <div className="rounded-xl border border-warning/25 bg-warning/[0.04] p-5 space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <Emoji name="page-facing-up" className="h-4 w-4" />
+                  <h3 className="text-sm font-semibold text-foreground">Historial previo</h3>
+                  <span className="text-[11px] text-muted-foreground">· sistema anterior (planilla)</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="rounded-full border border-border bg-card px-2 py-0.5 text-[11px] font-medium text-foreground">{h.perfil}</span>
+                  {puedeAnular && (
+                    <button
+                      onClick={() => setEditarHist(true)}
+                      className="inline-flex items-center gap-1 rounded-lg border border-border px-2 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                      title="Editar el historial (solo administrador)"
+                    >
+                      <Pencil className="h-3 w-3" /> Editar
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                {tiles.map(([l, v, c]) => (
+                  <div key={l} className="rounded-lg border border-border bg-card/50 px-2.5 py-2">
+                    <p className="text-[10px] text-muted-foreground">{l}</p>
+                    <p className={`font-mono text-sm font-bold ${c}`}>{v}</p>
+                  </div>
+                ))}
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[30rem] text-xs">
+                  <thead>
+                    <tr className="border-b border-border text-left text-[10px] uppercase tracking-wide text-muted-foreground">
+                      <th className="py-1.5 pr-2 font-semibold">Crédito (planilla)</th>
+                      <th className="py-1.5 px-2 text-right font-semibold">Prestado</th>
+                      <th className="py-1.5 px-2 text-right font-semibold">Cuota</th>
+                      <th className="py-1.5 px-2 text-center font-semibold" title="Cuotas pagadas / total">Cuotas</th>
+                      <th className="py-1.5 px-2 font-semibold">Estado</th>
+                      <th className="py-1.5 pl-2 text-right font-semibold">Saldo</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {h.historial.map((c, i) => {
+                      const b = HB[c.estado] ?? { l: c.estado, v: "muted" as BadgeVariant };
+                      const totalCuotas = c.cuotas_pagadas + c.cuotas_pendientes;
+                      return (
+                        <tr key={i} className="border-b border-border/60">
+                          <td className="py-1.5 pr-2 text-foreground">{c.descripcion}{c.revisar ? <span className="ml-1 text-[10px] text-warning">⚠ {c.revisar}</span> : null}</td>
+                          <td className="py-1.5 px-2 text-right font-mono text-foreground">${n0(c.monto)}</td>
+                          <td className="py-1.5 px-2 text-right font-mono text-muted-foreground">${n0(c.cuota)}</td>
+                          <td className="py-1.5 px-2 text-center font-mono text-muted-foreground" title="pagadas / total">
+                            <span className="text-foreground font-semibold">{c.cuotas_pagadas}</span>/{totalCuotas}
+                          </td>
+                          <td className="py-1.5 px-2"><StatusBadge label={b.l} variant={b.v} /></td>
+                          <td className={`py-1.5 pl-2 text-right font-mono ${c.saldo > 0 ? "text-warning font-semibold" : "text-success"}`}>${n0(c.saldo)}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              <p className="text-[11px] leading-relaxed text-muted-foreground/70">
+                Importado de la planilla anterior — <strong className="text-foreground">solo referencia</strong> (no genera caja ni cuotas). Completá el nombre real y el DNI con <strong className="text-foreground">Editar</strong>; los créditos nuevos se cargan normalmente.
+              </p>
+            </div>
+          );
+        })()}
 
         {/* Datos personales (presentación editorial por bloques) */}
         {showPersonal && (
@@ -445,6 +540,13 @@ export function ClienteDetail({
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Editar historia clínica del cliente migrado (solo admin) */}
+      <EditarHistorialDialog
+        clienteId={cliente.id}
+        historial={editarHist ? (cliente.historial_migrado ?? null) : null}
+        onClose={() => { setEditarHist(false); mutate(); }}
+      />
     </div>
   );
 }

@@ -85,6 +85,9 @@ export function ClienteForm({ clienteId, initialDocumento, onClose }: ClienteFor
   const [sueldoControl, setSueldoControl] = useState<{ ediciones: number; max: number; esAdmin: boolean; puedeEditar: boolean } | null>(null);
   const [sueldoOriginal, setSueldoOriginal] = useState(""); // valor cargado, para detectar el cambio
   const [motivoSueldo, setMotivoSueldo] = useState("");
+  // Cliente migrado (cartera vieja): datos incompletos por diseño → no exigir DNI/sueldo para
+  // poder completarlos de a poco. El sueldo lo pedirá igual el motor de riesgo al dar un crédito.
+  const [migrado, setMigrado] = useState(false);
   const [reseteando, setReseteando] = useState(false);
   const confirm = useConfirm();
   const toast = useToast();
@@ -179,6 +182,7 @@ export function ClienteForm({ clienteId, initialDocumento, onClose }: ClienteFor
         if (d.provincia) cargarLocalidades(d.provincia); // poblar el select de localidades
         setSueldoControl(d.sueldo_control ?? null);
         setSueldoOriginal(d.ingreso_mensual != null ? numeroAInput(d.ingreso_mensual) : "");
+        setMigrado((d as { migrado?: boolean }).migrado === true);
       }
     } catch { setError("Error al cargar cliente"); }
   };
@@ -229,14 +233,16 @@ export function ClienteForm({ clienteId, initialDocumento, onClose }: ClienteFor
     if (!formData.nombre.trim()) e.nombre = "Ingresá el nombre";
     if (!formData.apellido.trim()) e.apellido = "Ingresá el apellido";
     const dni = formData.documento.trim();
-    if (!dni) e.documento = "El DNI es obligatorio";
+    // DNI: obligatorio salvo en clientes migrados (se completan de a poco). Si se carga, se valida el formato.
+    if (!dni) { if (!migrado) e.documento = "El DNI es obligatorio"; }
     else if (!RE.dni.test(dni)) e.documento = "DNI inválido (7 u 8 dígitos)";
     if (formData.cuit_cuil.trim() && !RE.cuit.test(formData.cuit_cuil.trim())) e.cuit_cuil = "CUIT/CUIL inválido (11 dígitos)";
     if (formData.email.trim() && !RE.email.test(formData.email.trim())) e.email = "Email inválido";
     if (formData.telefono.trim() && !RE.tel.test(formData.telefono.trim())) e.telefono = "Debe tener 10 dígitos";
     if (formData.telefono_laboral.trim() && !RE.tel.test(formData.telefono_laboral.trim())) e.telefono_laboral = "Debe tener 10 dígitos";
-    // El ingreso es OBLIGATORIO: es la variable central del motor financiero (capacidad de pago).
-    if (!formData.ingreso_mensual.trim() || parseMontoInput(formData.ingreso_mensual) <= 0)
+    // El ingreso es OBLIGATORIO (variable central del motor) — salvo en clientes migrados, que
+    // se completan progresivamente. El motor de riesgo lo exige igual al otorgar un crédito.
+    if (!migrado && (!formData.ingreso_mensual.trim() || parseMontoInput(formData.ingreso_mensual) <= 0))
       e.ingreso_mensual = "El ingreso es obligatorio (variable clave del motor financiero)";
     return e;
   };
@@ -267,7 +273,11 @@ export function ClienteForm({ clienteId, initialDocumento, onClose }: ClienteFor
     const errs = validar();
     if (Object.keys(errs).length > 0) {
       setErrors(errs);
-      setError(null);
+      // Aviso VISIBLE + scroll al tope: antes el error del campo quedaba fuera de la vista y
+      // parecía que "no hacía nada" al guardar.
+      const primero = Object.values(errs)[0];
+      setError(`No se pudo guardar. Revisá los campos en rojo${primero ? `: ${primero}` : "."}`);
+      (ev.currentTarget as HTMLFormElement)?.scrollTo?.({ top: 0, behavior: "smooth" });
       return;
     }
     setErrors({});
