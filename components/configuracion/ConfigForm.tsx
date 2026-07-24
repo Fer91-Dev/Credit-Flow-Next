@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Settings, Check, Loader2, Percent, Plus, X, MessageSquare, Phone, Mail } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Settings, Check, Loader2, Percent, Plus, X, MessageSquare, Phone, Mail, HelpCircle } from "lucide-react";
 import { useConfiguracion, type ConfiguracionFinanciera, type GamificacionConfig, type RentabilidadConfig, type RiesgoConfig, type CobranzaConfig } from "@/lib/swr";
 import { FeatureGate } from "@/components/providers/FeaturesProvider";
 import { FinancieraForm } from "@/components/configuracion/FinancieraForm";
@@ -17,6 +17,162 @@ const ordenLabel: Record<string, string> = {
   mora: "Mora",
   interes: "Interés",
   capital: "Capital",
+};
+
+/** Ayuda contextual por bloque de configuración: qué configura y con qué efecto. */
+export type AyudaBloque = { titulo?: string; texto: string; puntos?: string[] };
+
+const AYUDA: Record<string, AyudaBloque> = {
+  motor: {
+    titulo: "Motor financiero",
+    texto: "Define cómo el sistema interpreta la tasa que cargás en cada crédito y con qué método arma las cuotas.",
+    puntos: [
+      "Convención de tasa: si el número que escribís es anual (TNA/TEA) o mensual.",
+      "Sistema de amortización: hoy Francés (cuota fija todos los períodos).",
+    ],
+  },
+  mora: {
+    titulo: "Interés por mora",
+    texto: "Recargo que se suma cuando el cliente paga una cuota tarde. Con el switch apagado, no se cobra mora.",
+    puntos: [
+      "Tasa diaria: % que se acumula por cada día de atraso.",
+      "Base de cálculo: si ese % se aplica sobre el valor de la cuota o sobre el saldo pendiente.",
+    ],
+  },
+  cobranza: {
+    titulo: "Cobranza y control de pagos",
+    texto: "Dos controles operativos de la cobranza diaria.",
+    puntos: [
+      "Días sin gestión: cada cuántos días un moroso sin contactar vuelve a aparecer en la agenda del día.",
+      "Días para anular un pago: ventana para revertir un cobro cargado por error (control de tesorería).",
+    ],
+  },
+  imputacion: {
+    titulo: "Orden de imputación de pagos",
+    texto: "Define a qué se aplica primero la plata que paga el cliente cuando no alcanza a cubrir todo.",
+    puntos: [
+      "Hoy el orden es Mora → Interés → Capital.",
+      "Imputación de cargos: dónde entran IVA/seguro/gastos del período dentro de ese orden.",
+    ],
+  },
+  presentacion: {
+    titulo: "Presentación",
+    texto: "Formato de la moneda y la región para mostrar los montos. No cambia ningún cálculo, solo cómo se ven los números.",
+  },
+  financiacion: {
+    titulo: "Financiación del simulador",
+    texto: "Valores que el simulador propone y los límites de tasa al otorgar. Poné 0 para no aplicar un tope.",
+    puntos: [
+      "Monto mín/máx/por defecto: acotan y prellenan el monto del crédito.",
+      "Tasa base: la tasa que aparece cargada por defecto.",
+      "Tasa mín/máx: bloquean otorgar por debajo o por encima de esos valores.",
+    ],
+  },
+  plazos: {
+    titulo: "Plazos disponibles",
+    texto: "Qué cantidades de cuotas puede elegir el operador en el simulador. Tocá un plazo para activarlo o desactivarlo, y agregá los tuyos.",
+    puntos: ["Plazo por defecto: el que viene preseleccionado al simular."],
+  },
+  frecuencias: {
+    titulo: "Frecuencias de pago",
+    texto: "Cada cuánto vence una cuota (mensual, semanal, etc.). Las base no se editan; podés crear las tuyas, como quincenal.",
+    puntos: [
+      "Cuotas fijas: si una frecuencia siempre usa la misma cantidad de cuotas.",
+      "Frecuencia por defecto: la preseleccionada en el simulador.",
+    ],
+  },
+  redondeo: {
+    titulo: "Redondeo de cuota",
+    texto: "Ajusta el valor final de la cuota para que quede redondo.",
+    puntos: [
+      "Ninguno: la cuota exacta que calcula el motor.",
+      "Al entero: sin centavos.",
+      "A múltiplo: redondea al múltiplo que definas (ej: de a $100).",
+    ],
+  },
+  cronograma: {
+    titulo: "Cronograma de cobranza",
+    texto: "Reglas de fechas para créditos mensuales. Se congelan al otorgar el crédito: cambiarlas no afecta a los créditos ya dados.",
+    puntos: [
+      "Día de corte: después de esa fecha, la 1ª cuota pasa al mes siguiente.",
+      "Día de vencimiento: día fijo del mes en que vence cada cuota.",
+      "Días de gracia: tolerancia antes de contar mora.",
+      "Sábado no hábil y feriados: corren el vencimiento al próximo día hábil.",
+    ],
+  },
+  cargos: {
+    titulo: "Cargos del crédito",
+    texto: "Comisiones e impuestos que se suman a la cuota o al costo del crédito. Cada uno se activa por separado; todo apagado = cuota pura (solo capital + interés).",
+  },
+  "cargo-comision": {
+    titulo: "Comisión de otorgamiento",
+    texto: "Cargo único por dar el crédito.",
+    puntos: [
+      "Modo: % del monto o un valor fijo.",
+      "¿Financiada?: se cobra al inicio o se suma al capital y se paga en las cuotas.",
+    ],
+  },
+  "cargo-iva": {
+    titulo: "IVA sobre interés",
+    texto: "Impuesto que se aplica sobre el interés de cada cuota. Cargá la tasa vigente (ej: 21%).",
+  },
+  "cargo-seguro": {
+    titulo: "Seguro",
+    texto: "Cobertura que se cobra en cada cuota.",
+    puntos: ["Base: % del saldo, % del monto original o un monto fijo por cuota."],
+  },
+  "cargo-gastos": {
+    titulo: "Gastos administrativos",
+    texto: "Cargo administrativo que se suma a cada cuota, como monto fijo o % de la cuota.",
+  },
+  comunicaciones: {
+    titulo: "Canales de comunicación",
+    texto: "Conectá WhatsApp, SMS y Email para que el sistema mande recordatorios y avisos de mora automáticamente. Cada canal se activa y guarda por separado.",
+  },
+  "canal-whatsapp": {
+    titulo: "WhatsApp (Meta)",
+    texto: "Conexión con WhatsApp Cloud API para enviar mensajes automáticos.",
+    puntos: [
+      "Token y Phone Number ID: los provee Meta Business.",
+      "Plantillas: el nombre exacto de cada mensaje aprobado en Meta.",
+    ],
+  },
+  "canal-sms": {
+    titulo: "SMS",
+    texto: "Envío de mensajes de texto vía un proveedor (Twilio, etc.). Cargá el proveedor y su API key.",
+  },
+  "canal-email": {
+    titulo: "Email",
+    texto: "Envío de correos. Elegí el proveedor (SMTP, Resend, SendGrid) y cargá sus credenciales.",
+  },
+  gamificacion: {
+    titulo: "Gamificación",
+    texto: "Cómo se calcula la medalla (Oro/Plata/Bronce) de cada vendedor según su rendimiento.",
+    puntos: [
+      "Período: cada cuánto se evalúa (mensual, trimestral, semestral).",
+      "Pesos: cuánto influye cada objetivo (monto, cantidad, cobranza, calidad).",
+      "Umbrales: el puntaje necesario para cada medalla.",
+    ],
+  },
+  rentabilidad: {
+    titulo: "Rentabilidad (costo de fondeo)",
+    texto: "Cuánto te cuesta el dinero que prestás, para calcular la ganancia NETA en Reportes.",
+    puntos: [
+      "Costo de fondeo anual: el interés que pagás por tu capital.",
+      "Otros costos mensuales: gastos fijos operativos.",
+      "Apagado: Reportes muestra el margen bruto (sin restar estos costos).",
+    ],
+  },
+  riesgo: {
+    titulo: "Política de originación",
+    texto: "Reglas que definen si un cliente califica para un crédito y hasta qué monto.",
+    puntos: [
+      "Ratio cuota/ingreso: la cuota no puede superar ese % del sueldo.",
+      "Tope por múltiplo de ingreso y límites de monto.",
+      "Máx. créditos activos y bloqueo por mora previa.",
+      "Si no califica: avisar y dejar autorizar, o bloquear.",
+    ],
+  },
 };
 
 export function ConfigForm() {
@@ -213,7 +369,7 @@ export function ConfigForm() {
 
           {/* ─── Motor tab: Motor financiero (primero) ─── */}
           {activeTab === "motor" && (
-          <Section title="Motor financiero" desc="Cómo se interpreta la tasa y el sistema de cálculo."
+          <Section title="Motor financiero" desc="Cómo se interpreta la tasa y el sistema de cálculo." ayuda={AYUDA.motor}
             onSave={() => save("motor", { convencionTasa: form.convencionTasa, sistemaAmortizacion: form.sistemaAmortizacion })}
             saving={savingKey === "motor"} saved={savedKey === "motor"} dirty={isDirty("motor")}>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -237,7 +393,7 @@ export function ConfigForm() {
           {activeTab === "simulador" && <>
 
           {/* Simulador · Financiación */}
-          <Section title="Financiación del simulador" desc="Rango de monto y valores que el simulador prellena. 0 = sin restricción / sin valor por defecto."
+          <Section title="Financiación del simulador" desc="Rango de monto y valores que el simulador prellena. 0 = sin restricción / sin valor por defecto." ayuda={AYUDA.financiacion}
             onSave={() => saveSim("financiacion")} saving={savingKey === "financiacion"} saved={savedKey === "financiacion"} dirty={isDirty("financiacion")}>
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
               <Field label="Monto mínimo ($)">
@@ -277,7 +433,7 @@ export function ConfigForm() {
           </Section>
 
           {/* Simulador · Plazos */}
-          <Section title="Plazos disponibles" desc="Cuotas que se ofrecen en el simulador. Tocá un plazo para activarlo o desactivarlo."
+          <Section title="Plazos disponibles" desc="Cuotas que se ofrecen en el simulador. Tocá un plazo para activarlo o desactivarlo." ayuda={AYUDA.plazos}
             onSave={() => saveSim("plazos")} saving={savingKey === "plazos"} saved={savedKey === "plazos"} dirty={isDirty("plazos")}>
             <PlazosEditor plazos={form.simulador.plazos} onChange={p => setSim("plazos", p)} />
             <div className="mt-4 max-w-xs">
@@ -293,7 +449,7 @@ export function ConfigForm() {
           </Section>
 
           {/* Simulador · Frecuencias */}
-          <Section title="Frecuencias de pago" desc="Frecuencias ofrecidas en el simulador. Las base no se editan; podés agregar propias (ej. quincenal)."
+          <Section title="Frecuencias de pago" desc="Frecuencias ofrecidas en el simulador. Las base no se editan; podés agregar propias (ej. quincenal)." ayuda={AYUDA.frecuencias}
             onSave={() => saveSim("frecuencias")} saving={savingKey === "frecuencias"} saved={savedKey === "frecuencias"} dirty={isDirty("frecuencias")}>
             <FrecuenciasEditor
               frecuencias={form.simulador.frecuencias}
@@ -312,7 +468,7 @@ export function ConfigForm() {
           </Section>
 
           {/* Simulador · Redondeo */}
-          <Section title="Redondeo de cuota" desc="Ajuste del valor de la cuota total."
+          <Section title="Redondeo de cuota" desc="Ajuste del valor de la cuota total." ayuda={AYUDA.redondeo}
             onSave={() => saveSim("redondeo")} saving={savingKey === "redondeo"} saved={savedKey === "redondeo"} dirty={isDirty("redondeo")}>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Field label="Redondeo de cuota">
@@ -332,7 +488,7 @@ export function ConfigForm() {
           </Section>
 
           {/* Simulador · Cronograma de cobranza */}
-          <Section title="Cronograma de cobranza" desc="Fecha de corte, día de vencimiento fijo, gracia y feriados. Solo aplica a créditos mensuales; se congela al otorgar."
+          <Section title="Cronograma de cobranza" desc="Fecha de corte, día de vencimiento fijo, gracia y feriados. Solo aplica a créditos mensuales; se congela al otorgar." ayuda={AYUDA.cronograma}
             onSave={() => saveSim("cronograma")} saving={savingKey === "cronograma"} saved={savedKey === "cronograma"} dirty={isDirty("cronograma")}>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               <Field label="Día de corte" hint="1–28. Vacío = sin corte (1ª cuota al mes siguiente)">
@@ -371,10 +527,10 @@ export function ConfigForm() {
           </Section>
 
           {/* Simulador · Cargos */}
-          <Section title="Cargos del crédito" desc="Comisiones e impuestos que se suman a la cuota o al costo total. Todo desactivado = cuota pura.">
+          <Section title="Cargos del crédito" desc="Comisiones e impuestos que se suman a la cuota o al costo total. Todo desactivado = cuota pura." ayuda={AYUDA.cargos}>
             <div className="space-y-3">
               {/* Comisión de otorgamiento */}
-              <CargoBlock title="Comisión de otorgamiento" desc="Cargo único por dar el crédito."
+              <CargoBlock title="Comisión de otorgamiento" desc="Cargo único por dar el crédito." ayuda={AYUDA["cargo-comision"]}
                 activo={form.simulador.cargos.comisionOtorgamiento.activo}
                 onToggle={v => setCargo("comisionOtorgamiento", "activo", v)}
                 onSave={() => saveSim("cargo-comision")} saving={savingKey === "cargo-comision"} saved={savedKey === "cargo-comision"} dirty={isDirty("cargo-comision")}>
@@ -401,7 +557,7 @@ export function ConfigForm() {
               </CargoBlock>
 
               {/* IVA */}
-              <CargoBlock title="IVA sobre interés" desc="Impuesto sobre el interés de cada cuota."
+              <CargoBlock title="IVA sobre interés" desc="Impuesto sobre el interés de cada cuota." ayuda={AYUDA["cargo-iva"]}
                 activo={form.simulador.cargos.iva.activo}
                 onToggle={v => setCargo("iva", "activo", v)}
                 onSave={() => saveSim("cargo-iva")} saving={savingKey === "cargo-iva"} saved={savedKey === "cargo-iva"} dirty={isDirty("cargo-iva")}>
@@ -414,7 +570,7 @@ export function ConfigForm() {
               </CargoBlock>
 
               {/* Seguro */}
-              <CargoBlock title="Seguro" desc="Cobertura aplicada por período."
+              <CargoBlock title="Seguro" desc="Cobertura aplicada por período." ayuda={AYUDA["cargo-seguro"]}
                 activo={form.simulador.cargos.seguro.activo}
                 onToggle={v => setCargo("seguro", "activo", v)}
                 onSave={() => saveSim("cargo-seguro")} saving={savingKey === "cargo-seguro"} saved={savedKey === "cargo-seguro"} dirty={isDirty("cargo-seguro")}>
@@ -441,7 +597,7 @@ export function ConfigForm() {
               </CargoBlock>
 
               {/* Gastos administrativos */}
-              <CargoBlock title="Gastos administrativos" desc="Cargo por cuota."
+              <CargoBlock title="Gastos administrativos" desc="Cargo por cuota." ayuda={AYUDA["cargo-gastos"]}
                 activo={form.simulador.cargos.gastosAdministrativos.activo}
                 onToggle={v => setCargo("gastosAdministrativos", "activo", v)}
                 onSave={() => saveSim("cargo-gastos")} saving={savingKey === "cargo-gastos"} saved={savedKey === "cargo-gastos"} dirty={isDirty("cargo-gastos")}>
@@ -474,7 +630,7 @@ export function ConfigForm() {
           {activeTab === "motor" && <>
 
           {/* Mora */}
-          <Section title="Interés por mora" desc="Recargo aplicado por días de atraso. Apagá el switch para no cobrar mora."
+          <Section title="Interés por mora" desc="Recargo aplicado por días de atraso. Apagá el switch para no cobrar mora." ayuda={AYUDA.mora}
             enabled={form.moraActiva} onToggle={v => set("moraActiva", v)}
             onSave={() => save("mora", { moraActiva: form.moraActiva, tasaMoraDiaria: form.tasaMoraDiaria, baseMora: form.baseMora })}
             saving={savingKey === "mora"} saved={savedKey === "mora"} dirty={isDirty("mora")}>
@@ -501,7 +657,7 @@ export function ConfigForm() {
           </Section>
 
           {/* Agenda de cobranza */}
-          <Section title="Cobranza y control de pagos" desc="Umbral de la agenda del día y la ventana para anular un pago cargado por error (control de tesorería)."
+          <Section title="Cobranza y control de pagos" desc="Umbral de la agenda del día y la ventana para anular un pago cargado por error (control de tesorería)." ayuda={AYUDA.cobranza}
             onSave={() => save("cobranza", { cobranzaConfig: cobranza })}
             saving={savingKey === "cobranza"} saved={savedKey === "cobranza"} dirty={isDirty("cobranza")}>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 max-w-xl">
@@ -523,7 +679,7 @@ export function ConfigForm() {
           </Section>
 
           {/* Imputación */}
-          <Section title="Orden de imputación de pagos" desc="Cómo se aplica cada pago recibido sobre la deuda."
+          <Section title="Orden de imputación de pagos" desc="Cómo se aplica cada pago recibido sobre la deuda." ayuda={AYUDA.imputacion}
             onSave={() => save("imputacion", { imputarCargos: form.imputarCargos })}
             saving={savingKey === "imputacion"} saved={savedKey === "imputacion"} dirty={isDirty("imputacion")}>
             <div className="flex items-center gap-2 flex-wrap">
@@ -552,7 +708,7 @@ export function ConfigForm() {
           </Section>
 
           {/* Presentación */}
-          <Section title="Presentación" desc="Formato de moneda y región (no afecta los cálculos)."
+          <Section title="Presentación" desc="Formato de moneda y región (no afecta los cálculos)." ayuda={AYUDA.presentacion}
             onSave={() => save("presentacion", { moneda: form.moneda, locale: form.locale })}
             saving={savingKey === "presentacion"} saved={savedKey === "presentacion"} dirty={isDirty("presentacion")}>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -581,12 +737,14 @@ export function ConfigForm() {
           <Section
             title="Canales de comunicación"
             desc="Configura los canales para notificaciones automáticas de cobranza (recordatorios, mora, vencimientos)."
+            ayuda={AYUDA.comunicaciones}
           >
             <div className="space-y-4">
               {/* WhatsApp Cloud API */}
               <CanalesBlock
                 icon={<MessageSquare className="w-4 h-4 text-success" />}
                 title="WhatsApp Cloud API (Meta)"
+                ayuda={AYUDA["canal-whatsapp"]}
                 enabled={!!form.whatsappConfig?.enabled}
                 onToggle={(v) => set("whatsappConfig", { ...(form.whatsappConfig ?? defaultWhatsapp()), enabled: v })}
                 onSave={() => save("canal-whatsapp", { whatsappConfig: form.whatsappConfig ?? null } as any)}
@@ -641,6 +799,7 @@ export function ConfigForm() {
               <CanalesBlock
                 icon={<Phone className="w-4 h-4 text-warning" />}
                 title="SMS Gateway"
+                ayuda={AYUDA["canal-sms"]}
                 enabled={!!form.smsConfig?.enabled}
                 onToggle={(v) => set("smsConfig", { ...(form.smsConfig ?? defaultSms()), enabled: v })}
                 onSave={() => save("canal-sms", { smsConfig: form.smsConfig ?? null } as any)}
@@ -674,6 +833,7 @@ export function ConfigForm() {
               <CanalesBlock
                 icon={<Mail className="w-4 h-4 text-primary" />}
                 title="Email"
+                ayuda={AYUDA["canal-email"]}
                 enabled={!!form.emailConfig?.enabled}
                 onToggle={(v) => set("emailConfig", { ...(form.emailConfig ?? defaultEmail()), enabled: v })}
                 onSave={() => save("canal-email", { emailConfig: form.emailConfig ?? null } as any)}
@@ -713,6 +873,7 @@ export function ConfigForm() {
           <Section
             title="Gamificación (medallas y logros)"
             desc="Cómo se calcula la medalla del vendedor: período, pesos de cada objetivo y umbrales de Oro/Plata/Bronce."
+            ayuda={AYUDA.gamificacion}
             enabled={g.habilitado} onToggle={(v) => setGam({ habilitado: v })}
             onSave={() => save("gamificacion", { gamificacionConfig: g } as Partial<ConfiguracionFinanciera>)}
             saving={savingKey === "gamificacion"} saved={savedKey === "gamificacion"} dirty={isDirty("gamificacion")}
@@ -771,6 +932,7 @@ export function ConfigForm() {
           <Section
             title="Rentabilidad (costo de fondeo)"
             desc="Costo del capital que prestás, para calcular la ganancia NETA en Reportes. Ingreso financiero (interés + cargos + mora cobrados) − este costo = rentabilidad neta. Apagá el switch para ver solo el margen bruto."
+            ayuda={AYUDA.rentabilidad}
             enabled={rent.habilitado} onToggle={(v) => setRent({ habilitado: v })}
             onSave={() => save("rentabilidad", { rentabilidadConfig: rent } as Partial<ConfiguracionFinanciera>)}
             saving={savingKey === "rentabilidad"} saved={savedKey === "rentabilidad"} dirty={isDirty("rentabilidad")}
@@ -800,6 +962,7 @@ export function ConfigForm() {
           <Section
             title="Política de originación"
             desc="Límites de crédito según el ingreso del cliente. Si un cliente no califica, la decisión queda en el admin (puede autorizar asumiendo el riesgo). Las señales de bureau (BCRA/Nosis) se conectan en un paso próximo."
+            ayuda={AYUDA.riesgo}
             onSave={() => save("riesgo", { riesgoConfig: riesgo } as Partial<ConfiguracionFinanciera>)}
             saving={savingKey === "riesgo"} saved={savedKey === "riesgo"} dirty={isDirty("riesgo")}
           >
@@ -994,9 +1157,9 @@ function defaultGamificacion(): GamificacionConfig {
   };
 }
 
-function CanalesBlock({ icon, title, enabled, onToggle, children, onSave, saving, saved, dirty }: {
+function CanalesBlock({ icon, title, enabled, onToggle, children, onSave, saving, saved, dirty, ayuda }: {
   icon: React.ReactNode; title: string; enabled: boolean; onToggle: (v: boolean) => void; children: React.ReactNode;
-  onSave?: () => void; saving?: boolean; saved?: boolean; dirty?: boolean;
+  onSave?: () => void; saving?: boolean; saved?: boolean; dirty?: boolean; ayuda?: AyudaBloque;
 }) {
   return (
     <div className="rounded-lg border border-border bg-muted/30 p-4 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.03)]">
@@ -1006,6 +1169,7 @@ function CanalesBlock({ icon, title, enabled, onToggle, children, onSave, saving
           <p className="text-sm font-medium text-foreground">{title}</p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
+          {ayuda && <HelpHint ayuda={ayuda} />}
           <Toggle checked={enabled} onChange={onToggle} />
           {onSave && <SaveButton saving={!!saving} saved={!!saved} dirty={dirty} onClick={onSave} />}
         </div>
@@ -1023,11 +1187,13 @@ function defaultWhatsapp() { return { enabled: false, token: "", phone_number_id
 function defaultSms()       { return { enabled: false, api_key: "", provider: "twilio" }; }
 function defaultEmail()     { return { enabled: false, provider: "smtp", host: "", port: 587, user: "", pass: "" }; }
 
-function Section({ title, desc, children, onSave, saving, saved, dirty, enabled, onToggle }: {
+function Section({ title, desc, children, onSave, saving, saved, dirty, enabled, onToggle, ayuda }: {
   title: string; desc?: string; children: React.ReactNode;
   onSave?: () => void; saving?: boolean; saved?: boolean; dirty?: boolean;
   /** Si se pasa `onToggle`, la sección muestra un switch de encendido/apagado en la cabecera. */
   enabled?: boolean; onToggle?: (v: boolean) => void;
+  /** Ayuda contextual del bloque (botón "?"). */
+  ayuda?: AyudaBloque;
 }) {
   return (
     <div className="rounded-xl bg-card border border-border p-5 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)]">
@@ -1037,11 +1203,67 @@ function Section({ title, desc, children, onSave, saving, saved, dirty, enabled,
           {desc && <p className="text-sm text-muted-foreground mt-0.5">{desc}</p>}
         </div>
         <div className="flex shrink-0 items-center gap-3">
+          {ayuda && <HelpHint ayuda={ayuda} />}
           {onToggle && <Toggle checked={!!enabled} onChange={onToggle} />}
           {onSave && <SaveButton saving={!!saving} saved={!!saved} dirty={dirty} onClick={onSave} />}
         </div>
       </div>
       {children}
+    </div>
+  );
+}
+
+/**
+ * Botón "?" por bloque de configuración. Abre un popover contextual que explica QUÉ
+ * configura ese bloque (pedido del cliente: "saber qué configura cada bloque"). Cierra
+ * con clic afuera o Escape. El popover se ancla a la derecha del botón; como las cards de
+ * config no recortan el overflow, se muestra completo sin necesidad de portal.
+ */
+export function HelpHint({ ayuda }: { ayuda: AyudaBloque }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+    document.addEventListener("mousedown", onDoc);
+    document.addEventListener("keydown", onKey);
+    return () => { document.removeEventListener("mousedown", onDoc); document.removeEventListener("keydown", onKey); };
+  }, [open]);
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        aria-label="¿Qué configura este bloque?"
+        aria-expanded={open}
+        title="¿Qué configura este bloque?"
+        className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg transition-colors ${
+          open ? "bg-primary/10 text-primary ring-1 ring-inset ring-primary/25" : "text-muted-foreground hover:bg-muted hover:text-foreground"
+        }`}
+      >
+        <HelpCircle className="h-4 w-4" />
+      </button>
+      {open && (
+        <div className="absolute right-0 top-9 z-30 w-72 rounded-xl border border-border bg-card p-3.5 text-left shadow-2xl shadow-black/30">
+          <div className="mb-1.5 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-primary">
+            <HelpCircle className="h-3.5 w-3.5" /> {ayuda.titulo ?? "Ayuda"}
+          </div>
+          <p className="text-xs leading-relaxed text-foreground/90">{ayuda.texto}</p>
+          {ayuda.puntos && (
+            <ul className="mt-2 space-y-1">
+              {ayuda.puntos.map((p, i) => (
+                <li key={i} className="flex gap-1.5 text-xs leading-relaxed text-muted-foreground">
+                  <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-primary/60" />
+                  <span>{p}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -1265,9 +1487,9 @@ function FrecuenciasEditor({ frecuencias, onChange }: {
   );
 }
 
-function CargoBlock({ title, desc, activo, onToggle, children, onSave, saving, saved, dirty }: {
+function CargoBlock({ title, desc, activo, onToggle, children, onSave, saving, saved, dirty, ayuda }: {
   title: string; desc?: string; activo: boolean; onToggle: (v: boolean) => void; children: React.ReactNode;
-  onSave?: () => void; saving?: boolean; saved?: boolean; dirty?: boolean;
+  onSave?: () => void; saving?: boolean; saved?: boolean; dirty?: boolean; ayuda?: AyudaBloque;
 }) {
   return (
     <div className="rounded-lg border border-border bg-muted/30 p-4 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.03)]">
@@ -1277,6 +1499,7 @@ function CargoBlock({ title, desc, activo, onToggle, children, onSave, saving, s
           {desc && <p className="text-xs text-muted-foreground">{desc}</p>}
         </div>
         <div className="flex shrink-0 items-center gap-2">
+          {ayuda && <HelpHint ayuda={ayuda} />}
           <Toggle checked={activo} onChange={onToggle} />
           {onSave && <SaveButton saving={!!saving} saved={!!saved} dirty={dirty} onClick={onSave} />}
         </div>

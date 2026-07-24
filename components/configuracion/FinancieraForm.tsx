@@ -7,6 +7,7 @@ import { useFinanciera, type Financiera } from "@/lib/swr";
 import { esEmailValido, esCuitValido } from "@/lib/utils";
 import { useToast } from "@/components/ui/toast";
 import { Skeleton } from "@/components/ui/skeleton";
+import { HelpHint } from "./ConfigForm";
 
 const VACIO: Financiera = { nombre: "", razon_social: null, cuit: null, direccion: null, telefono: null, email: null, logo_url: null };
 
@@ -67,6 +68,15 @@ export function FinancieraForm() {
           <h3 className="text-base font-semibold text-foreground">Datos de la financiera</h3>
           <p className="text-sm text-muted-foreground mt-0.5">Identidad de tu empresa. Se usa en la app y en los comprobantes (co-branding).</p>
         </div>
+        <div className="flex shrink-0 items-center gap-3">
+        <HelpHint ayuda={{
+          titulo: "Datos de la financiera",
+          texto: "La identidad de tu empresa. Estos datos aparecen en el sistema y en los comprobantes/PDFs que ve el cliente (co-branding).",
+          puntos: [
+            "Nombre de fantasía: cómo se muestra tu financiera en la app.",
+            "Logo, CUIT y contacto: se usan en los comprobantes y el pie de los PDFs.",
+          ],
+        }} />
         <button
           type="button" onClick={guardar} disabled={saving}
           className={`flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-50 ${
@@ -78,6 +88,7 @@ export function FinancieraForm() {
           {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : saved ? <Check className="h-3.5 w-3.5" /> : null}
           {saving ? "Guardando…" : saved ? "Guardado" : "Guardar"}
         </button>
+        </div>
       </div>
 
       {/* Logo */}
