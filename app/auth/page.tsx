@@ -51,7 +51,7 @@ export default function LoginPage() {
       }
     >
       <h1 className="text-xl font-semibold text-foreground">Introduce tus credenciales</h1>
-      <p className="mt-1 text-sm text-muted-foreground">Bienvenido de nuevo al panel de control</p>
+      <p className="mt-1 text-sm text-muted-foreground">Bienvenido de nuevo al panel de control · 🧪 PREVIEW de prueba</p>
 
       <form onSubmit={handleSubmit} className="mt-8 space-y-4">
         {/* Usuario (acepta usuario o email) */}
