@@ -11,6 +11,12 @@ node_modules/
 .env.local
 .env*.local
 
+# Operativos locales: secretos (contraseñas) + scripts one-shot de migración a prod
+*.local.json
+_migrar.mjs
+_inspect-old.mjs
+_verify-prod.mjs
+
 # Misc
 .DS_Store
 *.pem

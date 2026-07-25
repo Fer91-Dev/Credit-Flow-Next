@@ -13,12 +13,22 @@ const REGLAS = [
 ];
 
 /**
- * POST /api/cron/cobranza-notificaciones
- * Motor de notificaciones automáticas diarias.
+ * /api/cron/cobranza-notificaciones — Motor de notificaciones automáticas diarias.
  * Requiere header Authorization: Bearer <CRON_SECRET> para evitar ejecuciones no autorizadas.
- * Disparar externamente (Vercel Cron, Supabase Edge Function, cron local).
+ *
+ * Se expone en GET y POST con la MISMA lógica:
+ *  - GET  → lo dispara Vercel Cron (solo hace GET; agrega el Bearer <CRON_SECRET> solo).
+ *  - POST → disparadores externos (Supabase Edge Function, cron local, curl).
  */
+export async function GET(req: NextRequest) {
+  return ejecutarCron(req);
+}
+
 export async function POST(req: NextRequest) {
+  return ejecutarCron(req);
+}
+
+async function ejecutarCron(req: NextRequest) {
   // Verificar token secreto
   const cronSecret = process.env.CRON_SECRET;
   if (cronSecret) {
