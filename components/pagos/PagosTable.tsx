@@ -29,6 +29,7 @@ export function PagosTable() {
   const [verTodos, setVerTodos] = useState(false); // F3: lista completa de clientes A→Z
   const [selected, setSelected] = useState<Cliente | null>(null);
   const [pagoOpen, setPagoOpen] = useState(false);
+  const [nuevoPagoOpen, setNuevoPagoOpen] = useState(false); // pago genérico (busca crédito/cliente en el form)
 
   // Búsqueda DNI-aware: matchea por nombre o por documento (también en su forma
   // "solo dígitos", para que 20.123.456 encuentre al guardado como 20123456).
@@ -63,6 +64,17 @@ export function PagosTable() {
     if (success && selected) {
       // Refrescar la ficha + cachés de cartera/pagos/caja.
       globalMutate(`/api/clientes/${selected.id}`);
+      globalMutate(KEYS.creditos);
+      globalMutate(KEYS.pagos);
+      globalMutate(KEYS.dashboard);
+      globalMutate("/api/caja");
+    }
+  };
+
+  // Pago genérico desde la vista de entrada (el operador busca el crédito/cliente en el form).
+  const handleNuevoPagoClose = (success?: boolean) => {
+    setNuevoPagoOpen(false);
+    if (success) {
       globalMutate(KEYS.creditos);
       globalMutate(KEYS.pagos);
       globalMutate(KEYS.dashboard);
@@ -131,18 +143,26 @@ export function PagosTable() {
         accent="primary"
       />
 
-      {/* Buscador */}
-      <BuscadorF3
-        value={query}
-        onChange={setQuery}
-        placeholder="DNI o nombre del cliente…"
-        autoFocus
-        onF3={() => setVerTodos((v) => !v)}
-        onEnter={() => { if (resultados.length === 1) elegir(resultados[0]); }}
-        onEscape={() => { if (verTodos) setVerTodos(false); else setQuery(""); }}
-        f3Hint={`para ${verTodos ? "cerrar" : "ver"} la lista completa de clientes`}
-        className="w-full sm:max-w-sm"
-      />
+      {/* Buscador + acción */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <BuscadorF3
+          value={query}
+          onChange={setQuery}
+          placeholder="DNI o nombre del cliente…"
+          autoFocus
+          onF3={() => setVerTodos((v) => !v)}
+          onEnter={() => { if (resultados.length === 1) elegir(resultados[0]); }}
+          onEscape={() => { if (verTodos) setVerTodos(false); else setQuery(""); }}
+          f3Hint={`para ${verTodos ? "cerrar" : "ver"} la lista completa de clientes`}
+          className="w-full sm:max-w-sm"
+        />
+        <button
+          onClick={() => setNuevoPagoOpen(true)}
+          className="flex shrink-0 items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 transition-opacity whitespace-nowrap"
+        >
+          <Plus className="h-4 w-4" /> Registrar pago
+        </button>
+      </div>
 
       {/* Estados */}
       {!q && !verTodos ? (
@@ -182,6 +202,18 @@ export function PagosTable() {
           ))}
         </div>
       )}
+
+      {/* Registrar pago genérico: el operador busca el crédito/cliente dentro del form */}
+      <Dialog open={nuevoPagoOpen} onOpenChange={(o) => { if (!o) setNuevoPagoOpen(false); }}>
+        <DialogContent className="w-[95vw] sm:max-w-xl max-h-[90dvh] flex flex-col overflow-hidden">
+          <DialogHeader className="shrink-0">
+            <DialogTitle>Registrar pago</DialogTitle>
+          </DialogHeader>
+          <div className="flex-1 min-h-0 overflow-y-auto">
+            {nuevoPagoOpen && <PagoForm onClose={handleNuevoPagoClose} />}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
