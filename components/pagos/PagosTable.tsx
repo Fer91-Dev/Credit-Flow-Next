@@ -2,16 +2,18 @@
 
 import { useMemo, useState } from "react";
 import { useSWRConfig } from "swr";
-import { Wallet, Search, User, Phone, IdCard, ArrowLeft, Plus, ChevronRight, X } from "lucide-react";
-import { useClientes, KEYS, type Cliente } from "@/lib/swr";
+import { Wallet, Search, User, Phone, IdCard, ArrowLeft, Plus, ChevronRight, X, Clock } from "lucide-react";
+import { useClientes, usePagos, KEYS, type Cliente, type Pago } from "@/lib/swr";
 import { ClienteDetail } from "@/components/clientes/ClienteDetail";
 import { BuscadorF3 } from "@/components/ui/BuscadorF3";
 import { Avatar } from "@/components/ui/Avatar";
+import { DataTable } from "@/components/ui/DataTable";
+import { Skeleton } from "@/components/ui/skeleton";
 import { PagoForm } from "./PagoForm";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { nombreCompleto } from "@/lib/utils";
+import { nombreCompleto, formatFecha, formatMonto, formatCreditoNumero } from "@/lib/utils";
 
 /**
  * Terminal de pagos: flujo "buscar primero". No se lista nada hasta que el
@@ -20,6 +22,7 @@ import { nombreCompleto } from "@/lib/utils";
  */
 export function PagosTable() {
   const { clientes, isLoading } = useClientes();
+  const { pagos, isLoading: pagosLoading } = usePagos();
   const { mutate: globalMutate } = useSWRConfig();
 
   const [query, setQuery] = useState("");
@@ -48,6 +51,12 @@ export function PagosTable() {
   );
 
   const elegir = (c: Cliente) => { setSelected(c); setQuery(""); setVerTodos(false); };
+
+  // Desde un pago reciente → abrir la ficha de su cliente (donde se anula el pago).
+  const abrirPorPago = (p: Pago) => {
+    const c = clientes.find((x) => x.id === p.credito.cliente_id);
+    if (c) elegir(c);
+  };
 
   const handlePagoClose = (success?: boolean) => {
     setPagoOpen(false);
@@ -137,7 +146,7 @@ export function PagosTable() {
 
       {/* Estados */}
       {!q && !verTodos ? (
-        <HeroVacio />
+        <UltimosPagos pagos={pagos} loading={pagosLoading} onRow={abrirPorPago} />
       ) : isLoading ? (
         <p className="text-sm text-muted-foreground">Buscando…</p>
       ) : lista.length === 0 ? (
@@ -173,6 +182,59 @@ export function PagosTable() {
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * Registro de los últimos pagos ingresados. Se muestra al entrar a Pagos (sin búsqueda
+ * activa) para dar acceso rápido: tocar una fila abre la ficha del cliente, desde donde
+ * se puede anular el cobro. Si no hay pagos aún, cae al hero de "buscá un cliente".
+ */
+function UltimosPagos({ pagos, loading, onRow }: { pagos: Pago[]; loading: boolean; onRow: (p: Pago) => void }) {
+  if (loading) {
+    return <div className="space-y-2">{[...Array(5)].map((_, i) => <Skeleton key={i} className="h-12 rounded-lg" />)}</div>;
+  }
+  if (pagos.length === 0) return <HeroVacio />;
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-2.5">
+        <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-primary">
+          <Clock className="h-4 w-4" />
+        </div>
+        <div>
+          <h2 className="text-sm font-semibold text-foreground">Últimos pagos ingresados</h2>
+          <p className="text-xs text-muted-foreground">Tocá un pago para abrir la ficha del cliente y anularlo si hace falta.</p>
+        </div>
+      </div>
+      <DataTable
+        rows={pagos}
+        rowKey={(p) => p.id}
+        pageSize={10}
+        onRowClick={onRow}
+        zebra
+        columns={[
+          { header: "Fecha", className: "whitespace-nowrap",
+            cell: (p) => <span className="text-xs text-muted-foreground">{formatFecha(p.fecha)}</span> },
+          { header: "Cliente",
+            cell: (p) => (
+              <div className="flex items-center gap-2.5">
+                <Avatar name={nombreCompleto(p.credito.cliente)} seed={p.credito.cliente_id} size="sm" />
+                <span className={`font-medium ${p.anulado ? "text-muted-foreground line-through" : "text-foreground"}`}>{nombreCompleto(p.credito.cliente)}</span>
+              </div>
+            ) },
+          { header: "Crédito", className: "whitespace-nowrap",
+            cell: (p) => <span className="font-mono text-xs text-muted-foreground">{formatCreditoNumero(p.credito.numero)}</span> },
+          { header: "Monto", mono: true, align: "right",
+            cell: (p) => <span className={`font-semibold ${p.anulado ? "text-muted-foreground" : "text-foreground"}`}>{formatMonto(p.monto, 0)}</span> },
+          { header: "Método",
+            cell: (p) => <StatusBadge label={p.metodo} variant="muted" /> },
+          { header: "Estado", align: "center",
+            cell: (p) => p.anulado
+              ? <StatusBadge label="Anulado" variant="destructive" />
+              : <StatusBadge label="Registrado" variant="success" /> },
+        ]}
+      />
     </div>
   );
 }

@@ -47,6 +47,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
         credito: {
           select: {
             id: true,
+            numero: true,
             cliente_id: true,
             monto_original: true,
             saldo_pendiente: true,

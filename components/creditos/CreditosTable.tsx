@@ -231,7 +231,7 @@ export function CreditosTable({ role }: { role: Role }) {
             placeholder="Buscar por cliente o N° (CRD-…)…"
             onF3={() => setSearch("")}
             f3Hint="para limpiar el filtro y ver todos"
-            className="flex-1"
+            className="w-full sm:max-w-sm"
           />
           <FiltrosPanel
             activos={(estadoFilter !== "all" ? 1 : 0) + (tipoFilter !== "all" ? 1 : 0)}

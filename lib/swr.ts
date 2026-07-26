@@ -725,7 +725,7 @@ export interface Pago {
   anulado?: boolean;
   anulado_motivo?: string | null;
   anulado_at?: string | null;
-  credito: { id: string; cliente: { nombre: string; apellido?: string | null } };
+  credito: { id: string; numero?: number | null; cliente_id: string; cliente: { nombre: string; apellido?: string | null } };
 }
 
 // ── Campañas de recuperación de cobranza (Fase 7A) ──────────────────────────
