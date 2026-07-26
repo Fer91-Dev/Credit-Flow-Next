@@ -1,11 +1,12 @@
 ﻿"use client";
 
-import { useState } from "react";
+import { useState, type ComponentType } from "react";
 import { useSWRConfig } from "swr";
 import {
-  Megaphone, Users, HandCoins, TrendingUp, ChevronLeft, ExternalLink,
-  Check, Play, CheckCircle2, MessageCircle, Mail, Smartphone, Sparkles,
+  Megaphone, Users, HandCoins, TrendingUp, ChevronLeft,
+  Check, Play, CheckCircle2, Mail, Smartphone, Sparkles,
 } from "lucide-react";
+import { WhatsAppIcon } from "@/components/ui/WhatsAppIcon";
 import { useCampanas, useCampana, KEYS, type CampanaCobranza, type CampanaObjetivo, type CanalCampana, type EstadoCampana } from "@/lib/swr";
 import { construirMensajeCampana, linkWhatsapp, TEMPLATE_DEFAULT } from "@/lib/domain";
 import { formatFecha, nombreCompleto } from "@/lib/utils";
@@ -26,8 +27,8 @@ const ESTADO_META: Record<EstadoCampana, { label: string; variant: "muted" | "su
   activa: { label: "Activa", variant: "success" },
   finalizada: { label: "Finalizada", variant: "primary" },
 };
-const CANAL_ICON: Record<CanalCampana, typeof MessageCircle> = {
-  whatsapp: MessageCircle, email: Mail, sms: Smartphone,
+const CANAL_ICON: Record<CanalCampana, ComponentType<{ className?: string }>> = {
+  whatsapp: WhatsAppIcon, email: Mail, sms: Smartphone,
 };
 
 export function CampanasView() {
@@ -226,7 +227,7 @@ function CampanaDetalle({ id, onBack }: { id: string; onBack: () => void }) {
             cell: (o) => (
               <button onClick={() => abrirWhatsapp(o)}
                 className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-colors ${abiertos.has(o.id) ? "bg-success/10 text-success border-success/30" : "text-primary border-primary/20 hover:bg-primary/10"}`}>
-                <ExternalLink className="h-3.5 w-3.5" /> WhatsApp
+                <WhatsAppIcon className="h-3.5 w-3.5" /> WhatsApp
               </button>
             ),
           },
@@ -251,7 +252,7 @@ function CampanaDetalle({ id, onBack }: { id: string; onBack: () => void }) {
               </button>
               <button onClick={() => abrirWhatsapp(o)}
                 className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium text-primary border border-primary/20 hover:bg-primary/10 transition-colors">
-                <ExternalLink className="h-3.5 w-3.5" /> WhatsApp
+                <WhatsAppIcon className="h-3.5 w-3.5" /> WhatsApp
               </button>
             </div>
           </div>

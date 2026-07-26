@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { MessageCircle, Mail, Smartphone, Sparkles, ExternalLink, Check, Zap, Loader2 } from "lucide-react";
+import { useMemo, useState, type ComponentType } from "react";
+import { Mail, Smartphone, Sparkles, Check, Zap, Loader2 } from "lucide-react";
+import { WhatsAppIcon } from "@/components/ui/WhatsAppIcon";
 import type { Credito } from "@/lib/swr";
 import { useConfiguracion } from "@/lib/swr";
 import {
@@ -21,8 +22,8 @@ function n0(x: number) {
   return new Intl.NumberFormat("es-AR", { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(x);
 }
 
-const CANAL_META: Record<CanalCampana, { label: string; icon: typeof MessageCircle }> = {
-  whatsapp: { label: "WhatsApp", icon: MessageCircle },
+const CANAL_META: Record<CanalCampana, { label: string; icon: ComponentType<{ className?: string }> }> = {
+  whatsapp: { label: "WhatsApp", icon: WhatsAppIcon },
   email: { label: "Email", icon: Mail },
   sms: { label: "SMS", icon: Smartphone },
 };
@@ -192,7 +193,7 @@ export function CampaignModal({ creditos, onClose }: CampaignModalProps) {
             disabled={enviandoApi}
             className="flex items-center justify-center gap-2 w-full py-2.5 rounded-lg bg-success text-success-foreground text-sm font-medium hover:bg-success/90 disabled:opacity-50 transition-colors"
           >
-            {enviandoApi ? <Loader2 className="h-4 w-4 animate-spin" /> : <Zap className="h-4 w-4" />}
+            {enviandoApi ? <Loader2 className="h-4 w-4 animate-spin" /> : esEmail ? <Mail className="h-4 w-4" /> : <WhatsAppIcon className="h-4 w-4" />}
             {enviandoApi
               ? "Enviando…"
               : esEmail
@@ -228,7 +229,7 @@ export function CampaignModal({ creditos, onClose }: CampaignModalProps) {
                           : "bg-primary/10 text-primary border-primary/20 hover:bg-primary/20"
                     }`}
                   >
-                    {enviado ? <Check className="h-3.5 w-3.5" /> : <ExternalLink className="h-3.5 w-3.5" />}
+                    {enviado ? <Check className="h-3.5 w-3.5" /> : <WhatsAppIcon className="h-3.5 w-3.5" />}
                     {enviado ? "Enviado" : "Manual"}
                   </button>
                 )}

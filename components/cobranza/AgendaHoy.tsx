@@ -3,8 +3,9 @@
 import { useMemo } from "react";
 import {
   HandshakeIcon, CalendarClock, Snowflake, MessageSquarePlus,
-  MessageCircle, Phone, CheckCheck, AlertCircle,
+  Phone, CheckCheck, AlertCircle,
 } from "lucide-react";
+import { WhatsAppIcon } from "@/components/ui/WhatsAppIcon";
 import { useAgendaCobranza, type AgendaItem } from "@/lib/swr";
 import { formatMonto, formatFecha, formatCreditoNumero } from "@/lib/utils";
 import { StatusBadge } from "@/components/ui/StatusBadge";
@@ -234,7 +235,7 @@ function AgendaRow({
             wa ? "text-success hover:bg-success/10" : "text-muted-foreground/20 cursor-not-allowed"
           }`}
         >
-          <MessageCircle className="h-3.5 w-3.5" />
+          <WhatsAppIcon className="h-3.5 w-3.5" />
         </a>
       </div>
     </div>

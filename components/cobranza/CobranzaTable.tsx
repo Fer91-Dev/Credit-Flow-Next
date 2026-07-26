@@ -3,7 +3,8 @@
 import { useState, useMemo, useEffect } from "react";
 import { motion } from "framer-motion";
 import { useSWRConfig } from "swr";
-import { AlertCircle, Phone, Mail, Clock, Copy, CheckCheck, Search, DollarSign, ShieldAlert, MessageSquarePlus, CalendarClock, Megaphone, X, Users, MessageCircle, TrendingUp, Sun } from "lucide-react";
+import { AlertCircle, Phone, Mail, Clock, Copy, CheckCheck, Search, DollarSign, ShieldAlert, MessageSquarePlus, CalendarClock, Megaphone, X, Users, TrendingUp, Sun } from "lucide-react";
+import { WhatsAppIcon } from "@/components/ui/WhatsAppIcon";
 import { useCreditos, useAccionesCobranza, KEYS, type Credito, type AccionCobranza } from "@/lib/swr";
 import { type Role } from "@/lib/auth/roles";
 import { formatFecha, nombreCompleto } from "@/lib/utils";
@@ -401,7 +402,7 @@ export function CobranzaTable({ role }: { role: Role }) {
                         aria-disabled={!wa}
                         className={`flex items-center justify-center h-7 w-7 rounded-lg transition-colors ${wa ? "text-success hover:bg-success/10" : "text-muted-foreground/20 cursor-not-allowed"}`}
                       >
-                        <MessageCircle className="h-3.5 w-3.5" />
+                        <WhatsAppIcon className="h-3.5 w-3.5" />
                       </a>
                     );
                   })()}
@@ -466,7 +467,7 @@ export function CobranzaTable({ role }: { role: Role }) {
                     if (!wa) return null;
                     return (
                       <a href={wa} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} title="Reclamar por WhatsApp" className="flex items-center justify-center h-10 w-10 rounded-lg border border-success/30 bg-success/10 text-success hover:bg-success/20 transition-colors">
-                        <MessageCircle className="h-4 w-4" />
+                        <WhatsAppIcon className="h-4 w-4" />
                       </a>
                     );
                   })()}
