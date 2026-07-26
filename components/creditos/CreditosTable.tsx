@@ -42,6 +42,7 @@ const SEL =
 // Etiquetas de los filtros para los chips del FiltrosPanel.
 const ESTADO_FILTRO_LABEL: Record<string, string> = { activo: "Activos", pagado: "Pagados", refinanciado: "Refinanciados", anulado: "Anulados" };
 const TIPO_FILTRO_LABEL: Record<string, string> = { personal: "Personal", empresarial: "Empresarial", productos: "Producto", otro: "Otro" };
+const MORA_FILTRO_LABEL: Record<string, string> = { al_dia: "Al día", en_mora: "En mora", critica: "Mora crítica" };
 
 function estadoBadge(estado: string): { label: string; variant: "primary" | "success" | "muted" | "destructive" | "warning" } {
   if (estado === "activo")       return { label: "Activo",       variant: "primary" };
@@ -65,6 +66,7 @@ export function CreditosTable({ role }: { role: Role }) {
   const [search, setSearch]       = useState("");
   const [estadoFilter, setEstado] = useState("all");
   const [tipoFilter, setTipo]     = useState("all");
+  const [moraFilter, setMora]     = useState("all");
   const [tab, setTab]             = useState<"creditos" | "refinanciados">("creditos");
 
   const [actionError, setActionError] = useState<string | null>(null);
@@ -132,9 +134,13 @@ export function CreditosTable({ role }: { role: Role }) {
         || formatCreditoNumero(c.numero).toLowerCase().includes(q)
         || (!!qNum && c.numero != null && String(c.numero).includes(qNum))) &&
       (estadoFilter === "all" || c.estado === estadoFilter) &&
-      (tipoFilter === "all" || c.tipo_credito === tipoFilter)
+      (tipoFilter === "all" || c.tipo_credito === tipoFilter) &&
+      (moraFilter === "all"
+        || (moraFilter === "al_dia" && c.dias_mora === 0)
+        || (moraFilter === "en_mora" && c.dias_mora > 0)
+        || (moraFilter === "critica" && c.dias_mora > 30))
     );
-  }, [creditos, search, estadoFilter, tipoFilter]);
+  }, [creditos, search, estadoFilter, tipoFilter, moraFilter]);
 
   // KPIs from all credits (portfolio picture, not filter-dependent)
   const kpis = useMemo(() => ({
@@ -152,8 +158,8 @@ export function CreditosTable({ role }: { role: Role }) {
   // Cantidad de créditos nacidos de una refinanciación (badge de la pestaña).
   const refiCount = useMemo(() => creditos.filter((c) => c.es_refinanciacion).length, [creditos]);
 
-  const hasFilters = !!(search || estadoFilter !== "all" || tipoFilter !== "all");
-  const clearFilters = () => { setSearch(""); setEstado("all"); setTipo("all"); };
+  const hasFilters = !!(search || estadoFilter !== "all" || tipoFilter !== "all" || moraFilter !== "all");
+  const clearFilters = () => { setSearch(""); setEstado("all"); setTipo("all"); setMora("all"); };
 
   const cta = (
     <button
@@ -234,12 +240,13 @@ export function CreditosTable({ role }: { role: Role }) {
             className="w-full sm:max-w-sm"
           />
           <FiltrosPanel
-            activos={(estadoFilter !== "all" ? 1 : 0) + (tipoFilter !== "all" ? 1 : 0)}
-            onLimpiar={() => { setEstado("all"); setTipo("all"); }}
+            activos={(estadoFilter !== "all" ? 1 : 0) + (tipoFilter !== "all" ? 1 : 0) + (moraFilter !== "all" ? 1 : 0)}
+            onLimpiar={() => { setEstado("all"); setTipo("all"); setMora("all"); }}
             align="right"
             chips={<>
               {estadoFilter !== "all" && <FiltroChip onClear={() => setEstado("all")}>{ESTADO_FILTRO_LABEL[estadoFilter] ?? estadoFilter}</FiltroChip>}
               {tipoFilter !== "all" && <FiltroChip onClear={() => setTipo("all")}>{TIPO_FILTRO_LABEL[tipoFilter] ?? tipoFilter}</FiltroChip>}
+              {moraFilter !== "all" && <FiltroChip onClear={() => setMora("all")}>{MORA_FILTRO_LABEL[moraFilter] ?? moraFilter}</FiltroChip>}
             </>}
           >
             <label className="flex flex-col gap-1">
@@ -264,6 +271,18 @@ export function CreditosTable({ role }: { role: Role }) {
                   <option value="empresarial">Empresarial</option>
                   <option value="productos">Producto</option>
                   <option value="otro">Otro</option>
+                </select>
+                <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              </div>
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-[11px] font-medium text-muted-foreground">Mora</span>
+              <div className="relative">
+                <select value={moraFilter} onChange={e => setMora(e.target.value)} className={SEL}>
+                  <option value="all">Cualquier estado de mora</option>
+                  <option value="al_dia">Al día</option>
+                  <option value="en_mora">En mora (1+ días)</option>
+                  <option value="critica">Mora crítica (+30 días)</option>
                 </select>
                 <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               </div>
