@@ -11,7 +11,7 @@ import { RefinanciarDialog } from "./RefinanciarDialog";
 import { CompararRefiDialog } from "./CompararRefiDialog";
 import { useCreditos, KEYS, type Credito } from "@/lib/swr";
 import { type Role } from "@/lib/auth/roles";
-import { formatCreditoNumero, nombreCompleto, formatFecha } from "@/lib/utils";
+import { formatCreditoNumero, nombreCompleto, formatFecha, formatFechaHora } from "@/lib/utils";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { KpiCard } from "@/components/ui/KpiCard";
 import { StatusBadge } from "@/components/ui/StatusBadge";
@@ -324,8 +324,12 @@ export function CreditosTable({ role }: { role: Role }) {
                     )}
                   </div>
                 ) },
+              { header: "Otorgado", className: "whitespace-nowrap",
+                cell: (c) => <span className="text-xs text-muted-foreground tabular-nums">{formatFechaHora(c.created_at)}</span> },
               { header: "Cliente",
                 cell: (c) => <span className="font-medium text-foreground">{nombreCompleto(c.cliente)}</span> },
+              { header: "Agente",
+                cell: (c) => <span className="text-sm text-muted-foreground">{c.vendedor?.nombre ?? "—"}</span> },
               { header: "Tipo",
                 cell: (c) => <StatusBadge label={c.tipo_credito === "productos" ? "Producto" : c.tipo_credito} variant={c.tipo_credito === "productos" ? "primary" : "muted"} /> },
               { header: "Monto orig.", mono: true,
@@ -388,6 +392,7 @@ export function CreditosTable({ role }: { role: Role }) {
                       <p className="font-mono text-[11px] text-muted-foreground">{formatCreditoNumero(c.numero)}</p>
                       <p className="font-medium text-foreground text-sm">{nombreCompleto(c.cliente)}</p>
                       <p className="text-xs text-muted-foreground mt-0.5">{c.tipo_credito === "productos" ? "Producto" : c.tipo_credito} · {c.tasa}% TNA · {c.plazo_meses}m</p>
+                      <p className="text-[10px] text-muted-foreground/70 mt-0.5">{formatFechaHora(c.created_at)} · {c.vendedor?.nombre ?? "Sin agente"}</p>
                     </div>
                     <StatusBadge label={est.label} variant={est.variant} />
                   </div>
