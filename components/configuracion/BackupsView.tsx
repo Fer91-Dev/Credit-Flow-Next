@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Loader2, RefreshCw, ExternalLink, AlertCircle } from "lucide-react";
+import { Loader2, RefreshCw, AlertCircle } from "lucide-react";
 import { Emoji } from "@/components/ui/Emoji";
 import { StatusBadge, type BadgeVariant } from "@/components/ui/StatusBadge";
 import { DataTable, type Column } from "@/components/ui/DataTable";
@@ -133,27 +133,11 @@ export function BackupsView() {
     },
     {
       header: "Estado",
+      align: "right",
       cell: (c) => {
         const b = badge(c);
         return <StatusBadge label={b.label} variant={b.variant} />;
       },
-    },
-    {
-      header: "",
-      align: "right",
-      className: "w-10",
-      cell: (c) => (
-        <a
-          href={c.url}
-          target="_blank"
-          rel="noopener noreferrer"
-          onClick={(e) => e.stopPropagation()}
-          title="Ver en GitHub"
-          className="inline-flex text-muted-foreground/60 transition-colors hover:text-foreground"
-        >
-          <ExternalLink className="h-3.5 w-3.5" />
-        </a>
-      ),
     },
   ];
 
@@ -237,12 +221,7 @@ export function BackupsView() {
               <div className="rounded-xl border border-border bg-card p-4">
                 <div className="flex items-center justify-between gap-3">
                   <p className="text-sm text-foreground tabular-nums">{formatFechaHora(c.creado)}</p>
-                  <div className="flex items-center gap-2">
-                    <StatusBadge label={b.label} variant={b.variant} />
-                    <a href={c.url} target="_blank" rel="noopener noreferrer" title="Ver en GitHub" className="text-muted-foreground/60 hover:text-foreground">
-                      <ExternalLink className="h-3.5 w-3.5" />
-                    </a>
-                  </div>
+                  <StatusBadge label={b.label} variant={b.variant} />
                 </div>
                 <p className="mt-1 text-xs text-muted-foreground">{origen(c)}</p>
               </div>
