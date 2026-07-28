@@ -12,7 +12,7 @@ import type { NextRequest } from "next/server";
  */
 export const GET = withErrorHandler(async (req: NextRequest) => {
   await requireRole(["admin"], req);
-  const corridas = await listarCorridasBackup(5);
+  const corridas = await listarCorridasBackup(30);
   return successResponse({ corridas });
 });
 
