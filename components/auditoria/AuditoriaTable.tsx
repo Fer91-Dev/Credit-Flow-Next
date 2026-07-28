@@ -28,6 +28,7 @@ const entidadLabel: Record<string, string> = {
   pagos: "Pago",
   configuracion: "Configuración",
   caja: "Caja",
+  plataforma: "Sistema",
 };
 
 function accionConfig(a: EventoAuditoria["accion"]): { label: string; variant: BadgeVariant } {
@@ -39,6 +40,7 @@ function accionConfig(a: EventoAuditoria["accion"]): { label: string; variant: B
     case "anular":            return { label: "Anulado",     variant: "warning" };
     case "registrar_pago":    return { label: "Pago",        variant: "success" };
     case "actualizar_config": return { label: "Config",      variant: "warning" };
+    case "backup":            return { label: "Backup",      variant: "primary" };
     default:                  return { label: a,             variant: "muted" };
   }
 }
@@ -125,6 +127,7 @@ export function AuditoriaTable() {
                     <option value="creditos">Créditos</option>
                     <option value="pagos">Pagos</option>
                     <option value="configuracion">Configuración</option>
+                    <option value="plataforma">Sistema</option>
                   </select>
                   <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 </div>

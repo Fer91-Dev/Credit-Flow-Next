@@ -9,7 +9,7 @@ import { DetailSection, DetailGrid } from "@/components/ui/DetailGrid";
 const fmtDateTime = (s: string) => formatFechaHora(s);
 
 const ENTIDAD_LABEL: Record<string, string> = {
-  clientes: "Cliente", creditos: "Crédito", pagos: "Pago", configuracion: "Configuración", caja: "Caja",
+  clientes: "Cliente", creditos: "Crédito", pagos: "Pago", configuracion: "Configuración", caja: "Caja", plataforma: "Sistema",
 };
 
 function accionConfig(a: string): { label: string; variant: BadgeVariant } {
@@ -21,6 +21,7 @@ function accionConfig(a: string): { label: string; variant: BadgeVariant } {
     case "anular":            return { label: "Anulado",     variant: "warning" };
     case "registrar_pago":    return { label: "Pago",        variant: "success" };
     case "actualizar_config": return { label: "Config",      variant: "warning" };
+    case "backup":            return { label: "Backup",      variant: "primary" };
     default:                  return { label: a,             variant: "muted" };
   }
 }
