@@ -379,9 +379,9 @@ function UsuarioForm({
     e.preventDefault();
     setError(null);
 
+    if (!email.trim()) { setError("El email es requerido"); return; }
+    if (!esEmailValido(email)) { setError("Email inválido (ej. nombre@correo.com)"); return; }
     if (!editing) {
-      if (!email.trim()) { setError("El email es requerido"); return; }
-      if (!esEmailValido(email)) { setError("Email inválido (ej. nombre@correo.com)"); return; }
       if (password.length < 8) { setError("La contraseña debe tener al menos 8 caracteres"); return; }
       if (password !== passwordConfirm) { setError("Las contraseñas no coinciden"); return; }
     }
@@ -410,7 +410,7 @@ function UsuarioForm({
         ? await fetch(`/api/usuarios/${usuario!.id}`, {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ full_name: fullName, role, activo, vendedor_id: vinc, username: usuarioAlias }),
+            body: JSON.stringify({ email: email.trim(), full_name: fullName, role, activo, vendedor_id: vinc, username: usuarioAlias }),
           })
         : await fetch("/api/usuarios", {
             method: "POST",
@@ -445,14 +445,13 @@ function UsuarioForm({
             <div className="rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-2.5 text-sm text-destructive">{error}</div>
           )}
 
-          <Field label="Email" required hint={editing ? undefined : "Email real del usuario — se usa para ingresar y para recuperar la contraseña"}>
+          <Field label="Email" required hint={editing ? "Cambiarlo actualiza el email de login del usuario" : "Email real del usuario — se usa para ingresar y para recuperar la contraseña"}>
             <Input
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="nombre@email-real.com"
-              required={!editing}
-              disabled={editing}
+              required
             />
           </Field>
 

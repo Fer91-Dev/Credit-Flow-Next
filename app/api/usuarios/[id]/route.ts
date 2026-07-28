@@ -4,7 +4,7 @@ import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { registrarAuditoria } from "@/lib/audit";
-import { esUsernameValido, normalizarUsername } from "@/lib/utils";
+import { esEmailValido, esUsernameValido, normalizarUsername } from "@/lib/utils";
 import type { NextRequest } from "next/server";
 
 interface RouteParams {
@@ -36,7 +36,7 @@ export const PATCH = withErrorHandler(async (req: NextRequest, { params }: Route
     return errorResponse("No podés modificar la cuenta del dueño de la plataforma", "OWNER_PROTEGIDO", 403);
   }
 
-  let body: { role?: string; activo?: boolean; full_name?: string; vendedor_id?: string | null; password?: string; username?: string | null };
+  let body: { role?: string; activo?: boolean; full_name?: string; vendedor_id?: string | null; password?: string; username?: string | null; email?: string };
   try {
     body = await req.json();
   } catch {
@@ -67,6 +67,18 @@ export const PATCH = withErrorHandler(async (req: NextRequest, { params }: Route
       if (taken) return errorResponse("Ese nombre de usuario ya está en uso", "DUPLICATE_RECORD", 409);
       data.username = u;
     }
+  }
+
+  // Email de login (opcional): se valida y se controla duplicado; el cambio real en
+  // Supabase Auth se aplica más abajo, ANTES de tocar el profile. Único global.
+  const nuevoEmail = typeof body.email === "string" ? body.email.trim().toLowerCase() : null;
+  if (nuevoEmail !== null && nuevoEmail !== (target.email ?? "").toLowerCase()) {
+    if (!esEmailValido(nuevoEmail)) {
+      return errorResponse("Email inválido (ej. nombre@correo.com)", "INVALID_INPUT", 400);
+    }
+    const taken = await prisma.profiles.findFirst({ where: { email: nuevoEmail, id: { not: id } }, select: { id: true } });
+    if (taken) return errorResponse("Ese email ya está en uso por otro usuario", "DUPLICATE_RECORD", 409);
+    data.email = nuevoEmail;
   }
 
   if ("role" in body) {
@@ -127,6 +139,32 @@ export const PATCH = withErrorHandler(async (req: NextRequest, { params }: Route
 
   if (Object.keys(data).length === 0 && nuevaPassword === null) {
     return errorResponse("No hay cambios para aplicar", "INVALID_INPUT", 400);
+  }
+
+  // Cambio de email en Supabase Auth (el login). Se hace ANTES del update del profile: si Auth
+  // lo rechaza (ej. email ya registrado en otra cuenta), no dejamos el profile desincronizado.
+  // `email_confirm: true` lo confirma sin mandar mail (es un cambio administrativo).
+  if (typeof data.email === "string") {
+    try {
+      const { error: emErr } = await createAdminClient().auth.admin.updateUserById(id, {
+        email: data.email,
+        email_confirm: true,
+      });
+      if (emErr) {
+        const dup = /already|registered|exists|duplicate/i.test(emErr.message);
+        const nf = /not found|does not exist/i.test(emErr.message);
+        return errorResponse(
+          dup ? "Ese email ya está registrado en otra cuenta de login"
+            : nf ? "El usuario no tiene cuenta de acceso en el sistema de login"
+            : `No se pudo cambiar el email: ${emErr.message}`,
+          dup ? "DUPLICATE_RECORD" : nf ? "NOT_FOUND" : "AUTH_ERROR",
+          dup ? 409 : nf ? 404 : 400,
+        );
+      }
+    } catch (e) {
+      console.error("[usuarios/PATCH] auth.updateUserById(email) threw:", e);
+      return errorResponse("No se pudo cambiar el email", "AUTH_ERROR", 500);
+    }
   }
 
   const selectProfile = { id: true, email: true, username: true, full_name: true, role: true, activo: true, vendedor_id: true, created_at: true } as const;
