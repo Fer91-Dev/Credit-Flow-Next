@@ -21,24 +21,25 @@ export function BrandingProvider({ value, children }: { value: Branding; childre
  * (respeta claro/oscuro). El logo/nombre salen del branding server-provided (fallback CreditFlow).
  * `left` = contenido central del hero; `children` = el formulario.
  */
-export function AuthShell({ left, children }: { left: React.ReactNode; children: React.ReactNode }) {
+export function AuthShell({ left, children }: { left?: React.ReactNode; children: React.ReactNode }) {
   const branding = useContext(BrandingCtx);
 
   return (
     <div className="min-h-screen w-full bg-background lg:grid lg:grid-cols-2">
-      {/* ── HERO de marca (izquierda) — siempre oscuro ── */}
+      {/* ── HERO de marca (izquierda) — siempre oscuro. El logo es el protagonista. ── */}
       <div
-        className="relative hidden flex-col justify-between overflow-hidden p-12 lg:flex"
+        className="relative hidden flex-col justify-center overflow-hidden p-12 lg:flex"
         style={{
           background:
             "radial-gradient(1000px 600px at 88% 18%, rgba(16,185,129,0.16), transparent 55%), radial-gradient(760px 520px at 8% 92%, rgba(99,102,241,0.14), transparent 55%), linear-gradient(160deg, #0C1A2B 0%, #0A1018 62%)",
         }}
       >
-        <BrandBlock branding={branding} />
+        <div className="relative z-10 flex flex-col items-start gap-8">
+          <HeroBrand branding={branding} />
+          {left && <div className="max-w-md">{left}</div>}
+        </div>
 
-        <div className="relative z-10 max-w-md">{left}</div>
-
-        <div className="relative z-10 flex items-center gap-3 text-xs font-medium text-white/45">
+        <div className="absolute bottom-12 left-12 z-10 flex items-center gap-3 text-xs font-medium text-white/45">
           <span className="h-px w-8 bg-white/25" />
           Sistema de Gestión
         </div>
@@ -90,6 +91,36 @@ function BrandBlock({ branding, onLight = false }: { branding: Branding | null; 
       <div className="min-w-0 leading-tight">
         <p className={`truncate text-lg font-bold tracking-tight ${titulo}`}>{nombre}</p>
         <p className={`text-xs ${sub}`}>{esFinanciera ? "powered by CreditFlow" : "Sistema de gestión de cartera crediticia"}</p>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Marca PROTAGONISTA del hero (desktop): logo grande + nombre. Reemplaza la frase del login,
+ * dándole todo el peso visual al logo de la financiera.
+ */
+function HeroBrand({ branding }: { branding: Branding | null }) {
+  const nombre = branding?.nombre?.trim() || "CreditFlow";
+  const esFinanciera = !!branding?.nombre?.trim();
+  const inicial = nombre[0]?.toUpperCase() ?? "C";
+  return (
+    <div className="flex flex-col items-start gap-6">
+      {branding?.logo_url ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={branding.logo_url}
+          alt={nombre}
+          className="h-32 w-32 shrink-0 rounded-[1.75rem] bg-white/5 object-contain p-3 shadow-2xl shadow-black/40 ring-1 ring-white/10"
+        />
+      ) : (
+        <div className="flex h-32 w-32 shrink-0 items-center justify-center rounded-[1.75rem] bg-gradient-to-br from-primary to-success text-6xl font-bold leading-none text-white shadow-2xl shadow-primary/30 ring-1 ring-white/15">
+          {inicial}
+        </div>
+      )}
+      <div className="min-w-0">
+        <p className="text-4xl font-bold tracking-tight text-white">{nombre}</p>
+        <p className="mt-2 text-sm text-white/45">{esFinanciera ? "powered by CreditFlow" : "Sistema de gestión de cartera crediticia"}</p>
       </div>
     </div>
   );

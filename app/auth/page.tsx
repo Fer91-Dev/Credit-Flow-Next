@@ -43,13 +43,7 @@ export default function LoginPage() {
   }
 
   return (
-    <AuthShell
-      left={
-        <p className="text-3xl font-semibold italic leading-snug text-white/90">
-          &ldquo;Ningún logro importante se construye en soledad.&rdquo;
-        </p>
-      }
-    >
+    <AuthShell>
       <h1 className="text-xl font-semibold text-foreground">Introduce tus credenciales</h1>
       <p className="mt-1 text-sm text-muted-foreground">Bienvenido de nuevo al panel de control</p>
 
