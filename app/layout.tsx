@@ -1,12 +1,13 @@
 import type { Metadata } from "next";
-import { Plus_Jakarta_Sans, JetBrains_Mono } from "next/font/google";
+import { Geist, JetBrains_Mono } from "next/font/google";
 import { ThemeProvider } from "next-themes";
 import "./globals.css";
 
-const plusJakarta = Plus_Jakarta_Sans({
+// Fuente UI: Geist (variable) — más geométrica/moderna que el default. La variable
+// sigue llamándose --font-inter para no tocar globals.css (ahí se mapea a --font-sans).
+const geistSans = Geist({
   variable: "--font-inter",
   subsets: ["latin"],
-  weight: ["400", "500", "600", "700", "800"],
 });
 
 const jetbrainsMono = JetBrains_Mono({
@@ -26,7 +27,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="es" suppressHydrationWarning>
-      <body className={`${plusJakarta.variable} ${jetbrainsMono.variable} antialiased`}>
+      <body className={`${geistSans.variable} ${jetbrainsMono.variable} antialiased`}>
         <ThemeProvider attribute="class" defaultTheme="dark" enableSystem={false}>
           {children}
         </ThemeProvider>
