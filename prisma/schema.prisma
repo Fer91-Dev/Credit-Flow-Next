@@ -47,6 +47,13 @@ model tenants {
   telefono     String?
   email        String?
   logo_url     String? // logo en Supabase Storage (co-branding)
+  // Domicilio estructurado (georef AR: provincia→localidad; igual que clientes)
+  provincia      String?
+  localidad      String?
+  codigo_postal  String?
+  tipo_domicilio String?
+  piso           String?
+  depto          String?
 
   profiles    profiles[]
   suscripcion suscripciones?

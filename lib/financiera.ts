@@ -12,10 +12,18 @@ export interface FinancieraDatos {
   telefono: string | null;
   email: string | null;
   logo_url: string | null;
+  // Domicilio estructurado (georef AR)
+  provincia: string | null;
+  localidad: string | null;
+  codigo_postal: string | null;
+  tipo_domicilio: string | null;
+  piso: string | null;
+  depto: string | null;
 }
 
 const SELECT = {
   nombre: true, razon_social: true, cuit: true, direccion: true, telefono: true, email: true, logo_url: true,
+  provincia: true, localidad: true, codigo_postal: true, tipo_domicilio: true, piso: true, depto: true,
 } as const;
 
 /**
@@ -39,6 +47,12 @@ export async function getFinanciera(tenantId: string): Promise<FinancieraDatos> 
     telefono: t?.telefono ?? null,
     email: t?.email ?? null,
     logo_url: t?.logo_url ?? null,
+    provincia: t?.provincia ?? null,
+    localidad: t?.localidad ?? null,
+    codigo_postal: t?.codigo_postal ?? null,
+    tipo_domicilio: t?.tipo_domicilio ?? null,
+    piso: t?.piso ?? null,
+    depto: t?.depto ?? null,
   };
 }
 
@@ -46,7 +60,10 @@ export async function getFinanciera(tenantId: string): Promise<FinancieraDatos> 
 export async function guardarFinanciera(tenantId: string, data: Partial<FinancieraDatos>): Promise<FinancieraDatos> {
   const upd: Record<string, string | null> = {};
   if (data.nombre !== undefined) upd.nombre = data.nombre.trim();
-  const opcionales: (keyof FinancieraDatos)[] = ["razon_social", "cuit", "direccion", "telefono", "email", "logo_url"];
+  const opcionales: (keyof FinancieraDatos)[] = [
+    "razon_social", "cuit", "direccion", "telefono", "email", "logo_url",
+    "provincia", "localidad", "codigo_postal", "tipo_domicilio", "piso", "depto",
+  ];
   for (const k of opcionales) {
     if (data[k] !== undefined) upd[k] = (data[k] as string | null)?.toString().trim() || null;
   }

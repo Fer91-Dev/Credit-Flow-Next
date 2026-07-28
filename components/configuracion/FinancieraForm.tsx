@@ -3,13 +3,17 @@
 import { useEffect, useRef, useState } from "react";
 import { Check, Loader2, Upload, X, Building2 } from "lucide-react";
 import { Field, Input, CuitInput, TelInput } from "@/components/ui/field";
+import { DomicilioFields } from "@/components/ui/DomicilioFields";
 import { useFinanciera, type Financiera } from "@/lib/swr";
 import { esEmailValido, esCuitValido } from "@/lib/utils";
 import { useToast } from "@/components/ui/toast";
 import { Skeleton } from "@/components/ui/skeleton";
 import { HelpHint } from "./ConfigForm";
 
-const VACIO: Financiera = { nombre: "", razon_social: null, cuit: null, direccion: null, telefono: null, email: null, logo_url: null };
+const VACIO: Financiera = {
+  nombre: "", razon_social: null, cuit: null, direccion: null, telefono: null, email: null, logo_url: null,
+  provincia: null, localidad: null, codigo_postal: null, tipo_domicilio: null, piso: null, depto: null,
+};
 
 /**
  * "Datos de la financiera" (identidad del tenant): nombre de fantasía, razón social, CUIT,
@@ -133,9 +137,15 @@ export function FinancieraForm() {
         <Field label="Email">
           <Input type="email" value={form.email ?? ""} onChange={(e) => set("email", e.target.value)} placeholder="contacto@financiera.com" />
         </Field>
-        <Field label="Dirección">
-          <Input value={form.direccion ?? ""} onChange={(e) => set("direccion", e.target.value)} placeholder="Av. Siempre Viva 123, Tucumán" />
-        </Field>
+      </div>
+
+      {/* Domicilio estructurado (georef AR: provincia→localidad, igual que el alta de cliente) */}
+      <div className="mt-5">
+        <p className="mb-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Domicilio</p>
+        <DomicilioFields
+          value={form}
+          onChange={(patch) => { setForm((p) => ({ ...p, ...patch })); setSaved(false); }}
+        />
       </div>
     </div>
   );

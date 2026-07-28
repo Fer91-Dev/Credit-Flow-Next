@@ -842,6 +842,12 @@ export interface Financiera {
   telefono: string | null;
   email: string | null;
   logo_url: string | null;
+  provincia: string | null;
+  localidad: string | null;
+  codigo_postal: string | null;
+  tipo_domicilio: string | null;
+  piso: string | null;
+  depto: string | null;
 }
 
 // ── Hooks tipados ─────────────────────────────────────────────────────────────
