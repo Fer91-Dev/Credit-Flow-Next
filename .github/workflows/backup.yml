@@ -4,13 +4,13 @@ name: Backup nightly
 #   pg_dump → cifrado (age) → subida a Cloudflare R2 (privado, off-site).
 # Corre solo cada noche y también a mano ("Run workflow" o el botón in-app).
 #
-# Corre DENTRO del contenedor oficial postgres:17 → pg_dump 17 ya viene incluido
-# (sin agregar repos externos, que es lo que fallaba). age + awscli se instalan
-# adentro con apt (el awscli de Debian es v1, evita el bug de la v2 con R2).
+# pg_dump 17 se instala desde el repo oficial PGDG (probado en noble).
+# age desde apt. awscli NO se instala: los runners de GitHub ya traen aws v2
+# preinstalado (Ubuntu 24.04 sacó awscli de apt → por eso fallaba con exit 100).
 #
 # Requiere los secrets del repo (Settings → Secrets and variables → Actions):
 #   BACKUP_DATABASE_URL  → conexión de São Paulo para pg_dump (Session pooler 5432
-#                          si la directa da timeout en el runner; ver README/doc)
+#                          si la directa da timeout en el runner; ver doc)
 #   BACKUP_AGE_PUBKEY    → clave PÚBLICA age (age1...) — la privada NUNCA acá
 #   R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY / R2_ENDPOINT / R2_BUCKET
 
@@ -26,13 +26,17 @@ concurrency:
 jobs:
   backup:
     runs-on: ubuntu-latest
-    container: postgres:17 # trae pg_dump 17; el job corre como root (sin sudo)
     steps:
-      - name: Instalar age + awscli
+      - name: Instalar pg_dump 17 + age
         run: |
-          set -eux
-          apt-get update
-          apt-get install -y --no-install-recommends age awscli ca-certificates
+          set -euxo pipefail
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client-17 age
+          pg_dump --version
+          aws --version # ya viene preinstalado en el runner
 
       - name: Dump → cifrar → subir a R2
         env:
@@ -41,6 +45,9 @@ jobs:
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           AWS_DEFAULT_REGION: auto # R2 usa 'auto'
+          # aws CLI v2 >= 2.23 activa checksums de integridad que R2 rechaza; los desactivamos:
+          AWS_REQUEST_CHECKSUM_CALCULATION: when_required
+          AWS_RESPONSE_CHECKSUM_VALIDATION: when_required
           R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
           R2_BUCKET: ${{ secrets.R2_BUCKET }}
         run: |
