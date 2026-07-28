@@ -1,0 +1,49 @@
+name: Backup nightly
+
+# Respaldo diario de la base de PRODUCCIÓN (Supabase São Paulo):
+#   pg_dump → cifrado (age) → subida a Cloudflare R2 (privado, off-site).
+# Corre solo cada noche y también a mano ("Run workflow" o el botón in-app).
+# Requiere los secrets del repo (Settings → Secrets and variables → Actions):
+#   BACKUP_DATABASE_URL  → conexión SESSION pooler (5432) de São Paulo (NO el 6543)
+#   BACKUP_AGE_PUBKEY    → clave PÚBLICA age (age1...) — la privada NUNCA acá
+#   R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY / R2_ENDPOINT / R2_BUCKET
+
+on:
+  schedule:
+    - cron: "0 6 * * *" # 06:00 UTC = 03:00 ART, todas las noches
+  workflow_dispatch: {} # botón manual ("Run workflow") + lo dispara el botón in-app
+
+concurrency:
+  group: backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Instalar pg_dump 17 + age + awscli
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client-17 age awscli
+
+      - name: Dump → cifrar → subir a R2
+        env:
+          PGCONN: ${{ secrets.BACKUP_DATABASE_URL }}
+          AGE_PUBKEY: ${{ secrets.BACKUP_AGE_PUBKEY }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+        run: |
+          set -euo pipefail
+          STAMP=$(date -u +%Y%m%d-%H%M%S)
+          FILE="creditflow-$STAMP.dump"
+          # -Fc = formato custom (comprimido y restaurable con pg_restore)
+          pg_dump "$PGCONN" -Fc --no-owner --no-privileges -f "$FILE"
+          echo "$AGE_PUBKEY" > recipient.txt
+          age -R recipient.txt -o "$FILE.age" "$FILE"
+          aws s3 cp "$FILE.age" "s3://$R2_BUCKET/daily/$FILE.age" --endpoint-url "$R2_ENDPOINT"
+          echo "✅ Backup subido: daily/$FILE.age ($(du -h "$FILE.age" | cut -f1))"
