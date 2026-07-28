@@ -3,8 +3,14 @@ name: Backup nightly
 # Respaldo diario de la base de PRODUCCIÓN (Supabase São Paulo):
 #   pg_dump → cifrado (age) → subida a Cloudflare R2 (privado, off-site).
 # Corre solo cada noche y también a mano ("Run workflow" o el botón in-app).
+#
+# Corre DENTRO del contenedor oficial postgres:17 → pg_dump 17 ya viene incluido
+# (sin agregar repos externos, que es lo que fallaba). age + awscli se instalan
+# adentro con apt (el awscli de Debian es v1, evita el bug de la v2 con R2).
+#
 # Requiere los secrets del repo (Settings → Secrets and variables → Actions):
-#   BACKUP_DATABASE_URL  → conexión SESSION pooler (5432) de São Paulo (NO el 6543)
+#   BACKUP_DATABASE_URL  → conexión de São Paulo para pg_dump (Session pooler 5432
+#                          si la directa da timeout en el runner; ver README/doc)
 #   BACKUP_AGE_PUBKEY    → clave PÚBLICA age (age1...) — la privada NUNCA acá
 #   R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY / R2_ENDPOINT / R2_BUCKET
 
@@ -20,14 +26,13 @@ concurrency:
 jobs:
   backup:
     runs-on: ubuntu-latest
+    container: postgres:17 # trae pg_dump 17; el job corre como root (sin sudo)
     steps:
-      - name: Instalar pg_dump 17 + age + awscli
+      - name: Instalar age + awscli
         run: |
-          sudo install -d /usr/share/postgresql-common/pgdg
-          sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc
-          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
-          sudo apt-get update
-          sudo apt-get install -y postgresql-client-17 age awscli
+          set -eux
+          apt-get update
+          apt-get install -y --no-install-recommends age awscli ca-certificates
 
       - name: Dump → cifrar → subir a R2
         env:
@@ -35,6 +40,7 @@ jobs:
           AGE_PUBKEY: ${{ secrets.BACKUP_AGE_PUBKEY }}
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto # R2 usa 'auto'
           R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
           R2_BUCKET: ${{ secrets.R2_BUCKET }}
         run: |
