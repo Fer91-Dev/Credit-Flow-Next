@@ -254,6 +254,23 @@ export const DELETE = withErrorHandler(async (req: NextRequest, { params }: Rout
     }
   }
 
+  // Guard de tesorería: si la cuenta es de un agente que todavía tiene plata en su caja,
+  // no eliminar hasta que rinda ese saldo a la caja principal (mismo criterio que Agentes).
+  if (target.vendedor_id) {
+    const saldoAgg = await prisma.movimientos_caja.aggregate({
+      where: { ...withTenant(tenantId), vendedor_id: target.vendedor_id },
+      _sum: { monto: true },
+    });
+    const saldoCaja = Math.round((saldoAgg._sum.monto ?? 0) * 100) / 100;
+    if (Math.abs(saldoCaja) > 0.01) {
+      return errorResponse(
+        `Este usuario es un agente con un saldo de $${saldoCaja.toLocaleString("es-AR")} en su caja. Antes de eliminar la cuenta, ese saldo debe rendirse a la caja principal.`,
+        "CAJA_CON_SALDO",
+        409,
+      );
+    }
+  }
+
   // 1) Borrar el profile (corta el acceso por deny-by-default aunque Auth fallara).
   await prisma.profiles.delete({ where: { id } });
 

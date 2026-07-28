@@ -128,6 +128,23 @@ export const DELETE = withErrorHandler(async (req: NextRequest, { params }: Rout
     return errorResponse("Vendedor no encontrado", "NOT_FOUND", 404);
   }
 
+  // Guard de tesorería: no eliminar un agente que aún tiene plata en su caja. La FK
+  // movimientos_caja→vendedor es SetNull, así que borrarlo MOVERÍA su saldo a la caja
+  // principal SIN rendición (movimiento silencioso que rompe la trazabilidad). Primero
+  // hay que rendir/transferir ese saldo a la caja principal.
+  const saldoAgg = await prisma.movimientos_caja.aggregate({
+    where: { ...withTenant(tenantId), vendedor_id: id },
+    _sum: { monto: true },
+  });
+  const saldoCaja = Math.round((saldoAgg._sum.monto ?? 0) * 100) / 100;
+  if (Math.abs(saldoCaja) > 0.01) {
+    return errorResponse(
+      `Este agente tiene un saldo de $${saldoCaja.toLocaleString("es-AR")} en su caja. Antes de eliminarlo, ese saldo debe rendirse a la caja principal (si no, se movería a la principal sin registro).`,
+      "CAJA_CON_SALDO",
+      409,
+    );
+  }
+
   // Cuentas de login vinculadas a este agente.
   const cuentas = await prisma.profiles.findMany({
     where: { ...withTenant(tenantId), vendedor_id: id },
