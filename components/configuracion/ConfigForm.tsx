@@ -323,7 +323,7 @@ export function ConfigForm() {
           Error al cargar la configuración: {error.message}
         </div>
       ) : (
-        <div className="max-w-5xl">
+        <div className="w-full">
           {saveError && (
             <div className="mb-4 rounded-xl bg-destructive/10 border border-destructive/30 p-3 text-destructive text-sm">
               {saveError}
@@ -1527,7 +1527,7 @@ function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean
 
 function BodySkeleton() {
   return (
-    <div className="grid max-w-5xl grid-cols-1 gap-5 md:grid-cols-[190px_1fr]">
+    <div className="grid w-full grid-cols-1 gap-5 md:grid-cols-[190px_1fr]">
       <Skeleton className="hidden h-56 rounded-xl md:block" />
       <div className="space-y-4">
         {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-40 rounded-xl" />)}
