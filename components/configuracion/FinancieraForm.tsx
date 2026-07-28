@@ -29,7 +29,13 @@ export function FinancieraForm() {
   const [saved, setSaved] = useState(false);
   const [subiendo, setSubiendo] = useState(false);
 
-  useEffect(() => { if (financiera) setForm(financiera); }, [financiera]);
+  // Hidratar SOLO la 1ª vez que llega la config. Si se re-hidratara en cada cambio de
+  // `financiera`, una revalidación de SWR (ocurre al recuperar el foco, ej. al abrir un
+  // <select>) pisaría las ediciones sin guardar (la provincia elegida volvería a "Seleccioná…").
+  const hidratado = useRef(false);
+  useEffect(() => {
+    if (financiera && !hidratado.current) { setForm(financiera); hidratado.current = true; }
+  }, [financiera]);
 
   const set = <K extends keyof Financiera>(k: K, v: Financiera[K]) => { setForm((p) => ({ ...p, [k]: v })); setSaved(false); };
   const dirty = !!financiera && JSON.stringify(form) !== JSON.stringify(financiera);
