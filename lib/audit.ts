@@ -17,7 +17,8 @@ export type AuditAccion =
   | "anular"
   | "refinanciar"
   | "registrar_pago"
-  | "actualizar_config";
+  | "actualizar_config"
+  | "backup";
 
 export interface AuditInput {
   tenantId: string;

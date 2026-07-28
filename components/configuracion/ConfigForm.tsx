@@ -5,6 +5,7 @@ import { Settings, Check, Loader2, Percent, Plus, X, MessageSquare, Phone, Mail,
 import { useConfiguracion, type ConfiguracionFinanciera, type GamificacionConfig, type RentabilidadConfig, type RiesgoConfig, type CobranzaConfig } from "@/lib/swr";
 import { FeatureGate } from "@/components/providers/FeaturesProvider";
 import { FinancieraForm } from "@/components/configuracion/FinancieraForm";
+import { BackupsView } from "@/components/configuracion/BackupsView";
 import type { SimuladorConfig, CargosConfig, FrecuenciaOpcion } from "@/lib/domain";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Emoji } from "@/components/ui/Emoji";
@@ -183,7 +184,7 @@ export function ConfigForm() {
   const [savingKey, setSavingKey] = useState<string | null>(null);
   const [savedKey, setSavedKey] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"financiera" | "motor" | "simulador" | "comunicaciones" | "gamificacion" | "rentabilidad" | "riesgo">("financiera");
+  const [activeTab, setActiveTab] = useState<"financiera" | "motor" | "simulador" | "comunicaciones" | "gamificacion" | "rentabilidad" | "riesgo" | "backups">("financiera");
 
   // Hidratar el form local cuando llega la config.
   useEffect(() => {
@@ -341,6 +342,7 @@ export function ConfigForm() {
                 { key: "gamificacion",   label: "Gamificación",           emoji: "trophy" },
                 { key: "rentabilidad",   label: "Rentabilidad",           emoji: "chart-increasing" },
                 { key: "riesgo",         label: "Riesgo / Originación",   emoji: "shield" },
+                { key: "backups",        label: "Respaldos",              emoji: "package" },
               ] as const).map(tab => {
                 const active = activeTab === tab.key;
                 return (
@@ -1112,6 +1114,9 @@ export function ConfigForm() {
             </div>
           </Section>
           )}
+
+          {/* ─── Respaldos (backups) ─── */}
+          {activeTab === "backups" && <BackupsView />}
 
             </div>{/* /contenido */}
           </div>{/* /grid rail+contenido */}
