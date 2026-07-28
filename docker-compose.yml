@@ -9,10 +9,6 @@ services:
     volumes:
       - .:/app
       - /app/node_modules
-      # .next (build cache de Turbopack) en volumen del contenedor, FUERA del bind mount
-      # de Windows → escrituras rápidas al compilar. Para limpiar cache: NO uses `rm .next`
-      # desde Windows; usá `docker compose exec app rm -rf .next` (o recreá con up --force-recreate).
-      - /app/.next
     env_file:
       - .env.local
     environment:
