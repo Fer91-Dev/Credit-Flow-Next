@@ -46,7 +46,9 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   const show = useCallback((message: string, variant: ToastVariant = "success") => {
     const id = ++counter;
     setItems((prev) => [...prev, { id, message, variant }]);
-    setTimeout(() => remove(id), 3500);
+    // Los errores NO se autocierran: quedan hasta que el usuario los cierre con la X, para
+    // poder leer el detalle con calma. Éxito/info se van solos a los 3.5s.
+    if (variant !== "error") setTimeout(() => remove(id), 3500);
   }, [remove]);
 
   const api: ToastApi = {
@@ -78,7 +80,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
                 <p className="flex-1 text-sm text-foreground leading-snug">{t.message}</p>
                 <button
                   onClick={() => remove(t.id)}
-                  className="shrink-0 text-muted-foreground/60 hover:text-foreground transition-colors"
+                  className="-mr-1 -mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground/70 transition-colors hover:bg-muted hover:text-foreground"
                   aria-label="Cerrar"
                 >
                   <X className="h-3.5 w-3.5" />
