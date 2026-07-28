@@ -600,9 +600,9 @@ export interface CajaData {
 export interface EventoAuditoria {
   id: string;
   created_at: string;
-  entidad: "clientes" | "creditos" | "pagos" | "configuracion" | "caja" | "campana";
+  entidad: "clientes" | "creditos" | "pagos" | "configuracion" | "caja" | "campana" | "plataforma";
   entidad_id: string | null;
-  accion: "crear" | "actualizar" | "eliminar" | "cancelar" | "anular" | "registrar_pago" | "actualizar_config";
+  accion: "crear" | "actualizar" | "eliminar" | "cancelar" | "anular" | "registrar_pago" | "actualizar_config" | "backup";
   descripcion: string;
   meta: Record<string, unknown> | null;
   /** Actor que ejecutó la acción (capturado al escribir el evento). */
