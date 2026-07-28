@@ -38,16 +38,7 @@ export default function RecuperarPage() {
   }
 
   return (
-    <AuthShell
-      left={
-        <div className="space-y-4">
-          <h2 className="text-3xl font-bold tracking-tight text-white">¿Olvidaste tu contraseña?</h2>
-          <p className="text-sm leading-relaxed text-white/55">
-            No te preocupes. Ingresá tu correo electrónico y te enviaremos las instrucciones para restablecerla.
-          </p>
-        </div>
-      }
-    >
+    <AuthShell>
       {enviado ? (
         <div className="space-y-3 text-center">
           <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-success/10">

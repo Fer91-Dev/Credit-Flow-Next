@@ -52,16 +52,7 @@ export default function ResetPasswordPage() {
   }
 
   return (
-    <AuthShell
-      left={
-        <div className="space-y-4">
-          <h2 className="text-3xl font-bold tracking-tight text-white">Elegí tu nueva contraseña</h2>
-          <p className="text-sm leading-relaxed text-white/55">
-            Creá una contraseña segura para volver a entrar a tu cuenta. Vas a tener que iniciar sesión con la nueva clave.
-          </p>
-        </div>
-      }
-    >
+    <AuthShell>
       {estado === "cargando" ? (
         <div className="flex flex-col items-center gap-3 py-6 text-center">
           <Loader2 className="h-6 w-6 animate-spin text-primary" />
