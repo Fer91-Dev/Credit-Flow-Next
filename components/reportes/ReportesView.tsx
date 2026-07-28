@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { Download, Printer } from "lucide-react";
-import { useReportes, useReporteSerie, useReporteCobranza, type Reporte, type ReporteSerie, type PuntoMensual, type ReporteCobranza } from "@/lib/swr";
+import { useReportes, useReporteSerie, useReporteCobranza, useFinanciera, type Reporte, type ReporteSerie, type PuntoMensual, type ReporteCobranza } from "@/lib/swr";
 import { formatFecha } from "@/lib/utils";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { KpiCard } from "@/components/ui/KpiCard";
@@ -91,12 +91,17 @@ function exportarCobranza(c: ReporteCobranza) {
  * Reporte imprimible COMPLETO (tema claro) en una ventana nueva → Imprimir o "Guardar como PDF".
  * No re-renderiza gráficos: usa tablas (perfectamente imprimibles). Reusa los datos ya cargados.
  */
-function imprimirReporte(r: Reporte, s?: ReporteSerie) {
-  const w = window.open("", "_blank");
-  if (!w) return;
-  const esc = (v: string) => String(v).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c] as string));
+function imprimirReporte(
+  r: Reporte,
+  s?: ReporteSerie,
+  financiera?: { nombre?: string | null; logo_url?: string | null } | null,
+) {
+  const esc = (v: string) => String(v).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c] as string));
   const $ = (n: number) => "$" + n0(n);
   const moraPct = r.cartera.saldo_activo_total > 0 ? (r.morosidad.saldo_expuesto / r.cartera.saldo_activo_total) * 100 : 0;
+  // Co-branding: el reporte sale con el nombre (y logo) de la financiera, no "CreditFlow".
+  const marca = (financiera?.nombre ?? "").trim() || "CreditFlow";
+  const logo = (financiera?.logo_url ?? "").trim();
 
   const kpis: [string, string][] = [
     ["Operaciones", String(r.operaciones.cantidad)],
@@ -118,14 +123,21 @@ function imprimirReporte(r: Reporte, s?: ReporteSerie) {
   const carteraHtml = r.cartera.por_estado.map((e) => `<tr><td>${esc(estadoLabel[e.estado] ?? e.estado)}</td><td class="r">${e.cantidad}</td><td class="r">${$(e.saldo_pendiente)}</td></tr>`).join("");
   const metodoHtml = r.cobranzas_por_metodo.map((m) => `<tr><td>${esc(metodoLabel[m.metodo] ?? m.metodo)}</td><td class="r">${m.cantidad}</td><td class="r">${$(m.monto)}</td></tr>`).join("");
 
-  w.document.write(`<!doctype html><html lang="es"><head><meta charset="utf-8">
-<title>Reporte ${r.periodo.desde} a ${r.periodo.hasta}</title>
+  const brandHtml = logo
+    ? `<div class="brandrow"><img class="logo" src="${esc(logo)}" alt=""><div><div class="brand">${esc(marca)}</div><div class="subttl">Reporte financiero</div></div></div>`
+    : `<div><div class="brand">${esc(marca)}</div><div class="subttl">Reporte financiero</div></div>`;
+
+  const html = `<!doctype html><html lang="es"><head><meta charset="utf-8">
+<title>Reporte ${esc(r.periodo.desde)} a ${esc(r.periodo.hasta)}</title>
 <style>
   @page { margin: 16mm; }
   * { box-sizing: border-box; }
   body { font-family: Inter, Arial, sans-serif; color: #111827; margin: 0; }
   .head { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #111827; padding-bottom: 10px; margin-bottom: 16px; }
+  .brandrow { display: flex; align-items: center; gap: 10px; }
+  .logo { height: 34px; width: auto; object-fit: contain; }
   .brand { font-size: 20px; font-weight: 800; background: linear-gradient(135deg,#6366F1,#818CF8); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+  .subttl { font-size: 12px; color: #374151; margin-top: 2px; }
   .meta { text-align: right; font-size: 11px; color: #374151; }
   h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: #374151; margin: 20px 0 8px; }
   .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
@@ -140,7 +152,7 @@ function imprimirReporte(r: Reporte, s?: ReporteSerie) {
   .foot { margin-top: 24px; font-size: 9px; color: #9ca3af; border-top: 1px solid #e5e7eb; padding-top: 8px; }
 </style></head><body>
   <div class="head">
-    <div><div class="brand">CreditFlow</div><div style="font-size:12px;color:#374151;margin-top:2px">Reporte financiero</div></div>
+    ${brandHtml}
     <div class="meta">Período: <strong>${fmtDate(r.periodo.desde)} – ${fmtDate(r.periodo.hasta)}</strong><br>Emitido: ${fmtDate(new Date().toISOString())}</div>
   </div>
 
@@ -156,10 +168,27 @@ function imprimirReporte(r: Reporte, s?: ReporteSerie) {
     <div><h2>Cobranzas por método</h2><table><thead><tr><th>Método</th><th class="r">Pagos</th><th class="r">Monto</th></tr></thead><tbody>${metodoHtml || '<tr><td colspan="3" style="text-align:center;color:#9ca3af">Sin pagos</td></tr>'}</tbody></table></div>
   </div>
 
-  <div class="foot">Resumen informativo generado por CreditFlow. No constituye un documento contable ni fiscal.</div>
-</body></html>`);
-  w.document.close();
-  setTimeout(() => { w.focus(); w.print(); }, 400);
+  <div class="foot">Resumen informativo generado por ${esc(marca)}. No constituye un documento contable ni fiscal.</div>
+</body></html>`;
+
+  // Impresión vía iframe OCULTO: abre el diálogo de "Guardar como PDF" sin dejar una pestaña
+  // nueva con el HTML crudo (lo que molestaba). El iframe se limpia solo al terminar.
+  const iframe = document.createElement("iframe");
+  iframe.setAttribute("aria-hidden", "true");
+  Object.assign(iframe.style, { position: "fixed", right: "0", bottom: "0", width: "0", height: "0", border: "0", visibility: "hidden" });
+  document.body.appendChild(iframe);
+  const win = iframe.contentWindow;
+  const doc = win?.document;
+  if (!win || !doc) { iframe.remove(); return; }
+
+  doc.open(); doc.write(html); doc.close();
+
+  let impreso = false;
+  const imprimir = () => { if (impreso) return; impreso = true; try { win.focus(); win.print(); } catch { /* noop */ } };
+  win.onafterprint = () => setTimeout(() => iframe.remove(), 300);
+  win.onload = imprimir;                    // espera a que cargue todo (incluido el logo)
+  setTimeout(imprimir, 600);                // fallback si onload no dispara tras document.write
+  setTimeout(() => iframe.remove(), 60000); // seguridad: no dejar el iframe colgado
 }
 
 // ─── Vista principal ─────────────────────────────────────────────────────────
@@ -177,6 +206,7 @@ export function ReportesView() {
   const { reporte, error, isLoading } = useReportes(desde, hasta);
   const { serie } = useReporteSerie(desde, hasta);
   const { cobranza } = useReporteCobranza(desde, hasta);
+  const { financiera } = useFinanciera();
 
   const preset = (d: Date, h: Date) => { setDesde(ymd(d)); setHasta(ymd(h)); };
   const presets = [
@@ -221,7 +251,7 @@ export function ReportesView() {
           </div>
         </div>
         <div className="flex gap-2">
-          <button onClick={() => reporte && imprimirReporte(reporte, serie)} disabled={!reporte}
+          <button onClick={() => reporte && imprimirReporte(reporte, serie, financiera)} disabled={!reporte}
             className="flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-border text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-40 transition-colors text-sm font-medium whitespace-nowrap">
             <Printer className="h-4 w-4" /> Imprimir
           </button>
