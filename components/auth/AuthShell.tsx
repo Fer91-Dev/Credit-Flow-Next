@@ -111,7 +111,7 @@ function HeroBrand({ branding }: { branding: Branding | null }) {
         <img
           src={branding.logo_url}
           alt={nombre}
-          className="h-32 w-32 shrink-0 rounded-[1.75rem] bg-white/5 object-contain p-3 shadow-2xl shadow-black/40 ring-1 ring-white/10"
+          className="h-28 w-auto max-w-[20rem] shrink-0 object-contain drop-shadow-[0_10px_28px_rgba(0,0,0,0.5)]"
         />
       ) : (
         <div className="flex h-32 w-32 shrink-0 items-center justify-center rounded-[1.75rem] bg-gradient-to-br from-primary to-success text-6xl font-bold leading-none text-white shadow-2xl shadow-primary/30 ring-1 ring-white/15">
