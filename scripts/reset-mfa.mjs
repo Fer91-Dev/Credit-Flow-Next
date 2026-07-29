@@ -15,10 +15,36 @@
  *   node scripts/reset-mfa.mjs status <email>     → ver si tiene 2FA y de qué tipo
  *   node scripts/reset-mfa.mjs reset <email>      → borrar sus factores
  *
- * ⚠️  Correrlo contra la base correcta: con `.env.local` apunta a DEV; para producción
- *     exportar antes el DATABASE_URL de São Paulo.
+ * ⚠️  A QUÉ BASE APUNTA: si no hay `DATABASE_URL` en el entorno, toma la de
+ *     `.env.local` = **DEV**. Para PRODUCCIÓN hay que pasarla explícitamente:
+ *       $env:DATABASE_URL="<url de São Paulo>"; node scripts/reset-mfa.mjs reset <email>
+ *     El script imprime el host antes de tocar nada, para que se vea dónde está parado.
  */
 import { PrismaClient } from "@prisma/client";
+
+// Los scripts del repo corren con `node` pelado y Prisma solo lee `.env` (no
+// `.env.local`, que es de Next). Se carga a mano — `process.loadEnvFile` es nativo
+// de Node 20.12+, así que no suma dependencias. Un DATABASE_URL ya presente en el
+// entorno GANA: es el mecanismo para apuntar a producción a propósito.
+if (!process.env.DATABASE_URL) {
+  try {
+    process.loadEnvFile(".env.local");
+  } catch {
+    console.error("✗ No encontré DATABASE_URL ni pude leer .env.local.");
+    console.error("  Corré el script desde creditflow-next/ o exportá DATABASE_URL.");
+    process.exit(1);
+  }
+}
+
+/** Host de la base, para que quede claro contra qué entorno se está trabajando. */
+function hostDeLaBase() {
+  try {
+    const u = new URL(process.env.DATABASE_URL);
+    return u.host;
+  } catch {
+    return "desconocido";
+  }
+}
 
 const prisma = new PrismaClient();
 
@@ -45,6 +71,8 @@ async function main() {
     console.log("Uso: node scripts/reset-mfa.mjs <status|reset> <email>");
     process.exit(1);
   }
+
+  console.log(`\nBase: ${hostDeLaBase()}`);
 
   const user = await buscarUsuario(email);
   if (!user) {
