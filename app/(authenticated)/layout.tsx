@@ -44,6 +44,18 @@ export default async function AuthenticatedLayout({
   const pathname = (await headers()).get("x-pathname") ?? "/";
 
   if (ctx!.esOwner) {
+    // 2FA OBLIGATORIO para el dueño del SaaS (administra todas las financieras).
+    // Se lo saca de la plataforma hasta que tenga una sesión aal2:
+    //  - sin factor configurado → a /perfil, donde está el enrolamiento;
+    //  - con factor pero sesión aal1 → a /auth/verificar, a poner el código.
+    // /perfil queda accesible en ambos casos (si no, no podría enrolarse nunca).
+    // La barrera autoritativa es `requireOwner` en la API; esto es la navegación.
+    if (!ctx!.mfaEnrolado) {
+      if (!pathname.startsWith("/perfil")) redirect("/perfil");
+    } else if (ctx!.aal !== "aal2") {
+      redirect("/auth/verificar");
+    }
+
     // Dueño de plataforma: solo su área de administración del SaaS (+ perfil). No opera financieras.
     if (!pathname.startsWith("/plataforma") && !pathname.startsWith("/perfil")) {
       redirect("/plataforma");

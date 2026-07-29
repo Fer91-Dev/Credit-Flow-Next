@@ -35,7 +35,17 @@ export type AuthContext = {
   avatarUrl: string | null; // user_metadata.avatar_url (avatar elegido por el usuario)
   features: string[]; // tenants.features — entitlements premium del tenant (ver lib/entitlements.ts)
   esOwner: boolean; // profiles.es_owner — dueño de la plataforma (área de administración del SaaS)
+  // ── 2FA (TOTP de Supabase Auth) ───────────────────────────────────────────
+  // `aal` = Authenticator Assurance Level de ESTA sesión: aal1 = solo contraseña,
+  // aal2 = además pasó el segundo factor. `mfaEnrolado` = el usuario tiene un
+  // factor TOTP verificado (Supabase lo expone como nextLevel === "aal2").
+  // Ambos salen de mfa.getAuthenticatorAssuranceLevel(), que lee los claims del
+  // JWT ya validado por getUser() — no se decodifica nada a mano.
+  aal: Aal;
+  mfaEnrolado: boolean;
 };
+
+export type Aal = "aal1" | "aal2";
 
 /**
  * Carga el contexto desde `profiles` (fuente de verdad del rol y del tenant).
@@ -43,7 +53,11 @@ export type AuthContext = {
  * Deny-by-default (OWASP — Mínimo Privilegio): si no hay profile, está inactivo,
  * o le falta tenant_id o role → 403. Nunca se asume un rol por defecto.
  */
-async function cargarContexto(userId: string, avatarUrl: string | null = null): Promise<AuthContext> {
+async function cargarContexto(
+  userId: string,
+  avatarUrl: string | null = null,
+  mfa: { aal: Aal; mfaEnrolado: boolean } = { aal: "aal1", mfaEnrolado: false }
+): Promise<AuthContext> {
   const profile = await prisma.profiles.findUnique({
     where: { id: userId },
     select: {
@@ -78,6 +92,8 @@ async function cargarContexto(userId: string, avatarUrl: string | null = null): 
     // premium se apagan al instante — sin depender de que corra el cron de suscripciones.
     features: planVencido(profile.tenant?.suscripcion) ? [] : (profile.tenant?.features ?? []),
     esOwner: profile.es_owner === true,
+    aal: mfa.aal,
+    mfaEnrolado: mfa.mfaEnrolado,
   };
 }
 
@@ -100,7 +116,9 @@ function planVencido(sus?: { plan: string; estado: string; periodo_hasta: Date |
  */
 export async function requireAuth(_request?: Request): Promise<AuthContext> {
   if (process.env.DEV_BYPASS_AUTH === "true") {
-    return cargarContexto(DEV_USER_ID);
+    // Sin sesión real no hay AAL que leer; se da por satisfecho el 2FA para no
+    // bloquear el bypass de desarrollo (hoy está en false de forma permanente).
+    return cargarContexto(DEV_USER_ID, null, { aal: "aal2", mfaEnrolado: true });
   }
 
   const supabase = await createClient();
@@ -113,7 +131,15 @@ export async function requireAuth(_request?: Request): Promise<AuthContext> {
     throw new ApiError("No autenticado", "UNAUTHORIZED", 401);
   }
 
-  return cargarContexto(user.id, (user.user_metadata?.avatar_url as string | undefined) ?? null);
+  // Nivel de autenticación de la sesión. Se lee DESPUÉS de getUser() (que valida
+  // la firma del JWT contra Supabase), así que los claims ya son confiables.
+  const { data: nivel } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+
+  return cargarContexto(user.id, (user.user_metadata?.avatar_url as string | undefined) ?? null, {
+    aal: nivel?.currentLevel === "aal2" ? "aal2" : "aal1",
+    // nextLevel llega en "aal2" únicamente si hay un factor TOTP VERIFICADO.
+    mfaEnrolado: nivel?.nextLevel === "aal2",
+  });
 }
 
 /**
