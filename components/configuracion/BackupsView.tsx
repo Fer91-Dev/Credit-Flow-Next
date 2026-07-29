@@ -9,6 +9,7 @@ import { HelpHint, type AyudaBloque } from "@/components/configuracion/ConfigFor
 import { useConfirm } from "@/components/ui/confirm";
 import { useToast } from "@/components/ui/toast";
 import { formatFechaHora } from "@/lib/utils";
+import { calcularSaludBackup } from "@/lib/backup-salud";
 
 type Corrida = {
   id: number;
@@ -31,18 +32,6 @@ const AYUDA_BACKUPS: AyudaBloque = {
   ],
 };
 
-/** "hace X" legible a partir de una fecha ISO. */
-function haceTexto(iso: string): string {
-  const ms = Date.now() - new Date(iso).getTime();
-  const min = Math.floor(ms / 60000);
-  if (min < 1) return "hace instantes";
-  if (min < 60) return `hace ${min} min`;
-  const h = Math.floor(min / 60);
-  if (h < 24) return `hace ${h} h`;
-  const d = Math.floor(h / 24);
-  return `hace ${d} día${d !== 1 ? "s" : ""}`;
-}
-
 /** Traduce el estado de una corrida de GitHub Actions a un badge legible. */
 function badge(c: Corrida): { label: string; variant: BadgeVariant } {
   if (c.estado !== "completed") {
@@ -64,35 +53,6 @@ function badge(c: Corrida): { label: string; variant: BadgeVariant } {
 function origen(c: Corrida): string {
   const auto = c.disparadoPor === null || c.disparadoPor === "" || c.disparadoPor === "github-actions[bot]";
   return auto ? "Automático (programado)" : `Manual · ${c.disparadoPor}`;
-}
-
-type Salud = { tono: "ok" | "alerta" | "neutro"; titulo: string; detalle: string };
-
-/** Estado de salud del respaldo a partir de la última copia EXITOSA (señal de un vistazo). */
-function calcularSalud(corridas: Corrida[] | null): Salud {
-  if (!corridas) return { tono: "neutro", titulo: "Consultando estado de los respaldos…", detalle: "" };
-  const exitosa = corridas.find((c) => c.estado === "completed" && c.conclusion === "success");
-  const enCurso = corridas.some((c) => c.estado !== "completed");
-  if (!exitosa) {
-    return {
-      tono: "alerta",
-      titulo: enCurso ? "Backup en curso…" : "Sin copia exitosa reciente",
-      detalle: enCurso ? "Esperá a que termine y refrescá." : "Revisá el estado o generá una copia ahora mismo.",
-    };
-  }
-  const horas = (Date.now() - new Date(exitosa.creado).getTime()) / 3_600_000;
-  if (horas > 36) {
-    return {
-      tono: "alerta",
-      titulo: `Última copia exitosa ${haceTexto(exitosa.creado)}`,
-      detalle: "Pasó más de un día sin un respaldo exitoso. Conviene revisarlo o generar uno ahora.",
-    };
-  }
-  return {
-    tono: "ok",
-    titulo: `Última copia exitosa ${haceTexto(exitosa.creado)}`,
-    detalle: "Tus datos están respaldados y a salvo.",
-  };
 }
 
 /**
@@ -163,7 +123,7 @@ export function BackupsView() {
     }
   }
 
-  const salud = calcularSalud(noConfig ? [] : corridas);
+  const salud = calcularSaludBackup(noConfig ? [] : corridas);
 
   const columns: Column<Corrida>[] = [
     {

@@ -82,6 +82,13 @@ export function SystemControls() {
   const { data } = useSWR<EstadoSus | null>("/api/suscripciones/estado", fetcher, { revalidateOnFocus: false });
   const aviso = calcularAviso(data);
 
+  // Salud del respaldo (solo admins; a otros roles el endpoint responde 403 → sin aviso).
+  // No se pollea: una consulta por carga alcanza (el estado del backup cambia una vez al día).
+  const { data: saludBackup } = useSWR<{ salud: { tono: string; titulo: string; detalle: string } } | null>(
+    "/api/backups/salud", fetcher, { revalidateOnFocus: false },
+  );
+  const avisoBackup = saludBackup?.salud?.tono === "alerta" ? saludBackup.salud : null;
+
   // Movimientos de caja (polling) + marcador de "último visto".
   const { data: notif } = useSWR<{ movimientos: MovNotif[] } | null>("/api/notificaciones", fetcher, {
     refreshInterval: 45_000,
@@ -146,8 +153,8 @@ export function SystemControls() {
             <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-bold text-primary-foreground ring-2 ring-background">
               {nuevas.length > 9 ? "9+" : nuevas.length}
             </span>
-          ) : aviso ? (
-            <span className={`absolute right-1.5 top-1.5 h-2 w-2 rounded-full ring-2 ring-background ${aviso.tipo === "vencido" ? "bg-destructive" : "bg-warning"}`} />
+          ) : (aviso || avisoBackup) ? (
+            <span className={`absolute right-1.5 top-1.5 h-2 w-2 rounded-full ring-2 ring-background ${(aviso?.tipo === "vencido" || avisoBackup) ? "bg-destructive" : "bg-warning"}`} />
           ) : null}
         </button>
 
@@ -170,6 +177,24 @@ export function SystemControls() {
                     <p className="mt-0.5 text-xs text-muted-foreground">{aviso.texto}</p>
                     <span className="mt-1.5 inline-flex items-center gap-1 text-xs font-medium text-primary">
                       Ir a Plan y facturación <ArrowRight className="h-3 w-3 group-hover:translate-x-0.5 transition-transform" />
+                    </span>
+                  </div>
+                </Link>
+              )}
+
+              {/* Aviso de respaldo con problemas (solo admin) */}
+              {avisoBackup && (
+                <Link
+                  href="/configuracion"
+                  onClick={() => setOpen(false)}
+                  className="group flex items-start gap-2.5 rounded-lg p-2.5 transition-all duration-150 hover:translate-x-0.5 hover:bg-destructive/5"
+                >
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-foreground">Respaldo con problemas</p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">{avisoBackup.titulo}. {avisoBackup.detalle}</p>
+                    <span className="mt-1.5 inline-flex items-center gap-1 text-xs font-medium text-primary">
+                      Ir a Configuración → Respaldos <ArrowRight className="h-3 w-3 group-hover:translate-x-0.5 transition-transform" />
                     </span>
                   </div>
                 </Link>
