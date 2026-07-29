@@ -27,7 +27,30 @@ export function esOwner(ctx: Pick<AuthContext, "esOwner">): boolean {
   return ctx.esOwner === true;
 }
 
-/** Corta el handler si el usuario NO es dueño de la plataforma (403). */
-export function requireOwner(ctx: Pick<AuthContext, "esOwner">): void {
+/**
+ * Corta el handler si el usuario NO es dueño de la plataforma (403).
+ *
+ * **Además exige 2FA (aal2).** La cuenta owner administra TODAS las financieras:
+ * una contraseña sola no alcanza. Se distinguen dos fallos para que la UI sepa a
+ * dónde mandar al usuario:
+ *  - `MFA_NO_ENROLADO` → todavía no configuró el segundo factor → a /perfil (Seguridad).
+ *  - `MFA_REQUERIDO`   → lo tiene, pero esta sesión es aal1 → a /auth/verificar.
+ *
+ * Es deliberado que el owner quede BLOQUEADO de la plataforma hasta enrolar: es el
+ * sentido de que el 2FA sea obligatorio. `scripts/reset-mfa-owner.mjs` es la salida
+ * de emergencia si pierde el dispositivo.
+ */
+export function requireOwner(ctx: Pick<AuthContext, "esOwner" | "aal" | "mfaEnrolado">): void {
   if (!ctx.esOwner) throw new ApiError("Solo el dueño del SaaS puede hacer esto", "FORBIDDEN", 403);
+
+  if (!ctx.mfaEnrolado) {
+    throw new ApiError(
+      "Activá la verificación en dos pasos para administrar el SaaS",
+      "MFA_NO_ENROLADO",
+      403
+    );
+  }
+  if (ctx.aal !== "aal2") {
+    throw new ApiError("Ingresá el código de verificación para continuar", "MFA_REQUERIDO", 403);
+  }
 }

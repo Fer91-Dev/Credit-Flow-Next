@@ -32,6 +32,11 @@ export default function LoginPage() {
         setLoading(false);
         return;
       }
+      // La cuenta tiene verificación en dos pasos: la contraseña sola no alcanza.
+      if (json.data?.mfaPendiente) {
+        router.replace("/auth/verificar");
+        return;
+      }
     } catch {
       setError("No se pudo conectar. Revisá tu conexión e intentá de nuevo.");
       setLoading(false);

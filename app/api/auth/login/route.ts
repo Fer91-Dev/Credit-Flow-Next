@@ -58,5 +58,12 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     return errorResponse(CREDENCIALES_INVALIDAS, "INVALID_CREDENTIALS", 401);
   }
 
-  return successResponse({ ok: true });
+  // ¿La cuenta tiene un segundo factor? Si lo tiene, la contraseña dejó la sesión en
+  // aal1 y falta el código: se le avisa al front para que mande a /auth/verificar en
+  // vez de al home. `nextLevel` llega en "aal2" solo si hay un factor VERIFICADO.
+  // No es una barrera (la real es `requireOwner` + el guard del layout): es ruteo.
+  const { data: nivel } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+  const mfaPendiente = nivel?.nextLevel === "aal2" && nivel?.currentLevel !== "aal2";
+
+  return successResponse({ ok: true, mfaPendiente });
 });
