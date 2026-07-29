@@ -700,6 +700,7 @@ export interface ConfiguracionFinanciera {
   rentabilidadConfig?: RentabilidadConfig | null;
   riesgoConfig?: RiesgoConfig | null;
   cobranzaConfig?: CobranzaConfig | null;
+  notificacionesConfig?: NotificacionesConfig | null;
 }
 
 /** Config de la agenda del día de cobranza (parametrizable por el admin). */
@@ -708,6 +709,13 @@ export interface CobranzaConfig {
   dias_sin_gestion: number;
   /** Ventana (días desde el registro) para poder anular un pago. 0 = solo el mismo día. */
   dias_anulacion_pago: number;
+}
+
+/** Preferencias de qué avisos in-app (campanita) se muestran. */
+export interface NotificacionesConfig {
+  movimientos_caja: boolean;
+  respaldos: boolean;
+  plan: boolean;
 }
 
 export interface Pago {

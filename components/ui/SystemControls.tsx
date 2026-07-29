@@ -79,22 +79,29 @@ export function SystemControls() {
   const helpDoc = getHelpDoc(pathname);
   const [helpOpen, setHelpOpen] = useState(false);
 
+  // Preferencias de notificaciones del tenant (qué avisos se muestran). Todos los roles.
+  // Ante fallo/ausencia se asume TODO encendido (no ocultar avisos por un fetch fallido).
+  const { data: prefs } = useSWR<{ movimientos_caja: boolean; respaldos: boolean; plan: boolean } | null>(
+    "/api/notificaciones/preferencias", fetcher, { revalidateOnFocus: false },
+  );
+  const verMovimientos = prefs?.movimientos_caja !== false;
+
   const { data } = useSWR<EstadoSus | null>("/api/suscripciones/estado", fetcher, { revalidateOnFocus: false });
-  const aviso = calcularAviso(data);
+  const aviso = prefs?.plan === false ? null : calcularAviso(data);
 
   // Salud del respaldo (solo admins; a otros roles el endpoint responde 403 → sin aviso).
   // No se pollea: una consulta por carga alcanza (el estado del backup cambia una vez al día).
   const { data: saludBackup } = useSWR<{ salud: { tono: string; titulo: string; detalle: string } } | null>(
     "/api/backups/salud", fetcher, { revalidateOnFocus: false },
   );
-  const avisoBackup = saludBackup?.salud?.tono === "alerta" ? saludBackup.salud : null;
+  const avisoBackup = prefs?.respaldos === false ? null : (saludBackup?.salud?.tono === "alerta" ? saludBackup.salud : null);
 
   // Movimientos de caja (polling) + marcador de "último visto".
   const { data: notif } = useSWR<{ movimientos: MovNotif[] } | null>("/api/notificaciones", fetcher, {
     refreshInterval: 45_000,
     revalidateOnFocus: true,
   });
-  const movimientos = useMemo(() => notif?.movimientos ?? [], [notif]);
+  const movimientos = useMemo(() => (verMovimientos ? (notif?.movimientos ?? []) : []), [notif, verMovimientos]);
 
   const [lastSeen, setLastSeen] = useState<number | null>(null);
   useEffect(() => {
@@ -200,7 +207,8 @@ export function SystemControls() {
                 </Link>
               )}
 
-              {/* Movimientos de caja */}
+              {/* Movimientos de caja (ocultable desde Configuración → Notificaciones) */}
+              {verMovimientos && (<>
               <div className="mt-1 flex items-center justify-between px-2 pt-1">
                 <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Movimientos de caja</p>
                 <Link href="/comprobantes" onClick={() => setOpen(false)} className="text-[11px] font-medium text-primary hover:underline">
@@ -247,6 +255,12 @@ export function SystemControls() {
                     );
                   })}
                 </ul>
+              )}
+              </>)}
+
+              {/* Panel vacío: ni movimientos ni avisos activos */}
+              {!verMovimientos && !aviso && !avisoBackup && (
+                <div className="px-2.5 py-4 text-sm text-muted-foreground">No hay notificaciones para mostrar.</div>
               )}
             </div>
           </>

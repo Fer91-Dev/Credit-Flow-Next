@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Settings, Check, Loader2, Percent, Plus, X, MessageSquare, Phone, Mail, HelpCircle } from "lucide-react";
-import { useConfiguracion, type ConfiguracionFinanciera, type GamificacionConfig, type RentabilidadConfig, type RiesgoConfig, type CobranzaConfig } from "@/lib/swr";
+import { useConfiguracion, type ConfiguracionFinanciera, type GamificacionConfig, type RentabilidadConfig, type RiesgoConfig, type CobranzaConfig, type NotificacionesConfig } from "@/lib/swr";
 import { FeatureGate } from "@/components/providers/FeaturesProvider";
 import { FinancieraForm } from "@/components/configuracion/FinancieraForm";
 import { BackupsView } from "@/components/configuracion/BackupsView";
@@ -174,6 +174,15 @@ const AYUDA: Record<string, AyudaBloque> = {
       "Si no califica: avisar y dejar autorizar, o bloquear.",
     ],
   },
+  notificaciones: {
+    titulo: "Notificaciones",
+    texto: "Elegí qué avisos aparecen en la campanita del sistema. No afecta los mensajes automáticos a clientes (eso se maneja en Comunicaciones).",
+    puntos: [
+      "Movimientos de caja: cobros, desembolsos y demás, en vivo (lo ven todos los roles).",
+      "Respaldos: aviso si un backup falla o se atrasa (solo admin).",
+      "Plan y facturación: avisos de vencimiento del plan (solo admin).",
+    ],
+  },
 };
 
 export function ConfigForm() {
@@ -184,7 +193,7 @@ export function ConfigForm() {
   const [savingKey, setSavingKey] = useState<string | null>(null);
   const [savedKey, setSavedKey] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"financiera" | "motor" | "simulador" | "comunicaciones" | "gamificacion" | "rentabilidad" | "riesgo" | "backups">("financiera");
+  const [activeTab, setActiveTab] = useState<"financiera" | "motor" | "simulador" | "comunicaciones" | "gamificacion" | "rentabilidad" | "riesgo" | "notificaciones" | "backups">("financiera");
 
   // Hidratar el form local cuando llega la config.
   useEffect(() => {
@@ -251,6 +260,13 @@ export function ConfigForm() {
     touch();
   };
 
+  // Notificaciones in-app: qué avisos muestra la campanita.
+  const notif = form?.notificacionesConfig ?? defaultNotificaciones();
+  const setNotif = (patch: Partial<NotificacionesConfig>) => {
+    setForm(prev => prev ? { ...prev, notificacionesConfig: { ...defaultNotificaciones(), ...prev.notificacionesConfig, ...patch } } : prev);
+    touch();
+  };
+
   // Rentabilidad: costo de fondeo para la ganancia NETA de Reportes.
   const rent = form?.rentabilidadConfig ?? defaultRentabilidad();
   const setRent = (patch: Partial<RentabilidadConfig>) => {
@@ -287,6 +303,7 @@ export function ConfigForm() {
       case "motor":         return f.convencionTasa !== c.convencionTasa || f.sistemaAmortizacion !== c.sistemaAmortizacion;
       case "mora":          return f.moraActiva !== c.moraActiva || f.tasaMoraDiaria !== c.tasaMoraDiaria || f.baseMora !== c.baseMora;
       case "cobranza":      return !eq(f.cobranzaConfig ?? null, c.cobranzaConfig ?? null);
+      case "notificaciones": return !eq(f.notificacionesConfig ?? null, c.notificacionesConfig ?? null);
       case "imputacion":    return f.imputarCargos !== c.imputarCargos;
       case "presentacion":  return f.moneda !== c.moneda || f.locale !== c.locale;
       case "gamificacion":  return !eq(f.gamificacionConfig ?? null, c.gamificacionConfig ?? null);
@@ -342,6 +359,7 @@ export function ConfigForm() {
                 { key: "gamificacion",   label: "Gamificación",           emoji: "trophy" },
                 { key: "rentabilidad",   label: "Rentabilidad",           emoji: "chart-increasing" },
                 { key: "riesgo",         label: "Riesgo / Originación",   emoji: "shield" },
+                { key: "notificaciones", label: "Notificaciones",          emoji: "bell" },
                 { key: "backups",        label: "Respaldos",              emoji: "package" },
               ] as const).map(tab => {
                 const active = activeTab === tab.key;
@@ -1115,6 +1133,38 @@ export function ConfigForm() {
           </Section>
           )}
 
+          {/* ─── Notificaciones in-app (campanita) ─── */}
+          {activeTab === "notificaciones" && (
+          <Section
+            title="Notificaciones del sistema"
+            desc="Elegí qué avisos aparecen en la campanita. No afecta los mensajes automáticos que se envían a los clientes (eso se maneja en Comunicaciones)."
+            ayuda={AYUDA.notificaciones}
+            onSave={() => save("notificaciones", { notificacionesConfig: notif } as Partial<ConfiguracionFinanciera>)}
+            saving={savingKey === "notificaciones"} saved={savedKey === "notificaciones"} dirty={isDirty("notificaciones")}
+          >
+            <div className="space-y-3">
+              <NotifRow
+                title="Movimientos de caja"
+                desc="Cobros, desembolsos y demás movimientos, en vivo. Lo ven todos los roles."
+                checked={notif.movimientos_caja}
+                onChange={v => setNotif({ movimientos_caja: v })}
+              />
+              <NotifRow
+                title="Respaldos"
+                desc="Aviso si un backup falla o se atrasa. Solo administradores."
+                checked={notif.respaldos}
+                onChange={v => setNotif({ respaldos: v })}
+              />
+              <NotifRow
+                title="Plan y facturación"
+                desc="Avisos de vencimiento del plan. Solo administradores."
+                checked={notif.plan}
+                onChange={v => setNotif({ plan: v })}
+              />
+            </div>
+          </Section>
+          )}
+
           {/* ─── Respaldos (backups) ─── */}
           {activeTab === "backups" && <BackupsView />}
 
@@ -1132,6 +1182,23 @@ function defaultRentabilidad(): RentabilidadConfig {
 
 function defaultCobranza(): CobranzaConfig {
   return { dias_sin_gestion: 7, dias_anulacion_pago: 3 };
+}
+
+function defaultNotificaciones(): NotificacionesConfig {
+  return { movimientos_caja: true, respaldos: true, plan: true };
+}
+
+/** Fila de encendido/apagado de un aviso de la campanita (mismo look que el toggle de cronograma). */
+function NotifRow({ title, desc, checked, onChange }: { title: string; desc: string; checked: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <div className={`flex items-center justify-between gap-3 rounded-lg border border-border px-4 py-3 transition-colors ${checked ? "bg-primary/[0.06] ring-1 ring-inset ring-primary/25" : "bg-muted/30"}`}>
+      <div className="min-w-0">
+        <p className="text-sm font-medium text-foreground">{title}</p>
+        <p className="text-xs text-muted-foreground">{desc}</p>
+      </div>
+      <Toggle checked={checked} onChange={onChange} />
+    </div>
+  );
 }
 
 function defaultRiesgo(): RiesgoConfig {

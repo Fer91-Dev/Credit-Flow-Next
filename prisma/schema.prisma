@@ -651,5 +651,6 @@ model configuraciones {
   rentabilidad_config  Json? // { habilitado, costo_fondeo_anual, otros_costos_mensuales } — costo de capital para rentabilidad NETA en Reportes
   riesgo_config        Json? // { politica: PoliticaOriginacion } — motor de riesgo/originación (feature premium; ver lib/domain/riesgo.ts)
   cobranza_config      Json? // { dias_sin_gestion } — agenda de cobranza: cada cuántos días un moroso sin gestión vuelve a la cola
+  notificaciones_config Json? // { movimientos_caja, respaldos, plan } — qué avisos in-app (campanita) se muestran
   updated_at           DateTime @updatedAt @db.Timestamptz(6)
 }

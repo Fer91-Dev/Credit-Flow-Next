@@ -218,3 +218,46 @@ export async function guardarCobranzaConfig(tenantId: string, config: CobranzaCo
   });
   return clean;
 }
+
+// ─── Notificaciones in-app (qué avisos muestra la campanita) ────────────────────
+
+export interface NotificacionesConfig {
+  /** Movimientos de caja en vivo (cobros, desembolsos, etc.). Lo ven todos los roles. */
+  movimientos_caja: boolean;
+  /** Aviso de respaldo con problemas (falló / atrasado). Solo admin. */
+  respaldos: boolean;
+  /** Avisos de plan/facturación (vencido / por vencer). Solo admin. */
+  plan: boolean;
+}
+
+export const NOTIFICACIONES_DEFAULT: NotificacionesConfig = { movimientos_caja: true, respaldos: true, plan: true };
+
+/** Mezcla con defaults: cada aviso está encendido salvo que se haya guardado explícitamente en false. */
+export function resolverNotificaciones(raw: unknown): NotificacionesConfig {
+  const r = (raw ?? {}) as Partial<NotificacionesConfig>;
+  return {
+    movimientos_caja: r.movimientos_caja !== false,
+    respaldos: r.respaldos !== false,
+    plan: r.plan !== false,
+  };
+}
+
+/** Preferencias de notificaciones in-app del tenant (mezcladas con defaults). No es secreto. */
+export async function getNotificacionesConfig(tenantId: string): Promise<NotificacionesConfig> {
+  const row = await prisma.configuraciones.findUnique({
+    where: { tenant_id: tenantId },
+    select: { notificaciones_config: true },
+  });
+  return resolverNotificaciones(row?.notificaciones_config ?? null);
+}
+
+/** Persiste (upsert) las preferencias de notificaciones in-app. */
+export async function guardarNotificacionesConfig(tenantId: string, config: NotificacionesConfig): Promise<NotificacionesConfig> {
+  const clean = resolverNotificaciones(config);
+  await prisma.configuraciones.upsert({
+    where:  { tenant_id: tenantId },
+    create: { tenant_id: tenantId, notificaciones_config: clean as unknown as Prisma.InputJsonValue },
+    update: { notificaciones_config: clean as unknown as Prisma.InputJsonValue },
+  });
+  return clean;
+}

@@ -1,6 +1,6 @@
 import { requireAuth, requireRole } from "@/lib/auth";
 import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api";
-import { getConfiguracion, guardarConfiguracion, getComunicacionConfig, guardarComunicacionConfig, getGamificacionConfig, guardarGamificacionConfig, getRentabilidadConfig, guardarRentabilidadConfig, getRiesgoConfig, guardarRiesgoConfig, getCobranzaConfig, guardarCobranzaConfig, type ComunicacionConfig } from "@/lib/config";
+import { getConfiguracion, guardarConfiguracion, getComunicacionConfig, guardarComunicacionConfig, getGamificacionConfig, guardarGamificacionConfig, getRentabilidadConfig, guardarRentabilidadConfig, getRiesgoConfig, guardarRiesgoConfig, getCobranzaConfig, guardarCobranzaConfig, getNotificacionesConfig, guardarNotificacionesConfig, type ComunicacionConfig } from "@/lib/config";
 import { resolverConfig, resolverGamificacion, resolverRentabilidad, resolverRiesgo, type ComponenteDeuda } from "@/lib/domain";
 import { registrarAuditoria } from "@/lib/audit";
 import type { NextRequest } from "next/server";
@@ -94,16 +94,17 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   // también el vendedor. La config del motor no es información sensible admin-only.
   // La ESCRITURA (PUT) sigue siendo solo admin.
   const { tenantId } = await requireAuth(req);
-  const [config, comm, gamificacion, rentabilidad, riesgo, cobranza] = await Promise.all([
+  const [config, comm, gamificacion, rentabilidad, riesgo, cobranza, notificaciones] = await Promise.all([
     getConfiguracion(tenantId),
     getComunicacionConfig(tenantId),
     getGamificacionConfig(tenantId),
     getRentabilidadConfig(tenantId),
     getRiesgoConfig(tenantId),
     getCobranzaConfig(tenantId),
+    getNotificacionesConfig(tenantId),
   ]);
   const riesgoMasked = { ...riesgo, bureau: { ...riesgo.bureau, token: riesgo.bureau.token ? MASKED : "" } };
-  return successResponse({ ...config, ...maskCommConfig(comm), gamificacionConfig: gamificacion, rentabilidadConfig: rentabilidad, riesgoConfig: riesgoMasked, cobranzaConfig: cobranza });
+  return successResponse({ ...config, ...maskCommConfig(comm), gamificacionConfig: gamificacion, rentabilidadConfig: rentabilidad, riesgoConfig: riesgoMasked, cobranzaConfig: cobranza, notificacionesConfig: notificaciones });
 });
 
 /**
@@ -255,6 +256,12 @@ export const PUT = withErrorHandler(async (req: NextRequest) => {
   }
   const cobranza = await getCobranzaConfig(tenantId);
 
+  // Preferencias de notificaciones in-app (qué avisos muestra la campanita).
+  if (body.notificacionesConfig !== undefined) {
+    await guardarNotificacionesConfig(tenantId, body.notificacionesConfig);
+  }
+  const notificaciones = await getNotificacionesConfig(tenantId);
+
   await registrarAuditoria({
     tenantId,
     entidad: "configuracion",
@@ -263,5 +270,5 @@ export const PUT = withErrorHandler(async (req: NextRequest) => {
     meta: { campos: Object.keys(body) },
   });
 
-  return successResponse({ ...guardada, ...maskCommConfig(comm), gamificacionConfig: gamificacion, rentabilidadConfig: rentabilidad, riesgoConfig: riesgo, cobranzaConfig: cobranza });
+  return successResponse({ ...guardada, ...maskCommConfig(comm), gamificacionConfig: gamificacion, rentabilidadConfig: rentabilidad, riesgoConfig: riesgo, cobranzaConfig: cobranza, notificacionesConfig: notificaciones });
 });
