@@ -80,9 +80,9 @@ export function IdentidadCard({
     : null;
 
   return (
-    /* `sticky` para que la identidad y el estado queden a la vista mientras se
-       scrollean los formularios de la derecha. */
-    <div className="rounded-xl border border-border bg-card p-5 lg:sticky lg:top-4">
+    /* El `sticky` vive en el wrapper de PerfilForm (un grid item estirado); acá solo
+       la tarjeta, si no no le queda recorrido para desplazarse. */
+    <div className="rounded-xl border border-border bg-card p-5">
       {/* Identidad */}
       <div className="flex flex-col items-center text-center">
         <button

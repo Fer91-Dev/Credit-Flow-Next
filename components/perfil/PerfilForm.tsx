@@ -260,17 +260,27 @@ export function PerfilForm({
     /* Dos columnas: identidad + estado a la izquierda (sticky), formularios a la
        derecha. El ancho extra NO se usa estirando inputs — se llena con contenido
        que antes no existía. En mobile, la identidad va arriba y se apila todo. */
-    <div className="grid items-start gap-5 lg:grid-cols-[320px_minmax(0,1fr)]">
-      <IdentidadCard
-        nombre={nombreCompleto}
-        email={initialEmail}
-        rolLabel={rolLabel}
-        initialAvatarUrl={initialAvatarUrl}
-        creadoEn={creadoEn}
-        emailVerificado={emailVerificado}
-        mfaActivo={mfaActivo}
-        completitud={completitud}
-      />
+    <div className="grid gap-5 lg:grid-cols-[320px_minmax(0,1fr)]">
+      {/* El sticky NO va en la tarjeta directamente: va en un wrapper que ocupa toda
+          la altura de la fila del grid. Un grid item con `items-start` se encoge a su
+          contenido y entonces no le queda recorrido para desplazarse. Este item se
+          estira (sin items-start) y la tarjeta se mueve dentro de él.
+          `top-[72px]` = los 64px del PageHeader sticky + 8 de aire, así queda justo
+          debajo del encabezado y no se le mete abajo. */}
+      <div>
+        <div className="lg:sticky lg:top-[72px]">
+          <IdentidadCard
+            nombre={nombreCompleto}
+            email={initialEmail}
+            rolLabel={rolLabel}
+            initialAvatarUrl={initialAvatarUrl}
+            creadoEn={creadoEn}
+            emailVerificado={emailVerificado}
+            mfaActivo={mfaActivo}
+            completitud={completitud}
+          />
+        </div>
+      </div>
 
       <div className="space-y-5">
 
@@ -338,10 +348,15 @@ export function PerfilForm({
           Email, contraseña y 2FA son el MISMO concepto y estaban dispersos, con
           el 2FA huérfano al final de la página. Agrupados bajo un encabezado
           común dejan de leerse como agregados sueltos. */}
-      <div className="pt-1">
-        <h2 className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+      {/* Separador con línea: como etiqueta suelta parecía una sección vacía —
+          un título solo, con medio ancho de pantalla en blanco al lado. Con la
+          línea se lee como lo que es: el corte entre "quién sos" y "cómo entrás". */}
+      <div className="flex items-center gap-3 pt-2">
+        <Emoji name="locked-with-key" className="h-3.5 w-3.5" />
+        <h2 className="shrink-0 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
           Acceso y seguridad
         </h2>
+        <div className="h-px flex-1 bg-border" />
       </div>
 
       {/* Email */}
