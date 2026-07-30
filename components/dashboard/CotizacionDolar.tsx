@@ -3,35 +3,21 @@
 import { useCotizacion, type Cotizacion } from "@/lib/swr";
 import { Emoji } from "@/components/ui/Emoji";
 import { Skeleton } from "@/components/ui/skeleton";
-import { TrendingUp, Globe, Building2, CreditCard, Bitcoin, type LucideIcon } from "lucide-react";
 
 /**
- * Cards grandes (Blue/Oficial): ícono **Fluent Emoji** (son "de presencia").
- *  - Blue    → 🤝 handshake: el paralelo es un trato entre personas, no una institución.
- *  - Oficial → 🏛 bank: el tipo de cambio institucional.
+ * Etiqueta + ícono (Fluent Emoji) por tipo de cotización. El ícono referencia el tipo:
+ * Blue = billete, Oficial = banco, MEP = bolsa, CCL = maletín, Mayorista = corporativo,
+ * Tarjeta = tarjeta, Cripto = gema.
  */
 const META: Record<string, { label: string; icon: string }> = {
-  blue:    { label: "Blue",    icon: "handshake" },
-  oficial: { label: "Oficial", icon: "bank" },
+  blue:            { label: "Blue",      icon: "dollar-banknote" },
+  oficial:         { label: "Oficial",   icon: "bank" },
+  bolsa:           { label: "MEP",       icon: "chart-increasing" },
+  contadoconliqui: { label: "CCL",       icon: "briefcase" },
+  mayorista:       { label: "Mayorista", icon: "office-building" },
+  tarjeta:         { label: "Tarjeta",   icon: "credit-card" },
+  cripto:          { label: "Cripto",    icon: "gem-stone" },
 };
-
-/**
- * Tiles chicas: ícono **lucide monocromo**, todas del MISMO color (heredan `currentColor`).
- * Los Fluent Emoji son SVG multicolor y su color es parte del dibujo → era imposible
- * unificarlos; de ahí el cambio a lucide, que además es lo que corresponde a un
- * micro-ícono funcional de 3.5×3.5.
- *
- * `grupo` separa **bursátiles** (MEP/CCL, cotizan en el mercado de capitales) de **otros**,
- * y se expresa con una barra lateral sutil — no con colores de ícono distintos.
- */
-const META_CHICA: Record<string, { label: string; Icon: LucideIcon; grupo: "bursatil" | "otro" }> = {
-  bolsa:           { label: "MEP",       Icon: TrendingUp, grupo: "bursatil" },
-  contadoconliqui: { label: "CCL",       Icon: Globe,      grupo: "bursatil" },
-  mayorista:       { label: "Mayorista", Icon: Building2,  grupo: "otro" },
-  tarjeta:         { label: "Tarjeta",   Icon: CreditCard, grupo: "otro" },
-  cripto:          { label: "Cripto",    Icon: Bitcoin,    grupo: "otro" },
-};
-
 /** Protagonistas (arriba, cards grandes) y secundarias (cuadrícula, siempre visibles). */
 const PRINCIPALES = ["blue", "oficial"];
 const SECUNDARIAS = ["bolsa", "contadoconliqui", "mayorista", "tarjeta", "cripto"];
@@ -144,20 +130,14 @@ function PrincipalCard({ c, referencia }: { c: Cotizacion; referencia: boolean }
 }
 
 function SecundariaTile({ c }: { c: Cotizacion }) {
-  const m = META_CHICA[c.casa];
-  if (!m) return null;
-  const { label, Icon, grupo } = m;
-
-  // Único diferenciador entre grupos: la barra lateral. Los íconos van todos del mismo
-  // tono que el borde de la tile, para que las 5 se lean como un conjunto.
-  const barra = grupo === "bursatil" ? "border-l-primary/45" : "border-l-border";
-
+  const m = META[c.casa] ?? { label: c.nombre, icon: "dollar-banknote" };
   return (
-    <div className={`rounded-xl border border-l-2 border-border ${barra} bg-muted/10 p-2.5`}>
+    <div className="rounded-xl border border-border bg-muted/10 p-2.5">
       <div className="flex items-center gap-1.5">
-        <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" strokeWidth={2} />
-        <span className="text-xs font-medium text-foreground">{label}</span>
+        <Emoji name={m.icon} className="h-4 w-4" />
+        <span className="text-xs font-medium text-foreground">{m.label}</span>
       </div>
+      {/* Mismo criterio que las cards grandes: Compra deja de ser un dato descartable. */}
       <div className="mt-1.5 space-y-0.5">
         <p className="flex items-baseline gap-1.5">
           <span className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">Venta</span>
