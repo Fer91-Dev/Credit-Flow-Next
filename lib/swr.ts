@@ -274,8 +274,28 @@ export interface MetaVendedor {
   };
 }
 
+/**
+ * Datos personales del empleado, tomados de SU cuenta (`profiles`, la fuente de
+ * verdad). En la ficha de Agentes se muestran en solo lectura: los edita el propio
+ * empleado desde Mi perfil. Es `null` si el agente no tiene cuenta vinculada.
+ */
+export interface PerfilDelEmpleado {
+  full_name: string | null;
+  email: string | null;
+  telefono: string | null;
+  fecha_nacimiento: string | null;
+  direccion: string | null;
+  provincia: string | null;
+  localidad: string | null;
+  codigo_postal: string | null;
+  tipo_domicilio: string | null;
+  piso: string | null;
+  depto: string | null;
+}
+
 export interface VendedorDetalle extends Vendedor {
   resumen: ResumenVendedor;
+  perfil: PerfilDelEmpleado | null;
   creditos: Array<{
     id: string;
     numero: number | null;

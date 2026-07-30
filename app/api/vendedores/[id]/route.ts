@@ -45,7 +45,20 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
     normalizarComisionConfig(vendedor.comision_config, vendedor.comision_pct),
   );
 
-  return successResponse({ ...vendedor, resumen, creditos });
+  // Datos personales de SU cuenta: `profiles` es la fuente de verdad (los edita el
+  // propio empleado desde Mi perfil). Acá se muestran en SOLO LECTURA, para que no
+  // queden dos lugares editando el mismo dato y divergiendo.
+  // Puede ser null: los agentes viejos "sin acceso" no tienen profile vinculado.
+  const perfil = await prisma.profiles.findFirst({
+    where: { ...withTenant(tenantId), vendedor_id: id },
+    select: {
+      full_name: true, email: true, telefono: true, fecha_nacimiento: true,
+      direccion: true, provincia: true, localidad: true, codigo_postal: true,
+      tipo_domicilio: true, piso: true, depto: true,
+    },
+  });
+
+  return successResponse({ ...vendedor, resumen, creditos, perfil });
 });
 
 /**
