@@ -2,11 +2,14 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { User, Mail, Lock, Check, Loader2, ShieldAlert, Image as ImageIcon } from "lucide-react";
+// Lucide queda solo para los micro-íconos FUNCIONALES (spinner, check, alerta inline).
+// Los íconos de presencia de cada sección son Fluent Emoji vía IconBadge.
+import { Check, Loader2, ShieldAlert, AtSign } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { Field, Input, PasswordInput, TelInput } from "@/components/ui/field";
 import { Avatar, generatedAvatarUrl, AVATAR_SEEDS } from "@/components/ui/Avatar";
 import { DomicilioFields } from "@/components/ui/DomicilioFields";
+import { IconBadge } from "@/components/ui/IconBadge";
 
 /**
  * Datos personales editables. Las claves coinciden 1:1 con las columnas de `profiles`
@@ -61,13 +64,17 @@ function SaveButton({ saving, saved, label = "Guardar cambios" }: { saving: bool
   );
 }
 
-function SectionCard({ icon: Icon, title, children }: { icon: typeof User; title: string; children: React.ReactNode }) {
+/**
+ * Encabezado de sección con **Fluent Emoji** (`IconBadge`), igual que el resto del SaaS
+ * — KPIs del Home, headers de modal y la sección de 2FA de esta misma pantalla. Antes
+ * usaba íconos lucide, que son los "funcionales" (chevrons, cerrar, adornos de input),
+ * no los de presencia.
+ */
+function SectionCard({ emoji, title, children }: { emoji: string; title: string; children: React.ReactNode }) {
   return (
     <div className="rounded-xl border border-border bg-card p-5 space-y-4">
       <div className="flex items-center gap-2.5 border-b border-border/60 pb-3">
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 border border-primary/20">
-          <Icon className="h-4 w-4 text-primary" />
-        </div>
+        <IconBadge emoji={emoji} accent="primary" />
         <h2 className="text-sm font-semibold text-foreground">{title}</h2>
       </div>
       {children}
@@ -245,7 +252,7 @@ export function PerfilForm({ initialDatos, initialEmail, initialAvatarUrl }: Per
     <div className="space-y-5 max-w-xl">
 
       {/* Avatar */}
-      <SectionCard icon={ImageIcon} title="Avatar">
+      <SectionCard emoji="sparkles" title="Avatar">
         <form onSubmit={guardarAvatar} className="space-y-4">
           <div className="flex items-center gap-4">
             {/* Sigue el nombre EN VIVO: al editarlo arriba, las iniciales se actualizan solas. */}
@@ -279,7 +286,7 @@ export function PerfilForm({ initialDatos, initialEmail, initialAvatarUrl }: Per
       </SectionCard>
 
       {/* Datos personales */}
-      <SectionCard icon={User} title="Datos personales">
+      <SectionCard emoji="clipboard" title="Datos personales">
         <form onSubmit={handleDatos} className="space-y-4">
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <Field label="Nombre">
@@ -335,9 +342,25 @@ export function PerfilForm({ initialDatos, initialEmail, initialAvatarUrl }: Per
       </SectionCard>
 
       {/* Email */}
-      <SectionCard icon={Mail} title="Dirección de email">
-        <div className="rounded-lg border border-border bg-muted/30 px-3 py-2.5 text-sm text-muted-foreground">
-          Email actual: <span className="font-medium text-foreground">{initialEmail}</span>
+      <SectionCard emoji="envelope" title="Dirección de email">
+        {/* El email actual NO es un dato de fondo: es la dirección con la que se
+            ingresa al sistema. Se destaca con acento warning para que quede claro
+            qué se está por cambiar antes de tocar nada. */}
+        <div className="flex items-start gap-3 rounded-lg border border-warning/30 bg-warning/[0.07] px-3.5 py-3">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-warning/25 bg-warning/10">
+            <AtSign className="h-4 w-4 text-warning" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-warning">
+              Email actual
+            </p>
+            <p className="mt-0.5 break-all font-mono text-sm font-semibold text-foreground">
+              {initialEmail}
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Es la dirección con la que ingresás al sistema.
+            </p>
+          </div>
         </div>
         <form onSubmit={handleEmail} className="space-y-4">
           <Field label="Nuevo email" hint="Recibirás un correo de confirmación; el email sigue siendo el actual hasta que lo confirmes">
@@ -371,7 +394,7 @@ export function PerfilForm({ initialDatos, initialEmail, initialAvatarUrl }: Per
       </SectionCard>
 
       {/* Contraseña */}
-      <SectionCard icon={Lock} title="Contraseña">
+      <SectionCard emoji="locked-with-key" title="Contraseña">
         <form onSubmit={handlePassword} className="space-y-4">
           <Field label="Contraseña actual">
             <Input
