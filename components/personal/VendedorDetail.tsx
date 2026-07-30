@@ -4,9 +4,9 @@ import { useState, useMemo, useEffect } from "react";
 import { mutate as globalMutate } from "swr";
 import {
   UserCog, Trash2, TrendingUp, Target, Percent,
-  MapPin, Layers, Plus, X, Award, Wallet, Send, ArrowDownToLine, Lock,
+  MapPin, Layers, Plus, X, Award, Wallet, Send, ArrowDownToLine,
 } from "lucide-react";
-import { useVendedorDetalle, useMetasVendedor, useLogrosVendedor, useConfiguracion, useVendedorCaja, KEYS, type VendedorDetalle, type ComisionConfig, type MetaVendedor, type PeriodoGamificacion, type CuentaCaja, type MovimientoCaja, type PerfilDelEmpleado } from "@/lib/swr";
+import { useVendedorDetalle, useMetasVendedor, useLogrosVendedor, useConfiguracion, useVendedorCaja, KEYS, type VendedorDetalle, type ComisionConfig, type MetaVendedor, type PeriodoGamificacion, type CuentaCaja, type MovimientoCaja } from "@/lib/swr";
 import { calcularComisionTotal, comisionDeVenta, rangoDePeriodo, periodoActual } from "@/lib/domain";
 import { MedallaBadge, RangoBadge, InsigniaChip } from "@/components/ui/Medalla";
 import { MovimientoDetail } from "@/components/caja/MovimientoDetail";
@@ -996,80 +996,6 @@ function EntregaRendirDialog({
   );
 }
 
-/* ── Datos personales del empleado: SOLO LECTURA ──
-   `profiles` es la fuente de verdad y los edita el propio empleado desde Mi perfil.
-   Acá se muestran para que el admin los tenga a mano, pero no se editan: dos
-   pantallas escribiendo el mismo dato terminaban divergiendo sin que nadie supiera
-   cuál valía. */
-function DatosPersonalesPerfil({
-  perfil, nombre, vendedor,
-}: { perfil: PerfilDelEmpleado | null; nombre: string; vendedor: VendedorDetalle }) {
-  const dato = (v: string | null | undefined) => (v && v.trim() ? v : "—");
-  const lleno = (v: string | null | undefined) => !!(v && v.trim());
-
-  // El alta de un agente captura teléfono y dirección en `vendedores` — el admin los
-  // tiene a mano al contratarlo, mucho antes de que el empleado entre por primera vez.
-  // Así que el perfil MANDA, pero si está vacío se muestra lo cargado en el alta: si
-  // no, ese dato desaparecía de la ficha sin que nadie lo hubiera borrado.
-  const telefono = lleno(perfil?.telefono) ? perfil!.telefono : vendedor.telefono;
-
-  const domicilioPerfil = perfil
-    ? [
-        perfil.direccion,
-        perfil.piso ? `Piso ${perfil.piso}` : null,
-        perfil.depto ? `Depto ${perfil.depto}` : null,
-        perfil.localidad,
-        perfil.provincia,
-        perfil.codigo_postal ? `CP ${perfil.codigo_postal}` : null,
-      ].filter(Boolean).join(", ")
-    : "";
-  const domicilio = domicilioPerfil || vendedor.direccion || "";
-
-  return (
-    <section className="rounded-xl border border-border bg-muted/10 p-4">
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-          Datos personales
-        </p>
-        <span className="inline-flex items-center gap-1 rounded-full border border-border bg-card px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
-          <Lock className="h-2.5 w-2.5" /> Solo lectura
-        </span>
-      </div>
-
-      <dl className="grid grid-cols-1 gap-x-4 gap-y-2.5 md:grid-cols-2">
-        <div>
-          <dt className="text-xs font-medium text-muted-foreground">Celular</dt>
-          <dd className="font-mono text-sm text-foreground">{dato(telefono)}</dd>
-        </div>
-        <div>
-          <dt className="text-xs font-medium text-muted-foreground">Fecha de nacimiento</dt>
-          <dd className="text-sm text-foreground">
-            {perfil?.fecha_nacimiento ? formatFecha(perfil.fecha_nacimiento) : "—"}
-          </dd>
-        </div>
-        <div className="md:col-span-2">
-          <dt className="text-xs font-medium text-muted-foreground">Domicilio</dt>
-          <dd className="text-sm text-foreground">{domicilio || "—"}</dd>
-        </div>
-      </dl>
-
-      <p className="mt-3 text-[11px] text-muted-foreground">
-        {perfil ? (
-          <>
-            Los edita <span className="font-medium text-foreground">{nombre || "el empleado"}</span> desde
-            su sección <span className="font-medium text-foreground">Mi perfil</span>.
-          </>
-        ) : (
-          <>
-            {nombre || "Este agente"} todavía no tiene cuenta de acceso: lo que se ve es lo
-            cargado en el alta. Cuando tenga su cuenta, los completa desde Mi perfil.
-          </>
-        )}
-      </p>
-    </section>
-  );
-}
-
 /* ── Pestaña Datos (laborales + parametrización) ── */
 function DatosTab({ vendedor, guardar }: { vendedor: VendedorDetalle; guardar: (b: Record<string, unknown>, m: SaveMsgs) => Promise<boolean> }) {
   // `telefono` y `direccion` NO están en el form: los edita el empleado desde Mi
@@ -1138,8 +1064,6 @@ function DatosTab({ vendedor, guardar }: { vendedor: VendedorDetalle; guardar: (
         </div>
       </section>
 
-      {/* Datos personales — SOLO LECTURA (los carga el empleado en Mi perfil) */}
-      <DatosPersonalesPerfil perfil={vendedor.perfil} nombre={f.nombre} vendedor={vendedor} />
 
       {/* Laboral */}
       <section className="rounded-xl border border-border bg-muted/10 p-4">
