@@ -12,6 +12,7 @@ import { IconBadge } from "@/components/ui/IconBadge";
 import { Emoji } from "@/components/ui/Emoji";
 import { IdentidadCard } from "@/components/perfil/IdentidadCard";
 import { DosFactores } from "@/components/perfil/DosFactores";
+import { useToast } from "@/components/ui/toast";
 
 /**
  * Datos personales editables. Las claves coinciden 1:1 con las columnas de `profiles`
@@ -117,6 +118,7 @@ export function PerfilForm({
 }: PerfilFormProps) {
   const router = useRouter();
   const supabase = createClient();
+  const toast = useToast();
 
   // El avatar ahora se elige desde IdentidadCard (clickeando la foto): dejó de ser
   // una sección propia — era una tarjeta entera para una decisión decorativa.
@@ -183,10 +185,13 @@ export function PerfilForm({
       const json = await res.json();
       if (!json.ok) throw new Error(json.error || "Error al guardar");
       setSavedDatos(true);
+      toast.success("Datos personales guardados");
       router.refresh(); // re-ejecuta el layout → el sidebar muestra el nombre nuevo
       setTimeout(() => setSavedDatos(false), 3000);
     } catch (err) {
-      setErrorDatos(err instanceof Error ? err.message : "Error");
+      const msg = err instanceof Error ? err.message : "No se pudieron guardar los datos";
+      setErrorDatos(msg);
+      toast.error(msg);
     } finally {
       setSavingDatos(false);
     }
@@ -206,19 +211,29 @@ export function PerfilForm({
     try {
       // 1) Re-autenticación: nadie cambia el email sin probar que es el dueño.
       const reauthError = await verificarPassword(emailPass);
-      if (reauthError) { setErrorEmail(reauthError); return; }
+      if (reauthError) { setErrorEmail(reauthError); toast.error(reauthError); return; }
 
       // 2) Cambio de email. Supabase envía confirmación; el email NO cambia
       //    hasta que el usuario confirme desde el correo. profiles.email se
       //    sincroniza vía trigger SQL cuando auth.users.email cambia de verdad.
       const { error } = await supabase.auth.updateUser({ email: dest });
-      if (error) { setErrorEmail(traducirError(error.message)); return; }
+      if (error) {
+        const msg = traducirError(error.message);
+        setErrorEmail(msg);
+        toast.error(msg);
+        return;
+      }
 
       setSavedEmail(true);
+      // El email TODAVÍA no cambió: el toast lo dice explícito para que nadie crea
+      // que ya está listo y después no entienda por qué sigue entrando con el viejo.
+      toast.success("Te enviamos un correo para confirmar el cambio");
       setNewEmail("");
       setEmailPass("");
     } catch (err) {
-      setErrorEmail(err instanceof Error ? err.message : "Error");
+      const msg = err instanceof Error ? err.message : "No se pudo cambiar el email";
+      setErrorEmail(msg);
+      toast.error(msg);
     } finally {
       setSavingEmail(false);
     }
@@ -238,19 +253,27 @@ export function PerfilForm({
     try {
       // 1) Re-autenticación con la contraseña actual.
       const reauthError = await verificarPassword(currentPass);
-      if (reauthError) { setErrorPass(reauthError); return; }
+      if (reauthError) { setErrorPass(reauthError); toast.error(reauthError); return; }
 
       // 2) Cambio de contraseña. La sesión actual sigue válida tras el cambio.
       const { error } = await supabase.auth.updateUser({ password: newPass });
-      if (error) { setErrorPass(traducirError(error.message)); return; }
+      if (error) {
+        const msg = traducirError(error.message);
+        setErrorPass(msg);
+        toast.error(msg);
+        return;
+      }
 
       setSavedPass(true);
+      toast.success("Contraseña actualizada");
       setCurrentPass("");
       setNewPass("");
       setConfirmPass("");
       setTimeout(() => setSavedPass(false), 3000);
     } catch (err) {
-      setErrorPass(err instanceof Error ? err.message : "Error");
+      const msg = err instanceof Error ? err.message : "No se pudo cambiar la contraseña";
+      setErrorPass(msg);
+      toast.error(msg);
     } finally {
       setSavingPass(false);
     }

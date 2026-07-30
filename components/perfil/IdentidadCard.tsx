@@ -6,6 +6,7 @@ import { Check, Loader2, Camera, ShieldCheck, ShieldAlert, MailCheck, MailWarnin
 import { createClient } from "@/lib/supabase/client";
 import { Avatar, generatedAvatarUrl, AVATAR_SEEDS } from "@/components/ui/Avatar";
 import { StatusBadge } from "@/components/ui/StatusBadge";
+import { useToast } from "@/components/ui/toast";
 
 interface Props {
   nombre: string; // en vivo desde el form: las iniciales cambian mientras se tipea
@@ -50,6 +51,7 @@ export function IdentidadCard({
 }: Props) {
   const router = useRouter();
   const supabase = createClient();
+  const toast = useToast();
 
   const [avatar, setAvatar] = useState(initialAvatarUrl ?? "");
   const [abierto, setAbierto] = useState(false);
@@ -58,7 +60,8 @@ export function IdentidadCard({
   const [error, setError] = useState<string | null>(null);
 
   const guardarAvatar = async (url: string) => {
-    setAvatar(url);
+    const previo = avatar;
+    setAvatar(url); // optimista: la foto cambia al instante
     setSaving(true);
     setError(null);
     setSaved(false);
@@ -66,10 +69,15 @@ export function IdentidadCard({
       const { error } = await supabase.auth.updateUser({ data: { avatar_url: url } });
       if (error) throw error;
       setSaved(true);
+      toast.success("Avatar actualizado");
       router.refresh(); // el sidebar toma el avatar nuevo
       setTimeout(() => setSaved(false), 2500);
     } catch {
+      // Si falló, se vuelve al anterior: que la foto quede cambiada en pantalla
+      // sin haberse guardado sería mentirle al usuario.
+      setAvatar(previo);
       setError("No se pudo guardar el avatar.");
+      toast.error("No se pudo guardar el avatar");
     } finally {
       setSaving(false);
     }
