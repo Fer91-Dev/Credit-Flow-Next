@@ -4,16 +4,49 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { User, Mail, Lock, Check, Loader2, ShieldAlert, Image as ImageIcon } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { Field, Input, PasswordInput } from "@/components/ui/field";
+import { Field, Input, PasswordInput, TelInput } from "@/components/ui/field";
 import { Avatar, generatedAvatarUrl, AVATAR_SEEDS } from "@/components/ui/Avatar";
+import { DomicilioFields } from "@/components/ui/DomicilioFields";
+
+/**
+ * Datos personales editables. Las claves coinciden 1:1 con las columnas de `profiles`
+ * y con `DomicilioValue`, así el payload va derecho sin mapeos intermedios.
+ * Se usa "" en vez de null para que los inputs sean siempre controlados.
+ */
+export interface DatosPersonales {
+  nombre: string;
+  apellido: string;
+  telefono: string;
+  fecha_nacimiento: string; // "AAAA-MM-DD"
+  direccion: string;
+  provincia: string;
+  localidad: string;
+  codigo_postal: string;
+  tipo_domicilio: string;
+  piso: string;
+  depto: string;
+}
 
 interface PerfilFormProps {
-  initialName: string;
+  initialDatos: DatosPersonales;
   initialEmail: string;
   initialAvatarUrl?: string | null;
 }
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const HOY = new Date().toISOString().slice(0, 10);
+
+/** Edad a partir de "AAAA-MM-DD". null si no hay fecha o es inválida/futura. */
+function calcularEdad(iso: string): number | null {
+  if (!iso) return null;
+  const nac = new Date(`${iso}T00:00:00`);
+  if (Number.isNaN(nac.getTime()) || nac.getTime() > Date.now()) return null;
+  const hoy = new Date();
+  let edad = hoy.getFullYear() - nac.getFullYear();
+  const m = hoy.getMonth() - nac.getMonth();
+  if (m < 0 || (m === 0 && hoy.getDate() < nac.getDate())) edad--;
+  return edad >= 0 && edad < 130 ? edad : null;
+}
 
 function SaveButton({ saving, saved, label = "Guardar cambios" }: { saving: boolean; saved: boolean; label?: string }) {
   return (
@@ -54,7 +87,7 @@ function traducirError(msg: string): string {
   return msg;
 }
 
-export function PerfilForm({ initialName, initialEmail, initialAvatarUrl }: PerfilFormProps) {
+export function PerfilForm({ initialDatos, initialEmail, initialAvatarUrl }: PerfilFormProps) {
   const router = useRouter();
   const supabase = createClient();
 
@@ -81,10 +114,22 @@ export function PerfilForm({ initialName, initialEmail, initialAvatarUrl }: Perf
   };
 
   // ── Datos personales ──
-  const [nombre, setNombre] = useState(initialName);
-  const [savingNombre, setSavingNombre] = useState(false);
-  const [savedNombre, setSavedNombre] = useState(false);
-  const [errorNombre, setErrorNombre] = useState<string | null>(null);
+  // Un solo bloque con su propio Guardar: nombre/apellido, contacto y domicilio.
+  // `full_name` NO se edita acá: lo recalcula el server como "nombre apellido".
+  const [datos, setDatos] = useState<DatosPersonales>(initialDatos);
+  const [savingDatos, setSavingDatos] = useState(false);
+  const [savedDatos, setSavedDatos] = useState(false);
+  const [errorDatos, setErrorDatos] = useState<string | null>(null);
+
+  const setDato = (patch: Partial<DatosPersonales>) => {
+    setDatos((d) => ({ ...d, ...patch }));
+    setSavedDatos(false);
+    setErrorDatos(null);
+  };
+
+  // Edad en vivo desde la fecha de nacimiento (mismo criterio que la ficha de cliente:
+  // no hay campo "edad" manual, se deriva).
+  const edad = calcularEdad(datos.fecha_nacimiento);
 
   // ── Email ──
   const [newEmail, setNewEmail] = useState("");
@@ -108,29 +153,27 @@ export function PerfilForm({ initialName, initialEmail, initialAvatarUrl }: Perf
     return null;
   };
 
-  const handleNombre = async (e: React.FormEvent) => {
+  const handleDatos = async (e: React.FormEvent) => {
     e.preventDefault();
-    const limpio = nombre.trim();
-    if (!limpio) { setErrorNombre("El nombre no puede estar vacío."); return; }
-    if (limpio === initialName.trim()) { setErrorNombre("El nombre es igual al actual."); return; }
-    setSavingNombre(true);
-    setErrorNombre(null);
-    setSavedNombre(false);
+    if (!datos.nombre.trim()) { setErrorDatos("El nombre no puede estar vacío."); return; }
+    setSavingDatos(true);
+    setErrorDatos(null);
+    setSavedDatos(false);
     try {
       const res = await fetch("/api/perfil", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ full_name: limpio }),
+        body: JSON.stringify(datos),
       });
       const json = await res.json();
       if (!json.ok) throw new Error(json.error || "Error al guardar");
-      setSavedNombre(true);
+      setSavedDatos(true);
       router.refresh(); // re-ejecuta el layout → el sidebar muestra el nombre nuevo
-      setTimeout(() => setSavedNombre(false), 3000);
+      setTimeout(() => setSavedDatos(false), 3000);
     } catch (err) {
-      setErrorNombre(err instanceof Error ? err.message : "Error");
+      setErrorDatos(err instanceof Error ? err.message : "Error");
     } finally {
-      setSavingNombre(false);
+      setSavingDatos(false);
     }
   };
 
@@ -205,7 +248,8 @@ export function PerfilForm({ initialName, initialEmail, initialAvatarUrl }: Perf
       <SectionCard icon={ImageIcon} title="Avatar">
         <form onSubmit={guardarAvatar} className="space-y-4">
           <div className="flex items-center gap-4">
-            <Avatar name={initialName} src={avatar || undefined} size="xl" />
+            {/* Sigue el nombre EN VIVO: al editarlo arriba, las iniciales se actualizan solas. */}
+            <Avatar name={[datos.nombre, datos.apellido].filter(Boolean).join(" ")} src={avatar || undefined} size="xl" />
             <p className="text-xs text-muted-foreground leading-relaxed">
               Elegí un avatar para tu perfil. Se muestra en el menú lateral y en tu ficha.
             </p>
@@ -236,17 +280,56 @@ export function PerfilForm({ initialName, initialEmail, initialAvatarUrl }: Perf
 
       {/* Datos personales */}
       <SectionCard icon={User} title="Datos personales">
-        <form onSubmit={handleNombre} className="space-y-4">
-          <Field label="Nombre completo">
-            <Input
-              value={nombre}
-              onChange={e => { setNombre(e.target.value); setSavedNombre(false); setErrorNombre(null); }}
-              placeholder="Tu nombre completo"
+        <form onSubmit={handleDatos} className="space-y-4">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <Field label="Nombre">
+              <Input
+                value={datos.nombre}
+                onChange={e => setDato({ nombre: e.target.value })}
+                placeholder="Tu nombre"
+              />
+            </Field>
+            <Field label="Apellido">
+              <Input
+                value={datos.apellido}
+                onChange={e => setDato({ apellido: e.target.value })}
+                placeholder="Tu apellido"
+              />
+            </Field>
+          </div>
+
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <Field label="Celular" hint="Solo números, sin 0 ni 15">
+              <TelInput
+                value={datos.telefono}
+                onValueChange={(v) => setDato({ telefono: v })}
+                placeholder="1122334455"
+              />
+            </Field>
+            <Field label="Fecha de nacimiento" hint={edad != null ? `${edad} años` : undefined}>
+              <Input
+                type="date"
+                max={HOY}
+                value={datos.fecha_nacimiento}
+                onChange={e => setDato({ fecha_nacimiento: e.target.value })}
+              />
+            </Field>
+          </div>
+
+          {/* Mismo componente de domicilio que Clientes y Datos de la financiera */}
+          <div className="border-t border-border/60 pt-4">
+            <p className="mb-3 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+              Domicilio
+            </p>
+            <DomicilioFields
+              value={datos}
+              onChange={(patch) => setDato(patch as Partial<DatosPersonales>)}
             />
-          </Field>
-          {errorNombre && <p className="text-xs text-destructive">{errorNombre}</p>}
+          </div>
+
+          {errorDatos && <p className="text-xs text-destructive">{errorDatos}</p>}
           <div className="flex justify-end">
-            <SaveButton saving={savingNombre} saved={savedNombre} />
+            <SaveButton saving={savingDatos} saved={savedDatos} />
           </div>
         </form>
       </SectionCard>

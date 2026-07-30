@@ -86,6 +86,10 @@ model suscripciones {
 model profiles {
   id          String   @id @db.Uuid // = auth.users.id (Supabase Auth)
   created_at  DateTime @default(now()) @db.Timestamptz(6)
+  // Nombre para MOSTRAR. Se lee en ~42 lugares (saludo del Home, actor de auditoría,
+  // listas de Usuarios/Agentes, emails). NO se elimina: se RECALCULA como
+  // "nombre apellido" cada vez que se guarda el perfil, así todos esos usos siguen
+  // funcionando sin tocarlos.
   full_name   String?
   email       String?
   // Alias de login opcional: el admin lo asigna. Permite ingresar con usuario O email.
@@ -99,6 +103,29 @@ model profiles {
   // Dueño de la PLATAFORMA (SaaS), distinto del admin de una financiera. Fuente de verdad
   // del acceso al área "Administración del SaaS". Se asigna con scripts/set-owner.mjs.
   es_owner    Boolean  @default(false)
+
+  // ── Datos personales de la persona que loguea ────────────────────────────────
+  // `profiles` es la FUENTE DE VERDAD de estos campos (decisión 2026-07-30): los
+  // edita cada uno desde "Mi perfil" y la ficha de Agentes los muestra en solo
+  // lectura, quedándose con lo laboral (fecha_ingreso, zona, comisión, meta,
+  // límite). Van acá y no en `vendedores` porque no todo usuario tiene ficha de
+  // agente — hoy 2 de 3 (el owner y el admin de la financiera) no la tienen.
+  // Todos opcionales: son aditivos y no bloquean ninguna cuenta existente.
+  nombre           String?
+  apellido         String?
+  telefono         String? // celular de contacto
+  fecha_nacimiento DateTime? @db.Date
+
+  // Domicilio estructurado — MISMO patrón y nombres que `clientes` (georef AR:
+  // provincia→localidad, CP manual; tipo_domicilio = casa | departamento, y si es
+  // departamento se cargan piso y depto). Reusa el componente DomicilioFields.
+  direccion      String?
+  provincia      String?
+  localidad      String?
+  codigo_postal  String?
+  tipo_domicilio String?
+  piso           String?
+  depto          String?
 
   tenant   tenants?    @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
   vendedor vendedores? @relation(fields: [vendedor_id], references: [id], onDelete: SetNull)
