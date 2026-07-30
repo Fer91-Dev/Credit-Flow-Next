@@ -1,25 +1,31 @@
 import { PageHeader } from "@/components/ui/PageHeader";
 import { PerfilForm, type DatosPersonales } from "@/components/perfil/PerfilForm";
-import { DosFactores } from "@/components/perfil/DosFactores";
 import { requireAuth } from "@/lib/auth";
+import { ROLE_LABEL } from "@/lib/auth/roles";
+import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
 
 /** null → "" para que los inputs del form sean siempre controlados. */
 const s = (v: string | null | undefined) => v ?? "";
 
 export default async function PerfilPage() {
-  const { userId, email, avatarUrl, esOwner } = await requireAuth();
+  const { userId, email, avatarUrl, esOwner, role, mfaEnrolado } = await requireAuth();
 
   // Los datos personales viven en `profiles` (fuente de verdad, decisión 2026-07-30).
   // Se leen acá en el server y bajan al form ya cargados — sin fetch en el cliente.
-  const p = await prisma.profiles.findUnique({
-    where: { id: userId },
-    select: {
-      nombre: true, apellido: true, full_name: true, telefono: true, fecha_nacimiento: true,
-      direccion: true, provincia: true, localidad: true,
-      codigo_postal: true, tipo_domicilio: true, piso: true, depto: true,
-    },
-  });
+  const [p, { data: authUser }] = await Promise.all([
+    prisma.profiles.findUnique({
+      where: { id: userId },
+      select: {
+        nombre: true, apellido: true, full_name: true, telefono: true, fecha_nacimiento: true,
+        direccion: true, provincia: true, localidad: true,
+        codigo_postal: true, tipo_domicilio: true, piso: true, depto: true,
+        created_at: true,
+      },
+    }),
+    // `email_confirmed_at` vive en auth.users, no en profiles → sale de Supabase Auth.
+    createClient().then((c) => c.auth.getUser()),
+  ]);
 
   const initialDatos: DatosPersonales = {
     // Fallback a `full_name` para cuentas anteriores al backfill: nunca queda vacío.
@@ -50,9 +56,12 @@ export default async function PerfilPage() {
         initialDatos={initialDatos}
         initialEmail={email ?? ""}
         initialAvatarUrl={avatarUrl}
+        rolLabel={role ? ROLE_LABEL[role] : "—"}
+        creadoEn={p?.created_at?.toISOString() ?? null}
+        emailVerificado={!!authUser?.user?.email_confirmed_at}
+        mfaActivo={mfaEnrolado}
+        esOwner={esOwner}
       />
-      {/* Obligatoria para el dueño del SaaS; opcional para el resto. */}
-      <DosFactores obligatorio={esOwner} />
     </div>
   );
 }

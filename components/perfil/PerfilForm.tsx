@@ -7,9 +7,10 @@ import { useRouter } from "next/navigation";
 import { Check, Loader2, ShieldAlert, AtSign } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { Field, Input, PasswordInput, TelInput } from "@/components/ui/field";
-import { Avatar, generatedAvatarUrl, AVATAR_SEEDS } from "@/components/ui/Avatar";
 import { DomicilioFields } from "@/components/ui/DomicilioFields";
 import { IconBadge } from "@/components/ui/IconBadge";
+import { IdentidadCard } from "@/components/perfil/IdentidadCard";
+import { DosFactores } from "@/components/perfil/DosFactores";
 
 /**
  * Datos personales editables. Las claves coinciden 1:1 con las columnas de `profiles`
@@ -34,7 +35,22 @@ interface PerfilFormProps {
   initialDatos: DatosPersonales;
   initialEmail: string;
   initialAvatarUrl?: string | null;
+  rolLabel: string;
+  creadoEn: string | null; // profiles.created_at (ISO) → "miembro desde"
+  emailVerificado: boolean;
+  mfaActivo: boolean;
+  esOwner: boolean;
 }
+
+/**
+ * Campos que cuentan para el % de perfil completo. `piso`/`depto` quedan afuera:
+ * solo aplican si el domicilio es un departamento, y penalizarían a quien vive
+ * en una casa.
+ */
+const CAMPOS_COMPLETITUD: (keyof DatosPersonales)[] = [
+  "nombre", "apellido", "telefono", "fecha_nacimiento",
+  "provincia", "localidad", "direccion", "codigo_postal", "tipo_domicilio",
+];
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const HOY = new Date().toISOString().slice(0, 10);
@@ -94,31 +110,15 @@ function traducirError(msg: string): string {
   return msg;
 }
 
-export function PerfilForm({ initialDatos, initialEmail, initialAvatarUrl }: PerfilFormProps) {
+export function PerfilForm({
+  initialDatos, initialEmail, initialAvatarUrl,
+  rolLabel, creadoEn, emailVerificado, mfaActivo, esOwner,
+}: PerfilFormProps) {
   const router = useRouter();
   const supabase = createClient();
 
-  // ── Avatar ──
-  const [avatar, setAvatar] = useState(initialAvatarUrl ?? "");
-  const [savingAvatar, setSavingAvatar] = useState(false);
-  const [savedAvatar, setSavedAvatar] = useState(false);
-  const [errorAvatar, setErrorAvatar] = useState<string | null>(null);
-
-  const guardarAvatar = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setSavingAvatar(true);
-    setErrorAvatar(null);
-    try {
-      const { error } = await supabase.auth.updateUser({ data: { avatar_url: avatar } });
-      if (error) throw error;
-      setSavedAvatar(true);
-      router.refresh(); // re-ejecuta el layout → el sidebar muestra el avatar nuevo
-    } catch (err) {
-      setErrorAvatar(err instanceof Error ? traducirError(err.message) : "No se pudo guardar el avatar.");
-    } finally {
-      setSavingAvatar(false);
-    }
-  };
+  // El avatar ahora se elige desde IdentidadCard (clickeando la foto): dejó de ser
+  // una sección propia — era una tarjeta entera para una decisión decorativa.
 
   // ── Datos personales ──
   // Un solo bloque con su propio Guardar: nombre/apellido, contacto y domicilio.
@@ -137,6 +137,13 @@ export function PerfilForm({ initialDatos, initialEmail, initialAvatarUrl }: Per
   // Edad en vivo desde la fecha de nacimiento (mismo criterio que la ficha de cliente:
   // no hay campo "edad" manual, se deriva).
   const edad = calcularEdad(datos.fecha_nacimiento);
+
+  // Nombre y completitud se calculan EN VIVO: la tarjeta de identidad refleja lo que
+  // se está tipeando (iniciales del avatar y barra de progreso) antes de guardar.
+  const nombreCompleto = [datos.nombre, datos.apellido].filter(Boolean).join(" ").trim();
+  const completitud = Math.round(
+    (CAMPOS_COMPLETITUD.filter((k) => datos[k].trim() !== "").length / CAMPOS_COMPLETITUD.length) * 100
+  );
 
   // ── Email ──
   const [newEmail, setNewEmail] = useState("");
@@ -249,41 +256,22 @@ export function PerfilForm({ initialDatos, initialEmail, initialAvatarUrl }: Per
   };
 
   return (
-    <div className="space-y-5 max-w-xl">
+    /* Dos columnas: identidad + estado a la izquierda (sticky), formularios a la
+       derecha. El ancho extra NO se usa estirando inputs — se llena con contenido
+       que antes no existía. En mobile, la identidad va arriba y se apila todo. */
+    <div className="grid items-start gap-5 lg:grid-cols-[320px_minmax(0,1fr)]">
+      <IdentidadCard
+        nombre={nombreCompleto}
+        email={initialEmail}
+        rolLabel={rolLabel}
+        initialAvatarUrl={initialAvatarUrl}
+        creadoEn={creadoEn}
+        emailVerificado={emailVerificado}
+        mfaActivo={mfaActivo}
+        completitud={completitud}
+      />
 
-      {/* Avatar */}
-      <SectionCard emoji="sparkles" title="Avatar">
-        <form onSubmit={guardarAvatar} className="space-y-4">
-          <div className="flex items-center gap-4">
-            {/* Sigue el nombre EN VIVO: al editarlo arriba, las iniciales se actualizan solas. */}
-            <Avatar name={[datos.nombre, datos.apellido].filter(Boolean).join(" ")} src={avatar || undefined} size="xl" />
-            <p className="text-xs text-muted-foreground leading-relaxed">
-              Elegí un avatar para tu perfil. Se muestra en el menú lateral y en tu ficha.
-            </p>
-          </div>
-          <div className="grid grid-cols-6 gap-2.5 sm:grid-cols-8">
-            {AVATAR_SEEDS.map((seed) => {
-              const url = generatedAvatarUrl(seed);
-              const sel = url === avatar;
-              return (
-                <button
-                  key={seed}
-                  type="button"
-                  onClick={() => { setAvatar(url); setSavedAvatar(false); }}
-                  title={`Avatar ${seed}`}
-                  className={`rounded-full transition-all ${sel ? "ring-2 ring-primary ring-offset-2 ring-offset-card" : "opacity-80 hover:scale-105 hover:opacity-100"}`}
-                >
-                  <Avatar src={url} name={seed} size="sm" />
-                </button>
-              );
-            })}
-          </div>
-          {errorAvatar && <p className="text-xs text-destructive">{errorAvatar}</p>}
-          <div className="flex justify-end">
-            <SaveButton saving={savingAvatar} saved={savedAvatar} label="Guardar avatar" />
-          </div>
-        </form>
-      </SectionCard>
+      <div className="space-y-5">
 
       {/* Datos personales */}
       <SectionCard emoji="clipboard" title="Datos personales">
@@ -328,7 +316,10 @@ export function PerfilForm({ initialDatos, initialEmail, initialAvatarUrl }: Per
             <p className="mb-3 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
               Domicilio
             </p>
+            {/* 3 columnas: la pantalla no es un modal, hay ancho de sobra. Los inputs
+                NO se estiran — se acomodan más por fila y baja el scroll vertical. */}
             <DomicilioFields
+              cols={3}
               value={datos}
               onChange={(patch) => setDato(patch as Partial<DatosPersonales>)}
             />
@@ -340,6 +331,16 @@ export function PerfilForm({ initialDatos, initialEmail, initialAvatarUrl }: Per
           </div>
         </form>
       </SectionCard>
+
+      {/* ── Acceso y seguridad ──────────────────────────────────────────────
+          Email, contraseña y 2FA son el MISMO concepto y estaban dispersos, con
+          el 2FA huérfano al final de la página. Agrupados bajo un encabezado
+          común dejan de leerse como agregados sueltos. */}
+      <div className="pt-1">
+        <h2 className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+          Acceso y seguridad
+        </h2>
+      </div>
 
       {/* Email */}
       <SectionCard emoji="envelope" title="Dirección de email">
@@ -430,6 +431,11 @@ export function PerfilForm({ initialDatos, initialEmail, initialAvatarUrl }: Per
         </form>
       </SectionCard>
 
+      {/* 2FA — cierra el bloque de seguridad. Antes colgaba al final de la página,
+          fuera del contenedor, y era la única tarjeta a ancho completo. */}
+      <DosFactores obligatorio={esOwner} />
+
+      </div>
     </div>
   );
 }

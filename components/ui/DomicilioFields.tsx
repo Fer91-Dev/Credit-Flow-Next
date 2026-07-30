@@ -21,9 +21,15 @@ export interface DomicilioValue {
 export function DomicilioFields({
   value,
   onChange,
+  cols = 2,
 }: {
   value: DomicilioValue;
   onChange: (patch: Partial<DomicilioValue>) => void;
+  /**
+   * Columnas en desktop. Default 2 (modales de Clientes / Datos de la financiera).
+   * Con 3 aprovecha un contenedor ancho — se usa en Mi perfil, que no es un modal.
+   */
+  cols?: 2 | 3;
 }) {
   const [provincias, setProvincias] = useState<{ id: string; nombre: string }[]>([]);
   const [localidades, setLocalidades] = useState<{ id: string; nombre: string }[]>([]);
@@ -52,7 +58,7 @@ export function DomicilioFields({
   }, [prov]);
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+    <div className={`grid grid-cols-1 gap-3 sm:grid-cols-2 ${cols === 3 ? "lg:grid-cols-3" : ""}`}>
       <Field label="Provincia">
         <Select value={value.provincia ?? ""} onChange={(e) => onChange({ provincia: e.target.value, localidad: "" })}>
           <option value="">Seleccioná…</option>
