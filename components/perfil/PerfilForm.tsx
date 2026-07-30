@@ -9,6 +9,7 @@ import { createClient } from "@/lib/supabase/client";
 import { Field, Input, PasswordInput, TelInput } from "@/components/ui/field";
 import { DomicilioFields } from "@/components/ui/DomicilioFields";
 import { IconBadge } from "@/components/ui/IconBadge";
+import { Emoji } from "@/components/ui/Emoji";
 import { IdentidadCard } from "@/components/perfil/IdentidadCard";
 import { DosFactores } from "@/components/perfil/DosFactores";
 
@@ -313,7 +314,8 @@ export function PerfilForm({
 
           {/* Mismo componente de domicilio que Clientes y Datos de la financiera */}
           <div className="border-t border-border/60 pt-4">
-            <p className="mb-3 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+            <p className="mb-3 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+              <Emoji name="house" className="h-3.5 w-3.5" />
               Domicilio
             </p>
             {/* 3 columnas: la pantalla no es un modal, hay ancho de sobra. Los inputs
@@ -379,7 +381,12 @@ export function PerfilForm({
               value={emailPass}
               onChange={e => { setEmailPass(e.target.value); setErrorEmail(null); }}
               placeholder="Tu contraseña actual"
-              autoComplete="current-password"
+              // "off" a propósito (NO "current-password"): es un campo de RE-AUTENTICACIÓN.
+              // Con "current-password" el navegador lo autocompletaba solo, y cualquiera
+              // frente a la máquina desbloqueada podía cambiar el type a text desde el
+              // inspector y leer la clave guardada. Vacío no hay nada que revelar.
+              // Se sigue pudiendo pegar desde un gestor de contraseñas.
+              autoComplete="off"
             />
           </Field>
           {errorEmail && <p className="text-xs text-destructive">{errorEmail}</p>}
@@ -397,13 +404,27 @@ export function PerfilForm({
       {/* Contraseña */}
       <SectionCard emoji="locked-with-key" title="Contraseña">
         <form onSubmit={handlePassword} className="space-y-4">
+          {/* Campo de usuario oculto: los gestores de contraseñas y los lectores de
+              pantalla lo necesitan para saber a QUÉ cuenta pertenece la clave nueva.
+              Sin él, la consola avisa "Password forms should have (optionally hidden)
+              username fields for accessibility". No se muestra ni se envía a la API. */}
+          <input
+            type="text"
+            name="username"
+            autoComplete="username"
+            value={initialEmail}
+            readOnly
+            tabIndex={-1}
+            aria-hidden="true"
+            className="hidden"
+          />
           <Field label="Contraseña actual">
             <Input
               type="password"
               value={currentPass}
               onChange={e => { setCurrentPass(e.target.value); setSavedPass(false); setErrorPass(null); }}
               placeholder="Tu contraseña actual"
-              autoComplete="current-password"
+              autoComplete="off" // re-autenticación: ver nota en el form de email
             />
           </Field>
           <Field label="Nueva contraseña">
