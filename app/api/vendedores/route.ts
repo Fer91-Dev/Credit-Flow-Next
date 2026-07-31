@@ -80,7 +80,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
   type RolAcceso = (typeof ROLES_ACCESO)[number];
 
   let body: {
-    nombre?: string; email?: string; telefono?: string; rol?: string;
+    nombre?: string; apellido?: string; email?: string; telefono?: string; rol?: string;
     comision_pct?: number; meta_venta?: number; activo?: boolean;
     documento?: string; fecha_ingreso?: string; direccion?: string;
     zona?: string; notas?: string; limite_aprobacion?: number | null;
@@ -97,6 +97,15 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
   if (!body.nombre?.trim()) {
     return errorResponse("El nombre es requerido", "INVALID_INPUT", 400);
   }
+
+  // Nombre y apellido se cargan SEPARADOS (igual que en clientes y en Mi perfil).
+  // `vendedores` tiene una sola columna `nombre`, que es el nombre para MOSTRAR en
+  // créditos y reportes: ahí va el compuesto. Las partes se guardan en `profiles`,
+  // que es la fuente de verdad de los datos personales — así el agente ve su nombre
+  // ya separado en Mi perfil en vez de todo junto en un campo.
+  const nombrePila = body.nombre.trim();
+  const apellido = body.apellido?.trim() || null;
+  const nombreCompleto = [nombrePila, apellido].filter(Boolean).join(" ");
 
   // Cuenta de acceso OBLIGATORIA: todo agente nuevo debe poder loguearse para trabajar.
   // Sin cuenta no tendría forma de operar el sistema (regla de negocio del dueño).
@@ -131,7 +140,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
   // Datos del agente (comunes al alta normal y a la vinculación de una cuenta existente).
   const datosVendedor = {
     ...withTenant(tenantId),
-    nombre: body.nombre.trim(),
+    nombre: nombreCompleto,
     email: ccEmail,
     telefono: body.telefono?.trim() || null,
     rol,
@@ -161,7 +170,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     const vendedor = await prisma.vendedores.create({ data: datosVendedor });
     await prisma.profiles.update({
       where: { id: prof.id },
-      data: { full_name: vendedor.nombre, tenant_id: tenantId, role: ccRol, activo: true, vendedor_id: vendedor.id, username: ccUsername },
+      data: { full_name: vendedor.nombre, nombre: nombrePila, apellido, tenant_id: tenantId, role: ccRol, activo: true, vendedor_id: vendedor.id, username: ccUsername },
     });
     await registrarAuditoria({
       tenantId, entidad: "vendedores", entidadId: vendedor.id, accion: "crear",
@@ -177,7 +186,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     email: ccEmail,
     password: ccPassword,
     email_confirm: true,
-    user_metadata: { full_name: body.nombre.trim() },
+    user_metadata: { full_name: nombreCompleto },
   });
 
   if (authErr || !created?.user) {
@@ -205,6 +214,8 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
         email: ccEmail,
         username: ccUsername,
         full_name: vendedor.nombre,
+        nombre: nombrePila,
+        apellido,
         tenant_id: tenantId,
         role: ccRol,
         activo: true,
@@ -214,6 +225,8 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
         email: ccEmail,
         username: ccUsername,
         full_name: vendedor.nombre,
+        nombre: nombrePila,
+        apellido,
         tenant_id: tenantId,
         role: ccRol,
         activo: true,

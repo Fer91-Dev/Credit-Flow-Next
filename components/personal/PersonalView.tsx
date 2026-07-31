@@ -477,6 +477,7 @@ export function PersonalForm({
   const toast = useToast();
   const editing = !!vendedor;
   const [nombre, setNombre] = useState("");
+  const [apellido, setApellido] = useState("");
   const [email, setEmail] = useState("");
   const [telefono, setTelefono] = useState("");
   const [rol, setRol] = useState<Vendedor["rol"]>("vendedor");
@@ -497,7 +498,15 @@ export function PersonalForm({
   const currentKey = open ? (vendedor?.id ?? "new") : null;
   if (currentKey !== syncKey) {
     setSyncKey(currentKey);
-    setNombre(vendedor?.nombre ?? "");
+    // `vendedores.nombre` guarda el compuesto ("Juan Pérez"). Para precargar los dos
+    // campos se corta en el PRIMER espacio: el resto es apellido (soporta apellidos
+    // compuestos, "Juan De la Fuente" -> nombre "Juan", apellido "De la Fuente").
+    {
+      const completo = (vendedor?.nombre ?? "").trim();
+      const corte = completo.indexOf(" ");
+      setNombre(corte === -1 ? completo : completo.slice(0, corte));
+      setApellido(corte === -1 ? "" : completo.slice(corte + 1));
+    }
     setEmail(vendedor?.email ?? "");
     setTelefono(vendedor?.telefono ?? "");
     setRol(vendedor?.rol ?? "vendedor");
@@ -538,7 +547,7 @@ export function PersonalForm({
     setLoading(true); setError(null);
     try {
       const body: Record<string, unknown> = {
-        nombre, email, telefono, rol,
+        nombre, apellido, email, telefono, rol,
         comision_pct: parseFloat(comision) || 0,
         meta_venta: parseMontoInput(meta),
         activo,
@@ -602,9 +611,17 @@ export function PersonalForm({
           {error && (
             <div className="rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-2.5 text-sm text-destructive">{error}</div>
           )}
-          <Field label="Nombre" required>
-            <Input value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Nombre y apellido" required />
-          </Field>
+          {/* Nombre y apellido SEPARADOS, igual que en Clientes y en Mi perfil. En un
+              solo input, el agente despues veia todo junto en el campo "Nombre" de su
+              perfil, con "Apellido" vacio. */}
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <Field label="Nombre" required>
+              <Input value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Ej: Juan" required />
+            </Field>
+            <Field label="Apellido">
+              <Input value={apellido} onChange={(e) => setApellido(e.target.value)} placeholder="Ej: Pérez" />
+            </Field>
+          </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Field label="Email" required={!editing} hint={editing ? undefined : "Email real del agente — se usa para ingresar y para recuperar la contraseña"}>
               <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder={editing ? "opcional" : "nombre@email-real.com"} required={!editing} />
