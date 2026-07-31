@@ -410,7 +410,13 @@ export function PerfilForm({
               value={newEmail}
               onChange={e => { setNewEmail(e.target.value); setSavedEmail(false); setErrorEmail(null); }}
               placeholder="nuevo@email.com"
-              autoComplete="email"
+              // NO es un campo de login: es el email DESTINO de un cambio. Con
+              // autoComplete="email" el navegador lo tomaba por un formulario de
+              // ingreso y volcaba acá el usuario+contraseña guardados en la máquina
+              // (los de OTRA persona, si compartieron el navegador). `name` sin la
+              // palabra "email" evita además la heurística de Chrome.
+              name="destino-cambio"
+              autoComplete="off"
             />
           </Field>
           <Field label="Contraseña actual" hint="Por seguridad, confirmá tu identidad">
@@ -419,12 +425,14 @@ export function PerfilForm({
               value={emailPass}
               onChange={e => { setEmailPass(e.target.value); setErrorEmail(null); }}
               placeholder="Tu contraseña actual"
-              // "off" a propósito (NO "current-password"): es un campo de RE-AUTENTICACIÓN.
-              // Con "current-password" el navegador lo autocompletaba solo, y cualquiera
-              // frente a la máquina desbloqueada podía cambiar el type a text desde el
-              // inspector y leer la clave guardada. Vacío no hay nada que revelar.
+              // "new-password", NO "off": Chrome IGNORA autocomplete="off" en campos de
+              // contraseña (es deliberado de su parte). El único valor que respeta para
+              // no volcar una clave guardada es "new-password". Es un campo de
+              // RE-AUTENTICACIÓN: se tipea en el momento, no se recuerda. Vacío no hay
+              // nada que revelar cambiando el type a text desde el inspector.
               // Se sigue pudiendo pegar desde un gestor de contraseñas.
-              autoComplete="off"
+              name="reauth-email"
+              autoComplete="new-password"
             />
           </Field>
           {errorEmail && <p className="text-xs text-destructive">{errorEmail}</p>}
@@ -462,7 +470,8 @@ export function PerfilForm({
               value={currentPass}
               onChange={e => { setCurrentPass(e.target.value); setSavedPass(false); setErrorPass(null); }}
               placeholder="Tu contraseña actual"
-              autoComplete="off" // re-autenticación: ver nota en el form de email
+              name="reauth-pass"
+              autoComplete="new-password" // re-autenticación: ver nota en el form de email
             />
           </Field>
           <Field label="Nueva contraseña">
