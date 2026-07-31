@@ -614,13 +614,11 @@ export function PersonalForm({
             </Field>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <Field label="Rol" required>
-              <Select value={rol} onChange={(e) => setRol(e.target.value as Vendedor["rol"])}>
-                <option value="vendedor">Vendedor</option>
-                <option value="supervisor">Supervisor</option>
-                <option value="admin">Administrador</option>
-              </Select>
-            </Field>
+            {/* El "Rol" del legajo se quitó: `vendedores.rol` está DEPRECADO — no
+                controla ningún permiso (eso es `profiles.role`) y solo alimentaba un
+                badge. Tenerlo acá hacía que el formulario pidiera el rol DOS veces,
+                y el de arriba no hacía nada. El único rol real es "Rol de acceso",
+                más abajo, en la sección de cuenta. */}
             <Field label="Comisión (%)" hint="sobre el monto otorgado">
               <Input type="number" min="0" max="100" step="any" value={comision} onChange={(e) => setComision(e.target.value)} className="font-mono tabular-nums" />
             </Field>

@@ -1077,13 +1077,10 @@ function DatosTab({ vendedor, guardar }: { vendedor: VendedorDetalle; guardar: (
       <section className="rounded-xl border border-border bg-muted/10 p-4">
         <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-3">Datos laborales</p>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <Field label="Rol" required>
-            <Select value={f.rol} onChange={set("rol")}>
-              <option value="vendedor">Vendedor</option>
-              <option value="supervisor">Supervisor</option>
-              <option value="admin">Administrador</option>
-            </Select>
-          </Field>
+          {/* Mismo caso que en el alta: el "Rol" del legajo (`vendedores.rol`) está
+              DEPRECADO y no define permisos — el rol real es el de la cuenta, que se
+              edita en Equipo/Usuarios. Se quita para no tener dos roles distintos
+              conviviendo, uno de los cuales no hace nada. */}
           <Field label="Estado">
             <Select value={f.activo ? "activo" : "inactivo"} onChange={(e) => setF((p) => ({ ...p, activo: e.target.value === "activo" }))}>
               <option value="activo">Activo</option>
