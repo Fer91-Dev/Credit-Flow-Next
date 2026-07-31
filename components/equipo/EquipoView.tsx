@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ShieldOff, Briefcase, ArrowLeft, Pencil, KeyRound, UserX, UserCheck, Plus } from "lucide-react";
+import { ShieldOff, ArrowLeft, Pencil, KeyRound, UserX, UserCheck, Plus } from "lucide-react";
 import { useEquipo, useUsuarios, useVendedores, type MiembroEquipo, type Usuario, type Vendedor } from "@/lib/swr";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { KpiCard } from "@/components/ui/KpiCard";
@@ -156,15 +156,31 @@ export function EquipoView() {
       cell: (m) => (
         <div className="flex items-center gap-2.5">
           <Avatar name={m.nombre} size="sm" />
-          <div className="min-w-0">
-            <p className="truncate text-sm font-medium text-foreground">{m.nombre}</p>
-            <p className="truncate text-xs text-muted-foreground">
-              {m.email ?? "sin email"}
-              {m.username && <span className="ml-1.5 font-mono">· {m.username}</span>}
-            </p>
-          </div>
+          <p className="truncate text-sm font-medium text-foreground">{m.nombre}</p>
         </div>
       ),
+    },
+    {
+      // Usuario y email en columnas propias: son dos datos distintos (con qué entra /
+      // dónde se le escribe) y apilados bajo el nombre no se podían leer ni comparar.
+      header: "Usuario",
+      className: "hidden sm:table-cell",
+      cell: (m) =>
+        m.username ? (
+          <span className="font-mono text-xs text-foreground">{m.username}</span>
+        ) : (
+          <span className="text-xs text-muted-foreground/60">—</span>
+        ),
+    },
+    {
+      header: "Email",
+      className: "hidden md:table-cell",
+      cell: (m) =>
+        m.email ? (
+          <span className="truncate text-xs text-muted-foreground">{m.email}</span>
+        ) : (
+          <span className="text-xs text-muted-foreground/60">—</span>
+        ),
     },
     {
       header: "Acceso",
@@ -181,19 +197,6 @@ export function EquipoView() {
         ),
     },
     {
-      header: "Legajo",
-      className: "hidden md:table-cell",
-      cell: (m) =>
-        m.vendedor_id ? (
-          <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-            <Briefcase className="h-3 w-3 shrink-0" />
-            {m.zona || "sin zona"}
-          </span>
-        ) : (
-          <span className="text-xs text-muted-foreground/60">—</span>
-        ),
-    },
-    {
       header: "Otorgado",
       mono: true,
       className: "hidden lg:table-cell",
@@ -202,13 +205,13 @@ export function EquipoView() {
     {
       header: "Comisión",
       mono: true,
-      className: "hidden lg:table-cell",
+      className: "hidden xl:table-cell",
       cell: (m) => (m.comision_pct != null ? `${m.comision_pct}%` : "—"),
     },
     {
-      header: "",
+      header: "Acciones",
       align: "right",
-      className: "w-px",
+      className: "w-px whitespace-nowrap",
       cell: (m) => {
         const u = usuarioDe(m);
         const v = vendedorDe(m);
