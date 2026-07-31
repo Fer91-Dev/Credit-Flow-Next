@@ -4,10 +4,10 @@ import { useState, useMemo, useEffect } from "react";
 import { mutate as globalMutate } from "swr";
 import {
   UserCog, Trash2, TrendingUp, Target, Percent,
-  MapPin, Layers, Plus, X, Award, Wallet, Send, ArrowDownToLine,
+  MapPin, Layers, Plus, X, Award, Wallet, Send, ArrowDownToLine, CalendarRange,
 } from "lucide-react";
 import { useVendedorDetalle, useMetasVendedor, useLogrosVendedor, useConfiguracion, useVendedorCaja, KEYS, type VendedorDetalle, type ComisionConfig, type MetaVendedor, type PeriodoGamificacion, type CuentaCaja, type MovimientoCaja } from "@/lib/swr";
-import { calcularComisionTotal, comisionDeVenta, rangoDePeriodo, periodoActual } from "@/lib/domain";
+import { calcularComisionTotal, comisionDeVenta, rangoDePeriodo, periodoActual, PERIODOS_META, PERIODO_LABEL, type TipoPeriodo } from "@/lib/domain";
 import { MedallaBadge, RangoBadge, InsigniaChip } from "@/components/ui/Medalla";
 import { MovimientoDetail } from "@/components/caja/MovimientoDetail";
 import { StatusBadge } from "@/components/ui/StatusBadge";
@@ -508,8 +508,13 @@ function MetasTab({ vendedor, onMetaChanged }: { vendedor: VendedorDetalle; onMe
   const confirm = useConfirm();
   const toast = useToast();
 
+  // El largo del período se elige META POR META: una financiera puede querer una meta
+  // anual para un encargado y mensuales para los vendedores. Arranca en el largo
+  // configurado en Gamificación (lo que se usaba antes) para no cambiarle el default
+  // a nadie, pero acá se puede pisar sin tocar la configuración del tenant.
   const { config } = useConfiguracion();
-  const periodo: PeriodoGamificacion = config?.gamificacionConfig?.periodo ?? "mensual";
+  const periodoDefault: PeriodoGamificacion = config?.gamificacionConfig?.periodo ?? "mensual";
+  const [periodo, setPeriodo] = useState<TipoPeriodo>(periodoDefault);
 
   const [creando, setCreando] = useState(false);
   const [anio, setAnio] = useState(() => new Date().getUTCFullYear());
@@ -519,11 +524,17 @@ function MetasTab({ vendedor, onMetaChanged }: { vendedor: VendedorDetalle; onMe
   const [mCobr, setMCobr] = useState("");
   const [saving, setSaving] = useState(false);
 
-  // Al cambiar el período configurado, reposicionar el selector en el período actual.
+  // Sigue al default hasta que el usuario elige uno a mano (ahí manda su elección).
+  const [tocado, setTocado] = useState(false);
+  useEffect(() => { if (!tocado) setPeriodo(periodoDefault); }, [periodoDefault, tocado]);
+
+  // Al cambiar el largo del período, reposicionar el selector en el período actual.
   useEffect(() => {
     const p = periodoActual(periodo);
     setAnio(p.anio); setIndice(p.indice);
   }, [periodo]);
+
+  const { desde, hasta, etiqueta } = rangoDePeriodo(periodo, anio, indice);
 
   const vigente = metas.find((m) => m.estado === "vigente");
   const historico = metas.filter((m) => m.estado !== "vigente");
@@ -532,10 +543,9 @@ function MetasTab({ vendedor, onMetaChanged }: { vendedor: VendedorDetalle; onMe
 
   const crear = async (e: React.FormEvent) => {
     e.preventDefault();
-    const { desde, hasta, etiqueta } = rangoDePeriodo(periodo, anio, indice);
     const ok = await confirm({
       title: "¿Crear meta del período?",
-      description: `Se creará la meta de ${etiqueta} y pasará a ser la vigente (la anterior se cierra).`,
+      description: `Se creará la meta de ${etiqueta} (${formatFecha(desde)} al ${formatFecha(hasta)}) y pasará a ser la vigente. La anterior se cierra: solo puede haber una meta vigente por persona.`,
       confirmLabel: "Crear meta",
     });
     if (!ok) return;
@@ -589,9 +599,16 @@ function MetasTab({ vendedor, onMetaChanged }: { vendedor: VendedorDetalle; onMe
         </div>
         {vigente ? (
           <div className="rounded-xl border border-primary/30 bg-primary/5 p-4 space-y-3">
-            <div className="flex items-center justify-between">
-              <p className="text-sm font-semibold text-foreground">Período {vigente.periodo}</p>
-              <button onClick={() => eliminar(vigente)} className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors" title="Eliminar meta">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-foreground">Período {vigente.periodo}</p>
+                {/* El rango, explícito: ahora las metas pueden ser mensuales o anuales
+                    y la etiqueta sola ("2026") no dice qué créditos cuentan. */}
+                <p className="mt-0.5 text-[11px] text-muted-foreground">
+                  {formatFecha(vigente.fecha_desde)} al {formatFecha(vigente.fecha_hasta)}
+                </p>
+              </div>
+              <button onClick={() => eliminar(vigente)} className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors" title="Eliminar meta">
                 <Trash2 className="h-3.5 w-3.5" />
               </button>
             </div>
@@ -613,10 +630,30 @@ function MetasTab({ vendedor, onMetaChanged }: { vendedor: VendedorDetalle; onMe
         <form onSubmit={crear} className="rounded-xl border border-border bg-muted/10 p-4 space-y-3">
           <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Nueva meta de período</p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <Field label={periodo === "mensual" ? "Período (mes)" : periodo === "trimestral" ? "Período (trimestre)" : "Período (semestre)"} required>
+            <Field label="Duración de la meta" required>
+              <Select
+                value={periodo}
+                onChange={(e) => { setTocado(true); setPeriodo(e.target.value as TipoPeriodo); }}
+              >
+                {PERIODOS_META.map((p) => (
+                  <option key={p} value={p}>{PERIODO_LABEL[p]}</option>
+                ))}
+              </Select>
+            </Field>
+            <Field
+              label={
+                periodo === "mensual" ? "Mes"
+                : periodo === "trimestral" ? "Trimestre"
+                : periodo === "semestral" ? "Semestre"
+                : "Año"
+              }
+              required
+            >
               {periodo === "mensual" ? (
                 <Input type="month" value={`${anio}-${String(indice).padStart(2, "0")}`}
                   onChange={(e) => { const [y, m] = e.target.value.split("-").map(Number); if (y && m) { setAnio(y); setIndice(m); } }} required />
+              ) : periodo === "anual" ? (
+                <Input type="number" min="2020" max="2100" value={anio} onChange={(e) => setAnio(parseInt(e.target.value) || anio)} className="text-center font-mono tabular-nums" />
               ) : (
                 <div className="grid grid-cols-2 gap-2">
                   <Input type="number" min="2020" max="2100" value={anio} onChange={(e) => setAnio(parseInt(e.target.value) || anio)} className="text-center font-mono tabular-nums" />
@@ -628,6 +665,16 @@ function MetasTab({ vendedor, onMetaChanged }: { vendedor: VendedorDetalle; onMe
                 </div>
               )}
             </Field>
+            {/* El rango exacto, resuelto en vivo: es lo que va a decidir qué créditos
+                cuentan para la meta, así que no puede quedar implícito. */}
+            <div className="sm:col-span-2 -mt-1 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+              <CalendarRange className="h-3.5 w-3.5 shrink-0 text-muted-foreground/60" />
+              <span>
+                Cuenta lo otorgado del <span className="font-mono text-foreground">{formatFecha(desde)}</span> al{" "}
+                <span className="font-mono text-foreground">{formatFecha(hasta)}</span> · se archiva como{" "}
+                <span className="font-mono text-foreground">{etiqueta}</span>
+              </span>
+            </div>
             <Field label="Meta de monto ($)">
               <Input type="text" inputMode="decimal" placeholder="2.000.000,00" value={mMonto} onChange={(e) => setMMonto(maskMontoInput(e.target.value))} className="text-right font-mono tabular-nums" />
             </Field>

@@ -11,6 +11,29 @@
 export type Medalla = "oro" | "plata" | "bronce" | null;
 export type Rango = "novato" | "bronce" | "plata" | "oro" | "platino" | "diamante";
 
+/**
+ * Largo de un período. Se usa para DOS cosas distintas, a propósito separadas:
+ *
+ * · **Metas comerciales** — lo elige el admin meta por meta (una anual para el
+ *   gerente, mensuales para los vendedores). Admite `anual`.
+ * · **Gamificación / medallas** — es del tenant entero, porque las medallas se
+ *   comparan entre personas y no tendría sentido premiar períodos distintos.
+ *   Por eso `PeriodoGamificacion` es más angosto y NO incluye `anual`.
+ *
+ * Nada de esto se persiste como configuración de la meta: la meta guarda su
+ * `fecha_desde`/`fecha_hasta` ya resueltos, y el `periodo` es solo la etiqueta que
+ * se muestra. Por eso agregar largos nuevos no requiere migrar nada.
+ */
+export const PERIODOS_META = ["mensual", "trimestral", "semestral", "anual"] as const;
+export type TipoPeriodo = (typeof PERIODOS_META)[number];
+
+export const PERIODO_LABEL: Record<TipoPeriodo, string> = {
+  mensual: "Mensual",
+  trimestral: "Trimestral",
+  semestral: "Semestral",
+  anual: "Anual",
+};
+
 export interface CumplimientoMeta {
   monto: number;
   cantidad: number;
@@ -149,16 +172,18 @@ export function resolverGamificacion(raw: unknown): GamificacionConfig {
 const pad2 = (n: number) => String(n).padStart(2, "0");
 
 /** Etiqueta de período a partir de año + índice (1-based). */
-export function etiquetaPeriodo(periodo: PeriodoGamificacion, anio: number, indice: number): string {
+export function etiquetaPeriodo(periodo: TipoPeriodo, anio: number, indice: number): string {
+  if (periodo === "anual") return `${anio}`;
   if (periodo === "trimestral") return `${anio}-T${indice}`;
   if (periodo === "semestral") return `${anio}-S${indice}`;
   return `${anio}-${pad2(indice)}`;
 }
 
 /** Rango de fechas [desde, hasta] (YYYY-MM-DD) de un período. */
-export function rangoDePeriodo(periodo: PeriodoGamificacion, anio: number, indice: number): { desde: string; hasta: string; etiqueta: string } {
+export function rangoDePeriodo(periodo: TipoPeriodo, anio: number, indice: number): { desde: string; hasta: string; etiqueta: string } {
   let mesIni: number, mesFin: number;
-  if (periodo === "trimestral") { mesIni = (indice - 1) * 3 + 1; mesFin = mesIni + 2; }
+  if (periodo === "anual") { mesIni = 1; mesFin = 12; }
+  else if (periodo === "trimestral") { mesIni = (indice - 1) * 3 + 1; mesFin = mesIni + 2; }
   else if (periodo === "semestral") { mesIni = (indice - 1) * 6 + 1; mesFin = mesIni + 5; }
   else { mesIni = indice; mesFin = indice; }
   const desde = `${anio}-${pad2(mesIni)}-01`;
@@ -167,9 +192,10 @@ export function rangoDePeriodo(periodo: PeriodoGamificacion, anio: number, indic
 }
 
 /** Año + índice del período que contiene a `now` (para precargar el selector). */
-export function periodoActual(periodo: PeriodoGamificacion, now: Date = new Date()): { anio: number; indice: number } {
+export function periodoActual(periodo: TipoPeriodo, now: Date = new Date()): { anio: number; indice: number } {
   const anio = now.getUTCFullYear();
   const mes = now.getUTCMonth() + 1;
+  if (periodo === "anual") return { anio, indice: 1 };
   if (periodo === "trimestral") return { anio, indice: Math.ceil(mes / 3) };
   if (periodo === "semestral") return { anio, indice: Math.ceil(mes / 6) };
   return { anio, indice: mes };
