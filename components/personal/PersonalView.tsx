@@ -466,7 +466,7 @@ function EmptyState({ onNew }: { onNew: () => void }) {
   );
 }
 
-function PersonalForm({
+export function PersonalForm({
   open, vendedor, onClose,
 }: {
   open: boolean;
@@ -684,7 +684,7 @@ function PersonalForm({
  * (agentes viejos, previos a la regla de cuenta obligatoria). Crea el profile de login
  * vía POST /api/usuarios vinculado al vendedor.
  */
-function CrearCuentaDialog({ vendedor, onClose }: { vendedor: Vendedor | null; onClose: (ok?: boolean) => void }) {
+export function CrearCuentaDialog({ vendedor, onClose }: { vendedor: Vendedor | null; onClose: (ok?: boolean) => void }) {
   const confirm = useConfirm();
   const toast = useToast();
   const open = !!vendedor;

@@ -1,9 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import Link from "next/link";
-import { ShieldOff, Briefcase, ExternalLink, ArrowLeft } from "lucide-react";
-import { useEquipo, type MiembroEquipo } from "@/lib/swr";
+import { ShieldOff, Briefcase, ArrowLeft, Pencil, KeyRound, UserX, UserCheck, Plus } from "lucide-react";
+import { useEquipo, useUsuarios, useVendedores, type MiembroEquipo, type Usuario, type Vendedor } from "@/lib/swr";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { KpiCard } from "@/components/ui/KpiCard";
 import { DataTable, type Column } from "@/components/ui/DataTable";
@@ -13,6 +12,10 @@ import { FiltrosPanel, FiltroChip } from "@/components/ui/FiltrosPanel";
 import { Field, Select } from "@/components/ui/field";
 import { Avatar } from "@/components/ui/Avatar";
 import { VendedorDetail } from "@/components/personal/VendedorDetail";
+import { PersonalForm, CrearCuentaDialog } from "@/components/personal/PersonalView";
+import { UsuarioForm, CambiarPasswordDialog } from "@/components/usuarios/UsuariosView";
+import { useConfirm } from "@/components/ui/confirm";
+import { useToast } from "@/components/ui/toast";
 import { formatMonto } from "@/lib/utils";
 import { ROLE_LABEL } from "@/lib/auth/roles";
 
@@ -23,17 +26,74 @@ import { ROLE_LABEL } from "@/lib/auth/roles";
  * le atribuyen créditos y comisiones), que obligaba a saltar entre dos pantallas para
  * entender a una misma persona.
  *
- * ⚠️ ETAPA 1: convive con las secciones viejas, que siguen funcionando. Acá se ve y se
- * abre la ficha; las acciones de cuenta (crear, contraseña, activar) siguen en Usuarios
- * hasta que esta vista esté aprobada. No se cambió ni el modelo ni un endpoint.
+ * ETAPA 2: ya es AUTOSUFICIENTE — alta de integrante (legajo + cuenta), editar cuenta,
+ * cambiar contraseña, activar/desactivar acceso y dar acceso a un legajo que no lo tiene.
+ * Los diálogos son los MISMOS de Usuarios y Agentes (exportados, no copiados), así que el
+ * alta atómica con rollback quedó intacta.
+ *
+ * Sigue conviviendo con las secciones viejas, que funcionan igual. No se tocó el modelo ni
+ * ningún endpoint existente.
  */
 export function EquipoView() {
   const { equipo, isLoading, error, mutate } = useEquipo();
+  // Los diálogos de cuenta y legajo son los MISMOS de Usuarios y Agentes (exportados,
+  // no copiados). Esperan objetos `Usuario` y `Vendedor` reales, así que se traen de
+  // sus hooks y se busca el que corresponde por id: sin mapeos a mano que puedan
+  // divergir del original.
+  const { usuarios, mutate: mutateUsuarios } = useUsuarios();
+  const { vendedores, mutate: mutateVendedores } = useVendedores();
+  const confirm = useConfirm();
+  const toast = useToast();
 
   const [search, setSearch] = useState("");
   const [rol, setRol] = useState("");
   const [tipo, setTipo] = useState(""); // "" | agente | solo_cuenta | sin_acceso
   const [abierto, setAbierto] = useState<string | null>(null); // vendedor_id
+
+  // Diálogos
+  const [formIntegrante, setFormIntegrante] = useState(false);       // alta: legajo + cuenta
+  const [editandoCuenta, setEditandoCuenta] = useState<Usuario | null>(null);
+  const [formCuentaAbierto, setFormCuentaAbierto] = useState(false);
+  const [passwordDe, setPasswordDe] = useState<Usuario | null>(null);
+  const [crearCuentaDe, setCrearCuentaDe] = useState<Vendedor | null>(null);
+
+  /** Refresca las tres fuentes: la lista unificada y las dos de origen. */
+  const refrescar = () => { mutate(); mutateUsuarios(); mutateVendedores(); };
+
+  const usuarioDe = (m: MiembroEquipo) => usuarios.find((u) => u.id === m.profile_id) ?? null;
+  const vendedorDe = (m: MiembroEquipo) => vendedores.find((v) => v.id === m.vendedor_id) ?? null;
+
+  /** Legajos que YA tienen cuenta — el form los deshabilita (un agente = una cuenta). */
+  const legajosConCuenta = useMemo(
+    () => new Set(usuarios.map((u) => u.vendedor_id).filter(Boolean) as string[]),
+    [usuarios]
+  );
+
+  const toggleAcceso = async (m: MiembroEquipo) => {
+    const u = usuarioDe(m);
+    if (!u) return;
+    const ok = await confirm({
+      title: u.activo ? "¿Desactivar acceso?" : "¿Reactivar acceso?",
+      description: u.activo
+        ? `${m.nombre} no va a poder entrar al sistema. Su legajo y su historial quedan intactos.`
+        : `${m.nombre} vuelve a poder entrar al sistema.`,
+      confirmLabel: u.activo ? "Desactivar" : "Reactivar",
+      tone: u.activo ? "danger" : "default",
+    });
+    if (!ok) return;
+    const res = await fetch(`/api/usuarios/${u.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ activo: !u.activo }),
+    });
+    if (!res.ok) {
+      const json = await res.json().catch(() => null);
+      toast.error(json?.error || "No se pudo actualizar el acceso");
+      return;
+    }
+    refrescar();
+    toast.success(u.activo ? `Acceso de ${m.nombre} desactivado` : `Acceso de ${m.nombre} reactivado`);
+  };
 
   const filtradas = useMemo(() => {
     const t = search.trim().toLowerCase();
@@ -145,6 +205,45 @@ export function EquipoView() {
       className: "hidden lg:table-cell",
       cell: (m) => (m.comision_pct != null ? `${m.comision_pct}%` : "—"),
     },
+    {
+      header: "",
+      align: "right",
+      className: "w-px",
+      cell: (m) => {
+        const u = usuarioDe(m);
+        const v = vendedorDe(m);
+        return (
+          // `stopPropagation`: la fila abre la ficha; estos botones no deben dispararla.
+          <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
+            {u ? (
+              <>
+                <IconBtn title="Editar cuenta" onClick={() => { setEditandoCuenta(u); setFormCuentaAbierto(true); }}>
+                  <Pencil className="h-3.5 w-3.5" />
+                </IconBtn>
+                <IconBtn title="Cambiar contraseña" onClick={() => setPasswordDe(u)}>
+                  <KeyRound className="h-3.5 w-3.5" />
+                </IconBtn>
+                <IconBtn
+                  title={u.activo ? "Desactivar acceso" : "Reactivar acceso"}
+                  onClick={() => toggleAcceso(m)}
+                  danger={u.activo}
+                >
+                  {u.activo ? <UserX className="h-3.5 w-3.5" /> : <UserCheck className="h-3.5 w-3.5" />}
+                </IconBtn>
+              </>
+            ) : v ? (
+              <button
+                type="button"
+                onClick={() => setCrearCuentaDe(v)}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary transition-colors hover:bg-primary/20"
+              >
+                <KeyRound className="h-3 w-3" /> Crear cuenta
+              </button>
+            ) : null}
+          </div>
+        );
+      },
+    },
   ];
 
   return (
@@ -159,8 +258,8 @@ export function EquipoView() {
       {/* Aviso de convivencia — se va cuando la vista quede aprobada (etapa 3). */}
       <div className="rounded-xl border border-primary/25 bg-primary/[0.06] p-3.5 text-xs text-foreground">
         <span className="font-semibold">Vista nueva, en prueba.</span> Junta lo que hoy está
-        separado en Usuarios y Agentes. Las dos secciones viejas siguen funcionando sin cambios
-        mientras la evaluás.
+        separado en Usuarios y Agentes, con todas las acciones acá mismo. Las dos secciones
+        viejas siguen funcionando sin cambios mientras la evaluás.
       </div>
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -168,6 +267,17 @@ export function EquipoView() {
         <KpiCard icon="briefcase" label="Con legajo" value={String(kpis.agentes)} sub="otorgan créditos" />
         <KpiCard icon="locked-with-key" label="Sin cuenta" value={String(kpis.sinAcceso)} sub="no pueden entrar" />
         <KpiCard icon="warning" label="Acceso inactivo" value={String(kpis.inactivos)} />
+      </div>
+
+      {/* Toolbar propia: el CTA nunca va dentro del PageHeader (regla del proyecto). */}
+      <div className="flex justify-end">
+        <button
+          type="button"
+          onClick={() => setFormIntegrante(true)}
+          className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
+        >
+          <Plus className="h-4 w-4" /> Nuevo integrante
+        </button>
       </div>
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -232,14 +342,54 @@ export function EquipoView() {
         }}
       />
 
-      <p className="text-xs text-muted-foreground">
-        Las acciones de cuenta (crear, cambiar contraseña, activar o desactivar) siguen por ahora en{" "}
-        <Link href="/usuarios" className="inline-flex items-center gap-1 font-medium text-primary hover:underline">
-          Usuarios <ExternalLink className="h-3 w-3" />
-        </Link>
-        . Se integran acá cuando apruebes esta vista.
-      </p>
+      {/* ── Diálogos: los MISMOS de Usuarios y Agentes, importados ─────────────
+          No son copias. Cualquier arreglo en ellos vale para las tres pantallas, y
+          el alta atómica (cuenta de Auth + profile + legajo, con rollback) queda
+          intacta — es el código más delicado de esta zona y no se reescribió. */}
 
+      {/* Alta de integrante: crea el legajo Y su cuenta de acceso en un solo paso. */}
+      <PersonalForm
+        open={formIntegrante}
+        vendedor={null}
+        onClose={(ok) => { setFormIntegrante(false); if (ok) refrescar(); }}
+      />
+
+      {/* Editar / crear cuenta de acceso suelta (sin legajo, ej. un administrativo). */}
+      <UsuarioForm
+        open={formCuentaAbierto}
+        usuario={editandoCuenta}
+        linkedVendedorIds={legajosConCuenta}
+        onClose={(ok) => { setFormCuentaAbierto(false); setEditandoCuenta(null); if (ok) refrescar(); }}
+      />
+
+      <CambiarPasswordDialog usuario={passwordDe} onClose={() => setPasswordDe(null)} />
+
+      {/* Dar acceso a un legajo que todavía no lo tiene. */}
+      <CrearCuentaDialog
+        vendedor={crearCuentaDe}
+        onClose={(ok) => { setCrearCuentaDe(null); if (ok) refrescar(); }}
+      />
     </div>
+  );
+}
+
+/** Botón de acción de fila: cuadrado, discreto, con tono destructivo opcional. */
+function IconBtn({
+  title, onClick, danger, children,
+}: { title: string; onClick: () => void; danger?: boolean; children: React.ReactNode }) {
+  return (
+    <button
+      type="button"
+      title={title}
+      aria-label={title}
+      onClick={onClick}
+      className={`flex h-7 w-7 items-center justify-center rounded-lg transition-colors ${
+        danger
+          ? "text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+          : "text-muted-foreground hover:bg-muted/40 hover:text-foreground"
+      }`}
+    >
+      {children}
+    </button>
   );
 }

@@ -331,7 +331,7 @@ function EmptyState({ onNew }: { onNew: () => void }) {
   );
 }
 
-function UsuarioForm({
+export function UsuarioForm({
   open, usuario, onClose, linkedVendedorIds,
 }: {
   open: boolean;
@@ -533,7 +533,7 @@ function UsuarioForm({
 }
 
 /** Mini-modal para que el admin cambie la contraseña de un usuario (sin recrearlo). */
-function CambiarPasswordDialog({ usuario, onClose }: { usuario: Usuario | null; onClose: () => void }) {
+export function CambiarPasswordDialog({ usuario, onClose }: { usuario: Usuario | null; onClose: () => void }) {
   const confirm = useConfirm();
   const toast = useToast();
   const open = !!usuario;
