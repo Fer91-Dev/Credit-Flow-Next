@@ -1,8 +1,34 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import { Search, X } from "lucide-react";
 
 type Size = "md" | "lg";
+
+/**
+ * Registro de buscadores montados, para que **F3 funcione sin tener el cursor en el
+ * campo**. Antes el atajo vivía en el `onKeyDown` del input: si no habías clickeado
+ * adentro, no pasaba nada — pero el hint decía "presioná F3" sin aclararlo, así que
+ * prometía algo que no cumplía.
+ *
+ * Responde **solo el último montado**: si una pantalla tiene dos buscadores (ej.
+ * Créditos: la lista y la pestaña Refinanciados), no se disparan los dos ni se
+ * ejecuta la acción por duplicado.
+ */
+const registro: { onF3: () => void }[] = [];
+let listenerPuesto = false;
+
+function asegurarListener() {
+  if (listenerPuesto || typeof window === "undefined") return;
+  listenerPuesto = true;
+  window.addEventListener("keydown", (e) => {
+    if (e.key !== "F3") return;
+    const actual = registro[registro.length - 1];
+    if (!actual) return;
+    e.preventDefault(); // F3 es "buscar siguiente" del navegador; acá es nuestro atajo
+    actual.onF3();
+  });
+}
 
 /**
  * Buscador reutilizable con atajo F3. Unifica el look y el comportamiento de TODOS los campos
@@ -38,6 +64,22 @@ export function BuscadorF3({
   className?: string;
 }) {
   const lg = size === "lg";
+
+  // Se registra en un ref para que el listener global llame SIEMPRE al onF3 vigente
+  // (si se guardara la función directa, quedaría capturada la de la primera render).
+  const onF3Ref = useRef(onF3);
+  onF3Ref.current = onF3;
+
+  useEffect(() => {
+    const entrada = { onF3: () => onF3Ref.current() };
+    registro.push(entrada);
+    asegurarListener();
+    return () => {
+      const i = registro.indexOf(entrada);
+      if (i >= 0) registro.splice(i, 1);
+    };
+  }, []);
+
   return (
     <div className={className}>
       <div className="relative">
@@ -52,7 +94,9 @@ export function BuscadorF3({
           value={value}
           onChange={(e) => onChange(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === "F3") { e.preventDefault(); onF3(); return; }
+            // F3 NO se maneja acá: lo toma el listener global (ver arriba). Si además
+            // se manejara en el input, al tener el foco adentro se ejecutaría dos veces
+            // — y en los buscadores que ABREN/CIERRAN la lista, eso la dejaba igual.
             if (e.key === "Escape") { if (onEscape) { onEscape(); return; } if (value) onChange(""); return; }
             if (e.key === "Enter" && onEnter) { onEnter(); }
           }}

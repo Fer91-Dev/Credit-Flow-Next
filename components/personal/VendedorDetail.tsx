@@ -798,32 +798,36 @@ function CajaOperacionTab({ vendedor, guardar }: { vendedor: VendedorDetalle; gu
   const refrescarCaja = () => { mutate(); globalMutate("/api/dashboard"); };
 
   return (
-    <div className="space-y-5 max-w-3xl">
+    /* Sin `max-w-3xl`: dejaba media pestaña vacía a la derecha mientras el contenido
+       se apretaba. Los dos bloques ahora son cards hermanas, con la misma estructura
+       (título arriba, acciones abajo a la derecha) para que no se lean amontonadas. */
+    <div className="space-y-4">
       {/* Límite de aprobación */}
       <form onSubmit={guardarLimite} className="rounded-xl border border-border bg-muted/10 p-4">
-        <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-3">Límite de aprobación</p>
-        <div className="flex flex-col sm:flex-row sm:items-end gap-3">
-          <div className="flex-1">
+        <p className="mb-3 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Límite de aprobación</p>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+          {/* Acotado: es un input de monto, no gana nada con 900px de ancho. */}
+          <div className="w-full sm:max-w-xs">
             <Field label="Monto máx. sin autorización ($)" hint="Vacío = sin límite">
               <Input type="text" inputMode="decimal" placeholder="Ej: 1.000.000,00" value={limite}
                 onChange={(e) => setLimite(maskMontoInput(e.target.value))} className="text-right font-mono tabular-nums" />
             </Field>
           </div>
-          <button type="submit" disabled={savingLimite} className="px-5 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 disabled:opacity-50 transition-opacity whitespace-nowrap">
+          <button type="submit" disabled={savingLimite} className="whitespace-nowrap rounded-lg bg-primary px-5 py-2 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50">
             {savingLimite ? "Guardando…" : "Guardar límite"}
           </button>
         </div>
       </form>
 
-      {/* Caja personal */}
-      <section className="space-y-3">
-        <div className="flex items-center justify-between gap-2">
-          <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Caja personal</p>
-          <div className="flex gap-2">
-            <button onClick={() => setDialog("entrega")} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-medium hover:opacity-90 transition-opacity">
+      {/* Caja personal — card propia, para que sus acciones no se peguen a las del bloque de arriba */}
+      <section className="space-y-3 rounded-xl border border-border bg-muted/10 p-4">
+        <div className="flex flex-col gap-2 border-b border-border/50 pb-3 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Caja personal</p>
+          <div className="flex flex-wrap gap-2">
+            <button onClick={() => setDialog("entrega")} className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition-opacity hover:opacity-90">
               <ArrowDownToLine className="h-3.5 w-3.5" /> Entregar efectivo
             </button>
-            <button onClick={() => setDialog("rendicion")} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-foreground text-xs font-medium hover:bg-muted transition-colors">
+            <button onClick={() => setDialog("rendicion")} className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-muted">
               <Send className="h-3.5 w-3.5" /> Rendir
             </button>
           </div>

@@ -67,10 +67,13 @@ export function EquipoView() {
     const m = equipo.find((x) => x.vendedor_id === abierto);
     return (
       <div className="space-y-6">
+        {/* El título se queda en "Equipo": el header dice DÓNDE estás, no a quién
+            estás mirando. El nombre va en el subtítulo — mismo criterio que Agentes.
+            Cambiarlo hacía sentir que te habías ido a otra sección. */}
         <PageHeader
           icon="busts-in-silhouette"
-          title={m?.nombre ?? "Ficha"}
-          subtitle="Ficha del integrante del equipo"
+          title="Equipo"
+          subtitle={m?.nombre ? `Ficha de ${m.nombre}` : "Ficha del integrante"}
           accent="primary"
         />
         <button
