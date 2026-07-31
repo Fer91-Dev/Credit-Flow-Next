@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { ShieldOff, ArrowLeft, Pencil, KeyRound, UserX, UserCheck, Plus } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { ShieldOff, ArrowLeft, Pencil, KeyRound, UserX, UserCheck, Plus, LayoutGrid, List } from "lucide-react";
 import { useEquipo, useUsuarios, useVendedores, type MiembroEquipo, type Usuario, type Vendedor } from "@/lib/swr";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { KpiCard } from "@/components/ui/KpiCard";
@@ -12,6 +12,8 @@ import { FiltrosPanel, FiltroChip } from "@/components/ui/FiltrosPanel";
 import { Field, Select } from "@/components/ui/field";
 import { Avatar } from "@/components/ui/Avatar";
 import { MetaBar } from "@/components/ui/MetaBar";
+import { Emoji } from "@/components/ui/Emoji";
+import { Skeleton } from "@/components/ui/skeleton";
 import { VendedorDetail } from "@/components/personal/VendedorDetail";
 import { PersonalForm, CrearCuentaDialog } from "@/components/personal/PersonalView";
 import { UsuarioForm, CambiarPasswordDialog } from "@/components/usuarios/UsuariosView";
@@ -19,6 +21,23 @@ import { useConfirm } from "@/components/ui/confirm";
 import { useToast } from "@/components/ui/toast";
 import { formatMonto } from "@/lib/utils";
 import { ROLE_LABEL } from "@/lib/auth/roles";
+
+/** Filtro por fecha de alta. "" = sin filtro. */
+type Reciente = "" | "hoy" | "mes" | "anio";
+
+const RECIENTE_LABEL: Record<Exclude<Reciente, "">, string> = {
+  hoy: "Hoy",
+  mes: "Este mes",
+  anio: "Este año",
+};
+
+/** Inicio del período de "recién cargados", en hora local. */
+function desdeDe(r: Exclude<Reciente, "">): number {
+  const now = new Date();
+  if (r === "hoy") return new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  if (r === "mes") return new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+  return new Date(now.getFullYear(), 0, 1).getTime();
+}
 
 /**
  * **Equipo** — vista unificada de las personas de la financiera.
@@ -49,7 +68,18 @@ export function EquipoView() {
   const [search, setSearch] = useState("");
   const [rol, setRol] = useState("");
   const [tipo, setTipo] = useState(""); // "" | agente | solo_cuenta | sin_acceso
+  const [recientes, setRecientes] = useState<Reciente>(""); // alta reciente
   const [abierto, setAbierto] = useState<string | null>(null); // vendedor_id
+
+  // Preferencia de vista (tarjetas / tabla). Se guarda con clave PROPIA: Equipo y
+  // Agentes muestran cosas distintas, así que elegir tarjetas en una no debería
+  // cambiar la otra.
+  const [vista, setVista] = useState<"cards" | "tabla">("tabla");
+  useEffect(() => {
+    const v = localStorage.getItem("cf:equipoVista");
+    if (v === "cards" || v === "tabla") setVista(v);
+  }, []);
+  const cambiarVista = (v: "cards" | "tabla") => { setVista(v); localStorage.setItem("cf:equipoVista", v); };
 
   // Diálogos
   const [formIntegrante, setFormIntegrante] = useState(false);       // alta: legajo + cuenta
@@ -98,7 +128,9 @@ export function EquipoView() {
 
   const filtradas = useMemo(() => {
     const t = search.trim().toLowerCase();
+    const desde = recientes ? desdeDe(recientes) : null;
     return equipo.filter((m) => {
+      if (desde != null && !(m.created_at && new Date(m.created_at).getTime() >= desde)) return false;
       if (t && !(
         m.nombre.toLowerCase().includes(t) ||
         (m.email ?? "").toLowerCase().includes(t) ||
@@ -111,7 +143,7 @@ export function EquipoView() {
       if (tipo === "sin_acceso" && m.tiene_cuenta) return false;
       return true;
     });
-  }, [equipo, search, rol, tipo]);
+  }, [equipo, search, rol, tipo, recientes]);
 
   const kpis = useMemo(() => ({
     total: equipo.length,
@@ -125,7 +157,48 @@ export function EquipoView() {
     comision: equipo.reduce((s, m) => s + (m.resumen?.comision_total ?? 0), 0),
   }), [equipo]);
 
-  const filtrosActivos = (rol ? 1 : 0) + (tipo ? 1 : 0);
+  const filtrosActivos = (rol ? 1 : 0) + (tipo ? 1 : 0) + (recientes ? 1 : 0);
+  const limpiarTodo = () => { setSearch(""); setRol(""); setTipo(""); setRecientes(""); };
+
+  /**
+   * Acciones de cuenta de una persona. Es UNA sola definición porque la usan la tabla
+   * y las tarjetas: si estuviera duplicada, agregar una acción en un lado y olvidarla
+   * en el otro sería cuestión de tiempo.
+   */
+  const accionesDe = (m: MiembroEquipo) => {
+    const u = usuarioDe(m);
+    const v = vendedorDe(m);
+    return (
+      // `stopPropagation`: la fila/tarjeta abre la ficha; estos botones no deben dispararla.
+      <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
+        {u ? (
+          <>
+            <IconBtn title="Editar cuenta" onClick={() => { setEditandoCuenta(u); setFormCuentaAbierto(true); }}>
+              <Pencil className="h-3.5 w-3.5" />
+            </IconBtn>
+            <IconBtn title="Cambiar contraseña" onClick={() => setPasswordDe(u)}>
+              <KeyRound className="h-3.5 w-3.5" />
+            </IconBtn>
+            <IconBtn
+              title={u.activo ? "Desactivar acceso" : "Reactivar acceso"}
+              onClick={() => toggleAcceso(m)}
+              danger={u.activo}
+            >
+              {u.activo ? <UserX className="h-3.5 w-3.5" /> : <UserCheck className="h-3.5 w-3.5" />}
+            </IconBtn>
+          </>
+        ) : v ? (
+          <button
+            type="button"
+            onClick={() => setCrearCuentaDe(v)}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary transition-colors hover:bg-primary/20"
+          >
+            <KeyRound className="h-3 w-3" /> Crear cuenta
+          </button>
+        ) : null}
+      </div>
+    );
+  };
 
   // La ficha se muestra EN LÍNEA reemplazando la lista, igual que en Agentes — no es
   // un modal. Se reusa el mismo VendedorDetail tal cual, sin tocarlo.
@@ -203,6 +276,12 @@ export function EquipoView() {
         ),
     },
     {
+      header: "Créditos",
+      mono: true,
+      className: "hidden xl:table-cell",
+      cell: (m) => (m.resumen ? String(m.resumen.creditos_otorgados) : "—"),
+    },
+    {
       header: "Otorgado",
       mono: true,
       className: "hidden lg:table-cell",
@@ -211,7 +290,7 @@ export function EquipoView() {
     {
       header: "Comisión",
       mono: true,
-      className: "hidden xl:table-cell",
+      className: "hidden 2xl:table-cell",
       cell: (m) => (m.comision_pct != null ? `${m.comision_pct}%` : "—"),
     },
     {
@@ -219,7 +298,7 @@ export function EquipoView() {
       // apagar Agentes en la etapa 3 se perdería la lectura de "cómo viene el equipo
       // contra su meta", que es para qué se mira esta pantalla.
       header: "Avance de meta",
-      className: "hidden lg:table-cell w-44",
+      className: "hidden xl:table-cell w-44",
       cell: (m) =>
         m.vendedor_id ? (
           <MetaBar
@@ -235,40 +314,7 @@ export function EquipoView() {
       header: "Acciones",
       align: "right",
       className: "w-px whitespace-nowrap",
-      cell: (m) => {
-        const u = usuarioDe(m);
-        const v = vendedorDe(m);
-        return (
-          // `stopPropagation`: la fila abre la ficha; estos botones no deben dispararla.
-          <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
-            {u ? (
-              <>
-                <IconBtn title="Editar cuenta" onClick={() => { setEditandoCuenta(u); setFormCuentaAbierto(true); }}>
-                  <Pencil className="h-3.5 w-3.5" />
-                </IconBtn>
-                <IconBtn title="Cambiar contraseña" onClick={() => setPasswordDe(u)}>
-                  <KeyRound className="h-3.5 w-3.5" />
-                </IconBtn>
-                <IconBtn
-                  title={u.activo ? "Desactivar acceso" : "Reactivar acceso"}
-                  onClick={() => toggleAcceso(m)}
-                  danger={u.activo}
-                >
-                  {u.activo ? <UserX className="h-3.5 w-3.5" /> : <UserCheck className="h-3.5 w-3.5" />}
-                </IconBtn>
-              </>
-            ) : v ? (
-              <button
-                type="button"
-                onClick={() => setCrearCuentaDe(v)}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary transition-colors hover:bg-primary/20"
-              >
-                <KeyRound className="h-3 w-3" /> Crear cuenta
-              </button>
-            ) : null}
-          </div>
-        );
-      },
+      cell: accionesDe,
     },
   ];
 
@@ -332,11 +378,31 @@ export function EquipoView() {
       </div>
 
       {/* Toolbar propia: el CTA nunca va dentro del PageHeader (regla del proyecto). */}
-      <div className="flex justify-end">
+      <div className="flex items-center justify-end gap-2">
+        <div className="flex h-10 items-center rounded-lg border border-border p-0.5">
+          <button
+            type="button"
+            onClick={() => cambiarVista("cards")}
+            title="Ver como tarjetas"
+            aria-pressed={vista === "cards"}
+            className={`flex h-9 w-9 items-center justify-center rounded-md transition-colors ${vista === "cards" ? "bg-primary/10 text-foreground" : "text-muted-foreground hover:bg-muted/20"}`}
+          >
+            <LayoutGrid className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            onClick={() => cambiarVista("tabla")}
+            title="Ver como tabla"
+            aria-pressed={vista === "tabla"}
+            className={`flex h-9 w-9 items-center justify-center rounded-md transition-colors ${vista === "tabla" ? "bg-primary/10 text-foreground" : "text-muted-foreground hover:bg-muted/20"}`}
+          >
+            <List className="h-4 w-4" />
+          </button>
+        </div>
         <button
           type="button"
           onClick={() => setFormIntegrante(true)}
-          className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
+          className="inline-flex h-10 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
         >
           <Plus className="h-4 w-4" /> Nuevo integrante
         </button>
@@ -349,7 +415,7 @@ export function EquipoView() {
             onChange={setSearch}
             // Mismo criterio que Créditos: limpia búsqueda Y filtros, así F3 siempre
             // devuelve la lista completa y no queda como que "no hace nada".
-            onF3={() => { setSearch(""); setRol(""); setTipo(""); }}
+            onF3={limpiarTodo}
             f3Hint="para limpiar la búsqueda y los filtros"
             size="md"
             placeholder="Buscar por nombre, email, usuario o zona…"
@@ -357,7 +423,7 @@ export function EquipoView() {
         </div>
         <FiltrosPanel
           activos={filtrosActivos}
-          onLimpiar={() => { setRol(""); setTipo(""); }}
+          onLimpiar={() => { setRol(""); setTipo(""); setRecientes(""); }}
           align="right"
           chips={
             <>
@@ -366,6 +432,9 @@ export function EquipoView() {
                 <FiltroChip onClear={() => setTipo("")}>
                   {tipo === "agente" ? "Con legajo" : tipo === "solo_cuenta" ? "Sin legajo" : "Sin cuenta"}
                 </FiltroChip>
+              )}
+              {recientes && (
+                <FiltroChip onClear={() => setRecientes("")}>Alta: {RECIENTE_LABEL[recientes]}</FiltroChip>
               )}
             </>
           }
@@ -386,23 +455,44 @@ export function EquipoView() {
               <option value="sin_acceso">Sin cuenta de acceso</option>
             </Select>
           </Field>
+          {/* "Recién cargados" de Agentes, acá como un filtro más del panel estándar
+              (en Agentes era una barra aparte, contra la convención del SaaS). */}
+          <Field label="Recién cargados">
+            <Select value={recientes} onChange={(e) => setRecientes(e.target.value as Reciente)}>
+              <option value="">Cualquier fecha de alta</option>
+              <option value="hoy">Hoy</option>
+              <option value="mes">Este mes</option>
+              <option value="anio">Este año</option>
+            </Select>
+          </Field>
         </FiltrosPanel>
       </div>
 
-      <DataTable<MiembroEquipo>
-        columns={columns}
-        rows={filtradas}
-        rowKey={(m) => m.key}
-        loading={isLoading}
-        error={error ? "No se pudo cargar el equipo" : undefined}
-        pageSize={12}
-        onRowClick={(m) => { if (m.vendedor_id) setAbierto(m.vendedor_id); }}
-        empty={{
-          icon: "busts-in-silhouette",
-          title: "Sin personas para mostrar",
-          hint: search || filtrosActivos ? "Probá quitando filtros o la búsqueda." : "Todavía no hay nadie cargado.",
-        }}
-      />
+      {vista === "cards" ? (
+        <EquipoCards
+          filas={filtradas}
+          loading={isLoading}
+          error={!!error}
+          filtrado={!!(search || filtrosActivos)}
+          onAbrir={(m) => { if (m.vendedor_id) setAbierto(m.vendedor_id); }}
+          acciones={accionesDe}
+        />
+      ) : (
+        <DataTable<MiembroEquipo>
+          columns={columns}
+          rows={filtradas}
+          rowKey={(m) => m.key}
+          loading={isLoading}
+          error={error ? "No se pudo cargar el equipo" : undefined}
+          pageSize={12}
+          onRowClick={(m) => { if (m.vendedor_id) setAbierto(m.vendedor_id); }}
+          empty={{
+            icon: "busts-in-silhouette",
+            title: "Sin personas para mostrar",
+            hint: search || filtrosActivos ? "Probá quitando filtros o la búsqueda." : "Todavía no hay nadie cargado.",
+          }}
+        />
+      )}
 
       {/* ── Diálogos: los MISMOS de Usuarios y Agentes, importados ─────────────
           No son copias. Cualquier arreglo en ellos vale para las tres pantallas, y
@@ -431,6 +521,150 @@ export function EquipoView() {
         vendedor={crearCuentaDe}
         onClose={(ok) => { setCrearCuentaDe(null); if (ok) refrescar(); }}
       />
+    </div>
+  );
+}
+
+/**
+ * Vista de TARJETAS del equipo. Misma información que la tabla, en una grilla que
+ * respira: sirve cuando se quiere mirar a las personas de a una (rendimiento y meta
+ * a la vista) en vez de comparar filas.
+ *
+ * Las acciones NO se redefinen acá: llegan por `acciones`, la misma función que usa
+ * la tabla.
+ */
+function EquipoCards({
+  filas, loading, error, filtrado, onAbrir, acciones,
+}: {
+  filas: MiembroEquipo[];
+  loading: boolean;
+  error: boolean;
+  /** true si hay búsqueda o filtros activos (cambia el texto del estado vacío). */
+  filtrado: boolean;
+  onAbrir: (m: MiembroEquipo) => void;
+  acciones: (m: MiembroEquipo) => React.ReactNode;
+}) {
+  if (error) {
+    return (
+      <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
+        No se pudo cargar el equipo
+      </div>
+    );
+  }
+  if (loading) {
+    return (
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {Array.from({ length: 6 }).map((_, i) => (
+          <div key={i} className="space-y-3 rounded-xl border border-border bg-card p-4">
+            <div className="flex items-center gap-3">
+              <Skeleton className="h-9 w-9 rounded-full" />
+              <div className="flex-1 space-y-1.5">
+                <Skeleton className="h-4 w-32" />
+                <Skeleton className="h-3 w-20" />
+              </div>
+            </div>
+            <Skeleton className="h-10 w-full" />
+            <Skeleton className="h-6 w-full" />
+          </div>
+        ))}
+      </div>
+    );
+  }
+  if (filas.length === 0) {
+    return (
+      <div className="flex flex-col items-center gap-4 rounded-xl border border-dashed border-border/60 p-12 text-center">
+        <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-border/70 bg-muted/20">
+          <Emoji name="busts-in-silhouette" className="h-8 w-8 opacity-80" />
+        </div>
+        <div className="space-y-1.5">
+          <p className="text-sm font-semibold text-muted-foreground">Sin personas para mostrar</p>
+          <p className="max-w-xs text-xs leading-relaxed text-muted-foreground/50">
+            {filtrado ? "Probá quitando filtros o la búsqueda." : "Todavía no hay nadie cargado."}
+          </p>
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      {filas.map((m) => {
+        // Solo quien tiene legajo tiene ficha que abrir; una cuenta suelta (ej. un
+        // administrativo) no lleva a ningún lado y no debe simular ser clickeable.
+        const abrible = !!m.vendedor_id;
+        return (
+          <div
+            key={m.key}
+            onClick={abrible ? () => onAbrir(m) : undefined}
+            {...(abrible
+              ? {
+                  role: "button" as const,
+                  tabIndex: 0,
+                  onKeyDown: (e: React.KeyboardEvent) => {
+                    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onAbrir(m); }
+                  },
+                }
+              : {})}
+            className={`space-y-3 rounded-xl border border-border bg-card p-4 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 ${
+              abrible ? "cursor-pointer hover:border-primary/40 active:bg-muted/20" : ""
+            } ${m.tiene_cuenta && !m.acceso_activo ? "opacity-60" : ""}`}
+          >
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex min-w-0 items-center gap-3">
+                <Avatar name={m.nombre} size="sm" status={m.acceso_activo ? "online" : "offline"} />
+                <div className="min-w-0">
+                  <p className="truncate font-semibold text-foreground">{m.nombre}</p>
+                  <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                    {m.tiene_cuenta ? (
+                      <>
+                        <StatusBadge variant="primary" label={m.role ? ROLE_LABEL[m.role] : "sin rol"} />
+                        {!m.acceso_activo && <StatusBadge variant="muted" label="Inactivo" />}
+                      </>
+                    ) : (
+                      <StatusBadge variant="warning" label="Sin cuenta" />
+                    )}
+                  </div>
+                </div>
+              </div>
+              {acciones(m)}
+            </div>
+
+            <p className="truncate text-xs text-muted-foreground">
+              {m.email ?? "sin email"}
+              {m.username && <span className="ml-1.5 font-mono">· {m.username}</span>}
+            </p>
+
+            {m.vendedor_id ? (
+              <>
+                <div className="grid grid-cols-3 gap-2 border-t border-border/60 pt-3 text-center">
+                  <div>
+                    <p className="text-[10px] uppercase text-muted-foreground">Créditos</p>
+                    <p className="font-mono text-sm">{m.resumen?.creditos_otorgados ?? 0}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] uppercase text-muted-foreground">Otorgado</p>
+                    <p className="font-mono text-sm">{formatMonto(m.resumen?.monto_vendido ?? 0, 0)}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] uppercase text-muted-foreground">Comisión</p>
+                    <p className="font-mono text-sm font-semibold text-warning">
+                      {formatMonto(m.resumen?.comision_total ?? 0, 0)}
+                    </p>
+                  </div>
+                </div>
+                <MetaBar
+                  vendido={m.resumen?.monto_vendido ?? 0}
+                  meta={m.meta_venta ?? 0}
+                  avance={m.resumen?.avance_meta ?? 0}
+                />
+              </>
+            ) : (
+              <p className="border-t border-border/60 pt-3 text-xs text-muted-foreground/60">
+                Sin legajo comercial — no otorga créditos.
+              </p>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
