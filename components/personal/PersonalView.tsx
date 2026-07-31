@@ -309,7 +309,7 @@ export function PersonalView() {
                           <td className="px-4 py-4 text-right font-mono tabular-nums font-semibold text-warning border-b border-border/60">${n0(r?.comision_total ?? 0)}</td>
                           {/* 3 · Meta / avance */}
                           <td className="px-4 py-4 border-b border-border/60">
-                            <MetaBar meta={v.meta_venta} avance={r?.avance_meta ?? 0} />
+                            <MetaBar meta={v.meta_venta} avance={r?.avance_meta ?? 0} periodo={v.meta_periodo} />
                           </td>
                           {/* 4 · Acciones */}
                           <td className="pl-4 pr-6 py-4 border-b border-border/60 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
@@ -388,7 +388,7 @@ function PersonalCard({ v, onOpen, onDelete, onCrearCuenta }: { v: Vendedor; onO
         <div><p className="text-[10px] text-muted-foreground uppercase">Vendido</p><p className="text-sm font-mono">${n0(r?.monto_vendido ?? 0)}</p></div>
         <div><p className="text-[10px] text-muted-foreground uppercase">Comisión $</p><p className="text-sm font-mono font-semibold text-warning">${n0(r?.comision_total ?? 0)}</p></div>
       </div>
-      <MetaBar meta={v.meta_venta} avance={r?.avance_meta ?? 0} />
+      <MetaBar meta={v.meta_venta} avance={r?.avance_meta ?? 0} periodo={v.meta_periodo} />
     </div>
   );
 }

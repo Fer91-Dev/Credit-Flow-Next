@@ -13,9 +13,13 @@ import { formatNumero } from "@/lib/utils";
  * (tabla y tarjetas de Equipo y de Agentes) el monto otorgado ya está en su propia
  * columna al lado, y repetirlo hacía leer dos veces el mismo número.
  *
+ * `periodo` NO es decorativo: el avance mide solo lo otorgado DENTRO del período de
+ * la meta, así que sin él un vendedor con cartera vieja muestra "Otorgado $650.000"
+ * al lado de "0%" y parece un error, cuando en realidad no vendió nada este mes.
+ *
  * `avance` viene del servidor (`resumen.avance_meta`) — no se recalcula en el cliente.
  */
-export function MetaBar({ meta, avance }: { meta: number; avance: number }) {
+export function MetaBar({ meta, avance, periodo }: { meta: number; avance: number; periodo?: string | null }) {
   if (!meta || meta <= 0) {
     return <span className="text-[11px] text-muted-foreground/50">Sin meta</span>;
   }
@@ -25,7 +29,10 @@ export function MetaBar({ meta, avance }: { meta: number; avance: number }) {
   return (
     <div className="space-y-1">
       <div className="flex items-center justify-between gap-2 text-[11px]">
-        <span className="truncate text-muted-foreground">Meta ${formatNumero(meta, 0)}</span>
+        <span className="truncate text-muted-foreground">
+          {periodo && <span className="font-mono text-muted-foreground/70">{periodo} · </span>}
+          Meta ${formatNumero(meta, 0)}
+        </span>
         <span className={`font-mono font-semibold ${avance >= 100 ? "text-success" : "text-foreground"}`}>
           {avance}%
         </span>

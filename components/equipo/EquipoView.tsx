@@ -308,7 +308,7 @@ export function EquipoView() {
       className: "hidden xl:table-cell w-44",
       cell: (m) =>
         m.vendedor_id ? (
-          <MetaBar meta={m.meta_venta ?? 0} avance={m.resumen?.avance_meta ?? 0} />
+          <MetaBar meta={m.meta_venta ?? 0} avance={m.resumen?.avance_meta ?? 0} periodo={m.meta_periodo} />
         ) : (
           <span className="text-xs text-muted-foreground/60">—</span>
         ),
@@ -654,7 +654,7 @@ function EquipoCards({
                     </p>
                   </div>
                 </div>
-                <MetaBar meta={m.meta_venta ?? 0} avance={m.resumen?.avance_meta ?? 0} />
+                <MetaBar meta={m.meta_venta ?? 0} avance={m.resumen?.avance_meta ?? 0} periodo={m.meta_periodo} />
               </>
             ) : (
               <p className="border-t border-border/60 pt-3 text-xs text-muted-foreground/60">

@@ -25,7 +25,11 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
 
   const [creditos, pagos, metaVigente] = await Promise.all([
     prisma.creditos.findMany({
-      where: { ...withTenant(tenantId), vendedor_id: vendedorId, estado: { not: "anulado" } },
+      // `es_refinanciacion: false` — igual que en la ficha y en las listas: una
+      // refinanciación no es plata nueva, no genera comisión ni cuenta para la meta.
+      // Faltaba acá, así que el vendedor veía en su Home un otorgado más alto que el
+      // que el admin veía de él.
+      where: { ...withTenant(tenantId), vendedor_id: vendedorId, estado: { not: "anulado" }, es_refinanciacion: false },
       select: { created_at: true, monto_original: true, tipo_credito: true },
     }),
     prisma.pagos.findMany({
@@ -40,23 +44,28 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
 
   const config = normalizarComisionConfig(vendedor.comision_config, vendedor.comision_pct);
 
-  // Cumplimiento de la meta vigente dentro de su rango de fechas. De acá sale si
-  // el bonus por meta aplica (cumplimiento del PERÍODO, no ventas históricas).
+  // Cumplimiento de la meta vigente dentro de su rango de fechas (no ventas históricas).
   let meta_vigente = null;
-  let metaCumplida = false;
   if (metaVigente) {
-    const cumplimiento = cumplimientoMeta(metaVigente, creditos, pagos);
-    metaCumplida = metaVigente.meta_monto > 0 && cumplimiento.monto >= metaVigente.meta_monto;
     meta_vigente = {
       periodo: metaVigente.periodo,
       meta_monto: metaVigente.meta_monto,
       meta_cantidad: metaVigente.meta_cantidad,
       meta_cobranza: metaVigente.meta_cobranza,
-      cumplimiento,
+      cumplimiento: cumplimientoMeta(metaVigente, creditos, pagos),
     };
   }
 
-  const resumen = resumirVendedor(creditos, vendedor.comision_pct, vendedor.meta_venta, config, metaCumplida);
+  // El bonus por meta lo deriva `resumirVendedor` del mismo período — ya no lo decide
+  // cada endpoint por su cuenta (era la causa de que la comisión de acá no coincidiera
+  // con la que el admin veía en la lista).
+  const resumen = resumirVendedor(
+    creditos,
+    vendedor.comision_pct,
+    vendedor.meta_venta,
+    config,
+    metaVigente ? { desde: metaVigente.fecha_desde, hasta: metaVigente.fecha_hasta } : null,
+  );
 
   return successResponse({
     nombre: vendedor.nombre,

@@ -34,16 +34,26 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   // genera comisión ni cuenta para la meta (no inflar el rendimiento del vendedor).
   const creditos = await prisma.creditos.findMany({
     where: { ...withTenant(tenantId), vendedor_id: { not: null }, estado: { not: "anulado" }, es_refinanciacion: false },
-    select: { vendedor_id: true, monto_original: true, tipo_credito: true },
+    select: { vendedor_id: true, monto_original: true, tipo_credito: true, created_at: true },
   });
 
-  const porVendedor = new Map<string, { monto_original: number; tipo_credito: string }[]>();
+  const porVendedor = new Map<string, { monto_original: number; tipo_credito: string; created_at: Date }[]>();
   for (const c of creditos) {
     if (!c.vendedor_id) continue;
     const arr = porVendedor.get(c.vendedor_id) ?? [];
-    arr.push({ monto_original: c.monto_original, tipo_credito: c.tipo_credito });
+    arr.push({ monto_original: c.monto_original, tipo_credito: c.tipo_credito, created_at: c.created_at });
     porVendedor.set(c.vendedor_id, arr);
   }
+
+  // Meta vigente de cada agente: el avance se mide DENTRO de su período, no contra
+  // las ventas de toda la historia (si no, una meta nueva nace cumplida).
+  const metasVigentes = await prisma.metas_vendedor.findMany({
+    where: { ...withTenant(tenantId), estado: "vigente" },
+    select: { vendedor_id: true, periodo: true, fecha_desde: true, fecha_hasta: true },
+    orderBy: { fecha_desde: "desc" },
+  });
+  const metaPorVendedor = new Map<string, (typeof metasVigentes)[number]>();
+  for (const m of metasVigentes) if (!metaPorVendedor.has(m.vendedor_id)) metaPorVendedor.set(m.vendedor_id, m);
 
   // Qué agentes ya tienen una cuenta de login (profile) vinculada — para marcar en la UI
   // los que quedaron "sin acceso" y ofrecer crearles la cuenta.
@@ -53,16 +63,21 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   });
   const conCuenta = new Set(cuentas.map((c) => c.vendedor_id));
 
-  const enriquecidos = vendedores.map((v) => ({
-    ...v,
-    tiene_cuenta: conCuenta.has(v.id),
-    resumen: resumirVendedor(
-      porVendedor.get(v.id) ?? [],
-      v.comision_pct,
-      v.meta_venta,
-      normalizarComisionConfig(v.comision_config, v.comision_pct),
-    ),
-  }));
+  const enriquecidos = vendedores.map((v) => {
+    const mv = metaPorVendedor.get(v.id) ?? null;
+    return {
+      ...v,
+      tiene_cuenta: conCuenta.has(v.id),
+      meta_periodo: mv?.periodo ?? null,
+      resumen: resumirVendedor(
+        porVendedor.get(v.id) ?? [],
+        v.comision_pct,
+        v.meta_venta,
+        normalizarComisionConfig(v.comision_config, v.comision_pct),
+        mv ? { desde: mv.fecha_desde, hasta: mv.fecha_hasta } : null,
+      ),
+    };
+  });
 
   return successResponse({ vendedores: enriquecidos, total: enriquecidos.length });
 });

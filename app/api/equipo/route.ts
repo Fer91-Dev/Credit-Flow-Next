@@ -28,7 +28,7 @@ import type { NextRequest } from "next/server";
 export const GET = withErrorHandler(async (req: NextRequest) => {
   const { tenantId } = await requireRole(["admin"], req);
 
-  const [profiles, vendedores, creditos] = await Promise.all([
+  const [profiles, vendedores, creditos, metasVigentes] = await Promise.all([
     prisma.profiles.findMany({
       // `es_owner: false` — el dueño del SaaS vive en el tenant de plataforma y no
       // pertenece a la financiera; el filtro por tenant ya lo aísla, esto es defensa
@@ -48,19 +48,31 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     // con el MISMO criterio que la ficha del agente, para que los números coincidan.
     prisma.creditos.findMany({
       where: { ...withTenant(tenantId), estado: { not: "anulado" }, es_refinanciacion: false },
-      select: { vendedor_id: true, monto_original: true, tipo_credito: true },
+      select: { vendedor_id: true, monto_original: true, tipo_credito: true, created_at: true },
+    }),
+    // La meta vigente de cada legajo. Sin su rango de fechas el avance se calcularía
+    // contra las ventas de toda la historia, y una meta del mes arrancaría "cumplida".
+    prisma.metas_vendedor.findMany({
+      where: { ...withTenant(tenantId), estado: "vigente" },
+      select: { vendedor_id: true, periodo: true, fecha_desde: true, fecha_hasta: true },
+      orderBy: { fecha_desde: "desc" },
     }),
   ]);
 
   if (esTenantPlataforma(tenantId)) return successResponse([]);
 
-  const creditosPorVendedor = new Map<string, { monto_original: number; tipo_credito: string }[]>();
+  const creditosPorVendedor = new Map<string, { monto_original: number; tipo_credito: string; created_at: Date }[]>();
   for (const c of creditos) {
     if (!c.vendedor_id) continue;
     const arr = creditosPorVendedor.get(c.vendedor_id) ?? [];
-    arr.push({ monto_original: c.monto_original, tipo_credito: c.tipo_credito });
+    arr.push({ monto_original: c.monto_original, tipo_credito: c.tipo_credito, created_at: c.created_at });
     creditosPorVendedor.set(c.vendedor_id, arr);
   }
+
+  // Una sola vigente por vendedor; si hubiera más, gana la más reciente (el orderBy
+  // de arriba las trae ordenadas y el primer set es el que queda).
+  const metaPorVendedor = new Map<string, (typeof metasVigentes)[number]>();
+  for (const m of metasVigentes) if (!metaPorVendedor.has(m.vendedor_id)) metaPorVendedor.set(m.vendedor_id, m);
 
   const perfilPorVendedor = new Map(
     profiles.filter((p) => p.vendedor_id).map((p) => [p.vendedor_id as string, p])
@@ -71,6 +83,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   // 1) Una fila por legajo (con su cuenta vinculada, si tiene).
   for (const v of vendedores) {
     const p = perfilPorVendedor.get(v.id) ?? null;
+    const mv = metaPorVendedor.get(v.id) ?? null;
     filas.push({
       key: `v:${v.id}`,
       // El nombre a mostrar sale de la CUENTA si existe (es el que la persona edita en
@@ -89,12 +102,16 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
       zona: v.zona,
       comision_pct: v.comision_pct,
       meta_venta: v.meta_venta,
+      // El período de la meta viaja a la UI: sin él, ver "Otorgado $650.000" al lado
+      // de "Meta 0%" parece un error en vez de "todavía no vendió nada este mes".
+      meta_periodo: mv?.periodo ?? null,
       limite_aprobacion: v.limite_aprobacion,
       resumen: resumirVendedor(
         creditosPorVendedor.get(v.id) ?? [],
         v.comision_pct,
         v.meta_venta,
         normalizarComisionConfig(v.comision_config, v.comision_pct),
+        mv ? { desde: mv.fecha_desde, hasta: mv.fecha_hasta } : null,
       ),
       created_at: v.created_at,
     });
@@ -117,6 +134,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
       zona: null,
       comision_pct: null,
       meta_venta: null,
+      meta_periodo: null,
       limite_aprobacion: null,
       resumen: null,
       created_at: p.created_at,

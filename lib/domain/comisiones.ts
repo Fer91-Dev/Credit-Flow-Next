@@ -155,37 +155,66 @@ export function avanceMeta(vendido: number, meta: number): number {
 
 export interface ResumenVendedor {
   creditos_otorgados: number;
+  /** Monto otorgado ACUMULADO (toda la historia del vendedor). */
   monto_vendido: number;
   comision_total: number;
+  /** % de la meta vigente cubierto por lo otorgado DENTRO de su período. */
   avance_meta: number;
+  /** Monto que efectivamente cuenta para la meta (lo otorgado dentro del período). */
+  monto_meta: number;
 }
+
+/** Rango de la meta vigente. `hasta` es inclusive (el día entero cuenta). */
+export interface PeriodoMeta { desde: Date; hasta: Date }
 
 /**
  * Agrega los créditos de un vendedor en un resumen de ventas y comisión.
- * `comisionPct` y `meta` son los valores actuales del vendedor. Si se pasa
- * `config` (comisión avanzada), la comisión se calcula con ella; si no, usa el
- * % plano.
  *
- * `metaCumplida` decide si se suma el bonus por meta. Es responsabilidad del
- * llamador determinarlo contra la meta del PERÍODO vigente (no contra las ventas
- * históricas). Por defecto `false`: el bonus solo se acredita cuando se verifica
- * el cumplimiento del período.
+ * **`periodoMeta` es obligatorio a propósito.** Una meta es un objetivo DE UN
+ * PERÍODO: medir el avance contra las ventas históricas hace que alguien con
+ * cartera vieja aparezca cumpliendo una meta del mes que arranca en cero. Ese
+ * era un bug real (se veía 33% en la lista y 0% en la pestaña Metas de la misma
+ * persona). Pedirlo por firma obliga a cada endpoint nuevo a resolver el período
+ * en vez de heredar el error por descuido.
+ *
+ * `null` = el vendedor no tiene meta vigente → no hay avance que calcular.
+ *
+ * El bonus por meta cumplida se deriva ACÁ (no lo decide el llamador): antes cada
+ * endpoint lo pasaba por su cuenta y tres de los cuatro lo dejaban en `false`, así
+ * que la comisión de la lista no coincidía con la que el vendedor veía en su Home.
  */
 export function resumirVendedor(
-  creditos: { monto_original: number; tipo_credito?: string | null }[],
+  creditos: { monto_original: number; tipo_credito?: string | null; created_at: Date }[],
   comisionPct: number,
   meta: number,
-  config?: ComisionConfig | null,
-  metaCumplida = false
+  config: ComisionConfig | null,
+  periodoMeta: PeriodoMeta | null,
 ): ResumenVendedor {
   const monto_vendido = round2(creditos.reduce((s, c) => s + (c.monto_original || 0), 0));
+
+  // Solo lo otorgado dentro del período cuenta para la meta. `hasta` es inclusive:
+  // se compara contra el día siguiente a las 00:00 (mismo criterio que cumplimientoMeta).
+  let monto_meta = 0;
+  if (periodoMeta) {
+    const hastaExcl = new Date(periodoMeta.hasta);
+    hastaExcl.setDate(hastaExcl.getDate() + 1);
+    monto_meta = round2(
+      creditos
+        .filter((c) => c.created_at >= periodoMeta.desde && c.created_at < hastaExcl)
+        .reduce((s, c) => s + (c.monto_original || 0), 0),
+    );
+  }
+
+  const metaCumplida = meta > 0 && monto_meta >= meta;
   const comision_total = config
     ? calcularComisionTotal(creditos, { ...config, base_pct: config.base_pct ?? comisionPct }, { metaCumplida })
     : comisionDeVenta(monto_vendido, comisionPct);
+
   return {
     creditos_otorgados: creditos.length,
     monto_vendido,
     comision_total,
-    avance_meta: avanceMeta(monto_vendido, meta),
+    avance_meta: avanceMeta(monto_meta, meta),
+    monto_meta,
   };
 }

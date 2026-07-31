@@ -38,14 +38,24 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
     orderBy: { created_at: "desc" },
   });
 
+  // El avance de meta del encabezado se mide DENTRO del período de la meta vigente.
+  // Antes usaba el otorgado histórico: la ficha mostraba 33% arriba y 0% en la
+  // pestaña Metas, el mismo dato contradiciéndose en la misma pantalla.
+  const metaVigente = await prisma.metas_vendedor.findFirst({
+    where: { ...withTenant(tenantId), vendedor_id: id, estado: "vigente" },
+    orderBy: { fecha_desde: "desc" },
+    select: { periodo: true, fecha_desde: true, fecha_hasta: true },
+  });
+
   const resumen = resumirVendedor(
-    creditos.map((c) => ({ monto_original: c.monto_original, tipo_credito: c.tipo_credito })),
+    creditos.map((c) => ({ monto_original: c.monto_original, tipo_credito: c.tipo_credito, created_at: c.created_at })),
     vendedor.comision_pct,
     vendedor.meta_venta,
     normalizarComisionConfig(vendedor.comision_config, vendedor.comision_pct),
+    metaVigente ? { desde: metaVigente.fecha_desde, hasta: metaVigente.fecha_hasta } : null,
   );
 
-  return successResponse({ ...vendedor, resumen, creditos });
+  return successResponse({ ...vendedor, resumen, creditos, meta_periodo: metaVigente?.periodo ?? null });
 });
 
 /**

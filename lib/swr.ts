@@ -202,9 +202,13 @@ export interface RiesgoSnapshot {
 /** Resumen de ventas/comisión de un vendedor (derivado en el servidor). */
 export interface ResumenVendedor {
   creditos_otorgados: number;
+  /** Monto otorgado ACUMULADO (toda la historia). */
   monto_vendido: number;
   comision_total: number;
+  /** % de la meta vigente cubierto por lo otorgado DENTRO de su período. */
   avance_meta: number;
+  /** Monto que cuenta para la meta (lo otorgado dentro del período). */
+  monto_meta: number;
 }
 
 /** Comisión avanzada por vendedor (Fase 2). null = % plano (comision_pct). */
@@ -234,6 +238,8 @@ export interface Vendedor {
   limite_aprobacion?: number | null;
   comision_config?: ComisionConfig | null;
   resumen?: ResumenVendedor;
+  /** Período de la meta vigente (ej. "2026-08"). null = sin meta vigente. */
+  meta_periodo?: string | null;
   /** true si el agente ya tiene una cuenta de login (profile) vinculada. */
   tiene_cuenta?: boolean;
 }
@@ -274,6 +280,8 @@ export interface MiembroEquipo {
   zona: string | null;
   comision_pct: number | null;
   meta_venta: number | null;
+  /** Período de la meta vigente (ej. "2026-08"). null = sin meta vigente. */
+  meta_periodo: string | null;
   limite_aprobacion: number | null;
   resumen: ResumenVendedor | null;
   created_at: string;
