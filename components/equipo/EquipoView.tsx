@@ -175,8 +175,10 @@ export function EquipoView() {
           <BuscadorF3
             value={search}
             onChange={setSearch}
-            onF3={() => setSearch("")}
-            f3Hint="para limpiar la búsqueda y ver a todo el equipo"
+            // Mismo criterio que Créditos: limpia búsqueda Y filtros, así F3 siempre
+            // devuelve la lista completa y no queda como que "no hace nada".
+            onF3={() => { setSearch(""); setRol(""); setTipo(""); }}
+            f3Hint="para limpiar la búsqueda y los filtros"
             size="md"
             placeholder="Buscar por nombre, email, usuario o zona…"
           />

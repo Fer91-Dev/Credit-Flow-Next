@@ -235,8 +235,11 @@ export function CreditosTable({ role }: { role: Role }) {
             value={search}
             onChange={setSearch}
             placeholder="Buscar por cliente o N° (CRD-…)…"
-            onF3={() => setSearch("")}
-            f3Hint="para limpiar el filtro y ver todos"
+            // F3 limpia la búsqueda Y los filtros: el hint promete "ver todos", y
+            // limpiar solo el texto no cumplía si lo puesto era un filtro de estado o
+            // mora (y con la búsqueda vacía parecía que la tecla no hacía nada).
+            onF3={() => { setSearch(""); setEstado("all"); setTipo("all"); setMora("all"); }}
+            f3Hint="para limpiar la búsqueda y los filtros"
             className="w-full sm:max-w-sm"
           />
           <FiltrosPanel
