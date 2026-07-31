@@ -349,7 +349,8 @@ export function UsuarioForm({
   const [usernameOk, setUsernameOk] = useState(false);
   const [password, setPassword] = useState("");
   const [passwordConfirm, setPasswordConfirm] = useState("");
-  const [fullName, setFullName] = useState("");
+  const [nombre, setNombre] = useState("");
+  const [apellido, setApellido] = useState("");
   const [role, setRole] = useState<RolUsuario>("vendedor");
   const [vendedorId, setVendedorId] = useState("");
   const [activo, setActivo] = useState(true);
@@ -366,9 +367,16 @@ export function UsuarioForm({
     setUsernameOk(false);
     setPassword("");
     setPasswordConfirm("");
-    setFullName(usuario?.full_name ?? "");
     setRole((usuario?.role as RolUsuario) ?? "vendedor");
     setVendedorId(usuario?.vendedor_id ?? "");
+    // `full_name` está guardado compuesto: se corta en el PRIMER espacio (el resto es
+    // apellido, para soportar apellidos compuestos: "Juan De la Fuente").
+    {
+      const completo = (usuario?.full_name ?? "").trim();
+      const corte = completo.indexOf(" ");
+      setNombre(corte === -1 ? completo : completo.slice(0, corte));
+      setApellido(corte === -1 ? "" : completo.slice(corte + 1));
+    }
     setActivo(usuario?.activo ?? true);
     setError(null);
   }
@@ -410,12 +418,12 @@ export function UsuarioForm({
         ? await fetch(`/api/usuarios/${usuario!.id}`, {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ email: email.trim(), full_name: fullName, role, activo, vendedor_id: vinc, username: usuarioAlias }),
+            body: JSON.stringify({ email: email.trim(), nombre, apellido, role, activo, vendedor_id: vinc, username: usuarioAlias }),
           })
         : await fetch("/api/usuarios", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ email, password, full_name: fullName, role, vendedor_id: vinc, username: usuarioAlias }),
+            body: JSON.stringify({ email, password, nombre, apellido, role, vendedor_id: vinc, username: usuarioAlias }),
           });
       const json = await res.json();
       if (json.ok) {
@@ -466,9 +474,17 @@ export function UsuarioForm({
             />
           )}
 
-          <Field label="Nombre">
-            <Input value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="Nombre y apellido (opcional)" />
-          </Field>
+          {/* Separados, igual que en Clientes, Mi perfil y el alta de agente. En un
+              solo input, la persona despues veia todo junto en el campo "Nombre" de su
+              perfil. `full_name` lo recalcula el server como el compuesto. */}
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <Field label="Nombre">
+              <Input value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Ej: Juan" />
+            </Field>
+            <Field label="Apellido">
+              <Input value={apellido} onChange={(e) => setApellido(e.target.value)} placeholder="Ej: Pérez" />
+            </Field>
+          </div>
 
           <UsernameField value={username} onChange={setUsername} excludeId={usuario?.id} onValidChange={setUsernameOk} />
 
@@ -495,9 +511,9 @@ export function UsuarioForm({
             );
             return (
               <Field
-                label="Vincular a ficha de agente (Personal)"
+                label="Vincular a su legajo de agente"
                 required
-                hint="obligatorio: es su ficha de agente (comisiones, su caja propia, ve solo SUS créditos)"
+                hint="Un vendedor necesita legajo: es donde se enganchan sus créditos, su comisión, su meta y su caja"
               >
                 <Select value={vendedorId} onChange={(e) => setVendedorId(e.target.value)} required>
                   <option value="">— elegí un agente —</option>

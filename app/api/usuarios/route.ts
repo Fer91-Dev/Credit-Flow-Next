@@ -55,7 +55,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
  * Da de alta un usuario real en Supabase Auth (contraseña temporal) y lo vincula
  * a la financiera del admin con un rol. Solo admin.
  *
- * Body: { email, password, full_name?, role, vendedor_id? }
+ * Body: { email, password, nombre?, apellido?, role, vendedor_id? }
  *
  * Seguridad: el tenant_id se FUERZA al del admin (ctx.tenantId) — nunca del body.
  * Un admin solo puede crear usuarios dentro de su propia financiera.
@@ -66,7 +66,8 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
   let body: {
     email?: string;
     password?: string;
-    full_name?: string;
+    nombre?: string;
+    apellido?: string;
     role?: string;
     vendedor_id?: string | null;
     username?: string | null;
@@ -132,11 +133,17 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
 
   // 1) Crear el usuario real en Supabase Auth (email confirmado, sin mail).
   const admin = createAdminClient();
+  // Nombre y apellido llegan SEPARADOS (los pide el form). `full_name` es DERIVADO:
+  // lo leen ~42 lugares del sistema, así que se mantiene como el compuesto.
+  const nombrePila = body.nombre?.trim() || null;
+  const apellidoUsr = body.apellido?.trim() || null;
+  const nombreCompuesto = [nombrePila, apellidoUsr].filter(Boolean).join(" ") || null;
+
   const { data: created, error: authErr } = await admin.auth.admin.createUser({
     email,
     password,
     email_confirm: true,
-    user_metadata: { full_name: body.full_name?.trim() || null },
+    user_metadata: { full_name: nombreCompuesto },
   });
 
   if (authErr || !created?.user) {
@@ -157,7 +164,9 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
       id: created.user.id,
       email,
       username,
-      full_name: body.full_name?.trim() || null,
+      full_name: nombreCompuesto,
+      nombre: nombrePila,
+      apellido: apellidoUsr,
       tenant_id: tenantId,
       role,
       activo: true,
@@ -166,7 +175,9 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     update: {
       email,
       username,
-      full_name: body.full_name?.trim() || null,
+      full_name: nombreCompuesto,
+      nombre: nombrePila,
+      apellido: apellidoUsr,
       tenant_id: tenantId,
       role,
       activo: true,

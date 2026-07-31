@@ -36,7 +36,7 @@ export const PATCH = withErrorHandler(async (req: NextRequest, { params }: Route
     return errorResponse("No podés modificar la cuenta del dueño de la plataforma", "OWNER_PROTEGIDO", 403);
   }
 
-  let body: { role?: string; activo?: boolean; full_name?: string; vendedor_id?: string | null; password?: string; username?: string | null; email?: string };
+  let body: { role?: string; activo?: boolean; nombre?: string; apellido?: string; vendedor_id?: string | null; password?: string; username?: string | null; email?: string };
   try {
     body = await req.json();
   } catch {
@@ -51,7 +51,15 @@ export const PATCH = withErrorHandler(async (req: NextRequest, { params }: Route
 
   const data: Record<string, unknown> = {};
 
-  if ("full_name" in body) data.full_name = body.full_name?.trim() || null;
+  // Nombre y apellido separados; `full_name` se RECALCULA como el compuesto (lo leen
+  // ~42 lugares del sistema, así que nunca se recibe del cliente).
+  if ("nombre" in body || "apellido" in body) {
+    const n = body.nombre?.trim() || null;
+    const a = body.apellido?.trim() || null;
+    data.nombre = n;
+    data.apellido = a;
+    data.full_name = [n, a].filter(Boolean).join(" ") || null;
+  }
 
   // Nombre de usuario (alias de login): asignar, cambiar o quitar. Único GLOBAL.
   if ("username" in body) {
