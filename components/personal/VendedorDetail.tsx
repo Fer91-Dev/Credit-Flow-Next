@@ -805,18 +805,22 @@ function CajaOperacionTab({ vendedor, guardar }: { vendedor: VendedorDetalle; gu
       {/* Límite de aprobación */}
       <form onSubmit={guardarLimite} className="rounded-xl border border-border bg-muted/10 p-4">
         <p className="mb-3 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Límite de aprobación</p>
+        {/* El `hint` va FUERA del Field, debajo de toda la fila: dentro, `Field` lo
+            renderiza bajo el input, y con `items-end` el botón se alineaba al borde
+            inferior del hint en vez del input — por eso quedaba caído. */}
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
           {/* Acotado: es un input de monto, no gana nada con 900px de ancho. */}
           <div className="w-full sm:max-w-xs">
-            <Field label="Monto máx. sin autorización ($)" hint="Vacío = sin límite">
+            <Field label="Monto máx. sin autorización ($)">
               <Input type="text" inputMode="decimal" placeholder="Ej: 1.000.000,00" value={limite}
                 onChange={(e) => setLimite(maskMontoInput(e.target.value))} className="text-right font-mono tabular-nums" />
             </Field>
           </div>
-          <button type="submit" disabled={savingLimite} className="whitespace-nowrap rounded-lg bg-primary px-5 py-2 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50">
+          <button type="submit" disabled={savingLimite} className="h-10 whitespace-nowrap rounded-lg bg-primary px-5 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50">
             {savingLimite ? "Guardando…" : "Guardar límite"}
           </button>
         </div>
+        <p className="mt-2 text-xs text-muted-foreground/60">Vacío = sin límite de otorgamiento.</p>
       </form>
 
       {/* Caja personal — card propia, para que sus acciones no se peguen a las del bloque de arriba */}
