@@ -9,9 +9,13 @@ import { formatNumero } from "@/lib/utils";
  * dos tablas tienen que mostrar exactamente el mismo cálculo y los mismos colores.
  * Duplicarla habría hecho que un ajuste en una no valiera para la otra.
  *
+ * Muestra la META y el porcentaje, NO lo vendido: en las cuatro vistas que la usan
+ * (tabla y tarjetas de Equipo y de Agentes) el monto otorgado ya está en su propia
+ * columna al lado, y repetirlo hacía leer dos veces el mismo número.
+ *
  * `avance` viene del servidor (`resumen.avance_meta`) — no se recalcula en el cliente.
  */
-export function MetaBar({ vendido, meta, avance }: { vendido: number; meta: number; avance: number }) {
+export function MetaBar({ meta, avance }: { meta: number; avance: number }) {
   if (!meta || meta <= 0) {
     return <span className="text-[11px] text-muted-foreground/50">Sin meta</span>;
   }
@@ -21,9 +25,7 @@ export function MetaBar({ vendido, meta, avance }: { vendido: number; meta: numb
   return (
     <div className="space-y-1">
       <div className="flex items-center justify-between gap-2 text-[11px]">
-        <span className="truncate text-muted-foreground">
-          ${formatNumero(vendido, 0)} / ${formatNumero(meta, 0)}
-        </span>
+        <span className="truncate text-muted-foreground">Meta ${formatNumero(meta, 0)}</span>
         <span className={`font-mono font-semibold ${avance >= 100 ? "text-success" : "text-foreground"}`}>
           {avance}%
         </span>

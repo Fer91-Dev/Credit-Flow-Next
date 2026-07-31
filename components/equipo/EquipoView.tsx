@@ -288,10 +288,17 @@ export function EquipoView() {
       cell: (m) => (m.resumen ? formatMonto(m.resumen.monto_vendido) : "—"),
     },
     {
+      // El monto a liquidar, no el %. El porcentaje es un parámetro de configuración
+      // que ya se ve en la ficha; lo que se mira todos los meses es la plata.
       header: "Comisión",
       mono: true,
-      className: "hidden 2xl:table-cell",
-      cell: (m) => (m.comision_pct != null ? `${m.comision_pct}%` : "—"),
+      className: "hidden lg:table-cell",
+      cell: (m) =>
+        m.resumen ? (
+          <span className="font-semibold text-warning">{formatMonto(m.resumen.comision_total, 0)}</span>
+        ) : (
+          "—"
+        ),
     },
     {
       // Misma barra que la tabla de Agentes (componente compartido): sin esto, al
@@ -301,11 +308,7 @@ export function EquipoView() {
       className: "hidden xl:table-cell w-44",
       cell: (m) =>
         m.vendedor_id ? (
-          <MetaBar
-            vendido={m.resumen?.monto_vendido ?? 0}
-            meta={m.meta_venta ?? 0}
-            avance={m.resumen?.avance_meta ?? 0}
-          />
+          <MetaBar meta={m.meta_venta ?? 0} avance={m.resumen?.avance_meta ?? 0} />
         ) : (
           <span className="text-xs text-muted-foreground/60">—</span>
         ),
@@ -651,11 +654,7 @@ function EquipoCards({
                     </p>
                   </div>
                 </div>
-                <MetaBar
-                  vendido={m.resumen?.monto_vendido ?? 0}
-                  meta={m.meta_venta ?? 0}
-                  avance={m.resumen?.avance_meta ?? 0}
-                />
+                <MetaBar meta={m.meta_venta ?? 0} avance={m.resumen?.avance_meta ?? 0} />
               </>
             ) : (
               <p className="border-t border-border/60 pt-3 text-xs text-muted-foreground/60">
