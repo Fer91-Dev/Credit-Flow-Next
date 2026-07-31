@@ -252,6 +252,33 @@ export interface Usuario {
   created_at: string;
 }
 
+/**
+ * Una PERSONA del equipo, uniendo sus dos caras: la cuenta de acceso (`profiles`) y
+ * el legajo comercial (`vendedores`). Los tres casos posibles se distinguen por
+ * `tiene_cuenta` y `vendedor_id`: cuenta+legajo, cuenta sin legajo (admin que no
+ * vende) y legajo sin cuenta (agentes viejos, previos a exigir cuenta en el alta).
+ */
+export interface MiembroEquipo {
+  key: string;
+  nombre: string;
+  email: string | null;
+  username: string | null;
+  // Acceso (profiles)
+  profile_id: string | null;
+  role: RolUsuario | null;
+  acceso_activo: boolean;
+  tiene_cuenta: boolean;
+  // Legajo comercial (vendedores)
+  vendedor_id: string | null;
+  legajo_activo: boolean | null;
+  zona: string | null;
+  comision_pct: number | null;
+  meta_venta: number | null;
+  limite_aprobacion: number | null;
+  resumen: ResumenVendedor | null;
+  created_at: string;
+}
+
 /** Meta de período de un vendedor con su cumplimiento derivado (Fase 3). */
 export interface MetaVendedor {
   id: string;
@@ -837,6 +864,7 @@ export const KEYS = {
   proveedores:   "/api/proveedores",
   productos:     "/api/productos",
   usuarios:      "/api/usuarios",
+  equipo:        "/api/equipo",
   zonas:         "/api/clientes/zonas",
   financiera:    "/api/financiera",
 } as const;
@@ -1352,4 +1380,10 @@ export function useCampana(id: string | null) {
     id ? `/api/cobranza/campanas/${id}` : null,
   );
   return { campana: data, error, isLoading, mutate };
+}
+
+/** Equipo unificado (cuentas + legajos). Solo admin. */
+export function useEquipo() {
+  const { data, error, isLoading, mutate } = useSWR<MiembroEquipo[]>(KEYS.equipo);
+  return { equipo: data ?? [], error, isLoading, mutate };
 }

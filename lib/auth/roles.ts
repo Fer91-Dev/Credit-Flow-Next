@@ -23,6 +23,8 @@ export type { Role };
  */
 const ACCESO_RUTAS: { prefix: string; roles: Role[] }[] = [
   { prefix: "/usuarios", roles: ["admin"] },
+  // Vista unificada Usuarios + Agentes (etapa 1: convive con las dos).
+  { prefix: "/equipo", roles: ["admin"] },
   { prefix: "/configuracion", roles: ["admin"] },
   { prefix: "/facturacion", roles: ["admin"] },
   { prefix: "/reportes", roles: ["admin"] },

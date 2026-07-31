@@ -402,6 +402,41 @@ const HELP: Record<string, HelpDoc> = {
   },
 
   // ─────────────────────────────────────────── Usuarios ───
+  "/equipo": {
+    titulo: "Equipo",
+    resumen:
+      "Todas las personas de la financiera en una sola lista, con sus dos caras: la cuenta con la que entran al sistema y su legajo comercial (comisiones, metas, caja). Unifica lo que antes estaba separado en Usuarios y Agentes.",
+    bloques: [
+      {
+        kind: "definiciones",
+        titulo: "Las dos caras de una persona",
+        items: [
+          { term: "Cuenta de acceso", desc: "Si puede entrar al sistema, con qué rol y si está activa. Es la llave." },
+          { term: "Legajo comercial", desc: "A quién se le atribuye cada crédito, su comisión, su meta y su caja. Es el historial." },
+          { term: "Por qué van separados", desc: "Si un empleado se va y le cerrás el acceso, sus créditos y comisiones tienen que seguir existiendo. Por eso el legajo sobrevive a la cuenta." },
+        ],
+      },
+      {
+        kind: "definiciones",
+        titulo: "Los tres casos que vas a ver",
+        items: [
+          { term: "Cuenta + legajo", desc: "Lo normal en un vendedor: entra al sistema y otorga créditos." },
+          { term: "Solo cuenta", desc: "Alguien que entra pero no vende — por ejemplo, el administrador de la financiera." },
+          { term: "Sin cuenta", desc: "Un legajo sin acceso. Son agentes viejos, de antes de que el alta exigiera crear la cuenta." },
+        ],
+      },
+      {
+        kind: "tips",
+        titulo: "Mientras dure la prueba",
+        items: [
+          "Esta vista convive con Usuarios y Agentes, que siguen funcionando igual que siempre.",
+          "Las acciones de cuenta (crear, contraseña, activar) todavía se hacen desde Usuarios.",
+          "Los datos personales (celular, domicilio, nacimiento) los edita cada uno en Mi perfil, no acá.",
+        ],
+      },
+    ],
+  },
+
   "/usuarios": {
     titulo: "Usuarios",
     resumen:
