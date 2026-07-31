@@ -1,0 +1,265 @@
+{
+  "admin/financieras/route.ts": [
+    "POST"
+  ],
+  "admin/planes/route.ts": [
+    "POST"
+  ],
+  "admin/tenants/[id]/route.ts": [
+    "GET",
+    "PATCH"
+  ],
+  "admin/tenants/route.ts": [
+    "GET"
+  ],
+  "auditoria/route.ts": [
+    "GET"
+  ],
+  "auth/login/route.ts": [
+    "POST"
+  ],
+  "auth/recuperar/route.ts": [
+    "POST"
+  ],
+  "backups/route.ts": [
+    "GET",
+    "POST"
+  ],
+  "backups/salud/route.ts": [
+    "GET"
+  ],
+  "branding/route.ts": [
+    "GET"
+  ],
+  "caja/arqueo/route.ts": [
+    "POST"
+  ],
+  "caja/route.ts": [
+    "GET",
+    "POST"
+  ],
+  "caja/transferencia/route.ts": [
+    "POST"
+  ],
+  "clientes/[id]/bureau/route.ts": [
+    "GET",
+    "POST"
+  ],
+  "clientes/[id]/reset-ingreso/route.ts": [
+    "POST"
+  ],
+  "clientes/[id]/route.ts": [
+    "GET",
+    "PATCH",
+    "DELETE"
+  ],
+  "clientes/existe/route.ts": [
+    "GET"
+  ],
+  "clientes/route.ts": [
+    "GET",
+    "POST"
+  ],
+  "clientes/zonas/route.ts": [
+    "GET"
+  ],
+  "cobranza/acciones/route.ts": [
+    "GET",
+    "POST"
+  ],
+  "cobranza/agenda/route.ts": [
+    "GET"
+  ],
+  "cobranza/campanas/[id]/enviar/route.ts": [
+    "POST"
+  ],
+  "cobranza/campanas/[id]/route.ts": [
+    "GET",
+    "PATCH",
+    "DELETE"
+  ],
+  "cobranza/campanas/route.ts": [
+    "GET",
+    "POST"
+  ],
+  "cobranza/promesas/route.ts": [
+    "GET",
+    "PATCH"
+  ],
+  "comprobantes/route.ts": [
+    "GET"
+  ],
+  "configuracion/route.ts": [
+    "GET",
+    "PUT"
+  ],
+  "cotizacion/route.ts": [
+    "GET"
+  ],
+  "creditos/[id]/amortizacion/route.ts": [
+    "GET"
+  ],
+  "creditos/[id]/anular/route.ts": [
+    "POST"
+  ],
+  "creditos/[id]/cuotas/route.ts": [
+    "GET"
+  ],
+  "creditos/[id]/libre-deuda/route.ts": [
+    "GET"
+  ],
+  "creditos/[id]/refinanciar/route.ts": [
+    "GET",
+    "POST"
+  ],
+  "creditos/[id]/route.ts": [
+    "GET",
+    "PATCH",
+    "DELETE"
+  ],
+  "creditos/evaluar-riesgo/route.ts": [
+    "POST"
+  ],
+  "creditos/route.ts": [
+    "GET",
+    "POST"
+  ],
+  "cron/cobranza-notificaciones/route.ts": [
+    "GET",
+    "POST"
+  ],
+  "cron/suscripciones/route.ts": [
+    "POST"
+  ],
+  "dashboard/route.ts": [
+    "GET"
+  ],
+  "dashboard/series/route.ts": [
+    "GET"
+  ],
+  "equipo/route.ts": [
+    "GET"
+  ],
+  "financiera/logo/route.ts": [
+    "POST"
+  ],
+  "financiera/route.ts": [
+    "GET",
+    "PUT"
+  ],
+  "georef/route.ts": [
+    "GET"
+  ],
+  "me/caja/route.ts": [
+    "GET",
+    "POST"
+  ],
+  "me/logros/route.ts": [
+    "GET"
+  ],
+  "me/mfa/route.ts": [
+    "GET",
+    "POST",
+    "DELETE"
+  ],
+  "me/mfa/verify/route.ts": [
+    "POST"
+  ],
+  "me/vendedor/route.ts": [
+    "GET"
+  ],
+  "notificaciones/preferencias/route.ts": [
+    "GET"
+  ],
+  "notificaciones/route.ts": [
+    "GET"
+  ],
+  "pagos/[id]/anular/route.ts": [
+    "POST"
+  ],
+  "pagos/[id]/recibo/route.ts": [
+    "GET"
+  ],
+  "pagos/route.ts": [
+    "GET",
+    "POST"
+  ],
+  "perfil/route.ts": [
+    "PUT"
+  ],
+  "productos/[id]/movimientos/route.ts": [
+    "POST"
+  ],
+  "productos/[id]/route.ts": [
+    "GET",
+    "PATCH",
+    "DELETE"
+  ],
+  "productos/movimientos/route.ts": [
+    "GET"
+  ],
+  "productos/route.ts": [
+    "GET",
+    "POST"
+  ],
+  "productos/upload/route.ts": [
+    "POST"
+  ],
+  "proveedores/[id]/movimientos/route.ts": [
+    "POST"
+  ],
+  "proveedores/[id]/route.ts": [
+    "GET",
+    "PATCH",
+    "DELETE"
+  ],
+  "proveedores/route.ts": [
+    "GET",
+    "POST"
+  ],
+  "reportes/cobranza/route.ts": [
+    "GET"
+  ],
+  "reportes/route.ts": [
+    "GET"
+  ],
+  "reportes/series/route.ts": [
+    "GET"
+  ],
+  "suscripciones/estado/route.ts": [
+    "GET"
+  ],
+  "usuarios/[id]/route.ts": [
+    "PATCH",
+    "DELETE"
+  ],
+  "usuarios/check-username/route.ts": [
+    "GET"
+  ],
+  "usuarios/route.ts": [
+    "GET",
+    "POST"
+  ],
+  "vendedores/[id]/caja/route.ts": [
+    "GET",
+    "POST"
+  ],
+  "vendedores/[id]/logros/route.ts": [
+    "GET"
+  ],
+  "vendedores/[id]/metas/route.ts": [
+    "GET",
+    "POST",
+    "PATCH",
+    "DELETE"
+  ],
+  "vendedores/[id]/route.ts": [
+    "GET",
+    "PATCH",
+    "DELETE"
+  ],
+  "vendedores/route.ts": [
+    "GET",
+    "POST"
+  ]
+}
