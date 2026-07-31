@@ -15,7 +15,7 @@ import { Avatar } from "@/components/ui/Avatar";
 import { Emoji } from "@/components/ui/Emoji";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Field, Input, Select, Textarea, DigitInput, TelInput } from "@/components/ui/field";
+import { Field, Input, Select, Textarea, DigitInput } from "@/components/ui/field";
 import {
   formatMonto, formatFecha, formatFechaHora, formatCreditoNumero, nombreCompleto,
   numeroAInput, maskMontoInput, parseMontoInput, esEmailValido,
@@ -998,15 +998,16 @@ function EntregaRendirDialog({
 
 /* ── Pestaña Datos (laborales + parametrización) ── */
 function DatosTab({ vendedor, guardar }: { vendedor: VendedorDetalle; guardar: (b: Record<string, unknown>, m: SaveMsgs) => Promise<boolean> }) {
+  // `telefono` y `direccion` NO están en el form: los edita el empleado desde Mi
+  // perfil y acá se muestran en solo lectura. Tenerlos editables en dos lados
+  // garantizaba que en algún momento dijeran cosas distintas.
   const [f, setF] = useState({
     nombre: vendedor.nombre ?? "",
     email: vendedor.email ?? "",
-    telefono: vendedor.telefono ?? "",
     rol: vendedor.rol ?? "vendedor",
     activo: vendedor.activo,
     documento: vendedor.documento ?? "",
     fecha_ingreso: vendedor.fecha_ingreso ? String(vendedor.fecha_ingreso).slice(0, 10) : "",
-    direccion: vendedor.direccion ?? "",
     zona: vendedor.zona ?? "",
     notas: vendedor.notas ?? "",
   });
@@ -1027,14 +1028,13 @@ function DatosTab({ vendedor, guardar }: { vendedor: VendedorDetalle; guardar: (
       {
         nombre: f.nombre.trim(),
         email: f.email,
-        telefono: f.telefono,
         rol: f.rol,
         activo: f.activo,
         documento: f.documento,
         fecha_ingreso: f.fecha_ingreso || null,
-        direccion: f.direccion,
         zona: f.zona,
         notas: f.notas,
+        // telefono / direccion NO se mandan: son del perfil del empleado.
       },
       {
         title: "¿Guardar cambios?",
@@ -1061,11 +1061,9 @@ function DatosTab({ vendedor, guardar }: { vendedor: VendedorDetalle; guardar: (
           <Field label="Email" error={emailError ?? undefined}>
             <Input type="email" value={f.email} onChange={set("email")} placeholder="opcional" />
           </Field>
-          <Field label="Teléfono">
-            <TelInput value={f.telefono} onValueChange={setVal("telefono")} placeholder="10 dígitos (opcional)" />
-          </Field>
         </div>
       </section>
+
 
       {/* Laboral */}
       <section className="rounded-xl border border-border bg-muted/10 p-4">
@@ -1089,9 +1087,6 @@ function DatosTab({ vendedor, guardar }: { vendedor: VendedorDetalle; guardar: (
           </Field>
           <Field label="Zona / Sucursal">
             <Input value={f.zona} onChange={set("zona")} placeholder="Ej: Centro, Norte…" />
-          </Field>
-          <Field label="Dirección">
-            <Input value={f.direccion} onChange={set("direccion")} placeholder="Calle y número" />
           </Field>
         </div>
         <div className="mt-3">
