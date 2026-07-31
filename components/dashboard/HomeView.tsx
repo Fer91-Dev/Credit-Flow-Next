@@ -292,7 +292,12 @@ function MiConfiguracionVendedor({ perfil }: { perfil: MiPerfilVendedor }) {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <MiStat icon="credit-card" label="Créditos otorgados" value={String(r.creditos_otorgados)} />
         <MiStat icon="dollar-banknote" label="Vendido" value={`$${n0(r.monto_vendido)}`} accent="success" />
-        <MiStat icon="bar-chart" label="Comisión devengada" value={`$${n0(r.comision_total)}`} accent="warning" />
+        <MiStat
+          icon="bar-chart"
+          label={r.comision_es_acumulada ? "Comisión acumulada" : "Comisión del período"}
+          value={`$${n0(r.comision_total)}`}
+          accent="warning"
+        />
         <MiStat icon="bullseye" label="Avance meta" value={`${perfil.meta_vigente?.cumplimiento.avance_monto ?? 0}%`} accent="primary" />
       </div>
 

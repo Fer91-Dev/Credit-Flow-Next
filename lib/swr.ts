@@ -201,14 +201,20 @@ export interface RiesgoSnapshot {
 
 /** Resumen de ventas/comisión de un vendedor (derivado en el servidor). */
 export interface ResumenVendedor {
+  /** Cantidad de créditos ACUMULADA (toda la historia). */
   creditos_otorgados: number;
   /** Monto otorgado ACUMULADO (toda la historia). */
   monto_vendido: number;
+  /** Comisión del PERÍODO de la meta vigente (o acumulada si no hay meta). */
   comision_total: number;
+  /** true si `comision_total` es histórica (sin meta vigente) en vez de del período. */
+  comision_es_acumulada: boolean;
   /** % de la meta vigente cubierto por lo otorgado DENTRO de su período. */
   avance_meta: number;
   /** Monto que cuenta para la meta (lo otorgado dentro del período). */
   monto_meta: number;
+  /** Cantidad de créditos otorgados dentro del período de la meta vigente. */
+  creditos_meta: number;
 }
 
 /** Comisión avanzada por vendedor (Fase 2). null = % plano (comision_pct). */

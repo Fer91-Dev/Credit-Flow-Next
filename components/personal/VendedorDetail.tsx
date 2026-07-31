@@ -144,7 +144,14 @@ export function VendedorDetail({ vendedorId, onChanged, onEliminar }: VendedorDe
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 p-5 border-b border-border">
         <MiniStat icon="credit-card" label="Créditos otorgados" value={String(r?.creditos_otorgados ?? 0)} />
         <MiniStat icon="dollar-banknote" label="Vendido" value={`$${n0(r?.monto_vendido ?? 0)}`} accent="success" />
-        <MiniStat icon="bar-chart" label="Comisión devengada" value={`$${n0(r?.comision_total ?? 0)}`} accent="warning" />
+        {/* El rótulo dice de qué período habla la plata: sin meta vigente no hay
+            período que recortar y el número es el acumulado histórico. */}
+        <MiniStat
+          icon="bar-chart"
+          label={r && !r.comision_es_acumulada ? "Comisión del período" : "Comisión acumulada"}
+          value={`$${n0(r?.comision_total ?? 0)}`}
+          accent="warning"
+        />
         <MiniStat icon="bullseye" label="Avance meta" value={`${r?.avance_meta ?? 0}%`} accent="primary" />
       </div>
 

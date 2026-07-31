@@ -290,12 +290,25 @@ export function EquipoView() {
     {
       // El monto a liquidar, no el %. El porcentaje es un parámetro de configuración
       // que ya se ve en la ficha; lo que se mira todos los meses es la plata.
+      // Es la comisión DEL PERÍODO de la meta vigente. Cuando no hay meta el número
+      // pasa a ser el acumulado histórico, y eso se marca: si no, dos filas mostrarían
+      // números que no se pueden comparar sin que nada lo avise.
       header: "Comisión",
       mono: true,
       className: "hidden lg:table-cell",
       cell: (m) =>
         m.resumen ? (
-          <span className="font-semibold text-warning">{formatMonto(m.resumen.comision_total, 0)}</span>
+          <span
+            className="font-semibold text-warning"
+            title={m.resumen.comision_es_acumulada
+              ? "Comisión acumulada (el agente no tiene meta vigente)"
+              : `Comisión del período ${m.meta_periodo ?? "vigente"}`}
+          >
+            {formatMonto(m.resumen.comision_total, 0)}
+            {m.resumen.comision_es_acumulada && (
+              <span className="ml-1 font-sans text-[10px] font-normal text-muted-foreground/60">acum.</span>
+            )}
+          </span>
         ) : (
           "—"
         ),
@@ -360,7 +373,7 @@ export function EquipoView() {
           icon="bar-chart"
           label="Comisiones"
           value={formatMonto(kpis.comision, 0)}
-          sub="a liquidar"
+          sub="a liquidar del período"
           accent="warning"
           mono
         />
@@ -648,7 +661,9 @@ function EquipoCards({
                     <p className="font-mono text-sm">{formatMonto(m.resumen?.monto_vendido ?? 0, 0)}</p>
                   </div>
                   <div>
-                    <p className="text-[10px] uppercase text-muted-foreground">Comisión</p>
+                    <p className="text-[10px] uppercase text-muted-foreground">
+                      {m.resumen?.comision_es_acumulada ? "Comisión acum." : "Comisión"}
+                    </p>
                     <p className="font-mono text-sm font-semibold text-warning">
                       {formatMonto(m.resumen?.comision_total ?? 0, 0)}
                     </p>

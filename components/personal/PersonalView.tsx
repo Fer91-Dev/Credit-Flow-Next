@@ -210,7 +210,7 @@ export function PersonalView() {
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             <StatCard icon="busts-in-silhouette" label="Agentes" value={String(totales.personal)} sub={`${totales.activos} activos`} accent="primary" />
             <StatCard icon="dollar-banknote" label="Vendido (total)" value={`$${n0(totales.vendido)}`} sub="acumulado del equipo" accent="success" mono />
-            <StatCard icon="bar-chart" label="Comisiones" value={`$${n0(totales.comision)}`} sub="a liquidar" accent="warning" mono />
+            <StatCard icon="bar-chart" label="Comisiones" value={`$${n0(totales.comision)}`} sub="a liquidar del período" accent="warning" mono />
             <StatCard icon="bullseye" label="Vendedores activos" value={String(totales.activos)} sub={`de ${totales.personal} totales`} accent="primary" />
           </div>
 
@@ -306,7 +306,20 @@ export function PersonalView() {
                           <td className="px-4 py-4 text-right font-mono tabular-nums text-muted-foreground border-b border-border/60">{v.comision_pct}%</td>
                           <td className="px-4 py-4 text-right font-mono tabular-nums text-muted-foreground border-b border-border/60">{r?.creditos_otorgados ?? 0}</td>
                           <td className="px-4 py-4 text-right font-mono tabular-nums font-semibold text-foreground border-b border-border/60">${n0(r?.monto_vendido ?? 0)}</td>
-                          <td className="px-4 py-4 text-right font-mono tabular-nums font-semibold text-warning border-b border-border/60">${n0(r?.comision_total ?? 0)}</td>
+                          {/* Comisión DEL PERÍODO de la meta vigente. Sin meta cae al
+                              acumulado histórico y se marca, para que dos filas no
+                              muestren números incomparables sin aviso. */}
+                          <td
+                            className="px-4 py-4 text-right font-mono tabular-nums font-semibold text-warning border-b border-border/60"
+                            title={r?.comision_es_acumulada
+                              ? "Comisión acumulada (sin meta vigente)"
+                              : `Comisión del período ${v.meta_periodo ?? "vigente"}`}
+                          >
+                            ${n0(r?.comision_total ?? 0)}
+                            {r?.comision_es_acumulada && (
+                              <span className="ml-1 font-sans text-[10px] font-normal text-muted-foreground/60">acum.</span>
+                            )}
+                          </td>
                           {/* 3 · Meta / avance */}
                           <td className="px-4 py-4 border-b border-border/60">
                             <MetaBar meta={v.meta_venta} avance={r?.avance_meta ?? 0} periodo={v.meta_periodo} />
@@ -386,7 +399,7 @@ function PersonalCard({ v, onOpen, onDelete, onCrearCuenta }: { v: Vendedor; onO
       <div className="grid grid-cols-3 gap-2 text-center">
         <div><p className="text-[10px] text-muted-foreground uppercase">Comisión</p><p className="text-sm font-mono font-semibold">{v.comision_pct}%</p></div>
         <div><p className="text-[10px] text-muted-foreground uppercase">Vendido</p><p className="text-sm font-mono">${n0(r?.monto_vendido ?? 0)}</p></div>
-        <div><p className="text-[10px] text-muted-foreground uppercase">Comisión $</p><p className="text-sm font-mono font-semibold text-warning">${n0(r?.comision_total ?? 0)}</p></div>
+        <div><p className="text-[10px] text-muted-foreground uppercase">{r?.comision_es_acumulada ? "Comisión acum." : "Comisión $"}</p><p className="text-sm font-mono font-semibold text-warning">${n0(r?.comision_total ?? 0)}</p></div>
       </div>
       <MetaBar meta={v.meta_venta} avance={r?.avance_meta ?? 0} periodo={v.meta_periodo} />
     </div>
