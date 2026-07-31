@@ -17,6 +17,7 @@ import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Field, Input, Select, PasswordFields } from "@/components/ui/field";
 import { UsernameField } from "@/components/ui/UsernameField";
 import { BuscadorF3 } from "@/components/ui/BuscadorF3";
+import { MetaBar } from "@/components/ui/MetaBar";
 import { ModalHeader, MoneyInput, FormActions, MODAL_CONTENT } from "@/components/ui/form-kit";
 import { maskMontoInput, parseMontoInput, numeroAInput, soloDigitos, esEmailValido, esUsernameValido, normalizarUsername } from "@/lib/utils";
 import { useConfirm } from "@/components/ui/confirm";
@@ -423,26 +424,6 @@ function StatCard({ icon, label, value, sub, accent, mono }: {
       </div>
       <p className={`relative mt-5 text-2xl font-bold leading-none tracking-tight ${c.text} ${mono ? "font-mono tabular-nums text-xl sm:text-2xl" : ""}`}>{value}</p>
       {sub && <p className="relative mt-2 text-xs text-muted-foreground/50">{sub}</p>}
-    </div>
-  );
-}
-
-
-function MetaBar({ vendido, meta, avance }: { vendido: number; meta: number; avance: number }) {
-  if (!meta || meta <= 0) {
-    return <span className="text-[11px] text-muted-foreground/50">Sin meta</span>;
-  }
-  const pct = Math.min(100, avance);
-  const color = avance >= 100 ? "bg-success" : avance >= 60 ? "bg-warning" : "bg-primary";
-  return (
-    <div className="space-y-1">
-      <div className="flex items-center justify-between text-[11px]">
-        <span className="text-muted-foreground">${n0(vendido)} / ${n0(meta)}</span>
-        <span className={`font-mono font-semibold ${avance >= 100 ? "text-success" : "text-foreground"}`}>{avance}%</span>
-      </div>
-      <div className="h-1.5 w-full rounded-full bg-muted/40 overflow-hidden">
-        <div className={`h-full rounded-full transition-all duration-500 ${color}`} style={{ width: `${pct}%` }} />
-      </div>
     </div>
   );
 }

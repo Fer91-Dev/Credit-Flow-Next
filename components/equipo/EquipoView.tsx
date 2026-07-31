@@ -11,6 +11,7 @@ import { BuscadorF3 } from "@/components/ui/BuscadorF3";
 import { FiltrosPanel, FiltroChip } from "@/components/ui/FiltrosPanel";
 import { Field, Select } from "@/components/ui/field";
 import { Avatar } from "@/components/ui/Avatar";
+import { MetaBar } from "@/components/ui/MetaBar";
 import { VendedorDetail } from "@/components/personal/VendedorDetail";
 import { PersonalForm, CrearCuentaDialog } from "@/components/personal/PersonalView";
 import { UsuarioForm, CambiarPasswordDialog } from "@/components/usuarios/UsuariosView";
@@ -117,6 +118,11 @@ export function EquipoView() {
     agentes: equipo.filter((m) => m.vendedor_id).length,
     sinAcceso: equipo.filter((m) => !m.tiene_cuenta).length,
     inactivos: equipo.filter((m) => m.tiene_cuenta && !m.acceso_activo).length,
+    // Plata: los MISMOS totales que hoy encabezan Agentes. Cuando esa sección se
+    // apague (etapa 3) esta pantalla tiene que responder sola "cuánto colocó el
+    // equipo y cuánto hay que liquidar", si no el refactor sería una pérdida.
+    vendido: equipo.reduce((s, m) => s + (m.resumen?.monto_vendido ?? 0), 0),
+    comision: equipo.reduce((s, m) => s + (m.resumen?.comision_total ?? 0), 0),
   }), [equipo]);
 
   const filtrosActivos = (rol ? 1 : 0) + (tipo ? 1 : 0);
@@ -209,6 +215,23 @@ export function EquipoView() {
       cell: (m) => (m.comision_pct != null ? `${m.comision_pct}%` : "—"),
     },
     {
+      // Misma barra que la tabla de Agentes (componente compartido): sin esto, al
+      // apagar Agentes en la etapa 3 se perdería la lectura de "cómo viene el equipo
+      // contra su meta", que es para qué se mira esta pantalla.
+      header: "Avance de meta",
+      className: "hidden lg:table-cell w-44",
+      cell: (m) =>
+        m.vendedor_id ? (
+          <MetaBar
+            vendido={m.resumen?.monto_vendido ?? 0}
+            meta={m.meta_venta ?? 0}
+            avance={m.resumen?.avance_meta ?? 0}
+          />
+        ) : (
+          <span className="text-xs text-muted-foreground/60">—</span>
+        ),
+    },
+    {
       header: "Acciones",
       align: "right",
       className: "w-px whitespace-nowrap",
@@ -265,11 +288,47 @@ export function EquipoView() {
         viejas siguen funcionando sin cambios mientras la evaluás.
       </div>
 
+      {/* Los KPIs juntan las dos miradas que hoy están partidas: la de acceso (Usuarios)
+          y la de plata (Agentes). "Requieren atención" fusiona los dos contadores de
+          alerta —sin cuenta e inactivos—: por separado ocupaban media fila para mostrar
+          cero casi siempre. */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <KpiCard icon="busts-in-silhouette" label="Personas" value={String(kpis.total)} />
-        <KpiCard icon="briefcase" label="Con legajo" value={String(kpis.agentes)} sub="otorgan créditos" />
-        <KpiCard icon="locked-with-key" label="Sin cuenta" value={String(kpis.sinAcceso)} sub="no pueden entrar" />
-        <KpiCard icon="warning" label="Acceso inactivo" value={String(kpis.inactivos)} />
+        <KpiCard
+          icon="busts-in-silhouette"
+          label="Personas"
+          value={String(kpis.total)}
+          sub={`${kpis.agentes} con legajo comercial`}
+        />
+        <KpiCard
+          icon="dollar-banknote"
+          label="Otorgado (total)"
+          value={formatMonto(kpis.vendido, 0)}
+          sub="acumulado del equipo"
+          accent="success"
+          mono
+        />
+        <KpiCard
+          icon="bar-chart"
+          label="Comisiones"
+          value={formatMonto(kpis.comision, 0)}
+          sub="a liquidar"
+          accent="warning"
+          mono
+        />
+        <KpiCard
+          icon={kpis.sinAcceso + kpis.inactivos > 0 ? "warning" : "locked-with-key"}
+          label="Requieren atención"
+          value={String(kpis.sinAcceso + kpis.inactivos)}
+          accent={kpis.sinAcceso + kpis.inactivos > 0 ? "warning" : "muted"}
+          sub={
+            kpis.sinAcceso + kpis.inactivos === 0
+              ? "todos con acceso activo"
+              : [
+                  kpis.sinAcceso ? `${kpis.sinAcceso} sin cuenta` : null,
+                  kpis.inactivos ? `${kpis.inactivos} con acceso inactivo` : null,
+                ].filter(Boolean).join(" · ")
+          }
+        />
       </div>
 
       {/* Toolbar propia: el CTA nunca va dentro del PageHeader (regla del proyecto). */}
