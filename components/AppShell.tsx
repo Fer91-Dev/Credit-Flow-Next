@@ -111,14 +111,28 @@ function SideNavLink({ icon: Icon, label, to, isActive, onClick }: NavItem & { i
       href={to}
       onClick={onClick}
       aria-current={isActive ? "page" : undefined}
-      className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors ${
+      className={`group relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-all duration-150 ease-out ${
         isActive
           ? "bg-primary/10 font-medium text-primary"
-          : "font-normal text-muted-foreground hover:bg-muted/20 hover:text-foreground"
+          : "font-normal text-muted-foreground hover:translate-x-0.5 hover:bg-muted/40 hover:text-foreground"
       }`}
     >
-      {/* `strokeWidth` bajo: el trazo fino es lo que baja el ruido visual del menú. */}
-      <Icon className="h-[18px] w-[18px] shrink-0" strokeWidth={1.75} />
+      {/* Barra de acento del ítem activo: da un ancla vertical que el fondo solo no
+          logra. Más corta que el ítem, así no toca las esquinas redondeadas. */}
+      <span
+        aria-hidden
+        className={`absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-r-full bg-primary transition-opacity duration-150 ${
+          isActive ? "opacity-100" : "opacity-0"
+        }`}
+      />
+      {/* `strokeWidth` bajo: el trazo fino es lo que baja el ruido visual del menú.
+          Al heredar currentColor, el ícono se tiñe de indigo con el hover y el foco. */}
+      <Icon
+        className={`h-[18px] w-[18px] shrink-0 transition-colors duration-150 ${
+          isActive ? "" : "text-muted-foreground/70 group-hover:text-primary"
+        }`}
+        strokeWidth={1.75}
+      />
       <span className="truncate">{label}</span>
     </Link>
   );
@@ -258,7 +272,7 @@ export function AppShell({ children, role, nombre, email, avatarUrl, financiera,
       {/* ── SIDEBAR DESKTOP (lg+) ─────────────────────────────────────────── */}
       <aside className="hidden lg:flex fixed inset-y-0 left-0 z-30 w-64 flex-col bg-sidebar/85 backdrop-blur-xl border-r border-edge">
         {/* Branding — alto alineado con la línea inferior del PageHeader del contenido */}
-        <Link href="/" className="flex h-[64px] shrink-0 items-center border-b border-edge px-5 transition-opacity hover:opacity-80">
+        <Link href="/" className="flex h-[76px] shrink-0 items-center border-b border-edge px-5 transition-opacity hover:opacity-80">
           <Brand financiera={financiera} size="lg" />
         </Link>
 
