@@ -46,20 +46,19 @@ function desdeDe(r: Exclude<Reciente, "">): number {
  * le atribuyen créditos y comisiones), que obligaba a saltar entre dos pantallas para
  * entender a una misma persona.
  *
- * ETAPA 2: ya es AUTOSUFICIENTE — alta de integrante (legajo + cuenta), editar cuenta,
- * cambiar contraseña, activar/desactivar acceso y dar acceso a un legajo que no lo tiene.
- * Los diálogos son los MISMOS de Usuarios y Agentes (exportados, no copiados), así que el
- * alta atómica con rollback quedó intacta.
+ * Es la ÚNICA pantalla de personas: desde la etapa 3 (2026-08-01) `/personal` y `/usuarios`
+ * ya no existen. Hace todo — alta de integrante (ficha + cuenta), editar cuenta, cambiar
+ * contraseña, activar/desactivar acceso, dar acceso a una ficha que no lo tiene y eliminar.
+ * Los diálogos viven en `AgenteForm`/`CuentaForm`: son los de las vistas viejas MOVIDOS tal
+ * cual, no copias, así que el alta atómica con rollback quedó intacta.
  *
- * Sigue conviviendo con las secciones viejas, que funcionan igual. No se tocó el modelo ni
- * ningún endpoint existente.
+ * Se unificó la INTERFAZ, no el modelo: siguen siendo `profiles` + `vendedores` leídas
+ * juntas por `GET /api/equipo`. No se tocó ningún endpoint existente.
  */
 export function EquipoView() {
   const { equipo, isLoading, error, mutate } = useEquipo();
-  // Los diálogos de cuenta y legajo son los MISMOS de Usuarios y Agentes (exportados,
-  // no copiados). Esperan objetos `Usuario` y `Vendedor` reales, así que se traen de
-  // sus hooks y se busca el que corresponde por id: sin mapeos a mano que puedan
-  // divergir del original.
+  // Los diálogos esperan objetos `Usuario` y `Vendedor` reales, así que se traen de sus
+  // hooks y se busca el que corresponde por id: sin mapeos a mano que puedan divergir.
   const { usuarios, mutate: mutateUsuarios } = useUsuarios();
   const { vendedores, mutate: mutateVendedores } = useVendedores();
   const confirm = useConfirm();
@@ -71,9 +70,7 @@ export function EquipoView() {
   const [recientes, setRecientes] = useState<Reciente>(""); // alta reciente
   const [abierto, setAbierto] = useState<string | null>(null); // vendedor_id
 
-  // Preferencia de vista (tarjetas / tabla). Se guarda con clave PROPIA: Equipo y
-  // Agentes muestran cosas distintas, así que elegir tarjetas en una no debería
-  // cambiar la otra.
+  // Preferencia de vista (tarjetas / tabla).
   const [vista, setVista] = useState<"cards" | "tabla">("tabla");
   useEffect(() => {
     const v = localStorage.getItem("cf:equipoVista");
@@ -82,7 +79,7 @@ export function EquipoView() {
   const cambiarVista = (v: "cards" | "tabla") => { setVista(v); localStorage.setItem("cf:equipoVista", v); };
 
   // Diálogos
-  const [formIntegrante, setFormIntegrante] = useState(false);       // alta: legajo + cuenta
+  const [formIntegrante, setFormIntegrante] = useState(false);       // alta: ficha + cuenta
   const [editandoCuenta, setEditandoCuenta] = useState<Usuario | null>(null);
   const [formCuentaAbierto, setFormCuentaAbierto] = useState(false);
   const [passwordDe, setPasswordDe] = useState<Usuario | null>(null);
@@ -94,7 +91,7 @@ export function EquipoView() {
   const usuarioDe = (m: MiembroEquipo) => usuarios.find((u) => u.id === m.profile_id) ?? null;
   const vendedorDe = (m: MiembroEquipo) => vendedores.find((v) => v.id === m.vendedor_id) ?? null;
 
-  /** Legajos que YA tienen cuenta — el form los deshabilita (un agente = una cuenta). */
+  /** Fichas que YA tienen cuenta — el form las deshabilita (un agente = una cuenta). */
   const legajosConCuenta = useMemo(
     () => new Set(usuarios.map((u) => u.vendedor_id).filter(Boolean) as string[]),
     [usuarios]
@@ -213,8 +210,8 @@ export function EquipoView() {
     sinAcceso: equipo.filter((m) => !m.tiene_cuenta).length,
     inactivos: equipo.filter((m) => m.tiene_cuenta && !m.acceso_activo).length,
     // Plata: los MISMOS totales que hoy encabezan Agentes. Cuando esa sección se
-    // apague (etapa 3) esta pantalla tiene que responder sola "cuánto colocó el
-    // equipo y cuánto hay que liquidar", si no el refactor sería una pérdida.
+    // apagó (etapa 3) esta pantalla es la única que responde "cuánto colocó el
+    // equipo y cuánto hay que liquidar".
     vendido: equipo.reduce((s, m) => s + (m.resumen?.monto_vendido ?? 0), 0),
     comision: equipo.reduce((s, m) => s + (m.resumen?.comision_total ?? 0), 0),
   }), [equipo]);
@@ -381,9 +378,8 @@ export function EquipoView() {
         ),
     },
     {
-      // Misma barra que la tabla de Agentes (componente compartido): sin esto, al
-      // apagar Agentes en la etapa 3 se perdería la lectura de "cómo viene el equipo
-      // contra su meta", que es para qué se mira esta pantalla.
+      // `MetaBar` compartida: es la lectura de "cómo viene el equipo contra su meta",
+      // que es para qué se mira esta pantalla.
       header: "Avance de meta",
       className: "hidden xl:table-cell w-44",
       cell: (m) =>
@@ -409,13 +405,6 @@ export function EquipoView() {
         subtitle="Las personas de la financiera: su acceso al sistema y su ficha de agente"
         accent="primary"
       />
-
-      {/* Aviso de convivencia — se va cuando la vista quede aprobada (etapa 3). */}
-      <div className="rounded-xl border border-primary/25 bg-primary/[0.06] p-3.5 text-xs text-foreground">
-        <span className="font-semibold">Vista nueva, en prueba.</span> Junta lo que hoy está
-        separado en Usuarios y Agentes, con todas las acciones acá mismo. Las dos secciones
-        viejas siguen funcionando sin cambios mientras la evaluás.
-      </div>
 
       {/* Los KPIs juntan las dos miradas que hoy están partidas: la de acceso (Usuarios)
           y la de plata (Agentes). "Requieren atención" fusiona los dos contadores de
