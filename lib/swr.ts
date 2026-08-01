@@ -8,7 +8,7 @@
  * La configuración global (fetcher, dedupe, keepPreviousData) vive en
  * components/providers/SWRProvider.tsx, montado en el layout autenticado.
  */
-import useSWR from "swr";
+import useSWR, { mutate as globalMutate } from "swr";
 import type { SimuladorConfig } from "@/lib/domain";
 
 export type { SimuladorConfig };
@@ -882,7 +882,21 @@ export const KEYS = {
   zonas:         "/api/clientes/zonas",
   financiera:    "/api/financiera",
   misLiquidaciones: "/api/me/liquidaciones",
+  notificaciones:   "/api/notificaciones",
 } as const;
+
+/**
+ * Refresca la campanita **ya**, sin esperar el polling.
+ *
+ * La campanita (`SystemControls`) consulta los movimientos de caja cada 45 segundos.
+ * Está bien para enterarse de lo que hace otro, pero cuando el movimiento lo generás
+ * VOS —cobrar, liquidar una comisión, anularla— quedarte hasta 45 segundos sin aviso
+ * se siente como que la acción no se registró. Llamar a esto después de una acción que
+ * mueve caja hace que el aviso aparezca al instante.
+ */
+export function refrescarNotificaciones() {
+  return globalMutate(KEYS.notificaciones);
+}
 
 // ── Liquidación de comisiones ────────────────────────────────────────────────
 

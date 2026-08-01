@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Ban, CheckCircle2 } from "lucide-react";
-import { useComisiones, type FilaComision, type LiquidacionDetallada, type CuentaCaja } from "@/lib/swr";
+import { useComisiones, refrescarNotificaciones, type FilaComision, type LiquidacionDetallada, type CuentaCaja } from "@/lib/swr";
 import { PERIODOS_META, PERIODO_LABEL, periodoActual, type TipoPeriodo } from "@/lib/domain";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { KpiCard } from "@/components/ui/KpiCard";
@@ -373,6 +373,7 @@ function LiquidarDialog({
       const j = await res.json().catch(() => null);
       if (!res.ok || !j?.ok) { toast.error(j?.error ?? "No se pudo liquidar"); return; }
       toast.success(`Comisión de ${fila.nombre} liquidada`);
+      refrescarNotificaciones(); // el egreso ya salió de la caja: que la campanita lo diga ya
       setNotas("");
       onClose(true);
     } finally { setSaving(false); }
@@ -521,6 +522,7 @@ function AnularLiquidacionDialog({
       const j = await res.json().catch(() => null);
       if (!res.ok || !j?.ok) { toast.error(j?.error ?? "No se pudo anular la liquidación"); return; }
       toast.success(`Liquidación de ${l.vendedor_nombre} anulada`);
+      refrescarNotificaciones(); // la plata volvió a la caja: avisar sin esperar el polling
       setMotivo("");
       onClose(true);
     } finally { setSaving(false); }
