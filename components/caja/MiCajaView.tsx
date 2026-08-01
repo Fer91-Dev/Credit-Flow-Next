@@ -136,10 +136,10 @@ export function MiCajaView() {
 
           {/* KPIs */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <KpiCard icon="balance-scale" label="Saldo de mi caja" value={`$${n0(caja.saldo_total)}`} accent={caja.saldo_total >= 0 ? "success" : "destructive"} mono sub="suma de cuentas" />
-            <KpiCard icon="inbox-tray" label="Ingresos" value={`$${n0(caja.ingresos)}`} accent="success" mono sub="cobros + entregas" />
-            <KpiCard icon="outbox-tray" label="Egresos" value={`$${n0(caja.egresos)}`} accent="warning" mono sub="desembolsos + rendiciones" />
-            <KpiCard icon="balance-scale" label="Neto" value={`$${n0(caja.neto)}`} accent={caja.neto >= 0 ? "primary" : "destructive"} mono />
+            <KpiCard icon="balance-scale" label="Saldo de mi caja" value={`$${n2(caja.saldo_total)}`} accent={caja.saldo_total >= 0 ? "success" : "destructive"} mono sub="suma de cuentas" />
+            <KpiCard icon="inbox-tray" label="Ingresos" value={`$${n2(caja.ingresos)}`} accent="success" mono sub="cobros + entregas" />
+            <KpiCard icon="outbox-tray" label="Egresos" value={`$${n2(caja.egresos)}`} accent="warning" mono sub="desembolsos + rendiciones" />
+            <KpiCard icon="balance-scale" label="Neto" value={`$${n2(caja.neto)}`} accent={caja.neto >= 0 ? "primary" : "destructive"} mono />
           </div>
 
           {/* Movimientos */}

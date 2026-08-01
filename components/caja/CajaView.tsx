@@ -25,6 +25,15 @@ function sinCeroNegativo(x: number, decimales: number) {
   const r = Math.round(x * f) / f;
   return r === 0 ? 0 : r;
 }
+/**
+ * `n0` = pesos enteros · `n2` = con centavos.
+ *
+ * **Todo monto que el usuario pueda querer CUADRAR va en `n2`.** Redondear un total
+ * hace que no cierre con la suma de sus partes: el saldo de tesorería mostraba
+ * $64.941.101 mientras Efectivo + Banco daban $64.941.100,91, y el usuario terminó
+ * sacando la calculadora para ver quién mentía. `n0` queda para referencias que no se
+ * suman (la cotización del blue, la valorización aproximada en dólares).
+ */
 function n0(x: number) {
   return new Intl.NumberFormat("es-AR", { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(sinCeroNegativo(x, 0));
 }
@@ -246,15 +255,15 @@ export function CajaView() {
                   <div className="grid grid-cols-3 gap-2">
                     <div>
                       <p className="text-[9px] font-semibold uppercase tracking-widest text-white/60">Anterior</p>
-                      <p className="mt-0.5 text-[11px] font-mono font-semibold text-white/90">{card.prefix}{n0(d.anterior)}</p>
+                      <p className="mt-0.5 text-[11px] font-mono font-semibold text-white/90">{card.prefix}{n2(d.anterior)}</p>
                     </div>
                     <div>
                       <p className="text-[9px] font-semibold uppercase tracking-widest text-white/60">Ingresos</p>
-                      <p className="mt-0.5 text-[11px] font-mono font-semibold text-white/90">↑ {n0(d.ingresos)}</p>
+                      <p className="mt-0.5 text-[11px] font-mono font-semibold text-white/90">↑ {n2(d.ingresos)}</p>
                     </div>
                     <div>
                       <p className="text-[9px] font-semibold uppercase tracking-widest text-white/60">Egresos</p>
-                      <p className="mt-0.5 text-[11px] font-mono font-semibold text-white/90">↓ {n0(d.egresos)}</p>
+                      <p className="mt-0.5 text-[11px] font-mono font-semibold text-white/90">↓ {n2(d.egresos)}</p>
                     </div>
                   </div>
                 </div>
@@ -264,10 +273,10 @@ export function CajaView() {
 
           {/* KPIs del período */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <KpiCard icon="balance-scale" label="Saldo caja principal" value={`$${n0(caja.saldo_total)}`} accent={caja.saldo_total >= 0 ? "success" : "destructive"} mono sub="tesorería (sin vendedores)" />
-            <KpiCard icon="busts-in-silhouette" label="En poder de vendedores" value={`$${n0(caja.en_vendedores ?? 0)}`} accent="primary" mono sub="suma de sus cajas" />
-            <KpiCard icon="inbox-tray" label="Ingresos del período" value={`$${n0(caja.ingresos)}`} accent="success" mono />
-            <KpiCard icon="outbox-tray" label="Egresos del período" value={`$${n0(caja.egresos)}`} accent="warning" mono />
+            <KpiCard icon="balance-scale" label="Saldo caja principal" value={`$${n2(caja.saldo_total)}`} accent={caja.saldo_total >= 0 ? "success" : "destructive"} mono sub="tesorería (sin vendedores)" />
+            <KpiCard icon="busts-in-silhouette" label="En poder de vendedores" value={`$${n2(caja.en_vendedores ?? 0)}`} accent="primary" mono sub="suma de sus cajas" />
+            <KpiCard icon="inbox-tray" label="Ingresos del período" value={`$${n2(caja.ingresos)}`} accent="success" mono />
+            <KpiCard icon="outbox-tray" label="Egresos del período" value={`$${n2(caja.egresos)}`} accent="warning" mono />
           </div>
 
           {/* Tabla de movimientos — el título y los filtros van en el MISMO bloque,
