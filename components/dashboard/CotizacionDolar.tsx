@@ -57,7 +57,17 @@ export function CotizacionDolar() {
           <Emoji name="dollar-banknote" className="h-4 w-4" />
           <h2 className="text-sm font-semibold text-foreground">Cotización del dólar</h2>
         </div>
-        <span className="text-[10px] text-muted-foreground/70">act. {fmtHora(ultima)} · dolarapi.com</span>
+        {/* Indicador "en vivo": punto verde con halo pulsante (animate-ping) + texto con
+            algo más de peso, para que el dato transmita frescura sin robar jerarquía. */}
+        <div className="flex items-center gap-1.5" title={`Última actualización: ${fmtHora(ultima)} — fuente dolarapi.com`}>
+          <span className="relative flex h-1.5 w-1.5 shrink-0">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-success/70" />
+            <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-success" />
+          </span>
+          <span className="text-[10.5px] font-medium text-muted-foreground">
+            act. {fmtHora(ultima)} <span className="text-muted-foreground/60">· dolarapi.com</span>
+          </span>
+        </div>
       </div>
 
       {/* Protagonistas: Blue + Oficial */}
@@ -100,9 +110,18 @@ function PrincipalCard({ c, referencia }: { c: Cotizacion; referencia: boolean }
               </span>
             )}
           </div>
-          <div className="mt-1 flex items-baseline gap-4">
-            <span className="text-[11px] text-muted-foreground">Compra <span className="font-mono text-sm font-bold text-foreground">{fmt(c.compra)}</span></span>
-            <span className="text-[11px] text-muted-foreground">Venta <span className={`font-mono text-lg font-bold ${ventaColor}`}>{fmt(c.venta)}</span></span>
+          {/* Compra y Venta son AMBOS datos operativos: la etiqueta va en versalitas y el
+              número en `text-foreground` con peso. La jerarquía la sigue marcando Venta,
+              por tamaño (xl vs base) y por color de acento — no por apagar a Compra. */}
+          <div className="mt-1.5 flex items-baseline gap-5">
+            <span className="flex items-baseline gap-1.5">
+              <span className="text-[9.5px] font-semibold uppercase tracking-wide text-muted-foreground">Compra</span>
+              <span className="font-mono text-base font-bold text-foreground">{fmt(c.compra)}</span>
+            </span>
+            <span className="flex items-baseline gap-1.5">
+              <span className="text-[9.5px] font-semibold uppercase tracking-wide text-muted-foreground">Venta</span>
+              <span className={`font-mono text-xl font-bold ${ventaColor}`}>{fmt(c.venta)}</span>
+            </span>
           </div>
         </div>
       </div>
@@ -118,9 +137,16 @@ function SecundariaTile({ c }: { c: Cotizacion }) {
         <Emoji name={m.icon} className="h-4 w-4" />
         <span className="text-xs font-medium text-foreground">{m.label}</span>
       </div>
-      <div className="mt-1.5">
-        <p className="font-mono text-sm font-bold text-foreground">{fmt(c.venta)}</p>
-        <p className="text-[10px] text-muted-foreground/70">compra {fmt(c.compra)}</p>
+      {/* Mismo criterio que las cards grandes: Compra deja de ser un dato descartable. */}
+      <div className="mt-1.5 space-y-0.5">
+        <p className="flex items-baseline gap-1.5">
+          <span className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">Venta</span>
+          <span className="font-mono text-sm font-bold text-foreground">{fmt(c.venta)}</span>
+        </p>
+        <p className="flex items-baseline gap-1.5">
+          <span className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">Compra</span>
+          <span className="font-mono text-xs font-semibold text-foreground/85">{fmt(c.compra)}</span>
+        </p>
       </div>
     </div>
   );
