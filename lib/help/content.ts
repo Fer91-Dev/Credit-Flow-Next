@@ -356,34 +356,6 @@ const HELP: Record<string, HelpDoc> = {
     ],
   },
 
-  // ─────────────────────────────────────────── Agentes ───
-  "/personal": {
-    titulo: "Agentes",
-    resumen:
-      "La gestión de tu equipo: cada agente tiene su ficha con rendimiento, comisiones, metas, logros y datos laborales. Al crear un agente se crea también su cuenta de acceso.",
-    bloques: [
-      {
-        kind: "definiciones",
-        titulo: "La ficha del agente",
-        items: [
-          { term: "Rendimiento", desc: "Créditos y monto otorgado, cartera, mora y evolución mensual." },
-          { term: "Comisiones", desc: "Base, por tipo de crédito, escalonada por volumen y bonus por meta." },
-          { term: "Metas", desc: "Objetivos por período (monto / cantidad / cobranza) con cumplimiento real." },
-          { term: "Logros", desc: "Medallas, puntos y rango (gamificación configurable)." },
-          { term: "Límite de otorgamiento", desc: "El tope que ese agente puede otorgar sin autorización." },
-        ],
-      },
-      {
-        kind: "tips",
-        titulo: "Cuenta de acceso",
-        items: [
-          "Crear un agente exige crear su usuario (email + contraseña + rol).",
-          "Los agentes viejos sin cuenta muestran \"Sin acceso\" con acción rápida para crearla.",
-        ],
-      },
-    ],
-  },
-
   // ─────────────────────────────────────────── Productos ───
   "/productos": {
     titulo: "Productos",
@@ -443,54 +415,49 @@ const HELP: Record<string, HelpDoc> = {
     ],
   },
 
-  // ─────────────────────────────────────────── Usuarios ───
+  // ─────────────────────────────────────────── Equipo ───
   "/equipo": {
     titulo: "Equipo",
     resumen:
-      "Todas las personas de la financiera en una sola lista, con sus dos caras: la cuenta con la que entran al sistema y su legajo comercial (comisiones, metas, caja). Unifica lo que antes estaba separado en Usuarios y Agentes.",
+      "Todas las personas de la financiera en una sola lista, con sus dos caras: la cuenta con la que entran al sistema y su ficha de agente (comisiones, metas, caja). Unifica lo que antes estaba separado en Usuarios y Agentes.",
     bloques: [
       {
         kind: "definiciones",
         titulo: "Las dos caras de una persona",
         items: [
           { term: "Cuenta de acceso", desc: "Si puede entrar al sistema, con qué rol y si está activa. Es la llave." },
-          { term: "Legajo comercial", desc: "A quién se le atribuye cada crédito, su comisión, su meta y su caja. Es el historial." },
-          { term: "Por qué van separados", desc: "Si un empleado se va y le cerrás el acceso, sus créditos y comisiones tienen que seguir existiendo. Por eso el legajo sobrevive a la cuenta." },
+          { term: "Ficha del agente", desc: "A quién se le atribuye cada crédito, su comisión, su meta y su caja. Es el historial." },
+          { term: "Por qué van separados", desc: "Si un empleado se va y le cerrás el acceso, sus créditos y comisiones tienen que seguir existiendo. Por eso la ficha sobrevive a la cuenta." },
         ],
       },
       {
         kind: "definiciones",
         titulo: "Los tres casos que vas a ver",
         items: [
-          { term: "Cuenta + legajo", desc: "Lo normal en un vendedor: entra al sistema y otorga créditos." },
+          { term: "Cuenta + ficha", desc: "Lo normal en un vendedor: entra al sistema y otorga créditos." },
           { term: "Solo cuenta", desc: "Alguien que entra pero no vende — por ejemplo, el administrador de la financiera." },
-          { term: "Sin cuenta", desc: "Un legajo sin acceso. Son agentes viejos, de antes de que el alta exigiera crear la cuenta." },
+          { term: "Sin cuenta", desc: "Una ficha sin acceso. Son agentes viejos, de antes de que el alta exigiera crear la cuenta." },
         ],
       },
-      {
-        kind: "tips",
-        titulo: "Mientras dure la prueba",
-        items: [
-          "Esta vista convive con Usuarios y Agentes, que siguen funcionando igual que siempre.",
-          "Las acciones de cuenta (crear, contraseña, activar) todavía se hacen desde Usuarios.",
-          "Los datos personales (celular, domicilio, nacimiento) los edita cada uno en Mi perfil, no acá.",
-        ],
-      },
-    ],
-  },
-
-  "/usuarios": {
-    titulo: "Usuarios",
-    resumen:
-      "Las cuentas de acceso al sistema (quién puede entrar y con qué rol). Distinto de Agentes: acá se gestiona el login; allá, la ficha comercial.",
-    bloques: [
       {
         kind: "pasos",
         titulo: "Cómo se usa",
         pasos: [
-          "Creá una cuenta con email, nombre de usuario (obligatorio y único), rol y contraseña.",
-          "Cambiá el rol o activá/desactivá el acceso desde la lista.",
-          "El botón 🔑 restablece la contraseña de un usuario.",
+          "\"Nuevo integrante\" crea la ficha del agente Y su cuenta de acceso en un solo paso.",
+          "Hacé click en una persona para abrir su ficha: rendimiento, comisiones, metas, logros y datos laborales.",
+          "Desde la lista cambiás su cuenta: editar, restablecer la contraseña (🔑), activar/desactivar el acceso o eliminar.",
+          "A quien figure \"Sin cuenta\" le podés crear el acceso con el botón que aparece en su fila.",
+        ],
+      },
+      {
+        kind: "definiciones",
+        titulo: "Qué hay en la ficha del agente",
+        items: [
+          { term: "Rendimiento", desc: "Créditos y monto otorgado, cartera, mora y evolución mensual." },
+          { term: "Comisiones", desc: "Base, por tipo de crédito, escalonada por volumen y bonus por meta." },
+          { term: "Metas", desc: "Objetivos por período (monto / cantidad / cobranza) con cumplimiento real." },
+          { term: "Logros", desc: "Medallas, puntos y rango (gamificación configurable)." },
+          { term: "Límite de otorgamiento", desc: "El tope que ese agente puede otorgar sin autorización." },
         ],
       },
       {
@@ -504,8 +471,12 @@ const HELP: Record<string, HelpDoc> = {
       },
       {
         kind: "tips",
-        titulo: "Seguridad",
+        titulo: "Cosas que conviene saber",
         items: [
+          "El nombre de cada persona se edita en Mi perfil y desde acá; se actualiza en los dos lados a la vez.",
+          "El resto de los datos personales (celular, domicilio, nacimiento) los edita cada uno en su Mi perfil.",
+          "Desactivar el acceso NO borra nada: la ficha y todo el historial quedan intactos.",
+          "Eliminar a alguien con ficha te pregunta aparte si querés borrar también su login. Si lo conservás, ese email queda ocupado y no lo vas a poder reutilizar.",
           "No podés quitarte tu propio rol de admin, desactivarte ni eliminar al único admin (evita quedar afuera).",
         ],
       },

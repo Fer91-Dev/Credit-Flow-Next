@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ShieldOff, ArrowLeft, Pencil, KeyRound, UserX, UserCheck, Plus, LayoutGrid, List } from "lucide-react";
+import { ShieldOff, ArrowLeft, Pencil, KeyRound, UserX, UserCheck, Plus, LayoutGrid, List, Trash2 } from "lucide-react";
 import { useEquipo, useUsuarios, useVendedores, type MiembroEquipo, type Usuario, type Vendedor } from "@/lib/swr";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { KpiCard } from "@/components/ui/KpiCard";
@@ -14,9 +14,9 @@ import { Avatar } from "@/components/ui/Avatar";
 import { MetaBar } from "@/components/ui/MetaBar";
 import { Emoji } from "@/components/ui/Emoji";
 import { Skeleton } from "@/components/ui/skeleton";
-import { VendedorDetail } from "@/components/personal/VendedorDetail";
-import { PersonalForm, CrearCuentaDialog } from "@/components/personal/PersonalView";
-import { UsuarioForm, CambiarPasswordDialog } from "@/components/usuarios/UsuariosView";
+import { VendedorDetail } from "@/components/equipo/VendedorDetail";
+import { PersonalForm, CrearCuentaDialog } from "@/components/equipo/AgenteForm";
+import { UsuarioForm, CambiarPasswordDialog } from "@/components/equipo/CuentaForm";
 import { useConfirm } from "@/components/ui/confirm";
 import { useToast } from "@/components/ui/toast";
 import { formatMonto } from "@/lib/utils";
@@ -106,7 +106,7 @@ export function EquipoView() {
     const ok = await confirm({
       title: u.activo ? "¿Desactivar acceso?" : "¿Reactivar acceso?",
       description: u.activo
-        ? `${m.nombre} no va a poder entrar al sistema. Su legajo y su historial quedan intactos.`
+        ? `${m.nombre} no va a poder entrar al sistema. Su ficha de agente y su historial quedan intactos.`
         : `${m.nombre} vuelve a poder entrar al sistema.`,
       confirmLabel: u.activo ? "Desactivar" : "Reactivar",
       tone: u.activo ? "danger" : "default",
@@ -124,6 +124,68 @@ export function EquipoView() {
     }
     refrescar();
     toast.success(u.activo ? `Acceso de ${m.nombre} desactivado` : `Acceso de ${m.nombre} reactivado`);
+  };
+
+  /**
+   * Baja definitiva. Antes vivía partida en dos pantallas (Agentes borraba la ficha,
+   * Usuarios borraba el login); acá es UNA acción que elige el endpoint según lo que
+   * la persona tenga. Cuando hay ficha, manda la ficha: es la que arrastra el historial
+   * (créditos, comisiones, caja), y su endpoint ya sabe borrar el login de arrastre.
+   */
+  const eliminarMiembro = async (m: MiembroEquipo) => {
+    const u = usuarioDe(m);
+    const v = vendedorDe(m);
+
+    // Cuenta suelta, sin ficha comercial (ej. un administrativo): solo se va el acceso.
+    if (!v) {
+      if (!u) return;
+      const ok = await confirm({
+        title: "¿Eliminar usuario?",
+        description: `Se eliminará DEFINITIVAMENTE el acceso de ${u.email}. Esta acción no se puede deshacer.`,
+        confirmLabel: "Eliminar",
+        tone: "danger",
+      });
+      if (!ok) return;
+      const res = await fetch(`/api/usuarios/${u.id}`, { method: "DELETE" });
+      const j = await res.json().catch(() => null);
+      if (!res.ok) { toast.error(j?.error || "No se pudo eliminar el usuario"); return; }
+      refrescar();
+      toast.success(`Usuario ${u.email} eliminado`);
+      return;
+    }
+
+    const ok = await confirm({
+      title: "¿Eliminar del equipo?",
+      description: `Se eliminará la ficha de ${m.nombre}. Los créditos vinculados quedarán sin vendedor.`,
+      confirmLabel: "Eliminar",
+      tone: "danger",
+    });
+    if (!ok) return;
+
+    // Segundo paso: el login es una capa aparte (Supabase Auth ≠ nuestras tablas).
+    // Conservarlo deja el email ocupado y no se puede reutilizar para otro agente.
+    let eliminarCuenta = false;
+    if (v.tiene_cuenta) {
+      eliminarCuenta = await confirm({
+        title: "¿Eliminar también la cuenta de acceso?",
+        description: `${m.nombre} tiene una cuenta de login${v.email ? ` (${v.email})` : ""}. Si la conservás, ese email quedará ocupado y no vas a poder reutilizarlo para otro agente. Si la eliminás, se borra el login por completo.`,
+        confirmLabel: "Sí, eliminar el login",
+        cancelLabel: "No, conservar",
+        tone: "danger",
+      });
+    }
+
+    const res = await fetch(`/api/vendedores/${v.id}${eliminarCuenta ? "?eliminar_cuenta=true" : ""}`, { method: "DELETE" });
+    if (!res.ok) {
+      const j = await res.json().catch(() => null);
+      toast.error(j?.error ?? "No se pudo eliminar");
+      return;
+    }
+    // Si estaba abierta la ficha de quien se borró, cerrarla: si no, queda pidiendo
+    // datos de un id que ya no existe.
+    if (abierto === v.id) setAbierto(null);
+    refrescar();
+    toast.success(`${m.nombre} eliminado${eliminarCuenta ? " (con su cuenta de acceso)" : ""}`);
   };
 
   const filtradas = useMemo(() => {
@@ -196,6 +258,11 @@ export function EquipoView() {
             <KeyRound className="h-3 w-3" /> Crear cuenta
           </button>
         ) : null}
+        {/* Fuera del condicional: se puede dar de baja a cualquiera de los tres casos
+            (con ficha, sin ficha o sin cuenta) y `eliminarMiembro` resuelve cuál es. */}
+        <IconBtn title="Eliminar" onClick={() => eliminarMiembro(m)} danger>
+          <Trash2 className="h-3.5 w-3.5" />
+        </IconBtn>
       </div>
     );
   };
@@ -339,7 +406,7 @@ export function EquipoView() {
       <PageHeader
         icon="busts-in-silhouette"
         title="Equipo"
-        subtitle="Las personas de la financiera: su acceso al sistema y su legajo comercial"
+        subtitle="Las personas de la financiera: su acceso al sistema y su ficha de agente"
         accent="primary"
       />
 
@@ -359,7 +426,7 @@ export function EquipoView() {
           icon="busts-in-silhouette"
           label="Personas"
           value={String(kpis.total)}
-          sub={`${kpis.agentes} con legajo comercial`}
+          sub={`${kpis.agentes} con ficha de agente`}
         />
         <KpiCard
           icon="dollar-banknote"
@@ -446,7 +513,7 @@ export function EquipoView() {
               {rol && <FiltroChip onClear={() => setRol("")}>Rol: {ROLE_LABEL[rol as keyof typeof ROLE_LABEL]}</FiltroChip>}
               {tipo && (
                 <FiltroChip onClear={() => setTipo("")}>
-                  {tipo === "agente" ? "Con legajo" : tipo === "solo_cuenta" ? "Sin legajo" : "Sin cuenta"}
+                  {tipo === "agente" ? "Con ficha" : tipo === "solo_cuenta" ? "Sin ficha" : "Sin cuenta"}
                 </FiltroChip>
               )}
               {recientes && (
@@ -466,7 +533,7 @@ export function EquipoView() {
           <Field label="Tipo">
             <Select value={tipo} onChange={(e) => setTipo(e.target.value)}>
               <option value="">Todos</option>
-              <option value="agente">Con legajo comercial</option>
+              <option value="agente">Con ficha de agente</option>
               <option value="solo_cuenta">Solo cuenta (no vende)</option>
               <option value="sin_acceso">Sin cuenta de acceso</option>
             </Select>
@@ -673,7 +740,7 @@ function EquipoCards({
               </>
             ) : (
               <p className="border-t border-border/60 pt-3 text-xs text-muted-foreground/60">
-                Sin legajo comercial — no otorga créditos.
+                Sin ficha de agente — no otorga créditos.
               </p>
             )}
           </div>

@@ -79,14 +79,12 @@ const NAV_GROUPS: NavGroup[] = [
   {
     label: "Administración",
     items: [
-      // ETAPA 1 del refactor: "Equipo" unifica Agentes + Usuarios. Las tres conviven
-      // a propósito para poder compararlas; al aprobar la nueva se quitan las viejas.
+      // "Equipo" unifica lo que antes eran Agentes + Usuarios (etapa 3 del refactor:
+      // esas dos secciones se apagaron y sus rutas ya no existen).
       { icon: "busts-in-silhouette", label: "Equipo",  to: "/equipo" },
-      { icon: "office-worker",   label: "Agentes",     to: "/personal" },
       { icon: "package",         label: "Productos",   to: "/productos" },
       { icon: "counterclockwise-arrows-button", label: "Movimientos de stock", to: "/productos/movimientos" },
       { icon: "delivery-truck",  label: "Proveedores", to: "/proveedores" },
-      { icon: "locked-with-key", label: "Usuarios",    to: "/usuarios" },
     ],
   },
   {

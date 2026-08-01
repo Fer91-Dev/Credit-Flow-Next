@@ -66,7 +66,10 @@ export const PATCH = withErrorHandler(async (req: NextRequest, { params }: Route
   const { tenantId } = await requireRole(["admin"], req);
   const { id } = await params;
 
-  const existing = await prisma.vendedores.findFirst({ where: { ...withTenant(tenantId), id } });
+  const existing = await prisma.vendedores.findFirst({
+    where: { ...withTenant(tenantId), id },
+    include: { profiles: { select: { id: true } } },
+  });
   if (!existing) {
     return errorResponse("Vendedor no encontrado", "NOT_FOUND", 404);
   }
@@ -79,7 +82,14 @@ export const PATCH = withErrorHandler(async (req: NextRequest, { params }: Route
   }
 
   const data: Record<string, unknown> = {};
-  if (typeof body.nombre === "string" && body.nombre.trim()) data.nombre = body.nombre.trim();
+  // El nombre solo se acepta acá si el agente NO tiene cuenta. Con cuenta, la fuente de
+  // verdad es `profiles` (decisión 2026-08-01) y esta sería la puerta de atrás por donde
+  // los dos nombres volverían a divergir. Los agentes viejos sin cuenta no tienen profile
+  // que editar, así que para ellos la ficha sigue siendo el único lugar donde cambiarlo.
+  const tieneCuenta = existing.profiles.length > 0;
+  if (!tieneCuenta && typeof body.nombre === "string" && body.nombre.trim()) {
+    data.nombre = body.nombre.trim();
+  }
   if ("email" in body) data.email = (body.email as string)?.trim() || null;
   if ("telefono" in body) data.telefono = (body.telefono as string)?.trim() || null;
   if (esRolValido(body.rol)) data.rol = body.rol;
