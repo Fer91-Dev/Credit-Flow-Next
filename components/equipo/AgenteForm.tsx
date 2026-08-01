@@ -35,7 +35,6 @@ export function PersonalForm({
   const [apellido, setApellido] = useState("");
   const [email, setEmail] = useState("");
   const [telefono, setTelefono] = useState("");
-  const [rol, setRol] = useState<Vendedor["rol"]>("vendedor");
   const [comision, setComision] = useState("0");
   const [meta, setMeta] = useState("");
   const [activo, setActivo] = useState(true);
@@ -64,7 +63,6 @@ export function PersonalForm({
     }
     setEmail(vendedor?.email ?? "");
     setTelefono(vendedor?.telefono ?? "");
-    setRol(vendedor?.rol ?? "vendedor");
     setComision(String(vendedor?.comision_pct ?? 0));
     setMeta(vendedor?.meta_venta ? numeroAInput(vendedor.meta_venta) : "");
     setActivo(vendedor?.activo ?? true);
@@ -102,7 +100,7 @@ export function PersonalForm({
     setLoading(true); setError(null);
     try {
       const body: Record<string, unknown> = {
-        nombre, apellido, email, telefono, rol,
+        nombre, apellido, email, telefono,
         comision_pct: parseFloat(comision) || 0,
         meta_venta: parseMontoInput(meta),
         activo,
@@ -186,11 +184,10 @@ export function PersonalForm({
             </Field>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {/* El "Rol" del legajo se quitó: `vendedores.rol` está DEPRECADO — no
-                controla ningún permiso (eso es `profiles.role`) y solo alimentaba un
-                badge. Tenerlo acá hacía que el formulario pidiera el rol DOS veces,
-                y el de arriba no hacía nada. El único rol real es "Rol de acceso",
-                más abajo, en la sección de cuenta. */}
+            {/* Acá NO va ningún rol. El único que existe es "Rol de acceso", más
+                abajo en la sección de cuenta, y es el que define permisos
+                (`profiles.role`). Cuando el formulario lo pedía dos veces, el de
+                arriba escribía `vendedores.rol`, que no hace nada. */}
             <Field label="Comisión (%)" hint="sobre el monto otorgado">
               <Input type="number" min="0" max="100" step="any" value={comision} onChange={(e) => setComision(e.target.value)} className="font-mono tabular-nums" />
             </Field>

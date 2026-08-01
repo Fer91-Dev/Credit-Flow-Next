@@ -28,13 +28,6 @@ function n0(x: number) {
   return new Intl.NumberFormat("es-AR", { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(x);
 }
 
-const ROL_META: Record<string, { label: string; variant: "primary" | "success" | "warning" | "muted" }> = {
-  vendedor:   { label: "Vendedor",      variant: "primary" },
-  supervisor: { label: "Supervisor",    variant: "success" },
-  cobrador:   { label: "Cobrador",      variant: "warning" },
-  admin:      { label: "Administrador", variant: "muted" },
-};
-
 const TABS = [
   { key: "rendimiento", label: "Rendimiento", icon: TrendingUp },
   { key: "comisiones",  label: "Comisiones",  icon: Percent },
@@ -110,7 +103,6 @@ export function VendedorDetail({ vendedorId, onChanged, onEliminar }: VendedorDe
     );
   }
 
-  const rol = ROL_META[vendedor.rol] ?? ROL_META.vendedor;
   const r = vendedor.resumen;
 
   return (
@@ -122,7 +114,6 @@ export function VendedorDetail({ vendedorId, onChanged, onEliminar }: VendedorDe
           <div className="min-w-0">
             <h2 className="truncate text-2xl font-semibold leading-tight tracking-tight text-foreground">{vendedor.nombre}</h2>
             <div className="mt-1.5 flex flex-wrap items-center gap-2">
-              <StatusBadge label={rol.label} variant={rol.variant} />
               <StatusBadge label={vendedor.activo ? "Activo" : "Inactivo"} variant={vendedor.activo ? "success" : "muted"} />
               {vendedor.zona && <span className="flex items-center gap-1 text-xs text-muted-foreground"><MapPin className="h-3 w-3" />{vendedor.zona}</span>}
             </div>
@@ -1075,7 +1066,6 @@ function DatosTab({ vendedor, guardar }: { vendedor: VendedorDetalle; guardar: (
   const [f, setF] = useState({
     nombre: vendedor.nombre ?? "",
     email: vendedor.email ?? "",
-    rol: vendedor.rol ?? "vendedor",
     activo: vendedor.activo,
     documento: vendedor.documento ?? "",
     fecha_ingreso: vendedor.fecha_ingreso ? String(vendedor.fecha_ingreso).slice(0, 10) : "",
@@ -1099,7 +1089,6 @@ function DatosTab({ vendedor, guardar }: { vendedor: VendedorDetalle; guardar: (
       {
         nombre: f.nombre.trim(),
         email: f.email,
-        rol: f.rol,
         activo: f.activo,
         documento: f.documento,
         fecha_ingreso: f.fecha_ingreso || null,
@@ -1140,10 +1129,10 @@ function DatosTab({ vendedor, guardar }: { vendedor: VendedorDetalle; guardar: (
       <section className="rounded-xl border border-border bg-muted/10 p-4">
         <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-3">Datos laborales</p>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {/* Mismo caso que en el alta: el "Rol" del legajo (`vendedores.rol`) está
-              DEPRECADO y no define permisos — el rol real es el de la cuenta, que se
-              edita en Equipo/Usuarios. Se quita para no tener dos roles distintos
-              conviviendo, uno de los cuales no hace nada. */}
+          {/* Acá NO va el rol: `vendedores.rol` no controla ningún permiso (eso es
+              `profiles.role`, que se elige en "Rol de acceso" al crear la cuenta).
+              Mostrarlo era peor que no tenerlo: un badge que dice "Supervisor" se lee
+              como un nivel de privilegio y no otorga ninguno. */}
           <Field label="Estado">
             <Select value={f.activo ? "activo" : "inactivo"} onChange={(e) => setF((p) => ({ ...p, activo: e.target.value === "activo" }))}>
               <option value="activo">Activo</option>
