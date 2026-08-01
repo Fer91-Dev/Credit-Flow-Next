@@ -525,8 +525,16 @@ model movimientos_caja {
   pago_id     String?  @db.Uuid
   vendedor_id String?  @db.Uuid // dueño de la caja: null = caja principal (tesorería); set = caja personal del vendedor
 
-  credito  creditos?   @relation(fields: [credito_id], references: [id], onDelete: Cascade)
-  pago     pagos?      @relation(fields: [pago_id], references: [id], onDelete: Cascade)
+  // `SetNull`, NO `Cascade`: el libro de caja es append-only y no puede perder asientos
+  // porque se borre lo que los originó. Con Cascade, borrar un crédito se llevaba su
+  // desembolso: el saldo histórico cambiaba solo, un arqueo viejo dejaba de cuadrar y el
+  // comprobante quedaba con un hueco en la numeración. El endpoint ya lo bloquea, pero
+  // eso protege UNA puerta; esto lo hace imposible desde cualquiera (script, SQL a mano,
+  // endpoint nuevo). Es el mismo criterio con el que ya se protegía `movimientos_stock`.
+  // Si se borra el origen, el asiento queda huérfano pero vivo: la descripción y el
+  // comprobante conservan a qué correspondía.
+  credito  creditos?   @relation(fields: [credito_id], references: [id], onDelete: SetNull)
+  pago     pagos?      @relation(fields: [pago_id], references: [id], onDelete: SetNull)
   vendedor vendedores? @relation(fields: [vendedor_id], references: [id], onDelete: SetNull)
 
   @@unique([tenant_id, serie, numero])

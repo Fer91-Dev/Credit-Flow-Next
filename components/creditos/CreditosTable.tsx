@@ -111,7 +111,6 @@ export function CreditosTable({ role }: { role: Role }) {
       if (!json.ok) { setActionError(json.error); toast.error(json.error || "No se pudo eliminar"); return; }
       mutate();
       globalMutate(KEYS.dashboard);
-      refrescarNotificaciones(); // borra sus movimientos de caja: la campanita no debe mostrarlos
       toast.success(`Crédito ${formatCreditoNumero(c.numero)} eliminado`);
     } catch {
       setActionError("No se pudo eliminar el crédito");
