@@ -134,6 +134,7 @@ export function ComisionesView() {
             </button>
           );
         }
+        if (!f.comision_configurada) return <span className="text-xs text-muted-foreground/50">Sin comisión configurada</span>;
         if (f.comision_total <= 0) return <span className="text-xs text-muted-foreground/50">Sin comisión</span>;
         return <StatusBadge variant="warning" label="Pendiente" />;
       },
@@ -213,6 +214,17 @@ export function ComisionesView() {
           </p>
         )}
       </div>
+
+      {/* Estado de primer uso: con todos los agentes en 0% la pantalla queda llena de
+          ceros sin decir por qué. Dice dónde se resuelve y desaparece solo. */}
+      {!isLoading && filas.length > 0 && filas.every((f) => !f.comision_configurada) && (
+        <div className="rounded-xl border border-warning/25 bg-warning/[0.06] p-3.5 text-xs leading-relaxed text-foreground">
+          <span className="font-semibold">Todavía no hay comisiones para liquidar.</span> Ningún
+          agente tiene un porcentaje asignado, así que todo da cero. Se configura en{" "}
+          <a href="/equipo" className="font-medium text-primary hover:underline">Equipo</a> → la
+          persona → pestaña <span className="font-medium">Comisiones</span>.
+        </div>
+      )}
 
       <DataTable<FilaComision>
         columns={columns}
@@ -322,7 +334,11 @@ function DetalleComision({ fila }: { fila: FilaComision }) {
         <div className="flex justify-between">
           <span className="text-muted-foreground">
             Bonus por meta
-            {fila.meta_monto > 0 && <span className="ml-1 text-muted-foreground/60">(meta {formatMonto(fila.meta_monto, 0)})</span>}
+            {/* El monto de la meta solo se muestra si esa meta ES la de este período;
+                si no, se estaría poniendo al lado un objetivo que no aplica acá. */}
+            {fila.meta_coincide && fila.meta_monto > 0 && (
+              <span className="ml-1 text-muted-foreground/60">(meta {formatMonto(fila.meta_monto, 0)})</span>
+            )}
           </span>
           <span className="font-mono">{formatMonto(fila.comision_bonus, 0)}</span>
         </div>

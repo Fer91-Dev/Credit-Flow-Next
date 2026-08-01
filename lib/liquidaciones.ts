@@ -37,6 +37,8 @@ export interface FilaComision {
   vendedor_id: string;
   nombre: string;
   comision_pct: number;
+  /** false si el agente no tiene ni % base ni config avanzada → nunca va a generar comisión. */
+  comision_configurada: boolean;
   monto_otorgado: number;
   creditos_cantidad: number;
   comision_base: number;
@@ -181,6 +183,7 @@ export async function comisionesDelPeriodo(
       vendedor_id: v.id,
       nombre: v.nombre,
       comision_pct: v.comision_pct,
+      comision_configurada: v.comision_pct > 0 || config != null,
       monto_otorgado,
       creditos_cantidad: creds.length,
       comision_base,

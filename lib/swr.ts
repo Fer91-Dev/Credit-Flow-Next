@@ -916,6 +916,8 @@ export interface FilaComision {
   vendedor_id: string;
   nombre: string;
   comision_pct: number;
+  /** false si no tiene ni % base ni config avanzada → nunca va a generar comisión. */
+  comision_configurada: boolean;
   monto_otorgado: number;
   creditos_cantidad: number;
   comision_base: number;
