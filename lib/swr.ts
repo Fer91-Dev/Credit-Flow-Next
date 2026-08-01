@@ -881,7 +881,86 @@ export const KEYS = {
   equipo:        "/api/equipo",
   zonas:         "/api/clientes/zonas",
   financiera:    "/api/financiera",
+  misLiquidaciones: "/api/me/liquidaciones",
 } as const;
+
+// ── Liquidación de comisiones ────────────────────────────────────────────────
+
+/** Una línea del detalle: por qué cada crédito aportó lo que aportó. */
+export interface DetalleCreditoComision {
+  credito_id: string;
+  numero: number | null;
+  cliente: string;
+  fecha: string;
+  monto: number;
+  tipo_credito: string;
+  pct: number;
+  comision: number;
+}
+
+/** Liquidación ya emitida (resumen que acompaña a la fila del período). */
+export interface LiquidacionResumen {
+  id: string;
+  periodo: string;
+  fecha_desde: string;
+  fecha_hasta: string;
+  comision_total: number;
+  estado: string;
+  comprobante: string | null;
+  created_at: string;
+  liquidado_por_nombre: string | null;
+}
+
+/** Lo que se le debe a un agente por el período consultado. */
+export interface FilaComision {
+  vendedor_id: string;
+  nombre: string;
+  comision_pct: number;
+  monto_otorgado: number;
+  creditos_cantidad: number;
+  comision_base: number;
+  comision_bonus: number;
+  comision_total: number;
+  meta_monto: number;
+  meta_cumplida: boolean;
+  meta_periodo: string | null;
+  /** true si la meta vigente cubre EXACTAMENTE el rango liquidado (condición del bonus). */
+  meta_coincide: boolean;
+  detalle: DetalleCreditoComision[];
+  liquidacion: LiquidacionResumen | null;
+}
+
+/** Liquidación con todo su snapshot (historial y ficha del agente). */
+export interface LiquidacionDetallada {
+  id: string;
+  vendedor_id: string;
+  vendedor_nombre: string;
+  periodo: string;
+  fecha_desde: string;
+  fecha_hasta: string;
+  monto_otorgado: number;
+  creditos_cantidad: number;
+  comision_base: number;
+  comision_bonus: number;
+  comision_total: number;
+  meta_monto: number;
+  meta_cumplida: boolean;
+  comision_pct_snapshot: number;
+  detalle: DetalleCreditoComision[];
+  estado: string;
+  cuenta: string;
+  comprobante: string | null;
+  liquidado_por_nombre: string | null;
+  notas: string | null;
+  anulada_motivo: string | null;
+  created_at: string;
+}
+
+export interface ComisionesPeriodo {
+  periodo: { tipo: string; anio: number; indice: number; etiqueta: string; desde: string; hasta: string };
+  filas: FilaComision[];
+  historial: LiquidacionDetallada[];
+}
 
 /** Identidad de la financiera (tenant) — co-branding + datos. */
 export interface Financiera {
@@ -1394,6 +1473,28 @@ export function useCampana(id: string | null) {
     id ? `/api/cobranza/campanas/${id}` : null,
   );
   return { campana: data, error, isLoading, mutate };
+}
+
+/** Comisiones a liquidar de un período + historial de liquidaciones. Solo admin. */
+export function useComisiones(p: { tipo: string; anio: number; indice: number }) {
+  const { data, error, isLoading, mutate } = useSWR<ComisionesPeriodo>(
+    `/api/comisiones?tipo=${p.tipo}&anio=${p.anio}&indice=${p.indice}`,
+  );
+  return { data, error, isLoading, mutate };
+}
+
+/** Las liquidaciones del usuario logueado (solo lectura, scopeadas en el server). */
+export function useMisLiquidaciones() {
+  const { data, error, isLoading, mutate } = useSWR<LiquidacionDetallada[]>(KEYS.misLiquidaciones);
+  return { liquidaciones: data ?? [], error, isLoading, mutate };
+}
+
+/** Liquidaciones de un agente puntual (ficha). Solo admin. Key condicional. */
+export function useLiquidacionesDe(vendedorId: string | null) {
+  const { data, error, isLoading, mutate } = useSWR<LiquidacionDetallada[]>(
+    vendedorId ? `/api/vendedores/${vendedorId}/liquidaciones` : null,
+  );
+  return { liquidaciones: data ?? [], error, isLoading, mutate };
 }
 
 /** Equipo unificado (cuentas + legajos). Solo admin. */

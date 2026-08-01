@@ -289,6 +289,48 @@ const HELP: Record<string, HelpDoc> = {
     ],
   },
 
+  // ─────────────────────────────────────────── Comisiones ───
+  "/comisiones": {
+    titulo: "Comisiones",
+    resumen:
+      "Acá liquidás lo que le debés a cada agente por su trabajo del período. Al liquidar, el monto queda congelado con el detalle de qué crédito aportó cuánto, y la plata sale de la caja principal. Es el respaldo de lo que pagaste: si mañana cambiás un porcentaje, este pago no se altera.",
+    bloques: [
+      {
+        kind: "pasos",
+        titulo: "Cómo liquidar un período",
+        pasos: [
+          "Elegí la duración (mensual, trimestral, semestral o anual) y el período. Arranca en el mes en curso.",
+          "La tabla muestra, por agente, cuánto otorgó, cuántos créditos y cuánto le corresponde de comisión.",
+          "Hacé clic en la fila del agente para ver el detalle: qué crédito aportó cuánto y con qué porcentaje.",
+          "Presioná «Liquidar», elegí de qué cuenta sale la plata (efectivo, banco o dólares) y confirmá.",
+          "Queda emitido un comprobante LIQ y el egreso aparece en Caja y en Comprobantes.",
+        ],
+      },
+      {
+        kind: "definiciones",
+        titulo: "Qué significa cada columna",
+        items: [
+          { term: "Otorgado", desc: "Lo que el agente colocó dentro del período. Es la base del cálculo. No incluye créditos anulados ni refinanciaciones (una refinanciación no es plata nueva)." },
+          { term: "A pagar", desc: "La comisión por sus créditos más el bonus por meta, si corresponde." },
+          { term: "Bonus", desc: "El premio por cumplir la meta. Solo se paga si la meta vigente cubre exactamente el período que estás liquidando." },
+          { term: "Pendiente", desc: "Todavía no se le pagó ese período." },
+          { term: "LIQ-000001", desc: "Ya está liquidado. El número es el comprobante; hacé clic para ver cómo se calculó." },
+        ],
+      },
+      {
+        kind: "tips",
+        titulo: "Cosas para tener en cuenta",
+        items: [
+          "Un agente no puede cobrar dos veces el mismo período: el sistema lo bloquea, y también bloquea liquidar fechas que se pisen con una liquidación anterior.",
+          "Si el bonus aparece en cero, revisá el detalle: ahí se explica el motivo. Lo más común es que la meta sea de otro período (por ejemplo, anual) y el bonus se pague cuando liquides ese período completo.",
+          "Si te equivocaste, no se edita: se anula. Anular devuelve la plata a la caja con un movimiento inverso y deja el registro marcado, con el motivo. Después podés volver a liquidar.",
+          "El porcentaje de comisión de cada agente se configura en su ficha, en Equipo → la persona → pestaña Comisiones.",
+          "Cada vendedor puede ver sus propias liquidaciones desde su inicio de sesión, con el mismo detalle. No puede modificar nada.",
+        ],
+      },
+    ],
+  },
+
   // ─────────────────────────────────────────── Reportes ───
   "/reportes": {
     titulo: "Reportes",

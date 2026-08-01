@@ -3,7 +3,8 @@
 import { useMemo, useState } from "react";
 import type { Role } from "@prisma/client";
 import { CalendarDays, MapPin, UserCog, Target, Trophy, Users2, AlertTriangle, Percent, ShieldCheck, Sparkles, PhoneCall } from "lucide-react";
-import { useZonas, useVendedores, useDashboard, useMiPerfilVendedor, useMisLogros, useReporteCobranza, type DashboardFiltros, type VendedorRendimiento, type MiPerfilVendedor } from "@/lib/swr";
+import { useZonas, useVendedores, useDashboard, useMiPerfilVendedor, useMisLogros, useReporteCobranza, useMisLiquidaciones, type DashboardFiltros, type VendedorRendimiento, type MiPerfilVendedor } from "@/lib/swr";
+import { LiquidacionesLista } from "@/components/comisiones/LiquidacionesLista";
 import { FiltrosPanel, FiltroChip } from "@/components/ui/FiltrosPanel";
 import { IconBadge } from "@/components/ui/IconBadge";
 import { DashboardKpis, DashboardCobranzaAvance, DashboardMoraGrid, DashboardKpisSkeleton } from "./DashboardMetrics";
@@ -222,6 +223,31 @@ function RendimientoVendedores({ filas }: { filas: VendedorRendimiento[] }) {
  * comisiones, su límite de otorgamiento, su meta vigente y su rendimiento.
  * Es de solo lectura — lo configura el admin desde la sección Personal.
  */
+/**
+ * Las liquidaciones de comisión del vendedor logueado — **solo lectura**. Los datos
+ * llegan de `/api/me/liquidaciones`, scopeado desde la SESIÓN (no por parámetro), así
+ * que nadie puede ver las de otro. Que cada uno pueda mirar por qué le pagaron lo que
+ * le pagaron evita la discusión antes de que exista.
+ */
+function MisLiquidaciones() {
+  const { liquidaciones, isLoading } = useMisLiquidaciones();
+  // Si nunca le liquidaron nada, no se muestra el bloque: es ruido hasta que exista.
+  if (!isLoading && liquidaciones.length === 0) return null;
+  return (
+    <div className="rounded-xl border border-border bg-muted/10 p-4">
+      <div className="flex items-center gap-1.5 mb-3">
+        <Percent className="h-3.5 w-3.5 text-muted-foreground" />
+        <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Mis liquidaciones</p>
+      </div>
+      <LiquidacionesLista
+        liquidaciones={liquidaciones}
+        loading={isLoading}
+        vacio="Todavía no se te liquidó ninguna comisión."
+      />
+    </div>
+  );
+}
+
 function MiConfiguracionVendedor({ perfil }: { perfil: MiPerfilVendedor }) {
   const r = perfil.resumen;
   const cfg = perfil.comision_config;
@@ -357,6 +383,10 @@ function MiConfiguracionVendedor({ perfil }: { perfil: MiPerfilVendedor }) {
           <p className="text-sm text-muted-foreground">No tenés una meta de período asignada.</p>
         )}
       </div>
+
+      {/* Mis liquidaciones — lo que efectivamente se me pagó, con el detalle de qué
+          crédito aportó cuánto. Solo lectura: el vendedor consulta, no modifica. */}
+      <MisLiquidaciones />
     </div>
   );
 }

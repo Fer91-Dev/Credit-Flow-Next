@@ -72,6 +72,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { icon: "bank",      label: "Caja",         to: "/caja" },
       { icon: "receipt",   label: "Comprobantes", to: "/comprobantes" },
+      { icon: "money-bag", label: "Comisiones",   to: "/comisiones" },
       { icon: "bar-chart", label: "Reportes",     to: "/reportes" },
     ],
   },

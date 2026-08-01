@@ -363,8 +363,71 @@ model vendedores {
   profiles         profiles[] // back-relation del vínculo profiles.vendedor_id
   metas            metas_vendedor[]
   movimientos_caja movimientos_caja[] // caja personal del vendedor (Fase caja por vendedor)
+  liquidaciones    liquidaciones_comision[]
 
   @@index([tenant_id])
+}
+
+/**
+ * Liquidación de comisiones — el comprobante de lo que se le PAGÓ a un agente.
+ *
+ * Existe porque la comisión se calculaba siempre en vivo: bajarle el `comision_pct` a
+ * un vendedor, o anular un crédito viejo, reescribía cuánto se le había pagado el mes
+ * anterior. Sin este registro, ninguna discusión con un vendedor sobre un pago tiene
+ * respaldo.
+ *
+ * Es un SNAPSHOT: los montos, la config de comisión usada y el detalle crédito por
+ * crédito quedan congelados al liquidar y no se recalculan nunca más. Mismo criterio
+ * que `creditos.cronograma` / `cargos` / `riesgo_snapshot`.
+ *
+ * NO se edita. Si algo salió mal se ANULA (revierte el movimiento de caja) y se genera
+ * otra — igual que un crédito.
+ */
+model liquidaciones_comision {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  created_at  DateTime @default(now()) @db.Timestamptz(6)
+  tenant_id   String   @db.Uuid
+  vendedor_id String   @db.Uuid
+
+  // Qué se liquidó
+  periodo     String // etiqueta: "2026-08", "2026-T3", "2026"
+  fecha_desde DateTime @db.Date
+  fecha_hasta DateTime @db.Date
+
+  // Base del cálculo (congelada)
+  monto_otorgado    Float @default(0)
+  creditos_cantidad Int   @default(0)
+
+  // El número que se paga (congelado)
+  comision_base  Float @default(0) // base + por tipo + tramos
+  comision_bonus Float @default(0) // bonus por meta (0 si no llegó)
+  comision_total Float @default(0)
+
+  // Por qué dio eso (congelado)
+  meta_monto               Float   @default(0)
+  meta_cumplida            Boolean @default(false)
+  comision_pct_snapshot    Float   @default(0)
+  comision_config_snapshot Json? // config avanzada vigente al liquidar (null = % plano)
+  detalle                  Json // [{ credito_id, numero, cliente, monto, pct, comision }]
+
+  // Trazabilidad
+  estado             String  @default("pagada") // pagada | anulada
+  movimiento_caja_id String? @db.Uuid // el egreso en la caja principal
+  cuenta             String  @default("efectivo") // efectivo | banco | dolares
+  liquidado_por      String? @db.Uuid // profiles.id de quien liquidó
+  liquidado_por_nombre String?
+  notas              String?
+  anulada_en         DateTime? @db.Timestamptz(6)
+  anulada_motivo     String?
+
+  vendedor vendedores @relation(fields: [vendedor_id], references: [id], onDelete: Cascade)
+
+  // Candado anti doble pago: un agente no puede tener dos liquidaciones del mismo
+  // período. El solapamiento de rangos se valida además en el endpoint (una liquidación
+  // anulada no bloquea, por eso no alcanza con el unique).
+  @@unique([tenant_id, vendedor_id, periodo])
+  @@index([tenant_id, fecha_desde])
+  @@index([tenant_id, vendedor_id])
 }
 
 /// Metas/objetivos de un vendedor por período (Fase 3). Aditiva, multi-tenant.

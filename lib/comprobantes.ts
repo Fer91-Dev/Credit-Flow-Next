@@ -18,6 +18,7 @@ export const SERIE_LABEL = {
   REN: "Rendición",
   GAS: "Gasto",
   ANP: "Anulación de cobro",
+  LIQ: "Liquidación de comisión",
 } as const;
 
 export type SerieComprobante = keyof typeof SERIE_LABEL;

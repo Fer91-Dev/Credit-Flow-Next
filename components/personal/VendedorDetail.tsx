@@ -6,9 +6,10 @@ import {
   UserCog, Trash2, TrendingUp, Target, Percent,
   MapPin, Layers, Plus, X, Award, Wallet, Send, ArrowDownToLine, CalendarRange,
 } from "lucide-react";
-import { useVendedorDetalle, useMetasVendedor, useLogrosVendedor, useConfiguracion, useVendedorCaja, KEYS, type VendedorDetalle, type ComisionConfig, type MetaVendedor, type PeriodoGamificacion, type CuentaCaja, type MovimientoCaja } from "@/lib/swr";
+import { useVendedorDetalle, useMetasVendedor, useLogrosVendedor, useConfiguracion, useVendedorCaja, useLiquidacionesDe, KEYS, type VendedorDetalle, type ComisionConfig, type MetaVendedor, type PeriodoGamificacion, type CuentaCaja, type MovimientoCaja } from "@/lib/swr";
 import { calcularComisionTotal, comisionDeVenta, rangoDePeriodo, periodoActual, PERIODOS_META, PERIODO_LABEL, type TipoPeriodo } from "@/lib/domain";
 import { MedallaBadge, RangoBadge, InsigniaChip } from "@/components/ui/Medalla";
+import { LiquidacionesLista } from "@/components/comisiones/LiquidacionesLista";
 import { MovimientoDetail } from "@/components/caja/MovimientoDetail";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Avatar } from "@/components/ui/Avatar";
@@ -177,7 +178,14 @@ export function VendedorDetail({ vendedorId, onChanged, onEliminar }: VendedorDe
       {/* ── Contenido de la pestaña ── */}
       <div className="p-5">
         {tab === "rendimiento" && <RendimientoTab vendedor={vendedor} />}
-        {tab === "comisiones" && <ComisionesTab vendedor={vendedor} guardar={guardar} />}
+        {tab === "comisiones" && (
+          <div className="space-y-6">
+            <ComisionesTab vendedor={vendedor} guardar={guardar} />
+            {/* Lo que efectivamente se le PAGÓ, debajo de con qué reglas se calcula.
+                Es solo lectura: liquidar se hace desde Finanzas → Comisiones. */}
+            <LiquidacionesDeAgente vendedorId={vendedor.id} />
+          </div>
+        )}
         {tab === "metas" && <MetasTab vendedor={vendedor} onMetaChanged={onMetaChanged} />}
         {tab === "logros" && <LogrosTab vendedorId={vendedor.id} />}
         {tab === "caja" && <CajaOperacionTab vendedor={vendedor} guardar={guardar} />}
@@ -1161,5 +1169,27 @@ function DatosTab({ vendedor, guardar }: { vendedor: VendedorDetalle; guardar: (
         </button>
       </div>
     </form>
+  );
+}
+
+/**
+ * Liquidaciones de comisión ya pagadas al agente — **solo lectura**. Emitirlas se hace
+ * desde Finanzas → Comisiones, que es donde se ve al equipo entero de una; acá se
+ * consulta el historial de esta persona cuando la pregunta es sobre ella.
+ */
+function LiquidacionesDeAgente({ vendedorId }: { vendedorId: string }) {
+  const { liquidaciones, isLoading } = useLiquidacionesDe(vendedorId);
+  return (
+    <section className="space-y-2">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Liquidaciones pagadas</p>
+        <a href="/comisiones" className="text-[11px] font-medium text-primary hover:underline">Liquidar comisiones</a>
+      </div>
+      <LiquidacionesLista
+        liquidaciones={liquidaciones}
+        loading={isLoading}
+        vacio="Todavía no se le liquidó ninguna comisión."
+      />
+    </section>
   );
 }
