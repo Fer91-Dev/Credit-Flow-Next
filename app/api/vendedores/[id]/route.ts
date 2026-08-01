@@ -22,10 +22,17 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
 
   const vendedor = await prisma.vendedores.findFirst({
     where: { ...withTenant(tenantId), id },
+    // La cuenta vinculada, para poder mostrar en la ficha el rol REAL (`profiles.role`,
+    // lo único que define permisos) en vez del decorativo `vendedores.rol`. Es un array
+    // por la back-relation, pero un agente tiene como mucho una cuenta (lo garantizan
+    // `POST/PATCH /api/usuarios` con 409).
+    include: { profiles: { select: { role: true, activo: true, email: true } } },
   });
   if (!vendedor) {
     return errorResponse("Vendedor no encontrado", "NOT_FOUND", 404);
   }
+  const { profiles, ...ficha } = vendedor;
+  const cuenta = profiles[0] ?? null;
 
   // Excluye refinanciaciones: no son plata nueva otorgada (no suman a comisión/meta ni
   // al "otorgado" de la ficha). El crédito original ya quedó contado en su momento.
@@ -49,13 +56,21 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
 
   const resumen = resumirVendedor(
     creditos.map((c) => ({ monto_original: c.monto_original, tipo_credito: c.tipo_credito, created_at: c.created_at })),
-    vendedor.comision_pct,
-    vendedor.meta_venta,
-    normalizarComisionConfig(vendedor.comision_config, vendedor.comision_pct),
+    ficha.comision_pct,
+    ficha.meta_venta,
+    normalizarComisionConfig(ficha.comision_config, ficha.comision_pct),
     metaVigente ? { desde: metaVigente.fecha_desde, hasta: metaVigente.fecha_hasta } : null,
   );
 
-  return successResponse({ ...vendedor, resumen, creditos, meta_periodo: metaVigente?.periodo ?? null });
+  return successResponse({
+    ...ficha,
+    resumen,
+    creditos,
+    meta_periodo: metaVigente?.periodo ?? null,
+    // `cuenta` es null si el agente no tiene login (agentes viejos). La ficha muestra
+    // "Sin acceso" en ese caso, que es informacion util, no un rol inventado.
+    cuenta: cuenta ? { role: cuenta.role, activo: cuenta.activo, email: cuenta.email } : null,
+  });
 });
 
 /**

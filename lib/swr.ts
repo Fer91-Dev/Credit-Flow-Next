@@ -317,6 +317,12 @@ export interface MetaVendedor {
 
 export interface VendedorDetalle extends Vendedor {
   resumen: ResumenVendedor;
+  /**
+   * Cuenta de acceso vinculada. `null` = el agente no tiene login (agentes viejos,
+   * previos a exigir cuenta en el alta). El `role` de acá es el rol REAL, el que
+   * define permisos — NO confundir con `Vendedor["rol"]`, que es decorativo.
+   */
+  cuenta: { role: RolUsuario | null; activo: boolean; email: string | null } | null;
   creditos: Array<{
     id: string;
     numero: number | null;

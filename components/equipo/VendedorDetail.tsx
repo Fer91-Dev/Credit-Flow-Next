@@ -23,6 +23,7 @@ import {
 } from "@/lib/utils";
 import { useConfirm } from "@/components/ui/confirm";
 import { useToast } from "@/components/ui/toast";
+import { ROLE_LABEL } from "@/lib/auth/roles";
 
 function n0(x: number) {
   return new Intl.NumberFormat("es-AR", { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(x);
@@ -114,6 +115,13 @@ export function VendedorDetail({ vendedorId, onChanged, onEliminar }: VendedorDe
           <div className="min-w-0">
             <h2 className="truncate text-2xl font-semibold leading-tight tracking-tight text-foreground">{vendedor.nombre}</h2>
             <div className="mt-1.5 flex flex-wrap items-center gap-2">
+              {/* Rol REAL de la cuenta (`profiles.role`), que es el que define permisos.
+                  NO se usa `vendedores.rol`: ese es decorativo y mostrarlo hacía creer
+                  que un "Supervisor" tenía privilegios que en realidad no tiene.
+                  Sin cuenta no hay rol que mostrar — y decirlo es información útil. */}
+              {vendedor.cuenta?.role
+                ? <StatusBadge label={ROLE_LABEL[vendedor.cuenta.role]} variant={vendedor.cuenta.role === "admin" ? "primary" : "muted"} />
+                : <StatusBadge label="Sin acceso" variant="warning" />}
               <StatusBadge label={vendedor.activo ? "Activo" : "Inactivo"} variant={vendedor.activo ? "success" : "muted"} />
               {vendedor.zona && <span className="flex items-center gap-1 text-xs text-muted-foreground"><MapPin className="h-3 w-3" />{vendedor.zona}</span>}
             </div>
