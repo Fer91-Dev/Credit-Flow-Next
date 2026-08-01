@@ -11,7 +11,7 @@ import {
   AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogFooter,
   AlertDialogTitle, AlertDialogDescription, AlertDialogCancel,
 } from "@/components/ui/alert-dialog";
-import { useConfiguracion, useMiPerfilVendedor, useMiCaja, useFinanciera, type CuentaCaja, type Producto } from "@/lib/swr";
+import { refrescarNotificaciones, useConfiguracion, useMiPerfilVendedor, useMiCaja, useFinanciera, type CuentaCaja, type Producto } from "@/lib/swr";
 import { useConfirm } from "@/components/ui/confirm";
 import { useToast } from "@/components/ui/toast";
 import { formatNumero, parseMontoInput, maskMontoInput, numeroAInput, formatFecha, formatMonto, formatCreditoNumero, nombreCompleto } from "@/lib/utils";
@@ -327,6 +327,7 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
           onClose(true);
         } else {
           setConfirmOpen(false);
+          refrescarNotificaciones(); // el desembolso ya salió de la caja
           setCreated({ numero: json.data?.numero ?? null, monto_original: json.data?.monto_original ?? monto });
         }
       } else {

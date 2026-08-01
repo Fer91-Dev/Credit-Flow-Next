@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useSWRConfig } from "swr";
 import { CalendarDays, Wallet, Info, ArrowUpRight, Receipt, Loader2, Printer, RefreshCw, ArrowRight, ShieldCheck, Ban } from "lucide-react";
-import { useAmortizacion, useCuotas, usePagosByCredito, useCreditos, KEYS, type Credito, type EstadoCuota, type Pago } from "@/lib/swr";
+import { refrescarNotificaciones, useAmortizacion, useCuotas, usePagosByCredito, useCreditos, KEYS, type Credito, type EstadoCuota, type Pago } from "@/lib/swr";
 import { type Role } from "@/lib/auth/roles";
 import { abrirRecibo } from "@/lib/recibo";
 import { imprimirPlanPagos } from "@/lib/plan-print";
@@ -92,6 +92,7 @@ export function CreditoDetail({ credito, role, onRefinanciar }: { credito: Credi
       const json = await res.json();
       if (!json.ok) { toast.error(json.error || "No se pudo anular el pago"); return; }
       toast.success("Pago anulado y caja cuadrada");
+      refrescarNotificaciones(); // movió caja: que la campanita avise ya
       setAnularPago(null); setAnularMotivo("");
       revalidar();
     } catch {

@@ -5,7 +5,7 @@ import { mutate as globalMutate } from "swr";
 import {
   Wallet, Banknote, CircleDollarSign, ArrowUpRight, ArrowDownLeft, Scale, Send, MinusCircle, FileText, ArrowRight, ArrowLeftRight,
 } from "lucide-react";
-import { useMiCaja, type CuentaCaja, type MovimientoCaja } from "@/lib/swr";
+import { refrescarNotificaciones, useMiCaja, type CuentaCaja, type MovimientoCaja } from "@/lib/swr";
 import { formatFechaHora, parseMontoInput } from "@/lib/utils";
 import { MoneyInput, Segmented, IconSelect, IconTextarea, FieldLabel, FormActions, simboloCuenta } from "./caja-form";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -238,7 +238,7 @@ function GastoDialog({
         body: JSON.stringify({ accion: "gasto", monto: montoNum, cuenta, descripcion }),
       });
       const json = await res.json();
-      if (json.ok) { reset(); toast.success("Gasto registrado"); onClose(true); }
+      if (json.ok) { reset(); toast.success("Gasto registrado"); refrescarNotificaciones(); onClose(true); }
       else setError(json.error);
     } catch {
       setError("No se pudo registrar el gasto");
@@ -351,7 +351,7 @@ function RendirDialog({
         body: JSON.stringify({ monto: montoNum, cuenta, descripcion }),
       });
       const json = await res.json();
-      if (json.ok) { reset(); toast.success("Rendición registrada"); onClose(true); }
+      if (json.ok) { reset(); toast.success("Rendición registrada"); refrescarNotificaciones(); onClose(true); }
       else setError(json.error);
     } catch {
       setError("No se pudo registrar la rendición");
@@ -469,7 +469,7 @@ function TransferDialog({
         body: JSON.stringify({ accion: "transferencia", origen, destino, monto: montoNum, descripcion }),
       });
       const json = await res.json();
-      if (json.ok) { reset(); toast.success("Transferencia registrada"); onClose(true); }
+      if (json.ok) { reset(); toast.success("Transferencia registrada"); refrescarNotificaciones(); onClose(true); }
       else setError(json.error);
     } catch {
       setError("No se pudo registrar la transferencia");

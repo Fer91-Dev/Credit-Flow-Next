@@ -9,7 +9,7 @@ import { CreditoDetail } from "./CreditoDetail";
 import { LibreDeudaDialog } from "./LibreDeudaDialog";
 import { RefinanciarDialog } from "./RefinanciarDialog";
 import { CompararRefiDialog } from "./CompararRefiDialog";
-import { useCreditos, KEYS, type Credito } from "@/lib/swr";
+import { refrescarNotificaciones, useCreditos, KEYS, type Credito } from "@/lib/swr";
 import { type Role } from "@/lib/auth/roles";
 import { formatCreditoNumero, nombreCompleto, formatFecha, formatFechaHora } from "@/lib/utils";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -87,6 +87,7 @@ export function CreditosTable({ role }: { role: Role }) {
       globalMutate(KEYS.dashboard);
       globalMutate(KEYS.vendedores); // las stats del vendedor excluyen anulados → refrescar Personal
       globalMutate((k) => typeof k === "string" && k.startsWith("/api/caja"), undefined, { revalidate: true });
+      refrescarNotificaciones(); // movió caja: que la campanita avise ya
       toast.success("Crédito anulado");
     } catch {
       setActionError("No se pudo anular el crédito");
@@ -110,6 +111,7 @@ export function CreditosTable({ role }: { role: Role }) {
       if (!json.ok) { setActionError(json.error); toast.error(json.error || "No se pudo eliminar"); return; }
       mutate();
       globalMutate(KEYS.dashboard);
+      refrescarNotificaciones(); // borra sus movimientos de caja: la campanita no debe mostrarlos
       toast.success(`Crédito ${formatCreditoNumero(c.numero)} eliminado`);
     } catch {
       setActionError("No se pudo eliminar el crédito");

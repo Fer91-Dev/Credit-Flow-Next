@@ -5,7 +5,7 @@ import { useSWRConfig } from "swr";
 import {
   Pencil, Trash2, CalendarClock, ChevronRight, Loader2, Mail, Phone, Printer, ShieldCheck, Ban, Receipt,
 } from "lucide-react";
-import { useClienteDetalle, useAccionesCobranza, useCuotas, KEYS, type CreditoConFinanzas, type EstadoCuota, type CuotaPersistida } from "@/lib/swr";
+import { refrescarNotificaciones, useClienteDetalle, useAccionesCobranza, useCuotas, KEYS, type CreditoConFinanzas, type EstadoCuota, type CuotaPersistida } from "@/lib/swr";
 import { StatusBadge, type BadgeVariant } from "@/components/ui/StatusBadge";
 import { Stat } from "@/components/ui/Stat";
 import { Emoji } from "@/components/ui/Emoji";
@@ -201,6 +201,7 @@ export function ClienteDetail({
       const json = await res.json();
       if (!json.ok) { toast.error(json.error || "No se pudo anular el pago"); return; }
       toast.success("Pago anulado y caja cuadrada");
+      refrescarNotificaciones(); // movió caja: que la campanita avise ya
       setAnularPago(null); setAnularMotivo("");
       mutate(); // revalida la ficha del cliente
       globalMutate(KEYS.creditos); globalMutate(KEYS.pagos); globalMutate(KEYS.dashboard); globalMutate("/api/caja");

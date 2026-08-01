@@ -6,7 +6,7 @@ import { Landmark, ArrowDownLeft, ArrowUpRight, Scale, Download, Plus, ChevronDo
 import { IconBadge } from "@/components/ui/IconBadge";
 import { DataTable } from "@/components/ui/DataTable";
 import { Emoji } from "@/components/ui/Emoji";
-import { useCaja, useVendedores, useCotizacion, type CajaData, type MovimientoCaja, type CuentaCaja } from "@/lib/swr";
+import { refrescarNotificaciones, useCaja, useVendedores, useCotizacion, type CajaData, type MovimientoCaja, type CuentaCaja } from "@/lib/swr";
 import { formatFechaHora, parseMontoInput } from "@/lib/utils";
 import { MoneyInput, Segmented, IconSelect, IconTextarea, FieldLabel, FormActions, simboloCuenta } from "./caja-form";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -430,7 +430,7 @@ function AjusteDialog({ open, onClose }: { open: boolean; onClose: (ok?: boolean
         body: JSON.stringify({ monto: montoNum, sentido, descripcion, metodo, cuenta }),
       });
       const json = await res.json();
-      if (json.ok) { reset(); toast.success("Ajuste registrado"); onClose(true); }
+      if (json.ok) { reset(); toast.success("Ajuste registrado"); refrescarNotificaciones(); onClose(true); }
       else setError(json.error);
     } catch {
       setError("No se pudo registrar el ajuste");
@@ -595,6 +595,7 @@ function TransferenciaDialog({
       if (json.ok) {
         reset();
         toast.success(cruzaMoneda ? (vende ? "Venta de dólares registrada" : "Compra de dólares registrada") : "Transferencia registrada");
+        refrescarNotificaciones(); // movió caja: que la campanita avise ya
         onClose(true);
       } else setError(json.error);
     } catch {
@@ -771,7 +772,7 @@ function ArqueoDialog({
         body: JSON.stringify({ cuenta, monto_fisico: fisicoNum, descripcion }),
       });
       const json = await res.json();
-      if (json.ok) { setResultado(json.data); toast.success("Arqueo registrado"); onClose(true); }
+      if (json.ok) { setResultado(json.data); toast.success("Arqueo registrado"); refrescarNotificaciones(); onClose(true); }
       else setError(json.error);
     } catch {
       setError("No se pudo registrar el arqueo");
@@ -904,7 +905,7 @@ function CajaVendedorDialog({ open, onClose }: { open: boolean; onClose: (ok?: b
         body: JSON.stringify({ accion, monto: montoNum, cuenta_principal: cuentaPrincipal, cuenta_vendedor: cuentaVendedor, descripcion }),
       });
       const json = await res.json();
-      if (json.ok) { reset(); toast.success(esEntrega ? "Entrega registrada" : "Recepción registrada"); onClose(true); }
+      if (json.ok) { reset(); toast.success(esEntrega ? "Entrega registrada" : "Recepción registrada"); refrescarNotificaciones(); onClose(true); }
       else setError(json.error);
     } catch {
       setError("No se pudo registrar el movimiento");

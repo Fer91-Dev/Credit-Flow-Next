@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { abrirRecibo } from "@/lib/recibo";
 import { formatNumero, maskMontoInput, parseMontoInput, formatFecha, formatCreditoNumero, nombreCompleto, cn } from "@/lib/utils";
+import { refrescarNotificaciones } from "@/lib/swr";
 import type { CuotaPersistida, EstadoCuota } from "@/lib/swr";
 
 /** Desglose de imputación que devuelve POST /api/pagos. */
@@ -315,6 +316,7 @@ export function PagoForm({ creditoId, clienteId, onClose }: PagoFormProps) {
       const json = await res.json();
       if (json.ok) {
         setConfirmOpen(false);
+        refrescarNotificaciones(); // el cobro ya entró a la caja
         setResult({ pagoId: json.data.pago.id, imp: json.data.imputacion as Imputacion });
       } else {
         setConfirmOpen(false);

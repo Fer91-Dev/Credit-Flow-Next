@@ -6,7 +6,7 @@ import {
   UserCog, Trash2, TrendingUp, Target, Percent,
   MapPin, Layers, Plus, X, Award, Wallet, Send, ArrowDownToLine, CalendarRange,
 } from "lucide-react";
-import { useVendedorDetalle, useMetasVendedor, useLogrosVendedor, useConfiguracion, useVendedorCaja, useLiquidacionesDe, KEYS, type VendedorDetalle, type ComisionConfig, type MetaVendedor, type PeriodoGamificacion, type CuentaCaja, type MovimientoCaja } from "@/lib/swr";
+import { refrescarNotificaciones, useVendedorDetalle, useMetasVendedor, useLogrosVendedor, useConfiguracion, useVendedorCaja, useLiquidacionesDe, KEYS, type VendedorDetalle, type ComisionConfig, type MetaVendedor, type PeriodoGamificacion, type CuentaCaja, type MovimientoCaja } from "@/lib/swr";
 import { calcularComisionTotal, comisionDeVenta, rangoDePeriodo, periodoActual, PERIODOS_META, PERIODO_LABEL, type TipoPeriodo } from "@/lib/domain";
 import { MedallaBadge, RangoBadge, InsigniaChip } from "@/components/ui/Medalla";
 import { LiquidacionesLista } from "@/components/comisiones/LiquidacionesLista";
@@ -1016,7 +1016,7 @@ function EntregaRendirDialog({
         body: JSON.stringify({ accion, monto: m, cuenta, descripcion }),
       });
       const json = await res.json();
-      if (json.ok) { reset(); toast.success(esEntrega ? "Entrega registrada" : "Rendición registrada"); onClose(true); }
+      if (json.ok) { reset(); toast.success(esEntrega ? "Entrega registrada" : "Rendición registrada"); refrescarNotificaciones(); onClose(true); }
       else setError(json.error);
     } catch {
       setError("No se pudo registrar el movimiento");
