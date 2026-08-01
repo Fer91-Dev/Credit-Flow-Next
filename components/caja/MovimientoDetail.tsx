@@ -70,6 +70,7 @@ const TIPO_META: Record<MovimientoCaja["tipo"], { label: string; variant: BadgeV
   transferencia:      { label: "Transferencia", variant: "primary" },
   entrega:            { label: "Entrega a vendedor", variant: "warning" },
   rendicion:          { label: "Rendición",    variant: "success" },
+  comision:           { label: "Liquidación de comisión", variant: "warning" },
 };
 
 const CUENTA_LABEL: Record<MovimientoCaja["cuenta"], string> = {

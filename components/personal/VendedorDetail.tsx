@@ -832,6 +832,7 @@ const CAJA_TIPO_META: Record<MovimientoCaja["tipo"], { label: string; variant: "
   transferencia:      { label: "Transferencia", variant: "primary" },
   entrega:            { label: "Entrega",       variant: "warning" },
   rendicion:          { label: "Rendición",     variant: "success" },
+  comision:           { label: "Comisión",      variant: "warning" },
 };
 const CAJA_CUENTA_LABEL: Record<CuentaCaja, string> = { efectivo: "Efectivo", banco: "Banco", dolares: "Dólares" };
 

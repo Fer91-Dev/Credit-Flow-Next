@@ -43,6 +43,7 @@ const TIPO_META: Record<MovimientoCaja["tipo"], { label: string; variant: BadgeV
   transferencia:      { label: "Transferencia", variant: "primary" },
   entrega:            { label: "Entrega",       variant: "warning" },
   rendicion:          { label: "Rendición",     variant: "success" },
+  comision:           { label: "Comisión",      variant: "warning" },
 };
 
 const CUENTAS: CuentaCaja[] = ["efectivo", "banco", "dolares"];
@@ -201,6 +202,7 @@ export function CajaView() {
                   <option value="reversa_desembolso">Reversas</option>
                   <option value="ajuste">Ajustes</option>
                   <option value="transferencia">Transferencias</option>
+                  <option value="comision">Comisiones</option>
                 </select>
                 <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               </div>

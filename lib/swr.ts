@@ -577,7 +577,7 @@ export interface MovimientoCaja {
   fecha: string;
   /** Timestamp con hora (para mostrar fecha + hora del movimiento). */
   created_at?: string;
-  tipo: "desembolso" | "cobro" | "devolucion" | "reversa_desembolso" | "ajuste" | "transferencia" | "entrega" | "rendicion";
+  tipo: "desembolso" | "cobro" | "devolucion" | "reversa_desembolso" | "ajuste" | "transferencia" | "entrega" | "rendicion" | "comision";
   monto: number; // con signo: ingreso > 0, egreso < 0
   metodo: string | null;
   cuenta: CuentaCaja;

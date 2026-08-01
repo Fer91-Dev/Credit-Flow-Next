@@ -14,7 +14,8 @@ export type TipoMovimiento =
   | "ajuste"            // manual (ingreso o egreso)
   | "transferencia"     // movimiento de saldo entre cuentas (signo explícito)
   | "entrega"           // caja principal → vendedor (signo explícito por cada pata del par)
-  | "rendicion";        // vendedor → caja principal (signo explícito por cada pata del par)
+  | "rendicion"         // vendedor → caja principal (signo explícito por cada pata del par)
+  | "comision";         // egreso: liquidación de comisión a un agente (ingreso si se anula)
 
 /** Cuentas de tesorería disponibles. */
 export type Cuenta = "efectivo" | "banco" | "dolares";
