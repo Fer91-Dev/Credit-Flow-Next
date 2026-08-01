@@ -86,6 +86,13 @@
     "GET",
     "PATCH"
   ],
+  "comisiones/[id]/route.ts": [
+    "DELETE"
+  ],
+  "comisiones/route.ts": [
+    "GET",
+    "POST"
+  ],
   "comprobantes/route.ts": [
     "GET"
   ],
@@ -153,6 +160,9 @@
   "me/caja/route.ts": [
     "GET",
     "POST"
+  ],
+  "me/liquidaciones/route.ts": [
+    "GET"
   ],
   "me/logros/route.ts": [
     "GET"
@@ -243,6 +253,9 @@
   "vendedores/[id]/caja/route.ts": [
     "GET",
     "POST"
+  ],
+  "vendedores/[id]/liquidaciones/route.ts": [
+    "GET"
   ],
   "vendedores/[id]/logros/route.ts": [
     "GET"
