@@ -9,10 +9,9 @@ import { KpiCard } from "@/components/ui/KpiCard";
 import { DataTable, type Column } from "@/components/ui/DataTable";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Avatar } from "@/components/ui/Avatar";
-import { Field, Input, Select } from "@/components/ui/field";
+import { Field, Input, Select, Textarea } from "@/components/ui/field";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { ModalHeader, FormActions, MODAL_CONTENT } from "@/components/ui/form-kit";
-import { useConfirm } from "@/components/ui/confirm";
 import { useToast } from "@/components/ui/toast";
 import { formatMonto, formatFecha, formatCreditoNumero } from "@/lib/utils";
 
@@ -38,7 +37,6 @@ export function ComisionesView() {
   const [expandida, setExpandida] = useState<string | null>(null);
   const [verLiquidacion, setVerLiquidacion] = useState<LiquidacionDetallada | null>(null);
 
-  const confirm = useConfirm();
   const toast = useToast();
 
   const filas = data?.filas ?? [];
@@ -56,22 +54,7 @@ export function ComisionesView() {
     setTipo(t); setAnio(p.anio); setIndice(p.indice);
   };
 
-  const anular = async (l: LiquidacionDetallada) => {
-    const ok = await confirm({
-      title: "¿Anular la liquidación?",
-      description: `Se anula la liquidación de ${l.vendedor_nombre} del período ${l.periodo} por ${formatMonto(l.comision_total)}. La plata vuelve a la caja con un movimiento inverso; el registro queda como anulado, no se borra.`,
-      confirmLabel: "Anular",
-      tone: "danger",
-    });
-    if (!ok) return;
-    const motivo = window.prompt("Motivo de la anulación (queda en el registro y en la auditoría):");
-    if (!motivo?.trim()) return;
-    const res = await fetch(`/api/comisiones/${l.id}?motivo=${encodeURIComponent(motivo.trim())}`, { method: "DELETE" });
-    const j = await res.json().catch(() => null);
-    if (!res.ok || !j?.ok) { toast.error(j?.error ?? "No se pudo anular la liquidación"); return; }
-    mutate();
-    toast.success("Liquidación anulada");
-  };
+  const [aAnular, setAAnular] = useState<LiquidacionDetallada | null>(null);
 
   const columns: Column<FilaComision>[] = [
     {
@@ -275,7 +258,7 @@ export function ComisionesView() {
                   <span className="font-mono text-sm font-semibold text-warning">{formatMonto(l.comision_total, 0)}</span>
                   <button onClick={() => setVerLiquidacion(l)} className="rounded-lg px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted/30 hover:text-foreground">Ver</button>
                   {l.estado !== "anulada" && (
-                    <button onClick={() => anular(l)} title="Anular" className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive">
+                    <button onClick={() => setAAnular(l)} title="Anular" className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive">
                       <Ban className="h-3.5 w-3.5" />
                     </button>
                   )}
@@ -292,6 +275,10 @@ export function ComisionesView() {
         onClose={(ok) => { setALiquidar(null); if (ok) mutate(); }}
       />
       <VerLiquidacionDialog liquidacion={verLiquidacion} onClose={() => setVerLiquidacion(null)} />
+      <AnularLiquidacionDialog
+        liquidacion={aAnular}
+        onClose={(ok) => { setAAnular(null); if (ok) mutate(); }}
+      />
     </div>
   );
 }
@@ -501,5 +488,84 @@ function Dato({ label, valor, mono }: { label: string; valor: string; mono?: boo
       <p className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</p>
       <p className={`mt-0.5 text-foreground ${mono ? "font-mono tabular-nums" : ""}`}>{valor}</p>
     </div>
+  );
+}
+
+/**
+ * Anulación de una liquidación: confirma Y pide el motivo en un solo paso.
+ *
+ * Antes esto eran un `confirm()` del proyecto encadenado con un `window.prompt()`
+ * nativo. El prompt del navegador no respeta el tema, muestra el dominio del sitio y
+ * no valida nada — y la convención del SaaS es que no haya diálogos nativos. Como
+ * `useConfirm` no puede capturar texto, la salida correcta es un diálogo propio.
+ */
+function AnularLiquidacionDialog({
+  liquidacion, onClose,
+}: {
+  liquidacion: LiquidacionDetallada | null;
+  onClose: (ok?: boolean) => void;
+}) {
+  const [motivo, setMotivo] = useState("");
+  const [saving, setSaving] = useState(false);
+  const toast = useToast();
+
+  if (!liquidacion) return null;
+  const l = liquidacion;
+
+  const enviar = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!motivo.trim()) return;
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/comisiones/${l.id}?motivo=${encodeURIComponent(motivo.trim())}`, { method: "DELETE" });
+      const j = await res.json().catch(() => null);
+      if (!res.ok || !j?.ok) { toast.error(j?.error ?? "No se pudo anular la liquidación"); return; }
+      toast.success(`Liquidación de ${l.vendedor_nombre} anulada`);
+      setMotivo("");
+      onClose(true);
+    } finally { setSaving(false); }
+  };
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) { setMotivo(""); onClose(); } }}>
+      <DialogContent className={MODAL_CONTENT}>
+        <ModalHeader
+          icon={Ban}
+          title="Anular liquidación"
+          subtitle={`${l.vendedor_nombre} · período ${l.periodo}${l.comprobante ? ` · ${l.comprobante}` : ""}`}
+          accent="destructive"
+        />
+        <form onSubmit={enviar} className="space-y-4 p-5">
+          <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-4">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Vuelve a la caja</p>
+            <p className="mt-1 font-mono text-2xl font-bold text-destructive">{formatMonto(l.comision_total)}</p>
+            <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
+              Se registra un movimiento inverso en la caja principal. La liquidación no se borra:
+              queda marcada como anulada, con este motivo, y el período vuelve a quedar disponible.
+            </p>
+          </div>
+
+          <Field label="Motivo de la anulación" required hint="Queda en el registro y en la auditoría">
+            <Textarea
+              rows={3}
+              value={motivo}
+              onChange={(e) => setMotivo(e.target.value)}
+              placeholder="Ej. se cargó el período equivocado"
+              autoFocus
+              required
+            />
+          </Field>
+
+          <FormActions
+            onCancel={() => { setMotivo(""); onClose(); }}
+            loading={saving}
+            disabled={!motivo.trim()}
+            submitLabel="Anular liquidación"
+            loadingLabel="Anulando…"
+            tone="destructive"
+          />
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }
