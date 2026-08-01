@@ -422,10 +422,16 @@ model liquidaciones_comision {
 
   vendedor vendedores @relation(fields: [vendedor_id], references: [id], onDelete: Cascade)
 
-  // Candado anti doble pago: un agente no puede tener dos liquidaciones del mismo
-  // período. El solapamiento de rangos se valida además en el endpoint (una liquidación
-  // anulada no bloquea, por eso no alcanza con el unique).
-  @@unique([tenant_id, vendedor_id, periodo])
+  // NO lleva `@@unique([tenant_id, vendedor_id, periodo])`. Lo tuvo, y estaba mal: un
+  // unique no distingue estados, así que una liquidación ANULADA seguía ocupando el
+  // período y no se podía volver a liquidar (fallaba con "Recurso duplicado", el error
+  // crudo de Postgres). Anular tiene que dejar rehacer — es para lo que existe.
+  //
+  // El candado real es el chequeo de SOLAPAMIENTO en `liquidarComision`, que además es
+  // más fuerte: ignora las anuladas y también atrapa rangos que se pisan con etiquetas
+  // distintas ("2026-07" contra "01/07 al 15/07"), algo que el unique nunca vio. Corre
+  // dentro de la transacción y bajo advisory lock por (tenant, vendedor), así que dos
+  // liquidaciones simultáneas no pueden colarse.
   @@index([tenant_id, fecha_desde])
   @@index([tenant_id, vendedor_id])
 }

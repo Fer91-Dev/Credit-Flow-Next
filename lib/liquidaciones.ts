@@ -248,32 +248,37 @@ export async function liquidarComision(opts: {
     throw new ApiError("No hay comisión para liquidar en este período", "SIN_COMISION", 400);
   }
 
-  // Candado 1 (el @@unique cubre el mismo período). Candado 2: que no exista otra
-  // liquidación NO anulada del mismo agente cuyo rango se pise con este — si no, se
-  // podría pagar "agosto" y después "del 1 al 15 de agosto".
-  const solapada = await prisma.liquidaciones_comision.findFirst({
-    where: {
-      ...withTenant(tenantId),
-      vendedor_id: vendedorId,
-      estado: { not: "anulada" },
-      fecha_desde: { lte: rango.hasta },
-      fecha_hasta: { gte: rango.desde },
-    },
-  });
-  if (solapada) {
-    throw new ApiError(
-      `Ya hay una liquidación del período ${solapada.periodo} que cubre esas fechas. Anulala primero si querés rehacerla.`,
-      "LIQUIDACION_SOLAPADA",
-      409,
-    );
-  }
-
   const vendedor = await prisma.vendedores.findFirst({ where: { ...withTenant(tenantId), id: vendedorId } });
   if (!vendedor) throw new ApiError("Agente no encontrado", "NOT_FOUND", 404);
 
   const total = round2(fila.comision_total);
 
   const creada = await prisma.$transaction(async (tx) => {
+    // Candado anti doble pago. Va DENTRO de la transacción y bajo advisory lock por
+    // (tenant, agente): chequear afuera dejaba una ventana para que dos liquidaciones
+    // simultáneas pasaran las dos. Mismo patrón que la numeración de comprobantes.
+    //
+    // Las ANULADAS se ignoran a propósito: anular existe justamente para poder rehacer.
+    // Se compara por RANGO y no por etiqueta de período, así también atrapa "01/07 al
+    // 15/07" contra un "2026-07" ya liquidado.
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`liq:${tenantId}:${vendedorId}`}, 0))`;
+    const solapada = await tx.liquidaciones_comision.findFirst({
+      where: {
+        ...withTenant(tenantId),
+        vendedor_id: vendedorId,
+        estado: { not: "anulada" },
+        fecha_desde: { lte: rango.hasta },
+        fecha_hasta: { gte: rango.desde },
+      },
+    });
+    if (solapada) {
+      throw new ApiError(
+        `${vendedor.nombre} ya tiene liquidado el período ${solapada.periodo}, que cubre esas fechas. Anulá esa liquidación si querés rehacerla.`,
+        "LIQUIDACION_SOLAPADA",
+        409,
+      );
+    }
+
     // La comisión sale de la CAJA PRINCIPAL (vendedor_id: null).
     await assertFondosSuficientesTx(tx, {
       tenantId, vendedorId: null, cuenta, monto: total,
