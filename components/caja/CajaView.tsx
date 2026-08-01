@@ -184,123 +184,6 @@ export function CajaView() {
         </button>
       </div>
 
-      {/* ── Filtros de la tabla ─────────────────────────────────────────────
-          Antes eran tres mecanismos sueltos en una fila (dos inputs de fecha, el
-          panel de Filtros y los presets al otro extremo) y ninguno decía qué estaba
-          aplicado: los presets no se marcaban y no había forma de volver atrás.
-          Ahora es UNA barra, pegada a la tabla, con jerarquía: el período manda
-          (es el filtro principal de una caja), lo demás queda en el panel, y los
-          chips + "Limpiar" muestran y deshacen lo activo. */}
-      <div className="rounded-xl border border-border bg-card">
-        <div className="flex flex-col gap-3 p-3 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Período</span>
-            {/* Segmentado: el preset aplicado queda marcado. Antes eran cuatro botones
-                idénticos y no se sabía cuál estaba puesto. */}
-            <div className="flex items-center rounded-lg border border-border p-0.5">
-              {presets.map((p) => {
-                const activo = desde === p.desde && hasta === p.hasta;
-                return (
-                  <button
-                    key={p.label}
-                    onClick={p.run}
-                    aria-pressed={activo}
-                    className={`rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors ${
-                      activo ? "bg-primary/10 text-foreground" : "text-muted-foreground hover:bg-muted/20 hover:text-foreground"
-                    }`}
-                  >
-                    {p.label}
-                  </button>
-                );
-              })}
-            </div>
-            <span className="hidden h-5 w-px bg-border sm:block" />
-            <div className="flex items-center gap-1.5">
-              <input
-                type="date" value={desde} max={hasta} onChange={(e) => setDesde(e.target.value)}
-                aria-label="Desde"
-                className="h-9 rounded-lg border border-border bg-muted/40 px-2.5 text-xs text-foreground outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/20"
-              />
-              <ArrowRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground/50" />
-              <input
-                type="date" value={hasta} min={desde} onChange={(e) => setHasta(e.target.value)}
-                aria-label="Hasta"
-                className="h-9 rounded-lg border border-border bg-muted/40 px-2.5 text-xs text-foreground outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/20"
-              />
-            </div>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2">
-            {/* Sin `onLimpiar`: el panel no dibuja SU botón de limpiar. Hay uno solo,
-                el de la barra, que además restablece el período. Dos botones "Limpiar"
-                con alcances distintos era una trampa. */}
-            <FiltrosPanel
-              activos={filtrosActivos}
-              align="right"
-              chips={<>
-                {tipo !== "all" && <FiltroChip onClear={() => setTipo("all")}>{TIPO_META[tipo as MovimientoCaja["tipo"]]?.label ?? tipo}</FiltroChip>}
-                {cuenta !== "all" && <FiltroChip onClear={() => setCuenta("all")}>{CUENTA_META[cuenta as CuentaCaja]?.label ?? cuenta}</FiltroChip>}
-              </>}
-            >
-              <label className="flex flex-col gap-1">
-                <span className="text-[11px] font-medium text-muted-foreground">Tipo</span>
-                <div className="relative">
-                  <select value={tipo} onChange={(e) => setTipo(e.target.value)} className={SEL}>
-                    <option value="all">Todos</option>
-                    <option value="desembolso">Desembolsos</option>
-                    <option value="cobro">Cobros</option>
-                    <option value="devolucion">Devoluciones</option>
-                    <option value="reversa_desembolso">Reversas</option>
-                    <option value="ajuste">Ajustes</option>
-                    <option value="transferencia">Transferencias</option>
-                    <option value="comision">Comisiones</option>
-                  </select>
-                  <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                </div>
-              </label>
-              <label className="flex flex-col gap-1">
-                <span className="text-[11px] font-medium text-muted-foreground">Cuenta</span>
-                <div className="relative">
-                  <select value={cuenta} onChange={(e) => setCuenta(e.target.value as CuentaCaja | "all")} className={SEL}>
-                    <option value="all">Todas</option>
-                    <option value="efectivo">Efectivo</option>
-                    <option value="banco">Banco</option>
-                    <option value="dolares">Dólares</option>
-                  </select>
-                  <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                </div>
-              </label>
-            </FiltrosPanel>
-
-            {/* Aparece solo si hay algo que deshacer — incluido un período cambiado. */}
-            {haySucio && (
-              <button
-                onClick={limpiarTodo}
-                className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/30 hover:text-foreground"
-              >
-                <X className="h-3.5 w-3.5" /> Limpiar
-              </button>
-            )}
-          </div>
-        </div>
-
-        {/* Resumen de lo aplicado, pegado a la tabla: cuántos movimientos se están
-            viendo y de qué recorte salen. */}
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 border-t border-border/60 px-3 py-2 text-[11px] text-muted-foreground">
-          <span>
-            {caja ? <><span className="font-semibold text-foreground">{caja.movimientos.length}</span> movimiento{caja.movimientos.length === 1 ? "" : "s"}</> : "Cargando…"}
-          </span>
-          <span className="text-muted-foreground/40">·</span>
-          <span className="font-mono">{desde.split("-").reverse().join("/")} — {hasta.split("-").reverse().join("/")}</span>
-          {filtrosActivos > 0 && (
-            <>
-              <span className="text-muted-foreground/40">·</span>
-              <span>{filtrosActivos} filtro{filtrosActivos === 1 ? "" : "s"} aplicado{filtrosActivos === 1 ? "" : "s"}</span>
-            </>
-          )}
-        </div>
-      </div>
-
       {isLoading || !caja ? (
         <BodySkeleton />
       ) : error ? (
@@ -387,11 +270,129 @@ export function CajaView() {
             <KpiCard icon="outbox-tray" label="Egresos del período" value={`$${n0(caja.egresos)}`} accent="warning" mono />
           </div>
 
-          {/* Tabla de movimientos */}
+          {/* Tabla de movimientos — el título y los filtros van en el MISMO bloque,
+              justo encima de la tabla: así se lee "esta tabla, recortada así" en vez de
+              filtros sueltos arriba de la pantalla, lejos de lo que filtran. */}
           <section className="space-y-3">
           <div className="flex items-center gap-2 border-b border-border pb-2">
             <IconBadge emoji="bank" accent="primary" />
             <h2 className="text-sm font-semibold text-foreground">Movimientos de caja</h2>
+          </div>
+          {/* ── Filtros de la tabla ─────────────────────────────────────────────
+              Antes eran tres mecanismos sueltos en una fila (dos inputs de fecha, el
+              panel de Filtros y los presets al otro extremo) y ninguno decía qué estaba
+              aplicado: los presets no se marcaban y no había forma de volver atrás.
+              Ahora es UNA barra, pegada a la tabla, con jerarquía: el período manda
+              (es el filtro principal de una caja), lo demás queda en el panel, y los
+              chips + "Limpiar" muestran y deshacen lo activo. */}
+          <div className="rounded-xl border border-border bg-card">
+            <div className="flex flex-col gap-3 p-3 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Período</span>
+                {/* Segmentado: el preset aplicado queda marcado. Antes eran cuatro botones
+                    idénticos y no se sabía cuál estaba puesto. */}
+                <div className="flex items-center rounded-lg border border-border p-0.5">
+                  {presets.map((p) => {
+                    const activo = desde === p.desde && hasta === p.hasta;
+                    return (
+                      <button
+                        key={p.label}
+                        onClick={p.run}
+                        aria-pressed={activo}
+                        className={`rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors ${
+                          activo ? "bg-primary/10 text-foreground" : "text-muted-foreground hover:bg-muted/20 hover:text-foreground"
+                        }`}
+                      >
+                        {p.label}
+                      </button>
+                    );
+                  })}
+                </div>
+                <span className="hidden h-5 w-px bg-border sm:block" />
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="date" value={desde} max={hasta} onChange={(e) => setDesde(e.target.value)}
+                    aria-label="Desde"
+                    className="h-9 rounded-lg border border-border bg-muted/40 px-2.5 text-xs text-foreground outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/20"
+                  />
+                  <ArrowRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground/50" />
+                  <input
+                    type="date" value={hasta} min={desde} onChange={(e) => setHasta(e.target.value)}
+                    aria-label="Hasta"
+                    className="h-9 rounded-lg border border-border bg-muted/40 px-2.5 text-xs text-foreground outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/20"
+                  />
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                {/* Sin `onLimpiar`: el panel no dibuja SU botón de limpiar. Hay uno solo,
+                    el de la barra, que además restablece el período. Dos botones "Limpiar"
+                    con alcances distintos era una trampa. */}
+                <FiltrosPanel
+                  activos={filtrosActivos}
+                  align="right"
+                  chips={<>
+                    {tipo !== "all" && <FiltroChip onClear={() => setTipo("all")}>{TIPO_META[tipo as MovimientoCaja["tipo"]]?.label ?? tipo}</FiltroChip>}
+                    {cuenta !== "all" && <FiltroChip onClear={() => setCuenta("all")}>{CUENTA_META[cuenta as CuentaCaja]?.label ?? cuenta}</FiltroChip>}
+                  </>}
+                >
+                  <label className="flex flex-col gap-1">
+                    <span className="text-[11px] font-medium text-muted-foreground">Tipo</span>
+                    <div className="relative">
+                      <select value={tipo} onChange={(e) => setTipo(e.target.value)} className={SEL}>
+                        <option value="all">Todos</option>
+                        <option value="desembolso">Desembolsos</option>
+                        <option value="cobro">Cobros</option>
+                        <option value="devolucion">Devoluciones</option>
+                        <option value="reversa_desembolso">Reversas</option>
+                        <option value="ajuste">Ajustes</option>
+                        <option value="transferencia">Transferencias</option>
+                        <option value="comision">Comisiones</option>
+                      </select>
+                      <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    </div>
+                  </label>
+                  <label className="flex flex-col gap-1">
+                    <span className="text-[11px] font-medium text-muted-foreground">Cuenta</span>
+                    <div className="relative">
+                      <select value={cuenta} onChange={(e) => setCuenta(e.target.value as CuentaCaja | "all")} className={SEL}>
+                        <option value="all">Todas</option>
+                        <option value="efectivo">Efectivo</option>
+                        <option value="banco">Banco</option>
+                        <option value="dolares">Dólares</option>
+                      </select>
+                      <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    </div>
+                  </label>
+                </FiltrosPanel>
+
+                {/* Aparece solo si hay algo que deshacer — incluido un período cambiado. */}
+                {haySucio && (
+                  <button
+                    onClick={limpiarTodo}
+                    className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/30 hover:text-foreground"
+                  >
+                    <X className="h-3.5 w-3.5" /> Limpiar
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Resumen de lo aplicado, pegado a la tabla: cuántos movimientos se están
+                viendo y de qué recorte salen. */}
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 border-t border-border/60 px-3 py-2 text-[11px] text-muted-foreground">
+              <span>
+                {caja ? <><span className="font-semibold text-foreground">{caja.movimientos.length}</span> movimiento{caja.movimientos.length === 1 ? "" : "s"}</> : "Cargando…"}
+              </span>
+              <span className="text-muted-foreground/40">·</span>
+              <span className="font-mono">{desde.split("-").reverse().join("/")} — {hasta.split("-").reverse().join("/")}</span>
+              {filtrosActivos > 0 && (
+                <>
+                  <span className="text-muted-foreground/40">·</span>
+                  <span>{filtrosActivos} filtro{filtrosActivos === 1 ? "" : "s"} aplicado{filtrosActivos === 1 ? "" : "s"}</span>
+                </>
+              )}
+            </div>
           </div>
           <DataTable<MovimientoCaja>
             rows={caja.movimientos}
