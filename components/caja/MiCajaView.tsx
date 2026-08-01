@@ -13,6 +13,7 @@ import { KpiCard } from "@/components/ui/KpiCard";
 import { Emoji } from "@/components/ui/Emoji";
 import { StatusBadge, type BadgeVariant } from "@/components/ui/StatusBadge";
 import { DataTable } from "@/components/ui/DataTable";
+import { CuentaCard, CUENTAS, CUENTA_META } from "@/components/caja/CuentaCard";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { MovimientoDetail } from "./MovimientoDetail";
@@ -32,13 +33,6 @@ function n2(x: number) {
   return new Intl.NumberFormat("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(sinCeroNegativo(x, 2));
 }
 
-const CUENTAS: CuentaCaja[] = ["efectivo", "banco", "dolares"];
-const CUENTA_META: Record<CuentaCaja, { label: string; icon: string; prefix: string }> = {
-  efectivo: { label: "Efectivo", icon: "money-bag", prefix: "$" },
-  banco:    { label: "Banco",    icon: "bank", prefix: "$" },
-  dolares:  { label: "Dólares",  icon: "dollar-banknote", prefix: "u$s" },
-};
-
 const TIPO_META: Record<MovimientoCaja["tipo"], { label: string; variant: BadgeVariant }> = {
   desembolso:         { label: "Desembolso",   variant: "warning" },
   cobro:              { label: "Cobro",         variant: "success" },
@@ -57,8 +51,24 @@ export function MiCajaView() {
   const [gastoOpen, setGastoOpen] = useState(false);
   const [transferOpen, setTransferOpen] = useState(false);
   const [detalle, setDetalle] = useState<MovimientoCaja | null>(null);
+  /** Filtro de la tabla por cuenta: se pone y se saca clickeando su tarjeta. */
+  const [cuentaFiltro, setCuentaFiltro] = useState<CuentaCaja | "all">("all");
+  const [refrescando, setRefrescando] = useState<CuentaCaja | null>(null);
 
   const refrescar = () => { mutate(); globalMutate("/api/dashboard"); };
+
+  /** Refresco por tarjeta. El `setTimeout` sostiene el spinner el tiempo suficiente
+   *  para que se vea que pasó algo, aunque SWR responda de la caché al instante. */
+  const refrescarCuenta = async (c: CuentaCaja) => {
+    setRefrescando(c);
+    await Promise.all([mutate(), new Promise((r) => setTimeout(r, 500))]);
+    globalMutate("/api/dashboard");
+    setRefrescando(null);
+  };
+
+  const movimientosVisibles = caja
+    ? (cuentaFiltro === "all" ? caja.movimientos : caja.movimientos.filter((m) => m.cuenta === cuentaFiltro))
+    : [];
 
   return (
     <div className="space-y-6">
@@ -109,29 +119,21 @@ export function MiCajaView() {
         </div>
       ) : (
         <div className="space-y-5">
-          {/* Saldos por cuenta */}
+          {/* Saldos por cuenta — MISMA tarjeta que la caja del administrador. */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            {CUENTAS.map((c) => {
-              const meta = CUENTA_META[c];
-              const saldo = caja.saldos_por_cuenta[c] ?? 0;
-              return (
-                <div key={c} className="rounded-xl border border-border bg-card p-5">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold uppercase tracking-widest text-muted-foreground">{meta.label}</span>
-                    <Emoji name={meta.icon} className="h-4 w-4" />
-                  </div>
-                  <p className={`mt-3 text-2xl font-bold font-mono tabular-nums tracking-tight ${saldo < 0 ? "text-destructive" : "text-foreground"}`}>
-                    {meta.prefix} {n2(saldo)}
-                  </p>
-                  {c === "dolares" && caja.valorizacion_dolares != null && (
-                    <p className="mt-1 text-[11px] font-mono text-muted-foreground">
-                      ≈ ${n0(caja.valorizacion_dolares)}
-                      {caja.dolar_blue != null && <span className="text-muted-foreground/60"> · blue ${n0(caja.dolar_blue)}</span>}
-                    </p>
-                  )}
-                </div>
-              );
-            })}
+            {CUENTAS.map((c) => (
+              <CuentaCard
+                key={c}
+                cuenta={c}
+                detalle={caja.saldos_detalle?.[c] ?? { saldo: caja.saldos_por_cuenta[c] ?? 0, anterior: 0, ingresos: 0, egresos: 0 }}
+                activa={cuentaFiltro === c}
+                onToggle={() => setCuentaFiltro(cuentaFiltro === c ? "all" : c)}
+                onRefrescar={() => refrescarCuenta(c)}
+                refrescando={refrescando === c}
+                valorizacionDolares={caja.valorizacion_dolares}
+                dolarBlue={caja.dolar_blue}
+              />
+            ))}
           </div>
 
           {/* KPIs */}
@@ -144,7 +146,7 @@ export function MiCajaView() {
 
           {/* Movimientos */}
           <DataTable<MovimientoCaja>
-            rows={caja.movimientos}
+            rows={movimientosVisibles}
             rowKey={(m) => m.id}
             onRowClick={(m) => setDetalle(m)}
             empty={{ icon: "bank", title: "Todavía no hay movimientos en tu caja" }}

@@ -9,7 +9,8 @@ import type { NextRequest } from "next/server";
  * GET /api/notificaciones
  * Últimos movimientos de caja para la campanita, ROL-AWARE:
  *  - vendedor → solo los de SU caja (entregas recibidas, cobros, gastos, etc.).
- *  - admin / cobrador → TODAS las cajas (principal + la de cada vendedor).
+ *  - admin / cobrador → TODAS las cajas (principal + la de cada vendedor), pero con las
+ *    transferencias contadas UNA vez (ver el filtro `NOT` más abajo).
  * El estado "no leído" lo calcula el cliente comparando `created_at` contra un marcador
  * local (localStorage) — no persiste por usuario en DB (suficiente para un aviso en vivo).
  */
@@ -20,6 +21,14 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   if (role === "vendedor") {
     if (!vendedorId) return successResponse({ movimientos: [] });
     where.vendedor_id = vendedorId;
+  } else {
+    // Una entrega/rendición escribe DOS asientos: la pata del vendedor y la de la caja
+    // principal. El libro de caja las necesita a las dos, pero para quien administra es
+    // UN solo evento — le llegaban dos avisos de la misma transferencia, uno de ellos
+    // "ajeno" (la caja del vendedor). Se queda con la pata de la caja principal, que es
+    // la que refleja SU movimiento de plata. El resto de los tipos no se toca: el admin
+    // sigue viendo los cobros y gastos de cada vendedor.
+    where.NOT = { tipo: { in: ["entrega", "rendicion"] }, vendedor_id: { not: null } };
   }
 
   const movs = await prisma.movimientos_caja.findMany({

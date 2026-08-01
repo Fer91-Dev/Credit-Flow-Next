@@ -2,9 +2,10 @@
 
 import { useState } from "react";
 import { mutate as globalMutate } from "swr";
-import { Landmark, ArrowDownLeft, ArrowUpRight, Scale, Download, Plus, ChevronDown, ArrowLeftRight, ClipboardCheck, Wallet, Banknote, CircleDollarSign, FileText, CreditCard, ArrowRight, Users, RotateCw, X } from "lucide-react";
+import { Landmark, ArrowDownLeft, ArrowUpRight, Scale, Download, Plus, ChevronDown, ArrowLeftRight, ClipboardCheck, Wallet, Banknote, CircleDollarSign, FileText, CreditCard, ArrowRight, Users, X } from "lucide-react";
 import { IconBadge } from "@/components/ui/IconBadge";
 import { DataTable } from "@/components/ui/DataTable";
+import { CuentaCard, CUENTAS, CUENTA_META } from "@/components/caja/CuentaCard";
 import { Emoji } from "@/components/ui/Emoji";
 import { refrescarNotificaciones, useCaja, useVendedores, useCotizacion, type CajaData, type MovimientoCaja, type CuentaCaja } from "@/lib/swr";
 import { formatFechaHora, parseMontoInput } from "@/lib/utils";
@@ -55,19 +56,6 @@ const TIPO_META: Record<MovimientoCaja["tipo"], { label: string; variant: BadgeV
   comision:           { label: "Comisión",      variant: "warning" },
 };
 
-const CUENTAS: CuentaCaja[] = ["efectivo", "banco", "dolares"];
-const CUENTA_META: Record<CuentaCaja, { label: string; icon: string }> = {
-  efectivo: { label: "Efectivo", icon: "money-bag" },
-  banco:    { label: "Banco",    icon: "bank" },
-  dolares:  { label: "Dólares",  icon: "dollar-banknote" },
-};
-
-// Estilo de las tarjetas de saldo (gradiente fuerte + prefijo de moneda).
-const CUENTA_CARD: Record<CuentaCaja, { gradient: string; prefix: string }> = {
-  efectivo: { gradient: "linear-gradient(135deg, #10b981 0%, #0d9488 100%)", prefix: "$" },
-  banco:    { gradient: "linear-gradient(135deg, #818cf8 0%, #4f46e5 100%)", prefix: "$" },
-  dolares:  { gradient: "linear-gradient(135deg, #f59e0b 0%, #ea580c 100%)", prefix: "u$s" },
-};
 
 const INPUT =
   "h-10 rounded-lg border border-border bg-muted/40 px-3 text-sm text-foreground outline-none " +
@@ -203,72 +191,19 @@ export function CajaView() {
         <div className="space-y-5">
           {/* Saldos por cuenta (clickeables: filtran la tabla) */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            {CUENTAS.map((c) => {
-              const meta = CUENTA_META[c];
-              const card = CUENTA_CARD[c];
-              const d = caja.saldos_detalle?.[c] ?? { saldo: caja.saldos_por_cuenta[c] ?? 0, anterior: 0, ingresos: 0, egresos: 0 };
-              const active = cuenta === c;
-              return (
-                <div
-                  key={c}
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => setCuenta(active ? "all" : c)}
-                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setCuenta(active ? "all" : c); } }}
-                  title={active ? "Quitar filtro" : `Ver solo ${meta.label}`}
-                  style={{ backgroundImage: card.gradient }}
-                  className={`group relative overflow-hidden text-left rounded-2xl p-5 text-white shadow-lg shadow-black/20 transition-all cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70 ${
-                    active ? "ring-2 ring-white/80 ring-offset-2 ring-offset-background" : "hover:brightness-105"
-                  }`}
-                >
-                  {/* Header: nombre + refresh individual + ícono */}
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold uppercase tracking-widest text-white/80">{meta.label}</span>
-                    <div className="flex items-center gap-1.5">
-                      <button
-                        type="button"
-                        onClick={(e) => { e.stopPropagation(); refrescarCaja(c); }}
-                        title="Actualizar esta caja"
-                        className="flex h-6 w-6 items-center justify-center rounded-md bg-white/15 text-white/90 hover:bg-white/30 active:scale-90 transition-all"
-                      >
-                        <RotateCw className={`h-3.5 w-3.5 ${refreshing === c ? "animate-spin" : ""}`} />
-                      </button>
-                      <Emoji name={meta.icon} className="h-4 w-4" />
-                    </div>
-                  </div>
-
-                  {/* Balance */}
-                  <p className="mt-3 text-2xl font-bold font-mono tracking-tight">
-                    {card.prefix} {n2(d.saldo)}
-                  </p>
-                  {c === "dolares" && caja.valorizacion_dolares != null && (
-                    <p className="mt-1 text-[11px] font-mono text-white/75">
-                      ≈ ${n0(caja.valorizacion_dolares)}
-                      {caja.dolar_blue != null && <span className="text-white/50"> · blue ${n0(caja.dolar_blue)}</span>}
-                    </p>
-                  )}
-
-                  {/* Divisor */}
-                  <div className="my-4 h-px w-full bg-white/20" />
-
-                  {/* Anterior / Ingresos / Egresos */}
-                  <div className="grid grid-cols-3 gap-2">
-                    <div>
-                      <p className="text-[9px] font-semibold uppercase tracking-widest text-white/60">Anterior</p>
-                      <p className="mt-0.5 text-[11px] font-mono font-semibold text-white/90">{card.prefix}{n2(d.anterior)}</p>
-                    </div>
-                    <div>
-                      <p className="text-[9px] font-semibold uppercase tracking-widest text-white/60">Ingresos</p>
-                      <p className="mt-0.5 text-[11px] font-mono font-semibold text-white/90">↑ {n2(d.ingresos)}</p>
-                    </div>
-                    <div>
-                      <p className="text-[9px] font-semibold uppercase tracking-widest text-white/60">Egresos</p>
-                      <p className="mt-0.5 text-[11px] font-mono font-semibold text-white/90">↓ {n2(d.egresos)}</p>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
+            {CUENTAS.map((c) => (
+              <CuentaCard
+                key={c}
+                cuenta={c}
+                detalle={caja.saldos_detalle?.[c] ?? { saldo: caja.saldos_por_cuenta[c] ?? 0, anterior: 0, ingresos: 0, egresos: 0 }}
+                activa={cuenta === c}
+                onToggle={() => setCuenta(cuenta === c ? "all" : c)}
+                onRefrescar={() => refrescarCaja(c)}
+                refrescando={refreshing === c}
+                valorizacionDolares={caja.valorizacion_dolares}
+                dolarBlue={caja.dolar_blue}
+              />
+            ))}
           </div>
 
           {/* KPIs del período */}

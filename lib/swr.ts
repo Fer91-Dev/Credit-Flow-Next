@@ -611,6 +611,10 @@ export interface CajaVendedor {
   dolar_blue?: number | null;
   valorizacion_dolares?: number | null;
   saldos_por_cuenta: Record<CuentaCaja, number>;
+  /** Mismo desglose que la caja principal, para que las dos usen la misma `CuentaCard`.
+   *  Acá no hay filtro de fechas: el "período" es todo el historial del vendedor, así
+   *  que `anterior` siempre da 0 y los ingresos/egresos son los acumulados. */
+  saldos_detalle: Record<CuentaCaja, SaldoCuentaDetalle>;
   ingresos: number;
   egresos: number;
   neto: number;

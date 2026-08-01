@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { withTenant } from "@/app/lib/db";
 import { ApiError } from "@/lib/auth";
 import { registrarAuditoria } from "@/lib/audit";
-import { saldosPorCuenta, totalesCaja, round2, CUENTA_LABEL, etiquetaCaja, type Cuenta } from "@/lib/domain";
+import { saldosPorCuenta, totalesCaja, round2, esCuentaValida, CUENTA_LABEL, etiquetaCaja, type Cuenta } from "@/lib/domain";
 import { siguienteNumeroComprobante, formatComprobante, type SerieComprobante } from "@/lib/comprobantes";
 import { getDolarBlueVenta } from "@/lib/cotizacion";
 import { nombreCompleto, hoyComercial } from "@/lib/utils";
@@ -37,12 +37,35 @@ export async function cajaDeVendedor(tenantId: string, vendedorId: string | null
   const valorizacionDolares = dolarBlue != null ? round2(saldoDolares * dolarBlue) : null;
   const tot = totalesCaja(saldoMovs);
 
+  // Desglose por cuenta, con la MISMA forma que devuelve `/api/caja` — así la tarjeta
+  // de saldo es un componente compartido y no dos diseños que se van separando.
+  // La caja del vendedor no tiene filtro de fechas: su "período" es todo su historial,
+  // por eso `anterior` da 0 y los ingresos/egresos son los acumulados.
+  const r2 = (n: number) => Math.round(n * 100) / 100;
+  const saldosDetalle = { efectivo: null, banco: null, dolares: null } as unknown as Record<
+    "efectivo" | "banco" | "dolares",
+    { saldo: number; anterior: number; ingresos: number; egresos: number }
+  >;
+  for (const cta of ["efectivo", "banco", "dolares"] as const) {
+    saldosDetalle[cta] = { saldo: saldos[cta], anterior: 0, ingresos: 0, egresos: 0 };
+  }
+  for (const m of saldoMovs) {
+    const cta = esCuentaValida(m.cuenta) ? m.cuenta : "efectivo";
+    if (m.monto >= 0) saldosDetalle[cta].ingresos = r2(saldosDetalle[cta].ingresos + m.monto);
+    else saldosDetalle[cta].egresos = r2(saldosDetalle[cta].egresos + Math.abs(m.monto));
+  }
+  for (const cta of ["efectivo", "banco", "dolares"] as const) {
+    const d = saldosDetalle[cta];
+    d.anterior = r2(d.saldo - (d.ingresos - d.egresos));
+  }
+
   return {
     saldo_total: saldoTotal,
     saldo_dolares: saldoDolares,
     dolar_blue: dolarBlue,
     valorizacion_dolares: valorizacionDolares,
     saldos_por_cuenta: saldos,
+    saldos_detalle: saldosDetalle,
     ingresos: tot.ingresos,
     egresos: tot.egresos,
     neto: tot.neto,
@@ -99,12 +122,16 @@ export async function registrarMovimientoCajaVendedor(opts: {
   let origenVendedor: string, destinoVendedor: string, origenPrincipal: string, destinoPrincipal: string;
   if (accion === "entrega") {
     descVendedor = note || "Entrega recibida";
-    descPrincipal = note || `Entrega a ${nombre}`;
+    // La pata de la principal SIEMPRE nombra a la contraparte, aunque haya nota. Antes la
+    // nota la reemplazaba y el asiento quedaba diciendo solo "Préstamo": en la campanita,
+    // donde ahora se ve una sola línea por transferencia, no había forma de saber a quién
+    // se le entregó.
+    descPrincipal = note ? `Entrega a ${nombre} — ${note}` : `Entrega a ${nombre}`;
     origenVendedor = cajaPrincipalLbl; destinoVendedor = cajaVendedorLbl;
     origenPrincipal = cajaPrincipalLbl; destinoPrincipal = cajaVendedorLbl;
   } else {
     descVendedor = note || "Rendición a caja principal";
-    descPrincipal = note || `Rendición de ${nombre}`;
+    descPrincipal = note ? `Rendición de ${nombre} — ${note}` : `Rendición de ${nombre}`;
     origenVendedor = cajaVendedorLbl; destinoVendedor = cajaPrincipalLbl;
     origenPrincipal = cajaVendedorLbl; destinoPrincipal = cajaPrincipalLbl;
   }
