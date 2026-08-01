@@ -3,7 +3,12 @@
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import {
-  Bell, Search, LogOut, Menu, X, ChevronDown, PlusCircle, Sun, Moon, HelpCircle,
+  Bell, Search, LogOut, Menu, X, PlusCircle, Sun, Moon, HelpCircle,
+  LayoutDashboard, Users, CreditCard, Banknote, Megaphone,
+  Wallet, Receipt, Percent, BarChart3,
+  UserCog, Briefcase, Package, ArrowLeftRight, Truck, KeyRound,
+  Settings, Gem, ScrollText, Building2,
+  type LucideIcon,
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useEffect, useState } from "react";
@@ -11,7 +16,6 @@ import { Footer } from "./Footer";
 import { SystemActionsProvider } from "./system-actions";
 import { canAccess, type Role } from "@/lib/auth/roles";
 import { createClient } from "@/lib/supabase/client";
-import { Emoji } from "@/components/ui/Emoji";
 import { HelpPanel } from "@/components/ui/HelpPanel";
 import { getHelpDoc } from "@/lib/help/content";
 import type { Financiera } from "@/lib/swr";
@@ -42,18 +46,20 @@ function Brand({ financiera, size = "lg" }: { financiera?: Financiera | null; si
 }
 import { Avatar } from "@/components/ui/Avatar";
 
-/** `icon`: nombre del SVG Fluent Emoji en `public/emoji/<icon>.svg` (Microsoft, vía Iconify). */
-type NavItem = { icon: string; label: string; to: string };
+/** `icon`: componente de lucide-react (línea, monocromo, hereda `currentColor`). */
+type NavItem = { icon: LucideIcon; label: string; to: string };
 type NavGroup = { label: string; items: NavItem[] };
 
-/** Home queda suelto arriba (no entra en ningún grupo colapsable). */
-const HOME_ITEM: NavItem = { icon: "house", label: "Home", to: "/" };
+/** Home va suelto, FUERA del filtro por rol: `canAccess(cobrador, "/")` es false y el
+ *  cobrador (rol legacy) se quedaría sin enlace a su propia pantalla de aterrizaje. */
+const HOME_ITEM: NavItem = { icon: LayoutDashboard, label: "Home", to: "/" };
 /** Nav del dueño de la plataforma: solo el área de administración del SaaS. */
-const OWNER_ITEM: NavItem = { icon: "gem-stone", label: "Administración del SaaS", to: "/plataforma" };
+const OWNER_ITEM: NavItem = { icon: Building2, label: "Administración del SaaS", to: "/plataforma" };
 
 /**
- * Menús agrupados por dominio (colapsables). El filtrado por rol vacía grupos
- * que el rol no puede ver y se ocultan enteros (ver `groups` en AppShell):
+ * Menús agrupados por dominio. La etiqueta del grupo es un SEPARADOR, no un control:
+ * no colapsa. El filtrado por rol vacía grupos que el rol no puede ver y se ocultan
+ * enteros (ver `groups` en AppShell):
  *  - vendedor → Operación + Caja; cobrador → solo Operación; admin → todo.
  * "Cartera" se quitó del menú a pedido (la ruta sigue viva, sin enlace).
  */
@@ -61,19 +67,19 @@ const NAV_GROUPS: NavGroup[] = [
   {
     label: "Operación",
     items: [
-      { icon: "busts-in-silhouette", label: "Clientes",             to: "/clientes" },
-      { icon: "credit-card",         label: "Créditos",             to: "/creditos" },
-      { icon: "dollar-banknote",     label: "Pagos",                to: "/pagos" },
-      { icon: "megaphone",           label: "Cobranzas y Recupero", to: "/cobranza" },
+      { icon: Users,      label: "Clientes",             to: "/clientes" },
+      { icon: CreditCard, label: "Créditos",             to: "/creditos" },
+      { icon: Banknote,   label: "Pagos",                to: "/pagos" },
+      { icon: Megaphone,  label: "Cobranzas y Recupero", to: "/cobranza" },
     ],
   },
   {
     label: "Finanzas",
     items: [
-      { icon: "bank",      label: "Caja",         to: "/caja" },
-      { icon: "receipt",   label: "Comprobantes", to: "/comprobantes" },
-      { icon: "money-bag", label: "Comisiones",   to: "/comisiones" },
-      { icon: "bar-chart", label: "Reportes",     to: "/reportes" },
+      { icon: Wallet,    label: "Caja",         to: "/caja" },
+      { icon: Receipt,   label: "Comprobantes", to: "/comprobantes" },
+      { icon: Percent,   label: "Comisiones",   to: "/comisiones" },
+      { icon: BarChart3, label: "Reportes",     to: "/reportes" },
     ],
   },
   {
@@ -81,76 +87,60 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       // ETAPA 1 del refactor: "Equipo" unifica Agentes + Usuarios. Las tres conviven
       // a propósito para poder compararlas; al aprobar la nueva se quitan las viejas.
-      { icon: "busts-in-silhouette", label: "Equipo",  to: "/equipo" },
-      { icon: "office-worker",   label: "Agentes",     to: "/personal" },
-      { icon: "package",         label: "Productos",   to: "/productos" },
-      { icon: "counterclockwise-arrows-button", label: "Movimientos de stock", to: "/productos/movimientos" },
-      { icon: "delivery-truck",  label: "Proveedores", to: "/proveedores" },
-      { icon: "locked-with-key", label: "Usuarios",    to: "/usuarios" },
+      { icon: UserCog,        label: "Equipo",               to: "/equipo" },
+      { icon: Briefcase,      label: "Agentes",              to: "/personal" },
+      { icon: Package,        label: "Productos",            to: "/productos" },
+      { icon: ArrowLeftRight, label: "Movimientos de stock", to: "/productos/movimientos" },
+      { icon: Truck,          label: "Proveedores",          to: "/proveedores" },
+      { icon: KeyRound,       label: "Usuarios",             to: "/usuarios" },
     ],
   },
   {
     label: "Sistema",
     items: [
-      { icon: "gear",       label: "Configuración",       to: "/configuracion" },
-      { icon: "gem-stone",  label: "Plan y facturación",  to: "/facturacion" },
-      { icon: "scroll",     label: "Auditoría",           to: "/auditoria" },
+      { icon: Settings,   label: "Configuración",      to: "/configuracion" },
+      { icon: Gem,        label: "Plan y facturación", to: "/facturacion" },
+      { icon: ScrollText, label: "Auditoría",          to: "/auditoria" },
     ],
   },
 ];
 
-function SideNavLink({ icon, label, to, isActive, onClick, nested = false }: NavItem & { isActive: boolean; onClick?: () => void; nested?: boolean }) {
+function SideNavLink({ icon: Icon, label, to, isActive, onClick }: NavItem & { isActive: boolean; onClick?: () => void }) {
   return (
     <Link
       href={to}
       onClick={onClick}
-      className={`group flex items-center rounded-lg font-medium transition-colors duration-200 ease-out ${
-        nested ? "gap-2.5 px-2.5 py-1.5 text-[13px]" : "gap-3 px-3 py-2.5 text-sm"
-      } ${
+      aria-current={isActive ? "page" : undefined}
+      className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors ${
         isActive
-          ? "bg-primary/10 text-foreground ring-1 ring-inset ring-primary/30"
-          : "text-muted-foreground hover:bg-muted/10 hover:text-foreground"
+          ? "bg-primary/10 font-medium text-primary"
+          : "font-normal text-muted-foreground hover:bg-muted/20 hover:text-foreground"
       }`}
     >
-      <Emoji name={icon} className={nested ? "h-[18px] w-[18px]" : "h-5 w-5"} />
-      <span className={isActive ? "font-semibold" : ""}>{label}</span>
+      {/* `strokeWidth` bajo: el trazo fino es lo que baja el ruido visual del menú. */}
+      <Icon className="h-[18px] w-[18px] shrink-0" strokeWidth={1.75} />
+      <span className="truncate">{label}</span>
     </Link>
   );
 }
 
-/** Grupo colapsable del sidebar: cabecera con chevron + sus items. */
+/** Grupo del sidebar: etiqueta separadora (no interactiva) + sus items. */
 function NavSection({
-  group, open, groupActive, isActive, onToggle, onNavigate,
+  group, isActive, onNavigate,
 }: {
   group: NavGroup;
-  open: boolean;
-  groupActive: boolean;
   isActive: (to: string) => boolean;
-  onToggle: () => void;
   onNavigate?: () => void;
 }) {
   return (
-    <div className="pt-3 first:pt-0">
-      <button
-        type="button"
-        onClick={onToggle}
-        aria-expanded={open}
-        className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-[10px] font-bold uppercase tracking-[0.15em] transition-colors ${
-          groupActive ? "text-foreground" : "text-muted-foreground/70 hover:text-foreground"
-        }`}
-      >
-        <span>{group.label}</span>
-        <ChevronDown className={`h-3.5 w-3.5 shrink-0 transition-transform duration-200 ${open ? "" : "-rotate-90"}`} />
-      </button>
-      {/* Despliegue suave: grid-rows 0fr→1fr anima la altura sin saltos. */}
-      <div className={`grid transition-[grid-template-rows] duration-300 ease-out ${open ? "grid-rows-[1fr]" : "grid-rows-[0fr]"}`}>
-        <div className="overflow-hidden">
-          <div className={`ml-4 mt-0.5 space-y-0.5 border-l border-border/40 pl-2 transition-opacity duration-200 ${open ? "opacity-100" : "opacity-0"}`}>
-            {group.items.map((item) => (
-              <SideNavLink key={item.to} {...item} isActive={isActive(item.to)} onClick={onNavigate} nested />
-            ))}
-          </div>
-        </div>
+    <div className="mt-5 first:mt-0">
+      <p className="mb-1 px-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/60">
+        {group.label}
+      </p>
+      <div className="space-y-0.5">
+        {group.items.map((item) => (
+          <SideNavLink key={item.to} {...item} isActive={isActive(item.to)} onClick={onNavigate} />
+        ))}
       </div>
     </div>
   );
@@ -177,9 +167,6 @@ export function AppShell({ children, role, nombre, email, avatarUrl, financiera,
   // Ayuda contextual (mobile): mismo panel que en el header desktop (SystemControls).
   const [helpOpen, setHelpOpen] = useState(false);
   const helpDoc = getHelpDoc(pathname);
-  // Colapso por grupo. Valor explícito tras togglear; si no hay, el grupo se
-  // abre por defecto solo si contiene la ruta activa (ver `renderNav`).
-  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
 
   // Identidad del usuario: server-sourced (profiles vía requireAuth en el layout).
   // Fuente única de verdad — el perfil edita profiles.full_name y un router.refresh()
@@ -188,20 +175,7 @@ export function AppShell({ children, role, nombre, email, avatarUrl, financiera,
 
   useEffect(() => {
     setMounted(true);
-    // Restaura el colapso de grupos que el usuario fijó manualmente.
-    try {
-      const saved = localStorage.getItem("cf:navGroups");
-      if (saved) setOpenGroups(JSON.parse(saved));
-    } catch { /* sin persistencia, se usan los defaults */ }
   }, []);
-
-  const setGroupOpen = (label: string, open: boolean) => {
-    setOpenGroups((prev) => {
-      const next = { ...prev, [label]: open };
-      try { localStorage.setItem("cf:navGroups", JSON.stringify(next)); } catch { /* noop */ }
-      return next;
-    });
-  };
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -253,31 +227,27 @@ export function AppShell({ children, role, nombre, email, avatarUrl, financiera,
   const isDark = resolvedTheme === "dark";
   const toggleTheme = () => setTheme(isDark ? "light" : "dark");
 
-  // Navegación compartida desktop/mobile: Home suelto + grupos colapsables.
+  // Navegación compartida desktop/mobile: grupos planos con etiqueta separadora.
   // `onNavigate` cierra el drawer en mobile (no-op en desktop).
   const renderNav = (onNavigate?: () => void) => (
     <>
       {esOwner ? (
-        <SideNavLink {...OWNER_ITEM} isActive={isActive(OWNER_ITEM.to)} onClick={onNavigate} />
+        <NavSection
+          group={{ label: "Plataforma", items: [OWNER_ITEM] }}
+          isActive={isActive}
+          onNavigate={onNavigate}
+        />
       ) : (
-      <>
-      <SideNavLink {...HOME_ITEM} isActive={isActive(HOME_ITEM.to)} onClick={onNavigate} />
-      {groups.map((g) => {
-        const groupActive = g.items.some((i) => isActive(i.to));
-        const open = openGroups[g.label] ?? groupActive;
-        return (
+        <>
           <NavSection
-            key={g.label}
-            group={g}
-            open={open}
-            groupActive={groupActive}
+            group={{ label: "Principal", items: [HOME_ITEM] }}
             isActive={isActive}
-            onToggle={() => setGroupOpen(g.label, !open)}
             onNavigate={onNavigate}
           />
-        );
-      })}
-      </>
+          {groups.map((g) => (
+            <NavSection key={g.label} group={g} isActive={isActive} onNavigate={onNavigate} />
+          ))}
+        </>
       )}
     </>
   );
@@ -294,7 +264,7 @@ export function AppShell({ children, role, nombre, email, avatarUrl, financiera,
 
         {/* Nav — Home suelto + grupos colapsables. La identidad del usuario + logout viven ahora
             en el header (menú de usuario en SystemControls), no al pie del sidebar. */}
-        <nav className="flex-1 overflow-y-auto p-3 space-y-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <nav className="flex-1 overflow-y-auto p-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {renderNav()}
         </nav>
       </aside>
@@ -406,7 +376,7 @@ export function AppShell({ children, role, nombre, email, avatarUrl, financiera,
               </div>
             </div>
 
-            <nav className="flex-1 overflow-y-auto p-3 space-y-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            <nav className="flex-1 overflow-y-auto p-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               {renderNav(() => setMobileOpen(false))}
             </nav>
 
@@ -450,13 +420,13 @@ export function AppShell({ children, role, nombre, email, avatarUrl, financiera,
                 Navegación rápida
               </p>
               <div className="space-y-0.5">
-                {allNavItems.map((item) => (
+                {allNavItems.map(({ icon: Icon, ...item }) => (
                   <button
                     key={item.to}
                     onClick={() => handlePaletteAction(item.to)}
                     className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm text-muted-foreground hover:bg-muted hover:text-foreground transition-all"
                   >
-                    <Emoji name={item.icon} className="h-5 w-5" />
+                    <Icon className="h-[18px] w-[18px] shrink-0" strokeWidth={1.75} />
                     <span>Ir a {item.label}</span>
                   </button>
                 ))}
