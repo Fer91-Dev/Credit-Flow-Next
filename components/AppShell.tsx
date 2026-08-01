@@ -6,7 +6,7 @@ import {
   Bell, Search, LogOut, Menu, X, PlusCircle, Sun, Moon, HelpCircle,
   LayoutDashboard, Users, CreditCard, Banknote, Megaphone,
   Wallet, Receipt, Percent, BarChart3,
-  UserCog, Briefcase, Package, ArrowLeftRight, Truck, KeyRound,
+  UserCog, Package, ArrowLeftRight, Truck,
   Settings, Gem, ScrollText, Building2,
   type LucideIcon,
 } from "lucide-react";
@@ -85,14 +85,12 @@ const NAV_GROUPS: NavGroup[] = [
   {
     label: "Administración",
     items: [
-      // ETAPA 1 del refactor: "Equipo" unifica Agentes + Usuarios. Las tres conviven
-      // a propósito para poder compararlas; al aprobar la nueva se quitan las viejas.
+      // "Equipo" unifica lo que antes eran Agentes + Usuarios (etapa 3 del refactor:
+      // esas dos secciones se apagaron y sus rutas ya no existen).
       { icon: UserCog,        label: "Equipo",               to: "/equipo" },
-      { icon: Briefcase,      label: "Agentes",              to: "/personal" },
       { icon: Package,        label: "Productos",            to: "/productos" },
       { icon: ArrowLeftRight, label: "Movimientos de stock", to: "/productos/movimientos" },
       { icon: Truck,          label: "Proveedores",          to: "/proveedores" },
-      { icon: KeyRound,       label: "Usuarios",             to: "/usuarios" },
     ],
   },
   {

@@ -22,7 +22,6 @@ export type { Role };
  * Deny-by-default: una ruta sin regla que matchee → denegada.
  */
 const ACCESO_RUTAS: { prefix: string; roles: Role[] }[] = [
-  { prefix: "/usuarios", roles: ["admin"] },
   // Vista unificada Usuarios + Agentes (etapa 1: convive con las dos).
   { prefix: "/equipo", roles: ["admin"] },
   { prefix: "/configuracion", roles: ["admin"] },
@@ -32,7 +31,6 @@ const ACCESO_RUTAS: { prefix: string; roles: Role[] }[] = [
   { prefix: "/comisiones", roles: ["admin"] }, // liquidar comisiones = mover plata de la caja principal
   { prefix: "/comprobantes", roles: ["admin", "vendedor"] }, // vendedor: solo lectura, scopeado a SU caja (sin eliminar)
   { prefix: "/caja", roles: ["admin", "vendedor"] }, // admin → caja principal; vendedor → su caja personal
-  { prefix: "/personal", roles: ["admin"] },
   { prefix: "/productos", roles: ["admin"] },
   { prefix: "/proveedores", roles: ["admin"] },
   { prefix: "/cobranza", roles: ["admin", "vendedor"] },

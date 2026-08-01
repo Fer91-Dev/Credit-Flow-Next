@@ -181,6 +181,18 @@ export const PATCH = withErrorHandler(async (req: NextRequest, { params }: Route
     ? await prisma.profiles.update({ where: { id }, data, select: selectProfile })
     : await prisma.profiles.findUniqueOrThrow({ where: { id }, select: selectProfile });
 
+  // El nombre vive en dos tablas y `profiles` es el que manda (decisión 2026-08-01):
+  // se replica a la ficha del agente para que no queden distintos. Se usa el
+  // `vendedor_id` YA RESUELTO (`updated`), no el del body: en el mismo PATCH se puede
+  // estar cambiando el vínculo, y con el del body se sincronizaría la ficha equivocada.
+  // Ver la nota gemela en `PUT /api/perfil`.
+  if (data.full_name && updated.vendedor_id) {
+    await prisma.vendedores.updateMany({
+      where: { id: updated.vendedor_id, ...withTenant(tenantId) },
+      data: { nombre: updated.full_name as string },
+    });
+  }
+
   // Cambio de contraseña en Supabase Auth (si se pidió). No viaja a profiles ni a la auditoría.
   if (nuevaPassword !== null) {
     try {

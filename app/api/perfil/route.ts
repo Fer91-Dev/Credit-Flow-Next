@@ -1,4 +1,4 @@
-import { requireAuth } from "@/lib/auth";
+import { requireAuth, withTenant } from "@/lib/auth";
 import { successResponse, errorResponse, withErrorHandler, assertSameOrigin } from "@/app/lib/api";
 import { prisma } from "@/lib/prisma";
 import { registrarAuditoria } from "@/lib/audit";
@@ -32,7 +32,7 @@ function limpiar(v: unknown): string | null {
 
 export const PUT = withErrorHandler(async (req: NextRequest) => {
   assertSameOrigin(req);
-  const { userId, tenantId } = await requireAuth(req);
+  const { userId, tenantId, vendedorId } = await requireAuth(req);
 
   let body: Record<string, unknown>;
   try {
@@ -75,6 +75,19 @@ export const PUT = withErrorHandler(async (req: NextRequest) => {
   data.full_name = [nombre, data.apellido].filter(Boolean).join(" ");
 
   await prisma.profiles.update({ where: { id: userId }, data });
+
+  // El nombre vive en dos tablas y `profiles` es el que manda (decisión 2026-08-01):
+  // se replica a la ficha del agente para que no queden distintos. `vendedores.nombre`
+  // NO se puede eliminar — lo leen 48 lugares en 15 endpoints (reportes por vendedor,
+  // comisiones, caja, comprobantes) y los agentes viejos sin cuenta no tienen profile
+  // de dónde sacarlo. `updateMany` con el tenant: si el id no es de este tenant, no
+  // actualiza nada en vez de tocar la ficha de otra financiera.
+  if (vendedorId) {
+    await prisma.vendedores.updateMany({
+      where: { id: vendedorId, ...withTenant(tenantId) },
+      data: { nombre: data.full_name },
+    });
+  }
 
   await registrarAuditoria({
     tenantId,
