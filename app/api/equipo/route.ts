@@ -117,9 +117,18 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     });
   }
 
-  // 2) Cuentas sin legajo (admins que no venden). Van al final.
+  // 2) Cuentas sin ficha (admins que no venden). Van al final.
+  //
+  // Se saltea solo si su ficha EXISTE de verdad (ya salió en la pasada 1). Con un
+  // `continue` a secas por tener `vendedor_id`, una cuenta apuntando a una ficha
+  // inexistente desaparecía de la pantalla: no entraba por la pasada 1 (no hay ficha
+  // que la traiga) ni por la 2 (la salteaba el continue). Hoy la FK es SET NULL y no
+  // debería pasar, pero una persona que se vuelve invisible en la única pantalla donde
+  // se administra el acceso es un agujero demasiado silencioso para dejarlo librado a
+  // que una constraint nunca falle.
+  const fichasExistentes = new Set(vendedores.map((v) => v.id));
   for (const p of profiles) {
-    if (p.vendedor_id) continue;
+    if (p.vendedor_id && fichasExistentes.has(p.vendedor_id)) continue;
     filas.push({
       key: `p:${p.id}`,
       nombre: p.full_name?.trim() || p.email || "—",

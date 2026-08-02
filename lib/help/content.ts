@@ -443,7 +443,8 @@ const HELP: Record<string, HelpDoc> = {
         kind: "pasos",
         titulo: "Cómo se usa",
         pasos: [
-          "\"Nuevo integrante\" crea la ficha del agente Y su cuenta de acceso en un solo paso.",
+          "\"Nuevo integrante\" es para quien VENDE: crea su ficha de agente y su cuenta de acceso en un solo paso.",
+          "\"Solo cuenta\" es para quien administra pero no vende: crea únicamente el acceso, sin ficha de agente.",
           "Hacé click en una persona para abrir su ficha: rendimiento, comisiones, metas, logros y datos laborales.",
           "Desde la lista cambiás su cuenta: editar, restablecer la contraseña (🔑), activar/desactivar el acceso o eliminar.",
           "A quien figure \"Sin cuenta\" le podés crear el acceso con el botón que aparece en su fila.",

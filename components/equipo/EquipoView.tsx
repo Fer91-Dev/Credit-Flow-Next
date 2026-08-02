@@ -471,9 +471,22 @@ export function EquipoView() {
             <List className="h-4 w-4" />
           </button>
         </div>
+        {/* Dos altas distintas, porque son dos cosas distintas: quien VENDE necesita
+            ficha de agente (ahí se enganchan créditos, comisión, meta y caja); quien
+            solo administra, no. Sin este segundo botón había que crearle una ficha de
+            agente a un administrativo, y quedaba de relleno en las listas de ventas. */}
+        <button
+          type="button"
+          onClick={() => { setEditandoCuenta(null); setFormCuentaAbierto(true); }}
+          title="Para quien administra pero no vende: crea solo el acceso, sin ficha de agente"
+          className="inline-flex h-10 items-center gap-2 rounded-lg border border-border px-4 text-sm font-medium text-foreground transition-colors hover:bg-muted"
+        >
+          <KeyRound className="h-4 w-4" /> Solo cuenta
+        </button>
         <button
           type="button"
           onClick={() => setFormIntegrante(true)}
+          title="Agente que vende: crea su ficha y su cuenta de acceso en un paso"
           className="inline-flex h-10 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
         >
           <Plus className="h-4 w-4" /> Nuevo integrante
@@ -516,7 +529,8 @@ export function EquipoView() {
               <option value="">Todos</option>
               <option value="admin">Administrador</option>
               <option value="vendedor">Vendedor</option>
-              <option value="cobrador">Cobrador</option>
+              {/* "Cobrador" NO se ofrece: el rol está deprecado, no se puede crear
+                  ninguno y filtrar por él solo devolvía una lista vacía. */}
             </Select>
           </Field>
           <Field label="Tipo">
