@@ -471,22 +471,14 @@ export function EquipoView() {
             <List className="h-4 w-4" />
           </button>
         </div>
-        {/* Dos altas distintas, porque son dos cosas distintas: quien VENDE necesita
-            ficha de agente (ahí se enganchan créditos, comisión, meta y caja); quien
-            solo administra, no. Sin este segundo botón había que crearle una ficha de
-            agente a un administrativo, y quedaba de relleno en las listas de ventas. */}
-        <button
-          type="button"
-          onClick={() => { setEditandoCuenta(null); setFormCuentaAbierto(true); }}
-          title="Para quien administra pero no vende: crea solo el acceso, sin ficha de agente"
-          className="inline-flex h-10 items-center gap-2 rounded-lg border border-border px-4 text-sm font-medium text-foreground transition-colors hover:bg-muted"
-        >
-          <KeyRound className="h-4 w-4" /> Solo cuenta
-        </button>
+        {/* UNA sola puerta para dar de alta a cualquiera. El formulario decide qué crear
+            según el "Rol de acceso" que se elija: Vendedor → ficha de agente + cuenta;
+            Administrador → solo la cuenta, porque sin vender no tiene sentido una ficha
+            (y creársela igual la dejaba de relleno en Comisiones, en el filtro de
+            empleados del Home y en el selector de a quién entregarle plata). */}
         <button
           type="button"
           onClick={() => setFormIntegrante(true)}
-          title="Agente que vende: crea su ficha y su cuenta de acceso en un paso"
           className="inline-flex h-10 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
         >
           <Plus className="h-4 w-4" /> Nuevo integrante

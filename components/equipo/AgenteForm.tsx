@@ -74,6 +74,9 @@ export function PersonalForm({
     setError(null);
   }
 
+  /** Alta de alguien que NO vende: solo cuenta, sin ficha de agente. */
+  const soloCuenta = !editing && rolAcceso === "admin";
+
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!nombre.trim()) { setError("El nombre es requerido"); return; }
@@ -90,15 +93,43 @@ export function PersonalForm({
       }
     }
     const ok = await confirm({
-      title: editing ? "¿Guardar cambios?" : "¿Crear agente?",
+      title: editing ? "¿Guardar cambios?" : soloCuenta ? "¿Crear administrador?" : "¿Crear agente?",
       description: editing
         ? `Se actualizarán los datos de ${nombre.trim()}.`
-        : `Se creará el agente ${nombre.trim()} con su cuenta de acceso (${email.trim()}).`,
+        : soloCuenta
+          ? `Se creará la cuenta de ${nombre.trim()} (${email.trim()}) como administrador. No se le crea ficha de agente porque no vende.`
+          : `Se creará el agente ${nombre.trim()} con su cuenta de acceso (${email.trim()}).`,
       confirmLabel: editing ? "Guardar cambios" : "Crear",
     });
     if (!ok) return;
     setLoading(true); setError(null);
     try {
+      // Alta de ADMINISTRADOR: se crea SOLO la cuenta, sin ficha de agente. La ficha es
+      // donde se enganchan créditos, comisión, meta y caja — a quien no vende no le sirve,
+      // y creársela igual la dejaba de relleno en Comisiones, en el filtro de empleados
+      // del Home y en el selector de a quién entregarle plata. Es el mismo alta: cambia
+      // el endpoint según el rol elegido, no hay un segundo botón.
+      if (!editing && rolAcceso === "admin") {
+        const res = await fetch("/api/usuarios", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            email: email.trim(),
+            password: cuentaPassword,
+            nombre: nombre.trim(),
+            apellido: apellido.trim(),
+            role: "admin",
+            username: normalizarUsername(cuentaUsername),
+          }),
+        });
+        const json = await res.json();
+        if (json.ok) {
+          toast.success(`${nombre.trim()} creado como administrador (${email.trim()})`);
+          onClose(true);
+        } else setError(json.error);
+        return;
+      }
+
       const body: Record<string, unknown> = {
         nombre, apellido, email, telefono,
         comision_pct: parseFloat(comision) || 0,
@@ -156,9 +187,13 @@ export function PersonalForm({
     <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(false); }}>
       <DialogContent className={MODAL_CONTENT}>
         <ModalHeader
-          icon="office-worker"
-          title={editing ? "Editar agente" : "Nuevo agente"}
-          subtitle={editing ? "Actualizá los datos del agente." : "Sumá un integrante al equipo de ventas y cobranza."}
+          icon={soloCuenta ? "locked-with-key" : "office-worker"}
+          title={editing ? "Editar agente" : soloCuenta ? "Nuevo administrador" : "Nuevo agente"}
+          subtitle={
+            editing ? "Actualizá los datos del agente."
+              : soloCuenta ? "Administra el sistema pero no vende: se le crea solo la cuenta de acceso."
+              : "Sumá un integrante al equipo de ventas y cobranza."
+          }
         />
         <form onSubmit={submit} className="space-y-4">
           {error && (
@@ -176,33 +211,39 @@ export function PersonalForm({
             </Field>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <Field label="Email" required={!editing} hint={editing ? undefined : "Email real del agente — se usa para ingresar y para recuperar la contraseña"}>
+            <Field label="Email" required={!editing} hint={editing ? undefined : "Email real — se usa para ingresar y para recuperar la contraseña"}>
               <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder={editing ? "opcional" : "nombre@email-real.com"} required={!editing} />
             </Field>
-            <Field label="Teléfono">
-              <Input value={telefono} inputMode="numeric" onChange={(e) => setTelefono(soloDigitos(e.target.value, 10))} placeholder="10 dígitos (opcional)" />
-            </Field>
+            {!soloCuenta && (
+              <Field label="Teléfono">
+                <Input value={telefono} inputMode="numeric" onChange={(e) => setTelefono(soloDigitos(e.target.value, 10))} placeholder="10 dígitos (opcional)" />
+              </Field>
+            )}
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {/* Acá NO va ningún rol. El único que existe es "Rol de acceso", más
-                abajo en la sección de cuenta, y es el que define permisos
-                (`profiles.role`). Cuando el formulario lo pedía dos veces, el de
-                arriba escribía `vendedores.rol`, que no hace nada. */}
-            <Field label="Comisión (%)" hint="sobre el monto otorgado">
-              <Input type="number" min="0" max="100" step="any" value={comision} onChange={(e) => setComision(e.target.value)} className="font-mono tabular-nums" />
-            </Field>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <Field label="Meta de venta" hint="vacío = sin meta">
-              <MoneyInput value={meta} onChange={setMeta} />
-            </Field>
-            <Field label="Estado">
-              <Select value={activo ? "activo" : "inactivo"} onChange={(e) => setActivo(e.target.value === "activo")}>
-                <option value="activo">Activo</option>
-                <option value="inactivo">Inactivo</option>
-              </Select>
-            </Field>
-          </div>
+          {/* Los campos comerciales solo existen si la persona VENDE. Al elegir
+              "Administrador" desaparecen: sin ficha de agente no hay comisión, ni meta,
+              ni estado de ficha que configurar. Acá NO va ningún rol — el único que
+              existe es "Rol de acceso", abajo, y es el que define permisos. */}
+          {!soloCuenta && (
+            <>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <Field label="Comisión (%)" hint="sobre el monto otorgado">
+                  <Input type="number" min="0" max="100" step="any" value={comision} onChange={(e) => setComision(e.target.value)} className="font-mono tabular-nums" />
+                </Field>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <Field label="Meta de venta" hint="vacío = sin meta">
+                  <MoneyInput value={meta} onChange={setMeta} />
+                </Field>
+                <Field label="Estado">
+                  <Select value={activo ? "activo" : "inactivo"} onChange={(e) => setActivo(e.target.value === "activo")}>
+                    <option value="activo">Activo</option>
+                    <option value="inactivo">Inactivo</option>
+                  </Select>
+                </Field>
+              </div>
+            </>
+          )}
           {/* Cuenta de acceso — OBLIGATORIA en alta (el agente necesita loguearse para trabajar) */}
           {!editing && (
             <div className="rounded-lg border border-border bg-muted/20 overflow-hidden">

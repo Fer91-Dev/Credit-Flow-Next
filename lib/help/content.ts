@@ -419,7 +419,7 @@ const HELP: Record<string, HelpDoc> = {
   "/equipo": {
     titulo: "Equipo",
     resumen:
-      "Todas las personas de la financiera en una sola lista, con sus dos caras: la cuenta con la que entran al sistema y su ficha de agente (comisiones, metas, caja). Unifica lo que antes estaba separado en Usuarios y Agentes.",
+      "Todas las personas de la financiera en una sola lista, con sus dos caras: la cuenta con la que entran al sistema y su ficha de agente (comisiones, metas, caja). Reemplaza a las viejas secciones Usuarios y Agentes: acá se hace todo.",
     bloques: [
       {
         kind: "definiciones",
@@ -443,8 +443,7 @@ const HELP: Record<string, HelpDoc> = {
         kind: "pasos",
         titulo: "Cómo se usa",
         pasos: [
-          "\"Nuevo integrante\" es para quien VENDE: crea su ficha de agente y su cuenta de acceso en un solo paso.",
-          "\"Solo cuenta\" es para quien administra pero no vende: crea únicamente el acceso, sin ficha de agente.",
+          "\"Nuevo integrante\" es la única forma de dar de alta a alguien. Lo que se crea depende del \"Rol de acceso\" que elijas: Vendedor → su ficha de agente y su cuenta; Administrador → solo la cuenta, porque no vende.",
           "Hacé click en una persona para abrir su ficha: rendimiento, comisiones, metas, logros y datos laborales.",
           "Desde la lista cambiás su cuenta: editar, restablecer la contraseña (🔑), activar/desactivar el acceso o eliminar.",
           "A quien figure \"Sin cuenta\" le podés crear el acceso con el botón que aparece en su fila.",

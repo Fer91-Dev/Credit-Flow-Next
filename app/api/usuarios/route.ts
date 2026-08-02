@@ -125,7 +125,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
   // (que ya incluye su cuenta) o se vincula uno existente.
   if (role === "vendedor" && !vendedorId) {
     return errorResponse(
-      "Un usuario con rol vendedor debe vincularse a una ficha de agente. Creá el agente en 'Agentes' (incluye su cuenta) o vinculá uno existente.",
+      "Un usuario con rol vendedor debe vincularse a una ficha de agente. Crealo desde Equipo → 'Nuevo integrante' (crea la ficha y la cuenta juntas) o vinculá una ficha existente.",
       "VENDEDOR_SIN_FICHA",
       400,
     );
