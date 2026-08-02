@@ -15,6 +15,24 @@ export type { SimuladorConfig };
 
 export async function apiFetcher<T = unknown>(url: string): Promise<T> {
   const res = await fetch(url);
+
+  /**
+   * Sesión terminada — la cuenta fue eliminada o desactivada, o venció el token.
+   *
+   * El middleware redirige la request al login, así que lo que vuelve NO es nuestro
+   * envelope JSON sino el HTML de `/auth`, con status 200. Sin este chequeo, el
+   * `res.json()` de abajo fallaba y la pantalla se llenaba de "Error 200 al cargar
+   * datos" mientras la persona seguía viendo la app, sin enterarse de que ya no tiene
+   * sesión — quedaba ahí hasta que algo disparara una navegación.
+   *
+   * Con esto, el polling de notificaciones (45s) alcanza para sacarla sola: la salida
+   * deja de depender de que el usuario toque la máquina.
+   */
+  if (typeof window !== "undefined" && res.redirected && new URL(res.url).pathname.startsWith("/auth")) {
+    window.location.href = "/auth?sesion=expirada";
+    throw new Error("Tu sesión terminó. Volvé a iniciar sesión.");
+  }
+
   const json = await res.json().catch(() => null);
   if (!res.ok || !json?.ok) {
     throw new Error(json?.error || `Error ${res.status} al cargar datos`);

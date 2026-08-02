@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Eye, EyeOff, Loader2, AlertCircle, LogIn } from "lucide-react";
@@ -13,6 +13,16 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  /**
+   * `?sesion=expirada` lo pone el fetcher cuando una request vuelve redirigida al
+   * login: la cuenta fue eliminada o desactivada, o venció el token. Se lee del
+   * `location` y no con `useSearchParams` para no tener que envolver la página en
+   * un `<Suspense>` (lo exige el build estático de Next).
+   */
+  const [sesionExpirada, setSesionExpirada] = useState(false);
+  useEffect(() => {
+    setSesionExpirada(new URLSearchParams(window.location.search).get("sesion") === "expirada");
+  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -106,6 +116,15 @@ export default function LoginPage() {
             ¿Olvidaste tu contraseña?
           </Link>
         </div>
+
+        {sesionExpirada && !error && (
+          <div className="flex items-start gap-2.5 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2.5">
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
+            <p className="text-xs text-warning">
+              Tu sesión terminó. Volvé a iniciar sesión para continuar.
+            </p>
+          </div>
+        )}
 
         {error && (
           <div className="flex items-start gap-2.5 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2.5">
