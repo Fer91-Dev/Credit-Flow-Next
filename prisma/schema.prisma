@@ -103,6 +103,13 @@ model profiles {
   // Dueño de la PLATAFORMA (SaaS), distinto del admin de una financiera. Fuente de verdad
   // del acceso al área "Administración del SaaS". Se asigna con scripts/set-owner.mjs.
   es_owner    Boolean  @default(false)
+  // TITULAR de la financiera: el admin dueño del negocio. Distinto de `es_owner`, que es
+  // el dueño del SaaS. Sin esto, todos los admin de un tenant eran intercambiables y
+  // cualquiera podía eliminar, degradar, desactivar o CAMBIARLE LA CONTRASEÑA al dueño
+  // —quedándose con su cuenta sin borrar nada y sin que él se entere—. Solo el propio
+  // titular puede modificarse a sí mismo; ningún otro admin puede tocarlo.
+  // Se asigna con scripts/set-titular.mjs (uno por tenant).
+  es_titular  Boolean  @default(false)
 
   // ── Datos personales de la persona que loguea ────────────────────────────────
   // `profiles` es la FUENTE DE VERDAD de estos campos (decisión 2026-07-30): los

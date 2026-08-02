@@ -36,6 +36,22 @@ export const PATCH = withErrorHandler(async (req: NextRequest, { params }: Route
     return errorResponse("No podés modificar la cuenta del dueño de la plataforma", "OWNER_PROTEGIDO", 403);
   }
 
+  // El TITULAR de la financiera (su dueño) es intocable para los demás administradores.
+  // Sin esto todos los admin eran intercambiables: cualquiera podía degradarlo,
+  // desactivarlo o —lo más grave— CAMBIARLE LA CONTRASEÑA y quedarse con su cuenta sin
+  // borrar nada, de forma que el dueño se enteraba recién al no poder entrar. Se bloquea
+  // el PATCH entero, no campo por campo: cambiarle el email también es una toma de
+  // cuenta (se cambia y después se pide recuperación de contraseña a ese email).
+  // Él sí puede modificarse a sí mismo; los guards de auto-protección de más abajo lo
+  // siguen cubriendo para que no se deje afuera solo.
+  if (target.es_titular && target.id !== userId) {
+    return errorResponse(
+      "No podés modificar la cuenta del titular de la financiera. Solo puede hacerlo él desde su perfil.",
+      "TITULAR_PROTEGIDO",
+      403,
+    );
+  }
+
   let body: { role?: string; activo?: boolean; nombre?: string; apellido?: string; vendedor_id?: string | null; password?: string; username?: string | null; email?: string };
   try {
     body = await req.json();
@@ -264,6 +280,16 @@ export const DELETE = withErrorHandler(async (req: NextRequest, { params }: Rout
   // El dueño de la plataforma no se puede eliminar desde una financiera (defensa en profundidad).
   if (target.es_owner) {
     return errorResponse("No podés eliminar la cuenta del dueño de la plataforma", "OWNER_PROTEGIDO", 403);
+  }
+
+  // El titular de la financiera tampoco. El anti-lockout de más abajo NO alcanzaba: solo
+  // exige que quede un admin, y ese admin bien podía ser quien acaba de borrar al dueño.
+  if (target.es_titular) {
+    return errorResponse(
+      "No podés eliminar la cuenta del titular de la financiera.",
+      "TITULAR_PROTEGIDO",
+      403,
+    );
   }
 
   // Anti-lockout: no dejar a la financiera sin administradores.

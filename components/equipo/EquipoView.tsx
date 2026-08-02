@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ShieldOff, ArrowLeft, Pencil, KeyRound, UserX, UserCheck, Plus, LayoutGrid, List, Trash2 } from "lucide-react";
+import { ShieldOff, ShieldCheck, ArrowLeft, Pencil, KeyRound, UserX, UserCheck, Plus, LayoutGrid, List, Trash2 } from "lucide-react";
 import { useEquipo, useUsuarios, useVendedores, type MiembroEquipo, type Usuario, type Vendedor } from "@/lib/swr";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { KpiCard } from "@/components/ui/KpiCard";
@@ -227,6 +227,21 @@ export function EquipoView() {
   const accionesDe = (m: MiembroEquipo) => {
     const u = usuarioDe(m);
     const v = vendedorDe(m);
+    // El TITULAR de la financiera solo puede tocarse a sí mismo, desde Mi perfil. Se le
+    // ocultan las acciones en vez de mostrarlas y que devuelvan 403: ofrecer un botón
+    // que siempre falla es peor que no ofrecerlo. La barrera real está en la API.
+    if (m.es_titular) {
+      return (
+        <div className="flex items-center justify-end" onClick={(e) => e.stopPropagation()}>
+          <span
+            title="Es el titular de la financiera: solo él puede modificar su cuenta, desde Mi perfil"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-warning/30 bg-warning/10 px-2.5 py-1 text-[11px] font-medium text-warning"
+          >
+            <ShieldCheck className="h-3 w-3" /> Protegida
+          </span>
+        </div>
+      );
+    }
     return (
       // `stopPropagation`: la fila/tarjeta abre la ficha; estos botones no deben dispararla.
       <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
@@ -335,6 +350,7 @@ export function EquipoView() {
         ) : (
           <div className="flex flex-wrap items-center gap-1.5">
             <StatusBadge variant="primary" label={m.role ? ROLE_LABEL[m.role] : "sin rol"} />
+            {m.es_titular && <StatusBadge variant="warning" label="Titular" />}
             {!m.acceso_activo && <StatusBadge variant="muted" label="Inactivo" />}
           </div>
         ),

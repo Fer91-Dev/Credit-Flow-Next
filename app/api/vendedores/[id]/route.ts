@@ -183,10 +183,24 @@ export const DELETE = withErrorHandler(async (req: NextRequest, { params }: Rout
   // Cuentas de login vinculadas a este agente.
   const cuentas = await prisma.profiles.findMany({
     where: { ...withTenant(tenantId), vendedor_id: id },
-    select: { id: true, email: true, role: true },
+    select: { id: true, email: true, role: true, es_titular: true, es_owner: true },
   });
 
   if (eliminarCuenta && cuentas.length > 0) {
+    // El titular de la financiera (y el dueño del SaaS) no se pueden borrar por esta
+    // puerta. `DELETE /api/usuarios/[id]` ya los protege, pero esta ruta también borra
+    // profiles: sin el mismo guard, bastaba con eliminar la ficha de agente del dueño
+    // marcando "eliminar también la cuenta" para saltear la protección.
+    const protegida = cuentas.find((c) => c.es_titular || c.es_owner);
+    if (protegida) {
+      return errorResponse(
+        protegida.es_owner
+          ? "Ese agente está vinculado a la cuenta del dueño de la plataforma: no se puede eliminar."
+          : "Ese agente está vinculado a la cuenta del titular de la financiera: no se puede eliminar.",
+        "TITULAR_PROTEGIDO",
+        403,
+      );
+    }
     // Guardas anti-lockout: no borrar tu propia cuenta ni la del último administrador.
     if (cuentas.some((c) => c.id === userId)) {
       return errorResponse("No podés eliminar tu propia cuenta de acceso desde acá.", "SELF_DELETE", 400);

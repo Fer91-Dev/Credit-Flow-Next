@@ -36,7 +36,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
       where: { ...withTenant(tenantId), es_owner: false },
       select: {
         id: true, email: true, username: true, full_name: true, nombre: true, apellido: true,
-        role: true, activo: true, vendedor_id: true, created_at: true,
+        role: true, activo: true, vendedor_id: true, created_at: true, es_titular: true,
       },
       orderBy: { created_at: "asc" },
     }),
@@ -96,6 +96,9 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
       role: p?.role ?? null,
       acceso_activo: p?.activo ?? false,
       tiene_cuenta: !!p,
+      // Titular de la financiera: la UI le oculta las acciones destructivas (la
+      // barrera real son los guards de la API, esto evita ofrecer lo que va a fallar).
+      es_titular: p?.es_titular ?? false,
       // Legajo
       vendedor_id: v.id,
       legajo_activo: v.activo,
@@ -138,6 +141,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
       role: p.role,
       acceso_activo: p.activo,
       tiene_cuenta: true,
+      es_titular: p.es_titular,
       vendedor_id: null,
       legajo_activo: null,
       zona: null,

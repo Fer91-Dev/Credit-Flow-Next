@@ -298,6 +298,8 @@ export interface MiembroEquipo {
   role: RolUsuario | null;
   acceso_activo: boolean;
   tiene_cuenta: boolean;
+  /** Titular de la financiera: su dueño. Ningún otro admin puede tocarlo. */
+  es_titular: boolean;
   // Legajo comercial (vendedores)
   vendedor_id: string | null;
   legajo_activo: boolean | null;
