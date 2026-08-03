@@ -1,7 +1,7 @@
 import { requireAuth, requireRole } from "@/lib/auth";
 import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api";
-import { getConfiguracion, guardarConfiguracion, getComunicacionConfig, guardarComunicacionConfig, getGamificacionConfig, guardarGamificacionConfig, getRentabilidadConfig, guardarRentabilidadConfig, getRiesgoConfig, guardarRiesgoConfig, getCobranzaConfig, guardarCobranzaConfig, getNotificacionesConfig, guardarNotificacionesConfig, type ComunicacionConfig } from "@/lib/config";
-import { resolverConfig, resolverGamificacion, resolverRentabilidad, resolverRiesgo, type ComponenteDeuda } from "@/lib/domain";
+import { getConfiguracion, guardarConfiguracion, getComunicacionConfig, guardarComunicacionConfig, getGamificacionConfig, guardarGamificacionConfig, getRentabilidadConfig, guardarRentabilidadConfig, getRiesgoConfig, guardarRiesgoConfig, getCobranzaConfig, guardarCobranzaConfig, getNotificacionesConfig, guardarNotificacionesConfig, getDocumentosConfig, guardarDocumentosConfig, type ComunicacionConfig } from "@/lib/config";
+import { resolverConfig, resolverGamificacion, resolverRentabilidad, resolverRiesgo, resolverDocumentos, type ComponenteDeuda } from "@/lib/domain";
 import { registrarAuditoria } from "@/lib/audit";
 import type { NextRequest } from "next/server";
 
@@ -94,7 +94,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   // también el vendedor. La config del motor no es información sensible admin-only.
   // La ESCRITURA (PUT) sigue siendo solo admin.
   const { tenantId } = await requireAuth(req);
-  const [config, comm, gamificacion, rentabilidad, riesgo, cobranza, notificaciones] = await Promise.all([
+  const [config, comm, gamificacion, rentabilidad, riesgo, cobranza, notificaciones, documentos] = await Promise.all([
     getConfiguracion(tenantId),
     getComunicacionConfig(tenantId),
     getGamificacionConfig(tenantId),
@@ -102,9 +102,10 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     getRiesgoConfig(tenantId),
     getCobranzaConfig(tenantId),
     getNotificacionesConfig(tenantId),
+    getDocumentosConfig(tenantId),
   ]);
   const riesgoMasked = { ...riesgo, bureau: { ...riesgo.bureau, token: riesgo.bureau.token ? MASKED : "" } };
-  return successResponse({ ...config, ...maskCommConfig(comm), gamificacionConfig: gamificacion, rentabilidadConfig: rentabilidad, riesgoConfig: riesgoMasked, cobranzaConfig: cobranza, notificacionesConfig: notificaciones });
+  return successResponse({ ...config, ...maskCommConfig(comm), gamificacionConfig: gamificacion, rentabilidadConfig: rentabilidad, riesgoConfig: riesgoMasked, cobranzaConfig: cobranza, notificacionesConfig: notificaciones, documentosConfig: documentos });
 });
 
 /**
@@ -213,6 +214,13 @@ export const PUT = withErrorHandler(async (req: NextRequest) => {
 
   // Riesgo / originación (feature premium). Se guarda aunque el tenant no tenga el
   // entitlement (es solo preferencia); la barrera real está en el otorgamiento.
+  // Documentos del crédito (solicitud/mutuo + pagaré). `resolverDocumentos` acota los
+  // valores fuera de rango y completa lo que falte, así nunca se guarda algo que después
+  // el generador tenga que adivinar.
+  if (body.documentosConfig !== undefined) {
+    await guardarDocumentosConfig(tenantId, resolverDocumentos(body.documentosConfig));
+  }
+
   if (body.riesgoConfig !== undefined) {
     const p = body.riesgoConfig?.politica ?? {};
     if (p.ratioCuotaIngresoMax !== undefined && (typeof p.ratioCuotaIngresoMax !== "number" || p.ratioCuotaIngresoMax <= 0 || p.ratioCuotaIngresoMax > 1)) {

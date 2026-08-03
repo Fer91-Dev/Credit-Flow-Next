@@ -19,6 +19,8 @@ import {
   type RentabilidadConfig,
   resolverRiesgo,
   type RiesgoConfig,
+  resolverDocumentos,
+  type DocumentosConfig,
 } from "@/lib/domain";
 import type { Prisma } from "@prisma/client";
 
@@ -173,6 +175,29 @@ export async function guardarRiesgoConfig(tenantId: string, config: RiesgoConfig
     update: { riesgo_config: value },
   });
   return config;
+}
+
+// ─── Documentos del crédito (solicitud/mutuo + pagaré) ──────────────────────
+
+/** Parametrización de los documentos del tenant (mezclada con defaults). No es secreto. */
+export async function getDocumentosConfig(tenantId: string): Promise<DocumentosConfig> {
+  const row = await prisma.configuraciones.findUnique({
+    where: { tenant_id: tenantId },
+    select: { documentos_config: true },
+  });
+  return resolverDocumentos((row?.documentos_config as Partial<DocumentosConfig> | null) ?? null);
+}
+
+/** Persiste (upsert) la config de documentos, ya normalizada. */
+export async function guardarDocumentosConfig(tenantId: string, config: DocumentosConfig): Promise<DocumentosConfig> {
+  const limpia = resolverDocumentos(config);
+  const value = limpia as unknown as Prisma.InputJsonValue;
+  await prisma.configuraciones.upsert({
+    where:  { tenant_id: tenantId },
+    create: { tenant_id: tenantId, documentos_config: value },
+    update: { documentos_config: value },
+  });
+  return limpia;
 }
 
 // ─── Cobranza (agenda de gestión del día) ───────────────────────────────────

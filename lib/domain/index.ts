@@ -20,6 +20,7 @@ export * from "./credito-estado";
 // Documentos legales (contrato de mutuo / pagaré)
 export * from "./numero-a-letras";
 export * from "./contrato-requisitos";
+export * from "./documentos";
 export * from "./caja";
 export * from "./campanas";
 export * from "./calendar";

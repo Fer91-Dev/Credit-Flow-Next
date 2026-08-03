@@ -4,8 +4,8 @@ generator client {
 }
 
 datasource db {
-  provider  = "postgresql"
-  url       = env("DATABASE_URL")
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -22,10 +22,10 @@ datasource db {
 /// Roles de acceso dentro de una financiera (tenant). Deny-by-default: un profile
 /// sin rol (role = null) o inactivo NO tiene acceso a nada.
 enum Role {
-  admin    // Dueño/gerente: acceso total (Reportes, Caja, Configuración, Auditoría)
+  admin // Dueño/gerente: acceso total (Reportes, Caja, Configuración, Auditoría)
   vendedor // Comercial: ABM clientes + alta/simulación de créditos + cobranza y caja de SUS clientes
   cobrador // DEPRECADO — el vendedor hace su propia cobranza. No se crea ni tiene acceso (UI/API/rutas
-           // ya no lo permiten). El valor queda en el enum para no romper filas legacy; no migrar.
+  // ya no lo permiten). El valor queda en el enum para no romper filas legacy; no migrar.
 }
 
 /// Financiera / organización. Es el "tenant" del sistema multi-tenant.
@@ -41,12 +41,12 @@ model tenants {
 
   // Identidad de la financiera (Datos de la financiera). La edita el admin del tenant;
   // alimenta el co-branding (sidebar/Home/PDFs) y la facturación futura.
-  razon_social String?
-  cuit         String?
-  direccion    String?
-  telefono     String?
-  email        String?
-  logo_url     String? // logo en Supabase Storage (co-branding)
+  razon_social   String?
+  cuit           String?
+  direccion      String?
+  telefono       String?
+  email          String?
+  logo_url       String? // logo en Supabase Storage (co-branding)
   // Domicilio estructurado (georef AR: provincia→localidad; igual que clientes)
   provincia      String?
   localidad      String?
@@ -143,8 +143,8 @@ model profiles {
 model clientes {
   id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   created_at   DateTime @default(now()) @db.Timestamptz(6)
-  nombre       String   // nombre(s) de pila
-  apellido     String?  // apellido(s) — separado de nombre (modelo normalizado)
+  nombre       String // nombre(s) de pila
+  apellido     String? // apellido(s) — separado de nombre (modelo normalizado)
   documento    String?
   email        String?
   telefono     String?
@@ -152,7 +152,7 @@ model clientes {
   estado       String   @default("activo")
   tipo_credito String   @default("personal")
   monto_total  Float    @default(0)
-  zona         String?  // zona/barrio para segmentación geográfica (Fase Home)
+  zona         String? // zona/barrio para segmentación geográfica (Fase Home)
   tenant_id    String   @db.Uuid
 
   // Datos personales ampliados
@@ -177,12 +177,12 @@ model clientes {
   antiguedad_laboral_meses Int?
 
   // Ingresos / capacidad de pago
-  ingreso_mensual Float?
-  otros_ingresos  Float?
+  ingreso_mensual   Float?
+  otros_ingresos    Float?
   // Anti-fraude: veces que un VENDEDOR editó el sueldo. Al superar el máximo (política), el
   // campo se bloquea para vendedores hasta que un ADMIN resetee el contador. El sueldo es la
   // variable central del motor financiero; sin este control un vendedor podría inflarlo.
-  ingreso_ediciones Int @default(0)
+  ingreso_ediciones Int    @default(0)
 
   // Consentimiento del titular para consultar bureaus de crédito (Ley 25.326 - habeas data).
   // Requisito legal para consultar BCRA/Nosis/Veraz (no aplica al modo manual).
@@ -199,8 +199,8 @@ model clientes {
   migrado           Boolean @default(false)
   historial_migrado Json?
 
-  creditos    creditos[]
-  solicitudes solicitudes[]
+  creditos         creditos[]
+  solicitudes      solicitudes[]
   consultas_bureau consultas_bureau[]
 
   // El identificador ÚNICO es el CUIT/CUIL (en AR puede haber DNI repetidos). Los
@@ -226,7 +226,7 @@ model consultas_bureau {
   cheques_rechazados Int?
   deuda_sistema      Float? // deuda total informada en el sistema financiero
   crudo              Json? // payload normalizado + crudo del proveedor
-  usuario_id         String? @db.Uuid // quién consultó (auditoría)
+  usuario_id         String?  @db.Uuid // quién consultó (auditoría)
   usuario_nombre     String?
 
   cliente clientes @relation(fields: [cliente_id], references: [id], onDelete: Cascade)
@@ -276,16 +276,26 @@ model creditos {
   // motivos, ratio, ingreso, score y si se autorizó manualmente. Congela la decisión.
   riesgo_snapshot   Json?
 
-  cliente           clientes           @relation(fields: [cliente_id], references: [id], onDelete: Cascade)
-  solicitud         solicitudes?       @relation(fields: [solicitud_id], references: [id], onDelete: SetNull)
-  vendedor          vendedores?        @relation(fields: [vendedor_id], references: [id], onDelete: SetNull)
-  producto          productos?         @relation(fields: [producto_id], references: [id], onDelete: SetNull)
+  cliente           clientes            @relation(fields: [cliente_id], references: [id], onDelete: Cascade)
+  solicitud         solicitudes?        @relation(fields: [solicitud_id], references: [id], onDelete: SetNull)
+  vendedor          vendedores?         @relation(fields: [vendedor_id], references: [id], onDelete: SetNull)
+  producto          productos?          @relation(fields: [producto_id], references: [id], onDelete: SetNull)
   pagos             pagos[]
   acciones          acciones_cobranza[]
   cuotas            cuotas[]
   movimientos       movimientos_caja[]
   movimientos_stock movimientos_stock[]
   objetivos_campana campana_objetivo[]
+
+  // ── Documentación del crédito (solicitud/mutuo + pagaré) ──
+  // Estado del PAPEL, distinto del estado del crédito: un crédito puede estar activo y
+  // cobrándose sin que nadie haya devuelto el contrato firmado. Sin esto no había forma
+  // de saber qué parte de la cartera está respaldada por un documento ejecutable.
+  //   sin_emitir → nunca se generó · emitido → se imprimió, falta la firma
+  //   firmado    → el cliente devolvió el papel firmado (lo marca un humano)
+  doc_estado     String    @default("sin_emitir")
+  doc_emitido_en DateTime? @db.Timestamptz(6)
+  doc_firmado_en DateTime? @db.Timestamptz(6)
 
   @@unique([tenant_id, numero])
   @@index([tenant_id, vendedor_id])
@@ -358,13 +368,13 @@ model vendedores {
   activo       Boolean  @default(true)
 
   // Datos laborales y parametrización del empleado (Fase 1)
-  documento         String?   // DNI / CUIL
+  documento         String? // DNI / CUIL
   fecha_ingreso     DateTime? @db.Date
   direccion         String?
-  zona              String?   // zona o sucursal asignada
-  notas             String?   // notas internas
-  limite_aprobacion Float?    // monto máximo que puede otorgar sin autorización (null = sin límite)
-  comision_config   Json?     // comisión avanzada (Fase 2): { base_pct, por_tipo, tramos, bonus_meta }. null = % plano
+  zona              String? // zona o sucursal asignada
+  notas             String? // notas internas
+  limite_aprobacion Float? // monto máximo que puede otorgar sin autorización (null = sin límite)
+  comision_config   Json? // comisión avanzada (Fase 2): { base_pct, por_tipo, tramos, bonus_meta }. null = % plano
 
   creditos         creditos[]
   profiles         profiles[] // back-relation del vínculo profiles.vendedor_id
@@ -377,16 +387,13 @@ model vendedores {
 
 /**
  * Liquidación de comisiones — el comprobante de lo que se le PAGÓ a un agente.
- *
  * Existe porque la comisión se calculaba siempre en vivo: bajarle el `comision_pct` a
  * un vendedor, o anular un crédito viejo, reescribía cuánto se le había pagado el mes
  * anterior. Sin este registro, ninguna discusión con un vendedor sobre un pago tiene
  * respaldo.
- *
  * Es un SNAPSHOT: los montos, la config de comisión usada y el detalle crédito por
  * crédito quedan congelados al liquidar y no se recalculan nunca más. Mismo criterio
  * que `creditos.cronograma` / `cargos` / `riesgo_snapshot`.
- *
  * NO se edita. Si algo salió mal se ANULA (revierte el movimiento de caja) y se genera
  * otra — igual que un crédito.
  */
@@ -418,14 +425,14 @@ model liquidaciones_comision {
   detalle                  Json // [{ credito_id, numero, cliente, monto, pct, comision }]
 
   // Trazabilidad
-  estado             String  @default("pagada") // pagada | anulada
-  movimiento_caja_id String? @db.Uuid // el egreso en la caja principal
-  cuenta             String  @default("efectivo") // efectivo | banco | dolares
-  liquidado_por      String? @db.Uuid // profiles.id de quien liquidó
+  estado               String    @default("pagada") // pagada | anulada
+  movimiento_caja_id   String?   @db.Uuid // el egreso en la caja principal
+  cuenta               String    @default("efectivo") // efectivo | banco | dolares
+  liquidado_por        String?   @db.Uuid // profiles.id de quien liquidó
   liquidado_por_nombre String?
-  notas              String?
-  anulada_en         DateTime? @db.Timestamptz(6)
-  anulada_motivo     String?
+  notas                String?
+  anulada_en           DateTime? @db.Timestamptz(6)
+  anulada_motivo       String?
 
   vendedor vendedores @relation(fields: [vendedor_id], references: [id], onDelete: Cascade)
 
@@ -451,7 +458,7 @@ model metas_vendedor {
   created_at    DateTime @default(now()) @db.Timestamptz(6)
   tenant_id     String   @db.Uuid
   vendedor_id   String   @db.Uuid
-  periodo       String   // etiqueta del período, ej. "2026-06" o "2026-T2"
+  periodo       String // etiqueta del período, ej. "2026-06" o "2026-T2"
   fecha_desde   DateTime @db.Date
   fecha_hasta   DateTime @db.Date
   meta_monto    Float    @default(0) // objetivo de monto otorgado
@@ -530,10 +537,10 @@ model movimientos_caja {
   metodo      String?
   cuenta      String   @default("efectivo") // efectivo | banco | dolares
   descripcion String
-  origen      String?  // de dónde sale la plata (etiqueta legible: cliente, caja, ajuste…)
-  destino     String?  // a dónde va la plata (etiqueta legible)
-  serie       String?  // serie del comprobante (REC, DES, ENT, …)
-  numero      Int?     // número correlativo dentro de la serie (por tenant) → REC-000123
+  origen      String? // de dónde sale la plata (etiqueta legible: cliente, caja, ajuste…)
+  destino     String? // a dónde va la plata (etiqueta legible)
+  serie       String? // serie del comprobante (REC, DES, ENT, …)
+  numero      Int? // número correlativo dentro de la serie (por tenant) → REC-000123
   credito_id  String?  @db.Uuid
   pago_id     String?  @db.Uuid
   vendedor_id String?  @db.Uuid // dueño de la caja: null = caja principal (tesorería); set = caja personal del vendedor
@@ -614,19 +621,19 @@ model pago_cuota {
 }
 
 model pagos {
-  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  created_at       DateTime @default(now()) @db.Timestamptz(6)
-  credito_id       String   @db.Uuid
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  created_at       DateTime  @default(now()) @db.Timestamptz(6)
+  credito_id       String    @db.Uuid
   monto            Float
-  fecha            DateTime @default(now()) @db.Date
-  metodo           String   @default("efectivo")
+  fecha            DateTime  @default(now()) @db.Date
+  metodo           String    @default("efectivo")
   notas            String?
-  tenant_id        String   @db.Uuid
-  aplicado_mora    Float    @default(0)
-  aplicado_interes Float    @default(0)
-  aplicado_cargos  Float    @default(0)
-  aplicado_capital Float    @default(0)
-  excedente        Float    @default(0)
+  tenant_id        String    @db.Uuid
+  aplicado_mora    Float     @default(0)
+  aplicado_interes Float     @default(0)
+  aplicado_cargos  Float     @default(0)
+  aplicado_capital Float     @default(0)
+  excedente        Float     @default(0)
   // Anulación de pago (tesorería): no se borra, se marca anulado + contra-asiento en caja.
   // Solo dentro de la ventana configurable (cobranza_config.dias_anulacion_pago).
   anulado          Boolean   @default(false)
@@ -685,15 +692,15 @@ model acciones_cobranza {
 /// Traza de auditoría: registra eventos de negocio por tenant (tenant_id).
 /// Tabla aditiva, solo escritura desde el backend y lectura en la vista.
 model auditoria {
-  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  created_at  DateTime @default(now()) @db.Timestamptz(6)
-  tenant_id   String   @db.Uuid
-  entidad     String // clientes | creditos | pagos | configuracion
-  entidad_id  String?  @db.Uuid
-  accion      String // crear | actualizar | eliminar | cancelar | registrar_pago | actualizar_config
-  descripcion String
-  meta        Json?
-  usuario_id     String? @db.Uuid // actor que ejecutó la acción (capturado al escribir)
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  created_at     DateTime @default(now()) @db.Timestamptz(6)
+  tenant_id      String   @db.Uuid
+  entidad        String // clientes | creditos | pagos | configuracion
+  entidad_id     String?  @db.Uuid
+  accion         String // crear | actualizar | eliminar | cancelar | registrar_pago | actualizar_config
+  descripcion    String
+  meta           Json?
+  usuario_id     String?  @db.Uuid // actor que ejecutó la acción (capturado al escribir)
   usuario_nombre String? // nombre del actor (inmutable, al momento del evento)
   usuario_email  String? // email del actor (inmutable)
 
@@ -744,24 +751,26 @@ model movimientos_proveedor {
 
 /// Configuración del motor financiero por financiera (tenant = tenant_id).
 model configuraciones {
-  tenant_id            String   @id @db.Uuid
-  convencion_tasa      String   @default("nominal_anual")
-  sistema_amortizacion String   @default("frances")
-  mora_activa          Boolean  @default(true)
-  tasa_mora_diaria     Float    @default(0.01)
-  base_mora            String   @default("cuota")
-  orden_imputacion     String   @default("mora,interes,capital")
-  imputar_cargos       String   @default("integrado")
-  moneda               String   @default("ARS")
-  locale               String   @default("es-AR")
-  simulador            Json? // SimuladorConfig (parámetros del motor de cuota por tenant)
-  whatsapp_config      Json? // { enabled, token, phone_number_id, business_account_id, templates: { recordatorio, vencimiento, mora_temprana, mora_media, mora_critica } }
-  sms_config           Json? // { enabled, api_key, provider }
-  email_config         Json? // { enabled, host, port, user, pass } o { enabled, api_key, provider }
-  gamificacion_config  Json? // { habilitado, periodo, pesos:{monto,cantidad,cobranza,calidad}, umbrales:{oro,plata,bronce} }
-  rentabilidad_config  Json? // { habilitado, costo_fondeo_anual, otros_costos_mensuales } — costo de capital para rentabilidad NETA en Reportes
-  riesgo_config        Json? // { politica: PoliticaOriginacion } — motor de riesgo/originación (feature premium; ver lib/domain/riesgo.ts)
-  cobranza_config      Json? // { dias_sin_gestion } — agenda de cobranza: cada cuántos días un moroso sin gestión vuelve a la cola
+  tenant_id             String   @id @db.Uuid
+  convencion_tasa       String   @default("nominal_anual")
+  sistema_amortizacion  String   @default("frances")
+  mora_activa           Boolean  @default(true)
+  tasa_mora_diaria      Float    @default(0.01)
+  base_mora             String   @default("cuota")
+  orden_imputacion      String   @default("mora,interes,capital")
+  imputar_cargos        String   @default("integrado")
+  moneda                String   @default("ARS")
+  locale                String   @default("es-AR")
+  simulador             Json? // SimuladorConfig (parámetros del motor de cuota por tenant)
+  whatsapp_config       Json? // { enabled, token, phone_number_id, business_account_id, templates: { recordatorio, vencimiento, mora_temprana, mora_media, mora_critica } }
+  sms_config            Json? // { enabled, api_key, provider }
+  email_config          Json? // { enabled, host, port, user, pass } o { enabled, api_key, provider }
+  gamificacion_config   Json? // { habilitado, periodo, pesos:{monto,cantidad,cobranza,calidad}, umbrales:{oro,plata,bronce} }
+  rentabilidad_config   Json? // { habilitado, costo_fondeo_anual, otros_costos_mensuales } — costo de capital para rentabilidad NETA en Reportes
+  riesgo_config         Json? // { politica: PoliticaOriginacion } — motor de riesgo/originación (feature premium; ver lib/domain/riesgo.ts)
+  cobranza_config       Json? // { dias_sin_gestion } — agenda de cobranza: cada cuántos días un moroso sin gestión vuelve a la cola
   notificaciones_config Json? // { movimientos_caja, respaldos, plan } — qué avisos in-app (campanita) se muestran
-  updated_at           DateTime @updatedAt @db.Timestamptz(6)
+  documentos_config     Json? // DocumentosConfig — jurisdicción, punitorios, modo del pagaré y qué cláusulas
+  // lleva la solicitud/mutuo. Ver lib/domain/documentos.ts
+  updated_at            DateTime @updatedAt @db.Timestamptz(6)
 }

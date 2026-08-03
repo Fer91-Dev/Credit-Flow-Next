@@ -9,9 +9,9 @@
  * components/providers/SWRProvider.tsx, montado en el layout autenticado.
  */
 import useSWR, { mutate as globalMutate } from "swr";
-import type { SimuladorConfig } from "@/lib/domain";
+import type { SimuladorConfig, DocumentosConfig } from "@/lib/domain";
 
-export type { SimuladorConfig };
+export type { SimuladorConfig, DocumentosConfig };
 
 export async function apiFetcher<T = unknown>(url: string): Promise<T> {
   const res = await fetch(url);
@@ -772,6 +772,7 @@ export interface ConfiguracionFinanciera {
   riesgoConfig?: RiesgoConfig | null;
   cobranzaConfig?: CobranzaConfig | null;
   notificacionesConfig?: NotificacionesConfig | null;
+  documentosConfig?: DocumentosConfig | null;
 }
 
 /** Config de la agenda del día de cobranza (parametrizable por el admin). */

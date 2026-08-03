@@ -6,10 +6,11 @@ import { useConfiguracion, type ConfiguracionFinanciera, type GamificacionConfig
 import { FeatureGate } from "@/components/providers/FeaturesProvider";
 import { FinancieraForm } from "@/components/configuracion/FinancieraForm";
 import { BackupsView } from "@/components/configuracion/BackupsView";
-import type { SimuladorConfig, CargosConfig, FrecuenciaOpcion } from "@/lib/domain";
+import type { SimuladorConfig, CargosConfig, FrecuenciaOpcion, DocumentosConfig } from "@/lib/domain";
+import { DOCUMENTOS_DEFAULT, revisarDocumentos } from "@/lib/domain";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Emoji } from "@/components/ui/Emoji";
-import { Field, Input, Select } from "@/components/ui/field";
+import { Field, Input, Select, Textarea } from "@/components/ui/field";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatFecha } from "@/lib/utils";
@@ -174,6 +175,17 @@ const AYUDA: Record<string, AyudaBloque> = {
       "Si no califica: avisar y dejar autorizar, o bloquear.",
     ],
   },
+  documentos: {
+    titulo: "Documentos del crédito",
+    texto: "Lo que se imprime en la solicitud de préstamo y en el pagaré. Se define una vez y vale para todos los créditos; los datos de cada operación (monto, cuotas, tasas) los completa el sistema solo.",
+    puntos: [
+      "Jurisdicción: ante qué tribunales se reclama si hay que ir a juicio. Sin esto, el deudor puede discutir dónde se lo demanda.",
+      "Punitorio mensual: el recargo por pagar tarde. En 0, atrasarse sale lo mismo que pagar a término.",
+      "Pagaré con monto: se imprime la cifra. Sin monto: se completa el día que se ejecuta, con la deuda actualizada a esa fecha.",
+      "Ampliación a 5 años: es el plazo para presentar un pagaré a la vista. Sin la cláusula, el plazo es mucho más corto.",
+      "Autorizada por el BCRA: solo si la financiera realmente lo está. Declararlo sin serlo es una infracción grave.",
+    ],
+  },
   notificaciones: {
     titulo: "Notificaciones",
     texto: "Elegí qué avisos aparecen en la campanita del sistema. No afecta los mensajes automáticos a clientes (eso se maneja en Comunicaciones).",
@@ -193,7 +205,7 @@ export function ConfigForm() {
   const [savingKey, setSavingKey] = useState<string | null>(null);
   const [savedKey, setSavedKey] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"financiera" | "motor" | "simulador" | "comunicaciones" | "gamificacion" | "rentabilidad" | "riesgo" | "notificaciones" | "backups">("financiera");
+  const [activeTab, setActiveTab] = useState<"financiera" | "motor" | "simulador" | "comunicaciones" | "gamificacion" | "rentabilidad" | "riesgo" | "documentos" | "notificaciones" | "backups">("financiera");
 
   // Hidratar el form local cuando llega la config.
   useEffect(() => {
@@ -266,6 +278,15 @@ export function ConfigForm() {
     setForm(prev => prev ? { ...prev, notificacionesConfig: { ...defaultNotificaciones(), ...prev.notificacionesConfig, ...patch } } : prev);
     touch();
   };
+
+  // Documentos: parametrización de la solicitud/mutuo + pagaré.
+  const docs = form?.documentosConfig ?? DOCUMENTOS_DEFAULT;
+  const setDocs = (patch: Partial<DocumentosConfig>) => {
+    setForm(prev => prev ? { ...prev, documentosConfig: { ...DOCUMENTOS_DEFAULT, ...prev.documentosConfig, ...patch } } : prev);
+    touch();
+  };
+  // Avisos de "esto va a salir débil": no bloquean, marcan.
+  const avisosDocs = revisarDocumentos(docs);
 
   // Rentabilidad: costo de fondeo para la ganancia NETA de Reportes.
   const rent = form?.rentabilidadConfig ?? defaultRentabilidad();
@@ -359,6 +380,7 @@ export function ConfigForm() {
                 { key: "gamificacion",   label: "Gamificación",           emoji: "trophy" },
                 { key: "rentabilidad",   label: "Rentabilidad",           emoji: "chart-increasing" },
                 { key: "riesgo",         label: "Riesgo / Originación",   emoji: "shield" },
+                { key: "documentos",     label: "Documentos",             emoji: "scroll" },
                 { key: "notificaciones", label: "Notificaciones",          emoji: "bell" },
                 { key: "backups",        label: "Respaldos",              emoji: "package" },
               ] as const).map(tab => {
@@ -1161,6 +1183,112 @@ export function ConfigForm() {
                 checked={notif.plan}
                 onChange={v => setNotif({ plan: v })}
               />
+            </div>
+          </Section>
+          )}
+
+          {/* ─── Documentos del crédito (solicitud/mutuo + pagaré) ─── */}
+          {activeTab === "documentos" && (
+          <Section
+            title="Documentos del crédito"
+            desc="Lo que se imprime en la solicitud de préstamo y en el pagaré. Se define una vez; los datos de cada operación los completa el sistema."
+            ayuda={AYUDA.documentos}
+            onSave={() => save("documentos", { documentosConfig: docs } as Partial<ConfiguracionFinanciera>)}
+            saving={savingKey === "documentos"} saved={savedKey === "documentos"} dirty={isDirty("documentos")}
+          >
+            <div className="space-y-4">
+              {/* Avisos de configuración que dejaría un documento débil. No bloquean:
+                  puede haber razones para emitir así, pero que sea a sabiendas. */}
+              {avisosDocs.length > 0 && (
+                <div className="rounded-lg border border-warning/30 bg-warning/[0.07] px-4 py-3 space-y-1.5">
+                  {avisosDocs.map(a => (
+                    <p key={a.campo} className="text-xs leading-relaxed text-warning">{a.mensaje}</p>
+                  ))}
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <Field label="Jurisdicción" hint="Ante qué tribunales se reclama">
+                  <Input
+                    value={docs.jurisdiccion}
+                    onChange={e => setDocs({ jurisdiccion: e.target.value })}
+                    placeholder="Ej: Tribunales Ordinarios de San Miguel de Tucumán"
+                  />
+                </Field>
+                <Field label="Interés punitorio mensual (%)" hint="Recargo por pagar fuera de término">
+                  <Input
+                    type="number" min="0" max="100" step="any"
+                    value={String(docs.punitorio_mensual)}
+                    onChange={e => setDocs({ punitorio_mensual: parseFloat(e.target.value) || 0 })}
+                    className="font-mono tabular-nums"
+                  />
+                </Field>
+              </div>
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <Field label="Pagaré" hint="Cómo se emite">
+                  <Select value={docs.modo_pagare} onChange={e => setDocs({ modo_pagare: e.target.value as DocumentosConfig["modo_pagare"] })}>
+                    <option value="con_monto">Con monto impreso</option>
+                    <option value="sin_monto">Sin monto (se completa al ejecutarlo)</option>
+                  </Select>
+                </Field>
+                <Field label="Caducidad de plazos" hint="Cuotas impagas que vuelven exigible el total (0 = sin caducidad)">
+                  <Input
+                    type="number" min="0" max="24" step="1"
+                    value={String(docs.cuotas_caducidad)}
+                    onChange={e => setDocs({ cuotas_caducidad: parseInt(e.target.value) || 0 })}
+                    className="font-mono tabular-nums"
+                  />
+                </Field>
+              </div>
+
+              <div className="space-y-3">
+                <NotifRow
+                  title="Sin protesto"
+                  desc="Evita el trámite notarial previo a ejecutar el pagaré."
+                  checked={docs.sin_protesto}
+                  onChange={v => setDocs({ sin_protesto: v })}
+                />
+                <NotifRow
+                  title={`Ampliar la presentación del pagaré a ${docs.anios_presentacion} años`}
+                  desc="Art. 36 Dec. Ley 5965/63. Sin esta cláusula, el plazo para presentar un pagaré a la vista es mucho más corto."
+                  checked={docs.anios_presentacion >= 5}
+                  onChange={v => setDocs({ anios_presentacion: v ? 5 : 1 })}
+                />
+                <NotifRow
+                  title="Actualizar por IPC del INDEC"
+                  desc="Además del punitorio, ajusta la deuda por inflación."
+                  checked={docs.actualiza_por_ipc}
+                  onChange={v => setDocs({ actualiza_por_ipc: v })}
+                />
+                <NotifRow
+                  title="Autorización a pedir informes"
+                  desc="El cliente autoriza a consultar e informar su comportamiento de pago a bureaus y terceros."
+                  checked={docs.incluye_autorizacion_informes}
+                  onChange={v => setDocs({ incluye_autorizacion_informes: v })}
+                />
+                <NotifRow
+                  title="Cesión de crédito"
+                  desc="Permite vender la cartera a un tercero. Activalo solo si la financiera lo hace."
+                  checked={docs.incluye_cesion_credito}
+                  onChange={v => setDocs({ incluye_cesion_credito: v })}
+                />
+                <NotifRow
+                  title="Entidad autorizada por el BCRA"
+                  desc="Se imprime en el encabezado. Activalo SOLO si la financiera tiene la autorización: declararlo sin tenerla es una infracción grave."
+                  checked={docs.autorizada_bcra}
+                  onChange={v => setDocs({ autorizada_bcra: v })}
+                />
+              </div>
+
+              <Field label="Cláusulas adicionales" hint="Texto libre que se agrega al final. Opcional.">
+                <Textarea
+                  rows={4}
+                  value={docs.clausulas_extra}
+                  onChange={e => setDocs({ clausulas_extra: e.target.value })}
+                  placeholder="Cláusulas propias de la financiera que no estén contempladas arriba."
+                />
+              </Field>
             </div>
           </Section>
           )}
