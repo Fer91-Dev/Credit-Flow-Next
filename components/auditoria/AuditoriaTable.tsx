@@ -108,9 +108,9 @@ export function AuditoriaTable() {
               value={search}
               onChange={setSearch}
               placeholder="Buscar en la descripción…"
-              {/* F3 limpia TODO, no solo el texto: el hint decía "ver todo" pero dejaba
-                  puesto el filtro de entidad, así que la lista seguía recortada y
-                  parecía que el atajo no había funcionado. */}
+              // F3 limpia TODO, no solo el texto: el hint decía "ver todo" pero dejaba
+              // puesto el filtro de entidad, así que la lista seguía recortada y parecía
+              // que el atajo no había funcionado.
               onF3={() => { setSearch(""); setEntidad("all"); }}
               f3Hint="para limpiar la búsqueda y los filtros"
               className="flex-1"
