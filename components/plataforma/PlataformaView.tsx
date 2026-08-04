@@ -8,7 +8,7 @@ import { StatusBadge } from "@/components/ui/StatusBadge";
 import { KpiCard } from "@/components/ui/KpiCard";
 import { DataTable } from "@/components/ui/DataTable";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Field, Input, Textarea } from "@/components/ui/field";
+import { Field, Input, Textarea, PasswordInput } from "@/components/ui/field";
 import { MoneyInput } from "@/components/ui/form-kit";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/toast";
@@ -109,7 +109,7 @@ export function PlataformaView() {
                   <Input type="email" value={nueva.email} onChange={(e) => setNueva((n) => ({ ...n, email: e.target.value }))} placeholder="admin@financiera.com" />
                 </Field>
                 <Field label="Contraseña temporal" required hint="Se la pasás al cliente; la cambia al entrar">
-                  <Input type="password" value={nueva.password} onChange={(e) => setNueva((n) => ({ ...n, password: e.target.value }))} placeholder="Mínimo 8 caracteres" />
+                  <PasswordInput value={nueva.password} onChange={(e) => setNueva((n) => ({ ...n, password: e.target.value }))} placeholder="Mínimo 8 caracteres" />
                 </Field>
               </div>
               <div className="mt-3 flex justify-end gap-2">

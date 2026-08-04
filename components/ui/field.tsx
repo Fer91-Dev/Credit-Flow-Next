@@ -109,6 +109,30 @@ export function PasswordInput({ className, ...props }: React.InputHTMLAttributes
 }
 
 /**
+ * Input de SECRETO de integración: token de API, clave SMTP, credencial de bureau.
+ *
+ * Enmascarado como una contraseña, pero **se puede pegar**: un token de Meta o de Resend
+ * no se escribe a mano, y bloquear el portapapeles (como hace `PasswordInput`) volvería el
+ * campo inusable. Lo que sí comparte es `autoComplete="new-password"`, y ahí está el punto:
+ *
+ * **Chrome IGNORA `autocomplete="off"` en los inputs de password.** Un `type="password"`
+ * sin atributo —que era como estaban estos campos— es una invitación a que el navegador
+ * vuelque ahí la contraseña guardada del usuario. Si eso pasa y se guarda, la clave
+ * personal de un admin termina persistida como "token de WhatsApp", enmascarada al leerla
+ * (o sea, invisible) y encima enviada a un tercero cuando la integración la use.
+ */
+export function SecretInput({ className, ...props }: React.InputHTMLAttributes<HTMLInputElement>) {
+  return (
+    <input
+      type="password"
+      autoComplete="new-password"
+      className={cn(inputBase, className)}
+      {...props}
+    />
+  );
+}
+
+/**
  * Par de campos "contraseña" + "repetir contraseña" para SETEAR una clave nueva.
  * Ambos enmascarados y sin copiar/pegar; muestra en vivo si no coinciden. La validación
  * final (largo mínimo + coincidencia) la hace el submit del formulario que lo usa.

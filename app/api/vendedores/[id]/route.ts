@@ -75,7 +75,9 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
 
 /**
  * PATCH /api/vendedores/[id]
- * Actualiza datos del vendedor. Campos: nombre, email, telefono, rol, comision_pct, meta_venta, activo.
+ * Actualiza datos del vendedor (lo LABORAL: comisión, meta, zona, límite, estado).
+ * Los datos PERSONALES (nombre, teléfono, dirección) solo se aceptan si el agente no
+ * tiene cuenta: con cuenta, la fuente de verdad es `profiles` / Mi perfil.
  */
 export const PATCH = withErrorHandler(async (req: NextRequest, { params }: RouteParams) => {
   const { tenantId } = await requireRole(["admin"], req);
@@ -106,7 +108,12 @@ export const PATCH = withErrorHandler(async (req: NextRequest, { params }: Route
     data.nombre = body.nombre.trim();
   }
   if ("email" in body) data.email = (body.email as string)?.trim() || null;
-  if ("telefono" in body) data.telefono = (body.telefono as string)?.trim() || null;
+  // `telefono` y `direccion` son datos PERSONALES: desde 2026-07-30 la fuente de verdad es
+  // `profiles` y los edita cada uno en Mi perfil. La UI ya no los manda, pero la API los
+  // seguía aceptando: una puerta abierta por la que los dos valores volvían a divergir sin
+  // que nadie lo notara. Se cierran para quien TIENE cuenta; los agentes sin cuenta no
+  // tienen profile que editar, así que para ellos la ficha sigue siendo el único lugar.
+  if (!tieneCuenta && "telefono" in body) data.telefono = (body.telefono as string)?.trim() || null;
   if (esRolValido(body.rol)) data.rol = body.rol;
   if ("comision_pct" in body) data.comision_pct = normalizarComisionPct(body.comision_pct);
   if ("meta_venta" in body) data.meta_venta = normalizarMonto(body.meta_venta);
@@ -114,7 +121,7 @@ export const PATCH = withErrorHandler(async (req: NextRequest, { params }: Route
   // Datos laborales (Fase 1)
   if ("documento" in body) data.documento = (body.documento as string)?.trim() || null;
   if ("fecha_ingreso" in body) data.fecha_ingreso = body.fecha_ingreso ? new Date(body.fecha_ingreso as string) : null;
-  if ("direccion" in body) data.direccion = (body.direccion as string)?.trim() || null;
+  if (!tieneCuenta && "direccion" in body) data.direccion = (body.direccion as string)?.trim() || null;
   if ("zona" in body) data.zona = (body.zona as string)?.trim() || null;
   if ("notas" in body) data.notas = (body.notas as string)?.trim() || null;
   if ("limite_aprobacion" in body) data.limite_aprobacion = body.limite_aprobacion != null ? normalizarMonto(body.limite_aprobacion) : null;

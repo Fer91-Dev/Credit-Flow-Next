@@ -10,7 +10,7 @@ import type { SimuladorConfig, CargosConfig, FrecuenciaOpcion, DocumentosConfig 
 import { DOCUMENTOS_DEFAULT, revisarDocumentos } from "@/lib/domain";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Emoji } from "@/components/ui/Emoji";
-import { Field, Input, Select, Textarea } from "@/components/ui/field";
+import { Field, Input, Select, Textarea, SecretInput } from "@/components/ui/field";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatFecha } from "@/lib/utils";
@@ -796,8 +796,7 @@ export function ConfigForm() {
               >
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
                   <Field label="Token de acceso permanente">
-                    <Input
-                      type="password"
+                    <SecretInput
                       placeholder="EAAxxxxxx..."
                       value={(form.whatsappConfig as any)?.token ?? ""}
                       onChange={e => set("whatsappConfig", { ...(form.whatsappConfig ?? defaultWhatsapp()), token: e.target.value })}
@@ -861,8 +860,7 @@ export function ConfigForm() {
                     </Select>
                   </Field>
                   <Field label="API Key">
-                    <Input
-                      type="password"
+                    <SecretInput
                       placeholder="SK..."
                       value={(form.smsConfig as any)?.api_key ?? ""}
                       onChange={e => set("smsConfig", { ...(form.smsConfig ?? defaultSms()), api_key: e.target.value })}
@@ -899,10 +897,10 @@ export function ConfigForm() {
                       <Field label="Host SMTP"><Input placeholder="smtp.ejemplo.com" value={(form.emailConfig as any)?.host ?? ""} onChange={e => set("emailConfig", { ...(form.emailConfig ?? defaultEmail()), host: e.target.value })} /></Field>
                       <Field label="Puerto"><Input type="number" placeholder="587" value={(form.emailConfig as any)?.port ?? ""} onChange={e => set("emailConfig", { ...(form.emailConfig ?? defaultEmail()), port: parseInt(e.target.value) || 587 })} /></Field>
                       <Field label="Usuario"><Input placeholder="user@ejemplo.com" value={(form.emailConfig as any)?.user ?? ""} onChange={e => set("emailConfig", { ...(form.emailConfig ?? defaultEmail()), user: e.target.value })} /></Field>
-                      <Field label="Contraseña"><Input type="password" value={(form.emailConfig as any)?.pass ?? ""} onChange={e => set("emailConfig", { ...(form.emailConfig ?? defaultEmail()), pass: e.target.value })} /></Field>
+                      <Field label="Contraseña"><SecretInput value={(form.emailConfig as any)?.pass ?? ""} onChange={e => set("emailConfig", { ...(form.emailConfig ?? defaultEmail()), pass: e.target.value })} /></Field>
                     </>
                   ) : (
-                    <Field label="API Key"><Input type="password" placeholder="re_xxxx / SG.xxxx" value={(form.emailConfig as any)?.api_key ?? ""} onChange={e => set("emailConfig", { ...(form.emailConfig ?? defaultEmail()), api_key: e.target.value })} /></Field>
+                    <Field label="API Key"><SecretInput placeholder="re_xxxx / SG.xxxx" value={(form.emailConfig as any)?.api_key ?? ""} onChange={e => set("emailConfig", { ...(form.emailConfig ?? defaultEmail()), api_key: e.target.value })} /></Field>
                   )}
                 </div>
               </CanalesBlock>
@@ -1136,7 +1134,7 @@ export function ConfigForm() {
                         onChange={e => setBureau({ usuario: e.target.value })} />
                     </Field>
                     <Field label="Token / API key" hint="Secreto: se guarda enmascarado">
-                      <Input type="password" placeholder="••••••••" value={riesgo.bureau.token}
+                      <SecretInput placeholder="••••••••" value={riesgo.bureau.token}
                         onChange={e => setBureau({ token: e.target.value })} />
                     </Field>
                   </div>
