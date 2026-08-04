@@ -294,6 +294,7 @@ function ArqueoVendedorDialog({
       if (json.ok) {
         reset();
         toast.success(json.data.diferencia === 0 ? "Caja cerrada: cuadra exacto" : "Cierre registrado · queda pendiente de revisión");
+        refrescarNotificaciones();
         onClose(true);
       } else setError(json.error);
     } catch {

@@ -13,6 +13,12 @@ import type { NextRequest } from "next/server";
  *    transferencias contadas UNA vez (ver el filtro `NOT` más abajo).
  * El estado "no leído" lo calcula el cliente comparando `created_at` contra un marcador
  * local (localStorage) — no persiste por usuario en DB (suficiente para un aviso en vivo).
+ *
+ * Además devuelve los **cierres de caja pendientes** (`arqueos`). Van aparte de los
+ * movimientos a propósito: cuando un vendedor declara una diferencia NO se escribe ningún
+ * asiento (justamente porque nadie ajustó nada todavía), así que si la campanita solo
+ * mirara `movimientos_caja`, un faltante declarado no avisaría a nadie — el admin se
+ * enteraba recién si entraba a Caja de casualidad.
  */
 export const GET = withErrorHandler(async (req: NextRequest) => {
   const { tenantId, role, vendedorId } = await requireAuth(req);
@@ -31,12 +37,24 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     where.NOT = { tipo: { in: ["entrega", "rendicion"] }, vendedor_id: { not: null } };
   }
 
-  const movs = await prisma.movimientos_caja.findMany({
-    where,
-    orderBy: { created_at: "desc" },
-    take: 12,
-    include: { vendedor: { select: { nombre: true } } },
-  });
+  // Los cierres pendientes son del ADMIN: es quien los resuelve. El vendedor ya ve el suyo
+  // en su propia caja y no puede hacer nada con él, así que no le sumamos ruido.
+  const [movs, arqueosPendientes] = await Promise.all([
+    prisma.movimientos_caja.findMany({
+      where,
+      orderBy: { created_at: "desc" },
+      take: 12,
+      include: { vendedor: { select: { nombre: true } } },
+    }),
+    role === "admin"
+      ? prisma.arqueos_caja.findMany({
+          where: { ...withTenant(tenantId), estado: "pendiente" },
+          orderBy: { created_at: "desc" },
+          take: 10,
+          include: { vendedor: { select: { nombre: true } } },
+        })
+      : Promise.resolve([]),
+  ]);
 
   // Destino del clic: el vendedor va a SU caja; el admin/cobrador al registro central
   // (donde ve todas las cajas). Cada notificación lleva su `href` → patrón extensible:
@@ -56,5 +74,16 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     href: hrefCaja,
   }));
 
-  return successResponse({ movimientos });
+  const arqueos = arqueosPendientes.map((a) => ({
+    id: a.id,
+    created_at: a.created_at,
+    caja: a.vendedor?.nombre ? `Caja de ${a.vendedor.nombre}` : "Caja principal",
+    cuenta: a.cuenta,
+    diferencia: a.diferencia,
+    observacion: a.observacion,
+    creado_por: a.creado_por_nombre,
+    href: "/caja",
+  }));
+
+  return successResponse({ movimientos, arqueos });
 });
