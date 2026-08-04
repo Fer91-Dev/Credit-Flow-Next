@@ -2,6 +2,7 @@ import { requireRole } from "@/lib/auth";
 import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
+import { errorDePassword } from "@/lib/domain";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { registrarAuditoria } from "@/lib/audit";
 import { esEmailValido, esUsernameValido, normalizarUsername } from "@/lib/utils";
@@ -61,8 +62,11 @@ export const PATCH = withErrorHandler(async (req: NextRequest, { params }: Route
 
   // Cambio de contraseña (opcional): va directo a Supabase Auth, no a profiles.
   const nuevaPassword = typeof body.password === "string" ? body.password : null;
-  if (nuevaPassword !== null && nuevaPassword.length < 8) {
-    return errorResponse("La contraseña debe tener al menos 8 caracteres", "INVALID_INPUT", 400);
+  if (nuevaPassword !== null) {
+    const mala = errorDePassword(nuevaPassword, {
+      email: body.email ?? target.email, username: body.username ?? target.username, nombre: body.nombre ?? target.full_name,
+    });
+    if (mala) return errorResponse(mala, "INVALID_INPUT", 400);
   }
 
   const data: Record<string, unknown> = {};

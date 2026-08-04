@@ -1,6 +1,8 @@
 import { requireAuth, ApiError } from "@/lib/auth";
 import { successResponse, errorResponse, withErrorHandler, assertSameOrigin } from "@/app/lib/api";
 import { prisma } from "@/lib/prisma";
+import { rateLimit, clientIp, sweepIfNeeded } from "@/lib/rate-limit";
+import { errorDePassword } from "@/lib/domain";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireOwner } from "@/lib/saas-owner";
 import { registrarAuditoria } from "@/lib/audit";
@@ -17,6 +19,12 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
   requireOwner(ctx);
   assertSameOrigin(req);
 
+  // Alta de financieras: crea tenant + cuenta de Auth, la operación más cara del sistema.
+  // Exige ser owner, pero una sesión robada podría dispararla en loop.
+  sweepIfNeeded();
+  const rl = rateLimit(`alta-financiera:${clientIp(req)}`, 10, 60 * 60_000);
+  if (!rl.ok) return errorResponse("Demasiadas solicitudes. Esperá unos minutos.", "RATE_LIMITED", 429);
+
   let body: any;
   try { body = await req.json(); } catch { return errorResponse("Body JSON inválido", "INVALID_JSON", 400); }
 
@@ -27,7 +35,8 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
 
   if (!nombre) return errorResponse("El nombre de la financiera es obligatorio", "INVALID_INPUT", 400);
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return errorResponse("Email del admin inválido", "INVALID_INPUT", 400);
-  if (password.length < 8) return errorResponse("La contraseña debe tener al menos 8 caracteres", "INVALID_INPUT", 400);
+  const malaPass = errorDePassword(password, { email, nombre: body.admin_nombre });
+  if (malaPass) return errorResponse(malaPass, "INVALID_INPUT", 400);
 
   // 1) Tenant
   const tenant = await prisma.tenants.create({ data: { nombre, features: [] }, select: { id: true } });

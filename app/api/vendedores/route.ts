@@ -4,7 +4,7 @@ import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
 import { registrarAuditoria } from "@/lib/audit";
-import { esRolValido, resumirVendedor, normalizarComisionPct, normalizarMonto, normalizarComisionConfig } from "@/lib/domain";
+import { esRolValido, resumirVendedor, normalizarComisionPct, normalizarMonto, normalizarComisionConfig, errorDePassword } from "@/lib/domain";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { esUsernameValido, normalizarUsername } from "@/lib/utils";
 import type { NextRequest } from "next/server";
@@ -132,9 +132,6 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
   if (!ccEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(ccEmail)) {
     return errorResponse("Se requiere un email válido para la cuenta de acceso del agente", "INVALID_INPUT", 400);
   }
-  if (ccPassword.length < 8) {
-    return errorResponse("La contraseña de acceso debe tener al menos 8 caracteres", "INVALID_INPUT", 400);
-  }
 
   // Nombre de usuario OBLIGATORIO: alias de login que asigna el admin al crear la cuenta. Único GLOBAL.
   if (typeof cc?.username !== "string" || !cc.username.trim()) {
@@ -146,6 +143,12 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
   }
   const ccUsernameTaken = await prisma.profiles.findUnique({ where: { username: ccUsername }, select: { id: true } });
   if (ccUsernameTaken) return errorResponse("Ese nombre de usuario ya está en uso", "DUPLICATE_RECORD", 409);
+
+  // La contraseña se valida DESPUÉS del username, no antes: la política la compara contra
+  // la identidad de la persona (email, usuario, nombre) para rechazar "silvio2026", y para
+  // eso el username ya tiene que estar resuelto.
+  const malaPassAgente = errorDePassword(ccPassword, { email: ccEmail, username: ccUsername, nombre: body.nombre });
+  if (malaPassAgente) return errorResponse(malaPassAgente, "INVALID_INPUT", 400);
 
   const rol = esRolValido(body.rol) ? body.rol : "vendedor";
   const comision = normalizarComisionPct(body.comision_pct);

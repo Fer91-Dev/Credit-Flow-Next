@@ -32,10 +32,16 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     return errorResponse("Ingresá tu usuario/email y contraseña", "INVALID_INPUT", 400);
   }
 
-  // Rate limit por IP: frena la fuerza bruta de contraseñas.
+  // Rate limit en DOS ejes, porque cada uno tapa un ataque distinto:
+  //  · por IP → una máquina probando muchas cuentas (barrido).
+  //  · por IDENTIFICADOR → muchas IPs probando UNA cuenta (fuerza bruta distribuida, y
+  //    botnets baratas hay de sobra). Con solo el límite por IP este caso pasaba entero.
+  // El de cuenta es más laxo (15/15min) que el de IP para no dejar afuera a alguien que
+  // simplemente no se acuerda la clave desde su casa.
   sweepIfNeeded();
-  const rl = rateLimit(`login:${clientIp(req)}`, 10, 5 * 60_000);
-  if (!rl.ok) {
+  const porIp = rateLimit(`login:ip:${clientIp(req)}`, 10, 5 * 60_000);
+  const porCuenta = rateLimit(`login:id:${identifier.toLowerCase()}`, 15, 15 * 60_000);
+  if (!porIp.ok || !porCuenta.ok) {
     return errorResponse("Demasiados intentos. Esperá unos minutos e intentá de nuevo.", "RATE_LIMITED", 429);
   }
 

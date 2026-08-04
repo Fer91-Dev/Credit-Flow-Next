@@ -1,8 +1,21 @@
 /**
- * Rate limiter simple en memoria (ventana fija). Suficiente para mitigar abuso básico en un
- * server single-instance (dev / VPS chico): fuerza bruta de login, bombardeo de emails de
- * recuperación, agotamiento de la cuota de Gmail. Para multi-instancia/serverless habría que
- * mover el estado a Redis/DB — anotar si escala.
+ * Rate limiter en memoria (ventana fija).
+ *
+ * ⚠️ **CUÁNTO PROTEGE DE VERDAD, para no confiarse de más.** El estado vive en un `Map` del
+ * proceso. En Vercel cada invocación puede caer en una instancia distinta, así que el
+ * contador NO es global: con N instancias calientes, el techo real es N × el máximo
+ * configurado, y cuando una instancia se recicla su contador vuelve a cero.
+ *
+ * O sea: **sirve contra el script casero y contra el usuario que se equivoca de clave;
+ * NO frena un ataque distribuido con recursos.** Para eso el estado tiene que ser
+ * compartido (Redis / Upstash / la propia DB) o el límite tiene que vivir en el borde
+ * (WAF de Cloudflare o Vercel Firewall), que además corta ANTES de gastar una lambda.
+ *
+ * Se deja igual porque el costo es cero y sube el piso; pero está anotado como pendiente
+ * en `SEGURIDAD-PRODUCCION.md` para no venderlo como lo que no es.
+ *
+ * Nota aparte: **el login de Supabase tiene su propio rate limit del lado del proveedor**,
+ * así que la fuerza bruta contra contraseñas ya choca con esa pared aunque la nuestra ceda.
  */
 type Bucket = { count: number; resetAt: number };
 const store = new Map<string, Bucket>();

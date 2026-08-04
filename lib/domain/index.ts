@@ -21,6 +21,7 @@ export * from "./credito-estado";
 export * from "./numero-a-letras";
 export * from "./contrato-requisitos";
 export * from "./documentos";
+export * from "./password";
 export * from "./caja";
 export * from "./campanas";
 export * from "./calendar";

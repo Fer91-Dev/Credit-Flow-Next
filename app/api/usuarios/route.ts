@@ -2,6 +2,8 @@ import { requireRole } from "@/lib/auth";
 import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
+import { rateLimit, clientIp, sweepIfNeeded } from "@/lib/rate-limit";
+import { errorDePassword } from "@/lib/domain";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { registrarAuditoria } from "@/lib/audit";
 import { esUsernameValido, normalizarUsername } from "@/lib/utils";
@@ -62,6 +64,11 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
  */
 export const POST = withErrorHandler(async (req: NextRequest) => {
   const { tenantId } = await requireRole(["admin"], req);
+  // Alta de cuentas: aunque exige ser admin, una sesión robada podría crear usuarios en masa.
+  sweepIfNeeded();
+  const rl = rateLimit(`alta-usuario:${clientIp(req)}`, 20, 60 * 60_000);
+  if (!rl.ok) return errorResponse("Demasiadas solicitudes. Esperá unos minutos.", "RATE_LIMITED", 429);
+
 
   let body: {
     email?: string;
@@ -85,9 +92,10 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
   if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     return errorResponse("Email inválido", "INVALID_INPUT", 400);
   }
-  if (password.length < 8) {
-    return errorResponse("La contraseña debe tener al menos 8 caracteres", "INVALID_INPUT", 400);
-  }
+  // Política de contraseñas: la MISMA función que usa el formulario, para que la UI no
+  // pueda aceptar algo que acá se rechaza (ni al revés).
+  const malaPass = errorDePassword(password, { email, username: body.username, nombre: body.nombre });
+  if (malaPass) return errorResponse(malaPass, "INVALID_INPUT", 400);
   if (!ROLES.includes(role)) {
     return errorResponse("Rol inválido", "INVALID_INPUT", 400);
   }

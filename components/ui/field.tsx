@@ -1,5 +1,6 @@
 import { ChevronDown } from "lucide-react";
 import { cn, soloDigitos, formatCuit } from "@/lib/utils";
+import { revisarPassword, type ContextoPassword } from "@/lib/domain";
 
 interface FieldProps {
   label: string;
@@ -139,7 +140,7 @@ export function SecretInput({ className, ...props }: React.InputHTMLAttributes<H
  */
 export function PasswordFields({
   password, confirm, onPassword, onConfirm,
-  label = "Contraseña", required, minLength = 8,
+  label = "Contraseña", required, minLength = 8, identidad,
 }: {
   password: string;
   confirm: string;
@@ -148,16 +149,21 @@ export function PasswordFields({
   label?: string;
   required?: boolean;
   minLength?: number;
+  /** Email/usuario/nombre de la cuenta: la política rechaza claves que los contengan. */
+  identidad?: ContextoPassword;
 }) {
   const noCoincide = confirm.length > 0 && password !== confirm;
+  // MISMA función que la barrera del servidor: si divergieran, el formulario aceptaría
+  // algo que el backend rechaza (o marcaría error sobre algo que sí se guardaría).
+  const problemas = password.length > 0 ? revisarPassword(password, identidad ?? {}) : [];
   const muyCorta = password.length > 0 && password.length < minLength;
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
       <Field
         label={label}
         required={required}
-        error={muyCorta ? `Mínimo ${minLength} caracteres (llevás ${password.length})` : undefined}
-        hint={muyCorta ? undefined : `mínimo ${minLength} caracteres`}
+        error={problemas.length > 0 ? problemas[0].mensaje : undefined}
+        hint={problemas.length > 0 ? undefined : `mínimo ${minLength} caracteres`}
       >
         <PasswordInput value={password} onChange={(e) => onPassword(e.target.value)} placeholder="••••••••" required={required} />
       </Field>
