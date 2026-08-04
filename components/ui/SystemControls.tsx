@@ -113,10 +113,24 @@ export function SystemControls() {
   );
   const avisoBackup = prefs?.respaldos === false ? null : (saludBackup?.salud?.tono === "alerta" ? saludBackup.salud : null);
 
-  // Movimientos de caja (polling) + marcador de "último visto".
+  /**
+   * Movimientos de caja + cierres pendientes. Es lo único de la app que avisa de algo que
+   * hizo OTRA persona, así que la frecuencia importa: con 45s, una rendición de un vendedor
+   * podía tardar casi un minuto en aparecer y parecía que no había pasado nada.
+   *
+   * `dedupingInterval: 0` es la parte que faltaba y no se ve a simple vista: el default
+   * global es 30s y **también aplica a la revalidación por foco**, así que volver a la
+   * pestaña dentro de esos 30s no pedía nada — justo el caso más común (mirás otra
+   * ventana, volvés, y seguís viendo lo viejo).
+   *
+   * Sigue siendo polling: en el peor caso —parado en la pantalla, sin tocar nada— tarda
+   * hasta 15s. Instantáneo de verdad requeriría websockets, que es otra discusión.
+   */
   const { data: notif } = useSWR<{ movimientos: MovNotif[]; arqueos: ArqueoNotif[] } | null>("/api/notificaciones", fetcher, {
-    refreshInterval: 45_000,
+    refreshInterval: 15_000,
     revalidateOnFocus: true,
+    revalidateOnReconnect: true,
+    dedupingInterval: 0,
   });
   const movimientos = useMemo(() => (verMovimientos ? (notif?.movimientos ?? []) : []), [notif, verMovimientos]);
   /**

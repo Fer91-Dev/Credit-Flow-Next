@@ -1174,8 +1174,17 @@ export interface ArqueoCaja {
  * aviso "esperando que lo revise un administrador" con el cierre ya resuelto.
  *
  * Por eso estos dos hooks se salen de la regla: pollean y revalidan al volver a la pestaña.
+ *
+ * `dedupingInterval: 0` no es adorno: el default global (30s) **también frena la
+ * revalidación por foco**, así que volver a la pestaña dentro de esos 30s no pedía nada y
+ * se seguía viendo el estado viejo.
  */
-const ARQUEOS_SWR = { refreshInterval: 60_000, revalidateOnFocus: true } as const;
+const ARQUEOS_SWR = {
+  refreshInterval: 30_000,
+  revalidateOnFocus: true,
+  revalidateOnReconnect: true,
+  dedupingInterval: 0,
+} as const;
 
 /** Arqueos de MI caja (vendedor logueado). */
 export function useMisArqueos() {
