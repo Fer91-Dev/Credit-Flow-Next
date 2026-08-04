@@ -9,7 +9,7 @@
  * components/providers/SWRProvider.tsx, montado en el layout autenticado.
  */
 import useSWR, { mutate as globalMutate } from "swr";
-import type { SimuladorConfig, DocumentosConfig } from "@/lib/domain";
+import type { SimuladorConfig, DocumentosConfig, TipoMovimiento } from "@/lib/domain";
 
 export type { SimuladorConfig, DocumentosConfig };
 
@@ -603,12 +603,17 @@ export interface MovimientoCaja {
   fecha: string;
   /** Timestamp con hora (para mostrar fecha + hora del movimiento). */
   created_at?: string;
-  /** Espejo de `TipoMovimiento` (lib/domain/caja.ts). Sumar acá un valor hace que `tsc`
-   *  marque cada `Record<...>` que lo mapea a etiqueta o color, y no quede ninguno afuera. */
-  tipo:
-    | "desembolso" | "cobro" | "devolucion" | "reversa_desembolso" | "ajuste"
-    | "transferencia" | "entrega" | "rendicion" | "comision"
-    | "aporte_capital" | "retiro_utilidades";
+  /**
+   * La MISMA lista que el dominio (`TipoMovimiento`), no una copia.
+   *
+   * Antes estaba duplicada acá a mano, y las dos listas no se hablaban: sumar un tipo en el
+   * dominio no hacía saltar nada, así que las pantallas quedaban sin su etiqueta y su color
+   * y mostraban el código crudo. Importándolo, agregar un tipo rompe el build hasta que los
+   * `Record<MovimientoCaja["tipo"], …>` (hoy cinco: Caja, Mi caja, detalle del movimiento,
+   * Comprobantes y la ficha del agente) estén completos. La protección deja de depender de
+   * que alguien se acuerde.
+   */
+  tipo: TipoMovimiento;
   monto: number; // con signo: ingreso > 0, egreso < 0
   metodo: string | null;
   cuenta: CuentaCaja;
