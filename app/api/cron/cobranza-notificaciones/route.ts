@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { sincronizarAcuerdos } from "@/lib/acuerdos";
 import { Prisma } from "@prisma/client";
 import { sinDeuda } from "@/lib/domain";
 
@@ -49,6 +50,11 @@ async function ejecutarCron(req: NextRequest) {
   // quedaron en "activo"/"vencido" (datos legacy o drift). El camino normal ya los pasa
   // a "pagado" al cobrar la última cuota; esto es la red de seguridad. Corre SIEMPRE.
   const reconciliacion = await reconciliarCreditosSaldados();
+
+  // Acuerdos de pago: se cierran los cumplidos y se rompen los incumplidos. Mismo criterio
+  // que las promesas —el estado se DERIVA de lo cobrado, no de que alguien lo marque— y
+  // corre SIEMPRE, para todos los tenants: es actualización de estado, no notificación.
+  const acuerdos = await sincronizarAcuerdos({ hoy });
 
   // Obtener todos los tenants con configuración de canales activa
   const configs = await prisma.configuraciones.findMany({
@@ -136,7 +142,7 @@ async function ejecutarCron(req: NextRequest) {
     resultados.push({ tenant_id: config.tenant_id, enviados, errores });
   }
 
-  return NextResponse.json({ ok: true, promesas, reconciliacion, procesados: configs.length, resultados });
+  return NextResponse.json({ ok: true, promesas, acuerdos, reconciliacion, procesados: configs.length, resultados });
 }
 
 /**

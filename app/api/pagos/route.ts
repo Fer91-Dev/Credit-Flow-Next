@@ -2,6 +2,7 @@ import { requireRole, scopeCreditosVendedor } from "@/lib/auth";
 import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
+import { sincronizarAcuerdos } from "@/lib/acuerdos";
 import { nombreCompleto, formatCreditoNumero, hoyComercial } from "@/lib/utils";
 import {
   imputarPagoEnCuotas,
@@ -374,6 +375,11 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
 
   // Auto-conciliación de promesas de pago pendientes (no bloquea la respuesta)
   conciliarPromesas(body.credito_id, tenantId, body.monto).catch(() => {});
+
+  // Y del ACUERDO de pago, si el crédito tiene uno vigente: el cliente que termina de
+  // pagar lo acordado tiene que verlo cumplido al instante, no cuando corra el cron.
+  // Fire-and-forget con el mismo criterio: nunca frenar el cobro por un efecto de estado.
+  sincronizarAcuerdos({ tenantId, creditoId: body.credito_id }).catch(() => {});
 
   return successResponse(
     {

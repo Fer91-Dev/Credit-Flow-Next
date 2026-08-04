@@ -282,6 +282,7 @@ model creditos {
   producto          productos?          @relation(fields: [producto_id], references: [id], onDelete: SetNull)
   pagos             pagos[]
   acciones          acciones_cobranza[]
+  acuerdos          acuerdos_pago[]
   cuotas            cuotas[]
   movimientos       movimientos_caja[]
   movimientos_stock movimientos_stock[]
@@ -736,6 +737,80 @@ model acciones_cobranza {
   @@index([tenant_id, credito_id])
   @@index([tenant_id, proximo_contacto])
   @@index([tenant_id, promesa_estado])
+}
+
+/**
+ * ACUERDO DE PAGO — el arreglo informal con un moroso: "debés $150.000 vencidos, me los
+ * pagás en 3 de $50.000". Tabla aditiva, multi-tenant.
+ * Llena el hueco entre las dos cosas que ya existían: la **promesa** es un solo pago
+ * ("el viernes te pago") y la **refinanciación** cierra el crédito y arma uno nuevo con
+ * contrato nuevo. En el medio está lo que se hace todos los días, que es acordar unos
+ * pagos sin papeles.
+ * 🔴 **NO toca las cuotas del crédito ni el libro de caja.** Es un registro de COMPROMISO,
+ * igual que la promesa: el cliente paga por la vía normal (`POST /api/pagos`), la plata se
+ * imputa a las cuotas reales como siempre, y el acuerdo se concilia solo comparando lo
+ * cobrado desde que se firmó contra lo prometido. Si el acuerdo reescribiera las cuotas,
+ * un arreglo de mostrador estaría reescribiendo el crédito.
+ * Los términos se CONGELAN al acordar (`congela_punitorios`, `cuotas_para_romper`): que el
+ * admin cambie la política después no puede cambiar un acuerdo ya pactado con alguien.
+ */
+model acuerdos_pago {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  created_at  DateTime @default(now()) @db.Timestamptz(6)
+  tenant_id   String   @db.Uuid
+  credito_id  String   @db.Uuid
+  /// Quién lo gestionó: es a quien le corresponde el plus por recupero.
+  vendedor_id String?  @db.Uuid
+  fecha       DateTime @default(now()) @db.Date
+
+  /// Snapshot de lo VENCIDO al momento de acordar (capital + interés + cargos + mora).
+  deuda_original Float
+  /// Condonación otorgada como incentivo (sale de la mora/interés, nunca del capital).
+  quita          Float @default(0)
+  /// Lo que el cliente se comprometió a pagar = deuda_original − quita.
+  monto_acordado Float
+
+  /// vigente | cumplido | roto | anulado
+  estado        String  @default("vigente")
+  motivo_estado String? // por qué se rompió o anuló
+
+  // ── Términos CONGELADOS al acordar ────────────────────────────────────────
+  /// Mientras cumple, no se le devengan más punitorios (si la financiera lo permite).
+  congela_punitorios Boolean @default(false)
+  /// Cuántas cuotas del acuerdo impagas lo dan por roto.
+  cuotas_para_romper Int     @default(1)
+
+  notas             String?
+  creado_por        String?   @db.Uuid
+  creado_por_nombre String?
+  cerrado_at        DateTime? @db.Timestamptz(6)
+
+  credito creditos        @relation(fields: [credito_id], references: [id], onDelete: Cascade)
+  cuotas  acuerdo_cuota[]
+
+  @@index([tenant_id, credito_id])
+  @@index([tenant_id, estado])
+  @@index([tenant_id, created_at])
+}
+
+/// Cada pago comprometido dentro de un acuerdo. `pagado` se completa conciliando contra
+/// los pagos reales del crédito — no es una cuota del crédito ni genera imputación propia.
+model acuerdo_cuota {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenant_id   String   @db.Uuid
+  acuerdo_id  String   @db.Uuid
+  numero      Int
+  vencimiento DateTime @db.Date
+  monto       Float
+  pagado      Float    @default(0)
+  /// pendiente | pagada | vencida
+  estado      String   @default("pendiente")
+
+  acuerdo acuerdos_pago @relation(fields: [acuerdo_id], references: [id], onDelete: Cascade)
+
+  @@unique([acuerdo_id, numero])
+  @@index([tenant_id, acuerdo_id])
+  @@index([tenant_id, vencimiento])
 }
 
 /// Traza de auditoría: registra eventos de negocio por tenant (tenant_id).

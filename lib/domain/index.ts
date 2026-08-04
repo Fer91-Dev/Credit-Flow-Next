@@ -15,6 +15,7 @@ export * from "./frequency";
 export * from "./mora";
 export * from "./payments";
 export * from "./refinanciacion";
+export * from "./acuerdos";
 export * from "./cuotas";
 export * from "./credito-estado";
 // Documentos legales (contrato de mutuo / pagaré)
