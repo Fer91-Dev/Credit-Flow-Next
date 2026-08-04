@@ -10,6 +10,7 @@
  */
 import useSWR, { mutate as globalMutate } from "swr";
 import type { SimuladorConfig, DocumentosConfig, TipoMovimiento } from "@/lib/domain";
+import type { CobranzaConfig } from "@/lib/config";
 
 export type { SimuladorConfig, DocumentosConfig };
 
@@ -786,12 +787,14 @@ export interface ConfiguracionFinanciera {
 }
 
 /** Config de la agenda del día de cobranza (parametrizable por el admin). */
-export interface CobranzaConfig {
-  /** Días sin gestión tras los cuales un moroso vuelve a aparecer en la agenda del día. */
-  dias_sin_gestion: number;
-  /** Ventana (días desde el registro) para poder anular un pago. 0 = solo el mismo día. */
-  dias_anulacion_pago: number;
-}
+/**
+ * La MISMA definición que usa el servidor (`lib/config.ts`), no una copia.
+ *
+ * Estaba duplicada acá a mano y las dos no se hablaban: sumarle un campo a la config del
+ * servidor no rompía nada, y la pantalla de Configuración seguía compilando sin saber que
+ * ese campo existía. Es el mismo problema que tenían los tipos de movimiento de caja.
+ */
+export type { CobranzaConfig };
 
 /** Preferencias de qué avisos in-app (campanita) se muestran. */
 export interface NotificacionesConfig {

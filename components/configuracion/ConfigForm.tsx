@@ -49,6 +49,17 @@ const AYUDA: Record<string, AyudaBloque> = {
       "Días para anular un pago: ventana para revertir un cobro cargado por error (control de tesorería).",
     ],
   },
+  acuerdos: {
+    titulo: "Acuerdos de pago",
+    texto: "El arreglo informal en cuotas con un moroso: acordás cómo te paga lo VENCIDO, sin rehacer el crédito ni firmar nada nuevo.",
+    puntos: [
+      "Solo se acuerda lo vencido. Las cuotas que todavía no vencieron siguen su curso normal.",
+      "El acuerdo no toca el crédito: el cliente paga como siempre y el acuerdo se va cumpliendo solo con esos pagos.",
+      "Cuotas impagas que lo rompen: al llegar a ese número, el acuerdo se cae y el cliente vuelve a la cola de morosos.",
+      "La condonación sale de los punitorios y el interés, NUNCA del capital. Cada rol tiene su tope.",
+      "No hay botón para darlo por cumplido: se cumple cuando la plata entra, y eso lo detecta el sistema solo.",
+    ],
+  },
   imputacion: {
     titulo: "Orden de imputación de pagos",
     texto: "Define a qué se aplica primero la plata que paga el cliente cuando no alcanza a cubrir todo.",
@@ -267,6 +278,10 @@ export function ConfigForm() {
 
   // Cobranza: agenda del día (cada cuántos días un moroso sin gestión reaparece en la cola).
   const cobranza = form?.cobranzaConfig ?? defaultCobranza();
+  /** Patch anidado de la política de acuerdos (vive dentro de cobranza_config). */
+  const setAcuerdos = (patch: Partial<CobranzaConfig["acuerdos"]>) =>
+    setCobranza({ acuerdos: { ...cobranza.acuerdos, ...patch } });
+
   const setCobranza = (patch: Partial<CobranzaConfig>) => {
     setForm(prev => prev ? { ...prev, cobranzaConfig: { ...defaultCobranza(), ...prev.cobranzaConfig, ...patch } } : prev);
     touch();
@@ -717,6 +732,65 @@ export function ConfigForm() {
                   onChange={e => setCobranza({ dias_anulacion_pago: Math.max(0, Math.min(365, Math.round(parseFloat(e.target.value) || 0))) })}
                 />
               </Field>
+            </div>
+          </Section>
+
+          {/* Acuerdos de pago */}
+          <Section title="Acuerdos de pago" desc="El arreglo informal en cuotas con un moroso: hasta cuántas cuotas, qué lo rompe y quién puede condonar." ayuda={AYUDA.acuerdos}
+            onSave={() => save("cobranza", { cobranzaConfig: cobranza })}
+            saving={savingKey === "cobranza"} saved={savedKey === "cobranza"} dirty={isDirty("cobranza")}>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 max-w-3xl">
+              <Field label="Máximo de cuotas" hint="En cuántos pagos como mucho se puede repartir lo vencido.">
+                <Input
+                  type="number" min="1" max="60" step="1"
+                  value={cobranza.acuerdos.max_cuotas}
+                  onChange={e => setAcuerdos({ max_cuotas: Math.max(1, Math.min(60, Math.round(parseFloat(e.target.value) || 1))) })}
+                />
+              </Field>
+              <Field label="Días entre cuotas" hint="30 = mensual · 15 = quincenal · 7 = semanal.">
+                <Input
+                  type="number" min="1" max="365" step="1"
+                  value={cobranza.acuerdos.dias_entre_cuotas}
+                  onChange={e => setAcuerdos({ dias_entre_cuotas: Math.max(1, Math.min(365, Math.round(parseFloat(e.target.value) || 1))) })}
+                />
+              </Field>
+              <Field label="Cuotas impagas que lo rompen" hint="Cuántas cuotas del acuerdo sin pagar lo dan por caído.">
+                <Input
+                  type="number" min="1" step="1"
+                  value={cobranza.acuerdos.cuotas_para_romper}
+                  onChange={e => setAcuerdos({ cuotas_para_romper: Math.max(1, Math.round(parseFloat(e.target.value) || 1)) })}
+                />
+              </Field>
+              <Field label="Quita máx. del vendedor (%)" hint="Cuánto de los punitorios e interés puede condonar un vendedor. 0 = no puede.">
+                <Input
+                  type="number" min="0" max="100" step="1"
+                  value={cobranza.acuerdos.quita_max_vendedor_pct}
+                  onChange={e => setAcuerdos({ quita_max_vendedor_pct: Math.max(0, Math.min(100, parseFloat(e.target.value) || 0)) })}
+                />
+              </Field>
+              <Field label="Quita máx. del administrador (%)" hint="Nunca sale del capital: solo de punitorios e interés.">
+                <Input
+                  type="number" min="0" max="100" step="1"
+                  value={cobranza.acuerdos.quita_max_admin_pct}
+                  onChange={e => setAcuerdos({ quita_max_admin_pct: Math.max(0, Math.min(100, parseFloat(e.target.value) || 0)) })}
+                />
+              </Field>
+            </div>
+            <div className="mt-4 flex flex-col gap-3 max-w-3xl">
+              <div className={`flex items-center justify-between rounded-lg border border-border px-4 py-3 transition-colors ${cobranza.acuerdos.congela_punitorios ? "bg-primary/[0.06] ring-1 ring-inset ring-primary/25" : "bg-muted/30"}`}>
+                <div>
+                  <p className="text-sm font-medium text-foreground">Congelar punitorios mientras cumple</p>
+                  <p className="text-xs text-muted-foreground">El incentivo para el deudor: si paga lo acordado, no se le sigue sumando mora.</p>
+                </div>
+                <Toggle checked={cobranza.acuerdos.congela_punitorios} onChange={v => setAcuerdos({ congela_punitorios: v })} />
+              </div>
+              <div className={`flex items-center justify-between rounded-lg border border-border px-4 py-3 transition-colors ${cobranza.acuerdos.saca_de_agenda ? "bg-primary/[0.06] ring-1 ring-inset ring-primary/25" : "bg-muted/30"}`}>
+                <div>
+                  <p className="text-sm font-medium text-foreground">Sacarlo de la agenda del día mientras cumple</p>
+                  <p className="text-xs text-muted-foreground">Quien está cumpliendo ya está gestionado. Llamarlo igual suele ser la forma más rápida de que deje de cumplir.</p>
+                </div>
+                <Toggle checked={cobranza.acuerdos.saca_de_agenda} onChange={v => setAcuerdos({ saca_de_agenda: v })} />
+              </div>
             </div>
           </Section>
 
@@ -1307,7 +1381,15 @@ function defaultRentabilidad(): RentabilidadConfig {
 }
 
 function defaultCobranza(): CobranzaConfig {
-  return { dias_sin_gestion: 7, dias_anulacion_pago: 3 };
+  return {
+    dias_sin_gestion: 7,
+    dias_anulacion_pago: 3,
+    acuerdos: {
+      max_cuotas: 6, dias_entre_cuotas: 30, cuotas_para_romper: 1,
+      congela_punitorios: true, saca_de_agenda: true,
+      quita_max_vendedor_pct: 0, quita_max_admin_pct: 100,
+    },
+  };
 }
 
 function defaultNotificaciones(): NotificacionesConfig {

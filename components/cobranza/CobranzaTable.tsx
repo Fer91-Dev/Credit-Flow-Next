@@ -3,7 +3,7 @@
 import { useState, useMemo, useEffect } from "react";
 import { motion } from "framer-motion";
 import { useSWRConfig } from "swr";
-import { AlertCircle, Phone, Mail, Clock, Copy, CheckCheck, Search, DollarSign, ShieldAlert, MessageSquarePlus, CalendarClock, Megaphone, X, Users, TrendingUp, Sun } from "lucide-react";
+import { AlertCircle, Phone, Mail, Clock, Copy, CheckCheck, Search, DollarSign, ShieldAlert, MessageSquarePlus, CalendarClock, Megaphone, X, Users, TrendingUp, Sun, Handshake } from "lucide-react";
 import { WhatsAppIcon } from "@/components/ui/WhatsAppIcon";
 import { useCreditos, useAccionesCobranza, KEYS, type Credito, type AccionCobranza } from "@/lib/swr";
 import { type Role } from "@/lib/auth/roles";
@@ -13,6 +13,8 @@ import { CobranzaDetail } from "./CobranzaDetail";
 import { CampaignModal } from "./CampaignModal";
 import { CampanasView } from "./CampanasView";
 import { PromesasTab } from "./PromesasTab";
+import { AcuerdosTab } from "./AcuerdosTab";
+import { AcuerdoForm } from "./AcuerdoForm";
 import { AgendaHoy } from "./AgendaHoy";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { KpiCard } from "@/components/ui/KpiCard";
@@ -63,7 +65,7 @@ const resultadoLabel: Record<AccionCobranza["resultado"], string> = {
   otro:          "Otro",
 };
 
-type Tab = "hoy" | "morosos" | "promesas" | "campanas";
+type Tab = "hoy" | "morosos" | "promesas" | "acuerdos" | "campanas";
 
 export function CobranzaTable({ role }: { role: Role }) {
   // Campañas (selección masiva + ActionToolbar + pestaña): admin (toda la cartera) y
@@ -79,6 +81,8 @@ export function CobranzaTable({ role }: { role: Role }) {
   const [search, setSearch]     = useState("");
   const [copiedId, setCopied]   = useState<string | null>(null);
   const [gestion, setGestion]   = useState<Credito | null>(null);
+  /** Crédito sobre el que se está armando un acuerdo de pago (null = cerrado). */
+  const [acordando, setAcordando] = useState<string | null>(null);
   const [detalle, setDetalle]   = useState<Credito | null>(null);
   const [seleccion, setSeleccion] = useState<Set<string>>(new Set());
   const [campaignOpen, setCampaignOpen] = useState(false);
@@ -189,12 +193,13 @@ export function CobranzaTable({ role }: { role: Role }) {
         accent="destructive"
       />
 
-      {/* ── Tabs: Morosos | Promesas | Campañas (campañas solo admin/cobrador) ── */}
+      {/* ── Tabs: Hoy | Morosos | Promesas | Acuerdos | Campañas ── */}
       <div className="relative flex gap-1 border-b border-border -mt-2">
         {([
           ["hoy",      "Hoy",      "calendar"],
           ["morosos",  "Morosos",  "money-with-wings"],
           ["promesas", "Promesas", "handshake"],
+          ["acuerdos", "Acuerdos", "scroll"],
           ...(puedeCampanas ? [["campanas", "Campañas", "megaphone"]] : []),
         ] as [Tab, string, string][]).map(([key, label, emoji]) => (
           <button
@@ -227,6 +232,8 @@ export function CobranzaTable({ role }: { role: Role }) {
         <CampanasView />
       ) : tab === "promesas" ? (
         <PromesasTab role={role} />
+      ) : tab === "acuerdos" ? (
+        <AcuerdosTab role={role} />
       ) : (
       <>
       {isLoading ? (
@@ -390,6 +397,13 @@ export function CobranzaTable({ role }: { role: Role }) {
                   >
                     <MessageSquarePlus className="h-3 w-3" /> Gestionar
                   </button>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setAcordando(c.id); }}
+                    title="Armar un acuerdo de pago por lo vencido"
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-muted-foreground hover:bg-muted hover:text-foreground text-xs font-medium transition-colors"
+                  >
+                    <Handshake className="h-3 w-3" /> Acordar
+                  </button>
                   {(() => {
                     const wa = whatsappLink(c);
                     return (
@@ -462,6 +476,9 @@ export function CobranzaTable({ role }: { role: Role }) {
                   <button onClick={(e) => { e.stopPropagation(); setGestion(c); }} className="flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 text-sm font-medium transition-colors border border-primary/20">
                     <MessageSquarePlus className="h-4 w-4" /> Gestionar
                   </button>
+                  <button onClick={(e) => { e.stopPropagation(); setAcordando(c.id); }} title="Acuerdo de pago" className="flex items-center justify-center h-10 w-10 rounded-lg border border-border text-muted-foreground hover:bg-muted transition-colors">
+                    <Handshake className="h-4 w-4" />
+                  </button>
                   {(() => {
                     const wa = whatsappLink(c);
                     if (!wa) return null;
@@ -491,6 +508,18 @@ export function CobranzaTable({ role }: { role: Role }) {
             subtitle="Dejá registro del contacto y, si corresponde, la promesa de pago."
           />
           {gestion && <GestionForm credito={gestion} onClose={handleGestionClose} />}
+
+          <AcuerdoForm
+            creditoId={acordando}
+            open={!!acordando}
+            onClose={(ok) => {
+              setAcordando(null);
+              if (!ok) return;
+              // Un acuerdo nuevo saca al crédito de la agenda del día y aparece en su pestaña.
+              globalMutate("/api/cobranza/acuerdos?estado=vigente");
+              globalMutate("/api/cobranza/agenda");
+            }}
+          />
         </DialogContent>
       </Dialog>
 
