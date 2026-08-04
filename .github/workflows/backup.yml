@@ -95,8 +95,24 @@ jobs:
           set -euo pipefail
           PSQL="psql -h localhost -p 5433 -U postgres -d verificacion -tAX"
 
-          echo "── Restaurando el dump en una base limpia ──"
-          pg_restore --no-owner --no-privileges -h localhost -p 5433 -U postgres -d verificacion "$FILE"
+          echo "── Qué esquemas trae el dump ──"
+          # El dump de Supabase incluye sus esquemas internos (auth, storage, vault…) y la
+          # extensión `supabase_vault`, que NO existe en un Postgres común. Eso no es un
+          # error del backup: es que solo se restauran enteros sobre un proyecto Supabase.
+          # Acá se verifica lo que ES nuestro y tiene que estar perfecto: el esquema public.
+          pg_restore -l "$FILE" | awk '{for(i=1;i<=NF;i++) if($i=="SCHEMA") print $(i+1)}' | sort -u | sed 's/^/  /' || true
+
+          echo "── Restaurando el esquema public en una base limpia ──"
+          # Sin `set -e` en esta línea: se evalúa el código a mano para poder distinguir
+          # "falló la restauración" de "terminó bien".
+          set +e
+          pg_restore --no-owner --no-privileges --schema=public             -h localhost -p 5433 -U postgres -d verificacion "$FILE" 2> restore.err
+          CODE=$?
+          set -e
+          if [ -s restore.err ]; then echo "  salida de pg_restore:"; sed 's/^/    /' restore.err; fi
+          if [ $CODE -ne 0 ]; then
+            echo "❌ La restauración del esquema public falló. El backup NO sirve."; exit 1
+          fi
 
           TABLAS=$($PSQL -c "SELECT count(*) FROM information_schema.tables WHERE table_schema='public'")
           echo "  tablas en public: $TABLAS"
