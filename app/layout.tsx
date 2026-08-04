@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import { Geist, JetBrains_Mono } from "next/font/google";
 import { ThemeProvider } from "next-themes";
 import "./globals.css";
@@ -20,15 +21,19 @@ export const metadata: Metadata = {
   description: "Sistema de gestión de cartera crediticia",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // Nonce de la CSP de ESTE request (lo pone el middleware). Sin él, el script que
+  // next-themes inyecta para evitar el parpadeo de tema queda sin firmar y el navegador
+  // lo bloquea: la página arrancaría con el tema equivocado hasta hidratar.
+  const nonce = (await headers()).get("x-nonce") ?? undefined;
   return (
     <html lang="es" suppressHydrationWarning>
       <body className={`${geistSans.variable} ${jetbrainsMono.variable} antialiased`}>
-        <ThemeProvider attribute="class" defaultTheme="dark" enableSystem={false}>
+        <ThemeProvider attribute="class" defaultTheme="dark" enableSystem={false} nonce={nonce}>
           {children}
         </ThemeProvider>
       </body>
