@@ -1166,9 +1166,20 @@ export interface ArqueoCaja {
   resolucion_nota: string | null;
 }
 
+/**
+ * Los arqueos son el único dato de la app que **cambia de estado desde otra sesión**: el
+ * vendedor declara y el admin resuelve, cada uno en su navegador. Con la config global
+ * (`revalidateOnFocus: false`, pensada para un panel operativo y no para un feed), a
+ * ninguno de los dos le llegaba la novedad del otro: al vendedor le quedaba colgado el
+ * aviso "esperando que lo revise un administrador" con el cierre ya resuelto.
+ *
+ * Por eso estos dos hooks se salen de la regla: pollean y revalidan al volver a la pestaña.
+ */
+const ARQUEOS_SWR = { refreshInterval: 60_000, revalidateOnFocus: true } as const;
+
 /** Arqueos de MI caja (vendedor logueado). */
 export function useMisArqueos() {
-  const { data, error, isLoading, mutate } = useSWR<{ arqueos: ArqueoCaja[] }>("/api/me/caja/arqueo");
+  const { data, error, isLoading, mutate } = useSWR<{ arqueos: ArqueoCaja[] }>("/api/me/caja/arqueo", ARQUEOS_SWR);
   return { arqueos: data?.arqueos ?? [], error, isLoading, mutate };
 }
 
@@ -1177,6 +1188,7 @@ export function useArqueos(estado?: string) {
   const qs = estado && estado !== "all" ? `?estado=${estado}` : "";
   const { data, error, isLoading, mutate } = useSWR<{ arqueos: ArqueoCaja[]; pendientes: number }>(
     `/api/caja/arqueo${qs}`,
+    ARQUEOS_SWR,
   );
   return { arqueos: data?.arqueos ?? [], pendientes: data?.pendientes ?? 0, error, isLoading, mutate };
 }

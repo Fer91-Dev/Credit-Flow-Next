@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { mutate as globalMutate } from "swr";
 import {
   Wallet, Banknote, CircleDollarSign, ArrowUpRight, ArrowDownLeft, Scale, Send, MinusCircle, FileText, ArrowRight, ArrowLeftRight,
@@ -62,6 +62,21 @@ export function MiCajaView() {
 
   /** Cierres declarados que el administrador todavía no resolvió. */
   const arqueosPendientes = arqueos.filter((a) => a.estado === "pendiente");
+
+  /**
+   * Cuando el admin resuelve un cierre, el ajuste cambia el SALDO de esta caja — y eso pasó
+   * en otra sesión, así que acá no hay ningún evento del que colgarse. `useMisArqueos`
+   * pollea y se entera; esto detecta que un pendiente se resolvió y refresca la caja, para
+   * que no quede el saldo viejo al lado de un aviso que ya desapareció.
+   */
+  const pendientesRef = useRef(arqueosPendientes.length);
+  useEffect(() => {
+    if (arqueosPendientes.length < pendientesRef.current) {
+      mutate();
+      globalMutate("/api/dashboard");
+    }
+    pendientesRef.current = arqueosPendientes.length;
+  }, [arqueosPendientes.length, mutate]);
 
   /** Refresco por tarjeta. El `setTimeout` sostiene el spinner el tiempo suficiente
    *  para que se vea que pasó algo, aunque SWR responda de la caché al instante. */
