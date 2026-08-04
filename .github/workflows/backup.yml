@@ -1,8 +1,21 @@
 name: Backup nightly
 
 # Respaldo diario de la base de PRODUCCIÓN (Supabase São Paulo):
-#   pg_dump → cifrado (age) → subida a Cloudflare R2 (privado, off-site).
+#   pg_dump → VERIFICACIÓN (restaurar de verdad) → cifrado (age) → subida a R2.
 # Corre solo cada noche y también a mano ("Run workflow" o el botón in-app).
+#
+# ── POR QUÉ SE VERIFICA ACÁ Y NO A MANO UNA VEZ ──────────────────────────────
+# Un backup que nunca se restauró es una suposición, no un respaldo, y eso se
+# descubre el día que hace falta: el peor momento posible. Una prueba manual valida
+# el archivo de UN día; a la noche siguiente vuelve a ser una suposición. Por eso la
+# verificación vive acá dentro: cada backup se prueba a sí mismo antes de subirse, y
+# si no se puede restaurar, el workflow FALLA y avisa.
+#
+# La verificación NO necesita la clave privada de age (que nunca sale de la máquina
+# del dueño): el dump se restaura ANTES de cifrarlo, cuando todavía está en claro en
+# el runner. Y para probar que el cifrado tampoco rompe nada, se cifra aparte contra
+# una clave EFÍMERA generada en el job, se descifra y se compara byte a byte. Lo que
+# se sube sigue cifrado solo para el destinatario real.
 #
 # pg_dump 17 se instala desde el repo oficial PGDG (probado en noble).
 # age desde apt. awscli NO se instala: los runners de GitHub ya traen aws v2
@@ -26,6 +39,23 @@ concurrency:
 jobs:
   backup:
     runs-on: ubuntu-latest
+
+    # Postgres descartable donde se restaura el dump para comprobar que sirve.
+    # MISMA major que producción (17): restaurar en una menor puede fallar por
+    # features que la vieja no entiende, y daría un falso negativo.
+    services:
+      verificacion:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: verificacion
+          POSTGRES_DB: verificacion
+        ports: ["5433:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
     steps:
       - name: Instalar pg_dump 17 + age
         run: |
@@ -41,9 +71,71 @@ jobs:
           /usr/lib/postgresql/17/bin/pg_dump --version
           aws --version # ya viene preinstalado en el runner
 
-      - name: Dump → cifrar → subir a R2
+      - name: Dump de producción
         env:
           PGCONN: ${{ secrets.BACKUP_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          STAMP=$(date -u +%Y%m%d-%H%M%S)
+          FILE="creditflow-$STAMP.dump"
+          echo "FILE=$FILE" >> "$GITHUB_ENV"
+          # -Fc = formato custom (comprimido y restaurable con pg_restore)
+          pg_dump "$PGCONN" -Fc --no-owner --no-privileges -f "$FILE"
+          ls -lh "$FILE"
+
+      # ── LA PRUEBA QUE FALTABA ────────────────────────────────────────────────
+      # No alcanza con que pg_restore termine sin error: un dump VACÍO también
+      # "restaura bien". Por eso se comprueba que estén las tablas del negocio y
+      # que tengan filas — el modo de falla temido es silencioso: un respaldo que
+      # corre todas las noches y guarda una base vacía.
+      - name: Verificar que el backup se puede restaurar
+        env:
+          PGPASSWORD: verificacion
+        run: |
+          set -euo pipefail
+          PSQL="psql -h localhost -p 5433 -U postgres -d verificacion -tAX"
+
+          echo "── Restaurando el dump en una base limpia ──"
+          pg_restore --no-owner --no-privileges -h localhost -p 5433 -U postgres -d verificacion "$FILE"
+
+          TABLAS=$($PSQL -c "SELECT count(*) FROM information_schema.tables WHERE table_schema='public'")
+          echo "  tablas en public: $TABLAS"
+          if [ "$TABLAS" -lt 15 ]; then
+            echo "❌ El backup tiene solo $TABLAS tablas: está incompleto."; exit 1
+          fi
+
+          echo "── Tablas del negocio que TIENEN que estar ──"
+          for t in clientes creditos cuotas pagos movimientos_caja vendedores profiles tenants configuraciones; do
+            EXISTE=$($PSQL -c "SELECT to_regclass('public.$t') IS NOT NULL")
+            if [ "$EXISTE" != "t" ]; then echo "❌ Falta la tabla $t"; exit 1; fi
+            echo "  $t: $($PSQL -c "SELECT count(*) FROM $t") filas"
+          done
+
+          echo "── Control de contenido: la cartera no puede venir vacía ──"
+          CLIENTES=$($PSQL -c "SELECT count(*) FROM clientes")
+          TENANTS=$($PSQL -c "SELECT count(*) FROM tenants")
+          if [ "$CLIENTES" -eq 0 ] || [ "$TENANTS" -eq 0 ]; then
+            echo "❌ Restauró SIN clientes o SIN financieras: es un respaldo vacío."; exit 1
+          fi
+
+          echo "✅ Restaurado y verificado: $TABLAS tablas · $CLIENTES clientes · $TENANTS financieras."
+
+      # Prueba que cifrar/descifrar no corrompe el archivo SIN usar la clave real:
+      # par efímero generado acá, se cifra contra él, se descifra y se compara byte
+      # a byte. El archivo que se sube después se cifra solo para el destinatario real.
+      - name: Verificar el cifrado (ida y vuelta con clave efímera)
+        run: |
+          set -euo pipefail
+          age-keygen -o efimera.key 2>/dev/null
+          PUB=$(age-keygen -y efimera.key)
+          age -r "$PUB" -o prueba.age "$FILE"
+          age -d -i efimera.key -o prueba.dump prueba.age
+          cmp "$FILE" prueba.dump
+          echo "✅ Cifrado y descifrado sin pérdida ($(du -h prueba.age | cut -f1))."
+          shred -u efimera.key prueba.age prueba.dump
+
+      - name: Cifrar y subir a R2
+        env:
           AGE_PUBKEY: ${{ secrets.BACKUP_AGE_PUBKEY }}
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
@@ -55,11 +147,18 @@ jobs:
           R2_BUCKET: ${{ secrets.R2_BUCKET }}
         run: |
           set -euo pipefail
-          STAMP=$(date -u +%Y%m%d-%H%M%S)
-          FILE="creditflow-$STAMP.dump"
-          # -Fc = formato custom (comprimido y restaurable con pg_restore)
-          pg_dump "$PGCONN" -Fc --no-owner --no-privileges -f "$FILE"
           echo "$AGE_PUBKEY" > recipient.txt
           age -R recipient.txt -o "$FILE.age" "$FILE"
           aws s3 cp "$FILE.age" "s3://$R2_BUCKET/daily/$FILE.age" --endpoint-url "$R2_ENDPOINT"
-          echo "✅ Backup subido: daily/$FILE.age ($(du -h "$FILE.age" | cut -f1))"
+
+          # Que el `cp` no falle no garantiza que llegó entero: se compara el tamaño
+          # del objeto en R2 contra el local. Una subida truncada pasaría inadvertida
+          # hasta el día de la restauración, que es cuando ya no hay margen.
+          LOCAL=$(stat -c%s "$FILE.age")
+          REMOTO=$(aws s3api head-object --bucket "$R2_BUCKET" --key "daily/$FILE.age" \
+                    --endpoint-url "$R2_ENDPOINT" --query ContentLength --output text)
+          echo "  local: $LOCAL bytes · en R2: $REMOTO bytes"
+          if [ "$LOCAL" != "$REMOTO" ]; then
+            echo "❌ El archivo en R2 no coincide con el local: la subida quedó incompleta."; exit 1
+          fi
+          echo "✅ Backup subido y verificado: daily/$FILE.age ($(du -h "$FILE.age" | cut -f1))"
