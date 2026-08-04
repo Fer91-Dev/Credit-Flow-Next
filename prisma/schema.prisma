@@ -380,6 +380,7 @@ model vendedores {
   profiles         profiles[] // back-relation del vínculo profiles.vendedor_id
   metas            metas_vendedor[]
   movimientos_caja movimientos_caja[] // caja personal del vendedor (Fase caja por vendedor)
+  arqueos          arqueos_caja[] // cierres de su caja
   liquidaciones    liquidaciones_comision[]
 
   @@index([tenant_id])
@@ -562,6 +563,54 @@ model movimientos_caja {
   @@index([tenant_id, credito_id])
   @@index([tenant_id, cuenta])
   @@index([tenant_id, vendedor_id])
+}
+
+/**
+ * ARQUEO de caja — el acta de cada cierre: qué decía el sistema, qué se contó, y qué
+ * pasó con la diferencia. Tabla aditiva, multi-tenant.
+ * Existe por dos razones que `movimientos_caja` no puede cubrir:
+ * 1. **Un arqueo que cuadra no es un movimiento de plata**, así que antes no dejaba
+ * NINGÚN rastro: se podía cerrar la caja todos los días y no haber forma de probarlo.
+ * Acá queda asentado igual, cuadre o no.
+ * 2. **El vendedor no puede conciliar su propio faltante.** Si el arqueo del vendedor
+ * generara el ajuste solo, sería un botón para hacer desaparecer plata que falta.
+ * Por eso su arqueo es una DECLARACIÓN (`pendiente`) y el ajuste lo crea el admin al
+ * conciliar. El del admin sí se autoconcilia: es el dueño de la tesorería.
+ * `ajuste_id` apunta al `movimientos_caja` que cuadró la diferencia (null si cuadró exacto
+ * o si todavía está pendiente). El actor queda congelado como en `auditoria`.
+ */
+model arqueos_caja {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  created_at  DateTime @default(now()) @db.Timestamptz(6)
+  tenant_id   String   @db.Uuid
+  fecha       DateTime @default(now()) @db.Date
+  vendedor_id String?  @db.Uuid // caja arqueada: null = caja principal (tesorería)
+  cuenta      String   @default("efectivo") // efectivo | banco | dolares
+
+  saldo_sistema Float // lo que decía el sistema al momento del conteo
+  saldo_fisico  Float // lo que se contó realmente
+  diferencia    Float // fisico − sistema: sobrante > 0, faltante < 0
+
+  /// cuadrado (dif = 0) | pendiente (dif ≠ 0, esperando al admin) | conciliado (ajuste hecho)
+  estado      String  @default("cuadrado")
+  observacion String? // nota de quien arqueó
+  ajuste_id   String? @db.Uuid // movimiento de ajuste que cerró la diferencia
+
+  // Quién contó (congelado, igual que en `auditoria`: si se borra la cuenta, el acta se lee igual)
+  creado_por        String? @db.Uuid
+  creado_por_nombre String?
+
+  // Quién concilió la diferencia (solo admin)
+  resuelto_por        String?   @db.Uuid
+  resuelto_por_nombre String?
+  resuelto_at         DateTime? @db.Timestamptz(6)
+  resolucion_nota     String? // por qué se ajustó (obligatoria al conciliar)
+
+  vendedor vendedores? @relation(fields: [vendedor_id], references: [id], onDelete: SetNull)
+
+  @@index([tenant_id, created_at])
+  @@index([tenant_id, vendedor_id])
+  @@index([tenant_id, estado])
 }
 
 /// Plan de cuotas PERSISTIDO de un crédito (Fase 6A). Tabla aditiva, multi-tenant.

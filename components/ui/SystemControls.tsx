@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import useSWR from "swr";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Search, Bell, Sun, Moon, AlertTriangle, CheckCircle2, ArrowRight, ArrowDownLeft, ArrowUpRight, LogOut, ChevronDown, User, HelpCircle } from "lucide-react";
+import { Search, Bell, Sun, Moon, AlertTriangle, CheckCircle2, ArrowRight, ArrowDownLeft, ArrowUpRight, LogOut, ChevronDown, User, HelpCircle, Scale } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useSystemActions } from "@/components/system-actions";
 import { Avatar } from "@/components/ui/Avatar";
@@ -32,6 +32,19 @@ interface MovNotif {
   destino: string | null;
   caja: string;
   /** Destino del clic (patrón extensible: cada notificación sabe a dónde lleva). */
+  href: string;
+}
+
+/** Cierre de caja declarado con diferencia, esperando que un admin lo resuelva. */
+interface ArqueoNotif {
+  id: string;
+  created_at: string;
+  caja: string;
+  cuenta: string;
+  /** fisico − sistema: sobrante > 0, faltante < 0. */
+  diferencia: number;
+  observacion: string | null;
+  creado_por: string | null;
   href: string;
 }
 
@@ -63,9 +76,13 @@ const TIPO_LABEL: Record<string, string> = {
 
 /**
  * Controles globales del sistema (buscar / notificaciones / tema). Vive en el PageHeader.
- * La campanita avisa: (1) estado del plan (vencido / por vencer) y (2) MOVIMIENTOS DE CAJA
- * en vivo (admin: todas las cajas; vendedor: la suya). "No leído" = movimiento con
- * `created_at` posterior al último visto (marcador en localStorage).
+ * La campanita avisa: (1) estado del plan (vencido / por vencer), (2) MOVIMIENTOS DE CAJA
+ * en vivo (admin: todas las cajas; vendedor: la suya) y (3) CIERRES DE CAJA con diferencia
+ * sin resolver (solo admin). "No leído" = evento con `created_at` posterior al último visto
+ * (marcador en localStorage).
+ *
+ * Los cierres pendientes van primero y no se silencian con la preferencia de movimientos:
+ * un movimiento es la operación normal, una diferencia sin resolver es plata que no cuadra.
  */
 export function SystemControls() {
   const actions = useSystemActions();
@@ -96,12 +113,32 @@ export function SystemControls() {
   );
   const avisoBackup = prefs?.respaldos === false ? null : (saludBackup?.salud?.tono === "alerta" ? saludBackup.salud : null);
 
-  // Movimientos de caja (polling) + marcador de "último visto".
-  const { data: notif } = useSWR<{ movimientos: MovNotif[] } | null>("/api/notificaciones", fetcher, {
-    refreshInterval: 45_000,
+  /**
+   * Movimientos de caja + cierres pendientes. Es lo único de la app que avisa de algo que
+   * hizo OTRA persona, así que la frecuencia importa: con 45s, una rendición de un vendedor
+   * podía tardar casi un minuto en aparecer y parecía que no había pasado nada.
+   *
+   * `dedupingInterval: 0` es la parte que faltaba y no se ve a simple vista: el default
+   * global es 30s y **también aplica a la revalidación por foco**, así que volver a la
+   * pestaña dentro de esos 30s no pedía nada — justo el caso más común (mirás otra
+   * ventana, volvés, y seguís viendo lo viejo).
+   *
+   * Sigue siendo polling: en el peor caso —parado en la pantalla, sin tocar nada— tarda
+   * hasta 15s. Instantáneo de verdad requeriría websockets, que es otra discusión.
+   */
+  const { data: notif } = useSWR<{ movimientos: MovNotif[]; arqueos: ArqueoNotif[] } | null>("/api/notificaciones", fetcher, {
+    refreshInterval: 15_000,
     revalidateOnFocus: true,
+    revalidateOnReconnect: true,
+    dedupingInterval: 0,
   });
   const movimientos = useMemo(() => (verMovimientos ? (notif?.movimientos ?? []) : []), [notif, verMovimientos]);
+  /**
+   * Los cierres pendientes NO se silencian con la preferencia "movimientos de caja": eso
+   * oculta el ruido de la operación diaria, y esto es plata que falta y nadie revisó.
+   * Tampoco se van al marcarlos leídos — siguen ahí hasta que se resuelvan.
+   */
+  const arqueos = useMemo(() => notif?.arqueos ?? [], [notif]);
 
   const [lastSeen, setLastSeen] = useState<number | null>(null);
   useEffect(() => {
@@ -118,6 +155,12 @@ export function SystemControls() {
     () => (lastSeen == null ? [] : movimientos.filter((m) => new Date(m.created_at).getTime() > lastSeen)),
     [movimientos, lastSeen],
   );
+  /** Cierres declarados desde la última vez que se abrió la campanita: disparan el número. */
+  const arqueosNuevos = useMemo(
+    () => (lastSeen == null ? [] : arqueos.filter((a) => new Date(a.created_at).getTime() > lastSeen)),
+    [arqueos, lastSeen],
+  );
+  const totalNuevas = nuevas.length + arqueosNuevos.length;
 
   const [open, setOpen] = useState(false);
   // IDs que eran "nuevos" al abrir (para resaltarlos mientras el panel está abierto).
@@ -156,11 +199,11 @@ export function SystemControls() {
           className="relative flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent transition-colors"
         >
           <Bell className="h-4 w-4" />
-          {nuevas.length > 0 ? (
-            <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-bold text-primary-foreground ring-2 ring-background">
-              {nuevas.length > 9 ? "9+" : nuevas.length}
+          {totalNuevas > 0 ? (
+            <span className={`absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[9px] font-bold ring-2 ring-background ${arqueos.length > 0 ? "bg-warning text-warning-foreground" : "bg-primary text-primary-foreground"}`}>
+              {totalNuevas > 9 ? "9+" : totalNuevas}
             </span>
-          ) : (aviso || avisoBackup) ? (
+          ) : (aviso || avisoBackup || arqueos.length > 0) ? (
             <span className={`absolute right-1.5 top-1.5 h-2 w-2 rounded-full ring-2 ring-background ${(aviso?.tipo === "vencido" || avisoBackup) ? "bg-destructive" : "bg-warning"}`} />
           ) : null}
         </button>
@@ -170,6 +213,37 @@ export function SystemControls() {
             <div className="fixed inset-0 z-40 cursor-pointer" onClick={() => setOpen(false)} />
             <div className="absolute right-0 top-11 z-50 max-h-[70vh] w-96 overflow-y-auto rounded-xl border border-border bg-card p-2 shadow-xl shadow-black/20">
               <p className="px-2 py-1.5 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Notificaciones</p>
+
+              {/* Cierres de caja sin resolver — PRIMERO: es plata que no cuadra. */}
+              {arqueos.map((a) => {
+                const sobrante = a.diferencia > 0;
+                return (
+                  <Link
+                    key={a.id}
+                    href={a.href}
+                    onClick={() => setOpen(false)}
+                    className="group flex items-start gap-2.5 rounded-lg p-2.5 transition-all duration-150 hover:translate-x-0.5 hover:bg-warning/5"
+                  >
+                    <Scale className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium text-foreground">
+                        {sobrante ? "Sobrante" : "Faltante"} sin resolver en {a.caja}
+                      </p>
+                      <p className="mt-0.5 text-xs text-muted-foreground">
+                        <span className={`font-mono font-semibold ${sobrante ? "text-success" : "text-destructive"}`}>
+                          {sobrante ? "+" : "−"}${Math.abs(a.diferencia).toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </span>{" "}
+                        en {a.cuenta}
+                        {a.creado_por ? ` · lo declaró ${a.creado_por}` : ""}
+                        {a.observacion ? ` · "${a.observacion}"` : ""}
+                      </p>
+                      <span className="mt-1.5 inline-flex items-center gap-1 text-xs font-medium text-primary">
+                        Revisar en Caja <ArrowRight className="h-3 w-3 group-hover:translate-x-0.5 transition-transform" />
+                      </span>
+                    </div>
+                  </Link>
+                );
+              })}
 
               {/* Aviso de plan */}
               {aviso && (
@@ -259,7 +333,7 @@ export function SystemControls() {
               </>)}
 
               {/* Panel vacío: ni movimientos ni avisos activos */}
-              {!verMovimientos && !aviso && !avisoBackup && (
+              {!verMovimientos && !aviso && !avisoBackup && arqueos.length === 0 && (
                 <div className="px-2.5 py-4 text-sm text-muted-foreground">No hay notificaciones para mostrar.</div>
               )}
             </div>

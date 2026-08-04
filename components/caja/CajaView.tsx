@@ -7,7 +7,8 @@ import { IconBadge } from "@/components/ui/IconBadge";
 import { DataTable } from "@/components/ui/DataTable";
 import { CuentaCard, CUENTAS, CUENTA_META } from "@/components/caja/CuentaCard";
 import { Emoji } from "@/components/ui/Emoji";
-import { refrescarNotificaciones, useCaja, useVendedores, useCotizacion, type CajaData, type MovimientoCaja, type CuentaCaja } from "@/lib/swr";
+import { refrescarNotificaciones, useCaja, useVendedores, useCotizacion, useArqueos, type CajaData, type MovimientoCaja, type CuentaCaja, type ArqueoCaja } from "@/lib/swr";
+import { ArqueosPanel } from "@/components/caja/ArqueosPanel";
 import { formatFechaHora, parseMontoInput } from "@/lib/utils";
 import { MoneyInput, Segmented, IconSelect, IconTextarea, FieldLabel, FormActions, simboloCuenta } from "./caja-form";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -104,11 +105,13 @@ export function CajaView() {
   const [arqueoOpen, setArqueoOpen] = useState(false);
   const [vendedorOpen, setVendedorOpen] = useState(false);
   const [detalle, setDetalle] = useState<MovimientoCaja | null>(null);
+  const [conciliar, setConciliar] = useState<ArqueoCaja | null>(null);
 
   const { caja, error, isLoading, mutate } = useCaja(desde, hasta, tipo, cuenta);
+  const { arqueos, pendientes, mutate: mutateArqueos } = useArqueos();
   const [refreshing, setRefreshing] = useState<CuentaCaja | null>(null);
 
-  const refrescar = () => { mutate(); globalMutate("/api/dashboard"); };
+  const refrescar = () => { mutate(); globalMutate("/api/dashboard"); mutateArqueos(); };
   // Refresca la caja mostrando el spin en la tarjeta clickeada (feedback individual).
   const refrescarCaja = async (c: CuentaCaja) => {
     setRefreshing(c);
@@ -198,6 +201,18 @@ export function CajaView() {
         </div>
       ) : (
         <div className="space-y-5">
+          {/* Un cierre de vendedor con diferencia es plata que falta (o sobra) y nadie
+              revisó. Va arriba de todo: es lo primero que hay que ver al entrar. */}
+          {pendientes > 0 && (
+            <div className="rounded-xl border border-warning/30 bg-warning/10 px-4 py-3 flex items-start gap-3">
+              <Scale className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
+              <p className="text-sm text-warning">
+                Hay <span className="font-semibold">{pendientes}</span> cierre{pendientes === 1 ? "" : "s"} de caja con
+                diferencia sin resolver. Revisalos en <span className="font-semibold">Cierres de caja</span>, al pie de esta pantalla.
+              </p>
+            </div>
+          )}
+
           {/* Saldos por cuenta (clickeables: filtran la tabla) */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             {CUENTAS.map((c) => (
@@ -375,8 +390,28 @@ export function CajaView() {
             ]}
           />
           </section>
+
+          {/* Cierres de caja: los propios y los que declararon los vendedores. Los
+              pendientes son diferencias que todavía NO se ajustaron — el saldo de sistema
+              de esa caja sigue como estaba hasta que alguien decida qué hacer. */}
+          <ArqueosPanel
+            arqueos={arqueos}
+            mostrarCaja
+            onConciliar={setConciliar}
+            titulo="Cierres de caja"
+            subtitulo={
+              pendientes > 0
+                ? `${pendientes} cierre${pendientes === 1 ? "" : "s"} con diferencia esperando que decidas cómo ajustarlo${pendientes === 1 ? "" : "s"}.`
+                : "Arqueos de la caja principal y de la de cada vendedor."
+            }
+          />
         </div>
       )}
+
+      <ConciliarArqueoDialog
+        arqueo={conciliar}
+        onClose={(ok) => { setConciliar(null); if (ok) refrescar(); }}
+      />
 
       <AjusteDialog
         open={ajusteOpen}
@@ -752,6 +787,127 @@ function TransferenciaDialog({
             disabled={mismaCuenta || montoNum <= 0 || (cruzaMoneda && tcEfectivo <= 0)}
             submitLabel={cruzaMoneda ? (vende ? "Vender dólares" : "Comprar dólares") : "Transferir"}
             loadingLabel="Registrando…"
+          />
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/**
+ * Resuelve un cierre PENDIENTE declarado por un vendedor: crea el ajuste en SU caja para
+ * que el sistema coincida con lo que se contó.
+ *
+ * El motivo es obligatorio. Un faltante que se ajusta sin explicación es plata que sale del
+ * sistema sin dejar por qué — y este es exactamente el registro que hay que poder mirar
+ * seis meses después.
+ */
+function ConciliarArqueoDialog({
+  arqueo, onClose,
+}: {
+  arqueo: ArqueoCaja | null;
+  onClose: (ok?: boolean) => void;
+}) {
+  const confirm = useConfirm();
+  const toast = useToast();
+  const [nota, setNota] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const reset = () => { setNota(""); setError(null); };
+
+  if (!arqueo) return null;
+
+  const simbolo = simboloCuenta(arqueo.cuenta as CuentaCaja);
+  const sobrante = arqueo.diferencia > 0;
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!nota.trim()) { setError("Explicá por qué se ajusta la diferencia"); return; }
+    const ok = await confirm({
+      title: "¿Ajustar la diferencia?",
+      description: `Se va a registrar ${sobrante ? "un ingreso" : "un egreso"} de ${simbolo} ${n2(Math.abs(arqueo.diferencia))} en ${arqueo.caja} para que el sistema coincida con lo contado. El asiento queda en el libro y no se puede borrar.`,
+      confirmLabel: "Ajustar",
+      tone: sobrante ? undefined : "danger",
+    });
+    if (!ok) return;
+    setLoading(true); setError(null);
+    try {
+      const res = await fetch(`/api/caja/arqueo/${arqueo.id}/conciliar`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ nota }),
+      });
+      const json = await res.json();
+      if (json.ok) { reset(); toast.success("Diferencia ajustada"); refrescarNotificaciones(); onClose(true); }
+      else setError(json.error);
+    } catch {
+      setError("No se pudo conciliar el arqueo");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) { reset(); onClose(false); } }}>
+      <DialogContent className="w-[95vw] sm:max-w-xl sm:p-7 max-h-[90dvh] overflow-y-auto">
+        <DialogHeader className="pr-8">
+          <div className="flex items-center gap-3">
+            <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border ${sobrante ? "border-success/20 bg-success/10 text-success" : "border-destructive/20 bg-destructive/10 text-destructive"}`}>
+              <ClipboardCheck className="h-5 w-5" />
+            </div>
+            <div>
+              <DialogTitle>Conciliar cierre de caja</DialogTitle>
+              <p className="mt-0.5 text-xs text-muted-foreground">{arqueo.caja} · {CUENTA_META[arqueo.cuenta as CuentaCaja]?.label ?? arqueo.cuenta}</p>
+            </div>
+          </div>
+        </DialogHeader>
+
+        <form onSubmit={submit} className="space-y-5">
+          {error && (
+            <div className="rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-2.5 text-sm text-destructive">{error}</div>
+          )}
+
+          <div className="rounded-lg border border-border bg-muted/30 divide-y divide-border/60 text-sm">
+            <div className="flex items-center justify-between px-3 py-2.5">
+              <span className="text-muted-foreground">Saldo de sistema al cerrar</span>
+              <span className="font-mono text-foreground">{simbolo} {n2(arqueo.sistema)}</span>
+            </div>
+            <div className="flex items-center justify-between px-3 py-2.5">
+              <span className="text-muted-foreground">Lo que se contó</span>
+              <span className="font-mono text-foreground">{simbolo} {n2(arqueo.fisico)}</span>
+            </div>
+            <div className="flex items-center justify-between px-3 py-2.5">
+              <span className={sobrante ? "text-success" : "text-destructive"}>{sobrante ? "Sobrante" : "Faltante"}</span>
+              <span className={`font-mono font-bold ${sobrante ? "text-success" : "text-destructive"}`}>
+                {sobrante ? "+" : "−"}{simbolo} {n2(Math.abs(arqueo.diferencia))}
+              </span>
+            </div>
+          </div>
+
+          <div className="text-xs text-muted-foreground space-y-1">
+            <p>Contó <span className="text-foreground">{arqueo.creado_por ?? "—"}</span> el {formatFechaHora(arqueo.created_at)}.</p>
+            {arqueo.observacion && <p>Observación: <span className="text-foreground">{arqueo.observacion}</span></p>}
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <FieldLabel required>Motivo del ajuste</FieldLabel>
+            <IconTextarea
+              icon="receipt"
+              value={nota}
+              onChange={(e) => setNota(e.target.value)}
+              rows={3}
+              placeholder="Ej: vuelto mal dado en dos cobros, se descuenta del próximo pago…"
+              required
+            />
+          </div>
+
+          <FormActions
+            onCancel={() => { reset(); onClose(false); }}
+            loading={loading}
+            disabled={!nota.trim()}
+            submitLabel="Ajustar diferencia"
+            loadingLabel="Ajustando…"
           />
         </form>
       </DialogContent>

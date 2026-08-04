@@ -1,11 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { mutate as globalMutate } from "swr";
 import {
   Wallet, Banknote, CircleDollarSign, ArrowUpRight, ArrowDownLeft, Scale, Send, MinusCircle, FileText, ArrowRight, ArrowLeftRight,
 } from "lucide-react";
-import { refrescarNotificaciones, useMiCaja, type CuentaCaja, type MovimientoCaja } from "@/lib/swr";
+import { refrescarNotificaciones, useMiCaja, useMisArqueos, type CuentaCaja, type MovimientoCaja } from "@/lib/swr";
 import { formatFechaHora, parseMontoInput } from "@/lib/utils";
 import { MoneyInput, Segmented, IconSelect, IconTextarea, FieldLabel, FormActions, simboloCuenta } from "./caja-form";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -14,6 +14,7 @@ import { Emoji } from "@/components/ui/Emoji";
 import { StatusBadge, type BadgeVariant } from "@/components/ui/StatusBadge";
 import { DataTable } from "@/components/ui/DataTable";
 import { CuentaCard, CUENTAS, CUENTA_META } from "@/components/caja/CuentaCard";
+import { ArqueosPanel } from "@/components/caja/ArqueosPanel";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { MovimientoDetail } from "./MovimientoDetail";
@@ -47,15 +48,35 @@ const TIPO_META: Record<MovimientoCaja["tipo"], { label: string; variant: BadgeV
 
 export function MiCajaView() {
   const { caja, error, isLoading, mutate } = useMiCaja();
+  const { arqueos, mutate: mutateArqueos } = useMisArqueos();
   const [rendirOpen, setRendirOpen] = useState(false);
   const [gastoOpen, setGastoOpen] = useState(false);
   const [transferOpen, setTransferOpen] = useState(false);
+  const [arqueoOpen, setArqueoOpen] = useState(false);
   const [detalle, setDetalle] = useState<MovimientoCaja | null>(null);
   /** Filtro de la tabla por cuenta: se pone y se saca clickeando su tarjeta. */
   const [cuentaFiltro, setCuentaFiltro] = useState<CuentaCaja | "all">("all");
   const [refrescando, setRefrescando] = useState<CuentaCaja | null>(null);
 
   const refrescar = () => { mutate(); globalMutate("/api/dashboard"); };
+
+  /** Cierres declarados que el administrador todavía no resolvió. */
+  const arqueosPendientes = arqueos.filter((a) => a.estado === "pendiente");
+
+  /**
+   * Cuando el admin resuelve un cierre, el ajuste cambia el SALDO de esta caja — y eso pasó
+   * en otra sesión, así que acá no hay ningún evento del que colgarse. `useMisArqueos`
+   * pollea y se entera; esto detecta que un pendiente se resolvió y refresca la caja, para
+   * que no quede el saldo viejo al lado de un aviso que ya desapareció.
+   */
+  const pendientesRef = useRef(arqueosPendientes.length);
+  useEffect(() => {
+    if (arqueosPendientes.length < pendientesRef.current) {
+      mutate();
+      globalMutate("/api/dashboard");
+    }
+    pendientesRef.current = arqueosPendientes.length;
+  }, [arqueosPendientes.length, mutate]);
 
   /** Refresco por tarjeta. El `setTimeout` sostiene el spinner el tiempo suficiente
    *  para que se vea que pasó algo, aunque SWR responda de la caché al instante. */
@@ -99,6 +120,12 @@ export function MiCajaView() {
         >
           <Emoji name="outbox-tray" className="h-4 w-4" /> Registrar gasto
         </button>
+        <button
+          onClick={() => setArqueoOpen(true)}
+          className="flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-border text-foreground hover:bg-muted transition-colors text-sm font-medium whitespace-nowrap"
+        >
+          <Scale className="h-4 w-4" /> Cerrar caja
+        </button>
       </div>
 
       {isLoading ? (
@@ -119,6 +146,20 @@ export function MiCajaView() {
         </div>
       ) : (
         <div className="space-y-5">
+          {/* Un cierre con diferencia queda esperando al administrador: se avisa acá para
+              que el vendedor sepa que su saldo de sistema todavía NO refleja lo que contó. */}
+          {arqueosPendientes.length > 0 && (
+            <div className="rounded-xl border border-warning/30 bg-warning/10 px-4 py-3 flex items-start gap-3">
+              <Scale className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
+              <p className="text-sm text-warning">
+                {arqueosPendientes.length === 1
+                  ? "Tenés un cierre con diferencia esperando que lo revise un administrador."
+                  : `Tenés ${arqueosPendientes.length} cierres con diferencia esperando que los revise un administrador.`}{" "}
+                Hasta entonces el saldo de tu caja sigue mostrando lo que dice el sistema.
+              </p>
+            </div>
+          )}
+
           {/* Saldos por cuenta — MISMA tarjeta que la caja del administrador. */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             {CUENTAS.map((c) => (
@@ -168,8 +209,20 @@ export function MiCajaView() {
               },
             ]}
           />
+
+          <ArqueosPanel
+            arqueos={arqueos}
+            titulo="Mis cierres de caja"
+            subtitulo="Cada vez que contás tu efectivo queda asentado acá, cuadre o no."
+          />
         </div>
       )}
+
+      <ArqueoVendedorDialog
+        open={arqueoOpen}
+        saldos={caja?.saldos_por_cuenta}
+        onClose={(ok) => { setArqueoOpen(false); if (ok) { refrescar(); mutateArqueos(); } }}
+      />
 
       <RendirDialog
         open={rendirOpen}
@@ -200,6 +253,157 @@ export function MiCajaView() {
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+/**
+ * Cierre de caja del VENDEDOR: declara cuánto contó y el sistema guarda el acta.
+ *
+ * A diferencia del arqueo del administrador, este **no ajusta nada**: si hay diferencia,
+ * queda pendiente para que la resuelva un admin. El vendedor no puede hacer desaparecer su
+ * propio faltante. El texto del diálogo lo dice explícitamente, para que no parezca que la
+ * acción "no funcionó" cuando el saldo no cambia.
+ */
+function ArqueoVendedorDialog({
+  open, onClose, saldos,
+}: {
+  open: boolean;
+  onClose: (ok?: boolean) => void;
+  saldos?: Record<CuentaCaja, number>;
+}) {
+  const confirm = useConfirm();
+  const toast = useToast();
+  const [cuenta, setCuenta] = useState<CuentaCaja>("efectivo");
+  const [fisico, setFisico] = useState("");
+  const [observacion, setObservacion] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const reset = () => { setCuenta("efectivo"); setFisico(""); setObservacion(""); setError(null); };
+
+  const sistema = saldos?.[cuenta] ?? 0;
+  const simbolo = simboloCuenta(cuenta);
+  const fisicoNum = parseMontoInput(fisico);
+  const contado = fisico.trim() !== "";
+  const diferencia = contado ? Math.round((fisicoNum - sistema) * 100) / 100 : null;
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const hayDif = diferencia !== null && diferencia !== 0;
+    const ok = await confirm({
+      title: "¿Cerrar la caja?",
+      description: hayDif
+        ? `Contaste ${simbolo} ${n2(fisicoNum)} y el sistema dice ${simbolo} ${n2(sistema)}: hay ${diferencia! > 0 ? "un sobrante" : "un faltante"} de ${simbolo} ${n2(Math.abs(diferencia!))}. Se va a avisar a un administrador para que lo revise; tu saldo no cambia por ahora.`
+        : `Se va a registrar el cierre de ${CUENTA_META[cuenta].label} sin diferencias.`,
+      confirmLabel: "Cerrar caja",
+    });
+    if (!ok) return;
+    setLoading(true); setError(null);
+    try {
+      const res = await fetch("/api/me/caja/arqueo", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cuenta, monto_fisico: fisicoNum, observacion }),
+      });
+      const json = await res.json();
+      if (json.ok) {
+        reset();
+        toast.success(json.data.diferencia === 0 ? "Caja cerrada: cuadra exacto" : "Cierre registrado · queda pendiente de revisión");
+        refrescarNotificaciones();
+        onClose(true);
+      } else setError(json.error);
+    } catch {
+      setError("No se pudo registrar el cierre");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => { if (!o) { reset(); onClose(false); } }}>
+      <DialogContent className="w-[95vw] sm:max-w-xl sm:p-7 max-h-[90dvh] overflow-y-auto">
+        <DialogHeader className="pr-8">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-primary">
+              <Scale className="h-5 w-5" />
+            </div>
+            <div>
+              <DialogTitle>Cerrar mi caja</DialogTitle>
+              <p className="mt-0.5 text-xs text-muted-foreground">Contá lo que tenés y dejá asentado cómo cerró el día.</p>
+            </div>
+          </div>
+        </DialogHeader>
+
+        <form onSubmit={submit} className="space-y-5">
+          {error && (
+            <div className="rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-2.5 text-sm text-destructive">{error}</div>
+          )}
+
+          <div className="flex flex-col gap-1.5">
+            <FieldLabel required>Cuenta</FieldLabel>
+            <Segmented
+              value={cuenta}
+              onChange={setCuenta}
+              options={[
+                { value: "efectivo", label: "Efectivo", icon: "money-bag" },
+                { value: "banco", label: "Banco", icon: "bank" },
+                { value: "dolares", label: "Dólares", icon: "dollar-banknote" },
+              ]}
+            />
+          </div>
+
+          <div className="rounded-lg border border-border bg-muted/30 px-3 py-2.5 flex items-center justify-between text-sm">
+            <span className="text-muted-foreground">Según el sistema tenés</span>
+            <span className="font-mono font-semibold text-foreground">{simbolo} {n2(sistema)}</span>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <FieldLabel required>Lo que contaste</FieldLabel>
+            <MoneyInput value={fisico} onChange={setFisico} currency={simbolo} placeholder="Lo que hay realmente" autoFocus required />
+          </div>
+
+          {diferencia !== null && (
+            <div className={`rounded-lg px-3 py-2.5 flex items-center justify-between text-sm border ${
+              diferencia === 0
+                ? "bg-success/10 border-success/30 text-success"
+                : diferencia > 0
+                  ? "bg-warning/10 border-warning/30 text-warning"
+                  : "bg-destructive/10 border-destructive/30 text-destructive"
+            }`}>
+              <span>{diferencia === 0 ? "Cuadra exacto" : diferencia > 0 ? "Sobrante" : "Faltante"}</span>
+              <span className="font-mono font-bold">
+                {diferencia > 0 ? "+" : diferencia < 0 ? "−" : ""}{simbolo} {n2(Math.abs(diferencia))}
+              </span>
+            </div>
+          )}
+
+          {diferencia !== null && diferencia !== 0 && (
+            <p className="text-xs text-muted-foreground">
+              Tu saldo no se modifica: el cierre queda registrado y un administrador decide cómo se ajusta la diferencia.
+            </p>
+          )}
+
+          <div className="flex flex-col gap-1.5">
+            <FieldLabel>Observación</FieldLabel>
+            <IconTextarea
+              icon="receipt"
+              value={observacion}
+              onChange={(e) => setObservacion(e.target.value)}
+              rows={2}
+              placeholder={diferencia !== null && diferencia !== 0 ? "Contá qué pasó, ayuda a resolverlo más rápido…" : "Detalle opcional…"}
+            />
+          </div>
+
+          <FormActions
+            onCancel={() => { reset(); onClose(false); }}
+            loading={loading}
+            disabled={!contado}
+            submitLabel="Cerrar caja"
+            loadingLabel="Registrando…"
+          />
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }
 

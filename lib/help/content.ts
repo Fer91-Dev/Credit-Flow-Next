@@ -258,7 +258,18 @@ const HELP: Record<string, HelpDoc> = {
         pasos: [
           "Ajuste: registrar un ingreso o egreso que no viene de un crédito (con descripción).",
           "Transferencia: mover saldo entre cuentas. Entre pesos y dólares es compra/venta con tipo de cambio.",
-          "Arqueo: conciliar el saldo del sistema contra el conteo físico; la diferencia se ajusta.",
+          "Arqueo: conciliar el saldo del sistema contra el conteo físico de la caja principal; la diferencia se ajusta en el acto.",
+        ],
+      },
+      {
+        kind: "definiciones",
+        titulo: "Cierres de caja (arqueos)",
+        items: [
+          { term: "Queda asentado siempre", desc: "Cada cierre se guarda aunque cuadre exacto: es el comprobante de que la caja se cerró ese día." },
+          { term: "Sobrante y faltante", desc: "Sobrante = hay más plata que la que dice el sistema. Faltante = hay menos. El faltante es el que conviene mirar de cerca." },
+          { term: "El vendedor cierra su caja", desc: "Con el botón «Cerrar caja» declara lo que contó. Si hay diferencia, el sistema NO la ajusta solo: queda pendiente y su saldo no se modifica. Si pudiera ajustarla él mismo, tendría un botón para hacer desaparecer la plata que falta." },
+          { term: "El administrador concilia", desc: "Al conciliar un cierre pendiente se registra el ajuste en la caja de esa persona y el saldo de sistema pasa a coincidir con lo contado. Pide un motivo obligatorio, que queda en el libro." },
+          { term: "Arqueo de la caja principal", desc: "El administrador arquea su propia tesorería y la diferencia se ajusta en el momento: es el dueño de esa caja." },
         ],
       },
       {
@@ -266,6 +277,7 @@ const HELP: Record<string, HelpDoc> = {
         titulo: "Reglas de fondos",
         items: [
           "No se puede desembolsar, transferir ni ajustar en egreso por encima del saldo disponible: la caja nunca queda negativa.",
+          "Un cierre con diferencia no bloquea a nadie: el vendedor sigue trabajando y la diferencia queda a la vista hasta que la resuelvas.",
         ],
       },
     ],

@@ -1142,6 +1142,66 @@ export function useMiCaja() {
   return { caja: data ?? null, error, isLoading, mutate };
 }
 
+// ── Arqueos de caja ──────────────────────────────────────────────────────────
+
+/** Un cierre de caja: qué decía el sistema, qué se contó y en qué quedó la diferencia. */
+export interface ArqueoCaja {
+  id: string;
+  created_at: string;
+  fecha: string;
+  cuenta: string;
+  /** "Caja principal" o "Caja de <nombre>". */
+  caja: string;
+  vendedor_id: string | null;
+  sistema: number;
+  fisico: number;
+  /** fisico − sistema: sobrante > 0, faltante < 0. */
+  diferencia: number;
+  estado: "cuadrado" | "pendiente" | "conciliado";
+  observacion: string | null;
+  ajuste_id: string | null;
+  creado_por: string | null;
+  resuelto_por: string | null;
+  resuelto_at: string | null;
+  resolucion_nota: string | null;
+}
+
+/**
+ * Los arqueos son el único dato de la app que **cambia de estado desde otra sesión**: el
+ * vendedor declara y el admin resuelve, cada uno en su navegador. Con la config global
+ * (`revalidateOnFocus: false`, pensada para un panel operativo y no para un feed), a
+ * ninguno de los dos le llegaba la novedad del otro: al vendedor le quedaba colgado el
+ * aviso "esperando que lo revise un administrador" con el cierre ya resuelto.
+ *
+ * Por eso estos dos hooks se salen de la regla: pollean y revalidan al volver a la pestaña.
+ *
+ * `dedupingInterval: 0` no es adorno: el default global (30s) **también frena la
+ * revalidación por foco**, así que volver a la pestaña dentro de esos 30s no pedía nada y
+ * se seguía viendo el estado viejo.
+ */
+const ARQUEOS_SWR = {
+  refreshInterval: 30_000,
+  revalidateOnFocus: true,
+  revalidateOnReconnect: true,
+  dedupingInterval: 0,
+} as const;
+
+/** Arqueos de MI caja (vendedor logueado). */
+export function useMisArqueos() {
+  const { data, error, isLoading, mutate } = useSWR<{ arqueos: ArqueoCaja[] }>("/api/me/caja/arqueo", ARQUEOS_SWR);
+  return { arqueos: data?.arqueos ?? [], error, isLoading, mutate };
+}
+
+/** Arqueos de TODAS las cajas del tenant (admin). `pendientes` ignora el filtro de estado. */
+export function useArqueos(estado?: string) {
+  const qs = estado && estado !== "all" ? `?estado=${estado}` : "";
+  const { data, error, isLoading, mutate } = useSWR<{ arqueos: ArqueoCaja[]; pendientes: number }>(
+    `/api/caja/arqueo${qs}`,
+    ARQUEOS_SWR,
+  );
+  return { arqueos: data?.arqueos ?? [], pendientes: data?.pendientes ?? 0, error, isLoading, mutate };
+}
+
 /** Registro central de comprobantes (admin). Filtros opcionales por texto/serie/fechas/cuenta. */
 export function useComprobantes(filtros: { q?: string; serie?: string; cuenta?: string; desde?: string; hasta?: string }) {
   const params = new URLSearchParams();
