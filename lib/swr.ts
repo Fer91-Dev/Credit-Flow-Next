@@ -1142,6 +1142,45 @@ export function useMiCaja() {
   return { caja: data ?? null, error, isLoading, mutate };
 }
 
+// ── Arqueos de caja ──────────────────────────────────────────────────────────
+
+/** Un cierre de caja: qué decía el sistema, qué se contó y en qué quedó la diferencia. */
+export interface ArqueoCaja {
+  id: string;
+  created_at: string;
+  fecha: string;
+  cuenta: string;
+  /** "Caja principal" o "Caja de <nombre>". */
+  caja: string;
+  vendedor_id: string | null;
+  sistema: number;
+  fisico: number;
+  /** fisico − sistema: sobrante > 0, faltante < 0. */
+  diferencia: number;
+  estado: "cuadrado" | "pendiente" | "conciliado";
+  observacion: string | null;
+  ajuste_id: string | null;
+  creado_por: string | null;
+  resuelto_por: string | null;
+  resuelto_at: string | null;
+  resolucion_nota: string | null;
+}
+
+/** Arqueos de MI caja (vendedor logueado). */
+export function useMisArqueos() {
+  const { data, error, isLoading, mutate } = useSWR<{ arqueos: ArqueoCaja[] }>("/api/me/caja/arqueo");
+  return { arqueos: data?.arqueos ?? [], error, isLoading, mutate };
+}
+
+/** Arqueos de TODAS las cajas del tenant (admin). `pendientes` ignora el filtro de estado. */
+export function useArqueos(estado?: string) {
+  const qs = estado && estado !== "all" ? `?estado=${estado}` : "";
+  const { data, error, isLoading, mutate } = useSWR<{ arqueos: ArqueoCaja[]; pendientes: number }>(
+    `/api/caja/arqueo${qs}`,
+  );
+  return { arqueos: data?.arqueos ?? [], pendientes: data?.pendientes ?? 0, error, isLoading, mutate };
+}
+
 /** Registro central de comprobantes (admin). Filtros opcionales por texto/serie/fechas/cuenta. */
 export function useComprobantes(filtros: { q?: string; serie?: string; cuenta?: string; desde?: string; hasta?: string }) {
   const params = new URLSearchParams();

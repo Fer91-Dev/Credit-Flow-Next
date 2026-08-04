@@ -23,6 +23,7 @@ export * from "./contrato-requisitos";
 export * from "./documentos";
 export * from "./password";
 export * from "./caja";
+export * from "./arqueo";
 export * from "./campanas";
 export * from "./calendar";
 export * from "./scoring";
