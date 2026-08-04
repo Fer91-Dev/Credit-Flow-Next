@@ -603,7 +603,12 @@ export interface MovimientoCaja {
   fecha: string;
   /** Timestamp con hora (para mostrar fecha + hora del movimiento). */
   created_at?: string;
-  tipo: "desembolso" | "cobro" | "devolucion" | "reversa_desembolso" | "ajuste" | "transferencia" | "entrega" | "rendicion" | "comision";
+  /** Espejo de `TipoMovimiento` (lib/domain/caja.ts). Sumar acá un valor hace que `tsc`
+   *  marque cada `Record<...>` que lo mapea a etiqueta o color, y no quede ninguno afuera. */
+  tipo:
+    | "desembolso" | "cobro" | "devolucion" | "reversa_desembolso" | "ajuste"
+    | "transferencia" | "entrega" | "rendicion" | "comision"
+    | "aporte_capital" | "retiro_utilidades";
   monto: number; // con signo: ingreso > 0, egreso < 0
   metodo: string | null;
   cuenta: CuentaCaja;

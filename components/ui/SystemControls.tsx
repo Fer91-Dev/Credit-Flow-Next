@@ -72,6 +72,7 @@ const TIPO_LABEL: Record<string, string> = {
   desembolso: "Desembolso", cobro: "Cobro", devolucion: "Devolución",
   reversa_desembolso: "Reversa", ajuste: "Ajuste", transferencia: "Transferencia",
   entrega: "Entrega", rendicion: "Rendición", gasto: "Gasto",
+  aporte_capital: "Aporte de capital", retiro_utilidades: "Retiro de utilidades",
 };
 
 /**

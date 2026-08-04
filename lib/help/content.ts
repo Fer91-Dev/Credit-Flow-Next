@@ -259,6 +259,17 @@ const HELP: Record<string, HelpDoc> = {
           "Ajuste: registrar un ingreso o egreso que no viene de un crédito (con descripción).",
           "Transferencia: mover saldo entre cuentas. Entre pesos y dólares es compra/venta con tipo de cambio.",
           "Arqueo: conciliar el saldo del sistema contra el conteo físico de la caja principal; la diferencia se ajusta en el acto.",
+          "Capital: la plata que el dueño pone o saca del negocio (ver abajo).",
+        ],
+      },
+      {
+        kind: "definiciones",
+        titulo: "Capital del dueño",
+        items: [
+          { term: "Aporte de capital", desc: "Plata que ponés vos para prestar. Suma a la caja, pero NO es una ganancia del negocio: la financiera no ganó nada, solo tiene más con qué trabajar." },
+          { term: "Retiro de utilidades", desc: "Plata que sacás del negocio. Resta de la caja, pero NO es un gasto. No podés retirar más de lo que hay disponible." },
+          { term: "Por qué está separado del ajuste", desc: "El ajuste corrige un error de registro. Si un aporte se cargara como ajuste, en el libro un aporte de $10.000.000 se leería igual que una corrección de $1.500, y para distinguirlos habría que leer la descripción a mano." },
+          { term: "Comprobante propio", desc: "Los aportes llevan serie APO y los retiros RET, con su numeración. Sirven para respaldar el movimiento ante tu contador." },
         ],
       },
       {

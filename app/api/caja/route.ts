@@ -3,8 +3,8 @@ import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api"
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { registrarAuditoria } from "@/lib/audit";
-import { montoConSigno, totalesCaja, saldosPorCuenta, esCuentaValida, etiquetaCaja, CUENTA_LABEL } from "@/lib/domain";
-import { siguienteNumeroComprobante, formatComprobante } from "@/lib/comprobantes";
+import { montoConSigno, totalesCaja, saldosPorCuenta, esCuentaValida, etiquetaCaja, CUENTA_LABEL, type TipoMovimiento } from "@/lib/domain";
+import { siguienteNumeroComprobante, formatComprobante, type SerieComprobante } from "@/lib/comprobantes";
 import { assertFondosSuficientesTx } from "@/lib/caja-fondos";
 import { getDolarBlueVenta } from "@/lib/cotizacion";
 import { nombreCompleto, hoyComercial } from "@/lib/utils";
@@ -122,20 +122,66 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
 });
 
 /**
+ * Los tres movimientos manuales de la caja principal. Comparten forma (monto + cuenta +
+ * motivo) pero significan cosas distintas, y por eso cada uno tiene su tipo y su serie:
+ *
+ *  - `ajuste`            — corregir un error de registro. Sentido libre.
+ *  - `aporte_capital`    — el dueño pone plata. SIEMPRE ingreso.
+ *  - `retiro_utilidades` — el dueño saca plata. SIEMPRE egreso.
+ *
+ * Antes los tres eran "ajuste": en el libro, un aporte de $10.000.000 y una corrección de
+ * $1.500 se leían igual, y para saber cuál era cuál había que leer la descripción a mano.
+ */
+const CONCEPTOS = {
+  ajuste: {
+    tipo: "ajuste" as const,
+    serie: "AJU" as const,
+    /** null = lo decide quien carga; true/false = forzado por la naturaleza del concepto. */
+    ingresoForzado: null,
+    etiqueta: "Ajuste manual",
+    label: "Ajuste de caja",
+  },
+  aporte_capital: {
+    tipo: "aporte_capital" as const,
+    serie: "APO" as const,
+    ingresoForzado: true,
+    etiqueta: "Aporte de capital",
+    label: "Aporte de capital",
+  },
+  retiro_utilidades: {
+    tipo: "retiro_utilidades" as const,
+    serie: "RET" as const,
+    ingresoForzado: false,
+    etiqueta: "Retiro de utilidades",
+    label: "Retiro de utilidades",
+  },
+} satisfies Record<string, { tipo: TipoMovimiento; serie: SerieComprobante; ingresoForzado: boolean | null; etiqueta: string; label: string }>;
+
+type Concepto = keyof typeof CONCEPTOS;
+const esConcepto = (v: unknown): v is Concepto => typeof v === "string" && v in CONCEPTOS;
+
+/**
  * POST /api/caja
- * Registra un AJUSTE manual de caja (ingreso o egreso que no proviene de un
- * crédito/pago). Body: { monto > 0, sentido: "ingreso"|"egreso", descripcion, fecha?, metodo? }
+ * Movimiento manual de la caja principal: ajuste, aporte de capital o retiro de utilidades.
+ * Body: { monto > 0, concepto?, sentido: "ingreso"|"egreso", descripcion, fecha?, metodo?, cuenta? }
+ * `concepto` es opcional y default "ajuste" (compatibilidad con clientes viejos).
  */
 export const POST = withErrorHandler(async (req: NextRequest) => {
-  // Ajuste manual de caja: solo admin.
+  // Movimiento manual de caja: solo admin. Un aporte o un retiro son decisiones del dueño
+  // del negocio, no de quien opera el mostrador.
   const { tenantId } = await requireRole(["admin"], req);
 
-  let body: { monto?: number; sentido?: string; descripcion?: string; fecha?: string; metodo?: string; cuenta?: string };
+  let body: { monto?: number; concepto?: string; sentido?: string; descripcion?: string; fecha?: string; metodo?: string; cuenta?: string };
   try {
     body = await req.json();
   } catch {
     return errorResponse("Body JSON inválido", "INVALID_JSON", 400);
   }
+
+  if (body.concepto !== undefined && !esConcepto(body.concepto)) {
+    return errorResponse("Concepto inválido (ajuste | aporte_capital | retiro_utilidades)", "INVALID_INPUT", 400);
+  }
+  const concepto = CONCEPTOS[(body.concepto ?? "ajuste") as Concepto];
 
   const monto = Number(body.monto);
   if (!monto || monto <= 0) {
@@ -144,33 +190,36 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
   if (!body.descripcion?.trim()) {
     return errorResponse("La descripción es requerida", "INVALID_INPUT", 400);
   }
-  const ingreso = body.sentido !== "egreso";
+  // El sentido de un aporte/retiro NO se acepta del body: un "aporte de capital" que
+  // reste plata no significa nada, y sería una forma de sacar dinero disfrazada.
+  const ingreso = concepto.ingresoForzado ?? body.sentido !== "egreso";
   const cuenta = esCuentaValida(body.cuenta) ? body.cuenta : "efectivo";
   const descripcion = body.descripcion.trim();
   const metodo = body.metodo?.trim() || null;
   const fecha = body.fecha ? new Date(`${body.fecha}T00:00:00.000Z`) : hoyComercial();
 
   const mov = await prisma.$transaction(async (tx) => {
-    // Un ajuste de EGRESO no puede dejar la caja principal negativa (decisión de tesorería:
-    // se bloquea igual que cobros/desembolsos/transferencias). Para sumar plata está el ingreso.
+    // Ningún egreso manual puede dejar la caja principal negativa (misma decisión de
+    // tesorería que cobros/desembolsos/transferencias). Vale igual para el retiro: no se
+    // puede sacar una ganancia que todavía no está en la caja.
     if (!ingreso) {
       await assertFondosSuficientesTx(tx, {
         tenantId, vendedorId: null, cuenta, monto,
-        mensaje: (disp) => `El ajuste de egreso ($${monto.toLocaleString("es-AR")}) supera el saldo de ${CUENTA_LABEL[cuenta]} en la caja principal (disponible $${disp.toLocaleString("es-AR")}).`,
+        mensaje: (disp) => `${concepto.label} de $${monto.toLocaleString("es-AR")} supera el saldo de ${CUENTA_LABEL[cuenta]} en la caja principal (disponible $${disp.toLocaleString("es-AR")}).`,
       });
     }
-    const numero = await siguienteNumeroComprobante(tx, tenantId, "AJU");
+    const numero = await siguienteNumeroComprobante(tx, tenantId, concepto.serie);
     return tx.movimientos_caja.create({
       data: {
         ...withTenant(tenantId),
         fecha,
-        tipo: "ajuste",
-        monto: montoConSigno("ajuste", monto, ingreso),
+        tipo: concepto.tipo,
+        monto: montoConSigno(concepto.tipo, monto, ingreso),
         metodo,
         cuenta,
-        origen: ingreso ? "Ajuste manual" : etiquetaCaja(false, cuenta),
-        destino: ingreso ? etiquetaCaja(false, cuenta) : "Ajuste manual",
-        serie: "AJU",
+        origen: ingreso ? concepto.etiqueta : etiquetaCaja(false, cuenta),
+        destino: ingreso ? etiquetaCaja(false, cuenta) : concepto.etiqueta,
+        serie: concepto.serie,
         numero,
         descripcion,
       },
@@ -182,8 +231,8 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     entidad: "caja",
     entidadId: mov.id,
     accion: "crear",
-    descripcion: `Ajuste de caja (${ingreso ? "ingreso" : "egreso"}) $${monto.toLocaleString("es-AR")} en ${cuenta} — ${mov.descripcion}`,
-    meta: { monto: mov.monto, tipo: "ajuste", cuenta },
+    descripcion: `${concepto.label} (${ingreso ? "ingreso" : "egreso"}) $${monto.toLocaleString("es-AR")} en ${cuenta} — ${mov.descripcion}`,
+    meta: { monto: mov.monto, tipo: concepto.tipo, cuenta },
   });
 
   return successResponse(mov, 201);

@@ -44,6 +44,8 @@ const TIPO_META: Record<MovimientoCaja["tipo"], { label: string; variant: BadgeV
   entrega:            { label: "Entrega",       variant: "warning" },
   rendicion:          { label: "Rendición",     variant: "success" },
   comision:           { label: "Comisión",      variant: "warning" },
+  aporte_capital:     { label: "Aporte de capital",    variant: "primary" },
+  retiro_utilidades:  { label: "Retiro de utilidades", variant: "warning" },
 };
 
 export function MiCajaView() {
