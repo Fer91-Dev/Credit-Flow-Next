@@ -128,6 +128,15 @@ export function CajaView() {
     { label: "Este año", ...preset(new Date(today.getFullYear(), 0, 1), today) },
   ].map((p) => ({ ...p, run: () => { setDesde(p.desde); setHasta(p.hasta); } }));
 
+  // Nombre del rango para las tarjetas. Si coincide con un preset se usa su etiqueta
+  // ("Este mes"), que se lee mejor que dos fechas; si no, las fechas.
+  const rangoLegible = (() => {
+    const p = presets.find((x) => x.desde === desde && x.hasta === hasta);
+    if (p) return p.label.toLowerCase();
+    const corta = (v: string) => v.split("-").reverse().slice(0, 2).join("/");
+    return `${corta(desde)} al ${corta(hasta)}`;
+  })();
+
   const filtrosActivos = (tipo !== "all" ? 1 : 0) + (cuenta !== "all" ? 1 : 0);
   // "Sucio" = algo distinto del estado inicial (este mes, sin filtros) → hay qué limpiar.
   const rangoDefault = presets[0];
@@ -206,12 +215,16 @@ export function CajaView() {
             ))}
           </div>
 
-          {/* KPIs del período */}
+          {/* KPIs. Los dos primeros son saldos (no dependen del rango); los dos últimos SÍ
+              se mueven con el filtro, que vive abajo, pegado a la tabla. Como el filtro
+              quedó fuera de la vista de estas tarjetas, cada una dice a qué período
+              corresponde: si no, al cambiar el rango cambian números que ni se están
+              mirando y no hay forma de saber qué recorte reflejan. */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             <KpiCard icon="balance-scale" label="Saldo caja principal" value={`$${n2(caja.saldo_total)}`} accent={caja.saldo_total >= 0 ? "success" : "destructive"} mono sub="tesorería (sin vendedores)" />
             <KpiCard icon="busts-in-silhouette" label="En poder de vendedores" value={`$${n2(caja.en_vendedores ?? 0)}`} accent="primary" mono sub="suma de sus cajas" />
-            <KpiCard icon="inbox-tray" label="Ingresos del período" value={`$${n2(caja.ingresos)}`} accent="success" mono />
-            <KpiCard icon="outbox-tray" label="Egresos del período" value={`$${n2(caja.egresos)}`} accent="warning" mono />
+            <KpiCard icon="inbox-tray" label="Ingresos del período" value={`$${n2(caja.ingresos)}`} accent="success" mono sub={rangoLegible} />
+            <KpiCard icon="outbox-tray" label="Egresos del período" value={`$${n2(caja.egresos)}`} accent="warning" mono sub={rangoLegible} />
           </div>
 
           {/* Tabla de movimientos — el título y los filtros van en el MISMO bloque,

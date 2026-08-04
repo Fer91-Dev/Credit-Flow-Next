@@ -1,7 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { Search, ChevronDown, Download } from "lucide-react";
+import { BuscadorF3 } from "@/components/ui/BuscadorF3";
+import { FiltrosPanel, FiltroChip } from "@/components/ui/FiltrosPanel";
+import { Field, Input, Select } from "@/components/ui/field";
+import { Download } from "lucide-react";
 import { useMovimientosStock, type MovimientoStockGlobal } from "@/lib/swr";
 import { formatFechaHora } from "@/lib/utils";
 import { TIPOS_MOVIMIENTO_STOCK, ETIQUETA_MOVIMIENTO_STOCK, type TipoMovimientoStock } from "@/lib/domain";
@@ -22,10 +25,6 @@ const TIPO_META: Record<TipoMovimientoStock, { variant: BadgeVariant }> = {
   ajuste: { variant: "muted" },
 };
 
-const INPUT =
-  "h-10 rounded-lg border border-border bg-muted/40 px-3 text-sm text-foreground outline-none " +
-  "transition-all focus:border-primary focus:ring-2 focus:ring-primary/20";
-const SEL = INPUT + " pr-8 appearance-none cursor-pointer [&>option]:bg-card [&>option]:text-foreground";
 
 // ── CSV (separador es-AR ";") ──────────────────────────────────────────────
 function csvCell(v: string | number) {
@@ -65,6 +64,9 @@ export function MovimientosStockView() {
 
   const { movimientos, total, totales, isLoading, error } = useMovimientosStock({ q, tipo, desde, hasta });
 
+  const filtrosActivos = (tipo !== "all" ? 1 : 0) + (desde || hasta ? 1 : 0);
+  const limpiarTodo = () => { setQ(""); setTipo("all"); setDesde(""); setHasta(""); };
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -93,35 +95,55 @@ export function MovimientosStockView() {
         </button>
       </div>
 
-      {/* Filtros */}
-      <div className="flex flex-wrap items-end gap-3">
-        <label className="flex flex-col gap-1 flex-1 min-w-[220px]">
-          <span className="text-xs font-medium text-muted-foreground">Buscar</span>
-          <div className="relative">
-            <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Producto, SKU o motivo…" className={`${INPUT} w-full pl-9`} />
-          </div>
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className="text-xs font-medium text-muted-foreground">Tipo</span>
-          <div className="relative">
-            <select value={tipo} onChange={(e) => setTipo(e.target.value)} className={SEL}>
+      {/* Filtros — mismo patrón que el resto del SaaS: buscador con F3 a la izquierda y
+          los filtros en un panel plegable a la derecha, con chips de lo aplicado. Antes
+          eran cuatro controles a todo el ancho, que era el estilo viejo. */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="sm:max-w-md sm:flex-1">
+          <BuscadorF3
+            value={q}
+            onChange={setQ}
+            placeholder="Buscar por producto, SKU o motivo…"
+            onF3={limpiarTodo}
+            f3Hint="para limpiar la búsqueda y los filtros"
+          />
+        </div>
+        <FiltrosPanel
+          activos={filtrosActivos}
+          onLimpiar={limpiarTodo}
+          align="right"
+          chips={
+            <>
+              {tipo !== "all" && (
+                <FiltroChip onClear={() => setTipo("all")}>
+                  {ETIQUETA_MOVIMIENTO_STOCK[tipo as keyof typeof ETIQUETA_MOVIMIENTO_STOCK] ?? tipo}
+                </FiltroChip>
+              )}
+              {(desde || hasta) && (
+                <FiltroChip onClear={() => { setDesde(""); setHasta(""); }}>
+                  {desde && hasta ? `${desde} a ${hasta}` : desde ? `desde ${desde}` : `hasta ${hasta}`}
+                </FiltroChip>
+              )}
+            </>
+          }
+        >
+          <Field label="Tipo de movimiento">
+            <Select value={tipo} onChange={(e) => setTipo(e.target.value)}>
               <option value="all">Todos</option>
               {TIPOS_MOVIMIENTO_STOCK.map((t) => (
                 <option key={t} value={t}>{ETIQUETA_MOVIMIENTO_STOCK[t]}</option>
               ))}
-            </select>
-            <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            </Select>
+          </Field>
+          <div className="grid grid-cols-2 gap-2">
+            <Field label="Desde">
+              <Input type="date" value={desde} max={hasta || undefined} onChange={(e) => setDesde(e.target.value)} />
+            </Field>
+            <Field label="Hasta">
+              <Input type="date" value={hasta} min={desde || undefined} onChange={(e) => setHasta(e.target.value)} />
+            </Field>
           </div>
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className="text-xs font-medium text-muted-foreground">Desde</span>
-          <input type="date" value={desde} max={hasta || undefined} onChange={(e) => setDesde(e.target.value)} className={INPUT} />
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className="text-xs font-medium text-muted-foreground">Hasta</span>
-          <input type="date" value={hasta} min={desde || undefined} onChange={(e) => setHasta(e.target.value)} className={INPUT} />
-        </label>
+        </FiltrosPanel>
       </div>
 
       <DataTable<MovimientoStockGlobal>
