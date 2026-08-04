@@ -18,11 +18,13 @@ import {
   etiquetaDiferencia,
   CUENTA_LABEL,
   etiquetaCaja,
+  esCuentaValida,
   round2,
   type Cuenta,
   type ModoArqueo,
 } from "@/lib/domain";
 import { siguienteNumeroComprobante } from "@/lib/comprobantes";
+import { lockCuentaTx } from "@/lib/caja-fondos";
 import { hoyComercial } from "@/lib/utils";
 
 const money = (n: number) => `$${n.toLocaleString("es-AR")}`;
@@ -74,8 +76,12 @@ export async function registrarArqueo(input: RegistrarArqueoInput) {
     : null;
 
   const arqueo = await prisma.$transaction(async (tx) => {
-    // El saldo se lee DENTRO de la transacción: si se leyera antes, un cobro registrado en
-    // el medio haría que el ajuste cuadre contra un saldo que ya cambió.
+    // Candado por (tenant, caja, cuenta) ANTES de leer, igual que toda operación de caja.
+    // Leer dentro de la transacción no alcanza: sin el candado, un cobro puede commitear
+    // entre la lectura y el asiento, y el ajuste queda cuadrando contra un saldo viejo —
+    // el arqueo diría que la caja quedó en lo contado, y no. Con el lock, nadie más toca
+    // esa cuenta hasta que este arqueo termina.
+    await lockCuentaTx(tx, tenantId, vendedorId, cuenta);
     const movs = await tx.movimientos_caja.findMany({
       where: { ...withTenant(tenantId), vendedor_id: vendedorId },
       select: { monto: true, cuenta: true },
@@ -195,10 +201,19 @@ export async function conciliarArqueo(opts: {
     // acta congela lo que se contó ese día. Si el vendedor siguió operando desde entonces,
     // recalcular contra el saldo actual borraría movimientos legítimos posteriores.
     const diferencia = round2(a.diferencia);
+    const cuentaLock = (esCuentaValida(a.cuenta) ? a.cuenta : "efectivo") as Cuenta;
+    // Mismo candado que el resto de la caja, para no insertar mientras otra operación
+    // está calculando fondos sobre esta misma cuenta.
+    await lockCuentaTx(tx, tenantId, a.vendedor_id, cuentaLock);
+
+    // A propósito NO se valida saldo suficiente. Conciliar un faltante puede dejar la caja
+    // en negativo si el vendedor ya rindió de más, y eso es exactamente lo que hay que
+    // mostrar: debe esa plata. Bloquearlo sería peor — el faltante quedaría sin poder
+    // resolverse nunca, que es el único estado del que hay que salir sí o sí.
     const vend = a.vendedor_id
       ? await tx.vendedores.findFirst({ where: { ...withTenant(tenantId), id: a.vendedor_id }, select: { nombre: true } })
       : null;
-    const cuenta = a.cuenta as Cuenta;
+    const cuenta = cuentaLock;
     const etiquetaMiCaja = a.vendedor_id
       ? `Caja de ${vend?.nombre ?? "vendedor"} (${CUENTA_LABEL[cuenta] ?? cuenta})`
       : etiquetaCaja(false, cuenta);
