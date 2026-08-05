@@ -5,7 +5,7 @@ import useSWR from "swr";
 import { Handshake } from "lucide-react";
 import { formatMonto, formatFecha, parseMontoInput } from "@/lib/utils";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { MoneyInput, FieldLabel, FormActions, IconTextarea } from "@/components/caja/caja-form";
+import { MoneyInput, FieldLabel, FormActions, IconTextarea, IconSelect } from "@/components/caja/caja-form";
 import { useConfirm } from "@/components/ui/confirm";
 import { useToast } from "@/components/ui/toast";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -190,12 +190,17 @@ export function AcuerdoForm({
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="flex flex-col gap-1.5">
                 <FieldLabel required>En cuántas cuotas</FieldLabel>
-                <input
-                  type="number" min={1} max={data.limites.max_cuotas} value={cuotas}
-                  onChange={(e) => setCuotas(Math.max(1, Math.min(data.limites.max_cuotas, Number(e.target.value))))}
-                  className="h-12 rounded-lg border border-border bg-background px-3 text-sm text-foreground focus:ring-2 focus:ring-primary/20 focus:outline-none"
-                  required
-                />
+                {/* Lista de opciones y no un campo numérico: las opciones válidas son pocas
+                    y las define la financiera, así que se eligen, no se tipean. */}
+                <IconSelect
+                  icon="calendar"
+                  value={String(cuotas)}
+                  onChange={(e) => setCuotas(Number(e.target.value))}
+                >
+                  {Array.from({ length: data.limites.max_cuotas }, (_, i) => i + 1).map((n) => (
+                    <option key={n} value={n}>{n === 1 ? "1 pago" : `${n} cuotas`}</option>
+                  ))}
+                </IconSelect>
                 <p className="text-xs text-muted-foreground">Hasta {data.limites.max_cuotas}, cada {data.limites.dias_entre_cuotas} días.</p>
               </div>
 
@@ -225,11 +230,15 @@ export function AcuerdoForm({
             {plan.length > 0 && (
               <div className="rounded-lg border border-primary/20 bg-primary/5 px-3 py-3">
                 <p className="text-[10px] font-bold uppercase tracking-widest text-primary">Queda así</p>
-                <div className="mt-2 grid gap-1.5 sm:grid-cols-2">
+                {/* Una cuota por fila: leído en columna se sigue el cronograma de arriba
+                    hacia abajo, que es como se le lee al cliente. */}
+                <div className="mt-2 divide-y divide-primary/10">
                   {plan.map((c) => (
-                    <div key={c.numero} className="flex items-center justify-between text-sm">
-                      <span className="text-muted-foreground">Cuota {c.numero} · {formatFecha(c.vencimiento)}</span>
-                      <span className="font-mono font-semibold text-foreground">{formatMonto(c.monto)}</span>
+                    <div key={c.numero} className="flex items-center justify-between gap-3 py-1.5 text-sm">
+                      <span className="text-muted-foreground">
+                        Cuota {c.numero} <span className="text-muted-foreground/50">·</span> {formatFecha(c.vencimiento)}
+                      </span>
+                      <span className="font-mono font-semibold text-foreground tabular-nums">{formatMonto(c.monto)}</span>
                     </div>
                   ))}
                 </div>
