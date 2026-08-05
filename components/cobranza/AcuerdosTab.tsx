@@ -251,7 +251,9 @@ export function AcuerdosTab({ role }: { role: Role }) {
                   montoSugerido={pendiente > 0 ? pendiente : undefined}
                   motivoSugerido={
                     c
-                      ? `Cuota ${c.numero} de ${cobrando.cuotas.length} del acuerdo · vence ${formatFecha(c.vencimiento)}. El importe ya viene cargado; se puede cambiar si paga otra cantidad.`
+                      ? `Cuota ${c.numero} de ${cobrando.cuotas.length} DEL ACUERDO · vence ${formatFecha(c.vencimiento)}. ` +
+                        `El importe ya viene cargado y se puede cambiar. Las cuotas que figuran abajo son las del CRÉDITO ` +
+                        `(otras fechas y otros importes): es adonde se imputa la plata, no lo que se está cobrando.`
                       : undefined
                   }
                   onClose={(ok) => { setCobrando(null); if (ok) mutate(key); }}

@@ -299,6 +299,9 @@ export function PagoForm({ creditoId, clienteId, montoSugerido, motivoSugerido, 
 
   const cobrables    = cuotas.filter(c => c.estado !== "pagada");
   const seleccionadas = hasta != null ? cobrables.filter(c => c.nro <= hasta) : [];
+  /** Se está cobrando la cuota de un ACUERDO: viene importe y motivo precargados. */
+  const cobrandoAcuerdo = Boolean(motivoSugerido);
+
   const montoCuotas  = round2(seleccionadas.reduce((s, c) => s + importePendiente(c), 0));
   const monto        = manual ? parseMontoInput(montoManual) : montoCuotas;
   // "Excede" = se paga más que TODO lo adeudado (capital + interés + cargos de las
@@ -499,16 +502,29 @@ export function PagoForm({ creditoId, clienteId, montoSugerido, motivoSugerido, 
           </div>
         )}
 
-        {/* ── Paso 2: Cuotas a cobrar ── */}
+        {/* ── Paso 2: Cuotas a cobrar ──
+            Cobrando la cuota de un ACUERDO, esta lista se pliega: son las cuotas del
+            CRÉDITO (6 de $60.000), no las del acuerdo (3 de $116.800), y verlas abiertas
+            al lado de un título que dice "cuota del acuerdo" hace pensar que el acuerdo
+            salió mal. Siguen disponibles porque es adonde va a parar la plata, pero
+            plegadas: en ese momento no se eligen cuotas, se cobra un importe pactado. */}
         {creditoSel && (
-          <div>
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Cuotas a cobrar</p>
-              <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer">
-                <input type="checkbox" checked={manual} onChange={e => setManual(e.target.checked)} className="accent-primary" />
-                Monto personalizado
-              </label>
-            </div>
+          <details open={!cobrandoAcuerdo}>
+            <summary className={cn(
+              "flex items-center justify-between mb-3",
+              cobrandoAcuerdo ? "cursor-pointer list-none" : "list-none pointer-events-none",
+            )}>
+              <span className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                {cobrandoAcuerdo && <CornerDownRight className="h-3.5 w-3.5" />}
+                {cobrandoAcuerdo ? "Cuotas del crédito" : "Cuotas a cobrar"}
+              </span>
+              {!cobrandoAcuerdo && (
+                <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer pointer-events-auto">
+                  <input type="checkbox" checked={manual} onChange={e => setManual(e.target.checked)} className="accent-primary" />
+                  Monto personalizado
+                </label>
+              )}
+            </summary>
 
             {loadingCuotas ? (
               <div className="flex items-center justify-center gap-2 rounded-xl border border-border py-8 text-sm text-muted-foreground">
@@ -602,7 +618,7 @@ export function PagoForm({ creditoId, clienteId, montoSugerido, motivoSugerido, 
                 {hayMora && <span className="text-destructive"> · la mora por atraso se suma al imputar</span>}
               </p>
             )}
-          </div>
+          </details>
         )}
 
         {/* ── Paso 3: Monto + método ── */}
