@@ -193,6 +193,16 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
 
   const graciaCred = (credito.cronograma as { diasGracia?: number } | null)?.diasGracia ?? config.simulador.diasGracia;
 
+  // ── Acuerdo de pago con punitorios congelados ───────────────────────────────
+  // Si el crédito tiene un acuerdo VIGENTE y la financiera ofreció frenar los punitorios,
+  // la mora deja de correr desde la fecha en que se acordó. Es la contraprestación de que
+  // el deudor se haya comprometido, y estaba prometida en pantalla desde el primer día.
+  // `estado: "vigente"` es la clave: un acuerdo roto o anulado NO congela nada.
+  const acuerdoVigente = await prisma.acuerdos_pago.findFirst({
+    where: { ...withTenant(tenantId), credito_id: body.credito_id, estado: "vigente", congela_punitorios: true },
+    select: { fecha: true },
+  });
+
   const resultado = imputarPagoEnCuotas(body.monto, cuotasDom, {
     modoCargos: config.imputarCargos,
     moraActiva: config.moraActiva,
@@ -200,6 +210,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     hoy: fechaPago,
     descuentoMoraPct,
     diasGracia: graciaCred,
+    moraCongeladaAl: acuerdoVigente?.fecha ?? null,
   });
 
   // P1 — Sobrepago: el cobro no puede exceder la deuda total del crédito. Si la imputación

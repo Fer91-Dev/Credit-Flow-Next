@@ -58,6 +58,19 @@ export function diasMoraActual(proximoPago: Date | string | null | undefined, ho
  * @param dias Días de atraso.
  * @param config Tasa diaria opcional.
  */
+/**
+ * Fecha hasta la cual corre la mora, cuando algo la CONGELA (hoy: un acuerdo de pago
+ * vigente que se está cumpliendo).
+ *
+ * Devuelve la más TEMPRANA entre hoy y el corte: congelar solo puede frenar el reloj, nunca
+ * adelantarlo. Si el corte fuera posterior a hoy —una fecha mal cargada, un huso raro—,
+ * usarlo cobraría punitorios del futuro.
+ */
+export function fechaTopeMora(hoy: Date, corte?: Date | null): Date {
+  if (!corte) return hoy;
+  return corte.getTime() < hoy.getTime() ? corte : hoy;
+}
+
 export function interesMora(
   valorCuota: number,
   dias: number,

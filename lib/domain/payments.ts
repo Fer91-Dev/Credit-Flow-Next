@@ -10,7 +10,7 @@
  * Si tras cubrir todo aún sobra dinero, se reporta como excedente (saldo a favor).
  */
 import { round2, noNegativo } from "./money";
-import { diasAtraso, interesMora } from "./mora";
+import { diasAtraso, interesMora, fechaTopeMora } from "./mora";
 
 /** Cómo se imputan los cargos del período respecto del interés. */
 export type ModoImputacionCargos = "integrado" | "separado";
@@ -146,6 +146,18 @@ export interface OpcionesImputacionCuotas {
   descuentoMoraPct?: number;
   /** Días de gracia: tolerancia tras el vencimiento antes de que corra la mora. Default 0. */
   diasGracia?: number;
+  /**
+   * CONGELA la mora a esta fecha: los punitorios dejan de correr ahí, aunque se cobre
+   * mucho después. Lo usa el acuerdo de pago cuando la financiera ofrece frenar los
+   * punitorios como incentivo — es la contraprestación de que el deudor se comprometa.
+   *
+   * Solo afecta a la PLATA. Los días de atraso que se muestran siguen siendo los reales:
+   * alguien con 90 días de mora sigue teniendo 90, aunque le cobremos punitorios por 30.
+   * Congelar el contador sería mentir sobre el estado de la cartera.
+   *
+   * Sin este dato, todo se comporta exactamente igual que antes.
+   */
+  moraCongeladaAl?: Date | null;
 }
 
 export interface ResultadoImputacionCuotas {
@@ -180,6 +192,8 @@ export function imputarPagoEnCuotas(
   const tasaMoraDiaria = opciones.tasaMoraDiaria;
   const diasGracia = opciones.diasGracia;
   const hoy = opciones.hoy ?? new Date();
+  // Hasta dónde corren los punitorios: hoy, salvo que un acuerdo los haya congelado antes.
+  const topeMora = fechaTopeMora(hoy, opciones.moraCongeladaAl);
   // Quita de mora por campaña (Fase 7B), acotada a [0, 100].
   const factorMora = 1 - Math.min(100, Math.max(0, opciones.descuentoMoraPct ?? 0)) / 100;
 
@@ -199,8 +213,11 @@ export function imputarPagoEnCuotas(
     const capitalPend = noNegativo(round2(c.capital - c.pagadoCapital));
 
     // Mora dinámica de la cuota (solo si está vencida y la mora está activa).
+    // `dias` son los REALES (lo que se informa); `diasMora` es hasta dónde se cobra, que
+    // puede estar congelado por un acuerdo. Sin acuerdo, los dos son el mismo número.
     const dias = diasAtraso(c.fechaVencimiento, hoy);
-    const moraPlena = moraActiva ? interesMora(c.cuotaTotal, dias, { tasaDiaria: tasaMoraDiaria, diasGracia }) : 0;
+    const diasMora = diasAtraso(c.fechaVencimiento, topeMora);
+    const moraPlena = moraActiva ? interesMora(c.cuotaTotal, diasMora, { tasaDiaria: tasaMoraDiaria, diasGracia }) : 0;
     // La quita de campaña reduce la mora devengada (lo condonado se reporta como ahorro).
     const moraDevengada = round2(moraPlena * factorMora);
     const moraPend = noNegativo(round2(moraDevengada - c.pagadoMora));
