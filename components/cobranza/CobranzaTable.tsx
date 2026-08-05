@@ -508,20 +508,22 @@ export function CobranzaTable({ role }: { role: Role }) {
             subtitle="Dejá registro del contacto y, si corresponde, la promesa de pago."
           />
           {gestion && <GestionForm credito={gestion} onClose={handleGestionClose} />}
-
-          <AcuerdoForm
-            creditoId={acordando}
-            open={!!acordando}
-            onClose={(ok) => {
-              setAcordando(null);
-              if (!ok) return;
-              // Un acuerdo nuevo saca al crédito de la agenda del día y aparece en su pestaña.
-              globalMutate("/api/cobranza/acuerdos?estado=vigente");
-              globalMutate("/api/cobranza/agenda");
-            }}
-          />
         </DialogContent>
       </Dialog>
+
+      {/* Acuerdo de pago — al MISMO nivel que los otros diálogos, no anidado dentro de
+          ninguno: si vive dentro del de "Gestionar", solo aparece cuando ese está abierto. */}
+      <AcuerdoForm
+        creditoId={acordando}
+        open={!!acordando}
+        onClose={(ok) => {
+          setAcordando(null);
+          if (!ok) return;
+          // Un acuerdo nuevo saca al crédito de la agenda del día y aparece en su pestaña.
+          globalMutate("/api/cobranza/acuerdos?estado=vigente");
+          globalMutate("/api/cobranza/agenda");
+        }}
+      />
 
       <Dialog open={!!detalle} onOpenChange={open => { if (!open) setDetalle(null); }}>
         <DialogContent className="w-[95vw] sm:max-w-lg max-h-[90dvh] flex flex-col overflow-hidden">
