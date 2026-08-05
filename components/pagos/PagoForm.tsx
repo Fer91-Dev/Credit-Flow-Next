@@ -43,6 +43,16 @@ interface Credito {
   proximo_pago?: string | null;
 }
 
+/** Acuerdo de pago vigente sobre el crédito, tal como lo devuelve el endpoint de cuotas. */
+interface AcuerdoDelCredito {
+  id: string;
+  fecha: string;
+  monto_acordado: number;
+  congela_punitorios: boolean;
+  total_cuotas: number;
+  proxima: { numero: number; vencimiento: string; pendiente: number } | null;
+}
+
 interface PagoFormProps {
   /** Si viene, el form arranca con ese crédito preseleccionado y bloqueado. */
   creditoId?: string;
@@ -216,6 +226,8 @@ export function PagoForm({ creditoId, clienteId, montoSugerido, motivoSugerido, 
 
   const [cuotas, setCuotas]               = useState<CuotaPersistida[]>([]);
   const [loadingCuotas, setLoadingCuotas] = useState(false);
+  /** Acuerdo vigente del crédito elegido (lo trae el endpoint de cuotas). */
+  const [acuerdo, setAcuerdo] = useState<AcuerdoDelCredito | null>(null);
   const [hasta, setHasta]                 = useState<number | null>(null);
 
   // Con monto sugerido (cuota de un acuerdo) se arranca en modo manual: el importe
@@ -251,7 +263,7 @@ export function PagoForm({ creditoId, clienteId, montoSugerido, motivoSugerido, 
 
   // Cuotas del crédito seleccionado
   useEffect(() => {
-    if (!creditoSel) { setCuotas([]); setHasta(null); return; }
+    if (!creditoSel) { setCuotas([]); setHasta(null); setAcuerdo(null); return; }
     setLoadingCuotas(true);
     fetch(`/api/creditos/${creditoSel}/cuotas`)
       .then(r => r.json())
@@ -259,6 +271,7 @@ export function PagoForm({ creditoId, clienteId, montoSugerido, motivoSugerido, 
         if (!j.ok) return;
         const cs: CuotaPersistida[] = j.data.cuotas || [];
         setCuotas(cs);
+        setAcuerdo(j.data.acuerdo ?? null);
         const proxima = cs.find(c => c.estado !== "pagada");
         setHasta(proxima ? proxima.nro : null);
       })
@@ -499,6 +512,27 @@ export function PagoForm({ creditoId, clienteId, montoSugerido, motivoSugerido, 
         {creditoSel && motivoSugerido && (
           <div className="rounded-lg border border-primary/30 bg-primary/5 px-3 py-2.5 text-sm text-primary">
             {motivoSugerido}
+          </div>
+        )}
+
+        {/* Aviso de acuerdo cuando se llega desde PAGOS (sin importe precargado).
+            Sin esto, quien cobra no tiene forma de enterarse de que hay un arreglo y le
+            cobraría la cuota del crédito en vez de la pactada, que es otro importe. */}
+        {creditoSel && !motivoSugerido && acuerdo?.proxima && (
+          <div className="rounded-lg border border-primary/30 bg-primary/5 px-3 py-3 text-sm">
+            <p className="font-medium text-primary">Este crédito tiene un acuerdo de pago vigente</p>
+            <p className="mt-1 text-muted-foreground">
+              Corresponde cobrar la <strong className="text-foreground">cuota {acuerdo.proxima.numero} de {acuerdo.total_cuotas}</strong> del
+              acuerdo, de <strong className="font-mono text-foreground">${fmt2(acuerdo.proxima.pendiente)}</strong>, con vencimiento el {fmtDate(acuerdo.proxima.vencimiento)}.
+              {acuerdo.congela_punitorios && " Mientras cumpla no se le devengan punitorios."}
+            </p>
+            <button
+              type="button"
+              onClick={() => { setManual(true); setMontoManual(maskMontoInput(String(acuerdo.proxima!.pendiente).replace(".", ","))); }}
+              className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition-opacity hover:opacity-90"
+            >
+              Cobrar ${fmt2(acuerdo.proxima.pendiente)}
+            </button>
           </div>
         )}
 
