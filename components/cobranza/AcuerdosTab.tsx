@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import useSWR, { mutate } from "swr";
-import { Handshake, Ban, ChevronDown } from "lucide-react";
+import { Handshake, Ban, DollarSign } from "lucide-react";
 import { formatMonto, formatFecha, formatCreditoNumero } from "@/lib/utils";
 import { StatusBadge, type BadgeVariant } from "@/components/ui/StatusBadge";
 import { DataTable } from "@/components/ui/DataTable";
@@ -11,6 +11,7 @@ import { useConfirm } from "@/components/ui/confirm";
 import { useToast } from "@/components/ui/toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { FieldLabel, FormActions, IconTextarea } from "@/components/caja/caja-form";
+import { PagoForm } from "@/components/pagos/PagoForm";
 import type { Role } from "@/lib/auth/roles";
 
 /**
@@ -75,12 +76,19 @@ function cuando(fecha: string | null): string {
   return `En ${d}d`;
 }
 
+/** Próxima cuota del acuerdo que falta cobrar (la más vieja sin pagar). */
+function proximaCuota(a: Acuerdo): AcuerdoCuota | null {
+  return [...a.cuotas].sort((x, y) => x.numero - y.numero).find((c) => c.estado !== "pagada") ?? null;
+}
+
 export function AcuerdosTab({ role }: { role: Role }) {
   const confirm = useConfirm();
   const toast = useToast();
   const [estado, setEstado] = useState<string>("vigente");
   const [abierto, setAbierto] = useState<string | null>(null);
   const [anulando, setAnulando] = useState<Acuerdo | null>(null);
+  /** Acuerdo cuya próxima cuota se está cobrando. */
+  const [cobrando, setCobrando] = useState<Acuerdo | null>(null);
 
   const key = `/api/cobranza/acuerdos${estado ? `?estado=${estado}` : ""}`;
   const { data, isLoading } = useSWR<{ acuerdos: Acuerdo[]; vigentes: number }>(key, fetcher);
@@ -142,12 +150,23 @@ export function AcuerdosTab({ role }: { role: Role }) {
             header: "", align: "right",
             cell: (a) =>
               a.estado === "vigente" ? (
-                <button
-                  onClick={(e) => { e.stopPropagation(); setAnulando(a); }}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground whitespace-nowrap"
-                >
-                  <Ban className="h-3.5 w-3.5" /> Anular
-                </button>
+                <div className="flex items-center justify-end gap-1.5">
+                  {/* Sin esto había que anotar el monto, ir a Pagos, buscar al cliente y
+                      tipearlo — con la persona esperando en el mostrador. */}
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setCobrando(a); }}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition-opacity hover:opacity-90 whitespace-nowrap"
+                  >
+                    <DollarSign className="h-3.5 w-3.5" /> Cobrar
+                  </button>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setAnulando(a); }}
+                    title="Anular el acuerdo"
+                    className="inline-flex items-center justify-center h-7 w-7 rounded-lg border border-border text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                  >
+                    <Ban className="h-3.5 w-3.5" />
+                  </button>
+                </div>
               ) : null,
           },
         ]}
@@ -213,6 +232,35 @@ export function AcuerdosTab({ role }: { role: Role }) {
         acuerdo={anulando}
         onClose={(ok) => { setAnulando(null); if (ok) mutate(key); }}
       />
+
+      {/* Cobro de una cuota del acuerdo: es un pago NORMAL del crédito, con el importe
+          acordado precargado. No hay un circuito de cobro aparte — el acuerdo se concilia
+          solo con los pagos que entran por la vía de siempre. */}
+      {cobrando && (() => {
+        const c = proximaCuota(cobrando);
+        const pendiente = c ? Math.round((c.monto - c.pagado) * 100) / 100 : 0;
+        return (
+          <Dialog open onOpenChange={(o) => { if (!o) setCobrando(null); }}>
+            <DialogContent className="w-[95vw] sm:max-w-2xl max-h-[90dvh] flex flex-col overflow-hidden">
+              <DialogHeader className="shrink-0">
+                <DialogTitle>Cobrar cuota del acuerdo</DialogTitle>
+              </DialogHeader>
+              <div className="flex-1 min-h-0 overflow-y-auto">
+                <PagoForm
+                  creditoId={cobrando.credito_id}
+                  montoSugerido={pendiente > 0 ? pendiente : undefined}
+                  motivoSugerido={
+                    c
+                      ? `Cuota ${c.numero} de ${cobrando.cuotas.length} del acuerdo · vence ${formatFecha(c.vencimiento)}. El importe ya viene cargado; se puede cambiar si paga otra cantidad.`
+                      : undefined
+                  }
+                  onClose={(ok) => { setCobrando(null); if (ok) mutate(key); }}
+                />
+              </div>
+            </DialogContent>
+          </Dialog>
+        );
+      })()}
     </div>
   );
 }

@@ -48,6 +48,17 @@ interface PagoFormProps {
   creditoId?: string;
   /** Si viene, la lista de créditos se acota a este cliente. */
   clienteId?: string;
+  /**
+   * Importe con el que arranca el cobro, en modo "monto personalizado".
+   *
+   * Lo usa el cobro de una cuota de ACUERDO DE PAGO: lo que el cliente se comprometió a
+   * pagar no coincide con ninguna cuota del crédito (el acuerdo reparte lo vencido en
+   * otros importes), así que elegir cuotas no sirve — hay que cobrar ese monto exacto.
+   * Sigue siendo editable: es una sugerencia, no una imposición.
+   */
+  montoSugerido?: number;
+  /** Texto que explica de dónde sale el monto sugerido. */
+  motivoSugerido?: string;
   onClose: (success?: boolean) => void;
 }
 
@@ -193,7 +204,7 @@ function CreditoSeleccionado({ c, onCambiar }: { c: Credito; onCambiar?: () => v
   );
 }
 
-export function PagoForm({ creditoId, clienteId, onClose }: PagoFormProps) {
+export function PagoForm({ creditoId, clienteId, montoSugerido, motivoSugerido, onClose }: PagoFormProps) {
   const [creditos, setCreditos]     = useState<Credito[]>([]);
   const [selected, setSelected]     = useState<Credito | null>(null);
   const [creditoSel, setCreditoSel] = useState(creditoId ?? "");
@@ -207,8 +218,12 @@ export function PagoForm({ creditoId, clienteId, onClose }: PagoFormProps) {
   const [loadingCuotas, setLoadingCuotas] = useState(false);
   const [hasta, setHasta]                 = useState<number | null>(null);
 
-  const [manual,       setManual]       = useState(false);
-  const [montoManual,  setMontoManual]  = useState("");
+  // Con monto sugerido (cuota de un acuerdo) se arranca en modo manual: el importe
+  // acordado no coincide con ninguna cuota del crédito, así que elegir cuotas no aplica.
+  const [manual,       setManual]       = useState(montoSugerido != null && montoSugerido > 0);
+  const [montoManual,  setMontoManual]  = useState(
+    montoSugerido != null && montoSugerido > 0 ? maskMontoInput(String(Math.round(montoSugerido * 100) / 100).replace(".", ",")) : "",
+  );
   const [metodo,       setMetodo]       = useState("efectivo");
   const [notas,        setNotas]        = useState("");
   const [loading,      setLoading]      = useState(false);
@@ -475,6 +490,14 @@ export function PagoForm({ creditoId, clienteId, onClose }: PagoFormProps) {
             </div>
           )}
         </div>
+
+        {/* De dónde sale el importe precargado (ej. la cuota de un acuerdo de pago): sin
+            esto, quien cobra ve un monto raro que no coincide con ninguna cuota. */}
+        {creditoSel && motivoSugerido && (
+          <div className="rounded-lg border border-primary/30 bg-primary/5 px-3 py-2.5 text-sm text-primary">
+            {motivoSugerido}
+          </div>
+        )}
 
         {/* ── Paso 2: Cuotas a cobrar ── */}
         {creditoSel && (
