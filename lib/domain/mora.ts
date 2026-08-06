@@ -111,8 +111,6 @@ export function moraPendienteTotal(
 export interface MoraSnapshot {
   activa: boolean;
   tasaDiaria: number;
-  /** "cuota" | "saldo" — sobre qué se aplica el porcentaje. */
-  base: string;
 }
 
 /**
@@ -129,16 +127,12 @@ export interface MoraSnapshot {
  */
 export function moraDelCredito(
   snapshot: MoraSnapshot | null | undefined,
-  configActual: { moraActiva: boolean; tasaMoraDiaria: number; baseMora?: string },
-): { moraActiva: boolean; tasaMoraDiaria: number; baseMora: string } {
+  configActual: { moraActiva: boolean; tasaMoraDiaria: number },
+): { moraActiva: boolean; tasaMoraDiaria: number } {
   if (snapshot && typeof snapshot.tasaDiaria === "number" && typeof snapshot.activa === "boolean") {
-    return { moraActiva: snapshot.activa, tasaMoraDiaria: snapshot.tasaDiaria, baseMora: snapshot.base ?? "cuota" };
+    return { moraActiva: snapshot.activa, tasaMoraDiaria: snapshot.tasaDiaria };
   }
-  return {
-    moraActiva: configActual.moraActiva,
-    tasaMoraDiaria: configActual.tasaMoraDiaria,
-    baseMora: configActual.baseMora ?? "cuota",
-  };
+  return { moraActiva: configActual.moraActiva, tasaMoraDiaria: configActual.tasaMoraDiaria };
 }
 
 /** Lee las condiciones de mora del snapshot `cronograma` de un crédito (o null si es viejo). */

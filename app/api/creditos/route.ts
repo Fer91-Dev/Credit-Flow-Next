@@ -315,7 +315,6 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     mora: {
       activa: configActual.moraActiva,
       tasaDiaria: configActual.tasaMoraDiaria,
-      base: configActual.baseMora,
     },
   };
 

@@ -13,7 +13,6 @@ import type { FrecuenciaDef } from "./frequency";
 export type ConvencionTasa = "nominal_anual" | "efectiva_anual" | "mensual";
 
 /** Base sobre la que se calcula el interés moratorio. */
-export type BaseMora = "cuota" | "saldo";
 
 /** Componente de deuda al imputar un pago. */
 export type ComponenteDeuda = "mora" | "interes" | "capital";
@@ -136,7 +135,6 @@ export interface ConfiguracionFinanciera {
   /** Fracción diaria de mora (ej: 0.01 = 1% diario). */
   tasaMoraDiaria: number;
   /** Base del cálculo de mora: sobre la cuota o sobre el saldo. Default: cuota. */
-  baseMora: BaseMora;
 
   /** Orden de imputación de un pago. Default: mora -> interes -> capital. */
   ordenImputacion: ComponenteDeuda[];
@@ -197,7 +195,6 @@ export const CONFIG_DEFAULT: ConfiguracionFinanciera = {
   sistemaAmortizacion: "frances",
   moraActiva: true,
   tasaMoraDiaria: 0.01, // 1% diario sobre la cuota
-  baseMora: "cuota",
   ordenImputacion: ["mora", "interes", "capital"],
   imputarCargos: "integrado",
   moneda: "ARS",

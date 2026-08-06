@@ -131,9 +131,6 @@ export const PUT = withErrorHandler(async (req: NextRequest) => {
   if (body.convencionTasa !== undefined && !CONVENCIONES.includes(body.convencionTasa)) {
     return errorResponse(`convencionTasa debe ser una de: ${CONVENCIONES.join(", ")}`, "INVALID_INPUT", 400);
   }
-  if (body.baseMora !== undefined && !BASES_MORA.includes(body.baseMora)) {
-    return errorResponse(`baseMora debe ser una de: ${BASES_MORA.join(", ")}`, "INVALID_INPUT", 400);
-  }
   if (body.sistemaAmortizacion !== undefined && !SISTEMAS.includes(body.sistemaAmortizacion)) {
     return errorResponse(`sistemaAmortizacion debe ser uno de: ${SISTEMAS.join(", ")}`, "INVALID_INPUT", 400);
   }

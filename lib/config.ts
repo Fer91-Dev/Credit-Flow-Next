@@ -11,7 +11,6 @@ import {
   type ConfiguracionFinanciera,
   type ComponenteDeuda,
   type ConvencionTasa,
-  type BaseMora,
   type SistemaAmortizacion,
   type SimuladorConfig,
   type GamificacionConfig,
@@ -41,7 +40,6 @@ export async function getConfiguracion(
     sistemaAmortizacion: row.sistema_amortizacion as SistemaAmortizacion,
     moraActiva: row.mora_activa,
     tasaMoraDiaria: row.tasa_mora_diaria,
-    baseMora: row.base_mora as BaseMora,
     ordenImputacion: row.orden_imputacion
       .split(",")
       .map((s) => s.trim())
@@ -63,7 +61,6 @@ export async function guardarConfiguracion(
     sistema_amortizacion: config.sistemaAmortizacion,
     mora_activa: config.moraActiva,
     tasa_mora_diaria: config.tasaMoraDiaria,
-    base_mora: config.baseMora,
     orden_imputacion: config.ordenImputacion.join(","),
     imputar_cargos: config.imputarCargos,
     moneda: config.moneda,

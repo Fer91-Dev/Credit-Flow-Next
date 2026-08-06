@@ -38,7 +38,8 @@ const AYUDA: Record<string, AyudaBloque> = {
     texto: "Recargo que se suma cuando el cliente paga una cuota tarde. Con el switch apagado, no se cobra mora.",
     puntos: [
       "Tasa diaria: % que se acumula por cada día de atraso.",
-      "Base de cálculo: si ese % se aplica sobre el valor de la cuota o sobre el saldo pendiente.",
+      "Se aplica sobre el VALOR DE LA CUOTA vencida: cada cuota atrasada devenga su propio punitorio.",
+      "Los días de gracia (Simulador → Cronograma) son la tolerancia antes de que empiece a correr.",
     ],
   },
   cobranza: {
@@ -337,7 +338,7 @@ export function ConfigForm() {
     const f = form, c = config, s = form.simulador, cs = config.simulador;
     switch (key) {
       case "motor":         return f.convencionTasa !== c.convencionTasa || f.sistemaAmortizacion !== c.sistemaAmortizacion;
-      case "mora":          return f.moraActiva !== c.moraActiva || f.tasaMoraDiaria !== c.tasaMoraDiaria || f.baseMora !== c.baseMora;
+      case "mora":          return f.moraActiva !== c.moraActiva || f.tasaMoraDiaria !== c.tasaMoraDiaria;
       case "cobranza":      return !eq(f.cobranzaConfig ?? null, c.cobranzaConfig ?? null);
       case "notificaciones": return !eq(f.notificacionesConfig ?? null, c.notificacionesConfig ?? null);
       case "imputacion":    return f.imputarCargos !== c.imputarCargos;
@@ -689,9 +690,9 @@ export function ConfigForm() {
           {/* Mora */}
           <Section title="Interés por mora" desc="Recargo aplicado por días de atraso. Apagá el switch para no cobrar mora." ayuda={AYUDA.mora}
             enabled={form.moraActiva} onToggle={v => set("moraActiva", v)}
-            onSave={() => save("mora", { moraActiva: form.moraActiva, tasaMoraDiaria: form.tasaMoraDiaria, baseMora: form.baseMora })}
+            onSave={() => save("mora", { moraActiva: form.moraActiva, tasaMoraDiaria: form.tasaMoraDiaria })}
             saving={savingKey === "mora"} saved={savedKey === "mora"} dirty={isDirty("mora")}>
-            <div className={`grid grid-cols-1 sm:grid-cols-2 gap-4 transition-opacity ${form.moraActiva ? "" : "opacity-50"}`}>
+            <div className={`grid grid-cols-1 gap-4 max-w-sm transition-opacity ${form.moraActiva ? "" : "opacity-50"}`}>
               <Field label="Tasa de mora diaria (%)" hint="Porcentaje diario sobre la base de mora">
                 <div className="relative">
                   <Input
@@ -704,12 +705,7 @@ export function ConfigForm() {
                   <Percent className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
                 </div>
               </Field>
-              <Field label="Base de cálculo" hint="Sobre qué monto se calcula la mora">
-                <Select value={form.baseMora} onChange={e => set("baseMora", e.target.value as ConfiguracionFinanciera["baseMora"])} disabled={!form.moraActiva}>
-                  <option value="cuota">Valor de la cuota</option>
-                  <option value="saldo">Saldo pendiente</option>
-                </Select>
-              </Field>
+
             </div>
           </Section>
 

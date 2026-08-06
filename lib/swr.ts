@@ -769,7 +769,6 @@ export interface ConfiguracionFinanciera {
   sistemaAmortizacion: "frances";
   moraActiva: boolean;
   tasaMoraDiaria: number;
-  baseMora: "cuota" | "saldo";
   ordenImputacion: Array<"mora" | "interes" | "capital">;
   imputarCargos: "integrado" | "separado";
   moneda: string;
