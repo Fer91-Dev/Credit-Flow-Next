@@ -2,7 +2,7 @@ import { requireAuth, requireRole, scopeCreditosVendedor, ApiError } from "@/lib
 import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
-import { cuotaMensualFrancesa, tasaPeriodicaSegunConvencion, interesMora, normalizarFrecuencia, resolverFrecuencia, sumarPeriodos, construirPlanAmortizacion, planACuotas, estadoCoherente, etiquetaCaja, esCuentaValida, validarParametrosOtorgamiento, diasMoraActual, CUENTA_LABEL, type Cuenta, type FrecuenciaDef, ESTADOS_VIVOS, esCreditoVivo, moraDelCredito, moraDesdeCronograma } from "@/lib/domain";
+import { cuotaMensualFrancesa, tasaPeriodicaSegunConvencion, interesMora, normalizarFrecuencia, resolverFrecuencia, sumarPeriodos, construirPlanAmortizacion, planACuotas, estadoCoherente, etiquetaCaja, esCuentaValida, validarParametrosOtorgamiento, diasMoraActual, CUENTA_LABEL, type Cuenta, type FrecuenciaDef, ESTADOS_VIVOS, esCreditoVivo, moraDelCredito, moraDesdeCronograma, moraPendienteTotal } from "@/lib/domain";
 import { siguienteNumeroComprobante } from "@/lib/comprobantes";
 import { assertFondosSuficientesTx } from "@/lib/caja-fondos";
 import { getConfiguracion } from "@/lib/config";
@@ -44,6 +44,8 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     prisma.creditos.findMany({
       where,
       include: {
+        // Cuotas mínimas para calcular la mora EXACTA (cuota por cuota, como al cobrar).
+        cuotas: { select: { fecha_vencimiento: true, cuota_total: true, pagado_mora: true } },
         cliente: { select: { id: true, nombre: true, apellido: true, documento: true } },
         vendedor: { select: { id: true, nombre: true } },
         pagos: { orderBy: { fecha: "desc" }, take: 5 },
@@ -78,17 +80,19 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
       c.monto_original > 0 &&
       c.plazo_meses >= 1
     ) {
-      const frec = normalizarFrecuencia(c.frecuencia);
-      const catFrec = c.frecuencia_def ? [c.frecuencia_def as unknown as FrecuenciaDef] : config.simulador.frecuencias;
-      const tasaPeriodica = tasaPeriodicaSegunConvencion(c.tasa, config.convencionTasa, frec, catFrec);
-      const cuota = cuotaMensualFrancesa(c.monto_original, tasaPeriodica, c.plazo_meses);
       const graciaCred = (c.cronograma as { diasGracia?: number } | null)?.diasGracia ?? config.simulador.diasGracia;
-      interes_mora = interesMora(cuota, dmora, { tasaDiaria: mc.tasaMoraDiaria, diasGracia: graciaCred });
+      // Cuota por cuota, igual que la imputación al cobrar. Antes era UNA cuota × los días
+      // de la más vieja, que con varias vencidas mostraba menos de la mitad de lo real.
+      interes_mora = moraPendienteTotal(
+        c.cuotas.map((q) => ({ fechaVencimiento: q.fecha_vencimiento, cuotaTotal: q.cuota_total, pagadoMora: q.pagado_mora })),
+        { tasaDiaria: mc.tasaMoraDiaria, diasGracia: graciaCred, hoy },
+      );
     }
     // Estado reconciliado: defensa de lectura ante datos legacy. La lista no carga
     // cuotas, así que se valida contra el saldo (autoritativo, derivado del ledger).
     const estado = estadoCoherente(c.estado, c.saldo_pendiente);
-    return { ...c, estado, dias_mora: dmora, interes_mora, tiene_pagos: c.pagos.length > 0 };
+    const { cuotas: _cuotas, ...credito } = c; // no viajan al cliente: solo alimentan la mora
+    return { ...credito, estado, dias_mora: dmora, interes_mora, tiene_pagos: c.pagos.length > 0 };
   });
 
   return successResponse({

@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { registrarAuditoria } from "@/lib/audit";
 import { nombreCompleto } from "@/lib/utils";
 import { normalizarCuit, validarDuplicadoCliente } from "@/lib/clientes-validacion";
-import { cuotaMensualFrancesa, tasaPeriodicaSegunConvencion, normalizarFrecuencia, interesMora, diasAtraso, round2, estadoCoherente, esCreditoVivo, moraDelCredito, moraDesdeCronograma } from "@/lib/domain";
+import { cuotaMensualFrancesa, tasaPeriodicaSegunConvencion, normalizarFrecuencia, interesMora, diasAtraso, round2, estadoCoherente, esCreditoVivo, moraDelCredito, moraDesdeCronograma, moraPendienteTotal } from "@/lib/domain";
 import { getConfiguracion, getRiesgoConfig } from "@/lib/config";
 import type { NextRequest } from "next/server";
 
@@ -65,7 +65,11 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
       // La mora del CRÉDITO, no la de la config de hoy (ver moraDelCredito).
       const mc = moraDelCredito(moraDesdeCronograma(c.cronograma), config);
       if (mc.moraActiva && enMora) {
-        interes_mora = interesMora(cuota, c.dias_mora, { tasaDiaria: mc.tasaMoraDiaria });
+        // Cuota por cuota, igual que al cobrar (ver moraPendienteTotal).
+        interes_mora = moraPendienteTotal(
+          c.cuotas.map((q) => ({ fechaVencimiento: q.fecha_vencimiento, cuotaTotal: q.cuota_total, pagadoMora: q.pagado_mora })),
+          { tasaDiaria: mc.tasaMoraDiaria },
+        );
       }
     }
     const total_cobrado = c.pagos.filter((p) => !p.anulado).reduce((s, p) => s + p.monto, 0);
