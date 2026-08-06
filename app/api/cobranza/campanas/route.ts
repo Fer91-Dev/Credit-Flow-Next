@@ -2,7 +2,7 @@ import { requireRole, scopeCreditosVendedor } from "@/lib/auth";
 import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
-import { cuotaMensualFrancesa, tasaPeriodicaSegunConvencion, interesMora, normalizarFrecuencia, calculateRecoveryOffer, diasMoraActual, type FrecuenciaDef, type ConfiguracionFinanciera, moraDelCredito, moraDesdeCronograma } from "@/lib/domain";
+import { cuotaMensualFrancesa, tasaPeriodicaSegunConvencion, interesMora, normalizarFrecuencia, calculateRecoveryOffer, diasMoraActual, type FrecuenciaDef, type ConfiguracionFinanciera, moraDelCredito, moraDesdeCronograma, esCreditoVivo } from "@/lib/domain";
 import { getConfiguracion } from "@/lib/config";
 import { registrarAuditoria } from "@/lib/audit";
 import { hoyComercial } from "@/lib/utils";
@@ -26,10 +26,13 @@ type CreditoMora = {
 
 /** Interés de mora de un crédito, con el mismo criterio que GET /api/creditos. */
 function interesMoraDe(c: CreditoMora, config: ConfiguracionFinanciera): number {
+  // Condiciones del crédito, no de la config actual. Y VIVO incluye a los vencidos: un
+  // crédito al que ya se le cobró estando en mora es justamente el que va a una campaña.
+  const mc = moraDelCredito(moraDesdeCronograma(c.cronograma), config);
   if (
-    !config.moraActiva ||
+    !mc.moraActiva ||
     c.dias_mora <= 0 ||
-    c.estado !== "activo" ||
+    !esCreditoVivo(c.estado) ||
     c.monto_original <= 0 ||
     c.plazo_meses < 1
   ) {
@@ -40,8 +43,6 @@ function interesMoraDe(c: CreditoMora, config: ConfiguracionFinanciera): number 
   const tasaPeriodica = tasaPeriodicaSegunConvencion(c.tasa, config.convencionTasa, frec, catFrec);
   const cuota = cuotaMensualFrancesa(c.monto_original, tasaPeriodica, c.plazo_meses);
   const gracia = (c.cronograma as { diasGracia?: number } | null)?.diasGracia ?? config.simulador.diasGracia;
-  const mc = moraDelCredito(moraDesdeCronograma(c.cronograma), config);
-  if (!mc.moraActiva) return 0;
   return interesMora(cuota, c.dias_mora, { tasaDiaria: mc.tasaMoraDiaria, diasGracia: gracia });
 }
 

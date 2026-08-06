@@ -3,7 +3,7 @@ import { successResponse, withErrorHandler } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { nombreCompleto, hoyComercial } from "@/lib/utils";
-import { cuotaMensualFrancesa, tasaPeriodicaSegunConvencion, normalizarFrecuencia, interesMora, round2, costoFondeo, resumenOperaciones, diasMoraActual, esCreditoVivo } from "@/lib/domain";
+import { cuotaMensualFrancesa, tasaPeriodicaSegunConvencion, normalizarFrecuencia, interesMora, round2, costoFondeo, resumenOperaciones, diasMoraActual, esCreditoVivo, moraDelCredito, moraDesdeCronograma } from "@/lib/domain";
 import { getConfiguracion, getRentabilidadConfig } from "@/lib/config";
 import type { NextRequest } from "next/server";
 
@@ -41,6 +41,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
       select: {
         estado: true, monto_original: true, saldo_pendiente: true,
         tasa: true, plazo_meses: true, frecuencia: true, frecuencia_def: true, dias_mora: true, proximo_pago: true,
+        cronograma: true, // trae la mora congelada del crédito
         created_at: true, es_refinanciacion: true, tipo_credito: true,
       },
     }),
@@ -106,12 +107,15 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     .map((c) => ({ ...c, dias_mora: dmoraDe(c) }));
   let interesMoraTotal = 0;
   for (const c of enMora) {
-    if (config.moraActiva && c.monto_original > 0 && c.plazo_meses >= 1) {
+    // Cada crédito con SU tasa pactada. Usar la de hoy para todos hacía que cambiar la
+    // configuración reescribiera la mora histórica de la cartera entera en los reportes.
+    const mc = moraDelCredito(moraDesdeCronograma(c.cronograma), config);
+    if (mc.moraActiva && c.monto_original > 0 && c.plazo_meses >= 1) {
       const frec = normalizarFrecuencia(c.frecuencia);
       const catFrec = c.frecuencia_def ? [c.frecuencia_def as unknown as typeof config.simulador.frecuencias[number]] : config.simulador.frecuencias;
       const tasaPeriodica = tasaPeriodicaSegunConvencion(c.tasa, config.convencionTasa, frec, catFrec);
       const cuota = cuotaMensualFrancesa(c.monto_original, tasaPeriodica, c.plazo_meses);
-      interesMoraTotal += interesMora(cuota, c.dias_mora, { tasaDiaria: config.tasaMoraDiaria });
+      interesMoraTotal += interesMora(cuota, c.dias_mora, { tasaDiaria: mc.tasaMoraDiaria });
     }
   }
   const morosidad = {

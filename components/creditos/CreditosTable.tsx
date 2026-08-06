@@ -29,6 +29,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { useConfirm } from "@/components/ui/confirm";
 import { useToast } from "@/components/ui/toast";
+import { esCreditoVivo } from "@/lib/domain";
 
 function n0(x: number) {
   return new Intl.NumberFormat("es-AR", { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(x);
@@ -145,8 +146,9 @@ export function CreditosTable({ role }: { role: Role }) {
 
   // KPIs from all credits (portfolio picture, not filter-dependent)
   const kpis = useMemo(() => ({
-    activos:      creditos.filter(c => c.estado === "activo").length,
-    cartera:      creditos.filter(c => c.estado === "activo").reduce((s, c) => s + c.saldo_pendiente, 0),
+    // Cartera VIVA: incluye los vencidos, que siguen siendo plata en la calle.
+    activos:      creditos.filter(c => esCreditoVivo(c.estado)).length,
+    cartera:      creditos.filter(c => esCreditoVivo(c.estado)).reduce((s, c) => s + c.saldo_pendiente, 0),
     moraCritica:  creditos.filter(c => c.dias_mora > 30).length,
     pagados:      creditos.filter(c => c.estado === "pagado").length,
   }), [creditos]);
@@ -351,7 +353,7 @@ export function CreditosTable({ role }: { role: Role }) {
               { header: "Acciones", align: "right", className: "pr-5",
                 cell: (c) => (
                   <div className="flex justify-end gap-1" onClick={(e) => e.stopPropagation()}>
-                    {c.estado === "activo" && c.dias_mora > 0 && (
+                    {esCreditoVivo(c.estado) && c.dias_mora > 0 && (
                       <button onClick={() => setRefinanciar(c)} className="p-1.5 rounded-lg hover:bg-warning/10 transition-colors text-muted-foreground hover:text-warning" title="Refinanciar / reestructurar deuda">
                         <RefreshCw className="h-3.5 w-3.5" />
                       </button>
@@ -417,7 +419,7 @@ export function CreditosTable({ role }: { role: Role }) {
                       ? <StatusBadge label={`${c.dias_mora}d mora`} variant={c.dias_mora > 30 ? "destructive" : "warning"} />
                       : <span className="text-xs font-medium text-success">Al día</span>}
                     <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
-                      {c.estado === "activo" && c.dias_mora > 0 && (
+                      {esCreditoVivo(c.estado) && c.dias_mora > 0 && (
                         <button onClick={() => setRefinanciar(c)} className="p-1.5 rounded-lg hover:bg-warning/10 transition-colors text-muted-foreground hover:text-warning" title="Refinanciar">
                           <RefreshCw className="h-3.5 w-3.5" />
                         </button>
@@ -580,7 +582,7 @@ function RefinanciadosView({ creditos, onOpen, onRefinanciar }: { creditos: Cred
 
   // Candidatos a refinanciar = créditos activos en mora (lo que el server permite reestructurar).
   const candidatos = useMemo(
-    () => creditos.filter((c) => c.estado === "activo" && c.dias_mora > 0).sort((a, b) => b.dias_mora - a.dias_mora),
+    () => creditos.filter((c) => esCreditoVivo(c.estado) && c.dias_mora > 0).sort((a, b) => b.dias_mora - a.dias_mora),
     [creditos],
   );
   const [busq, setBusq] = useState("");

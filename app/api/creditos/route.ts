@@ -66,11 +66,15 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     // misma fórmula con la que se persiste, pero evaluada hoy → independiente del cron.
     const dmora = c.proximo_pago ? diasMoraActual(c.proximo_pago, hoy) : c.dias_mora;
     let interes_mora = 0;
+    // Manda lo CONGELADO en el crédito, no la config de hoy. Tener `config.moraActiva` en
+    // esta condición hacía que apagar la mora de la financiera mostrara $0 en la lista de
+    // morosos, mientras el cobro sí le seguía cobrando lo pactado: la pantalla decía una
+    // cosa y la caja hacía otra.
+    const mc = moraDelCredito(moraDesdeCronograma(c.cronograma), config);
     if (
-      config.moraActiva &&
+      mc.moraActiva &&
       dmora > 0 &&
       esCreditoVivo(c.estado) && // un vencido devenga mora igual que un activo atrasado
-
       c.monto_original > 0 &&
       c.plazo_meses >= 1
     ) {
@@ -79,8 +83,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
       const tasaPeriodica = tasaPeriodicaSegunConvencion(c.tasa, config.convencionTasa, frec, catFrec);
       const cuota = cuotaMensualFrancesa(c.monto_original, tasaPeriodica, c.plazo_meses);
       const graciaCred = (c.cronograma as { diasGracia?: number } | null)?.diasGracia ?? config.simulador.diasGracia;
-      const mc = moraDelCredito(moraDesdeCronograma(c.cronograma), config);
-      if (mc.moraActiva) interes_mora = interesMora(cuota, dmora, { tasaDiaria: mc.tasaMoraDiaria, diasGracia: graciaCred });
+      interes_mora = interesMora(cuota, dmora, { tasaDiaria: mc.tasaMoraDiaria, diasGracia: graciaCred });
     }
     // Estado reconciliado: defensa de lectura ante datos legacy. La lista no carga
     // cuotas, así que se valida contra el saldo (autoritativo, derivado del ledger).

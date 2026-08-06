@@ -53,16 +53,19 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
     // Estado reconciliado: nunca mostrar un terminal SALDADO (pagado/cancelado)
     // si el ledger todavía tiene deuda. Defensa ante datos legacy inconsistentes.
     const estadoReal = estadoCoherente(c.estado, c.saldo_pendiente, c.cuotas);
-    const enMora = c.dias_mora > 0 && estadoReal === "activo";
+    // VIVO, no "activo": tras cobrarle a un moroso el crédito queda en `vencido`, y ahí
+    // la ficha dejaba de mostrarle el interés de mora que igual se le está cobrando.
+    const enMora = c.dias_mora > 0 && esCreditoVivo(estadoReal);
     let cuota = 0;
     let interes_mora = 0;
     if (c.monto_original > 0 && c.plazo_meses >= 1) {
       const frec = normalizarFrecuencia(c.frecuencia);
       const tasaPeriodica = tasaPeriodicaSegunConvencion(c.tasa, config.convencionTasa, frec);
       cuota = cuotaMensualFrancesa(c.monto_original, tasaPeriodica, c.plazo_meses);
-      if (config.moraActiva && enMora) {
-        const mc = moraDelCredito(moraDesdeCronograma(c.cronograma), config);
-        if (mc.moraActiva) interes_mora = interesMora(cuota, c.dias_mora, { tasaDiaria: mc.tasaMoraDiaria });
+      // La mora del CRÉDITO, no la de la config de hoy (ver moraDelCredito).
+      const mc = moraDelCredito(moraDesdeCronograma(c.cronograma), config);
+      if (mc.moraActiva && enMora) {
+        interes_mora = interesMora(cuota, c.dias_mora, { tasaDiaria: mc.tasaMoraDiaria });
       }
     }
     const total_cobrado = c.pagos.filter((p) => !p.anulado).reduce((s, p) => s + p.monto, 0);
