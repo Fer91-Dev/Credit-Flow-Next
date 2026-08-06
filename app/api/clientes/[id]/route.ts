@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { registrarAuditoria } from "@/lib/audit";
 import { nombreCompleto } from "@/lib/utils";
 import { normalizarCuit, validarDuplicadoCliente } from "@/lib/clientes-validacion";
-import { cuotaMensualFrancesa, tasaPeriodicaSegunConvencion, normalizarFrecuencia, interesMora, diasAtraso, round2, estadoCoherente, esCreditoVivo } from "@/lib/domain";
+import { cuotaMensualFrancesa, tasaPeriodicaSegunConvencion, normalizarFrecuencia, interesMora, diasAtraso, round2, estadoCoherente, esCreditoVivo, moraDelCredito, moraDesdeCronograma } from "@/lib/domain";
 import { getConfiguracion, getRiesgoConfig } from "@/lib/config";
 import type { NextRequest } from "next/server";
 
@@ -61,7 +61,8 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
       const tasaPeriodica = tasaPeriodicaSegunConvencion(c.tasa, config.convencionTasa, frec);
       cuota = cuotaMensualFrancesa(c.monto_original, tasaPeriodica, c.plazo_meses);
       if (config.moraActiva && enMora) {
-        interes_mora = interesMora(cuota, c.dias_mora, { tasaDiaria: config.tasaMoraDiaria });
+        const mc = moraDelCredito(moraDesdeCronograma(c.cronograma), config);
+        if (mc.moraActiva) interes_mora = interesMora(cuota, c.dias_mora, { tasaDiaria: mc.tasaMoraDiaria });
       }
     }
     const total_cobrado = c.pagos.filter((p) => !p.anulado).reduce((s, p) => s + p.monto, 0);

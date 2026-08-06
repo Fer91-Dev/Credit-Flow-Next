@@ -59,6 +59,53 @@ export function diasMoraActual(proximoPago: Date | string | null | undefined, ho
  * @param config Tasa diaria opcional.
  */
 /**
+ * Condiciones de mora CONGELADAS en el crédito al otorgarlo.
+ *
+ * Van adentro del snapshot `creditos.cronograma`, junto a los días de gracia —que ya se
+ * congelaban ahí— para no agregar otra columna. La tolerancia estaba congelada y la tasa
+ * no: media condición viajaba con el crédito y la otra media se leía de la configuración
+ * del día en que alguien mirara.
+ */
+export interface MoraSnapshot {
+  activa: boolean;
+  tasaDiaria: number;
+  /** "cuota" | "saldo" — sobre qué se aplica el porcentaje. */
+  base: string;
+}
+
+/**
+ * Condiciones de mora que le corresponden a UN crédito.
+ *
+ * 🔴 Manda lo congelado al otorgar; la configuración actual es solo el fallback para los
+ * créditos viejos que se otorgaron antes de que esto existiera.
+ *
+ * Por qué importa: la mora no se acumula día a día, se recalcula cada vez que se mira
+ * (días de atraso × tasa). Sin congelarla, subir la tasa el mes que viene le cobraría a un
+ * moroso los punitorios de TODO su atraso a la tasa nueva, incluidos los meses en que
+ * regía la vieja — y bajarla le regalaría los que ya devengó. Las condiciones de un crédito
+ * son las del día en que se firmó.
+ */
+export function moraDelCredito(
+  snapshot: MoraSnapshot | null | undefined,
+  configActual: { moraActiva: boolean; tasaMoraDiaria: number; baseMora?: string },
+): { moraActiva: boolean; tasaMoraDiaria: number; baseMora: string } {
+  if (snapshot && typeof snapshot.tasaDiaria === "number" && typeof snapshot.activa === "boolean") {
+    return { moraActiva: snapshot.activa, tasaMoraDiaria: snapshot.tasaDiaria, baseMora: snapshot.base ?? "cuota" };
+  }
+  return {
+    moraActiva: configActual.moraActiva,
+    tasaMoraDiaria: configActual.tasaMoraDiaria,
+    baseMora: configActual.baseMora ?? "cuota",
+  };
+}
+
+/** Lee las condiciones de mora del snapshot `cronograma` de un crédito (o null si es viejo). */
+export function moraDesdeCronograma(cronograma: unknown): MoraSnapshot | null {
+  const c = cronograma as { mora?: MoraSnapshot } | null;
+  return c?.mora ?? null;
+}
+
+/**
  * Fecha hasta la cual corre la mora, cuando algo la CONGELA (hoy: un acuerdo de pago
  * vigente que se está cumpliendo).
  *

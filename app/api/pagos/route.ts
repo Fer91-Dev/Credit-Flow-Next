@@ -4,15 +4,7 @@ import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { sincronizarAcuerdos } from "@/lib/acuerdos";
 import { nombreCompleto, formatCreditoNumero, hoyComercial } from "@/lib/utils";
-import {
-  imputarPagoEnCuotas,
-  diasAtraso,
-  round2,
-  etiquetaCaja,
-  cuentaDeMetodo,
-  esCuentaValida,
-  type CuotaParaImputar,
-} from "@/lib/domain";
+import { imputarPagoEnCuotas, diasAtraso, round2, etiquetaCaja, cuentaDeMetodo, esCuentaValida, type CuotaParaImputar, moraDelCredito, moraDesdeCronograma } from "@/lib/domain";
 import { siguienteNumeroComprobante } from "@/lib/comprobantes";
 import { getConfiguracion } from "@/lib/config";
 import { registrarAuditoria } from "@/lib/audit";
@@ -203,10 +195,14 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     select: { fecha: true },
   });
 
+  // Condiciones de mora CONGELADAS al otorgar este crédito (la config actual solo es
+  // fallback para créditos viejos). Ver `moraDelCredito` en lib/domain/mora.ts.
+  const moraCred = moraDelCredito(moraDesdeCronograma(credito.cronograma), config);
+
   const resultado = imputarPagoEnCuotas(body.monto, cuotasDom, {
     modoCargos: config.imputarCargos,
-    moraActiva: config.moraActiva,
-    tasaMoraDiaria: config.tasaMoraDiaria,
+    moraActiva: moraCred.moraActiva,
+    tasaMoraDiaria: moraCred.tasaMoraDiaria,
     hoy: fechaPago,
     descuentoMoraPct,
     diasGracia: graciaCred,

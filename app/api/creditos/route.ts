@@ -2,26 +2,7 @@ import { requireAuth, requireRole, scopeCreditosVendedor, ApiError } from "@/lib
 import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
-import {
-  cuotaMensualFrancesa,
-  tasaPeriodicaSegunConvencion,
-  interesMora,
-  normalizarFrecuencia,
-  resolverFrecuencia,
-  sumarPeriodos,
-  construirPlanAmortizacion,
-  planACuotas,
-  estadoCoherente,
-  etiquetaCaja,
-  esCuentaValida,
-  validarParametrosOtorgamiento,
-  diasMoraActual,
-  CUENTA_LABEL,
-  type Cuenta,
-  type FrecuenciaDef,
-  ESTADOS_VIVOS,
-  esCreditoVivo,
-} from "@/lib/domain";
+import { cuotaMensualFrancesa, tasaPeriodicaSegunConvencion, interesMora, normalizarFrecuencia, resolverFrecuencia, sumarPeriodos, construirPlanAmortizacion, planACuotas, estadoCoherente, etiquetaCaja, esCuentaValida, validarParametrosOtorgamiento, diasMoraActual, CUENTA_LABEL, type Cuenta, type FrecuenciaDef, ESTADOS_VIVOS, esCreditoVivo, moraDelCredito, moraDesdeCronograma } from "@/lib/domain";
 import { siguienteNumeroComprobante } from "@/lib/comprobantes";
 import { assertFondosSuficientesTx } from "@/lib/caja-fondos";
 import { getConfiguracion } from "@/lib/config";
@@ -98,7 +79,8 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
       const tasaPeriodica = tasaPeriodicaSegunConvencion(c.tasa, config.convencionTasa, frec, catFrec);
       const cuota = cuotaMensualFrancesa(c.monto_original, tasaPeriodica, c.plazo_meses);
       const graciaCred = (c.cronograma as { diasGracia?: number } | null)?.diasGracia ?? config.simulador.diasGracia;
-      interes_mora = interesMora(cuota, dmora, { tasaDiaria: config.tasaMoraDiaria, diasGracia: graciaCred });
+      const mc = moraDelCredito(moraDesdeCronograma(c.cronograma), config);
+      if (mc.moraActiva) interes_mora = interesMora(cuota, dmora, { tasaDiaria: mc.tasaMoraDiaria, diasGracia: graciaCred });
     }
     // Estado reconciliado: defensa de lectura ante datos legacy. La lista no carga
     // cuotas, así que se valida contra el saldo (autoritativo, derivado del ledger).
@@ -318,6 +300,16 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     diasGracia: configActual.simulador.diasGracia,
     incluirSabado: configActual.simulador.incluirSabadoNoHabil,
     feriados: configActual.simulador.feriados,
+    // Condiciones de MORA del día en que se firma. Los días de gracia ya se congelaban
+    // acá; la tasa y el switch quedaban afuera, así que media condición viajaba con el
+    // crédito y la otra media se leía de la config del día en que alguien la mirara.
+    // Como la mora se recalcula al vuelo, sin esto cambiar la tasa reescribía hacia atrás
+    // los punitorios de todos los morosos.
+    mora: {
+      activa: configActual.moraActiva,
+      tasaDiaria: configActual.tasaMoraDiaria,
+      base: configActual.baseMora,
+    },
   };
 
   // ─── Riesgo / originación (motor base, TODOS los planes) ───

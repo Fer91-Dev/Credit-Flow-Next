@@ -2,16 +2,7 @@ import { requireRole, scopeCreditosVendedor } from "@/lib/auth";
 import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
-import {
-  cuotaMensualFrancesa,
-  tasaPeriodicaSegunConvencion,
-  interesMora,
-  normalizarFrecuencia,
-  calculateRecoveryOffer,
-  diasMoraActual,
-  type FrecuenciaDef,
-  type ConfiguracionFinanciera,
-} from "@/lib/domain";
+import { cuotaMensualFrancesa, tasaPeriodicaSegunConvencion, interesMora, normalizarFrecuencia, calculateRecoveryOffer, diasMoraActual, type FrecuenciaDef, type ConfiguracionFinanciera, moraDelCredito, moraDesdeCronograma } from "@/lib/domain";
 import { getConfiguracion } from "@/lib/config";
 import { registrarAuditoria } from "@/lib/audit";
 import { hoyComercial } from "@/lib/utils";
@@ -49,7 +40,9 @@ function interesMoraDe(c: CreditoMora, config: ConfiguracionFinanciera): number 
   const tasaPeriodica = tasaPeriodicaSegunConvencion(c.tasa, config.convencionTasa, frec, catFrec);
   const cuota = cuotaMensualFrancesa(c.monto_original, tasaPeriodica, c.plazo_meses);
   const gracia = (c.cronograma as { diasGracia?: number } | null)?.diasGracia ?? config.simulador.diasGracia;
-  return interesMora(cuota, c.dias_mora, { tasaDiaria: config.tasaMoraDiaria, diasGracia: gracia });
+  const mc = moraDelCredito(moraDesdeCronograma(c.cronograma), config);
+  if (!mc.moraActiva) return 0;
+  return interesMora(cuota, c.dias_mora, { tasaDiaria: mc.tasaMoraDiaria, diasGracia: gracia });
 }
 
 /** Métricas agregadas de una campaña a partir de sus objetivos. */

@@ -15,17 +15,7 @@ import { ApiError } from "@/lib/auth";
 import { registrarAuditoria } from "@/lib/audit";
 import { getAuditActor } from "@/lib/audit-context";
 import { getConfiguracion, getCobranzaConfig } from "@/lib/config";
-import {
-  calcularDeudaVencida,
-  planDeAcuerdo,
-  evaluarAcuerdo,
-  quitaMaxima,
-  round2,
-  noNegativo,
-  type CuotaParaImputar,
-  type DeudaVencida,
-  type AcuerdosConfig,
-} from "@/lib/domain";
+import { calcularDeudaVencida, planDeAcuerdo, evaluarAcuerdo, quitaMaxima, round2, noNegativo, type CuotaParaImputar, type DeudaVencida, type AcuerdosConfig, moraDelCredito, moraDesdeCronograma } from "@/lib/domain";
 import { hoyComercial } from "@/lib/utils";
 
 /** Crédito con lo necesario para calcular su deuda vencida. */
@@ -74,9 +64,11 @@ export async function deudaVencidaDeCredito(tenantId: string, creditoId: string)
     pagadoCargos: c.pagado_cargos,
   }));
 
+  // Lo que se acuerda es la deuda bajo las condiciones del crédito, no las de hoy.
+  const moraCred = moraDelCredito(moraDesdeCronograma(credito.cronograma), config);
   const deuda = calcularDeudaVencida(cuotasDom, {
-    moraActiva: config.moraActiva,
-    tasaMoraDiaria: config.tasaMoraDiaria,
+    moraActiva: moraCred.moraActiva,
+    tasaMoraDiaria: moraCred.tasaMoraDiaria,
     diasGracia: gracia,
   });
 
