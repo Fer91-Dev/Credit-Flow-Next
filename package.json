@@ -8,7 +8,7 @@
     "build": "next build",
     "start": "next start",
     "postinstall": "prisma generate",
-    "reset:test": "node prisma/sql/reset_datos_ficticios.mjs",
+    "reset:test": "node --env-file=.env.local prisma/sql/reset_datos_ficticios.mjs",
     "seed:productos": "node scripts/seed-catalogo.mjs",
     "seed:reportes": "node scripts/seed-reportes-demo.mjs"
   },
