@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { sincronizarAcuerdos } from "@/lib/acuerdos";
 import { Prisma } from "@prisma/client";
-import { sinDeuda } from "@/lib/domain";
+import { sinDeuda, ESTADOS_VIVOS } from "@/lib/domain";
 
 // Reglas de mora para disparar notificaciones
 const REGLAS = [
@@ -88,7 +88,7 @@ async function ejecutarCron(req: NextRequest) {
       const creditos = await prisma.creditos.findMany({
         where: {
           tenant_id: config.tenant_id,
-          estado: "activo",
+          estado: { in: [...ESTADOS_VIVOS] },
           ...(regla.dias < 0
             ? { proximo_pago: fechaObjetivo }          // cuota por vencer
             : { dias_mora: regla.dias === 0 ? { gt: 0, lte: 1 } : regla.dias }),

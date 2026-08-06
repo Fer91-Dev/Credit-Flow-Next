@@ -5,15 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { registrarAuditoria } from "@/lib/audit";
 import { nombreCompleto } from "@/lib/utils";
 import { normalizarCuit, validarDuplicadoCliente } from "@/lib/clientes-validacion";
-import {
-  cuotaMensualFrancesa,
-  tasaPeriodicaSegunConvencion,
-  normalizarFrecuencia,
-  interesMora,
-  diasAtraso,
-  round2,
-  estadoCoherente,
-} from "@/lib/domain";
+import { cuotaMensualFrancesa, tasaPeriodicaSegunConvencion, normalizarFrecuencia, interesMora, diasAtraso, round2, estadoCoherente, esCreditoVivo } from "@/lib/domain";
 import { getConfiguracion, getRiesgoConfig } from "@/lib/config";
 import type { NextRequest } from "next/server";
 
@@ -102,7 +94,7 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
     return { ...rest, estado: estadoReal, cuota, interes_mora, total_cobrado, cuotas_resumen };
   });
 
-  const activos = creditosConFinanzas.filter((c) => c.estado === "activo");
+  const activos = creditosConFinanzas.filter((c) => esCreditoVivo(c.estado));
   const enMora = activos.filter((c) => c.dias_mora > 0);
 
   const estado_cuenta = {

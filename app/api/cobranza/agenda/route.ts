@@ -4,7 +4,7 @@ import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { getCobranzaConfig } from "@/lib/config";
 import { sincronizarAcuerdos, creditosConAcuerdoVigente } from "@/lib/acuerdos";
-import { diasMoraActual } from "@/lib/domain";
+import { diasMoraActual, ESTADOS_VIVOS } from "@/lib/domain";
 import { nombreCompleto, hoyComercial } from "@/lib/utils";
 import type { NextRequest } from "next/server";
 
@@ -53,7 +53,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   // `proximo_pago` vencido (filtro EN VIVO, independiente del cache `dias_mora` que no se avanza
   // día a día); así un moroso nunca cobrado aparece igual en la agenda.
   const creditos = await prisma.creditos.findMany({
-    where: { ...withTenant(tenantId), ...scopeCreditosVendedor({ role, vendedorId }), estado: "activo", proximo_pago: { lt: hoy } },
+    where: { ...withTenant(tenantId), ...scopeCreditosVendedor({ role, vendedorId }), estado: { in: [...ESTADOS_VIVOS] }, proximo_pago: { lt: hoy } },
     select: {
       id: true, numero: true, saldo_pendiente: true, proximo_pago: true,
       cliente: { select: { nombre: true, apellido: true, telefono: true } },

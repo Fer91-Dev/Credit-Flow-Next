@@ -19,6 +19,8 @@ import {
   CUENTA_LABEL,
   type Cuenta,
   type FrecuenciaDef,
+  ESTADOS_VIVOS,
+  esCreditoVivo,
 } from "@/lib/domain";
 import { siguienteNumeroComprobante } from "@/lib/comprobantes";
 import { assertFondosSuficientesTx } from "@/lib/caja-fondos";
@@ -50,7 +52,11 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
 
   // Anti-IDOR: el vendedor solo ve SUS créditos; admin/cobrador ven todo el tenant.
   const where: Record<string, any> = { ...withTenant(tenantId), ...scopeCreditosVendedor({ role, vendedorId }) };
-  if (estado) where.estado = estado;
+  // `estado=vivos` = activo + vencido, o sea "sigue en cartera y se le puede cobrar".
+  // Un `vencido` es un activo atrasado; filtrar por "activo" a secas deja afuera justo a
+  // los morosos. Ver ESTADOS_VIVOS en lib/domain/credito-estado.ts.
+  if (estado === "vivos") where.estado = { in: [...ESTADOS_VIVOS] };
+  else if (estado) where.estado = estado;
   if (clienteId) where.cliente_id = clienteId;
 
   const [creditos, total] = await Promise.all([
@@ -82,7 +88,8 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     if (
       config.moraActiva &&
       dmora > 0 &&
-      c.estado === "activo" &&
+      esCreditoVivo(c.estado) && // un vencido devenga mora igual que un activo atrasado
+
       c.monto_original > 0 &&
       c.plazo_meses >= 1
     ) {

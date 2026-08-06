@@ -15,6 +15,7 @@ import { useToast } from "@/components/ui/toast";
 import { formatCreditoNumero, formatFecha, nombreCompleto } from "@/lib/utils";
 import { Stat } from "@/components/ui/Stat";
 import { Skeleton } from "@/components/ui/skeleton";
+import { esCreditoVivo } from "@/lib/domain";
 
 function n2(x: number) {
   return new Intl.NumberFormat("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(x);
@@ -51,7 +52,7 @@ const metodoLabel: Record<string, string> = {
  */
 export function CreditoDetail({ credito, role, onRefinanciar }: { credito: Credito; role?: Role; onRefinanciar?: (c: Credito) => void }) {
   // Refinanciable = crédito activo y en mora (misma regla que el server exige para reestructurar).
-  const refinanciable = credito.estado === "activo" && credito.dias_mora > 0;
+  const refinanciable = esCreditoVivo(credito.estado) && credito.dias_mora > 0;
   const { amortizacion } = useAmortizacion(credito.id);
   const { cuotas, resumen, isLoading: loadingCuotas } = useCuotas(credito.id);
   const { pagos, isLoading: loadingPagos } = usePagosByCredito(credito.id);
@@ -124,7 +125,7 @@ export function CreditoDetail({ credito, role, onRefinanciar }: { credito: Credi
   };
 
   // Solo se puede cobrar un crédito activo con saldo pendiente.
-  const puedeCobrar = credito.estado === "activo" && credito.saldo_pendiente > 0;
+  const puedeCobrar = esCreditoVivo(credito.estado) && credito.saldo_pendiente > 0;
 
   const est = estadoBadge(credito.estado);
   const totalCobrado = pagos.filter(p => !p.anulado).reduce((s, p) => s + p.monto, 0);

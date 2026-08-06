@@ -6,13 +6,7 @@
  * Feature premium: el llamador decide si corre (ctxHasFeature) — este helper no gatea.
  */
 import { prisma } from "@/lib/prisma";
-import {
-  calcularScore,
-  evaluarOriginacion,
-  type ResultadoOriginacion,
-  type ScoreResult,
-  type SenalesBureau,
-} from "@/lib/domain";
+import { calcularScore, evaluarOriginacion, type ResultadoOriginacion, type ScoreResult, type SenalesBureau, esCreditoVivo } from "@/lib/domain";
 import { getRiesgoConfig } from "@/lib/config";
 
 export interface EvaluacionRiesgo extends ResultadoOriginacion {
@@ -53,7 +47,7 @@ export async function evaluarClienteParaCredito(params: {
   });
   const idsVivos = creditos.filter((c) => c.estado === "activo" || c.estado === "vencido").map((c) => c.id);
   const maxDiasMora = creditos
-    .filter((c) => c.estado === "activo")
+    .filter((c) => esCreditoVivo(c.estado))
     .reduce((m, c) => Math.max(m, c.dias_mora), 0);
 
   const cuotas = creditos.length

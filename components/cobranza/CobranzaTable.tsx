@@ -25,6 +25,7 @@ import { BuscadorF3 } from "@/components/ui/BuscadorF3";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ModalHeader } from "@/components/ui/form-kit";
 import { Skeleton } from "@/components/ui/skeleton";
+import { esCreditoVivo } from "@/lib/domain";
 
 function n0(x: number) {
   return new Intl.NumberFormat("es-AR", { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(x);
@@ -121,7 +122,7 @@ export function CobranzaTable({ role }: { role: Role }) {
 
   // Solo créditos activos en mora — comparten caché con la sección Créditos.
   const creditos = useMemo(
-    () => allCreditos.filter(c => c.dias_mora > 0 && c.estado === "activo"),
+    () => allCreditos.filter(c => c.dias_mora > 0 && esCreditoVivo(c.estado)),
     [allCreditos],
   );
 
@@ -147,7 +148,7 @@ export function CobranzaTable({ role }: { role: Role }) {
 
   // Total Esperado (saldo de toda la cartera activa) vs Total en Mora (saldo vencido)
   const panel = useMemo(() => {
-    const activos = allCreditos.filter(c => c.estado === "activo");
+    const activos = allCreditos.filter(c => esCreditoVivo(c.estado));
     const esperado = activos.reduce((s, c) => s + c.saldo_pendiente, 0);
     const enMora = creditos.reduce((s, c) => s + c.saldo_pendiente, 0);
     return { esperado, enMora, alDia: Math.max(0, esperado - enMora) };

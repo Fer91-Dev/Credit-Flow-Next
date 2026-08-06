@@ -1,11 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { withTenant } from "@/app/lib/db";
 import { getGamificacionConfig } from "@/lib/config";
-import {
-  cumplimientoMeta, scoreCumplimiento, medallaDePeriodo, puntosMedalla,
-  rangoDesdePuntos, maxRacha, masUnDia,
-  type Medalla, type CumplimientoMeta, type RangoInfo, type GamificacionConfig,
-} from "@/lib/domain";
+import { cumplimientoMeta, scoreCumplimiento, medallaDePeriodo, puntosMedalla, rangoDesdePuntos, maxRacha, masUnDia, type Medalla, type CumplimientoMeta, type RangoInfo, type GamificacionConfig, esCreditoVivo } from "@/lib/domain";
 
 /** Una fila del historial de logros (un período). */
 export interface LogroPeriodo {
@@ -61,7 +57,7 @@ export async function construirLogrosVendedor(tenantId: string, vendedorId: stri
   ]);
 
   // Cartera sana: morosidad actual de su cartera activa (también alimenta el peso "calidad").
-  const activos = creditos.filter((c) => c.estado === "activo");
+  const activos = creditos.filter((c) => esCreditoVivo(c.estado));
   const cartera = activos.reduce((s, c) => s + c.saldo_pendiente, 0);
   const enMora = activos.filter((c) => c.dias_mora > 0).reduce((s, c) => s + c.saldo_pendiente, 0);
   const morosidad = cartera > 0 ? Math.round((enMora / cartera) * 100) : 0;

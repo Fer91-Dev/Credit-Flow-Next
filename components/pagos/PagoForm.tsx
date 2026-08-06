@@ -244,9 +244,11 @@ export function PagoForm({ creditoId, clienteId, montoSugerido, motivoSugerido, 
   const [result,       setResult]       = useState<{ pagoId: string; imp: Imputacion } | null>(null);
   const [reciboBusy,   setReciboBusy]   = useState(false);
 
-  // Carga inicial de créditos activos
+  // Carga inicial de créditos VIVOS (activo + vencido). Con "activo" a secas, un
+  // moroso al que ya se le cobró una vez desaparecía de la terminal: el cobro lo pasa a
+  // "vencido" y dejaba de listarse justo a quien más hay que cobrarle.
   useEffect(() => {
-    fetch("/api/creditos?estado=activo&limit=1000")
+    fetch("/api/creditos?estado=vivos&limit=1000")
       .then(r => r.json())
       .then(j => {
         if (!j.ok) return;
@@ -450,7 +452,7 @@ export function PagoForm({ creditoId, clienteId, montoSugerido, motivoSugerido, 
             /* Créditos del cliente — picker (1 o más, siempre explícito) */
             creditos.length === 0 ? (
               <p className="rounded-xl border border-dashed border-border/60 px-4 py-8 text-center text-xs text-muted-foreground/60">
-                Este cliente no tiene créditos activos.
+                Este cliente no tiene créditos por cobrar.
               </p>
             ) : (
               <div className="space-y-2.5">

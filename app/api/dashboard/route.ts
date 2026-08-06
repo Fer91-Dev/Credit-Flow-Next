@@ -2,7 +2,7 @@ import { requireAuth } from "@/lib/auth";
 import { successResponse, withErrorHandler } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
-import { diasMoraActual } from "@/lib/domain";
+import { diasMoraActual, ESTADOS_VIVOS, esCreditoVivo } from "@/lib/domain";
 import { hoyComercial } from "@/lib/utils";
 import type { NextRequest } from "next/server";
 
@@ -54,7 +54,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   const [clientes, creditos, pagosTotal, cuotasPeriodo, personal] = await Promise.all([
     // Clientes activos (filtra por zona si corresponde)
     prisma.clientes.count({
-      where: { ...withTenant(tenantId), estado: "activo", ...(zona ? { zona } : {}) },
+      where: { ...withTenant(tenantId), estado: { in: [...ESTADOS_VIVOS] }, ...(zona ? { zona } : {}) },
     }),
 
     // Créditos (con filtro de vendedor/zona)
@@ -110,7 +110,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     dias_mora: c.proximo_pago ? diasMoraActual(c.proximo_pago, hoy) : c.dias_mora,
   }));
 
-  const creditosActivos = creditosDM.filter((c) => c.estado === "activo").length;
+  const creditosActivos = creditosDM.filter((c) => esCreditoVivo(c.estado)).length;
   const creditosPagados = creditosDM.filter((c) => c.estado === "pagado").length;
   const carteraTotal = creditosDM.reduce((sum, c) => sum + c.saldo_pendiente, 0);
   const moraCritica = creditosDM.filter((c) => c.dias_mora > 30).length;
