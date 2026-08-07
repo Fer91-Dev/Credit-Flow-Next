@@ -9,7 +9,6 @@ import {
   resolverSimulador,
   resolverGamificacion,
   type ConfiguracionFinanciera,
-  type ComponenteDeuda,
   type ConvencionTasa,
   type SistemaAmortizacion,
   type SimuladorConfig,
@@ -40,10 +39,8 @@ export async function getConfiguracion(
     sistemaAmortizacion: row.sistema_amortizacion as SistemaAmortizacion,
     moraActiva: row.mora_activa,
     tasaMoraDiaria: row.tasa_mora_diaria,
-    ordenImputacion: row.orden_imputacion
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean) as ComponenteDeuda[],
+    // `orden_imputacion` ya no se lee: el orden es fijo (ORDEN_IMPUTACION en domain/payments).
+    // La columna queda inerte, mismo criterio que `base_mora` y `vendedores.rol`.
     imputarCargos: row.imputar_cargos as ConfiguracionFinanciera["imputarCargos"],
     moneda: row.moneda,
     locale: row.locale,
@@ -61,7 +58,6 @@ export async function guardarConfiguracion(
     sistema_amortizacion: config.sistemaAmortizacion,
     mora_activa: config.moraActiva,
     tasa_mora_diaria: config.tasaMoraDiaria,
-    orden_imputacion: config.ordenImputacion.join(","),
     imputar_cargos: config.imputarCargos,
     moneda: config.moneda,
     locale: config.locale,

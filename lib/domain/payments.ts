@@ -15,6 +15,34 @@ import { diasAtraso, interesMora, fechaTopeMora } from "./mora";
 /** Cómo se imputan los cargos del período respecto del interés. */
 export type ModoImputacionCargos = "integrado" | "separado";
 
+/**
+ * Orden en que un pago cubre la deuda. **Es el orden que aplica `imputarPago` de verdad**, y
+ * existe como constante para que la pantalla de Configuración lo muestre desde acá.
+ *
+ * 🔴 NO se configura por tenant, y es a propósito:
+ *
+ * 1. **Lo dice la ley.** El art. 903 del Código Civil y Comercial argentino establece que un
+ *    pago a cuenta de capital e intereses se imputa PRIMERO A INTERESES, salvo que el
+ *    acreedor otorgue recibo por cuenta del capital. No es una preferencia de la casa: es la
+ *    regla supletoria que rige para cualquier financiera del país, así que no hay nada que
+ *    diferenciar entre un tenant y otro.
+ * 2. **El resto del motor lo asume.** Si el capital bajara primero, cada pago achicaría el
+ *    préstamo mientras el interés y los punitorios impagos se siguen acumulando, y la mora
+ *    nunca dejaría de crecer aunque el cliente pague.
+ *
+ * Antes esto vivía en `configuraciones.orden_imputacion`: se guardaba, se podía editar por
+ * API y la pantalla lo dibujaba desde ahí, pero `imputarPago` nunca lo leyó. Guardar
+ * "capital → interés → mora" hacía que la pantalla mostrara ese orden mientras la caja
+ * cobraba el correcto — la pantalla mintiendo sobre lo que hace el motor.
+ *
+ * Lo único configurable es dónde entran los cargos (`ModoImputacionCargos`), que no altera
+ * ni lo que paga el cliente ni cuánto baja el capital.
+ */
+export const ORDEN_IMPUTACION = ["mora", "interes", "capital"] as const;
+
+/** Los componentes de la deuda, derivados del orden real para que no puedan divergir. */
+export type ComponenteDeuda = (typeof ORDEN_IMPUTACION)[number];
+
 export interface DeudaActual {
   /** Interés moratorio acumulado adeudado. */
   mora: number;

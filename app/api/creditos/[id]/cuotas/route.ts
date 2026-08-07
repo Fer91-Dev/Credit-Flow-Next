@@ -4,7 +4,7 @@ import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { frecuenciaLabel, normalizarFrecuencia, diasAtraso, round2, type FrecuenciaDef } from "@/lib/domain";
 import { formatComprobante } from "@/lib/comprobantes";
-import { nombreCompleto } from "@/lib/utils";
+import { nombreCompleto, hoyComercial } from "@/lib/utils";
 import type { NextRequest } from "next/server";
 
 interface RouteParams {
@@ -51,7 +51,9 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
     ? [credito.frecuencia_def as unknown as FrecuenciaDef]
     : undefined;
 
-  const hoy = new Date();
+  // Día comercial argentino, no el ahora en UTC: entre las 21:00 y la medianoche de
+  // Argentina, una cuota que vence hoy se mostraba ya como vencida en el cronograma.
+  const hoy = hoyComercial();
   const cuotas = credito.cuotas.map((c) => {
     const restante_capital = round2(Math.max(0, c.capital - c.pagado_capital));
     const capitalSaldado = c.pagado_capital >= round2(c.capital);

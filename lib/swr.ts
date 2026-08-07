@@ -769,7 +769,7 @@ export interface ConfiguracionFinanciera {
   sistemaAmortizacion: "frances";
   moraActiva: boolean;
   tasaMoraDiaria: number;
-  ordenImputacion: Array<"mora" | "interes" | "capital">;
+  // Sin `ordenImputacion`: el orden es fijo y se lee de ORDEN_IMPUTACION, no del servidor.
   imputarCargos: "integrado" | "separado";
   moneda: string;
   locale: string;

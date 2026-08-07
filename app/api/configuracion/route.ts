@@ -1,7 +1,7 @@
 import { requireAuth, requireRole } from "@/lib/auth";
 import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api";
 import { getConfiguracion, guardarConfiguracion, getComunicacionConfig, guardarComunicacionConfig, getGamificacionConfig, guardarGamificacionConfig, getRentabilidadConfig, guardarRentabilidadConfig, getRiesgoConfig, guardarRiesgoConfig, getCobranzaConfig, guardarCobranzaConfig, getNotificacionesConfig, guardarNotificacionesConfig, getDocumentosConfig, guardarDocumentosConfig, type ComunicacionConfig } from "@/lib/config";
-import { resolverConfig, resolverGamificacion, resolverRentabilidad, resolverRiesgo, resolverDocumentos, type ComponenteDeuda } from "@/lib/domain";
+import { resolverConfig, resolverGamificacion, resolverRentabilidad, resolverRiesgo, resolverDocumentos } from "@/lib/domain";
 import { registrarAuditoria } from "@/lib/audit";
 import type { NextRequest } from "next/server";
 
@@ -35,7 +35,6 @@ function resolveMasked(incoming: Record<string, unknown>, existing: Record<strin
 const CONVENCIONES = ["nominal_anual", "efectiva_anual", "mensual"];
 const BASES_MORA = ["cuota", "saldo"];
 const SISTEMAS = ["frances"];
-const COMPONENTES = ["mora", "interes", "capital"];
 const REDONDEOS = ["ninguno", "entero", "multiplo"];
 const MODOS_CARGOS = ["integrado", "separado"];
 
@@ -140,12 +139,9 @@ export const PUT = withErrorHandler(async (req: NextRequest) => {
   if (body.moraActiva !== undefined && typeof body.moraActiva !== "boolean") {
     return errorResponse("moraActiva debe ser booleano", "INVALID_INPUT", 400);
   }
-  if (body.ordenImputacion !== undefined) {
-    const orden = body.ordenImputacion as unknown[];
-    if (!Array.isArray(orden) || orden.length === 0 || !orden.every((c) => COMPONENTES.includes(c as string))) {
-      return errorResponse(`ordenImputacion debe ser un array no vacío de: ${COMPONENTES.join(", ")}`, "INVALID_INPUT", 400);
-    }
-  }
+  // `ordenImputacion` ya no se acepta: el orden es fijo (art. 903 CCyC) y vive en el dominio.
+  // Aceptarlo era peor que ignorarlo — se guardaba, la pantalla lo dibujaba desde la config y
+  // el motor seguía cobrando en el orden real, así que un valor raro hacía mentir a la pantalla.
   if (body.imputarCargos !== undefined && !MODOS_CARGOS.includes(body.imputarCargos)) {
     return errorResponse(`imputarCargos debe ser uno de: ${MODOS_CARGOS.join(", ")}`, "INVALID_INPUT", 400);
   }
@@ -156,7 +152,6 @@ export const PUT = withErrorHandler(async (req: NextRequest) => {
   const nueva = resolverConfig({
     ...actual,
     ...body,
-    ordenImputacion: (body.ordenImputacion as ComponenteDeuda[]) ?? actual.ordenImputacion,
     simulador: body.simulador ?? actual.simulador,
   });
 

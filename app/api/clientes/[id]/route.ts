@@ -3,7 +3,7 @@ import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api"
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { registrarAuditoria } from "@/lib/audit";
-import { nombreCompleto } from "@/lib/utils";
+import { nombreCompleto, hoyComercial } from "@/lib/utils";
 import { normalizarCuit, validarDuplicadoCliente } from "@/lib/clientes-validacion";
 import { cuotaMensualFrancesa, tasaPeriodicaSegunConvencion, normalizarFrecuencia, interesMora, diasAtraso, round2, estadoCoherente, esCreditoVivo, moraDelCredito, moraDesdeCronograma, moraPendienteTotal } from "@/lib/domain";
 import { getConfiguracion, getRiesgoConfig } from "@/lib/config";
@@ -66,9 +66,18 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
       const mc = moraDelCredito(moraDesdeCronograma(c.cronograma), config);
       if (mc.moraActiva && enMora) {
         // Cuota por cuota, igual que al cobrar (ver moraPendienteTotal).
+        //
+        // 🔴 `hoy` y `diasGracia` NO son opcionales acá aunque la firma los deje pasar.
+        // Faltaban los dos y la ficha mostraba más mora de la que cobra la caja:
+        //   · sin `hoy` se usa el ahora en UTC, que después de las 21:00 de Argentina ya
+        //     está en el día siguiente → un día de más POR CUOTA;
+        //   · sin `diasGracia` la tolerancia del crédito no se descuenta → tantos días de
+        //     más como días de gracia tenga configurados la financiera.
+        // La lista de créditos siempre pasó los dos; por eso las dos pantallas discrepaban.
+        const graciaCred = (c.cronograma as { diasGracia?: number } | null)?.diasGracia ?? config.simulador.diasGracia;
         interes_mora = moraPendienteTotal(
           c.cuotas.map((q) => ({ fechaVencimiento: q.fecha_vencimiento, cuotaTotal: q.cuota_total, pagadoMora: q.pagado_mora })),
-          { tasaDiaria: mc.tasaMoraDiaria },
+          { tasaDiaria: mc.tasaMoraDiaria, diasGracia: graciaCred, hoy: hoyComercial() },
         );
       }
     }
@@ -76,7 +85,9 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
 
     // Cronograma persistido: estado AUTORITATIVO (escrito por el motor cuota-dirigido,
     // Fase 6B); `vencida` se recalcula dinámicamente (depende de hoy).
-    const hoy = new Date();
+    // Día comercial argentino: con el ahora en UTC, entre las 21:00 y la medianoche de
+    // Argentina una cuota que vence hoy ya se mostraba como vencida.
+    const hoy = hoyComercial();
     const estadosCuota = c.cuotas.map((q) => {
       const capitalSaldado = q.pagado_capital >= round2(q.capital);
       if (capitalSaldado) return "pagada";

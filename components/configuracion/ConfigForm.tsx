@@ -7,7 +7,7 @@ import { FeatureGate } from "@/components/providers/FeaturesProvider";
 import { FinancieraForm } from "@/components/configuracion/FinancieraForm";
 import { BackupsView } from "@/components/configuracion/BackupsView";
 import type { SimuladorConfig, CargosConfig, FrecuenciaOpcion, DocumentosConfig } from "@/lib/domain";
-import { DOCUMENTOS_DEFAULT, revisarDocumentos } from "@/lib/domain";
+import { DOCUMENTOS_DEFAULT, revisarDocumentos, ORDEN_IMPUTACION } from "@/lib/domain";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Emoji } from "@/components/ui/Emoji";
 import { Field, Input, Select, Textarea, SecretInput } from "@/components/ui/field";
@@ -87,7 +87,7 @@ const AYUDA: Record<string, AyudaBloque> = {
       "La mora va primera para que la deuda deje de crecer: mientras queden punitorios sin pagar, el atraso sigue sumando.",
       "El capital va último a propósito. Si bajara primero, el préstamo se achicaría antes de haber cobrado lo que cuesta tenerlo.",
       "Además se salda la cuota MÁS VIEJA entera antes de tocar la siguiente — no se reparte un poco a cada una.",
-      "Ese orden es fijo y no se configura. Lo único que elegís acá es dónde entran los cargos (IVA, seguro, gastos) respecto del interés.",
+      "Ese orden es fijo y no se configura: es el que fija la ley por defecto (art. 903 del Código Civil y Comercial — un pago a cuenta de capital e intereses se imputa primero a intereses). Lo único que elegís acá es dónde entran los cargos.",
       "Elijas lo que elijas, el cliente paga lo mismo y el capital baja igual: cambia el reparto contable, no la plata.",
     ],
   },
@@ -818,20 +818,27 @@ export function ConfigForm() {
               Orden que aplica el motor
             </p>
             <div className="flex items-center gap-2 flex-wrap">
-              {form.ordenImputacion.map((c, i) => (
+              {/*
+                Se dibuja desde ORDEN_IMPUTACION, la constante que usa el propio motor. Antes
+                salía de la configuración guardada, que el motor no leía: bastaba un valor raro
+                en la base para que la pantalla mostrara un orden y la caja cobrara otro.
+              */}
+              {ORDEN_IMPUTACION.map((c, i) => (
                 <div key={c} className="flex items-center gap-2">
                   <StatusBadge
                     label={`${i + 1}. ${ordenLabel[c] ?? c}`}
                     variant={c === "mora" ? "destructive" : c === "interes" ? "warning" : "primary"}
                   />
-                  {i < form.ordenImputacion.length - 1 && <span className="text-muted-foreground/40">→</span>}
+                  {i < ORDEN_IMPUTACION.length - 1 && <span className="text-muted-foreground/40">→</span>}
                 </div>
               ))}
             </div>
             <p className="text-xs text-muted-foreground mt-3 max-w-2xl">
-              Es fijo. La mora va primera para que la deuda deje de crecer, y el capital último para no
-              achicar el préstamo antes de haber cobrado lo que cuesta tenerlo. Además se salda la cuota
-              más vieja entera antes de pasar a la siguiente.
+              Es fijo, y no por comodidad: el art. 903 del Código Civil y Comercial establece que un pago
+              a cuenta de capital e intereses se imputa primero a los intereses. Además la mora va primera
+              para que la deuda deje de crecer, el capital último para no achicar el préstamo antes de
+              haber cobrado lo que cuesta tenerlo, y se salda la cuota más vieja entera antes de pasar a
+              la siguiente.
             </p>
 
             <div className="mt-4 max-w-md border-t border-border pt-4">
