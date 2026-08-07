@@ -32,10 +32,16 @@ export interface AcuerdosConfig {
   congela_punitorios: boolean;
   /** Mientras está vigente, el crédito sale de la agenda de morosos (ya está gestionado). */
   saca_de_agenda: boolean;
-  /** Quita máxima (%) que puede otorgar un VENDEDOR sin autorización. 0 = no puede condonar. */
+  /**
+   * Quita máxima (%) que puede otorgar un VENDEDOR sin autorización. 0 = no puede condonar.
+   *
+   * El ADMIN no tiene tope configurable: condona hasta el 100% de lo condonable. Existió un
+   * `quita_max_admin_pct` y se sacó porque no limitaba a nadie — dentro de una financiera
+   * todos los admins tienen el mismo poder y todos entran a Configuración, así que el tope
+   * lo ponía la misma persona a la que supuestamente restringía, en la misma pantalla. El
+   * límite que sí importa —que la quita nunca toque el capital— vive en `quitaMaxima`.
+   */
   quita_max_vendedor_pct: number;
-  /** Quita máxima (%) que puede otorgar un ADMIN. 100 = sin tope. */
-  quita_max_admin_pct: number;
 }
 
 export const ACUERDOS_DEFAULT: AcuerdosConfig = {
@@ -45,7 +51,6 @@ export const ACUERDOS_DEFAULT: AcuerdosConfig = {
   congela_punitorios: true,
   saca_de_agenda: true,
   quita_max_vendedor_pct: 0,
-  quita_max_admin_pct: 100,
 };
 
 const entero = (v: unknown, def: number, min: number, max: number) => {
@@ -70,7 +75,6 @@ export function resolverAcuerdos(raw: unknown): AcuerdosConfig {
     congela_punitorios: bool(r.congela_punitorios, d.congela_punitorios),
     saca_de_agenda: bool(r.saca_de_agenda, d.saca_de_agenda),
     quita_max_vendedor_pct: pct(r.quita_max_vendedor_pct, d.quita_max_vendedor_pct),
-    quita_max_admin_pct: pct(r.quita_max_admin_pct, d.quita_max_admin_pct),
   };
 }
 
@@ -151,6 +155,10 @@ export function calcularDeudaVencida(
  * Tope de condonación según quién arma el acuerdo. La quita sale de la mora y el interés,
  * **nunca del capital**: condonar capital es regalar la plata prestada, y eso es una
  * decisión de otra naturaleza (para eso está el write-off).
+ *
+ * 🔴 Este es el único límite real, y es el que NO se configura. El admin llega al 100% de lo
+ * condonable porque un tope suyo sería autoimpuesto (lo edita él mismo en Configuración); el
+ * del vendedor sí limita, porque lo pone otro y el vendedor no entra a esa pantalla.
  */
 export function quitaMaxima(
   deuda: DeudaVencida,
@@ -158,8 +166,8 @@ export function quitaMaxima(
   config: AcuerdosConfig,
 ): number {
   const condonable = round2(deuda.mora + deuda.interes);
-  const tope = esAdmin ? config.quita_max_admin_pct : config.quita_max_vendedor_pct;
-  return round2(condonable * (tope / 100));
+  if (esAdmin) return condonable;
+  return round2(condonable * (config.quita_max_vendedor_pct / 100));
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

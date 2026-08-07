@@ -68,7 +68,7 @@ const AYUDA: Record<string, AyudaBloque> = {
       "Máximo de cuotas: hasta dónde puede estirar el vendedor sin consultar. No es lo que va a ofrecer siempre, es su techo.",
       "Días entre cuotas: cada cuánto vence una cuota DEL ACUERDO. Es independiente del crédito: podés acordar semanal aunque el crédito sea mensual.",
       "Cuotas impagas que lo rompen: con 1 sos estricto (falta a una y se cae); con 2 o 3 le das margen para un tropiezo.",
-      "Las dos quitas son topes de lo MISMO: cuánto se puede condonar. La del vendedor es lo que puede perdonar solo; la del admin es el techo de la financiera. Vendedor en 0 = toda quita la firma el admin.",
+      "Quita máx. del vendedor: cuánto puede perdonar por su cuenta. En 0 no condona nada y toda quita la firma un admin, que no tiene tope.",
       "La condonación sale de los punitorios y el interés, NUNCA del capital: la plata que se prestó de verdad no se regala.",
       "El acuerdo no toca el crédito: el cliente paga como siempre y el acuerdo se va cumpliendo solo con esos pagos.",
       "No hay botón para darlo por cumplido: se cumple cuando la plata entra, y eso lo detecta el sistema solo.",
@@ -771,18 +771,11 @@ export function ConfigForm() {
                   onChange={e => setAcuerdos({ cuotas_para_romper: Math.max(1, Math.round(parseFloat(e.target.value) || 1)) })}
                 />
               </Field>
-              <Field label="Quita máx. del vendedor (%)" hint="Cuánto de los punitorios e interés puede perdonar el vendedor por su cuenta. En 0 no condona nada: toda quita la firma el admin.">
+              <Field label="Quita máx. del vendedor (%)" hint="Cuánto de los punitorios e interés puede perdonar el vendedor por su cuenta. En 0 no condona nada: toda quita la firma un admin, que no tiene tope. El capital nunca se toca.">
                 <Input
                   type="number" min="0" max="100" step="1"
                   value={cobranza.acuerdos.quita_max_vendedor_pct}
                   onChange={e => setAcuerdos({ quita_max_vendedor_pct: Math.max(0, Math.min(100, parseFloat(e.target.value) || 0)) })}
-                />
-              </Field>
-              <Field label="Quita máx. del administrador (%)" hint="El techo de la financiera. En 100 puede perdonar todos los punitorios y el interés. El capital prestado nunca se toca.">
-                <Input
-                  type="number" min="0" max="100" step="1"
-                  value={cobranza.acuerdos.quita_max_admin_pct}
-                  onChange={e => setAcuerdos({ quita_max_admin_pct: Math.max(0, Math.min(100, parseFloat(e.target.value) || 0)) })}
                 />
               </Field>
             </div>
@@ -1393,7 +1386,7 @@ function defaultCobranza(): CobranzaConfig {
     acuerdos: {
       max_cuotas: 6, dias_entre_cuotas: 30, cuotas_para_romper: 1,
       congela_punitorios: true, saca_de_agenda: true,
-      quita_max_vendedor_pct: 0, quita_max_admin_pct: 100,
+      quita_max_vendedor_pct: 0,
     },
   };
 }
