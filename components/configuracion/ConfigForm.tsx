@@ -565,12 +565,13 @@ export function ConfigForm() {
               </Field>
             </div>
 
-            <div className={`mt-4 flex items-center justify-between rounded-lg border border-border px-4 py-3 transition-colors ${form.simulador.incluirSabadoNoHabil ? "bg-primary/[0.06] ring-1 ring-inset ring-primary/25" : "bg-muted/30"}`}>
-              <div>
-                <p className="text-sm font-medium text-foreground">Sábado no hábil</p>
-                <p className="text-xs text-muted-foreground">Si está activo, los vencimientos que caen sábado también se corren al lunes.</p>
-              </div>
-              <Toggle checked={form.simulador.incluirSabadoNoHabil} onChange={v => setSim("incluirSabadoNoHabil", v)} />
+            <div className="mt-4">
+              <SwitchRow
+                title="Sábado no hábil"
+                desc="Si está activo, los vencimientos que caen sábado también se corren al lunes."
+                checked={form.simulador.incluirSabadoNoHabil}
+                onChange={v => setSim("incluirSabadoNoHabil", v)}
+              />
             </div>
 
             <div className="mt-4">
@@ -773,20 +774,18 @@ export function ConfigForm() {
               </Field>
             </div>
             <div className="mt-4 flex flex-col gap-3 max-w-3xl">
-              <div className={`flex items-center justify-between rounded-lg border border-border px-4 py-3 transition-colors ${cobranza.acuerdos.congela_punitorios ? "bg-primary/[0.06] ring-1 ring-inset ring-primary/25" : "bg-muted/30"}`}>
-                <div>
-                  <p className="text-sm font-medium text-foreground">Congelar punitorios mientras cumple</p>
-                  <p className="text-xs text-muted-foreground">El incentivo para el deudor: si paga lo acordado, no se le sigue sumando mora.</p>
-                </div>
-                <Toggle checked={cobranza.acuerdos.congela_punitorios} onChange={v => setAcuerdos({ congela_punitorios: v })} />
-              </div>
-              <div className={`flex items-center justify-between rounded-lg border border-border px-4 py-3 transition-colors ${cobranza.acuerdos.saca_de_agenda ? "bg-primary/[0.06] ring-1 ring-inset ring-primary/25" : "bg-muted/30"}`}>
-                <div>
-                  <p className="text-sm font-medium text-foreground">Sacarlo de la agenda del día mientras cumple</p>
-                  <p className="text-xs text-muted-foreground">Quien está cumpliendo ya está gestionado. Llamarlo igual suele ser la forma más rápida de que deje de cumplir.</p>
-                </div>
-                <Toggle checked={cobranza.acuerdos.saca_de_agenda} onChange={v => setAcuerdos({ saca_de_agenda: v })} />
-              </div>
+              <SwitchRow
+                title="Congelar punitorios mientras cumple"
+                desc="El incentivo para el deudor: si paga lo acordado, no se le sigue sumando mora."
+                checked={cobranza.acuerdos.congela_punitorios}
+                onChange={v => setAcuerdos({ congela_punitorios: v })}
+              />
+              <SwitchRow
+                title="Sacarlo de la agenda del día mientras cumple"
+                desc="Quien está cumpliendo ya está gestionado. Llamarlo igual suele ser la forma más rápida de que deje de cumplir."
+                checked={cobranza.acuerdos.saca_de_agenda}
+                onChange={v => setAcuerdos({ saca_de_agenda: v })}
+              />
             </div>
           </Section>
 
@@ -1156,21 +1155,19 @@ export function ConfigForm() {
                 </Field>
               </div>
 
-              <div className={`flex items-center justify-between rounded-lg border border-border px-4 py-3 transition-colors ${riesgo.politica.bloquearConCuotasVencidas ? "bg-primary/[0.06] ring-1 ring-inset ring-primary/25" : "bg-muted/30"}`}>
-                <div>
-                  <p className="text-sm font-medium text-foreground">Bloquear si tiene cuotas vencidas impagas</p>
-                  <p className="text-xs text-muted-foreground">Impedimento absoluto: no se puede otorgar a un cliente que ya está en mora, ni siquiera con autorización del admin.</p>
-                </div>
-                <Toggle checked={riesgo.politica.bloquearConCuotasVencidas} onChange={v => setRiesgo({ bloquearConCuotasVencidas: v })} />
-              </div>
+              <SwitchRow
+                title="Bloquear si tiene cuotas vencidas impagas"
+                desc="Impedimento absoluto: no se puede otorgar a un cliente que ya está en mora, ni siquiera con autorización del admin."
+                checked={riesgo.politica.bloquearConCuotasVencidas}
+                onChange={v => setRiesgo({ bloquearConCuotasVencidas: v })}
+              />
 
-              <div className={`flex items-center justify-between rounded-lg border border-border px-4 py-3 transition-colors ${riesgo.politica.rechazaConChequesRechazados ? "bg-primary/[0.06] ring-1 ring-inset ring-primary/25" : "bg-muted/30"}`}>
-                <div>
-                  <p className="text-sm font-medium text-foreground">Rechazar con cheques rechazados</p>
-                  <p className="text-xs text-muted-foreground">Si el bureau informa cheques rechazados sin regularizar, el cliente no califica.</p>
-                </div>
-                <Toggle checked={riesgo.politica.rechazaConChequesRechazados} onChange={v => setRiesgo({ rechazaConChequesRechazados: v })} />
-              </div>
+              <SwitchRow
+                title="Rechazar con cheques rechazados"
+                desc="Si el bureau informa cheques rechazados sin regularizar, el cliente no califica."
+                checked={riesgo.politica.rechazaConChequesRechazados}
+                onChange={v => setRiesgo({ rechazaConChequesRechazados: v })}
+              />
 
               {/* ── Bureau de crédito (integración por API) — PREMIUM (plan Pro) ── */}
               <FeatureGate feature="bureau_credito">
@@ -1392,17 +1389,32 @@ function defaultNotificaciones(): NotificacionesConfig {
   return { movimientos_caja: true, respaldos: true, plan: true };
 }
 
-/** Fila de encendido/apagado de un aviso de la campanita (mismo look que el toggle de cronograma). */
-function NotifRow({ title, desc, checked, onChange }: { title: string; desc: string; checked: boolean; onChange: (v: boolean) => void }) {
+/**
+ * Fila de un ajuste de encendido/apagado.
+ *
+ * El estado se lee en TRES señales a la vez: el fondo teñido, la etiqueta "Activo/Inactivo"
+ * y la perilla. Suena redundante y no lo es — en un bloque con seis ajustes, lo que se busca
+ * de un vistazo es cuáles están prendidos, y eso se ve en el fondo mucho antes que en seis
+ * perillas del mismo tamaño.
+ *
+ * Este look ya existía repetido a mano en seis lugares del formulario; acá queda en uno solo
+ * para que no se despeguen entre sí.
+ */
+function SwitchRow({ title, desc, checked, onChange }: { title: string; desc?: string; checked: boolean; onChange: (v: boolean) => void }) {
   return (
     <div className={`flex items-center justify-between gap-3 rounded-lg border border-border px-4 py-3 transition-colors ${checked ? "bg-primary/[0.06] ring-1 ring-inset ring-primary/25" : "bg-muted/30"}`}>
       <div className="min-w-0">
         <p className="text-sm font-medium text-foreground">{title}</p>
-        <p className="text-xs text-muted-foreground">{desc}</p>
+        {desc && <p className="text-xs text-muted-foreground">{desc}</p>}
       </div>
       <Toggle checked={checked} onChange={onChange} />
     </div>
   );
+}
+
+/** Aviso de la campanita: es un `SwitchRow` con nombre propio para que se lea en su bloque. */
+function NotifRow({ title, desc, checked, onChange }: { title: string; desc: string; checked: boolean; onChange: (v: boolean) => void }) {
+  return <SwitchRow title={title} desc={desc} checked={checked} onChange={onChange} />;
 }
 
 function defaultRiesgo(): RiesgoConfig {
@@ -1484,7 +1496,14 @@ function Section({ title, desc, children, onSave, saving, saved, dirty, enabled,
           {onSave && <SaveButton saving={!!saving} saved={!!saved} dirty={dirty} onClick={onSave} />}
         </div>
       </div>
-      {children}
+      {/*
+        Un bloque apagado atenúa su contenido y deja de aceptar clics, igual que los bloques
+        de cargos y de canales. Faltaba justamente acá: se podía apagar Mora y seguir
+        escribiendo la tasa como si algo fuera a pasar con ese número.
+      */}
+      {onToggle ? (
+        <div className={enabled ? "" : "pointer-events-none select-none opacity-40"}>{children}</div>
+      ) : children}
     </div>
   );
 }
@@ -1689,7 +1708,7 @@ function FrecuenciasEditor({ frecuencias, onChange }: {
         <span className="w-4 shrink-0" />
       </div>
       {frecuencias.map(f => (
-        <div key={f.clave} className="flex items-center gap-3 rounded-lg border border-border bg-muted/20 px-3 py-2">
+        <div key={f.clave} className={`flex items-center gap-3 rounded-lg border border-border px-3 py-2 transition-colors ${f.activo ? "bg-primary/[0.06] ring-1 ring-inset ring-primary/25" : "bg-muted/20"}`}>
           <div className="min-w-0 flex-1">
             {f.builtin ? (
               <p className="text-sm font-medium text-foreground">{cap(f.label)}</p>
@@ -1785,6 +1804,18 @@ function CargoBlock({ title, desc, activo, onToggle, children, onSave, saving, s
   );
 }
 
+/**
+ * Switch de encendido/apagado de un ajuste del motor.
+ *
+ * 🔴 Lleva el estado ESCRITO al lado, no solo la perilla. Un switch pelado obliga a conocer
+ * la convención —¿la perilla a la derecha significa prendido?— y acá prender un cargo cambia
+ * lo que termina pagando el cliente: adivinar no es una opción. Además, media configuración
+ * son ajustes apagados por defecto, así que el estado que hay que poder leer de un vistazo
+ * es justamente el que menos se nota.
+ *
+ * El apagado usa `bg-muted` y no un blanco translúcido: el translúcido se veía bien en
+ * oscuro y desaparecía sobre las tarjetas del modo claro.
+ */
 function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
   return (
     <button
@@ -1792,11 +1823,23 @@ function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean
       role="switch"
       aria-checked={checked}
       onClick={() => onChange(!checked)}
-      className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full px-0.5 transition-colors ${checked ? "bg-primary" : "bg-white/[0.14] ring-1 ring-inset ring-white/10"}`}
+      className="inline-flex shrink-0 items-center gap-2 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
     >
+      {/*
+        Ancho fijo a propósito: "Activo" e "Inactivo" no miden lo mismo, y sin fijarlo los
+        controles que van a la derecha (la X de borrar en la lista de frecuencias) se corren
+        de fila en fila según el estado de cada una.
+      */}
+      <span className={`w-16 text-right text-[11px] font-semibold uppercase tracking-wide transition-colors ${checked ? "text-primary" : "text-muted-foreground"}`}>
+        {checked ? "Activo" : "Inactivo"}
+      </span>
       <span
-        className={`inline-block h-5 w-5 rounded-full bg-white shadow-sm transition-transform duration-200 ${checked ? "translate-x-5" : "translate-x-0"}`}
-      />
+        className={`relative inline-flex h-6 w-11 items-center rounded-full px-0.5 transition-colors ${checked ? "bg-primary" : "bg-muted ring-1 ring-inset ring-border"}`}
+      >
+        <span
+          className={`inline-block h-5 w-5 rounded-full shadow-sm transition-transform duration-200 ${checked ? "translate-x-5 bg-white" : "translate-x-0 bg-muted-foreground/60"}`}
+        />
+      </span>
     </button>
   );
 }
