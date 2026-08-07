@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { mutate as globalMutate } from "swr";
-import { Landmark, ArrowDownLeft, ArrowUpRight, Scale, Download, Plus, ChevronDown, ArrowLeftRight, ClipboardCheck, Wallet, Banknote, CircleDollarSign, FileText, CreditCard, ArrowRight, Users, X, PiggyBank } from "lucide-react";
+import { Landmark, ArrowDownLeft, ArrowUpRight, Scale, Download, Plus, ChevronDown, ArrowLeftRight, ClipboardCheck, Wallet, Banknote, CircleDollarSign, FileText, CreditCard, ArrowRight, Users, X, PiggyBank, Wrench } from "lucide-react";
 import { IconBadge } from "@/components/ui/IconBadge";
 import { DataTable } from "@/components/ui/DataTable";
 import { CuentaCard, CUENTAS, CUENTA_META } from "@/components/caja/CuentaCard";
@@ -161,45 +161,64 @@ export function CajaView() {
         accent="primary"
       />
 
-      {/* Barra de acciones (fuera del header) — con micro-animación al hover */}
-      <div className="flex flex-wrap items-center gap-2">
-        <button
-          onClick={() => setAjusteOpen(true)}
-          className="group flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium whitespace-nowrap transition-all hover:-translate-y-0.5 hover:shadow-lg hover:shadow-primary/25 active:translate-y-0"
-        >
-          <Emoji name="gear" className="h-4 w-4 transition-transform group-hover:scale-110 group-hover:rotate-90" /> Ajuste
-        </button>
-        <button
-          onClick={() => setTransferOpen(true)}
-          className="group flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-border text-foreground text-sm font-medium whitespace-nowrap transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:bg-muted hover:shadow-md hover:shadow-black/20 active:translate-y-0"
-        >
-          <Emoji name="money-with-wings" className="h-4 w-4 transition-transform group-hover:scale-110" /> Transferir
-        </button>
-        <button
-          onClick={() => setVendedorOpen(true)}
-          className="group flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-border text-foreground text-sm font-medium whitespace-nowrap transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:bg-muted hover:shadow-md hover:shadow-black/20 active:translate-y-0"
-        >
-          <Emoji name="busts-in-silhouette" className="h-4 w-4 transition-transform group-hover:scale-110" /> Caja vendedores
-        </button>
-        <button
-          onClick={() => setArqueoOpen(true)}
-          className="group flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-border text-foreground text-sm font-medium whitespace-nowrap transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:bg-muted hover:shadow-md hover:shadow-black/20 active:translate-y-0"
-        >
-          <Emoji name="balance-scale" className="h-4 w-4 transition-transform group-hover:scale-110" /> Arqueo
-        </button>
-        <button
-          onClick={() => setCapitalOpen(true)}
-          className="group flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-border text-foreground text-sm font-medium whitespace-nowrap transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:bg-muted hover:shadow-md hover:shadow-black/20 active:translate-y-0"
-        >
-          <PiggyBank className="h-4 w-4 transition-transform group-hover:scale-110" /> Capital
-        </button>
-        <button
-          onClick={() => caja && exportarCSV(caja)}
-          disabled={!caja || caja.movimientos.length === 0}
-          className="ml-auto flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-border text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-40 transition-colors text-sm font-medium whitespace-nowrap"
-        >
-          <Download className="h-4 w-4" /> CSV
-        </button>
+      {/*
+        ACCIONES DE CAJA.
+        Antes eran cinco botones sueltos del mismo tamaño, con una palabra cada uno y sin
+        decir qué hacían. Dos problemas concretos:
+          · "Ajuste" era el único PRIMARIO (relleno en indigo) → la acción más rara y más
+            delicada del módulo era la que más tiraba del ojo, y terminaba usándose para
+            cargar el capital inicial;
+          · "Capital", que es lo PRIMERO que hace una financiera al arrancar, quedaba último
+            y con el mismo peso que corregir un error de conteo.
+        Ahora van agrupadas bajo su título, en el orden real de uso (poner plata → repartirla
+        → controlarla → corregir), cada una con una línea que dice qué hace. La jerarquía la
+        marca el color, no el tamaño: Capital destacada, Ajuste apagada.
+      */}
+      <div className="rounded-xl border border-border bg-card p-5">
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Acciones de caja</p>
+          <button
+            onClick={() => caja && exportarCSV(caja)}
+            disabled={!caja || caja.movimientos.length === 0}
+            className="flex items-center gap-2 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-40"
+          >
+            <Download className="h-3.5 w-3.5" /> Exportar CSV
+          </button>
+        </div>
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          <AccionCaja
+            destacada
+            icon={<PiggyBank className="h-[18px] w-[18px]" strokeWidth={1.75} />}
+            title="Capital"
+            desc="La plata que el dueño pone o retira del negocio."
+            onClick={() => setCapitalOpen(true)}
+          />
+          <AccionCaja
+            icon={<Users className="h-[18px] w-[18px]" strokeWidth={1.75} />}
+            title="Caja de vendedores"
+            desc="Entregarle plata a un vendedor o recibir lo que rinde."
+            onClick={() => setVendedorOpen(true)}
+          />
+          <AccionCaja
+            icon={<ArrowLeftRight className="h-[18px] w-[18px]" strokeWidth={1.75} />}
+            title="Transferir"
+            desc="Pasar saldo entre efectivo, banco y dólares."
+            onClick={() => setTransferOpen(true)}
+          />
+          <AccionCaja
+            icon={<Scale className="h-[18px] w-[18px]" strokeWidth={1.75} />}
+            title="Arqueo"
+            desc="Contar lo que hay y dejar constancia de cómo cerró."
+            onClick={() => setArqueoOpen(true)}
+          />
+          <AccionCaja
+            tenue
+            icon={<Wrench className="h-[18px] w-[18px]" strokeWidth={1.75} />}
+            title="Ajuste"
+            desc="Corregir un error de registro. No es para cargar capital."
+            onClick={() => setAjusteOpen(true)}
+          />
+        </div>
       </div>
 
       {isLoading || !caja ? (
@@ -1362,6 +1381,43 @@ function CajaVendedorDialog({ open, onClose }: { open: boolean; onClose: (ok?: b
         </form>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/**
+ * Una acción de la caja: ícono, nombre y una línea de qué hace.
+ *
+ * La línea no es una micro-instrucción de las que sobran ("hacé clic acá"): son cinco
+ * operaciones con plata que se parecen entre sí, y el nombre solo —"Capital", "Ajuste",
+ * "Transferir"— no alcanza para elegir bien. Sin ella, el capital inicial terminó cargado
+ * como un ajuste de conteo.
+ *
+ * `destacada` es la acción con la que se empieza; `tenue`, la que casi nunca hay que tocar.
+ */
+function AccionCaja({ icon, title, desc, onClick, destacada, tenue }: {
+  icon: React.ReactNode; title: string; desc: string; onClick: () => void;
+  destacada?: boolean; tenue?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`group flex items-start gap-3 rounded-lg border p-3 text-left transition-all hover:-translate-y-0.5 hover:shadow-md hover:shadow-black/10 active:translate-y-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 ${
+        destacada
+          ? "border-primary/40 bg-primary/[0.07] hover:border-primary/60"
+          : tenue
+            ? "border-border bg-muted/20 hover:bg-muted/40"
+            : "border-border bg-muted/30 hover:border-primary/40 hover:bg-muted/50"
+      }`}
+    >
+      <span className={`mt-0.5 shrink-0 transition-transform group-hover:scale-110 ${destacada ? "text-primary" : tenue ? "text-muted-foreground" : "text-foreground"}`}>
+        {icon}
+      </span>
+      <span className="min-w-0">
+        <span className="block text-sm font-medium text-foreground">{title}</span>
+        <span className="mt-0.5 block text-xs leading-snug text-muted-foreground">{desc}</span>
+      </span>
+    </button>
   );
 }
 
