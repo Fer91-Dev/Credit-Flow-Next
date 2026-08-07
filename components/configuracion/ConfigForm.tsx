@@ -76,10 +76,19 @@ const AYUDA: Record<string, AyudaBloque> = {
   },
   imputacion: {
     titulo: "Orden de imputación de pagos",
-    texto: "Define a qué se aplica primero la plata que paga el cliente cuando no alcanza a cubrir todo.",
+    texto: "Imputar es decidir a qué parte de la deuda se le descuenta la plata que entra. Solo importa cuando el cliente paga MENOS de lo que debe: si paga todo, el orden no cambia nada.",
+    ejemplo:
+      "Juan debe una cuota de $25.000: $3.000 de punitorios, $5.000 de interés, $2.000 de cargos y " +
+      "$15.000 de capital. Paga $9.000. Con «integrado» se cubren los $3.000 de punitorios, los " +
+      "$5.000 de interés y $1.000 de cargos. Con «separado» se cubren los punitorios, los $2.000 de " +
+      "cargos enteros y $4.000 de interés. En los dos casos Juan pagó lo mismo y el capital quedó " +
+      "intacto: lo único que cambia es en qué casillero se anotó cada peso.",
     puntos: [
-      "Hoy el orden es Mora → Interés → Capital.",
-      "Imputación de cargos: dónde entran IVA/seguro/gastos del período dentro de ese orden.",
+      "La mora va primera para que la deuda deje de crecer: mientras queden punitorios sin pagar, el atraso sigue sumando.",
+      "El capital va último a propósito. Si bajara primero, el préstamo se achicaría antes de haber cobrado lo que cuesta tenerlo.",
+      "Además se salda la cuota MÁS VIEJA entera antes de tocar la siguiente — no se reparte un poco a cada una.",
+      "Ese orden es fijo y no se configura. Lo único que elegís acá es dónde entran los cargos (IVA, seguro, gastos) respecto del interés.",
+      "Elijas lo que elijas, el cliente paga lo mismo y el capital baja igual: cambia el reparto contable, no la plata.",
     ],
   },
   presentacion: {
@@ -796,9 +805,18 @@ export function ConfigForm() {
           </Section>
 
           {/* Imputación */}
-          <Section title="Orden de imputación de pagos" desc="Cómo se aplica cada pago recibido sobre la deuda." ayuda={AYUDA.imputacion}
+          <Section title="Orden de imputación de pagos" desc="Cuando un pago no alcanza a cubrir todo lo vencido, a qué parte de la deuda se le descuenta primero." ayuda={AYUDA.imputacion}
             onSave={() => save("imputacion", { imputarCargos: form.imputarCargos })}
             saving={savingKey === "imputacion"} saved={savedKey === "imputacion"} dirty={isDirty("imputacion")}>
+            {/*
+              Las etiquetas son INFORMACIÓN, no un control: muestran el orden que aplica el motor.
+              Llevan su propio título para que no se lean como botones desactivados — antes acá
+              decía que el reordenamiento "llegará en una fase próxima", y prometer una función
+              que nadie tiene planeada es peor que explicar por qué el orden es el que es.
+            */}
+            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-2">
+              Orden que aplica el motor
+            </p>
             <div className="flex items-center gap-2 flex-wrap">
               {form.ordenImputacion.map((c, i) => (
                 <div key={c} className="flex items-center gap-2">
@@ -810,15 +828,20 @@ export function ConfigForm() {
                 </div>
               ))}
             </div>
-            <p className="text-xs text-muted-foreground/60 mt-3">
-              El reordenamiento de mora/interés/capital llegará en una fase próxima. Hoy el motor aplica este orden.
+            <p className="text-xs text-muted-foreground mt-3 max-w-2xl">
+              Es fijo. La mora va primera para que la deuda deje de crecer, y el capital último para no
+              achicar el préstamo antes de haber cobrado lo que cuesta tenerlo. Además se salda la cuota
+              más vieja entera antes de pasar a la siguiente.
             </p>
 
             <div className="mt-4 max-w-md border-t border-border pt-4">
-              <Field label="Imputación de cargos" hint="Dónde entran IVA/seguro/gastos del período al imputar un pago">
+              <Field
+                label="Dónde entran los cargos"
+                hint="IVA, seguro y gastos: si se cobran antes o después del interés. No cambia lo que paga el cliente ni cuánto baja el capital — solo en qué casillero se anota cada peso de un pago parcial."
+              >
                 <Select value={form.imputarCargos} onChange={e => set("imputarCargos", e.target.value as ConfiguracionFinanciera["imputarCargos"])}>
-                  <option value="integrado">Integrado — Mora → Interés → Cargos → Capital</option>
-                  <option value="separado">Separado — Mora → Cargos → Interés → Capital</option>
+                  <option value="integrado">Después del interés (mora → interés → cargos → capital)</option>
+                  <option value="separado">Antes del interés (mora → cargos → interés → capital)</option>
                 </Select>
               </Field>
             </div>
