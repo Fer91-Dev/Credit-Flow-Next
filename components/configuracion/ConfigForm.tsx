@@ -21,8 +21,14 @@ const ordenLabel: Record<string, string> = {
   capital: "Capital",
 };
 
-/** Ayuda contextual por bloque de configuración: qué configura y con qué efecto. */
-export type AyudaBloque = { titulo?: string; texto: string; puntos?: string[] };
+/**
+ * Ayuda contextual por bloque de configuración: qué configura y con qué efecto.
+ *
+ * `ejemplo` es un caso resuelto con números. Va aparte de `puntos` porque explicar un
+ * parámetro por definición ("cuántas cuotas se pueden ofrecer") no muestra la mecánica;
+ * un caso con plata sí, y es lo que pidió el usuario al configurar acuerdos por primera vez.
+ */
+export type AyudaBloque = { titulo?: string; texto: string; ejemplo?: string; puntos?: string[] };
 
 const AYUDA: Record<string, AyudaBloque> = {
   motor: {
@@ -52,12 +58,19 @@ const AYUDA: Record<string, AyudaBloque> = {
   },
   acuerdos: {
     titulo: "Acuerdos de pago",
-    texto: "El arreglo informal en cuotas con un moroso: acordás cómo te paga lo VENCIDO, sin rehacer el crédito ni firmar nada nuevo.",
+    texto: "El arreglo informal en cuotas con alguien que ya se atrasó: acordás cómo te paga lo VENCIDO, sin rehacer el crédito ni firmar nada nuevo. Lo que todavía no venció sigue su curso normal.",
+    ejemplo:
+      "Juan debe $50.000 vencidos: $30.000 de capital, $8.000 de interés y $12.000 de punitorios. " +
+      "Le perdonás la mitad de los punitorios ($6.000) y le armás 4 cuotas de $11.000 cada 30 días. " +
+      "Mientras cumple no se le suma más mora; si falta a las cuotas que definiste, el acuerdo se cae " +
+      "y vuelve a la cola de morosos con los punitorios corriendo otra vez.",
     puntos: [
-      "Solo se acuerda lo vencido. Las cuotas que todavía no vencieron siguen su curso normal.",
+      "Máximo de cuotas: hasta dónde puede estirar el vendedor sin consultar. No es lo que va a ofrecer siempre, es su techo.",
+      "Días entre cuotas: cada cuánto vence una cuota DEL ACUERDO. Es independiente del crédito: podés acordar semanal aunque el crédito sea mensual.",
+      "Cuotas impagas que lo rompen: con 1 sos estricto (falta a una y se cae); con 2 o 3 le das margen para un tropiezo.",
+      "Las dos quitas son topes de lo MISMO: cuánto se puede condonar. La del vendedor es lo que puede perdonar solo; la del admin es el techo de la financiera. Vendedor en 0 = toda quita la firma el admin.",
+      "La condonación sale de los punitorios y el interés, NUNCA del capital: la plata que se prestó de verdad no se regala.",
       "El acuerdo no toca el crédito: el cliente paga como siempre y el acuerdo se va cumpliendo solo con esos pagos.",
-      "Cuotas impagas que lo rompen: al llegar a ese número, el acuerdo se cae y el cliente vuelve a la cola de morosos.",
-      "La condonación sale de los punitorios y el interés, NUNCA del capital. Cada rol tiene su tope.",
       "No hay botón para darlo por cumplido: se cumple cuando la plata entra, y eso lo detecta el sistema solo.",
     ],
   },
@@ -737,35 +750,35 @@ export function ConfigForm() {
             onSave={() => save("cobranza", { cobranzaConfig: cobranza })}
             saving={savingKey === "cobranza"} saved={savedKey === "cobranza"} dirty={isDirty("cobranza")}>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 max-w-3xl">
-              <Field label="Máximo de cuotas" hint="En cuántos pagos como mucho se puede repartir lo vencido.">
+              <Field label="Máximo de cuotas" hint="El techo del vendedor: hasta en cuántos pagos puede repartir lo vencido sin consultar. Con 6 puede ofrecer 6, no 8.">
                 <Input
                   type="number" min="1" max="60" step="1"
                   value={cobranza.acuerdos.max_cuotas}
                   onChange={e => setAcuerdos({ max_cuotas: Math.max(1, Math.min(60, Math.round(parseFloat(e.target.value) || 1))) })}
                 />
               </Field>
-              <Field label="Días entre cuotas" hint="30 = mensual · 15 = quincenal · 7 = semanal.">
+              <Field label="Días entre cuotas" hint="Cada cuánto vence una cuota del acuerdo: 30 = mensual · 15 = quincenal · 7 = semanal. No depende de la frecuencia del crédito.">
                 <Input
                   type="number" min="1" max="365" step="1"
                   value={cobranza.acuerdos.dias_entre_cuotas}
                   onChange={e => setAcuerdos({ dias_entre_cuotas: Math.max(1, Math.min(365, Math.round(parseFloat(e.target.value) || 1))) })}
                 />
               </Field>
-              <Field label="Cuotas impagas que lo rompen" hint="Cuántas cuotas del acuerdo sin pagar lo dan por caído.">
+              <Field label="Cuotas impagas que lo rompen" hint="Con 1 se cae al primer faltazo; con 2 o 3 tolerás un tropiezo. Al romperse vuelve a morosos y los punitorios corren de nuevo.">
                 <Input
                   type="number" min="1" step="1"
                   value={cobranza.acuerdos.cuotas_para_romper}
                   onChange={e => setAcuerdos({ cuotas_para_romper: Math.max(1, Math.round(parseFloat(e.target.value) || 1)) })}
                 />
               </Field>
-              <Field label="Quita máx. del vendedor (%)" hint="Cuánto de los punitorios e interés puede condonar un vendedor. 0 = no puede.">
+              <Field label="Quita máx. del vendedor (%)" hint="Cuánto de los punitorios e interés puede perdonar el vendedor por su cuenta. En 0 no condona nada: toda quita la firma el admin.">
                 <Input
                   type="number" min="0" max="100" step="1"
                   value={cobranza.acuerdos.quita_max_vendedor_pct}
                   onChange={e => setAcuerdos({ quita_max_vendedor_pct: Math.max(0, Math.min(100, parseFloat(e.target.value) || 0)) })}
                 />
               </Field>
-              <Field label="Quita máx. del administrador (%)" hint="Nunca sale del capital: solo de punitorios e interés.">
+              <Field label="Quita máx. del administrador (%)" hint="El techo de la financiera. En 100 puede perdonar todos los punitorios y el interés. El capital prestado nunca se toca.">
                 <Input
                   type="number" min="0" max="100" step="1"
                   value={cobranza.acuerdos.quita_max_admin_pct}
@@ -1542,11 +1555,17 @@ export function HelpHint({ ayuda }: { ayuda: AyudaBloque }) {
         <HelpCircle className="h-4 w-4" />
       </button>
       {open && (
-        <div className="absolute right-0 top-9 z-30 w-72 rounded-xl border border-border bg-card p-3.5 text-left shadow-2xl shadow-black/30">
+        <div className="absolute right-0 top-9 z-30 w-80 max-w-[calc(100vw-2rem)] rounded-xl border border-border bg-card p-3.5 text-left shadow-2xl shadow-black/30">
           <div className="mb-1.5 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-primary">
             <HelpCircle className="h-3.5 w-3.5" /> {ayuda.titulo ?? "Ayuda"}
           </div>
           <p className="text-xs leading-relaxed text-foreground/90">{ayuda.texto}</p>
+          {ayuda.ejemplo && (
+            <div className="mt-2.5 rounded-lg border border-primary/20 bg-primary/[0.07] p-2.5">
+              <p className="mb-1 text-[10px] font-bold uppercase tracking-widest text-primary">Ejemplo</p>
+              <p className="text-xs leading-relaxed text-foreground/90">{ayuda.ejemplo}</p>
+            </div>
+          )}
           {ayuda.puntos && (
             <ul className="mt-2 space-y-1">
               {ayuda.puntos.map((p, i) => (
