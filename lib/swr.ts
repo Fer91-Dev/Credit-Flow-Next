@@ -1103,8 +1103,34 @@ export interface MiPerfilVendedor {
   } | null;
 }
 
+/**
+ * Datos que **el admin cambia y el vendedor consume desde otra sesión**: la configuración
+ * del motor, la identidad de la financiera y la ficha propia del vendedor (su límite de
+ * otorgamiento, su comisión). Con la política global —cache de 30s, sin revalidar al
+ * enfocar— el vendedor seguía trabajando con los valores viejos hasta apretar F5.
+ *
+ * Lo reportó el usuario: el admin subió el monto máximo de $5.000 a $600.000 y el
+ * simulador del vendedor siguió rechazando por el tope anterior.
+ *
+ * `revalidateOnFocus` es la pieza que resuelve el caso real: el vendedor vuelve a su
+ * ventana y ahí se entera. El `refreshInterval` largo es la red por si nunca cambia el
+ * foco (dos monitores, la pestaña siempre visible). No se poletea cada 30s como los
+ * arqueos porque estos parámetros se tocan una vez por mes, no varias veces por día.
+ *
+ * `dedupingInterval: 0` es imprescindible, no adorno: el default global de 30s **también
+ * frena la revalidación por foco**, así que sin esto volver a la pestaña dentro de esa
+ * ventana no pedía nada y se seguía viendo el valor viejo.
+ */
+const PARAMETROS_SWR = {
+  refreshInterval: 120_000,
+  revalidateOnFocus: true,
+  revalidateOnReconnect: true,
+  dedupingInterval: 0,
+} as const;
+
 export function useMiPerfilVendedor() {
-  const { data, error, isLoading } = useSWR<MiPerfilVendedor | null>("/api/me/vendedor");
+  // Su límite de otorgamiento y su comisión los define el admin desde otra sesión.
+  const { data, error, isLoading } = useSWR<MiPerfilVendedor | null>("/api/me/vendedor", null, PARAMETROS_SWR);
   return { perfil: data ?? null, error, isLoading };
 }
 
@@ -1178,8 +1204,9 @@ export interface ArqueoCaja {
   resolucion_nota: string | null;
 }
 
+
 /**
- * Los arqueos son el único dato de la app que **cambia de estado desde otra sesión**: el
+ * Los arqueos también **cambian de estado desde otra sesión**: el
  * vendedor declara y el admin resuelve, cada uno en su navegador. Con la config global
  * (`revalidateOnFocus: false`, pensada para un panel operativo y no para un feed), a
  * ninguno de los dos le llegaba la novedad del otro: al vendedor le quedaba colgado el
@@ -1424,12 +1451,12 @@ export function useClienteDetalle(clienteId: string | null) {
 }
 
 export function useConfiguracion() {
-  const { data, error, isLoading, mutate } = useSWR<ConfiguracionFinanciera>(KEYS.configuracion);
+  const { data, error, isLoading, mutate } = useSWR<ConfiguracionFinanciera>(KEYS.configuracion, null, PARAMETROS_SWR);
   return { config: data, error, isLoading, mutate };
 }
 
 export function useFinanciera() {
-  const { data, error, isLoading, mutate } = useSWR<Financiera>(KEYS.financiera);
+  const { data, error, isLoading, mutate } = useSWR<Financiera>(KEYS.financiera, null, PARAMETROS_SWR);
   return { financiera: data, error, isLoading, mutate };
 }
 
