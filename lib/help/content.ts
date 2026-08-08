@@ -253,13 +253,17 @@ const HELP: Record<string, HelpDoc> = {
         ],
       },
       {
-        kind: "pasos",
-        titulo: "Acciones manuales",
-        pasos: [
-          "Ajuste: registrar un ingreso o egreso que no viene de un crédito (con descripción).",
-          "Transferencia: mover saldo entre cuentas. Entre pesos y dólares es compra/venta con tipo de cambio.",
-          "Arqueo: conciliar el saldo del sistema contra el conteo físico de la caja principal; la diferencia se ajusta en el acto.",
-          "Capital: la plata que el dueño pone o saca del negocio (ver abajo).",
+        // Los cinco botones de "Acciones de caja". El texto vive acá y NO adentro del botón:
+        // un botón se lee de un vistazo, y cinco párrafos en fila lo convertían en una ficha.
+        // Van en el mismo orden que en pantalla, que es el orden real de uso.
+        kind: "definiciones",
+        titulo: "Acciones de caja",
+        items: [
+          { term: "Capital", desc: "La plata que el dueño pone o retira del negocio." },
+          { term: "Caja de vendedores", desc: "Entregar plata a un vendedor o recibir lo que rinde." },
+          { term: "Transferir", desc: "Pasar saldo entre efectivo, banco y dólares. Entre pesos y dólares es compra/venta, con su tipo de cambio." },
+          { term: "Arqueo", desc: "Contar lo que hay y dejar constancia de cómo cerró." },
+          { term: "Ajuste", desc: "Corregir un error de registro. No sirve para cargar capital." },
         ],
       },
       {

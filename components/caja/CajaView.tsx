@@ -174,50 +174,46 @@ export function CajaView() {
         → controlarla → corregir), cada una con una línea que dice qué hace. La jerarquía la
         marca el color, no el tamaño: Capital destacada, Ajuste apagada.
       */}
-      {/* Contenedor HUNDIDO (`bg-muted/20`) a propósito: los botones son `bg-card`, así que
-          sobre una tarjeta normal se fundían con el fondo y volvían a leerse como casilleros. */}
-      <div className="rounded-xl border border-border bg-muted/20 p-4 sm:p-5">
-        <div className="mb-3 flex items-center justify-between gap-3">
+      {/* Barra de acciones: etiqueta + fila de botones, SIN tarjeta que los contenga. Los
+          botones son `bg-card` sobre el fondo de la página, que es lo que los hace ver
+          elevados; metidos adentro de un panel volvían a leerse como fichas. */}
+      <div>
+        <div className="mb-2 flex items-center justify-between gap-3">
           <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Acciones de caja</p>
           <button
             onClick={() => caja && exportarCSV(caja)}
             disabled={!caja || caja.movimientos.length === 0}
-            className="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground disabled:opacity-40"
+            className="inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-card px-3 text-sm font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:bg-muted hover:text-foreground disabled:opacity-40"
           >
-            <Download className="h-3.5 w-3.5" /> Exportar CSV
+            <Download className="h-[18px] w-[18px]" strokeWidth={1.75} /> CSV
           </button>
         </div>
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="flex flex-wrap items-center gap-2">
           <AccionCaja
             destacada
             icon={<PiggyBank className="h-[18px] w-[18px]" strokeWidth={1.75} />}
             title="Capital"
-            desc="La plata que el dueño pone o retira del negocio."
             onClick={() => setCapitalOpen(true)}
           />
           <AccionCaja
             icon={<Users className="h-[18px] w-[18px]" strokeWidth={1.75} />}
             title="Caja de vendedores"
-            desc="Entregarle plata a un vendedor o recibir lo que rinde."
             onClick={() => setVendedorOpen(true)}
           />
           <AccionCaja
             icon={<ArrowLeftRight className="h-[18px] w-[18px]" strokeWidth={1.75} />}
             title="Transferir"
-            desc="Pasar saldo entre efectivo, banco y dólares."
             onClick={() => setTransferOpen(true)}
           />
           <AccionCaja
             icon={<Scale className="h-[18px] w-[18px]" strokeWidth={1.75} />}
             title="Arqueo"
-            desc="Contar lo que hay y dejar constancia de cómo cerró."
             onClick={() => setArqueoOpen(true)}
           />
           <AccionCaja
             tenue
             icon={<Wrench className="h-[18px] w-[18px]" strokeWidth={1.75} />}
             title="Ajuste"
-            desc="Corregir un error de registro. No es para cargar capital."
             onClick={() => setAjusteOpen(true)}
           />
         </div>
@@ -1387,48 +1383,37 @@ function CajaVendedorDialog({ open, onClose }: { open: boolean; onClose: (ok?: b
 }
 
 /**
- * Una acción de la caja: ícono, nombre y una línea de qué hace.
+ * Un botón de la barra de acciones de caja: ícono + nombre, una sola línea.
  *
- * La línea no es una micro-instrucción de las que sobran ("hacé clic acá"): son cinco
- * operaciones con plata que se parecen entre sí, y el nombre solo —"Capital", "Ajuste",
- * "Transferir"— no alcanza para elegir bien. Sin ella, el capital inicial terminó cargado
- * como un ajuste de conteo.
+ * 🔴 Sin descripción adentro, a propósito. Qué hace cada acción se explica en la AYUDA de
+ * la sección (el "?" del encabezado): un botón se lee de un vistazo, y cinco párrafos en
+ * fila lo convertían en una ficha informativa que no invitaba a tocarla.
  *
- * Se ven como BOTONES, no como tarjetas: superficie elevada sobre el bloque, borde propio,
- * sombra y hundido al apretar. Con fondo hundido (`bg-muted`) se leían como casilleros de
- * información y no invitaban a tocarlos.
- *
- * La jerarquía es la de siempre en un formulario, y no depende del tamaño —todos miden
- * igual, así ninguno grita—:
+ * La jerarquía la da el color, nunca el tamaño —todos miden igual, así ninguno grita—:
  *   · `destacada` → relleno, la acción con la que se empieza (Capital);
  *   · normal      → contorno elevado;
  *   · `tenue`     → contorno apagado, la que casi nunca hay que tocar (Ajuste).
  */
-function AccionCaja({ icon, title, desc, onClick, destacada, tenue }: {
-  icon: React.ReactNode; title: string; desc: string; onClick: () => void;
+function AccionCaja({ icon, title, onClick, destacada, tenue }: {
+  icon: React.ReactNode; title: string; onClick: () => void;
   destacada?: boolean; tenue?: boolean;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className={`group flex items-start gap-3 rounded-lg border px-3.5 py-3 text-left transition-all hover:-translate-y-0.5 active:translate-y-0 active:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-card ${
+      className={`group inline-flex h-9 items-center gap-2 rounded-lg border px-3 text-sm font-medium whitespace-nowrap transition-all hover:-translate-y-0.5 active:translate-y-0 active:shadow-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
         destacada
-          ? "border-primary bg-primary text-primary-foreground shadow-md shadow-primary/20 hover:shadow-lg hover:shadow-primary/30"
+          ? "border-primary bg-primary text-primary-foreground shadow-sm shadow-primary/25 hover:bg-primary/90 hover:shadow-md hover:shadow-primary/30"
           : tenue
-            ? "border-border bg-card text-muted-foreground hover:border-muted-foreground/40 hover:text-foreground"
-            : "border-border bg-card text-foreground shadow-sm hover:border-primary/50 hover:shadow-md hover:shadow-black/15"
+            ? "border-border bg-card text-muted-foreground hover:border-muted-foreground/40 hover:bg-muted hover:text-foreground"
+            : "border-border bg-card text-foreground shadow-sm hover:border-primary/50 hover:bg-muted hover:shadow-md hover:shadow-black/15"
       }`}
     >
-      <span className={`mt-0.5 shrink-0 transition-transform group-hover:scale-110 ${destacada ? "" : tenue ? "" : "text-primary"}`}>
+      <span className={`shrink-0 transition-transform group-hover:scale-110 ${destacada || tenue ? "" : "text-primary"}`}>
         {icon}
       </span>
-      <span className="min-w-0">
-        <span className="block text-sm font-semibold">{title}</span>
-        <span className={`mt-0.5 block text-xs leading-snug ${destacada ? "text-primary-foreground/80" : "text-muted-foreground"}`}>
-          {desc}
-        </span>
-      </span>
+      {title}
     </button>
   );
 }
