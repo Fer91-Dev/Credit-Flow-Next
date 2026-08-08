@@ -8,6 +8,7 @@ import { DataTable } from "@/components/ui/DataTable";
 import { CuentaCard, CUENTAS, CUENTA_META } from "@/components/caja/CuentaCard";
 import { Emoji } from "@/components/ui/Emoji";
 import { refrescarNotificaciones, useCaja, useVendedores, useCotizacion, useArqueos, type CajaData, type MovimientoCaja, type CuentaCaja, type ArqueoCaja } from "@/lib/swr";
+import { AccionCaja, AccionesCajaHeader } from "@/components/caja/AccionCaja";
 import { ArqueosPanel } from "@/components/caja/ArqueosPanel";
 import { formatFechaHora, parseMontoInput } from "@/lib/utils";
 import { MoneyInput, Segmented, IconSelect, IconTextarea, FieldLabel, FormActions, simboloCuenta } from "./caja-form";
@@ -178,8 +179,7 @@ export function CajaView() {
           botones son `bg-card` sobre el fondo de la página, que es lo que los hace ver
           elevados; metidos adentro de un panel volvían a leerse como fichas. */}
       <div>
-        <div className="mb-2 flex items-center justify-between gap-3">
-          <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Acciones de caja</p>
+        <AccionesCajaHeader>
           <button
             onClick={() => caja && exportarCSV(caja)}
             disabled={!caja || caja.movimientos.length === 0}
@@ -187,7 +187,7 @@ export function CajaView() {
           >
             <Download className="h-4 w-4" strokeWidth={1.75} /> CSV
           </button>
-        </div>
+        </AccionesCajaHeader>
         <div className="flex flex-wrap items-center gap-2">
           <AccionCaja
             destacada
@@ -1379,55 +1379,6 @@ function CajaVendedorDialog({ open, onClose }: { open: boolean; onClose: (ok?: b
         </form>
       </DialogContent>
     </Dialog>
-  );
-}
-
-/**
- * Un botón de la barra de acciones de caja: ícono + nombre, una sola línea.
- *
- * 🔴 Sin descripción adentro, a propósito. Qué hace cada acción se explica en la AYUDA de
- * la sección (el "?" del encabezado): un botón se lee de un vistazo, y cinco párrafos en
- * fila lo convertían en una ficha informativa que no invitaba a tocarla.
- *
- * La jerarquía la da el color, nunca el tamaño —todos miden igual, así ninguno grita—:
- *   · `destacada` → relleno, la acción con la que se empieza (Capital);
- *   · normal      → contorno elevado;
- *   · `tenue`     → contorno apagado, la que casi nunca hay que tocar (Ajuste).
- *
- * Sobre la FORMA: 40px de alto con 16px de padding lateral. Con menos alto y menos padding
- * se leían como chips —etiquetas de filtro— y no como acciones de un tablero. Radio de 6px
- * por el mismo motivo: cuanto más redondeado, más cerca de la cápsula. El ícono va a 16px y
- * en gris, un escalón por debajo del texto: es apoyo, no protagonista.
- *
- * Las transiciones son solo de COLOR. La elevación al pasar por encima se sacó a propósito:
- * un botón que rebota se siente de landing page, y esto es una herramienta de trabajo. Al
- * apretar, el fondo se hunde con una sombra interior en vez de moverse.
- */
-function AccionCaja({ icon, title, onClick, destacada, tenue }: {
-  icon: React.ReactNode; title: string; onClick: () => void;
-  destacada?: boolean; tenue?: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`group inline-flex h-10 items-center gap-2 rounded-md border px-4 text-sm font-medium whitespace-nowrap transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
-        destacada
-          ? // El seleccionado: relleno indigo, sin sombra de color. Al apretarlo se oscurece
-            // en vez de moverse — un botón de tablero no rebota.
-            "border-primary bg-primary text-primary-foreground hover:bg-primary/90 active:bg-primary/80"
-          : tenue
-            ? "border-border bg-card text-muted-foreground hover:border-muted-foreground/50 hover:bg-muted hover:text-foreground active:bg-muted/70"
-            : // El realce superior de 1px es el mismo recurso con el que las tarjetas de
-              // Configuración se despegan del fondo: da volumen sin recurrir a una sombra.
-              "border-border bg-card text-foreground shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)] hover:border-primary/50 hover:bg-muted active:bg-muted/70 active:shadow-[inset_0_2px_4px_0_rgba(0,0,0,0.15)]"
-      }`}
-    >
-      <span className={`shrink-0 ${destacada ? "" : "text-muted-foreground transition-colors group-hover:text-foreground"}`}>
-        {icon}
-      </span>
-      {title}
-    </button>
   );
 }
 

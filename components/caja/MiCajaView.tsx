@@ -13,6 +13,7 @@ import { KpiCard } from "@/components/ui/KpiCard";
 import { Emoji } from "@/components/ui/Emoji";
 import { StatusBadge, type BadgeVariant } from "@/components/ui/StatusBadge";
 import { DataTable } from "@/components/ui/DataTable";
+import { AccionCaja, AccionesCajaHeader } from "@/components/caja/AccionCaja";
 import { CuentaCard, CUENTAS, CUENTA_META } from "@/components/caja/CuentaCard";
 import { ArqueosPanel } from "@/components/caja/ArqueosPanel";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -102,32 +103,34 @@ export function MiCajaView() {
         accent="primary"
       />
 
-      {/* Barra de acciones (fuera del header) */}
-      <div className="flex flex-wrap items-center gap-2">
-        <button
-          onClick={() => setRendirOpen(true)}
-          className="flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:opacity-90 transition-opacity text-sm font-medium whitespace-nowrap"
-        >
-          <Emoji name="money-bag" className="h-4 w-4" /> Rendir efectivo
-        </button>
-        <button
-          onClick={() => setTransferOpen(true)}
-          className="flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-border text-foreground hover:bg-muted transition-colors text-sm font-medium whitespace-nowrap"
-        >
-          <Emoji name="money-with-wings" className="h-4 w-4" /> Transferir
-        </button>
-        <button
-          onClick={() => setGastoOpen(true)}
-          className="flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-border text-foreground hover:bg-muted transition-colors text-sm font-medium whitespace-nowrap"
-        >
-          <Emoji name="outbox-tray" className="h-4 w-4" /> Registrar gasto
-        </button>
-        <button
-          onClick={() => setArqueoOpen(true)}
-          className="flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-border text-foreground hover:bg-muted transition-colors text-sm font-medium whitespace-nowrap"
-        >
-          <Scale className="h-4 w-4" /> Cerrar caja
-        </button>
+      {/* Misma barra que la caja principal (`AccionCaja`), con las operaciones del vendedor.
+          Quedaba con el estilo viejo: son dos vistas distintas de la misma pantalla y hay que
+          tocarlas juntas. Destacada va "Rendir efectivo", que es lo que más hace en el día. */}
+      <div>
+        <AccionesCajaHeader />
+        <div className="flex flex-wrap items-center gap-2">
+          <AccionCaja
+            destacada
+            icon={<Send className="h-4 w-4" strokeWidth={1.75} />}
+            title="Rendir efectivo"
+            onClick={() => setRendirOpen(true)}
+          />
+          <AccionCaja
+            icon={<ArrowLeftRight className="h-4 w-4" strokeWidth={1.75} />}
+            title="Transferir"
+            onClick={() => setTransferOpen(true)}
+          />
+          <AccionCaja
+            icon={<MinusCircle className="h-4 w-4" strokeWidth={1.75} />}
+            title="Registrar gasto"
+            onClick={() => setGastoOpen(true)}
+          />
+          <AccionCaja
+            icon={<Scale className="h-4 w-4" strokeWidth={1.75} />}
+            title="Cerrar caja"
+            onClick={() => setArqueoOpen(true)}
+          />
+        </div>
       </div>
 
       {isLoading ? (

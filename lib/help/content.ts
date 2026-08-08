@@ -267,6 +267,18 @@ const HELP: Record<string, HelpDoc> = {
         ],
       },
       {
+        // Los dos roles entran por la misma ruta y ven esta misma ayuda, pero cada uno tiene
+        // su barra: el vendedor no dispone de capital ni de la caja de los demás.
+        kind: "definiciones",
+        titulo: "Acciones de caja (vendedor)",
+        items: [
+          { term: "Rendir efectivo", desc: "Entregarle a la caja principal la plata que cobraste. Es lo que más vas a usar." },
+          { term: "Transferir", desc: "Pasar saldo entre tus propias cuentas: efectivo, banco y dólares." },
+          { term: "Registrar gasto", desc: "Un egreso de tu caja que no es un crédito ni una rendición." },
+          { term: "Cerrar caja", desc: "Contás lo que tenés y lo declarás. Si hay diferencia, tu saldo NO se toca: queda pendiente hasta que un administrador la revise." },
+        ],
+      },
+      {
         kind: "definiciones",
         titulo: "Capital del dueño",
         items: [
