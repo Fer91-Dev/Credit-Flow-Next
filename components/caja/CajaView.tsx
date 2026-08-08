@@ -174,13 +174,15 @@ export function CajaView() {
         → controlarla → corregir), cada una con una línea que dice qué hace. La jerarquía la
         marca el color, no el tamaño: Capital destacada, Ajuste apagada.
       */}
-      <div className="rounded-xl border border-border bg-card p-5">
+      {/* Contenedor HUNDIDO (`bg-muted/20`) a propósito: los botones son `bg-card`, así que
+          sobre una tarjeta normal se fundían con el fondo y volvían a leerse como casilleros. */}
+      <div className="rounded-xl border border-border bg-muted/20 p-4 sm:p-5">
         <div className="mb-3 flex items-center justify-between gap-3">
           <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Acciones de caja</p>
           <button
             onClick={() => caja && exportarCSV(caja)}
             disabled={!caja || caja.movimientos.length === 0}
-            className="flex items-center gap-2 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-40"
+            className="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground disabled:opacity-40"
           >
             <Download className="h-3.5 w-3.5" /> Exportar CSV
           </button>
@@ -1392,7 +1394,15 @@ function CajaVendedorDialog({ open, onClose }: { open: boolean; onClose: (ok?: b
  * "Transferir"— no alcanza para elegir bien. Sin ella, el capital inicial terminó cargado
  * como un ajuste de conteo.
  *
- * `destacada` es la acción con la que se empieza; `tenue`, la que casi nunca hay que tocar.
+ * Se ven como BOTONES, no como tarjetas: superficie elevada sobre el bloque, borde propio,
+ * sombra y hundido al apretar. Con fondo hundido (`bg-muted`) se leían como casilleros de
+ * información y no invitaban a tocarlos.
+ *
+ * La jerarquía es la de siempre en un formulario, y no depende del tamaño —todos miden
+ * igual, así ninguno grita—:
+ *   · `destacada` → relleno, la acción con la que se empieza (Capital);
+ *   · normal      → contorno elevado;
+ *   · `tenue`     → contorno apagado, la que casi nunca hay que tocar (Ajuste).
  */
 function AccionCaja({ icon, title, desc, onClick, destacada, tenue }: {
   icon: React.ReactNode; title: string; desc: string; onClick: () => void;
@@ -1402,20 +1412,22 @@ function AccionCaja({ icon, title, desc, onClick, destacada, tenue }: {
     <button
       type="button"
       onClick={onClick}
-      className={`group flex items-start gap-3 rounded-lg border p-3 text-left transition-all hover:-translate-y-0.5 hover:shadow-md hover:shadow-black/10 active:translate-y-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 ${
+      className={`group flex items-start gap-3 rounded-lg border px-3.5 py-3 text-left transition-all hover:-translate-y-0.5 active:translate-y-0 active:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-card ${
         destacada
-          ? "border-primary/40 bg-primary/[0.07] hover:border-primary/60"
+          ? "border-primary bg-primary text-primary-foreground shadow-md shadow-primary/20 hover:shadow-lg hover:shadow-primary/30"
           : tenue
-            ? "border-border bg-muted/20 hover:bg-muted/40"
-            : "border-border bg-muted/30 hover:border-primary/40 hover:bg-muted/50"
+            ? "border-border bg-card text-muted-foreground hover:border-muted-foreground/40 hover:text-foreground"
+            : "border-border bg-card text-foreground shadow-sm hover:border-primary/50 hover:shadow-md hover:shadow-black/15"
       }`}
     >
-      <span className={`mt-0.5 shrink-0 transition-transform group-hover:scale-110 ${destacada ? "text-primary" : tenue ? "text-muted-foreground" : "text-foreground"}`}>
+      <span className={`mt-0.5 shrink-0 transition-transform group-hover:scale-110 ${destacada ? "" : tenue ? "" : "text-primary"}`}>
         {icon}
       </span>
       <span className="min-w-0">
-        <span className="block text-sm font-medium text-foreground">{title}</span>
-        <span className="mt-0.5 block text-xs leading-snug text-muted-foreground">{desc}</span>
+        <span className="block text-sm font-semibold">{title}</span>
+        <span className={`mt-0.5 block text-xs leading-snug ${destacada ? "text-primary-foreground/80" : "text-muted-foreground"}`}>
+          {desc}
+        </span>
       </span>
     </button>
   );
