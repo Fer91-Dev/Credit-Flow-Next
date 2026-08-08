@@ -183,36 +183,36 @@ export function CajaView() {
           <button
             onClick={() => caja && exportarCSV(caja)}
             disabled={!caja || caja.movimientos.length === 0}
-            className="inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-card px-3 text-sm font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:bg-muted hover:text-foreground disabled:opacity-40"
+            className="inline-flex h-10 items-center gap-2 rounded-md border border-border bg-card px-4 text-sm font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:bg-muted hover:text-foreground disabled:opacity-40"
           >
-            <Download className="h-[18px] w-[18px]" strokeWidth={1.75} /> CSV
+            <Download className="h-4 w-4" strokeWidth={1.75} /> CSV
           </button>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <AccionCaja
             destacada
-            icon={<PiggyBank className="h-[18px] w-[18px]" strokeWidth={1.75} />}
+            icon={<PiggyBank className="h-4 w-4" strokeWidth={1.75} />}
             title="Capital"
             onClick={() => setCapitalOpen(true)}
           />
           <AccionCaja
-            icon={<Users className="h-[18px] w-[18px]" strokeWidth={1.75} />}
+            icon={<Users className="h-4 w-4" strokeWidth={1.75} />}
             title="Caja de vendedores"
             onClick={() => setVendedorOpen(true)}
           />
           <AccionCaja
-            icon={<ArrowLeftRight className="h-[18px] w-[18px]" strokeWidth={1.75} />}
+            icon={<ArrowLeftRight className="h-4 w-4" strokeWidth={1.75} />}
             title="Transferir"
             onClick={() => setTransferOpen(true)}
           />
           <AccionCaja
-            icon={<Scale className="h-[18px] w-[18px]" strokeWidth={1.75} />}
+            icon={<Scale className="h-4 w-4" strokeWidth={1.75} />}
             title="Arqueo"
             onClick={() => setArqueoOpen(true)}
           />
           <AccionCaja
             tenue
-            icon={<Wrench className="h-[18px] w-[18px]" strokeWidth={1.75} />}
+            icon={<Wrench className="h-4 w-4" strokeWidth={1.75} />}
             title="Ajuste"
             onClick={() => setAjusteOpen(true)}
           />
@@ -1393,6 +1393,15 @@ function CajaVendedorDialog({ open, onClose }: { open: boolean; onClose: (ok?: b
  *   · `destacada` → relleno, la acción con la que se empieza (Capital);
  *   · normal      → contorno elevado;
  *   · `tenue`     → contorno apagado, la que casi nunca hay que tocar (Ajuste).
+ *
+ * Sobre la FORMA: 40px de alto con 16px de padding lateral. Con menos alto y menos padding
+ * se leían como chips —etiquetas de filtro— y no como acciones de un tablero. Radio de 6px
+ * por el mismo motivo: cuanto más redondeado, más cerca de la cápsula. El ícono va a 16px y
+ * en gris, un escalón por debajo del texto: es apoyo, no protagonista.
+ *
+ * Las transiciones son solo de COLOR. La elevación al pasar por encima se sacó a propósito:
+ * un botón que rebota se siente de landing page, y esto es una herramienta de trabajo. Al
+ * apretar, el fondo se hunde con una sombra interior en vez de moverse.
  */
 function AccionCaja({ icon, title, onClick, destacada, tenue }: {
   icon: React.ReactNode; title: string; onClick: () => void;
@@ -1402,15 +1411,19 @@ function AccionCaja({ icon, title, onClick, destacada, tenue }: {
     <button
       type="button"
       onClick={onClick}
-      className={`group inline-flex h-9 items-center gap-2 rounded-lg border px-3 text-sm font-medium whitespace-nowrap transition-all hover:-translate-y-0.5 active:translate-y-0 active:shadow-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
+      className={`group inline-flex h-10 items-center gap-2 rounded-md border px-4 text-sm font-medium whitespace-nowrap transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
         destacada
-          ? "border-primary bg-primary text-primary-foreground shadow-sm shadow-primary/25 hover:bg-primary/90 hover:shadow-md hover:shadow-primary/30"
+          ? // El seleccionado: relleno indigo, sin sombra de color. Al apretarlo se oscurece
+            // en vez de moverse — un botón de tablero no rebota.
+            "border-primary bg-primary text-primary-foreground hover:bg-primary/90 active:bg-primary/80"
           : tenue
-            ? "border-border bg-card text-muted-foreground hover:border-muted-foreground/40 hover:bg-muted hover:text-foreground"
-            : "border-border bg-card text-foreground shadow-sm hover:border-primary/50 hover:bg-muted hover:shadow-md hover:shadow-black/15"
+            ? "border-border bg-card text-muted-foreground hover:border-muted-foreground/50 hover:bg-muted hover:text-foreground active:bg-muted/70"
+            : // El realce superior de 1px es el mismo recurso con el que las tarjetas de
+              // Configuración se despegan del fondo: da volumen sin recurrir a una sombra.
+              "border-border bg-card text-foreground shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)] hover:border-primary/50 hover:bg-muted active:bg-muted/70 active:shadow-[inset_0_2px_4px_0_rgba(0,0,0,0.15)]"
       }`}
     >
-      <span className={`shrink-0 transition-transform group-hover:scale-110 ${destacada || tenue ? "" : "text-primary"}`}>
+      <span className={`shrink-0 ${destacada ? "" : "text-muted-foreground transition-colors group-hover:text-foreground"}`}>
         {icon}
       </span>
       {title}
