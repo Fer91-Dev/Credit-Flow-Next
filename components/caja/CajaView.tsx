@@ -10,6 +10,7 @@ import { Emoji } from "@/components/ui/Emoji";
 import { refrescarNotificaciones, useCaja, useVendedores, useCotizacion, useArqueos, type CajaData, type MovimientoCaja, type CuentaCaja, type ArqueoCaja } from "@/lib/swr";
 import { AccionCaja, AccionesCajaHeader } from "@/components/caja/AccionCaja";
 import { ArqueosPanel } from "@/components/caja/ArqueosPanel";
+import { descargarCSV } from "@/lib/csv";
 import { formatFechaHora, parseMontoInput } from "@/lib/utils";
 import { MoneyInput, Segmented, IconSelect, IconTextarea, FieldLabel, FormActions, simboloCuenta } from "./caja-form";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -68,11 +69,6 @@ const SEL = INPUT + " pr-8 appearance-none cursor-pointer [&>option]:bg-card [&>
 
 // Separador es-AR: Excel en español usa ";" (la "," es el decimal). Se quotea
 // cualquier celda que contenga el separador, comillas o saltos de línea.
-const CSV_SEP = ";";
-function csvCell(v: string | number) {
-  const s = String(v ?? "");
-  return /[";\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-}
 function exportarCSV(caja: CajaData) {
   // Mismas columnas que la tabla de movimientos.
   const head = ["Comprobante", "Fecha y hora", "Tipo", "Origen", "Destino", "Detalle", "Monto"];
@@ -85,15 +81,7 @@ function exportarCSV(caja: CajaData) {
     m.descripcion,
     n2(m.monto), // formato es-AR ("-2.000.000,00") → Excel lo lee como número
   ]);
-  const body = [head, ...rows].map((r) => r.map(csvCell).join(CSV_SEP)).join("\r\n");
-  // BOM (UTF-8) + directiva "sep=;" para que Excel use el separador correcto en cualquier configuración regional.
-  const blob = new Blob(["﻿" + `sep=${CSV_SEP}\r\n` + body], { type: "text/csv;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `caja_${caja.periodo.desde}_${caja.periodo.hasta}.csv`;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 10_000);
+  descargarCSV(`caja_${caja.periodo.desde}_${caja.periodo.hasta}.csv`, [head, ...rows]);
 }
 
 export function CajaView() {

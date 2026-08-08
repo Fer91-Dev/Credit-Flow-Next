@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { Download, Printer } from "lucide-react";
 import { useReportes, useReporteSerie, useReporteCobranza, useFinanciera, type Reporte, type ReporteSerie, type PuntoMensual, type ReporteCobranza } from "@/lib/swr";
+import { descargarCSV } from "@/lib/csv";
 import { formatFecha } from "@/lib/utils";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { KpiCard } from "@/components/ui/KpiCard";
@@ -54,18 +55,9 @@ type TabId = (typeof TABS)[number]["id"];
 
 // ─── Export CSV ─────────────────────────────────────────────────────────────
 
-function csvCell(v: string | number) {
-  const s = String(v ?? "");
-  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-}
-function descargarCSV(nombre: string, filas: (string | number)[][]) {
-  const csv = filas.map((r) => r.map(csvCell).join(",")).join("\n");
-  const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url; a.download = nombre; a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 10_000);
-}
+// El armado del CSV vive en `lib/csv.ts`, compartido con Caja, Comprobantes y Stock.
+// Acá había una variante con coma como separador: correcta para un Excel en inglés y
+// equivocada para uno en español, donde la fila entera caía en una sola columna.
 function exportarPagos(r: Reporte) {
   descargarCSV(`reporte-cobranzas_${r.periodo.desde}_${r.periodo.hasta}.csv`, [
     ["Fecha", "Cliente", "Monto", "Capital", "Interés", "Mora", "Excedente", "Método"],
