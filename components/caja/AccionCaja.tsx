@@ -26,18 +26,21 @@
  * un botón que rebota se siente de landing page, y esto es una herramienta de trabajo. Al
  * apretar, el fondo se hunde con una sombra interior en vez de moverse.
  */
-export function AccionCaja({ icon, title, onClick, destacada, tenue }: {
+export function AccionCaja({ icon, title, onClick, destacada, tenue, disabled }: {
   icon: React.ReactNode;
   title: string;
   onClick: () => void;
   destacada?: boolean;
   tenue?: boolean;
+  /** Para acciones que dependen de que haya datos, como exportar un libro vacío. */
+  disabled?: boolean;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className={`group inline-flex h-10 items-center gap-2 rounded-md border px-4 text-sm font-medium whitespace-nowrap transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
+      disabled={disabled}
+      className={`group inline-flex h-10 items-center gap-2 rounded-md border px-4 text-sm font-medium whitespace-nowrap transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-40 ${
         destacada
           ? // El destacado: relleno indigo, sin sombra de color. Al apretarlo se oscurece en
             // vez de moverse — un botón de tablero se aprieta, no salta.
@@ -57,12 +60,11 @@ export function AccionCaja({ icon, title, onClick, destacada, tenue }: {
   );
 }
 
-/** Encabezado de la barra: el título del grupo y, opcionalmente, acciones al margen derecho. */
-export function AccionesCajaHeader({ children }: { children?: React.ReactNode }) {
+/** Título del grupo de acciones. */
+export function AccionesCajaHeader() {
   return (
-    <div className="mb-2 flex items-center justify-between gap-3">
-      <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Acciones de caja</p>
-      {children}
-    </div>
+    <p className="mb-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+      Acciones de caja
+    </p>
   );
 }

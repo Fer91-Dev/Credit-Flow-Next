@@ -179,15 +179,7 @@ export function CajaView() {
           botones son `bg-card` sobre el fondo de la página, que es lo que los hace ver
           elevados; metidos adentro de un panel volvían a leerse como fichas. */}
       <div>
-        <AccionesCajaHeader>
-          <button
-            onClick={() => caja && exportarCSV(caja)}
-            disabled={!caja || caja.movimientos.length === 0}
-            className="inline-flex h-10 items-center gap-2 rounded-md border border-border bg-card px-4 text-sm font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:bg-muted hover:text-foreground disabled:opacity-40"
-          >
-            <Download className="h-4 w-4" strokeWidth={1.75} /> CSV
-          </button>
-        </AccionesCajaHeader>
+        <AccionesCajaHeader />
         <div className="flex flex-wrap items-center gap-2">
           <AccionCaja
             destacada
@@ -215,6 +207,16 @@ export function CajaView() {
             icon={<Wrench className="h-4 w-4" strokeWidth={1.75} />}
             title="Ajuste"
             onClick={() => setAjusteOpen(true)}
+          />
+          {/* Va en la misma fila y al final: es la única que no mueve plata, y apagada
+              mientras no haya movimientos que exportar. Suelto contra el margen derecho
+              quedaba huérfano, sin pertenecer a nada. */}
+          <AccionCaja
+            tenue
+            disabled={!caja || caja.movimientos.length === 0}
+            icon={<Download className="h-4 w-4" strokeWidth={1.75} />}
+            title="Exportar CSV"
+            onClick={() => caja && exportarCSV(caja)}
           />
         </div>
       </div>
