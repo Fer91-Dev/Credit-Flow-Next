@@ -403,6 +403,28 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
   // Crédito de producto: no hay desembolso de efectivo → nunca hay "fondos insuficientes".
   const fondosInsuficientes = !esProducto && !creditoId && dispDesembolso != null && montoIngresado > dispDesembolso;
 
+  /**
+   * Error del capital, EN VIVO mientras se escribe.
+   *
+   * 🔴 Estas tres reglas solo se evaluaban al apretar "Otorgar crédito". El vendedor cargaba
+   * el monto, elegía plazo y tasa, veía el plan de cuotas completo y recién ahí se enteraba
+   * de que ese monto no estaba permitido — con el cliente sentado enfrente. La falta de
+   * fondos ya avisaba a tiempo (deshabilita el botón); estas no.
+   *
+   * Devuelve `null` con el campo vacío o en cero: un campo a medio escribir todavía no es
+   * un error, y pintarlo de rojo apenas se toca es peor que avisar tarde.
+   */
+  const errorCapital = useMemo(() => {
+    if (esProducto || !formData.monto_original) return null;
+    const monto = parseMonto(formData.monto_original);
+    if (monto <= 0) return null;
+    if (simCfg && simCfg.montoMin > 0 && monto < simCfg.montoMin) return `El capital mínimo es $${n0(simCfg.montoMin)}`;
+    if (simCfg && simCfg.montoMax > 0 && monto > simCfg.montoMax) return `El capital máximo es $${n0(simCfg.montoMax)}`;
+    if (!creditoId && perfil?.limite_aprobacion != null && monto > perfil.limite_aprobacion)
+      return `Supera tu límite de otorgamiento ($${n0(perfil.limite_aprobacion)}). Requiere autorización de un administrador.`;
+    return null;
+  }, [esProducto, formData.monto_original, simCfg, creditoId, perfil?.limite_aprobacion]);
+
   const tasaEA = useMemo(() => {
     const tasa = parseFloat(sim.tasa) || 0;
     if (tasa <= 0) return 0;
@@ -629,14 +651,20 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
           <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Condiciones financieras</p>
 
           {/* Capital — valor grande, ancho completo. En crédito de producto es read-only (= precio × cantidad). */}
-          <Field label="Capital ($)" required hint={esProducto ? "Definido por el producto (precio × cantidad)" : montoHint}>
+          <Field
+            label="Capital ($)"
+            required
+            hint={esProducto ? "Definido por el producto (precio × cantidad)" : montoHint}
+            error={errorCapital ?? undefined}
+          >
             <div className="relative">
-              <DollarSign className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <DollarSign className={`pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 ${errorCapital ? "text-destructive" : "text-muted-foreground"}`} />
               <Input
                 name="monto_original" type="text" inputMode="decimal" placeholder="350.000,00"
                 value={formData.monto_original} onChange={setMonto}
                 required readOnly={esProducto}
-                className={`pl-9 text-lg font-bold font-mono tabular-nums ${!esProducto && miCaja ? "pr-10" : ""} ${esProducto ? "opacity-70 cursor-not-allowed" : ""}`}
+                aria-invalid={!!errorCapital}
+                className={`pl-9 text-lg font-bold font-mono tabular-nums ${!esProducto && miCaja ? "pr-10" : ""} ${esProducto ? "opacity-70 cursor-not-allowed" : ""} ${errorCapital ? "border-destructive focus:border-destructive focus:ring-destructive/25" : ""}`}
               />
               {/* Refrescar saldo de la caja: ícono sutil dentro del campo (recarga parcial, sin F5).
                   Delicado y semitransparente, al estilo de los íconos del sidebar. */}
@@ -835,8 +863,8 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
             Cancelar
           </button>
           <button
-            type="submit" disabled={loading || fondosInsuficientes || riesgoImpide}
-            title={fondosInsuficientes ? "Saldo insuficiente en la cuenta de desembolso" : riesgoImpide ? "El cliente no califica para este crédito" : undefined}
+            type="submit" disabled={loading || fondosInsuficientes || riesgoImpide || !!errorCapital}
+            title={errorCapital ?? (fondosInsuficientes ? "Saldo insuficiente en la cuenta de desembolso" : riesgoImpide ? "El cliente no califica para este crédito" : undefined)}
             className="px-5 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 disabled:opacity-50 transition-opacity"
           >
             {loading ? "Guardando..." : creditoId ? "Actualizar" : "Otorgar crédito"}
