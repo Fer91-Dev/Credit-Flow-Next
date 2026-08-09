@@ -229,7 +229,11 @@ export function evaluarOriginacion(
   let bloqueoDuro = false;
 
   // 1) Capacidad de pago (afordabilidad).
-  const ratio = ingreso > 0 ? round2((entrada.cuotaMensualEquivalenteConCargos + deudaVigente) / ingreso) : null;
+  // 🔴 Cuatro decimales, no dos. Es una FRACCIÓN: con `round2`, 0,2970 y 0,3044 quedaban los
+  // dos en 0,30 y la pantalla mostraba "30%" para ambos —uno por debajo del tope y el otro por
+  // encima—. El dato es de presentación (la decisión se toma comparando la cuota contra la
+  // capacidad, no este número), pero justo en el borde es donde el operador lo mira.
+  const ratio = ingreso > 0 ? Math.round(((entrada.cuotaMensualEquivalenteConCargos + deudaVigente) / ingreso) * 10000) / 10000 : null;
   if (ingreso <= 0) {
     escalar("revisar");
     motivos.push("Sin ingreso declarado: no se puede evaluar la capacidad de pago.");

@@ -170,6 +170,49 @@ const HELP: Record<string, HelpDoc> = {
           { term: "Tasa / plazo / monto", desc: "Deben respetar los rangos y plazos habilitados en Configuración → Simulador." },
         ],
       },
+      {
+        // El recuadro naranja del simulador. Cada dato que muestra, explicado — el usuario
+        // pidió esta sección después de no entender qué significaba cada número.
+        kind: "definiciones",
+        titulo: "El recuadro de Originación",
+        items: [
+          {
+            term: "Semáforo (Aprobado / Revisar / Rechazado)",
+            desc: "El veredicto. Aprobado: entra sin observaciones. Revisar: se puede otorgar pero hay algo que mirar (por ejemplo, cliente sin historial). Rechazado: no califica; según la configuración, se bloquea o pide autorización de un admin.",
+          },
+          {
+            term: "Monto máximo sugerido",
+            desc: "El capital más grande que este cliente puede pagar con su sueldo, a la tasa y el plazo que estás cargando. El botón «Usar» lo carga en el campo Capital. Cambia con el plazo: más cuotas → cuota más chica → mayor monto posible.",
+          },
+          {
+            term: "Cuota máx (capacidad)",
+            desc: "Cuánto puede destinar por mes: su ingreso × el porcentaje configurado en Riesgo, menos lo que ya paga por otros créditos. Con $450.000 de ingreso y un tope del 30%, son $135.000. Es el número del que sale el monto sugerido.",
+          },
+          {
+            term: "Ratio cuota / ingreso",
+            desc: "Qué porcentaje del sueldo se lleva la cuota del crédito que estás simulando, sumada a lo que ya paga. Mientras esté por debajo del tope configurado, la capacidad de pago está bien.",
+          },
+          {
+            term: "Score interno",
+            desc: "Cómo se portó el cliente EN ESTA financiera (pagos puntuales, atrasos). «Sin historial» es un cliente nuevo: no es malo, es que todavía no hay con qué juzgarlo.",
+          },
+          {
+            term: "«Puede afrontar más, pero el máximo que podés otorgar es…»",
+            desc: "Aparece cuando el cliente aguanta más de lo que podés prestarle, sea por el máximo de la financiera o por tu propio límite de otorgamiento. El monto sugerido sigue mostrando su capacidad real —conviene saber que te sobra margen— pero «Usar» carga hasta donde el sistema te deja.",
+          },
+        ],
+      },
+      {
+        kind: "tips",
+        titulo: "Cómo se calcula el monto sugerido",
+        items: [
+          "Sale de la capacidad de pago, no de un porcentaje del monto pedido: se busca el capital cuya cuota sea exactamente lo que el cliente puede pagar por mes.",
+          "La frecuencia importa. Con cuotas semanales el cliente paga 52 veces al año, no 12: el sistema lo lleva a su equivalente mensual antes de compararlo con el sueldo.",
+          "Los cargos cuentan. Si tenés IVA, seguro o gastos activos, el sugerido baja: son plata que el cliente también paga.",
+          "Los créditos que ya tiene descuentan. Si Nora ya paga $40.000 por mes, le quedan $95.000 de margen en vez de $135.000.",
+          "Es orientativo, no una aprobación: podés escribir otro monto. Lo que cambia es el semáforo, y todo se vuelve a validar en el servidor al otorgar.",
+        ],
+      },
     ],
   },
 

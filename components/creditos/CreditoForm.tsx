@@ -880,7 +880,7 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
                     </div>
                     <div className="rounded-lg bg-muted/30 px-2.5 py-1.5">
                       <p className="text-muted-foreground">Ratio cuota / ingreso</p>
-                      <p className="font-mono font-semibold text-foreground">{riesgoEval.ratioCuotaIngreso != null ? `${(riesgoEval.ratioCuotaIngreso * 100).toFixed(0)}%` : "—"}</p>
+                      <p className="font-mono font-semibold text-foreground">{riesgoEval.ratioCuotaIngreso != null ? `${(riesgoEval.ratioCuotaIngreso * 100).toFixed(1)}%` : "—"}</p>
                     </div>
                   </div>
                   {riesgoRechazado && !riesgoEval.bloquea && esAdmin && (
