@@ -831,8 +831,20 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
                   {!riesgoRechazado && (riesgoEval.montoMaximoSugerido > 0 ? (
                     <div className="mt-3 flex items-center justify-between gap-2 rounded-lg border border-primary/25 bg-primary/5 px-3 py-2">
                       <div>
-                        <p className="text-[11px] text-muted-foreground">Monto máximo sugerido <span className="text-muted-foreground/70">· a {sim.plazo || formData.plazo_meses} cuotas</span></p>
-                        <p className="font-mono text-sm font-bold text-foreground">{formatMonto(riesgoEval.montoMaximoSugerido)}</p>
+                        <p className="text-[11px] text-muted-foreground">Monto máximo sugerido</p>
+                        {/*
+                          🔴 El plazo va PEGADO al monto y con entidad propia, no como texto gris
+                          al final del rótulo. El número solo no significa nada sin él: el mismo
+                          cliente da $159.897 a 2 cuotas y $311.483 a 24. Con la aclaración en
+                          letra chica y apagada, el vendedor lee el monto, cambia el plazo, ve
+                          otro monto y no entiende por qué se movió.
+                        */}
+                        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                          <p className="font-mono text-base font-bold text-foreground">{formatMonto(riesgoEval.montoMaximoSugerido)}</p>
+                          <span className="rounded-md border border-primary/40 bg-primary/10 px-1.5 py-0.5 text-[11px] font-semibold text-primary">
+                            a {sim.plazo || formData.plazo_meses} {lbl.cuotaPlural}
+                          </span>
+                        </div>
                         {/*
                           El sugerido responde "cuánto puede pagar ESTA PERSONA" y el tope de la
                           financiera responde "cuánto prestamos NOSOTROS". Son dos preguntas
@@ -848,7 +860,7 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
                             Puede afrontar más, pero el máximo que podés otorgar es {formatMonto(topeOtorgable)}.
                           </p>
                         )}
-                        <p className="text-[10px] text-muted-foreground/70">Cambia con el plazo: más cuotas → mayor monto (cuota más chica)</p>
+                        <p className="text-[10px] text-muted-foreground">Si estirás el plazo, la cuota baja y este monto sube.</p>
                       </div>
                       <button
                         type="button"
