@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { motion } from "framer-motion";
 import { DollarSign, Eye, EyeOff, Info, Percent, Search, UserPlus, X, RefreshCw, PanelLeftClose, PanelLeftOpen, ListOrdered } from "lucide-react";
 import { Emoji } from "@/components/ui/Emoji";
@@ -79,7 +79,7 @@ function useDebounced<T>(value: T, delay = 350): T {
 }
 
 export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
-  const { config } = useConfiguracion();
+  const { config, mutate: refrescarConfig } = useConfiguracion();
   const { financiera } = useFinanciera(); // co-branding del PDF (nombre/logo)
   const { perfil } = useMiPerfilVendedor(); // límite de otorgamiento del usuario (null si es admin/sin tope)
   const { caja: miCaja, mutate: refrescarCaja } = useMiCaja(); // caja de la que desembolsa el usuario (vendedor: su caja; admin: caja principal); fondos para otorgar
@@ -414,6 +414,24 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
    * Devuelve `null` con el campo vacío o en cero: un campo a medio escribir todavía no es
    * un error, y pintarlo de rojo apenas se toca es peor que avisar tarde.
    */
+  /**
+   * Trae los topes de nuevo justo antes de que el vendedor escriba el monto.
+   *
+   * El polleo de fondo (30s) y la revalidación al enfocar la ventana cubren el caso general,
+   * pero el foco depende del escritorio y no siempre llega: probando en dos ventanas, el
+   * valor nuevo tardó un minuto en aparecer. Este es el momento exacto en que un tope viejo
+   * molesta, así que se pide acá y el aviso sale con el número de hoy.
+   *
+   * Con tope de 5s para que tabular entre campos no dispare una consulta por pasada.
+   */
+  const ultimoRefrescoCfg = useRef(0);
+  const refrescarTopes = () => {
+    const ahora = Date.now();
+    if (ahora - ultimoRefrescoCfg.current < 5_000) return;
+    ultimoRefrescoCfg.current = ahora;
+    refrescarConfig();
+  };
+
   const errorCapital = useMemo(() => {
     if (esProducto || !formData.monto_original) return null;
     const monto = parseMonto(formData.monto_original);
@@ -662,6 +680,7 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
               <Input
                 name="monto_original" type="text" inputMode="decimal" placeholder="350.000,00"
                 value={formData.monto_original} onChange={setMonto}
+                onFocus={refrescarTopes}
                 required readOnly={esProducto}
                 aria-invalid={!!errorCapital}
                 className={`pl-9 text-lg font-bold font-mono tabular-nums ${!esProducto && miCaja ? "pr-10" : ""} ${esProducto ? "opacity-70 cursor-not-allowed" : ""} ${errorCapital ? "border-destructive focus:border-destructive focus:ring-destructive/25" : ""}`}

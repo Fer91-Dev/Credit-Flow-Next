@@ -1112,17 +1112,27 @@ export interface MiPerfilVendedor {
  * Lo reportó el usuario: el admin subió el monto máximo de $5.000 a $600.000 y el
  * simulador del vendedor siguió rechazando por el tope anterior.
  *
- * `revalidateOnFocus` es la pieza que resuelve el caso real: el vendedor vuelve a su
- * ventana y ahí se entera. El `refreshInterval` largo es la red por si nunca cambia el
- * foco (dos monitores, la pestaña siempre visible). No se poletea cada 30s como los
- * arqueos porque estos parámetros se tocan una vez por mes, no varias veces por día.
+ * `revalidateOnFocus` cubre el caso habitual —el vendedor vuelve a su ventana y ahí se
+ * entera—, pero **no hay que apoyarse solo en eso**: el evento de foco depende del
+ * escritorio y no siempre llega. Con el usuario probando en dos ventanas, el aviso tardó
+ * un minuto y lo que terminó actualizando el valor fue el polleo, no el foco.
+ *
+ * Por eso el `refreshInterval` baja a 30s. Son parámetros que se tocan una vez por mes, así
+ * que el costo es una consulta chica cada medio minuto por usuario; el beneficio es que el
+ * peor caso deja de depender de un evento del sistema operativo. Aun así no es tiempo real:
+ * para eso haría falta empujar el cambio desde el servidor, y no lo vale un dato que casi
+ * nunca cambia.
+ *
+ * 🔴 Nada de esto es una barrera de seguridad. El servidor revalida los topes al otorgar,
+ * así que una pantalla desactualizada como mucho hace perder tiempo — nunca deja pasar un
+ * crédito que no corresponde.
  *
  * `dedupingInterval: 0` es imprescindible, no adorno: el default global de 30s **también
  * frena la revalidación por foco**, así que sin esto volver a la pestaña dentro de esa
  * ventana no pedía nada y se seguía viendo el valor viejo.
  */
 const PARAMETROS_SWR = {
-  refreshInterval: 120_000,
+  refreshInterval: 30_000,
   revalidateOnFocus: true,
   revalidateOnReconnect: true,
   dedupingInterval: 0,
