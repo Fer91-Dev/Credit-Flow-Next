@@ -9,7 +9,10 @@
  * components/providers/SWRProvider.tsx, montado en el layout autenticado.
  */
 import useSWR, { mutate as globalMutate } from "swr";
-import type { SimuladorConfig, DocumentosConfig, TipoMovimiento } from "@/lib/domain";
+import type {
+  SimuladorConfig, DocumentosConfig, TipoMovimiento,
+  PoliticaOriginacion, BureauConfig, BureauProveedor, RiesgoConfig,
+} from "@/lib/domain";
 import type { CobranzaConfig } from "@/lib/config";
 
 export type { SimuladorConfig, DocumentosConfig };
@@ -737,32 +740,15 @@ export interface RentabilidadConfig {
   otros_costos_mensuales: number;  // costo operativo fijo por mes (opcional)
 }
 
-/** Política de originación (feature premium): límites por ingreso + reglas de bureau. */
-export interface PoliticaOriginacion {
-  ratioCuotaIngresoMax: number;
-  multiploIngresoMax: number;
-  limiteBaseSinBureau: number;
-  situacionBcraMax: 1 | 2 | 3 | 4 | 5 | 6;
-  scoreExternoMin: number | null;
-  rechazaConChequesRechazados: boolean;
-  maxCreditosActivos: number;
-  maxEdicionesSueldoVendedor: number;
-  alertaSaltoSueldoPct: number;
-  bloquearConCuotasVencidas: boolean;
-  accionAlNoCalificar: "bloquear" | "autorizar";
-}
-export type BureauProveedor = "manual" | "bcra" | "nosis" | "veraz";
-export interface BureauConfig {
-  proveedor: BureauProveedor;
-  enabled: boolean;
-  endpoint: string;
-  token: string;
-  usuario: string;
-}
-export interface RiesgoConfig {
-  politica: PoliticaOriginacion;
-  bureau: BureauConfig;
-}
+/**
+ * Política de originación y bureau: se reexportan LOS TIPOS DEL DOMINIO, no una copia.
+ *
+ * Acá había una definición paralela, campo por campo. Agregar un parámetro al motor
+ * compilaba igual y el formulario de Configuración no lo veía —el error salía recién al
+ * usarlo—, y peor: nada impedía que las dos versiones se contradijeran y que la pantalla
+ * dijera una cosa y el motor hiciera otra. Mismo criterio que `CobranzaConfig`.
+ */
+export type { PoliticaOriginacion, BureauConfig, BureauProveedor, RiesgoConfig };
 
 export interface ConfiguracionFinanciera {
   convencionTasa: "nominal_anual" | "efectiva_anual" | "mensual";

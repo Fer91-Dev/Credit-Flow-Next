@@ -1127,6 +1127,18 @@ export function ConfigForm() {
                     onChange={e => setRiesgo({ multiploIngresoMax: Math.max(0, parseFloat(e.target.value) || 0) })}
                     className="font-mono tabular-nums" />
                 </Field>
+                <Field
+                  label="Sueldo que debe quedarle libre (%)"
+                  hint="Segunda chance para quien se pasa del ratio: si aun así le queda libre este % del sueldo, en vez de rechazarlo lo manda a revisar. 0 = apagado."
+                >
+                  <div className="relative">
+                    <Input type="number" min="0" max="100" step="1"
+                      value={riesgo.politica.ingresoDisponibleMinPct}
+                      onChange={e => setRiesgo({ ingresoDisponibleMinPct: Math.min(100, Math.max(0, parseFloat(e.target.value) || 0)) })}
+                      className="pr-7" />
+                    <Percent className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
+                  </div>
+                </Field>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1457,6 +1469,7 @@ function defaultRiesgo(): RiesgoConfig {
   return {
     politica: {
       ratioCuotaIngresoMax: 0.30,
+      ingresoDisponibleMinPct: 0, // apagado por defecto: no cambia el criterio de nadie
       multiploIngresoMax: 6,
       limiteBaseSinBureau: 0,
       situacionBcraMax: 2,

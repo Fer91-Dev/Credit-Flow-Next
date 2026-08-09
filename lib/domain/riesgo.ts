@@ -34,6 +34,18 @@ export interface SenalesBureau {
 export interface PoliticaOriginacion {
   /** Ratio máx cuota/ingreso neto. Ej. 0.30 = la cuota no supera el 30% del ingreso. */
   ratioCuotaIngresoMax: number;
+  /**
+   * Segunda vía para los que se pasan del ratio: qué porcentaje del sueldo tiene que
+   * quedarle libre al cliente después de pagar la cuota (y lo que ya debe) para que el caso
+   * pase a REVISAR en vez de rechazarse. Ej. 50 = tiene que quedarle la mitad del sueldo.
+   *
+   * Existe porque el ratio es relativo y la subsistencia es absoluta: el 30% de un sueldo
+   * chico deja poco para vivir, y el 47% de uno grande deja mucho. Con un solo porcentaje se
+   * termina rechazando a quien tiene margen de sobra y aprobando a quien está al límite.
+   *
+   * 0 = la regla no existe (default): pasarse del ratio es rechazo directo, como siempre.
+   */
+  ingresoDisponibleMinPct: number;
   /** Múltiplo de ingreso mensual como tope de monto (cap absoluto). Ej. 6 = hasta 6 sueldos. */
   multiploIngresoMax: number;
   /** Tope de monto cuando NO hay datos de bureau (perfil fino). 0 = sin tope propio. */
@@ -69,6 +81,7 @@ export interface PoliticaOriginacion {
 /** Default razonable (mercado AR). Se puede sobrescribir por tenant desde Configuración. */
 export const POLITICA_ORIGINACION_DEFAULT: PoliticaOriginacion = {
   ratioCuotaIngresoMax: 0.3,
+  ingresoDisponibleMinPct: 0, // apagado: quien no lo configure sigue con el criterio de siempre
   multiploIngresoMax: 6,
   limiteBaseSinBureau: 0,
   situacionBcraMax: 2,
@@ -238,8 +251,35 @@ export function evaluarOriginacion(
     escalar("revisar");
     motivos.push("Sin ingreso declarado: no se puede evaluar la capacidad de pago.");
   } else if (entrada.cuotaMensualEquivalenteConCargos > capacidad.cuotaMaxima) {
-    escalar("rechazado");
-    motivos.push(`La cuota supera la capacidad de pago (máx ${(politica.ratioCuotaIngresoMax * 100).toFixed(0)}% del ingreso).`);
+    /**
+     * Se pasa del ratio. Antes era rechazo directo; ahora hay una segunda mirada.
+     *
+     * El ratio es RELATIVO y la subsistencia es ABSOLUTA, y ahí el porcentaje solo se
+     * queda corto: a quien gana poco, el 30% le deja apenas para vivir; a quien gana
+     * mucho, el 47% le sigue dejando de sobra. Con un único número se rechaza al segundo
+     * y se aprueba al primero, que es al revés de lo que conviene.
+     *
+     * El piso de ingreso disponible corrige eso: si después de pagar la cuota —y lo que ya
+     * debe— le queda al menos ese porcentaje del sueldo, el caso pasa a REVISAR en vez de
+     * rechazarse. No se aprueba solo: nosotros vemos el sueldo declarado, no las deudas
+     * informales del cliente, así que la excepción la firma una persona.
+     *
+     * En 0 la regla no existe y el comportamiento es el de siempre: rechazo directo. Es el
+     * default, para que ninguna financiera cambie de criterio sin decidirlo.
+     */
+    const disponible = ingreso - (entrada.cuotaMensualEquivalenteConCargos + deudaVigente);
+    const pisoRequerido = ingreso * (politica.ingresoDisponibleMinPct / 100);
+    const leQuedaMargen = politica.ingresoDisponibleMinPct > 0 && disponible >= pisoRequerido;
+
+    if (leQuedaMargen) {
+      escalar("revisar");
+      motivos.push(
+        `La cuota supera el ${(politica.ratioCuotaIngresoMax * 100).toFixed(0)}% del ingreso, pero al cliente le sigue quedando más del ${politica.ingresoDisponibleMinPct}% de su sueldo libre. Requiere revisión.`,
+      );
+    } else {
+      escalar("rechazado");
+      motivos.push(`La cuota supera la capacidad de pago (máx ${(politica.ratioCuotaIngresoMax * 100).toFixed(0)}% del ingreso).`);
+    }
   }
 
   // 2) Monto vs tope indicativo por ingreso.
