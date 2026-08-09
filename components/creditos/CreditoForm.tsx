@@ -799,24 +799,44 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
               <div className="rounded-xl border border-border bg-card p-4 text-xs text-muted-foreground">Evaluando riesgo…</div>
             ) : (() => {
               const meta = {
-                aprobado:  { ring: "ring-success/30",     bg: "bg-success/5",     text: "text-success",     dot: "bg-success",     label: "Aprobado" },
-                revisar:   { ring: "ring-warning/30",     bg: "bg-warning/5",     text: "text-warning",     dot: "bg-warning",     label: "Revisar" },
-                rechazado: { ring: "ring-destructive/30", bg: "bg-destructive/5", text: "text-destructive", dot: "bg-destructive", label: "No califica" },
+                aprobado:  { ring: "ring-success/30",     bg: "bg-success/5",     text: "text-success",     dot: "bg-success",     chip: "bg-success/10",     barra: "bg-success",     label: "Aprobado" },
+                revisar:   { ring: "ring-warning/30",     bg: "bg-warning/5",     text: "text-warning",     dot: "bg-warning",     chip: "bg-warning/10",     barra: "bg-warning",     label: "Revisar" },
+                rechazado: { ring: "ring-destructive/30", bg: "bg-destructive/5", text: "text-destructive", dot: "bg-destructive", chip: "bg-destructive/10", barra: "bg-destructive", label: "No califica" },
               }[riesgoEval.semaforo];
               return (
                 <div className={`rounded-xl border border-border bg-card p-4 ring-1 ring-inset ${meta.ring} ${meta.bg}`}>
-                  <div className="flex items-center justify-between gap-2">
+                  {/*
+                    Encabezado: el veredicto como CHIP y no como punto + texto suelto. Un punto
+                    de color no se lee de un vistazo mientras el vendedor tiene al cliente
+                    enfrente; una pastilla con el fondo del color sí.
+                  */}
+                  <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="flex items-center gap-2">
-                      <span className={`inline-flex h-2.5 w-2.5 rounded-full ${meta.dot}`} />
-                      <span className={`text-sm font-semibold ${meta.text}`}>Originación: {meta.label}</span>
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Originación</span>
+                      <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ring-inset ${meta.ring} ${meta.text} ${meta.chip}`}>
+                        <span className={`inline-flex h-1.5 w-1.5 rounded-full ${meta.dot}`} />
+                        {meta.label}
+                      </span>
                     </div>
-                    <span className="text-[11px] text-muted-foreground">Score interno {riesgoEval.scoreInterno.categoria}</span>
+                    {/*
+                      🔴 `label`, no `categoria`. Se mostraba "sin_historial" —el valor con el que
+                      el sistema lo guarda internamente— en una pantalla que mira un vendedor. La
+                      etiqueta legible ("Sin historial", "Excelente", "Riesgo alto") ya existía en
+                      el dominio y no se estaba usando.
+                    */}
+                    <span className="text-[11px] text-muted-foreground">
+                      Score interno: <span className="font-semibold text-foreground">{riesgoEval.scoreInterno.label}</span>
+                    </span>
                   </div>
-                  <ul className="mt-2 space-y-1">
-                    {riesgoEval.motivos.map((m, i) => (
-                      <li key={i} className="flex gap-1.5 text-xs text-muted-foreground"><span className="text-muted-foreground/40">•</span>{m}</li>
-                    ))}
-                  </ul>
+                  {riesgoEval.motivos.length > 0 && (
+                    <ul className="mt-2.5 space-y-1">
+                      {riesgoEval.motivos.map((m, i) => (
+                        <li key={i} className={`flex gap-1.5 text-xs ${meta.text}`}>
+                          <span className="opacity-50">•</span>{m}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                   {/* Compromiso actual del cliente: créditos vivos + suma de sus cuotas mensuales
                       (esta deuda es la que reduce el monto que se le puede otorgar). */}
                   {riesgoEval.creditosActivos > 0 && (
@@ -885,27 +905,73 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
                       Sin margen para nuevo crédito: las cuotas de sus créditos vigentes ({formatMonto(riesgoEval.deudaCuotaMensualVigente)}/mes) ya superan su capacidad de pago ({formatMonto(riesgoEval.ingresoNetoMensual)} de ingreso).
                     </p>
                   ))}
-                  <div className="mt-3 grid grid-cols-2 gap-2 text-[11px]">
-                    <div className="rounded-lg bg-muted/30 px-2.5 py-1.5">
-                      <p className="text-muted-foreground">Cuota máx (capacidad)</p>
-                      <p className="font-mono font-semibold text-foreground">{riesgoEval.capacidad.cuotaMaxima > 0 ? formatMonto(riesgoEval.capacidad.cuotaMaxima) : "—"}</p>
-                    </div>
-                    <div className="rounded-lg bg-muted/30 px-2.5 py-1.5">
-                      <p className="text-muted-foreground">Ratio cuota / ingreso</p>
-                      <p className="font-mono font-semibold text-foreground">{riesgoEval.ratioCuotaIngreso != null ? `${(riesgoEval.ratioCuotaIngreso * 100).toFixed(1)}%` : "—"}</p>
-                    </div>
-                  </div>
+                  {/*
+                    🔴 La comparación que el motor hace de verdad, dibujada.
+                    Antes eran dos números sueltos —"Cuota máx $135.000" y "Ratio 93,8%"— que
+                    obligaban al vendedor a hacer la cuenta de cabeza para saber si entra y por
+                    cuánto se pasa. Ahora se ve: la barra es lo que ocupa la cuota de ESTE crédito
+                    sobre lo que el cliente puede pagar, y cuando se pasa lo dice con el monto del
+                    excedente. Es el número accionable — decirle "sobran $286.875" le permite
+                    bajar el monto o estirar el plazo, cosa que "93,8%" no.
+                  */}
+                  {riesgoEval.capacidad.cuotaMaxima > 0 && riesgoEval.cuotaEstimada > 0 && (() => {
+                    const usado = riesgoEval.cuotaEstimada / riesgoEval.capacidad.cuotaMaxima;
+                    const excedente = riesgoEval.cuotaEstimada - riesgoEval.capacidad.cuotaMaxima;
+                    return (
+                      <div className="mt-3 rounded-lg bg-muted/30 px-3 py-2.5">
+                        <div className="flex items-baseline justify-between gap-2">
+                          <span className="text-[11px] text-muted-foreground">Cuota de este crédito</span>
+                          <span className={`font-mono text-sm font-bold ${excedente > 0 ? meta.text : "text-foreground"}`}>
+                            {formatMonto(riesgoEval.cuotaEstimada)}<span className="text-[10px] font-normal text-muted-foreground">/mes</span>
+                          </span>
+                        </div>
+                        <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-muted">
+                          <div className={`h-full rounded-full transition-all ${meta.barra}`} style={{ width: `${Math.min(100, usado * 100)}%` }} />
+                        </div>
+                        <div className="mt-1.5 flex flex-wrap items-baseline justify-between gap-x-2 text-[11px]">
+                          <span className="text-muted-foreground">
+                            Puede pagar hasta <span className="font-mono font-semibold text-foreground">{formatMonto(riesgoEval.capacidad.cuotaMaxima)}</span>
+                          </span>
+                          <span className={excedente > 0 ? `font-semibold ${meta.text}` : "text-muted-foreground"}>
+                            {excedente > 0
+                              ? `Se pasa por ${formatMonto(excedente)}`
+                              : `Usa el ${(usado * 100).toFixed(0)}% de su margen`}
+                          </span>
+                        </div>
+                        {riesgoEval.ratioCuotaIngreso != null && (
+                          <p className="mt-1.5 border-t border-border/60 pt-1.5 text-[10px] text-muted-foreground">
+                            Le compromete el <span className="font-semibold text-foreground">{(riesgoEval.ratioCuotaIngreso * 100).toFixed(1)}%</span> de su ingreso de {formatMonto(riesgoEval.ingresoNetoMensual)}
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })()}
                   {riesgoRechazado && !riesgoEval.bloquea && esAdmin && (
                     <label className="mt-3 flex cursor-pointer items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2">
                       <input type="checkbox" checked={autorizarRiesgo} onChange={e => setAutorizarRiesgo(e.target.checked)} className="mt-0.5 accent-primary" />
                       <span className="text-xs text-foreground">Autorizo el otorgamiento asumiendo el riesgo (decisión del administrador).</span>
                     </label>
                   )}
+                  {/* Avisos del pie: recuadro con ícono, no una línea de texto rojo suelta. Es lo
+                      que define si la operación puede seguir o no — tiene que verse como un
+                      cartel, no como una nota al margen. */}
                   {riesgoRechazado && !riesgoEval.bloquea && !esAdmin && (
-                    <p className="mt-3 text-xs text-destructive">Requiere autorización de un administrador para otorgar.</p>
+                    <div className="mt-3 flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2">
+                      <Info className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+                      <p className="text-xs text-destructive">
+                        <span className="font-semibold">Requiere autorización de un administrador.</span>{" "}
+                        Podés bajar el monto o estirar el plazo para que entre en su capacidad, o pedirle a un admin que lo autorice.
+                      </p>
+                    </div>
                   )}
                   {riesgoRechazado && riesgoEval.bloquea && (
-                    <p className="mt-3 text-xs text-destructive">La política bloquea el otorgamiento a clientes que no califican.</p>
+                    <div className="mt-3 flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2">
+                      <Info className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+                      <p className="text-xs text-destructive">
+                        <span className="font-semibold">No se puede otorgar.</span>{" "}
+                        La política de la financiera bloquea el otorgamiento a clientes que no califican, sin excepciones.
+                      </p>
+                    </div>
                   )}
                 </div>
               );
