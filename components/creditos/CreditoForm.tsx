@@ -923,17 +923,21 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
                      *
                      * El vendedor ve cuotas de $31.287 en el plan y acá un total de $135.578: sin
                      * mostrar la cuenta del medio parecen dos cifras sin relación, y la que decide
-                     * si el crédito entra o no es la segunda. Con "4,33 cuotas de $31.287 en un
-                     * mes" se entiende de una: lo que lo pasa del tope es la SUMA de las semanales,
-                     * no una cuota sola.
+                     * si el crédito entra o no es la segunda. Mostrarla deja claro que lo que se
+                     * pasa del tope es la SUMA de las cuotas del mes, no una cuota sola.
                      *
-                     * El multiplicador sale de los períodos por año de la frecuencia: 52/12 = 4,33
-                     * semanas por mes. En mensual no se muestra nada — ahí no hay nada que explicar.
+                     * 🔴 Va como `× 52 semanas ÷ 12 meses` y NO como `× 4,33`. El multiplicador es
+                     * 4,3333… periódico: con el redondeado la cuenta no cierra —$31.287,46 × 4,33
+                     * da $135.474,70, cien pesos menos que el total que muestra la pantalla— y el
+                     * usuario lo detectó en la primera prueba. Una explicación cuyo resultado no se
+                     * puede reproducir a mano es peor que no explicar: hace dudar del número bueno.
+                     * Con la fracción entera se verifica exacto con una calculadora.
                      */
                     const frecDef = resolverFrecuencia(formData.frecuencia, catalogoFrec);
                     const porMes = frecDef.periodosAnio / 12;
                     const cuotaPeriodo = plan ? plan.cuotas.reduce((m, c) => Math.max(m, c.cuotaTotal), 0) : 0;
                     const esMensual = Math.abs(porMes - 1) < 0.01;
+                    const unidadPlural = `${lbl.unidad}s`;
                     return (
                       <div className="mt-3 rounded-lg bg-muted/30 px-3 py-2.5">
                         <div className="flex items-baseline justify-between gap-2">
@@ -943,9 +947,10 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
                           </span>
                         </div>
                         {!esMensual && cuotaPeriodo > 0 && (
-                          <p className="text-[10px] text-muted-foreground">
-                            Son <span className="font-semibold text-foreground">{porMes.toFixed(2).replace(".", ",")}</span> cuotas
-                            de <span className="font-mono font-semibold text-foreground">{formatMonto(cuotaPeriodo)}</span> en un mes
+                          <p className="text-[10px] leading-relaxed text-muted-foreground">
+                            <span className="font-mono font-semibold text-foreground">{formatMonto(cuotaPeriodo)}</span> por {lbl.unidad}
+                            {" × "}<span className="font-semibold text-foreground">{frecDef.periodosAnio}</span> {unidadPlural} ÷ 12 meses
+                            {" = "}<span className={`font-mono font-semibold ${excedente > 0 ? meta.text : "text-foreground"}`}>{formatMonto(riesgoEval.cuotaEstimada)}</span> por mes
                           </p>
                         )}
                         <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-muted">
