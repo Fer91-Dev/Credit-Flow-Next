@@ -946,11 +946,19 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
                             {formatMonto(riesgoEval.cuotaEstimada)}<span className="text-[10px] font-normal text-muted-foreground">/mes</span>
                           </span>
                         </div>
+                        {/* Cada tramo de la cuenta va en su propio `nowrap`: si el renglón se corta,
+                            que sea ENTRE operaciones y nunca entre un número y su unidad ("÷ 12 /
+                            meses" partido en dos líneas se lee pésimo). */}
                         {!esMensual && cuotaPeriodo > 0 && (
                           <p className="text-[10px] leading-relaxed text-muted-foreground">
-                            <span className="font-mono font-semibold text-foreground">{formatMonto(cuotaPeriodo)}</span> por {lbl.unidad}
-                            {" × "}<span className="font-semibold text-foreground">{frecDef.periodosAnio}</span> {unidadPlural} ÷ 12 meses
-                            {" = "}<span className={`font-mono font-semibold ${excedente > 0 ? meta.text : "text-foreground"}`}>{formatMonto(riesgoEval.cuotaEstimada)}</span> por mes
+                            <span className="whitespace-nowrap">
+                              <span className="font-mono font-semibold text-foreground">{formatMonto(cuotaPeriodo)}</span> por {lbl.unidad}
+                            </span>{" "}
+                            <span className="whitespace-nowrap">× <span className="font-semibold text-foreground">{frecDef.periodosAnio}</span> {unidadPlural}</span>{" "}
+                            <span className="whitespace-nowrap">÷ 12 meses</span>{" "}
+                            <span className="whitespace-nowrap">
+                              = <span className={`font-mono font-semibold ${excedente > 0 ? meta.text : "text-foreground"}`}>{formatMonto(riesgoEval.cuotaEstimada)}</span> por mes
+                            </span>
                           </p>
                         )}
                         <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-muted">
