@@ -432,6 +432,22 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
     refrescarConfig();
   };
 
+  /**
+   * Techo real de lo que este usuario puede otorgar hoy: el menor entre el máximo de la
+   * financiera y su propio límite de otorgamiento. `null` si no hay ninguno.
+   *
+   * Acota lo que carga el botón "Usar" del monto sugerido. Incluye el límite del VENDEDOR y
+   * no solo el de la financiera porque los dos rompen igual: un botón que sugiere un monto y
+   * al apretarlo deja el campo en rojo es un botón roto, sin importar cuál de los dos topes
+   * lo frenó.
+   */
+  const topeOtorgable = useMemo(() => {
+    const topes: number[] = [];
+    if (simCfg && simCfg.montoMax > 0) topes.push(simCfg.montoMax);
+    if (!creditoId && perfil?.limite_aprobacion != null) topes.push(perfil.limite_aprobacion);
+    return topes.length > 0 ? Math.min(...topes) : null;
+  }, [simCfg, creditoId, perfil?.limite_aprobacion]);
+
   const errorCapital = useMemo(() => {
     if (esProducto || !formData.monto_original) return null;
     const monto = parseMonto(formData.monto_original);
@@ -817,11 +833,32 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
                       <div>
                         <p className="text-[11px] text-muted-foreground">Monto máximo sugerido <span className="text-muted-foreground/70">· a {sim.plazo || formData.plazo_meses} cuotas</span></p>
                         <p className="font-mono text-sm font-bold text-foreground">{formatMonto(riesgoEval.montoMaximoSugerido)}</p>
+                        {/*
+                          El sugerido responde "cuánto puede pagar ESTA PERSONA" y el tope de la
+                          financiera responde "cuánto prestamos NOSOTROS". Son dos preguntas
+                          distintas, así que el número que se muestra sigue siendo la capacidad
+                          real del cliente — taparla con el tope escondería que se le podía
+                          prestar más, que es justo lo que el dueño quiere saber para decidir si
+                          su tope le está dejando plata sobre la mesa.
+                          Lo que sí se acota es lo que el botón CARGA: sugerir un monto y que el
+                          campo se ponga en rojo al usarlo es un botón roto.
+                        */}
+                        {topeOtorgable != null && riesgoEval.montoMaximoSugerido > topeOtorgable && (
+                          <p className="text-[10px] text-warning">
+                            Puede afrontar más, pero el máximo que podés otorgar es {formatMonto(topeOtorgable)}.
+                          </p>
+                        )}
                         <p className="text-[10px] text-muted-foreground/70">Cambia con el plazo: más cuotas → mayor monto (cuota más chica)</p>
                       </div>
                       <button
                         type="button"
-                        onClick={() => { setError(null); setFormData(p => ({ ...p, monto_original: numeroAInput(riesgoEval.montoMaximoSugerido) })); }}
+                        onClick={() => {
+                          setError(null);
+                          const aCargar = topeOtorgable != null
+                            ? Math.min(riesgoEval.montoMaximoSugerido, topeOtorgable)
+                            : riesgoEval.montoMaximoSugerido;
+                          setFormData(p => ({ ...p, monto_original: numeroAInput(aCargar) }));
+                        }}
                         className="shrink-0 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:opacity-90 transition-opacity"
                       >
                         Usar
