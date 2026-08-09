@@ -8,7 +8,7 @@ import { assertFondosSuficientesTx } from "@/lib/caja-fondos";
 import { getConfiguracion } from "@/lib/config";
 import { registrarAuditoria } from "@/lib/audit";
 import { registrarMovimientoStock } from "@/lib/stock";
-import { evaluarClienteParaCredito } from "@/lib/riesgo-server";
+import { evaluarClienteParaCredito, cuotaMensualParaRiesgo } from "@/lib/riesgo-server";
 import { formatCreditoNumero, nombreCompleto, hoyComercial } from "@/lib/utils";
 import type { NextRequest } from "next/server";
 import type { Prisma } from "@prisma/client";
@@ -327,9 +327,20 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
   // tenant tiene el plan Pro y consultó (BCRA/Nosis/Veraz); si no, el motor usa datos internos.
   let riesgoSnapshot: Prisma.InputJsonValue | undefined;
   {
-    const tasaPeriodica = tasaPeriodicaSegunConvencion(body.tasa, configActual.convencionTasa, frecuencia, configActual.simulador.frecuencias);
-    const cuotaEstimada = cuotaMensualFrancesa(body.monto_original, tasaPeriodica, body.plazo_meses);
-    const ev = await evaluarClienteParaCredito({ tenantId, clienteId: body.cliente_id, montoSolicitado: body.monto_original, cuotaEstimada });
+    // Lo que el crédito le cuesta al cliente POR MES, con cargos. Antes acá iba la cuota pura
+    // de capital + interés y sin mensualizar: con cargos activos o frecuencia no mensual, la
+    // barrera del otorgamiento medía menos de lo que el cliente realmente iba a pagar.
+    const cuotaEstimada = cuotaMensualParaRiesgo({
+      monto: body.monto_original,
+      tasa: body.tasa,
+      plazoCuotas: body.plazo_meses,
+      frecuencia,
+      // Alcanza con hoy: la evaluación mira el TAMAÑO de la cuota, no en qué fecha cae, y el
+      // cronograma real todavía no se armó en este punto del flujo.
+      fechaInicio: hoyComercial(),
+      config: configActual,
+    });
+    const ev = await evaluarClienteParaCredito({ tenantId, clienteId: body.cliente_id, montoSolicitado: body.monto_original, cuotaMensualEquivalenteConCargos: cuotaEstimada });
     const autorizadoManual = role === "admin" && body.autorizacion_riesgo === true;
     if (ev.semaforo === "rechazado") {
       if (ev.bloquea) {

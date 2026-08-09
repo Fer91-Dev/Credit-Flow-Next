@@ -6,8 +6,9 @@
  * Feature premium: el llamador decide si corre (ctxHasFeature) — este helper no gatea.
  */
 import { prisma } from "@/lib/prisma";
-import { calcularScore, evaluarOriginacion, type ResultadoOriginacion, type ScoreResult, type SenalesBureau, esCreditoVivo } from "@/lib/domain";
+import { calcularScore, evaluarOriginacion, cuotaMensualEquivalente, construirPlanAmortizacion, round2, type ResultadoOriginacion, type ScoreResult, type SenalesBureau, type FrecuenciaDef, esCreditoVivo } from "@/lib/domain";
 import { getRiesgoConfig } from "@/lib/config";
+import type { ConfiguracionFinanciera } from "@/lib/domain";
 
 export interface EvaluacionRiesgo extends ResultadoOriginacion {
   ingresoNetoMensual: number;
@@ -18,17 +19,59 @@ export interface EvaluacionRiesgo extends ResultadoOriginacion {
 }
 
 /**
- * Evalúa a un cliente para un crédito de `cuotaEstimada` / `montoSolicitado`.
- * `excluirCreditoId` permite no contar un crédito propio (edición/refinanciación).
+ * Lo que un crédito le va a costar al cliente POR MES, que es lo único comparable contra su
+ * sueldo. Es el número que hay que darle a `evaluarClienteParaCredito`.
+ *
+ * Dos correcciones sobre lo que se hacía antes, y las dos importan:
+ *
+ * 1. **Con cargos.** Se toma la cuota MÁS ALTA del cronograma real (`cuotaTotal`, que incluye
+ *    IVA, seguro y gastos), no la cuota pura de capital + interés. Los cargos son plata que
+ *    el cliente paga; dejarlos afuera hacía que el compromiso real superara el tope de la
+ *    política. Además la deuda de sus créditos anteriores SÍ se medía con cargos, así que el
+ *    crédito nuevo entraba con una vara más blanda que los viejos.
+ *
+ * 2. **Mensualizada.** Una cuota semanal se paga 52 veces al año. Compararla cruda contra un
+ *    ingreso mensual hacía que el motor aprobara el 130% del sueldo creyendo que respetaba
+ *    el 30%.
+ *
+ * Se usa la cuota más alta y no el promedio porque la capacidad de pago se mide contra el
+ * peor mes: si en ese no llega, el crédito entra en mora aunque el promedio cierre.
+ */
+export function cuotaMensualParaRiesgo(params: {
+  monto: number;
+  tasa: number;
+  plazoCuotas: number;
+  frecuencia: string;
+  fechaInicio: Date;
+  config: ConfiguracionFinanciera;
+}): number {
+  const { monto, tasa, plazoCuotas, frecuencia, fechaInicio, config } = params;
+  if (monto <= 0 || plazoCuotas < 1) return 0;
+
+  const plan = construirPlanAmortizacion(
+    monto, tasa, plazoCuotas, fechaInicio, config.convencionTasa, frecuencia,
+    { cargos: config.simulador.cargos, redondeo: config.simulador.redondeoCuota },
+    config.simulador.frecuencias,
+  );
+  const cuotaPeriodo = plan.cuotas.reduce((m, c) => Math.max(m, c.cuotaTotal), 0);
+  return round2(cuotaMensualEquivalente(cuotaPeriodo, frecuencia, config.simulador.frecuencias));
+}
+
+/**
+ * Evalúa a un cliente para un crédito.
+ *
+ * `cuotaMensualEquivalenteConCargos` tiene que venir ya mensualizada y con cargos (ver el
+ * tipo `EntradaOriginacion`). `excluirCreditoId` permite no contar un crédito propio
+ * (edición/refinanciación).
  */
 export async function evaluarClienteParaCredito(params: {
   tenantId: string;
   clienteId: string;
   montoSolicitado: number;
-  cuotaEstimada: number;
+  cuotaMensualEquivalenteConCargos: number;
   excluirCreditoId?: string;
 }): Promise<EvaluacionRiesgo> {
-  const { tenantId, clienteId, montoSolicitado, cuotaEstimada, excluirCreditoId } = params;
+  const { tenantId, clienteId, montoSolicitado, cuotaMensualEquivalenteConCargos, excluirCreditoId } = params;
 
   const cliente = await prisma.clientes.findFirst({
     where: { tenant_id: tenantId, id: clienteId },
@@ -43,7 +86,9 @@ export async function evaluarClienteParaCredito(params: {
       cliente_id: clienteId,
       ...(excluirCreditoId ? { id: { not: excluirCreditoId } } : {}),
     },
-    select: { id: true, estado: true, dias_mora: true },
+    // `frecuencia` y `frecuencia_def` hacen falta para mensualizar la cuota de cada crédito:
+    // uno semanal se paga 52 veces al año, no 12.
+    select: { id: true, estado: true, dias_mora: true, frecuencia: true, frecuencia_def: true },
   });
   const idsVivos = creditos.filter((c) => c.estado === "activo" || c.estado === "vencido").map((c) => c.id);
   const maxDiasMora = creditos
@@ -70,15 +115,22 @@ export async function evaluarClienteParaCredito(params: {
     }
   }
 
-  // Deuda mensual vigente = cuota más próxima impaga de cada crédito vivo.
+  // Deuda vigente = la cuota más próxima impaga de cada crédito vivo, MENSUALIZADA.
+  //
+  // 🔴 Lo segundo faltaba: se sumaban las cuotas tal cual, así que un crédito semanal de
+  // $20.000 por semana entraba como si fueran $20.000 al mes cuando son $86.667. El cliente
+  // parecía tener el bolsillo mucho más libre de lo que estaba.
   const deudaPorCredito = new Map<string, number>();
+  const frecPorCredito = new Map(creditos.map((c) => [c.id, c]));
   for (const q of cuotas) {
     if (!idsVivos.includes(q.credito_id) || q.estado === "pagada") continue;
-    const actual = deudaPorCredito.get(q.credito_id);
-    if (actual === undefined) deudaPorCredito.set(q.credito_id, q.cuota_total);
+    if (deudaPorCredito.has(q.credito_id)) continue;
     // (findMany no garantiza orden por nro, pero tomamos la primera impaga como representativa)
+    const cred = frecPorCredito.get(q.credito_id);
+    const catalogo = cred?.frecuencia_def ? [cred.frecuencia_def as unknown as FrecuenciaDef] : undefined;
+    deudaPorCredito.set(q.credito_id, cuotaMensualEquivalente(q.cuota_total, cred?.frecuencia ?? "mensual", catalogo));
   }
-  const deudaCuotaMensualVigente = [...deudaPorCredito.values()].reduce((a, b) => a + b, 0);
+  const deudaCuotaMensualVigente = round2([...deudaPorCredito.values()].reduce((a, b) => a + b, 0));
 
   const scoreInterno = calcularScore({
     maxDiasMora,
@@ -105,7 +157,7 @@ export async function evaluarClienteParaCredito(params: {
   const { politica } = await getRiesgoConfig(tenantId);
   const resultado = evaluarOriginacion(
     {
-      ingresoNetoMensual, cuotaEstimada, montoSolicitado, deudaCuotaMensualVigente,
+      ingresoNetoMensual, cuotaMensualEquivalenteConCargos, montoSolicitado, deudaCuotaMensualVigente,
       scoreInterno, senalesBureau,
       creditosActivos: idsVivos.length,
       tieneCuotasVencidas,

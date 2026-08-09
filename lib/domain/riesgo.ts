@@ -159,11 +159,29 @@ export type SemaforoOriginacion = "aprobado" | "revisar" | "rechazado";
 export interface EntradaOriginacion {
   /** Ingreso neto mensual = `ingreso_mensual + otros_ingresos` del cliente. */
   ingresoNetoMensual: number;
-  /** Cuota estimada del crédito a otorgar (la mayor del cronograma). */
-  cuotaEstimada: number;
+  /**
+   * Lo que el crédito nuevo le va a costar POR MES, ya con cargos.
+   *
+   * 🔴 Dos cosas que tienen que venir resueltas por quien llama, y que antes no venían:
+   *
+   * 1. **Mensualizada.** Es lo que sale del bolsillo en un mes, no la cuota del período. Una
+   *    cuota semanal se paga 52 veces al año, no 12: pasarla cruda contra un ingreso mensual
+   *    hacía que el motor aprobara el 130% del sueldo creyendo que respetaba el 30%.
+   *    Convertir con `cuotaMensualEquivalente`.
+   * 2. **Con cargos.** IVA, seguro y gastos son plata que el cliente paga. Antes se evaluaba
+   *    solo capital + interés, así que el compromiso real superaba el tope de la política —
+   *    y encima quedaba medido con distinta vara que la deuda vigente, que sí los incluía.
+   *
+   * El nombre dice las dos cosas a propósito: si mañana alguien le pasa una cuota cruda, que
+   * al menos tenga que leer para hacerlo mal.
+   */
+  cuotaMensualEquivalenteConCargos: number;
   /** Monto (capital) solicitado. */
   montoSolicitado: number;
-  /** Suma de cuotas mensuales de otros créditos vivos del cliente. Default 0. */
+  /**
+   * Suma de lo que el cliente ya paga por mes por sus otros créditos vivos, cada uno
+   * llevado a su equivalente mensual. Default 0.
+   */
   deudaCuotaMensualVigente?: number;
   /** Score interno del cliente (de `calcularScore`). `null`/ausente = sin historial. */
   scoreInterno?: ScoreResult | null;
@@ -211,11 +229,11 @@ export function evaluarOriginacion(
   let bloqueoDuro = false;
 
   // 1) Capacidad de pago (afordabilidad).
-  const ratio = ingreso > 0 ? round2((entrada.cuotaEstimada + deudaVigente) / ingreso) : null;
+  const ratio = ingreso > 0 ? round2((entrada.cuotaMensualEquivalenteConCargos + deudaVigente) / ingreso) : null;
   if (ingreso <= 0) {
     escalar("revisar");
     motivos.push("Sin ingreso declarado: no se puede evaluar la capacidad de pago.");
-  } else if (entrada.cuotaEstimada > capacidad.cuotaMaxima) {
+  } else if (entrada.cuotaMensualEquivalenteConCargos > capacidad.cuotaMaxima) {
     escalar("rechazado");
     motivos.push(`La cuota supera la capacidad de pago (máx ${(politica.ratioCuotaIngresoMax * 100).toFixed(0)}% del ingreso).`);
   }
