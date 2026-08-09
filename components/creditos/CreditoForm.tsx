@@ -21,6 +21,7 @@ import {
   tasaPeriodicaSegunConvencion,
   efectivaAnualDesdePeriodica,
   frecuenciaLabel,
+  resolverFrecuencia,
   cargoColumnasActivas,
   type Frecuencia,
   type ConvencionTasa,
@@ -917,6 +918,22 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
                   {riesgoEval.capacidad.cuotaMaxima > 0 && riesgoEval.cuotaEstimada > 0 && (() => {
                     const usado = riesgoEval.cuotaEstimada / riesgoEval.capacidad.cuotaMaxima;
                     const excedente = riesgoEval.cuotaEstimada - riesgoEval.capacidad.cuotaMaxima;
+                    /**
+                     * 🔴 De dónde sale el número mensual, cuando la frecuencia NO es mensual.
+                     *
+                     * El vendedor ve cuotas de $31.287 en el plan y acá un total de $135.578: sin
+                     * mostrar la cuenta del medio parecen dos cifras sin relación, y la que decide
+                     * si el crédito entra o no es la segunda. Con "4,33 cuotas de $31.287 en un
+                     * mes" se entiende de una: lo que lo pasa del tope es la SUMA de las semanales,
+                     * no una cuota sola.
+                     *
+                     * El multiplicador sale de los períodos por año de la frecuencia: 52/12 = 4,33
+                     * semanas por mes. En mensual no se muestra nada — ahí no hay nada que explicar.
+                     */
+                    const frecDef = resolverFrecuencia(formData.frecuencia, catalogoFrec);
+                    const porMes = frecDef.periodosAnio / 12;
+                    const cuotaPeriodo = plan ? plan.cuotas.reduce((m, c) => Math.max(m, c.cuotaTotal), 0) : 0;
+                    const esMensual = Math.abs(porMes - 1) < 0.01;
                     return (
                       <div className="mt-3 rounded-lg bg-muted/30 px-3 py-2.5">
                         <div className="flex items-baseline justify-between gap-2">
@@ -925,6 +942,12 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
                             {formatMonto(riesgoEval.cuotaEstimada)}<span className="text-[10px] font-normal text-muted-foreground">/mes</span>
                           </span>
                         </div>
+                        {!esMensual && cuotaPeriodo > 0 && (
+                          <p className="text-[10px] text-muted-foreground">
+                            Son <span className="font-semibold text-foreground">{porMes.toFixed(2).replace(".", ",")}</span> cuotas
+                            de <span className="font-mono font-semibold text-foreground">{formatMonto(cuotaPeriodo)}</span> en un mes
+                          </p>
+                        )}
                         <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-muted">
                           <div className={`h-full rounded-full transition-all ${meta.barra}`} style={{ width: `${Math.min(100, usado * 100)}%` }} />
                         </div>
