@@ -108,6 +108,41 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
       });
     }
 
+    /**
+     * Devolver la comisión de otorgamiento que se le cobró al firmar.
+     *
+     * Si el crédito se anula, ese cargo no tiene causa: se cobró por dar un préstamo que
+     * quedó sin efecto. Sin esta pata, la financiera se quedaba con la comisión de una
+     * operación que dejó de existir, y la caja mostraba un ingreso sin contrapartida.
+     *
+     * Se busca el movimiento real en vez de recalcularlo desde la configuración: si la
+     * comisión cambió después de otorgar, hay que devolver lo que se cobró, no lo que se
+     * cobraría hoy.
+     */
+    const comisionCobrada = await tx.movimientos_caja.findFirst({
+      where: { ...withTenant(tenantId), credito_id: id, tipo: "comision_otorgamiento" },
+      select: { monto: true, cuenta: true },
+    });
+    if (comisionCobrada && comisionCobrada.monto > 0) {
+      const numDevCom = await siguienteNumeroComprobante(tx, tenantId, "DEV");
+      await tx.movimientos_caja.create({
+        data: {
+          ...withTenant(tenantId),
+          fecha: hoyComercial(),
+          tipo: "devolucion",
+          monto: -Math.abs(comisionCobrada.monto),
+          cuenta: comisionCobrada.cuenta, // vuelve por la misma cuenta por la que entró
+          credito_id: id,
+          vendedor_id: existing.vendedor_id,
+          origen: etiquetaCaja(!!existing.vendedor_id, comisionCobrada.cuenta as Cuenta),
+          destino: `Anulación ${numeroFmt}`,
+          serie: "DEV",
+          numero: numDevCom,
+          descripcion: `Devolución comisión de otorgamiento ${numeroFmt} (anulación)`,
+        },
+      });
+    }
+
     // Devolución de lo cobrado (egreso), si corresponde — una pata por cada cuenta donde
     // entraron los cobros, para que cada cuenta (efectivo/banco/dólares) se revierta bien.
     if (devolver && totalCobrado > 0) {

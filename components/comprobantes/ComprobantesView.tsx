@@ -33,6 +33,7 @@ const TIPO_META: Record<MovimientoCaja["tipo"], { label: string; variant: BadgeV
   comision:           { label: "Comisión",      variant: "warning" },
   aporte_capital:     { label: "Aporte de capital",    variant: "primary" },
   retiro_utilidades:  { label: "Retiro de utilidades", variant: "warning" },
+  comision_otorgamiento: { label: "Comisión de otorgamiento", variant: "success" },
 };
 
 const INPUT =

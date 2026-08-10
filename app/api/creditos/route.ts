@@ -2,7 +2,7 @@ import { requireAuth, requireRole, scopeCreditosVendedor, ApiError } from "@/lib
 import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
-import { cuotaMensualFrancesa, tasaPeriodicaSegunConvencion, interesMora, normalizarFrecuencia, resolverFrecuencia, sumarPeriodos, construirPlanAmortizacion, planACuotas, estadoCoherente, etiquetaCaja, esCuentaValida, validarParametrosOtorgamiento, diasMoraActual, CUENTA_LABEL, type Cuenta, type FrecuenciaDef, ESTADOS_VIVOS, esCreditoVivo, moraDelCredito, moraDesdeCronograma, moraPendienteTotal } from "@/lib/domain";
+import { cuotaMensualFrancesa, round2, tasaPeriodicaSegunConvencion, interesMora, normalizarFrecuencia, resolverFrecuencia, sumarPeriodos, construirPlanAmortizacion, planACuotas, estadoCoherente, etiquetaCaja, esCuentaValida, validarParametrosOtorgamiento, diasMoraActual, CUENTA_LABEL, type Cuenta, type FrecuenciaDef, ESTADOS_VIVOS, esCreditoVivo, moraDelCredito, moraDesdeCronograma, moraPendienteTotal } from "@/lib/domain";
 import { siguienteNumeroComprobante } from "@/lib/comprobantes";
 import { assertFondosSuficientesTx } from "@/lib/caja-fondos";
 import { getConfiguracion } from "@/lib/config";
@@ -507,6 +507,43 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
           serie: "DES",
           numero: numComp,
           descripcion: `Desembolso ${formatCreditoNumero(c.numero)} · ${nombreCompleto(cliente)}`,
+        },
+      });
+    }
+
+    /**
+     * Comisión de otorgamiento cobrada AL INICIO: entra a la caja como ingreso.
+     *
+     * 🔴 Esto faltaba por completo. El cargo se calculaba, se mostraba en el plan y se sumaba
+     * al total que el plan le promete al cliente, pero no generaba ningún movimiento: la
+     * financiera la cobraba en mano y en los libros no existía. El plan decía "paga $375.737"
+     * y la caja solo registraba la salida del desembolso.
+     *
+     * Va como asiento APARTE del desembolso, no restándolo, porque son dos hechos distintos:
+     * sale plata prestada y entra plata cobrada. Netearlos escondería los dos.
+     *
+     * Solo cuando NO está financiada: financiada se suma al capital y se cobra dentro de las
+     * cuotas, que ya se registran al cobrar. Y solo en créditos de dinero — en uno de producto
+     * no hay caja de por medio.
+     */
+    const comisionCobrada = !esProducto && plan.comision > 0 && !plan.comisionFinanciada
+      ? round2(plan.comision) : 0;
+    if (comisionCobrada > 0) {
+      const numCom = await siguienteNumeroComprobante(tx, tenantId, "COM");
+      await tx.movimientos_caja.create({
+        data: {
+          ...withTenant(tenantId),
+          fecha: fechaInicio,
+          tipo: "comision_otorgamiento",
+          monto: Math.abs(comisionCobrada), // ingreso: lo paga el cliente al firmar
+          cuenta: cuentaDesembolso,
+          credito_id: c.id,
+          vendedor_id: vendedorId,
+          origen: nombreCompleto(cliente),
+          destino: etiquetaCaja(!!vendedorId, cuentaDesembolso),
+          serie: "COM",
+          numero: numCom,
+          descripcion: `Comisión de otorgamiento ${formatCreditoNumero(c.numero)} · ${nombreCompleto(cliente)}`,
         },
       });
     }

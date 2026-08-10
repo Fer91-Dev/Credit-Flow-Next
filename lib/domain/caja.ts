@@ -16,6 +16,20 @@ export type TipoMovimiento =
   | "entrega"           // caja principal → vendedor (signo explícito por cada pata del par)
   | "rendicion"         // vendedor → caja principal (signo explícito por cada pata del par)
   | "comision"          // egreso: liquidación de comisión a un agente (ingreso si se anula)
+  /**
+   * Ingreso: comisión de otorgamiento que paga el CLIENTE al firmar, cuando la financiera la
+   * cobra al inicio en vez de financiarla.
+   *
+   * 🔴 No confundir con `comision`, que es lo contrario: plata que SALE para pagarle al
+   * vendedor. Van separadas justamente porque una entra y la otra sale; con un solo nombre,
+   * el libro sumaba y restaba bajo la misma etiqueta.
+   *
+   * Existe porque este cargo se calculaba, se mostraba en el plan y se sumaba al total que
+   * paga el cliente, pero NO generaba ningún movimiento: la plata se cobraba en mano y no
+   * quedaba en los libros. Financiada no tiene el problema — ahí se suma al capital y se
+   * cobra dentro de las cuotas.
+   */
+  | "comision_otorgamiento"
   // ── Plata del DUEÑO, que no es del negocio ────────────────────────────────
   // Iban como "ajuste", el mismo tipo con el que se corrige un error de conteo: en el
   // libro, un aporte de $10.000.000 y una corrección de $1.500 se leían igual. No son
