@@ -6,6 +6,7 @@ import { FiltrosPanel, FiltroChip } from "@/components/ui/FiltrosPanel";
 import { Field, Input, Select } from "@/components/ui/field";
 import { Download } from "lucide-react";
 import { useMovimientosStock, type MovimientoStockGlobal } from "@/lib/swr";
+import { descargarCSV } from "@/lib/csv";
 import { formatFechaHora } from "@/lib/utils";
 import { TIPOS_MOVIMIENTO_STOCK, ETIQUETA_MOVIMIENTO_STOCK, type TipoMovimientoStock } from "@/lib/domain";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -26,14 +27,9 @@ const TIPO_META: Record<TipoMovimientoStock, { variant: BadgeVariant }> = {
 };
 
 
-// ── CSV (separador es-AR ";") ──────────────────────────────────────────────
-function csvCell(v: string | number) {
-  const s = String(v ?? "");
-  return /[";\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-}
 function exportarCSV(rows: MovimientoStockGlobal[]) {
   const head = ["Fecha y hora", "Producto", "SKU", "Tipo", "Cantidad", "Saldo resultante", "Motivo / crédito", "Vendedor (comisión)", "Operador"];
-  const body = [
+  descargarCSV(`movimientos-stock_${new Date().toISOString().slice(0, 10)}.csv`, [
     head,
     ...rows.map((m) => [
       formatFechaHora(m.created_at),
@@ -46,14 +42,7 @@ function exportarCSV(rows: MovimientoStockGlobal[]) {
       m.tipo === "venta_credito" ? (m.vendedor_atribuido ?? "") : "",
       m.usuario_nombre ?? "",
     ]),
-  ].map((r) => r.map(csvCell).join(";")).join("\r\n");
-  const blob = new Blob(["﻿" + "sep=;\r\n" + body], { type: "text/csv;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `movimientos-stock_${new Date().toISOString().slice(0, 10)}.csv`;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 10_000);
+  ]);
 }
 
 export function MovimientosStockView() {

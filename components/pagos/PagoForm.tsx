@@ -43,11 +43,32 @@ interface Credito {
   proximo_pago?: string | null;
 }
 
+/** Acuerdo de pago vigente sobre el crédito, tal como lo devuelve el endpoint de cuotas. */
+interface AcuerdoDelCredito {
+  id: string;
+  fecha: string;
+  monto_acordado: number;
+  congela_punitorios: boolean;
+  total_cuotas: number;
+  proxima: { numero: number; vencimiento: string; pendiente: number } | null;
+}
+
 interface PagoFormProps {
   /** Si viene, el form arranca con ese crédito preseleccionado y bloqueado. */
   creditoId?: string;
   /** Si viene, la lista de créditos se acota a este cliente. */
   clienteId?: string;
+  /**
+   * Importe con el que arranca el cobro, en modo "monto personalizado".
+   *
+   * Lo usa el cobro de una cuota de ACUERDO DE PAGO: lo que el cliente se comprometió a
+   * pagar no coincide con ninguna cuota del crédito (el acuerdo reparte lo vencido en
+   * otros importes), así que elegir cuotas no sirve — hay que cobrar ese monto exacto.
+   * Sigue siendo editable: es una sugerencia, no una imposición.
+   */
+  montoSugerido?: number;
+  /** Texto que explica de dónde sale el monto sugerido. */
+  motivoSugerido?: string;
   onClose: (success?: boolean) => void;
 }
 
@@ -193,7 +214,7 @@ function CreditoSeleccionado({ c, onCambiar }: { c: Credito; onCambiar?: () => v
   );
 }
 
-export function PagoForm({ creditoId, clienteId, onClose }: PagoFormProps) {
+export function PagoForm({ creditoId, clienteId, montoSugerido, motivoSugerido, onClose }: PagoFormProps) {
   const [creditos, setCreditos]     = useState<Credito[]>([]);
   const [selected, setSelected]     = useState<Credito | null>(null);
   const [creditoSel, setCreditoSel] = useState(creditoId ?? "");
@@ -205,10 +226,16 @@ export function PagoForm({ creditoId, clienteId, onClose }: PagoFormProps) {
 
   const [cuotas, setCuotas]               = useState<CuotaPersistida[]>([]);
   const [loadingCuotas, setLoadingCuotas] = useState(false);
+  /** Acuerdo vigente del crédito elegido (lo trae el endpoint de cuotas). */
+  const [acuerdo, setAcuerdo] = useState<AcuerdoDelCredito | null>(null);
   const [hasta, setHasta]                 = useState<number | null>(null);
 
-  const [manual,       setManual]       = useState(false);
-  const [montoManual,  setMontoManual]  = useState("");
+  // Con monto sugerido (cuota de un acuerdo) se arranca en modo manual: el importe
+  // acordado no coincide con ninguna cuota del crédito, así que elegir cuotas no aplica.
+  const [manual,       setManual]       = useState(montoSugerido != null && montoSugerido > 0);
+  const [montoManual,  setMontoManual]  = useState(
+    montoSugerido != null && montoSugerido > 0 ? maskMontoInput(String(Math.round(montoSugerido * 100) / 100).replace(".", ",")) : "",
+  );
   const [metodo,       setMetodo]       = useState("efectivo");
   const [notas,        setNotas]        = useState("");
   const [loading,      setLoading]      = useState(false);
@@ -217,9 +244,11 @@ export function PagoForm({ creditoId, clienteId, onClose }: PagoFormProps) {
   const [result,       setResult]       = useState<{ pagoId: string; imp: Imputacion } | null>(null);
   const [reciboBusy,   setReciboBusy]   = useState(false);
 
-  // Carga inicial de créditos activos
+  // Carga inicial de créditos VIVOS (activo + vencido). Con "activo" a secas, un
+  // moroso al que ya se le cobró una vez desaparecía de la terminal: el cobro lo pasa a
+  // "vencido" y dejaba de listarse justo a quien más hay que cobrarle.
   useEffect(() => {
-    fetch("/api/creditos?estado=activo&limit=1000")
+    fetch("/api/creditos?estado=vivos&limit=1000")
       .then(r => r.json())
       .then(j => {
         if (!j.ok) return;
@@ -236,7 +265,7 @@ export function PagoForm({ creditoId, clienteId, onClose }: PagoFormProps) {
 
   // Cuotas del crédito seleccionado
   useEffect(() => {
-    if (!creditoSel) { setCuotas([]); setHasta(null); return; }
+    if (!creditoSel) { setCuotas([]); setHasta(null); setAcuerdo(null); return; }
     setLoadingCuotas(true);
     fetch(`/api/creditos/${creditoSel}/cuotas`)
       .then(r => r.json())
@@ -244,6 +273,7 @@ export function PagoForm({ creditoId, clienteId, onClose }: PagoFormProps) {
         if (!j.ok) return;
         const cs: CuotaPersistida[] = j.data.cuotas || [];
         setCuotas(cs);
+        setAcuerdo(j.data.acuerdo ?? null);
         const proxima = cs.find(c => c.estado !== "pagada");
         setHasta(proxima ? proxima.nro : null);
       })
@@ -284,6 +314,9 @@ export function PagoForm({ creditoId, clienteId, onClose }: PagoFormProps) {
 
   const cobrables    = cuotas.filter(c => c.estado !== "pagada");
   const seleccionadas = hasta != null ? cobrables.filter(c => c.nro <= hasta) : [];
+  /** Se está cobrando la cuota de un ACUERDO: viene importe y motivo precargados. */
+  const cobrandoAcuerdo = Boolean(motivoSugerido);
+
   const montoCuotas  = round2(seleccionadas.reduce((s, c) => s + importePendiente(c), 0));
   const monto        = manual ? parseMontoInput(montoManual) : montoCuotas;
   // "Excede" = se paga más que TODO lo adeudado (capital + interés + cargos de las
@@ -419,7 +452,7 @@ export function PagoForm({ creditoId, clienteId, onClose }: PagoFormProps) {
             /* Créditos del cliente — picker (1 o más, siempre explícito) */
             creditos.length === 0 ? (
               <p className="rounded-xl border border-dashed border-border/60 px-4 py-8 text-center text-xs text-muted-foreground/60">
-                Este cliente no tiene créditos activos.
+                Este cliente no tiene créditos por cobrar.
               </p>
             ) : (
               <div className="space-y-2.5">
@@ -476,16 +509,58 @@ export function PagoForm({ creditoId, clienteId, onClose }: PagoFormProps) {
           )}
         </div>
 
-        {/* ── Paso 2: Cuotas a cobrar ── */}
+        {/* De dónde sale el importe precargado (ej. la cuota de un acuerdo de pago): sin
+            esto, quien cobra ve un monto raro que no coincide con ninguna cuota. */}
+        {creditoSel && motivoSugerido && (
+          <div className="rounded-lg border border-primary/30 bg-primary/5 px-3 py-2.5 text-sm text-primary">
+            {motivoSugerido}
+          </div>
+        )}
+
+        {/* Aviso de acuerdo cuando se llega desde PAGOS (sin importe precargado).
+            Sin esto, quien cobra no tiene forma de enterarse de que hay un arreglo y le
+            cobraría la cuota del crédito en vez de la pactada, que es otro importe. */}
+        {creditoSel && !motivoSugerido && acuerdo?.proxima && (
+          <div className="rounded-lg border border-primary/30 bg-primary/5 px-3 py-3 text-sm">
+            <p className="font-medium text-primary">Este crédito tiene un acuerdo de pago vigente</p>
+            <p className="mt-1 text-muted-foreground">
+              Corresponde cobrar la <strong className="text-foreground">cuota {acuerdo.proxima.numero} de {acuerdo.total_cuotas}</strong> del
+              acuerdo, de <strong className="font-mono text-foreground">${fmt2(acuerdo.proxima.pendiente)}</strong>, con vencimiento el {fmtDate(acuerdo.proxima.vencimiento)}.
+              {acuerdo.congela_punitorios && " Mientras cumpla no se le devengan punitorios."}
+            </p>
+            <button
+              type="button"
+              onClick={() => { setManual(true); setMontoManual(maskMontoInput(String(acuerdo.proxima!.pendiente).replace(".", ","))); }}
+              className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition-opacity hover:opacity-90"
+            >
+              Cobrar ${fmt2(acuerdo.proxima.pendiente)}
+            </button>
+          </div>
+        )}
+
+        {/* ── Paso 2: Cuotas a cobrar ──
+            Cobrando la cuota de un ACUERDO, esta lista se pliega: son las cuotas del
+            CRÉDITO (6 de $60.000), no las del acuerdo (3 de $116.800), y verlas abiertas
+            al lado de un título que dice "cuota del acuerdo" hace pensar que el acuerdo
+            salió mal. Siguen disponibles porque es adonde va a parar la plata, pero
+            plegadas: en ese momento no se eligen cuotas, se cobra un importe pactado. */}
         {creditoSel && (
-          <div>
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Cuotas a cobrar</p>
-              <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer">
-                <input type="checkbox" checked={manual} onChange={e => setManual(e.target.checked)} className="accent-primary" />
-                Monto personalizado
-              </label>
-            </div>
+          <details open={!cobrandoAcuerdo}>
+            <summary className={cn(
+              "flex items-center justify-between mb-3",
+              cobrandoAcuerdo ? "cursor-pointer list-none" : "list-none pointer-events-none",
+            )}>
+              <span className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                {cobrandoAcuerdo && <CornerDownRight className="h-3.5 w-3.5" />}
+                {cobrandoAcuerdo ? "Cuotas del crédito" : "Cuotas a cobrar"}
+              </span>
+              {!cobrandoAcuerdo && (
+                <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer pointer-events-auto">
+                  <input type="checkbox" checked={manual} onChange={e => setManual(e.target.checked)} className="accent-primary" />
+                  Monto personalizado
+                </label>
+              )}
+            </summary>
 
             {loadingCuotas ? (
               <div className="flex items-center justify-center gap-2 rounded-xl border border-border py-8 text-sm text-muted-foreground">
@@ -579,7 +654,7 @@ export function PagoForm({ creditoId, clienteId, onClose }: PagoFormProps) {
                 {hayMora && <span className="text-destructive"> · la mora por atraso se suma al imputar</span>}
               </p>
             )}
-          </div>
+          </details>
         )}
 
         {/* ── Paso 3: Monto + método ── */}

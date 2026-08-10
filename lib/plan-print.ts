@@ -40,6 +40,21 @@ export interface PlanPrintData {
   cargoCols?: CargoCuotaCol[];
   cuotas: FilaPlanPrint[];
   totales: { cuota: number; interes: number; capital: number; cargos: number; cuotaTotal: number };
+  /**
+   * Comisión de otorgamiento que el cliente paga AL FIRMAR (0 si no hay, o si está financiada
+   * y por lo tanto ya viene adentro de las cuotas).
+   *
+   * 🔴 No entra en la suma de la columna de cuotas, pero SÍ es plata que el cliente desembolsa.
+   * Sin mostrarla, el documento decía "total a pagar" por un importe menor al real y el C.F.T.
+   * impreso quedaba calculado sobre un cargo que el papel no mencionaba en ningún lado.
+   */
+  comisionUpfront?: number;
+  /**
+   * C.F.T. anual en FRACCIÓN (0,6321 = 63,21%). Es el costo del crédito con todos los cargos
+   * adentro, y va en el documento del cliente porque es lo que le permite comparar ofertas —
+   * en Argentina, además, es de exhibición obligatoria. `null`/omitido → no se muestra.
+   */
+  cft?: number | null;
   /** Co-branding: identidad de la financiera. Si trae nombre/logo, encabeza el documento
    *  con "powered by CreditFlow" al pie. Sin esto, se muestra la marca CreditFlow. */
   financiera?: { nombre?: string | null; logo_url?: string | null };
@@ -74,30 +89,57 @@ export function imprimirPlanPagos(data: PlanPrintData, vista: VistaPlan): void {
   const totalPorKey = (key: "iva" | "seguro" | "gastos") =>
     data.cuotas.reduce((s, r) => s + r[key], 0);
 
+  /**
+   * Clase de la columna que lleva LO QUE EL CLIENTE PAGA. Con cargos es la columna "A pagar";
+   * sin cargos, la propia "Cuota" ya es todo lo que se abona y se resalta esa.
+   */
+  const pgCuota = esOp && !hayCargos ? " pg" : "";
+
   const cargosHead = discriminar
-    ? cols.map(c => `<th class="r cg">${c.label}</th>`).join('') + '<th class="r">Total</th>'
-    : (hayCargos ? '<th class="r">Cargos</th><th class="r">Total</th>' : '');
+    ? cols.map(c => `<th class="r cg">${c.label}</th>`).join('') + '<th class="r pg">A pagar</th>'
+    : (hayCargos ? '<th class="r">Cargos</th><th class="r pg">A pagar</th>' : '');
   const headCols = esOp
-    ? `<th class="c">#</th><th>Vencimiento</th><th class="r">Cuota</th><th class="r">Interés</th><th class="r">Capital</th>${cargosHead}<th class="r">Saldo</th>`
+    ? `<th class="c">#</th><th>Vencimiento</th><th class="r${pgCuota}">Cuota</th><th class="r">Interés</th><th class="r">Capital</th>${cargosHead}<th class="r">Saldo</th>`
     : `<th class="c">N°</th><th>Vencimiento</th><th class="r">A pagar</th>`;
 
   const rows = data.cuotas.map((r, idx) => {
     const ev = idx % 2 === 0 ? ' class="ev"' : '';
     if (esOp) {
       const cargosCells = discriminar
-        ? cols.map(c => `<td class="r mn cg">${formatMonto(r[c.key])}</td>`).join('') + `<td class="r mn fw">${formatMonto(r.cuotaTotal)}</td>`
-        : (hayCargos ? `<td class="r mn">${formatMonto(r.iva + r.seguro + r.gastos)}</td><td class="r mn fw">${formatMonto(r.cuotaTotal)}</td>` : '');
-      return `<tr${ev}><td class="nm c">${r.nro}</td><td>${formatFecha(r.fecha)}</td><td class="r mn">${formatMonto(r.cuota)}</td><td class="r mn">${formatMonto(r.interes)}</td><td class="r mn">${formatMonto(r.capital)}</td>${cargosCells}<td class="r mn">${formatMonto(r.saldo)}</td></tr>`;
+        ? cols.map(c => `<td class="r mn cg">${formatMonto(r[c.key])}</td>`).join('') + `<td class="r mn fw pg">${formatMonto(r.cuotaTotal)}</td>`
+        : (hayCargos ? `<td class="r mn">${formatMonto(r.iva + r.seguro + r.gastos)}</td><td class="r mn fw pg">${formatMonto(r.cuotaTotal)}</td>` : '');
+      return `<tr${ev}><td class="nm c">${r.nro}</td><td>${formatFecha(r.fecha)}</td><td class="r mn${pgCuota}">${formatMonto(r.cuota)}</td><td class="r mn">${formatMonto(r.interes)}</td><td class="r mn">${formatMonto(r.capital)}</td>${cargosCells}<td class="r mn">${formatMonto(r.saldo)}</td></tr>`;
     }
     return `<tr${ev}><td class="nm c">${r.nro} de ${nCuotas}</td><td>${formatFecha(r.fecha)}</td><td class="r mn fw">${formatMonto(r.cuotaTotal)}</td></tr>`;
   }).join('');
 
   const cargosTotalCells = discriminar
-    ? cols.map(c => `<td class="r mn cg">${formatMonto(totalPorKey(c.key))}</td>`).join('') + `<td class="r mn fw">${formatMonto(data.totales.cuotaTotal)}</td>`
-    : (hayCargos ? `<td class="r mn">${formatMonto(data.totales.cargos)}</td><td class="r mn fw">${formatMonto(data.totales.cuotaTotal)}</td>` : '');
-  const totalRow = esOp
-    ? `<tr><td colspan="2" class="fl">Totales</td><td class="r mn">${formatMonto(data.totales.cuota)}</td><td class="r mn">${formatMonto(data.totales.interes)}</td><td class="r mn">${formatMonto(capital)}</td>${cargosTotalCells}<td class="r mn">$ 0,00</td></tr>`
-    : `<tr><td colspan="2" class="fl">Total a pagar</td><td class="r mn fw">${formatMonto(totalFinal)}</td></tr>`;
+    ? cols.map(c => `<td class="r mn cg">${formatMonto(totalPorKey(c.key))}</td>`).join('') + `<td class="r mn fw pg">${formatMonto(data.totales.cuotaTotal)}</td>`
+    : (hayCargos ? `<td class="r mn">${formatMonto(data.totales.cargos)}</td><td class="r mn fw pg">${formatMonto(data.totales.cuotaTotal)}</td>` : '');
+  /**
+   * La comisión se cobra al firmar: no es una cuota y no puede sumarse a la columna (rompería
+   * la aritmética de la tabla). Va como renglón aparte, y recién después el total de verdad.
+   */
+  const comUp = data.comisionUpfront ?? 0;
+  /**
+   * El importe del renglón se alinea bajo la columna que lleva el TOTAL POR CUOTA: "Total"
+   * cuando hay cargos, y "Cuota" cuando no los hay (ahí la cuota ya es el total). Si cayera
+   * al final quedaría bajo "Saldo", que es otra cosa.
+   */
+  const pieAntes = esOp ? (discriminar ? 5 + cols.length : hayCargos ? 6 : 2) : 2;
+  const pieDespues = esOp ? (hayCargos ? 1 : 3) : 0;
+  const celdasVacias = pieDespues > 0 ? `<td colspan="${pieDespues}"></td>` : "";
+  const filaPie = (label: string, monto: number, fuerte: boolean) =>
+    `<tr><td colspan="${pieAntes}" class="fl">${label}</td><td class="r mn pg${fuerte ? " fw" : ""}">${formatMonto(monto)}</td>${celdasVacias}</tr>`;
+  const filasComision = comUp > 0
+    ? filaPie("Comisión de otorgamiento (se abona al firmar)", comUp, false) +
+      filaPie("Total a pagar", totalFinal + comUp, true)
+    : "";
+  const totalRow = (esOp
+    ? `<tr><td colspan="2" class="fl">Totales</td><td class="r mn${pgCuota}">${formatMonto(data.totales.cuota)}</td><td class="r mn">${formatMonto(data.totales.interes)}</td><td class="r mn">${formatMonto(capital)}</td>${cargosTotalCells}<td class="r mn">$ 0,00</td></tr>`
+    // Con comisión, este renglón deja de ser el total: pasa a ser el subtotal de las cuotas.
+    : `<tr><td colspan="2" class="fl">${comUp > 0 ? "Total de las cuotas" : "Total a pagar"}</td><td class="r mn${comUp > 0 ? "" : " fw"}">${formatMonto(totalFinal)}</td></tr>`
+  ) + filasComision;
 
   w.document.write(`<!DOCTYPE html>
 <html lang="es">
@@ -126,6 +168,11 @@ body{font-family:'Inter',system-ui,-apple-system,sans-serif;background:#F5F7FB;c
 .kitem:last-child{border-right:none;padding-right:0;margin-right:0}
 .klabel{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:#4B5563}
 .kval{font-size:17px;font-weight:700;color:#111827;font-family:'Courier New',Courier,monospace}
+/* C.F.T. recuadrado: tiene que leerse antes que el resto de la banda (es el dato que permite
+   comparar ofertas). Se destaca con relieve, no con color: el único elemento a color del
+   documento sigue siendo la marca. Va DESPUÉS de .kitem:last-child para ganarle el reset. */
+.kitem.hl{background:#F3F4F6;border:1px solid #CBD5E1;border-radius:10px;padding:8px 18px;margin-right:0;align-self:center}
+.kitem.hl .kval{font-size:19px;font-weight:800}
 .tw{padding:28px 56px 0}
 .ttl{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#111827;margin-bottom:12px}
 table{width:100%;border-collapse:separate;border-spacing:0;font-size:15px;border-radius:12px;overflow:hidden;border:1px solid #E5E7EB}
@@ -149,6 +196,14 @@ thead th.cg{background:#2A2113}
 tbody td.cg{background:#FFF7EA}
 tbody tr.ev td.cg{background:#FBEFD9}
 tfoot td.cg{background:#2A2113}
+/* Columna "A pagar": lo que el cliente entrega en cada vencimiento. Entre ocho columnas de
+   números se perdía justo la única que se dice en voz alta, y competía con "Cuota", que es la
+   parte pura sin cargos. Se resalta con banda y peso, no con color: en este documento el único
+   elemento a color sigue siendo la marca. */
+thead th.pg{background:#0B1220;border-left:1px solid #3A4356}
+tbody td.pg{background:#EEF1F6;font-weight:700;border-left:1px solid #D5DBE5}
+tbody tr.ev td.pg{background:#E7EBF2}
+tfoot td.pg{background:#0B1220;border-left:1px solid #3A4356}
 .footer{margin:26px 56px 0;padding-top:18px;border-top:1px solid #E5E7EB;padding-bottom:36px;text-align:center}
 .ftxt{font-size:11px;line-height:1.6;color:#374151}
 /* Vista operador: muchas columnas (cargos discriminados). Página ancha y tabla
@@ -194,7 +249,11 @@ tfoot td.cg{background:#2A2113}
   <div class="band">
     <div class="kitem"><span class="klabel">Monto solicitado</span><span class="kval">${formatMonto(capital)}</span></div>
     <div class="kitem"><span class="klabel">Tasa</span><span class="kval">${data.tasa}% ${convLabel}</span></div>
-    <div class="kitem"><span class="klabel">Cuotas</span><span class="kval">${nCuotas} – ${freqLabel}</span></div>
+    <div class="kitem"><span class="klabel">Cuotas</span><span class="kval">${nCuotas} – ${freqLabel}</span></div>${
+      data.cft != null
+        ? `<div class="kitem hl"><span class="klabel">C.F.T. anual</span><span class="kval">${(data.cft * 100).toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%</span></div>`
+        : ""
+    }
   </div>
   <div class="tw">
     <p class="ttl">${seccionLabel}</p>
@@ -205,7 +264,11 @@ tfoot td.cg{background:#2A2113}
     </table>
   </div>
   <div class="footer">
-    <p class="ftxt">Este documento es un resumen informativo generado al momento de la simulación. Los importes pueden estar sujetos a modificaciones según las condiciones contractuales.</p>
+    <p class="ftxt">Este documento es un resumen informativo generado al momento de la simulación. Los importes pueden estar sujetos a modificaciones según las condiciones contractuales.</p>${
+      data.cft != null
+        ? `\n    <p class="ftxt">El C.F.T. (Costo Financiero Total) expresa el costo anual del crédito incluyendo intereses, impuestos, seguros y gastos. Es el indicador que permite comparar distintas ofertas de financiación.</p>`
+        : ""
+    }
     ${data.financiera?.nombre?.trim() ? '<p class="pwr">powered by CreditFlow</p>' : ""}
   </div>
 </div>

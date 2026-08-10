@@ -7,8 +7,10 @@ import {
   construirPlanAmortizacion,
   tasaPeriodicaSegunConvencion,
   efectivaAnualDesdePeriodica,
+  cftDelPlan,
   normalizarFrecuencia,
   frecuenciaLabel,
+  resolverFrecuencia,
   resolverCargos,
   type CronogramaConfig,
   type CargosConfig,
@@ -94,6 +96,10 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
       frecuencia_label: frecuenciaLabel(frecuencia, catalogo),
       tasa_periodica: tasaPeriodica,
       tasa_efectiva_anual: efectivaAnualDesdePeriodica(tasaPeriodica, frecuencia, catalogo),
+      // C.F.T.: el costo del crédito con TODOS los cargos adentro. Se calcula sobre el monto
+      // que el cliente recibió (`monto_original`), no sobre el capital amortizado — si la
+      // comisión se financió, el plan amortiza más de lo que se le entregó.
+      cft_anual: cftDelPlan(plan, credito.monto_original, resolverFrecuencia(frecuencia, catalogo).periodosAnio)?.anual ?? null,
       plazo_meses: credito.plazo_meses,
       n_cuotas: credito.plazo_meses,
     },

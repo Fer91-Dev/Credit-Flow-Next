@@ -9,7 +9,11 @@
  * components/providers/SWRProvider.tsx, montado en el layout autenticado.
  */
 import useSWR, { mutate as globalMutate } from "swr";
-import type { SimuladorConfig, DocumentosConfig } from "@/lib/domain";
+import type {
+  SimuladorConfig, DocumentosConfig, TipoMovimiento,
+  PoliticaOriginacion, BureauConfig, BureauProveedor, RiesgoConfig,
+} from "@/lib/domain";
+import type { CobranzaConfig } from "@/lib/config";
 
 export type { SimuladorConfig, DocumentosConfig };
 
@@ -469,6 +473,8 @@ export interface Amortizacion {
     frecuencia_label: { cuotaSingular: string; cuotaPlural: string; adjetivo: string; unidad: string };
     tasa_periodica: number;
     tasa_efectiva_anual: number;
+    /** C.F.T. anual en fracción (0,6321 = 63,21%). `null` cuando no está definido. */
+    cft_anual: number | null;
     plazo_meses: number;
     n_cuotas: number;
   };
@@ -603,7 +609,17 @@ export interface MovimientoCaja {
   fecha: string;
   /** Timestamp con hora (para mostrar fecha + hora del movimiento). */
   created_at?: string;
-  tipo: "desembolso" | "cobro" | "devolucion" | "reversa_desembolso" | "ajuste" | "transferencia" | "entrega" | "rendicion" | "comision";
+  /**
+   * La MISMA lista que el dominio (`TipoMovimiento`), no una copia.
+   *
+   * Antes estaba duplicada acá a mano, y las dos listas no se hablaban: sumar un tipo en el
+   * dominio no hacía saltar nada, así que las pantallas quedaban sin su etiqueta y su color
+   * y mostraban el código crudo. Importándolo, agregar un tipo rompe el build hasta que los
+   * `Record<MovimientoCaja["tipo"], …>` (hoy cinco: Caja, Mi caja, detalle del movimiento,
+   * Comprobantes y la ficha del agente) estén completos. La protección deja de depender de
+   * que alguien se acuerde.
+   */
+  tipo: TipoMovimiento;
   monto: number; // con signo: ingreso > 0, egreso < 0
   metodo: string | null;
   cuenta: CuentaCaja;
@@ -726,40 +742,22 @@ export interface RentabilidadConfig {
   otros_costos_mensuales: number;  // costo operativo fijo por mes (opcional)
 }
 
-/** Política de originación (feature premium): límites por ingreso + reglas de bureau. */
-export interface PoliticaOriginacion {
-  ratioCuotaIngresoMax: number;
-  multiploIngresoMax: number;
-  limiteBaseSinBureau: number;
-  situacionBcraMax: 1 | 2 | 3 | 4 | 5 | 6;
-  scoreExternoMin: number | null;
-  rechazaConChequesRechazados: boolean;
-  maxCreditosActivos: number;
-  maxEdicionesSueldoVendedor: number;
-  alertaSaltoSueldoPct: number;
-  bloquearConCuotasVencidas: boolean;
-  accionAlNoCalificar: "bloquear" | "autorizar";
-}
-export type BureauProveedor = "manual" | "bcra" | "nosis" | "veraz";
-export interface BureauConfig {
-  proveedor: BureauProveedor;
-  enabled: boolean;
-  endpoint: string;
-  token: string;
-  usuario: string;
-}
-export interface RiesgoConfig {
-  politica: PoliticaOriginacion;
-  bureau: BureauConfig;
-}
+/**
+ * Política de originación y bureau: se reexportan LOS TIPOS DEL DOMINIO, no una copia.
+ *
+ * Acá había una definición paralela, campo por campo. Agregar un parámetro al motor
+ * compilaba igual y el formulario de Configuración no lo veía —el error salía recién al
+ * usarlo—, y peor: nada impedía que las dos versiones se contradijeran y que la pantalla
+ * dijera una cosa y el motor hiciera otra. Mismo criterio que `CobranzaConfig`.
+ */
+export type { PoliticaOriginacion, BureauConfig, BureauProveedor, RiesgoConfig };
 
 export interface ConfiguracionFinanciera {
   convencionTasa: "nominal_anual" | "efectiva_anual" | "mensual";
   sistemaAmortizacion: "frances";
   moraActiva: boolean;
   tasaMoraDiaria: number;
-  baseMora: "cuota" | "saldo";
-  ordenImputacion: Array<"mora" | "interes" | "capital">;
+  // Sin `ordenImputacion`: el orden es fijo y se lee de ORDEN_IMPUTACION, no del servidor.
   imputarCargos: "integrado" | "separado";
   moneda: string;
   locale: string;
@@ -776,12 +774,14 @@ export interface ConfiguracionFinanciera {
 }
 
 /** Config de la agenda del día de cobranza (parametrizable por el admin). */
-export interface CobranzaConfig {
-  /** Días sin gestión tras los cuales un moroso vuelve a aparecer en la agenda del día. */
-  dias_sin_gestion: number;
-  /** Ventana (días desde el registro) para poder anular un pago. 0 = solo el mismo día. */
-  dias_anulacion_pago: number;
-}
+/**
+ * La MISMA definición que usa el servidor (`lib/config.ts`), no una copia.
+ *
+ * Estaba duplicada acá a mano y las dos no se hablaban: sumarle un campo a la config del
+ * servidor no rompía nada, y la pantalla de Configuración seguía compilando sin saber que
+ * ese campo existía. Es el mismo problema que tenían los tipos de movimiento de caja.
+ */
+export type { CobranzaConfig };
 
 /** Preferencias de qué avisos in-app (campanita) se muestran. */
 export interface NotificacionesConfig {
@@ -1091,8 +1091,44 @@ export interface MiPerfilVendedor {
   } | null;
 }
 
+/**
+ * Datos que **el admin cambia y el vendedor consume desde otra sesión**: la configuración
+ * del motor, la identidad de la financiera y la ficha propia del vendedor (su límite de
+ * otorgamiento, su comisión). Con la política global —cache de 30s, sin revalidar al
+ * enfocar— el vendedor seguía trabajando con los valores viejos hasta apretar F5.
+ *
+ * Lo reportó el usuario: el admin subió el monto máximo de $5.000 a $600.000 y el
+ * simulador del vendedor siguió rechazando por el tope anterior.
+ *
+ * `revalidateOnFocus` cubre el caso habitual —el vendedor vuelve a su ventana y ahí se
+ * entera—, pero **no hay que apoyarse solo en eso**: el evento de foco depende del
+ * escritorio y no siempre llega. Con el usuario probando en dos ventanas, el aviso tardó
+ * un minuto y lo que terminó actualizando el valor fue el polleo, no el foco.
+ *
+ * Por eso el `refreshInterval` baja a 30s. Son parámetros que se tocan una vez por mes, así
+ * que el costo es una consulta chica cada medio minuto por usuario; el beneficio es que el
+ * peor caso deja de depender de un evento del sistema operativo. Aun así no es tiempo real:
+ * para eso haría falta empujar el cambio desde el servidor, y no lo vale un dato que casi
+ * nunca cambia.
+ *
+ * 🔴 Nada de esto es una barrera de seguridad. El servidor revalida los topes al otorgar,
+ * así que una pantalla desactualizada como mucho hace perder tiempo — nunca deja pasar un
+ * crédito que no corresponde.
+ *
+ * `dedupingInterval: 0` es imprescindible, no adorno: el default global de 30s **también
+ * frena la revalidación por foco**, así que sin esto volver a la pestaña dentro de esa
+ * ventana no pedía nada y se seguía viendo el valor viejo.
+ */
+const PARAMETROS_SWR = {
+  refreshInterval: 30_000,
+  revalidateOnFocus: true,
+  revalidateOnReconnect: true,
+  dedupingInterval: 0,
+} as const;
+
 export function useMiPerfilVendedor() {
-  const { data, error, isLoading } = useSWR<MiPerfilVendedor | null>("/api/me/vendedor");
+  // Su límite de otorgamiento y su comisión los define el admin desde otra sesión.
+  const { data, error, isLoading } = useSWR<MiPerfilVendedor | null>("/api/me/vendedor", null, PARAMETROS_SWR);
   return { perfil: data ?? null, error, isLoading };
 }
 
@@ -1166,8 +1202,9 @@ export interface ArqueoCaja {
   resolucion_nota: string | null;
 }
 
+
 /**
- * Los arqueos son el único dato de la app que **cambia de estado desde otra sesión**: el
+ * Los arqueos también **cambian de estado desde otra sesión**: el
  * vendedor declara y el admin resuelve, cada uno en su navegador. Con la config global
  * (`revalidateOnFocus: false`, pensada para un panel operativo y no para un feed), a
  * ninguno de los dos le llegaba la novedad del otro: al vendedor le quedaba colgado el
@@ -1412,12 +1449,12 @@ export function useClienteDetalle(clienteId: string | null) {
 }
 
 export function useConfiguracion() {
-  const { data, error, isLoading, mutate } = useSWR<ConfiguracionFinanciera>(KEYS.configuracion);
+  const { data, error, isLoading, mutate } = useSWR<ConfiguracionFinanciera>(KEYS.configuracion, null, PARAMETROS_SWR);
   return { config: data, error, isLoading, mutate };
 }
 
 export function useFinanciera() {
-  const { data, error, isLoading, mutate } = useSWR<Financiera>(KEYS.financiera);
+  const { data, error, isLoading, mutate } = useSWR<Financiera>(KEYS.financiera, null, PARAMETROS_SWR);
   return { financiera: data, error, isLoading, mutate };
 }
 

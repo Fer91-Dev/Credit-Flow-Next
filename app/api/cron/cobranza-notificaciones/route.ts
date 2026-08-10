@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { sincronizarAcuerdos } from "@/lib/acuerdos";
 import { Prisma } from "@prisma/client";
-import { sinDeuda } from "@/lib/domain";
+import { sinDeuda, ESTADOS_VIVOS } from "@/lib/domain";
 
 // Reglas de mora para disparar notificaciones
 const REGLAS = [
@@ -50,6 +51,11 @@ async function ejecutarCron(req: NextRequest) {
   // a "pagado" al cobrar la última cuota; esto es la red de seguridad. Corre SIEMPRE.
   const reconciliacion = await reconciliarCreditosSaldados();
 
+  // Acuerdos de pago: se cierran los cumplidos y se rompen los incumplidos. Mismo criterio
+  // que las promesas —el estado se DERIVA de lo cobrado, no de que alguien lo marque— y
+  // corre SIEMPRE, para todos los tenants: es actualización de estado, no notificación.
+  const acuerdos = await sincronizarAcuerdos({ hoy });
+
   // Obtener todos los tenants con configuración de canales activa
   const configs = await prisma.configuraciones.findMany({
     where: {
@@ -82,7 +88,7 @@ async function ejecutarCron(req: NextRequest) {
       const creditos = await prisma.creditos.findMany({
         where: {
           tenant_id: config.tenant_id,
-          estado: "activo",
+          estado: { in: [...ESTADOS_VIVOS] },
           ...(regla.dias < 0
             ? { proximo_pago: fechaObjetivo }          // cuota por vencer
             : { dias_mora: regla.dias === 0 ? { gt: 0, lte: 1 } : regla.dias }),
@@ -136,7 +142,7 @@ async function ejecutarCron(req: NextRequest) {
     resultados.push({ tenant_id: config.tenant_id, enviados, errores });
   }
 
-  return NextResponse.json({ ok: true, promesas, reconciliacion, procesados: configs.length, resultados });
+  return NextResponse.json({ ok: true, promesas, acuerdos, reconciliacion, procesados: configs.length, resultados });
 }
 
 /**

@@ -19,6 +19,7 @@ import { ClienteBureauPanel } from "@/components/clientes/ClienteBureauPanel";
 import { EditarHistorialDialog } from "@/components/clientes/EditarHistorialDialog";
 import { abrirRecibo } from "@/lib/recibo";
 import { formatCreditoNumero, formatFecha, formatFechaHora, nombreCompleto } from "@/lib/utils";
+import { esCreditoVivo } from "@/lib/domain";
 
 function n2(x: number) {
   return new Intl.NumberFormat("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(x);
@@ -176,8 +177,9 @@ export function ClienteDetail({
 
   const ec = cliente.estado_cuenta;
   const creditos = cliente.creditos ?? [];
-  const activos = creditos.filter((c) => c.estado === "activo");
-  const historicos = creditos.filter((c) => c.estado !== "activo");
+  // VIVOS (activo + vencido): un crédito atrasado sigue siendo del cliente, no historial.
+  const activos = creditos.filter((c) => esCreditoVivo(c.estado));
+  const historicos = creditos.filter((c) => !esCreditoVivo(c.estado));
 
   // Historial de pagos del cliente (aplanado de todos sus créditos), más nuevos primero.
   const puedeAnular = cliente.puede_anular_pago === true;

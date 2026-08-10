@@ -19,6 +19,9 @@ export const SERIE_LABEL = {
   GAS: "Gasto",
   ANP: "Anulación de cobro",
   LIQ: "Liquidación de comisión",
+  COM: "Comisión de otorgamiento",
+  APO: "Aporte de capital",
+  RET: "Retiro de utilidades",
 } as const;
 
 export type SerieComprobante = keyof typeof SERIE_LABEL;

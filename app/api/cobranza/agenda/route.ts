@@ -3,7 +3,8 @@ import { successResponse, withErrorHandler } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { getCobranzaConfig } from "@/lib/config";
-import { diasMoraActual } from "@/lib/domain";
+import { sincronizarAcuerdos, creditosConAcuerdoVigente } from "@/lib/acuerdos";
+import { diasMoraActual, ESTADOS_VIVOS } from "@/lib/domain";
 import { nombreCompleto, hoyComercial } from "@/lib/utils";
 import type { NextRequest } from "next/server";
 
@@ -34,7 +35,14 @@ interface AgendaItem {
 
 export const GET = withErrorHandler(async (req: NextRequest) => {
   const { tenantId, role, vendedorId } = await requireAuth(req);
-  const { dias_sin_gestion } = await getCobranzaConfig(tenantId);
+  const { dias_sin_gestion, acuerdos } = await getCobranzaConfig(tenantId);
+
+  // Los acuerdos se ponen al día ANTES de armar la cola: uno que se rompió ayer tiene que
+  // volver a la agenda hoy, no cuando corra el cron de la madrugada.
+  await sincronizarAcuerdos({ tenantId });
+  // Quien está cumpliendo un arreglo ya está gestionado. Llamarlo igual es la forma más
+  // rápida de que deje de cumplirlo. Es parametrizable: hay financieras que igual llaman.
+  const conAcuerdo = acuerdos.saca_de_agenda ? await creditosConAcuerdoVigente(tenantId) : new Set<string>();
 
   const hoy = hoyComercial();
   const hoyMs = hoy.getTime();
@@ -45,7 +53,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   // `proximo_pago` vencido (filtro EN VIVO, independiente del cache `dias_mora` que no se avanza
   // día a día); así un moroso nunca cobrado aparece igual en la agenda.
   const creditos = await prisma.creditos.findMany({
-    where: { ...withTenant(tenantId), ...scopeCreditosVendedor({ role, vendedorId }), estado: "activo", proximo_pago: { lt: hoy } },
+    where: { ...withTenant(tenantId), ...scopeCreditosVendedor({ role, vendedorId }), estado: { in: [...ESTADOS_VIVOS] }, proximo_pago: { lt: hoy } },
     select: {
       id: true, numero: true, saldo_pendiente: true, proximo_pago: true,
       cliente: { select: { nombre: true, apellido: true, telefono: true } },
@@ -73,6 +81,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
 
   const items: AgendaItem[] = [];
   for (const c of creditos) {
+    if (conAcuerdo.has(c.id)) continue; // acuerdo vigente: ya está gestionado
     const accs = porCredito.get(c.id) ?? [];
     const promesaPend = accs.find((a) => a.promesa_estado === "pendiente" && a.promesa_fecha);
     const conProx = accs.find((a) => a.proximo_contacto);

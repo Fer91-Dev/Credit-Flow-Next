@@ -34,6 +34,18 @@ export interface SenalesBureau {
 export interface PoliticaOriginacion {
   /** Ratio máx cuota/ingreso neto. Ej. 0.30 = la cuota no supera el 30% del ingreso. */
   ratioCuotaIngresoMax: number;
+  /**
+   * Segunda vía para los que se pasan del ratio: qué porcentaje del sueldo tiene que
+   * quedarle libre al cliente después de pagar la cuota (y lo que ya debe) para que el caso
+   * pase a REVISAR en vez de rechazarse. Ej. 50 = tiene que quedarle la mitad del sueldo.
+   *
+   * Existe porque el ratio es relativo y la subsistencia es absoluta: el 30% de un sueldo
+   * chico deja poco para vivir, y el 47% de uno grande deja mucho. Con un solo porcentaje se
+   * termina rechazando a quien tiene margen de sobra y aprobando a quien está al límite.
+   *
+   * 0 = la regla no existe (default): pasarse del ratio es rechazo directo, como siempre.
+   */
+  ingresoDisponibleMinPct: number;
   /** Múltiplo de ingreso mensual como tope de monto (cap absoluto). Ej. 6 = hasta 6 sueldos. */
   multiploIngresoMax: number;
   /** Tope de monto cuando NO hay datos de bureau (perfil fino). 0 = sin tope propio. */
@@ -69,6 +81,7 @@ export interface PoliticaOriginacion {
 /** Default razonable (mercado AR). Se puede sobrescribir por tenant desde Configuración. */
 export const POLITICA_ORIGINACION_DEFAULT: PoliticaOriginacion = {
   ratioCuotaIngresoMax: 0.3,
+  ingresoDisponibleMinPct: 0, // apagado: quien no lo configure sigue con el criterio de siempre
   multiploIngresoMax: 6,
   limiteBaseSinBureau: 0,
   situacionBcraMax: 2,
@@ -159,11 +172,29 @@ export type SemaforoOriginacion = "aprobado" | "revisar" | "rechazado";
 export interface EntradaOriginacion {
   /** Ingreso neto mensual = `ingreso_mensual + otros_ingresos` del cliente. */
   ingresoNetoMensual: number;
-  /** Cuota estimada del crédito a otorgar (la mayor del cronograma). */
-  cuotaEstimada: number;
+  /**
+   * Lo que el crédito nuevo le va a costar POR MES, ya con cargos.
+   *
+   * 🔴 Dos cosas que tienen que venir resueltas por quien llama, y que antes no venían:
+   *
+   * 1. **Mensualizada.** Es lo que sale del bolsillo en un mes, no la cuota del período. Una
+   *    cuota semanal se paga 52 veces al año, no 12: pasarla cruda contra un ingreso mensual
+   *    hacía que el motor aprobara el 130% del sueldo creyendo que respetaba el 30%.
+   *    Convertir con `cuotaMensualEquivalente`.
+   * 2. **Con cargos.** IVA, seguro y gastos son plata que el cliente paga. Antes se evaluaba
+   *    solo capital + interés, así que el compromiso real superaba el tope de la política —
+   *    y encima quedaba medido con distinta vara que la deuda vigente, que sí los incluía.
+   *
+   * El nombre dice las dos cosas a propósito: si mañana alguien le pasa una cuota cruda, que
+   * al menos tenga que leer para hacerlo mal.
+   */
+  cuotaMensualEquivalenteConCargos: number;
   /** Monto (capital) solicitado. */
   montoSolicitado: number;
-  /** Suma de cuotas mensuales de otros créditos vivos del cliente. Default 0. */
+  /**
+   * Suma de lo que el cliente ya paga por mes por sus otros créditos vivos, cada uno
+   * llevado a su equivalente mensual. Default 0.
+   */
   deudaCuotaMensualVigente?: number;
   /** Score interno del cliente (de `calcularScore`). `null`/ausente = sin historial. */
   scoreInterno?: ScoreResult | null;
@@ -211,13 +242,44 @@ export function evaluarOriginacion(
   let bloqueoDuro = false;
 
   // 1) Capacidad de pago (afordabilidad).
-  const ratio = ingreso > 0 ? round2((entrada.cuotaEstimada + deudaVigente) / ingreso) : null;
+  // 🔴 Cuatro decimales, no dos. Es una FRACCIÓN: con `round2`, 0,2970 y 0,3044 quedaban los
+  // dos en 0,30 y la pantalla mostraba "30%" para ambos —uno por debajo del tope y el otro por
+  // encima—. El dato es de presentación (la decisión se toma comparando la cuota contra la
+  // capacidad, no este número), pero justo en el borde es donde el operador lo mira.
+  const ratio = ingreso > 0 ? Math.round(((entrada.cuotaMensualEquivalenteConCargos + deudaVigente) / ingreso) * 10000) / 10000 : null;
   if (ingreso <= 0) {
     escalar("revisar");
     motivos.push("Sin ingreso declarado: no se puede evaluar la capacidad de pago.");
-  } else if (entrada.cuotaEstimada > capacidad.cuotaMaxima) {
-    escalar("rechazado");
-    motivos.push(`La cuota supera la capacidad de pago (máx ${(politica.ratioCuotaIngresoMax * 100).toFixed(0)}% del ingreso).`);
+  } else if (entrada.cuotaMensualEquivalenteConCargos > capacidad.cuotaMaxima) {
+    /**
+     * Se pasa del ratio. Antes era rechazo directo; ahora hay una segunda mirada.
+     *
+     * El ratio es RELATIVO y la subsistencia es ABSOLUTA, y ahí el porcentaje solo se
+     * queda corto: a quien gana poco, el 30% le deja apenas para vivir; a quien gana
+     * mucho, el 47% le sigue dejando de sobra. Con un único número se rechaza al segundo
+     * y se aprueba al primero, que es al revés de lo que conviene.
+     *
+     * El piso de ingreso disponible corrige eso: si después de pagar la cuota —y lo que ya
+     * debe— le queda al menos ese porcentaje del sueldo, el caso pasa a REVISAR en vez de
+     * rechazarse. No se aprueba solo: nosotros vemos el sueldo declarado, no las deudas
+     * informales del cliente, así que la excepción la firma una persona.
+     *
+     * En 0 la regla no existe y el comportamiento es el de siempre: rechazo directo. Es el
+     * default, para que ninguna financiera cambie de criterio sin decidirlo.
+     */
+    const disponible = ingreso - (entrada.cuotaMensualEquivalenteConCargos + deudaVigente);
+    const pisoRequerido = ingreso * (politica.ingresoDisponibleMinPct / 100);
+    const leQuedaMargen = politica.ingresoDisponibleMinPct > 0 && disponible >= pisoRequerido;
+
+    if (leQuedaMargen) {
+      escalar("revisar");
+      motivos.push(
+        `La cuota supera el ${(politica.ratioCuotaIngresoMax * 100).toFixed(0)}% del ingreso, pero al cliente le sigue quedando más del ${politica.ingresoDisponibleMinPct}% de su sueldo libre. Requiere revisión.`,
+      );
+    } else {
+      escalar("rechazado");
+      motivos.push(`La cuota supera la capacidad de pago (máx ${(politica.ratioCuotaIngresoMax * 100).toFixed(0)}% del ingreso).`);
+    }
   }
 
   // 2) Monto vs tope indicativo por ingreso.

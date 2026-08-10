@@ -3,17 +3,9 @@ import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api"
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { registrarAuditoria } from "@/lib/audit";
-import { nombreCompleto } from "@/lib/utils";
+import { nombreCompleto, hoyComercial } from "@/lib/utils";
 import { normalizarCuit, validarDuplicadoCliente } from "@/lib/clientes-validacion";
-import {
-  cuotaMensualFrancesa,
-  tasaPeriodicaSegunConvencion,
-  normalizarFrecuencia,
-  interesMora,
-  diasAtraso,
-  round2,
-  estadoCoherente,
-} from "@/lib/domain";
+import { cuotaMensualFrancesa, tasaPeriodicaSegunConvencion, normalizarFrecuencia, interesMora, diasAtraso, round2, estadoCoherente, esCreditoVivo, moraDelCredito, moraDesdeCronograma, moraPendienteTotal } from "@/lib/domain";
 import { getConfiguracion, getRiesgoConfig } from "@/lib/config";
 import type { NextRequest } from "next/server";
 
@@ -61,22 +53,41 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
     // Estado reconciliado: nunca mostrar un terminal SALDADO (pagado/cancelado)
     // si el ledger todavía tiene deuda. Defensa ante datos legacy inconsistentes.
     const estadoReal = estadoCoherente(c.estado, c.saldo_pendiente, c.cuotas);
-    const enMora = c.dias_mora > 0 && estadoReal === "activo";
+    // VIVO, no "activo": tras cobrarle a un moroso el crédito queda en `vencido`, y ahí
+    // la ficha dejaba de mostrarle el interés de mora que igual se le está cobrando.
+    const enMora = c.dias_mora > 0 && esCreditoVivo(estadoReal);
     let cuota = 0;
     let interes_mora = 0;
     if (c.monto_original > 0 && c.plazo_meses >= 1) {
       const frec = normalizarFrecuencia(c.frecuencia);
       const tasaPeriodica = tasaPeriodicaSegunConvencion(c.tasa, config.convencionTasa, frec);
       cuota = cuotaMensualFrancesa(c.monto_original, tasaPeriodica, c.plazo_meses);
-      if (config.moraActiva && enMora) {
-        interes_mora = interesMora(cuota, c.dias_mora, { tasaDiaria: config.tasaMoraDiaria });
+      // La mora del CRÉDITO, no la de la config de hoy (ver moraDelCredito).
+      const mc = moraDelCredito(moraDesdeCronograma(c.cronograma), config);
+      if (mc.moraActiva && enMora) {
+        // Cuota por cuota, igual que al cobrar (ver moraPendienteTotal).
+        //
+        // 🔴 `hoy` y `diasGracia` NO son opcionales acá aunque la firma los deje pasar.
+        // Faltaban los dos y la ficha mostraba más mora de la que cobra la caja:
+        //   · sin `hoy` se usa el ahora en UTC, que después de las 21:00 de Argentina ya
+        //     está en el día siguiente → un día de más POR CUOTA;
+        //   · sin `diasGracia` la tolerancia del crédito no se descuenta → tantos días de
+        //     más como días de gracia tenga configurados la financiera.
+        // La lista de créditos siempre pasó los dos; por eso las dos pantallas discrepaban.
+        const graciaCred = (c.cronograma as { diasGracia?: number } | null)?.diasGracia ?? config.simulador.diasGracia;
+        interes_mora = moraPendienteTotal(
+          c.cuotas.map((q) => ({ fechaVencimiento: q.fecha_vencimiento, cuotaTotal: q.cuota_total, pagadoMora: q.pagado_mora })),
+          { tasaDiaria: mc.tasaMoraDiaria, diasGracia: graciaCred, hoy: hoyComercial() },
+        );
       }
     }
     const total_cobrado = c.pagos.filter((p) => !p.anulado).reduce((s, p) => s + p.monto, 0);
 
     // Cronograma persistido: estado AUTORITATIVO (escrito por el motor cuota-dirigido,
     // Fase 6B); `vencida` se recalcula dinámicamente (depende de hoy).
-    const hoy = new Date();
+    // Día comercial argentino: con el ahora en UTC, entre las 21:00 y la medianoche de
+    // Argentina una cuota que vence hoy ya se mostraba como vencida.
+    const hoy = hoyComercial();
     const estadosCuota = c.cuotas.map((q) => {
       const capitalSaldado = q.pagado_capital >= round2(q.capital);
       if (capitalSaldado) return "pagada";
@@ -102,7 +113,7 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
     return { ...rest, estado: estadoReal, cuota, interes_mora, total_cobrado, cuotas_resumen };
   });
 
-  const activos = creditosConFinanzas.filter((c) => c.estado === "activo");
+  const activos = creditosConFinanzas.filter((c) => esCreditoVivo(c.estado));
   const enMora = activos.filter((c) => c.dias_mora > 0);
 
   const estado_cuenta = {

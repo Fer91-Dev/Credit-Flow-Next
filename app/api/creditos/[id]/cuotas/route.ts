@@ -4,7 +4,7 @@ import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { frecuenciaLabel, normalizarFrecuencia, diasAtraso, round2, type FrecuenciaDef } from "@/lib/domain";
 import { formatComprobante } from "@/lib/comprobantes";
-import { nombreCompleto } from "@/lib/utils";
+import { nombreCompleto, hoyComercial } from "@/lib/utils";
 import type { NextRequest } from "next/server";
 
 interface RouteParams {
@@ -51,7 +51,9 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
     ? [credito.frecuencia_def as unknown as FrecuenciaDef]
     : undefined;
 
-  const hoy = new Date();
+  // Día comercial argentino, no el ahora en UTC: entre las 21:00 y la medianoche de
+  // Argentina, una cuota que vence hoy se mostraba ya como vencida en el cronograma.
+  const hoy = hoyComercial();
   const cuotas = credito.cuotas.map((c) => {
     const restante_capital = round2(Math.max(0, c.capital - c.pagado_capital));
     const capitalSaldado = c.pagado_capital >= round2(c.capital);
@@ -101,9 +103,43 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
   const proxima = cuotas.find((c) => c.estado !== "pagada") ?? null;
   const saldo_capital = cuotas.reduce((s, c) => s + c.restante_capital, 0);
 
+  /**
+   * Acuerdo de pago VIGENTE, si lo hay, con la próxima cuota a cobrar.
+   *
+   * Viaja acá y no en un endpoint aparte porque la terminal de cobro ya pide esto al elegir
+   * un crédito: sin el dato, quien cobra desde Pagos no tiene forma de saber que hay un
+   * arreglo y le cobraría la cuota del crédito en vez de la pactada, que es otro importe.
+   */
+  const acuerdo = await prisma.acuerdos_pago.findFirst({
+    where: { ...withTenant(tenantId), credito_id: id, estado: "vigente" },
+    select: {
+      id: true, fecha: true, monto_acordado: true, congela_punitorios: true,
+      cuotas: { orderBy: { numero: "asc" }, select: { numero: true, vencimiento: true, monto: true, pagado: true, estado: true } },
+    },
+  });
+  const proximaAcuerdo = acuerdo?.cuotas.find((c) => c.estado !== "pagada") ?? null;
+
   return successResponse({
     credito_id: credito.id,
     cliente: credito.cliente ? nombreCompleto(credito.cliente) : null,
+    acuerdo: acuerdo
+      ? {
+          id: acuerdo.id,
+          fecha: acuerdo.fecha,
+          monto_acordado: acuerdo.monto_acordado,
+          congela_punitorios: acuerdo.congela_punitorios,
+          total_cuotas: acuerdo.cuotas.length,
+          proxima: proximaAcuerdo
+            ? {
+                numero: proximaAcuerdo.numero,
+                vencimiento: proximaAcuerdo.vencimiento,
+                // Lo que falta de esa cuota, no su importe nominal: si se pagó una parte,
+                // cobrar el nominal de nuevo sería cobrar de más.
+                pendiente: Math.round((proximaAcuerdo.monto - proximaAcuerdo.pagado) * 100) / 100,
+              }
+            : null,
+        }
+      : null,
     frecuencia,
     frecuencia_label: frecuenciaLabel(frecuencia, catalogo),
     resumen: {

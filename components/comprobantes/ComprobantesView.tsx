@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Receipt, Search, ChevronDown, Download, Users, Landmark } from "lucide-react";
 import { useComprobantes, type Comprobante, type MovimientoCaja } from "@/lib/swr";
+import { descargarCSV } from "@/lib/csv";
 import { formatFechaHora } from "@/lib/utils";
 import { SERIE_LABEL } from "@/lib/comprobantes";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -30,6 +31,9 @@ const TIPO_META: Record<MovimientoCaja["tipo"], { label: string; variant: BadgeV
   entrega:            { label: "Entrega",       variant: "warning" },
   rendicion:          { label: "Rendición",     variant: "success" },
   comision:           { label: "Comisión",      variant: "warning" },
+  aporte_capital:     { label: "Aporte de capital",    variant: "primary" },
+  retiro_utilidades:  { label: "Retiro de utilidades", variant: "warning" },
+  comision_otorgamiento: { label: "Comisión de otorgamiento", variant: "success" },
 };
 
 const INPUT =
@@ -37,14 +41,9 @@ const INPUT =
   "transition-all focus:border-primary focus:ring-2 focus:ring-primary/20";
 const SEL = INPUT + " pr-8 appearance-none cursor-pointer [&>option]:bg-card [&>option]:text-foreground";
 
-// ── CSV (separador es-AR ";") ──────────────────────────────────────────────
-function csvCell(v: string | number) {
-  const s = String(v ?? "");
-  return /[";\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-}
 function exportarCSV(rows: Comprobante[]) {
   const head = ["Comprobante", "Fecha y hora", "Tipo", "Caja", "Origen", "Destino", "Detalle", "Monto"];
-  const body = [
+  descargarCSV(`comprobantes_${new Date().toISOString().slice(0, 10)}.csv`, [
     head,
     ...rows.map((m) => [
       m.comprobante ?? "",
@@ -56,14 +55,7 @@ function exportarCSV(rows: Comprobante[]) {
       m.descripcion,
       n2(m.monto),
     ]),
-  ].map((r) => r.map(csvCell).join(";")).join("\r\n");
-  const blob = new Blob(["﻿" + "sep=;\r\n" + body], { type: "text/csv;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `comprobantes_${new Date().toISOString().slice(0, 10)}.csv`;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 10_000);
+  ]);
 }
 
 export function ComprobantesView() {

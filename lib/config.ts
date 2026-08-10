@@ -9,9 +9,7 @@ import {
   resolverSimulador,
   resolverGamificacion,
   type ConfiguracionFinanciera,
-  type ComponenteDeuda,
   type ConvencionTasa,
-  type BaseMora,
   type SistemaAmortizacion,
   type SimuladorConfig,
   type GamificacionConfig,
@@ -21,6 +19,9 @@ import {
   type RiesgoConfig,
   resolverDocumentos,
   type DocumentosConfig,
+  resolverAcuerdos,
+  ACUERDOS_DEFAULT,
+  type AcuerdosConfig,
 } from "@/lib/domain";
 import type { Prisma } from "@prisma/client";
 
@@ -38,11 +39,8 @@ export async function getConfiguracion(
     sistemaAmortizacion: row.sistema_amortizacion as SistemaAmortizacion,
     moraActiva: row.mora_activa,
     tasaMoraDiaria: row.tasa_mora_diaria,
-    baseMora: row.base_mora as BaseMora,
-    ordenImputacion: row.orden_imputacion
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean) as ComponenteDeuda[],
+    // `orden_imputacion` ya no se lee: el orden es fijo (ORDEN_IMPUTACION en domain/payments).
+    // La columna queda inerte, mismo criterio que `base_mora` y `vendedores.rol`.
     imputarCargos: row.imputar_cargos as ConfiguracionFinanciera["imputarCargos"],
     moneda: row.moneda,
     locale: row.locale,
@@ -60,8 +58,6 @@ export async function guardarConfiguracion(
     sistema_amortizacion: config.sistemaAmortizacion,
     mora_activa: config.moraActiva,
     tasa_mora_diaria: config.tasaMoraDiaria,
-    base_mora: config.baseMora,
-    orden_imputacion: config.ordenImputacion.join(","),
     imputar_cargos: config.imputarCargos,
     moneda: config.moneda,
     locale: config.locale,
@@ -210,9 +206,18 @@ export interface CobranzaConfig {
    * tesorería: pasado el plazo, el pago queda inmutable. 0 = solo el mismo día del registro.
    */
   dias_anulacion_pago: number;
+  /**
+   * Política de ACUERDOS DE PAGO. Va anidada acá y no en una columna nueva porque es el
+   * mismo dominio (cobranza) — una tabla no cambia por agrupar mejor un JSON.
+   */
+  acuerdos: AcuerdosConfig;
 }
 
-export const COBRANZA_DEFAULT: CobranzaConfig = { dias_sin_gestion: 7, dias_anulacion_pago: 3 };
+export const COBRANZA_DEFAULT: CobranzaConfig = {
+  dias_sin_gestion: 7,
+  dias_anulacion_pago: 3,
+  acuerdos: ACUERDOS_DEFAULT,
+};
 
 /** Mezcla con defaults y acota `dias_sin_gestion` a 1..90 y `dias_anulacion_pago` a 0..365. */
 export function resolverCobranza(raw: unknown): CobranzaConfig {
@@ -221,7 +226,7 @@ export function resolverCobranza(raw: unknown): CobranzaConfig {
   const dias = Number.isFinite(n) && n > 0 ? Math.min(90, Math.max(1, Math.round(n))) : COBRANZA_DEFAULT.dias_sin_gestion;
   const a = Number(r.dias_anulacion_pago);
   const diasAnul = Number.isFinite(a) && a >= 0 ? Math.min(365, Math.max(0, Math.round(a))) : COBRANZA_DEFAULT.dias_anulacion_pago;
-  return { dias_sin_gestion: dias, dias_anulacion_pago: diasAnul };
+  return { dias_sin_gestion: dias, dias_anulacion_pago: diasAnul, acuerdos: resolverAcuerdos(r.acuerdos) };
 }
 
 /** Config de agenda de cobranza del tenant (mezclada con defaults). No es secreto. */

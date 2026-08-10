@@ -2,13 +2,15 @@
 
 import { useState } from "react";
 import { mutate as globalMutate } from "swr";
-import { Landmark, ArrowDownLeft, ArrowUpRight, Scale, Download, Plus, ChevronDown, ArrowLeftRight, ClipboardCheck, Wallet, Banknote, CircleDollarSign, FileText, CreditCard, ArrowRight, Users, X } from "lucide-react";
+import { Landmark, ArrowDownLeft, ArrowUpRight, Scale, Download, Plus, ChevronDown, ArrowLeftRight, ClipboardCheck, Wallet, Banknote, CircleDollarSign, FileText, CreditCard, ArrowRight, Users, X, PiggyBank, Wrench } from "lucide-react";
 import { IconBadge } from "@/components/ui/IconBadge";
 import { DataTable } from "@/components/ui/DataTable";
 import { CuentaCard, CUENTAS, CUENTA_META } from "@/components/caja/CuentaCard";
 import { Emoji } from "@/components/ui/Emoji";
 import { refrescarNotificaciones, useCaja, useVendedores, useCotizacion, useArqueos, type CajaData, type MovimientoCaja, type CuentaCaja, type ArqueoCaja } from "@/lib/swr";
+import { AccionCaja, AccionesCajaHeader } from "@/components/caja/AccionCaja";
 import { ArqueosPanel } from "@/components/caja/ArqueosPanel";
+import { descargarCSV } from "@/lib/csv";
 import { formatFechaHora, parseMontoInput } from "@/lib/utils";
 import { MoneyInput, Segmented, IconSelect, IconTextarea, FieldLabel, FormActions, simboloCuenta } from "./caja-form";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -55,6 +57,9 @@ const TIPO_META: Record<MovimientoCaja["tipo"], { label: string; variant: BadgeV
   entrega:            { label: "Entrega",       variant: "warning" },
   rendicion:          { label: "Rendición",     variant: "success" },
   comision:           { label: "Comisión",      variant: "warning" },
+  aporte_capital:     { label: "Aporte de capital",    variant: "primary" },
+  retiro_utilidades:  { label: "Retiro de utilidades", variant: "warning" },
+  comision_otorgamiento: { label: "Comisión de otorgamiento", variant: "success" },
 };
 
 
@@ -65,11 +70,6 @@ const SEL = INPUT + " pr-8 appearance-none cursor-pointer [&>option]:bg-card [&>
 
 // Separador es-AR: Excel en español usa ";" (la "," es el decimal). Se quotea
 // cualquier celda que contenga el separador, comillas o saltos de línea.
-const CSV_SEP = ";";
-function csvCell(v: string | number) {
-  const s = String(v ?? "");
-  return /[";\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-}
 function exportarCSV(caja: CajaData) {
   // Mismas columnas que la tabla de movimientos.
   const head = ["Comprobante", "Fecha y hora", "Tipo", "Origen", "Destino", "Detalle", "Monto"];
@@ -82,15 +82,7 @@ function exportarCSV(caja: CajaData) {
     m.descripcion,
     n2(m.monto), // formato es-AR ("-2.000.000,00") → Excel lo lee como número
   ]);
-  const body = [head, ...rows].map((r) => r.map(csvCell).join(CSV_SEP)).join("\r\n");
-  // BOM (UTF-8) + directiva "sep=;" para que Excel use el separador correcto en cualquier configuración regional.
-  const blob = new Blob(["﻿" + `sep=${CSV_SEP}\r\n` + body], { type: "text/csv;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `caja_${caja.periodo.desde}_${caja.periodo.hasta}.csv`;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 10_000);
+  descargarCSV(`caja_${caja.periodo.desde}_${caja.periodo.hasta}.csv`, [head, ...rows]);
 }
 
 export function CajaView() {
@@ -104,6 +96,7 @@ export function CajaView() {
   const [transferOpen, setTransferOpen] = useState(false);
   const [arqueoOpen, setArqueoOpen] = useState(false);
   const [vendedorOpen, setVendedorOpen] = useState(false);
+  const [capitalOpen, setCapitalOpen] = useState(false);
   const [detalle, setDetalle] = useState<MovimientoCaja | null>(null);
   const [conciliar, setConciliar] = useState<ArqueoCaja | null>(null);
 
@@ -158,39 +151,63 @@ export function CajaView() {
         accent="primary"
       />
 
-      {/* Barra de acciones (fuera del header) — con micro-animación al hover */}
-      <div className="flex flex-wrap items-center gap-2">
-        <button
-          onClick={() => setAjusteOpen(true)}
-          className="group flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium whitespace-nowrap transition-all hover:-translate-y-0.5 hover:shadow-lg hover:shadow-primary/25 active:translate-y-0"
-        >
-          <Emoji name="gear" className="h-4 w-4 transition-transform group-hover:scale-110 group-hover:rotate-90" /> Ajuste
-        </button>
-        <button
-          onClick={() => setTransferOpen(true)}
-          className="group flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-border text-foreground text-sm font-medium whitespace-nowrap transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:bg-muted hover:shadow-md hover:shadow-black/20 active:translate-y-0"
-        >
-          <Emoji name="money-with-wings" className="h-4 w-4 transition-transform group-hover:scale-110" /> Transferir
-        </button>
-        <button
-          onClick={() => setVendedorOpen(true)}
-          className="group flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-border text-foreground text-sm font-medium whitespace-nowrap transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:bg-muted hover:shadow-md hover:shadow-black/20 active:translate-y-0"
-        >
-          <Emoji name="busts-in-silhouette" className="h-4 w-4 transition-transform group-hover:scale-110" /> Caja vendedores
-        </button>
-        <button
-          onClick={() => setArqueoOpen(true)}
-          className="group flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-border text-foreground text-sm font-medium whitespace-nowrap transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:bg-muted hover:shadow-md hover:shadow-black/20 active:translate-y-0"
-        >
-          <Emoji name="balance-scale" className="h-4 w-4 transition-transform group-hover:scale-110" /> Arqueo
-        </button>
-        <button
-          onClick={() => caja && exportarCSV(caja)}
-          disabled={!caja || caja.movimientos.length === 0}
-          className="ml-auto flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-border text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-40 transition-colors text-sm font-medium whitespace-nowrap"
-        >
-          <Download className="h-4 w-4" /> CSV
-        </button>
+      {/*
+        ACCIONES DE CAJA.
+        Antes eran cinco botones sueltos del mismo tamaño, con una palabra cada uno y sin
+        decir qué hacían. Dos problemas concretos:
+          · "Ajuste" era el único PRIMARIO (relleno en indigo) → la acción más rara y más
+            delicada del módulo era la que más tiraba del ojo, y terminaba usándose para
+            cargar el capital inicial;
+          · "Capital", que es lo PRIMERO que hace una financiera al arrancar, quedaba último
+            y con el mismo peso que corregir un error de conteo.
+        Ahora van agrupadas bajo su título, en el orden real de uso (poner plata → repartirla
+        → controlarla → corregir), cada una con una línea que dice qué hace. La jerarquía la
+        marca el color, no el tamaño: Capital destacada, Ajuste apagada.
+      */}
+      {/* Barra de acciones: etiqueta + fila de botones, SIN tarjeta que los contenga. Los
+          botones son `bg-card` sobre el fondo de la página, que es lo que los hace ver
+          elevados; metidos adentro de un panel volvían a leerse como fichas. */}
+      <div>
+        <AccionesCajaHeader />
+        <div className="flex flex-wrap items-center gap-2">
+          <AccionCaja
+            destacada
+            icon={<PiggyBank className="h-4 w-4" strokeWidth={1.75} />}
+            title="Capital"
+            onClick={() => setCapitalOpen(true)}
+          />
+          <AccionCaja
+            icon={<Users className="h-4 w-4" strokeWidth={1.75} />}
+            title="Caja de vendedores"
+            onClick={() => setVendedorOpen(true)}
+          />
+          <AccionCaja
+            icon={<ArrowLeftRight className="h-4 w-4" strokeWidth={1.75} />}
+            title="Transferir"
+            onClick={() => setTransferOpen(true)}
+          />
+          <AccionCaja
+            icon={<Scale className="h-4 w-4" strokeWidth={1.75} />}
+            title="Arqueo"
+            onClick={() => setArqueoOpen(true)}
+          />
+          <AccionCaja
+            tenue
+            icon={<Wrench className="h-4 w-4" strokeWidth={1.75} />}
+            title="Ajuste"
+            onClick={() => setAjusteOpen(true)}
+          />
+          {/* Va en la misma fila y al final: es la única que no mueve plata, y apagada
+              mientras no haya movimientos que exportar. Suelto contra el margen derecho
+              quedaba huérfano, sin pertenecer a nada. */}
+          <AccionCaja
+            tenue
+            disabled={!caja || caja.movimientos.length === 0}
+            icon={<Download className="h-4 w-4" strokeWidth={1.75} />}
+            title="Exportar CSV"
+            onClick={() => caja && exportarCSV(caja)}
+          />
+        </div>
       </div>
 
       {isLoading || !caja ? (
@@ -320,6 +337,8 @@ export function CajaView() {
                         <option value="ajuste">Ajustes</option>
                         <option value="transferencia">Transferencias</option>
                         <option value="comision">Comisiones</option>
+                        <option value="aporte_capital">Aportes de capital</option>
+                        <option value="retiro_utilidades">Retiros de utilidades</option>
                       </select>
                       <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     </div>
@@ -411,6 +430,12 @@ export function CajaView() {
       <ConciliarArqueoDialog
         arqueo={conciliar}
         onClose={(ok) => { setConciliar(null); if (ok) refrescar(); }}
+      />
+
+      <CapitalDialog
+        open={capitalOpen}
+        saldos={caja?.saldos_por_cuenta}
+        onClose={(ok) => { setCapitalOpen(false); if (ok) refrescar(); }}
       />
 
       <AjusteDialog
@@ -577,6 +602,161 @@ function AjusteDialog({ open, onClose }: { open: boolean; onClose: (ok?: boolean
             loading={loading}
             disabled={!montoNum || !descripcion.trim()}
             submitLabel="Registrar ajuste"
+            loadingLabel="Registrando…"
+          />
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/**
+ * Plata del DUEÑO entrando o saliendo del negocio: aporte de capital y retiro de utilidades.
+ *
+ * Vive aparte del ajuste a propósito. Tiene la misma forma (monto + cuenta + motivo) pero
+ * significa otra cosa: un ajuste corrige un error de registro, esto mueve el capital. Antes
+ * los dos iban como "ajuste" y en el libro un aporte de $10.000.000 se leía igual que una
+ * corrección de $1.500. Ahora cada uno tiene su tipo y su comprobante (APO / RET).
+ */
+function CapitalDialog({
+  open, onClose, saldos,
+}: {
+  open: boolean;
+  onClose: (ok?: boolean) => void;
+  saldos?: Record<CuentaCaja, number>;
+}) {
+  const confirm = useConfirm();
+  const toast = useToast();
+  const [concepto, setConcepto] = useState<"aporte_capital" | "retiro_utilidades">("aporte_capital");
+  const [monto, setMonto] = useState("");
+  const [cuenta, setCuenta] = useState<CuentaCaja>("efectivo");
+  const [descripcion, setDescripcion] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const reset = () => { setConcepto("aporte_capital"); setMonto(""); setCuenta("efectivo"); setDescripcion(""); setError(null); };
+
+  const esAporte = concepto === "aporte_capital";
+  const montoNum = parseMontoInput(monto);
+  const simbolo = simboloCuenta(cuenta);
+  const disponible = saldos?.[cuenta] ?? 0;
+  // No se puede retirar una ganancia que todavía no está en la caja.
+  const excede = !esAporte && montoNum > disponible;
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const ok = await confirm({
+      title: esAporte ? "¿Registrar el aporte?" : "¿Registrar el retiro?",
+      description: esAporte
+        ? `Entran ${simbolo} ${n2(montoNum)} a la caja (${CUENTA_META[cuenta].label}) como capital del dueño. No es un ingreso del negocio.`
+        : `Salen ${simbolo} ${n2(montoNum)} de la caja (${CUENTA_META[cuenta].label}) hacia el dueño. No es un gasto del negocio.`,
+      confirmLabel: esAporte ? "Registrar aporte" : "Registrar retiro",
+      tone: esAporte ? undefined : "danger",
+    });
+    if (!ok) return;
+    setLoading(true); setError(null);
+    try {
+      const res = await fetch("/api/caja", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ concepto, monto: montoNum, cuenta, descripcion }),
+      });
+      const json = await res.json();
+      if (json.ok) {
+        reset();
+        toast.success(esAporte ? "Aporte registrado" : "Retiro registrado");
+        refrescarNotificaciones();
+        onClose(true);
+      } else setError(json.error);
+    } catch {
+      setError("No se pudo registrar el movimiento");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => { if (!o) { reset(); onClose(false); } }}>
+      <DialogContent className="w-[95vw] sm:max-w-xl sm:p-7 max-h-[90dvh] overflow-y-auto">
+        <DialogHeader className="pr-8">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-primary">
+              <PiggyBank className="h-5 w-5" />
+            </div>
+            <div>
+              <DialogTitle>Capital del dueño</DialogTitle>
+              <p className="mt-0.5 text-xs text-muted-foreground">Plata que ponés o sacás del negocio, aparte de la operación.</p>
+            </div>
+          </div>
+        </DialogHeader>
+
+        <form onSubmit={submit} className="space-y-5">
+          {error && (
+            <div className="rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-2.5 text-sm text-destructive">{error}</div>
+          )}
+
+          <div className="flex flex-col gap-1.5">
+            <FieldLabel required>Concepto</FieldLabel>
+            <Segmented
+              value={concepto}
+              onChange={setConcepto}
+              options={[
+                { value: "aporte_capital", label: "Aporte", icon: "inbox-tray" },
+                { value: "retiro_utilidades", label: "Retiro", icon: "outbox-tray" },
+              ]}
+            />
+            <p className="text-xs text-muted-foreground">
+              {esAporte
+                ? "Ponés plata para prestar. Suma a la caja, pero no es una ganancia."
+                : "Sacás plata del negocio. Resta de la caja, pero no es un gasto."}
+            </p>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <FieldLabel required>Cuenta</FieldLabel>
+            <Segmented
+              value={cuenta}
+              onChange={setCuenta}
+              options={[
+                { value: "efectivo", label: "Efectivo", icon: "money-bag" },
+                { value: "banco", label: "Banco", icon: "bank" },
+                { value: "dolares", label: "Dólares", icon: "dollar-banknote" },
+              ]}
+            />
+          </div>
+
+          {!esAporte && (
+            <div className="rounded-lg border border-border bg-muted/30 px-3 py-2.5 flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">Disponible en {CUENTA_META[cuenta].label}</span>
+              <span className={`font-mono font-semibold ${disponible < 0 ? "text-destructive" : "text-foreground"}`}>{simbolo} {n2(disponible)}</span>
+            </div>
+          )}
+
+          <div className="flex flex-col gap-1.5">
+            <FieldLabel required>Monto</FieldLabel>
+            <MoneyInput value={monto} onChange={setMonto} currency={simbolo} autoFocus required />
+          </div>
+          {excede && (
+            <p className="text-xs text-destructive">El retiro supera el saldo disponible en {CUENTA_META[cuenta].label}.</p>
+          )}
+
+          <div className="flex flex-col gap-1.5">
+            <FieldLabel required>Detalle</FieldLabel>
+            <IconTextarea
+              icon="receipt"
+              value={descripcion}
+              onChange={(e) => setDescripcion(e.target.value)}
+              rows={2}
+              placeholder={esAporte ? "Ej: aporte para ampliar la cartera…" : "Ej: retiro de ganancias de julio…"}
+              required
+            />
+          </div>
+
+          <FormActions
+            onCancel={() => { reset(); onClose(false); }}
+            loading={loading}
+            disabled={!montoNum || !descripcion.trim() || excede}
+            submitLabel={esAporte ? "Registrar aporte" : "Registrar retiro"}
             loadingLabel="Registrando…"
           />
         </form>

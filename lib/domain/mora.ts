@@ -58,6 +58,102 @@ export function diasMoraActual(proximoPago: Date | string | null | undefined, ho
  * @param dias Días de atraso.
  * @param config Tasa diaria opcional.
  */
+/** Lo mínimo de una cuota para calcular su mora. */
+export interface CuotaParaMora {
+  fechaVencimiento: Date;
+  /** Valor de la cuota, que es la base sobre la que corre el punitorio. */
+  cuotaTotal: number;
+  /** Mora ya cobrada de esta cuota (se descuenta de lo devengado). */
+  pagadoMora?: number;
+}
+
+/**
+ * Mora PENDIENTE de un crédito: lo que realmente se le cobraría hoy.
+ *
+ * Suma **cuota por cuota**, cada una con sus propios días de atraso, exactamente como lo
+ * hace la imputación al cobrar (`imputarPagoEnCuotas`).
+ *
+ * 🔴 Existe porque las pantallas hacían una aproximación distinta —UNA cuota × los días de
+ * la más vieja— que se queda corta apenas hay más de una cuota vencida: con tres, mostraba
+ * menos de la mitad de lo que la caja iba a cobrar. Decirle un número al cliente y cobrarle
+ * otro es peor que no mostrar nada.
+ *
+ * @param hasta Fecha tope de devengamiento (para acuerdos que congelan punitorios).
+ */
+export function moraPendienteTotal(
+  cuotas: CuotaParaMora[],
+  opciones: { tasaDiaria?: number; diasGracia?: number; hoy?: Date; hasta?: Date | null } = {},
+): number {
+  const hoy = opciones.hoy ?? new Date();
+  const tope = fechaTopeMora(hoy, opciones.hasta);
+  let total = 0;
+  for (const c of cuotas) {
+    const dias = diasAtraso(c.fechaVencimiento, tope);
+    if (dias <= 0) continue;
+    const devengada = interesMora(c.cuotaTotal, dias, {
+      tasaDiaria: opciones.tasaDiaria,
+      diasGracia: opciones.diasGracia,
+    });
+    const pendiente = devengada - (c.pagadoMora ?? 0);
+    if (pendiente > 0) total = round2(total + pendiente);
+  }
+  return round2(total);
+}
+
+/**
+ * Condiciones de mora CONGELADAS en el crédito al otorgarlo.
+ *
+ * Van adentro del snapshot `creditos.cronograma`, junto a los días de gracia —que ya se
+ * congelaban ahí— para no agregar otra columna. La tolerancia estaba congelada y la tasa
+ * no: media condición viajaba con el crédito y la otra media se leía de la configuración
+ * del día en que alguien mirara.
+ */
+export interface MoraSnapshot {
+  activa: boolean;
+  tasaDiaria: number;
+}
+
+/**
+ * Condiciones de mora que le corresponden a UN crédito.
+ *
+ * 🔴 Manda lo congelado al otorgar; la configuración actual es solo el fallback para los
+ * créditos viejos que se otorgaron antes de que esto existiera.
+ *
+ * Por qué importa: la mora no se acumula día a día, se recalcula cada vez que se mira
+ * (días de atraso × tasa). Sin congelarla, subir la tasa el mes que viene le cobraría a un
+ * moroso los punitorios de TODO su atraso a la tasa nueva, incluidos los meses en que
+ * regía la vieja — y bajarla le regalaría los que ya devengó. Las condiciones de un crédito
+ * son las del día en que se firmó.
+ */
+export function moraDelCredito(
+  snapshot: MoraSnapshot | null | undefined,
+  configActual: { moraActiva: boolean; tasaMoraDiaria: number },
+): { moraActiva: boolean; tasaMoraDiaria: number } {
+  if (snapshot && typeof snapshot.tasaDiaria === "number" && typeof snapshot.activa === "boolean") {
+    return { moraActiva: snapshot.activa, tasaMoraDiaria: snapshot.tasaDiaria };
+  }
+  return { moraActiva: configActual.moraActiva, tasaMoraDiaria: configActual.tasaMoraDiaria };
+}
+
+/** Lee las condiciones de mora del snapshot `cronograma` de un crédito (o null si es viejo). */
+export function moraDesdeCronograma(cronograma: unknown): MoraSnapshot | null {
+  const c = cronograma as { mora?: MoraSnapshot } | null;
+  return c?.mora ?? null;
+}
+
+/**
+ * Fecha hasta la cual corre la mora, cuando algo la CONGELA (hoy: un acuerdo de pago
+ * vigente que se está cumpliendo).
+ *
+ * Devuelve la más TEMPRANA entre hoy y el corte: congelar solo puede frenar el reloj, nunca
+ * adelantarlo. Si el corte fuera posterior a hoy —una fecha mal cargada, un huso raro—,
+ * usarlo cobraría punitorios del futuro.
+ */
+export function fechaTopeMora(hoy: Date, corte?: Date | null): Date {
+  if (!corte) return hoy;
+  return corte.getTime() < hoy.getTime() ? corte : hoy;
+}
+
 export function interesMora(
   valorCuota: number,
   dias: number,

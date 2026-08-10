@@ -2,16 +2,9 @@ import { requireRole, scopeCreditosVendedor } from "@/lib/auth";
 import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
+import { sincronizarAcuerdos } from "@/lib/acuerdos";
 import { nombreCompleto, formatCreditoNumero, hoyComercial } from "@/lib/utils";
-import {
-  imputarPagoEnCuotas,
-  diasAtraso,
-  round2,
-  etiquetaCaja,
-  cuentaDeMetodo,
-  esCuentaValida,
-  type CuotaParaImputar,
-} from "@/lib/domain";
+import { imputarPagoEnCuotas, diasAtraso, round2, etiquetaCaja, cuentaDeMetodo, esCuentaValida, type CuotaParaImputar, moraDelCredito, moraDesdeCronograma } from "@/lib/domain";
 import { siguienteNumeroComprobante } from "@/lib/comprobantes";
 import { getConfiguracion } from "@/lib/config";
 import { registrarAuditoria } from "@/lib/audit";
@@ -192,13 +185,28 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
 
   const graciaCred = (credito.cronograma as { diasGracia?: number } | null)?.diasGracia ?? config.simulador.diasGracia;
 
+  // ── Acuerdo de pago con punitorios congelados ───────────────────────────────
+  // Si el crédito tiene un acuerdo VIGENTE y la financiera ofreció frenar los punitorios,
+  // la mora deja de correr desde la fecha en que se acordó. Es la contraprestación de que
+  // el deudor se haya comprometido, y estaba prometida en pantalla desde el primer día.
+  // `estado: "vigente"` es la clave: un acuerdo roto o anulado NO congela nada.
+  const acuerdoVigente = await prisma.acuerdos_pago.findFirst({
+    where: { ...withTenant(tenantId), credito_id: body.credito_id, estado: "vigente", congela_punitorios: true },
+    select: { fecha: true },
+  });
+
+  // Condiciones de mora CONGELADAS al otorgar este crédito (la config actual solo es
+  // fallback para créditos viejos). Ver `moraDelCredito` en lib/domain/mora.ts.
+  const moraCred = moraDelCredito(moraDesdeCronograma(credito.cronograma), config);
+
   const resultado = imputarPagoEnCuotas(body.monto, cuotasDom, {
     modoCargos: config.imputarCargos,
-    moraActiva: config.moraActiva,
-    tasaMoraDiaria: config.tasaMoraDiaria,
+    moraActiva: moraCred.moraActiva,
+    tasaMoraDiaria: moraCred.tasaMoraDiaria,
     hoy: fechaPago,
     descuentoMoraPct,
     diasGracia: graciaCred,
+    moraCongeladaAl: acuerdoVigente?.fecha ?? null,
   });
 
   // P1 — Sobrepago: el cobro no puede exceder la deuda total del crédito. Si la imputación
@@ -374,6 +382,11 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
 
   // Auto-conciliación de promesas de pago pendientes (no bloquea la respuesta)
   conciliarPromesas(body.credito_id, tenantId, body.monto).catch(() => {});
+
+  // Y del ACUERDO de pago, si el crédito tiene uno vigente: el cliente que termina de
+  // pagar lo acordado tiene que verlo cumplido al instante, no cuando corra el cron.
+  // Fire-and-forget con el mismo criterio: nunca frenar el cobro por un efecto de estado.
+  sincronizarAcuerdos({ tenantId, creditoId: body.credito_id }).catch(() => {});
 
   return successResponse(
     {

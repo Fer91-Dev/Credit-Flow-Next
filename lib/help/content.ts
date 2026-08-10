@@ -170,6 +170,65 @@ const HELP: Record<string, HelpDoc> = {
           { term: "Tasa / plazo / monto", desc: "Deben respetar los rangos y plazos habilitados en Configuración → Simulador." },
         ],
       },
+      {
+        // El recuadro naranja del simulador. Cada dato que muestra, explicado — el usuario
+        // pidió esta sección después de no entender qué significaba cada número.
+        kind: "definiciones",
+        titulo: "El recuadro de Originación",
+        items: [
+          {
+            term: "Semáforo (Aprobado / Revisar / Rechazado)",
+            desc: "El veredicto. Aprobado: entra sin observaciones. Revisar: se puede otorgar pero hay algo que mirar (por ejemplo, cliente sin historial). Rechazado: no califica; según la configuración, se bloquea o pide autorización de un admin.",
+          },
+          {
+            term: "Monto máximo sugerido",
+            desc: "El capital más grande que este cliente puede pagar con su sueldo, a la tasa y el plazo que estás cargando. El botón «Usar» lo carga en el campo Capital. Cambia con el plazo: más cuotas → cuota más chica → mayor monto posible.",
+          },
+          {
+            term: "Cuota máx (capacidad)",
+            desc: "Cuánto puede destinar por mes: su ingreso × el porcentaje configurado en Riesgo, menos lo que ya paga por otros créditos. Con $450.000 de ingreso y un tope del 30%, son $135.000. Es el número del que sale el monto sugerido.",
+          },
+          {
+            term: "Ratio cuota / ingreso",
+            desc: "Qué porcentaje del sueldo se lleva la cuota del crédito que estás simulando, sumada a lo que ya paga. Mientras esté por debajo del tope configurado, la capacidad de pago está bien.",
+          },
+          {
+            term: "Score interno",
+            desc: "Cómo se portó el cliente EN ESTA financiera (pagos puntuales, atrasos). «Sin historial» es un cliente nuevo: no es malo, es que todavía no hay con qué juzgarlo.",
+          },
+          {
+            term: "«Puede afrontar más, pero el máximo que podés otorgar es…»",
+            desc: "Aparece cuando el cliente aguanta más de lo que podés prestarle, sea por el máximo de la financiera o por tu propio límite de otorgamiento. El monto sugerido sigue mostrando su capacidad real —conviene saber que te sobra margen— pero «Usar» carga hasta donde el sistema te deja.",
+          },
+        ],
+      },
+      {
+        kind: "tips",
+        titulo: "Cómo se calcula el monto sugerido",
+        items: [
+          "Sale de la capacidad de pago, no de un porcentaje del monto pedido: se busca el capital cuya cuota sea exactamente lo que el cliente puede pagar por mes.",
+          "La frecuencia importa. Con cuotas semanales el cliente paga 52 veces al año, no 12: el sistema lo lleva a su equivalente mensual antes de compararlo con el sueldo.",
+          "Los cargos cuentan. Si tenés IVA, seguro o gastos activos, el sugerido baja: son plata que el cliente también paga.",
+          "Los créditos que ya tiene descuentan. Si Nora ya paga $40.000 por mes, le quedan $95.000 de margen en vez de $135.000.",
+          "Es orientativo, no una aprobación: podés escribir otro monto. Lo que cambia es el semáforo, y todo se vuelve a validar en el servidor al otorgar.",
+        ],
+      },
+      {
+        kind: "definiciones",
+        titulo: "La barra de resultados (al pie del plan)",
+        items: [
+          { term: "Cuota", desc: "Lo que paga el cliente en cada vencimiento. Si tenés cargos activos dice «c/cargos»: ya incluye IVA, seguro y gastos." },
+          { term: "Intereses", desc: "Lo que la financiera gana por prestar, sumado a lo largo de todo el plan. No incluye los cargos." },
+          { term: "Total a pagar", desc: "Todo lo que el cliente va a desembolsar: capital + intereses + cargos." },
+          { term: "T.E.A.", desc: "Tasa Efectiva Anual. El costo del INTERÉS llevado a un año. No incluye IVA, seguro, gastos ni comisión." },
+          {
+            term: "C.F.T.",
+            desc: "Costo Financiero Total: lo que el crédito le cuesta al cliente con TODO adentro (interés + IVA + seguro + gastos + comisión), expresado como tasa anual. Es el único número que compara dos ofertas de verdad. Si no hay cargos activos, da igual que la T.E.A.; si hay, siempre da más alto. Va también en el plan de pagos que se le entrega al cliente.",
+          },
+          { term: "Cargos totales", desc: "La suma en pesos de IVA, seguro, gastos y comisión de todo el plan. Aparece solo si tenés algún cargo activo." },
+          { term: "Capital / Interés", desc: "La barra de abajo: qué proporción del total a pagar es la plata prestada y qué proporción es la ganancia." },
+        ],
+      },
     ],
   },
 
@@ -253,12 +312,39 @@ const HELP: Record<string, HelpDoc> = {
         ],
       },
       {
-        kind: "pasos",
-        titulo: "Acciones manuales",
-        pasos: [
-          "Ajuste: registrar un ingreso o egreso que no viene de un crédito (con descripción).",
-          "Transferencia: mover saldo entre cuentas. Entre pesos y dólares es compra/venta con tipo de cambio.",
-          "Arqueo: conciliar el saldo del sistema contra el conteo físico de la caja principal; la diferencia se ajusta en el acto.",
+        // Los cinco botones de "Acciones de caja". El texto vive acá y NO adentro del botón:
+        // un botón se lee de un vistazo, y cinco párrafos en fila lo convertían en una ficha.
+        // Van en el mismo orden que en pantalla, que es el orden real de uso.
+        kind: "definiciones",
+        titulo: "Acciones de caja",
+        items: [
+          { term: "Capital", desc: "La plata que el dueño pone o retira del negocio." },
+          { term: "Caja de vendedores", desc: "Entregar plata a un vendedor o recibir lo que rinde." },
+          { term: "Transferir", desc: "Pasar saldo entre efectivo, banco y dólares. Entre pesos y dólares es compra/venta, con su tipo de cambio." },
+          { term: "Arqueo", desc: "Contar lo que hay y dejar constancia de cómo cerró." },
+          { term: "Ajuste", desc: "Corregir un error de registro. No sirve para cargar capital." },
+        ],
+      },
+      {
+        // Los dos roles entran por la misma ruta y ven esta misma ayuda, pero cada uno tiene
+        // su barra: el vendedor no dispone de capital ni de la caja de los demás.
+        kind: "definiciones",
+        titulo: "Acciones de caja (vendedor)",
+        items: [
+          { term: "Rendir efectivo", desc: "Entregarle a la caja principal la plata que cobraste. Es lo que más vas a usar." },
+          { term: "Transferir", desc: "Pasar saldo entre tus propias cuentas: efectivo, banco y dólares." },
+          { term: "Registrar gasto", desc: "Un egreso de tu caja que no es un crédito ni una rendición." },
+          { term: "Cerrar caja", desc: "Contás lo que tenés y lo declarás. Si hay diferencia, tu saldo NO se toca: queda pendiente hasta que un administrador la revise." },
+        ],
+      },
+      {
+        kind: "definiciones",
+        titulo: "Capital del dueño",
+        items: [
+          { term: "Aporte de capital", desc: "Plata que ponés vos para prestar. Suma a la caja, pero NO es una ganancia del negocio: la financiera no ganó nada, solo tiene más con qué trabajar." },
+          { term: "Retiro de utilidades", desc: "Plata que sacás del negocio. Resta de la caja, pero NO es un gasto. No podés retirar más de lo que hay disponible." },
+          { term: "Por qué está separado del ajuste", desc: "El ajuste corrige un error de registro. Si un aporte se cargara como ajuste, en el libro un aporte de $10.000.000 se leería igual que una corrección de $1.500, y para distinguirlos habría que leer la descripción a mano." },
+          { term: "Comprobante propio", desc: "Los aportes llevan serie APO y los retiros RET, con su numeración. Sirven para respaldar el movimiento ante tu contador." },
         ],
       },
       {

@@ -13,10 +13,10 @@ import type { FrecuenciaDef } from "./frequency";
 export type ConvencionTasa = "nominal_anual" | "efectiva_anual" | "mensual";
 
 /** Base sobre la que se calcula el interés moratorio. */
-export type BaseMora = "cuota" | "saldo";
 
-/** Componente de deuda al imputar un pago. */
-export type ComponenteDeuda = "mora" | "interes" | "capital";
+// `ComponenteDeuda` se movió a ./payments, derivado de ORDEN_IMPUTACION: el tipo y el orden
+// que aplica el motor tienen que salir del mismo lugar. `./index` reexporta los dos módulos,
+// así que quien lo importaba del dominio no se entera.
 
 /** Sistema de amortización (por ahora solo francés; extensible). */
 export type SistemaAmortizacion = "frances";
@@ -136,10 +136,13 @@ export interface ConfiguracionFinanciera {
   /** Fracción diaria de mora (ej: 0.01 = 1% diario). */
   tasaMoraDiaria: number;
   /** Base del cálculo de mora: sobre la cuota o sobre el saldo. Default: cuota. */
-  baseMora: BaseMora;
 
-  /** Orden de imputación de un pago. Default: mora -> interes -> capital. */
-  ordenImputacion: ComponenteDeuda[];
+  /**
+   * El ORDEN de imputación (mora → interés → capital) no está acá: es fijo y vive en
+   * `ORDEN_IMPUTACION` (lib/domain/payments.ts), junto al cálculo que lo aplica. Existió
+   * como config y se sacó porque el motor nunca lo leía — ver el comentario de esa
+   * constante para el fundamento (art. 903 CCyC).
+   */
   /** Cómo se imputan los cargos del período respecto del interés. Default: integrado. */
   imputarCargos: ModoImputacionCargos;
 
@@ -197,8 +200,6 @@ export const CONFIG_DEFAULT: ConfiguracionFinanciera = {
   sistemaAmortizacion: "frances",
   moraActiva: true,
   tasaMoraDiaria: 0.01, // 1% diario sobre la cuota
-  baseMora: "cuota",
-  ordenImputacion: ["mora", "interes", "capital"],
   imputarCargos: "integrado",
   moneda: "ARS",
   locale: "es-AR",
@@ -314,11 +315,6 @@ export function resolverConfig(
   return {
     ...CONFIG_DEFAULT,
     ...parcial,
-    // ordenImputacion necesita validación: si viene vacío, usar default.
-    ordenImputacion:
-      parcial.ordenImputacion && parcial.ordenImputacion.length > 0
-        ? parcial.ordenImputacion
-        : CONFIG_DEFAULT.ordenImputacion,
     // simulador: merge profundo sobre defaults.
     simulador: resolverSimulador(parcial.simulador),
   };

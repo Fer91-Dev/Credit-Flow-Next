@@ -1,0 +1,60 @@
+import { requireRole, scopeCreditosVendedor } from "@/lib/auth";
+import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api";
+import { withTenant } from "@/app/lib/db";
+import { prisma } from "@/lib/prisma";
+import { deudaVencidaDeCredito } from "@/lib/acuerdos";
+import { getCobranzaConfig } from "@/lib/config";
+import { quitaMaxima } from "@/lib/domain";
+import type { NextRequest } from "next/server";
+
+interface RouteParams {
+  params: Promise<{ id: string }>;
+}
+
+/**
+ * GET /api/creditos/[id]/acuerdo
+ * Previsualización para armar un acuerdo: cuánto debe VENCIDO hoy (desglosado), cuánto
+ * puede condonar quien está mirando, y los límites de la financiera.
+ *
+ * Es solo lectura: no crea nada. El alta va por `POST /api/cobranza/acuerdos`.
+ */
+export const GET = withErrorHandler(async (req: NextRequest, { params }: RouteParams) => {
+  const { tenantId, role, vendedorId } = await requireRole(["admin", "vendedor"], req);
+  const { id } = await params;
+
+  // Anti-IDOR antes de calcular nada.
+  const scope = scopeCreditosVendedor({ role, vendedorId });
+  const existe = await prisma.creditos.findFirst({
+    where: { ...withTenant(tenantId), id, ...scope },
+    select: { id: true },
+  });
+  if (!existe) return errorResponse("El crédito no existe", "NOT_FOUND", 404);
+
+  const { credito, deuda } = await deudaVencidaDeCredito(tenantId, id);
+  const cobranza = await getCobranzaConfig(tenantId);
+  const cfg = cobranza.acuerdos;
+
+  const acuerdoVigente = await prisma.acuerdos_pago.findFirst({
+    where: { ...withTenant(tenantId), credito_id: id, estado: "vigente" },
+    select: { id: true, monto_acordado: true, fecha: true },
+  });
+
+  return successResponse({
+    credito: {
+      id: credito.id,
+      numero: credito.numero,
+      estado: credito.estado,
+      cliente: credito.cliente ? `${credito.cliente.nombre} ${credito.cliente.apellido ?? ""}`.trim() : null,
+    },
+    deuda,
+    limites: {
+      max_cuotas: cfg.max_cuotas,
+      dias_entre_cuotas: cfg.dias_entre_cuotas,
+      cuotas_para_romper: cfg.cuotas_para_romper,
+      congela_punitorios: cfg.congela_punitorios,
+      /** Tope de condonación para QUIEN ESTÁ MIRANDO (según su rol). */
+      quita_maxima: quitaMaxima(deuda, role === "admin", cfg),
+    },
+    acuerdo_vigente: acuerdoVigente,
+  });
+});

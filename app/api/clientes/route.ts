@@ -3,7 +3,7 @@ import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api"
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { registrarAuditoria } from "@/lib/audit";
-import { calcularScore, diasMoraActual } from "@/lib/domain";
+import { calcularScore, diasMoraActual, esCreditoVivo } from "@/lib/domain";
 import { nombreCompleto, hoyComercial } from "@/lib/utils";
 import { normalizarCuit, validarDuplicadoCliente } from "@/lib/clientes-validacion";
 import type { NextRequest } from "next/server";
@@ -116,7 +116,7 @@ async function enriquecerClientes(
     a.tieneCreditos = true;
     // Mora EN VIVO desde `proximo_pago` (cron-independiente), no del cache `dias_mora`.
     const dm = cr.proximo_pago ? diasMoraActual(cr.proximo_pago, hoyMora) : cr.dias_mora;
-    if (cr.estado === "activo" && dm > a.maxDiasMora) a.maxDiasMora = dm;
+    if (esCreditoVivo(cr.estado) && dm > a.maxDiasMora) a.maxDiasMora = dm;
     a.ultimoMovimiento = Math.max(a.ultimoMovimiento, cr.created_at.getTime());
   }
 

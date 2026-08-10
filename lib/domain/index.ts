@@ -11,10 +11,12 @@ export * from "./config";
 export * from "./money";
 export * from "./rates";
 export * from "./amortization";
+export * from "./cft";
 export * from "./frequency";
 export * from "./mora";
 export * from "./payments";
 export * from "./refinanciacion";
+export * from "./acuerdos";
 export * from "./cuotas";
 export * from "./credito-estado";
 // Documentos legales (contrato de mutuo / pagaré)

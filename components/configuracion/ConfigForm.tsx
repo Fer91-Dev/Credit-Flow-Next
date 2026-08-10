@@ -7,7 +7,7 @@ import { FeatureGate } from "@/components/providers/FeaturesProvider";
 import { FinancieraForm } from "@/components/configuracion/FinancieraForm";
 import { BackupsView } from "@/components/configuracion/BackupsView";
 import type { SimuladorConfig, CargosConfig, FrecuenciaOpcion, DocumentosConfig } from "@/lib/domain";
-import { DOCUMENTOS_DEFAULT, revisarDocumentos } from "@/lib/domain";
+import { DOCUMENTOS_DEFAULT, revisarDocumentos, ORDEN_IMPUTACION } from "@/lib/domain";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Emoji } from "@/components/ui/Emoji";
 import { Field, Input, Select, Textarea, SecretInput } from "@/components/ui/field";
@@ -21,8 +21,14 @@ const ordenLabel: Record<string, string> = {
   capital: "Capital",
 };
 
-/** Ayuda contextual por bloque de configuración: qué configura y con qué efecto. */
-export type AyudaBloque = { titulo?: string; texto: string; puntos?: string[] };
+/**
+ * Ayuda contextual por bloque de configuración: qué configura y con qué efecto.
+ *
+ * `ejemplo` es un caso resuelto con números. Va aparte de `puntos` porque explicar un
+ * parámetro por definición ("cuántas cuotas se pueden ofrecer") no muestra la mecánica;
+ * un caso con plata sí, y es lo que pidió el usuario al configurar acuerdos por primera vez.
+ */
+export type AyudaBloque = { titulo?: string; texto: string; ejemplo?: string; puntos?: string[] };
 
 const AYUDA: Record<string, AyudaBloque> = {
   motor: {
@@ -38,7 +44,8 @@ const AYUDA: Record<string, AyudaBloque> = {
     texto: "Recargo que se suma cuando el cliente paga una cuota tarde. Con el switch apagado, no se cobra mora.",
     puntos: [
       "Tasa diaria: % que se acumula por cada día de atraso.",
-      "Base de cálculo: si ese % se aplica sobre el valor de la cuota o sobre el saldo pendiente.",
+      "Se aplica sobre el VALOR DE LA CUOTA vencida: cada cuota atrasada devenga su propio punitorio.",
+      "Los días de gracia (Simulador → Cronograma) son la tolerancia antes de que empiece a correr.",
     ],
   },
   cobranza: {
@@ -49,12 +56,39 @@ const AYUDA: Record<string, AyudaBloque> = {
       "Días para anular un pago: ventana para revertir un cobro cargado por error (control de tesorería).",
     ],
   },
+  acuerdos: {
+    titulo: "Acuerdos de pago",
+    texto: "El arreglo informal en cuotas con alguien que ya se atrasó: acordás cómo te paga lo VENCIDO, sin rehacer el crédito ni firmar nada nuevo. Lo que todavía no venció sigue su curso normal.",
+    ejemplo:
+      "Juan debe $50.000 vencidos: $30.000 de capital, $8.000 de interés y $12.000 de punitorios. " +
+      "Le perdonás la mitad de los punitorios ($6.000) y le armás 4 cuotas de $11.000 cada 30 días. " +
+      "Mientras cumple no se le suma más mora; si falta a las cuotas que definiste, el acuerdo se cae " +
+      "y vuelve a la cola de morosos con los punitorios corriendo otra vez.",
+    puntos: [
+      "Máximo de cuotas: hasta dónde puede estirar el vendedor sin consultar. No es lo que va a ofrecer siempre, es su techo.",
+      "Días entre cuotas: cada cuánto vence una cuota DEL ACUERDO. Es independiente del crédito: podés acordar semanal aunque el crédito sea mensual.",
+      "Cuotas impagas que lo rompen: con 1 sos estricto (falta a una y se cae); con 2 o 3 le das margen para un tropiezo.",
+      "Quita máx. del vendedor: cuánto puede perdonar por su cuenta. En 0 no condona nada y toda quita la firma un admin, que no tiene tope.",
+      "La condonación sale de los punitorios y el interés, NUNCA del capital: la plata que se prestó de verdad no se regala.",
+      "El acuerdo no toca el crédito: el cliente paga como siempre y el acuerdo se va cumpliendo solo con esos pagos.",
+      "No hay botón para darlo por cumplido: se cumple cuando la plata entra, y eso lo detecta el sistema solo.",
+    ],
+  },
   imputacion: {
     titulo: "Orden de imputación de pagos",
-    texto: "Define a qué se aplica primero la plata que paga el cliente cuando no alcanza a cubrir todo.",
+    texto: "Imputar es decidir a qué parte de la deuda se le descuenta la plata que entra. Solo importa cuando el cliente paga MENOS de lo que debe: si paga todo, el orden no cambia nada.",
+    ejemplo:
+      "Juan debe una cuota de $25.000: $3.000 de punitorios, $5.000 de interés, $2.000 de cargos y " +
+      "$15.000 de capital. Paga $9.000. Con «integrado» se cubren los $3.000 de punitorios, los " +
+      "$5.000 de interés y $1.000 de cargos. Con «separado» se cubren los punitorios, los $2.000 de " +
+      "cargos enteros y $4.000 de interés. En los dos casos Juan pagó lo mismo y el capital quedó " +
+      "intacto: lo único que cambia es en qué casillero se anotó cada peso.",
     puntos: [
-      "Hoy el orden es Mora → Interés → Capital.",
-      "Imputación de cargos: dónde entran IVA/seguro/gastos del período dentro de ese orden.",
+      "La mora va primera para que la deuda deje de crecer: mientras queden punitorios sin pagar, el atraso sigue sumando.",
+      "El capital va último a propósito. Si bajara primero, el préstamo se achicaría antes de haber cobrado lo que cuesta tenerlo.",
+      "Además se salda la cuota MÁS VIEJA entera antes de tocar la siguiente — no se reparte un poco a cada una.",
+      "Ese orden es fijo y no se configura: es el que fija la ley por defecto (art. 903 del Código Civil y Comercial — un pago a cuenta de capital e intereses se imputa primero a intereses). Lo único que elegís acá es dónde entran los cargos.",
+      "Elijas lo que elijas, el cliente paga lo mismo y el capital baja igual: cambia el reparto contable, no la plata.",
     ],
   },
   presentacion: {
@@ -267,6 +301,10 @@ export function ConfigForm() {
 
   // Cobranza: agenda del día (cada cuántos días un moroso sin gestión reaparece en la cola).
   const cobranza = form?.cobranzaConfig ?? defaultCobranza();
+  /** Patch anidado de la política de acuerdos (vive dentro de cobranza_config). */
+  const setAcuerdos = (patch: Partial<CobranzaConfig["acuerdos"]>) =>
+    setCobranza({ acuerdos: { ...cobranza.acuerdos, ...patch } });
+
   const setCobranza = (patch: Partial<CobranzaConfig>) => {
     setForm(prev => prev ? { ...prev, cobranzaConfig: { ...defaultCobranza(), ...prev.cobranzaConfig, ...patch } } : prev);
     touch();
@@ -322,7 +360,7 @@ export function ConfigForm() {
     const f = form, c = config, s = form.simulador, cs = config.simulador;
     switch (key) {
       case "motor":         return f.convencionTasa !== c.convencionTasa || f.sistemaAmortizacion !== c.sistemaAmortizacion;
-      case "mora":          return f.moraActiva !== c.moraActiva || f.tasaMoraDiaria !== c.tasaMoraDiaria || f.baseMora !== c.baseMora;
+      case "mora":          return f.moraActiva !== c.moraActiva || f.tasaMoraDiaria !== c.tasaMoraDiaria;
       case "cobranza":      return !eq(f.cobranzaConfig ?? null, c.cobranzaConfig ?? null);
       case "notificaciones": return !eq(f.notificacionesConfig ?? null, c.notificacionesConfig ?? null);
       case "imputacion":    return f.imputarCargos !== c.imputarCargos;
@@ -549,12 +587,13 @@ export function ConfigForm() {
               </Field>
             </div>
 
-            <div className={`mt-4 flex items-center justify-between rounded-lg border border-border px-4 py-3 transition-colors ${form.simulador.incluirSabadoNoHabil ? "bg-primary/[0.06] ring-1 ring-inset ring-primary/25" : "bg-muted/30"}`}>
-              <div>
-                <p className="text-sm font-medium text-foreground">Sábado no hábil</p>
-                <p className="text-xs text-muted-foreground">Si está activo, los vencimientos que caen sábado también se corren al lunes.</p>
-              </div>
-              <Toggle checked={form.simulador.incluirSabadoNoHabil} onChange={v => setSim("incluirSabadoNoHabil", v)} />
+            <div className="mt-4">
+              <SwitchRow
+                title="Sábado no hábil"
+                desc="Si está activo, los vencimientos que caen sábado también se corren al lunes."
+                checked={form.simulador.incluirSabadoNoHabil}
+                onChange={v => setSim("incluirSabadoNoHabil", v)}
+              />
             </div>
 
             <div className="mt-4">
@@ -674,9 +713,9 @@ export function ConfigForm() {
           {/* Mora */}
           <Section title="Interés por mora" desc="Recargo aplicado por días de atraso. Apagá el switch para no cobrar mora." ayuda={AYUDA.mora}
             enabled={form.moraActiva} onToggle={v => set("moraActiva", v)}
-            onSave={() => save("mora", { moraActiva: form.moraActiva, tasaMoraDiaria: form.tasaMoraDiaria, baseMora: form.baseMora })}
+            onSave={() => save("mora", { moraActiva: form.moraActiva, tasaMoraDiaria: form.tasaMoraDiaria })}
             saving={savingKey === "mora"} saved={savedKey === "mora"} dirty={isDirty("mora")}>
-            <div className={`grid grid-cols-1 sm:grid-cols-2 gap-4 transition-opacity ${form.moraActiva ? "" : "opacity-50"}`}>
+            <div className={`grid grid-cols-1 gap-4 max-w-sm transition-opacity ${form.moraActiva ? "" : "opacity-50"}`}>
               <Field label="Tasa de mora diaria (%)" hint="Porcentaje diario sobre la base de mora">
                 <div className="relative">
                   <Input
@@ -689,12 +728,7 @@ export function ConfigForm() {
                   <Percent className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
                 </div>
               </Field>
-              <Field label="Base de cálculo" hint="Sobre qué monto se calcula la mora">
-                <Select value={form.baseMora} onChange={e => set("baseMora", e.target.value as ConfiguracionFinanciera["baseMora"])} disabled={!form.moraActiva}>
-                  <option value="cuota">Valor de la cuota</option>
-                  <option value="saldo">Saldo pendiente</option>
-                </Select>
-              </Field>
+
             </div>
           </Section>
 
@@ -720,30 +754,101 @@ export function ConfigForm() {
             </div>
           </Section>
 
+          {/* Acuerdos de pago */}
+          <Section title="Acuerdos de pago" desc="El arreglo informal en cuotas con un moroso: hasta cuántas cuotas, qué lo rompe y quién puede condonar." ayuda={AYUDA.acuerdos}
+            onSave={() => save("cobranza", { cobranzaConfig: cobranza })}
+            saving={savingKey === "cobranza"} saved={savedKey === "cobranza"} dirty={isDirty("cobranza")}>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 max-w-3xl">
+              <Field label="Máximo de cuotas" hint="El techo del vendedor: hasta en cuántos pagos puede repartir lo vencido sin consultar. Con 6 puede ofrecer 6, no 8.">
+                <Input
+                  type="number" min="1" max="60" step="1"
+                  value={cobranza.acuerdos.max_cuotas}
+                  onChange={e => setAcuerdos({ max_cuotas: Math.max(1, Math.min(60, Math.round(parseFloat(e.target.value) || 1))) })}
+                />
+              </Field>
+              <Field label="Días entre cuotas" hint="Cada cuánto vence una cuota del acuerdo: 30 = mensual · 15 = quincenal · 7 = semanal. No depende de la frecuencia del crédito.">
+                <Input
+                  type="number" min="1" max="365" step="1"
+                  value={cobranza.acuerdos.dias_entre_cuotas}
+                  onChange={e => setAcuerdos({ dias_entre_cuotas: Math.max(1, Math.min(365, Math.round(parseFloat(e.target.value) || 1))) })}
+                />
+              </Field>
+              <Field label="Cuotas impagas que lo rompen" hint="Con 1 se cae al primer faltazo; con 2 o 3 tolerás un tropiezo. Al romperse vuelve a morosos y los punitorios corren de nuevo.">
+                <Input
+                  type="number" min="1" step="1"
+                  value={cobranza.acuerdos.cuotas_para_romper}
+                  onChange={e => setAcuerdos({ cuotas_para_romper: Math.max(1, Math.round(parseFloat(e.target.value) || 1)) })}
+                />
+              </Field>
+              <Field label="Quita máx. del vendedor (%)" hint="Cuánto de los punitorios e interés puede perdonar el vendedor por su cuenta. En 0 no condona nada: toda quita la firma un admin, que no tiene tope. El capital nunca se toca.">
+                <Input
+                  type="number" min="0" max="100" step="1"
+                  value={cobranza.acuerdos.quita_max_vendedor_pct}
+                  onChange={e => setAcuerdos({ quita_max_vendedor_pct: Math.max(0, Math.min(100, parseFloat(e.target.value) || 0)) })}
+                />
+              </Field>
+            </div>
+            <div className="mt-4 flex flex-col gap-3 max-w-3xl">
+              <SwitchRow
+                title="Congelar punitorios mientras cumple"
+                desc="El incentivo para el deudor: si paga lo acordado, no se le sigue sumando mora."
+                checked={cobranza.acuerdos.congela_punitorios}
+                onChange={v => setAcuerdos({ congela_punitorios: v })}
+              />
+              <SwitchRow
+                title="Sacarlo de la agenda del día mientras cumple"
+                desc="Quien está cumpliendo ya está gestionado. Llamarlo igual suele ser la forma más rápida de que deje de cumplir."
+                checked={cobranza.acuerdos.saca_de_agenda}
+                onChange={v => setAcuerdos({ saca_de_agenda: v })}
+              />
+            </div>
+          </Section>
+
           {/* Imputación */}
-          <Section title="Orden de imputación de pagos" desc="Cómo se aplica cada pago recibido sobre la deuda." ayuda={AYUDA.imputacion}
+          <Section title="Orden de imputación de pagos" desc="Cuando un pago no alcanza a cubrir todo lo vencido, a qué parte de la deuda se le descuenta primero." ayuda={AYUDA.imputacion}
             onSave={() => save("imputacion", { imputarCargos: form.imputarCargos })}
             saving={savingKey === "imputacion"} saved={savedKey === "imputacion"} dirty={isDirty("imputacion")}>
+            {/*
+              Las etiquetas son INFORMACIÓN, no un control: muestran el orden que aplica el motor.
+              Llevan su propio título para que no se lean como botones desactivados — antes acá
+              decía que el reordenamiento "llegará en una fase próxima", y prometer una función
+              que nadie tiene planeada es peor que explicar por qué el orden es el que es.
+            */}
+            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-2">
+              Orden que aplica el motor
+            </p>
             <div className="flex items-center gap-2 flex-wrap">
-              {form.ordenImputacion.map((c, i) => (
+              {/*
+                Se dibuja desde ORDEN_IMPUTACION, la constante que usa el propio motor. Antes
+                salía de la configuración guardada, que el motor no leía: bastaba un valor raro
+                en la base para que la pantalla mostrara un orden y la caja cobrara otro.
+              */}
+              {ORDEN_IMPUTACION.map((c, i) => (
                 <div key={c} className="flex items-center gap-2">
                   <StatusBadge
                     label={`${i + 1}. ${ordenLabel[c] ?? c}`}
                     variant={c === "mora" ? "destructive" : c === "interes" ? "warning" : "primary"}
                   />
-                  {i < form.ordenImputacion.length - 1 && <span className="text-muted-foreground/40">→</span>}
+                  {i < ORDEN_IMPUTACION.length - 1 && <span className="text-muted-foreground/40">→</span>}
                 </div>
               ))}
             </div>
-            <p className="text-xs text-muted-foreground/60 mt-3">
-              El reordenamiento de mora/interés/capital llegará en una fase próxima. Hoy el motor aplica este orden.
+            <p className="text-xs text-muted-foreground mt-3 max-w-2xl">
+              Es fijo, y no por comodidad: el art. 903 del Código Civil y Comercial establece que un pago
+              a cuenta de capital e intereses se imputa primero a los intereses. Además la mora va primera
+              para que la deuda deje de crecer, el capital último para no achicar el préstamo antes de
+              haber cobrado lo que cuesta tenerlo, y se salda la cuota más vieja entera antes de pasar a
+              la siguiente.
             </p>
 
             <div className="mt-4 max-w-md border-t border-border pt-4">
-              <Field label="Imputación de cargos" hint="Dónde entran IVA/seguro/gastos del período al imputar un pago">
+              <Field
+                label="Dónde entran los cargos"
+                hint="IVA, seguro y gastos: si se cobran antes o después del interés. No cambia lo que paga el cliente ni cuánto baja el capital — solo en qué casillero se anota cada peso de un pago parcial."
+              >
                 <Select value={form.imputarCargos} onChange={e => set("imputarCargos", e.target.value as ConfiguracionFinanciera["imputarCargos"])}>
-                  <option value="integrado">Integrado — Mora → Interés → Cargos → Capital</option>
-                  <option value="separado">Separado — Mora → Cargos → Interés → Capital</option>
+                  <option value="integrado">Después del interés (mora → interés → cargos → capital)</option>
+                  <option value="separado">Antes del interés (mora → cargos → interés → capital)</option>
                 </Select>
               </Field>
             </div>
@@ -1022,6 +1127,18 @@ export function ConfigForm() {
                     onChange={e => setRiesgo({ multiploIngresoMax: Math.max(0, parseFloat(e.target.value) || 0) })}
                     className="font-mono tabular-nums" />
                 </Field>
+                <Field
+                  label="Sueldo que debe quedarle libre (%)"
+                  hint="Segunda chance para quien se pasa del ratio: si aun así le queda libre este % del sueldo, en vez de rechazarlo lo manda a revisar. 0 = apagado."
+                >
+                  <div className="relative">
+                    <Input type="number" min="0" max="100" step="1"
+                      value={riesgo.politica.ingresoDisponibleMinPct}
+                      onChange={e => setRiesgo({ ingresoDisponibleMinPct: Math.min(100, Math.max(0, parseFloat(e.target.value) || 0)) })}
+                      className="pr-7" />
+                    <Percent className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
+                  </div>
+                </Field>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1086,21 +1203,19 @@ export function ConfigForm() {
                 </Field>
               </div>
 
-              <div className={`flex items-center justify-between rounded-lg border border-border px-4 py-3 transition-colors ${riesgo.politica.bloquearConCuotasVencidas ? "bg-primary/[0.06] ring-1 ring-inset ring-primary/25" : "bg-muted/30"}`}>
-                <div>
-                  <p className="text-sm font-medium text-foreground">Bloquear si tiene cuotas vencidas impagas</p>
-                  <p className="text-xs text-muted-foreground">Impedimento absoluto: no se puede otorgar a un cliente que ya está en mora, ni siquiera con autorización del admin.</p>
-                </div>
-                <Toggle checked={riesgo.politica.bloquearConCuotasVencidas} onChange={v => setRiesgo({ bloquearConCuotasVencidas: v })} />
-              </div>
+              <SwitchRow
+                title="Bloquear si tiene cuotas vencidas impagas"
+                desc="Impedimento absoluto: no se puede otorgar a un cliente que ya está en mora, ni siquiera con autorización del admin."
+                checked={riesgo.politica.bloquearConCuotasVencidas}
+                onChange={v => setRiesgo({ bloquearConCuotasVencidas: v })}
+              />
 
-              <div className={`flex items-center justify-between rounded-lg border border-border px-4 py-3 transition-colors ${riesgo.politica.rechazaConChequesRechazados ? "bg-primary/[0.06] ring-1 ring-inset ring-primary/25" : "bg-muted/30"}`}>
-                <div>
-                  <p className="text-sm font-medium text-foreground">Rechazar con cheques rechazados</p>
-                  <p className="text-xs text-muted-foreground">Si el bureau informa cheques rechazados sin regularizar, el cliente no califica.</p>
-                </div>
-                <Toggle checked={riesgo.politica.rechazaConChequesRechazados} onChange={v => setRiesgo({ rechazaConChequesRechazados: v })} />
-              </div>
+              <SwitchRow
+                title="Rechazar con cheques rechazados"
+                desc="Si el bureau informa cheques rechazados sin regularizar, el cliente no califica."
+                checked={riesgo.politica.rechazaConChequesRechazados}
+                onChange={v => setRiesgo({ rechazaConChequesRechazados: v })}
+              />
 
               {/* ── Bureau de crédito (integración por API) — PREMIUM (plan Pro) ── */}
               <FeatureGate feature="bureau_credito">
@@ -1307,30 +1422,54 @@ function defaultRentabilidad(): RentabilidadConfig {
 }
 
 function defaultCobranza(): CobranzaConfig {
-  return { dias_sin_gestion: 7, dias_anulacion_pago: 3 };
+  return {
+    dias_sin_gestion: 7,
+    dias_anulacion_pago: 3,
+    acuerdos: {
+      max_cuotas: 6, dias_entre_cuotas: 30, cuotas_para_romper: 1,
+      congela_punitorios: true, saca_de_agenda: true,
+      quita_max_vendedor_pct: 0,
+    },
+  };
 }
 
 function defaultNotificaciones(): NotificacionesConfig {
   return { movimientos_caja: true, respaldos: true, plan: true };
 }
 
-/** Fila de encendido/apagado de un aviso de la campanita (mismo look que el toggle de cronograma). */
-function NotifRow({ title, desc, checked, onChange }: { title: string; desc: string; checked: boolean; onChange: (v: boolean) => void }) {
+/**
+ * Fila de un ajuste de encendido/apagado.
+ *
+ * El estado se lee en TRES señales a la vez: el fondo teñido, la etiqueta "Activo/Inactivo"
+ * y la perilla. Suena redundante y no lo es — en un bloque con seis ajustes, lo que se busca
+ * de un vistazo es cuáles están prendidos, y eso se ve en el fondo mucho antes que en seis
+ * perillas del mismo tamaño.
+ *
+ * Este look ya existía repetido a mano en seis lugares del formulario; acá queda en uno solo
+ * para que no se despeguen entre sí.
+ */
+function SwitchRow({ title, desc, checked, onChange }: { title: string; desc?: string; checked: boolean; onChange: (v: boolean) => void }) {
   return (
     <div className={`flex items-center justify-between gap-3 rounded-lg border border-border px-4 py-3 transition-colors ${checked ? "bg-primary/[0.06] ring-1 ring-inset ring-primary/25" : "bg-muted/30"}`}>
       <div className="min-w-0">
         <p className="text-sm font-medium text-foreground">{title}</p>
-        <p className="text-xs text-muted-foreground">{desc}</p>
+        {desc && <p className="text-xs text-muted-foreground">{desc}</p>}
       </div>
       <Toggle checked={checked} onChange={onChange} />
     </div>
   );
 }
 
+/** Aviso de la campanita: es un `SwitchRow` con nombre propio para que se lea en su bloque. */
+function NotifRow({ title, desc, checked, onChange }: { title: string; desc: string; checked: boolean; onChange: (v: boolean) => void }) {
+  return <SwitchRow title={title} desc={desc} checked={checked} onChange={onChange} />;
+}
+
 function defaultRiesgo(): RiesgoConfig {
   return {
     politica: {
       ratioCuotaIngresoMax: 0.30,
+      ingresoDisponibleMinPct: 0, // apagado por defecto: no cambia el criterio de nadie
       multiploIngresoMax: 6,
       limiteBaseSinBureau: 0,
       situacionBcraMax: 2,
@@ -1406,7 +1545,14 @@ function Section({ title, desc, children, onSave, saving, saved, dirty, enabled,
           {onSave && <SaveButton saving={!!saving} saved={!!saved} dirty={dirty} onClick={onSave} />}
         </div>
       </div>
-      {children}
+      {/*
+        Un bloque apagado atenúa su contenido y deja de aceptar clics, igual que los bloques
+        de cargos y de canales. Faltaba justamente acá: se podía apagar Mora y seguir
+        escribiendo la tasa como si algo fuera a pasar con ese número.
+      */}
+      {onToggle ? (
+        <div className={enabled ? "" : "pointer-events-none select-none opacity-40"}>{children}</div>
+      ) : children}
     </div>
   );
 }
@@ -1445,11 +1591,17 @@ export function HelpHint({ ayuda }: { ayuda: AyudaBloque }) {
         <HelpCircle className="h-4 w-4" />
       </button>
       {open && (
-        <div className="absolute right-0 top-9 z-30 w-72 rounded-xl border border-border bg-card p-3.5 text-left shadow-2xl shadow-black/30">
+        <div className="absolute right-0 top-9 z-30 w-80 max-w-[calc(100vw-2rem)] rounded-xl border border-border bg-card p-3.5 text-left shadow-2xl shadow-black/30">
           <div className="mb-1.5 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-primary">
             <HelpCircle className="h-3.5 w-3.5" /> {ayuda.titulo ?? "Ayuda"}
           </div>
           <p className="text-xs leading-relaxed text-foreground/90">{ayuda.texto}</p>
+          {ayuda.ejemplo && (
+            <div className="mt-2.5 rounded-lg border border-primary/20 bg-primary/[0.07] p-2.5">
+              <p className="mb-1 text-[10px] font-bold uppercase tracking-widest text-primary">Ejemplo</p>
+              <p className="text-xs leading-relaxed text-foreground/90">{ayuda.ejemplo}</p>
+            </div>
+          )}
           {ayuda.puntos && (
             <ul className="mt-2 space-y-1">
               {ayuda.puntos.map((p, i) => (
@@ -1611,7 +1763,7 @@ function FrecuenciasEditor({ frecuencias, onChange }: {
         <span className="w-4 shrink-0" />
       </div>
       {frecuencias.map(f => (
-        <div key={f.clave} className="flex items-center gap-3 rounded-lg border border-border bg-muted/20 px-3 py-2">
+        <div key={f.clave} className={`flex items-center gap-3 rounded-lg border border-border px-3 py-2 transition-colors ${f.activo ? "bg-primary/[0.06] ring-1 ring-inset ring-primary/25" : "bg-muted/20"}`}>
           <div className="min-w-0 flex-1">
             {f.builtin ? (
               <p className="text-sm font-medium text-foreground">{cap(f.label)}</p>
@@ -1707,6 +1859,18 @@ function CargoBlock({ title, desc, activo, onToggle, children, onSave, saving, s
   );
 }
 
+/**
+ * Switch de encendido/apagado de un ajuste del motor.
+ *
+ * 🔴 Lleva el estado ESCRITO al lado, no solo la perilla. Un switch pelado obliga a conocer
+ * la convención —¿la perilla a la derecha significa prendido?— y acá prender un cargo cambia
+ * lo que termina pagando el cliente: adivinar no es una opción. Además, media configuración
+ * son ajustes apagados por defecto, así que el estado que hay que poder leer de un vistazo
+ * es justamente el que menos se nota.
+ *
+ * El apagado usa `bg-muted` y no un blanco translúcido: el translúcido se veía bien en
+ * oscuro y desaparecía sobre las tarjetas del modo claro.
+ */
 function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
   return (
     <button
@@ -1714,11 +1878,23 @@ function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean
       role="switch"
       aria-checked={checked}
       onClick={() => onChange(!checked)}
-      className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full px-0.5 transition-colors ${checked ? "bg-primary" : "bg-white/[0.14] ring-1 ring-inset ring-white/10"}`}
+      className="inline-flex shrink-0 items-center gap-2 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
     >
+      {/*
+        Ancho fijo a propósito: "Activo" e "Inactivo" no miden lo mismo, y sin fijarlo los
+        controles que van a la derecha (la X de borrar en la lista de frecuencias) se corren
+        de fila en fila según el estado de cada una.
+      */}
+      <span className={`w-16 text-right text-[11px] font-semibold uppercase tracking-wide transition-colors ${checked ? "text-primary" : "text-muted-foreground"}`}>
+        {checked ? "Activo" : "Inactivo"}
+      </span>
       <span
-        className={`inline-block h-5 w-5 rounded-full bg-white shadow-sm transition-transform duration-200 ${checked ? "translate-x-5" : "translate-x-0"}`}
-      />
+        className={`relative inline-flex h-6 w-11 items-center rounded-full px-0.5 transition-colors ${checked ? "bg-primary" : "bg-muted ring-1 ring-inset ring-border"}`}
+      >
+        <span
+          className={`inline-block h-5 w-5 rounded-full shadow-sm transition-transform duration-200 ${checked ? "translate-x-5 bg-white" : "translate-x-0 bg-muted-foreground/60"}`}
+        />
+      </span>
     </button>
   );
 }

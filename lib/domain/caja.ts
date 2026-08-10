@@ -15,7 +15,27 @@ export type TipoMovimiento =
   | "transferencia"     // movimiento de saldo entre cuentas (signo explícito)
   | "entrega"           // caja principal → vendedor (signo explícito por cada pata del par)
   | "rendicion"         // vendedor → caja principal (signo explícito por cada pata del par)
-  | "comision";         // egreso: liquidación de comisión a un agente (ingreso si se anula)
+  | "comision"          // egreso: liquidación de comisión a un agente (ingreso si se anula)
+  /**
+   * Ingreso: comisión de otorgamiento que paga el CLIENTE al firmar, cuando la financiera la
+   * cobra al inicio en vez de financiarla.
+   *
+   * 🔴 No confundir con `comision`, que es lo contrario: plata que SALE para pagarle al
+   * vendedor. Van separadas justamente porque una entra y la otra sale; con un solo nombre,
+   * el libro sumaba y restaba bajo la misma etiqueta.
+   *
+   * Existe porque este cargo se calculaba, se mostraba en el plan y se sumaba al total que
+   * paga el cliente, pero NO generaba ningún movimiento: la plata se cobraba en mano y no
+   * quedaba en los libros. Financiada no tiene el problema — ahí se suma al capital y se
+   * cobra dentro de las cuotas.
+   */
+  | "comision_otorgamiento"
+  // ── Plata del DUEÑO, que no es del negocio ────────────────────────────────
+  // Iban como "ajuste", el mismo tipo con el que se corrige un error de conteo: en el
+  // libro, un aporte de $10.000.000 y una corrección de $1.500 se leían igual. No son
+  // resultado del negocio (ni ganancia ni gasto): son plata que entra y sale del dueño.
+  | "aporte_capital"    // ingreso: el dueño pone plata para prestar
+  | "retiro_utilidades";// egreso: el dueño saca plata del negocio
 
 /** Cuentas de tesorería disponibles. */
 export type Cuenta = "efectivo" | "banco" | "dolares";
@@ -53,7 +73,25 @@ export function cuentaDeMetodo(metodo: string | null | undefined): Cuenta {
 }
 
 /** Tipos cuyo signo natural es egreso (monto negativo). */
-const EGRESOS: ReadonlySet<TipoMovimiento> = new Set(["desembolso", "devolucion"]);
+const EGRESOS: ReadonlySet<TipoMovimiento> = new Set(["desembolso", "devolucion", "retiro_utilidades"]);
+
+/**
+ * Movimientos de CAPITAL del dueño: no son resultado del negocio.
+ *
+ * Mueven el saldo de caja como cualquier otro (la plata entra y sale de verdad), pero no
+ * son ni ganancia ni gasto: si el dueño pone un millón, la financiera no ganó un millón.
+ * Sirve para poder separarlos al leer el libro y para que un cálculo futuro de resultado
+ * los excluya sin tener que acordarse de estos dos nombres sueltos.
+ *
+ * (Hoy Reportes ni siquiera lee la caja — la rentabilidad sale de los pagos —, así que
+ * esto no corrige ningún número: ordena el libro.)
+ */
+export const TIPOS_CAPITAL: ReadonlySet<TipoMovimiento> = new Set(["aporte_capital", "retiro_utilidades"]);
+
+/** True si el movimiento es plata del dueño entrando o saliendo, no operación del negocio. */
+export function esMovimientoDeCapital(tipo: string): boolean {
+  return TIPOS_CAPITAL.has(tipo as TipoMovimiento);
+}
 
 /** True si el tipo representa, por naturaleza, un ingreso de caja. */
 export function esIngreso(tipo: TipoMovimiento): boolean {

@@ -2,30 +2,13 @@ import { requireAuth, requireRole, scopeCreditosVendedor, ApiError } from "@/lib
 import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
-import {
-  cuotaMensualFrancesa,
-  tasaPeriodicaSegunConvencion,
-  interesMora,
-  normalizarFrecuencia,
-  resolverFrecuencia,
-  sumarPeriodos,
-  construirPlanAmortizacion,
-  planACuotas,
-  estadoCoherente,
-  etiquetaCaja,
-  esCuentaValida,
-  validarParametrosOtorgamiento,
-  diasMoraActual,
-  CUENTA_LABEL,
-  type Cuenta,
-  type FrecuenciaDef,
-} from "@/lib/domain";
+import { cuotaMensualFrancesa, round2, tasaPeriodicaSegunConvencion, interesMora, normalizarFrecuencia, resolverFrecuencia, sumarPeriodos, construirPlanAmortizacion, planACuotas, estadoCoherente, etiquetaCaja, esCuentaValida, validarParametrosOtorgamiento, diasMoraActual, CUENTA_LABEL, type Cuenta, type FrecuenciaDef, ESTADOS_VIVOS, esCreditoVivo, moraDelCredito, moraDesdeCronograma, moraPendienteTotal } from "@/lib/domain";
 import { siguienteNumeroComprobante } from "@/lib/comprobantes";
 import { assertFondosSuficientesTx } from "@/lib/caja-fondos";
 import { getConfiguracion } from "@/lib/config";
 import { registrarAuditoria } from "@/lib/audit";
 import { registrarMovimientoStock } from "@/lib/stock";
-import { evaluarClienteParaCredito } from "@/lib/riesgo-server";
+import { evaluarClienteParaCredito, cuotaMensualParaRiesgo } from "@/lib/riesgo-server";
 import { formatCreditoNumero, nombreCompleto, hoyComercial } from "@/lib/utils";
 import type { NextRequest } from "next/server";
 import type { Prisma } from "@prisma/client";
@@ -50,13 +33,19 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
 
   // Anti-IDOR: el vendedor solo ve SUS créditos; admin/cobrador ven todo el tenant.
   const where: Record<string, any> = { ...withTenant(tenantId), ...scopeCreditosVendedor({ role, vendedorId }) };
-  if (estado) where.estado = estado;
+  // `estado=vivos` = activo + vencido, o sea "sigue en cartera y se le puede cobrar".
+  // Un `vencido` es un activo atrasado; filtrar por "activo" a secas deja afuera justo a
+  // los morosos. Ver ESTADOS_VIVOS en lib/domain/credito-estado.ts.
+  if (estado === "vivos") where.estado = { in: [...ESTADOS_VIVOS] };
+  else if (estado) where.estado = estado;
   if (clienteId) where.cliente_id = clienteId;
 
   const [creditos, total] = await Promise.all([
     prisma.creditos.findMany({
       where,
       include: {
+        // Cuotas mínimas para calcular la mora EXACTA (cuota por cuota, como al cobrar).
+        cuotas: { select: { fecha_vencimiento: true, cuota_total: true, pagado_mora: true } },
         cliente: { select: { id: true, nombre: true, apellido: true, documento: true } },
         vendedor: { select: { id: true, nombre: true } },
         pagos: { orderBy: { fecha: "desc" }, take: 5 },
@@ -79,24 +68,31 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     // misma fórmula con la que se persiste, pero evaluada hoy → independiente del cron.
     const dmora = c.proximo_pago ? diasMoraActual(c.proximo_pago, hoy) : c.dias_mora;
     let interes_mora = 0;
+    // Manda lo CONGELADO en el crédito, no la config de hoy. Tener `config.moraActiva` en
+    // esta condición hacía que apagar la mora de la financiera mostrara $0 en la lista de
+    // morosos, mientras el cobro sí le seguía cobrando lo pactado: la pantalla decía una
+    // cosa y la caja hacía otra.
+    const mc = moraDelCredito(moraDesdeCronograma(c.cronograma), config);
     if (
-      config.moraActiva &&
+      mc.moraActiva &&
       dmora > 0 &&
-      c.estado === "activo" &&
+      esCreditoVivo(c.estado) && // un vencido devenga mora igual que un activo atrasado
       c.monto_original > 0 &&
       c.plazo_meses >= 1
     ) {
-      const frec = normalizarFrecuencia(c.frecuencia);
-      const catFrec = c.frecuencia_def ? [c.frecuencia_def as unknown as FrecuenciaDef] : config.simulador.frecuencias;
-      const tasaPeriodica = tasaPeriodicaSegunConvencion(c.tasa, config.convencionTasa, frec, catFrec);
-      const cuota = cuotaMensualFrancesa(c.monto_original, tasaPeriodica, c.plazo_meses);
       const graciaCred = (c.cronograma as { diasGracia?: number } | null)?.diasGracia ?? config.simulador.diasGracia;
-      interes_mora = interesMora(cuota, dmora, { tasaDiaria: config.tasaMoraDiaria, diasGracia: graciaCred });
+      // Cuota por cuota, igual que la imputación al cobrar. Antes era UNA cuota × los días
+      // de la más vieja, que con varias vencidas mostraba menos de la mitad de lo real.
+      interes_mora = moraPendienteTotal(
+        c.cuotas.map((q) => ({ fechaVencimiento: q.fecha_vencimiento, cuotaTotal: q.cuota_total, pagadoMora: q.pagado_mora })),
+        { tasaDiaria: mc.tasaMoraDiaria, diasGracia: graciaCred, hoy },
+      );
     }
     // Estado reconciliado: defensa de lectura ante datos legacy. La lista no carga
     // cuotas, así que se valida contra el saldo (autoritativo, derivado del ledger).
     const estado = estadoCoherente(c.estado, c.saldo_pendiente);
-    return { ...c, estado, dias_mora: dmora, interes_mora, tiene_pagos: c.pagos.length > 0 };
+    const { cuotas: _cuotas, ...credito } = c; // no viajan al cliente: solo alimentan la mora
+    return { ...credito, estado, dias_mora: dmora, interes_mora, tiene_pagos: c.pagos.length > 0 };
   });
 
   return successResponse({
@@ -311,6 +307,15 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     diasGracia: configActual.simulador.diasGracia,
     incluirSabado: configActual.simulador.incluirSabadoNoHabil,
     feriados: configActual.simulador.feriados,
+    // Condiciones de MORA del día en que se firma. Los días de gracia ya se congelaban
+    // acá; la tasa y el switch quedaban afuera, así que media condición viajaba con el
+    // crédito y la otra media se leía de la config del día en que alguien la mirara.
+    // Como la mora se recalcula al vuelo, sin esto cambiar la tasa reescribía hacia atrás
+    // los punitorios de todos los morosos.
+    mora: {
+      activa: configActual.moraActiva,
+      tasaDiaria: configActual.tasaMoraDiaria,
+    },
   };
 
   // ─── Riesgo / originación (motor base, TODOS los planes) ───
@@ -322,9 +327,20 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
   // tenant tiene el plan Pro y consultó (BCRA/Nosis/Veraz); si no, el motor usa datos internos.
   let riesgoSnapshot: Prisma.InputJsonValue | undefined;
   {
-    const tasaPeriodica = tasaPeriodicaSegunConvencion(body.tasa, configActual.convencionTasa, frecuencia, configActual.simulador.frecuencias);
-    const cuotaEstimada = cuotaMensualFrancesa(body.monto_original, tasaPeriodica, body.plazo_meses);
-    const ev = await evaluarClienteParaCredito({ tenantId, clienteId: body.cliente_id, montoSolicitado: body.monto_original, cuotaEstimada });
+    // Lo que el crédito le cuesta al cliente POR MES, con cargos. Antes acá iba la cuota pura
+    // de capital + interés y sin mensualizar: con cargos activos o frecuencia no mensual, la
+    // barrera del otorgamiento medía menos de lo que el cliente realmente iba a pagar.
+    const cuotaEstimada = cuotaMensualParaRiesgo({
+      monto: body.monto_original,
+      tasa: body.tasa,
+      plazoCuotas: body.plazo_meses,
+      frecuencia,
+      // Alcanza con hoy: la evaluación mira el TAMAÑO de la cuota, no en qué fecha cae, y el
+      // cronograma real todavía no se armó en este punto del flujo.
+      fechaInicio: hoyComercial(),
+      config: configActual,
+    });
+    const ev = await evaluarClienteParaCredito({ tenantId, clienteId: body.cliente_id, montoSolicitado: body.monto_original, cuotaMensualEquivalenteConCargos: cuotaEstimada });
     const autorizadoManual = role === "admin" && body.autorizacion_riesgo === true;
     if (ev.semaforo === "rechazado") {
       if (ev.bloquea) {
@@ -491,6 +507,43 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
           serie: "DES",
           numero: numComp,
           descripcion: `Desembolso ${formatCreditoNumero(c.numero)} · ${nombreCompleto(cliente)}`,
+        },
+      });
+    }
+
+    /**
+     * Comisión de otorgamiento cobrada AL INICIO: entra a la caja como ingreso.
+     *
+     * 🔴 Esto faltaba por completo. El cargo se calculaba, se mostraba en el plan y se sumaba
+     * al total que el plan le promete al cliente, pero no generaba ningún movimiento: la
+     * financiera la cobraba en mano y en los libros no existía. El plan decía "paga $375.737"
+     * y la caja solo registraba la salida del desembolso.
+     *
+     * Va como asiento APARTE del desembolso, no restándolo, porque son dos hechos distintos:
+     * sale plata prestada y entra plata cobrada. Netearlos escondería los dos.
+     *
+     * Solo cuando NO está financiada: financiada se suma al capital y se cobra dentro de las
+     * cuotas, que ya se registran al cobrar. Y solo en créditos de dinero — en uno de producto
+     * no hay caja de por medio.
+     */
+    const comisionCobrada = !esProducto && plan.comision > 0 && !plan.comisionFinanciada
+      ? round2(plan.comision) : 0;
+    if (comisionCobrada > 0) {
+      const numCom = await siguienteNumeroComprobante(tx, tenantId, "COM");
+      await tx.movimientos_caja.create({
+        data: {
+          ...withTenant(tenantId),
+          fecha: fechaInicio,
+          tipo: "comision_otorgamiento",
+          monto: Math.abs(comisionCobrada), // ingreso: lo paga el cliente al firmar
+          cuenta: cuentaDesembolso,
+          credito_id: c.id,
+          vendedor_id: vendedorId,
+          origen: nombreCompleto(cliente),
+          destino: etiquetaCaja(!!vendedorId, cuentaDesembolso),
+          serie: "COM",
+          numero: numCom,
+          descripcion: `Comisión de otorgamiento ${formatCreditoNumero(c.numero)} · ${nombreCompleto(cliente)}`,
         },
       });
     }

@@ -2,18 +2,7 @@ import { requireRole, scopeCreditosVendedor } from "@/lib/auth";
 import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
-import {
-  calcularDeudaConsolidada,
-  aplicarQuita,
-  construirPlanAmortizacion,
-  planACuotas,
-  normalizarFrecuencia,
-  resolverFrecuencia,
-  round2,
-  estadoCoherente,
-  type CuotaParaImputar,
-  type TipoQuita,
-} from "@/lib/domain";
+import { calcularDeudaConsolidada, aplicarQuita, construirPlanAmortizacion, planACuotas, normalizarFrecuencia, resolverFrecuencia, round2, estadoCoherente, type CuotaParaImputar, type TipoQuita, esCreditoVivo, moraDelCredito, moraDesdeCronograma } from "@/lib/domain";
 import { getConfiguracion } from "@/lib/config";
 import { registrarAuditoria } from "@/lib/audit";
 import { formatCreditoNumero, nombreCompleto, hoyComercial } from "@/lib/utils";
@@ -41,7 +30,10 @@ async function cargarRefinanciable(req: NextRequest, id: string) {
 
   // Estado reconciliado: defensa ante datos legacy.
   const estado = estadoCoherente(credito.estado, credito.saldo_pendiente, credito.cuotas);
-  if (estado !== "activo") {
+  // VIVO, no "activo": un crédito al que ya se le cobró estando en mora queda en `vencido`,
+  // y ese es exactamente el que se quiere refinanciar. Exigir "activo" bloqueaba la
+  // refinanciación justo en el caso para el que existe.
+  if (!esCreditoVivo(estado)) {
     const motivo =
       estado === "pagado" || estado === "cancelado"
         ? "ya está saldado"
@@ -49,7 +41,7 @@ async function cargarRefinanciable(req: NextRequest, id: string) {
         ? "está anulado"
         : estado === "refinanciado"
         ? "ya fue refinanciado"
-        : `no está activo (${estado})`;
+        : `no está vigente (${estado})`;
     return { error: errorResponse(`No se puede refinanciar: el crédito ${motivo}.`, "NOT_REFINANCEABLE", 409), tenantId, role, vendedorId } as const;
   }
   if (credito.cuotas.length === 0) {
@@ -77,9 +69,12 @@ async function cargarRefinanciable(req: NextRequest, id: string) {
     pagadoCargos: c.pagado_cargos,
   }));
 
+  // Mora con las condiciones del crédito ORIGINAL: la deuda que se consolida es la que se
+  // devengó bajo el contrato que se firmó, no bajo la tasa vigente hoy.
+  const moraCred = moraDelCredito(moraDesdeCronograma(credito.cronograma), config);
   const deuda = calcularDeudaConsolidada(cuotasDom, {
-    moraActiva: config.moraActiva,
-    tasaMoraDiaria: config.tasaMoraDiaria,
+    moraActiva: moraCred.moraActiva,
+    tasaMoraDiaria: moraCred.tasaMoraDiaria,
     diasGracia: graciaCred,
   });
 

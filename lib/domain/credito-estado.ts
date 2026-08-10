@@ -25,6 +25,27 @@ export const ESTADOS_SALDADOS: readonly EstadoCredito[] = ["pagado", "cancelado"
 /** Estados de void administrativo (se respetan aunque haya residual; fuera de cartera). */
 export const ESTADOS_VOID: readonly EstadoCredito[] = ["anulado", "refinanciado"];
 
+/**
+ * Estados de un crédito VIVO: sigue en cartera y se le puede cobrar.
+ *
+ * 🔴 `vencido` NO es un estado terminal: es un crédito activo que además está atrasado.
+ * Escribir `estado === "activo"` cuando lo que se quiere decir es "está vivo" deja afuera
+ * justo a los morosos — que son a quienes hay que cobrarles.
+ *
+ * Eso pasaba de verdad: al cobrarle a un moroso, `POST /api/pagos` lo pasa de `activo` a
+ * `vencido`, y a partir de ahí desaparecía de la terminal de cobro, de la lista de morosos,
+ * de la agenda del día y del botón de refinanciar. Cobrarle una vez lo volvía invisible.
+ *
+ * **Regla: si el código quiere decir "el crédito está vivo", usa esto y no `"activo"`.**
+ * `"activo"` solo cuando de verdad se quiera excluir a los atrasados.
+ */
+export const ESTADOS_VIVOS: readonly EstadoCredito[] = ["activo", "vencido"];
+
+/** True si el crédito sigue en cartera (activo o vencido). */
+export function esCreditoVivo(estado: string | null | undefined): boolean {
+  return (ESTADOS_VIVOS as readonly string[]).includes(estado ?? "");
+}
+
 /** Tolerancia de centavos para comparaciones de saldo. */
 const EPS = 0.01;
 

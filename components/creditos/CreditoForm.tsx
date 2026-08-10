@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { motion } from "framer-motion";
 import { DollarSign, Eye, EyeOff, Info, Percent, Search, UserPlus, X, RefreshCw, PanelLeftClose, PanelLeftOpen, ListOrdered } from "lucide-react";
 import { Emoji } from "@/components/ui/Emoji";
@@ -20,12 +20,27 @@ import {
   construirPlanAmortizacion,
   tasaPeriodicaSegunConvencion,
   efectivaAnualDesdePeriodica,
+  cftDelPlan,
   frecuenciaLabel,
+  resolverFrecuencia,
   cargoColumnasActivas,
   type Frecuencia,
   type ConvencionTasa,
   type PlanAmortizacion,
 } from "@/lib/domain";
+
+/**
+ * La columna que lleva LO QUE EL CLIENTE PAGA en cada vencimiento: "Total" cuando hay cargos
+ * (cuota + IVA + seguro + gastos) y "Cuota" cuando no los hay, porque ahí la cuota ya es todo.
+ *
+ * Va con banda propia porque entre ocho columnas de números se perdía justo la única que el
+ * operador le dice en voz alta al cliente, y encima competía con "Cuota", que es otra cosa
+ * (la parte pura, sin cargos). Se resalta con fondo y peso, no con un color de texto nuevo:
+ * indigo ya significa "capital" y ámbar "interés" en esta misma tabla.
+ */
+const COL_PAGA_TH = "px-2.5 py-2.5 text-right font-bold text-primary bg-primary/10 border-b border-border border-l border-primary/25";
+const COL_PAGA_TD = "px-2.5 py-2 text-right font-mono font-bold text-[13px] text-foreground bg-primary/[0.07] border-l border-primary/25 tabular-nums";
+const COL_PAGA_TF = "px-2.5 py-3.5 text-right font-bold font-mono text-sm text-foreground bg-primary/[0.15] border-l border-primary/25 tabular-nums";
 
 const CUENTA_DESEMBOLSO_LABEL: Record<CuentaCaja, string> = {
   efectivo: "Efectivo",
@@ -79,7 +94,7 @@ function useDebounced<T>(value: T, delay = 350): T {
 }
 
 export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
-  const { config } = useConfiguracion();
+  const { config, mutate: refrescarConfig } = useConfiguracion();
   const { financiera } = useFinanciera(); // co-branding del PDF (nombre/logo)
   const { perfil } = useMiPerfilVendedor(); // límite de otorgamiento del usuario (null si es admin/sin tope)
   const { caja: miCaja, mutate: refrescarCaja } = useMiCaja(); // caja de la que desembolsa el usuario (vendedor: su caja; admin: caja principal); fondos para otorgar
@@ -403,12 +418,81 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
   // Crédito de producto: no hay desembolso de efectivo → nunca hay "fondos insuficientes".
   const fondosInsuficientes = !esProducto && !creditoId && dispDesembolso != null && montoIngresado > dispDesembolso;
 
+  /**
+   * Error del capital, EN VIVO mientras se escribe.
+   *
+   * 🔴 Estas tres reglas solo se evaluaban al apretar "Otorgar crédito". El vendedor cargaba
+   * el monto, elegía plazo y tasa, veía el plan de cuotas completo y recién ahí se enteraba
+   * de que ese monto no estaba permitido — con el cliente sentado enfrente. La falta de
+   * fondos ya avisaba a tiempo (deshabilita el botón); estas no.
+   *
+   * Devuelve `null` con el campo vacío o en cero: un campo a medio escribir todavía no es
+   * un error, y pintarlo de rojo apenas se toca es peor que avisar tarde.
+   */
+  /**
+   * Trae los topes de nuevo justo antes de que el vendedor escriba el monto.
+   *
+   * El polleo de fondo (30s) y la revalidación al enfocar la ventana cubren el caso general,
+   * pero el foco depende del escritorio y no siempre llega: probando en dos ventanas, el
+   * valor nuevo tardó un minuto en aparecer. Este es el momento exacto en que un tope viejo
+   * molesta, así que se pide acá y el aviso sale con el número de hoy.
+   *
+   * Con tope de 5s para que tabular entre campos no dispare una consulta por pasada.
+   */
+  const ultimoRefrescoCfg = useRef(0);
+  const refrescarTopes = () => {
+    const ahora = Date.now();
+    if (ahora - ultimoRefrescoCfg.current < 5_000) return;
+    ultimoRefrescoCfg.current = ahora;
+    refrescarConfig();
+  };
+
+  /**
+   * Techo real de lo que este usuario puede otorgar hoy: el menor entre el máximo de la
+   * financiera y su propio límite de otorgamiento. `null` si no hay ninguno.
+   *
+   * Acota lo que carga el botón "Usar" del monto sugerido. Incluye el límite del VENDEDOR y
+   * no solo el de la financiera porque los dos rompen igual: un botón que sugiere un monto y
+   * al apretarlo deja el campo en rojo es un botón roto, sin importar cuál de los dos topes
+   * lo frenó.
+   */
+  const topeOtorgable = useMemo(() => {
+    const topes: number[] = [];
+    if (simCfg && simCfg.montoMax > 0) topes.push(simCfg.montoMax);
+    if (!creditoId && perfil?.limite_aprobacion != null) topes.push(perfil.limite_aprobacion);
+    return topes.length > 0 ? Math.min(...topes) : null;
+  }, [simCfg, creditoId, perfil?.limite_aprobacion]);
+
+  const errorCapital = useMemo(() => {
+    if (esProducto || !formData.monto_original) return null;
+    const monto = parseMonto(formData.monto_original);
+    if (monto <= 0) return null;
+    if (simCfg && simCfg.montoMin > 0 && monto < simCfg.montoMin) return `El capital mínimo es $${n0(simCfg.montoMin)}`;
+    if (simCfg && simCfg.montoMax > 0 && monto > simCfg.montoMax) return `El capital máximo es $${n0(simCfg.montoMax)}`;
+    if (!creditoId && perfil?.limite_aprobacion != null && monto > perfil.limite_aprobacion)
+      return `Supera tu límite de otorgamiento ($${n0(perfil.limite_aprobacion)}). Requiere autorización de un administrador.`;
+    return null;
+  }, [esProducto, formData.monto_original, simCfg, creditoId, perfil?.limite_aprobacion]);
+
   const tasaEA = useMemo(() => {
     const tasa = parseFloat(sim.tasa) || 0;
     if (tasa <= 0) return 0;
     const ip = tasaPeriodicaSegunConvencion(tasa, convencion, sim.frecuencia, catalogoFrec);
     return efectivaAnualDesdePeriodica(ip, sim.frecuencia, catalogoFrec);
   }, [sim.tasa, sim.frecuencia, convencion, catalogoFrec]);
+
+  /**
+   * C.F.T. — lo que el crédito le cuesta al cliente con TODO adentro (interés + IVA + seguro +
+   * gastos + comisión). Sin cargos da exactamente la T.E.A.; con cargos, más.
+   *
+   * Se calcula sobre `montoNum` (lo que el cliente RECIBE) y no sobre el capital que se
+   * amortiza: cuando la comisión está financiada, el plan amortiza más de lo que se le entregó.
+   */
+  const cft = useMemo(() => {
+    if (!plan) return null;
+    const periodosAnio = resolverFrecuencia(sim.frecuencia, catalogoFrec).periodosAnio;
+    return cftDelPlan(plan, montoNum, periodosAnio);
+  }, [plan, montoNum, sim.frecuencia, catalogoFrec]);
 
   const capPct = plan && plan.totalPagado > 0
     ? Math.round((montoNum / plan.totalPagado) * 100)
@@ -419,6 +503,28 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
     : "Aceptá miles y decimales: 350.000,52";
   // Total de cuotas (con cargos) para la vista cliente.
   const totalCuotasCliente = plan ? plan.cuotas.reduce((s, r) => s + r.cuotaTotal, 0) : 0;
+  /** Comisión que el cliente paga AL FIRMAR (0 si no hay, o si está financiada). */
+  const comisionUpfront = plan && plan.comision > 0 && !plan.comisionFinanciada ? plan.comision : 0;
+  /**
+   * TODO lo que el cliente desembolsa: las cuotas más la comisión que paga al firmar.
+   *
+   * 🔴 Es un solo número y se usa en los cuatro lugares que dicen "total a pagar" (barra,
+   * confirmación, pantalla de otorgado y PDF). Antes cada uno lo armaba por su cuenta y no
+   * coincidían: los que sumaban la columna de cuotas se olvidaban de la comisión, así que el
+   * documento del cliente informaba menos de lo que realmente iba a pagar.
+   *
+   * Se parte del total de las CUOTAS y no de `plan.totalConCargos` porque ese suma los cargos
+   * sin el redondeo aplicado: si el tenant redondea la cuota, los dos no dan igual.
+   */
+  const totalAPagar = totalCuotasCliente + comisionUpfront;
+  /**
+   * Dónde cae el importe en el pie de la tabla del OPERADOR (la del cliente tiene 3 columnas
+   * fijas). Se alinea bajo la columna que lleva el total por cuota: "Total" si hay cargos
+   * discriminados, y "Cuota" si no los hay, porque ahí la cuota ya ES el total. Si fuera al
+   * final quedaría bajo "Saldo", que es otra cosa.
+   */
+  const pieOpAntes = hayCargoCols ? 5 + cargoCols.length : 2;
+  const pieOpDespues = hayCargoCols ? 1 : 3;
 
   const clienteSel = clientes.find(c => c.id === formData.cliente_id);
 
@@ -442,13 +548,16 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
         cargos: plan.totalIva + plan.totalSeguro + plan.totalGastos,
         cuotaTotal: totalCuotasCliente,
       },
+      // Solo si NO está financiada: financiada = ya viene adentro de las cuotas de la tabla.
+      comisionUpfront,
+      cft: cft?.anual ?? null,
       financiera: financiera ? { nombre: financiera.nombre, logo_url: financiera.logo_url } : undefined,
     }, vistaImp);
   }
 
   // ── Pantalla de éxito: el crédito ya se otorgó (reemplaza el simulador) ──
   if (created) {
-    const totalFinal = hayCargos ? totalCuotasCliente : (plan?.totalPagado ?? 0);
+    const totalFinal = hayCargos ? totalAPagar : (plan?.totalPagado ?? 0);
     return (
       <div className="flex h-full min-h-0 flex-col items-center justify-center gap-6 p-8 text-center">
         <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-success/30 bg-success/15">
@@ -629,14 +738,21 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
           <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Condiciones financieras</p>
 
           {/* Capital — valor grande, ancho completo. En crédito de producto es read-only (= precio × cantidad). */}
-          <Field label="Capital ($)" required hint={esProducto ? "Definido por el producto (precio × cantidad)" : montoHint}>
+          <Field
+            label="Capital ($)"
+            required
+            hint={esProducto ? "Definido por el producto (precio × cantidad)" : montoHint}
+            error={errorCapital ?? undefined}
+          >
             <div className="relative">
-              <DollarSign className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <DollarSign className={`pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 ${errorCapital ? "text-destructive" : "text-muted-foreground"}`} />
               <Input
                 name="monto_original" type="text" inputMode="decimal" placeholder="350.000,00"
                 value={formData.monto_original} onChange={setMonto}
+                onFocus={refrescarTopes}
                 required readOnly={esProducto}
-                className={`pl-9 text-lg font-bold font-mono tabular-nums ${!esProducto && miCaja ? "pr-10" : ""} ${esProducto ? "opacity-70 cursor-not-allowed" : ""}`}
+                aria-invalid={!!errorCapital}
+                className={`pl-9 text-lg font-bold font-mono tabular-nums ${!esProducto && miCaja ? "pr-10" : ""} ${esProducto ? "opacity-70 cursor-not-allowed" : ""} ${errorCapital ? "border-destructive focus:border-destructive focus:ring-destructive/25" : ""}`}
               />
               {/* Refrescar saldo de la caja: ícono sutil dentro del campo (recarga parcial, sin F5).
                   Delicado y semitransparente, al estilo de los íconos del sidebar. */}
@@ -736,24 +852,44 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
               <div className="rounded-xl border border-border bg-card p-4 text-xs text-muted-foreground">Evaluando riesgo…</div>
             ) : (() => {
               const meta = {
-                aprobado:  { ring: "ring-success/30",     bg: "bg-success/5",     text: "text-success",     dot: "bg-success",     label: "Aprobado" },
-                revisar:   { ring: "ring-warning/30",     bg: "bg-warning/5",     text: "text-warning",     dot: "bg-warning",     label: "Revisar" },
-                rechazado: { ring: "ring-destructive/30", bg: "bg-destructive/5", text: "text-destructive", dot: "bg-destructive", label: "No califica" },
+                aprobado:  { ring: "ring-success/30",     bg: "bg-success/5",     text: "text-success",     dot: "bg-success",     chip: "bg-success/10",     barra: "bg-success",     label: "Aprobado" },
+                revisar:   { ring: "ring-warning/30",     bg: "bg-warning/5",     text: "text-warning",     dot: "bg-warning",     chip: "bg-warning/10",     barra: "bg-warning",     label: "Revisar" },
+                rechazado: { ring: "ring-destructive/30", bg: "bg-destructive/5", text: "text-destructive", dot: "bg-destructive", chip: "bg-destructive/10", barra: "bg-destructive", label: "No califica" },
               }[riesgoEval.semaforo];
               return (
                 <div className={`rounded-xl border border-border bg-card p-4 ring-1 ring-inset ${meta.ring} ${meta.bg}`}>
-                  <div className="flex items-center justify-between gap-2">
+                  {/*
+                    Encabezado: el veredicto como CHIP y no como punto + texto suelto. Un punto
+                    de color no se lee de un vistazo mientras el vendedor tiene al cliente
+                    enfrente; una pastilla con el fondo del color sí.
+                  */}
+                  <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="flex items-center gap-2">
-                      <span className={`inline-flex h-2.5 w-2.5 rounded-full ${meta.dot}`} />
-                      <span className={`text-sm font-semibold ${meta.text}`}>Originación: {meta.label}</span>
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Originación</span>
+                      <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ring-inset ${meta.ring} ${meta.text} ${meta.chip}`}>
+                        <span className={`inline-flex h-1.5 w-1.5 rounded-full ${meta.dot}`} />
+                        {meta.label}
+                      </span>
                     </div>
-                    <span className="text-[11px] text-muted-foreground">Score interno {riesgoEval.scoreInterno.categoria}</span>
+                    {/*
+                      🔴 `label`, no `categoria`. Se mostraba "sin_historial" —el valor con el que
+                      el sistema lo guarda internamente— en una pantalla que mira un vendedor. La
+                      etiqueta legible ("Sin historial", "Excelente", "Riesgo alto") ya existía en
+                      el dominio y no se estaba usando.
+                    */}
+                    <span className="text-[11px] text-muted-foreground">
+                      Score interno: <span className="font-semibold text-foreground">{riesgoEval.scoreInterno.label}</span>
+                    </span>
                   </div>
-                  <ul className="mt-2 space-y-1">
-                    {riesgoEval.motivos.map((m, i) => (
-                      <li key={i} className="flex gap-1.5 text-xs text-muted-foreground"><span className="text-muted-foreground/40">•</span>{m}</li>
-                    ))}
-                  </ul>
+                  {riesgoEval.motivos.length > 0 && (
+                    <ul className="mt-2.5 space-y-1">
+                      {riesgoEval.motivos.map((m, i) => (
+                        <li key={i} className={`flex gap-1.5 text-xs ${meta.text}`}>
+                          <span className="opacity-50">•</span>{m}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                   {/* Compromiso actual del cliente: créditos vivos + suma de sus cuotas mensuales
                       (esta deuda es la que reduce el monto que se le puede otorgar). */}
                   {riesgoEval.creditosActivos > 0 && (
@@ -768,13 +904,46 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
                   {!riesgoRechazado && (riesgoEval.montoMaximoSugerido > 0 ? (
                     <div className="mt-3 flex items-center justify-between gap-2 rounded-lg border border-primary/25 bg-primary/5 px-3 py-2">
                       <div>
-                        <p className="text-[11px] text-muted-foreground">Monto máximo sugerido <span className="text-muted-foreground/70">· a {sim.plazo || formData.plazo_meses} cuotas</span></p>
-                        <p className="font-mono text-sm font-bold text-foreground">{formatMonto(riesgoEval.montoMaximoSugerido)}</p>
-                        <p className="text-[10px] text-muted-foreground/70">Cambia con el plazo: más cuotas → mayor monto (cuota más chica)</p>
+                        <p className="text-[11px] text-muted-foreground">Monto máximo sugerido</p>
+                        {/*
+                          🔴 El plazo va PEGADO al monto y con entidad propia, no como texto gris
+                          al final del rótulo. El número solo no significa nada sin él: el mismo
+                          cliente da $159.897 a 2 cuotas y $311.483 a 24. Con la aclaración en
+                          letra chica y apagada, el vendedor lee el monto, cambia el plazo, ve
+                          otro monto y no entiende por qué se movió.
+                        */}
+                        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                          <p className="font-mono text-base font-bold text-foreground">{formatMonto(riesgoEval.montoMaximoSugerido)}</p>
+                          <span className="rounded-md border border-primary/40 bg-primary/10 px-1.5 py-0.5 text-[11px] font-semibold text-primary">
+                            a {sim.plazo || formData.plazo_meses} {lbl.cuotaPlural}
+                          </span>
+                        </div>
+                        {/*
+                          El sugerido responde "cuánto puede pagar ESTA PERSONA" y el tope de la
+                          financiera responde "cuánto prestamos NOSOTROS". Son dos preguntas
+                          distintas, así que el número que se muestra sigue siendo la capacidad
+                          real del cliente — taparla con el tope escondería que se le podía
+                          prestar más, que es justo lo que el dueño quiere saber para decidir si
+                          su tope le está dejando plata sobre la mesa.
+                          Lo que sí se acota es lo que el botón CARGA: sugerir un monto y que el
+                          campo se ponga en rojo al usarlo es un botón roto.
+                        */}
+                        {topeOtorgable != null && riesgoEval.montoMaximoSugerido > topeOtorgable && (
+                          <p className="text-[10px] text-warning">
+                            Puede afrontar más, pero el máximo que podés otorgar es {formatMonto(topeOtorgable)}.
+                          </p>
+                        )}
+                        <p className="text-[10px] text-muted-foreground">Si estirás el plazo, la cuota baja y este monto sube.</p>
                       </div>
                       <button
                         type="button"
-                        onClick={() => { setError(null); setFormData(p => ({ ...p, monto_original: numeroAInput(riesgoEval.montoMaximoSugerido) })); }}
+                        onClick={() => {
+                          setError(null);
+                          const aCargar = topeOtorgable != null
+                            ? Math.min(riesgoEval.montoMaximoSugerido, topeOtorgable)
+                            : riesgoEval.montoMaximoSugerido;
+                          setFormData(p => ({ ...p, monto_original: numeroAInput(aCargar) }));
+                        }}
                         className="shrink-0 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:opacity-90 transition-opacity"
                       >
                         Usar
@@ -789,27 +958,108 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
                       Sin margen para nuevo crédito: las cuotas de sus créditos vigentes ({formatMonto(riesgoEval.deudaCuotaMensualVigente)}/mes) ya superan su capacidad de pago ({formatMonto(riesgoEval.ingresoNetoMensual)} de ingreso).
                     </p>
                   ))}
-                  <div className="mt-3 grid grid-cols-2 gap-2 text-[11px]">
-                    <div className="rounded-lg bg-muted/30 px-2.5 py-1.5">
-                      <p className="text-muted-foreground">Cuota máx (capacidad)</p>
-                      <p className="font-mono font-semibold text-foreground">{riesgoEval.capacidad.cuotaMaxima > 0 ? formatMonto(riesgoEval.capacidad.cuotaMaxima) : "—"}</p>
-                    </div>
-                    <div className="rounded-lg bg-muted/30 px-2.5 py-1.5">
-                      <p className="text-muted-foreground">Ratio cuota / ingreso</p>
-                      <p className="font-mono font-semibold text-foreground">{riesgoEval.ratioCuotaIngreso != null ? `${(riesgoEval.ratioCuotaIngreso * 100).toFixed(0)}%` : "—"}</p>
-                    </div>
-                  </div>
+                  {/*
+                    🔴 La comparación que el motor hace de verdad, dibujada.
+                    Antes eran dos números sueltos —"Cuota máx $135.000" y "Ratio 93,8%"— que
+                    obligaban al vendedor a hacer la cuenta de cabeza para saber si entra y por
+                    cuánto se pasa. Ahora se ve: la barra es lo que ocupa la cuota de ESTE crédito
+                    sobre lo que el cliente puede pagar, y cuando se pasa lo dice con el monto del
+                    excedente. Es el número accionable — decirle "sobran $286.875" le permite
+                    bajar el monto o estirar el plazo, cosa que "93,8%" no.
+                  */}
+                  {riesgoEval.capacidad.cuotaMaxima > 0 && riesgoEval.cuotaEstimada > 0 && (() => {
+                    const usado = riesgoEval.cuotaEstimada / riesgoEval.capacidad.cuotaMaxima;
+                    const excedente = riesgoEval.cuotaEstimada - riesgoEval.capacidad.cuotaMaxima;
+                    /**
+                     * 🔴 De dónde sale el número mensual, cuando la frecuencia NO es mensual.
+                     *
+                     * El vendedor ve cuotas de $31.287 en el plan y acá un total de $135.578: sin
+                     * mostrar la cuenta del medio parecen dos cifras sin relación, y la que decide
+                     * si el crédito entra o no es la segunda. Mostrarla deja claro que lo que se
+                     * pasa del tope es la SUMA de las cuotas del mes, no una cuota sola.
+                     *
+                     * 🔴 Va como `× 52 semanas ÷ 12 meses` y NO como `× 4,33`. El multiplicador es
+                     * 4,3333… periódico: con el redondeado la cuenta no cierra —$31.287,46 × 4,33
+                     * da $135.474,70, cien pesos menos que el total que muestra la pantalla— y el
+                     * usuario lo detectó en la primera prueba. Una explicación cuyo resultado no se
+                     * puede reproducir a mano es peor que no explicar: hace dudar del número bueno.
+                     * Con la fracción entera se verifica exacto con una calculadora.
+                     */
+                    const frecDef = resolverFrecuencia(formData.frecuencia, catalogoFrec);
+                    const porMes = frecDef.periodosAnio / 12;
+                    const cuotaPeriodo = plan ? plan.cuotas.reduce((m, c) => Math.max(m, c.cuotaTotal), 0) : 0;
+                    const esMensual = Math.abs(porMes - 1) < 0.01;
+                    const unidadPlural = `${lbl.unidad}s`;
+                    return (
+                      <div className="mt-3 rounded-lg bg-muted/30 px-3 py-2.5">
+                        <div className="flex items-baseline justify-between gap-2">
+                          <span className="text-[11px] text-muted-foreground">Cuota de este crédito</span>
+                          <span className={`font-mono text-sm font-bold ${excedente > 0 ? meta.text : "text-foreground"}`}>
+                            {formatMonto(riesgoEval.cuotaEstimada)}<span className="text-[10px] font-normal text-muted-foreground">/mes</span>
+                          </span>
+                        </div>
+                        {/* Cada tramo de la cuenta va en su propio `nowrap`: si el renglón se corta,
+                            que sea ENTRE operaciones y nunca entre un número y su unidad ("÷ 12 /
+                            meses" partido en dos líneas se lee pésimo). */}
+                        {!esMensual && cuotaPeriodo > 0 && (
+                          <p className="text-[10px] leading-relaxed text-muted-foreground">
+                            <span className="whitespace-nowrap">
+                              <span className="font-mono font-semibold text-foreground">{formatMonto(cuotaPeriodo)}</span> por {lbl.unidad}
+                            </span>{" "}
+                            <span className="whitespace-nowrap">× <span className="font-semibold text-foreground">{frecDef.periodosAnio}</span> {unidadPlural}</span>{" "}
+                            <span className="whitespace-nowrap">÷ 12 meses</span>{" "}
+                            <span className="whitespace-nowrap">
+                              = <span className={`font-mono font-semibold ${excedente > 0 ? meta.text : "text-foreground"}`}>{formatMonto(riesgoEval.cuotaEstimada)}</span> por mes
+                            </span>
+                          </p>
+                        )}
+                        <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-muted">
+                          <div className={`h-full rounded-full transition-all ${meta.barra}`} style={{ width: `${Math.min(100, usado * 100)}%` }} />
+                        </div>
+                        <div className="mt-1.5 flex flex-wrap items-baseline justify-between gap-x-2 text-[11px]">
+                          <span className="text-muted-foreground">
+                            Puede pagar hasta <span className="font-mono font-semibold text-foreground">{formatMonto(riesgoEval.capacidad.cuotaMaxima)}</span>
+                          </span>
+                          <span className={excedente > 0 ? `font-semibold ${meta.text}` : "text-muted-foreground"}>
+                            {excedente > 0
+                              ? `Se pasa por ${formatMonto(excedente)}`
+                              : `Usa el ${(usado * 100).toFixed(0)}% de su margen`}
+                          </span>
+                        </div>
+                        {riesgoEval.ratioCuotaIngreso != null && (
+                          <p className="mt-1.5 border-t border-border/60 pt-1.5 text-[10px] text-muted-foreground">
+                            Le compromete el <span className="font-semibold text-foreground">{(riesgoEval.ratioCuotaIngreso * 100).toFixed(1)}%</span> de su ingreso de {formatMonto(riesgoEval.ingresoNetoMensual)}
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })()}
                   {riesgoRechazado && !riesgoEval.bloquea && esAdmin && (
                     <label className="mt-3 flex cursor-pointer items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2">
                       <input type="checkbox" checked={autorizarRiesgo} onChange={e => setAutorizarRiesgo(e.target.checked)} className="mt-0.5 accent-primary" />
                       <span className="text-xs text-foreground">Autorizo el otorgamiento asumiendo el riesgo (decisión del administrador).</span>
                     </label>
                   )}
+                  {/* Avisos del pie: recuadro con ícono, no una línea de texto rojo suelta. Es lo
+                      que define si la operación puede seguir o no — tiene que verse como un
+                      cartel, no como una nota al margen. */}
                   {riesgoRechazado && !riesgoEval.bloquea && !esAdmin && (
-                    <p className="mt-3 text-xs text-destructive">Requiere autorización de un administrador para otorgar.</p>
+                    <div className="mt-3 flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2">
+                      <Info className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+                      <p className="text-xs text-destructive">
+                        <span className="font-semibold">Requiere autorización de un administrador.</span>{" "}
+                        Podés bajar el monto o estirar el plazo para que entre en su capacidad, o pedirle a un admin que lo autorice.
+                      </p>
+                    </div>
                   )}
                   {riesgoRechazado && riesgoEval.bloquea && (
-                    <p className="mt-3 text-xs text-destructive">La política bloquea el otorgamiento a clientes que no califican.</p>
+                    <div className="mt-3 flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2">
+                      <Info className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+                      <p className="text-xs text-destructive">
+                        <span className="font-semibold">No se puede otorgar.</span>{" "}
+                        La política de la financiera bloquea el otorgamiento a clientes que no califican, sin excepciones.
+                      </p>
+                    </div>
                   )}
                 </div>
               );
@@ -835,8 +1085,8 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
             Cancelar
           </button>
           <button
-            type="submit" disabled={loading || fondosInsuficientes || riesgoImpide}
-            title={fondosInsuficientes ? "Saldo insuficiente en la cuenta de desembolso" : riesgoImpide ? "El cliente no califica para este crédito" : undefined}
+            type="submit" disabled={loading || fondosInsuficientes || riesgoImpide || !!errorCapital}
+            title={errorCapital ?? (fondosInsuficientes ? "Saldo insuficiente en la cuenta de desembolso" : riesgoImpide ? "El cliente no califica para este crédito" : undefined)}
             className="px-5 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 disabled:opacity-50 transition-opacity"
           >
             {loading ? "Guardando..." : creditoId ? "Actualizar" : "Otorgar crédito"}
@@ -941,13 +1191,14 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
                   <tr>
                     <th className="px-2.5 py-2.5 text-left font-semibold text-muted-foreground border-b border-border w-9">#</th>
                     <th className="px-2.5 py-2.5 text-left font-semibold text-muted-foreground border-b border-border">Vencimiento</th>
-                    <th className="px-2.5 py-2.5 text-right font-semibold text-muted-foreground border-b border-border">Cuota</th>
+                    <th className={hayCargoCols ? "px-2.5 py-2.5 text-right font-semibold text-muted-foreground border-b border-border" : COL_PAGA_TH}>Cuota</th>
                     <th className="px-2.5 py-2.5 text-right font-semibold text-warning border-b border-border">Interés</th>
                     <th className="px-2.5 py-2.5 text-right font-semibold text-primary border-b border-border">Capital</th>
                     {cargoCols.map(col => (
                       <th key={col.key} className="px-2.5 py-2.5 text-right font-semibold text-foreground bg-warning/5 border-b border-border align-bottom">{col.label}</th>
                     ))}
-                    {hayCargoCols && <th className="px-2.5 py-2.5 text-right font-semibold text-foreground border-b border-border">Total</th>}
+                    {/* Mismo nombre que en la vista cliente: es literalmente el mismo número. */}
+                    {hayCargoCols && <th className={COL_PAGA_TH}>A pagar</th>}
                     <th className="px-2.5 py-2.5 text-right font-semibold text-muted-foreground border-b border-border pr-3">Saldo</th>
                   </tr>
                 </thead>
@@ -956,13 +1207,13 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
                     <tr key={row.nro} className={`hover:bg-muted/20 transition-colors ${idx % 2 === 1 ? "bg-muted/5" : ""}`}>
                       <td className="px-2.5 py-2 text-muted-foreground/50 font-mono tabular-nums">{row.nro}</td>
                       <td className="px-2.5 py-2 text-muted-foreground tabular-nums">{fmtDate(row.fecha)}</td>
-                      <td className="px-2.5 py-2 text-right font-mono text-foreground tabular-nums">${n2(row.cuota)}</td>
+                      <td className={hayCargoCols ? "px-2.5 py-2 text-right font-mono text-foreground tabular-nums" : COL_PAGA_TD}>${n2(row.cuota)}</td>
                       <td className="px-2.5 py-2 text-right font-mono text-warning tabular-nums">${n2(row.interes)}</td>
                       <td className="px-2.5 py-2 text-right font-mono text-primary tabular-nums">${n2(row.capital)}</td>
                       {cargoCols.map(col => (
                         <td key={col.key} className="px-2.5 py-2 text-right font-mono text-foreground/80 bg-warning/5 tabular-nums">${n2(row[col.key])}</td>
                       ))}
-                      {hayCargoCols && <td className="px-2.5 py-2 text-right font-mono font-semibold text-foreground tabular-nums">${n2(row.cuotaTotal)}</td>}
+                      {hayCargoCols && <td className={COL_PAGA_TD}>${n2(row.cuotaTotal)}</td>}
                       <td className="px-2.5 py-2 pr-3 text-right font-mono text-muted-foreground tabular-nums">${n2(row.saldo)}</td>
                     </tr>
                   ))}
@@ -970,15 +1221,33 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
                 <tfoot className="sticky bottom-0 z-10 bg-card">
                   <tr className="border-t-2 border-border bg-muted/40">
                     <td colSpan={2} className="px-2.5 py-3.5 text-[10px] font-bold text-foreground uppercase tracking-widest">Totales</td>
-                    <td className="px-2.5 py-3.5 text-right font-bold font-mono text-sm text-foreground tabular-nums">${n2(plan.totalPagado)}</td>
+                    <td className={hayCargoCols ? "px-2.5 py-3.5 text-right font-bold font-mono text-sm text-foreground tabular-nums" : COL_PAGA_TF}>${n2(plan.totalPagado)}</td>
                     <td className="px-2.5 py-3.5 text-right font-bold font-mono text-sm text-warning tabular-nums">${n2(plan.totalIntereses)}</td>
                     <td className="px-2.5 py-3.5 text-right font-bold font-mono text-sm text-primary tabular-nums">${n2(montoNum)}</td>
                     {cargoCols.map(col => (
                       <td key={col.key} className="px-2.5 py-3.5 text-right font-bold font-mono text-sm text-foreground bg-warning/10 tabular-nums">${n2(col.key === "iva" ? plan.totalIva : col.key === "seguro" ? plan.totalSeguro : plan.totalGastos)}</td>
                     ))}
-                    {hayCargoCols && <td className="px-2.5 py-3.5 text-right font-bold font-mono text-sm text-foreground tabular-nums">${n2(totalCuotasCliente)}</td>}
+                    {hayCargoCols && <td className={COL_PAGA_TF}>${n2(totalCuotasCliente)}</td>}
                     <td className="px-2.5 py-3.5 pr-3 text-right font-mono text-muted-foreground/30 tabular-nums">$ 0,00</td>
                   </tr>
+                  {/* La comisión se cobra al firmar: no es una cuota y no puede sumarse a la
+                      columna sin romper su aritmética. Va en su propio renglón, y el total
+                      de verdad recién debajo. */}
+                  {comisionUpfront > 0 && (
+                    <>
+                      <tr className="bg-muted/40">
+                        <td colSpan={pieOpAntes} className="px-2.5 py-2 text-[10px] font-medium text-muted-foreground uppercase tracking-widest">Comisión de otorgamiento (al firmar)</td>
+                        {/* La banda sigue bajando por la misma columna: todo lo que el cliente paga vive ahí. */}
+                        <td className="px-2.5 py-2 text-right font-mono text-sm text-foreground bg-primary/[0.07] border-l border-primary/25 tabular-nums">${n2(comisionUpfront)}</td>
+                        <td colSpan={pieOpDespues} />
+                      </tr>
+                      <tr className="border-t border-border bg-muted/40">
+                        <td colSpan={pieOpAntes} className="px-2.5 py-3.5 text-[10px] font-bold text-foreground uppercase tracking-widest">Total a pagar</td>
+                        <td className={COL_PAGA_TF}>${n2(totalAPagar)}</td>
+                        <td colSpan={pieOpDespues} />
+                      </tr>
+                    </>
+                  )}
                 </tfoot>
               </table>
             ) : (
@@ -1001,10 +1270,29 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
                   ))}
                 </tbody>
                 <tfoot className="sticky bottom-0 z-10 bg-card">
+                  {/*
+                    La comisión se cobra al firmar: no es una cuota y no puede entrar en la
+                    columna sin romper la suma. Va en su propio renglón, y el total de verdad
+                    recién debajo — si no, el cliente ve un "total a pagar" al que le faltan.
+                  */}
                   <tr className="border-t-2 border-border bg-muted/40">
-                    <td colSpan={2} className="px-4 py-3.5 text-[10px] font-bold text-foreground uppercase tracking-widest">Total a pagar</td>
-                    <td className="px-4 py-3.5 pr-6 text-right font-bold font-mono text-base text-foreground tabular-nums">${n2(totalCuotasCliente)}</td>
+                    <td colSpan={2} className="px-4 py-3.5 text-[10px] font-bold text-foreground uppercase tracking-widest">
+                      {comisionUpfront > 0 ? "Total de las cuotas" : "Total a pagar"}
+                    </td>
+                    <td className={`px-4 py-3.5 pr-6 text-right font-mono tabular-nums ${comisionUpfront > 0 ? "text-sm font-semibold text-foreground" : "text-base font-bold text-foreground"}`}>${n2(totalCuotasCliente)}</td>
                   </tr>
+                  {comisionUpfront > 0 && (
+                    <>
+                      <tr className="bg-muted/40">
+                        <td colSpan={2} className="px-4 py-2 text-[10px] font-medium text-muted-foreground uppercase tracking-widest">Comisión de otorgamiento (al firmar)</td>
+                        <td className="px-4 py-2 pr-6 text-right font-mono text-sm text-foreground tabular-nums">${n2(comisionUpfront)}</td>
+                      </tr>
+                      <tr className="border-t border-border bg-muted/40">
+                        <td colSpan={2} className="px-4 py-3.5 text-[10px] font-bold text-foreground uppercase tracking-widest">Total a pagar</td>
+                        <td className="px-4 py-3.5 pr-6 text-right font-bold font-mono text-base text-foreground tabular-nums">${n2(totalAPagar)}</td>
+                      </tr>
+                    </>
+                  )}
                 </tfoot>
               </table>
             )}
@@ -1052,11 +1340,20 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
                 </div>
                 <div>
                   <p className="text-[10px] text-muted-foreground leading-tight">Total a pagar</p>
-                  <p className="text-sm font-bold text-foreground font-mono leading-tight mt-0.5">${n0(hayCargos ? plan.totalConCargos : plan.totalPagado)}</p>
+                  <p className="text-sm font-bold text-foreground font-mono leading-tight mt-0.5">${n0(hayCargos ? totalAPagar : plan.totalPagado)}</p>
                 </div>
                 <div>
                   <p className="text-[10px] text-muted-foreground leading-tight">T.E.A.</p>
                   <p className="text-sm font-bold text-foreground font-mono leading-tight mt-0.5">{tasaEA > 0 ? `${n2(tasaEA * 100)}%` : "—"}</p>
+                </div>
+                {/*
+                  El C.F.T. va destacado y pegado a la T.E.A. porque es el número que compara
+                  ofertas de verdad: si hay cargos, la T.E.A. sola subestima lo que se paga.
+                  En Argentina, además, es de exhibición obligatoria frente al consumidor.
+                */}
+                <div className="rounded-md border border-primary/30 bg-primary/10 px-2.5 py-1 -my-1">
+                  <p className="text-[10px] text-primary/90 font-semibold leading-tight">C.F.T.</p>
+                  <p className="text-sm font-bold text-primary font-mono leading-tight mt-0.5">{cft ? `${n2(cft.anual * 100)}%` : "—"}</p>
                 </div>
                 {hayCargos && (
                   <div>
@@ -1110,7 +1407,7 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
           <DetalleRow label="Capital" value={formatMonto(montoNum)} mono strong />
           {plan && <DetalleRow label={`Cuota (${lbl.cuotaSingular})`} value={formatMonto(hayCargos ? plan.cuotaTotal : plan.cuota)} mono />}
           {plan && <DetalleRow label="Plan" value={`${plan.cuotas.length} ${lbl.cuotaPlural}`} />}
-          {plan && <DetalleRow label="Total a pagar" value={formatMonto(hayCargos ? totalCuotasCliente : plan.totalPagado)} mono strong />}
+          {plan && <DetalleRow label="Total a pagar" value={formatMonto(hayCargos ? totalAPagar : plan.totalPagado)} mono strong />}
         </div>
 
         <AlertDialogFooter>

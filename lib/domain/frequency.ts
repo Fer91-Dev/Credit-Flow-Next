@@ -69,6 +69,31 @@ export function resolverFrecuencia(clave: string, catalogo?: FrecuenciaDef[]): F
   return FRECUENCIAS_BUILTIN.mensual;
 }
 
+/**
+ * Lleva una cuota de SU período al equivalente MENSUAL.
+ *
+ * 🔴 Es obligatorio antes de comparar una cuota contra el ingreso, porque el ingreso del
+ * cliente es mensual y la cuota no siempre lo es. Sin esto, una cuota semanal de $135.000
+ * se leía como si fuera lo que paga en el mes, cuando en realidad son $585.000 — el motor
+ * de riesgo creía estar respetando el 30% del sueldo y aprobaba el 130%.
+ *
+ * Se usa el promedio anual (periodosAnio / 12) y no "4 semanas por mes": un año tiene 52
+ * semanas, no 48, y esas 4 cuotas de diferencia las paga el cliente igual.
+ */
+export function cuotaMensualEquivalente(cuota: number, frecuencia: string, catalogo?: FrecuenciaDef[]): number {
+  const def = resolverFrecuencia(frecuencia, catalogo);
+  return (cuota * def.periodosAnio) / 12;
+}
+
+/**
+ * La inversa: cuánto puede pagar POR PERÍODO alguien que puede destinar `cuotaMensual` al mes.
+ * Sirve para calcular el monto máximo sugerido con frecuencias que no son mensuales.
+ */
+export function cuotaDelPeriodoDesdeMensual(cuotaMensual: number, frecuencia: string, catalogo?: FrecuenciaDef[]): number {
+  const def = resolverFrecuencia(frecuencia, catalogo);
+  return (cuotaMensual * 12) / def.periodosAnio;
+}
+
 /** Etiquetas de presentación de una frecuencia (built-in con texto cuidado; custom derivado). */
 export function frecuenciaLabel(clave: string, catalogo?: FrecuenciaDef[]): FrecuenciaLabel {
   if (LABELS_BUILTIN[clave]) return LABELS_BUILTIN[clave];
