@@ -473,6 +473,8 @@ export interface Amortizacion {
     frecuencia_label: { cuotaSingular: string; cuotaPlural: string; adjetivo: string; unidad: string };
     tasa_periodica: number;
     tasa_efectiva_anual: number;
+    /** C.F.T. anual en fracción (0,6321 = 63,21%). `null` cuando no está definido. */
+    cft_anual: number | null;
     plazo_meses: number;
     n_cuotas: number;
   };

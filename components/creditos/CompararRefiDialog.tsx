@@ -125,7 +125,13 @@ function TermCard({ titulo, sub, credito, amort, loading, error, accent, onOpen 
         <dl className="space-y-1.5">
           <Line label={accent === "warning" ? "Capital consolidado" : "Monto otorgado"} value={`$${n0(amort.parametros.monto)}`} strong />
           <Line label="Tasa" value={tasa} />
-          {tea != null && <Line label="Costo efectivo (T.E.A.)" value={`${n0(tea)}%`} muted />}
+          {/* La T.E.A. y el C.F.T. vienen en FRACCIÓN (0,6321), no en porcentaje: van ×100.
+              Sin eso, un 63,21% se mostraba como "1%" y hacía ver la refinanciación como
+              gratis justo en la pantalla donde el cliente compara las dos opciones. */}
+          {tea != null && <Line label="Costo efectivo (T.E.A.)" value={`${n0(tea * 100)}%`} muted />}
+          {amort.parametros.cft_anual != null && (
+            <Line label="Costo total (C.F.T.)" value={`${n0(amort.parametros.cft_anual * 100)}%`} />
+          )}
           <Line label="Cuotas" value={`${amort.parametros.n_cuotas} × ${amort.parametros.frecuencia_label.adjetivo}`} />
           <Line label="Cuota" value={`$${n0(amort.resumen.cuota_mensual)}`} strong />
           <Line label="Interés total" value={`$${n0(amort.resumen.total_intereses)}`} muted />

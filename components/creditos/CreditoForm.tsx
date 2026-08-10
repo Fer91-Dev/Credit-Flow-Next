@@ -20,6 +20,7 @@ import {
   construirPlanAmortizacion,
   tasaPeriodicaSegunConvencion,
   efectivaAnualDesdePeriodica,
+  cftDelPlan,
   frecuenciaLabel,
   resolverFrecuencia,
   cargoColumnasActivas,
@@ -467,6 +468,19 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
     return efectivaAnualDesdePeriodica(ip, sim.frecuencia, catalogoFrec);
   }, [sim.tasa, sim.frecuencia, convencion, catalogoFrec]);
 
+  /**
+   * C.F.T. — lo que el crédito le cuesta al cliente con TODO adentro (interés + IVA + seguro +
+   * gastos + comisión). Sin cargos da exactamente la T.E.A.; con cargos, más.
+   *
+   * Se calcula sobre `montoNum` (lo que el cliente RECIBE) y no sobre el capital que se
+   * amortiza: cuando la comisión está financiada, el plan amortiza más de lo que se le entregó.
+   */
+  const cft = useMemo(() => {
+    if (!plan) return null;
+    const periodosAnio = resolverFrecuencia(sim.frecuencia, catalogoFrec).periodosAnio;
+    return cftDelPlan(plan, montoNum, periodosAnio);
+  }, [plan, montoNum, sim.frecuencia, catalogoFrec]);
+
   const capPct = plan && plan.totalPagado > 0
     ? Math.round((montoNum / plan.totalPagado) * 100)
     : 0;
@@ -499,6 +513,7 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
         cargos: plan.totalIva + plan.totalSeguro + plan.totalGastos,
         cuotaTotal: totalCuotasCliente,
       },
+      cft: cft?.anual ?? null,
       financiera: financiera ? { nombre: financiera.nombre, logo_url: financiera.logo_url } : undefined,
     }, vistaImp);
   }
@@ -1255,6 +1270,15 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
                 <div>
                   <p className="text-[10px] text-muted-foreground leading-tight">T.E.A.</p>
                   <p className="text-sm font-bold text-foreground font-mono leading-tight mt-0.5">{tasaEA > 0 ? `${n2(tasaEA * 100)}%` : "—"}</p>
+                </div>
+                {/*
+                  El C.F.T. va destacado y pegado a la T.E.A. porque es el número que compara
+                  ofertas de verdad: si hay cargos, la T.E.A. sola subestima lo que se paga.
+                  En Argentina, además, es de exhibición obligatoria frente al consumidor.
+                */}
+                <div className="rounded-md border border-primary/30 bg-primary/10 px-2.5 py-1 -my-1">
+                  <p className="text-[10px] text-primary/90 font-semibold leading-tight">C.F.T.</p>
+                  <p className="text-sm font-bold text-primary font-mono leading-tight mt-0.5">{cft ? `${n2(cft.anual * 100)}%` : "—"}</p>
                 </div>
                 {hayCargos && (
                   <div>

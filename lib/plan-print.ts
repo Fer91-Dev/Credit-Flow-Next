@@ -40,6 +40,12 @@ export interface PlanPrintData {
   cargoCols?: CargoCuotaCol[];
   cuotas: FilaPlanPrint[];
   totales: { cuota: number; interes: number; capital: number; cargos: number; cuotaTotal: number };
+  /**
+   * C.F.T. anual en FRACCIÓN (0,6321 = 63,21%). Es el costo del crédito con todos los cargos
+   * adentro, y va en el documento del cliente porque es lo que le permite comparar ofertas —
+   * en Argentina, además, es de exhibición obligatoria. `null`/omitido → no se muestra.
+   */
+  cft?: number | null;
   /** Co-branding: identidad de la financiera. Si trae nombre/logo, encabeza el documento
    *  con "powered by CreditFlow" al pie. Sin esto, se muestra la marca CreditFlow. */
   financiera?: { nombre?: string | null; logo_url?: string | null };
@@ -126,6 +132,11 @@ body{font-family:'Inter',system-ui,-apple-system,sans-serif;background:#F5F7FB;c
 .kitem:last-child{border-right:none;padding-right:0;margin-right:0}
 .klabel{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:#4B5563}
 .kval{font-size:17px;font-weight:700;color:#111827;font-family:'Courier New',Courier,monospace}
+/* C.F.T. recuadrado: tiene que leerse antes que el resto de la banda (es el dato que permite
+   comparar ofertas). Se destaca con relieve, no con color: el único elemento a color del
+   documento sigue siendo la marca. Va DESPUÉS de .kitem:last-child para ganarle el reset. */
+.kitem.hl{background:#F3F4F6;border:1px solid #CBD5E1;border-radius:10px;padding:8px 18px;margin-right:0;align-self:center}
+.kitem.hl .kval{font-size:19px;font-weight:800}
 .tw{padding:28px 56px 0}
 .ttl{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#111827;margin-bottom:12px}
 table{width:100%;border-collapse:separate;border-spacing:0;font-size:15px;border-radius:12px;overflow:hidden;border:1px solid #E5E7EB}
@@ -194,7 +205,11 @@ tfoot td.cg{background:#2A2113}
   <div class="band">
     <div class="kitem"><span class="klabel">Monto solicitado</span><span class="kval">${formatMonto(capital)}</span></div>
     <div class="kitem"><span class="klabel">Tasa</span><span class="kval">${data.tasa}% ${convLabel}</span></div>
-    <div class="kitem"><span class="klabel">Cuotas</span><span class="kval">${nCuotas} – ${freqLabel}</span></div>
+    <div class="kitem"><span class="klabel">Cuotas</span><span class="kval">${nCuotas} – ${freqLabel}</span></div>${
+      data.cft != null
+        ? `<div class="kitem hl"><span class="klabel">C.F.T. anual</span><span class="kval">${(data.cft * 100).toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%</span></div>`
+        : ""
+    }
   </div>
   <div class="tw">
     <p class="ttl">${seccionLabel}</p>
@@ -205,7 +220,11 @@ tfoot td.cg{background:#2A2113}
     </table>
   </div>
   <div class="footer">
-    <p class="ftxt">Este documento es un resumen informativo generado al momento de la simulación. Los importes pueden estar sujetos a modificaciones según las condiciones contractuales.</p>
+    <p class="ftxt">Este documento es un resumen informativo generado al momento de la simulación. Los importes pueden estar sujetos a modificaciones según las condiciones contractuales.</p>${
+      data.cft != null
+        ? `\n    <p class="ftxt">El C.F.T. (Costo Financiero Total) expresa el costo anual del crédito incluyendo intereses, impuestos, seguros y gastos. Es el indicador que permite comparar distintas ofertas de financiación.</p>`
+        : ""
+    }
     ${data.financiera?.nombre?.trim() ? '<p class="pwr">powered by CreditFlow</p>' : ""}
   </div>
 </div>

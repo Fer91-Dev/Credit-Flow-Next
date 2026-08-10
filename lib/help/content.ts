@@ -213,6 +213,22 @@ const HELP: Record<string, HelpDoc> = {
           "Es orientativo, no una aprobación: podés escribir otro monto. Lo que cambia es el semáforo, y todo se vuelve a validar en el servidor al otorgar.",
         ],
       },
+      {
+        kind: "definiciones",
+        titulo: "La barra de resultados (al pie del plan)",
+        items: [
+          { term: "Cuota", desc: "Lo que paga el cliente en cada vencimiento. Si tenés cargos activos dice «c/cargos»: ya incluye IVA, seguro y gastos." },
+          { term: "Intereses", desc: "Lo que la financiera gana por prestar, sumado a lo largo de todo el plan. No incluye los cargos." },
+          { term: "Total a pagar", desc: "Todo lo que el cliente va a desembolsar: capital + intereses + cargos." },
+          { term: "T.E.A.", desc: "Tasa Efectiva Anual. El costo del INTERÉS llevado a un año. No incluye IVA, seguro, gastos ni comisión." },
+          {
+            term: "C.F.T.",
+            desc: "Costo Financiero Total: lo que el crédito le cuesta al cliente con TODO adentro (interés + IVA + seguro + gastos + comisión), expresado como tasa anual. Es el único número que compara dos ofertas de verdad. Si no hay cargos activos, da igual que la T.E.A.; si hay, siempre da más alto. Va también en el plan de pagos que se le entrega al cliente.",
+          },
+          { term: "Cargos totales", desc: "La suma en pesos de IVA, seguro, gastos y comisión de todo el plan. Aparece solo si tenés algún cargo activo." },
+          { term: "Capital / Interés", desc: "La barra de abajo: qué proporción del total a pagar es la plata prestada y qué proporción es la ganancia." },
+        ],
+      },
     ],
   },
 
