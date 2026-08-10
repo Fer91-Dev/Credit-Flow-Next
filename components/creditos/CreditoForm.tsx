@@ -29,6 +29,19 @@ import {
   type PlanAmortizacion,
 } from "@/lib/domain";
 
+/**
+ * La columna que lleva LO QUE EL CLIENTE PAGA en cada vencimiento: "Total" cuando hay cargos
+ * (cuota + IVA + seguro + gastos) y "Cuota" cuando no los hay, porque ahí la cuota ya es todo.
+ *
+ * Va con banda propia porque entre ocho columnas de números se perdía justo la única que el
+ * operador le dice en voz alta al cliente, y encima competía con "Cuota", que es otra cosa
+ * (la parte pura, sin cargos). Se resalta con fondo y peso, no con un color de texto nuevo:
+ * indigo ya significa "capital" y ámbar "interés" en esta misma tabla.
+ */
+const COL_PAGA_TH = "px-2.5 py-2.5 text-right font-bold text-primary bg-primary/10 border-b border-border border-l border-primary/25";
+const COL_PAGA_TD = "px-2.5 py-2 text-right font-mono font-bold text-[13px] text-foreground bg-primary/[0.07] border-l border-primary/25 tabular-nums";
+const COL_PAGA_TF = "px-2.5 py-3.5 text-right font-bold font-mono text-sm text-foreground bg-primary/[0.15] border-l border-primary/25 tabular-nums";
+
 const CUENTA_DESEMBOLSO_LABEL: Record<CuentaCaja, string> = {
   efectivo: "Efectivo",
   banco: "Transferencia (Banco)",
@@ -1178,13 +1191,14 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
                   <tr>
                     <th className="px-2.5 py-2.5 text-left font-semibold text-muted-foreground border-b border-border w-9">#</th>
                     <th className="px-2.5 py-2.5 text-left font-semibold text-muted-foreground border-b border-border">Vencimiento</th>
-                    <th className="px-2.5 py-2.5 text-right font-semibold text-muted-foreground border-b border-border">Cuota</th>
+                    <th className={hayCargoCols ? "px-2.5 py-2.5 text-right font-semibold text-muted-foreground border-b border-border" : COL_PAGA_TH}>Cuota</th>
                     <th className="px-2.5 py-2.5 text-right font-semibold text-warning border-b border-border">Interés</th>
                     <th className="px-2.5 py-2.5 text-right font-semibold text-primary border-b border-border">Capital</th>
                     {cargoCols.map(col => (
                       <th key={col.key} className="px-2.5 py-2.5 text-right font-semibold text-foreground bg-warning/5 border-b border-border align-bottom">{col.label}</th>
                     ))}
-                    {hayCargoCols && <th className="px-2.5 py-2.5 text-right font-semibold text-foreground border-b border-border">Total</th>}
+                    {/* Mismo nombre que en la vista cliente: es literalmente el mismo número. */}
+                    {hayCargoCols && <th className={COL_PAGA_TH}>A pagar</th>}
                     <th className="px-2.5 py-2.5 text-right font-semibold text-muted-foreground border-b border-border pr-3">Saldo</th>
                   </tr>
                 </thead>
@@ -1193,13 +1207,13 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
                     <tr key={row.nro} className={`hover:bg-muted/20 transition-colors ${idx % 2 === 1 ? "bg-muted/5" : ""}`}>
                       <td className="px-2.5 py-2 text-muted-foreground/50 font-mono tabular-nums">{row.nro}</td>
                       <td className="px-2.5 py-2 text-muted-foreground tabular-nums">{fmtDate(row.fecha)}</td>
-                      <td className="px-2.5 py-2 text-right font-mono text-foreground tabular-nums">${n2(row.cuota)}</td>
+                      <td className={hayCargoCols ? "px-2.5 py-2 text-right font-mono text-foreground tabular-nums" : COL_PAGA_TD}>${n2(row.cuota)}</td>
                       <td className="px-2.5 py-2 text-right font-mono text-warning tabular-nums">${n2(row.interes)}</td>
                       <td className="px-2.5 py-2 text-right font-mono text-primary tabular-nums">${n2(row.capital)}</td>
                       {cargoCols.map(col => (
                         <td key={col.key} className="px-2.5 py-2 text-right font-mono text-foreground/80 bg-warning/5 tabular-nums">${n2(row[col.key])}</td>
                       ))}
-                      {hayCargoCols && <td className="px-2.5 py-2 text-right font-mono font-semibold text-foreground tabular-nums">${n2(row.cuotaTotal)}</td>}
+                      {hayCargoCols && <td className={COL_PAGA_TD}>${n2(row.cuotaTotal)}</td>}
                       <td className="px-2.5 py-2 pr-3 text-right font-mono text-muted-foreground tabular-nums">${n2(row.saldo)}</td>
                     </tr>
                   ))}
@@ -1207,13 +1221,13 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
                 <tfoot className="sticky bottom-0 z-10 bg-card">
                   <tr className="border-t-2 border-border bg-muted/40">
                     <td colSpan={2} className="px-2.5 py-3.5 text-[10px] font-bold text-foreground uppercase tracking-widest">Totales</td>
-                    <td className="px-2.5 py-3.5 text-right font-bold font-mono text-sm text-foreground tabular-nums">${n2(plan.totalPagado)}</td>
+                    <td className={hayCargoCols ? "px-2.5 py-3.5 text-right font-bold font-mono text-sm text-foreground tabular-nums" : COL_PAGA_TF}>${n2(plan.totalPagado)}</td>
                     <td className="px-2.5 py-3.5 text-right font-bold font-mono text-sm text-warning tabular-nums">${n2(plan.totalIntereses)}</td>
                     <td className="px-2.5 py-3.5 text-right font-bold font-mono text-sm text-primary tabular-nums">${n2(montoNum)}</td>
                     {cargoCols.map(col => (
                       <td key={col.key} className="px-2.5 py-3.5 text-right font-bold font-mono text-sm text-foreground bg-warning/10 tabular-nums">${n2(col.key === "iva" ? plan.totalIva : col.key === "seguro" ? plan.totalSeguro : plan.totalGastos)}</td>
                     ))}
-                    {hayCargoCols && <td className="px-2.5 py-3.5 text-right font-bold font-mono text-sm text-foreground tabular-nums">${n2(totalCuotasCliente)}</td>}
+                    {hayCargoCols && <td className={COL_PAGA_TF}>${n2(totalCuotasCliente)}</td>}
                     <td className="px-2.5 py-3.5 pr-3 text-right font-mono text-muted-foreground/30 tabular-nums">$ 0,00</td>
                   </tr>
                   {/* La comisión se cobra al firmar: no es una cuota y no puede sumarse a la
@@ -1223,12 +1237,13 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
                     <>
                       <tr className="bg-muted/40">
                         <td colSpan={pieOpAntes} className="px-2.5 py-2 text-[10px] font-medium text-muted-foreground uppercase tracking-widest">Comisión de otorgamiento (al firmar)</td>
-                        <td className="px-2.5 py-2 text-right font-mono text-sm text-foreground tabular-nums">${n2(comisionUpfront)}</td>
+                        {/* La banda sigue bajando por la misma columna: todo lo que el cliente paga vive ahí. */}
+                        <td className="px-2.5 py-2 text-right font-mono text-sm text-foreground bg-primary/[0.07] border-l border-primary/25 tabular-nums">${n2(comisionUpfront)}</td>
                         <td colSpan={pieOpDespues} />
                       </tr>
                       <tr className="border-t border-border bg-muted/40">
                         <td colSpan={pieOpAntes} className="px-2.5 py-3.5 text-[10px] font-bold text-foreground uppercase tracking-widest">Total a pagar</td>
-                        <td className="px-2.5 py-3.5 text-right font-bold font-mono text-sm text-foreground tabular-nums">${n2(totalAPagar)}</td>
+                        <td className={COL_PAGA_TF}>${n2(totalAPagar)}</td>
                         <td colSpan={pieOpDespues} />
                       </tr>
                     </>

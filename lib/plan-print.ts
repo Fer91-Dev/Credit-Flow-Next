@@ -89,27 +89,33 @@ export function imprimirPlanPagos(data: PlanPrintData, vista: VistaPlan): void {
   const totalPorKey = (key: "iva" | "seguro" | "gastos") =>
     data.cuotas.reduce((s, r) => s + r[key], 0);
 
+  /**
+   * Clase de la columna que lleva LO QUE EL CLIENTE PAGA. Con cargos es la columna "A pagar";
+   * sin cargos, la propia "Cuota" ya es todo lo que se abona y se resalta esa.
+   */
+  const pgCuota = esOp && !hayCargos ? " pg" : "";
+
   const cargosHead = discriminar
-    ? cols.map(c => `<th class="r cg">${c.label}</th>`).join('') + '<th class="r">Total</th>'
-    : (hayCargos ? '<th class="r">Cargos</th><th class="r">Total</th>' : '');
+    ? cols.map(c => `<th class="r cg">${c.label}</th>`).join('') + '<th class="r pg">A pagar</th>'
+    : (hayCargos ? '<th class="r">Cargos</th><th class="r pg">A pagar</th>' : '');
   const headCols = esOp
-    ? `<th class="c">#</th><th>Vencimiento</th><th class="r">Cuota</th><th class="r">Interés</th><th class="r">Capital</th>${cargosHead}<th class="r">Saldo</th>`
+    ? `<th class="c">#</th><th>Vencimiento</th><th class="r${pgCuota}">Cuota</th><th class="r">Interés</th><th class="r">Capital</th>${cargosHead}<th class="r">Saldo</th>`
     : `<th class="c">N°</th><th>Vencimiento</th><th class="r">A pagar</th>`;
 
   const rows = data.cuotas.map((r, idx) => {
     const ev = idx % 2 === 0 ? ' class="ev"' : '';
     if (esOp) {
       const cargosCells = discriminar
-        ? cols.map(c => `<td class="r mn cg">${formatMonto(r[c.key])}</td>`).join('') + `<td class="r mn fw">${formatMonto(r.cuotaTotal)}</td>`
-        : (hayCargos ? `<td class="r mn">${formatMonto(r.iva + r.seguro + r.gastos)}</td><td class="r mn fw">${formatMonto(r.cuotaTotal)}</td>` : '');
-      return `<tr${ev}><td class="nm c">${r.nro}</td><td>${formatFecha(r.fecha)}</td><td class="r mn">${formatMonto(r.cuota)}</td><td class="r mn">${formatMonto(r.interes)}</td><td class="r mn">${formatMonto(r.capital)}</td>${cargosCells}<td class="r mn">${formatMonto(r.saldo)}</td></tr>`;
+        ? cols.map(c => `<td class="r mn cg">${formatMonto(r[c.key])}</td>`).join('') + `<td class="r mn fw pg">${formatMonto(r.cuotaTotal)}</td>`
+        : (hayCargos ? `<td class="r mn">${formatMonto(r.iva + r.seguro + r.gastos)}</td><td class="r mn fw pg">${formatMonto(r.cuotaTotal)}</td>` : '');
+      return `<tr${ev}><td class="nm c">${r.nro}</td><td>${formatFecha(r.fecha)}</td><td class="r mn${pgCuota}">${formatMonto(r.cuota)}</td><td class="r mn">${formatMonto(r.interes)}</td><td class="r mn">${formatMonto(r.capital)}</td>${cargosCells}<td class="r mn">${formatMonto(r.saldo)}</td></tr>`;
     }
     return `<tr${ev}><td class="nm c">${r.nro} de ${nCuotas}</td><td>${formatFecha(r.fecha)}</td><td class="r mn fw">${formatMonto(r.cuotaTotal)}</td></tr>`;
   }).join('');
 
   const cargosTotalCells = discriminar
-    ? cols.map(c => `<td class="r mn cg">${formatMonto(totalPorKey(c.key))}</td>`).join('') + `<td class="r mn fw">${formatMonto(data.totales.cuotaTotal)}</td>`
-    : (hayCargos ? `<td class="r mn">${formatMonto(data.totales.cargos)}</td><td class="r mn fw">${formatMonto(data.totales.cuotaTotal)}</td>` : '');
+    ? cols.map(c => `<td class="r mn cg">${formatMonto(totalPorKey(c.key))}</td>`).join('') + `<td class="r mn fw pg">${formatMonto(data.totales.cuotaTotal)}</td>`
+    : (hayCargos ? `<td class="r mn">${formatMonto(data.totales.cargos)}</td><td class="r mn fw pg">${formatMonto(data.totales.cuotaTotal)}</td>` : '');
   /**
    * La comisión se cobra al firmar: no es una cuota y no puede sumarse a la columna (rompería
    * la aritmética de la tabla). Va como renglón aparte, y recién después el total de verdad.
@@ -124,13 +130,13 @@ export function imprimirPlanPagos(data: PlanPrintData, vista: VistaPlan): void {
   const pieDespues = esOp ? (hayCargos ? 1 : 3) : 0;
   const celdasVacias = pieDespues > 0 ? `<td colspan="${pieDespues}"></td>` : "";
   const filaPie = (label: string, monto: number, fuerte: boolean) =>
-    `<tr><td colspan="${pieAntes}" class="fl">${label}</td><td class="r mn${fuerte ? " fw" : ""}">${formatMonto(monto)}</td>${celdasVacias}</tr>`;
+    `<tr><td colspan="${pieAntes}" class="fl">${label}</td><td class="r mn pg${fuerte ? " fw" : ""}">${formatMonto(monto)}</td>${celdasVacias}</tr>`;
   const filasComision = comUp > 0
     ? filaPie("Comisión de otorgamiento (se abona al firmar)", comUp, false) +
       filaPie("Total a pagar", totalFinal + comUp, true)
     : "";
   const totalRow = (esOp
-    ? `<tr><td colspan="2" class="fl">Totales</td><td class="r mn">${formatMonto(data.totales.cuota)}</td><td class="r mn">${formatMonto(data.totales.interes)}</td><td class="r mn">${formatMonto(capital)}</td>${cargosTotalCells}<td class="r mn">$ 0,00</td></tr>`
+    ? `<tr><td colspan="2" class="fl">Totales</td><td class="r mn${pgCuota}">${formatMonto(data.totales.cuota)}</td><td class="r mn">${formatMonto(data.totales.interes)}</td><td class="r mn">${formatMonto(capital)}</td>${cargosTotalCells}<td class="r mn">$ 0,00</td></tr>`
     // Con comisión, este renglón deja de ser el total: pasa a ser el subtotal de las cuotas.
     : `<tr><td colspan="2" class="fl">${comUp > 0 ? "Total de las cuotas" : "Total a pagar"}</td><td class="r mn${comUp > 0 ? "" : " fw"}">${formatMonto(totalFinal)}</td></tr>`
   ) + filasComision;
@@ -190,6 +196,14 @@ thead th.cg{background:#2A2113}
 tbody td.cg{background:#FFF7EA}
 tbody tr.ev td.cg{background:#FBEFD9}
 tfoot td.cg{background:#2A2113}
+/* Columna "A pagar": lo que el cliente entrega en cada vencimiento. Entre ocho columnas de
+   números se perdía justo la única que se dice en voz alta, y competía con "Cuota", que es la
+   parte pura sin cargos. Se resalta con banda y peso, no con color: en este documento el único
+   elemento a color sigue siendo la marca. */
+thead th.pg{background:#0B1220;border-left:1px solid #3A4356}
+tbody td.pg{background:#EEF1F6;font-weight:700;border-left:1px solid #D5DBE5}
+tbody tr.ev td.pg{background:#E7EBF2}
+tfoot td.pg{background:#0B1220;border-left:1px solid #3A4356}
 .footer{margin:26px 56px 0;padding-top:18px;border-top:1px solid #E5E7EB;padding-bottom:36px;text-align:center}
 .ftxt{font-size:11px;line-height:1.6;color:#374151}
 /* Vista operador: muchas columnas (cargos discriminados). Página ancha y tabla
