@@ -41,6 +41,15 @@ export interface PlanPrintData {
   cuotas: FilaPlanPrint[];
   totales: { cuota: number; interes: number; capital: number; cargos: number; cuotaTotal: number };
   /**
+   * Comisión de otorgamiento que el cliente paga AL FIRMAR (0 si no hay, o si está financiada
+   * y por lo tanto ya viene adentro de las cuotas).
+   *
+   * 🔴 No entra en la suma de la columna de cuotas, pero SÍ es plata que el cliente desembolsa.
+   * Sin mostrarla, el documento decía "total a pagar" por un importe menor al real y el C.F.T.
+   * impreso quedaba calculado sobre un cargo que el papel no mencionaba en ningún lado.
+   */
+  comisionUpfront?: number;
+  /**
    * C.F.T. anual en FRACCIÓN (0,6321 = 63,21%). Es el costo del crédito con todos los cargos
    * adentro, y va en el documento del cliente porque es lo que le permite comparar ofertas —
    * en Argentina, además, es de exhibición obligatoria. `null`/omitido → no se muestra.
@@ -101,9 +110,24 @@ export function imprimirPlanPagos(data: PlanPrintData, vista: VistaPlan): void {
   const cargosTotalCells = discriminar
     ? cols.map(c => `<td class="r mn cg">${formatMonto(totalPorKey(c.key))}</td>`).join('') + `<td class="r mn fw">${formatMonto(data.totales.cuotaTotal)}</td>`
     : (hayCargos ? `<td class="r mn">${formatMonto(data.totales.cargos)}</td><td class="r mn fw">${formatMonto(data.totales.cuotaTotal)}</td>` : '');
-  const totalRow = esOp
+  /**
+   * La comisión se cobra al firmar: no es una cuota y no puede sumarse a la columna (rompería
+   * la aritmética de la tabla). Va como renglón aparte, y recién después el total de verdad.
+   */
+  const comUp = data.comisionUpfront ?? 0;
+  // Columnas de la tabla, para que el renglón extra abarque todo menos la celda del importe.
+  const nCols = esOp
+    ? 5 + (discriminar ? cols.length + 1 : hayCargos ? 2 : 0) + 1
+    : 3;
+  const filasComision = comUp > 0
+    ? `<tr><td colspan="${nCols - 1}" class="fl">Comisión de otorgamiento (se abona al firmar)</td><td class="r mn">${formatMonto(comUp)}</td></tr>` +
+      `<tr><td colspan="${nCols - 1}" class="fl">Total a pagar</td><td class="r mn fw">${formatMonto(totalFinal + comUp)}</td></tr>`
+    : "";
+  const totalRow = (esOp
     ? `<tr><td colspan="2" class="fl">Totales</td><td class="r mn">${formatMonto(data.totales.cuota)}</td><td class="r mn">${formatMonto(data.totales.interes)}</td><td class="r mn">${formatMonto(capital)}</td>${cargosTotalCells}<td class="r mn">$ 0,00</td></tr>`
-    : `<tr><td colspan="2" class="fl">Total a pagar</td><td class="r mn fw">${formatMonto(totalFinal)}</td></tr>`;
+    // Con comisión, este renglón deja de ser el total: pasa a ser el subtotal de las cuotas.
+    : `<tr><td colspan="2" class="fl">${comUp > 0 ? "Total de las cuotas" : "Total a pagar"}</td><td class="r mn${comUp > 0 ? "" : " fw"}">${formatMonto(totalFinal)}</td></tr>`
+  ) + filasComision;
 
   w.document.write(`<!DOCTYPE html>
 <html lang="es">

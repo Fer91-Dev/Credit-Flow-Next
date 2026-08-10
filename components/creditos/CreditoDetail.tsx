@@ -154,6 +154,8 @@ export function CreditoDetail({ credito, role, onRefinanciar }: { credito: Credi
         cargos: a.resumen.total_iva + a.resumen.total_seguro + a.resumen.total_gastos,
         cuotaTotal: a.resumen.total_con_cargos,
       },
+      // Solo si NO está financiada: financiada = ya viene adentro de las cuotas de la tabla.
+      comisionUpfront: a.resumen.comision > 0 && !a.resumen.comision_financiada ? a.resumen.comision : 0,
       cft: a.parametros.cft_anual,
     }, "cliente");
   };

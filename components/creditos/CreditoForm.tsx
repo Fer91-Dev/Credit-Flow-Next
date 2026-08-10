@@ -490,6 +490,20 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
     : "Aceptá miles y decimales: 350.000,52";
   // Total de cuotas (con cargos) para la vista cliente.
   const totalCuotasCliente = plan ? plan.cuotas.reduce((s, r) => s + r.cuotaTotal, 0) : 0;
+  /** Comisión que el cliente paga AL FIRMAR (0 si no hay, o si está financiada). */
+  const comisionUpfront = plan && plan.comision > 0 && !plan.comisionFinanciada ? plan.comision : 0;
+  /**
+   * TODO lo que el cliente desembolsa: las cuotas más la comisión que paga al firmar.
+   *
+   * 🔴 Es un solo número y se usa en los cuatro lugares que dicen "total a pagar" (barra,
+   * confirmación, pantalla de otorgado y PDF). Antes cada uno lo armaba por su cuenta y no
+   * coincidían: los que sumaban la columna de cuotas se olvidaban de la comisión, así que el
+   * documento del cliente informaba menos de lo que realmente iba a pagar.
+   *
+   * Se parte del total de las CUOTAS y no de `plan.totalConCargos` porque ese suma los cargos
+   * sin el redondeo aplicado: si el tenant redondea la cuota, los dos no dan igual.
+   */
+  const totalAPagar = totalCuotasCliente + comisionUpfront;
 
   const clienteSel = clientes.find(c => c.id === formData.cliente_id);
 
@@ -513,6 +527,8 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
         cargos: plan.totalIva + plan.totalSeguro + plan.totalGastos,
         cuotaTotal: totalCuotasCliente,
       },
+      // Solo si NO está financiada: financiada = ya viene adentro de las cuotas de la tabla.
+      comisionUpfront,
       cft: cft?.anual ?? null,
       financiera: financiera ? { nombre: financiera.nombre, logo_url: financiera.logo_url } : undefined,
     }, vistaImp);
@@ -520,7 +536,7 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
 
   // ── Pantalla de éxito: el crédito ya se otorgó (reemplaza el simulador) ──
   if (created) {
-    const totalFinal = hayCargos ? totalCuotasCliente : (plan?.totalPagado ?? 0);
+    const totalFinal = hayCargos ? totalAPagar : (plan?.totalPagado ?? 0);
     return (
       <div className="flex h-full min-h-0 flex-col items-center justify-center gap-6 p-8 text-center">
         <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-success/30 bg-success/15">
@@ -1214,10 +1230,29 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
                   ))}
                 </tbody>
                 <tfoot className="sticky bottom-0 z-10 bg-card">
+                  {/*
+                    La comisión se cobra al firmar: no es una cuota y no puede entrar en la
+                    columna sin romper la suma. Va en su propio renglón, y el total de verdad
+                    recién debajo — si no, el cliente ve un "total a pagar" al que le faltan.
+                  */}
                   <tr className="border-t-2 border-border bg-muted/40">
-                    <td colSpan={2} className="px-4 py-3.5 text-[10px] font-bold text-foreground uppercase tracking-widest">Total a pagar</td>
-                    <td className="px-4 py-3.5 pr-6 text-right font-bold font-mono text-base text-foreground tabular-nums">${n2(totalCuotasCliente)}</td>
+                    <td colSpan={2} className="px-4 py-3.5 text-[10px] font-bold text-foreground uppercase tracking-widest">
+                      {comisionUpfront > 0 ? "Total de las cuotas" : "Total a pagar"}
+                    </td>
+                    <td className={`px-4 py-3.5 pr-6 text-right font-mono tabular-nums ${comisionUpfront > 0 ? "text-sm font-semibold text-foreground" : "text-base font-bold text-foreground"}`}>${n2(totalCuotasCliente)}</td>
                   </tr>
+                  {comisionUpfront > 0 && (
+                    <>
+                      <tr className="bg-muted/40">
+                        <td colSpan={2} className="px-4 py-2 text-[10px] font-medium text-muted-foreground uppercase tracking-widest">Comisión de otorgamiento (al firmar)</td>
+                        <td className="px-4 py-2 pr-6 text-right font-mono text-sm text-foreground tabular-nums">${n2(comisionUpfront)}</td>
+                      </tr>
+                      <tr className="border-t border-border bg-muted/40">
+                        <td colSpan={2} className="px-4 py-3.5 text-[10px] font-bold text-foreground uppercase tracking-widest">Total a pagar</td>
+                        <td className="px-4 py-3.5 pr-6 text-right font-bold font-mono text-base text-foreground tabular-nums">${n2(totalAPagar)}</td>
+                      </tr>
+                    </>
+                  )}
                 </tfoot>
               </table>
             )}
@@ -1265,7 +1300,7 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
                 </div>
                 <div>
                   <p className="text-[10px] text-muted-foreground leading-tight">Total a pagar</p>
-                  <p className="text-sm font-bold text-foreground font-mono leading-tight mt-0.5">${n0(hayCargos ? plan.totalConCargos : plan.totalPagado)}</p>
+                  <p className="text-sm font-bold text-foreground font-mono leading-tight mt-0.5">${n0(hayCargos ? totalAPagar : plan.totalPagado)}</p>
                 </div>
                 <div>
                   <p className="text-[10px] text-muted-foreground leading-tight">T.E.A.</p>
@@ -1332,7 +1367,7 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
           <DetalleRow label="Capital" value={formatMonto(montoNum)} mono strong />
           {plan && <DetalleRow label={`Cuota (${lbl.cuotaSingular})`} value={formatMonto(hayCargos ? plan.cuotaTotal : plan.cuota)} mono />}
           {plan && <DetalleRow label="Plan" value={`${plan.cuotas.length} ${lbl.cuotaPlural}`} />}
-          {plan && <DetalleRow label="Total a pagar" value={formatMonto(hayCargos ? totalCuotasCliente : plan.totalPagado)} mono strong />}
+          {plan && <DetalleRow label="Total a pagar" value={formatMonto(hayCargos ? totalAPagar : plan.totalPagado)} mono strong />}
         </div>
 
         <AlertDialogFooter>
