@@ -115,13 +115,19 @@ export function imprimirPlanPagos(data: PlanPrintData, vista: VistaPlan): void {
    * la aritmética de la tabla). Va como renglón aparte, y recién después el total de verdad.
    */
   const comUp = data.comisionUpfront ?? 0;
-  // Columnas de la tabla, para que el renglón extra abarque todo menos la celda del importe.
-  const nCols = esOp
-    ? 5 + (discriminar ? cols.length + 1 : hayCargos ? 2 : 0) + 1
-    : 3;
+  /**
+   * El importe del renglón se alinea bajo la columna que lleva el TOTAL POR CUOTA: "Total"
+   * cuando hay cargos, y "Cuota" cuando no los hay (ahí la cuota ya es el total). Si cayera
+   * al final quedaría bajo "Saldo", que es otra cosa.
+   */
+  const pieAntes = esOp ? (discriminar ? 5 + cols.length : hayCargos ? 6 : 2) : 2;
+  const pieDespues = esOp ? (hayCargos ? 1 : 3) : 0;
+  const celdasVacias = pieDespues > 0 ? `<td colspan="${pieDespues}"></td>` : "";
+  const filaPie = (label: string, monto: number, fuerte: boolean) =>
+    `<tr><td colspan="${pieAntes}" class="fl">${label}</td><td class="r mn${fuerte ? " fw" : ""}">${formatMonto(monto)}</td>${celdasVacias}</tr>`;
   const filasComision = comUp > 0
-    ? `<tr><td colspan="${nCols - 1}" class="fl">Comisión de otorgamiento (se abona al firmar)</td><td class="r mn">${formatMonto(comUp)}</td></tr>` +
-      `<tr><td colspan="${nCols - 1}" class="fl">Total a pagar</td><td class="r mn fw">${formatMonto(totalFinal + comUp)}</td></tr>`
+    ? filaPie("Comisión de otorgamiento (se abona al firmar)", comUp, false) +
+      filaPie("Total a pagar", totalFinal + comUp, true)
     : "";
   const totalRow = (esOp
     ? `<tr><td colspan="2" class="fl">Totales</td><td class="r mn">${formatMonto(data.totales.cuota)}</td><td class="r mn">${formatMonto(data.totales.interes)}</td><td class="r mn">${formatMonto(capital)}</td>${cargosTotalCells}<td class="r mn">$ 0,00</td></tr>`

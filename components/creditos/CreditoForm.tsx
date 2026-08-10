@@ -504,6 +504,14 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
    * sin el redondeo aplicado: si el tenant redondea la cuota, los dos no dan igual.
    */
   const totalAPagar = totalCuotasCliente + comisionUpfront;
+  /**
+   * Dónde cae el importe en el pie de la tabla del OPERADOR (la del cliente tiene 3 columnas
+   * fijas). Se alinea bajo la columna que lleva el total por cuota: "Total" si hay cargos
+   * discriminados, y "Cuota" si no los hay, porque ahí la cuota ya ES el total. Si fuera al
+   * final quedaría bajo "Saldo", que es otra cosa.
+   */
+  const pieOpAntes = hayCargoCols ? 5 + cargoCols.length : 2;
+  const pieOpDespues = hayCargoCols ? 1 : 3;
 
   const clienteSel = clientes.find(c => c.id === formData.cliente_id);
 
@@ -1208,6 +1216,23 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
                     {hayCargoCols && <td className="px-2.5 py-3.5 text-right font-bold font-mono text-sm text-foreground tabular-nums">${n2(totalCuotasCliente)}</td>}
                     <td className="px-2.5 py-3.5 pr-3 text-right font-mono text-muted-foreground/30 tabular-nums">$ 0,00</td>
                   </tr>
+                  {/* La comisión se cobra al firmar: no es una cuota y no puede sumarse a la
+                      columna sin romper su aritmética. Va en su propio renglón, y el total
+                      de verdad recién debajo. */}
+                  {comisionUpfront > 0 && (
+                    <>
+                      <tr className="bg-muted/40">
+                        <td colSpan={pieOpAntes} className="px-2.5 py-2 text-[10px] font-medium text-muted-foreground uppercase tracking-widest">Comisión de otorgamiento (al firmar)</td>
+                        <td className="px-2.5 py-2 text-right font-mono text-sm text-foreground tabular-nums">${n2(comisionUpfront)}</td>
+                        <td colSpan={pieOpDespues} />
+                      </tr>
+                      <tr className="border-t border-border bg-muted/40">
+                        <td colSpan={pieOpAntes} className="px-2.5 py-3.5 text-[10px] font-bold text-foreground uppercase tracking-widest">Total a pagar</td>
+                        <td className="px-2.5 py-3.5 text-right font-bold font-mono text-sm text-foreground tabular-nums">${n2(totalAPagar)}</td>
+                        <td colSpan={pieOpDespues} />
+                      </tr>
+                    </>
+                  )}
                 </tfoot>
               </table>
             ) : (
