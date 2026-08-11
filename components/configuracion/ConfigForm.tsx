@@ -485,11 +485,16 @@ export function ConfigForm() {
 
               <SubGrupo titulo="Lo que el simulador propone" nota="Solo son valores de arranque: el vendedor los puede cambiar">
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                  <Field label="Monto ($)" hint={<EstadoParam on={form.simulador.montoDefault > 0} siOn="Aparece cargado" siOff="Arranca vacío" />}>
+                  {/*
+                    Dice "en el simulador" a propósito: con tres campos de tasa en el bloque, el
+                    usuario preguntó cuál era la que efectivamente se ve. El rótulo del grupo no
+                    alcanzaba — la respuesta tiene que estar pegada al campo.
+                  */}
+                  <Field label="Monto ($)" hint={<EstadoParam on={form.simulador.montoDefault > 0} siOn="Se carga solo en el simulador" siOff="El simulador arranca vacío" />}>
                     <Input type="number" min="0" step="any" value={form.simulador.montoDefault}
                       onChange={e => setSim("montoDefault", parseFloat(e.target.value) || 0)} />
                   </Field>
-                  <Field label="Tasa (%)" hint={<EstadoParam on={form.simulador.tasaBase > 0} siOn="Aparece cargada" siOff="Arranca vacía" />}>
+                  <Field label={`Tasa (% ${CONV_CORTA[form.convencionTasa]})`} hint={<EstadoParam on={form.simulador.tasaBase > 0} siOn="Se carga sola en el simulador" siOff="El simulador arranca vacío" />}>
                     <div className="relative">
                       <Input type="number" min="0" step="0.5" value={form.simulador.tasaBase}
                         onChange={e => setSim("tasaBase", parseFloat(e.target.value) || 0)} className="pr-7" />
@@ -1547,6 +1552,16 @@ function defaultEmail()     { return { enabled: false, provider: "smtp", host: "
  * Nace de que "monto máximo" y "monto por defecto" se leían igual de importantes en una
  * grilla plana, cuando uno LIMITA y el otro solo PROPONE. Agrupar es más barato que explicar.
  */
+/**
+ * Rótulo corto de la convención de tasa, el mismo que muestra el simulador debajo del campo.
+ * Sin esto, "Tasa: 50" no dice si son 50 mensual o 50 anual — y la diferencia es enorme.
+ */
+const CONV_CORTA: Record<ConfiguracionFinanciera["convencionTasa"], string> = {
+  nominal_anual: "T.N.A.",
+  efectiva_anual: "T.E.A.",
+  mensual: "T.M.",
+};
+
 function SubGrupo({ titulo, nota, children }: { titulo: string; nota?: string; children: React.ReactNode }) {
   return (
     <div>
