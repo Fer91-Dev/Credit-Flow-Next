@@ -17,3 +17,19 @@ export async function getBrandingPublico(): Promise<BrandingPublico> {
   });
   return { nombre: t?.nombre ?? null, logo_url: t?.logo_url ?? null };
 }
+
+/**
+ * Cómo se nombra a la propia financiera cuando aparece como si fuera un actor más.
+ *
+ * Pasa en los cortes por vendedor: los créditos que otorga el dueño no tienen vendedor
+ * asignado, y esa fila necesita un nombre. "Sin asignar" se leía como un dato faltante y
+ * "La financiera" es correcto pero anónimo — al lado de "Andrea" y "Mariela", ver "Credit
+ * Zero" dice de una que ahí está la operación de la casa.
+ *
+ * El respaldo importa: el SaaS es multi-empresa y una financiera puede no tener el nombre
+ * cargado todavía.
+ */
+export async function nombrePropioFinanciera(tenantId: string): Promise<string> {
+  const t = await prisma.tenants.findUnique({ where: { id: tenantId }, select: { nombre: true } });
+  return t?.nombre?.trim() || "La financiera";
+}

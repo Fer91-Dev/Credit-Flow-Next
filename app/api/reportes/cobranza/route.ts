@@ -2,6 +2,7 @@ import { requireRole, scopeCreditosVendedor } from "@/lib/auth";
 import { successResponse, withErrorHandler } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
+import { nombrePropioFinanciera } from "@/lib/branding";
 import {
   resumenEmbudoCobranza,
   recuperoCobranza,
@@ -82,13 +83,16 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   filas.forEach((f) => ids.add(f.vendedorId));
   pagosRows.forEach((p) => ids.add(p.vendedorId));
 
+  // Solo se consulta si hay actividad sin vendedor; si toda la tiene, no hace falta.
+  const nombreCasa = ids.has(null) ? await nombrePropioFinanciera(tenantId) : "La financiera";
+
   const por_vendedor = [...ids].map((id) => {
     const e = resumenEmbudoCobranza(filas.filter((f) => f.vendedorId === id).map((f) => f.gestion));
     const r = recuperoCobranza(pagosRows.filter((p) => p.vendedorId === id));
     return {
       vendedor_id: id,
-      // Mismo criterio que el rendimiento por vendedor del Home: sin vendedor = la financiera.
-      nombre: id ? (nombreDe.get(id) ?? "—") : "La financiera",
+      // Mismo criterio que el rendimiento por vendedor del Home: sin vendedor = la casa.
+      nombre: id ? (nombreDe.get(id) ?? "—") : nombreCasa,
       gestiones: e.gestiones,
       contactos: e.contactos,
       promesas: e.promesas,

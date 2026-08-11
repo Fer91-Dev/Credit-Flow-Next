@@ -4,6 +4,7 @@ import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { diasMoraActual, ESTADOS_VIVOS, esCreditoVivo } from "@/lib/domain";
 import { hoyComercial } from "@/lib/utils";
+import { nombrePropioFinanciera } from "@/lib/branding";
 import type { NextRequest } from "next/server";
 
 /**
@@ -142,6 +143,10 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   let porVendedor: PorVendedor[] | undefined;
   if (esAdmin) {
     const SIN_ASIGNAR = "sin_asignar";
+    // Solo se consulta si hay créditos de la casa; si todos tienen vendedor, no hace falta.
+    const nombreCasa = creditosDM.some((c) => !c.vendedor_id)
+      ? await nombrePropioFinanciera(tenantId)
+      : "La financiera";
     const nombrePorId = new Map(personal.map((p) => [p.id, p.nombre]));
     const grupos = new Map<string, typeof creditosDM>();
     for (const c of creditosDM) {
@@ -159,9 +164,9 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
           .reduce((s, c) => s + c.saldo_pendiente, 0);
         return {
           vendedor_id: key === SIN_ASIGNAR ? null : key,
-          // "La financiera" y no "Sin asignar": desde que el dueño puede otorgar sin elegir
-          // vendedor, esa fila es su operación propia, no un dato que falta.
-          nombre: key === SIN_ASIGNAR ? "La financiera" : nombrePorId.get(key) ?? "—",
+          // El nombre de la financiera y no "Sin asignar": desde que el dueño puede otorgar
+          // sin elegir vendedor, esa fila es su operación propia, no un dato que falta.
+          nombre: key === SIN_ASIGNAR ? nombreCasa : nombrePorId.get(key) ?? "—",
           // Otorgado: excluye anulados y refinanciaciones (no es plata nueva colocada).
           // Cartera y mora SÍ incluyen la refinanciación: es deuda viva real a cobrar.
           creditos_otorgados: lista.filter((c) => c.estado !== "anulado" && !c.es_refinanciacion).length,
