@@ -254,11 +254,13 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
     setFormData(p => ({ ...p, monto_original: formatMontoInput(e.target.value) }));
   };
 
-  /** Valida los datos del crédito. Todos los campos son obligatorios. */
+  /** Valida los datos del crédito antes de enviarlo. */
   const validar = (): string | null => {
     if (!formData.cliente_id) return "Seleccioná un cliente";
     if (!formData.tipo_credito) return "Seleccioná el tipo de crédito";
-    if (vendedores.length > 0 && !formData.vendedor_id) return "Seleccioná un vendedor";
+    // El vendedor NO se valida: vacío significa "caja principal", que es como otorga el dueño.
+    // Este chequeo sobrevivió a que se le sacara el `required` al campo y seguía frenando el
+    // envío con el desplegable en un valor perfectamente válido.
     // Crédito de producto: validar elección y stock (el capital lo fija el producto).
     if (esProducto) {
       if (!formData.producto_id || !productoSel) return "Seleccioná un producto";
