@@ -199,10 +199,6 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
     setPrefilled(true);
   }, [simCfg, creditoId, prefilled]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // El campo N° de cuotas es siempre editable, independientemente de la frecuencia.
-  // Los plazos disponibles vienen de Configuración (el operador puede agregar 15 para quincenal, etc.)
-  const esMensual = formData.frecuencia === "mensual";
-
   // ── Crédito de PRODUCTO ───────────────────────────────────────────────────
   // El cliente se lleva un producto en vez de dinero: el capital = precio × cantidad
   // (read-only) y NO hay desembolso de efectivo (no se valida caja). El control es el stock.
@@ -694,7 +690,7 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
             {vendedores.length > 0 && (
               <Field label="Vendedor" hint="Define de qué caja sale el desembolso">
                 <Select name="vendedor_id" value={formData.vendedor_id} onChange={set("vendedor_id")}>
-                  <option value="">La financiera (caja principal)</option>
+                  <option value="">Caja principal</option>
                   {vendedores.map(v => (
                     <option key={v.id} value={v.id}>{v.nombre}</option>
                   ))}
@@ -1613,11 +1609,3 @@ function DetalleRow({ label, value, mono, strong }: { label: string; value: stri
   );
 }
 
-function CargoLinea({ label, valor }: { label: string; valor: number }) {
-  return (
-    <div className="flex justify-between text-[11px]">
-      <span className="text-muted-foreground">{label}</span>
-      <span className="text-foreground font-mono">${n2(valor)}</span>
-    </div>
-  );
-}
