@@ -187,17 +187,40 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
     if (creditoId) fetchCredito();
   }, [creditoId]);
 
-  // Prellenar solo monto y tasa desde los defaults del tenant (NO el plazo ni la frecuencia).
-  // El plazo se configura en Configuración por frecuencia; no hay "plan por defecto".
+  /**
+   * Definición de la frecuencia elegida, tomada del CATÁLOGO DEL TENANT y no de
+   * `resolverFrecuencia`: esa devuelve la built-in con sus valores fijos y se comería el
+   * `cuotasFijas` que el tenant le haya puesto a mensual/semanal/diaria. El servidor valida
+   * contra el catálogo crudo, así que la pantalla tiene que mirar lo mismo.
+   */
+  const frecSel = catalogoFrec.find(f => f.clave === formData.frecuencia);
+  const cuotasFijas = frecSel?.cuotasFijas ?? null;
+
+  // Prellena monto, tasa y plazo desde los defaults del tenant.
   useEffect(() => {
     if (creditoId || prefilled || !simCfg) return;
     setFormData(p => ({
       ...p,
       monto_original: p.monto_original || (simCfg.montoDefault > 0 ? numeroAInput(simCfg.montoDefault) : ""),
       tasa: p.tasa || (simCfg.tasaBase > 0 ? String(simCfg.tasaBase) : ""),
+      // Solo si sigue activo: el admin puede desactivar un plazo y dejar el default apuntando
+      // a un número que ya no se ofrece, y ahí el desplegable arrancaría en un valor inválido.
+      plazo_meses: p.plazo_meses || (plazosActivos.includes(simCfg.plazoDefault) ? String(simCfg.plazoDefault) : ""),
     }));
     setPrefilled(true);
   }, [simCfg, creditoId, prefilled]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /**
+   * Una frecuencia con cuotas fijas manda sobre el campo.
+   *
+   * El servidor rechaza cualquier otro número (`validarParametrosOtorgamiento`), así que
+   * dejarlo editable solo servía para que el vendedor cargara el crédito entero y se enterara
+   * al apretar Otorgar.
+   */
+  useEffect(() => {
+    if (cuotasFijas == null) return;
+    setFormData(p => (p.plazo_meses === String(cuotasFijas) ? p : { ...p, plazo_meses: String(cuotasFijas) }));
+  }, [cuotasFijas]);
 
   // ── Crédito de PRODUCTO ───────────────────────────────────────────────────
   // El cliente se lleva un producto en vez de dinero: el capital = precio × cantidad
@@ -839,8 +862,14 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
               </Field>
             </div>
             <div className="col-span-1">
-              <Field label="Cuotas" required>
-                {plazosActivos.length > 0 ? (
+              <Field label="Cuotas" required hint={cuotasFijas != null ? "Fijas por la frecuencia" : undefined}>
+                {cuotasFijas != null ? (
+                  // Frecuencia con cuotas fijas: el número lo impone la configuración.
+                  <Input
+                    name="plazo_meses" type="number" value={cuotasFijas} readOnly tabIndex={-1}
+                    className="text-center font-mono tabular-nums px-1 opacity-70 cursor-not-allowed"
+                  />
+                ) : plazosActivos.length > 0 ? (
                   <Select name="plazo_meses" value={formData.plazo_meses} onChange={set("plazo_meses")} required>
                     {!formData.plazo_meses && <option value="">—</option>}
                     {plazosActivos.map(p => <option key={p} value={p}>{p}</option>)}

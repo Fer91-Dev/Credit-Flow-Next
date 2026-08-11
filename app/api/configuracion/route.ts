@@ -56,6 +56,13 @@ function validarSimulador(s: any): string | null {
     if (!Array.isArray(s.plazos) || s.plazos.some((p: any) => typeof p?.cuotas !== "number" || p.cuotas < 1 || typeof p?.activo !== "boolean")) {
       return "simulador.plazos debe ser un array de { cuotas>=1, activo:boolean }";
     }
+    // Sin ningún plazo activo la financiera queda sin poder otorgar créditos mensuales: el
+    // simulador no ofrece ninguno y el servidor rechaza cualquier número que se le mande.
+    // Se puede dejar la configuración en ese estado con dos clics, y el error aparece después,
+    // en el mostrador y sin explicación.
+    if (s.plazos.length > 0 && !s.plazos.some((p: any) => p.activo)) {
+      return "Tiene que quedar al menos un plazo activo: sin ninguno no se pueden otorgar créditos mensuales.";
+    }
   }
   if (s.frecuencias !== undefined) {
     if (!Array.isArray(s.frecuencias) || s.frecuencias.some((f: any) =>

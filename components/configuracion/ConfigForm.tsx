@@ -107,7 +107,11 @@ const AYUDA: Record<string, AyudaBloque> = {
   plazos: {
     titulo: "Plazos disponibles",
     texto: "Qué cantidades de cuotas puede elegir el operador en el simulador. Tocá un plazo para activarlo o desactivarlo, y agregá los tuyos.",
-    puntos: ["Plazo por defecto: el que viene preseleccionado al simular."],
+    puntos: [
+      "Plazo por defecto: el que viene preseleccionado al simular. Si lo desactivás, el simulador arranca vacío.",
+      "Una frecuencia con cuotas fijas ignora esta lista: usa su propio número y el campo queda bloqueado.",
+      "Tiene que quedar al menos uno activo, o no se puede otorgar ningún crédito mensual.",
+    ],
   },
   frecuencias: {
     titulo: "Frecuencias de pago",
