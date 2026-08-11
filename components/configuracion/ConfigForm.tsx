@@ -97,11 +97,11 @@ const AYUDA: Record<string, AyudaBloque> = {
   },
   financiacion: {
     titulo: "Financiación del simulador",
-    texto: "Valores que el simulador propone y los límites de tasa al otorgar. Poné 0 para no aplicar un tope.",
+    texto: "Dos cosas distintas: lo que el simulador PROPONE al abrirlo, y los LÍMITES que no se pueden pasar. Un campo en 0 no hace nada.",
     puntos: [
-      "Monto mín/máx/por defecto: acotan y prellenan el monto del crédito.",
-      "Tasa base: la tasa que aparece cargada por defecto.",
-      "Tasa mín/máx: bloquean otorgar por debajo o por encima de esos valores.",
+      "Lo que propone: aparece cargado al abrir el simulador y el vendedor lo puede cambiar.",
+      "Los límites: el simulador avisa en rojo mientras se escribe y el servidor rechaza el otorgamiento.",
+      "El punto verde a la derecha del campo indica que ese límite está rigiendo.",
     ],
   },
   plazos: {
@@ -473,42 +473,59 @@ export function ConfigForm() {
           {activeTab === "simulador" && <>
 
           {/* Simulador · Financiación */}
-          <Section title="Financiación del simulador" desc="Rango de monto y valores que el simulador prellena. 0 = sin restricción / sin valor por defecto." ayuda={AYUDA.financiacion}
+          {/*
+            Los seis campos vivían en una sola grilla y no se entendía cuál hacía qué: "monto
+            máximo" y "monto por defecto" se leen igual de importantes, y son cosas distintas.
+            Uno PROPONE (el vendedor lo cambia) y el otro LIMITA (no lo puede pasar). Separarlos
+            en dos grupos hace el trabajo que antes se le pedía al texto de ayuda.
+          */}
+          <Section title="Financiación del simulador" desc="Qué propone el simulador al abrirlo, y entre qué valores se puede otorgar." ayuda={AYUDA.financiacion}
             onSave={() => saveSim("financiacion")} saving={savingKey === "financiacion"} saved={savedKey === "financiacion"} dirty={isDirty("financiacion")}>
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-              <Field label="Monto mínimo ($)">
-                <Input type="number" min="0" step="any" value={form.simulador.montoMin}
-                  onChange={e => setSim("montoMin", parseFloat(e.target.value) || 0)} />
-              </Field>
-              <Field label="Monto máximo ($)" hint="0 = sin tope">
-                <Input type="number" min="0" step="any" value={form.simulador.montoMax}
-                  onChange={e => setSim("montoMax", parseFloat(e.target.value) || 0)} />
-              </Field>
-              <Field label="Monto por defecto ($)">
-                <Input type="number" min="0" step="any" value={form.simulador.montoDefault}
-                  onChange={e => setSim("montoDefault", parseFloat(e.target.value) || 0)} />
-              </Field>
-              <Field label="Tasa base (%)" hint="Prellena la tasa del simulador">
-                <div className="relative">
-                  <Input type="number" min="0" step="0.5" value={form.simulador.tasaBase}
-                    onChange={e => setSim("tasaBase", parseFloat(e.target.value) || 0)} className="pr-7" />
-                  <Percent className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
+            <div className="space-y-5">
+
+              <SubGrupo titulo="Lo que el simulador propone" nota="Solo son valores de arranque: el vendedor los puede cambiar">
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                  <Field label="Monto ($)" hint={<EstadoParam on={form.simulador.montoDefault > 0} siOn="Aparece cargado" siOff="Arranca vacío" />}>
+                    <Input type="number" min="0" step="any" value={form.simulador.montoDefault}
+                      onChange={e => setSim("montoDefault", parseFloat(e.target.value) || 0)} />
+                  </Field>
+                  <Field label="Tasa (%)" hint={<EstadoParam on={form.simulador.tasaBase > 0} siOn="Aparece cargada" siOff="Arranca vacía" />}>
+                    <div className="relative">
+                      <Input type="number" min="0" step="0.5" value={form.simulador.tasaBase}
+                        onChange={e => setSim("tasaBase", parseFloat(e.target.value) || 0)} className="pr-7" />
+                      <Percent className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
+                    </div>
+                  </Field>
                 </div>
-              </Field>
-              <Field label="Tasa mínima (%)" hint="0 = sin límite. Bloquea otorgar por debajo">
-                <div className="relative">
-                  <Input type="number" min="0" step="0.5" value={form.simulador.tasaMin}
-                    onChange={e => setSim("tasaMin", parseFloat(e.target.value) || 0)} className="pr-7" />
-                  <Percent className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
+              </SubGrupo>
+
+              <SubGrupo titulo="Límites de lo que se puede otorgar" nota="En 0 el límite no se aplica">
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                  <Field label="Monto mínimo ($)" hint={<EstadoParam on={form.simulador.montoMin > 0} siOn="No se otorga menos" siOff="Sin mínimo" />}>
+                    <Input type="number" min="0" step="any" value={form.simulador.montoMin}
+                      onChange={e => setSim("montoMin", parseFloat(e.target.value) || 0)} />
+                  </Field>
+                  <Field label="Monto máximo ($)" hint={<EstadoParam on={form.simulador.montoMax > 0} siOn="No se otorga más" siOff="Sin tope" />}>
+                    <Input type="number" min="0" step="any" value={form.simulador.montoMax}
+                      onChange={e => setSim("montoMax", parseFloat(e.target.value) || 0)} />
+                  </Field>
+                  <Field label="Tasa mínima (%)" hint={<EstadoParam on={form.simulador.tasaMin > 0} siOn="No se otorga por debajo" siOff="Sin mínimo" />}>
+                    <div className="relative">
+                      <Input type="number" min="0" step="0.5" value={form.simulador.tasaMin}
+                        onChange={e => setSim("tasaMin", parseFloat(e.target.value) || 0)} className="pr-7" />
+                      <Percent className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
+                    </div>
+                  </Field>
+                  <Field label="Tasa máxima (%)" hint={<EstadoParam on={form.simulador.tasaMax > 0} siOn="No se otorga por encima" siOff="Sin tope" />}>
+                    <div className="relative">
+                      <Input type="number" min="0" step="0.5" value={form.simulador.tasaMax}
+                        onChange={e => setSim("tasaMax", parseFloat(e.target.value) || 0)} className="pr-7" />
+                      <Percent className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
+                    </div>
+                  </Field>
                 </div>
-              </Field>
-              <Field label="Tasa máxima (%)" hint="0 = sin límite. Bloquea otorgar por encima">
-                <div className="relative">
-                  <Input type="number" min="0" step="0.5" value={form.simulador.tasaMax}
-                    onChange={e => setSim("tasaMax", parseFloat(e.target.value) || 0)} className="pr-7" />
-                  <Percent className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
-                </div>
-              </Field>
+              </SubGrupo>
+
             </div>
           </Section>
 
@@ -1523,6 +1540,40 @@ function eventoLabel(evento: string): string {
 function defaultWhatsapp() { return { enabled: false, token: "", phone_number_id: "", business_account_id: "", templates: {} }; }
 function defaultSms()       { return { enabled: false, api_key: "", provider: "twilio" }; }
 function defaultEmail()     { return { enabled: false, provider: "smtp", host: "", port: 587, user: "", pass: "" }; }
+
+/**
+ * Sub-título dentro de un bloque, para separar campos que hacen cosas distintas.
+ *
+ * Nace de que "monto máximo" y "monto por defecto" se leían igual de importantes en una
+ * grilla plana, cuando uno LIMITA y el otro solo PROPONE. Agrupar es más barato que explicar.
+ */
+function SubGrupo({ titulo, nota, children }: { titulo: string; nota?: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <div className="mb-2.5 flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+        <h4 className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">{titulo}</h4>
+        {nota && <span className="text-xs text-muted-foreground/60">· {nota}</span>}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+/**
+ * Estado de un parámetro que se apaga con 0.
+ *
+ * Un campo en 0 se lee exactamente igual que uno sin configurar, así que no había forma de
+ * saber si el límite estaba rigiendo. El punto de color lo resuelve de un vistazo, y el texto
+ * dice qué pasa en cada caso — sin sumarle largo a la ayuda del bloque.
+ */
+function EstadoParam({ on, siOn, siOff }: { on: boolean; siOn: string; siOff: string }) {
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${on ? "bg-success" : "bg-muted-foreground/40"}`} />
+      <span className={on ? "font-medium text-success" : "text-muted-foreground/60"}>{on ? siOn : siOff}</span>
+    </span>
+  );
+}
 
 function Section({ title, desc, children, onSave, saving, saved, dirty, enabled, onToggle, ayuda }: {
   title: string; desc?: string; children: React.ReactNode;

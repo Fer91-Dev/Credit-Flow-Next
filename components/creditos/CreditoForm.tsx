@@ -474,6 +474,23 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
     return null;
   }, [esProducto, formData.monto_original, simCfg, creditoId, perfil?.limite_aprobacion]);
 
+  /**
+   * Tasa fuera del rango que permite la financiera.
+   *
+   * El servidor ya la rechaza al otorgar (`validarParametrosOtorgamiento`), pero recién ahí:
+   * el vendedor cargaba el crédito entero y se enteraba al apretar el botón. Es el mismo
+   * problema que ya se corrigió con el capital, que sí avisa mientras se escribe.
+   */
+  const errorTasa = useMemo(() => {
+    if (!sim.tasa || !simCfg) return null;
+    const tasa = parseFloat(sim.tasa);
+    if (!Number.isFinite(tasa) || tasa <= 0) return null;
+    // Mensajes cortos: el campo ocupa un cuarto del ancho y ya está rotulado "Tasa %".
+    if (simCfg.tasaMin > 0 && tasa < simCfg.tasaMin) return `Mínima ${simCfg.tasaMin}%`;
+    if (simCfg.tasaMax > 0 && tasa > simCfg.tasaMax) return `Máxima ${simCfg.tasaMax}%`;
+    return null;
+  }, [sim.tasa, simCfg]);
+
   const tasaEA = useMemo(() => {
     const tasa = parseFloat(sim.tasa) || 0;
     if (tasa <= 0) return 0;
@@ -831,14 +848,19 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
               </Field>
             </div>
             <div className="col-span-1">
-              <Field label="Tasa %" required hint={convencion === "mensual" ? "T.M." : convencion === "efectiva_anual" ? "T.E.A." : "T.N.A."}>
+              <Field
+                label="Tasa %" required
+                hint={convencion === "mensual" ? "T.M." : convencion === "efectiva_anual" ? "T.E.A." : "T.N.A."}
+                error={errorTasa ?? undefined}
+              >
                 <div className="relative">
                   <Input
                     name="tasa" type="number" placeholder="48"
                     value={formData.tasa} onChange={set("tasa")}
-                    min="0" step="0.5" required className="pr-5 text-center font-mono tabular-nums px-1"
+                    min="0" step="0.5" required aria-invalid={!!errorTasa}
+                    className={`pr-5 text-center font-mono tabular-nums px-1 ${errorTasa ? "border-destructive focus:border-destructive focus:ring-destructive/25" : ""}`}
                   />
-                  <Percent className="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
+                  <Percent className={`pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 h-3 w-3 ${errorTasa ? "text-destructive" : "text-muted-foreground"}`} />
                 </div>
               </Field>
             </div>
@@ -1085,8 +1107,8 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
             Cancelar
           </button>
           <button
-            type="submit" disabled={loading || fondosInsuficientes || riesgoImpide || !!errorCapital}
-            title={errorCapital ?? (fondosInsuficientes ? "Saldo insuficiente en la cuenta de desembolso" : riesgoImpide ? "El cliente no califica para este crédito" : undefined)}
+            type="submit" disabled={loading || fondosInsuficientes || riesgoImpide || !!errorCapital || !!errorTasa}
+            title={errorCapital ?? errorTasa ?? (fondosInsuficientes ? "Saldo insuficiente en la cuenta de desembolso" : riesgoImpide ? "El cliente no califica para este crédito" : undefined)}
             className="px-5 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 disabled:opacity-50 transition-opacity"
           >
             {loading ? "Guardando..." : creditoId ? "Actualizar" : "Otorgar crédito"}

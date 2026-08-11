@@ -5,7 +5,12 @@ import { revisarPassword, type ContextoPassword } from "@/lib/domain";
 interface FieldProps {
   label: string;
   required?: boolean;
-  hint?: string;
+  /**
+   * Aclaración bajo el campo. Acepta nodos además de texto para poder mostrar ahí el ESTADO
+   * del parámetro (por ejemplo, si un límite está aplicándose o no): es el lugar donde el
+   * usuario ya busca la explicación, así que el estado se lee sin agregar otro elemento.
+   */
+  hint?: React.ReactNode;
   /** Mensaje de error de validación. Si está presente, reemplaza al hint y se ve en rojo. */
   error?: string;
   children: React.ReactNode;
