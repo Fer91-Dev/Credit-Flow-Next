@@ -63,6 +63,13 @@ function validarSimulador(s: any): string | null {
     if (s.plazos.length > 0 && !s.plazos.some((p: any) => p.activo)) {
       return "Tiene que quedar al menos un plazo activo: sin ninguno no se pueden otorgar créditos mensuales.";
     }
+    // Mismo criterio que la frecuencia por defecto: el simulador abre con este número, así que
+    // no puede apuntar a un plazo desactivado. La pantalla ya solo ofrece los activos, pero la
+    // barrera autoritativa es la API.
+    if (typeof s.plazoDefault === "number" && s.plazos.length > 0
+        && !s.plazos.some((p: any) => p.cuotas === s.plazoDefault && p.activo)) {
+      return "El plazo por defecto tiene que ser uno de los plazos activos.";
+    }
   }
   if (s.frecuencias !== undefined) {
     if (!Array.isArray(s.frecuencias) || s.frecuencias.some((f: any) =>
@@ -72,9 +79,24 @@ function validarSimulador(s: any): string | null {
     )) {
       return "simulador.frecuencias debe ser un array de { clave, label, dias>=1, periodosAnio>0, activo }";
     }
+    // Sin ninguna frecuencia activa no se puede otorgar NADA: es más grave que quedarse sin
+    // plazos, porque no queda ni un camino alternativo. Y se llega con tres clics.
+    if (s.frecuencias.length > 0 && !s.frecuencias.some((f: any) => f.activo)) {
+      return "Tiene que quedar al menos una frecuencia activa: sin ninguna no se puede otorgar ningún crédito.";
+    }
   }
-  if (s.frecuenciaDefault !== undefined && typeof s.frecuenciaDefault !== "string") {
-    return "simulador.frecuenciaDefault debe ser la clave de una frecuencia";
+  if (s.frecuenciaDefault !== undefined) {
+    if (typeof s.frecuenciaDefault !== "string") {
+      return "simulador.frecuenciaDefault debe ser la clave de una frecuencia";
+    }
+    // Tiene que apuntar a una frecuencia que exista Y esté activa: el simulador abre con ella,
+    // y si señala a una desactivada (o borrada) el formulario arranca en un valor que el
+    // servidor después rechaza. Se valida contra la lista que viene en el MISMO guardado,
+    // porque desactivar una frecuencia y cambiar el default es un solo movimiento.
+    const lista = Array.isArray(s.frecuencias) ? s.frecuencias : undefined;
+    if (lista && !lista.some((f: any) => f.clave === s.frecuenciaDefault && f.activo)) {
+      return "La frecuencia por defecto tiene que ser una de las frecuencias activas.";
+    }
   }
   if (s.redondeoCuota?.modo !== undefined && !REDONDEOS.includes(s.redondeoCuota.modo)) {
     return `simulador.redondeoCuota.modo debe ser uno de: ${REDONDEOS.join(", ")}`;

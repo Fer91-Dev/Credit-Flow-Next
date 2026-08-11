@@ -196,9 +196,23 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
   const frecSel = catalogoFrec.find(f => f.clave === formData.frecuencia);
   const cuotasFijas = frecSel?.cuotasFijas ?? null;
 
-  // Prellena monto, tasa y plazo desde los defaults del tenant.
+  // Prellena monto, tasa, plazo y frecuencia desde los defaults del tenant.
   useEffect(() => {
     if (creditoId || prefilled || !simCfg) return;
+    /**
+     * Frecuencia de arranque: la configurada como default y, si esa no está activa, la primera
+     * activa que haya.
+     *
+     * 🔴 El fallback no es cosmético. El formulario arrancaba con "mensual" escrito a mano, así
+     * que una financiera que desactivara mensual quedaba con el campo apuntando a una
+     * frecuencia que el desplegable ya no ofrecía: se veía en blanco, y el rechazo llegaba
+     * recién al otorgar ("la frecuencia mensual no está habilitada").
+     */
+    const clavesActivas = (simCfg.frecuencias ?? []).filter(f => f.activo).map(f => f.clave);
+    const frecInicial = clavesActivas.includes(simCfg.frecuenciaDefault)
+      ? simCfg.frecuenciaDefault
+      : clavesActivas[0];
+
     setFormData(p => ({
       ...p,
       monto_original: p.monto_original || (simCfg.montoDefault > 0 ? numeroAInput(simCfg.montoDefault) : ""),
@@ -206,6 +220,7 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
       // Solo si sigue activo: el admin puede desactivar un plazo y dejar el default apuntando
       // a un número que ya no se ofrece, y ahí el desplegable arrancaría en un valor inválido.
       plazo_meses: p.plazo_meses || (plazosActivos.includes(simCfg.plazoDefault) ? String(simCfg.plazoDefault) : ""),
+      frecuencia: frecInicial ?? p.frecuencia,
     }));
     setPrefilled(true);
   }, [simCfg, creditoId, prefilled]); // eslint-disable-line react-hooks/exhaustive-deps

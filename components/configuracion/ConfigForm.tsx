@@ -117,8 +117,10 @@ const AYUDA: Record<string, AyudaBloque> = {
     titulo: "Frecuencias de pago",
     texto: "Cada cuánto vence una cuota (mensual, semanal, etc.). Las base no se editan; podés crear las tuyas, como quincenal.",
     puntos: [
-      "Cuotas fijas: si una frecuencia siempre usa la misma cantidad de cuotas.",
-      "Frecuencia por defecto: la preseleccionada en el simulador.",
+      "Cuotas fijas: la frecuencia impone ese número y el campo Cuotas queda bloqueado en el simulador.",
+      "Frecuencia por defecto: la preseleccionada en el simulador. Tiene que estar activa.",
+      "Tiene que quedar al menos una activa, o no se puede otorgar ningún crédito.",
+      "Borrar una frecuencia no toca los créditos que ya la usan: cada crédito guarda su propia definición al otorgarse.",
     ],
   },
   redondeo: {
