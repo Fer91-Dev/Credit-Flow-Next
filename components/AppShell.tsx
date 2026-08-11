@@ -8,7 +8,6 @@ import {
   Wallet, Receipt, Percent, BarChart3,
   UserCog, Package, ArrowLeftRight, Truck,
   Settings, Gem, ScrollText, Building2,
-  PanelLeftClose, PanelLeftOpen,
   type LucideIcon,
 } from "lucide-react";
 import { useTheme } from "next-themes";
@@ -347,7 +346,7 @@ export function AppShell({ children, role, nombre, email, avatarUrl, financiera,
 
       {/* ── SIDEBAR DESKTOP (lg+) ─────────────────────────────────────────── */}
       <aside
-        className={`hidden lg:flex fixed inset-y-0 left-0 z-30 flex-col bg-sidebar/85 backdrop-blur-xl border-r border-edge transition-[width] duration-200 ease-out ${
+        className={`group/side hidden lg:flex fixed inset-y-0 left-0 z-30 flex-col bg-sidebar/85 backdrop-blur-xl border-r border-edge transition-[width] duration-200 ease-out ${
           colapsado ? "w-16" : "w-64"
         }`}
       >
@@ -365,26 +364,28 @@ export function AppShell({ children, role, nombre, email, avatarUrl, financiera,
           {renderNav(undefined, colapsado)}
         </nav>
 
-        {/* Contraer / expandir. Va al pie y no en la cabecera para no pelearle el lugar a la
-            marca, y para que su posición no cambie entre los dos estados. */}
-        <div className={`shrink-0 border-t border-edge py-2 ${colapsado ? "px-2" : "px-3"}`}>
-          <button
-            type="button"
-            onClick={alternarColapso}
-            aria-label={colapsado ? "Expandir el menú" : "Contraer el menú"}
-            aria-expanded={!colapsado}
-            onMouseEnter={(e) => { if (colapsado) mostrarRotulo("Expandir el menú", e.currentTarget); }}
-            onMouseLeave={() => { if (colapsado) mostrarRotulo("", null); }}
-            className={`flex w-full items-center rounded-lg py-2 text-sm font-normal text-muted-foreground transition-colors hover:bg-muted/40 hover:text-foreground ${
-              colapsado ? "justify-center px-0" : "gap-3 px-3"
-            }`}
-          >
-            {colapsado
-              ? <PanelLeftOpen className="h-[18px] w-[18px] shrink-0" strokeWidth={1.75} />
-              : <PanelLeftClose className="h-[18px] w-[18px] shrink-0" strokeWidth={1.75} />}
-            {!colapsado && <span className="truncate">Contraer</span>}
-          </button>
-        </div>
+        {/*
+          Aleta de contraer/expandir, montada SOBRE el borde derecho.
+
+          Estuvo un rato como botón al pie del menú y no funcionaba: con su separador arriba
+          se leía como una sección más del menú, y esa línea chocaba con la del footer. Acá no
+          ocupa lugar en la lista ni agrega bordes — aparece al pasar el mouse por el sidebar y
+          desaparece sola.
+        */}
+        <button
+          type="button"
+          onClick={alternarColapso}
+          aria-label={colapsado ? "Expandir el menú" : "Contraer el menú"}
+          aria-expanded={!colapsado}
+          title={colapsado ? "Expandir el menú" : "Contraer el menú"}
+          className="group/aleta absolute right-0 top-1/2 z-40 flex -translate-y-1/2 translate-x-1/2 items-center justify-center px-2 py-5 opacity-0 transition-opacity duration-150 group-hover/side:opacity-100 focus-visible:opacity-100"
+        >
+          {/* El área de clic es el padding del botón; esto es solo la marca visible. */}
+          <span
+            aria-hidden
+            className="h-14 w-[3px] rounded-full bg-border transition-colors duration-150 group-hover/aleta:bg-primary"
+          />
+        </button>
       </aside>
 
       {/*
