@@ -681,10 +681,20 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
                 <option value="otro">Otro</option>
               </Select>
             </Field>
+            {/*
+              El vendedor NO es obligatorio: el dueño de la financiera también vende, y el
+              motor ya acepta un crédito sin asignar — sale de la caja principal, que es la
+              suya. El asterisco lo obligaba a inventarse un vendedor o a crearse una segunda
+              cuenta para algo que el sistema ya soportaba.
+
+              🔴 Este campo no es una etiqueta: DEFINE DE QUÉ CAJA SALE LA PLATA. Elegir a una
+              vendedora descuenta de la caja de ella; dejarlo en "la financiera" descuenta de la
+              principal. Por eso la opción vacía se nombra en vez de dejarse en blanco.
+            */}
             {vendedores.length > 0 && (
-              <Field label="Vendedor" required>
-                <Select name="vendedor_id" value={formData.vendedor_id} onChange={set("vendedor_id")} required>
-                  <option value="">Seleccioná…</option>
+              <Field label="Vendedor" hint="Define de qué caja sale el desembolso">
+                <Select name="vendedor_id" value={formData.vendedor_id} onChange={set("vendedor_id")}>
+                  <option value="">La financiera (caja principal)</option>
                   {vendedores.map(v => (
                     <option key={v.id} value={v.id}>{v.nombre}</option>
                   ))}

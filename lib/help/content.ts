@@ -164,6 +164,7 @@ const HELP: Record<string, HelpDoc> = {
         kind: "definiciones",
         titulo: "Qué mira antes de otorgar",
         items: [
+          { term: "Vendedor", desc: "Define de qué caja sale el desembolso: elegir a alguien lo descuenta de SU caja; dejarlo en «La financiera» lo descuenta de la caja principal. No es obligatorio — el dueño también vende. Un vendedor no elige: el sistema le asigna su propia ficha." },
           { term: "Fondos de caja", desc: "No podés desembolsar más de lo que hay en la cuenta elegida de tu caja (admin: caja principal)." },
           { term: "Límite de otorgamiento", desc: "Un vendedor no puede superar su tope sin autorización de un admin." },
           { term: "Semáforo de riesgo", desc: "Evalúa capacidad de pago por sueldo, deuda vigente y —con plan Pro— bureaus. Puede bloquear o pedir autorización." },

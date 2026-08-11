@@ -159,7 +159,9 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
           .reduce((s, c) => s + c.saldo_pendiente, 0);
         return {
           vendedor_id: key === SIN_ASIGNAR ? null : key,
-          nombre: key === SIN_ASIGNAR ? "Sin asignar" : nombrePorId.get(key) ?? "—",
+          // "La financiera" y no "Sin asignar": desde que el dueño puede otorgar sin elegir
+          // vendedor, esa fila es su operación propia, no un dato que falta.
+          nombre: key === SIN_ASIGNAR ? "La financiera" : nombrePorId.get(key) ?? "—",
           // Otorgado: excluye anulados y refinanciaciones (no es plata nueva colocada).
           // Cartera y mora SÍ incluyen la refinanciación: es deuda viva real a cobrar.
           creditos_otorgados: lista.filter((c) => c.estado !== "anulado" && !c.es_refinanciacion).length,

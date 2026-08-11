@@ -87,7 +87,8 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     const r = recuperoCobranza(pagosRows.filter((p) => p.vendedorId === id));
     return {
       vendedor_id: id,
-      nombre: id ? (nombreDe.get(id) ?? "—") : "Sin asignar",
+      // Mismo criterio que el rendimiento por vendedor del Home: sin vendedor = la financiera.
+      nombre: id ? (nombreDe.get(id) ?? "—") : "La financiera",
       gestiones: e.gestiones,
       contactos: e.contactos,
       promesas: e.promesas,
