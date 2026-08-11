@@ -8,6 +8,7 @@ import {
   Wallet, Receipt, Percent, BarChart3,
   UserCog, Package, ArrowLeftRight, Truck,
   Settings, Gem, ScrollText, Building2,
+  PanelLeftClose, PanelLeftOpen,
   type LucideIcon,
 } from "lucide-react";
 import { useTheme } from "next-themes";
@@ -22,14 +23,14 @@ import type { Financiera } from "@/lib/swr";
 
 /** Marca co-branded: logo + nombre de la financiera, con "powered by CreditFlow". Fallback
  *  a la marca CreditFlow si la financiera no cargó nombre/logo. */
-function Brand({ financiera, size = "lg" }: { financiera?: Financiera | null; size?: "lg" | "sm" }) {
+function Brand({ financiera, size = "lg", soloIcono = false }: { financiera?: Financiera | null; size?: "lg" | "sm"; soloIcono?: boolean }) {
   const nombre = financiera?.nombre?.trim();
   const marca = nombre || "CreditFlow";
   const inicial = (nombre?.[0] ?? "C").toUpperCase();
   const box = size === "lg" ? "h-11 w-11 rounded-2xl text-xl" : "h-9 w-9 rounded-xl text-base";
   const txt = size === "lg" ? "text-base" : "text-sm";
   return (
-    <div className="flex min-w-0 items-center gap-3">
+    <div className={`flex min-w-0 items-center ${soloIcono ? "justify-center" : "gap-3"}`}>
       {financiera?.logo_url ? (
         <img src={financiera.logo_url} alt={marca} className={`${box} shrink-0 bg-card object-contain p-0.5 ring-1 ring-border`} />
       ) : (
@@ -37,10 +38,14 @@ function Brand({ financiera, size = "lg" }: { financiera?: Financiera | null; si
           {inicial}
         </div>
       )}
-      <div className="min-w-0 leading-tight">
-        <span className={`block truncate ${txt} font-bold tracking-tight text-foreground`}>{marca}</span>
-        {nombre && <span className="block text-[9px] uppercase tracking-wider text-muted-foreground/50">powered by CreditFlow</span>}
-      </div>
+      {/* Contraído: queda solo el isotipo. El nombre de la financiera no entra en 64px y
+          truncarlo a dos letras se lee peor que no ponerlo. */}
+      {!soloIcono && (
+        <div className="min-w-0 leading-tight">
+          <span className={`block truncate ${txt} font-bold tracking-tight text-foreground`}>{marca}</span>
+          {nombre && <span className="block text-[9px] uppercase tracking-wider text-muted-foreground/50">powered by CreditFlow</span>}
+        </div>
+      )}
     </div>
   );
 }
@@ -103,16 +108,31 @@ const NAV_GROUPS: NavGroup[] = [
   },
 ];
 
-function SideNavLink({ icon: Icon, label, to, isActive, onClick }: NavItem & { isActive: boolean; onClick?: () => void }) {
+/** Lo que el sidebar contraído le avisa al shell para dibujar el rótulo flotante. */
+type AvisoRotulo = (label: string, el: HTMLElement | null) => void;
+
+function SideNavLink({ icon: Icon, label, to, isActive, onClick, colapsado, onRotulo }: NavItem & {
+  isActive: boolean; onClick?: () => void; colapsado?: boolean; onRotulo?: AvisoRotulo;
+}) {
+  // Contraído no queda texto: el nombre tiene que llegar por el rótulo flotante y por el
+  // lector de pantalla, o el menú se vuelve un jeroglífico de íconos.
+  const avisar = (el: HTMLElement | null) => { if (colapsado) onRotulo?.(label, el); };
   return (
     <Link
       href={to}
       onClick={onClick}
       aria-current={isActive ? "page" : undefined}
-      className={`group relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-all duration-150 ease-out ${
+      aria-label={colapsado ? label : undefined}
+      onMouseEnter={(e) => avisar(e.currentTarget)}
+      onMouseLeave={() => avisar(null)}
+      onFocus={(e) => avisar(e.currentTarget)}
+      onBlur={() => avisar(null)}
+      className={`group relative flex items-center rounded-lg py-2 text-sm transition-all duration-150 ease-out ${
+        colapsado ? "justify-center px-0" : "gap-3 px-3"
+      } ${
         isActive
           ? "bg-primary/10 font-medium text-primary"
-          : "font-normal text-muted-foreground hover:translate-x-0.5 hover:bg-muted/40 hover:text-foreground"
+          : `font-normal text-muted-foreground hover:bg-muted/40 hover:text-foreground ${colapsado ? "" : "hover:translate-x-0.5"}`
       }`}
     >
       {/* Barra de acento del ítem activo: da un ancla vertical que el fondo solo no
@@ -131,27 +151,41 @@ function SideNavLink({ icon: Icon, label, to, isActive, onClick }: NavItem & { i
         }`}
         strokeWidth={1.75}
       />
-      <span className="truncate">{label}</span>
+      {!colapsado && <span className="truncate">{label}</span>}
     </Link>
   );
 }
 
 /** Grupo del sidebar: etiqueta separadora (no interactiva) + sus items. */
 function NavSection({
-  group, isActive, onNavigate,
+  group, isActive, onNavigate, colapsado, onRotulo, primero,
 }: {
   group: NavGroup;
   isActive: (to: string) => boolean;
   onNavigate?: () => void;
+  colapsado?: boolean;
+  onRotulo?: AvisoRotulo;
+  /** Primer grupo del menú: no lleva separador arriba (ya está el borde de la marca). */
+  primero?: boolean;
 }) {
   return (
     <div className="mt-5 first:mt-0">
-      <p className="mb-1 px-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/60">
-        {group.label}
-      </p>
+      {/* Contraído, la etiqueta del grupo se reemplaza por una línea: el agrupamiento se
+          sigue leyendo, que es para lo que estaba, y no hace falta abreviar la palabra. */}
+      {colapsado ? (
+        !primero && <div aria-hidden className="mb-2 mt-1 h-px bg-border/70" />
+      ) : (
+        <p className="mb-1 px-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/60">
+          {group.label}
+        </p>
+      )}
       <div className="space-y-0.5">
         {group.items.map((item) => (
-          <SideNavLink key={item.to} {...item} isActive={isActive(item.to)} onClick={onNavigate} />
+          <SideNavLink
+            key={item.to} {...item}
+            isActive={isActive(item.to)} onClick={onNavigate}
+            colapsado={colapsado} onRotulo={onRotulo}
+          />
         ))}
       </div>
     </div>
@@ -179,6 +213,40 @@ export function AppShell({ children, role, nombre, email, avatarUrl, financiera,
   // Ayuda contextual (mobile): mismo panel que en el header desktop (SystemControls).
   const [helpOpen, setHelpOpen] = useState(false);
   const helpDoc = getHelpDoc(pathname);
+
+  /**
+   * Sidebar contraído a una franja de íconos (solo desktop).
+   *
+   * Le devuelve 192px de ancho al contenido, que es donde se nota: el simulador tiene la
+   * tabla del plan de pagos con hasta ocho columnas de importes y venía apretada.
+   *
+   * Arranca en `false` y se lee de localStorage recién montado: si se leyera durante el
+   * render inicial, el HTML del servidor y el del cliente no coincidirían.
+   */
+  const [colapsado, setColapsado] = useState(false);
+  /**
+   * Rótulo flotante del modo contraído. Va en `position: fixed` a nivel del shell y no dentro
+   * del ítem, porque el `<nav>` scrollea y cualquier cosa que asome fuera de los 64px de la
+   * franja quedaría recortada.
+   */
+  const [rotulo, setRotulo] = useState<{ label: string; top: number } | null>(null);
+  const mostrarRotulo: AvisoRotulo = (label, el) => {
+    if (!el) { setRotulo(null); return; }
+    const r = el.getBoundingClientRect();
+    setRotulo({ label, top: r.top + r.height / 2 });
+  };
+
+  useEffect(() => {
+    try { setColapsado(localStorage.getItem("cf:navColapsado") === "1"); } catch { /* modo privado */ }
+  }, []);
+  const alternarColapso = () => {
+    setRotulo(null); // si no, queda el rótulo colgado al expandir
+    setColapsado((v) => {
+      const n = !v;
+      try { localStorage.setItem("cf:navColapsado", n ? "1" : "0"); } catch { /* modo privado */ }
+      return n;
+    });
+  };
 
   // Identidad del usuario: server-sourced (profiles vía requireAuth en el layout).
   // Fuente única de verdad — el perfil edita profiles.full_name y un router.refresh()
@@ -241,13 +309,17 @@ export function AppShell({ children, role, nombre, email, avatarUrl, financiera,
 
   // Navegación compartida desktop/mobile: grupos planos con etiqueta separadora.
   // `onNavigate` cierra el drawer en mobile (no-op en desktop).
-  const renderNav = (onNavigate?: () => void) => (
+  // `compacto` solo lo pide el sidebar de escritorio; el drawer mobile siempre va completo.
+  const renderNav = (onNavigate?: () => void, compacto = false) => (
     <>
       {esOwner ? (
         <NavSection
           group={{ label: "Plataforma", items: [OWNER_ITEM] }}
           isActive={isActive}
           onNavigate={onNavigate}
+          colapsado={compacto}
+          onRotulo={mostrarRotulo}
+          primero
         />
       ) : (
         <>
@@ -255,9 +327,15 @@ export function AppShell({ children, role, nombre, email, avatarUrl, financiera,
             group={{ label: "Principal", items: [HOME_ITEM] }}
             isActive={isActive}
             onNavigate={onNavigate}
+            colapsado={compacto}
+            onRotulo={mostrarRotulo}
+            primero
           />
           {groups.map((g) => (
-            <NavSection key={g.label} group={g} isActive={isActive} onNavigate={onNavigate} />
+            <NavSection
+              key={g.label} group={g} isActive={isActive} onNavigate={onNavigate}
+              colapsado={compacto} onRotulo={mostrarRotulo}
+            />
           ))}
         </>
       )}
@@ -268,21 +346,63 @@ export function AppShell({ children, role, nombre, email, avatarUrl, financiera,
     <div className="flex h-screen overflow-hidden text-foreground">
 
       {/* ── SIDEBAR DESKTOP (lg+) ─────────────────────────────────────────── */}
-      <aside className="hidden lg:flex fixed inset-y-0 left-0 z-30 w-64 flex-col bg-sidebar/85 backdrop-blur-xl border-r border-edge">
+      <aside
+        className={`hidden lg:flex fixed inset-y-0 left-0 z-30 flex-col bg-sidebar/85 backdrop-blur-xl border-r border-edge transition-[width] duration-200 ease-out ${
+          colapsado ? "w-16" : "w-64"
+        }`}
+      >
         {/* Branding — alto alineado con la línea inferior del PageHeader del contenido */}
-        <Link href="/" className="flex h-[76px] shrink-0 items-center border-b border-edge px-5 transition-opacity hover:opacity-80">
-          <Brand financiera={financiera} size="lg" />
+        <Link
+          href="/"
+          className={`flex h-[76px] shrink-0 items-center border-b border-edge transition-opacity hover:opacity-80 ${colapsado ? "justify-center px-0" : "px-5"}`}
+        >
+          <Brand financiera={financiera} size={colapsado ? "sm" : "lg"} soloIcono={colapsado} />
         </Link>
 
         {/* Nav — Home suelto + grupos colapsables. La identidad del usuario + logout viven ahora
             en el header (menú de usuario en SystemControls), no al pie del sidebar. */}
-        <nav className="flex-1 overflow-y-auto p-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {renderNav()}
+        <nav className={`flex-1 overflow-y-auto py-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${colapsado ? "px-2" : "px-3"}`}>
+          {renderNav(undefined, colapsado)}
         </nav>
+
+        {/* Contraer / expandir. Va al pie y no en la cabecera para no pelearle el lugar a la
+            marca, y para que su posición no cambie entre los dos estados. */}
+        <div className={`shrink-0 border-t border-edge py-2 ${colapsado ? "px-2" : "px-3"}`}>
+          <button
+            type="button"
+            onClick={alternarColapso}
+            aria-label={colapsado ? "Expandir el menú" : "Contraer el menú"}
+            aria-expanded={!colapsado}
+            onMouseEnter={(e) => { if (colapsado) mostrarRotulo("Expandir el menú", e.currentTarget); }}
+            onMouseLeave={() => { if (colapsado) mostrarRotulo("", null); }}
+            className={`flex w-full items-center rounded-lg py-2 text-sm font-normal text-muted-foreground transition-colors hover:bg-muted/40 hover:text-foreground ${
+              colapsado ? "justify-center px-0" : "gap-3 px-3"
+            }`}
+          >
+            {colapsado
+              ? <PanelLeftOpen className="h-[18px] w-[18px] shrink-0" strokeWidth={1.75} />
+              : <PanelLeftClose className="h-[18px] w-[18px] shrink-0" strokeWidth={1.75} />}
+            {!colapsado && <span className="truncate">Contraer</span>}
+          </button>
+        </div>
       </aside>
 
+      {/*
+        Rótulo del modo contraído. Fijo a nivel del shell: el `<nav>` scrollea, así que un
+        rótulo dentro del ítem quedaría recortado en el borde de la franja de 64px.
+      */}
+      {colapsado && rotulo && (
+        <div
+          role="tooltip"
+          className="pointer-events-none fixed left-[4.25rem] z-50 hidden -translate-y-1/2 whitespace-nowrap rounded-md border border-border bg-card px-2.5 py-1.5 text-xs font-medium text-foreground shadow-lg lg:block"
+          style={{ top: rotulo.top }}
+        >
+          {rotulo.label}
+        </div>
+      )}
+
       {/* ── COLUMNA DERECHA ───────────────────────────────────────────────── */}
-      <div className="flex flex-1 flex-col lg:pl-64 min-w-0 overflow-hidden">
+      <div className={`flex flex-1 flex-col min-w-0 overflow-hidden transition-[padding] duration-200 ease-out ${colapsado ? "lg:pl-16" : "lg:pl-64"}`}>
 
         {/* TOPBAR — solo mobile (en desktop los controles viven en el PageHeader) */}
         <header className="lg:hidden sticky top-0 z-40 flex h-14 items-center gap-3 border-b border-edge bg-sidebar/85 backdrop-blur-md px-4">
