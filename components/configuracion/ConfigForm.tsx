@@ -13,6 +13,7 @@ import { Emoji } from "@/components/ui/Emoji";
 import { Field, Input, Select, Textarea, SecretInput } from "@/components/ui/field";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useToast } from "@/components/ui/toast";
 import { formatFecha } from "@/lib/utils";
 
 const ordenLabel: Record<string, string> = {
@@ -245,6 +246,9 @@ export function ConfigForm() {
   const [savingKey, setSavingKey] = useState<string | null>(null);
   const [savedKey, setSavedKey] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
+  /** Bloque que rechazó el último guardado, para poder mostrarle el error AL LADO. */
+  const [errorKey, setErrorKey] = useState<string | null>(null);
+  const toast = useToast();
   const [activeTab, setActiveTab] = useState<"financiera" | "motor" | "simulador" | "comunicaciones" | "gamificacion" | "rentabilidad" | "riesgo" | "documentos" | "notificaciones" | "backups">("financiera");
 
   // Hidratar el form local cuando llega la config.
@@ -277,6 +281,7 @@ export function ConfigForm() {
   const save = async (key: string, patch: Partial<ConfiguracionFinanciera>) => {
     setSavingKey(key);
     setSaveError(null);
+    setErrorKey(null);
     setSavedKey(null);
     try {
       const res = await fetch("/api/configuracion", {
@@ -290,7 +295,16 @@ export function ConfigForm() {
       setSavedKey(key);
       setTimeout(() => setSavedKey(k => (k === key ? null : k)), 2500);
     } catch (e) {
-      setSaveError(e instanceof Error ? e.message : "Error al guardar");
+      const msg = e instanceof Error ? e.message : "Error al guardar";
+      setSaveError(msg);
+      setErrorKey(key);
+      /**
+       * Toast además del cartel: el cartel vive ARRIBA de la pestaña y esta pantalla es larga.
+       * Un rechazo al guardar Frecuencias —que está al fondo— dejaba el aviso fuera de
+       * pantalla, y el usuario se quedaba mirando unos interruptores apagados que en la base
+       * seguían encendidos. El toast es fijo: se ve estés donde estés.
+       */
+      toast.error(msg);
     } finally {
       setSavingKey(null);
     }
@@ -486,7 +500,7 @@ export function ConfigForm() {
             en dos grupos hace el trabajo que antes se le pedía al texto de ayuda.
           */}
           <Section title="Financiación del simulador" desc="Qué propone el simulador al abrirlo, y entre qué valores se puede otorgar." ayuda={AYUDA.financiacion}
-            onSave={() => saveSim("financiacion")} saving={savingKey === "financiacion"} saved={savedKey === "financiacion"} dirty={isDirty("financiacion")}>
+            onSave={() => saveSim("financiacion")} saving={savingKey === "financiacion"} saved={savedKey === "financiacion"} dirty={isDirty("financiacion")} error={errorKey === "financiacion" ? saveError ?? undefined : undefined}>
             <div className="space-y-5">
 
               <SubGrupo titulo="Lo que el simulador propone" nota="Solo son valores de arranque: el vendedor los puede cambiar">
@@ -542,7 +556,7 @@ export function ConfigForm() {
 
           {/* Simulador · Plazos */}
           <Section title="Plazos disponibles" desc="Cuotas que se ofrecen en el simulador. Tocá un plazo para activarlo o desactivarlo." ayuda={AYUDA.plazos}
-            onSave={() => saveSim("plazos")} saving={savingKey === "plazos"} saved={savedKey === "plazos"} dirty={isDirty("plazos")}>
+            onSave={() => saveSim("plazos")} saving={savingKey === "plazos"} saved={savedKey === "plazos"} dirty={isDirty("plazos")} error={errorKey === "plazos" ? saveError ?? undefined : undefined}>
             <PlazosEditor plazos={form.simulador.plazos} onChange={p => setSim("plazos", p)} />
             <div className="mt-4 max-w-xs">
               <Field label="Plazo por defecto" hint="Preseleccionado en el simulador">
@@ -558,7 +572,7 @@ export function ConfigForm() {
 
           {/* Simulador · Frecuencias */}
           <Section title="Frecuencias de pago" desc="Frecuencias ofrecidas en el simulador. Las base no se editan; podés agregar propias (ej. quincenal)." ayuda={AYUDA.frecuencias}
-            onSave={() => saveSim("frecuencias")} saving={savingKey === "frecuencias"} saved={savedKey === "frecuencias"} dirty={isDirty("frecuencias")}>
+            onSave={() => saveSim("frecuencias")} saving={savingKey === "frecuencias"} saved={savedKey === "frecuencias"} dirty={isDirty("frecuencias")} error={errorKey === "frecuencias" ? saveError ?? undefined : undefined}>
             <FrecuenciasEditor
               frecuencias={form.simulador.frecuencias}
               onChange={f => setSim("frecuencias", f)}
@@ -1596,9 +1610,11 @@ function EstadoParam({ on, siOn, siOff }: { on: boolean; siOn: string; siOff: st
   );
 }
 
-function Section({ title, desc, children, onSave, saving, saved, dirty, enabled, onToggle, ayuda }: {
+function Section({ title, desc, children, onSave, saving, saved, dirty, enabled, onToggle, ayuda, error }: {
   title: string; desc?: string; children: React.ReactNode;
   onSave?: () => void; saving?: boolean; saved?: boolean; dirty?: boolean;
+  /** Motivo por el que el servidor rechazó el último guardado DE ESTE bloque. */
+  error?: string;
   /** Si se pasa `onToggle`, la sección muestra un switch de encendido/apagado en la cabecera. */
   enabled?: boolean; onToggle?: (v: boolean) => void;
   /** Ayuda contextual del bloque (botón "?"). */
@@ -1622,6 +1638,17 @@ function Section({ title, desc, children, onSave, saving, saved, dirty, enabled,
         de cargos y de canales. Faltaba justamente acá: se podía apagar Mora y seguir
         escribiendo la tasa como si algo fuera a pasar con ese número.
       */}
+      {/*
+        El motivo del rechazo, pegado al bloque que lo causó. El cartel general vive arriba de
+        la pestaña y esta pantalla es larga: un rechazo en Frecuencias, que está al fondo,
+        dejaba el aviso fuera de pantalla y el usuario se quedaba mirando unos interruptores
+        apagados que en la base seguían encendidos.
+      */}
+      {error && (
+        <div className="mb-4 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          <span className="font-semibold">No se guardó.</span> {error}
+        </div>
+      )}
       {onToggle ? (
         <div className={enabled ? "" : "pointer-events-none select-none opacity-40"}>{children}</div>
       ) : children}
