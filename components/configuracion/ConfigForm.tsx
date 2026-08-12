@@ -128,7 +128,7 @@ const AYUDA: Record<string, AyudaBloque> = {
     titulo: "Redondeo de cuota",
     texto: "Ajusta la cuota FINAL (la que paga el cliente, ya con los cargos adentro) para que quede redonda.",
     puntos: [
-      "Ninguno: la cuota exacta que calcula el motor.",
+      "Apagado: la cuota exacta que calcula el motor, con centavos.",
       "Al entero: sin centavos.",
       "A múltiplo: redondea al múltiplo que definas (ej: de a $100).",
       "Redondea al más cercano: puede subir o bajar la cuota.",
@@ -253,12 +253,23 @@ export function ConfigForm() {
   /** Bloque que rechazó el último guardado, para poder mostrarle el error AL LADO. */
   const [errorKey, setErrorKey] = useState<string | null>(null);
   const toast = useToast();
+  /**
+   * Último modo de redondeo REAL elegido. El switch del bloque apaga poniendo
+   * `modo: "ninguno"`; sin esta memoria, volver a encenderlo perdería la elección anterior
+   * y habría que rearmarla desde cero.
+   */
+  const modoRedondeoPrevio = useRef<"entero" | "multiplo" | null>(null);
   const [activeTab, setActiveTab] = useState<"financiera" | "motor" | "simulador" | "comunicaciones" | "gamificacion" | "rentabilidad" | "riesgo" | "documentos" | "notificaciones" | "backups">("financiera");
 
   // Hidratar el form local cuando llega la config.
   useEffect(() => {
     if (config) setForm(config);
   }, [config]);
+
+  useEffect(() => {
+    const modo = form?.simulador.redondeoCuota.modo;
+    if (modo && modo !== "ninguno") modoRedondeoPrevio.current = modo;
+  }, [form?.simulador.redondeoCuota.modo]);
 
   const touch = () => setSavedKey(null);
   const set = <K extends keyof ConfiguracionFinanciera>(key: K, value: ConfiguracionFinanciera[K]) => {
@@ -594,23 +605,36 @@ export function ConfigForm() {
           </Section>
 
           {/* Simulador · Redondeo */}
+          {/*
+            El encendido/apagado va en el switch de la cabecera, como en Cargos, Mora y los
+            canales: "modo = ninguno" ES el estado apagado, y tenerlo escondido adentro de un
+            desplegable dejaba el bloque sin estado visible. El desplegable ahora solo elige
+            A QUÉ redondea. El campo Múltiplo se muestra únicamente cuando corresponde: antes
+            estaba siempre presente y deshabilitado, así que se intentaba escribir en él sin
+            haber cambiado el modo todavía.
+          */}
           <Section title="Redondeo de cuota" desc="Deja la cuota del cliente en un número redondo. La última absorbe la diferencia." ayuda={AYUDA.redondeo}
+            enabled={form.simulador.redondeoCuota.modo !== "ninguno"}
+            onToggle={v => setSim("redondeoCuota", {
+              ...form.simulador.redondeoCuota,
+              modo: v ? (modoRedondeoPrevio.current || "multiplo") : "ninguno",
+            })}
             onSave={() => saveSim("redondeo")} saving={savingKey === "redondeo"} saved={savedKey === "redondeo"} dirty={isDirty("redondeo")}
             error={errorKey === "redondeo" ? saveError ?? undefined : undefined}>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Field label="Redondeo de cuota">
-                <Select value={form.simulador.redondeoCuota.modo}
+              <Field label="Redondea">
+                <Select value={form.simulador.redondeoCuota.modo === "ninguno" ? (modoRedondeoPrevio.current || "multiplo") : form.simulador.redondeoCuota.modo}
                   onChange={e => setSim("redondeoCuota", { ...form.simulador.redondeoCuota, modo: e.target.value as SimuladorConfig["redondeoCuota"]["modo"] })}>
-                  <option value="ninguno">Ninguno (exacta)</option>
-                  <option value="entero">Al entero</option>
+                  <option value="entero">Al entero (sin centavos)</option>
                   <option value="multiplo">A múltiplo</option>
                 </Select>
               </Field>
-              <Field label="Múltiplo" hint="Solo si redondea a múltiplo">
-                <Input type="number" min="1" step="1" value={form.simulador.redondeoCuota.multiplo}
-                  disabled={form.simulador.redondeoCuota.modo !== "multiplo"}
-                  onChange={e => setSim("redondeoCuota", { ...form.simulador.redondeoCuota, multiplo: parseInt(e.target.value) || 1 })} />
-              </Field>
+              {form.simulador.redondeoCuota.modo === "multiplo" && (
+                <Field label="Múltiplo" hint="Ej: 100 deja las cuotas de a $100">
+                  <Input type="number" min="1" step="1" value={form.simulador.redondeoCuota.multiplo}
+                    onChange={e => setSim("redondeoCuota", { ...form.simulador.redondeoCuota, multiplo: parseInt(e.target.value) || 1 })} />
+                </Field>
+              )}
             </div>
           </Section>
 
