@@ -10,8 +10,9 @@
  *  - Días de gracia: tolerancia tras el vencimiento antes de que corra la mora
  *    (lo usa el cálculo de mora, no estas funciones de fecha).
  *
- * Solo aplica a frecuencia MENSUAL. Las demás frecuencias mantienen el avance
- * por períodos (`sumarPeriodos`). Trabaja en UTC para coincidir con `@db.Date`.
+ * El corte y el día fijo solo aplican a frecuencia MENSUAL; las demás mantienen el avance
+ * por períodos (`sumarPeriodos`). El ajuste por día no hábil, en cambio, aplica a TODAS
+ * (`ajustarADiasHabiles`). Trabaja en UTC para coincidir con `@db.Date`.
  */
 
 /** Configuración de cronograma (snapshot por crédito o config del tenant). */
@@ -58,6 +59,35 @@ export function siguienteDiaHabil(
   return d;
 }
 
+/**
+ * Corre a día hábil TODOS los vencimientos de un plan, en cascada.
+ *
+ * Antes este ajuste vivía solo dentro del cronograma de día fijo, así que un crédito sin día
+ * de vencimiento —o de cualquier frecuencia que no fuera mensual— podía vencer un domingo o
+ * un 25 de diciembre, y los feriados cargados en Configuración no movían nada.
+ *
+ * La cascada es lo que lo hace seguro en frecuencia diaria: correr el vencimiento del domingo
+ * al lunes lo dejaría pisado con el del lunes, así que si el corrimiento alcanza al anterior
+ * se sigue empujando. El resultado en diaria es un cronograma de días hábiles.
+ */
+export function ajustarADiasHabiles(
+  fechas: Date[],
+  cfg: { incluirSabado?: boolean; feriados?: string[] } = {}
+): Date[] {
+  const ajustadas: Date[] = [];
+  let previa: Date | null = null;
+  for (const fecha of fechas) {
+    let d = siguienteDiaHabil(fecha, cfg);
+    let guard = 0;
+    while (previa && d.getTime() <= previa.getTime() && guard++ < 366) {
+      d = siguienteDiaHabil(new Date(d.getTime() + 86_400_000), cfg);
+    }
+    ajustadas.push(d);
+    previa = d;
+  }
+  return ajustadas;
+}
+
 /** Fecha UTC con día clampeado al último día del mes (maneja desborde de mes). */
 function fechaUTC(anio: number, mes: number, dia: number): Date {
   const ultimoDia = new Date(Date.UTC(anio, mes + 1, 0)).getUTCDate();
@@ -91,8 +121,9 @@ export function calcularVencimientos(
 
   const fechas: Date[] = [];
   for (let n = 0; n < nCuotas; n++) {
-    const cruda = fechaUTC(anio, mes + mesesAdelante + n, diaVenc);
-    fechas.push(siguienteDiaHabil(cruda, cfg));
+    fechas.push(fechaUTC(anio, mes + mesesAdelante + n, diaVenc));
   }
+  // El corrimiento a día hábil no se hace acá: lo aplica `ajustarADiasHabiles` sobre el plan
+  // entero, para que sea el MISMO ajuste con o sin día de vencimiento fijo.
   return fechas;
 }

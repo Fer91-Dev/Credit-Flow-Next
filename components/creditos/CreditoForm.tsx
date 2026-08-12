@@ -14,7 +14,7 @@ import {
 import { refrescarNotificaciones, useConfiguracion, useMiPerfilVendedor, useMiCaja, useFinanciera, type CuentaCaja, type Producto } from "@/lib/swr";
 import { useConfirm } from "@/components/ui/confirm";
 import { useToast } from "@/components/ui/toast";
-import { formatNumero, parseMontoInput, maskMontoInput, numeroAInput, formatFecha, formatMonto, formatCreditoNumero, nombreCompleto } from "@/lib/utils";
+import { formatNumero, parseMontoInput, maskMontoInput, numeroAInput, formatFecha, formatMonto, formatCreditoNumero, nombreCompleto, hoyComercial } from "@/lib/utils";
 import { imprimirPlanPagos } from "@/lib/plan-print";
 import {
   construirPlanAmortizacion,
@@ -438,8 +438,28 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
     const n = parseInt(sim.plazo);
     if (monto <= 0 || isNaN(n) || n < 1) return null;
     try {
-      return construirPlanAmortizacion(monto, tasa, n, new Date(), convencion, sim.frecuencia,
-        simCfg ? { cargos: simCfg.cargos, redondeo: simCfg.redondeoCuota } : undefined,
+      /**
+       * Se simula con las MISMAS condiciones con las que el servidor va a armar el crédito:
+       * `hoyComercial()` (medianoche UTC del día calendario argentino, no `new Date()`, que
+       * de noche cae en otro día UTC) y el cronograma del tenant.
+       *
+       * El cronograma faltaba: con día de vencimiento fijo configurado, el plan que se le
+       * imprimía al cliente al firmar traía fechas que no eran las que iba a tener su
+       * crédito. Ahora la previsualización y el otorgamiento salen del mismo motor con la
+       * misma entrada.
+       */
+      return construirPlanAmortizacion(monto, tasa, n, hoyComercial(), convencion, sim.frecuencia,
+        simCfg ? {
+          cargos: simCfg.cargos,
+          redondeo: simCfg.redondeoCuota,
+          cronograma: {
+            diaCorte: simCfg.diaCorte,
+            diaVencimiento: simCfg.diaVencimientoFijo,
+            diasGracia: simCfg.diasGracia,
+            incluirSabado: simCfg.incluirSabadoNoHabil,
+            feriados: simCfg.feriados,
+          },
+        } : undefined,
         catalogoFrec);
     } catch {
       return null;

@@ -8,7 +8,7 @@
 import { round2, toCents, fromCents } from "./money";
 import type { ConvencionTasa, CargosConfig, RedondeoModo } from "./config";
 import { tasaPeriodicaSegunConvencion, sumarPeriodos, resolverFrecuencia, type Frecuencia, type FrecuenciaDef } from "./frequency";
-import { calcularVencimientos, type CronogramaConfig } from "./calendar";
+import { calcularVencimientos, ajustarADiasHabiles, type CronogramaConfig } from "./calendar";
 
 export interface CuotaPlan {
   nro: number;
@@ -165,12 +165,24 @@ export function construirPlanAmortizacion(
   const i = tasaPeriodicaSegunConvencion(tasaPct, convencion, frecuencia, catalogoFrecuencias);
   const cuota = cuotaMensualFrancesa(principalAmortizar, i, nCuotas);
 
-  // Cronograma de vencimientos (corte + día fijo). Solo mensual; si no, fechas por período.
+  /**
+   * Vencimientos del plan, en dos pasos:
+   *  1. La grilla: corte + día fijo si el crédito es mensual y está configurado; si no, un
+   *     período por cuota desde el desembolso.
+   *  2. El corrimiento a día hábil, que se aplica SIEMPRE y a todas las frecuencias.
+   *
+   * El paso 2 vivía adentro del paso 1, así que solo corría con día de vencimiento fijo y
+   * solo en mensual: un crédito semanal podía vencer un domingo o un 25 de diciembre, y los
+   * feriados cargados en Configuración no movían absolutamente nada.
+   */
   const esMensual = resolverFrecuencia(frecuencia, catalogoFrecuencias).esMensual ?? false;
-  const vencimientos =
-    opciones?.cronograma && esMensual
+  const grilla =
+    (opciones?.cronograma && esMensual
       ? calcularVencimientos(fechaInicio, nCuotas, opciones.cronograma)
-      : null;
+      : null)
+    ?? Array.from({ length: nCuotas }, (_, k) =>
+      sumarPeriodos(fechaInicio, k + 1, frecuencia, catalogoFrecuencias));
+  const vencimientos = ajustarADiasHabiles(grilla, opciones?.cronograma ?? {});
 
   const cuotaCents = toCents(cuota);
   let saldoCents = toCents(principalAmortizar);
@@ -259,7 +271,7 @@ export function construirPlanAmortizacion(
 
     cuotas.push({
       nro,
-      fecha: vencimientos ? vencimientos[nro - 1] : sumarPeriodos(fechaInicio, nro, frecuencia, catalogoFrecuencias),
+      fecha: vencimientos[nro - 1],
       saldoInicial,
       cuota: cuotaPura,
       interes,
