@@ -316,6 +316,11 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
       activa: configActual.moraActiva,
       tasaDiaria: configActual.tasaMoraDiaria,
     },
+    // Redondeo del día en que se firma. Los cargos y el cronograma ya se congelaban; el
+    // redondeo no, y la pantalla de amortización RECALCULA el plan con la config vigente:
+    // cambiar el redondeo hoy reescribía la tabla que se le muestra a un crédito viejo,
+    // mientras sus cuotas cobradas seguían siendo las originales.
+    redondeo: configActual.simulador.redondeoCuota,
   };
 
   // ─── Riesgo / originación (motor base, TODOS los planes) ───

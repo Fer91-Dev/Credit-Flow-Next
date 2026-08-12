@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Settings, Check, Loader2, Percent, Plus, X, MessageSquare, Phone, Mail, HelpCircle } from "lucide-react";
+import { Check, Loader2, Percent, Plus, X, MessageSquare, Phone, Mail, HelpCircle } from "lucide-react";
 import { useConfiguracion, type ConfiguracionFinanciera, type GamificacionConfig, type RentabilidadConfig, type RiesgoConfig, type CobranzaConfig, type NotificacionesConfig } from "@/lib/swr";
 import { FeatureGate } from "@/components/providers/FeaturesProvider";
 import { FinancieraForm } from "@/components/configuracion/FinancieraForm";
@@ -126,21 +126,23 @@ const AYUDA: Record<string, AyudaBloque> = {
   },
   redondeo: {
     titulo: "Redondeo de cuota",
-    texto: "Ajusta el valor final de la cuota para que quede redondo.",
+    texto: "Ajusta la cuota FINAL (la que paga el cliente, ya con los cargos adentro) para que quede redonda.",
     puntos: [
       "Ninguno: la cuota exacta que calcula el motor.",
       "Al entero: sin centavos.",
       "A múltiplo: redondea al múltiplo que definas (ej: de a $100).",
+      "Redondea al más cercano: puede subir o bajar la cuota.",
+      "La ÚLTIMA cuota absorbe la diferencia, así que no queda redonda.",
     ],
   },
   cronograma: {
     titulo: "Cronograma de cobranza",
     texto: "Reglas de fechas para créditos mensuales. Se congelan al otorgar el crédito: cambiarlas no afecta a los créditos ya dados.",
     puntos: [
+      "Día de vencimiento: día fijo del mes en que vence cada cuota. Es la llave del bloque: sin él, ni el corte ni los feriados se aplican.",
       "Día de corte: después de esa fecha, la 1ª cuota pasa al mes siguiente.",
-      "Día de vencimiento: día fijo del mes en que vence cada cuota.",
-      "Días de gracia: tolerancia antes de contar mora.",
       "Sábado no hábil y feriados: corren el vencimiento al próximo día hábil.",
+      "Días de gracia: tolerancia antes de contar mora. Este sí funciona solo, y en todas las frecuencias.",
     ],
   },
   cargos: {
@@ -590,8 +592,9 @@ export function ConfigForm() {
           </Section>
 
           {/* Simulador · Redondeo */}
-          <Section title="Redondeo de cuota" desc="Ajuste del valor de la cuota total." ayuda={AYUDA.redondeo}
-            onSave={() => saveSim("redondeo")} saving={savingKey === "redondeo"} saved={savedKey === "redondeo"} dirty={isDirty("redondeo")}>
+          <Section title="Redondeo de cuota" desc="Deja la cuota del cliente en un número redondo. La última absorbe la diferencia." ayuda={AYUDA.redondeo}
+            onSave={() => saveSim("redondeo")} saving={savingKey === "redondeo"} saved={savedKey === "redondeo"} dirty={isDirty("redondeo")}
+            error={errorKey === "redondeo" ? saveError ?? undefined : undefined}>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Field label="Redondeo de cuota">
                 <Select value={form.simulador.redondeoCuota.modo}
@@ -611,7 +614,8 @@ export function ConfigForm() {
 
           {/* Simulador · Cronograma de cobranza */}
           <Section title="Cronograma de cobranza" desc="Fecha de corte, día de vencimiento fijo, gracia y feriados. Solo aplica a créditos mensuales; se congela al otorgar." ayuda={AYUDA.cronograma}
-            onSave={() => saveSim("cronograma")} saving={savingKey === "cronograma"} saved={savedKey === "cronograma"} dirty={isDirty("cronograma")}>
+            onSave={() => saveSim("cronograma")} saving={savingKey === "cronograma"} saved={savedKey === "cronograma"} dirty={isDirty("cronograma")}
+            error={errorKey === "cronograma" ? saveError ?? undefined : undefined}>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               <Field label="Día de corte" hint="1–28. Vacío = sin corte (1ª cuota al mes siguiente)">
                 <Input type="number" min="1" max="28" step="1"
@@ -642,11 +646,26 @@ export function ConfigForm() {
               <FeriadosEditor feriados={form.simulador.feriados} onChange={f => setSim("feriados", f)} />
             </div>
 
-            {(form.simulador.diaCorte || form.simulador.diaVencimientoFijo) && (
-              <p className="mt-4 rounded-lg bg-muted/20 border border-border/60 px-3 py-2 text-[11px] text-muted-foreground/80">
-                Ejemplo: corte <b>{form.simulador.diaCorte ?? "—"}</b>, vencimiento <b>{form.simulador.diaVencimientoFijo ?? "—"}</b>. Un crédito otorgado después del corte pasa su 1ª cuota a la liquidación siguiente; si el vencimiento cae domingo/feriado, se corre al día hábil siguiente.
+            {/*
+              El día de corte, el sábado y los feriados cuelgan TODOS del día de vencimiento
+              fijo: sin él, `calcularVencimientos` devuelve null y las fechas salen del
+              cronograma clásico, que no mira ni corte ni días hábiles. Cargar feriados y no
+              ver ningún cambio en el simulador es el síntoma, y aparece lejos de acá.
+            */}
+            {!form.simulador.diaVencimientoFijo
+              && (form.simulador.diaCorte || form.simulador.incluirSabadoNoHabil || form.simulador.feriados.length > 0) ? (
+              <p className="mt-4 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-700 dark:text-amber-400">
+                Sin <b>día de vencimiento</b>, el resto de este bloque no se aplica: las cuotas vencen un período después del desembolso, sin corte y sin correrse por días no hábiles.
               </p>
-            )}
+            ) : form.simulador.diaVencimientoFijo ? (
+              <p className="mt-4 rounded-lg bg-muted/20 border border-border/60 px-3 py-2 text-[11px] text-muted-foreground/80">
+                Cada cuota vence el <b>{form.simulador.diaVencimientoFijo}</b> de cada mes
+                {form.simulador.diaCorte
+                  ? <> y un crédito otorgado después del <b>{form.simulador.diaCorte}</b> arranca a cobrarse un mes más tarde</>
+                  : <> (el primero, al mes siguiente del desembolso)</>}
+                . Si esa fecha cae domingo{form.simulador.incluirSabadoNoHabil ? ", sábado" : ""} o feriado, se corre al día hábil siguiente.
+              </p>
+            ) : null}
           </Section>
 
           {/* Simulador · Cargos */}

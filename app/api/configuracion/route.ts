@@ -33,7 +33,6 @@ function resolveMasked(incoming: Record<string, unknown>, existing: Record<strin
 }
 
 const CONVENCIONES = ["nominal_anual", "efectiva_anual", "mensual"];
-const BASES_MORA = ["cuota", "saldo"];
 const SISTEMAS = ["frances"];
 const REDONDEOS = ["ninguno", "entero", "multiplo"];
 const MODOS_CARGOS = ["integrado", "separado"];
@@ -43,7 +42,7 @@ function validarSimulador(s: any): string | null {
   if (s === undefined) return null;
   if (typeof s !== "object" || s === null) return "simulador debe ser un objeto";
 
-  const numFields = ["montoMin", "montoMax", "montoDefault", "tasaBase", "desfasajePrimeraCuotaDias"];
+  const numFields = ["montoMin", "montoMax", "montoDefault", "tasaBase"];
   for (const f of numFields) {
     if (s[f] !== undefined && (typeof s[f] !== "number" || s[f] < 0)) {
       return `simulador.${f} debe ser un número >= 0`;
@@ -101,10 +100,34 @@ function validarSimulador(s: any): string | null {
   if (s.redondeoCuota?.modo !== undefined && !REDONDEOS.includes(s.redondeoCuota.modo)) {
     return `simulador.redondeoCuota.modo debe ser uno de: ${REDONDEOS.join(", ")}`;
   }
-  if (s.diaVencimientoFijo !== undefined && s.diaVencimientoFijo !== null) {
-    if (typeof s.diaVencimientoFijo !== "number" || s.diaVencimientoFijo < 1 || s.diaVencimientoFijo > 28) {
-      return "simulador.diaVencimientoFijo debe ser null o un entero entre 1 y 28";
+  // El múltiplo solo pesa en modo "multiplo", pero se valida siempre: un 0 o un negativo
+  // guardado queda esperando a que alguien cambie el modo, y ahí el motor redondea a 1.
+  if (s.redondeoCuota?.multiplo !== undefined
+      && (typeof s.redondeoCuota.multiplo !== "number" || !Number.isInteger(s.redondeoCuota.multiplo) || s.redondeoCuota.multiplo < 1)) {
+    return "El múltiplo del redondeo tiene que ser un número entero de 1 o más.";
+  }
+  for (const campo of ["diaVencimientoFijo", "diaCorte"] as const) {
+    if (s[campo] !== undefined && s[campo] !== null) {
+      if (typeof s[campo] !== "number" || !Number.isInteger(s[campo]) || s[campo] < 1 || s[campo] > 28) {
+        return `simulador.${campo} debe ser null o un entero entre 1 y 28`;
+      }
     }
+  }
+  // El día de corte NO hace nada por sí solo: `calcularVencimientos` corta y devuelve el
+  // cronograma clásico si no hay día de vencimiento fijo. Guardarlo suelto deja a la
+  // financiera creyendo que las cuotas se corren al mes siguiente cuando no se corren.
+  if (s.diaCorte && !s.diaVencimientoFijo) {
+    return "El día de corte solo tiene efecto junto con un día de vencimiento fijo: sin él las cuotas vencen un período después del desembolso y el corte no se aplica.";
+  }
+  if (s.diasGracia !== undefined && (typeof s.diasGracia !== "number" || !Number.isInteger(s.diasGracia) || s.diasGracia < 0)) {
+    return "Los días de gracia tienen que ser un número entero de 0 o más.";
+  }
+  if (s.incluirSabadoNoHabil !== undefined && typeof s.incluirSabadoNoHabil !== "boolean") {
+    return "simulador.incluirSabadoNoHabil debe ser booleano";
+  }
+  if (s.feriados !== undefined
+      && (!Array.isArray(s.feriados) || s.feriados.some((f: any) => typeof f !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(f)))) {
+    return "Los feriados tienen que ser fechas con formato AAAA-MM-DD.";
   }
   if (s.cargos !== undefined && (typeof s.cargos !== "object" || s.cargos === null)) {
     return "simulador.cargos debe ser un objeto";

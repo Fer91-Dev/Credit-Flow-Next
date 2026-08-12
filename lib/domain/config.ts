@@ -111,9 +111,15 @@ export interface SimuladorConfig {
   redondeoCuota: { modo: RedondeoModo; multiplo: number };
   /** Cronograma: día fijo de vencimiento (1..28) o null (un período desde el inicio). */
   diaVencimientoFijo: number | null;
-  /** Desfasaje (días de gracia) de la primera cuota. */
-  desfasajePrimeraCuotaDias: number;
-  /** Día de corte (1..28) o null. Si se otorga después, la 1ª cuota pasa a la liquidación siguiente. */
+  /**
+   * Día de corte (1..28) o null. Si se otorga después, la 1ª cuota pasa a la liquidación siguiente.
+   * ⚠️ Solo tiene efecto junto con `diaVencimientoFijo` (ver `calcularVencimientos`).
+   *
+   * Acá vivía además `desfasajePrimeraCuotaDias`, que se guardaba y se validaba pero no
+   * llegaba a ningún motor ni tenía campo en la pantalla: nadie podía ponerlo y nada lo leía.
+   * Si alguna vez se quiere "primera cuota a los X días", hay que construirlo de verdad
+   * (decidir cómo convive con el día de vencimiento fijo), no reactivar este campo.
+   */
   diaCorte: number | null;
   /** Días de gracia: tolerancia tras el vencimiento antes de que corra la mora. */
   diasGracia: number;
@@ -182,7 +188,6 @@ export const SIMULADOR_DEFAULT: SimuladorConfig = {
   frecuenciaDefault: "mensual",
   redondeoCuota: { modo: "ninguno", multiplo: 100 },
   diaVencimientoFijo: null,
-  desfasajePrimeraCuotaDias: 0,
   diaCorte: null,
   diasGracia: 0,
   incluirSabadoNoHabil: false,
@@ -234,9 +239,14 @@ export function resolverSimulador(
 ): SimuladorConfig {
   if (!parcial) return structuredClone(SIMULADOR_DEFAULT);
   const c = parcial.cargos;
+  // `desfasajePrimeraCuotaDias` se sacó del tipo (no lo leía ningún motor y no tenía campo en
+  // la pantalla), pero quedó escrito en el JSON de los tenants que ya guardaron. Se descarta
+  // acá para que no siga viajando de guardado en guardado.
+  const { desfasajePrimeraCuotaDias: _legacy, ...limpio } =
+    parcial as Partial<SimuladorConfig> & { desfasajePrimeraCuotaDias?: number };
   return {
     ...SIMULADOR_DEFAULT,
-    ...parcial,
+    ...limpio,
     plazos:
       Array.isArray(parcial.plazos) && parcial.plazos.length > 0
         ? parcial.plazos

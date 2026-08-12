@@ -41,7 +41,9 @@ export interface PlanAmortizacion {
   totalSeguro: number;
   totalGastos: number;
   totalCargos: number; // iva + seguro + gastos + (comisión si NO financiada)
-  totalConCargos: number; // total efectivo que paga el cliente
+  /** Suma de la columna que paga el cliente (las `cuotaTotal` YA redondeadas). Sin comisión upfront. */
+  totalCuotas: number;
+  totalConCargos: number; // total efectivo que paga el cliente = totalCuotas + comisión upfront
   cuotas: CuotaPlan[];
 }
 
@@ -59,6 +61,18 @@ function aplicarRedondeo(valor: number, redondeo?: OpcionesPlan["redondeo"]): nu
   if (redondeo.modo === "entero") return Math.round(valor);
   const m = redondeo.multiplo && redondeo.multiplo > 0 ? redondeo.multiplo : 1;
   return Math.round(valor / m) * m;
+}
+
+/**
+ * Redondeo forzado HACIA ARRIBA. Válvula de escape para el caso en que redondear al más
+ * cercano deja la cuota sin capital (o en cero): con múltiplo $10.000 sobre una cuota de
+ * $4.000 el redondeo al más cercano da $0 y el crédito no amortizaría nunca.
+ */
+function redondearHaciaArriba(valor: number, redondeo?: OpcionesPlan["redondeo"]): number {
+  if (!redondeo || redondeo.modo === "ninguno") return round2(valor);
+  if (redondeo.modo === "entero") return Math.ceil(valor);
+  const m = redondeo.multiplo && redondeo.multiplo > 0 ? redondeo.multiplo : 1;
+  return Math.ceil(valor / m) * m;
 }
 
 /**
@@ -169,25 +183,17 @@ export function construirPlanAmortizacion(
   for (let nro = 1; nro <= nCuotas; nro++) {
     const saldoInicialCents = saldoCents;
     const interesCents = Math.round(saldoCents * i);
-    let capitalCents = cuotaCents - interesCents;
-    let pagoCents = cuotaCents;
-
-    // Última cuota (o si el capital excede el saldo): liquidar el saldo exacto.
-    if (nro === nCuotas || capitalCents >= saldoCents) {
-      capitalCents = saldoCents;
-      pagoCents = capitalCents + interesCents;
-    }
-
-    saldoCents -= capitalCents;
-    totalInteresCents += interesCents;
-    totalPagadoCents += pagoCents;
-
-    const interes = fromCents(interesCents);
-    const capital = fromCents(capitalCents);
-    const cuotaPura = fromCents(pagoCents);
     const saldoInicial = fromCents(saldoInicialCents);
+    const interes = fromCents(interesCents);
 
-    // Cargos del período (sobre la cuota pura ya calculada).
+    // La última cuota —o cualquiera cuyo capital ya se pase del saldo— liquida el saldo
+    // exacto y NO se redondea: es la cuota de ajuste del plan.
+    const capitalDeTabla = cuotaCents - interesCents;
+    const esAjuste = nro === nCuotas || capitalDeTabla >= saldoCents;
+
+    // Cargos del período, sobre la cuota ANTES de redondear: son un % del interés, del
+    // saldo o de la cuota de tabla, no del importe redondeado.
+    const cuotaPuraTeorica = fromCents(esAjuste ? saldoCents + interesCents : cuotaCents);
     let iva = 0, seguro = 0, gastos = 0;
     if (cargos?.iva?.activo) iva = round2(interes * cargos.iva.tasa);
     if (cargos?.seguro?.activo) {
@@ -200,9 +206,52 @@ export function construirPlanAmortizacion(
     }
     if (cargos?.gastosAdministrativos?.activo) {
       const g = cargos.gastosAdministrativos;
-      gastos = round2(g.modo === "porcentaje" ? cuotaPura * g.valor : g.valor);
+      gastos = round2(g.modo === "porcentaje" ? cuotaPuraTeorica * g.valor : g.valor);
     }
-    const cuotaTotal = aplicarRedondeo(cuotaPura + iva + seguro + gastos, opciones?.redondeo);
+    const cargosCents = toCents(round2(iva + seguro + gastos));
+
+    /**
+     * 🔴 El redondeo se aplica a la cuota total y el CAPITAL absorbe la diferencia; no se
+     * redondea el importe de la última columna dejando los componentes en su valor exacto.
+     *
+     * Si los componentes no suman la cuota que figura en el plan, el cliente puede pagar
+     * exactamente lo que dice su cronograma y la cuota igual queda debiendo: la imputación
+     * de pagos trabaja por componente (mora → interés → cargos → capital), así que con un
+     * redondeo hacia abajo el capital nunca se salda, la cuota queda "parcial" para siempre
+     * y arranca a devengar mora. Verificado: múltiplo de $1.000 sobre una cuota de
+     * $15.332,54 dejaba $332,54 impagables en CADA cuota.
+     *
+     * Absorbiéndolo en el capital, el plan se recompone solo: se amortiza un poco más (o un
+     * poco menos) por período y la cuota de ajuste queda con la diferencia.
+     */
+    let capitalCents: number;
+    let cuotaTotalCents: number;
+    if (esAjuste) {
+      capitalCents = saldoCents;
+      cuotaTotalCents = capitalCents + interesCents + cargosCents;
+    } else {
+      cuotaTotalCents = toCents(aplicarRedondeo(fromCents(cuotaCents + cargosCents), opciones?.redondeo));
+      // Un múltiplo más grande que la propia cuota la redondearía a cero y el crédito no
+      // amortizaría nunca: en ese caso se redondea hacia arriba.
+      if (cuotaTotalCents - cargosCents - interesCents <= 0) {
+        cuotaTotalCents = toCents(redondearHaciaArriba(fromCents(cuotaCents + cargosCents), opciones?.redondeo));
+      }
+      capitalCents = cuotaTotalCents - cargosCents - interesCents;
+      // Redondear para arriba puede empujar el capital más allá del saldo: liquidar y cerrar.
+      if (capitalCents >= saldoCents) {
+        capitalCents = saldoCents;
+        cuotaTotalCents = capitalCents + interesCents + cargosCents;
+      }
+    }
+    const pagoCents = capitalCents + interesCents;
+
+    saldoCents -= capitalCents;
+    totalInteresCents += interesCents;
+    totalPagadoCents += pagoCents;
+
+    const capital = fromCents(capitalCents);
+    const cuotaPura = fromCents(pagoCents);
+    const cuotaTotal = fromCents(cuotaTotalCents);
 
     totalIva = round2(totalIva + iva);
     totalSeguro = round2(totalSeguro + seguro);
@@ -226,7 +275,15 @@ export function construirPlanAmortizacion(
   // Comisión NO financiada = costo extra cobrado al inicio (no entra en las cuotas).
   const comisionUpfront = comision > 0 && !comisionFinanciada ? comision : 0;
   const totalCargos = round2(totalIva + totalSeguro + totalGastos + comisionUpfront);
-  const totalConCargos = round2(totalPagado + totalIva + totalSeguro + totalGastos + comisionUpfront);
+  /**
+   * 🔴 El total se suma de las cuotas REDONDEADAS, no de sus componentes. Sumar
+   * `cuotaPura + iva + seguro + gastos` devuelve el importe exacto que el motor calculó
+   * ANTES del redondeo, y con redondeo activo eso no coincide con ninguna de las cuotas que
+   * figuran en el plan (con múltiplo de $1.000 se separaba $177 en un crédito de 12 cuotas).
+   * El cliente paga las cuotas que ve; la diferencia de redondeo es de la financiera.
+   */
+  const totalCuotas = round2(cuotas.reduce((s, c) => s + c.cuotaTotal, 0));
+  const totalConCargos = round2(totalCuotas + comisionUpfront);
 
   return {
     cuota,
@@ -240,6 +297,7 @@ export function construirPlanAmortizacion(
     totalSeguro,
     totalGastos,
     totalCargos,
+    totalCuotas,
     totalConCargos,
     cuotas,
   };

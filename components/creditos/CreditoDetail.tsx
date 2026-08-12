@@ -152,7 +152,11 @@ export function CreditoDetail({ credito, role, onRefinanciar }: { credito: Credi
         interes: a.resumen.total_intereses,
         capital: a.parametros.monto,
         cargos: a.resumen.total_iva + a.resumen.total_seguro + a.resumen.total_gastos,
-        cuotaTotal: a.resumen.total_con_cargos,
+        // Es el pie de la COLUMNA de cuotas: no lleva la comisión de otorgamiento, que va en
+        // su propia línea abajo. Acá iba `total_con_cargos`, que ya la incluye, así que el
+        // "Total a pagar" del PDF reimpreso la contaba dos veces y no coincidía con el que
+        // se le había entregado al cliente al otorgar.
+        cuotaTotal: a.resumen.total_cuotas,
       },
       // Solo si NO está financiada: financiada = ya viene adentro de las cuotas de la tabla.
       comisionUpfront: a.resumen.comision > 0 && !a.resumen.comision_financiada ? a.resumen.comision : 0,

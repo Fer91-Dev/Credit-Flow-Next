@@ -490,6 +490,9 @@ export interface Amortizacion {
     total_seguro: number;
     total_gastos: number;
     total_cargos: number;
+    /** Suma de la columna del cliente (cuotas redondeadas), SIN la comisión que paga al firmar. */
+    total_cuotas: number;
+    /** Todo lo que desembolsa el cliente: `total_cuotas` + comisión de otorgamiento no financiada. */
     total_con_cargos: number;
   };
   cuotas: CuotaAmortizacion[];

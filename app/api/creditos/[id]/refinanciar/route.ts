@@ -155,6 +155,15 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
     diasGracia: config.simulador.diasGracia,
     incluirSabado: config.simulador.incluirSabadoNoHabil,
     feriados: config.simulador.feriados,
+    // Mismo snapshot que en el otorgamiento: el crédito nuevo de una refinanciación es un
+    // crédito como cualquier otro y tiene que congelar las mismas condiciones. Faltaban las
+    // dos: sin `mora` los punitorios se recalculaban con la tasa del día en que alguien los
+    // mirara, y sin `redondeo` la tabla de amortización se reescribía al cambiar la config.
+    mora: {
+      activa: config.moraActiva,
+      tasaDiaria: config.tasaMoraDiaria,
+    },
+    redondeo: config.simulador.redondeoCuota,
   };
   const fechaInicio = body.fecha_inicio ? new Date(body.fecha_inicio) : hoyComercial();
 

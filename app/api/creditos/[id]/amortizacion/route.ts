@@ -14,6 +14,7 @@ import {
   resolverCargos,
   type CronogramaConfig,
   type CargosConfig,
+  type RedondeoModo,
 } from "@/lib/domain";
 import { getConfiguracion } from "@/lib/config";
 import type { NextRequest } from "next/server";
@@ -72,7 +73,11 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
       // Snapshot del crédito (puede ser PARCIAL en créditos viejos/seed) normalizado sobre la
       // config vigente → todos los sub-cargos existen y el motor no revienta con `.activo`.
       cargos: resolverCargos(credito.cargos as Partial<CargosConfig> | null, config.simulador.cargos),
-      redondeo: config.simulador.redondeoCuota,
+      // Redondeo CONGELADO al otorgar (créditos viejos no lo tienen → config vigente). Sin
+      // esto, cambiar el redondeo reescribía la tabla que se muestra de un crédito ya dado,
+      // y esa tabla dejaba de coincidir con las cuotas que se le están cobrando.
+      redondeo: (credito.cronograma as { redondeo?: { modo: RedondeoModo; multiplo: number } } | null)?.redondeo
+        ?? config.simulador.redondeoCuota,
       // Cronograma: snapshot del crédito si existe; si no, config vigente (mensual).
       cronograma: (credito.cronograma as CronogramaConfig | null) ?? {
         diaCorte: config.simulador.diaCorte,
@@ -115,6 +120,9 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
       total_seguro: plan.totalSeguro,
       total_gastos: plan.totalGastos,
       total_cargos: plan.totalCargos,
+      // Suma de la columna que paga el cliente (cuotas ya redondeadas), SIN la comisión que
+      // abona al firmar. `total_con_cargos` sí la incluye: no son intercambiables.
+      total_cuotas: plan.totalCuotas,
       total_con_cargos: plan.totalConCargos,
     },
     cuotas: plan.cuotas,

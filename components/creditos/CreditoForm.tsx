@@ -554,8 +554,8 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
   const montoHint = simCfg && (simCfg.montoMin > 0 || simCfg.montoMax > 0)
     ? `Permitido: $${n0(simCfg.montoMin)}${simCfg.montoMax > 0 ? ` – $${n0(simCfg.montoMax)}` : " o más"}`
     : "Aceptá miles y decimales: 350.000,52";
-  // Total de cuotas (con cargos) para la vista cliente.
-  const totalCuotasCliente = plan ? plan.cuotas.reduce((s, r) => s + r.cuotaTotal, 0) : 0;
+  // Total de cuotas (con cargos, ya redondeadas) para la vista cliente.
+  const totalCuotasCliente = plan ? plan.totalCuotas : 0;
   /** Comisión que el cliente paga AL FIRMAR (0 si no hay, o si está financiada). */
   const comisionUpfront = plan && plan.comision > 0 && !plan.comisionFinanciada ? plan.comision : 0;
   /**
@@ -566,8 +566,8 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
    * coincidían: los que sumaban la columna de cuotas se olvidaban de la comisión, así que el
    * documento del cliente informaba menos de lo que realmente iba a pagar.
    *
-   * Se parte del total de las CUOTAS y no de `plan.totalConCargos` porque ese suma los cargos
-   * sin el redondeo aplicado: si el tenant redondea la cuota, los dos no dan igual.
+   * Es exactamente `plan.totalConCargos` (el motor lo arma con las cuotas ya redondeadas);
+   * se deja escrito acá porque la pantalla también muestra las dos partes por separado.
    */
   const totalAPagar = totalCuotasCliente + comisionUpfront;
   /**
