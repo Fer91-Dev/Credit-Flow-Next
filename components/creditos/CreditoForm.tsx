@@ -576,6 +576,12 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
     : "Aceptá miles y decimales: 350.000,52";
   // Total de cuotas (con cargos, ya redondeadas) para la vista cliente.
   const totalCuotasCliente = plan ? plan.totalCuotas : 0;
+  /**
+   * Si todas las cuotas valen lo mismo. La de ajuste siempre difiere en centavos, pero con el
+   * redondeo activo puede separarse por miles: ahí llamarla "cuota fija" es mentir.
+   */
+  const cuotaPareja = !plan || plan.cuotas.length < 2
+    || Math.abs(plan.cuotas[plan.cuotas.length - 1].cuotaTotal - plan.cuotas[0].cuotaTotal) <= 1;
   /** Comisión que el cliente paga AL FIRMAR (0 si no hay, o si está financiada). */
   const comisionUpfront = plan && plan.comision > 0 && !plan.comisionFinanciada ? plan.comision : 0;
   /**
@@ -1417,10 +1423,19 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
                   <Emoji name="chart-increasing" className="h-4 w-4" />
                 </div>
                 <div>
+                  {/*
+                    🔴 Va SIEMPRE `cuotaTotal`: es el número que el operador le dice en voz alta
+                    al cliente, así que tiene que ser el que el cliente paga. Cuando no había
+                    cargos mostraba `plan.cuota` (la cuota teórica del sistema francés), y con
+                    el redondeo activo esa no la paga nadie: el plan decía $74.000 y acá arriba
+                    figuraba $74.340,89.
+                    Y no se llama "fija" si la última cuota se separa de las demás.
+                  */}
                   <p className="text-[10px] text-muted-foreground/80 leading-tight">
-                    {lbl.cuotaSingular.charAt(0).toUpperCase() + lbl.cuotaSingular.slice(1)} {hayCargos ? "c/cargos" : "fija"} · Sist. Francés
+                    {lbl.cuotaSingular.charAt(0).toUpperCase() + lbl.cuotaSingular.slice(1)}
+                    {hayCargos ? " c/cargos" : cuotaPareja ? " fija" : ""} · Sist. Francés
                   </p>
-                  <p className="text-xl font-bold text-foreground font-mono leading-tight">${n2(hayCargos ? plan.cuotaTotal : plan.cuota)}</p>
+                  <p className="text-xl font-bold text-foreground font-mono leading-tight">${n2(plan.cuotaTotal)}</p>
                 </div>
               </div>
 
@@ -1499,7 +1514,7 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
           {clienteSel?.documento && <DetalleRow label="DNI" value={clienteSel.documento} mono />}
           <div className="border-t border-border" />
           <DetalleRow label="Capital" value={formatMonto(montoNum)} mono strong />
-          {plan && <DetalleRow label={`Cuota (${lbl.cuotaSingular})`} value={formatMonto(hayCargos ? plan.cuotaTotal : plan.cuota)} mono />}
+          {plan && <DetalleRow label={`Cuota (${lbl.cuotaSingular})`} value={formatMonto(plan.cuotaTotal)} mono />}
           {plan && <DetalleRow label="Plan" value={`${plan.cuotas.length} ${lbl.cuotaPlural}`} />}
           {plan && <DetalleRow label="Total a pagar" value={formatMonto(hayCargos ? totalAPagar : plan.totalPagado)} mono strong />}
         </div>

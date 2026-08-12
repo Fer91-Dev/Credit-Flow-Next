@@ -208,8 +208,10 @@ export function CreditoDetail({ credito, role, onRefinanciar }: { credito: Credi
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <Stat icon="money-bag" label="Saldo pendiente" accent={credito.saldo_pendiente > 0 ? "warning" : "success"}
             value={`$${n0(credito.saldo_pendiente)}`} />
+          {/* Lo que el cliente paga por período: `cuota_total`, no `cuota_mensual`, que es la
+              cuota PURA del sistema francés — sin cargos y sin el redondeo aplicado. */}
           <Stat icon="chart-increasing" label="Cuota mensual" accent="primary"
-            value={amortizacion ? `$${n0(amortizacion.resumen.cuota_mensual)}` : "—"} />
+            value={amortizacion ? `$${n0(amortizacion.resumen.cuota_total)}` : "—"} />
           <Stat icon="chart-increasing" label="Total cobrado" accent="success"
             value={`$${n0(totalCobrado)}`} sub={`${pagos.length} pago${pagos.length !== 1 ? "s" : ""}`} />
           <Stat

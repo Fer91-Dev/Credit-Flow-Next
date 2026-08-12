@@ -133,7 +133,9 @@ function TermCard({ titulo, sub, credito, amort, loading, error, accent, onOpen 
             <Line label="Costo total (C.F.T.)" value={`${n0(amort.parametros.cft_anual * 100)}%`} />
           )}
           <Line label="Cuotas" value={`${amort.parametros.n_cuotas} × ${amort.parametros.frecuencia_label.adjetivo}`} />
-          <Line label="Cuota" value={`$${n0(amort.resumen.cuota_mensual)}`} strong />
+          {/* `cuota_total` = lo que paga el cliente. `cuota_mensual` es la cuota pura, sin
+              cargos ni redondeo: comparar dos ofertas por ese número no compara nada. */}
+          <Line label="Cuota" value={`$${n0(amort.resumen.cuota_total)}`} strong />
           <Line label="Interés total" value={`$${n0(amort.resumen.total_intereses)}`} muted />
           <Line label="Total a pagar" value={`$${n0(amort.resumen.total_con_cargos)}`} strong />
         </dl>
@@ -161,8 +163,8 @@ function Deltas({ a, b }: { a: Amortizacion; b: Amortizacion }) {
     {
       label: "Cuota",
       nota: `${a.parametros.n_cuotas} cuota${a.parametros.n_cuotas === 1 ? "" : "s"} → ${b.parametros.n_cuotas}`,
-      orig: a.resumen.cuota_mensual,
-      refi: b.resumen.cuota_mensual,
+      orig: a.resumen.cuota_total,
+      refi: b.resumen.cuota_total,
     },
     {
       label: "Total a pagar",
