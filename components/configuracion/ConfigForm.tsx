@@ -1231,6 +1231,7 @@ export function ConfigForm() {
             ayuda={AYUDA.riesgo}
             onSave={() => save("riesgo", { riesgoConfig: riesgo } as Partial<ConfiguracionFinanciera>)}
             saving={savingKey === "riesgo"} saved={savedKey === "riesgo"} dirty={isDirty("riesgo")}
+            error={errorKey === "riesgo" ? saveError ?? undefined : undefined}
           >
             <div className="space-y-5">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

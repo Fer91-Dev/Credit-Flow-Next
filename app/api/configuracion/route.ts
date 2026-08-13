@@ -367,6 +367,27 @@ export const PUT = withErrorHandler(async (req: NextRequest) => {
     if (p.bloquearConCuotasVencidas !== undefined && typeof p.bloquearConCuotasVencidas !== "boolean") {
       return errorResponse("politica.bloquearConCuotasVencidas debe ser booleano", "INVALID_INPUT", 400);
     }
+    /**
+     * Los cuatro que faltaban. Ninguno abría un agujero —el motor los guarda con `> 0` o con
+     * `!= null`, así que un valor sin sentido apaga la regla en vez de invertirla— pero un
+     * número guardado que no hace nada es de la misma familia que el resto de esta auditoría:
+     * la pantalla lo muestra configurado y el motor lo ignora.
+     */
+    if (p.ingresoDisponibleMinPct !== undefined
+        && (typeof p.ingresoDisponibleMinPct !== "number" || p.ingresoDisponibleMinPct < 0 || p.ingresoDisponibleMinPct > 100)) {
+      return errorResponse("El piso de ingreso disponible tiene que estar entre 0% y 100% (0 = regla apagada).", "INVALID_INPUT", 400);
+    }
+    if (p.limiteBaseSinBureau !== undefined
+        && (typeof p.limiteBaseSinBureau !== "number" || p.limiteBaseSinBureau < 0)) {
+      return errorResponse("El límite sin bureau no puede ser negativo (0 = sin tope propio).", "INVALID_INPUT", 400);
+    }
+    if (p.scoreExternoMin !== undefined && p.scoreExternoMin !== null
+        && (typeof p.scoreExternoMin !== "number" || p.scoreExternoMin < 0 || p.scoreExternoMin > 1000)) {
+      return errorResponse("El score externo mínimo tiene que estar entre 0 y 1000, o vacío para no exigirlo.", "INVALID_INPUT", 400);
+    }
+    if (p.rechazaConChequesRechazados !== undefined && typeof p.rechazaConChequesRechazados !== "boolean") {
+      return errorResponse("politica.rechazaConChequesRechazados debe ser booleano", "INVALID_INPUT", 400);
+    }
     // El token del bureau es secreto: si llega el sentinel, se preserva el valor guardado.
     if (body.riesgoConfig?.bureau?.token === MASKED) {
       const existente = await getRiesgoConfig(tenantId);
