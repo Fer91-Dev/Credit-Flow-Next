@@ -129,9 +129,85 @@ function validarSimulador(s: any): string | null {
       && (!Array.isArray(s.feriados) || s.feriados.some((f: any) => typeof f !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(f)))) {
     return "Los feriados tienen que ser fechas con formato AAAA-MM-DD.";
   }
-  if (s.cargos !== undefined && (typeof s.cargos !== "object" || s.cargos === null)) {
-    return "simulador.cargos debe ser un objeto";
+  if (s.cargos !== undefined) {
+    const err = validarCargos(s.cargos);
+    if (err) return err;
   }
+  return null;
+}
+
+/**
+ * Valida los cuatro cargos. Antes acá solo se comprobaba que `cargos` fuera un objeto: ni los
+ * modos, ni los valores, ni la tasa de IVA.
+ *
+ * 🔴 Lo peligroso era el modo desconocido. `construirPlanAmortizacion` elige la base del
+ * seguro con una cadena de ternarios que TERMINA en "fijo", así que un modo mal escrito no
+ * fallaba: cobraba el valor como monto fijo por cuota, en silencio. Con `{ modo: "inventado",
+ * valor: 999 }` el motor le sumaba $999 a cada cuota sin que nada lo delatara.
+ *
+ * Ojo con las convenciones, que NO son iguales entre cargos y así están guardadas:
+ *  · comisión en modo porcentaje guarda el PORCENTAJE (5 = 5%)
+ *  · seguro y gastos en modo porcentaje guardan la FRACCIÓN (0,05 = 5%)
+ *  · el IVA guarda la fracción (0,21 = 21%)
+ * Cada pantalla convierte lo suyo; unificarlo obligaría a migrar lo ya guardado.
+ */
+function validarCargos(c: any): string | null {
+  if (typeof c !== "object" || c === null) return "simulador.cargos debe ser un objeto";
+
+  const num = (v: any) => typeof v === "number" && Number.isFinite(v);
+  /** `clave` es el nombre técnico del campo; `nombre` es cómo se lo llama en la pantalla. */
+  const bloque = (obj: any, clave: string, nombre: string, modos: string[] | null) => {
+    if (obj === undefined) return null;
+    if (typeof obj !== "object" || obj === null) return `simulador.cargos.${clave} debe ser un objeto`;
+    if (obj.activo !== undefined && typeof obj.activo !== "boolean") {
+      return `${nombre}: el encendido tiene que ser sí o no.`;
+    }
+    if (modos && obj.modo !== undefined && !modos.includes(obj.modo)) {
+      return `${nombre}: el modo tiene que ser uno de ${modos.join(", ")}.`;
+    }
+    return null;
+  };
+
+  const errComision = bloque(c.comisionOtorgamiento, "comisionOtorgamiento", "Comisión de otorgamiento", ["porcentaje", "fijo"]);
+  if (errComision) return errComision;
+  if (c.comisionOtorgamiento?.financiada !== undefined && typeof c.comisionOtorgamiento.financiada !== "boolean") {
+    return "Comisión de otorgamiento: «¿Financiada?» tiene que ser sí o no.";
+  }
+  if (c.comisionOtorgamiento?.valor !== undefined) {
+    const v = c.comisionOtorgamiento.valor;
+    if (!num(v) || v < 0) return "La comisión de otorgamiento no puede ser negativa.";
+    // En modo porcentaje el valor ES el porcentaje: más de 100 sería cobrar más que el crédito.
+    if (c.comisionOtorgamiento.modo === "porcentaje" && v > 100) {
+      return "La comisión de otorgamiento no puede superar el 100% del monto.";
+    }
+  }
+
+  const errIva = bloque(c.iva, "iva", "IVA", null);
+  if (errIva) return errIva;
+  if (c.iva?.tasa !== undefined) {
+    const t = c.iva.tasa;
+    // Se guarda en fracción: 0,21 = 21%. Un 5 acá serían 500% de IVA sobre el interés.
+    if (!num(t) || t < 0 || t > 1) return "La tasa de IVA tiene que estar entre 0% y 100%.";
+  }
+
+  const errSeguro = bloque(c.seguro, "seguro", "Seguro", ["porcentaje_saldo", "porcentaje_monto", "fijo"]);
+  if (errSeguro) return errSeguro;
+  if (c.seguro?.valor !== undefined) {
+    const v = c.seguro.valor;
+    if (!num(v) || v < 0) return "El seguro no puede ser negativo.";
+    if (c.seguro.modo !== "fijo" && v > 1) return "El seguro en porcentaje tiene que estar entre 0% y 100%.";
+  }
+
+  const errGastos = bloque(c.gastosAdministrativos, "gastosAdministrativos", "Gastos administrativos", ["porcentaje", "fijo"]);
+  if (errGastos) return errGastos;
+  if (c.gastosAdministrativos?.valor !== undefined) {
+    const v = c.gastosAdministrativos.valor;
+    if (!num(v) || v < 0) return "Los gastos administrativos no pueden ser negativos.";
+    if (c.gastosAdministrativos.modo !== "fijo" && v > 1) {
+      return "Los gastos administrativos en porcentaje tienen que estar entre 0% y 100%.";
+    }
+  }
+
   return null;
 }
 

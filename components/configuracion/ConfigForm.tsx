@@ -724,7 +724,8 @@ export function ConfigForm() {
               <CargoBlock title="Comisión de otorgamiento" desc="Cargo único por dar el crédito." ayuda={AYUDA["cargo-comision"]}
                 activo={form.simulador.cargos.comisionOtorgamiento.activo}
                 onToggle={v => setCargo("comisionOtorgamiento", "activo", v)}
-                onSave={() => saveSim("cargo-comision")} saving={savingKey === "cargo-comision"} saved={savedKey === "cargo-comision"} dirty={isDirty("cargo-comision")}>
+                onSave={() => saveSim("cargo-comision")} saving={savingKey === "cargo-comision"} saved={savedKey === "cargo-comision"} dirty={isDirty("cargo-comision")}
+                error={errorKey === "cargo-comision" ? saveError ?? undefined : undefined}>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <Field label="Modo">
                     <Select value={form.simulador.cargos.comisionOtorgamiento.modo}
@@ -733,7 +734,14 @@ export function ConfigForm() {
                       <option value="fijo">Monto fijo</option>
                     </Select>
                   </Field>
-                  <Field label="Valor">
+                  {/*
+                    La unidad en la etiqueta, como en Seguro y en Gastos. Este era el único de
+                    los cuatro cargos que decía "Valor" a secas: con el modo en "% del monto",
+                    un 5 son 5% y no $5, y no había forma de saberlo mirando el campo.
+                    (Acá el valor se guarda como PORCENTAJE —5 = 5%—, al revés que en seguro y
+                    gastos, que guardan la fracción. Cada pantalla convierte lo suyo.)
+                  */}
+                  <Field label={form.simulador.cargos.comisionOtorgamiento.modo === "fijo" ? "Valor ($)" : "Valor (%)"}>
                     <Input type="number" min="0" step="0.5" value={form.simulador.cargos.comisionOtorgamiento.valor}
                       onChange={e => setCargo("comisionOtorgamiento", "valor", parseFloat(e.target.value) || 0)} />
                   </Field>
@@ -751,7 +759,8 @@ export function ConfigForm() {
               <CargoBlock title="IVA sobre interés" desc="Impuesto sobre el interés de cada cuota." ayuda={AYUDA["cargo-iva"]}
                 activo={form.simulador.cargos.iva.activo}
                 onToggle={v => setCargo("iva", "activo", v)}
-                onSave={() => saveSim("cargo-iva")} saving={savingKey === "cargo-iva"} saved={savedKey === "cargo-iva"} dirty={isDirty("cargo-iva")}>
+                onSave={() => saveSim("cargo-iva")} saving={savingKey === "cargo-iva"} saved={savedKey === "cargo-iva"} dirty={isDirty("cargo-iva")}
+                error={errorKey === "cargo-iva" ? saveError ?? undefined : undefined}>
                 <div className="max-w-[12rem]">
                   <Field label="Tasa de IVA (%)">
                     <Input type="number" min="0" step="0.5" value={Number((form.simulador.cargos.iva.tasa * 100).toFixed(2))}
@@ -764,7 +773,8 @@ export function ConfigForm() {
               <CargoBlock title="Seguro" desc="Cobertura aplicada por período." ayuda={AYUDA["cargo-seguro"]}
                 activo={form.simulador.cargos.seguro.activo}
                 onToggle={v => setCargo("seguro", "activo", v)}
-                onSave={() => saveSim("cargo-seguro")} saving={savingKey === "cargo-seguro"} saved={savedKey === "cargo-seguro"} dirty={isDirty("cargo-seguro")}>
+                onSave={() => saveSim("cargo-seguro")} saving={savingKey === "cargo-seguro"} saved={savedKey === "cargo-seguro"} dirty={isDirty("cargo-seguro")}
+                error={errorKey === "cargo-seguro" ? saveError ?? undefined : undefined}>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <Field label="Base">
                     <Select value={form.simulador.cargos.seguro.modo}
@@ -791,7 +801,8 @@ export function ConfigForm() {
               <CargoBlock title="Gastos administrativos" desc="Cargo por cuota." ayuda={AYUDA["cargo-gastos"]}
                 activo={form.simulador.cargos.gastosAdministrativos.activo}
                 onToggle={v => setCargo("gastosAdministrativos", "activo", v)}
-                onSave={() => saveSim("cargo-gastos")} saving={savingKey === "cargo-gastos"} saved={savedKey === "cargo-gastos"} dirty={isDirty("cargo-gastos")}>
+                onSave={() => saveSim("cargo-gastos")} saving={savingKey === "cargo-gastos"} saved={savedKey === "cargo-gastos"} dirty={isDirty("cargo-gastos")}
+                error={errorKey === "cargo-gastos" ? saveError ?? undefined : undefined}>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <Field label="Modo">
                     <Select value={form.simulador.cargos.gastosAdministrativos.modo}
@@ -2004,9 +2015,11 @@ function FrecuenciasEditor({ frecuencias, onChange }: {
   );
 }
 
-function CargoBlock({ title, desc, activo, onToggle, children, onSave, saving, saved, dirty, ayuda }: {
+function CargoBlock({ title, desc, activo, onToggle, children, onSave, saving, saved, dirty, ayuda, error }: {
   title: string; desc?: string; activo: boolean; onToggle: (v: boolean) => void; children: React.ReactNode;
   onSave?: () => void; saving?: boolean; saved?: boolean; dirty?: boolean; ayuda?: AyudaBloque;
+  /** Motivo por el que el servidor rechazó el último guardado DE ESTE cargo. */
+  error?: string;
 }) {
   return (
     <div className="rounded-lg border border-border bg-muted/30 p-4 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.03)]">
@@ -2021,6 +2034,14 @@ function CargoBlock({ title, desc, activo, onToggle, children, onSave, saving, s
           {onSave && <SaveButton saving={!!saving} saved={!!saved} dirty={dirty} onClick={onSave} />}
         </div>
       </div>
+      {/* Mismo criterio que en `Section`: el motivo del rechazo, pegado al cargo que lo causó.
+          Estos cuatro bloques mostraban el toast y nada más, así que el "por qué" quedaba
+          arriba de una pantalla larga. */}
+      {error && (
+        <div className="mb-3 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          <span className="font-semibold">No se guardó.</span> {error}
+        </div>
+      )}
       <div className={activo ? "" : "pointer-events-none opacity-40"}>{children}</div>
     </div>
   );
