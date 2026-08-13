@@ -275,5 +275,12 @@ tfoot td.pg{background:#0B1220;border-left:1px solid #3A4356}
 </body>
 </html>`);
   w.document.close();
-  setTimeout(() => w.print(), 600);
+  setTimeout(() => {
+    // 🔴 `print()` BLOQUEA la pestaña que lo ejecuta hasta que se cierra el diálogo, y acá
+    // lo ejecuta la principal sobre la ventana del documento. Sin el `focus()`, esa ventana
+    // puede quedar detrás: se ve la aplicación congelada, sin nada visible que la esté
+    // congelando (ni siquiera abre F12), y parece que el sistema se colgó.
+    w.focus();
+    w.print();
+  }, 600);
 }
