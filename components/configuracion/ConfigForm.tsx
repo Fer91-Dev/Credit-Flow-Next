@@ -139,12 +139,12 @@ const AYUDA: Record<string, AyudaBloque> = {
     titulo: "Cronograma de cobranza",
     texto: "Reglas de fechas del crédito. Se congelan al otorgarlo: cambiarlas no afecta a los créditos ya dados.",
     puntos: [
-      "Día de vencimiento y día de corte: solo para créditos MENSUALES.",
       "Día de vencimiento: día fijo del mes en que vence cada cuota. Vacío = un período después del desembolso.",
       "Día de corte: después de esa fecha, la 1ª cuota pasa al mes siguiente. Necesita un día de vencimiento.",
-      "Sábado no hábil y feriados: corren el vencimiento al próximo día hábil, en TODAS las frecuencias. El domingo nunca es hábil.",
-      "En frecuencia diaria eso deja el cronograma en días hábiles, sin amontonar dos cuotas el mismo día.",
-      "Días de gracia: tolerancia antes de contar mora.",
+      "Esos dos SOLO valen para créditos mensuales.",
+      "Días de gracia: el cliente sigue figurando en cobranza, pero no se le cobran punitorios hasta pasada la tolerancia. Vale en todas las frecuencias.",
+      "Sábado no hábil y feriados: corren el vencimiento al próximo día hábil. El domingo nunca es hábil, sin configurar nada.",
+      "En diaria, ese corrimiento deja el cronograma en días hábiles sin amontonar dos cuotas el mismo día.",
     ],
   },
   cargos: {
@@ -642,34 +642,58 @@ export function ConfigForm() {
           <Section title="Cronograma de cobranza" desc="Cuándo vence cada cuota y cuándo empieza a correr la mora. Se congela al otorgar." ayuda={AYUDA.cronograma}
             onSave={() => saveSim("cronograma")} saving={savingKey === "cronograma"} saved={savedKey === "cronograma"} dirty={isDirty("cronograma")}
             error={errorKey === "cronograma" ? saveError ?? undefined : undefined}>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              <Field label="Día de corte" hint="1–28. Vacío = sin corte (1ª cuota al mes siguiente)">
-                <Input type="number" min="1" max="28" step="1"
-                  value={form.simulador.diaCorte ?? ""}
-                  onChange={e => setSim("diaCorte", e.target.value === "" ? null : Math.min(28, Math.max(1, parseInt(e.target.value) || 1)))} />
-              </Field>
-              <Field label="Día de vencimiento" hint="1–28. Vacío = un período desde el desembolso">
-                <Input type="number" min="1" max="28" step="1"
-                  value={form.simulador.diaVencimientoFijo ?? ""}
-                  onChange={e => setSim("diaVencimientoFijo", e.target.value === "" ? null : Math.min(28, Math.max(1, parseInt(e.target.value) || 1)))} />
-              </Field>
-              <Field label="Días de gracia" hint="Tolerancia tras el vencimiento antes de la mora">
-                <Input type="number" min="0" step="1" value={form.simulador.diasGracia}
-                  onChange={e => setSim("diasGracia", Math.max(0, parseInt(e.target.value) || 0))} />
-              </Field>
-            </div>
+            {/*
+              Tres grupos, porque los cinco campos no pesan igual: los dos primeros solo
+              existen para créditos MENSUALES, la gracia rige en todas las frecuencias, y el
+              sábado y los feriados casi nadie los toca. Antes iban los cinco en fila y no
+              había forma de saber cuál aplicaba a qué.
+            */}
+            <div className="space-y-5">
+              <SubGrupo titulo="Cuándo vence la cuota" nota="solo créditos mensuales">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <Field label="Día de vencimiento" hint="1–28. Vacío = un período desde el desembolso">
+                    <Input type="number" min="1" max="28" step="1"
+                      value={form.simulador.diaVencimientoFijo ?? ""}
+                      onChange={e => setSim("diaVencimientoFijo", e.target.value === "" ? null : Math.min(28, Math.max(1, parseInt(e.target.value) || 1)))} />
+                  </Field>
+                  <Field label="Día de corte" hint="1–28. Necesita un día de vencimiento">
+                    <Input type="number" min="1" max="28" step="1"
+                      value={form.simulador.diaCorte ?? ""}
+                      onChange={e => setSim("diaCorte", e.target.value === "" ? null : Math.min(28, Math.max(1, parseInt(e.target.value) || 1)))} />
+                  </Field>
+                </div>
+                <p className="mt-2 text-xs text-muted-foreground/60">
+                  En semanal, quincenal y diaria las cuotas vencen un período después del desembolso y estos dos campos no se aplican.
+                </p>
+              </SubGrupo>
 
-            <div className="mt-4">
-              <SwitchRow
-                title="Sábado no hábil"
-                desc="Si está activo, los vencimientos que caen sábado también se corren al lunes."
-                checked={form.simulador.incluirSabadoNoHabil}
-                onChange={v => setSim("incluirSabadoNoHabil", v)}
-              />
-            </div>
+              <SubGrupo titulo="Cuándo empieza a correr la mora" nota="todas las frecuencias">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <Field label="Días de gracia" hint="Tolerancia tras el vencimiento antes de la mora">
+                    <Input type="number" min="0" step="1" value={form.simulador.diasGracia}
+                      onChange={e => setSim("diasGracia", Math.max(0, parseInt(e.target.value) || 0))} />
+                  </Field>
+                  <div className="flex items-end pb-2 text-xs">
+                    <EstadoParam
+                      on={form.simulador.diasGracia > 0}
+                      siOn={`Sin punitorios los primeros ${form.simulador.diasGracia} día${form.simulador.diasGracia === 1 ? "" : "s"} de atraso`}
+                      siOff="La mora corre desde el día siguiente al vencimiento"
+                    />
+                  </div>
+                </div>
+              </SubGrupo>
 
-            <div className="mt-4">
-              <FeriadosEditor feriados={form.simulador.feriados} onChange={f => setSim("feriados", f)} />
+              <SubGrupo titulo="Días no hábiles" nota="opcional · el domingo siempre lo es">
+                <SwitchRow
+                  title="Sábado no hábil"
+                  desc="Si está activo, los vencimientos que caen sábado también se corren al lunes."
+                  checked={form.simulador.incluirSabadoNoHabil}
+                  onChange={v => setSim("incluirSabadoNoHabil", v)}
+                />
+                <div className="mt-4">
+                  <FeriadosEditor feriados={form.simulador.feriados} onChange={f => setSim("feriados", f)} />
+                </div>
+              </SubGrupo>
             </div>
 
             {/*
