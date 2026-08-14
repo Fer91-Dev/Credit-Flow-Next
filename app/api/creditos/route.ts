@@ -2,7 +2,7 @@ import { requireAuth, requireRole, scopeCreditosVendedor, ApiError } from "@/lib
 import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
-import { round2, normalizarFrecuencia, resolverFrecuencia, sumarPeriodos, construirPlanAmortizacion, planACuotas, estadoCoherente, etiquetaCaja, esCuentaValida, validarParametrosOtorgamiento, diasMoraActual, CUENTA_LABEL, type Cuenta, ESTADOS_VIVOS, esCreditoVivo, moraDelCredito, moraDesdeCronograma, moraPendienteTotal } from "@/lib/domain";
+import { round2, normalizarFrecuencia, resolverFrecuencia, sumarPeriodos, construirPlanAmortizacion, planACuotas, estadoCoherente, etiquetaCaja, esCuentaValida, validarParametrosOtorgamiento, diasMoraActual, buscarPlan, nombrePlan, tasaDesdeCoeficiente, cargosConPlan, CUENTA_LABEL, type Cuenta, ESTADOS_VIVOS, esCreditoVivo, moraDelCredito, moraDesdeCronograma, moraPendienteTotal } from "@/lib/domain";
 import { siguienteNumeroComprobante } from "@/lib/comprobantes";
 import { assertFondosSuficientesTx } from "@/lib/caja-fondos";
 import { getConfiguracion } from "@/lib/config";
@@ -287,16 +287,53 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
   // crédito, para que cambios futuros de configuración no lo alteren.
   const configActual = await getConfiguracion(tenantId);
 
+  // ─── PLANES ───
+  // Si el crédito nace de un plan con coeficiente, la tasa la despeja el SERVIDOR. El
+  // simulador ya se la mostró al vendedor, pero la que vale es esta: el crédito guarda la
+  // TASA (no el coeficiente), así que si se aceptara la del navegador el cliente elegiría
+  // su propio precio. Se recalcula y se pisa lo que haya venido.
+  const planElegido = buscarPlan(configActual.simulador.plazos, body.plan_id);
+  if (body.plan_id && !planElegido) {
+    return errorResponse("El plan elegido ya no existe en la configuración.", "PLAN_INVALIDO", 400);
+  }
+  if (planElegido) {
+    if (!planElegido.activo) {
+      return errorResponse(`El plan "${nombrePlan(planElegido)}" está desactivado.`, "PLAN_INVALIDO", 400);
+    }
+    if (planElegido.cuotas !== body.plazo_meses) {
+      return errorResponse(`El plan "${nombrePlan(planElegido)}" es de ${planElegido.cuotas} cuotas.`, "PLAN_INVALIDO", 400);
+    }
+    if (planElegido.frecuencia && planElegido.frecuencia !== frecuencia) {
+      return errorResponse(`El plan "${nombrePlan(planElegido)}" solo se ofrece en frecuencia ${planElegido.frecuencia}.`, "PLAN_INVALIDO", 400);
+    }
+    if (planElegido.coeficiente) {
+      const tasaPlan = tasaDesdeCoeficiente(
+        planElegido.coeficiente, planElegido.cuotas,
+        configActual.convencionTasa, frecuencia, configActual.simulador.frecuencias,
+      );
+      if (tasaPlan === null) {
+        return errorResponse(`El coeficiente del plan "${nombrePlan(planElegido)}" no representa una tasa válida. Revisá la configuración.`, "PLAN_INVALIDO", 400);
+      }
+      body.tasa = tasaPlan;
+    }
+  }
+
   // M1 — Parámetros dentro de lo configurado por el tenant (defensa en profundidad: el
   // simulador ya acota en la UI, pero la API es la barrera autoritativa). Frecuencia
   // habilitada, plazo permitido y tasa/monto dentro de rango.
+  // 🔴 Corre DESPUÉS del despeje del plan a propósito: la tasa que sale de un coeficiente
+  // también tiene que caer dentro de tasaMin/tasaMax. Es la red que atrapa un 0,038
+  // tipeado donde iba 0,38.
   const errParam = validarParametrosOtorgamiento(configActual.simulador, {
     monto: body.monto_original, tasa: body.tasa, plazoMeses: body.plazo_meses,
     frecuencia, esProducto,
   });
   if (errParam) return errorResponse(errParam, "PARAMETROS_INVALIDOS", 400);
 
-  const cargosSnapshot = configActual.simulador.cargos;
+  // Los gastos administrativos propios del plan pisan los del bloque Cargos (única
+  // herencia del modelo). Se congelan ya resueltos, así el crédito no necesita saber
+  // de qué plan salió para recalcular su propio plan de cuotas.
+  const cargosSnapshot = cargosConPlan(configActual.simulador.cargos, planElegido);
   // Snapshot de la definición de frecuencia: congela días/períodos del crédito.
   const frecuenciaDef = resolverFrecuencia(frecuencia, configActual.simulador.frecuencias);
   // Snapshot del cronograma (corte/día de vencimiento/gracia/feriados): congela las
@@ -568,6 +605,9 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     meta: {
       numero: credito.numero, monto: credito.monto_original, tasa: credito.tasa,
       plazo_meses: credito.plazo_meses, frecuencia: credito.frecuencia, tipo: credito.tipo_credito,
+      // De qué plan salió el precio. El crédito guarda la tasa despejada (para que sea igual
+      // a uno tipeado a mano), así que la trazabilidad del coeficiente vive acá.
+      ...(planElegido ? { plan: nombrePlan(planElegido), plan_coeficiente: planElegido.coeficiente ?? null } : {}),
       ...(esProducto ? { producto_id: producto!.id, producto: producto!.nombre, cantidad: productoCantidad } : {}),
     },
   });

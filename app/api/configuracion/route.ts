@@ -37,6 +37,70 @@ const SISTEMAS = ["frances"];
 const REDONDEOS = ["ninguno", "entero", "multiplo"];
 const MODOS_CARGOS = ["integrado", "separado"];
 
+const MODOS_GASTO = ["fijo", "porcentaje"];
+
+/**
+ * Valida los PLANES (`simulador.plazos`). Los campos nuevos son todos opcionales: un plan
+ * que solo trae `{cuotas, activo}` es el "plazo" de siempre y pasa sin tocar nada.
+ *
+ * Lo que se cuida acá es que un plan mal cargado no llegue al mostrador: un coeficiente
+ * imposible (que despeja una tasa negativa), dos planes que compiten por la misma
+ * combinación cuotas+frecuencia, o un coeficiente sin frecuencia — que no significa nada,
+ * porque "0,38" es "6 cuotas MENSUALES" y con otra frecuencia sería otro número.
+ */
+function validarPlanes(plazos: any[], frecuencias: any): string | null {
+  const claves = new Set<string>();
+  const ids = new Set<string>();
+  for (const p of plazos) {
+    const nombre = typeof p.nombre === "string" && p.nombre.trim() ? p.nombre.trim() : `${p.cuotas} cuotas`;
+    if (!Number.isInteger(p.cuotas)) return `${nombre}: el número de cuotas tiene que ser entero.`;
+    for (const campo of ["id", "nombre", "codigo"]) {
+      if (p[campo] !== undefined && typeof p[campo] !== "string") return `${nombre}: ${campo} tiene que ser texto.`;
+    }
+    if (p.id) {
+      if (ids.has(p.id)) return `Hay dos planes con el mismo identificador interno (${p.id}).`;
+      ids.add(p.id);
+    }
+    if (p.frecuencia !== undefined && p.frecuencia !== "" && p.frecuencia !== null) {
+      if (typeof p.frecuencia !== "string") return `${nombre}: la frecuencia tiene que ser texto.`;
+      // Se valida contra la lista que viene en el MISMO guardado (pantalla y API guardan
+      // el bloque entero), igual que la frecuencia por defecto.
+      if (Array.isArray(frecuencias) && !frecuencias.some((f: any) => f.clave === p.frecuencia && f.activo)) {
+        return `${nombre}: la frecuencia "${p.frecuencia}" no existe o está desactivada.`;
+      }
+    }
+    if (p.coeficiente !== undefined && p.coeficiente !== null) {
+      if (typeof p.coeficiente !== "number" || !Number.isFinite(p.coeficiente) || p.coeficiente <= 0) {
+        return `${nombre}: el coeficiente tiene que ser un número mayor a cero.`;
+      }
+      if (!p.frecuencia) return `${nombre}: un plan con coeficiente necesita una frecuencia (el mismo número significa otra cosa en semanal que en mensual).`;
+      // Por debajo de 1/cuotas el cliente devolvería menos de lo que se llevó: el despeje
+      // daría una tasa negativa. Es el error de tipeo clásico (0,038 en vez de 0,38).
+      const piso = 1 / p.cuotas;
+      if (p.coeficiente < piso - 1e-12) {
+        return `${nombre}: el coeficiente ${p.coeficiente} es menor al mínimo posible para ${p.cuotas} cuotas (${piso.toFixed(4)}); daría una tasa negativa.`;
+      }
+    }
+    if (p.gastos !== undefined && p.gastos !== null) {
+      const g = p.gastos;
+      if (typeof g !== "object") return `${nombre}: los gastos del plan tienen que ser un objeto.`;
+      if (!MODOS_GASTO.includes(g.modo)) return `${nombre}: el modo de los gastos tiene que ser uno de ${MODOS_GASTO.join(", ")}.`;
+      if (typeof g.valor !== "number" || !Number.isFinite(g.valor) || g.valor < 0) return `${nombre}: los gastos del plan no pueden ser negativos.`;
+      if (g.modo !== "fijo" && g.valor > 1) return `${nombre}: los gastos en porcentaje tienen que estar entre 0% y 100%.`;
+    }
+    // Dos planes activos para la misma combinación cuotas+frecuencia son ambiguos: el
+    // simulador ofrecería dos renglones idénticos con precios distintos.
+    if (p.activo) {
+      const clave = `${p.cuotas}|${p.frecuencia || ""}`;
+      if (claves.has(clave)) {
+        return `Hay dos planes activos de ${p.cuotas} cuotas${p.frecuencia ? ` (${p.frecuencia})` : ""}. Desactivá uno o cambiale la frecuencia.`;
+      }
+      claves.add(clave);
+    }
+  }
+  return null;
+}
+
 /** Valida el bloque `simulador`. Devuelve un mensaje de error o null si está OK. */
 function validarSimulador(s: any): string | null {
   if (s === undefined) return null;
@@ -55,6 +119,8 @@ function validarSimulador(s: any): string | null {
     if (!Array.isArray(s.plazos) || s.plazos.some((p: any) => typeof p?.cuotas !== "number" || p.cuotas < 1 || typeof p?.activo !== "boolean")) {
       return "simulador.plazos debe ser un array de { cuotas>=1, activo:boolean }";
     }
+    const errPlanes = validarPlanes(s.plazos, s.frecuencias);
+    if (errPlanes) return errPlanes;
     // Sin ningún plazo activo la financiera queda sin poder otorgar créditos mensuales: el
     // simulador no ofrece ninguno y el servidor rechaza cualquier número que se le mande.
     // Se puede dejar la configuración en ese estado con dos clics, y el error aparece después,

@@ -41,9 +41,31 @@ export type ComisionModo = "porcentaje" | "fijo";
 export type SeguroModo = "porcentaje_saldo" | "porcentaje_monto" | "fijo";
 export type GastoModo = "fijo" | "porcentaje";
 
-/** Un plazo ofrecido por el tenant, con posibilidad de activar/desactivar. */
+/**
+ * Un PLAN ofrecido por el tenant. Nació como "plazo" (solo el número de cuotas) y sigue
+ * funcionando así: los campos nuevos son todos opcionales y un plan sin ellos se comporta
+ * exactamente como antes.
+ *
+ * Las tres reglas de compatibilidad, que son las que hacen que esto no rompa nada:
+ *  1. Sin `coeficiente` → se cotiza por tasa a mano, como toda la vida.
+ *  2. Sin `frecuencia` → vale para todas las activas (comportamiento histórico). La
+ *     frecuencia solo es obligatoria si hay coeficiente: "0,38" significa "6 MENSUALES".
+ *  3. `gastos` pisa el bloque Cargos, y solo si se define.
+ */
 export interface PlazoOpcion {
+  /** Identificador estable. Los planes viejos no lo tienen; `planId()` lo deriva. */
+  id?: string;
+  /** Nombre visible ("Plan 83"). Sin nombre se muestra "N cuotas". */
+  nombre?: string;
+  /** Código interno de la financiera (informativo; aparece en el desplegable). */
+  codigo?: string;
   cuotas: number;
+  /** Clave de frecuencia. Vacío = vale para todas las activas. */
+  frecuencia?: string;
+  /** `cuota = monto × coeficiente`. Vacío = se cotiza por tasa. */
+  coeficiente?: number;
+  /** Gastos administrativos propios del plan (pisan los del bloque Cargos). */
+  gastos?: { modo: GastoModo; valor: number };
   activo: boolean;
 }
 
@@ -291,7 +313,12 @@ export function validarParametrosOtorgamiento(
       return `La frecuencia "${frec.label}" usa ${frec.cuotasFijas} cuotas fijas (se recibió ${p.plazoMeses}).`;
     }
   } else if (frec.esMensual) {
-    if (!sim.plazos.some((pl) => pl.activo && pl.cuotas === p.plazoMeses)) {
+    // Un plan SIN frecuencia vale para todas (comportamiento histórico); uno CON frecuencia
+    // solo vale para la suya — si no, un "6 semanales" habilitaría un "6 mensuales".
+    const habilitado = sim.plazos.some(
+      (pl) => pl.activo && pl.cuotas === p.plazoMeses && (!pl.frecuencia || pl.frecuencia === p.frecuencia)
+    );
+    if (!habilitado) {
       return `El plazo de ${p.plazoMeses} cuotas no está habilitado en la configuración.`;
     }
   } else if (p.plazoMeses < 1) {

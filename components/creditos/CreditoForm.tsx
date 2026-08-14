@@ -24,6 +24,11 @@ import {
   frecuenciaLabel,
   resolverFrecuencia,
   cargoColumnasActivas,
+  planesParaFrecuencia,
+  planId,
+  nombrePlan,
+  tasaDesdeCoeficiente,
+  cargosConPlan,
   type Frecuencia,
   type ConvencionTasa,
   type PlanAmortizacion,
@@ -114,7 +119,6 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
   // Parámetros del simulador definidos por el tenant en Configuración.
   const simCfg = config?.simulador;
   const catalogoFrec = simCfg?.frecuencias ?? [];
-  const plazosActivos = (simCfg?.plazos ?? []).filter(p => p.activo).map(p => p.cuotas);
   const frecsActivas = catalogoFrec.filter(f => f.activo);
   const hayCargos = !!simCfg && (
     simCfg.cargos.iva.activo || simCfg.cargos.seguro.activo ||
@@ -129,6 +133,8 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
   const [formData, setFormData] = useState({
     cliente_id: "", tipo_credito: "personal",
     monto_original: "", tasa: "", plazo_meses: "",
+    // Plan elegido (Configuración → Planes de cuotas). Vacío = se cotiza tipeando la tasa.
+    plan_id: "",
     frecuencia: "mensual" as Frecuencia,
     vendedor_id: "",
     cuenta_desembolso: "efectivo" as CuentaCaja,
@@ -213,13 +219,18 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
       ? simCfg.frecuenciaDefault
       : clavesActivas[0];
 
+    // Plan de arranque: el que tenga las cuotas del default y se ofrezca con esa frecuencia.
+    // Solo si sigue activo: el admin puede desactivar un plan y dejar el default apuntando a
+    // un número que ya no se ofrece, y ahí el desplegable arrancaría en un valor inválido.
+    const planInicial = planesParaFrecuencia(simCfg.plazos ?? [], frecInicial ?? "mensual")
+      .find(p => p.cuotas === simCfg.plazoDefault);
+
     setFormData(p => ({
       ...p,
       monto_original: p.monto_original || (simCfg.montoDefault > 0 ? numeroAInput(simCfg.montoDefault) : ""),
       tasa: p.tasa || (simCfg.tasaBase > 0 ? String(simCfg.tasaBase) : ""),
-      // Solo si sigue activo: el admin puede desactivar un plazo y dejar el default apuntando
-      // a un número que ya no se ofrece, y ahí el desplegable arrancaría en un valor inválido.
-      plazo_meses: p.plazo_meses || (plazosActivos.includes(simCfg.plazoDefault) ? String(simCfg.plazoDefault) : ""),
+      plazo_meses: p.plazo_meses || (planInicial ? String(planInicial.cuotas) : ""),
+      plan_id: p.plan_id || (planInicial ? planId(planInicial) : ""),
       frecuencia: frecInicial ?? p.frecuencia,
     }));
     setPrefilled(true);
@@ -236,6 +247,58 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
     if (cuotasFijas == null) return;
     setFormData(p => (p.plazo_meses === String(cuotasFijas) ? p : { ...p, plazo_meses: String(cuotasFijas) }));
   }, [cuotasFijas]);
+
+  // ── PLANES ────────────────────────────────────────────────────────────────
+  // Los planes que se pueden ofrecer con la frecuencia elegida. Uno sin frecuencia propia
+  // vale para todas (así funcionaba la lista de plazos de siempre).
+  const planesDisponibles = useMemo(
+    () => planesParaFrecuencia(simCfg?.plazos ?? [], formData.frecuencia),
+    [simCfg, formData.frecuencia],
+  );
+  const planSel = useMemo(
+    () => planesDisponibles.find(p => planId(p) === formData.plan_id) ?? null,
+    [planesDisponibles, formData.plan_id],
+  );
+  /**
+   * El selector de planes rige en el ALTA. En la edición se conserva el desplegable de
+   * números de siempre: un crédito ya otorgado guarda su tasa, y hacerle elegir un plan
+   * podría reescribírsela con la del coeficiente de hoy. Editar es reparar, no re-cotizar.
+   */
+  const hayPlanes = !creditoId && planesDisponibles.length > 0;
+  const plazosActivos = useMemo(
+    () => [...new Set(planesDisponibles.map(p => p.cuotas))].sort((a, b) => a - b),
+    [planesDisponibles],
+  );
+  /** Tasa que representa el coeficiente del plan. `null` = el plan no cotiza por coeficiente. */
+  const tasaDelPlan = useMemo(() => {
+    if (!planSel?.coeficiente) return null;
+    return tasaDesdeCoeficiente(planSel.coeficiente, planSel.cuotas, convencion, formData.frecuencia, catalogoFrec);
+  }, [planSel, convencion, formData.frecuencia, catalogoFrec]);
+
+  /**
+   * El plan manda sobre cuotas y tasa.
+   *
+   * La tasa se guarda con TODOS sus decimales aunque en pantalla se muestre redondeada: es el
+   * número con el que el motor arma el plan, y recortarlo movería la cuota unos centavos
+   * respecto de `monto × coeficiente`, que es justamente lo que el cliente vino a ver. El
+   * servidor la vuelve a despejar por su cuenta, así que esto es solo la previsualización.
+   */
+  useEffect(() => {
+    if (!planSel) return;
+    setFormData(p => {
+      const cuotas = String(planSel.cuotas);
+      const tasa = tasaDelPlan !== null ? String(tasaDelPlan) : p.tasa;
+      if (p.plazo_meses === cuotas && p.tasa === tasa) return p;
+      return { ...p, plazo_meses: cuotas, tasa };
+    });
+  }, [planSel, tasaDelPlan]);
+
+  // Cambiar de frecuencia puede dejar el plan elegido fuera de la lista (uno "6 semanales"
+  // no se ofrece en mensual). Se limpia para que el desplegable no muestre un plan fantasma.
+  useEffect(() => {
+    if (!formData.plan_id || planSel) return;
+    setFormData(p => ({ ...p, plan_id: "" }));
+  }, [formData.plan_id, planSel]);
 
   // ── Crédito de PRODUCTO ───────────────────────────────────────────────────
   // El cliente se lleva un producto en vez de dinero: el capital = precio × cantidad
@@ -271,6 +334,8 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
           cliente_id, tipo_credito,
           monto_original: numeroAInput(monto_original),
           tasa: String(tasa), plazo_meses: String(plazo_meses),
+          // Sin plan: el crédito ya tiene su tasa congelada y la edición no re-cotiza.
+          plan_id: "",
           frecuencia: (frecuencia ?? "mensual") as Frecuencia,
           vendedor_id: vendedor_id ?? "",
           cuenta_desembolso: "efectivo",
@@ -359,6 +424,9 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
         tasa: parseFloat(formData.tasa) || 0,
         plazo_meses: parseInt(formData.plazo_meses),
         frecuencia: formData.frecuencia,
+        // El servidor vuelve a despejar la tasa del coeficiente de este plan y pisa la de
+        // arriba: el precio no lo puede elegir el navegador.
+        ...(formData.plan_id ? { plan_id: formData.plan_id } : {}),
         vendedor_id: formData.vendedor_id || null,
         cuenta_desembolso: formData.cuenta_desembolso,
         // Autorización manual del admin cuando el cliente no califica (feature riesgo).
@@ -450,7 +518,8 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
        */
       return construirPlanAmortizacion(monto, tasa, n, hoyComercial(), convencion, sim.frecuencia,
         simCfg ? {
-          cargos: simCfg.cargos,
+          // Los gastos administrativos propios del plan pisan los generales (única herencia).
+          cargos: cargosConPlan(simCfg.cargos, planSel),
           redondeo: simCfg.redondeoCuota,
           cronograma: {
             diaCorte: simCfg.diaCorte,
@@ -465,7 +534,7 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
     } catch {
       return null;
     }
-  }, [sim, convencion, simCfg]);
+  }, [sim, convencion, simCfg, planSel]);
 
   const montoNum = parseMonto(sim.monto);
 
@@ -903,14 +972,24 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
                 </Select>
               </Field>
             </div>
-            <div className="col-span-1">
-              <Field label="Cuotas" required hint={cuotasFijas != null ? "Fijas por la frecuencia" : undefined}>
+            <div className={hayPlanes ? "col-span-2" : "col-span-1"}>
+              <Field label={hayPlanes ? "Plan" : "Cuotas"} required hint={cuotasFijas != null ? "Fijas por la frecuencia" : undefined}>
                 {cuotasFijas != null ? (
                   // Frecuencia con cuotas fijas: el número lo impone la configuración.
                   <Input
                     name="plazo_meses" type="number" value={cuotasFijas} readOnly tabIndex={-1}
                     className="text-center font-mono tabular-nums px-1 opacity-70 cursor-not-allowed"
                   />
+                ) : hayPlanes ? (
+                  // El plan define cuotas y —si cotiza por coeficiente— también la tasa.
+                  <Select name="plan_id" value={formData.plan_id} onChange={set("plan_id")} required>
+                    {!formData.plan_id && <option value="">—</option>}
+                    {planesDisponibles.map(p => (
+                      <option key={planId(p)} value={planId(p)}>
+                        {nombrePlan(p)}{p.codigo ? ` · ${p.codigo}` : ""}
+                      </option>
+                    ))}
+                  </Select>
                 ) : plazosActivos.length > 0 ? (
                   <Select name="plazo_meses" value={formData.plazo_meses} onChange={set("plazo_meses")} required>
                     {!formData.plazo_meses && <option value="">—</option>}
@@ -929,20 +1008,39 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
             <div className="col-span-1">
               <Field
                 label="Tasa %" required
-                hint={convencion === "mensual" ? "T.M." : convencion === "efectiva_anual" ? "T.E.A." : "T.N.A."}
+                hint={tasaDelPlan !== null ? "La fija el plan" : convencion === "mensual" ? "T.M." : convencion === "efectiva_anual" ? "T.E.A." : "T.N.A."}
                 error={errorTasa ?? undefined}
               >
                 <div className="relative">
+                  {/*
+                    Con un plan que cotiza por coeficiente la tasa no se tipea: se despeja. Se
+                    muestra redondeada (el valor real lleva todos sus decimales) y bloqueada,
+                    porque cambiarla a mano rompería la equivalencia con el coeficiente que el
+                    cliente está viendo — y el servidor la volvería a pisar igual.
+                  */}
                   <Input
-                    name="tasa" type="number" placeholder="48"
-                    value={formData.tasa} onChange={set("tasa")}
+                    name="tasa" type={tasaDelPlan !== null ? "text" : "number"} placeholder="48"
+                    value={tasaDelPlan !== null ? n2(tasaDelPlan) : formData.tasa}
+                    onChange={set("tasa")}
+                    readOnly={tasaDelPlan !== null} tabIndex={tasaDelPlan !== null ? -1 : undefined}
                     min="0" step="0.5" required aria-invalid={!!errorTasa}
-                    className={`pr-5 text-center font-mono tabular-nums px-1 ${errorTasa ? "border-destructive focus:border-destructive focus:ring-destructive/25" : ""}`}
+                    className={`pr-5 text-center font-mono tabular-nums px-1 ${tasaDelPlan !== null ? "opacity-70 cursor-not-allowed" : ""} ${errorTasa ? "border-destructive focus:border-destructive focus:ring-destructive/25" : ""}`}
                   />
                   <Percent className={`pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 h-3 w-3 ${errorTasa ? "text-destructive" : "text-muted-foreground"}`} />
                 </div>
               </Field>
             </div>
+            {/*
+              De dónde sale la cuota, en el idioma con el que cotiza la financiera. Es la
+              línea que le permite al vendedor confirmar el precio contra su tabla impresa
+              sin tener que entender de tasas.
+            */}
+            {planSel?.coeficiente ? (
+              <p className="col-span-3 self-center text-xs text-muted-foreground">
+                Coeficiente <span className="font-mono font-semibold text-foreground">{planSel.coeficiente}</span>
+                {" · "}cada $100.000 paga <span className="font-mono font-semibold text-foreground">${n0(100_000 * planSel.coeficiente)}</span> por {lbl.cuotaSingular}
+              </p>
+            ) : null}
           </div>
         </section>
 

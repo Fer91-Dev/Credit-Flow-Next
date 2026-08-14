@@ -6,15 +6,22 @@ import { useConfiguracion, type ConfiguracionFinanciera, type GamificacionConfig
 import { FeatureGate } from "@/components/providers/FeaturesProvider";
 import { FinancieraForm } from "@/components/configuracion/FinancieraForm";
 import { BackupsView } from "@/components/configuracion/BackupsView";
-import type { SimuladorConfig, CargosConfig, FrecuenciaOpcion, DocumentosConfig } from "@/lib/domain";
-import { DOCUMENTOS_DEFAULT, revisarDocumentos, ORDEN_IMPUTACION } from "@/lib/domain";
+import type { SimuladorConfig, CargosConfig, FrecuenciaOpcion, DocumentosConfig, ConvencionTasa } from "@/lib/domain";
+import { DOCUMENTOS_DEFAULT, revisarDocumentos, ORDEN_IMPUTACION, tasaDesdeCoeficiente } from "@/lib/domain";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Emoji } from "@/components/ui/Emoji";
 import { Field, Input, Select, Textarea, SecretInput } from "@/components/ui/field";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
-import { formatFecha } from "@/lib/utils";
+import { formatFecha, formatMonto, formatNumero } from "@/lib/utils";
+
+/** Sigla de la convención de tasa, para no mostrar un porcentaje sin decir de qué es. */
+const CONVENCION_SIGLA: Record<ConvencionTasa, string> = {
+  nominal_anual: "T.N.A.",
+  efectiva_anual: "T.E.A.",
+  mensual: "T.M.",
+};
 
 const ordenLabel: Record<string, string> = {
   mora: "Mora",
@@ -106,11 +113,16 @@ const AYUDA: Record<string, AyudaBloque> = {
     ],
   },
   plazos: {
-    titulo: "Plazos disponibles",
-    texto: "Qué cantidades de cuotas puede elegir el operador en el simulador. Tocá un plazo para activarlo o desactivarlo, y agregá los tuyos.",
+    titulo: "Planes de cuotas",
+    texto: "Lo que el operador puede elegir en el simulador. Un plan es una combinación cerrada: tantas cuotas, con tal frecuencia. Si tu financiera cotiza con una tabla de coeficientes, cargalo acá y la cuota sale sola.",
+    ejemplo: "Plan de 3 cuotas mensuales con coeficiente 0,415: un crédito de $500.000 paga 3 cuotas de $207.500 ($500.000 × 0,415). El sistema despeja solo la tasa que representa (y la guarda en el crédito), así que el resto del sistema —mora, refinanciación, C.F.T., PDF— no cambia en nada.",
     puntos: [
-      "Plazo por defecto: el que viene preseleccionado al simular. Si lo desactivás, el simulador arranca vacío.",
-      "Una frecuencia con cuotas fijas ignora esta lista: usa su propio número y el campo queda bloqueado.",
+      "Coeficiente vacío: el plan se cotiza con la tasa que se tipea en el simulador, como siempre.",
+      "Un plan con coeficiente necesita frecuencia: el mismo número significa otra cosa en semanal que en mensual.",
+      "Frecuencia \"Todas\": el plan se ofrece con cualquier frecuencia activa (así funcionaban los plazos antes).",
+      "Gastos administrativos: si los dejás en \"Los generales\", el plan usa los del bloque Cargos. Si los definís, mandan los del plan.",
+      "La línea de abajo de cada plan muestra la cuota y la tasa que sale del coeficiente: si ves un número raro, hay un error de tipeo.",
+      "Plan por defecto: el número de cuotas preseleccionado al simular.",
       "Tiene que quedar al menos uno activo, o no se puede otorgar ningún crédito mensual.",
     ],
   },
@@ -569,17 +581,26 @@ export function ConfigForm() {
             </div>
           </Section>
 
-          {/* Simulador · Plazos */}
-          <Section title="Plazos disponibles" desc="Cuotas que se ofrecen en el simulador. Tocá un plazo para activarlo o desactivarlo." ayuda={AYUDA.plazos}
+          {/* Simulador · Planes */}
+          <Section title="Planes de cuotas" desc="Lo que se le ofrece al cliente. Cada plan es una combinación cerrada de cuotas y frecuencia, y puede llevar su propio coeficiente y gastos." ayuda={AYUDA.plazos}
             onSave={() => saveSim("plazos")} saving={savingKey === "plazos"} saved={savedKey === "plazos"} dirty={isDirty("plazos")} error={errorKey === "plazos" ? saveError ?? undefined : undefined}>
-            <PlazosEditor plazos={form.simulador.plazos} onChange={p => setSim("plazos", p)} />
+            <PlanesEditor
+              planes={form.simulador.plazos}
+              frecuencias={form.simulador.frecuencias}
+              convencion={form.convencionTasa}
+              tasaMin={form.simulador.tasaMin}
+              tasaMax={form.simulador.tasaMax}
+              onChange={p => setSim("plazos", p)}
+            />
             <div className="mt-4 max-w-xs">
-              <Field label="Plazo por defecto" hint="Preseleccionado en el simulador">
+              <Field label="Plan por defecto" hint="Preseleccionado en el simulador">
                 <Select value={String(form.simulador.plazoDefault)} onChange={e => setSim("plazoDefault", parseInt(e.target.value))}>
-                  {form.simulador.plazos.filter(p => p.activo).map(p => (
-                    <option key={p.cuotas} value={p.cuotas}>{p.cuotas} cuotas</option>
+                  {/* Se elige por número de cuotas: es lo que el simulador prellena, y dos
+                      planes activos no pueden compartir cuotas+frecuencia. */}
+                  {[...new Set(form.simulador.plazos.filter(p => p.activo).map(p => p.cuotas))].sort((a, b) => a - b).map(c => (
+                    <option key={c} value={c}>{c} cuotas</option>
                   ))}
-                  {form.simulador.plazos.filter(p => p.activo).length === 0 && <option value="">— sin plazos activos —</option>}
+                  {form.simulador.plazos.filter(p => p.activo).length === 0 && <option value="">— sin planes activos —</option>}
                 </Select>
               </Field>
             </div>
@@ -1832,40 +1853,131 @@ function SaveButton({ saving, saved, dirty, onClick }: { saving: boolean; saved:
   );
 }
 
-function PlazosEditor({ plazos, onChange }: { plazos: SimuladorConfig["plazos"]; onChange: (p: SimuladorConfig["plazos"]) => void }) {
-  const [nuevo, setNuevo] = useState("");
-  const add = () => {
-    const n = parseInt(nuevo);
-    if (!n || n < 1 || plazos.some(p => p.cuotas === n)) { setNuevo(""); return; }
-    onChange([...plazos, { cuotas: n, activo: true }].sort((a, b) => a.cuotas - b.cuotas));
-    setNuevo("");
-  };
+/** Monto de referencia de la vista previa de un plan: "cada $100.000 sale…". */
+const MONTO_MUESTRA = 100_000;
+
+/** Identificador nuevo para un plan. Solo tiene que ser estable y único dentro del tenant. */
+function nuevoPlanId(): string {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID();
+  return `plan-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+/**
+ * Editor de PLANES (antes "plazos", que era solo el número de cuotas).
+ *
+ * Cada fila es una combinación cerrada: nombre, cuotas, frecuencia, y opcionalmente el
+ * coeficiente con el que la financiera cotiza (`cuota = monto × coeficiente`) y sus propios
+ * gastos administrativos. Un plan sin coeficiente se cotiza con la tasa que se tipea en el
+ * simulador — que es como funcionó siempre.
+ *
+ * La vista previa de cada fila no es decorativa: muestra la cuota que sale y la TASA que el
+ * coeficiente representa. Es lo que atrapa el error de tipeo (0,038 donde iba 0,38) en la
+ * pantalla de configuración y no en el mostrador.
+ */
+function PlanesEditor({ planes, frecuencias, convencion, tasaMin, tasaMax, onChange }: {
+  planes: SimuladorConfig["plazos"];
+  frecuencias: FrecuenciaOpcion[];
+  convencion: ConvencionTasa;
+  tasaMin: number;
+  tasaMax: number;
+  onChange: (p: SimuladorConfig["plazos"]) => void;
+}) {
+  const activas = frecuencias.filter(f => f.activo);
+  const patch = (i: number, cambio: Partial<SimuladorConfig["plazos"][number]>) =>
+    onChange(planes.map((p, k) => (k === i ? { ...p, ...cambio } : p)));
+
+  const agregar = () => onChange([
+    ...planes,
+    { id: nuevoPlanId(), cuotas: 1, activo: true, frecuencia: activas[0]?.clave ?? "mensual" },
+  ]);
+
   return (
-    <div>
-      <div className="flex flex-wrap items-center gap-2">
-        {plazos.length === 0 && <span className="text-xs text-muted-foreground/60">Sin plazos definidos.</span>}
-        {plazos.map(p => (
-          <span
-            key={p.cuotas}
-            className={`group inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-sm transition-colors ${p.activo ? "border-primary bg-primary/10 text-primary" : "border-border bg-muted/30 text-muted-foreground"}`}
-          >
-            <button type="button" onClick={() => onChange(plazos.map(x => x.cuotas === p.cuotas ? { ...x, activo: !x.activo } : x))} title={p.activo ? "Desactivar" : "Activar"}>
-              {p.cuotas} cuotas
-            </button>
-            <button type="button" onClick={() => onChange(plazos.filter(x => x.cuotas !== p.cuotas))} title="Quitar" className="opacity-40 hover:opacity-100">
-              <X className="h-3 w-3" />
-            </button>
-          </span>
-        ))}
-      </div>
-      <div className="mt-3 flex items-center gap-2 max-w-[14rem]">
-        <Input type="number" min="1" step="1" placeholder="N° de cuotas" value={nuevo}
-          onChange={e => setNuevo(e.target.value)}
-          onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); add(); } }} />
-        <button type="button" onClick={add} className="inline-flex items-center gap-1 rounded-lg border border-border px-2.5 py-2 text-xs text-muted-foreground hover:bg-muted hover:text-foreground transition-colors whitespace-nowrap">
-          <Plus className="h-3.5 w-3.5" /> Agregar
-        </button>
-      </div>
+    <div className="space-y-2">
+      {planes.length === 0 && (
+        <p className="text-xs text-muted-foreground/60">Todavía no hay planes. Agregá el primero para poder otorgar créditos mensuales.</p>
+      )}
+
+      {planes.map((p, i) => {
+        const coef = p.coeficiente ?? 0;
+        const tasa = coef > 0 ? tasaDesdeCoeficiente(coef, p.cuotas, convencion, p.frecuencia || "mensual", frecuencias) : null;
+        const fueraDeRango = tasa !== null && ((tasaMin > 0 && tasa < tasaMin) || (tasaMax > 0 && tasa > tasaMax));
+        return (
+          <div key={p.id ?? `${p.cuotas}-${p.frecuencia ?? ""}-${i}`}
+            className={`rounded-xl border p-3 transition-colors ${p.activo ? "border-border bg-muted/10" : "border-border/60 bg-muted/5 opacity-60"}`}>
+
+            <div className="flex items-center gap-2">
+              <Input value={p.nombre ?? ""} onChange={e => patch(i, { nombre: e.target.value })}
+                placeholder={`${p.cuotas} cuotas`} className="font-medium" />
+              <Toggle checked={p.activo} onChange={v => patch(i, { activo: v })} />
+              <button type="button" onClick={() => onChange(planes.filter((_, k) => k !== i))}
+                title="Quitar plan" className="shrink-0 rounded-lg p-2 text-muted-foreground/40 hover:bg-destructive/10 hover:text-destructive transition-colors">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="mt-3 grid grid-cols-2 gap-3 lg:grid-cols-6">
+              <Field label="Código">
+                <Input value={p.codigo ?? ""} onChange={e => patch(i, { codigo: e.target.value })} placeholder="—" />
+              </Field>
+              <Field label="Cuotas">
+                <Input type="number" min="1" step="1" value={p.cuotas}
+                  onChange={e => patch(i, { cuotas: Math.max(1, parseInt(e.target.value) || 1) })}
+                  className="text-center font-mono tabular-nums" />
+              </Field>
+              <Field label="Frecuencia">
+                <Select value={p.frecuencia ?? ""} onChange={e => patch(i, { frecuencia: e.target.value || undefined })}>
+                  <option value="">Todas</option>
+                  {activas.map(f => <option key={f.clave} value={f.clave}>{cap(f.label)}</option>)}
+                </Select>
+              </Field>
+              <Field label="Coeficiente">
+                <Input type="number" min="0" step="0.001" value={p.coeficiente ?? ""}
+                  onChange={e => {
+                    const v = e.target.value.trim();
+                    patch(i, { coeficiente: v === "" ? undefined : parseFloat(v) });
+                  }}
+                  placeholder="por tasa" className="font-mono tabular-nums" />
+              </Field>
+              <Field label="Gastos adm.">
+                <Select value={p.gastos ? p.gastos.modo : ""}
+                  onChange={e => patch(i, {
+                    gastos: e.target.value ? { modo: e.target.value as "fijo" | "porcentaje", valor: p.gastos?.valor ?? 0 } : undefined,
+                  })}>
+                  <option value="">Los generales</option>
+                  <option value="fijo">$ por cuota</option>
+                  <option value="porcentaje">% de la cuota</option>
+                </Select>
+              </Field>
+              <Field label={p.gastos?.modo === "porcentaje" ? "Gastos (%)" : "Gastos ($)"}>
+                <Input type="number" min="0" step="0.01" disabled={!p.gastos}
+                  value={!p.gastos ? "" : p.gastos.modo === "fijo" ? p.gastos.valor : Number((p.gastos.valor * 100).toFixed(4))}
+                  onChange={e => {
+                    if (!p.gastos) return;
+                    const raw = parseFloat(e.target.value) || 0;
+                    patch(i, { gastos: { modo: p.gastos.modo, valor: p.gastos.modo === "fijo" ? raw : raw / 100 } });
+                  }}
+                  className="font-mono tabular-nums disabled:opacity-40" />
+              </Field>
+            </div>
+
+            {coef > 0 && (
+              <p className={`mt-2.5 text-xs ${fueraDeRango ? "text-destructive" : "text-muted-foreground"}`}>
+                Cada <span className="font-mono">{formatMonto(MONTO_MUESTRA, 0)}</span> paga{" "}
+                <span className="font-mono font-semibold text-foreground">{formatMonto(MONTO_MUESTRA * coef, 0)}</span> por cuota
+                {tasa === null
+                  ? " · ⚠ el coeficiente es demasiado bajo para esa cantidad de cuotas (daría tasa negativa)"
+                  : <> · equivale a <span className="font-mono font-semibold">{formatNumero(tasa, 2)}%</span> {CONVENCION_SIGLA[convencion]}</>}
+                {fueraDeRango && " · fuera del rango de tasa permitido"}
+              </p>
+            )}
+          </div>
+        );
+      })}
+
+      <button type="button" onClick={agregar}
+        className="inline-flex items-center gap-1 rounded-lg border border-border px-2.5 py-2 text-xs text-muted-foreground hover:bg-muted hover:text-foreground transition-colors">
+        <Plus className="h-3.5 w-3.5" /> Agregar plan
+      </button>
     </div>
   );
 }
