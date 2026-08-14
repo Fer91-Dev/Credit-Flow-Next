@@ -108,9 +108,26 @@ export function planId(p: PlazoOpcion): string {
   return p.id || `p-${p.cuotas}-${p.frecuencia ?? "todas"}`;
 }
 
+/** "1 cuota" / "3 cuotas". Se usa como nombre de respaldo y como sufijo de la etiqueta. */
+export function textoCuotas(cuotas: number): string {
+  return `${cuotas} ${cuotas === 1 ? "cuota" : "cuotas"}`;
+}
+
 /** Nombre visible del plan. Sin nombre propio cae en "N cuotas", que es como se ve hoy. */
 export function nombrePlan(p: PlazoOpcion): string {
-  return p.nombre?.trim() || `${p.cuotas} cuotas`;
+  return p.nombre?.trim() || textoCuotas(p.cuotas);
+}
+
+/**
+ * Etiqueta del desplegable del simulador: "Plan 81 · 1 cuota".
+ *
+ * El código NO va acá. Es un dato interno de la financiera y en la práctica ya viaja dentro
+ * del nombre ("Plan 81"), así que mostrarlo repetía el mismo número dos veces y desplazaba lo
+ * único que el vendedor necesita leer en ese momento: cuántas cuotas son.
+ */
+export function etiquetaPlan(p: PlazoOpcion): string {
+  const nombre = p.nombre?.trim();
+  return nombre ? `${nombre} · ${textoCuotas(p.cuotas)}` : textoCuotas(p.cuotas);
 }
 
 /**

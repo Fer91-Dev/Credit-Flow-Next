@@ -26,7 +26,7 @@ import {
   cargoColumnasActivas,
   planesParaFrecuencia,
   planId,
-  nombrePlan,
+  etiquetaPlan,
   tasaDesdeCoeficiente,
   cargosConPlan,
   type Frecuencia,
@@ -985,9 +985,7 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
                   <Select name="plan_id" value={formData.plan_id} onChange={set("plan_id")} required>
                     {!formData.plan_id && <option value="">—</option>}
                     {planesDisponibles.map(p => (
-                      <option key={planId(p)} value={planId(p)}>
-                        {nombrePlan(p)}{p.codigo ? ` · ${p.codigo}` : ""}
-                      </option>
+                      <option key={planId(p)} value={planId(p)}>{etiquetaPlan(p)}</option>
                     ))}
                   </Select>
                 ) : plazosActivos.length > 0 ? (

@@ -7,7 +7,7 @@ import { FeatureGate } from "@/components/providers/FeaturesProvider";
 import { FinancieraForm } from "@/components/configuracion/FinancieraForm";
 import { BackupsView } from "@/components/configuracion/BackupsView";
 import type { SimuladorConfig, CargosConfig, FrecuenciaOpcion, DocumentosConfig, ConvencionTasa } from "@/lib/domain";
-import { DOCUMENTOS_DEFAULT, revisarDocumentos, ORDEN_IMPUTACION, tasaDesdeCoeficiente } from "@/lib/domain";
+import { DOCUMENTOS_DEFAULT, revisarDocumentos, ORDEN_IMPUTACION, tasaDesdeCoeficiente, textoCuotas } from "@/lib/domain";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Emoji } from "@/components/ui/Emoji";
 import { Field, Input, Select, Textarea, SecretInput } from "@/components/ui/field";
@@ -15,6 +15,21 @@ import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
 import { formatFecha, formatMonto, formatNumero } from "@/lib/utils";
+
+/**
+ * Día del mes (1–28) de los campos de cronograma, o `null` cuando el campo queda vacío.
+ *
+ * 🔴 **El 0 apaga el campo.** Antes el 0 se convertía en 1 en silencio, y "corte 1" no es
+ * "sin corte": significa que casi todo crédito se va un mes más. En el resto del SaaS el 0
+ * siempre quiere decir apagado (monto mínimo, tasa base, días de gracia, límite de
+ * otorgamiento), así que un campo que hace lo contrario sin avisar es una trampa.
+ */
+const diaDelMes = (valor: string): number | null => {
+  if (valor.trim() === "") return null;
+  const n = parseInt(valor);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return Math.min(28, n);
+};
 
 /** Sigla de la convención de tasa, para no mostrar un porcentaje sin decir de qué es. */
 const CONVENCION_SIGLA: Record<ConvencionTasa, string> = {
@@ -151,8 +166,8 @@ const AYUDA: Record<string, AyudaBloque> = {
     titulo: "Cronograma de cobranza",
     texto: "Reglas de fechas del crédito. Se congelan al otorgarlo: cambiarlas no afecta a los créditos ya dados.",
     puntos: [
-      "Día de vencimiento: día fijo del mes en que vence cada cuota. Vacío = un período después del desembolso.",
-      "Día de corte: después de esa fecha, la 1ª cuota pasa al mes siguiente. Necesita un día de vencimiento.",
+      "Día de vencimiento: día fijo del mes en que vence cada cuota. Vacío o 0 = un período después del desembolso.",
+      "Día de corte: después de esa fecha, la 1ª cuota pasa al mes siguiente. Vacío o 0 = sin corte. Necesita un día de vencimiento.",
       "Esos dos SOLO valen para créditos mensuales.",
       "Días de gracia: el cliente sigue figurando en cobranza, pero no se le cobran punitorios hasta pasada la tolerancia. Vale en todas las frecuencias.",
       "Domingo, sábado y feriados: corren el vencimiento al próximo día hábil. Los tres vienen APAGADOS: si no activás ninguno, las fechas no se mueven.",
@@ -672,15 +687,15 @@ export function ConfigForm() {
             <div className="space-y-5">
               <SubGrupo titulo="Cuándo vence la cuota" nota="solo créditos mensuales">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <Field label="Día de vencimiento" hint="1–28. Vacío = un período desde el desembolso">
-                    <Input type="number" min="1" max="28" step="1"
+                  <Field label="Día de vencimiento" hint="1–28. Vacío o 0 = un período desde el desembolso">
+                    <Input type="number" min="0" max="28" step="1"
                       value={form.simulador.diaVencimientoFijo ?? ""}
-                      onChange={e => setSim("diaVencimientoFijo", e.target.value === "" ? null : Math.min(28, Math.max(1, parseInt(e.target.value) || 1)))} />
+                      onChange={e => setSim("diaVencimientoFijo", diaDelMes(e.target.value))} />
                   </Field>
-                  <Field label="Día de corte" hint="1–28. Necesita un día de vencimiento">
-                    <Input type="number" min="1" max="28" step="1"
+                  <Field label="Día de corte" hint="1–28. Vacío o 0 = sin corte. Necesita un día de vencimiento">
+                    <Input type="number" min="0" max="28" step="1"
                       value={form.simulador.diaCorte ?? ""}
-                      onChange={e => setSim("diaCorte", e.target.value === "" ? null : Math.min(28, Math.max(1, parseInt(e.target.value) || 1)))} />
+                      onChange={e => setSim("diaCorte", diaDelMes(e.target.value))} />
                   </Field>
                 </div>
                 <p className="mt-2 text-xs text-muted-foreground/60">
@@ -1907,7 +1922,7 @@ function PlanesEditor({ planes, frecuencias, convencion, tasaMin, tasaMax, onCha
 
             <div className="flex items-center gap-2">
               <Input value={p.nombre ?? ""} onChange={e => patch(i, { nombre: e.target.value })}
-                placeholder={`${p.cuotas} cuotas`} className="font-medium" />
+                placeholder={textoCuotas(p.cuotas)} className="font-medium" />
               <Toggle checked={p.activo} onChange={v => patch(i, { activo: v })} />
               <button type="button" onClick={() => onChange(planes.filter((_, k) => k !== i))}
                 title="Quitar plan" className="shrink-0 rounded-lg p-2 text-muted-foreground/40 hover:bg-destructive/10 hover:text-destructive transition-colors">
