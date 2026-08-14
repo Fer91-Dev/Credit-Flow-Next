@@ -120,14 +120,8 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
   const simCfg = config?.simulador;
   const catalogoFrec = simCfg?.frecuencias ?? [];
   const frecsActivas = catalogoFrec.filter(f => f.activo);
-  const hayCargos = !!simCfg && (
-    simCfg.cargos.iva.activo || simCfg.cargos.seguro.activo ||
-    simCfg.cargos.gastosAdministrativos.activo || simCfg.cargos.comisionOtorgamiento.activo
-  );
-  // Columnas de cargos per-cuota activas (IVA / Seguro / Gastos) para discriminarlas
-  // en el detalle del operador. La comisión es upfront → no genera columna.
-  const cargoCols = simCfg ? cargoColumnasActivas(simCfg.cargos) : [];
-  const hayCargoCols = cargoCols.length > 0;
+  // (`hayCargos` y `cargoCols` se derivan de los cargos EFECTIVOS del plan, más abajo:
+  //  necesitan saber qué plan está elegido, y eso depende del formulario.)
 
   // Estado inicial vacío: el simulador no muestra ningún plan hasta que el operador complete todos los campos.
   const [formData, setFormData] = useState({
@@ -269,6 +263,28 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
     () => [...new Set(planesDisponibles.map(p => p.cuotas))].sort((a, b) => a - b),
     [planesDisponibles],
   );
+
+  /**
+   * Cargos EFECTIVOS de esta simulación: los del tenant con los gastos del plan encima.
+   *
+   * 🔴 Es la fuente ÚNICA de la que salen el motor, las columnas del detalle del operador y
+   * el "total a pagar". Cuando el motor los tomaba del plan y la tabla del operador seguía
+   * mirando los generales, la pantalla se contradecía sola: al cliente le mostraba cuotas de
+   * $208.000 y al operador la misma cuota en $207.500, sin columna donde apareciera la
+   * diferencia. Un cargo que el sistema cobra y no muestra es peor que no cobrarlo.
+   */
+  const cargosEfectivos = useMemo(
+    () => (simCfg ? cargosConPlan(simCfg.cargos, planSel) : null),
+    [simCfg, planSel],
+  );
+  const hayCargos = !!cargosEfectivos && (
+    cargosEfectivos.iva.activo || cargosEfectivos.seguro.activo ||
+    cargosEfectivos.gastosAdministrativos.activo || cargosEfectivos.comisionOtorgamiento.activo
+  );
+  // Columnas de cargos per-cuota activas (IVA / Seguro / Gastos) para discriminarlas
+  // en el detalle del operador. La comisión es upfront → no genera columna.
+  const cargoCols = cargosEfectivos ? cargoColumnasActivas(cargosEfectivos) : [];
+  const hayCargoCols = cargoCols.length > 0;
   /** Tasa que representa el coeficiente del plan. `null` = el plan no cotiza por coeficiente. */
   const tasaDelPlan = useMemo(() => {
     if (!planSel?.coeficiente) return null;
@@ -484,7 +500,8 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
     setRiesgoLoading(true);
     fetch("/api/creditos/evaluar-riesgo", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ cliente_id: formData.cliente_id, monto_original: monto, tasa, plazo_meses: n, frecuencia: formData.frecuencia }),
+      // El plan viaja para que el motor de riesgo mida la cuota con SUS gastos, no con los generales.
+      body: JSON.stringify({ cliente_id: formData.cliente_id, monto_original: monto, tasa, plazo_meses: n, frecuencia: formData.frecuencia, plan_id: formData.plan_id || undefined }),
     })
       .then(r => r.json())
       .then(j => { if (cancel) return; setRiesgoEval(j.ok ? j.data : null); setAutorizarRiesgo(false); })
@@ -492,7 +509,7 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
       .finally(() => { if (!cancel) setRiesgoLoading(false); });
     return () => { cancel = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tieneRiesgo, creditoId, formData.cliente_id, formData.frecuencia, sim.monto, sim.tasa, sim.plazo]);
+  }, [tieneRiesgo, creditoId, formData.cliente_id, formData.frecuencia, formData.plan_id, sim.monto, sim.tasa, sim.plazo]);
 
   const riesgoRechazado = !!(tieneRiesgo && riesgoEval && riesgoEval.semaforo === "rechazado");
   // El otorgamiento se traba si: política dura (bloquea) o falta la autorización del admin.
@@ -517,9 +534,9 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
        * misma entrada.
        */
       return construirPlanAmortizacion(monto, tasa, n, hoyComercial(), convencion, sim.frecuencia,
-        simCfg ? {
-          // Los gastos administrativos propios del plan pisan los generales (única herencia).
-          cargos: cargosConPlan(simCfg.cargos, planSel),
+        simCfg && cargosEfectivos ? {
+          // Los mismos cargos de los que salen las columnas del operador y el total a pagar.
+          cargos: cargosEfectivos,
           redondeo: simCfg.redondeoCuota,
           cronograma: {
             diaCorte: simCfg.diaCorte,
@@ -534,7 +551,7 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
     } catch {
       return null;
     }
-  }, [sim, convencion, simCfg, planSel]);
+  }, [sim, convencion, simCfg, cargosEfectivos]);
 
   const montoNum = parseMonto(sim.monto);
 

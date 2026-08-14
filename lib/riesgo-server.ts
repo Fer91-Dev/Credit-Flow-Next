@@ -8,7 +8,7 @@
 import { prisma } from "@/lib/prisma";
 import { calcularScore, evaluarOriginacion, cuotaMensualEquivalente, construirPlanAmortizacion, round2, type ResultadoOriginacion, type ScoreResult, type SenalesBureau, type FrecuenciaDef, esCreditoVivo } from "@/lib/domain";
 import { getRiesgoConfig } from "@/lib/config";
-import type { ConfiguracionFinanciera } from "@/lib/domain";
+import type { ConfiguracionFinanciera, CargosConfig } from "@/lib/domain";
 
 export interface EvaluacionRiesgo extends ResultadoOriginacion {
   ingresoNetoMensual: number;
@@ -44,13 +44,21 @@ export function cuotaMensualParaRiesgo(params: {
   frecuencia: string;
   fechaInicio: Date;
   config: ConfiguracionFinanciera;
+  /**
+   * Cargos EFECTIVOS del crédito, cuando no son los generales del tenant. Es el caso de un
+   * plan con gastos administrativos propios: si acá entraran los generales, el motor mediría
+   * contra el sueldo una cuota más chica que la que el cliente va a pagar de verdad, y
+   * aprobaría por encima de su capacidad. La regla de `MOTOR-RIESGO.md` es que toda cuota que
+   * se compare contra el ingreso vaya mensualizada Y con los cargos que realmente se cobran.
+   */
+  cargos?: CargosConfig;
 }): number {
   const { monto, tasa, plazoCuotas, frecuencia, fechaInicio, config } = params;
   if (monto <= 0 || plazoCuotas < 1) return 0;
 
   const plan = construirPlanAmortizacion(
     monto, tasa, plazoCuotas, fechaInicio, config.convencionTasa, frecuencia,
-    { cargos: config.simulador.cargos, redondeo: config.simulador.redondeoCuota },
+    { cargos: params.cargos ?? config.simulador.cargos, redondeo: config.simulador.redondeoCuota },
     config.simulador.frecuencias,
   );
   const cuotaPeriodo = plan.cuotas.reduce((m, c) => Math.max(m, c.cuotaTotal), 0);

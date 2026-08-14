@@ -382,6 +382,9 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
       // cronograma real todavía no se armó en este punto del flujo.
       fechaInicio: hoyComercial(),
       config: configActual,
+      // Los cargos del crédito que se está por dar (con los gastos del plan ya resueltos),
+      // no los generales: si no, mide contra el sueldo una cuota más barata que la real.
+      cargos: cargosSnapshot,
     });
     const ev = await evaluarClienteParaCredito({ tenantId, clienteId: body.cliente_id, montoSolicitado: body.monto_original, cuotaMensualEquivalenteConCargos: cuotaEstimada });
     const autorizadoManual = role === "admin" && body.autorizacion_riesgo === true;
