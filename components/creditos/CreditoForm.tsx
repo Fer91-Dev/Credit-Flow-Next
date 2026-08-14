@@ -263,6 +263,14 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
     () => [...new Set(planesDisponibles.map(p => p.cuotas))].sort((a, b) => a - b),
     [planesDisponibles],
   );
+  /**
+   * ¿Los planes son un PRODUCTO con identidad propia, o son la lista de números de siempre?
+   *
+   * Una financiera que solo enumera plazos (3, 6, 12…) no tiene "planes": tiene cuotas. Con
+   * el rótulo "Plan" sobre un desplegable de números pelados, la pantalla nombra algo que
+   * para esa financiera no existe. El campo se llama por lo que hay adentro.
+   */
+  const planesConIdentidad = planesDisponibles.some(p => p.nombre?.trim() || p.coeficiente);
 
   /**
    * Cargos EFECTIVOS de esta simulación: los del tenant con los gastos del plan encima.
@@ -989,8 +997,8 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
                 </Select>
               </Field>
             </div>
-            <div className={hayPlanes ? "col-span-2" : "col-span-1"}>
-              <Field label={hayPlanes ? "Plan" : "Cuotas"} required hint={cuotasFijas != null ? "Fijas por la frecuencia" : undefined}>
+            <div className={hayPlanes && planesConIdentidad ? "col-span-2" : "col-span-1"}>
+              <Field label={hayPlanes && planesConIdentidad ? "Plan" : "Cuotas"} required hint={cuotasFijas != null ? "Fijas por la frecuencia" : undefined}>
                 {cuotasFijas != null ? (
                   // Frecuencia con cuotas fijas: el número lo impone la configuración.
                   <Input
@@ -1001,8 +1009,12 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
                   // El plan define cuotas y —si cotiza por coeficiente— también la tasa.
                   <Select name="plan_id" value={formData.plan_id} onChange={set("plan_id")} required>
                     {!formData.plan_id && <option value="">—</option>}
+                    {/* Sin identidad propia, la opción es el número solo: el rótulo ya dice
+                        "Cuotas" y repetir la palabra en cada renglón solo achica el campo. */}
                     {planesDisponibles.map(p => (
-                      <option key={planId(p)} value={planId(p)}>{etiquetaPlan(p)}</option>
+                      <option key={planId(p)} value={planId(p)}>
+                        {planesConIdentidad ? etiquetaPlan(p) : p.cuotas}
+                      </option>
                     ))}
                   </Select>
                 ) : plazosActivos.length > 0 ? (
