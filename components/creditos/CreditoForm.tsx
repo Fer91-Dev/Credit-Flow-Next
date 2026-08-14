@@ -456,6 +456,7 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
             diaCorte: simCfg.diaCorte,
             diaVencimiento: simCfg.diaVencimientoFijo,
             diasGracia: simCfg.diasGracia,
+            incluirDomingo: simCfg.incluirDomingoNoHabil,
             incluirSabado: simCfg.incluirSabadoNoHabil,
             feriados: simCfg.feriados,
           },

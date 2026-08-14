@@ -23,7 +23,15 @@ export interface CronogramaConfig {
   diaVencimiento: number | null;
   /** Días de tolerancia tras el vencimiento antes de la mora. Default 0. */
   diasGracia?: number;
-  /** Si el sábado se considera no hábil (además del domingo). Default false. */
+  /**
+   * Si el DOMINGO se considera no hábil. Default false.
+   *
+   * Estuvo cableado a `true` sin forma de apagarlo. Decisión del usuario (2026-08-13):
+   * apagado por defecto, como el sábado — ninguna financiera cambia de criterio de fechas
+   * sin haberlo elegido. Con los tres en falso y sin feriados, el ajuste no mueve nada.
+   */
+  incluirDomingo?: boolean;
+  /** Si el SÁBADO se considera no hábil. Default false. */
   incluirSabado?: boolean;
   /** Fechas no hábiles (feriados) en ISO "YYYY-MM-DD". */
   feriados?: string[];
@@ -34,23 +42,20 @@ function ymd(d: Date): string {
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
 }
 
-/** True si la fecha es domingo, feriado, o sábado (si está activado). */
-export function esDiaNoHabil(
-  fecha: Date,
-  cfg: { incluirSabado?: boolean; feriados?: string[] } = {}
-): boolean {
+/** Config de días no hábiles. Todo apagado y sin feriados = ninguna fecha se mueve. */
+export type DiasNoHabiles = { incluirDomingo?: boolean; incluirSabado?: boolean; feriados?: string[] };
+
+/** True si la fecha es feriado, domingo o sábado (los dos últimos, si están activados). */
+export function esDiaNoHabil(fecha: Date, cfg: DiasNoHabiles = {}): boolean {
   const dow = fecha.getUTCDay(); // 0 = domingo, 6 = sábado
-  if (dow === 0) return true;
+  if (cfg.incluirDomingo && dow === 0) return true;
   if (cfg.incluirSabado && dow === 6) return true;
   if (cfg.feriados && cfg.feriados.includes(ymd(fecha))) return true;
   return false;
 }
 
 /** Corre la fecha hacia adelante hasta el siguiente día hábil (incluye el mismo si ya lo es). */
-export function siguienteDiaHabil(
-  fecha: Date,
-  cfg: { incluirSabado?: boolean; feriados?: string[] } = {}
-): Date {
+export function siguienteDiaHabil(fecha: Date, cfg: DiasNoHabiles = {}): Date {
   let d = new Date(fecha.getTime());
   let guard = 0;
   while (esDiaNoHabil(d, cfg) && guard++ < 366) {
@@ -70,10 +75,7 @@ export function siguienteDiaHabil(
  * al lunes lo dejaría pisado con el del lunes, así que si el corrimiento alcanza al anterior
  * se sigue empujando. El resultado en diaria es un cronograma de días hábiles.
  */
-export function ajustarADiasHabiles(
-  fechas: Date[],
-  cfg: { incluirSabado?: boolean; feriados?: string[] } = {}
-): Date[] {
+export function ajustarADiasHabiles(fechas: Date[], cfg: DiasNoHabiles = {}): Date[] {
   const ajustadas: Date[] = [];
   let previa: Date | null = null;
   for (const fecha of fechas) {

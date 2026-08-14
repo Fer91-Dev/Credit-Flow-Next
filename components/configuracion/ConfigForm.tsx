@@ -143,7 +143,7 @@ const AYUDA: Record<string, AyudaBloque> = {
       "Día de corte: después de esa fecha, la 1ª cuota pasa al mes siguiente. Necesita un día de vencimiento.",
       "Esos dos SOLO valen para créditos mensuales.",
       "Días de gracia: el cliente sigue figurando en cobranza, pero no se le cobran punitorios hasta pasada la tolerancia. Vale en todas las frecuencias.",
-      "Sábado no hábil y feriados: corren el vencimiento al próximo día hábil. El domingo nunca es hábil, sin configurar nada.",
+      "Domingo, sábado y feriados: corren el vencimiento al próximo día hábil. Los tres vienen APAGADOS: si no activás ninguno, las fechas no se mueven.",
       "En diaria, ese corrimiento deja el cronograma en días hábiles sin amontonar dos cuotas el mismo día.",
     ],
   },
@@ -407,7 +407,7 @@ export function ConfigForm() {
       case "plazos":        return !eq(s.plazos, cs.plazos) || s.plazoDefault !== cs.plazoDefault;
       case "frecuencias":   return !eq(s.frecuencias, cs.frecuencias) || s.frecuenciaDefault !== cs.frecuenciaDefault;
       case "redondeo":      return !eq(s.redondeoCuota, cs.redondeoCuota);
-      case "cronograma":    return !eq([s.diaCorte, s.diaVencimientoFijo, s.diasGracia, s.incluirSabadoNoHabil, s.feriados], [cs.diaCorte, cs.diaVencimientoFijo, cs.diasGracia, cs.incluirSabadoNoHabil, cs.feriados]);
+      case "cronograma":    return !eq([s.diaCorte, s.diaVencimientoFijo, s.diasGracia, s.incluirDomingoNoHabil, s.incluirSabadoNoHabil, s.feriados], [cs.diaCorte, cs.diaVencimientoFijo, cs.diasGracia, cs.incluirDomingoNoHabil, cs.incluirSabadoNoHabil, cs.feriados]);
       case "cargo-comision": return !eq(s.cargos.comisionOtorgamiento, cs.cargos.comisionOtorgamiento);
       case "cargo-iva":      return !eq(s.cargos.iva, cs.cargos.iva);
       case "cargo-seguro":   return !eq(s.cargos.seguro, cs.cargos.seguro);
@@ -683,13 +683,27 @@ export function ConfigForm() {
                 </div>
               </SubGrupo>
 
-              <SubGrupo titulo="Días no hábiles" nota="opcional · el domingo siempre lo es">
+              {/*
+                Los dos APAGADOS por defecto. El domingo estuvo cableado en el motor sin forma
+                de apagarlo; se hizo configurable por decisión del usuario, con el mismo
+                criterio que el resto: nadie cambia de comportamiento sin haberlo elegido.
+                Con los dos apagados y sin feriados, ninguna fecha se mueve.
+              */}
+              <SubGrupo titulo="Días no hábiles" nota="opcional · todo apagado = las fechas no se corren">
                 <SwitchRow
-                  title="Sábado no hábil"
-                  desc="Si está activo, los vencimientos que caen sábado también se corren al lunes."
-                  checked={form.simulador.incluirSabadoNoHabil}
-                  onChange={v => setSim("incluirSabadoNoHabil", v)}
+                  title="Domingo no hábil"
+                  desc="Si está activo, los vencimientos que caen domingo se corren al lunes."
+                  checked={form.simulador.incluirDomingoNoHabil}
+                  onChange={v => setSim("incluirDomingoNoHabil", v)}
                 />
+                <div className="mt-3">
+                  <SwitchRow
+                    title="Sábado no hábil"
+                    desc="Si está activo, los vencimientos que caen sábado se corren al día hábil siguiente."
+                    checked={form.simulador.incluirSabadoNoHabil}
+                    onChange={v => setSim("incluirSabadoNoHabil", v)}
+                  />
+                </div>
                 <div className="mt-4">
                   <FeriadosEditor feriados={form.simulador.feriados} onChange={f => setSim("feriados", f)} />
                 </div>
@@ -712,7 +726,7 @@ export function ConfigForm() {
                 {form.simulador.diaCorte
                   ? <> y uno otorgado después del <b>{form.simulador.diaCorte}</b> arranca a cobrarse un mes más tarde</>
                   : <> (el primero, al mes siguiente del desembolso)</>}
-                . Si esa fecha cae domingo{form.simulador.incluirSabadoNoHabil ? ", sábado" : ""} o feriado, se corre al día hábil siguiente.
+                .{(form.simulador.incluirDomingoNoHabil || form.simulador.incluirSabadoNoHabil || form.simulador.feriados.length > 0) && <> Si esa fecha cae en un día no hábil, se corre al siguiente.</>}
               </p>
             ) : null}
           </Section>

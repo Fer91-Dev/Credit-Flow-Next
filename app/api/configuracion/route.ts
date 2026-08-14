@@ -122,8 +122,10 @@ function validarSimulador(s: any): string | null {
   if (s.diasGracia !== undefined && (typeof s.diasGracia !== "number" || !Number.isInteger(s.diasGracia) || s.diasGracia < 0)) {
     return "Los días de gracia tienen que ser un número entero de 0 o más.";
   }
-  if (s.incluirSabadoNoHabil !== undefined && typeof s.incluirSabadoNoHabil !== "boolean") {
-    return "simulador.incluirSabadoNoHabil debe ser booleano";
+  for (const campo of ["incluirDomingoNoHabil", "incluirSabadoNoHabil"] as const) {
+    if (s[campo] !== undefined && typeof s[campo] !== "boolean") {
+      return `simulador.${campo} debe ser booleano`;
+    }
   }
   if (s.feriados !== undefined
       && (!Array.isArray(s.feriados) || s.feriados.some((f: any) => typeof f !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(f)))) {

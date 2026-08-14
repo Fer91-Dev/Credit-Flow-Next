@@ -2,7 +2,7 @@ import { requireAuth, requireRole, scopeCreditosVendedor, ApiError } from "@/lib
 import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
-import { cuotaMensualFrancesa, round2, tasaPeriodicaSegunConvencion, interesMora, normalizarFrecuencia, resolverFrecuencia, sumarPeriodos, construirPlanAmortizacion, planACuotas, estadoCoherente, etiquetaCaja, esCuentaValida, validarParametrosOtorgamiento, diasMoraActual, CUENTA_LABEL, type Cuenta, type FrecuenciaDef, ESTADOS_VIVOS, esCreditoVivo, moraDelCredito, moraDesdeCronograma, moraPendienteTotal } from "@/lib/domain";
+import { round2, normalizarFrecuencia, resolverFrecuencia, sumarPeriodos, construirPlanAmortizacion, planACuotas, estadoCoherente, etiquetaCaja, esCuentaValida, validarParametrosOtorgamiento, diasMoraActual, CUENTA_LABEL, type Cuenta, ESTADOS_VIVOS, esCreditoVivo, moraDelCredito, moraDesdeCronograma, moraPendienteTotal } from "@/lib/domain";
 import { siguienteNumeroComprobante } from "@/lib/comprobantes";
 import { assertFondosSuficientesTx } from "@/lib/caja-fondos";
 import { getConfiguracion } from "@/lib/config";
@@ -305,6 +305,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     diaCorte: configActual.simulador.diaCorte,
     diaVencimiento: configActual.simulador.diaVencimientoFijo,
     diasGracia: configActual.simulador.diasGracia,
+    incluirDomingo: configActual.simulador.incluirDomingoNoHabil,
     incluirSabado: configActual.simulador.incluirSabadoNoHabil,
     feriados: configActual.simulador.feriados,
     // Condiciones de MORA del día en que se firma. Los días de gracia ya se congelaban

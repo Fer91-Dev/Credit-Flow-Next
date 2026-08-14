@@ -123,7 +123,9 @@ export interface SimuladorConfig {
   diaCorte: number | null;
   /** Días de gracia: tolerancia tras el vencimiento antes de que corra la mora. */
   diasGracia: number;
-  /** Si el sábado se considera no hábil (además del domingo) para correr vencimientos. */
+  /** Si el DOMINGO se considera no hábil para correr vencimientos. Apagado por defecto. */
+  incluirDomingoNoHabil: boolean;
+  /** Si el SÁBADO se considera no hábil para correr vencimientos. Apagado por defecto. */
   incluirSabadoNoHabil: boolean;
   /** Feriados (no hábiles) en ISO "YYYY-MM-DD"; los vencimientos que caen ahí se corren. */
   feriados: string[];
@@ -190,6 +192,7 @@ export const SIMULADOR_DEFAULT: SimuladorConfig = {
   diaVencimientoFijo: null,
   diaCorte: null,
   diasGracia: 0,
+  incluirDomingoNoHabil: false,
   incluirSabadoNoHabil: false,
   feriados: [],
   cargos: {

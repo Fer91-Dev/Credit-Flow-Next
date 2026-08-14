@@ -153,6 +153,7 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
     diaCorte: config.simulador.diaCorte,
     diaVencimiento: config.simulador.diaVencimientoFijo,
     diasGracia: config.simulador.diasGracia,
+    incluirDomingo: config.simulador.incluirDomingoNoHabil,
     incluirSabado: config.simulador.incluirSabadoNoHabil,
     feriados: config.simulador.feriados,
     // Mismo snapshot que en el otorgamiento: el crédito nuevo de una refinanciación es un
