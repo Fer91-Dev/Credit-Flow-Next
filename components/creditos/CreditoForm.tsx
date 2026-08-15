@@ -1456,7 +1456,11 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
             <div className={`h-full overflow-auto transition-opacity duration-200 ${calculando ? "opacity-50" : "opacity-100"}`}>
             {vista === "operador" ? (
               /* ── Vista operador: desglose completo ── */
-              <table className="w-full text-xs border-separate border-spacing-0">
+              /* El canal lateral sale de una regla sola: la primera y la última celda toman
+                 el mismo `px-4` que el encabezado del panel, así la tabla queda alineada con
+                 "Plan de pagos" y con el botón Imprimir. Va sobre la tabla y no celda por
+                 celda porque las columnas de cargos aparecen y desaparecen según la config. */
+              <table className="w-full text-xs border-separate border-spacing-0 [&_th:first-child]:pl-4 [&_td:first-child]:pl-4 [&_th:last-child]:pr-4 [&_td:last-child]:pr-4">
                 <thead className="sticky top-0 z-10 bg-card">
                   <tr>
                     <th className="px-2.5 py-2.5 text-left font-semibold text-muted-foreground border-b border-border w-9">#</th>
@@ -1469,7 +1473,7 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
                     ))}
                     {/* Mismo nombre que en la vista cliente: es literalmente el mismo número. */}
                     {hayCargoCols && <th className={COL_PAGA_TH}>A pagar</th>}
-                    <th className="px-2.5 py-2.5 text-right font-semibold text-muted-foreground border-b border-border pr-3">Saldo</th>
+                    <th className="px-2.5 py-2.5 text-right font-semibold text-muted-foreground border-b border-border">Saldo</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1484,7 +1488,7 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
                         <td key={col.key} className="px-2.5 py-2 text-right font-mono text-foreground/80 bg-warning/5 tabular-nums">${n2(row[col.key])}</td>
                       ))}
                       {hayCargoCols && <td className={COL_PAGA_TD}>${n2(row.cuotaTotal)}</td>}
-                      <td className="px-2.5 py-2 pr-3 text-right font-mono text-muted-foreground tabular-nums">${n2(row.saldo)}</td>
+                      <td className="px-2.5 py-2 text-right font-mono text-muted-foreground tabular-nums">${n2(row.saldo)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -1498,7 +1502,7 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
                       <td key={col.key} className="px-2.5 py-3.5 text-right font-bold font-mono text-sm text-foreground bg-warning/10 tabular-nums">${n2(col.key === "iva" ? plan.totalIva : col.key === "seguro" ? plan.totalSeguro : plan.totalGastos)}</td>
                     ))}
                     {hayCargoCols && <td className={COL_PAGA_TF}>${n2(totalCuotasCliente)}</td>}
-                    <td className="px-2.5 py-3.5 pr-3 text-right font-mono text-muted-foreground/30 tabular-nums">$ 0,00</td>
+                    <td className="px-2.5 py-3.5 text-right font-mono text-muted-foreground/30 tabular-nums">$ 0,00</td>
                   </tr>
                   {/* La comisión se cobra al firmar: no es una cuota y no puede sumarse a la
                       columna sin romper su aritmética. Va en su propio renglón, y el total
@@ -1522,12 +1526,14 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
               </table>
             ) : (
               /* ── Vista cliente: solo cuotas a cubrir ── */
-              <table className="w-full text-sm border-separate border-spacing-0">
+              /* Mismo canal lateral que la vista operador: las dos se alternan con el mismo
+                 botón, así que el borde no puede moverse al cambiar de vista. */
+              <table className="w-full text-sm border-separate border-spacing-0 [&_th:first-child]:pl-4 [&_td:first-child]:pl-4 [&_th:last-child]:pr-4 [&_td:last-child]:pr-4">
                 <thead className="sticky top-0 z-10 bg-card">
                   <tr>
                     <th className="px-4 py-2.5 text-left font-semibold text-muted-foreground border-b border-border w-12">Cuota</th>
                     <th className="px-4 py-2.5 text-left font-semibold text-muted-foreground border-b border-border">Vence</th>
-                    <th className="px-4 py-2.5 text-right font-semibold text-muted-foreground border-b border-border pr-6">A pagar</th>
+                    <th className="px-4 py-2.5 text-right font-semibold text-muted-foreground border-b border-border">A pagar</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1535,7 +1541,7 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
                     <tr key={row.nro} className={`hover:bg-muted/20 transition-colors ${idx % 2 === 1 ? "bg-muted/5" : ""}`}>
                       <td className="px-4 py-2.5 text-muted-foreground font-mono tabular-nums">{row.nro}/{plan.cuotas.length}</td>
                       <td className="px-4 py-2.5 text-foreground tabular-nums">{fmtDate(row.fecha)}</td>
-                      <td className="px-4 py-2.5 pr-6 text-right font-mono font-semibold text-foreground tabular-nums">${n2(row.cuotaTotal)}</td>
+                      <td className="px-4 py-2.5 text-right font-mono font-semibold text-foreground tabular-nums">${n2(row.cuotaTotal)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -1549,17 +1555,17 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
                     <td colSpan={2} className="px-4 py-3.5 text-[10px] font-bold text-foreground uppercase tracking-widest">
                       {comisionUpfront > 0 ? "Total de las cuotas" : "Total a pagar"}
                     </td>
-                    <td className={`px-4 py-3.5 pr-6 text-right font-mono tabular-nums ${comisionUpfront > 0 ? "text-sm font-semibold text-foreground" : "text-base font-bold text-foreground"}`}>${n2(totalCuotasCliente)}</td>
+                    <td className={`px-4 py-3.5 text-right font-mono tabular-nums ${comisionUpfront > 0 ? "text-sm font-semibold text-foreground" : "text-base font-bold text-foreground"}`}>${n2(totalCuotasCliente)}</td>
                   </tr>
                   {comisionUpfront > 0 && (
                     <>
                       <tr className="bg-muted/40">
                         <td colSpan={2} className="px-4 py-2 text-[10px] font-medium text-muted-foreground uppercase tracking-widest">Comisión de otorgamiento (al firmar)</td>
-                        <td className="px-4 py-2 pr-6 text-right font-mono text-sm text-foreground tabular-nums">${n2(comisionUpfront)}</td>
+                        <td className="px-4 py-2 text-right font-mono text-sm text-foreground tabular-nums">${n2(comisionUpfront)}</td>
                       </tr>
                       <tr className="border-t border-border bg-muted/40">
                         <td colSpan={2} className="px-4 py-3.5 text-[10px] font-bold text-foreground uppercase tracking-widest">Total a pagar</td>
-                        <td className="px-4 py-3.5 pr-6 text-right font-bold font-mono text-base text-foreground tabular-nums">${n2(totalAPagar)}</td>
+                        <td className="px-4 py-3.5 text-right font-bold font-mono text-base text-foreground tabular-nums">${n2(totalAPagar)}</td>
                       </tr>
                     </>
                   )}
