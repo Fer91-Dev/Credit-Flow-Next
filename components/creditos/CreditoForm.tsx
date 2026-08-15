@@ -123,6 +123,22 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
   // (`hayCargos` y `cargoCols` se derivan de los cargos EFECTIVOS del plan, más abajo:
   //  necesitan saber qué plan está elegido, y eso depende del formulario.)
 
+  /**
+   * 🔴 Las CONDICIONES de un crédito otorgado no se editan.
+   *
+   * El formulario dejaba cambiar capital, cuotas, tasa y frecuencia y mostraba el plan entero
+   * recalculado, pero el servidor descartaba capital y plazo **en silencio**, cambiaba la tasa
+   * y **nunca regeneraba el cronograma persistido** —que es el que usan el cobro, la mora y el
+   * saldo—. Resultado probado: un crédito quedaba mostrando cuotas de $79.139,24 en la pantalla
+   * de amortización mientras la terminal de cobro le exigía $121.212,95. La pantalla respondía
+   * "Crédito actualizado" en los dos casos.
+   *
+   * Un crédito otorgado es un contrato firmado: para cambiarle las condiciones existen
+   * **anular** (revierte la caja) y **refinanciar** (consolida la deuda), que cuadran los
+   * libros y quedan auditados. Un formulario que reescribe la deuda por atrás, no.
+   */
+  const condicionesBloqueadas = !!creditoId;
+
   // Estado inicial vacío: el simulador no muestra ningún plan hasta que el operador complete todos los campos.
   const [formData, setFormData] = useState({
     cliente_id: "", tipo_credito: "personal",
@@ -822,12 +838,20 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
         <section className="space-y-2">
           <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Prestatario</p>
           <Field label="Cliente" required>
-            <ClienteCombobox
-              clientes={clientes}
-              value={formData.cliente_id}
-              onSelect={id => setFormData(p => ({ ...p, cliente_id: id }))}
-              onAlta={abrirAlta}
-            />
+            {condicionesBloqueadas ? (
+              // Un crédito otorgado no cambia de titular: eso no es editar, es otro crédito.
+              <Input
+                value={clienteSel ? `${nombreCompleto(clienteSel)}${clienteSel.documento ? ` · DNI ${clienteSel.documento}` : ""}` : "—"}
+                readOnly tabIndex={-1} className="opacity-70 cursor-not-allowed"
+              />
+            ) : (
+              <ClienteCombobox
+                clientes={clientes}
+                value={formData.cliente_id}
+                onSelect={id => setFormData(p => ({ ...p, cliente_id: id }))}
+                onAlta={abrirAlta}
+              />
+            )}
           </Field>
           <div className={vendedores.length > 0 ? "grid grid-cols-2 gap-2.5" : ""}>
             <Field label="Tipo de crédito" required>
@@ -849,8 +873,12 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
               principal. Por eso la opción vacía se nombra en vez de dejarse en blanco.
             */}
             {vendedores.length > 0 && (
-              <Field label="Vendedor" hint="Define de qué caja sale el desembolso">
-                <Select name="vendedor_id" value={formData.vendedor_id} onChange={set("vendedor_id")}>
+              // En edición queda firme: el desembolso YA salió de una caja concreta y
+              // reasignarlo no mueve ese asiento — dejaría la comisión de uno colgada de la
+              // caja de otro.
+              <Field label="Vendedor" hint={condicionesBloqueadas ? "Firme desde el otorgamiento" : "Define de qué caja sale el desembolso"}>
+                <Select name="vendedor_id" value={formData.vendedor_id} onChange={set("vendedor_id")}
+                  disabled={condicionesBloqueadas} className={condicionesBloqueadas ? "opacity-70 cursor-not-allowed" : ""}>
                   <option value="">Caja principal</option>
                   {vendedores.map(v => (
                     <option key={v.id} value={v.id}>{v.nombre}</option>
@@ -920,6 +948,11 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
         {/* Condiciones */}
         <section className="space-y-2">
           <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Condiciones financieras</p>
+          {condicionesBloqueadas && (
+            <p className="rounded-lg border border-border/60 bg-muted/20 px-2.5 py-2 text-[11px] text-muted-foreground">
+              Las condiciones quedaron firmes al otorgar. Para cambiarlas, <b>anulá</b> el crédito y otorgalo de nuevo, o <b>refinancialo</b> si ya cobró cuotas.
+            </p>
+          )}
 
           {/* Capital — valor grande, ancho completo. En crédito de producto es read-only (= precio × cantidad). */}
           <Field
@@ -934,13 +967,14 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
                 name="monto_original" type="text" inputMode="decimal" placeholder="350.000,00"
                 value={formData.monto_original} onChange={setMonto}
                 onFocus={refrescarTopes}
-                required readOnly={esProducto}
+                required readOnly={esProducto || condicionesBloqueadas}
+                tabIndex={condicionesBloqueadas ? -1 : undefined}
                 aria-invalid={!!errorCapital}
-                className={`pl-9 text-lg font-bold font-mono tabular-nums ${!esProducto && miCaja ? "pr-10" : ""} ${esProducto ? "opacity-70 cursor-not-allowed" : ""} ${errorCapital ? "border-destructive focus:border-destructive focus:ring-destructive/25" : ""}`}
+                className={`pl-9 text-lg font-bold font-mono tabular-nums ${!esProducto && miCaja && !condicionesBloqueadas ? "pr-10" : ""} ${esProducto || condicionesBloqueadas ? "opacity-70 cursor-not-allowed" : ""} ${errorCapital ? "border-destructive focus:border-destructive focus:ring-destructive/25" : ""}`}
               />
               {/* Refrescar saldo de la caja: ícono sutil dentro del campo (recarga parcial, sin F5).
                   Delicado y semitransparente, al estilo de los íconos del sidebar. */}
-              {!esProducto && miCaja && (
+              {!esProducto && miCaja && !condicionesBloqueadas && (
                 <button
                   type="button"
                   onClick={refrescarSaldo}
@@ -955,8 +989,10 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
             </div>
           </Field>
 
-          {/* Forma de desembolso → solo en créditos de dinero (el producto no desembolsa efectivo). */}
-          {!esProducto && (
+          {/* Forma de desembolso → solo en créditos de dinero (el producto no desembolsa efectivo)
+              y solo al OTORGAR: en un crédito ya dado la plata ya salió de una caja concreta,
+              y ofrecer cambiarla acá no movería un solo asiento. */}
+          {!esProducto && !condicionesBloqueadas && (
             <>
               <Field label="Forma de desembolso" required>
                 <Select name="cuenta_desembolso" value={formData.cuenta_desembolso} onChange={set("cuenta_desembolso")} required>
@@ -988,7 +1024,8 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
           <div className="grid grid-cols-4 gap-2.5">
             <div className="col-span-2">
               <Field label="Frecuencia" required>
-                <Select name="frecuencia" value={formData.frecuencia} onChange={set("frecuencia")} required>
+                <Select name="frecuencia" value={formData.frecuencia} onChange={set("frecuencia")} required
+                  disabled={condicionesBloqueadas} className={condicionesBloqueadas ? "opacity-70 cursor-not-allowed" : ""}>
                   {frecsActivas.map(f => (
                     <option key={f.clave} value={f.clave}>
                       {f.label.charAt(0).toUpperCase() + f.label.slice(1)}
@@ -999,7 +1036,13 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
             </div>
             <div className={hayPlanes && planesConIdentidad ? "col-span-2" : "col-span-1"}>
               <Field label={hayPlanes && planesConIdentidad ? "Plan" : "Cuotas"} required hint={cuotasFijas != null ? "Fijas por la frecuencia" : undefined}>
-                {cuotasFijas != null ? (
+                {condicionesBloqueadas ? (
+                  // Crédito otorgado: el plazo es el que se firmó.
+                  <Input
+                    name="plazo_meses" type="number" value={formData.plazo_meses} readOnly tabIndex={-1}
+                    className="text-center font-mono tabular-nums px-1 opacity-70 cursor-not-allowed"
+                  />
+                ) : cuotasFijas != null ? (
                   // Frecuencia con cuotas fijas: el número lo impone la configuración.
                   <Input
                     name="plazo_meses" type="number" value={cuotasFijas} readOnly tabIndex={-1}
@@ -1035,7 +1078,7 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
             <div className="col-span-1">
               <Field
                 label="Tasa %" required
-                hint={tasaDelPlan !== null ? "La fija el plan" : convencion === "mensual" ? "T.M." : convencion === "efectiva_anual" ? "T.E.A." : "T.N.A."}
+                hint={condicionesBloqueadas ? "Firme desde el otorgamiento" : tasaDelPlan !== null ? "La fija el plan" : convencion === "mensual" ? "T.M." : convencion === "efectiva_anual" ? "T.E.A." : "T.N.A."}
                 error={errorTasa ?? undefined}
               >
                 <div className="relative">
@@ -1049,9 +1092,10 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
                     name="tasa" type={tasaDelPlan !== null ? "text" : "number"} placeholder="48"
                     value={tasaDelPlan !== null ? n2(tasaDelPlan) : formData.tasa}
                     onChange={set("tasa")}
-                    readOnly={tasaDelPlan !== null} tabIndex={tasaDelPlan !== null ? -1 : undefined}
+                    readOnly={tasaDelPlan !== null || condicionesBloqueadas}
+                    tabIndex={tasaDelPlan !== null || condicionesBloqueadas ? -1 : undefined}
                     min="0" step="0.5" required aria-invalid={!!errorTasa}
-                    className={`pr-5 text-center font-mono tabular-nums px-1 ${tasaDelPlan !== null ? "opacity-70 cursor-not-allowed" : ""} ${errorTasa ? "border-destructive focus:border-destructive focus:ring-destructive/25" : ""}`}
+                    className={`pr-5 text-center font-mono tabular-nums px-1 ${tasaDelPlan !== null || condicionesBloqueadas ? "opacity-70 cursor-not-allowed" : ""} ${errorTasa ? "border-destructive focus:border-destructive focus:ring-destructive/25" : ""}`}
                   />
                   <Percent className={`pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 h-3 w-3 ${errorTasa ? "text-destructive" : "text-muted-foreground"}`} />
                 </div>
