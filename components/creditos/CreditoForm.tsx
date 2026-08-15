@@ -1526,51 +1526,12 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
               </table>
             ) : (
               /* ── Vista cliente: solo cuotas a cubrir ── */
-              /* Mismo canal lateral que la vista operador: las dos se alternan con el mismo
-                 botón, así que el borde no puede moverse al cambiar de vista. */
-              <table className="w-full text-sm border-separate border-spacing-0 [&_th:first-child]:pl-4 [&_td:first-child]:pl-4 [&_th:last-child]:pr-4 [&_td:last-child]:pr-4">
-                <thead className="sticky top-0 z-10 bg-card">
-                  <tr>
-                    <th className="px-4 py-2.5 text-left font-semibold text-muted-foreground border-b border-border w-12">Cuota</th>
-                    <th className="px-4 py-2.5 text-left font-semibold text-muted-foreground border-b border-border">Vence</th>
-                    <th className="px-4 py-2.5 text-right font-semibold text-muted-foreground border-b border-border">A pagar</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {plan.cuotas.map((row, idx) => (
-                    <tr key={row.nro} className={`hover:bg-muted/20 transition-colors ${idx % 2 === 1 ? "bg-muted/5" : ""}`}>
-                      <td className="px-4 py-2.5 text-muted-foreground font-mono tabular-nums">{row.nro}/{plan.cuotas.length}</td>
-                      <td className="px-4 py-2.5 text-foreground tabular-nums">{fmtDate(row.fecha)}</td>
-                      <td className="px-4 py-2.5 text-right font-mono font-semibold text-foreground tabular-nums">${n2(row.cuotaTotal)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-                <tfoot className="sticky bottom-0 z-10 bg-card">
-                  {/*
-                    La comisión se cobra al firmar: no es una cuota y no puede entrar en la
-                    columna sin romper la suma. Va en su propio renglón, y el total de verdad
-                    recién debajo — si no, el cliente ve un "total a pagar" al que le faltan.
-                  */}
-                  <tr className="border-t-2 border-border bg-muted/40">
-                    <td colSpan={2} className="px-4 py-3.5 text-[10px] font-bold text-foreground uppercase tracking-widest">
-                      {comisionUpfront > 0 ? "Total de las cuotas" : "Total a pagar"}
-                    </td>
-                    <td className={`px-4 py-3.5 text-right font-mono tabular-nums ${comisionUpfront > 0 ? "text-sm font-semibold text-foreground" : "text-base font-bold text-foreground"}`}>${n2(totalCuotasCliente)}</td>
-                  </tr>
-                  {comisionUpfront > 0 && (
-                    <>
-                      <tr className="bg-muted/40">
-                        <td colSpan={2} className="px-4 py-2 text-[10px] font-medium text-muted-foreground uppercase tracking-widest">Comisión de otorgamiento (al firmar)</td>
-                        <td className="px-4 py-2 text-right font-mono text-sm text-foreground tabular-nums">${n2(comisionUpfront)}</td>
-                      </tr>
-                      <tr className="border-t border-border bg-muted/40">
-                        <td colSpan={2} className="px-4 py-3.5 text-[10px] font-bold text-foreground uppercase tracking-widest">Total a pagar</td>
-                        <td className="px-4 py-3.5 text-right font-bold font-mono text-base text-foreground tabular-nums">${n2(totalAPagar)}</td>
-                      </tr>
-                    </>
-                  )}
-                </tfoot>
-              </table>
+              <PlanCliente
+                cuotas={plan.cuotas}
+                totalCuotas={totalCuotasCliente}
+                comisionUpfront={comisionUpfront}
+                totalAPagar={totalAPagar}
+              />
             )}
             </div>{/* fin scroll tabla */}
           </div>
@@ -1716,6 +1677,99 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
  * Buscador de cliente para el otorgamiento: filtra por DNI (normalizando dígitos)
  * o por apellido y nombre. Reemplaza el viejo desplegable de opciones.
  */
+/**
+ * El plan de cuotas como lo ve EL CLIENTE: número, vencimiento e importe. Nada más.
+ *
+ * Va en DOS COLUMNAS porque son tres datos cortos: a todo el ancho, la fecha y el importe
+ * quedaban separados por un vacío de media pantalla y el cliente tenía que scrollear su
+ * propio plan. Partido al medio, un crédito de hasta ~24 cuotas entra completo de un vistazo,
+ * que es exactamente lo que esa vista tiene que lograr.
+ *
+ * Se parte a partir de 6 cuotas: por debajo, una columna de 3 y otra de 2 se ve desbalanceada
+ * y no ahorra ningún scroll. En ese caso va una sola columna con ancho de lectura, para que
+ * tampoco se estire.
+ */
+function PlanCliente({ cuotas, totalCuotas, comisionUpfront, totalAPagar }: {
+  cuotas: PlanAmortizacion["cuotas"];
+  totalCuotas: number;
+  comisionUpfront: number;
+  totalAPagar: number;
+}) {
+  const total = cuotas.length;
+  const dividir = total >= 6;
+  // La mitad se redondea hacia arriba: si sobra una, va en la columna izquierda, que es la
+  // que se lee primero.
+  const bloques = dividir
+    ? [cuotas.slice(0, Math.ceil(total / 2)), cuotas.slice(Math.ceil(total / 2))]
+    : [cuotas];
+
+  const th = "px-4 py-2.5 text-left font-semibold text-muted-foreground border-b border-border";
+  const td = "px-4 py-2.5 tabular-nums";
+  /** Canal lateral: alinea las celdas de los extremos con el encabezado del panel (px-4). */
+  const canal = "[&_th:first-child]:pl-4 [&_td:first-child]:pl-4 [&_th:last-child]:pr-4 [&_td:last-child]:pr-4";
+
+  return (
+    <div>
+      <div className={dividir ? "grid grid-cols-1 lg:grid-cols-2" : "mx-auto max-w-xl"}>
+        {bloques.map((bloque, i) => (
+          // La medianera solo existe cuando hay dos columnas de verdad; apilado no separa nada.
+          <div key={i} className={i === 1 ? "lg:border-l lg:border-border/50" : ""}>
+            <table className={`w-full text-sm border-separate border-spacing-0 ${canal}`}>
+              <thead className="sticky top-0 z-10 bg-card">
+                <tr>
+                  <th className={`${th} w-14`}>Cuota</th>
+                  <th className={th}>Vence</th>
+                  <th className={`${th} text-right`}>A pagar</th>
+                </tr>
+              </thead>
+              <tbody>
+                {bloque.map((row) => (
+                  <tr key={row.nro} className={`hover:bg-muted/20 transition-colors ${row.nro % 2 === 0 ? "bg-muted/5" : ""}`}>
+                    <td className={`${td} text-muted-foreground font-mono`}>{row.nro}/{total}</td>
+                    <td className={`${td} text-foreground`}>{fmtDate(row.fecha)}</td>
+                    <td className={`${td} text-right font-mono font-semibold text-foreground`}>${n2(row.cuotaTotal)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ))}
+      </div>
+
+      {/*
+        Los totales salieron del `tfoot` al partirse la tabla en dos: son UNO solo para las
+        dos columnas. Siguen pegados abajo mientras se scrollea.
+
+        La comisión se cobra al firmar: no es una cuota y no puede entrar en la columna sin
+        romper la suma. Va en su propio renglón, y el total de verdad recién debajo — si no,
+        el cliente ve un "total a pagar" al que le faltan.
+      */}
+      <div className="sticky bottom-0 z-20 bg-card">
+        <div className="flex items-baseline justify-between gap-4 border-t-2 border-border bg-muted/40 px-4 py-3.5">
+          <span className="text-[10px] font-bold uppercase tracking-widest text-foreground">
+            {comisionUpfront > 0 ? "Total de las cuotas" : "Total a pagar"}
+          </span>
+          <span className={`font-mono tabular-nums ${comisionUpfront > 0 ? "text-sm font-semibold text-foreground" : "text-base font-bold text-foreground"}`}>
+            ${n2(totalCuotas)}
+          </span>
+        </div>
+        {comisionUpfront > 0 && (
+          <>
+            <div className="flex items-baseline justify-between gap-4 bg-muted/40 px-4 py-2">
+              <span className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground">Comisión de otorgamiento (al firmar)</span>
+              <span className="font-mono text-sm tabular-nums text-foreground">${n2(comisionUpfront)}</span>
+            </div>
+            <div className="flex items-baseline justify-between gap-4 border-t border-border bg-muted/40 px-4 py-3.5">
+              <span className="text-[10px] font-bold uppercase tracking-widest text-foreground">Total a pagar</span>
+              <span className="font-mono text-base font-bold tabular-nums text-foreground">${n2(totalAPagar)}</span>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function ClienteCombobox({ clientes, value, onSelect, onAlta }: {
   clientes: Cliente[]; value: string; onSelect: (id: string) => void; onAlta: (query: string) => void;
 }) {
