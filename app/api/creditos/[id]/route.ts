@@ -82,9 +82,56 @@ export const PATCH = withErrorHandler(async (req: NextRequest, { params }: Route
     return errorResponse("Body JSON inválido", "INVALID_JSON", 400);
   }
 
+  /**
+   * 🔴 Las CONDICIONES de un crédito otorgado son firmes.
+   *
+   * Antes `tasa` y `frecuencia` se aceptaban, `monto_original` y `plazo_meses` se descartaban
+   * en silencio, y **el cronograma persistido (`cuotas`) no se regeneraba nunca**. Como la
+   * pantalla de amortización RECALCULA el plan a partir de tasa+plazo y el cobro usa las
+   * `cuotas` guardadas, cambiar la tasa dejaba al crédito mostrando un plan y cobrando otro
+   * (probado: $79.139,24 en pantalla contra $121.212,95 en la terminal de cobro). Y el
+   * formulario respondía "Crédito actualizado" en los dos casos.
+   *
+   * Para cambiar condiciones existen `POST /anular` (revierte la caja) y `POST /refinanciar`
+   * (consolida la deuda en un crédito nuevo). Los dos cuadran los libros y quedan auditados.
+   *
+   * `vendedor_id` también queda firme: el desembolso salió de UNA caja concreta al otorgar, y
+   * reasignar el crédito no mueve ese asiento — dejaría la comisión de un vendedor colgada de
+   * la caja de otro.
+   */
+  const CONDICIONES_FIRMES: { campo: string; etiqueta: string }[] = [
+    { campo: "monto_original", etiqueta: "el capital" },
+    { campo: "plazo_meses", etiqueta: "la cantidad de cuotas" },
+    { campo: "tasa", etiqueta: "la tasa" },
+    { campo: "frecuencia", etiqueta: "la frecuencia" },
+    { campo: "cliente_id", etiqueta: "el cliente" },
+    { campo: "vendedor_id", etiqueta: "el vendedor" },
+  ];
+  for (const { campo, etiqueta } of CONDICIONES_FIRMES) {
+    if (!(campo in body) || body[campo] === undefined) continue;
+    const actual = (existing as Record<string, any>)[campo];
+    // El formulario reenvía todos los campos aunque no se hayan tocado: solo molesta el que
+    // CAMBIA. Los números se comparan con tolerancia de un centavo.
+    const igual = typeof actual === "number" && typeof body[campo] === "number"
+      ? Math.abs(actual - body[campo]) < 0.01
+      : (actual ?? null) === (body[campo] ?? null);
+    if (!igual) {
+      return errorResponse(
+        `No se puede cambiar ${etiqueta} de un crédito ya otorgado. Anulá el crédito y otorgalo de nuevo, o refinancialo si ya cobró cuotas.`,
+        "CONDICIONES_FIRMES",
+        409
+      );
+    }
+  }
+
   // Preparar datos para actualizar
   const updateData: Record<string, any> = {};
-  const allowedFields = ["saldo_pendiente", "tasa", "proximo_pago", "dias_mora", "estado", "frecuencia"];
+  // `tipo_credito` es la única condición reclasificable: no toca plata ni cronograma. Queda
+  // afuera si el crédito es de PRODUCTOS o se lo quiere volver de productos — ese tipo está
+  // atado al stock y al `producto_id`, y cambiarlo por acá dejaría el kardex descuadrado.
+  const puedeReclasificar = existing.tipo_credito !== "productos" && body.tipo_credito !== "productos";
+  const allowedFields = ["saldo_pendiente", "proximo_pago", "dias_mora", "estado",
+    ...(puedeReclasificar ? ["tipo_credito"] : [])];
 
   allowedFields.forEach((field) => {
     if (field in body) {
@@ -97,7 +144,7 @@ export const PATCH = withErrorHandler(async (req: NextRequest, { params }: Route
   });
 
   if (Object.keys(updateData).length === 0) {
-    return errorResponse("No hay campos para actualizar", "INVALID_INPUT", 400);
+    return errorResponse("No hay cambios para guardar.", "SIN_CAMBIOS", 400);
   }
 
   // ── Defensa de consistencia de estado ──────────────────────────────────────
