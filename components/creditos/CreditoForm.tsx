@@ -191,7 +191,10 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
   };
 
   useEffect(() => {
-    fetch("/api/clientes?limit=1000")
+    // `estado=activo`: a un cliente dado de baja no se le otorga. La lista general (KEYS.clientes)
+    // sigue trayéndolos a todos a propósito — la pantalla de Clientes los muestra con su badge
+    // y desde ahí se los reactiva.
+    fetch("/api/clientes?estado=activo&limit=1000")
       .then(r => r.json())
       .then(j => { if (j.ok) setClientes(j.data.clientes || []); });
     fetch("/api/vendedores?activo=true")
