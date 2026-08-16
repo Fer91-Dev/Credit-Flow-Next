@@ -79,11 +79,26 @@ export async function evaluarClienteParaCredito(params: {
   });
   const ingresoNetoMensual = (cliente?.ingreso_mensual ?? 0) + (cliente?.otros_ingresos ?? 0);
 
-  // Créditos del cliente (para score interno + deuda vigente), excluyendo el propio si aplica.
+  /**
+   * Créditos del cliente (para score interno + deuda vigente), excluyendo el propio si aplica.
+   *
+   * 🔴 Los ANULADOS quedan afuera del historial. Un crédito anulado no existió: la anulación
+   * revierte hasta el movimiento de caja. Pero sus cuotas seguían en la base con sus fechas, y
+   * el score las leía como vencidas e impagas → un cliente cuyo ÚNICO crédito se anuló quedaba
+   * en "C · Regular" sin deber un peso.
+   *
+   * El daño real es de proceso: la forma correcta de corregir un error de carga es anular y
+   * volver a otorgar (las condiciones de un crédito otorgado son firmes), así que arreglar el
+   * error del operador le bajaba el score al cliente.
+   *
+   * Los REFINANCIADOS sí quedan: ahí el cliente efectivamente no pudo pagar y hubo que
+   * reestructurarle la deuda. Eso es historia legítima y tiene que pesar.
+   */
   const creditos = await prisma.creditos.findMany({
     where: {
       tenant_id: tenantId,
       cliente_id: clienteId,
+      estado: { not: "anulado" },
       ...(excluirCreditoId ? { id: { not: excluirCreditoId } } : {}),
     },
     // `frecuencia` y `frecuencia_def` hacen falta para mensualizar la cuota de cada crédito:
