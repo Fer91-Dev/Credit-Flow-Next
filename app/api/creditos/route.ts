@@ -178,6 +178,22 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     return errorResponse("Cliente no encontrado o no tiene permisos", "INVALID_REFERENCE", 400);
   }
 
+  /**
+   * Un cliente dado de baja no puede recibir un crédito nuevo.
+   *
+   * El botón Eliminar de Clientes hace un soft delete (`estado` → "inactivo") justamente para
+   * sacarlo de circulación conservando su historial. Pero el simulador pedía la lista SIN
+   * filtrar, así que el inactivado seguía apareciendo en el buscador y se le podía otorgar:
+   * la baja no daba de baja nada. La pantalla ya no lo ofrece, y esta es la barrera que vale.
+   */
+  if (cliente.estado === "inactivo") {
+    return errorResponse(
+      `${cliente.nombre} ${cliente.apellido ?? ""} está dado de baja. Reactivalo desde Clientes antes de otorgarle un crédito.`.replace(/\s+/g, " ").trim(),
+      "CLIENTE_INACTIVO",
+      409
+    );
+  }
+
   // Crédito de PRODUCTO: en vez de desembolsar dinero, el cliente se lleva un producto.
   // El capital lo fija el producto (precio × cantidad, autoritativo: no se confía en el
   // monto del cliente) y NO mueve caja; el control es el descuento de stock.
