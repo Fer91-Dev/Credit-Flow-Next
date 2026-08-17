@@ -155,11 +155,38 @@ export async function evaluarClienteParaCredito(params: {
   }
   const deudaCuotaMensualVigente = round2([...deudaPorCredito.values()].reduce((a, b) => a + b, 0));
 
+  /**
+   * Señales de INCUMPLIMIENTO más allá de la mora del día.
+   *
+   * La mora dice cómo está el cliente HOY; estas tres dicen cómo se comportó cuando ya estaba
+   * en problemas: si hubo que reestructurarle la deuda, si firmó un acuerdo y lo rompió, si
+   * prometió pagar y no pagó. Dos clientes con los mismos 40 días de mora no son lo mismo si
+   * uno además rompió dos acuerdos.
+   *
+   * Se cuentan sobre los créditos ya filtrados arriba, así que un crédito anulado tampoco
+   * aporta acuerdos ni promesas.
+   */
+  const idsCreditos = creditos.map((c) => c.id);
+  const refinanciaciones = creditos.filter((c) => c.estado === "refinanciado").length;
+  const [acuerdosRotos, promesasIncumplidas] = idsCreditos.length
+    ? await Promise.all([
+        prisma.acuerdos_pago.count({
+          where: { tenant_id: tenantId, credito_id: { in: idsCreditos }, estado: "roto" },
+        }),
+        prisma.acciones_cobranza.count({
+          where: { tenant_id: tenantId, credito_id: { in: idsCreditos }, promesa_estado: "incumplida" },
+        }),
+      ])
+    : [0, 0];
+
   const scoreInterno = calcularScore({
     maxDiasMora,
     cuotasVencidas,
     cuotasCumplidas,
     tieneCreditos: creditos.length > 0,
+    refinanciaciones,
+    acuerdosRotos,
+    promesasIncumplidas,
   });
 
   // Señales de bureau: última consulta OK del cliente (BCRA/Nosis/Veraz/manual), si existe.
