@@ -15,7 +15,7 @@ import { useToast } from "@/components/ui/toast";
 import { formatCreditoNumero, formatFecha, nombreCompleto } from "@/lib/utils";
 import { Stat } from "@/components/ui/Stat";
 import { Skeleton } from "@/components/ui/skeleton";
-import { esCreditoVivo } from "@/lib/domain";
+import { esCreditoVivo, montoEnPalabras } from "@/lib/domain";
 
 function n2(x: number) {
   return new Intl.NumberFormat("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(x);
@@ -215,6 +215,11 @@ export function CreditoDetail({ credito, role, onRefinanciar }: { credito: Credi
               </p>
               <p className="text-2xl font-bold font-mono tabular-nums leading-tight text-foreground">
                 ${n0(credito.monto_original)}
+              </p>
+              {/* El mismo importe en letras: es lo que va al pagaré, donde la letra le gana
+                  al número si no coinciden. Verlo acá permite cotejarlo contra el papel. */}
+              <p className="mt-1 max-w-[22rem] text-[11px] leading-snug text-muted-foreground first-letter:uppercase">
+                {montoEnPalabras(credito.monto_original)}
               </p>
             </div>
 

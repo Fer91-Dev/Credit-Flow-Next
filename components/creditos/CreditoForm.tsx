@@ -32,6 +32,7 @@ import {
   type Frecuencia,
   type ConvencionTasa,
   type PlanAmortizacion,
+  montoEnPalabras,
 } from "@/lib/domain";
 
 /**
@@ -990,6 +991,16 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
                 </button>
               )}
             </div>
+            {/* El capital EN LETRAS, debajo del número.
+                Es el control de lectura del operador antes de otorgar: un cero de más se ve
+                en el acto en las palabras ("cinco millones") y es fácil que se pase en los
+                dígitos. Además es lo que después va al pagaré, donde las letras mandan
+                sobre los números si no coinciden. */}
+            {montoNum > 0 && (
+              <p className="mt-1.5 text-xs leading-snug text-muted-foreground first-letter:uppercase">
+                {montoEnPalabras(montoNum)}
+              </p>
+            )}
           </Field>
 
           {/* Forma de desembolso → solo en créditos de dinero (el producto no desembolsa efectivo)
