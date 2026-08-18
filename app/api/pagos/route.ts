@@ -1,10 +1,12 @@
-import { requireRole, scopeCreditosVendedor } from "@/lib/auth";
-import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api";
+import { requireRole, scopeCreditosVendedor, ApiError } from "@/lib/auth";
+import { successResponse, errorResponse, withErrorHandler, assertSameOrigin } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { sincronizarAcuerdos } from "@/lib/acuerdos";
 import { nombreCompleto, formatCreditoNumero, hoyComercial } from "@/lib/utils";
-import { imputarPagoEnCuotas, diasAtraso, round2, etiquetaCaja, cuentaDeMetodo, esCuentaValida, type CuotaParaImputar, moraDelCredito, moraDesdeCronograma } from "@/lib/domain";
+import { imputarPagoEnCuotas, diasAtraso, round2, etiquetaCaja, cuentaDeMetodo, esCuentaValida, type CuotaParaImputar, moraDelCredito, moraDesdeCronograma, esCreditoVivo } from "@/lib/domain";
+import { lockCreditoTx, assertCuotasSinCambios } from "@/lib/locks";
+import { lockCuentaTx } from "@/lib/caja-fondos";
 import { siguienteNumeroComprobante } from "@/lib/comprobantes";
 import { getConfiguracion } from "@/lib/config";
 import { registrarAuditoria } from "@/lib/audit";
@@ -76,6 +78,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
  * }
  */
 export const POST = withErrorHandler(async (req: NextRequest) => {
+  assertSameOrigin(req);
   // Registrar un cobro: admin, cobrador y vendedor (este último, solo SUS créditos).
   const { tenantId, role, vendedorId } = await requireRole(["admin", "vendedor"], req);
 
@@ -105,8 +108,12 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     );
   }
 
-  if (body.monto <= 0) {
-    return errorResponse("Monto debe ser mayor a 0", "INVALID_INPUT", 400);
+  // Coerción explícita ANTES de comparar: `"abc" <= 0` es false, así que un monto no numérico
+  // atravesaba esta guarda y reventaba recién en Prisma → salía como 500 "error interno" en vez
+  // de un 400 que le dijera al operador qué escribió mal.
+  const montoPago = round2(Number(body.monto));
+  if (!Number.isFinite(montoPago) || montoPago <= 0) {
+    return errorResponse("Monto debe ser un número mayor a 0", "INVALID_INPUT", 400);
   }
 
   // Anti-IDOR: un vendedor solo puede cobrar sobre créditos que él otorgó.
@@ -119,12 +126,24 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     return errorResponse("Crédito no encontrado", "INVALID_REFERENCE", 400);
   }
 
-  if (credito.estado === "pagado" || credito.estado === "cancelado") {
-    return errorResponse("El crédito ya está saldado; no admite más cobros", "INVALID_STATE", 400);
-  }
-
-  if (credito.estado === "anulado") {
-    return errorResponse("El crédito está anulado; no admite cobros", "INVALID_STATE", 400);
+  /**
+   * Solo se cobra sobre un crédito VIVO (activo o vencido).
+   *
+   * 🔴 Antes esto era una lista negra de tres estados y **`refinanciado` no estaba**. Al
+   * refinanciar, el crédito viejo queda con `saldo_pendiente: 0` pero sus cuotas siguen
+   * impagas en la base, así que un cobro sobre él encontraba deuda, imputaba, y el update
+   * final lo devolvía a "vencido" con su saldo original completo: el cliente pasaba a deber
+   * las DOS deudas, la vieja resucitada y la consolidada. `refinanciado` está declarado como
+   * estado void justamente para esto — la lista blanca lo cubre sin poder olvidarse ninguno.
+   */
+  if (!esCreditoVivo(credito.estado)) {
+    const motivo =
+      credito.estado === "anulado"
+        ? "está anulado"
+        : credito.estado === "refinanciado"
+          ? "fue refinanciado: la deuda se trasladó al crédito nuevo y ahí se cobra"
+          : "ya está saldado";
+    return errorResponse(`El crédito ${motivo}; no admite cobros`, "INVALID_STATE", 400);
   }
 
   if (credito.cuotas.length === 0) {
@@ -199,7 +218,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
   // fallback para créditos viejos). Ver `moraDelCredito` en lib/domain/mora.ts.
   const moraCred = moraDelCredito(moraDesdeCronograma(credito.cronograma), config);
 
-  const resultado = imputarPagoEnCuotas(body.monto, cuotasDom, {
+  const resultado = imputarPagoEnCuotas(montoPago, cuotasDom, {
     modoCargos: config.imputarCargos,
     moraActiva: moraCred.moraActiva,
     tasaMoraDiaria: moraCred.tasaMoraDiaria,
@@ -214,9 +233,9 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
   // con plata sin imputar; el vuelto físico queda fuera del sistema). El monto ya considera la
   // quita de mora de campaña, así que el máximo cobrable = monto − excedente.
   if (resultado.excedente > 0) {
-    const cobrable = round2(body.monto - resultado.excedente);
+    const cobrable = round2(montoPago - resultado.excedente);
     return errorResponse(
-      `El monto ($${Number(body.monto).toLocaleString("es-AR")}) supera la deuda total del crédito. Cobrá hasta $${cobrable.toLocaleString("es-AR")}.`,
+      `El monto ($${montoPago.toLocaleString("es-AR")}) supera la deuda total del crédito. Cobrá hasta $${cobrable.toLocaleString("es-AR")}.`,
       "SOBREPAGO",
       400,
     );
@@ -255,10 +274,42 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
 
   // ── Persistencia (transacción) ─────────────────────────────────────────────
   const pago = await prisma.$transaction(async (tx) => {
+    /**
+     * 🔴 Serializar los cobros de ESTE crédito antes de tocar nada.
+     *
+     * La imputación de arriba se calculó fuera de la transacción, y las escrituras de abajo
+     * son valores ABSOLUTOS (`pagado_capital: 4500`), no incrementos. Sin esto, dos cobros
+     * simultáneos —un doble clic en "Cobrar" alcanza— leían las cuotas en el mismo estado,
+     * calculaban la misma imputación y la segunda pisaba a la primera: quedaban dos filas en
+     * `pagos` y dos movimientos de caja, con las cuotas reflejando un solo cobro.
+     *
+     * El lock hace esperar al segundo; la comparación de abajo detecta que el estado cambió
+     * mientras esperaba y lo aborta con 409 en vez de escribir sobre un cálculo viejo.
+     */
+    await lockCreditoTx(tx, tenantId, body.credito_id);
+    const cuotasAhora = await tx.cuotas.findMany({
+      where: { ...withTenant(tenantId), credito_id: body.credito_id },
+      select: { id: true, pagado_capital: true, pagado_interes: true, pagado_mora: true, pagado_cargos: true },
+    });
+    assertCuotasSinCambios(credito.cuotas, cuotasAhora);
+
+    // El estado también pudo cambiar mientras esperábamos (una anulación, una refinanciación).
+    const estadoAhora = await tx.creditos.findFirst({
+      where: { ...withTenant(tenantId), id: body.credito_id },
+      select: { estado: true },
+    });
+    if (!estadoAhora || !esCreditoVivo(estadoAhora.estado)) {
+      throw new ApiError(
+        "El crédito dejó de admitir cobros mientras se procesaba este pago (se anuló o se refinanció).",
+        "INVALID_STATE",
+        409,
+      );
+    }
+
     const p = await tx.pagos.create({
       data: {
         credito_id: body.credito_id,
-        monto: body.monto,
+        monto: montoPago,
         metodo: body.metodo,
         fecha: fechaPago,
         notas: body.notas?.trim() || null,
@@ -325,20 +376,27 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     });
 
     // Movimiento de caja: cobro (ingreso).
+    //
+    // El lock de la cuenta lo tomaban solo los EGRESOS (vía `assertFondosSuficientesTx`), así
+    // que un arqueo podía leer el saldo, emitir su ajuste y quedar descuadrado por un cobro que
+    // entró en el medio: el acta decía "cuadrada" y la cuenta terminaba arriba. Los ingresos
+    // también lo piden ahora, que es lo que el arqueo promete cuando lo toma.
+    const cajaDelCobro = role === "vendedor" ? vendedorId : null;
+    await lockCuentaTx(tx, tenantId, cajaDelCobro, cuentaCobro);
     const numComp = await siguienteNumeroComprobante(tx, tenantId, "REC");
     await tx.movimientos_caja.create({
       data: {
         ...withTenant(tenantId),
         fecha: fechaPago,
         tipo: "cobro",
-        monto: Math.abs(body.monto),
+        monto: Math.abs(montoPago),
         metodo: body.metodo,
         cuenta: cuentaCobro, // el cobro impacta en efectivo o banco según el método
         credito_id: body.credito_id,
         pago_id: p.id,
         // La cobranza entra a la caja de QUIEN cobra: un vendedor cobra a SU caja;
         // un admin/cobrador cobra para la empresa → caja principal (vendedor_id null).
-        vendedor_id: role === "vendedor" ? vendedorId : null,
+        vendedor_id: cajaDelCobro,
         origen: nombreCompleto(credito.cliente),
         destino: etiquetaCaja(role === "vendedor", cuentaCobro),
         serie: "REC",
@@ -351,7 +409,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     if (objetivosActivos.length > 0) {
       await tx.campana_objetivo.updateMany({
         where: { id: { in: objetivosActivos.map((o) => o.id) } },
-        data: { monto_recuperado: { increment: Math.abs(body.monto) } },
+        data: { monto_recuperado: { increment: Math.abs(montoPago) } },
       });
     }
 
@@ -363,9 +421,9 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     entidad: "pagos",
     entidadId: pago.id,
     accion: "registrar_pago",
-    descripcion: `Pago de $${Number(body.monto).toLocaleString("es-AR")} registrado para ${nombreCompleto(credito.cliente)}`,
+    descripcion: `Pago de $${montoPago.toLocaleString("es-AR")} registrado para ${nombreCompleto(credito.cliente)}`,
     meta: {
-      monto: body.monto,
+      monto: montoPago,
       metodo: body.metodo,
       aplicado_mora: resultado.totales.mora,
       aplicado_interes: resultado.totales.interes,
@@ -381,7 +439,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
   });
 
   // Auto-conciliación de promesas de pago pendientes (no bloquea la respuesta)
-  conciliarPromesas(body.credito_id, tenantId, body.monto).catch(() => {});
+  conciliarPromesas(body.credito_id, tenantId, montoPago).catch(() => {});
 
   // Y del ACUERDO de pago, si el crédito tiene uno vigente: el cliente que termina de
   // pagar lo acordado tiene que verlo cumplido al instante, no cuando corra el cron.

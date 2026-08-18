@@ -1,10 +1,12 @@
-import { requireRole } from "@/lib/auth";
-import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api";
+import { requireRole, ApiError } from "@/lib/auth";
+import { successResponse, errorResponse, withErrorHandler, assertSameOrigin } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { registrarAuditoria } from "@/lib/audit";
 import { round2, etiquetaCaja, esCuentaValida, diasAtraso, type Cuenta } from "@/lib/domain";
 import { siguienteNumeroComprobante } from "@/lib/comprobantes";
+import { lockCreditoTx } from "@/lib/locks";
+import { lockCuentaTx } from "@/lib/caja-fondos";
 import { getCobranzaConfig } from "@/lib/config";
 import { nombreCompleto, formatCreditoNumero, hoyComercial } from "@/lib/utils";
 import type { NextRequest } from "next/server";
@@ -24,6 +26,7 @@ interface RouteParams {
  * Body opcional: { motivo?: string }
  */
 export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteParams) => {
+  assertSameOrigin(req);
   const { tenantId } = await requireRole(["admin"], req);
   const { id } = await params;
 
@@ -96,6 +99,28 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
   const cobros = pago.movimientos.filter((m) => m.tipo === "cobro");
 
   await prisma.$transaction(async (tx) => {
+    /**
+     * 0) Ganar la carrera ANTES de tocar cuotas y caja.
+     *
+     * 🔴 El chequeo `if (pago.anulado)` de arriba corre fuera de la transacción y el marcado
+     * ocurría recién en el paso 5. Con dos requests simultáneas —doble clic en "Anular
+     * cobro"— las dos lo pasaban y las dos emitían su contra-asiento ANP: la caja quedaba
+     * con DOS egresos por un solo cobro, y las cuotas revertidas dos veces contra el mismo
+     * `pago_cuota`.
+     *
+     * `updateMany` condicionado a `anulado: false` es atómico: la segunda afecta 0 filas y
+     * aborta. El lock del crédito serializa además contra un cobro nuevo que esté imputando
+     * sobre estas mismas cuotas.
+     */
+    await lockCreditoTx(tx, tenantId, credito.id);
+    const marcado = await tx.pagos.updateMany({
+      where: { ...withTenant(tenantId), id, anulado: false },
+      data: { anulado: true, anulado_motivo: motivo, anulado_at: new Date() },
+    });
+    if (marcado.count === 0) {
+      throw new ApiError("Ese pago ya fue anulado por otra operación.", "INVALID_STATE", 409);
+    }
+
     // 1) Revertir la imputación en las cuotas tocadas por este pago.
     for (const x of cuotasRevert) {
       if (!x.a) continue;
@@ -129,6 +154,9 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
     // 4) Contra-asiento de caja: por cada cobro, un egreso que lo cancela (comprobante ANP).
     for (const m of cobros) {
       const cta: Cuenta = esCuentaValida(m.cuenta) ? m.cuenta : "efectivo";
+      // Lock de la cuenta afectada: el contra-asiento cambia el saldo, y un arqueo en curso
+      // sobre esa misma caja tiene que esperarlo para no cerrar contra un saldo viejo.
+      await lockCuentaTx(tx, tenantId, m.vendedor_id, cta);
       const numAnp = await siguienteNumeroComprobante(tx, tenantId, "ANP");
       await tx.movimientos_caja.create({
         data: {
@@ -149,11 +177,7 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
       });
     }
 
-    // 5) Marcar el pago anulado (se conserva el registro — no se borra).
-    await tx.pagos.update({
-      where: { id },
-      data: { anulado: true, anulado_motivo: motivo, anulado_at: new Date() },
-    });
+    // 5) (el pago ya quedó marcado como anulado en el paso 0, que es el que gana la carrera)
 
     // 6) Revertir lo acumulado en campañas por este pago (best-effort, sin bajar de 0).
     const objetivos = await tx.campana_objetivo.findMany({

@@ -1,5 +1,5 @@
 import { requireAuth, requireRole } from "@/lib/auth";
-import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api";
+import { successResponse, errorResponse, withErrorHandler, assertSameOrigin } from "@/app/lib/api";
 import { getConfiguracion, guardarConfiguracion, getComunicacionConfig, guardarComunicacionConfig, getGamificacionConfig, guardarGamificacionConfig, getRentabilidadConfig, guardarRentabilidadConfig, getRiesgoConfig, guardarRiesgoConfig, getCobranzaConfig, guardarCobranzaConfig, getNotificacionesConfig, guardarNotificacionesConfig, getDocumentosConfig, guardarDocumentosConfig, type ComunicacionConfig } from "@/lib/config";
 import { resolverConfig, resolverGamificacion, resolverRentabilidad, resolverRiesgo, resolverDocumentos } from "@/lib/domain";
 import { registrarAuditoria } from "@/lib/audit";
@@ -309,6 +309,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
  * los no enviados conservan su valor actual.
  */
 export const PUT = withErrorHandler(async (req: NextRequest) => {
+  assertSameOrigin(req);
   // Modificar la configuración del motor financiero: solo admin.
   const { tenantId } = await requireRole(["admin"], req);
 
@@ -456,12 +457,28 @@ export const PUT = withErrorHandler(async (req: NextRequest) => {
     if (p.rechazaConChequesRechazados !== undefined && typeof p.rechazaConChequesRechazados !== "boolean") {
       return errorResponse("politica.rechazaConChequesRechazados debe ser booleano", "INVALID_INPUT", 400);
     }
+    /**
+     * Se mezcla sobre lo GUARDADO, no sobre los defaults.
+     *
+     * El enmascarado resolvía bien el caso previsto (llega `__masked__` → se repone el valor
+     * real), pero si el body venía **sin** la clave `bureau`, `resolverRiesgo` la completaba
+     * con los defaults (`token: ""`, `proveedor: "manual"`) y eso pisaba lo guardado: un
+     * guardado parcial de la política —mandar solo `{ politica: {...} }`— dejaba a la
+     * financiera sin credenciales de bureau y de vuelta en modo manual, sin error ni aviso.
+     * Hoy la pantalla manda el objeto entero y no se dispara, pero el resto del formulario ya
+     * guarda por bloque: es cuestión de tiempo. Mismo criterio que `resolverConfig`, que
+     * mezcla sobre `actual`.
+     */
+    const existente = await getRiesgoConfig(tenantId);
+    const entrante = body.riesgoConfig ?? {};
+    const bureauEntrante = entrante.bureau ?? existente.bureau;
     // El token del bureau es secreto: si llega el sentinel, se preserva el valor guardado.
-    if (body.riesgoConfig?.bureau?.token === MASKED) {
-      const existente = await getRiesgoConfig(tenantId);
-      body.riesgoConfig.bureau.token = existente.bureau.token;
-    }
-    const r = resolverRiesgo(body.riesgoConfig);
+    if (bureauEntrante.token === MASKED) bureauEntrante.token = existente.bureau.token;
+
+    const r = resolverRiesgo({
+      politica: { ...existente.politica, ...(entrante.politica ?? {}) },
+      bureau: { ...existente.bureau, ...bureauEntrante },
+    });
     await guardarRiesgoConfig(tenantId, r);
   }
   const riesgoRaw = await getRiesgoConfig(tenantId);

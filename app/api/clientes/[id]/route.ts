@@ -1,5 +1,5 @@
 import { requireAuth, requireRole } from "@/lib/auth";
-import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api";
+import { successResponse, errorResponse, withErrorHandler, assertSameOrigin } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { registrarAuditoria } from "@/lib/audit";
@@ -162,6 +162,7 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
  * }
  */
 export const PATCH = withErrorHandler(async (req: NextRequest, { params }: RouteParams) => {
+  assertSameOrigin(req);
   const { tenantId, role } = await requireRole(["admin", "vendedor"], req);
   const { id } = await params;
 
@@ -255,6 +256,9 @@ export const PATCH = withErrorHandler(async (req: NextRequest, { params }: Route
   // limitado de veces (política); superado el tope, se bloquea hasta que un admin resetee. Un
   // salto grande exige motivo. Todo cambio de sueldo queda auditado (viejo→nuevo, quién).
   let sueldoLog: { anterior: number | null; nuevo: number | null; motivo: string | null } | null = null;
+  // Tope de ediciones del sueldo que hay que hacer cumplir de forma ATÓMICA en el update
+  // (null = no aplica: es admin, o el PATCH no toca el sueldo).
+  let topeSueldoVendedor: number | null = null;
   if ("ingreso_mensual" in updateData) {
     const nuevo = updateData.ingreso_mensual as number | null;
     const anterior = existing.ingreso_mensual;
@@ -283,7 +287,13 @@ export const PATCH = withErrorHandler(async (req: NextRequest, { params }: Route
             "SUELDO_BLOQUEADO", 403,
           );
         }
-        updateData.ingreso_ediciones = existing.ingreso_ediciones + 1;
+        // El chequeo de arriba usa un contador leído fuera de toda transacción y escribía un
+        // valor absoluto (`+ 1`), así que cinco PATCH en paralelo leían el mismo número, los
+        // cinco pasaban y los cinco escribían el mismo incremento: el tope se saltaba a
+        // pedidos concurrentes. Ahora el límite viaja en el `where` del update y el contador
+        // sube con `increment`, que sí es atómico; si otra request se adelantó, afecta 0
+        // filas y se rechaza igual que si el tope ya estuviera agotado.
+        topeSueldoVendedor = politica.maxEdicionesSueldoVendedor;
       }
       sueldoLog = { anterior, nuevo, motivo: motivo || null };
     }
@@ -296,10 +306,22 @@ export const PATCH = withErrorHandler(async (req: NextRequest, { params }: Route
   const dupError = await validarDuplicadoCliente(tenantId, docFinal, cuitFinal, id);
   if (dupError) return dupError;
 
-  const updated = await prisma.clientes.update({
-    where: { id },
-    data: updateData,
-  });
+  let updated;
+  if (topeSueldoVendedor !== null) {
+    const r = await prisma.clientes.updateMany({
+      where: { ...withTenant(tenantId), id, ingreso_ediciones: { lt: topeSueldoVendedor } },
+      data: { ...updateData, ingreso_ediciones: { increment: 1 } },
+    });
+    if (r.count === 0) {
+      return errorResponse(
+        `Alcanzaste el límite de ${topeSueldoVendedor} ediciones del sueldo de este cliente. Pedí a un administrador que resetee el contador.`,
+        "SUELDO_BLOQUEADO", 403,
+      );
+    }
+    updated = await prisma.clientes.findFirstOrThrow({ where: { ...withTenant(tenantId), id } });
+  } else {
+    updated = await prisma.clientes.update({ where: { id }, data: updateData });
+  }
 
   await registrarAuditoria({
     tenantId,
@@ -335,6 +357,7 @@ export const PATCH = withErrorHandler(async (req: NextRequest, { params }: Route
  * Elimina un cliente (soft delete: marcar como inactivo).
  */
 export const DELETE = withErrorHandler(async (req: NextRequest, { params }: RouteParams) => {
+  assertSameOrigin(req);
   const { tenantId } = await requireRole(["admin", "vendedor"], req);
   const { id } = await params;
 

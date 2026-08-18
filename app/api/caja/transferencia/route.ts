@@ -1,5 +1,5 @@
 import { requireRole } from "@/lib/auth";
-import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api";
+import { successResponse, errorResponse, withErrorHandler, assertSameOrigin } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { registrarAuditoria } from "@/lib/audit";
@@ -18,6 +18,7 @@ import type { NextRequest } from "next/server";
  * Body: { origen, destino, monto > 0, descripcion?, fecha? }
  */
 export const POST = withErrorHandler(async (req: NextRequest) => {
+  assertSameOrigin(req);
   const { tenantId } = await requireRole(["admin"], req);
 
   let body: { origen?: string; destino?: string; monto?: number; monto_destino?: number; descripcion?: string; fecha?: string };
@@ -51,7 +52,12 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     }
   }
 
+  // Fecha validada como en el arqueo: `new Date("cualquier cosa")` da Invalid Date y llega
+  // a Prisma como 500 en vez de un 400 que se pueda entender.
   const fecha = body.fecha ? new Date(`${body.fecha}T00:00:00.000Z`) : hoyComercial();
+  if (Number.isNaN(fecha.getTime())) {
+    return errorResponse("Fecha inválida", "FECHA_INVALIDA", 400);
+  }
   const detalle = body.descripcion?.trim();
   const origenLbl = `Caja principal (${CUENTA_LABEL[origen]})`;
   const destinoLbl = `Caja principal (${CUENTA_LABEL[destino]})`;

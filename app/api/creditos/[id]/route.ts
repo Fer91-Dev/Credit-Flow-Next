@@ -1,5 +1,5 @@
 import { requireAuth, requireRole, scopeCreditosVendedor } from "@/lib/auth";
-import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api";
+import { successResponse, errorResponse, withErrorHandler, assertSameOrigin } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { registrarAuditoria } from "@/lib/audit";
@@ -59,6 +59,7 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
  * }
  */
 export const PATCH = withErrorHandler(async (req: NextRequest, { params }: RouteParams) => {
+  assertSameOrigin(req);
   // Alteración del estado/saldo de un crédito: solo admin (gestión financiera).
   const { tenantId } = await requireRole(["admin"], req);
   const { id } = await params;
@@ -198,6 +199,7 @@ export const PATCH = withErrorHandler(async (req: NextRequest, { params }: Route
  * (en ese caso debe ANULARSE para preservar el historial financiero).
  */
 export const DELETE = withErrorHandler(async (req: NextRequest, { params }: RouteParams) => {
+  assertSameOrigin(req);
   // Eliminación definitiva: solo admin.
   const { tenantId } = await requireRole(["admin"], req);
   const { id } = await params;

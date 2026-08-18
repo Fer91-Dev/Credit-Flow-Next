@@ -1,5 +1,5 @@
 import { requireRole } from "@/lib/auth";
-import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api";
+import { successResponse, errorResponse, withErrorHandler, assertSameOrigin } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { registrarAuditoria } from "@/lib/audit";
@@ -41,6 +41,7 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
  * Actualiza datos del proveedor.
  */
 export const PATCH = withErrorHandler(async (req: NextRequest, { params }: RouteParams) => {
+  assertSameOrigin(req);
   const { tenantId } = await requireRole(["admin"], req);
   const { id } = await params;
 
@@ -86,6 +87,7 @@ export const PATCH = withErrorHandler(async (req: NextRequest, { params }: Route
  * Elimina un proveedor y su cuenta corriente (onDelete: Cascade en movimientos).
  */
 export const DELETE = withErrorHandler(async (req: NextRequest, { params }: RouteParams) => {
+  assertSameOrigin(req);
   const { tenantId } = await requireRole(["admin"], req);
   const { id } = await params;
 

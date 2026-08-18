@@ -73,11 +73,17 @@ const AYUDA: Record<string, AyudaBloque> = {
   },
   cobranza: {
     titulo: "Cobranza y control de pagos",
-    texto: "Dos controles operativos de la cobranza diaria.",
+    texto: "Tres controles operativos del día a día.",
     puntos: [
       "Días sin gestión: cada cuántos días un moroso sin contactar vuelve a aparecer en la agenda del día.",
       "Días para anular un pago: ventana para revertir un cobro cargado por error (control de tesorería).",
+      "Gasto máximo del vendedor: cuánto puede descontar de su propia caja sin que lo apruebe un administrador.",
     ],
+    ejemplo:
+      "El gasto del vendedor en 0 (como viene) significa que no puede sacar plata de su caja por su cuenta. " +
+      "Es a propósito: si pudiera, a un vendedor al que le faltan $80.000 le alcanzaría con anotar " +
+      "«combustible $80.000» para que su arqueo del día cierre cuadrado y el faltante no aparezca nunca. " +
+      "Si le querés dar caja chica, ponele el techo que te parezca — por encima de ese número, el gasto lo carga un admin.",
   },
   acuerdos: {
     titulo: "Acuerdos de pago",
@@ -922,6 +928,13 @@ export function ConfigForm() {
                   onChange={e => setCobranza({ dias_anulacion_pago: Math.max(0, Math.min(365, Math.round(parseFloat(e.target.value) || 0))) })}
                 />
               </Field>
+              <Field label="Gasto máximo del vendedor ($)" hint="Cuánto puede descontar de su propia caja sin aprobación. En 0 no registra gastos: los carga un admin. Es lo que impide tapar un faltante anotándolo como gasto.">
+                <Input
+                  type="number" min="0" step="1000"
+                  value={cobranza.tope_gasto_vendedor}
+                  onChange={e => setCobranza({ tope_gasto_vendedor: Math.max(0, parseFloat(e.target.value) || 0) })}
+                />
+              </Field>
             </div>
           </Section>
 
@@ -1602,6 +1615,7 @@ function defaultCobranza(): CobranzaConfig {
       congela_punitorios: true, saca_de_agenda: true,
       quita_max_vendedor_pct: 0,
     },
+    tope_gasto_vendedor: 0,
   };
 }
 

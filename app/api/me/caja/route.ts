@@ -1,5 +1,5 @@
 import { requireAuth } from "@/lib/auth";
-import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api";
+import { successResponse, errorResponse, withErrorHandler, assertSameOrigin } from "@/app/lib/api";
 import { esCuentaValida } from "@/lib/domain";
 import { cajaDeVendedor, registrarMovimientoCajaVendedor, registrarGastoCajaVendedor, registrarTransferenciaCajaVendedor } from "@/lib/caja-vendedor";
 import type { NextRequest } from "next/server";
@@ -36,6 +36,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
  * Body: { accion?, monto > 0, cuenta?, origen?, destino?, descripcion? }
  */
 export const POST = withErrorHandler(async (req: NextRequest) => {
+  assertSameOrigin(req);
   const { tenantId, vendedorId } = await requireAuth(req);
   if (!vendedorId) return errorResponse("Tu usuario no está vinculado a un vendedor", "NO_VENDEDOR", 400);
 

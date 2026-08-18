@@ -1,10 +1,10 @@
-import { requireRole } from "@/lib/auth";
-import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api";
+import { requireRole, ApiError } from "@/lib/auth";
+import { successResponse, errorResponse, withErrorHandler, assertSameOrigin } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { registrarAuditoria } from "@/lib/audit";
-import { aplicarYRegistrarStock } from "@/lib/stock";
-import { StockError, deltaAjuste } from "@/lib/domain";
+import { aplicarYRegistrarStock, ajustarStockAConteo } from "@/lib/stock";
+import { StockError } from "@/lib/domain";
 import type { NextRequest } from "next/server";
 
 interface RouteParams {
@@ -22,6 +22,7 @@ interface RouteParams {
  *                                                    motivo obligatorio; no permite negativo.
  */
 export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteParams) => {
+  assertSameOrigin(req);
   const { tenantId } = await requireRole(["admin"], req);
   const { id } = await params;
 
@@ -47,27 +48,38 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
     return errorResponse("Cantidad inválida", "INVALID_INPUT", 400);
   }
 
-  let cantidadFirmada: number;
   if (tipo === "entrada") {
     if (valor <= 0) return errorResponse("La entrada debe ser mayor a 0", "INVALID_INPUT", 400);
-    cantidadFirmada = valor; // suma
   } else if (tipo === "ajuste") {
     if (valor < 0) return errorResponse("El conteo no puede ser negativo", "INVALID_INPUT", 400);
     if (!motivo) return errorResponse("El ajuste requiere un motivo", "INVALID_INPUT", 400);
-    cantidadFirmada = deltaAjuste(producto.stock, valor); // delta hacia el conteo objetivo
-    if (cantidadFirmada === 0) return errorResponse("El conteo coincide con el stock actual (sin cambios)", "INVALID_INPUT", 400);
   } else {
     return errorResponse("Tipo de movimiento inválido (entrada | ajuste)", "INVALID_INPUT", 400);
   }
 
+  // El delta del AJUSTE se calcula adentro de la transacción y con el producto lockeado:
+  // `producto.stock` se leyó arriba, fuera de la tx, y si en el medio se vendía una unidad
+  // el ajuste aterrizaba una unidad por encima de lo que el admin realmente contó.
   let resultante: number;
+  let cantidadFirmada: number;
   try {
-    resultante = await prisma.$transaction((tx) =>
-      aplicarYRegistrarStock(tx, {
-        tenantId, productoId: id, tipo: tipo as "entrada" | "ajuste",
-        cantidad: cantidadFirmada, motivo,
-      }),
-    );
+    const r = await prisma.$transaction(async (tx) => {
+      if (tipo === "ajuste") {
+        const { resultante, delta } = await ajustarStockAConteo(tx, {
+          tenantId, productoId: id, tipo: "ajuste", conteo: valor, motivo,
+        });
+        if (delta === 0) {
+          throw new ApiError("El conteo coincide con el stock actual (sin cambios)", "INVALID_INPUT", 400);
+        }
+        return { resultante, delta };
+      }
+      const res = await aplicarYRegistrarStock(tx, {
+        tenantId, productoId: id, tipo: "entrada", cantidad: valor, motivo,
+      });
+      return { resultante: res, delta: valor };
+    });
+    resultante = r.resultante;
+    cantidadFirmada = r.delta;
   } catch (e) {
     if (e instanceof StockError) return errorResponse(e.message, "INVALID_STOCK", 409);
     throw e;

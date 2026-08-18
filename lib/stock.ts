@@ -7,7 +7,8 @@
  * (setAuditActor en requireAuth), así no hay que pasarlo en cada call.
  */
 import type { Prisma } from "@prisma/client";
-import { aplicarMovimientoStock, type TipoMovimientoStock } from "@/lib/domain/stock";
+import { aplicarMovimientoStock, deltaAjuste, type TipoMovimientoStock } from "@/lib/domain/stock";
+import { lockProductoTx } from "@/lib/locks";
 import { getAuditActor } from "@/lib/audit-context";
 
 type Tx = Prisma.TransactionClient;
@@ -54,6 +55,19 @@ export async function aplicarYRegistrarStock(
   tx: Tx,
   m: MovimientoBase & { cantidad: number },
 ): Promise<number> {
+  /**
+   * 🔴 Lock del producto ANTES de leer.
+   *
+   * Esto era leer-calcular-escribir con un valor ABSOLUTO (`stock: resultante`), sin
+   * `increment` ni guarda `gte` — al revés de lo que sí hace la venta a crédito. Dos
+   * anulaciones del mismo producto casi simultáneas leían `stock = 5`, las dos escribían
+   * `6`, y se perdía una unidad: el kardex quedaba con dos filas diciendo
+   * `stock_resultante: 6` y el cache descuadrado contra la suma del libro.
+   *
+   * Con el lock, la segunda espera y lee el 6 que dejó la primera.
+   */
+  await lockProductoTx(tx, m.tenantId, m.productoId);
+
   const prod = await tx.productos.findFirst({
     where: { tenant_id: m.tenantId, id: m.productoId },
     select: { stock: true },
@@ -64,4 +78,30 @@ export async function aplicarYRegistrarStock(
   await tx.productos.update({ where: { id: m.productoId }, data: { stock: resultante } });
   await registrarMovimientoStock(tx, { ...m, stockResultante: resultante });
   return resultante;
+}
+
+/**
+ * Igual que `aplicarYRegistrarStock`, pero para un AJUSTE por conteo: la cantidad no se sabe
+ * hasta leer el stock real, así que el delta se calcula DENTRO del lock.
+ *
+ * Antes el delta venía calculado desde el route con un stock leído fuera de la transacción:
+ * el admin contaba 10 unidades, se vendía una en el medio, y el ajuste aterrizaba en 11.
+ */
+export async function ajustarStockAConteo(
+  tx: Tx,
+  m: MovimientoBase & { conteo: number },
+): Promise<{ resultante: number; delta: number }> {
+  await lockProductoTx(tx, m.tenantId, m.productoId);
+
+  const prod = await tx.productos.findFirst({
+    where: { tenant_id: m.tenantId, id: m.productoId },
+    select: { stock: true },
+  });
+  if (!prod) throw new Error("Producto no encontrado");
+
+  const delta = deltaAjuste(prod.stock, m.conteo);
+  const resultante = aplicarMovimientoStock(prod.stock, delta);
+  await tx.productos.update({ where: { id: m.productoId }, data: { stock: resultante } });
+  await registrarMovimientoStock(tx, { ...m, cantidad: delta, stockResultante: resultante });
+  return { resultante, delta };
 }

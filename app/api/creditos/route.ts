@@ -1,10 +1,11 @@
 import { requireAuth, requireRole, scopeCreditosVendedor, ApiError } from "@/lib/auth";
-import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api";
+import { successResponse, errorResponse, withErrorHandler, assertSameOrigin } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { round2, normalizarFrecuencia, resolverFrecuencia, sumarPeriodos, construirPlanAmortizacion, planACuotas, estadoCoherente, etiquetaCaja, esCuentaValida, validarParametrosOtorgamiento, diasMoraActual, buscarPlan, nombrePlan, tasaDesdeCoeficiente, cargosConPlan, CUENTA_LABEL, type Cuenta, ESTADOS_VIVOS, esCreditoVivo, moraDelCredito, moraDesdeCronograma, moraPendienteTotal } from "@/lib/domain";
 import { siguienteNumeroComprobante } from "@/lib/comprobantes";
 import { assertFondosSuficientesTx } from "@/lib/caja-fondos";
+import { lockNumeroCreditoTx } from "@/lib/locks";
 import { getConfiguracion } from "@/lib/config";
 import { registrarAuditoria } from "@/lib/audit";
 import { registrarMovimientoStock } from "@/lib/stock";
@@ -151,6 +152,7 @@ async function asegurarFichaVendedor(
 }
 
 export const POST = withErrorHandler(async (req: NextRequest) => {
+  assertSameOrigin(req);
   // Otorgar créditos: admin y vendedor. El cobrador NO puede otorgar.
   const { tenantId, role, vendedorId: miVendedorId, userId, nombre, email } = await requireRole(["admin", "vendedor"], req);
 
@@ -226,9 +228,23 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     body.monto_original = Math.round(producto.precio * productoCantidad * 100) / 100;
   }
 
-  // Validar montos
-  if (body.monto_original <= 0 || body.tasa < 0 || body.plazo_meses < 1) {
-    return errorResponse("Montos inválidos", "INVALID_INPUT", 400);
+  /**
+   * Validar montos con COERCIÓN explícita.
+   *
+   * Sin `Number()`, un `"abc"` no es `<= 0` ni `< 1`, así que atravesaba esta guarda y
+   * reventaba recién adentro de Prisma → 500 "error interno" en vez de un 400 que le diga
+   * al operador qué escribió mal. Y `plazo_meses` se trunca: un 3,7 llegaba entero al motor
+   * en las frecuencias que no fijan cuotas.
+   */
+  body.monto_original = Number(body.monto_original);
+  body.tasa = Number(body.tasa);
+  body.plazo_meses = Math.trunc(Number(body.plazo_meses));
+  if (
+    !Number.isFinite(body.monto_original) || body.monto_original <= 0 ||
+    !Number.isFinite(body.tasa) || body.tasa < 0 ||
+    !Number.isFinite(body.plazo_meses) || body.plazo_meses < 1
+  ) {
+    return errorResponse("Montos inválidos: revisá capital, tasa y cantidad de cuotas.", "INVALID_INPUT", 400);
   }
 
   // Atribución del vendedor.
@@ -441,6 +457,12 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
   if (fechaInicio.getTime() > hoyComercial().getTime()) {
     return errorResponse("La fecha de otorgamiento no puede ser futura.", "FECHA_INVALIDA", 400);
   }
+  // Piso de CORDURA, no regla de negocio: retroceder la fecha es legítimo (así se cargan a
+  // mano los créditos vivos que la financiera traía de antes), pero un año 1970 por un typo
+  // asienta el desembolso en caja con esa fecha y ensucia todos los reportes por período.
+  if (fechaInicio.getUTCFullYear() < 2000) {
+    return errorResponse("La fecha de otorgamiento parece equivocada: revisá el año.", "FECHA_INVALIDA", 400);
+  }
   const proximoPago = body.proximo_pago
     ? new Date(body.proximo_pago)
     : sumarPeriodos(fechaInicio, 1, frecuencia, configActual.simulador.frecuencias);
@@ -472,15 +494,27 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     configActual.simulador.frecuencias
   );
   const filasCuota = planACuotas(plan);
-  // El próximo pago = 1ª cuota del plan (respeta el cronograma de corte/vencimiento).
-  const proximoPagoFinal = body.proximo_pago ? new Date(body.proximo_pago) : (plan.cuotas[0]?.fecha ?? proximoPago);
+  /**
+   * El próximo pago = 1ª cuota del plan. **Punto.**
+   *
+   * 🔴 Antes esto era `body.proximo_pago ? ... : plan.cuotas[0].fecha`, o sea que el valor
+   * del navegador pisaba el cronograma calculado, sin validarse contra el plan y sin tope.
+   * El cronograma de `cuotas` quedaba bien (se cobraba correcto), pero **toda la vista de
+   * mora se computa sobre `proximo_pago`**: lista de créditos, dashboard, agenda del día y
+   * campañas. Un vendedor que otorgara con `proximo_pago: "2031-01-01"` sacaba ese crédito
+   * del radar de cobranza —y de su propio % de morosidad en el ranking— hasta 2031. Solo se
+   * corregía si alguna vez entraba un pago, que es justo lo que no pasa con un incobrable.
+   *
+   * No hay motivo legítimo para que el cliente lo mande: el cronograma ya lo determina.
+   */
+  const proximoPagoFinal = plan.cuotas[0]?.fecha ?? proximoPago;
 
   // Crédito + cuotas en una transacción: un crédito nunca queda sin cronograma.
   const credito = await prisma.$transaction(async (tx) => {
     // Número identificador legible, secuencial por tenant (CRD-000123). Advisory lock por
     // tenant para que dos otorgamientos concurrentes no calculen el mismo `_max + 1`
     // (antes eso violaba el @@unique → 500). Se libera al terminar la transacción.
-    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`credito-numero:${tenantId}`}, 0))`;
+    await lockNumeroCreditoTx(tx, tenantId);
     const maxNum = await tx.creditos.aggregate({
       where: { ...withTenant(tenantId) },
       _max: { numero: true },

@@ -1,5 +1,5 @@
 import { requireRole, scopeCreditosVendedor } from "@/lib/auth";
-import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api";
+import { successResponse, errorResponse, withErrorHandler, assertSameOrigin } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { registrarAuditoria } from "@/lib/audit";
@@ -49,6 +49,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
  * Body: { credito_id, tipo, resultado, nota?, promesa_monto?, promesa_fecha?, proximo_contacto? }
  */
 export const POST = withErrorHandler(async (req: NextRequest) => {
+  assertSameOrigin(req);
   // Registrar gestión de cobranza: admin, cobrador y vendedor (este último, solo SUS créditos).
   const { tenantId, role, vendedorId } = await requireRole(["admin", "vendedor"], req);
 

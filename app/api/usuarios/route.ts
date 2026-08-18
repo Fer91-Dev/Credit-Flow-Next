@@ -1,5 +1,5 @@
 import { requireRole } from "@/lib/auth";
-import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api";
+import { successResponse, errorResponse, withErrorHandler, assertSameOrigin } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { rateLimit, clientIp, sweepIfNeeded } from "@/lib/rate-limit";
@@ -63,6 +63,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
  * Un admin solo puede crear usuarios dentro de su propia financiera.
  */
 export const POST = withErrorHandler(async (req: NextRequest) => {
+  assertSameOrigin(req);
   const { tenantId } = await requireRole(["admin"], req);
   // Alta de cuentas: aunque exige ser admin, una sesión robada podría crear usuarios en masa.
   sweepIfNeeded();

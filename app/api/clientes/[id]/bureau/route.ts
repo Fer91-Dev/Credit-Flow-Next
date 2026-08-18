@@ -1,6 +1,6 @@
 import { requireRole } from "@/lib/auth";
 import { requireFeature } from "@/lib/entitlements-server";
-import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api";
+import { successResponse, errorResponse, withErrorHandler, assertSameOrigin } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { getRiesgoConfig } from "@/lib/config";
@@ -39,6 +39,7 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
  * Body: { proveedor?, senalesManual?: { situacionBcra, scoreExterno, chequesRechazados, deudaSistemaFinanciero } }
  */
 export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteParams) => {
+  assertSameOrigin(req);
   const ctx = await requireRole(["admin"], req);
   requireFeature(ctx, "bureau_credito");
   const { tenantId, userId, nombre } = ctx;

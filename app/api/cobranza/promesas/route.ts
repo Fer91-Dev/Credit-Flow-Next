@@ -1,5 +1,5 @@
 import { requireRole, scopeCreditosVendedor } from "@/lib/auth";
-import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api";
+import { successResponse, errorResponse, withErrorHandler, assertSameOrigin } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import type { NextRequest } from "next/server";
@@ -52,6 +52,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
  * Body: { promesa_estado: "pendiente" | "cumplida" | "incumplida" }
  */
 export const PATCH = withErrorHandler(async (req: NextRequest) => {
+  assertSameOrigin(req);
   const { tenantId, role, vendedorId } = await requireRole(["admin", "vendedor"], req);
 
   const url = new URL(req.url);

@@ -6,7 +6,7 @@
  * Feature premium: el llamador decide si corre (ctxHasFeature) — este helper no gatea.
  */
 import { prisma } from "@/lib/prisma";
-import { calcularScore, evaluarOriginacion, cuotaMensualEquivalente, construirPlanAmortizacion, round2, type ResultadoOriginacion, type ScoreResult, type SenalesBureau, type FrecuenciaDef, esCreditoVivo } from "@/lib/domain";
+import { calcularScore, evaluarOriginacion, cuotaMensualEquivalente, construirPlanAmortizacion, round2, type ResultadoOriginacion, type ScoreResult, type SenalesBureau, type FrecuenciaDef, esCreditoVivo, diasMoraActual } from "@/lib/domain";
 import { getRiesgoConfig } from "@/lib/config";
 import type { ConfiguracionFinanciera, CargosConfig } from "@/lib/domain";
 
@@ -111,12 +111,24 @@ export async function evaluarClienteParaCredito(params: {
     },
     // `frecuencia` y `frecuencia_def` hacen falta para mensualizar la cuota de cada crédito:
     // uno semanal se paga 52 veces al año, no 12.
-    select: { id: true, estado: true, dias_mora: true, frecuencia: true, frecuencia_def: true },
+    // `proximo_pago` para computar la mora EN VIVO (ver abajo); `dias_mora` ya no se usa.
+    select: { id: true, estado: true, proximo_pago: true, frecuencia: true, frecuencia_def: true },
   });
   const idsVivos = creditos.filter((c) => c.estado === "activo" || c.estado === "vencido").map((c) => c.id);
+  /**
+   * 🔴 Mora EN VIVO, no del cache.
+   *
+   * `creditos.dias_mora` solo se escribe al cobrar o al anular un pago: **nada lo avanza día
+   * a día**. Un cliente con un crédito de 150 días de atraso y CERO pagos entraba al motor
+   * con `maxDiasMora = 0` y conservaba su categoría de score intacta. Hoy lo tapa el bloqueo
+   * duro por cuotas vencidas —que sí se calcula en vivo— pero ese bloqueo es configurable
+   * (`bloquearConCuotasVencidas`): apagarlo dejaba al score como única señal de mora,
+   * leyendo un cero.
+   */
+  const hoyRiesgo = new Date();
   const maxDiasMora = creditos
     .filter((c) => esCreditoVivo(c.estado))
-    .reduce((m, c) => Math.max(m, c.dias_mora), 0);
+    .reduce((m, c) => Math.max(m, diasMoraActual(c.proximo_pago, hoyRiesgo)), 0);
 
   const cuotas = creditos.length
     ? await prisma.cuotas.findMany({

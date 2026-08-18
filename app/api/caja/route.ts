@@ -1,5 +1,5 @@
 import { requireRole } from "@/lib/auth";
-import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api";
+import { successResponse, errorResponse, withErrorHandler, assertSameOrigin } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { registrarAuditoria } from "@/lib/audit";
@@ -167,6 +167,7 @@ const esConcepto = (v: unknown): v is Concepto => typeof v === "string" && v in 
  * `concepto` es opcional y default "ajuste" (compatibilidad con clientes viejos).
  */
 export const POST = withErrorHandler(async (req: NextRequest) => {
+  assertSameOrigin(req);
   // Movimiento manual de caja: solo admin. Un aporte o un retiro son decisiones del dueño
   // del negocio, no de quien opera el mostrador.
   const { tenantId } = await requireRole(["admin"], req);
@@ -196,7 +197,12 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
   const cuenta = esCuentaValida(body.cuenta) ? body.cuenta : "efectivo";
   const descripcion = body.descripcion.trim();
   const metodo = body.metodo?.trim() || null;
+  // Fecha validada como en el arqueo: `new Date("cualquier cosa")` da Invalid Date y llega
+  // a Prisma como 500 en vez de un 400 que se pueda entender.
   const fecha = body.fecha ? new Date(`${body.fecha}T00:00:00.000Z`) : hoyComercial();
+  if (Number.isNaN(fecha.getTime())) {
+    return errorResponse("Fecha inválida", "FECHA_INVALIDA", 400);
+  }
 
   const mov = await prisma.$transaction(async (tx) => {
     // Ningún egreso manual puede dejar la caja principal negativa (misma decisión de

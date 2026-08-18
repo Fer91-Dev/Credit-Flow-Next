@@ -1,5 +1,5 @@
 import { requireRole, scopeCreditosVendedor } from "@/lib/auth";
-import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api";
+import { successResponse, errorResponse, withErrorHandler, assertSameOrigin } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { getComunicacionConfig } from "@/lib/config";
@@ -19,6 +19,7 @@ export const POST = withErrorHandler(async (
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) => {
+  assertSameOrigin(req);
   const auth = await requireRole(["admin", "vendedor"], req);
   const { tenantId } = auth;
   const { id } = await params;

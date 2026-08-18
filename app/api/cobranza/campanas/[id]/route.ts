@@ -1,5 +1,5 @@
 import { requireRole, scopeCreditosVendedor } from "@/lib/auth";
-import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api";
+import { successResponse, errorResponse, withErrorHandler, assertSameOrigin } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { registrarAuditoria } from "@/lib/audit";
@@ -65,6 +65,7 @@ export const GET = withErrorHandler(async (req: NextRequest, ctx: { params: Prom
  * Body: { estado? } | { objetivo_id, promesa_generada }
  */
 export const PATCH = withErrorHandler(async (req: NextRequest, ctx: { params: Promise<{ id: string }> }) => {
+  assertSameOrigin(req);
   const auth = await requireRole(["admin", "vendedor"], req);
   const { tenantId } = auth;
   const { id } = await ctx.params;
@@ -125,6 +126,7 @@ export const PATCH = withErrorHandler(async (req: NextRequest, ctx: { params: Pr
  * Elimina la campaña (los objetivos se borran por cascade). No afecta créditos.
  */
 export const DELETE = withErrorHandler(async (req: NextRequest, ctx: { params: Promise<{ id: string }> }) => {
+  assertSameOrigin(req);
   const auth = await requireRole(["admin", "vendedor"], req);
   const { tenantId } = auth;
   const { id } = await ctx.params;
