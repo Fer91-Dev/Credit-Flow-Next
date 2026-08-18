@@ -7,7 +7,7 @@ import { FeatureGate } from "@/components/providers/FeaturesProvider";
 import { FinancieraForm } from "@/components/configuracion/FinancieraForm";
 import { BackupsView } from "@/components/configuracion/BackupsView";
 import type { SimuladorConfig, CargosConfig, FrecuenciaOpcion, DocumentosConfig, ConvencionTasa } from "@/lib/domain";
-import { DOCUMENTOS_DEFAULT, revisarDocumentos, ORDEN_IMPUTACION, tasaDesdeCoeficiente, textoCuotas } from "@/lib/domain";
+import { DOCUMENTOS_DEFAULT, revisarDocumentos, punitorioMensualDesdeDiaria, ORDEN_IMPUTACION, tasaDesdeCoeficiente, textoCuotas } from "@/lib/domain";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Emoji } from "@/components/ui/Emoji";
 import { Field, Input, Select, Textarea, SecretInput } from "@/components/ui/field";
@@ -302,7 +302,7 @@ export function ConfigForm() {
    * y habría que rearmarla desde cero.
    */
   const modoRedondeoPrevio = useRef<"entero" | "multiplo" | null>(null);
-  const [activeTab, setActiveTab] = useState<"financiera" | "motor" | "simulador" | "comunicaciones" | "gamificacion" | "rentabilidad" | "riesgo" | "cajas" | "documentos" | "notificaciones" | "backups">("financiera");
+  const [activeTab, setActiveTab] = useState<"financiera" | "motor" | "simulador" | "comunicaciones" | "gamificacion" | "rentabilidad" | "riesgo" | "cobranza" | "cajas" | "documentos" | "notificaciones" | "backups">("financiera");
 
   // Hidratar el form local cuando llega la config.
   useEffect(() => {
@@ -409,7 +409,12 @@ export function ConfigForm() {
     touch();
   };
   // Avisos de "esto va a salir débil": no bloquean, marcan.
-  const avisosDocs = revisarDocumentos(docs);
+  /**
+   * El punitorio del documento se DERIVA de la mora que el motor cobra: una sola fuente.
+   * Si la mora está apagada, el documento declara 0 — que es la verdad.
+   */
+  const punitorioMensual = form?.moraActiva ? punitorioMensualDesdeDiaria(form.tasaMoraDiaria) : 0;
+  const avisosDocs = revisarDocumentos(docs, punitorioMensual);
 
   // Rentabilidad: costo de fondeo para la ganancia NETA de Reportes.
   const rent = form?.rentabilidadConfig ?? defaultRentabilidad();
@@ -504,6 +509,7 @@ export function ConfigForm() {
                 { key: "gamificacion",   label: "Gamificación",           emoji: "trophy" },
                 { key: "rentabilidad",   label: "Rentabilidad",           emoji: "chart-increasing" },
                 { key: "riesgo",         label: "Riesgo / Originación",   emoji: "shield" },
+                { key: "cobranza",       label: "Cobranza",               emoji: "telephone" },
                 { key: "cajas",          label: "Cajas",                  emoji: "money-bag" },
                 { key: "documentos",     label: "Documentos",             emoji: "scroll" },
                 { key: "notificaciones", label: "Notificaciones",          emoji: "bell" },
@@ -532,7 +538,32 @@ export function ConfigForm() {
             <div className="min-w-0 space-y-4">
 
           {/* ─── Datos de la financiera (identidad del tenant) ─── */}
-          {activeTab === "financiera" && <FinancieraForm />}
+          {activeTab === "financiera" && <>
+          <FinancieraForm />
+
+          {/* Presentación */}
+          <Section title="Presentación" desc="Formato de moneda y región (no afecta los cálculos)." ayuda={AYUDA.presentacion}
+            onSave={() => save("presentacion", { moneda: form.moneda, locale: form.locale })}
+            saving={savingKey === "presentacion"} saved={savedKey === "presentacion"} dirty={isDirty("presentacion")}>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <Field label="Moneda" hint="Código ISO 4217">
+                <Select value={form.moneda} onChange={e => set("moneda", e.target.value)}>
+                  <option value="ARS">ARS — Peso argentino</option>
+                  <option value="COP">COP — Peso colombiano</option>
+                  <option value="MXN">MXN — Peso mexicano</option>
+                  <option value="USD">USD — Dólar</option>
+                </Select>
+              </Field>
+              <Field label="Región (locale)">
+                <Select value={form.locale} onChange={e => set("locale", e.target.value)}>
+                  <option value="es-AR">es-AR — Argentina</option>
+                  <option value="es-CO">es-CO — Colombia</option>
+                  <option value="es-MX">es-MX — México</option>
+                </Select>
+              </Field>
+            </div>
+          </Section>
+          </>}
 
           {/* ─── Motor tab: Motor financiero (primero) ─── */}
           {activeTab === "motor" && (
@@ -903,7 +934,8 @@ export function ConfigForm() {
 
           </>}
 
-          {/* ─── Motor tab: Mora, Imputación, Presentación ─── */}
+
+
           {activeTab === "motor" && <>
 
           {/* Mora */}
@@ -925,71 +957,6 @@ export function ConfigForm() {
                 </div>
               </Field>
 
-            </div>
-          </Section>
-
-          {/* Agenda de cobranza */}
-          <Section title="Agenda de cobranza" desc="Cada cuántos días un moroso sin gestionar vuelve a aparecer en la cola del día." ayuda={AYUDA.cobranza}
-            onSave={() => save("cobranza", { cobranzaConfig: cobranza })}
-            saving={savingKey === "cobranza"} saved={savedKey === "cobranza"} dirty={isDirty("cobranza")}>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 max-w-xl">
-              <Field label="Días sin gestión" hint="Un moroso reaparece en la agenda si nadie lo contactó en esta cantidad de días (1–90).">
-                <Input
-                  type="number" min="1" max="90" step="1"
-                  value={cobranza.dias_sin_gestion}
-                  onChange={e => setCobranza({ dias_sin_gestion: Math.max(1, Math.min(90, Math.round(parseFloat(e.target.value) || 1))) })}
-                />
-              </Field>
-            </div>
-          </Section>
-
-          {/* Acuerdos de pago */}
-          <Section title="Acuerdos de pago" desc="El arreglo informal en cuotas con un moroso: hasta cuántas cuotas, qué lo rompe y quién puede condonar." ayuda={AYUDA.acuerdos}
-            onSave={() => save("cobranza", { cobranzaConfig: cobranza })}
-            saving={savingKey === "cobranza"} saved={savedKey === "cobranza"} dirty={isDirty("cobranza")}>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 max-w-3xl">
-              <Field label="Máximo de cuotas" hint="El techo del vendedor: hasta en cuántos pagos puede repartir lo vencido sin consultar. Con 6 puede ofrecer 6, no 8.">
-                <Input
-                  type="number" min="1" max="60" step="1"
-                  value={cobranza.acuerdos.max_cuotas}
-                  onChange={e => setAcuerdos({ max_cuotas: Math.max(1, Math.min(60, Math.round(parseFloat(e.target.value) || 1))) })}
-                />
-              </Field>
-              <Field label="Días entre cuotas" hint="Cada cuánto vence una cuota del acuerdo: 30 = mensual · 15 = quincenal · 7 = semanal. No depende de la frecuencia del crédito.">
-                <Input
-                  type="number" min="1" max="365" step="1"
-                  value={cobranza.acuerdos.dias_entre_cuotas}
-                  onChange={e => setAcuerdos({ dias_entre_cuotas: Math.max(1, Math.min(365, Math.round(parseFloat(e.target.value) || 1))) })}
-                />
-              </Field>
-              <Field label="Cuotas impagas que lo rompen" hint="Con 1 se cae al primer faltazo; con 2 o 3 tolerás un tropiezo. Al romperse vuelve a morosos y los punitorios corren de nuevo.">
-                <Input
-                  type="number" min="1" step="1"
-                  value={cobranza.acuerdos.cuotas_para_romper}
-                  onChange={e => setAcuerdos({ cuotas_para_romper: Math.max(1, Math.round(parseFloat(e.target.value) || 1)) })}
-                />
-              </Field>
-              <Field label="Quita máx. del vendedor (%)" hint="Cuánto de los punitorios e interés puede perdonar el vendedor por su cuenta. En 0 no condona nada: toda quita la firma un admin, que no tiene tope. El capital nunca se toca.">
-                <Input
-                  type="number" min="0" max="100" step="1"
-                  value={cobranza.acuerdos.quita_max_vendedor_pct}
-                  onChange={e => setAcuerdos({ quita_max_vendedor_pct: Math.max(0, Math.min(100, parseFloat(e.target.value) || 0)) })}
-                />
-              </Field>
-            </div>
-            <div className="mt-4 flex flex-col gap-3 max-w-3xl">
-              <SwitchRow
-                title="Congelar punitorios mientras cumple"
-                desc="El incentivo para el deudor: si paga lo acordado, no se le sigue sumando mora."
-                checked={cobranza.acuerdos.congela_punitorios}
-                onChange={v => setAcuerdos({ congela_punitorios: v })}
-              />
-              <SwitchRow
-                title="Sacarlo de la agenda del día mientras cumple"
-                desc="Quien está cumpliendo ya está gestionado. Llamarlo igual suele ser la forma más rápida de que deje de cumplir."
-                checked={cobranza.acuerdos.saca_de_agenda}
-                onChange={v => setAcuerdos({ saca_de_agenda: v })}
-              />
             </div>
           </Section>
 
@@ -1038,29 +1005,6 @@ export function ConfigForm() {
                 <Select value={form.imputarCargos} onChange={e => set("imputarCargos", e.target.value as ConfiguracionFinanciera["imputarCargos"])}>
                   <option value="integrado">Después del interés (mora → interés → cargos → capital)</option>
                   <option value="separado">Antes del interés (mora → cargos → interés → capital)</option>
-                </Select>
-              </Field>
-            </div>
-          </Section>
-
-          {/* Presentación */}
-          <Section title="Presentación" desc="Formato de moneda y región (no afecta los cálculos)." ayuda={AYUDA.presentacion}
-            onSave={() => save("presentacion", { moneda: form.moneda, locale: form.locale })}
-            saving={savingKey === "presentacion"} saved={savedKey === "presentacion"} dirty={isDirty("presentacion")}>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Field label="Moneda" hint="Código ISO 4217">
-                <Select value={form.moneda} onChange={e => set("moneda", e.target.value)}>
-                  <option value="ARS">ARS — Peso argentino</option>
-                  <option value="COP">COP — Peso colombiano</option>
-                  <option value="MXN">MXN — Peso mexicano</option>
-                  <option value="USD">USD — Dólar</option>
-                </Select>
-              </Field>
-              <Field label="Región (locale)">
-                <Select value={form.locale} onChange={e => set("locale", e.target.value)}>
-                  <option value="es-AR">es-AR — Argentina</option>
-                  <option value="es-CO">es-CO — Colombia</option>
-                  <option value="es-MX">es-MX — México</option>
                 </Select>
               </Field>
             </div>
@@ -1491,6 +1435,74 @@ export function ConfigForm() {
           )}
 
           {/* ─── Documentos del crédito (solicitud/mutuo + pagaré) ─── */}
+          {activeTab === "cobranza" && <>
+          {/* Agenda de cobranza */}
+          <Section title="Agenda de cobranza" desc="Cada cuántos días un moroso sin gestionar vuelve a aparecer en la cola del día." ayuda={AYUDA.cobranza}
+            onSave={() => save("cobranza", { cobranzaConfig: cobranza })}
+            saving={savingKey === "cobranza"} saved={savedKey === "cobranza"} dirty={isDirty("cobranza")}>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 max-w-xl">
+              <Field label="Días sin gestión" hint="Un moroso reaparece en la agenda si nadie lo contactó en esta cantidad de días (1–90).">
+                <Input
+                  type="number" min="1" max="90" step="1"
+                  value={cobranza.dias_sin_gestion}
+                  onChange={e => setCobranza({ dias_sin_gestion: Math.max(1, Math.min(90, Math.round(parseFloat(e.target.value) || 1))) })}
+                />
+              </Field>
+            </div>
+          </Section>
+
+          {/* Acuerdos de pago */}
+          <Section title="Acuerdos de pago" desc="El arreglo informal en cuotas con un moroso: hasta cuántas cuotas, qué lo rompe y quién puede condonar." ayuda={AYUDA.acuerdos}
+            onSave={() => save("cobranza", { cobranzaConfig: cobranza })}
+            saving={savingKey === "cobranza"} saved={savedKey === "cobranza"} dirty={isDirty("cobranza")}>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 max-w-3xl">
+              <Field label="Máximo de cuotas" hint="El techo del vendedor: hasta en cuántos pagos puede repartir lo vencido sin consultar. Con 6 puede ofrecer 6, no 8.">
+                <Input
+                  type="number" min="1" max="60" step="1"
+                  value={cobranza.acuerdos.max_cuotas}
+                  onChange={e => setAcuerdos({ max_cuotas: Math.max(1, Math.min(60, Math.round(parseFloat(e.target.value) || 1))) })}
+                />
+              </Field>
+              <Field label="Días entre cuotas" hint="Cada cuánto vence una cuota del acuerdo: 30 = mensual · 15 = quincenal · 7 = semanal. No depende de la frecuencia del crédito.">
+                <Input
+                  type="number" min="1" max="365" step="1"
+                  value={cobranza.acuerdos.dias_entre_cuotas}
+                  onChange={e => setAcuerdos({ dias_entre_cuotas: Math.max(1, Math.min(365, Math.round(parseFloat(e.target.value) || 1))) })}
+                />
+              </Field>
+              <Field label="Cuotas impagas que lo rompen" hint="Con 1 se cae al primer faltazo; con 2 o 3 tolerás un tropiezo. Al romperse vuelve a morosos y los punitorios corren de nuevo.">
+                <Input
+                  type="number" min="1" step="1"
+                  value={cobranza.acuerdos.cuotas_para_romper}
+                  onChange={e => setAcuerdos({ cuotas_para_romper: Math.max(1, Math.round(parseFloat(e.target.value) || 1)) })}
+                />
+              </Field>
+              <Field label="Quita máx. del vendedor (%)" hint="Cuánto de los punitorios e interés puede perdonar el vendedor por su cuenta. En 0 no condona nada: toda quita la firma un admin, que no tiene tope. El capital nunca se toca.">
+                <Input
+                  type="number" min="0" max="100" step="1"
+                  value={cobranza.acuerdos.quita_max_vendedor_pct}
+                  onChange={e => setAcuerdos({ quita_max_vendedor_pct: Math.max(0, Math.min(100, parseFloat(e.target.value) || 0)) })}
+                />
+              </Field>
+            </div>
+            <div className="mt-4 flex flex-col gap-3 max-w-3xl">
+              <SwitchRow
+                title="Congelar punitorios mientras cumple"
+                desc="El incentivo para el deudor: si paga lo acordado, no se le sigue sumando mora."
+                checked={cobranza.acuerdos.congela_punitorios}
+                onChange={v => setAcuerdos({ congela_punitorios: v })}
+              />
+              <SwitchRow
+                title="Sacarlo de la agenda del día mientras cumple"
+                desc="Quien está cumpliendo ya está gestionado. Llamarlo igual suele ser la forma más rápida de que deje de cumplir."
+                checked={cobranza.acuerdos.saca_de_agenda}
+                onChange={v => setAcuerdos({ saca_de_agenda: v })}
+              />
+            </div>
+          </Section>
+
+          </>}
+
           {activeTab === "cajas" && (
           <Section
             title="Control de las cajas"
@@ -1564,13 +1576,21 @@ export function ConfigForm() {
                     placeholder="Ej: Tribunales Ordinarios de San Miguel de Tucumán"
                   />
                 </Field>
-                <Field label="Interés punitorio mensual (%)" hint="Recargo por pagar fuera de término">
-                  <Input
-                    type="number" min="0" max="100" step="any"
-                    value={String(docs.punitorio_mensual)}
-                    onChange={e => setDocs({ punitorio_mensual: parseFloat(e.target.value) || 0 })}
-                    className="font-mono tabular-nums"
-                  />
+                {/* DERIVADO, no editable. Antes era un número suelto que podía no coincidir
+                    con lo que el motor cobra de verdad — y en un pagaré firmado gana lo que
+                    dice el papel. Ahora sale de la tasa diaria; se cambia donde se cobra. */}
+                <Field
+                  label="Interés punitorio mensual (%)"
+                  hint="Sale de la tasa de mora que cobra el sistema. Para cambiarlo: Motor financiero → Interés por mora."
+                >
+                  <div className="relative">
+                    <Input
+                      type="text" readOnly tabIndex={-1}
+                      value={punitorioMensual.toLocaleString("es-AR", { maximumFractionDigits: 2 })}
+                      className="font-mono tabular-nums opacity-70 cursor-not-allowed"
+                    />
+                    <Percent className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
+                  </div>
                 </Field>
               </div>
 

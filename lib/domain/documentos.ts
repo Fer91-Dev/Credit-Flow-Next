@@ -26,8 +26,6 @@ export type ModoPagare =
 export interface DocumentosConfig {
   /** Fuero al que se someten las partes. Vacío = no se imprime la cláusula. */
   jurisdiccion: string;
-  /** Punitorio mensual sobre la deuda en mora, en %. 0 = no se reclama nada por atraso. */
-  punitorio_mensual: number;
   /** Actualización por IPC del INDEC, además del punitorio. */
   actualiza_por_ipc: boolean;
   /** Con monto impreso, o en blanco para completar al ejecutar. */
@@ -60,7 +58,6 @@ export interface DocumentosConfig {
 
 export const DOCUMENTOS_DEFAULT: DocumentosConfig = {
   jurisdiccion: "",
-  punitorio_mensual: 0,
   actualiza_por_ipc: false,
   modo_pagare: "con_monto",
   sin_protesto: true,
@@ -87,7 +84,6 @@ export function resolverDocumentos(raw: Partial<DocumentosConfig> | null | undef
   if (!raw || typeof raw !== "object") return { ...d };
   return {
     jurisdiccion: texto(raw.jurisdiccion, d.jurisdiccion, 200),
-    punitorio_mensual: num(raw.punitorio_mensual, d.punitorio_mensual, 0, 100),
     actualiza_por_ipc: bool(raw.actualiza_por_ipc, d.actualiza_por_ipc),
     modo_pagare: raw.modo_pagare === "sin_monto" ? "sin_monto" : "con_monto",
     sin_protesto: bool(raw.sin_protesto, d.sin_protesto),
@@ -102,7 +98,8 @@ export function resolverDocumentos(raw: Partial<DocumentosConfig> | null | undef
 
 /** Aviso, con su motivo. `bloqueante` impide emitir; el resto solo advierte. */
 export interface AvisoDocumentos {
-  campo: keyof DocumentosConfig;
+  /** Clave del bloque señalado. "mora" apunta al motor, que es donde se cambia. */
+  campo: keyof DocumentosConfig | "mora";
   mensaje: string;
   bloqueante: boolean;
 }
@@ -114,7 +111,27 @@ export interface AvisoDocumentos {
  * Un contrato sin punitorios no permite reclamar el atraso; uno sin jurisdicción deja la
  * competencia abierta a discusión. Son huecos que recién se notan cuando hay que cobrar.
  */
-export function revisarDocumentos(c: DocumentosConfig): AvisoDocumentos[] {
+
+/**
+ * Punitorio MENSUAL, en %, derivado de la tasa de mora diaria que el motor realmente cobra.
+ *
+ * 🔴 Esto existe porque antes eran DOS números independientes: la tasa diaria en Motor
+ * financiero (lo que la caja cobra) y un "interés punitorio mensual" suelto acá (lo que el
+ * papel declara). Nada verificaba que coincidieran — `revisarDocumentos` ni siquiera podía
+ * verlos juntos— así que el documento podía declarar 5% mensual mientras el sistema cobraba
+ * el equivalente a 3%. En una pantalla desalineada eso es un detalle; en un pagaré firmado
+ * es la cifra que vale ante un juez.
+ *
+ * La mora del motor es interés SIMPLE por día (`cuota × tasaDiaria × días`, ver
+ * `interesMora`), así que el mensual equivalente es la diaria por 30. Nada de capitalizar:
+ * el documento tiene que declarar lo que efectivamente se cobra, no una aproximación.
+ */
+export function punitorioMensualDesdeDiaria(tasaMoraDiaria: number): number {
+  if (!Number.isFinite(tasaMoraDiaria) || tasaMoraDiaria <= 0) return 0;
+  return Math.round(tasaMoraDiaria * 30 * 100 * 100) / 100; // fracción diaria → % mensual
+}
+
+export function revisarDocumentos(c: DocumentosConfig, punitorioMensual = 0): AvisoDocumentos[] {
   const avisos: AvisoDocumentos[] = [];
 
   if (!c.jurisdiccion.trim()) {
@@ -124,12 +141,12 @@ export function revisarDocumentos(c: DocumentosConfig): AvisoDocumentos[] {
       bloqueante: false,
     });
   }
-  if (c.punitorio_mensual <= 0) {
+  if (punitorioMensual <= 0) {
     avisos.push({
-      campo: "punitorio_mensual",
+      campo: "mora",
       mensaje:
-        "Con punitorios en 0 el documento no reclama nada por el atraso: pagar tarde sale " +
-        "lo mismo que pagar a término.",
+        "Con la mora apagada o en cero, el documento no reclama nada por el atraso: pagar " +
+        "tarde sale lo mismo que pagar a término. Se activa en Motor financiero → Interés por mora.",
       bloqueante: false,
     });
   }
