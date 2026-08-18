@@ -1495,6 +1495,19 @@ export function ConfigForm() {
             saving={savingKey === "documentos"} saved={savedKey === "documentos"} dirty={isDirty("documentos")}
           >
             <div className="space-y-4">
+              {/* 🔴 Esta pestaña está construida y NO tiene consumidor todavía: no hay
+                  generador de pagaré. Sin este cartel, quien la complete espera un papel que
+                  el sistema no imprime, y lo lee como una función rota. Sacarlo el día que
+                  exista el documento (C1 en PENDIENTES.md). */}
+              <div className="rounded-lg border border-primary/30 bg-primary/[0.07] px-4 py-3">
+                <p className="text-xs leading-relaxed text-foreground">
+                  <span className="font-semibold">El documento todavía no se imprime.</span>{" "}
+                  Esta sección ya guarda tus condiciones y las va a usar el pagaré cuando esté
+                  listo. Mientras tanto, seguí usando el que usás hoy: lo que cargues acá queda
+                  guardado y no hay que volver a escribirlo.
+                </p>
+              </div>
+
               {/* Avisos de configuración que dejaría un documento débil. No bloquean:
                   puede haber razones para emitir así, pero que sea a sabiendas. */}
               {avisosDocs.length > 0 && (

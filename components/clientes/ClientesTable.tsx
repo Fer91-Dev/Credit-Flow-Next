@@ -3,7 +3,7 @@
 import { useMemo, useState, useRef, useEffect } from "react";
 import { useSWRConfig } from "swr";
 import { motion, AnimatePresence } from "framer-motion";
-import { Search, User, Phone, Mail, ArrowLeft, Plus, ChevronRight, X, Clock, FileText } from "lucide-react";
+import { Search, User, Phone, Mail, ArrowLeft, Plus, ChevronRight, X, Clock } from "lucide-react";
 import { ClienteForm } from "./ClienteForm";
 import { ClienteDetail } from "./ClienteDetail";
 import { useClientes, KEYS, type Cliente } from "@/lib/swr";
@@ -243,19 +243,6 @@ export function ClientesTable() {
 
       {/* Filtros: solo inactivos + recién cargados (por fecha de alta) */}
       <div className="flex flex-wrap items-center gap-2">
-        {/* Planilla imprimible de datos faltantes. Se abre en pestaña nueva (es un PDF
-            que sirve el servidor), y va acá y no en el header por la regla de que los
-            CTA no viven en el PageHeader. */}
-        <a
-          href="/api/clientes/datos-incompletos"
-          target="_blank"
-          rel="noopener noreferrer"
-          title="Planilla para imprimir y completar a mano los datos que faltan"
-          className="flex items-center gap-2 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-        >
-          <FileText className="h-3.5 w-3.5" />
-          Datos faltantes (PDF)
-        </a>
         <button
           onClick={() => setSoloInactivos((v) => !v)}
           className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${

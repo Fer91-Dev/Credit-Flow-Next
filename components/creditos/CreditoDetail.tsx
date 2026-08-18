@@ -188,6 +188,17 @@ export function CreditoDetail({ credito, role, onRefinanciar }: { credito: Credi
               {credito.tipo_credito === "productos" ? "Producto" : credito.tipo_credito} · {credito.tasa}% TNA ·{" "}
               {credito.plazo_meses} {amortizacion?.parametros.frecuencia_label.cuotaPlural ?? "cuotas"}
             </p>
+            {/* QUIÉN otorgó. Distinto de a quién se le atribuye la venta: con más de un
+                administrador, "la casa" deja de identificar a nadie. Se muestra el nombre
+                congelado al otorgar, así sigue respondiendo aunque la cuenta ya no exista. */}
+            {credito.otorgado_por_nombre && (
+              <p className="text-xs text-muted-foreground">
+                Otorgado por <span className="font-medium text-foreground">{credito.otorgado_por_nombre}</span>
+                {credito.vendedor?.nombre && credito.vendedor.nombre !== credito.otorgado_por_nombre
+                  ? <> · atribuido a {credito.vendedor.nombre}</>
+                  : null}
+              </p>
+            )}
             {credito.tipo_credito === "productos" && credito.producto && (
               <p className="text-xs text-foreground flex items-center gap-1.5">
                 <span className="inline-flex items-center rounded-md bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary ring-1 ring-inset ring-primary/20">Producto</span>

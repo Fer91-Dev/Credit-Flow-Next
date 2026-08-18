@@ -179,6 +179,9 @@ export interface Credito {
   cliente: { nombre: string; apellido?: string | null; documento?: string | null; email?: string; telefono?: string };
   vendedor_id?: string | null;
   vendedor?: { id: string; nombre: string } | null;
+  /** Quién EJECUTÓ el otorgamiento (≠ a quién se le atribuye la venta). Nombre congelado. */
+  otorgado_por?: string | null;
+  otorgado_por_nombre?: string | null;
   tipo_credito: string;
   monto_original: number;
   saldo_pendiente: number;

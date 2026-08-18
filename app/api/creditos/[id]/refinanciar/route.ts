@@ -19,7 +19,7 @@ interface RouteParams {
  * Devuelve { error } (Response) o { credito, config, deuda } listo para operar.
  */
 async function cargarRefinanciable(req: NextRequest, id: string) {
-  const { tenantId, role, vendedorId } = await requireRole(["admin", "vendedor"], req);
+  const { tenantId, role, vendedorId, userId, nombre, email } = await requireRole(["admin", "vendedor"], req);
 
   const credito = await prisma.creditos.findFirst({
     where: { ...withTenant(tenantId), ...scopeCreditosVendedor({ role, vendedorId }), id },
@@ -90,7 +90,7 @@ async function cargarRefinanciable(req: NextRequest, id: string) {
     diasGracia: graciaCred,
   });
 
-  return { credito, config, deuda, moraHoy, tenantId, role, vendedorId } as const;
+  return { credito, config, deuda, moraHoy, tenantId, role, vendedorId, userId, nombre, email } as const;
 }
 
 /**
@@ -136,7 +136,7 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
   const { id } = await params;
   const r = await cargarRefinanciable(req, id);
   if ("error" in r && r.error) return r.error;
-  const { credito, config, deuda, tenantId, role } = r as Extract<typeof r, { credito: object }>;
+  const { credito, config, deuda, tenantId, role, userId, nombre, email } = r as Extract<typeof r, { credito: object }>;
   const cobranzaCfg = await getCobranzaConfig(tenantId);
 
   let body: any;
@@ -265,6 +265,10 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
         fecha_inicio: fechaInicio,
         proximo_pago: proximoPago,
         vendedor_id: credito.vendedor_id,
+        // La refinanciación también CREA un crédito: quién la ejecutó se guarda igual que en
+        // el otorgamiento. La atribución de la venta se hereda del crédito original.
+        otorgado_por: userId,
+        otorgado_por_nombre: nombre?.trim() || email || null,
         es_refinanciacion: true,
         refinancia_a: credito.id,
         ...withTenant(tenantId),

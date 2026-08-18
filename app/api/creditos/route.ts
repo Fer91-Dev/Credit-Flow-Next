@@ -538,6 +538,10 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
         proximo_pago: proximoPagoFinal,
         solicitud_id: body.solicitud_id || null,
         vendedor_id: vendedorId,
+        // Quién EJECUTÓ el otorgamiento (≠ a quién se le atribuye la venta). Con el nombre
+        // congelado, para que la respuesta sobreviva al borrado o renombre de la cuenta.
+        otorgado_por: userId,
+        otorgado_por_nombre: nombre?.trim() || email || null,
         producto_id: esProducto ? producto!.id : null,
         producto_cantidad: esProducto ? productoCantidad : null,
         riesgo_snapshot: riesgoSnapshot,
