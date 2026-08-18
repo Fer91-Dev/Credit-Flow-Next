@@ -1,7 +1,7 @@
 import { requireRole } from "@/lib/auth";
 import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api";
 import { getConfiguracion } from "@/lib/config";
-import { capitalMaximoFrances, tasaPeriodicaSegunConvencion, normalizarFrecuencia, cuotaDelPeriodoDesdeMensual } from "@/lib/domain";
+import { capitalMaximoFrances, tasaPeriodicaSegunConvencion, normalizarFrecuencia, cuotaDelPeriodoDesdeMensual, buscarPlan, cargosConPlan } from "@/lib/domain";
 import { evaluarClienteParaCredito, cuotaMensualParaRiesgo } from "@/lib/riesgo-server";
 import { hoyComercial } from "@/lib/utils";
 import type { NextRequest } from "next/server";
@@ -36,9 +36,14 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
   const tasaPeriodica = tasaPeriodicaSegunConvencion(tasa, config.convencionTasa, frecuencia, config.simulador.frecuencias);
   const hoy = hoyComercial();
 
+  // Cargos efectivos: si el crédito nace de un plan con gastos propios, son esos y no los
+  // generales. Sin esto el semáforo mediría una cuota más barata que la real.
+  const planElegido = buscarPlan(config.simulador.plazos, body.plan_id);
+  const cargos = cargosConPlan(config.simulador.cargos, planElegido);
+
   // Lo que le sale por mes con cargos incluidos (ver `cuotaMensualParaRiesgo`).
   const cuotaMensual = cuotaMensualParaRiesgo({
-    monto, tasa, plazoCuotas: plazo, frecuencia, fechaInicio: hoy, config,
+    monto, tasa, plazoCuotas: plazo, frecuencia, fechaInicio: hoy, config, cargos,
   });
 
   const evaluacion = await evaluarClienteParaCredito({
@@ -72,7 +77,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
   const { cuotaMaxima, montoIndicativo } = evaluacion.capacidad;
   const cuotaMaxPeriodo = cuotaDelPeriodoDesdeMensual(cuotaMaxima, frecuencia, config.simulador.frecuencias);
   const costoMensual = (m: number) =>
-    cuotaMensualParaRiesgo({ monto: m, tasa, plazoCuotas: plazo, frecuencia, fechaInicio: hoy, config });
+    cuotaMensualParaRiesgo({ monto: m, tasa, plazoCuotas: plazo, frecuencia, fechaInicio: hoy, config, cargos });
 
   let porCuota = 0;
   const techo = capitalMaximoFrances(cuotaMaxPeriodo, tasaPeriodica, plazo);

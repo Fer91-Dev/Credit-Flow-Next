@@ -1,5 +1,5 @@
 import { requireAuth, requireRole } from "@/lib/auth";
-import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api";
+import { successResponse, errorResponse, withErrorHandler, assertSameOrigin } from "@/app/lib/api";
 import { getFinanciera, guardarFinanciera, esUrlDeStorage } from "@/lib/financiera";
 import { registrarAuditoria } from "@/lib/audit";
 import type { NextRequest } from "next/server";
@@ -17,6 +17,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
  * PUT /api/financiera  (admin) — actualiza los datos de la financiera (parcial).
  */
 export const PUT = withErrorHandler(async (req: NextRequest) => {
+  assertSameOrigin(req);
   const { tenantId } = await requireRole(["admin"], req);
 
   let body: any;

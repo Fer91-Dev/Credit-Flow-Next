@@ -1,5 +1,5 @@
 import { requireRole } from "@/lib/auth";
-import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api";
+import { successResponse, errorResponse, withErrorHandler, assertSameOrigin } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { esCuentaValida } from "@/lib/domain";
@@ -33,6 +33,7 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
  * Body: { accion: "entrega"|"rendicion", monto > 0, cuenta?, descripcion? }
  */
 export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteParams) => {
+  assertSameOrigin(req);
   const { tenantId } = await requireRole(["admin"], req);
   const { id } = await params;
 

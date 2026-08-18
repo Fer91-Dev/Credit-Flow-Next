@@ -1,12 +1,14 @@
-import { requireRole } from "@/lib/auth";
-import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api";
+import { requireRole, ApiError } from "@/lib/auth";
+import { successResponse, errorResponse, withErrorHandler, assertSameOrigin } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
+import { TX_PLATA } from "@/lib/locks";
 import { registrarAuditoria } from "@/lib/audit";
 import { aplicarYRegistrarStock } from "@/lib/stock";
 import { formatCreditoNumero, nombreCompleto, hoyComercial } from "@/lib/utils";
-import { round2, etiquetaCaja, esCuentaValida, type Cuenta } from "@/lib/domain";
+import { round2, etiquetaCaja, esCuentaValida, esCreditoVivo, type Cuenta } from "@/lib/domain";
 import { siguienteNumeroComprobante } from "@/lib/comprobantes";
+import { lockCuentaTx } from "@/lib/caja-fondos";
 import type { NextRequest } from "next/server";
 
 interface RouteParams {
@@ -26,6 +28,7 @@ interface RouteParams {
  *    "conservar": no se devuelve (lo cobrado queda en caja).
  */
 export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteParams) => {
+  assertSameOrigin(req);
   // Anular un crédito cuadra la caja (reversa de desembolso): solo admin.
   const { tenantId } = await requireRole(["admin"], req);
   const { id } = await params;
@@ -45,8 +48,27 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
   if (!existing) {
     return errorResponse("Crédito no encontrado", "NOT_FOUND", 404);
   }
-  if (existing.estado === "anulado") {
-    return errorResponse("El crédito ya está anulado", "INVALID_STATE", 400);
+  /**
+   * Solo se anula un crédito VIVO (activo o vencido).
+   *
+   * 🔴 Antes la única guarda era "ya está anulado", y la reversa del desembolso se emitía
+   * igual para cualquier otro estado. Dos formas de inventar plata en el libro:
+   *  - un crédito **ya cancelado**: la reversa devuelve el capital a la caja mientras los
+   *    cobros se conservan (`accion_pagos` default) → la caja se queda el capital dos veces.
+   *  - un crédito **refinanciado**: la deuda ya se trasladó al crédito nuevo, que sigue vivo,
+   *    y la anulación del viejo devuelve además el capital original.
+   * En los dos casos queda comprobante REV y auditoría, así que mirando el libro parece
+   * legítimo. Para corregir un crédito que ya no está vivo hay que ir por el crédito que sí
+   * lo está.
+   */
+  if (!esCreditoVivo(existing.estado)) {
+    const motivoRechazo =
+      existing.estado === "anulado"
+        ? "El crédito ya está anulado."
+        : existing.estado === "refinanciado"
+          ? "El crédito fue refinanciado: la deuda vive en el crédito nuevo. Anulá ese, no este."
+          : "El crédito ya está saldado; anularlo devolvería el capital a la caja además de lo cobrado.";
+    return errorResponse(motivoRechazo, "INVALID_STATE", 400);
   }
 
   const totalCobrado = round2(existing.pagos.reduce((s, p) => s + p.monto, 0));
@@ -73,10 +95,23 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
     : [];
 
   const credito = await prisma.$transaction(async (tx) => {
-    const c = await tx.creditos.update({
-      where: { id },
+    /**
+     * 🔴 La guarda de estado de arriba corre FUERA de la transacción. Con dos requests
+     * simultáneas —un doble clic en "Anular" alcanza— las dos la pasaban y las dos emitían
+     * su `reversa_desembolso`: sobre un crédito de $1.500.000, la caja terminaba $1.500.000
+     * arriba, con dos comprobantes REV válidos y dos entradas de auditoría.
+     *
+     * El `updateMany` condicionado al estado esperado es atómico: la segunda afecta 0 filas
+     * y aborta antes de tocar la caja. Es el mismo patrón que ya usa `conciliarArqueo`.
+     */
+    const marcado = await tx.creditos.updateMany({
+      where: { ...withTenant(tenantId), id, estado: existing.estado },
       data: { estado: "anulado", proximo_pago: null, motivo_anulacion: motivo },
     });
+    if (marcado.count === 0) {
+      throw new ApiError("El crédito cambió de estado mientras se anulaba. Volvé a abrirlo para ver cómo quedó.", "INVALID_STATE", 409);
+    }
+    const c = await tx.creditos.findFirstOrThrow({ where: { ...withTenant(tenantId), id } });
 
     if (existing.producto_id && existing.producto_cantidad) {
       // Crédito de producto: no hubo desembolso de efectivo → no hay reversa de caja.
@@ -89,6 +124,9 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
       });
     } else {
       // Reversa del desembolso (ingreso): la plata no se considera prestada.
+      // Lock de la cuenta también en el ingreso, para que un arqueo en curso no cierre
+      // contra un saldo que esta reversa está por cambiar.
+      await lockCuentaTx(tx, tenantId, existing.vendedor_id, cuentaReversa);
       const numRev = await siguienteNumeroComprobante(tx, tenantId, "REV");
       await tx.movimientos_caja.create({
         data: {
@@ -171,7 +209,7 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
     }
 
     return c;
-  });
+  }, TX_PLATA);
 
   await registrarAuditoria({
     tenantId,

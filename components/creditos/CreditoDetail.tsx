@@ -15,7 +15,7 @@ import { useToast } from "@/components/ui/toast";
 import { formatCreditoNumero, formatFecha, nombreCompleto } from "@/lib/utils";
 import { Stat } from "@/components/ui/Stat";
 import { Skeleton } from "@/components/ui/skeleton";
-import { esCreditoVivo } from "@/lib/domain";
+import { esCreditoVivo, montoEnPalabras } from "@/lib/domain";
 
 function n2(x: number) {
   return new Intl.NumberFormat("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(x);
@@ -24,6 +24,8 @@ function n0(x: number) {
   return new Intl.NumberFormat("es-AR", { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(x);
 }
 const fmtDate = (s: string) => formatFecha(s);
+/** "cuota semanal" → "Cuota semanal". Las etiquetas de frecuencia vienen en minúscula. */
+const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 function estadoBadge(estado: string): { label: string; variant: "primary" | "success" | "muted" | "warning" } {
   if (estado === "activo") return { label: "Activo", variant: "primary" };
@@ -177,9 +179,26 @@ export function CreditoDetail({ credito, role, onRefinanciar }: { credito: Credi
               <StatusBadge label={est.label} variant={est.variant} />
             </div>
             <p className="text-sm font-semibold text-foreground">{nombreCompleto(credito.cliente)}</p>
+            {/*
+              `plazo_meses` es el NÚMERO DE CUOTAS, no meses: acá decía "6 meses" para un
+              crédito de 6 cuotas SEMANALES, que se termina de pagar en mes y medio. Se nombra
+              con la frecuencia real del crédito.
+            */}
             <p className="text-xs text-muted-foreground">
-              {credito.tipo_credito === "productos" ? "Producto" : credito.tipo_credito} · {credito.tasa}% TNA · {credito.plazo_meses} meses
+              {credito.tipo_credito === "productos" ? "Producto" : credito.tipo_credito} · {credito.tasa}% TNA ·{" "}
+              {credito.plazo_meses} {amortizacion?.parametros.frecuencia_label.cuotaPlural ?? "cuotas"}
             </p>
+            {/* QUIÉN otorgó. Distinto de a quién se le atribuye la venta: con más de un
+                administrador, "la casa" deja de identificar a nadie. Se muestra el nombre
+                congelado al otorgar, así sigue respondiendo aunque la cuenta ya no exista. */}
+            {credito.otorgado_por_nombre && (
+              <p className="text-xs text-muted-foreground">
+                Otorgado por <span className="font-medium text-foreground">{credito.otorgado_por_nombre}</span>
+                {credito.vendedor?.nombre && credito.vendedor.nombre !== credito.otorgado_por_nombre
+                  ? <> · atribuido a {credito.vendedor.nombre}</>
+                  : null}
+              </p>
+            )}
             {credito.tipo_credito === "productos" && credito.producto && (
               <p className="text-xs text-foreground flex items-center gap-1.5">
                 <span className="inline-flex items-center rounded-md bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary ring-1 ring-inset ring-primary/20">Producto</span>
@@ -188,29 +207,59 @@ export function CreditoDetail({ credito, role, onRefinanciar }: { credito: Credi
             )}
           </div>
 
-          {/* Acción destacada: refinanciar/reestructurar (solo si el crédito está en mora). */}
-          {refinanciable && onRefinanciar && (
-            <div className="shrink-0 flex flex-col items-end gap-1">
-              <button
-                onClick={() => onRefinanciar(credito)}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-warning/30 bg-warning/10 px-3.5 py-2 text-sm font-medium text-warning transition-colors hover:bg-warning/20"
-                title="Consolidar la deuda vencida en un crédito nuevo (no mueve caja)"
-              >
-                <RefreshCw className="h-4 w-4" /> Refinanciar
-              </button>
-              {credito.es_refinanciacion && (
-                <span className="text-[10px] text-warning/80">⚠ ya proviene de otra refinanciación</span>
-              )}
+          {/*
+            El CAPITAL OTORGADO, enfrentado al número de crédito.
+
+            No estaba en ningún lado: se confundía con "Saldo pendiente" solo mientras el
+            crédito no tuviera un peso cobrado. En cuanto entra el primer pago el saldo baja y
+            el monto original —que es la referencia de toda la operación, contra la que se lee
+            el interés, el total y lo cobrado— desaparecía de la pantalla.
+
+            Va acá y no como quinta tarjeta porque no es un ESTADO que cambia: es una condición
+            del contrato, como la tasa y el plazo. Las tarjetas de abajo muestran cómo viene el
+            crédito; el encabezado, qué se firmó.
+          */}
+          <div className="shrink-0 flex flex-col items-end gap-2">
+            <div className="text-right">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                {credito.tipo_credito === "productos" ? "Capital financiado" : "Capital otorgado"}
+              </p>
+              <p className="text-2xl font-bold font-mono tabular-nums leading-tight text-foreground">
+                ${n0(credito.monto_original)}
+              </p>
+              {/* El mismo importe en letras: es lo que va al pagaré, donde la letra le gana
+                  al número si no coinciden. Verlo acá permite cotejarlo contra el papel. */}
+              <p className="mt-1 max-w-[22rem] text-[11px] leading-snug text-muted-foreground first-letter:uppercase">
+                {montoEnPalabras(credito.monto_original)}
+              </p>
             </div>
-          )}
+
+            {/* Acción destacada: refinanciar/reestructurar (solo si el crédito está en mora). */}
+            {refinanciable && onRefinanciar && (
+              <div className="flex flex-col items-end gap-1">
+                <button
+                  onClick={() => onRefinanciar(credito)}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-warning/30 bg-warning/10 px-3.5 py-2 text-sm font-medium text-warning transition-colors hover:bg-warning/20"
+                  title="Consolidar la deuda vencida en un crédito nuevo (no mueve caja)"
+                >
+                  <RefreshCw className="h-4 w-4" /> Refinanciar
+                </button>
+                {credito.es_refinanciacion && (
+                  <span className="text-[10px] text-warning/80">⚠ ya proviene de otra refinanciación</span>
+                )}
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <Stat icon="money-bag" label="Saldo pendiente" accent={credito.saldo_pendiente > 0 ? "warning" : "success"}
             value={`$${n0(credito.saldo_pendiente)}`} />
           {/* Lo que el cliente paga por período: `cuota_total`, no `cuota_mensual`, que es la
-              cuota PURA del sistema francés — sin cargos y sin el redondeo aplicado. */}
-          <Stat icon="chart-increasing" label="Cuota mensual" accent="primary"
+              cuota PURA del sistema francés — sin cargos y sin el redondeo aplicado.
+              La etiqueta sale de la frecuencia del crédito: decía "Cuota mensual" también en
+              uno semanal, que es otro importe y otro calendario. */}
+          <Stat icon="chart-increasing" label={cap(amortizacion?.parametros.frecuencia_label.cuotaSingular ?? "cuota")} accent="primary"
             value={amortizacion ? `$${n0(amortizacion.resumen.cuota_total)}` : "—"} />
           <Stat icon="chart-increasing" label="Total cobrado" accent="success"
             value={`$${n0(totalCobrado)}`} sub={`${pagos.length} pago${pagos.length !== 1 ? "s" : ""}`} />

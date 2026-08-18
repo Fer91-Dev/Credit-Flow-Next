@@ -55,8 +55,14 @@ function hasta999(n: number, apocope: boolean): string {
   return partes.join(" ");
 }
 
-/** Parte entera en letras. Soporta hasta billones (millón de millones, escala larga). */
-function enteroALetras(n: number): string {
+/**
+ * Parte entera en letras. Soporta hasta billones (millón de millones, escala larga).
+ *
+ * `apocope` afecta SOLO al último bloque (las unidades), que es el que puede quedar pegado a
+ * un sustantivo masculino: `true` para "veintiún pesos", `false` para "PESOS VEINTIUNO CON
+ * 00/100", donde el sustantivo va adelante y no corresponde apocopar.
+ */
+function enteroALetras(n: number, apocope = false): string {
   if (n === 0) return "cero";
 
   const bloques: string[] = [];
@@ -71,13 +77,16 @@ function enteroALetras(n: number): string {
     bloques.push(billones === 1 ? "un billón" : `${hasta999(billones, true)} billones`);
   }
   if (millones > 0) {
-    bloques.push(millones === 1 ? "un millón" : `${enteroALetras(millones)} millones`);
+    // 🔴 `true`: "millones" es un sustantivo masculino, así que el número que lo precede se
+    // apocopa. Sin esto salía "VEINTIUNO MILLONES" y "TREINTA Y UNO MILLONES" — en el
+    // pagaré, que es donde la letra le gana al número.
+    bloques.push(millones === 1 ? "un millón" : `${enteroALetras(millones, true)} millones`);
   }
   if (miles > 0) {
     // "mil", nunca "un mil".
     bloques.push(miles === 1 ? "mil" : `${hasta999(miles, true)} mil`);
   }
-  if (unidades > 0) bloques.push(hasta999(unidades, false));
+  if (unidades > 0) bloques.push(hasta999(unidades, apocope));
 
   return bloques.join(" ");
 }
@@ -110,4 +119,45 @@ export function montoALetras(monto: number, moneda = "PESOS"): string {
 /** Versión en minúscula, para textos corridos dentro del contrato. */
 export function montoALetrasMinuscula(monto: number, moneda = "pesos"): string {
   return montoALetras(monto, moneda).toLowerCase();
+}
+
+/**
+ * Importe en letras para LEER EN PANTALLA — distinto del formato de documento.
+ *
+ *   500000    → "quinientos mil pesos"
+ *   367391.30 → "trescientos sesenta y siete mil trescientos noventa y un pesos con treinta centavos"
+ *   1000000   → "un millón de pesos"
+ *
+ * Tres diferencias con `montoALetras`, y las tres son porque acá se lee, no se firma:
+ *  1. La moneda va DETRÁS, así que el número se apocopa ("un peso", no "uno peso").
+ *  2. Los centavos van en palabras, no como fracción: "con treinta centavos" se entiende
+ *     de un vistazo, "con 30/100" es jerga de instrumento de pago.
+ *  3. Si no hay centavos, no se los nombra.
+ *
+ * Sirve como control de lectura antes de otorgar: un cero de más pasa desapercibido entre
+ * los dígitos y salta enseguida en las palabras.
+ */
+export function montoEnPalabras(monto: number, singular = "peso", plural = "pesos"): string {
+  if (!Number.isFinite(monto)) return "";
+
+  const negativo = monto < 0;
+  const centavosTotales = Math.round(Math.abs(monto) * 100);
+  const entero = Math.floor(centavosTotales / 100);
+  const centavos = centavosTotales % 100;
+
+  const letras = enteroALetras(entero, true);
+  /**
+   * "millón" y "billón" son sustantivos y piden **de** antes de la moneda: se dice "un millón
+   * DE pesos", pero "mil pesos" sin nada en el medio. Y solo cuando el número termina ahí —
+   * "un millón doscientos mil pesos" no lo lleva, porque el sustantivo que manda pasó a ser
+   * "mil". Por eso se mira el final del texto ya armado, no la magnitud.
+   */
+  const pideDe = /(mill(ón|ones)|bill(ón|ones))$/.test(letras);
+  let texto = `${letras} ${pideDe ? "de " : ""}${entero === 1 ? singular : plural}`;
+
+  if (centavos > 0) {
+    texto += ` con ${enteroALetras(centavos, true)} ${centavos === 1 ? "centavo" : "centavos"}`;
+  }
+
+  return negativo ? `menos ${texto}` : texto;
 }

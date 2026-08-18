@@ -1,5 +1,5 @@
 import { requireRole } from "@/lib/auth";
-import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api";
+import { successResponse, errorResponse, withErrorHandler, assertSameOrigin } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
@@ -88,6 +88,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
  * Body: { nombre, email?, telefono?, rol?, comision_pct?, meta_venta?, activo? }
  */
 export const POST = withErrorHandler(async (req: NextRequest) => {
+  assertSameOrigin(req);
   // Alta de personal: solo admin.
   const { tenantId } = await requireRole(["admin"], req);
 
@@ -183,6 +184,41 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     const prof = await prisma.profiles.findFirst({ where: { ...withTenant(tenantId), email: ccEmail } });
     if (!prof) return errorResponse("No hay una cuenta con ese email para vincular en esta financiera.", "NOT_FOUND", 404);
     if (prof.vendedor_id) return errorResponse("Esa cuenta ya está vinculada a otro agente.", "DUPLICATE_RECORD", 409);
+
+    /**
+     * 🔴 TOMA DE CUENTA POR LA PUERTA DE ATRÁS — las tres guardas que faltaban acá.
+     *
+     * `usuarios/[id]` (PATCH y DELETE) y `vendedores/[id]` (DELETE) protegen al titular y
+     * al owner; esta rama era la única que no. Y no hace falta ninguna herramienta: un
+     * segundo admin entra a Equipo → Nuevo integrante, escribe el email del titular y una
+     * contraseña, el alta falla con `EMAIL_VINCULABLE` (el titular no tiene ficha de agente,
+     * así que su `vendedor_id` es null), la pantalla le ofrece vincular, confirma — y en ese
+     * click la contraseña del dueño pasa a ser la suya, el rol del dueño baja a `vendedor` y
+     * su username queda reemplazado. Dos clicks.
+     *
+     * De yapa, si el titular era el único admin, degradarlo dejaba la financiera con CERO
+     * administradores: el anti-lockout de `usuarios/[id]` tampoco corría por acá.
+     */
+    if (prof.es_owner) {
+      return errorResponse("No podés vincular la cuenta del dueño de la plataforma a un agente.", "OWNER_PROTEGIDO", 403);
+    }
+    if (prof.es_titular) {
+      return errorResponse(
+        "Esa es la cuenta del titular de la financiera: no se puede vincular a un agente desde acá (le cambiaría la contraseña y el rol). Solo puede hacerlo él desde su perfil.",
+        "TITULAR_PROTEGIDO",
+        403,
+      );
+    }
+    if (prof.role === "admin" && ccRol !== "admin") {
+      const admins = await prisma.profiles.count({ where: { ...withTenant(tenantId), role: "admin", activo: true } });
+      if (admins <= 1) {
+        return errorResponse(
+          "Esa es la cuenta del último administrador activo: vincularla como agente la dejaría sin permisos y la financiera sin nadie que la administre.",
+          "LAST_ADMIN",
+          400,
+        );
+      }
+    }
 
     if (ccPassword) await supabase.auth.admin.updateUserById(prof.id, { password: ccPassword }).catch(() => {});
     const vendedor = await prisma.vendedores.create({ data: datosVendedor });

@@ -7,7 +7,7 @@ import {
   round2, etiquetaCaja, type Cuenta, type ComisionConfig,
 } from "@/lib/domain";
 import { siguienteNumeroComprobante, formatComprobante } from "@/lib/comprobantes";
-import { assertFondosSuficientesTx } from "@/lib/caja-fondos";
+import { assertFondosSuficientesTx, lockCuentaTx } from "@/lib/caja-fondos";
 import { nombreCompleto, hoyComercial } from "@/lib/utils";
 
 /**
@@ -365,7 +365,24 @@ export async function anularLiquidacion(opts: {
   if (liq.estado === "anulada") throw new ApiError("La liquidación ya está anulada", "YA_ANULADA", 409);
 
   await prisma.$transaction(async (tx) => {
+    /**
+     * 🔴 Marcar PRIMERO, y condicionado al estado esperado.
+     *
+     * El chequeo `liq.estado === "anulada"` corre fuera de la transacción y el update estaba
+     * al final: dos anulaciones simultáneas de la misma liquidación pasaban las dos y creaban
+     * DOS asientos de comisión de vuelta a la caja principal — la financiera recuperaba dos
+     * veces plata que pagó una sola.
+     */
+    const marcada = await tx.liquidaciones_comision.updateMany({
+      where: { ...withTenant(tenantId), id, estado: { not: "anulada" } },
+      data: { estado: "anulada", anulada_en: new Date(), anulada_motivo: motivo },
+    });
+    if (marcada.count === 0) {
+      throw new ApiError("Esa liquidación ya fue anulada por otra operación.", "YA_ANULADA", 409);
+    }
+
     if (liq.movimiento_caja_id) {
+      await lockCuentaTx(tx, tenantId, null, liq.cuenta as Cuenta);
       const numero = await siguienteNumeroComprobante(tx, tenantId, "LIQ");
       await tx.movimientos_caja.create({
         data: {
@@ -383,10 +400,7 @@ export async function anularLiquidacion(opts: {
         },
       });
     }
-    await tx.liquidaciones_comision.update({
-      where: { id },
-      data: { estado: "anulada", anulada_en: new Date(), anulada_motivo: motivo },
-    });
+    // (el marcado como "anulada" ya ocurrió arriba: es el que gana la carrera)
   });
 
   await registrarAuditoria({

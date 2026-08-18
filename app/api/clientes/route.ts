@@ -1,5 +1,5 @@
 import { requireAuth, requireRole, ApiError } from "@/lib/auth";
-import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api";
+import { successResponse, errorResponse, withErrorHandler, assertSameOrigin } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { registrarAuditoria } from "@/lib/audit";
@@ -166,6 +166,7 @@ async function enriquecerClientes(
  * }
  */
 export const POST = withErrorHandler(async (req: NextRequest) => {
+  assertSameOrigin(req);
   // Alta de clientes: admin y vendedor (el cobrador es solo-lectura sobre clientes).
   const { tenantId } = await requireRole(["admin", "vendedor"], req);
 

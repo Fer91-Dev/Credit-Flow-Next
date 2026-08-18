@@ -105,6 +105,11 @@ export function withErrorHandler<A extends any[]>(
           return errorResponse('Referencia inválida', 'INVALID_REFERENCE', 400);
         }
         if (msg.includes('not found')) {
+          // 🔴 Se loguea aunque sea un 4xx. Este branch atrapa el P2025 de Prisma ("depends
+          // on records that were required but not found"), que puede venir de CUALQUIER
+          // update/delete de la transacción — y salía como un "No encontrado" pelado, sin
+          // traza ni en el log ni en Sentry. Diagnosticar eso a ciegas cuesta horas.
+          console.error('[API 404]', err);
           return errorResponse('No encontrado', 'NOT_FOUND', 404);
         }
 

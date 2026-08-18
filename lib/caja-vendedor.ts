@@ -8,6 +8,7 @@ import { siguienteNumeroComprobante, formatComprobante, type SerieComprobante } 
 import { getDolarBlueVenta } from "@/lib/cotizacion";
 import { nombreCompleto, hoyComercial } from "@/lib/utils";
 import { assertFondosSuficientesTx } from "@/lib/caja-fondos";
+import { getCobranzaConfig } from "@/lib/config";
 
 /**
  * Caja de un vendedor: todos los movimientos cuyo `vendedor_id` apunta a él.
@@ -107,6 +108,24 @@ export async function registrarMovimientoCajaVendedor(opts: {
   const { tenantId, vendedorId, accion, monto, cuentaVendedor, cuentaPrincipal } = opts;
   const abs = round2(Math.abs(monto));
   const signoVendedor = accion === "entrega" ? abs : -abs; // entrega ingresa al vendedor; rendición egresa
+
+  /**
+   * 🔴 Las dos patas se escriben con el MISMO valor absoluto, así que cruzar monedas creaba
+   * plata de la nada: una entrega de 100 desde `efectivo` (pesos) hacia `dolares` sacaba
+   * $100 de la principal y ponía U$S 100 en la caja del vendedor. Con una rendición
+   * dólares→dólares después, esos U$S 100 llegaban a la tesorería y `/api/caja` los
+   * valorizaba al blue: el tenant inventó dólares al costo de cien pesos.
+   *
+   * La misma guarda ya existía en la transferencia interna del vendedor y en
+   * `caja/transferencia` (que lo resuelve pidiendo `monto_destino`); acá faltaba.
+   */
+  if ((cuentaVendedor === "dolares") !== (cuentaPrincipal === "dolares")) {
+    throw new ApiError(
+      "No se puede mover plata entre una cuenta en pesos y una en dólares sin tipo de cambio: las dos cuentas tienen que ser de la misma moneda.",
+      "MONEDA_CRUZADA",
+      400,
+    );
+  }
 
   // Descripciones detalladas con el flujo origen → destino (una por cada pata).
   const vend = await prisma.vendedores.findFirst({ where: { ...withTenant(tenantId), id: vendedorId }, select: { nombre: true } });
@@ -211,6 +230,30 @@ export async function registrarGastoCajaVendedor(opts: {
   const { tenantId, vendedorId, cuenta } = opts;
   const abs = round2(Math.abs(opts.monto));
   const motivo = opts.descripcion.trim();
+
+  /**
+   * 🔴 Tope de gasto autoliquidable — cierra la puerta de atrás del arqueo.
+   *
+   * Todo el módulo de caja está armado sobre una regla: **el vendedor no puede resolver
+   * solo un faltante de su caja** (declara el conteo, el admin concilia con motivo). El
+   * gasto de texto libre y sin tope la esquivaba entera: registrando "combustible $80.000"
+   * su saldo de sistema bajaba $80.000 y el arqueo del día cerraba cuadrado, sin quedar
+   * nunca `pendiente` y con el faltante documentado como gasto operativo.
+   *
+   * Ahora el techo lo pone la financiera (`cobranza_config.tope_gasto_vendedor`), no el
+   * vendedor. Arranca en 0 = no registra gastos por su cuenta, igual que
+   * `quita_max_vendedor_pct`. Un admin siempre puede cargarlo desde la caja principal.
+   */
+  const { tope_gasto_vendedor: tope } = await getCobranzaConfig(tenantId);
+  if (abs > tope) {
+    throw new ApiError(
+      tope === 0
+        ? "No podés registrar gastos de tu caja por tu cuenta. Pedile a un administrador que lo cargue."
+        : `El gasto máximo que podés registrar solo es de $${tope.toLocaleString("es-AR")}. Por encima de eso lo tiene que cargar un administrador.`,
+      "GASTO_EXCEDIDO",
+      403,
+    );
+  }
 
   const mov = await prisma.$transaction(async (tx) => {
     await assertFondosSuficientesTx(tx, {

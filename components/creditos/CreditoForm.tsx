@@ -24,9 +24,15 @@ import {
   frecuenciaLabel,
   resolverFrecuencia,
   cargoColumnasActivas,
+  planesParaFrecuencia,
+  planId,
+  etiquetaPlan,
+  tasaDesdeCoeficiente,
+  cargosConPlan,
   type Frecuencia,
   type ConvencionTasa,
   type PlanAmortizacion,
+  montoEnPalabras,
 } from "@/lib/domain";
 
 /**
@@ -114,8 +120,9 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
   // Parámetros del simulador definidos por el tenant en Configuración.
   const simCfg = config?.simulador;
   const catalogoFrec = simCfg?.frecuencias ?? [];
-  const plazosActivos = (simCfg?.plazos ?? []).filter(p => p.activo).map(p => p.cuotas);
   const frecsActivas = catalogoFrec.filter(f => f.activo);
+  // (`hayCargos` y `cargoCols` se derivan de los cargos EFECTIVOS del plan, más abajo:
+  //  necesitan saber qué plan está elegido, y eso depende del formulario.)
 
   /**
    * 🔴 Las CONDICIONES de un crédito otorgado no se editan.
@@ -132,19 +139,13 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
    * libros y quedan auditados. Un formulario que reescribe la deuda por atrás, no.
    */
   const condicionesBloqueadas = !!creditoId;
-  const hayCargos = !!simCfg && (
-    simCfg.cargos.iva.activo || simCfg.cargos.seguro.activo ||
-    simCfg.cargos.gastosAdministrativos.activo || simCfg.cargos.comisionOtorgamiento.activo
-  );
-  // Columnas de cargos per-cuota activas (IVA / Seguro / Gastos) para discriminarlas
-  // en el detalle del operador. La comisión es upfront → no genera columna.
-  const cargoCols = simCfg ? cargoColumnasActivas(simCfg.cargos) : [];
-  const hayCargoCols = cargoCols.length > 0;
 
   // Estado inicial vacío: el simulador no muestra ningún plan hasta que el operador complete todos los campos.
   const [formData, setFormData] = useState({
     cliente_id: "", tipo_credito: "personal",
     monto_original: "", tasa: "", plazo_meses: "",
+    // Plan elegido (Configuración → Planes de cuotas). Vacío = se cotiza tipeando la tasa.
+    plan_id: "",
     frecuencia: "mensual" as Frecuencia,
     vendedor_id: "",
     cuenta_desembolso: "efectivo" as CuentaCaja,
@@ -232,13 +233,18 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
       ? simCfg.frecuenciaDefault
       : clavesActivas[0];
 
+    // Plan de arranque: el que tenga las cuotas del default y se ofrezca con esa frecuencia.
+    // Solo si sigue activo: el admin puede desactivar un plan y dejar el default apuntando a
+    // un número que ya no se ofrece, y ahí el desplegable arrancaría en un valor inválido.
+    const planInicial = planesParaFrecuencia(simCfg.plazos ?? [], frecInicial ?? "mensual")
+      .find(p => p.cuotas === simCfg.plazoDefault);
+
     setFormData(p => ({
       ...p,
       monto_original: p.monto_original || (simCfg.montoDefault > 0 ? numeroAInput(simCfg.montoDefault) : ""),
       tasa: p.tasa || (simCfg.tasaBase > 0 ? String(simCfg.tasaBase) : ""),
-      // Solo si sigue activo: el admin puede desactivar un plazo y dejar el default apuntando
-      // a un número que ya no se ofrece, y ahí el desplegable arrancaría en un valor inválido.
-      plazo_meses: p.plazo_meses || (plazosActivos.includes(simCfg.plazoDefault) ? String(simCfg.plazoDefault) : ""),
+      plazo_meses: p.plazo_meses || (planInicial ? String(planInicial.cuotas) : ""),
+      plan_id: p.plan_id || (planInicial ? planId(planInicial) : ""),
       frecuencia: frecInicial ?? p.frecuencia,
     }));
     setPrefilled(true);
@@ -255,6 +261,88 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
     if (cuotasFijas == null) return;
     setFormData(p => (p.plazo_meses === String(cuotasFijas) ? p : { ...p, plazo_meses: String(cuotasFijas) }));
   }, [cuotasFijas]);
+
+  // ── PLANES ────────────────────────────────────────────────────────────────
+  // Los planes que se pueden ofrecer con la frecuencia elegida. Uno sin frecuencia propia
+  // vale para todas (así funcionaba la lista de plazos de siempre).
+  const planesDisponibles = useMemo(
+    () => planesParaFrecuencia(simCfg?.plazos ?? [], formData.frecuencia),
+    [simCfg, formData.frecuencia],
+  );
+  const planSel = useMemo(
+    () => planesDisponibles.find(p => planId(p) === formData.plan_id) ?? null,
+    [planesDisponibles, formData.plan_id],
+  );
+  /**
+   * El selector de planes rige en el ALTA. En la edición se conserva el desplegable de
+   * números de siempre: un crédito ya otorgado guarda su tasa, y hacerle elegir un plan
+   * podría reescribírsela con la del coeficiente de hoy. Editar es reparar, no re-cotizar.
+   */
+  const hayPlanes = !creditoId && planesDisponibles.length > 0;
+  const plazosActivos = useMemo(
+    () => [...new Set(planesDisponibles.map(p => p.cuotas))].sort((a, b) => a - b),
+    [planesDisponibles],
+  );
+  /**
+   * ¿Los planes son un PRODUCTO con identidad propia, o son la lista de números de siempre?
+   *
+   * Una financiera que solo enumera plazos (3, 6, 12…) no tiene "planes": tiene cuotas. Con
+   * el rótulo "Plan" sobre un desplegable de números pelados, la pantalla nombra algo que
+   * para esa financiera no existe. El campo se llama por lo que hay adentro.
+   */
+  const planesConIdentidad = planesDisponibles.some(p => p.nombre?.trim() || p.coeficiente);
+
+  /**
+   * Cargos EFECTIVOS de esta simulación: los del tenant con los gastos del plan encima.
+   *
+   * 🔴 Es la fuente ÚNICA de la que salen el motor, las columnas del detalle del operador y
+   * el "total a pagar". Cuando el motor los tomaba del plan y la tabla del operador seguía
+   * mirando los generales, la pantalla se contradecía sola: al cliente le mostraba cuotas de
+   * $208.000 y al operador la misma cuota en $207.500, sin columna donde apareciera la
+   * diferencia. Un cargo que el sistema cobra y no muestra es peor que no cobrarlo.
+   */
+  const cargosEfectivos = useMemo(
+    () => (simCfg ? cargosConPlan(simCfg.cargos, planSel) : null),
+    [simCfg, planSel],
+  );
+  const hayCargos = !!cargosEfectivos && (
+    cargosEfectivos.iva.activo || cargosEfectivos.seguro.activo ||
+    cargosEfectivos.gastosAdministrativos.activo || cargosEfectivos.comisionOtorgamiento.activo
+  );
+  // Columnas de cargos per-cuota activas (IVA / Seguro / Gastos) para discriminarlas
+  // en el detalle del operador. La comisión es upfront → no genera columna.
+  const cargoCols = cargosEfectivos ? cargoColumnasActivas(cargosEfectivos) : [];
+  const hayCargoCols = cargoCols.length > 0;
+  /** Tasa que representa el coeficiente del plan. `null` = el plan no cotiza por coeficiente. */
+  const tasaDelPlan = useMemo(() => {
+    if (!planSel?.coeficiente) return null;
+    return tasaDesdeCoeficiente(planSel.coeficiente, planSel.cuotas, convencion, formData.frecuencia, catalogoFrec);
+  }, [planSel, convencion, formData.frecuencia, catalogoFrec]);
+
+  /**
+   * El plan manda sobre cuotas y tasa.
+   *
+   * La tasa se guarda con TODOS sus decimales aunque en pantalla se muestre redondeada: es el
+   * número con el que el motor arma el plan, y recortarlo movería la cuota unos centavos
+   * respecto de `monto × coeficiente`, que es justamente lo que el cliente vino a ver. El
+   * servidor la vuelve a despejar por su cuenta, así que esto es solo la previsualización.
+   */
+  useEffect(() => {
+    if (!planSel) return;
+    setFormData(p => {
+      const cuotas = String(planSel.cuotas);
+      const tasa = tasaDelPlan !== null ? String(tasaDelPlan) : p.tasa;
+      if (p.plazo_meses === cuotas && p.tasa === tasa) return p;
+      return { ...p, plazo_meses: cuotas, tasa };
+    });
+  }, [planSel, tasaDelPlan]);
+
+  // Cambiar de frecuencia puede dejar el plan elegido fuera de la lista (uno "6 semanales"
+  // no se ofrece en mensual). Se limpia para que el desplegable no muestre un plan fantasma.
+  useEffect(() => {
+    if (!formData.plan_id || planSel) return;
+    setFormData(p => ({ ...p, plan_id: "" }));
+  }, [formData.plan_id, planSel]);
 
   // ── Crédito de PRODUCTO ───────────────────────────────────────────────────
   // El cliente se lleva un producto en vez de dinero: el capital = precio × cantidad
@@ -290,6 +378,8 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
           cliente_id, tipo_credito,
           monto_original: numeroAInput(monto_original),
           tasa: String(tasa), plazo_meses: String(plazo_meses),
+          // Sin plan: el crédito ya tiene su tasa congelada y la edición no re-cotiza.
+          plan_id: "",
           frecuencia: (frecuencia ?? "mensual") as Frecuencia,
           vendedor_id: vendedor_id ?? "",
           cuenta_desembolso: "efectivo",
@@ -378,6 +468,9 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
         tasa: parseFloat(formData.tasa) || 0,
         plazo_meses: parseInt(formData.plazo_meses),
         frecuencia: formData.frecuencia,
+        // El servidor vuelve a despejar la tasa del coeficiente de este plan y pisa la de
+        // arriba: el precio no lo puede elegir el navegador.
+        ...(formData.plan_id ? { plan_id: formData.plan_id } : {}),
         vendedor_id: formData.vendedor_id || null,
         cuenta_desembolso: formData.cuenta_desembolso,
         // Autorización manual del admin cuando el cliente no califica (feature riesgo).
@@ -435,7 +528,8 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
     setRiesgoLoading(true);
     fetch("/api/creditos/evaluar-riesgo", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ cliente_id: formData.cliente_id, monto_original: monto, tasa, plazo_meses: n, frecuencia: formData.frecuencia }),
+      // El plan viaja para que el motor de riesgo mida la cuota con SUS gastos, no con los generales.
+      body: JSON.stringify({ cliente_id: formData.cliente_id, monto_original: monto, tasa, plazo_meses: n, frecuencia: formData.frecuencia, plan_id: formData.plan_id || undefined }),
     })
       .then(r => r.json())
       .then(j => { if (cancel) return; setRiesgoEval(j.ok ? j.data : null); setAutorizarRiesgo(false); })
@@ -443,7 +537,7 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
       .finally(() => { if (!cancel) setRiesgoLoading(false); });
     return () => { cancel = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tieneRiesgo, creditoId, formData.cliente_id, formData.frecuencia, sim.monto, sim.tasa, sim.plazo]);
+  }, [tieneRiesgo, creditoId, formData.cliente_id, formData.frecuencia, formData.plan_id, sim.monto, sim.tasa, sim.plazo]);
 
   const riesgoRechazado = !!(tieneRiesgo && riesgoEval && riesgoEval.semaforo === "rechazado");
   // El otorgamiento se traba si: política dura (bloquea) o falta la autorización del admin.
@@ -468,8 +562,9 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
        * misma entrada.
        */
       return construirPlanAmortizacion(monto, tasa, n, hoyComercial(), convencion, sim.frecuencia,
-        simCfg ? {
-          cargos: simCfg.cargos,
+        simCfg && cargosEfectivos ? {
+          // Los mismos cargos de los que salen las columnas del operador y el total a pagar.
+          cargos: cargosEfectivos,
           redondeo: simCfg.redondeoCuota,
           cronograma: {
             diaCorte: simCfg.diaCorte,
@@ -484,7 +579,7 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
     } catch {
       return null;
     }
-  }, [sim, convencion, simCfg]);
+  }, [sim, convencion, simCfg, cargosEfectivos]);
 
   const montoNum = parseMonto(sim.monto);
 
@@ -896,6 +991,16 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
                 </button>
               )}
             </div>
+            {/* El capital EN LETRAS, debajo del número.
+                Es el control de lectura del operador antes de otorgar: un cero de más se ve
+                en el acto en las palabras ("cinco millones") y es fácil que se pase en los
+                dígitos. Además es lo que después va al pagaré, donde las letras mandan
+                sobre los números si no coinciden. */}
+            {montoNum > 0 && (
+              <p className="mt-1.5 text-xs leading-snug text-muted-foreground first-letter:uppercase">
+                {montoEnPalabras(montoNum)}
+              </p>
+            )}
           </Field>
 
           {/* Forma de desembolso → solo en créditos de dinero (el producto no desembolsa efectivo)
@@ -943,8 +1048,8 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
                 </Select>
               </Field>
             </div>
-            <div className="col-span-1">
-              <Field label="Cuotas" required hint={cuotasFijas != null ? "Fijas por la frecuencia" : undefined}>
+            <div className={hayPlanes && planesConIdentidad ? "col-span-2" : "col-span-1"}>
+              <Field label={hayPlanes && planesConIdentidad ? "Plan" : "Cuotas"} required hint={cuotasFijas != null ? "Fijas por la frecuencia" : undefined}>
                 {condicionesBloqueadas ? (
                   // Crédito otorgado: el plazo es el que se firmó.
                   <Input
@@ -957,6 +1062,18 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
                     name="plazo_meses" type="number" value={cuotasFijas} readOnly tabIndex={-1}
                     className="text-center font-mono tabular-nums px-1 opacity-70 cursor-not-allowed"
                   />
+                ) : hayPlanes ? (
+                  // El plan define cuotas y —si cotiza por coeficiente— también la tasa.
+                  <Select name="plan_id" value={formData.plan_id} onChange={set("plan_id")} required>
+                    {!formData.plan_id && <option value="">—</option>}
+                    {/* Sin identidad propia, la opción es el número solo: el rótulo ya dice
+                        "Cuotas" y repetir la palabra en cada renglón solo achica el campo. */}
+                    {planesDisponibles.map(p => (
+                      <option key={planId(p)} value={planId(p)}>
+                        {planesConIdentidad ? etiquetaPlan(p) : p.cuotas}
+                      </option>
+                    ))}
+                  </Select>
                 ) : plazosActivos.length > 0 ? (
                   <Select name="plazo_meses" value={formData.plazo_meses} onChange={set("plazo_meses")} required>
                     {!formData.plazo_meses && <option value="">—</option>}
@@ -975,21 +1092,40 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
             <div className="col-span-1">
               <Field
                 label="Tasa %" required
-                hint={condicionesBloqueadas ? "Firme desde el otorgamiento" : convencion === "mensual" ? "T.M." : convencion === "efectiva_anual" ? "T.E.A." : "T.N.A."}
+                hint={condicionesBloqueadas ? "Firme desde el otorgamiento" : tasaDelPlan !== null ? "La fija el plan" : convencion === "mensual" ? "T.M." : convencion === "efectiva_anual" ? "T.E.A." : "T.N.A."}
                 error={errorTasa ?? undefined}
               >
                 <div className="relative">
+                  {/*
+                    Con un plan que cotiza por coeficiente la tasa no se tipea: se despeja. Se
+                    muestra redondeada (el valor real lleva todos sus decimales) y bloqueada,
+                    porque cambiarla a mano rompería la equivalencia con el coeficiente que el
+                    cliente está viendo — y el servidor la volvería a pisar igual.
+                  */}
                   <Input
-                    name="tasa" type="number" placeholder="48"
-                    value={formData.tasa} onChange={set("tasa")}
-                    readOnly={condicionesBloqueadas} tabIndex={condicionesBloqueadas ? -1 : undefined}
+                    name="tasa" type={tasaDelPlan !== null ? "text" : "number"} placeholder="48"
+                    value={tasaDelPlan !== null ? n2(tasaDelPlan) : formData.tasa}
+                    onChange={set("tasa")}
+                    readOnly={tasaDelPlan !== null || condicionesBloqueadas}
+                    tabIndex={tasaDelPlan !== null || condicionesBloqueadas ? -1 : undefined}
                     min="0" step="0.5" required aria-invalid={!!errorTasa}
-                    className={`pr-5 text-center font-mono tabular-nums px-1 ${condicionesBloqueadas ? "opacity-70 cursor-not-allowed" : ""} ${errorTasa ? "border-destructive focus:border-destructive focus:ring-destructive/25" : ""}`}
+                    className={`pr-5 text-center font-mono tabular-nums px-1 ${tasaDelPlan !== null || condicionesBloqueadas ? "opacity-70 cursor-not-allowed" : ""} ${errorTasa ? "border-destructive focus:border-destructive focus:ring-destructive/25" : ""}`}
                   />
                   <Percent className={`pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 h-3 w-3 ${errorTasa ? "text-destructive" : "text-muted-foreground"}`} />
                 </div>
               </Field>
             </div>
+            {/*
+              De dónde sale la cuota, en el idioma con el que cotiza la financiera. Es la
+              línea que le permite al vendedor confirmar el precio contra su tabla impresa
+              sin tener que entender de tasas.
+            */}
+            {planSel?.coeficiente ? (
+              <p className="col-span-3 self-center text-xs text-muted-foreground">
+                Coeficiente <span className="font-mono font-semibold text-foreground">{planSel.coeficiente}</span>
+                {" · "}cada $100.000 paga <span className="font-mono font-semibold text-foreground">${n0(100_000 * planSel.coeficiente)}</span> por {lbl.cuotaSingular}
+              </p>
+            ) : null}
           </div>
         </section>
 
@@ -1334,7 +1470,11 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
             <div className={`h-full overflow-auto transition-opacity duration-200 ${calculando ? "opacity-50" : "opacity-100"}`}>
             {vista === "operador" ? (
               /* ── Vista operador: desglose completo ── */
-              <table className="w-full text-xs border-separate border-spacing-0">
+              /* El canal lateral sale de una regla sola: la primera y la última celda toman
+                 el mismo `px-4` que el encabezado del panel, así la tabla queda alineada con
+                 "Plan de pagos" y con el botón Imprimir. Va sobre la tabla y no celda por
+                 celda porque las columnas de cargos aparecen y desaparecen según la config. */
+              <table className="w-full text-xs border-separate border-spacing-0 [&_th:first-child]:pl-4 [&_td:first-child]:pl-4 [&_th:last-child]:pr-4 [&_td:last-child]:pr-4">
                 <thead className="sticky top-0 z-10 bg-card">
                   <tr>
                     <th className="px-2.5 py-2.5 text-left font-semibold text-muted-foreground border-b border-border w-9">#</th>
@@ -1347,7 +1487,7 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
                     ))}
                     {/* Mismo nombre que en la vista cliente: es literalmente el mismo número. */}
                     {hayCargoCols && <th className={COL_PAGA_TH}>A pagar</th>}
-                    <th className="px-2.5 py-2.5 text-right font-semibold text-muted-foreground border-b border-border pr-3">Saldo</th>
+                    <th className="px-2.5 py-2.5 text-right font-semibold text-muted-foreground border-b border-border">Saldo</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1362,7 +1502,7 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
                         <td key={col.key} className="px-2.5 py-2 text-right font-mono text-foreground/80 bg-warning/5 tabular-nums">${n2(row[col.key])}</td>
                       ))}
                       {hayCargoCols && <td className={COL_PAGA_TD}>${n2(row.cuotaTotal)}</td>}
-                      <td className="px-2.5 py-2 pr-3 text-right font-mono text-muted-foreground tabular-nums">${n2(row.saldo)}</td>
+                      <td className="px-2.5 py-2 text-right font-mono text-muted-foreground tabular-nums">${n2(row.saldo)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -1376,7 +1516,7 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
                       <td key={col.key} className="px-2.5 py-3.5 text-right font-bold font-mono text-sm text-foreground bg-warning/10 tabular-nums">${n2(col.key === "iva" ? plan.totalIva : col.key === "seguro" ? plan.totalSeguro : plan.totalGastos)}</td>
                     ))}
                     {hayCargoCols && <td className={COL_PAGA_TF}>${n2(totalCuotasCliente)}</td>}
-                    <td className="px-2.5 py-3.5 pr-3 text-right font-mono text-muted-foreground/30 tabular-nums">$ 0,00</td>
+                    <td className="px-2.5 py-3.5 text-right font-mono text-muted-foreground/30 tabular-nums">$ 0,00</td>
                   </tr>
                   {/* La comisión se cobra al firmar: no es una cuota y no puede sumarse a la
                       columna sin romper su aritmética. Va en su propio renglón, y el total
@@ -1400,49 +1540,12 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
               </table>
             ) : (
               /* ── Vista cliente: solo cuotas a cubrir ── */
-              <table className="w-full text-sm border-separate border-spacing-0">
-                <thead className="sticky top-0 z-10 bg-card">
-                  <tr>
-                    <th className="px-4 py-2.5 text-left font-semibold text-muted-foreground border-b border-border w-12">Cuota</th>
-                    <th className="px-4 py-2.5 text-left font-semibold text-muted-foreground border-b border-border">Vence</th>
-                    <th className="px-4 py-2.5 text-right font-semibold text-muted-foreground border-b border-border pr-6">A pagar</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {plan.cuotas.map((row, idx) => (
-                    <tr key={row.nro} className={`hover:bg-muted/20 transition-colors ${idx % 2 === 1 ? "bg-muted/5" : ""}`}>
-                      <td className="px-4 py-2.5 text-muted-foreground font-mono tabular-nums">{row.nro}/{plan.cuotas.length}</td>
-                      <td className="px-4 py-2.5 text-foreground tabular-nums">{fmtDate(row.fecha)}</td>
-                      <td className="px-4 py-2.5 pr-6 text-right font-mono font-semibold text-foreground tabular-nums">${n2(row.cuotaTotal)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-                <tfoot className="sticky bottom-0 z-10 bg-card">
-                  {/*
-                    La comisión se cobra al firmar: no es una cuota y no puede entrar en la
-                    columna sin romper la suma. Va en su propio renglón, y el total de verdad
-                    recién debajo — si no, el cliente ve un "total a pagar" al que le faltan.
-                  */}
-                  <tr className="border-t-2 border-border bg-muted/40">
-                    <td colSpan={2} className="px-4 py-3.5 text-[10px] font-bold text-foreground uppercase tracking-widest">
-                      {comisionUpfront > 0 ? "Total de las cuotas" : "Total a pagar"}
-                    </td>
-                    <td className={`px-4 py-3.5 pr-6 text-right font-mono tabular-nums ${comisionUpfront > 0 ? "text-sm font-semibold text-foreground" : "text-base font-bold text-foreground"}`}>${n2(totalCuotasCliente)}</td>
-                  </tr>
-                  {comisionUpfront > 0 && (
-                    <>
-                      <tr className="bg-muted/40">
-                        <td colSpan={2} className="px-4 py-2 text-[10px] font-medium text-muted-foreground uppercase tracking-widest">Comisión de otorgamiento (al firmar)</td>
-                        <td className="px-4 py-2 pr-6 text-right font-mono text-sm text-foreground tabular-nums">${n2(comisionUpfront)}</td>
-                      </tr>
-                      <tr className="border-t border-border bg-muted/40">
-                        <td colSpan={2} className="px-4 py-3.5 text-[10px] font-bold text-foreground uppercase tracking-widest">Total a pagar</td>
-                        <td className="px-4 py-3.5 pr-6 text-right font-bold font-mono text-base text-foreground tabular-nums">${n2(totalAPagar)}</td>
-                      </tr>
-                    </>
-                  )}
-                </tfoot>
-              </table>
+              <PlanCliente
+                cuotas={plan.cuotas}
+                totalCuotas={totalCuotasCliente}
+                comisionUpfront={comisionUpfront}
+                totalAPagar={totalAPagar}
+              />
             )}
             </div>{/* fin scroll tabla */}
           </div>
@@ -1588,6 +1691,99 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
  * Buscador de cliente para el otorgamiento: filtra por DNI (normalizando dígitos)
  * o por apellido y nombre. Reemplaza el viejo desplegable de opciones.
  */
+/**
+ * El plan de cuotas como lo ve EL CLIENTE: número, vencimiento e importe. Nada más.
+ *
+ * Va en DOS COLUMNAS porque son tres datos cortos: a todo el ancho, la fecha y el importe
+ * quedaban separados por un vacío de media pantalla y el cliente tenía que scrollear su
+ * propio plan. Partido al medio, un crédito de hasta ~24 cuotas entra completo de un vistazo,
+ * que es exactamente lo que esa vista tiene que lograr.
+ *
+ * Se parte a partir de 6 cuotas: por debajo, una columna de 3 y otra de 2 se ve desbalanceada
+ * y no ahorra ningún scroll. En ese caso va una sola columna con ancho de lectura, para que
+ * tampoco se estire.
+ */
+function PlanCliente({ cuotas, totalCuotas, comisionUpfront, totalAPagar }: {
+  cuotas: PlanAmortizacion["cuotas"];
+  totalCuotas: number;
+  comisionUpfront: number;
+  totalAPagar: number;
+}) {
+  const total = cuotas.length;
+  const dividir = total >= 6;
+  // La mitad se redondea hacia arriba: si sobra una, va en la columna izquierda, que es la
+  // que se lee primero.
+  const bloques = dividir
+    ? [cuotas.slice(0, Math.ceil(total / 2)), cuotas.slice(Math.ceil(total / 2))]
+    : [cuotas];
+
+  const th = "px-4 py-2.5 text-left font-semibold text-muted-foreground border-b border-border";
+  const td = "px-4 py-2.5 tabular-nums";
+  /** Canal lateral: alinea las celdas de los extremos con el encabezado del panel (px-4). */
+  const canal = "[&_th:first-child]:pl-4 [&_td:first-child]:pl-4 [&_th:last-child]:pr-4 [&_td:last-child]:pr-4";
+
+  return (
+    <div>
+      <div className={dividir ? "grid grid-cols-1 lg:grid-cols-2" : "mx-auto max-w-xl"}>
+        {bloques.map((bloque, i) => (
+          // La medianera solo existe cuando hay dos columnas de verdad; apilado no separa nada.
+          <div key={i} className={i === 1 ? "lg:border-l lg:border-border/50" : ""}>
+            <table className={`w-full text-sm border-separate border-spacing-0 ${canal}`}>
+              <thead className="sticky top-0 z-10 bg-card">
+                <tr>
+                  <th className={`${th} w-14`}>Cuota</th>
+                  <th className={th}>Vence</th>
+                  <th className={`${th} text-right`}>A pagar</th>
+                </tr>
+              </thead>
+              <tbody>
+                {bloque.map((row) => (
+                  <tr key={row.nro} className={`hover:bg-muted/20 transition-colors ${row.nro % 2 === 0 ? "bg-muted/5" : ""}`}>
+                    <td className={`${td} text-muted-foreground font-mono`}>{row.nro}/{total}</td>
+                    <td className={`${td} text-foreground`}>{fmtDate(row.fecha)}</td>
+                    <td className={`${td} text-right font-mono font-semibold text-foreground`}>${n2(row.cuotaTotal)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ))}
+      </div>
+
+      {/*
+        Los totales salieron del `tfoot` al partirse la tabla en dos: son UNO solo para las
+        dos columnas. Siguen pegados abajo mientras se scrollea.
+
+        La comisión se cobra al firmar: no es una cuota y no puede entrar en la columna sin
+        romper la suma. Va en su propio renglón, y el total de verdad recién debajo — si no,
+        el cliente ve un "total a pagar" al que le faltan.
+      */}
+      <div className="sticky bottom-0 z-20 bg-card">
+        <div className="flex items-baseline justify-between gap-4 border-t-2 border-border bg-muted/40 px-4 py-3.5">
+          <span className="text-[10px] font-bold uppercase tracking-widest text-foreground">
+            {comisionUpfront > 0 ? "Total de las cuotas" : "Total a pagar"}
+          </span>
+          <span className={`font-mono tabular-nums ${comisionUpfront > 0 ? "text-sm font-semibold text-foreground" : "text-base font-bold text-foreground"}`}>
+            ${n2(totalCuotas)}
+          </span>
+        </div>
+        {comisionUpfront > 0 && (
+          <>
+            <div className="flex items-baseline justify-between gap-4 bg-muted/40 px-4 py-2">
+              <span className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground">Comisión de otorgamiento (al firmar)</span>
+              <span className="font-mono text-sm tabular-nums text-foreground">${n2(comisionUpfront)}</span>
+            </div>
+            <div className="flex items-baseline justify-between gap-4 border-t border-border bg-muted/40 px-4 py-3.5">
+              <span className="text-[10px] font-bold uppercase tracking-widest text-foreground">Total a pagar</span>
+              <span className="font-mono text-base font-bold tabular-nums text-foreground">${n2(totalAPagar)}</span>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function ClienteCombobox({ clientes, value, onSelect, onAlta }: {
   clientes: Cliente[]; value: string; onSelect: (id: string) => void; onAlta: (query: string) => void;
 }) {

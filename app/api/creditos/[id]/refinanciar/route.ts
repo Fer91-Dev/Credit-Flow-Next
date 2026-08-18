@@ -1,9 +1,11 @@
 import { requireRole, scopeCreditosVendedor } from "@/lib/auth";
-import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api";
+import { successResponse, errorResponse, withErrorHandler, assertSameOrigin } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
-import { calcularDeudaConsolidada, aplicarQuita, construirPlanAmortizacion, planACuotas, normalizarFrecuencia, resolverFrecuencia, round2, estadoCoherente, type CuotaParaImputar, type TipoQuita, esCreditoVivo, moraDelCredito, moraDesdeCronograma } from "@/lib/domain";
-import { getConfiguracion } from "@/lib/config";
+import { calcularDeudaConsolidada, aplicarQuita, construirPlanAmortizacion, planACuotas, normalizarFrecuencia, resolverFrecuencia, round2, estadoCoherente, type CuotaParaImputar, type TipoQuita, esCreditoVivo, moraDelCredito, moraDesdeCronograma, diasMoraActual, validarParametrosOtorgamiento } from "@/lib/domain";
+import { getConfiguracion, getCobranzaConfig } from "@/lib/config";
+import { quitaMaxima } from "@/lib/domain/acuerdos";
+import { lockNumeroCreditoTx, TX_PLATA } from "@/lib/locks";
 import { registrarAuditoria } from "@/lib/audit";
 import { formatCreditoNumero, nombreCompleto, hoyComercial } from "@/lib/utils";
 import type { NextRequest } from "next/server";
@@ -17,7 +19,7 @@ interface RouteParams {
  * Devuelve { error } (Response) o { credito, config, deuda } listo para operar.
  */
 async function cargarRefinanciable(req: NextRequest, id: string) {
-  const { tenantId, role, vendedorId } = await requireRole(["admin", "vendedor"], req);
+  const { tenantId, role, vendedorId, userId, nombre, email } = await requireRole(["admin", "vendedor"], req);
 
   const credito = await prisma.creditos.findFirst({
     where: { ...withTenant(tenantId), ...scopeCreditosVendedor({ role, vendedorId }), id },
@@ -47,8 +49,18 @@ async function cargarRefinanciable(req: NextRequest, id: string) {
   if (credito.cuotas.length === 0) {
     return { error: errorResponse("El crédito no tiene cronograma de cuotas.", "INVALID_STATE", 400), tenantId, role, vendedorId } as const;
   }
-  // Solo se refinancia deuda MOROSA: un crédito activo y al día no se reestructura.
-  if (credito.dias_mora <= 0) {
+  /**
+   * Solo se refinancia deuda MOROSA: un crédito activo y al día no se reestructura.
+   *
+   * 🔴 La mora se calcula EN VIVO, no del cache. `creditos.dias_mora` solo se escribe al
+   * cobrar, al anular un pago o por PATCH: **nada lo avanza día a día**. Un crédito al que
+   * el cliente NUNCA le pagó una cuota conserva `dias_mora = 0` desde que nació, así que
+   * este endpoint —el único de la API que seguía leyendo el cache— respondía "no se puede
+   * refinanciar un crédito al día" sobre alguien con 150 días de atraso. Bloqueaba la
+   * herramienta de recupero justo para el perfil que la necesita.
+   */
+  const moraHoy = diasMoraActual(credito.proximo_pago, hoyComercial());
+  if (moraHoy <= 0) {
     return { error: errorResponse("No se puede refinanciar un crédito al día: la refinanciación es para deuda en mora.", "NOT_IN_ARREARS", 409), tenantId, role, vendedorId } as const;
   }
 
@@ -78,7 +90,7 @@ async function cargarRefinanciable(req: NextRequest, id: string) {
     diasGracia: graciaCred,
   });
 
-  return { credito, config, deuda, tenantId, role, vendedorId } as const;
+  return { credito, config, deuda, moraHoy, tenantId, role, vendedorId, userId, nombre, email } as const;
 }
 
 /**
@@ -90,7 +102,7 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
   const { id } = await params;
   const r = await cargarRefinanciable(req, id);
   if ("error" in r && r.error) return r.error;
-  const { credito, deuda } = r as Extract<typeof r, { credito: object }>;
+  const { credito, deuda, moraHoy } = r as Extract<typeof r, { credito: object }>;
 
   return successResponse({
     credito: {
@@ -100,7 +112,7 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
       tasa: credito.tasa,
       plazo_meses: credito.plazo_meses,
       frecuencia: credito.frecuencia,
-      dias_mora: credito.dias_mora,
+      dias_mora: moraHoy,
     },
     deuda,
     sugerido: { tasa: credito.tasa, plazo_meses: credito.plazo_meses, frecuencia: credito.frecuencia },
@@ -120,10 +132,12 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
  * }
  */
 export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteParams) => {
+  assertSameOrigin(req);
   const { id } = await params;
   const r = await cargarRefinanciable(req, id);
   if ("error" in r && r.error) return r.error;
-  const { credito, config, deuda, tenantId } = r as Extract<typeof r, { credito: object }>;
+  const { credito, config, deuda, tenantId, role, userId, nombre, email } = r as Extract<typeof r, { credito: object }>;
+  const cobranzaCfg = await getCobranzaConfig(tenantId);
 
   let body: any;
   try {
@@ -140,10 +154,51 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
   // Quita opcional sobre la base consolidada (condonación parcial como incentivo).
   const quitaTipo = (["ninguna", "porcentaje", "monto"].includes(body.quita_tipo) ? body.quita_tipo : "ninguna") as TipoQuita;
   const quita = aplicarQuita(deuda.total, quitaTipo, Number(body.quita_valor) || 0);
+
+  /**
+   * 🔴 TOPE DE CONDONACIÓN — la misma regla que ya rige en los acuerdos de pago.
+   *
+   * Sin esto, `aplicarQuita` aceptaba cualquier valor: el dominio solo lo acota a 0–100% del
+   * total, y el total incluye el CAPITAL. Un vendedor podía mandar `quita_valor: 99` sobre
+   * uno de sus propios créditos en mora y dejar una deuda de $2.000.000 en $20.000, sin
+   * autorización de nadie. Era la puerta de atrás del control que `lib/acuerdos.ts` ya
+   * aplicaba en el otro camino de condonación.
+   *
+   * La regla es idéntica y por el mismo motivo: **la quita sale de la mora y el interés,
+   * nunca del capital** (regalar capital es un write-off, otra decisión). El admin llega al
+   * 100% de lo condonable; el vendedor, al porcentaje que fije la financiera.
+   */
+  const tope = quitaMaxima({ ...deuda, cuotas_vencidas: 0 }, role === "admin", cobranzaCfg.acuerdos);
+  if (quita.condonado > tope) {
+    return errorResponse(
+      tope === 0
+        ? "No podés condonar nada al refinanciar. Pedile a un administrador que lo haga."
+        : `La quita máxima que podés otorgar es $${tope.toLocaleString("es-AR")} (sale de la mora y el interés, nunca del capital).`,
+      "QUITA_EXCEDIDA",
+      403,
+    );
+  }
+
   const nuevoCapital = quita.nuevoCapital;
   if (nuevoCapital <= 0) {
     return errorResponse("El capital a refinanciar quedó en cero tras la quita.", "INVALID_INPUT", 400);
   }
+
+  /**
+   * Las condiciones del crédito NUEVO pasan por las mismas validaciones que un otorgamiento.
+   * Antes solo se chequeaba `tasa >= 0` y `plazo >= 1`, así que por acá entraba una tasa del
+   * 350% mensual aunque la financiera tuviera `tasaMax` en 15, o un plazo/frecuencia que
+   * tiene apagados. El crédito resultante era indistinguible de uno otorgado normalmente.
+   */
+  const invalido = validarParametrosOtorgamiento(config.simulador, {
+    monto: nuevoCapital,
+    tasa,
+    plazoMeses,
+    frecuencia: normalizarFrecuencia(body.frecuencia ?? credito.frecuencia),
+    // La refinanciación nunca es de producto: consolida deuda de dinero.
+    esProducto: false,
+  });
+  if (invalido) return errorResponse(invalido, "INVALID_INPUT", 400);
 
   // Snapshots vigentes para el crédito NUEVO (mismo criterio que POST /creditos).
   const frecuencia = normalizarFrecuencia(body.frecuencia ?? credito.frecuencia);
@@ -186,6 +241,11 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
   // Transacción: nace el crédito nuevo, se cierra el viejo. Sin movimiento de caja
   // (no hay desembolso: la deuda simplemente se traslada a un crédito nuevo).
   const { nuevo } = await prisma.$transaction(async (tx) => {
+    // El otorgamiento y la refinanciación comparten la MISMA secuencia de `numero`, así que
+    // tienen que compartir el lock: sin esto, una refinanciación concurrente con un
+    // otorgamiento calculaban el mismo número y la segunda reventaba contra el @@unique con
+    // un 500 "Recurso duplicado" — el mismo bug que ya se había arreglado del otro lado.
+    await lockNumeroCreditoTx(tx, tenantId);
     const maxNum = await tx.creditos.aggregate({ where: { ...withTenant(tenantId) }, _max: { numero: true } });
     const numero = (maxNum._max.numero ?? 0) + 1;
 
@@ -205,6 +265,10 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
         fecha_inicio: fechaInicio,
         proximo_pago: proximoPago,
         vendedor_id: credito.vendedor_id,
+        // La refinanciación también CREA un crédito: quién la ejecutó se guarda igual que en
+        // el otorgamiento. La atribución de la venta se hereda del crédito original.
+        otorgado_por: userId,
+        otorgado_por_nombre: nombre?.trim() || email || null,
         es_refinanciacion: true,
         refinancia_a: credito.id,
         ...withTenant(tenantId),
@@ -242,7 +306,7 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
     });
 
     return { nuevo };
-  });
+  }, TX_PLATA);
 
   await registrarAuditoria({
     tenantId,

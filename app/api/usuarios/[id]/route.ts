@@ -1,5 +1,5 @@
 import { requireRole } from "@/lib/auth";
-import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api";
+import { successResponse, errorResponse, withErrorHandler, assertSameOrigin } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { errorDePassword } from "@/lib/domain";
@@ -22,6 +22,7 @@ type RoleStr = (typeof ROLES)[number];
  * quite a sí mismo el rol o se desactive (anti-auto-bloqueo).
  */
 export const PATCH = withErrorHandler(async (req: NextRequest, { params }: RouteParams) => {
+  assertSameOrigin(req);
   const { tenantId, userId } = await requireRole(["admin"], req);
   const { id } = await params;
 
@@ -271,6 +272,7 @@ export const PATCH = withErrorHandler(async (req: NextRequest, { params }: Route
  * Guardas: no podés eliminarte a vos mismo ni al ÚLTIMO administrador (anti-lockout).
  */
 export const DELETE = withErrorHandler(async (req: NextRequest, { params }: RouteParams) => {
+  assertSameOrigin(req);
   const { tenantId, userId } = await requireRole(["admin"], req);
   const { id } = await params;
 

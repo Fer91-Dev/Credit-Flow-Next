@@ -258,6 +258,18 @@ model creditos {
 
   vendedor_id String? @db.Uuid // vendedor que otorgó el crédito (Fase 5, opcional)
 
+  // QUIÉN otorgó, que NO es lo mismo que `vendedor_id`.
+  //
+  // `vendedor_id` es a quién se le atribuye la venta (comisión, meta, ranking) y queda en
+  // null cuando otorga la casa. Con un solo administrador eso era inequívoco —fue él—, pero
+  // en cuanto hay dos, todos los créditos de la casa caen en la misma fila y no se distinguen.
+  //
+  // El nombre va congelado además del id porque la cuenta se puede borrar o renombrar, y la
+  // pregunta "¿quién dio este crédito?" tiene que seguir teniendo respuesta dentro de cinco
+  // años. Mismo criterio que los snapshots de `cargos` y `cronograma`.
+  otorgado_por        String? @db.Uuid // profiles.id del usuario que ejecutó el otorgamiento
+  otorgado_por_nombre String? // nombre al momento de otorgar (sobrevive al borrado de la cuenta)
+
   // Refinanciación / reestructuración: un crédito moroso se cierra y su deuda viva
   // se consolida como capital de un crédito NUEVO. No mueve plata real (no hay
   // desembolso). Los punteros vinculan ambos créditos; el flag excluye al nuevo del

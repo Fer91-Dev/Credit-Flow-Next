@@ -211,12 +211,29 @@ export interface CobranzaConfig {
    * mismo dominio (cobranza) — una tabla no cambia por agrupar mejor un JSON.
    */
   acuerdos: AcuerdosConfig;
+  /**
+   * Tope, EN PESOS, de un gasto que el vendedor puede registrar en su propia caja sin
+   * que lo apruebe un administrador. **0 = no puede registrar gastos** (los carga un admin).
+   *
+   * 🔴 Por qué existe: el circuito de arqueo está armado para que un faltante NO se pueda
+   * hacer desaparecer solo — el vendedor declara lo que contó y el ajuste lo firma un admin
+   * con motivo obligatorio. El gasto autoliquidable era la puerta de atrás de ese control:
+   * a un vendedor al que le faltan $80.000 le alcanzaba con registrar "combustible
+   * $80.000" para que su saldo de sistema bajara y el arqueo del día cerrara cuadrado, sin
+   * quedar nunca pendiente de conciliación.
+   *
+   * Mismo criterio que `quita_max_vendedor_pct`: el límite lo pone otro, no el propio
+   * vendedor, y arranca cerrado. Una financiera que quiera darle caja chica le pone un
+   * número acá.
+   */
+  tope_gasto_vendedor: number;
 }
 
 export const COBRANZA_DEFAULT: CobranzaConfig = {
   dias_sin_gestion: 7,
   dias_anulacion_pago: 3,
   acuerdos: ACUERDOS_DEFAULT,
+  tope_gasto_vendedor: 0,
 };
 
 /** Mezcla con defaults y acota `dias_sin_gestion` a 1..90 y `dias_anulacion_pago` a 0..365. */
@@ -226,7 +243,14 @@ export function resolverCobranza(raw: unknown): CobranzaConfig {
   const dias = Number.isFinite(n) && n > 0 ? Math.min(90, Math.max(1, Math.round(n))) : COBRANZA_DEFAULT.dias_sin_gestion;
   const a = Number(r.dias_anulacion_pago);
   const diasAnul = Number.isFinite(a) && a >= 0 ? Math.min(365, Math.max(0, Math.round(a))) : COBRANZA_DEFAULT.dias_anulacion_pago;
-  return { dias_sin_gestion: dias, dias_anulacion_pago: diasAnul, acuerdos: resolverAcuerdos(r.acuerdos) };
+  const g = Number(r.tope_gasto_vendedor);
+  const tope = Number.isFinite(g) && g > 0 ? Math.round(g * 100) / 100 : COBRANZA_DEFAULT.tope_gasto_vendedor;
+  return {
+    dias_sin_gestion: dias,
+    dias_anulacion_pago: diasAnul,
+    acuerdos: resolverAcuerdos(r.acuerdos),
+    tope_gasto_vendedor: tope,
+  };
 }
 
 /** Config de agenda de cobranza del tenant (mezclada con defaults). No es secreto. */

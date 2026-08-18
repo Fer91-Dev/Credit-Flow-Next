@@ -1,5 +1,5 @@
 import { requireRole } from "@/lib/auth";
-import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api";
+import { successResponse, errorResponse, withErrorHandler, assertSameOrigin } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { registrarAuditoria } from "@/lib/audit";
@@ -52,6 +52,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
  * Body: { nombre, cuit?, email?, telefono?, direccion?, rubro?, notas?, activo? }
  */
 export const POST = withErrorHandler(async (req: NextRequest) => {
+  assertSameOrigin(req);
   // Alta de proveedor: solo admin.
   const { tenantId } = await requireRole(["admin"], req);
 

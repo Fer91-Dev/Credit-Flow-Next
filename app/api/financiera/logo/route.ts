@@ -1,5 +1,5 @@
 import { requireRole } from "@/lib/auth";
-import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api";
+import { successResponse, errorResponse, withErrorHandler, assertSameOrigin } from "@/app/lib/api";
 import type { NextRequest } from "next/server";
 
 /**
@@ -17,6 +17,7 @@ const MIME_EXT: Record<string, string> = {
 };
 
 export const POST = withErrorHandler(async (req: NextRequest) => {
+  assertSameOrigin(req);
   const { tenantId } = await requireRole(["admin"], req);
 
   const form = await req.formData();
