@@ -1,7 +1,7 @@
 "use client";
 
 import { Printer } from "lucide-react";
-import type { MovimientoCaja } from "@/lib/swr";
+import { useFinanciera, type MovimientoCaja } from "@/lib/swr";
 import { StatusBadge, type BadgeVariant } from "@/components/ui/StatusBadge";
 import { DetailGrid } from "@/components/ui/DetailGrid";
 import { formatCreditoNumero, formatFechaHora } from "@/lib/utils";
@@ -15,7 +15,7 @@ function esc(s: string) {
 }
 
 /** Abre un comprobante imprimible del movimiento en una ventana aparte y lanza la impresión. */
-function imprimirMovimiento(mov: MovimientoCaja, label: string) {
+function imprimirMovimiento(mov: MovimientoCaja, label: string, marcaDoc: string) {
   const ingreso = mov.monto >= 0;
   const filas: [string, string][] = [
     ["Comprobante", mov.comprobante ?? "—"],
@@ -49,7 +49,7 @@ function imprimirMovimiento(mov: MovimientoCaja, label: string) {
       .ft { margin-top: 24px; color: #94a3b8; font-size: 11px; text-align: center; }
       @media print { body { padding: 0; } }
     </style></head><body><div class="doc">
-      <h1>CreditFlow · Comprobante ${esc(mov.comprobante ?? "de movimiento")}</h1>
+      <h1>${esc(marcaDoc)} · Comprobante ${esc(mov.comprobante ?? "de movimiento")}</h1>
       <div class="sub">${esc(formatFechaHora(mov.created_at ?? mov.fecha))}</div>
       <div class="monto">${esc(montoStr)}</div>
       <table>${filas.map(([k, v]) => `<tr><td class="k">${esc(k)}</td><td class="v">${esc(v)}</td></tr>`).join("")}</table>
@@ -83,6 +83,10 @@ const CUENTA_LABEL: Record<MovimientoCaja["cuenta"], string> = {
 };
 
 export function MovimientoDetail({ mov }: { mov: MovimientoCaja }) {
+  // Marca de la FINANCIERA para lo que se imprime (no la del SaaS: el papel es de ella).
+  const { financiera } = useFinanciera();
+  const marcaDoc = (financiera?.nombre ?? "").trim() || "CreditFlow";
+
   const meta = TIPO_META[mov.tipo];
   const ingreso = mov.monto >= 0;
 
@@ -117,7 +121,7 @@ export function MovimientoDetail({ mov }: { mov: MovimientoCaja }) {
       />
 
       <button
-        onClick={() => imprimirMovimiento(mov, meta.label)}
+        onClick={() => imprimirMovimiento(mov, meta.label, marcaDoc)}
         className="flex w-full items-center justify-center gap-2 rounded-lg border border-border px-4 py-2.5 text-sm font-medium text-foreground transition-colors hover:bg-muted"
       >
         <Printer className="h-4 w-4" /> Imprimir comprobante

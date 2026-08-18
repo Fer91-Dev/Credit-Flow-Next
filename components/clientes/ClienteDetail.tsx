@@ -5,7 +5,7 @@ import { useSWRConfig } from "swr";
 import {
   Pencil, Trash2, CalendarClock, ChevronRight, Loader2, Mail, Phone, Printer, ShieldCheck, Ban, Receipt,
 } from "lucide-react";
-import { refrescarNotificaciones, useClienteDetalle, useAccionesCobranza, useCuotas, KEYS, type CreditoConFinanzas, type EstadoCuota, type CuotaPersistida } from "@/lib/swr";
+import { refrescarNotificaciones, useClienteDetalle, useAccionesCobranza, useCuotas, useFinanciera, KEYS, type CreditoConFinanzas, type EstadoCuota, type CuotaPersistida } from "@/lib/swr";
 import { StatusBadge, type BadgeVariant } from "@/components/ui/StatusBadge";
 import { Stat } from "@/components/ui/Stat";
 import { Emoji } from "@/components/ui/Emoji";
@@ -42,7 +42,13 @@ function escHtml(s: string) {
 }
 
 /** Abre un recibo imprimible de una cuota (con los comprobantes que la imputaron) y lanza la impresión. */
-function imprimirReciboCuota(cuota: CuotaPersistida, ctx: { cliente: string | null; creditoNumero: number | null | undefined }) {
+function imprimirReciboCuota(
+  cuota: CuotaPersistida,
+  // `marca` es el nombre de la FINANCIERA: es un papel que se lleva el cliente y tiene que
+  // llevar la marca de quien le presta, no la del sistema que emite el recibo.
+  ctx: { cliente: string | null; creditoNumero: number | null | undefined; marca: string },
+) {
+  const marcaDoc = ctx.marca;
   const comps = cuota.comprobantes ?? [];
   const pagado = comps.reduce((s, c) => s + c.monto, 0);
   const badge = CUOTA_BADGE[cuota.estado];
@@ -81,7 +87,7 @@ function imprimirReciboCuota(cuota: CuotaPersistida, ctx: { cliente: string | nu
       .ft { margin-top: 24px; color: #94a3b8; font-size: 11px; text-align: center; }
       @media print { body { padding: 0; } }
     </style></head><body><div class="doc">
-      <h1>CreditFlow · Recibo de cuota</h1>
+      <h1>${escHtml(marcaDoc)} · Recibo de cuota</h1>
       <div class="sub">${escHtml(formatCreditoNumero(ctx.creditoNumero))} · Cuota N° ${cuota.nro}</div>
       <div class="monto">$${escHtml(n2(pagado > 0 ? pagado : cuota.cuota_total))}</div>
       <table>${filas.map(([k, v]) => `<tr><td class="k">${escHtml(k)}</td><td class="v">${escHtml(v)}</td></tr>`).join("")}</table>
@@ -149,6 +155,7 @@ export function ClienteDetail({
   onEditar?: () => void;
   onEliminar?: () => void;
 }) {
+
   const { cliente, isLoading, mutate } = useClienteDetalle(clienteId);
   const { acciones } = useAccionesCobranza();
   const toast = useToast();
@@ -663,6 +670,10 @@ function FragmentRow({ children }: { children: React.ReactNode }) {
 
 /** Plan de cuotas detallado de un crédito, embebido en la fila expandida. */
 function CuotasInline({ creditoId, creditoNumero }: { creditoId: string; creditoNumero: number | null | undefined }) {
+  // El recibo lo firma la FINANCIERA, no el sistema. Se resuelve acá porque este componente
+  // es el dueño del botón; `useFinanciera` va contra la misma cache de SWR, no repite fetch.
+  const { financiera } = useFinanciera();
+  const marcaDoc = (financiera?.nombre ?? "").trim() || "CreditFlow";
   const { cuotas, resumen, meta, isLoading } = useCuotas(creditoId);
   const cliente = meta?.cliente ?? null;
 
@@ -722,7 +733,7 @@ function CuotasInline({ creditoId, creditoNumero }: { creditoId: string; credito
                     <td className="px-2 py-1.5 pr-3 text-right border-b border-border/30">
                       {tieneRecibo ? (
                         <button
-                          onClick={() => imprimirReciboCuota(q, { cliente, creditoNumero })}
+                          onClick={() => imprimirReciboCuota(q, { cliente, creditoNumero, marca: marcaDoc })}
                           title="Imprimir / reimprimir recibo de la cuota"
                           className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                         >

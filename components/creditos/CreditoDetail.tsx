@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useSWRConfig } from "swr";
 import { CalendarDays, Wallet, Info, ArrowUpRight, Receipt, Loader2, Printer, RefreshCw, ArrowRight, ShieldCheck, Ban } from "lucide-react";
-import { refrescarNotificaciones, useAmortizacion, useCuotas, usePagosByCredito, useCreditos, KEYS, type Credito, type EstadoCuota, type Pago } from "@/lib/swr";
+import { refrescarNotificaciones, useAmortizacion, useCuotas, usePagosByCredito, useCreditos, KEYS, type Credito, type EstadoCuota, type Pago, useFinanciera } from "@/lib/swr";
 import { type Role } from "@/lib/auth/roles";
 import { abrirRecibo } from "@/lib/recibo";
 import { imprimirPlanPagos } from "@/lib/plan-print";
@@ -57,6 +57,7 @@ export function CreditoDetail({ credito, role, onRefinanciar }: { credito: Credi
   const refinanciable = esCreditoVivo(credito.estado) && credito.dias_mora > 0;
   const { amortizacion } = useAmortizacion(credito.id);
   const { cuotas, resumen, isLoading: loadingCuotas } = useCuotas(credito.id);
+  const { financiera } = useFinanciera(); // co-branding de lo que se imprime
 
   /**
    * Lo vencido e impago, y la mora corrida. Se derivan de las MISMAS cuotas que muestra la
@@ -178,6 +179,11 @@ export function CreditoDetail({ credito, role, onRefinanciar }: { credito: Credi
       },
       // Solo si NO está financiada: financiada = ya viene adentro de las cuotas de la tabla.
       comisionUpfront: a.resumen.comision > 0 && !a.resumen.comision_financiada ? a.resumen.comision : 0,
+      // 🔴 Faltaba: sin esto el plan REIMPRESO salía con la marca del SaaS en vez de la de la
+      // financiera. El simulador sí la pasaba, así que el papel que se entrega al otorgar y el
+      // que se reimprime después no decían lo mismo — y el segundo le ponía a los clientes de
+      // Silvio una marca que no es la suya.
+      financiera: financiera ? { nombre: financiera.nombre, logo_url: financiera.logo_url } : undefined,
       cft: a.parametros.cft_anual,
     }, "cliente");
   };
