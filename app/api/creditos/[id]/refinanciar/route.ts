@@ -6,6 +6,7 @@ import { calcularDeudaConsolidada, aplicarQuita, construirPlanAmortizacion, plan
 import { getConfiguracion, getCobranzaConfig } from "@/lib/config";
 import { quitaMaxima } from "@/lib/domain/acuerdos";
 import { lockNumeroCreditoTx, TX_PLATA } from "@/lib/locks";
+import { assertPuedeRefinanciar } from "@/lib/recupero-server";
 import { registrarAuditoria } from "@/lib/audit";
 import { formatCreditoNumero, nombreCompleto, hoyComercial } from "@/lib/utils";
 import type { NextRequest } from "next/server";
@@ -138,6 +139,9 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
   if ("error" in r && r.error) return r.error;
   const { credito, config, deuda, tenantId, role, userId, nombre, email } = r as Extract<typeof r, { credito: object }>;
   const cobranzaCfg = await getCobranzaConfig(tenantId);
+  // Escalera de recupero: la refinanciación es el escalón irreversible (mata el crédito y
+  // crea otro). Si la financiera exige agotar antes el acuerdo de pago, se corta acá.
+  await assertPuedeRefinanciar(tenantId, id, cobranzaCfg.recupero);
 
   let body: any;
   try {

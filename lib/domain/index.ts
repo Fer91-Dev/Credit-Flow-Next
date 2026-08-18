@@ -22,6 +22,7 @@ export * from "./cuotas";
 export * from "./credito-estado";
 // Documentos legales (contrato de mutuo / pagaré)
 export * from "./numero-a-letras";
+export * from "./recupero";
 export * from "./contrato-requisitos";
 export * from "./documentos";
 export * from "./password";

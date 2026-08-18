@@ -22,6 +22,9 @@ import {
   resolverAcuerdos,
   ACUERDOS_DEFAULT,
   type AcuerdosConfig,
+  resolverRecupero,
+  RECUPERO_DEFAULT,
+  type RecuperoConfig,
 } from "@/lib/domain";
 import type { Prisma } from "@prisma/client";
 
@@ -206,11 +209,19 @@ export interface CobranzaConfig {
    * mismo dominio (cobranza) — una tabla no cambia por agrupar mejor un JSON.
    */
   acuerdos: AcuerdosConfig;
+  /**
+   * ESCALERA DE RECUPERO: si hay que agotar los escalones blandos antes de los duros
+   * (promesa → acuerdo → refinanciación). Arranca toda apagada: que la escalera sea
+   * obligatoria es decisión de cada financiera, y con los defaults el sistema se comporta
+   * igual que antes de que existiera. Ver `lib/domain/recupero.ts`.
+   */
+  recupero: RecuperoConfig;
 }
 
 export const COBRANZA_DEFAULT: CobranzaConfig = {
   dias_sin_gestion: 7,
   acuerdos: ACUERDOS_DEFAULT,
+  recupero: RECUPERO_DEFAULT,
 };
 
 /** Mezcla con defaults y acota `dias_sin_gestion` a 1..90. */
@@ -218,7 +229,7 @@ export function resolverCobranza(raw: unknown): CobranzaConfig {
   const r = (raw ?? {}) as Partial<CobranzaConfig>;
   const n = Number(r.dias_sin_gestion);
   const dias = Number.isFinite(n) && n > 0 ? Math.min(90, Math.max(1, Math.round(n))) : COBRANZA_DEFAULT.dias_sin_gestion;
-  return { dias_sin_gestion: dias, acuerdos: resolverAcuerdos(r.acuerdos) };
+  return { dias_sin_gestion: dias, acuerdos: resolverAcuerdos(r.acuerdos), recupero: resolverRecupero(r.recupero) };
 }
 
 // ─── Cajas (tesorería: la caja principal y la de cada vendedor) ─────────────

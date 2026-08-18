@@ -87,6 +87,23 @@ const AYUDA: Record<string, AyudaBloque> = {
       "noche le cierre cuadrado y el faltante no aparezca nunca. Si le querés dar caja chica para nafta o viáticos, " +
       "ponele el techo que te parezca: por encima de ese número, el gasto lo cargás vos desde la caja principal.",
   },
+  escalera: {
+    titulo: "Escalera de recupero",
+    texto:
+      "Cuando alguien se atrasa hay tres formas de recuperarlo, de la más blanda a la más definitiva: " +
+      "la promesa de pago (un compromiso verbal, no toca nada), el acuerdo (reparte lo vencido en cuotas y el " +
+      "crédito sobrevive) y la refinanciación (cierra el crédito y nace otro con toda la deuda). " +
+      "Acá decidís si hay que subir los escalones en orden o si el vendedor resuelve como pueda.",
+    puntos: [
+      "De fábrica está todo apagado: se puede ir directo a cualquiera de los tres.",
+      "Los mínimos de atraso evitan refinanciar a alguien por tres días de demora.",
+      "Exigir el acuerdo antes de refinanciar es la regla fuerte: obliga a intentar lo que se puede deshacer.",
+    ],
+    ejemplo:
+      "Un acuerdo roto devuelve el crédito exactamente como estaba y los punitorios vuelven a correr. " +
+      "Una refinanciación no se deshace: el crédito viejo muere, nace uno nuevo con toda la deuda adentro " +
+      "y al cliente se le descuentan 25 puntos de score. Por eso conviene que sea el último recurso y no el primero.",
+  },
   cobranza: {
     titulo: "Agenda de cobranza",
     texto: "Cada cuántos días alguien que debe y no fue contactado vuelve a aparecer en la cola del día.",
@@ -382,6 +399,9 @@ export function ConfigForm() {
   /** Patch anidado de la política de acuerdos (vive dentro de cobranza_config). */
   const setAcuerdos = (patch: Partial<CobranzaConfig["acuerdos"]>) =>
     setCobranza({ acuerdos: { ...cobranza.acuerdos, ...patch } });
+  /** Patch anidado de la escalera de recupero (vive dentro de cobranza_config). */
+  const setRecupero = (patch: Partial<CobranzaConfig["recupero"]>) =>
+    setCobranza({ recupero: { ...cobranza.recupero, ...patch } });
 
   const setCobranza = (patch: Partial<CobranzaConfig>) => {
     setForm(prev => prev ? { ...prev, cobranzaConfig: { ...defaultCobranza(), ...prev.cobranzaConfig, ...patch } } : prev);
@@ -1501,6 +1521,46 @@ export function ConfigForm() {
             </div>
           </Section>
 
+
+          {/* Escalera de recupero */}
+          <Section
+            title="Escalera de recupero"
+            desc="Si hay que agotar lo blando antes de lo irreversible: promesa → acuerdo → refinanciación."
+            ayuda={AYUDA.escalera}
+            onSave={() => save("cobranza", { cobranzaConfig: cobranza })}
+            saving={savingKey === "cobranza"} saved={savedKey === "cobranza"} dirty={isDirty("cobranza")}
+          >
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 max-w-xl">
+              <Field label="Días mínimos de atraso para un acuerdo" hint="Antes de eso no se puede armar. 0 = sin mínimo.">
+                <Input
+                  type="number" min="0" max="365" step="1"
+                  value={cobranza.recupero.dias_min_mora_acuerdo}
+                  onChange={e => setRecupero({ dias_min_mora_acuerdo: Math.max(0, Math.min(365, Math.round(parseFloat(e.target.value) || 0))) })}
+                />
+              </Field>
+              <Field label="Días mínimos de atraso para refinanciar" hint="La refinanciación mata el crédito y crea otro: conviene reservarla para el atraso grande. 0 = sin mínimo.">
+                <Input
+                  type="number" min="0" max="365" step="1"
+                  value={cobranza.recupero.dias_min_mora_refinanciar}
+                  onChange={e => setRecupero({ dias_min_mora_refinanciar: Math.max(0, Math.min(365, Math.round(parseFloat(e.target.value) || 0))) })}
+                />
+              </Field>
+            </div>
+            <div className="mt-4 flex flex-col gap-3 max-w-3xl">
+              <SwitchRow
+                title="Exigir haberlo contactado antes de armar un acuerdo"
+                desc="Sin al menos una gestión registrada, no se puede acordar. Evita el acuerdo de escritorio, armado sin hablar con el deudor."
+                checked={cobranza.recupero.exigir_gestion_para_acuerdo}
+                onChange={v => setRecupero({ exigir_gestion_para_acuerdo: v })}
+              />
+              <SwitchRow
+                title="Exigir un acuerdo roto antes de refinanciar"
+                desc="Obliga a agotar lo reversible primero. Un acuerdo que se rompe deja el crédito como estaba; una refinanciación no se deshace, y además le descuenta 25 puntos de score al cliente."
+                checked={cobranza.recupero.exigir_acuerdo_para_refinanciar}
+                onChange={v => setRecupero({ exigir_acuerdo_para_refinanciar: v })}
+              />
+            </div>
+          </Section>
           </>}
 
           {activeTab === "cajas" && (
@@ -1684,6 +1744,10 @@ function defaultCobranza(): CobranzaConfig {
       max_cuotas: 6, dias_entre_cuotas: 30, cuotas_para_romper: 1,
       congela_punitorios: true, saca_de_agenda: true,
       quita_max_vendedor_pct: 0,
+    },
+    recupero: {
+      exigir_gestion_para_acuerdo: false, dias_min_mora_acuerdo: 0,
+      exigir_acuerdo_para_refinanciar: false, dias_min_mora_refinanciar: 0,
     },
   };
 }

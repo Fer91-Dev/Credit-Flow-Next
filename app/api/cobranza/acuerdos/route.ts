@@ -2,6 +2,8 @@ import { requireRole, scopeCreditosVendedor } from "@/lib/auth";
 import { successResponse, errorResponse, withErrorHandler, assertSameOrigin } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
+import { assertPuedeAcordar } from "@/lib/recupero-server";
+import { getCobranzaConfig } from "@/lib/config";
 import { crearAcuerdo, anularAcuerdo, evaluarAcuerdoPersistido, serializarAcuerdo, sincronizarAcuerdos } from "@/lib/acuerdos";
 import { ESTADOS_ACUERDO } from "@/lib/domain";
 import { hoyComercial } from "@/lib/utils";
@@ -92,6 +94,11 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
       return errorResponse("El primer vencimiento no puede ser anterior a hoy", "FECHA_INVALIDA", 400);
     }
   }
+
+  // Escalera de recupero: si la financiera exige haber contactado antes, o un mínimo de
+  // atraso, se corta acá. Con la política en sus defaults esto nunca bloquea.
+  const { recupero } = await getCobranzaConfig(tenantId);
+  await assertPuedeAcordar(tenantId, body.credito_id, recupero);
 
   const acuerdo = await crearAcuerdo({
     tenantId,
