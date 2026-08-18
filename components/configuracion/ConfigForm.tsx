@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Check, Loader2, Percent, Plus, X, MessageSquare, Phone, Mail, HelpCircle } from "lucide-react";
-import { useConfiguracion, type ConfiguracionFinanciera, type GamificacionConfig, type RentabilidadConfig, type RiesgoConfig, type CobranzaConfig, type NotificacionesConfig } from "@/lib/swr";
+import { useConfiguracion, type ConfiguracionFinanciera, type GamificacionConfig, type RentabilidadConfig, type RiesgoConfig, type CobranzaConfig, type CajaConfig, type NotificacionesConfig } from "@/lib/swr";
 import { FeatureGate } from "@/components/providers/FeaturesProvider";
 import { FinancieraForm } from "@/components/configuracion/FinancieraForm";
 import { BackupsView } from "@/components/configuracion/BackupsView";
@@ -71,19 +71,29 @@ const AYUDA: Record<string, AyudaBloque> = {
       "Los días de gracia (Simulador → Cronograma) son la tolerancia antes de que empiece a correr.",
     ],
   },
-  cobranza: {
-    titulo: "Cobranza y control de pagos",
-    texto: "Tres controles operativos del día a día.",
+  cajas: {
+    titulo: "Control de las cajas",
+    texto:
+      "Cada vendedor tiene su propia caja: ahí entra lo que cobra y de ahí sale lo que rinde. La tuya es la caja principal. " +
+      "Estos dos números definen qué puede hacer alguien con la plata sin pedirte permiso.",
     puntos: [
-      "Días sin gestión: cada cuántos días un moroso sin contactar vuelve a aparecer en la agenda del día.",
-      "Días para anular un pago: ventana para revertir un cobro cargado por error (control de tesorería).",
-      "Gasto máximo del vendedor: cuánto puede descontar de su propia caja sin que lo apruebe un administrador.",
+      "Gasto máximo del vendedor: cuánto puede descontar de su caja por su cuenta. En 0 no puede ninguno.",
+      "Días para anular un cobro: la ventana para deshacer un pago cargado por error. Después queda firme.",
     ],
     ejemplo:
-      "El gasto del vendedor en 0 (como viene) significa que no puede sacar plata de su caja por su cuenta. " +
-      "Es a propósito: si pudiera, a un vendedor al que le faltan $80.000 le alcanzaría con anotar " +
-      "«combustible $80.000» para que su arqueo del día cierre cuadrado y el faltante no aparezca nunca. " +
-      "Si le querés dar caja chica, ponele el techo que te parezca — por encima de ese número, el gasto lo carga un admin.",
+      "El gasto en 0 (como viene) es a propósito. Todas las noches el vendedor cierra su caja: cuenta la plata y el sistema " +
+      "compara con lo que debería tener. Si falta, queda pendiente y lo resolvés vos con un motivo escrito. Si pudiera " +
+      "anotar gastos solo, a uno al que le faltan $80.000 le alcanzaría con escribir «combustible $80.000» para que esa " +
+      "noche le cierre cuadrado y el faltante no aparezca nunca. Si le querés dar caja chica para nafta o viáticos, " +
+      "ponele el techo que te parezca: por encima de ese número, el gasto lo cargás vos desde la caja principal.",
+  },
+  cobranza: {
+    titulo: "Agenda de cobranza",
+    texto: "Cada cuántos días alguien que debe y no fue contactado vuelve a aparecer en la cola del día.",
+    puntos: [
+      "Con 7, un moroso al que nadie llamó reaparece en «Hoy» a la semana de la última gestión.",
+      "Los controles de la plata (gastos y anulaciones) se mudaron a la sección Cajas.",
+    ],
   },
   acuerdos: {
     titulo: "Acuerdos de pago",
@@ -292,7 +302,7 @@ export function ConfigForm() {
    * y habría que rearmarla desde cero.
    */
   const modoRedondeoPrevio = useRef<"entero" | "multiplo" | null>(null);
-  const [activeTab, setActiveTab] = useState<"financiera" | "motor" | "simulador" | "comunicaciones" | "gamificacion" | "rentabilidad" | "riesgo" | "documentos" | "notificaciones" | "backups">("financiera");
+  const [activeTab, setActiveTab] = useState<"financiera" | "motor" | "simulador" | "comunicaciones" | "gamificacion" | "rentabilidad" | "riesgo" | "cajas" | "documentos" | "notificaciones" | "backups">("financiera");
 
   // Hidratar el form local cuando llega la config.
   useEffect(() => {
@@ -378,6 +388,13 @@ export function ConfigForm() {
     touch();
   };
 
+  // Cajas: controles de tesorería (tope de gasto del vendedor, ventana de anulación).
+  const caja = form?.cajaConfig ?? defaultCaja();
+  const setCaja = (patch: Partial<CajaConfig>) => {
+    setForm(prev => prev ? { ...prev, cajaConfig: { ...defaultCaja(), ...prev.cajaConfig, ...patch } } : prev);
+    touch();
+  };
+
   // Notificaciones in-app: qué avisos muestra la campanita.
   const notif = form?.notificacionesConfig ?? defaultNotificaciones();
   const setNotif = (patch: Partial<NotificacionesConfig>) => {
@@ -430,6 +447,7 @@ export function ConfigForm() {
       case "motor":         return f.convencionTasa !== c.convencionTasa || f.sistemaAmortizacion !== c.sistemaAmortizacion;
       case "mora":          return f.moraActiva !== c.moraActiva || f.tasaMoraDiaria !== c.tasaMoraDiaria;
       case "cobranza":      return !eq(f.cobranzaConfig ?? null, c.cobranzaConfig ?? null);
+      case "cajas":         return !eq(f.cajaConfig ?? null, c.cajaConfig ?? null);
       case "notificaciones": return !eq(f.notificacionesConfig ?? null, c.notificacionesConfig ?? null);
       case "imputacion":    return f.imputarCargos !== c.imputarCargos;
       case "presentacion":  return f.moneda !== c.moneda || f.locale !== c.locale;
@@ -486,6 +504,7 @@ export function ConfigForm() {
                 { key: "gamificacion",   label: "Gamificación",           emoji: "trophy" },
                 { key: "rentabilidad",   label: "Rentabilidad",           emoji: "chart-increasing" },
                 { key: "riesgo",         label: "Riesgo / Originación",   emoji: "shield" },
+                { key: "cajas",          label: "Cajas",                  emoji: "money-bag" },
                 { key: "documentos",     label: "Documentos",             emoji: "scroll" },
                 { key: "notificaciones", label: "Notificaciones",          emoji: "bell" },
                 { key: "backups",        label: "Respaldos",              emoji: "package" },
@@ -910,7 +929,7 @@ export function ConfigForm() {
           </Section>
 
           {/* Agenda de cobranza */}
-          <Section title="Cobranza y control de pagos" desc="Umbral de la agenda del día y la ventana para anular un pago cargado por error (control de tesorería)." ayuda={AYUDA.cobranza}
+          <Section title="Agenda de cobranza" desc="Cada cuántos días un moroso sin gestionar vuelve a aparecer en la cola del día." ayuda={AYUDA.cobranza}
             onSave={() => save("cobranza", { cobranzaConfig: cobranza })}
             saving={savingKey === "cobranza"} saved={savedKey === "cobranza"} dirty={isDirty("cobranza")}>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 max-w-xl">
@@ -919,20 +938,6 @@ export function ConfigForm() {
                   type="number" min="1" max="90" step="1"
                   value={cobranza.dias_sin_gestion}
                   onChange={e => setCobranza({ dias_sin_gestion: Math.max(1, Math.min(90, Math.round(parseFloat(e.target.value) || 1))) })}
-                />
-              </Field>
-              <Field label="Días para anular un pago" hint="Pasado este plazo desde que se registró el pago, ya no se puede anular (0 = solo el mismo día).">
-                <Input
-                  type="number" min="0" max="365" step="1"
-                  value={cobranza.dias_anulacion_pago}
-                  onChange={e => setCobranza({ dias_anulacion_pago: Math.max(0, Math.min(365, Math.round(parseFloat(e.target.value) || 0))) })}
-                />
-              </Field>
-              <Field label="Gasto máximo del vendedor ($)" hint="Cuánto puede descontar de su propia caja sin aprobación. En 0 no registra gastos: los carga un admin. Es lo que impide tapar un faltante anotándolo como gasto.">
-                <Input
-                  type="number" min="0" step="1000"
-                  value={cobranza.tope_gasto_vendedor}
-                  onChange={e => setCobranza({ tope_gasto_vendedor: Math.max(0, parseFloat(e.target.value) || 0) })}
                 />
               </Field>
             </div>
@@ -1486,6 +1491,39 @@ export function ConfigForm() {
           )}
 
           {/* ─── Documentos del crédito (solicitud/mutuo + pagaré) ─── */}
+          {activeTab === "cajas" && (
+          <Section
+            title="Control de las cajas"
+            desc="Quién puede sacar plata sin que la firme un administrador, y hasta cuándo se puede deshacer un cobro."
+            ayuda={AYUDA.cajas}
+            onSave={() => save("cajas", { cajaConfig: caja })}
+            saving={savingKey === "cajas"} saved={savedKey === "cajas"} dirty={isDirty("cajas")}
+          >
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 max-w-xl">
+              <Field
+                label="Gasto máximo del vendedor ($)"
+                hint="Cuánto puede descontar de su propia caja sin que lo apruebes. En 0 no registra ninguno: se los cargás vos."
+              >
+                <Input
+                  type="number" min="0" step="1000"
+                  value={caja.tope_gasto_vendedor}
+                  onChange={e => setCaja({ tope_gasto_vendedor: Math.max(0, parseFloat(e.target.value) || 0) })}
+                />
+              </Field>
+              <Field
+                label="Días para anular un cobro"
+                hint="Pasado este plazo desde que se registró, el cobro queda firme y solo se corrige con un ajuste de caja (0 = solo el mismo día)."
+              >
+                <Input
+                  type="number" min="0" max="365" step="1"
+                  value={caja.dias_anulacion_pago}
+                  onChange={e => setCaja({ dias_anulacion_pago: Math.max(0, Math.min(365, Math.round(parseFloat(e.target.value) || 0))) })}
+                />
+              </Field>
+            </div>
+          </Section>
+          )}
+
           {activeTab === "documentos" && (
           <Section
             title="Documentos del crédito"
@@ -1622,14 +1660,16 @@ function defaultRentabilidad(): RentabilidadConfig {
 function defaultCobranza(): CobranzaConfig {
   return {
     dias_sin_gestion: 7,
-    dias_anulacion_pago: 3,
     acuerdos: {
       max_cuotas: 6, dias_entre_cuotas: 30, cuotas_para_romper: 1,
       congela_punitorios: true, saca_de_agenda: true,
       quita_max_vendedor_pct: 0,
     },
-    tope_gasto_vendedor: 0,
   };
+}
+
+function defaultCaja(): CajaConfig {
+  return { tope_gasto_vendedor: 0, dias_anulacion_pago: 3 };
 }
 
 function defaultNotificaciones(): NotificacionesConfig {

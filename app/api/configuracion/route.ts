@@ -1,6 +1,6 @@
 import { requireAuth, requireRole } from "@/lib/auth";
 import { successResponse, errorResponse, withErrorHandler, assertSameOrigin } from "@/app/lib/api";
-import { getConfiguracion, guardarConfiguracion, getComunicacionConfig, guardarComunicacionConfig, getGamificacionConfig, guardarGamificacionConfig, getRentabilidadConfig, guardarRentabilidadConfig, getRiesgoConfig, guardarRiesgoConfig, getCobranzaConfig, guardarCobranzaConfig, getNotificacionesConfig, guardarNotificacionesConfig, getDocumentosConfig, guardarDocumentosConfig, type ComunicacionConfig } from "@/lib/config";
+import { getConfiguracion, guardarConfiguracion, getComunicacionConfig, guardarComunicacionConfig, getGamificacionConfig, guardarGamificacionConfig, getRentabilidadConfig, guardarRentabilidadConfig, getRiesgoConfig, guardarRiesgoConfig, getCobranzaConfig, guardarCobranzaConfig, getCajaConfig, guardarCajaConfig, getNotificacionesConfig, guardarNotificacionesConfig, getDocumentosConfig, guardarDocumentosConfig, type ComunicacionConfig } from "@/lib/config";
 import { resolverConfig, resolverGamificacion, resolverRentabilidad, resolverRiesgo, resolverDocumentos } from "@/lib/domain";
 import { registrarAuditoria } from "@/lib/audit";
 import type { NextRequest } from "next/server";
@@ -289,7 +289,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   // también el vendedor. La config del motor no es información sensible admin-only.
   // La ESCRITURA (PUT) sigue siendo solo admin.
   const { tenantId } = await requireAuth(req);
-  const [config, comm, gamificacion, rentabilidad, riesgo, cobranza, notificaciones, documentos] = await Promise.all([
+  const [config, comm, gamificacion, rentabilidad, riesgo, cobranza, notificaciones, documentos, caja] = await Promise.all([
     getConfiguracion(tenantId),
     getComunicacionConfig(tenantId),
     getGamificacionConfig(tenantId),
@@ -298,9 +298,10 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     getCobranzaConfig(tenantId),
     getNotificacionesConfig(tenantId),
     getDocumentosConfig(tenantId),
+    getCajaConfig(tenantId),
   ]);
   const riesgoMasked = { ...riesgo, bureau: { ...riesgo.bureau, token: riesgo.bureau.token ? MASKED : "" } };
-  return successResponse({ ...config, ...maskCommConfig(comm), gamificacionConfig: gamificacion, rentabilidadConfig: rentabilidad, riesgoConfig: riesgoMasked, cobranzaConfig: cobranza, notificacionesConfig: notificaciones, documentosConfig: documentos });
+  return successResponse({ ...config, ...maskCommConfig(comm), gamificacionConfig: gamificacion, rentabilidadConfig: rentabilidad, riesgoConfig: riesgoMasked, cobranzaConfig: cobranza, cajaConfig: caja, notificacionesConfig: notificaciones, documentosConfig: documentos });
 });
 
 /**
@@ -485,10 +486,14 @@ export const PUT = withErrorHandler(async (req: NextRequest) => {
   const riesgo = { ...riesgoRaw, bureau: { ...riesgoRaw.bureau, token: riesgoRaw.bureau.token ? MASKED : "" } };
 
   // Agenda de cobranza (días sin gestión para reaparecer en la cola).
+  if (body.cajaConfig !== undefined) {
+    await guardarCajaConfig(tenantId, body.cajaConfig);
+  }
   if (body.cobranzaConfig !== undefined) {
     await guardarCobranzaConfig(tenantId, body.cobranzaConfig);
   }
   const cobranza = await getCobranzaConfig(tenantId);
+  const caja = await getCajaConfig(tenantId);
 
   // Preferencias de notificaciones in-app (qué avisos muestra la campanita).
   if (body.notificacionesConfig !== undefined) {
@@ -504,5 +509,5 @@ export const PUT = withErrorHandler(async (req: NextRequest) => {
     meta: { campos: Object.keys(body) },
   });
 
-  return successResponse({ ...guardada, ...maskCommConfig(comm), gamificacionConfig: gamificacion, rentabilidadConfig: rentabilidad, riesgoConfig: riesgo, cobranzaConfig: cobranza, notificacionesConfig: notificaciones });
+  return successResponse({ ...guardada, ...maskCommConfig(comm), gamificacionConfig: gamificacion, rentabilidadConfig: rentabilidad, riesgoConfig: riesgo, cobranzaConfig: cobranza, cajaConfig: caja, notificacionesConfig: notificaciones });
 });

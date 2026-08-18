@@ -7,7 +7,7 @@ import { round2, etiquetaCaja, esCuentaValida, diasAtraso, type Cuenta } from "@
 import { siguienteNumeroComprobante } from "@/lib/comprobantes";
 import { lockCreditoTx, TX_PLATA } from "@/lib/locks";
 import { lockCuentaTx } from "@/lib/caja-fondos";
-import { getCobranzaConfig } from "@/lib/config";
+import { getCajaConfig } from "@/lib/config";
 import { nombreCompleto, formatCreditoNumero, hoyComercial } from "@/lib/utils";
 import type { NextRequest } from "next/server";
 
@@ -20,7 +20,7 @@ interface RouteParams {
  * Anula un cobro cargado por error, con buenas prácticas: NO borra el pago (lo marca
  * `anulado`), revierte la imputación en las cuotas, recalcula el crédito y hace un
  * CONTRA-ASIENTO en la caja (egreso que cancela el ingreso del cobro, con comprobante ANP).
- * Solo dentro de la ventana configurable `cobranza_config.dias_anulacion_pago` (desde el
+ * Solo dentro de la ventana configurable la configuración de Cajas (desde el
  * registro del pago). Todo queda auditado.
  *
  * Body opcional: { motivo?: string }
@@ -51,7 +51,7 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
   if (pago.anulado) return errorResponse("El pago ya está anulado", "INVALID_STATE", 400);
 
   // Ventana de anulación (tesorería): no se puede anular pasado el plazo desde el registro.
-  const { dias_anulacion_pago } = await getCobranzaConfig(tenantId);
+  const { dias_anulacion_pago } = await getCajaConfig(tenantId);
   const diasDesdeRegistro = Math.floor((Date.now() - pago.created_at.getTime()) / 86_400_000);
   if (diasDesdeRegistro > dias_anulacion_pago) {
     return errorResponse(

@@ -904,6 +904,7 @@ model configuraciones {
   gamificacion_config   Json? // { habilitado, periodo, pesos:{monto,cantidad,cobranza,calidad}, umbrales:{oro,plata,bronce} }
   rentabilidad_config   Json? // { habilitado, costo_fondeo_anual, otros_costos_mensuales } — costo de capital para rentabilidad NETA en Reportes
   riesgo_config         Json? // { politica: PoliticaOriginacion } — motor de riesgo/originación (feature premium; ver lib/domain/riesgo.ts)
+  caja_config           Json? // { tope_gasto_vendedor, dias_anulacion_pago } — tesorería: cuánto puede gastar solo un vendedor y hasta cuándo se puede anular un cobro
   cobranza_config       Json? // { dias_sin_gestion } — agenda de cobranza: cada cuántos días un moroso sin gestión vuelve a la cola
   notificaciones_config Json? // { movimientos_caja, respaldos, plan } — qué avisos in-app (campanita) se muestran
   documentos_config     Json? // DocumentosConfig — jurisdicción, punitorios, modo del pagaré y qué cláusulas

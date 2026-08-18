@@ -8,7 +8,7 @@ import { siguienteNumeroComprobante, formatComprobante, type SerieComprobante } 
 import { getDolarBlueVenta } from "@/lib/cotizacion";
 import { nombreCompleto, hoyComercial } from "@/lib/utils";
 import { assertFondosSuficientesTx } from "@/lib/caja-fondos";
-import { getCobranzaConfig } from "@/lib/config";
+import { getCajaConfig } from "@/lib/config";
 
 /**
  * Caja de un vendedor: todos los movimientos cuyo `vendedor_id` apunta a él.
@@ -240,11 +240,11 @@ export async function registrarGastoCajaVendedor(opts: {
    * su saldo de sistema bajaba $80.000 y el arqueo del día cerraba cuadrado, sin quedar
    * nunca `pendiente` y con el faltante documentado como gasto operativo.
    *
-   * Ahora el techo lo pone la financiera (`cobranza_config.tope_gasto_vendedor`), no el
+   * Ahora el techo lo pone la financiera (Configuración → Cajas), no el
    * vendedor. Arranca en 0 = no registra gastos por su cuenta, igual que
    * `quita_max_vendedor_pct`. Un admin siempre puede cargarlo desde la caja principal.
    */
-  const { tope_gasto_vendedor: tope } = await getCobranzaConfig(tenantId);
+  const { tope_gasto_vendedor: tope } = await getCajaConfig(tenantId);
   if (abs > tope) {
     throw new ApiError(
       tope === 0

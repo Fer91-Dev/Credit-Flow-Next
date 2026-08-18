@@ -13,7 +13,8 @@ import type {
   SimuladorConfig, DocumentosConfig, TipoMovimiento,
   PoliticaOriginacion, BureauConfig, BureauProveedor, RiesgoConfig,
 } from "@/lib/domain";
-import type { CobranzaConfig } from "@/lib/config";
+import type { CobranzaConfig, CajaConfig } from "@/lib/config";
+export type { CajaConfig };
 
 export type { SimuladorConfig, DocumentosConfig };
 
@@ -775,6 +776,8 @@ export interface ConfiguracionFinanciera {
   rentabilidadConfig?: RentabilidadConfig | null;
   riesgoConfig?: RiesgoConfig | null;
   cobranzaConfig?: CobranzaConfig | null;
+  /** Controles de tesorería de las cajas (tope de gasto del vendedor, ventana de anulación). */
+  cajaConfig?: CajaConfig | null;
   notificacionesConfig?: NotificacionesConfig | null;
   documentosConfig?: DocumentosConfig | null;
 }
