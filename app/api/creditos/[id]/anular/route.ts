@@ -2,6 +2,7 @@ import { requireRole, ApiError } from "@/lib/auth";
 import { successResponse, errorResponse, withErrorHandler, assertSameOrigin } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
+import { TX_PLATA } from "@/lib/locks";
 import { registrarAuditoria } from "@/lib/audit";
 import { aplicarYRegistrarStock } from "@/lib/stock";
 import { formatCreditoNumero, nombreCompleto, hoyComercial } from "@/lib/utils";
@@ -208,7 +209,7 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
     }
 
     return c;
-  });
+  }, TX_PLATA);
 
   await registrarAuditoria({
     tenantId,

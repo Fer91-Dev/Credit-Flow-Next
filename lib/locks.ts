@@ -13,6 +13,25 @@ import { ApiError } from "@/lib/auth";
  * endpoint nuevo que imputa un cobro o anula algo, tiene que pedir el mismo lock.
  */
 
+/**
+ * Opciones para las transacciones que MUEVEN PLATA.
+ *
+ * 🔴 El default de Prisma para una transacción interactiva es **5 segundos**, y las nuestras
+ * lo rozan: un cobro escribe el pago, el ledger `pago_cuota`, una fila por cuota tocada, el
+ * crédito y el movimiento de caja — más los locks y las relecturas de control. Contra una
+ * base con latencia (la de desarrollo está en us-east-1, ~186 ms por consulta) eso se pasa:
+ * medido, **5201 ms** en un cobro de 6 cuotas.
+ *
+ * Y el modo de fallar es de los peores: la transacción revienta a mitad de camino con
+ * "Transaction already closed", que `withErrorHandler` traduce a un 500 —o peor, a un 404
+ * opaco, porque el texto de Prisma contiene "not found"—. El operador ve "error interno"
+ * sobre un cobro que sí quería hacer.
+ *
+ * `maxWait` es cuánto espera para TOMAR una conexión del pool (importante ahora que los
+ * cobros del mismo crédito se serializan con un advisory lock).
+ */
+export const TX_PLATA = { timeout: 20_000, maxWait: 10_000 } as const;
+
 /** Lock por crédito: lo toman el cobro y la anulación de pago antes de tocar sus cuotas. */
 export async function lockCreditoTx(
   tx: Prisma.TransactionClient,

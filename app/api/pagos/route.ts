@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { sincronizarAcuerdos } from "@/lib/acuerdos";
 import { nombreCompleto, formatCreditoNumero, hoyComercial } from "@/lib/utils";
 import { imputarPagoEnCuotas, diasAtraso, round2, etiquetaCaja, cuentaDeMetodo, esCuentaValida, type CuotaParaImputar, moraDelCredito, moraDesdeCronograma, esCreditoVivo } from "@/lib/domain";
-import { lockCreditoTx, assertCuotasSinCambios } from "@/lib/locks";
+import { lockCreditoTx, assertCuotasSinCambios, TX_PLATA } from "@/lib/locks";
 import { lockCuentaTx } from "@/lib/caja-fondos";
 import { siguienteNumeroComprobante } from "@/lib/comprobantes";
 import { getConfiguracion } from "@/lib/config";
@@ -414,7 +414,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     }
 
     return p;
-  });
+  }, TX_PLATA);
 
   await registrarAuditoria({
     tenantId,

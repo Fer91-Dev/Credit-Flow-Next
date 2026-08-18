@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { registrarAuditoria } from "@/lib/audit";
 import { round2, etiquetaCaja, esCuentaValida, diasAtraso, type Cuenta } from "@/lib/domain";
 import { siguienteNumeroComprobante } from "@/lib/comprobantes";
-import { lockCreditoTx } from "@/lib/locks";
+import { lockCreditoTx, TX_PLATA } from "@/lib/locks";
 import { lockCuentaTx } from "@/lib/caja-fondos";
 import { getCobranzaConfig } from "@/lib/config";
 import { nombreCompleto, formatCreditoNumero, hoyComercial } from "@/lib/utils";
@@ -100,7 +100,7 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
 
   await prisma.$transaction(async (tx) => {
     /**
-     * 0) Ganar la carrera ANTES de tocar cuotas y caja.
+     * 0, TX_PLATA) Ganar la carrera ANTES de tocar cuotas y caja.
      *
      * 🔴 El chequeo `if (pago.anulado)` de arriba corre fuera de la transacción y el marcado
      * ocurría recién en el paso 5. Con dos requests simultáneas —doble clic en "Anular
