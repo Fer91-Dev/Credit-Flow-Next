@@ -94,17 +94,35 @@ async function ejecutarCron(req: NextRequest) {
     let errores = 0;
 
     for (const regla of REGLAS) {
+      /**
+       * TODAS las reglas se resuelven contra `proximo_pago`, con UNA fórmula.
+       *
+       * 🔴 Antes había dos caminos y los dos estaban mal:
+       *
+       *  · Las de MORA filtraban por `creditos.dias_mora`, que es un CACHE y solo se escribe
+       *    al cobrar — nada lo avanza día a día. Un crédito al que el cliente nunca le pagó
+       *    una cuota conserva `dias_mora = 0` desde que nació, así que **no matcheaba ninguna
+       *    regla y no recibía jamás un aviso de mora**: justo el deudor que más hay que
+       *    perseguir era el único al que el sistema no le escribía.
+       *
+       *  · La de RECORDATORIO (−3 = "tres días antes de vencer") calculaba `hoy + (−3)`, o
+       *    sea tres días ATRÁS, y buscaba cuotas ya vencidas. Disparaba un mensaje de
+       *    "se te viene el vencimiento" al tercer día de atraso.
+       *
+       * `regla.dias` son días de ATRASO (negativo = todavía falta para vencer), así que la
+       * cuota que buscamos venció hace `regla.dias` días: `hoy − regla.dias`. Con −3 da
+       * hoy + 3 (vence en tres días) y con 15 da hoy − 15 (venció hace quince). Una sola
+       * cuenta para las cinco reglas.
+       */
       const fechaObjetivo = new Date(hoy);
-      fechaObjetivo.setDate(hoy.getDate() + regla.dias); // negativo = días antes
+      fechaObjetivo.setDate(hoy.getDate() - regla.dias);
 
-      // Créditos activos que cumplen la condición de la regla
+      // Créditos vivos cuya cuota más vieja impaga vence (o venció) exactamente ese día.
       const creditos = await prisma.creditos.findMany({
         where: {
           tenant_id: config.tenant_id,
           estado: { in: [...ESTADOS_VIVOS] },
-          ...(regla.dias < 0
-            ? { proximo_pago: fechaObjetivo }          // cuota por vencer
-            : { dias_mora: regla.dias === 0 ? { gt: 0, lte: 1 } : regla.dias }),
+          proximo_pago: fechaObjetivo,
         },
         include: {
           cliente: { select: { nombre: true, apellido: true, telefono: true, email: true } },
