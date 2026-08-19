@@ -50,6 +50,12 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
         cliente: { select: { id: true, nombre: true, apellido: true, documento: true } },
         vendedor: { select: { id: true, nombre: true } },
         pagos: { orderBy: { fecha: "desc" }, take: 5 },
+        // Cobros VIVOS (sin los anulados). Va aparte de `pagos` porque cada uno responde
+        // una pregunta distinta: `tiene_pagos` decide si se puede ELIMINAR el crédito —y ahí
+        // los anulados cuentan, porque dejaron movimientos en la caja—, mientras que esto
+        // decide si al anular hay algo que devolverle al cliente. Un pago anulado ya se
+        // revirtió: no hay nada que devolver.
+        _count: { select: { pagos: { where: { anulado: false } } } },
         producto: { select: { id: true, nombre: true, categoria: true, imagen_url: true } },
       },
       orderBy: { created_at: "desc" },
@@ -93,7 +99,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     // cuotas, así que se valida contra el saldo (autoritativo, derivado del ledger).
     const estado = estadoCoherente(c.estado, c.saldo_pendiente);
     const { cuotas: _cuotas, ...credito } = c; // no viajan al cliente: solo alimentan la mora
-    return { ...credito, estado, dias_mora: dmora, interes_mora, tiene_pagos: c.pagos.length > 0 };
+    return { ...credito, estado, dias_mora: dmora, interes_mora, tiene_pagos: c.pagos.length > 0, cobros_vivos: c._count.pagos > 0 };
   });
 
   return successResponse({

@@ -196,7 +196,10 @@ export interface Credito {
   /** Interés moratorio calculado en el servidor (solo créditos con mora). */
   interes_mora?: number;
   /** True si el crédito tiene al menos un pago registrado (bloquea eliminar). */
+  /** Tiene ALGÚN pago, anulados incluidos: es lo que impide eliminar el crédito. */
   tiene_pagos?: boolean;
+  /** Tiene pagos NO anulados: es lo que decide si al anular hay algo que devolver. */
+  cobros_vivos?: boolean;
   /** True si nació de una refinanciación (no es plata nueva otorgada). */
   es_refinanciacion?: boolean;
   /** (En el nuevo) crédito original que esta refinanciación reemplaza. */

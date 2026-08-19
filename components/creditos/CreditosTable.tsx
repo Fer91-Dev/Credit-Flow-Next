@@ -504,7 +504,10 @@ export function CreditosTable({ role }: { role: Role }) {
 function AnularButton({ credito, onAnular }: { credito: Credito; onAnular: (id: string, motivo: string, accion: "devolver" | "conservar") => void }) {
   const [motivo, setMotivo] = useState("");
   const [accion, setAccion] = useState<"devolver" | "conservar">("devolver");
-  const tienePagos = !!credito.tiene_pagos;
+  // `cobros_vivos`, no `tiene_pagos`: si el único pago se anuló, ya se devolvió con su
+  // contra-asiento y no hay nada que decidir. Preguntarlo igual confunde y ofrece una acción
+  // que no haría nada.
+  const tienePagos = !!credito.cobros_vivos;
 
   return (
     <AlertDialog>
