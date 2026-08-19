@@ -2,16 +2,18 @@
 
 import { useState } from "react";
 import { useSWRConfig } from "swr";
-import { CalendarDays, Wallet, Info, ArrowUpRight, Receipt, Loader2, Printer, RefreshCw, ArrowRight, ShieldCheck, Ban } from "lucide-react";
+import { CalendarDays, Wallet, Info, ArrowUpRight, Receipt, Loader2, Printer, RefreshCw, ArrowRight, ShieldCheck, Ban, Edit2, Trash2 } from "lucide-react";
 import { refrescarNotificaciones, useAmortizacion, useCuotas, usePagosByCredito, useCreditos, KEYS, type Credito, type EstadoCuota, type Pago, type CuotaPersistida, useFinanciera } from "@/lib/swr";
 import { type Role } from "@/lib/auth/roles";
 import { abrirRecibo } from "@/lib/recibo";
 import { imprimirPlanPagos } from "@/lib/plan-print";
 import { PagoForm } from "@/components/pagos/PagoForm";
+import { LibreDeudaDialog } from "./LibreDeudaDialog";
 import { StatusBadge, type BadgeVariant } from "@/components/ui/StatusBadge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field, Textarea } from "@/components/ui/field";
 import { useToast } from "@/components/ui/toast";
+import { useConfirm } from "@/components/ui/confirm";
 import { formatCreditoNumero, formatFecha, nombreCompleto } from "@/lib/utils";
 import { Stat } from "@/components/ui/Stat";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -47,12 +49,32 @@ const metodoLabel: Record<string, string> = {
   cheque: "Cheque",
 };
 
+/** Botón secundario de la barra de acciones (todos iguales; el color lo pone el hover). */
+const BTN_ACCION =
+  "inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-medium " +
+  "text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-40";
+
 /**
- * Detalle de un crédito ya otorgado. Solo lectura.
- * Reúne tres fuentes existentes: el crédito (de la lista), su plan de
- * amortización (/amortizacion) y sus pagos imputados (/pagos?credito_id=).
+ * Detalle de un crédito ya otorgado, y el ÚNICO lugar donde se opera sobre él.
+ *
+ * Reúne tres fuentes existentes: el crédito (de la lista), su plan de amortización
+ * (/amortizacion) y sus pagos imputados (/pagos?credito_id=).
+ *
+ * Las acciones (editar / anular / eliminar / libre deuda) vivían apretadas como íconos sin
+ * texto en la fila de la tabla: había que pasar el mouse por cada uno para saber cuál era, y
+ * se disparaban desde una fila que no muestra ni el saldo real ni los pagos. Ahora se deciden
+ * acá, con el nombre escrito y al lado de los datos que las justifican.
  */
-export function CreditoDetail({ credito, role, onRefinanciar }: { credito: Credito; role?: Role; onRefinanciar?: (c: Credito) => void }) {
+export function CreditoDetail({ credito, role, onRefinanciar, onEditar, onCerrar }: {
+  credito: Credito;
+  role?: Role;
+  onRefinanciar?: (c: Credito) => void;
+  /** Abre el formulario de edición (vive en la pantalla contenedora, a pantalla completa). */
+  onEditar?: (id: string) => void;
+  /** Cierra el modal: lo llama tras anular o eliminar, cuando el crédito que se está
+   *  mostrando dejó de existir o cambió de estado y esta copia quedó vieja. */
+  onCerrar?: () => void;
+}) {
   // Refinanciable = crédito activo y en mora (misma regla que el server exige para reestructurar).
   const refinanciable = esCreditoVivo(credito.estado) && credito.dias_mora > 0;
   const { amortizacion } = useAmortizacion(credito.id);
@@ -90,6 +112,7 @@ export function CreditoDetail({ credito, role, onRefinanciar }: { credito: Credi
 
   const { mutate: globalMutate } = useSWRConfig();
   const toast = useToast();
+  const confirm = useConfirm();
   const [reciboBusy, setReciboBusy] = useState<string | null>(null);
   const [pagoOpen, setPagoOpen] = useState(false);
   /** Cuota que se está cobrando desde el cronograma (null = cobro libre desde el botón de arriba). */
@@ -97,6 +120,13 @@ export function CreditoDetail({ credito, role, onRefinanciar }: { credito: Credi
   const [anularPago, setAnularPago] = useState<Pago | null>(null);
   const [anularMotivo, setAnularMotivo] = useState("");
   const [anularBusy, setAnularBusy] = useState(false);
+  // Acciones sobre el CRÉDITO (distintas de las de un pago suelto).
+  const [libreDeudaOpen, setLibreDeudaOpen] = useState(false);
+  const [anularCreditoOpen, setAnularCreditoOpen] = useState(false);
+  const [anularCreditoMotivo, setAnularCreditoMotivo] = useState("");
+  const [accionPagos, setAccionPagos] = useState<"devolver" | "conservar">("devolver");
+  const [anularCreditoBusy, setAnularCreditoBusy] = useState(false);
+  const [eliminarBusy, setEliminarBusy] = useState(false);
 
   // Revalida cuotas/pagos/crédito + cachés globales tras cobrar o anular un pago.
   const revalidar = () => {
@@ -128,6 +158,59 @@ export function CreditoDetail({ credito, role, onRefinanciar }: { credito: Credi
       toast.error("No se pudo anular el pago");
     } finally {
       setAnularBusy(false);
+    }
+  };
+
+  /**
+   * Anula el CRÉDITO: lo deja sin efecto conservando el registro, y cuadra la caja
+   * (reversa del desembolso + devolución o conservación de lo cobrado).
+   */
+  const handleAnularCredito = async () => {
+    setAnularCreditoBusy(true);
+    try {
+      const res = await fetch(`/api/creditos/${credito.id}/anular`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ motivo: anularCreditoMotivo.trim(), accion_pagos: accionPagos }),
+      });
+      const json = await res.json();
+      if (!json.ok) { toast.error(json.error || "No se pudo anular el crédito"); return; }
+      toast.success(`Crédito ${formatCreditoNumero(credito.numero)} anulado`);
+      refrescarNotificaciones(); // movió caja: que la campanita avise ya
+      revalidar();
+      globalMutate(KEYS.vendedores); // las stats del vendedor excluyen anulados
+      setAnularCreditoOpen(false); setAnularCreditoMotivo("");
+      // La copia que muestra este modal quedó vieja (estado, saldo, caja): se cierra.
+      onCerrar?.();
+    } catch {
+      toast.error("No se pudo anular el crédito");
+    } finally {
+      setAnularCreditoBusy(false);
+    }
+  };
+
+  /** Borrado definitivo. El server lo rechaza si el crédito tiene pagos. */
+  const handleEliminarCredito = async () => {
+    const ok = await confirm({
+      title: `¿Eliminar crédito ${formatCreditoNumero(credito.numero)}?`,
+      description: `Se eliminará definitivamente el crédito de ${nombreCompleto(credito.cliente)} por $${n2(credito.monto_original)}, junto con su plan de cuotas. Esta acción no se puede deshacer.`,
+      confirmLabel: "Eliminar definitivamente",
+      tone: "danger",
+    });
+    if (!ok) return;
+    setEliminarBusy(true);
+    try {
+      const res = await fetch(`/api/creditos/${credito.id}`, { method: "DELETE" });
+      const json = await res.json();
+      if (!json.ok) { toast.error(json.error || "No se pudo eliminar el crédito"); return; }
+      toast.success(`Crédito ${formatCreditoNumero(credito.numero)} eliminado`);
+      revalidar();
+      globalMutate(KEYS.vendedores);
+      onCerrar?.();
+    } catch {
+      toast.error("No se pudo eliminar el crédito");
+    } finally {
+      setEliminarBusy(false);
     }
   };
 
@@ -163,7 +246,15 @@ export function CreditoDetail({ credito, role, onRefinanciar }: { credito: Credi
   const pagosVivos = pagos.filter(p => !p.anulado).length;
   const pagosAnulados = pagos.length - pagosVivos;
   const hayCargos = pagos.some(p => p.aplicado_cargos > 0);
+  /**
+   * Editar / anular / eliminar son admin en el server (`requireRole(["admin"])` en el PATCH,
+   * el DELETE y /anular). Mostrárselas a un vendedor era ofrecerle botones que terminan
+   * siempre en 403.
+   */
   const puedeAnular = role === "admin";
+  const esAdmin = role === "admin";
+  /** El libre deuda solo existe si el crédito está cancelado (el endpoint lo exige igual). */
+  const cancelado = credito.estado === "pagado";
 
   // Reimprime el mismo PDF "Plan de pagos" (vista cliente) que se ve al otorgar.
   // Reusa el plan de amortización ya cargado en el detalle.
@@ -407,9 +498,15 @@ export function CreditoDetail({ credito, role, onRefinanciar }: { credito: Credi
 
         {/* Pagos registrados */}
         <section className="space-y-2">
+          {/* El N° al lado del título: la ficha del cliente lista TODOS sus pagos, así que
+              acá hay que poder ver de un vistazo que estos son los de ESTE crédito. Va el
+              número, no una frase que lo explique. */}
           <div className="flex items-center gap-2">
             <ArrowUpRight className="h-4 w-4 text-success" />
             <h3 className="text-sm font-semibold text-foreground">Pagos registrados</h3>
+            <span className="font-mono text-[11px] text-muted-foreground">
+              {formatCreditoNumero(credito.numero)}
+            </span>
           </div>
           {loadingPagos ? (
             <Skeleton className="h-24 rounded-xl" />
@@ -485,6 +582,27 @@ export function CreditoDetail({ credito, role, onRefinanciar }: { credito: Credi
                   ))}
                 </tbody>
               </table>
+            </div>
+          )}
+
+          {/* Libre deuda — pegado a los recibos porque es el cierre de la misma historia: el
+              último comprobante de la lista es el que canceló el crédito, y el certificado es
+              el papel que lo dice. Aparece solo con el crédito cancelado (el endpoint lo exige
+              igual: con saldo devuelve error). */}
+          {cancelado && (
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-success/30 bg-success/[0.06] px-4 py-3">
+              <div className="min-w-0">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-success">Crédito cancelado</p>
+                <p className="font-mono text-xs tabular-nums text-muted-foreground">
+                  {pagosVivos} pago{pagosVivos !== 1 ? "s" : ""} · ${n2(totalCobrado)}
+                </p>
+              </div>
+              <button
+                onClick={() => setLibreDeudaOpen(true)}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-success/40 bg-success/10 px-3 py-1.5 text-xs font-semibold text-success transition-colors hover:bg-success/20"
+              >
+                <ShieldCheck className="h-3.5 w-3.5" /> Libre deuda
+              </button>
             </div>
           )}
 
@@ -633,6 +751,41 @@ export function CreditoDetail({ credito, role, onRefinanciar }: { credito: Credi
         </section>
       </div>
 
+      {/* ── Barra de acciones del crédito ──
+          Fija al pie: no se scrollea con el contenido, así que están siempre a mano sin
+          competir con la acción principal (cobrar la cuota, que son los botones verdes del
+          cronograma). Secundarias a propósito: bordeadas, y el color lo pone recién el hover
+          según lo que hace cada una. */}
+      {esAdmin && (
+        <div className="shrink-0 flex flex-wrap items-center justify-end gap-2 border-t border-border px-7 py-3">
+          {onEditar && (
+            <button onClick={() => onEditar(credito.id)} className={BTN_ACCION}>
+              <Edit2 className="h-3.5 w-3.5" /> Editar
+            </button>
+          )}
+          {credito.estado !== "anulado" && (
+            <button
+              onClick={() => { setAnularCreditoMotivo(""); setAccionPagos("devolver"); setAnularCreditoOpen(true); }}
+              className={`${BTN_ACCION} hover:border-warning/40 hover:bg-warning/10 hover:text-warning`}
+            >
+              <Ban className="h-3.5 w-3.5" /> Anular crédito
+            </button>
+          )}
+          {/* Con pagos registrados el server rechaza el DELETE: en vez de dejar un botón
+              apagado que solo se explica al pasar el mouse, no se muestra — la salida es
+              anularlo, que está justo al lado. */}
+          {!credito.tiene_pagos && (
+            <button
+              onClick={handleEliminarCredito}
+              disabled={eliminarBusy}
+              className={`${BTN_ACCION} hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive`}
+            >
+              {eliminarBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />} Eliminar
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Cobro del crédito — formulario de pago preseleccionado a este crédito */}
       <Dialog open={pagoOpen} onOpenChange={(o) => { if (!o) setPagoOpen(false); }}>
         <DialogContent className="w-[95vw] sm:max-w-xl max-h-[90dvh] flex flex-col overflow-hidden">
@@ -682,6 +835,65 @@ export function CreditoDetail({ credito, role, onRefinanciar }: { credito: Credi
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Anular el CRÉDITO — motivo + qué se hace con lo ya cobrado (la caja tiene que
+          cuadrar en las dos direcciones). */}
+      <Dialog open={anularCreditoOpen} onOpenChange={(o) => { if (!o) { setAnularCreditoOpen(false); setAnularCreditoMotivo(""); } }}>
+        <DialogContent className="w-[95vw] sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>¿Anular crédito {formatCreditoNumero(credito.numero)}?</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="rounded-lg border border-warning/20 bg-warning/5 px-3 py-2.5 text-xs text-muted-foreground">
+              El crédito de <strong className="text-foreground">{nombreCompleto(credito.cliente)}</strong> por{" "}
+              <span className="font-mono font-semibold text-foreground">${n2(credito.monto_original)}</span> queda{" "}
+              <strong className="text-foreground">anulado</strong>: se conservan registro, cuotas y pagos, y se revierte el desembolso en la caja.
+            </div>
+
+            <Field label="Motivo (opcional)" hint="Queda en la auditoría">
+              <Textarea
+                rows={2}
+                value={anularCreditoMotivo}
+                onChange={(e) => setAnularCreditoMotivo(e.target.value)}
+                placeholder="Ej.: cargado por error, no cumplió requisitos…"
+              />
+            </Field>
+
+            {/* `cobros_vivos`, no `tiene_pagos`: si el único pago ya se anuló, su
+                contra-asiento devolvió la plata y no hay nada que decidir. */}
+            {!!credito.cobros_vivos && (
+              <div className="space-y-1.5">
+                <span className="text-xs font-medium text-muted-foreground">El crédito tiene pagos. ¿Qué hacés con lo cobrado?</span>
+                <div className="grid grid-cols-2 gap-2">
+                  <button type="button" onClick={() => setAccionPagos("devolver")}
+                    className={`rounded-lg border px-3 py-2 text-xs font-medium transition-colors ${accionPagos === "devolver" ? "border-primary bg-primary/10 text-foreground" : "border-border text-muted-foreground hover:bg-muted"}`}>
+                    Devolver al cliente
+                  </button>
+                  <button type="button" onClick={() => setAccionPagos("conservar")}
+                    className={`rounded-lg border px-3 py-2 text-xs font-medium transition-colors ${accionPagos === "conservar" ? "border-primary bg-primary/10 text-foreground" : "border-border text-muted-foreground hover:bg-muted"}`}>
+                    Conservar en caja
+                  </button>
+                </div>
+                <p className="text-[11px] text-muted-foreground/70">
+                  {accionPagos === "devolver"
+                    ? "Se registra una devolución (egreso) por lo cobrado."
+                    : "Lo cobrado queda como ingreso en la caja."}
+                </p>
+              </div>
+            )}
+
+            <div className="flex justify-end gap-2">
+              <button onClick={() => { setAnularCreditoOpen(false); setAnularCreditoMotivo(""); }} className="rounded-lg px-3 py-1.5 text-xs text-muted-foreground hover:bg-muted">Volver</button>
+              <button onClick={handleAnularCredito} disabled={anularCreditoBusy} className="inline-flex items-center gap-1.5 rounded-lg bg-warning px-3 py-1.5 text-xs font-medium text-warning-foreground hover:bg-warning/90 disabled:opacity-50">
+                {anularCreditoBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Ban className="h-3.5 w-3.5" />} Anular crédito
+              </button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Certificado de libre deuda (solo con el crédito cancelado). */}
+      <LibreDeudaDialog creditoId={libreDeudaOpen ? credito.id : null} onClose={() => setLibreDeudaOpen(false)} />
     </div>
   );
 }
