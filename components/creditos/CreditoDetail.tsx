@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useSWRConfig } from "swr";
 import { CalendarDays, Wallet, Info, ArrowUpRight, Receipt, Loader2, Printer, RefreshCw, ArrowRight, ShieldCheck, Ban } from "lucide-react";
-import { refrescarNotificaciones, useAmortizacion, useCuotas, usePagosByCredito, useCreditos, KEYS, type Credito, type EstadoCuota, type Pago, useFinanciera } from "@/lib/swr";
+import { refrescarNotificaciones, useAmortizacion, useCuotas, usePagosByCredito, useCreditos, KEYS, type Credito, type EstadoCuota, type Pago, type CuotaPersistida, useFinanciera } from "@/lib/swr";
 import { type Role } from "@/lib/auth/roles";
 import { abrirRecibo } from "@/lib/recibo";
 import { imprimirPlanPagos } from "@/lib/plan-print";
@@ -92,6 +92,8 @@ export function CreditoDetail({ credito, role, onRefinanciar }: { credito: Credi
   const toast = useToast();
   const [reciboBusy, setReciboBusy] = useState<string | null>(null);
   const [pagoOpen, setPagoOpen] = useState(false);
+  /** Cuota que se está cobrando desde el cronograma (null = cobro libre desde el botón de arriba). */
+  const [cuotaACobrar, setCuotaACobrar] = useState<CuotaPersistida | null>(null);
   const [anularPago, setAnularPago] = useState<Pago | null>(null);
   const [anularMotivo, setAnularMotivo] = useState("");
   const [anularBusy, setAnularBusy] = useState(false);
@@ -139,6 +141,7 @@ export function CreditoDetail({ credito, role, onRefinanciar }: { credito: Credi
   // crédito + las cachés globales de cartera/pagos/dashboard/caja.
   const handlePagoClose = (success?: boolean) => {
     setPagoOpen(false);
+    setCuotaACobrar(null);
     if (success) {
       globalMutate(`/api/creditos/${credito.id}/cuotas`);
       globalMutate(`/api/creditos/${credito.id}/amortizacion`);
@@ -152,6 +155,8 @@ export function CreditoDetail({ credito, role, onRefinanciar }: { credito: Credi
 
   // Solo se puede cobrar un crédito activo con saldo pendiente.
   const puedeCobrar = esCreditoVivo(credito.estado) && credito.saldo_pendiente > 0;
+  /** Abre la terminal de cobro con el importe de ESA cuota ya cargado. */
+  const cobrarCuota = (q: CuotaPersistida) => { setCuotaACobrar(q); setPagoOpen(true); };
 
   const est = estadoBadge(credito.estado);
   const totalCobrado = pagos.filter(p => !p.anulado).reduce((s, p) => s + p.monto, 0);
@@ -587,7 +592,22 @@ export function CreditoDetail({ credito, role, onRefinanciar }: { credito: Credi
                         <td className="px-3 py-2 text-right font-mono text-foreground tabular-nums border-b border-border/70">${n2(q.cuota_total)}</td>
                         <td className="px-3 py-2 text-right font-mono text-warning tabular-nums border-b border-border/70 hidden sm:table-cell">${n2(q.interes)}</td>
                         <td className="px-3 py-2 text-right font-mono text-primary tabular-nums border-b border-border/70">${n2(q.capital)}</td>
-                        <td className="px-3 py-2 pr-4 border-b border-border/70"><StatusBadge label={b.label} variant={b.variant} /></td>
+                        <td className="px-3 py-2 border-b border-border/70"><StatusBadge label={b.label} variant={b.variant} /></td>
+                        {/* Cobrar ESTA cuota, con su importe final a la vista. Antes había que
+                            abrir el cobro, buscar el crédito y tildar la cuota: cuatro pasos
+                            para lo que se hace veinte veces por día. */}
+                        <td className="px-3 py-2 pr-4 text-right border-b border-border/70">
+                          {q.estado === "pagada" || !puedeCobrar ? null : (
+                            <button
+                              onClick={() => cobrarCuota(q)}
+                              title={`Cobrar la ${unidadCuota} ${q.nro}`}
+                              className="inline-flex items-center gap-1.5 rounded-lg border border-success/40 bg-success/10 px-2.5 py-1 font-mono tabular-nums text-[11px] font-semibold text-success transition-colors hover:bg-success/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-success/40"
+                            >
+                              ${n2(q.total_cobrar ?? q.cuota_total)}
+                              {(q.mora ?? 0) > 0 && <span className="font-sans font-normal text-destructive/80">+mora</span>}
+                            </button>
+                          )}
+                        </td>
                       </tr>
                     );
                   })}
@@ -615,7 +635,20 @@ Totales</td>
             <DialogTitle>Registrar pago · {formatCreditoNumero(credito.numero)}</DialogTitle>
           </DialogHeader>
           <div className="flex-1 min-h-0 overflow-y-auto">
-            {pagoOpen && <PagoForm creditoId={credito.id} onClose={handlePagoClose} />}
+            {pagoOpen && (
+              <PagoForm
+                creditoId={credito.id}
+                onClose={handlePagoClose}
+                {...(cuotaACobrar
+                  ? {
+                      montoSugerido: cuotaACobrar.total_cobrar ?? cuotaACobrar.cuota_total,
+                      motivoSugerido:
+                        `${cap(unidadCuota)} ${cuotaACobrar.nro} · vence ${fmtDate(cuotaACobrar.fecha_vencimiento)}` +
+                        ((cuotaACobrar.mora ?? 0) > 0 ? ` · incluye $${n2(cuotaACobrar.mora ?? 0)} de mora` : ""),
+                    }
+                  : {})}
+              />
+            )}
           </div>
         </DialogContent>
       </Dialog>

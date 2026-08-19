@@ -525,6 +525,10 @@ export interface CuotaPersistida {
   pagado_mora?: number;
   pagado_cargos?: number;
   restante_capital: number;
+  /** Mora devengada de ESTA cuota, calculada por el motor con las condiciones congeladas. */
+  mora?: number;
+  /** Lo que hay que cobrar para saldarla hoy: lo que falta de la cuota + su mora. */
+  total_cobrar?: number;
   /** Recibos que imputaron a la cuota (comprobante REC + fecha/hora del pago + monto aplicado). */
   comprobantes?: { comprobante: string | null; fecha: string; fecha_hora: string; monto: number }[];
 }

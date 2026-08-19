@@ -2,7 +2,8 @@ import { requireAuth, scopeCreditosVendedor } from "@/lib/auth";
 import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
-import { frecuenciaLabel, normalizarFrecuencia, diasAtraso, round2, type FrecuenciaDef } from "@/lib/domain";
+import { frecuenciaLabel, normalizarFrecuencia, diasAtraso, round2, interesMora, moraDelCredito, moraDesdeCronograma, type FrecuenciaDef } from "@/lib/domain";
+import { getConfiguracion } from "@/lib/config";
 import { formatComprobante } from "@/lib/comprobantes";
 import { nombreCompleto, hoyComercial } from "@/lib/utils";
 import type { NextRequest } from "next/server";
@@ -29,6 +30,7 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
       id: true,
       frecuencia: true,
       frecuencia_def: true,
+      cronograma: true, // condiciones de mora congeladas al otorgar
       cliente: { select: { nombre: true, apellido: true } },
       cuotas: {
         orderBy: { nro: "asc" },
@@ -54,6 +56,19 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
   // Día comercial argentino, no el ahora en UTC: entre las 21:00 y la medianoche de
   // Argentina, una cuota que vence hoy se mostraba ya como vencida en el cronograma.
   const hoy = hoyComercial();
+
+  /**
+   * Mora POR CUOTA, para poder cobrar una sola desde el cronograma.
+   *
+   * Se calcula acá y no en la pantalla a propósito: la mora depende de las condiciones
+   * CONGELADAS en el crédito (tasa, días de gracia) y de la misma fórmula con la que se
+   * imputa al cobrar. Replicarla en el navegador sería una segunda fuente para un número
+   * que es plata — el error que ya se pagó caro con los cargos del plan.
+   */
+  const config = await getConfiguracion(tenantId);
+  const moraCred = moraDelCredito(moraDesdeCronograma(credito.cronograma), config);
+  const graciaCred = (credito.cronograma as { diasGracia?: number } | null)?.diasGracia ?? config.simulador.diasGracia;
+
   const cuotas = credito.cuotas.map((c) => {
     const restante_capital = round2(Math.max(0, c.capital - c.pagado_capital));
     const capitalSaldado = c.pagado_capital >= round2(c.capital);
@@ -64,6 +79,12 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
     else if (diasAtraso(c.fecha_vencimiento, hoy) > 0) estado = "vencida";
     else if (c.pagado_capital > 0 || c.pagado_interes > 0 || c.pagado_mora > 0 || c.pagado_cargos > 0) estado = "parcial";
     else estado = "pendiente";
+    const moraPlena = moraCred.moraActiva
+      ? interesMora(c.cuota_total, diasAtraso(c.fecha_vencimiento, hoy), { tasaDiaria: moraCred.tasaMoraDiaria, diasGracia: graciaCred })
+      : 0;
+    const moraPend = capitalSaldado ? 0 : round2(Math.max(0, moraPlena - c.pagado_mora));
+    const pendienteCuota = round2(Math.max(0, c.cuota_total - (c.pagado_capital + c.pagado_interes + c.pagado_cargos)));
+
     // Recibos (comprobantes) que imputaron a esta cuota.
     const comprobantes = c.aplicaciones
       .map((a) => {
@@ -92,6 +113,10 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
       pagado_mora: c.pagado_mora,
       pagado_cargos: c.pagado_cargos,
       restante_capital,
+      // Mora devengada de ESTA cuota (0 si no venció o si la financiera la tiene apagada).
+      mora: moraPend,
+      // Lo que hay que cobrar para saldarla HOY: lo que falta de la cuota más su mora.
+      total_cobrar: round2(pendienteCuota + moraPend),
       comprobantes,
     };
   });
