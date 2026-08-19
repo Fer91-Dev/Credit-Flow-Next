@@ -6,7 +6,7 @@ import { calcularDeudaConsolidada, aplicarQuita, construirPlanAmortizacion, plan
 import { getConfiguracion, getCobranzaConfig } from "@/lib/config";
 import { quitaMaxima } from "@/lib/domain/acuerdos";
 import { lockNumeroCreditoTx, TX_PLATA } from "@/lib/locks";
-import { assertPuedeRefinanciar } from "@/lib/recupero-server";
+import { assertPuedeRefinanciar, assertPuedeUsarTasa } from "@/lib/recupero-server";
 import { registrarAuditoria } from "@/lib/audit";
 import { formatCreditoNumero, nombreCompleto, hoyComercial } from "@/lib/utils";
 import type { NextRequest } from "next/server";
@@ -139,10 +139,6 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
   if ("error" in r && r.error) return r.error;
   const { credito, config, deuda, tenantId, role, userId, nombre, email } = r as Extract<typeof r, { credito: object }>;
   const cobranzaCfg = await getCobranzaConfig(tenantId);
-  // Escalera de recupero: la refinanciación es el escalón irreversible (mata el crédito y
-  // crea otro). Si la financiera exige agotar antes el acuerdo de pago, se corta acá.
-  await assertPuedeRefinanciar(tenantId, id, cobranzaCfg.recupero);
-
   let body: any;
   try {
     body = await req.json();
@@ -150,10 +146,18 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
     return errorResponse("Body JSON inválido", "INVALID_JSON", 400);
   }
 
+  // Escalera de recupero: la refinanciación es el escalón irreversible (mata el crédito y
+  // crea otro). Si la financiera exige agotar antes el acuerdo de pago, se corta acá.
+  // Va DESPUÉS de leer el body: la autorización del admin viene ahí.
+  const actorEscalera = { role, autorizacionAdmin: body?.autorizacion_admin === true };
+  await assertPuedeRefinanciar(tenantId, id, cobranzaCfg.recupero, actorEscalera);
+
   const tasa = Number(body.tasa);
   const plazoMeses = Math.trunc(Number(body.plazo_meses));
   if (!isFinite(tasa) || tasa < 0) return errorResponse("Tasa inválida", "INVALID_INPUT", 400);
   if (!isFinite(plazoMeses) || plazoMeses < 1) return errorResponse("Plazo inválido (mínimo 1 cuota)", "INVALID_INPUT", 400);
+  // Piso de tasa: refinanciar más barato es una quita que esquiva el tope de las quitas.
+  assertPuedeUsarTasa(tasa, credito.tasa, cobranzaCfg.recupero, actorEscalera);
 
   // Quita opcional sobre la base consolidada (condonación parcial como incentivo).
   const quitaTipo = (["ninguna", "porcentaje", "monto"].includes(body.quita_tipo) ? body.quita_tipo : "ninguna") as TipoQuita;

@@ -66,7 +66,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
   assertSameOrigin(req);
   const { tenantId, role, vendedorId } = await requireRole(["admin", "vendedor"], req);
 
-  let body: { credito_id?: string; cuotas?: number; quita?: number; primer_vencimiento?: string; notas?: string };
+  let body: { credito_id?: string; cuotas?: number; quita?: number; primer_vencimiento?: string; notas?: string; autorizacion_admin?: boolean };
   try {
     body = await req.json();
   } catch {
@@ -98,7 +98,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
   // Escalera de recupero: si la financiera exige haber contactado antes, o un mínimo de
   // atraso, se corta acá. Con la política en sus defaults esto nunca bloquea.
   const { recupero } = await getCobranzaConfig(tenantId);
-  await assertPuedeAcordar(tenantId, body.credito_id, recupero);
+  await assertPuedeAcordar(tenantId, body.credito_id, recupero, { role, autorizacionAdmin: body.autorizacion_admin === true });
 
   const acuerdo = await crearAcuerdo({
     tenantId,

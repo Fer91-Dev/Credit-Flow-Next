@@ -117,6 +117,19 @@ export interface RecuperoConfig {
   exigir_acuerdo_para_refinanciar: boolean;
   /** Mínimo de días de atraso para poder refinanciar. 0 = sin mínimo. */
   dias_min_mora_refinanciar: number;
+  /**
+   * La refinanciación no puede pactarse por DEBAJO de la tasa del crédito original.
+   *
+   * 🔴 Sin esto, bajar la tasa al refinanciar es una quita invisible: sobre una deuda
+   * consolidada de $221.000 a 3 cuotas, pasar de 60% a 20% TNA le regala al cliente unos
+   * $15.000 — más de lo que el tope de condonación permite— y no figura como quita en
+   * ningún lado, así que esquiva ese control entero.
+   *
+   * Subirla sigue libre: refinanciar más caro a quien ya incumplió es una decisión
+   * comercial legítima. Y un admin puede pactar por debajo con `autorizacion_admin`, que
+   * queda auditada — el que regala plata es el dueño, no el que atiende.
+   */
+  no_bajar_tasa_refinanciando: boolean;
 }
 
 export const RECUPERO_DEFAULT: RecuperoConfig = {
@@ -124,6 +137,7 @@ export const RECUPERO_DEFAULT: RecuperoConfig = {
   dias_min_mora_acuerdo: 0,
   exigir_acuerdo_para_refinanciar: false,
   dias_min_mora_refinanciar: 0,
+  no_bajar_tasa_refinanciando: true,
 };
 
 export function resolverRecupero(raw: unknown): RecuperoConfig {
@@ -137,6 +151,10 @@ export function resolverRecupero(raw: unknown): RecuperoConfig {
     dias_min_mora_acuerdo: dia(r.dias_min_mora_acuerdo, RECUPERO_DEFAULT.dias_min_mora_acuerdo),
     exigir_acuerdo_para_refinanciar: r.exigir_acuerdo_para_refinanciar === true,
     dias_min_mora_refinanciar: dia(r.dias_min_mora_refinanciar, RECUPERO_DEFAULT.dias_min_mora_refinanciar),
+    // Protector por defecto: es el único de la escalera que arranca prendido, porque no
+    // ordena un proceso — tapa una fuga de plata.
+    no_bajar_tasa_refinanciando:
+      r.no_bajar_tasa_refinanciando === false ? false : RECUPERO_DEFAULT.no_bajar_tasa_refinanciando,
   };
 }
 
@@ -167,6 +185,24 @@ export function puedeAcordar(s: SenalesRecupero, cfg: RecuperoConfig): Veredicto
     };
   }
   return PERMITIDO;
+}
+
+/**
+ * ¿Se puede pactar ESA tasa al refinanciar? Separada de `puedeRefinanciar` porque se evalúa
+ * más tarde: la tasa recién se conoce cuando el operador la escribe.
+ */
+export function puedeUsarTasa(
+  tasaNueva: number,
+  tasaOriginal: number,
+  cfg: RecuperoConfig,
+): VeredictoEscalera {
+  if (!cfg.no_bajar_tasa_refinanciando) return PERMITIDO;
+  if (!Number.isFinite(tasaNueva) || tasaNueva >= tasaOriginal) return PERMITIDO;
+  return {
+    permitido: false,
+    motivo: `La refinanciación no puede pactarse por debajo de la tasa del crédito original (${tasaOriginal}%). Bajarla es una condonación encubierta: no queda registrada como quita ni respeta su tope.`,
+    sugerencia: "Si querés hacerle una concesión, usá la quita: sale de la mora y el interés, tiene tope y queda auditada.",
+  };
 }
 
 /** ¿Se le puede refinanciar? (además de estar en mora y vivo, que valida el server) */

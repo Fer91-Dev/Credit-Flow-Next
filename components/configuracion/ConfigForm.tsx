@@ -98,6 +98,8 @@ const AYUDA: Record<string, AyudaBloque> = {
       "De fábrica está todo apagado: se puede ir directo a cualquiera de los tres.",
       "Los mínimos de atraso evitan refinanciar a alguien por tres días de demora.",
       "Exigir el acuerdo antes de refinanciar es la regla fuerte: obliga a intentar lo que se puede deshacer.",
+      "El piso de tasa viene prendido: es el único que no ordena un proceso, tapa una fuga de plata.",
+      "Un administrador puede pasar por encima de cualquiera de estas reglas; el vendedor no. Queda auditado.",
     ],
     ejemplo:
       "Un acuerdo roto devuelve el crédito exactamente como estaba y los punitorios vuelven a correr. " +
@@ -1564,6 +1566,12 @@ export function ConfigForm() {
                 onChange={v => setRecupero({ exigir_gestion_para_acuerdo: v })}
               />
               <SwitchRow
+                title="No refinanciar por debajo de la tasa original"
+                desc="Bajar la tasa al refinanciar es una condonación encubierta: no queda registrada como quita ni respeta su tope. Sobre una deuda de $221.000 a 3 cuotas, pasar de 60% a 20% regala unos $15.000. Subirla sigue libre, y un administrador puede autorizar la baja igual."
+                checked={cobranza.recupero.no_bajar_tasa_refinanciando}
+                onChange={v => setRecupero({ no_bajar_tasa_refinanciando: v })}
+              />
+              <SwitchRow
                 title="Exigir un acuerdo roto antes de refinanciar"
                 desc="Obliga a agotar lo reversible primero. Un acuerdo que se rompe deja el crédito como estaba; una refinanciación no se deshace, y además le descuenta 25 puntos de score al cliente."
                 checked={cobranza.recupero.exigir_acuerdo_para_refinanciar}
@@ -1758,6 +1766,7 @@ function defaultCobranza(): CobranzaConfig {
     recupero: {
       exigir_gestion_para_acuerdo: false, dias_min_mora_acuerdo: 0,
       exigir_acuerdo_para_refinanciar: false, dias_min_mora_refinanciar: 0,
+      no_bajar_tasa_refinanciando: true,
     },
   };
 }

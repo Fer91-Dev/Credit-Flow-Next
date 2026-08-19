@@ -10,7 +10,7 @@ import { prisma } from "@/lib/prisma";
 import { withTenant } from "@/app/lib/db";
 import { hoyComercial } from "@/lib/utils";
 import {
-  etapaRecupero, puedeAcordar, puedeRefinanciar, diasMoraActual,
+  etapaRecupero, puedeAcordar, puedeRefinanciar, puedeUsarTasa, diasMoraActual,
   type SenalesRecupero, type EtapaRecupero, type RecuperoConfig, type VeredictoEscalera,
 } from "@/lib/domain";
 import { ApiError } from "@/lib/auth";
@@ -66,21 +66,59 @@ export async function etapaDeCredito(tenantId: string, creditoId: string): Promi
 }
 
 /**
+ * Quién pide la operación y si viene con la autorización explícita del admin.
+ *
+ * 🔴 Toda regla de escalera necesita una válvula de escape, o alguien termina editando la
+ * base un domingo. El criterio es el mismo que ya usa el motor de riesgo con
+ * `autorizacion_riesgo`: el vendedor no puede saltarse la regla, el admin sí, asumiendo la
+ * decisión — y queda auditada.
+ */
+export interface ActorEscalera {
+  role: string;
+  /** El admin marcó explícitamente que quiere seguir igual. */
+  autorizacionAdmin?: boolean;
+}
+
+/** `true` si este actor puede pasar por encima de la regla. */
+function autorizaAdmin(actor?: ActorEscalera): boolean {
+  return actor?.role === "admin" && actor.autorizacionAdmin === true;
+}
+
+/**
  * Hace cumplir la escalera antes de un ACUERDO. Lanza 409 con el motivo y la sugerencia.
  * Con la config en sus defaults nunca lanza — la escalera arranca apagada.
  */
-export async function assertPuedeAcordar(tenantId: string, creditoId: string, cfg: RecuperoConfig): Promise<void> {
-  lanzarSiBloquea(puedeAcordar(await senalesRecupero(tenantId, creditoId), cfg), "ESCALERA_ACUERDO");
+export async function assertPuedeAcordar(
+  tenantId: string, creditoId: string, cfg: RecuperoConfig, actor?: ActorEscalera,
+): Promise<void> {
+  lanzarSiBloquea(puedeAcordar(await senalesRecupero(tenantId, creditoId), cfg), "ESCALERA_ACUERDO", actor);
 }
 
 /** Ídem para la REFINANCIACIÓN, que es el escalón irreversible. */
-export async function assertPuedeRefinanciar(tenantId: string, creditoId: string, cfg: RecuperoConfig): Promise<void> {
-  lanzarSiBloquea(puedeRefinanciar(await senalesRecupero(tenantId, creditoId), cfg), "ESCALERA_REFINANCIACION");
+export async function assertPuedeRefinanciar(
+  tenantId: string, creditoId: string, cfg: RecuperoConfig, actor?: ActorEscalera,
+): Promise<void> {
+  lanzarSiBloquea(puedeRefinanciar(await senalesRecupero(tenantId, creditoId), cfg), "ESCALERA_REFINANCIACION", actor);
 }
 
-function lanzarSiBloquea(v: VeredictoEscalera, code: string): void {
+/**
+ * La tasa pactada no puede quedar por debajo de la del crédito original: bajarla es una
+ * quita que no pasa por el tope de las quitas ni queda registrada como tal.
+ */
+export function assertPuedeUsarTasa(
+  tasaNueva: number, tasaOriginal: number, cfg: RecuperoConfig, actor?: ActorEscalera,
+): void {
+  lanzarSiBloquea(puedeUsarTasa(tasaNueva, tasaOriginal, cfg), "TASA_MENOR_A_ORIGINAL", actor);
+}
+
+function lanzarSiBloquea(v: VeredictoEscalera, code: string, actor?: ActorEscalera): void {
   if (v.permitido) return;
+  if (autorizaAdmin(actor)) return; // el admin asume la decisión (se audita en el caller)
   // El mensaje lleva la sugerencia pegada: una negativa sin alternativa deja al operador
-  // frente al cliente sin saber qué ofrecerle.
-  throw new ApiError([v.motivo, v.sugerencia].filter(Boolean).join(" "), code, 409);
+  // frente al cliente sin saber qué ofrecerle. Y si quien pregunta es admin, se le dice que
+  // puede seguir igual — si no, el 409 parece un bug del sistema.
+  const puedeForzar = actor?.role === "admin"
+    ? " Como administrador podés autorizarlo igual, y queda registrado."
+    : "";
+  throw new ApiError([v.motivo, v.sugerencia].filter(Boolean).join(" ") + puedeForzar, code, 409);
 }
