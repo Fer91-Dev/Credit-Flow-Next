@@ -579,7 +579,8 @@ export function CreditoDetail({ credito, role, onRefinanciar }: { credito: Credi
                     <th className="px-3 py-2.5 text-right font-semibold text-foreground border-b border-border">Cuota</th>
                     <th className="px-3 py-2.5 text-right font-semibold text-warning border-b border-border hidden sm:table-cell">Interés</th>
                     <th className="px-3 py-2.5 text-right font-semibold text-primary border-b border-border">Capital</th>
-                    <th className="px-3 py-2 text-left  font-semibold text-muted-foreground border-b border-border pr-4">Estado</th>
+                    <th className="px-3 py-2.5 text-left  font-semibold text-muted-foreground border-b border-border">Estado</th>
+                    <th className="px-3 py-2.5 text-right font-semibold text-muted-foreground border-b border-border pr-4">Cobrar</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -614,12 +615,11 @@ export function CreditoDetail({ credito, role, onRefinanciar }: { credito: Credi
                 </tbody>
                 <tfoot>
                   <tr className="bg-muted/20">
-                    <td colSpan={2} className="px-3 py-2.5 text-[10px] font-bold text-muted-foreground uppercase tracking-widest border-t border-border">
-Totales</td>
+                    <td colSpan={2} className="px-3 py-2.5 text-[10px] font-bold text-muted-foreground uppercase tracking-widest border-t border-border">Totales</td>
                     <td className="px-3 py-2.5 text-right font-mono font-bold text-foreground border-t border-border">${n2(cuotas.reduce((s, q) => s + q.cuota_total, 0))}</td>
                     <td className="px-3 py-2.5 text-right font-mono font-bold text-warning border-t border-border hidden sm:table-cell">${n2(cuotas.reduce((s, q) => s + q.interes, 0))}</td>
                     <td className="px-3 py-2.5 text-right font-mono font-bold text-primary border-t border-border">${n2(cuotas.reduce((s, q) => s + q.capital, 0))}</td>
-                    <td className="border-t border-border pr-4" />
+                    <td colSpan={2} className="border-t border-border pr-4" />
                   </tr>
                 </tfoot>
               </table>
