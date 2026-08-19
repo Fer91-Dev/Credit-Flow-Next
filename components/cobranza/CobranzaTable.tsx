@@ -524,42 +524,6 @@ export function CobranzaTable({ role }: { role: Role }) {
       </div>
       )}
 
-      <Dialog open={!!gestion} onOpenChange={open => { if (!open) setGestion(null); }}>
-        <DialogContent className="w-[95vw] sm:max-w-lg sm:p-7">
-          <ModalHeader
-            icon="speech-balloon"
-            title="Registrar gestión de cobranza"
-            subtitle="Dejá registro del contacto y, si corresponde, la promesa de pago."
-          />
-          {gestion && <GestionForm credito={gestion} onClose={handleGestionClose} />}
-        </DialogContent>
-      </Dialog>
-
-      {/* Acuerdo de pago — al MISMO nivel que los otros diálogos, no anidado dentro de
-          ninguno: si vive dentro del de "Gestionar", solo aparece cuando ese está abierto. */}
-      <AcuerdoForm
-        creditoId={acordando}
-        open={!!acordando}
-        onClose={(ok) => {
-          setAcordando(null);
-          if (!ok) return;
-          // Un acuerdo nuevo saca al crédito de la agenda del día y aparece en su pestaña.
-          globalMutate("/api/cobranza/acuerdos?estado=vigente");
-          globalMutate("/api/cobranza/agenda");
-        }}
-      />
-
-      <Dialog open={!!detalle} onOpenChange={open => { if (!open) setDetalle(null); }}>
-        <DialogContent className="w-[95vw] sm:max-w-lg max-h-[90dvh] flex flex-col overflow-hidden">
-          <DialogHeader className="shrink-0">
-            <DialogTitle>Detalle de cobranza</DialogTitle>
-          </DialogHeader>
-          <div className="flex-1 min-h-0 overflow-y-auto">
-            {detalle && <CobranzaDetail credito={detalle} acciones={acciones} />}
-          </div>
-        </DialogContent>
-      </Dialog>
-
       {/* ── ActionToolbar: acciones masivas sobre la selección (solo campañas) ── */}
       {puedeCampanas && seleccionados.length > 0 && (
         <div className="fixed inset-x-0 bottom-4 z-40 flex justify-center px-4 pointer-events-none">
@@ -586,6 +550,53 @@ export function CobranzaTable({ role }: { role: Role }) {
       )}
       </>
       )}
+
+      {/*
+        🔴 LOS DIÁLOGOS VAN ACÁ, FUERA DEL TERNARIO DE PESTAÑAS.
+
+        Vivían adentro de la última rama —la de Morosos—, así que en "Hoy" simplemente no
+        existían en el árbol. Apretar "Gestionar" en la agenda seteaba el estado y no pasaba
+        nada; el diálogo recién aparecía al cambiar de pestaña, que es cuando esa rama se
+        monta. Y "Hoy" es la pestaña por defecto.
+
+        Es el mismo error que ya estaba anotado dos comentarios más abajo para el acuerdo
+        ("si vive dentro del de Gestionar, solo aparece cuando ese está abierto"): un diálogo
+        montado condicionalmente solo funciona cuando su condición se cumple. La regla es que
+        los diálogos de esta pantalla cuelgan de la raíz, nunca de una pestaña.
+      */}
+      <Dialog open={!!gestion} onOpenChange={open => { if (!open) setGestion(null); }}>
+        <DialogContent className="w-[95vw] sm:max-w-lg sm:p-7">
+          <ModalHeader
+            icon="speech-balloon"
+            title="Registrar gestión de cobranza"
+            subtitle="Dejá registro del contacto y, si corresponde, la promesa de pago."
+          />
+          {gestion && <GestionForm credito={gestion} onClose={handleGestionClose} />}
+        </DialogContent>
+      </Dialog>
+
+      <AcuerdoForm
+        creditoId={acordando}
+        open={!!acordando}
+        onClose={(ok) => {
+          setAcordando(null);
+          if (!ok) return;
+          // Un acuerdo nuevo saca al crédito de la agenda del día y aparece en su pestaña.
+          globalMutate("/api/cobranza/acuerdos?estado=vigente");
+          globalMutate("/api/cobranza/agenda");
+        }}
+      />
+
+      <Dialog open={!!detalle} onOpenChange={open => { if (!open) setDetalle(null); }}>
+        <DialogContent className="w-[95vw] sm:max-w-lg max-h-[90dvh] flex flex-col overflow-hidden">
+          <DialogHeader className="shrink-0">
+            <DialogTitle>Detalle de cobranza</DialogTitle>
+          </DialogHeader>
+          <div className="flex-1 min-h-0 overflow-y-auto">
+            {detalle && <CobranzaDetail credito={detalle} acciones={acciones} />}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Modal de configuración de campaña (solo admin/cobrador) */}
       {puedeCampanas && (
