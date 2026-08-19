@@ -626,7 +626,20 @@ export function PagoForm({ creditoId, clienteId, montoSugerido, motivoSugerido, 
                         const pagadoProg = round2(c.pagado_capital + (c.pagado_interes ?? 0) + (c.pagado_cargos ?? 0));
                         const resta = importePendiente(c);
                         const parcial = pagadoProg > 0 && resta > 0;
-                        const pctPagado = c.cuota_total > 0 ? Math.min(100, (pagadoProg / c.cuota_total) * 100) : 0;
+                        /**
+                         * Los tres números del bloque del saldo, en los términos en los que el
+                         * operador se lo explica al cliente: lo que había que pagar, lo que
+                         * entregó y lo que resta.
+                         *
+                         * `mora` es la PENDIENTE (el server ya le descontó la cobrada), así que
+                         * la devengada total se reconstruye sumándole `pagado_mora`.
+                         */
+                        const moraDevengada = round2((c.mora ?? 0) + (c.pagado_mora ?? 0));
+                        const deudaDeLaCuota = round2(c.cuota_total + moraDevengada);
+                        const entregado = round2(pagadoProg + (c.pagado_mora ?? 0));
+                        // El avance se mide contra esa misma deuda: si se midiera contra la
+                        // cuota nominal, el porcentaje no cuadraría con los renglones de arriba.
+                        const pctCubierto = deudaDeLaCuota > 0 ? Math.min(100, (entregado / deudaDeLaCuota) * 100) : 0;
                         return (
                           <Fragment key={c.nro}>
                           <tr
@@ -683,48 +696,58 @@ export function PagoForm({ creditoId, clienteId, montoSugerido, motivoSugerido, 
                                     <CornerDownRight className="h-3.5 w-3.5 shrink-0" /> Saldo de la cuota {c.nro}
                                   </p>
 
+                                  {/*
+                                    Los tres renglones son UNA RESTA que cierra:
+                                        deuda de la cuota − lo entregado = lo que resta
+
+                                    La versión anterior ponía arriba la cuota NOMINAL
+                                    ($183.604,28) y abajo solo la parte que bajó de la cuota
+                                    ($37.147,70). Los dos números eran ciertos y la resta daba
+                                    bien, pero para seguirla había que saber que la mora se
+                                    cobra antes: el cliente entregó $50.000 y en la pantalla
+                                    figuraban $37.147,70.
+
+                                    Ahora arriba va la deuda CON su mora devengada y abajo TODO
+                                    lo que entregó. La identidad se sostiene sola y sigue
+                                    cerrando cuando la mora corre:
+                                      (cuota + moraDevengada) − (pagadoCuota + pagadoMora)
+                                        = pendiente + moraPendiente = "a cobrar"
+                                  */}
                                   <table className="mt-3 w-full text-[11px]">
                                     <tbody className="font-mono tabular-nums">
                                       <tr>
-                                        <td className="py-1 font-sans text-muted-foreground">Cuota completa</td>
-                                        <td className="py-1 text-right text-foreground">${fmt2(c.cuota_total)}</td>
+                                        <td className="py-1 font-sans text-muted-foreground">
+                                          {moraDevengada > 0 ? "Cuota + mora" : "Cuota completa"}
+                                        </td>
+                                        <td className="py-1 text-right text-foreground">${fmt2(deudaDeLaCuota)}</td>
                                       </tr>
                                       <tr>
                                         <td className="py-1 font-sans text-muted-foreground">Pagado a cuenta</td>
-                                        <td className="py-1 text-right text-success">−${fmt2(pagadoProg)}</td>
+                                        <td className="py-1 text-right text-success">−${fmt2(entregado)}</td>
                                       </tr>
                                       <tr className="border-t border-warning/20">
                                         <td className="pt-2 font-sans font-semibold text-foreground">Resta</td>
-                                        <td className="pt-2 text-right text-base font-bold text-foreground">${fmt2(resta)}</td>
+                                        <td className="pt-2 text-right text-base font-bold text-foreground">${fmt2(importeACobrar(c))}</td>
                                       </tr>
                                     </tbody>
                                   </table>
 
                                   <div className="mt-3 flex items-center gap-2.5">
                                     <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted/40">
-                                      <div className="h-full rounded-full bg-warning transition-all" style={{ width: `${pctPagado}%` }} />
+                                      <div className="h-full rounded-full bg-warning transition-all" style={{ width: `${pctCubierto}%` }} />
                                     </div>
                                     <span className="shrink-0 font-mono text-[10px] tabular-nums text-muted-foreground">
-                                      {Math.round(pctPagado)}%
+                                      {Math.round(pctCubierto)}%
                                     </span>
                                   </div>
 
-                                  {/* Lo que el cliente ENTREGÓ, que no es lo mismo que lo que
-                                      bajó de la cuota: la mora se cobra antes. Sin este
-                                      renglón los dos números parecen contradecirse. */}
+                                  {/* De lo entregado, cuánto se fue a mora. Es el único renglón
+                                      que no forma parte de la resta: la explica. */}
                                   {(c.pagado_mora ?? 0) > 0 && (
-                                    <table className="mt-3 w-full border-t border-warning/20 pt-2 text-[11px]">
-                                      <tbody className="font-mono tabular-nums">
-                                        <tr>
-                                          <td className="pt-2 font-sans text-muted-foreground">Entregó</td>
-                                          <td className="pt-2 text-right text-foreground">${fmt2(round2(pagadoProg + (c.pagado_mora ?? 0)))}</td>
-                                        </tr>
-                                        <tr>
-                                          <td className="py-1 font-sans text-muted-foreground">Se aplicó a mora</td>
-                                          <td className="py-1 text-right text-destructive">${fmt2(c.pagado_mora ?? 0)}</td>
-                                        </tr>
-                                      </tbody>
-                                    </table>
+                                    <p className="mt-3 border-t border-warning/20 pt-2.5 flex items-center justify-between text-[11px]">
+                                      <span className="text-muted-foreground">Se aplicó a mora</span>
+                                      <span className="font-mono tabular-nums text-destructive">${fmt2(c.pagado_mora ?? 0)}</span>
+                                    </p>
                                   )}
                                 </div>
                               </td>
