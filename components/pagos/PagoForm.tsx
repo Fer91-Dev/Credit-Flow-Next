@@ -594,17 +594,17 @@ export function PagoForm({ creditoId, clienteId, montoSugerido, motivoSugerido, 
               </p>
             ) : (
               <div className="rounded-xl border border-border overflow-hidden">
-                <div className="max-h-[34vh] overflow-auto">
-                  <table className="w-full min-w-[26rem] text-xs border-separate border-spacing-0">
+                <div className="max-h-[42vh] overflow-auto">
+                  <table className="w-full min-w-[34rem] text-xs border-separate border-spacing-0">
                     <thead className="sticky top-0 z-10">
                       <tr className="bg-card">
-                        <th className="px-2 py-2 text-center font-semibold text-muted-foreground border-b border-border w-8"></th>
-                        <th className="px-2 py-2 text-left   font-semibold text-muted-foreground border-b border-border w-8">#</th>
-                        <th className="px-3 py-2 text-left   font-semibold text-muted-foreground border-b border-border">Vencimiento</th>
-                        <th className="px-3 py-2 text-right  font-semibold text-muted-foreground border-b border-border">Cuota</th>
-                        <th className="px-3 py-2 text-right  font-semibold text-muted-foreground border-b border-border">Mora</th>
-                        <th className="px-3 py-2 text-right  font-semibold text-foreground       border-b border-border">A cobrar</th>
-                        <th className="px-3 py-2 text-left   font-semibold text-muted-foreground border-b border-border pr-3">Estado</th>
+                        <th className="px-2 py-3 text-center font-semibold text-muted-foreground border-b border-border w-8"></th>
+                        <th className="px-2 py-3 text-left   font-semibold text-muted-foreground border-b border-border w-8">#</th>
+                        <th className="px-3 py-3 text-left   font-semibold text-muted-foreground border-b border-border">Vencimiento</th>
+                        <th className="px-3 py-3 text-right  font-semibold text-muted-foreground border-b border-border">Cuota</th>
+                        <th className="px-3 py-3 text-right  font-semibold text-muted-foreground border-b border-border">Mora</th>
+                        <th className="px-3 py-3 text-right  font-semibold text-foreground       border-b border-border">A cobrar</th>
+                        <th className="px-3 py-3 text-left   font-semibold text-muted-foreground border-b border-border pr-3">Estado</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -625,29 +625,29 @@ export function PagoForm({ creditoId, clienteId, montoSugerido, motivoSugerido, 
                             className={`${manual ? "opacity-50" : "cursor-pointer hover:bg-muted/20"} ${incluida ? "bg-primary/5" : ""}`}
                             title={manual ? "Desactivá «Monto personalizado» para elegir cuotas" : "Cobrar hasta esta cuota"}
                           >
-                            <td className="px-2 py-2 text-center border-b border-border/70">
+                            <td className="px-2 py-3 text-center border-b border-border/70">
                               <span className={`inline-flex h-4 w-4 items-center justify-center rounded border ${incluida ? "bg-primary border-primary text-primary-foreground" : "border-border"}`}>
                                 {incluida && <Check className="h-3 w-3" />}
                               </span>
                             </td>
-                            <td className="px-2 py-2 font-mono text-muted-foreground/60 border-b border-border/70">{c.nro}</td>
-                            <td className="px-3 py-2 text-muted-foreground tabular-nums border-b border-border/70">{fmtDate(c.fecha_vencimiento)}</td>
+                            <td className="px-2 py-3 font-mono text-muted-foreground/60 border-b border-border/70">{c.nro}</td>
+                            <td className="px-3 py-3 text-muted-foreground tabular-nums border-b border-border/70">{fmtDate(c.fecha_vencimiento)}</td>
                             {/* Cuota | Mora | A cobrar — la misma lectura que el plan de
                                 cuotas del detalle, para que el operador vea el mismo desglose
                                 en las dos pantallas. */}
-                            <td className="px-3 py-2 text-right font-mono tabular-nums border-b border-border/70">
+                            <td className="px-3 py-3 text-right font-mono tabular-nums border-b border-border/70">
                               <span className="text-muted-foreground">${fmt2(resta)}</span>
                               {parcial && <span className="ml-1 align-middle text-[9px] font-sans font-semibold uppercase tracking-wide text-warning">saldo</span>}
                             </td>
-                            <td className="px-3 py-2 text-right font-mono tabular-nums border-b border-border/70">
+                            <td className="px-3 py-3 text-right font-mono tabular-nums border-b border-border/70">
                               {(c.mora ?? 0) > 0
                                 ? <span className="text-destructive">${fmt2(c.mora ?? 0)}</span>
                                 : <span className="text-muted-foreground/20">—</span>}
                             </td>
-                            <td className="px-3 py-2 text-right font-mono font-semibold tabular-nums text-foreground border-b border-border/70">
+                            <td className="px-3 py-3 text-right font-mono font-semibold tabular-nums text-foreground border-b border-border/70">
                               ${fmt2(importeACobrar(c))}
                             </td>
-                            <td className="px-3 py-2 pr-3 border-b border-border/70"><StatusBadge label={b.label} variant={b.variant} /></td>
+                            <td className="px-3 py-3 pr-3 border-b border-border/70"><StatusBadge label={b.label} variant={b.variant} /></td>
                           </tr>
                           {parcial && (
                             <tr
@@ -658,20 +658,65 @@ export function PagoForm({ creditoId, clienteId, montoSugerido, motivoSugerido, 
                               {/* 6 = las columnas que quedan tras la del check (#, Vencimiento,
                                   Cuota, Mora, A cobrar, Estado). Si se suma una columna, esto
                                   se mueve con ella o la fila de la subcuota se desalinea. */}
-                              <td colSpan={6} className="px-3 pb-2 border-b border-border/70">
-                                <div className="rounded-lg border border-warning/20 bg-warning/[0.06] px-2.5 py-1.5">
-                                  <div className="flex items-center justify-between gap-2">
-                                    <span className="flex items-center gap-1 text-[11px] font-medium text-warning">
-                                      <CornerDownRight className="h-3 w-3 shrink-0" /> Subcuota pendiente · completa la cuota #{c.nro}
-                                    </span>
-                                    <span className="shrink-0 font-mono text-[11px] text-foreground">resta <span className="font-bold">${fmt2(resta)}</span></span>
-                                  </div>
-                                  <div className="mt-1.5 flex items-center gap-2">
-                                    <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted/40">
+                              {/*
+                                De dónde sale el saldo, renglón por renglón.
+
+                                Antes decía "pagado $37.147,70 de $183.604,28" en una línea de
+                                10px, y ese número no coincidía con lo que el cliente había
+                                entregado ($50.000): la diferencia se había ido a mora y no
+                                figuraba en ningún lado. El operador tenía que reconstruir la
+                                cuenta de memoria para explicarle al cliente por qué le queda
+                                debiendo $146.456,58.
+                              */}
+                              <td colSpan={6} className="px-3 pb-3 border-b border-border/70">
+                                <div className="rounded-xl border border-warning/25 bg-warning/[0.06] p-4">
+                                  <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-warning">
+                                    <CornerDownRight className="h-3.5 w-3.5 shrink-0" /> Saldo de la cuota {c.nro}
+                                  </p>
+
+                                  <table className="mt-3 w-full text-[11px]">
+                                    <tbody className="font-mono tabular-nums">
+                                      <tr>
+                                        <td className="py-1 font-sans text-muted-foreground">Cuota completa</td>
+                                        <td className="py-1 text-right text-foreground">${fmt2(c.cuota_total)}</td>
+                                      </tr>
+                                      <tr>
+                                        <td className="py-1 font-sans text-muted-foreground">Pagado a cuenta</td>
+                                        <td className="py-1 text-right text-success">−${fmt2(pagadoProg)}</td>
+                                      </tr>
+                                      <tr className="border-t border-warning/20">
+                                        <td className="pt-2 font-sans font-semibold text-foreground">Resta</td>
+                                        <td className="pt-2 text-right text-base font-bold text-foreground">${fmt2(resta)}</td>
+                                      </tr>
+                                    </tbody>
+                                  </table>
+
+                                  <div className="mt-3 flex items-center gap-2.5">
+                                    <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted/40">
                                       <div className="h-full rounded-full bg-warning transition-all" style={{ width: `${pctPagado}%` }} />
                                     </div>
-                                    <span className="shrink-0 text-[10px] text-muted-foreground">pagado ${fmt2(pagadoProg)} de ${fmt2(c.cuota_total)}</span>
+                                    <span className="shrink-0 font-mono text-[10px] tabular-nums text-muted-foreground">
+                                      {Math.round(pctPagado)}%
+                                    </span>
                                   </div>
+
+                                  {/* Lo que el cliente ENTREGÓ, que no es lo mismo que lo que
+                                      bajó de la cuota: la mora se cobra antes. Sin este
+                                      renglón los dos números parecen contradecirse. */}
+                                  {(c.pagado_mora ?? 0) > 0 && (
+                                    <table className="mt-3 w-full border-t border-warning/20 pt-2 text-[11px]">
+                                      <tbody className="font-mono tabular-nums">
+                                        <tr>
+                                          <td className="pt-2 font-sans text-muted-foreground">Entregó</td>
+                                          <td className="pt-2 text-right text-foreground">${fmt2(round2(pagadoProg + (c.pagado_mora ?? 0)))}</td>
+                                        </tr>
+                                        <tr>
+                                          <td className="py-1 font-sans text-muted-foreground">Se aplicó a mora</td>
+                                          <td className="py-1 text-right text-destructive">${fmt2(c.pagado_mora ?? 0)}</td>
+                                        </tr>
+                                      </tbody>
+                                    </table>
+                                  )}
                                 </div>
                               </td>
                             </tr>
