@@ -241,7 +241,7 @@ export function AcuerdosTab({ role }: { role: Role }) {
         const pendiente = c ? Math.round((c.monto - c.pagado) * 100) / 100 : 0;
         return (
           <Dialog open onOpenChange={(o) => { if (!o) setCobrando(null); }}>
-            <DialogContent className="w-[95vw] sm:max-w-3xl max-h-[90dvh] flex flex-col overflow-hidden">
+            <DialogContent className="w-[95vw] sm:max-w-4xl max-h-[90dvh] flex flex-col overflow-hidden">
               <DialogHeader className="shrink-0">
                 <DialogTitle>Cobrar cuota del acuerdo</DialogTitle>
               </DialogHeader>

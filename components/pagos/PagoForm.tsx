@@ -1,7 +1,7 @@
 ﻿"use client";
 
 import { useState, useEffect, Fragment } from "react";
-import { ArrowRight, Check, CheckCircle2, CornerDownRight, Loader2, Printer, Search, X } from "lucide-react";
+import { ArrowRight, Check, CheckCircle2, ChevronDown, CornerDownRight, Loader2, Printer, Search, X } from "lucide-react";
 import { Field, Input, Select, Textarea } from "@/components/ui/field";
 import { StatusBadge, type BadgeVariant } from "@/components/ui/StatusBadge";
 import {
@@ -567,17 +567,26 @@ export function PagoForm({ creditoId, clienteId, montoSugerido, motivoSugerido, 
             salió mal. Siguen disponibles porque es adonde va a parar la plata, pero
             plegadas: en ese momento no se eligen cuotas, se cobra un importe pactado. */}
         {creditoSel && (
-          <details open={!cobrandoAcuerdo}>
-            <summary className={cn(
-              "flex items-center justify-between mb-3",
-              cobrandoAcuerdo ? "cursor-pointer list-none" : "list-none pointer-events-none",
-            )}>
+          /*
+            🔴 ABIERTA SIEMPRE. Venía plegada cuando el cobro traía un importe sugerido —que
+            desde que existe el botón verde de cada cuota es el caso NORMAL, no solo el de un
+            acuerdo—, y el usuario no encontraba las cuotas: el título parecía una etiqueta,
+            no un control. Se puede seguir plegando, pero ahora se ve que se puede: la flecha
+            está siempre y gira al abrir/cerrar.
+          */
+          <details open className="group">
+            <summary className="flex cursor-pointer list-none items-center justify-between mb-3">
               <span className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                {cobrandoAcuerdo && <CornerDownRight className="h-3.5 w-3.5" />}
+                <ChevronDown className="h-3.5 w-3.5 transition-transform group-open:rotate-180" />
                 {cobrandoAcuerdo ? "Cuotas del crédito" : "Cuotas a cobrar"}
               </span>
               {!cobrandoAcuerdo && (
-                <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer pointer-events-auto">
+                /* El check vive DENTRO del summary: sin el stopPropagation, tildarlo
+                   también pliega la sección que se está por usar. */
+                <label
+                  className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer"
+                  onClick={(e) => e.stopPropagation()}
+                >
                   <input type="checkbox" checked={manual} onChange={e => setManual(e.target.checked)} className="accent-primary" />
                   Monto personalizado
                 </label>

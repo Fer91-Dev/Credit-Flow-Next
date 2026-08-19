@@ -859,7 +859,7 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar }: {
 
       {/* Cobro del crédito — formulario de pago preseleccionado a este crédito */}
       <Dialog open={pagoOpen} onOpenChange={(o) => { if (!o) setPagoOpen(false); }}>
-        <DialogContent className="w-[95vw] sm:max-w-3xl max-h-[90dvh] flex flex-col overflow-hidden">
+        <DialogContent className="w-[95vw] sm:max-w-4xl max-h-[90dvh] flex flex-col overflow-hidden">
           <DialogHeader className="shrink-0">
             <DialogTitle>Registrar pago · {formatCreditoNumero(credito.numero)}</DialogTitle>
           </DialogHeader>
