@@ -72,6 +72,10 @@ export function CreditoDetail({ credito, role, onRefinanciar }: { credito: Credi
     const pagado = q.pagado_capital + (q.pagado_interes ?? 0) + (q.pagado_cargos ?? 0);
     return acc + Math.max(0, q.cuota_total - pagado);
   }, 0);
+  const capitalVencido = cuotasVencidasArr.reduce((a, q) => a + Math.max(0, q.capital - q.pagado_capital), 0);
+  const interesVencido = cuotasVencidasArr.reduce((a, q) => a + Math.max(0, q.interes - (q.pagado_interes ?? 0)), 0);
+  const cargosVencidos = cuotasVencidasArr.reduce(
+    (a, q) => a + Math.max(0, (q.iva + q.seguro + q.gastos) - (q.pagado_cargos ?? 0)), 0);
   const moraHoy = credito.dias_mora > 0 ? (credito.interes_mora ?? 0) : 0;
   const aCobrarHoy = Math.round((vencidoImpago + moraHoy) * 100) / 100;
   const { pagos, isLoading: loadingPagos } = usePagosByCredito(credito.id);
@@ -464,22 +468,43 @@ export function CreditoDetail({ credito, role, onRefinanciar }: { credito: Credi
             </div>
           )}
 
-          {/* LO QUE HAY QUE COBRARLE HOY.
-              El plan de arriba dice lo que se pactó; esto dice cuánto pedirle al cliente que
-              está enfrente. Antes había que sumarlo de cabeza: las cuotas vencidas salían de
-              la tabla y la mora de una tarjeta a media pantalla de distancia. */}
+          {/* Lo que hay que cobrarle HOY, discriminado. El plan de arriba dice lo pactado;
+              esto dice cuánto pedirle al que está en el mostrador y de qué se compone. */}
           {aCobrarHoy > 0 && (
-            <div className="rounded-xl border border-warning/30 bg-warning/[0.06] px-4 py-3">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-warning">A cobrar hoy</p>
-              <div className="mt-1.5 flex flex-wrap items-baseline gap-x-2 gap-y-1 font-mono tabular-nums">
-                <span className="text-lg font-bold text-foreground">${n2(aCobrarHoy)}</span>
-                <span className="text-xs text-muted-foreground">
-                  = ${n2(vencidoImpago)} de {cuotasVencidas} cuota{cuotasVencidas === 1 ? "" : "s"} vencida{cuotasVencidas === 1 ? "" : "s"}
-                  {moraHoy > 0 && <> + ${n2(moraHoy)} de mora</>}
-                </span>
+            <div className="rounded-xl border border-warning/30 bg-warning/[0.06] overflow-hidden">
+              <div className="flex items-baseline justify-between gap-3 px-4 py-2.5 border-b border-warning/20">
+                <span className="text-[10px] font-bold uppercase tracking-widest text-warning">A cobrar hoy</span>
+                <span className="font-mono tabular-nums text-lg font-bold text-foreground">${n2(aCobrarHoy)}</span>
               </div>
-              <p className="mt-1 text-[11px] leading-snug text-muted-foreground/70 first-letter:uppercase">
-                {montoEnPalabras(aCobrarHoy)}
+              <table className="w-full text-xs">
+                <tbody className="font-mono tabular-nums">
+                  <tr>
+                    <td className="px-4 py-1.5 font-sans text-muted-foreground">Capital</td>
+                    <td className="px-4 py-1.5 text-right text-primary">${n2(capitalVencido)}</td>
+                  </tr>
+                  <tr>
+                    <td className="px-4 py-1.5 font-sans text-muted-foreground">Interés</td>
+                    <td className="px-4 py-1.5 text-right text-warning">${n2(interesVencido)}</td>
+                  </tr>
+                  {cargosVencidos > 0 && (
+                    <tr>
+                      <td className="px-4 py-1.5 font-sans text-muted-foreground">Cargos</td>
+                      <td className="px-4 py-1.5 text-right text-muted-foreground">${n2(cargosVencidos)}</td>
+                    </tr>
+                  )}
+                  {moraHoy > 0 && (
+                    <tr>
+                      <td className="px-4 py-1.5 font-sans text-muted-foreground">
+                        Mora <span className="text-muted-foreground/50">· {credito.dias_mora} d</span>
+                      </td>
+                      <td className="px-4 py-1.5 text-right text-destructive">${n2(moraHoy)}</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+              <p className="px-4 py-2 text-[11px] text-muted-foreground/70 border-t border-warning/20 font-mono tabular-nums">
+                {cuotasVencidas} cuota{cuotasVencidas === 1 ? "" : "s"} vencida{cuotasVencidas === 1 ? "" : "s"}
+                {cuotasVencidasArr[0] && <> · desde {fmtDate(cuotasVencidasArr[0].fecha_vencimiento)}</>}
               </p>
             </div>
           )}
@@ -490,14 +515,7 @@ export function CreditoDetail({ credito, role, onRefinanciar }: { credito: Credi
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <CalendarDays className="h-4 w-4 text-muted-foreground" />
-              <div>
-                <h3 className="text-sm font-semibold text-foreground">Plan de cuotas</h3>
-                {/* Sin esta línea la tabla se lee mal: parecía recalcularse con el atraso, y
-                    la mora —que NO está acá— quedaba sin explicación. */}
-                <p className="text-[11px] leading-tight text-muted-foreground/60">
-                  Lo que se pactó al otorgar. No cambia con el atraso: la mora se suma aparte.
-                </p>
-              </div>
+              <h3 className="text-sm font-semibold text-foreground">Plan de cuotas</h3>
             </div>
             <div className="flex items-center gap-3">
               {resumen && (
@@ -537,22 +555,10 @@ export function CreditoDetail({ credito, role, onRefinanciar }: { credito: Credi
                 <thead>
                   <tr className="bg-muted/30">
                     <th className="px-3 py-2.5 text-left  font-semibold text-muted-foreground border-b border-border w-9">#</th>
-                    <th className="px-3 py-2 text-left  font-semibold text-muted-foreground border-b border-border">
-                      Vencimiento
-                      <span className="block text-[10px] font-normal text-muted-foreground/50">cuándo se paga</span>
-                    </th>
-                    <th className="px-3 py-2 text-right font-semibold text-foreground border-b border-border">
-                      Cuota
-                      <span className="block text-[10px] font-normal text-muted-foreground/50">lo que paga</span>
-                    </th>
-                    <th className="px-3 py-2 text-right font-semibold text-warning border-b border-border hidden sm:table-cell">
-                      Interés
-                      <span className="block text-[10px] font-normal text-muted-foreground/50">tu ganancia</span>
-                    </th>
-                    <th className="px-3 py-2 text-right font-semibold text-primary border-b border-border">
-                      Capital
-                      <span className="block text-[10px] font-normal text-muted-foreground/50">devuelve del préstamo</span>
-                    </th>
+                    <th className="px-3 py-2.5 text-left  font-semibold text-muted-foreground border-b border-border">Vencimiento</th>
+                    <th className="px-3 py-2.5 text-right font-semibold text-foreground border-b border-border">Cuota</th>
+                    <th className="px-3 py-2.5 text-right font-semibold text-warning border-b border-border hidden sm:table-cell">Interés</th>
+                    <th className="px-3 py-2.5 text-right font-semibold text-primary border-b border-border">Capital</th>
                     <th className="px-3 py-2 text-left  font-semibold text-muted-foreground border-b border-border pr-4">Estado</th>
                   </tr>
                 </thead>
@@ -574,9 +580,7 @@ export function CreditoDetail({ credito, role, onRefinanciar }: { credito: Credi
                 <tfoot>
                   <tr className="bg-muted/20">
                     <td colSpan={2} className="px-3 py-2.5 text-[10px] font-bold text-muted-foreground uppercase tracking-widest border-t border-border">
-                      Totales
-                      <span className="block text-[10px] font-normal normal-case tracking-normal text-muted-foreground/50">capital + interés</span>
-                    </td>
+Totales</td>
                     <td className="px-3 py-2.5 text-right font-mono font-bold text-foreground border-t border-border">${n2(cuotas.reduce((s, q) => s + q.cuota_total, 0))}</td>
                     <td className="px-3 py-2.5 text-right font-mono font-bold text-warning border-t border-border hidden sm:table-cell">${n2(cuotas.reduce((s, q) => s + q.interes, 0))}</td>
                     <td className="px-3 py-2.5 text-right font-mono font-bold text-primary border-t border-border">${n2(cuotas.reduce((s, q) => s + q.capital, 0))}</td>
