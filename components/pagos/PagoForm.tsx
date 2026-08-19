@@ -84,9 +84,25 @@ const CUOTA_BADGE: Record<EstadoCuota, { label: string; variant: BadgeVariant }>
   pendiente: { label: "Pendiente", variant: "muted" },
 };
 
+/** Lo PROGRAMADO que falta de la cuota (capital + interés + cargos), sin mora. */
 function importePendiente(c: CuotaPersistida): number {
   const pagadoProg = c.pagado_capital + (c.pagado_interes ?? 0) + (c.pagado_cargos ?? 0);
   return Math.max(0, round2(c.cuota_total - pagadoProg));
+}
+
+/**
+ * Lo que hay que COBRAR para saldar la cuota hoy: lo programado + su mora devengada.
+ *
+ * 🔴 El picker mostraba `importePendiente` —el nominal— y con eso calculaba el monto. Sobre
+ * un crédito atrasado eso cobra de MENOS: la imputación aplica mora primero, así que el
+ * importe nominal deja la cuota corta justo por la mora y queda "parcial". El botón de cada
+ * cuota del detalle ya cobraba bien (usa `total_cobrar`); este formulario no.
+ *
+ * El número lo calcula el server con las condiciones congeladas del crédito, que es la misma
+ * fuente con la que después imputa. El fallback solo cubre una respuesta vieja sin el campo.
+ */
+function importeACobrar(c: CuotaPersistida): number {
+  return c.total_cobrar ?? round2(importePendiente(c) + (c.mora ?? 0));
 }
 
 /** Filtra la lista de créditos por N° de crédito o DNI del cliente. */
@@ -317,15 +333,21 @@ export function PagoForm({ creditoId, clienteId, montoSugerido, motivoSugerido, 
   /** Se está cobrando la cuota de un ACUERDO: viene importe y motivo precargados. */
   const cobrandoAcuerdo = Boolean(motivoSugerido);
 
-  const montoCuotas  = round2(seleccionadas.reduce((s, c) => s + importePendiente(c), 0));
+  const montoCuotas  = round2(seleccionadas.reduce((s, c) => s + importeACobrar(c), 0));
   const monto        = manual ? parseMontoInput(montoManual) : montoCuotas;
-  // "Excede" = se paga más que TODO lo adeudado (capital + interés + cargos de las
-  // cuotas pendientes) → el sobrante queda a favor. OJO: NO comparar contra
-  // `saldo_pendiente`, que es solo el CAPITAL: una cuota normal (capital + interés)
-  // ya lo supera y dispararía un falso aviso. El epsilon evita falsos por redondeo.
-  const totalAdeudado = round2(cobrables.reduce((s, c) => s + importePendiente(c), 0));
+  /**
+   * "Excede" = se paga más que TODO lo adeudado → el sobrante queda a favor. OJO: NO comparar
+   * contra `saldo_pendiente`, que es solo el CAPITAL: una cuota normal (capital + interés) ya
+   * lo supera y dispararía un falso aviso. El epsilon evita falsos por redondeo.
+   *
+   * 🔴 Va con MORA incluida. Sin ella, cancelar un crédito atrasado avisaba "excede lo
+   * adeudado" siendo el importe exacto: en CRD-000069 la deuda real es $572.845,35 y este
+   * total decía $550.812,84.
+   */
+  const totalAdeudado = round2(cobrables.reduce((s, c) => s + importeACobrar(c), 0));
   const excede       = monto > totalAdeudado + 0.01;
-  const hayMora      = cobrables.some(c => c.estado === "vencida");
+  /** Mora devengada de lo seleccionado: se muestra discriminada, no se "avisa". */
+  const moraSeleccionada = round2(seleccionadas.reduce((s, c) => s + (c.mora ?? 0), 0));
 
   // Submit NO cobra directo: abre la confirmación para que un Enter o clic
   // accidental nunca registre un pago.
@@ -579,7 +601,9 @@ export function PagoForm({ creditoId, clienteId, montoSugerido, motivoSugerido, 
                         <th className="px-2 py-2 text-center font-semibold text-muted-foreground border-b border-border w-8"></th>
                         <th className="px-2 py-2 text-left   font-semibold text-muted-foreground border-b border-border w-8">#</th>
                         <th className="px-3 py-2 text-left   font-semibold text-muted-foreground border-b border-border">Vencimiento</th>
-                        <th className="px-3 py-2 text-right  font-semibold text-foreground       border-b border-border">Importe</th>
+                        <th className="px-3 py-2 text-right  font-semibold text-muted-foreground border-b border-border">Cuota</th>
+                        <th className="px-3 py-2 text-right  font-semibold text-muted-foreground border-b border-border">Mora</th>
+                        <th className="px-3 py-2 text-right  font-semibold text-foreground       border-b border-border">A cobrar</th>
                         <th className="px-3 py-2 text-left   font-semibold text-muted-foreground border-b border-border pr-3">Estado</th>
                       </tr>
                     </thead>
@@ -608,9 +632,20 @@ export function PagoForm({ creditoId, clienteId, montoSugerido, motivoSugerido, 
                             </td>
                             <td className="px-2 py-2 font-mono text-muted-foreground/60 border-b border-border/70">{c.nro}</td>
                             <td className="px-3 py-2 text-muted-foreground tabular-nums border-b border-border/70">{fmtDate(c.fecha_vencimiento)}</td>
+                            {/* Cuota | Mora | A cobrar — la misma lectura que el plan de
+                                cuotas del detalle, para que el operador vea el mismo desglose
+                                en las dos pantallas. */}
                             <td className="px-3 py-2 text-right font-mono tabular-nums border-b border-border/70">
-                              <span className="text-foreground">${fmt2(resta)}</span>
+                              <span className="text-muted-foreground">${fmt2(resta)}</span>
                               {parcial && <span className="ml-1 align-middle text-[9px] font-sans font-semibold uppercase tracking-wide text-warning">saldo</span>}
+                            </td>
+                            <td className="px-3 py-2 text-right font-mono tabular-nums border-b border-border/70">
+                              {(c.mora ?? 0) > 0
+                                ? <span className="text-destructive">${fmt2(c.mora ?? 0)}</span>
+                                : <span className="text-muted-foreground/20">—</span>}
+                            </td>
+                            <td className="px-3 py-2 text-right font-mono font-semibold tabular-nums text-foreground border-b border-border/70">
+                              ${fmt2(importeACobrar(c))}
                             </td>
                             <td className="px-3 py-2 pr-3 border-b border-border/70"><StatusBadge label={b.label} variant={b.variant} /></td>
                           </tr>
@@ -620,7 +655,10 @@ export function PagoForm({ creditoId, clienteId, montoSugerido, motivoSugerido, 
                               className={`${manual ? "opacity-50" : "cursor-pointer"} ${incluida ? "bg-primary/5" : ""}`}
                             >
                               <td className="border-b border-border/70"></td>
-                              <td colSpan={4} className="px-3 pb-2 border-b border-border/70">
+                              {/* 6 = las columnas que quedan tras la del check (#, Vencimiento,
+                                  Cuota, Mora, A cobrar, Estado). Si se suma una columna, esto
+                                  se mueve con ella o la fila de la subcuota se desalinea. */}
+                              <td colSpan={6} className="px-3 pb-2 border-b border-border/70">
                                 <div className="rounded-lg border border-warning/20 bg-warning/[0.06] px-2.5 py-1.5">
                                   <div className="flex items-center justify-between gap-2">
                                     <span className="flex items-center gap-1 text-[11px] font-medium text-warning">
@@ -649,9 +687,14 @@ export function PagoForm({ creditoId, clienteId, montoSugerido, motivoSugerido, 
 
             {!manual && seleccionadas.length > 0 && (
               <p className="mt-2 text-[11px] text-muted-foreground">
-                Cobrando {seleccionadas.length === 1 ? "la cuota" : `${seleccionadas.length} cuotas (hasta la`} #{hasta}{seleccionadas.length === 1 ? "" : ")"} ·
-                importe programado <span className="font-mono text-foreground">${fmt2(montoCuotas)}</span>
-                {hayMora && <span className="text-destructive"> · la mora por atraso se suma al imputar</span>}
+                Cobrando {seleccionadas.length === 1 ? "la cuota" : `${seleccionadas.length} cuotas (hasta la`} #{hasta}{seleccionadas.length === 1 ? "" : ")"} ·{" "}
+                <span className="font-mono text-foreground">${fmt2(montoCuotas)}</span>
+                {/* La mora ya está DENTRO del importe: se dice cuánta es, no que "se va a
+                    sumar". Antes el importe era el nominal y la frase avisaba de un
+                    recargo que el operador tenía que calcular de memoria. */}
+                {moraSeleccionada > 0 && (
+                  <span className="text-destructive"> · incluye <span className="font-mono">${fmt2(moraSeleccionada)}</span> de mora</span>
+                )}
               </p>
             )}
           </details>
