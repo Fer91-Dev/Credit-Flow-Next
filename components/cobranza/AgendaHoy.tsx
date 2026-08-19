@@ -54,7 +54,16 @@ export function AgendaHoy({
   onGestionar,
   onDetalle,
 }: {
-  onGestionar: (creditoId: string) => void;
+  /**
+   * Recibe el ITEM entero, no solo el id. La pantalla que abre el diálogo resolvía el
+   * crédito buscándolo en la caché de `/api/creditos`, y mientras esa caché no hubiera
+   * terminado de cargar el clic no hacía NADA: ni abría, ni avisaba, ni esperaba. Y como
+   * "Hoy" es la pestaña por defecto, era justo el momento en que se clickea.
+   *
+   * La agenda ya trae todo lo que la gestión necesita (cliente, teléfono, saldo, mora), así
+   * que no hay nada que ir a buscar a otra caché.
+   */
+  onGestionar: (item: AgendaItem) => void;
   onDetalle: (creditoId: string) => void;
 }) {
   const { agenda, error, isLoading } = useAgendaCobranza();
@@ -148,7 +157,7 @@ export function AgendaHoy({
                   key={it.credito_id}
                   it={it}
                   badge={b.badge}
-                  onGestionar={() => onGestionar(it.credito_id)}
+                  onGestionar={() => onGestionar(it)}
                   onDetalle={() => onDetalle(it.credito_id)}
                 />
               ))}

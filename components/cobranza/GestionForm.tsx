@@ -7,7 +7,7 @@ import { nombreCompleto, parseMontoInput } from "@/lib/utils";
 import { useConfirm } from "@/components/ui/confirm";
 import { useToast } from "@/components/ui/toast";
 
-interface CreditoCtx {
+export interface CreditoCtx {
   id: string;
   cliente: { nombre: string; apellido?: string | null; telefono?: string };
   saldo_pendiente: number;

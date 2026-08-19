@@ -5,10 +5,10 @@ import { motion } from "framer-motion";
 import { useSWRConfig } from "swr";
 import { AlertCircle, Phone, Mail, Clock, Copy, CheckCheck, Search, DollarSign, ShieldAlert, MessageSquarePlus, CalendarClock, Megaphone, X, Users, TrendingUp, Sun, Handshake } from "lucide-react";
 import { WhatsAppIcon } from "@/components/ui/WhatsAppIcon";
-import { useCreditos, useAccionesCobranza, KEYS, type Credito, type AccionCobranza } from "@/lib/swr";
+import { useCreditos, useAccionesCobranza, KEYS, type Credito, type AccionCobranza, type AgendaItem } from "@/lib/swr";
 import { type Role } from "@/lib/auth/roles";
 import { formatFecha, nombreCompleto } from "@/lib/utils";
-import { GestionForm } from "./GestionForm";
+import { GestionForm, type CreditoCtx } from "./GestionForm";
 import { CobranzaDetail } from "./CobranzaDetail";
 import { CampaignModal } from "./CampaignModal";
 import { CampanasView } from "./CampanasView";
@@ -25,6 +25,7 @@ import { BuscadorF3 } from "@/components/ui/BuscadorF3";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ModalHeader } from "@/components/ui/form-kit";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useToast } from "@/components/ui/toast";
 import { esCreditoVivo } from "@/lib/domain";
 
 function n0(x: number) {
@@ -75,13 +76,14 @@ export function CobranzaTable({ role }: { role: Role }) {
   const { creditos: allCreditos, error, isLoading } = useCreditos();
   const { acciones, mutate: mutateAcciones } = useAccionesCobranza();
   const { mutate: globalMutate } = useSWRConfig();
+  const toast = useToast();
   const [tab, setTab]           = useState<Tab>("hoy");
   const [mounted, setMounted]   = useState(false);
   useEffect(() => setMounted(true), []);
   const [filterMora, setFilter] = useState<Severidad>("critica");
   const [search, setSearch]     = useState("");
   const [copiedId, setCopied]   = useState<string | null>(null);
-  const [gestion, setGestion]   = useState<Credito | null>(null);
+  const [gestion, setGestion]   = useState<CreditoCtx | null>(null);
   /** Crédito sobre el que se está armando un acuerdo de pago (null = cerrado). */
   const [acordando, setAcordando] = useState<string | null>(null);
   const [detalle, setDetalle]   = useState<Credito | null>(null);
@@ -110,14 +112,35 @@ export function CobranzaTable({ role }: { role: Role }) {
     }
   };
 
-  // La agenda del día devuelve solo ids; resolvemos el Credito completo para gestionar/ver.
-  const abrirGestionPorId = (id: string) => {
-    const c = allCreditos.find((x) => x.id === id);
-    if (c) setGestion(c);
+  /**
+   * 🔴 Gestionar desde la agenda NO depende de la caché de créditos.
+   *
+   * Antes hacía `allCreditos.find(id)` y, si no lo encontraba, `if (c) setGestion(c)` — es
+   * decir, no hacía nada. Sin error, sin espera, sin pista. Y "Hoy" es la pestaña por
+   * defecto: el usuario entra, la agenda (una query liviana) ya pintó, `/api/creditos`
+   * todavía viaja, y los primeros clics en el botón principal de la pantalla se pierden.
+   *
+   * El diálogo solo necesita cliente, teléfono, saldo y mora, y todo eso viene en el ítem
+   * de la agenda. Se arma con eso y listo: sin búsqueda, no hay carrera que perder.
+   */
+  const abrirGestionDesdeAgenda = (it: AgendaItem) => {
+    setGestion({
+      id: it.credito_id,
+      // La agenda manda el nombre ya armado; `nombreCompleto` lo deja igual sin apellido.
+      cliente: { nombre: it.cliente, apellido: null, telefono: it.telefono ?? undefined },
+      saldo_pendiente: it.saldo_pendiente,
+      dias_mora: it.dias_mora,
+    });
   };
+  /**
+   * El detalle sí necesita el crédito ENTERO (cuotas, pagos, riesgo), así que acá la
+   * búsqueda no se puede evitar. Lo que sí se evita es el silencio: si la cartera todavía
+   * no cargó, se avisa en vez de tragarse el clic.
+   */
   const abrirDetallePorId = (id: string) => {
     const c = allCreditos.find((x) => x.id === id);
-    if (c) setDetalle(c);
+    if (c) { setDetalle(c); return; }
+    toast.error(isLoading ? "La cartera se está cargando, probá de nuevo en un segundo." : "No se encontró el crédito.");
   };
 
   // Solo créditos activos en mora — comparten caché con la sección Créditos.
@@ -228,7 +251,7 @@ export function CobranzaTable({ role }: { role: Role }) {
       </div>
 
       {tab === "hoy" ? (
-        <AgendaHoy onGestionar={abrirGestionPorId} onDetalle={abrirDetallePorId} />
+        <AgendaHoy onGestionar={abrirGestionDesdeAgenda} onDetalle={abrirDetallePorId} />
       ) : tab === "campanas" ? (
         <CampanasView />
       ) : tab === "promesas" ? (
