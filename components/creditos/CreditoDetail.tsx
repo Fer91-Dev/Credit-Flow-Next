@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useSWRConfig } from "swr";
-import { CalendarDays, Wallet, Info, ArrowUpRight, Receipt, Loader2, Printer, RefreshCw, ArrowRight, ShieldCheck, Ban, Edit2, Trash2 } from "lucide-react";
+import { CalendarDays, Wallet, Info, ArrowUpRight, Receipt, Loader2, Printer, RefreshCw, ArrowRight, ShieldCheck, Ban, Trash2 } from "lucide-react";
 import { refrescarNotificaciones, useAmortizacion, useCuotas, usePagosByCredito, useCreditos, KEYS, type Credito, type EstadoCuota, type Pago, type CuotaPersistida, useFinanciera } from "@/lib/swr";
 import { type Role } from "@/lib/auth/roles";
 import { abrirRecibo } from "@/lib/recibo";
@@ -65,12 +65,10 @@ const BTN_ACCION =
  * se disparaban desde una fila que no muestra ni el saldo real ni los pagos. Ahora se deciden
  * acá, con el nombre escrito y al lado de los datos que las justifican.
  */
-export function CreditoDetail({ credito, role, onRefinanciar, onEditar, onCerrar }: {
+export function CreditoDetail({ credito, role, onRefinanciar, onCerrar }: {
   credito: Credito;
   role?: Role;
   onRefinanciar?: (c: Credito) => void;
-  /** Abre el formulario de edición (vive en la pantalla contenedora, a pantalla completa). */
-  onEditar?: (id: string) => void;
   /** Cierra el modal: lo llama tras anular o eliminar, cuando el crédito que se está
    *  mostrando dejó de existir o cambió de estado y esta copia quedó vieja. */
   onCerrar?: () => void;
@@ -267,9 +265,16 @@ export function CreditoDetail({ credito, role, onRefinanciar, onEditar, onCerrar
    */
   const puedeEliminar = !credito.tiene_pagos && !loadingCuotas && cuotasVencidas === 0 && credito.dias_mora === 0;
 
-  // Reimprime el mismo PDF "Plan de pagos" (vista cliente) que se ve al otorgar.
-  // Reusa el plan de amortización ya cargado en el detalle.
-  const imprimirPlan = () => {
+  /**
+   * Reimprime el PDF "Plan de pagos", en cualquiera de sus dos vistas.
+   *
+   * La vista OPERADOR se agregó acá porque no había forma de sacarla desde un crédito ya
+   * otorgado: el único lugar que la ofrecía era el formulario de edición, que arma el plan
+   * simulando **desde hoy**. Imprimir de ahí un crédito viejo entregaba un papel con
+   * vencimientos corridos meses (probado con CRD-000069: 10/09 en vez de 10/06). Las dos
+   * vistas salen del mismo `/amortizacion`, que usa la `fecha_inicio` real del crédito.
+   */
+  const imprimirPlan = (vista: "cliente" | "operador") => {
     const a = amortizacion;
     if (!a) return;
     imprimirPlanPagos({
@@ -301,7 +306,7 @@ export function CreditoDetail({ credito, role, onRefinanciar, onEditar, onCerrar
       // Silvio una marca que no es la suya.
       financiera: financiera ? { nombre: financiera.nombre, logo_url: financiera.logo_url } : undefined,
       cft: a.parametros.cft_anual,
-    }, "cliente");
+    }, vista);
   };
 
   return (
@@ -673,14 +678,27 @@ export function CreditoDetail({ credito, role, onRefinanciar, onEditar, onCerrar
                   {resumen.vencidas > 0 && <span className="text-destructive"> · {resumen.vencidas} vencida{resumen.vencidas !== 1 ? "s" : ""}</span>}
                 </span>
               )}
-              <button
-                onClick={imprimirPlan}
-                disabled={!amortizacion}
-                title="Reimprimir el plan de cuotas (PDF)"
-                className="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-40"
-              >
-                <Printer className="h-3.5 w-3.5" /> Imprimir plan
-              </button>
+              {/* Las dos vistas del plan, a un clic. La de operador estaba escondida en el
+                  formulario de edición, que la imprimía con fechas recalculadas desde hoy. */}
+              <div className="inline-flex items-center gap-1">
+                <Printer className="h-3.5 w-3.5 text-muted-foreground" />
+                <button
+                  onClick={() => imprimirPlan("cliente")}
+                  disabled={!amortizacion}
+                  title="Plan de cuotas para entregarle al cliente (PDF)"
+                  className="rounded-lg border border-border px-2.5 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-40"
+                >
+                  Cliente
+                </button>
+                <button
+                  onClick={() => imprimirPlan("operador")}
+                  disabled={!amortizacion}
+                  title="Cronograma completo con interés, capital, cargos y saldo (PDF)"
+                  className="rounded-lg border border-border px-2.5 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-40"
+                >
+                  Operador
+                </button>
+              </div>
               {/* SECUNDARIO a propósito. La acción principal pasaron a ser los botones de
                   cada cuota, que son el 90% de los cobros; este queda para lo que ellos no
                   cubren: varias cuotas juntas o un importe que no coincide con ninguna.
@@ -805,11 +823,16 @@ export function CreditoDetail({ credito, role, onRefinanciar, onEditar, onCerrar
           según lo que hace cada una. */}
       {esAdmin && (
         <div className="shrink-0 flex flex-wrap items-center justify-end gap-2 border-t border-border px-7 py-3">
-          {onEditar && (
-            <button onClick={() => onEditar(credito.id)} className={BTN_ACCION}>
-              <Edit2 className="h-3.5 w-3.5" /> Editar
-            </button>
-          )}
+          {/*
+            Sin "Editar". Las condiciones de un crédito otorgado son FIRMES desde el 15/08
+            (capital, tasa, cuotas, frecuencia, cliente y vendedor los rechaza el PATCH con
+            409 CONDICIONES_FIRMES), así que lo único que la pantalla podía cambiar era el
+            `tipo_credito` — una etiqueta. A cambio abría el simulador entero sobre un crédito
+            vivo, mostraba un plan recalculado desde hoy y ofrecía imprimirlo.
+
+            Para cambiar algo de verdad están ANULAR (revierte la caja) y REFINANCIAR
+            (consolida la deuda en un crédito nuevo). Los dos cuadran los libros y se auditan.
+          */}
           {credito.estado !== "anulado" && (
             <button
               onClick={() => { setAnularCreditoMotivo(""); setAccionPagos("devolver"); setAnularCreditoOpen(true); }}

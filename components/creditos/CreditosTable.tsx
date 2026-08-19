@@ -4,7 +4,6 @@ import { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { mutate as globalMutate } from "swr";
 import { Plus, FileText, ChevronDown, X, RefreshCw } from "lucide-react";
-import { CreditoForm } from "./CreditoForm";
 import { CreditoDetail } from "./CreditoDetail";
 import { RefinanciarDialog } from "./RefinanciarDialog";
 import { CompararRefiDialog } from "./CompararRefiDialog";
@@ -49,8 +48,6 @@ function estadoBadge(estado: string): { label: string; variant: "primary" | "suc
 export function CreditosTable({ role }: { role: Role }) {
   const router = useRouter();
   const { creditos, error, isLoading, mutate } = useCreditos();
-  const [dialogOpen, setDialog]   = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
   const [detail, setDetail]       = useState<Credito | null>(null);
   const [refinanciar, setRefinanciar] = useState<Credito | null>(null);
   const [search, setSearch]       = useState("");
@@ -59,16 +56,16 @@ export function CreditosTable({ role }: { role: Role }) {
   const [moraFilter, setMora]     = useState("all");
   const [tab, setTab]             = useState<"creditos" | "refinanciados">("creditos");
 
-  // Anular y eliminar se dispararon SIEMPRE desde el detalle (`CreditoDetail`), que es donde
-  // se ve contra qué se está decidiendo. Acá quedan solo el alta y la edición.
-
-  // Nuevo crédito → ruta dedicada (vista a pantalla completa, no modal).
-  const openNew  = () => router.push("/creditos/nuevo");
-  const openEdit = (id: string) => { setEditingId(id); setDialog(true); };
-  const handleFormClose = (success?: boolean) => {
-    setDialog(false); setEditingId(null);
-    if (success) { mutate(); globalMutate(KEYS.dashboard); }
-  };
+  /**
+   * Acá solo se DA DE ALTA. Anular y eliminar se disparan desde el detalle, que es donde se
+   * ve contra qué se está decidiendo.
+   *
+   * Y no hay "editar": las condiciones de un crédito otorgado son firmes, así que el
+   * formulario solo podía cambiar el `tipo_credito` mientras abría el simulador entero sobre
+   * un crédito vivo, con el plan recalculado desde hoy. Para cambiar algo real están anular y
+   * refinanciar.
+   */
+  const openNew = () => router.push("/creditos/nuevo");
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -351,34 +348,6 @@ export function CreditosTable({ role }: { role: Role }) {
         )}
       </div>
 
-      <Dialog open={dialogOpen} onOpenChange={open => { if (!open) handleFormClose(false); }}>
-        <DialogContent
-          className="w-screen max-w-none h-[100dvh] max-h-[100dvh] rounded-none border-0 p-0 gap-0 flex flex-col overflow-hidden"
-          onInteractOutside={(e) => e.preventDefault()}
-          onEscapeKeyDown={(e) => e.preventDefault()}
-        >
-          <DialogHeader className="px-6 py-4 border-b border-border shrink-0">
-            <div className="flex items-center gap-4">
-              {/* Badge tipográfico sin iconos Lucide */}
-              <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-primary/20 to-primary/5 border border-primary/20 flex items-center justify-center shrink-0">
-                <span className="font-mono text-base font-black text-primary leading-none">$</span>
-              </div>
-              <div>
-                <DialogTitle className="text-base font-semibold leading-tight">
-                  {editingId ? "Editar crédito" : "Simulador de crédito"}
-                </DialogTitle>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  Sistema Francés · amortización por cuotas iguales
-                </p>
-              </div>
-            </div>
-          </DialogHeader>
-          <div className="flex-1 min-h-0 overflow-hidden">
-            <CreditoForm creditoId={editingId} onClose={handleFormClose} />
-          </div>
-        </DialogContent>
-      </Dialog>
-
       <Dialog open={!!detail} onOpenChange={open => { if (!open) setDetail(null); }}>
         <DialogContent className="w-full max-w-[96vw] lg:max-w-5xl h-[90vh] max-h-[90vh] p-0 gap-0 flex flex-col overflow-hidden">
           <DialogHeader className="px-6 py-4 border-b border-border shrink-0">
@@ -390,9 +359,6 @@ export function CreditosTable({ role }: { role: Role }) {
                 credito={detail}
                 role={role}
                 onRefinanciar={(c) => { setDetail(null); setRefinanciar(c); }}
-                // El formulario de edición se abre a pantalla completa: hay que cerrar el
-                // detalle antes, o quedan dos modales encimados.
-                onEditar={(id) => { setDetail(null); openEdit(id); }}
                 // Anular/eliminar dejan vieja la copia del crédito que muestra este modal.
                 onCerrar={() => { setDetail(null); mutate(); }}
               />
