@@ -76,6 +76,9 @@ export function CreditoDetail({ credito, role, onRefinanciar }: { credito: Credi
   const interesVencido = cuotasVencidasArr.reduce((a, q) => a + Math.max(0, q.interes - (q.pagado_interes ?? 0)), 0);
   const cargosVencidos = cuotasVencidasArr.reduce(
     (a, q) => a + Math.max(0, (q.iva + q.seguro + q.gastos) - (q.pagado_cargos ?? 0)), 0);
+  /** La primera cuota sin saldar: es la que el operador va a cobrar. */
+  const proximaCuota = cuotas.find((q) => q.estado !== "pagada") ?? null;
+  const unidadCuota = amortizacion?.parametros.frecuencia_label.cuotaSingular ?? "cuota";
   const moraHoy = credito.dias_mora > 0 ? (credito.interes_mora ?? 0) : 0;
   const aCobrarHoy = Math.round((vencidoImpago + moraHoy) * 100) / 100;
   const { pagos, isLoading: loadingPagos } = usePagosByCredito(credito.id);
@@ -152,6 +155,8 @@ export function CreditoDetail({ credito, role, onRefinanciar }: { credito: Credi
 
   const est = estadoBadge(credito.estado);
   const totalCobrado = pagos.filter(p => !p.anulado).reduce((s, p) => s + p.monto, 0);
+  const pagosVivos = pagos.filter(p => !p.anulado).length;
+  const pagosAnulados = pagos.length - pagosVivos;
   const hayCargos = pagos.some(p => p.aplicado_cargos > 0);
   const puedeAnular = role === "admin";
 
@@ -251,7 +256,7 @@ export function CreditoDetail({ credito, role, onRefinanciar }: { credito: Credi
                 {credito.tipo_credito === "productos" ? "Capital financiado" : "Capital otorgado"}
               </p>
               <p className="text-2xl font-bold font-mono tabular-nums leading-tight text-foreground">
-                ${n0(credito.monto_original)}
+                ${n2(credito.monto_original)}
               </p>
               {/* El mismo importe en letras: es lo que va al pagaré, donde la letra le gana
                   al número si no coinciden. Verlo acá permite cotejarlo contra el papel. */}
@@ -279,16 +284,26 @@ export function CreditoDetail({ credito, role, onRefinanciar }: { credito: Credi
         </div>
 
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          {/* 🔴 Los importes van con CENTAVOS. Con `n0` la tarjeta decía $73.442 y el diálogo
+              de cobro $73.441,71 para la misma cuota: 29 centavos de diferencia que se leen
+              como dos importes distintos. Un peso redondeado en una pantalla de plata no es
+              un detalle de diseño, es un número que no coincide con el que se cobra. */}
           <Stat icon="money-bag" label="Saldo pendiente" accent={credito.saldo_pendiente > 0 ? "warning" : "success"}
-            value={`$${n0(credito.saldo_pendiente)}`} />
-          {/* Lo que el cliente paga por período: `cuota_total`, no `cuota_mensual`, que es la
-              cuota PURA del sistema francés — sin cargos y sin el redondeo aplicado.
-              La etiqueta sale de la frecuencia del crédito: decía "Cuota mensual" también en
-              uno semanal, que es otro importe y otro calendario. */}
-          <Stat icon="chart-increasing" label={cap(amortizacion?.parametros.frecuencia_label.cuotaSingular ?? "cuota")} accent="primary"
-            value={amortizacion ? `$${n0(amortizacion.resumen.cuota_total)}` : "—"} />
+            value={`$${n2(credito.saldo_pendiente)}`} />
+          {/* CUÁL y CUÁNTO, no "la cuota" en abstracto: el operador necesita saber qué le
+              toca cobrar ahora. Antes mostraba el importe genérico del plan, que no dice
+              cuál está pendiente ni cuándo vence. */}
+          <Stat
+            icon="chart-increasing"
+            label={proximaCuota ? `${cap(unidadCuota)} ${proximaCuota.nro} de ${cuotas.length}` : cap(unidadCuota)}
+            accent="primary"
+            value={proximaCuota ? `$${n2(proximaCuota.cuota_total)}` : "—"}
+            sub={proximaCuota ? `vence ${fmtDate(proximaCuota.fecha_vencimiento)}` : "sin cuotas pendientes"}
+          />
+          {/* El conteo excluye los anulados: decía "1 pago" con "$0 cobrado" al lado. */}
           <Stat icon="chart-increasing" label="Total cobrado" accent="success"
-            value={`$${n0(totalCobrado)}`} sub={`${pagos.length} pago${pagos.length !== 1 ? "s" : ""}`} />
+            value={`$${n2(totalCobrado)}`}
+            sub={`${pagosVivos} pago${pagosVivos !== 1 ? "s" : ""}${pagosAnulados > 0 ? ` · ${pagosAnulados} anulado${pagosAnulados !== 1 ? "s" : ""}` : ""}`} />
           <Stat
             icon="warning"
             label={credito.dias_mora > 0 ? "En mora" : "Próximo pago"}
@@ -298,7 +313,7 @@ export function CreditoDetail({ credito, role, onRefinanciar }: { credito: Credi
                 ? `${credito.dias_mora}d`
                 : credito.proximo_pago ? fmtDate(credito.proximo_pago) : "—"
             }
-            sub={credito.dias_mora > 0 && credito.interes_mora ? `mora $${n0(credito.interes_mora)}` : undefined}
+            sub={credito.dias_mora > 0 && credito.interes_mora ? `mora $${n2(credito.interes_mora)}` : undefined}
           />
         </div>
       </div>
@@ -418,8 +433,8 @@ export function CreditoDetail({ credito, role, onRefinanciar }: { credito: Credi
                       <td className="px-3 py-2 text-muted-foreground tabular-nums border-b border-border/70">{fmtDate(p.fecha)}</td>
                       <td className="px-3 py-2 text-right font-mono font-semibold border-b border-border/70">
                         {p.anulado
-                          ? <span className="inline-flex items-center gap-1.5"><StatusBadge label="Anulado" variant="destructive" /><span className="text-muted-foreground line-through">${n0(p.monto)}</span></span>
-                          : <span className="text-success">+${n0(p.monto)}</span>}
+                          ? <span className="inline-flex items-center gap-1.5"><StatusBadge label="Anulado" variant="destructive" /><span className="text-muted-foreground line-through">${n2(p.monto)}</span></span>
+                          : <span className="text-success">+${n2(p.monto)}</span>}
                       </td>
                       <td className="px-3 py-2 text-right font-mono border-b border-border/70">
                         {p.aplicado_mora > 0 ? <span className="text-destructive">${n2(p.aplicado_mora)}</span> : <span className="text-muted-foreground/20">—</span>}
@@ -614,7 +629,7 @@ Totales</td>
           {anularPago && (
             <div className="space-y-4">
               <div className="rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-2.5 text-xs text-muted-foreground">
-                Se anulará el cobro de <span className="font-mono font-semibold text-foreground">${n0(anularPago.monto)}</span> del {fmtDate(anularPago.fecha)}: se revierte la imputación en las cuotas, se recalcula el crédito y se hace un <strong className="text-foreground">contra-asiento en la caja</strong>. El pago queda registrado como anulado (no se borra).
+                Se anulará el cobro de <span className="font-mono font-semibold text-foreground">${n2(anularPago.monto)}</span> del {fmtDate(anularPago.fecha)}: se revierte la imputación en las cuotas, se recalcula el crédito y se hace un <strong className="text-foreground">contra-asiento en la caja</strong>. El pago queda registrado como anulado (no se borra).
               </div>
               <Field label="Motivo (opcional)" hint="Queda en la auditoría">
                 <Textarea rows={2} value={anularMotivo} onChange={(e) => setAnularMotivo(e.target.value)} placeholder="Ej.: monto mal cargado, crédito equivocado…" />
