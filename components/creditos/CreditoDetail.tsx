@@ -552,13 +552,18 @@ export function CreditoDetail({ credito, role, onRefinanciar }: { credito: Credi
               >
                 <Printer className="h-3.5 w-3.5" /> Imprimir plan
               </button>
+              {/* SECUNDARIO a propósito. La acción principal pasaron a ser los botones de
+                  cada cuota, que son el 90% de los cobros; este queda para lo que ellos no
+                  cubren: varias cuotas juntas o un importe que no coincide con ninguna.
+                  Con los dos en verde relleno competían, y el que menos se usa era el que
+                  más pesaba — una sola acción primaria por pantalla. */}
               {puedeCobrar && (
                 <button
-                  onClick={() => setPagoOpen(true)}
-                  title="Registrar un cobro para este crédito"
-                  className="inline-flex items-center gap-1.5 rounded-lg bg-success px-3 py-1 text-[11px] font-semibold text-success-foreground transition-opacity hover:opacity-90"
+                  onClick={() => { setCuotaACobrar(null); setPagoOpen(true); }}
+                  title="Cobrar varias cuotas juntas, o un importe distinto al de una cuota"
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                 >
-                  <Wallet className="h-3.5 w-3.5" /> Registrar pago
+                  <Wallet className="h-3.5 w-3.5" /> Otro monto
                 </button>
               )}
             </div>
@@ -602,10 +607,10 @@ export function CreditoDetail({ credito, role, onRefinanciar }: { credito: Credi
                             <button
                               onClick={() => cobrarCuota(q)}
                               title={`Cobrar la ${unidadCuota} ${q.nro}`}
-                              className="inline-flex items-center gap-1.5 rounded-lg border border-success/40 bg-success/10 px-2.5 py-1 font-mono tabular-nums text-[11px] font-semibold text-success transition-colors hover:bg-success/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-success/40"
+                              className="inline-flex items-center gap-1.5 rounded-lg bg-success px-2.5 py-1 font-mono tabular-nums text-[11px] font-semibold text-success-foreground transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-success/40"
                             >
                               ${n2(q.total_cobrar ?? q.cuota_total)}
-                              {(q.mora ?? 0) > 0 && <span className="font-sans font-normal text-destructive/80">+mora</span>}
+                              {(q.mora ?? 0) > 0 && <span className="font-sans font-normal opacity-75">+mora</span>}
                             </button>
                           )}
                         </td>
