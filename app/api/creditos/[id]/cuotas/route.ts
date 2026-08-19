@@ -71,16 +71,20 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
 
   const cuotas = credito.cuotas.map((c) => {
     const restante_capital = round2(Math.max(0, c.capital - c.pagado_capital));
+    // Días de atraso de ESTA cuota. Sale de acá y no del navegador porque es el número que
+    // explica el importe de mora: los dos tienen que salir del mismo "hoy comercial", o la
+    // pantalla mostraría 70 días al lado de una mora calculada sobre 69.
+    const dias_atraso = diasAtraso(c.fecha_vencimiento, hoy);
     const capitalSaldado = c.pagado_capital >= round2(c.capital);
     // Estado de presentación: capital saldado = pagada; si no, vencida si ya
     // venció; parcial si hubo alguna imputación; sino pendiente.
     let estado: string;
     if (capitalSaldado) estado = "pagada";
-    else if (diasAtraso(c.fecha_vencimiento, hoy) > 0) estado = "vencida";
+    else if (dias_atraso > 0) estado = "vencida";
     else if (c.pagado_capital > 0 || c.pagado_interes > 0 || c.pagado_mora > 0 || c.pagado_cargos > 0) estado = "parcial";
     else estado = "pendiente";
     const moraPlena = moraCred.moraActiva
-      ? interesMora(c.cuota_total, diasAtraso(c.fecha_vencimiento, hoy), { tasaDiaria: moraCred.tasaMoraDiaria, diasGracia: graciaCred })
+      ? interesMora(c.cuota_total, dias_atraso, { tasaDiaria: moraCred.tasaMoraDiaria, diasGracia: graciaCred })
       : 0;
     const moraPend = capitalSaldado ? 0 : round2(Math.max(0, moraPlena - c.pagado_mora));
     const pendienteCuota = round2(Math.max(0, c.cuota_total - (c.pagado_capital + c.pagado_interes + c.pagado_cargos)));
@@ -115,6 +119,7 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
       restante_capital,
       // Mora devengada de ESTA cuota (0 si no venció o si la financiera la tiene apagada).
       mora: moraPend,
+      dias_atraso,
       // Lo que hay que cobrar para saldarla HOY: lo que falta de la cuota más su mora.
       total_cobrar: round2(pendienteCuota + moraPend),
       comprobantes,

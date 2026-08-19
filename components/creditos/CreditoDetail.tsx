@@ -100,6 +100,8 @@ export function CreditoDetail({ credito, role, onRefinanciar, onEditar, onCerrar
     (a, q) => a + Math.max(0, (q.iva + q.seguro + q.gastos) - (q.pagado_cargos ?? 0)), 0);
   /** La primera cuota sin saldar: es la que el operador va a cobrar. */
   const proximaCuota = cuotas.find((q) => q.estado !== "pagada") ?? null;
+  /** Mora devengada de todo el plan (pie de la columna Mora). */
+  const moraTotalPlan = cuotas.reduce((s, q) => s + (q.mora ?? 0), 0);
   const unidadCuota = amortizacion?.parametros.frecuencia_label.cuotaSingular ?? "cuota";
   const moraHoy = credito.dias_mora > 0 ? (credito.interes_mora ?? 0) : 0;
   const aCobrarHoy = Math.round((vencidoImpago + moraHoy) * 100) / 100;
@@ -693,42 +695,75 @@ export function CreditoDetail({ credito, role, onRefinanciar, onEditar, onCerrar
               <Info className="h-3.5 w-3.5" /> Sin cronograma persistido para este crédito.
             </p>
           ) : (
+            /*
+              Lectura de izquierda a derecha, como una cuenta:
+                  Cuota  =  Interés + Capital        +  Mora   →   A cobrar
+                (pactada)   (de qué se compone)      (recargo)     (lo que se pide)
+
+              Antes cada encabezado tenía su propio color (blanco / naranja / azul) y los
+              importes también, así que la tabla era un arcoíris donde todo pesaba lo mismo.
+              Ahora el color dice algo: la CUOTA en blanco porque es la referencia, su
+              desglose en gris porque es secundario, y la MORA en rojo porque es el único
+              número que no estaba pactado. Los encabezados, todos grises (Design Contract §4).
+            */
             <div className="rounded-xl border border-border overflow-x-auto">
               <table className="w-full text-xs border-separate border-spacing-0">
                 <thead>
                   <tr className="bg-muted/30">
-                    <th className="px-3 py-2.5 text-left  font-semibold text-muted-foreground border-b border-border w-9">#</th>
-                    <th className="px-3 py-2.5 text-left  font-semibold text-muted-foreground border-b border-border">Vencimiento</th>
-                    <th className="px-3 py-2.5 text-right font-semibold text-foreground border-b border-border">Cuota</th>
-                    <th className="px-3 py-2.5 text-right font-semibold text-warning border-b border-border hidden sm:table-cell">Interés</th>
-                    <th className="px-3 py-2.5 text-right font-semibold text-primary border-b border-border">Capital</th>
-                    <th className="px-3 py-2.5 text-left  font-semibold text-muted-foreground border-b border-border">Estado</th>
-                    <th className="px-3 py-2.5 text-right font-semibold text-muted-foreground border-b border-border pr-4">Cobrar</th>
+                    {[
+                      { t: "#", a: "text-left", w: "w-9" },
+                      { t: "Vencimiento", a: "text-left" },
+                      { t: "Cuota", a: "text-right" },
+                      { t: "Interés", a: "text-right", w: "hidden sm:table-cell" },
+                      { t: "Capital", a: "text-right", w: "hidden sm:table-cell" },
+                      { t: "Mora", a: "text-right" },
+                      { t: "Estado", a: "text-left" },
+                      { t: "A cobrar", a: "text-right pr-4" },
+                    ].map((h) => (
+                      <th key={h.t} className={`px-3 py-2.5 ${h.a} text-[10px] font-semibold uppercase tracking-wide text-muted-foreground border-b border-border ${h.w ?? ""}`}>
+                        {h.t}
+                      </th>
+                    ))}
                   </tr>
                 </thead>
                 <tbody>
                   {cuotas.map((q, idx) => {
                     const b = CUOTA_BADGE[q.estado];
+                    const mora = q.mora ?? 0;
                     return (
-                      <tr key={q.nro} className={idx % 2 === 1 ? "bg-muted/5" : ""}>
-                        <td className="px-3 py-2 font-mono text-muted-foreground/50 tabular-nums border-b border-border/70">{q.nro}</td>
-                        <td className="px-3 py-2 text-muted-foreground tabular-nums border-b border-border/70">{fmtDate(q.fecha_vencimiento)}</td>
-                        <td className="px-3 py-2 text-right font-mono text-foreground tabular-nums border-b border-border/70">${n2(q.cuota_total)}</td>
-                        <td className="px-3 py-2 text-right font-mono text-warning tabular-nums border-b border-border/70 hidden sm:table-cell">${n2(q.interes)}</td>
-                        <td className="px-3 py-2 text-right font-mono text-primary tabular-nums border-b border-border/70">${n2(q.capital)}</td>
-                        <td className="px-3 py-2 border-b border-border/70"><StatusBadge label={b.label} variant={b.variant} /></td>
-                        {/* Cobrar ESTA cuota, con su importe final a la vista. Antes había que
-                            abrir el cobro, buscar el crédito y tildar la cuota: cuatro pasos
-                            para lo que se hace veinte veces por día. */}
-                        <td className="px-3 py-2 pr-4 text-right border-b border-border/70">
+                      <tr key={q.nro} className={`${idx % 2 === 1 ? "bg-muted/5" : ""} ${q.estado === "pagada" ? "text-muted-foreground/60" : ""}`}>
+                        <td className="px-3 py-2.5 font-mono text-muted-foreground/50 tabular-nums border-b border-border/70">{q.nro}</td>
+                        <td className="px-3 py-2.5 text-muted-foreground tabular-nums border-b border-border/70">{fmtDate(q.fecha_vencimiento)}</td>
+                        <td className="px-3 py-2.5 text-right font-mono font-medium text-foreground tabular-nums border-b border-border/70">${n2(q.cuota_total)}</td>
+                        <td className="px-3 py-2.5 text-right font-mono text-muted-foreground tabular-nums border-b border-border/70 hidden sm:table-cell">${n2(q.interes)}</td>
+                        <td className="px-3 py-2.5 text-right font-mono text-muted-foreground tabular-nums border-b border-border/70 hidden sm:table-cell">${n2(q.capital)}</td>
+                        {/* La mora, discriminada. Con los días al lado: son los que la generan,
+                            así que el importe se puede verificar sin salir de la fila. */}
+                        <td className="px-3 py-2.5 text-right font-mono tabular-nums border-b border-border/70">
+                          {mora > 0 ? (
+                            <span className="text-destructive">
+                              ${n2(mora)}
+                              {(q.dias_atraso ?? 0) > 0 && (
+                                <span className="ml-1 font-sans text-[10px] font-normal text-destructive/60">{q.dias_atraso} d</span>
+                              )}
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground/20">—</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2.5 border-b border-border/70"><StatusBadge label={b.label} variant={b.variant} /></td>
+                        {/* Cobrar ESTA cuota. El botón dice el TOTAL a cobrar —cuota + mora—,
+                            sin sufijos: el "+mora" que llevaba antes se leía como si al
+                            importe todavía hubiera que sumarle algo. La mora ya está
+                            discriminada en su columna. */}
+                        <td className="px-3 py-2.5 pr-4 text-right border-b border-border/70">
                           {q.estado === "pagada" || !puedeCobrar ? null : (
                             <button
                               onClick={() => cobrarCuota(q)}
                               title={`Cobrar la ${unidadCuota} ${q.nro}`}
-                              className="inline-flex items-center gap-1.5 rounded-lg bg-success px-2.5 py-1 font-mono tabular-nums text-[11px] font-semibold text-success-foreground transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-success/40"
+                              className="inline-flex items-center justify-center rounded-lg bg-success px-3 py-1.5 font-mono tabular-nums text-[11px] font-semibold text-success-foreground transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-success/40"
                             >
                               ${n2(q.total_cobrar ?? q.cuota_total)}
-                              {(q.mora ?? 0) > 0 && <span className="font-sans font-normal opacity-75">+mora</span>}
                             </button>
                           )}
                         </td>
@@ -740,8 +775,11 @@ export function CreditoDetail({ credito, role, onRefinanciar, onEditar, onCerrar
                   <tr className="bg-muted/20">
                     <td colSpan={2} className="px-3 py-2.5 text-[10px] font-bold text-muted-foreground uppercase tracking-widest border-t border-border">Totales</td>
                     <td className="px-3 py-2.5 text-right font-mono font-bold text-foreground border-t border-border">${n2(cuotas.reduce((s, q) => s + q.cuota_total, 0))}</td>
-                    <td className="px-3 py-2.5 text-right font-mono font-bold text-warning border-t border-border hidden sm:table-cell">${n2(cuotas.reduce((s, q) => s + q.interes, 0))}</td>
-                    <td className="px-3 py-2.5 text-right font-mono font-bold text-primary border-t border-border">${n2(cuotas.reduce((s, q) => s + q.capital, 0))}</td>
+                    <td className="px-3 py-2.5 text-right font-mono font-bold text-muted-foreground border-t border-border hidden sm:table-cell">${n2(cuotas.reduce((s, q) => s + q.interes, 0))}</td>
+                    <td className="px-3 py-2.5 text-right font-mono font-bold text-muted-foreground border-t border-border hidden sm:table-cell">${n2(cuotas.reduce((s, q) => s + q.capital, 0))}</td>
+                    <td className="px-3 py-2.5 text-right font-mono font-bold text-destructive border-t border-border">
+                      {moraTotalPlan > 0 ? `$${n2(moraTotalPlan)}` : <span className="text-muted-foreground/20">—</span>}
+                    </td>
                     <td colSpan={2} className="border-t border-border pr-4" />
                   </tr>
                 </tfoot>

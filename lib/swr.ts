@@ -527,6 +527,9 @@ export interface CuotaPersistida {
   restante_capital: number;
   /** Mora devengada de ESTA cuota, calculada por el motor con las condiciones congeladas. */
   mora?: number;
+  /** Días de atraso de ESTA cuota. Es lo que explica el importe de mora de al lado; viene del
+   *  server para que use el mismo "hoy comercial" con el que se calculó esa mora. */
+  dias_atraso?: number;
   /** Lo que hay que cobrar para saldarla hoy: lo que falta de la cuota + su mora. */
   total_cobrar?: number;
   /** Recibos que imputaron a la cuota (comprobante REC + fecha/hora del pago + monto aplicado). */
