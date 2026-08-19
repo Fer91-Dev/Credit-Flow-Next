@@ -257,6 +257,15 @@ export function CreditoDetail({ credito, role, onRefinanciar, onEditar, onCerrar
   const esAdmin = role === "admin";
   /** El libre deuda solo existe si el crédito está cancelado (el endpoint lo exige igual). */
   const cancelado = credito.estado === "pagado";
+  /**
+   * Eliminar es para el ERROR DE CARGA, no para hacer desaparecer a un moroso: borrar un
+   * crédito con cuotas vencidas impagas le limpia el historial al cliente y su score vuelve a
+   * "sin historial". Mismo criterio que el server (que es la barrera real).
+   *
+   * Se espera a que carguen las cuotas: con la lista vacía, `cuotasVencidas` es 0 y el botón
+   * aparecería un instante antes de esconderse.
+   */
+  const puedeEliminar = !credito.tiene_pagos && !loadingCuotas && cuotasVencidas === 0 && credito.dias_mora === 0;
 
   // Reimprime el mismo PDF "Plan de pagos" (vista cliente) que se ve al otorgar.
   // Reusa el plan de amortización ya cargado en el detalle.
@@ -809,10 +818,11 @@ export function CreditoDetail({ credito, role, onRefinanciar, onEditar, onCerrar
               <Ban className="h-3.5 w-3.5" /> Anular crédito
             </button>
           )}
-          {/* Con pagos registrados el server rechaza el DELETE: en vez de dejar un botón
-              apagado que solo se explica al pasar el mouse, no se muestra — la salida es
-              anularlo, que está justo al lado. */}
-          {!credito.tiene_pagos && (
+          {/* El server rechaza el DELETE si el crédito tiene pagos, si ya desembolsó plata o
+              si arrastra cuotas vencidas impagas. En vez de dejar un botón apagado que solo
+              se explica al pasar el mouse, no se muestra — la salida es anularlo, que está
+              justo al lado. */}
+          {puedeEliminar && (
             <button
               onClick={handleEliminarCredito}
               disabled={eliminarBusy}

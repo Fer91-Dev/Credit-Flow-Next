@@ -4,7 +4,7 @@ import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { registrarAuditoria } from "@/lib/audit";
 import { aplicarYRegistrarStock } from "@/lib/stock";
-import { formatCreditoNumero, nombreCompleto } from "@/lib/utils";
+import { formatCreditoNumero, nombreCompleto, hoyComercial } from "@/lib/utils";
 import { validarTransicionEstado, estadoCoherente } from "@/lib/domain";
 import type { NextRequest } from "next/server";
 
@@ -231,6 +231,37 @@ export const DELETE = withErrorHandler(async (req: NextRequest, { params }: Rout
   if (desembolso) {
     return errorResponse(
       "El crédito ya tiene un desembolso registrado en caja; anulalo en lugar de eliminarlo (la anulación revierte la caja con comprobante).",
+      "INVALID_STATE",
+      409,
+    );
+  }
+
+  /**
+   * 🔴 Un crédito CON CUOTAS VENCIDAS IMPAGAS tampoco se hard-deletea, aunque no tenga pagos
+   * ni haya movido caja.
+   *
+   * Borrarlo no deja plata descuadrada, pero **le limpia el prontuario al deudor**: el score
+   * interno (`lib/domain/scoring.ts`) se arma leyendo los `creditos` del cliente y sus
+   * `cuotas`. Sin créditos, `calcularScore` devuelve `sin_historial` — el que no te pagó
+   * $500.000 vuelve mañana y evalúa como cliente nuevo. La auditoría deja la traza del
+   * borrado, pero el motor de riesgo no lee auditoría: lee créditos.
+   *
+   * "Eliminar" es para el error de carga (se otorgó mal, todavía no venció nada). Para todo
+   * lo demás está ANULAR, que conserva el registro con su motivo y queda auditado.
+   */
+  const vencidas = await prisma.cuotas.findMany({
+    where: { ...withTenant(tenantId), credito_id: id, fecha_vencimiento: { lt: hoyComercial() } },
+    select: { capital: true, pagado_capital: true },
+  });
+  // Saldada = capital cubierto, el MISMO criterio con el que el cronograma la pinta como
+  // "pagada". No se filtra por `cuotas.estado` porque ese campo solo se reescribe al cobrar:
+  // una cuota que venció ayer sigue guardada como "pendiente" hasta que alguien pague.
+  const hayVencidaImpaga = vencidas.some(
+    (c) => c.pagado_capital < Math.round(c.capital * 100) / 100,
+  );
+  if (hayVencidaImpaga) {
+    return errorResponse(
+      "El crédito tiene cuotas vencidas impagas; anulalo en lugar de eliminarlo (eliminarlo le borraría el historial de mora al cliente).",
       "INVALID_STATE",
       409,
     );
