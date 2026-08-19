@@ -15,7 +15,7 @@ import { ApiError } from "@/lib/auth";
 import { registrarAuditoria } from "@/lib/audit";
 import { getAuditActor } from "@/lib/audit-context";
 import { getConfiguracion, getCobranzaConfig } from "@/lib/config";
-import { calcularDeudaVencida, planDeAcuerdo, evaluarAcuerdo, quitaMaxima, round2, noNegativo, type CuotaParaImputar, type DeudaVencida, type AcuerdosConfig, moraDelCredito, moraDesdeCronograma } from "@/lib/domain";
+import { calcularDeudaVencida, planDeAcuerdo, evaluarAcuerdo, quitaMaxima, round2, noNegativo, tasaPeriodicaSegunConvencion, type CuotaParaImputar, type DeudaVencida, type AcuerdosConfig, moraDelCredito, moraDesdeCronograma } from "@/lib/domain";
 import { hoyComercial } from "@/lib/utils";
 
 /** Crédito con lo necesario para calcular su deuda vencida. */
@@ -23,6 +23,7 @@ const SELECT_CREDITO = {
   id: true,
   numero: true,
   estado: true,
+  tasa: true, // para heredarla al acuerdo cuando la financiera no fija una propia
   vendedor_id: true,
   cronograma: true,
   cliente: { select: { id: true, nombre: true, apellido: true } },
@@ -176,7 +177,21 @@ export async function crearAcuerdo(input: CrearAcuerdoInput) {
     d.setUTCDate(d.getUTCDate() + cfg.dias_entre_cuotas);
     return d;
   })();
-  const plan = planDeAcuerdo(montoAcordado, cuotas, primero, cfg.dias_entre_cuotas);
+  /**
+   * Tasa del acuerdo. `null` en la configuración = **heredar la del crédito**, que es el
+   * criterio equitativo: el deudor paga por la plata el mismo precio que firmó, y su
+   * beneficio por acordar es que los punitorios dejan de correr. Un 0 explícito es "sin
+   * interés" (incentivo puro), que no es lo mismo.
+   *
+   * La del crédito viene en la convención del tenant (TNA, TEA o mensual), así que se
+   * convierte a MENSUAL, que es la unidad en la que se define el parámetro.
+   */
+  const config = await getConfiguracion(tenantId);
+  const tasaAcuerdoPct = cfg.tasa_mensual ?? round2(
+    tasaPeriodicaSegunConvencion(credito.tasa, config.convencionTasa, "mensual", config.simulador.frecuencias) * 100,
+  );
+  const plan = planDeAcuerdo(montoAcordado, cuotas, primero, cfg.dias_entre_cuotas, tasaAcuerdoPct);
+  const totalAcuerdo = round2(plan.reduce((a, c) => a + c.monto, 0));
 
   const acuerdo = await prisma.acuerdos_pago.create({
     data: {
@@ -186,7 +201,10 @@ export async function crearAcuerdo(input: CrearAcuerdoInput) {
       fecha: hoy,
       deuda_original: deuda.total,
       quita,
-      monto_acordado: montoAcordado,
+      // Lo que se compromete a pagar = la suma del plan. Con tasa 0 coincide con
+      // `deuda_original − quita`; con interés es mayor, y es contra ESTE número que se
+      // evalúa si cumplió.
+      monto_acordado: totalAcuerdo,
       estado: "vigente",
       congela_punitorios: cfg.congela_punitorios,
       cuotas_para_romper: cfg.cuotas_para_romper,
@@ -214,7 +232,7 @@ export async function crearAcuerdo(input: CrearAcuerdoInput) {
       `Acuerdo de pago sobre ${credito.numero ? `CRD-${String(credito.numero).padStart(6, "0")}` : "crédito"}: ` +
       `$${deuda.total.toLocaleString("es-AR")} vencidos en ${cuotas} cuota(s)` +
       (quita > 0 ? ` con quita de $${quita.toLocaleString("es-AR")}` : ""),
-    meta: { tipo: "acuerdo_pago", acuerdo_id: acuerdo.id, deuda: deuda.total, quita, monto_acordado: montoAcordado, cuotas },
+    meta: { tipo: "acuerdo_pago", acuerdo_id: acuerdo.id, deuda: deuda.total, quita, monto_acordado: totalAcuerdo, tasa_mensual: tasaAcuerdoPct, cuotas },
   });
 
   return acuerdo;

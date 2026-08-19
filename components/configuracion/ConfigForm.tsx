@@ -1497,6 +1497,16 @@ export function ConfigForm() {
                   onChange={e => setAcuerdos({ cuotas_para_romper: Math.max(1, Math.round(parseFloat(e.target.value) || 1)) })}
                 />
               </Field>
+              <Field
+                label="Tasa del acuerdo (% mensual)"
+                hint="Vacío = la misma tasa que firmó el cliente (lo equitativo). 0 = sin interés: el acuerdo le sale gratis y atrasarse conviene."
+              >
+                <Input
+                  type="number" min="0" max="100" step="any" placeholder="la del crédito"
+                  value={cobranza.acuerdos.tasa_mensual ?? ""}
+                  onChange={e => setAcuerdos({ tasa_mensual: e.target.value === "" ? null : Math.max(0, Math.min(100, parseFloat(e.target.value) || 0)) })}
+                />
+              </Field>
               <Field label="Quita máx. del vendedor (%)" hint="Cuánto de los punitorios e interés puede perdonar el vendedor por su cuenta. En 0 no condona nada: toda quita la firma un admin, que no tiene tope. El capital nunca se toca.">
                 <Input
                   type="number" min="0" max="100" step="1"
@@ -1743,7 +1753,7 @@ function defaultCobranza(): CobranzaConfig {
     acuerdos: {
       max_cuotas: 6, dias_entre_cuotas: 30, cuotas_para_romper: 1,
       congela_punitorios: true, saca_de_agenda: true,
-      quita_max_vendedor_pct: 0,
+      quita_max_vendedor_pct: 0, tasa_mensual: null,
     },
     recupero: {
       exigir_gestion_para_acuerdo: false, dias_min_mora_acuerdo: 0,

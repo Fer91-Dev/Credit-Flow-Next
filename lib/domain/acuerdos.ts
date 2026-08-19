@@ -42,6 +42,21 @@ export interface AcuerdosConfig {
    * límite que sí importa —que la quita nunca toque el capital— vive en `quitaMaxima`.
    */
   quita_max_vendedor_pct: number;
+  /**
+   * Tasa MENSUAL, en %, que se le cobra al financiar el acuerdo. `null` = usa la tasa del
+   * crédito original.
+   *
+   * Por qué existe: sin interés, el acuerdo le sale al deudor más barato que pagar en
+   * fecha — se lleva meses de plazo sin costo y encima con los punitorios congelados, así
+   * que atrasarse pasa a convenir. Y la financiera resigna el rendimiento de esa plata
+   * (sobre $74.000 a tres meses al 5% mensual, unos $7.500).
+   *
+   * El criterio equitativo es que el acuerdo lleve la MISMA tasa que el cliente firmó: paga
+   * el mismo precio por la plata que ya tenía, y su beneficio real es que los punitorios
+   * dejan de correr. Por eso `null` (heredar la del crédito) es el default. Una financiera
+   * que prefiera usar el acuerdo como incentivo puro pone 0.
+   */
+  tasa_mensual: number | null;
 }
 
 export const ACUERDOS_DEFAULT: AcuerdosConfig = {
@@ -51,6 +66,7 @@ export const ACUERDOS_DEFAULT: AcuerdosConfig = {
   congela_punitorios: true,
   saca_de_agenda: true,
   quita_max_vendedor_pct: 0,
+  tasa_mensual: null,
 };
 
 const entero = (v: unknown, def: number, min: number, max: number) => {
@@ -75,6 +91,12 @@ export function resolverAcuerdos(raw: unknown): AcuerdosConfig {
     congela_punitorios: bool(r.congela_punitorios, d.congela_punitorios),
     saca_de_agenda: bool(r.saca_de_agenda, d.saca_de_agenda),
     quita_max_vendedor_pct: pct(r.quita_max_vendedor_pct, d.quita_max_vendedor_pct),
+    // `null`/vacío se conserva: significa "heredar la tasa del crédito", que no es lo mismo
+    // que 0 (sin interés). Por eso no puede caer al default con un `Number(null) === 0`.
+    tasa_mensual:
+      r.tasa_mensual === null || r.tasa_mensual === undefined || r.tasa_mensual === ("" as unknown)
+        ? null
+        : pct(r.tasa_mensual, 0),
   };
 }
 
@@ -181,18 +203,33 @@ export interface CuotaAcuerdo {
 }
 
 /**
- * Reparte el monto acordado en `cantidad` pagos iguales, con el REDONDEO ACUMULADO en la
- * última: si se redondeara cada una por separado, la suma no daría el total y el cliente
- * terminaría debiendo unos centavos que nadie sabe de dónde salieron.
+ * Reparte el monto acordado en `cantidad` pagos, con el REDONDEO ACUMULADO en la última: si
+ * se redondeara cada una por separado, la suma no daría el total y el cliente terminaría
+ * debiendo unos centavos que nadie sabe de dónde salieron.
+ *
+ * `tasaMensualPct` financia el acuerdo (0 o ausente = pagos iguales sin interés, que era el
+ * único comportamiento hasta ahora). La tasa se prorratea a la periodicidad real de las
+ * cuotas: con 30 días es la mensual tal cual; con 15, la mitad. Prorrateo simple y no
+ * capitalizado, porque es lo que se le puede explicar al deudor en el mostrador.
  */
 export function planDeAcuerdo(
   montoAcordado: number,
   cantidad: number,
   primerVencimiento: Date,
   diasEntreCuotas: number,
+  tasaMensualPct = 0,
 ): CuotaAcuerdo[] {
   if (cantidad < 1) throw new Error("Un acuerdo necesita al menos una cuota");
-  const total = round2(montoAcordado);
+
+  const iPeriodo = Number.isFinite(tasaMensualPct) && tasaMensualPct > 0
+    ? (tasaMensualPct / 100) * (diasEntreCuotas / 30)
+    : 0;
+  // Con interés, el pago periódico sale del factor francés sobre el monto acordado.
+  const montoBase = iPeriodo > 0
+    ? round2(montoAcordado * (iPeriodo / (1 - Math.pow(1 + iPeriodo, -cantidad))) * cantidad)
+    : montoAcordado;
+
+  const total = round2(montoBase);
   const base = round2(Math.floor((total / cantidad) * 100) / 100);
 
   const plan: CuotaAcuerdo[] = [];
