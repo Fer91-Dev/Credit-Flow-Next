@@ -10,7 +10,7 @@ import {
   useProveedores, useProveedor, KEYS,
   type Proveedor, type MovimientoProveedor,
 } from "@/lib/swr";
-import { formatFecha, parseMontoInput } from "@/lib/utils";
+import { formatFecha, parseMontoInput, eventoPropio, teclaDelContenedor } from "@/lib/utils";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { KpiCard } from "@/components/ui/KpiCard";
 import { StatusBadge } from "@/components/ui/StatusBadge";
@@ -223,7 +223,7 @@ export function ProveedoresView() {
             renderMobileCard={(p) => {
               const saldo = p.saldo ?? 0;
               return (
-                <div onClick={() => setFichaId(p.id)} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setFichaId(p.id); } }} className={`rounded-xl bg-card border border-border p-4 space-y-2 cursor-pointer active:bg-muted/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 ${!p.activo ? "opacity-50" : ""}`}>
+                <div onClick={(e) => { if (eventoPropio(e)) setFichaId(p.id); }} role="button" tabIndex={0} onKeyDown={(e) => { if (teclaDelContenedor(e) && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); setFichaId(p.id); } }} className={`rounded-xl bg-card border border-border p-4 space-y-2 cursor-pointer active:bg-muted/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 ${!p.activo ? "opacity-50" : ""}`}>
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
                       <p className="font-medium text-foreground truncate">{p.nombre}</p>

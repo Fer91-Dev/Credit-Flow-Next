@@ -11,7 +11,7 @@ import { RefinanciarDialog } from "./RefinanciarDialog";
 import { CompararRefiDialog } from "./CompararRefiDialog";
 import { refrescarNotificaciones, useCreditos, KEYS, type Credito } from "@/lib/swr";
 import { type Role } from "@/lib/auth/roles";
-import { formatCreditoNumero, nombreCompleto, formatFecha, formatFechaHora } from "@/lib/utils";
+import { formatCreditoNumero, nombreCompleto, formatFecha, formatFechaHora, eventoPropio, teclaDelContenedor } from "@/lib/utils";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { KpiCard } from "@/components/ui/KpiCard";
 import { StatusBadge } from "@/components/ui/StatusBadge";
@@ -392,7 +392,7 @@ export function CreditosTable({ role }: { role: Role }) {
             renderMobileCard={(c) => {
               const est = estadoBadge(c.estado);
               return (
-                <div onClick={() => setDetail(c)} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setDetail(c); } }} className="rounded-xl bg-card border border-border p-4 space-y-3 cursor-pointer active:bg-muted/20 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50">
+                <div onClick={(e) => { if (eventoPropio(e)) setDetail(c); }} role="button" tabIndex={0} onKeyDown={(e) => { if (teclaDelContenedor(e) && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); setDetail(c); } }} className="rounded-xl bg-card border border-border p-4 space-y-3 cursor-pointer active:bg-muted/20 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50">
                   <div className="flex items-start justify-between gap-2">
                     <div>
                       <p className="font-mono text-[11px] text-muted-foreground">{formatCreditoNumero(c.numero)}</p>

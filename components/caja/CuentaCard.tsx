@@ -1,5 +1,7 @@
 "use client";
 
+import { teclaDelContenedor } from "@/lib/utils";
+
 import { RotateCw } from "lucide-react";
 import { Emoji } from "@/components/ui/Emoji";
 import type { CuentaCaja, SaldoCuentaDetalle } from "@/lib/swr";
@@ -56,7 +58,7 @@ export function CuentaCard({
       role="button"
       tabIndex={0}
       onClick={onToggle}
-      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onToggle(); } }}
+      onKeyDown={(e) => { if (teclaDelContenedor(e) && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); onToggle(); } }}
       title={activa ? "Quitar filtro" : `Ver solo ${meta.label}`}
       style={{ backgroundImage: CUENTA_GRADIENTE[cuenta] }}
       className={`group relative overflow-hidden text-left rounded-2xl p-5 text-white shadow-lg shadow-black/20 transition-all cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70 ${

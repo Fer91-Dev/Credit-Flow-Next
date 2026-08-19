@@ -7,7 +7,7 @@ import {
 } from "lucide-react";
 import { WhatsAppIcon } from "@/components/ui/WhatsAppIcon";
 import { useAgendaCobranza, type AgendaItem } from "@/lib/swr";
-import { formatMonto, formatFecha, formatCreditoNumero } from "@/lib/utils";
+import { formatMonto, formatFecha, formatCreditoNumero, teclaDelContenedor } from "@/lib/utils";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { KpiCard } from "@/components/ui/KpiCard";
 import { IconBadge } from "@/components/ui/IconBadge";
@@ -176,7 +176,7 @@ function AgendaRow({
       role="button"
       tabIndex={0}
       onClick={onDetalle}
-      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onDetalle(); } }}
+      onKeyDown={(e) => { if (teclaDelContenedor(e) && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); onDetalle(); } }}
       className="group flex items-center gap-3 rounded-xl bg-card border border-border p-4 cursor-pointer transition-all duration-150 hover:bg-accent hover:border-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
     >
       {/* Cliente + motivo */}

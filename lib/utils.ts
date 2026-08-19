@@ -140,3 +140,34 @@ export function formatFechaHora(v: string | Date | null | undefined): string {
     timeZone: "America/Argentina/Buenos_Aires",
   }).format(d);
 }
+
+/**
+ * ¿El evento nació DENTRO de este elemento, en el DOM?
+ *
+ * 🔴 React propaga los eventos por el árbol de COMPONENTES, no por el DOM. Un diálogo de
+ * Radix montado dentro de una tarjeta o una fila clickeable se portalea al `<body>`, pero
+ * sus eventos siguen subiendo hasta el contenedor. Consecuencia real, encontrada probando:
+ * al escribir el motivo para anular un crédito, la barra espaciadora no escribía el espacio
+ * —el handler de la fila hacía `preventDefault`— y además abría el detalle encima del modal,
+ * que se leía como "el modal se cierra solo". Igual al clickear fuera del diálogo.
+ *
+ * `contains` mira el DOM, así que da false para todo lo portaleado.
+ *
+ * Regla: **todo contenedor clickeable que pueda tener un modal adentro filtra con esto.**
+ */
+export function eventoPropio(e: { currentTarget: EventTarget & Element; target: EventTarget | null }): boolean {
+  return e.currentTarget.contains(e.target as Node);
+}
+
+/**
+ * ¿La tecla le corresponde al contenedor, o a un control que tiene adentro?
+ *
+ * Un `<input>`, un `<select>` o un botón dentro de una tarjeta clickeable se quedan con el
+ * espacio y el Enter: son suyos. Sin esto, escribir en un campo dispara la acción del
+ * contenedor.
+ */
+export function teclaDelContenedor(e: { currentTarget: EventTarget & Element; target: EventTarget | null }): boolean {
+  if (!eventoPropio(e)) return false;
+  const t = e.target as HTMLElement;
+  return t === e.currentTarget || !t.closest("input,textarea,select,button,a,[role=button]");
+}

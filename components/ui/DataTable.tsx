@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, type ReactNode, type KeyboardEvent } from 
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Emoji } from "./Emoji";
 import { Skeleton } from "./skeleton";
+import { eventoPropio, teclaDelContenedor } from "@/lib/utils";
 
 /**
  * Tabla reutilizable del SaaS — implementa el "modelo" del SaaS Design Contract §4
@@ -225,12 +226,13 @@ export function DataTable<T>({
                 return (
                   <tr
                     key={rowKey(row)}
-                    onClick={onRowClick ? () => onRowClick(row) : undefined}
+                    onClick={onRowClick ? (e) => { if (eventoPropio(e)) onRowClick(row); } : undefined}
                     {...(onRowClick
                       ? {
                           role: "button" as const,
                           tabIndex: 0,
                           onKeyDown: (e: KeyboardEvent) => {
+                            if (!teclaDelContenedor(e)) return;
                             if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onRowClick(row); }
                           },
                         }

@@ -5,7 +5,7 @@ import { mutate as globalMutate } from "swr";
 import { Plus, Pencil, Trash2, ImagePlus, Loader2, X, Link as LinkIcon, LayoutGrid, List, ArrowDownToLine, SlidersHorizontal, Image as ImageIcon, ChevronLeft, ChevronRight, Info, GripVertical, Star } from "lucide-react";
 import { BuscadorF3 } from "@/components/ui/BuscadorF3";
 import { useProductos, useProducto, KEYS, type Producto, type MovimientoStock } from "@/lib/swr";
-import { parseMontoInput, formatFecha, formatFechaHora, formatCreditoNumero } from "@/lib/utils";
+import { parseMontoInput, formatFecha, formatFechaHora, formatCreditoNumero, teclaDelContenedor } from "@/lib/utils";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { KpiCard } from "@/components/ui/KpiCard";
 import { StatusBadge } from "@/components/ui/StatusBadge";
@@ -256,7 +256,7 @@ function ProductoCard({ producto, loading, onOpen, onEdit, onDelete }: { product
       onClick={onOpen}
       role="button"
       tabIndex={0}
-      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpen(); } }}
+      onKeyDown={(e) => { if (teclaDelContenedor(e) && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); onOpen(); } }}
       className={`group relative rounded-xl bg-card border border-border overflow-hidden flex flex-col cursor-pointer transition-all duration-200 ease-out hover:-translate-y-1 hover:border-primary/50 hover:shadow-xl hover:shadow-black/25 active:translate-y-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background ${!producto.activo ? "opacity-50" : ""}`}
     >
       {/* Skeleton de carga (al clickear, mientras se abre la ficha) */}
