@@ -275,6 +275,7 @@ const HELP: Record<string, HelpDoc> = {
           { term: "Hoy (agenda)", desc: "Cola priorizada de a quién contactar: promesas vencidas → agendados → morosos enfriados. Scopeada al vendedor." },
           { term: "Morosos", desc: "Créditos en mora con días e interés moratorio. Desde acá registrás gestiones (llamada, WhatsApp, visita…)." },
           { term: "Promesas", desc: "Seguimiento de promesas de pago (pendiente / cumplida / rota). Se concilian solas al cobrar; el cron rompe las vencidas." },
+          { term: "Acuerdos", desc: "Los planes de pago vigentes, cumplidos y rotos. El sistema los evalúa solo: no hay que marcarlos a mano." },
           { term: "Campañas", desc: "Envíos masivos a un grupo de morosos (Email/WhatsApp) con quita de interés opcional." },
         ],
       },
@@ -284,14 +285,69 @@ const HELP: Record<string, HelpDoc> = {
         pasos: [
           "Arrancá por \"Hoy\": es la lista de trabajo del día.",
           "Registrá una gestión; si el cliente promete pagar, queda una promesa en seguimiento.",
+          "Si prometió y no pagó, subí un escalón: ofrecele un acuerdo sobre lo vencido.",
           "Para varios casos a la vez, armá una campaña con su plantilla de mensaje.",
+        ],
+      },
+      {
+        // Los tres instrumentos se confunden todo el tiempo, y elegir mal cuesta plata: la
+        // refinanciación no se deshace. Van en orden de menor a mayor compromiso.
+        kind: "definiciones",
+        titulo: "Las tres formas de recuperar a un moroso",
+        items: [
+          {
+            term: "1 · Promesa de pago",
+            desc:
+              "\"Pagame el viernes\". No modifica nada: la deuda es la misma, las cuotas siguen en su fecha y los punitorios siguen corriendo. Queda anotada con fecha y, si no cumple, el sistema la marca rota solo y te avisa. Para el que se olvidó o cobra el día 10.",
+          },
+          {
+            term: "2 · Acuerdo de pago",
+            desc:
+              "Toma SOLO lo vencido y lo reparte en cuotas. El crédito sobrevive: lo que todavía no venció sigue su curso normal. Mientras cumple no se le devengan más punitorios y sale de la lista de morosos. Si lo rompe, vuelve todo como estaba. Para el que puede pagar, pero no todo junto.",
+          },
+          {
+            term: "3 · Refinanciación",
+            desc:
+              "Cierra el crédito y crea uno nuevo con TODA la deuda —vencida y por vencer— y cronograma desde cero. No se deshace, y le descuenta 25 puntos de score al cliente. Para el que ya no puede con el crédito que firmó.",
+          },
+        ],
+      },
+      {
+        kind: "pasos",
+        titulo: "Cómo se arma un acuerdo",
+        pasos: [
+          "Entrá al crédito en mora y elegí \"Acuerdo de pago\". Arriba vas a ver lo que se toma: capital vencido, interés de esas cuotas y punitorios corridos.",
+          "Elegí en cuántas cuotas y cuándo vence la primera. El tope de cuotas y cada cuántos días vencen se fijan en Configuración → Cobranza.",
+          "Si querés dar un incentivo, cargá una condonación. Sale de los punitorios y el interés, NUNCA del capital, y cada vendedor tiene su propio tope.",
+          "Confirmá. El crédito sale de la agenda del día y los punitorios dejan de correr mientras cumpla.",
+        ],
+      },
+      {
+        kind: "texto",
+        titulo: "Qué gana y qué pierde cada uno",
+        parrafos: [
+          "EL DEUDOR gana tres cosas concretas: paga en cuotas en vez de todo junto, deja de acumular punitorios mientras cumple, y sale de la lista de morosos. Sobre una deuda vencida de $74.000 con mora al 0,1% diario, congelar los punitorios le ahorra unos $2.200 por mes.",
+          "LA FINANCIERA gana lo único que importa cuando alguien ya no paga: cobrar. Un acuerdo cumplido recupera el 100% de lo vencido sin gestión judicial, sin quita y sin perder al cliente. Y si se rompe, no perdiste nada: el crédito vuelve exactamente como estaba y los punitorios corren de nuevo desde el vencimiento original.",
+          "LO QUE HAY QUE MIRAR: hoy el acuerdo no lleva interés. El deudor paga lo mismo que debe, repartido en meses, sin costo financiero. Sobre $74.000 a tres meses, eso son unos $7.500 que la financiera resigna. Es una decisión: se puede leer como el precio de recuperar sin juicio, o como un premio al que se atrasa. Conviene tenerlo presente al ofrecerlo.",
+          "Y OJO CON EL CALENDARIO: el acuerdo toma solo lo vencido, así que las cuotas que todavía no vencieron siguen corriendo en su fecha. Al deudor le puede quedar un mes con la cuota original MÁS la del acuerdo. Antes de ofrecer un plan, mirá que el total mensual le entre.",
+        ],
+      },
+      {
+        kind: "tips",
+        titulo: "Cuándo se rompe, y qué pasa después",
+        items: [
+          "Con una sola cuota impaga el acuerdo se cae (es configurable). No hace falta que nadie lo marque: el sistema lo evalúa todos los días.",
+          "Al romperse, el crédito vuelve a morosos y los punitorios se recalculan desde el vencimiento ORIGINAL, no desde que se rompió el acuerdo.",
+          "Un acuerdo roto le descuenta 10 puntos de score al cliente. Una promesa incumplida, 4.",
+          "Un crédito puede tener un solo acuerdo vigente por vez. Para armar otro hay que cerrar el anterior.",
         ],
       },
       {
         kind: "tips",
         titulo: "Configuración relacionada",
         items: [
-          "El umbral de \"morosos enfriados\" (cada cuántos días reaparecen) se ajusta en Configuración → Motor.",
+          "Configuración → Cobranza: cada cuántos días reaparece un moroso sin gestionar, el tope de cuotas del acuerdo, qué lo rompe y cuánto puede condonar un vendedor.",
+          "Configuración → Cobranza → Escalera de recupero: si querés obligar a subir los escalones en orden (no refinanciar sin haber intentado un acuerdo antes). De fábrica está apagado.",
         ],
       },
     ],
