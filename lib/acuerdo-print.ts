@@ -38,7 +38,29 @@ export interface AcuerdoPrintData {
   cuotasParaRomper: number;
   cuotas: { numero: number; vencimiento: string | Date; monto: number }[];
   notas?: string | null;
+  /**
+   * Estado del acuerdo al momento de imprimir. Un acuerdo anulado o caído NO puede salir
+   * impreso igual que uno vigente: es un papel que se firma y se guarda, y si dentro de seis
+   * meses aparece en una carpeta sin decir nada, se lee como si estuviera en pie.
+   * Mismo criterio que el recibo de un pago anulado, que sale con marca de agua.
+   */
+  estado?: "vigente" | "cumplido" | "roto" | "anulado";
+  motivoEstado?: string | null;
   financiera?: { nombre?: string | null; logo_url?: string | null };
+}
+
+/** Sello a estampar según el estado. `null` = vigente, el documento sale limpio. */
+function selloDe(estado?: string): { texto: string; nota: string; color: string } | null {
+  switch (estado) {
+    case "anulado":
+      return { texto: "ANULADO", nota: "Este acuerdo fue anulado y no se encuentra vigente.", color: "#DC2626" };
+    case "roto":
+      return { texto: "CADUCO", nota: "Este acuerdo caducó por falta de pago. Los intereses punitorios se liquidan desde el vencimiento original de cada cuota.", color: "#DC2626" };
+    case "cumplido":
+      return { texto: "CUMPLIDO", nota: "Este acuerdo fue cumplido en su totalidad.", color: "#059669" };
+    default:
+      return null;
+  }
 }
 
 function esc(s: string): string {
@@ -85,6 +107,8 @@ export function imprimirAcuerdo(d: AcuerdoPrintData): void {
     `El deudor <b>reconoce la deuda</b> por el importe consignado y se obliga a abonarla en las cuotas y fechas indicadas.`,
   );
 
+  const sello = selloDe(d.estado);
+
   const win = window.open("", "_blank", "width=860,height=1000");
   if (!win) return;
 
@@ -120,8 +144,20 @@ export function imprimirAcuerdo(d: AcuerdoPrintData): void {
   .firmas{margin-top:52px;display:flex;gap:48px}
   .firmas div{flex:1;border-top:1px solid #6B7280;padding-top:6px;font-size:10.5px;color:#4B5563}
   .ft{margin-top:26px;padding-top:10px;border-top:1px solid #E5E7EB;color:#6B7280;font-size:9.5px;text-align:center}
+  /* Sello de estado: marca de agua diagonal DETRÁS del contenido (mismo criterio que el
+     recibo de un pago anulado) + una banda arriba que lo dice en texto, porque una marca
+     de agua sola se pierde en una fotocopia. */
+  .wm{position:fixed;top:42%;left:50%;transform:translate(-50%,-50%) rotate(-32deg);
+      font-size:110px;font-weight:900;letter-spacing:.06em;opacity:.11;z-index:0;
+      pointer-events:none;white-space:nowrap}
+  .doc{position:relative;z-index:1}
+  .banda{border:2px solid;border-radius:8px;padding:9px 14px;margin:16px 0 4px;
+         font-size:11px;font-weight:700;display:flex;gap:10px;align-items:baseline}
+  .banda b{font-size:13px;letter-spacing:.08em}
   @media print{body{padding:22px}}
-</style></head><body><div class="doc">
+</style></head><body>${
+    sello ? `<div class="wm" style="color:${sello.color}">${esc(sello.texto)}</div>` : ""
+  }<div class="doc">
 
   <div class="head">
     <div class="brand">${
@@ -132,6 +168,14 @@ export function imprimirAcuerdo(d: AcuerdoPrintData): void {
 
   <h1>Acuerdo de pago y reconocimiento de deuda</h1>
   <p class="sub">Crédito ${esc(d.numeroCredito)}</p>
+  ${
+    sello
+      ? `<div class="banda" style="color:${sello.color};border-color:${sello.color}">
+           <b>${esc(sello.texto)}</b>
+           <span>${esc(sello.nota)}${d.motivoEstado ? ` Motivo: ${esc(d.motivoEstado)}` : ""}</span>
+         </div>`
+      : ""
+  }
 
   <div class="grid">
     <div><div class="k">Deudor</div><div class="v">${esc(d.cliente)}</div></div>
@@ -166,7 +210,7 @@ export function imprimirAcuerdo(d: AcuerdoPrintData): void {
     <div>Por ${esc(marca)}<br/>Firma y sello</div>
   </div>
 
-  <div class="ft">Documento emitido por ${esc(marca)} · ${esc(formatFecha(d.fecha))} · Ejemplar para el deudor</div>
+  <div class="ft">Documento emitido por ${esc(marca)} · ${esc(formatFecha(d.fecha))} · ${sello ? "Copia de archivo — " + esc(sello.texto).toLowerCase() : "Ejemplar para el deudor"}</div>
 </div>
 <script>window.onload=function(){setTimeout(function(){window.print()},400)}<\/script>
 </body></html>`);

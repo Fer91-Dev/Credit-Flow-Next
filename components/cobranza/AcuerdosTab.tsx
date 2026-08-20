@@ -108,6 +108,10 @@ export function AcuerdosTab({ role }: { role: Role }) {
       cuotasParaRomper: a.cuotas_para_romper ?? 1,
       cuotas: a.cuotas.map((c) => ({ numero: c.numero, vencimiento: c.vencimiento, monto: c.monto })),
       notas: a.notas,
+      // Un acuerdo anulado o caído no puede salir impreso como si estuviera en pie: el papel
+      // se guarda en una carpeta y, seis meses después, nadie recuerda que ya no rige.
+      estado: a.estado,
+      motivoEstado: a.motivo_estado,
       financiera: financiera ? { nombre: financiera.nombre, logo_url: financiera.logo_url } : undefined,
     });
   };
