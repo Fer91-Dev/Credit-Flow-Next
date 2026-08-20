@@ -9,6 +9,7 @@ import { MoneyInput, FieldLabel, FormActions, IconTextarea, IconSelect } from "@
 import { useConfirm } from "@/components/ui/confirm";
 import { useToast } from "@/components/ui/toast";
 import { Skeleton } from "@/components/ui/skeleton";
+import { planDeAcuerdo } from "@/lib/domain";
 
 /**
  * Armar un ACUERDO DE PAGO sobre la deuda vencida de un crédito.
@@ -27,6 +28,10 @@ interface Preview {
     cuotas_para_romper: number;
     congela_punitorios: boolean;
     quita_maxima: number;
+    /** Tasa con la que el servidor va a armar el plan (% mensual, ya resuelta). */
+    tasa_mensual: number;
+    /** De dónde salió: la fijó la financiera, o se heredó la del crédito. */
+    tasa_origen: "config" | "credito";
   };
   acuerdo_vigente: { id: string; monto_acordado: number; fecha: string } | null;
 }
@@ -74,29 +79,41 @@ export function AcuerdoForm({
   const acordado = Math.round((total - quitaNum) * 100) / 100;
   const excedeQuita = data ? quitaNum > data.limites.quita_maxima : false;
 
-  // Vista previa del plan (mismo reparto que el servidor: el redondeo va en la última).
+  /**
+   * Vista previa del plan, con LA MISMA FUNCIÓN que usa el alta (`planDeAcuerdo`, dominio
+   * puro) y la misma tasa, que ahora viene resuelta del server.
+   *
+   * 🔴 Antes esto repartía `acordado ÷ cuotas` a mano, sin interés, mientras el servidor
+   * armaba el plan con la tasa del acuerdo. Sobre CRD-000069 la pantalla prometía tres cuotas
+   * de $190.948,45 y se creaban tres de $210.353,72: $58.215,81 de diferencia en el papel que
+   * el cliente firma. El comentario que estaba acá decía "mismo reparto que el servidor" —
+   * escribirlo no lo hace cierto; compartir la función, sí.
+   */
   const plan = (() => {
     if (!data || acordado <= 0 || cuotas < 1 || !primerVto) return [];
-    const base = Math.floor((acordado / cuotas) * 100) / 100;
-    const filas: { numero: number; vencimiento: Date; monto: number }[] = [];
-    let acum = 0;
-    for (let i = 1; i <= cuotas; i++) {
-      const monto = i === cuotas ? Math.round((acordado - acum) * 100) / 100 : base;
-      acum = Math.round((acum + monto) * 100) / 100;
-      const v = new Date(`${primerVto}T00:00:00`);
-      v.setDate(v.getDate() + data.limites.dias_entre_cuotas * (i - 1));
-      filas.push({ numero: i, vencimiento: v, monto });
-    }
-    return filas;
+    return planDeAcuerdo(
+      acordado,
+      cuotas,
+      new Date(`${primerVto}T00:00:00`),
+      data.limites.dias_entre_cuotas,
+      data.limites.tasa_mensual,
+    ).map((c) => ({ numero: c.numero, vencimiento: c.vencimiento, monto: c.monto }));
   })();
+  const totalPlan = Math.round(plan.reduce((s, c) => s + c.monto, 0) * 100) / 100;
+  /** Lo que el acuerdo agrega sobre la deuda: es la pregunta que hace todo el mundo. */
+  const interesAcuerdo = Math.round((totalPlan - acordado) * 100) / 100;
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!creditoId || !data) return;
     const ok = await confirm({
       title: "¿Armar el acuerdo?",
+      // El total del PLAN, no la deuda: es a lo que el cliente se compromete. Decía
+      // `acordado` (la deuda sin el interés del acuerdo), así que la confirmación prometía
+      // un número que el acuerdo no iba a tener.
       description:
-        `${data.credito.cliente ?? "El cliente"} se compromete a pagar ${formatMonto(acordado)} en ${cuotas} cuota(s)` +
+        `${data.credito.cliente ?? "El cliente"} se compromete a pagar ${formatMonto(totalPlan)} en ${cuotas} cuota(s)` +
+        (interesAcuerdo > 0 ? ` (incluye ${formatMonto(interesAcuerdo)} de interés al ${data.limites.tasa_mensual}% mensual)` : "") +
         (quitaNum > 0 ? `, con ${formatMonto(quitaNum)} de condonación` : "") +
         `. Mientras cumpla sale de la cola de morosos${data.limites.congela_punitorios ? " y no se le devengan punitorios" : ""}.`,
       confirmLabel: "Armar acuerdo",
@@ -242,10 +259,33 @@ export function AcuerdoForm({
                     </div>
                   ))}
                 </div>
-                <div className="mt-2 flex items-center justify-between border-t border-primary/20 pt-2 text-sm">
+                {/* El interés del acuerdo, discriminado: sin este renglón el total no cierra
+                    contra la deuda de arriba y parece un error de cuenta. */}
+                {interesAcuerdo > 0 && (
+                  <div className="mt-2 flex items-center justify-between border-t border-primary/20 pt-2 text-sm">
+                    <span className="text-muted-foreground">
+                      Interés del acuerdo <span className="text-muted-foreground/60">· {data.limites.tasa_mensual}% mensual</span>
+                    </span>
+                    <span className="font-mono text-warning tabular-nums">{formatMonto(interesAcuerdo)}</span>
+                  </div>
+                )}
+                <div className={`mt-2 flex items-center justify-between text-sm ${interesAcuerdo > 0 ? "" : "border-t border-primary/20 pt-2"}`}>
                   <span className="font-medium text-foreground">Total a pagar</span>
-                  <span className="font-mono font-bold text-foreground">{formatMonto(acordado)}</span>
+                  <span className="font-mono font-bold text-foreground tabular-nums">{formatMonto(totalPlan)}</span>
                 </div>
+
+                {/*
+                  Tasa en 0 = el acuerdo se lleva la plata a plazo SIN COSTO, y encima con los
+                  punitorios congelados. Es una decisión legítima (incentivo puro), pero tiene
+                  que tomarse a la vista: pedido del usuario, "el sistema debe informar al
+                  momento de hacer el acuerdo si la tasa está en 0".
+                */}
+                {data.limites.tasa_mensual === 0 && (
+                  <p className="mt-2 rounded-md border border-warning/30 bg-warning/10 px-2.5 py-1.5 text-xs text-warning">
+                    Acuerdo <strong>sin interés</strong>: se financia la deuda a {plan.length} cuota{plan.length === 1 ? "" : "s"} sin costo
+                    {data.limites.congela_punitorios ? " y con los punitorios congelados" : ""}. Se cambia en Configuración → Cobranza.
+                  </p>
+                )}
                 {data.limites.congela_punitorios && (
                   <p className="mt-2 text-xs text-muted-foreground">
                     Mientras cumpla no se le devengan más punitorios. Si deja de pagar {data.limites.cuotas_para_romper} cuota{data.limites.cuotas_para_romper === 1 ? "" : "s"}, el acuerdo se cae.
