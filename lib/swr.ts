@@ -825,6 +825,8 @@ export interface Pago {
   anulado_motivo?: string | null;
   anulado_at?: string | null;
   credito: { id: string; numero?: number | null; cliente_id: string; cliente: { nombre: string; apellido?: string | null } };
+  /** Si el cobro salió de una cuota de ACUERDO DE PAGO: cuál es, y de cuántas. */
+  acuerdo_cuota?: { numero: number; acuerdo: { _count: { cuotas: number } } } | null;
 }
 
 // ── Campañas de recuperación de cobranza (Fase 7A) ──────────────────────────

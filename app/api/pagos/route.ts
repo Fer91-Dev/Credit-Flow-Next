@@ -49,6 +49,12 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
             cliente: { select: { nombre: true, apellido: true } },
           },
         },
+        // Si el cobro salió de una cuota de ACUERDO, el historial y el recibo tienen que
+        // poder decirlo. Sin esto se ve un importe suelto que no coincide con ninguna cuota
+        // del crédito, y el cliente cree que le cobraron mal.
+        acuerdo_cuota: {
+          select: { numero: true, acuerdo: { select: { _count: { select: { cuotas: true } } } } },
+        },
       },
       orderBy: { fecha: "desc" },
       take: limit,
@@ -214,6 +220,30 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     select: { fecha: true },
   });
 
+  /**
+   * Cuota del acuerdo que se está cobrando, si el cobro salió de la terminal del acuerdo.
+   *
+   * Se GUARDA en el pago para que el recibo y el historial puedan decir "cuota 2 de 3 del
+   * acuerdo". Las cuotas del acuerdo se marcan pagadas repartiendo el total cobrado desde
+   * que se armó, así que ese vínculo no existía en ningún lado; derivarlo al imprimir sería
+   * peor, porque anular un pago viejo remapearía recibos ya entregados.
+   *
+   * 🔴 Se valida contra el acuerdo de ESTE crédito: un id de otro crédito (o de otra
+   * financiera) no se guarda, se ignora. Nunca confiar en un id que llega del navegador.
+   */
+  let acuerdoCuotaId: string | null = null;
+  if (typeof body.acuerdo_cuota_id === "string" && body.acuerdo_cuota_id) {
+    const cuotaAcuerdo = await prisma.acuerdo_cuota.findFirst({
+      where: {
+        ...withTenant(tenantId),
+        id: body.acuerdo_cuota_id,
+        acuerdo: { ...withTenant(tenantId), credito_id: body.credito_id, estado: "vigente" },
+      },
+      select: { id: true },
+    });
+    acuerdoCuotaId = cuotaAcuerdo?.id ?? null;
+  }
+
   // Condiciones de mora CONGELADAS al otorgar este crédito (la config actual solo es
   // fallback para créditos viejos). Ver `moraDelCredito` en lib/domain/mora.ts.
   const moraCred = moraDelCredito(moraDesdeCronograma(credito.cronograma), config);
@@ -318,6 +348,9 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
         aplicado_cargos: resultado.totales.cargos,
         aplicado_capital: resultado.totales.capital,
         excedente: resultado.excedente,
+        // Qué cuota del ACUERDO se estaba cobrando (null = cobro normal del crédito). Se
+        // valida contra el acuerdo vigente de ESTE crédito, así que un id ajeno no entra.
+        acuerdo_cuota_id: acuerdoCuotaId,
         ...withTenant(tenantId),
       },
       include: {

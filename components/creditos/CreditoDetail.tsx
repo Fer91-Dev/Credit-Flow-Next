@@ -548,7 +548,17 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar }: {
                 <tbody>
                   {pagos.map((p, idx) => (
                     <tr key={p.id} className={`${idx % 2 === 1 ? "bg-muted/5" : ""} ${p.anulado ? "opacity-50" : ""}`}>
-                      <td className="px-3 py-2 text-muted-foreground tabular-nums border-b border-border/70">{fmtDate(p.fecha)}</td>
+                      {/* Un cobro de acuerdo se marca: su importe no coincide con ninguna
+                          cuota del crédito, así que sin la etiqueta parece un pago mal
+                          cargado. Y el número es el DEL ACUERDO, no el del crédito. */}
+                      <td className="px-3 py-2 text-muted-foreground tabular-nums border-b border-border/70">
+                        {fmtDate(p.fecha)}
+                        {p.acuerdo_cuota && (
+                          <span className="ml-1.5 inline-flex items-center rounded-full bg-primary/10 px-1.5 py-0.5 align-middle text-[9px] font-semibold uppercase tracking-wide text-primary">
+                            Acuerdo {p.acuerdo_cuota.numero}/{p.acuerdo_cuota.acuerdo._count.cuotas}
+                          </span>
+                        )}
+                      </td>
                       <td className="px-3 py-2 text-right font-mono font-semibold border-b border-border/70">
                         {p.anulado
                           ? <span className="inline-flex items-center gap-1.5"><StatusBadge label="Anulado" variant="destructive" /><span className="text-muted-foreground line-through">${n2(p.monto)}</span></span>

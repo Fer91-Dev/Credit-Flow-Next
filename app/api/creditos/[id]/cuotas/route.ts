@@ -147,7 +147,7 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
       // acuerdo. Sin eso, la terminal de cobro mostraba "$81.876,14" sin origen: el operador
       // lo había visto desglosado al armarlo y acá volvía a aparecer como un número suelto.
       id: true, fecha: true, monto_acordado: true, deuda_original: true, quita: true, congela_punitorios: true,
-      cuotas: { orderBy: { numero: "asc" }, select: { numero: true, vencimiento: true, monto: true, pagado: true, estado: true } },
+      cuotas: { orderBy: { numero: "asc" }, select: { id: true, numero: true, vencimiento: true, monto: true, pagado: true, estado: true } },
     },
   });
   const proximaAcuerdo = acuerdo?.cuotas.find((c) => c.estado !== "pagada") ?? null;
@@ -172,6 +172,8 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
            * entiende viendo el plan, no leyendo un párrafo que lo explique.
            */
           cuotas: acuerdo.cuotas.map((c) => ({
+            // El id viaja para que el cobro pueda decir QUÉ cuota del acuerdo se pagó.
+            id: c.id,
             numero: c.numero,
             vencimiento: c.vencimiento,
             monto: c.monto,
@@ -180,6 +182,7 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
           })),
           proxima: proximaAcuerdo
             ? {
+                id: proximaAcuerdo.id,
                 numero: proximaAcuerdo.numero,
                 vencimiento: proximaAcuerdo.vencimiento,
                 // Lo que falta de esa cuota, no su importe nominal: si se pagó una parte,

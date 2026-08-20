@@ -53,9 +53,9 @@ interface AcuerdoDelCredito {
   quita?: number;
   congela_punitorios: boolean;
   total_cuotas: number;
-  proxima: { numero: number; vencimiento: string; pendiente: number } | null;
+  proxima: { id?: string; numero: number; vencimiento: string; pendiente: number } | null;
   /** El plan completo del acuerdo, para mostrar de dónde sale el importe que se cobra. */
-  cuotas?: { numero: number; vencimiento: string; monto: number; pagado: number; estado: string }[];
+  cuotas?: { id: string; numero: number; vencimiento: string; monto: number; pagado: number; estado: string }[];
 }
 
 interface PagoFormProps {
@@ -337,6 +337,8 @@ export function PagoForm({ creditoId, clienteId, montoSugerido, motivoSugerido, 
   const seleccionadas = hasta != null ? cobrables.filter(c => c.nro <= hasta) : [];
   /** Se está cobrando la cuota de un ACUERDO: viene importe y motivo precargados. */
   const cobrandoAcuerdo = Boolean(motivoSugerido);
+  /** Cuota del acuerdo que se esta cobrando: se guarda en el pago para el recibo. */
+  const cuotaAcuerdoId = acuerdo?.proxima?.id ?? null;
 
   const montoCuotas  = round2(seleccionadas.reduce((s, c) => s + importeACobrar(c), 0));
   const monto        = manual ? parseMontoInput(montoManual) : montoCuotas;
@@ -371,7 +373,13 @@ export function PagoForm({ creditoId, clienteId, montoSugerido, motivoSugerido, 
       const res = await fetch("/api/pagos", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ credito_id: creditoSel, monto, metodo, notas }),
+        // `acuerdo_cuota_id` solo cuando el cobro salió de la terminal del acuerdo: es lo
+        // que después deja al recibo decir "cuota 2 de 3 del acuerdo". El server igual lo
+        // valida contra el acuerdo vigente de este crédito.
+        body: JSON.stringify({
+          credito_id: creditoSel, monto, metodo, notas,
+          ...(cobrandoAcuerdo && cuotaAcuerdoId ? { acuerdo_cuota_id: cuotaAcuerdoId } : {}),
+        }),
       });
       const json = await res.json();
       if (json.ok) {
