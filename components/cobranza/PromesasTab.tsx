@@ -2,13 +2,14 @@
 
 import { useState } from "react";
 import useSWR, { mutate } from "swr";
-import { HandshakeIcon } from "lucide-react";
+import { HandshakeIcon, Ban } from "lucide-react";
 import { formatMonto, formatFecha, formatCreditoNumero, nombreCompleto } from "@/lib/utils";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Emoji } from "@/components/ui/Emoji";
 import { DataTable, type Column } from "@/components/ui/DataTable";
 import { KpiCard } from "@/components/ui/KpiCard";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { FieldLabel, FormActions, IconTextarea } from "@/components/caja/caja-form";
 import { useConfirm } from "@/components/ui/confirm";
 import { useToast } from "@/components/ui/toast";
 import type { Role } from "@/lib/auth/roles";
@@ -127,6 +128,76 @@ function PromesaDetalle({ promesa, onClose }: { promesa: Promesa | null; onClose
   );
 }
 
+/**
+ * Anular una promesa: pide el motivo en un diálogo del SISTEMA.
+ *
+ * 🔴 Esto salió con un `window.prompt()` y el usuario lo cazó en el acto. Un alert nativo no
+ * respeta el tema, no se puede estilar, bloquea la pestaña y —lo peor— muestra el dominio de
+ * Vercel arriba: parece otra aplicación. El patrón ya existía en `AcuerdosTab.AnularDialog`,
+ * a un archivo de distancia. Ir rápido no es motivo para inventar un camino aparte.
+ */
+function AnularPromesaDialog({ promesa, onClose }: { promesa: Promesa | null; onClose: (motivo?: string) => void }) {
+  const [motivo, setMotivo] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  if (!promesa) return null;
+
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!motivo.trim()) { setError("Indicá por qué se anula la promesa"); return; }
+    const m = motivo.trim();
+    setMotivo(""); setError(null);
+    onClose(m);
+  };
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) { setMotivo(""); setError(null); onClose(); } }}>
+      <DialogContent className="w-[95vw] sm:max-w-lg sm:p-7">
+        <DialogHeader className="pr-8">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-destructive/20 bg-destructive/10 text-destructive">
+              <Ban className="h-5 w-5" />
+            </div>
+            <div>
+              <DialogTitle>Anular promesa de pago</DialogTitle>
+              <p className="mt-0.5 text-xs text-muted-foreground">{nombreCompleto(promesa.credito.cliente)}</p>
+            </div>
+          </div>
+        </DialogHeader>
+
+        <form onSubmit={submit} className="space-y-4">
+          <div className="rounded-lg border border-border bg-muted/20 px-3 py-2.5 text-xs text-muted-foreground">
+            La promesa de{" "}
+            <span className="font-mono font-semibold text-foreground">
+              {promesa.promesa_monto ? formatMonto(promesa.promesa_monto) : "—"}
+            </span>{" "}
+            para el {formatFecha(promesa.promesa_fecha)} queda <strong className="text-foreground">sin efecto</strong>.
+            No cuenta como incumplida ni le baja la efectividad al cliente.
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <FieldLabel>Motivo</FieldLabel>
+            <IconTextarea
+              icon="receipt"
+              value={motivo}
+              onChange={(e) => { setMotivo(e.target.value); setError(null); }}
+              placeholder="Ej.: el cliente se arrepintió, se cargó por error…"
+              rows={3}
+            />
+            {error && <p className="text-xs text-destructive">{error}</p>}
+          </div>
+
+          <FormActions
+            onCancel={() => { setMotivo(""); setError(null); onClose(); }}
+            disabled={!motivo.trim()}
+            submitLabel="Anular promesa"
+          />
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export function PromesasTab({ role }: { role: Role }) {
   const confirm = useConfirm();
   const toast = useToast();
@@ -196,16 +267,8 @@ export function PromesasTab({ role }: { role: Role }) {
     }
   }
 
-  /**
-   * Anular pide MOTIVO (el server lo exige, igual que al anular un crédito o un acuerdo).
-   * Se pregunta antes de confirmar, no después: si se cancela, no se manda nada.
-   */
-  async function anular(id: string) {
-    const motivo = window.prompt("¿Por qué se anula la promesa?\n(ej.: el cliente se arrepintió, se cargó por error)");
-    if (motivo === null) return;
-    if (!motivo.trim()) { toast.error("Indicá por qué se anula la promesa"); return; }
-    await cambiarEstado(id, "anulada", motivo.trim());
-  }
+  /** Promesa que se está anulando (abre el diálogo que pide el motivo). */
+  const [anulando, setAnulando] = useState<Promesa | null>(null);
 
   return (
     <div className="space-y-4">
@@ -313,7 +376,7 @@ export function PromesasTab({ role }: { role: Role }) {
                   <button onClick={() => cambiarEstado(p.id, "incumplida")} disabled={cambiando === p.id} className="px-2 py-1 text-xs rounded-md bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors disabled:opacity-40">Rota</button>
                   {/* Anular: la promesa se deja sin efecto. No es un incumplimiento del
                       cliente, asi que no le ensucia la efectividad. */}
-                  <button onClick={() => anular(p.id)} disabled={cambiando === p.id} className="px-2 py-1 text-xs rounded-md border border-border text-muted-foreground hover:bg-muted transition-colors disabled:opacity-40">Anular</button>
+                  <button onClick={() => setAnulando(p)} disabled={cambiando === p.id} className="px-2 py-1 text-xs rounded-md border border-border text-muted-foreground hover:bg-muted transition-colors disabled:opacity-40">Anular</button>
                 </div>
               ) : null,
             }] as Column<Promesa>[]) : []),
@@ -343,6 +406,15 @@ export function PromesasTab({ role }: { role: Role }) {
       )}
 
       <PromesaDetalle promesa={detalle} onClose={() => setDetalle(null)} />
+
+      <AnularPromesaDialog
+        promesa={anulando}
+        onClose={(motivo) => {
+          const p = anulando;
+          setAnulando(null);
+          if (p && motivo) void cambiarEstado(p.id, "anulada", motivo);
+        }}
+      />
     </div>
   );
 }
