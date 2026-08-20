@@ -3,7 +3,7 @@
 import { useState } from "react";
 import useSWR, { mutate } from "swr";
 import { HandshakeIcon, Ban } from "lucide-react";
-import { formatMonto, formatFecha, formatCreditoNumero, nombreCompleto } from "@/lib/utils";
+import { formatMonto, formatFecha, formatFechaHora, formatCreditoNumero, nombreCompleto } from "@/lib/utils";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Emoji } from "@/components/ui/Emoji";
 import { DataTable, type Column } from "@/components/ui/DataTable";
@@ -23,6 +23,9 @@ type Promesa = {
   promesa_estado: string | null;
   nota: string | null;
   automatico: boolean;
+  /** Por donde se lo contacto: llamada | whatsapp | email | visita | otro. */
+  tipo: string;
+  proximo_contacto: string | null;
   credito: {
     id: string;
     numero: number | null;
@@ -67,7 +70,16 @@ function diasRestantes(fechaStr: string | null): string {
  * cobrador escribe qué dijo el cliente— no se veía en ninguna parte: quedaba escrita en la
  * base y nadie la leía nunca. Es el dato con el que se prepara la llamada siguiente.
  */
-function PromesaDetalle({ promesa, onClose }: { promesa: Promesa | null; onClose: () => void }) {
+const TIPO_LABEL: Record<string, string> = {
+  llamada: "Llamada", whatsapp: "WhatsApp", email: "Email", visita: "Visita", otro: "Otro",
+};
+
+function PromesaDetalle({ promesa, historial, onClose }: {
+  promesa: Promesa | null;
+  /** Todas las promesas del MISMO crédito, para saber si el cliente suele cumplir. */
+  historial: Promesa[];
+  onClose: () => void;
+}) {
   return (
     <Dialog open={!!promesa} onOpenChange={(o) => { if (!o) onClose(); }}>
       <DialogContent className="w-[95vw] sm:max-w-lg sm:p-7">
@@ -85,44 +97,111 @@ function PromesaDetalle({ promesa, onClose }: { promesa: Promesa | null; onClose
           </div>
         </DialogHeader>
 
-        {promesa && (
-          <div className="space-y-4">
-            <div className="rounded-xl border border-border overflow-hidden">
-              <table className="w-full text-sm">
-                <tbody>
-                  {([
-                    ["Crédito", formatCreditoNumero(promesa.credito.numero)],
-                    ["Documento", promesa.credito.cliente.documento || "—"],
-                    ["Monto prometido", promesa.promesa_monto ? formatMonto(promesa.promesa_monto) : "—"],
-                    ["Fecha límite", `${formatFecha(promesa.promesa_fecha)} · ${diasRestantes(promesa.promesa_fecha)}`],
-                    ["Registrada", formatFecha(promesa.created_at)],
-                    ["Saldo del crédito", formatMonto(promesa.credito.saldo_pendiente)],
-                  ] as [string, string][]).map(([k, v], i) => (
-                    <tr key={k} className={i % 2 === 1 ? "bg-muted/5" : ""}>
-                      <td className="px-3 py-2 text-muted-foreground border-b border-border/40">{k}</td>
-                      <td className="px-3 py-2 text-right font-medium text-foreground border-b border-border/40 tabular-nums">{v}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+        {promesa && (() => {
+          /**
+           * Cómo se pactó, no solo cuánto.
+           *
+           * El diálogo mostraba seis renglones que ya estaban en la tabla. Lo que hace falta
+           * para decidir si creerle es OTRA cosa: por dónde se lo contactó, cuánto plazo se
+           * le dio, qué parte de la deuda cubre lo prometido, y —sobre todo— cómo cumplió
+           * las promesas anteriores.
+           */
+          const plazoDias = promesa.promesa_fecha
+            ? Math.round(
+                (new Date(promesa.promesa_fecha).setHours(0, 0, 0, 0) -
+                  new Date(promesa.created_at).setHours(0, 0, 0, 0)) / 86_400_000,
+              )
+            : null;
+          const cubrePct =
+            promesa.promesa_monto && promesa.credito.saldo_pendiente > 0
+              ? Math.round((promesa.promesa_monto / promesa.credito.saldo_pendiente) * 100)
+              : null;
+          const previas = historial.filter((h) => h.id !== promesa.id);
+          const cumplidas = previas.filter((h) => h.promesa_estado === "cumplida").length;
+          const rotas = previas.filter((h) => h.promesa_estado === "incumplida").length;
 
-            <div className="flex items-center gap-2">
-              {estadoBadge(promesa.promesa_estado)}
-              {promesa.automatico && (
-                <span className="text-[11px] text-muted-foreground">la registró el sistema</span>
+          return (
+            <div className="space-y-4">
+              <div className="flex flex-wrap items-center gap-2">
+                {estadoBadge(promesa.promesa_estado)}
+                <span className="inline-flex items-center rounded-full bg-muted/40 px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+                  {TIPO_LABEL[promesa.tipo] ?? promesa.tipo}
+                </span>
+                {promesa.automatico && (
+                  <span className="text-[11px] text-muted-foreground">la registró el sistema</span>
+                )}
+              </div>
+
+              <div className="rounded-xl border border-border overflow-hidden">
+                <table className="w-full text-sm">
+                  <tbody>
+                    {([
+                      ["Crédito", formatCreditoNumero(promesa.credito.numero)],
+                      ["Documento", promesa.credito.cliente.documento || "—"],
+                      ["Días de mora", `${promesa.credito.dias_mora} d`],
+                      ["Saldo del crédito", formatMonto(promesa.credito.saldo_pendiente)],
+                      [
+                        "Monto prometido",
+                        promesa.promesa_monto
+                          ? `${formatMonto(promesa.promesa_monto)}${cubrePct != null ? ` · ${cubrePct}% del saldo` : ""}`
+                          : "—",
+                      ],
+                      ["Se pactó el", formatFechaHora(promesa.created_at)],
+                      [
+                        "Fecha límite",
+                        `${formatFecha(promesa.promesa_fecha)} · ${diasRestantes(promesa.promesa_fecha)}`,
+                      ],
+                      ["Plazo otorgado", plazoDias != null ? `${plazoDias} día${plazoDias === 1 ? "" : "s"}` : "—"],
+                      ["Próximo contacto", promesa.proximo_contacto ? formatFecha(promesa.proximo_contacto) : "sin agendar"],
+                    ] as [string, string][]).map(([k, v], i) => (
+                      <tr key={k} className={i % 2 === 1 ? "bg-muted/5" : ""}>
+                        <td className="px-3 py-2 text-muted-foreground border-b border-border/40">{k}</td>
+                        <td className="px-3 py-2 text-right font-medium text-foreground border-b border-border/40 tabular-nums">{v}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Lo que dijo el cliente. */}
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Nota de la gestión</p>
+                <p className="mt-1.5 rounded-lg border border-border bg-muted/20 px-3 py-2.5 text-sm text-foreground whitespace-pre-wrap">
+                  {promesa.nota?.trim() || <span className="text-muted-foreground/50">Sin nota.</span>}
+                </p>
+              </div>
+
+              {/* Cómo cumplió antes: es el dato que decide si esta promesa vale algo. */}
+              {previas.length > 0 && (
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                    Promesas anteriores de este crédito
+                  </p>
+                  <div className="mt-1.5 flex flex-wrap items-center gap-2 rounded-lg border border-border bg-muted/20 px-3 py-2.5 text-xs">
+                    <span className="text-muted-foreground">{previas.length} anterior{previas.length === 1 ? "" : "es"}</span>
+                    {cumplidas > 0 && <span className="font-medium text-success">{cumplidas} cumplida{cumplidas === 1 ? "" : "s"}</span>}
+                    {rotas > 0 && <span className="font-medium text-destructive">{rotas} rota{rotas === 1 ? "" : "s"}</span>}
+                  </div>
+                  <div className="mt-1.5 space-y-1">
+                    {previas.slice(0, 4).map((h) => (
+                      <div key={h.id} className="flex items-center justify-between gap-2 px-1 text-[11px]">
+                        <span className="text-muted-foreground">
+                          {formatFecha(h.promesa_fecha)} · {TIPO_LABEL[h.tipo] ?? h.tipo}
+                        </span>
+                        <span className="flex items-center gap-2">
+                          <span className="font-mono tabular-nums text-muted-foreground">
+                            {h.promesa_monto ? formatMonto(h.promesa_monto) : "—"}
+                          </span>
+                          {estadoBadge(h.promesa_estado)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
               )}
             </div>
-
-            {/* Lo que dijo el cliente. El motivo por el que este diálogo existe. */}
-            <div>
-              <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Nota de la gestión</p>
-              <p className="mt-1.5 rounded-lg border border-border bg-muted/20 px-3 py-2.5 text-sm text-foreground whitespace-pre-wrap">
-                {promesa.nota?.trim() || <span className="text-muted-foreground/50">Sin nota.</span>}
-              </p>
-            </div>
-          </div>
-        )}
+          );
+        })()}
       </DialogContent>
     </Dialog>
   );
@@ -371,7 +450,11 @@ export function PromesasTab({ role }: { role: Role }) {
             ...(puedeEditar ? ([{
               header: "Acción",
               cell: (p) => p.promesa_estado === "pendiente" ? (
-                <div className="flex gap-1">
+                /* 🔴 `stopPropagation`: la fila abre el detalle, y sin esto el clic en
+                   cualquiera de estos botones burbujeaba hasta ella — se anulaba la promesa
+                   Y encima se abría el diálogo del detalle encima. Mismo patrón que la
+                   tabla de créditos. */
+                <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
                   <button onClick={() => cambiarEstado(p.id, "cumplida")} disabled={cambiando === p.id} className="px-2 py-1 text-xs rounded-md bg-success/10 text-success hover:bg-success/20 transition-colors disabled:opacity-40">Cumplida</button>
                   <button onClick={() => cambiarEstado(p.id, "incumplida")} disabled={cambiando === p.id} className="px-2 py-1 text-xs rounded-md bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors disabled:opacity-40">Rota</button>
                   {/* Anular: la promesa se deja sin efecto. No es un incumplimiento del
@@ -395,9 +478,10 @@ export function PromesasTab({ role }: { role: Role }) {
                 <span>{formatFecha(p.promesa_fecha)} · {diasRestantes(p.promesa_fecha)}</span>
               </div>
               {puedeEditar && p.promesa_estado === "pendiente" && (
-                <div className="flex gap-2 pt-1">
+                <div className="flex gap-2 pt-1" onClick={(e) => e.stopPropagation()}>
                   <button onClick={() => cambiarEstado(p.id, "cumplida")} disabled={cambiando === p.id} className="flex-1 py-1.5 text-xs rounded-md bg-success/10 text-success hover:bg-success/20 transition-colors disabled:opacity-40">Marcar cumplida</button>
                   <button onClick={() => cambiarEstado(p.id, "incumplida")} disabled={cambiando === p.id} className="flex-1 py-1.5 text-xs rounded-md bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors disabled:opacity-40">Marcar rota</button>
+                  <button onClick={() => setAnulando(p)} disabled={cambiando === p.id} className="flex-1 py-1.5 text-xs rounded-md border border-border text-muted-foreground hover:bg-muted transition-colors disabled:opacity-40">Anular</button>
                 </div>
               )}
             </div>
@@ -405,7 +489,11 @@ export function PromesasTab({ role }: { role: Role }) {
         />
       )}
 
-      <PromesaDetalle promesa={detalle} onClose={() => setDetalle(null)} />
+      <PromesaDetalle
+        promesa={detalle}
+        historial={detalle ? todas.filter((p) => p.credito_id === detalle.credito_id) : []}
+        onClose={() => setDetalle(null)}
+      />
 
       <AnularPromesaDialog
         promesa={anulando}
