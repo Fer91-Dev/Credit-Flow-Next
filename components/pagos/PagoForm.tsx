@@ -48,6 +48,9 @@ interface AcuerdoDelCredito {
   id: string;
   fecha: string;
   monto_acordado: number;
+  /** Lo VENCIDO al momento de acordar. Con `quita`, explica de qué se compone el total. */
+  deuda_original?: number;
+  quita?: number;
   congela_punitorios: boolean;
   total_cuotas: number;
   proxima: { numero: number; vencimiento: string; pendiente: number } | null;
@@ -545,12 +548,46 @@ export function PagoForm({ creditoId, clienteId, montoSugerido, motivoSugerido, 
         */}
         {creditoSel && motivoSugerido && acuerdo?.cuotas?.length ? (
           <div className="rounded-xl border border-primary/30 bg-primary/5 p-3">
-            <div className="flex items-baseline justify-between gap-2">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-primary">Plan del acuerdo</p>
-              <p className="font-mono text-[11px] tabular-nums text-muted-foreground">
-                {acuerdo.total_cuotas} cuota{acuerdo.total_cuotas === 1 ? "" : "s"} · ${fmt2(acuerdo.monto_acordado)}
-              </p>
-            </div>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-primary">Plan del acuerdo</p>
+
+            {/*
+              De qué se compone el total, en una resta que cierra:
+                deuda vencida − quita + interés = total del plan
+              Antes acá salía "$81.876,14" solo. Ese número se desglosa al ARMAR el acuerdo,
+              pero quien cobra tres semanas después abre esta pantalla y lo ve por primera vez.
+            */}
+            {acuerdo.deuda_original != null && (() => {
+              const base = round2(acuerdo.deuda_original! - (acuerdo.quita ?? 0));
+              const interes = round2(acuerdo.monto_acordado - base);
+              return (
+                <table className="mt-2 w-full text-[11px]">
+                  <tbody className="font-mono tabular-nums">
+                    <tr>
+                      <td className="py-0.5 font-sans text-muted-foreground">Deuda vencida al acordar</td>
+                      <td className="py-0.5 text-right text-foreground">${fmt2(acuerdo.deuda_original!)}</td>
+                    </tr>
+                    {(acuerdo.quita ?? 0) > 0 && (
+                      <tr>
+                        <td className="py-0.5 font-sans text-muted-foreground">Condonación</td>
+                        <td className="py-0.5 text-right text-success">−${fmt2(acuerdo.quita ?? 0)}</td>
+                      </tr>
+                    )}
+                    {interes > 0 && (
+                      <tr>
+                        <td className="py-0.5 font-sans text-muted-foreground">Interés del acuerdo</td>
+                        <td className="py-0.5 text-right text-warning">+${fmt2(interes)}</td>
+                      </tr>
+                    )}
+                    <tr className="border-t border-primary/20">
+                      <td className="pt-1.5 font-sans font-semibold text-foreground">
+                        Total en {acuerdo.total_cuotas} cuota{acuerdo.total_cuotas === 1 ? "" : "s"}
+                      </td>
+                      <td className="pt-1.5 text-right font-bold text-foreground">${fmt2(acuerdo.monto_acordado)}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              );
+            })()}
             <div className="mt-2 divide-y divide-primary/10">
               {acuerdo.cuotas.map((c) => {
                 const pendiente = round2(c.monto - c.pagado);

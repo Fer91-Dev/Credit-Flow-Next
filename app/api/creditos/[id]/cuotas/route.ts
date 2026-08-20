@@ -143,7 +143,10 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
   const acuerdo = await prisma.acuerdos_pago.findFirst({
     where: { ...withTenant(tenantId), credito_id: id, estado: "vigente" },
     select: {
-      id: true, fecha: true, monto_acordado: true, congela_punitorios: true,
+      // `deuda_original` y `quita` viajan para poder mostrar de qué se COMPONE el total del
+      // acuerdo. Sin eso, la terminal de cobro mostraba "$81.876,14" sin origen: el operador
+      // lo había visto desglosado al armarlo y acá volvía a aparecer como un número suelto.
+      id: true, fecha: true, monto_acordado: true, deuda_original: true, quita: true, congela_punitorios: true,
       cuotas: { orderBy: { numero: "asc" }, select: { numero: true, vencimiento: true, monto: true, pagado: true, estado: true } },
     },
   });
@@ -157,6 +160,8 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
           id: acuerdo.id,
           fecha: acuerdo.fecha,
           monto_acordado: acuerdo.monto_acordado,
+          deuda_original: acuerdo.deuda_original,
+          quita: acuerdo.quita,
           congela_punitorios: acuerdo.congela_punitorios,
           total_cuotas: acuerdo.cuotas.length,
           /**

@@ -779,7 +779,9 @@ model acuerdos_pago {
   deuda_original Float
   /// Condonación otorgada como incentivo (sale de la mora/interés, nunca del capital).
   quita          Float @default(0)
-  /// Lo que el cliente se comprometió a pagar = deuda_original − quita.
+  /// Total del PLAN: lo que el cliente se comprometió a pagar en cuotas.
+  /// = (deuda_original − quita) + el interés del acuerdo. Decía "= deuda_original − quita",
+  /// que dejó de ser cierto cuando el acuerdo pasó a llevar tasa propia.
   monto_acordado Float
 
   /// vigente | cumplido | roto | anulado
