@@ -2,11 +2,13 @@
 
 import { useState } from "react";
 import useSWR, { mutate } from "swr";
-import { HandshakeIcon, CheckCircle2, XCircle, Clock, ExternalLink } from "lucide-react";
+import { HandshakeIcon } from "lucide-react";
 import { formatMonto, formatFecha, formatCreditoNumero, nombreCompleto } from "@/lib/utils";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Emoji } from "@/components/ui/Emoji";
 import { DataTable, type Column } from "@/components/ui/DataTable";
+import { KpiCard } from "@/components/ui/KpiCard";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useConfirm } from "@/components/ui/confirm";
 import { useToast } from "@/components/ui/toast";
 import type { Role } from "@/lib/auth/roles";
@@ -56,6 +58,72 @@ function diasRestantes(fechaStr: string | null): string {
   return `En ${diff}d`;
 }
 
+/**
+ * Detalle de una promesa. La fila de la tabla no era clickeable, así que la NOTA —donde el
+ * cobrador escribe qué dijo el cliente— no se veía en ninguna parte: quedaba escrita en la
+ * base y nadie la leía nunca. Es el dato con el que se prepara la llamada siguiente.
+ */
+function PromesaDetalle({ promesa, onClose }: { promesa: Promesa | null; onClose: () => void }) {
+  return (
+    <Dialog open={!!promesa} onOpenChange={(o) => { if (!o) onClose(); }}>
+      <DialogContent className="w-[95vw] sm:max-w-lg sm:p-7">
+        <DialogHeader className="pr-8">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-warning/20 bg-warning/10 text-warning">
+              <HandshakeIcon className="h-5 w-5" />
+            </div>
+            <div>
+              <DialogTitle>Promesa de pago</DialogTitle>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                {promesa ? nombreCompleto(promesa.credito.cliente) : ""}
+              </p>
+            </div>
+          </div>
+        </DialogHeader>
+
+        {promesa && (
+          <div className="space-y-4">
+            <div className="rounded-xl border border-border overflow-hidden">
+              <table className="w-full text-sm">
+                <tbody>
+                  {([
+                    ["Crédito", formatCreditoNumero(promesa.credito.numero)],
+                    ["Documento", promesa.credito.cliente.documento || "—"],
+                    ["Monto prometido", promesa.promesa_monto ? formatMonto(promesa.promesa_monto) : "—"],
+                    ["Fecha límite", `${formatFecha(promesa.promesa_fecha)} · ${diasRestantes(promesa.promesa_fecha)}`],
+                    ["Registrada", formatFecha(promesa.created_at)],
+                    ["Saldo del crédito", formatMonto(promesa.credito.saldo_pendiente)],
+                  ] as [string, string][]).map(([k, v], i) => (
+                    <tr key={k} className={i % 2 === 1 ? "bg-muted/5" : ""}>
+                      <td className="px-3 py-2 text-muted-foreground border-b border-border/40">{k}</td>
+                      <td className="px-3 py-2 text-right font-medium text-foreground border-b border-border/40 tabular-nums">{v}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="flex items-center gap-2">
+              {estadoBadge(promesa.promesa_estado)}
+              {promesa.automatico && (
+                <span className="text-[11px] text-muted-foreground">la registró el sistema</span>
+              )}
+            </div>
+
+            {/* Lo que dijo el cliente. El motivo por el que este diálogo existe. */}
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Nota de la gestión</p>
+              <p className="mt-1.5 rounded-lg border border-border bg-muted/20 px-3 py-2.5 text-sm text-foreground whitespace-pre-wrap">
+                {promesa.nota?.trim() || <span className="text-muted-foreground/50">Sin nota.</span>}
+              </p>
+            </div>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export function PromesasTab({ role }: { role: Role }) {
   const confirm = useConfirm();
   const toast = useToast();
@@ -64,6 +132,34 @@ export function PromesasTab({ role }: { role: Role }) {
 
   const swrKey = `/api/cobranza/promesas${estadoTab ? `?estado=${estadoTab}` : ""}`;
   const { data: promesas = [], isLoading } = useSWR<Promesa[]>(swrKey, fetcher);
+
+  /**
+   * KPIs de TODAS las promesas, no de la pestaña abierta.
+   *
+   * La pantalla no tenía ninguno: para saber cuántas estaban por vencer había que entrar a
+   * cada pestaña y contar filas. Se pide la lista completa aparte, así los números no
+   * cambian al cambiar de pestaña — un KPI que se mueve con el filtro no es un KPI.
+   */
+  const { data: todas = [] } = useSWR<Promesa[]>("/api/cobranza/promesas", fetcher);
+  const hoyMs = (() => { const d = new Date(); d.setHours(23, 59, 59, 999); return d.getTime(); })();
+  const kpis = (() => {
+    const pend = todas.filter((p) => p.promesa_estado === "pendiente");
+    const cumplidas = todas.filter((p) => p.promesa_estado === "cumplida").length;
+    const rotas = todas.filter((p) => p.promesa_estado === "incumplida").length;
+    return {
+      pendientes: pend.length,
+      // Las que hay que cobrar HOY o ya se pasaron: es la única cifra accionable del día.
+      vencenHoy: pend.filter((p) => p.promesa_fecha && new Date(p.promesa_fecha).getTime() <= hoyMs).length,
+      comprometido: pend.reduce((s, p) => s + (p.promesa_monto ?? 0), 0),
+      cumplidas,
+      rotas,
+      // Cuántas de las que ya se resolvieron terminaron bien. Mide la palabra del cliente.
+      efectividad: cumplidas + rotas > 0 ? Math.round((cumplidas / (cumplidas + rotas)) * 100) : null,
+    };
+  })();
+
+  /** Promesa abierta en el detalle (la fila no era clickeable: no se podía ver la nota). */
+  const [detalle, setDetalle] = useState<Promesa | null>(null);
 
   const puedeEditar = role === "admin" || role === "cobrador";
 
@@ -93,6 +189,22 @@ export function PromesasTab({ role }: { role: Role }) {
 
   return (
     <div className="space-y-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <KpiCard
+          icon="alarm-clock" label="Promesas pendientes" value={String(kpis.pendientes)}
+          accent={kpis.pendientes > 0 ? "warning" : "muted"}
+          sub={kpis.vencenHoy > 0 ? `${kpis.vencenHoy} para cobrar hoy` : "ninguna vencida"}
+        />
+        <KpiCard icon="money-bag" label="Comprometido" value={formatMonto(kpis.comprometido)} accent="primary" mono sub="lo que prometieron pagar" />
+        <KpiCard icon="check-mark-button" label="Cumplidas" value={String(kpis.cumplidas)} accent="success" />
+        <KpiCard
+          icon="chart-increasing" label="Efectividad"
+          value={kpis.efectividad != null ? `${kpis.efectividad}%` : "—"}
+          accent={kpis.efectividad != null && kpis.efectividad >= 50 ? "success" : "destructive"}
+          sub={`${kpis.rotas} rota${kpis.rotas === 1 ? "" : "s"}`}
+        />
+      </div>
+
       {/* Sub-tabs de estado */}
       <div className="flex gap-1 bg-muted/30 rounded-lg p-1 w-fit">
         {TABS.map((tab) => {
@@ -134,6 +246,10 @@ export function PromesasTab({ role }: { role: Role }) {
           rows={promesas}
           rowKey={(p) => p.id}
           pageSize={12}
+          zebra
+          // La fila abre el detalle: la NOTA de la gestion -que es donde el cobrador escribe
+          // que dijo el cliente- no se veia en ningun lado.
+          onRowClick={(p) => setDetalle(p)}
           columns={[
             {
               header: "Cliente",
@@ -202,6 +318,8 @@ export function PromesasTab({ role }: { role: Role }) {
           )}
         />
       )}
+
+      <PromesaDetalle promesa={detalle} onClose={() => setDetalle(null)} />
     </div>
   );
 }
