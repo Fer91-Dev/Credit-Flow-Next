@@ -35,16 +35,19 @@ const TABS = [
   { key: "pendiente", label: "Pendientes", emoji: "alarm-clock" },
   { key: "cumplida",  label: "Cumplidas",  emoji: "check-mark-button" },
   { key: "incumplida", label: "Rotas",     emoji: "cross-mark" },
+  { key: "anulada",   label: "Anuladas",   emoji: "prohibited" },
   { key: "",          label: "Todas",      emoji: "scroll" },
 ] as const;
 
-type EstadoTab = "" | "pendiente" | "cumplida" | "incumplida";
+type EstadoTab = "" | "pendiente" | "cumplida" | "incumplida" | "anulada";
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json()).then((r) => r.data);
 
 function estadoBadge(estado: string | null) {
   if (estado === "cumplida")   return <StatusBadge label="Cumplida"  variant="success" />;
   if (estado === "incumplida") return <StatusBadge label="Rota"      variant="destructive" />;
+  // Anulada NO es lo mismo que rota: la promesa se dejo sin efecto, el cliente no incumplio.
+  if (estado === "anulada")    return <StatusBadge label="Anulada"   variant="muted" />;
   return                              <StatusBadge label="Pendiente" variant="warning" />;
 }
 
@@ -163,13 +166,18 @@ export function PromesasTab({ role }: { role: Role }) {
 
   const puedeEditar = role === "admin" || role === "cobrador";
 
-  async function cambiarEstado(id: string, nuevoEstado: string) {
-    const label = nuevoEstado === "cumplida" ? "cumplida" : "rota";
+  const LABEL: Record<string, string> = { cumplida: "cumplida", incumplida: "rota", anulada: "anulada" };
+
+  async function cambiarEstado(id: string, nuevoEstado: string, motivo?: string) {
+    const label = LABEL[nuevoEstado] ?? nuevoEstado;
     const ok = await confirm({
-      title: nuevoEstado === "cumplida" ? "¿Marcar promesa como cumplida?" : "¿Marcar promesa como rota?",
-      description: `La promesa de pago quedará marcada como ${label}.`,
-      confirmLabel: nuevoEstado === "cumplida" ? "Marcar cumplida" : "Marcar rota",
-      tone: nuevoEstado === "incumplida" ? "danger" : "default",
+      title: `¿Marcar promesa como ${label}?`,
+      description:
+        nuevoEstado === "anulada"
+          ? "La promesa queda sin efecto: no se le va a reclamar ni cuenta como incumplida."
+          : `La promesa de pago quedará marcada como ${label}.`,
+      confirmLabel: `Marcar ${label}`,
+      tone: nuevoEstado === "cumplida" ? "default" : "danger",
     });
     if (!ok) return;
     setCambiando(id);
@@ -177,14 +185,26 @@ export function PromesasTab({ role }: { role: Role }) {
       const res = await fetch(`/api/cobranza/promesas?id=${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ promesa_estado: nuevoEstado }),
+        body: JSON.stringify({ promesa_estado: nuevoEstado, ...(motivo ? { motivo } : {}) }),
       });
       if (!res.ok) { toast.error("No se pudo actualizar la promesa"); return; }
       mutate(swrKey);
-      toast.success(nuevoEstado === "cumplida" ? "Promesa marcada como cumplida" : "Promesa marcada como rota");
+      mutate("/api/cobranza/promesas"); // los KPIs salen de la lista completa
+      toast.success(`Promesa marcada como ${label}`);
     } finally {
       setCambiando(null);
     }
+  }
+
+  /**
+   * Anular pide MOTIVO (el server lo exige, igual que al anular un crédito o un acuerdo).
+   * Se pregunta antes de confirmar, no después: si se cancela, no se manda nada.
+   */
+  async function anular(id: string) {
+    const motivo = window.prompt("¿Por qué se anula la promesa?\n(ej.: el cliente se arrepintió, se cargó por error)");
+    if (motivo === null) return;
+    if (!motivo.trim()) { toast.error("Indicá por qué se anula la promesa"); return; }
+    await cambiarEstado(id, "anulada", motivo.trim());
   }
 
   return (
@@ -291,6 +311,9 @@ export function PromesasTab({ role }: { role: Role }) {
                 <div className="flex gap-1">
                   <button onClick={() => cambiarEstado(p.id, "cumplida")} disabled={cambiando === p.id} className="px-2 py-1 text-xs rounded-md bg-success/10 text-success hover:bg-success/20 transition-colors disabled:opacity-40">Cumplida</button>
                   <button onClick={() => cambiarEstado(p.id, "incumplida")} disabled={cambiando === p.id} className="px-2 py-1 text-xs rounded-md bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors disabled:opacity-40">Rota</button>
+                  {/* Anular: la promesa se deja sin efecto. No es un incumplimiento del
+                      cliente, asi que no le ensucia la efectividad. */}
+                  <button onClick={() => anular(p.id)} disabled={cambiando === p.id} className="px-2 py-1 text-xs rounded-md border border-border text-muted-foreground hover:bg-muted transition-colors disabled:opacity-40">Anular</button>
                 </div>
               ) : null,
             }] as Column<Promesa>[]) : []),

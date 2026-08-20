@@ -4,7 +4,15 @@ import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import type { NextRequest } from "next/server";
 
-const ESTADOS_VALIDOS = ["pendiente", "cumplida", "incumplida"];
+/**
+ * Estados de una promesa.
+ *
+ * `anulada` = la promesa se deja sin efecto (el cliente se arrepintió, se cargó por error).
+ * NO es lo mismo que `incumplida`: una promesa anulada nunca existió como compromiso, así que
+ * no cuenta como incumplimiento del cliente ni ensucia su efectividad. El cron solo rompe las
+ * `pendiente`, así que una anulada queda fuera de la automatización sola.
+ */
+const ESTADOS_VALIDOS = ["pendiente", "cumplida", "incumplida", "anulada"];
 
 /**
  * GET /api/cobranza/promesas
@@ -59,7 +67,7 @@ export const PATCH = withErrorHandler(async (req: NextRequest) => {
   const id = url.searchParams.get("id");
   if (!id) return errorResponse("Se requiere el parámetro id", "MISSING_PARAM", 400);
 
-  const body = await req.json() as { promesa_estado?: string };
+  const body = await req.json() as { promesa_estado?: string; motivo?: string };
   if (!body.promesa_estado || !ESTADOS_VALIDOS.includes(body.promesa_estado)) {
     return errorResponse(`promesa_estado debe ser uno de: ${ESTADOS_VALIDOS.join(", ")}`, "INVALID_INPUT", 400);
   }
@@ -77,9 +85,24 @@ export const PATCH = withErrorHandler(async (req: NextRequest) => {
     return errorResponse("Sin acceso a esta promesa", "FORBIDDEN", 403);
   }
 
+  /**
+   * Anular pide MOTIVO, igual que anular un crédito, un pago o un acuerdo. Se guarda al pie
+   * de la nota de la gestión, sin pisar lo que el cobrador había escrito: no hay columna
+   * propia para esto y agregar una por un texto no lo justifica.
+   */
+  const motivo = typeof body.motivo === "string" ? body.motivo.trim() : "";
+  if (body.promesa_estado === "anulada" && !motivo) {
+    return errorResponse("Indicá por qué se anula la promesa", "MOTIVO_REQUERIDO", 400);
+  }
+
   const actualizada = await prisma.acciones_cobranza.update({
     where: { id },
-    data: { promesa_estado: body.promesa_estado },
+    data: {
+      promesa_estado: body.promesa_estado,
+      ...(motivo
+        ? { nota: `${accion.nota ? `${accion.nota}\n` : ""}Promesa anulada: ${motivo}` }
+        : {}),
+    },
   });
 
   return successResponse(actualizada);
