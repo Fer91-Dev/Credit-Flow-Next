@@ -206,7 +206,7 @@ export function AcuerdosTab({ role }: { role: Role }) {
                   }`}
                 >
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-medium text-muted-foreground">Cuota {c.numero}</span>
+                    <span className="text-xs font-medium text-muted-foreground">Cuota {c.numero} de {a.cuotas.length} del acuerdo</span>
                     <span className={`text-[10px] font-bold uppercase tracking-wide ${
                       c.estado === "pagada" ? "text-success" : c.estado === "vencida" ? "text-destructive" : "text-muted-foreground"
                     }`}>{c.estado}</span>

@@ -246,14 +246,22 @@ export function AcuerdoForm({
             {/* Vista previa del plan: lo que se le dice al cliente. */}
             {plan.length > 0 && (
               <div className="rounded-lg border border-primary/20 bg-primary/5 px-3 py-3">
-                <p className="text-[10px] font-bold uppercase tracking-widest text-primary">Queda así</p>
+                {/* "Plan del acuerdo", no "Queda así": el encabezado tiene que decir DE QUÉ
+                    plan son estas cuotas. Con un título neutro, tres filas que dicen
+                    "Cuota 1 / Cuota 2" se confunden con las del crédito, que son otras
+                    fechas y otros importes. */}
+                <p className="text-[10px] font-bold uppercase tracking-widest text-primary">Plan del acuerdo</p>
                 {/* Una cuota por fila: leído en columna se sigue el cronograma de arriba
                     hacia abajo, que es como se le lee al cliente. */}
                 <div className="mt-2 divide-y divide-primary/10">
                   {plan.map((c) => (
                     <div key={c.numero} className="flex items-center justify-between gap-3 py-1.5 text-sm">
+                      {/* "Cuota 1 DE 2 DEL ACUERDO", igual que el recibo que se lleva el
+                          cliente. Decía "Cuota 1" a secas y el cliente entendía que estaba
+                          pagando la cuota 1 del crédito — que es otro importe y otra fecha. */}
                       <span className="text-muted-foreground">
-                        Cuota {c.numero} <span className="text-muted-foreground/50">·</span> {formatFecha(c.vencimiento)}
+                        Cuota {c.numero} de {plan.length} del acuerdo
+                        <span className="text-muted-foreground/50"> · </span>{formatFecha(c.vencimiento)}
                       </span>
                       <span className="font-mono font-semibold text-foreground tabular-nums">{formatMonto(c.monto)}</span>
                     </div>
@@ -263,8 +271,15 @@ export function AcuerdoForm({
                     contra la deuda de arriba y parece un error de cuenta. */}
                 {interesAcuerdo > 0 && (
                   <div className="mt-2 flex items-center justify-between border-t border-primary/20 pt-2 text-sm">
+                    {/* De dónde salió la tasa: sin esto, el operador ve "5% mensual" y no
+                        sabe si alguien la fijó o si se heredó del crédito — ni dónde
+                        cambiarla. Es la pregunta que hizo el usuario apenas la vio. */}
                     <span className="text-muted-foreground">
-                      Interés del acuerdo <span className="text-muted-foreground/60">· {data.limites.tasa_mensual}% mensual</span>
+                      Interés del acuerdo{" "}
+                      <span className="text-muted-foreground/60">
+                        · {data.limites.tasa_mensual}% mensual
+                        {data.limites.tasa_origen === "credito" ? " (la del crédito)" : ""}
+                      </span>
                     </span>
                     <span className="font-mono text-warning tabular-nums">{formatMonto(interesAcuerdo)}</span>
                   </div>

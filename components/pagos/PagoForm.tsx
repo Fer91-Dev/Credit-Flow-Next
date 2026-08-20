@@ -606,7 +606,7 @@ export function PagoForm({ creditoId, clienteId, montoSugerido, motivoSugerido, 
                     className={`flex items-center justify-between gap-3 px-1.5 py-1.5 text-xs ${esLaQueSeCobra ? "rounded-md bg-primary/10" : ""}`}
                   >
                     <span className={esLaQueSeCobra ? "font-medium text-foreground" : "text-muted-foreground"}>
-                      Cuota {c.numero} <span className="text-muted-foreground/50">·</span> {fmtDate(c.vencimiento)}
+                      Cuota {c.numero} de {acuerdo.total_cuotas} del acuerdo<span className="text-muted-foreground/50"> · </span>{fmtDate(c.vencimiento)}
                     </span>
                     <span className="flex items-center gap-2">
                       {c.estado === "pagada"
