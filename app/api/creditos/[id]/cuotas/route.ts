@@ -2,7 +2,7 @@ import { requireAuth, scopeCreditosVendedor } from "@/lib/auth";
 import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
-import { frecuenciaLabel, normalizarFrecuencia, diasAtraso, round2, interesMora, moraDelCredito, moraDesdeCronograma, type FrecuenciaDef } from "@/lib/domain";
+import { frecuenciaLabel, normalizarFrecuencia, diasAtraso, round2, interesMora, moraDelCredito, moraDesdeCronograma, fechaTopeMora, type FrecuenciaDef } from "@/lib/domain";
 import { getConfiguracion } from "@/lib/config";
 import { formatComprobante } from "@/lib/comprobantes";
 import { nombreCompleto, hoyComercial } from "@/lib/utils";
@@ -69,6 +69,24 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
   const moraCred = moraDelCredito(moraDesdeCronograma(credito.cronograma), config);
   const graciaCred = (credito.cronograma as { diasGracia?: number } | null)?.diasGracia ?? config.simulador.diasGracia;
 
+  /**
+   * 🔴 El freno de punitorios de un acuerdo vigente TAMBIÉN vale acá.
+   *
+   * `POST /pagos` congela la mora en la fecha del acuerdo (`moraCongeladaAl`), pero esta
+   * pantalla la venía calculando hasta HOY. Con un acuerdo vigente, el cronograma mostraba
+   * una mora que el cobro no iba a cobrar: el operador le decía un número al cliente y la
+   * caja tomaba otro, más bajo. Es el mismo error que ya apareció con los cargos del plan y
+   * con el preview del acuerdo — dos fórmulas para el mismo número.
+   *
+   * Se pide antes del cálculo (la consulta del acuerdo estaba más abajo, solo para mostrarlo)
+   * y con `congela_punitorios: true`, el mismo filtro que usa el cobro.
+   */
+  const acuerdoQueCongela = await prisma.acuerdos_pago.findFirst({
+    where: { ...withTenant(tenantId), credito_id: id, estado: "vigente", congela_punitorios: true },
+    select: { fecha: true },
+  });
+  const topeMora = fechaTopeMora(hoy, acuerdoQueCongela?.fecha ?? null);
+
   const cuotas = credito.cuotas.map((c) => {
     const restante_capital = round2(Math.max(0, c.capital - c.pagado_capital));
     // Días de atraso de ESTA cuota. Sale de acá y no del navegador porque es el número que
@@ -83,8 +101,11 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
     else if (dias_atraso > 0) estado = "vencida";
     else if (c.pagado_capital > 0 || c.pagado_interes > 0 || c.pagado_mora > 0 || c.pagado_cargos > 0) estado = "parcial";
     else estado = "pendiente";
+    // `dias_atraso` son los REALES (lo que se informa); la mora se devenga hasta `topeMora`,
+    // que un acuerdo vigente puede haber congelado. Sin acuerdo, los dos son el mismo número.
+    const diasQueDevengan = diasAtraso(c.fecha_vencimiento, topeMora);
     const moraPlena = moraCred.moraActiva
-      ? interesMora(c.cuota_total, dias_atraso, { tasaDiaria: moraCred.tasaMoraDiaria, diasGracia: graciaCred })
+      ? interesMora(c.cuota_total, diasQueDevengan, { tasaDiaria: moraCred.tasaMoraDiaria, diasGracia: graciaCred })
       : 0;
     const moraPend = capitalSaldado ? 0 : round2(Math.max(0, moraPlena - c.pagado_mora));
     const pendienteCuota = round2(Math.max(0, c.cuota_total - (c.pagado_capital + c.pagado_interes + c.pagado_cargos)));
