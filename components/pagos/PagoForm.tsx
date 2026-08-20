@@ -51,6 +51,8 @@ interface AcuerdoDelCredito {
   congela_punitorios: boolean;
   total_cuotas: number;
   proxima: { numero: number; vencimiento: string; pendiente: number } | null;
+  /** El plan completo del acuerdo, para mostrar de dónde sale el importe que se cobra. */
+  cuotas?: { numero: number; vencimiento: string; monto: number; pagado: number; estado: string }[];
 }
 
 interface PagoFormProps {
@@ -531,13 +533,59 @@ export function PagoForm({ creditoId, clienteId, montoSugerido, motivoSugerido, 
           )}
         </div>
 
-        {/* De dónde sale el importe precargado (ej. la cuota de un acuerdo de pago): sin
-            esto, quien cobra ve un monto raro que no coincide con ninguna cuota. */}
-        {creditoSel && motivoSugerido && (
+        {/*
+          De dónde sale el importe precargado.
+
+          Era un párrafo de tres renglones explicando que las cuotas de abajo eran las del
+          CRÉDITO y no las que se estaban cobrando. El operador veía $27.292,04 al lado de una
+          tabla de $73.441,71 y tenía que leerse el texto para entender por qué.
+
+          Ahora se muestra el PLAN DEL ACUERDO, con la cuota que se está cobrando marcada. El
+          importe deja de aparecer de la nada: es la cuota 1 de 3, y se ve.
+        */}
+        {creditoSel && motivoSugerido && acuerdo?.cuotas?.length ? (
+          <div className="rounded-xl border border-primary/30 bg-primary/5 p-3">
+            <div className="flex items-baseline justify-between gap-2">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-primary">Plan del acuerdo</p>
+              <p className="font-mono text-[11px] tabular-nums text-muted-foreground">
+                {acuerdo.total_cuotas} cuota{acuerdo.total_cuotas === 1 ? "" : "s"} · ${fmt2(acuerdo.monto_acordado)}
+              </p>
+            </div>
+            <div className="mt-2 divide-y divide-primary/10">
+              {acuerdo.cuotas.map((c) => {
+                const pendiente = round2(c.monto - c.pagado);
+                const esLaQueSeCobra = c.estado !== "pagada" && acuerdo.proxima?.numero === c.numero;
+                return (
+                  <div
+                    key={c.numero}
+                    className={`flex items-center justify-between gap-3 px-1.5 py-1.5 text-xs ${esLaQueSeCobra ? "rounded-md bg-primary/10" : ""}`}
+                  >
+                    <span className={esLaQueSeCobra ? "font-medium text-foreground" : "text-muted-foreground"}>
+                      Cuota {c.numero} <span className="text-muted-foreground/50">·</span> {fmtDate(c.vencimiento)}
+                    </span>
+                    <span className="flex items-center gap-2">
+                      {c.estado === "pagada"
+                        ? <StatusBadge label="Pagada" variant="success" />
+                        : esLaQueSeCobra
+                          ? <span className="text-[10px] font-semibold uppercase tracking-wide text-primary">cobrando</span>
+                          : null}
+                      <span className={`font-mono tabular-nums ${esLaQueSeCobra ? "font-bold text-foreground" : "text-muted-foreground"}`}>
+                        ${fmt2(pendiente > 0 ? pendiente : c.monto)}
+                      </span>
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+            {acuerdo.congela_punitorios && (
+              <p className="mt-2 text-[11px] text-muted-foreground">Mientras cumpla no se le devengan punitorios.</p>
+            )}
+          </div>
+        ) : creditoSel && motivoSugerido ? (
           <div className="rounded-lg border border-primary/30 bg-primary/5 px-3 py-2.5 text-sm text-primary">
             {motivoSugerido}
           </div>
-        )}
+        ) : null}
 
         {/* Aviso de acuerdo cuando se llega desde PAGOS (sin importe precargado).
             Sin esto, quien cobra no tiene forma de enterarse de que hay un arreglo y le
@@ -579,6 +627,13 @@ export function PagoForm({ creditoId, clienteId, montoSugerido, motivoSugerido, 
               <span className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                 <ChevronDown className="h-3.5 w-3.5 transition-transform group-open:rotate-180" />
                 {cobrandoAcuerdo ? "Cuotas del crédito" : "Cuotas a cobrar"}
+                {/* Cobrando un acuerdo, esta tabla NO es lo que se cobra: es adonde va a
+                    parar la plata. Va como etiqueta al lado del título, no como párrafo. */}
+                {cobrandoAcuerdo && (
+                  <span className="font-normal normal-case tracking-normal text-muted-foreground/60">
+                    · adonde se imputa
+                  </span>
+                )}
               </span>
               {!cobrandoAcuerdo && (
                 /* El check vive DENTRO del summary: sin el stopPropagation, tildarlo

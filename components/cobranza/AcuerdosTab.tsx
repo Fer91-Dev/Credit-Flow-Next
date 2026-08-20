@@ -250,10 +250,11 @@ export function AcuerdosTab({ role }: { role: Role }) {
                   creditoId={cobrando.credito_id}
                   montoSugerido={pendiente > 0 ? pendiente : undefined}
                   motivoSugerido={
+                    // Una línea. El párrafo que explicaba "las cuotas de abajo son las del
+                    // crédito, no lo que se cobra" lo reemplaza el propio plan del acuerdo,
+                    // que la terminal ahora dibuja arriba con la cuota marcada.
                     c
-                      ? `Cuota ${c.numero} de ${cobrando.cuotas.length} DEL ACUERDO · vence ${formatFecha(c.vencimiento)}. ` +
-                        `El importe ya viene cargado y se puede cambiar. Las cuotas que figuran abajo son las del CRÉDITO ` +
-                        `(otras fechas y otros importes): es adonde se imputa la plata, no lo que se está cobrando.`
+                      ? `Cuota ${c.numero} de ${cobrando.cuotas.length} del acuerdo · vence ${formatFecha(c.vencimiento)}`
                       : undefined
                   }
                   onClose={(ok) => { setCobrando(null); if (ok) mutate(key); }}

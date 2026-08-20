@@ -159,6 +159,20 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
           monto_acordado: acuerdo.monto_acordado,
           congela_punitorios: acuerdo.congela_punitorios,
           total_cuotas: acuerdo.cuotas.length,
+          /**
+           * El plan ENTERO del acuerdo. Ya se consultaba para resolver `proxima` y se
+           * descartaba: sin él, la terminal de cobro mostraba un importe precargado
+           * ($27.292,04) al lado de una tabla con las cuotas del CRÉDITO ($73.441,71) y no
+           * había forma de ver de dónde salía. Es "cuota 1 de 3 del acuerdo", y eso se
+           * entiende viendo el plan, no leyendo un párrafo que lo explique.
+           */
+          cuotas: acuerdo.cuotas.map((c) => ({
+            numero: c.numero,
+            vencimiento: c.vencimiento,
+            monto: c.monto,
+            pagado: c.pagado,
+            estado: c.estado,
+          })),
           proxima: proximaAcuerdo
             ? {
                 numero: proximaAcuerdo.numero,
