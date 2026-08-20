@@ -2,7 +2,7 @@ import { requireAuth, scopeCreditosVendedor } from "@/lib/auth";
 import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
-import { frecuenciaLabel, normalizarFrecuencia, diasAtraso, round2, interesMora, moraDelCredito, moraDesdeCronograma, fechaTopeMora, type FrecuenciaDef } from "@/lib/domain";
+import { frecuenciaLabel, normalizarFrecuencia, diasAtraso, round2, interesMora, moraDelCredito, moraDesdeCronograma, topeMoraDeCuota, type FrecuenciaDef } from "@/lib/domain";
 import { getConfiguracion } from "@/lib/config";
 import { formatComprobante } from "@/lib/comprobantes";
 import { nombreCompleto, hoyComercial } from "@/lib/utils";
@@ -85,7 +85,7 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
     where: { ...withTenant(tenantId), credito_id: id, estado: "vigente", congela_punitorios: true },
     select: { fecha: true },
   });
-  const topeMora = fechaTopeMora(hoy, acuerdoQueCongela?.fecha ?? null);
+  const congeladaAl = acuerdoQueCongela?.fecha ?? null;
 
   const cuotas = credito.cuotas.map((c) => {
     const restante_capital = round2(Math.max(0, c.capital - c.pagado_capital));
@@ -103,7 +103,7 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
     else estado = "pendiente";
     // `dias_atraso` son los REALES (lo que se informa); la mora se devenga hasta `topeMora`,
     // que un acuerdo vigente puede haber congelado. Sin acuerdo, los dos son el mismo número.
-    const diasQueDevengan = diasAtraso(c.fecha_vencimiento, topeMora);
+    const diasQueDevengan = diasAtraso(c.fecha_vencimiento, topeMoraDeCuota(c.fecha_vencimiento, hoy, congeladaAl));
     const moraPlena = moraCred.moraActiva
       ? interesMora(c.cuota_total, diasQueDevengan, { tasaDiaria: moraCred.tasaMoraDiaria, diasGracia: graciaCred })
       : 0;

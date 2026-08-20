@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import useSWR, { mutate } from "swr";
-import { Handshake, Ban, DollarSign } from "lucide-react";
+import { Handshake, Ban, DollarSign, Printer } from "lucide-react";
 import { formatMonto, formatFecha, formatCreditoNumero } from "@/lib/utils";
 import { StatusBadge, type BadgeVariant } from "@/components/ui/StatusBadge";
 import { DataTable } from "@/components/ui/DataTable";
@@ -13,6 +13,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { FieldLabel, FormActions, IconTextarea } from "@/components/caja/caja-form";
 import { PagoForm } from "@/components/pagos/PagoForm";
 import type { Role } from "@/lib/auth/roles";
+import { useFinanciera } from "@/lib/swr";
+import { imprimirAcuerdo } from "@/lib/acuerdo-print";
 
 /**
  * Acuerdos de pago: el arreglo informal en cuotas con un moroso.
@@ -47,6 +49,10 @@ export interface Acuerdo {
   notas: string | null;
   motivo_estado: string | null;
   creado_por: string | null;
+  /** Datos que necesita el documento imprimible (firma del cliente). */
+  documento?: string | null;
+  tasa_mensual?: number | null;
+  cuotas_para_romper?: number;
   cuotas: AcuerdoCuota[];
 }
 
@@ -84,6 +90,27 @@ function proximaCuota(a: Acuerdo): AcuerdoCuota | null {
 export function AcuerdosTab({ role }: { role: Role }) {
   const confirm = useConfirm();
   const toast = useToast();
+  const { financiera } = useFinanciera(); // co-branding del documento que firma el cliente
+  /** Arma el documento imprimible del acuerdo. El interés se DERIVA (no se guarda). */
+  const imprimir = (a: Acuerdo) => {
+    const base = Math.round((a.deuda_original - a.quita) * 100) / 100;
+    imprimirAcuerdo({
+      numeroCredito: formatCreditoNumero(a.credito_numero ?? undefined),
+      cliente: a.cliente ?? "—",
+      documento: a.documento ?? null,
+      fecha: a.fecha,
+      deudaOriginal: a.deuda_original,
+      quita: a.quita,
+      interes: Math.round((a.monto_acordado - base) * 100) / 100,
+      total: a.monto_acordado,
+      tasaMensual: a.tasa_mensual ?? null,
+      congelaPunitorios: a.congela_punitorios,
+      cuotasParaRomper: a.cuotas_para_romper ?? 1,
+      cuotas: a.cuotas.map((c) => ({ numero: c.numero, vencimiento: c.vencimiento, monto: c.monto })),
+      notas: a.notas,
+      financiera: financiera ? { nombre: financiera.nombre, logo_url: financiera.logo_url } : undefined,
+    });
+  };
   const [estado, setEstado] = useState<string>("vigente");
   const [abierto, setAbierto] = useState<string | null>(null);
   const [anulando, setAnulando] = useState<Acuerdo | null>(null);
@@ -217,13 +244,22 @@ export function AcuerdosTab({ role }: { role: Role }) {
               ))}
             </div>
 
-            {(a.notas || a.motivo_estado || a.creado_por) && (
-              <div className="rounded-lg border border-border bg-muted/20 px-3 py-2.5 text-xs text-muted-foreground space-y-1">
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-muted/20 px-3 py-2.5 text-xs text-muted-foreground">
+              <div className="space-y-1">
                 {a.creado_por && <p>Lo armó <span className="text-foreground">{a.creado_por}</span></p>}
                 {a.notas && <p>Nota: <span className="text-foreground">{a.notas}</span></p>}
                 {a.motivo_estado && <p>{a.motivo_estado}</p>}
               </div>
-            )}
+              {/* El papel que firma el cliente. Sin esto, las condiciones del acuerdo —el
+                  freno de punitorios y su vuelta retroactiva si se cae— no están escritas
+                  en ningún lado y no hay reconocimiento de deuda firmado. */}
+              <button
+                onClick={(e) => { e.stopPropagation(); imprimir(a); }}
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-muted"
+              >
+                <Printer className="h-3.5 w-3.5" /> Imprimir para firmar
+              </button>
+            </div>
           </div>
         );
       })()}

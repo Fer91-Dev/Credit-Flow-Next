@@ -391,12 +391,14 @@ export async function anularAcuerdo(tenantId: string, acuerdoId: string, motivo:
  * cola: alguien que está cumpliendo un arreglo ya está gestionado, y llamarlo igual es la
  * forma más rápida de que deje de cumplirlo.
  */
-export async function creditosConAcuerdoVigente(tenantId: string): Promise<Set<string>> {
+export async function creditosConAcuerdoVigente(tenantId: string): Promise<Map<string, Date>> {
   const filas = await prisma.acuerdos_pago.findMany({
     where: { ...withTenant(tenantId), estado: "vigente" },
-    select: { credito_id: true },
+    select: { credito_id: true, fecha: true },
   });
-  return new Set(filas.map((f) => f.credito_id));
+  // La FECHA, no solo el id: la agenda necesita saber si lo que está atrasado hoy entró al
+  // acuerdo o es una cuota posterior que el cliente dejó de pagar igual.
+  return new Map(filas.map((f) => [f.credito_id, f.fecha]));
 }
 
 /** Forma con la que viaja un acuerdo a la UI. */
@@ -407,7 +409,7 @@ export function serializarAcuerdo(
     congela_punitorios: boolean; cuotas_para_romper: number;
     notas: string | null; motivo_estado: string | null; creado_por_nombre: string | null;
     cuotas: { numero: number; vencimiento: Date; monto: number; pagado: number; estado: string }[];
-    credito?: { numero: number | null; cliente: { nombre: string; apellido: string | null } | null } | null;
+    credito?: { numero: number | null; cliente: { nombre: string; apellido: string | null; documento?: string | null } | null } | null;
   },
   evaluacion?: { cobrado: number; pendiente: number; cuotas_pagas: number; proximo_vencimiento: Date | null },
 ) {
@@ -418,6 +420,9 @@ export function serializarAcuerdo(
     credito_id: a.credito_id,
     credito_numero: a.credito?.numero ?? null,
     cliente: a.credito?.cliente ? `${a.credito.cliente.nombre} ${a.credito.cliente.apellido ?? ""}`.trim() : null,
+    // El DNI viaja para el documento que firma el cliente: un reconocimiento de deuda sin
+    // documento del deudor no identifica a nadie.
+    documento: a.credito?.cliente?.documento ?? null,
     estado: a.estado,
     deuda_original: a.deuda_original,
     quita: a.quita,

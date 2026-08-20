@@ -154,6 +154,26 @@ export function fechaTopeMora(hoy: Date, corte?: Date | null): Date {
   return corte.getTime() < hoy.getTime() ? corte : hoy;
 }
 
+/**
+ * Hasta cuándo devenga mora UNA cuota, cuando hay un acuerdo de pago que congela punitorios.
+ *
+ * 🔴 El acuerdo se firma sobre lo que estaba VENCIDO ese día. Las cuotas que vencen DESPUÉS
+ * no entraron en el trato, así que siguen devengando normal: congelarlas sería regalar
+ * punitorios que nadie negoció, y encima le saca al cliente el incentivo de seguir pagando
+ * su plan mientras cumple el arreglo.
+ *
+ * Decisión del usuario (2026-08-20), sobre el caso real de CRD-000067: su cuota 2 vence el
+ * 07/09 y la primera del acuerdo el 19/09 — se cruzan, y esa cuota 2 no era parte del
+ * acuerdo.
+ *
+ * Una cuota "entró al acuerdo" si ya había vencido a la fecha en que se acordó.
+ */
+export function topeMoraDeCuota(fechaVencimiento: Date, hoy: Date, congeladaAl?: Date | null): Date {
+  if (!congeladaAl) return hoy;
+  const entroAlAcuerdo = fechaVencimiento.getTime() <= congeladaAl.getTime();
+  return entroAlAcuerdo ? fechaTopeMora(hoy, congeladaAl) : hoy;
+}
+
 export function interesMora(
   valorCuota: number,
   dias: number,

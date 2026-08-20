@@ -37,7 +37,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     take: 200,
     include: {
       cuotas: { orderBy: { numero: "asc" } },
-      credito: { select: { numero: true, cliente: { select: { nombre: true, apellido: true } } } },
+      credito: { select: { numero: true, cliente: { select: { nombre: true, apellido: true, documento: true } } } },
     },
   });
 
