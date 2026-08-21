@@ -554,6 +554,15 @@ export function ConfigForm() {
                   </button>
                 );
               })}
+              {/*
+                Qué significa el asterisco. Sin esta línea el `*` es decorativo: en una
+                pantalla donde CASI TODO tiene un default razonable, hay que poder distinguir
+                el parámetro que la financiera elige del que el motor no puede resolver solo.
+              */}
+              <p className="mt-4 hidden md:block px-3 text-[11px] leading-relaxed text-muted-foreground/70">
+                <span className="text-destructive">*</span> El motor no puede calcular sin este dato.
+                El resto tiene un valor por defecto y en 0 simplemente queda apagado.
+              </p>
             </nav>
 
             {/* ─ Contenido de la sección activa ─ */}
@@ -593,14 +602,14 @@ export function ConfigForm() {
             onSave={() => save("motor", { convencionTasa: form.convencionTasa, sistemaAmortizacion: form.sistemaAmortizacion })}
             saving={savingKey === "motor"} saved={savedKey === "motor"} dirty={isDirty("motor")}>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Field label="Convención de tasa" hint="Cómo se interpreta el campo «tasa» de cada crédito">
+              <Field required label="Convención de tasa" hint="Cómo se interpreta el campo «tasa» de cada crédito">
                 <Select value={form.convencionTasa} onChange={e => set("convencionTasa", e.target.value as ConfiguracionFinanciera["convencionTasa"])}>
                   <option value="nominal_anual">Nominal anual (TNA)</option>
                   <option value="efectiva_anual">Efectiva anual (TEA)</option>
                   <option value="mensual">Mensual</option>
                 </Select>
               </Field>
-              <Field label="Sistema de amortización">
+              <Field required label="Sistema de amortización">
                 <Select value={form.sistemaAmortizacion} onChange={e => set("sistemaAmortizacion", e.target.value as ConfiguracionFinanciera["sistemaAmortizacion"])}>
                   <option value="frances">Francés (cuota fija)</option>
                 </Select>
@@ -707,7 +716,7 @@ export function ConfigForm() {
               onChange={f => setSim("frecuencias", f)}
             />
             <div className="mt-4 max-w-xs">
-              <Field label="Frecuencia por defecto" hint="Preseleccionada en el simulador">
+              <Field required label="Frecuencia por defecto" hint="Preseleccionada en el simulador">
                 <Select value={form.simulador.frecuenciaDefault} onChange={e => setSim("frecuenciaDefault", e.target.value)}>
                   {form.simulador.frecuencias.filter(f => f.activo).map(f => (
                     <option key={f.clave} value={f.clave}>{cap(f.label)}</option>
@@ -744,7 +753,7 @@ export function ConfigForm() {
                 </Select>
               </Field>
               {form.simulador.redondeoCuota.modo === "multiplo" && (
-                <Field label="Múltiplo" hint="Ej: 100 deja las cuotas de a $100">
+                <Field required label="Múltiplo" hint="Ej: 100 deja las cuotas de a $100">
                   <Input type="number" min="1" step="1" value={form.simulador.redondeoCuota.multiplo}
                     onChange={e => setSim("redondeoCuota", { ...form.simulador.redondeoCuota, multiplo: parseInt(e.target.value) || 1 })} />
                 </Field>
@@ -885,7 +894,7 @@ export function ConfigForm() {
                     (Acá el valor se guarda como PORCENTAJE —5 = 5%—, al revés que en seguro y
                     gastos, que guardan la fracción. Cada pantalla convierte lo suyo.)
                   */}
-                  <Field label={form.simulador.cargos.comisionOtorgamiento.modo === "fijo" ? "Valor ($)" : "Valor (%)"}>
+                  <Field required={form.simulador.cargos.comisionOtorgamiento.activo} label={form.simulador.cargos.comisionOtorgamiento.modo === "fijo" ? "Valor ($)" : "Valor (%)"}>
                     <Input type="number" min="0" step="0.5" value={form.simulador.cargos.comisionOtorgamiento.valor}
                       onChange={e => setCargo("comisionOtorgamiento", "valor", parseFloat(e.target.value) || 0)} />
                   </Field>
@@ -906,7 +915,7 @@ export function ConfigForm() {
                 onSave={() => saveSim("cargo-iva")} saving={savingKey === "cargo-iva"} saved={savedKey === "cargo-iva"} dirty={isDirty("cargo-iva")}
                 error={errorKey === "cargo-iva" ? saveError ?? undefined : undefined}>
                 <div className="max-w-[12rem]">
-                  <Field label="Tasa de IVA (%)">
+                  <Field required={form.simulador.cargos.iva.activo} label="Tasa de IVA (%)">
                     <Input type="number" min="0" step="0.5" value={Number((form.simulador.cargos.iva.tasa * 100).toFixed(2))}
                       onChange={e => setCargo("iva", "tasa", (parseFloat(e.target.value) || 0) / 100)} />
                   </Field>
@@ -928,7 +937,7 @@ export function ConfigForm() {
                       <option value="fijo">Monto fijo por cuota</option>
                     </Select>
                   </Field>
-                  <Field label={form.simulador.cargos.seguro.modo === "fijo" ? "Valor ($)" : "Valor (%)"}>
+                  <Field required={form.simulador.cargos.seguro.activo} label={form.simulador.cargos.seguro.modo === "fijo" ? "Valor ($)" : "Valor (%)"}>
                     <Input type="number" min="0" step="0.01"
                       value={form.simulador.cargos.seguro.modo === "fijo"
                         ? form.simulador.cargos.seguro.valor
@@ -955,7 +964,7 @@ export function ConfigForm() {
                       <option value="porcentaje">% de la cuota</option>
                     </Select>
                   </Field>
-                  <Field label={form.simulador.cargos.gastosAdministrativos.modo === "fijo" ? "Valor ($)" : "Valor (%)"}>
+                  <Field required={form.simulador.cargos.gastosAdministrativos.activo} label={form.simulador.cargos.gastosAdministrativos.modo === "fijo" ? "Valor ($)" : "Valor (%)"}>
                     <Input type="number" min="0" step="0.01"
                       value={form.simulador.cargos.gastosAdministrativos.modo === "fijo"
                         ? form.simulador.cargos.gastosAdministrativos.valor
@@ -982,7 +991,7 @@ export function ConfigForm() {
             onSave={() => save("mora", { moraActiva: form.moraActiva, tasaMoraDiaria: form.tasaMoraDiaria })}
             saving={savingKey === "mora"} saved={savedKey === "mora"} dirty={isDirty("mora")}>
             <div className={`grid grid-cols-1 gap-4 max-w-sm transition-opacity ${form.moraActiva ? "" : "opacity-50"}`}>
-              <Field label="Tasa de mora diaria (%)" hint="Porcentaje diario sobre la base de mora">
+              <Field required={form.moraActiva} label="Tasa de mora diaria (%)" hint="Porcentaje diario sobre la base de mora">
                 <div className="relative">
                   <Input
                     type="number" min="0" step="0.1"
@@ -1285,7 +1294,7 @@ export function ConfigForm() {
           >
             <div className="space-y-5">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <Field label="Ratio cuota / ingreso máx (%)" hint="La cuota no puede superar este % del ingreso neto del cliente">
+                <Field required label="Ratio cuota / ingreso máx (%)" hint="La cuota no puede superar este % del ingreso neto del cliente. En 0 nadie califica.">
                   <div className="relative">
                     <Input type="number" min="1" max="100" step="1"
                       value={Number((riesgo.politica.ratioCuotaIngresoMax * 100).toFixed(0))}
@@ -1500,14 +1509,14 @@ export function ConfigForm() {
             onSave={() => save("cobranza", { cobranzaConfig: cobranza })}
             saving={savingKey === "cobranza"} saved={savedKey === "cobranza"} dirty={isDirty("cobranza")}>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 max-w-3xl">
-              <Field label="Máximo de cuotas" hint="El techo del vendedor: hasta en cuántos pagos puede repartir lo vencido sin consultar. Con 6 puede ofrecer 6, no 8.">
+              <Field required label="Máximo de cuotas" hint="El techo del vendedor: hasta en cuántos pagos puede repartir lo vencido sin consultar. Con 6 puede ofrecer 6, no 8.">
                 <Input
                   type="number" min="1" max="60" step="1"
                   value={cobranza.acuerdos.max_cuotas}
                   onChange={e => setAcuerdos({ max_cuotas: Math.max(1, Math.min(60, Math.round(parseFloat(e.target.value) || 1))) })}
                 />
               </Field>
-              <Field label="Días entre cuotas" hint="Cada cuánto vence una cuota del acuerdo: 30 = mensual · 15 = quincenal · 7 = semanal. No depende de la frecuencia del crédito.">
+              <Field required label="Días entre cuotas" hint="Cada cuánto vence una cuota del acuerdo: 30 = mensual · 15 = quincenal · 7 = semanal. No depende de la frecuencia del crédito.">
                 <Input
                   type="number" min="1" max="365" step="1"
                   value={cobranza.acuerdos.dias_entre_cuotas}
