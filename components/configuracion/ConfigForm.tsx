@@ -126,7 +126,7 @@ const AYUDA: Record<string, AyudaBloque> = {
       "Máximo de cuotas: hasta dónde puede estirar el vendedor sin consultar. No es lo que va a ofrecer siempre, es su techo.",
       "Días entre cuotas: cada cuánto vence una cuota DEL ACUERDO. Es independiente del crédito: podés acordar semanal aunque el crédito sea mensual.",
       "Cuotas impagas que lo rompen: con 1 sos estricto (falta a una y se cae); con 2 o 3 le das margen para un tropiezo.",
-      "Quita máx. del vendedor: cuánto puede perdonar por su cuenta. En 0 no condona nada y toda quita la firma un admin, que no tiene tope.",
+      "Descuento máx. del vendedor: cuánto puede perdonar por su cuenta. En 0 no descuenta nada y todo descuento lo firma un admin, que no tiene tope.",
       "La condonación sale de los punitorios y el interés, NUNCA del capital: la plata que se prestó de verdad no se regala.",
       "El acuerdo no toca el crédito: el cliente paga como siempre y el acuerdo se va cumpliendo solo con esos pagos.",
       "No hay botón para darlo por cumplido: se cumple cuando la plata entra, y eso lo detecta el sistema solo.",
@@ -765,14 +765,23 @@ export function ConfigForm() {
             <div className="space-y-5">
               <SubGrupo titulo="Cuándo vence la cuota" nota="solo créditos mensuales">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <Field label="Día de vencimiento" hint="1–28. Vacío o 0 = un período desde el desembolso">
+                  {/*
+                    🔴 EL CAMPO NUNCA SE MUESTRA EN BLANCO.
+                    Un input vacío no dice nada: no se distingue "está apagado" de "nadie lo
+                    configuró todavía". Y son dos lecturas MUY distintas cuando lo que está en
+                    juego es la fecha en la que arranca a cobrarse un crédito. En el motor
+                    `null` y `0` son el mismo valor (`calendar.ts`: `cfg.diaCorte ?? 0` y
+                    `if (!cfg.diaVencimiento) return null`), así que mostrar 0 no cambia una
+                    coma del cálculo — solo deja de esconder el estado.
+                  */}
+                  <Field label="Día de vencimiento" hint="1–28. En 0, la cuota vence un período después del desembolso">
                     <Input type="number" min="0" max="28" step="1"
-                      value={form.simulador.diaVencimientoFijo ?? ""}
+                      value={form.simulador.diaVencimientoFijo ?? 0}
                       onChange={e => setSim("diaVencimientoFijo", diaDelMes(e.target.value))} />
                   </Field>
-                  <Field label="Día de corte" hint="1–28. Vacío o 0 = sin corte. Necesita un día de vencimiento">
+                  <Field label="Día de corte" hint="1–28. En 0 no hay corte. Necesita un día de vencimiento">
                     <Input type="number" min="0" max="28" step="1"
-                      value={form.simulador.diaCorte ?? ""}
+                      value={form.simulador.diaCorte ?? 0}
                       onChange={e => setSim("diaCorte", diaDelMes(e.target.value))} />
                   </Field>
                 </div>
@@ -839,10 +848,17 @@ export function ConfigForm() {
                 Los créditos mensuales vencen el <b>{form.simulador.diaVencimientoFijo}</b> de cada mes
                 {form.simulador.diaCorte
                   ? <> y uno otorgado después del <b>{form.simulador.diaCorte}</b> arranca a cobrarse un mes más tarde</>
-                  : <> (el primero, al mes siguiente del desembolso)</>}
+                  : <> (el primero, al mes siguiente del desembolso). <b>Sin día de corte</b>: uno otorgado un día antes del vencimiento igual cobra el período entero de interés</>}
                 .{(form.simulador.incluirDomingoNoHabil || form.simulador.incluirSabadoNoHabil || form.simulador.feriados.length > 0) && <> Si esa fecha cae en un día no hábil, se corre al siguiente.</>}
               </p>
-            ) : null}
+            ) : (
+              /* Los dos en 0. Antes este caso no imprimía NADA: la sección quedaba muda
+                 justo cuando los dos campos estaban apagados, que es el estado que más
+                 necesita decirse en voz alta. */
+              <p className="mt-4 rounded-lg bg-muted/20 border border-border/60 px-3 py-2 text-[11px] text-muted-foreground/80">
+                Día de vencimiento y día de corte en <b>0</b>: las cuotas vencen <b>un período después del desembolso</b>, sin día fijo del mes.
+              </p>
+            )}
           </Section>
 
           {/* Simulador · Cargos */}
@@ -1345,10 +1361,16 @@ export function ConfigForm() {
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <Field label="Score externo mínimo" hint="0–1000 (Nosis/Veraz). Vacío = no se exige">
+                {/* En 0 se muestra 0, no vacío: `riesgo.ts` ya trata null y 0 igual (con 0,
+                    `score < 0` nunca es cierto → no exige nada). Se guarda null para no
+                    ensuciar el JSON con un mínimo que no existe. */}
+                <Field label="Score externo mínimo" hint="0–1000 (Nosis/Veraz). En 0 no se exige">
                   <Input type="number" min="0" max="1000" step="10"
-                    value={riesgo.politica.scoreExternoMin ?? ""}
-                    onChange={e => setRiesgo({ scoreExternoMin: e.target.value === "" ? null : Math.max(0, parseInt(e.target.value) || 0) })} />
+                    value={riesgo.politica.scoreExternoMin ?? 0}
+                    onChange={e => {
+                      const n = Math.max(0, Math.min(1000, parseInt(e.target.value) || 0));
+                      setRiesgo({ scoreExternoMin: n === 0 ? null : n });
+                    }} />
                 </Field>
                 <Field label="Si el cliente no califica" hint="Qué hace el sistema cuando no cumple la política">
                   <Select value={riesgo.politica.accionAlNoCalificar}
@@ -1499,17 +1521,43 @@ export function ConfigForm() {
                   onChange={e => setAcuerdos({ cuotas_para_romper: Math.max(1, Math.round(parseFloat(e.target.value) || 1)) })}
                 />
               </Field>
+              {/*
+                🔴 ACÁ `null` NO ES `0`, Y NO SE PUEDEN JUNTAR.
+                  null → el acuerdo usa la MISMA tasa que firmó el cliente (`resolverTasaAcuerdo`)
+                  0    → el acuerdo NO devenga interés: refinanciarse sale gratis
+                Mostrar 0 cuando el valor es null —como sí se hace con el día de corte, donde
+                el motor los trata igual— convertiría todos los acuerdos en gratuitos de un
+                día para el otro. Así que en vez de un número que a veces está vacío, el modo
+                se elige explícito: nunca hay un campo mudo, y las dos opciones se leen.
+              */}
               <Field
-                label="Tasa del acuerdo (% mensual)"
-                hint="Vacío = la misma tasa que firmó el cliente (lo equitativo). 0 = sin interés: el acuerdo le sale gratis y atrasarse conviene."
+                label="Tasa del acuerdo"
+                hint="Con la tasa del crédito, el acuerdo le cuesta lo mismo que ya firmó. Con tasa propia en 0 no devenga interés: atrasarse conviene."
+              >
+                <Select
+                  value={cobranza.acuerdos.tasa_mensual === null || cobranza.acuerdos.tasa_mensual === undefined ? "credito" : "propia"}
+                  onChange={e => setAcuerdos({ tasa_mensual: e.target.value === "credito" ? null : 0 })}
+                >
+                  <option value="credito">La misma del crédito</option>
+                  <option value="propia">Tasa propia (% mensual)</option>
+                </Select>
+              </Field>
+              <Field
+                label="% mensual del acuerdo"
+                hint={cobranza.acuerdos.tasa_mensual === null || cobranza.acuerdos.tasa_mensual === undefined
+                  ? "Lo define la tasa de cada crédito."
+                  : cobranza.acuerdos.tasa_mensual === 0
+                  ? "En 0: el acuerdo no devenga interés."
+                  : "Se aplica a todos los acuerdos, sea cual sea la tasa del crédito."}
               >
                 <Input
-                  type="number" min="0" max="100" step="any" placeholder="la del crédito"
-                  value={cobranza.acuerdos.tasa_mensual ?? ""}
-                  onChange={e => setAcuerdos({ tasa_mensual: e.target.value === "" ? null : Math.max(0, Math.min(100, parseFloat(e.target.value) || 0)) })}
+                  type="number" min="0" max="100" step="any"
+                  disabled={cobranza.acuerdos.tasa_mensual === null || cobranza.acuerdos.tasa_mensual === undefined}
+                  value={cobranza.acuerdos.tasa_mensual ?? 0}
+                  onChange={e => setAcuerdos({ tasa_mensual: Math.max(0, Math.min(100, parseFloat(e.target.value) || 0)) })}
                 />
               </Field>
-              <Field label="Quita máx. del vendedor (%)" hint="Cuánto de los punitorios e interés puede perdonar el vendedor por su cuenta. En 0 no condona nada: toda quita la firma un admin, que no tiene tope. El capital nunca se toca.">
+              <Field label="Descuento máx. del vendedor (%)" hint="Cuánto de los punitorios e interés puede perdonar el vendedor por su cuenta. En 0 no descuenta nada: todo descuento lo firma un admin, que no tiene tope. El capital nunca se toca.">
                 <Input
                   type="number" min="0" max="100" step="1"
                   value={cobranza.acuerdos.quita_max_vendedor_pct}
