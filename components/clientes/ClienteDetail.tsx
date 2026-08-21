@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import { refrescarNotificaciones, useClienteDetalle, useAccionesCobranza, useCuotas, useFinanciera, KEYS, type CreditoConFinanzas, type EstadoCuota, type CuotaPersistida } from "@/lib/swr";
 import { StatusBadge, type BadgeVariant } from "@/components/ui/StatusBadge";
+import { ScoreBadge } from "@/components/ui/ScoreBadge";
 import { Stat } from "@/components/ui/Stat";
 import { Emoji } from "@/components/ui/Emoji";
 import { Avatar } from "@/components/ui/Avatar";
@@ -119,10 +120,20 @@ const SITUACION_LABORAL: Record<string, string> = {
   desempleado: "Desempleado", otro: "Otro",
 };
 
-function creditoBadge(estado: string): { label: string; variant: "primary" | "success" | "muted" | "destructive" } {
+function creditoBadge(estado: string, diasMora = 0): { label: string; variant: "primary" | "success" | "muted" | "destructive" | "warning" } {
+  // Mismo criterio que CreditoDetail/CreditosTable: un crédito vivo con cuotas vencidas
+  // NO es simplemente "activo". Sin esto la ficha del cliente lo mostraba al día.
+  if (esCreditoVivo(estado) && diasMora > 0) {
+    return { label: "Activo atrasado", variant: diasMora > 30 ? "destructive" : "warning" };
+  }
   if (estado === "activo") return { label: "Activo", variant: "primary" };
   if (estado === "pagado") return { label: "Pagado", variant: "success" };
   if (estado === "cancelado") return { label: "Cancelado", variant: "destructive" };
+  // `refinanciado` caía en el genérico y se leía en minúscula, sin decir que el crédito
+  // sigue vivo en otro número. Es el estado más confuso de los seis si no se nombra.
+  if (estado === "refinanciado") return { label: "Refinanciado", variant: "muted" };
+  if (estado === "vencido") return { label: "Vencido", variant: "destructive" };
+  if (estado === "anulado") return { label: "Anulado", variant: "muted" };
   return { label: estado, variant: "muted" };
 }
 
@@ -243,6 +254,9 @@ export function ClienteDetail({
                 <h2 className="truncate text-2xl font-bold leading-tight tracking-tight text-foreground">{nombreCompleto(cliente)}</h2>
                 <div className="mt-2 flex flex-wrap items-center gap-2.5">
                   <StatusBadge label={cliente.estado} variant={cliente.estado === "activo" ? "success" : "muted"} />
+                  {/* La calificación se veía solo en el LISTADO: al entrar a la ficha
+                      desaparecía justo donde se la mira en serio. */}
+                  <ScoreBadge score={cliente.score} />
                   {cliente.migrado && (
                     <span
                       className="rounded-full border border-warning/30 bg-warning/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-warning"
@@ -592,7 +606,7 @@ function CreditosTabla({ creditos, mostrarProximo }: { creditos: CreditoConFinan
         </thead>
         <tbody>
           {creditos.map((c, idx) => {
-            const b = creditoBadge(c.estado);
+            const b = creditoBadge(c.estado, c.dias_mora ?? 0);
             const tieneCuotas = !!c.cuotas_resumen && c.cuotas_resumen.total > 0;
             const abierto = abiertos.has(c.id);
             return (
@@ -608,6 +622,14 @@ function CreditosTabla({ creditos, mostrarProximo }: { creditos: CreditoConFinan
                         : <span className="inline-block w-3.5" />}
                       <span className="font-mono text-[11px] text-muted-foreground/70">{formatCreditoNumero(c.numero)}</span>
                       <span className="capitalize">{c.tipo_credito}</span>
+                      {/* Que un crédito HAYA NACIDO de refinanciar otro no se veía en la ficha:
+                          la cadena de reestructuraciones de un cliente es justo lo que hay que
+                          leer de un vistazo antes de darle otro. */}
+                      {c.es_refinanciacion && (
+                        <span className="rounded border border-warning/30 bg-warning/10 px-1.5 py-px text-[9px] font-bold uppercase tracking-wide text-warning" title="Nació de refinanciar un crédito anterior">
+                          Refi
+                        </span>
+                      )}
                       <span className="text-muted-foreground/60"> · {c.tasa}% · {c.plazo_meses} cuotas</span>
                     </span>
                   </td>

@@ -88,6 +88,10 @@ export interface ClienteScore {
   categoria: "A" | "B" | "C" | "D" | "sin_historial";
   label: string;
   puntaje: number | null;
+  /** Ratio de cumplimiento 0–1 sobre las cuotas ya vencidas. */
+  cumplimiento?: number;
+  /** De dónde salió cada punto que perdió. Vacío = el cliente está impecable. */
+  detalle?: Array<{ concepto: string; puntos: number }>;
 }
 
 /** Historia clínica del cliente migrado: sus créditos previos de la planilla (solo referencia). */
@@ -131,6 +135,12 @@ export interface CreditoConFinanzas {
   frecuencia: string;
   dias_mora: number;
   estado: string;
+  /** El crédito NACIÓ de refinanciar otro (no es plata nueva). */
+  es_refinanciacion?: boolean;
+  /** Crédito origen que esta refinanciación reemplazó. */
+  refinancia_a?: string | null;
+  /** Refinanciación que reemplazó a este crédito. */
+  refinanciado_en?: string | null;
   created_at: string;
   fecha_inicio: string;
   proximo_pago?: string | null;
@@ -169,6 +179,8 @@ export interface ClienteDetalle extends Cliente {
   monto_total?: number;
   creditos: CreditoConFinanzas[];
   estado_cuenta: EstadoCuenta;
+  /** Calificación crediticia derivada, con el detalle de por qué (ver lib/domain/scoring). */
+  score?: ClienteScore;
   /** El usuario en sesión puede anular pagos (rol admin). */
   puede_anular_pago?: boolean;
 }
