@@ -100,6 +100,12 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar }: {
   const proximaCuota = cuotas.find((q) => q.estado !== "pagada") ?? null;
   /** Mora devengada de todo el plan (pie de la columna Mora). */
   const moraTotalPlan = cuotas.reduce((s, q) => s + (q.mora ?? 0), 0);
+  /**
+   * Lo que el cliente debe HOY por todo el crédito: lo que resta de cada cuota más su mora.
+   * Una sola suma de `total_cobrar`, que es lo mismo que muestra la columna "A cobrar" —
+   * así el pie de la tabla, la tarjeta de arriba y los botones verdes no pueden discrepar.
+   */
+  const deudaTotal = Math.round(cuotas.reduce((s, q) => s + (q.total_cobrar ?? q.cuota_total), 0) * 100) / 100;
   const unidadCuota = amortizacion?.parametros.frecuencia_label.cuotaSingular ?? "cuota";
   const moraHoy = credito.dias_mora > 0 ? (credito.interes_mora ?? 0) : 0;
   const aCobrarHoy = Math.round((vencidoImpago + moraHoy) * 100) / 100;
@@ -400,8 +406,24 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar }: {
               de cobro $73.441,71 para la misma cuota: 29 centavos de diferencia que se leen
               como dos importes distintos. Un peso redondeado en una pantalla de plata no es
               un detalle de diseño, es un número que no coincide con el que se cobra. */}
-          <Stat icon="money-bag" label="Saldo pendiente" accent={credito.saldo_pendiente > 0 ? "warning" : "success"}
-            value={`$${n2(credito.saldo_pendiente)}`} />
+          {/*
+            🔴 DEUDA TOTAL, no "saldo pendiente".
+​
+            `creditos.saldo_pendiente` es solo el CAPITAL que falta amortizar. Mientras el
+            crédito no cobró un peso vale exactamente lo mismo que el capital otorgado, así
+            que la tarjeta repetía el número de arriba y no informaba nada: en CRD-000068
+            decía "$350.000,00" al lado de "Capital otorgado $350.000,00", cuando Bruno debe
+            $392.252,19.
+​
+            Lo que se muestra ahora es lo que el cliente debe: todo lo que resta del plan más
+            la mora devengada. Sale de `total_cobrar` cuota por cuota — la MISMA fuente que la
+            columna "A cobrar" y su total, así que los tres números de la pantalla cierran
+            entre sí. El capital queda abajo, que es donde corresponde: es un componente de la
+            deuda, no la deuda.
+          */}
+          <Stat icon="money-bag" label="Deuda total" accent={deudaTotal > 0 ? "warning" : "success"}
+            value={`$${n2(deudaTotal)}`}
+            sub={deudaTotal > 0 ? `capital $${n2(credito.saldo_pendiente)}${moraTotalPlan > 0 ? ` · mora $${n2(moraTotalPlan)}` : ""}` : undefined} />
           {/* CUÁL y CUÁNTO, no "la cuota" en abstracto: el operador necesita saber qué le
               toca cobrar ahora. Antes mostraba el importe genérico del plan, que no dice
               cuál está pendiente ni cuándo vence. */}
@@ -817,7 +839,13 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar }: {
                     <td className="px-3 py-2.5 text-right font-mono font-bold text-destructive border-t border-border">
                       {moraTotalPlan > 0 ? `$${n2(moraTotalPlan)}` : <span className="text-muted-foreground/20">—</span>}
                     </td>
-                    <td colSpan={2} className="border-t border-border pr-4" />
+                    <td className="border-t border-border" />
+                    {/* El total de la columna "A cobrar" faltaba: era la única con pie vacío,
+                        y es justamente la que suma lo que el cliente debe. Coincide con la
+                        tarjeta "Deuda total" de arriba porque sale de la misma suma. */}
+                    <td className="px-3 py-2.5 pr-4 text-right font-mono font-bold tabular-nums text-foreground border-t border-border">
+                      ${n2(deudaTotal)}
+                    </td>
                   </tr>
                 </tfoot>
               </table>
