@@ -29,8 +29,23 @@ const fmtDate = (s: string) => formatFecha(s);
 /** "cuota semanal" → "Cuota semanal". Las etiquetas de frecuencia vienen en minúscula. */
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
-function estadoBadge(estado: string): { label: string; variant: "primary" | "success" | "muted" | "warning" } {
+/**
+ * Estado del crédito COMO SE LEE, no como se guarda.
+ *
+ * 🔴 Un crédito con cuotas vencidas decía "Activo" a secas: el mismo badge, del mismo color,
+ * que uno que viene pagando en fecha. El atraso vivía aparte, en otra columna o en otra
+ * tarjeta, y quien miraba la fila tenía que cruzar dos datos para saber si el cliente debe.
+ * "Activo" y "Activo atrasado" son dos situaciones distintas y tienen que verse distinto.
+ *
+ * El estado guardado no cambia (`activo` sigue siendo `activo`): esto es presentación. La
+ * mora entra por parámetro porque se computa EN VIVO, nunca desde el cache.
+ */
+function estadoBadge(estado: string, diasMora = 0): { label: string; variant: "primary" | "success" | "muted" | "warning" | "destructive" } {
+  if (esCreditoVivo(estado) && diasMora > 0) {
+    return { label: "Activo atrasado", variant: diasMora > 30 ? "destructive" : "warning" };
+  }
   if (estado === "activo") return { label: "Activo", variant: "primary" };
+  if (estado === "vencido") return { label: "Activo", variant: "primary" };
   if (estado === "pagado") return { label: "Pagado", variant: "success" };
   if (estado === "refinanciado") return { label: "Refinanciado", variant: "warning" };
   return { label: estado, variant: "muted" };
@@ -262,7 +277,7 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar }: {
   /** Abre la terminal de cobro con el importe de ESA cuota ya cargado. */
   const cobrarCuota = (q: CuotaPersistida) => { setCuotaACobrar(q); setPagoOpen(true); };
 
-  const est = estadoBadge(credito.estado);
+  const est = estadoBadge(credito.estado, credito.dias_mora);
   const totalCobrado = pagos.filter(p => !p.anulado).reduce((s, p) => s + p.monto, 0);
   const pagosVivos = pagos.filter(p => !p.anulado).length;
   const pagosAnulados = pagos.length - pagosVivos;

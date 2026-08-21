@@ -31,7 +31,15 @@ export function RefinanciarDialog({
   const open = !!credito;
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(false); }}>
-      <DialogContent className="w-[95vw] sm:max-w-xl sm:p-7 max-h-[90dvh] overflow-y-auto">
+      {/* Ancho de trabajo, no de aviso: acá se lee un cronograma completo al lado de la
+          deuda. Y NO se cierra por clic afuera ni con Escape — se está acordando una
+          reestructuracion con el cliente enfrente, y perder lo cargado por un clic al costado
+          es exactamente lo que el usuario pidió que no pase. Solo la X. */}
+      <DialogContent
+        className="w-[95vw] sm:max-w-3xl sm:p-8 max-h-[92dvh] overflow-y-auto"
+        onInteractOutside={(e) => e.preventDefault()}
+        onEscapeKeyDown={(e) => e.preventDefault()}
+      >
         {credito && <RefinanciarForm credito={credito} onClose={onClose} />}
       </DialogContent>
     </Dialog>
