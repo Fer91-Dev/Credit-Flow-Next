@@ -103,7 +103,7 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
   const { id } = await params;
   const r = await cargarRefinanciable(req, id);
   if ("error" in r && r.error) return r.error;
-  const { credito, deuda, moraHoy } = r as Extract<typeof r, { credito: object }>;
+  const { credito, deuda, moraHoy, config } = r as Extract<typeof r, { credito: object }>;
 
   return successResponse({
     credito: {
@@ -117,6 +117,32 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
     },
     deuda,
     sugerido: { tasa: credito.tasa, plazo_meses: credito.plazo_meses, frecuencia: credito.frecuencia },
+    /**
+     * Los parámetros con los que el POST va a armar el plan del crédito nuevo.
+     *
+     * 🔴 Viajan para que el diálogo pueda PREVISUALIZAR el cronograma con la misma función
+     * del dominio (`construirPlanAmortizacion`) y las mismas entradas. Sin esto, la pantalla
+     * pedía tasa y cuotas y no mostraba nada: el operador refinanciaba a ciegas y el cliente
+     * se enteraba del importe de su cuota nueva recién cuando el crédito ya estaba creado.
+     *
+     * Es la misma lección del preview del acuerdo, que prometía $58.215,81 de menos por
+     * calcular el plan por su cuenta: los dos lados tienen que compartir la función Y los
+     * datos, no solo la intención.
+     */
+    motor: {
+      convencion_tasa: config.convencionTasa,
+      frecuencias: config.simulador.frecuencias,
+      cargos: config.simulador.cargos,
+      redondeo: config.simulador.redondeoCuota,
+      cronograma: {
+        diaCorte: config.simulador.diaCorte,
+        diaVencimiento: config.simulador.diaVencimientoFijo,
+        diasGracia: config.simulador.diasGracia,
+        incluirDomingo: config.simulador.incluirDomingoNoHabil,
+        incluirSabado: config.simulador.incluirSabadoNoHabil,
+        feriados: config.simulador.feriados,
+      },
+    },
   });
 });
 

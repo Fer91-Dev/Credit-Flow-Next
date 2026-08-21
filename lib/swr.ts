@@ -1417,6 +1417,17 @@ export interface RefinanciacionPreview {
   credito: { id: string; numero: number | null; cliente: string; tasa: number; plazo_meses: number; frecuencia: string; dias_mora: number };
   deuda: DeudaConsolidada;
   sugerido: { tasa: number; plazo_meses: number; frecuencia: string };
+  /**
+   * Parámetros del motor con los que el POST va a armar el plan del crédito nuevo. Viajan
+   * para que el diálogo previsualice EL MISMO cronograma con la misma función del dominio.
+   */
+  motor?: {
+    convencion_tasa: string;
+    frecuencias: unknown[];
+    cargos: unknown;
+    redondeo: unknown;
+    cronograma: Record<string, unknown>;
+  };
 }
 
 /** Preview de la deuda a consolidar al refinanciar. Key condicional. */

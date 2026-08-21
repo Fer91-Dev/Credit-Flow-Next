@@ -7,7 +7,8 @@ import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { ModalHeader, MoneyInput, Segmented, IconInput, FieldLabel, FormActions } from "@/components/ui/form-kit";
 import { useToast } from "@/components/ui/toast";
 import { KEYS, useRefinanciacionPreview, type Credito } from "@/lib/swr";
-import { formatCreditoNumero, parseMontoInput } from "@/lib/utils";
+import { formatCreditoNumero, formatFecha, parseMontoInput, hoyComercial } from "@/lib/utils";
+import { construirPlanAmortizacion } from "@/lib/domain";
 
 function n2(x: number) {
   return new Intl.NumberFormat("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(x);
@@ -68,6 +69,43 @@ function RefinanciarForm({ credito, onClose }: { credito: Credito; onClose: (suc
 
   const tasaNum = parseFloat(tasa);
   const plazoNum = parseInt(plazo, 10);
+
+  /**
+   * EL PLAN DEL CRÉDITO NUEVO, previsualizado.
+   *
+   * 🔴 El diálogo pedía tasa y cantidad de cuotas y no mostraba nada más: el operador
+   * refinanciaba a ciegas y el cliente se enteraba del importe de su cuota nueva recién
+   * cuando el crédito ya estaba creado y el viejo cerrado — una operación que no se deshace
+   * sin anular dos créditos.
+   *
+   * Se arma con `construirPlanAmortizacion`, LA MISMA función que usa el POST, y con los
+   * mismos parámetros del motor que ahora manda el server (`preview.motor`). Es la lección
+   * del preview del acuerdo, que prometía $58.215,81 de menos por calcular por su cuenta:
+   * compartir la función Y los datos, no solo la intención.
+   */
+  const plan = useMemo(() => {
+    const m = preview?.motor;
+    if (!m || nuevoCapital <= 0 || !isFinite(tasaNum) || tasaNum < 0 || !isFinite(plazoNum) || plazoNum < 1) return null;
+    try {
+      return construirPlanAmortizacion(
+        nuevoCapital,
+        tasaNum,
+        plazoNum,
+        hoyComercial(),
+        m.convencion_tasa as never,
+        (preview?.sugerido.frecuencia ?? "mensual") as never,
+        { cargos: m.cargos as never, redondeo: m.redondeo as never, cronograma: m.cronograma as never },
+        m.frecuencias as never,
+      );
+    } catch {
+      return null;
+    }
+  }, [preview, nuevoCapital, tasaNum, plazoNum]);
+
+  /** Lo que termina pagando con el plan nuevo, y cuánto de eso es interés nuevo. */
+  const totalNuevo = plan ? Math.round(plan.cuotas.reduce((s, c) => s + c.cuotaTotal, 0) * 100) / 100 : 0;
+  const interesNuevo = plan ? Math.round((totalNuevo - nuevoCapital) * 100) / 100 : 0;
+
   const valido =
     !!preview && nuevoCapital > 0 && isFinite(tasaNum) && tasaNum >= 0 && isFinite(plazoNum) && plazoNum >= 1;
 
@@ -206,6 +244,65 @@ function RefinanciarForm({ credito, onClose }: { credito: Credito; onClose: (suc
               El crédito {formatCreditoNumero(credito.numero)} quedará <strong>refinanciado</strong> (cerrado, saldo $0) y se generará un crédito nuevo con este capital y el cronograma elegido.
             </p>
           </div>
+
+          {/*
+            CÓMO QUEDA EL CRÉDITO NUEVO. Es lo que se le dice al cliente antes de firmar:
+            "son N cuotas de tanto, la primera el tal día".
+          */}
+          {plan && (
+            <div className="rounded-xl border border-primary/20 bg-primary/5 p-3.5">
+              <div className="flex items-baseline justify-between gap-2">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-primary">Cómo queda el crédito nuevo</p>
+                <p className="font-mono text-[11px] tabular-nums text-muted-foreground">
+                  {plan.cuotas.length} cuota{plan.cuotas.length === 1 ? "" : "s"} · {tasaNum}%
+                </p>
+              </div>
+
+              <div className="mt-2.5 max-h-44 overflow-y-auto divide-y divide-primary/10">
+                {plan.cuotas.map((c) => (
+                  <div key={c.nro} className="flex items-center justify-between gap-3 py-1.5 text-xs">
+                    <span className="text-muted-foreground">
+                      Cuota {c.nro} de {plan.cuotas.length}
+                      <span className="text-muted-foreground/50"> · </span>
+                      {formatFecha(c.fecha)}
+                    </span>
+                    <span className="font-mono font-semibold tabular-nums text-foreground">${n2(c.cuotaTotal)}</span>
+                  </div>
+                ))}
+              </div>
+
+              {/* La cuenta, para que el total no aparezca de la nada. */}
+              <table className="mt-2.5 w-full border-t border-primary/20 pt-2 text-[11px]">
+                <tbody className="font-mono tabular-nums">
+                  <tr>
+                    <td className="pt-2 font-sans text-muted-foreground">Capital del nuevo crédito</td>
+                    <td className="pt-2 text-right text-foreground">${n2(nuevoCapital)}</td>
+                  </tr>
+                  <tr>
+                    <td className="py-1 font-sans text-muted-foreground">Interés del nuevo plan</td>
+                    <td className="py-1 text-right text-warning">+${n2(interesNuevo)}</td>
+                  </tr>
+                  <tr className="border-t border-primary/20">
+                    <td className="pt-2 font-sans font-semibold text-foreground">Total a pagar</td>
+                    <td className="pt-2 text-right text-base font-bold text-foreground">${n2(totalNuevo)}</td>
+                  </tr>
+                </tbody>
+              </table>
+
+              {/*
+                🔴 El costo REAL de refinanciar, que es el número que nadie calcula.
+                Debía X y va a terminar pagando Y. La diferencia es lo que le cuesta el
+                arreglo — y es lo que hay que poder responder cuando el cliente pregunte
+                "¿en cuánto me quedó?".
+              */}
+              <p className="mt-2 flex items-center justify-between gap-2 rounded-md bg-muted/30 px-2.5 py-1.5 text-[11px]">
+                <span className="text-muted-foreground">
+                  Debía <span className="font-mono text-foreground">${n2(base)}</span> · termina pagando
+                </span>
+                <span className="font-mono font-bold tabular-nums text-foreground">${n2(totalNuevo)}</span>
+              </p>
+            </div>
+          )}
 
           {formError && (
             <div className="rounded-lg bg-destructive/10 border border-destructive/20 px-3 py-2.5 text-sm text-destructive">
