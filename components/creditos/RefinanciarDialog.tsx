@@ -2,12 +2,12 @@
 
 import { useState, useMemo } from "react";
 import { mutate as globalMutate } from "swr";
-import { RefreshCw, Percent, Hash, Scissors } from "lucide-react";
+import { Percent, Hash, Scissors, Ban } from "lucide-react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { ModalHeader, MoneyInput, Segmented, IconInput, FieldLabel, FormActions } from "@/components/ui/form-kit";
 import { useToast } from "@/components/ui/toast";
 import { KEYS, useRefinanciacionPreview, type Credito } from "@/lib/swr";
-import { formatCreditoNumero, formatFecha, parseMontoInput, hoyComercial } from "@/lib/utils";
+import { formatCreditoNumero, formatFecha, formatMonto, parseMontoInput, hoyComercial } from "@/lib/utils";
 import { construirPlanAmortizacion } from "@/lib/domain";
 
 function n2(x: number) {
@@ -77,6 +77,11 @@ function RefinanciarForm({ credito, onClose }: { credito: Credito; onClose: (suc
 
   const tasaNum = parseFloat(tasa);
   const plazoNum = parseInt(plazo, 10);
+
+  /** Cuánto puede descontar ESTA persona (admin llega al 100% de lo condonable). Lo resuelve
+   *  el server con `quitaMaxima`, la misma regla que aplica el POST al rechazar. */
+  const topeQuita = preview?.limites?.quita_maxima ?? 0;
+  const excedeTope = condonado > topeQuita;
 
   /**
    * EL PLAN DEL CRÉDITO NUEVO, previsualizado.
@@ -178,15 +183,21 @@ function RefinanciarForm({ credito, onClose }: { credito: Credito; onClose: (suc
             </div>
           </div>
 
-          {/* Quita opcional */}
+          {/*
+            DESCUENTO AL CLIENTE (en la jerga: quita o condonación).
+            La palabra técnica no la entiende quien está del otro lado del mostrador, así que
+            manda el término llano y el tope se muestra como DATO — igual que en `AcuerdoForm`,
+            que es el otro camino por el que se condona. Antes el vendedor descubría su límite
+            recién al mandar el formulario y comerse un 403.
+          */}
           <div className="space-y-2">
-            <FieldLabel>Quita (condonación opcional)</FieldLabel>
+            <FieldLabel>Descuento al cliente (opcional)</FieldLabel>
             <Segmented<QuitaTipo>
               value={quitaTipo}
               onChange={setQuitaTipo}
               options={[
-                { value: "ninguna", label: "Sin quita" },
-                { value: "porcentaje", label: "% sobre deuda", icon: Percent },
+                { value: "ninguna", label: "Sin descuento", icon: Ban },
+                { value: "porcentaje", label: "% sobre la deuda", icon: Percent },
                 { value: "monto", label: "Monto fijo", icon: Scissors },
               ]}
             />
@@ -201,6 +212,13 @@ function RefinanciarForm({ credito, onClose }: { credito: Credito; onClose: (suc
             )}
             {quitaTipo === "monto" && (
               <MoneyInput value={quitaMonto} onChange={setQuitaMonto} placeholder="0,00" />
+            )}
+            {quitaTipo !== "ninguna" && (
+              <p className={`text-xs ${excedeTope ? "text-destructive" : "text-muted-foreground"}`}>
+                {topeQuita > 0
+                  ? <>Hasta {formatMonto(topeQuita)} — sale de la mora y el interés, nunca del capital.</>
+                  : <>No podés descontar nada. Lo tiene que autorizar un administrador.</>}
+              </p>
             )}
           </div>
 
@@ -240,7 +258,7 @@ function RefinanciarForm({ credito, onClose }: { credito: Credito; onClose: (suc
           <div className="rounded-xl border border-primary/30 bg-primary/5 p-4 space-y-1.5">
             {condonado > 0 && (
               <div className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">Condonado (quita)</span>
+                <span className="text-muted-foreground">Descuento al cliente</span>
                 <span className="font-mono text-success tabular-nums">− ${n2(condonado)}</span>
               </div>
             )}

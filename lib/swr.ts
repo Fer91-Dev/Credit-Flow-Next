@@ -1417,6 +1417,8 @@ export interface RefinanciacionPreview {
   credito: { id: string; numero: number | null; cliente: string; tasa: number; plazo_meses: number; frecuencia: string; dias_mora: number };
   deuda: DeudaConsolidada;
   sugerido: { tasa: number; plazo_meses: number; frecuencia: string };
+  /** Cuánto puede descontar quien hace la operación (`quitaMaxima`, la regla del POST). */
+  limites?: { quita_maxima: number };
   /**
    * Parámetros del motor con los que el POST va a armar el plan del crédito nuevo. Viajan
    * para que el diálogo previsualice EL MISMO cronograma con la misma función del dominio.

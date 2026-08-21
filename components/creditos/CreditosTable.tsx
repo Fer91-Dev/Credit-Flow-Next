@@ -451,7 +451,7 @@ function RefinanciadosView({ creditos, onOpen, onRefinanciar }: { creditos: Cred
           <h3 className="text-sm font-semibold text-foreground">Refinanciar un crédito</h3>
         </div>
         <p className="text-xs text-muted-foreground">
-          Elegí un crédito <strong className="text-foreground">en mora</strong> para consolidar su deuda viva en un crédito nuevo (con quita opcional; no mueve caja).
+          Elegí un crédito <strong className="text-foreground">en mora</strong> para consolidar su deuda viva en un crédito nuevo (con descuento opcional; no mueve caja).
         </p>
 
         {candidatos.length === 0 ? (

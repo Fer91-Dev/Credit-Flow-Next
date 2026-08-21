@@ -103,7 +103,18 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
   const { id } = await params;
   const r = await cargarRefinanciable(req, id);
   if ("error" in r && r.error) return r.error;
-  const { credito, deuda, moraHoy, config } = r as Extract<typeof r, { credito: object }>;
+  const { credito, deuda, moraHoy, config, tenantId, role } = r as Extract<typeof r, { credito: object }>;
+
+  /**
+   * El TOPE de descuento de quien está mirando la pantalla.
+   *
+   * 🔴 El diálogo dejaba cargar cualquier quita y el límite aparecía recién al mandar el
+   * formulario, como un 403. Es el mismo dato que ya muestra `AcuerdoForm` ("Hasta $X"), y
+   * sale de la MISMA función (`quitaMaxima`) que usa el POST para rechazar — no de una
+   * cuenta paralela del cliente.
+   */
+  const cobranzaCfg = await getCobranzaConfig(tenantId);
+  const quitaMax = quitaMaxima({ ...deuda, cuotas_vencidas: 0 }, role === "admin", cobranzaCfg.acuerdos);
 
   return successResponse({
     credito: {
@@ -117,6 +128,7 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
     },
     deuda,
     sugerido: { tasa: credito.tasa, plazo_meses: credito.plazo_meses, frecuencia: credito.frecuencia },
+    limites: { quita_maxima: quitaMax },
     /**
      * Los parámetros con los que el POST va a armar el plan del crédito nuevo.
      *
@@ -206,8 +218,8 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
   if (quita.condonado > tope) {
     return errorResponse(
       tope === 0
-        ? "No podés condonar nada al refinanciar. Pedile a un administrador que lo haga."
-        : `La quita máxima que podés otorgar es $${tope.toLocaleString("es-AR")} (sale de la mora y el interés, nunca del capital).`,
+        ? "No podés descontar nada al refinanciar. Pedile a un administrador que lo haga."
+        : `El descuento máximo que podés otorgar es $${tope.toLocaleString("es-AR")} (sale de la mora y el interés, nunca del capital).`,
       "QUITA_EXCEDIDA",
       403,
     );
