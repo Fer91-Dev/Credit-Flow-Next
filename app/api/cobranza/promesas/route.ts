@@ -2,6 +2,8 @@ import { requireRole, scopeCreditosVendedor } from "@/lib/auth";
 import { successResponse, errorResponse, withErrorHandler, assertSameOrigin } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
+import { diasMoraActual } from "@/lib/domain";
+import { hoyComercial } from "@/lib/utils";
 import type { NextRequest } from "next/server";
 
 /**
@@ -45,13 +47,29 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
           numero: true,
           saldo_pendiente: true,
           dias_mora: true,
+          proximo_pago: true, // para la mora EN VIVO (ver abajo)
           cliente: { select: { id: true, nombre: true, apellido: true, documento: true } },
         },
       },
     },
   });
 
-  return successResponse(promesas);
+  /**
+   * 🔴 Mora EN VIVO, no el cache.
+   *
+   * `creditos.dias_mora` solo se escribe al cobrar, anular o refinanciar: nada lo avanza día
+   * a día. Ana, con 13 días de atraso y sin un solo pago, figuraba con "0d mora" en la lista
+   * de promesas — el peor lugar para subestimar el atraso, porque es donde se decide a quién
+   * apretar. Es la regla que ya está escrita en CLAUDE.md: toda lectura de morosidad usa
+   * `diasMoraActual`, nunca la columna.
+   */
+  const hoy = hoyComercial();
+  const conMoraViva = promesas.map((p) => ({
+    ...p,
+    credito: { ...p.credito, dias_mora: diasMoraActual(p.credito.proximo_pago, hoy) },
+  }));
+
+  return successResponse(conMoraViva);
 });
 
 /**
