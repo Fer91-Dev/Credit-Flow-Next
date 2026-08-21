@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useSWRConfig } from "swr";
 import { CalendarDays, Wallet, Info, ArrowUpRight, Receipt, Loader2, Printer, RefreshCw, ArrowRight, ShieldCheck, Ban, Trash2 } from "lucide-react";
 import { refrescarNotificaciones, useAmortizacion, useCuotas, usePagosByCredito, useCreditos, KEYS, type Credito, type EstadoCuota, type Pago, type CuotaPersistida, useFinanciera } from "@/lib/swr";
@@ -133,6 +133,21 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar }: {
   const [accionPagos, setAccionPagos] = useState<"devolver" | "conservar">("devolver");
   const [anularCreditoBusy, setAnularCreditoBusy] = useState(false);
   const [eliminarBusy, setEliminarBusy] = useState(false);
+
+  /**
+   * Ir al plan de cuotas desde la tarjeta de arriba.
+   *
+   * El plan está en la misma pantalla pero abajo de los pagos: en un crédito con historial
+   * hay que scrollear a buscarlo. La tarjeta que dice qué cuota toca ahora lleva hasta ahí y
+   * deja la fila resaltada unos segundos, para no perderla entre doce renglones iguales.
+   */
+  const planRef = useRef<HTMLElement>(null);
+  const [resaltarProxima, setResaltarProxima] = useState(false);
+  const irAlPlan = () => {
+    planRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    setResaltarProxima(true);
+    window.setTimeout(() => setResaltarProxima(false), 2600);
+  };
 
   // Revalida cuotas/pagos/crédito + cachés globales tras cobrar o anular un pago.
   const revalidar = () => {
@@ -427,12 +442,29 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar }: {
           {/* CUÁL y CUÁNTO, no "la cuota" en abstracto: el operador necesita saber qué le
               toca cobrar ahora. Antes mostraba el importe genérico del plan, que no dice
               cuál está pendiente ni cuándo vence. */}
+          {/*
+            La cuota que toca, CON su mora y clickeable.
+​
+            Mostraba el importe pactado ($128.523,00) mientras el botón de esa misma cuota
+            decía $133.792,44: dos números para lo mismo, y el que aparece más arriba era el
+            que NO se cobra. Ahora muestra lo que hay que cobrar y desglosa la mora abajo.
+​
+            El clic baja al plan de cuotas y deja la fila marcada — pedido del usuario: quería
+            llegar al detalle de las cuotas desde acá sin tener que buscar la tabla.
+          */}
           <Stat
             icon="chart-increasing"
             label={proximaCuota ? `${cap(unidadCuota)} ${proximaCuota.nro} de ${cuotas.length}` : cap(unidadCuota)}
             accent="primary"
-            value={proximaCuota ? `$${n2(proximaCuota.cuota_total)}` : "—"}
-            sub={proximaCuota ? `vence ${fmtDate(proximaCuota.fecha_vencimiento)}` : "sin cuotas pendientes"}
+            value={proximaCuota ? `$${n2(proximaCuota.total_cobrar ?? proximaCuota.cuota_total)}` : "—"}
+            sub={
+              proximaCuota
+                ? `vence ${fmtDate(proximaCuota.fecha_vencimiento)}` +
+                  ((proximaCuota.mora ?? 0) > 0 ? ` · incluye $${n2(proximaCuota.mora ?? 0)} de mora` : "")
+                : "sin cuotas pendientes"
+            }
+            onClick={proximaCuota ? irAlPlan : undefined}
+            title={proximaCuota ? "Ver el plan de cuotas" : undefined}
           />
           {/* El conteo excluye los anulados: decía "1 pago" con "$0 cobrado" al lado. */}
           <Stat icon="chart-increasing" label="Total cobrado" accent="success"
@@ -442,9 +474,12 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar }: {
             icon="warning"
             label={credito.dias_mora > 0 ? "En mora" : "Próximo pago"}
             accent={credito.dias_mora > 30 ? "destructive" : credito.dias_mora > 0 ? "warning" : "muted"}
+            // "41 días", no "41d": el usuario pidió la palabra entera — la abreviatura
+            // obliga a traducirla mentalmente cada vez, y esta tarjeta es de las que se
+            // miran de reojo.
             value={
               credito.dias_mora > 0
-                ? `${credito.dias_mora}d`
+                ? `${credito.dias_mora} ${credito.dias_mora === 1 ? "día" : "días"}`
                 : credito.proximo_pago ? fmtDate(credito.proximo_pago) : "—"
             }
             sub={credito.dias_mora > 0 && credito.interes_mora ? `mora $${n2(credito.interes_mora)}` : undefined}
@@ -697,7 +732,7 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar }: {
         </section>
 
         {/* Plan de cuotas (cronograma persistido con estado real) */}
-        <section className="space-y-2">
+        <section className="space-y-2" ref={planRef}>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <CalendarDays className="h-4 w-4 text-muted-foreground" />
@@ -789,8 +824,17 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar }: {
                   {cuotas.map((q, idx) => {
                     const b = CUOTA_BADGE[q.estado];
                     const mora = q.mora ?? 0;
+                    // La que toca cobrar. Se marca siempre (en un plan de 12 renglones iguales
+                    // no había nada que la distinguiera) y con más fuerza durante unos segundos
+                    // cuando se llega desde la tarjeta de arriba.
+                    const esProxima = proximaCuota?.nro === q.nro;
                     return (
-                      <tr key={q.nro} className={`${idx % 2 === 1 ? "bg-muted/5" : ""} ${q.estado === "pagada" ? "text-muted-foreground/60" : ""}`}>
+                      <tr
+                        key={q.nro}
+                        className={`${idx % 2 === 1 ? "bg-muted/5" : ""} ${q.estado === "pagada" ? "text-muted-foreground/60" : ""} ${
+                          esProxima ? "bg-primary/[0.07]" : ""
+                        } ${esProxima && resaltarProxima ? "ring-1 ring-inset ring-primary/50" : ""} transition-colors`}
+                      >
                         <td className="px-3 py-2.5 font-mono text-muted-foreground/50 tabular-nums border-b border-border/70">{q.nro}</td>
                         <td className="px-3 py-2.5 text-muted-foreground tabular-nums border-b border-border/70">{fmtDate(q.fecha_vencimiento)}</td>
                         <td className="px-3 py-2.5 text-right font-mono font-medium text-foreground tabular-nums border-b border-border/70">${n2(q.cuota_total)}</td>
@@ -803,7 +847,9 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar }: {
                             <span className="text-destructive">
                               ${n2(mora)}
                               {(q.dias_atraso ?? 0) > 0 && (
-                                <span className="ml-1 font-sans text-[10px] font-normal text-destructive/60">{q.dias_atraso} d</span>
+                                <span className="ml-1 font-sans text-[10px] font-normal text-destructive/60">
+                                  {q.dias_atraso} {q.dias_atraso === 1 ? "día" : "días"}
+                                </span>
                               )}
                             </span>
                           ) : (

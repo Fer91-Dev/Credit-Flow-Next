@@ -13,6 +13,8 @@ export function Stat({
   value,
   sub,
   accent,
+  onClick,
+  title,
 }: {
   /** Componente Lucide, o nombre de un Fluent Emoji (`public/emoji/<icon>.svg`). */
   icon: React.ComponentType<{ className?: string }> | string;
@@ -20,6 +22,9 @@ export function Stat({
   value: string;
   sub?: string;
   accent: StatAccent;
+  /** Si viene, la tarjeta se vuelve un botón: hover, foco y cursor. */
+  onClick?: () => void;
+  title?: string;
 }) {
   const isEmoji = typeof icon === "string";
   const Icon = isEmoji ? null : icon;
@@ -31,8 +36,19 @@ export function Stat({
     destructive: { text: "text-destructive", bg: "bg-destructive/10", border: "border-destructive/20" },
   }[accent];
 
+  // Con `onClick` la tarjeta es un <button>: así se puede tabular y activar con Enter sin
+  // agregarle `role`/`tabIndex` a mano (Design Contract §3, cards clickeables).
+  const Wrapper = onClick ? "button" : "div";
+
   return (
-    <div className="rounded-xl bg-card border border-border p-3">
+    <Wrapper
+      {...(onClick ? { type: "button" as const, onClick, title } : {})}
+      className={`w-full text-left rounded-xl bg-card border border-border p-3 ${
+        onClick
+          ? "cursor-pointer transition-colors hover:bg-muted/20 hover:border-primary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+          : ""
+      }`}
+    >
       <div className="flex items-start justify-between mb-1.5">
         <p className="text-[11px] font-medium text-muted-foreground leading-tight pr-1">{label}</p>
         <div className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md border ${isEmoji ? "bg-muted/40 border-border" : `${c.bg} ${c.border}`}`}>
@@ -41,6 +57,6 @@ export function Stat({
       </div>
       <p className={`text-lg font-bold font-mono ${c.text}`}>{value}</p>
       {sub && <p className="text-[10px] text-muted-foreground/60 mt-0.5">{sub}</p>}
-    </div>
+    </Wrapper>
   );
 }
