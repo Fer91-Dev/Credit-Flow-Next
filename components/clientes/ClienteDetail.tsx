@@ -398,6 +398,10 @@ export function ClienteDetail({
 
         {/* Datos personales (presentación editorial por bloques) */}
         {showPersonal && (
+        // Dos columnas a propósito, no tres: a pantalla completa, tres bloques dejan cada
+        // uno tan angosto que sus campos internos se apilan de a uno. Lo que sí cambia es
+        // "Laboral e ingresos", que ya ocupaba el ancho entero para mostrar ocho campos
+        // cortos en dos columnas — ahora los reparte en cuatro.
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <InfoBlock icon="bust-in-silhouette" title="Identidad" emptyText="Sin datos de identidad cargados." items={[
             { label: "DNI / Documento", value: cliente.documento, mono: true, emphasis: true },
@@ -418,7 +422,7 @@ export function ClienteDetail({
           </div>
 
           <div className="lg:col-span-2">
-            <InfoBlock icon="briefcase" title="Laboral e ingresos" emptyText="Sin datos laborales cargados." items={[
+            <InfoBlock anchoCompleto icon="briefcase" title="Laboral e ingresos" emptyText="Sin datos laborales cargados." items={[
               { label: "Situación", value: cliente.situacion_laboral ? SITUACION_LABORAL[cliente.situacion_laboral] ?? cliente.situacion_laboral : null },
               { label: "Ocupación", value: cliente.ocupacion },
               { label: "Empleador", value: cliente.empleador },
@@ -777,13 +781,15 @@ interface CampoItem {
 
 /** Bloque editorial de datos: título con ícono + grilla de campos. Oculta vacíos. */
 function InfoBlock({
-  icon, title, items, emptyText, onEditar,
+  icon, title, items, emptyText, onEditar, anchoCompleto,
 }: {
   icon: React.ComponentType<{ className?: string }> | string;
   title: string;
   items: CampoItem[];
   emptyText: string;
   onEditar?: () => void;
+  /** El bloque ocupa el ancho de la ficha: sus campos se reparten en 4 columnas en vez de 2. */
+  anchoCompleto?: boolean;
 }) {
   const isEmoji = typeof icon === "string";
   const Icon = isEmoji ? null : icon;
@@ -804,7 +810,7 @@ function InfoBlock({
           )}
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2">
+        <div className={`grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2 ${anchoCompleto ? "lg:grid-cols-3 xl:grid-cols-4" : ""}`}>
           {visibles.map((it) => <Campo key={it.label} {...it} />)}
         </div>
       )}

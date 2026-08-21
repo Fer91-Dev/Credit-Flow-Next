@@ -200,8 +200,14 @@ export function ClientesTable() {
           accent="primary"
         />
 
-        {/* Ficha centrada y con ancho controlado — protagonista de la vista */}
-        <div className="mx-auto w-full max-w-4xl space-y-3">
+        {/*
+          La ficha ocupa TODO el ancho disponible.
+          Estaba topeada en `max-w-4xl` y centrada, así que en un monitor ancho quedaban dos
+          franjas vacías a los costados mientras los bloques de adentro se apretaban. Es la
+          pantalla donde va a vivir el historial del cliente: acá el espacio se usa, no se
+          decora. El `AppShell` ya no centra el contenido, así que alcanza con soltar el tope.
+        */}
+        <div className="w-full space-y-3">
           {volver}
           <div className="overflow-hidden rounded-xl border border-border bg-card">
             <ClienteDetail
