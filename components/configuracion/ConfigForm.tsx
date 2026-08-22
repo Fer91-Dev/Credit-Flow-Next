@@ -1187,6 +1187,24 @@ export function ConfigForm() {
                   ) : (
                     <Field label="API Key"><SecretInput placeholder="re_xxxx / SG.xxxx" value={(form.emailConfig as any)?.api_key ?? ""} onChange={e => set("emailConfig", { ...(form.emailConfig ?? defaultEmail()), api_key: e.target.value })} /></Field>
                   )}
+                  {/*
+                    🔴 EL REMITENTE ESTABA CABLEADO en el código como
+                    `CreditFlow <onboarding@resend.dev>`, en dos lugares distintos. Dos problemas:
+                    al cliente le llegaba un mail firmado por el SISTEMA y no por la financiera
+                    que le prestó, y —lo que rompe el envío— Resend solo deja mandar a terceros
+                    desde un dominio verificado. Sin este campo no había forma de cambiarlo sin
+                    tocar el código.
+                  */}
+                  <Field
+                    label="Remitente (From)"
+                    hint="El dominio tiene que estar verificado en tu proveedor. Vacío = la casilla de prueba, que solo llega a tu propio email."
+                  >
+                    <Input
+                      placeholder="no-responder@tudominio.com"
+                      value={(form.emailConfig as any)?.from_email ?? ""}
+                      onChange={e => set("emailConfig", { ...(form.emailConfig ?? defaultEmail()), from_email: e.target.value.trim() })}
+                    />
+                  </Field>
                 </div>
               </CanalesBlock>
             </div>

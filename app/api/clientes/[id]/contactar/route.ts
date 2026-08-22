@@ -104,7 +104,13 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
         409,
       );
     }
-    const res = await enviarEmail(apiKey, { to: cliente.email, subject: asunto, texto, marca: datos.financiera });
+    const res = await enviarEmail(apiKey, {
+      to: cliente.email,
+      subject: asunto,
+      texto,
+      marca: datos.financiera,
+      from: comm.email?.from_email?.trim() || null,
+    });
     if (!res.ok) return errorResponse(res.error ?? "No se pudo enviar el email", "ENVIO_FALLIDO", 502);
     enviado = { metodo: "api" };
   }
@@ -191,7 +197,7 @@ async function cargarContactable(ctx: Ctx, id: string) {
   const commRaw = await getComunicacionConfig(ctx.tenantId);
   const comm = {
     whatsapp: (commRaw.whatsappConfig ?? null) as { enabled?: boolean } | null,
-    email: (commRaw.emailConfig ?? null) as { enabled?: boolean; api_key?: string } | null,
+    email: (commRaw.emailConfig ?? null) as { enabled?: boolean; api_key?: string; from_email?: string } | null,
   };
 
   /**
@@ -262,12 +268,22 @@ function render(plantilla: string, d: { nombre: string; financiera: string; deud
 
 async function enviarEmail(
   apiKey: string,
-  { to, subject, texto, marca }: { to: string; subject: string; texto: string; marca: string },
+  { to, subject, texto, marca, from }: { to: string; subject: string; texto: string; marca: string; from: string | null },
 ): Promise<{ ok: boolean; error?: string }> {
   try {
     const resend = new Resend(apiKey);
+    /**
+     * 🔴 El remitente lleva el nombre de la FINANCIERA, no el del sistema.
+     * Estaba cableado como "CreditFlow <onboarding@resend.dev>": al cliente le llegaba un
+     * mail firmado por el software y no por quien le prestó la plata — el mismo criterio que
+     * ya rige en los recibos y en el plan de pagos impreso.
+     *
+     * Sin dominio propio verificado cae en la casilla de prueba del proveedor, que SOLO deja
+     * mandarle al dueño de la cuenta. Por eso el campo es configurable.
+     */
+    const remitente = from ? `${marca} <${from}>` : `${marca} <onboarding@resend.dev>`;
     const { error } = await resend.emails.send({
-      from: "CreditFlow <onboarding@resend.dev>",
+      from: remitente,
       to,
       subject,
       html: `<div style="font-family:Inter,Arial,sans-serif;max-width:560px;margin:0 auto;padding:28px 16px">
@@ -277,11 +293,28 @@ async function enviarEmail(
         </div>
       </div>`,
     });
-    if (error) return { ok: false, error: error.message };
+    if (error) return { ok: false, error: traducirErrorEnvio(error.message, !!from) };
     return { ok: true };
   } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : "Error desconocido" };
+    return { ok: false, error: e instanceof Error ? traducirErrorEnvio(e.message, !!from) : "Error desconocido" };
   }
+}
+
+/**
+ * El proveedor contesta en inglés y con su jerga. El operador que está atendiendo a un
+ * cliente necesita saber QUÉ HACER, no leer una excepción.
+ */
+function traducirErrorEnvio(msg: string, tieneRemitentePropio: boolean): string {
+  const m = msg.toLowerCase();
+  if (m.includes("only send testing emails") || m.includes("verify a domain")) {
+    return tieneRemitentePropio
+      ? "El dominio del remitente no está verificado en Resend. Verificalo en resend.com/domains y volvé a probar."
+      : "Todavía no tenés dominio propio: la casilla de prueba solo puede escribirle a tu propia dirección. Verificá un dominio en resend.com/domains y cargalo en Configuración → Comunicaciones → Remitente.";
+  }
+  if (m.includes("api key") || m.includes("unauthorized")) {
+    return "La API key del email es inválida. Revisala en Configuración → Comunicaciones.";
+  }
+  return msg;
 }
 
 function escapar(s: string) {

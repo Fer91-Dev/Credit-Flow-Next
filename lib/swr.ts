@@ -754,6 +754,8 @@ export interface EmailConfig {
   pass?: string;
   api_key?: string;
   provider?: string;
+  /** Dirección del remitente. Su dominio debe estar verificado en el proveedor. */
+  from_email?: string;
 }
 
 export type PeriodoGamificacion = "mensual" | "trimestral" | "semestral";

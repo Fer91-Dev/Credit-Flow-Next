@@ -42,6 +42,7 @@ function Form({ clienteId, onClose }: { clienteId: string; onClose: () => void }
   const { data, isLoading } = useSWR<PreviewContacto>(`/api/clientes/${clienteId}/contactar`);
   const [canal, setCanal] = useState<Canal>("whatsapp");
   const [motivo, setMotivo] = useState<Motivo>("mora");
+  const [motivoTocado, setMotivoTocado] = useState(false);
   const [texto, setTexto] = useState("");
   const [asunto, setAsunto] = useState("");
   const [tocado, setTocado] = useState(false);
@@ -55,6 +56,16 @@ function Form({ clienteId, onClose }: { clienteId: string; onClose: () => void }
     setTexto(data.mensajes[motivo].texto);
     setAsunto(data.mensajes[motivo].asunto);
   }, [data, motivo, tocado]);
+
+  /**
+   * 🔴 El motivo arrancaba SIEMPRE en "Mora", y a un cliente al día le armaba el mensaje
+   * "registramos un atraso de 0 días", que es un disparate que se le manda por escrito.
+   * El motivo por defecto lo decide la situación del cliente, no una constante.
+   */
+  useEffect(() => {
+    if (!data || motivoTocado) return;
+    setMotivo(data.datos.dias > 0 ? "mora" : "informacion");
+  }, [data, motivoTocado]);
 
   if (isLoading || !data) {
     return <div className="py-10 text-center text-sm text-muted-foreground">Cargando…</div>;
@@ -120,11 +131,13 @@ function Form({ clienteId, onClose }: { clienteId: string; onClose: () => void }
           <FieldLabel>Motivo</FieldLabel>
           <Segmented<Motivo>
             value={motivo}
-            onChange={(m) => { setMotivo(m); setTocado(false); }}
+            onChange={(m) => { setMotivo(m); setMotivoTocado(true); setTocado(false); }}
             options={[
-              { value: "mora", label: "Mora" },
-              { value: "promocion", label: "Promo" },
-              { value: "informacion", label: "Info" },
+              // "Mora" ni se ofrece si no hay mora: no hay nada que reclamar, y el mensaje
+              // saldría diciendo "un atraso de 0 días".
+              ...(data.datos.dias > 0 ? [{ value: "mora" as Motivo, label: "Mora" }] : []),
+              { value: "promocion" as Motivo, label: "Promo" },
+              { value: "informacion" as Motivo, label: "Info" },
             ]}
           />
         </div>
