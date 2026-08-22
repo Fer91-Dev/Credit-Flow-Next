@@ -89,6 +89,9 @@ async function cargarRefinanciable(req: NextRequest, id: string) {
     moraActiva: moraCred.moraActiva,
     tasaMoraDiaria: moraCred.tasaMoraDiaria,
     diasGracia: graciaCred,
+    // Dia comercial argentino (mismo criterio que el resto del sistema): sin esto, entre
+    // las 21:00 y la medianoche de Argentina se consolida un dia de mora de mas.
+    hoy: hoyComercial(),
   });
 
   return { credito, config, deuda, moraHoy, tenantId, role, vendedorId, userId, nombre, email } as const;

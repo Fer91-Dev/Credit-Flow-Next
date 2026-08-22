@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useSWRConfig } from "swr";
 import {
-  Pencil, Trash2, CalendarClock, ChevronRight, Loader2, Mail, Phone, Printer, ShieldCheck, Ban, Receipt,
+  Pencil, Trash2, CalendarClock, ChevronRight, Loader2, Mail, MessageCircle, Phone, Printer, ShieldCheck, Ban, Receipt,
 } from "lucide-react";
 import { refrescarNotificaciones, useClienteDetalle, useAccionesCobranza, useCuotas, useFinanciera, KEYS, type CreditoConFinanzas, type EstadoCuota, type CuotaPersistida } from "@/lib/swr";
 import { StatusBadge, type BadgeVariant } from "@/components/ui/StatusBadge";
@@ -18,6 +18,7 @@ import { useToast } from "@/components/ui/toast";
 import { LibreDeudaDialog } from "@/components/creditos/LibreDeudaDialog";
 import { ClienteBureauPanel } from "@/components/clientes/ClienteBureauPanel";
 import { EditarHistorialDialog } from "@/components/clientes/EditarHistorialDialog";
+import { ContactarDialog } from "@/components/clientes/ContactarDialog";
 import { abrirRecibo } from "@/lib/recibo";
 import { formatCreditoNumero, formatFecha, formatFechaHora, nombreCompleto } from "@/lib/utils";
 import { esCreditoVivo } from "@/lib/domain";
@@ -176,6 +177,7 @@ export function ClienteDetail({
   const [anularMotivo, setAnularMotivo] = useState("");
   const [anularBusy, setAnularBusy] = useState(false);
   const [editarHist, setEditarHist] = useState(false);
+  const [contactar, setContactar] = useState(false);
 
   // Qué secciones se muestran según el contexto.
   const showPersonal = variant !== "pagos";   // datos personales/laborales
@@ -276,6 +278,17 @@ export function ClienteDetail({
 
               {(onEditar || onEliminar) && (
                 <div className="flex shrink-0 items-center gap-2">
+                  {/* Contactar va PRIMERO y en color: es la acción que se usa todos los días
+                      desde esta pantalla, a diferencia de editar y eliminar. */}
+                  {showCreditos && (
+                    <button
+                      type="button"
+                      onClick={() => setContactar(true)}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/10 px-2.5 py-1.5 text-xs font-medium text-primary hover:bg-primary/20 transition-colors"
+                    >
+                      <MessageCircle className="h-3.5 w-3.5" /> Contactar
+                    </button>
+                  )}
                   {onEditar && (
                     <button
                       onClick={onEditar}
@@ -575,6 +588,10 @@ export function ClienteDetail({
         historial={editarHist ? (cliente.historial_migrado ?? null) : null}
         onClose={() => { setEditarHist(false); mutate(); }}
       />
+
+      {/* Contacto individual (WhatsApp / email). Montado en la RAÍZ del componente, no dentro
+          de una sección condicional: si vive en una rama que no se renderiza, no existe. */}
+      <ContactarDialog clienteId={contactar ? cliente.id : null} onClose={() => setContactar(false)} />
     </div>
   );
 }
