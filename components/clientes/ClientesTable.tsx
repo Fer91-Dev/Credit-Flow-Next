@@ -212,7 +212,12 @@ export function ClientesTable() {
           <div className="overflow-hidden rounded-xl border border-border bg-card">
             <ClienteDetail
               clienteId={selected.id}
-              variant="cliente"
+              /* 🔴 Era "cliente", que apaga `showCreditos`: la ficha NO mostraba sus
+                 créditos, ni el estado de cuenta, ni las promesas, ni el perfil de bureau,
+                 ni los pagos. Quedaban solo los datos personales — un formulario de alta en
+                 modo lectura, no una ficha. La vista 360 vivía en el componente y la única
+                 pantalla que la necesita entera era justo la que la tenía apagada. */
+              variant="full"
               onEditar={() => openEdit(selected.id)}
               onEliminar={() => handleDelete(selected.id, selected.nombre)}
             />
