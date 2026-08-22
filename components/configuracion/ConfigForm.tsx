@@ -2502,6 +2502,10 @@ function BodySkeleton() {
 function ProbarEmail() {
   const [estado, setEstado] = useState<"idle" | "enviando" | "ok">("idle");
   const [error, setError] = useState<string | null>(null);
+  // 🔴 A DÓNDE fue. La prueba se manda a la casilla del USUARIO en sesión, no a la que se
+  // configuró como remitente — y sin decirlo, uno revisa la casilla equivocada y concluye
+  // que el envío falló.
+  const [destino, setDestino] = useState<string | null>(null);
 
   const probar = async () => {
     setEstado("enviando");
@@ -2510,6 +2514,7 @@ function ProbarEmail() {
       const res = await fetch("/api/configuracion/email-prueba", { method: "POST" });
       const json = await res.json();
       if (!json.ok) { setError(json.error || "No se pudo enviar"); setEstado("idle"); return; }
+      setDestino(json.data?.enviado_a ?? null);
       setEstado("ok");
     } catch {
       setError("No se pudo enviar el email de prueba");
@@ -2521,7 +2526,9 @@ function ProbarEmail() {
     <div className="rounded-lg border border-border bg-muted/20 px-3 py-2.5">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <span className="text-xs text-muted-foreground">
-          {estado === "ok" ? "Enviado. Revisá tu casilla (mirá también el spam)." : "Mandate un email a vos mismo para verificar la configuración."}
+          {estado === "ok"
+            ? <>Enviado a <span className="font-mono text-foreground">{destino ?? "tu casilla"}</span> — revisá también el spam.</>
+            : "Se manda a la casilla de tu usuario, no a la del remitente."}
         </span>
         <button
           type="button"
