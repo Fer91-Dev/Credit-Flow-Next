@@ -1172,9 +1172,10 @@ export function ConfigForm() {
                       value={(form.emailConfig as any)?.provider ?? "smtp"}
                       onChange={e => set("emailConfig", { ...(form.emailConfig ?? defaultEmail()), provider: e.target.value })}
                     >
-                      <option value="smtp">SMTP</option>
-                      <option value="resend">Resend</option>
-                      <option value="sendgrid">SendGrid</option>
+                      {/* SendGrid estaba en la lista y el código no lo sabía mandar: elegirlo
+                          no hacía nada. Mismo defecto que tenía SMTP. Se saca hasta que exista. */}
+                      <option value="smtp">SMTP (tu casilla: Gmail, etc.)</option>
+                      <option value="resend">Resend (requiere dominio propio)</option>
                     </Select>
                   </Field>
                   {(form.emailConfig as any)?.provider === "smtp" || !(form.emailConfig as any)?.provider ? (
@@ -1195,6 +1196,9 @@ export function ConfigForm() {
                     desde un dominio verificado. Sin este campo no había forma de cambiarlo sin
                     tocar el código.
                   */}
+                  <div className="sm:col-span-2">
+                    <ProbarEmail />
+                  </div>
                   <Field
                     label="Remitente (From)"
                     hint="El dominio tiene que estar verificado en tu proveedor. Vacío = la casilla de prueba, que solo llega a tu propio email."
@@ -2482,6 +2486,57 @@ function BodySkeleton() {
       <div className="space-y-4">
         {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-40 rounded-xl" />)}
       </div>
+    </div>
+  );
+}
+
+/**
+ * Botón de prueba del canal de email.
+ *
+ * 🔴 Sin esto, la única forma de saber si el SMTP quedó bien era ir a la ficha de un cliente
+ * y escribirle de verdad: si la contraseña estaba mal te enterabas ahí, y si estaba bien ya
+ * le habías mandado un mensaje a una persona real para probar. Manda a la casilla del
+ * usuario en sesión y usa la config GUARDADA, no la del formulario — prueba lo que va a
+ * correr, no lo que hay escrito en pantalla.
+ */
+function ProbarEmail() {
+  const [estado, setEstado] = useState<"idle" | "enviando" | "ok">("idle");
+  const [error, setError] = useState<string | null>(null);
+
+  const probar = async () => {
+    setEstado("enviando");
+    setError(null);
+    try {
+      const res = await fetch("/api/configuracion/email-prueba", { method: "POST" });
+      const json = await res.json();
+      if (!json.ok) { setError(json.error || "No se pudo enviar"); setEstado("idle"); return; }
+      setEstado("ok");
+    } catch {
+      setError("No se pudo enviar el email de prueba");
+      setEstado("idle");
+    }
+  };
+
+  return (
+    <div className="rounded-lg border border-border bg-muted/20 px-3 py-2.5">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="text-xs text-muted-foreground">
+          {estado === "ok" ? "Enviado. Revisá tu casilla (mirá también el spam)." : "Mandate un email a vos mismo para verificar la configuración."}
+        </span>
+        <button
+          type="button"
+          onClick={probar}
+          disabled={estado === "enviando"}
+          className="shrink-0 rounded-lg border border-primary/30 bg-primary/10 px-3 py-1.5 text-xs font-medium text-primary transition-colors hover:bg-primary/20 disabled:opacity-40"
+        >
+          {estado === "enviando" ? "Enviando…" : estado === "ok" ? "Enviar otra" : "Enviar prueba"}
+        </button>
+      </div>
+      {/* Guardá primero: la prueba corre contra la config persistida, no contra el formulario. */}
+      {estado === "idle" && !error && (
+        <p className="mt-1 text-[11px] text-muted-foreground/60">Guardá los cambios antes de probar.</p>
+      )}
+      {error && <p className="mt-1.5 text-[11px] text-destructive">{error}</p>}
     </div>
   );
 }
