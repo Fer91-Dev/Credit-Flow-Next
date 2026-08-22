@@ -11,7 +11,7 @@ import {
   plantillaDe, cuentaComoGestion, MOTIVO_LABEL, tipoGestionDeCanal, resolverPlantillasContacto, type MotivoContacto,
 } from "@/lib/domain";
 import { nombreCompleto, hoyComercial } from "@/lib/utils";
-import { Resend } from "resend";
+import { enviarEmailTenant, motivoEmailNoDisponible, type EmailTenantConfig } from "@/lib/mailer-tenant";
 import type { NextRequest } from "next/server";
 
 interface RouteParams {
@@ -52,7 +52,9 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
     canales: {
       // WhatsApp siempre se puede: sin API de Meta configurada, sale por wa.me (manual).
       whatsapp: { disponible: !!cliente.telefono, automatico: !!comm.whatsapp?.enabled },
-      email: { disponible: !!cliente.email, automatico: !!comm.email?.enabled },
+      // "automatico" ahora mira si el canal PUEDE mandar de verdad, no solo si el
+      // switch está prendido: la config podía estar activa y sin credenciales completas.
+      email: { disponible: !!cliente.email, automatico: !motivoEmailNoDisponible(comm.email) },
     },
     mensajes,
   });
@@ -96,20 +98,13 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
     enviado = { metodo: "manual", link: linkWhatsapp(cliente.telefono, texto) };
   } else {
     if (!cliente.email) return errorResponse("El cliente no tiene email cargado.", "SIN_EMAIL", 409);
-    const apiKey = comm.email?.enabled ? comm.email?.api_key : null;
-    if (!apiKey) {
-      return errorResponse(
-        "El email no está configurado. Activalo en Configuración → Comunicaciones.",
-        "EMAIL_NO_CONFIGURADO",
-        409,
-      );
-    }
-    const res = await enviarEmail(apiKey, {
+    const impedimento = motivoEmailNoDisponible(comm.email);
+    if (impedimento) return errorResponse(impedimento, "EMAIL_NO_CONFIGURADO", 409);
+    const res = await enviarEmailTenant(comm.email, {
       to: cliente.email,
       subject: asunto,
-      texto,
+      html: cuerpoHtml(texto, datos.financiera),
       marca: datos.financiera,
-      from: comm.email?.from_email?.trim() || null,
     });
     if (!res.ok) return errorResponse(res.error ?? "No se pudo enviar el email", "ENVIO_FALLIDO", 502);
     enviado = { metodo: "api" };
@@ -197,7 +192,7 @@ async function cargarContactable(ctx: Ctx, id: string) {
   const commRaw = await getComunicacionConfig(ctx.tenantId);
   const comm = {
     whatsapp: (commRaw.whatsappConfig ?? null) as { enabled?: boolean } | null,
-    email: (commRaw.emailConfig ?? null) as { enabled?: boolean; api_key?: string; from_email?: string } | null,
+    email: (commRaw.emailConfig ?? null) as EmailTenantConfig | null,
   };
 
   /**
@@ -266,55 +261,14 @@ function render(plantilla: string, d: { nombre: string; financiera: string; deud
   }).replace(/\[deuda\]/gi, new Intl.NumberFormat("es-AR", { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(d.deuda));
 }
 
-async function enviarEmail(
-  apiKey: string,
-  { to, subject, texto, marca, from }: { to: string; subject: string; texto: string; marca: string; from: string | null },
-): Promise<{ ok: boolean; error?: string }> {
-  try {
-    const resend = new Resend(apiKey);
-    /**
-     * 🔴 El remitente lleva el nombre de la FINANCIERA, no el del sistema.
-     * Estaba cableado como "CreditFlow <onboarding@resend.dev>": al cliente le llegaba un
-     * mail firmado por el software y no por quien le prestó la plata — el mismo criterio que
-     * ya rige en los recibos y en el plan de pagos impreso.
-     *
-     * Sin dominio propio verificado cae en la casilla de prueba del proveedor, que SOLO deja
-     * mandarle al dueño de la cuenta. Por eso el campo es configurable.
-     */
-    const remitente = from ? `${marca} <${from}>` : `${marca} <onboarding@resend.dev>`;
-    const { error } = await resend.emails.send({
-      from: remitente,
-      to,
-      subject,
-      html: `<div style="font-family:Inter,Arial,sans-serif;max-width:560px;margin:0 auto;padding:28px 16px">
-        <div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:28px">
-          <p style="color:#374151;font-size:14px;line-height:1.6;margin:0;white-space:pre-line">${escapar(texto)}</p>
-          <p style="color:#6b7280;font-size:12px;margin:24px 0 0;border-top:1px solid #f3f4f6;padding-top:16px">${escapar(marca)}</p>
-        </div>
-      </div>`,
-    });
-    if (error) return { ok: false, error: traducirErrorEnvio(error.message, !!from) };
-    return { ok: true };
-  } catch (e) {
-    return { ok: false, error: e instanceof Error ? traducirErrorEnvio(e.message, !!from) : "Error desconocido" };
-  }
-}
-
-/**
- * El proveedor contesta en inglés y con su jerga. El operador que está atendiendo a un
- * cliente necesita saber QUÉ HACER, no leer una excepción.
- */
-function traducirErrorEnvio(msg: string, tieneRemitentePropio: boolean): string {
-  const m = msg.toLowerCase();
-  if (m.includes("only send testing emails") || m.includes("verify a domain")) {
-    return tieneRemitentePropio
-      ? "El dominio del remitente no está verificado en Resend. Verificalo en resend.com/domains y volvé a probar."
-      : "Todavía no tenés dominio propio: la casilla de prueba solo puede escribirle a tu propia dirección. Verificá un dominio en resend.com/domains y cargalo en Configuración → Comunicaciones → Remitente.";
-  }
-  if (m.includes("api key") || m.includes("unauthorized")) {
-    return "La API key del email es inválida. Revisala en Configuración → Comunicaciones.";
-  }
-  return msg;
+/** Cuerpo del mail: el texto tal cual se leyó en pantalla, firmado por la financiera. */
+function cuerpoHtml(texto: string, marca: string): string {
+  return `<div style="font-family:Inter,Arial,sans-serif;max-width:560px;margin:0 auto;padding:28px 16px">
+    <div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:28px">
+      <p style="color:#374151;font-size:14px;line-height:1.6;margin:0;white-space:pre-line">${escapar(texto)}</p>
+      <p style="color:#6b7280;font-size:12px;margin:24px 0 0;border-top:1px solid #f3f4f6;padding-top:16px">${escapar(marca)}</p>
+    </div>
+  </div>`;
 }
 
 function escapar(s: string) {
