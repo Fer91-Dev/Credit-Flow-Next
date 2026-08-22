@@ -2506,12 +2506,19 @@ function ProbarEmail() {
   // configuró como remitente — y sin decirlo, uno revisa la casilla equivocada y concluye
   // que el envío falló.
   const [destino, setDestino] = useState<string | null>(null);
+  /** Vacío = la casilla del usuario en sesión. Se puede escribir otra: quien configura el
+   *  sistema no siempre tiene acceso al buzón con el que entra. */
+  const [para, setPara] = useState("");
 
   const probar = async () => {
     setEstado("enviando");
     setError(null);
     try {
-      const res = await fetch("/api/configuracion/email-prueba", { method: "POST" });
+      const res = await fetch("/api/configuracion/email-prueba", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ to: para.trim() || undefined }),
+      });
       const json = await res.json();
       if (!json.ok) { setError(json.error || "No se pudo enviar"); setEstado("idle"); return; }
       setDestino(json.data?.enviado_a ?? null);
@@ -2528,8 +2535,15 @@ function ProbarEmail() {
         <span className="text-xs text-muted-foreground">
           {estado === "ok"
             ? <>Enviado a <span className="font-mono text-foreground">{destino ?? "tu casilla"}</span> — revisá también el spam.</>
-            : "Se manda a la casilla de tu usuario, no a la del remitente."}
+            : "Probá el envío antes de escribirle a un cliente."}
         </span>
+        <input
+          type="email"
+          value={para}
+          onChange={(e) => setPara(e.target.value)}
+          placeholder="Mandarla a… (vacío = tu casilla)"
+          className="h-8 min-w-0 flex-1 rounded-lg border border-border bg-input px-2.5 text-xs text-foreground placeholder:text-muted-foreground/40 outline-none focus:border-primary"
+        />
         <button
           type="button"
           onClick={probar}
