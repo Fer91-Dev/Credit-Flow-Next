@@ -17,6 +17,40 @@ interface Consulta {
   score_externo: number | null;
   cheques_rechazados: number | null;
   deuda_sistema: number | null;
+  /** Respuesta cruda del proveedor. Trae el detalle por entidad que el resumen aplana. */
+  crudo?: unknown;
+}
+
+/** Una línea del informe del BCRA: qué entidad, en qué situación y con qué banderas. */
+interface EntidadBureau {
+  entidad: string;
+  situacion: number;
+  monto: number;
+  diasAtrasoPago?: number;
+  refinanciaciones?: boolean;
+  situacionJuridica?: boolean;
+  procesoJud?: boolean;
+  enRevision?: boolean;
+}
+
+/**
+ * 🔴 El detalle POR ENTIDAD ya viajaba en `crudo` y no se mostraba en ningún lado.
+ *
+ * El panel resumía todo a "peor situación" y "deuda total": no se veía QUIÉN le prestó,
+ * cuánto le debe a cada uno, ni cuál de todos es el que lo tiene en juicio. Con cuatro
+ * entidades en situación 1 y una en 4, el informe decía "4" y no había forma de saber si
+ * eran $2.000 de una tarjeta o $2.000.000 de un banco.
+ */
+function entidadesDe(crudo: unknown): EntidadBureau[] {
+  const periodos = (crudo as { deudas?: { results?: { periodos?: unknown[] } } } | null)?.deudas?.results?.periodos;
+  if (!Array.isArray(periodos) || periodos.length === 0) return [];
+  const ents = (periodos[0] as { entidades?: unknown[] })?.entidades;
+  if (!Array.isArray(ents)) return [];
+  return ents
+    .map((e) => e as EntidadBureau)
+    .filter((e) => e && typeof e.entidad === "string")
+    // El que peor está, primero: es el que define el caso.
+    .sort((a, b) => (b.situacion ?? 0) - (a.situacion ?? 0) || (b.monto ?? 0) - (a.monto ?? 0));
 }
 
 const SIT_BCRA_LABEL: Record<number, string> = {
@@ -192,6 +226,52 @@ export function ClienteBureauPanel({ clienteId }: { clienteId: string }) {
                 <span className="font-mono font-semibold text-foreground">{ultima.deuda_sistema != null ? formatMonto(ultima.deuda_sistema) : "—"}</span>
               </Dato>
             </div>
+          
+            {/* Detalle por entidad — el dato que el resumen aplana. */}
+            {(() => {
+              const ents = entidadesDe(ultima.crudo);
+              if (ents.length === 0) return null;
+              return (
+                <div className="mt-4 overflow-x-auto rounded-xl border border-border">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="bg-muted/30">
+                        <th className="px-3 py-2 text-left text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Entidad</th>
+                        <th className="px-3 py-2 text-center text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Sit.</th>
+                        <th className="px-3 py-2 text-right text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Monto</th>
+                        <th className="px-3 py-2 text-right text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Atraso</th>
+                        <th className="px-3 py-2 text-left text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Alertas</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {ents.map((e, i) => (
+                        <tr key={`${e.entidad}-${i}`} className={`border-t border-border/50 ${i % 2 === 1 ? "bg-muted/5" : ""}`}>
+                          <td className="px-3 py-2 text-foreground">{e.entidad}</td>
+                          <td className="px-3 py-2 text-center">
+                            <StatusBadge label={String(e.situacion)} variant={sitVariant(e.situacion)} />
+                          </td>
+                          {/* El BCRA informa en MILES: 2049 son $2.049.000. */}
+                          <td className="px-3 py-2 text-right font-mono tabular-nums text-foreground">{formatMonto((e.monto ?? 0) * 1000, 0)}</td>
+                          <td className={`px-3 py-2 text-right font-mono tabular-nums ${(e.diasAtrasoPago ?? 0) > 0 ? "text-warning" : "text-muted-foreground/40"}`}>
+                            {(e.diasAtrasoPago ?? 0) > 0 ? `${e.diasAtrasoPago} d` : "—"}
+                          </td>
+                          <td className="px-3 py-2">
+                            <span className="flex flex-wrap gap-1">
+                              {(e.procesoJud || e.situacionJuridica) && <StatusBadge label="Juicio" variant="destructive" />}
+                              {e.refinanciaciones && <StatusBadge label="Refinanció" variant="warning" />}
+                              {e.enRevision && <StatusBadge label="En revisión" variant="muted" />}
+                              {!e.procesoJud && !e.situacionJuridica && !e.refinanciaciones && !e.enRevision && (
+                                <span className="text-muted-foreground/30">—</span>
+                              )}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              );
+            })()}
           </>
         )}
       </div>
