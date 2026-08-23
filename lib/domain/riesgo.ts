@@ -28,6 +28,25 @@ export interface SenalesBureau {
   chequesRechazados?: number | null;
   /** Deuda total informada en el sistema financiero ($). */
   deudaSistemaFinanciero?: number | null;
+  /**
+   * 🔴 SEÑALES QUE EL BCRA MANDA Y SE TIRABAN.
+   *
+   * Su respuesta trae, POR ENTIDAD, si hay proceso judicial, si la deuda fue refinanciada
+   * y cuántos días de atraso lleva. De todo eso solo se guardaba la peor situación y la suma
+   * de montos. Alguien puede figurar en situación 2 —que la política acepta— y estar con
+   * demanda judicial de otro banco: el informe mostraba "2" y nada más.
+   *
+   * Son opcionales: los bureaus que no las informen las dejan en null y la política las
+   * ignora, igual que hoy.
+   */
+  /** Alguna entidad le inició acción judicial o lo tiene en situación jurídica. */
+  tieneProcesoJudicial?: boolean | null;
+  /** Alguna entidad le refinanció deuda (reestructuró en otro lado). */
+  tieneRefinanciaciones?: boolean | null;
+  /** Peor atraso informado, en días. */
+  diasAtrasoMax?: number | null;
+  /** Cuántas entidades le informaron deuda. */
+  entidadesInformantes?: number | null;
 }
 
 /** Política de originación del tenant. Todo parametrizado; se persiste en `configuraciones.riesgo_config`. */

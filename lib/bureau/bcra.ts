@@ -114,14 +114,26 @@ export async function consultarBcra(cuitRaw: string): Promise<ResultadoConsulta>
   // Peor situación + deuda total del período más reciente.
   let situacionBcra: number | null = null;
   let deudaSistemaFinanciero: number | null = null;
+  let procesoJudicial = false;
+  let refinanciado = false;
+  let diasAtrasoMax = 0;
+  let entidadesInformantes = 0;
+  let hayEntidades = false;
   const periodos = deudas?.results?.periodos;
   if (Array.isArray(periodos) && periodos.length > 0) {
     const entidades = periodos[0]?.entidades ?? [];
+    entidadesInformantes = entidades.length;
+    hayEntidades = entidades.length > 0;
     for (const e of entidades) {
       const sit = Number(e?.situacion);
       if (!Number.isNaN(sit)) situacionBcra = Math.max(situacionBcra ?? 0, sit);
       const monto = Number(e?.monto);
       if (!Number.isNaN(monto)) deudaSistemaFinanciero = (deudaSistemaFinanciero ?? 0) + monto * 1000; // BCRA informa en miles
+      // Basta UNA entidad con juicio o refinanciación para que la señal sea verdadera.
+      if (e?.procesoJud === true || e?.situacionJuridica === true) procesoJudicial = true;
+      if (e?.refinanciaciones === true) refinanciado = true;
+      const atraso = Number(e?.diasAtrasoPago);
+      if (!Number.isNaN(atraso)) diasAtrasoMax = Math.max(diasAtrasoMax, atraso);
     }
   }
 
@@ -142,6 +154,12 @@ export async function consultarBcra(cuitRaw: string): Promise<ResultadoConsulta>
     scoreExterno: null, // BCRA no da score
     chequesRechazados,
     deudaSistemaFinanciero,
+    // Las banderas que veníamos descartando. `procesoJud` y `situacionJuridica` son la misma
+    // pregunta desde dos ángulos —¿alguien lo está ejecutando?— así que se unifican.
+    tieneProcesoJudicial: hayEntidades ? procesoJudicial : null,
+    tieneRefinanciaciones: hayEntidades ? refinanciado : null,
+    diasAtrasoMax: hayEntidades ? diasAtrasoMax : null,
+    entidadesInformantes: hayEntidades ? entidadesInformantes : null,
   };
 
   const sinDatos = situacionBcra == null && chequesRechazados == null;
