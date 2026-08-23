@@ -97,10 +97,22 @@ export async function consultarBcra(cuitRaw: string): Promise<ResultadoConsulta>
    */
   let deudas: any = null;
   let cheques: any = null;
+  let historicas: any = null;
   try {
-    [deudas, cheques] = await Promise.all([
+    /**
+     * 🔴 Se pedía la foto de HOY y se ignoraba el historial.
+     *
+     * El BCRA publica 24 meses en `/Deudas/Historicas/{cuit}` y no lo tocábamos. La
+     * diferencia es grande para decidir: alguien que estuvo SIEMPRE en situación 1 no es lo
+     * mismo que alguien que estuvo en 4 hace ocho meses y se recuperó — y hoy los dos se
+     * veían idénticos, porque los dos muestran "1" en el mes actual.
+     *
+     * Va tolerado como los cheques: si falla, la consulta principal sigue.
+     */
+    [deudas, cheques, historicas] = await Promise.all([
       getJson(`${BASE}/${cuit}`),
       getJson(`${BASE}/ChequesRechazados/${cuit}`).catch(() => null),
+      getJson(`${BASE}/Historicas/${cuit}`).catch(() => null),
     ]);
   } catch (e) {
     return {
@@ -181,7 +193,7 @@ export async function consultarBcra(cuitRaw: string): Promise<ResultadoConsulta>
       ? "No figura en la Central de Deudores: ninguna entidad financiera le informó deuda al BCRA."
       : undefined,
     senales,
-    crudo: { deudas, cheques },
+    crudo: { deudas, cheques, historicas },
   };
 }
 

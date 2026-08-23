@@ -34,6 +34,33 @@ interface EntidadBureau {
 }
 
 /**
+ * Historial de 24 meses: la PEOR situación informada en cada período.
+ *
+ * 🔴 Sin esto, alguien que estuvo siempre en situación 1 y alguien que estuvo en 4 hace
+ * ocho meses y se recuperó se veían IDÉNTICOS — los dos muestran "1" en el mes actual. Es
+ * justo la diferencia que uno quiere saber antes de prestar.
+ */
+function historialDe(crudo: unknown): Array<{ periodo: string; situacion: number }> {
+  const periodos = (crudo as { historicas?: { results?: { periodos?: unknown[] } } } | null)?.historicas?.results?.periodos;
+  if (!Array.isArray(periodos)) return [];
+  return periodos
+    .map((p) => {
+      const per = p as { periodo?: string; entidades?: Array<{ situacion?: number }> };
+      const ents = Array.isArray(per.entidades) ? per.entidades : [];
+      const peor = ents.reduce((m, e) => Math.max(m, Number(e?.situacion) || 0), 0);
+      return { periodo: String(per.periodo ?? ""), situacion: peor };
+    })
+    .filter((x) => x.periodo.length === 6)
+    // Del más viejo al más nuevo: la línea se lee de izquierda a derecha.
+    .sort((a, b) => a.periodo.localeCompare(b.periodo));
+}
+
+/** "202606" → "06/26" */
+function periodoCorto(p: string): string {
+  return `${p.slice(4, 6)}/${p.slice(2, 4)}`;
+}
+
+/**
  * 🔴 El detalle POR ENTIDAD ya viajaba en `crudo` y no se mostraba en ningún lado.
  *
  * El panel resumía todo a "peor situación" y "deuda total": no se veía QUIÉN le prestó,
@@ -227,6 +254,47 @@ export function ClienteBureauPanel({ clienteId }: { clienteId: string }) {
               </Dato>
             </div>
           
+            {/* Historial de 24 meses: se lee de un vistazo si alguna vez estuvo mal. */}
+            {(() => {
+              const hist = historialDe(ultima.crudo);
+              if (hist.length === 0) return null;
+              const peorHistorico = hist.reduce((m, h) => Math.max(m, h.situacion), 0);
+              return (
+                <div className="mt-4 rounded-xl border border-border p-3">
+                  <div className="flex flex-wrap items-baseline justify-between gap-2">
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                      Historial · {hist.length} meses
+                    </p>
+                    <p className="text-[11px] text-muted-foreground">
+                      Peor situación del período:{" "}
+                      <span className={peorHistorico >= 3 ? "font-semibold text-destructive" : "text-foreground"}>
+                        {peorHistorico > 0 ? peorHistorico : "sin deuda informada"}
+                      </span>
+                    </p>
+                  </div>
+                  <div className="mt-2 flex gap-[3px] overflow-x-auto pb-1">
+                    {hist.map((h) => (
+                      <div
+                        key={h.periodo}
+                        title={`${periodoCorto(h.periodo)} · situación ${h.situacion || "—"}`}
+                        className={`h-7 min-w-[14px] flex-1 rounded-[3px] ${
+                          h.situacion >= 5 ? "bg-destructive"
+                          : h.situacion >= 3 ? "bg-destructive/60"
+                          : h.situacion === 2 ? "bg-warning"
+                          : h.situacion === 1 ? "bg-success/70"
+                          : "bg-muted-foreground/15"
+                        }`}
+                      />
+                    ))}
+                  </div>
+                  <div className="mt-1 flex justify-between text-[10px] font-mono text-muted-foreground/50">
+                    <span>{periodoCorto(hist[0].periodo)}</span>
+                    <span>{periodoCorto(hist[hist.length - 1].periodo)}</span>
+                  </div>
+                </div>
+              );
+            })()}
+
             {/* Detalle por entidad — el dato que el resumen aplana. */}
             {(() => {
               const ents = entidadesDe(ultima.crudo);
