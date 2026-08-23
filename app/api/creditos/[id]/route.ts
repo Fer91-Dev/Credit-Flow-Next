@@ -2,6 +2,7 @@ import { requireAuth, requireRole, scopeCreditosVendedor } from "@/lib/auth";
 import { successResponse, errorResponse, withErrorHandler, assertSameOrigin } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
+import { conNumeroDeOrigen } from "@/lib/creditos-numero";
 import { registrarAuditoria } from "@/lib/audit";
 import { aplicarYRegistrarStock } from "@/lib/stock";
 import { formatCreditoNumero, nombreCompleto, hoyComercial } from "@/lib/utils";
@@ -43,7 +44,9 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
   // Estado reconciliado: nunca exponer un terminal saldado con deuda viva.
   const { cuotas, ...rest } = credito;
   const estado = estadoCoherente(credito.estado, credito.saldo_pendiente, cuotas);
-  return successResponse({ ...rest, estado });
+  // Número del crédito que esta refinanciación reemplaza → la ficha lo muestra REF-XXXXXX.
+  const [conOrigen] = await conNumeroDeOrigen(tenantId, [{ ...rest, estado }]);
+  return successResponse(conOrigen);
 });
 
 /**

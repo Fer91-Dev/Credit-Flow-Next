@@ -4,6 +4,7 @@ import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { getConfiguracion } from "@/lib/config";
 import { getFinanciera } from "@/lib/financiera";
+import { conNumeroDeOrigen } from "@/lib/creditos-numero";
 import { generarReciboPDF } from "@/lib/pdf/recibo";
 import { nombreCompleto } from "@/lib/utils";
 import type { NextRequest } from "next/server";
@@ -35,6 +36,9 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
           numero: true,
           tipo_credito: true,
           saldo_pendiente: true,
+          // Para imprimir REF-XXXXXX cuando el crédito nació de una refinanciación.
+          es_refinanciacion: true,
+          refinancia_a: true,
           cliente: { select: { nombre: true, apellido: true, documento: true } },
         },
       },
@@ -52,6 +56,9 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
 
   const config = await getConfiguracion(tenantId);
   const financiera = await getFinanciera(tenantId); // co-branding del recibo
+  // Si el crédito nació de refinanciar otro, el recibo lo nombra REF-<número del original>,
+  // igual que la pantalla: el papel del cliente y el sistema no pueden llamarlo distinto.
+  const [{ refinancia_a_numero: numeroOrigen }] = await conNumeroDeOrigen(tenantId, [pago.credito]);
 
   const pdf = await generarReciboPDF({
     pago: {
@@ -76,6 +83,7 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
     credito: {
       id: pago.credito.id,
       numero: pago.credito.numero,
+      refinancia_a_numero: numeroOrigen,
       tipo_credito: pago.credito.tipo_credito,
       saldo_pendiente: pago.credito.saldo_pendiente,
     },

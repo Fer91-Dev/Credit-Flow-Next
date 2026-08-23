@@ -286,6 +286,9 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
   const proximoPago = plan.cuotas[0]?.fecha ?? fechaInicio;
   const motivo = body.motivo?.trim() || null;
   const numeroViejo = formatCreditoNumero(credito.numero);
+  // El crédito nuevo se llama REF-<número del que reemplaza>, igual que en pantalla: la
+  // auditoría no puede nombrarlo distinto de como lo ve el operador.
+  const numeroNuevo = (n: number | null) => formatCreditoNumero(n, credito.numero);
 
   // Transacción: nace el crédito nuevo, se cierra el viejo. Sin movimiento de caja
   // (no hay desembolso: la deuda simplemente se traslada a un crédito nuevo).
@@ -362,7 +365,7 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
     entidad: "creditos",
     entidadId: credito.id,
     accion: "refinanciar",
-    descripcion: `Crédito ${numeroViejo} refinanciado en ${formatCreditoNumero(nuevo.numero)} — deuda consolidada $${deuda.total.toLocaleString("es-AR")}${quita.condonado > 0 ? `, quita $${quita.condonado.toLocaleString("es-AR")}` : ""}${motivo ? ` — ${motivo}` : ""}`,
+    descripcion: `Crédito ${numeroViejo} refinanciado en ${numeroNuevo(nuevo.numero)} — deuda consolidada $${deuda.total.toLocaleString("es-AR")}${quita.condonado > 0 ? `, quita $${quita.condonado.toLocaleString("es-AR")}` : ""}${motivo ? ` — ${motivo}` : ""}`,
     meta: {
       credito_origen: credito.numero,
       credito_nuevo: nuevo.numero,
@@ -380,7 +383,7 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
     entidad: "creditos",
     entidadId: nuevo.id,
     accion: "crear",
-    descripcion: `Crédito ${formatCreditoNumero(nuevo.numero)} creado por refinanciación de ${numeroViejo} — $${nuevoCapital.toLocaleString("es-AR")}`,
+    descripcion: `Crédito ${numeroNuevo(nuevo.numero)} creado por refinanciación de ${numeroViejo} — $${nuevoCapital.toLocaleString("es-AR")}`,
     meta: { refinancia_a: credito.numero, monto: nuevoCapital, tasa, plazo_meses: plazoMeses, frecuencia, es_refinanciacion: true },
   });
 

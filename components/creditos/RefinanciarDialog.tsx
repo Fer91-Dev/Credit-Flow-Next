@@ -145,7 +145,8 @@ function RefinanciarForm({ credito, onClose }: { credito: Credito; onClose: (suc
       globalMutate(KEYS.creditos);
       globalMutate(KEYS.dashboard);
       globalMutate(KEYS.vendedores);
-      toast.success(`Refinanciado en ${formatCreditoNumero(json.data?.nuevo?.numero)}`);
+      // El crédito nuevo se nombra por el que reemplaza, igual que en el listado.
+      toast.success(`Refinanciado en ${formatCreditoNumero(json.data?.nuevo?.numero, credito.numero)}`);
       onClose(true);
     } catch {
       setFormError("No se pudo refinanciar el crédito");

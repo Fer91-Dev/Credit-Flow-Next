@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { assertPuedeAcordar } from "@/lib/recupero-server";
 import { getCobranzaConfig } from "@/lib/config";
 import { crearAcuerdo, anularAcuerdo, evaluarAcuerdoPersistido, serializarAcuerdo, sincronizarAcuerdos } from "@/lib/acuerdos";
+import { numerosRefinanciados } from "@/lib/creditos-numero";
 import { ESTADOS_ACUERDO } from "@/lib/domain";
 import { hoyComercial } from "@/lib/utils";
 import type { Prisma } from "@prisma/client";
@@ -37,15 +38,26 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     take: 200,
     include: {
       cuotas: { orderBy: { numero: "asc" } },
-      credito: { select: { numero: true, cliente: { select: { nombre: true, apellido: true, documento: true } } } },
+      // `es_refinanciacion`/`refinancia_a`: el acuerdo impreso tiene que nombrar al crédito
+      // igual que la pantalla (REF-XXXXXX si nació de una refinanciación).
+      credito: { select: { numero: true, es_refinanciacion: true, refinancia_a: true, cliente: { select: { nombre: true, apellido: true, documento: true } } } },
     },
   });
 
   const hoy = hoyComercial();
+  // Número del crédito de origen cuando el acuerdo es sobre una refinanciación: el documento
+  // que firma el cliente tiene que nombrarlo igual que la pantalla (REF-XXXXXX).
+  const origenes = await numerosRefinanciados(
+    tenantId,
+    acuerdos.map((a) => a.credito).filter((c): c is NonNullable<typeof c> => !!c),
+  );
   const salida = await Promise.all(
     acuerdos.map(async (a) => {
       const ev = a.estado === "vigente" ? await evaluarAcuerdoPersistido(tenantId, a, hoy) : undefined;
-      return serializarAcuerdo(a, ev);
+      const refi = a.credito?.es_refinanciacion && a.credito.refinancia_a
+        ? origenes.get(a.credito.refinancia_a) ?? null
+        : null;
+      return { ...serializarAcuerdo(a, ev), credito_refinancia_a_numero: refi };
     }),
   );
 

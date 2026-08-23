@@ -211,7 +211,7 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar }: {
       });
       const json = await res.json();
       if (!json.ok) { toast.error(json.error || "No se pudo anular el crédito"); return; }
-      toast.success(`Crédito ${formatCreditoNumero(credito.numero)} anulado`);
+      toast.success(`Crédito ${formatCreditoNumero(credito.numero, credito.refinancia_a_numero)} anulado`);
       refrescarNotificaciones(); // movió caja: que la campanita avise ya
       revalidar();
       globalMutate(KEYS.vendedores); // las stats del vendedor excluyen anulados
@@ -228,7 +228,7 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar }: {
   /** Borrado definitivo. El server lo rechaza si el crédito tiene pagos. */
   const handleEliminarCredito = async () => {
     const ok = await confirm({
-      title: `¿Eliminar crédito ${formatCreditoNumero(credito.numero)}?`,
+      title: `¿Eliminar crédito ${formatCreditoNumero(credito.numero, credito.refinancia_a_numero)}?`,
       description: `Se eliminará definitivamente el crédito de ${nombreCompleto(credito.cliente)} por $${n2(credito.monto_original)}, junto con su plan de cuotas. Esta acción no se puede deshacer.`,
       confirmLabel: "Eliminar definitivamente",
       tone: "danger",
@@ -239,7 +239,7 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar }: {
       const res = await fetch(`/api/creditos/${credito.id}`, { method: "DELETE" });
       const json = await res.json();
       if (!json.ok) { toast.error(json.error || "No se pudo eliminar el crédito"); return; }
-      toast.success(`Crédito ${formatCreditoNumero(credito.numero)} eliminado`);
+      toast.success(`Crédito ${formatCreditoNumero(credito.numero, credito.refinancia_a_numero)} eliminado`);
       revalidar();
       globalMutate(KEYS.vendedores);
       onCerrar?.();
@@ -353,7 +353,7 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar }: {
           <div className="space-y-1.5">
             <div className="flex items-center gap-3">
               <span className="font-mono text-2xl font-black text-primary tracking-tight leading-none">
-                {formatCreditoNumero(credito.numero)}
+                {formatCreditoNumero(credito.numero, credito.refinancia_a_numero)}
               </span>
               <StatusBadge label={est.label} variant={est.variant} />
             </div>
@@ -593,7 +593,7 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar }: {
             <ArrowUpRight className="h-4 w-4 text-success" />
             <h3 className="text-sm font-semibold text-foreground">Pagos registrados</h3>
             <span className="font-mono text-[11px] text-muted-foreground">
-              {formatCreditoNumero(credito.numero)}
+              {formatCreditoNumero(credito.numero, credito.refinancia_a_numero)}
             </span>
           </div>
           {loadingPagos ? (
@@ -960,7 +960,7 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar }: {
       <Dialog open={pagoOpen} onOpenChange={(o) => { if (!o) setPagoOpen(false); }}>
         <DialogContent className="w-[95vw] sm:max-w-4xl max-h-[90dvh] flex flex-col overflow-hidden">
           <DialogHeader className="shrink-0">
-            <DialogTitle>Registrar pago · {formatCreditoNumero(credito.numero)}</DialogTitle>
+            <DialogTitle>Registrar pago · {formatCreditoNumero(credito.numero, credito.refinancia_a_numero)}</DialogTitle>
           </DialogHeader>
           <div className="flex-1 min-h-0 overflow-y-auto">
             {pagoOpen && (
@@ -1011,7 +1011,7 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar }: {
       <Dialog open={anularCreditoOpen} onOpenChange={(o) => { if (!o) { setAnularCreditoOpen(false); setAnularCreditoMotivo(""); } }}>
         <DialogContent className="w-[95vw] sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>¿Anular crédito {formatCreditoNumero(credito.numero)}?</DialogTitle>
+            <DialogTitle>¿Anular crédito {formatCreditoNumero(credito.numero, credito.refinancia_a_numero)}?</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div className="rounded-lg border border-warning/20 bg-warning/5 px-3 py-2.5 text-xs text-muted-foreground">

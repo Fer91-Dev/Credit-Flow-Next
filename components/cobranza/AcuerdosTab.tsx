@@ -37,6 +37,8 @@ export interface Acuerdo {
   fecha: string;
   credito_id: string;
   credito_numero: number | null;
+  /** Número del crédito que refinancia, si el acuerdo es sobre una refinanciación. */
+  credito_refinancia_a_numero?: number | null;
   cliente: string | null;
   estado: "vigente" | "cumplido" | "roto" | "anulado";
   deuda_original: number;
@@ -99,7 +101,7 @@ export function AcuerdosTab({ role }: { role: Role }) {
   const imprimir = (a: Acuerdo) => {
     const base = Math.round((a.deuda_original - a.quita) * 100) / 100;
     imprimirAcuerdo({
-      numeroCredito: formatCreditoNumero(a.credito_numero ?? undefined),
+      numeroCredito: formatCreditoNumero(a.credito_numero ?? undefined, a.credito_refinancia_a_numero),
       cliente: a.cliente ?? "—",
       documento: a.documento ?? null,
       fecha: a.fecha,
@@ -164,7 +166,7 @@ export function AcuerdosTab({ role }: { role: Role }) {
         zebra
         pageSize={10}
         columns={[
-          { header: "Crédito", cell: (a) => <span className="font-mono text-xs text-muted-foreground whitespace-nowrap">{formatCreditoNumero(a.credito_numero ?? undefined)}</span> },
+          { header: "Crédito", cell: (a) => <span className="font-mono text-xs text-muted-foreground whitespace-nowrap">{formatCreditoNumero(a.credito_numero ?? undefined, a.credito_refinancia_a_numero)}</span> },
           { header: "Cliente", cell: (a) => <span className="text-foreground">{a.cliente ?? "—"}</span> },
           { header: "Acordado", cell: (a) => <span className="text-muted-foreground tabular-nums whitespace-nowrap">{formatFecha(a.fecha)}</span> },
           { header: "Monto", align: "right", mono: true, cell: (a) => <span className="text-foreground">{formatMonto(a.monto_acordado)}</span> },
@@ -219,7 +221,7 @@ export function AcuerdosTab({ role }: { role: Role }) {
               </div>
               <div className="min-w-0">
                 <h3 className="text-sm font-semibold text-foreground">
-                  {a.cliente} · {formatCreditoNumero(a.credito_numero ?? undefined)}
+                  {a.cliente} · {formatCreditoNumero(a.credito_numero ?? undefined, a.credito_refinancia_a_numero)}
                 </h3>
                 <p className="mt-0.5 text-xs text-muted-foreground">
                   Debía {formatMonto(a.deuda_original)} vencidos

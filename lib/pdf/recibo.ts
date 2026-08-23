@@ -7,6 +7,7 @@
  * El recibo es un documento de lectura: refleja el pago y su imputación
  * (Mora → Interés → Capital) tal como los persistió el motor financiero.
  */
+import { formatCreditoNumero } from "@/lib/utils";
 import { PDFDocument, StandardFonts, rgb, degrees, type PDFFont } from "pdf-lib";
 
 export interface ReciboData {
@@ -31,6 +32,8 @@ export interface ReciboData {
   credito: {
     id: string;
     numero: number | null;
+    /** Si es una refinanciación, el número del crédito que reemplaza (se imprime REF-XXXXXX). */
+    refinancia_a_numero?: number | null;
     tipo_credito: string;
     saldo_pendiente: number;
   };
@@ -163,7 +166,14 @@ export async function generarReciboPDF(data: ReciboData): Promise<Uint8Array> {
   pair("Documento", cliente.documento || "—", colL, y);
   pair("Método de pago", metodoLabel[pago.metodo] ?? pago.metodo, colR, y);
   y -= 40;
-  const numeroCredito = credito.numero != null ? `CRD-${String(credito.numero).padStart(6, "0")}` : credito.id.slice(0, 8).toUpperCase();
+  /**
+   * 🔴 El recibo armaba el número A MANO, con la misma plantilla repetida que `lib/utils`.
+   * Dos formulas para el mismo dato: al aparecer REF-, el papel que se lleva el cliente
+   * habría seguido diciendo CRD- mientras la pantalla decía otra cosa.
+   */
+  const numeroCredito = credito.numero != null
+    ? formatCreditoNumero(credito.numero, credito.refinancia_a_numero)
+    : credito.id.slice(0, 8).toUpperCase();
   pair("Crédito", `${numeroCredito} · ${credito.tipo_credito}`, colL, y);
   pair("Saldo pendiente actual", fmtMoney(credito.saldo_pendiente), colR, y);
   y -= 44;
