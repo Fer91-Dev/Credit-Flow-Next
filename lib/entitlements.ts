@@ -17,8 +17,16 @@
 export const FEATURES = {
   bureau_credito: {
     label: "Verificación en bureaus de crédito",
+    /**
+     * 🔴 Decía "Consulta externa a BCRA / Nosis / Veraz". De los tres, el único que anda es
+     * BCRA — y es GRATUITO. O sea que el plan Pro estaba cobrando por algo que cualquiera
+     * tiene gratis, y prometiendo dos servicios que todavía no se pueden usar. Nosis, Veraz
+     * y Credixa están cableados pero esperan que la financiera CONTRATE el servicio y cargue
+     * su credencial; hasta entonces devuelven un motivo claro en vez de un resultado.
+     */
     descripcion:
-      "Consulta externa a BCRA / Nosis / Veraz (situación, score, cheques, deuda) al evaluar al cliente.",
+      "Consulta la Central de Deudores del BCRA (situación, cheques rechazados, deuda declarada e historial de 24 meses) desde la ficha del cliente, y la suma a la evaluación de riesgo. "
+      + "Incluye la conexión lista para Nosis, Veraz y Credixa: se activan cargando la credencial de cada servicio, que se contrata aparte.",
     plan: "Pro",
   },
 } as const;
