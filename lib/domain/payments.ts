@@ -10,7 +10,7 @@
  * Si tras cubrir todo aún sobra dinero, se reporta como excedente (saldo a favor).
  */
 import { round2, noNegativo } from "./money";
-import { diasAtraso, interesMora, topeMoraDeCuota } from "./mora";
+import { diasAtraso, interesMora, topeMoraDeCuota, fechaTopeMora } from "./mora";
 
 /** Cómo se imputan los cargos del período respecto del interés. */
 export type ModoImputacionCargos = "integrado" | "separado";
@@ -186,6 +186,17 @@ export interface OpcionesImputacionCuotas {
    * Sin este dato, todo se comporta exactamente igual que antes.
    */
   moraCongeladaAl?: Date | null;
+  /**
+   * Tope DURO de mora: ninguna cuota devenga después de esta fecha, haya vencido antes o
+   * después. Lo usa el FALLECIMIENTO del cliente.
+   *
+   * 🔴 Es distinto de `moraCongeladaAl` a propósito. El acuerdo congela solo lo que estaba
+   * vencido cuando se firmó, porque las cuotas futuras no entraron al trato y el deudor
+   * sigue teniendo que pagarlas. Un muerto no va a pagar ninguna: cobrarle punitorios por
+   * la cuota que vence el mes que viene es cobrarle a la sucesión por un incumplimiento
+   * que era imposible de evitar.
+   */
+  moraTopeAbsoluto?: Date | null;
 }
 
 export interface ResultadoImputacionCuotas {
@@ -225,6 +236,8 @@ export function imputarPagoEnCuotas(
   // (`topeMoraDeCuota`). Antes era un tope único para todo el crédito, así que una cuota que
   // vencía DESPUÉS del acuerdo tampoco devengaba — punitorios regalados sin pactarlos.
   const congeladaAl = opciones.moraCongeladaAl ?? null;
+  // Tope duro (fallecimiento): recorta TODAS las cuotas, incluso las que vencen después.
+  const topeAbsoluto = opciones.moraTopeAbsoluto ?? null;
   // Quita de mora por campaña (Fase 7B), acotada a [0, 100].
   const factorMora = 1 - Math.min(100, Math.max(0, opciones.descuentoMoraPct ?? 0)) / 100;
 
@@ -247,7 +260,10 @@ export function imputarPagoEnCuotas(
     // `dias` son los REALES (lo que se informa); `diasMora` es hasta dónde se cobra, que
     // puede estar congelado por un acuerdo. Sin acuerdo, los dos son el mismo número.
     const dias = diasAtraso(c.fechaVencimiento, hoy);
-    const diasMora = diasAtraso(c.fechaVencimiento, topeMoraDeCuota(c.fechaVencimiento, hoy, congeladaAl));
+    const diasMora = diasAtraso(
+      c.fechaVencimiento,
+      fechaTopeMora(topeMoraDeCuota(c.fechaVencimiento, hoy, congeladaAl), topeAbsoluto),
+    );
     const moraPlena = moraActiva ? interesMora(c.cuotaTotal, diasMora, { tasaDiaria: tasaMoraDiaria, diasGracia }) : 0;
     // La quita de campaña reduce la mora devengada (lo condonado se reporta como ahorro).
     const moraDevengada = round2(moraPlena * factorMora);

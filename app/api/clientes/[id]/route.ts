@@ -6,7 +6,7 @@ import { conNumeroDeOrigen } from "@/lib/creditos-numero";
 import { registrarAuditoria } from "@/lib/audit";
 import { nombreCompleto, hoyComercial } from "@/lib/utils";
 import { normalizarCuit, validarDuplicadoCliente } from "@/lib/clientes-validacion";
-import { calcularScore, diasMoraActual, cuotaMensualFrancesa, tasaPeriodicaSegunConvencion, normalizarFrecuencia, interesMora, diasAtraso, round2, estadoCoherente, esCreditoVivo, moraDelCredito, moraDesdeCronograma, moraPendienteTotal } from "@/lib/domain";
+import { calcularScore, diasMoraActual, cuotaMensualFrancesa, tasaPeriodicaSegunConvencion, normalizarFrecuencia, interesMora, diasAtraso, round2, estadoCoherente, esCreditoVivo, moraDelCredito, moraDesdeCronograma, moraPendienteTotal, ESTADOS_CLIENTE, ESTADO_CLIENTE_LABEL, esEstadoClienteValido, normalizarEstadoCliente, type EstadoCliente } from "@/lib/domain";
 import { getConfiguracion, getRiesgoConfig } from "@/lib/config";
 import type { NextRequest } from "next/server";
 
@@ -248,7 +248,9 @@ export const PATCH = withErrorHandler(async (req: NextRequest, { params }: Route
     "telefono",
     "direccion",
     "zona",
-    "estado",
+    // 🔴 `estado` NO va acá. Estaba en la lista libre de strings, así que un vendedor podía
+    // mandar cualquier valor —incluido "fallecido"— con un PATCH común y frenar la cobranza
+    // de una cartera entera sin dejar motivo. Se maneja aparte, abajo, y solo lo mueve un admin.
     "tipo_credito",
     "cuit_cuil",
     "estado_civil",
@@ -293,6 +295,67 @@ export const PATCH = withErrorHandler(async (req: NextRequest, { params }: Route
   if ("historial_migrado" in body && role === "admin") {
     const h = body.historial_migrado;
     updateData.historial_migrado = h && typeof h === "object" ? h : null;
+  }
+
+  /**
+   * ── ESTADO DEL CLIENTE (activo / fallecido) ──
+   *
+   * Solo un ADMIN. Marcar a alguien como fallecido frena los punitorios de toda su deuda y
+   * bloquea el contacto: es una decisión de la financiera sobre plata, del mismo orden que
+   * conciliar una caja, y por eso no la toma quien gestiona todos los días.
+   *
+   * El acta de defunción se pide y se archiva EN PAPEL (decisión del usuario), así que acá
+   * el respaldo es el MOTIVO escrito más la traza de auditoría: quién lo marcó y cuándo.
+   * Sin motivo no se marca — si no, quedarían clientes frenados sin explicación.
+   *
+   * Es REVERSIBLE (volver a "activo" limpia motivo y fecha) porque el error existe: alguien
+   * homónimo, un dato mal informado. Volver atrás también queda auditado.
+   */
+  let estadoLog: { anterior: string; nuevo: string; motivo: string | null } | null = null;
+  if ("estado" in body) {
+    const nuevo = normalizarEstadoCliente(body.estado);
+    if (!esEstadoClienteValido(body.estado)) {
+      return errorResponse(`Estado inválido. Valores posibles: ${ESTADOS_CLIENTE.join(", ")}`, "INVALID_INPUT", 400);
+    }
+    const anterior = normalizarEstadoCliente(existing.estado);
+    if (nuevo !== anterior) {
+      if (role !== "admin") {
+        return errorResponse(
+          "Solo un administrador puede cambiar el estado de un cliente.",
+          "SOLO_ADMIN",
+          403,
+        );
+      }
+      const motivo = typeof body.estado_motivo === "string" ? body.estado_motivo.trim() : "";
+      if (nuevo === "fallecido") {
+        if (!motivo) {
+          return errorResponse(
+            "Indicá el motivo. El acta de defunción se archiva en papel; el sistema necesita dejar asentado quién informó el fallecimiento y cómo.",
+            "MOTIVO_REQUERIDO",
+            400,
+          );
+        }
+        // La fecha del deceso es la que frena los punitorios. Sin dato, se usa hoy: es lo
+        // más conservador para el cliente que se pueda justificar (no inventa un pasado que
+        // condonaría mora que sí corrió).
+        const f = body.estado_fecha ? new Date(body.estado_fecha) : hoyComercial();
+        if (Number.isNaN(f.getTime())) {
+          return errorResponse("La fecha del fallecimiento no es válida", "INVALID_INPUT", 400);
+        }
+        if (f.getTime() > hoyComercial().getTime()) {
+          return errorResponse("La fecha del fallecimiento no puede ser futura", "INVALID_INPUT", 400);
+        }
+        updateData.estado = "fallecido";
+        updateData.estado_motivo = motivo;
+        updateData.estado_fecha = f;
+      } else {
+        // Volver a activo: se limpia todo, para que no quede una fecha vieja congelando mora.
+        updateData.estado = nuevo;
+        updateData.estado_motivo = motivo || null;
+        updateData.estado_fecha = null;
+      }
+      estadoLog = { anterior, nuevo, motivo: motivo || null };
+    }
   }
 
   if (Object.keys(updateData).length === 0) {
@@ -393,6 +456,28 @@ export const PATCH = withErrorHandler(async (req: NextRequest, { params }: Route
         motivo: sueldoLog.motivo,
         rol: role,
         ediciones: updated.ingreso_ediciones,
+      },
+    });
+  }
+
+  // Cambio de estado: es lo que frena punitorios y bloquea el contacto, así que tiene su
+  // propia traza con quién lo hizo, desde qué estado y con qué explicación.
+  if (estadoLog) {
+    await registrarAuditoria({
+      tenantId,
+      entidad: "clientes",
+      entidadId: id,
+      accion: "actualizar",
+      descripcion:
+        `${nombreCompleto(updated)}: ${ESTADO_CLIENTE_LABEL[estadoLog.anterior as EstadoCliente] ?? estadoLog.anterior}`
+        + ` → ${ESTADO_CLIENTE_LABEL[estadoLog.nuevo as EstadoCliente] ?? estadoLog.nuevo}`
+        + (estadoLog.motivo ? ` — ${estadoLog.motivo}` : ""),
+      meta: {
+        estado_anterior: estadoLog.anterior,
+        estado_nuevo: estadoLog.nuevo,
+        motivo: estadoLog.motivo,
+        fecha_fallecimiento: updated.estado_fecha,
+        rol: role,
       },
     });
   }

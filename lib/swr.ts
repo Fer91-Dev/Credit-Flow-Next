@@ -56,7 +56,12 @@ export interface Cliente {
   telefono?: string | null;
   direccion?: string | null;
   zona?: string | null;
+  /** Estado de la PERSONA: activo | fallecido (ver lib/domain/cliente-estado.ts). */
   estado: string;
+  /** Por qué se cambió el estado (obligatorio al marcar fallecido: el acta va en papel). */
+  estado_motivo?: string | null;
+  /** Fecha del deceso — la que frena los punitorios. */
+  estado_fecha?: string | null;
   tipo_credito?: string;
   created_at: string;
   // Datos personales ampliados

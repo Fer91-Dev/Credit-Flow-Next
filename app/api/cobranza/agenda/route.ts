@@ -38,7 +38,7 @@ interface AgendaItem {
 
 export const GET = withErrorHandler(async (req: NextRequest) => {
   const { tenantId, role, vendedorId } = await requireAuth(req);
-  const { dias_sin_gestion, acuerdos } = await getCobranzaConfig(tenantId);
+  const { dias_sin_gestion, acuerdos, fallecidos } = await getCobranzaConfig(tenantId);
 
   // Los acuerdos se ponen al día ANTES de armar la cola: uno que se rompió ayer tiene que
   // volver a la agenda hoy, no cuando corra el cron de la madrugada.
@@ -56,11 +56,22 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   // `proximo_pago` vencido (filtro EN VIVO, independiente del cache `dias_mora` que no se avanza
   // día a día); así un moroso nunca cobrado aparece igual en la agenda.
   const creditos = await prisma.creditos.findMany({
-    where: { ...withTenant(tenantId), ...scopeCreditosVendedor({ role, vendedorId }), estado: { in: [...ESTADOS_VIVOS] }, proximo_pago: { lt: hoy } },
+    where: {
+      ...withTenant(tenantId),
+      ...scopeCreditosVendedor({ role, vendedorId }),
+      estado: { in: [...ESTADOS_VIVOS] },
+      proximo_pago: { lt: hoy },
+      // Un cliente fallecido no tiene gestión posible: no se le puede escribir ni llamar, y
+      // su deuda está en revisión. Dejarlo en la cola sería darle al cobrador nombres sobre
+      // los que no puede hacer nada. Parametrizable: hay financieras que gestionan con la
+      // familia. Va DENTRO de este where —y no como una clave aparte— porque un segundo
+      // `where` en el mismo objeto pisaría el filtro de tenant entero.
+      ...(fallecidos.saca_de_agenda ? { cliente: { estado: { not: "fallecido" } } } : {}),
+    },
     select: {
       id: true, numero: true, saldo_pendiente: true, proximo_pago: true,
       es_refinanciacion: true, refinancia_a: true,
-      cliente: { select: { nombre: true, apellido: true, telefono: true } },
+      cliente: { select: { nombre: true, apellido: true, telefono: true, estado: true } },
     },
   });
 

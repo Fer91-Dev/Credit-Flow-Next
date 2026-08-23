@@ -2,8 +2,8 @@ import { requireRole, scopeCreditosVendedor } from "@/lib/auth";
 import { successResponse, errorResponse, withErrorHandler, assertSameOrigin } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
-import { getComunicacionConfig } from "@/lib/config";
-import { construirMensajeCampana, linkWhatsapp } from "@/lib/domain";
+import { getComunicacionConfig, getCobranzaConfig } from "@/lib/config";
+import { construirMensajeCampana, linkWhatsapp, deudaEnRevision } from "@/lib/domain";
 import { nombreCompleto } from "@/lib/utils";
 import { enviarEmailTenant, motivoEmailNoDisponible, type EmailTenantConfig } from "@/lib/mailer-tenant";
 import { getFinanciera } from "@/lib/financiera";
@@ -32,7 +32,7 @@ export const POST = withErrorHandler(async (
         include: {
           credito: {
             include: {
-              cliente: { select: { nombre: true, apellido: true, telefono: true, email: true } },
+              cliente: { select: { nombre: true, apellido: true, telefono: true, email: true, estado: true } },
             },
           },
         },
@@ -76,12 +76,25 @@ export const POST = withErrorHandler(async (
     error?: string;
   };
   const resultados: Resultado[] = [];
+  const { fallecidos } = await getCobranzaConfig(tenantId);
 
   for (const objetivo of campana.objetivos) {
     const nombre   = nombreCompleto(objetivo.credito.cliente);
     const telefono = objetivo.credito.cliente.telefono;
     const email    = objetivo.credito.cliente.email;
     const clienteId = objetivo.credito.cliente_id ?? objetivo.credito_id;
+
+    /**
+     * 🔴 Un fallecido no entra en la campaña, aunque esté cargado como objetivo.
+     *
+     * El objetivo se congela al armar la campaña; si el cliente muere entre el armado y el
+     * envío, el mensaje saldría igual — un reclamo de plata a nombre del muerto, que lee la
+     * familia. El corte va acá, en el envío, y no al armar la lista.
+     */
+    if (fallecidos.bloquea_contacto && deudaEnRevision(objetivo.credito.cliente)) {
+      resultados.push({ cliente_id: clienteId, nombre, metodo: "manual", error: "Cliente fallecido: deuda en revisión, contacto bloqueado" });
+      continue;
+    }
 
     const mensaje = construirMensajeCampana(template, {
       nombre,

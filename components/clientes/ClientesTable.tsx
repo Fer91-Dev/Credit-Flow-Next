@@ -17,6 +17,8 @@ import { IconBadge } from "@/components/ui/IconBadge";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { ModalHeader } from "@/components/ui/form-kit";
 import { nombreCompleto, formatFecha } from "@/lib/utils";
+import { deudaEnRevision, normalizarEstadoCliente, ESTADO_CLIENTE_LABEL } from "@/lib/domain";
+import type { Role } from "@/lib/auth/roles";
 import { useConfirm } from "@/components/ui/confirm";
 import { useToast } from "@/components/ui/toast";
 
@@ -36,7 +38,7 @@ function esInactivo(c: Cliente): boolean {
  * ingresar un DNI o nombre; al elegir, se ve la ficha 360 a pantalla completa,
  * con editar/eliminar. El alta de clientes está siempre disponible.
  */
-export function ClientesTable() {
+export function ClientesTable({ role }: { role?: Role } = {}) {
   const { clientes, isLoading, mutate } = useClientes({ scored: true });
   const { mutate: globalMutate } = useSWRConfig();
   const confirm = useConfirm();
@@ -118,7 +120,14 @@ export function ClientesTable() {
     ) },
     { header: "DNI", className: "hidden md:table-cell", cell: (c) => <span className="font-mono text-muted-foreground">{c.documento ?? "—"}</span> },
     { header: "Teléfono", className: "hidden lg:table-cell", cell: (c) => <span className="text-muted-foreground">{c.telefono ?? "—"}</span> },
-    { header: "Estado", align: "center", cell: (c) => <StatusBadge label={c.estado} variant={c.estado === "activo" ? "success" : "muted"} /> },
+    // Un fallecido se marca en ROJO, no en gris: no es "inactivo", es una deuda que quedó
+    // en revisión y que nadie tiene que salir a cobrar.
+    { header: "Estado", align: "center", cell: (c) => (
+        <StatusBadge
+          label={ESTADO_CLIENTE_LABEL[normalizarEstadoCliente(c.estado)]}
+          variant={deudaEnRevision(c) ? "destructive" : "success"}
+        />
+      ) },
     { header: "Cargado", align: "right", cell: (c) => <span className="text-muted-foreground tabular-nums">{formatFecha(c.created_at)}</span> },
   ];
 
@@ -218,6 +227,7 @@ export function ClientesTable() {
                  modo lectura, no una ficha. La vista 360 vivía en el componente y la única
                  pantalla que la necesita entera era justo la que la tenía apagada. */
               variant="full"
+              role={role}
               onEditar={() => openEdit(selected.id)}
               onEliminar={() => handleDelete(selected.id, selected.nombre)}
             />

@@ -132,6 +132,26 @@ const AYUDA: Record<string, AyudaBloque> = {
       "No hay botón para darlo por cumplido: se cumple cuando la plata entra, y eso lo detecta el sistema solo.",
     ],
   },
+  fallecidos: {
+    titulo: "Clientes fallecidos",
+    texto:
+      "Cuando un cliente muere, la deuda no desaparece: pasa a la sucesión. Pero tampoco se la puede seguir " +
+      "persiguiendo como si nada. Marcarlo como fallecido deja la deuda EN REVISIÓN — congelada y visible — " +
+      "hasta que decidas si la condonás o vas por la vía legal. El sistema no da de baja nada solo.",
+    ejemplo:
+      "Ana debía $180.000,00 y falleció el 03/08. Un admin la marca como fallecida con esa fecha. " +
+      "Los punitorios se frenan ese día: si el trámite tarda cuatro meses, la deuda sigue siendo $180.000,00 " +
+      "y no $215.000,00. Nadie la llama ni le manda mensajes, y sale de la cola del cobrador. " +
+      "La deuda sigue figurando en la cartera hasta que vos la resuelvas.",
+    puntos: [
+      "Solo un administrador puede marcar el estado. Frena la cobranza de toda la deuda de esa persona.",
+      "El acta de defunción se pide y se archiva EN PAPEL: el sistema guarda el motivo escrito y quién lo registró.",
+      "La FECHA que cargás es la que frena los punitorios. Si murió hace tres meses, esa mora no corresponde.",
+      "A diferencia del acuerdo de pago, acá se congelan TODAS las cuotas, también las que vencen después: nadie las iba a pagar.",
+      "Es reversible. Si fue un error o un homónimo, volvés a marcarlo activo y la mora retoma su curso.",
+      "Todo queda en Auditoría: quién lo marcó, cuándo y con qué explicación.",
+    ],
+  },
   imputacion: {
     titulo: "Orden de imputación de pagos",
     texto: "Imputar es decidir a qué parte de la deuda se le descuenta la plata que entra. Solo importa cuando el cliente paga MENOS de lo que debe: si paga todo, el orden no cambia nada.",
@@ -404,6 +424,9 @@ export function ConfigForm() {
   /** Patch anidado de la escalera de recupero (vive dentro de cobranza_config). */
   const setRecupero = (patch: Partial<CobranzaConfig["recupero"]>) =>
     setCobranza({ recupero: { ...cobranza.recupero, ...patch } });
+  /** Patch anidado de la política de clientes fallecidos. */
+  const setFallecidos = (patch: Partial<CobranzaConfig["fallecidos"]>) =>
+    setCobranza({ fallecidos: { ...cobranza.fallecidos, ...patch } });
 
   const setCobranza = (patch: Partial<CobranzaConfig>) => {
     setForm(prev => prev ? { ...prev, cobranzaConfig: { ...defaultCobranza(), ...prev.cobranzaConfig, ...patch } } : prev);
@@ -1670,6 +1693,36 @@ export function ConfigForm() {
             </div>
           </Section>
 
+          {/* Clientes fallecidos */}
+          <Section
+            title="Clientes fallecidos"
+            desc="Qué hace el sistema con la deuda de alguien que falleció, mientras la financiera decide si la condona o va a la sucesión."
+            ayuda={AYUDA.fallecidos}
+            onSave={() => save("cobranza", { cobranzaConfig: cobranza })}
+            saving={savingKey === "cobranza"} saved={savedKey === "cobranza"} dirty={isDirty("cobranza")}
+          >
+            <div className="flex flex-col gap-3 max-w-3xl">
+              <SwitchRow
+                title="Frenar los punitorios"
+                desc="La mora deja de correr el día del fallecimiento — todas las cuotas, también las que vencen después. Nadie iba a poder pagarlas."
+                checked={cobranza.fallecidos.frena_punitorios}
+                onChange={v => setFallecidos({ frena_punitorios: v })}
+              />
+              <SwitchRow
+                title="Bloquear el contacto"
+                desc="No se le manda WhatsApp ni email, ni entra en campañas. El mensaje lo recibiría la familia, a nombre del fallecido."
+                checked={cobranza.fallecidos.bloquea_contacto}
+                onChange={v => setFallecidos({ bloquea_contacto: v })}
+              />
+              <SwitchRow
+                title="Sacarlo de la agenda del día"
+                desc="Apagalo si tu financiera igual gestiona con los herederos."
+                checked={cobranza.fallecidos.saca_de_agenda}
+                onChange={v => setFallecidos({ saca_de_agenda: v })}
+              />
+            </div>
+          </Section>
+
 
           {/* Escalera de recupero */}
           <Section
@@ -1906,6 +1959,7 @@ function defaultCobranza(): CobranzaConfig {
       exigir_acuerdo_para_refinanciar: false, dias_min_mora_refinanciar: 0,
       no_bajar_tasa_refinanciando: true,
     },
+    fallecidos: { frena_punitorios: true, bloquea_contacto: true, saca_de_agenda: true },
   };
 }
 

@@ -5,11 +5,11 @@ import { prisma } from "@/lib/prisma";
 import { conNumeroDeOrigen, numerosRefinanciados } from "@/lib/creditos-numero";
 import { sincronizarAcuerdos } from "@/lib/acuerdos";
 import { nombreCompleto, formatCreditoNumero, hoyComercial } from "@/lib/utils";
-import { imputarPagoEnCuotas, diasAtraso, round2, etiquetaCaja, cuentaDeMetodo, esCuentaValida, type CuotaParaImputar, moraDelCredito, moraDesdeCronograma, esCreditoVivo } from "@/lib/domain";
+import { imputarPagoEnCuotas, diasAtraso, round2, etiquetaCaja, cuentaDeMetodo, esCuentaValida, type CuotaParaImputar, moraDelCredito, moraDesdeCronograma, esCreditoVivo, topeMoraPorFallecimiento } from "@/lib/domain";
 import { lockCreditoTx, assertCuotasSinCambios, TX_PLATA } from "@/lib/locks";
 import { lockCuentaTx } from "@/lib/caja-fondos";
 import { siguienteNumeroComprobante } from "@/lib/comprobantes";
-import { getConfiguracion } from "@/lib/config";
+import { getConfiguracion, getCobranzaConfig } from "@/lib/config";
 import { registrarAuditoria } from "@/lib/audit";
 import type { NextRequest } from "next/server";
 
@@ -184,6 +184,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
   // CONGELADO del plan; el atraso se castiga con mora por cuota vencida.
 
   const config = await getConfiguracion(tenantId);
+  const { fallecidos: fallecidosCfg } = await getCobranzaConfig(tenantId);
   const fechaPago = body.fecha ? new Date(body.fecha) : hoyComercial();
   // P2 — Un cobro no puede fecharse en el futuro (distorsiona mora, caja y reportes).
   if (Number.isNaN(fechaPago.getTime())) {
@@ -275,6 +276,10 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     descuentoMoraPct,
     diasGracia: graciaCred,
     moraCongeladaAl: acuerdoVigente?.fecha ?? null,
+    // Cliente fallecido: la mora se frena en la fecha del deceso, para TODAS las cuotas.
+    // Va en el cobro y no solo en la pantalla, o el cronograma diría un número y la caja
+    // tomaría otro — el error de las dos fórmulas que ya mordió con los cargos y el acuerdo.
+    moraTopeAbsoluto: topeMoraPorFallecimiento(fechaPago, credito.cliente, fallecidosCfg),
   });
 
   // P1 — Sobrepago: el cobro no puede exceder la deuda total del crédito. Si la imputación

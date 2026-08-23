@@ -2,8 +2,8 @@ import { requireAuth, scopeCreditosVendedor } from "@/lib/auth";
 import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
-import { frecuenciaLabel, normalizarFrecuencia, diasAtraso, round2, interesMora, moraDelCredito, moraDesdeCronograma, topeMoraDeCuota, type FrecuenciaDef } from "@/lib/domain";
-import { getConfiguracion } from "@/lib/config";
+import { frecuenciaLabel, normalizarFrecuencia, diasAtraso, round2, interesMora, moraDelCredito, moraDesdeCronograma, topeMoraDeCuota, fechaTopeMora, topeMoraPorFallecimiento, type FrecuenciaDef } from "@/lib/domain";
+import { getConfiguracion, getCobranzaConfig } from "@/lib/config";
 import { formatComprobante } from "@/lib/comprobantes";
 import { nombreCompleto, hoyComercial } from "@/lib/utils";
 import type { NextRequest } from "next/server";
@@ -31,7 +31,8 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
       frecuencia: true,
       frecuencia_def: true,
       cronograma: true, // condiciones de mora congeladas al otorgar
-      cliente: { select: { nombre: true, apellido: true } },
+      // `estado`/`estado_fecha` del cliente: un fallecido frena los punitorios de todo el plan.
+      cliente: { select: { nombre: true, apellido: true, estado: true, estado_fecha: true } },
       cuotas: {
         orderBy: { nro: "asc" },
         include: {
@@ -86,6 +87,13 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
     select: { fecha: true },
   });
   const congeladaAl = acuerdoQueCongela?.fecha ?? null;
+  /**
+   * Y el freno por FALLECIMIENTO, que es un tope distinto: recorta todas las cuotas, no solo
+   * las que ya estaban vencidas. Tiene que estar acá y en `POST /pagos` con el mismo dato, o
+   * la pantalla le diría un importe al operador y la caja tomaría otro.
+   */
+  const { fallecidos: fallecidosCfg } = await getCobranzaConfig(tenantId);
+  const topeAbsoluto = topeMoraPorFallecimiento(hoy, credito.cliente, fallecidosCfg);
 
   const cuotas = credito.cuotas.map((c) => {
     const restante_capital = round2(Math.max(0, c.capital - c.pagado_capital));
@@ -103,7 +111,10 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
     else estado = "pendiente";
     // `dias_atraso` son los REALES (lo que se informa); la mora se devenga hasta `topeMora`,
     // que un acuerdo vigente puede haber congelado. Sin acuerdo, los dos son el mismo número.
-    const diasQueDevengan = diasAtraso(c.fecha_vencimiento, topeMoraDeCuota(c.fecha_vencimiento, hoy, congeladaAl));
+    const diasQueDevengan = diasAtraso(
+      c.fecha_vencimiento,
+      fechaTopeMora(topeMoraDeCuota(c.fecha_vencimiento, hoy, congeladaAl), topeAbsoluto),
+    );
     const moraPlena = moraCred.moraActiva
       ? interesMora(c.cuota_total, diasQueDevengan, { tasaDiaria: moraCred.tasaMoraDiaria, diasGracia: graciaCred })
       : 0;

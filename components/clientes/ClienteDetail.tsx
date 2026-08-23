@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useSWRConfig } from "swr";
 import {
-  Pencil, Trash2, CalendarClock, ChevronRight, Loader2, Mail, MessageCircle, Phone, Printer, ShieldCheck, Ban, Receipt,
+  Pencil, Trash2, CalendarClock, ChevronRight, Loader2, Mail, MessageCircle, Phone, Printer, ShieldCheck, Ban, Receipt, AlertTriangle,
 } from "lucide-react";
 import { refrescarNotificaciones, useClienteDetalle, useAccionesCobranza, useCuotas, useFinanciera, KEYS, type CreditoConFinanzas, type EstadoCuota, type CuotaPersistida } from "@/lib/swr";
 import { StatusBadge, type BadgeVariant } from "@/components/ui/StatusBadge";
@@ -19,9 +19,11 @@ import { LibreDeudaDialog } from "@/components/creditos/LibreDeudaDialog";
 import { ClienteBureauPanel } from "@/components/clientes/ClienteBureauPanel";
 import { EditarHistorialDialog } from "@/components/clientes/EditarHistorialDialog";
 import { ContactarDialog } from "@/components/clientes/ContactarDialog";
+import { EstadoClienteDialog } from "@/components/clientes/EstadoClienteDialog";
 import { abrirRecibo } from "@/lib/recibo";
 import { formatCreditoNumero, formatFecha, formatFechaHora, nombreCompleto } from "@/lib/utils";
-import { esCreditoVivo } from "@/lib/domain";
+import { esCreditoVivo, deudaEnRevision, normalizarEstadoCliente, ESTADO_CLIENTE_LABEL } from "@/lib/domain";
+import type { Role } from "@/lib/auth/roles";
 
 function n2(x: number) {
   return new Intl.NumberFormat("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(x);
@@ -160,12 +162,15 @@ export function ClienteDetail({
   variant = "full",
   onEditar,
   onEliminar,
+  role,
 }: {
   clienteId: string;
   /** "pagos" = solo créditos + plan de cuotas + historial. "cliente" = solo datos personales/laborales. */
   variant?: "full" | "pagos" | "cliente";
   onEditar?: () => void;
   onEliminar?: () => void;
+  /** Para ofrecerle a un admin cambiar el estado del cliente. La barrera real es el PATCH. */
+  role?: Role;
 }) {
 
   const { cliente, isLoading, mutate } = useClienteDetalle(clienteId);
@@ -178,6 +183,7 @@ export function ClienteDetail({
   const [anularBusy, setAnularBusy] = useState(false);
   const [editarHist, setEditarHist] = useState(false);
   const [contactar, setContactar] = useState(false);
+  const [cambiarEstado, setCambiarEstado] = useState(false);
 
   // Qué secciones se muestran según el contexto.
   const showPersonal = variant !== "pagos";   // datos personales/laborales
@@ -234,6 +240,11 @@ export function ClienteDetail({
     }
   };
 
+  // Estado de la PERSONA (no del crédito). Un fallecido tiene la deuda en revisión: no se
+  // le escribe, no devenga punitorios y no se lo persigue hasta que la financiera resuelva.
+  const fallecido = deudaEnRevision(cliente);
+  const estadoLabel = ESTADO_CLIENTE_LABEL[normalizarEstadoCliente(cliente.estado)];
+
   // Historial de promesas de pago del cliente (vigentes + cumplidas + rotas), últimas 6.
   const creditoIds = new Set(creditos.map((c) => c.id));
   const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
@@ -255,7 +266,20 @@ export function ClienteDetail({
               <div className="min-w-0">
                 <h2 className="truncate text-2xl font-bold leading-tight tracking-tight text-foreground">{nombreCompleto(cliente)}</h2>
                 <div className="mt-2 flex flex-wrap items-center gap-2.5">
-                  <StatusBadge label={cliente.estado} variant={cliente.estado === "activo" ? "success" : "muted"} />
+                  {/* El estado del cliente lo mueve un admin (dialogo). Para el resto es un
+                      badge y nada más: no es un dato que se edite al pasar. */}
+                  {role === "admin" ? (
+                    <button
+                      type="button"
+                      onClick={() => setCambiarEstado(true)}
+                      title="Cambiar el estado del cliente"
+                      className="rounded-full transition-opacity hover:opacity-80"
+                    >
+                      <StatusBadge label={estadoLabel} variant={fallecido ? "destructive" : "success"} />
+                    </button>
+                  ) : (
+                    <StatusBadge label={estadoLabel} variant={fallecido ? "destructive" : "success"} />
+                  )}
                   {/* La calificación se veía solo en el LISTADO: al entrar a la ficha
                       desaparecía justo donde se la mira en serio. */}
                   <ScoreBadge score={cliente.score} />
@@ -280,7 +304,10 @@ export function ClienteDetail({
                 <div className="flex shrink-0 items-center gap-2">
                   {/* Contactar va PRIMERO y en color: es la acción que se usa todos los días
                       desde esta pantalla, a diferencia de editar y eliminar. */}
-                  {showCreditos && (
+                  {/* A un fallecido no se le escribe: el mensaje le llegaría a la familia con
+                      un reclamo de plata. El servidor lo rechaza igual (CLIENTE_FALLECIDO);
+                      acá se saca el botón para que nadie llegue hasta el error. */}
+                  {showCreditos && !fallecido && (
                     <button
                       type="button"
                       onClick={() => setContactar(true)}
@@ -337,6 +364,25 @@ export function ClienteDetail({
 
       {/* ── Cuerpo scrolleable ── */}
       <div className="flex-1 min-h-0 overflow-y-auto px-5 py-4 space-y-5">
+
+        {/* Deuda en revisión: por qué este cliente no aparece en cobranza ni se lo contacta.
+            Va arriba de todo porque cambia cómo hay que leer los números de abajo. */}
+        {fallecido && (
+          <div className="flex gap-3 rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3">
+            <AlertTriangle className="h-4 w-4 shrink-0 text-destructive" />
+            <div className="min-w-0 space-y-1 text-xs">
+              <p className="font-semibold text-foreground">
+                Deuda en revisión — cliente fallecido
+                {cliente.estado_fecha && <span className="font-normal text-muted-foreground"> · {fmtDate(cliente.estado_fecha)}</span>}
+              </p>
+              {cliente.estado_motivo && <p className="text-muted-foreground">{cliente.estado_motivo}</p>}
+              <p className="text-muted-foreground">
+                Los punitorios están frenados y no se le puede escribir. La deuda sigue registrada:
+                condonarla o iniciar la vía legal es una decisión que se toma aparte.
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* Historial previo (cliente migrado del sistema anterior) — solo referencia */}
         {cliente.migrado && cliente.historial_migrado && (() => {
@@ -592,6 +638,13 @@ export function ClienteDetail({
       {/* Contacto individual (WhatsApp / email). Montado en la RAÍZ del componente, no dentro
           de una sección condicional: si vive en una rama que no se renderiza, no existe. */}
       <ContactarDialog clienteId={contactar ? cliente.id : null} onClose={() => setContactar(false)} />
+
+      {cambiarEstado && (
+        <EstadoClienteDialog
+          cliente={cliente}
+          onClose={(guardado) => { setCambiarEstado(false); if (guardado) mutate(); }}
+        />
+      )}
     </div>
   );
 }

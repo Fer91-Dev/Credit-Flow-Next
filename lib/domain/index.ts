@@ -20,6 +20,7 @@ export * from "./refinanciacion";
 export * from "./acuerdos";
 export * from "./cuotas";
 export * from "./credito-estado";
+export * from "./cliente-estado";
 // Documentos legales (contrato de mutuo / pagaré)
 export * from "./numero-a-letras";
 export * from "./recupero";

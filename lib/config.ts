@@ -26,6 +26,9 @@ import {
   resolverRecupero,
   RECUPERO_DEFAULT,
   type RecuperoConfig,
+  resolverFallecidos,
+  FALLECIDOS_DEFAULT,
+  type FallecidosConfig,
 } from "@/lib/domain";
 import type { Prisma } from "@prisma/client";
 
@@ -219,6 +222,12 @@ export interface CobranzaConfig {
    * igual que antes de que existiera. Ver `lib/domain/recupero.ts`.
    */
   recupero: RecuperoConfig;
+  /**
+   * Qué hace el sistema con la deuda de un cliente FALLECIDO. Va como parámetro y no fijo en
+   * el código: hay financieras que frenan todo y esperan la sucesión, y otras que siguen
+   * gestionando con los herederos. Ver `lib/domain/cliente-estado.ts`.
+   */
+  fallecidos: FallecidosConfig;
 }
 
 export const COBRANZA_DEFAULT: CobranzaConfig = {
@@ -226,6 +235,7 @@ export const COBRANZA_DEFAULT: CobranzaConfig = {
   contacto: PLANTILLAS_CONTACTO_DEFAULT,
   acuerdos: ACUERDOS_DEFAULT,
   recupero: RECUPERO_DEFAULT,
+  fallecidos: FALLECIDOS_DEFAULT,
 };
 
 /** Mezcla con defaults y acota `dias_sin_gestion` a 1..90. */
@@ -241,6 +251,7 @@ export function resolverCobranza(raw: unknown): CobranzaConfig {
     // columna nueva porque son textos de gestión del cliente, del mismo orden que el resto
     // de este bloque; `resolverPlantillasContacto` completa con los defaults del dominio.
     contacto: resolverPlantillasContacto(r.contacto),
+    fallecidos: resolverFallecidos(r.fallecidos),
   };
 }
 
