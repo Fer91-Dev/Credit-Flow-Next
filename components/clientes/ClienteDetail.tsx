@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useSWRConfig } from "swr";
 import {
-  Pencil, Trash2, CalendarClock, ChevronRight, Loader2, Mail, MessageCircle, Phone, Printer, ShieldCheck, Ban, Receipt, AlertTriangle,
+  Pencil, Trash2, CalendarClock, ChevronRight, Loader2, Mail, MessageCircle, Phone, Printer, ShieldCheck, Ban, Receipt, AlertTriangle, History,
 } from "lucide-react";
 import { refrescarNotificaciones, useClienteDetalle, useAccionesCobranza, useCuotas, useFinanciera, KEYS, type CreditoConFinanzas, type EstadoCuota, type CuotaPersistida } from "@/lib/swr";
 import { StatusBadge, type BadgeVariant } from "@/components/ui/StatusBadge";
@@ -20,6 +20,7 @@ import { ClienteBureauPanel } from "@/components/clientes/ClienteBureauPanel";
 import { EditarHistorialDialog } from "@/components/clientes/EditarHistorialDialog";
 import { ContactarDialog } from "@/components/clientes/ContactarDialog";
 import { EstadoClienteDialog } from "@/components/clientes/EstadoClienteDialog";
+import { ProntuarioPanel } from "@/components/clientes/ProntuarioPanel";
 import { abrirRecibo } from "@/lib/recibo";
 import { formatCreditoNumero, formatFecha, formatFechaHora, nombreCompleto } from "@/lib/utils";
 import { esCreditoVivo, deudaEnRevision, normalizarEstadoCliente, ESTADO_CLIENTE_LABEL, ESTADO_CLIENTE_VARIANT } from "@/lib/domain";
@@ -512,6 +513,15 @@ export function ClienteDetail({
 
         {/* Perfil crediticio (bureau) — feature premium; se auto-oculta si no está habilitada */}
         {showCreditos && <ClienteBureauPanel clienteId={clienteId} />}
+
+        {/* Prontuario: cómo LLEGÓ hasta acá, no cómo está. Va después del bureau porque es
+            la contracara interna de lo que el bureau dice desde afuera. */}
+        {showCreditos && (
+          <section className="space-y-2">
+            <SectionTitle icon={History} text="Prontuario del cliente" />
+            <ProntuarioPanel clienteId={clienteId} />
+          </section>
+        )}
 
         {/* Historial de promesas de pago (vigentes / cumplidas / rotas) */}
         {showCreditos && promesas.length > 0 && (
