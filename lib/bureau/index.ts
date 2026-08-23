@@ -45,11 +45,18 @@ export async function consultarBureau(
         return { ok: true, proveedor, senales: { ...VACIO, ...(opts.senalesManual ?? {}) } };
       case "nosis":
       case "veraz":
-        // Stub: la integración real se activa cuando el cliente aporte contrato + credenciales.
+        /**
+         * 🔴 Stub: Nosis y Veraz son servicios PAGOS y no se pueden integrar sin un contrato
+         * y credenciales del cliente. No es algo que se destrabe escribiendo código.
+         *
+         * El mensaje que salía estaba escrito para un programador —"completá el provider en
+         * lib/bureau/nosis.ts"— y se le mostraba al operador, que no tiene forma de actuar
+         * sobre eso. Ahora dice qué falta y qué hacer mientras tanto.
+         */
         return {
           ok: false,
           proveedor,
-          mensaje: `Proveedor ${proveedor} aún no integrado. Configurá credenciales y completá el provider en lib/bureau/${proveedor}.ts.`,
+          mensaje: `${proveedor === "nosis" ? "Nosis" : "Veraz"} es un servicio pago: hace falta contratarlo y cargar las credenciales. Mientras tanto podés usar BCRA, que es gratuito, o «Cargar manual».`,
           senales: VACIO,
         };
       default:
