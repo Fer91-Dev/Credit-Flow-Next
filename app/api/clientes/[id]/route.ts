@@ -2,6 +2,7 @@ import { requireAuth, requireRole } from "@/lib/auth";
 import { successResponse, errorResponse, withErrorHandler, assertSameOrigin } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
+import { conNumeroDeOrigen } from "@/lib/creditos-numero";
 import { registrarAuditoria } from "@/lib/audit";
 import { nombreCompleto, hoyComercial } from "@/lib/utils";
 import { normalizarCuit, validarDuplicadoCliente } from "@/lib/clientes-validacion";
@@ -188,7 +189,10 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
     tieneCreditos: creditosConFinanzas.length > 0,
   });
 
-  return successResponse({ ...cliente, creditos: creditosConFinanzas, estado_cuenta, sueldo_control, score, puede_anular_pago: esAdmin });
+  // REF-XXXXXX: los créditos de la ficha se nombran por el que reemplazan si son refis.
+  const creditosConOrigen = await conNumeroDeOrigen(tenantId, creditosConFinanzas);
+
+  return successResponse({ ...cliente, creditos: creditosConOrigen, estado_cuenta, sueldo_control, score, puede_anular_pago: esAdmin });
 });
 
 /**

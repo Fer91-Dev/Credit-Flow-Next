@@ -19,7 +19,7 @@ function escHtml(s: string) {
 
 /** Texto del certificado (compartido por la vista en pantalla y la impresión). */
 export function libreDeudaTexto(ld: LibreDeuda): string {
-  const nro = formatCreditoNumero(ld.credito.numero);
+  const nro = formatCreditoNumero(ld.credito.numero, ld.credito.refinancia_a_numero);
   const cancel = ld.totales.fecha_cancelacion ? formatFecha(ld.totales.fecha_cancelacion) : "—";
   return `Se certifica que ${ld.cliente.nombre}${ld.cliente.documento ? ` (DNI ${ld.cliente.documento})` : ""} ha cancelado en su totalidad el crédito ${nro}, ` +
     `otorgado el ${formatFecha(ld.credito.fecha_otorgamiento)} por un monto de $${n0(ld.credito.monto_original)} en ${ld.totales.cuotas} cuota${ld.totales.cuotas !== 1 ? "s" : ""}. ` +
@@ -31,7 +31,7 @@ export function imprimirLibreDeuda(ld: LibreDeuda) {
   const filas: [string, string][] = [
     ["Cliente", ld.cliente.nombre],
     ["DNI / Documento", ld.cliente.documento ?? "—"],
-    ["Crédito", formatCreditoNumero(ld.credito.numero)],
+    ["Crédito", formatCreditoNumero(ld.credito.numero, ld.credito.refinancia_a_numero)],
     ["Tipo", ld.credito.tipo],
     ["Monto otorgado", `$${n2(ld.credito.monto_original)}`],
     ["Cuotas", String(ld.totales.cuotas)],
@@ -42,7 +42,7 @@ export function imprimirLibreDeuda(ld: LibreDeuda) {
   const win = window.open("", "_blank", "width=720,height=900");
   if (!win) return;
   win.document.write(`<!doctype html><html lang="es"><head><meta charset="utf-8" />
-    <title>Libre deuda ${escHtml(formatCreditoNumero(ld.credito.numero))}</title>
+    <title>Libre deuda ${escHtml(formatCreditoNumero(ld.credito.numero, ld.credito.refinancia_a_numero))}</title>
     <style>
       * { box-sizing: border-box; }
       body { font-family: ui-sans-serif, system-ui, "Segoe UI", Arial, sans-serif; color: #0f172a; margin: 0; padding: 48px; }
@@ -112,7 +112,7 @@ export function LibreDeudaDialog({ creditoId, onClose }: { creditoId: string | n
                   {([
                     ["Cliente", ld.cliente.nombre],
                     ["DNI / Documento", ld.cliente.documento ?? "—"],
-                    ["Crédito", formatCreditoNumero(ld.credito.numero)],
+                    ["Crédito", formatCreditoNumero(ld.credito.numero, ld.credito.refinancia_a_numero)],
                     ["Monto otorgado", `$${n2(ld.credito.monto_original)}`],
                     ["Cuotas", String(ld.totales.cuotas)],
                     ["Total pagado", `$${n2(ld.totales.total_pagado)}`],

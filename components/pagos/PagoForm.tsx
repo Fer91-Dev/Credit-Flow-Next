@@ -34,6 +34,8 @@ function Row({ label, value, mono, strong, accent }: {
 interface Credito {
   id: string;
   numero: number | null;
+  /** Número del crédito que reemplaza, si es una refinanciación → se muestra REF-XXXXXX. */
+  refinancia_a_numero?: number | null;
   cliente_id: string;
   cliente: { nombre: string; apellido?: string | null; documento?: string | null };
   saldo_pendiente: number;
@@ -118,7 +120,7 @@ function buscarCreditos(query: string, lista: Credito[]): Credito[] {
   const qDigits = q.replace(/\D/g, "");
   return lista.filter(c => {
     if (c.numero != null) {
-      const formatted = formatCreditoNumero(c.numero).toUpperCase(); // "CRD-000001"
+      const formatted = formatCreditoNumero(c.numero, c.refinancia_a_numero).toUpperCase(); // "CRD-000001"
       if (formatted.includes(qUp) || String(c.numero) === qDigits) return true;
     }
     if (qDigits.length >= 6) {
@@ -176,7 +178,7 @@ function CreditoOption({ c, onClick, showCliente, prioritario }: {
       <div className="flex items-center gap-3 pl-2">
         <div className="min-w-0 flex-1 space-y-2">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="font-mono text-sm font-bold text-foreground">{formatCreditoNumero(c.numero)}</span>
+            <span className="font-mono text-sm font-bold text-foreground">{formatCreditoNumero(c.numero, c.refinancia_a_numero)}</span>
             <StatusBadge label={est.label} variant={est.variant} />
             {prioritario && (
               <span className="rounded-full bg-destructive/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-destructive">
@@ -212,7 +214,7 @@ function CreditoSeleccionado({ c, onCambiar }: { c: Credito; onCambiar?: () => v
         </div>
         <div className="min-w-0 flex-1 space-y-2">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="font-mono text-sm font-bold text-foreground">{formatCreditoNumero(c.numero)}</span>
+            <span className="font-mono text-sm font-bold text-foreground">{formatCreditoNumero(c.numero, c.refinancia_a_numero)}</span>
             <StatusBadge label={est.label} variant={est.variant} />
           </div>
           <p className="truncate text-xs text-muted-foreground">{nombreCompleto(c.cliente)}</p>
@@ -425,7 +427,7 @@ export function PagoForm({ creditoId, clienteId, montoSugerido, motivoSugerido, 
         </div>
 
         <div className="w-full max-w-sm space-y-3 rounded-xl border border-border bg-card p-5 text-left">
-          {selected && <Row label="Crédito" value={formatCreditoNumero(selected.numero)} mono />}
+          {selected && <Row label="Crédito" value={formatCreditoNumero(selected.numero, selected.refinancia_a_numero)} mono />}
           {selected && <Row label="Cliente" value={nombreCompleto(selected.cliente)} />}
           <div className="border-t border-border" />
           <Row label="Monto cobrado" value={`$${fmt2(monto)}`} mono strong accent="text-success" />
@@ -956,7 +958,7 @@ export function PagoForm({ creditoId, clienteId, montoSugerido, motivoSugerido, 
         </AlertDialogHeader>
 
         <div className="space-y-2.5 rounded-xl border border-border bg-card p-4">
-          {selected && <Row label="Crédito" value={formatCreditoNumero(selected.numero)} mono />}
+          {selected && <Row label="Crédito" value={formatCreditoNumero(selected.numero, selected.refinancia_a_numero)} mono />}
           {selected && <Row label="Cliente" value={nombreCompleto(selected.cliente)} />}
           <Row label="Método" value={metodo.charAt(0).toUpperCase() + metodo.slice(1)} />
           {!manual && seleccionadas.length > 0 && (

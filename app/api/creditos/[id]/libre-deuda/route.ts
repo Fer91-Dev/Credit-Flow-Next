@@ -2,6 +2,7 @@ import { requireAuth, scopeCreditosVendedor } from "@/lib/auth";
 import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
+import { conNumeroDeOrigen } from "@/lib/creditos-numero";
 import { round2 } from "@/lib/domain";
 import { nombreCompleto } from "@/lib/utils";
 import type { NextRequest } from "next/server";
@@ -25,11 +26,14 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
     select: {
       id: true, numero: true, tipo_credito: true, monto_original: true, tasa: true,
       plazo_meses: true, frecuencia: true, fecha_inicio: true, created_at: true, estado: true,
+      es_refinanciacion: true, refinancia_a: true,
       cliente: { select: { nombre: true, apellido: true, documento: true } },
     },
   });
 
   if (!credito) return errorResponse("Crédito no encontrado", "NOT_FOUND", 404);
+  // El certificado nombra el crédito como lo ve el operador: REF-XXXXXX si es una refi.
+  const [{ refinancia_a_numero: origenNum }] = await conNumeroDeOrigen(tenantId, [credito]);
   if (credito.estado !== "pagado") {
     return errorResponse("El crédito todavía no está cancelado", "NOT_CANCELLED", 409);
   }

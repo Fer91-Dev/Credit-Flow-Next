@@ -1410,6 +1410,8 @@ export interface LibreDeuda {
     plazo_meses: number;
     frecuencia: string;
     fecha_otorgamiento: string;
+    /** Número del crédito que reemplaza, si es una refinanciación → REF-XXXXXX. */
+    refinancia_a_numero?: number | null;
   };
   totales: { total_pagado: number; cuotas: number; fecha_cancelacion: string | null };
 }
