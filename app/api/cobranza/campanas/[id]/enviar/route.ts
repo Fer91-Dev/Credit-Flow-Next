@@ -5,7 +5,8 @@ import { prisma } from "@/lib/prisma";
 import { getComunicacionConfig } from "@/lib/config";
 import { construirMensajeCampana, linkWhatsapp } from "@/lib/domain";
 import { nombreCompleto } from "@/lib/utils";
-import { Resend } from "resend";
+import { enviarEmailTenant, motivoEmailNoDisponible, type EmailTenantConfig } from "@/lib/mailer-tenant";
+import { getFinanciera } from "@/lib/financiera";
 import type { NextRequest } from "next/server";
 
 /**
@@ -59,7 +60,9 @@ export const POST = withErrorHandler(async (
 
   const comm = await getComunicacionConfig(tenantId);
   const whatsappCfg = comm.whatsappConfig as WhatsappConfig | null;
-  const emailCfg    = comm.emailConfig    as EmailConfig    | null;
+  const emailCfg    = comm.emailConfig    as EmailTenantConfig | null;
+  // El asunto y el remitente llevan el nombre de la FINANCIERA, no el del sistema.
+  const marca = (await getFinanciera(tenantId))?.nombre || "CreditFlow";
 
   const template = campana.mensaje_template ?? "";
   const canal    = campana.canal;
@@ -90,8 +93,11 @@ export const POST = withErrorHandler(async (
 
     // ── EMAIL ─────────────────────────────────────────────────────────────────
     if (canal === "email") {
-      if (!emailCfg?.enabled || !emailCfg.api_key) {
-        resultados.push({ cliente_id: clienteId, nombre, metodo: "manual", error: "Email no configurado" });
+      // 🔴 Antes exigía `api_key`, o sea Resend sí o sí: una financiera con SMTP
+      // configurado y andando recibía "Email no configurado" en toda la campaña.
+      const impedimento = motivoEmailNoDisponible(emailCfg);
+      if (impedimento) {
+        resultados.push({ cliente_id: clienteId, nombre, metodo: "manual", error: impedimento });
         continue;
       }
       if (!email) {
@@ -99,10 +105,11 @@ export const POST = withErrorHandler(async (
         continue;
       }
 
-      const { ok, error: sendError } = await enviarEmailResend(emailCfg.api_key, {
+      const { ok, error: sendError } = await enviarEmailTenant(emailCfg, {
         to: email,
-        subject: `CreditFlow · ${campana.nombre}`,
+        subject: `${marca} · ${campana.nombre}`,
         html: mensajeAHtml(nombre, mensaje, objetivo.oferta_monto, objetivo.oferta_descuento),
+        marca,
       });
 
       await prisma.acciones_cobranza.create({
@@ -163,27 +170,6 @@ export const POST = withErrorHandler(async (
   return successResponse({ campana_id: id, canal, resultados });
 });
 
-// ─── Resend email ─────────────────────────────────────────────────────────────
-
-async function enviarEmailResend(
-  apiKey: string,
-  { to, subject, html }: { to: string; subject: string; html: string }
-): Promise<{ ok: boolean; error?: string }> {
-  try {
-    const resend = new Resend(apiKey);
-    const { error } = await resend.emails.send({
-      from: "CreditFlow <onboarding@resend.dev>",
-      to,
-      subject,
-      html,
-    });
-    if (error) return { ok: false, error: error.message };
-    return { ok: true };
-  } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : "Error desconocido" };
-  }
-}
-
 function mensajeAHtml(nombre: string, texto: string, monto: number, descuento: number): string {
   const fmt = (n: number) => new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", minimumFractionDigits: 0 }).format(n);
   return `
@@ -217,8 +203,4 @@ type WhatsappConfig = {
   templates?: Record<string, string>;
 };
 
-type EmailConfig = {
-  enabled: boolean;
-  api_key?: string;
-  provider?: string;
-};
+

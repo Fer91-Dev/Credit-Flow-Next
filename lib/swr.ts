@@ -88,6 +88,10 @@ export interface ClienteScore {
   categoria: "A" | "B" | "C" | "D" | "sin_historial";
   label: string;
   puntaje: number | null;
+  /** Ratio de cumplimiento 0–1 sobre las cuotas ya vencidas. */
+  cumplimiento?: number;
+  /** De dónde salió cada punto que perdió. Vacío = el cliente está impecable. */
+  detalle?: Array<{ concepto: string; puntos: number }>;
 }
 
 /** Historia clínica del cliente migrado: sus créditos previos de la planilla (solo referencia). */
@@ -131,6 +135,12 @@ export interface CreditoConFinanzas {
   frecuencia: string;
   dias_mora: number;
   estado: string;
+  /** El crédito NACIÓ de refinanciar otro (no es plata nueva). */
+  es_refinanciacion?: boolean;
+  /** Crédito origen que esta refinanciación reemplazó. */
+  refinancia_a?: string | null;
+  /** Refinanciación que reemplazó a este crédito. */
+  refinanciado_en?: string | null;
   created_at: string;
   fecha_inicio: string;
   proximo_pago?: string | null;
@@ -169,6 +179,8 @@ export interface ClienteDetalle extends Cliente {
   monto_total?: number;
   creditos: CreditoConFinanzas[];
   estado_cuenta: EstadoCuenta;
+  /** Calificación crediticia derivada, con el detalle de por qué (ver lib/domain/scoring). */
+  score?: ClienteScore;
   /** El usuario en sesión puede anular pagos (rol admin). */
   puede_anular_pago?: boolean;
 }
@@ -527,6 +539,9 @@ export interface CuotaPersistida {
   restante_capital: number;
   /** Mora devengada de ESTA cuota, calculada por el motor con las condiciones congeladas. */
   mora?: number;
+  /** Días de atraso de ESTA cuota. Es lo que explica el importe de mora de al lado; viene del
+   *  server para que use el mismo "hoy comercial" con el que se calculó esa mora. */
+  dias_atraso?: number;
   /** Lo que hay que cobrar para saldarla hoy: lo que falta de la cuota + su mora. */
   total_cobrar?: number;
   /** Recibos que imputaron a la cuota (comprobante REC + fecha/hora del pago + monto aplicado). */
@@ -739,6 +754,8 @@ export interface EmailConfig {
   pass?: string;
   api_key?: string;
   provider?: string;
+  /** Dirección del remitente. Su dominio debe estar verificado en el proveedor. */
+  from_email?: string;
 }
 
 export type PeriodoGamificacion = "mensual" | "trimestral" | "semestral";
@@ -822,6 +839,8 @@ export interface Pago {
   anulado_motivo?: string | null;
   anulado_at?: string | null;
   credito: { id: string; numero?: number | null; cliente_id: string; cliente: { nombre: string; apellido?: string | null } };
+  /** Si el cobro salió de una cuota de ACUERDO DE PAGO: cuál es, y de cuántas. */
+  acuerdo_cuota?: { numero: number; acuerdo: { _count: { cuotas: number } } } | null;
 }
 
 // ── Campañas de recuperación de cobranza (Fase 7A) ──────────────────────────
@@ -1412,6 +1431,19 @@ export interface RefinanciacionPreview {
   credito: { id: string; numero: number | null; cliente: string; tasa: number; plazo_meses: number; frecuencia: string; dias_mora: number };
   deuda: DeudaConsolidada;
   sugerido: { tasa: number; plazo_meses: number; frecuencia: string };
+  /** Cuánto puede descontar quien hace la operación (`quitaMaxima`, la regla del POST). */
+  limites?: { quita_maxima: number };
+  /**
+   * Parámetros del motor con los que el POST va a armar el plan del crédito nuevo. Viajan
+   * para que el diálogo previsualice EL MISMO cronograma con la misma función del dominio.
+   */
+  motor?: {
+    convencion_tasa: string;
+    frecuencias: unknown[];
+    cargos: unknown;
+    redondeo: unknown;
+    cronograma: Record<string, unknown>;
+  };
 }
 
 /** Preview de la deuda a consolidar al refinanciar. Key condicional. */

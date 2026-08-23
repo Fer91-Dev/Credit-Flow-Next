@@ -89,6 +89,9 @@ async function cargarRefinanciable(req: NextRequest, id: string) {
     moraActiva: moraCred.moraActiva,
     tasaMoraDiaria: moraCred.tasaMoraDiaria,
     diasGracia: graciaCred,
+    // Dia comercial argentino (mismo criterio que el resto del sistema): sin esto, entre
+    // las 21:00 y la medianoche de Argentina se consolida un dia de mora de mas.
+    hoy: hoyComercial(),
   });
 
   return { credito, config, deuda, moraHoy, tenantId, role, vendedorId, userId, nombre, email } as const;
@@ -103,7 +106,18 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
   const { id } = await params;
   const r = await cargarRefinanciable(req, id);
   if ("error" in r && r.error) return r.error;
-  const { credito, deuda, moraHoy } = r as Extract<typeof r, { credito: object }>;
+  const { credito, deuda, moraHoy, config, tenantId, role } = r as Extract<typeof r, { credito: object }>;
+
+  /**
+   * El TOPE de descuento de quien está mirando la pantalla.
+   *
+   * 🔴 El diálogo dejaba cargar cualquier quita y el límite aparecía recién al mandar el
+   * formulario, como un 403. Es el mismo dato que ya muestra `AcuerdoForm` ("Hasta $X"), y
+   * sale de la MISMA función (`quitaMaxima`) que usa el POST para rechazar — no de una
+   * cuenta paralela del cliente.
+   */
+  const cobranzaCfg = await getCobranzaConfig(tenantId);
+  const quitaMax = quitaMaxima({ ...deuda, cuotas_vencidas: 0 }, role === "admin", cobranzaCfg.acuerdos);
 
   return successResponse({
     credito: {
@@ -117,6 +131,33 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
     },
     deuda,
     sugerido: { tasa: credito.tasa, plazo_meses: credito.plazo_meses, frecuencia: credito.frecuencia },
+    limites: { quita_maxima: quitaMax },
+    /**
+     * Los parámetros con los que el POST va a armar el plan del crédito nuevo.
+     *
+     * 🔴 Viajan para que el diálogo pueda PREVISUALIZAR el cronograma con la misma función
+     * del dominio (`construirPlanAmortizacion`) y las mismas entradas. Sin esto, la pantalla
+     * pedía tasa y cuotas y no mostraba nada: el operador refinanciaba a ciegas y el cliente
+     * se enteraba del importe de su cuota nueva recién cuando el crédito ya estaba creado.
+     *
+     * Es la misma lección del preview del acuerdo, que prometía $58.215,81 de menos por
+     * calcular el plan por su cuenta: los dos lados tienen que compartir la función Y los
+     * datos, no solo la intención.
+     */
+    motor: {
+      convencion_tasa: config.convencionTasa,
+      frecuencias: config.simulador.frecuencias,
+      cargos: config.simulador.cargos,
+      redondeo: config.simulador.redondeoCuota,
+      cronograma: {
+        diaCorte: config.simulador.diaCorte,
+        diaVencimiento: config.simulador.diaVencimientoFijo,
+        diasGracia: config.simulador.diasGracia,
+        incluirDomingo: config.simulador.incluirDomingoNoHabil,
+        incluirSabado: config.simulador.incluirSabadoNoHabil,
+        feriados: config.simulador.feriados,
+      },
+    },
   });
 });
 
@@ -180,8 +221,8 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
   if (quita.condonado > tope) {
     return errorResponse(
       tope === 0
-        ? "No podés condonar nada al refinanciar. Pedile a un administrador que lo haga."
-        : `La quita máxima que podés otorgar es $${tope.toLocaleString("es-AR")} (sale de la mora y el interés, nunca del capital).`,
+        ? "No podés descontar nada al refinanciar. Pedile a un administrador que lo haga."
+        : `El descuento máximo que podés otorgar es $${tope.toLocaleString("es-AR")} (sale de la mora y el interés, nunca del capital).`,
       "QUITA_EXCEDIDA",
       403,
     );

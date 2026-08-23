@@ -25,6 +25,8 @@ export interface ReciboData {
     /** Si el pago fue anulado: el recibo sale con marca de agua "ANULADO". */
     anulado?: boolean;
     anulado_motivo?: string | null;
+    /** Cuota del acuerdo de pago que se cobro, si el cobro salio de ahi. */
+    acuerdo?: { numero: number; total: number; vencimiento?: Date | string | null } | null;
   };
   credito: {
     id: string;
@@ -165,6 +167,24 @@ export async function generarReciboPDF(data: ReciboData): Promise<Uint8Array> {
   pair("Crédito", `${numeroCredito} · ${credito.tipo_credito}`, colL, y);
   pair("Saldo pendiente actual", fmtMoney(credito.saldo_pendiente), colR, y);
   y -= 44;
+
+  /**
+   * CONCEPTO, cuando el cobro fue de una cuota de acuerdo de pago.
+   *
+   * Sin esto el cliente se lleva un papel con un importe que no coincide con ninguna cuota
+   * de su plan —porque las del acuerdo son otras—, y no tiene contra qué cotejarlo. Dice
+   * "del acuerdo" en el mismo renglón a propósito: la cuota 2 del acuerdo no es la cuota 2
+   * del crédito, y esa confusión es la que hace que el cliente crea que le cobraron mal.
+   */
+  if (pago.acuerdo) {
+    text("CONCEPTO", M, y, font, 8, MUTED);
+    text(
+      `Cuota ${pago.acuerdo.numero} de ${pago.acuerdo.total} del acuerdo de pago` +
+        (pago.acuerdo.vencimiento ? ` · vence ${fmtDate(new Date(pago.acuerdo.vencimiento))}` : ""),
+      M, y - 14, bold, 11, INK,
+    );
+    y -= 40;
+  }
 
   // ── Monto pagado (destacado) ──────────────────────────────────────────────
   page.drawRectangle({

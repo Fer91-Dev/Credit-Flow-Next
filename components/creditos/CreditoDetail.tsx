@@ -1,17 +1,19 @@
 ﻿"use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useSWRConfig } from "swr";
-import { CalendarDays, Wallet, Info, ArrowUpRight, Receipt, Loader2, Printer, RefreshCw, ArrowRight, ShieldCheck, Ban } from "lucide-react";
+import { CalendarDays, Wallet, Info, ArrowUpRight, Receipt, Loader2, Printer, RefreshCw, ArrowRight, ShieldCheck, Ban, Trash2 } from "lucide-react";
 import { refrescarNotificaciones, useAmortizacion, useCuotas, usePagosByCredito, useCreditos, KEYS, type Credito, type EstadoCuota, type Pago, type CuotaPersistida, useFinanciera } from "@/lib/swr";
 import { type Role } from "@/lib/auth/roles";
 import { abrirRecibo } from "@/lib/recibo";
 import { imprimirPlanPagos } from "@/lib/plan-print";
 import { PagoForm } from "@/components/pagos/PagoForm";
+import { LibreDeudaDialog } from "./LibreDeudaDialog";
 import { StatusBadge, type BadgeVariant } from "@/components/ui/StatusBadge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field, Textarea } from "@/components/ui/field";
 import { useToast } from "@/components/ui/toast";
+import { useConfirm } from "@/components/ui/confirm";
 import { formatCreditoNumero, formatFecha, nombreCompleto } from "@/lib/utils";
 import { Stat } from "@/components/ui/Stat";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -27,8 +29,23 @@ const fmtDate = (s: string) => formatFecha(s);
 /** "cuota semanal" → "Cuota semanal". Las etiquetas de frecuencia vienen en minúscula. */
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
-function estadoBadge(estado: string): { label: string; variant: "primary" | "success" | "muted" | "warning" } {
+/**
+ * Estado del crédito COMO SE LEE, no como se guarda.
+ *
+ * 🔴 Un crédito con cuotas vencidas decía "Activo" a secas: el mismo badge, del mismo color,
+ * que uno que viene pagando en fecha. El atraso vivía aparte, en otra columna o en otra
+ * tarjeta, y quien miraba la fila tenía que cruzar dos datos para saber si el cliente debe.
+ * "Activo" y "Activo atrasado" son dos situaciones distintas y tienen que verse distinto.
+ *
+ * El estado guardado no cambia (`activo` sigue siendo `activo`): esto es presentación. La
+ * mora entra por parámetro porque se computa EN VIVO, nunca desde el cache.
+ */
+function estadoBadge(estado: string, diasMora = 0): { label: string; variant: "primary" | "success" | "muted" | "warning" | "destructive" } {
+  if (esCreditoVivo(estado) && diasMora > 0) {
+    return { label: "Activo atrasado", variant: diasMora > 30 ? "destructive" : "warning" };
+  }
   if (estado === "activo") return { label: "Activo", variant: "primary" };
+  if (estado === "vencido") return { label: "Activo", variant: "primary" };
   if (estado === "pagado") return { label: "Pagado", variant: "success" };
   if (estado === "refinanciado") return { label: "Refinanciado", variant: "warning" };
   return { label: estado, variant: "muted" };
@@ -47,12 +64,30 @@ const metodoLabel: Record<string, string> = {
   cheque: "Cheque",
 };
 
+/** Botón secundario de la barra de acciones (todos iguales; el color lo pone el hover). */
+const BTN_ACCION =
+  "inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-medium " +
+  "text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-40";
+
 /**
- * Detalle de un crédito ya otorgado. Solo lectura.
- * Reúne tres fuentes existentes: el crédito (de la lista), su plan de
- * amortización (/amortizacion) y sus pagos imputados (/pagos?credito_id=).
+ * Detalle de un crédito ya otorgado, y el ÚNICO lugar donde se opera sobre él.
+ *
+ * Reúne tres fuentes existentes: el crédito (de la lista), su plan de amortización
+ * (/amortizacion) y sus pagos imputados (/pagos?credito_id=).
+ *
+ * Las acciones (editar / anular / eliminar / libre deuda) vivían apretadas como íconos sin
+ * texto en la fila de la tabla: había que pasar el mouse por cada uno para saber cuál era, y
+ * se disparaban desde una fila que no muestra ni el saldo real ni los pagos. Ahora se deciden
+ * acá, con el nombre escrito y al lado de los datos que las justifican.
  */
-export function CreditoDetail({ credito, role, onRefinanciar }: { credito: Credito; role?: Role; onRefinanciar?: (c: Credito) => void }) {
+export function CreditoDetail({ credito, role, onRefinanciar, onCerrar }: {
+  credito: Credito;
+  role?: Role;
+  onRefinanciar?: (c: Credito) => void;
+  /** Cierra el modal: lo llama tras anular o eliminar, cuando el crédito que se está
+   *  mostrando dejó de existir o cambió de estado y esta copia quedó vieja. */
+  onCerrar?: () => void;
+}) {
   // Refinanciable = crédito activo y en mora (misma regla que el server exige para reestructurar).
   const refinanciable = esCreditoVivo(credito.estado) && credito.dias_mora > 0;
   const { amortizacion } = useAmortizacion(credito.id);
@@ -78,6 +113,14 @@ export function CreditoDetail({ credito, role, onRefinanciar }: { credito: Credi
     (a, q) => a + Math.max(0, (q.iva + q.seguro + q.gastos) - (q.pagado_cargos ?? 0)), 0);
   /** La primera cuota sin saldar: es la que el operador va a cobrar. */
   const proximaCuota = cuotas.find((q) => q.estado !== "pagada") ?? null;
+  /** Mora devengada de todo el plan (pie de la columna Mora). */
+  const moraTotalPlan = cuotas.reduce((s, q) => s + (q.mora ?? 0), 0);
+  /**
+   * Lo que el cliente debe HOY por todo el crédito: lo que resta de cada cuota más su mora.
+   * Una sola suma de `total_cobrar`, que es lo mismo que muestra la columna "A cobrar" —
+   * así el pie de la tabla, la tarjeta de arriba y los botones verdes no pueden discrepar.
+   */
+  const deudaTotal = Math.round(cuotas.reduce((s, q) => s + (q.total_cobrar ?? q.cuota_total), 0) * 100) / 100;
   const unidadCuota = amortizacion?.parametros.frecuencia_label.cuotaSingular ?? "cuota";
   const moraHoy = credito.dias_mora > 0 ? (credito.interes_mora ?? 0) : 0;
   const aCobrarHoy = Math.round((vencidoImpago + moraHoy) * 100) / 100;
@@ -90,6 +133,7 @@ export function CreditoDetail({ credito, role, onRefinanciar }: { credito: Credi
 
   const { mutate: globalMutate } = useSWRConfig();
   const toast = useToast();
+  const confirm = useConfirm();
   const [reciboBusy, setReciboBusy] = useState<string | null>(null);
   const [pagoOpen, setPagoOpen] = useState(false);
   /** Cuota que se está cobrando desde el cronograma (null = cobro libre desde el botón de arriba). */
@@ -97,6 +141,28 @@ export function CreditoDetail({ credito, role, onRefinanciar }: { credito: Credi
   const [anularPago, setAnularPago] = useState<Pago | null>(null);
   const [anularMotivo, setAnularMotivo] = useState("");
   const [anularBusy, setAnularBusy] = useState(false);
+  // Acciones sobre el CRÉDITO (distintas de las de un pago suelto).
+  const [libreDeudaOpen, setLibreDeudaOpen] = useState(false);
+  const [anularCreditoOpen, setAnularCreditoOpen] = useState(false);
+  const [anularCreditoMotivo, setAnularCreditoMotivo] = useState("");
+  const [accionPagos, setAccionPagos] = useState<"devolver" | "conservar">("devolver");
+  const [anularCreditoBusy, setAnularCreditoBusy] = useState(false);
+  const [eliminarBusy, setEliminarBusy] = useState(false);
+
+  /**
+   * Ir al plan de cuotas desde la tarjeta de arriba.
+   *
+   * El plan está en la misma pantalla pero abajo de los pagos: en un crédito con historial
+   * hay que scrollear a buscarlo. La tarjeta que dice qué cuota toca ahora lleva hasta ahí y
+   * deja la fila resaltada unos segundos, para no perderla entre doce renglones iguales.
+   */
+  const planRef = useRef<HTMLElement>(null);
+  const [resaltarProxima, setResaltarProxima] = useState(false);
+  const irAlPlan = () => {
+    planRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    setResaltarProxima(true);
+    window.setTimeout(() => setResaltarProxima(false), 2600);
+  };
 
   // Revalida cuotas/pagos/crédito + cachés globales tras cobrar o anular un pago.
   const revalidar = () => {
@@ -131,6 +197,59 @@ export function CreditoDetail({ credito, role, onRefinanciar }: { credito: Credi
     }
   };
 
+  /**
+   * Anula el CRÉDITO: lo deja sin efecto conservando el registro, y cuadra la caja
+   * (reversa del desembolso + devolución o conservación de lo cobrado).
+   */
+  const handleAnularCredito = async () => {
+    setAnularCreditoBusy(true);
+    try {
+      const res = await fetch(`/api/creditos/${credito.id}/anular`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ motivo: anularCreditoMotivo.trim(), accion_pagos: accionPagos }),
+      });
+      const json = await res.json();
+      if (!json.ok) { toast.error(json.error || "No se pudo anular el crédito"); return; }
+      toast.success(`Crédito ${formatCreditoNumero(credito.numero)} anulado`);
+      refrescarNotificaciones(); // movió caja: que la campanita avise ya
+      revalidar();
+      globalMutate(KEYS.vendedores); // las stats del vendedor excluyen anulados
+      setAnularCreditoOpen(false); setAnularCreditoMotivo("");
+      // La copia que muestra este modal quedó vieja (estado, saldo, caja): se cierra.
+      onCerrar?.();
+    } catch {
+      toast.error("No se pudo anular el crédito");
+    } finally {
+      setAnularCreditoBusy(false);
+    }
+  };
+
+  /** Borrado definitivo. El server lo rechaza si el crédito tiene pagos. */
+  const handleEliminarCredito = async () => {
+    const ok = await confirm({
+      title: `¿Eliminar crédito ${formatCreditoNumero(credito.numero)}?`,
+      description: `Se eliminará definitivamente el crédito de ${nombreCompleto(credito.cliente)} por $${n2(credito.monto_original)}, junto con su plan de cuotas. Esta acción no se puede deshacer.`,
+      confirmLabel: "Eliminar definitivamente",
+      tone: "danger",
+    });
+    if (!ok) return;
+    setEliminarBusy(true);
+    try {
+      const res = await fetch(`/api/creditos/${credito.id}`, { method: "DELETE" });
+      const json = await res.json();
+      if (!json.ok) { toast.error(json.error || "No se pudo eliminar el crédito"); return; }
+      toast.success(`Crédito ${formatCreditoNumero(credito.numero)} eliminado`);
+      revalidar();
+      globalMutate(KEYS.vendedores);
+      onCerrar?.();
+    } catch {
+      toast.error("No se pudo eliminar el crédito");
+    } finally {
+      setEliminarBusy(false);
+    }
+  };
+
   const handleRecibo = async (pagoId: string) => {
     setReciboBusy(pagoId);
     try { await abrirRecibo(pagoId); } catch { /* error silencioso en el detalle */ }
@@ -158,16 +277,40 @@ export function CreditoDetail({ credito, role, onRefinanciar }: { credito: Credi
   /** Abre la terminal de cobro con el importe de ESA cuota ya cargado. */
   const cobrarCuota = (q: CuotaPersistida) => { setCuotaACobrar(q); setPagoOpen(true); };
 
-  const est = estadoBadge(credito.estado);
+  const est = estadoBadge(credito.estado, credito.dias_mora);
   const totalCobrado = pagos.filter(p => !p.anulado).reduce((s, p) => s + p.monto, 0);
   const pagosVivos = pagos.filter(p => !p.anulado).length;
   const pagosAnulados = pagos.length - pagosVivos;
   const hayCargos = pagos.some(p => p.aplicado_cargos > 0);
+  /**
+   * Editar / anular / eliminar son admin en el server (`requireRole(["admin"])` en el PATCH,
+   * el DELETE y /anular). Mostrárselas a un vendedor era ofrecerle botones que terminan
+   * siempre en 403.
+   */
   const puedeAnular = role === "admin";
+  const esAdmin = role === "admin";
+  /** El libre deuda solo existe si el crédito está cancelado (el endpoint lo exige igual). */
+  const cancelado = credito.estado === "pagado";
+  /**
+   * Eliminar es para el ERROR DE CARGA, no para hacer desaparecer a un moroso: borrar un
+   * crédito con cuotas vencidas impagas le limpia el historial al cliente y su score vuelve a
+   * "sin historial". Mismo criterio que el server (que es la barrera real).
+   *
+   * Se espera a que carguen las cuotas: con la lista vacía, `cuotasVencidas` es 0 y el botón
+   * aparecería un instante antes de esconderse.
+   */
+  const puedeEliminar = !credito.tiene_pagos && !loadingCuotas && cuotasVencidas === 0 && credito.dias_mora === 0;
 
-  // Reimprime el mismo PDF "Plan de pagos" (vista cliente) que se ve al otorgar.
-  // Reusa el plan de amortización ya cargado en el detalle.
-  const imprimirPlan = () => {
+  /**
+   * Reimprime el PDF "Plan de pagos", en cualquiera de sus dos vistas.
+   *
+   * La vista OPERADOR se agregó acá porque no había forma de sacarla desde un crédito ya
+   * otorgado: el único lugar que la ofrecía era el formulario de edición, que arma el plan
+   * simulando **desde hoy**. Imprimir de ahí un crédito viejo entregaba un papel con
+   * vencimientos corridos meses (probado con CRD-000069: 10/09 en vez de 10/06). Las dos
+   * vistas salen del mismo `/amortizacion`, que usa la `fecha_inicio` real del crédito.
+   */
+  const imprimirPlan = (vista: "cliente" | "operador") => {
     const a = amortizacion;
     if (!a) return;
     imprimirPlanPagos({
@@ -199,7 +342,7 @@ export function CreditoDetail({ credito, role, onRefinanciar }: { credito: Credi
       // Silvio una marca que no es la suya.
       financiera: financiera ? { nombre: financiera.nombre, logo_url: financiera.logo_url } : undefined,
       cft: a.parametros.cft_anual,
-    }, "cliente");
+    }, vista);
   };
 
   return (
@@ -293,17 +436,50 @@ export function CreditoDetail({ credito, role, onRefinanciar }: { credito: Credi
               de cobro $73.441,71 para la misma cuota: 29 centavos de diferencia que se leen
               como dos importes distintos. Un peso redondeado en una pantalla de plata no es
               un detalle de diseño, es un número que no coincide con el que se cobra. */}
-          <Stat icon="money-bag" label="Saldo pendiente" accent={credito.saldo_pendiente > 0 ? "warning" : "success"}
-            value={`$${n2(credito.saldo_pendiente)}`} />
+          {/*
+            🔴 DEUDA TOTAL, no "saldo pendiente".
+​
+            `creditos.saldo_pendiente` es solo el CAPITAL que falta amortizar. Mientras el
+            crédito no cobró un peso vale exactamente lo mismo que el capital otorgado, así
+            que la tarjeta repetía el número de arriba y no informaba nada: en CRD-000068
+            decía "$350.000,00" al lado de "Capital otorgado $350.000,00", cuando Bruno debe
+            $392.252,19.
+​
+            Lo que se muestra ahora es lo que el cliente debe: todo lo que resta del plan más
+            la mora devengada. Sale de `total_cobrar` cuota por cuota — la MISMA fuente que la
+            columna "A cobrar" y su total, así que los tres números de la pantalla cierran
+            entre sí. El capital queda abajo, que es donde corresponde: es un componente de la
+            deuda, no la deuda.
+          */}
+          <Stat icon="money-bag" label="Deuda total" accent={deudaTotal > 0 ? "warning" : "success"}
+            value={`$${n2(deudaTotal)}`}
+            sub={deudaTotal > 0 ? `capital $${n2(credito.saldo_pendiente)}${moraTotalPlan > 0 ? ` · mora $${n2(moraTotalPlan)}` : ""}` : undefined} />
           {/* CUÁL y CUÁNTO, no "la cuota" en abstracto: el operador necesita saber qué le
               toca cobrar ahora. Antes mostraba el importe genérico del plan, que no dice
               cuál está pendiente ni cuándo vence. */}
+          {/*
+            La cuota que toca, CON su mora y clickeable.
+​
+            Mostraba el importe pactado ($128.523,00) mientras el botón de esa misma cuota
+            decía $133.792,44: dos números para lo mismo, y el que aparece más arriba era el
+            que NO se cobra. Ahora muestra lo que hay que cobrar y desglosa la mora abajo.
+​
+            El clic baja al plan de cuotas y deja la fila marcada — pedido del usuario: quería
+            llegar al detalle de las cuotas desde acá sin tener que buscar la tabla.
+          */}
           <Stat
             icon="chart-increasing"
             label={proximaCuota ? `${cap(unidadCuota)} ${proximaCuota.nro} de ${cuotas.length}` : cap(unidadCuota)}
             accent="primary"
-            value={proximaCuota ? `$${n2(proximaCuota.cuota_total)}` : "—"}
-            sub={proximaCuota ? `vence ${fmtDate(proximaCuota.fecha_vencimiento)}` : "sin cuotas pendientes"}
+            value={proximaCuota ? `$${n2(proximaCuota.total_cobrar ?? proximaCuota.cuota_total)}` : "—"}
+            sub={
+              proximaCuota
+                ? `vence ${fmtDate(proximaCuota.fecha_vencimiento)}` +
+                  ((proximaCuota.mora ?? 0) > 0 ? ` · incluye $${n2(proximaCuota.mora ?? 0)} de mora` : "")
+                : "sin cuotas pendientes"
+            }
+            onClick={proximaCuota ? irAlPlan : undefined}
+            title={proximaCuota ? "Ver el plan de cuotas" : undefined}
           />
           {/* El conteo excluye los anulados: decía "1 pago" con "$0 cobrado" al lado. */}
           <Stat icon="chart-increasing" label="Total cobrado" accent="success"
@@ -313,9 +489,12 @@ export function CreditoDetail({ credito, role, onRefinanciar }: { credito: Credi
             icon="warning"
             label={credito.dias_mora > 0 ? "En mora" : "Próximo pago"}
             accent={credito.dias_mora > 30 ? "destructive" : credito.dias_mora > 0 ? "warning" : "muted"}
+            // "41 días", no "41d": el usuario pidió la palabra entera — la abreviatura
+            // obliga a traducirla mentalmente cada vez, y esta tarjeta es de las que se
+            // miran de reojo.
             value={
               credito.dias_mora > 0
-                ? `${credito.dias_mora}d`
+                ? `${credito.dias_mora} ${credito.dias_mora === 1 ? "día" : "días"}`
                 : credito.proximo_pago ? fmtDate(credito.proximo_pago) : "—"
             }
             sub={credito.dias_mora > 0 && credito.interes_mora ? `mora $${n2(credito.interes_mora)}` : undefined}
@@ -407,9 +586,15 @@ export function CreditoDetail({ credito, role, onRefinanciar }: { credito: Credi
 
         {/* Pagos registrados */}
         <section className="space-y-2">
+          {/* El N° al lado del título: la ficha del cliente lista TODOS sus pagos, así que
+              acá hay que poder ver de un vistazo que estos son los de ESTE crédito. Va el
+              número, no una frase que lo explique. */}
           <div className="flex items-center gap-2">
             <ArrowUpRight className="h-4 w-4 text-success" />
             <h3 className="text-sm font-semibold text-foreground">Pagos registrados</h3>
+            <span className="font-mono text-[11px] text-muted-foreground">
+              {formatCreditoNumero(credito.numero)}
+            </span>
           </div>
           {loadingPagos ? (
             <Skeleton className="h-24 rounded-xl" />
@@ -435,7 +620,17 @@ export function CreditoDetail({ credito, role, onRefinanciar }: { credito: Credi
                 <tbody>
                   {pagos.map((p, idx) => (
                     <tr key={p.id} className={`${idx % 2 === 1 ? "bg-muted/5" : ""} ${p.anulado ? "opacity-50" : ""}`}>
-                      <td className="px-3 py-2 text-muted-foreground tabular-nums border-b border-border/70">{fmtDate(p.fecha)}</td>
+                      {/* Un cobro de acuerdo se marca: su importe no coincide con ninguna
+                          cuota del crédito, así que sin la etiqueta parece un pago mal
+                          cargado. Y el número es el DEL ACUERDO, no el del crédito. */}
+                      <td className="px-3 py-2 text-muted-foreground tabular-nums border-b border-border/70">
+                        {fmtDate(p.fecha)}
+                        {p.acuerdo_cuota && (
+                          <span className="ml-1.5 inline-flex items-center rounded-full bg-primary/10 px-1.5 py-0.5 align-middle text-[9px] font-semibold uppercase tracking-wide text-primary">
+                            Acuerdo {p.acuerdo_cuota.numero}/{p.acuerdo_cuota.acuerdo._count.cuotas}
+                          </span>
+                        )}
+                      </td>
                       <td className="px-3 py-2 text-right font-mono font-semibold border-b border-border/70">
                         {p.anulado
                           ? <span className="inline-flex items-center gap-1.5"><StatusBadge label="Anulado" variant="destructive" /><span className="text-muted-foreground line-through">${n2(p.monto)}</span></span>
@@ -488,6 +683,27 @@ export function CreditoDetail({ credito, role, onRefinanciar }: { credito: Credi
             </div>
           )}
 
+          {/* Libre deuda — pegado a los recibos porque es el cierre de la misma historia: el
+              último comprobante de la lista es el que canceló el crédito, y el certificado es
+              el papel que lo dice. Aparece solo con el crédito cancelado (el endpoint lo exige
+              igual: con saldo devuelve error). */}
+          {cancelado && (
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-success/30 bg-success/[0.06] px-4 py-3">
+              <div className="min-w-0">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-success">Crédito cancelado</p>
+                <p className="font-mono text-xs tabular-nums text-muted-foreground">
+                  {pagosVivos} pago{pagosVivos !== 1 ? "s" : ""} · ${n2(totalCobrado)}
+                </p>
+              </div>
+              <button
+                onClick={() => setLibreDeudaOpen(true)}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-success/40 bg-success/10 px-3 py-1.5 text-xs font-semibold text-success transition-colors hover:bg-success/20"
+              >
+                <ShieldCheck className="h-3.5 w-3.5" /> Libre deuda
+              </button>
+            </div>
+          )}
+
           {/* Lo que hay que cobrarle HOY, discriminado. El plan de arriba dice lo pactado;
               esto dice cuánto pedirle al que está en el mostrador y de qué se compone. */}
           {aCobrarHoy > 0 && (
@@ -531,7 +747,7 @@ export function CreditoDetail({ credito, role, onRefinanciar }: { credito: Credi
         </section>
 
         {/* Plan de cuotas (cronograma persistido con estado real) */}
-        <section className="space-y-2">
+        <section className="space-y-2" ref={planRef}>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <CalendarDays className="h-4 w-4 text-muted-foreground" />
@@ -544,14 +760,27 @@ export function CreditoDetail({ credito, role, onRefinanciar }: { credito: Credi
                   {resumen.vencidas > 0 && <span className="text-destructive"> · {resumen.vencidas} vencida{resumen.vencidas !== 1 ? "s" : ""}</span>}
                 </span>
               )}
-              <button
-                onClick={imprimirPlan}
-                disabled={!amortizacion}
-                title="Reimprimir el plan de cuotas (PDF)"
-                className="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-40"
-              >
-                <Printer className="h-3.5 w-3.5" /> Imprimir plan
-              </button>
+              {/* Las dos vistas del plan, a un clic. La de operador estaba escondida en el
+                  formulario de edición, que la imprimía con fechas recalculadas desde hoy. */}
+              <div className="inline-flex items-center gap-1">
+                <Printer className="h-3.5 w-3.5 text-muted-foreground" />
+                <button
+                  onClick={() => imprimirPlan("cliente")}
+                  disabled={!amortizacion}
+                  title="Plan de cuotas para entregarle al cliente (PDF)"
+                  className="rounded-lg border border-border px-2.5 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-40"
+                >
+                  Cliente
+                </button>
+                <button
+                  onClick={() => imprimirPlan("operador")}
+                  disabled={!amortizacion}
+                  title="Cronograma completo con interés, capital, cargos y saldo (PDF)"
+                  className="rounded-lg border border-border px-2.5 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-40"
+                >
+                  Operador
+                </button>
+              </div>
               {/* SECUNDARIO a propósito. La acción principal pasaron a ser los botones de
                   cada cuota, que son el 90% de los cobros; este queda para lo que ellos no
                   cubren: varias cuotas juntas o un importe que no coincide con ninguna.
@@ -575,42 +804,86 @@ export function CreditoDetail({ credito, role, onRefinanciar }: { credito: Credi
               <Info className="h-3.5 w-3.5" /> Sin cronograma persistido para este crédito.
             </p>
           ) : (
+            /*
+              Lectura de izquierda a derecha, como una cuenta:
+                  Cuota  =  Interés + Capital        +  Mora   →   A cobrar
+                (pactada)   (de qué se compone)      (recargo)     (lo que se pide)
+
+              Antes cada encabezado tenía su propio color (blanco / naranja / azul) y los
+              importes también, así que la tabla era un arcoíris donde todo pesaba lo mismo.
+              Ahora el color dice algo: la CUOTA en blanco porque es la referencia, su
+              desglose en gris porque es secundario, y la MORA en rojo porque es el único
+              número que no estaba pactado. Los encabezados, todos grises (Design Contract §4).
+            */
             <div className="rounded-xl border border-border overflow-x-auto">
               <table className="w-full text-xs border-separate border-spacing-0">
                 <thead>
                   <tr className="bg-muted/30">
-                    <th className="px-3 py-2.5 text-left  font-semibold text-muted-foreground border-b border-border w-9">#</th>
-                    <th className="px-3 py-2.5 text-left  font-semibold text-muted-foreground border-b border-border">Vencimiento</th>
-                    <th className="px-3 py-2.5 text-right font-semibold text-foreground border-b border-border">Cuota</th>
-                    <th className="px-3 py-2.5 text-right font-semibold text-warning border-b border-border hidden sm:table-cell">Interés</th>
-                    <th className="px-3 py-2.5 text-right font-semibold text-primary border-b border-border">Capital</th>
-                    <th className="px-3 py-2.5 text-left  font-semibold text-muted-foreground border-b border-border">Estado</th>
-                    <th className="px-3 py-2.5 text-right font-semibold text-muted-foreground border-b border-border pr-4">Cobrar</th>
+                    {[
+                      { t: "#", a: "text-left", w: "w-9" },
+                      { t: "Vencimiento", a: "text-left" },
+                      { t: "Cuota", a: "text-right" },
+                      { t: "Interés", a: "text-right", w: "hidden sm:table-cell" },
+                      { t: "Capital", a: "text-right", w: "hidden sm:table-cell" },
+                      { t: "Mora", a: "text-right" },
+                      { t: "Estado", a: "text-left" },
+                      { t: "A cobrar", a: "text-right pr-4" },
+                    ].map((h) => (
+                      <th key={h.t} className={`px-3 py-2.5 ${h.a} text-[10px] font-semibold uppercase tracking-wide text-muted-foreground border-b border-border ${h.w ?? ""}`}>
+                        {h.t}
+                      </th>
+                    ))}
                   </tr>
                 </thead>
                 <tbody>
                   {cuotas.map((q, idx) => {
                     const b = CUOTA_BADGE[q.estado];
+                    const mora = q.mora ?? 0;
+                    // La que toca cobrar. Se marca siempre (en un plan de 12 renglones iguales
+                    // no había nada que la distinguiera) y con más fuerza durante unos segundos
+                    // cuando se llega desde la tarjeta de arriba.
+                    const esProxima = proximaCuota?.nro === q.nro;
                     return (
-                      <tr key={q.nro} className={idx % 2 === 1 ? "bg-muted/5" : ""}>
-                        <td className="px-3 py-2 font-mono text-muted-foreground/50 tabular-nums border-b border-border/70">{q.nro}</td>
-                        <td className="px-3 py-2 text-muted-foreground tabular-nums border-b border-border/70">{fmtDate(q.fecha_vencimiento)}</td>
-                        <td className="px-3 py-2 text-right font-mono text-foreground tabular-nums border-b border-border/70">${n2(q.cuota_total)}</td>
-                        <td className="px-3 py-2 text-right font-mono text-warning tabular-nums border-b border-border/70 hidden sm:table-cell">${n2(q.interes)}</td>
-                        <td className="px-3 py-2 text-right font-mono text-primary tabular-nums border-b border-border/70">${n2(q.capital)}</td>
-                        <td className="px-3 py-2 border-b border-border/70"><StatusBadge label={b.label} variant={b.variant} /></td>
-                        {/* Cobrar ESTA cuota, con su importe final a la vista. Antes había que
-                            abrir el cobro, buscar el crédito y tildar la cuota: cuatro pasos
-                            para lo que se hace veinte veces por día. */}
-                        <td className="px-3 py-2 pr-4 text-right border-b border-border/70">
+                      <tr
+                        key={q.nro}
+                        className={`${idx % 2 === 1 ? "bg-muted/5" : ""} ${q.estado === "pagada" ? "text-muted-foreground/60" : ""} ${
+                          esProxima ? "bg-primary/[0.07]" : ""
+                        } ${esProxima && resaltarProxima ? "ring-1 ring-inset ring-primary/50" : ""} transition-colors`}
+                      >
+                        <td className="px-3 py-2.5 font-mono text-muted-foreground/50 tabular-nums border-b border-border/70">{q.nro}</td>
+                        <td className="px-3 py-2.5 text-muted-foreground tabular-nums border-b border-border/70">{fmtDate(q.fecha_vencimiento)}</td>
+                        <td className="px-3 py-2.5 text-right font-mono font-medium text-foreground tabular-nums border-b border-border/70">${n2(q.cuota_total)}</td>
+                        <td className="px-3 py-2.5 text-right font-mono text-muted-foreground tabular-nums border-b border-border/70 hidden sm:table-cell">${n2(q.interes)}</td>
+                        <td className="px-3 py-2.5 text-right font-mono text-muted-foreground tabular-nums border-b border-border/70 hidden sm:table-cell">${n2(q.capital)}</td>
+                        {/* La mora, discriminada. Con los días al lado: son los que la generan,
+                            así que el importe se puede verificar sin salir de la fila. */}
+                        <td className="px-3 py-2.5 text-right font-mono tabular-nums border-b border-border/70">
+                          {mora > 0 ? (
+                            <span className="text-destructive">
+                              ${n2(mora)}
+                              {(q.dias_atraso ?? 0) > 0 && (
+                                <span className="ml-1 font-sans text-[10px] font-normal text-destructive/60">
+                                  {q.dias_atraso} {q.dias_atraso === 1 ? "día" : "días"}
+                                </span>
+                              )}
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground/20">—</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2.5 border-b border-border/70"><StatusBadge label={b.label} variant={b.variant} /></td>
+                        {/* Cobrar ESTA cuota. El botón dice el TOTAL a cobrar —cuota + mora—,
+                            sin sufijos: el "+mora" que llevaba antes se leía como si al
+                            importe todavía hubiera que sumarle algo. La mora ya está
+                            discriminada en su columna. */}
+                        <td className="px-3 py-2.5 pr-4 text-right border-b border-border/70">
                           {q.estado === "pagada" || !puedeCobrar ? null : (
                             <button
                               onClick={() => cobrarCuota(q)}
                               title={`Cobrar la ${unidadCuota} ${q.nro}`}
-                              className="inline-flex items-center gap-1.5 rounded-lg bg-success px-2.5 py-1 font-mono tabular-nums text-[11px] font-semibold text-success-foreground transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-success/40"
+                              className="inline-flex items-center justify-center rounded-lg bg-success px-3 py-1.5 font-mono tabular-nums text-[11px] font-semibold text-success-foreground transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-success/40"
                             >
                               ${n2(q.total_cobrar ?? q.cuota_total)}
-                              {(q.mora ?? 0) > 0 && <span className="font-sans font-normal opacity-75">+mora</span>}
                             </button>
                           )}
                         </td>
@@ -622,9 +895,18 @@ export function CreditoDetail({ credito, role, onRefinanciar }: { credito: Credi
                   <tr className="bg-muted/20">
                     <td colSpan={2} className="px-3 py-2.5 text-[10px] font-bold text-muted-foreground uppercase tracking-widest border-t border-border">Totales</td>
                     <td className="px-3 py-2.5 text-right font-mono font-bold text-foreground border-t border-border">${n2(cuotas.reduce((s, q) => s + q.cuota_total, 0))}</td>
-                    <td className="px-3 py-2.5 text-right font-mono font-bold text-warning border-t border-border hidden sm:table-cell">${n2(cuotas.reduce((s, q) => s + q.interes, 0))}</td>
-                    <td className="px-3 py-2.5 text-right font-mono font-bold text-primary border-t border-border">${n2(cuotas.reduce((s, q) => s + q.capital, 0))}</td>
-                    <td colSpan={2} className="border-t border-border pr-4" />
+                    <td className="px-3 py-2.5 text-right font-mono font-bold text-muted-foreground border-t border-border hidden sm:table-cell">${n2(cuotas.reduce((s, q) => s + q.interes, 0))}</td>
+                    <td className="px-3 py-2.5 text-right font-mono font-bold text-muted-foreground border-t border-border hidden sm:table-cell">${n2(cuotas.reduce((s, q) => s + q.capital, 0))}</td>
+                    <td className="px-3 py-2.5 text-right font-mono font-bold text-destructive border-t border-border">
+                      {moraTotalPlan > 0 ? `$${n2(moraTotalPlan)}` : <span className="text-muted-foreground/20">—</span>}
+                    </td>
+                    <td className="border-t border-border" />
+                    {/* El total de la columna "A cobrar" faltaba: era la única con pie vacío,
+                        y es justamente la que suma lo que el cliente debe. Coincide con la
+                        tarjeta "Deuda total" de arriba porque sale de la misma suma. */}
+                    <td className="px-3 py-2.5 pr-4 text-right font-mono font-bold tabular-nums text-foreground border-t border-border">
+                      ${n2(deudaTotal)}
+                    </td>
                   </tr>
                 </tfoot>
               </table>
@@ -633,9 +915,50 @@ export function CreditoDetail({ credito, role, onRefinanciar }: { credito: Credi
         </section>
       </div>
 
+      {/* ── Barra de acciones del crédito ──
+          Fija al pie: no se scrollea con el contenido, así que están siempre a mano sin
+          competir con la acción principal (cobrar la cuota, que son los botones verdes del
+          cronograma). Secundarias a propósito: bordeadas, y el color lo pone recién el hover
+          según lo que hace cada una. */}
+      {esAdmin && (
+        <div className="shrink-0 flex flex-wrap items-center justify-end gap-2 border-t border-border px-7 py-3">
+          {/*
+            Sin "Editar". Las condiciones de un crédito otorgado son FIRMES desde el 15/08
+            (capital, tasa, cuotas, frecuencia, cliente y vendedor los rechaza el PATCH con
+            409 CONDICIONES_FIRMES), así que lo único que la pantalla podía cambiar era el
+            `tipo_credito` — una etiqueta. A cambio abría el simulador entero sobre un crédito
+            vivo, mostraba un plan recalculado desde hoy y ofrecía imprimirlo.
+
+            Para cambiar algo de verdad están ANULAR (revierte la caja) y REFINANCIAR
+            (consolida la deuda en un crédito nuevo). Los dos cuadran los libros y se auditan.
+          */}
+          {credito.estado !== "anulado" && (
+            <button
+              onClick={() => { setAnularCreditoMotivo(""); setAccionPagos("devolver"); setAnularCreditoOpen(true); }}
+              className={`${BTN_ACCION} hover:border-warning/40 hover:bg-warning/10 hover:text-warning`}
+            >
+              <Ban className="h-3.5 w-3.5" /> Anular crédito
+            </button>
+          )}
+          {/* El server rechaza el DELETE si el crédito tiene pagos, si ya desembolsó plata o
+              si arrastra cuotas vencidas impagas. En vez de dejar un botón apagado que solo
+              se explica al pasar el mouse, no se muestra — la salida es anularlo, que está
+              justo al lado. */}
+          {puedeEliminar && (
+            <button
+              onClick={handleEliminarCredito}
+              disabled={eliminarBusy}
+              className={`${BTN_ACCION} hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive`}
+            >
+              {eliminarBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />} Eliminar
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Cobro del crédito — formulario de pago preseleccionado a este crédito */}
       <Dialog open={pagoOpen} onOpenChange={(o) => { if (!o) setPagoOpen(false); }}>
-        <DialogContent className="w-[95vw] sm:max-w-xl max-h-[90dvh] flex flex-col overflow-hidden">
+        <DialogContent className="w-[95vw] sm:max-w-4xl max-h-[90dvh] flex flex-col overflow-hidden">
           <DialogHeader className="shrink-0">
             <DialogTitle>Registrar pago · {formatCreditoNumero(credito.numero)}</DialogTitle>
           </DialogHeader>
@@ -682,6 +1005,65 @@ export function CreditoDetail({ credito, role, onRefinanciar }: { credito: Credi
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Anular el CRÉDITO — motivo + qué se hace con lo ya cobrado (la caja tiene que
+          cuadrar en las dos direcciones). */}
+      <Dialog open={anularCreditoOpen} onOpenChange={(o) => { if (!o) { setAnularCreditoOpen(false); setAnularCreditoMotivo(""); } }}>
+        <DialogContent className="w-[95vw] sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>¿Anular crédito {formatCreditoNumero(credito.numero)}?</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="rounded-lg border border-warning/20 bg-warning/5 px-3 py-2.5 text-xs text-muted-foreground">
+              El crédito de <strong className="text-foreground">{nombreCompleto(credito.cliente)}</strong> por{" "}
+              <span className="font-mono font-semibold text-foreground">${n2(credito.monto_original)}</span> queda{" "}
+              <strong className="text-foreground">anulado</strong>: se conservan registro, cuotas y pagos, y se revierte el desembolso en la caja.
+            </div>
+
+            <Field label="Motivo (opcional)" hint="Queda en la auditoría">
+              <Textarea
+                rows={2}
+                value={anularCreditoMotivo}
+                onChange={(e) => setAnularCreditoMotivo(e.target.value)}
+                placeholder="Ej.: cargado por error, no cumplió requisitos…"
+              />
+            </Field>
+
+            {/* `cobros_vivos`, no `tiene_pagos`: si el único pago ya se anuló, su
+                contra-asiento devolvió la plata y no hay nada que decidir. */}
+            {!!credito.cobros_vivos && (
+              <div className="space-y-1.5">
+                <span className="text-xs font-medium text-muted-foreground">El crédito tiene pagos. ¿Qué hacés con lo cobrado?</span>
+                <div className="grid grid-cols-2 gap-2">
+                  <button type="button" onClick={() => setAccionPagos("devolver")}
+                    className={`rounded-lg border px-3 py-2 text-xs font-medium transition-colors ${accionPagos === "devolver" ? "border-primary bg-primary/10 text-foreground" : "border-border text-muted-foreground hover:bg-muted"}`}>
+                    Devolver al cliente
+                  </button>
+                  <button type="button" onClick={() => setAccionPagos("conservar")}
+                    className={`rounded-lg border px-3 py-2 text-xs font-medium transition-colors ${accionPagos === "conservar" ? "border-primary bg-primary/10 text-foreground" : "border-border text-muted-foreground hover:bg-muted"}`}>
+                    Conservar en caja
+                  </button>
+                </div>
+                <p className="text-[11px] text-muted-foreground/70">
+                  {accionPagos === "devolver"
+                    ? "Se registra una devolución (egreso) por lo cobrado."
+                    : "Lo cobrado queda como ingreso en la caja."}
+                </p>
+              </div>
+            )}
+
+            <div className="flex justify-end gap-2">
+              <button onClick={() => { setAnularCreditoOpen(false); setAnularCreditoMotivo(""); }} className="rounded-lg px-3 py-1.5 text-xs text-muted-foreground hover:bg-muted">Volver</button>
+              <button onClick={handleAnularCredito} disabled={anularCreditoBusy} className="inline-flex items-center gap-1.5 rounded-lg bg-warning px-3 py-1.5 text-xs font-medium text-warning-foreground hover:bg-warning/90 disabled:opacity-50">
+                {anularCreditoBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Ban className="h-3.5 w-3.5" />} Anular crédito
+              </button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Certificado de libre deuda (solo con el crédito cancelado). */}
+      <LibreDeudaDialog creditoId={libreDeudaOpen ? credito.id : null} onClose={() => setLibreDeudaOpen(false)} />
     </div>
   );
 }

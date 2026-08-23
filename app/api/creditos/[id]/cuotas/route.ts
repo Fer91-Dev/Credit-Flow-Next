@@ -2,7 +2,7 @@ import { requireAuth, scopeCreditosVendedor } from "@/lib/auth";
 import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
-import { frecuenciaLabel, normalizarFrecuencia, diasAtraso, round2, interesMora, moraDelCredito, moraDesdeCronograma, type FrecuenciaDef } from "@/lib/domain";
+import { frecuenciaLabel, normalizarFrecuencia, diasAtraso, round2, interesMora, moraDelCredito, moraDesdeCronograma, topeMoraDeCuota, type FrecuenciaDef } from "@/lib/domain";
 import { getConfiguracion } from "@/lib/config";
 import { formatComprobante } from "@/lib/comprobantes";
 import { nombreCompleto, hoyComercial } from "@/lib/utils";
@@ -69,18 +69,43 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
   const moraCred = moraDelCredito(moraDesdeCronograma(credito.cronograma), config);
   const graciaCred = (credito.cronograma as { diasGracia?: number } | null)?.diasGracia ?? config.simulador.diasGracia;
 
+  /**
+   * 🔴 El freno de punitorios de un acuerdo vigente TAMBIÉN vale acá.
+   *
+   * `POST /pagos` congela la mora en la fecha del acuerdo (`moraCongeladaAl`), pero esta
+   * pantalla la venía calculando hasta HOY. Con un acuerdo vigente, el cronograma mostraba
+   * una mora que el cobro no iba a cobrar: el operador le decía un número al cliente y la
+   * caja tomaba otro, más bajo. Es el mismo error que ya apareció con los cargos del plan y
+   * con el preview del acuerdo — dos fórmulas para el mismo número.
+   *
+   * Se pide antes del cálculo (la consulta del acuerdo estaba más abajo, solo para mostrarlo)
+   * y con `congela_punitorios: true`, el mismo filtro que usa el cobro.
+   */
+  const acuerdoQueCongela = await prisma.acuerdos_pago.findFirst({
+    where: { ...withTenant(tenantId), credito_id: id, estado: "vigente", congela_punitorios: true },
+    select: { fecha: true },
+  });
+  const congeladaAl = acuerdoQueCongela?.fecha ?? null;
+
   const cuotas = credito.cuotas.map((c) => {
     const restante_capital = round2(Math.max(0, c.capital - c.pagado_capital));
+    // Días de atraso de ESTA cuota. Sale de acá y no del navegador porque es el número que
+    // explica el importe de mora: los dos tienen que salir del mismo "hoy comercial", o la
+    // pantalla mostraría 70 días al lado de una mora calculada sobre 69.
+    const dias_atraso = diasAtraso(c.fecha_vencimiento, hoy);
     const capitalSaldado = c.pagado_capital >= round2(c.capital);
     // Estado de presentación: capital saldado = pagada; si no, vencida si ya
     // venció; parcial si hubo alguna imputación; sino pendiente.
     let estado: string;
     if (capitalSaldado) estado = "pagada";
-    else if (diasAtraso(c.fecha_vencimiento, hoy) > 0) estado = "vencida";
+    else if (dias_atraso > 0) estado = "vencida";
     else if (c.pagado_capital > 0 || c.pagado_interes > 0 || c.pagado_mora > 0 || c.pagado_cargos > 0) estado = "parcial";
     else estado = "pendiente";
+    // `dias_atraso` son los REALES (lo que se informa); la mora se devenga hasta `topeMora`,
+    // que un acuerdo vigente puede haber congelado. Sin acuerdo, los dos son el mismo número.
+    const diasQueDevengan = diasAtraso(c.fecha_vencimiento, topeMoraDeCuota(c.fecha_vencimiento, hoy, congeladaAl));
     const moraPlena = moraCred.moraActiva
-      ? interesMora(c.cuota_total, diasAtraso(c.fecha_vencimiento, hoy), { tasaDiaria: moraCred.tasaMoraDiaria, diasGracia: graciaCred })
+      ? interesMora(c.cuota_total, diasQueDevengan, { tasaDiaria: moraCred.tasaMoraDiaria, diasGracia: graciaCred })
       : 0;
     const moraPend = capitalSaldado ? 0 : round2(Math.max(0, moraPlena - c.pagado_mora));
     const pendienteCuota = round2(Math.max(0, c.cuota_total - (c.pagado_capital + c.pagado_interes + c.pagado_cargos)));
@@ -115,6 +140,7 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
       restante_capital,
       // Mora devengada de ESTA cuota (0 si no venció o si la financiera la tiene apagada).
       mora: moraPend,
+      dias_atraso,
       // Lo que hay que cobrar para saldarla HOY: lo que falta de la cuota más su mora.
       total_cobrar: round2(pendienteCuota + moraPend),
       comprobantes,
@@ -138,8 +164,11 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
   const acuerdo = await prisma.acuerdos_pago.findFirst({
     where: { ...withTenant(tenantId), credito_id: id, estado: "vigente" },
     select: {
-      id: true, fecha: true, monto_acordado: true, congela_punitorios: true,
-      cuotas: { orderBy: { numero: "asc" }, select: { numero: true, vencimiento: true, monto: true, pagado: true, estado: true } },
+      // `deuda_original` y `quita` viajan para poder mostrar de qué se COMPONE el total del
+      // acuerdo. Sin eso, la terminal de cobro mostraba "$81.876,14" sin origen: el operador
+      // lo había visto desglosado al armarlo y acá volvía a aparecer como un número suelto.
+      id: true, fecha: true, monto_acordado: true, deuda_original: true, quita: true, congela_punitorios: true,
+      cuotas: { orderBy: { numero: "asc" }, select: { id: true, numero: true, vencimiento: true, monto: true, pagado: true, estado: true } },
     },
   });
   const proximaAcuerdo = acuerdo?.cuotas.find((c) => c.estado !== "pagada") ?? null;
@@ -152,10 +181,29 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
           id: acuerdo.id,
           fecha: acuerdo.fecha,
           monto_acordado: acuerdo.monto_acordado,
+          deuda_original: acuerdo.deuda_original,
+          quita: acuerdo.quita,
           congela_punitorios: acuerdo.congela_punitorios,
           total_cuotas: acuerdo.cuotas.length,
+          /**
+           * El plan ENTERO del acuerdo. Ya se consultaba para resolver `proxima` y se
+           * descartaba: sin él, la terminal de cobro mostraba un importe precargado
+           * ($27.292,04) al lado de una tabla con las cuotas del CRÉDITO ($73.441,71) y no
+           * había forma de ver de dónde salía. Es "cuota 1 de 3 del acuerdo", y eso se
+           * entiende viendo el plan, no leyendo un párrafo que lo explique.
+           */
+          cuotas: acuerdo.cuotas.map((c) => ({
+            // El id viaja para que el cobro pueda decir QUÉ cuota del acuerdo se pagó.
+            id: c.id,
+            numero: c.numero,
+            vencimiento: c.vencimiento,
+            monto: c.monto,
+            pagado: c.pagado,
+            estado: c.estado,
+          })),
           proxima: proximaAcuerdo
             ? {
+                id: proximaAcuerdo.id,
                 numero: proximaAcuerdo.numero,
                 vencimiento: proximaAcuerdo.vencimiento,
                 // Lo que falta de esa cuota, no su importe nominal: si se pagó una parte,

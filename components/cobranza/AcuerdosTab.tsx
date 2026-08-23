@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import useSWR, { mutate } from "swr";
-import { Handshake, Ban, DollarSign } from "lucide-react";
+import { Handshake, Ban, DollarSign, Printer } from "lucide-react";
 import { formatMonto, formatFecha, formatCreditoNumero } from "@/lib/utils";
 import { StatusBadge, type BadgeVariant } from "@/components/ui/StatusBadge";
 import { DataTable } from "@/components/ui/DataTable";
@@ -13,6 +13,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { FieldLabel, FormActions, IconTextarea } from "@/components/caja/caja-form";
 import { PagoForm } from "@/components/pagos/PagoForm";
 import type { Role } from "@/lib/auth/roles";
+import { useFinanciera } from "@/lib/swr";
+import { imprimirAcuerdo } from "@/lib/acuerdo-print";
 
 /**
  * Acuerdos de pago: el arreglo informal en cuotas con un moroso.
@@ -47,6 +49,10 @@ export interface Acuerdo {
   notas: string | null;
   motivo_estado: string | null;
   creado_por: string | null;
+  /** Datos que necesita el documento imprimible (firma del cliente). */
+  documento?: string | null;
+  tasa_mensual?: number | null;
+  cuotas_para_romper?: number;
   cuotas: AcuerdoCuota[];
 }
 
@@ -61,6 +67,10 @@ const TABS = [
   { key: "vigente", label: "Vigentes" },
   { key: "cumplido", label: "Cumplidos" },
   { key: "roto", label: "Rotos" },
+  // Los anulados solo aparecían mezclados en "Todos". Un acuerdo que alguien anuló es
+  // justamente el que se va a querer revisar después —con su motivo— y no había forma de
+  // llegar a él sin recorrer la lista entera.
+  { key: "anulado", label: "Anulados" },
   { key: "", label: "Todos" },
 ] as const;
 
@@ -84,6 +94,31 @@ function proximaCuota(a: Acuerdo): AcuerdoCuota | null {
 export function AcuerdosTab({ role }: { role: Role }) {
   const confirm = useConfirm();
   const toast = useToast();
+  const { financiera } = useFinanciera(); // co-branding del documento que firma el cliente
+  /** Arma el documento imprimible del acuerdo. El interés se DERIVA (no se guarda). */
+  const imprimir = (a: Acuerdo) => {
+    const base = Math.round((a.deuda_original - a.quita) * 100) / 100;
+    imprimirAcuerdo({
+      numeroCredito: formatCreditoNumero(a.credito_numero ?? undefined),
+      cliente: a.cliente ?? "—",
+      documento: a.documento ?? null,
+      fecha: a.fecha,
+      deudaOriginal: a.deuda_original,
+      quita: a.quita,
+      interes: Math.round((a.monto_acordado - base) * 100) / 100,
+      total: a.monto_acordado,
+      tasaMensual: a.tasa_mensual ?? null,
+      congelaPunitorios: a.congela_punitorios,
+      cuotasParaRomper: a.cuotas_para_romper ?? 1,
+      cuotas: a.cuotas.map((c) => ({ numero: c.numero, vencimiento: c.vencimiento, monto: c.monto })),
+      notas: a.notas,
+      // Un acuerdo anulado o caído no puede salir impreso como si estuviera en pie: el papel
+      // se guarda en una carpeta y, seis meses después, nadie recuerda que ya no rige.
+      estado: a.estado,
+      motivoEstado: a.motivo_estado,
+      financiera: financiera ? { nombre: financiera.nombre, logo_url: financiera.logo_url } : undefined,
+    });
+  };
   const [estado, setEstado] = useState<string>("vigente");
   const [abierto, setAbierto] = useState<string | null>(null);
   const [anulando, setAnulando] = useState<Acuerdo | null>(null);
@@ -147,7 +182,7 @@ export function AcuerdosTab({ role }: { role: Role }) {
           },
           { header: "Estado", cell: (a) => <StatusBadge label={ESTADO_META[a.estado].label} variant={ESTADO_META[a.estado].variant} /> },
           {
-            header: "", align: "right",
+            header: "Acciones", align: "right",
             cell: (a) =>
               a.estado === "vigente" ? (
                 <div className="flex items-center justify-end gap-1.5">
@@ -195,35 +230,78 @@ export function AcuerdosTab({ role }: { role: Role }) {
               </div>
             </div>
 
-            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-              {a.cuotas.map((c) => (
-                <div
-                  key={c.numero}
-                  className={`rounded-lg border px-3 py-2.5 text-sm ${
-                    c.estado === "pagada" ? "border-success/30 bg-success/5"
-                    : c.estado === "vencida" ? "border-destructive/30 bg-destructive/5"
-                    : "border-border bg-muted/20"
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-medium text-muted-foreground">Cuota {c.numero}</span>
-                    <span className={`text-[10px] font-bold uppercase tracking-wide ${
-                      c.estado === "pagada" ? "text-success" : c.estado === "vencida" ? "text-destructive" : "text-muted-foreground"
-                    }`}>{c.estado}</span>
+            {/*
+              Las cuotas del acuerdo, con estado a la vista.
+
+              Eran tres cajas iguales con número, importe y fecha: no se veía cuál toca
+              cobrar, cuánto falta de una parcial, ni si la fecha ya pasó. Ahora cada una
+              lleva su franja de color, el avance cuando se pagó una parte, y la que sigue
+              queda marcada — que es la única pregunta que se hace quien atiende.
+            */}
+            <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
+              {a.cuotas.map((c) => {
+                const resta = Math.round((c.monto - c.pagado) * 100) / 100;
+                const pct = c.monto > 0 ? Math.min(100, (c.pagado / c.monto) * 100) : 0;
+                const esProxima = a.estado === "vigente" && proximaCuota(a)?.numero === c.numero;
+                const tono =
+                  c.estado === "pagada" ? { borde: "border-success/30 bg-success/[0.06]", barra: "bg-success", txt: "text-success" }
+                  : c.estado === "vencida" ? { borde: "border-destructive/30 bg-destructive/[0.06]", barra: "bg-destructive", txt: "text-destructive" }
+                  : { borde: "border-border bg-muted/20", barra: "bg-primary", txt: "text-muted-foreground" };
+                return (
+                  <div
+                    key={c.numero}
+                    className={`relative overflow-hidden rounded-xl border p-3.5 ${tono.borde} ${esProxima ? "ring-1 ring-inset ring-primary/40" : ""}`}
+                  >
+                    <span className={`absolute inset-y-0 left-0 w-1 ${tono.barra}`} aria-hidden />
+                    <div className="flex items-start justify-between gap-2 pl-1.5">
+                      <div className="min-w-0">
+                        <p className="text-[11px] font-medium text-muted-foreground">
+                          Cuota {c.numero} de {a.cuotas.length} del acuerdo
+                        </p>
+                        <p className="mt-1 font-mono text-lg font-bold tabular-nums text-foreground">{formatMonto(c.monto)}</p>
+                      </div>
+                      <div className="shrink-0 text-right">
+                        <span className={`text-[10px] font-bold uppercase tracking-wide ${tono.txt}`}>{c.estado}</span>
+                        {esProxima && <p className="mt-0.5 text-[10px] font-semibold text-primary">la que sigue</p>}
+                      </div>
+                    </div>
+                    <p className="mt-1.5 pl-1.5 text-[11px] text-muted-foreground">
+                      Vence {formatFecha(c.vencimiento)}
+                      {c.estado !== "pagada" && <span className="text-muted-foreground/60"> · {cuando(c.vencimiento)}</span>}
+                    </p>
+                    {/* Avance solo si se pagó ALGO y falta: en una pagada la barra llena es
+                        ruido, y en una intacta una barra vacía no dice nada. */}
+                    {c.pagado > 0 && resta > 0 && (
+                      <div className="mt-2.5 pl-1.5">
+                        <div className="h-1.5 overflow-hidden rounded-full bg-muted/50">
+                          <div className={`h-full rounded-full ${tono.barra}`} style={{ width: `${pct}%` }} />
+                        </div>
+                        <p className="mt-1 font-mono text-[10px] tabular-nums text-muted-foreground">
+                          pagó {formatMonto(c.pagado)} · resta <span className="font-bold text-foreground">{formatMonto(resta)}</span>
+                        </p>
+                      </div>
+                    )}
                   </div>
-                  <p className="mt-1 font-mono font-semibold text-foreground">{formatMonto(c.monto)}</p>
-                  <p className="mt-0.5 text-xs text-muted-foreground">Vence {formatFecha(c.vencimiento)}</p>
-                </div>
-              ))}
+                );
+              })}
             </div>
 
-            {(a.notas || a.motivo_estado || a.creado_por) && (
-              <div className="rounded-lg border border-border bg-muted/20 px-3 py-2.5 text-xs text-muted-foreground space-y-1">
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-muted/20 px-3 py-2.5 text-xs text-muted-foreground">
+              <div className="space-y-1">
                 {a.creado_por && <p>Lo armó <span className="text-foreground">{a.creado_por}</span></p>}
                 {a.notas && <p>Nota: <span className="text-foreground">{a.notas}</span></p>}
                 {a.motivo_estado && <p>{a.motivo_estado}</p>}
               </div>
-            )}
+              {/* El papel que firma el cliente. Sin esto, las condiciones del acuerdo —el
+                  freno de punitorios y su vuelta retroactiva si se cae— no están escritas
+                  en ningún lado y no hay reconocimiento de deuda firmado. */}
+              <button
+                onClick={(e) => { e.stopPropagation(); imprimir(a); }}
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-muted"
+              >
+                <Printer className="h-3.5 w-3.5" /> Imprimir para firmar
+              </button>
+            </div>
           </div>
         );
       })()}
@@ -241,7 +319,7 @@ export function AcuerdosTab({ role }: { role: Role }) {
         const pendiente = c ? Math.round((c.monto - c.pagado) * 100) / 100 : 0;
         return (
           <Dialog open onOpenChange={(o) => { if (!o) setCobrando(null); }}>
-            <DialogContent className="w-[95vw] sm:max-w-2xl max-h-[90dvh] flex flex-col overflow-hidden">
+            <DialogContent className="w-[95vw] sm:max-w-4xl max-h-[90dvh] flex flex-col overflow-hidden">
               <DialogHeader className="shrink-0">
                 <DialogTitle>Cobrar cuota del acuerdo</DialogTitle>
               </DialogHeader>
@@ -250,10 +328,11 @@ export function AcuerdosTab({ role }: { role: Role }) {
                   creditoId={cobrando.credito_id}
                   montoSugerido={pendiente > 0 ? pendiente : undefined}
                   motivoSugerido={
+                    // Una línea. El párrafo que explicaba "las cuotas de abajo son las del
+                    // crédito, no lo que se cobra" lo reemplaza el propio plan del acuerdo,
+                    // que la terminal ahora dibuja arriba con la cuota marcada.
                     c
-                      ? `Cuota ${c.numero} de ${cobrando.cuotas.length} DEL ACUERDO · vence ${formatFecha(c.vencimiento)}. ` +
-                        `El importe ya viene cargado y se puede cambiar. Las cuotas que figuran abajo son las del CRÉDITO ` +
-                        `(otras fechas y otros importes): es adonde se imputa la plata, no lo que se está cobrando.`
+                      ? `Cuota ${c.numero} de ${cobrando.cuotas.length} del acuerdo · vence ${formatFecha(c.vencimiento)}`
                       : undefined
                   }
                   onClose={(ok) => { setCobrando(null); if (ok) mutate(key); }}

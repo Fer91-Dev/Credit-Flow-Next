@@ -118,7 +118,7 @@ export function PagosTable() {
         </div>
 
         <Dialog open={pagoOpen} onOpenChange={(o) => { if (!o) setPagoOpen(false); }}>
-          <DialogContent className="w-[95vw] sm:max-w-xl max-h-[90dvh] flex flex-col overflow-hidden">
+          <DialogContent className="w-[95vw] sm:max-w-4xl max-h-[90dvh] flex flex-col overflow-hidden">
             <DialogHeader className="shrink-0">
               <DialogTitle>Registrar pago · {nombreCompleto(selected)}</DialogTitle>
             </DialogHeader>
@@ -205,7 +205,7 @@ export function PagosTable() {
 
       {/* Registrar pago genérico: el operador busca el crédito/cliente dentro del form */}
       <Dialog open={nuevoPagoOpen} onOpenChange={(o) => { if (!o) setNuevoPagoOpen(false); }}>
-        <DialogContent className="w-[95vw] sm:max-w-xl max-h-[90dvh] flex flex-col overflow-hidden">
+        <DialogContent className="w-[95vw] sm:max-w-4xl max-h-[90dvh] flex flex-col overflow-hidden">
           <DialogHeader className="shrink-0">
             <DialogTitle>Registrar pago</DialogTitle>
           </DialogHeader>

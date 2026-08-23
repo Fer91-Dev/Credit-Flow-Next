@@ -6,6 +6,7 @@
  * sigue las reglas permanentes del documento (ver CLAUDE.md → PDF "Plan de pagos").
  */
 import { formatMonto, formatFecha } from "@/lib/utils";
+import { montoEnPalabras } from "@/lib/domain";
 import type { CargoCuotaCol } from "@/lib/domain";
 
 export type VistaPlan = "operador" | "cliente";
@@ -168,6 +169,10 @@ body{font-family:'Inter',system-ui,-apple-system,sans-serif;background:#F5F7FB;c
 .kitem:last-child{border-right:none;padding-right:0;margin-right:0}
 .klabel{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:#4B5563}
 .kval{font-size:17px;font-weight:700;color:#111827;font-family:'Courier New',Courier,monospace}
+/* El monto en letras, debajo del número. Sin monoespaciada (es texto, no una cifra) y con
+   la primera en mayúscula, como se escribe en un pagaré. */
+.kletras{font-size:10px;font-weight:600;color:#374151;max-width:230px;line-height:1.35;text-transform:lowercase}
+.kletras::first-letter{text-transform:uppercase}
 /* C.F.T. recuadrado: tiene que leerse antes que el resto de la banda (es el dato que permite
    comparar ofertas). Se destaca con relieve, no con color: el único elemento a color del
    documento sigue siendo la marca. Va DESPUÉS de .kitem:last-child para ganarle el reset. */
@@ -247,7 +252,10 @@ tfoot td.pg{background:#0B1220;border-left:1px solid #3A4356}
     </div>
   </div>
   <div class="band">
-    <div class="kitem"><span class="klabel">Monto solicitado</span><span class="kval">${formatMonto(capital)}</span></div>
+    <!-- El capital también en LETRAS: es lo que va al pagaré, donde la letra le gana al
+         número si no coinciden. Tenerlo en el mismo papel permite cotejarlo sin abrir el
+         sistema. -->
+    <div class="kitem"><span class="klabel">Monto solicitado</span><span class="kval">${formatMonto(capital)}</span><span class="kletras">${esc(montoEnPalabras(capital))}</span></div>
     <div class="kitem"><span class="klabel">Tasa</span><span class="kval">${data.tasa}% ${convLabel}</span></div>
     <div class="kitem"><span class="klabel">Cuotas</span><span class="kval">${nCuotas} – ${freqLabel}</span></div>${
       data.cft != null

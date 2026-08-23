@@ -1,7 +1,7 @@
 ﻿"use client";
 
 import { useState, useEffect, Fragment } from "react";
-import { ArrowRight, Check, CheckCircle2, CornerDownRight, Loader2, Printer, Search, X } from "lucide-react";
+import { ArrowRight, Check, CheckCircle2, ChevronDown, CornerDownRight, Loader2, Printer, Search, X } from "lucide-react";
 import { Field, Input, Select, Textarea } from "@/components/ui/field";
 import { StatusBadge, type BadgeVariant } from "@/components/ui/StatusBadge";
 import {
@@ -48,9 +48,14 @@ interface AcuerdoDelCredito {
   id: string;
   fecha: string;
   monto_acordado: number;
+  /** Lo VENCIDO al momento de acordar. Con `quita`, explica de qué se compone el total. */
+  deuda_original?: number;
+  quita?: number;
   congela_punitorios: boolean;
   total_cuotas: number;
-  proxima: { numero: number; vencimiento: string; pendiente: number } | null;
+  proxima: { id?: string; numero: number; vencimiento: string; pendiente: number } | null;
+  /** El plan completo del acuerdo, para mostrar de dónde sale el importe que se cobra. */
+  cuotas?: { id: string; numero: number; vencimiento: string; monto: number; pagado: number; estado: string }[];
 }
 
 interface PagoFormProps {
@@ -84,9 +89,25 @@ const CUOTA_BADGE: Record<EstadoCuota, { label: string; variant: BadgeVariant }>
   pendiente: { label: "Pendiente", variant: "muted" },
 };
 
+/** Lo PROGRAMADO que falta de la cuota (capital + interés + cargos), sin mora. */
 function importePendiente(c: CuotaPersistida): number {
   const pagadoProg = c.pagado_capital + (c.pagado_interes ?? 0) + (c.pagado_cargos ?? 0);
   return Math.max(0, round2(c.cuota_total - pagadoProg));
+}
+
+/**
+ * Lo que hay que COBRAR para saldar la cuota hoy: lo programado + su mora devengada.
+ *
+ * 🔴 El picker mostraba `importePendiente` —el nominal— y con eso calculaba el monto. Sobre
+ * un crédito atrasado eso cobra de MENOS: la imputación aplica mora primero, así que el
+ * importe nominal deja la cuota corta justo por la mora y queda "parcial". El botón de cada
+ * cuota del detalle ya cobraba bien (usa `total_cobrar`); este formulario no.
+ *
+ * El número lo calcula el server con las condiciones congeladas del crédito, que es la misma
+ * fuente con la que después imputa. El fallback solo cubre una respuesta vieja sin el campo.
+ */
+function importeACobrar(c: CuotaPersistida): number {
+  return c.total_cobrar ?? round2(importePendiente(c) + (c.mora ?? 0));
 }
 
 /** Filtra la lista de créditos por N° de crédito o DNI del cliente. */
@@ -316,16 +337,24 @@ export function PagoForm({ creditoId, clienteId, montoSugerido, motivoSugerido, 
   const seleccionadas = hasta != null ? cobrables.filter(c => c.nro <= hasta) : [];
   /** Se está cobrando la cuota de un ACUERDO: viene importe y motivo precargados. */
   const cobrandoAcuerdo = Boolean(motivoSugerido);
+  /** Cuota del acuerdo que se esta cobrando: se guarda en el pago para el recibo. */
+  const cuotaAcuerdoId = acuerdo?.proxima?.id ?? null;
 
-  const montoCuotas  = round2(seleccionadas.reduce((s, c) => s + importePendiente(c), 0));
+  const montoCuotas  = round2(seleccionadas.reduce((s, c) => s + importeACobrar(c), 0));
   const monto        = manual ? parseMontoInput(montoManual) : montoCuotas;
-  // "Excede" = se paga más que TODO lo adeudado (capital + interés + cargos de las
-  // cuotas pendientes) → el sobrante queda a favor. OJO: NO comparar contra
-  // `saldo_pendiente`, que es solo el CAPITAL: una cuota normal (capital + interés)
-  // ya lo supera y dispararía un falso aviso. El epsilon evita falsos por redondeo.
-  const totalAdeudado = round2(cobrables.reduce((s, c) => s + importePendiente(c), 0));
+  /**
+   * "Excede" = se paga más que TODO lo adeudado → el sobrante queda a favor. OJO: NO comparar
+   * contra `saldo_pendiente`, que es solo el CAPITAL: una cuota normal (capital + interés) ya
+   * lo supera y dispararía un falso aviso. El epsilon evita falsos por redondeo.
+   *
+   * 🔴 Va con MORA incluida. Sin ella, cancelar un crédito atrasado avisaba "excede lo
+   * adeudado" siendo el importe exacto: en CRD-000069 la deuda real es $572.845,35 y este
+   * total decía $550.812,84.
+   */
+  const totalAdeudado = round2(cobrables.reduce((s, c) => s + importeACobrar(c), 0));
   const excede       = monto > totalAdeudado + 0.01;
-  const hayMora      = cobrables.some(c => c.estado === "vencida");
+  /** Mora devengada de lo seleccionado: se muestra discriminada, no se "avisa". */
+  const moraSeleccionada = round2(seleccionadas.reduce((s, c) => s + (c.mora ?? 0), 0));
 
   // Submit NO cobra directo: abre la confirmación para que un Enter o clic
   // accidental nunca registre un pago.
@@ -344,7 +373,13 @@ export function PagoForm({ creditoId, clienteId, montoSugerido, motivoSugerido, 
       const res = await fetch("/api/pagos", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ credito_id: creditoSel, monto, metodo, notas }),
+        // `acuerdo_cuota_id` solo cuando el cobro salió de la terminal del acuerdo: es lo
+        // que después deja al recibo decir "cuota 2 de 3 del acuerdo". El server igual lo
+        // valida contra el acuerdo vigente de este crédito.
+        body: JSON.stringify({
+          credito_id: creditoSel, monto, metodo, notas,
+          ...(cobrandoAcuerdo && cuotaAcuerdoId ? { acuerdo_cuota_id: cuotaAcuerdoId } : {}),
+        }),
       });
       const json = await res.json();
       if (json.ok) {
@@ -509,13 +544,93 @@ export function PagoForm({ creditoId, clienteId, montoSugerido, motivoSugerido, 
           )}
         </div>
 
-        {/* De dónde sale el importe precargado (ej. la cuota de un acuerdo de pago): sin
-            esto, quien cobra ve un monto raro que no coincide con ninguna cuota. */}
-        {creditoSel && motivoSugerido && (
+        {/*
+          De dónde sale el importe precargado.
+
+          Era un párrafo de tres renglones explicando que las cuotas de abajo eran las del
+          CRÉDITO y no las que se estaban cobrando. El operador veía $27.292,04 al lado de una
+          tabla de $73.441,71 y tenía que leerse el texto para entender por qué.
+
+          Ahora se muestra el PLAN DEL ACUERDO, con la cuota que se está cobrando marcada. El
+          importe deja de aparecer de la nada: es la cuota 1 de 3, y se ve.
+        */}
+        {creditoSel && motivoSugerido && acuerdo?.cuotas?.length ? (
+          <div className="rounded-xl border border-primary/30 bg-primary/5 p-3">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-primary">Plan del acuerdo</p>
+
+            {/*
+              De qué se compone el total, en una resta que cierra:
+                deuda vencida − quita + interés = total del plan
+              Antes acá salía "$81.876,14" solo. Ese número se desglosa al ARMAR el acuerdo,
+              pero quien cobra tres semanas después abre esta pantalla y lo ve por primera vez.
+            */}
+            {acuerdo.deuda_original != null && (() => {
+              const base = round2(acuerdo.deuda_original! - (acuerdo.quita ?? 0));
+              const interes = round2(acuerdo.monto_acordado - base);
+              return (
+                <table className="mt-2 w-full text-[11px]">
+                  <tbody className="font-mono tabular-nums">
+                    <tr>
+                      <td className="py-0.5 font-sans text-muted-foreground">Deuda vencida al acordar</td>
+                      <td className="py-0.5 text-right text-foreground">${fmt2(acuerdo.deuda_original!)}</td>
+                    </tr>
+                    {(acuerdo.quita ?? 0) > 0 && (
+                      <tr>
+                        <td className="py-0.5 font-sans text-muted-foreground">Condonación</td>
+                        <td className="py-0.5 text-right text-success">−${fmt2(acuerdo.quita ?? 0)}</td>
+                      </tr>
+                    )}
+                    {interes > 0 && (
+                      <tr>
+                        <td className="py-0.5 font-sans text-muted-foreground">Interés del acuerdo</td>
+                        <td className="py-0.5 text-right text-warning">+${fmt2(interes)}</td>
+                      </tr>
+                    )}
+                    <tr className="border-t border-primary/20">
+                      <td className="pt-1.5 font-sans font-semibold text-foreground">
+                        Total en {acuerdo.total_cuotas} cuota{acuerdo.total_cuotas === 1 ? "" : "s"}
+                      </td>
+                      <td className="pt-1.5 text-right font-bold text-foreground">${fmt2(acuerdo.monto_acordado)}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              );
+            })()}
+            <div className="mt-2 divide-y divide-primary/10">
+              {acuerdo.cuotas.map((c) => {
+                const pendiente = round2(c.monto - c.pagado);
+                const esLaQueSeCobra = c.estado !== "pagada" && acuerdo.proxima?.numero === c.numero;
+                return (
+                  <div
+                    key={c.numero}
+                    className={`flex items-center justify-between gap-3 px-1.5 py-1.5 text-xs ${esLaQueSeCobra ? "rounded-md bg-primary/10" : ""}`}
+                  >
+                    <span className={esLaQueSeCobra ? "font-medium text-foreground" : "text-muted-foreground"}>
+                      Cuota {c.numero} de {acuerdo.total_cuotas} del acuerdo<span className="text-muted-foreground/50"> · </span>{fmtDate(c.vencimiento)}
+                    </span>
+                    <span className="flex items-center gap-2">
+                      {c.estado === "pagada"
+                        ? <StatusBadge label="Pagada" variant="success" />
+                        : esLaQueSeCobra
+                          ? <span className="text-[10px] font-semibold uppercase tracking-wide text-primary">cobrando</span>
+                          : null}
+                      <span className={`font-mono tabular-nums ${esLaQueSeCobra ? "font-bold text-foreground" : "text-muted-foreground"}`}>
+                        ${fmt2(pendiente > 0 ? pendiente : c.monto)}
+                      </span>
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+            {acuerdo.congela_punitorios && (
+              <p className="mt-2 text-[11px] text-muted-foreground">Mientras cumpla no se le devengan punitorios.</p>
+            )}
+          </div>
+        ) : creditoSel && motivoSugerido ? (
           <div className="rounded-lg border border-primary/30 bg-primary/5 px-3 py-2.5 text-sm text-primary">
             {motivoSugerido}
           </div>
-        )}
+        ) : null}
 
         {/* Aviso de acuerdo cuando se llega desde PAGOS (sin importe precargado).
             Sin esto, quien cobra no tiene forma de enterarse de que hay un arreglo y le
@@ -545,17 +660,33 @@ export function PagoForm({ creditoId, clienteId, montoSugerido, motivoSugerido, 
             salió mal. Siguen disponibles porque es adonde va a parar la plata, pero
             plegadas: en ese momento no se eligen cuotas, se cobra un importe pactado. */}
         {creditoSel && (
-          <details open={!cobrandoAcuerdo}>
-            <summary className={cn(
-              "flex items-center justify-between mb-3",
-              cobrandoAcuerdo ? "cursor-pointer list-none" : "list-none pointer-events-none",
-            )}>
+          /*
+            🔴 ABIERTA SIEMPRE. Venía plegada cuando el cobro traía un importe sugerido —que
+            desde que existe el botón verde de cada cuota es el caso NORMAL, no solo el de un
+            acuerdo—, y el usuario no encontraba las cuotas: el título parecía una etiqueta,
+            no un control. Se puede seguir plegando, pero ahora se ve que se puede: la flecha
+            está siempre y gira al abrir/cerrar.
+          */
+          <details open className="group">
+            <summary className="flex cursor-pointer list-none items-center justify-between mb-3">
               <span className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                {cobrandoAcuerdo && <CornerDownRight className="h-3.5 w-3.5" />}
+                <ChevronDown className="h-3.5 w-3.5 transition-transform group-open:rotate-180" />
                 {cobrandoAcuerdo ? "Cuotas del crédito" : "Cuotas a cobrar"}
+                {/* Cobrando un acuerdo, esta tabla NO es lo que se cobra: es adonde va a
+                    parar la plata. Va como etiqueta al lado del título, no como párrafo. */}
+                {cobrandoAcuerdo && (
+                  <span className="font-normal normal-case tracking-normal text-muted-foreground/60">
+                    · adonde se imputa
+                  </span>
+                )}
               </span>
               {!cobrandoAcuerdo && (
-                <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer pointer-events-auto">
+                /* El check vive DENTRO del summary: sin el stopPropagation, tildarlo
+                   también pliega la sección que se está por usar. */
+                <label
+                  className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer"
+                  onClick={(e) => e.stopPropagation()}
+                >
                   <input type="checkbox" checked={manual} onChange={e => setManual(e.target.checked)} className="accent-primary" />
                   Monto personalizado
                 </label>
@@ -572,15 +703,17 @@ export function PagoForm({ creditoId, clienteId, montoSugerido, motivoSugerido, 
               </p>
             ) : (
               <div className="rounded-xl border border-border overflow-hidden">
-                <div className="max-h-[34vh] overflow-auto">
-                  <table className="w-full min-w-[26rem] text-xs border-separate border-spacing-0">
+                <div className="max-h-[42vh] overflow-auto">
+                  <table className="w-full min-w-[34rem] text-xs border-separate border-spacing-0">
                     <thead className="sticky top-0 z-10">
                       <tr className="bg-card">
-                        <th className="px-2 py-2 text-center font-semibold text-muted-foreground border-b border-border w-8"></th>
-                        <th className="px-2 py-2 text-left   font-semibold text-muted-foreground border-b border-border w-8">#</th>
-                        <th className="px-3 py-2 text-left   font-semibold text-muted-foreground border-b border-border">Vencimiento</th>
-                        <th className="px-3 py-2 text-right  font-semibold text-foreground       border-b border-border">Importe</th>
-                        <th className="px-3 py-2 text-left   font-semibold text-muted-foreground border-b border-border pr-3">Estado</th>
+                        <th className="px-2 py-3 text-center font-semibold text-muted-foreground border-b border-border w-8"></th>
+                        <th className="px-2 py-3 text-left   font-semibold text-muted-foreground border-b border-border w-8">#</th>
+                        <th className="px-3 py-3 text-left   font-semibold text-muted-foreground border-b border-border">Vencimiento</th>
+                        <th className="px-3 py-3 text-right  font-semibold text-muted-foreground border-b border-border">Cuota</th>
+                        <th className="px-3 py-3 text-right  font-semibold text-muted-foreground border-b border-border">Mora</th>
+                        <th className="px-3 py-3 text-right  font-semibold text-foreground       border-b border-border">A cobrar</th>
+                        <th className="px-3 py-3 text-left   font-semibold text-muted-foreground border-b border-border pr-3">Estado</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -593,7 +726,20 @@ export function PagoForm({ creditoId, clienteId, montoSugerido, motivoSugerido, 
                         const pagadoProg = round2(c.pagado_capital + (c.pagado_interes ?? 0) + (c.pagado_cargos ?? 0));
                         const resta = importePendiente(c);
                         const parcial = pagadoProg > 0 && resta > 0;
-                        const pctPagado = c.cuota_total > 0 ? Math.min(100, (pagadoProg / c.cuota_total) * 100) : 0;
+                        /**
+                         * Los tres números del bloque del saldo, en los términos en los que el
+                         * operador se lo explica al cliente: lo que había que pagar, lo que
+                         * entregó y lo que resta.
+                         *
+                         * `mora` es la PENDIENTE (el server ya le descontó la cobrada), así que
+                         * la devengada total se reconstruye sumándole `pagado_mora`.
+                         */
+                        const moraDevengada = round2((c.mora ?? 0) + (c.pagado_mora ?? 0));
+                        const deudaDeLaCuota = round2(c.cuota_total + moraDevengada);
+                        const entregado = round2(pagadoProg + (c.pagado_mora ?? 0));
+                        // El avance se mide contra esa misma deuda: si se midiera contra la
+                        // cuota nominal, el porcentaje no cuadraría con los renglones de arriba.
+                        const pctCubierto = deudaDeLaCuota > 0 ? Math.min(100, (entregado / deudaDeLaCuota) * 100) : 0;
                         return (
                           <Fragment key={c.nro}>
                           <tr
@@ -601,18 +747,29 @@ export function PagoForm({ creditoId, clienteId, montoSugerido, motivoSugerido, 
                             className={`${manual ? "opacity-50" : "cursor-pointer hover:bg-muted/20"} ${incluida ? "bg-primary/5" : ""}`}
                             title={manual ? "Desactivá «Monto personalizado» para elegir cuotas" : "Cobrar hasta esta cuota"}
                           >
-                            <td className="px-2 py-2 text-center border-b border-border/70">
+                            <td className="px-2 py-3 text-center border-b border-border/70">
                               <span className={`inline-flex h-4 w-4 items-center justify-center rounded border ${incluida ? "bg-primary border-primary text-primary-foreground" : "border-border"}`}>
                                 {incluida && <Check className="h-3 w-3" />}
                               </span>
                             </td>
-                            <td className="px-2 py-2 font-mono text-muted-foreground/60 border-b border-border/70">{c.nro}</td>
-                            <td className="px-3 py-2 text-muted-foreground tabular-nums border-b border-border/70">{fmtDate(c.fecha_vencimiento)}</td>
-                            <td className="px-3 py-2 text-right font-mono tabular-nums border-b border-border/70">
-                              <span className="text-foreground">${fmt2(resta)}</span>
+                            <td className="px-2 py-3 font-mono text-muted-foreground/60 border-b border-border/70">{c.nro}</td>
+                            <td className="px-3 py-3 text-muted-foreground tabular-nums border-b border-border/70">{fmtDate(c.fecha_vencimiento)}</td>
+                            {/* Cuota | Mora | A cobrar — la misma lectura que el plan de
+                                cuotas del detalle, para que el operador vea el mismo desglose
+                                en las dos pantallas. */}
+                            <td className="px-3 py-3 text-right font-mono tabular-nums border-b border-border/70">
+                              <span className="text-muted-foreground">${fmt2(resta)}</span>
                               {parcial && <span className="ml-1 align-middle text-[9px] font-sans font-semibold uppercase tracking-wide text-warning">saldo</span>}
                             </td>
-                            <td className="px-3 py-2 pr-3 border-b border-border/70"><StatusBadge label={b.label} variant={b.variant} /></td>
+                            <td className="px-3 py-3 text-right font-mono tabular-nums border-b border-border/70">
+                              {(c.mora ?? 0) > 0
+                                ? <span className="text-destructive">${fmt2(c.mora ?? 0)}</span>
+                                : <span className="text-muted-foreground/20">—</span>}
+                            </td>
+                            <td className="px-3 py-3 text-right font-mono font-semibold tabular-nums text-foreground border-b border-border/70">
+                              ${fmt2(importeACobrar(c))}
+                            </td>
+                            <td className="px-3 py-3 pr-3 border-b border-border/70"><StatusBadge label={b.label} variant={b.variant} /></td>
                           </tr>
                           {parcial && (
                             <tr
@@ -620,20 +777,78 @@ export function PagoForm({ creditoId, clienteId, montoSugerido, motivoSugerido, 
                               className={`${manual ? "opacity-50" : "cursor-pointer"} ${incluida ? "bg-primary/5" : ""}`}
                             >
                               <td className="border-b border-border/70"></td>
-                              <td colSpan={4} className="px-3 pb-2 border-b border-border/70">
-                                <div className="rounded-lg border border-warning/20 bg-warning/[0.06] px-2.5 py-1.5">
-                                  <div className="flex items-center justify-between gap-2">
-                                    <span className="flex items-center gap-1 text-[11px] font-medium text-warning">
-                                      <CornerDownRight className="h-3 w-3 shrink-0" /> Subcuota pendiente · completa la cuota #{c.nro}
-                                    </span>
-                                    <span className="shrink-0 font-mono text-[11px] text-foreground">resta <span className="font-bold">${fmt2(resta)}</span></span>
-                                  </div>
-                                  <div className="mt-1.5 flex items-center gap-2">
-                                    <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted/40">
-                                      <div className="h-full rounded-full bg-warning transition-all" style={{ width: `${pctPagado}%` }} />
+                              {/* 6 = las columnas que quedan tras la del check (#, Vencimiento,
+                                  Cuota, Mora, A cobrar, Estado). Si se suma una columna, esto
+                                  se mueve con ella o la fila de la subcuota se desalinea. */}
+                              {/*
+                                De dónde sale el saldo, renglón por renglón.
+
+                                Antes decía "pagado $37.147,70 de $183.604,28" en una línea de
+                                10px, y ese número no coincidía con lo que el cliente había
+                                entregado ($50.000): la diferencia se había ido a mora y no
+                                figuraba en ningún lado. El operador tenía que reconstruir la
+                                cuenta de memoria para explicarle al cliente por qué le queda
+                                debiendo $146.456,58.
+                              */}
+                              <td colSpan={6} className="px-3 pb-3 border-b border-border/70">
+                                <div className="rounded-xl border border-warning/25 bg-warning/[0.06] p-4">
+                                  <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-warning">
+                                    <CornerDownRight className="h-3.5 w-3.5 shrink-0" /> Saldo de la cuota {c.nro}
+                                  </p>
+
+                                  {/*
+                                    Los tres renglones son UNA RESTA que cierra:
+                                        deuda de la cuota − lo entregado = lo que resta
+
+                                    La versión anterior ponía arriba la cuota NOMINAL
+                                    ($183.604,28) y abajo solo la parte que bajó de la cuota
+                                    ($37.147,70). Los dos números eran ciertos y la resta daba
+                                    bien, pero para seguirla había que saber que la mora se
+                                    cobra antes: el cliente entregó $50.000 y en la pantalla
+                                    figuraban $37.147,70.
+
+                                    Ahora arriba va la deuda CON su mora devengada y abajo TODO
+                                    lo que entregó. La identidad se sostiene sola y sigue
+                                    cerrando cuando la mora corre:
+                                      (cuota + moraDevengada) − (pagadoCuota + pagadoMora)
+                                        = pendiente + moraPendiente = "a cobrar"
+                                  */}
+                                  <table className="mt-3 w-full text-[11px]">
+                                    <tbody className="font-mono tabular-nums">
+                                      <tr>
+                                        <td className="py-1 font-sans text-muted-foreground">
+                                          {moraDevengada > 0 ? "Cuota + mora" : "Cuota completa"}
+                                        </td>
+                                        <td className="py-1 text-right text-foreground">${fmt2(deudaDeLaCuota)}</td>
+                                      </tr>
+                                      <tr>
+                                        <td className="py-1 font-sans text-muted-foreground">Pagado a cuenta</td>
+                                        <td className="py-1 text-right text-success">−${fmt2(entregado)}</td>
+                                      </tr>
+                                      <tr className="border-t border-warning/20">
+                                        <td className="pt-2 font-sans font-semibold text-foreground">Resta</td>
+                                        <td className="pt-2 text-right text-base font-bold text-foreground">${fmt2(importeACobrar(c))}</td>
+                                      </tr>
+                                    </tbody>
+                                  </table>
+
+                                  <div className="mt-3 flex items-center gap-2.5">
+                                    <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted/40">
+                                      <div className="h-full rounded-full bg-warning transition-all" style={{ width: `${pctCubierto}%` }} />
                                     </div>
-                                    <span className="shrink-0 text-[10px] text-muted-foreground">pagado ${fmt2(pagadoProg)} de ${fmt2(c.cuota_total)}</span>
+                                    <span className="shrink-0 font-mono text-[10px] tabular-nums text-muted-foreground">
+                                      {Math.round(pctCubierto)}%
+                                    </span>
                                   </div>
+
+                                  {/* De lo entregado, cuánto se fue a mora. Es el único renglón
+                                      que no forma parte de la resta: la explica. */}
+                                  {(c.pagado_mora ?? 0) > 0 && (
+                                    <p className="mt-3 border-t border-warning/20 pt-2.5 flex items-center justify-between text-[11px]">
+                                      <span className="text-muted-foreground">Se aplicó a mora</span>
+                                      <span className="font-mono tabular-nums text-destructive">${fmt2(c.pagado_mora ?? 0)}</span>
+                                    </p>
+                                  )}
                                 </div>
                               </td>
                             </tr>
@@ -649,9 +864,14 @@ export function PagoForm({ creditoId, clienteId, montoSugerido, motivoSugerido, 
 
             {!manual && seleccionadas.length > 0 && (
               <p className="mt-2 text-[11px] text-muted-foreground">
-                Cobrando {seleccionadas.length === 1 ? "la cuota" : `${seleccionadas.length} cuotas (hasta la`} #{hasta}{seleccionadas.length === 1 ? "" : ")"} ·
-                importe programado <span className="font-mono text-foreground">${fmt2(montoCuotas)}</span>
-                {hayMora && <span className="text-destructive"> · la mora por atraso se suma al imputar</span>}
+                Cobrando {seleccionadas.length === 1 ? "la cuota" : `${seleccionadas.length} cuotas (hasta la`} #{hasta}{seleccionadas.length === 1 ? "" : ")"} ·{" "}
+                <span className="font-mono text-foreground">${fmt2(montoCuotas)}</span>
+                {/* La mora ya está DENTRO del importe: se dice cuánta es, no que "se va a
+                    sumar". Antes el importe era el nominal y la frase avisaba de un
+                    recargo que el operador tenía que calcular de memoria. */}
+                {moraSeleccionada > 0 && (
+                  <span className="text-destructive"> · incluye <span className="font-mono">${fmt2(moraSeleccionada)}</span> de mora</span>
+                )}
               </p>
             )}
           </details>

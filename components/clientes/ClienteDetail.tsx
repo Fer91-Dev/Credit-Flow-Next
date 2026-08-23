@@ -3,10 +3,11 @@
 import { useState } from "react";
 import { useSWRConfig } from "swr";
 import {
-  Pencil, Trash2, CalendarClock, ChevronRight, Loader2, Mail, Phone, Printer, ShieldCheck, Ban, Receipt,
+  Pencil, Trash2, CalendarClock, ChevronRight, Loader2, Mail, MessageCircle, Phone, Printer, ShieldCheck, Ban, Receipt,
 } from "lucide-react";
 import { refrescarNotificaciones, useClienteDetalle, useAccionesCobranza, useCuotas, useFinanciera, KEYS, type CreditoConFinanzas, type EstadoCuota, type CuotaPersistida } from "@/lib/swr";
 import { StatusBadge, type BadgeVariant } from "@/components/ui/StatusBadge";
+import { ScoreBadge } from "@/components/ui/ScoreBadge";
 import { Stat } from "@/components/ui/Stat";
 import { Emoji } from "@/components/ui/Emoji";
 import { Avatar } from "@/components/ui/Avatar";
@@ -17,6 +18,7 @@ import { useToast } from "@/components/ui/toast";
 import { LibreDeudaDialog } from "@/components/creditos/LibreDeudaDialog";
 import { ClienteBureauPanel } from "@/components/clientes/ClienteBureauPanel";
 import { EditarHistorialDialog } from "@/components/clientes/EditarHistorialDialog";
+import { ContactarDialog } from "@/components/clientes/ContactarDialog";
 import { abrirRecibo } from "@/lib/recibo";
 import { formatCreditoNumero, formatFecha, formatFechaHora, nombreCompleto } from "@/lib/utils";
 import { esCreditoVivo } from "@/lib/domain";
@@ -119,10 +121,20 @@ const SITUACION_LABORAL: Record<string, string> = {
   desempleado: "Desempleado", otro: "Otro",
 };
 
-function creditoBadge(estado: string): { label: string; variant: "primary" | "success" | "muted" | "destructive" } {
+function creditoBadge(estado: string, diasMora = 0): { label: string; variant: "primary" | "success" | "muted" | "destructive" | "warning" } {
+  // Mismo criterio que CreditoDetail/CreditosTable: un crédito vivo con cuotas vencidas
+  // NO es simplemente "activo". Sin esto la ficha del cliente lo mostraba al día.
+  if (esCreditoVivo(estado) && diasMora > 0) {
+    return { label: "Activo atrasado", variant: diasMora > 30 ? "destructive" : "warning" };
+  }
   if (estado === "activo") return { label: "Activo", variant: "primary" };
   if (estado === "pagado") return { label: "Pagado", variant: "success" };
   if (estado === "cancelado") return { label: "Cancelado", variant: "destructive" };
+  // `refinanciado` caía en el genérico y se leía en minúscula, sin decir que el crédito
+  // sigue vivo en otro número. Es el estado más confuso de los seis si no se nombra.
+  if (estado === "refinanciado") return { label: "Refinanciado", variant: "muted" };
+  if (estado === "vencido") return { label: "Vencido", variant: "destructive" };
+  if (estado === "anulado") return { label: "Anulado", variant: "muted" };
   return { label: estado, variant: "muted" };
 }
 
@@ -165,6 +177,7 @@ export function ClienteDetail({
   const [anularMotivo, setAnularMotivo] = useState("");
   const [anularBusy, setAnularBusy] = useState(false);
   const [editarHist, setEditarHist] = useState(false);
+  const [contactar, setContactar] = useState(false);
 
   // Qué secciones se muestran según el contexto.
   const showPersonal = variant !== "pagos";   // datos personales/laborales
@@ -243,6 +256,9 @@ export function ClienteDetail({
                 <h2 className="truncate text-2xl font-bold leading-tight tracking-tight text-foreground">{nombreCompleto(cliente)}</h2>
                 <div className="mt-2 flex flex-wrap items-center gap-2.5">
                   <StatusBadge label={cliente.estado} variant={cliente.estado === "activo" ? "success" : "muted"} />
+                  {/* La calificación se veía solo en el LISTADO: al entrar a la ficha
+                      desaparecía justo donde se la mira en serio. */}
+                  <ScoreBadge score={cliente.score} />
                   {cliente.migrado && (
                     <span
                       className="rounded-full border border-warning/30 bg-warning/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-warning"
@@ -262,6 +278,17 @@ export function ClienteDetail({
 
               {(onEditar || onEliminar) && (
                 <div className="flex shrink-0 items-center gap-2">
+                  {/* Contactar va PRIMERO y en color: es la acción que se usa todos los días
+                      desde esta pantalla, a diferencia de editar y eliminar. */}
+                  {showCreditos && (
+                    <button
+                      type="button"
+                      onClick={() => setContactar(true)}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/10 px-2.5 py-1.5 text-xs font-medium text-primary hover:bg-primary/20 transition-colors"
+                    >
+                      <MessageCircle className="h-3.5 w-3.5" /> Contactar
+                    </button>
+                  )}
                   {onEditar && (
                     <button
                       onClick={onEditar}
@@ -398,6 +425,10 @@ export function ClienteDetail({
 
         {/* Datos personales (presentación editorial por bloques) */}
         {showPersonal && (
+        // Dos columnas a propósito, no tres: a pantalla completa, tres bloques dejan cada
+        // uno tan angosto que sus campos internos se apilan de a uno. Lo que sí cambia es
+        // "Laboral e ingresos", que ya ocupaba el ancho entero para mostrar ocho campos
+        // cortos en dos columnas — ahora los reparte en cuatro.
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <InfoBlock icon="bust-in-silhouette" title="Identidad" emptyText="Sin datos de identidad cargados." items={[
             { label: "DNI / Documento", value: cliente.documento, mono: true, emphasis: true },
@@ -418,7 +449,7 @@ export function ClienteDetail({
           </div>
 
           <div className="lg:col-span-2">
-            <InfoBlock icon="briefcase" title="Laboral e ingresos" emptyText="Sin datos laborales cargados." items={[
+            <InfoBlock anchoCompleto icon="briefcase" title="Laboral e ingresos" emptyText="Sin datos laborales cargados." items={[
               { label: "Situación", value: cliente.situacion_laboral ? SITUACION_LABORAL[cliente.situacion_laboral] ?? cliente.situacion_laboral : null },
               { label: "Ocupación", value: cliente.ocupacion },
               { label: "Empleador", value: cliente.empleador },
@@ -557,6 +588,10 @@ export function ClienteDetail({
         historial={editarHist ? (cliente.historial_migrado ?? null) : null}
         onClose={() => { setEditarHist(false); mutate(); }}
       />
+
+      {/* Contacto individual (WhatsApp / email). Montado en la RAÍZ del componente, no dentro
+          de una sección condicional: si vive en una rama que no se renderiza, no existe. */}
+      <ContactarDialog clienteId={contactar ? cliente.id : null} onClose={() => setContactar(false)} />
     </div>
   );
 }
@@ -588,7 +623,7 @@ function CreditosTabla({ creditos, mostrarProximo }: { creditos: CreditoConFinan
         </thead>
         <tbody>
           {creditos.map((c, idx) => {
-            const b = creditoBadge(c.estado);
+            const b = creditoBadge(c.estado, c.dias_mora ?? 0);
             const tieneCuotas = !!c.cuotas_resumen && c.cuotas_resumen.total > 0;
             const abierto = abiertos.has(c.id);
             return (
@@ -604,6 +639,14 @@ function CreditosTabla({ creditos, mostrarProximo }: { creditos: CreditoConFinan
                         : <span className="inline-block w-3.5" />}
                       <span className="font-mono text-[11px] text-muted-foreground/70">{formatCreditoNumero(c.numero)}</span>
                       <span className="capitalize">{c.tipo_credito}</span>
+                      {/* Que un crédito HAYA NACIDO de refinanciar otro no se veía en la ficha:
+                          la cadena de reestructuraciones de un cliente es justo lo que hay que
+                          leer de un vistazo antes de darle otro. */}
+                      {c.es_refinanciacion && (
+                        <span className="rounded border border-warning/30 bg-warning/10 px-1.5 py-px text-[9px] font-bold uppercase tracking-wide text-warning" title="Nació de refinanciar un crédito anterior">
+                          Refi
+                        </span>
+                      )}
                       <span className="text-muted-foreground/60"> · {c.tasa}% · {c.plazo_meses} cuotas</span>
                     </span>
                   </td>
@@ -777,13 +820,15 @@ interface CampoItem {
 
 /** Bloque editorial de datos: título con ícono + grilla de campos. Oculta vacíos. */
 function InfoBlock({
-  icon, title, items, emptyText, onEditar,
+  icon, title, items, emptyText, onEditar, anchoCompleto,
 }: {
   icon: React.ComponentType<{ className?: string }> | string;
   title: string;
   items: CampoItem[];
   emptyText: string;
   onEditar?: () => void;
+  /** El bloque ocupa el ancho de la ficha: sus campos se reparten en 4 columnas en vez de 2. */
+  anchoCompleto?: boolean;
 }) {
   const isEmoji = typeof icon === "string";
   const Icon = isEmoji ? null : icon;
@@ -804,7 +849,7 @@ function InfoBlock({
           )}
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2">
+        <div className={`grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2 ${anchoCompleto ? "lg:grid-cols-3 xl:grid-cols-4" : ""}`}>
           {visibles.map((it) => <Campo key={it.label} {...it} />)}
         </div>
       )}

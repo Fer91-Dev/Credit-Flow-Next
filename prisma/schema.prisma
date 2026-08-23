@@ -702,9 +702,20 @@ model pagos {
   anulado_motivo   String?
   anulado_at       DateTime? @db.Timestamptz(6)
 
-  credito      creditos           @relation(fields: [credito_id], references: [id], onDelete: Cascade)
-  aplicaciones pago_cuota[]
-  movimientos  movimientos_caja[]
+  /// Cuota del ACUERDO DE PAGO que se estaba cobrando, si el cobro salió de ahí.
+  ///
+  /// Las cuotas del acuerdo se marcan pagadas repartiendo el TOTAL cobrado desde que se
+  /// armó, así que sin esta columna no había forma de saber qué pago pagó cuál: ni el
+  /// recibo ni el historial podían decir "cuota 2 de 3 del acuerdo". Y derivarlo al
+  /// imprimir sería frágil — anular un pago viejo remapearía recibos ya entregados.
+  ///
+  /// SetNull: si el acuerdo se borra, el pago sobrevive (la plata entró igual).
+  acuerdo_cuota_id String? @db.Uuid
+
+  credito       creditos           @relation(fields: [credito_id], references: [id], onDelete: Cascade)
+  acuerdo_cuota acuerdo_cuota?     @relation(fields: [acuerdo_cuota_id], references: [id], onDelete: SetNull)
+  aplicaciones  pago_cuota[]
+  movimientos   movimientos_caja[]
 
   @@index([tenant_id])
 }
@@ -779,7 +790,9 @@ model acuerdos_pago {
   deuda_original Float
   /// Condonación otorgada como incentivo (sale de la mora/interés, nunca del capital).
   quita          Float @default(0)
-  /// Lo que el cliente se comprometió a pagar = deuda_original − quita.
+  /// Total del PLAN: lo que el cliente se comprometió a pagar en cuotas.
+  /// = (deuda_original − quita) + el interés del acuerdo. Decía "= deuda_original − quita",
+  /// que dejó de ser cierto cuando el acuerdo pasó a llevar tasa propia.
   monto_acordado Float
 
   /// vigente | cumplido | roto | anulado
@@ -819,6 +832,7 @@ model acuerdo_cuota {
   estado      String   @default("pendiente")
 
   acuerdo acuerdos_pago @relation(fields: [acuerdo_id], references: [id], onDelete: Cascade)
+  pagos   pagos[]
 
   @@unique([acuerdo_id, numero])
   @@index([tenant_id, acuerdo_id])

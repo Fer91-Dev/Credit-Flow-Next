@@ -88,6 +88,40 @@ async function cobradoDesde(tenantId: string, creditoId: string, desde: Date): P
   return round2(agg._sum.monto ?? 0);
 }
 
+/**
+ * Tasa del acuerdo, resuelta. UNA sola definición, usada por el alta y por la previsualización
+ * de la pantalla.
+ *
+ * 🔴 Existe por un bug que costó caro: el diálogo repartía `deuda ÷ cuotas` a secas mientras
+ * el servidor armaba el plan con interés. Sobre CRD-000069 la pantalla prometía tres cuotas de
+ * $190.948,45 y el acuerdo se creaba con tres de $210.353,72 — $58.215,81 de diferencia en un
+ * papel que el cliente firma. El comentario del preview decía "mismo reparto que el servidor" y
+ * hacía años que había dejado de serlo. Dos fórmulas para el mismo número siempre terminan así.
+ *
+ * `null` en la configuración = **heredar la del crédito**: el deudor paga por la plata el mismo
+ * precio que firmó, y su beneficio por acordar es que los punitorios dejan de correr. Un 0
+ * explícito es "sin interés" (incentivo puro), que no es lo mismo — y por eso la pantalla lo
+ * avisa cuando está en 0.
+ *
+ * La tasa del crédito viene en la convención del tenant (TNA, TEA o mensual); se convierte a
+ * MENSUAL, que es la unidad en la que se define el parámetro.
+ */
+export async function resolverTasaAcuerdo(
+  tenantId: string,
+  tasaCredito: number,
+  cfg?: AcuerdosConfig,
+): Promise<{ tasa: number; origen: "config" | "credito" }> {
+  const acuerdos = cfg ?? (await getCobranzaConfig(tenantId)).acuerdos;
+  if (acuerdos.tasa_mensual !== null && acuerdos.tasa_mensual !== undefined) {
+    return { tasa: acuerdos.tasa_mensual, origen: "config" };
+  }
+  const config = await getConfiguracion(tenantId);
+  const tasa = round2(
+    tasaPeriodicaSegunConvencion(tasaCredito, config.convencionTasa, "mensual", config.simulador.frecuencias) * 100,
+  );
+  return { tasa, origen: "credito" };
+}
+
 export interface CrearAcuerdoInput {
   tenantId: string;
   creditoId: string;
@@ -177,19 +211,7 @@ export async function crearAcuerdo(input: CrearAcuerdoInput) {
     d.setUTCDate(d.getUTCDate() + cfg.dias_entre_cuotas);
     return d;
   })();
-  /**
-   * Tasa del acuerdo. `null` en la configuración = **heredar la del crédito**, que es el
-   * criterio equitativo: el deudor paga por la plata el mismo precio que firmó, y su
-   * beneficio por acordar es que los punitorios dejan de correr. Un 0 explícito es "sin
-   * interés" (incentivo puro), que no es lo mismo.
-   *
-   * La del crédito viene en la convención del tenant (TNA, TEA o mensual), así que se
-   * convierte a MENSUAL, que es la unidad en la que se define el parámetro.
-   */
-  const config = await getConfiguracion(tenantId);
-  const tasaAcuerdoPct = cfg.tasa_mensual ?? round2(
-    tasaPeriodicaSegunConvencion(credito.tasa, config.convencionTasa, "mensual", config.simulador.frecuencias) * 100,
-  );
+  const { tasa: tasaAcuerdoPct } = await resolverTasaAcuerdo(tenantId, credito.tasa, cfg);
   const plan = planDeAcuerdo(montoAcordado, cuotas, primero, cfg.dias_entre_cuotas, tasaAcuerdoPct);
   const totalAcuerdo = round2(plan.reduce((a, c) => a + c.monto, 0));
 
@@ -369,12 +391,14 @@ export async function anularAcuerdo(tenantId: string, acuerdoId: string, motivo:
  * cola: alguien que está cumpliendo un arreglo ya está gestionado, y llamarlo igual es la
  * forma más rápida de que deje de cumplirlo.
  */
-export async function creditosConAcuerdoVigente(tenantId: string): Promise<Set<string>> {
+export async function creditosConAcuerdoVigente(tenantId: string): Promise<Map<string, Date>> {
   const filas = await prisma.acuerdos_pago.findMany({
     where: { ...withTenant(tenantId), estado: "vigente" },
-    select: { credito_id: true },
+    select: { credito_id: true, fecha: true },
   });
-  return new Set(filas.map((f) => f.credito_id));
+  // La FECHA, no solo el id: la agenda necesita saber si lo que está atrasado hoy entró al
+  // acuerdo o es una cuota posterior que el cliente dejó de pagar igual.
+  return new Map(filas.map((f) => [f.credito_id, f.fecha]));
 }
 
 /** Forma con la que viaja un acuerdo a la UI. */
@@ -385,7 +409,7 @@ export function serializarAcuerdo(
     congela_punitorios: boolean; cuotas_para_romper: number;
     notas: string | null; motivo_estado: string | null; creado_por_nombre: string | null;
     cuotas: { numero: number; vencimiento: Date; monto: number; pagado: number; estado: string }[];
-    credito?: { numero: number | null; cliente: { nombre: string; apellido: string | null } | null } | null;
+    credito?: { numero: number | null; cliente: { nombre: string; apellido: string | null; documento?: string | null } | null } | null;
   },
   evaluacion?: { cobrado: number; pendiente: number; cuotas_pagas: number; proximo_vencimiento: Date | null },
 ) {
@@ -396,6 +420,9 @@ export function serializarAcuerdo(
     credito_id: a.credito_id,
     credito_numero: a.credito?.numero ?? null,
     cliente: a.credito?.cliente ? `${a.credito.cliente.nombre} ${a.credito.cliente.apellido ?? ""}`.trim() : null,
+    // El DNI viaja para el documento que firma el cliente: un reconocimiento de deuda sin
+    // documento del deudor no identifica a nadie.
+    documento: a.credito?.cliente?.documento ?? null,
     estado: a.estado,
     deuda_original: a.deuda_original,
     quita: a.quita,

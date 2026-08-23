@@ -200,13 +200,24 @@ export function ClientesTable() {
           accent="primary"
         />
 
-        {/* Ficha centrada y con ancho controlado — protagonista de la vista */}
-        <div className="mx-auto w-full max-w-4xl space-y-3">
+        {/*
+          La ficha ocupa TODO el ancho disponible.
+          Estaba topeada en `max-w-4xl` y centrada, así que en un monitor ancho quedaban dos
+          franjas vacías a los costados mientras los bloques de adentro se apretaban. Es la
+          pantalla donde va a vivir el historial del cliente: acá el espacio se usa, no se
+          decora. El `AppShell` ya no centra el contenido, así que alcanza con soltar el tope.
+        */}
+        <div className="w-full space-y-3">
           {volver}
           <div className="overflow-hidden rounded-xl border border-border bg-card">
             <ClienteDetail
               clienteId={selected.id}
-              variant="cliente"
+              /* 🔴 Era "cliente", que apaga `showCreditos`: la ficha NO mostraba sus
+                 créditos, ni el estado de cuenta, ni las promesas, ni el perfil de bureau,
+                 ni los pagos. Quedaban solo los datos personales — un formulario de alta en
+                 modo lectura, no una ficha. La vista 360 vivía en el componente y la única
+                 pantalla que la necesita entera era justo la que la tenía apagada. */
+              variant="full"
               onEditar={() => openEdit(selected.id)}
               onEliminar={() => handleDelete(selected.id, selected.nombre)}
             />

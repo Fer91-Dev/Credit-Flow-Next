@@ -31,6 +31,7 @@ export * from "./arqueo";
 export * from "./campanas";
 export * from "./calendar";
 export * from "./scoring";
+export * from "./contacto";
 export * from "./riesgo";
 export * from "./comisiones";
 export * from "./proveedores";

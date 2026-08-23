@@ -1,13 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Field, Input, Select, Textarea } from "@/components/ui/field";
 import { MoneyInput, FormActions } from "@/components/ui/form-kit";
-import { nombreCompleto, parseMontoInput } from "@/lib/utils";
+import { nombreCompleto, parseMontoInput, maskMontoInput, formatFecha } from "@/lib/utils";
+import { useCuotas } from "@/lib/swr";
 import { useConfirm } from "@/components/ui/confirm";
 import { useToast } from "@/components/ui/toast";
 
-interface CreditoCtx {
+export interface CreditoCtx {
   id: string;
   cliente: { nombre: string; apellido?: string | null; telefono?: string };
   saldo_pendiente: number;
@@ -22,10 +23,50 @@ interface GestionFormProps {
 function n0(x: number) {
   return new Intl.NumberFormat("es-AR", { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(x);
 }
+function n2(x: number) {
+  return new Intl.NumberFormat("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(x);
+}
 
 export function GestionForm({ credito, onClose }: GestionFormProps) {
   const confirm = useConfirm();
   const toast = useToast();
+  /**
+   * El cronograma del crédito, para poder proponer QUÉ prometer.
+   *
+   * Se pide acá y no se recibe por props porque este diálogo se abre desde dos lugares
+   * (la agenda del día y la tabla de morosos) y ninguno de los dos tiene las cuotas a mano.
+   * Los importes vienen calculados del server —cuota + su mora devengada— que es la misma
+   * fuente con la que después se cobra.
+   */
+  const { cuotas } = useCuotas(credito.id);
+  const opciones = useMemo(() => {
+    const impagas = cuotas.filter((c) => c.estado !== "pagada");
+    const vencidas = impagas.filter((c) => (c.dias_atraso ?? 0) > 0);
+    const proxima = impagas[0];
+    const out: { clave: string; titulo: string; detalle: string; monto: number }[] = [];
+    if (proxima) {
+      const monto = proxima.total_cobrar ?? proxima.cuota_total;
+      out.push({
+        clave: "cuota",
+        titulo: `Cuota ${proxima.nro} · vence ${formatFecha(proxima.fecha_vencimiento)}`,
+        detalle: (proxima.mora ?? 0) > 0 ? `incluye $${n2(proxima.mora ?? 0)} de mora` : "sin mora",
+        monto,
+      });
+    }
+    // "Ponerse al día" solo tiene sentido con MÁS de una cuota vencida: con una sola sería
+    // el mismo importe que la opción de arriba, repetido.
+    if (vencidas.length > 1) {
+      const monto = Math.round(vencidas.reduce((s, c) => s + (c.total_cobrar ?? c.cuota_total), 0) * 100) / 100;
+      const mora = Math.round(vencidas.reduce((s, c) => s + (c.mora ?? 0), 0) * 100) / 100;
+      out.push({
+        clave: "vencido",
+        titulo: `Ponerse al día · ${vencidas.length} cuotas vencidas`,
+        detalle: mora > 0 ? `incluye $${n2(mora)} de mora` : "sin mora",
+        monto,
+      });
+    }
+    return out;
+  }, [cuotas]);
   const [form, setForm] = useState({
     tipo: "llamada",
     resultado: "contactado",
@@ -132,6 +173,44 @@ export function GestionForm({ credito, onClose }: GestionFormProps) {
         <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
           Promesa de pago {esPromesa ? "" : "(opcional)"}
         </p>
+
+        {/*
+          Qué le puede prometer, con el importe puesto.
+
+          El campo era un input vacío: para saber cuánto anotar había que cerrar el diálogo,
+          entrar al crédito, mirar el cronograma y volver. Y el monto no es decorativo — el
+          cron diario concilia la promesa contra los pagos posteriores, así que una promesa
+          sin importe (o con uno inventado) nunca se marca cumplida sola.
+
+          Son las dos promesas que existen en la práctica: "te pago la cuota" o "me pongo al
+          día". Los dos importes salen del server ya con su mora.
+        */}
+        {opciones.length > 0 && (
+          <div className="space-y-1.5">
+            {opciones.map((o) => {
+              const elegida = parseMontoInput(form.promesa_monto) === o.monto;
+              return (
+                <button
+                  key={o.clave}
+                  type="button"
+                  onClick={() => setForm((p) => ({ ...p, promesa_monto: maskMontoInput(o.monto.toFixed(2).replace(".", ",")) }))}
+                  className={`flex w-full items-center justify-between gap-3 rounded-lg border px-3 py-2 text-left transition-colors ${
+                    elegida ? "border-success/40 bg-success/10" : "border-border hover:bg-muted/30"
+                  }`}
+                >
+                  <span className="min-w-0">
+                    <span className="block text-xs font-medium text-foreground">{o.titulo}</span>
+                    <span className="block text-[10px] text-muted-foreground">{o.detalle}</span>
+                  </span>
+                  <span className="shrink-0 font-mono tabular-nums text-sm font-bold text-foreground">
+                    ${n2(o.monto)}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Field label="Monto comprometido">
             <MoneyInput value={form.promesa_monto} onChange={(v) => setForm((p) => ({ ...p, promesa_monto: v }))} />

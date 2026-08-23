@@ -5,10 +5,10 @@ import { motion } from "framer-motion";
 import { useSWRConfig } from "swr";
 import { AlertCircle, Phone, Mail, Clock, Copy, CheckCheck, Search, DollarSign, ShieldAlert, MessageSquarePlus, CalendarClock, Megaphone, X, Users, TrendingUp, Sun, Handshake } from "lucide-react";
 import { WhatsAppIcon } from "@/components/ui/WhatsAppIcon";
-import { useCreditos, useAccionesCobranza, KEYS, type Credito, type AccionCobranza } from "@/lib/swr";
+import { useCreditos, useAccionesCobranza, KEYS, type Credito, type AccionCobranza, type AgendaItem } from "@/lib/swr";
 import { type Role } from "@/lib/auth/roles";
 import { formatFecha, nombreCompleto } from "@/lib/utils";
-import { GestionForm } from "./GestionForm";
+import { GestionForm, type CreditoCtx } from "./GestionForm";
 import { CobranzaDetail } from "./CobranzaDetail";
 import { CampaignModal } from "./CampaignModal";
 import { CampanasView } from "./CampanasView";
@@ -25,6 +25,7 @@ import { BuscadorF3 } from "@/components/ui/BuscadorF3";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ModalHeader } from "@/components/ui/form-kit";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useToast } from "@/components/ui/toast";
 import { esCreditoVivo } from "@/lib/domain";
 
 function n0(x: number) {
@@ -75,13 +76,14 @@ export function CobranzaTable({ role }: { role: Role }) {
   const { creditos: allCreditos, error, isLoading } = useCreditos();
   const { acciones, mutate: mutateAcciones } = useAccionesCobranza();
   const { mutate: globalMutate } = useSWRConfig();
+  const toast = useToast();
   const [tab, setTab]           = useState<Tab>("hoy");
   const [mounted, setMounted]   = useState(false);
   useEffect(() => setMounted(true), []);
   const [filterMora, setFilter] = useState<Severidad>("critica");
   const [search, setSearch]     = useState("");
   const [copiedId, setCopied]   = useState<string | null>(null);
-  const [gestion, setGestion]   = useState<Credito | null>(null);
+  const [gestion, setGestion]   = useState<CreditoCtx | null>(null);
   /** Crédito sobre el que se está armando un acuerdo de pago (null = cerrado). */
   const [acordando, setAcordando] = useState<string | null>(null);
   const [detalle, setDetalle]   = useState<Credito | null>(null);
@@ -110,14 +112,35 @@ export function CobranzaTable({ role }: { role: Role }) {
     }
   };
 
-  // La agenda del día devuelve solo ids; resolvemos el Credito completo para gestionar/ver.
-  const abrirGestionPorId = (id: string) => {
-    const c = allCreditos.find((x) => x.id === id);
-    if (c) setGestion(c);
+  /**
+   * 🔴 Gestionar desde la agenda NO depende de la caché de créditos.
+   *
+   * Antes hacía `allCreditos.find(id)` y, si no lo encontraba, `if (c) setGestion(c)` — es
+   * decir, no hacía nada. Sin error, sin espera, sin pista. Y "Hoy" es la pestaña por
+   * defecto: el usuario entra, la agenda (una query liviana) ya pintó, `/api/creditos`
+   * todavía viaja, y los primeros clics en el botón principal de la pantalla se pierden.
+   *
+   * El diálogo solo necesita cliente, teléfono, saldo y mora, y todo eso viene en el ítem
+   * de la agenda. Se arma con eso y listo: sin búsqueda, no hay carrera que perder.
+   */
+  const abrirGestionDesdeAgenda = (it: AgendaItem) => {
+    setGestion({
+      id: it.credito_id,
+      // La agenda manda el nombre ya armado; `nombreCompleto` lo deja igual sin apellido.
+      cliente: { nombre: it.cliente, apellido: null, telefono: it.telefono ?? undefined },
+      saldo_pendiente: it.saldo_pendiente,
+      dias_mora: it.dias_mora,
+    });
   };
+  /**
+   * El detalle sí necesita el crédito ENTERO (cuotas, pagos, riesgo), así que acá la
+   * búsqueda no se puede evitar. Lo que sí se evita es el silencio: si la cartera todavía
+   * no cargó, se avisa en vez de tragarse el clic.
+   */
   const abrirDetallePorId = (id: string) => {
     const c = allCreditos.find((x) => x.id === id);
-    if (c) setDetalle(c);
+    if (c) { setDetalle(c); return; }
+    toast.error(isLoading ? "La cartera se está cargando, probá de nuevo en un segundo." : "No se encontró el crédito.");
   };
 
   // Solo créditos activos en mora — comparten caché con la sección Créditos.
@@ -228,7 +251,7 @@ export function CobranzaTable({ role }: { role: Role }) {
       </div>
 
       {tab === "hoy" ? (
-        <AgendaHoy onGestionar={abrirGestionPorId} onDetalle={abrirDetallePorId} />
+        <AgendaHoy onGestionar={abrirGestionDesdeAgenda} onDetalle={abrirDetallePorId} />
       ) : tab === "campanas" ? (
         <CampanasView />
       ) : tab === "promesas" ? (
@@ -501,42 +524,6 @@ export function CobranzaTable({ role }: { role: Role }) {
       </div>
       )}
 
-      <Dialog open={!!gestion} onOpenChange={open => { if (!open) setGestion(null); }}>
-        <DialogContent className="w-[95vw] sm:max-w-lg sm:p-7">
-          <ModalHeader
-            icon="speech-balloon"
-            title="Registrar gestión de cobranza"
-            subtitle="Dejá registro del contacto y, si corresponde, la promesa de pago."
-          />
-          {gestion && <GestionForm credito={gestion} onClose={handleGestionClose} />}
-        </DialogContent>
-      </Dialog>
-
-      {/* Acuerdo de pago — al MISMO nivel que los otros diálogos, no anidado dentro de
-          ninguno: si vive dentro del de "Gestionar", solo aparece cuando ese está abierto. */}
-      <AcuerdoForm
-        creditoId={acordando}
-        open={!!acordando}
-        onClose={(ok) => {
-          setAcordando(null);
-          if (!ok) return;
-          // Un acuerdo nuevo saca al crédito de la agenda del día y aparece en su pestaña.
-          globalMutate("/api/cobranza/acuerdos?estado=vigente");
-          globalMutate("/api/cobranza/agenda");
-        }}
-      />
-
-      <Dialog open={!!detalle} onOpenChange={open => { if (!open) setDetalle(null); }}>
-        <DialogContent className="w-[95vw] sm:max-w-lg max-h-[90dvh] flex flex-col overflow-hidden">
-          <DialogHeader className="shrink-0">
-            <DialogTitle>Detalle de cobranza</DialogTitle>
-          </DialogHeader>
-          <div className="flex-1 min-h-0 overflow-y-auto">
-            {detalle && <CobranzaDetail credito={detalle} acciones={acciones} />}
-          </div>
-        </DialogContent>
-      </Dialog>
-
       {/* ── ActionToolbar: acciones masivas sobre la selección (solo campañas) ── */}
       {puedeCampanas && seleccionados.length > 0 && (
         <div className="fixed inset-x-0 bottom-4 z-40 flex justify-center px-4 pointer-events-none">
@@ -563,6 +550,53 @@ export function CobranzaTable({ role }: { role: Role }) {
       )}
       </>
       )}
+
+      {/*
+        🔴 LOS DIÁLOGOS VAN ACÁ, FUERA DEL TERNARIO DE PESTAÑAS.
+
+        Vivían adentro de la última rama —la de Morosos—, así que en "Hoy" simplemente no
+        existían en el árbol. Apretar "Gestionar" en la agenda seteaba el estado y no pasaba
+        nada; el diálogo recién aparecía al cambiar de pestaña, que es cuando esa rama se
+        monta. Y "Hoy" es la pestaña por defecto.
+
+        Es el mismo error que ya estaba anotado dos comentarios más abajo para el acuerdo
+        ("si vive dentro del de Gestionar, solo aparece cuando ese está abierto"): un diálogo
+        montado condicionalmente solo funciona cuando su condición se cumple. La regla es que
+        los diálogos de esta pantalla cuelgan de la raíz, nunca de una pestaña.
+      */}
+      <Dialog open={!!gestion} onOpenChange={open => { if (!open) setGestion(null); }}>
+        <DialogContent className="w-[95vw] sm:max-w-lg sm:p-7">
+          <ModalHeader
+            icon="speech-balloon"
+            title="Registrar gestión de cobranza"
+            subtitle="Dejá registro del contacto y, si corresponde, la promesa de pago."
+          />
+          {gestion && <GestionForm credito={gestion} onClose={handleGestionClose} />}
+        </DialogContent>
+      </Dialog>
+
+      <AcuerdoForm
+        creditoId={acordando}
+        open={!!acordando}
+        onClose={(ok) => {
+          setAcordando(null);
+          if (!ok) return;
+          // Un acuerdo nuevo saca al crédito de la agenda del día y aparece en su pestaña.
+          globalMutate("/api/cobranza/acuerdos?estado=vigente");
+          globalMutate("/api/cobranza/agenda");
+        }}
+      />
+
+      <Dialog open={!!detalle} onOpenChange={open => { if (!open) setDetalle(null); }}>
+        <DialogContent className="w-[95vw] sm:max-w-lg max-h-[90dvh] flex flex-col overflow-hidden">
+          <DialogHeader className="shrink-0">
+            <DialogTitle>Detalle de cobranza</DialogTitle>
+          </DialogHeader>
+          <div className="flex-1 min-h-0 overflow-y-auto">
+            {detalle && <CobranzaDetail credito={detalle} acciones={acciones} />}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Modal de configuración de campaña (solo admin/cobrador) */}
       {puedeCampanas && (

@@ -3,6 +3,7 @@
  * Traduce entre el registro de BD (snake_case, CSV) y el tipo de dominio.
  */
 import { prisma } from "@/lib/prisma";
+import { resolverPlantillasContacto, PLANTILLAS_CONTACTO_DEFAULT, type PlantillasContacto } from "@/lib/domain";
 import {
   CONFIG_DEFAULT,
   resolverConfig,
@@ -204,6 +205,8 @@ export async function guardarDocumentosConfig(tenantId: string, config: Document
 export interface CobranzaConfig {
   /** Días sin gestión tras los cuales un moroso vuelve a aparecer en la agenda del día. */
   dias_sin_gestion: number;
+  /** Textos del contacto individual (WhatsApp/email desde la ficha del cliente). */
+  contacto: PlantillasContacto;
   /**
    * Política de ACUERDOS DE PAGO. Va anidada acá y no en una columna nueva porque es el
    * mismo dominio (cobranza) — una tabla no cambia por agrupar mejor un JSON.
@@ -220,6 +223,7 @@ export interface CobranzaConfig {
 
 export const COBRANZA_DEFAULT: CobranzaConfig = {
   dias_sin_gestion: 7,
+  contacto: PLANTILLAS_CONTACTO_DEFAULT,
   acuerdos: ACUERDOS_DEFAULT,
   recupero: RECUPERO_DEFAULT,
 };
@@ -229,7 +233,15 @@ export function resolverCobranza(raw: unknown): CobranzaConfig {
   const r = (raw ?? {}) as Partial<CobranzaConfig>;
   const n = Number(r.dias_sin_gestion);
   const dias = Number.isFinite(n) && n > 0 ? Math.min(90, Math.max(1, Math.round(n))) : COBRANZA_DEFAULT.dias_sin_gestion;
-  return { dias_sin_gestion: dias, acuerdos: resolverAcuerdos(r.acuerdos), recupero: resolverRecupero(r.recupero) };
+  return {
+    dias_sin_gestion: dias,
+    acuerdos: resolverAcuerdos(r.acuerdos),
+    recupero: resolverRecupero(r.recupero),
+    // Plantillas del contacto individual desde la ficha del cliente. Viven acá y no en una
+    // columna nueva porque son textos de gestión del cliente, del mismo orden que el resto
+    // de este bloque; `resolverPlantillasContacto` completa con los defaults del dominio.
+    contacto: resolverPlantillasContacto(r.contacto),
+  };
 }
 
 // ─── Cajas (tesorería: la caja principal y la de cada vendedor) ─────────────

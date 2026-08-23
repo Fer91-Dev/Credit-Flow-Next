@@ -3,13 +3,11 @@
 import { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { mutate as globalMutate } from "swr";
-import { Plus, Trash2, Edit2, FileText, Wallet, AlertCircle, CheckCircle, Search, ChevronDown, X, Ban, ShieldCheck, RefreshCw } from "lucide-react";
-import { CreditoForm } from "./CreditoForm";
+import { Plus, FileText, ChevronDown, X, RefreshCw } from "lucide-react";
 import { CreditoDetail } from "./CreditoDetail";
-import { LibreDeudaDialog } from "./LibreDeudaDialog";
 import { RefinanciarDialog } from "./RefinanciarDialog";
 import { CompararRefiDialog } from "./CompararRefiDialog";
-import { refrescarNotificaciones, useCreditos, KEYS, type Credito } from "@/lib/swr";
+import { useCreditos, KEYS, type Credito } from "@/lib/swr";
 import { type Role } from "@/lib/auth/roles";
 import { formatCreditoNumero, nombreCompleto, formatFecha, formatFechaHora, eventoPropio, teclaDelContenedor } from "@/lib/utils";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -21,14 +19,7 @@ import { FiltrosPanel, FiltroChip } from "@/components/ui/FiltrosPanel";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
-  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader,
-  AlertDialogTitle, AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useConfirm } from "@/components/ui/confirm";
-import { useToast } from "@/components/ui/toast";
 import { esCreditoVivo } from "@/lib/domain";
 
 function n0(x: number) {
@@ -45,8 +36,18 @@ const ESTADO_FILTRO_LABEL: Record<string, string> = { activo: "Activos", pagado:
 const TIPO_FILTRO_LABEL: Record<string, string> = { personal: "Personal", empresarial: "Empresarial", productos: "Producto", otro: "Otro" };
 const MORA_FILTRO_LABEL: Record<string, string> = { al_dia: "Al día", en_mora: "En mora", critica: "Mora crítica" };
 
-function estadoBadge(estado: string): { label: string; variant: "primary" | "success" | "muted" | "destructive" | "warning" } {
+/**
+ * Estado COMO SE LEE. Un crédito con cuotas vencidas mostraba "Activo", el mismo badge y el
+ * mismo color que uno que viene pagando en fecha: el atraso vivía en otra columna y había que
+ * cruzar dos datos para saber si el cliente debe. El estado GUARDADO no cambia — esto es
+ * presentación. La mora llega en vivo desde la lista, nunca del cache.
+ */
+function estadoBadge(estado: string, diasMora = 0): { label: string; variant: "primary" | "success" | "muted" | "destructive" | "warning" } {
+  if (esCreditoVivo(estado) && diasMora > 0) {
+    return { label: "Activo atrasado", variant: diasMora > 30 ? "destructive" : "warning" };
+  }
   if (estado === "activo")       return { label: "Activo",       variant: "primary" };
+  if (estado === "vencido")      return { label: "Activo",       variant: "primary" };
   if (estado === "pagado")       return { label: "Pagado",       variant: "success" };
   if (estado === "anulado")      return { label: "Anulado",      variant: "destructive" };
   if (estado === "cancelado")    return { label: "Cancelado",    variant: "muted" };
@@ -57,12 +58,7 @@ function estadoBadge(estado: string): { label: string; variant: "primary" | "suc
 export function CreditosTable({ role }: { role: Role }) {
   const router = useRouter();
   const { creditos, error, isLoading, mutate } = useCreditos();
-  const confirm = useConfirm();
-  const toast = useToast();
-  const [dialogOpen, setDialog]   = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
   const [detail, setDetail]       = useState<Credito | null>(null);
-  const [libreDeudaId, setLibreDeudaId] = useState<string | null>(null);
   const [refinanciar, setRefinanciar] = useState<Credito | null>(null);
   const [search, setSearch]       = useState("");
   const [estadoFilter, setEstado] = useState("all");
@@ -70,62 +66,16 @@ export function CreditosTable({ role }: { role: Role }) {
   const [moraFilter, setMora]     = useState("all");
   const [tab, setTab]             = useState<"creditos" | "refinanciados">("creditos");
 
-  const [actionError, setActionError] = useState<string | null>(null);
-
-  // Anular: deja el crédito sin efecto pero conserva el registro (estado anulado).
-  // Cuadra la caja (reversa del desembolso + devolución/conservación de lo cobrado).
-  const handleAnular = async (id: string, motivo: string, accionPagos: "devolver" | "conservar") => {
-    setActionError(null);
-    try {
-      const res = await fetch(`/api/creditos/${id}/anular`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ motivo, accion_pagos: accionPagos }),
-      });
-      const json = await res.json();
-      if (!json.ok) { setActionError(json.error); return; }
-      mutate();
-      globalMutate(KEYS.dashboard);
-      globalMutate(KEYS.vendedores); // las stats del vendedor excluyen anulados → refrescar Personal
-      globalMutate((k) => typeof k === "string" && k.startsWith("/api/caja"), undefined, { revalidate: true });
-      refrescarNotificaciones(); // movió caja: que la campanita avise ya
-      toast.success("Crédito anulado");
-    } catch {
-      setActionError("No se pudo anular el crédito");
-    }
-  };
-
-  // Eliminar: borrado definitivo (bloqueado por el server si tiene pagos).
-  // Confirmación previa con el detalle del crédito (N°, cliente, monto).
-  const handleEliminar = async (c: Credito) => {
-    const ok = await confirm({
-      title: `¿Eliminar crédito ${formatCreditoNumero(c.numero)}?`,
-      description: `Se eliminará definitivamente el crédito de ${nombreCompleto(c.cliente)} por $${n0(c.monto_original)}, junto con su plan de cuotas. Esta acción no se puede deshacer.`,
-      confirmLabel: "Eliminar definitivamente",
-      tone: "danger",
-    });
-    if (!ok) return;
-    setActionError(null);
-    try {
-      const res = await fetch(`/api/creditos/${c.id}`, { method: "DELETE" });
-      const json = await res.json();
-      if (!json.ok) { setActionError(json.error); toast.error(json.error || "No se pudo eliminar"); return; }
-      mutate();
-      globalMutate(KEYS.dashboard);
-      toast.success(`Crédito ${formatCreditoNumero(c.numero)} eliminado`);
-    } catch {
-      setActionError("No se pudo eliminar el crédito");
-      toast.error("No se pudo eliminar el crédito");
-    }
-  };
-
-  // Nuevo crédito → ruta dedicada (vista a pantalla completa, no modal).
-  const openNew  = () => router.push("/creditos/nuevo");
-  const openEdit = (id: string) => { setEditingId(id); setDialog(true); };
-  const handleFormClose = (success?: boolean) => {
-    setDialog(false); setEditingId(null);
-    if (success) { mutate(); globalMutate(KEYS.dashboard); }
-  };
+  /**
+   * Acá solo se DA DE ALTA. Anular y eliminar se disparan desde el detalle, que es donde se
+   * ve contra qué se está decidiendo.
+   *
+   * Y no hay "editar": las condiciones de un crédito otorgado son firmes, así que el
+   * formulario solo podía cambiar el `tipo_credito` mientras abría el simulador entero sobre
+   * un crédito vivo, con el plan recalculado desde hoy. Para cambiar algo real están anular y
+   * refinanciar.
+   */
+  const openNew = () => router.push("/creditos/nuevo");
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -217,12 +167,6 @@ export function CreditosTable({ role }: { role: Role }) {
           <RefinanciadosView creditos={creditos} onOpen={setDetail} onRefinanciar={setRefinanciar} />
         ) : (
         <div className="space-y-5">
-
-        {actionError && (
-          <div className="rounded-lg bg-destructive/10 border border-destructive/20 px-3 py-2.5 text-sm text-destructive">
-            {actionError}
-          </div>
-        )}
 
         {/* ── KPI Strip ── */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -348,49 +292,32 @@ export function CreditosTable({ role }: { role: Role }) {
                 cell: (c) => c.dias_mora > 0
                   ? <StatusBadge label={`${c.dias_mora}d`} variant={c.dias_mora > 30 ? "destructive" : "warning"} />
                   : <span className="text-xs font-medium text-success">Al día</span> },
-              { header: "Estado",
-                cell: (c) => { const est = estadoBadge(c.estado); return <StatusBadge label={est.label} variant={est.variant} />; } },
-              { header: "Acciones", align: "right", className: "pr-5",
-                cell: (c) => (
-                  <div className="flex justify-end gap-1" onClick={(e) => e.stopPropagation()}>
-                    {esCreditoVivo(c.estado) && c.dias_mora > 0 && (
-                      <button onClick={() => setRefinanciar(c)} className="p-1.5 rounded-lg hover:bg-warning/10 transition-colors text-muted-foreground hover:text-warning" title="Refinanciar / reestructurar deuda">
-                        <RefreshCw className="h-3.5 w-3.5" />
-                      </button>
-                    )}
-                    {c.estado === "pagado" && (
-                      <button onClick={() => setLibreDeudaId(c.id)} className="p-1.5 rounded-lg hover:bg-success/10 transition-colors text-success" title="Libre deuda (crédito cancelado)">
-                        <ShieldCheck className="h-3.5 w-3.5" />
-                      </button>
-                    )}
-                    <button onClick={() => openEdit(c.id)} className="p-1.5 rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-foreground" title="Editar">
-                      <Edit2 className="h-3.5 w-3.5" />
-                    </button>
-                    {c.estado !== "anulado" && <AnularButton credito={c} onAnular={handleAnular} />}
-                    {c.tiene_pagos ? (
-                      <button disabled title="No se puede eliminar: el crédito tiene pagos. Anulalo en su lugar." className="p-1.5 rounded-lg text-muted-foreground/30 cursor-not-allowed">
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    ) : (
-                      <button onClick={() => handleEliminar(c)} className="p-1.5 rounded-lg hover:bg-destructive/10 transition-colors text-muted-foreground hover:text-destructive" title="Eliminar crédito">
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    )}
-                  </div>
-                ) },
+              /*
+                Sin columna "Acciones": eran cinco íconos pegados, sin texto, que había que
+                recorrer con el mouse para saber cuál era cuál. Ahora la fila hace UNA cosa
+                —abrir el detalle— y las acciones viven ahí, con su nombre y al lado de los
+                datos contra los que se decide (saldo real, pagos, cuotas).
+              */
+              { header: "Estado", className: "pr-5",
+                cell: (c) => { const est = estadoBadge(c.estado, c.dias_mora); return <StatusBadge label={est.label} variant={est.variant} />; } },
             ]}
             footer={
+              /*
+                🔴 Los colSpan tienen que sumar la cantidad de columnas. Sumaban 9 contra 11:
+                el total de "Monto orig." se dibujaba bajo "Agente" y el de "Saldo" bajo
+                "Tipo". Ahora son 10 columnas → 5 + 1 + 1 + 3.
+              */
               <tr className="bg-muted/20">
-                <td colSpan={3} className="px-4 py-3 text-[10px] font-bold text-muted-foreground uppercase tracking-widest border-t border-border">
+                <td colSpan={5} className="px-4 py-3 text-[10px] font-bold text-muted-foreground uppercase tracking-widest border-t border-border">
                   Totales ({filtered.length})
                 </td>
                 <td className="px-4 py-3 text-right font-mono font-bold text-foreground border-t border-border">${n0(totals.monto)}</td>
                 <td className="px-4 py-3 text-right font-mono font-bold text-warning border-t border-border">${n0(totals.saldo)}</td>
-                <td colSpan={4} className="border-t border-border pr-5" />
+                <td colSpan={3} className="border-t border-border pr-5" />
               </tr>
             }
             renderMobileCard={(c) => {
-              const est = estadoBadge(c.estado);
+              const est = estadoBadge(c.estado, c.dias_mora);
               return (
                 <div onClick={(e) => { if (eventoPropio(e)) setDetail(c); }} role="button" tabIndex={0} onKeyDown={(e) => { if (teclaDelContenedor(e) && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); setDetail(c); } }} className="rounded-xl bg-card border border-border p-4 space-y-3 cursor-pointer active:bg-muted/20 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50">
                   <div className="flex items-start justify-between gap-2">
@@ -414,30 +341,13 @@ export function CreditosTable({ role }: { role: Role }) {
                       </p>
                     </div>
                   </div>
-                  <div className="flex items-center justify-between pt-2 border-t border-border/70">
+                  {/* Mismo criterio que en desktop: la tarjeta abre el detalle y las acciones
+                      viven allá. Acá los íconos apretados eran peor todavía — sin hover que
+                      revele el título, en un teléfono no hay forma de saber qué hace cada uno. */}
+                  <div className="pt-2 border-t border-border/70">
                     {c.dias_mora > 0
                       ? <StatusBadge label={`${c.dias_mora}d mora`} variant={c.dias_mora > 30 ? "destructive" : "warning"} />
                       : <span className="text-xs font-medium text-success">Al día</span>}
-                    <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
-                      {esCreditoVivo(c.estado) && c.dias_mora > 0 && (
-                        <button onClick={() => setRefinanciar(c)} className="p-1.5 rounded-lg hover:bg-warning/10 transition-colors text-muted-foreground hover:text-warning" title="Refinanciar">
-                          <RefreshCw className="h-3.5 w-3.5" />
-                        </button>
-                      )}
-                      <button onClick={() => openEdit(c.id)} className="p-1.5 rounded-lg hover:bg-muted transition-colors text-muted-foreground">
-                        <Edit2 className="h-3.5 w-3.5" />
-                      </button>
-                      {c.estado !== "anulado" && <AnularButton credito={c} onAnular={handleAnular} />}
-                      {c.tiene_pagos ? (
-                        <button disabled title="Tiene pagos; anulalo en su lugar" className="p-1.5 rounded-lg text-muted-foreground/30 cursor-not-allowed">
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                      ) : (
-                        <button onClick={() => handleEliminar(c)} className="p-1.5 rounded-lg hover:bg-destructive/10 transition-colors text-muted-foreground hover:text-destructive" title="Eliminar">
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                      )}
-                    </div>
                   </div>
                 </div>
               );
@@ -448,46 +358,24 @@ export function CreditosTable({ role }: { role: Role }) {
         )}
       </div>
 
-      <Dialog open={dialogOpen} onOpenChange={open => { if (!open) handleFormClose(false); }}>
-        <DialogContent
-          className="w-screen max-w-none h-[100dvh] max-h-[100dvh] rounded-none border-0 p-0 gap-0 flex flex-col overflow-hidden"
-          onInteractOutside={(e) => e.preventDefault()}
-          onEscapeKeyDown={(e) => e.preventDefault()}
-        >
-          <DialogHeader className="px-6 py-4 border-b border-border shrink-0">
-            <div className="flex items-center gap-4">
-              {/* Badge tipográfico sin iconos Lucide */}
-              <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-primary/20 to-primary/5 border border-primary/20 flex items-center justify-center shrink-0">
-                <span className="font-mono text-base font-black text-primary leading-none">$</span>
-              </div>
-              <div>
-                <DialogTitle className="text-base font-semibold leading-tight">
-                  {editingId ? "Editar crédito" : "Simulador de crédito"}
-                </DialogTitle>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  Sistema Francés · amortización por cuotas iguales
-                </p>
-              </div>
-            </div>
-          </DialogHeader>
-          <div className="flex-1 min-h-0 overflow-hidden">
-            <CreditoForm creditoId={editingId} onClose={handleFormClose} />
-          </div>
-        </DialogContent>
-      </Dialog>
-
       <Dialog open={!!detail} onOpenChange={open => { if (!open) setDetail(null); }}>
         <DialogContent className="w-full max-w-[96vw] lg:max-w-5xl h-[90vh] max-h-[90vh] p-0 gap-0 flex flex-col overflow-hidden">
           <DialogHeader className="px-6 py-4 border-b border-border shrink-0">
             <DialogTitle>Detalle del crédito</DialogTitle>
           </DialogHeader>
           <div className="flex-1 min-h-0 overflow-hidden">
-            {detail && <CreditoDetail credito={detail} role={role} onRefinanciar={(c) => { setDetail(null); setRefinanciar(c); }} />}
+            {detail && (
+              <CreditoDetail
+                credito={detail}
+                role={role}
+                onRefinanciar={(c) => { setDetail(null); setRefinanciar(c); }}
+                // Anular/eliminar dejan vieja la copia del crédito que muestra este modal.
+                onCerrar={() => { setDetail(null); mutate(); }}
+              />
+            )}
           </div>
         </DialogContent>
       </Dialog>
-
-      <LibreDeudaDialog creditoId={libreDeudaId} onClose={() => setLibreDeudaId(null)} />
 
       <RefinanciarDialog
         credito={refinanciar}
@@ -497,73 +385,6 @@ export function CreditosTable({ role }: { role: Role }) {
         }}
       />
     </>
-  );
-}
-
-/** Botón + diálogo de anulación con motivo y decisión sobre lo cobrado (cuadra la caja). */
-function AnularButton({ credito, onAnular }: { credito: Credito; onAnular: (id: string, motivo: string, accion: "devolver" | "conservar") => void }) {
-  const [motivo, setMotivo] = useState("");
-  const [accion, setAccion] = useState<"devolver" | "conservar">("devolver");
-  // `cobros_vivos`, no `tiene_pagos`: si el único pago se anuló, ya se devolvió con su
-  // contra-asiento y no hay nada que decidir. Preguntarlo igual confunde y ofrece una acción
-  // que no haría nada.
-  const tienePagos = !!credito.cobros_vivos;
-
-  return (
-    <AlertDialog>
-      <AlertDialogTrigger asChild>
-        <button className="p-1.5 rounded-lg hover:bg-warning/10 transition-colors text-muted-foreground hover:text-warning" title="Anular crédito">
-          <Ban className="h-3.5 w-3.5" />
-        </button>
-      </AlertDialogTrigger>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>¿Anular crédito {formatCreditoNumero(credito.numero)}?</AlertDialogTitle>
-          <AlertDialogDescription>
-            El crédito de <strong>{nombreCompleto(credito.cliente)}</strong> por <strong>${n0(credito.monto_original)}</strong> quedará <strong>anulado</strong>; se conservan registro, cuotas y pagos. Se revierte el desembolso en la caja.
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-
-        <div className="space-y-3">
-          <label className="block space-y-1">
-            <span className="text-xs font-medium text-muted-foreground">Motivo (opcional)</span>
-            <textarea
-              value={motivo} onChange={(e) => setMotivo(e.target.value)} rows={2}
-              placeholder="Ej: cargado por error, no cumplió requisitos…"
-              className="w-full rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm text-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
-            />
-          </label>
-
-          {tienePagos && (
-            <div className="space-y-1.5">
-              <span className="text-xs font-medium text-muted-foreground">El crédito tiene pagos. ¿Qué hacés con lo cobrado?</span>
-              <div className="grid grid-cols-2 gap-2">
-                <button type="button" onClick={() => setAccion("devolver")}
-                  className={`rounded-lg border px-3 py-2 text-xs font-medium transition-colors ${accion === "devolver" ? "border-primary bg-primary/10 text-foreground" : "border-border text-muted-foreground hover:bg-muted"}`}>
-                  Devolver al cliente
-                </button>
-                <button type="button" onClick={() => setAccion("conservar")}
-                  className={`rounded-lg border px-3 py-2 text-xs font-medium transition-colors ${accion === "conservar" ? "border-primary bg-primary/10 text-foreground" : "border-border text-muted-foreground hover:bg-muted"}`}>
-                  Conservar en caja
-                </button>
-              </div>
-              <p className="text-[11px] text-muted-foreground/70">
-                {accion === "devolver"
-                  ? "Se registra una devolución (egreso) por lo cobrado."
-                  : "Lo cobrado queda como ingreso en la caja."}
-              </p>
-            </div>
-          )}
-        </div>
-
-        <AlertDialogFooter>
-          <AlertDialogCancel>Volver</AlertDialogCancel>
-          <AlertDialogAction onClick={() => onAnular(credito.id, motivo, accion)} className="bg-warning text-warning-foreground hover:bg-warning/90">
-            Anular crédito
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
   );
 }
 
@@ -630,7 +451,7 @@ function RefinanciadosView({ creditos, onOpen, onRefinanciar }: { creditos: Cred
           <h3 className="text-sm font-semibold text-foreground">Refinanciar un crédito</h3>
         </div>
         <p className="text-xs text-muted-foreground">
-          Elegí un crédito <strong className="text-foreground">en mora</strong> para consolidar su deuda viva en un crédito nuevo (con quita opcional; no mueve caja).
+          Elegí un crédito <strong className="text-foreground">en mora</strong> para consolidar su deuda viva en un crédito nuevo (con descuento opcional; no mueve caja).
         </p>
 
         {candidatos.length === 0 ? (

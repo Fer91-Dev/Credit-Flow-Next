@@ -44,8 +44,8 @@ import {
  * (la parte pura, sin cargos). Se resalta con fondo y peso, no con un color de texto nuevo:
  * indigo ya significa "capital" y ámbar "interés" en esta misma tabla.
  */
-const COL_PAGA_TH = "px-2.5 py-2.5 text-right font-bold text-primary bg-primary/10 border-b border-border border-l border-primary/25";
-const COL_PAGA_TD = "px-2.5 py-2 text-right font-mono font-bold text-[13px] text-foreground bg-primary/[0.07] border-l border-primary/25 tabular-nums";
+const COL_PAGA_TH = "px-2.5 py-2.5 text-right text-[11px] font-bold uppercase tracking-wider text-primary bg-primary/10 border-b border-border border-l border-primary/25";
+const COL_PAGA_TD = "px-2.5 py-2.5 text-right font-mono font-bold text-[14px] text-foreground bg-primary/[0.07] border-l border-primary/25 tabular-nums";
 const COL_PAGA_TF = "px-2.5 py-3.5 text-right font-bold font-mono text-sm text-foreground bg-primary/[0.15] border-l border-primary/25 tabular-nums";
 
 const CUENTA_DESEMBOLSO_LABEL: Record<CuentaCaja, string> = {
@@ -1477,38 +1477,38 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
               <table className="w-full text-xs border-separate border-spacing-0 [&_th:first-child]:pl-4 [&_td:first-child]:pl-4 [&_th:last-child]:pr-4 [&_td:last-child]:pr-4">
                 <thead className="sticky top-0 z-10 bg-card">
                   <tr>
-                    <th className="px-2.5 py-2.5 text-left font-semibold text-muted-foreground border-b border-border w-9">#</th>
-                    <th className="px-2.5 py-2.5 text-left font-semibold text-muted-foreground border-b border-border">Vencimiento</th>
-                    <th className={hayCargoCols ? "px-2.5 py-2.5 text-right font-semibold text-muted-foreground border-b border-border" : COL_PAGA_TH}>Cuota</th>
-                    <th className="px-2.5 py-2.5 text-right font-semibold text-warning border-b border-border">Interés</th>
-                    <th className="px-2.5 py-2.5 text-right font-semibold text-primary border-b border-border">Capital</th>
+                    <th className="px-2.5 py-2.5 text-left text-[11px] font-bold uppercase tracking-wider text-muted-foreground border-b border-border w-9">#</th>
+                    <th className="px-2.5 py-2.5 text-left text-[11px] font-bold uppercase tracking-wider text-muted-foreground border-b border-border">Vencimiento</th>
+                    <th className={hayCargoCols ? "px-2.5 py-2.5 text-right text-[11px] font-bold uppercase tracking-wider text-muted-foreground border-b border-border" : COL_PAGA_TH}>Cuota</th>
+                    <th className="px-2.5 py-2.5 text-right text-[11px] font-bold uppercase tracking-wider text-warning border-b border-border">Interés</th>
+                    <th className="px-2.5 py-2.5 text-right text-[11px] font-bold uppercase tracking-wider text-primary border-b border-border">Capital</th>
                     {cargoCols.map(col => (
-                      <th key={col.key} className="px-2.5 py-2.5 text-right font-semibold text-foreground bg-warning/5 border-b border-border align-bottom">{col.label}</th>
+                      <th key={col.key} className="px-2.5 py-2.5 text-right text-[11px] font-bold uppercase tracking-wider text-foreground bg-warning/5 border-b border-border align-bottom">{col.label}</th>
                     ))}
                     {/* Mismo nombre que en la vista cliente: es literalmente el mismo número. */}
                     {hayCargoCols && <th className={COL_PAGA_TH}>A pagar</th>}
-                    <th className="px-2.5 py-2.5 text-right font-semibold text-muted-foreground border-b border-border">Saldo</th>
+                    <th className="px-2.5 py-2.5 text-right text-[11px] font-bold uppercase tracking-wider text-muted-foreground border-b border-border">Saldo</th>
                   </tr>
                 </thead>
                 <tbody>
                   {plan.cuotas.map((row, idx) => (
                     <tr key={row.nro} className={`hover:bg-muted/20 transition-colors ${idx % 2 === 1 ? "bg-muted/5" : ""}`}>
-                      <td className="px-2.5 py-2 text-muted-foreground/50 font-mono tabular-nums">{row.nro}</td>
-                      <td className="px-2.5 py-2 text-muted-foreground tabular-nums">{fmtDate(row.fecha)}</td>
-                      <td className={hayCargoCols ? "px-2.5 py-2 text-right font-mono text-foreground tabular-nums" : COL_PAGA_TD}>${n2(row.cuota)}</td>
-                      <td className="px-2.5 py-2 text-right font-mono text-warning tabular-nums">${n2(row.interes)}</td>
-                      <td className="px-2.5 py-2 text-right font-mono text-primary tabular-nums">${n2(row.capital)}</td>
+                      <td className="px-2.5 py-2.5 text-muted-foreground/50 font-mono tabular-nums">{row.nro}</td>
+                      <td className="px-2.5 py-2.5 text-muted-foreground tabular-nums">{fmtDate(row.fecha)}</td>
+                      <td className={hayCargoCols ? "px-2.5 py-2.5 text-right font-mono text-foreground tabular-nums" : COL_PAGA_TD}>${n2(row.cuota)}</td>
+                      <td className="px-2.5 py-2.5 text-right font-mono text-warning tabular-nums">${n2(row.interes)}</td>
+                      <td className="px-2.5 py-2.5 text-right font-mono text-primary tabular-nums">${n2(row.capital)}</td>
                       {cargoCols.map(col => (
-                        <td key={col.key} className="px-2.5 py-2 text-right font-mono text-foreground/80 bg-warning/5 tabular-nums">${n2(row[col.key])}</td>
+                        <td key={col.key} className="px-2.5 py-2.5 text-right font-mono text-foreground/80 bg-warning/5 tabular-nums">${n2(row[col.key])}</td>
                       ))}
                       {hayCargoCols && <td className={COL_PAGA_TD}>${n2(row.cuotaTotal)}</td>}
-                      <td className="px-2.5 py-2 text-right font-mono text-muted-foreground tabular-nums">${n2(row.saldo)}</td>
+                      <td className="px-2.5 py-2.5 text-right font-mono text-muted-foreground tabular-nums">${n2(row.saldo)}</td>
                     </tr>
                   ))}
                 </tbody>
                 <tfoot className="sticky bottom-0 z-10 bg-card">
-                  <tr className="border-t-2 border-border bg-muted/40">
-                    <td colSpan={2} className="px-2.5 py-3.5 text-[10px] font-bold text-foreground uppercase tracking-widest">Totales</td>
+                  <tr className="border-t-2 border-primary/40 bg-primary/5">
+                    <td colSpan={2} className="px-2.5 py-4 text-[10px] font-bold text-foreground uppercase tracking-widest">Totales</td>
                     <td className={hayCargoCols ? "px-2.5 py-3.5 text-right font-bold font-mono text-sm text-foreground tabular-nums" : COL_PAGA_TF}>${n2(plan.totalPagado)}</td>
                     <td className="px-2.5 py-3.5 text-right font-bold font-mono text-sm text-warning tabular-nums">${n2(plan.totalIntereses)}</td>
                     <td className="px-2.5 py-3.5 text-right font-bold font-mono text-sm text-primary tabular-nums">${n2(montoNum)}</td>
@@ -1524,9 +1524,9 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
                   {comisionUpfront > 0 && (
                     <>
                       <tr className="bg-muted/40">
-                        <td colSpan={pieOpAntes} className="px-2.5 py-2 text-[10px] font-medium text-muted-foreground uppercase tracking-widest">Comisión de otorgamiento (al firmar)</td>
+                        <td colSpan={pieOpAntes} className="px-2.5 py-2.5 text-[10px] font-medium text-muted-foreground uppercase tracking-widest">Comisión de otorgamiento (al firmar)</td>
                         {/* La banda sigue bajando por la misma columna: todo lo que el cliente paga vive ahí. */}
-                        <td className="px-2.5 py-2 text-right font-mono text-sm text-foreground bg-primary/[0.07] border-l border-primary/25 tabular-nums">${n2(comisionUpfront)}</td>
+                        <td className="px-2.5 py-2.5 text-right font-mono text-sm text-foreground bg-primary/[0.07] border-l border-primary/25 tabular-nums">${n2(comisionUpfront)}</td>
                         <td colSpan={pieOpDespues} />
                       </tr>
                       <tr className="border-t border-border bg-muted/40">
@@ -1717,8 +1717,9 @@ function PlanCliente({ cuotas, totalCuotas, comisionUpfront, totalAPagar }: {
     ? [cuotas.slice(0, Math.ceil(total / 2)), cuotas.slice(Math.ceil(total / 2))]
     : [cuotas];
 
-  const th = "px-4 py-2.5 text-left font-semibold text-muted-foreground border-b border-border";
-  const td = "px-4 py-2.5 tabular-nums";
+  const th = "px-4 py-2.5 text-left text-[11px] font-bold uppercase tracking-wider text-muted-foreground border-b border-border";
+  // Filas más altas: el vendedor lee este plan en voz alta frente al cliente, no lo escanea.
+  const td = "px-4 py-3 tabular-nums";
   /** Canal lateral: alinea las celdas de los extremos con el encabezado del panel (px-4). */
   const canal = "[&_th:first-child]:pl-4 [&_td:first-child]:pl-4 [&_th:last-child]:pr-4 [&_td:last-child]:pr-4";
 
@@ -1739,9 +1740,12 @@ function PlanCliente({ cuotas, totalCuotas, comisionUpfront, totalAPagar }: {
               <tbody>
                 {bloque.map((row) => (
                   <tr key={row.nro} className={`hover:bg-muted/20 transition-colors ${row.nro % 2 === 0 ? "bg-muted/5" : ""}`}>
-                    <td className={`${td} text-muted-foreground font-mono`}>{row.nro}/{total}</td>
+                    <td className={`${td} font-mono text-muted-foreground`}>
+                      <span className="text-foreground">{row.nro}</span><span className="text-muted-foreground/50">/{total}</span>
+                    </td>
                     <td className={`${td} text-foreground`}>{fmtDate(row.fecha)}</td>
-                    <td className={`${td} text-right font-mono font-semibold text-foreground`}>${n2(row.cuotaTotal)}</td>
+                    {/* El importe es LO QUE SE DICE en voz alta: es el dato de la fila. */}
+                    <td className={`${td} text-right font-mono text-[15px] font-bold text-foreground`}>${n2(row.cuotaTotal)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -1758,12 +1762,19 @@ function PlanCliente({ cuotas, totalCuotas, comisionUpfront, totalAPagar }: {
         romper la suma. Va en su propio renglón, y el total de verdad recién debajo — si no,
         el cliente ve un "total a pagar" al que le faltan.
       */}
-      <div className="sticky bottom-0 z-20 bg-card">
-        <div className="flex items-baseline justify-between gap-4 border-t-2 border-border bg-muted/40 px-4 py-3.5">
+      {/*
+        🔴 El total va en el MISMO contenedor que la tabla.
+        Con pocas cuotas la tabla se centra (`mx-auto max-w-xl`) y el bloque de totales
+        quedaba a todo el ancho del panel: la etiqueta salía disparada al borde izquierdo,
+        lejísimos de la columna que resume. Ahora comparten caja y el importe cae justo
+        debajo de la columna "A pagar".
+      */}
+      <div className={`sticky bottom-0 z-20 bg-card ${dividir ? "" : "mx-auto max-w-xl"}`}>
+        <div className="flex items-baseline justify-between gap-4 border-t-2 border-primary/40 bg-primary/5 px-4 py-4">
           <span className="text-[10px] font-bold uppercase tracking-widest text-foreground">
             {comisionUpfront > 0 ? "Total de las cuotas" : "Total a pagar"}
           </span>
-          <span className={`font-mono tabular-nums ${comisionUpfront > 0 ? "text-sm font-semibold text-foreground" : "text-base font-bold text-foreground"}`}>
+          <span className={`font-mono tabular-nums ${comisionUpfront > 0 ? "text-sm font-semibold text-foreground" : "text-xl font-black text-foreground"}`}>
             ${n2(totalCuotas)}
           </span>
         </div>
@@ -1773,9 +1784,9 @@ function PlanCliente({ cuotas, totalCuotas, comisionUpfront, totalAPagar }: {
               <span className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground">Comisión de otorgamiento (al firmar)</span>
               <span className="font-mono text-sm tabular-nums text-foreground">${n2(comisionUpfront)}</span>
             </div>
-            <div className="flex items-baseline justify-between gap-4 border-t border-border bg-muted/40 px-4 py-3.5">
+            <div className="flex items-baseline justify-between gap-4 border-t border-primary/30 bg-primary/5 px-4 py-4">
               <span className="text-[10px] font-bold uppercase tracking-widest text-foreground">Total a pagar</span>
-              <span className="font-mono text-base font-bold tabular-nums text-foreground">${n2(totalAPagar)}</span>
+              <span className="font-mono text-xl font-black tabular-nums text-foreground">${n2(totalAPagar)}</span>
             </div>
           </>
         )}

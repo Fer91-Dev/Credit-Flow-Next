@@ -47,7 +47,17 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
       include: {
         // Cuotas mínimas para calcular la mora EXACTA (cuota por cuota, como al cobrar).
         cuotas: { select: { fecha_vencimiento: true, cuota_total: true, pagado_mora: true } },
-        cliente: { select: { id: true, nombre: true, apellido: true, documento: true } },
+        /**
+         * 🔴 `telefono` y `email` FALTABAN, y el tipo `Credito` los declaraba igual.
+         *
+         * Consecuencia: `cliente.telefono` era `undefined` para TODOS los créditos de la
+         * lista, siempre. El botón de WhatsApp de la pestaña Morosos —que es por donde se
+         * reclama— salía apagado para toda la cartera, tuviera el cliente teléfono o no, y
+         * el detalle de cobranza mostraba "—" en Email y Teléfono aunque estuvieran cargados.
+         * La agenda del día sí los manda, y ahí el botón funcionaba: mismo dato, dos
+         * endpoints, uno solo lo mandaba.
+         */
+        cliente: { select: { id: true, nombre: true, apellido: true, documento: true, telefono: true, email: true } },
         vendedor: { select: { id: true, nombre: true } },
         pagos: { orderBy: { fecha: "desc" }, take: 5 },
         // Cobros VIVOS (sin los anulados). Va aparte de `pagos` porque cada uno responde

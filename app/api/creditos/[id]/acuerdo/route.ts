@@ -2,7 +2,7 @@ import { requireRole, scopeCreditosVendedor } from "@/lib/auth";
 import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
-import { deudaVencidaDeCredito } from "@/lib/acuerdos";
+import { deudaVencidaDeCredito, resolverTasaAcuerdo } from "@/lib/acuerdos";
 import { getCobranzaConfig } from "@/lib/config";
 import { quitaMaxima } from "@/lib/domain";
 import type { NextRequest } from "next/server";
@@ -34,6 +34,8 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
   const cobranza = await getCobranzaConfig(tenantId);
   const cfg = cobranza.acuerdos;
 
+  const tasaAcuerdo = await resolverTasaAcuerdo(tenantId, credito.tasa, cfg);
+
   const acuerdoVigente = await prisma.acuerdos_pago.findFirst({
     where: { ...withTenant(tenantId), credito_id: id, estado: "vigente" },
     select: { id: true, monto_acordado: true, fecha: true },
@@ -54,6 +56,14 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
       congela_punitorios: cfg.congela_punitorios,
       /** Tope de condonación para QUIEN ESTÁ MIRANDO (según su rol). */
       quita_maxima: quitaMaxima(deuda, role === "admin", cfg),
+      /**
+       * La tasa con la que se va a armar el plan, ya resuelta, para que la pantalla calcule
+       * EL MISMO plan que va a crear el alta. Sin esto el diálogo repartía la deuda en partes
+       * iguales y prometía un total que no era el que se creaba.
+       */
+      tasa_mensual: tasaAcuerdo.tasa,
+      /** "config" = la fijó la financiera · "credito" = se heredó la del crédito. */
+      tasa_origen: tasaAcuerdo.origen,
     },
     acuerdo_vigente: acuerdoVigente,
   });

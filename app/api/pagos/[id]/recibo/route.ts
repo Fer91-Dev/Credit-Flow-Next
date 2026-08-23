@@ -38,6 +38,11 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
           cliente: { select: { nombre: true, apellido: true, documento: true } },
         },
       },
+      // Un cobro de acuerdo lo dice el recibo: el importe no coincide con ninguna cuota
+      // del credito y el cliente se lleva un papel que no puede cotejar contra su plan.
+      acuerdo_cuota: {
+        select: { numero: true, vencimiento: true, acuerdo: { select: { _count: { select: { cuotas: true } } } } },
+      },
     },
   });
 
@@ -63,6 +68,10 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
       created_at: pago.created_at,
       anulado: pago.anulado,
       anulado_motivo: pago.anulado_motivo,
+      // "Cuota 2 de 3 del acuerdo de pago" — el concepto por el que se cobro.
+      acuerdo: pago.acuerdo_cuota
+        ? { numero: pago.acuerdo_cuota.numero, total: pago.acuerdo_cuota.acuerdo._count.cuotas, vencimiento: pago.acuerdo_cuota.vencimiento }
+        : null,
     },
     credito: {
       id: pago.credito.id,

@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { registrarAuditoria } from "@/lib/audit";
 import { nombreCompleto, hoyComercial } from "@/lib/utils";
 import { normalizarCuit, validarDuplicadoCliente } from "@/lib/clientes-validacion";
-import { cuotaMensualFrancesa, tasaPeriodicaSegunConvencion, normalizarFrecuencia, interesMora, diasAtraso, round2, estadoCoherente, esCreditoVivo, moraDelCredito, moraDesdeCronograma, moraPendienteTotal } from "@/lib/domain";
+import { calcularScore, diasMoraActual, cuotaMensualFrancesa, tasaPeriodicaSegunConvencion, normalizarFrecuencia, interesMora, diasAtraso, round2, estadoCoherente, esCreditoVivo, moraDelCredito, moraDesdeCronograma, moraPendienteTotal } from "@/lib/domain";
 import { getConfiguracion, getRiesgoConfig } from "@/lib/config";
 import type { NextRequest } from "next/server";
 
@@ -53,9 +53,19 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
     // Estado reconciliado: nunca mostrar un terminal SALDADO (pagado/cancelado)
     // si el ledger todavía tiene deuda. Defensa ante datos legacy inconsistentes.
     const estadoReal = estadoCoherente(c.estado, c.saldo_pendiente, c.cuotas);
+    /**
+     * 🔴 MORA EN VIVO, NO EL CACHÉ.
+     *
+     * `creditos.dias_mora` solo se escribe al cobrar, anular, refinanciar o reconciliar:
+     * **nada lo avanza día a día**. La ficha era el último lugar de la API que seguía
+     * leyéndolo, y por eso mostraba al día a un cliente con 41 días de atraso — con
+     * `interes_mora` en $0, porque el interés colgaba del mismo cero. La lista de créditos,
+     * el dashboard y cobranzas ya calculaban en vivo: la ficha del cliente los contradecía.
+     */
+    const diasMora = diasMoraActual(c.proximo_pago, hoyComercial());
     // VIVO, no "activo": tras cobrarle a un moroso el crédito queda en `vencido`, y ahí
     // la ficha dejaba de mostrarle el interés de mora que igual se le está cobrando.
-    const enMora = c.dias_mora > 0 && esCreditoVivo(estadoReal);
+    const enMora = diasMora > 0 && esCreditoVivo(estadoReal);
     let cuota = 0;
     let interes_mora = 0;
     if (c.monto_original > 0 && c.plazo_meses >= 1) {
@@ -110,7 +120,7 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
     // solo el resumen; quitamos `cuotas` del payload del crédito.
     const { cuotas: _omit, ...rest } = c;
     void _omit;
-    return { ...rest, estado: estadoReal, cuota, interes_mora, total_cobrado, cuotas_resumen };
+    return { ...rest, estado: estadoReal, dias_mora: diasMora, cuota, interes_mora, total_cobrado, cuotas_resumen };
   });
 
   const activos = creditosConFinanzas.filter((c) => esCreditoVivo(c.estado));
@@ -144,7 +154,41 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
     puedeEditar: esAdmin || maxEd === 0 || cliente.ingreso_ediciones < maxEd,
   };
 
-  return successResponse({ ...cliente, creditos: creditosConFinanzas, estado_cuenta, sueldo_control, puede_anular_pago: esAdmin });
+  /**
+   * CALIFICACIÓN CREDITICIA DEL CLIENTE.
+   *
+   * 🔴 El score existía y se veía SOLO en el listado: entrabas a la ficha y el dato
+   * desaparecía justo en la pantalla donde se lo mira en serio. Y lo que nunca se vio en
+   * ningún lado es el DETALLE — de dónde salió cada punto que perdió—, que `calcularScore`
+   * viene devolviendo desde siempre.
+   *
+   * Se arma con los mismos insumos que `GET /api/clientes` (misma función del dominio, mismo
+   * criterio de "cuota vencida"): días de mora máximos de sus créditos vivos, cuotas ya
+   * vencidas y cuántas de ésas cumplió.
+   */
+  const hoyMs = hoyComercial().getTime();
+  const cuotasDeSusCreditos = await prisma.cuotas.findMany({
+    where: { ...withTenant(tenantId), credito_id: { in: creditosConFinanzas.map((c) => c.id) } },
+    select: { fecha_vencimiento: true, estado: true },
+  });
+  let cuotasVencidas = 0;
+  let cuotasCumplidas = 0;
+  for (const q of cuotasDeSusCreditos) {
+    if (q.fecha_vencimiento.getTime() < hoyMs) {
+      cuotasVencidas += 1;
+      if (q.estado === "pagada") cuotasCumplidas += 1;
+    }
+  }
+  const score = calcularScore({
+    // Solo los créditos VIVOS pesan en la mora actual: uno pagado hace un año no lo
+    // deja moroso hoy. El historial de incumplimiento entra por cuotasVencidas.
+    maxDiasMora: activos.reduce((m, c) => Math.max(m, c.dias_mora), 0),
+    cuotasVencidas,
+    cuotasCumplidas,
+    tieneCreditos: creditosConFinanzas.length > 0,
+  });
+
+  return successResponse({ ...cliente, creditos: creditosConFinanzas, estado_cuenta, sueldo_control, score, puede_anular_pago: esAdmin });
 });
 
 /**

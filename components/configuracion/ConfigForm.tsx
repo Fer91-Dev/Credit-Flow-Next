@@ -7,7 +7,7 @@ import { FeatureGate } from "@/components/providers/FeaturesProvider";
 import { FinancieraForm } from "@/components/configuracion/FinancieraForm";
 import { BackupsView } from "@/components/configuracion/BackupsView";
 import type { SimuladorConfig, CargosConfig, FrecuenciaOpcion, DocumentosConfig, ConvencionTasa } from "@/lib/domain";
-import { DOCUMENTOS_DEFAULT, revisarDocumentos, punitorioMensualDesdeDiaria, ORDEN_IMPUTACION, tasaDesdeCoeficiente, textoCuotas } from "@/lib/domain";
+import { DOCUMENTOS_DEFAULT, PLANTILLAS_CONTACTO_DEFAULT, revisarDocumentos, punitorioMensualDesdeDiaria, ORDEN_IMPUTACION, tasaDesdeCoeficiente, textoCuotas } from "@/lib/domain";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Emoji } from "@/components/ui/Emoji";
 import { Field, Input, Select, Textarea, SecretInput } from "@/components/ui/field";
@@ -126,7 +126,7 @@ const AYUDA: Record<string, AyudaBloque> = {
       "Máximo de cuotas: hasta dónde puede estirar el vendedor sin consultar. No es lo que va a ofrecer siempre, es su techo.",
       "Días entre cuotas: cada cuánto vence una cuota DEL ACUERDO. Es independiente del crédito: podés acordar semanal aunque el crédito sea mensual.",
       "Cuotas impagas que lo rompen: con 1 sos estricto (falta a una y se cae); con 2 o 3 le das margen para un tropiezo.",
-      "Quita máx. del vendedor: cuánto puede perdonar por su cuenta. En 0 no condona nada y toda quita la firma un admin, que no tiene tope.",
+      "Descuento máx. del vendedor: cuánto puede perdonar por su cuenta. En 0 no descuenta nada y todo descuento lo firma un admin, que no tiene tope.",
       "La condonación sale de los punitorios y el interés, NUNCA del capital: la plata que se prestó de verdad no se regala.",
       "El acuerdo no toca el crédito: el cliente paga como siempre y el acuerdo se va cumpliendo solo con esos pagos.",
       "No hay botón para darlo por cumplido: se cumple cuando la plata entra, y eso lo detecta el sistema solo.",
@@ -554,6 +554,15 @@ export function ConfigForm() {
                   </button>
                 );
               })}
+              {/*
+                Qué significa el asterisco. Sin esta línea el `*` es decorativo: en una
+                pantalla donde CASI TODO tiene un default razonable, hay que poder distinguir
+                el parámetro que la financiera elige del que el motor no puede resolver solo.
+              */}
+              <p className="mt-4 hidden md:block px-3 text-[11px] leading-relaxed text-muted-foreground/70">
+                <span className="text-destructive">*</span> El motor no puede calcular sin este dato.
+                El resto tiene un valor por defecto y en 0 simplemente queda apagado.
+              </p>
             </nav>
 
             {/* ─ Contenido de la sección activa ─ */}
@@ -593,14 +602,14 @@ export function ConfigForm() {
             onSave={() => save("motor", { convencionTasa: form.convencionTasa, sistemaAmortizacion: form.sistemaAmortizacion })}
             saving={savingKey === "motor"} saved={savedKey === "motor"} dirty={isDirty("motor")}>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Field label="Convención de tasa" hint="Cómo se interpreta el campo «tasa» de cada crédito">
+              <Field required label="Convención de tasa" hint="Cómo se interpreta el campo «tasa» de cada crédito">
                 <Select value={form.convencionTasa} onChange={e => set("convencionTasa", e.target.value as ConfiguracionFinanciera["convencionTasa"])}>
                   <option value="nominal_anual">Nominal anual (TNA)</option>
                   <option value="efectiva_anual">Efectiva anual (TEA)</option>
                   <option value="mensual">Mensual</option>
                 </Select>
               </Field>
-              <Field label="Sistema de amortización">
+              <Field required label="Sistema de amortización">
                 <Select value={form.sistemaAmortizacion} onChange={e => set("sistemaAmortizacion", e.target.value as ConfiguracionFinanciera["sistemaAmortizacion"])}>
                   <option value="frances">Francés (cuota fija)</option>
                 </Select>
@@ -707,7 +716,7 @@ export function ConfigForm() {
               onChange={f => setSim("frecuencias", f)}
             />
             <div className="mt-4 max-w-xs">
-              <Field label="Frecuencia por defecto" hint="Preseleccionada en el simulador">
+              <Field required label="Frecuencia por defecto" hint="Preseleccionada en el simulador">
                 <Select value={form.simulador.frecuenciaDefault} onChange={e => setSim("frecuenciaDefault", e.target.value)}>
                   {form.simulador.frecuencias.filter(f => f.activo).map(f => (
                     <option key={f.clave} value={f.clave}>{cap(f.label)}</option>
@@ -744,7 +753,7 @@ export function ConfigForm() {
                 </Select>
               </Field>
               {form.simulador.redondeoCuota.modo === "multiplo" && (
-                <Field label="Múltiplo" hint="Ej: 100 deja las cuotas de a $100">
+                <Field required label="Múltiplo" hint="Ej: 100 deja las cuotas de a $100">
                   <Input type="number" min="1" step="1" value={form.simulador.redondeoCuota.multiplo}
                     onChange={e => setSim("redondeoCuota", { ...form.simulador.redondeoCuota, multiplo: parseInt(e.target.value) || 1 })} />
                 </Field>
@@ -765,14 +774,23 @@ export function ConfigForm() {
             <div className="space-y-5">
               <SubGrupo titulo="Cuándo vence la cuota" nota="solo créditos mensuales">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <Field label="Día de vencimiento" hint="1–28. Vacío o 0 = un período desde el desembolso">
+                  {/*
+                    🔴 EL CAMPO NUNCA SE MUESTRA EN BLANCO.
+                    Un input vacío no dice nada: no se distingue "está apagado" de "nadie lo
+                    configuró todavía". Y son dos lecturas MUY distintas cuando lo que está en
+                    juego es la fecha en la que arranca a cobrarse un crédito. En el motor
+                    `null` y `0` son el mismo valor (`calendar.ts`: `cfg.diaCorte ?? 0` y
+                    `if (!cfg.diaVencimiento) return null`), así que mostrar 0 no cambia una
+                    coma del cálculo — solo deja de esconder el estado.
+                  */}
+                  <Field label="Día de vencimiento" hint="1–28. En 0, la cuota vence un período después del desembolso">
                     <Input type="number" min="0" max="28" step="1"
-                      value={form.simulador.diaVencimientoFijo ?? ""}
+                      value={form.simulador.diaVencimientoFijo ?? 0}
                       onChange={e => setSim("diaVencimientoFijo", diaDelMes(e.target.value))} />
                   </Field>
-                  <Field label="Día de corte" hint="1–28. Vacío o 0 = sin corte. Necesita un día de vencimiento">
+                  <Field label="Día de corte" hint="1–28. En 0 no hay corte. Necesita un día de vencimiento">
                     <Input type="number" min="0" max="28" step="1"
-                      value={form.simulador.diaCorte ?? ""}
+                      value={form.simulador.diaCorte ?? 0}
                       onChange={e => setSim("diaCorte", diaDelMes(e.target.value))} />
                   </Field>
                 </div>
@@ -839,10 +857,17 @@ export function ConfigForm() {
                 Los créditos mensuales vencen el <b>{form.simulador.diaVencimientoFijo}</b> de cada mes
                 {form.simulador.diaCorte
                   ? <> y uno otorgado después del <b>{form.simulador.diaCorte}</b> arranca a cobrarse un mes más tarde</>
-                  : <> (el primero, al mes siguiente del desembolso)</>}
+                  : <> (el primero, al mes siguiente del desembolso). <b>Sin día de corte</b>: uno otorgado un día antes del vencimiento igual cobra el período entero de interés</>}
                 .{(form.simulador.incluirDomingoNoHabil || form.simulador.incluirSabadoNoHabil || form.simulador.feriados.length > 0) && <> Si esa fecha cae en un día no hábil, se corre al siguiente.</>}
               </p>
-            ) : null}
+            ) : (
+              /* Los dos en 0. Antes este caso no imprimía NADA: la sección quedaba muda
+                 justo cuando los dos campos estaban apagados, que es el estado que más
+                 necesita decirse en voz alta. */
+              <p className="mt-4 rounded-lg bg-muted/20 border border-border/60 px-3 py-2 text-[11px] text-muted-foreground/80">
+                Día de vencimiento y día de corte en <b>0</b>: las cuotas vencen <b>un período después del desembolso</b>, sin día fijo del mes.
+              </p>
+            )}
           </Section>
 
           {/* Simulador · Cargos */}
@@ -869,7 +894,7 @@ export function ConfigForm() {
                     (Acá el valor se guarda como PORCENTAJE —5 = 5%—, al revés que en seguro y
                     gastos, que guardan la fracción. Cada pantalla convierte lo suyo.)
                   */}
-                  <Field label={form.simulador.cargos.comisionOtorgamiento.modo === "fijo" ? "Valor ($)" : "Valor (%)"}>
+                  <Field required={form.simulador.cargos.comisionOtorgamiento.activo} label={form.simulador.cargos.comisionOtorgamiento.modo === "fijo" ? "Valor ($)" : "Valor (%)"}>
                     <Input type="number" min="0" step="0.5" value={form.simulador.cargos.comisionOtorgamiento.valor}
                       onChange={e => setCargo("comisionOtorgamiento", "valor", parseFloat(e.target.value) || 0)} />
                   </Field>
@@ -890,7 +915,7 @@ export function ConfigForm() {
                 onSave={() => saveSim("cargo-iva")} saving={savingKey === "cargo-iva"} saved={savedKey === "cargo-iva"} dirty={isDirty("cargo-iva")}
                 error={errorKey === "cargo-iva" ? saveError ?? undefined : undefined}>
                 <div className="max-w-[12rem]">
-                  <Field label="Tasa de IVA (%)">
+                  <Field required={form.simulador.cargos.iva.activo} label="Tasa de IVA (%)">
                     <Input type="number" min="0" step="0.5" value={Number((form.simulador.cargos.iva.tasa * 100).toFixed(2))}
                       onChange={e => setCargo("iva", "tasa", (parseFloat(e.target.value) || 0) / 100)} />
                   </Field>
@@ -912,7 +937,7 @@ export function ConfigForm() {
                       <option value="fijo">Monto fijo por cuota</option>
                     </Select>
                   </Field>
-                  <Field label={form.simulador.cargos.seguro.modo === "fijo" ? "Valor ($)" : "Valor (%)"}>
+                  <Field required={form.simulador.cargos.seguro.activo} label={form.simulador.cargos.seguro.modo === "fijo" ? "Valor ($)" : "Valor (%)"}>
                     <Input type="number" min="0" step="0.01"
                       value={form.simulador.cargos.seguro.modo === "fijo"
                         ? form.simulador.cargos.seguro.valor
@@ -939,7 +964,7 @@ export function ConfigForm() {
                       <option value="porcentaje">% de la cuota</option>
                     </Select>
                   </Field>
-                  <Field label={form.simulador.cargos.gastosAdministrativos.modo === "fijo" ? "Valor ($)" : "Valor (%)"}>
+                  <Field required={form.simulador.cargos.gastosAdministrativos.activo} label={form.simulador.cargos.gastosAdministrativos.modo === "fijo" ? "Valor ($)" : "Valor (%)"}>
                     <Input type="number" min="0" step="0.01"
                       value={form.simulador.cargos.gastosAdministrativos.modo === "fijo"
                         ? form.simulador.cargos.gastosAdministrativos.valor
@@ -966,7 +991,7 @@ export function ConfigForm() {
             onSave={() => save("mora", { moraActiva: form.moraActiva, tasaMoraDiaria: form.tasaMoraDiaria })}
             saving={savingKey === "mora"} saved={savedKey === "mora"} dirty={isDirty("mora")}>
             <div className={`grid grid-cols-1 gap-4 max-w-sm transition-opacity ${form.moraActiva ? "" : "opacity-50"}`}>
-              <Field label="Tasa de mora diaria (%)" hint="Porcentaje diario sobre la base de mora">
+              <Field required={form.moraActiva} label="Tasa de mora diaria (%)" hint="Porcentaje diario sobre la base de mora">
                 <div className="relative">
                   <Input
                     type="number" min="0" step="0.1"
@@ -1147,9 +1172,10 @@ export function ConfigForm() {
                       value={(form.emailConfig as any)?.provider ?? "smtp"}
                       onChange={e => set("emailConfig", { ...(form.emailConfig ?? defaultEmail()), provider: e.target.value })}
                     >
-                      <option value="smtp">SMTP</option>
-                      <option value="resend">Resend</option>
-                      <option value="sendgrid">SendGrid</option>
+                      {/* SendGrid estaba en la lista y el código no lo sabía mandar: elegirlo
+                          no hacía nada. Mismo defecto que tenía SMTP. Se saca hasta que exista. */}
+                      <option value="smtp">SMTP (tu casilla: Gmail, etc.)</option>
+                      <option value="resend">Resend (requiere dominio propio)</option>
                     </Select>
                   </Field>
                   {(form.emailConfig as any)?.provider === "smtp" || !(form.emailConfig as any)?.provider ? (
@@ -1162,6 +1188,27 @@ export function ConfigForm() {
                   ) : (
                     <Field label="API Key"><SecretInput placeholder="re_xxxx / SG.xxxx" value={(form.emailConfig as any)?.api_key ?? ""} onChange={e => set("emailConfig", { ...(form.emailConfig ?? defaultEmail()), api_key: e.target.value })} /></Field>
                   )}
+                  {/*
+                    🔴 EL REMITENTE ESTABA CABLEADO en el código como
+                    `CreditFlow <onboarding@resend.dev>`, en dos lugares distintos. Dos problemas:
+                    al cliente le llegaba un mail firmado por el SISTEMA y no por la financiera
+                    que le prestó, y —lo que rompe el envío— Resend solo deja mandar a terceros
+                    desde un dominio verificado. Sin este campo no había forma de cambiarlo sin
+                    tocar el código.
+                  */}
+                  <div className="sm:col-span-2">
+                    <ProbarEmail />
+                  </div>
+                  <Field
+                    label="Remitente (From)"
+                    hint="El dominio tiene que estar verificado en tu proveedor. Vacío = la casilla de prueba, que solo llega a tu propio email."
+                  >
+                    <Input
+                      placeholder="no-responder@tudominio.com"
+                      value={(form.emailConfig as any)?.from_email ?? ""}
+                      onChange={e => set("emailConfig", { ...(form.emailConfig ?? defaultEmail()), from_email: e.target.value.trim() })}
+                    />
+                  </Field>
                 </div>
               </CanalesBlock>
             </div>
@@ -1269,7 +1316,7 @@ export function ConfigForm() {
           >
             <div className="space-y-5">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <Field label="Ratio cuota / ingreso máx (%)" hint="La cuota no puede superar este % del ingreso neto del cliente">
+                <Field required label="Ratio cuota / ingreso máx (%)" hint="La cuota no puede superar este % del ingreso neto del cliente. En 0 nadie califica.">
                   <div className="relative">
                     <Input type="number" min="1" max="100" step="1"
                       value={Number((riesgo.politica.ratioCuotaIngresoMax * 100).toFixed(0))}
@@ -1345,10 +1392,16 @@ export function ConfigForm() {
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <Field label="Score externo mínimo" hint="0–1000 (Nosis/Veraz). Vacío = no se exige">
+                {/* En 0 se muestra 0, no vacío: `riesgo.ts` ya trata null y 0 igual (con 0,
+                    `score < 0` nunca es cierto → no exige nada). Se guarda null para no
+                    ensuciar el JSON con un mínimo que no existe. */}
+                <Field label="Score externo mínimo" hint="0–1000 (Nosis/Veraz). En 0 no se exige">
                   <Input type="number" min="0" max="1000" step="10"
-                    value={riesgo.politica.scoreExternoMin ?? ""}
-                    onChange={e => setRiesgo({ scoreExternoMin: e.target.value === "" ? null : Math.max(0, parseInt(e.target.value) || 0) })} />
+                    value={riesgo.politica.scoreExternoMin ?? 0}
+                    onChange={e => {
+                      const n = Math.max(0, Math.min(1000, parseInt(e.target.value) || 0));
+                      setRiesgo({ scoreExternoMin: n === 0 ? null : n });
+                    }} />
                 </Field>
                 <Field label="Si el cliente no califica" hint="Qué hace el sistema cuando no cumple la política">
                   <Select value={riesgo.politica.accionAlNoCalificar}
@@ -1478,14 +1531,14 @@ export function ConfigForm() {
             onSave={() => save("cobranza", { cobranzaConfig: cobranza })}
             saving={savingKey === "cobranza"} saved={savedKey === "cobranza"} dirty={isDirty("cobranza")}>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 max-w-3xl">
-              <Field label="Máximo de cuotas" hint="El techo del vendedor: hasta en cuántos pagos puede repartir lo vencido sin consultar. Con 6 puede ofrecer 6, no 8.">
+              <Field required label="Máximo de cuotas" hint="El techo del vendedor: hasta en cuántos pagos puede repartir lo vencido sin consultar. Con 6 puede ofrecer 6, no 8.">
                 <Input
                   type="number" min="1" max="60" step="1"
                   value={cobranza.acuerdos.max_cuotas}
                   onChange={e => setAcuerdos({ max_cuotas: Math.max(1, Math.min(60, Math.round(parseFloat(e.target.value) || 1))) })}
                 />
               </Field>
-              <Field label="Días entre cuotas" hint="Cada cuánto vence una cuota del acuerdo: 30 = mensual · 15 = quincenal · 7 = semanal. No depende de la frecuencia del crédito.">
+              <Field required label="Días entre cuotas" hint="Cada cuánto vence una cuota del acuerdo: 30 = mensual · 15 = quincenal · 7 = semanal. No depende de la frecuencia del crédito.">
                 <Input
                   type="number" min="1" max="365" step="1"
                   value={cobranza.acuerdos.dias_entre_cuotas}
@@ -1499,17 +1552,43 @@ export function ConfigForm() {
                   onChange={e => setAcuerdos({ cuotas_para_romper: Math.max(1, Math.round(parseFloat(e.target.value) || 1)) })}
                 />
               </Field>
+              {/*
+                🔴 ACÁ `null` NO ES `0`, Y NO SE PUEDEN JUNTAR.
+                  null → el acuerdo usa la MISMA tasa que firmó el cliente (`resolverTasaAcuerdo`)
+                  0    → el acuerdo NO devenga interés: refinanciarse sale gratis
+                Mostrar 0 cuando el valor es null —como sí se hace con el día de corte, donde
+                el motor los trata igual— convertiría todos los acuerdos en gratuitos de un
+                día para el otro. Así que en vez de un número que a veces está vacío, el modo
+                se elige explícito: nunca hay un campo mudo, y las dos opciones se leen.
+              */}
               <Field
-                label="Tasa del acuerdo (% mensual)"
-                hint="Vacío = la misma tasa que firmó el cliente (lo equitativo). 0 = sin interés: el acuerdo le sale gratis y atrasarse conviene."
+                label="Tasa del acuerdo"
+                hint="Con la tasa del crédito, el acuerdo le cuesta lo mismo que ya firmó. Con tasa propia en 0 no devenga interés: atrasarse conviene."
+              >
+                <Select
+                  value={cobranza.acuerdos.tasa_mensual === null || cobranza.acuerdos.tasa_mensual === undefined ? "credito" : "propia"}
+                  onChange={e => setAcuerdos({ tasa_mensual: e.target.value === "credito" ? null : 0 })}
+                >
+                  <option value="credito">La misma del crédito</option>
+                  <option value="propia">Tasa propia (% mensual)</option>
+                </Select>
+              </Field>
+              <Field
+                label="% mensual del acuerdo"
+                hint={cobranza.acuerdos.tasa_mensual === null || cobranza.acuerdos.tasa_mensual === undefined
+                  ? "Lo define la tasa de cada crédito."
+                  : cobranza.acuerdos.tasa_mensual === 0
+                  ? "En 0: el acuerdo no devenga interés."
+                  : "Se aplica a todos los acuerdos, sea cual sea la tasa del crédito."}
               >
                 <Input
-                  type="number" min="0" max="100" step="any" placeholder="la del crédito"
-                  value={cobranza.acuerdos.tasa_mensual ?? ""}
-                  onChange={e => setAcuerdos({ tasa_mensual: e.target.value === "" ? null : Math.max(0, Math.min(100, parseFloat(e.target.value) || 0)) })}
+                  type="number" min="0" max="100" step="any"
+                  disabled={cobranza.acuerdos.tasa_mensual === null || cobranza.acuerdos.tasa_mensual === undefined}
+                  value={cobranza.acuerdos.tasa_mensual ?? 0}
+                  onChange={e => setAcuerdos({ tasa_mensual: Math.max(0, Math.min(100, parseFloat(e.target.value) || 0)) })}
                 />
               </Field>
-              <Field label="Quita máx. del vendedor (%)" hint="Cuánto de los punitorios e interés puede perdonar el vendedor por su cuenta. En 0 no condona nada: toda quita la firma un admin, que no tiene tope. El capital nunca se toca.">
+              <Field label="Descuento máx. del vendedor (%)" hint="Cuánto de los punitorios e interés puede perdonar el vendedor por su cuenta. En 0 no descuenta nada: todo descuento lo firma un admin, que no tiene tope. El capital nunca se toca.">
                 <Input
                   type="number" min="0" max="100" step="1"
                   value={cobranza.acuerdos.quita_max_vendedor_pct}
@@ -1758,6 +1837,7 @@ function defaultRentabilidad(): RentabilidadConfig {
 function defaultCobranza(): CobranzaConfig {
   return {
     dias_sin_gestion: 7,
+    contacto: PLANTILLAS_CONTACTO_DEFAULT,
     acuerdos: {
       max_cuotas: 6, dias_entre_cuotas: 30, cuotas_para_romper: 1,
       congela_punitorios: true, saca_de_agenda: true,
@@ -2406,6 +2486,78 @@ function BodySkeleton() {
       <div className="space-y-4">
         {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-40 rounded-xl" />)}
       </div>
+    </div>
+  );
+}
+
+/**
+ * Botón de prueba del canal de email.
+ *
+ * 🔴 Sin esto, la única forma de saber si el SMTP quedó bien era ir a la ficha de un cliente
+ * y escribirle de verdad: si la contraseña estaba mal te enterabas ahí, y si estaba bien ya
+ * le habías mandado un mensaje a una persona real para probar. Manda a la casilla del
+ * usuario en sesión y usa la config GUARDADA, no la del formulario — prueba lo que va a
+ * correr, no lo que hay escrito en pantalla.
+ */
+function ProbarEmail() {
+  const [estado, setEstado] = useState<"idle" | "enviando" | "ok">("idle");
+  const [error, setError] = useState<string | null>(null);
+  // 🔴 A DÓNDE fue. La prueba se manda a la casilla del USUARIO en sesión, no a la que se
+  // configuró como remitente — y sin decirlo, uno revisa la casilla equivocada y concluye
+  // que el envío falló.
+  const [destino, setDestino] = useState<string | null>(null);
+  /** Vacío = la casilla del usuario en sesión. Se puede escribir otra: quien configura el
+   *  sistema no siempre tiene acceso al buzón con el que entra. */
+  const [para, setPara] = useState("");
+
+  const probar = async () => {
+    setEstado("enviando");
+    setError(null);
+    try {
+      const res = await fetch("/api/configuracion/email-prueba", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ to: para.trim() || undefined }),
+      });
+      const json = await res.json();
+      if (!json.ok) { setError(json.error || "No se pudo enviar"); setEstado("idle"); return; }
+      setDestino(json.data?.enviado_a ?? null);
+      setEstado("ok");
+    } catch {
+      setError("No se pudo enviar el email de prueba");
+      setEstado("idle");
+    }
+  };
+
+  return (
+    <div className="rounded-lg border border-border bg-muted/20 px-3 py-2.5">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="text-xs text-muted-foreground">
+          {estado === "ok"
+            ? <>Enviado a <span className="font-mono text-foreground">{destino ?? "tu casilla"}</span> — revisá también el spam.</>
+            : "Probá el envío antes de escribirle a un cliente."}
+        </span>
+        <input
+          type="email"
+          value={para}
+          onChange={(e) => setPara(e.target.value)}
+          placeholder="Mandarla a… (vacío = tu casilla)"
+          className="h-8 min-w-0 flex-1 rounded-lg border border-border bg-input px-2.5 text-xs text-foreground placeholder:text-muted-foreground/40 outline-none focus:border-primary"
+        />
+        <button
+          type="button"
+          onClick={probar}
+          disabled={estado === "enviando"}
+          className="shrink-0 rounded-lg border border-primary/30 bg-primary/10 px-3 py-1.5 text-xs font-medium text-primary transition-colors hover:bg-primary/20 disabled:opacity-40"
+        >
+          {estado === "enviando" ? "Enviando…" : estado === "ok" ? "Enviar otra" : "Enviar prueba"}
+        </button>
+      </div>
+      {/* Guardá primero: la prueba corre contra la config persistida, no contra el formulario. */}
+      {estado === "idle" && !error && (
+        <p className="mt-1 text-[11px] text-muted-foreground/60">Guardá los cambios antes de probar.</p>
+      )}
+      {error && <p className="mt-1.5 text-[11px] text-destructive">{error}</p>}
     </div>
   );
 }

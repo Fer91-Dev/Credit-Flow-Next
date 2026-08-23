@@ -10,7 +10,7 @@
  * Si tras cubrir todo aún sobra dinero, se reporta como excedente (saldo a favor).
  */
 import { round2, noNegativo } from "./money";
-import { diasAtraso, interesMora, fechaTopeMora } from "./mora";
+import { diasAtraso, interesMora, topeMoraDeCuota } from "./mora";
 
 /** Cómo se imputan los cargos del período respecto del interés. */
 export type ModoImputacionCargos = "integrado" | "separado";
@@ -221,7 +221,10 @@ export function imputarPagoEnCuotas(
   const diasGracia = opciones.diasGracia;
   const hoy = opciones.hoy ?? new Date();
   // Hasta dónde corren los punitorios: hoy, salvo que un acuerdo los haya congelado antes.
-  const topeMora = fechaTopeMora(hoy, opciones.moraCongeladaAl);
+  // El freno del acuerdo vale POR CUOTA: solo las que ya estaban vencidas cuando se acordó
+  // (`topeMoraDeCuota`). Antes era un tope único para todo el crédito, así que una cuota que
+  // vencía DESPUÉS del acuerdo tampoco devengaba — punitorios regalados sin pactarlos.
+  const congeladaAl = opciones.moraCongeladaAl ?? null;
   // Quita de mora por campaña (Fase 7B), acotada a [0, 100].
   const factorMora = 1 - Math.min(100, Math.max(0, opciones.descuentoMoraPct ?? 0)) / 100;
 
@@ -244,7 +247,7 @@ export function imputarPagoEnCuotas(
     // `dias` son los REALES (lo que se informa); `diasMora` es hasta dónde se cobra, que
     // puede estar congelado por un acuerdo. Sin acuerdo, los dos son el mismo número.
     const dias = diasAtraso(c.fechaVencimiento, hoy);
-    const diasMora = diasAtraso(c.fechaVencimiento, topeMora);
+    const diasMora = diasAtraso(c.fechaVencimiento, topeMoraDeCuota(c.fechaVencimiento, hoy, congeladaAl));
     const moraPlena = moraActiva ? interesMora(c.cuotaTotal, diasMora, { tasaDiaria: tasaMoraDiaria, diasGracia }) : 0;
     // La quita de campaña reduce la mora devengada (lo condonado se reporta como ahorro).
     const moraDevengada = round2(moraPlena * factorMora);

@@ -18,6 +18,9 @@ export type AuditAccion =
   | "refinanciar"
   | "registrar_pago"
   | "actualizar_config"
+  // Contacto individual con un cliente (WhatsApp/email desde su ficha). Se audita SIEMPRE,
+  // sea cual sea el motivo: es el registro de que a esa persona se la contactó y qué se le dijo.
+  | "contactar"
   | "backup";
 
 export interface AuditInput {

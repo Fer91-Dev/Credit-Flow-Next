@@ -42,7 +42,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   await sincronizarAcuerdos({ tenantId });
   // Quien está cumpliendo un arreglo ya está gestionado. Llamarlo igual es la forma más
   // rápida de que deje de cumplirlo. Es parametrizable: hay financieras que igual llaman.
-  const conAcuerdo = acuerdos.saca_de_agenda ? await creditosConAcuerdoVigente(tenantId) : new Set<string>();
+  const conAcuerdo = acuerdos.saca_de_agenda ? await creditosConAcuerdoVigente(tenantId) : new Map<string, Date>();
 
   const hoy = hoyComercial();
   const hoyMs = hoy.getTime();
@@ -81,7 +81,21 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
 
   const items: AgendaItem[] = [];
   for (const c of creditos) {
-    if (conAcuerdo.has(c.id)) continue; // acuerdo vigente: ya está gestionado
+    /**
+     * Acuerdo vigente = ya está gestionado… PERO solo por lo que entró al acuerdo.
+     *
+     * 🔴 Antes salía de la cola sin condición. Un cliente podía cumplir su arreglo al día y
+     * al mismo tiempo dejar de pagar las cuotas corrientes del crédito —que no eran parte
+     * del trato— y no lo veía nadie: deuda creciendo, invisible, hasta que el acuerdo
+     * terminara. Y ahora esas cuotas además devengan punitorios (`topeMoraDeCuota`), así que
+     * el agujero era peor.
+     *
+     * Se lo saca de la cola solo si lo más viejo que debe ya estaba vencido al acordar. Si
+     * arrastra una cuota que venció DESPUÉS, vuelve: cumple el arreglo, pero alguien tiene
+     * que llamarlo por lo otro. Decisión del usuario (2026-08-20).
+     */
+    const acordadoEl = conAcuerdo.get(c.id);
+    if (acordadoEl && c.proximo_pago && c.proximo_pago.getTime() <= acordadoEl.getTime()) continue;
     const accs = porCredito.get(c.id) ?? [];
     const promesaPend = accs.find((a) => a.promesa_estado === "pendiente" && a.promesa_fecha);
     const conProx = accs.find((a) => a.proximo_contacto);
