@@ -44,8 +44,8 @@ import {
  * (la parte pura, sin cargos). Se resalta con fondo y peso, no con un color de texto nuevo:
  * indigo ya significa "capital" y ámbar "interés" en esta misma tabla.
  */
-const COL_PAGA_TH = "px-2.5 py-2.5 text-right font-bold text-primary bg-primary/10 border-b border-border border-l border-primary/25";
-const COL_PAGA_TD = "px-2.5 py-2 text-right font-mono font-bold text-[13px] text-foreground bg-primary/[0.07] border-l border-primary/25 tabular-nums";
+const COL_PAGA_TH = "px-2.5 py-2.5 text-right text-[11px] font-bold uppercase tracking-wider text-primary bg-primary/10 border-b border-border border-l border-primary/25";
+const COL_PAGA_TD = "px-2.5 py-2.5 text-right font-mono font-bold text-[14px] text-foreground bg-primary/[0.07] border-l border-primary/25 tabular-nums";
 const COL_PAGA_TF = "px-2.5 py-3.5 text-right font-bold font-mono text-sm text-foreground bg-primary/[0.15] border-l border-primary/25 tabular-nums";
 
 const CUENTA_DESEMBOLSO_LABEL: Record<CuentaCaja, string> = {
@@ -1477,38 +1477,38 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
               <table className="w-full text-xs border-separate border-spacing-0 [&_th:first-child]:pl-4 [&_td:first-child]:pl-4 [&_th:last-child]:pr-4 [&_td:last-child]:pr-4">
                 <thead className="sticky top-0 z-10 bg-card">
                   <tr>
-                    <th className="px-2.5 py-2.5 text-left font-semibold text-muted-foreground border-b border-border w-9">#</th>
-                    <th className="px-2.5 py-2.5 text-left font-semibold text-muted-foreground border-b border-border">Vencimiento</th>
-                    <th className={hayCargoCols ? "px-2.5 py-2.5 text-right font-semibold text-muted-foreground border-b border-border" : COL_PAGA_TH}>Cuota</th>
-                    <th className="px-2.5 py-2.5 text-right font-semibold text-warning border-b border-border">Interés</th>
-                    <th className="px-2.5 py-2.5 text-right font-semibold text-primary border-b border-border">Capital</th>
+                    <th className="px-2.5 py-2.5 text-left text-[11px] font-bold uppercase tracking-wider text-muted-foreground border-b border-border w-9">#</th>
+                    <th className="px-2.5 py-2.5 text-left text-[11px] font-bold uppercase tracking-wider text-muted-foreground border-b border-border">Vencimiento</th>
+                    <th className={hayCargoCols ? "px-2.5 py-2.5 text-right text-[11px] font-bold uppercase tracking-wider text-muted-foreground border-b border-border" : COL_PAGA_TH}>Cuota</th>
+                    <th className="px-2.5 py-2.5 text-right text-[11px] font-bold uppercase tracking-wider text-warning border-b border-border">Interés</th>
+                    <th className="px-2.5 py-2.5 text-right text-[11px] font-bold uppercase tracking-wider text-primary border-b border-border">Capital</th>
                     {cargoCols.map(col => (
-                      <th key={col.key} className="px-2.5 py-2.5 text-right font-semibold text-foreground bg-warning/5 border-b border-border align-bottom">{col.label}</th>
+                      <th key={col.key} className="px-2.5 py-2.5 text-right text-[11px] font-bold uppercase tracking-wider text-foreground bg-warning/5 border-b border-border align-bottom">{col.label}</th>
                     ))}
                     {/* Mismo nombre que en la vista cliente: es literalmente el mismo número. */}
                     {hayCargoCols && <th className={COL_PAGA_TH}>A pagar</th>}
-                    <th className="px-2.5 py-2.5 text-right font-semibold text-muted-foreground border-b border-border">Saldo</th>
+                    <th className="px-2.5 py-2.5 text-right text-[11px] font-bold uppercase tracking-wider text-muted-foreground border-b border-border">Saldo</th>
                   </tr>
                 </thead>
                 <tbody>
                   {plan.cuotas.map((row, idx) => (
                     <tr key={row.nro} className={`hover:bg-muted/20 transition-colors ${idx % 2 === 1 ? "bg-muted/5" : ""}`}>
-                      <td className="px-2.5 py-2 text-muted-foreground/50 font-mono tabular-nums">{row.nro}</td>
-                      <td className="px-2.5 py-2 text-muted-foreground tabular-nums">{fmtDate(row.fecha)}</td>
-                      <td className={hayCargoCols ? "px-2.5 py-2 text-right font-mono text-foreground tabular-nums" : COL_PAGA_TD}>${n2(row.cuota)}</td>
-                      <td className="px-2.5 py-2 text-right font-mono text-warning tabular-nums">${n2(row.interes)}</td>
-                      <td className="px-2.5 py-2 text-right font-mono text-primary tabular-nums">${n2(row.capital)}</td>
+                      <td className="px-2.5 py-2.5 text-muted-foreground/50 font-mono tabular-nums">{row.nro}</td>
+                      <td className="px-2.5 py-2.5 text-muted-foreground tabular-nums">{fmtDate(row.fecha)}</td>
+                      <td className={hayCargoCols ? "px-2.5 py-2.5 text-right font-mono text-foreground tabular-nums" : COL_PAGA_TD}>${n2(row.cuota)}</td>
+                      <td className="px-2.5 py-2.5 text-right font-mono text-warning tabular-nums">${n2(row.interes)}</td>
+                      <td className="px-2.5 py-2.5 text-right font-mono text-primary tabular-nums">${n2(row.capital)}</td>
                       {cargoCols.map(col => (
-                        <td key={col.key} className="px-2.5 py-2 text-right font-mono text-foreground/80 bg-warning/5 tabular-nums">${n2(row[col.key])}</td>
+                        <td key={col.key} className="px-2.5 py-2.5 text-right font-mono text-foreground/80 bg-warning/5 tabular-nums">${n2(row[col.key])}</td>
                       ))}
                       {hayCargoCols && <td className={COL_PAGA_TD}>${n2(row.cuotaTotal)}</td>}
-                      <td className="px-2.5 py-2 text-right font-mono text-muted-foreground tabular-nums">${n2(row.saldo)}</td>
+                      <td className="px-2.5 py-2.5 text-right font-mono text-muted-foreground tabular-nums">${n2(row.saldo)}</td>
                     </tr>
                   ))}
                 </tbody>
                 <tfoot className="sticky bottom-0 z-10 bg-card">
-                  <tr className="border-t-2 border-border bg-muted/40">
-                    <td colSpan={2} className="px-2.5 py-3.5 text-[10px] font-bold text-foreground uppercase tracking-widest">Totales</td>
+                  <tr className="border-t-2 border-primary/40 bg-primary/5">
+                    <td colSpan={2} className="px-2.5 py-4 text-[10px] font-bold text-foreground uppercase tracking-widest">Totales</td>
                     <td className={hayCargoCols ? "px-2.5 py-3.5 text-right font-bold font-mono text-sm text-foreground tabular-nums" : COL_PAGA_TF}>${n2(plan.totalPagado)}</td>
                     <td className="px-2.5 py-3.5 text-right font-bold font-mono text-sm text-warning tabular-nums">${n2(plan.totalIntereses)}</td>
                     <td className="px-2.5 py-3.5 text-right font-bold font-mono text-sm text-primary tabular-nums">${n2(montoNum)}</td>
@@ -1524,9 +1524,9 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
                   {comisionUpfront > 0 && (
                     <>
                       <tr className="bg-muted/40">
-                        <td colSpan={pieOpAntes} className="px-2.5 py-2 text-[10px] font-medium text-muted-foreground uppercase tracking-widest">Comisión de otorgamiento (al firmar)</td>
+                        <td colSpan={pieOpAntes} className="px-2.5 py-2.5 text-[10px] font-medium text-muted-foreground uppercase tracking-widest">Comisión de otorgamiento (al firmar)</td>
                         {/* La banda sigue bajando por la misma columna: todo lo que el cliente paga vive ahí. */}
-                        <td className="px-2.5 py-2 text-right font-mono text-sm text-foreground bg-primary/[0.07] border-l border-primary/25 tabular-nums">${n2(comisionUpfront)}</td>
+                        <td className="px-2.5 py-2.5 text-right font-mono text-sm text-foreground bg-primary/[0.07] border-l border-primary/25 tabular-nums">${n2(comisionUpfront)}</td>
                         <td colSpan={pieOpDespues} />
                       </tr>
                       <tr className="border-t border-border bg-muted/40">
