@@ -532,7 +532,9 @@ function RefinanciadosView({ creditos, onOpen, onRefinanciar }: { creditos: Cred
           { header: "Origen", className: "whitespace-nowrap",
             cell: (p) => <span className="font-mono text-xs text-muted-foreground">{p.origen ? formatCreditoNumero(p.origen.numero) : "—"}</span> },
           { header: "Crédito nuevo", className: "whitespace-nowrap",
-            cell: (p) => <span className="inline-flex items-center gap-1.5 font-mono text-xs text-warning"><RefreshCw className="h-3 w-3" />{formatCreditoNumero(p.nuevo.numero)}</span> },
+            /* El crédito nuevo se nombra por el que reemplaza: en esta tabla el origen está en la
+               fila de al lado, así que sale de ahí sin consulta extra. */
+            cell: (p) => <span className="inline-flex items-center gap-1.5 font-mono text-xs text-warning"><RefreshCw className="h-3 w-3" />{formatCreditoNumero(p.nuevo.numero, p.origen?.numero)}</span> },
           { header: "Cliente",
             cell: (p) => <span className="font-medium text-foreground">{nombreCompleto(p.nuevo.cliente)}</span> },
           { header: "Capital consolidado", mono: true,
