@@ -169,7 +169,13 @@ export function ClienteBureauPanel({ clienteId }: { clienteId: string }) {
 
         {ultima && (
           <>
-            {ultima.mensaje && <p className="mt-3 text-xs text-muted-foreground/80">{ultima.mensaje}</p>}
+            {/* Una consulta que SALIÓ BIEN pero sin registros no puede leerse igual que una
+                que falló: se marca en verde para que el operador sepa que el dato llegó. */}
+            {ultima.mensaje && (
+              <p className={`mt-3 text-xs ${ultima.situacion_bcra == null && ultima.cheques_rechazados == null && /no figura/i.test(ultima.mensaje) ? "text-success" : "text-muted-foreground/80"}`}>
+                {ultima.mensaje}
+              </p>
+            )}
             <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
               <Dato label="Situación BCRA">
                 {ultima.situacion_bcra != null

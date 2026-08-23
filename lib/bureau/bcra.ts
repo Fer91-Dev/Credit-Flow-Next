@@ -148,7 +148,20 @@ export async function consultarBcra(cuitRaw: string): Promise<ResultadoConsulta>
   return {
     ok: true,
     proveedor: "bcra",
-    mensaje: sinDatos ? "Sin registros en la Central de Deudores." : undefined,
+    /**
+     * 🔴 "Sin registros" NO es un error, y así se leía.
+     *
+     * Salía como "Sin registros en la Central de Deudores.", en el mismo renglón gris donde
+     * aparecen las fallas, y con los cuatro campos en "—": indistinguible de una consulta
+     * que se cayó. Pero para una persona real —una jubilada sin créditos bancarios, por
+     * ejemplo— es un RESULTADO, y además informativo: nadie le informó deuda al BCRA.
+     *
+     * Se dice lo que el dato significa, sin prometer de más: que no figure no prueba que no
+     * deba nada (queda afuera todo lo que no pasa por el sistema financiero formal).
+     */
+    mensaje: sinDatos
+      ? "No figura en la Central de Deudores: ninguna entidad financiera le informó deuda al BCRA."
+      : undefined,
     senales,
     crudo: { deudas, cheques },
   };
