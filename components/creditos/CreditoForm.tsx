@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo, useRef } from "react";
 import { motion } from "framer-motion";
-import { DollarSign, Eye, EyeOff, Info, Percent, Search, UserPlus, X, RefreshCw, PanelLeftClose, PanelLeftOpen, ListOrdered } from "lucide-react";
+import { DollarSign, Eye, EyeOff, Info, Percent, Search, UserPlus, X, RefreshCw, PanelLeftClose, PanelLeftOpen, ListOrdered, ArrowRight } from "lucide-react";
 import { Emoji } from "@/components/ui/Emoji";
 import { Field, Input, Select } from "@/components/ui/field";
 import { ClienteForm, type ClienteCreado } from "@/components/clientes/ClienteForm";
@@ -16,6 +16,7 @@ import { useConfirm } from "@/components/ui/confirm";
 import { useToast } from "@/components/ui/toast";
 import { formatNumero, parseMontoInput, maskMontoInput, numeroAInput, formatFecha, formatMonto, formatCreditoNumero, nombreCompleto, hoyComercial, cn } from "@/lib/utils";
 import { StatusBadge } from "@/components/ui/StatusBadge";
+import { Avatar } from "@/components/ui/Avatar";
 import { imprimirPlanPagos } from "@/lib/plan-print";
 import {
   construirPlanAmortizacion,
@@ -1808,57 +1809,112 @@ function PlanCliente({ cuotas, totalCuotas, comisionUpfront, totalAPagar }: {
   );
 }
 
+/**
+ * Buscador de cliente del simulador.
+ *
+ * 🔴 Antes había que tipear y APRETAR ENTER (o la lupa) para ver algo: mientras escribías,
+ * el desplegable se cerraba a propósito. Para el mostrador eso es un paso de más en la
+ * operación que más se repite, y no se adivina — el operador tipeaba el DNI completo y se
+ * quedaba mirando una pantalla vacía.
+ *
+ * Ahora filtra mientras se escribe (a partir de 2 caracteres, con un respiro de 150ms para
+ * no recalcular en cada tecla) y se maneja entero con el teclado: ↓ ↑ para moverse, Enter
+ * para elegir, Escape para cerrar. F3 sigue mostrando la lista completa.
+ */
 function ClienteCombobox({ clientes, value, onSelect, onAlta }: {
   clientes: Cliente[]; value: string; onSelect: (id: string) => void; onAlta: (query: string) => void;
 }) {
   const [query, setQuery] = useState("");
-  // `searched` = término efectivamente buscado (al tocar la lupa). null = nada buscado aún.
-  const [searched, setSearched] = useState<string | null>(null);
+  /** Lo que se está buscando de verdad, con retardo. Separado de `query` para no filtrar en cada tecla. */
+  const [termino, setTermino] = useState("");
   const [open, setOpen] = useState(false);
   const [verTodos, setVerTodos] = useState(false); // F3: lista completa de clientes A→Z
+  const [cursor, setCursor] = useState(0);         // fila resaltada (teclado)
+  const listaRef = useRef<HTMLDivElement>(null);
   const selected = clientes.find(c => c.id === value) ?? null;
 
-  // Resultados sobre el término BUSCADO (no mientras se tipea).
-  const results = useMemo(() => {
-    if (!searched) return [];
-    const s = searched.toLowerCase();
-    const sd = s.replace(/\D/g, "");
-    return clientes.filter(c => {
-      const nombre = nombreCompleto(c).toLowerCase();
-      const doc = (c.documento || "").toLowerCase();
-      const docd = doc.replace(/\D/g, "");
-      return nombre.includes(s) || doc.includes(s) || (sd.length > 0 && docd.includes(sd));
-    }).slice(0, 8);
-  }, [clientes, searched]);
+  const MIN_CHARS = 2;
 
-  // Lista completa ordenada (para "ver todos" con F3).
+  // Retardo corto: el filtro corre sobre la lista ya cargada, así que 150ms alcanzan para
+  // que no se recalcule con cada tecla sin que se sienta lento.
+  useEffect(() => {
+    const t = setTimeout(() => setTermino(query.trim()), 150);
+    return () => clearTimeout(t);
+  }, [query]);
+
+  const results = useMemo(() => {
+    if (termino.length < MIN_CHARS) return [];
+    const s = termino.toLowerCase();
+    const sd = s.replace(/\D/g, "");
+    return clientes
+      .filter(c => {
+        const nombre = nombreCompleto(c).toLowerCase();
+        const docd = (c.documento || "").replace(/\D/g, "");
+        return nombre.includes(s) || (sd.length > 0 && docd.includes(sd));
+      })
+      // Los que pueden recibir un crédito primero: el fallecido o dado de baja se muestra
+      // (para que no parezca que no existe) pero no le gana el lugar a uno operable.
+      .sort((a, b) => {
+        const oa = normalizarEstadoCliente(a.estado) === "activo" ? 0 : 1;
+        const ob = normalizarEstadoCliente(b.estado) === "activo" ? 0 : 1;
+        return oa - ob || nombreCompleto(a).localeCompare(nombreCompleto(b), "es", { sensitivity: "base" });
+      })
+      .slice(0, 8);
+  }, [clientes, termino]);
+
   const clientesOrdenados = useMemo(
     () => [...clientes].sort((a, b) => nombreCompleto(a).localeCompare(nombreCompleto(b), "es", { sensitivity: "base" })).slice(0, 200),
     [clientes],
   );
   const lista = verTodos ? clientesOrdenados : results;
+  const buscando = !verTodos && termino.length >= MIN_CHARS;
+  const sinResultados = buscando && lista.length === 0;
 
-  const doSearch = () => {
-    const t = query.trim();
-    if (!t) { setSearched(null); setOpen(false); return; }
-    setSearched(t);
-    setOpen(true);
+  // El cursor vuelve arriba cada vez que cambia lo que se muestra.
+  useEffect(() => { setCursor(0); }, [termino, verTodos]);
+  // Y la fila resaltada se mantiene a la vista al moverse con el teclado.
+  useEffect(() => {
+    listaRef.current?.querySelector<HTMLElement>(`[data-idx="${cursor}"]`)?.scrollIntoView({ block: "nearest" });
+  }, [cursor]);
+
+  const puedeElegir = (c: Cliente) => normalizarEstadoCliente(c.estado) === "activo";
+  const pick = (c: Cliente) => {
+    if (!puedeElegir(c)) return;
+    onSelect(c.id); setQuery(""); setTermino(""); setOpen(false); setVerTodos(false);
   };
-  const pick = (c: Cliente) => { onSelect(c.id); setQuery(""); setSearched(null); setOpen(false); setVerTodos(false); };
-  const lanzarAlta = () => { onAlta(searched ?? query.trim()); setQuery(""); setSearched(null); setOpen(false); setVerTodos(false); };
+  const lanzarAlta = () => {
+    onAlta(termino || query.trim());
+    setQuery(""); setTermino(""); setOpen(false); setVerTodos(false);
+  };
+
+  const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "F3") { e.preventDefault(); setVerTodos(true); setOpen(true); return; }
+    if (e.key === "Escape") { setOpen(false); setVerTodos(false); return; }
+    if (!open || lista.length === 0) {
+      // Enter sin lista: si no hay coincidencias, da de alta directamente.
+      if (e.key === "Enter" && sinResultados) { e.preventDefault(); lanzarAlta(); }
+      return;
+    }
+    if (e.key === "ArrowDown") { e.preventDefault(); setCursor(i => Math.min(lista.length - 1, i + 1)); return; }
+    if (e.key === "ArrowUp")   { e.preventDefault(); setCursor(i => Math.max(0, i - 1)); return; }
+    if (e.key === "Enter")     { e.preventDefault(); const c = lista[cursor]; if (c) pick(c); return; }
+  };
 
   if (selected) {
+    const est = normalizarEstadoCliente(selected.estado);
     return (
-      <div className="flex h-10 items-center justify-between gap-2 rounded-lg border border-border bg-muted/40 px-3">
-        <span className="truncate text-sm text-foreground">
-          {nombreCompleto(selected)}
-          {selected.documento && <span className="text-muted-foreground"> · DNI {selected.documento}</span>}
+      <div className="flex h-10 items-center justify-between gap-2 rounded-lg border border-primary/30 bg-primary/5 px-2.5">
+        <span className="flex min-w-0 items-center gap-2">
+          <Avatar name={nombreCompleto(selected)} seed={selected.id} size="sm" />
+          <span className="truncate text-sm font-medium text-foreground">{nombreCompleto(selected)}</span>
+          {est !== "activo" && <StatusBadge label={ESTADO_CLIENTE_LABEL[est]} variant={ESTADO_CLIENTE_VARIANT[est]} />}
+          {selected.documento && <span className="shrink-0 font-mono text-xs text-muted-foreground">· {selected.documento}</span>}
         </span>
         <button
           type="button"
-          onClick={() => { onSelect(""); setQuery(""); setSearched(null); }}
+          onClick={() => { onSelect(""); setQuery(""); setTermino(""); }}
           title="Cambiar cliente"
-          className="shrink-0 text-muted-foreground hover:text-foreground transition-colors"
+          className="shrink-0 rounded-md p-1 text-muted-foreground transition-colors hover:bg-background hover:text-foreground"
         >
           <X className="h-3.5 w-3.5" />
         </button>
@@ -1868,98 +1924,126 @@ function ClienteCombobox({ clientes, value, onSelect, onAlta }: {
 
   return (
     <div className="relative">
-      {/* Campo único: input con la lupa integrada a la derecha (acción de buscar). */}
+      {/* La lupa quedó a la IZQUIERDA y decorativa: ya no hay que apretarla, es un rótulo. */}
       <div className="group relative flex h-10 items-center rounded-lg border border-border bg-muted/40 transition-all focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20">
+        <Search className="ml-3 h-4 w-4 shrink-0 text-muted-foreground/60 transition-colors group-focus-within:text-primary" />
         <input
           type="text"
           autoComplete="off"
           placeholder="Ingresá DNI o apellido y nombre…"
           value={query}
-          // Al editar, se ocultan resultados previos hasta volver a buscar con la lupa.
-          onChange={e => { setQuery(e.target.value); setSearched(null); setOpen(false); setVerTodos(false); }}
+          onChange={e => { setQuery(e.target.value); setOpen(true); setVerTodos(false); }}
+          onFocus={() => setOpen(true)}
           onBlur={() => setTimeout(() => setOpen(false), 150)}
-          onKeyDown={e => {
-            if (e.key === "F3") { e.preventDefault(); setVerTodos(true); setSearched(null); setOpen(true); return; }
-            if (e.key === "Enter") { e.preventDefault(); doSearch(); return; }
-            if (e.key === "Escape") { setOpen(false); setVerTodos(false); }
-          }}
-          className="h-full flex-1 rounded-lg bg-transparent pl-3 pr-1 text-sm text-foreground placeholder:text-muted-foreground/40 outline-none"
+          onKeyDown={onKeyDown}
+          className="h-full flex-1 bg-transparent px-2.5 text-sm text-foreground placeholder:text-muted-foreground/40 outline-none"
         />
-        <button
-          type="button"
-          onClick={doSearch}
-          onMouseDown={e => e.preventDefault()}
-          title="Buscar cliente"
-          aria-label="Buscar cliente"
-          className="mr-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-background hover:text-primary"
-        >
-          <Search className="h-4 w-4" />
-        </button>
+        {query && (
+          <button
+            type="button"
+            onClick={() => { setQuery(""); setTermino(""); setVerTodos(false); }}
+            onMouseDown={e => e.preventDefault()}
+            title="Limpiar"
+            className="mr-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-background hover:text-foreground"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        )}
       </div>
 
       <p className="mt-1 text-[10px] text-muted-foreground/50">
-        Tip: <kbd className="rounded border border-border bg-muted/50 px-1 py-0.5 font-mono text-[9px] font-semibold">F3</kbd> para ver todos los clientes.
+        <kbd className="rounded border border-border bg-muted/50 px-1 py-0.5 font-mono text-[9px] font-semibold">F3</kbd> ver todos ·{" "}
+        <kbd className="rounded border border-border bg-muted/50 px-1 py-0.5 font-mono text-[9px] font-semibold">↑↓</kbd> moverse ·{" "}
+        <kbd className="rounded border border-border bg-muted/50 px-1 py-0.5 font-mono text-[9px] font-semibold">Enter</kbd> elegir
       </p>
 
-      {open && (searched !== null || verTodos) && (
-        <div className="absolute z-20 mt-1 max-h-64 w-full overflow-y-auto rounded-lg border border-border bg-card shadow-lg">
+      {open && (buscando || verTodos) && (
+        <div ref={listaRef} className="absolute z-20 mt-1 max-h-72 w-full overflow-y-auto rounded-xl border border-border bg-card py-1 shadow-lg">
           {lista.length > 0 ? (
             <>
-              {verTodos && (
-                <p className="px-2.5 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/50">
-                  Todos los clientes · orden alfabético
-                </p>
-              )}
-              {lista.map(c => {
-                // Se muestra igual, pero no se puede elegir: el motivo va escrito en la fila.
-                const estado = normalizarEstadoCliente(c.estado);
-                const puede = estado === "activo";
+              <p className="px-3 pb-1 pt-1.5 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/50">
+                {verTodos
+                  ? `Todos los clientes · ${clientesOrdenados.length}`
+                  : `${lista.length} resultado${lista.length === 1 ? "" : "s"}`}
+              </p>
+              {lista.map((c, i) => {
+                const est = normalizarEstadoCliente(c.estado);
+                const puede = puedeElegir(c);
                 return (
                   <button
                     key={c.id}
+                    data-idx={i}
                     type="button"
                     disabled={!puede}
-                    title={puede ? undefined : `${ESTADO_CLIENTE_LABEL[estado]}: no se le puede otorgar un crédito`}
+                    title={puede ? undefined : `${ESTADO_CLIENTE_LABEL[est]}: no se le puede otorgar un crédito`}
                     onMouseDown={e => e.preventDefault()}
-                    onClick={() => puede && pick(c)}
+                    onMouseEnter={() => setCursor(i)}
+                    onClick={() => pick(c)}
                     className={cn(
-                      "flex w-full items-center justify-between gap-2 px-2.5 py-2 text-left transition-colors",
-                      puede ? "hover:bg-muted/50" : "cursor-not-allowed opacity-60",
+                      "flex w-full items-center gap-2.5 px-3 py-2 text-left transition-colors",
+                      !puede && "cursor-not-allowed opacity-50",
+                      puede && i === cursor && "bg-primary/10",
                     )}
                   >
-                    <span className="flex min-w-0 items-center gap-2">
-                      <span className="truncate text-sm text-foreground">{nombreCompleto(c)}</span>
-                      {!puede && (
-                        <StatusBadge label={ESTADO_CLIENTE_LABEL[estado]} variant={ESTADO_CLIENTE_VARIANT[estado]} />
-                      )}
+                    <Avatar name={nombreCompleto(c)} seed={c.id} size="sm" />
+                    <span className="min-w-0 flex-1">
+                      <span className="flex items-center gap-1.5">
+                        <span className="truncate text-sm font-medium text-foreground">
+                          {resaltar(nombreCompleto(c), termino)}
+                        </span>
+                        {!puede && <StatusBadge label={ESTADO_CLIENTE_LABEL[est]} variant={ESTADO_CLIENTE_VARIANT[est]} />}
+                      </span>
+                      <span className="block font-mono text-[11px] text-muted-foreground">
+                        {c.documento ? <>DNI {resaltar(c.documento, termino)}</> : "sin DNI"}
+                      </span>
                     </span>
-                    <span className="shrink-0 font-mono text-xs text-muted-foreground">{c.documento || "—"}</span>
+                    {puede && i === cursor && <ArrowRight className="h-3.5 w-3.5 shrink-0 text-primary" />}
                   </button>
                 );
               })}
             </>
           ) : verTodos ? (
-            <p className="px-2.5 py-2.5 text-xs text-muted-foreground/60">No hay clientes cargados.</p>
+            <p className="px-3 py-2.5 text-xs text-muted-foreground/60">No hay clientes cargados.</p>
           ) : (
             /* Sin coincidencias → el cliente no existe → ofrecer alta. */
             <>
-              <p className="px-2.5 py-2.5 text-xs text-muted-foreground/60">
-                «{searched}» no pertenece a ningún cliente.
+              <p className="px-3 py-2.5 text-xs text-muted-foreground/60">
+                Ningún cliente coincide con «{termino}».
               </p>
               <button
                 type="button"
                 onMouseDown={e => e.preventDefault()}
                 onClick={lanzarAlta}
-                className="flex w-full items-center gap-2 border-t border-border px-2.5 py-2.5 text-left text-sm text-primary hover:bg-primary/5 transition-colors"
+                className="flex w-full items-center gap-2 border-t border-border px-3 py-2.5 text-left text-sm text-primary transition-colors hover:bg-primary/5"
               >
                 <UserPlus className="h-3.5 w-3.5 shrink-0" />
-                Dar de alta nuevo cliente · «{searched}»
+                Dar de alta nuevo cliente · «{termino}»
               </button>
             </>
           )}
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * Resalta en el resultado la parte que coincide con lo tecleado. Sin esto, con ocho filas
+ * parecidas hay que leerlas enteras para saber por qué entró cada una.
+ */
+function resaltar(texto: string, termino: string) {
+  const t = termino.trim();
+  if (t.length < 2) return texto;
+  // Un DNI se tipea sin puntos; el guardado puede tenerlos. Se compara sin separadores.
+  const plano = /^\d+$/.test(t.replace(/\D/g, "")) && /\d/.test(texto) ? t.replace(/\D/g, "") : t;
+  const i = texto.toLowerCase().indexOf(plano.toLowerCase());
+  if (i === -1) return texto;
+  return (
+    <>
+      {texto.slice(0, i)}
+      <mark className="rounded-sm bg-primary/25 px-0.5 text-foreground">{texto.slice(i, i + plano.length)}</mark>
+      {texto.slice(i + plano.length)}
+    </>
   );
 }
 
