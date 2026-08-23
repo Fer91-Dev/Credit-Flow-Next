@@ -73,6 +73,14 @@ export interface PoliticaOriginacion {
   situacionBcraMax: SituacionBCRA;
   /** Score externo mínimo (0–1000). `null` = no se exige. */
   scoreExternoMin: number | null;
+  /**
+   * Rechaza si el bureau informa proceso judicial o situación jurídica. Va por el camino
+   * del rechazo para que lo alcance `accionAlNoCalificar`: en "autorizar" no bloquea, lo
+   * frena hasta que un admin lo asuma por escrito.
+   */
+  rechazaConJuicio: boolean;
+  /** Manda a REVISAR si el cliente ya refinanció deuda en otra entidad. */
+  revisaConRefinanciaciones: boolean;
   /** Rechazar si el titular registra cheques rechazados. */
   rechazaConChequesRechazados: boolean;
   /** Máximo de créditos activos simultáneos por cliente. 0 = sin límite. */
@@ -105,6 +113,8 @@ export const POLITICA_ORIGINACION_DEFAULT: PoliticaOriginacion = {
   limiteBaseSinBureau: 0,
   situacionBcraMax: 2,
   scoreExternoMin: null,
+  rechazaConJuicio: true,           // el juicio no se ignora; con "autorizar" lo firma un admin
+  revisaConRefinanciaciones: false, // apagado: no todas las financieras lo consideran señal
   rechazaConChequesRechazados: true,
   maxCreditosActivos: 0, // sin límite por defecto (cada financiera define su apetito)
   maxEdicionesSueldoVendedor: 3, // un vendedor puede editar el sueldo 3 veces; luego lo resetea un admin
@@ -311,6 +321,28 @@ export function evaluarOriginacion(
   if (b?.situacionBcra != null && b.situacionBcra > politica.situacionBcraMax) {
     escalar("rechazado");
     motivos.push(`Situación BCRA ${b.situacionBcra} supera el máximo aceptado (${politica.situacionBcraMax}).`);
+  }
+  /**
+   * 3b) Bureau — PROCESO JUDICIAL.
+   *
+   * 🔴 Es la señal más fuerte que manda el BCRA y la que se estaba tirando. Alguien puede
+   * figurar en situación 2 —que la política acepta— y tener demanda judicial de otro banco.
+   * Va como RECHAZO, no como "revisar", para que respete `accionAlNoCalificar`: con la
+   * política en "autorizar" (el default), el caso no se bloquea solo — queda frenado hasta
+   * que un ADMINISTRADOR lo autorice a mano y quede auditado. Un vendedor no puede saltearlo.
+   */
+  if (politica.rechazaConJuicio && b?.tieneProcesoJudicial === true) {
+    escalar("rechazado");
+    motivos.push("Tiene proceso judicial o situación jurídica informada por una entidad financiera.");
+  }
+  /**
+   * 3c) Bureau — DEUDA REFINANCIADA EN OTRO LADO.
+   * Que ya haya reestructurado con otra entidad no lo descalifica, pero cambia el caso: es
+   * alguien que no pudo con el plan original. Va a revisión, no a rechazo.
+   */
+  if (politica.revisaConRefinanciaciones && b?.tieneRefinanciaciones === true) {
+    escalar("revisar");
+    motivos.push("Tiene deuda refinanciada en otra entidad.");
   }
   // 4) Bureau — cheques rechazados.
   if (politica.rechazaConChequesRechazados && (b?.chequesRechazados ?? 0) > 0) {

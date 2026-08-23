@@ -1426,6 +1426,24 @@ export function ConfigForm() {
                 onChange={v => setRiesgo({ rechazaConChequesRechazados: v })}
               />
 
+              {/* Las dos señales que el BCRA informa por entidad y que hasta ahora se
+                  descartaban. El juicio va por el camino del rechazo justamente para que lo
+                  alcance "Si el cliente no califica": con esa opción en "autorizar", no
+                  bloquea — lo frena hasta que un admin lo asuma. */}
+              <SwitchRow
+                title="Rechazar con proceso judicial"
+                desc="Si alguna entidad le inició juicio o lo informa en situación jurídica, el cliente no califica. Con «Avisar y dejar autorizar» no se bloquea: lo tiene que autorizar un administrador."
+                checked={riesgo.politica.rechazaConJuicio}
+                onChange={v => setRiesgo({ rechazaConJuicio: v })}
+              />
+
+              <SwitchRow
+                title="Revisar si refinanció en otra entidad"
+                desc="No lo descalifica, pero cambia el caso: es alguien que no pudo con su plan original. Queda en revisión."
+                checked={riesgo.politica.revisaConRefinanciaciones}
+                onChange={v => setRiesgo({ revisaConRefinanciaciones: v })}
+              />
+
               {/* ── Bureau de crédito (integración por API) — PREMIUM (plan Pro) ── */}
               <FeatureGate feature="bureau_credito">
               <div className="border-t border-border pt-4">
@@ -1897,6 +1915,8 @@ function defaultRiesgo(): RiesgoConfig {
       situacionBcraMax: 2,
       scoreExternoMin: null,
       rechazaConChequesRechazados: true,
+      rechazaConJuicio: true,
+      revisaConRefinanciaciones: false,
       maxCreditosActivos: 0,
       maxEdicionesSueldoVendedor: 3,
       alertaSaltoSueldoPct: 50,
