@@ -369,6 +369,9 @@ export function CreditosTable({ role }: { role: Role }) {
                 credito={detail}
                 role={role}
                 onRefinanciar={(c) => { setDetail(null); setRefinanciar(c); }}
+                // Saltar al otro extremo de la refinanciación: se cambia el crédito DENTRO del
+                // mismo modal, sin cerrarlo y volver a abrirlo.
+                onAbrirCredito={(c) => setDetail(c)}
                 // Anular/eliminar dejan vieja la copia del crédito que muestra este modal.
                 onCerrar={() => { setDetail(null); mutate(); }}
               />

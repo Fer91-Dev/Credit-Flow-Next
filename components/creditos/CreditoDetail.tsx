@@ -2,7 +2,7 @@
 
 import { useState, useRef } from "react";
 import { useSWRConfig } from "swr";
-import { CalendarDays, Wallet, Info, ArrowUpRight, Receipt, Loader2, Printer, RefreshCw, ArrowRight, ShieldCheck, Ban, Trash2 } from "lucide-react";
+import { CalendarDays, Wallet, Info, ArrowUpRight, Receipt, Loader2, Printer, RefreshCw, ArrowRight, ShieldCheck, Ban, Trash2, ExternalLink } from "lucide-react";
 import { refrescarNotificaciones, useAmortizacion, useCuotas, usePagosByCredito, useCreditos, KEYS, type Credito, type EstadoCuota, type Pago, type CuotaPersistida, useFinanciera } from "@/lib/swr";
 import { type Role } from "@/lib/auth/roles";
 import { abrirRecibo } from "@/lib/recibo";
@@ -80,10 +80,38 @@ const BTN_ACCION =
  * se disparaban desde una fila que no muestra ni el saldo real ni los pagos. Ahora se deciden
  * acá, con el nombre escrito y al lado de los datos que las justifican.
  */
-export function CreditoDetail({ credito, role, onRefinanciar, onCerrar }: {
+/**
+ * El otro extremo de una refinanciación, clickeable.
+ *
+ * El banner nombraba al crédito vinculado pero no llevaba a ningún lado: para ver de dónde
+ * venía la deuda había que cerrar el modal, volver a la lista y buscar el número a mano.
+ * Queda como texto plano cuando el crédito no está en la lista cargada (no hay a dónde ir).
+ */
+function VinculoRefi({ credito, numeroOrigen, fallback, onAbrir }: {
+  credito: Credito | undefined;
+  numeroOrigen?: number | null;
+  fallback: string;
+  onAbrir?: (c: Credito) => void;
+}) {
+  const numero = credito ? formatCreditoNumero(credito.numero, numeroOrigen ?? credito.refinancia_a_numero) : fallback;
+  if (!credito || !onAbrir) return <span className="font-mono font-semibold text-warning">{numero}</span>;
+  return (
+    <button
+      onClick={() => onAbrir(credito)}
+      title={`Abrir el detalle de ${numero}`}
+      className="inline-flex items-center gap-1 rounded-md px-1 py-0.5 font-mono font-semibold text-warning transition-colors hover:bg-warning/15"
+    >
+      {numero} <ExternalLink className="h-3 w-3" />
+    </button>
+  );
+}
+
+export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirCredito }: {
   credito: Credito;
   role?: Role;
   onRefinanciar?: (c: Credito) => void;
+  /** Salta al detalle de otro crédito (los dos extremos de una refinanciación). */
+  onAbrirCredito?: (c: Credito) => void;
   /** Cierra el modal: lo llama tras anular o eliminar, cuando el crédito que se está
    *  mostrando dejó de existir o cambió de estado y esta copia quedó vieja. */
   onCerrar?: () => void;
@@ -516,9 +544,7 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar }: {
                 <p className="flex flex-wrap items-center gap-1.5">
                   <span className="text-muted-foreground">Proviene de refinanciar</span>
                   <ArrowRight className="h-3 w-3 text-warning" />
-                  <span className="font-mono font-semibold text-warning">
-                    {origenRefi ? formatCreditoNumero(origenRefi.numero) : "crédito anterior"}
-                  </span>
+                  <VinculoRefi credito={origenRefi} fallback="crédito anterior" onAbrir={onAbrirCredito} />
                   {origenRefi && <span className="text-muted-foreground">· {nombreCompleto(origenRefi.cliente)}</span>}
                 </p>
               )}
@@ -526,10 +552,8 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar }: {
                 <p className="flex flex-wrap items-center gap-1.5">
                   <span className="text-muted-foreground">Refinanciado en</span>
                   <ArrowRight className="h-3 w-3 text-warning" />
-                  <span className="font-mono font-semibold text-warning">
-                    {/* El destino ES la refinanciación de ESTE crédito → su número de origen es el nuestro. */}
-                    {destinoRefi ? formatCreditoNumero(destinoRefi.numero, credito.numero) : "crédito nuevo"}
-                  </span>
+                  {/* El destino ES la refinanciación de ESTE crédito → su número de origen es el nuestro. */}
+                  <VinculoRefi credito={destinoRefi} numeroOrigen={credito.numero} fallback="crédito nuevo" onAbrir={onAbrirCredito} />
                   <span className="text-muted-foreground">— la deuda viva pasó a ese crédito.</span>
                 </p>
               )}
