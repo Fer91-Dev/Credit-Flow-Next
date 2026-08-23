@@ -1717,8 +1717,9 @@ function PlanCliente({ cuotas, totalCuotas, comisionUpfront, totalAPagar }: {
     ? [cuotas.slice(0, Math.ceil(total / 2)), cuotas.slice(Math.ceil(total / 2))]
     : [cuotas];
 
-  const th = "px-4 py-2.5 text-left font-semibold text-muted-foreground border-b border-border";
-  const td = "px-4 py-2.5 tabular-nums";
+  const th = "px-4 py-2.5 text-left text-[11px] font-bold uppercase tracking-wider text-muted-foreground border-b border-border";
+  // Filas más altas: el vendedor lee este plan en voz alta frente al cliente, no lo escanea.
+  const td = "px-4 py-3 tabular-nums";
   /** Canal lateral: alinea las celdas de los extremos con el encabezado del panel (px-4). */
   const canal = "[&_th:first-child]:pl-4 [&_td:first-child]:pl-4 [&_th:last-child]:pr-4 [&_td:last-child]:pr-4";
 
@@ -1739,9 +1740,12 @@ function PlanCliente({ cuotas, totalCuotas, comisionUpfront, totalAPagar }: {
               <tbody>
                 {bloque.map((row) => (
                   <tr key={row.nro} className={`hover:bg-muted/20 transition-colors ${row.nro % 2 === 0 ? "bg-muted/5" : ""}`}>
-                    <td className={`${td} text-muted-foreground font-mono`}>{row.nro}/{total}</td>
+                    <td className={`${td} font-mono text-muted-foreground`}>
+                      <span className="text-foreground">{row.nro}</span><span className="text-muted-foreground/50">/{total}</span>
+                    </td>
                     <td className={`${td} text-foreground`}>{fmtDate(row.fecha)}</td>
-                    <td className={`${td} text-right font-mono font-semibold text-foreground`}>${n2(row.cuotaTotal)}</td>
+                    {/* El importe es LO QUE SE DICE en voz alta: es el dato de la fila. */}
+                    <td className={`${td} text-right font-mono text-[15px] font-bold text-foreground`}>${n2(row.cuotaTotal)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -1758,12 +1762,19 @@ function PlanCliente({ cuotas, totalCuotas, comisionUpfront, totalAPagar }: {
         romper la suma. Va en su propio renglón, y el total de verdad recién debajo — si no,
         el cliente ve un "total a pagar" al que le faltan.
       */}
-      <div className="sticky bottom-0 z-20 bg-card">
-        <div className="flex items-baseline justify-between gap-4 border-t-2 border-border bg-muted/40 px-4 py-3.5">
+      {/*
+        🔴 El total va en el MISMO contenedor que la tabla.
+        Con pocas cuotas la tabla se centra (`mx-auto max-w-xl`) y el bloque de totales
+        quedaba a todo el ancho del panel: la etiqueta salía disparada al borde izquierdo,
+        lejísimos de la columna que resume. Ahora comparten caja y el importe cae justo
+        debajo de la columna "A pagar".
+      */}
+      <div className={`sticky bottom-0 z-20 bg-card ${dividir ? "" : "mx-auto max-w-xl"}`}>
+        <div className="flex items-baseline justify-between gap-4 border-t-2 border-primary/40 bg-primary/5 px-4 py-4">
           <span className="text-[10px] font-bold uppercase tracking-widest text-foreground">
             {comisionUpfront > 0 ? "Total de las cuotas" : "Total a pagar"}
           </span>
-          <span className={`font-mono tabular-nums ${comisionUpfront > 0 ? "text-sm font-semibold text-foreground" : "text-base font-bold text-foreground"}`}>
+          <span className={`font-mono tabular-nums ${comisionUpfront > 0 ? "text-sm font-semibold text-foreground" : "text-xl font-black text-foreground"}`}>
             ${n2(totalCuotas)}
           </span>
         </div>
@@ -1773,9 +1784,9 @@ function PlanCliente({ cuotas, totalCuotas, comisionUpfront, totalAPagar }: {
               <span className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground">Comisión de otorgamiento (al firmar)</span>
               <span className="font-mono text-sm tabular-nums text-foreground">${n2(comisionUpfront)}</span>
             </div>
-            <div className="flex items-baseline justify-between gap-4 border-t border-border bg-muted/40 px-4 py-3.5">
+            <div className="flex items-baseline justify-between gap-4 border-t border-primary/30 bg-primary/5 px-4 py-4">
               <span className="text-[10px] font-bold uppercase tracking-widest text-foreground">Total a pagar</span>
-              <span className="font-mono text-base font-bold tabular-nums text-foreground">${n2(totalAPagar)}</span>
+              <span className="font-mono text-xl font-black tabular-nums text-foreground">${n2(totalAPagar)}</span>
             </div>
           </>
         )}
