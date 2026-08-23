@@ -6,7 +6,24 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 /** Formatea el número identificador de un crédito como `CRD-000123` (o `—` si no tiene). */
-export function formatCreditoNumero(n?: number | null): string {
+/**
+ * Número visible de una operación.
+ *
+ * 🔴 Un crédito nacido de refinanciar otro se mostraba como uno más: CRD-000060 y
+ * CRD-000070 sin ninguna relación visible entre ellos. Había que abrir el detalle para
+ * descubrir que el segundo salió del primero — justo lo que hay que ver de un vistazo en
+ * una cartera con mora.
+ *
+ * Con `refinanciaA` se muestra **REF-<número del crédito que refinancia>**: la refinanciación
+ * de CRD-000060 se lee REF-000060. El número INTERNO sigue siendo el secuencial y único
+ * (`creditos.numero`): dos créditos no pueden compartirlo, tienen cronograma y saldo propios.
+ * Lo que cambia es cómo se lo nombra.
+ *
+ * En una cadena no se repite: refinanciar el REF-000060 —cuyo número interno es el 70— da
+ * REF-000070, que apunta a su predecesor inmediato.
+ */
+export function formatCreditoNumero(n?: number | null, refinanciaA?: number | null): string {
+  if (refinanciaA != null) return `REF-${String(refinanciaA).padStart(6, "0")}`;
   if (n == null) return "—";
   return `CRD-${String(n).padStart(6, "0")}`;
 }

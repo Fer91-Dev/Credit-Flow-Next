@@ -7,6 +7,7 @@ import { siguienteNumeroComprobante } from "@/lib/comprobantes";
 import { assertFondosSuficientesTx } from "@/lib/caja-fondos";
 import { lockNumeroCreditoTx, TX_PLATA } from "@/lib/locks";
 import { getConfiguracion } from "@/lib/config";
+import { conNumeroDeOrigen } from "@/lib/creditos-numero";
 import { registrarAuditoria } from "@/lib/audit";
 import { registrarMovimientoStock } from "@/lib/stock";
 import { evaluarClienteParaCredito, cuotaMensualParaRiesgo } from "@/lib/riesgo-server";
@@ -112,8 +113,12 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     return { ...credito, estado, dias_mora: dmora, interes_mora, tiene_pagos: c.pagos.length > 0, cobros_vivos: c._count.pagos > 0 };
   });
 
+  // El número del crédito que cada refinanciación reemplaza, para poder mostrar REF-000060
+  // en vez de un CRD- suelto sin relación visible con su origen. Una sola query para el lote.
+  const creditosConOrigen = await conNumeroDeOrigen(tenantId, creditosConMora);
+
   return successResponse({
-    creditos: creditosConMora,
+    creditos: creditosConOrigen,
     total,
     limit,
     offset,

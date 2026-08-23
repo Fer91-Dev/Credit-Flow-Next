@@ -637,7 +637,7 @@ function CreditosTabla({ creditos, mostrarProximo }: { creditos: CreditoConFinan
                       {tieneCuotas
                         ? <ChevronRight className={`h-3.5 w-3.5 text-muted-foreground transition-transform ${abierto ? "rotate-90" : ""}`} />
                         : <span className="inline-block w-3.5" />}
-                      <span className="font-mono text-[11px] text-muted-foreground/70">{formatCreditoNumero(c.numero)}</span>
+                      <span className="font-mono text-[11px] text-muted-foreground/70">{formatCreditoNumero(c.numero, c.refinancia_a_numero)}</span>
                       <span className="capitalize">{c.tipo_credito}</span>
                       {/* Que un crédito HAYA NACIDO de refinanciar otro no se veía en la ficha:
                           la cadena de reestructuraciones de un cliente es justo lo que hay que

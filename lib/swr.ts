@@ -141,6 +141,8 @@ export interface CreditoConFinanzas {
   refinancia_a?: string | null;
   /** Refinanciación que reemplazó a este crédito. */
   refinanciado_en?: string | null;
+  /** Número del crédito que esta refinanciación reemplaza: se muestra como REF-XXXXXX. */
+  refinancia_a_numero?: number | null;
   created_at: string;
   fecha_inicio: string;
   proximo_pago?: string | null;
@@ -188,6 +190,8 @@ export interface ClienteDetalle extends Cliente {
 export interface Credito {
   id: string;
   numero?: number | null;
+  /** Número del crédito que esta refinanciación reemplaza: se muestra como REF-XXXXXX. */
+  refinancia_a_numero?: number | null;
   cliente_id: string;
   cliente: { nombre: string; apellido?: string | null; documento?: string | null; email?: string; telefono?: string };
   vendedor_id?: string | null;

@@ -83,7 +83,7 @@ export function CreditosTable({ role }: { role: Role }) {
     return creditos.filter(c =>
       (!q
         || nombreCompleto(c.cliente).toLowerCase().includes(q)
-        || formatCreditoNumero(c.numero).toLowerCase().includes(q)
+        || formatCreditoNumero(c.numero, c.refinancia_a_numero).toLowerCase().includes(q)
         || (!!qNum && c.numero != null && String(c.numero).includes(qNum))) &&
       (estadoFilter === "all" || c.estado === estadoFilter) &&
       (tipoFilter === "all" || c.tipo_credito === tipoFilter) &&
@@ -266,7 +266,7 @@ export function CreditosTable({ role }: { role: Role }) {
               { header: "N°", className: "whitespace-nowrap",
                 cell: (c) => (
                   <div className="flex items-center gap-1.5 font-mono text-xs text-muted-foreground">
-                    {formatCreditoNumero(c.numero)}
+                    {formatCreditoNumero(c.numero, c.refinancia_a_numero)}
                     {c.es_refinanciacion && (
                       <span className="inline-flex items-center gap-1 rounded-full bg-warning/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-warning" title="Crédito nacido de una refinanciación">
                         <RefreshCw className="h-2.5 w-2.5" /> Refi
@@ -322,7 +322,7 @@ export function CreditosTable({ role }: { role: Role }) {
                 <div onClick={(e) => { if (eventoPropio(e)) setDetail(c); }} role="button" tabIndex={0} onKeyDown={(e) => { if (teclaDelContenedor(e) && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); setDetail(c); } }} className="rounded-xl bg-card border border-border p-4 space-y-3 cursor-pointer active:bg-muted/20 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50">
                   <div className="flex items-start justify-between gap-2">
                     <div>
-                      <p className="font-mono text-[11px] text-muted-foreground">{formatCreditoNumero(c.numero)}</p>
+                      <p className="font-mono text-[11px] text-muted-foreground">{formatCreditoNumero(c.numero, c.refinancia_a_numero)}</p>
                       <p className="font-medium text-foreground text-sm">{nombreCompleto(c.cliente)}</p>
                       <p className="text-xs text-muted-foreground mt-0.5">{c.tipo_credito === "productos" ? "Producto" : c.tipo_credito} · {c.tasa}% TNA · {c.plazo_meses}m</p>
                       <p className="text-[10px] text-muted-foreground/70 mt-0.5">{formatFechaHora(c.created_at)} · {c.vendedor?.nombre ?? "Sin agente"}</p>
@@ -417,7 +417,7 @@ function RefinanciadosView({ creditos, onOpen, onRefinanciar }: { creditos: Cred
     if (!q) return candidatos;
     const qDigits = q.replace(/\D/g, "");
     return candidatos.filter((c) => {
-      const num = formatCreditoNumero(c.numero).toLowerCase();
+      const num = formatCreditoNumero(c.numero, c.refinancia_a_numero).toLowerCase();
       const nombre = nombreCompleto(c.cliente).toLowerCase();
       const doc = (c.cliente.documento ?? "").replace(/\D/g, "");
       if (num.includes(q) || nombre.includes(q)) return true;
@@ -475,7 +475,7 @@ function RefinanciadosView({ creditos, onOpen, onRefinanciar }: { creditos: Cred
                   <div key={c.id} className="flex items-center gap-3 rounded-lg border border-border bg-muted/10 px-3 py-2.5">
                     <button onClick={() => onOpen(c)} className="min-w-0 flex-1 text-left" title="Ver detalle del crédito">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-mono text-xs font-bold text-foreground">{formatCreditoNumero(c.numero)}</span>
+                        <span className="font-mono text-xs font-bold text-foreground">{formatCreditoNumero(c.numero, c.refinancia_a_numero)}</span>
                         <StatusBadge label={`${c.dias_mora}d mora`} variant={c.dias_mora > 30 ? "destructive" : "warning"} />
                         {c.es_refinanciacion && (
                           <span className="inline-flex items-center gap-1 rounded-full bg-warning/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-warning" title="Ya proviene de una refinanciación previa: cuidado con encadenar reestructuraciones">
