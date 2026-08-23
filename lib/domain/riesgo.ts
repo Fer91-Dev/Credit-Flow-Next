@@ -125,7 +125,7 @@ export const POLITICA_ORIGINACION_DEFAULT: PoliticaOriginacion = {
 };
 
 /** Proveedor de bureau de crédito. `manual` = el analista carga los valores a mano. */
-export type BureauProveedor = "manual" | "bcra" | "nosis" | "veraz";
+export type BureauProveedor = "manual" | "bcra" | "nosis" | "veraz" | "credixa";
 
 /** Config del bureau: qué proveedor consultar al originar y sus credenciales. */
 export interface BureauConfig {
@@ -138,6 +138,8 @@ export interface BureauConfig {
   token: string;
   /** Usuario (algunos proveedores lo piden además del token). */
   usuario: string;
+  /** Config por bureau: varios pueden estar activos a la vez. Ver `resolverProveedoresBureau`. */
+  proveedores?: Partial<Record<string, BureauProveedorConfig>>;
 }
 
 export const BUREAU_CONFIG_DEFAULT: BureauConfig = {
@@ -146,7 +148,71 @@ export const BUREAU_CONFIG_DEFAULT: BureauConfig = {
   endpoint: "",
   token: "",
   usuario: "",
+  proveedores: {},
 };
+
+/**
+ * 🔴 VARIOS BUREAUS A LA VEZ, CADA UNO CON LO SUYO.
+ *
+ * El modelo original soportaba UN proveedor por financiera (`proveedor` + un juego de
+ * credenciales). Eso no es como se trabaja: se consulta el BCRA —gratis— y ADEMÁS un
+ * bureau comercial, y a veces dos, comparando. Con un solo slot había que ir a
+ * Configuración y cambiar el proveedor cada vez que se quería la otra fuente.
+ *
+ * `proveedores` guarda un bloque por bureau, y cada uno se prende por separado. Los campos
+ * viejos siguen ahí y se respetan: una config guardada antes de esto sigue funcionando
+ * igual (ver `resolverBureau`), así que no hay migración ni pantalla que se rompa.
+ */
+export interface BureauProveedorConfig {
+  /** Aparece como opción consultable en la ficha del cliente. */
+  activo: boolean;
+  /** Endpoint base. BCRA es público y fijo: no lo usa. */
+  endpoint?: string;
+  /** Token / API key. Secreto: se enmascara en el GET de config. */
+  token?: string;
+  /** Usuario, para los proveedores que lo piden además del token. */
+  usuario?: string;
+}
+
+/** Los bureaus que se pueden configurar (el manual no lleva credenciales). */
+export const BUREAUS_CONFIGURABLES = ["bcra", "nosis", "veraz", "credixa"] as const;
+export type BureauConfigurable = (typeof BUREAUS_CONFIGURABLES)[number];
+
+export const BUREAU_LABEL: Record<BureauConfigurable, string> = {
+  bcra: "BCRA — Central de Deudores",
+  nosis: "Nosis",
+  veraz: "Veraz / Equifax",
+  credixa: "Credixa",
+};
+
+/** Los que necesitan contrato y credenciales. El BCRA es público y gratuito. */
+export const BUREAU_REQUIERE_CREDENCIALES: Record<BureauConfigurable, boolean> = {
+  bcra: false, nosis: true, veraz: true, credixa: true,
+};
+
+/**
+ * Completa `proveedores` desde los campos viejos cuando falta, para que una config guardada
+ * antes de este cambio siga comportándose igual. El BCRA arranca activo: es gratis, no pide
+ * credenciales y es el que usa todo el mundo.
+ */
+export function resolverProveedoresBureau(cfg: BureauConfig): Record<BureauConfigurable, BureauProveedorConfig> {
+  const p = cfg.proveedores ?? {};
+  const base: Record<BureauConfigurable, BureauProveedorConfig> = {
+    bcra:    { activo: true },
+    nosis:   { activo: false, endpoint: "", token: "", usuario: "" },
+    veraz:   { activo: false, endpoint: "", token: "", usuario: "" },
+    credixa: { activo: false, endpoint: "", token: "", usuario: "" },
+  };
+  for (const clave of BUREAUS_CONFIGURABLES) {
+    const guardado = p[clave];
+    if (guardado) base[clave] = { ...base[clave], ...guardado };
+    // Config vieja: el proveedor que estaba elegido queda activo con sus credenciales.
+    else if (cfg.proveedor === clave) {
+      base[clave] = { activo: true, endpoint: cfg.endpoint, token: cfg.token, usuario: cfg.usuario };
+    }
+  }
+  return base;
+}
 
 /**
  * Config de riesgo del tenant tal como se persiste en `configuraciones.riesgo_config`.

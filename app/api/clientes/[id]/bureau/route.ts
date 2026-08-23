@@ -14,7 +14,7 @@ interface RouteParams {
   params: Promise<{ id: string }>;
 }
 
-const PROVEEDORES: BureauProveedor[] = ["manual", "bcra", "nosis", "veraz"];
+const PROVEEDORES: BureauProveedor[] = ["manual", "bcra", "nosis", "veraz", "credixa"];
 
 /**
  * GET /api/clientes/[id]/bureau  (admin · feature premium)

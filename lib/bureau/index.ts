@@ -45,6 +45,7 @@ export async function consultarBureau(
         return { ok: true, proveedor, senales: { ...VACIO, ...(opts.senalesManual ?? {}) } };
       case "nosis":
       case "veraz":
+      case "credixa":
         /**
          * 🔴 Stub: Nosis y Veraz son servicios PAGOS y no se pueden integrar sin un contrato
          * y credenciales del cliente. No es algo que se destrabe escribiendo código.
@@ -56,7 +57,7 @@ export async function consultarBureau(
         return {
           ok: false,
           proveedor,
-          mensaje: `${proveedor === "nosis" ? "Nosis" : "Veraz"} es un servicio pago: hace falta contratarlo y cargar las credenciales. Mientras tanto podés usar BCRA, que es gratuito, o «Cargar manual».`,
+          mensaje: `${proveedor === "nosis" ? "Nosis" : proveedor === "credixa" ? "Credixa" : "Veraz"} es un servicio pago: hace falta contratarlo y cargar las credenciales. Mientras tanto podés usar BCRA, que es gratuito, o «Cargar manual».`,
           senales: VACIO,
         };
       default:
