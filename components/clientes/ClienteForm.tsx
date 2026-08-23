@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { Emoji } from "@/components/ui/Emoji";
 import { Field, Input, Select } from "@/components/ui/field";
 import { maskMontoInput, parseMontoInput, numeroAInput, nombreCompleto, formatCuit } from "@/lib/utils";
+import { normalizarEstadoCliente } from "@/lib/domain";
 import { useConfirm } from "@/components/ui/confirm";
 import { useToast } from "@/components/ui/toast";
 import { useHasFeature } from "@/components/providers/FeaturesProvider";
@@ -79,7 +80,7 @@ export function ClienteForm({ clienteId, initialDocumento, onClose }: ClienteFor
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [dniDup, setDniDup] = useState<{ nombre: string } | null>(null);  // otro cliente con ese DNI
+  const [dniDup, setDniDup] = useState<{ nombre: string; estado?: string | null } | null>(null);  // otro cliente con ese DNI
   const [cuitDup, setCuitDup] = useState<{ nombre: string } | null>(null); // otro cliente con ese CUIT
   // Control anti-fraude del sueldo (viene del GET, rol-aware).
   const [sueldoControl, setSueldoControl] = useState<{ ediciones: number; max: number; esAdmin: boolean; puedeEditar: boolean } | null>(null);
@@ -157,6 +158,22 @@ export function ClienteForm({ clienteId, initialDocumento, onClose }: ClienteFor
 
   // DNI repetido + sin CUIT válido → hay que diferenciar con el CUIT.
   const necesitaCuit = !!dniDup && !RE.cuit.test(formData.cuit_cuil.trim());
+
+  /**
+   * El aviso de DNI repetido, con el ESTADO del homónimo.
+   *
+   * 🔴 Decía solo "ya existe un cliente con este DNI: Carla". Pero si Carla está fallecida
+   * no aparece en el simulador, así que el operador la busca para otorgarle, no la
+   * encuentra, concluye que no está cargada y va a crearla — y recién ahí choca con este
+   * aviso, que no le explica nada. El estado tiene que estar acá, en el primer cartel.
+   */
+  const estadoDup = normalizarEstadoCliente(dniDup?.estado);
+  const avisoDni = !necesitaCuit ? undefined
+    : estadoDup === "fallecido"
+      ? `${dniDup!.nombre} tiene este DNI y figura como FALLECIDA/O: por eso no aparece al otorgar un crédito. Si es otra persona con el mismo DNI, cargá el CUIL para diferenciarla.`
+    : estadoDup === "inactivo"
+      ? `${dniDup!.nombre} tiene este DNI y está dado de baja: por eso no aparece al otorgar un crédito. Reactivalo desde Clientes, o cargá el CUIL si es otra persona.`
+      : `Ya existe un cliente con este DNI: ${dniDup!.nombre}. Si es OTRA persona, cargá el CUIL para diferenciarla.`;
   const bloqueadoDup = !!cuitDup || necesitaCuit;
 
   const fetchCliente = async () => {
@@ -269,7 +286,7 @@ export function ClienteForm({ clienteId, initialDocumento, onClose }: ClienteFor
   const handleSubmit = async (ev: React.FormEvent) => {
     ev.preventDefault();
     if (cuitDup) { setError(`Ya existe un cliente con el CUIT ${formData.cuit_cuil.trim()}: ${cuitDup.nombre}.`); return; }
-    if (necesitaCuit) { setError(`Ya existe un cliente con el DNI ${formData.documento.trim()}: ${dniDup?.nombre}. Cargá el CUIL para diferenciarla.`); return; }
+    if (necesitaCuit) { setError(avisoDni!); return; }
     const errs = validar();
     if (Object.keys(errs).length > 0) {
       setErrors(errs);
@@ -371,7 +388,7 @@ export function ClienteForm({ clienteId, initialDocumento, onClose }: ClienteFor
           <Field
             label="DNI"
             required
-            error={errors.documento || (necesitaCuit ? `Ya existe un cliente con este DNI: ${dniDup?.nombre}. Si es OTRA persona, cargá el CUIL para diferenciarla.` : undefined)}
+            error={errors.documento || avisoDni}
             hint={dniDup && !necesitaCuit ? "DNI repetido — diferenciado por el CUIT" : "Solo números, sin puntos"}
           >
             <Input name="documento" type="text" inputMode="numeric" placeholder="Ej: 36049884" value={formData.documento}

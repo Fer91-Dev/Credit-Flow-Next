@@ -14,7 +14,8 @@ import {
 import { refrescarNotificaciones, useConfiguracion, useMiPerfilVendedor, useMiCaja, useFinanciera, type CuentaCaja, type Producto } from "@/lib/swr";
 import { useConfirm } from "@/components/ui/confirm";
 import { useToast } from "@/components/ui/toast";
-import { formatNumero, parseMontoInput, maskMontoInput, numeroAInput, formatFecha, formatMonto, formatCreditoNumero, nombreCompleto, hoyComercial } from "@/lib/utils";
+import { formatNumero, parseMontoInput, maskMontoInput, numeroAInput, formatFecha, formatMonto, formatCreditoNumero, nombreCompleto, hoyComercial, cn } from "@/lib/utils";
+import { StatusBadge } from "@/components/ui/StatusBadge";
 import { imprimirPlanPagos } from "@/lib/plan-print";
 import {
   construirPlanAmortizacion,
@@ -33,6 +34,9 @@ import {
   type ConvencionTasa,
   type PlanAmortizacion,
   montoEnPalabras,
+  normalizarEstadoCliente,
+  ESTADO_CLIENTE_LABEL,
+  ESTADO_CLIENTE_VARIANT,
 } from "@/lib/domain";
 
 /**
@@ -54,7 +58,7 @@ const CUENTA_DESEMBOLSO_LABEL: Record<CuentaCaja, string> = {
   dolares: "Dólares",
 };
 
-interface Cliente { id: string; nombre: string; apellido?: string | null; documento?: string | null }
+interface Cliente { id: string; nombre: string; apellido?: string | null; documento?: string | null; estado?: string | null }
 
 /** Resultado de la evaluación de riesgo (preview del simulador). */
 interface EvalRiesgo {
@@ -192,10 +196,19 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
   };
 
   useEffect(() => {
-    // `estado=activo`: a un cliente dado de baja no se le otorga. La lista general (KEYS.clientes)
-    // sigue trayéndolos a todos a propósito — la pantalla de Clientes los muestra con su badge
-    // y desde ahí se los reactiva.
-    fetch("/api/clientes?estado=activo&limit=1000")
+    /**
+     * 🔴 SE TRAEN TODOS, incluidos los que no pueden recibir un crédito.
+     *
+     * Antes pedía `?estado=activo`, así que un cliente fallecido o dado de baja
+     * DESAPARECÍA del buscador. El operador tecleaba su DNI, el combo respondía «no
+     * pertenece a ningún cliente» —que es falso— y le ofrecía darlo de alta; recién al
+     * guardar chocaba con «ya existe un cliente con este DNI». Se enteraba dos pantallas
+     * después y sin saber por qué.
+     *
+     * Ahora aparecen, pero como fila DESHABILITADA con el motivo escrito. Que no se pueda
+     * otorgar lo sigue garantizando el server (CLIENTE_INACTIVO / CLIENTE_FALLECIDO).
+     */
+    fetch("/api/clientes?limit=1000")
       .then(r => r.json())
       .then(j => { if (j.ok) setClientes(j.data.clientes || []); });
     fetch("/api/vendedores?activo=true")
@@ -1897,18 +1910,33 @@ function ClienteCombobox({ clientes, value, onSelect, onAlta }: {
                   Todos los clientes · orden alfabético
                 </p>
               )}
-              {lista.map(c => (
-                <button
-                  key={c.id}
-                  type="button"
-                  onMouseDown={e => e.preventDefault()}
-                  onClick={() => pick(c)}
-                  className="flex w-full items-center justify-between gap-2 px-2.5 py-2 text-left hover:bg-muted/50 transition-colors"
-                >
-                  <span className="truncate text-sm text-foreground">{nombreCompleto(c)}</span>
-                  <span className="shrink-0 font-mono text-xs text-muted-foreground">{c.documento || "—"}</span>
-                </button>
-              ))}
+              {lista.map(c => {
+                // Se muestra igual, pero no se puede elegir: el motivo va escrito en la fila.
+                const estado = normalizarEstadoCliente(c.estado);
+                const puede = estado === "activo";
+                return (
+                  <button
+                    key={c.id}
+                    type="button"
+                    disabled={!puede}
+                    title={puede ? undefined : `${ESTADO_CLIENTE_LABEL[estado]}: no se le puede otorgar un crédito`}
+                    onMouseDown={e => e.preventDefault()}
+                    onClick={() => puede && pick(c)}
+                    className={cn(
+                      "flex w-full items-center justify-between gap-2 px-2.5 py-2 text-left transition-colors",
+                      puede ? "hover:bg-muted/50" : "cursor-not-allowed opacity-60",
+                    )}
+                  >
+                    <span className="flex min-w-0 items-center gap-2">
+                      <span className="truncate text-sm text-foreground">{nombreCompleto(c)}</span>
+                      {!puede && (
+                        <StatusBadge label={ESTADO_CLIENTE_LABEL[estado]} variant={ESTADO_CLIENTE_VARIANT[estado]} />
+                      )}
+                    </span>
+                    <span className="shrink-0 font-mono text-xs text-muted-foreground">{c.documento || "—"}</span>
+                  </button>
+                );
+              })}
             </>
           ) : verTodos ? (
             <p className="px-2.5 py-2.5 text-xs text-muted-foreground/60">No hay clientes cargados.</p>

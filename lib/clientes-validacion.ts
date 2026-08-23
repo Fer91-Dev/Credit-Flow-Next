@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { withTenant } from "@/app/lib/db";
 import { errorResponse } from "@/app/lib/api";
 import { nombreCompleto } from "@/lib/utils";
+import { normalizarEstadoCliente } from "@/lib/domain";
 
 /** Normaliza el CUIT/CUIL a solo dígitos (para unicidad y comparación). null si vacío. */
 export function normalizarCuit(v: unknown): string | null {
@@ -42,11 +43,21 @@ export async function validarDuplicadoCliente(
   if (documento) {
     const dniDup = await prisma.clientes.findFirst({
       where: { ...base, documento },
-      select: { id: true, nombre: true, apellido: true },
+      select: { id: true, nombre: true, apellido: true, estado: true },
     });
     if (dniDup && !cuit) {
+      /**
+       * El ESTADO del homónimo va en el mensaje. Sin él, alguien que no encuentra a un
+       * cliente fallecido o dado de baja intenta crearlo de nuevo y recibe un "ya existe"
+       * que no explica por qué no lo veía. El dato que falta es justamente ese.
+       */
+      const estado = normalizarEstadoCliente(dniDup.estado);
+      const porque =
+        estado === "fallecido" ? " Figura como FALLECIDA/O, por eso no aparece al otorgar un crédito."
+        : estado === "inactivo" ? " Está dado de baja, por eso no aparece al otorgar un crédito."
+        : "";
       return errorResponse(
-        `Ya existe un cliente con el DNI ${documento} (${nombreCompleto(dniDup)}). Si es OTRA persona con el mismo DNI, ingresá el CUIT para diferenciarla.`,
+        `Ya existe un cliente con el DNI ${documento} (${nombreCompleto(dniDup)}).${porque} Si es OTRA persona con el mismo DNI, ingresá el CUIT para diferenciarla.`,
         "DNI_DUP_NEEDS_CUIT",
         409,
       );

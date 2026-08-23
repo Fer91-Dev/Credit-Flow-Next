@@ -24,17 +24,22 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   const base: Record<string, unknown> = { ...withTenant(tenantId) };
   if (excluir) base.id = { not: excluir };
 
+  // `estado` viaja también: si el homónimo está fallecido o dado de baja, el formulario
+  // tiene que DECIRLO. Sin este dato el aviso quedaba en "ya existe un cliente con este
+  // DNI", el operador no entendía por qué no lo encontraba en el simulador y terminaba
+  // intentando crearlo de nuevo.
+  const campos = { id: true, nombre: true, apellido: true, estado: true };
   const [dni, cuitRow] = await Promise.all([
     documento
-      ? prisma.clientes.findFirst({ where: { ...base, documento }, select: { id: true, nombre: true, apellido: true } })
+      ? prisma.clientes.findFirst({ where: { ...base, documento }, select: campos })
       : Promise.resolve(null),
     cuit
-      ? prisma.clientes.findFirst({ where: { ...base, cuit_cuil: cuit }, select: { id: true, nombre: true, apellido: true } })
+      ? prisma.clientes.findFirst({ where: { ...base, cuit_cuil: cuit }, select: campos })
       : Promise.resolve(null),
   ]);
 
   return successResponse({
-    dni: { existe: !!dni, cliente: dni ? { id: dni.id, nombre: nombreCompleto(dni) } : null },
-    cuit: { existe: !!cuitRow, cliente: cuitRow ? { id: cuitRow.id, nombre: nombreCompleto(cuitRow) } : null },
+    dni: { existe: !!dni, cliente: dni ? { id: dni.id, nombre: nombreCompleto(dni), estado: dni.estado } : null },
+    cuit: { existe: !!cuitRow, cliente: cuitRow ? { id: cuitRow.id, nombre: nombreCompleto(cuitRow), estado: cuitRow.estado } : null },
   });
 });
