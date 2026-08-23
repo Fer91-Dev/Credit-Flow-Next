@@ -4,6 +4,7 @@ import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { getCobranzaConfig } from "@/lib/config";
 import { sincronizarAcuerdos, creditosConAcuerdoVigente } from "@/lib/acuerdos";
+import { numerosRefinanciados } from "@/lib/creditos-numero";
 import { diasMoraActual, ESTADOS_VIVOS } from "@/lib/domain";
 import { nombreCompleto, hoyComercial } from "@/lib/utils";
 import type { NextRequest } from "next/server";
@@ -23,6 +24,8 @@ const PRIORIDAD: Record<Bucket, number> = { promesa: 0, agendado: 1, enfriado: 2
 interface AgendaItem {
   credito_id: string;
   credito_numero: number | null;
+  /** N° del crédito que esta refinanciación reemplaza (para mostrarlo como REF-xxxxxx). */
+  credito_refinancia_a_numero: number | null;
   cliente: string;
   telefono: string | null;
   saldo_pendiente: number;
@@ -56,6 +59,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     where: { ...withTenant(tenantId), ...scopeCreditosVendedor({ role, vendedorId }), estado: { in: [...ESTADOS_VIVOS] }, proximo_pago: { lt: hoy } },
     select: {
       id: true, numero: true, saldo_pendiente: true, proximo_pago: true,
+      es_refinanciacion: true, refinancia_a: true,
       cliente: { select: { nombre: true, apellido: true, telefono: true } },
     },
   });
@@ -63,6 +67,9 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   if (creditos.length === 0) {
     return successResponse({ items: [], totales: { promesa: 0, agendado: 0, enfriado: 0, total: 0 }, dias_sin_gestion });
   }
+
+  // Los que son refinanciación se muestran como REF-<origen>: una sola query para todo el lote.
+  const origenes = await numerosRefinanciados(tenantId, creditos);
 
   const ids = creditos.map((c) => c.id);
   const acciones = await prisma.acciones_cobranza.findMany({
@@ -122,6 +129,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     items.push({
       credito_id: c.id,
       credito_numero: c.numero,
+      credito_refinancia_a_numero: c.es_refinanciacion && c.refinancia_a ? origenes.get(c.refinancia_a) ?? null : null,
       cliente: nombreCompleto(c.cliente),
       telefono: c.cliente?.telefono ?? null,
       saldo_pendiente: c.saldo_pendiente,

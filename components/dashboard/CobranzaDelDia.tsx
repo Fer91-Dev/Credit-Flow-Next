@@ -83,7 +83,7 @@ export function CobranzaDelDia() {
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium text-foreground truncate">{it.cliente}</p>
                     <p className="text-[11px] text-muted-foreground/60 truncate">
-                      {formatCreditoNumero(it.credito_numero)} · {it.motivo}
+                      {formatCreditoNumero(it.credito_numero, it.credito_refinancia_a_numero)} · {it.motivo}
                     </p>
                   </div>
                   <span className="hidden sm:block font-mono text-xs text-foreground shrink-0">

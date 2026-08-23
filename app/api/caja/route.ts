@@ -6,6 +6,7 @@ import { registrarAuditoria } from "@/lib/audit";
 import { montoConSigno, totalesCaja, saldosPorCuenta, esCuentaValida, etiquetaCaja, CUENTA_LABEL, type TipoMovimiento } from "@/lib/domain";
 import { siguienteNumeroComprobante, formatComprobante, type SerieComprobante } from "@/lib/comprobantes";
 import { assertFondosSuficientesTx } from "@/lib/caja-fondos";
+import { numerosRefinanciados } from "@/lib/creditos-numero";
 import { getDolarBlueVenta } from "@/lib/cotizacion";
 import { nombreCompleto, hoyComercial } from "@/lib/utils";
 import type { NextRequest } from "next/server";
@@ -44,7 +45,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   const [movimientos, saldoMovs, enVendedores] = await Promise.all([
     prisma.movimientos_caja.findMany({
       where: whereRango,
-      include: { credito: { select: { numero: true, cliente: { select: { nombre: true, apellido: true } } } } },
+      include: { credito: { select: { numero: true, es_refinanciacion: true, refinancia_a: true, cliente: { select: { nombre: true, apellido: true } } } } },
       orderBy: [{ fecha: "desc" }, { created_at: "desc" }],
       take: 1000,
     }),
@@ -59,6 +60,9 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
       _sum: { monto: true },
     }),
   ]);
+
+  // N° de origen de las refinanciaciones: el comprobante tiene que decir REF-, igual que el crédito.
+  const origenesRefi = await numerosRefinanciados(tenantId, movimientos.map((m) => m.credito).filter((c) => c != null));
 
   const periodo = totalesCaja(movimientos);
   const saldosCuenta = saldosPorCuenta(saldoMovs);
@@ -116,6 +120,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
       comprobante: formatComprobante(m.serie, m.numero),
       descripcion: m.descripcion,
       credito_numero: m.credito?.numero ?? null,
+      credito_refinancia_a_numero: m.credito?.es_refinanciacion && m.credito.refinancia_a ? origenesRefi.get(m.credito.refinancia_a) ?? null : null,
       cliente: m.credito?.cliente ? nombreCompleto(m.credito.cliente) : null,
     })),
   });

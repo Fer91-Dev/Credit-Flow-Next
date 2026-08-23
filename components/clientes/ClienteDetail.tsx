@@ -48,7 +48,7 @@ function imprimirReciboCuota(
   cuota: CuotaPersistida,
   // `marca` es el nombre de la FINANCIERA: es un papel que se lleva el cliente y tiene que
   // llevar la marca de quien le presta, no la del sistema que emite el recibo.
-  ctx: { cliente: string | null; creditoNumero: number | null | undefined; marca: string },
+  ctx: { cliente: string | null; creditoNumero: number | null | undefined; creditoRefiNumero?: number | null; marca: string },
 ) {
   const marcaDoc = ctx.marca;
   const comps = cuota.comprobantes ?? [];
@@ -58,7 +58,7 @@ function imprimirReciboCuota(
   const ultimoPago = comps.reduce<string | null>((acc, c) => (acc && acc > c.fecha_hora ? acc : c.fecha_hora), null);
   const filas: [string, string][] = [
     ["Cliente", ctx.cliente ?? "—"],
-    ["Crédito", formatCreditoNumero(ctx.creditoNumero)],
+    ["Crédito", formatCreditoNumero(ctx.creditoNumero, ctx.creditoRefiNumero)],
     ["Cuota N°", String(cuota.nro)],
     ["Vencimiento", fmtDate(cuota.fecha_vencimiento)],
     ["Pagado el", ultimoPago ? formatFechaHora(ultimoPago) : "—"],
@@ -90,7 +90,7 @@ function imprimirReciboCuota(
       @media print { body { padding: 0; } }
     </style></head><body><div class="doc">
       <h1>${escHtml(marcaDoc)} · Recibo de cuota</h1>
-      <div class="sub">${escHtml(formatCreditoNumero(ctx.creditoNumero))} · Cuota N° ${cuota.nro}</div>
+      <div class="sub">${escHtml(formatCreditoNumero(ctx.creditoNumero, ctx.creditoRefiNumero))} · Cuota N° ${cuota.nro}</div>
       <div class="monto">$${escHtml(n2(pagado > 0 ? pagado : cuota.cuota_total))}</div>
       <table>${filas.map(([k, v]) => `<tr><td class="k">${escHtml(k)}</td><td class="v">${escHtml(v)}</td></tr>`).join("")}</table>
       <p class="sec">Comprobantes imputados</p>
@@ -173,7 +173,7 @@ export function ClienteDetail({
   const toast = useToast();
   const { mutate: globalMutate } = useSWRConfig();
   const [reciboBusy, setReciboBusy] = useState<string | null>(null);
-  const [anularPago, setAnularPago] = useState<{ id: string; monto: number; fecha: string; creditoNumero?: number | null } | null>(null);
+  const [anularPago, setAnularPago] = useState<{ id: string; monto: number; fecha: string; creditoNumero?: number | null; creditoRefiNumero?: number | null } | null>(null);
   const [anularMotivo, setAnularMotivo] = useState("");
   const [anularBusy, setAnularBusy] = useState(false);
   const [editarHist, setEditarHist] = useState(false);
@@ -204,7 +204,7 @@ export function ClienteDetail({
   // Historial de pagos del cliente (aplanado de todos sus créditos), más nuevos primero.
   const puedeAnular = cliente.puede_anular_pago === true;
   const pagosCliente = creditos
-    .flatMap((c) => (c.pagos ?? []).map((p) => ({ ...p, creditoNumero: c.numero })))
+    .flatMap((c) => (c.pagos ?? []).map((p) => ({ ...p, creditoNumero: c.numero, creditoRefiNumero: c.refinancia_a_numero })))
     .sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime());
 
   const handleReciboPago = async (pagoId: string) => {
@@ -531,7 +531,7 @@ export function ClienteDetail({
                   {pagosCliente.map((p, idx) => (
                     <tr key={p.id} className={`${idx % 2 === 1 ? "bg-muted/5" : ""} ${p.anulado ? "opacity-50" : ""}`}>
                       <td className="px-3 py-2 text-muted-foreground tabular-nums border-b border-border/70">{formatFecha(p.fecha)}</td>
-                      <td className="px-3 py-2 font-mono text-primary border-b border-border/70">{formatCreditoNumero(p.creditoNumero)}</td>
+                      <td className="px-3 py-2 font-mono text-primary border-b border-border/70">{formatCreditoNumero(p.creditoNumero, p.creditoRefiNumero)}</td>
                       <td className="px-3 py-2 text-right font-mono font-semibold border-b border-border/70">
                         {p.anulado
                           ? <span className="inline-flex items-center gap-1.5"><StatusBadge label="Anulado" variant="destructive" /><span className="text-muted-foreground line-through">${n0(p.monto)}</span></span>
@@ -544,7 +544,7 @@ export function ClienteDetail({
                             {reciboBusy === p.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Receipt className="h-3.5 w-3.5" />}
                           </button>
                           {puedeAnular && !p.anulado && (
-                            <button onClick={() => { setAnularPago({ id: p.id, monto: p.monto, fecha: p.fecha, creditoNumero: p.creditoNumero }); setAnularMotivo(""); }} title="Anular pago (contra-asiento en caja)" className="inline-flex items-center justify-center h-7 w-7 rounded-md border border-border text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors">
+                            <button onClick={() => { setAnularPago({ id: p.id, monto: p.monto, fecha: p.fecha, creditoNumero: p.creditoNumero, creditoRefiNumero: p.creditoRefiNumero }); setAnularMotivo(""); }} title="Anular pago (contra-asiento en caja)" className="inline-flex items-center justify-center h-7 w-7 rounded-md border border-border text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors">
                               <Ban className="h-3.5 w-3.5" />
                             </button>
                           )}
@@ -566,7 +566,7 @@ export function ClienteDetail({
           {anularPago && (
             <div className="space-y-4">
               <div className="rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-2.5 text-xs text-muted-foreground">
-                Se anulará el cobro de <span className="font-mono font-semibold text-foreground">${n0(anularPago.monto)}</span> del {formatFecha(anularPago.fecha)} ({formatCreditoNumero(anularPago.creditoNumero)}): se revierte la imputación en las cuotas, se recalcula el crédito y se hace un <strong className="text-foreground">contra-asiento en la caja</strong>. El pago queda registrado como anulado (no se borra).
+                Se anulará el cobro de <span className="font-mono font-semibold text-foreground">${n0(anularPago.monto)}</span> del {formatFecha(anularPago.fecha)} ({formatCreditoNumero(anularPago.creditoNumero, anularPago.creditoRefiNumero)}): se revierte la imputación en las cuotas, se recalcula el crédito y se hace un <strong className="text-foreground">contra-asiento en la caja</strong>. El pago queda registrado como anulado (no se borra).
               </div>
               <Field label="Motivo (opcional)" hint="Queda en la auditoría">
                 <Textarea rows={2} value={anularMotivo} onChange={(e) => setAnularMotivo(e.target.value)} placeholder="Ej.: monto mal cargado, crédito equivocado…" />
@@ -690,7 +690,7 @@ function CreditosTabla({ creditos, mostrarProximo }: { creditos: CreditoConFinan
                 {abierto && (
                   <tr>
                     <td colSpan={cols} className="border-b border-border/70 bg-muted/[0.03] p-0">
-                      <CuotasInline creditoId={c.id} creditoNumero={c.numero} />
+                      <CuotasInline creditoId={c.id} creditoNumero={c.numero} creditoRefiNumero={c.refinancia_a_numero} />
                     </td>
                   </tr>
                 )}
@@ -712,7 +712,7 @@ function FragmentRow({ children }: { children: React.ReactNode }) {
 
 
 /** Plan de cuotas detallado de un crédito, embebido en la fila expandida. */
-function CuotasInline({ creditoId, creditoNumero }: { creditoId: string; creditoNumero: number | null | undefined }) {
+function CuotasInline({ creditoId, creditoNumero, creditoRefiNumero }: { creditoId: string; creditoNumero: number | null | undefined; creditoRefiNumero?: number | null }) {
   // El recibo lo firma la FINANCIERA, no el sistema. Se resuelve acá porque este componente
   // es el dueño del botón; `useFinanciera` va contra la misma cache de SWR, no repite fetch.
   const { financiera } = useFinanciera();
@@ -776,7 +776,7 @@ function CuotasInline({ creditoId, creditoNumero }: { creditoId: string; credito
                     <td className="px-2 py-1.5 pr-3 text-right border-b border-border/30">
                       {tieneRecibo ? (
                         <button
-                          onClick={() => imprimirReciboCuota(q, { cliente, creditoNumero, marca: marcaDoc })}
+                          onClick={() => imprimirReciboCuota(q, { cliente, creditoNumero, creditoRefiNumero, marca: marcaDoc })}
                           title="Imprimir / reimprimir recibo de la cuota"
                           className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                         >

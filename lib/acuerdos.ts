@@ -16,12 +16,15 @@ import { registrarAuditoria } from "@/lib/audit";
 import { getAuditActor } from "@/lib/audit-context";
 import { getConfiguracion, getCobranzaConfig } from "@/lib/config";
 import { calcularDeudaVencida, planDeAcuerdo, evaluarAcuerdo, quitaMaxima, round2, noNegativo, tasaPeriodicaSegunConvencion, type CuotaParaImputar, type DeudaVencida, type AcuerdosConfig, moraDelCredito, moraDesdeCronograma } from "@/lib/domain";
-import { hoyComercial } from "@/lib/utils";
+import { hoyComercial, formatCreditoNumero } from "@/lib/utils";
+import { numerosRefinanciados } from "@/lib/creditos-numero";
 
 /** Crédito con lo necesario para calcular su deuda vencida. */
 const SELECT_CREDITO = {
   id: true,
   numero: true,
+  es_refinanciacion: true,
+  refinancia_a: true,
   estado: true,
   tasa: true, // para heredarla al acuerdo cuando la financiera no fija una propia
   vendedor_id: true,
@@ -245,13 +248,17 @@ export async function crearAcuerdo(input: CrearAcuerdoInput) {
     include: { cuotas: { orderBy: { numero: "asc" } } },
   });
 
+  const origenRefi = (await numerosRefinanciados(tenantId, [credito])).get(credito.refinancia_a ?? "") ?? null;
+
   await registrarAuditoria({
     tenantId,
     entidad: "creditos",
     entidadId: creditoId,
     accion: "crear",
     descripcion:
-      `Acuerdo de pago sobre ${credito.numero ? `CRD-${String(credito.numero).padStart(6, "0")}` : "crédito"}: ` +
+      // Con el formateador del sistema, no armado a mano: un acuerdo sobre una refinanciación
+      // tiene que decir REF- en la auditoría igual que en la pantalla.
+      `Acuerdo de pago sobre ${credito.numero ? formatCreditoNumero(credito.numero, origenRefi) : "crédito"}: ` +
       `$${deuda.total.toLocaleString("es-AR")} vencidos en ${cuotas} cuota(s)` +
       (quita > 0 ? ` con quita de $${quita.toLocaleString("es-AR")}` : ""),
     meta: { tipo: "acuerdo_pago", acuerdo_id: acuerdo.id, deuda: deuda.total, quita, monto_acordado: totalAcuerdo, tasa_mensual: tasaAcuerdoPct, cuotas },

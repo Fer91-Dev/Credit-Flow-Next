@@ -53,7 +53,7 @@ function CompararBody({ origen, nuevo, onOpenCredito }: { origen: Credito; nuevo
       <ModalHeader
         icon="counterclockwise-arrows-button"
         title="Comparar refinanciación"
-        subtitle={`${formatCreditoNumero(origen.numero)} → ${formatCreditoNumero(nuevo.numero)} · antes vs. después`}
+        subtitle={`${formatCreditoNumero(origen.numero)} → ${formatCreditoNumero(nuevo.numero, nuevo.refinancia_a_numero)} · antes vs. después`}
         accent="warning"
       />
 
@@ -112,7 +112,7 @@ function TermCard({ titulo, sub, credito, amort, loading, error, accent, onOpen 
           className="inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-1 font-mono text-xs font-bold text-primary transition-colors hover:bg-primary/10"
           title="Abrir el detalle del crédito"
         >
-          {formatCreditoNumero(credito.numero)} <ExternalLink className="h-3 w-3" />
+          {formatCreditoNumero(credito.numero, credito.refinancia_a_numero)} <ExternalLink className="h-3 w-3" />
         </button>
       </div>
       {error && !amort ? (

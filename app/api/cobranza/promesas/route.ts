@@ -2,6 +2,7 @@ import { requireRole, scopeCreditosVendedor } from "@/lib/auth";
 import { successResponse, errorResponse, withErrorHandler, assertSameOrigin } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
+import { numerosRefinanciados } from "@/lib/creditos-numero";
 import { diasMoraActual } from "@/lib/domain";
 import { hoyComercial } from "@/lib/utils";
 import type { NextRequest } from "next/server";
@@ -45,6 +46,8 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
         select: {
           id: true,
           numero: true,
+          es_refinanciacion: true,
+          refinancia_a: true,
           saldo_pendiente: true,
           dias_mora: true,
           proximo_pago: true, // para la mora EN VIVO (ver abajo)
@@ -64,9 +67,15 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
    * `diasMoraActual`, nunca la columna.
    */
   const hoy = hoyComercial();
+  // Y el número de origen de las refinanciaciones, para que la lista diga REF- y no CRD-.
+  const origenes = await numerosRefinanciados(tenantId, promesas.map((p) => p.credito));
   const conMoraViva = promesas.map((p) => ({
     ...p,
-    credito: { ...p.credito, dias_mora: diasMoraActual(p.credito.proximo_pago, hoy) },
+    credito: {
+      ...p.credito,
+      dias_mora: diasMoraActual(p.credito.proximo_pago, hoy),
+      refinancia_a_numero: p.credito.es_refinanciacion && p.credito.refinancia_a ? origenes.get(p.credito.refinancia_a) ?? null : null,
+    },
   }));
 
   return successResponse(conMoraViva);

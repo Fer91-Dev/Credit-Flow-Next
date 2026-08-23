@@ -2,7 +2,7 @@ import { requireRole, scopeCreditosVendedor, ApiError } from "@/lib/auth";
 import { successResponse, errorResponse, withErrorHandler, assertSameOrigin } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
-import { conNumeroDeOrigen } from "@/lib/creditos-numero";
+import { conNumeroDeOrigen, numerosRefinanciados } from "@/lib/creditos-numero";
 import { sincronizarAcuerdos } from "@/lib/acuerdos";
 import { nombreCompleto, formatCreditoNumero, hoyComercial } from "@/lib/utils";
 import { imputarPagoEnCuotas, diasAtraso, round2, etiquetaCaja, cuentaDeMetodo, esCuentaValida, type CuotaParaImputar, moraDelCredito, moraDesdeCronograma, esCreditoVivo } from "@/lib/domain";
@@ -44,6 +44,8 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
           select: {
             id: true,
             numero: true,
+            es_refinanciacion: true,
+            refinancia_a: true,
             cliente_id: true,
             monto_original: true,
             saldo_pendiente: true,
@@ -64,8 +66,17 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     prisma.pagos.count({ where }),
   ]);
 
+  // Un cobro sobre una refinanciación se identifica como REF-<origen>, igual que el crédito.
+  const origenesRefi = await numerosRefinanciados(tenantId, pagos.map((p) => p.credito));
+
   return successResponse({
-    pagos,
+    pagos: pagos.map((p) => ({
+      ...p,
+      credito: {
+        ...p.credito,
+        refinancia_a_numero: p.credito.es_refinanciacion && p.credito.refinancia_a ? origenesRefi.get(p.credito.refinancia_a) ?? null : null,
+      },
+    })),
     total,
     limit,
     offset,

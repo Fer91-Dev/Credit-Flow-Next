@@ -4,6 +4,7 @@ import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { esCuentaValida, type Cuenta } from "@/lib/domain";
 import { formatComprobante } from "@/lib/comprobantes";
+import { numerosRefinanciados } from "@/lib/creditos-numero";
 import { nombreCompleto } from "@/lib/utils";
 import type { NextRequest } from "next/server";
 import type { Prisma } from "@prisma/client";
@@ -56,7 +57,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     prisma.movimientos_caja.findMany({
       where,
       include: {
-        credito: { select: { numero: true, cliente: { select: { nombre: true, apellido: true } } } },
+        credito: { select: { numero: true, es_refinanciacion: true, refinancia_a: true, cliente: { select: { nombre: true, apellido: true } } } },
         vendedor: { select: { nombre: true } },
       },
       orderBy: [{ created_at: "desc" }],
@@ -65,6 +66,9 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     }),
     prisma.movimientos_caja.count({ where }),
   ]);
+
+  // Mismo criterio que la caja: si el movimiento es de una refinanciación, dice REF-.
+  const origenesRefi = await numerosRefinanciados(tenantId, movs.map((m) => m.credito).filter((c) => c != null));
 
   const comprobantes = movs.map((m) => ({
     id: m.id,
@@ -80,6 +84,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     destino: m.destino,
     descripcion: m.descripcion,
     credito_numero: m.credito?.numero ?? null,
+    credito_refinancia_a_numero: m.credito?.es_refinanciacion && m.credito.refinancia_a ? origenesRefi.get(m.credito.refinancia_a) ?? null : null,
     cliente: m.credito?.cliente ? nombreCompleto(m.credito.cliente) : null,
     vendedor: m.vendedor?.nombre ?? null, // null = caja principal
   }));

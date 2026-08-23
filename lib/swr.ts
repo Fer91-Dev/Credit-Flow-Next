@@ -663,6 +663,8 @@ export interface MovimientoCaja {
   comprobante?: string | null;
   descripcion: string;
   credito_numero: number | null;
+  /** N° del crédito que la refinanciación reemplaza → el movimiento se muestra como REF-xxxxxx. */
+  credito_refinancia_a_numero?: number | null;
   cliente: string | null;
 }
 
@@ -842,7 +844,7 @@ export interface Pago {
   anulado?: boolean;
   anulado_motivo?: string | null;
   anulado_at?: string | null;
-  credito: { id: string; numero?: number | null; cliente_id: string; cliente: { nombre: string; apellido?: string | null } };
+  credito: { id: string; numero?: number | null; refinancia_a_numero?: number | null; cliente_id: string; cliente: { nombre: string; apellido?: string | null } };
   /** Si el cobro salió de una cuota de ACUERDO DE PAGO: cuál es, y de cuántas. */
   acuerdo_cuota?: { numero: number; acuerdo: { _count: { cuotas: number } } } | null;
 }
@@ -1516,6 +1518,8 @@ export function useFinanciera() {
 export interface AgendaItem {
   credito_id: string;
   credito_numero: number | null;
+  /** N° del crédito que reemplaza, si es una refinanciación → se muestra REF-xxxxxx. */
+  credito_refinancia_a_numero?: number | null;
   cliente: string;
   telefono: string | null;
   saldo_pendiente: number;

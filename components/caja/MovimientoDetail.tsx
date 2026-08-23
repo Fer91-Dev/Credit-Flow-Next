@@ -26,7 +26,7 @@ function imprimirMovimiento(mov: MovimientoCaja, label: string, marcaDoc: string
     ["Destino", mov.destino ?? "—"],
     ["Cuenta", CUENTA_LABEL[mov.cuenta] ?? mov.cuenta],
     ["Método", mov.metodo ?? "—"],
-    ["Crédito", mov.credito_numero != null ? formatCreditoNumero(mov.credito_numero) : "—"],
+    ["Crédito", mov.credito_numero != null ? formatCreditoNumero(mov.credito_numero, mov.credito_refinancia_a_numero) : "—"],
     ["Cliente", mov.cliente ?? "—"],
     ["Descripción", mov.descripcion],
   ];
@@ -115,7 +115,7 @@ export function MovimientoDetail({ mov }: { mov: MovimientoCaja }) {
           ["Fecha y hora", formatFechaHora(mov.created_at ?? mov.fecha)],
           ["Método", mov.metodo || null],
           ["Descripción", mov.descripcion],
-          ["Crédito", mov.credito_numero != null ? <span className="font-mono">{formatCreditoNumero(mov.credito_numero)}</span> : null],
+          ["Crédito", mov.credito_numero != null ? <span className="font-mono">{formatCreditoNumero(mov.credito_numero, mov.credito_refinancia_a_numero)}</span> : null],
           ["Cliente", mov.cliente || null],
         ]}
       />

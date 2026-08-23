@@ -29,6 +29,8 @@ type Promesa = {
   credito: {
     id: string;
     numero: number | null;
+    /** N° del crédito refinanciado (si lo es) → se muestra REF-xxxxxx. */
+    refinancia_a_numero?: number | null;
     saldo_pendiente: number;
     dias_mora: number;
     cliente: { id: string; nombre: string; apellido?: string | null; documento: string | null };
@@ -136,7 +138,7 @@ function PromesaDetalle({ promesa, historial, onClose }: {
                 <table className="w-full text-sm">
                   <tbody>
                     {([
-                      ["Crédito", formatCreditoNumero(promesa.credito.numero)],
+                      ["Crédito", formatCreditoNumero(promesa.credito.numero, promesa.credito.refinancia_a_numero)],
                       ["Documento", promesa.credito.cliente.documento || "—"],
                       ["Días de mora", `${promesa.credito.dias_mora} d`],
                       ["Saldo del crédito", formatMonto(promesa.credito.saldo_pendiente)],
@@ -426,7 +428,7 @@ export function PromesasTab({ role }: { role: Role }) {
               header: "Crédito",
               cell: (p) => (
                 <div>
-                  <span className="font-mono text-xs text-primary">{formatCreditoNumero(p.credito.numero)}</span>
+                  <span className="font-mono text-xs text-primary">{formatCreditoNumero(p.credito.numero, p.credito.refinancia_a_numero)}</span>
                   <p className="text-xs text-muted-foreground">{p.credito.dias_mora}d mora · Saldo {formatMonto(p.credito.saldo_pendiente)}</p>
                 </div>
               ),
@@ -469,7 +471,7 @@ export function PromesasTab({ role }: { role: Role }) {
               <div className="flex items-start justify-between gap-2">
                 <div>
                   <p className="font-medium text-sm text-foreground">{nombreCompleto(p.credito.cliente)}</p>
-                  <p className="text-xs text-muted-foreground font-mono">{formatCreditoNumero(p.credito.numero)}</p>
+                  <p className="text-xs text-muted-foreground font-mono">{formatCreditoNumero(p.credito.numero, p.credito.refinancia_a_numero)}</p>
                 </div>
                 {estadoBadge(p.promesa_estado)}
               </div>

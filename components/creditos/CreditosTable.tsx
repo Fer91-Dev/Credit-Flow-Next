@@ -565,7 +565,7 @@ function RefinanciadosView({ creditos, onOpen, onRefinanciar }: { creditos: Cred
           <div onClick={() => onOpen(p.nuevo)} className="rounded-xl bg-card border border-border p-4 space-y-2 cursor-pointer active:bg-muted/20 transition-colors">
             <div className="flex items-center justify-between gap-2">
               <span className="inline-flex items-center gap-1.5 font-mono text-xs text-warning">
-                <RefreshCw className="h-3 w-3" />{formatCreditoNumero(p.nuevo.numero)}
+                <RefreshCw className="h-3 w-3" />{formatCreditoNumero(p.nuevo.numero, p.origen?.numero)}
               </span>
               {p.nuevo.dias_mora > 0
                 ? <StatusBadge label={`${p.nuevo.dias_mora}d mora`} variant={p.nuevo.dias_mora > 30 ? "destructive" : "warning"} />

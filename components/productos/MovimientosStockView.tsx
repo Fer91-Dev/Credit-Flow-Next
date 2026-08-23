@@ -7,7 +7,7 @@ import { Field, Input, Select } from "@/components/ui/field";
 import { Download } from "lucide-react";
 import { useMovimientosStock, type MovimientoStockGlobal } from "@/lib/swr";
 import { descargarCSV } from "@/lib/csv";
-import { formatFechaHora } from "@/lib/utils";
+import { formatFechaHora, formatCreditoNumero } from "@/lib/utils";
 import { TIPOS_MOVIMIENTO_STOCK, ETIQUETA_MOVIMIENTO_STOCK, type TipoMovimientoStock } from "@/lib/domain";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { KpiCard } from "@/components/ui/KpiCard";
@@ -38,7 +38,7 @@ function exportarCSV(rows: MovimientoStockGlobal[]) {
       ETIQUETA_MOVIMIENTO_STOCK[m.tipo],
       m.cantidad,
       m.stock_resultante,
-      m.credito_numero ? `CRD-${String(m.credito_numero).padStart(6, "0")} · ${m.cliente ?? ""}` : (m.motivo ?? ""),
+      m.credito_numero ? `${formatCreditoNumero(m.credito_numero)} · ${m.cliente ?? ""}` : (m.motivo ?? ""),
       m.tipo === "venta_credito" ? (m.vendedor_atribuido ?? "") : "",
       m.usuario_nombre ?? "",
     ]),
@@ -166,7 +166,8 @@ export function MovimientosStockView() {
           {
             header: "Motivo / crédito", className: "hidden lg:table-cell",
             cell: (m) => m.credito_numero
-              ? <span className="text-xs text-foreground">CRD-{String(m.credito_numero).padStart(6, "0")} · {m.cliente}</span>
+              /* Un crédito de producto nunca es refinanciación (la refi no hereda `producto_id`) → siempre CRD-. */
+              ? <span className="text-xs text-foreground">{formatCreditoNumero(m.credito_numero)} · {m.cliente}</span>
               : <span className="text-xs text-muted-foreground">{m.motivo ?? "—"}</span>,
           },
           {

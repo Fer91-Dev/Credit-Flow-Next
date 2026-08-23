@@ -527,7 +527,8 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar }: {
                   <span className="text-muted-foreground">Refinanciado en</span>
                   <ArrowRight className="h-3 w-3 text-warning" />
                   <span className="font-mono font-semibold text-warning">
-                    {destinoRefi ? formatCreditoNumero(destinoRefi.numero) : "crédito nuevo"}
+                    {/* El destino ES la refinanciación de ESTE crédito → su número de origen es el nuestro. */}
+                    {destinoRefi ? formatCreditoNumero(destinoRefi.numero, credito.numero) : "crédito nuevo"}
                   </span>
                   <span className="text-muted-foreground">— la deuda viva pasó a ese crédito.</span>
                 </p>
