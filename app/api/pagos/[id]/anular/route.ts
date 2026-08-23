@@ -2,6 +2,7 @@ import { requireRole, ApiError } from "@/lib/auth";
 import { successResponse, errorResponse, withErrorHandler, assertSameOrigin } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
+import { conNumeroDeOrigen } from "@/lib/creditos-numero";
 import { registrarAuditoria } from "@/lib/audit";
 import { round2, etiquetaCaja, esCuentaValida, diasAtraso, type Cuenta } from "@/lib/domain";
 import { siguienteNumeroComprobante } from "@/lib/comprobantes";
@@ -62,7 +63,10 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
   }
 
   const credito = pago.credito;
-  const numeroFmt = formatCreditoNumero(credito.numero);
+  // REF-XXXXXX si el crédito nació de una refinanciación: la auditoría lo nombra
+  // igual que la pantalla y que el recibo.
+  const [{ refinancia_a_numero: origenRefNum }] = await conNumeroDeOrigen(tenantId, [credito]);
+  const numeroFmt = formatCreditoNumero(credito.numero, origenRefNum);
   const hoy = hoyComercial();
 
   // Estado proyectado de cada cuota tras REVERTIR lo que este pago aplicó.

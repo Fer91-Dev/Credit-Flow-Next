@@ -2,6 +2,7 @@ import { requireRole, ApiError } from "@/lib/auth";
 import { successResponse, errorResponse, withErrorHandler, assertSameOrigin } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
+import { conNumeroDeOrigen } from "@/lib/creditos-numero";
 import { TX_PLATA } from "@/lib/locks";
 import { registrarAuditoria } from "@/lib/audit";
 import { aplicarYRegistrarStock } from "@/lib/stock";
@@ -75,7 +76,10 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
   const tienePagos = existing.pagos.length > 0;
   const devolver = tienePagos && body.accion_pagos === "devolver";
   const motivo = body.motivo?.trim() || null;
-  const numeroFmt = formatCreditoNumero(existing.numero);
+  // Un crédito refinanciado se llama REF-<número del que reemplaza>: la auditoría y el
+  // motivo del movimiento de caja tienen que nombrarlo como lo ve el operador.
+  const [{ refinancia_a_numero: origenNum }] = await conNumeroDeOrigen(tenantId, [existing]);
+  const numeroFmt = formatCreditoNumero(existing.numero, origenNum);
 
   // La reversa vuelve a la MISMA cuenta del desembolso; la devolución se reparte por las
   // cuentas donde entraron los cobros (antes todo caía en efectivo → descuadre por cuenta).

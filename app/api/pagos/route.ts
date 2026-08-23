@@ -2,6 +2,7 @@ import { requireRole, scopeCreditosVendedor, ApiError } from "@/lib/auth";
 import { successResponse, errorResponse, withErrorHandler, assertSameOrigin } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
+import { conNumeroDeOrigen } from "@/lib/creditos-numero";
 import { sincronizarAcuerdos } from "@/lib/acuerdos";
 import { nombreCompleto, formatCreditoNumero, hoyComercial } from "@/lib/utils";
 import { imputarPagoEnCuotas, diasAtraso, round2, etiquetaCaja, cuentaDeMetodo, esCuentaValida, type CuotaParaImputar, moraDelCredito, moraDesdeCronograma, esCreditoVivo } from "@/lib/domain";
@@ -131,6 +132,13 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
   if (!credito) {
     return errorResponse("Crédito no encontrado", "INVALID_REFERENCE", 400);
   }
+
+
+  // REF-XXXXXX si el crédito nació de una refinanciación: la auditoría y el comprobante
+
+  // lo nombran igual que la pantalla y que el recibo.
+
+  const [{ refinancia_a_numero: origenRefNum }] = await conNumeroDeOrigen(tenantId, [credito]);
 
   /**
    * Solo se cobra sobre un crédito VIVO (activo o vencido).
@@ -434,7 +442,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
         destino: etiquetaCaja(role === "vendedor", cuentaCobro),
         serie: "REC",
         numero: numComp,
-        descripcion: `Cobro ${formatCreditoNumero(credito.numero)} · ${nombreCompleto(credito.cliente)}`,
+        descripcion: `Cobro ${formatCreditoNumero(credito.numero, origenRefNum)} · ${nombreCompleto(credito.cliente)}`,
       },
     });
 

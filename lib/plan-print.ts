@@ -25,6 +25,15 @@ export interface FilaPlanPrint {
 }
 
 export interface PlanPrintData {
+  /**
+   * Número del crédito, ya formateado (CRD-XXXXXX o REF-XXXXXX).
+   *
+   * 🔴 El plan impreso NO lo llevaba: el cliente se iba con un papel que dice cuánto y
+   * cuándo paga, pero sin decir DE CUÁL crédito. Con dos operaciones abiertas —o con una
+   * refinanciación conviviendo con el original— no hay forma de saber a cuál corresponde.
+   * Opcional: en el simulador, antes de otorgar, el crédito todavía no tiene número.
+   */
+  numeroCredito?: string | null;
   capital: number;
   /** Tasa ingresada (numérica), se muestra junto a la convención. */
   tasa: number;
@@ -247,6 +256,7 @@ tfoot td.pg{background:#0B1220;border-left:1px solid #3A4356}
         : `<div class="bicon">$</div>`
     }<span class="bname">${esc(data.financiera?.nombre?.trim() || "CreditFlow")}</span></div>
     <div class="cotblk">
+      ${data.numeroCredito ? `<span class="cotlabel">Crédito</span><span class="cotval" style="font-family:ui-monospace,monospace">${esc(data.numeroCredito)}</span>` : ""}
       <span class="cotlabel">Fecha de cotización de financiación</span>
       <span class="cotval">${hoy}</span>
     </div>

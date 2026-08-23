@@ -216,6 +216,9 @@ export const DELETE = withErrorHandler(async (req: NextRequest, { params }: Rout
     return errorResponse("Crédito no encontrado", "NOT_FOUND", 404);
   }
 
+  // REF-XXXXXX si el crédito nació de una refinanciación (mismo nombre que en pantalla).
+  const [{ refinancia_a_numero: origenNumDel }] = await conNumeroDeOrigen(tenantId, [existing]);
+
   if (existing._count.pagos > 0) {
     return errorResponse(
       "El crédito tiene pagos registrados; anulalo en lugar de eliminarlo",
@@ -281,7 +284,7 @@ export const DELETE = withErrorHandler(async (req: NextRequest, { params }: Rout
       await aplicarYRegistrarStock(tx, {
         tenantId, productoId: existing.producto_id!, tipo: "devolucion_anulacion",
         cantidad: existing.producto_cantidad!, creditoId: id,
-        motivo: `Eliminación ${formatCreditoNumero(existing.numero)}`,
+        motivo: `Eliminación ${formatCreditoNumero(existing.numero, origenNumDel)}`,
       });
     }
     await tx.creditos.delete({ where: { id } });
@@ -292,7 +295,7 @@ export const DELETE = withErrorHandler(async (req: NextRequest, { params }: Rout
     entidad: "creditos",
     entidadId: id,
     accion: "eliminar",
-    descripcion: `Crédito ${formatCreditoNumero(existing.numero)} eliminado definitivamente`,
+    descripcion: `Crédito ${formatCreditoNumero(existing.numero, origenNumDel)} eliminado definitivamente`,
     meta: { numero: existing.numero, monto: existing.monto_original },
   });
 

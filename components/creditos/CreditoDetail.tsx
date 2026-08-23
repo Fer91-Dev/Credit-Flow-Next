@@ -314,6 +314,8 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar }: {
     const a = amortizacion;
     if (!a) return;
     imprimirPlanPagos({
+      // El papel que se lleva el cliente dice de QUÉ crédito es.
+      numeroCredito: formatCreditoNumero(credito.numero, credito.refinancia_a_numero),
       capital: a.parametros.monto,
       tasa: a.parametros.tasa_ingresada,
       convencion: a.parametros.convencion_tasa,
