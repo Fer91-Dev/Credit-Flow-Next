@@ -1,11 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ShieldCheck, RefreshCw, Search } from "lucide-react";
 import { useHasFeature } from "@/components/providers/FeaturesProvider";
 import { useToast } from "@/components/ui/toast";
 import { StatusBadge, type BadgeVariant } from "@/components/ui/StatusBadge";
 import { formatFechaHora, formatMonto } from "@/lib/utils";
+import { useConfiguracion } from "@/lib/swr";
+import { BUREAUS_CONFIGURABLES, BUREAU_LABEL, resolverProveedoresBureau, type BureauConfigurable } from "@/lib/domain";
 
 interface Consulta {
   id: string;
@@ -89,7 +91,7 @@ function sitVariant(s: number | null): BadgeVariant {
   if (s === 2) return "warning";
   return "destructive";
 }
-const PROVEEDOR_LABEL: Record<string, string> = { bcra: "BCRA", nosis: "Nosis", veraz: "Veraz", manual: "Manual" };
+const PROVEEDOR_LABEL: Record<string, string> = { bcra: "BCRA", nosis: "Nosis", veraz: "Veraz", credixa: "Credixa", manual: "Manual" };
 
 /**
  * Perfil crediticio del cliente vía bureau (feature premium). Muestra la última consulta y
@@ -103,6 +105,15 @@ export function ClienteBureauPanel({ clienteId }: { clienteId: string }) {
   const [loading, setLoading] = useState(false);
   const [manualOpen, setManualOpen] = useState(false);
   const [manual, setManual] = useState({ situacionBcra: "", scoreExterno: "", chequesRechazados: "", deudaSistemaFinanciero: "" });
+  const { config } = useConfiguracion();
+
+  /** Los bureaus que la financiera dejó prendidos: uno por botón. */
+  const activos = useMemo<BureauConfigurable[]>(() => {
+    const bureau = config?.riesgoConfig?.bureau;
+    if (!bureau) return ["bcra"]; // hasta que cargue la config, el gratuito
+    const porProveedor = resolverProveedoresBureau(bureau);
+    return BUREAUS_CONFIGURABLES.filter((c) => porProveedor[c].activo);
+  }, [config]);
 
   useEffect(() => {
     if (!tiene) return;
@@ -116,11 +127,20 @@ export function ClienteBureauPanel({ clienteId }: { clienteId: string }) {
 
   if (!tiene) return null;
 
-  const consultar = async () => {
+  /**
+   * 🔴 UN BOTÓN POR BUREAU ACTIVO, no uno solo contra "el proveedor por defecto".
+   *
+   * Antes mandaba `{}` y el server resolvía con el único proveedor configurado. Con varios
+   * bureaus prendidos eso no alcanza: el operador tiene que poder elegir a cuál preguntarle
+   * —o preguntarles a los dos y comparar— sin pasar por Configuración.
+   */
+  const consultar = async (proveedor?: string) => {
     setLoading(true);
     try {
       const res = await fetch(`/api/clientes/${clienteId}/bureau`, {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: "{}",
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(proveedor ? { proveedor } : {}),
       });
       const j = await res.json();
       if (j.ok) {
@@ -184,14 +204,23 @@ export function ClienteBureauPanel({ clienteId }: { clienteId: string }) {
             >
               Cargar manual
             </button>
-            <button
-              onClick={consultar}
-              disabled={loading}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-primary/10 px-3 py-1.5 text-xs font-medium text-primary ring-1 ring-inset ring-primary/25 transition-colors hover:bg-primary/15 disabled:opacity-50"
-            >
-              {loading ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Search className="h-3.5 w-3.5" />}
-              {loading ? "Consultando…" : "Consultar bureau"}
-            </button>
+            {activos.map((clave) => (
+              <button
+                key={clave}
+                onClick={() => consultar(clave)}
+                disabled={loading}
+                title={`Consultar ${BUREAU_LABEL[clave]}`}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-primary/10 px-3 py-1.5 text-xs font-medium text-primary ring-1 ring-inset ring-primary/25 transition-colors hover:bg-primary/15 disabled:opacity-50"
+              >
+                {loading ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Search className="h-3.5 w-3.5" />}
+                {clave === "bcra" ? "BCRA" : BUREAU_LABEL[clave]}
+              </button>
+            ))}
+            {activos.length === 0 && (
+              /* Sin ningún bureau prendido no hay nada que consultar, y decirlo evita que
+                 el operador crea que la pantalla está rota. */
+              <span className="text-[11px] text-muted-foreground/70">Ningún bureau activo — prendelos en Configuración → Riesgo.</span>
+            )}
           </div>
         </div>
 
