@@ -6,8 +6,8 @@ import { useConfiguracion, type ConfiguracionFinanciera, type GamificacionConfig
 import { FeatureGate } from "@/components/providers/FeaturesProvider";
 import { FinancieraForm } from "@/components/configuracion/FinancieraForm";
 import { BackupsView } from "@/components/configuracion/BackupsView";
-import type { SimuladorConfig, CargosConfig, FrecuenciaOpcion, DocumentosConfig, ConvencionTasa } from "@/lib/domain";
-import { DOCUMENTOS_DEFAULT, PLANTILLAS_CONTACTO_DEFAULT, revisarDocumentos, punitorioMensualDesdeDiaria, ORDEN_IMPUTACION, tasaDesdeCoeficiente, textoCuotas } from "@/lib/domain";
+import type { SimuladorConfig, CargosConfig, FrecuenciaOpcion, DocumentosConfig, ConvencionTasa, BureauConfigurable, BureauProveedorConfig } from "@/lib/domain";
+import { BUREAUS_CONFIGURABLES, BUREAU_LABEL, BUREAU_REQUIERE_CREDENCIALES, resolverProveedoresBureau, DOCUMENTOS_DEFAULT, PLANTILLAS_CONTACTO_DEFAULT, revisarDocumentos, punitorioMensualDesdeDiaria, ORDEN_IMPUTACION, tasaDesdeCoeficiente, textoCuotas } from "@/lib/domain";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Emoji } from "@/components/ui/Emoji";
 import { Field, Input, Select, Textarea, SecretInput } from "@/components/ui/field";
@@ -460,6 +460,30 @@ export function ConfigForm() {
       if (!prev) return prev;
       const base = prev.riesgoConfig ?? defaultRiesgo();
       return { ...prev, riesgoConfig: { ...base, bureau: { ...defaultRiesgo().bureau, ...base.bureau, ...patch } } };
+    });
+    touch();
+  };
+
+  /** Config por bureau, completada desde los campos viejos si la financiera nunca la tocó. */
+  const proveedoresBureau = resolverProveedoresBureau(riesgo.bureau);
+
+  /** Prende/apaga un bureau o edita SUS credenciales, sin tocar las de los demás. */
+  const setProveedorBureau = (clave: BureauConfigurable, patch: Partial<BureauProveedorConfig>) => {
+    setForm(prev => {
+      if (!prev) return prev;
+      const base = prev.riesgoConfig ?? defaultRiesgo();
+      const actuales = resolverProveedoresBureau(base.bureau);
+      return {
+        ...prev,
+        riesgoConfig: {
+          ...base,
+          bureau: {
+            ...defaultRiesgo().bureau,
+            ...base.bureau,
+            proveedores: { ...actuales, [clave]: { ...actuales[clave], ...patch } },
+          },
+        },
+      };
     });
     touch();
   };
@@ -1426,51 +1450,85 @@ export function ConfigForm() {
                 onChange={v => setRiesgo({ rechazaConChequesRechazados: v })}
               />
 
+              {/* Las dos señales que el BCRA informa por entidad y que hasta ahora se
+                  descartaban. El juicio va por el camino del rechazo justamente para que lo
+                  alcance "Si el cliente no califica": con esa opción en "autorizar", no
+                  bloquea — lo frena hasta que un admin lo asuma. */}
+              <SwitchRow
+                title="Rechazar con proceso judicial"
+                desc="Si alguna entidad le inició juicio o lo informa en situación jurídica, el cliente no califica. Con «Avisar y dejar autorizar» no se bloquea: lo tiene que autorizar un administrador."
+                checked={riesgo.politica.rechazaConJuicio}
+                onChange={v => setRiesgo({ rechazaConJuicio: v })}
+              />
+
+              <SwitchRow
+                title="Revisar si refinanció en otra entidad"
+                desc="No lo descalifica, pero cambia el caso: es alguien que no pudo con su plan original. Queda en revisión."
+                checked={riesgo.politica.revisaConRefinanciaciones}
+                onChange={v => setRiesgo({ revisaConRefinanciaciones: v })}
+              />
+
               {/* ── Bureau de crédito (integración por API) — PREMIUM (plan Pro) ── */}
               <FeatureGate feature="bureau_credito">
               <div className="border-t border-border pt-4">
-                <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-3">Bureau de crédito (verificación externa · Pro)</p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <Field label="Proveedor" hint="Fuente de las señales externas (situación BCRA, score, cheques)">
-                    <Select value={riesgo.bureau.proveedor}
-                      onChange={e => setBureau({ proveedor: e.target.value as RiesgoConfig["bureau"]["proveedor"] })}>
-                      <option value="manual">Manual (el analista carga los valores)</option>
-                      <option value="bcra">BCRA — Central de Deudores (gratis)</option>
-                      <option value="nosis">Nosis (requiere contrato)</option>
-                      <option value="veraz">Veraz / Equifax (requiere contrato)</option>
-                    </Select>
-                  </Field>
-                  <Field label="Consulta automática" hint="Consultar el bureau al evaluar (igual se puede consultar a mano)">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-1">Bureaus de crédito (verificación externa · Pro)</p>
+                {/*
+                  🔴 ANTES ERA UN DESPLEGABLE: un solo bureau por financiera.
+                  Así no se trabaja — se consulta el BCRA, que es gratis, Y ADEMÁS un bureau
+                  comercial, a veces dos para comparar. Con un solo slot había que venir acá
+                  a cambiar el proveedor cada vez que se quería la otra fuente.
+                  Ahora es un bloque por bureau, cada uno se prende por separado, y los que
+                  queden activos aparecen como opción en la ficha del cliente.
+                */}
+                <p className="mb-3 text-[11px] text-muted-foreground/70">Los que actives aparecen para consultar en la ficha del cliente.</p>
+
+                <div className="space-y-3">
+                  {BUREAUS_CONFIGURABLES.map((clave) => {
+                    const cfg = proveedoresBureau[clave];
+                    const pide = BUREAU_REQUIERE_CREDENCIALES[clave];
+                    return (
+                      <div key={clave} className={`rounded-xl border p-3.5 transition-colors ${cfg.activo ? "border-primary/30 bg-primary/5" : "border-border bg-muted/10"}`}>
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium text-foreground">{BUREAU_LABEL[clave]}</p>
+                            <p className="text-[11px] text-muted-foreground/70">
+                              {clave === "bcra"
+                                ? "API pública y gratuita. No requiere credenciales."
+                                : "Servicio pago: hace falta contratarlo y cargar las credenciales."}
+                            </p>
+                          </div>
+                          <Toggle checked={cfg.activo} onChange={v => setProveedorBureau(clave, { activo: v })} />
+                        </div>
+
+                        {/* Las credenciales solo cuando el bureau está prendido y las pide. */}
+                        {cfg.activo && pide && (
+                          <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                            <Field label="Endpoint (URL base)">
+                              <Input placeholder="https://api.proveedor.com" value={cfg.endpoint ?? ""}
+                                onChange={e => setProveedorBureau(clave, { endpoint: e.target.value })} />
+                            </Field>
+                            <Field label="Usuario (si aplica)">
+                              <Input placeholder="usuario" value={cfg.usuario ?? ""}
+                                onChange={e => setProveedorBureau(clave, { usuario: e.target.value })} />
+                            </Field>
+                            <Field label="Token / API key" hint="Secreto: se guarda enmascarado">
+                              <SecretInput placeholder="••••••••" value={cfg.token ?? ""}
+                                onChange={e => setProveedorBureau(clave, { token: e.target.value })} />
+                            </Field>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div className="mt-4">
+                  <Field label="Consulta automática al evaluar" hint="Además de poder consultar a mano desde la ficha del cliente.">
                     <div className="flex h-10 items-center">
                       <Toggle checked={riesgo.bureau.enabled} onChange={v => setBureau({ enabled: v })} />
                     </div>
                   </Field>
                 </div>
-
-                {(riesgo.bureau.proveedor === "nosis" || riesgo.bureau.proveedor === "veraz") && (
-                  <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <Field label="Endpoint (URL base)">
-                      <Input placeholder="https://api.proveedor.com" value={riesgo.bureau.endpoint}
-                        onChange={e => setBureau({ endpoint: e.target.value })} />
-                    </Field>
-                    <Field label="Usuario (si aplica)">
-                      <Input placeholder="usuario" value={riesgo.bureau.usuario}
-                        onChange={e => setBureau({ usuario: e.target.value })} />
-                    </Field>
-                    <Field label="Token / API key" hint="Secreto: se guarda enmascarado">
-                      <SecretInput placeholder="••••••••" value={riesgo.bureau.token}
-                        onChange={e => setBureau({ token: e.target.value })} />
-                    </Field>
-                  </div>
-                )}
-
-                <p className="mt-3 rounded-lg bg-muted/20 border border-border/60 px-3 py-2 text-[11px] text-muted-foreground/80">
-                  {riesgo.bureau.proveedor === "bcra"
-                    ? "BCRA es una API pública y gratuita: no requiere credenciales. Consultá el perfil desde la ficha del cliente."
-                    : riesgo.bureau.proveedor === "manual"
-                    ? "Modo manual: el analista carga la situación/score en la ficha del cliente; el motor los usa igual."
-                    : "Nosis/Veraz requieren contrato del cliente. Al cargar las credenciales, se completa el provider en lib/bureau/ para consultas reales."}
-                </p>
               </div>
               </FeatureGate>
             </div>
@@ -1897,6 +1955,8 @@ function defaultRiesgo(): RiesgoConfig {
       situacionBcraMax: 2,
       scoreExternoMin: null,
       rechazaConChequesRechazados: true,
+      rechazaConJuicio: true,
+      revisaConRefinanciaciones: false,
       maxCreditosActivos: 0,
       maxEdicionesSueldoVendedor: 3,
       alertaSaltoSueldoPct: 50,

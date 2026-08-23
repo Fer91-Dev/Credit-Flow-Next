@@ -205,7 +205,8 @@ export async function evaluarClienteParaCredito(params: {
   const ultima = await prisma.consultas_bureau.findFirst({
     where: { tenant_id: tenantId, cliente_id: clienteId, ok: true },
     orderBy: { created_at: "desc" },
-    select: { situacion_bcra: true, score_externo: true, cheques_rechazados: true, deuda_sistema: true },
+    // `crudo` trae el informe completo del bureau. Sin él, las banderas de abajo no existen.
+    select: { situacion_bcra: true, score_externo: true, cheques_rechazados: true, deuda_sistema: true, crudo: true },
   });
   const senalesBureau: SenalesBureau | null = ultima
     ? {
@@ -213,6 +214,17 @@ export async function evaluarClienteParaCredito(params: {
         scoreExterno: ultima.score_externo ?? null,
         chequesRechazados: ultima.cheques_rechazados ?? null,
         deudaSistemaFinanciero: ultima.deuda_sistema ?? null,
+        /**
+         * 🔴 LA REGLA DEL JUICIO NO SE DISPARABA NUNCA.
+         *
+         * `consultas_bureau` tiene una columna por cada señal vieja, y las nuevas —proceso
+         * judicial, refinanciaciones, atraso— viven solo dentro de `crudo`. Este select las
+         * ignoraba, así que la política `rechazaConJuicio` recibía `undefined` y la condición
+         * era siempre falsa: la regla existía, estaba encendida por defecto, y no frenaba a
+         * nadie. Se derivan del informe guardado en vez de agregar columnas — funciona además
+         * para las consultas que YA están en la base.
+         */
+        ...banderasDeCrudo(ultima.crudo),
       }
     : null;
 
@@ -228,4 +240,26 @@ export async function evaluarClienteParaCredito(params: {
   );
 
   return { ...resultado, ingresoNetoMensual, deudaCuotaMensualVigente, scoreInterno, creditosActivos: idsVivos.length };
+}
+
+/**
+ * Extrae del informe crudo del bureau las señales que no tienen columna propia: proceso
+ * judicial, refinanciaciones y peor atraso. Basta UNA entidad para que la bandera sea
+ * verdadera. Si el informe no tiene el detalle (bureaus que no lo mandan, cargas manuales),
+ * devuelve vacío y la política las ignora, igual que antes.
+ */
+function banderasDeCrudo(crudo: unknown): Partial<SenalesBureau> {
+  const periodos = (crudo as { deudas?: { results?: { periodos?: unknown[] } } } | null)?.deudas?.results?.periodos;
+  if (!Array.isArray(periodos) || periodos.length === 0) return {};
+  const ents = (periodos[0] as { entidades?: unknown[] })?.entidades;
+  if (!Array.isArray(ents) || ents.length === 0) return {};
+  let juicio = false, refin = false, atraso = 0;
+  for (const raw of ents) {
+    const e = raw as { procesoJud?: boolean; situacionJuridica?: boolean; refinanciaciones?: boolean; diasAtrasoPago?: number };
+    if (e?.procesoJud === true || e?.situacionJuridica === true) juicio = true;
+    if (e?.refinanciaciones === true) refin = true;
+    const d = Number(e?.diasAtrasoPago);
+    if (!Number.isNaN(d)) atraso = Math.max(atraso, d);
+  }
+  return { tieneProcesoJudicial: juicio, tieneRefinanciaciones: refin, diasAtrasoMax: atraso, entidadesInformantes: ents.length };
 }

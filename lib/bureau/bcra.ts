@@ -21,15 +21,66 @@ function normalizarCuit(cuit: string): string {
   return (cuit || "").replace(/\D/g, "");
 }
 
+/**
+ * 🔴 EL BCRA SE CAE SEGUIDO, Y NO ES NUESTRO PROBLEMA — PERO SÍ NUESTRO SÍNTOMA.
+ *
+ * Su API pública devuelve 503 (y a veces 502/504) de forma intermitente, sobre todo fuera
+ * del horario bancario. Al primer intento fallido la pantalla mostraba "BCRA respondió 503"
+ * y ahí terminaba: el operador no sabe si el cliente no tiene deudas, si escribió mal el
+ * CUIT o si el organismo está caído, y el reintento manual queda a su criterio.
+ *
+ * Se reintenta hasta 3 veces con espera creciente. Solo ante fallas TRANSITORIAS (5xx,
+ * timeout, red): un 404 es una respuesta válida —el CUIT no tiene registros— y un 400 no
+ * mejora por insistir.
+ */
+const REINTENTOS = 3;
+const ESPERA_MS = [400, 1200];
+
+function esTransitorio(status: number): boolean {
+  return status === 429 || status === 502 || status === 503 || status === 504;
+}
+
+const dormir = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
 async function getJson(url: string): Promise<any | null> {
-  const res = await fetch(url, {
-    headers: { Accept: "application/json" },
-    // La consulta no debe bloquear el flujo indefinidamente.
-    signal: AbortSignal.timeout(8000),
-  });
-  if (res.status === 404) return null; // sin registros para ese CUIT
-  if (!res.ok) throw new Error(`BCRA respondió ${res.status}`);
-  return res.json();
+  let ultimo: Error | null = null;
+
+  for (let intento = 0; intento < REINTENTOS; intento++) {
+    try {
+      const res = await fetch(url, {
+        headers: { Accept: "application/json" },
+        // La consulta no debe bloquear el flujo indefinidamente.
+        signal: AbortSignal.timeout(8000),
+      });
+      if (res.status === 404) return null; // sin registros para ese CUIT
+      if (res.ok) return await res.json();
+
+      if (!esTransitorio(res.status)) {
+        throw new Error(mensajeHumano(res.status));
+      }
+      ultimo = new Error(mensajeHumano(res.status));
+    } catch (e) {
+      // Timeout o red caída: también son transitorios. Un error ya traducido se respeta.
+      ultimo = e instanceof Error ? e : new Error("Error desconocido consultando el BCRA");
+      if (ultimo.message.startsWith("El CUIT")) throw ultimo;
+    }
+    if (intento < REINTENTOS - 1) await dormir(ESPERA_MS[intento] ?? 1200);
+  }
+
+  throw ultimo ?? new Error("No se pudo consultar el BCRA.");
+}
+
+/**
+ * El código HTTP no le dice nada a quien está atendiendo a un cliente. Lo que necesita
+ * saber es de quién es el problema y qué puede hacer mientras tanto.
+ */
+function mensajeHumano(status: number): string {
+  if (esTransitorio(status)) {
+    return "El BCRA no está respondiendo (es su servicio, no el tuyo). Probá de nuevo en unos minutos, o cargá las señales a mano con «Cargar manual».";
+  }
+  if (status === 400) return "El CUIT/CUIL no tiene un formato que el BCRA acepte.";
+  if (status === 401 || status === 403) return "El BCRA rechazó la consulta.";
+  return `El BCRA respondió un error (${status}).`;
 }
 
 export async function consultarBcra(cuitRaw: string): Promise<ResultadoConsulta> {
@@ -38,22 +89,63 @@ export async function consultarBcra(cuitRaw: string): Promise<ResultadoConsulta>
     return { ok: false, proveedor: "bcra", mensaje: "CUIT/CUIL inválido (se requieren 11 dígitos).", senales: emptySenales() };
   }
 
-  const [deudas, cheques] = await Promise.all([
-    getJson(`${BASE}/${cuit}`),
-    getJson(`${BASE}/ChequesRechazados/${cuit}`).catch(() => null),
-  ]);
+  /**
+   * La consulta de deudas es la que importa; la de cheques es complementaria y su caída no
+   * puede tumbar la consulta entera (ya venía tolerada con `.catch`). Si la principal falla
+   * tras los reintentos, se devuelve ok:false con el motivo en castellano en vez de dejar
+   * que la excepción suba como "BCRA respondió 503".
+   */
+  let deudas: any = null;
+  let cheques: any = null;
+  let historicas: any = null;
+  try {
+    /**
+     * 🔴 Se pedía la foto de HOY y se ignoraba el historial.
+     *
+     * El BCRA publica 24 meses en `/Deudas/Historicas/{cuit}` y no lo tocábamos. La
+     * diferencia es grande para decidir: alguien que estuvo SIEMPRE en situación 1 no es lo
+     * mismo que alguien que estuvo en 4 hace ocho meses y se recuperó — y hoy los dos se
+     * veían idénticos, porque los dos muestran "1" en el mes actual.
+     *
+     * Va tolerado como los cheques: si falla, la consulta principal sigue.
+     */
+    [deudas, cheques, historicas] = await Promise.all([
+      getJson(`${BASE}/${cuit}`),
+      getJson(`${BASE}/ChequesRechazados/${cuit}`).catch(() => null),
+      getJson(`${BASE}/Historicas/${cuit}`).catch(() => null),
+    ]);
+  } catch (e) {
+    return {
+      ok: false,
+      proveedor: "bcra",
+      mensaje: e instanceof Error ? e.message : "No se pudo consultar el BCRA.",
+      senales: emptySenales(),
+    };
+  }
 
   // Peor situación + deuda total del período más reciente.
   let situacionBcra: number | null = null;
   let deudaSistemaFinanciero: number | null = null;
+  let procesoJudicial = false;
+  let refinanciado = false;
+  let diasAtrasoMax = 0;
+  let entidadesInformantes = 0;
+  let hayEntidades = false;
   const periodos = deudas?.results?.periodos;
   if (Array.isArray(periodos) && periodos.length > 0) {
     const entidades = periodos[0]?.entidades ?? [];
+    entidadesInformantes = entidades.length;
+    hayEntidades = entidades.length > 0;
     for (const e of entidades) {
       const sit = Number(e?.situacion);
       if (!Number.isNaN(sit)) situacionBcra = Math.max(situacionBcra ?? 0, sit);
       const monto = Number(e?.monto);
       if (!Number.isNaN(monto)) deudaSistemaFinanciero = (deudaSistemaFinanciero ?? 0) + monto * 1000; // BCRA informa en miles
+      // Basta UNA entidad con juicio o refinanciación para que la señal sea verdadera.
+      if (e?.procesoJud === true || e?.situacionJuridica === true) procesoJudicial = true;
+      if (e?.refinanciaciones === true) refinanciado = true;
+      const atraso = Number(e?.diasAtrasoPago);
+      if (!Number.isNaN(atraso)) diasAtrasoMax = Math.max(diasAtrasoMax, atraso);
     }
   }
 
@@ -74,15 +166,34 @@ export async function consultarBcra(cuitRaw: string): Promise<ResultadoConsulta>
     scoreExterno: null, // BCRA no da score
     chequesRechazados,
     deudaSistemaFinanciero,
+    // Las banderas que veníamos descartando. `procesoJud` y `situacionJuridica` son la misma
+    // pregunta desde dos ángulos —¿alguien lo está ejecutando?— así que se unifican.
+    tieneProcesoJudicial: hayEntidades ? procesoJudicial : null,
+    tieneRefinanciaciones: hayEntidades ? refinanciado : null,
+    diasAtrasoMax: hayEntidades ? diasAtrasoMax : null,
+    entidadesInformantes: hayEntidades ? entidadesInformantes : null,
   };
 
   const sinDatos = situacionBcra == null && chequesRechazados == null;
   return {
     ok: true,
     proveedor: "bcra",
-    mensaje: sinDatos ? "Sin registros en la Central de Deudores." : undefined,
+    /**
+     * 🔴 "Sin registros" NO es un error, y así se leía.
+     *
+     * Salía como "Sin registros en la Central de Deudores.", en el mismo renglón gris donde
+     * aparecen las fallas, y con los cuatro campos en "—": indistinguible de una consulta
+     * que se cayó. Pero para una persona real —una jubilada sin créditos bancarios, por
+     * ejemplo— es un RESULTADO, y además informativo: nadie le informó deuda al BCRA.
+     *
+     * Se dice lo que el dato significa, sin prometer de más: que no figure no prueba que no
+     * deba nada (queda afuera todo lo que no pasa por el sistema financiero formal).
+     */
+    mensaje: sinDatos
+      ? "No figura en la Central de Deudores: ninguna entidad financiera le informó deuda al BCRA."
+      : undefined,
     senales,
-    crudo: { deudas, cheques },
+    crudo: { deudas, cheques, historicas },
   };
 }
 

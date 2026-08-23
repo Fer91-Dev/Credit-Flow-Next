@@ -1,11 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ShieldCheck, RefreshCw, Search } from "lucide-react";
 import { useHasFeature } from "@/components/providers/FeaturesProvider";
 import { useToast } from "@/components/ui/toast";
 import { StatusBadge, type BadgeVariant } from "@/components/ui/StatusBadge";
 import { formatFechaHora, formatMonto } from "@/lib/utils";
+import { useConfiguracion } from "@/lib/swr";
+import { BUREAUS_CONFIGURABLES, BUREAU_LABEL, resolverProveedoresBureau, type BureauConfigurable } from "@/lib/domain";
 
 interface Consulta {
   id: string;
@@ -17,6 +19,67 @@ interface Consulta {
   score_externo: number | null;
   cheques_rechazados: number | null;
   deuda_sistema: number | null;
+  /** Respuesta cruda del proveedor. Trae el detalle por entidad que el resumen aplana. */
+  crudo?: unknown;
+}
+
+/** Una línea del informe del BCRA: qué entidad, en qué situación y con qué banderas. */
+interface EntidadBureau {
+  entidad: string;
+  situacion: number;
+  monto: number;
+  diasAtrasoPago?: number;
+  refinanciaciones?: boolean;
+  situacionJuridica?: boolean;
+  procesoJud?: boolean;
+  enRevision?: boolean;
+}
+
+/**
+ * Historial de 24 meses: la PEOR situación informada en cada período.
+ *
+ * 🔴 Sin esto, alguien que estuvo siempre en situación 1 y alguien que estuvo en 4 hace
+ * ocho meses y se recuperó se veían IDÉNTICOS — los dos muestran "1" en el mes actual. Es
+ * justo la diferencia que uno quiere saber antes de prestar.
+ */
+function historialDe(crudo: unknown): Array<{ periodo: string; situacion: number }> {
+  const periodos = (crudo as { historicas?: { results?: { periodos?: unknown[] } } } | null)?.historicas?.results?.periodos;
+  if (!Array.isArray(periodos)) return [];
+  return periodos
+    .map((p) => {
+      const per = p as { periodo?: string; entidades?: Array<{ situacion?: number }> };
+      const ents = Array.isArray(per.entidades) ? per.entidades : [];
+      const peor = ents.reduce((m, e) => Math.max(m, Number(e?.situacion) || 0), 0);
+      return { periodo: String(per.periodo ?? ""), situacion: peor };
+    })
+    .filter((x) => x.periodo.length === 6)
+    // Del más viejo al más nuevo: la línea se lee de izquierda a derecha.
+    .sort((a, b) => a.periodo.localeCompare(b.periodo));
+}
+
+/** "202606" → "06/26" */
+function periodoCorto(p: string): string {
+  return `${p.slice(4, 6)}/${p.slice(2, 4)}`;
+}
+
+/**
+ * 🔴 El detalle POR ENTIDAD ya viajaba en `crudo` y no se mostraba en ningún lado.
+ *
+ * El panel resumía todo a "peor situación" y "deuda total": no se veía QUIÉN le prestó,
+ * cuánto le debe a cada uno, ni cuál de todos es el que lo tiene en juicio. Con cuatro
+ * entidades en situación 1 y una en 4, el informe decía "4" y no había forma de saber si
+ * eran $2.000 de una tarjeta o $2.000.000 de un banco.
+ */
+function entidadesDe(crudo: unknown): EntidadBureau[] {
+  const periodos = (crudo as { deudas?: { results?: { periodos?: unknown[] } } } | null)?.deudas?.results?.periodos;
+  if (!Array.isArray(periodos) || periodos.length === 0) return [];
+  const ents = (periodos[0] as { entidades?: unknown[] })?.entidades;
+  if (!Array.isArray(ents)) return [];
+  return ents
+    .map((e) => e as EntidadBureau)
+    .filter((e) => e && typeof e.entidad === "string")
+    // El que peor está, primero: es el que define el caso.
+    .sort((a, b) => (b.situacion ?? 0) - (a.situacion ?? 0) || (b.monto ?? 0) - (a.monto ?? 0));
 }
 
 const SIT_BCRA_LABEL: Record<number, string> = {
@@ -28,7 +91,7 @@ function sitVariant(s: number | null): BadgeVariant {
   if (s === 2) return "warning";
   return "destructive";
 }
-const PROVEEDOR_LABEL: Record<string, string> = { bcra: "BCRA", nosis: "Nosis", veraz: "Veraz", manual: "Manual" };
+const PROVEEDOR_LABEL: Record<string, string> = { bcra: "BCRA", nosis: "Nosis", veraz: "Veraz", credixa: "Credixa", manual: "Manual" };
 
 /**
  * Perfil crediticio del cliente vía bureau (feature premium). Muestra la última consulta y
@@ -42,6 +105,15 @@ export function ClienteBureauPanel({ clienteId }: { clienteId: string }) {
   const [loading, setLoading] = useState(false);
   const [manualOpen, setManualOpen] = useState(false);
   const [manual, setManual] = useState({ situacionBcra: "", scoreExterno: "", chequesRechazados: "", deudaSistemaFinanciero: "" });
+  const { config } = useConfiguracion();
+
+  /** Los bureaus que la financiera dejó prendidos: uno por botón. */
+  const activos = useMemo<BureauConfigurable[]>(() => {
+    const bureau = config?.riesgoConfig?.bureau;
+    if (!bureau) return ["bcra"]; // hasta que cargue la config, el gratuito
+    const porProveedor = resolverProveedoresBureau(bureau);
+    return BUREAUS_CONFIGURABLES.filter((c) => porProveedor[c].activo);
+  }, [config]);
 
   useEffect(() => {
     if (!tiene) return;
@@ -55,11 +127,20 @@ export function ClienteBureauPanel({ clienteId }: { clienteId: string }) {
 
   if (!tiene) return null;
 
-  const consultar = async () => {
+  /**
+   * 🔴 UN BOTÓN POR BUREAU ACTIVO, no uno solo contra "el proveedor por defecto".
+   *
+   * Antes mandaba `{}` y el server resolvía con el único proveedor configurado. Con varios
+   * bureaus prendidos eso no alcanza: el operador tiene que poder elegir a cuál preguntarle
+   * —o preguntarles a los dos y comparar— sin pasar por Configuración.
+   */
+  const consultar = async (proveedor?: string) => {
     setLoading(true);
     try {
       const res = await fetch(`/api/clientes/${clienteId}/bureau`, {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: "{}",
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(proveedor ? { proveedor } : {}),
       });
       const j = await res.json();
       if (j.ok) {
@@ -123,14 +204,23 @@ export function ClienteBureauPanel({ clienteId }: { clienteId: string }) {
             >
               Cargar manual
             </button>
-            <button
-              onClick={consultar}
-              disabled={loading}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-primary/10 px-3 py-1.5 text-xs font-medium text-primary ring-1 ring-inset ring-primary/25 transition-colors hover:bg-primary/15 disabled:opacity-50"
-            >
-              {loading ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Search className="h-3.5 w-3.5" />}
-              {loading ? "Consultando…" : "Consultar bureau"}
-            </button>
+            {activos.map((clave) => (
+              <button
+                key={clave}
+                onClick={() => consultar(clave)}
+                disabled={loading}
+                title={`Consultar ${BUREAU_LABEL[clave]}`}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-primary/10 px-3 py-1.5 text-xs font-medium text-primary ring-1 ring-inset ring-primary/25 transition-colors hover:bg-primary/15 disabled:opacity-50"
+              >
+                {loading ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Search className="h-3.5 w-3.5" />}
+                {clave === "bcra" ? "BCRA" : BUREAU_LABEL[clave]}
+              </button>
+            ))}
+            {activos.length === 0 && (
+              /* Sin ningún bureau prendido no hay nada que consultar, y decirlo evita que
+                 el operador crea que la pantalla está rota. */
+              <span className="text-[11px] text-muted-foreground/70">Ningún bureau activo — prendelos en Configuración → Riesgo.</span>
+            )}
           </div>
         </div>
 
@@ -169,7 +259,13 @@ export function ClienteBureauPanel({ clienteId }: { clienteId: string }) {
 
         {ultima && (
           <>
-            {ultima.mensaje && <p className="mt-3 text-xs text-muted-foreground/80">{ultima.mensaje}</p>}
+            {/* Una consulta que SALIÓ BIEN pero sin registros no puede leerse igual que una
+                que falló: se marca en verde para que el operador sepa que el dato llegó. */}
+            {ultima.mensaje && (
+              <p className={`mt-3 text-xs ${ultima.situacion_bcra == null && ultima.cheques_rechazados == null && /no figura/i.test(ultima.mensaje) ? "text-success" : "text-muted-foreground/80"}`}>
+                {ultima.mensaje}
+              </p>
+            )}
             <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
               <Dato label="Situación BCRA">
                 {ultima.situacion_bcra != null
@@ -186,6 +282,93 @@ export function ClienteBureauPanel({ clienteId }: { clienteId: string }) {
                 <span className="font-mono font-semibold text-foreground">{ultima.deuda_sistema != null ? formatMonto(ultima.deuda_sistema) : "—"}</span>
               </Dato>
             </div>
+          
+            {/* Historial de 24 meses: se lee de un vistazo si alguna vez estuvo mal. */}
+            {(() => {
+              const hist = historialDe(ultima.crudo);
+              if (hist.length === 0) return null;
+              const peorHistorico = hist.reduce((m, h) => Math.max(m, h.situacion), 0);
+              return (
+                <div className="mt-4 rounded-xl border border-border p-3">
+                  <div className="flex flex-wrap items-baseline justify-between gap-2">
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                      Historial · {hist.length} meses
+                    </p>
+                    <p className="text-[11px] text-muted-foreground">
+                      Peor situación del período:{" "}
+                      <span className={peorHistorico >= 3 ? "font-semibold text-destructive" : "text-foreground"}>
+                        {peorHistorico > 0 ? peorHistorico : "sin deuda informada"}
+                      </span>
+                    </p>
+                  </div>
+                  <div className="mt-2 flex gap-[3px] overflow-x-auto pb-1">
+                    {hist.map((h) => (
+                      <div
+                        key={h.periodo}
+                        title={`${periodoCorto(h.periodo)} · situación ${h.situacion || "—"}`}
+                        className={`h-7 min-w-[14px] flex-1 rounded-[3px] ${
+                          h.situacion >= 5 ? "bg-destructive"
+                          : h.situacion >= 3 ? "bg-destructive/60"
+                          : h.situacion === 2 ? "bg-warning"
+                          : h.situacion === 1 ? "bg-success/70"
+                          : "bg-muted-foreground/15"
+                        }`}
+                      />
+                    ))}
+                  </div>
+                  <div className="mt-1 flex justify-between text-[10px] font-mono text-muted-foreground/50">
+                    <span>{periodoCorto(hist[0].periodo)}</span>
+                    <span>{periodoCorto(hist[hist.length - 1].periodo)}</span>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* Detalle por entidad — el dato que el resumen aplana. */}
+            {(() => {
+              const ents = entidadesDe(ultima.crudo);
+              if (ents.length === 0) return null;
+              return (
+                <div className="mt-4 overflow-x-auto rounded-xl border border-border">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="bg-muted/30">
+                        <th className="px-3 py-2 text-left text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Entidad</th>
+                        <th className="px-3 py-2 text-center text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Sit.</th>
+                        <th className="px-3 py-2 text-right text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Monto</th>
+                        <th className="px-3 py-2 text-right text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Atraso</th>
+                        <th className="px-3 py-2 text-left text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Alertas</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {ents.map((e, i) => (
+                        <tr key={`${e.entidad}-${i}`} className={`border-t border-border/50 ${i % 2 === 1 ? "bg-muted/5" : ""}`}>
+                          <td className="px-3 py-2 text-foreground">{e.entidad}</td>
+                          <td className="px-3 py-2 text-center">
+                            <StatusBadge label={String(e.situacion)} variant={sitVariant(e.situacion)} />
+                          </td>
+                          {/* El BCRA informa en MILES: 2049 son $2.049.000. */}
+                          <td className="px-3 py-2 text-right font-mono tabular-nums text-foreground">{formatMonto((e.monto ?? 0) * 1000, 0)}</td>
+                          <td className={`px-3 py-2 text-right font-mono tabular-nums ${(e.diasAtrasoPago ?? 0) > 0 ? "text-warning" : "text-muted-foreground/40"}`}>
+                            {(e.diasAtrasoPago ?? 0) > 0 ? `${e.diasAtrasoPago} d` : "—"}
+                          </td>
+                          <td className="px-3 py-2">
+                            <span className="flex flex-wrap gap-1">
+                              {(e.procesoJud || e.situacionJuridica) && <StatusBadge label="Juicio" variant="destructive" />}
+                              {e.refinanciaciones && <StatusBadge label="Refinanció" variant="warning" />}
+                              {e.enRevision && <StatusBadge label="En revisión" variant="muted" />}
+                              {!e.procesoJud && !e.situacionJuridica && !e.refinanciaciones && !e.enRevision && (
+                                <span className="text-muted-foreground/30">—</span>
+                              )}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              );
+            })()}
           </>
         )}
       </div>

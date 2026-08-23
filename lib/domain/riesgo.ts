@@ -28,6 +28,25 @@ export interface SenalesBureau {
   chequesRechazados?: number | null;
   /** Deuda total informada en el sistema financiero ($). */
   deudaSistemaFinanciero?: number | null;
+  /**
+   * 🔴 SEÑALES QUE EL BCRA MANDA Y SE TIRABAN.
+   *
+   * Su respuesta trae, POR ENTIDAD, si hay proceso judicial, si la deuda fue refinanciada
+   * y cuántos días de atraso lleva. De todo eso solo se guardaba la peor situación y la suma
+   * de montos. Alguien puede figurar en situación 2 —que la política acepta— y estar con
+   * demanda judicial de otro banco: el informe mostraba "2" y nada más.
+   *
+   * Son opcionales: los bureaus que no las informen las dejan en null y la política las
+   * ignora, igual que hoy.
+   */
+  /** Alguna entidad le inició acción judicial o lo tiene en situación jurídica. */
+  tieneProcesoJudicial?: boolean | null;
+  /** Alguna entidad le refinanció deuda (reestructuró en otro lado). */
+  tieneRefinanciaciones?: boolean | null;
+  /** Peor atraso informado, en días. */
+  diasAtrasoMax?: number | null;
+  /** Cuántas entidades le informaron deuda. */
+  entidadesInformantes?: number | null;
 }
 
 /** Política de originación del tenant. Todo parametrizado; se persiste en `configuraciones.riesgo_config`. */
@@ -54,6 +73,14 @@ export interface PoliticaOriginacion {
   situacionBcraMax: SituacionBCRA;
   /** Score externo mínimo (0–1000). `null` = no se exige. */
   scoreExternoMin: number | null;
+  /**
+   * Rechaza si el bureau informa proceso judicial o situación jurídica. Va por el camino
+   * del rechazo para que lo alcance `accionAlNoCalificar`: en "autorizar" no bloquea, lo
+   * frena hasta que un admin lo asuma por escrito.
+   */
+  rechazaConJuicio: boolean;
+  /** Manda a REVISAR si el cliente ya refinanció deuda en otra entidad. */
+  revisaConRefinanciaciones: boolean;
   /** Rechazar si el titular registra cheques rechazados. */
   rechazaConChequesRechazados: boolean;
   /** Máximo de créditos activos simultáneos por cliente. 0 = sin límite. */
@@ -86,6 +113,8 @@ export const POLITICA_ORIGINACION_DEFAULT: PoliticaOriginacion = {
   limiteBaseSinBureau: 0,
   situacionBcraMax: 2,
   scoreExternoMin: null,
+  rechazaConJuicio: true,           // el juicio no se ignora; con "autorizar" lo firma un admin
+  revisaConRefinanciaciones: false, // apagado: no todas las financieras lo consideran señal
   rechazaConChequesRechazados: true,
   maxCreditosActivos: 0, // sin límite por defecto (cada financiera define su apetito)
   maxEdicionesSueldoVendedor: 3, // un vendedor puede editar el sueldo 3 veces; luego lo resetea un admin
@@ -96,7 +125,7 @@ export const POLITICA_ORIGINACION_DEFAULT: PoliticaOriginacion = {
 };
 
 /** Proveedor de bureau de crédito. `manual` = el analista carga los valores a mano. */
-export type BureauProveedor = "manual" | "bcra" | "nosis" | "veraz";
+export type BureauProveedor = "manual" | "bcra" | "nosis" | "veraz" | "credixa";
 
 /** Config del bureau: qué proveedor consultar al originar y sus credenciales. */
 export interface BureauConfig {
@@ -109,6 +138,8 @@ export interface BureauConfig {
   token: string;
   /** Usuario (algunos proveedores lo piden además del token). */
   usuario: string;
+  /** Config por bureau: varios pueden estar activos a la vez. Ver `resolverProveedoresBureau`. */
+  proveedores?: Partial<Record<string, BureauProveedorConfig>>;
 }
 
 export const BUREAU_CONFIG_DEFAULT: BureauConfig = {
@@ -117,7 +148,71 @@ export const BUREAU_CONFIG_DEFAULT: BureauConfig = {
   endpoint: "",
   token: "",
   usuario: "",
+  proveedores: {},
 };
+
+/**
+ * 🔴 VARIOS BUREAUS A LA VEZ, CADA UNO CON LO SUYO.
+ *
+ * El modelo original soportaba UN proveedor por financiera (`proveedor` + un juego de
+ * credenciales). Eso no es como se trabaja: se consulta el BCRA —gratis— y ADEMÁS un
+ * bureau comercial, y a veces dos, comparando. Con un solo slot había que ir a
+ * Configuración y cambiar el proveedor cada vez que se quería la otra fuente.
+ *
+ * `proveedores` guarda un bloque por bureau, y cada uno se prende por separado. Los campos
+ * viejos siguen ahí y se respetan: una config guardada antes de esto sigue funcionando
+ * igual (ver `resolverBureau`), así que no hay migración ni pantalla que se rompa.
+ */
+export interface BureauProveedorConfig {
+  /** Aparece como opción consultable en la ficha del cliente. */
+  activo: boolean;
+  /** Endpoint base. BCRA es público y fijo: no lo usa. */
+  endpoint?: string;
+  /** Token / API key. Secreto: se enmascara en el GET de config. */
+  token?: string;
+  /** Usuario, para los proveedores que lo piden además del token. */
+  usuario?: string;
+}
+
+/** Los bureaus que se pueden configurar (el manual no lleva credenciales). */
+export const BUREAUS_CONFIGURABLES = ["bcra", "nosis", "veraz", "credixa"] as const;
+export type BureauConfigurable = (typeof BUREAUS_CONFIGURABLES)[number];
+
+export const BUREAU_LABEL: Record<BureauConfigurable, string> = {
+  bcra: "BCRA — Central de Deudores",
+  nosis: "Nosis",
+  veraz: "Veraz / Equifax",
+  credixa: "Credixa",
+};
+
+/** Los que necesitan contrato y credenciales. El BCRA es público y gratuito. */
+export const BUREAU_REQUIERE_CREDENCIALES: Record<BureauConfigurable, boolean> = {
+  bcra: false, nosis: true, veraz: true, credixa: true,
+};
+
+/**
+ * Completa `proveedores` desde los campos viejos cuando falta, para que una config guardada
+ * antes de este cambio siga comportándose igual. El BCRA arranca activo: es gratis, no pide
+ * credenciales y es el que usa todo el mundo.
+ */
+export function resolverProveedoresBureau(cfg: BureauConfig): Record<BureauConfigurable, BureauProveedorConfig> {
+  const p = cfg.proveedores ?? {};
+  const base: Record<BureauConfigurable, BureauProveedorConfig> = {
+    bcra:    { activo: true },
+    nosis:   { activo: false, endpoint: "", token: "", usuario: "" },
+    veraz:   { activo: false, endpoint: "", token: "", usuario: "" },
+    credixa: { activo: false, endpoint: "", token: "", usuario: "" },
+  };
+  for (const clave of BUREAUS_CONFIGURABLES) {
+    const guardado = p[clave];
+    if (guardado) base[clave] = { ...base[clave], ...guardado };
+    // Config vieja: el proveedor que estaba elegido queda activo con sus credenciales.
+    else if (cfg.proveedor === clave) {
+      base[clave] = { activo: true, endpoint: cfg.endpoint, token: cfg.token, usuario: cfg.usuario };
+    }
+  }
+  return base;
+}
 
 /**
  * Config de riesgo del tenant tal como se persiste en `configuraciones.riesgo_config`.
@@ -292,6 +387,28 @@ export function evaluarOriginacion(
   if (b?.situacionBcra != null && b.situacionBcra > politica.situacionBcraMax) {
     escalar("rechazado");
     motivos.push(`Situación BCRA ${b.situacionBcra} supera el máximo aceptado (${politica.situacionBcraMax}).`);
+  }
+  /**
+   * 3b) Bureau — PROCESO JUDICIAL.
+   *
+   * 🔴 Es la señal más fuerte que manda el BCRA y la que se estaba tirando. Alguien puede
+   * figurar en situación 2 —que la política acepta— y tener demanda judicial de otro banco.
+   * Va como RECHAZO, no como "revisar", para que respete `accionAlNoCalificar`: con la
+   * política en "autorizar" (el default), el caso no se bloquea solo — queda frenado hasta
+   * que un ADMINISTRADOR lo autorice a mano y quede auditado. Un vendedor no puede saltearlo.
+   */
+  if (politica.rechazaConJuicio && b?.tieneProcesoJudicial === true) {
+    escalar("rechazado");
+    motivos.push("Tiene proceso judicial o situación jurídica informada por una entidad financiera.");
+  }
+  /**
+   * 3c) Bureau — DEUDA REFINANCIADA EN OTRO LADO.
+   * Que ya haya reestructurado con otra entidad no lo descalifica, pero cambia el caso: es
+   * alguien que no pudo con el plan original. Va a revisión, no a rechazo.
+   */
+  if (politica.revisaConRefinanciaciones && b?.tieneRefinanciaciones === true) {
+    escalar("revisar");
+    motivos.push("Tiene deuda refinanciada en otra entidad.");
   }
   // 4) Bureau — cheques rechazados.
   if (politica.rechazaConChequesRechazados && (b?.chequesRechazados ?? 0) > 0) {
