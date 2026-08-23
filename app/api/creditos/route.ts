@@ -2,7 +2,7 @@ import { requireAuth, requireRole, scopeCreditosVendedor, ApiError } from "@/lib
 import { successResponse, errorResponse, withErrorHandler, assertSameOrigin } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
-import { round2, normalizarFrecuencia, resolverFrecuencia, sumarPeriodos, construirPlanAmortizacion, planACuotas, estadoCoherente, etiquetaCaja, esCuentaValida, validarParametrosOtorgamiento, diasMoraActual, buscarPlan, nombrePlan, tasaDesdeCoeficiente, cargosConPlan, CUENTA_LABEL, type Cuenta, ESTADOS_VIVOS, esCreditoVivo, moraDelCredito, moraDesdeCronograma, moraPendienteTotal } from "@/lib/domain";
+import { round2, normalizarFrecuencia, resolverFrecuencia, sumarPeriodos, construirPlanAmortizacion, planACuotas, estadoCoherente, etiquetaCaja, esCuentaValida, validarParametrosOtorgamiento, diasMoraActual, buscarPlan, nombrePlan, tasaDesdeCoeficiente, cargosConPlan, CUENTA_LABEL, type Cuenta, ESTADOS_VIVOS, esCreditoVivo, moraDelCredito, moraDesdeCronograma, moraPendienteTotal, deudaEnRevision } from "@/lib/domain";
 import { siguienteNumeroComprobante } from "@/lib/comprobantes";
 import { assertFondosSuficientesTx } from "@/lib/caja-fondos";
 import { lockNumeroCreditoTx, TX_PLATA } from "@/lib/locks";
@@ -58,7 +58,8 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
          * La agenda del día sí los manda, y ahí el botón funcionaba: mismo dato, dos
          * endpoints, uno solo lo mandaba.
          */
-        cliente: { select: { id: true, nombre: true, apellido: true, documento: true, telefono: true, email: true } },
+        // `estado`/`estado_fecha`: el terminal de cobro avisa si el titular falleció.
+        cliente: { select: { id: true, nombre: true, apellido: true, documento: true, telefono: true, email: true, estado: true, estado_fecha: true } },
         vendedor: { select: { id: true, nombre: true } },
         pagos: { orderBy: { fecha: "desc" }, take: 5 },
         // Cobros VIVOS (sin los anulados). Va aparte de `pagos` porque cada uno responde
@@ -213,6 +214,22 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     return errorResponse(
       `${cliente.nombre} ${cliente.apellido ?? ""} está dado de baja. Reactivalo desde Clientes antes de otorgarle un crédito.`.replace(/\s+/g, " ").trim(),
       "CLIENTE_INACTIVO",
+      409
+    );
+  }
+
+  /**
+   * 🔴 Y tampoco a un FALLECIDO.
+   *
+   * El chequeo de arriba miraba solo "inactivo", así que cuando apareció el estado
+   * "fallecido" pasaba de largo: se le podía otorgar un crédito a una persona muerta. No es
+   * un caso hipotético — es la puerta por la que alguien usa la identidad de un fallecido, y
+   * el contrato sería inejecutable de todos modos.
+   */
+  if (deudaEnRevision(cliente)) {
+    return errorResponse(
+      `${cliente.nombre} ${cliente.apellido ?? ""} figura como fallecido: no se le puede otorgar un crédito.`.replace(/\s+/g, " ").trim(),
+      "CLIENTE_FALLECIDO",
       409
     );
   }

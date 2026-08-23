@@ -2,7 +2,7 @@ import { requireRole, scopeCreditosVendedor } from "@/lib/auth";
 import { successResponse, errorResponse, withErrorHandler, assertSameOrigin } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
-import { calcularDeudaConsolidada, aplicarQuita, construirPlanAmortizacion, planACuotas, normalizarFrecuencia, resolverFrecuencia, round2, estadoCoherente, type CuotaParaImputar, type TipoQuita, esCreditoVivo, moraDelCredito, moraDesdeCronograma, diasMoraActual, validarParametrosOtorgamiento } from "@/lib/domain";
+import { calcularDeudaConsolidada, aplicarQuita, construirPlanAmortizacion, planACuotas, normalizarFrecuencia, resolverFrecuencia, round2, estadoCoherente, type CuotaParaImputar, type TipoQuita, esCreditoVivo, moraDelCredito, moraDesdeCronograma, diasMoraActual, validarParametrosOtorgamiento, deudaEnRevision } from "@/lib/domain";
 import { getConfiguracion, getCobranzaConfig } from "@/lib/config";
 import { quitaMaxima } from "@/lib/domain/acuerdos";
 import { lockNumeroCreditoTx, TX_PLATA } from "@/lib/locks";
@@ -49,6 +49,24 @@ async function cargarRefinanciable(req: NextRequest, id: string) {
   }
   if (credito.cuotas.length === 0) {
     return { error: errorResponse("El crédito no tiene cronograma de cuotas.", "INVALID_STATE", 400), tenantId, role, vendedorId } as const;
+  }
+  /**
+   * 🔴 No se refinancia la deuda de un FALLECIDO.
+   *
+   * Refinanciar no es un ajuste contable: cierra un crédito y **crea uno nuevo**, con tasa y
+   * plazo renegociados, a nombre del titular. Nadie puede acordar términos nuevos con alguien
+   * que murió. Además descongelaría los punitorios, porque el crédito nuevo nace limpio y sin
+   * la fecha de corte — justo lo contrario de lo que el estado "fallecido" protege.
+   */
+  if (deudaEnRevision(credito.cliente)) {
+    return {
+      error: errorResponse(
+        `${nombreCompleto(credito.cliente)} figura como fallecido: su deuda está en revisión y no se puede refinanciar.`,
+        "CLIENTE_FALLECIDO",
+        409,
+      ),
+      tenantId, role, vendedorId,
+    } as const;
   }
   /**
    * Solo se refinancia deuda MOROSA: un crédito activo y al día no se reestructura.

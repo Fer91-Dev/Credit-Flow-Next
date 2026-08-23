@@ -318,6 +318,11 @@ export const PATCH = withErrorHandler(async (req: NextRequest, { params }: Route
       return errorResponse(`Estado inválido. Valores posibles: ${ESTADOS_CLIENTE.join(", ")}`, "INVALID_INPUT", 400);
     }
     const anterior = normalizarEstadoCliente(existing.estado);
+    if (nuevo === "inactivo") {
+      // Dar de baja tiene su propio camino (DELETE), que rechaza si el cliente todavía tiene
+      // créditos vivos. Permitirlo por acá saltearía ese control.
+      return errorResponse("Para dar de baja un cliente usá Eliminar, que valida que no tenga créditos activos.", "USAR_ELIMINAR", 400);
+    }
     if (nuevo !== anterior) {
       if (role !== "admin") {
         return errorResponse(

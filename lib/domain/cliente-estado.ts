@@ -11,12 +11,35 @@
  * usuario: por ahora solo activo y fallecido.
  */
 
-export const ESTADOS_CLIENTE = ["activo", "fallecido"] as const;
+/**
+ * 🔴 SON TRES, NO DOS. `inactivo` es el borrado lógico (el botón Eliminar de Clientes) y
+ * existía desde antes. Dejarlo afuera de esta lista hacía que un cliente dado de baja se
+ * mostrara como "Activo" y que reactivarlo no hiciera nada (el PATCH no veía un cambio).
+ */
+export const ESTADOS_CLIENTE = ["activo", "inactivo", "fallecido"] as const;
 export type EstadoCliente = (typeof ESTADOS_CLIENTE)[number];
+
+/**
+ * Los que se eligen a mano desde la ficha. `inactivo` NO está: se llega ahí por Eliminar,
+ * que valida antes que el cliente no tenga créditos vivos. Ofrecerlo acá sería una puerta
+ * de atrás a ese control.
+ */
+export const ESTADOS_CLIENTE_ASIGNABLES = ["activo", "fallecido"] as const;
 
 export const ESTADO_CLIENTE_LABEL: Record<EstadoCliente, string> = {
   activo: "Activo",
+  inactivo: "Dado de baja",
   fallecido: "Fallecido",
+};
+
+/**
+ * Color del badge. Un fallecido va en ROJO y no en gris: no es "uno menos en la lista", es
+ * una deuda que quedó en revisión y que nadie tiene que salir a cobrar.
+ */
+export const ESTADO_CLIENTE_VARIANT: Record<EstadoCliente, "success" | "muted" | "destructive"> = {
+  activo: "success",
+  inactivo: "muted",
+  fallecido: "destructive",
 };
 
 export function esEstadoClienteValido(v: unknown): v is EstadoCliente {

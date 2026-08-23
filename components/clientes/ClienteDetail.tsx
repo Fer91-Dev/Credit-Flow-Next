@@ -22,7 +22,7 @@ import { ContactarDialog } from "@/components/clientes/ContactarDialog";
 import { EstadoClienteDialog } from "@/components/clientes/EstadoClienteDialog";
 import { abrirRecibo } from "@/lib/recibo";
 import { formatCreditoNumero, formatFecha, formatFechaHora, nombreCompleto } from "@/lib/utils";
-import { esCreditoVivo, deudaEnRevision, normalizarEstadoCliente, ESTADO_CLIENTE_LABEL } from "@/lib/domain";
+import { esCreditoVivo, deudaEnRevision, normalizarEstadoCliente, ESTADO_CLIENTE_LABEL, ESTADO_CLIENTE_VARIANT } from "@/lib/domain";
 import type { Role } from "@/lib/auth/roles";
 
 function n2(x: number) {
@@ -244,6 +244,7 @@ export function ClienteDetail({
   // le escribe, no devenga punitorios y no se lo persigue hasta que la financiera resuelva.
   const fallecido = deudaEnRevision(cliente);
   const estadoLabel = ESTADO_CLIENTE_LABEL[normalizarEstadoCliente(cliente.estado)];
+  const estadoVariant = ESTADO_CLIENTE_VARIANT[normalizarEstadoCliente(cliente.estado)];
 
   // Historial de promesas de pago del cliente (vigentes + cumplidas + rotas), últimas 6.
   const creditoIds = new Set(creditos.map((c) => c.id));
@@ -275,7 +276,7 @@ export function ClienteDetail({
                       title="Cambiar el estado del cliente"
                       className="rounded-full transition-opacity hover:opacity-80"
                     >
-                      <StatusBadge label={estadoLabel} variant={fallecido ? "destructive" : "success"} />
+                      <StatusBadge label={estadoLabel} variant={estadoVariant} />
                     </button>
                   ) : (
                     <StatusBadge label={estadoLabel} variant={fallecido ? "destructive" : "success"} />

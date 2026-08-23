@@ -5,7 +5,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Field, Input, Select } from "@/components/ui/field";
 import { IconTextarea } from "@/components/caja/caja-form";
 import { useToast } from "@/components/ui/toast";
-import { ESTADOS_CLIENTE, ESTADO_CLIENTE_LABEL, normalizarEstadoCliente, type EstadoCliente } from "@/lib/domain";
+import { ESTADOS_CLIENTE_ASIGNABLES, ESTADO_CLIENTE_LABEL, normalizarEstadoCliente, type EstadoCliente } from "@/lib/domain";
 import { hoyComercial } from "@/lib/utils";
 import { AlertTriangle, Loader2 } from "lucide-react";
 
@@ -81,7 +81,10 @@ export function EstadoClienteDialog({ cliente, onClose }: {
         <div className="space-y-4">
           <Field label="Estado">
             <Select value={estado} onChange={(e) => setEstado(normalizarEstadoCliente(e.target.value))}>
-              {ESTADOS_CLIENTE.map((e) => (
+              {/* Si el cliente está dado de baja, se muestra su estado actual para poder
+                  reactivarlo — pero "Dado de baja" no se elige acá (se llega por Eliminar). */}
+              {actual === "inactivo" && <option value="inactivo">{ESTADO_CLIENTE_LABEL.inactivo}</option>}
+              {ESTADOS_CLIENTE_ASIGNABLES.map((e) => (
                 <option key={e} value={e}>{ESTADO_CLIENTE_LABEL[e]}</option>
               ))}
             </Select>

@@ -17,7 +17,7 @@ import { IconBadge } from "@/components/ui/IconBadge";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { ModalHeader } from "@/components/ui/form-kit";
 import { nombreCompleto, formatFecha } from "@/lib/utils";
-import { deudaEnRevision, normalizarEstadoCliente, ESTADO_CLIENTE_LABEL } from "@/lib/domain";
+import { normalizarEstadoCliente, ESTADO_CLIENTE_LABEL, ESTADO_CLIENTE_VARIANT } from "@/lib/domain";
 import type { Role } from "@/lib/auth/roles";
 import { useConfirm } from "@/components/ui/confirm";
 import { useToast } from "@/components/ui/toast";
@@ -120,14 +120,10 @@ export function ClientesTable({ role }: { role?: Role } = {}) {
     ) },
     { header: "DNI", className: "hidden md:table-cell", cell: (c) => <span className="font-mono text-muted-foreground">{c.documento ?? "—"}</span> },
     { header: "Teléfono", className: "hidden lg:table-cell", cell: (c) => <span className="text-muted-foreground">{c.telefono ?? "—"}</span> },
-    // Un fallecido se marca en ROJO, no en gris: no es "inactivo", es una deuda que quedó
-    // en revisión y que nadie tiene que salir a cobrar.
-    { header: "Estado", align: "center", cell: (c) => (
-        <StatusBadge
-          label={ESTADO_CLIENTE_LABEL[normalizarEstadoCliente(c.estado)]}
-          variant={deudaEnRevision(c) ? "destructive" : "success"}
-        />
-      ) },
+    { header: "Estado", align: "center", cell: (c) => {
+        const e = normalizarEstadoCliente(c.estado);
+        return <StatusBadge label={ESTADO_CLIENTE_LABEL[e]} variant={ESTADO_CLIENTE_VARIANT[e]} />;
+      } },
     { header: "Cargado", align: "right", cell: (c) => <span className="text-muted-foreground tabular-nums">{formatFecha(c.created_at)}</span> },
   ];
 

@@ -1,7 +1,7 @@
 ﻿"use client";
 
 import { useState, useEffect, Fragment } from "react";
-import { ArrowRight, Check, CheckCircle2, ChevronDown, CornerDownRight, Loader2, Printer, Search, X } from "lucide-react";
+import { ArrowRight, Check, CheckCircle2, ChevronDown, CornerDownRight, Loader2, Printer, Search, X, AlertTriangle } from "lucide-react";
 import { Field, Input, Select, Textarea } from "@/components/ui/field";
 import { StatusBadge, type BadgeVariant } from "@/components/ui/StatusBadge";
 import {
@@ -11,6 +11,7 @@ import {
 import { abrirRecibo } from "@/lib/recibo";
 import { formatNumero, maskMontoInput, parseMontoInput, formatFecha, formatCreditoNumero, nombreCompleto, cn } from "@/lib/utils";
 import { refrescarNotificaciones } from "@/lib/swr";
+import { deudaEnRevision } from "@/lib/domain";
 import type { CuotaPersistida, EstadoCuota } from "@/lib/swr";
 
 /** Desglose de imputación que devuelve POST /api/pagos. */
@@ -37,7 +38,7 @@ interface Credito {
   /** Número del crédito que reemplaza, si es una refinanciación → se muestra REF-XXXXXX. */
   refinancia_a_numero?: number | null;
   cliente_id: string;
-  cliente: { nombre: string; apellido?: string | null; documento?: string | null };
+  cliente: { nombre: string; apellido?: string | null; documento?: string | null; estado?: string | null; estado_fecha?: string | null };
   saldo_pendiente: number;
   tasa: number;
   plazo_meses: number;
@@ -545,6 +546,33 @@ export function PagoForm({ creditoId, clienteId, montoSugerido, motivoSugerido, 
             </div>
           )}
         </div>
+
+        {/*
+          🔴 Titular fallecido: se AVISA, no se bloquea.
+
+          Cobrar y salir a cobrar no son lo mismo. Perseguir a la familia ya está cortado
+          (contacto, campañas, agenda). Pero si el hijo, el garante o el seguro traen la
+          plata, rechazarla no protege a nadie — y el operador terminaría marcando al cliente
+          como activo para poder cobrar, lo que descongela los punitorios y rompe la traza.
+          Así que se cobra, pero enterado de a quién le está cobrando.
+        */}
+        {selected && deudaEnRevision(selected.cliente) && (
+          <div className="flex gap-2.5 rounded-xl border border-destructive/30 bg-destructive/5 p-3">
+            <AlertTriangle className="h-4 w-4 shrink-0 text-destructive" />
+            <div className="min-w-0 text-xs">
+              <p className="font-semibold text-foreground">
+                El titular figura como fallecido
+                {selected.cliente.estado_fecha && (
+                  <span className="font-normal text-muted-foreground"> · {formatFecha(selected.cliente.estado_fecha)}</span>
+                )}
+              </p>
+              <p className="mt-0.5 text-muted-foreground">
+                La deuda está en revisión y los punitorios están frenados a esa fecha. Se puede cobrar
+                —herederos, garante, seguro—, pero dejá asentado en las notas quién está pagando.
+              </p>
+            </div>
+          </div>
+        )}
 
         {/*
           De dónde sale el importe precargado.
