@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import useSWR from "swr";
 import {
-  Banknote, CreditCard, Handshake, HeartCrack, Phone, RefreshCw, Search, Undo2, UserCog,
+  Banknote, CreditCard, Handshake, HeartCrack, Phone, RefreshCw, Search, Send, Undo2, UserCog,
 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatFecha, formatMonto, cn } from "@/lib/utils";
@@ -35,6 +35,7 @@ const ESTILO: Record<TipoEventoProntuario, { icon: React.ComponentType<{ classNa
   pago:           { icon: Banknote,    color: "text-success",     anillo: "ring-success/25 bg-success/10" },
   pago_anulado:   { icon: Undo2,       color: "text-destructive", anillo: "ring-destructive/25 bg-destructive/10" },
   gestion:        { icon: Phone,       color: "text-info",        anillo: "ring-info/25 bg-info/10" },
+  contacto:       { icon: Send,        color: "text-info",        anillo: "ring-info/25 bg-info/10" },
   promesa:        { icon: Handshake,   color: "text-primary",     anillo: "ring-primary/25 bg-primary/10" },
   promesa_rota:   { icon: HeartCrack,  color: "text-destructive", anillo: "ring-destructive/25 bg-destructive/10" },
   acuerdo:        { icon: Handshake,   color: "text-primary",     anillo: "ring-primary/25 bg-primary/10" },
@@ -70,7 +71,7 @@ export function ProntuarioPanel({ clienteId }: { clienteId: string }) {
     const hoy = hoyComercialYmd();
     const grupos: { dia: string; etiqueta: string; items: EventoProntuario[] }[] = [];
     for (const e of eventos) {
-      const dia = diaDe(e.fecha);
+      const dia = diaDe(e.fecha, e.soloFecha);
       const ultimo = grupos[grupos.length - 1];
       if (ultimo && ultimo.dia === dia) ultimo.items.push(e);
       else grupos.push({ dia, etiqueta: etiquetaDia(dia, hoy), items: [e] });

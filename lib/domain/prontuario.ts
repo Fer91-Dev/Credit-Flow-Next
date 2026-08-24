@@ -20,7 +20,8 @@ export type TipoEventoProntuario =
   | "refinanciacion" // se le reestructuró la deuda
   | "pago"           // cobró bien
   | "pago_anulado"   // un cobro que después se dio de baja
-  | "gestion"        // lo llamaron / le escribieron
+  | "gestion"        // lo llamaron / le escribieron POR MORA (cuenta para el embudo)
+  | "contacto"       // se le escribió por promoción o información (no es gestión de cobranza)
   | "promesa"        // se comprometió a pagar
   | "promesa_rota"   // no cumplió
   | "acuerdo"        // arregló en cuotas lo vencido
@@ -40,6 +41,7 @@ export const TONO_EVENTO: Record<TipoEventoProntuario, TonoEvento> = {
   pago: "bueno",
   pago_anulado: "neutro",   // puede ser un error de carga, no necesariamente del cliente
   gestion: "neutro",
+  contacto: "neutro",
   promesa: "neutro",        // prometer no es cumplir; el mérito es la promesa CUMPLIDA
   promesa_rota: "malo",
   acuerdo: "neutro",
@@ -53,7 +55,8 @@ export const LABEL_EVENTO: Record<TipoEventoProntuario, string> = {
   refinanciacion: "Refinanciación",
   pago: "Pago",
   pago_anulado: "Pago anulado",
-  gestion: "Gestión",
+  gestion: "Gestión de cobranza",
+  contacto: "Contacto",
   promesa: "Promesa de pago",
   promesa_rota: "Promesa incumplida",
   acuerdo: "Acuerdo de pago",
@@ -76,6 +79,11 @@ export interface EventoProntuario {
   credito?: string | null;
   /** Quién lo hizo, cuando quedó registrado. */
   actor?: string | null;
+  /**
+   * true si `fecha` es una FECHA DE CALENDARIO (columna `@db.Date`, guardada a medianoche
+   * UTC) y no un instante. Cambia cómo se agrupa por día — ver `diaDe`.
+   */
+  soloFecha?: boolean;
 }
 
 /**
@@ -104,7 +112,7 @@ export interface ResumenProntuario {
 /** Del más nuevo al más viejo. Con misma fecha, primero lo que mueve plata. */
 const PESO_DESEMPATE: Record<TipoEventoProntuario, number> = {
   credito: 0, refinanciacion: 1, pago: 2, pago_anulado: 3, acuerdo: 4, acuerdo_roto: 5,
-  promesa: 6, promesa_rota: 7, gestion: 8, bureau: 9, estado: 10,
+  promesa: 6, promesa_rota: 7, gestion: 8, contacto: 9, bureau: 10, estado: 11,
 };
 
 export function ordenarEventos(eventos: EventoProntuario[]): EventoProntuario[] {
@@ -144,10 +152,26 @@ export function hoyComercialYmd(): string {
   return new Date().toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" });
 }
 
-/** Clave de agrupación por DÍA (YYYY-MM-DD). Los eventos del mismo día van juntos. */
-export function diaDe(fechaIso: string): string {
+/**
+ * Clave de agrupación por DÍA (YYYY-MM-DD), en calendario argentino.
+ *
+ * 🔴 HAY QUE DISTINGUIR DOS COSAS QUE PARECEN IGUALES.
+ *
+ * Un `created_at` es un INSTANTE: un contacto de las 21:16 de Argentina se guarda como las
+ * 00:16 UTC del día siguiente. Agrupado por día UTC aparecería bajo la fecha de mañana —el
+ * mismo error de huso que el resto del sistema resuelve con `hoyComercial`.
+ *
+ * Pero `pagos.fecha` y `acuerdos_pago.fecha` son columnas `@db.Date`: ya son una fecha de
+ * calendario, guardada a medianoche UTC. Convertirlas a Argentina las correría un día PARA
+ * ATRÁS (00:00 UTC = 21:00 del día anterior). Un cobro del 18 pasaría a figurar el 17.
+ *
+ * Por eso el llamador dice de qué tipo es cada fecha, en vez de adivinarlo por la hora.
+ */
+export function diaDe(fechaIso: string, soloFecha?: boolean): string {
   const d = new Date(fechaIso);
-  return Number.isNaN(d.getTime()) ? "—" : d.toISOString().slice(0, 10);
+  if (Number.isNaN(d.getTime())) return "—";
+  if (soloFecha) return d.toISOString().slice(0, 10);
+  return d.toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" });
 }
 
 /**

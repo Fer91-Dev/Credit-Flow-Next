@@ -85,13 +85,21 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: { param
       orderBy: { created_at: "desc" },
       take: 20,
     }),
-    // Cambios de ESTADO de la persona: viven solo en la auditoría (la tabla `clientes` guarda
-    // el estado actual, no su historia). Se filtran por la marca que deja el PATCH.
+    /**
+     * De la AUDITORÍA salen dos cosas que no viven en ninguna tabla propia:
+     *
+     *  - Cambios de ESTADO de la persona (`clientes` guarda el estado actual, no su historia).
+     *  - Los CONTACTOS que no son de cobranza. Un mensaje de promoción o de información NO
+     *    crea una `accion_cobranza` a propósito —contarlo engordaría el embudo y hundiría la
+     *    tasa de conversión sin que nadie hubiera trabajado peor—, así que el único registro
+     *    que queda es este. Sin leerlo acá, mandarle una oferta a un cliente no dejaba rastro
+     *    en su historia: exactamente lo que reportó el usuario.
+     */
     prisma.auditoria.findMany({
-      where: { ...withTenant(tenantId), entidad: "clientes", entidad_id: id, accion: "actualizar" },
-      select: { id: true, created_at: true, descripcion: true, usuario_nombre: true, meta: true },
+      where: { ...withTenant(tenantId), entidad: "clientes", entidad_id: id, accion: { in: ["actualizar", "contactar"] } },
+      select: { id: true, created_at: true, descripcion: true, usuario_nombre: true, accion: true, meta: true },
       orderBy: { created_at: "desc" },
-      take: 50,
+      take: 100,
     }),
   ]);
 
@@ -118,6 +126,7 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: { param
       detalle: p.anulado ? p.anulado_motivo : p.notas,
       monto: p.monto,
       credito: nroDe.get(p.credito_id) ?? null,
+      soloFecha: true, // `pagos.fecha` es @db.Date: ya es el día, no un instante
     });
   }
 
@@ -151,6 +160,7 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: { param
       monto: a.monto_acordado,
       credito: nroDe.get(a.credito_id) ?? null,
       actor: a.creado_por_nombre,
+      soloFecha: true, // `acuerdos_pago.fecha` es @db.Date
     });
   }
 
@@ -165,8 +175,27 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: { param
   }
 
   for (const ev of auditoria) {
-    const meta = ev.meta as { estado_nuevo?: string; estado_anterior?: string; motivo?: string } | null;
-    if (!meta?.estado_nuevo) continue; // solo los cambios de estado, no cualquier edición
+    const meta = ev.meta as {
+      estado_nuevo?: string; estado_anterior?: string; motivo?: string;
+      canal?: string; asunto?: string | null; gestion_id?: string | null;
+    } | null;
+
+    if (ev.accion === "contactar") {
+      // Los de MORA ya entraron por `acciones_cobranza` (tienen `gestion_id`): si se
+      // agregaran también desde acá, cada aviso de mora se vería dos veces.
+      if (meta?.gestion_id) continue;
+      eventos.push({
+        fecha: ev.created_at.toISOString(),
+        tipo: "contacto",
+        titulo: ev.descripcion,
+        // El asunto del mail dice de qué se trató; el cuerpo entero es ruido en una lista.
+        detalle: meta?.asunto ?? null,
+        actor: ev.usuario_nombre,
+      });
+      continue;
+    }
+
+    if (!meta?.estado_nuevo) continue; // del resto, solo los cambios de estado
     eventos.push({
       fecha: ev.created_at.toISOString(),
       tipo: "estado",
