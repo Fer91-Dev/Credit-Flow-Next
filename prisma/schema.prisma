@@ -530,12 +530,37 @@ model campana_objetivo {
   campana_id       String   @db.Uuid
   credito_id       String   @db.Uuid
   // Snapshot de la mora al incorporar a la campaña
-  saldo            Float    @default(0)
+  saldo            Float    @default(0) // capital pendiente (NO es lo que se reclama)
   dias_mora        Int      @default(0)
   interes_mora     Float    @default(0)
+  /**
+   * Lo que está VENCIDO e impago, con mora: capital + interés + cargos de las cuotas que ya
+   * vencieron. Es lo que hay que reclamar, y sobre lo que se calcula la oferta.
+   *
+   * 🔴 La campaña armaba la oferta sobre `saldo` (capital). Es el mismo error que se corrigió
+   * en el contacto individual, pero multiplicado por toda la lista: a cada moroso le llegaba
+   * una cifra que no coincidía con lo que la caja le iba a cobrar. Nulable porque las
+   * campañas viejas no lo tienen.
+   */
+  vencido          Float?
+  cuotas_vencidas  Int?
   // Oferta de recuperación calculada (calculateRecoveryOffer)
   oferta_monto     Float    @default(0) // monto a cancelar con descuento aplicado
   oferta_descuento Float    @default(0) // $ de descuento (ahorro) ofrecido
+  /**
+   * ── Estado del ENVÍO, por destinatario ──
+   *
+   * Sin esto, mandar era todo o nada: el endpoint recorría la lista entera en una sola
+   * función y Vercel la corta a los 10 segundos. Una campaña de más de ~8 mails moría a la
+   * mitad, y como el candado anti-reenvío es por día, los que faltaban no se podían
+   * reintentar hasta mañana — sin que la pantalla dijera cuáles quedaron afuera.
+   *
+   * Ahora cada objetivo lleva su propio estado, así el envío se hace por tandas, se puede
+   * retomar donde se cortó y se ve a quién le llegó y a quién no.
+   */
+  envio_estado     String?  // pendiente | enviado | error | manual
+  envio_at         DateTime? @db.Timestamptz(6)
+  envio_error      String?
   // Seguimiento
   promesa_generada Boolean  @default(false)
   monto_recuperado Float    @default(0)

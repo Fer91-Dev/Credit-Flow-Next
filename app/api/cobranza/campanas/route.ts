@@ -2,7 +2,7 @@ import { requireRole, scopeCreditosVendedor } from "@/lib/auth";
 import { successResponse, errorResponse, withErrorHandler, assertSameOrigin } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
-import { cuotaMensualFrancesa, tasaPeriodicaSegunConvencion, interesMora, normalizarFrecuencia, calculateRecoveryOffer, diasMoraActual, type FrecuenciaDef, type ConfiguracionFinanciera, moraDelCredito, moraDesdeCronograma, esCreditoVivo } from "@/lib/domain";
+import { cuotaMensualFrancesa, tasaPeriodicaSegunConvencion, interesMora, normalizarFrecuencia, calculateRecoveryOffer, diasMoraActual, type FrecuenciaDef, type ConfiguracionFinanciera, moraDelCredito, moraDesdeCronograma, esCreditoVivo, calcularDeudaVencida, round2, type CuotaParaImputar } from "@/lib/domain";
 import { getConfiguracion } from "@/lib/config";
 import { registrarAuditoria } from "@/lib/audit";
 import { hoyComercial } from "@/lib/utils";
@@ -126,6 +126,8 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
       id: true, saldo_pendiente: true, dias_mora: true, proximo_pago: true, estado: true,
       monto_original: true, plazo_meses: true, tasa: true,
       frecuencia: true, frecuencia_def: true, cronograma: true,
+      // Las cuotas: sin ellas no se puede saber qué está VENCIDO, que es lo que se reclama.
+      cuotas: { orderBy: { nro: "asc" } },
     },
   });
   if (creditos.length === 0) {
@@ -139,20 +141,53 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
   // (no del cache `dias_mora`, que no se avanza día a día) → la oferta refleja la mora de hoy.
   const objetivosData = creditos.map((c) => {
     const dm = c.proximo_pago ? diasMoraActual(c.proximo_pago, hoyCamp) : c.dias_mora;
-    const interes = interesMoraDe({ ...c, dias_mora: dm }, config);
+
+    /**
+     * 🔴 LA OFERTA SE ARMA SOBRE LO VENCIDO, NO SOBRE EL CAPITAL.
+     *
+     * Antes entraba `saldo_pendiente` —capital— así que la cifra que le llegaba a cada
+     * moroso no coincidía ni con su ficha ni con lo que la caja iba a cobrarle. Es el mismo
+     * error que se corrigió en el contacto individual, pero repetido en toda la lista.
+     *
+     * Y hay una razón de fondo además de la aritmética: una campaña de recupero negocia lo
+     * que YA venció. Reclamar el préstamo entero —cuotas futuras incluidas— es exigir la
+     * caducidad de plazos, que es otra cosa y no se decide desde una campaña.
+     *
+     * `calcularDeudaVencida` es la MISMA función con la que se arman los acuerdos de pago,
+     * así que la oferta masiva y el arreglo de mostrador hablan del mismo número.
+     */
+    const cuotasDom: CuotaParaImputar[] = c.cuotas.map((q) => ({
+      id: q.id, nro: q.nro, fechaVencimiento: q.fecha_vencimiento,
+      capital: q.capital, interes: q.interes, cargos: round2(q.iva + q.seguro + q.gastos),
+      cuotaTotal: q.cuota_total,
+      pagadoCapital: q.pagado_capital, pagadoInteres: q.pagado_interes,
+      pagadoMora: q.pagado_mora, pagadoCargos: q.pagado_cargos,
+    }));
+    const mc = moraDelCredito(moraDesdeCronograma(c.cronograma), config);
+    const gracia = (c.cronograma as { diasGracia?: number } | null)?.diasGracia ?? config.simulador.diasGracia;
+    const dv = calcularDeudaVencida(cuotasDom, {
+      moraActiva: mc.moraActiva, tasaMoraDiaria: mc.tasaMoraDiaria, diasGracia: gracia, hoy: hoyCamp,
+    });
+
+    // La oferta se calcula sobre lo vencido SIN mora, con la mora aparte: es lo que
+    // `calculateRecoveryOffer` espera para poder condonar solo los punitorios.
+    const vencidoSinMora = round2(dv.capital + dv.interes + dv.cargos);
     const oferta = calculateRecoveryOffer({
-      saldo: c.saldo_pendiente,
-      interesMora: interes,
+      saldo: vencidoSinMora,
+      interesMora: dv.mora,
       diasMora: dm,
       descuentoPct: promoValor,
     });
     return {
       credito_id: c.id,
-      saldo: c.saldo_pendiente,
+      saldo: c.saldo_pendiente,     // capital, se conserva como referencia
+      vencido: round2(dv.total),    // lo exigible hoy, con mora
+      cuotas_vencidas: dv.cuotas_vencidas,
       dias_mora: dm,
-      interes_mora: interes,
+      interes_mora: dv.mora,
       oferta_monto: oferta.montoConDescuento,
       oferta_descuento: oferta.descuento,
+      envio_estado: "pendiente",
     };
   });
 

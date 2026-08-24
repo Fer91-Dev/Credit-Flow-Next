@@ -50,6 +50,8 @@ export function CampaignModal({ creditos, onClose }: CampaignModalProps) {
   });
   const [loading, setLoading] = useState(false);
   const [enviandoApi, setEnviandoApi] = useState(false);
+  /** Avance del envío por tandas: cuántos salieron y cuántos faltan. */
+  const [progreso, setProgreso] = useState<{ enviados: number; pendientes: number; procesados: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [launched, setLaunched] = useState(false);
   const [campanaId, setCampanaId] = useState<string | null>(null);
@@ -149,14 +151,43 @@ export function CampaignModal({ creditos, onClose }: CampaignModalProps) {
     if (!ok) return;
     setEnviandoApi(true);
     setError(null);
+    setProgreso(null);
     try {
-      const res = await fetch(`/api/cobranza/campanas/${campanaId}/enviar`, { method: "POST" });
-      const json = await res.json();
-      if (!json.ok) { setError(json.error || "Error al enviar"); toast.error(json.error || "Error al enviar"); return; }
-      // Marcar todos como enviados
-      const todos = new Set(objetivos.map(o => o.credito.id));
-      setEnviados(todos);
-      toast.success(`Campaña enviada a ${objetivos.length} cliente${objetivos.length !== 1 ? "s" : ""}`);
+      /**
+       * 🔴 SE LLAMA POR TANDAS HASTA TERMINAR.
+       *
+       * El envío es secuencial y una función de Vercel se corta a los 60 segundos, así que
+       * el servidor manda lo que le entra en ese rato y devuelve `quedan_pendientes`. Con
+       * una sola llamada, una campaña de 50 clientes moría a la mitad y —peor— no había
+       * forma de saber a quiénes les había llegado.
+       *
+       * Los ya enviados quedan marcados en la base, así que cada vuelta toma solo los que
+       * faltan: nadie recibe el mensaje dos veces.
+       */
+      const yaEnviados = new Set<string>();
+      let vueltas = 0;
+      for (;;) {
+        const res = await fetch(`/api/cobranza/campanas/${campanaId}/enviar`, { method: "POST" });
+        const json = await res.json();
+        if (!json.ok) { setError(json.error || "Error al enviar"); toast.error(json.error || "Error al enviar"); return; }
+
+        for (const r of (json.data.resultados ?? []) as { cliente_id: string; ok?: boolean }[]) {
+          if (r.ok !== false) yaEnviados.add(r.cliente_id);
+        }
+        setEnviados(new Set(yaEnviados));
+        setProgreso(json.data.progreso ?? null);
+
+        if (!json.data.quedan_pendientes) break;
+        // Guarda contra un bucle infinito si una tanda dejara de avanzar (por ejemplo, el
+        // email sin configurar: esos objetivos quedan pendientes a propósito).
+        if ((json.data.progreso?.procesados ?? 0) === 0 || ++vueltas > 40) {
+          setError("El envío se detuvo con destinatarios pendientes. Revisá la configuración del canal y volvé a intentar.");
+          return;
+        }
+      }
+
+      const total = objetivos.length;
+      toast.success(`Campaña enviada a ${yaEnviados.size} de ${total} cliente${total !== 1 ? "s" : ""}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Error");
     } finally {
@@ -195,11 +226,22 @@ export function CampaignModal({ creditos, onClose }: CampaignModalProps) {
           >
             {enviandoApi ? <Loader2 className="h-4 w-4 animate-spin" /> : esEmail ? <Mail className="h-4 w-4" /> : <WhatsAppIcon className="h-4 w-4" />}
             {enviandoApi
-              ? "Enviando…"
+              // Con muchos destinatarios el envío tarda: sin el contador, un botón que dice
+              // "Enviando…" durante un minuto parece colgado y alguien lo va a recargar.
+              ? progreso
+                ? `Enviando… ${progreso.enviados} de ${progreso.enviados + progreso.pendientes}`
+                : "Enviando…"
               : esEmail
                 ? `Enviar ${objetivos.length} email${objetivos.length !== 1 ? "s" : ""}`
                 : `Enviar ${objetivos.length} mensajes vía WhatsApp API`}
           </button>
+        )}
+
+        {progreso && !enviandoApi && progreso.pendientes > 0 && (
+          <p className="rounded-lg border border-warning/30 bg-warning/5 px-3 py-2 text-xs text-warning">
+            Quedaron {progreso.pendientes} sin enviar. Los que ya salieron no se repiten: volvé a
+            apretar Enviar y sigue por donde se cortó.
+          </p>
         )}
 
         <div className="space-y-2 max-h-[40vh] overflow-y-auto pr-1">
