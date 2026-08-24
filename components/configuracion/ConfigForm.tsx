@@ -85,14 +85,23 @@ const AYUDA: Record<string, AyudaBloque> = {
   },
   mora: {
     titulo: "Interés por mora",
-    texto: "Recargo que se suma cuando el cliente paga una cuota tarde. Con el switch apagado, no se cobra mora.",
+    texto:
+      "Recargo que se suma cuando el cliente paga una cuota tarde. Se calcula POR CUOTA y sobre el valor de esa cuota: "
+      + "si tiene tres vencidas, cada una devenga su propio punitorio. Con el switch apagado no se cobra mora.",
+    ejemplo:
+      "Una cuota de $50.000,00 con mora del 1% diario acumula $500,00 por día. A los 30 días de atraso son $15.000,00; "
+      + "a los 100 días, $50.000,00 — o sea, la mora ya iguala a la cuota. Sin tope sigue: al año son $182.500,00 de "
+      + "punitorios sobre una cuota de $50.000,00. Con el tope en «1 vez el valor de la cuota», se detiene en $50.000,00 "
+      + "y no crece más, aunque el crédito quede impago dos años.",
     puntos: [
       "Tasa diaria: % que se acumula por cada día de atraso.",
-      "Se aplica sobre el VALOR DE LA CUOTA vencida: cada cuota atrasada devenga su propio punitorio.",
       "Los días de gracia (Simulador → Cronograma) son la tolerancia antes de que empiece a correr.",
-      "TOPE: hasta dónde puede crecer la mora DE CADA CUOTA. No cuenta cuotas vencidas — limita el importe: con «1 vez el valor de la cuota», la mora de una cuota de $36.720,86 nunca pasa de $36.720,86.",
-      "Sin techo la mora no para: al 1% diario iguala a la cuota a los 100 días, al año es el 365% y a los dos años el 730%. Nadie paga eso, pero infla igual el saldo expuesto y el % de morosidad — y si el caso va a juicio, el art. 771 del Código Civil faculta al juez a reducir intereses excesivos.",
-      "El tope se CONGELA al otorgar: cambiarlo no reescribe la deuda de los créditos que ya estaban dados.",
+      "TOPE — hasta dónde puede crecer la mora DE CADA CUOTA. NO cuenta cuotas vencidas: limita el importe a un múltiplo de lo que vale la cuota.",
+      "Elegirlo resigna plata: en un cliente que paga muy tarde vas a cobrar menos punitorios de los que se habrían acumulado.",
+      "A cambio, la deuda sigue siendo pagable. Cuando los punitorios triplican la cuota, el deudor deja de intentar y el caso se pierde entero.",
+      "Y los reportes dejan de mentir: hoy el saldo expuesto y el % de morosidad incluyen punitorios que nadie va a pagar.",
+      "Si el caso va a juicio, el art. 771 del Código Civil faculta al juez a reducir intereses excesivos. Un tope propio es defendible; uno impuesto por un juez, no.",
+      "El tope se CONGELA al otorgar, igual que la tasa: cambiarlo no reescribe la deuda de los créditos ya dados.",
     ],
   },
   cajas: {
