@@ -38,6 +38,21 @@ export function HelpPanel({ doc, open, onClose }: HelpPanelProps) {
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose]);
 
+  /**
+   * Con el panel abierto, la PÁGINA no se mueve.
+   *
+   * El panel ya tenía su propio scroll, pero la rueda del mouse fuera de él —o al llegar a
+   * su final— seguía moviendo el contenido de atrás: se leía la ayuda y la pantalla se iba
+   * corriendo sola. Se restaura el valor anterior al cerrar en vez de fijarlo en "" para no
+   * pisar un overflow que haya puesto otro componente (un diálogo, por ejemplo).
+   */
+  useEffect(() => {
+    if (!open) return;
+    const anterior = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = anterior; };
+  }, [open]);
+
   if (!open || !doc || !mounted) return null;
 
   return createPortal(
@@ -73,7 +88,9 @@ export function HelpPanel({ doc, open, onClose }: HelpPanelProps) {
         </div>
 
         {/* Contenido */}
-        <div className="flex-1 overflow-y-auto px-5 py-5">
+        {/* `overscroll-contain`: al llegar al final del panel, el scroll NO se encadena a la
+          página de atrás. Sin esto, seguir bajando movía todo el contenido del fondo. */}
+        <div className="flex-1 overflow-y-auto overscroll-contain px-5 py-5">
           {/* Resumen destacado */}
           <p className="rounded-xl border border-primary/15 bg-primary/[0.06] p-3.5 text-sm leading-relaxed text-foreground">
             {doc.resumen}

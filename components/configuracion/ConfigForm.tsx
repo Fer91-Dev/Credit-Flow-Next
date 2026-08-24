@@ -2313,7 +2313,12 @@ export function HelpHint({ ayuda }: { ayuda: AyudaBloque }) {
         <HelpCircle className="h-4 w-4" />
       </button>
       {open && (
-        <div className="absolute right-0 top-9 z-30 w-80 max-w-[calc(100vw-2rem)] rounded-xl border border-border bg-card p-3.5 text-left shadow-2xl shadow-black/30">
+        /* 🔴 ALTO MÁXIMO + SCROLL PROPIO.
+           El globo crecía sin límite: con una ayuda larga se salía de la pantalla y la única
+           forma de leer el final era scrollear la PÁGINA, que arrastraba todo el contenido
+           de atrás. `overscroll-contain` es la otra mitad del arreglo — sin él, al llegar al
+           final del globo el scroll se encadena al fondo y vuelve a moverse la página. */
+        <div className="absolute right-0 top-9 z-30 flex max-h-[min(70vh,32rem)] w-80 max-w-[calc(100vw-2rem)] flex-col overflow-y-auto overscroll-contain rounded-xl border border-border bg-card p-3.5 text-left shadow-2xl shadow-black/30">
           <div className="mb-1.5 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-primary">
             <HelpCircle className="h-3.5 w-3.5" /> {ayuda.titulo ?? "Ayuda"}
           </div>
