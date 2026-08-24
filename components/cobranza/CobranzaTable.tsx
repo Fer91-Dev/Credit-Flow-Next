@@ -26,7 +26,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { ModalHeader } from "@/components/ui/form-kit";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
-import { esCreditoVivo } from "@/lib/domain";
+import { esCreditoVivo, deudaEnRevision } from "@/lib/domain";
 
 function n0(x: number) {
   return new Intl.NumberFormat("es-AR", { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(x);
@@ -90,8 +90,20 @@ export function CobranzaTable({ role }: { role: Role }) {
   const [seleccion, setSeleccion] = useState<Set<string>>(new Set());
   const [campaignOpen, setCampaignOpen] = useState(false);
 
+  /**
+   * 🔴 A un fallecido no se le manda una campaña, así que tampoco se lo puede tildar.
+   *
+   * El backend ya lo excluye al armar, pero la lista seguía dejando seleccionarlo: el
+   * operador marcaba 10, creaba la campaña y quedaban 9, sin nada que se lo hubiera dicho
+   * antes. El crédito se sigue VIENDO —su deuda existe y hay que poder abrir la ficha—,
+   * pero con el casillero apagado y el motivo a la vista.
+   */
+  const noContactable = (c: Credito) => deudaEnRevision(c.cliente);
+
   const toggleSel = (id: string) =>
     setSeleccion(prev => {
+      const cred = allCreditos.find(c => c.id === id);
+      if (cred && noContactable(cred)) return prev;
       const next = new Set(prev);
       next.has(id) ? next.delete(id) : next.add(id);
       return next;
@@ -188,8 +200,11 @@ export function CobranzaTable({ role }: { role: Role }) {
 
   // ── Selección de audiencia para campañas ──
   const seleccionados = useMemo(() => creditos.filter(c => seleccion.has(c.id)), [creditos, seleccion]);
-  const visiblesIds = sortedFiltered.map(c => c.id);
+  // "Seleccionar todos" son todos los CONTACTABLES: si arrastrara a los fallecidos, el tilde
+  // de la cabecera volvería a prometer un número que la campaña después no cumple.
+  const visiblesIds = sortedFiltered.filter(c => !noContactable(c)).map(c => c.id);
   const todasVisiblesSel = visiblesIds.length > 0 && visiblesIds.every(id => seleccion.has(id));
+  const bloqueadosVisibles = sortedFiltered.filter(noContactable).length;
 
   const toggleTodasVisibles = () =>
     setSeleccion(prev => {
@@ -350,18 +365,38 @@ export function CobranzaTable({ role }: { role: Role }) {
           columns={[
             ...(puedeCampanas ? ([{
               header: (
-                <input type="checkbox" checked={todasVisiblesSel} onChange={toggleTodasVisibles} title="Seleccionar todos los visibles" className="h-4 w-4 rounded border-border accent-primary cursor-pointer" />
+                <input
+                  type="checkbox"
+                  checked={todasVisiblesSel}
+                  onChange={toggleTodasVisibles}
+                  title={bloqueadosVisibles > 0
+                    ? `Seleccionar todos los contactables (${bloqueadosVisibles} quedan afuera: cliente fallecido)`
+                    : "Seleccionar todos los visibles"}
+                  className="h-4 w-4 rounded border-border accent-primary cursor-pointer"
+                />
               ),
               className: "w-10",
               cell: (c) => (
-                <input type="checkbox" checked={seleccion.has(c.id)} onChange={() => toggleSel(c.id)} onClick={(e) => e.stopPropagation()} className="h-4 w-4 rounded border-border accent-primary cursor-pointer" />
+                <input
+                  type="checkbox"
+                  checked={seleccion.has(c.id)}
+                  disabled={noContactable(c)}
+                  title={noContactable(c) ? "Cliente fallecido: su deuda está en revisión, no entra en campañas" : undefined}
+                  onChange={() => toggleSel(c.id)}
+                  onClick={(e) => e.stopPropagation()}
+                  className="h-4 w-4 rounded border-border accent-primary cursor-pointer disabled:cursor-not-allowed disabled:opacity-30"
+                />
               ),
             }] as Column<Credito>[]) : []),
             {
               header: "Cliente",
               cell: (c) => (
                 <div>
-                  <p className="font-medium text-foreground">{nombreCompleto(c.cliente)}</p>
+                  <p className="flex items-center gap-1.5 font-medium text-foreground">
+                    {nombreCompleto(c.cliente)}
+                    {/* El motivo, en la fila: si no, un casillero apagado no explica nada. */}
+                    {noContactable(c) && <StatusBadge label="Fallecido" variant="destructive" />}
+                  </p>
                   {(() => {
                     const u = ultimaPorCredito.get(c.id);
                     if (!u) return null;
@@ -462,9 +497,17 @@ export function CobranzaTable({ role }: { role: Role }) {
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex items-center gap-2.5 min-w-0" onClick={(e) => e.stopPropagation()}>
                     {puedeCampanas && (
-                      <input type="checkbox" checked={seleccion.has(c.id)} onChange={() => toggleSel(c.id)} className="h-4 w-4 rounded border-border accent-primary cursor-pointer shrink-0" />
+                      <input
+                        type="checkbox"
+                        checked={seleccion.has(c.id)}
+                        disabled={noContactable(c)}
+                        title={noContactable(c) ? "Cliente fallecido: no entra en campañas" : undefined}
+                        onChange={() => toggleSel(c.id)}
+                        className="h-4 w-4 rounded border-border accent-primary cursor-pointer shrink-0 disabled:cursor-not-allowed disabled:opacity-30"
+                      />
                     )}
                     <p className="font-medium text-foreground text-sm truncate">{nombreCompleto(c.cliente)}</p>
+                    {noContactable(c) && <StatusBadge label="Fallecido" variant="destructive" />}
                   </div>
                   <StatusBadge label={sev.label} variant={sev.variant} />
                 </div>

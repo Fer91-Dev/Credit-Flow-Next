@@ -198,7 +198,8 @@ export interface Credito {
   /** Número del crédito que esta refinanciación reemplaza: se muestra como REF-XXXXXX. */
   refinancia_a_numero?: number | null;
   cliente_id: string;
-  cliente: { nombre: string; apellido?: string | null; documento?: string | null; email?: string; telefono?: string };
+  /** `estado` del titular: un fallecido no se contacta ni entra en campañas. */
+  cliente: { nombre: string; apellido?: string | null; documento?: string | null; email?: string; telefono?: string; estado?: string | null };
   vendedor_id?: string | null;
   vendedor?: { id: string; nombre: string } | null;
   /** Quién EJECUTÓ el otorgamiento (≠ a quién se le atribuye la venta). Nombre congelado. */
