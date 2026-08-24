@@ -54,6 +54,22 @@ const ordenLabel: Record<string, string> = {
  */
 export type AyudaBloque = { titulo?: string; texto: string; ejemplo?: string; puntos?: string[] };
 
+/**
+ * Opciones del techo de mora, expresadas en CUOTAS.
+ *
+ * Se eligen de una lista y no se escribe un número libre porque el valor no es una
+ * preferencia estética: define cuánto puede crecer una deuda. Un campo abierto invita a
+ * poner "50" sin saber que eso apaga el punitorio a los 50 días con una tasa del 1%.
+ *
+ * En cuotas y no en porcentaje: "hasta 2 cuotas" se entiende sin cuenta previa; "200%" no.
+ */
+const TOPES_MORA = [
+  { pct: 0,   label: "Sin tope — crece para siempre" },
+  { pct: 100, label: "Hasta 1 cuota (100%)" },
+  { pct: 200, label: "Hasta 2 cuotas (200%)" },
+  { pct: 300, label: "Hasta 3 cuotas (300%)" },
+] as const;
+
 const AYUDA: Record<string, AyudaBloque> = {
   motor: {
     titulo: "Motor financiero",
@@ -489,6 +505,24 @@ export function ConfigForm() {
   const topeDias = form && form.tasaMoraDiaria > 0 && form.topeMoraPct > 0
     ? Math.round(form.topeMoraPct / 100 / form.tasaMoraDiaria)
     : 0;
+  /** true cuando el valor guardado no coincide con ninguna opción de la lista. */
+  const [topeManual, setTopeManual] = useState(false);
+  const topePersonalizado = topeManual || (!!form && !TOPES_MORA.some(o => o.pct === form.topeMoraPct));
+  const setTopePersonalizado = setTopeManual;
+
+  /**
+   * Qué pasa en el sistema con la opción elegida. Se calcula con la TASA CARGADA, así que el
+   * "a los N días" es el de esta financiera y no un ejemplo genérico.
+   */
+  const topeConsecuencia = !form
+    ? ""
+    : form.topeMoraPct === 0
+      ? form.tasaMoraDiaria > 0
+        ? `La mora no para nunca: a los ${Math.round(1 / form.tasaMoraDiaria)} días ya iguala a la cuota y sigue. Los reportes van a incluir punitorios que nadie va a pagar.`
+        : "La mora no tiene techo."
+      : topeDias > 0
+        ? `Corre normal los primeros ${topeDias} días de atraso; a partir de ahí la deuda deja de crecer. Cobrás menos en los que pagan muy tarde, pero la deuda sigue siendo pagable y los reportes muestran plata real.`
+        : `La mora se detiene al llegar al ${form.topeMoraPct}% de la cuota.`;
   const avisosDocs = revisarDocumentos(docs, punitorioMensual);
 
   // Rentabilidad: costo de fondeo para la ganancia NETA de Reportes.
@@ -1082,35 +1116,47 @@ export function ConfigForm() {
               </Field>
 
               <Field
-                label="Tope de mora (% de la cuota)"
-                hint={
-                  form.topeMoraPct > 0
-                    ? `La mora deja de crecer al llegar al ${form.topeMoraPct}% de la cuota${topeDias ? ` (≈ ${topeDias} días de atraso)` : ""}.`
-                    : "0 = sin tope: la mora crece sin límite mientras el crédito siga impago."
-                }
+                label="Hasta dónde puede crecer la mora"
+                hint={topeConsecuencia}
               >
-                <div className="relative">
-                  <Input
-                    type="number" min="0" max="1000" step="10"
-                    value={form.topeMoraPct}
-                    onChange={e => set("topeMoraPct", Math.max(0, Math.min(1000, parseFloat(e.target.value) || 0)))}
-                    disabled={!form.moraActiva}
-                    className="pr-7"
-                  />
-                  <Percent className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
-                </div>
+                {/*
+                  Se elige de una LISTA y se expresa en CUOTAS, no en un % libre.
+                  "200%" no le dice nada a nadie; "hasta 2 cuotas" se entiende solo. Y como
+                  cada opción avisa a los cuántos días toca el techo CON LA TASA CARGADA, la
+                  consecuencia se ve antes de guardar, no después con un moroso adelante.
+                */}
+                <Select
+                  value={topePersonalizado ? "otro" : String(form.topeMoraPct)}
+                  onChange={e => {
+                    const v = e.target.value;
+                    if (v === "otro") { setTopePersonalizado(true); return; }
+                    setTopePersonalizado(false);
+                    set("topeMoraPct", Number(v));
+                  }}
+                  disabled={!form.moraActiva}
+                >
+                  {TOPES_MORA.map(o => (
+                    <option key={o.pct} value={o.pct}>{o.label}</option>
+                  ))}
+                  <option value="otro">Otro valor…</option>
+                </Select>
+
+                {topePersonalizado && (
+                  <div className="relative mt-2">
+                    <Input
+                      type="number" min="0" max="1000" step="10"
+                      value={form.topeMoraPct}
+                      onChange={e => set("topeMoraPct", Math.max(0, Math.min(1000, parseFloat(e.target.value) || 0)))}
+                      disabled={!form.moraActiva}
+                      className="pr-7"
+                      placeholder="% de la cuota"
+                    />
+                    <Percent className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
+                  </div>
+                )}
               </Field>
             </div>
 
-            {/* El dato que falta al decidir el número: en cuántos días se llega al techo con
-                la tasa cargada. Sin esto, "100%" no dice nada operativo. */}
-            {form.moraActiva && form.topeMoraPct === 0 && form.tasaMoraDiaria > 0 && (
-              <p className="mt-3 max-w-2xl rounded-lg border border-warning/30 bg-warning/5 px-3 py-2 text-xs text-warning">
-                Sin tope, al {Number((form.tasaMoraDiaria * 100).toFixed(4))}% diario la mora iguala a la cuota
-                a los {Math.round(1 / form.tasaMoraDiaria)} días y sigue creciendo: al año acumula
-                el {Math.round(form.tasaMoraDiaria * 365 * 100)}% de la cuota.
-              </p>
-            )}
           </Section>
 
           {/* Imputación */}
