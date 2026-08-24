@@ -55,19 +55,23 @@ const ordenLabel: Record<string, string> = {
 export type AyudaBloque = { titulo?: string; texto: string; ejemplo?: string; puntos?: string[] };
 
 /**
- * Opciones del techo de mora, expresadas en CUOTAS.
+ * Opciones del techo de mora.
  *
  * Se eligen de una lista y no se escribe un número libre porque el valor no es una
  * preferencia estética: define cuánto puede crecer una deuda. Un campo abierto invita a
  * poner "50" sin saber que eso apaga el punitorio a los 50 días con una tasa del 1%.
  *
- * En cuotas y no en porcentaje: "hasta 2 cuotas" se entiende sin cuenta previa; "200%" no.
+ * 🔴 LA REDACCIÓN IMPORTA. La primera versión decía "Hasta 2 cuotas", y el usuario la leyó
+ * como "2 cuotas vencidas" — que es otro concepto, y que además EXISTE en el sistema (las
+ * cuotas impagas que rompen un acuerdo). El tope no cuenta cuotas: limita el IMPORTE de la
+ * mora de cada cuota a un múltiplo de lo que vale esa cuota. Por eso ahora dice "veces el
+ * valor de la cuota", que no se puede confundir con un conteo.
  */
 const TOPES_MORA = [
-  { pct: 0,   label: "Sin tope — crece para siempre" },
-  { pct: 100, label: "Hasta 1 cuota (100%)" },
-  { pct: 200, label: "Hasta 2 cuotas (200%)" },
-  { pct: 300, label: "Hasta 3 cuotas (300%)" },
+  { pct: 0,   label: "Sin tope — la mora crece para siempre" },
+  { pct: 100, label: "1 vez el valor de la cuota (100%)" },
+  { pct: 200, label: "2 veces el valor de la cuota (200%)" },
+  { pct: 300, label: "3 veces el valor de la cuota (300%)" },
 ] as const;
 
 const AYUDA: Record<string, AyudaBloque> = {
@@ -86,7 +90,7 @@ const AYUDA: Record<string, AyudaBloque> = {
       "Tasa diaria: % que se acumula por cada día de atraso.",
       "Se aplica sobre el VALOR DE LA CUOTA vencida: cada cuota atrasada devenga su propio punitorio.",
       "Los días de gracia (Simulador → Cronograma) son la tolerancia antes de que empiece a correr.",
-      "TOPE: hasta dónde puede crecer la mora, como % de la cuota. Con 100, deja de sumar cuando iguala a la cuota; con 0 no hay techo.",
+      "TOPE: hasta dónde puede crecer la mora DE CADA CUOTA. No cuenta cuotas vencidas — limita el importe: con «1 vez el valor de la cuota», la mora de una cuota de $36.720,86 nunca pasa de $36.720,86.",
       "Sin techo la mora no para: al 1% diario iguala a la cuota a los 100 días, al año es el 365% y a los dos años el 730%. Nadie paga eso, pero infla igual el saldo expuesto y el % de morosidad — y si el caso va a juicio, el art. 771 del Código Civil faculta al juez a reducir intereses excesivos.",
       "El tope se CONGELA al otorgar: cambiarlo no reescribe la deuda de los créditos que ya estaban dados.",
     ],
@@ -521,8 +525,8 @@ export function ConfigForm() {
         ? `La mora no para nunca: a los ${Math.round(1 / form.tasaMoraDiaria)} días ya iguala a la cuota y sigue. Los reportes van a incluir punitorios que nadie va a pagar.`
         : "La mora no tiene techo."
       : topeDias > 0
-        ? `Corre normal los primeros ${topeDias} días de atraso; a partir de ahí la deuda deja de crecer. Cobrás menos en los que pagan muy tarde, pero la deuda sigue siendo pagable y los reportes muestran plata real.`
-        : `La mora se detiene al llegar al ${form.topeMoraPct}% de la cuota.`;
+        ? `La mora de CADA cuota corre normal los primeros ${topeDias} días de atraso y ahí se detiene: nunca supera ${form.topeMoraPct / 100} ${form.topeMoraPct === 100 ? "vez" : "veces"} lo que vale esa cuota. Cobrás menos en los que pagan muy tarde, pero la deuda sigue siendo pagable y los reportes muestran plata real.`
+        : `La mora de cada cuota se detiene al llegar al ${form.topeMoraPct}% de lo que vale esa cuota.`;
   const avisosDocs = revisarDocumentos(docs, punitorioMensual);
 
   // Rentabilidad: costo de fondeo para la ganancia NETA de Reportes.
@@ -1116,7 +1120,7 @@ export function ConfigForm() {
               </Field>
 
               <Field
-                label="Hasta dónde puede crecer la mora"
+                label="Hasta dónde puede crecer la mora de una cuota"
                 hint={topeConsecuencia}
               >
                 {/*
