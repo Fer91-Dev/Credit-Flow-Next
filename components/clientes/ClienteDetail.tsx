@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useSWRConfig } from "swr";
 import {
-  Pencil, Trash2, CalendarClock, ChevronRight, Loader2, Mail, MessageCircle, Phone, Printer, ShieldCheck, Ban, Receipt, AlertTriangle, History,
+  Pencil, Trash2, CalendarClock, ChevronRight, Loader2, Mail, MessageCircle, Phone, Printer, ShieldCheck, Ban, Receipt, AlertTriangle, History, BellOff,
 } from "lucide-react";
 import { refrescarNotificaciones, useClienteDetalle, useAccionesCobranza, useCuotas, useFinanciera, KEYS, type CreditoConFinanzas, type EstadoCuota, type CuotaPersistida } from "@/lib/swr";
 import { StatusBadge, type BadgeVariant } from "@/components/ui/StatusBadge";
@@ -20,6 +20,7 @@ import { ClienteBureauPanel } from "@/components/clientes/ClienteBureauPanel";
 import { EditarHistorialDialog } from "@/components/clientes/EditarHistorialDialog";
 import { ContactarDialog } from "@/components/clientes/ContactarDialog";
 import { EstadoClienteDialog } from "@/components/clientes/EstadoClienteDialog";
+import { NoContactarDialog } from "@/components/clientes/NoContactarDialog";
 import { ProntuarioPanel } from "@/components/clientes/ProntuarioPanel";
 import { abrirRecibo } from "@/lib/recibo";
 import { formatCreditoNumero, formatFecha, formatFechaHora, nombreCompleto } from "@/lib/utils";
@@ -185,6 +186,7 @@ export function ClienteDetail({
   const [editarHist, setEditarHist] = useState(false);
   const [contactar, setContactar] = useState(false);
   const [cambiarEstado, setCambiarEstado] = useState(false);
+  const [noContactar, setNoContactar] = useState(false);
 
   // Qué secciones se muestran según el contexto.
   const showPersonal = variant !== "pagos";   // datos personales/laborales
@@ -244,6 +246,7 @@ export function ClienteDetail({
   // Estado de la PERSONA (no del crédito). Un fallecido tiene la deuda en revisión: no se
   // le escribe, no devenga punitorios y no se lo persigue hasta que la financiera resuelva.
   const fallecido = deudaEnRevision(cliente);
+  const sinContacto = cliente.no_contactar === true;
   const estadoLabel = ESTADO_CLIENTE_LABEL[normalizarEstadoCliente(cliente.estado)];
   const estadoVariant = ESTADO_CLIENTE_VARIANT[normalizarEstadoCliente(cliente.estado)];
 
@@ -285,6 +288,14 @@ export function ClienteDetail({
                   {/* La calificación se veía solo en el LISTADO: al entrar a la ficha
                       desaparecía justo donde se la mira en serio. */}
                   <ScoreBadge score={cliente.score} />
+                  {sinContacto && (
+                    <span
+                      className="inline-flex items-center gap-1 rounded-full border border-warning/30 bg-warning/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-warning"
+                      title={cliente.no_contactar_motivo ?? "El cliente pidió que no lo contacten"}
+                    >
+                      <BellOff className="h-3 w-3" /> No contactar
+                    </span>
+                  )}
                   {cliente.migrado && (
                     <span
                       className="rounded-full border border-warning/30 bg-warning/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-warning"
@@ -309,13 +320,30 @@ export function ClienteDetail({
                   {/* A un fallecido no se le escribe: el mensaje le llegaría a la familia con
                       un reclamo de plata. El servidor lo rechaza igual (CLIENTE_FALLECIDO);
                       acá se saca el botón para que nadie llegue hasta el error. */}
-                  {showCreditos && !fallecido && (
+                  {showCreditos && !fallecido && !sinContacto && (
                     <button
                       type="button"
                       onClick={() => setContactar(true)}
                       className="inline-flex items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/10 px-2.5 py-1.5 text-xs font-medium text-primary hover:bg-primary/20 transition-colors"
                     >
                       <MessageCircle className="h-3.5 w-3.5" /> Contactar
+                    </button>
+                  )}
+                  {/* El pedido del titular se registra desde acá, en el mismo lugar donde
+                      está el botón de contactar: es quien atiende el llamado el que lo
+                      escucha. Con el pedido activo, el botón pasa a ser el de revertirlo. */}
+                  {showCreditos && !fallecido && (
+                    <button
+                      type="button"
+                      onClick={() => setNoContactar(true)}
+                      title={sinContacto ? "Volver a habilitar el contacto (solo admin)" : "El cliente pidió que no lo contacten"}
+                      className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors ${
+                        sinContacto
+                          ? "border-warning/30 bg-warning/10 text-warning hover:bg-warning/20"
+                          : "border-border text-muted-foreground hover:bg-muted hover:text-foreground"
+                      }`}
+                    >
+                      <BellOff className="h-3.5 w-3.5" /> {sinContacto ? "Rehabilitar" : "No contactar"}
                     </button>
                   )}
                   {onEditar && (
@@ -649,6 +677,14 @@ export function ClienteDetail({
       {/* Contacto individual (WhatsApp / email). Montado en la RAÍZ del componente, no dentro
           de una sección condicional: si vive en una rama que no se renderiza, no existe. */}
       <ContactarDialog clienteId={contactar ? cliente.id : null} onClose={() => setContactar(false)} />
+
+      {noContactar && (
+        <NoContactarDialog
+          cliente={cliente}
+          esAdmin={role === "admin"}
+          onClose={(guardado) => { setNoContactar(false); if (guardado) mutate(); }}
+        />
+      )}
 
       {cambiarEstado && (
         <EstadoClienteDialog

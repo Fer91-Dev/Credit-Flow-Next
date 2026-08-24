@@ -114,6 +114,28 @@ export function topeMoraPorFallecimiento(
 }
 
 /**
+ * ¿Se le puede mandar un mensaje a este cliente?
+ *
+ * Dos motivos distintos lo bloquean y conviene no mezclarlos:
+ *  - **Fallecido**: el mensaje le llegaría a la familia (`deudaEnRevision`). Es política de
+ *    la financiera y por eso se puede configurar.
+ *  - **No contactar**: lo pidió el titular. NO es configurable — ver la columna en el
+ *    esquema. Un pedido del cliente no se apaga desde un panel.
+ */
+export function contactoBloqueado(
+  cliente: { estado?: string | null; no_contactar?: boolean | null } | null | undefined,
+  opts: { bloqueaFallecidos?: boolean } = {},
+): { bloqueado: boolean; motivo: string | null } {
+  if (cliente?.no_contactar) {
+    return { bloqueado: true, motivo: "El cliente pidió que no lo contacten" };
+  }
+  if ((opts.bloqueaFallecidos ?? true) && deudaEnRevision(cliente)) {
+    return { bloqueado: true, motivo: "Cliente fallecido: su deuda está en revisión" };
+  }
+  return { bloqueado: false, motivo: null };
+}
+
+/**
  * La deuda de un fallecido queda EN REVISIÓN: no se persigue mientras la financiera decide
  * si la condona o va por la vía legal (sucesión). No es un estado del crédito en la DB — se
  * deriva del estado del cliente, así no puede quedar desincronizado.

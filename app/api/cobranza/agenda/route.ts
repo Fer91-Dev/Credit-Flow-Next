@@ -61,12 +61,19 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
       ...scopeCreditosVendedor({ role, vendedorId }),
       estado: { in: [...ESTADOS_VIVOS] },
       proximo_pago: { lt: hoy },
-      // Un cliente fallecido no tiene gestión posible: no se le puede escribir ni llamar, y
-      // su deuda está en revisión. Dejarlo en la cola sería darle al cobrador nombres sobre
-      // los que no puede hacer nada. Parametrizable: hay financieras que gestionan con la
-      // familia. Va DENTRO de este where —y no como una clave aparte— porque un segundo
-      // `where` en el mismo objeto pisaría el filtro de tenant entero.
-      ...(fallecidos.saca_de_agenda ? { cliente: { estado: { not: "fallecido" } } } : {}),
+      /**
+       * Quién NO entra en la cola del día:
+       *  - `no_contactar`: lo pidió el titular. Sale SIEMPRE — no depende de ninguna política.
+       *  - fallecido: no hay gestión posible y su deuda está en revisión. Parametrizable,
+       *    porque hay financieras que igual gestionan con la familia.
+       *
+       * Va DENTRO de este `where` y no como clave aparte: un segundo `where` en el mismo
+       * objeto pisaría el filtro de tenant entero.
+       */
+      cliente: {
+        no_contactar: false,
+        ...(fallecidos.saca_de_agenda ? { estado: { not: "fallecido" } } : {}),
+      },
     },
     select: {
       id: true, numero: true, saldo_pendiente: true, proximo_pago: true,

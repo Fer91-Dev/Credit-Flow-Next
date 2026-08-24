@@ -9,7 +9,7 @@ import {
   linkWhatsapp, diasMoraActual, esCreditoVivo, round2, renderPlantillaContacto, type DatosPlantillaContacto,
   calcularDeudaConsolidada, calcularDeudaVencida, diasAtraso, moraDelCredito, moraDesdeCronograma, type CuotaParaImputar,
   plantillaDe, cuentaComoGestion, MOTIVO_LABEL, tipoGestionDeCanal, resolverPlantillasContacto, type MotivoContacto,
-  deudaEnRevision,
+  deudaEnRevision, contactoBloqueado,
 } from "@/lib/domain";
 import { nombreCompleto, hoyComercial } from "@/lib/utils";
 import { enviarEmailTenant, motivoEmailNoDisponible, type EmailTenantConfig } from "@/lib/mailer-tenant";
@@ -192,11 +192,13 @@ async function cargarContactable(ctx: Ctx, id: string) {
    * de otro lado. Es parametrizable — hay financieras que gestionan con los herederos.
    */
   const { fallecidos } = await getCobranzaConfig(ctx.tenantId);
-  if (fallecidos.bloquea_contacto && deudaEnRevision(cliente)) {
+  const corte = contactoBloqueado(cliente, { bloqueaFallecidos: fallecidos.bloquea_contacto });
+  if (corte.bloqueado) {
+    const quien = `${cliente.nombre} ${cliente.apellido ?? ""}`.trim();
     return {
       error: errorResponse(
-        `${cliente.nombre} ${cliente.apellido ?? ""}`.trim() + " figura como fallecido: su deuda está en revisión y el contacto está bloqueado.",
-        "CLIENTE_FALLECIDO",
+        `${quien}: ${corte.motivo}.${cliente.no_contactar && cliente.no_contactar_motivo ? ` (${cliente.no_contactar_motivo})` : ""}`,
+        cliente.no_contactar ? "NO_CONTACTAR" : "CLIENTE_FALLECIDO",
         409,
       ),
     } as const;

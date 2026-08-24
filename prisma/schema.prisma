@@ -159,6 +159,25 @@ model clientes {
   // porque nadie va a pagar una cuota después de muerto. Se guarda aparte del `created_at`
   // de la auditoría: una cosa es cuándo murió y otra cuándo se enteró la financiera.
   estado_fecha  DateTime? @db.Date
+
+  /**
+   * NO CONTACTAR — el cliente pidió que no lo llamen ni le escriban.
+   *
+   * Distinto de `estado`: el titular sigue vivo y la deuda sigue viva y exigible; lo único
+   * que cambia es el CANAL. Se le puede cobrar, se le puede refinanciar y aparece en la
+   * cartera; lo que no se puede es mandarle un mensaje.
+   *
+   * 🔴 NO es un parámetro de la financiera, y por eso no vive en `configuraciones`: es un
+   * pedido del titular. En Argentina, insistir después de que alguien pidió que no lo
+   * contacten es exposición directa bajo la ley de Defensa del Consumidor. Que una
+   * financiera pueda "desactivar" el respeto a ese pedido sería el único uso posible del
+   * toggle, así que el toggle no existe.
+   */
+  no_contactar        Boolean   @default(false)
+  /** Qué pidió exactamente (por escrito, por teléfono, solo al celular, etc.). Obligatorio al activarlo. */
+  no_contactar_motivo String?
+  /** Cuándo se registró el pedido. */
+  no_contactar_desde  DateTime? @db.Timestamptz(6)
   tipo_credito String   @default("personal")
   monto_total  Float    @default(0)
   zona         String? // zona/barrio para segmentación geográfica (Fase Home)

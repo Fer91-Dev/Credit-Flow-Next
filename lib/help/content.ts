@@ -277,6 +277,7 @@ const HELP: Record<string, HelpDoc> = {
           { term: "Promesas", desc: "Seguimiento de promesas de pago (pendiente / cumplida / rota). Se concilian solas al cobrar; el cron rompe las vencidas." },
           { term: "Acuerdos", desc: "Los planes de pago vigentes, cumplidos y rotos. El sistema los evalúa solo: no hay que marcarlos a mano." },
           { term: "Campañas", desc: "Envíos masivos a un grupo de morosos (Email/WhatsApp) con quita de interés opcional." },
+      { term: "No contactar", desc: "Si el cliente pide que no lo llamen, se registra desde su ficha. Deja de recibir mensajes y sale de la agenda, pero la deuda sigue viva y se le puede cobrar. Levantarlo solo lo puede hacer un admin." },
         ],
       },
       {

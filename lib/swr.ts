@@ -62,6 +62,10 @@ export interface Cliente {
   estado_motivo?: string | null;
   /** Fecha del deceso — la que frena los punitorios. */
   estado_fecha?: string | null;
+  /** El titular pidió que no lo contacten. Bloquea mensajes; la deuda sigue exigible. */
+  no_contactar?: boolean | null;
+  no_contactar_motivo?: string | null;
+  no_contactar_desde?: string | null;
   tipo_credito?: string;
   created_at: string;
   // Datos personales ampliados
@@ -199,7 +203,7 @@ export interface Credito {
   refinancia_a_numero?: number | null;
   cliente_id: string;
   /** `estado` del titular: un fallecido no se contacta ni entra en campañas. */
-  cliente: { nombre: string; apellido?: string | null; documento?: string | null; email?: string; telefono?: string; estado?: string | null };
+  cliente: { nombre: string; apellido?: string | null; documento?: string | null; email?: string; telefono?: string; estado?: string | null; no_contactar?: boolean | null };
   vendedor_id?: string | null;
   vendedor?: { id: string; nombre: string } | null;
   /** Quién EJECUTÓ el otorgamiento (≠ a quién se le atribuye la venta). Nombre congelado. */

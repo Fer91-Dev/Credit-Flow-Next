@@ -26,7 +26,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { ModalHeader } from "@/components/ui/form-kit";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
-import { esCreditoVivo, deudaEnRevision } from "@/lib/domain";
+import { esCreditoVivo, contactoBloqueado } from "@/lib/domain";
 
 function n0(x: number) {
   return new Intl.NumberFormat("es-AR", { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(x);
@@ -98,7 +98,9 @@ export function CobranzaTable({ role }: { role: Role }) {
    * antes. El crédito se sigue VIENDO —su deuda existe y hay que poder abrir la ficha—,
    * pero con el casillero apagado y el motivo a la vista.
    */
-  const noContactable = (c: Credito) => deudaEnRevision(c.cliente);
+  const noContactable = (c: Credito) => contactoBloqueado(c.cliente).bloqueado;
+  /** Etiqueta corta del motivo, para el badge de la fila. */
+  const motivoCorto = (c: Credito) => (c.cliente?.no_contactar ? "No contactar" : "Fallecido");
 
   const toggleSel = (id: string) =>
     setSeleccion(prev => {
@@ -401,7 +403,7 @@ export function CobranzaTable({ role }: { role: Role }) {
                   checked={todasVisiblesSel}
                   onChange={toggleTodasVisibles}
                   title={bloqueadosVisibles > 0
-                    ? `Seleccionar todos los contactables (${bloqueadosVisibles} quedan afuera: cliente fallecido)`
+                    ? `Seleccionar todos los contactables (${bloqueadosVisibles} quedan afuera: fallecidos o con pedido de no contactar)`
                     : "Seleccionar todos los visibles"}
                   className="h-4 w-4 rounded border-border accent-primary cursor-pointer"
                 />
@@ -412,7 +414,7 @@ export function CobranzaTable({ role }: { role: Role }) {
                   type="checkbox"
                   checked={seleccion.has(c.id)}
                   disabled={noContactable(c)}
-                  title={noContactable(c) ? "Cliente fallecido: su deuda está en revisión, no entra en campañas" : undefined}
+                  title={noContactable(c) ? `${contactoBloqueado(c.cliente).motivo}: no entra en campañas` : undefined}
                   onChange={() => toggleSel(c.id)}
                   onClick={(e) => e.stopPropagation()}
                   className="h-4 w-4 rounded border-border accent-primary cursor-pointer disabled:cursor-not-allowed disabled:opacity-30"
@@ -426,7 +428,7 @@ export function CobranzaTable({ role }: { role: Role }) {
                   <p className="flex items-center gap-1.5 font-medium text-foreground">
                     {nombreCompleto(c.cliente)}
                     {/* El motivo, en la fila: si no, un casillero apagado no explica nada. */}
-                    {noContactable(c) && <StatusBadge label="Fallecido" variant="destructive" />}
+                    {noContactable(c) && <StatusBadge label={motivoCorto(c)} variant={c.cliente?.no_contactar ? "warning" : "destructive"} />}
                   </p>
                   {(() => {
                     const u = ultimaPorCredito.get(c.id);
@@ -532,13 +534,13 @@ export function CobranzaTable({ role }: { role: Role }) {
                         type="checkbox"
                         checked={seleccion.has(c.id)}
                         disabled={noContactable(c)}
-                        title={noContactable(c) ? "Cliente fallecido: no entra en campañas" : undefined}
+                        title={noContactable(c) ? `${contactoBloqueado(c.cliente).motivo}` : undefined}
                         onChange={() => toggleSel(c.id)}
                         className="h-4 w-4 rounded border-border accent-primary cursor-pointer shrink-0 disabled:cursor-not-allowed disabled:opacity-30"
                       />
                     )}
                     <p className="font-medium text-foreground text-sm truncate">{nombreCompleto(c.cliente)}</p>
-                    {noContactable(c) && <StatusBadge label="Fallecido" variant="destructive" />}
+                    {noContactable(c) && <StatusBadge label={motivoCorto(c)} variant={c.cliente?.no_contactar ? "warning" : "destructive"} />}
                   </div>
                   <StatusBadge label={sev.label} variant={sev.variant} />
                 </div>

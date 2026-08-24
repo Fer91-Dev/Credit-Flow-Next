@@ -3,7 +3,7 @@ import { successResponse, errorResponse, withErrorHandler, assertSameOrigin } fr
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { getComunicacionConfig, getCobranzaConfig } from "@/lib/config";
-import { construirMensajeCampana, linkWhatsapp, deudaEnRevision, esCreditoVivo } from "@/lib/domain";
+import { construirMensajeCampana, linkWhatsapp, contactoBloqueado, esCreditoVivo } from "@/lib/domain";
 import { nombreCompleto } from "@/lib/utils";
 import { enviarEmailTenant, motivoEmailNoDisponible, type EmailTenantConfig } from "@/lib/mailer-tenant";
 import { getFinanciera } from "@/lib/financiera";
@@ -48,7 +48,7 @@ export const POST = withErrorHandler(async (
         include: {
           credito: {
             include: {
-              cliente: { select: { nombre: true, apellido: true, telefono: true, email: true, estado: true } },
+              cliente: { select: { nombre: true, apellido: true, telefono: true, email: true, estado: true, no_contactar: true } },
             },
           },
         },
@@ -126,16 +126,16 @@ export const POST = withErrorHandler(async (
     const clienteId = objetivo.credito.cliente_id ?? objetivo.credito_id;
 
     /**
-     * 🔴 Un fallecido no entra en la campaña, aunque esté cargado como objetivo.
+     * 🔴 A quién NO se le manda, aunque esté cargado como objetivo.
      *
-     * El objetivo se congela al armar la campaña; si el cliente muere entre el armado y el
-     * envío, el mensaje saldría igual — un reclamo de plata a nombre del muerto, que lee la
-     * familia. El corte va acá, en el envío, y no al armar la lista.
+     * El objetivo se congela al armar la campaña, pero entre eso y el envío el cliente puede
+     * haber muerto —el mensaje lo leería la familia— o haber pedido que no lo contacten. El
+     * corte va acá, donde se aprieta el gatillo, y no al armar la lista.
      */
-    if (fallecidos.bloquea_contacto && deudaEnRevision(objetivo.credito.cliente)) {
-      const motivo = "Cliente fallecido: deuda en revisión, contacto bloqueado";
-      await marcar(objetivo.id, "manual", motivo);
-      resultados.push({ cliente_id: clienteId, nombre, metodo: "manual", error: motivo });
+    const corte = contactoBloqueado(objetivo.credito.cliente, { bloqueaFallecidos: fallecidos.bloquea_contacto });
+    if (corte.bloqueado) {
+      await marcar(objetivo.id, "manual", corte.motivo!);
+      resultados.push({ cliente_id: clienteId, nombre, metodo: "manual", error: corte.motivo! });
       continue;
     }
 

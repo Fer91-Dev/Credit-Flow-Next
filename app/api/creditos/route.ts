@@ -59,7 +59,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
          * endpoints, uno solo lo mandaba.
          */
         // `estado`/`estado_fecha`: el terminal de cobro avisa si el titular falleció.
-        cliente: { select: { id: true, nombre: true, apellido: true, documento: true, telefono: true, email: true, estado: true, estado_fecha: true } },
+        cliente: { select: { id: true, nombre: true, apellido: true, documento: true, telefono: true, email: true, estado: true, estado_fecha: true, no_contactar: true } },
         vendedor: { select: { id: true, nombre: true } },
         pagos: { orderBy: { fecha: "desc" }, take: 5 },
         // Cobros VIVOS (sin los anulados). Va aparte de `pagos` porque cada uno responde

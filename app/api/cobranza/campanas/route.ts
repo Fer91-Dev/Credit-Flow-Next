@@ -2,7 +2,7 @@ import { requireRole, scopeCreditosVendedor } from "@/lib/auth";
 import { successResponse, errorResponse, withErrorHandler, assertSameOrigin } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
-import { cuotaMensualFrancesa, tasaPeriodicaSegunConvencion, interesMora, normalizarFrecuencia, calculateRecoveryOffer, diasMoraActual, type FrecuenciaDef, type ConfiguracionFinanciera, moraDelCredito, moraDesdeCronograma, esCreditoVivo, calcularDeudaVencida, round2, deudaEnRevision, type CuotaParaImputar } from "@/lib/domain";
+import { cuotaMensualFrancesa, tasaPeriodicaSegunConvencion, interesMora, normalizarFrecuencia, calculateRecoveryOffer, diasMoraActual, type FrecuenciaDef, type ConfiguracionFinanciera, moraDelCredito, moraDesdeCronograma, esCreditoVivo, calcularDeudaVencida, round2, deudaEnRevision, contactoBloqueado, type CuotaParaImputar } from "@/lib/domain";
 import { getConfiguracion, getCobranzaConfig } from "@/lib/config";
 import { registrarAuditoria } from "@/lib/audit";
 import { hoyComercial, formatCreditoNumero } from "@/lib/utils";
@@ -129,7 +129,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
       monto_original: true, plazo_meses: true, tasa: true,
       frecuencia: true, frecuencia_def: true, cronograma: true,
       // El estado del CLIENTE: a un fallecido no se le manda nada.
-      cliente: { select: { estado: true } },
+      cliente: { select: { estado: true, no_contactar: true, no_contactar_motivo: true } },
       // Las cuotas: sin ellas no se puede saber qué está VENCIDO, que es lo que se reclama.
       cuotas: { orderBy: { nro: "asc" } },
     },
@@ -158,7 +158,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
    */
   const { fallecidos: polFallecidos } = await getCobranzaConfig(tenantId);
   const cobrable = (c: (typeof candidatos)[number]) =>
-    esCreditoVivo(c.estado) && !(polFallecidos.bloquea_contacto && deudaEnRevision(c.cliente));
+    esCreditoVivo(c.estado) && !contactoBloqueado(c.cliente, { bloqueaFallecidos: polFallecidos.bloquea_contacto }).bloqueado;
 
   const creditos = candidatos.filter(cobrable);
   const excluidos = candidatos.filter((c) => !cobrable(c));
@@ -172,13 +172,12 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
    * sí puede arreglar. Se usa la misma función para el error y para la lista de excluidos.
    */
   const motivoExclusion = (c: (typeof candidatos)[number]): string =>
-    deudaEnRevision(c.cliente)
-      ? "Cliente fallecido: su deuda está en revisión"
-      : c.estado === "refinanciado"
+    contactoBloqueado(c.cliente, { bloqueaFallecidos: polFallecidos.bloquea_contacto }).motivo
+      ?? (c.estado === "refinanciado"
         ? "Ya se refinanció: su deuda está en el crédito nuevo"
         : c.estado === "pagado" || c.estado === "cancelado"
           ? "Ya está saldado"
-          : `No es cobrable (${c.estado})`;
+          : `No es cobrable (${c.estado})`);
 
   if (creditos.length === 0) {
     const detalle = excluidos.length
