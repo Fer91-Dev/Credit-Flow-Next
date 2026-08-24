@@ -117,6 +117,8 @@ export interface DeudaVencida {
 export interface OpcionesDeudaVencida {
   moraActiva?: boolean;
   tasaMoraDiaria?: number;
+  /** Techo de la mora (% de la cuota). 0/ausente = sin tope. Ver `interesMora`. */
+  topeMoraPct?: number;
   hoy?: Date;
   diasGracia?: number;
 }
@@ -153,7 +155,7 @@ export function calcularDeudaVencida(
     // `cuotaTotal`, no sobre lo pendiente. Si las dos calcularan distinto, refinanciar y
     // acordar darían números diferentes para la misma deuda.
     const moraPlena = moraActiva
-      ? interesMora(c.cuotaTotal, diasAtraso(c.fechaVencimiento, hoy), { tasaDiaria: tasa, diasGracia: gracia })
+      ? interesMora(c.cuotaTotal, diasAtraso(c.fechaVencimiento, hoy), { tasaDiaria: tasa, diasGracia: gracia, topePct: opts.topeMoraPct })
       : 0;
     const moraPend = noNegativo(round2(moraPlena - c.pagadoMora));
 

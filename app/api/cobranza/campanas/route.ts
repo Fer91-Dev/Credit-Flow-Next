@@ -44,7 +44,7 @@ function interesMoraDe(c: CreditoMora, config: ConfiguracionFinanciera): number 
   const tasaPeriodica = tasaPeriodicaSegunConvencion(c.tasa, config.convencionTasa, frec, catFrec);
   const cuota = cuotaMensualFrancesa(c.monto_original, tasaPeriodica, c.plazo_meses);
   const gracia = (c.cronograma as { diasGracia?: number } | null)?.diasGracia ?? config.simulador.diasGracia;
-  return interesMora(cuota, c.dias_mora, { tasaDiaria: mc.tasaMoraDiaria, diasGracia: gracia });
+  return interesMora(cuota, c.dias_mora, { tasaDiaria: mc.tasaMoraDiaria, diasGracia: gracia, topePct: mc.topeMoraPct });
 }
 
 /** Métricas agregadas de una campaña a partir de sus objetivos. */
@@ -219,7 +219,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     const mc = moraDelCredito(moraDesdeCronograma(c.cronograma), config);
     const gracia = (c.cronograma as { diasGracia?: number } | null)?.diasGracia ?? config.simulador.diasGracia;
     const dv = calcularDeudaVencida(cuotasDom, {
-      moraActiva: mc.moraActiva, tasaMoraDiaria: mc.tasaMoraDiaria, diasGracia: gracia, hoy: hoyCamp,
+      moraActiva: mc.moraActiva, tasaMoraDiaria: mc.tasaMoraDiaria, topeMoraPct: mc.topeMoraPct, diasGracia: gracia, hoy: hoyCamp,
     });
 
     // La oferta se calcula sobre lo vencido SIN mora, con la mora aparte: es lo que

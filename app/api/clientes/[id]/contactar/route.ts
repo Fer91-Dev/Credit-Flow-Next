@@ -257,7 +257,7 @@ async function cargarContactable(ctx: Ctx, id: string) {
     const gracia = (c.cronograma as { diasGracia?: number } | null)?.diasGracia ?? config.simulador.diasGracia;
     // Dia comercial argentino: con el ahora en UTC, entre las 21:00 y la medianoche de
     // Argentina se le cobra —y se le INFORMA— un dia de mora de mas.
-    const opts = { moraActiva: mc.moraActiva, tasaMoraDiaria: mc.tasaMoraDiaria, diasGracia: gracia, hoy };
+    const opts = { moraActiva: mc.moraActiva, tasaMoraDiaria: mc.tasaMoraDiaria, topeMoraPct: mc.topeMoraPct, diasGracia: gracia, hoy };
 
     deudaTotal += calcularDeudaConsolidada(cuotasDom, opts).total;
 

@@ -165,6 +165,12 @@ export interface ConfiguracionFinanciera {
   moraActiva: boolean;
   /** Fracción diaria de mora (ej: 0.01 = 1% diario). */
   tasaMoraDiaria: number;
+  /**
+   * TECHO de la mora, como % del valor de la cuota. **0 = sin tope.**
+   * Al 1% diario la mora iguala a la cuota a los 100 días y sigue creciendo sin límite;
+   * este parámetro es el que corta esa acumulación. Ver `interesMora` en `mora.ts`.
+   */
+  topeMoraPct: number;
   /** Base del cálculo de mora: sobre la cuota o sobre el saldo. Default: cuota. */
 
   /**
@@ -230,6 +236,7 @@ export const CONFIG_DEFAULT: ConfiguracionFinanciera = {
   sistemaAmortizacion: "frances",
   moraActiva: true,
   tasaMoraDiaria: 0.01, // 1% diario sobre la cuota
+  topeMoraPct: 0, // 0 = sin tope (comportamiento histórico)
   imputarCargos: "integrado",
   moneda: "ARS",
   locale: "es-AR",

@@ -272,6 +272,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     modoCargos: config.imputarCargos,
     moraActiva: moraCred.moraActiva,
     tasaMoraDiaria: moraCred.tasaMoraDiaria,
+    topeMoraPct: moraCred.topeMoraPct,
     hoy: fechaPago,
     descuentoMoraPct,
     diasGracia: graciaCred,

@@ -940,6 +940,10 @@ model configuraciones {
   sistema_amortizacion  String   @default("frances")
   mora_activa           Boolean  @default(true)
   tasa_mora_diaria      Float    @default(0.01)
+  // Techo de la mora como % del valor de la cuota. 0 = SIN TOPE (lo histórico).
+  // Con 1% diario, a los 100 días la mora ya iguala a la cuota y sigue subiendo sin límite:
+  // este parámetro es el que corta esa acumulación. Se CONGELA en el crédito al otorgar.
+  tope_mora_pct         Float    @default(0)
   base_mora             String   @default("cuota")
   orden_imputacion      String   @default("mora,interes,capital")
   imputar_cargos        String   @default("integrado")

@@ -88,7 +88,7 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
         const graciaCred = (c.cronograma as { diasGracia?: number } | null)?.diasGracia ?? config.simulador.diasGracia;
         interes_mora = moraPendienteTotal(
           c.cuotas.map((q) => ({ fechaVencimiento: q.fecha_vencimiento, cuotaTotal: q.cuota_total, pagadoMora: q.pagado_mora })),
-          { tasaDiaria: mc.tasaMoraDiaria, diasGracia: graciaCred, hoy: hoyComercial() },
+          { tasaDiaria: mc.tasaMoraDiaria, diasGracia: graciaCred, hoy: hoyComercial(), topePct: mc.topeMoraPct },
         );
       }
     }

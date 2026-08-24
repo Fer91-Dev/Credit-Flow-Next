@@ -800,6 +800,8 @@ export interface ConfiguracionFinanciera {
   sistemaAmortizacion: "frances";
   moraActiva: boolean;
   tasaMoraDiaria: number;
+  /** Techo de la mora como % de la cuota. 0 = sin tope (ver `interesMora` en el dominio). */
+  topeMoraPct: number;
   // Sin `ordenImputacion`: el orden es fijo y se lee de ORDEN_IMPUTACION, no del servidor.
   imputarCargos: "integrado" | "separado";
   moneda: string;

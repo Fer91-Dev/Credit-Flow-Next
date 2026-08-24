@@ -70,6 +70,9 @@ const AYUDA: Record<string, AyudaBloque> = {
       "Tasa diaria: % que se acumula por cada día de atraso.",
       "Se aplica sobre el VALOR DE LA CUOTA vencida: cada cuota atrasada devenga su propio punitorio.",
       "Los días de gracia (Simulador → Cronograma) son la tolerancia antes de que empiece a correr.",
+      "TOPE: hasta dónde puede crecer la mora, como % de la cuota. Con 100, deja de sumar cuando iguala a la cuota; con 0 no hay techo.",
+      "Sin techo la mora no para: al 1% diario iguala a la cuota a los 100 días, al año es el 365% y a los dos años el 730%. Nadie paga eso, pero infla igual el saldo expuesto y el % de morosidad — y si el caso va a juicio, el art. 771 del Código Civil faculta al juez a reducir intereses excesivos.",
+      "El tope se CONGELA al otorgar: cambiarlo no reescribe la deuda de los créditos que ya estaban dados.",
     ],
   },
   cajas: {
@@ -482,6 +485,10 @@ export function ConfigForm() {
    * Si la mora está apagada, el documento declara 0 — que es la verdad.
    */
   const punitorioMensual = form?.moraActiva ? punitorioMensualDesdeDiaria(form.tasaMoraDiaria) : 0;
+  /** Días de atraso en los que la mora alcanza el tope. Es lo que vuelve entendible un %. */
+  const topeDias = form && form.tasaMoraDiaria > 0 && form.topeMoraPct > 0
+    ? Math.round(form.topeMoraPct / 100 / form.tasaMoraDiaria)
+    : 0;
   const avisosDocs = revisarDocumentos(docs, punitorioMensual);
 
   // Rentabilidad: costo de fondeo para la ganancia NETA de Reportes.
@@ -542,7 +549,7 @@ export function ConfigForm() {
     const f = form, c = config, s = form.simulador, cs = config.simulador;
     switch (key) {
       case "motor":         return f.convencionTasa !== c.convencionTasa || f.sistemaAmortizacion !== c.sistemaAmortizacion;
-      case "mora":          return f.moraActiva !== c.moraActiva || f.tasaMoraDiaria !== c.tasaMoraDiaria;
+      case "mora":          return f.moraActiva !== c.moraActiva || f.tasaMoraDiaria !== c.tasaMoraDiaria || f.topeMoraPct !== c.topeMoraPct;
       case "cobranza":      return !eq(f.cobranzaConfig ?? null, c.cobranzaConfig ?? null);
       case "cajas":         return !eq(f.cajaConfig ?? null, c.cajaConfig ?? null);
       case "notificaciones": return !eq(f.notificacionesConfig ?? null, c.notificacionesConfig ?? null);
@@ -1058,9 +1065,9 @@ export function ConfigForm() {
           {/* Mora */}
           <Section title="Interés por mora" desc="Recargo aplicado por días de atraso. Apagá el switch para no cobrar mora." ayuda={AYUDA.mora}
             enabled={form.moraActiva} onToggle={v => set("moraActiva", v)}
-            onSave={() => save("mora", { moraActiva: form.moraActiva, tasaMoraDiaria: form.tasaMoraDiaria })}
+            onSave={() => save("mora", { moraActiva: form.moraActiva, tasaMoraDiaria: form.tasaMoraDiaria, topeMoraPct: form.topeMoraPct })}
             saving={savingKey === "mora"} saved={savedKey === "mora"} dirty={isDirty("mora")}>
-            <div className={`grid grid-cols-1 gap-4 max-w-sm transition-opacity ${form.moraActiva ? "" : "opacity-50"}`}>
+            <div className={`grid grid-cols-1 gap-4 sm:grid-cols-2 max-w-2xl transition-opacity ${form.moraActiva ? "" : "opacity-50"}`}>
               <Field required={form.moraActiva} label="Tasa de mora diaria (%)" hint="Porcentaje diario sobre la base de mora">
                 <div className="relative">
                   <Input
@@ -1074,7 +1081,36 @@ export function ConfigForm() {
                 </div>
               </Field>
 
+              <Field
+                label="Tope de mora (% de la cuota)"
+                hint={
+                  form.topeMoraPct > 0
+                    ? `La mora deja de crecer al llegar al ${form.topeMoraPct}% de la cuota${topeDias ? ` (≈ ${topeDias} días de atraso)` : ""}.`
+                    : "0 = sin tope: la mora crece sin límite mientras el crédito siga impago."
+                }
+              >
+                <div className="relative">
+                  <Input
+                    type="number" min="0" max="1000" step="10"
+                    value={form.topeMoraPct}
+                    onChange={e => set("topeMoraPct", Math.max(0, Math.min(1000, parseFloat(e.target.value) || 0)))}
+                    disabled={!form.moraActiva}
+                    className="pr-7"
+                  />
+                  <Percent className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
+                </div>
+              </Field>
             </div>
+
+            {/* El dato que falta al decidir el número: en cuántos días se llega al techo con
+                la tasa cargada. Sin esto, "100%" no dice nada operativo. */}
+            {form.moraActiva && form.topeMoraPct === 0 && form.tasaMoraDiaria > 0 && (
+              <p className="mt-3 max-w-2xl rounded-lg border border-warning/30 bg-warning/5 px-3 py-2 text-xs text-warning">
+                Sin tope, al {Number((form.tasaMoraDiaria * 100).toFixed(4))}% diario la mora iguala a la cuota
+                a los {Math.round(1 / form.tasaMoraDiaria)} días y sigue creciendo: al año acumula
+                el {Math.round(form.tasaMoraDiaria * 365 * 100)}% de la cuota.
+              </p>
+            )}
           </Section>
 
           {/* Imputación */}

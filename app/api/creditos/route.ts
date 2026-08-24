@@ -104,7 +104,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
       // de la más vieja, que con varias vencidas mostraba menos de la mitad de lo real.
       interes_mora = moraPendienteTotal(
         c.cuotas.map((q) => ({ fechaVencimiento: q.fecha_vencimiento, cuotaTotal: q.cuota_total, pagadoMora: q.pagado_mora })),
-        { tasaDiaria: mc.tasaMoraDiaria, diasGracia: graciaCred, hoy },
+        { tasaDiaria: mc.tasaMoraDiaria, diasGracia: graciaCred, hoy, topePct: mc.topeMoraPct },
       );
     }
     // Estado reconciliado: defensa de lectura ante datos legacy. La lista no carga
@@ -423,6 +423,10 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     mora: {
       activa: configActual.moraActiva,
       tasaDiaria: configActual.tasaMoraDiaria,
+      // El TECHO de la mora también se congela. Si mañana la financiera lo baja (o lo saca),
+      // los créditos ya otorgados conservan el que estaba vigente cuando el cliente firmó:
+      // cambiar la política no puede reescribir hacia atrás lo que se le va a cobrar.
+      topePct: configActual.topeMoraPct,
     },
     // Redondeo del día en que se firma. Los cargos y el cronograma ya se congelaban; el
     // redondeo no, y la pantalla de amortización RECALCULA el plan con la config vigente:

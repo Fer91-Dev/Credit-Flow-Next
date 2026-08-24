@@ -19,6 +19,20 @@ export interface ConfigMora {
   tasaDiaria?: number;
   /** Días de gracia: tolerancia tras el vencimiento sin mora. Default 0. */
   diasGracia?: number;
+  /**
+   * TECHO de la mora, como % del valor de la cuota. **0 o ausente = sin tope** (comportamiento
+   * histórico). Con 100, la mora deja de crecer cuando iguala a la cuota.
+   *
+   * 🔴 POR QUÉ HACE FALTA. La mora es lineal y no tenía límite: `cuota × tasa × días`. Al 1%
+   * diario —la tasa real de la financiera— a los 100 días la mora YA IGUALA a la cuota, al año
+   * es el 365% y a los dos años el 730%. Un crédito olvidado en un cajón acumula para siempre.
+   *
+   * Eso hace daño de tres formas: nadie paga ese número, así que infla el saldo expuesto y el
+   * % de morosidad con plata que no va a entrar; si se va a juicio, el art. 771 CCyC faculta al
+   * juez a morigerar intereses excesivos, así que lo que el sistema informa no es lo que se
+   * recupera; y la ficha del cliente muestra una deuda que la financiera no va a reclamar.
+   */
+  topePct?: number;
 }
 
 /**
@@ -82,7 +96,7 @@ export interface CuotaParaMora {
  */
 export function moraPendienteTotal(
   cuotas: CuotaParaMora[],
-  opciones: { tasaDiaria?: number; diasGracia?: number; hoy?: Date; hasta?: Date | null } = {},
+  opciones: { tasaDiaria?: number; diasGracia?: number; hoy?: Date; hasta?: Date | null; topePct?: number } = {},
 ): number {
   const hoy = opciones.hoy ?? new Date();
   const tope = fechaTopeMora(hoy, opciones.hasta);
@@ -93,6 +107,7 @@ export function moraPendienteTotal(
     const devengada = interesMora(c.cuotaTotal, dias, {
       tasaDiaria: opciones.tasaDiaria,
       diasGracia: opciones.diasGracia,
+      topePct: opciones.topePct,
     });
     const pendiente = devengada - (c.pagadoMora ?? 0);
     if (pendiente > 0) total = round2(total + pendiente);
@@ -111,6 +126,8 @@ export function moraPendienteTotal(
 export interface MoraSnapshot {
   activa: boolean;
   tasaDiaria: number;
+  /** Techo de la mora (% de la cuota) vigente AL OTORGAR. Ausente en créditos viejos = sin tope. */
+  topePct?: number;
 }
 
 /**
@@ -127,12 +144,23 @@ export interface MoraSnapshot {
  */
 export function moraDelCredito(
   snapshot: MoraSnapshot | null | undefined,
-  configActual: { moraActiva: boolean; tasaMoraDiaria: number },
-): { moraActiva: boolean; tasaMoraDiaria: number } {
+  configActual: { moraActiva: boolean; tasaMoraDiaria: number; topeMoraPct?: number },
+): { moraActiva: boolean; tasaMoraDiaria: number; topeMoraPct: number } {
   if (snapshot && typeof snapshot.tasaDiaria === "number" && typeof snapshot.activa === "boolean") {
-    return { moraActiva: snapshot.activa, tasaMoraDiaria: snapshot.tasaDiaria };
+    return {
+      moraActiva: snapshot.activa,
+      tasaMoraDiaria: snapshot.tasaDiaria,
+      // Un crédito otorgado ANTES de que existiera el tope no tiene el campo: sigue sin techo.
+      // Ponerle el tope de hoy le reescribiría la deuda por atrás, que es justo lo que el
+      // snapshot existe para impedir.
+      topeMoraPct: typeof snapshot.topePct === "number" ? snapshot.topePct : 0,
+    };
   }
-  return { moraActiva: configActual.moraActiva, tasaMoraDiaria: configActual.tasaMoraDiaria };
+  return {
+    moraActiva: configActual.moraActiva,
+    tasaMoraDiaria: configActual.tasaMoraDiaria,
+    topeMoraPct: configActual.topeMoraPct ?? 0,
+  };
 }
 
 /** Lee las condiciones de mora del snapshot `cronograma` de un crédito (o null si es viejo). */
@@ -185,7 +213,10 @@ export function interesMora(
   const diasEfectivos = dias - gracia;
   if (diasEfectivos <= 0) return 0;
   const tasa = config.tasaDiaria ?? TASA_MORA_DIARIA;
-  return round2(valorCuota * tasa * diasEfectivos);
+  const devengada = valorCuota * tasa * diasEfectivos;
+  // El tope se aplica al final: la mora crece normal hasta el techo y ahí se queda.
+  const tope = config.topePct && config.topePct > 0 ? valorCuota * (config.topePct / 100) : null;
+  return round2(tope !== null ? Math.min(devengada, tope) : devengada);
 }
 
 /** Severidad de la mora, alineada con la vista de Cobranza. */

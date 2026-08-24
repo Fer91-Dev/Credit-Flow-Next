@@ -197,6 +197,8 @@ export interface OpcionesImputacionCuotas {
    * que era imposible de evitar.
    */
   moraTopeAbsoluto?: Date | null;
+  /** Techo de la mora (% de la cuota). 0/ausente = sin tope. Ver `interesMora`. */
+  topeMoraPct?: number;
 }
 
 export interface ResultadoImputacionCuotas {
@@ -264,7 +266,7 @@ export function imputarPagoEnCuotas(
       c.fechaVencimiento,
       fechaTopeMora(topeMoraDeCuota(c.fechaVencimiento, hoy, congeladaAl), topeAbsoluto),
     );
-    const moraPlena = moraActiva ? interesMora(c.cuotaTotal, diasMora, { tasaDiaria: tasaMoraDiaria, diasGracia }) : 0;
+    const moraPlena = moraActiva ? interesMora(c.cuotaTotal, diasMora, { tasaDiaria: tasaMoraDiaria, diasGracia, topePct: opciones.topeMoraPct }) : 0;
     // La quita de campaña reduce la mora devengada (lo condonado se reporta como ahorro).
     const moraDevengada = round2(moraPlena * factorMora);
     const moraPend = noNegativo(round2(moraDevengada - c.pagadoMora));

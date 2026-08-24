@@ -116,7 +116,7 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
       fechaTopeMora(topeMoraDeCuota(c.fecha_vencimiento, hoy, congeladaAl), topeAbsoluto),
     );
     const moraPlena = moraCred.moraActiva
-      ? interesMora(c.cuota_total, diasQueDevengan, { tasaDiaria: moraCred.tasaMoraDiaria, diasGracia: graciaCred })
+      ? interesMora(c.cuota_total, diasQueDevengan, { tasaDiaria: moraCred.tasaMoraDiaria, diasGracia: graciaCred, topePct: moraCred.topeMoraPct })
       : 0;
     const moraPend = capitalSaldado ? 0 : round2(Math.max(0, moraPlena - c.pagado_mora));
     const pendienteCuota = round2(Math.max(0, c.cuota_total - (c.pagado_capital + c.pagado_interes + c.pagado_cargos)));

@@ -46,6 +46,7 @@ export async function getConfiguracion(
     sistemaAmortizacion: row.sistema_amortizacion as SistemaAmortizacion,
     moraActiva: row.mora_activa,
     tasaMoraDiaria: row.tasa_mora_diaria,
+    topeMoraPct: row.tope_mora_pct ?? 0,
     // `orden_imputacion` ya no se lee: el orden es fijo (ORDEN_IMPUTACION en domain/payments).
     // La columna queda inerte, mismo criterio que `base_mora` y `vendedores.rol`.
     imputarCargos: row.imputar_cargos as ConfiguracionFinanciera["imputarCargos"],
@@ -65,6 +66,7 @@ export async function guardarConfiguracion(
     sistema_amortizacion: config.sistemaAmortizacion,
     mora_activa: config.moraActiva,
     tasa_mora_diaria: config.tasaMoraDiaria,
+    tope_mora_pct: config.topeMoraPct ?? 0,
     imputar_cargos: config.imputarCargos,
     moneda: config.moneda,
     locale: config.locale,
