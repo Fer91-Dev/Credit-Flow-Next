@@ -268,7 +268,9 @@ export function CobranzaTable({ role }: { role: Role }) {
       {tab === "hoy" ? (
         <AgendaHoy onGestionar={abrirGestionDesdeAgenda} onDetalle={abrirDetallePorId} />
       ) : tab === "campanas" ? (
-        <CampanasView />
+        // `onArmar` lleva a Morosos: el vacío decía "seleccioná clientes en Morosos e iniciá
+        // una campaña", una instrucción que el usuario tenía que ejecutar a mano.
+        <CampanasView onArmar={() => setTab("morosos")} />
       ) : tab === "promesas" ? (
         <PromesasTab role={role} />
       ) : tab === "acuerdos" ? (
@@ -326,6 +328,34 @@ export function CobranzaTable({ role }: { role: Role }) {
             );
           })}
         </div>
+
+        {/*
+          🔴 La campaña existía pero no se veía.
+          Solo aparecía DESPUÉS de tildar clientes, en una barra flotante al pie: había que
+          descubrir por casualidad que los casilleros servían para algo. La acción principal
+          de esta pantalla estaba escondida detrás de un paso que nadie tenía motivo para dar.
+
+          Ahora está en la barra, siempre. Y hace lo que el operador iba a hacer igual: si no
+          tildó a nadie, toma los que está viendo —ya filtrados por severidad—, que es el
+          recorrido natural (filtrar «Crítica» → mandarles una campaña). El número en el botón
+          dice sobre cuántos va a trabajar, así que no hay que explicarlo con un texto.
+        */}
+        {puedeCampanas && (
+          <button
+            onClick={() => {
+              if (seleccionados.length === 0) setSeleccion(new Set(visiblesIds));
+              setCampaignOpen(true);
+            }}
+            disabled={seleccionados.length === 0 && visiblesIds.length === 0}
+            className="flex items-center justify-center gap-2 whitespace-nowrap rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-40"
+          >
+            <Megaphone className="h-4 w-4" />
+            Nueva campaña
+            <span className="rounded bg-primary-foreground/20 px-1.5 py-0.5 text-xs tabular-nums">
+              {seleccionados.length || visiblesIds.length}
+            </span>
+          </button>
+        )}
       </div>
 
       {/* Count */}
@@ -333,6 +363,7 @@ export function CobranzaTable({ role }: { role: Role }) {
         {sortedFiltered.length === creditos.length
           ? `${creditos.length} crédito${creditos.length !== 1 ? "s" : ""} en mora`
           : `${sortedFiltered.length} de ${creditos.length} en mora`}
+        {bloqueadosVisibles > 0 && ` · ${bloqueadosVisibles} sin contactar (fallecido)`}
       </p>
 
       {/* ── Content ── */}

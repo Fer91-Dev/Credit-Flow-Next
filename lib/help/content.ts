@@ -290,6 +290,26 @@ const HELP: Record<string, HelpDoc> = {
         ],
       },
       {
+        kind: "pasos",
+        titulo: "Armar una campaña",
+        pasos: [
+          "En Morosos, elegí a quién: filtrá por severidad (Crítica, Alta) o tildá clientes uno por uno.",
+          "Botón «Nueva campaña»: el número que muestra es sobre cuántos va a trabajar. Sin nada tildado, toma los que estás viendo.",
+          "Elegí canal y escribí el mensaje. Los datos entre corchetes —[Nombre], [Monto]— se reemplazan por los de cada cliente.",
+          "Opcional: quita de interés de mora, como incentivo para que paguen ahora.",
+          "Enviar. Va por tandas y muestra el avance; si se corta, volvés a apretar y sigue por donde quedó, sin repetirle a nadie.",
+        ],
+      },
+      {
+        kind: "tips",
+        titulo: "Lo que la campaña NO manda",
+        items: [
+          "Créditos ya refinanciados o saldados: su deuda está en otro lado y reclamarla sería cobrar dos veces.",
+          "Clientes fallecidos: quedan con el casillero apagado y su deuda en revisión.",
+          "El importe que se reclama es lo VENCIDO con mora, no el préstamo entero: es lo mismo que le va a cobrar la caja.",
+        ],
+      },
+      {
         // Los tres instrumentos se confunden todo el tiempo, y elegir mal cuesta plata: la
         // refinanciación no se deshace. Van en orden de menor a mayor compromiso.
         kind: "definiciones",

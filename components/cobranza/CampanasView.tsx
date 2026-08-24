@@ -31,7 +31,7 @@ const CANAL_ICON: Record<CanalCampana, ComponentType<{ className?: string }>> = 
   whatsapp: WhatsAppIcon, email: Mail, sms: Smartphone,
 };
 
-export function CampanasView() {
+export function CampanasView({ onArmar }: { onArmar?: () => void } = {}) {
   const { campanas, isLoading } = useCampanas();
   const [abierta, setAbierta] = useState<string | null>(null);
 
@@ -53,14 +53,35 @@ export function CampanasView() {
         </div>
         <p className="text-sm font-semibold text-muted-foreground">Sin campañas todavía</p>
         <p className="text-xs text-muted-foreground/50 max-w-xs leading-relaxed">
-          Seleccioná clientes en mora desde la pestaña Morosos e iniciá una campaña de recuperación.
+          Una campaña le manda el mismo mensaje a un grupo de morosos, con una oferta opcional
+          de quita de punitorios.
         </p>
+        {onArmar && (
+          <button
+            onClick={onArmar}
+            className="mt-1 flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
+          >
+            <Megaphone className="h-4 w-4" /> Armar una campaña
+          </button>
+        )}
       </div>
     );
   }
 
   return (
     <div className="space-y-3">
+      {/* La acción también arriba: con campañas ya creadas, el botón de Morosos queda a dos
+          pestañas de distancia y no hay ninguna pista de que exista. */}
+      {onArmar && (
+        <div className="flex justify-end">
+          <button
+            onClick={onArmar}
+            className="flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/10 px-3.5 py-2 text-sm font-medium text-primary transition-colors hover:bg-primary/20"
+          >
+            <Megaphone className="h-4 w-4" /> Nueva campaña
+          </button>
+        </div>
+      )}
       {campanas.map((c) => <CampanaCard key={c.id} campana={c} onOpen={() => setAbierta(c.id)} />)}
     </div>
   );
