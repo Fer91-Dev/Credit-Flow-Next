@@ -43,8 +43,66 @@ export interface PlantillasContacto {
 }
 
 /**
+ * Los datos que se pueden intercalar en un mensaje. Esta lista es la ÚNICA fuente: la
+ * pantalla de Configuración la muestra y `renderPlantillaContacto` la aplica, así que no
+ * puede ofrecerse algo que después no se reemplaza.
+ *
+ * 🔴 Pasó exactamente eso: la documentación prometía `[cuota]` y el renderizador nunca lo
+ * sustituía. Un mensaje escrito con esa clave le llegaba al cliente diciendo "[cuota]".
+ */
+export const PLACEHOLDERS_CONTACTO = [
+  { clave: "nombre",      descripcion: "Nombre del cliente" },
+  { clave: "financiera",  descripcion: "Nombre de tu financiera" },
+  { clave: "deuda",       descripcion: "Lo que debe hoy, con mora incluida" },
+  { clave: "dias",        descripcion: "Días de atraso" },
+  { clave: "cuota",       descripcion: "Importe de la próxima cuota" },
+  { clave: "vencimiento", descripcion: "Fecha del próximo vencimiento" },
+] as const;
+
+/** Lo que hace falta saber del cliente para completar un mensaje. */
+export interface DatosPlantillaContacto {
+  nombre: string;
+  financiera: string;
+  deuda: number;
+  dias: number;
+  cuota: number;
+  vencimiento: Date | string | null;
+}
+
+const money = (n: number) =>
+  new Intl.NumberFormat("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
+
+/**
+ * Reemplaza los `[claves]` de una plantilla con los datos del cliente.
+ *
+ * Vive en el dominio y no en el endpoint a propósito: lo usan el ENVÍO real y la VISTA
+ * PREVIA de Configuración. Si cada uno tuviera su copia, la pantalla mostraría un mensaje y
+ * al cliente le llegaría otro — el mismo error de dos fórmulas que ya se pagó con los cargos
+ * y con la mora.
+ *
+ * Los importes van CON CENTAVOS. Antes se redondeaban a pesos enteros: al cliente se le
+ * decía que debía $1.872.415 y al pagar el sistema le pedía $1.872.415,37. Un mensaje de
+ * cobranza que no coincide con la caja es una discusión en el mostrador.
+ */
+export function renderPlantillaContacto(plantilla: string, d: DatosPlantillaContacto): string {
+  const venc = d.vencimiento
+    ? new Intl.DateTimeFormat("es-AR", { timeZone: "UTC" }).format(new Date(d.vencimiento))
+    : "—";
+  const valores: Record<string, string> = {
+    nombre: d.nombre,
+    financiera: d.financiera,
+    deuda: money(d.deuda),
+    dias: String(d.dias),
+    cuota: money(d.cuota),
+    vencimiento: venc,
+  };
+  // Solo se tocan las claves conocidas: un `[texto entre corchetes]` que el operador haya
+  // escrito por su cuenta se respeta tal cual, en vez de desaparecer.
+  return plantilla.replace(/\[(\w+)\]/g, (full, k: string) => valores[k.toLowerCase()] ?? full);
+}
+
+/**
  * Textos por defecto. Neutros a propósito: los escribe cada financiera desde Configuración.
- * Placeholders disponibles: [nombre] [deuda] [dias] [cuota] [vencimiento] [financiera].
  */
 export const PLANTILLAS_CONTACTO_DEFAULT: PlantillasContacto = {
   mora: "Hola [nombre], te escribimos de [financiera]. Registramos un atraso de [dias] días en tu crédito, por un total de $[deuda]. Comunicate con nosotros para regularizarlo.",

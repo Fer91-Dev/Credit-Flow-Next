@@ -6,7 +6,7 @@ import { getCobranzaConfig, getComunicacionConfig, getConfiguracion } from "@/li
 import { getFinanciera } from "@/lib/financiera";
 import { registrarAuditoria } from "@/lib/audit";
 import {
-  construirMensajeCampana, linkWhatsapp, diasMoraActual, esCreditoVivo, round2,
+  linkWhatsapp, diasMoraActual, esCreditoVivo, round2, renderPlantillaContacto, type DatosPlantillaContacto,
   calcularDeudaConsolidada, moraDelCredito, moraDesdeCronograma, type CuotaParaImputar,
   plantillaDe, cuentaComoGestion, MOTIVO_LABEL, tipoGestionDeCanal, resolverPlantillasContacto, type MotivoContacto,
   deudaEnRevision,
@@ -251,6 +251,21 @@ async function cargarContactable(ctx: Ctx, id: string) {
     .filter((d): d is Date => d instanceof Date)
     .sort((a, b) => a.getTime() - b.getTime())[0] ?? null;
 
+  /**
+   * 🔴 `cuota` estaba FIJO EN 0.
+   *
+   * El placeholder `[cuota]` figuraba como disponible, así que una financiera que lo usara
+   * le habría escrito a su cliente que su próxima cuota es de $0,00. Peor que no
+   * reemplazarlo: un número inventado y con aire de oficial.
+   *
+   * Es el importe PROGRAMADO de la primera cuota impaga del crédito más atrasado —el mismo
+   * del que habla el mensaje—. Se usa el nominal del plan y no lo que habría que cobrar hoy
+   * con punitorios: la cuota es un número del contrato, fijo, y el atraso ya viaja aparte en
+   * `[deuda]` y `[dias]`.
+   */
+  const creditoDelMensaje = peor ?? vivos[0] ?? null;
+  const proximaCuota = creditoDelMensaje?.cuotas?.find((q) => q.pagado_capital < q.capital) ?? null;
+
   return {
     cliente,
     comm,
@@ -261,24 +276,23 @@ async function cargarContactable(ctx: Ctx, id: string) {
       financiera: financiera?.nombre || "tu financiera",
       deuda: deudaViva,
       dias: peor?.dias ?? 0,
-      cuota: 0,
+      cuota: round2(proximaCuota?.cuota_total ?? 0),
       vencimiento: proximo,
     },
   } as const;
 }
 
-/** Rellena los placeholders `[clave]` con el MISMO armador que usan las campañas. */
-function render(plantilla: string, d: { nombre: string; financiera: string; deuda: number; dias: number; cuota: number; vencimiento: Date | null }): string {
-  const conFecha = plantilla.replace(
-    /\[vencimiento\]/gi,
-    d.vencimiento ? new Intl.DateTimeFormat("es-AR", { timeZone: "UTC" }).format(d.vencimiento) : "—",
-  ).replace(/\[financiera\]/gi, d.financiera);
-  return construirMensajeCampana(conFecha, {
-    nombre: d.nombre,
-    monto: d.deuda,
-    saldo: d.deuda,
-    dias: d.dias,
-  }).replace(/\[deuda\]/gi, new Intl.NumberFormat("es-AR", { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(d.deuda));
+/**
+ * Rellena los placeholders. La función vive en el DOMINIO (`renderPlantillaContacto`) porque
+ * la comparte con la vista previa de Configuración: si cada lado tuviera la suya, la pantalla
+ * mostraría un mensaje y al cliente le llegaría otro.
+ *
+ * Tenía dos defectos que se arreglaron al centralizarla: `[cuota]` estaba documentado y NUNCA
+ * se sustituía (al cliente le llegaba el texto literal), y los importes salían redondeados a
+ * pesos enteros, así que el mensaje decía una cifra y la caja cobraba otra.
+ */
+function render(plantilla: string, d: DatosPlantillaContacto): string {
+  return renderPlantillaContacto(plantilla, d);
 }
 
 /** Cuerpo del mail: el texto tal cual se leyó en pantalla, firmado por la financiera. */

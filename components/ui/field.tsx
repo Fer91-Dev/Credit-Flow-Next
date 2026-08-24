@@ -1,3 +1,4 @@
+import * as React from "react";
 import { ChevronDown } from "lucide-react";
 import { cn, soloDigitos, formatCuit } from "@/lib/utils";
 import { revisarPassword, type ContextoPassword } from "@/lib/domain";
@@ -179,17 +180,24 @@ export function PasswordFields({
   );
 }
 
-export function Textarea({ className, ...props }: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
-  return (
-    <textarea
-      className={cn(
-        "w-full rounded-lg border border-border bg-input px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground/40 shadow-[inset_0_1px_2px_0_rgba(0,0,0,0.22)] outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/25 resize-none",
-        className
-      )}
-      {...props}
-    />
-  );
-}
+/**
+ * Reenvía la ref al `<textarea>` real: hace falta para escribir en la posición del cursor
+ * (insertar un `[dato]` donde está parado el operador, en las plantillas de contacto).
+ */
+export const Textarea = React.forwardRef<HTMLTextAreaElement, React.TextareaHTMLAttributes<HTMLTextAreaElement>>(
+  function Textarea({ className, ...props }, ref) {
+    return (
+      <textarea
+        ref={ref}
+        className={cn(
+          "w-full rounded-lg border border-border bg-input px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground/40 shadow-[inset_0_1px_2px_0_rgba(0,0,0,0.22)] outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/25 resize-none",
+          className
+        )}
+        {...props}
+      />
+    );
+  },
+);
 
 export function Select({ className, children, ...props }: React.SelectHTMLAttributes<HTMLSelectElement>) {
   return (

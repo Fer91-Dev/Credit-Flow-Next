@@ -15,6 +15,7 @@ import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
 import { formatFecha, formatMonto, formatNumero } from "@/lib/utils";
+import { PlantillasContactoEditor } from "@/components/configuracion/PlantillasContactoEditor";
 
 /**
  * Día del mes (1–28) de los campos de cronograma, o `null` cuando el campo queda vacío.
@@ -130,6 +131,25 @@ const AYUDA: Record<string, AyudaBloque> = {
       "La condonación sale de los punitorios y el interés, NUNCA del capital: la plata que se prestó de verdad no se regala.",
       "El acuerdo no toca el crédito: el cliente paga como siempre y el acuerdo se va cumpliendo solo con esos pagos.",
       "No hay botón para darlo por cumplido: se cumple cuando la plata entra, y eso lo detecta el sistema solo.",
+    ],
+  },
+  plantillas: {
+    titulo: "Mensajes al cliente",
+    texto:
+      "Los textos que salen cuando alguien aprieta «Contactar» en la ficha de un cliente. Hay uno por motivo "
+      + "(mora, promoción, información) y sirven para los dos canales: el WhatsApp usa solo el mensaje, el email "
+      + "le suma el asunto.",
+    ejemplo:
+      "Escribís «Hola [nombre], te habla [financiera]. Tenés $[deuda] vencidos hace [dias] días.» y al mandárselo "
+      + "a Juan Pérez le llega «Hola Juan Pérez, te habla Credit Zero. Tenés $152.340,50 vencidos hace 12 días.» "
+      + "La vista previa de la derecha muestra exactamente eso antes de guardar.",
+    puntos: [
+      "Los datos entre corchetes se reemplazan solos. Clic en la etiqueta y se inserta donde tenés el cursor.",
+      "Solo se reemplazan las claves de la lista: cualquier otra cosa entre corchetes se manda tal cual.",
+      "Los importes salen con centavos, iguales a los que después cobra la caja — si no, el cliente discute el vuelto.",
+      "Solo el mensaje de MORA cuenta como gestión de cobranza. Los otros dos se registran en la ficha pero no mueven la efectividad del equipo.",
+      "El asunto solo lo usa el email; en WhatsApp se ignora.",
+      "Si borrás un texto y guardás, vuelve el que trae el sistema por defecto.",
     ],
   },
   fallecidos: {
@@ -427,6 +447,9 @@ export function ConfigForm() {
   /** Patch anidado de la política de clientes fallecidos. */
   const setFallecidos = (patch: Partial<CobranzaConfig["fallecidos"]>) =>
     setCobranza({ fallecidos: { ...cobranza.fallecidos, ...patch } });
+  /** Patch anidado de los textos del contacto individual. */
+  const setContacto = (patch: Partial<CobranzaConfig["contacto"]>) =>
+    setCobranza({ contacto: { ...cobranza.contacto, ...patch } });
 
   const setCobranza = (patch: Partial<CobranzaConfig>) => {
     setForm(prev => prev ? { ...prev, cobranzaConfig: { ...defaultCobranza(), ...prev.cobranzaConfig, ...patch } } : prev);
@@ -1721,6 +1744,17 @@ export function ConfigForm() {
                 onChange={v => setFallecidos({ saca_de_agenda: v })}
               />
             </div>
+          </Section>
+
+          {/* Plantillas del contacto individual */}
+          <Section
+            title="Mensajes al cliente"
+            desc="Lo que se le manda por WhatsApp o email desde la ficha, según el motivo."
+            ayuda={AYUDA.plantillas}
+            onSave={() => save("cobranza", { cobranzaConfig: cobranza })}
+            saving={savingKey === "cobranza"} saved={savedKey === "cobranza"} dirty={isDirty("cobranza")}
+          >
+            <PlantillasContactoEditor valor={cobranza.contacto} onChange={setContacto} />
           </Section>
 
 
