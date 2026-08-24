@@ -207,9 +207,25 @@ export async function guardarDocumentosConfig(tenantId: string, config: Document
 
 // ─── Cobranza (agenda de gestión del día) ───────────────────────────────────
 
+/**
+ * Criterio de orden DENTRO de cada grupo de la agenda del día (los grupos —promesa,
+ * agendado, enfriado— van siempre en ese orden: eso es urgencia, no preferencia).
+ *  - "mora":  primero el que hace más días que no paga.
+ *  - "monto": primero el que más plata vencida tiene.
+ */
+export const ORDENES_AGENDA = ["mora", "monto"] as const;
+export type OrdenAgenda = (typeof ORDENES_AGENDA)[number];
+
 export interface CobranzaConfig {
   /** Días sin gestión tras los cuales un moroso vuelve a aparecer en la agenda del día. */
   dias_sin_gestion: number;
+  /**
+   * Con qué criterio se ordena la cola del día. Va como parámetro y no fijo en el código
+   * porque no hay una respuesta correcta: por días se protege la antigüedad de la deuda
+   * (cuanto más vieja, menos se recupera), por monto se protege la plata. Default "mora",
+   * que es como se comportaba el sistema antes de que este parámetro existiera.
+   */
+  orden: OrdenAgenda;
   /** Textos del contacto individual (WhatsApp/email desde la ficha del cliente). */
   contacto: PlantillasContacto;
   /**
@@ -234,6 +250,7 @@ export interface CobranzaConfig {
 
 export const COBRANZA_DEFAULT: CobranzaConfig = {
   dias_sin_gestion: 7,
+  orden: "mora",
   contacto: PLANTILLAS_CONTACTO_DEFAULT,
   acuerdos: ACUERDOS_DEFAULT,
   recupero: RECUPERO_DEFAULT,
@@ -247,6 +264,9 @@ export function resolverCobranza(raw: unknown): CobranzaConfig {
   const dias = Number.isFinite(n) && n > 0 ? Math.min(90, Math.max(1, Math.round(n))) : COBRANZA_DEFAULT.dias_sin_gestion;
   return {
     dias_sin_gestion: dias,
+    // Un valor desconocido cae al default en vez de romper la agenda: la config es un JSON
+    // libre y puede llegar con basura de una versión vieja o de una edición a mano.
+    orden: ORDENES_AGENDA.includes(r.orden as OrdenAgenda) ? (r.orden as OrdenAgenda) : COBRANZA_DEFAULT.orden,
     acuerdos: resolverAcuerdos(r.acuerdos),
     recupero: resolverRecupero(r.recupero),
     // Plantillas del contacto individual desde la ficha del cliente. Viven acá y no en una

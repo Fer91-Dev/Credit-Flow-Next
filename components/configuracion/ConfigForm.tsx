@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Check, Loader2, Percent, Plus, X, MessageSquare, Phone, Mail, HelpCircle } from "lucide-react";
-import { useConfiguracion, type ConfiguracionFinanciera, type GamificacionConfig, type RentabilidadConfig, type RiesgoConfig, type CobranzaConfig, type CajaConfig, type NotificacionesConfig } from "@/lib/swr";
+import { useConfiguracion, type ConfiguracionFinanciera, type GamificacionConfig, type RentabilidadConfig, type RiesgoConfig, type CobranzaConfig, type CajaConfig, type NotificacionesConfig, type OrdenAgenda } from "@/lib/swr";
 import { FeatureGate } from "@/components/providers/FeaturesProvider";
 import { FinancieraForm } from "@/components/configuracion/FinancieraForm";
 import { BackupsView } from "@/components/configuracion/BackupsView";
@@ -67,6 +67,27 @@ export type AyudaBloque = { titulo?: string; texto: string; ejemplo?: string; pu
  * mora de cada cuota a un múltiplo de lo que vale esa cuota. Por eso ahora dice "veces el
  * valor de la cuota", que no se puede confundir con un conteo.
  */
+/**
+ * Con qué criterio se ordena la cola del día ADENTRO de cada grupo. Cada opción dice qué
+ * pasa si se elige, porque las dos resignan algo y no hay una correcta.
+ */
+const ORDENES_AGENDA_UI: { key: OrdenAgenda; label: string; consecuencia: string }[] = [
+  {
+    key: "mora",
+    label: "El que hace más días que no paga",
+    consecuencia:
+      "Prioriza la deuda más vieja, que es la más difícil de recuperar. Contra: una deuda chica y antigua "
+      + "le gana a una grande y reciente, así que la plata más grande queda al final de la lista.",
+  },
+  {
+    key: "monto",
+    label: "El que más plata debe",
+    consecuencia:
+      "Prioriza la plata en juego: primero el vencido más alto. Contra: las deudas chicas se envejecen solas "
+      + "abajo de la lista, y cuanto más vieja es una deuda menos se cobra.",
+  },
+];
+
 const TOPES_MORA = [
   { pct: 0,   label: "Sin tope — la mora crece para siempre" },
   { pct: 100, label: "1 vez el valor de la cuota (100%)" },
@@ -141,9 +162,20 @@ const AYUDA: Record<string, AyudaBloque> = {
   },
   cobranza: {
     titulo: "Agenda de cobranza",
-    texto: "Cada cuántos días alguien que debe y no fue contactado vuelve a aparecer en la cola del día.",
+    texto:
+      "La cola del día: a quién hay que contactar y en qué orden. Se arma sola en tres grupos por urgencia "
+      + "—promesas vencidas, contactos agendados y morosos que nadie gestiona hace días— y ese orden entre "
+      + "grupos no se configura. Lo que sí elegís es cada cuánto vuelve alguien a la cola y a quién llamar "
+      + "primero DENTRO de cada grupo.",
+    ejemplo:
+      "Con «el que hace más días que no paga», una deuda de $8.000,00 con 200 días de atraso aparece ARRIBA de "
+      + "una de $500.000,00 con 20 días. Con «el que más plata debe» se invierte: primero los $500.000,00. "
+      + "Importa porque nadie llama la lista entera: el que queda al final no se llama.",
     puntos: [
-      "Con 7, un moroso al que nadie llamó reaparece en «Hoy» a la semana de la última gestión.",
+      "Días sin gestión: con 7, un moroso al que nadie llamó reaparece en «Hoy» a la semana de la última gestión.",
+      "A quién llamar primero: ordena solo adentro de cada grupo. Una promesa vencida siempre va antes que un enfriado.",
+      "El importe que muestra la agenda es lo VENCIDO (cuotas impagas + punitorios), no el préstamo entero.",
+      "Quien está cumpliendo un acuerdo de pago no aparece en la cola — eso se configura en Acuerdos de pago.",
       "Los controles de la plata (gastos y anulaciones) se mudaron a la sección Cajas.",
     ],
   },
@@ -1711,7 +1743,7 @@ export function ConfigForm() {
           {/* ─── Documentos del crédito (solicitud/mutuo + pagaré) ─── */}
           {activeTab === "cobranza" && <>
           {/* Agenda de cobranza */}
-          <Section title="Agenda de cobranza" desc="Cada cuántos días un moroso sin gestionar vuelve a aparecer en la cola del día." ayuda={AYUDA.cobranza}
+          <Section title="Agenda de cobranza" desc="Cada cuántos días un moroso sin gestionar vuelve a aparecer en la cola del día, y con qué criterio se ordena." ayuda={AYUDA.cobranza}
             onSave={() => save("cobranza", { cobranzaConfig: cobranza })}
             saving={savingKey === "cobranza"} saved={savedKey === "cobranza"} dirty={isDirty("cobranza")}>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 max-w-xl">
@@ -1721,6 +1753,22 @@ export function ConfigForm() {
                   value={cobranza.dias_sin_gestion}
                   onChange={e => setCobranza({ dias_sin_gestion: Math.max(1, Math.min(90, Math.round(parseFloat(e.target.value) || 1))) })}
                 />
+              </Field>
+              {/*
+                Los GRUPOS (promesa → agendado → enfriado) no se tocan: eso es urgencia. Lo
+                que se elige es el orden ADENTRO de cada grupo, que es donde estaba la
+                decisión escondida: ordenando por días, el que más plata debe quedaba al
+                final de la lista, y en una cola que nadie llama entera el último no se llama.
+              */}
+              <Field label="A quién llamar primero" hint={ORDENES_AGENDA_UI.find(o => o.key === cobranza.orden)?.consecuencia ?? ""}>
+                <Select
+                  value={cobranza.orden}
+                  onChange={e => setCobranza({ orden: e.target.value as OrdenAgenda })}
+                >
+                  {ORDENES_AGENDA_UI.map(o => (
+                    <option key={o.key} value={o.key}>{o.label}</option>
+                  ))}
+                </Select>
               </Field>
             </div>
           </Section>
@@ -2077,6 +2125,7 @@ function defaultRentabilidad(): RentabilidadConfig {
 function defaultCobranza(): CobranzaConfig {
   return {
     dias_sin_gestion: 7,
+    orden: "mora",
     contacto: PLANTILLAS_CONTACTO_DEFAULT,
     acuerdos: {
       max_cuotas: 6, dias_entre_cuotas: 30, cuotas_para_romper: 1,

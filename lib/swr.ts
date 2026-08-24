@@ -13,7 +13,7 @@ import type {
   SimuladorConfig, DocumentosConfig, TipoMovimiento,
   PoliticaOriginacion, BureauConfig, BureauProveedor, RiesgoConfig,
 } from "@/lib/domain";
-import type { CobranzaConfig, CajaConfig } from "@/lib/config";
+import type { CobranzaConfig, CajaConfig, OrdenAgenda } from "@/lib/config";
 export type { CajaConfig };
 
 export type { SimuladorConfig, DocumentosConfig };
@@ -832,7 +832,7 @@ export interface ConfiguracionFinanciera {
  * servidor no rompía nada, y la pantalla de Configuración seguía compilando sin saber que
  * ese campo existía. Es el mismo problema que tenían los tipos de movimiento de caja.
  */
-export type { CobranzaConfig };
+export type { CobranzaConfig, OrdenAgenda };
 
 /** Preferencias de qué avisos in-app (campanita) se muestran. */
 export interface NotificacionesConfig {
@@ -1529,12 +1529,19 @@ export function useFinanciera() {
 /** Un ítem de la agenda del día de cobranza (a quién contactar hoy). */
 export interface AgendaItem {
   credito_id: string;
+  /** Titular: lo usa el botón de WhatsApp, que contacta por el endpoint de la ficha. */
+  cliente_id: string;
   credito_numero: number | null;
   /** N° del crédito que reemplaza, si es una refinanciación → se muestra REF-xxxxxx. */
   credito_refinancia_a_numero?: number | null;
   cliente: string;
   telefono: string | null;
+  /** Capital pendiente del crédito. Referencia — NO es lo que se reclama. */
   saldo_pendiente: number;
+  /** Lo exigible hoy: cuotas vencidas impagas + punitorios. Es el número de la cobranza. */
+  vencido: number;
+  /** Cuántas cuotas están vencidas e impagas. */
+  cuotas_vencidas: number;
   dias_mora: number;
   promesa_monto: number | null;
   bucket: "promesa" | "agendado" | "enfriado";
@@ -1543,8 +1550,11 @@ export interface AgendaItem {
 }
 export interface AgendaCobranza {
   items: AgendaItem[];
-  totales: { promesa: number; agendado: number; enfriado: number; total: number };
+  /** `vencido` = plata exigible que hay en toda la cola del día. */
+  totales: { promesa: number; agendado: number; enfriado: number; total: number; vencido: number };
   dias_sin_gestion: number;
+  /** Con qué criterio vino ordenada la cola (parámetro de Configuración → Cobranza). */
+  orden: OrdenAgenda;
 }
 /** Agenda del día de cobranza (cola priorizada, scopeada al vendedor). */
 export function useAgendaCobranza() {

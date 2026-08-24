@@ -2,10 +2,13 @@ import { requireAuth, scopeCreditosVendedor } from "@/lib/auth";
 import { successResponse, withErrorHandler } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
-import { getCobranzaConfig } from "@/lib/config";
+import { getCobranzaConfig, getConfiguracion } from "@/lib/config";
 import { sincronizarAcuerdos, creditosConAcuerdoVigente } from "@/lib/acuerdos";
 import { numerosRefinanciados } from "@/lib/creditos-numero";
-import { diasMoraActual, ESTADOS_VIVOS } from "@/lib/domain";
+import {
+  diasMoraActual, ESTADOS_VIVOS, calcularDeudaVencida, moraDelCredito, moraDesdeCronograma,
+  round2, type CuotaParaImputar,
+} from "@/lib/domain";
 import { nombreCompleto, hoyComercial } from "@/lib/utils";
 import type { NextRequest } from "next/server";
 
@@ -16,19 +19,27 @@ import type { NextRequest } from "next/server";
  *  - promesa:  promesa de pago pendiente vencida (o de hoy) sin cumplir.
  *  - agendado: gestión con "próximo contacto" para hoy o vencido.
  *  - enfriado: moroso sin gestión humana en `dias_sin_gestion` días (parametrizable en Config).
- * Prioridad: promesa → agendado → enfriado; dentro de cada uno, mayor mora primero.
+ * Prioridad: promesa → agendado → enfriado; dentro de cada uno, según `cobranza.orden`
+ * (días de atraso o plata vencida — parametrizable en Config).
  */
 type Bucket = "promesa" | "agendado" | "enfriado";
 const PRIORIDAD: Record<Bucket, number> = { promesa: 0, agendado: 1, enfriado: 2 };
 
 interface AgendaItem {
   credito_id: string;
+  /** Titular. Lo necesita el botón de WhatsApp, que contacta por el endpoint de la ficha. */
+  cliente_id: string;
   credito_numero: number | null;
   /** N° del crédito que esta refinanciación reemplaza (para mostrarlo como REF-xxxxxx). */
   credito_refinancia_a_numero: number | null;
   cliente: string;
   telefono: string | null;
+  /** Capital pendiente del crédito. Se conserva como referencia, NO es lo que se reclama. */
   saldo_pendiente: number;
+  /** Lo EXIGIBLE hoy: cuotas ya vencidas impagas + punitorios. Es el número de la cobranza. */
+  vencido: number;
+  /** Cuántas cuotas están vencidas e impagas (para decir "debe 3 cuotas", no solo un total). */
+  cuotas_vencidas: number;
   dias_mora: number;
   promesa_monto: number | null;
   bucket: Bucket;
@@ -38,7 +49,8 @@ interface AgendaItem {
 
 export const GET = withErrorHandler(async (req: NextRequest) => {
   const { tenantId, role, vendedorId } = await requireAuth(req);
-  const { dias_sin_gestion, acuerdos, fallecidos } = await getCobranzaConfig(tenantId);
+  const { dias_sin_gestion, orden, acuerdos, fallecidos } = await getCobranzaConfig(tenantId);
+  const config = await getConfiguracion(tenantId);
 
   // Los acuerdos se ponen al día ANTES de armar la cola: uno que se rompió ayer tiene que
   // volver a la agenda hoy, no cuando corra el cron de la madrugada.
@@ -76,14 +88,21 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
       },
     },
     select: {
-      id: true, numero: true, saldo_pendiente: true, proximo_pago: true,
-      es_refinanciacion: true, refinancia_a: true,
+      id: true, numero: true, saldo_pendiente: true, proximo_pago: true, cliente_id: true,
+      es_refinanciacion: true, refinancia_a: true, cronograma: true,
       cliente: { select: { nombre: true, apellido: true, telefono: true, estado: true } },
+      /**
+       * Sin las cuotas no se puede saber qué está VENCIDO, que es lo único que se reclama en
+       * una cobranza. El `saldo_pendiente` es el préstamo entero —cuotas futuras incluidas—
+       * y pedirlo completo es exigir la caducidad de plazos, que no se decide desde la
+       * agenda del día. Mismo criterio que campañas y acuerdos.
+       */
+      cuotas: { orderBy: { nro: "asc" } },
     },
   });
 
   if (creditos.length === 0) {
-    return successResponse({ items: [], totales: { promesa: 0, agendado: 0, enfriado: 0, total: 0 }, dias_sin_gestion });
+    return successResponse({ items: [], totales: { promesa: 0, agendado: 0, enfriado: 0, total: 0, vencido: 0 }, dias_sin_gestion, orden });
   }
 
   // Los que son refinanciación se muestran como REF-<origen>: una sola query para todo el lote.
@@ -144,13 +163,36 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     }
 
     if (!bucket) continue;
+
+    /**
+     * Lo exigible HOY. Se calcula con las condiciones de mora congeladas en el crédito
+     * (`moraDelCredito` sobre su propio cronograma), no con la config actual: un crédito
+     * otorgado antes del techo de mora no cambia de deuda porque hoy se configure uno.
+     */
+    const cuotasDom: CuotaParaImputar[] = c.cuotas.map((q) => ({
+      id: q.id, nro: q.nro, fechaVencimiento: q.fecha_vencimiento,
+      capital: q.capital, interes: q.interes, cargos: round2(q.iva + q.seguro + q.gastos),
+      cuotaTotal: q.cuota_total,
+      pagadoCapital: q.pagado_capital, pagadoInteres: q.pagado_interes,
+      pagadoMora: q.pagado_mora, pagadoCargos: q.pagado_cargos,
+    }));
+    const mc = moraDelCredito(moraDesdeCronograma(c.cronograma), config);
+    const gracia = (c.cronograma as { diasGracia?: number } | null)?.diasGracia ?? config.simulador.diasGracia;
+    const dv = calcularDeudaVencida(cuotasDom, {
+      moraActiva: mc.moraActiva, tasaMoraDiaria: mc.tasaMoraDiaria, topeMoraPct: mc.topeMoraPct,
+      diasGracia: gracia, hoy,
+    });
+
     items.push({
       credito_id: c.id,
+      cliente_id: c.cliente_id,
       credito_numero: c.numero,
       credito_refinancia_a_numero: c.es_refinanciacion && c.refinancia_a ? origenes.get(c.refinancia_a) ?? null : null,
       cliente: nombreCompleto(c.cliente),
       telefono: c.cliente?.telefono ?? null,
       saldo_pendiente: c.saldo_pendiente,
+      vencido: round2(dv.total),
+      cuotas_vencidas: dv.cuotas_vencidas,
       dias_mora: diasMoraActual(c.proximo_pago, hoy),
       promesa_monto: bucket === "promesa" ? (promesaPend?.promesa_monto ?? null) : null,
       bucket,
@@ -159,14 +201,34 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     });
   }
 
-  items.sort((a, b) => PRIORIDAD[a.bucket] - PRIORIDAD[b.bucket] || b.dias_mora - a.dias_mora);
+  /**
+   * El GRUPO manda siempre (promesa → agendado → enfriado): eso es urgencia, no preferencia.
+   * Adentro de cada grupo ordena el criterio configurado.
+   *
+   * 🔴 Por qué es un parámetro y no una decisión fija: ordenar por días de atraso deja al
+   * final al que más plata debe. Una deuda de $8.000 con 200 días le ganaba a una de
+   * $500.000 con 20, y en una cola que nadie termina de llamar entera, el que queda abajo no
+   * se llama. Pero lo contrario tampoco es gratis: por monto, la deuda vieja y chica se
+   * envejece sola, y cuanto más vieja menos se recupera. Cada financiera elige.
+   *
+   * El desempate es siempre el otro criterio, así que dos iguales no quedan en orden
+   * arbitrario (que cambiaría de refresco en refresco).
+   */
+  items.sort((a, b) =>
+    PRIORIDAD[a.bucket] - PRIORIDAD[b.bucket] ||
+    (orden === "monto"
+      ? b.vencido - a.vencido || b.dias_mora - a.dias_mora
+      : b.dias_mora - a.dias_mora || b.vencido - a.vencido),
+  );
 
   const totales = {
     promesa: items.filter((i) => i.bucket === "promesa").length,
     agendado: items.filter((i) => i.bucket === "agendado").length,
     enfriado: items.filter((i) => i.bucket === "enfriado").length,
     total: items.length,
+    /** Plata exigible que hay en la cola del día, para saber qué está en juego. */
+    vencido: round2(items.reduce((s, i) => s + i.vencido, 0)),
   };
 
-  return successResponse({ items, totales, dias_sin_gestion });
+  return successResponse({ items, totales, dias_sin_gestion, orden });
 });

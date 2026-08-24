@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import {
   HandshakeIcon, CalendarClock, Snowflake, MessageSquarePlus,
   Phone, CheckCheck, AlertCircle,
@@ -12,22 +12,8 @@ import { StatusBadge } from "@/components/ui/StatusBadge";
 import { KpiCard } from "@/components/ui/KpiCard";
 import { IconBadge } from "@/components/ui/IconBadge";
 import { Skeleton } from "@/components/ui/skeleton";
-
-/** Sanitiza un teléfono a solo dígitos para un enlace wa.me. */
-function telDigits(tel?: string | null): string {
-  return (tel ?? "").replace(/\D/g, "");
-}
-
-/** Enlace de WhatsApp con un reclamo prellenado a partir del ítem de agenda. */
-function whatsappLink(it: AgendaItem): string | null {
-  const num = telDigits(it.telefono);
-  if (!num) return null;
-  const msg =
-    `Hola ${it.cliente}, le escribimos por su crédito con ${it.dias_mora} ` +
-    `día${it.dias_mora !== 1 ? "s" : ""} de atraso y un saldo de ${formatMonto(it.saldo_pendiente)}. ` +
-    `Por favor comuníquese para regularizar su situación. ¡Gracias!`;
-  return `https://wa.me/${num}?text=${encodeURIComponent(msg)}`;
-}
+import { useToast } from "@/components/ui/toast";
+import { mutate as globalMutate } from "swr";
 
 type BucketMeta = {
   key: AgendaItem["bucket"];
@@ -115,11 +101,12 @@ export function AgendaHoy({
           <div>
             <h3 className="text-sm font-semibold text-foreground">Tu agenda de hoy</h3>
             <p className="text-[11px] text-muted-foreground/70">
-              {total} cliente{total !== 1 ? "s" : ""} para contactar, priorizados por urgencia.
+              {total} cliente{total !== 1 ? "s" : ""} para contactar. Dentro de cada grupo, primero{" "}
+              {agenda?.orden === "monto" ? "el que más plata debe" : "el que hace más días que no paga"}.
             </p>
           </div>
         </div>
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
           {BUCKETS.map((b) => {
             const n = agenda?.totales[b.key] ?? 0;
             return (
@@ -133,6 +120,15 @@ export function AgendaHoy({
               />
             );
           })}
+          {/* Cuánta plata hay realmente en juego en la cola. Es lo VENCIDO, no la cartera. */}
+          <KpiCard
+            icon={AlertCircle}
+            label="Vencido en la cola"
+            value={formatMonto(agenda?.totales.vencido ?? 0)}
+            accent="destructive"
+            mono
+            sub="cuotas impagas + punitorios"
+          />
         </div>
       </div>
 
@@ -177,8 +173,44 @@ function AgendaRow({
   onGestionar: () => void;
   onDetalle: () => void;
 }) {
-  const wa = whatsappLink(it);
   const critica = it.dias_mora > 30;
+  const toast = useToast();
+  const [enviando, setEnviando] = useState(false);
+
+  /**
+   * 🔴 El reclamo por WhatsApp NO se arma acá.
+   *
+   * Antes esta fila construía el texto a mano en el navegador —"un saldo de $X"— con dos
+   * problemas: el número era `saldo_pendiente`, o sea el préstamo ENTERO con cuotas que
+   * todavía no vencieron (reclamarlo es exigir la caducidad de plazos), y el mensaje no
+   * pasaba por ningún lado: no usaba la plantilla del tenant, no quedaba en el prontuario
+   * del cliente, no contaba como gestión y no se auditaba. Se mandaba y no existía.
+   *
+   * Ahora va por el MISMO endpoint que el botón de la ficha: el server arma el texto con la
+   * plantilla configurada y los importes reales, registra la gestión y devuelve el link de
+   * wa.me para abrir. Un solo camino, un solo texto, un solo número.
+   */
+  const reclamarWhatsapp = async () => {
+    if (enviando) return;
+    setEnviando(true);
+    try {
+      const res = await fetch(`/api/clientes/${it.cliente_id}/contactar`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ canal: "whatsapp", motivo: "mora" }),
+      });
+      const json = await res.json();
+      if (!json.ok) { toast.error(json.error || "No se pudo preparar el WhatsApp"); return; }
+      if (json.data?.link) window.open(json.data.link, "_blank", "noopener");
+      toast.success("WhatsApp preparado y registrado en la ficha");
+      // El contacto es una gestión: el crédito sale del bucket "enfriado" de la cola.
+      globalMutate("/api/cobranza/agenda");
+    } catch {
+      toast.error("No se pudo preparar el WhatsApp");
+    } finally {
+      setEnviando(false);
+    }
+  };
 
   return (
     <div
@@ -214,8 +246,13 @@ function AgendaRow({
           </>
         ) : (
           <>
-            <p className={`font-mono font-bold ${critica ? "text-destructive" : "text-warning"}`}>{formatMonto(it.saldo_pendiente)}</p>
-            <p className="text-[10px] text-muted-foreground/60 uppercase tracking-wide">saldo</p>
+            {/* 🔴 VENCIDO, no `saldo_pendiente`. El saldo es el préstamo entero —cuotas
+                futuras incluidas— y no es lo que se le reclama a nadie en una cobranza.
+                Es el mismo número que ve el cliente en el WhatsApp y que cobra la caja. */}
+            <p className={`font-mono font-bold ${critica ? "text-destructive" : "text-warning"}`}>{formatMonto(it.vencido)}</p>
+            <p className="text-[10px] text-muted-foreground/60 uppercase tracking-wide">
+              vencido{it.cuotas_vencidas > 0 && ` · ${it.cuotas_vencidas} cuota${it.cuotas_vencidas === 1 ? "" : "s"}`}
+            </p>
           </>
         )}
       </div>
@@ -233,19 +270,17 @@ function AgendaRow({
         >
           <MessageSquarePlus className="h-3 w-3" /> Gestionar
         </button>
-        <a
-          href={wa ?? undefined}
-          target="_blank"
-          rel="noopener noreferrer"
-          onClick={(e) => { if (!wa) e.preventDefault(); }}
-          title={wa ? "Reclamar por WhatsApp" : "Sin teléfono cargado"}
-          aria-disabled={!wa}
+        <button
+          type="button"
+          onClick={reclamarWhatsapp}
+          disabled={!it.telefono || enviando}
+          title={it.telefono ? "Reclamar por WhatsApp (queda registrado en la ficha)" : "Sin teléfono cargado"}
           className={`hidden sm:flex items-center justify-center h-7 w-7 rounded-lg transition-colors ${
-            wa ? "text-success hover:bg-success/10" : "text-muted-foreground/20 cursor-not-allowed"
+            it.telefono ? "text-success hover:bg-success/10 disabled:opacity-50" : "text-muted-foreground/20 cursor-not-allowed"
           }`}
         >
           <WhatsAppIcon className="h-3.5 w-3.5" />
-        </a>
+        </button>
       </div>
     </div>
   );
