@@ -3,7 +3,7 @@ import { successResponse, errorResponse, withErrorHandler, assertSameOrigin } fr
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { getComunicacionConfig, getCobranzaConfig } from "@/lib/config";
-import { construirMensajeCampana, linkWhatsapp, deudaEnRevision } from "@/lib/domain";
+import { construirMensajeCampana, linkWhatsapp, deudaEnRevision, esCreditoVivo } from "@/lib/domain";
 import { nombreCompleto } from "@/lib/utils";
 import { enviarEmailTenant, motivoEmailNoDisponible, type EmailTenantConfig } from "@/lib/mailer-tenant";
 import { getFinanciera } from "@/lib/financiera";
@@ -134,6 +134,29 @@ export const POST = withErrorHandler(async (
      */
     if (fallecidos.bloquea_contacto && deudaEnRevision(objetivo.credito.cliente)) {
       const motivo = "Cliente fallecido: deuda en revisión, contacto bloqueado";
+      await marcar(objetivo.id, "manual", motivo);
+      resultados.push({ cliente_id: clienteId, nombre, metodo: "manual", error: motivo });
+      continue;
+    }
+
+    /**
+     * 🔴 Y el crédito tiene que seguir siendo COBRABLE al momento de mandar.
+     *
+     * El objetivo se congela al armar la campaña, pero entre eso y el envío pueden pasar
+     * días: el cliente puede haber pagado todo, o haber refinanciado. Si se refinanció, su
+     * deuda se mudó al crédito nuevo y el viejo quedó en $0 —con las cuotas viejas todavía
+     * impagas, porque no se pagaron, se trasladaron—. Mandar igual sería reclamarle dos
+     * veces la misma plata: por el crédito nuevo y por este.
+     *
+     * Es el mismo tipo de corte que el del fallecido: la lista se arma antes, la realidad
+     * cambia después, y el chequeo va donde se aprieta el gatillo.
+     */
+    if (!esCreditoVivo(objetivo.credito.estado)) {
+      const motivo = objetivo.credito.estado === "refinanciado"
+        ? "Se refinanció después de armar la campaña: su deuda está en el crédito nuevo"
+        : objetivo.credito.estado === "pagado" || objetivo.credito.estado === "cancelado"
+          ? "Ya canceló su deuda"
+          : `El crédito dejó de ser cobrable (${objetivo.credito.estado})`;
       await marcar(objetivo.id, "manual", motivo);
       resultados.push({ cliente_id: clienteId, nombre, metodo: "manual", error: motivo });
       continue;

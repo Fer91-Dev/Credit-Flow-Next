@@ -5,7 +5,8 @@ import { prisma } from "@/lib/prisma";
 import { cuotaMensualFrancesa, tasaPeriodicaSegunConvencion, interesMora, normalizarFrecuencia, calculateRecoveryOffer, diasMoraActual, type FrecuenciaDef, type ConfiguracionFinanciera, moraDelCredito, moraDesdeCronograma, esCreditoVivo, calcularDeudaVencida, round2, type CuotaParaImputar } from "@/lib/domain";
 import { getConfiguracion } from "@/lib/config";
 import { registrarAuditoria } from "@/lib/audit";
-import { hoyComercial } from "@/lib/utils";
+import { hoyComercial, formatCreditoNumero } from "@/lib/utils";
+import { numerosRefinanciados } from "@/lib/creditos-numero";
 import type { NextRequest } from "next/server";
 
 const CANALES = ["whatsapp", "email", "sms"];
@@ -120,18 +121,41 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
 
   // Créditos del tenant entre los solicitados (multi-tenant: nunca por id suelto).
   // Scoping anti-IDOR: un vendedor solo puede armar campañas con SUS créditos.
-  const creditos = await prisma.creditos.findMany({
+  const candidatos = await prisma.creditos.findMany({
     where: { ...withTenant(tenantId), ...scopeCreditosVendedor(ctx), id: { in: body.credito_ids } },
     select: {
-      id: true, saldo_pendiente: true, dias_mora: true, proximo_pago: true, estado: true,
+      id: true, numero: true, saldo_pendiente: true, dias_mora: true, proximo_pago: true, estado: true,
+      es_refinanciacion: true, refinancia_a: true, refinanciado_en: true,
       monto_original: true, plazo_meses: true, tasa: true,
       frecuencia: true, frecuencia_def: true, cronograma: true,
       // Las cuotas: sin ellas no se puede saber qué está VENCIDO, que es lo que se reclama.
       cuotas: { orderBy: { nro: "asc" } },
     },
   });
+
+  /**
+   * 🔴 SOLO CRÉDITOS VIVOS. Un REFINANCIADO no se reclama.
+   *
+   * Refinanciar cierra el crédito viejo (saldo $0) y traslada la deuda a uno nuevo, pero NO
+   * marca sus cuotas como pagadas —porque no se pagaron, se mudaron—. Como la campaña no
+   * filtraba por estado, se podía cargar ese crédito cerrado y `calcularDeudaVencida` le
+   * encontraba cuotas impagas: sobre CRD-000060, saldo real $0,00, la campaña reclamaba
+   * $134.398,34. Al cliente se le pedía DOS VECES la misma plata: por el crédito nuevo, que
+   * es donde vive la deuda, y por el viejo, que ya no existe.
+   *
+   * Lo mismo vale para un pagado o un anulado. El crédito NACIDO de una refinanciación sí
+   * entra: es deuda viva y puede caer en mora como cualquiera.
+   */
+  const creditos = candidatos.filter((c) => esCreditoVivo(c.estado));
+  const excluidos = candidatos.filter((c) => !esCreditoVivo(c.estado));
+  // Para nombrar a los excluidos como los ve el operador (REF-000060, no CRD-000061).
+  const origenesRefi = await numerosRefinanciados(tenantId, excluidos);
+
   if (creditos.length === 0) {
-    return errorResponse("Ningún crédito válido del tenant en credito_ids", "INVALID_REFERENCE", 400);
+    const detalle = excluidos.length
+      ? ` Los ${excluidos.length} seleccionados no son cobrables: ${[...new Set(excluidos.map((c) => c.estado))].join(", ")}.`
+      : "";
+    return errorResponse(`Ningún crédito válido para la campaña.${detalle}`, "INVALID_REFERENCE", 400);
   }
 
   const config = await getConfiguracion(tenantId);
@@ -224,5 +248,20 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     meta: { canal, promo_tipo: promoTipo, promo_valor: promoValor, objetivos: objetivosData.length },
   });
 
-  return successResponse({ ...campana, metricas: metricasDe([]) }, 201);
+  return successResponse({
+    ...campana,
+    metricas: metricasDe([]),
+    // Los que quedaron afuera viajan con su motivo: descartarlos en silencio haría que el
+    // operador creyera que le mandó a 20 cuando le mandó a 17.
+    excluidos: excluidos.map((c) => ({
+      credito_id: c.id,
+      numero: formatCreditoNumero(c.numero, c.es_refinanciacion && c.refinancia_a ? origenesRefi.get(c.refinancia_a) ?? null : null),
+      estado: c.estado,
+      motivo: c.estado === "refinanciado"
+        ? "Ya se refinanció: su deuda está en el crédito nuevo"
+        : c.estado === "pagado" || c.estado === "cancelado"
+          ? "Ya está saldado"
+          : `No es cobrable (${c.estado})`,
+    })),
+  }, 201);
 });
