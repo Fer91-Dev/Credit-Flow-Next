@@ -34,6 +34,8 @@
   --color-success-foreground: var(--success-foreground);
   --color-warning:  var(--warning);
   --color-warning-foreground: var(--warning-foreground);
+  --color-info:     var(--info);
+  --color-info-foreground: var(--info-foreground);
 
   /* Tipografías */
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
@@ -74,6 +76,12 @@
   --success:     #059669;
   --warning:     #D97706;
   --destructive: #E11D48;
+  /* INFORMATIVO (celeste). No es un estado bueno/malo: marca hechos que solo se registran
+     —una consulta al bureau, un contacto con el cliente—. Hacía falta un cuarto color
+     porque el verde ya significa PLATA QUE ENTRA: pintar de verde una llamada haría que
+     "le cobré" y "lo llamé" se leyeran igual de un vistazo. */
+  --info:        #0284C7;
+  --info-foreground:        #FFFFFF;
   /* Texto sobre fondos sólidos semánticos (contraste). Warning usa texto oscuro:
      sobre ámbar se lee mejor que blanco. Unifica el criterio (antes había mezcla). */
   --success-foreground:     #FFFFFF;
@@ -124,6 +132,8 @@ body {
   --success:     #10B981;
   --warning:     #F59E0B;
   --destructive: #F43F5E;
+  --info:        #38BDF8;
+  --info-foreground:        #06121D;
   --success-foreground:     #FFFFFF;
   --warning-foreground:     #1A1205;
   --destructive-foreground: #FFFFFF;

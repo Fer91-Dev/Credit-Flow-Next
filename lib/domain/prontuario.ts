@@ -133,9 +133,35 @@ export function resumirProntuario(eventos: EventoProntuario[]): ResumenProntuari
   };
 }
 
-/** Etiqueta "Mes AAAA" para separar la línea de tiempo. */
-export function periodoDe(fechaIso: string): string {
+/**
+ * Hoy, como YYYY-MM-DD y en calendario argentino.
+ *
+ * Se calcula con el huso de Argentina y no con la fecha local del navegador: entre las 21:00
+ * y la medianoche, `new Date()` en UTC ya está en el día siguiente, y el encabezado diría
+ * "Ayer" sobre algo que pasó hace dos horas.
+ */
+export function hoyComercialYmd(): string {
+  return new Date().toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" });
+}
+
+/** Clave de agrupación por DÍA (YYYY-MM-DD). Los eventos del mismo día van juntos. */
+export function diaDe(fechaIso: string): string {
   const d = new Date(fechaIso);
-  if (Number.isNaN(d.getTime())) return "—";
-  return d.toLocaleDateString("es-AR", { month: "long", year: "numeric", timeZone: "UTC" });
+  return Number.isNaN(d.getTime()) ? "—" : d.toISOString().slice(0, 10);
+}
+
+/**
+ * Encabezado del día: "Hoy" / "Ayer" / "martes 18 de agosto de 2026".
+ *
+ * Los dos primeros importan más de lo que parece: en cobranza, "ayer prometió" y "prometió
+ * el 22/08" son el mismo dato pero no se leen igual de rápido.
+ */
+export function etiquetaDia(diaYmd: string, hoyYmd: string): string {
+  if (diaYmd === hoyYmd) return "Hoy";
+  const ayer = new Date(`${hoyYmd}T00:00:00Z`);
+  ayer.setUTCDate(ayer.getUTCDate() - 1);
+  if (diaYmd === ayer.toISOString().slice(0, 10)) return "Ayer";
+  const d = new Date(`${diaYmd}T00:00:00Z`);
+  if (Number.isNaN(d.getTime())) return diaYmd;
+  return d.toLocaleDateString("es-AR", { weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
 }
