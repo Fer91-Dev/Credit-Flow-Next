@@ -165,9 +165,24 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
   // Para nombrar a los excluidos como los ve el operador (REF-000060, no CRD-000061).
   const origenesRefi = await numerosRefinanciados(tenantId, excluidos);
 
+  /**
+   * El motivo REAL de la exclusión, que no siempre es el estado del crédito: un crédito
+   * vencido —el candidato natural de una campaña— puede quedar afuera porque su titular
+   * falleció. Decir "no es cobrable: vencido" ahí sería mentirle al operador sobre algo que
+   * sí puede arreglar. Se usa la misma función para el error y para la lista de excluidos.
+   */
+  const motivoExclusion = (c: (typeof candidatos)[number]): string =>
+    deudaEnRevision(c.cliente)
+      ? "Cliente fallecido: su deuda está en revisión"
+      : c.estado === "refinanciado"
+        ? "Ya se refinanció: su deuda está en el crédito nuevo"
+        : c.estado === "pagado" || c.estado === "cancelado"
+          ? "Ya está saldado"
+          : `No es cobrable (${c.estado})`;
+
   if (creditos.length === 0) {
     const detalle = excluidos.length
-      ? ` Los ${excluidos.length} seleccionados no son cobrables: ${[...new Set(excluidos.map((c) => c.estado))].join(", ")}.`
+      ? ` ${[...new Set(excluidos.map(motivoExclusion))].join(" · ")}.`
       : "";
     return errorResponse(`Ningún crédito válido para la campaña.${detalle}`, "INVALID_REFERENCE", 400);
   }
@@ -271,13 +286,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
       credito_id: c.id,
       numero: formatCreditoNumero(c.numero, c.es_refinanciacion && c.refinancia_a ? origenesRefi.get(c.refinancia_a) ?? null : null),
       estado: c.estado,
-      motivo: deudaEnRevision(c.cliente)
-        ? "Cliente fallecido: su deuda está en revisión"
-        : c.estado === "refinanciado"
-          ? "Ya se refinanció: su deuda está en el crédito nuevo"
-          : c.estado === "pagado" || c.estado === "cancelado"
-            ? "Ya está saldado"
-            : `No es cobrable (${c.estado})`,
+      motivo: motivoExclusion(c),
     })),
   }, 201);
 });

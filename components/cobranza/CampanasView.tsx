@@ -4,12 +4,12 @@ import { useState, type ComponentType } from "react";
 import { useSWRConfig } from "swr";
 import {
   Megaphone, Users, HandCoins, TrendingUp, ChevronLeft,
-  Check, Play, CheckCircle2, Mail, Smartphone, Sparkles,
+  Check, Play, CheckCircle2, Mail, Smartphone, Sparkles, Trash2, Loader2,
 } from "lucide-react";
 import { WhatsAppIcon } from "@/components/ui/WhatsAppIcon";
 import { useCampanas, useCampana, KEYS, type CampanaCobranza, type CampanaObjetivo, type CanalCampana, type EstadoCampana } from "@/lib/swr";
 import { construirMensajeCampana, linkWhatsapp, TEMPLATE_DEFAULT } from "@/lib/domain";
-import { formatFecha, nombreCompleto } from "@/lib/utils";
+import { formatFecha, nombreCompleto, eventoPropio, teclaDelContenedor } from "@/lib/utils";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { DataTable } from "@/components/ui/DataTable";
 import { SummaryStrip } from "@/components/ui/SummaryStrip";
@@ -69,10 +69,46 @@ export function CampanasView() {
 function CampanaCard({ campana: c, onOpen }: { campana: CampanaCobranza; onOpen: () => void }) {
   const est = ESTADO_META[c.estado];
   const Canal = CANAL_ICON[c.canal];
+  const { mutate: globalMutate } = useSWRConfig();
+  const confirm = useConfirm();
+  const toast = useToast();
+  const [borrando, setBorrando] = useState(false);
+
+  /**
+   * No había forma de borrar una campaña desde ninguna pantalla: el endpoint existía y la
+   * interfaz no lo ofrecía. Una prueba mal armada quedaba en la lista para siempre.
+   *
+   * El servidor rechaza borrar una que ya se envió (ahí el registro de la oferta importa);
+   * acá solo se muestra el motivo.
+   */
+  const eliminar = async () => {
+    if (!(await confirm({
+      title: `¿Eliminar la campaña "${c.nombre}"?`,
+      description: "Se borra la campaña y su lista de destinatarios. Las gestiones ya registradas en cada crédito se conservan.",
+      confirmLabel: "Eliminar",
+      tone: "danger",
+    }))) return;
+    setBorrando(true);
+    try {
+      const res = await fetch(`/api/cobranza/campanas/${c.id}`, { method: "DELETE" });
+      const json = await res.json();
+      if (!json.ok) { toast.error(json.error || "No se pudo eliminar"); return; }
+      toast.success("Campaña eliminada");
+      globalMutate(KEYS.campanas);
+    } catch {
+      toast.error("No se pudo conectar con el servidor");
+    } finally {
+      setBorrando(false);
+    }
+  };
+
   return (
-    <button
-      onClick={onOpen}
-      className="w-full text-left rounded-xl bg-card border border-border p-4 hover:bg-muted/10 transition-colors"
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={(e) => { if (eventoPropio(e)) onOpen(); }}
+      onKeyDown={(e) => { if (teclaDelContenedor(e) && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); onOpen(); } }}
+      className="w-full cursor-pointer text-left rounded-xl bg-card border border-border p-4 hover:bg-muted/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
@@ -82,7 +118,19 @@ function CampanaCard({ campana: c, onOpen }: { campana: CampanaCobranza; onOpen:
           </div>
           {c.descripcion && <p className="text-xs text-muted-foreground mt-0.5 truncate">{c.descripcion}</p>}
         </div>
-        <StatusBadge label={est.label} variant={est.variant} />
+        <div className="flex shrink-0 items-center gap-2">
+          <StatusBadge label={est.label} variant={est.variant} />
+          <button
+            type="button"
+            onClick={eliminar}
+            disabled={borrando}
+            title="Eliminar campaña"
+            aria-label={`Eliminar la campaña ${c.nombre}`}
+            className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive disabled:opacity-40"
+          >
+            {borrando ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+          </button>
+        </div>
       </div>
       <div className="flex items-center gap-5 mt-3 text-xs">
         <span className="flex items-center gap-1.5 text-muted-foreground"><Users className="h-3.5 w-3.5" /> {c.metricas.alcance}</span>
@@ -92,7 +140,7 @@ function CampanaCard({ campana: c, onOpen }: { campana: CampanaCobranza; onOpen:
           <span className="flex items-center gap-1 text-[11px] text-success ml-auto"><Sparkles className="h-3 w-3" /> −{c.promo_valor}% mora</span>
         )}
       </div>
-    </button>
+    </div>
   );
 }
 

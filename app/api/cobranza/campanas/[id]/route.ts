@@ -136,6 +136,29 @@ export const DELETE = withErrorHandler(async (req: NextRequest, ctx: { params: P
   });
   if (!campana) return errorResponse("Campaña no encontrada", "NOT_FOUND", 404);
 
+  /**
+   * 🔴 Una campaña que YA SE MANDÓ no se borra.
+   *
+   * Borrarla arrastra sus objetivos (cascada), y con ellos el registro de qué se le ofreció
+   * a cada cliente y con cuánto descuento. Si el cliente aparece la semana que viene diciendo
+   * "me ofrecieron cancelar con $200.000", la financiera tiene que poder mirarlo. Es el mismo
+   * criterio con el que un crédito con pagos no se elimina.
+   *
+   * Las que nunca salieron —un borrador, una prueba— se borran sin problema: no hay nada que
+   * conservar porque nadie recibió nada.
+   */
+  const enviados = await prisma.campana_objetivo.count({
+    where: { ...withTenant(tenantId), campana_id: id, envio_estado: "enviado" },
+  });
+  if (enviados > 0) {
+    return errorResponse(
+      `No se puede eliminar: la campaña ya se envió a ${enviados} cliente${enviados === 1 ? "" : "s"}. `
+      + "Borrarla haría desaparecer qué oferta recibió cada uno.",
+      "CAMPANA_ENVIADA",
+      409,
+    );
+  }
+
   await prisma.campanas_cobranza.delete({ where: { id } });
 
   await registrarAuditoria({
