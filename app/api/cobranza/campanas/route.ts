@@ -2,8 +2,8 @@ import { requireRole, scopeCreditosVendedor } from "@/lib/auth";
 import { successResponse, errorResponse, withErrorHandler, assertSameOrigin } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
-import { cuotaMensualFrancesa, tasaPeriodicaSegunConvencion, interesMora, normalizarFrecuencia, calculateRecoveryOffer, diasMoraActual, type FrecuenciaDef, type ConfiguracionFinanciera, moraDelCredito, moraDesdeCronograma, esCreditoVivo, calcularDeudaVencida, round2, type CuotaParaImputar } from "@/lib/domain";
-import { getConfiguracion } from "@/lib/config";
+import { cuotaMensualFrancesa, tasaPeriodicaSegunConvencion, interesMora, normalizarFrecuencia, calculateRecoveryOffer, diasMoraActual, type FrecuenciaDef, type ConfiguracionFinanciera, moraDelCredito, moraDesdeCronograma, esCreditoVivo, calcularDeudaVencida, round2, deudaEnRevision, type CuotaParaImputar } from "@/lib/domain";
+import { getConfiguracion, getCobranzaConfig } from "@/lib/config";
 import { registrarAuditoria } from "@/lib/audit";
 import { hoyComercial, formatCreditoNumero } from "@/lib/utils";
 import { numerosRefinanciados } from "@/lib/creditos-numero";
@@ -128,6 +128,8 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
       es_refinanciacion: true, refinancia_a: true, refinanciado_en: true,
       monto_original: true, plazo_meses: true, tasa: true,
       frecuencia: true, frecuencia_def: true, cronograma: true,
+      // El estado del CLIENTE: a un fallecido no se le manda nada.
+      cliente: { select: { estado: true } },
       // Las cuotas: sin ellas no se puede saber qué está VENCIDO, que es lo que se reclama.
       cuotas: { orderBy: { nro: "asc" } },
     },
@@ -146,8 +148,20 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
    * Lo mismo vale para un pagado o un anulado. El crédito NACIDO de una refinanciación sí
    * entra: es deuda viva y puede caer en mora como cualquiera.
    */
-  const creditos = candidatos.filter((c) => esCreditoVivo(c.estado));
-  const excluidos = candidatos.filter((c) => !esCreditoVivo(c.estado));
+  /**
+   * Y los FALLECIDOS tampoco entran a la lista.
+   *
+   * El corte al enviar ya existía, así que el mensaje no salía — pero el fallecido igual
+   * aparecía entre los objetivos y contaba para el total. El operador armaba una campaña de
+   * 10, veía 10, y salían 9 sin que nada lo explicara antes de apretar. Si el cliente muere
+   * DESPUÉS de armada la campaña, el corte del envío sigue cubriendo ese caso.
+   */
+  const { fallecidos: polFallecidos } = await getCobranzaConfig(tenantId);
+  const cobrable = (c: (typeof candidatos)[number]) =>
+    esCreditoVivo(c.estado) && !(polFallecidos.bloquea_contacto && deudaEnRevision(c.cliente));
+
+  const creditos = candidatos.filter(cobrable);
+  const excluidos = candidatos.filter((c) => !cobrable(c));
   // Para nombrar a los excluidos como los ve el operador (REF-000060, no CRD-000061).
   const origenesRefi = await numerosRefinanciados(tenantId, excluidos);
 
@@ -257,11 +271,13 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
       credito_id: c.id,
       numero: formatCreditoNumero(c.numero, c.es_refinanciacion && c.refinancia_a ? origenesRefi.get(c.refinancia_a) ?? null : null),
       estado: c.estado,
-      motivo: c.estado === "refinanciado"
-        ? "Ya se refinanció: su deuda está en el crédito nuevo"
-        : c.estado === "pagado" || c.estado === "cancelado"
-          ? "Ya está saldado"
-          : `No es cobrable (${c.estado})`,
+      motivo: deudaEnRevision(c.cliente)
+        ? "Cliente fallecido: su deuda está en revisión"
+        : c.estado === "refinanciado"
+          ? "Ya se refinanció: su deuda está en el crédito nuevo"
+          : c.estado === "pagado" || c.estado === "cancelado"
+            ? "Ya está saldado"
+            : `No es cobrable (${c.estado})`,
     })),
   }, 201);
 });

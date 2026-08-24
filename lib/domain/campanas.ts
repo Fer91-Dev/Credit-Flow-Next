@@ -74,8 +74,14 @@ export function construirMensajeCampana(
   template: string,
   data: { nombre: string; monto: number; saldo?: number; dias?: number; descuento?: number },
 ): string {
+  /**
+   * 🔴 CON CENTAVOS. Redondeaba a pesos enteros, así que un reclamo de $289.727,56 salía
+   * como "$289.728": el cliente venía a pagar lo que decía el mensaje y la caja le pedía
+   * otra cosa. Mismo criterio que el contacto individual — el importe que se comunica tiene
+   * que ser exactamente el que se cobra.
+   */
   const fmt = (x: number) =>
-    new Intl.NumberFormat("es-AR", { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(x);
+    new Intl.NumberFormat("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(x);
 
   const mapa: Record<string, string> = {
     nombre: data.nombre,
