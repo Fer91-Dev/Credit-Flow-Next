@@ -14,7 +14,16 @@ type Motivo = "mora" | "promocion" | "informacion";
 
 interface PreviewContacto {
   cliente: { id: string; nombre: string; telefono: string | null; email: string | null };
-  datos: { deuda: number; dias: number; vencimiento: string | null };
+  datos: {
+    /** Lo que YA venció y hay que reclamar. Distinto de `deuda`, que es todo el crédito. */
+    vencido: number;
+    cuotas: number;
+    nroCuota: number | null;
+    cuota: number;
+    deuda: number;
+    dias: number;
+    vencimiento: string | null;
+  };
   canales: { whatsapp: { disponible: boolean; automatico: boolean }; email: { disponible: boolean; automatico: boolean } };
   mensajes: Record<Motivo, { texto: string; asunto: string; label: string }>;
 }
@@ -109,10 +118,20 @@ function Form({ clienteId, onClose }: { clienteId: string; onClose: () => void }
 
       {/* Los números con los que se arma el mensaje, a la vista: si el aviso de mora dice
           41 días, el operador tiene que poder verificarlo antes de mandarlo. */}
-      <div className="grid grid-cols-3 gap-2 rounded-xl border border-border bg-muted/20 p-3 text-center">
-        <Dato label="Deuda" valor={formatMonto(data.datos.deuda)} />
+      {/* 🔴 VENCIDO y DEUDA son distintos y se muestran los dos.
+          Antes decía solo "Deuda" con el total del crédito, y el operador leía eso como lo
+          que había que reclamar: a Ana, con una cuota de $73.441,71 atrasada, le figuraban
+          $221.426,76 —el préstamo entero— que además no coincidía con lo que dice su ficha. */}
+      <div className="grid grid-cols-2 gap-2 rounded-xl border border-border bg-muted/20 p-3 text-center sm:grid-cols-4">
+        <Dato
+          label="Vencido"
+          valor={formatMonto(data.datos.vencido)}
+          alerta={data.datos.vencido > 0}
+          pie={data.datos.cuotas > 0 ? `${data.datos.cuotas} cuota${data.datos.cuotas === 1 ? "" : "s"}` : "nada vencido"}
+        />
         <Dato label="Atraso" valor={data.datos.dias > 0 ? `${data.datos.dias} días` : "Al día"} alerta={data.datos.dias > 0} />
-        <Dato label="Próx. venc." valor={data.datos.vencimiento ? formatFecha(data.datos.vencimiento) : "—"} />
+        <Dato label="Próx. venc." valor={data.datos.vencimiento ? formatFecha(data.datos.vencimiento) : "—"} pie={formatMonto(data.datos.cuota)} />
+        <Dato label="Todo el crédito" valor={formatMonto(data.datos.deuda)} pie="si cancela hoy" />
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -192,11 +211,12 @@ function Form({ clienteId, onClose }: { clienteId: string; onClose: () => void }
   );
 }
 
-function Dato({ label, valor, alerta }: { label: string; valor: string; alerta?: boolean }) {
+function Dato({ label, valor, alerta, pie }: { label: string; valor: string; alerta?: boolean; pie?: string }) {
   return (
     <div>
       <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">{label}</p>
       <p className={`mt-0.5 font-mono text-sm font-semibold tabular-nums ${alerta ? "text-warning" : "text-foreground"}`}>{valor}</p>
+      {pie && <p className="mt-0.5 text-[10px] text-muted-foreground/60">{pie}</p>}
     </div>
   );
 }

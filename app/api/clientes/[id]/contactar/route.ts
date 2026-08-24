@@ -7,7 +7,7 @@ import { getFinanciera } from "@/lib/financiera";
 import { registrarAuditoria } from "@/lib/audit";
 import {
   linkWhatsapp, diasMoraActual, esCreditoVivo, round2, renderPlantillaContacto, type DatosPlantillaContacto,
-  calcularDeudaConsolidada, moraDelCredito, moraDesdeCronograma, type CuotaParaImputar,
+  calcularDeudaConsolidada, calcularDeudaVencida, diasAtraso, moraDelCredito, moraDesdeCronograma, type CuotaParaImputar,
   plantillaDe, cuentaComoGestion, MOTIVO_LABEL, tipoGestionDeCanal, resolverPlantillasContacto, type MotivoContacto,
   deudaEnRevision,
 } from "@/lib/domain";
@@ -49,7 +49,10 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
 
   return successResponse({
     cliente: { id: cliente.id, nombre: datos.nombre, telefono: cliente.telefono, email: cliente.email },
-    datos: { deuda: datos.deuda, dias: datos.dias, cuota: datos.cuota, vencimiento: datos.vencimiento },
+    datos: {
+      deuda: datos.deuda, vencido: datos.vencido, cuotas: datos.cuotas, nroCuota: datos.nroCuota,
+      dias: datos.dias, cuota: datos.cuota, vencimiento: datos.vencimiento,
+    },
     canales: {
       // WhatsApp siempre se puede: sin API de Meta configurada, sale por wa.me (manual).
       whatsapp: { disponible: !!cliente.telefono, automatico: !!comm.whatsapp?.enabled },
@@ -225,26 +228,49 @@ async function cargarContactable(ctx: Ctx, id: string) {
    * la refinanciación arma la deuda a consolidar.
    */
   const config = await getConfiguracion(ctx.tenantId);
-  const deudaViva = round2(
-    vivos.reduce((total, c) => {
-      const cuotasDom: CuotaParaImputar[] = c.cuotas.map((q) => ({
-        id: q.id, nro: q.nro, fechaVencimiento: q.fecha_vencimiento,
-        capital: q.capital, interes: q.interes, cargos: round2(q.iva + q.seguro + q.gastos),
-        cuotaTotal: q.cuota_total,
-        pagadoCapital: q.pagado_capital, pagadoInteres: q.pagado_interes,
-        pagadoMora: q.pagado_mora, pagadoCargos: q.pagado_cargos,
-      }));
-      const mc = moraDelCredito(moraDesdeCronograma(c.cronograma), config);
-      const gracia = (c.cronograma as { diasGracia?: number } | null)?.diasGracia ?? config.simulador.diasGracia;
-      const d = calcularDeudaConsolidada(cuotasDom, {
-        moraActiva: mc.moraActiva, tasaMoraDiaria: mc.tasaMoraDiaria, diasGracia: gracia,
-        // Dia comercial argentino: con el ahora en UTC, entre las 21:00 y la medianoche de
-        // Argentina se le cobra —y se le INFORMA— un dia de mora de mas.
-        hoy,
-      });
-      return total + d.total;
-    }, 0),
-  );
+
+  /**
+   * Se calculan LAS DOS cosas, con la misma fórmula de mora que usa el cobro:
+   *
+   *  - `deudaViva`: todo el crédito si lo cancela hoy (`calcularDeudaConsolidada`).
+   *  - `vencido`:   solo lo que YA venció y no pagó (`calcularDeudaVencida`), que es lo que
+   *                 un aviso de mora tiene que reclamar.
+   *
+   * 🔴 Antes solo existía la primera y la plantilla de mora la usaba. A Ana, con 15 días de
+   * atraso sobre UNA cuota de $73.441,71, se le reclamaban $221.426,76: el préstamo entero,
+   * cuotas futuras incluidas. Además de ser un reclamo improcedente, no coincidía con lo que
+   * la ficha muestra ni con lo que la caja iba a cobrar.
+   */
+  let deudaTotal = 0;
+  let venc = { total: 0, cuotas: 0 };
+  let nroCuotaVencida: number | null = null;
+
+  for (const c of vivos) {
+    const cuotasDom: CuotaParaImputar[] = c.cuotas.map((q) => ({
+      id: q.id, nro: q.nro, fechaVencimiento: q.fecha_vencimiento,
+      capital: q.capital, interes: q.interes, cargos: round2(q.iva + q.seguro + q.gastos),
+      cuotaTotal: q.cuota_total,
+      pagadoCapital: q.pagado_capital, pagadoInteres: q.pagado_interes,
+      pagadoMora: q.pagado_mora, pagadoCargos: q.pagado_cargos,
+    }));
+    const mc = moraDelCredito(moraDesdeCronograma(c.cronograma), config);
+    const gracia = (c.cronograma as { diasGracia?: number } | null)?.diasGracia ?? config.simulador.diasGracia;
+    // Dia comercial argentino: con el ahora en UTC, entre las 21:00 y la medianoche de
+    // Argentina se le cobra —y se le INFORMA— un dia de mora de mas.
+    const opts = { moraActiva: mc.moraActiva, tasaMoraDiaria: mc.tasaMoraDiaria, diasGracia: gracia, hoy };
+
+    deudaTotal += calcularDeudaConsolidada(cuotasDom, opts).total;
+
+    const dv = calcularDeudaVencida(cuotasDom, opts);
+    venc = { total: venc.total + dv.total, cuotas: venc.cuotas + dv.cuotas_vencidas };
+    // La cuota que se nombra es la vencida MÁS VIEJA: es la que el cliente tiene que buscar
+    // en su plan de pagos para reconocer el reclamo.
+    const masVieja = cuotasDom.find((q) => diasAtraso(q.fechaVencimiento, hoy) > 0 && q.pagadoCapital < q.capital);
+    if (masVieja && (nroCuotaVencida == null || masVieja.nro < nroCuotaVencida)) nroCuotaVencida = masVieja.nro;
+  }
+
+  const deudaViva = round2(deudaTotal);
+  const vencido = round2(venc.total);
 
   const proximo = vivos
     .map((c) => c.proximo_pago)
@@ -275,6 +301,9 @@ async function cargarContactable(ctx: Ctx, id: string) {
       nombre: cliente.nombre,
       financiera: financiera?.nombre || "tu financiera",
       deuda: deudaViva,
+      vencido,
+      cuotas: venc.cuotas,
+      nroCuota: nroCuotaVencida,
       dias: peor?.dias ?? 0,
       cuota: round2(proximaCuota?.cuota_total ?? 0),
       vencimiento: proximo,

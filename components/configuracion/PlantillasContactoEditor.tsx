@@ -22,8 +22,21 @@ import { cn } from "@/lib/utils";
  * ya apareció con los cargos y con la mora.
  */
 
-/** Cliente de ejemplo para la vista previa. Números redondos para que se note el formato. */
-const EJEMPLO = { nombre: "Juan Pérez", deuda: 152340.5, dias: 12, cuota: 38085.13, vencimiento: "2026-09-10" };
+/**
+ * Cliente de ejemplo para la vista previa. Los números son coherentes entre sí a propósito:
+ * lo VENCIDO (una cuota + mora) es menor que la deuda total del crédito, que es la relación
+ * real y la que hay que entender al elegir entre `[vencido]` y `[deuda]`.
+ */
+const EJEMPLO = {
+  nombre: "Juan Pérez",
+  vencido: 39187.4,   // cuota 2 + su mora
+  deuda: 152340.5,    // todo el crédito
+  cuotas: 1,
+  nroCuota: 2,
+  dias: 12,
+  cuota: 38085.13,
+  vencimiento: "2026-09-10",
+};
 
 const MOTIVOS: MotivoContacto[] = ["mora", "promocion", "informacion"];
 
@@ -157,7 +170,9 @@ export function PlantillasContactoEditor({ valor, onChange }: {
           </div>
 
           <p className="text-[11px] text-muted-foreground/60">
-            Ejemplo: {datos.nombre} · debe ${EJEMPLO.deuda.toLocaleString("es-AR", { minimumFractionDigits: 2 })} · {EJEMPLO.dias} días de atraso.
+            Ejemplo: {datos.nombre} · cuota {EJEMPLO.nroCuota} vencida hace {EJEMPLO.dias} días ·
+            {" "}vencido ${EJEMPLO.vencido.toLocaleString("es-AR", { minimumFractionDigits: 2 })} de
+            {" "}${EJEMPLO.deuda.toLocaleString("es-AR", { minimumFractionDigits: 2 })} del crédito.
             Al enviarlo se usan los datos reales del cliente.
           </p>
         </div>
