@@ -433,6 +433,14 @@ function RefinanciadosView({ creditos, onOpen, onRefinanciar }: { creditos: Cred
     [creditos],
   );
   const [busq, setBusq] = useState("");
+  /**
+   * Recorte del historial: todas / las que se están pagando / las que volvieron a mora.
+   *
+   * No existía. Los KPI decían "12 al día, 5 volvieron a mora" y para saber CUÁLES eran esos
+   * 5 —que es la pregunta que importa, porque son los que se reestructuraron y siguen sin
+   * pagar— había que recorrer la tabla a ojo.
+   */
+  const [recupero, setRecupero] = useState<"todas" | "al_dia" | "en_mora">("todas");
   // Comparación original ↔ refinanciación (plan de cuotas + TNA de otorgamiento).
   const [comparar, setComparar] = useState<{ origen: Credito; nuevo: Credito } | null>(null);
   const candFiltrados = useMemo(() => {
@@ -450,6 +458,13 @@ function RefinanciadosView({ creditos, onOpen, onRefinanciar }: { creditos: Cred
   }, [candidatos, busq]);
 
   // KPIs de recupero: ¿las refinanciaciones se pagan (al día) o vuelven a mora?
+  // Los KPI cuentan SIEMPRE sobre `pares` (el historial completo): un KPI que se mueve con
+  // el filtro deja de ser un KPI.
+  const paresVisibles = useMemo(
+    () => pares.filter((p) =>
+      recupero === "todas" || (recupero === "al_dia" ? p.nuevo.dias_mora === 0 : p.nuevo.dias_mora > 0)),
+    [pares, recupero],
+  );
   const totalConsolidado = pares.reduce((s, p) => s + p.nuevo.monto_original, 0);
   const alDia = pares.filter((p) => p.nuevo.dias_mora === 0).length;
   const enMora = pares.filter((p) => p.nuevo.dias_mora > 0).length;
@@ -460,10 +475,24 @@ function RefinanciadosView({ creditos, onOpen, onRefinanciar }: { creditos: Cred
       {/* KPIs de la sección (solo si ya hay historial) */}
       {pares.length > 0 && (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <KpiCard icon="counterclockwise-arrows-button" label="Refinanciaciones" value={String(pares.length)} accent="warning" />
+          {/* "Capital consolidado" es una suma: no hay un subconjunto que le corresponda. */}
+          <KpiCard
+            icon="counterclockwise-arrows-button" label="Refinanciaciones" value={String(pares.length)} accent="warning"
+            onClick={() => setRecupero("todas")}
+            active={recupero === "todas"}
+          />
           <KpiCard icon="money-bag" label="Capital consolidado" value={`$${n0(totalConsolidado)}`} accent="primary" mono />
-          <KpiCard icon="check-mark-button" label="Al día (recuperados)" value={String(alDia)} accent="success" sub={`${tasaRecupero}% de recupero`} />
-          <KpiCard icon="warning" label="Volvieron a mora" value={String(enMora)} accent={enMora > 0 ? "destructive" : "muted"} sub={enMora > 0 ? "reincidencia" : "ninguno"} />
+          <KpiCard
+            icon="check-mark-button" label="Al día (recuperados)" value={String(alDia)} accent="success" sub={`${tasaRecupero}% de recupero`}
+            onClick={alDia > 0 ? () => setRecupero("al_dia") : undefined}
+            active={recupero === "al_dia"}
+          />
+          <KpiCard
+            icon="warning" label="Volvieron a mora" value={String(enMora)}
+            accent={enMora > 0 ? "destructive" : "muted"} sub={enMora > 0 ? "reincidencia" : "ninguno"}
+            onClick={enMora > 0 ? () => setRecupero("en_mora") : undefined}
+            active={recupero === "en_mora"}
+          />
         </div>
       )}
 
@@ -532,7 +561,13 @@ function RefinanciadosView({ creditos, onOpen, onRefinanciar }: { creditos: Cred
       <div className="space-y-3">
         <div className="flex items-baseline justify-between gap-2">
           <h3 className="text-sm font-semibold text-foreground">Historial de refinanciaciones</h3>
-          {pares.length > 0 && <span className="text-[11px] text-muted-foreground">{pares.length} operaci{pares.length !== 1 ? "ones" : "ón"}</span>}
+          {pares.length > 0 && (
+            <span className="text-[11px] text-muted-foreground">
+              {recupero === "todas"
+                ? `${pares.length} operaci${pares.length !== 1 ? "ones" : "ón"}`
+                : `${paresVisibles.length} de ${pares.length} · ${recupero === "al_dia" ? "al día" : "volvieron a mora"}`}
+            </span>
+          )}
         </div>
 
         {pares.length === 0 ? (
@@ -546,7 +581,7 @@ function RefinanciadosView({ creditos, onOpen, onRefinanciar }: { creditos: Cred
           </div>
         ) : (
       <DataTable
-        rows={pares}
+        rows={paresVisibles}
         rowKey={(p) => p.nuevo.id}
         pageSize={12}
         onRowClick={(p) => onOpen(p.nuevo)}
