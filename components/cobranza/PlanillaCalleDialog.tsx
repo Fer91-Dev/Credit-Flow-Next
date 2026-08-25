@@ -9,6 +9,7 @@ import { useZonas, usePlanillaCalle, useFinanciera } from "@/lib/swr";
 import { imprimirPlanillaCalle } from "@/lib/planilla-print";
 import { formatMonto } from "@/lib/utils";
 import { Printer, MapPin, Loader2 } from "lucide-react";
+import { useToast } from "@/components/ui/toast";
 
 /** Clave interna del grupo "sin zona cargada" (la comparte con el endpoint). */
 const SIN_ZONA = "__sin__";
@@ -31,6 +32,8 @@ export function PlanillaCalleDialog({ open, onClose }: { open: boolean; onClose:
   const [seleccion, setSeleccion] = useState<Set<string>>(new Set());
   const [diasAdelante, setDiasAdelante] = useState(0);
   const [cobrador, setCobrador] = useState("");
+  const [emitiendo, setEmitiendo] = useState(false);
+  const toast = useToast();
 
   // Solo consulta con el diálogo abierto: es una query pesada (trae cuotas de toda la mora).
   const { planilla, isLoading, error } = usePlanillaCalle(
@@ -48,16 +51,44 @@ export function PlanillaCalleDialog({ open, onClose }: { open: boolean; onClose:
 
   const hayRecorrido = (planilla?.totales.clientes ?? 0) > 0;
 
-  const imprimir = () => {
-    if (!planilla || !hayRecorrido) return;
-    imprimirPlanillaCalle({
-      fecha: planilla.fecha,
-      zonas: planilla.zonas,
-      totales: planilla.totales,
-      diasAdelante: planilla.dias_adelante,
-      cobrador: cobrador.trim() || null,
-      financiera: financiera ? { nombre: financiera.nombre, logo_url: financiera.logo_url } : undefined,
-    });
+  /**
+   * Imprimir EMITE la planilla: queda registrada antes de salir a la calle.
+   *
+   * 🔴 Lo que se imprime es lo que devuelve el POST, no lo que había en pantalla. El
+   * servidor recalcula el recorrido al emitir, así que si algo cambió mientras el operador
+   * elegía zonas —un pago que entró, un acuerdo que se firmó— el papel sale con la realidad
+   * y no con una vista previa vieja. Y sobre todo: el importe impreso es idéntico al que
+   * queda grabado como esperado, que es contra lo que después se rinde.
+   */
+  const imprimir = async () => {
+    if (!hayRecorrido || emitiendo) return;
+    setEmitiendo(true);
+    try {
+      const qs = `?dias_adelante=${diasAdelante}&zonas=${encodeURIComponent([...seleccion].join(","))}`;
+      const res = await fetch(`/api/cobranza/planilla${qs}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cobrador: cobrador.trim() || null }),
+      });
+      const json = await res.json();
+      if (!json.ok) { toast.error(json.error || "No se pudo emitir la planilla"); return; }
+
+      const d = json.data;
+      imprimirPlanillaCalle({
+        fecha: d.fecha,
+        zonas: d.zonas,
+        totales: d.totales,
+        diasAdelante: d.dias_adelante,
+        cobrador: d.cobrador,
+        financiera: financiera ? { nombre: financiera.nombre, logo_url: financiera.logo_url } : undefined,
+      });
+      toast.success("Planilla emitida y registrada");
+      onClose();
+    } catch {
+      toast.error("No se pudo emitir la planilla");
+    } finally {
+      setEmitiendo(false);
+    }
   };
 
   return (
@@ -187,11 +218,11 @@ export function PlanillaCalleDialog({ open, onClose }: { open: boolean; onClose:
             <button
               type="button"
               onClick={imprimir}
-              disabled={isLoading || !hayRecorrido}
+              disabled={isLoading || emitiendo || !hayRecorrido}
               className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-40"
             >
-              {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
-              Imprimir planilla
+              {isLoading || emitiendo ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
+              {emitiendo ? "Emitiendo…" : "Emitir e imprimir"}
             </button>
           </div>
         </div>

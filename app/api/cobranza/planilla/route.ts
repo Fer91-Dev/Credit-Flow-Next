@@ -1,7 +1,10 @@
 import { requireAuth, scopeCreditosVendedor } from "@/lib/auth";
-import { successResponse, withErrorHandler } from "@/app/lib/api";
+import { successResponse, errorResponse, withErrorHandler, assertSameOrigin } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
+import { registrarAuditoria } from "@/lib/audit";
+import { Prisma } from "@prisma/client";
+import type { Role } from "@/lib/auth/roles";
 import { getCobranzaConfig, getConfiguracion } from "@/lib/config";
 import { sincronizarAcuerdos, creditosConAcuerdoVigente, cubiertoPorAcuerdo } from "@/lib/acuerdos";
 import { numerosRefinanciados } from "@/lib/creditos-numero";
@@ -9,7 +12,7 @@ import {
   diasMoraActual, ESTADOS_VIVOS, calcularDeudaVencida, moraDelCredito, moraDesdeCronograma,
   contactoBloqueado, round2, type CuotaParaImputar,
 } from "@/lib/domain";
-import { nombreCompleto, hoyComercial } from "@/lib/utils";
+import { nombreCompleto, hoyComercial, formatMonto } from "@/lib/utils";
 import type { NextRequest } from "next/server";
 
 /**
@@ -69,26 +72,23 @@ interface FilaPlanilla {
   a_cobrar: number;
 }
 
-export const GET = withErrorHandler(async (req: NextRequest) => {
-  const { tenantId, role, vendedorId } = await requireAuth(req);
+/** Contexto de quién pide la planilla (para el scoping anti-IDOR del vendedor). */
+interface CtxPlanilla { tenantId: string; role: Role; vendedorId: string | null }
+
+/**
+ * Arma el recorrido. **UNA sola definición**, la usan la vista previa (GET) y la emisión
+ * (POST): si cada una calculara lo suyo, el papel que sale impreso podría decir un importe
+ * distinto del que se vio en pantalla al apretar Imprimir — y el que queda registrado como
+ * "esperado" sería un tercer número. Es el mismo error de dos fórmulas que ya costó caro en
+ * los acuerdos y en las campañas.
+ */
+async function armarPlanilla(
+  { tenantId, role, vendedorId }: CtxPlanilla,
+  opts: { diasAdelante: number; zonasPedidas: string[] },
+) {
+  const { diasAdelante, zonasPedidas } = opts;
   const { acuerdos, fallecidos } = await getCobranzaConfig(tenantId);
   const config = await getConfiguracion(tenantId);
-
-  const url = new URL(req.url);
-  /**
-   * Cuántos días PARA ADELANTE entran en la planilla.
-   *
-   * 0 = solo lo vencido (planilla de recupero). Un número mayor suma los que vencen dentro
-   * de esa ventana, que es el recorrido de rutina del crédito de barrio: el cobrador pasa
-   * por la semana a buscar la cuota, no solo cuando el cliente ya se atrasó. Se acota a
-   * 0..90 para que un parámetro raro no traiga la cartera entera.
-   */
-  const diasAdelante = Math.min(90, Math.max(0, Math.round(Number(url.searchParams.get("dias_adelante")) || 0)));
-  /** Zonas pedidas (vacío = todas). "__sin__" es el grupo de los que no tienen zona cargada. */
-  const zonasPedidas = (url.searchParams.get("zonas") ?? "")
-    .split(",")
-    .map((z) => z.trim())
-    .filter(Boolean);
 
   // Igual que la agenda: los acuerdos se ponen al día ANTES de decidir a quién visitar.
   await sincronizarAcuerdos({ tenantId });
@@ -220,7 +220,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     // "Sin zona" siempre al final: es el grupo de los que hay que ir a completar la ficha.
     .sort((a, b) => (a.zona ? 0 : 1) - (b.zona ? 0 : 1) || (a.zona ?? "").localeCompare(b.zona ?? "", "es"));
 
-  return successResponse({
+  return {
     fecha: hoy,
     dias_adelante: diasAdelante,
     zonas,
@@ -232,5 +232,100 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
       total: round2(zonas.reduce((s, z) => s + z.total, 0)),
       zonas: zonas.length,
     },
+  };
+}
+
+/** Lee los parámetros del recorrido de la query string, acotados. */
+function opcionesDe(req: NextRequest) {
+  const url = new URL(req.url);
+  /**
+   * Cuántos días PARA ADELANTE entran en la planilla.
+   *
+   * 0 = solo lo vencido (planilla de recupero). Un número mayor suma los que vencen dentro
+   * de esa ventana, que es el recorrido de rutina del crédito de barrio: el cobrador pasa
+   * por la semana a buscar la cuota, no solo cuando el cliente ya se atrasó. Se acota a
+   * 0..90 para que un parámetro raro no traiga la cartera entera.
+   */
+  const diasAdelante = Math.min(90, Math.max(0, Math.round(Number(url.searchParams.get("dias_adelante")) || 0)));
+  /** Zonas pedidas (vacío = todas). "__sin__" es el grupo de los que no tienen zona cargada. */
+  const zonasPedidas = (url.searchParams.get("zonas") ?? "")
+    .split(",")
+    .map((z) => z.trim())
+    .filter(Boolean);
+  return { diasAdelante, zonasPedidas };
+}
+
+/**
+ * GET — vista previa del recorrido. No persiste nada: es lo que el diálogo muestra mientras
+ * el operador elige zonas.
+ */
+export const GET = withErrorHandler(async (req: NextRequest) => {
+  const ctx = await requireAuth(req);
+  return successResponse(await armarPlanilla(ctx, opcionesDe(req)));
+});
+
+/**
+ * POST — EMITE la planilla: la arma, la registra y la devuelve para imprimir.
+ *
+ * 🔴 El recorrido se RECALCULA acá, no se acepta el que mandó el navegador. Lo que queda
+ * grabado como "esperado" es lo que el motor dice hoy: si se confiara en el cliente,
+ * bastaría editar la request para registrar una planilla por un importe menor y que la
+ * rendición cerrara sola con plata faltante.
+ *
+ * Body: { cobrador?: string }. Las zonas y los días van en la query, igual que en el GET.
+ */
+export const POST = withErrorHandler(async (req: NextRequest) => {
+  assertSameOrigin(req);
+  const ctx = await requireAuth(req);
+  const body = await req.json().catch(() => ({}));
+  const cobrador = typeof body?.cobrador === "string" ? body.cobrador.trim().slice(0, 60) : "";
+
+  const armada = await armarPlanilla(ctx, opcionesDe(req));
+  if (armada.totales.creditos === 0) {
+    return errorResponse("No hay nadie para visitar con esos filtros.", "SIN_OBJETIVOS", 400);
+  }
+
+  const planilla = await prisma.planillas_cobranza.create({
+    data: {
+      ...withTenant(ctx.tenantId),
+      fecha: armada.fecha,
+      cobrador: cobrador || null,
+      // Lo que se guarda es lo que el recorrido REALMENTE incluyó, no lo que se pidió: con
+      // "todas" el pedido llega vacío y después nadie sabría qué zonas salieron a la calle.
+      zonas: armada.zonas.map((z) => z.zona ?? "__sin__"),
+      dias_adelante: armada.dias_adelante,
+      total_esperado: armada.totales.total,
+      clientes: armada.totales.clientes,
+      creditos: armada.totales.creditos,
+      /**
+       * El snapshot de las filas impresas. Los punitorios corren por día, así que mañana el
+       * mismo recorrido daría otros importes: sin congelar lo que decía el papel, la
+       * rendición no cerraría nunca y la carga de cobros se haría contra otra cosa.
+       */
+      detalle: armada.zonas as unknown as Prisma.InputJsonValue,
+      emitida_por: ctx.userId,
+      emitida_por_nombre: ctx.nombre ?? null,
+    },
+    select: { id: true, fecha: true, cobrador: true },
   });
+
+  await registrarAuditoria({
+    tenantId: ctx.tenantId,
+    entidad: "planilla",
+    entidadId: planilla.id,
+    accion: "crear",
+    descripcion:
+      `Planilla de calle emitida${cobrador ? ` para ${cobrador}` : ""}: ` +
+      `${armada.totales.creditos} crédito${armada.totales.creditos === 1 ? "" : "s"} de ` +
+      `${armada.totales.clientes} cliente${armada.totales.clientes === 1 ? "" : "s"} ` +
+      `por ${formatMonto(armada.totales.total)}`,
+    meta: {
+      planilla_id: planilla.id,
+      zonas: armada.zonas.map((z) => z.zona ?? "(sin zona)"),
+      dias_adelante: armada.dias_adelante,
+      total_esperado: armada.totales.total,
+    },
+  });
+
+  return successResponse({ ...armada, planilla_id: planilla.id, cobrador: planilla.cobrador }, 201);
 });

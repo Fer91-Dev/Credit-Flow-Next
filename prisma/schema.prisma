@@ -651,6 +651,67 @@ model movimientos_caja {
  * `ajuste_id` apunta al `movimientos_caja` que cuadró la diferencia (null si cuadró exacto
  * o si todavía está pendiente). El actor queda congelado como en `auditoria`.
  */
+/// PLANILLA DE COBRANZA EN CALLE emitida: el papel que se llevó el cobrador.
+///
+/// 🔴 POR QUÉ SE PERSISTE
+///
+/// La planilla salía a la calle y no quedaba rastro de nada: ni qué recorrido se imprimió, ni
+/// por cuánta plata, ni quién la mandó. El cobrador volvía con efectivo y papeles escritos a
+/// mano y **no había contra qué comparar**. Si faltaba plata, no se podía demostrar.
+///
+/// Guardarla convierte el papel en un documento con dos lados: se emite por un importe
+/// esperado y se RINDE con lo que realmente entró. Es el mismo criterio del arqueo de caja
+/// (`arqueos_caja`): un acta que se escribe cuadre o no, y una diferencia que solo un admin
+/// puede cerrar con motivo.
+///
+/// El cobrador NO es usuario del sistema (decisión del usuario, 2026-08-25): la rinde la
+/// oficina cuando vuelve el papel. Por eso `cobrador` es texto libre y no una FK.
+model planillas_cobranza {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  tenant_id  String   @db.Uuid
+  fecha      DateTime @default(now()) @db.Date
+
+  /// Quién sale a cobrar. Texto libre: el cobrador de calle no tiene cuenta en el sistema.
+  cobrador      String?
+  /// Zonas del recorrido. "__sin__" es el grupo de los clientes sin zona cargada.
+  zonas         String[]
+  /// Ventana hacia adelante con la que se armó (0 = solo vencidos).
+  dias_adelante Int      @default(0)
+
+  /// Lo que la planilla salió a cobrar. Congelado: los punitorios siguen corriendo, así que
+  /// mañana el mismo recorrido daría otro número y la rendición no cerraría nunca.
+  total_esperado Float
+  clientes       Int
+  creditos       Int
+  /// Snapshot de las filas impresas (mismo criterio que `creditos.cronograma`). Es lo que
+  /// permite cargar los cobros después contra lo que REALMENTE decía el papel.
+  detalle        Json
+
+  /// emitida | rendida | anulada
+  estado String @default("emitida")
+
+  // Quién la emitió (congelado, como en `auditoria`: si se borra la cuenta, el acta se lee igual)
+  emitida_por        String? @db.Uuid
+  emitida_por_nombre String?
+
+  // ── Rendición: lo que volvió de la calle ──
+  rendida_at          DateTime? @db.Timestamptz(6)
+  rendido_por         String?   @db.Uuid
+  rendido_por_nombre  String?
+  /// Efectivo que entregó el cobrador, contado en la oficina.
+  total_declarado     Float?
+  /// declarado − cargado en el sistema. Sobrante > 0, faltante < 0.
+  diferencia          Float?
+  /// Por qué no cerró. Obligatorio si hay diferencia.
+  motivo              String?
+
+  pagos pagos[]
+
+  @@index([tenant_id, created_at])
+  @@index([tenant_id, estado])
+}
+
 model arqueos_caja {
   id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   created_at  DateTime @default(now()) @db.Timestamptz(6)
@@ -760,6 +821,14 @@ model pagos {
   anulado          Boolean   @default(false)
   anulado_motivo   String?
   anulado_at       DateTime? @db.Timestamptz(6)
+
+  /// Planilla de calle de la que salió este cobro, si se cargó desde una.
+  ///
+  /// Sin esto la rendición sería a ojo: hay que poder sumar EXACTAMENTE lo que entró por un
+  /// recorrido y compararlo contra lo que el cobrador entregó. Nullable porque la enorme
+  /// mayoría de los pagos se cobran en el mostrador y no vienen de ninguna planilla.
+  planilla_id      String?   @db.Uuid
+  planilla         planillas_cobranza? @relation(fields: [planilla_id], references: [id], onDelete: SetNull)
 
   /// Cuota del ACUERDO DE PAGO que se estaba cobrando, si el cobro salió de ahí.
   ///
