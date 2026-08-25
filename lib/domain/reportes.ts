@@ -194,6 +194,8 @@ export interface OperacionCredito {
   plazo_meses: number;
   tasa: number;
   es_refinanciacion: boolean;
+  /** Hace falta para descartar los anulados (ver `resumenOperaciones`). */
+  estado: string;
 }
 export interface ResumenOperaciones {
   cantidad: number;
@@ -207,8 +209,21 @@ export interface ResumenOperaciones {
  * Resumen de las operaciones OTORGADAS (plata nueva): excluye refinanciaciones (no es plata
  * nueva, misma regla que comisión/meta). Ticket = monto promedio por operación.
  */
+/**
+ * Un crédito ANULADO no fue otorgado: anular revierte el desembolso en la caja y deshace la
+ * operación. Contarlo como plata prestada infla el otorgamiento del período y el ticket
+ * promedio con dinero que volvió.
+ *
+ * 🔴 Y el resto del sistema ya lo excluía: las stats del vendedor (comisiones, metas,
+ * cantidad) filtran `estado ≠ anulado`. Reportes no, así que el mismo crédito contaba como
+ * otorgado en Reportes y no contaba en Equipo. Sobre la cartera de prueba eran 8 créditos
+ * por $2.650.000 sobre $14.240.000 — un 18,6% de más.
+ *
+ * `refinanciado` NO se excluye: esa plata sí se prestó en su momento; lo que se excluye es la
+ * refinanciación (`es_refinanciacion`), que es deuda mudada y no plata nueva.
+ */
 export function resumenOperaciones(creditos: OperacionCredito[]): ResumenOperaciones {
-  const nuevos = creditos.filter((c) => !c.es_refinanciacion);
+  const nuevos = creditos.filter((c) => !c.es_refinanciacion && c.estado !== "anulado");
   const n = nuevos.length;
   const monto = round2(nuevos.reduce((s, c) => s + c.monto_original, 0));
   return {

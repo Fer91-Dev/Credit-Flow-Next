@@ -3,7 +3,7 @@ import { successResponse, withErrorHandler } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { nombreCompleto, hoyComercial } from "@/lib/utils";
-import { cuotaMensualFrancesa, tasaPeriodicaSegunConvencion, normalizarFrecuencia, interesMora, round2, costoFondeo, resumenOperaciones, diasMoraActual, esCreditoVivo, moraDelCredito, moraDesdeCronograma } from "@/lib/domain";
+import { round2, costoFondeo, resumenOperaciones, diasMoraActual, esCreditoVivo, moraDelCredito, moraDesdeCronograma, moraPendienteTotal } from "@/lib/domain";
 import { getConfiguracion, getRentabilidadConfig } from "@/lib/config";
 import type { NextRequest } from "next/server";
 
@@ -43,6 +43,8 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
         tasa: true, plazo_meses: true, frecuencia: true, frecuencia_def: true, dias_mora: true, proximo_pago: true,
         cronograma: true, // trae la mora congelada del crédito
         created_at: true, es_refinanciacion: true, tipo_credito: true,
+        // Sin las cuotas no se puede calcular la mora real: se devenga POR CUOTA vencida.
+        cuotas: { select: { fecha_vencimiento: true, cuota_total: true, pagado_mora: true } },
       },
     }),
     getConfiguracion(tenantId),
@@ -105,18 +107,37 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   const enMora = creditos
     .filter((c) => esCreditoVivo(c.estado) && dmoraDe(c) > 0)
     .map((c) => ({ ...c, dias_mora: dmoraDe(c) }));
+  /**
+   * 🔴 LA MORA SALE DEL LEDGER, CUOTA POR CUOTA — no de una cuota teórica.
+   *
+   * Antes se reconstruía UNA cuota con `cuotaMensualFrancesa` y se la multiplicaba por los
+   * días de atraso del crédito. Eso ignora que la mora se devenga POR CUOTA: un crédito con
+   * tres cuotas vencidas devenga tres punitorios, cada uno con sus propios días, y la
+   * fórmula vieja cobraba uno solo.
+   *
+   * Sobre la cartera de prueba (23 créditos en mora, 37 cuotas vencidas, 10 de ellos con más
+   * de una) Reportes informaba $720.955,16 y lo real era $1.013.860,56: **un 40,6% menos**.
+   * Y la pantalla de Morosos ya mostraba el número correcto en su columna «Interés mora»,
+   * así que las dos pantallas del mismo sistema decían cosas distintas de la misma cartera.
+   *
+   * `moraPendienteTotal` es exactamente lo que usa `/api/creditos` y lo que descuenta un
+   * cobro: una sola definición para lo que se informa y para lo que se cobra.
+   */
   let interesMoraTotal = 0;
   for (const c of enMora) {
-    // Cada crédito con SU tasa pactada. Usar la de hoy para todos hacía que cambiar la
-    // configuración reescribiera la mora histórica de la cartera entera en los reportes.
+    // Cada crédito con SU mora pactada. Usar la config de hoy para todos hacía que cambiarla
+    // reescribiera la mora histórica de la cartera entera en los reportes.
     const mc = moraDelCredito(moraDesdeCronograma(c.cronograma), config);
-    if (mc.moraActiva && c.monto_original > 0 && c.plazo_meses >= 1) {
-      const frec = normalizarFrecuencia(c.frecuencia);
-      const catFrec = c.frecuencia_def ? [c.frecuencia_def as unknown as typeof config.simulador.frecuencias[number]] : config.simulador.frecuencias;
-      const tasaPeriodica = tasaPeriodicaSegunConvencion(c.tasa, config.convencionTasa, frec, catFrec);
-      const cuota = cuotaMensualFrancesa(c.monto_original, tasaPeriodica, c.plazo_meses);
-      interesMoraTotal += interesMora(cuota, c.dias_mora, { tasaDiaria: mc.tasaMoraDiaria, topePct: mc.topeMoraPct });
-    }
+    if (!mc.moraActiva) continue;
+    const gracia = (c.cronograma as { diasGracia?: number } | null)?.diasGracia ?? config.simulador.diasGracia;
+    interesMoraTotal += moraPendienteTotal(
+      c.cuotas.map((q) => ({
+        fechaVencimiento: q.fecha_vencimiento,
+        cuotaTotal: q.cuota_total,
+        pagadoMora: q.pagado_mora,
+      })),
+      { tasaDiaria: mc.tasaMoraDiaria, diasGracia: gracia, topePct: mc.topeMoraPct, hoy: hoyMora },
+    );
   }
   const morosidad = {
     en_mora: enMora.length,
