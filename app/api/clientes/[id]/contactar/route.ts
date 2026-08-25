@@ -9,7 +9,7 @@ import {
   linkWhatsapp, diasMoraActual, esCreditoVivo, round2, renderPlantillaContacto, type DatosPlantillaContacto,
   calcularDeudaConsolidada, calcularDeudaVencida, diasAtraso, moraDelCredito, moraDesdeCronograma, type CuotaParaImputar,
   plantillaDe, cuentaComoGestion, MOTIVO_LABEL, tipoGestionDeCanal, resolverPlantillasContacto, type MotivoContacto,
-  deudaEnRevision, contactoBloqueado,
+  deudaEnRevision, contactoBloqueado, resolverPlantillasMeta, renderPlantillaMeta,
 } from "@/lib/domain";
 import { nombreCompleto, hoyComercial } from "@/lib/utils";
 import { enviarEmailTenant, motivoEmailNoDisponible, type EmailTenantConfig } from "@/lib/mailer-tenant";
@@ -38,7 +38,21 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
   const { cliente, datos, comm } = r as Extract<typeof r, { cliente: object }>;
   // Una config guardada ANTES de que existiera este bloque no trae `contacto`: se resuelve
   // sobre los defaults en vez de romper.
-  const plantillas = resolverPlantillasContacto((await getCobranzaConfig(ctx.tenantId)).contacto);
+  const cobranzaCfg = await getCobranzaConfig(ctx.tenantId);
+  const plantillas = resolverPlantillasContacto(cobranzaCfg.contacto);
+
+  /**
+   * Las plantillas que Meta aprobó, ya COMPLETADAS con los datos de este cliente. Se manda
+   * el texto final y no el cuerpo crudo porque es lo que la pantalla tiene que mostrar
+   * antes de enviar: si el operador ve la variable en crudo, no puede verificar el importe.
+   * Solo las activas: una plantilla pausada por Meta no se puede ofrecer.
+   */
+  const plantillasMeta = resolverPlantillasMeta(cobranzaCfg.plantillas_meta)
+    .filter((p) => p.activa)
+    .map((p) => ({
+      id: p.id, nombre: p.nombre, idioma: p.idioma, categoria: p.categoria,
+      texto: renderPlantillaMeta(p, datos),
+    }));
 
   const mensajes = Object.fromEntries(
     MOTIVOS.map((m) => {
@@ -61,6 +75,7 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
       email: { disponible: !!cliente.email, automatico: !motivoEmailNoDisponible(comm.email) },
     },
     mensajes,
+    plantillas_meta: plantillasMeta,
   });
 });
 
@@ -85,10 +100,28 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
   const canal = body.canal === "email" ? "email" : "whatsapp";
   const motivo: MotivoContacto = MOTIVOS.includes(body.motivo) ? body.motivo : "informacion";
 
-  const plantillas = resolverPlantillasContacto((await getCobranzaConfig(ctx.tenantId)).contacto);
+  const cobranzaCfg = await getCobranzaConfig(ctx.tenantId);
+  const plantillas = resolverPlantillasContacto(cobranzaCfg.contacto);
   const base = plantillaDe(plantillas, motivo);
-  // El operador puede editar el texto antes de mandarlo; si no lo toca, va la plantilla.
-  const texto = typeof body.mensaje === "string" && body.mensaje.trim() ? body.mensaje.trim() : render(base.texto, datos);
+
+  /**
+   * 🔴 UNA PLANTILLA DE META NO SE EDITA.
+   *
+   * Meta aprueba un texto exacto; cambiarle una palabra la invalida y el mensaje deja de
+   * entregarse. Por eso, cuando se elige una, el cuerpo lo arma el SERVIDOR con la plantilla
+   * guardada y se ignora lo que venga en `mensaje`: si se aceptara el texto del navegador,
+   * bastaría con editar el textarea para mandar como "aprobado" algo que Meta nunca vio.
+   */
+  const plantillaMeta = typeof body.plantilla_meta_id === "string" && body.plantilla_meta_id
+    ? resolverPlantillasMeta(cobranzaCfg.plantillas_meta).find((p) => p.id === body.plantilla_meta_id && p.activa) ?? null
+    : null;
+  if (body.plantilla_meta_id && !plantillaMeta)
+    return errorResponse("La plantilla de Meta elegida ya no existe o está desactivada.", "INVALID_REFERENCE", 400);
+
+  // Sin plantilla de Meta, el operador puede editar el texto; si no lo toca, va la del tenant.
+  const texto = plantillaMeta
+    ? renderPlantillaMeta(plantillaMeta, datos)
+    : typeof body.mensaje === "string" && body.mensaje.trim() ? body.mensaje.trim() : render(base.texto, datos);
   const asunto = typeof body.asunto === "string" && body.asunto.trim() ? body.asunto.trim() : render(base.asunto, datos);
   if (!texto) return errorResponse("El mensaje está vacío.", "INVALID_INPUT", 400);
 
@@ -146,7 +179,13 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
     entidadId: cliente.id,
     accion: "contactar",
     descripcion: `${MOTIVO_LABEL[motivo]} por ${canal === "email" ? "email" : "WhatsApp"} a ${datos.nombre}`,
-    meta: { canal, motivo, metodo: enviado.metodo, mensaje: texto, asunto: canal === "email" ? asunto : null, gestion_id: gestionId },
+    // Con qué plantilla se mandó queda registrado: si Meta después observa el número, hay
+    // que poder decir qué salió aprobado y qué salió como texto libre.
+    meta: {
+      canal, motivo, metodo: enviado.metodo, mensaje: texto,
+      asunto: canal === "email" ? asunto : null, gestion_id: gestionId,
+      plantilla_meta: plantillaMeta ? `${plantillaMeta.nombre} (${plantillaMeta.idioma})` : null,
+    },
   });
 
   return successResponse({ canal, motivo, ...enviado, gestion_id: gestionId, mensaje: texto }, 201);

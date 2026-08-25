@@ -2,7 +2,7 @@ import { requireRole, scopeCreditosVendedor } from "@/lib/auth";
 import { successResponse, errorResponse, withErrorHandler, assertSameOrigin } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
-import { cuotaMensualFrancesa, tasaPeriodicaSegunConvencion, interesMora, normalizarFrecuencia, calculateRecoveryOffer, diasMoraActual, type FrecuenciaDef, type ConfiguracionFinanciera, moraDelCredito, moraDesdeCronograma, esCreditoVivo, calcularDeudaVencida, round2, deudaEnRevision, contactoBloqueado, type CuotaParaImputar } from "@/lib/domain";
+import { cuotaMensualFrancesa, tasaPeriodicaSegunConvencion, interesMora, normalizarFrecuencia, calculateRecoveryOffer, diasMoraActual, type FrecuenciaDef, type ConfiguracionFinanciera, moraDelCredito, moraDesdeCronograma, esCreditoVivo, calcularDeudaVencida, round2, deudaEnRevision, contactoBloqueado, resolverPlantillasMeta, type CuotaParaImputar } from "@/lib/domain";
 import { getConfiguracion, getCobranzaConfig } from "@/lib/config";
 import { registrarAuditoria } from "@/lib/audit";
 import { hoyComercial, formatCreditoNumero } from "@/lib/utils";
@@ -257,6 +257,15 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
         promo_valor: promoValor,
         promo_vence: body.promo_vence ? new Date(body.promo_vence) : null,
         mensaje_template: body.mensaje_template?.trim() || null,
+        /**
+         * Con qué plantilla aprobada salió, o null si fue texto libre. Se valida contra las
+         * registradas y ACTIVAS: el nombre viene del navegador y no puede quedar en la
+         * campaña un "aprobado por Meta" que nadie aprobó.
+         */
+        plantilla_meta: typeof body.plantilla_meta === "string" && body.plantilla_meta
+          ? resolverPlantillasMeta((await getCobranzaConfig(tenantId)).plantillas_meta)
+              .find((p) => p.nombre === body.plantilla_meta && p.activa)?.nombre ?? null
+          : null,
       },
     });
 

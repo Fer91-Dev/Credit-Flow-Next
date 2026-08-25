@@ -96,7 +96,12 @@ export function Segmented<T extends string>({
 }: {
   value: T;
   onChange: (v: T) => void;
-  options: { value: T; label: string; icon?: LucideIcon | string }[];
+  /**
+   * `icon` acepta cualquier componente que reciba `className`, no solo un `LucideIcon`: hace
+   * falta para los logos de marca que lucide no trae (WhatsApp), que si no habría que
+   * reemplazar por un globito genérico justo en el botón que la gente reconoce por el logo.
+   */
+  options: { value: T; label: string; icon?: React.ComponentType<{ className?: string }> | string }[];
 }) {
   return (
     <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${options.length}, minmax(0,1fr))` }}>
@@ -110,13 +115,25 @@ export function Segmented<T extends string>({
             type="button"
             onClick={() => onChange(o.value)}
             className={cn(
-              "flex items-center justify-center gap-1.5 rounded-lg border px-3 py-2.5 text-sm font-medium transition-colors",
+              // `group` para que el ícono reaccione al hover del botón entero, no solo al suyo.
+              "group flex items-center justify-center gap-1.5 rounded-lg border px-3 py-2.5 text-sm font-medium transition-all duration-200 active:scale-[0.97]",
               active
-                ? "border-primary/40 bg-primary/10 text-primary"
-                : "border-border bg-muted/30 text-muted-foreground hover:bg-muted/50 hover:text-foreground",
+                ? "border-primary/40 bg-primary/10 text-primary shadow-sm shadow-primary/10"
+                : "border-border bg-muted/30 text-muted-foreground hover:-translate-y-0.5 hover:border-primary/30 hover:bg-muted/50 hover:text-foreground hover:shadow-md",
             )}
           >
-            {isEmoji ? <Emoji name={o.icon as string} className="h-4 w-4 shrink-0" /> : Icon && <Icon className="h-4 w-4 shrink-0" />}
+            {/* El ícono crece y se inclina apenas al pasar el mouse, y late mientras la
+                opción está elegida: el control se siente vivo sin distraer del formulario. */}
+            <span
+              className={cn(
+                "flex shrink-0 transition-transform duration-200 group-hover:scale-125 group-hover:-rotate-6",
+                active && "scale-110",
+              )}
+            >
+              {isEmoji
+                ? <Emoji name={o.icon as string} className="h-4 w-4" />
+                : Icon && <Icon className="h-4 w-4" />}
+            </span>
             {o.label}
           </button>
         );

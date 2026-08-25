@@ -531,6 +531,12 @@ model campanas_cobranza {
   promo_valor      Float     @default(0) // % de descuento sobre el interés de mora
   promo_vence      DateTime? @db.Date // plazo límite para acogerse a la promo
   mensaje_template String? // plantilla del mensaje (con [Nombre], [Monto], etc.)
+  /**
+   * Nombre de la plantilla aprobada por Meta con la que se armó el mensaje (`aviso_mora_ar`),
+   * o null si salió como texto libre. Se guarda para poder responder, si Meta observa el
+   * número, qué campañas salieron con plantilla aprobada y cuáles no.
+   */
+  plantilla_meta   String?
 
   objetivos campana_objetivo[]
 

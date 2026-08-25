@@ -4,14 +4,18 @@ import { useMemo, useState, type ComponentType } from "react";
 import { Mail, Smartphone, Sparkles, Check, Zap, Loader2 } from "lucide-react";
 import { WhatsAppIcon } from "@/components/ui/WhatsAppIcon";
 import type { Credito } from "@/lib/swr";
-import { useConfiguracion } from "@/lib/swr";
+import { useConfiguracion, useFinanciera } from "@/lib/swr";
 import {
   calculateRecoveryOffer,
   construirMensajeCampana,
   linkWhatsapp,
   TEMPLATE_DEFAULT,
+  plantillaMetaParaCampana,
+  riesgoEnvioMeta,
+  CATEGORIA_META_LABEL,
   type CanalCampana,
 } from "@/lib/domain";
+import { AvisoMeta } from "@/components/clientes/ContactarDialog";
 import { Field, Input, Select, Textarea } from "@/components/ui/field";
 import { FormActions } from "@/components/ui/form-kit";
 import { nombreCompleto } from "@/lib/utils";
@@ -35,9 +39,24 @@ interface CampaignModalProps {
 
 export function CampaignModal({ creditos, onClose }: CampaignModalProps) {
   const { config } = useConfiguracion();
+  const { financiera } = useFinanciera();
   const confirm = useConfirm();
   const toast = useToast();
   const whatsappApiActiva = !!(config?.whatsappConfig?.enabled);
+
+  /**
+   * Las plantillas aprobadas por Meta, ya traducidas al vocabulario de las campañas.
+   *
+   * Una plantilla que use un dato que la campaña no sabe completar —el número de cuota, la
+   * fecha de vencimiento— queda deshabilitada con el motivo a la vista. Ofrecerla igual
+   * mandaría por escrito a todo el lote una variable sin resolver.
+   */
+  const plantillasMeta = useMemo(() => {
+    const marca = financiera?.nombre?.trim() || "tu financiera";
+    return (config?.cobranzaConfig?.plantillas_meta ?? [])
+      .filter((p) => p.activa)
+      .map((p) => ({ ...p, ...plantillaMetaParaCampana(p, marca) }));
+  }, [config, financiera]);
 
   const [form, setForm] = useState({
     nombre: "",
@@ -47,6 +66,8 @@ export function CampaignModal({ creditos, onClose }: CampaignModalProps) {
     promo_valor: "50",
     promo_vence: "",
     mensaje_template: TEMPLATE_DEFAULT,
+    /** Nombre de la plantilla de Meta elegida ("" = texto libre). */
+    plantilla_meta: "",
   });
   const [loading, setLoading] = useState(false);
   const [enviandoApi, setEnviandoApi] = useState(false);
@@ -77,6 +98,20 @@ export function CampaignModal({ creditos, onClose }: CampaignModalProps) {
   const totalSinDescuento = objetivos.reduce((s, o) => s + o.oferta.montoSinDescuento, 0);
   const totalAhorro = objetivos.reduce((s, o) => s + o.oferta.ahorro, 0);
 
+  const metaElegida = plantillasMeta.find((p) => p.nombre === form.plantilla_meta) ?? null;
+  /**
+   * El aviso escala con el volumen: acá van cientos de mensajes iguales desde el mismo
+   * número, que es exactamente el patrón que Meta penaliza. Nunca bloquea el envío.
+   */
+  const riesgo = riesgoEnvioMeta({
+    // Solo WhatsApp: las políticas de plantillas son de Meta. El SMS y el email tienen sus
+    // propias reglas y no es honesto avisar de una restricción que no los alcanza.
+    canal: form.canal === "whatsapp" ? "whatsapp" : "email",
+    usaPlantillaMeta: !!metaElegida,
+    destinatarios: creditos.length,
+    hayPlantillas: plantillasMeta.length > 0,
+  });
+
   const set = (field: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
     setForm((p) => ({ ...p, [field]: e.target.value }));
 
@@ -103,6 +138,9 @@ export function CampaignModal({ creditos, onClose }: CampaignModalProps) {
         promo_valor: descuentoPct,
         promo_vence: form.promo_vence || undefined,
         mensaje_template: form.mensaje_template.trim() || undefined,
+        // Con qué plantilla salió. Si Meta observa el número hay que poder decir qué campañas
+        // usaron una plantilla aprobada y cuáles salieron como texto libre.
+        plantilla_meta: form.plantilla_meta || undefined,
         credito_ids: creditos.map((c) => c.id),
       };
       const res = await fetch("/api/cobranza/campanas", {
@@ -317,7 +355,21 @@ export function CampaignModal({ creditos, onClose }: CampaignModalProps) {
           <Input placeholder="Ej: Recupero Junio" value={form.nombre} onChange={set("nombre")} />
         </Field>
         <Field label="Canal" required>
-          <Select value={form.canal} onChange={set("canal")}>
+          <Select
+            value={form.canal}
+            onChange={(e) => {
+              const canal = e.target.value as CanalCampana;
+              // Una plantilla de Meta es de WhatsApp: cambiando de canal deja de aplicar, y
+              // el mensaje vuelve a ser editable.
+              setForm((p) => ({
+                ...p,
+                canal,
+                ...(canal !== "whatsapp" && p.plantilla_meta
+                  ? { plantilla_meta: "", mensaje_template: TEMPLATE_DEFAULT }
+                  : {}),
+              }));
+            }}
+          >
             {(Object.keys(CANAL_META) as CanalCampana[]).map((k) => (
               <option key={k} value={k}>{CANAL_META[k].label}</option>
             ))}
@@ -359,10 +411,59 @@ export function CampaignModal({ creditos, onClose }: CampaignModalProps) {
         )}
       </div>
 
+      {/* ── Plantilla aprobada por Meta (opcional, solo WhatsApp) ── */}
+      {form.canal === "whatsapp" && plantillasMeta.length > 0 && (
+        <Field
+          label="Plantilla aprobada por Meta"
+          hint={
+            metaElegida
+              ? "El cuerpo lo fija Meta y no se edita: cambiarlo invalida la aprobación."
+              : "Opcional. Con una plantilla aprobada el mensaje se entrega aunque el cliente no te haya escrito antes."
+          }
+        >
+          <Select
+            value={form.plantilla_meta}
+            onChange={(e) => {
+              const nombre = e.target.value;
+              const p = plantillasMeta.find((x) => x.nombre === nombre);
+              setForm((prev) => ({
+                ...prev,
+                plantilla_meta: nombre,
+                // Al elegirla, el mensaje pasa a ser el suyo; al volver a texto libre, el default.
+                mensaje_template: p ? p.template : TEMPLATE_DEFAULT,
+              }));
+            }}
+          >
+            <option value="">Texto libre (sin plantilla)</option>
+            {plantillasMeta.map((p) => (
+              <option key={p.id} value={p.nombre} disabled={p.faltantes.length > 0}>
+                {p.nombre} · {p.idioma} · {CATEGORIA_META_LABEL[p.categoria]}
+                {p.faltantes.length > 0 ? ` — no sirve para campañas (usa: ${p.faltantes.join(", ")})` : ""}
+              </option>
+            ))}
+          </Select>
+        </Field>
+      )}
+
       {/* Mensaje */}
-      <Field label="Mensaje" hint="Placeholders: [Nombre] [Monto] [Saldo] [Dias] [Descuento]">
-        <Textarea rows={3} value={form.mensaje_template} onChange={set("mensaje_template")} />
+      <Field
+        label="Mensaje"
+        hint={metaElegida
+          ? "Texto aprobado por Meta. Las variables se completan con los datos de cada cliente."
+          : "Placeholders: [Nombre] [Monto] [Saldo] [Dias] [Descuento]"}
+      >
+        <Textarea
+          rows={3}
+          value={form.mensaje_template}
+          onChange={set("mensaje_template")}
+          // Una plantilla aprobada no se edita: Meta aprueba un texto exacto.
+          readOnly={!!metaElegida}
+          className={metaElegida ? "cursor-not-allowed border-success/30 bg-success/5" : undefined}
+        />
       </Field>
+
+      {/* ── Aviso de políticas de Meta. Informa, no bloquea. ── */}
+      {riesgo.nivel && <AvisoMeta nivel={riesgo.nivel} titulo={riesgo.titulo} puntos={riesgo.puntos} />}
 
       {/* Preview de oferta por cliente */}
       <div className="rounded-lg border border-border overflow-hidden">

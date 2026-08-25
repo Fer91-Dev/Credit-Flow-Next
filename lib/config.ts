@@ -3,7 +3,7 @@
  * Traduce entre el registro de BD (snake_case, CSV) y el tipo de dominio.
  */
 import { prisma } from "@/lib/prisma";
-import { resolverPlantillasContacto, PLANTILLAS_CONTACTO_DEFAULT, type PlantillasContacto } from "@/lib/domain";
+import { resolverPlantillasContacto, PLANTILLAS_CONTACTO_DEFAULT, resolverPlantillasMeta, type PlantillasContacto, type PlantillaMeta } from "@/lib/domain";
 import {
   CONFIG_DEFAULT,
   resolverConfig,
@@ -229,6 +229,11 @@ export interface CobranzaConfig {
   /** Textos del contacto individual (WhatsApp/email desde la ficha del cliente). */
   contacto: PlantillasContacto;
   /**
+   * Plantillas que Meta ya aprobó para WhatsApp Business. Arranca vacío y NO es obligatorio
+   * usarlas: es la red de seguridad para cuando el volumen crezca. Ver `lib/domain/contacto`.
+   */
+  plantillas_meta: PlantillaMeta[];
+  /**
    * Política de ACUERDOS DE PAGO. Va anidada acá y no en una columna nueva porque es el
    * mismo dominio (cobranza) — una tabla no cambia por agrupar mejor un JSON.
    */
@@ -252,6 +257,8 @@ export const COBRANZA_DEFAULT: CobranzaConfig = {
   dias_sin_gestion: 7,
   orden: "mora",
   contacto: PLANTILLAS_CONTACTO_DEFAULT,
+  // Vacío a propósito: una plantilla de Meta la aprueba Meta, no la puede traer un default.
+  plantillas_meta: [],
   acuerdos: ACUERDOS_DEFAULT,
   recupero: RECUPERO_DEFAULT,
   fallecidos: FALLECIDOS_DEFAULT,
@@ -273,6 +280,7 @@ export function resolverCobranza(raw: unknown): CobranzaConfig {
     // columna nueva porque son textos de gestión del cliente, del mismo orden que el resto
     // de este bloque; `resolverPlantillasContacto` completa con los defaults del dominio.
     contacto: resolverPlantillasContacto(r.contacto),
+    plantillas_meta: resolverPlantillasMeta(r.plantillas_meta),
     fallecidos: resolverFallecidos(r.fallecidos),
   };
 }

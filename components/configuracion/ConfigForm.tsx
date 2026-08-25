@@ -16,6 +16,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
 import { formatFecha, formatMonto, formatNumero } from "@/lib/utils";
 import { PlantillasContactoEditor } from "@/components/configuracion/PlantillasContactoEditor";
+import { PlantillasMetaEditor } from "@/components/configuracion/PlantillasMetaEditor";
 
 /**
  * Día del mes (1–28) de los campos de cronograma, o `null` cuando el campo queda vacío.
@@ -214,6 +215,28 @@ const AYUDA: Record<string, AyudaBloque> = {
       "Solo el mensaje de MORA cuenta como gestión de cobranza. Los otros dos se registran en la ficha pero no mueven la efectividad del equipo.",
       "El asunto solo lo usa el email; en WhatsApp se ignora.",
       "Si borrás un texto y guardás, vuelve el que trae el sistema por defecto.",
+    ],
+  },
+  plantillas_meta: {
+    titulo: "Plantillas aprobadas por Meta",
+    texto:
+      "WhatsApp tiene dos formas de mandar un mensaje. Escribiéndolo a mano desde el teléfono —lo que hace el "
+      + "sistema hoy— podés poner el texto que quieras. Con la API de WhatsApp Business, en cambio, Meta solo "
+      + "entrega mensajes armados con una plantilla que aprobó ANTES, salvo que el cliente te haya escrito en las "
+      + "últimas 24 horas. Acá se registran esas plantillas ya aprobadas para poder elegirlas al contactar o al "
+      + "armar una campaña.",
+    ejemplo:
+      "Meta te aprueba «Hola {{1}}, tenés una cuota vencida por {{2}}. Comunicate con nosotros.» Registrás ese texto "
+      + "tal cual, decís que la primera variable es el nombre y la segunda lo vencido, y al mandárselo a Juan Pérez "
+      + "le llega «Hola Juan Pérez, tenés una cuota vencida por $39.187,40. Comunicate con nosotros.»",
+    puntos: [
+      "El sistema NO aprueba nada: la aprobación la da Meta en el Administrador de WhatsApp. Acá solo se registra.",
+      "El cuerpo va copiado exactamente, con sus variables numeradas. Si cambia una palabra, deja de estar aprobado y Meta no lo entrega.",
+      "Cada variable tiene que tener un dato asignado. Si queda vacía, al cliente le llega la variable escrita en crudo.",
+      "Categoría: una cobranza es «Utilidad». Declararla como «Marketing» hace que caiga bajo las preferencias de publicidad del cliente y puede no entregarse.",
+      "No son obligatorias. Sin plantilla se manda texto libre y el sistema avisa antes de enviar — el aviso es más fuerte en una campaña que en un mensaje suelto.",
+      "El riesgo real de mandar texto libre en volumen: los que bloquean o reportan bajan la calidad del número, primero se recorta el límite diario y después se pierde la línea.",
+      "Apagar una plantilla la saca de los selectores sin borrarla: sirve cuando Meta la pausa.",
     ],
   },
   fallecidos: {
@@ -1900,6 +1923,20 @@ export function ConfigForm() {
             <PlantillasContactoEditor valor={cobranza.contacto} onChange={setContacto} />
           </Section>
 
+          {/* Plantillas aprobadas por Meta (WhatsApp Business) */}
+          <Section
+            title="Plantillas aprobadas por Meta"
+            desc="Las que Meta ya aprobó para WhatsApp Business. Opcionales: sin ellas se manda texto libre y el sistema avisa del riesgo."
+            ayuda={AYUDA.plantillas_meta}
+            onSave={() => save("cobranza", { cobranzaConfig: cobranza })}
+            saving={savingKey === "cobranza"} saved={savedKey === "cobranza"} dirty={isDirty("cobranza")}
+          >
+            <PlantillasMetaEditor
+              valor={cobranza.plantillas_meta}
+              onChange={(plantillas_meta) => setCobranza({ plantillas_meta })}
+            />
+          </Section>
+
 
           {/* Escalera de recupero */}
           <Section
@@ -2127,6 +2164,7 @@ function defaultCobranza(): CobranzaConfig {
     dias_sin_gestion: 7,
     orden: "mora",
     contacto: PLANTILLAS_CONTACTO_DEFAULT,
+    plantillas_meta: [],
     acuerdos: {
       max_cuotas: 6, dias_entre_cuotas: 30, cuotas_para_romper: 1,
       congela_punitorios: true, saca_de_agenda: true,
