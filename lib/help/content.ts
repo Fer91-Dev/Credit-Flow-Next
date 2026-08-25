@@ -308,7 +308,7 @@ const HELP: Record<string, HelpDoc> = {
         kind: "pasos",
         titulo: "Salir a cobrar a la calle",
         pasos: [
-          "En Morosos, botón «Planilla de calle»: arma el recorrido y lo imprime.",
+          "Pestaña «Planillas» → «Nueva planilla»: arma el recorrido y lo imprime.",
           "Elegí las zonas. La zona sale de la ficha del cliente; los que no la tienen cargada van juntos en un grupo aparte.",
           "«A quién visitar»: solo los vencidos, o también los que vencen dentro de 7, 15 o 30 días —el recorrido de rutina.",
           "Antes de imprimir ves cuántos clientes y cuánta plata tiene el recorrido, zona por zona.",

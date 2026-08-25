@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ClipboardList, CheckCircle2, AlertTriangle, Loader2, ArrowLeft, Wallet } from "lucide-react";
+import { ClipboardList, CheckCircle2, AlertTriangle, Loader2, ArrowLeft, Wallet, Printer } from "lucide-react";
 import { usePlanillasEmitidas, usePlanillaDetalle, type PlanillaEmitida } from "@/lib/swr";
 import { formatMonto, formatFecha, formatFechaHora, formatCreditoNumero } from "@/lib/utils";
 import { StatusBadge } from "@/components/ui/StatusBadge";
@@ -12,6 +12,7 @@ import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { ModalHeader } from "@/components/ui/form-kit";
 import { useToast } from "@/components/ui/toast";
 import { useConfirm } from "@/components/ui/confirm";
+import { PlanillaCalleDialog } from "./PlanillaCalleDialog";
 import type { Role } from "@/lib/auth/roles";
 
 /**
@@ -25,6 +26,8 @@ import type { Role } from "@/lib/auth/roles";
 export function PlanillasTab({ role }: { role: Role }) {
   const [estado, setEstado] = useState("emitida");
   const [abierta, setAbierta] = useState<string | null>(null);
+  /** Emitir vive ACÁ y no en Morosos: es el principio del ciclo que termina en esta pestaña. */
+  const [emitir, setEmitir] = useState(false);
   const { planillas, isLoading, mutate } = usePlanillasEmitidas(estado);
 
   if (abierta) {
@@ -51,7 +54,7 @@ export function PlanillasTab({ role }: { role: Role }) {
         />
       </div>
 
-      <div className="flex gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         {([["emitida", "En la calle"], ["rendida", "Rendidas"], ["todas", "Todas"]] as [string, string][]).map(([k, l]) => (
           <button
             key={k}
@@ -63,6 +66,13 @@ export function PlanillasTab({ role }: { role: Role }) {
             {l}
           </button>
         ))}
+        <button
+          onClick={() => setEmitir(true)}
+          className="ml-auto flex items-center gap-2 whitespace-nowrap rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
+        >
+          <Printer className="h-4 w-4" />
+          Nueva planilla
+        </button>
       </div>
 
       {isLoading ? (
@@ -73,15 +83,25 @@ export function PlanillasTab({ role }: { role: Role }) {
           <p className="mt-3 text-sm font-medium text-foreground">
             {estado === "emitida" ? "No hay planillas en la calle" : "No hay planillas"}
           </p>
-          <p className="mt-1 text-xs text-muted-foreground/70">
-            Se emiten desde Morosos → «Planilla de calle».
+          <p className="mx-auto mt-1 max-w-sm text-xs leading-relaxed text-muted-foreground/70">
+            La planilla es la lista impresa que se lleva el cobrador, agrupada por zona. Cuando vuelve,
+            los cobros se cargan acá mismo y se rinde el efectivo.
           </p>
+          {/* El vacío ofrece la acción en vez de explicar dónde encontrarla. */}
+          <button
+            onClick={() => setEmitir(true)}
+            className="mx-auto mt-4 flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
+          >
+            <Printer className="h-4 w-4" /> Armar la primera
+          </button>
         </div>
       ) : (
         <div className="space-y-2">
           {planillas.map((p) => <FilaPlanilla key={p.id} p={p} onAbrir={() => setAbierta(p.id)} />)}
         </div>
       )}
+
+      <PlanillaCalleDialog open={emitir} onClose={() => { setEmitir(false); mutate(); }} />
     </div>
   );
 }

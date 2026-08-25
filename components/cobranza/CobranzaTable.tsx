@@ -3,7 +3,7 @@
 import { useState, useMemo, useEffect } from "react";
 import { motion } from "framer-motion";
 import { useSWRConfig } from "swr";
-import { AlertCircle, Phone, Mail, Clock, Copy, CheckCheck, Search, DollarSign, ShieldAlert, MessageSquarePlus, CalendarClock, Megaphone, X, Users, TrendingUp, Sun, Handshake, Printer } from "lucide-react";
+import { AlertCircle, Phone, Mail, Clock, Copy, CheckCheck, Search, DollarSign, ShieldAlert, MessageSquarePlus, CalendarClock, Megaphone, X, Users, TrendingUp, Sun, Handshake } from "lucide-react";
 import { WhatsAppIcon } from "@/components/ui/WhatsAppIcon";
 import { useCreditos, useAccionesCobranza, KEYS, type Credito, type AccionCobranza, type AgendaItem } from "@/lib/swr";
 import { type Role } from "@/lib/auth/roles";
@@ -16,7 +16,6 @@ import { PromesasTab } from "./PromesasTab";
 import { AcuerdosTab } from "./AcuerdosTab";
 import { AcuerdoForm } from "./AcuerdoForm";
 import { AgendaHoy } from "./AgendaHoy";
-import { PlanillaCalleDialog } from "./PlanillaCalleDialog";
 import { PlanillasTab } from "./PlanillasTab";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { KpiCard } from "@/components/ui/KpiCard";
@@ -91,8 +90,6 @@ export function CobranzaTable({ role }: { role: Role }) {
   const [detalle, setDetalle]   = useState<Credito | null>(null);
   const [seleccion, setSeleccion] = useState<Set<string>>(new Set());
   const [campaignOpen, setCampaignOpen] = useState(false);
-  /** Planilla imprimible para el cobrador de calle (agrupada por zona). */
-  const [planillaOpen, setPlanillaOpen] = useState(false);
 
   /**
    * 🔴 A un fallecido no se le manda una campaña, así que tampoco se lo puede tildar.
@@ -350,18 +347,14 @@ export function CobranzaTable({ role }: { role: Role }) {
           dice sobre cuántos va a trabajar, así que no hay que explicarlo con un texto.
         */}
         {/*
-          La otra mitad de la cobranza: la que se hace caminando. El cobrador de calle no usa
-          el sistema, así que su herramienta es un papel — y hasta acá ese papel se armaba a
-          mano, con importes que no salían del motor.
+          🔴 "Planilla de calle" NO va acá — vive en su pestaña.
+          Estuvo en esta barra por orden de construcción (se hizo antes de que existiera la
+          pestaña Planillas) y quedó. La diferencia con "Nueva campaña" es real: la campaña
+          trabaja sobre lo que el operador está viendo —los tildados, o los filtrados por
+          severidad—, así que pertenece a esta lista. La planilla ignora la selección por
+          completo: pide zonas. Su lugar es donde está el resto de su ciclo (emitir, cargar
+          los cobros, rendir), no colgada de una lista con la que no tiene relación.
         */}
-        <button
-          onClick={() => setPlanillaOpen(true)}
-          className="flex items-center justify-center gap-2 whitespace-nowrap rounded-lg border border-border px-4 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-        >
-          <Printer className="h-4 w-4" />
-          Planilla de calle
-        </button>
-
         {puedeCampanas && (
           <button
             onClick={() => {
@@ -711,8 +704,6 @@ export function CobranzaTable({ role }: { role: Role }) {
           </DialogContent>
         </Dialog>
       )}
-
-      <PlanillaCalleDialog open={planillaOpen} onClose={() => setPlanillaOpen(false)} />
     </div>
   );
 }
