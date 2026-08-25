@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { withTenant } from "@/app/lib/db";
 import { getGamificacionConfig } from "@/lib/config";
-import { cumplimientoMeta, scoreCumplimiento, medallaDePeriodo, puntosMedalla, rangoDesdePuntos, maxRacha, masUnDia, type Medalla, type CumplimientoMeta, type RangoInfo, type GamificacionConfig, esCreditoVivo } from "@/lib/domain";
+import { cumplimientoMeta, scoreCumplimiento, medallaDePeriodo, puntosMedalla, rangoDesdePuntos, maxRacha, ventanaAR, ventanaDias, type Medalla, type CumplimientoMeta, type RangoInfo, type GamificacionConfig, esCreditoVivo } from "@/lib/domain";
 
 /** Una fila del historial de logros (un período). */
 export interface LogroPeriodo {
@@ -46,9 +46,16 @@ export async function construirLogrosVendedor(tenantId: string, vendedorId: stri
       where: { ...withTenant(tenantId), vendedor_id: vendedorId },
       orderBy: { fecha_desde: "asc" }, // cronológico para la racha
     }),
+    // `es_refinanciacion: false` para la META, pero la cartera (morosidad) las necesita:
+    // una refinanciación no es plata nueva otorgada —no suma a la meta ni a la comisión—
+    // pero sí es saldo vivo en la calle. Se traen todas y se separan abajo.
+    //
+    // 🔴 Faltaba el corte: la refinanciación entraba al cumplimiento. Medido sobre la meta
+    // QA de Andrea, Logros le mostraba $330.488,30 otorgados —CRD-000008, una refi— cuando
+    // lo realmente vendido en el período eran $200.000.
     prisma.creditos.findMany({
       where: { ...withTenant(tenantId), vendedor_id: vendedorId, estado: { not: "anulado" } },
-      select: { created_at: true, monto_original: true, saldo_pendiente: true, dias_mora: true, estado: true },
+      select: { created_at: true, monto_original: true, saldo_pendiente: true, dias_mora: true, estado: true, es_refinanciacion: true },
     }),
     prisma.pagos.findMany({
       where: { ...withTenant(tenantId), credito: { vendedor_id: vendedorId }, anulado: false },
@@ -65,8 +72,9 @@ export async function construirLogrosVendedor(tenantId: string, vendedorId: stri
   const calidadPct = 100 - morosidad;
 
   const scoreOpts = { pesos: gam.pesos, calidadPct };
+  const paraMeta = creditos.filter((c) => !c.es_refinanciacion);
   const filas: (LogroPeriodo & { fecha_desde: Date; fecha_hasta: Date })[] = metas.map((m) => {
-    const cumplimiento = cumplimientoMeta(m, creditos, pagos);
+    const cumplimiento = cumplimientoMeta(m, paraMeta, pagos);
     const score = scoreCumplimiento(cumplimiento, m, scoreOpts);
     return {
       periodo: m.periodo, estado: m.estado, score, medalla: medallaDePeriodo(score, gam.umbrales),
@@ -115,16 +123,23 @@ async function esTopDelMes(
   if (metasPeriodo.length <= 1) return false; // hace falta equipo para ser "top"
 
   const minDesde = new Date(Math.min(...metasPeriodo.map((m) => m.fecha_desde.getTime())));
-  const maxHasta = masUnDia(new Date(Math.max(...metasPeriodo.map((m) => m.fecha_hasta.getTime()))));
+  const maxHasta = new Date(Math.max(...metasPeriodo.map((m) => m.fecha_hasta.getTime())));
   const ids = metasPeriodo.map((m) => m.vendedor_id);
+
+  // El pre-filtro tiene que ser MÁS ANCHO que el corte final, nunca más angosto: si acá se
+  // recorta por día UTC, el crédito del borde ya no llega a `cumplimientoMeta` y el corte
+  // correcto de adentro no lo puede recuperar. `created_at` es TIMESTAMP → ventana
+  // argentina; `pagos.fecha` es `@db.Date` → ventana de días, sin corrimiento.
+  const vCred = ventanaAR(minDesde, maxHasta);
+  const vPago = ventanaDias(minDesde, maxHasta);
 
   const [creds, pgs] = await Promise.all([
     prisma.creditos.findMany({
-      where: { ...withTenant(tenantId), vendedor_id: { in: ids }, estado: { not: "anulado" }, created_at: { gte: minDesde, lt: maxHasta } },
+      where: { ...withTenant(tenantId), vendedor_id: { in: ids }, estado: { not: "anulado" }, es_refinanciacion: false, created_at: { gte: vCred.desde, lt: vCred.hastaExcl } },
       select: { vendedor_id: true, created_at: true, monto_original: true },
     }),
     prisma.pagos.findMany({
-      where: { ...withTenant(tenantId), credito: { vendedor_id: { in: ids } }, fecha: { gte: minDesde, lt: maxHasta }, anulado: false },
+      where: { ...withTenant(tenantId), credito: { vendedor_id: { in: ids } }, fecha: { gte: vPago.desde, lt: vPago.hastaExcl }, anulado: false },
       select: { fecha: true, monto: true, credito: { select: { vendedor_id: true } } },
     }),
   ]);

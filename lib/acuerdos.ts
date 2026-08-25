@@ -83,10 +83,17 @@ export async function deudaVencidaDeCredito(tenantId: string, creditoId: string)
   return { credito, deuda, config };
 }
 
-/** Cuánto se cobró de un crédito desde una fecha (lo que alimenta el acuerdo). */
+/**
+ * Cuánto se cobró de un crédito desde una fecha (lo que alimenta el acuerdo).
+ *
+ * 🔴 `anulado: false`. Este número no es informativo: DECIDE el estado del acuerdo. Sin el
+ * filtro, un pago que se anuló —la plata volvió— seguía contando para darlo por cumplido,
+ * y un acuerdo cerrado como "cumplido" saca al deudor de la cola de cobranza. Todas las
+ * demás sumas de pagos del sistema ya lo filtraban; esta era la única que no.
+ */
 async function cobradoDesde(tenantId: string, creditoId: string, desde: Date): Promise<number> {
   const agg = await prisma.pagos.aggregate({
-    where: { ...withTenant(tenantId), credito_id: creditoId, fecha: { gte: desde } },
+    where: { ...withTenant(tenantId), credito_id: creditoId, fecha: { gte: desde }, anulado: false },
     _sum: { monto: true },
   });
   return round2(agg._sum.monto ?? 0);

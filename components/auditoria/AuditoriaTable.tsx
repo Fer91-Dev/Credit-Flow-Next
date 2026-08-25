@@ -45,37 +45,50 @@ function accionConfig(a: EventoAuditoria["accion"]): { label: string; variant: B
   }
 }
 
-function isSameDay(d: Date, ref: Date) {
-  return d.getDate() === ref.getDate() && d.getMonth() === ref.getMonth() && d.getFullYear() === ref.getFullYear();
-}
+/**
+ * Recorte activo de la traza. Vive como un solo estado porque los tres son excluyentes: los
+ * KPIs prenden uno y apagan el resto, y "todos" es el estado limpio.
+ */
+type Ventana = "todos" | "hoy" | "semana" | "pagos";
 
 export function AuditoriaTable() {
-  const { eventos, error, isLoading } = useAuditoria();
   const [search, setSearch]     = useState("");
   const [entidad, setEntidad]   = useState("all");
+  const [ventana, setVentana]   = useState<Ventana>("todos");
   const [detalle, setDetalle]   = useState<EventoAuditoria | null>(null);
 
+  // Primero se pide sin recorte, para saber qué días cubren "hoy" y "últimos 7 días" según
+  // el calendario ARGENTINO (lo resuelve el servidor: el navegador del operador puede estar
+  // en otra zona horaria y "hoy" no sería el mismo día que el del sistema).
+  const base = useAuditoria();
+  const r = base.resumen;
+
+  const filtros = {
+    entidad: entidad !== "all" ? entidad : undefined,
+    accion:  ventana === "pagos" ? "registrar_pago" : undefined,
+    desde:   ventana === "hoy" ? r?.desde_hoy : ventana === "semana" ? r?.desde_semana : undefined,
+  };
+  const activo = useAuditoria(filtros);
+  const { eventos, total, error, isLoading } = activo;
+
+  // Solo el texto se filtra en el navegador: es una búsqueda dentro de lo que ya está a la
+  // vista, no un recorte del universo. Todo lo demás lo recorta la base.
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return eventos.filter(e =>
-      (entidad === "all" || e.entidad === entidad) &&
-      (!q || e.descripcion.toLowerCase().includes(q))
-    );
-  }, [eventos, search, entidad]);
+    return q ? eventos.filter(e => e.descripcion.toLowerCase().includes(q)) : eventos;
+  }, [eventos, search]);
 
-  const kpis = useMemo(() => {
-    const now = new Date();
-    const weekAgo = new Date(now.getTime() - 7 * 86_400_000);
-    return {
-      total:   eventos.length,
-      hoy:     eventos.filter(e => isSameDay(new Date(e.created_at), now)).length,
-      semana:  eventos.filter(e => new Date(e.created_at) >= weekAgo).length,
-      pagos:   eventos.filter(e => e.accion === "registrar_pago").length,
-    };
-  }, [eventos]);
+  const kpis = {
+    total:  r?.total  ?? 0,
+    hoy:    r?.hoy    ?? 0,
+    semana: r?.semana ?? 0,
+    pagos:  r?.pagos  ?? 0,
+  };
 
-  const hasFilters = !!(search || entidad !== "all");
-  const clearFilters = () => { setSearch(""); setEntidad("all"); };
+  const hasFilters = !!(search || entidad !== "all" || ventana !== "todos");
+  const clearFilters = () => { setSearch(""); setEntidad("all"); setVentana("todos"); };
+  /** Un KPI prendido se apaga al volver a clickearlo. */
+  const alternar = (v: Ventana) => setVentana(prev => (prev === v ? "todos" : v));
 
   return (
     <div className="space-y-6">
@@ -96,10 +109,30 @@ export function AuditoriaTable() {
         <div className="space-y-5">
           {/* KPIs */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <KpiCard icon="bar-chart"      label="Eventos totales" value={String(kpis.total)}  accent="muted" />
-            <KpiCard icon="calendar" label="Hoy"             value={String(kpis.hoy)}    accent="primary" />
-            <KpiCard icon="calendar" label="Últimos 7 días"  value={String(kpis.semana)} accent="muted" />
-            <KpiCard icon="money-bag"        label="Pagos registrados" value={String(kpis.pagos)} accent="success" />
+            {/*
+              Los tres de la derecha son subconjuntos de la misma lista, así que filtran.
+              "Eventos totales" no: es el universo, y clickearlo no recortaría nada — se
+              vuelve a él con el KPI prendido o con "Limpiar filtros".
+            */}
+            <KpiCard
+              icon="bar-chart" label="Eventos totales" value={String(kpis.total)} accent="muted"
+              sub={ventana !== "todos" || entidad !== "all" ? "en toda la traza" : undefined}
+            />
+            <KpiCard
+              icon="calendar" label="Hoy" value={String(kpis.hoy)} accent="primary"
+              onClick={kpis.hoy > 0 ? () => alternar("hoy") : undefined}
+              active={ventana === "hoy"}
+            />
+            <KpiCard
+              icon="calendar" label="Últimos 7 días" value={String(kpis.semana)} accent="muted"
+              onClick={kpis.semana > 0 ? () => alternar("semana") : undefined}
+              active={ventana === "semana"}
+            />
+            <KpiCard
+              icon="money-bag" label="Pagos registrados" value={String(kpis.pagos)} accent="success"
+              onClick={kpis.pagos > 0 ? () => alternar("pagos") : undefined}
+              active={ventana === "pagos"}
+            />
           </div>
 
           {/* Toolbar */}
@@ -111,7 +144,7 @@ export function AuditoriaTable() {
               // F3 limpia TODO, no solo el texto: el hint decía "ver todo" pero dejaba
               // puesto el filtro de entidad, así que la lista seguía recortada y parecía
               // que el atajo no había funcionado.
-              onF3={() => { setSearch(""); setEntidad("all"); }}
+              onF3={() => clearFilters()}
               f3Hint="para limpiar la búsqueda y los filtros"
               className="flex-1"
             />
@@ -140,10 +173,18 @@ export function AuditoriaTable() {
 
           {/* Count + clear */}
           <div className="flex items-center justify-between">
+            {/*
+              `total` es el que cuenta la BASE para el filtro puesto; `eventos.length` es lo
+              que entró en la página. Cuando no coinciden hay que decirlo: si no, la pantalla
+              muestra un recorte y lo presenta como si fuera todo.
+            */}
             <p className="text-xs text-muted-foreground">
               {hasFilters
-                ? `${filtered.length} de ${eventos.length} eventos`
-                : `${eventos.length} evento${eventos.length !== 1 ? "s" : ""} registrado${eventos.length !== 1 ? "s" : ""}`}
+                ? `${filtered.length} de ${total} evento${total !== 1 ? "s" : ""}`
+                : `${total} evento${total !== 1 ? "s" : ""} registrado${total !== 1 ? "s" : ""}`}
+              {eventos.length < total && (
+                <span className="text-muted-foreground/60"> · se muestran los {eventos.length} más recientes</span>
+              )}
             </p>
             {hasFilters && (
               <button onClick={clearFilters} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors">

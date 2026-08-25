@@ -128,7 +128,7 @@ export function AcuerdosTab({ role }: { role: Role }) {
   const [cobrando, setCobrando] = useState<Acuerdo | null>(null);
 
   const key = `/api/cobranza/acuerdos${estado ? `?estado=${estado}` : ""}`;
-  const { data, isLoading } = useSWR<{ acuerdos: Acuerdo[]; vigentes: number }>(key, fetcher);
+  const { data, isLoading } = useSWR<{ acuerdos: Acuerdo[]; vigentes: number; total: number }>(key, fetcher);
   const acuerdos = data?.acuerdos ?? [];
 
   const totalAcordado = acuerdos.reduce((s, a) => s + a.monto_acordado, 0);
@@ -147,7 +147,11 @@ export function AcuerdosTab({ role }: { role: Role }) {
           onClick={(data?.vigentes ?? 0) > 0 ? () => setEstado("vigente") : undefined}
           active={estado === "vigente"}
         />
-        <KpiCard icon="scroll" label="En esta vista" value={String(acuerdos.length)} accent="muted" />
+        <KpiCard
+          icon="scroll" label="En esta vista" value={String(acuerdos.length)} accent="muted"
+          // Los dos importes de al lado suman ESTAS filas. Si el servidor recortó, decirlo.
+          sub={data && data.total > acuerdos.length ? `de ${data.total} · los importes suman estas` : undefined}
+        />
         <KpiCard icon="money-bag" label="Acordado" value={formatMonto(totalAcordado)} accent="warning" mono />
         <KpiCard icon="inbox-tray" label="Recuperado" value={formatMonto(totalCobrado)} accent="success" mono sub="cobrado desde el acuerdo" />
       </div>

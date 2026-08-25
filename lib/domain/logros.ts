@@ -8,6 +8,8 @@
  * Rango de perfil = por puntos acumulados (Oro 3 · Plata 2 · Bronce 1).
  */
 
+import { ventanaAR, ventanaDias } from "./fechas";
+
 export type Medalla = "oro" | "plata" | "bronce" | null;
 export type Rango = "novato" | "bronce" | "plata" | "oro" | "platino" | "diamante";
 
@@ -57,21 +59,31 @@ function avance(actual: number, meta: number): number {
 
 /**
  * Cumplimiento real de una meta dentro de su rango de fechas, a partir de los
- * créditos (no anulados) y pagos del vendedor. Único cálculo compartido por los
- * endpoints de metas, perfil propio y logros.
+ * créditos (no anulados, sin refinanciaciones) y pagos NO anulados del vendedor.
+ * Único cálculo compartido por los endpoints de metas, perfil propio y logros.
+ *
+ * 🔴 LOS DOS RANGOS NO SON EL MISMO.
+ *
+ * `creditos.created_at` es un TIMESTAMP y se corta por el día ARGENTINO; `pagos.fecha` es
+ * un `@db.Date` (un día pelado, sin hora) y se corta por el día tal cual está guardado.
+ * Usar el mismo borde para los dos rompe uno de los dos: con bordes UTC se perdían los
+ * créditos otorgados después de las 21:00 —medido: uno del 18/08 a las 23:58 dejaba la
+ * meta de su vendedora en $0— y corriéndole 3 horas a los pagos se caería el primer día
+ * del período.
  */
 export function cumplimientoMeta(
   meta: { fecha_desde: Date; fecha_hasta: Date; meta_monto: number; meta_cantidad: number; meta_cobranza: number },
   creditos: { created_at: Date; monto_original: number }[],
   pagos: { fecha: Date; monto: number }[],
 ): CumplimientoMeta {
-  const desde = meta.fecha_desde;
-  const hastaExcl = masUnDia(meta.fecha_hasta);
-  const enRango = (d: Date) => d >= desde && d < hastaExcl;
-  const cred = creditos.filter((c) => enRango(c.created_at));
+  const vCred = ventanaAR(meta.fecha_desde, meta.fecha_hasta);   // TIMESTAMP → día argentino
+  const vPago = ventanaDias(meta.fecha_desde, meta.fecha_hasta); // @db.Date  → día pelado
+  const cred = creditos.filter((c) => c.created_at >= vCred.desde && c.created_at < vCred.hastaExcl);
   const monto = cred.reduce((s, c) => s + (c.monto_original || 0), 0);
   const cantidad = cred.length;
-  const cobrado = pagos.filter((p) => enRango(p.fecha)).reduce((s, p) => s + (p.monto || 0), 0);
+  const cobrado = pagos
+    .filter((p) => p.fecha >= vPago.desde && p.fecha < vPago.hastaExcl)
+    .reduce((s, p) => s + (p.monto || 0), 0);
   return {
     monto, cantidad, cobrado,
     avance_monto: avance(monto, meta.meta_monto),

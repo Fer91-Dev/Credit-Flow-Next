@@ -61,9 +61,24 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     }),
   );
 
-  const vigentes = await prisma.acuerdos_pago.count({ where: { ...withTenant(tenantId), estado: "vigente" } });
+  // 🔴 El MISMO scope que la lista. Sin esto el vendedor veía el KPI "Acuerdos vigentes"
+  // de toda la financiera —le contaba los de sus compañeros— y al clickearlo (el KPI filtra)
+  // la tabla le mostraba solo los suyos: el número de arriba nunca coincidía con las filas
+  // de abajo. Además es una fuga: le decía cuántos acuerdos tiene el resto del equipo.
+  const vigentes = await prisma.acuerdos_pago.count({
+    where: {
+      ...withTenant(tenantId),
+      estado: "vigente",
+      ...(scope.vendedor_id ? { credito: { vendedor_id: scope.vendedor_id } } : {}),
+    },
+  });
 
-  return successResponse({ acuerdos: salida, vigentes });
+  // Cuántos hay DE VERDAD para el filtro puesto. Los KPIs "Acordado" y "Recuperado" de la
+  // pantalla son sumas de las filas devueltas: si alguna vez pasaran el tope de 200, esas
+  // sumas quedarían cortas sin que nada lo diga, que es la peor forma de estar mal.
+  const total = await prisma.acuerdos_pago.count({ where });
+
+  return successResponse({ acuerdos: salida, vigentes, total });
 });
 
 /**

@@ -32,8 +32,10 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
       where: { ...withTenant(tenantId), vendedor_id: vendedorId, estado: { not: "anulado" }, es_refinanciacion: false },
       select: { created_at: true, monto_original: true, tipo_credito: true },
     }),
+    // `anulado: false` igual que en Logros: sin esto el vendedor veía su avance de meta
+    // de cobranza con pagos que se anularon, y el admin —que sí lo filtraba— veía otro.
     prisma.pagos.findMany({
-      where: { ...withTenant(tenantId), credito: { vendedor_id: vendedorId } },
+      where: { ...withTenant(tenantId), credito: { vendedor_id: vendedorId }, anulado: false },
       select: { fecha: true, monto: true },
     }),
     prisma.metas_vendedor.findFirst({

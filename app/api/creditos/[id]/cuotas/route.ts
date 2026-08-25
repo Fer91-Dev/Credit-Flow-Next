@@ -38,7 +38,7 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
         include: {
           // Comprobantes (recibos) que imputaron a cada cuota: pago → movimiento de caja.
           aplicaciones: {
-            include: { pago: { select: { fecha: true, created_at: true, movimientos: { select: { serie: true, numero: true } } } } },
+            include: { pago: { select: { fecha: true, created_at: true, movimientos: { select: { tipo: true, serie: true, numero: true } } } } },
           },
         },
       },
@@ -124,7 +124,10 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
     // Recibos (comprobantes) que imputaron a esta cuota.
     const comprobantes = c.aplicaciones
       .map((a) => {
-        const mov = a.pago.movimientos.find((m) => m.serie != null && m.numero != null);
+        // El COBRO, no "el primero con número": desde que la anulación también apunta al
+        // pago, `movimientos` trae el ingreso y su reversa, y el recibo de una cuota es
+        // siempre el ingreso.
+        const mov = a.pago.movimientos.find((m) => m.tipo === "cobro" && m.serie != null && m.numero != null);
         return {
           comprobante: formatComprobante(mov?.serie, mov?.numero),
           fecha: a.pago.fecha,

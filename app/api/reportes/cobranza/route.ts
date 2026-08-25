@@ -52,8 +52,13 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
         credito: { select: { vendedor_id: true } },
       },
     }),
+    // 🔴 `anulado: false`: un pago anulado no se borra (se marca y se le hace el
+    // contra-asiento en caja), así que sin este filtro se cuenta plata que se devolvió.
+    // Medido en agosto: el recupero decía $1.091.412,52 cobrados y $136.046,06 de mora
+    // cuando lo real era $522.996,00 y $59.487,78 — 108,7% de más. El resto del sistema
+    // (dashboard, planillas, logros) ya lo filtraba; este reporte había quedado atrás.
     prisma.pagos.findMany({
-      where: { ...withTenant(tenantId), fecha: { gte: desde, lte: hasta }, ...creditoFilter },
+      where: { ...withTenant(tenantId), fecha: { gte: desde, lte: hasta }, anulado: false, ...creditoFilter },
       select: { monto: true, aplicado_mora: true, credito: { select: { vendedor_id: true } } },
     }),
     prisma.vendedores.findMany({ where: { ...withTenant(tenantId) }, select: { id: true, nombre: true } }),

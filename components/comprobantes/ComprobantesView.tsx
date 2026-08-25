@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Receipt, Search, ChevronDown, Download, Users, Landmark } from "lucide-react";
 import { useComprobantes, type Comprobante, type MovimientoCaja } from "@/lib/swr";
 import { descargarCSV } from "@/lib/csv";
-import { formatFechaHora } from "@/lib/utils";
+import { formatFecha, formatFechaHora } from "@/lib/utils";
 import { SERIE_LABEL } from "@/lib/comprobantes";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { StatusBadge, type BadgeVariant } from "@/components/ui/StatusBadge";
@@ -41,12 +41,22 @@ const INPUT =
   "transition-all focus:border-primary focus:ring-2 focus:ring-primary/20";
 const SEL = INPUT + " pr-8 appearance-none cursor-pointer [&>option]:bg-card [&>option]:text-foreground";
 
+/**
+ * 🔴 Las DOS fechas, en columnas separadas.
+ *
+ * `fecha` es la fecha CONTABLE del comprobante (la que se imputa, la que se filtra, la que
+ * dice el papel) y `created_at` es cuándo se cargó. No siempre coinciden: un desembolso
+ * imputado al 10/01 puede haberse cargado el 18/08. La grilla y el CSV mostraban solo la
+ * segunda, así que al filtrar "10/01 a 10/01" aparecía una fila fechada 18/08 y el operador
+ * no tenía forma de entender por qué. Medido: 10 comprobantes con las dos fechas distintas.
+ */
 function exportarCSV(rows: Comprobante[]) {
-  const head = ["Comprobante", "Fecha y hora", "Tipo", "Caja", "Origen", "Destino", "Detalle", "Monto"];
+  const head = ["Comprobante", "Fecha", "Cargado", "Tipo", "Caja", "Origen", "Destino", "Detalle", "Monto"];
   descargarCSV(`comprobantes_${new Date().toISOString().slice(0, 10)}.csv`, [
     head,
     ...rows.map((m) => [
       m.comprobante ?? "",
+      formatFecha(m.fecha),
       formatFechaHora(m.created_at ?? m.fecha),
       TIPO_META[m.tipo]?.label ?? m.tipo,
       m.vendedor ?? "Caja principal",
@@ -134,7 +144,17 @@ export function ComprobantesView() {
         </FiltrosPanel>
 
         <div className="flex items-center gap-2 sm:ml-auto">
-          <span className="text-xs text-muted-foreground whitespace-nowrap">{total} comprobante{total !== 1 ? "s" : ""}</span>
+          {/*
+            El CSV baja LO QUE ESTÁ EN PANTALLA. Mientras eso sea todo, no hace falta decir
+            nada; cuando la consulta pasa el tope del servidor hay que avisarlo, porque un
+            registro contable exportado a medias en silencio se usa creyendo que está entero.
+          */}
+          <span className="text-xs text-muted-foreground whitespace-nowrap">
+            {total} comprobante{total !== 1 ? "s" : ""}
+            {comprobantes.length < total && (
+              <span className="text-warning"> · se listan {comprobantes.length}</span>
+            )}
+          </span>
           <button
             onClick={() => exportarCSV(comprobantes)}
             disabled={comprobantes.length === 0}
@@ -162,7 +182,23 @@ export function ComprobantesView() {
           pageSize={12}
           columns={[
             { header: "Comprobante", cell: (m) => <span className="font-mono text-xs font-semibold text-foreground whitespace-nowrap">{m.comprobante ?? "—"}</span> },
-            { header: "Fecha y hora", cell: (m) => <span className="text-muted-foreground tabular-nums whitespace-nowrap">{formatFechaHora(m.created_at ?? m.fecha)}</span> },
+            {
+              // La fecha contable manda (es la que filtra el panel). El instante de carga
+              // solo se muestra cuando difiere: si es el mismo día, repetirlo es ruido.
+              header: "Fecha",
+              cell: (m) => {
+                const cargado = m.created_at ? formatFecha(m.created_at) : null;
+                const distinto = cargado && cargado !== formatFecha(m.fecha);
+                return (
+                  <span className="flex flex-col leading-tight whitespace-nowrap">
+                    <span className="text-foreground tabular-nums">{formatFecha(m.fecha)}</span>
+                    {distinto && (
+                      <span className="text-[11px] text-muted-foreground/60 tabular-nums">cargado {formatFechaHora(m.created_at)}</span>
+                    )}
+                  </span>
+                );
+              },
+            },
             { header: "Tipo", cell: (m) => <StatusBadge label={TIPO_META[m.tipo].label} variant={TIPO_META[m.tipo].variant} /> },
             {
               header: "Caja", className: "hidden md:table-cell",

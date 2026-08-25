@@ -1645,9 +1645,29 @@ export function usePlanillaDetalle(id: string | null) {
   return { detalle: data, error, isLoading, mutate };
 }
 
-export function useAuditoria() {
-  const { data, error, isLoading, mutate } = useSWR<{ eventos: EventoAuditoria[] }>(KEYS.auditoria);
-  return { eventos: data?.eventos ?? [], error, isLoading, mutate };
+export interface ResumenAuditoria {
+  total: number; hoy: number; semana: number; pagos: number;
+  desde_hoy: string; desde_semana: string;
+}
+
+/**
+ * Traza de auditoría. Los filtros viajan al SERVIDOR: filtrar en el navegador solo alcanza
+ * mientras la traza entre entera en la página que se pidió, y una auditoría que se recorta
+ * sola en silencio no sirve para auditar nada.
+ *
+ * `resumen` son los contadores del tenant completo (los KPIs), que la base cuenta aparte de
+ * la página devuelta.
+ */
+export function useAuditoria(filtros?: { entidad?: string; accion?: string; desde?: string; hasta?: string }) {
+  const qs = new URLSearchParams({ limit: "500" });
+  if (filtros?.entidad) qs.set("entidad", filtros.entidad);
+  if (filtros?.accion) qs.set("accion", filtros.accion);
+  if (filtros?.desde) qs.set("desde", filtros.desde);
+  if (filtros?.hasta) qs.set("hasta", filtros.hasta);
+  const { data, error, isLoading, mutate } = useSWR<{
+    eventos: EventoAuditoria[]; total: number; resumen: ResumenAuditoria;
+  }>(`/api/auditoria?${qs.toString()}`);
+  return { eventos: data?.eventos ?? [], total: data?.total ?? 0, resumen: data?.resumen, error, isLoading, mutate };
 }
 
 export function useAccionesCobranza() {

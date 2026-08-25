@@ -6,6 +6,7 @@
  * altera el motor financiero.
  */
 import { round2 } from "./money";
+import { ventanaAR } from "./fechas";
 
 export const ROLES = ["vendedor", "supervisor", "cobrador", "admin"] as const;
 export type RolVendedor = (typeof ROLES)[number];
@@ -180,10 +181,18 @@ export interface ResumenVendedor {
 export interface PeriodoMeta { desde: Date; hasta: Date }
 
 /** Créditos dentro de [desde, hasta] — `hasta` cuenta el día entero. */
+/**
+ * Créditos otorgados DENTRO del período de la meta.
+ *
+ * `p.desde`/`p.hasta` vienen de `metas_vendedor` (`@db.Date`, días pelados) y se comparan
+ * contra `created_at`, que es un TIMESTAMP: el corte tiene que ser por día ARGENTINO. Con
+ * los bordes UTC, un crédito otorgado el último día del período después de las 21:00
+ * quedaba afuera —medido: CRD-000066, vendido el 18/08 a las 23:58, dejaba la meta
+ * 01/08–18/08 de su vendedora en $0 otorgado en la pantalla de Equipo—.
+ */
 function enPeriodo<T extends { created_at: Date }>(creditos: T[], p: PeriodoMeta): T[] {
-  const hastaExcl = new Date(p.hasta);
-  hastaExcl.setDate(hastaExcl.getDate() + 1);
-  return creditos.filter((c) => c.created_at >= p.desde && c.created_at < hastaExcl);
+  const { desde, hastaExcl } = ventanaAR(p.desde, p.hasta);
+  return creditos.filter((c) => c.created_at >= desde && c.created_at < hastaExcl);
 }
 
 /**

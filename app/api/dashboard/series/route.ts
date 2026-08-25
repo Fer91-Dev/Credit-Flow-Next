@@ -45,8 +45,11 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   const hoyUTC = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
 
   const [pagos, creditos, cuotas] = await Promise.all([
+    // Sin `anulado: false` la curva de cobranzas cuenta plata devuelta, y el capital
+    // anulado se le resta a la circulación: la cartera en la calle sale más chica de lo
+    // que es. El KPI de cobrado del mismo Home ya filtraba — dos números del mismo hecho.
     prisma.pagos.findMany({
-      where: { ...withTenant(tenantId), ...(credRel ? { credito: credRel } : {}) },
+      where: { ...withTenant(tenantId), anulado: false, ...(credRel ? { credito: credRel } : {}) },
       select: { fecha: true, monto: true, aplicado_capital: true },
     }),
     prisma.creditos.findMany({

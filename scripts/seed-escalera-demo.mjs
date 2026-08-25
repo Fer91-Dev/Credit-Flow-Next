@@ -163,13 +163,41 @@ await prisma.acciones_cobranza.create({
     nota: `${MARCA} — se le ofreció un plan`, automatico: false, created_at: atras(50),
   },
 });
+/**
+ * 🔴 CON SU PLAN DE CUOTAS.
+ *
+ * El seed creaba el acuerdo sin ninguna cuota: $300.000 acordados y un plan vacío. Eso no
+ * lo puede producir el sistema (el alta exige de 1 a N cuotas), así que era un estado
+ * imposible sembrado a mano — la pantalla mostraba "Avance $0,00 / 0 cta." y
+ * `scripts/auditar-metas.mjs` lo marcaba como descuadre real.
+ *
+ * Mismo criterio que el desembolso de más arriba: un seed que produce datos que violan los
+ * invariantes del propio sistema hace que toda auditoría futura arranque con falsos
+ * positivos, y a la tercera vez nadie los mira.
+ */
+const CUOTAS_ACUERDO = 3;
+const MONTO_ACUERDO = 300_000;
+const cuotaAcuerdo = Math.round((MONTO_ACUERDO / CUOTAS_ACUERDO) * 100) / 100;
 await prisma.acuerdos_pago.create({
   data: {
     tenant_id: tenantId, credito_id: c.credito.id, estado: "roto",
-    fecha: atras(45), deuda_original: 300_000, monto_acordado: 300_000, quita: 0,
+    fecha: atras(45), deuda_original: MONTO_ACUERDO, monto_acordado: MONTO_ACUERDO, quita: 0,
     congela_punitorios: true, cuotas_para_romper: 1,
     motivo_estado: "No pagó ninguna cuota del acuerdo",
     notas: `${MARCA}`,
+    cuotas: {
+      create: Array.from({ length: CUOTAS_ACUERDO }, (_, i) => ({
+        tenant_id: tenantId,
+        numero: i + 1,
+        vencimiento: atras(45 - (i + 1) * 15), // vencidas: por eso está roto
+        // El último absorbe el redondeo, para que el plan sume EXACTO lo acordado.
+        monto: i === CUOTAS_ACUERDO - 1
+          ? Math.round((MONTO_ACUERDO - cuotaAcuerdo * (CUOTAS_ACUERDO - 1)) * 100) / 100
+          : cuotaAcuerdo,
+        pagado: 0,
+        estado: "vencida",
+      })),
+    },
   },
 });
 

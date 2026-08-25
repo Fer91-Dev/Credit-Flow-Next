@@ -7,6 +7,7 @@
  *  - Mora: 1% del valor de la cuota por día de atraso (interés moratorio diario simple).
  *  - Imputación de pagos: Mora → Interés → Capital.
  */
+export * from "./fechas";
 export * from "./config";
 export * from "./money";
 export * from "./rates";

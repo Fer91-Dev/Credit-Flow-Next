@@ -171,6 +171,19 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
           cuenta: cta,
           metodo: m.metodo,
           credito_id: credito.id,
+          /**
+           * 🔴 El contra-asiento apunta AL PAGO que anula.
+           *
+           * Faltaba: el cobro (serie REC) llevaba `pago_id` y su anulación (serie ANP) no,
+           * así que el único vínculo entre los dos era el texto de la descripción. Nada
+           * podía responder por consulta "¿qué ANP cancela a este REC?" — ni el detalle del
+           * pago, que recorre `pagos.movimientos` y solo veía el cobro, ni una conciliación,
+           * que tenía que parsear prosa. Lo detectó `scripts/auditar-metas.mjs`.
+           *
+           * Quien lea `pagos.movimientos` tiene que filtrar por `tipo`, no quedarse con el
+           * primero: ahora vienen los dos asientos, el ingreso y su reversa.
+           */
+          pago_id: pago.id,
           vendedor_id: m.vendedor_id, // revierte en la MISMA caja donde entró el cobro
           origen: etiquetaCaja(!!m.vendedor_id, cta),
           destino: `Anulación de cobro ${numeroFmt}`,
