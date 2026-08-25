@@ -70,7 +70,15 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
       },
     }),
     prisma.pagos.findMany({
-      where: { ...withTenant(tenantId), fecha: { gte: desde, lte: hasta } },
+      /**
+       * 🔴 `anulado: false`. Faltaba, y la serie sumaba plata que se había devuelto.
+       *
+       * El endpoint principal (`/api/reportes`) sí los excluye, así que la MISMA pantalla se
+       * contradecía: con 11 pagos anulados en la base, la pestaña Resumen mostraba
+       * $522.996,00 cobrados y las de Operaciones / Rentabilidad / Histórico $1.271.102,74.
+       * Un 143% de más, en el número del que sale la rentabilidad del mes.
+       */
+      where: { ...withTenant(tenantId), fecha: { gte: desde, lte: hasta }, anulado: false },
       select: { fecha: true, monto: true, aplicado_capital: true, aplicado_interes: true, aplicado_mora: true, aplicado_cargos: true },
     }),
     getConfiguracion(tenantId),
@@ -95,7 +103,10 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   const mesKey = (d: Date) => `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
   const otorgadoPorMes = new Map<string, { cantidad: number; monto: number }>();
   for (const c of creditos) {
-    if (c.es_refinanciacion) continue;
+    // Mismos descartes que `resumenOperaciones`: refinanciaciones (deuda mudada, no plata
+    // nueva) y ANULADOS (la operación se deshizo y la caja se revirtió). Si la serie los
+    // contara y el resumen no, las dos pestañas darían otorgamientos distintos.
+    if (c.es_refinanciacion || c.estado === "anulado") continue;
     if (c.created_at < desde || c.created_at > hasta) continue;
     const k = mesKey(c.created_at);
     const cur = otorgadoPorMes.get(k) ?? { cantidad: 0, monto: 0 };

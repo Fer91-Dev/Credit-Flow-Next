@@ -67,6 +67,11 @@ export function ProductosView() {
   const [q, setQ] = useState("");
   const [catFiltro, setCatFiltro] = useState("");
   const [soloActivos, setSoloActivos] = useState(false);
+  /**
+   * Ver solo los que hay que reponer. No existía: el KPI decía "3 bajo / sin stock" y para
+   * saber CUÁLES había que recorrer el catálogo a ojo.
+   */
+  const [soloBajoStock, setSoloBajoStock] = useState(false);
   // Vista tarjetas/tabla (preferencia del operador, persistida).
   const [vista, setVista] = useState<"cards" | "tabla">("cards");
   useEffect(() => {
@@ -75,20 +80,22 @@ export function ProductosView() {
   }, []);
   const cambiarVista = (v: "cards" | "tabla") => { setVista(v); localStorage.setItem("cf:productosVista", v); };
 
-  const bajoStock = useMemo(
-    () => productos.filter((p) => p.activo && (p.stock <= 0 || (p.stock_minimo != null && p.stock <= p.stock_minimo))).length,
-    [productos],
-  );
+  /** UNA definición de "hay que reponerlo": la usan el KPI y el filtro. */
+  const esBajoStock = (p: Producto) =>
+    p.activo && (p.stock <= 0 || (p.stock_minimo != null && p.stock <= p.stock_minimo));
+
+  const bajoStock = useMemo(() => productos.filter(esBajoStock).length, [productos]);
 
   const filtrados = useMemo(() => {
     const term = q.trim().toLowerCase();
     return productos.filter((p) => {
       if (soloActivos && !p.activo) return false;
+      if (soloBajoStock && !esBajoStock(p)) return false;
       if (catFiltro && p.categoria !== catFiltro) return false;
       if (term && !p.nombre.toLowerCase().includes(term) && !(p.sku ?? "").toLowerCase().includes(term)) return false;
       return true;
     });
-  }, [productos, q, catFiltro, soloActivos]);
+  }, [productos, q, catFiltro, soloActivos, soloBajoStock]);
 
   const refrescar = () => { mutate(); globalMutate(KEYS.productos); };
 
@@ -189,7 +196,13 @@ export function ProductosView() {
             <KpiCard icon="package" label="Productos" value={String(productos.length)} accent="primary" />
             <KpiCard icon="counterclockwise-arrows-button" label="Unidades en stock" value={n0(unidadesStock)} accent="primary" mono />
             <KpiCard icon="money-bag" label="Valor de inventario" value={`$${n0(valorInventario)}`} accent="success" mono sub="precio × stock" />
-            <KpiCard icon="warning" label="Bajo / sin stock" value={String(bajoStock)} accent={bajoStock > 0 ? "warning" : "muted"} />
+            {/* Los otros tres son totales del catálogo, no subconjuntos: no filtran. */}
+            <KpiCard
+              icon="warning" label="Bajo / sin stock" value={String(bajoStock)}
+              accent={bajoStock > 0 ? "warning" : "muted"}
+              onClick={bajoStock > 0 ? () => setSoloBajoStock((v) => !v) : undefined}
+              active={soloBajoStock}
+            />
           </div>
 
           {productos.length === 0 ? (

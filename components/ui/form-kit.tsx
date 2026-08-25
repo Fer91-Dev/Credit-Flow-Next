@@ -15,9 +15,27 @@ import { Emoji } from "./Emoji";
  */
 
 /** className estándar del DialogContent de un modal de formulario. */
-export const MODAL_CONTENT = "w-[95vw] sm:max-w-xl sm:p-7 max-h-[90dvh] overflow-y-auto";
+export const MODAL_CONTENT = "w-[95vw] sm:max-w-xl sm:p-7 max-h-[92dvh] overflow-y-auto overscroll-contain";
 /** Variante ancha (formularios con muchos campos en 2 columnas). */
-export const MODAL_CONTENT_WIDE = "w-[95vw] sm:max-w-2xl sm:p-7 max-h-[90dvh] overflow-y-auto";
+export const MODAL_CONTENT_WIDE = "w-[95vw] sm:max-w-2xl sm:p-7 max-h-[92dvh] overflow-y-auto overscroll-contain";
+
+/**
+ * 🔴 UN FORMULARIO NO SE CIERRA POR CLICKEAR AL COSTADO.
+ *
+ * Se pierde todo lo tipeado sin preguntar nada, y en esta app los modales piden importes,
+ * motivos y mensajes que se le mandan a un cliente. Quedan las tres formas EXPLÍCITAS de
+ * decir que no: la X, Cancelar y Escape.
+ *
+ * Va como constante y no como default del `DialogContent` porque hay modales que solo
+ * MUESTRAN algo (un detalle, un comprobante) y ahí cerrar al costado es cómodo y no cuesta
+ * nada. La regla es: si adentro hay campos que se llenan, se spreadea esto.
+ *
+ *   <DialogContent className={MODAL_CONTENT} {...SIN_CIERRE_ACCIDENTAL}>
+ */
+export const SIN_CIERRE_ACCIDENTAL = {
+  onPointerDownOutside: (e: { preventDefault: () => void }) => e.preventDefault(),
+  onInteractOutside: (e: { preventDefault: () => void }) => e.preventDefault(),
+} as const;
 
 type Accent = "primary" | "success" | "warning" | "destructive";
 const HEADER_ACCENT: Record<Accent, string> = {
@@ -233,7 +251,19 @@ export function FormActions({
   tone?: "primary" | "destructive";
 }) {
   return (
-    <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:items-center">
+    /**
+     * 🔴 PEGADO ABAJO (`sticky`). Los botones quedaban al final del contenido y, en un modal
+     * con muchos campos, se cortaban contra el borde inferior de la pantalla: el usuario veía
+     * media "Entregar" y tenía que adivinar que había que scrollear DENTRO del modal.
+     *
+     * Con `sticky bottom-0` la acción principal está siempre a la vista sin importar cuánto
+     * mida el formulario. El fondo opaco y el borde superior son necesarios: sin ellos, el
+     * contenido que pasa por debajo se lee a través de los botones.
+     *
+     * Los márgenes negativos compensan el padding del `DialogContent` para que la barra
+     * llegue de borde a borde y no quede una franja transparente a los costados.
+     */
+    <div className="sticky bottom-0 z-10 -mx-6 -mb-6 flex flex-col-reverse gap-2 border-t border-border/60 bg-card px-6 py-4 sm:-mx-7 sm:-mb-7 sm:flex-row sm:items-center sm:px-7">
       <button
         type="button"
         onClick={onCancel}

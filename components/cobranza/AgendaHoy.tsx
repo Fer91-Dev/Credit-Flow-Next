@@ -53,6 +53,14 @@ export function AgendaHoy({
   onDetalle: (creditoId: string) => void;
 }) {
   const { agenda, error, isLoading } = useAgendaCobranza();
+  /**
+   * Grupo que se está mirando. `null` = la cola entera.
+   *
+   * Los KPI ya se levantaban al pasar el mouse —o sea, se veían clickeables— y no hacían
+   * nada. Ahora filtran: apretar "Promesas por cobrar" deja en pantalla solo esas, y volver
+   * a apretarlo muestra todo de nuevo.
+   */
+  const [filtro, setFiltro] = useState<AgendaItem["bucket"] | null>(null);
 
   const porBucket = useMemo(() => {
     const map = new Map<AgendaItem["bucket"], AgendaItem[]>();
@@ -75,6 +83,12 @@ export function AgendaHoy({
   }
 
   const total = agenda?.totales.total ?? 0;
+  /**
+   * Los ítems que se están mirando. El total de plata del KPI se calcula sobre ESTO y no
+   * sobre la cola entera: con un grupo filtrado, mostrar el vencido de todo sería un número
+   * que no corresponde a nada de lo que hay en pantalla.
+   */
+  const filtrados = (agenda?.items ?? []).filter((i) => !filtro || i.bucket === filtro);
 
   if (total === 0) {
     return (
@@ -99,10 +113,21 @@ export function AgendaHoy({
         <div className="group flex items-center gap-2.5">
           <IconBadge emoji="dollar-banknote" accent="primary" pulse={total > 0} hoverable />
           <div>
-            <h3 className="text-sm font-semibold text-foreground">Tu agenda de hoy</h3>
+            <h3 className="text-sm font-semibold text-foreground">
+              Tu agenda de hoy
+              {/* Qué se está mirando, cuando no es todo. */}
+              {filtro && (
+                <span className="ml-2 text-xs font-normal text-primary">
+                  · {BUCKETS.find((b) => b.key === filtro)?.titulo}
+                </span>
+              )}
+            </h3>
             <p className="text-[11px] text-muted-foreground/70">
-              {total} cliente{total !== 1 ? "s" : ""} para contactar. Dentro de cada grupo, primero{" "}
-              {agenda?.orden === "monto" ? "el que más plata debe" : "el que hace más días que no paga"}.
+              {filtro
+                ? `${filtrados.length} de ${total} cliente${total !== 1 ? "s" : ""}`
+                : `${total} cliente${total !== 1 ? "s" : ""} para contactar. Dentro de cada grupo, primero ${
+                    agenda?.orden === "monto" ? "el que más plata debe" : "el que hace más días que no paga"
+                  }.`}
             </p>
           </div>
         </div>
@@ -117,23 +142,35 @@ export function AgendaHoy({
                 value={String(n)}
                 accent={n > 0 ? b.accent : "muted"}
                 pulse={b.key === "promesa" && n > 0}
+                /**
+                 * Apretar el grupo lo aísla; apretarlo de nuevo vuelve a la cola entera.
+                 * Un grupo VACÍO no recibe onClick: no se apaga ni se atenúa, simplemente no
+                 * es un botón. Filtrar por algo que no tiene nada no muestra nada.
+                 */
+                onClick={n > 0 ? () => setFiltro((f) => (f === b.key ? null : b.key)) : undefined}
+                active={filtro === b.key}
               />
             );
           })}
-          {/* Cuánta plata hay realmente en juego en la cola. Es lo VENCIDO, no la cartera. */}
+          {/*
+            Cuánta plata hay realmente en juego en la cola. Es lo VENCIDO, no la cartera.
+            No es un grupo: sin filtro puesto es una métrica y nada más —se ve igual que
+            siempre—; con un filtro puesto pasa a ser la salida para volver a ver todo.
+          */}
           <KpiCard
             icon={AlertCircle}
             label="Vencido en la cola"
-            value={formatMonto(agenda?.totales.vencido ?? 0)}
+            value={formatMonto(filtrados.reduce((s, i) => s + i.vencido, 0))}
             accent="destructive"
             mono
-            sub="cuotas impagas + punitorios"
+            sub={filtro ? "de este grupo · volver a toda la cola" : "cuotas impagas + punitorios"}
+            onClick={filtro ? () => setFiltro(null) : undefined}
           />
         </div>
       </div>
 
-      {/* Grupos por bucket */}
-      {BUCKETS.map((b) => {
+      {/* Grupos por bucket. Con un filtro puesto, solo se dibuja ese. */}
+      {BUCKETS.filter((b) => !filtro || b.key === filtro).map((b) => {
         const items = porBucket.get(b.key) ?? [];
         if (items.length === 0) return null;
         return (

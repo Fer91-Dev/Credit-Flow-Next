@@ -42,7 +42,20 @@ async function limpiar() {
   if (ids.length) {
     const creds = await prisma.creditos.findMany({ where: { cliente_id: { in: ids } }, select: { id: true } });
     const cids = creds.map((c) => c.id);
-    await prisma.movimientos_caja.deleteMany({ where: { credito_id: { in: cids } } });
+    /**
+     * 🔴 SOLO los desembolsos que sembró ESTE script.
+     *
+     * Antes borraba TODOS los movimientos de esos créditos. Si alguien había cobrado sobre un
+     * moroso de demo —que es exactamente para lo que están—, se llevaba puestos sus recibos y
+     * dejaba HUECOS en la numeración de las series REC y ANP. Lo detectó
+     * `scripts/auditar-caja.mjs`: "serie REC: faltan 13, 14".
+     *
+     * El esquema protege la caja con `onDelete: SetNull` para que borrar un crédito nunca se
+     * lleve su asiento; este `deleteMany` se salteaba esa protección por la puerta de atrás.
+     * Los demás movimientos quedan huérfanos pero VIVOS, que es el comportamiento correcto:
+     * la plata se movió de verdad y el comprobante tiene que poder mostrarse.
+     */
+    await prisma.movimientos_caja.deleteMany({ where: { credito_id: { in: cids }, tipo: "desembolso" } });
     await prisma.clientes.deleteMany({ where: { id: { in: ids } } }); // cascada: créditos, cuotas, gestiones, acuerdos
   }
   console.log(`limpiados ${ids.length} clientes de demo`);
@@ -93,6 +106,39 @@ async function moroso(nombre, apellido, dias, monto) {
     });
     saldo = Math.round((saldo - capital) * 100) / 100;
   }
+
+  /**
+   * 🔴 EL DESEMBOLSO EN LA CAJA.
+   *
+   * Faltaba: el seed insertaba el crédito directo en la base, salteándose el endpoint que es
+   * el que asienta el movimiento. Resultado: tres créditos con plata "prestada" que nunca
+   * salió de la caja. Lo detectó `scripts/auditar-caja.mjs` — y hasta que existió ese script
+   * nadie lo había visto, porque el saldo igual cerraba contra sí mismo.
+   *
+   * Un seed que produce datos que violan los invariantes del propio sistema hace que toda
+   * auditoría futura arranque con falsos positivos, y a la tercera vez nadie los mira.
+   */
+  const ultimo = await prisma.movimientos_caja.findFirst({
+    where: { tenant_id: tenantId, serie: "DES" },
+    orderBy: { numero: "desc" },
+    select: { numero: true },
+  });
+  await prisma.movimientos_caja.create({
+    data: {
+      tenant_id: tenantId,
+      fecha: atras(dias + 30),
+      tipo: "desembolso",
+      monto: -monto, // egreso: la plata sale de la caja
+      cuenta: "efectivo",
+      credito_id: credito.id,
+      serie: "DES",
+      numero: (ultimo?.numero ?? 0) + 1,
+      origen: "Caja principal",
+      destino: `${cliente.nombre} ${cliente.apellido}`,
+      descripcion: `Desembolso demo CRD-${String(numero).padStart(6, "0")}`,
+    },
+  });
+
   return { cliente, credito };
 }
 

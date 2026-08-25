@@ -308,12 +308,35 @@ const HELP: Record<string, HelpDoc> = {
         kind: "pasos",
         titulo: "Salir a cobrar a la calle",
         pasos: [
-          "En Morosos, botón «Planilla de calle»: arma el recorrido y lo imprime.",
+          "Pestaña «Planillas» → «Nueva planilla»: arma el recorrido y lo imprime.",
           "Elegí las zonas. La zona sale de la ficha del cliente; los que no la tienen cargada van juntos en un grupo aparte.",
           "«A quién visitar»: solo los vencidos, o también los que vencen dentro de 7, 15 o 30 días —el recorrido de rutina.",
           "Antes de imprimir ves cuántos clientes y cuánta plata tiene el recorrido, zona por zona.",
           "Cada zona sale en una hoja, ordenada por domicilio, con dos casilleros vacíos por cliente: lo cobrado y la firma.",
           "Al pie hay una rendición para que el cobrador cierre lo que trae.",
+        ],
+      },
+      {
+        // La vuelta del circuito. Sin esto la planilla es una lista que sale y no vuelve.
+        kind: "pasos",
+        titulo: "Cuando el cobrador vuelve",
+        pasos: [
+          "Pestaña «Planillas»: ahí está cada recorrido que salió, con lo que ya se cobró de él.",
+          "Abrí la planilla y cargá los cobros renglón por renglón, con el papel al lado. Cada uno se registra como un pago normal: imputa, mueve caja y emite comprobante.",
+          "Un cobro parcial deja el resto pendiente en su renglón, así se ve de un vistazo qué falta.",
+          "«Rendir planilla»: contás el efectivo que entregó y el sistema lo compara con lo cargado.",
+          "Si no coincide, hay que explicar por qué antes de cerrar. Al cerrarse, la planilla no admite más cobros.",
+        ],
+      },
+      {
+        kind: "tips",
+        titulo: "Qué significa la diferencia de una rendición",
+        items: [
+          "Se compara lo que ENTREGÓ contra lo CARGADO en el sistema, no contra lo que salió a cobrar.",
+          "Que traiga menos de lo que salió a cobrar es normal: hay gente que no estaba y pagos parciales. Eso no es una diferencia.",
+          "Faltante: trajo menos de lo que figura cobrado. O falta anular un cobro mal cargado, o falta plata.",
+          "Sobrante: trajo más de lo que figura cobrado. Casi siempre son cobros del papel que todavía no se cargaron.",
+          "Rendir es solo del admin: quien maneja efectivo ajeno no firma su propio faltante.",
         ],
       },
       {

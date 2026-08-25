@@ -110,7 +110,21 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
      */
     const marcado = await tx.creditos.updateMany({
       where: { ...withTenant(tenantId), id, estado: existing.estado },
-      data: { estado: "anulado", proximo_pago: null, motivo_anulacion: motivo },
+      /**
+       * 🔴 `saldo_pendiente: 0`. Faltaba, y el crédito anulado seguía arrastrando su deuda.
+       *
+       * Anular revierte el desembolso: esa plata volvió a la caja y ya no está prestada. Pero
+       * el saldo quedaba con el importe original, y como `anulado` es terminal nunca se
+       * limpiaba. Consecuencia medida sobre la cartera de prueba (8 anulados, $2.650.000):
+       * el Home informaba $14.371.741,22 de cartera contra los $11.721.741,22 reales, y la
+       * fila "anulado" de Cartera por estado mostraba saldo pendiente que nadie debe.
+       *
+       * Es exactamente lo que ya hace `refinanciar` al cerrar el crédito viejo. Las CUOTAS no
+       * se tocan —igual que ahí—: son el registro de cuál era el plan, y marcarlas pagadas
+       * sería mentir sobre algo que no se pagó. Nadie las lee para un anulado porque todo
+       * pasa antes por `esCreditoVivo`.
+       */
+      data: { estado: "anulado", proximo_pago: null, saldo_pendiente: 0, motivo_anulacion: motivo },
     });
     if (marcado.count === 0) {
       throw new ApiError("El crédito cambió de estado mientras se anulaba. Volvé a abrirlo para ver cómo quedó.", "INVALID_STATE", 409);

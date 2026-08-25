@@ -354,13 +354,25 @@ export function PromesasTab({ role }: { role: Role }) {
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {/*
+          Los KPI mueven las MISMAS sub-pestañas de abajo, no un filtro propio: dos controles
+          para lo mismo que no se hablen dejan la lista mostrando una cosa y las pestañas
+          diciendo otra. "Comprometido" y "Efectividad" no filtran — son una suma y un
+          porcentaje, no un subconjunto de la lista.
+        */}
         <KpiCard
           icon="alarm-clock" label="Promesas pendientes" value={String(kpis.pendientes)}
           accent={kpis.pendientes > 0 ? "warning" : "muted"}
           sub={kpis.vencenHoy > 0 ? `${kpis.vencenHoy} para cobrar hoy` : "ninguna vencida"}
+          onClick={kpis.pendientes > 0 ? () => setEstadoTab("pendiente") : undefined}
+          active={estadoTab === "pendiente"}
         />
         <KpiCard icon="money-bag" label="Comprometido" value={formatMonto(kpis.comprometido)} accent="primary" mono sub="lo que prometieron pagar" />
-        <KpiCard icon="check-mark-button" label="Cumplidas" value={String(kpis.cumplidas)} accent="success" />
+        <KpiCard
+          icon="check-mark-button" label="Cumplidas" value={String(kpis.cumplidas)} accent="success"
+          onClick={kpis.cumplidas > 0 ? () => setEstadoTab("cumplida") : undefined}
+          active={estadoTab === "cumplida"}
+        />
         <KpiCard
           icon="chart-increasing" label="Efectividad"
           value={kpis.efectividad != null ? `${kpis.efectividad}%` : "—"}
