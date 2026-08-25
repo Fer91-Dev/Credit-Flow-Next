@@ -348,6 +348,36 @@ export function renderPlantillaMeta(p: PlantillaMeta, d: DatosPlantillaContacto)
   });
 }
 
+/**
+ * Los VALORES de las variables, en orden, para mandárselos a Meta.
+ *
+ * 🔴 No alcanza con el texto ya armado. La API de WhatsApp no recibe el mensaje final:
+ * recibe el NOMBRE de la plantilla y los parámetros sueltos, y arma ella el texto con la
+ * versión aprobada. Mandar `{name, language}` sin parámetros hace que Meta rechace el envío
+ * («number of parameters does not match») en toda plantilla que tenga variables — que son
+ * casi todas.
+ *
+ * `resolver` traduce cada clave al valor de este cliente. Lo pone quien llama porque el
+ * contacto individual y la campaña tienen datos distintos a mano, pero el ORDEN y el
+ * saneado viven acá: una sola definición de cómo se le habla a Meta.
+ */
+export function valoresPlantillaMeta(p: PlantillaMeta, resolver: (clave: string) => string): string[] {
+  const n = variablesDeCuerpoMeta(p.cuerpo);
+  const valores: string[] = [];
+  for (let i = 0; i < n; i++) {
+    const clave = p.variables[i] ?? "";
+    /**
+     * Meta rechaza un parámetro con saltos de línea, tabulaciones o 4 espacios seguidos. Un
+     * nombre cargado con un enter adentro tiraría abajo el envío entero, así que se limpia
+     * acá y no en cada llamador.
+     */
+    const v = (clave ? resolver(clave) : "").replace(/[\r\n\t]+/g, " ").replace(/ {4,}/g, "   ").trim();
+    // Un parámetro vacío también lo rechaza: se manda un guion antes que fallar el envío.
+    valores.push(v || "-");
+  }
+  return valores;
+}
+
 /** Normaliza lo que viene guardado en la config (JSON libre). */
 export function resolverPlantillasMeta(raw: unknown): PlantillaMeta[] {
   if (!Array.isArray(raw)) return [];

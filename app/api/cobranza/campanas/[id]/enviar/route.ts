@@ -3,7 +3,8 @@ import { successResponse, errorResponse, withErrorHandler, assertSameOrigin } fr
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { getComunicacionConfig, getCobranzaConfig } from "@/lib/config";
-import { construirMensajeCampana, linkWhatsapp, contactoBloqueado, esCreditoVivo } from "@/lib/domain";
+import { construirMensajeCampana, linkWhatsapp, contactoBloqueado, esCreditoVivo, resolverPlantillasMeta } from "@/lib/domain";
+import { enviarWhatsappApi, whatsappApiDisponible, type WhatsappApiConfig } from "@/lib/whatsapp";
 import { nombreCompleto } from "@/lib/utils";
 import { enviarEmailTenant, motivoEmailNoDisponible, type EmailTenantConfig } from "@/lib/mailer-tenant";
 import { getFinanciera } from "@/lib/financiera";
@@ -94,6 +95,21 @@ export const POST = withErrorHandler(async (
 
   const template = campana.mensaje_template ?? "";
   const canal    = campana.canal;
+
+  /**
+   * La plantilla aprobada con la que se armó ESTA campaña, si hubo una. Se busca por nombre
+   * entre las registradas y activas: si se desactivó o se borró después de crear la campaña,
+   * `null` y el envío sale como texto libre en vez de fallar contra una plantilla que ya no
+   * existe. Solo de mora, igual que al armarla.
+   */
+  const plantillaCampana = campana.plantilla_meta
+    ? resolverPlantillasMeta((await getCobranzaConfig(tenantId)).plantillas_meta)
+        .find((p) => p.nombre === campana.plantilla_meta && p.activa && p.motivo === "mora") ?? null
+    : null;
+
+  /** Importe con centavos, igual que `construirMensajeCampana`: el mismo número por los dos caminos. */
+  const money = (x: number) =>
+    new Intl.NumberFormat("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(x);
 
   type Resultado = {
     cliente_id: string;
@@ -213,20 +229,31 @@ export const POST = withErrorHandler(async (
 
     // ── WHATSAPP ──────────────────────────────────────────────────────────────
     if (canal === "whatsapp") {
-      if (whatsappCfg?.enabled && whatsappCfg.token && whatsappCfg.phone_number_id && telefono) {
-        const templateId = whatsappCfg.templates?.mora_media;
-        let ok = false;
-        try {
-          const body = templateId
-            ? { messaging_product: "whatsapp", to: telefono.replace(/\D/g, ""), type: "template", template: { name: templateId, language: { code: "es_AR" } } }
-            : { messaging_product: "whatsapp", to: telefono.replace(/\D/g, ""), type: "text", text: { body: mensaje } };
-          const res = await fetch(`https://graph.facebook.com/v19.0/${encodeURIComponent(whatsappCfg.phone_number_id)}/messages`, {
-            method: "POST",
-            headers: { Authorization: `Bearer ${whatsappCfg.token}`, "Content-Type": "application/json" },
-            body: JSON.stringify(body),
-          });
-          ok = res.ok;
-        } catch { ok = false; }
+      if (whatsappApiDisponible(whatsappCfg) && telefono) {
+        /**
+         * 🔴 LA PLANTILLA ES LA DE LA CAMPAÑA, Y VA CON SUS PARÁMETROS.
+         *
+         * Antes esta rama leía `whatsappCfg.templates.mora_media` —un mapa viejo de
+         * evento→plantilla— e ignoraba la que se había elegido al armar la campaña. Y la
+         * mandaba como `{ name, language }` SIN parámetros: Meta rechaza eso en cuanto la
+         * plantilla tiene una variable, o sea casi siempre. El envío fallaba y quedaba
+         * anotado como un "Error de envío" genérico que no decía nada.
+         *
+         * Los valores salen de los MISMOS datos con los que se armó el texto de la campaña
+         * (`objetivo`), así que lo que compone Meta dice lo mismo que la vista previa.
+         */
+        const res = await enviarWhatsappApi(whatsappCfg, {
+          telefono,
+          texto: mensaje,
+          plantilla: plantillaCampana,
+          resolver: (clave) => ({
+            nombre,
+            financiera: marca,
+            vencido: money(objetivo.oferta_monto),
+            dias: String(objetivo.dias_mora),
+          }[clave] ?? ""),
+        });
+        const ok = res.ok;
 
         await prisma.acciones_cobranza.create({
           data: {
@@ -234,13 +261,15 @@ export const POST = withErrorHandler(async (
             credito_id: objetivo.credito_id,
             tipo: "whatsapp",
             resultado: ok ? "contactado" : "no_contesta",
-            nota: `[CAMPAÑA:${id}] ${campana.nombre} · ${ok ? "Enviado vía API" : "Error de envío"}`,
+            nota: `[CAMPAÑA:${id}] ${campana.nombre} · ${ok ? "Enviado vía API" : `Error: ${res.error ?? "de envío"}`}`,
             automatico: true,
           },
         });
 
-        await marcar(objetivo.id, ok ? "enviado" : "error", ok ? undefined : "Error de envío por la API de Meta");
-        resultados.push({ cliente_id: clienteId, nombre, metodo: "api", ok });
+        // El error REAL de Meta, no un genérico: un token vencido, una plantilla mal escrita
+        // y un número que bloqueó a la empresa se arreglan de formas distintas.
+        await marcar(objetivo.id, ok ? "enviado" : "error", ok ? undefined : res.error);
+        resultados.push({ cliente_id: clienteId, nombre, metodo: "api", ok, error: res.error });
       } else {
         // Sin API de Meta el mensaje lo manda una persona abriendo wa.me. No se marca como
         // "enviado" —el sistema no lo mandó— pero sí como resuelto, para que no vuelva a
@@ -310,11 +339,8 @@ function mensajeAHtml(nombre: string, texto: string, monto: number, descuento: n
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
-type WhatsappConfig = {
-  enabled: boolean;
-  token: string;
-  phone_number_id: string;
-  templates?: Record<string, string>;
-};
+// La forma de la config vive en `lib/whatsapp` junto al emisor: tenerla copiada acá era
+// parte de por qué existían tres implementaciones distintas del mismo envío.
+type WhatsappConfig = WhatsappApiConfig;
 
 

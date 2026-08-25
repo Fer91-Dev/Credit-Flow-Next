@@ -13,6 +13,7 @@ import {
 } from "@/lib/domain";
 import { nombreCompleto, hoyComercial } from "@/lib/utils";
 import { enviarEmailTenant, motivoEmailNoDisponible, type EmailTenantConfig } from "@/lib/mailer-tenant";
+import { enviarWhatsappApi, whatsappApiDisponible, type WhatsappApiConfig } from "@/lib/whatsapp";
 import type { NextRequest } from "next/server";
 
 interface RouteParams {
@@ -72,7 +73,10 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
     },
     canales: {
       // WhatsApp siempre se puede: sin API de Meta configurada, sale por wa.me (manual).
-      whatsapp: { disponible: !!cliente.telefono, automatico: !!comm.whatsapp?.enabled },
+      // `automatico` mira si la API PUEDE mandar de verdad, no solo si el switch está
+      // prendido: con el switch en sí y sin token, la pantalla decía que salía solo y el
+      // operador se quedaba esperando un mensaje que nadie mandaba.
+      whatsapp: { disponible: !!cliente.telefono, automatico: whatsappApiDisponible(comm.whatsapp) },
       // "automatico" ahora mira si el canal PUEDE mandar de verdad, no solo si el
       // switch está prendido: la config podía estar activa y sin credenciales completas.
       email: { disponible: !!cliente.email, automatico: !motivoEmailNoDisponible(comm.email) },
@@ -144,10 +148,36 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
 
   if (canal === "whatsapp") {
     if (!cliente.telefono) return errorResponse("El cliente no tiene teléfono cargado.", "SIN_TELEFONO", 409);
-    // Sin API de Meta configurada, el envío es MANUAL: se devuelve el link wa.me y lo abre
-    // el operador. Se registra igual — el contacto ocurrió, lo haya mandado un bot o una
-    // persona, y la ficha tiene que poder contarlo.
-    enviado = { metodo: "manual", link: linkWhatsapp(cliente.telefono, texto) };
+
+    /**
+     * 🔴 Con la API de Meta configurada, el mensaje lo manda el SISTEMA.
+     *
+     * Antes esta rama era siempre manual: el comentario decía "sin API de Meta configurada"
+     * pero no había ninguna bifurcación, así que una financiera que pagara la API igual
+     * tenía que abrir WhatsApp y apretar enviar cliente por cliente.
+     *
+     * Y va como plantilla aprobada si se eligió una, con sus parámetros: es la única forma
+     * de que Meta lo entregue cuando el cliente no escribió en las últimas 24 h — que es el
+     * caso normal de una cobranza.
+     */
+    const waCfg = comm.whatsapp as WhatsappApiConfig | null;
+    if (whatsappApiDisponible(waCfg)) {
+      const res = await enviarWhatsappApi(waCfg, {
+        telefono: cliente.telefono,
+        texto,
+        plantilla: plantillaMeta,
+        // Los valores de ESTE cliente, por el mismo renderizador que arma el texto que se
+        // previsualizó en pantalla: el operador leyó lo que Meta va a componer.
+        resolver: (clave) => render(`[${clave}]`, datos),
+      });
+      if (!res.ok) return errorResponse(res.error ?? "No se pudo enviar el WhatsApp", "ENVIO_FALLIDO", 502);
+      enviado = { metodo: "api" };
+    } else {
+      // Sin API, el envío es MANUAL: se devuelve el link wa.me y lo abre el operador. Se
+      // registra igual — el contacto ocurrió, lo haya mandado un bot o una persona, y la
+      // ficha tiene que poder contarlo.
+      enviado = { metodo: "manual", link: linkWhatsapp(cliente.telefono, texto) };
+    }
   } else {
     if (!cliente.email) return errorResponse("El cliente no tiene email cargado.", "SIN_EMAIL", 409);
     const impedimento = motivoEmailNoDisponible(comm.email);
@@ -270,7 +300,7 @@ async function cargarContactable(ctx: Ctx, id: string) {
   const financiera = await getFinanciera(ctx.tenantId);
   const commRaw = await getComunicacionConfig(ctx.tenantId);
   const comm = {
-    whatsapp: (commRaw.whatsappConfig ?? null) as { enabled?: boolean } | null,
+    whatsapp: (commRaw.whatsappConfig ?? null) as WhatsappApiConfig | null,
     email: (commRaw.emailConfig ?? null) as EmailTenantConfig | null,
   };
 
