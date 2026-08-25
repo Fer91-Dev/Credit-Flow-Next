@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { registrarAuditoria } from "@/lib/audit";
 import { nombreCompleto } from "@/lib/utils";
 import { normalizarImagenes } from "@/lib/productos";
+import { validarPrecio, normalizarCategoria, skuDuplicado } from "@/lib/productos-validacion";
 import type { NextRequest } from "next/server";
 
 interface RouteParams {
@@ -80,8 +81,16 @@ export const PATCH = withErrorHandler(async (req: NextRequest, { params }: Route
 
   const data: Record<string, unknown> = {};
   if (typeof body.nombre === "string" && body.nombre.trim()) data.nombre = body.nombre.trim();
-  for (const campo of ["categoria", "descripcion", "sku"] as const) {
+  for (const campo of ["descripcion", "sku"] as const) {
     if (campo in body) data[campo] = (body[campo] as string)?.trim() || null;
+  }
+  // Categoria: se reusa la grafia con la que ya existe, para que "Heladeras" y "heladeras"
+  // no sean dos entradas distintas en el selector del simulador (ver productos-validacion).
+  if ("categoria" in body) data.categoria = await normalizarCategoria(tenantId, body.categoria as string);
+  // El SKU identifica: si se cambia, no puede chocar con el de otro producto.
+  if ("sku" in body) {
+    const dup = await skuDuplicado(tenantId, body.sku as string, id);
+    if (dup) return errorResponse(dup, "SKU_DUPLICADO", 409);
   }
   // Galería de fotos (hasta 5): la portada (imagen_url) se deriva de la primera.
   if ("imagenes" in body || "imagen_url" in body) {
@@ -89,10 +98,12 @@ export const PATCH = withErrorHandler(async (req: NextRequest, { params }: Route
     data.imagenes = imagenes;
     data.imagen_url = imagenes[0] ?? null;
   }
+  // Mismas reglas que el alta: > 0 y numerico de verdad. Antes el PATCH aceptaba 0 y
+  // convertia el texto no numerico en 0 en silencio.
   if ("precio" in body) {
-    const precio = Number(body.precio);
-    if (isNaN(precio) || precio < 0) return errorResponse("Precio inválido", "INVALID_INPUT", 400);
-    data.precio = precio;
+    const vp = validarPrecio(body.precio);
+    if (!vp.ok) return errorResponse(vp.error, "INVALID_INPUT", 400);
+    data.precio = vp.precio;
   }
   // El número de `stock` NO se edita por acá: cambia solo vía el kardex
   // (POST /productos/[id]/movimientos → entrada/ajuste), para no descuadrar el libro.

@@ -14,7 +14,7 @@ import { Emoji } from "@/components/ui/Emoji";
 import { DataTable, type Column } from "@/components/ui/DataTable";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field, Input, Select, Textarea } from "@/components/ui/field";
-import { ModalHeader, MoneyInput, FormActions, FieldLabel } from "@/components/ui/form-kit";
+import { ModalHeader, MoneyInput, FormActions, FieldLabel, SIN_CIERRE_ACCIDENTAL } from "@/components/ui/form-kit";
 import { MAX_FOTOS_PRODUCTO } from "@/lib/productos";
 import { useConfirm } from "@/components/ui/confirm";
 import { useToast } from "@/components/ui/toast";
@@ -905,7 +905,15 @@ function ProductoForm({
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!nombre.trim()) { setError("El nombre es requerido"); return; }
-    if (precioNum <= 0) { setError("Ingresá un precio válido"); return; }
+    /**
+     * El precio es el CAPITAL del crédito, así que 0 no sirve. El mensaje dice POR QUÉ:
+     * antes decía "ingresá un precio válido" y el operador no tenía forma de saber que el
+     * problema no era el formato sino que un producto en $0 no se puede financiar.
+     */
+    if (!Number.isFinite(precioNum) || precioNum <= 0) {
+      setError("El precio tiene que ser mayor a 0: es el capital que se financia.");
+      return;
+    }
     const ok = await confirm({
       title: editing ? "¿Guardar cambios?" : "¿Crear producto?",
       description: editing ? `Se actualizará "${nombre.trim()}".` : `Se agregará "${nombre.trim()}" al inventario.`,
@@ -940,7 +948,7 @@ function ProductoForm({
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(false); }}>
-      <DialogContent className="w-[95vw] sm:max-w-2xl sm:p-7 max-h-[90dvh] flex flex-col overflow-hidden">
+      <DialogContent className="w-[95vw] sm:max-w-2xl sm:p-7 max-h-[92dvh] flex flex-col overflow-hidden" {...SIN_CIERRE_ACCIDENTAL}>
         <div className="shrink-0">
           <ModalHeader
             icon="package"

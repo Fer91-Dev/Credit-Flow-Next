@@ -3,6 +3,7 @@ import { successResponse, errorResponse, withErrorHandler, assertSameOrigin } fr
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { registrarAuditoria } from "@/lib/audit";
+import { validarPrecio, normalizarCategoria, skuDuplicado } from "@/lib/productos-validacion";
 import { registrarMovimientoStock } from "@/lib/stock";
 import { normalizarImagenes } from "@/lib/productos";
 import type { NextRequest } from "next/server";
@@ -87,11 +88,19 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
   if (!body.nombre?.trim()) {
     return errorResponse("El nombre es requerido", "INVALID_INPUT", 400);
   }
-  const precio = Number(body.precio) || 0;
+  // El precio es el CAPITAL del credito: 0 o texto no numerico se rechazan aca, no tres
+  // pantallas despues cuando el motor tire "montos invalidos" sin decir por que.
+  const vp = validarPrecio(body.precio);
+  if (!vp.ok) return errorResponse(vp.error, "INVALID_INPUT", 400);
+  const precio = vp.precio;
+
   const stock = Math.trunc(Number(body.stock) || 0);
-  if (precio < 0 || stock < 0) {
-    return errorResponse("Precio y stock no pueden ser negativos", "INVALID_INPUT", 400);
+  if (stock < 0) {
+    return errorResponse("El stock no puede ser negativo", "INVALID_INPUT", 400);
   }
+  const dupSku = await skuDuplicado(tenantId, body.sku);
+  if (dupSku) return errorResponse(dupSku, "SKU_DUPLICADO", 409);
+
   const stockMin = body.stock_minimo == null ? null : Math.max(0, Math.trunc(Number(body.stock_minimo)));
   // Galería: hasta 5 fotos; la 1ª es la portada (imagen_url).
   const imagenes = normalizarImagenes(body.imagenes, body.imagen_url);
@@ -101,7 +110,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
       data: {
         ...withTenant(tenantId),
         nombre: body.nombre!.trim(),
-        categoria: body.categoria?.trim() || null,
+        categoria: await normalizarCategoria(tenantId, body.categoria),
         descripcion: body.descripcion?.trim() || null,
         sku: body.sku?.trim() || null,
         precio,
