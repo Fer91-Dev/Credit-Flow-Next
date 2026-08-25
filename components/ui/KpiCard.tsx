@@ -21,8 +21,6 @@ interface KpiCardProps {
   onClick?: () => void;
   /** El filtro de esta tarjeta está aplicado: se marca con un anillo del acento. */
   active?: boolean;
-  /** No hay nada que filtrar (0 resultados): se ve, pero no se puede apretar. */
-  disabled?: boolean;
 }
 
 const COLORS: Record<KpiAccent, { text: string; iconBg: string; iconBorder: string; glow: string; hoverBorder: string }> = {
@@ -33,27 +31,32 @@ const COLORS: Record<KpiAccent, { text: string; iconBg: string; iconBorder: stri
   destructive: { text: "text-destructive", iconBg: "bg-destructive/10", iconBorder: "border-destructive/20", glow: "hover:shadow-destructive/10", hoverBorder: "hover:border-destructive/30" },
 };
 
-export function KpiCard({ icon, label, value, accent = "muted", mono, sub, pulse, onClick, active, disabled }: KpiCardProps) {
+export function KpiCard({ icon, label, value, accent = "muted", mono, sub, pulse, onClick, active }: KpiCardProps) {
   const c = COLORS[accent];
   const isEmoji = typeof icon === "string";
   const Icon = isEmoji ? null : icon;
   const ringColor =
     accent === "destructive" ? "ring-destructive/60" : accent === "warning" ? "ring-warning/60" : "ring-primary/60";
 
-  // Con `onClick` la tarjeta es un botón de verdad: operable por teclado y con foco visible,
-  // como pide el contrato de diseño para cualquier cosa clickeable.
+  /**
+   * Con `onClick` la tarjeta es un botón de verdad: operable por teclado y con foco visible,
+   * como pide el contrato de diseño.
+   *
+   * 🔴 SIN `onClick` TIENE QUE VERSE EXACTAMENTE IGUAL QUE ANTES. No hay estado "apagado":
+   * una tarjeta atenuada en una fila de KPI no se lee como "esta no filtra", se lee como
+   * "todavía no elegiste ninguna" — y con dos atenuadas la fila entera parece un filtro sin
+   * seleccionar, cuando en realidad se está viendo todo.
+   */
   const Root = onClick ? "button" : "div";
-  const interactiva = !!onClick && !disabled;
 
   return (
     <Root
-      {...(onClick ? { type: "button" as const, onClick: disabled ? undefined : onClick, disabled, "aria-pressed": !!active } : {})}
+      {...(onClick ? { type: "button" as const, onClick, "aria-pressed": !!active } : {})}
       className={`group relative overflow-hidden rounded-2xl border bg-card p-5 text-left transition-all duration-300 w-full
       ${pulse ? "border-destructive/40" : active ? "border-transparent" : "border-border/70"}
       shadow-[0_1px_2px_rgba(0,0,0,0.3),0_12px_30px_-16px_rgba(0,0,0,0.7)]
-      ${interactiva ? "cursor-pointer hover:-translate-y-1 hover:shadow-[0_1px_2px_rgba(0,0,0,0.3),0_20px_45px_-18px_rgba(0,0,0,0.8)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60" : ""}
-      ${!onClick ? "hover:-translate-y-1 hover:shadow-[0_1px_2px_rgba(0,0,0,0.3),0_20px_45px_-18px_rgba(0,0,0,0.8)]" : ""}
-      ${disabled ? "opacity-40" : ""}
+      hover:-translate-y-1 hover:shadow-[0_1px_2px_rgba(0,0,0,0.3),0_20px_45px_-18px_rgba(0,0,0,0.8)]
+      ${onClick ? "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60" : ""}
       ${c.glow} ${c.hoverBorder}`}>
       {/* Luz cenital SIEMPRE visible → la card deja de verse plana */}
       <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-white/10" />

@@ -124,7 +124,7 @@ export function AgendaHoy({
             </h3>
             <p className="text-[11px] text-muted-foreground/70">
               {filtro
-                ? `${filtrados.length} de ${total} · tocá la tarjeta de nuevo para ver toda la cola`
+                ? `${filtrados.length} de ${total} cliente${total !== 1 ? "s" : ""}`
                 : `${total} cliente${total !== 1 ? "s" : ""} para contactar. Dentro de cada grupo, primero ${
                     agenda?.orden === "monto" ? "el que más plata debe" : "el que hace más días que no paga"
                   }.`}
@@ -142,17 +142,20 @@ export function AgendaHoy({
                 value={String(n)}
                 accent={n > 0 ? b.accent : "muted"}
                 pulse={b.key === "promesa" && n > 0}
-                // Apretar el grupo lo aísla; apretarlo de nuevo vuelve a la cola entera.
-                onClick={() => setFiltro((f) => (f === b.key ? null : b.key))}
+                /**
+                 * Apretar el grupo lo aísla; apretarlo de nuevo vuelve a la cola entera.
+                 * Un grupo VACÍO no recibe onClick: no se apaga ni se atenúa, simplemente no
+                 * es un botón. Filtrar por algo que no tiene nada no muestra nada.
+                 */
+                onClick={n > 0 ? () => setFiltro((f) => (f === b.key ? null : b.key)) : undefined}
                 active={filtro === b.key}
-                disabled={n === 0}
               />
             );
           })}
           {/*
             Cuánta plata hay realmente en juego en la cola. Es lo VENCIDO, no la cartera.
-            No es un grupo, así que no filtra: LIMPIA el filtro. Es el total de todo, y
-            apretarlo devuelve la vista de todo — que es lo que el número representa.
+            No es un grupo: sin filtro puesto es una métrica y nada más —se ve igual que
+            siempre—; con un filtro puesto pasa a ser la salida para volver a ver todo.
           */}
           <KpiCard
             icon={AlertCircle}
@@ -160,9 +163,8 @@ export function AgendaHoy({
             value={formatMonto(filtrados.reduce((s, i) => s + i.vencido, 0))}
             accent="destructive"
             mono
-            sub={filtro ? "de este grupo · ver toda la cola" : "cuotas impagas + punitorios"}
-            onClick={() => setFiltro(null)}
-            disabled={!filtro}
+            sub={filtro ? "de este grupo · volver a toda la cola" : "cuotas impagas + punitorios"}
+            onClick={filtro ? () => setFiltro(null) : undefined}
           />
         </div>
       </div>
