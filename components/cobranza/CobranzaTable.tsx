@@ -17,6 +17,7 @@ import { AcuerdosTab } from "./AcuerdosTab";
 import { AcuerdoForm } from "./AcuerdoForm";
 import { AgendaHoy } from "./AgendaHoy";
 import { PlanillaCalleDialog } from "./PlanillaCalleDialog";
+import { PlanillasTab } from "./PlanillasTab";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { KpiCard } from "@/components/ui/KpiCard";
 import { StatusBadge } from "@/components/ui/StatusBadge";
@@ -68,7 +69,7 @@ const resultadoLabel: Record<AccionCobranza["resultado"], string> = {
   otro:          "Otro",
 };
 
-type Tab = "hoy" | "morosos" | "promesas" | "acuerdos" | "campanas";
+type Tab = "hoy" | "morosos" | "promesas" | "acuerdos" | "planillas" | "campanas";
 
 export function CobranzaTable({ role }: { role: Role }) {
   // Campañas (selección masiva + ActionToolbar + pestaña): admin (toda la cartera) y
@@ -244,6 +245,7 @@ export function CobranzaTable({ role }: { role: Role }) {
           ["morosos",  "Morosos",  "money-with-wings"],
           ["promesas", "Promesas", "handshake"],
           ["acuerdos", "Acuerdos", "scroll"],
+          ["planillas", "Planillas", "clipboard"],
           ...(puedeCampanas ? [["campanas", "Campañas", "megaphone"]] : []),
         ] as [Tab, string, string][]).map(([key, label, emoji]) => (
           <button
@@ -280,6 +282,8 @@ export function CobranzaTable({ role }: { role: Role }) {
         <PromesasTab role={role} />
       ) : tab === "acuerdos" ? (
         <AcuerdosTab role={role} />
+      ) : tab === "planillas" ? (
+        <PlanillasTab role={role} />
       ) : (
       <>
       {isLoading ? (

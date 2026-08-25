@@ -1601,6 +1601,50 @@ export function usePlanillaCalle(params: { zonas: string[]; diasAdelante: number
   return { planilla: data, error, isLoading };
 }
 
+/** Una planilla de calle emitida, con lo que ya se cobró de ella. */
+export interface PlanillaEmitida {
+  id: string;
+  fecha: string;
+  created_at: string;
+  cobrador: string | null;
+  zonas: string[];
+  dias_adelante: number;
+  total_esperado: number;
+  clientes: number;
+  creditos: number;
+  estado: "emitida" | "rendida" | "anulada";
+  emitida_por_nombre: string | null;
+  rendida_at: string | null;
+  rendido_por_nombre: string | null;
+  total_declarado: number | null;
+  diferencia: number | null;
+  motivo: string | null;
+  /** Suma de los pagos vinculados NO anulados. Se calcula al leer, nunca se cachea. */
+  cobrado: number;
+  pagos: number;
+  pendiente: number;
+}
+export function usePlanillasEmitidas(estado?: string) {
+  const key = `/api/cobranza/planillas${estado && estado !== "todas" ? `?estado=${estado}` : ""}`;
+  const { data, error, isLoading, mutate } = useSWR<{ planillas: PlanillaEmitida[] }>(key);
+  return { planillas: data?.planillas ?? [], error, isLoading, mutate };
+}
+
+/** Una fila del snapshot de la planilla, con lo cobrado contra ella. */
+export interface FilaPlanillaCobro extends FilaPlanilla {
+  cobrado: number;
+  pendiente: number;
+}
+export interface PlanillaDetalle {
+  planilla: PlanillaEmitida;
+  zonas: { zona: string | null; filas: FilaPlanillaCobro[]; clientes: number; creditos: number; total: number }[];
+  totales: { esperado: number; cobrado: number; pendiente: number; pagos: number; anulados: number };
+}
+export function usePlanillaDetalle(id: string | null) {
+  const { data, error, isLoading, mutate } = useSWR<PlanillaDetalle>(id ? `/api/cobranza/planillas/${id}` : null);
+  return { detalle: data, error, isLoading, mutate };
+}
+
 export function useAuditoria() {
   const { data, error, isLoading, mutate } = useSWR<{ eventos: EventoAuditoria[] }>(KEYS.auditoria);
   return { eventos: data?.eventos ?? [], error, isLoading, mutate };

@@ -134,6 +134,30 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     return errorResponse("Monto debe ser un número mayor a 0", "INVALID_INPUT", 400);
   }
 
+  /**
+   * De qué planilla de calle viene el cobro, si viene de una.
+   *
+   * 🔴 La carga masiva NO reimplementa el cobro: llama a ESTE endpoint una vez por fila. La
+   * imputación, la caja, el comprobante, la conciliación de promesas y el cierre del crédito
+   * son 230 líneas de lógica de plata — tener una segunda versión "para la planilla" sería
+   * garantizar que los dos caminos se separen con el tiempo. Lo único que suma la planilla
+   * es este vínculo, que es lo que después permite rendir el recorrido contra lo cobrado.
+   *
+   * Se valida contra el tenant y contra el estado: a una planilla ya rendida no se le
+   * pueden seguir colgando cobros, o la diferencia que se firmó dejaría de cerrar.
+   */
+  let planillaId: string | null = null;
+  if (typeof body.planilla_id === "string" && body.planilla_id) {
+    const pl = await prisma.planillas_cobranza.findFirst({
+      where: { ...withTenant(tenantId), id: body.planilla_id },
+      select: { id: true, estado: true },
+    });
+    if (!pl) return errorResponse("La planilla no existe.", "INVALID_REFERENCE", 400);
+    if (pl.estado !== "emitida")
+      return errorResponse(`La planilla ya está ${pl.estado}: no admite más cobros.`, "PLANILLA_CERRADA", 409);
+    planillaId = pl.id;
+  }
+
   // Anti-IDOR: un vendedor solo puede cobrar sobre créditos que él otorgó.
   const credito = await prisma.creditos.findFirst({
     where: { ...withTenant(tenantId), ...scopeCreditosVendedor({ role, vendedorId }), id: body.credito_id },
@@ -376,6 +400,9 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
         // Qué cuota del ACUERDO se estaba cobrando (null = cobro normal del crédito). Se
         // valida contra el acuerdo vigente de ESTE crédito, así que un id ajeno no entra.
         acuerdo_cuota_id: acuerdoCuotaId,
+        // De qué planilla de calle salió este cobro (null = cobro de mostrador). Validada
+        // arriba contra el tenant: un id ajeno no entra.
+        planilla_id: planillaId,
         ...withTenant(tenantId),
       },
       include: {
