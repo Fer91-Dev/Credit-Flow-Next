@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, Trash2, ShieldCheck, AlertTriangle, Power } from "lucide-react";
+import { Plus, Trash2, ShieldCheck, AlertTriangle, Power, DownloadCloud, Loader2 } from "lucide-react";
+import { useToast } from "@/components/ui/toast";
 import { Field, Input, Select, Textarea } from "@/components/ui/field";
 import {
   CATEGORIAS_META, CATEGORIA_META_LABEL, CATEGORIA_META_NOTA, CATEGORIA_ESPERADA,
@@ -66,6 +67,9 @@ export function PlantillasMetaEditor({ valor, onChange }: {
   onChange: (plantillas: PlantillaMeta[]) => void;
 }) {
   const [abierta, setAbierta] = useState<string | null>(null);
+  const [importando, setImportando] = useState(false);
+  const [omitidas, setOmitidas] = useState<{ nombre: string; idioma: string; motivo: string }[]>([]);
+  const toast = useToast();
 
   const patch = (id: string, cambio: Partial<PlantillaMeta>) =>
     onChange(valor.map((p) => (p.id === id ? { ...p, ...cambio } : p)));
@@ -74,6 +78,57 @@ export function PlantillasMetaEditor({ valor, onChange }: {
     const p = nuevaPlantilla();
     onChange([...valor, p]);
     setAbierta(p.id);
+  };
+
+  /**
+   * Trae las plantillas aprobadas desde el Administrador de WhatsApp de Meta.
+   *
+   * 🔴 LA MEZCLA RESPETA EL TRABAJO LOCAL. Lo que se decidió acá —a qué dato apunta cada
+   * variable, para qué motivo es, si está activa— NO viene de Meta y no se puede perder al
+   * volver a importar: se pisan solo el cuerpo, el idioma y la categoría, que son lo que
+   * Meta manda. Si no fuera así, cada importación borraría el mapeo de variables y las
+   * plantillas quedarían mandando texto en crudo sin que nadie lo note.
+   */
+  const importar = async () => {
+    if (importando) return;
+    setImportando(true);
+    setOmitidas([]);
+    try {
+      const res = await fetch("/api/configuracion/plantillas-meta/importar", { method: "POST" });
+      const json = await res.json();
+      if (!json.ok) { toast.error(json.error || "No se pudieron traer las plantillas"); return; }
+
+      const traidas: PlantillaMeta[] = json.data.plantillas ?? [];
+      const porClave = new Map(valor.map((p) => [`${p.nombre}|${p.idioma}`, p]));
+      let nuevas = 0;
+
+      for (const t of traidas) {
+        const previa = porClave.get(`${t.nombre}|${t.idioma}`);
+        if (previa) {
+          porClave.set(`${t.nombre}|${t.idioma}`, {
+            ...previa,
+            cuerpo: t.cuerpo,
+            categoria: t.categoria,
+            // Si el cuerpo cambió de cantidad de variables, el editor lo marca solo.
+          });
+        } else {
+          porClave.set(`${t.nombre}|${t.idioma}`, t);
+          nuevas++;
+        }
+      }
+      onChange([...porClave.values()]);
+      setOmitidas(json.data.omitidas ?? []);
+
+      toast.success(
+        traidas.length === 0
+          ? "Meta no devolvió ninguna plantilla aprobada."
+          : `${traidas.length} plantilla${traidas.length === 1 ? "" : "s"} de Meta · ${nuevas} nueva${nuevas === 1 ? "" : "s"}. Asigná las variables y guardá.`,
+      );
+    } catch {
+      toast.error("No se pudo conectar con Meta");
+    } finally {
+      setImportando(false);
+    }
   };
 
   return (
@@ -119,13 +174,47 @@ export function PlantillasMetaEditor({ valor, onChange }: {
         </div>
       )}
 
-      <button
-        type="button"
-        onClick={agregar}
-        className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-      >
-        <Plus className="h-3.5 w-3.5" /> Registrar una plantilla aprobada
-      </button>
+      {/* Lo que Meta tiene pero todavía no se puede usar, con el motivo. Es información que
+          solo está de su lado: sin esto, el operador no entiende por qué falta una. */}
+      {omitidas.length > 0 && (
+        <div className="rounded-xl border border-border bg-muted/25 p-3">
+          <p className="text-[11px] font-semibold text-foreground">
+            {omitidas.length} plantilla{omitidas.length === 1 ? "" : "s"} de Meta que todavía no se pueden usar
+          </p>
+          <ul className="mt-1.5 space-y-0.5">
+            {omitidas.map((o, i) => (
+              <li key={i} className="text-[11px] text-muted-foreground">
+                <span className="font-mono text-foreground">{o.nombre}</span>
+                {o.idioma && <span className="text-muted-foreground/60"> · {o.idioma}</span>} — {o.motivo}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={agregar}
+          className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+        >
+          <Plus className="h-3.5 w-3.5" /> Registrar una plantilla aprobada
+        </button>
+        {/*
+          Copiar y pegar el cuerpo es la forma más fácil de romper una plantilla sin enterarse:
+          un espacio de más y Meta deja de entregar el mensaje, sin ningún error visible.
+          Traerlas de la fuente elimina esa clase entera de error.
+        */}
+        <button
+          type="button"
+          onClick={importar}
+          disabled={importando}
+          className="flex items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/10 px-3 py-2 text-xs font-medium text-primary transition-colors hover:bg-primary/20 disabled:opacity-50"
+        >
+          {importando ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <DownloadCloud className="h-3.5 w-3.5" />}
+          Traer las aprobadas de Meta
+        </button>
+      </div>
     </div>
   );
 }
