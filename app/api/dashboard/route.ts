@@ -113,7 +113,16 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
 
   const creditosActivos = creditosDM.filter((c) => esCreditoVivo(c.estado)).length;
   const creditosPagados = creditosDM.filter((c) => c.estado === "pagado").length;
-  const carteraTotal = creditosDM.reduce((sum, c) => sum + c.saldo_pendiente, 0);
+  /**
+   * 🔴 Solo créditos VIVOS. Sumaba TODOS, así que la cartera del Home incluía el saldo de los
+   * anulados: $14.371.741,22 contra los $11.721.741,22 que informaba Reportes, un 22,6% de
+   * más sobre el número principal de la pantalla principal.
+   *
+   * El fix de `anular` (que ahora deja el saldo en 0) ya lo corregiría solo, pero el filtro va
+   * igual: un KPI de plata no puede depender de que el dato esté prolijo. Es el mismo criterio
+   * que `saldo_activo_total` en Reportes.
+   */
+  const carteraTotal = creditosDM.filter((c) => esCreditoVivo(c.estado)).reduce((sum, c) => sum + c.saldo_pendiente, 0);
   const moraCritica = creditosDM.filter((c) => c.dias_mora > 30).length;
 
   const detalleMotaAlerta = {
