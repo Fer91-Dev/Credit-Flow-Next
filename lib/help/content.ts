@@ -266,7 +266,7 @@ const HELP: Record<string, HelpDoc> = {
   "/cobranza": {
     titulo: "Cobranzas y Recupero",
     resumen:
-      "El centro de gestión de la mora. Organiza a quién contactar hoy, registra las gestiones, hace seguimiento de las promesas de pago y arma campañas de recuperación.",
+      "El centro de gestión de la mora. Organiza a quién contactar hoy, registra las gestiones, hace seguimiento de las promesas de pago, arma campañas de recuperación e imprime la planilla del cobrador de calle.",
     bloques: [
       {
         kind: "definiciones",
@@ -299,6 +299,32 @@ const HELP: Record<string, HelpDoc> = {
           "Elegí canal y escribí el mensaje. Los datos entre corchetes —[Nombre], [Monto]— se reemplazan por los de cada cliente.",
           "Opcional: quita de interés de mora, como incentivo para que paguen ahora.",
           "Enviar. Va por tandas y muestra el avance; si se corta, volvés a apretar y sigue por donde quedó, sin repetirle a nadie.",
+        ],
+      },
+      {
+        // La cobranza de calle es la otra mitad del trabajo y no vivía en el sistema: el
+        // cobrador no lo usa, así que su herramienta es un papel. Va acá porque el botón
+        // está en Morosos y no se descubre solo.
+        kind: "pasos",
+        titulo: "Salir a cobrar a la calle",
+        pasos: [
+          "En Morosos, botón «Planilla de calle»: arma el recorrido y lo imprime.",
+          "Elegí las zonas. La zona sale de la ficha del cliente; los que no la tienen cargada van juntos en un grupo aparte.",
+          "«A quién visitar»: solo los vencidos, o también los que vencen dentro de 7, 15 o 30 días —el recorrido de rutina.",
+          "Antes de imprimir ves cuántos clientes y cuánta plata tiene el recorrido, zona por zona.",
+          "Cada zona sale en una hoja, ordenada por domicilio, con dos casilleros vacíos por cliente: lo cobrado y la firma.",
+          "Al pie hay una rendición para que el cobrador cierre lo que trae.",
+        ],
+      },
+      {
+        kind: "tips",
+        titulo: "La planilla de calle, en detalle",
+        items: [
+          "Los importes son los del día que se imprime: la mora corre por día, así que una planilla vieja pide de menos. El importe final lo fija el sistema al registrar el pago.",
+          "Un cliente con tres créditos son tres renglones —cada uno con su importe y su recibo—, pero quedan pegados porque la lista se ordena por domicilio.",
+          "No entran los que están cumpliendo un acuerdo de pago, ni los que pidieron no ser contactados: una visita a domicilio es un contacto.",
+          "Incluye a los que ya fueron gestionados hoy por teléfono, a diferencia de la agenda: el recorrido se organiza por barrio, no por quién llamó a quién.",
+          "El vendedor imprime solo su cartera; el admin, toda la financiera.",
         ],
       },
       {

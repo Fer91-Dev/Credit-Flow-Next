@@ -409,6 +409,29 @@ export async function creditosConAcuerdoVigente(tenantId: string): Promise<Map<s
   return new Map(filas.map((f) => [f.credito_id, f.fecha]));
 }
 
+/**
+ * ¿Este crédito está cubierto por un acuerdo vigente y por eso no hay que ir a golpearle
+ * la puerta ni llamarlo?
+ *
+ * Solo si lo más viejo que debe YA estaba vencido cuando se firmó el acuerdo. Si arrastra
+ * una cuota que venció DESPUÉS, vuelve a la cola: cumple el arreglo, pero dejó de pagar lo
+ * corriente —que no era parte del trato— y esas cuotas además devengan punitorios.
+ *
+ * 🔴 Vive acá y no copiada en cada pantalla. La agenda del día y la planilla de calle tienen
+ * que decidir lo mismo sobre el mismo cliente: si una lo saca y la otra lo deja, el cobrador
+ * va a tocarle el timbre a alguien que está cumpliendo, que es la forma más rápida de que
+ * deje de cumplir.
+ */
+export function cubiertoPorAcuerdo(
+  conAcuerdo: Map<string, Date>,
+  creditoId: string,
+  proximoPago: Date | null,
+): boolean {
+  const acordadoEl = conAcuerdo.get(creditoId);
+  if (!acordadoEl) return false;
+  return !!proximoPago && proximoPago.getTime() <= acordadoEl.getTime();
+}
+
 /** Forma con la que viaja un acuerdo a la UI. */
 export function serializarAcuerdo(
   a: {

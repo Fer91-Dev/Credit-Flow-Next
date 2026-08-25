@@ -1562,6 +1562,45 @@ export function useAgendaCobranza() {
   return { agenda: data, error, isLoading, mutate };
 }
 
+/** Una fila de la planilla de cobranza en calle. */
+export interface FilaPlanilla {
+  credito_id: string;
+  cliente_id: string;
+  cliente: string;
+  documento: string | null;
+  direccion: string | null;
+  telefono: string | null;
+  credito_numero: number | null;
+  credito_refinancia_a_numero: number | null;
+  vencido: number;
+  cuotas_vencidas: number;
+  cuota_desde: number | null;
+  dias_mora: number;
+  proxima_cuota_nro: number | null;
+  proxima_cuota_monto: number | null;
+  proxima_cuota_fecha: string | null;
+  /** Lo que el cobrador tiene que pedir en la puerta. */
+  a_cobrar: number;
+}
+export interface PlanillaCalle {
+  fecha: string;
+  dias_adelante: number;
+  /** `creditos` = filas de la planilla; `clientes` = titulares distintos (no es lo mismo). */
+  zonas: { zona: string | null; filas: FilaPlanilla[]; clientes: number; creditos: number; total: number }[];
+  totales: { clientes: number; creditos: number; total: number; zonas: number };
+}
+/**
+ * Planilla de cobranza en calle (agrupada por zona), scopeada al vendedor.
+ * `null` no la pide: el diálogo la trae recién cuando está abierto.
+ */
+export function usePlanillaCalle(params: { zonas: string[]; diasAdelante: number } | null) {
+  const key = params
+    ? `/api/cobranza/planilla?dias_adelante=${params.diasAdelante}&zonas=${encodeURIComponent(params.zonas.join(","))}`
+    : null;
+  const { data, error, isLoading } = useSWR<PlanillaCalle>(key);
+  return { planilla: data, error, isLoading };
+}
+
 export function useAuditoria() {
   const { data, error, isLoading, mutate } = useSWR<{ eventos: EventoAuditoria[] }>(KEYS.auditoria);
   return { eventos: data?.eventos ?? [], error, isLoading, mutate };

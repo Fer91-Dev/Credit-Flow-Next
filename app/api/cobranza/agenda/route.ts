@@ -3,7 +3,7 @@ import { successResponse, withErrorHandler } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { getCobranzaConfig, getConfiguracion } from "@/lib/config";
-import { sincronizarAcuerdos, creditosConAcuerdoVigente } from "@/lib/acuerdos";
+import { sincronizarAcuerdos, creditosConAcuerdoVigente, cubiertoPorAcuerdo } from "@/lib/acuerdos";
 import { numerosRefinanciados } from "@/lib/creditos-numero";
 import {
   diasMoraActual, ESTADOS_VIVOS, calcularDeudaVencida, moraDelCredito, moraDesdeCronograma,
@@ -137,9 +137,10 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
      * Se lo saca de la cola solo si lo más viejo que debe ya estaba vencido al acordar. Si
      * arrastra una cuota que venció DESPUÉS, vuelve: cumple el arreglo, pero alguien tiene
      * que llamarlo por lo otro. Decisión del usuario (2026-08-20).
+     *
+     * La regla vive en `cubiertoPorAcuerdo` porque la planilla de calle decide lo mismo.
      */
-    const acordadoEl = conAcuerdo.get(c.id);
-    if (acordadoEl && c.proximo_pago && c.proximo_pago.getTime() <= acordadoEl.getTime()) continue;
+    if (cubiertoPorAcuerdo(conAcuerdo, c.id, c.proximo_pago)) continue;
     const accs = porCredito.get(c.id) ?? [];
     const promesaPend = accs.find((a) => a.promesa_estado === "pendiente" && a.promesa_fecha);
     const conProx = accs.find((a) => a.proximo_contacto);
