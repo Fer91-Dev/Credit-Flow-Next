@@ -119,6 +119,43 @@ export function hoyComercial(): Date {
   return new Date(`${ymd}T00:00:00.000Z`);
 }
 
+/**
+ * Bordes de un día ARGENTINO expresados en UTC, para filtrar columnas **TIMESTAMP**.
+ *
+ * 🔴 CUÁNDO USAR ESTO Y CUÁNDO NO
+ *
+ * Las columnas `@db.Date` (`pagos.fecha`, `movimientos_caja.fecha`) guardan un día pelado:
+ * ahí `T00:00Z`..`T23:59Z` es exacto y NO hay que tocar nada.
+ *
+ * Las `@db.Timestamptz` (`created_at` de créditos, gestiones y movimientos de stock) guardan
+ * un instante. Recortarlas con los bordes UTC del día recorta un día UTC, que está 3 horas
+ * corrido del argentino: entra la última franja del día anterior y se PIERDE todo lo hecho
+ * después de las 21:00.
+ *
+ * Medido: un crédito otorgado el 31/07 a las 22:00 hora argentina contaba en la comisión y en
+ * el reporte de AGOSTO. Para un vendedor que cierra una venta la última noche del mes, eso le
+ * mueve la comisión y el cumplimiento de la meta al mes siguiente.
+ *
+ * Argentina es UTC-3 todo el año (sin horario de verano desde 2009).
+ */
+const AR_OFFSET_MS = 3 * 3_600_000;
+
+/** Primer instante del día argentino `ymd` ("2026-08-25" → 2026-08-25T03:00:00Z). */
+export function inicioDiaAR(ymd: string): Date {
+  return new Date(new Date(`${ymd}T00:00:00.000Z`).getTime() + AR_OFFSET_MS);
+}
+
+/** Último instante del día argentino `ymd` ("2026-08-25" → 2026-08-26T02:59:59.999Z). */
+export function finDiaAR(ymd: string): Date {
+  return new Date(new Date(`${ymd}T23:59:59.999Z`).getTime() + AR_OFFSET_MS);
+}
+
+/** El día argentino (YYYY-MM) al que pertenece un instante. Para agrupar por mes. */
+export function mesAR(d: Date): string {
+  const local = new Date(d.getTime() - AR_OFFSET_MS);
+  return `${local.getUTCFullYear()}-${String(local.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+
 /** Número guardado → texto de input es-AR (para precargar campos en modo edición). */
 export function numeroAInput(n: number): string {
   return n.toLocaleString("es-AR", { maximumFractionDigits: 2 });

@@ -3,6 +3,7 @@ import { successResponse, withErrorHandler } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { nombrePropioFinanciera } from "@/lib/branding";
+import { inicioDiaAR, finDiaAR } from "@/lib/utils";
 import {
   resumenEmbudoCobranza,
   recuperoCobranza,
@@ -36,10 +37,16 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
 
   const desde = new Date(`${desdeStr}T00:00:00.000Z`);
   const hasta = new Date(`${hastaStr}T23:59:59.999Z`);
+  // Bordes del dia argentino, para las columnas TIMESTAMP. `pagos.fecha` es DATE y sigue
+  // usando los de arriba.
+  const desdeTs = inicioDiaAR(desdeStr);
+  const hastaTs = finDiaAR(hastaStr);
 
   const [acciones, pagos, vendedores] = await Promise.all([
     prisma.acciones_cobranza.findMany({
-      where: { ...withTenant(tenantId), automatico: false, created_at: { gte: desde, lte: hasta }, ...creditoFilter },
+      // `created_at` es TIMESTAMP: bordes del dia ARGENTINO, o las gestiones hechas despues de
+      // las 21:00 se contaban en el dia siguiente (ver lib/utils).
+      where: { ...withTenant(tenantId), automatico: false, created_at: { gte: desdeTs, lte: hastaTs }, ...creditoFilter },
       select: {
         tipo: true, resultado: true, promesa_estado: true, promesa_monto: true,
         credito: { select: { vendedor_id: true } },

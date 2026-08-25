@@ -10,6 +10,7 @@ import {
   type CreditoLedger,
 } from "@/lib/domain";
 import { getConfiguracion, getRentabilidadConfig } from "@/lib/config";
+import { inicioDiaAR, finDiaAR, mesAR } from "@/lib/utils";
 import type { NextRequest } from "next/server";
 
 const MAX_MESES = 36; // cota de cómputo (reconstrucción O(meses × cuotas))
@@ -51,6 +52,8 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
 
   const desde = new Date(`${desdeStr}T00:00:00.000Z`);
   const hasta = new Date(`${hastaStr}T23:59:59.999Z`);
+  const desdeTs = inicioDiaAR(desdeStr);
+  const hastaTs = finDiaAR(hastaStr);
 
   let buckets = bucketsMensuales(desde, hasta);
   if (buckets.length > MAX_MESES) buckets = buckets.slice(-MAX_MESES); // acota a los últimos N meses
@@ -107,8 +110,10 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     // nueva) y ANULADOS (la operación se deshizo y la caja se revirtió). Si la serie los
     // contara y el resumen no, las dos pestañas darían otorgamientos distintos.
     if (c.es_refinanciacion || c.estado === "anulado") continue;
-    if (c.created_at < desde || c.created_at > hasta) continue;
-    const k = mesKey(c.created_at);
+    // `created_at` es TIMESTAMP: bordes y mes segun el dia ARGENTINO. Con UTC, un credito
+    // otorgado despues de las 21:00 del ultimo dia del mes caia en el mes siguiente.
+    if (c.created_at < desdeTs || c.created_at > hastaTs) continue;
+    const k = mesAR(c.created_at);
     const cur = otorgadoPorMes.get(k) ?? { cantidad: 0, monto: 0 };
     cur.cantidad += 1; cur.monto += c.monto_original;
     otorgadoPorMes.set(k, cur);

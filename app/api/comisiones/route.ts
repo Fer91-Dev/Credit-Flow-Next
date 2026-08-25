@@ -1,6 +1,7 @@
 import { requireRole } from "@/lib/auth";
 import { successResponse, errorResponse, withErrorHandler, assertSameOrigin } from "@/app/lib/api";
 import { esCuentaValida, rangoDePeriodo, PERIODOS_META, type TipoPeriodo, type Cuenta } from "@/lib/domain";
+import { inicioDiaAR } from "@/lib/utils";
 import { comisionesDelPeriodo, liquidarComision, historialLiquidaciones } from "@/lib/liquidaciones";
 import type { NextRequest } from "next/server";
 
@@ -33,7 +34,14 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   const { tipo, anio, indice } = periodoDeQuery(new URL(req.url));
   const { desde, hasta, etiqueta } = rangoDePeriodo(tipo, anio, indice);
 
-  const rango = { desde: new Date(`${desde}T00:00:00.000Z`), hasta: new Date(`${hasta}T00:00:00.000Z`) };
+  /**
+   * Bordes del dia ARGENTINO. `creditos.created_at` es un timestamp: con los bordes UTC, un
+   * credito otorgado despues de las 21:00 del ultimo dia del mes caia en la comision del mes
+   * SIGUIENTE. Verificado: uno del 31/07 a las 22:00 AR contaba en agosto.
+   * `comisionesDelPeriodo` le suma un dia a `hasta` y compara con `lt`, asi que alcanza con
+   * pasarle el INICIO del dia argentino en los dos extremos.
+   */
+  const rango = { desde: inicioDiaAR(desde), hasta: inicioDiaAR(hasta) };
   const [filas, historial] = await Promise.all([
     comisionesDelPeriodo(tenantId, rango, etiqueta),
     historialLiquidaciones(tenantId, null),
@@ -79,7 +87,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
   const liq = await liquidarComision({
     tenantId: ctx.tenantId,
     vendedorId: body.vendedor_id,
-    rango: { desde: new Date(`${desde}T00:00:00.000Z`), hasta: new Date(`${hasta}T00:00:00.000Z`) },
+    rango: { desde: inicioDiaAR(desde), hasta: inicioDiaAR(hasta) },
     periodo: etiqueta,
     cuenta: body.cuenta as Cuenta,
     notas: body.notas ?? null,

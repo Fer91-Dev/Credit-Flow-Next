@@ -3,7 +3,7 @@ import { successResponse, withErrorHandler } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { TIPOS_MOVIMIENTO_STOCK, type TipoMovimientoStock } from "@/lib/domain";
-import { nombreCompleto } from "@/lib/utils";
+import { nombreCompleto, inicioDiaAR, finDiaAR } from "@/lib/utils";
 import type { NextRequest } from "next/server";
 import type { Prisma } from "@prisma/client";
 
@@ -42,17 +42,10 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
    * Argentina es UTC-3 todo el ano (no hay horario de verano desde 2009), asi que alcanza
    * con desplazar el corte 3 horas.
    */
-  const AR_OFFSET_H = 3;
   if (desdeStr || hastaStr) {
     where.created_at = {};
-    if (desdeStr) {
-      (where.created_at as Prisma.DateTimeFilter).gte =
-        new Date(new Date(`${desdeStr}T00:00:00.000Z`).getTime() + AR_OFFSET_H * 3_600_000);
-    }
-    if (hastaStr) {
-      (where.created_at as Prisma.DateTimeFilter).lte =
-        new Date(new Date(`${hastaStr}T23:59:59.999Z`).getTime() + AR_OFFSET_H * 3_600_000);
-    }
+    if (desdeStr) (where.created_at as Prisma.DateTimeFilter).gte = inicioDiaAR(desdeStr);
+    if (hastaStr) (where.created_at as Prisma.DateTimeFilter).lte = finDiaAR(hastaStr);
   }
   if (q) {
     where.OR = [
