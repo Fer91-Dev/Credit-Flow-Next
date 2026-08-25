@@ -155,7 +155,18 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   // el costo de fondear el capital en la calle (configurable por tenant) para leer la
   // ganancia NETA. Sin costo configurado (deshabilitado) el costo es 0 (= margen bruto).
   const ingreso_financiero = round2(cobranzas.total_interes + cobranzas.total_mora + cobranzas.total_cargos);
-  const diasPeriodo = Math.round((hasta.getTime() - desde.getTime()) / MS_DIA) + 1;
+  /**
+   * 🔴 SIN `+ 1`. El período contaba un día de más y el costo de fondeo salía inflado.
+   *
+   * `hasta` es el FIN del día (23:59:59.999), así que la diferencia contra el inicio de
+   * `desde` ya es el conteo inclusivo: un mes de 31 días da 30,99999 → redondea a 31. El
+   * `+1` venía de cuando `hasta` era el inicio del día y quedó cuando se cambió.
+   *
+   * Medido: un reporte de UN día cobraba 2 días de fondeo (el DOBLE), uno de una semana 8, y
+   * el mes de agosto 32 sobre 31 — $411.063,80 en vez de $398.218,06. Cuanto más corto el
+   * período, más se distorsiona: es el error que más pega en el reporte de un día puntual.
+   */
+  const diasPeriodo = Math.max(1, Math.round((hasta.getTime() - desde.getTime()) / MS_DIA));
   const mesesPeriodo = (hasta.getUTCFullYear() - desde.getUTCFullYear()) * 12 + (hasta.getUTCMonth() - desde.getUTCMonth()) + 1;
   const costo_total = costoFondeo(saldo_activo_total, cfgRent, diasPeriodo, mesesPeriodo);
   const otros_costos = cfgRent.habilitado ? round2(cfgRent.otros_costos_mensuales * mesesPeriodo) : 0;

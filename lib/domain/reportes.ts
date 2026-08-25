@@ -88,7 +88,10 @@ export function bucketsMensuales(desde: Date, hasta: Date): BucketMes[] {
     const finMes = new Date(Date.UTC(y, m + 1, 0, 23, 59, 59, 999));
     const inicio = inicioMes < desde ? desde : inicioMes;
     const corte = finMes < hasta ? finMes : hasta;
-    const dias = Math.max(0, Math.round((corte.getTime() - inicio.getTime()) / MS_DIA)) + 1;
+    // Mismo criterio que `diasPeriodo` en /api/reportes: `corte` es fin de día, así que el
+    // redondeo YA da el conteo inclusivo. El `+1` que había acá inflaba el costo de fondeo
+    // de cada mes (32 días en agosto), y con él la rentabilidad neta de la serie.
+    const dias = Math.max(1, Math.round((corte.getTime() - inicio.getTime()) / MS_DIA));
     out.push({ key: `${y}-${String(m + 1).padStart(2, "0")}`, inicio, corte, dias });
     m += 1;
     if (m > 11) { m = 0; y += 1; }
