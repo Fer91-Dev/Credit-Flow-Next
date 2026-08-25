@@ -337,6 +337,11 @@ export const PUT = withErrorHandler(async (req: NextRequest) => {
   if (body.moraActiva !== undefined && typeof body.moraActiva !== "boolean") {
     return errorResponse("moraActiva debe ser booleano", "INVALID_INPUT", 400);
   }
+  // Tope de mora: 0 = sin techo. Se acota arriba para que un dedazo (10000) no equivalga a
+  // no tener tope sin que nadie lo note.
+  if (body.topeMoraPct !== undefined && (typeof body.topeMoraPct !== "number" || body.topeMoraPct < 0 || body.topeMoraPct > 1000)) {
+    return errorResponse("topeMoraPct debe ser un número entre 0 y 1000 (% de la cuota; 0 = sin tope)", "INVALID_INPUT", 400);
+  }
   // `ordenImputacion` ya no se acepta: el orden es fijo (art. 903 CCyC) y vive en el dominio.
   // Aceptarlo era peor que ignorarlo — se guardaba, la pantalla lo dibujaba desde la config y
   // el motor seguía cobrando en el orden real, así que un valor raro hacía mentir a la pantalla.

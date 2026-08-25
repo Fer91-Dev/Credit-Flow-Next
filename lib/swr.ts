@@ -13,7 +13,7 @@ import type {
   SimuladorConfig, DocumentosConfig, TipoMovimiento,
   PoliticaOriginacion, BureauConfig, BureauProveedor, RiesgoConfig,
 } from "@/lib/domain";
-import type { CobranzaConfig, CajaConfig } from "@/lib/config";
+import type { CobranzaConfig, CajaConfig, OrdenAgenda } from "@/lib/config";
 export type { CajaConfig };
 
 export type { SimuladorConfig, DocumentosConfig };
@@ -62,6 +62,10 @@ export interface Cliente {
   estado_motivo?: string | null;
   /** Fecha del deceso — la que frena los punitorios. */
   estado_fecha?: string | null;
+  /** El titular pidió que no lo contacten. Bloquea mensajes; la deuda sigue exigible. */
+  no_contactar?: boolean | null;
+  no_contactar_motivo?: string | null;
+  no_contactar_desde?: string | null;
   tipo_credito?: string;
   created_at: string;
   // Datos personales ampliados
@@ -198,7 +202,8 @@ export interface Credito {
   /** Número del crédito que esta refinanciación reemplaza: se muestra como REF-XXXXXX. */
   refinancia_a_numero?: number | null;
   cliente_id: string;
-  cliente: { nombre: string; apellido?: string | null; documento?: string | null; email?: string; telefono?: string };
+  /** `estado` del titular: un fallecido no se contacta ni entra en campañas. */
+  cliente: { nombre: string; apellido?: string | null; documento?: string | null; email?: string; telefono?: string; estado?: string | null; no_contactar?: boolean | null };
   vendedor_id?: string | null;
   vendedor?: { id: string; nombre: string } | null;
   /** Quién EJECUTÓ el otorgamiento (≠ a quién se le atribuye la venta). Nombre congelado. */
@@ -799,6 +804,8 @@ export interface ConfiguracionFinanciera {
   sistemaAmortizacion: "frances";
   moraActiva: boolean;
   tasaMoraDiaria: number;
+  /** Techo de la mora como % de la cuota. 0 = sin tope (ver `interesMora` en el dominio). */
+  topeMoraPct: number;
   // Sin `ordenImputacion`: el orden es fijo y se lee de ORDEN_IMPUTACION, no del servidor.
   imputarCargos: "integrado" | "separado";
   moneda: string;
@@ -825,7 +832,7 @@ export interface ConfiguracionFinanciera {
  * servidor no rompía nada, y la pantalla de Configuración seguía compilando sin saber que
  * ese campo existía. Es el mismo problema que tenían los tipos de movimiento de caja.
  */
-export type { CobranzaConfig };
+export type { CobranzaConfig, OrdenAgenda };
 
 /** Preferencias de qué avisos in-app (campanita) se muestran. */
 export interface NotificacionesConfig {
@@ -1522,12 +1529,19 @@ export function useFinanciera() {
 /** Un ítem de la agenda del día de cobranza (a quién contactar hoy). */
 export interface AgendaItem {
   credito_id: string;
+  /** Titular: lo usa el botón de WhatsApp, que contacta por el endpoint de la ficha. */
+  cliente_id: string;
   credito_numero: number | null;
   /** N° del crédito que reemplaza, si es una refinanciación → se muestra REF-xxxxxx. */
   credito_refinancia_a_numero?: number | null;
   cliente: string;
   telefono: string | null;
+  /** Capital pendiente del crédito. Referencia — NO es lo que se reclama. */
   saldo_pendiente: number;
+  /** Lo exigible hoy: cuotas vencidas impagas + punitorios. Es el número de la cobranza. */
+  vencido: number;
+  /** Cuántas cuotas están vencidas e impagas. */
+  cuotas_vencidas: number;
   dias_mora: number;
   promesa_monto: number | null;
   bucket: "promesa" | "agendado" | "enfriado";
@@ -1536,13 +1550,55 @@ export interface AgendaItem {
 }
 export interface AgendaCobranza {
   items: AgendaItem[];
-  totales: { promesa: number; agendado: number; enfriado: number; total: number };
+  /** `vencido` = plata exigible que hay en toda la cola del día. */
+  totales: { promesa: number; agendado: number; enfriado: number; total: number; vencido: number };
   dias_sin_gestion: number;
+  /** Con qué criterio vino ordenada la cola (parámetro de Configuración → Cobranza). */
+  orden: OrdenAgenda;
 }
 /** Agenda del día de cobranza (cola priorizada, scopeada al vendedor). */
 export function useAgendaCobranza() {
   const { data, error, isLoading, mutate } = useSWR<AgendaCobranza>("/api/cobranza/agenda");
   return { agenda: data, error, isLoading, mutate };
+}
+
+/** Una fila de la planilla de cobranza en calle. */
+export interface FilaPlanilla {
+  credito_id: string;
+  cliente_id: string;
+  cliente: string;
+  documento: string | null;
+  direccion: string | null;
+  telefono: string | null;
+  credito_numero: number | null;
+  credito_refinancia_a_numero: number | null;
+  vencido: number;
+  cuotas_vencidas: number;
+  cuota_desde: number | null;
+  dias_mora: number;
+  proxima_cuota_nro: number | null;
+  proxima_cuota_monto: number | null;
+  proxima_cuota_fecha: string | null;
+  /** Lo que el cobrador tiene que pedir en la puerta. */
+  a_cobrar: number;
+}
+export interface PlanillaCalle {
+  fecha: string;
+  dias_adelante: number;
+  /** `creditos` = filas de la planilla; `clientes` = titulares distintos (no es lo mismo). */
+  zonas: { zona: string | null; filas: FilaPlanilla[]; clientes: number; creditos: number; total: number }[];
+  totales: { clientes: number; creditos: number; total: number; zonas: number };
+}
+/**
+ * Planilla de cobranza en calle (agrupada por zona), scopeada al vendedor.
+ * `null` no la pide: el diálogo la trae recién cuando está abierto.
+ */
+export function usePlanillaCalle(params: { zonas: string[]; diasAdelante: number } | null) {
+  const key = params
+    ? `/api/cobranza/planilla?dias_adelante=${params.diasAdelante}&zonas=${encodeURIComponent(params.zonas.join(","))}`
+    : null;
+  const { data, error, isLoading } = useSWR<PlanillaCalle>(key);
+  return { planilla: data, error, isLoading };
 }
 
 export function useAuditoria() {

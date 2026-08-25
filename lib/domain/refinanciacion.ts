@@ -35,6 +35,8 @@ export interface OpcionesDeudaConsolidada {
   hoy?: Date;
   /** Días de gracia del crédito (tolerancia antes de que corra la mora). */
   diasGracia?: number;
+  /** Techo de la mora (% de la cuota). 0/ausente = sin tope. Ver `interesMora`. */
+  topeMoraPct?: number;
 }
 
 /**
@@ -60,7 +62,7 @@ export function calcularDeudaConsolidada(
 
     const dias = diasAtraso(c.fechaVencimiento, hoy);
     const moraPlena = moraActiva
-      ? interesMora(c.cuotaTotal, dias, { tasaDiaria: opciones.tasaMoraDiaria, diasGracia: opciones.diasGracia })
+      ? interesMora(c.cuotaTotal, dias, { tasaDiaria: opciones.tasaMoraDiaria, diasGracia: opciones.diasGracia, topePct: opciones.topeMoraPct })
       : 0;
     const moraPend = noNegativo(round2(moraPlena - c.pagadoMora));
 

@@ -3,7 +3,7 @@
  * Traduce entre el registro de BD (snake_case, CSV) y el tipo de dominio.
  */
 import { prisma } from "@/lib/prisma";
-import { resolverPlantillasContacto, PLANTILLAS_CONTACTO_DEFAULT, type PlantillasContacto } from "@/lib/domain";
+import { resolverPlantillasContacto, PLANTILLAS_CONTACTO_DEFAULT, resolverPlantillasMeta, type PlantillasContacto, type PlantillaMeta } from "@/lib/domain";
 import {
   CONFIG_DEFAULT,
   resolverConfig,
@@ -46,6 +46,7 @@ export async function getConfiguracion(
     sistemaAmortizacion: row.sistema_amortizacion as SistemaAmortizacion,
     moraActiva: row.mora_activa,
     tasaMoraDiaria: row.tasa_mora_diaria,
+    topeMoraPct: row.tope_mora_pct ?? 0,
     // `orden_imputacion` ya no se lee: el orden es fijo (ORDEN_IMPUTACION en domain/payments).
     // La columna queda inerte, mismo criterio que `base_mora` y `vendedores.rol`.
     imputarCargos: row.imputar_cargos as ConfiguracionFinanciera["imputarCargos"],
@@ -65,6 +66,7 @@ export async function guardarConfiguracion(
     sistema_amortizacion: config.sistemaAmortizacion,
     mora_activa: config.moraActiva,
     tasa_mora_diaria: config.tasaMoraDiaria,
+    tope_mora_pct: config.topeMoraPct ?? 0,
     imputar_cargos: config.imputarCargos,
     moneda: config.moneda,
     locale: config.locale,
@@ -205,11 +207,32 @@ export async function guardarDocumentosConfig(tenantId: string, config: Document
 
 // ─── Cobranza (agenda de gestión del día) ───────────────────────────────────
 
+/**
+ * Criterio de orden DENTRO de cada grupo de la agenda del día (los grupos —promesa,
+ * agendado, enfriado— van siempre en ese orden: eso es urgencia, no preferencia).
+ *  - "mora":  primero el que hace más días que no paga.
+ *  - "monto": primero el que más plata vencida tiene.
+ */
+export const ORDENES_AGENDA = ["mora", "monto"] as const;
+export type OrdenAgenda = (typeof ORDENES_AGENDA)[number];
+
 export interface CobranzaConfig {
   /** Días sin gestión tras los cuales un moroso vuelve a aparecer en la agenda del día. */
   dias_sin_gestion: number;
+  /**
+   * Con qué criterio se ordena la cola del día. Va como parámetro y no fijo en el código
+   * porque no hay una respuesta correcta: por días se protege la antigüedad de la deuda
+   * (cuanto más vieja, menos se recupera), por monto se protege la plata. Default "mora",
+   * que es como se comportaba el sistema antes de que este parámetro existiera.
+   */
+  orden: OrdenAgenda;
   /** Textos del contacto individual (WhatsApp/email desde la ficha del cliente). */
   contacto: PlantillasContacto;
+  /**
+   * Plantillas que Meta ya aprobó para WhatsApp Business. Arranca vacío y NO es obligatorio
+   * usarlas: es la red de seguridad para cuando el volumen crezca. Ver `lib/domain/contacto`.
+   */
+  plantillas_meta: PlantillaMeta[];
   /**
    * Política de ACUERDOS DE PAGO. Va anidada acá y no en una columna nueva porque es el
    * mismo dominio (cobranza) — una tabla no cambia por agrupar mejor un JSON.
@@ -232,7 +255,10 @@ export interface CobranzaConfig {
 
 export const COBRANZA_DEFAULT: CobranzaConfig = {
   dias_sin_gestion: 7,
+  orden: "mora",
   contacto: PLANTILLAS_CONTACTO_DEFAULT,
+  // Vacío a propósito: una plantilla de Meta la aprueba Meta, no la puede traer un default.
+  plantillas_meta: [],
   acuerdos: ACUERDOS_DEFAULT,
   recupero: RECUPERO_DEFAULT,
   fallecidos: FALLECIDOS_DEFAULT,
@@ -245,12 +271,16 @@ export function resolverCobranza(raw: unknown): CobranzaConfig {
   const dias = Number.isFinite(n) && n > 0 ? Math.min(90, Math.max(1, Math.round(n))) : COBRANZA_DEFAULT.dias_sin_gestion;
   return {
     dias_sin_gestion: dias,
+    // Un valor desconocido cae al default en vez de romper la agenda: la config es un JSON
+    // libre y puede llegar con basura de una versión vieja o de una edición a mano.
+    orden: ORDENES_AGENDA.includes(r.orden as OrdenAgenda) ? (r.orden as OrdenAgenda) : COBRANZA_DEFAULT.orden,
     acuerdos: resolverAcuerdos(r.acuerdos),
     recupero: resolverRecupero(r.recupero),
     // Plantillas del contacto individual desde la ficha del cliente. Viven acá y no en una
     // columna nueva porque son textos de gestión del cliente, del mismo orden que el resto
     // de este bloque; `resolverPlantillasContacto` completa con los defaults del dominio.
     contacto: resolverPlantillasContacto(r.contacto),
+    plantillas_meta: resolverPlantillasMeta(r.plantillas_meta),
     fallecidos: resolverFallecidos(r.fallecidos),
   };
 }

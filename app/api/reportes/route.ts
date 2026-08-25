@@ -115,7 +115,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
       const catFrec = c.frecuencia_def ? [c.frecuencia_def as unknown as typeof config.simulador.frecuencias[number]] : config.simulador.frecuencias;
       const tasaPeriodica = tasaPeriodicaSegunConvencion(c.tasa, config.convencionTasa, frec, catFrec);
       const cuota = cuotaMensualFrancesa(c.monto_original, tasaPeriodica, c.plazo_meses);
-      interesMoraTotal += interesMora(cuota, c.dias_mora, { tasaDiaria: mc.tasaMoraDiaria });
+      interesMoraTotal += interesMora(cuota, c.dias_mora, { tasaDiaria: mc.tasaMoraDiaria, topePct: mc.topeMoraPct });
     }
   }
   const morosidad = {

@@ -6,13 +6,14 @@ import { getCobranzaConfig, getComunicacionConfig, getConfiguracion } from "@/li
 import { getFinanciera } from "@/lib/financiera";
 import { registrarAuditoria } from "@/lib/audit";
 import {
-  construirMensajeCampana, linkWhatsapp, diasMoraActual, esCreditoVivo, round2,
-  calcularDeudaConsolidada, moraDelCredito, moraDesdeCronograma, type CuotaParaImputar,
+  linkWhatsapp, diasMoraActual, esCreditoVivo, round2, renderPlantillaContacto, type DatosPlantillaContacto,
+  calcularDeudaConsolidada, calcularDeudaVencida, diasAtraso, moraDelCredito, moraDesdeCronograma, type CuotaParaImputar,
   plantillaDe, cuentaComoGestion, MOTIVO_LABEL, tipoGestionDeCanal, resolverPlantillasContacto, type MotivoContacto,
-  deudaEnRevision,
+  deudaEnRevision, contactoBloqueado, resolverPlantillasMeta, renderPlantillaMeta,
 } from "@/lib/domain";
 import { nombreCompleto, hoyComercial } from "@/lib/utils";
 import { enviarEmailTenant, motivoEmailNoDisponible, type EmailTenantConfig } from "@/lib/mailer-tenant";
+import { enviarWhatsappApi, whatsappApiDisponible, type WhatsappApiConfig } from "@/lib/whatsapp";
 import type { NextRequest } from "next/server";
 
 interface RouteParams {
@@ -38,7 +39,24 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
   const { cliente, datos, comm } = r as Extract<typeof r, { cliente: object }>;
   // Una config guardada ANTES de que existiera este bloque no trae `contacto`: se resuelve
   // sobre los defaults en vez de romper.
-  const plantillas = resolverPlantillasContacto((await getCobranzaConfig(ctx.tenantId)).contacto);
+  const cobranzaCfg = await getCobranzaConfig(ctx.tenantId);
+  const plantillas = resolverPlantillasContacto(cobranzaCfg.contacto);
+
+  /**
+   * Las plantillas que Meta aprobó, ya COMPLETADAS con los datos de este cliente. Se manda
+   * el texto final y no el cuerpo crudo porque es lo que la pantalla tiene que mostrar
+   * antes de enviar: si el operador ve la variable en crudo, no puede verificar el importe.
+   * Solo las activas: una plantilla pausada por Meta no se puede ofrecer.
+   */
+  const plantillasMeta = resolverPlantillasMeta(cobranzaCfg.plantillas_meta)
+    .filter((p) => p.activa)
+    .map((p) => ({
+      // El MOTIVO viaja: la pantalla solo puede ofrecer las de lo que se está mandando. Una
+      // plantilla de mora elegida en un mensaje de promoción le reclamaría una deuda por
+      // escrito a alguien a quien se le iba a hacer una oferta.
+      id: p.id, motivo: p.motivo, nombre: p.nombre, idioma: p.idioma, categoria: p.categoria,
+      texto: renderPlantillaMeta(p, datos),
+    }));
 
   const mensajes = Object.fromEntries(
     MOTIVOS.map((m) => {
@@ -49,15 +67,22 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
 
   return successResponse({
     cliente: { id: cliente.id, nombre: datos.nombre, telefono: cliente.telefono, email: cliente.email },
-    datos: { deuda: datos.deuda, dias: datos.dias, cuota: datos.cuota, vencimiento: datos.vencimiento },
+    datos: {
+      deuda: datos.deuda, vencido: datos.vencido, cuotas: datos.cuotas, nroCuota: datos.nroCuota,
+      dias: datos.dias, cuota: datos.cuota, vencimiento: datos.vencimiento,
+    },
     canales: {
       // WhatsApp siempre se puede: sin API de Meta configurada, sale por wa.me (manual).
-      whatsapp: { disponible: !!cliente.telefono, automatico: !!comm.whatsapp?.enabled },
+      // `automatico` mira si la API PUEDE mandar de verdad, no solo si el switch está
+      // prendido: con el switch en sí y sin token, la pantalla decía que salía solo y el
+      // operador se quedaba esperando un mensaje que nadie mandaba.
+      whatsapp: { disponible: !!cliente.telefono, automatico: whatsappApiDisponible(comm.whatsapp) },
       // "automatico" ahora mira si el canal PUEDE mandar de verdad, no solo si el
       // switch está prendido: la config podía estar activa y sin credenciales completas.
       email: { disponible: !!cliente.email, automatico: !motivoEmailNoDisponible(comm.email) },
     },
     mensajes,
+    plantillas_meta: plantillasMeta,
   });
 });
 
@@ -82,10 +107,40 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
   const canal = body.canal === "email" ? "email" : "whatsapp";
   const motivo: MotivoContacto = MOTIVOS.includes(body.motivo) ? body.motivo : "informacion";
 
-  const plantillas = resolverPlantillasContacto((await getCobranzaConfig(ctx.tenantId)).contacto);
+  const cobranzaCfg = await getCobranzaConfig(ctx.tenantId);
+  const plantillas = resolverPlantillasContacto(cobranzaCfg.contacto);
   const base = plantillaDe(plantillas, motivo);
-  // El operador puede editar el texto antes de mandarlo; si no lo toca, va la plantilla.
-  const texto = typeof body.mensaje === "string" && body.mensaje.trim() ? body.mensaje.trim() : render(base.texto, datos);
+
+  /**
+   * 🔴 UNA PLANTILLA DE META NO SE EDITA.
+   *
+   * Meta aprueba un texto exacto; cambiarle una palabra la invalida y el mensaje deja de
+   * entregarse. Por eso, cuando se elige una, el cuerpo lo arma el SERVIDOR con la plantilla
+   * guardada y se ignora lo que venga en `mensaje`: si se aceptara el texto del navegador,
+   * bastaría con editar el textarea para mandar como "aprobado" algo que Meta nunca vio.
+   */
+  const plantillaMeta = typeof body.plantilla_meta_id === "string" && body.plantilla_meta_id
+    ? resolverPlantillasMeta(cobranzaCfg.plantillas_meta).find((p) => p.id === body.plantilla_meta_id && p.activa) ?? null
+    : null;
+  if (body.plantilla_meta_id && !plantillaMeta)
+    return errorResponse("La plantilla de Meta elegida ya no existe o está desactivada.", "INVALID_REFERENCE", 400);
+  /**
+   * La plantilla tiene que ser DEL MOTIVO que se está mandando. La pantalla ya filtra, pero
+   * el corte real va acá: mandar `aviso_mora_ar` con motivo "promocion" le reclamaría una
+   * deuda por escrito a alguien a quien se le estaba por hacer una oferta, y además quedaría
+   * registrado como promoción —que no cuenta como gestión— un reclamo que sí lo es.
+   */
+  if (plantillaMeta && plantillaMeta.motivo !== motivo)
+    return errorResponse(
+      `La plantilla "${plantillaMeta.nombre}" es para ${MOTIVO_LABEL[plantillaMeta.motivo].toLowerCase()}, no para ${MOTIVO_LABEL[motivo].toLowerCase()}.`,
+      "INVALID_INPUT",
+      400,
+    );
+
+  // Sin plantilla de Meta, el operador puede editar el texto; si no lo toca, va la del tenant.
+  const texto = plantillaMeta
+    ? renderPlantillaMeta(plantillaMeta, datos)
+    : typeof body.mensaje === "string" && body.mensaje.trim() ? body.mensaje.trim() : render(base.texto, datos);
   const asunto = typeof body.asunto === "string" && body.asunto.trim() ? body.asunto.trim() : render(base.asunto, datos);
   if (!texto) return errorResponse("El mensaje está vacío.", "INVALID_INPUT", 400);
 
@@ -93,10 +148,36 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
 
   if (canal === "whatsapp") {
     if (!cliente.telefono) return errorResponse("El cliente no tiene teléfono cargado.", "SIN_TELEFONO", 409);
-    // Sin API de Meta configurada, el envío es MANUAL: se devuelve el link wa.me y lo abre
-    // el operador. Se registra igual — el contacto ocurrió, lo haya mandado un bot o una
-    // persona, y la ficha tiene que poder contarlo.
-    enviado = { metodo: "manual", link: linkWhatsapp(cliente.telefono, texto) };
+
+    /**
+     * 🔴 Con la API de Meta configurada, el mensaje lo manda el SISTEMA.
+     *
+     * Antes esta rama era siempre manual: el comentario decía "sin API de Meta configurada"
+     * pero no había ninguna bifurcación, así que una financiera que pagara la API igual
+     * tenía que abrir WhatsApp y apretar enviar cliente por cliente.
+     *
+     * Y va como plantilla aprobada si se eligió una, con sus parámetros: es la única forma
+     * de que Meta lo entregue cuando el cliente no escribió en las últimas 24 h — que es el
+     * caso normal de una cobranza.
+     */
+    const waCfg = comm.whatsapp as WhatsappApiConfig | null;
+    if (whatsappApiDisponible(waCfg)) {
+      const res = await enviarWhatsappApi(waCfg, {
+        telefono: cliente.telefono,
+        texto,
+        plantilla: plantillaMeta,
+        // Los valores de ESTE cliente, por el mismo renderizador que arma el texto que se
+        // previsualizó en pantalla: el operador leyó lo que Meta va a componer.
+        resolver: (clave) => render(`[${clave}]`, datos),
+      });
+      if (!res.ok) return errorResponse(res.error ?? "No se pudo enviar el WhatsApp", "ENVIO_FALLIDO", 502);
+      enviado = { metodo: "api" };
+    } else {
+      // Sin API, el envío es MANUAL: se devuelve el link wa.me y lo abre el operador. Se
+      // registra igual — el contacto ocurrió, lo haya mandado un bot o una persona, y la
+      // ficha tiene que poder contarlo.
+      enviado = { metodo: "manual", link: linkWhatsapp(cliente.telefono, texto) };
+    }
   } else {
     if (!cliente.email) return errorResponse("El cliente no tiene email cargado.", "SIN_EMAIL", 409);
     const impedimento = motivoEmailNoDisponible(comm.email);
@@ -143,7 +224,13 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
     entidadId: cliente.id,
     accion: "contactar",
     descripcion: `${MOTIVO_LABEL[motivo]} por ${canal === "email" ? "email" : "WhatsApp"} a ${datos.nombre}`,
-    meta: { canal, motivo, metodo: enviado.metodo, mensaje: texto, asunto: canal === "email" ? asunto : null, gestion_id: gestionId },
+    // Con qué plantilla se mandó queda registrado: si Meta después observa el número, hay
+    // que poder decir qué salió aprobado y qué salió como texto libre.
+    meta: {
+      canal, motivo, metodo: enviado.metodo, mensaje: texto,
+      asunto: canal === "email" ? asunto : null, gestion_id: gestionId,
+      plantilla_meta: plantillaMeta ? `${plantillaMeta.nombre} (${plantillaMeta.idioma})` : null,
+    },
   });
 
   return successResponse({ canal, motivo, ...enviado, gestion_id: gestionId, mensaje: texto }, 201);
@@ -189,11 +276,13 @@ async function cargarContactable(ctx: Ctx, id: string) {
    * de otro lado. Es parametrizable — hay financieras que gestionan con los herederos.
    */
   const { fallecidos } = await getCobranzaConfig(ctx.tenantId);
-  if (fallecidos.bloquea_contacto && deudaEnRevision(cliente)) {
+  const corte = contactoBloqueado(cliente, { bloqueaFallecidos: fallecidos.bloquea_contacto });
+  if (corte.bloqueado) {
+    const quien = `${cliente.nombre} ${cliente.apellido ?? ""}`.trim();
     return {
       error: errorResponse(
-        `${cliente.nombre} ${cliente.apellido ?? ""}`.trim() + " figura como fallecido: su deuda está en revisión y el contacto está bloqueado.",
-        "CLIENTE_FALLECIDO",
+        `${quien}: ${corte.motivo}.${cliente.no_contactar && cliente.no_contactar_motivo ? ` (${cliente.no_contactar_motivo})` : ""}`,
+        cliente.no_contactar ? "NO_CONTACTAR" : "CLIENTE_FALLECIDO",
         409,
       ),
     } as const;
@@ -211,7 +300,7 @@ async function cargarContactable(ctx: Ctx, id: string) {
   const financiera = await getFinanciera(ctx.tenantId);
   const commRaw = await getComunicacionConfig(ctx.tenantId);
   const comm = {
-    whatsapp: (commRaw.whatsappConfig ?? null) as { enabled?: boolean } | null,
+    whatsapp: (commRaw.whatsappConfig ?? null) as WhatsappApiConfig | null,
     email: (commRaw.emailConfig ?? null) as EmailTenantConfig | null,
   };
 
@@ -225,31 +314,69 @@ async function cargarContactable(ctx: Ctx, id: string) {
    * la refinanciación arma la deuda a consolidar.
    */
   const config = await getConfiguracion(ctx.tenantId);
-  const deudaViva = round2(
-    vivos.reduce((total, c) => {
-      const cuotasDom: CuotaParaImputar[] = c.cuotas.map((q) => ({
-        id: q.id, nro: q.nro, fechaVencimiento: q.fecha_vencimiento,
-        capital: q.capital, interes: q.interes, cargos: round2(q.iva + q.seguro + q.gastos),
-        cuotaTotal: q.cuota_total,
-        pagadoCapital: q.pagado_capital, pagadoInteres: q.pagado_interes,
-        pagadoMora: q.pagado_mora, pagadoCargos: q.pagado_cargos,
-      }));
-      const mc = moraDelCredito(moraDesdeCronograma(c.cronograma), config);
-      const gracia = (c.cronograma as { diasGracia?: number } | null)?.diasGracia ?? config.simulador.diasGracia;
-      const d = calcularDeudaConsolidada(cuotasDom, {
-        moraActiva: mc.moraActiva, tasaMoraDiaria: mc.tasaMoraDiaria, diasGracia: gracia,
-        // Dia comercial argentino: con el ahora en UTC, entre las 21:00 y la medianoche de
-        // Argentina se le cobra —y se le INFORMA— un dia de mora de mas.
-        hoy,
-      });
-      return total + d.total;
-    }, 0),
-  );
+
+  /**
+   * Se calculan LAS DOS cosas, con la misma fórmula de mora que usa el cobro:
+   *
+   *  - `deudaViva`: todo el crédito si lo cancela hoy (`calcularDeudaConsolidada`).
+   *  - `vencido`:   solo lo que YA venció y no pagó (`calcularDeudaVencida`), que es lo que
+   *                 un aviso de mora tiene que reclamar.
+   *
+   * 🔴 Antes solo existía la primera y la plantilla de mora la usaba. A Ana, con 15 días de
+   * atraso sobre UNA cuota de $73.441,71, se le reclamaban $221.426,76: el préstamo entero,
+   * cuotas futuras incluidas. Además de ser un reclamo improcedente, no coincidía con lo que
+   * la ficha muestra ni con lo que la caja iba a cobrar.
+   */
+  let deudaTotal = 0;
+  let venc = { total: 0, cuotas: 0 };
+  let nroCuotaVencida: number | null = null;
+
+  for (const c of vivos) {
+    const cuotasDom: CuotaParaImputar[] = c.cuotas.map((q) => ({
+      id: q.id, nro: q.nro, fechaVencimiento: q.fecha_vencimiento,
+      capital: q.capital, interes: q.interes, cargos: round2(q.iva + q.seguro + q.gastos),
+      cuotaTotal: q.cuota_total,
+      pagadoCapital: q.pagado_capital, pagadoInteres: q.pagado_interes,
+      pagadoMora: q.pagado_mora, pagadoCargos: q.pagado_cargos,
+    }));
+    const mc = moraDelCredito(moraDesdeCronograma(c.cronograma), config);
+    const gracia = (c.cronograma as { diasGracia?: number } | null)?.diasGracia ?? config.simulador.diasGracia;
+    // Dia comercial argentino: con el ahora en UTC, entre las 21:00 y la medianoche de
+    // Argentina se le cobra —y se le INFORMA— un dia de mora de mas.
+    const opts = { moraActiva: mc.moraActiva, tasaMoraDiaria: mc.tasaMoraDiaria, topeMoraPct: mc.topeMoraPct, diasGracia: gracia, hoy };
+
+    deudaTotal += calcularDeudaConsolidada(cuotasDom, opts).total;
+
+    const dv = calcularDeudaVencida(cuotasDom, opts);
+    venc = { total: venc.total + dv.total, cuotas: venc.cuotas + dv.cuotas_vencidas };
+    // La cuota que se nombra es la vencida MÁS VIEJA: es la que el cliente tiene que buscar
+    // en su plan de pagos para reconocer el reclamo.
+    const masVieja = cuotasDom.find((q) => diasAtraso(q.fechaVencimiento, hoy) > 0 && q.pagadoCapital < q.capital);
+    if (masVieja && (nroCuotaVencida == null || masVieja.nro < nroCuotaVencida)) nroCuotaVencida = masVieja.nro;
+  }
+
+  const deudaViva = round2(deudaTotal);
+  const vencido = round2(venc.total);
 
   const proximo = vivos
     .map((c) => c.proximo_pago)
     .filter((d): d is Date => d instanceof Date)
     .sort((a, b) => a.getTime() - b.getTime())[0] ?? null;
+
+  /**
+   * 🔴 `cuota` estaba FIJO EN 0.
+   *
+   * El placeholder `[cuota]` figuraba como disponible, así que una financiera que lo usara
+   * le habría escrito a su cliente que su próxima cuota es de $0,00. Peor que no
+   * reemplazarlo: un número inventado y con aire de oficial.
+   *
+   * Es el importe PROGRAMADO de la primera cuota impaga del crédito más atrasado —el mismo
+   * del que habla el mensaje—. Se usa el nominal del plan y no lo que habría que cobrar hoy
+   * con punitorios: la cuota es un número del contrato, fijo, y el atraso ya viaja aparte en
+   * `[deuda]` y `[dias]`.
+   */
+  const creditoDelMensaje = peor ?? vivos[0] ?? null;
+  const proximaCuota = creditoDelMensaje?.cuotas?.find((q) => q.pagado_capital < q.capital) ?? null;
 
   return {
     cliente,
@@ -260,25 +387,27 @@ async function cargarContactable(ctx: Ctx, id: string) {
       nombre: cliente.nombre,
       financiera: financiera?.nombre || "tu financiera",
       deuda: deudaViva,
+      vencido,
+      cuotas: venc.cuotas,
+      nroCuota: nroCuotaVencida,
       dias: peor?.dias ?? 0,
-      cuota: 0,
+      cuota: round2(proximaCuota?.cuota_total ?? 0),
       vencimiento: proximo,
     },
   } as const;
 }
 
-/** Rellena los placeholders `[clave]` con el MISMO armador que usan las campañas. */
-function render(plantilla: string, d: { nombre: string; financiera: string; deuda: number; dias: number; cuota: number; vencimiento: Date | null }): string {
-  const conFecha = plantilla.replace(
-    /\[vencimiento\]/gi,
-    d.vencimiento ? new Intl.DateTimeFormat("es-AR", { timeZone: "UTC" }).format(d.vencimiento) : "—",
-  ).replace(/\[financiera\]/gi, d.financiera);
-  return construirMensajeCampana(conFecha, {
-    nombre: d.nombre,
-    monto: d.deuda,
-    saldo: d.deuda,
-    dias: d.dias,
-  }).replace(/\[deuda\]/gi, new Intl.NumberFormat("es-AR", { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(d.deuda));
+/**
+ * Rellena los placeholders. La función vive en el DOMINIO (`renderPlantillaContacto`) porque
+ * la comparte con la vista previa de Configuración: si cada lado tuviera la suya, la pantalla
+ * mostraría un mensaje y al cliente le llegaría otro.
+ *
+ * Tenía dos defectos que se arreglaron al centralizarla: `[cuota]` estaba documentado y NUNCA
+ * se sustituía (al cliente le llegaba el texto literal), y los importes salían redondeados a
+ * pesos enteros, así que el mensaje decía una cifra y la caja cobraba otra.
+ */
+function render(plantilla: string, d: DatosPlantillaContacto): string {
+  return renderPlantillaContacto(plantilla, d);
 }
 
 /** Cuerpo del mail: el texto tal cual se leyó en pantalla, firmado por la financiera. */

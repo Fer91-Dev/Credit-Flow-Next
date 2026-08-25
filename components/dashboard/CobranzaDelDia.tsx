@@ -87,7 +87,8 @@ export function CobranzaDelDia() {
                     </p>
                   </div>
                   <span className="hidden sm:block font-mono text-xs text-foreground shrink-0">
-                    {formatMonto(it.promesa_monto ?? it.saldo_pendiente)}
+                    {/* Lo VENCIDO, igual que la agenda: el saldo es el préstamo entero. */}
+                    {formatMonto(it.promesa_monto ?? it.vencido)}
                   </span>
                   <StatusBadge label={`${it.dias_mora}d`} variant={critica ? "destructive" : "warning"} />
                 </Link>

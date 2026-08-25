@@ -88,7 +88,7 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
         const graciaCred = (c.cronograma as { diasGracia?: number } | null)?.diasGracia ?? config.simulador.diasGracia;
         interes_mora = moraPendienteTotal(
           c.cuotas.map((q) => ({ fechaVencimiento: q.fecha_vencimiento, cuotaTotal: q.cuota_total, pagadoMora: q.pagado_mora })),
-          { tasaDiaria: mc.tasaMoraDiaria, diasGracia: graciaCred, hoy: hoyComercial() },
+          { tasaDiaria: mc.tasaMoraDiaria, diasGracia: graciaCred, hoy: hoyComercial(), topePct: mc.topeMoraPct },
         );
       }
     }
@@ -363,6 +363,52 @@ export const PATCH = withErrorHandler(async (req: NextRequest, { params }: Route
     }
   }
 
+  /**
+   * ── NO CONTACTAR ──
+   *
+   * 🔴 ASIMÉTRICO A PROPÓSITO: cualquiera puede PONERLO, solo un admin puede SACARLO.
+   *
+   * Quien atiende el teléfono es el que escucha "no me llamen más", y tiene que poder
+   * registrarlo en el momento — si hay que esperar a un admin, el pedido se pierde y al
+   * cliente lo vuelven a llamar. Poner el bloqueo no puede hacer daño: solo protege.
+   *
+   * Sacarlo sí puede: es habilitar de nuevo el reclamo sobre alguien que pidió lo contrario.
+   * Un vendedor con la meta apretada tendría el incentivo exacto para destildarlo. Por eso
+   * levantar la protección es decisión de un admin y queda auditado.
+   */
+  let contactoLog: { activado: boolean; motivo: string | null } | null = null;
+  if ("no_contactar" in body) {
+    const pedido = body.no_contactar === true;
+    const actual = existing.no_contactar === true;
+    if (pedido !== actual) {
+      const motivo = typeof body.no_contactar_motivo === "string" ? body.no_contactar_motivo.trim() : "";
+      if (pedido) {
+        if (!motivo) {
+          return errorResponse(
+            "Indicá qué pidió el cliente (por escrito, por teléfono, solo al celular…). Sin eso no queda constancia de por qué dejamos de contactarlo.",
+            "MOTIVO_REQUERIDO",
+            400,
+          );
+        }
+        updateData.no_contactar = true;
+        updateData.no_contactar_motivo = motivo;
+        updateData.no_contactar_desde = new Date();
+      } else {
+        if (role !== "admin") {
+          return errorResponse(
+            "Solo un administrador puede volver a habilitar el contacto de un cliente que pidió no ser contactado.",
+            "SOLO_ADMIN",
+            403,
+          );
+        }
+        updateData.no_contactar = false;
+        updateData.no_contactar_motivo = motivo || null;
+        updateData.no_contactar_desde = null;
+      }
+      contactoLog = { activado: pedido, motivo: motivo || null };
+    }
+  }
+
   if (Object.keys(updateData).length === 0) {
     return errorResponse("No hay campos para actualizar", "INVALID_INPUT", 400);
   }
@@ -484,6 +530,21 @@ export const PATCH = withErrorHandler(async (req: NextRequest, { params }: Route
         fecha_fallecimiento: updated.estado_fecha,
         rol: role,
       },
+    });
+  }
+
+  // Activar o levantar el "no contactar" queda registrado: es un pedido del titular y la
+  // financiera tiene que poder mostrar cuándo lo recibió y quién lo habilitó de nuevo.
+  if (contactoLog) {
+    await registrarAuditoria({
+      tenantId,
+      entidad: "clientes",
+      entidadId: id,
+      accion: "actualizar",
+      descripcion: contactoLog.activado
+        ? `${nombreCompleto(updated)}: pidió NO ser contactado${contactoLog.motivo ? ` — ${contactoLog.motivo}` : ""}`
+        : `${nombreCompleto(updated)}: se rehabilitó el contacto${contactoLog.motivo ? ` — ${contactoLog.motivo}` : ""}`,
+      meta: { no_contactar: contactoLog.activado, motivo: contactoLog.motivo, rol: role },
     });
   }
 

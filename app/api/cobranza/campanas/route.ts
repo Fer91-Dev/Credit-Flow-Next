@@ -2,10 +2,11 @@ import { requireRole, scopeCreditosVendedor } from "@/lib/auth";
 import { successResponse, errorResponse, withErrorHandler, assertSameOrigin } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
-import { cuotaMensualFrancesa, tasaPeriodicaSegunConvencion, interesMora, normalizarFrecuencia, calculateRecoveryOffer, diasMoraActual, type FrecuenciaDef, type ConfiguracionFinanciera, moraDelCredito, moraDesdeCronograma, esCreditoVivo } from "@/lib/domain";
-import { getConfiguracion } from "@/lib/config";
+import { cuotaMensualFrancesa, tasaPeriodicaSegunConvencion, interesMora, normalizarFrecuencia, calculateRecoveryOffer, diasMoraActual, type FrecuenciaDef, type ConfiguracionFinanciera, moraDelCredito, moraDesdeCronograma, esCreditoVivo, calcularDeudaVencida, round2, deudaEnRevision, contactoBloqueado, resolverPlantillasMeta, type CuotaParaImputar } from "@/lib/domain";
+import { getConfiguracion, getCobranzaConfig } from "@/lib/config";
 import { registrarAuditoria } from "@/lib/audit";
-import { hoyComercial } from "@/lib/utils";
+import { hoyComercial, formatCreditoNumero } from "@/lib/utils";
+import { numerosRefinanciados } from "@/lib/creditos-numero";
 import type { NextRequest } from "next/server";
 
 const CANALES = ["whatsapp", "email", "sms"];
@@ -43,7 +44,7 @@ function interesMoraDe(c: CreditoMora, config: ConfiguracionFinanciera): number 
   const tasaPeriodica = tasaPeriodicaSegunConvencion(c.tasa, config.convencionTasa, frec, catFrec);
   const cuota = cuotaMensualFrancesa(c.monto_original, tasaPeriodica, c.plazo_meses);
   const gracia = (c.cronograma as { diasGracia?: number } | null)?.diasGracia ?? config.simulador.diasGracia;
-  return interesMora(cuota, c.dias_mora, { tasaDiaria: mc.tasaMoraDiaria, diasGracia: gracia });
+  return interesMora(cuota, c.dias_mora, { tasaDiaria: mc.tasaMoraDiaria, diasGracia: gracia, topePct: mc.topeMoraPct });
 }
 
 /** Métricas agregadas de una campaña a partir de sus objetivos. */
@@ -120,16 +121,69 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
 
   // Créditos del tenant entre los solicitados (multi-tenant: nunca por id suelto).
   // Scoping anti-IDOR: un vendedor solo puede armar campañas con SUS créditos.
-  const creditos = await prisma.creditos.findMany({
+  const candidatos = await prisma.creditos.findMany({
     where: { ...withTenant(tenantId), ...scopeCreditosVendedor(ctx), id: { in: body.credito_ids } },
     select: {
-      id: true, saldo_pendiente: true, dias_mora: true, proximo_pago: true, estado: true,
+      id: true, numero: true, saldo_pendiente: true, dias_mora: true, proximo_pago: true, estado: true,
+      es_refinanciacion: true, refinancia_a: true, refinanciado_en: true,
       monto_original: true, plazo_meses: true, tasa: true,
       frecuencia: true, frecuencia_def: true, cronograma: true,
+      // El estado del CLIENTE: a un fallecido no se le manda nada.
+      cliente: { select: { estado: true, no_contactar: true, no_contactar_motivo: true } },
+      // Las cuotas: sin ellas no se puede saber qué está VENCIDO, que es lo que se reclama.
+      cuotas: { orderBy: { nro: "asc" } },
     },
   });
+
+  /**
+   * 🔴 SOLO CRÉDITOS VIVOS. Un REFINANCIADO no se reclama.
+   *
+   * Refinanciar cierra el crédito viejo (saldo $0) y traslada la deuda a uno nuevo, pero NO
+   * marca sus cuotas como pagadas —porque no se pagaron, se mudaron—. Como la campaña no
+   * filtraba por estado, se podía cargar ese crédito cerrado y `calcularDeudaVencida` le
+   * encontraba cuotas impagas: sobre CRD-000060, saldo real $0,00, la campaña reclamaba
+   * $134.398,34. Al cliente se le pedía DOS VECES la misma plata: por el crédito nuevo, que
+   * es donde vive la deuda, y por el viejo, que ya no existe.
+   *
+   * Lo mismo vale para un pagado o un anulado. El crédito NACIDO de una refinanciación sí
+   * entra: es deuda viva y puede caer en mora como cualquiera.
+   */
+  /**
+   * Y los FALLECIDOS tampoco entran a la lista.
+   *
+   * El corte al enviar ya existía, así que el mensaje no salía — pero el fallecido igual
+   * aparecía entre los objetivos y contaba para el total. El operador armaba una campaña de
+   * 10, veía 10, y salían 9 sin que nada lo explicara antes de apretar. Si el cliente muere
+   * DESPUÉS de armada la campaña, el corte del envío sigue cubriendo ese caso.
+   */
+  const { fallecidos: polFallecidos } = await getCobranzaConfig(tenantId);
+  const cobrable = (c: (typeof candidatos)[number]) =>
+    esCreditoVivo(c.estado) && !contactoBloqueado(c.cliente, { bloqueaFallecidos: polFallecidos.bloquea_contacto }).bloqueado;
+
+  const creditos = candidatos.filter(cobrable);
+  const excluidos = candidatos.filter((c) => !cobrable(c));
+  // Para nombrar a los excluidos como los ve el operador (REF-000060, no CRD-000061).
+  const origenesRefi = await numerosRefinanciados(tenantId, excluidos);
+
+  /**
+   * El motivo REAL de la exclusión, que no siempre es el estado del crédito: un crédito
+   * vencido —el candidato natural de una campaña— puede quedar afuera porque su titular
+   * falleció. Decir "no es cobrable: vencido" ahí sería mentirle al operador sobre algo que
+   * sí puede arreglar. Se usa la misma función para el error y para la lista de excluidos.
+   */
+  const motivoExclusion = (c: (typeof candidatos)[number]): string =>
+    contactoBloqueado(c.cliente, { bloqueaFallecidos: polFallecidos.bloquea_contacto }).motivo
+      ?? (c.estado === "refinanciado"
+        ? "Ya se refinanció: su deuda está en el crédito nuevo"
+        : c.estado === "pagado" || c.estado === "cancelado"
+          ? "Ya está saldado"
+          : `No es cobrable (${c.estado})`);
+
   if (creditos.length === 0) {
-    return errorResponse("Ningún crédito válido del tenant en credito_ids", "INVALID_REFERENCE", 400);
+    const detalle = excluidos.length
+      ? ` ${[...new Set(excluidos.map(motivoExclusion))].join(" · ")}.`
+      : "";
+    return errorResponse(`Ningún crédito válido para la campaña.${detalle}`, "INVALID_REFERENCE", 400);
   }
 
   const config = await getConfiguracion(tenantId);
@@ -139,20 +193,53 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
   // (no del cache `dias_mora`, que no se avanza día a día) → la oferta refleja la mora de hoy.
   const objetivosData = creditos.map((c) => {
     const dm = c.proximo_pago ? diasMoraActual(c.proximo_pago, hoyCamp) : c.dias_mora;
-    const interes = interesMoraDe({ ...c, dias_mora: dm }, config);
+
+    /**
+     * 🔴 LA OFERTA SE ARMA SOBRE LO VENCIDO, NO SOBRE EL CAPITAL.
+     *
+     * Antes entraba `saldo_pendiente` —capital— así que la cifra que le llegaba a cada
+     * moroso no coincidía ni con su ficha ni con lo que la caja iba a cobrarle. Es el mismo
+     * error que se corrigió en el contacto individual, pero repetido en toda la lista.
+     *
+     * Y hay una razón de fondo además de la aritmética: una campaña de recupero negocia lo
+     * que YA venció. Reclamar el préstamo entero —cuotas futuras incluidas— es exigir la
+     * caducidad de plazos, que es otra cosa y no se decide desde una campaña.
+     *
+     * `calcularDeudaVencida` es la MISMA función con la que se arman los acuerdos de pago,
+     * así que la oferta masiva y el arreglo de mostrador hablan del mismo número.
+     */
+    const cuotasDom: CuotaParaImputar[] = c.cuotas.map((q) => ({
+      id: q.id, nro: q.nro, fechaVencimiento: q.fecha_vencimiento,
+      capital: q.capital, interes: q.interes, cargos: round2(q.iva + q.seguro + q.gastos),
+      cuotaTotal: q.cuota_total,
+      pagadoCapital: q.pagado_capital, pagadoInteres: q.pagado_interes,
+      pagadoMora: q.pagado_mora, pagadoCargos: q.pagado_cargos,
+    }));
+    const mc = moraDelCredito(moraDesdeCronograma(c.cronograma), config);
+    const gracia = (c.cronograma as { diasGracia?: number } | null)?.diasGracia ?? config.simulador.diasGracia;
+    const dv = calcularDeudaVencida(cuotasDom, {
+      moraActiva: mc.moraActiva, tasaMoraDiaria: mc.tasaMoraDiaria, topeMoraPct: mc.topeMoraPct, diasGracia: gracia, hoy: hoyCamp,
+    });
+
+    // La oferta se calcula sobre lo vencido SIN mora, con la mora aparte: es lo que
+    // `calculateRecoveryOffer` espera para poder condonar solo los punitorios.
+    const vencidoSinMora = round2(dv.capital + dv.interes + dv.cargos);
     const oferta = calculateRecoveryOffer({
-      saldo: c.saldo_pendiente,
-      interesMora: interes,
+      saldo: vencidoSinMora,
+      interesMora: dv.mora,
       diasMora: dm,
       descuentoPct: promoValor,
     });
     return {
       credito_id: c.id,
-      saldo: c.saldo_pendiente,
+      saldo: c.saldo_pendiente,     // capital, se conserva como referencia
+      vencido: round2(dv.total),    // lo exigible hoy, con mora
+      cuotas_vencidas: dv.cuotas_vencidas,
       dias_mora: dm,
-      interes_mora: interes,
+      interes_mora: dv.mora,
       oferta_monto: oferta.montoConDescuento,
       oferta_descuento: oferta.descuento,
+      envio_estado: "pendiente",
     };
   });
 
@@ -170,6 +257,17 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
         promo_valor: promoValor,
         promo_vence: body.promo_vence ? new Date(body.promo_vence) : null,
         mensaje_template: body.mensaje_template?.trim() || null,
+        /**
+         * Con qué plantilla aprobada salió, o null si fue texto libre. Se valida contra las
+         * registradas y ACTIVAS: el nombre viene del navegador y no puede quedar en la
+         * campaña un "aprobado por Meta" que nadie aprobó.
+         */
+        plantilla_meta: typeof body.plantilla_meta === "string" && body.plantilla_meta
+          ? resolverPlantillasMeta((await getCobranzaConfig(tenantId)).plantillas_meta)
+              // Y de MORA: una campaña sobre créditos atrasados es un reclamo, así que una
+              // plantilla de promoción o de información no puede quedar registrada acá.
+              .find((p) => p.nombre === body.plantilla_meta && p.activa && p.motivo === "mora")?.nombre ?? null
+          : null,
       },
     });
 
@@ -189,5 +287,16 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     meta: { canal, promo_tipo: promoTipo, promo_valor: promoValor, objetivos: objetivosData.length },
   });
 
-  return successResponse({ ...campana, metricas: metricasDe([]) }, 201);
+  return successResponse({
+    ...campana,
+    metricas: metricasDe([]),
+    // Los que quedaron afuera viajan con su motivo: descartarlos en silencio haría que el
+    // operador creyera que le mandó a 20 cuando le mandó a 17.
+    excluidos: excluidos.map((c) => ({
+      credito_id: c.id,
+      numero: formatCreditoNumero(c.numero, c.es_refinanciacion && c.refinancia_a ? origenesRefi.get(c.refinancia_a) ?? null : null),
+      estado: c.estado,
+      motivo: motivoExclusion(c),
+    })),
+  }, 201);
 });

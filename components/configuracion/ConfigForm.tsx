@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Check, Loader2, Percent, Plus, X, MessageSquare, Phone, Mail, HelpCircle } from "lucide-react";
-import { useConfiguracion, type ConfiguracionFinanciera, type GamificacionConfig, type RentabilidadConfig, type RiesgoConfig, type CobranzaConfig, type CajaConfig, type NotificacionesConfig } from "@/lib/swr";
+import { useConfiguracion, type ConfiguracionFinanciera, type GamificacionConfig, type RentabilidadConfig, type RiesgoConfig, type CobranzaConfig, type CajaConfig, type NotificacionesConfig, type OrdenAgenda } from "@/lib/swr";
 import { FeatureGate } from "@/components/providers/FeaturesProvider";
 import { FinancieraForm } from "@/components/configuracion/FinancieraForm";
 import { BackupsView } from "@/components/configuracion/BackupsView";
@@ -15,6 +15,8 @@ import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
 import { formatFecha, formatMonto, formatNumero } from "@/lib/utils";
+import { PlantillasContactoEditor } from "@/components/configuracion/PlantillasContactoEditor";
+import { PlantillasMetaEditor } from "@/components/configuracion/PlantillasMetaEditor";
 
 /**
  * Día del mes (1–28) de los campos de cronograma, o `null` cuando el campo queda vacío.
@@ -53,6 +55,47 @@ const ordenLabel: Record<string, string> = {
  */
 export type AyudaBloque = { titulo?: string; texto: string; ejemplo?: string; puntos?: string[] };
 
+/**
+ * Opciones del techo de mora.
+ *
+ * Se eligen de una lista y no se escribe un número libre porque el valor no es una
+ * preferencia estética: define cuánto puede crecer una deuda. Un campo abierto invita a
+ * poner "50" sin saber que eso apaga el punitorio a los 50 días con una tasa del 1%.
+ *
+ * 🔴 LA REDACCIÓN IMPORTA. La primera versión decía "Hasta 2 cuotas", y el usuario la leyó
+ * como "2 cuotas vencidas" — que es otro concepto, y que además EXISTE en el sistema (las
+ * cuotas impagas que rompen un acuerdo). El tope no cuenta cuotas: limita el IMPORTE de la
+ * mora de cada cuota a un múltiplo de lo que vale esa cuota. Por eso ahora dice "veces el
+ * valor de la cuota", que no se puede confundir con un conteo.
+ */
+/**
+ * Con qué criterio se ordena la cola del día ADENTRO de cada grupo. Cada opción dice qué
+ * pasa si se elige, porque las dos resignan algo y no hay una correcta.
+ */
+const ORDENES_AGENDA_UI: { key: OrdenAgenda; label: string; consecuencia: string }[] = [
+  {
+    key: "mora",
+    label: "El que hace más días que no paga",
+    consecuencia:
+      "Prioriza la deuda más vieja, que es la más difícil de recuperar. Contra: una deuda chica y antigua "
+      + "le gana a una grande y reciente, así que la plata más grande queda al final de la lista.",
+  },
+  {
+    key: "monto",
+    label: "El que más plata debe",
+    consecuencia:
+      "Prioriza la plata en juego: primero el vencido más alto. Contra: las deudas chicas se envejecen solas "
+      + "abajo de la lista, y cuanto más vieja es una deuda menos se cobra.",
+  },
+];
+
+const TOPES_MORA = [
+  { pct: 0,   label: "Sin tope — la mora crece para siempre" },
+  { pct: 100, label: "1 vez el valor de la cuota (100%)" },
+  { pct: 200, label: "2 veces el valor de la cuota (200%)" },
+  { pct: 300, label: "3 veces el valor de la cuota (300%)" },
+] as const;
+
 const AYUDA: Record<string, AyudaBloque> = {
   motor: {
     titulo: "Motor financiero",
@@ -64,11 +107,23 @@ const AYUDA: Record<string, AyudaBloque> = {
   },
   mora: {
     titulo: "Interés por mora",
-    texto: "Recargo que se suma cuando el cliente paga una cuota tarde. Con el switch apagado, no se cobra mora.",
+    texto:
+      "Recargo que se suma cuando el cliente paga una cuota tarde. Se calcula POR CUOTA y sobre el valor de esa cuota: "
+      + "si tiene tres vencidas, cada una devenga su propio punitorio. Con el switch apagado no se cobra mora.",
+    ejemplo:
+      "Una cuota de $50.000,00 con mora del 1% diario acumula $500,00 por día. A los 30 días de atraso son $15.000,00; "
+      + "a los 100 días, $50.000,00 — o sea, la mora ya iguala a la cuota. Sin tope sigue: al año son $182.500,00 de "
+      + "punitorios sobre una cuota de $50.000,00. Con el tope en «1 vez el valor de la cuota», se detiene en $50.000,00 "
+      + "y no crece más, aunque el crédito quede impago dos años.",
     puntos: [
       "Tasa diaria: % que se acumula por cada día de atraso.",
-      "Se aplica sobre el VALOR DE LA CUOTA vencida: cada cuota atrasada devenga su propio punitorio.",
       "Los días de gracia (Simulador → Cronograma) son la tolerancia antes de que empiece a correr.",
+      "TOPE — hasta dónde puede crecer la mora DE CADA CUOTA. NO cuenta cuotas vencidas: limita el importe a un múltiplo de lo que vale la cuota.",
+      "Elegirlo resigna plata: en un cliente que paga muy tarde vas a cobrar menos punitorios de los que se habrían acumulado.",
+      "A cambio, la deuda sigue siendo pagable. Cuando los punitorios triplican la cuota, el deudor deja de intentar y el caso se pierde entero.",
+      "Y los reportes dejan de mentir: hoy el saldo expuesto y el % de morosidad incluyen punitorios que nadie va a pagar.",
+      "Si el caso va a juicio, el art. 771 del Código Civil faculta al juez a reducir intereses excesivos. Un tope propio es defendible; uno impuesto por un juez, no.",
+      "El tope se CONGELA al otorgar, igual que la tasa: cambiarlo no reescribe la deuda de los créditos ya dados.",
     ],
   },
   cajas: {
@@ -108,9 +163,20 @@ const AYUDA: Record<string, AyudaBloque> = {
   },
   cobranza: {
     titulo: "Agenda de cobranza",
-    texto: "Cada cuántos días alguien que debe y no fue contactado vuelve a aparecer en la cola del día.",
+    texto:
+      "La cola del día: a quién hay que contactar y en qué orden. Se arma sola en tres grupos por urgencia "
+      + "—promesas vencidas, contactos agendados y morosos que nadie gestiona hace días— y ese orden entre "
+      + "grupos no se configura. Lo que sí elegís es cada cuánto vuelve alguien a la cola y a quién llamar "
+      + "primero DENTRO de cada grupo.",
+    ejemplo:
+      "Con «el que hace más días que no paga», una deuda de $8.000,00 con 200 días de atraso aparece ARRIBA de "
+      + "una de $500.000,00 con 20 días. Con «el que más plata debe» se invierte: primero los $500.000,00. "
+      + "Importa porque nadie llama la lista entera: el que queda al final no se llama.",
     puntos: [
-      "Con 7, un moroso al que nadie llamó reaparece en «Hoy» a la semana de la última gestión.",
+      "Días sin gestión: con 7, un moroso al que nadie llamó reaparece en «Hoy» a la semana de la última gestión.",
+      "A quién llamar primero: ordena solo adentro de cada grupo. Una promesa vencida siempre va antes que un enfriado.",
+      "El importe que muestra la agenda es lo VENCIDO (cuotas impagas + punitorios), no el préstamo entero.",
+      "Quien está cumpliendo un acuerdo de pago no aparece en la cola — eso se configura en Acuerdos de pago.",
       "Los controles de la plata (gastos y anulaciones) se mudaron a la sección Cajas.",
     ],
   },
@@ -130,6 +196,50 @@ const AYUDA: Record<string, AyudaBloque> = {
       "La condonación sale de los punitorios y el interés, NUNCA del capital: la plata que se prestó de verdad no se regala.",
       "El acuerdo no toca el crédito: el cliente paga como siempre y el acuerdo se va cumpliendo solo con esos pagos.",
       "No hay botón para darlo por cumplido: se cumple cuando la plata entra, y eso lo detecta el sistema solo.",
+    ],
+  },
+  plantillas: {
+    titulo: "Mensajes al cliente",
+    texto:
+      "Los textos que salen cuando alguien aprieta «Contactar» en la ficha de un cliente. Hay uno por motivo "
+      + "(mora, promoción, información) y sirven para los dos canales: el WhatsApp usa solo el mensaje, el email "
+      + "le suma el asunto.",
+    ejemplo:
+      "Escribís «Hola [nombre], te habla [financiera]. Tenés $[deuda] vencidos hace [dias] días.» y al mandárselo "
+      + "a Juan Pérez le llega «Hola Juan Pérez, te habla Credit Zero. Tenés $152.340,50 vencidos hace 12 días.» "
+      + "La vista previa de la derecha muestra exactamente eso antes de guardar.",
+    puntos: [
+      "Los datos entre corchetes se reemplazan solos. Clic en la etiqueta y se inserta donde tenés el cursor.",
+      "Solo se reemplazan las claves de la lista: cualquier otra cosa entre corchetes se manda tal cual.",
+      "Los importes salen con centavos, iguales a los que después cobra la caja — si no, el cliente discute el vuelto.",
+      "Solo el mensaje de MORA cuenta como gestión de cobranza. Los otros dos se registran en la ficha pero no mueven la efectividad del equipo.",
+      "El asunto solo lo usa el email; en WhatsApp se ignora.",
+      "Si borrás un texto y guardás, vuelve el que trae el sistema por defecto.",
+    ],
+  },
+  plantillas_meta: {
+    titulo: "Plantillas aprobadas por Meta",
+    texto:
+      "WhatsApp tiene dos formas de mandar un mensaje. Escribiéndolo a mano desde el teléfono —lo que hace el "
+      + "sistema hoy— podés poner el texto que quieras. Con la API de WhatsApp Business, en cambio, Meta solo "
+      + "entrega mensajes armados con una plantilla que aprobó ANTES, salvo que el cliente te haya escrito en las "
+      + "últimas 24 horas. Acá se registran esas plantillas ya aprobadas para poder elegirlas al contactar o al "
+      + "armar una campaña.",
+    ejemplo:
+      "Meta te aprueba «Hola {{1}}, tenés una cuota vencida por {{2}}. Comunicate con nosotros.» Registrás ese texto "
+      + "tal cual, decís que la primera variable es el nombre y la segunda lo vencido, y al mandárselo a Juan Pérez "
+      + "le llega «Hola Juan Pérez, tenés una cuota vencida por $39.187,40. Comunicate con nosotros.»",
+    puntos: [
+      "El sistema NO aprueba nada: la aprobación la da Meta en el Administrador de WhatsApp. Acá solo se registra.",
+      "Cada plantilla es PARA UN MOTIVO (mora, promoción o información) y solo aparece cuando estás mandando ese motivo. Hace falta una por cada tipo de mensaje que quieras mandar: la exigencia de Meta no es por el motivo sino por la ventana de 24 h.",
+      "Categoría según el motivo: una cobranza va como «Utilidad» y una oferta como «Marketing». Un reclamo aprobado como marketing no le llega a quien tiene la publicidad silenciada; una oferta aprobada como utilidad es lo que Meta re-categoriza y penaliza.",
+      "El cuerpo va copiado exactamente, con sus variables numeradas. Si cambia una palabra, deja de estar aprobado y Meta no lo entrega.",
+      "Cada variable tiene que tener un dato asignado. Si queda vacía, al cliente le llega la variable escrita en crudo.",
+      "El signo $ no lo pone el sistema: si el importe va con peso, escribilo en el cuerpo que mandás a aprobar.",
+      "Las campañas solo usan plantillas de MORA, y solo las que no pidan número de cuota ni fecha de vencimiento: una campaña no resuelve esos datos por cliente.",
+      "No son obligatorias. Sin plantilla se manda texto libre y el sistema avisa antes de enviar — el aviso es más fuerte en una campaña que en un mensaje suelto.",
+      "El riesgo real de mandar texto libre en volumen: los que bloquean o reportan bajan la calidad del número, primero se recorta el límite diario y después se pierde la línea.",
+      "Apagar una plantilla la saca de los selectores sin borrarla: sirve cuando Meta la pausa.",
     ],
   },
   fallecidos: {
@@ -427,6 +537,9 @@ export function ConfigForm() {
   /** Patch anidado de la política de clientes fallecidos. */
   const setFallecidos = (patch: Partial<CobranzaConfig["fallecidos"]>) =>
     setCobranza({ fallecidos: { ...cobranza.fallecidos, ...patch } });
+  /** Patch anidado de los textos del contacto individual. */
+  const setContacto = (patch: Partial<CobranzaConfig["contacto"]>) =>
+    setCobranza({ contacto: { ...cobranza.contacto, ...patch } });
 
   const setCobranza = (patch: Partial<CobranzaConfig>) => {
     setForm(prev => prev ? { ...prev, cobranzaConfig: { ...defaultCobranza(), ...prev.cobranzaConfig, ...patch } } : prev);
@@ -459,6 +572,28 @@ export function ConfigForm() {
    * Si la mora está apagada, el documento declara 0 — que es la verdad.
    */
   const punitorioMensual = form?.moraActiva ? punitorioMensualDesdeDiaria(form.tasaMoraDiaria) : 0;
+  /** Días de atraso en los que la mora alcanza el tope. Es lo que vuelve entendible un %. */
+  const topeDias = form && form.tasaMoraDiaria > 0 && form.topeMoraPct > 0
+    ? Math.round(form.topeMoraPct / 100 / form.tasaMoraDiaria)
+    : 0;
+  /** true cuando el valor guardado no coincide con ninguna opción de la lista. */
+  const [topeManual, setTopeManual] = useState(false);
+  const topePersonalizado = topeManual || (!!form && !TOPES_MORA.some(o => o.pct === form.topeMoraPct));
+  const setTopePersonalizado = setTopeManual;
+
+  /**
+   * Qué pasa en el sistema con la opción elegida. Se calcula con la TASA CARGADA, así que el
+   * "a los N días" es el de esta financiera y no un ejemplo genérico.
+   */
+  const topeConsecuencia = !form
+    ? ""
+    : form.topeMoraPct === 0
+      ? form.tasaMoraDiaria > 0
+        ? `La mora no para nunca: a los ${Math.round(1 / form.tasaMoraDiaria)} días ya iguala a la cuota y sigue. Los reportes van a incluir punitorios que nadie va a pagar.`
+        : "La mora no tiene techo."
+      : topeDias > 0
+        ? `La mora de CADA cuota corre normal los primeros ${topeDias} días de atraso y ahí se detiene: nunca supera ${form.topeMoraPct / 100} ${form.topeMoraPct === 100 ? "vez" : "veces"} lo que vale esa cuota. Cobrás menos en los que pagan muy tarde, pero la deuda sigue siendo pagable y los reportes muestran plata real.`
+        : `La mora de cada cuota se detiene al llegar al ${form.topeMoraPct}% de lo que vale esa cuota.`;
   const avisosDocs = revisarDocumentos(docs, punitorioMensual);
 
   // Rentabilidad: costo de fondeo para la ganancia NETA de Reportes.
@@ -519,7 +654,7 @@ export function ConfigForm() {
     const f = form, c = config, s = form.simulador, cs = config.simulador;
     switch (key) {
       case "motor":         return f.convencionTasa !== c.convencionTasa || f.sistemaAmortizacion !== c.sistemaAmortizacion;
-      case "mora":          return f.moraActiva !== c.moraActiva || f.tasaMoraDiaria !== c.tasaMoraDiaria;
+      case "mora":          return f.moraActiva !== c.moraActiva || f.tasaMoraDiaria !== c.tasaMoraDiaria || f.topeMoraPct !== c.topeMoraPct;
       case "cobranza":      return !eq(f.cobranzaConfig ?? null, c.cobranzaConfig ?? null);
       case "cajas":         return !eq(f.cajaConfig ?? null, c.cajaConfig ?? null);
       case "notificaciones": return !eq(f.notificacionesConfig ?? null, c.notificacionesConfig ?? null);
@@ -1035,9 +1170,9 @@ export function ConfigForm() {
           {/* Mora */}
           <Section title="Interés por mora" desc="Recargo aplicado por días de atraso. Apagá el switch para no cobrar mora." ayuda={AYUDA.mora}
             enabled={form.moraActiva} onToggle={v => set("moraActiva", v)}
-            onSave={() => save("mora", { moraActiva: form.moraActiva, tasaMoraDiaria: form.tasaMoraDiaria })}
+            onSave={() => save("mora", { moraActiva: form.moraActiva, tasaMoraDiaria: form.tasaMoraDiaria, topeMoraPct: form.topeMoraPct })}
             saving={savingKey === "mora"} saved={savedKey === "mora"} dirty={isDirty("mora")}>
-            <div className={`grid grid-cols-1 gap-4 max-w-sm transition-opacity ${form.moraActiva ? "" : "opacity-50"}`}>
+            <div className={`grid grid-cols-1 gap-4 sm:grid-cols-2 max-w-2xl transition-opacity ${form.moraActiva ? "" : "opacity-50"}`}>
               <Field required={form.moraActiva} label="Tasa de mora diaria (%)" hint="Porcentaje diario sobre la base de mora">
                 <div className="relative">
                   <Input
@@ -1051,7 +1186,48 @@ export function ConfigForm() {
                 </div>
               </Field>
 
+              <Field
+                label="Hasta dónde puede crecer la mora de una cuota"
+                hint={topeConsecuencia}
+              >
+                {/*
+                  Se elige de una LISTA y se expresa en CUOTAS, no en un % libre.
+                  "200%" no le dice nada a nadie; "hasta 2 cuotas" se entiende solo. Y como
+                  cada opción avisa a los cuántos días toca el techo CON LA TASA CARGADA, la
+                  consecuencia se ve antes de guardar, no después con un moroso adelante.
+                */}
+                <Select
+                  value={topePersonalizado ? "otro" : String(form.topeMoraPct)}
+                  onChange={e => {
+                    const v = e.target.value;
+                    if (v === "otro") { setTopePersonalizado(true); return; }
+                    setTopePersonalizado(false);
+                    set("topeMoraPct", Number(v));
+                  }}
+                  disabled={!form.moraActiva}
+                >
+                  {TOPES_MORA.map(o => (
+                    <option key={o.pct} value={o.pct}>{o.label}</option>
+                  ))}
+                  <option value="otro">Otro valor…</option>
+                </Select>
+
+                {topePersonalizado && (
+                  <div className="relative mt-2">
+                    <Input
+                      type="number" min="0" max="1000" step="10"
+                      value={form.topeMoraPct}
+                      onChange={e => set("topeMoraPct", Math.max(0, Math.min(1000, parseFloat(e.target.value) || 0)))}
+                      disabled={!form.moraActiva}
+                      className="pr-7"
+                      placeholder="% de la cuota"
+                    />
+                    <Percent className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
+                  </div>
+                )}
+              </Field>
             </div>
+
           </Section>
 
           {/* Imputación */}
@@ -1593,7 +1769,7 @@ export function ConfigForm() {
           {/* ─── Documentos del crédito (solicitud/mutuo + pagaré) ─── */}
           {activeTab === "cobranza" && <>
           {/* Agenda de cobranza */}
-          <Section title="Agenda de cobranza" desc="Cada cuántos días un moroso sin gestionar vuelve a aparecer en la cola del día." ayuda={AYUDA.cobranza}
+          <Section title="Agenda de cobranza" desc="Cada cuántos días un moroso sin gestionar vuelve a aparecer en la cola del día, y con qué criterio se ordena." ayuda={AYUDA.cobranza}
             onSave={() => save("cobranza", { cobranzaConfig: cobranza })}
             saving={savingKey === "cobranza"} saved={savedKey === "cobranza"} dirty={isDirty("cobranza")}>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 max-w-xl">
@@ -1603,6 +1779,22 @@ export function ConfigForm() {
                   value={cobranza.dias_sin_gestion}
                   onChange={e => setCobranza({ dias_sin_gestion: Math.max(1, Math.min(90, Math.round(parseFloat(e.target.value) || 1))) })}
                 />
+              </Field>
+              {/*
+                Los GRUPOS (promesa → agendado → enfriado) no se tocan: eso es urgencia. Lo
+                que se elige es el orden ADENTRO de cada grupo, que es donde estaba la
+                decisión escondida: ordenando por días, el que más plata debe quedaba al
+                final de la lista, y en una cola que nadie llama entera el último no se llama.
+              */}
+              <Field label="A quién llamar primero" hint={ORDENES_AGENDA_UI.find(o => o.key === cobranza.orden)?.consecuencia ?? ""}>
+                <Select
+                  value={cobranza.orden}
+                  onChange={e => setCobranza({ orden: e.target.value as OrdenAgenda })}
+                >
+                  {ORDENES_AGENDA_UI.map(o => (
+                    <option key={o.key} value={o.key}>{o.label}</option>
+                  ))}
+                </Select>
               </Field>
             </div>
           </Section>
@@ -1721,6 +1913,31 @@ export function ConfigForm() {
                 onChange={v => setFallecidos({ saca_de_agenda: v })}
               />
             </div>
+          </Section>
+
+          {/* Plantillas del contacto individual */}
+          <Section
+            title="Mensajes al cliente"
+            desc="Lo que se le manda por WhatsApp o email desde la ficha, según el motivo."
+            ayuda={AYUDA.plantillas}
+            onSave={() => save("cobranza", { cobranzaConfig: cobranza })}
+            saving={savingKey === "cobranza"} saved={savedKey === "cobranza"} dirty={isDirty("cobranza")}
+          >
+            <PlantillasContactoEditor valor={cobranza.contacto} onChange={setContacto} />
+          </Section>
+
+          {/* Plantillas aprobadas por Meta (WhatsApp Business) */}
+          <Section
+            title="Plantillas aprobadas por Meta"
+            desc="Las que Meta ya aprobó para WhatsApp Business. Opcionales: sin ellas se manda texto libre y el sistema avisa del riesgo."
+            ayuda={AYUDA.plantillas_meta}
+            onSave={() => save("cobranza", { cobranzaConfig: cobranza })}
+            saving={savingKey === "cobranza"} saved={savedKey === "cobranza"} dirty={isDirty("cobranza")}
+          >
+            <PlantillasMetaEditor
+              valor={cobranza.plantillas_meta}
+              onChange={(plantillas_meta) => setCobranza({ plantillas_meta })}
+            />
           </Section>
 
 
@@ -1948,7 +2165,9 @@ function defaultRentabilidad(): RentabilidadConfig {
 function defaultCobranza(): CobranzaConfig {
   return {
     dias_sin_gestion: 7,
+    orden: "mora",
     contacto: PLANTILLAS_CONTACTO_DEFAULT,
+    plantillas_meta: [],
     acuerdos: {
       max_cuotas: 6, dias_entre_cuotas: 30, cuotas_para_romper: 1,
       congela_punitorios: true, saca_de_agenda: true,
@@ -2184,7 +2403,12 @@ export function HelpHint({ ayuda }: { ayuda: AyudaBloque }) {
         <HelpCircle className="h-4 w-4" />
       </button>
       {open && (
-        <div className="absolute right-0 top-9 z-30 w-80 max-w-[calc(100vw-2rem)] rounded-xl border border-border bg-card p-3.5 text-left shadow-2xl shadow-black/30">
+        /* 🔴 ALTO MÁXIMO + SCROLL PROPIO.
+           El globo crecía sin límite: con una ayuda larga se salía de la pantalla y la única
+           forma de leer el final era scrollear la PÁGINA, que arrastraba todo el contenido
+           de atrás. `overscroll-contain` es la otra mitad del arreglo — sin él, al llegar al
+           final del globo el scroll se encadena al fondo y vuelve a moverse la página. */
+        <div className="absolute right-0 top-9 z-30 flex max-h-[min(70vh,32rem)] w-80 max-w-[calc(100vw-2rem)] flex-col overflow-y-auto overscroll-contain rounded-xl border border-border bg-card p-3.5 text-left shadow-2xl shadow-black/30">
           <div className="mb-1.5 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-primary">
             <HelpCircle className="h-3.5 w-3.5" /> {ayuda.titulo ?? "Ayuda"}
           </div>

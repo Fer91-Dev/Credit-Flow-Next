@@ -106,6 +106,7 @@ async function cargarRefinanciable(req: NextRequest, id: string) {
   const deuda = calcularDeudaConsolidada(cuotasDom, {
     moraActiva: moraCred.moraActiva,
     tasaMoraDiaria: moraCred.tasaMoraDiaria,
+    topeMoraPct: moraCred.topeMoraPct,
     diasGracia: graciaCred,
     // Dia comercial argentino (mismo criterio que el resto del sistema): sin esto, entre
     // las 21:00 y la medianoche de Argentina se consolida un dia de mora de mas.
@@ -285,6 +286,8 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
     mora: {
       activa: config.moraActiva,
       tasaDiaria: config.tasaMoraDiaria,
+      // El crédito NUEVO nace con el techo vigente hoy, congelado igual que al otorgar.
+      topePct: config.topeMoraPct,
     },
     redondeo: config.simulador.redondeoCuota,
   };

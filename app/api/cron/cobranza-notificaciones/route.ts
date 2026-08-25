@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { sincronizarAcuerdos } from "@/lib/acuerdos";
 import { Prisma } from "@prisma/client";
-import { sinDeuda, ESTADOS_VIVOS } from "@/lib/domain";
+import { sinDeuda, ESTADOS_VIVOS, resolverPlantillasMeta, type PlantillaMeta } from "@/lib/domain";
+import { enviarWhatsappApi, whatsappApiDisponible, type WhatsappApiConfig } from "@/lib/whatsapp";
 
 // Reglas de mora para disparar notificaciones
 const REGLAS = [
@@ -86,6 +87,11 @@ async function ejecutarCron(req: NextRequest) {
     const whatsapp = config.whatsapp_config as WhatsappConfig | null;
     const sms = config.sms_config as SmsConfig | null;
     const email = config.email_config as EmailConfig | null;
+    // Las plantillas registradas de este tenant: hacen falta para poder mandarle a Meta los
+    // parámetros de la que corresponda a cada evento.
+    const plantillasMeta = resolverPlantillasMeta(
+      (config.cobranza_config as { plantillas_meta?: unknown } | null)?.plantillas_meta,
+    );
 
     // Solo procesar si hay al menos un canal activo
     if (!whatsapp?.enabled && !sms?.enabled && !email?.enabled) continue;
@@ -147,7 +153,7 @@ async function ejecutarCron(req: NextRequest) {
 
         // Intentar envío por canal disponible (WhatsApp > SMS > Email)
         if (whatsapp?.enabled) {
-          enviado = await enviarWhatsapp(whatsapp, credito, regla.evento);
+          enviado = await enviarWhatsapp(whatsapp, credito, regla.evento, plantillasMeta);
         } else if (sms?.enabled) {
           enviado = await enviarSms(sms, credito, regla.evento);
         } else if (email?.enabled) {
@@ -274,13 +280,9 @@ async function procesarPromesasVencidas(hoy: Date): Promise<{ rotas: number; res
 
 // ─── Tipos de configuración ───────────────────────────────────────────────────
 
-type WhatsappConfig = {
-  enabled: boolean;
-  token: string;
-  phone_number_id: string;
-  business_account_id?: string;
-  templates?: Record<string, string>; // evento → template_id de Meta
-};
+// La forma vive junto al emisor (`lib/whatsapp`). `templates` mapea evento → NOMBRE de la
+// plantilla registrada, que es la que sabe qué variables tiene.
+type WhatsappConfig = WhatsappApiConfig;
 
 type SmsConfig = {
   enabled: boolean;
@@ -305,36 +307,43 @@ type CreditoConCliente = {
 
 // ─── Funciones de envío (stubs — implementar con SDK del proveedor) ───────────
 
+/**
+ * Aviso automático por WhatsApp.
+ *
+ * 🔴 Mandaba la plantilla como `{ name, language: "es_AR" }` SIN parámetros y con el idioma
+ * fijo. Meta rechaza las dos cosas: una plantilla con variables sin parámetros, y una
+ * búsqueda por nombre + idioma que no coincide con ninguno aprobado. Como el resultado se
+ * reducía a un booleano, el cron anotaba "Error de envío" un día tras otro sin que nada
+ * dijera por qué.
+ *
+ * Ahora pasa por el emisor único y busca la plantilla entre las REGISTRADAS, para poder
+ * mandarle sus parámetros. El mapa viejo `config.templates[evento]` se sigue respetando: es
+ * el que dice qué plantilla corresponde a cada evento del cron.
+ */
 async function enviarWhatsapp(
   config: WhatsappConfig,
   credito: CreditoConCliente,
-  evento: string
+  evento: string,
+  plantillas: PlantillaMeta[],
 ): Promise<boolean> {
   if (!credito.cliente.telefono) return false;
-  const templateId = config.templates?.[evento];
-  if (!templateId) return false;
+  if (!whatsappApiDisponible(config)) return false;
+  const nombrePlantilla = config.templates?.[evento];
+  if (!nombrePlantilla) return false;
 
-  try {
-    const res = await fetch(
-      `https://graph.facebook.com/v19.0/${config.phone_number_id}/messages`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${config.token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          messaging_product: "whatsapp",
-          to: credito.cliente.telefono.replace(/\D/g, ""),
-          type: "template",
-          template: { name: templateId, language: { code: "es_AR" } },
-        }),
-      }
-    );
-    return res.ok;
-  } catch {
-    return false;
-  }
+  const plantilla = plantillas.find((p) => p.nombre === nombrePlantilla && p.activa) ?? null;
+  // Sin la plantilla registrada no se puede completar sus variables; mandarla igual sería
+  // repetir el error que se está corrigiendo.
+  if (!plantilla) return false;
+
+  const res = await enviarWhatsappApi(config, {
+    telefono: credito.cliente.telefono,
+    plantilla,
+    // El cron no tiene la deuda calculada adelante: solo completa lo que sí sabe. Una
+    // plantilla de aviso automático que pida importes no es para este camino.
+    resolver: (clave) => (clave === "nombre" ? credito.cliente.nombre : ""),
+  });
+  return res.ok;
 }
 
 async function enviarSms(

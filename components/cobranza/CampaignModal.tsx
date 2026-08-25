@@ -4,14 +4,18 @@ import { useMemo, useState, type ComponentType } from "react";
 import { Mail, Smartphone, Sparkles, Check, Zap, Loader2 } from "lucide-react";
 import { WhatsAppIcon } from "@/components/ui/WhatsAppIcon";
 import type { Credito } from "@/lib/swr";
-import { useConfiguracion } from "@/lib/swr";
+import { useConfiguracion, useFinanciera } from "@/lib/swr";
 import {
   calculateRecoveryOffer,
   construirMensajeCampana,
   linkWhatsapp,
   TEMPLATE_DEFAULT,
+  plantillaMetaParaCampana,
+  riesgoEnvioMeta,
+  CATEGORIA_META_LABEL,
   type CanalCampana,
 } from "@/lib/domain";
+import { AvisoMeta } from "@/components/clientes/ContactarDialog";
 import { Field, Input, Select, Textarea } from "@/components/ui/field";
 import { FormActions } from "@/components/ui/form-kit";
 import { nombreCompleto } from "@/lib/utils";
@@ -35,9 +39,30 @@ interface CampaignModalProps {
 
 export function CampaignModal({ creditos, onClose }: CampaignModalProps) {
   const { config } = useConfiguracion();
+  const { financiera } = useFinanciera();
   const confirm = useConfirm();
   const toast = useToast();
   const whatsappApiActiva = !!(config?.whatsappConfig?.enabled);
+
+  /**
+   * Las plantillas aprobadas por Meta, ya traducidas al vocabulario de las campañas.
+   *
+   * Una plantilla que use un dato que la campaña no sabe completar —el número de cuota, la
+   * fecha de vencimiento— queda deshabilitada con el motivo a la vista. Ofrecerla igual
+   * mandaría por escrito a todo el lote una variable sin resolver.
+   */
+  const plantillasMeta = useMemo(() => {
+    const marca = financiera?.nombre?.trim() || "tu financiera";
+    return (config?.cobranzaConfig?.plantillas_meta ?? [])
+      /**
+       * 🔴 SOLO LAS DE MORA. Esta campaña se arma sobre créditos en mora: es un reclamo,
+       * lleve o no una quita de interés como incentivo. Ofrecer acá una plantilla de
+       * promoción o de información le mandaría a todo el lote un texto que no habla de su
+       * deuda.
+       */
+      .filter((p) => p.activa && p.motivo === "mora")
+      .map((p) => ({ ...p, ...plantillaMetaParaCampana(p, marca) }));
+  }, [config, financiera]);
 
   const [form, setForm] = useState({
     nombre: "",
@@ -47,9 +72,13 @@ export function CampaignModal({ creditos, onClose }: CampaignModalProps) {
     promo_valor: "50",
     promo_vence: "",
     mensaje_template: TEMPLATE_DEFAULT,
+    /** Nombre de la plantilla de Meta elegida ("" = texto libre). */
+    plantilla_meta: "",
   });
   const [loading, setLoading] = useState(false);
   const [enviandoApi, setEnviandoApi] = useState(false);
+  /** Avance del envío por tandas: cuántos salieron y cuántos faltan. */
+  const [progreso, setProgreso] = useState<{ enviados: number; pendientes: number; procesados: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [launched, setLaunched] = useState(false);
   const [campanaId, setCampanaId] = useState<string | null>(null);
@@ -74,6 +103,21 @@ export function CampaignModal({ creditos, onClose }: CampaignModalProps) {
 
   const totalSinDescuento = objetivos.reduce((s, o) => s + o.oferta.montoSinDescuento, 0);
   const totalAhorro = objetivos.reduce((s, o) => s + o.oferta.ahorro, 0);
+
+  const metaElegida = plantillasMeta.find((p) => p.nombre === form.plantilla_meta) ?? null;
+  /**
+   * El aviso escala con el volumen: acá van cientos de mensajes iguales desde el mismo
+   * número, que es exactamente el patrón que Meta penaliza. Nunca bloquea el envío.
+   */
+  const riesgo = riesgoEnvioMeta({
+    // Solo WhatsApp: las políticas de plantillas son de Meta. El SMS y el email tienen sus
+    // propias reglas y no es honesto avisar de una restricción que no los alcanza.
+    canal: form.canal === "whatsapp" ? "whatsapp" : "email",
+    usaPlantillaMeta: !!metaElegida,
+    destinatarios: creditos.length,
+    hayPlantillas: plantillasMeta.length > 0,
+    motivoLabel: "aviso de mora",
+  });
 
   const set = (field: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
     setForm((p) => ({ ...p, [field]: e.target.value }));
@@ -101,6 +145,9 @@ export function CampaignModal({ creditos, onClose }: CampaignModalProps) {
         promo_valor: descuentoPct,
         promo_vence: form.promo_vence || undefined,
         mensaje_template: form.mensaje_template.trim() || undefined,
+        // Con qué plantilla salió. Si Meta observa el número hay que poder decir qué campañas
+        // usaron una plantilla aprobada y cuáles salieron como texto libre.
+        plantilla_meta: form.plantilla_meta || undefined,
         credito_ids: creditos.map((c) => c.id),
       };
       const res = await fetch("/api/cobranza/campanas", {
@@ -149,14 +196,43 @@ export function CampaignModal({ creditos, onClose }: CampaignModalProps) {
     if (!ok) return;
     setEnviandoApi(true);
     setError(null);
+    setProgreso(null);
     try {
-      const res = await fetch(`/api/cobranza/campanas/${campanaId}/enviar`, { method: "POST" });
-      const json = await res.json();
-      if (!json.ok) { setError(json.error || "Error al enviar"); toast.error(json.error || "Error al enviar"); return; }
-      // Marcar todos como enviados
-      const todos = new Set(objetivos.map(o => o.credito.id));
-      setEnviados(todos);
-      toast.success(`Campaña enviada a ${objetivos.length} cliente${objetivos.length !== 1 ? "s" : ""}`);
+      /**
+       * 🔴 SE LLAMA POR TANDAS HASTA TERMINAR.
+       *
+       * El envío es secuencial y una función de Vercel se corta a los 60 segundos, así que
+       * el servidor manda lo que le entra en ese rato y devuelve `quedan_pendientes`. Con
+       * una sola llamada, una campaña de 50 clientes moría a la mitad y —peor— no había
+       * forma de saber a quiénes les había llegado.
+       *
+       * Los ya enviados quedan marcados en la base, así que cada vuelta toma solo los que
+       * faltan: nadie recibe el mensaje dos veces.
+       */
+      const yaEnviados = new Set<string>();
+      let vueltas = 0;
+      for (;;) {
+        const res = await fetch(`/api/cobranza/campanas/${campanaId}/enviar`, { method: "POST" });
+        const json = await res.json();
+        if (!json.ok) { setError(json.error || "Error al enviar"); toast.error(json.error || "Error al enviar"); return; }
+
+        for (const r of (json.data.resultados ?? []) as { cliente_id: string; ok?: boolean }[]) {
+          if (r.ok !== false) yaEnviados.add(r.cliente_id);
+        }
+        setEnviados(new Set(yaEnviados));
+        setProgreso(json.data.progreso ?? null);
+
+        if (!json.data.quedan_pendientes) break;
+        // Guarda contra un bucle infinito si una tanda dejara de avanzar (por ejemplo, el
+        // email sin configurar: esos objetivos quedan pendientes a propósito).
+        if ((json.data.progreso?.procesados ?? 0) === 0 || ++vueltas > 40) {
+          setError("El envío se detuvo con destinatarios pendientes. Revisá la configuración del canal y volvé a intentar.");
+          return;
+        }
+      }
+
+      const total = objetivos.length;
+      toast.success(`Campaña enviada a ${yaEnviados.size} de ${total} cliente${total !== 1 ? "s" : ""}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Error");
     } finally {
@@ -195,11 +271,22 @@ export function CampaignModal({ creditos, onClose }: CampaignModalProps) {
           >
             {enviandoApi ? <Loader2 className="h-4 w-4 animate-spin" /> : esEmail ? <Mail className="h-4 w-4" /> : <WhatsAppIcon className="h-4 w-4" />}
             {enviandoApi
-              ? "Enviando…"
+              // Con muchos destinatarios el envío tarda: sin el contador, un botón que dice
+              // "Enviando…" durante un minuto parece colgado y alguien lo va a recargar.
+              ? progreso
+                ? `Enviando… ${progreso.enviados} de ${progreso.enviados + progreso.pendientes}`
+                : "Enviando…"
               : esEmail
                 ? `Enviar ${objetivos.length} email${objetivos.length !== 1 ? "s" : ""}`
                 : `Enviar ${objetivos.length} mensajes vía WhatsApp API`}
           </button>
+        )}
+
+        {progreso && !enviandoApi && progreso.pendientes > 0 && (
+          <p className="rounded-lg border border-warning/30 bg-warning/5 px-3 py-2 text-xs text-warning">
+            Quedaron {progreso.pendientes} sin enviar. Los que ya salieron no se repiten: volvé a
+            apretar Enviar y sigue por donde se cortó.
+          </p>
         )}
 
         <div className="space-y-2 max-h-[40vh] overflow-y-auto pr-1">
@@ -275,7 +362,21 @@ export function CampaignModal({ creditos, onClose }: CampaignModalProps) {
           <Input placeholder="Ej: Recupero Junio" value={form.nombre} onChange={set("nombre")} />
         </Field>
         <Field label="Canal" required>
-          <Select value={form.canal} onChange={set("canal")}>
+          <Select
+            value={form.canal}
+            onChange={(e) => {
+              const canal = e.target.value as CanalCampana;
+              // Una plantilla de Meta es de WhatsApp: cambiando de canal deja de aplicar, y
+              // el mensaje vuelve a ser editable.
+              setForm((p) => ({
+                ...p,
+                canal,
+                ...(canal !== "whatsapp" && p.plantilla_meta
+                  ? { plantilla_meta: "", mensaje_template: TEMPLATE_DEFAULT }
+                  : {}),
+              }));
+            }}
+          >
             {(Object.keys(CANAL_META) as CanalCampana[]).map((k) => (
               <option key={k} value={k}>{CANAL_META[k].label}</option>
             ))}
@@ -317,10 +418,59 @@ export function CampaignModal({ creditos, onClose }: CampaignModalProps) {
         )}
       </div>
 
+      {/* ── Plantilla aprobada por Meta (opcional, solo WhatsApp) ── */}
+      {form.canal === "whatsapp" && plantillasMeta.length > 0 && (
+        <Field
+          label="Plantilla aprobada por Meta"
+          hint={
+            metaElegida
+              ? "El cuerpo lo fija Meta y no se edita: cambiarlo invalida la aprobación."
+              : "Opcional. Con una plantilla aprobada el mensaje se entrega aunque el cliente no te haya escrito antes."
+          }
+        >
+          <Select
+            value={form.plantilla_meta}
+            onChange={(e) => {
+              const nombre = e.target.value;
+              const p = plantillasMeta.find((x) => x.nombre === nombre);
+              setForm((prev) => ({
+                ...prev,
+                plantilla_meta: nombre,
+                // Al elegirla, el mensaje pasa a ser el suyo; al volver a texto libre, el default.
+                mensaje_template: p ? p.template : TEMPLATE_DEFAULT,
+              }));
+            }}
+          >
+            <option value="">Texto libre (sin plantilla)</option>
+            {plantillasMeta.map((p) => (
+              <option key={p.id} value={p.nombre} disabled={p.faltantes.length > 0}>
+                {p.nombre} · {p.idioma} · {CATEGORIA_META_LABEL[p.categoria]}
+                {p.faltantes.length > 0 ? ` — no sirve para campañas (usa: ${p.faltantes.join(", ")})` : ""}
+              </option>
+            ))}
+          </Select>
+        </Field>
+      )}
+
       {/* Mensaje */}
-      <Field label="Mensaje" hint="Placeholders: [Nombre] [Monto] [Saldo] [Dias] [Descuento]">
-        <Textarea rows={3} value={form.mensaje_template} onChange={set("mensaje_template")} />
+      <Field
+        label="Mensaje"
+        hint={metaElegida
+          ? "Texto aprobado por Meta. Las variables se completan con los datos de cada cliente."
+          : "Placeholders: [Nombre] [Monto] [Saldo] [Dias] [Descuento]"}
+      >
+        <Textarea
+          rows={3}
+          value={form.mensaje_template}
+          onChange={set("mensaje_template")}
+          // Una plantilla aprobada no se edita: Meta aprueba un texto exacto.
+          readOnly={!!metaElegida}
+          className={metaElegida ? "cursor-not-allowed border-success/30 bg-success/5" : undefined}
+        />
       </Field>
+
+      {/* ── Aviso de políticas de Meta. Informa, no bloquea. ── */}
+      {riesgo.nivel && <AvisoMeta nivel={riesgo.nivel} titulo={riesgo.titulo} puntos={riesgo.puntos} />}
 
       {/* Preview de oferta por cliente */}
       <div className="rounded-lg border border-border overflow-hidden">
