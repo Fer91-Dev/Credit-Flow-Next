@@ -12,7 +12,7 @@ import { AccionCaja, AccionesCajaHeader } from "@/components/caja/AccionCaja";
 import { ArqueosPanel } from "@/components/caja/ArqueosPanel";
 import { descargarCSV } from "@/lib/csv";
 import { formatFechaHora, parseMontoInput } from "@/lib/utils";
-import { MoneyInput, Segmented, IconSelect, IconTextarea, FieldLabel, FormActions, simboloCuenta } from "./caja-form";
+import { MoneyInput, Segmented, IconSelect, IconTextarea, FieldLabel, FormActions, simboloCuenta, MODAL_CONTENT_WIDE, SIN_CIERRE_ACCIDENTAL } from "./caja-form";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { KpiCard } from "@/components/ui/KpiCard";
 import { StatusBadge, type BadgeVariant } from "@/components/ui/StatusBadge";
@@ -474,7 +474,7 @@ export function CajaView() {
       />
 
       <Dialog open={!!detalle} onOpenChange={(o) => { if (!o) setDetalle(null); }}>
-        <DialogContent className="w-[95vw] sm:max-w-md max-h-[90dvh] flex flex-col overflow-hidden">
+        <DialogContent className="w-[95vw] sm:max-w-lg max-h-[92dvh] flex flex-col overflow-hidden" {...SIN_CIERRE_ACCIDENTAL}>
           <DialogHeader className="shrink-0">
             <DialogTitle>Detalle del movimiento</DialogTitle>
           </DialogHeader>
@@ -529,7 +529,7 @@ function AjusteDialog({ open, onClose }: { open: boolean; onClose: (ok?: boolean
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) { reset(); onClose(false); } }}>
-      <DialogContent className="w-[95vw] sm:max-w-xl sm:p-7 max-h-[90dvh] overflow-y-auto">
+      <DialogContent className={MODAL_CONTENT_WIDE} {...SIN_CIERRE_ACCIDENTAL}>
         <DialogHeader className="pr-8">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-primary">
@@ -677,7 +677,7 @@ function CapitalDialog({
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) { reset(); onClose(false); } }}>
-      <DialogContent className="w-[95vw] sm:max-w-xl sm:p-7 max-h-[90dvh] overflow-y-auto">
+      <DialogContent className={MODAL_CONTENT_WIDE} {...SIN_CIERRE_ACCIDENTAL}>
         <DialogHeader className="pr-8">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-primary">
@@ -850,7 +850,7 @@ function TransferenciaDialog({
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) { reset(); onClose(false); } }}>
-      <DialogContent className="w-[95vw] sm:max-w-xl sm:p-7 max-h-[90dvh] overflow-y-auto">
+      <DialogContent className={MODAL_CONTENT_WIDE} {...SIN_CIERRE_ACCIDENTAL}>
         <DialogHeader className="pr-8">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-primary">
@@ -1030,7 +1030,7 @@ function ConciliarArqueoDialog({
 
   return (
     <Dialog open onOpenChange={(o) => { if (!o) { reset(); onClose(false); } }}>
-      <DialogContent className="w-[95vw] sm:max-w-xl sm:p-7 max-h-[90dvh] overflow-y-auto">
+      <DialogContent className={MODAL_CONTENT_WIDE} {...SIN_CIERRE_ACCIDENTAL}>
         <DialogHeader className="pr-8">
           <div className="flex items-center gap-3">
             <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border ${sobrante ? "border-success/20 bg-success/10 text-success" : "border-destructive/20 bg-destructive/10 text-destructive"}`}>
@@ -1147,7 +1147,7 @@ function ArqueoDialog({
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) { reset(); onClose(false); } }}>
-      <DialogContent className="w-[95vw] sm:max-w-xl sm:p-7 max-h-[90dvh] overflow-y-auto">
+      <DialogContent className={MODAL_CONTENT_WIDE} {...SIN_CIERRE_ACCIDENTAL}>
         <DialogHeader className="pr-8">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-primary">
@@ -1280,7 +1280,7 @@ function CajaVendedorDialog({ open, onClose }: { open: boolean; onClose: (ok?: b
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) { reset(); onClose(false); } }}>
-      <DialogContent className="w-[95vw] sm:max-w-xl sm:p-7 max-h-[90dvh] overflow-y-auto">
+      <DialogContent className={MODAL_CONTENT_WIDE} {...SIN_CIERRE_ACCIDENTAL}>
         <DialogHeader className="pr-8">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-primary">
