@@ -137,7 +137,16 @@ export function AcuerdosTab({ role }: { role: Role }) {
   return (
     <div className="space-y-5">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <KpiCard icon="handshake" label="Acuerdos vigentes" value={String(data?.vigentes ?? 0)} accent="primary" sub="en cumplimiento" />
+        {/*
+          Solo "vigentes" filtra: mueve el mismo selector de estado de abajo. "En esta vista"
+          ya es el conteo de lo que se está mostrando —filtrarlo no cambiaría nada— y los dos
+          importes son sumas, no subconjuntos.
+        */}
+        <KpiCard
+          icon="handshake" label="Acuerdos vigentes" value={String(data?.vigentes ?? 0)} accent="primary" sub="en cumplimiento"
+          onClick={(data?.vigentes ?? 0) > 0 ? () => setEstado("vigente") : undefined}
+          active={estado === "vigente"}
+        />
         <KpiCard icon="scroll" label="En esta vista" value={String(acuerdos.length)} accent="muted" />
         <KpiCard icon="money-bag" label="Acordado" value={formatMonto(totalAcordado)} accent="warning" mono />
         <KpiCard icon="inbox-tray" label="Recuperado" value={formatMonto(totalCobrado)} accent="success" mono sub="cobrado desde el acuerdo" />

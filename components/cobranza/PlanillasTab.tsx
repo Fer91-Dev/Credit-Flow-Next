@@ -41,9 +41,23 @@ export function PlanillasTab({ role }: { role: Role }) {
   return (
     <div className="space-y-5">
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <KpiCard icon={ClipboardList} label="En la calle" value={String(enCalle.length)} accent={enCalle.length > 0 ? "primary" : "muted"} />
+        {/*
+          Los KPI mueven el MISMO filtro de estado de abajo. "Sin cobrar" es una suma y no
+          filtra; "con diferencia" tampoco tiene filtro propio —no hay un estado para eso—,
+          así que lleva a las rendidas, que es donde están.
+        */}
+        <KpiCard
+          icon={ClipboardList} label="En la calle" value={String(enCalle.length)}
+          accent={enCalle.length > 0 ? "primary" : "muted"}
+          onClick={() => setEstado("emitida")}
+          active={estado === "emitida"}
+        />
         <KpiCard icon={Wallet} label="Sin cobrar de esos recorridos" value={formatMonto(pendiente)} accent={pendiente > 0 ? "warning" : "muted"} mono />
-        <KpiCard icon={CheckCircle2} label="Rendidas" value={String(planillas.filter((p) => p.estado === "rendida").length)} accent="muted" />
+        <KpiCard
+          icon={CheckCircle2} label="Rendidas" value={String(planillas.filter((p) => p.estado === "rendida").length)} accent="muted"
+          onClick={() => setEstado("rendida")}
+          active={estado === "rendida"}
+        />
         <KpiCard
           icon={AlertTriangle}
           label="Rendidas con diferencia"
@@ -51,6 +65,7 @@ export function PlanillasTab({ role }: { role: Role }) {
           accent={conDiferencia > 0 ? "destructive" : "muted"}
           pulse={conDiferencia > 0}
           sub="lo entregado no coincide con lo cargado"
+          onClick={conDiferencia > 0 ? () => setEstado("rendida") : undefined}
         />
       </div>
 

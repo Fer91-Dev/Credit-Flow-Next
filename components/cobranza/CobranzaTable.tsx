@@ -297,10 +297,31 @@ export function CobranzaTable({ role }: { role: Role }) {
 
       {/* ── KPI Strip ── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <KpiCard icon="warning" label="Total en gestión"   value={String(kpis.total)}        accent={kpis.total > 0 ? "destructive" : "muted"} />
-        <KpiCard icon="dollar-banknote"  label="Saldo expuesto"     value={`$${n0(kpis.saldo)}`}      accent={kpis.saldo > 0 ? "warning" : "muted"} mono />
-        <KpiCard icon="shield" label="Mora crítica (+30d)" value={String(kpis.critica)}     accent={kpis.critica > 0 ? "destructive" : "muted"} />
-        <KpiCard icon="alarm-clock"       label="Mora alta (15–30d)" value={String(kpis.alta)}          accent={kpis.alta > 0 ? "warning" : "muted"} />
+        {/*
+          Los KPI manejan el MISMO filtro de severidad que los botones de abajo — no uno
+          propio. Dos controles para lo mismo que no se hablaran entre sí dejarían la tabla
+          mostrando una cosa y los botones diciendo otra.
+        */}
+        <KpiCard
+          icon="warning" label="Total en gestión" value={String(kpis.total)}
+          accent={kpis.total > 0 ? "destructive" : "muted"}
+          onClick={kpis.total > 0 ? () => setFilter("todas") : undefined}
+          active={filterMora === "todas"}
+        />
+        {/* Es una SUMA, no un subconjunto: no hay "los créditos del saldo expuesto". */}
+        <KpiCard icon="dollar-banknote" label="Saldo expuesto" value={`$${n0(kpis.saldo)}`} accent={kpis.saldo > 0 ? "warning" : "muted"} mono />
+        <KpiCard
+          icon="shield" label="Mora crítica (+30d)" value={String(kpis.critica)}
+          accent={kpis.critica > 0 ? "destructive" : "muted"}
+          onClick={kpis.critica > 0 ? () => setFilter("critica") : undefined}
+          active={filterMora === "critica"}
+        />
+        <KpiCard
+          icon="alarm-clock" label="Mora alta (15–30d)" value={String(kpis.alta)}
+          accent={kpis.alta > 0 ? "warning" : "muted"}
+          onClick={kpis.alta > 0 ? () => setFilter("alta") : undefined}
+          active={filterMora === "alta"}
+        />
       </div>
 
       {/* ── Filter Toolbar ── */}

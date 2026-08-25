@@ -170,10 +170,30 @@ export function CreditosTable({ role }: { role: Role }) {
 
         {/* ── KPI Strip ── */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <KpiCard icon="page-facing-up"    label="Créditos activos"  value={String(kpis.activos)}     accent="primary" />
-          <KpiCard icon="money-bag"      label="Cartera activa"    value={`$${n0(kpis.cartera)}`}   accent="success" mono />
-          <KpiCard icon="warning" label="Mora crítica"      value={String(kpis.moraCritica)} accent={kpis.moraCritica > 0 ? "destructive" : "muted"} sub={kpis.moraCritica > 0 ? "más de 30 días" : "sin atrasos críticos"} />
-          <KpiCard icon="check-mark-button" label="Créditos pagados"  value={String(kpis.pagados)}     accent="muted" />
+          {/*
+            Los KPI mueven los MISMOS filtros del panel de abajo, no unos propios: si no se
+            hablaran, la tabla mostraría una cosa y los chips de filtro dirían otra.
+            "Cartera activa" es una suma de pesos y no filtra — no hay "los créditos de la
+            cartera activa" distintos de los activos, que ya tienen su tarjeta.
+          */}
+          <KpiCard
+            icon="page-facing-up" label="Créditos activos" value={String(kpis.activos)} accent="primary"
+            onClick={kpis.activos > 0 ? () => { setEstado("activo"); setMora("all"); } : undefined}
+            active={estadoFilter === "activo" && moraFilter === "all"}
+          />
+          <KpiCard icon="money-bag" label="Cartera activa" value={`$${n0(kpis.cartera)}`} accent="success" mono />
+          <KpiCard
+            icon="warning" label="Mora crítica" value={String(kpis.moraCritica)}
+            accent={kpis.moraCritica > 0 ? "destructive" : "muted"}
+            sub={kpis.moraCritica > 0 ? "más de 30 días" : "sin atrasos críticos"}
+            onClick={kpis.moraCritica > 0 ? () => { setMora("critica"); setEstado("all"); } : undefined}
+            active={moraFilter === "critica"}
+          />
+          <KpiCard
+            icon="check-mark-button" label="Créditos pagados" value={String(kpis.pagados)} accent="muted"
+            onClick={kpis.pagados > 0 ? () => { setEstado("pagado"); setMora("all"); } : undefined}
+            active={estadoFilter === "pagado"}
+          />
         </div>
 
         {/* ── Filter Toolbar ── */}
