@@ -54,7 +54,13 @@ export function CampaignModal({ creditos, onClose }: CampaignModalProps) {
   const plantillasMeta = useMemo(() => {
     const marca = financiera?.nombre?.trim() || "tu financiera";
     return (config?.cobranzaConfig?.plantillas_meta ?? [])
-      .filter((p) => p.activa)
+      /**
+       * 🔴 SOLO LAS DE MORA. Esta campaña se arma sobre créditos en mora: es un reclamo,
+       * lleve o no una quita de interés como incentivo. Ofrecer acá una plantilla de
+       * promoción o de información le mandaría a todo el lote un texto que no habla de su
+       * deuda.
+       */
+      .filter((p) => p.activa && p.motivo === "mora")
       .map((p) => ({ ...p, ...plantillaMetaParaCampana(p, marca) }));
   }, [config, financiera]);
 
@@ -110,6 +116,7 @@ export function CampaignModal({ creditos, onClose }: CampaignModalProps) {
     usaPlantillaMeta: !!metaElegida,
     destinatarios: creditos.length,
     hayPlantillas: plantillasMeta.length > 0,
+    motivoLabel: "aviso de mora",
   });
 
   const set = (field: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>

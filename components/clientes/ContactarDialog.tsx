@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/field";
 import { WhatsAppIcon } from "@/components/ui/WhatsAppIcon";
 import { useToast } from "@/components/ui/toast";
 import { formatFecha, formatMonto } from "@/lib/utils";
-import { riesgoEnvioMeta, CATEGORIA_META_LABEL, type CategoriaMeta } from "@/lib/domain";
+import { riesgoEnvioMeta, CATEGORIA_META_LABEL, MOTIVO_LABEL, type CategoriaMeta } from "@/lib/domain";
 
 type Canal = "whatsapp" | "email";
 type Motivo = "mora" | "promocion" | "informacion";
@@ -17,6 +17,8 @@ type Motivo = "mora" | "promocion" | "informacion";
 /** Una plantilla aprobada por Meta, ya completada por el server con los datos del cliente. */
 interface PlantillaMetaPreview {
   id: string;
+  /** Para qué motivo sirve. Solo se ofrecen las del motivo que se está mandando. */
+  motivo: Motivo;
   nombre: string;
   idioma: string;
   categoria: CategoriaMeta;
@@ -83,8 +85,22 @@ function Form({ clienteId, onClose }: { clienteId: string; onClose: () => void }
   /** Plantilla de Meta elegida ("" = texto libre). Solo aplica a WhatsApp. */
   const [metaId, setMetaId] = useState("");
 
-  const plantillasMeta = data?.plantillas_meta ?? [];
+  /**
+   * 🔴 SOLO LAS DEL MOTIVO QUE SE ESTÁ MANDANDO.
+   *
+   * El selector ofrecía todas: con "Promo" elegido se podía mandar `aviso_mora_ar`, o sea
+   * reclamarle una deuda por escrito a alguien a quien se le iba a hacer una oferta. Y
+   * quedaba registrado como promoción —que no cuenta como gestión de cobranza— un reclamo
+   * que sí lo es, así que además ensuciaba el embudo de efectividad.
+   */
+  const plantillasMeta = (data?.plantillas_meta ?? []).filter((p) => p.motivo === motivo);
   const metaElegida = plantillasMeta.find((p) => p.id === metaId) ?? null;
+
+  // Al cambiar de motivo, la plantilla elegida deja de aplicar y se limpia sola. Sin esto
+  // quedaría un id colgado que el server rechazaría recién al apretar Enviar.
+  useEffect(() => {
+    if (metaId && !plantillasMeta.some((p) => p.id === metaId)) setMetaId("");
+  }, [metaId, plantillasMeta]);
 
   // El texto sigue a la plantilla del motivo elegido HASTA que el operador lo edita. Después
   // deja de pisarse solo: nada peor que perder lo que escribiste por cambiar un selector.
@@ -128,6 +144,7 @@ function Form({ clienteId, onClose }: { clienteId: string; onClose: () => void }
     usaPlantillaMeta: !!metaElegida,
     destinatarios: 1,
     hayPlantillas: plantillasMeta.length > 0,
+    motivoLabel: MOTIVO_LABEL[motivo],
   });
 
   const enviar = async (e: React.FormEvent) => {
@@ -227,7 +244,13 @@ function Form({ clienteId, onClose }: { clienteId: string; onClose: () => void }
       {/* ── Plantilla aprobada por Meta (opcional, solo WhatsApp) ── */}
       {canal === "whatsapp" && plantillasMeta.length > 0 && (
         <div className="space-y-1.5">
-          <FieldLabel>Plantilla aprobada por Meta</FieldLabel>
+          <div className="flex items-baseline gap-2">
+            <FieldLabel>Plantilla aprobada por Meta</FieldLabel>
+            {/* Qué se está viendo: son las de ESTE motivo, no todas las cargadas. */}
+            <span className="text-[11px] text-muted-foreground/60">
+              de {MOTIVO_LABEL[motivo].toLowerCase()}
+            </span>
+          </div>
           <select
             value={metaId}
             onChange={(e) => setMetaId(e.target.value)}

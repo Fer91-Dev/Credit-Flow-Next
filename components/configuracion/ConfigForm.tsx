@@ -231,9 +231,12 @@ const AYUDA: Record<string, AyudaBloque> = {
       + "le llega «Hola Juan Pérez, tenés una cuota vencida por $39.187,40. Comunicate con nosotros.»",
     puntos: [
       "El sistema NO aprueba nada: la aprobación la da Meta en el Administrador de WhatsApp. Acá solo se registra.",
+      "Cada plantilla es PARA UN MOTIVO (mora, promoción o información) y solo aparece cuando estás mandando ese motivo. Hace falta una por cada tipo de mensaje que quieras mandar: la exigencia de Meta no es por el motivo sino por la ventana de 24 h.",
+      "Categoría según el motivo: una cobranza va como «Utilidad» y una oferta como «Marketing». Un reclamo aprobado como marketing no le llega a quien tiene la publicidad silenciada; una oferta aprobada como utilidad es lo que Meta re-categoriza y penaliza.",
       "El cuerpo va copiado exactamente, con sus variables numeradas. Si cambia una palabra, deja de estar aprobado y Meta no lo entrega.",
       "Cada variable tiene que tener un dato asignado. Si queda vacía, al cliente le llega la variable escrita en crudo.",
-      "Categoría: una cobranza es «Utilidad». Declararla como «Marketing» hace que caiga bajo las preferencias de publicidad del cliente y puede no entregarse.",
+      "El signo $ no lo pone el sistema: si el importe va con peso, escribilo en el cuerpo que mandás a aprobar.",
+      "Las campañas solo usan plantillas de MORA, y solo las que no pidan número de cuota ni fecha de vencimiento: una campaña no resuelve esos datos por cliente.",
       "No son obligatorias. Sin plantilla se manda texto libre y el sistema avisa antes de enviar — el aviso es más fuerte en una campaña que en un mensaje suelto.",
       "El riesgo real de mandar texto libre en volumen: los que bloquean o reportan bajan la calidad del número, primero se recorta el límite diario y después se pierde la línea.",
       "Apagar una plantilla la saca de los selectores sin borrarla: sirve cuando Meta la pausa.",

@@ -264,7 +264,9 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
          */
         plantilla_meta: typeof body.plantilla_meta === "string" && body.plantilla_meta
           ? resolverPlantillasMeta((await getCobranzaConfig(tenantId)).plantillas_meta)
-              .find((p) => p.nombre === body.plantilla_meta && p.activa)?.nombre ?? null
+              // Y de MORA: una campaña sobre créditos atrasados es un reclamo, así que una
+              // plantilla de promoción o de información no puede quedar registrada acá.
+              .find((p) => p.nombre === body.plantilla_meta && p.activa && p.motivo === "mora")?.nombre ?? null
           : null,
       },
     });

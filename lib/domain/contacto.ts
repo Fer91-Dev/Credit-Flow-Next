@@ -236,9 +236,36 @@ export const CATEGORIA_META_NOTA: Record<CategoriaMeta, string> = {
   authentication: "Solo códigos de verificación. No corresponde a cobranza.",
 };
 
+/**
+ * Con qué CATEGORÍA de Meta tiene que estar aprobada la plantilla de cada motivo.
+ *
+ * 🔴 No es burocracia: la categoría cambia si el mensaje se entrega.
+ *  - Un reclamo de deuda declarado como "marketing" cae bajo las preferencias de publicidad
+ *    del destinatario. Al que las tiene apagadas no le llega el aviso de mora.
+ *  - Una oferta declarada como "utility" es exactamente lo que Meta persigue: re-categoriza
+ *    la plantilla, y la reincidencia penaliza la cuenta entera.
+ *
+ * "informacion" no tiene una respuesta única —un aviso de servicio es utility, un anuncio es
+ * marketing— así que ahí no se avisa nada: es la financiera la que sabe qué está mandando.
+ */
+export const CATEGORIA_ESPERADA: Record<MotivoContacto, CategoriaMeta | null> = {
+  mora: "utility",
+  promocion: "marketing",
+  informacion: null,
+};
+
 export interface PlantillaMeta {
   /** Id interno (lo genera la pantalla). No es el id de Meta. */
   id: string;
+  /**
+   * Para qué motivo sirve esta plantilla.
+   *
+   * 🔴 Sin esto, el selector ofrecía TODAS las plantillas siempre: con "Promo" elegido se
+   * podía mandar `aviso_mora_ar`, o sea reclamarle una deuda por escrito a alguien a quien
+   * se le iba a hacer una oferta. El motivo y no la categoría, porque mora e información
+   * comparten categoría (utility) y no son lo mismo.
+   */
+  motivo: MotivoContacto;
   /** El `name` EXACTO con el que Meta la aprobó (minúsculas y guiones bajos). */
   nombre: string;
   /** Código de idioma de Meta: es_AR, es, en_US. */
@@ -288,6 +315,19 @@ export function revisarPlantillaMeta(p: Partial<PlantillaMeta>): string[] {
         asignadas === 0 ? "no hay ninguna asignada" : `solo ${asignadas} tiene${asignadas === 1 ? "" : "n"} dato`
       }. Sin asignar, al cliente le llega la variable escrita en crudo.`,
     );
+
+  // La categoría con la que se aprobó tiene que coincidir con para qué se la va a usar.
+  const esperada = p.motivo ? CATEGORIA_ESPERADA[p.motivo] : null;
+  if (esperada && p.categoria && p.categoria !== esperada) {
+    errores.push(
+      p.motivo === "mora"
+        ? "Un aviso de mora aprobado como «Marketing» no le llega a quien tiene la publicidad silenciada. Meta lo aprueba como «Utilidad»."
+        : "Una oferta aprobada como «Utilidad» es lo que Meta re-categoriza y penaliza. Una promoción va como «Marketing».",
+    );
+  }
+  if (p.categoria === "authentication")
+    errores.push("«Autenticación» es solo para códigos de verificación: no corresponde a ninguno de estos mensajes.");
+
   return errores;
 }
 
@@ -315,6 +355,11 @@ export function resolverPlantillasMeta(raw: unknown): PlantillaMeta[] {
     .filter((p): p is Record<string, unknown> => !!p && typeof p === "object")
     .map((p, i) => ({
       id: typeof p.id === "string" && p.id ? p.id : `meta-${i}`,
+      // Las que se guardaron antes de que el motivo existiera son de mora: es el único uso
+      // que había cuando se cargaron.
+      motivo: (["mora", "promocion", "informacion"] as string[]).includes(String(p.motivo))
+        ? (p.motivo as MotivoContacto)
+        : "mora",
       nombre: String(p.nombre ?? "").trim(),
       idioma: String(p.idioma ?? "es_AR").trim(),
       categoria: (CATEGORIAS_META as readonly string[]).includes(String(p.categoria))
@@ -390,10 +435,12 @@ export function riesgoEnvioMeta(opts: {
   usaPlantillaMeta: boolean;
   /** A cuántos destinatarios va. 1 = contacto individual. */
   destinatarios: number;
-  /** `true` si hay al menos una plantilla aprobada registrada en el sistema. */
+  /** `true` si hay al menos una plantilla aprobada registrada PARA ESTE MOTIVO. */
   hayPlantillas: boolean;
+  /** Para qué es el mensaje ("aviso de mora", "promoción"). Precisa el aviso de que faltan. */
+  motivoLabel?: string;
 }): { nivel: RiesgoMeta; titulo: string; puntos: string[] } {
-  const { canal, usaPlantillaMeta, destinatarios, hayPlantillas } = opts;
+  const { canal, usaPlantillaMeta, destinatarios, hayPlantillas, motivoLabel } = opts;
   if (canal !== "whatsapp" || usaPlantillaMeta) return { nivel: null, titulo: "", puntos: [] };
 
   const masivo = destinatarios > 1;
@@ -406,7 +453,11 @@ export function riesgoEnvioMeta(opts: {
     puntos.push("Mandarlos de a tandas y escalonados a lo largo del día reduce el riesgo, pero no lo elimina.");
   }
   if (!hayPlantillas) {
-    puntos.push("Todavía no hay ninguna plantilla aprobada cargada. Se dan de alta en Configuración → Cobranza.");
+    // Se nombra el motivo: puede haber plantillas cargadas y ninguna de ESTE tipo, y decir
+    // "no hay ninguna" cuando el usuario acaba de cargar dos sería mentirle.
+    puntos.push(
+      `No hay ninguna plantilla aprobada cargada${motivoLabel ? ` para ${motivoLabel.toLowerCase()}` : ""}. Se dan de alta en Configuración → Cobranza.`,
+    );
   }
   return {
     nivel: masivo ? "alto" : "info",

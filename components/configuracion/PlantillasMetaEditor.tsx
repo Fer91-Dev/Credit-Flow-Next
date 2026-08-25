@@ -4,9 +4,10 @@ import { useState } from "react";
 import { Plus, Trash2, ShieldCheck, AlertTriangle, Power } from "lucide-react";
 import { Field, Input, Select, Textarea } from "@/components/ui/field";
 import {
-  CATEGORIAS_META, CATEGORIA_META_LABEL, CATEGORIA_META_NOTA, PLACEHOLDERS_CONTACTO,
+  CATEGORIAS_META, CATEGORIA_META_LABEL, CATEGORIA_META_NOTA, CATEGORIA_ESPERADA,
+  PLACEHOLDERS_CONTACTO, MOTIVO_LABEL,
   revisarPlantillaMeta, variablesDeCuerpoMeta, renderPlantillaMeta,
-  type CategoriaMeta, type PlantillaMeta,
+  type CategoriaMeta, type PlantillaMeta, type MotivoContacto,
 } from "@/lib/domain";
 
 /**
@@ -35,9 +36,22 @@ const EJEMPLO = {
   vencimiento: "2026-09-10",
 };
 
+const MOTIVOS: MotivoContacto[] = ["mora", "promocion", "informacion"];
+
+/**
+ * Para qué sirve una plantilla de cada motivo. Se lee al elegir, que es cuando importa: una
+ * plantilla de mora usada para una promo le reclama una deuda a quien ibas a ofrecerle algo.
+ */
+const MOTIVO_NOTA: Record<MotivoContacto, string> = {
+  mora: "Reclamos de cuotas atrasadas. Solo aparece cuando estás contactando por mora, y es la única que sirve para campañas de recupero.",
+  promocion: "Ofertas y propuestas. Meta la trata como publicidad: va aprobada como «Marketing».",
+  informacion: "Avisos que no son reclamo ni oferta.",
+};
+
 function nuevaPlantilla(): PlantillaMeta {
   return {
     id: `meta-${Date.now().toString(36)}`,
+    motivo: "mora",
     nombre: "",
     idioma: "es_AR",
     categoria: "utility",
@@ -134,6 +148,10 @@ function FilaPlantilla({ p, abierta, onToggle, onPatch, onBorrar }: {
         <button type="button" onClick={onToggle} className="flex min-w-0 flex-1 items-center gap-2 text-left">
           <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${p.activa ? "bg-success" : "bg-muted-foreground/40"}`} />
           <span className="truncate font-mono text-xs text-foreground">{p.nombre || "sin nombre"}</span>
+          {/* El motivo primero: es lo que dice en qué pantalla va a aparecer. */}
+          <span className="shrink-0 rounded border border-border px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+            {MOTIVO_LABEL[p.motivo]}
+          </span>
           <span className="shrink-0 text-[10px] uppercase tracking-wide text-muted-foreground/60">
             {p.idioma} · {CATEGORIA_META_LABEL[p.categoria]}
           </span>
@@ -159,6 +177,25 @@ function FilaPlantilla({ p, abierta, onToggle, onPatch, onBorrar }: {
 
       {abierta && (
         <div className="space-y-3 border-t border-border p-3">
+          {/*
+            El MOTIVO va primero y solo: es lo que decide dónde aparece la plantilla. Al
+            cambiarlo se ajusta también la categoría, porque las dos cosas tienen que ser
+            coherentes o Meta no entrega el mensaje.
+          */}
+          <Field label="¿Para qué mensajes es?" hint={MOTIVO_NOTA[p.motivo]}>
+            <Select
+              value={p.motivo}
+              onChange={(e) => {
+                const motivo = e.target.value as MotivoContacto;
+                onPatch({ motivo, categoria: CATEGORIA_ESPERADA[motivo] ?? p.categoria });
+              }}
+            >
+              {MOTIVOS.map((m) => (
+                <option key={m} value={m}>{MOTIVO_LABEL[m]}</option>
+              ))}
+            </Select>
+          </Field>
+
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <Field label="Nombre en Meta" hint="Tal cual lo aprobó: minúsculas, números y guiones bajos.">
               <Input

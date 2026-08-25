@@ -50,7 +50,10 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
   const plantillasMeta = resolverPlantillasMeta(cobranzaCfg.plantillas_meta)
     .filter((p) => p.activa)
     .map((p) => ({
-      id: p.id, nombre: p.nombre, idioma: p.idioma, categoria: p.categoria,
+      // El MOTIVO viaja: la pantalla solo puede ofrecer las de lo que se está mandando. Una
+      // plantilla de mora elegida en un mensaje de promoción le reclamaría una deuda por
+      // escrito a alguien a quien se le iba a hacer una oferta.
+      id: p.id, motivo: p.motivo, nombre: p.nombre, idioma: p.idioma, categoria: p.categoria,
       texto: renderPlantillaMeta(p, datos),
     }));
 
@@ -117,6 +120,18 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
     : null;
   if (body.plantilla_meta_id && !plantillaMeta)
     return errorResponse("La plantilla de Meta elegida ya no existe o está desactivada.", "INVALID_REFERENCE", 400);
+  /**
+   * La plantilla tiene que ser DEL MOTIVO que se está mandando. La pantalla ya filtra, pero
+   * el corte real va acá: mandar `aviso_mora_ar` con motivo "promocion" le reclamaría una
+   * deuda por escrito a alguien a quien se le estaba por hacer una oferta, y además quedaría
+   * registrado como promoción —que no cuenta como gestión— un reclamo que sí lo es.
+   */
+  if (plantillaMeta && plantillaMeta.motivo !== motivo)
+    return errorResponse(
+      `La plantilla "${plantillaMeta.nombre}" es para ${MOTIVO_LABEL[plantillaMeta.motivo].toLowerCase()}, no para ${MOTIVO_LABEL[motivo].toLowerCase()}.`,
+      "INVALID_INPUT",
+      400,
+    );
 
   // Sin plantilla de Meta, el operador puede editar el texto; si no lo toca, va la del tenant.
   const texto = plantillaMeta
