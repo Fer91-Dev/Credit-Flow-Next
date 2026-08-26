@@ -236,7 +236,36 @@ export const CONFIG_DEFAULT: ConfiguracionFinanciera = {
   sistemaAmortizacion: "frances",
   moraActiva: true,
   tasaMoraDiaria: 0.01, // 1% diario sobre la cuota
-  topeMoraPct: 0, // 0 = sin tope (comportamiento histórico)
+  /**
+   * 🔴 TECHO DE LA MORA: 100% de la cuota. Con 1% diario se alcanza a los 100 días.
+   *
+   * La regla se dice en una frase: **los punitorios nunca superan el valor de la cuota**.
+   * Eso es lo que la hace defendible en el mostrador y frente a un juez; un número raro no.
+   *
+   * Sale de la lógica que ya tiene el sistema, no de una preferencia:
+   *
+   * · La escalera de recupero (gestión → acuerdo → refinanciación) existe para que la deuda
+   *   se pueda COBRAR. Una mora que crece sin techo la vuelve incobrable y desarma el
+   *   módulo entero: nadie paga un número que no para de subir.
+   * · El acuerdo de pago ya congela punitorios cuando alguien se compromete. O sea, el
+   *   diseño ya reconoce que la mora ilimitada estorba el recupero; esto lo hace parejo
+   *   para el que no llegó a firmar nada.
+   * · A los 100 días de atraso ya pasaron TODAS las instancias: se gestionó, se pudo
+   *   ofrecer acuerdo y se pudo refinanciar. Si nada funcionó, seguir inflando el número
+   *   no recupera un peso — solo agranda una cifra que nadie va a pagar.
+   *
+   * Por qué 100 y no menos: por debajo el techo muerde mientras la cobranza todavía está
+   * activa y se regala presión cuando el caso aún es trabajable. Por qué no más: deja de
+   * ser una regla explicable y pasa a ser un número arbitrario.
+   *
+   * **Es un DEFAULT, no una regla fija**: cada financiera lo cambia en Configuración → Motor,
+   * y 0 sigue significando sin tope. Lo que cambia es con qué arranca quien no lo tocó.
+   *
+   * Un crédito ya otorgado NO se ve afectado: sus condiciones de mora quedan congeladas en
+   * `creditos.cronograma` y `moraDelCredito` les respeta el snapshot (los de antes del tope
+   * siguen sin techo, a propósito).
+   */
+  topeMoraPct: 100,
   imputarCargos: "integrado",
   moneda: "ARS",
   locale: "es-AR",
