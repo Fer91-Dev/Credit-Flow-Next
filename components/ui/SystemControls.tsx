@@ -85,6 +85,19 @@ const TIPO_LABEL: Record<string, string> = {
  * Los cierres pendientes van primero y no se silencian con la preferencia de movimientos:
  * un movimiento es la operación normal, una diferencia sin resolver es plata que no cuadra.
  */
+/**
+ * Datos del header que casi nunca cambian: preferencias de aviso, estado del plan y salud
+ * del respaldo. No pollean, pero se piden en CADA montaje del componente — y este vive en
+ * el header de todas las pantallas, así que navegar entre secciones los volvía a pedir cada
+ * 30s (el `dedupingInterval` global).
+ *
+ * Con 10 minutos de deduplicación, un recorrido normal por el sistema los pide UNA vez en
+ * lugar de una por pantalla. Lo que se pierde es nada: las preferencias las cambia el admin
+ * a mano (y ahí se revalida solo), el plan cambia una vez por ciclo y el estado del backup
+ * una vez por día.
+ */
+const CASI_ESTATICO = { revalidateOnFocus: false, dedupingInterval: 600_000 } as const;
+
 export function SystemControls() {
   const actions = useSystemActions();
   const { resolvedTheme, setTheme } = useTheme();
@@ -100,17 +113,17 @@ export function SystemControls() {
   // Preferencias de notificaciones del tenant (qué avisos se muestran). Todos los roles.
   // Ante fallo/ausencia se asume TODO encendido (no ocultar avisos por un fetch fallido).
   const { data: prefs } = useSWR<{ movimientos_caja: boolean; respaldos: boolean; plan: boolean } | null>(
-    "/api/notificaciones/preferencias", fetcher, { revalidateOnFocus: false },
+    "/api/notificaciones/preferencias", fetcher, CASI_ESTATICO,
   );
   const verMovimientos = prefs?.movimientos_caja !== false;
 
-  const { data } = useSWR<EstadoSus | null>("/api/suscripciones/estado", fetcher, { revalidateOnFocus: false });
+  const { data } = useSWR<EstadoSus | null>("/api/suscripciones/estado", fetcher, CASI_ESTATICO);
   const aviso = prefs?.plan === false ? null : calcularAviso(data);
 
   // Salud del respaldo (solo admins; a otros roles el endpoint responde 403 → sin aviso).
   // No se pollea: una consulta por carga alcanza (el estado del backup cambia una vez al día).
   const { data: saludBackup } = useSWR<{ salud: { tono: string; titulo: string; detalle: string } } | null>(
-    "/api/backups/salud", fetcher, { revalidateOnFocus: false },
+    "/api/backups/salud", fetcher, CASI_ESTATICO,
   );
   const avisoBackup = prefs?.respaldos === false ? null : (saludBackup?.salud?.tono === "alerta" ? saludBackup.salud : null);
 
