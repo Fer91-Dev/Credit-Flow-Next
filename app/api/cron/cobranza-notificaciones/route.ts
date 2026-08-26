@@ -4,6 +4,7 @@ import { sincronizarAcuerdos } from "@/lib/acuerdos";
 import { Prisma } from "@prisma/client";
 import { sinDeuda, ESTADOS_VIVOS, resolverPlantillasMeta, type PlantillaMeta } from "@/lib/domain";
 import { enviarWhatsappApi, whatsappApiDisponible, type WhatsappApiConfig } from "@/lib/whatsapp";
+import { hoyComercial } from "@/lib/utils";
 
 // Reglas de mora para disparar notificaciones
 const REGLAS = [
@@ -53,8 +54,15 @@ async function ejecutarCron(req: NextRequest) {
     }
   }
 
-  const hoy = new Date();
-  hoy.setHours(0, 0, 0, 0);
+  /**
+   * 🔴 El día ARGENTINO, no el del servidor.
+   *
+   * `setHours` usa la zona horaria de quien corre el proceso, y en Vercel eso es UTC. Hoy
+   * coincide porque el cron dispara 12:00 UTC (09:00 AR, mismo día de calendario) — pero es
+   * una coincidencia del horario, no una garantía: mover el cron a la madrugada haría que
+   * el servidor viera el día siguiente y rompiera las promesas un día antes.
+   */
+  const hoy = hoyComercial();
 
   // Promesas de pago vencidas: se procesan SIEMPRE (es una actualización de estado,
   // no depende de tener canales de notificación configurados).
@@ -233,8 +241,24 @@ async function procesarPromesasVencidas(hoy: Date): Promise<{ rotas: number; res
 
   for (const promesa of vencidas) {
     // ¿Hubo pagos desde que se hizo la promesa que la cubran? (auto-corrección)
-    const desde = new Date(promesa.created_at);
-    desde.setHours(0, 0, 0, 0);
+    /**
+     * 🔴 El día ARGENTINO en que se tomó la promesa.
+     *
+     * `created_at` es un TIMESTAMP y `setHours` recortaba por el día UTC del servidor. Una
+     * promesa tomada después de las 21:00 hora argentina ya pertenece al día UTC siguiente,
+     * así que `desde` quedaba en el día de DESPUÉS: un pago hecho esa misma noche no la
+     * rescataba y el cliente figuraba como que no cumplió su palabra. Medido: 1 de las 4
+     * promesas de la base cae en esa franja.
+     *
+     * `pagos.fecha` es `@db.Date`, así que el borde va a medianoche UTC del día argentino
+     * correcto — que es exactamente lo que devuelve `hoyComercial` para hoy y lo que se
+     * arma acá para la fecha de la promesa.
+     */
+    const ymdAR = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "America/Argentina/Buenos_Aires",
+      year: "numeric", month: "2-digit", day: "2-digit",
+    }).format(promesa.created_at);
+    const desde = new Date(`${ymdAR}T00:00:00.000Z`);
     const agg = await prisma.pagos.aggregate({
       where: { tenant_id: promesa.tenant_id, credito_id: promesa.credito_id, fecha: { gte: desde }, anulado: false },
       _sum: { monto: true },

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import useSWR, { mutate } from "swr";
 import { HandshakeIcon, Ban } from "lucide-react";
-import { formatMonto, formatFecha, formatFechaHora, formatCreditoNumero, nombreCompleto } from "@/lib/utils";
+import { formatMonto, formatFecha, formatFechaHora, formatCreditoNumero, nombreCompleto, hoyComercial } from "@/lib/utils";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Emoji } from "@/components/ui/Emoji";
 import { DataTable, type Column } from "@/components/ui/DataTable";
@@ -296,7 +296,19 @@ export function PromesasTab({ role }: { role: Role }) {
    * cambian al cambiar de pestaña — un KPI que se mueve con el filtro no es un KPI.
    */
   const { data: todas = [] } = useSWR<Promesa[]>("/api/cobranza/promesas", fetcher);
-  const hoyMs = (() => { const d = new Date(); d.setHours(23, 59, 59, 999); return d.getTime(); })();
+  /**
+   * 🔴 Fin del día ARGENTINO, no del día local del navegador.
+   *
+   * `promesa_fecha` es `@db.Date`: llega como `YYYY-MM-DDT00:00:00.000Z`, un día pelado.
+   * Compararlo contra `new Date().setHours(23,59,59,999)` mezcla dos cosas distintas — en
+   * Argentina ese corte cae a las 02:59:59.999Z del día SIGUIENTE, así que una promesa que
+   * vence MAÑANA entraba en "Vencen hoy". Medido: con fecha 27/08 y hoy 26/08, contaba.
+   *
+   * La agenda del día ya cortaba bien (`hoyComercial() + 1 día − 1ms`). Eran dos fórmulas
+   * para la misma pregunta y daban distinto: la agenda no lo llamaba y el KPI decía que
+   * había que cobrarlo hoy. Ahora es la misma.
+   */
+  const hoyMs = hoyComercial().getTime() + 86_400_000 - 1;
   const kpis = (() => {
     const pend = todas.filter((p) => p.promesa_estado === "pendiente");
     const cumplidas = todas.filter((p) => p.promesa_estado === "cumplida").length;
