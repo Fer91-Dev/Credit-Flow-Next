@@ -116,22 +116,45 @@ export function SystemControls() {
 
   /**
    * Movimientos de caja + cierres pendientes. Es lo único de la app que avisa de algo que
-   * hizo OTRA persona, así que la frecuencia importa: con 45s, una rendición de un vendedor
-   * podía tardar casi un minuto en aparecer y parecía que no había pasado nada.
+   * hizo OTRA persona, así que la frecuencia importa: una rendición de un vendedor no puede
+   * tardar en aparecer y parecer que no pasó nada.
    *
-   * `dedupingInterval: 0` es la parte que faltaba y no se ve a simple vista: el default
-   * global es 30s y **también aplica a la revalidación por foco**, así que volver a la
-   * pestaña dentro de esos 30s no pedía nada — justo el caso más común (mirás otra
-   * ventana, volvés, y seguís viendo lo viejo).
+   * Lo que hace el trabajo es `revalidateOnFocus`, no el intervalo: el caso real es mirar
+   * otra ventana y volver. Por eso el `dedupingInterval` no puede quedar en el default
+   * global de 30s — ese **también frena la revalidación por foco**, y volver a la pestaña
+   * dentro de esos 30s no pedía nada.
    *
    * Sigue siendo polling: en el peor caso —parado en la pantalla, sin tocar nada— tarda
-   * hasta 15s. Instantáneo de verdad requeriría websockets, que es otra discusión.
+   * hasta 60s. Instantáneo de verdad requeriría websockets, que es otra discusión.
    */
   const { data: notif } = useSWR<{ movimientos: MovNotif[]; arqueos: ArqueoNotif[] } | null>("/api/notificaciones", fetcher, {
-    refreshInterval: 15_000,
+    /**
+     * 🔴 60s, NO 15s. Este componente vive en `AppShell`: está montado en TODAS las
+     * pantallas, así que su intervalo se paga en cada minuto que alguien tenga el sistema
+     * abierto — no en cada minuto que mire la campanita.
+     *
+     * Medido en Vercel (26/07–25/08): 107.000 invocaciones de función y 3h 00m 55s de las
+     * 4h de CPU incluidas — 75%, con aviso de pausa automática del proyecto al pasarse. El
+     * costo por invocación es normal (101 ms); lo caro es la CANTIDAD, y a 15s este poller
+     * solo genera 240 pedidos por hora y por pestaña.
+     *
+     * A 60s siguen siendo 60/hora. Lo que se pierde es el peor caso —parado en la pantalla
+     * sin tocar nada, el aviso tarda hasta 60s en vez de 15— y lo que NO se pierde es el
+     * caso real: `revalidateOnFocus` sigue prendido, así que al volver a la ventana aparece
+     * al instante. La razón original del polleo (el arqueo lo declara el vendedor y lo
+     * resuelve el admin, en sesiones distintas) sigue cubierta.
+     */
+    refreshInterval: 60_000,
     revalidateOnFocus: true,
     revalidateOnReconnect: true,
-    dedupingInterval: 0,
+    /**
+     * `dedupingInterval` en 5s y no en 0. En 0, CADA montaje del componente vuelve a pedir:
+     * como esto vive en el header de todas las pantallas, navegar diez veces en un minuto
+     * eran diez pedidos extra, además del polleo. Cinco segundos colapsan esa ráfaga sin
+     * que se note, y siguen dejando pasar la revalidación por foco — que es el motivo por
+     * el que no puede quedar en el default global de 30s (ese también la frena).
+     */
+    dedupingInterval: 5_000,
   });
   const movimientos = useMemo(() => (verMovimientos ? (notif?.movimientos ?? []) : []), [notif, verMovimientos]);
   /**

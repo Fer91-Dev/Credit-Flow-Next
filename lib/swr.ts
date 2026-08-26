@@ -1158,25 +1158,33 @@ export interface MiPerfilVendedor {
  * escritorio y no siempre llega. Con el usuario probando en dos ventanas, el aviso tardó
  * un minuto y lo que terminó actualizando el valor fue el polleo, no el foco.
  *
- * Por eso el `refreshInterval` baja a 30s. Son parámetros que se tocan una vez por mes, así
- * que el costo es una consulta chica cada medio minuto por usuario; el beneficio es que el
- * peor caso deja de depender de un evento del sistema operativo. Aun así no es tiempo real:
- * para eso haría falta empujar el cambio desde el servidor, y no lo vale un dato que casi
- * nunca cambia.
+ * Por eso hay `refreshInterval` además del foco: el peor caso deja de depender de un evento
+ * del sistema operativo. Está en 120s y no menos porque son parámetros que se tocan una vez
+ * por mes, y el polleo se paga en CADA minuto de app abierta, no en los pocos en que el
+ * dato cambia (ver la nota de costo de Vercel en `components/ui/SystemControls.tsx`). No es
+ * tiempo real: para eso haría falta empujar el cambio desde el servidor, y no lo vale un
+ * dato que casi nunca cambia.
  *
  * 🔴 Nada de esto es una barrera de seguridad. El servidor revalida los topes al otorgar,
  * así que una pantalla desactualizada como mucho hace perder tiempo — nunca deja pasar un
  * crédito que no corresponde.
  *
- * `dedupingInterval: 0` es imprescindible, no adorno: el default global de 30s **también
- * frena la revalidación por foco**, así que sin esto volver a la pestaña dentro de esa
- * ventana no pedía nada y se seguía viendo el valor viejo.
+ * Bajarle el `dedupingInterval` al default global (30s) es imprescindible, no adorno: ese
+ * **también frena la revalidación por foco**, así que sin esto volver a la pestaña dentro
+ * de esa ventana no pedía nada y se seguía viendo el valor viejo.
  */
 const PARAMETROS_SWR = {
-  refreshInterval: 30_000,
+  // 120s, no 30s: son parámetros que se tocan una vez por mes y el polleo se paga en cada
+  // minuto de app abierta. Ver la nota de costo en `SystemControls` — el proyecto llegó al
+  // 75% de la CPU incluida de Vercel, que al pasarse lo pausa. `revalidateOnFocus` cubre el
+  // caso real (volver a la ventana); el intervalo es solo la red de seguridad.
+  refreshInterval: 120_000,
   revalidateOnFocus: true,
   revalidateOnReconnect: true,
-  dedupingInterval: 0,
+  // 5s, no 0: en 0 cada montaje del componente vuelve a pedir. Cinco segundos colapsan la
+  // ráfaga de navegar entre pantallas y siguen dejando pasar la revalidación por foco (el
+  // default global de 30s también la frena, por eso no se usa ese).
+  dedupingInterval: 5_000,
 } as const;
 
 export function useMiPerfilVendedor() {
@@ -1265,15 +1273,21 @@ export interface ArqueoCaja {
  *
  * Por eso estos dos hooks se salen de la regla: pollean y revalidan al volver a la pestaña.
  *
- * `dedupingInterval: 0` no es adorno: el default global (30s) **también frena la
- * revalidación por foco**, así que volver a la pestaña dentro de esos 30s no pedía nada y
- * se seguía viendo el estado viejo.
+ * Bajarle el `dedupingInterval` al default global no es adorno: ese (30s) **también frena
+ * la revalidación por foco**, así que volver a la pestaña dentro de esos 30s no pedía nada
+ * y se seguía viendo el estado viejo.
  */
 const ARQUEOS_SWR = {
-  refreshInterval: 30_000,
+  // 120s por la misma razón de costo que `PARAMETROS_SWR`. El vendedor declara y el admin
+  // resuelve desde otra sesión, así que el polleo tiene que existir; no hace falta que sea
+  // cada 30s. Al volver a la pestaña se revalida igual.
+  refreshInterval: 120_000,
   revalidateOnFocus: true,
   revalidateOnReconnect: true,
-  dedupingInterval: 0,
+  // 5s, no 0: en 0 cada montaje del componente vuelve a pedir. Cinco segundos colapsan la
+  // ráfaga de navegar entre pantallas y siguen dejando pasar la revalidación por foco (el
+  // default global de 30s también la frena, por eso no se usa ese).
+  dedupingInterval: 5_000,
 } as const;
 
 /** Arqueos de MI caja (vendedor logueado). */
