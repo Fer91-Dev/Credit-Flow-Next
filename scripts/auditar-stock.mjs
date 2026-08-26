@@ -20,12 +20,9 @@
  *
  * Es de SOLO LECTURA: no escribe nada.
  */
-import { PrismaClient } from "@prisma/client";
+import { conectar } from "./_conexion.mjs";
 
-const url = process.argv[2];
-const prisma = new PrismaClient(url ? { datasources: { db: { url } } } : {});
-const REF_PROD = "ilrvvfctzlcbhelxbsar";
-const donde = (url ?? process.env.DATABASE_URL ?? "").includes(REF_PROD) ? "PRODUCCION" : "DEV";
+const { prisma, donde } = conectar("auditor de stock (kardex)");
 
 let fallos = 0;
 const chk = (cond, label, detalle = "") => {

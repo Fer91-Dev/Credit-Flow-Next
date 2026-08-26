@@ -1,11 +1,12 @@
 /**
  * Auditor de METAS, ACUERDOS y TRAZA — solo lectura, no escribe nada.
  *
- *   node --env-file=.env.local scripts/auditar-metas.mjs
- *   node --env-file=.env.production.local scripts/auditar-metas.mjs
+ *   node --env-file=.env.local scripts/auditar-metas.mjs            # DESARROLLO
+ *   node --env-file=.env.production.local scripts/auditar-metas.mjs # PRODUCCION
+ *   node scripts/auditar-metas.mjs "<url>"                          # otra base
  *
- * Corre contra CUALQUIER base (no toca datos). Sale con código 1 si algo no cuadra, para
- * poder engancharlo a un chequeo automático.
+ * Anuncia en la PRIMERA LINEA a qué base apunta. No toca datos. Sale con código 1 si algo no
+ * cuadra, para poder engancharlo a un chequeo automático.
  *
  * 🔴 QUÉ CLASE DE BUG BUSCA
  *
@@ -20,9 +21,9 @@
  * Un auditor que grita por lo esperado no lo mira nadie a la tercera vez: lo que es normal
  * sale como INFO, no como falla.
  */
-import { PrismaClient } from "@prisma/client";
+import { conectar } from "./_conexion.mjs";
 
-const prisma = new PrismaClient();
+const { prisma } = conectar("auditor de metas, acuerdos y traza");
 const AR_OFFSET_MS = 3 * 3_600_000;
 const r2 = (n) => Math.round(n * 100) / 100;
 const m$ = (n) => `$${(n ?? 0).toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;

@@ -1,10 +1,12 @@
 /**
  * Auditor del NÚCLEO: el crédito contra su propio libro mayor. Solo lectura.
  *
- *   node --env-file=.env.local scripts/auditar-creditos.mjs
- *   node --env-file=.env.production.local scripts/auditar-creditos.mjs
+ *   node --env-file=.env.local scripts/auditar-creditos.mjs            # DESARROLLO
+ *   node --env-file=.env.production.local scripts/auditar-creditos.mjs # PRODUCCION
+ *   node scripts/auditar-creditos.mjs "<url>"                          # otra base
  *
- * Corre contra CUALQUIER base y no escribe nada. Sale con código 1 si algo no cuadra.
+ * Anuncia en la PRIMERA LINEA a qué base apunta. No escribe nada. Sale con código 1 si algo
+ * no cuadra, para poder engancharlo a un chequeo automático.
  *
  * 🔴 POR QUÉ EXISTE
  *
@@ -18,9 +20,9 @@
  * La regla de oro de estos scripts: lo ESPERADO sale como INFO, no como falla. Un auditor
  * que grita por lo normal deja de mirarse a la tercera vez.
  */
-import { PrismaClient } from "@prisma/client";
+import { conectar } from "./_conexion.mjs";
 
-const prisma = new PrismaClient();
+const { prisma } = conectar("auditor del nucleo de creditos");
 const EPS = 0.02; // tolerancia de redondeo (los importes van a 2 decimales)
 const r2 = (n) => Math.round(n * 100) / 100;
 const m$ = (n) => `$${(n ?? 0).toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;

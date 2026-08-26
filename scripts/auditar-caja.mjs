@@ -17,12 +17,9 @@
  *
  * Es de SOLO LECTURA: no escribe nada, se puede correr contra producción sin riesgo.
  */
-import { PrismaClient } from "@prisma/client";
+import { conectar } from "./_conexion.mjs";
 
-const url = process.argv[2];
-const prisma = new PrismaClient(url ? { datasources: { db: { url } } } : {});
-const REF_PROD = "ilrvvfctzlcbhelxbsar";
-const donde = (url ?? process.env.DATABASE_URL ?? "").includes(REF_PROD) ? "PRODUCCION" : "DEV";
+const { prisma, donde } = conectar("auditor de caja");
 
 const m = (x) => (x ?? 0).toFixed(2).padStart(15);
 let fallos = 0;
