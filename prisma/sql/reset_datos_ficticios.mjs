@@ -81,6 +81,7 @@ async function totales() {
     metas_vendedor: await p.metas_vendedor.count(),
     movimientos_stock: await p.movimientos_stock.count(),
     campanas_cobranza: await p.campanas_cobranza.count(),
+    planillas_cobranza: await p.planillas_cobranza.count(),
     auditoria: await p.auditoria.count(),
   };
 }
@@ -165,6 +166,15 @@ try {
   const metas = await p.metas_vendedor.deleteMany({});
   const stock = await p.movimientos_stock.deleteMany({});
   const campanas = await p.campanas_cobranza.deleteMany({});  // cascade: objetivos
+  /**
+   * 🔴 Las planillas de calle NO cuelgan de nadie.
+   *
+   * `planillas_cobranza` no tiene cascada desde clientes ni desde créditos, y `pagos.planilla_id`
+   * es SetNull. O sea que borrar la cartera dejaba las planillas emitidas VIVAS, con su
+   * snapshot de deuda congelado, apuntando a clientes que ya no existen. Faltaba acá: es la
+   * única tabla operativa del tenant que no se limpiaba ni sola ni explícitamente.
+   */
+  const planillas = await p.planillas_cobranza.deleteMany({});
   const auditoria = await p.auditoria.deleteMany({});
 
   console.log("\n=== BORRADO ===");
@@ -175,6 +185,7 @@ try {
   console.log(`  metas_vendedor       ${metas.count}`);
   console.log(`  movimientos_stock    ${stock.count}`);
   console.log(`  campanas_cobranza    ${campanas.count}`);
+  console.log(`  planillas_cobranza   ${planillas.count}`);
   console.log(`  auditoria            ${auditoria.count}`);
 
   console.log("\n=== STOCK ===");
