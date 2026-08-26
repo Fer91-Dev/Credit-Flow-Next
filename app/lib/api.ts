@@ -26,15 +26,35 @@ export function assertSameOrigin(req: Request): void {
 }
 
 /**
- * Reporta a Sentry un error NO esperado (500). Los ApiError y los errores de negocio
- * mapeados (unique/fk/not found → 4xx) NO se reportan: son control de flujo normal.
- * Adjunta el actor del request (usuario que disparó el error) para el soporte multi-tenant.
+ * Reporta a Sentry un error NO esperado (500) y devuelve una REFERENCIA corta para dársela
+ * al usuario. Los ApiError y los errores de negocio mapeados (unique/fk/not found → 4xx) NO
+ * se reportan: son control de flujo normal.
+ *
+ * Adjunta el actor del request (quién lo disparó) para el soporte multi-tenant.
+ *
+ * 🔴 POR QUÉ LA REFERENCIA.
+ *
+ * El usuario veía "Error interno del servidor", sin nada. Para encontrar qué le pasó había
+ * que correlacionar a mano por hora y por persona en Sentry — y si dos cosas parecidas
+ * ocurrían cerca, era adivinar. Con esto, "me dio error" pasa a ser "me dio error a3f9c2".
+ *
+ * El id que devuelve Sentry son 32 caracteres: impronunciable por teléfono. Así que la
+ * referencia se genera ACÁ, corta, y se manda como ETIQUETA del evento (`tags.ref`) — se
+ * busca en Sentry con `ref:a3f9c2`. Tiene que ir en el capture, no después: etiquetar un
+ * scope nuevo cuando el evento ya salió no lo toca.
+ *
+ * Generarla acá en vez de recortar el id de Sentry además la hace independiente del SDK: si
+ * no hay DSN configurado no se manda nada, pero la referencia sigue sirviendo porque queda
+ * en el log del servidor junto al stack.
  */
-function reportarErrorInterno(err: unknown): void {
+function reportarErrorInterno(err: unknown): string {
   const actor = getAuditActor();
-  Sentry.captureException(err, actor ? {
-    user: { id: actor.userId, username: actor.nombre ?? undefined, email: actor.email ?? undefined },
-  } : undefined);
+  const ref = crypto.randomUUID().replace(/-/g, "").slice(0, 8);
+  Sentry.captureException(err, {
+    tags: { ref },
+    ...(actor ? { user: { id: actor.userId, username: actor.nombre ?? undefined, email: actor.email ?? undefined } } : {}),
+  });
+  return ref;
 }
 
 export interface ApiResponse<T = any> {
@@ -42,6 +62,8 @@ export interface ApiResponse<T = any> {
   data?: T;
   error?: string;
   code?: string;
+  /** Referencia corta del evento en Sentry (solo en los 500). Se busca con `ref:xxxxxxxx`. */
+  ref?: string;
 }
 
 /**
@@ -60,9 +82,10 @@ export function successResponse<T>(data: T, statusCode: number = 200): Response 
 export function errorResponse(
   error: string,
   code: string = 'ERROR',
-  statusCode: number = 400
+  statusCode: number = 400,
+  ref?: string,
 ): Response {
-  return new Response(JSON.stringify({ ok: false, error, code } as ApiResponse), {
+  return new Response(JSON.stringify({ ok: false, error, code, ...(ref ? { ref } : {}) } as ApiResponse), {
     status: statusCode,
     headers: { 'Content-Type': 'application/json' },
   });
@@ -113,18 +136,27 @@ export function withErrorHandler<A extends any[]>(
           return errorResponse('No encontrado', 'NOT_FOUND', 404);
         }
 
-        // Error genérico (no esperado) → 500 + Sentry.
-        console.error('[API Error]', err);
-        reportarErrorInterno(err);
+        /**
+         * Error genérico (no esperado) → 500 + Sentry.
+         *
+         * La referencia va DENTRO del mensaje además de en su campo: media app lee
+         * `json.error` como texto plano (`setError(json.error)`, toasts), así que ponerla
+         * solo en `ref` la haría invisible en casi todas las pantallas. Así aparece en
+         * todas sin tocar un solo lugar de los que muestran el error.
+         */
+        const ref = reportarErrorInterno(err);
+        console.error('[API Error]', ref, err);
         return errorResponse(
-          'Error interno del servidor',
+          `Error interno del servidor · ref ${ref}`,
           'INTERNAL_ERROR',
-          500
+          500,
+          ref,
         );
       }
 
-      reportarErrorInterno(err);
-      return errorResponse('Error desconocido', 'UNKNOWN_ERROR', 500);
+      const refDesconocido = reportarErrorInterno(err);
+      console.error('[API Error desconocido]', refDesconocido, err);
+      return errorResponse(`Error desconocido · ref ${refDesconocido}`, 'UNKNOWN_ERROR', 500, refDesconocido);
     }
   });
 }
