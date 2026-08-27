@@ -119,6 +119,37 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     ? Math.min(100, Math.max(0, Number(body.promo_valor) || 0))
     : 0;
 
+  const cobranzaCfg = await getCobranzaConfig(tenantId);
+
+  /**
+   * 🔴 EL TOPE DE DESCUENTO DEL VENDEDOR TAMBIÉN RIGE ACÁ.
+   *
+   * `quita_max_vendedor_pct` (Configuración → Cobranza → Acuerdos) limita cuánto puede
+   * condonar un vendedor sin que lo firme un administrador, y se hacía cumplir al armar un
+   * ACUERDO y al REFINANCIAR — pero no acá. La campaña era el agujero: el mismo vendedor que
+   * no podía perdonar un peso en un acuerdo armaba una campaña al 100% y le condonaba todos
+   * los punitorios a cincuenta clientes de una sola vez, que además es el camino más rápido
+   * de los tres. Y no es cosmético: al cobrar, `POST /api/pagos` busca las campañas activas
+   * del crédito y aplica el mayor `promo_valor` vigente. Es plata realmente perdonada.
+   *
+   * Se compara PORCENTAJE contra porcentaje, que es más restrictivo que el tope en pesos de
+   * `quitaMaxima`: allá lo condonable es mora + interés, y acá el descuento sale solo de la
+   * mora. Si el % entra en el tope, el importe entra seguro.
+   *
+   * El admin no tiene tope, por la misma razón que en acuerdos: un límite que él mismo edita
+   * en Configuración no es un límite.
+   */
+  const topePromo = ctx.role === "admin" ? 100 : cobranzaCfg.acuerdos.quita_max_vendedor_pct;
+  if (promoValor > topePromo) {
+    return errorResponse(
+      topePromo === 0
+        ? "No podés ofrecer descuento en una campaña. Pedile a un administrador que la arme."
+        : `El descuento máximo que podés ofrecer es ${topePromo}% de los punitorios.`,
+      "QUITA_EXCEDIDA",
+      403,
+    );
+  }
+
   // Créditos del tenant entre los solicitados (multi-tenant: nunca por id suelto).
   // Scoping anti-IDOR: un vendedor solo puede armar campañas con SUS créditos.
   const candidatos = await prisma.creditos.findMany({
@@ -156,7 +187,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
    * 10, veía 10, y salían 9 sin que nada lo explicara antes de apretar. Si el cliente muere
    * DESPUÉS de armada la campaña, el corte del envío sigue cubriendo ese caso.
    */
-  const { fallecidos: polFallecidos } = await getCobranzaConfig(tenantId);
+  const polFallecidos = cobranzaCfg.fallecidos;
   const cobrable = (c: (typeof candidatos)[number]) =>
     esCreditoVivo(c.estado) && !contactoBloqueado(c.cliente, { bloqueaFallecidos: polFallecidos.bloquea_contacto }).bloqueado;
 
@@ -263,7 +294,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
          * campaña un "aprobado por Meta" que nadie aprobó.
          */
         plantilla_meta: typeof body.plantilla_meta === "string" && body.plantilla_meta
-          ? resolverPlantillasMeta((await getCobranzaConfig(tenantId)).plantillas_meta)
+          ? resolverPlantillasMeta(cobranzaCfg.plantillas_meta)
               // Y de MORA: una campaña sobre créditos atrasados es un reclamo, así que una
               // plantilla de promoción o de información no puede quedar registrada acá.
               .find((p) => p.nombre === body.plantilla_meta && p.activa && p.motivo === "mora")?.nombre ?? null

@@ -26,6 +26,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { nombreCompleto, formatMonto, formatDias } from "@/lib/utils";
 import { useConfirm } from "@/components/ui/confirm";
 import { useToast } from "@/components/ui/toast";
+import { type Role } from "@/lib/auth/roles";
 import { leerSeleccionCampana, limpiarSeleccionCampana } from "./seleccion-campana";
 
 const CANAL_META: Record<CanalCampana, { label: string; icon: ComponentType<{ className?: string }> }> = {
@@ -49,7 +50,7 @@ const CANAL_META: Record<CanalCampana, { label: string; icon: ComponentType<{ cl
  * a la derecha como tabla con columnas, y el total de lo que se ofrece siempre a la vista en
  * la barra de abajo.
  */
-export function NuevaCampanaView() {
+export function NuevaCampanaView({ role }: { role: Role }) {
   const router = useRouter();
   const { creditos: todos, isLoading } = useCreditos();
 
@@ -112,6 +113,7 @@ export function NuevaCampanaView() {
           <SinAudiencia bloqueados={bloqueados} onVolver={() => volver()} />
         ) : (
           <CampanaWorkspace
+            role={role}
             creditos={seleccionados}
             bloqueados={bloqueados}
             onCancelar={() => volver()}
@@ -155,13 +157,14 @@ function SinAudiencia({ bloqueados, onVolver }: { bloqueados: number; onVolver: 
 }
 
 interface WorkspaceProps {
+  role: Role;
   creditos: Credito[];
   bloqueados: number;
   onCancelar: () => void;
   onTerminar: () => void;
 }
 
-function CampanaWorkspace({ creditos, bloqueados, onCancelar, onTerminar }: WorkspaceProps) {
+function CampanaWorkspace({ role, creditos, bloqueados, onCancelar, onTerminar }: WorkspaceProps) {
   const reducirMovimiento = useReducedMotion();
   const { config } = useConfiguracion();
   const { financiera } = useFinanciera();
@@ -219,6 +222,25 @@ function CampanaWorkspace({ creditos, bloqueados, onCancelar, onTerminar }: Work
   const [foco, setFoco] = useState<string | null>(null);
 
   const descuentoPct = form.promoActiva ? Math.min(100, Math.max(0, parseFloat(form.promo_valor) || 0)) : 0;
+
+  /**
+   * 🔴 Tope de descuento del vendedor (Configuración → Cobranza → Acuerdos).
+   *
+   * Es el MISMO límite que ya regía en los acuerdos de pago y en la refinanciación, y que la
+   * campaña se salteaba: un vendedor que no podía perdonar un peso en un acuerdo armaba una
+   * campaña al 100% y le condonaba los punitorios a todo el lote de una vez. El admin no
+   * tiene tope —un límite que él mismo edita en Configuración no es un límite—.
+   *
+   * Acá solo se MUESTRA: quien rechaza es `POST /api/cobranza/campanas`.
+   */
+  const topeDescuento = role === "admin" ? 100 : (config?.cobranzaConfig?.acuerdos?.quita_max_vendedor_pct ?? 0);
+  /**
+   * Mientras la configuración no llegó, el tope todavía no se sabe y no se marca nada: con el
+   * 50% precargado, dar por hecho un tope de 0 pintaba el campo de rojo apenas se abría la
+   * pantalla y se corregía solo un instante después.
+   */
+  const topeConocido = role === "admin" || !!config?.cobranzaConfig;
+  const excedeTope = topeConocido && form.promoActiva && descuentoPct > topeDescuento;
 
   // Oferta por crédito (cálculo client-side con el mismo dominio que el server).
   const objetivos = useMemo(
@@ -290,6 +312,16 @@ function CampanaWorkspace({ creditos, bloqueados, onCancelar, onTerminar }: Work
     e.preventDefault();
     if (!form.nombre.trim()) {
       setError("Poné un nombre a la campaña");
+      return;
+    }
+    // Redundante con el `disabled` del botón y con el 403 del servidor, a propósito: es el
+    // único de los tres que explica el motivo si alguien llega igual (Enter en un campo).
+    if (excedeTope) {
+      setError(
+        topeDescuento === 0
+          ? "No podés ofrecer descuento en una campaña. Pedile a un administrador que la arme."
+          : `El descuento máximo que podés ofrecer es ${topeDescuento}% de los punitorios.`,
+      );
       return;
     }
     const ok = await confirm({
@@ -616,7 +648,12 @@ function CampanaWorkspace({ creditos, bloqueados, onCancelar, onTerminar }: Work
                   <>
                     <div className="grid grid-cols-2 gap-2.5">
                       <Field label="% sobre punitorios">
-                        <Input type="number" min="0" max="100" step="5" value={form.promo_valor} onChange={set("promo_valor")} />
+                        <Input
+                          type="number" min="0" max={topeConocido ? topeDescuento : 100} step="5"
+                          value={form.promo_valor} onChange={set("promo_valor")}
+                          aria-invalid={excedeTope}
+                          className={excedeTope ? "border-destructive focus:ring-destructive/20" : undefined}
+                        />
                       </Field>
                       <Field label="Válida hasta" hint="Plazo para acogerse">
                         <Input type="date" value={form.promo_vence} onChange={set("promo_vence")} />
@@ -625,11 +662,20 @@ function CampanaWorkspace({ creditos, bloqueados, onCancelar, onTerminar }: Work
                     {/* El descuento sale SOLO de los punitorios: el capital y el interés pactado no
                         se tocan. Con el tope a la vista se entiende por qué subir el % deja de
                         cambiar el total en algún momento. */}
-                    <p className="text-[11px] text-muted-foreground">
-                      Punitorios de la audiencia:{" "}
-                      <span className="font-mono tabular-nums text-foreground">{formatMonto(totalMora)}</span> — es todo lo
-                      que se puede descontar.
-                    </p>
+                    {excedeTope ? (
+                      <p className="text-[11px] font-medium text-destructive">
+                        {topeDescuento === 0
+                          ? "No podés ofrecer descuento en una campaña. Pedile a un administrador que la arme."
+                          : `Te pasaste del tope: como máximo podés ofrecer ${topeDescuento}% de los punitorios.`}
+                      </p>
+                    ) : (
+                      <p className="text-[11px] text-muted-foreground">
+                        Punitorios de la audiencia:{" "}
+                        <span className="font-mono tabular-nums text-foreground">{formatMonto(totalMora)}</span> — es todo lo
+                        que se puede descontar
+                        {topeConocido && topeDescuento < 100 && <>, y vos podés descontar hasta {topeDescuento}%</>}.
+                      </p>
+                    )}
                   </>
                 )}
               </div>
@@ -771,7 +817,7 @@ function CampanaWorkspace({ creditos, bloqueados, onCancelar, onTerminar }: Work
           </button>
           <button
             type="submit"
-            disabled={loading}
+            disabled={loading || excedeTope}
             className="inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-5 py-2 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
           >
             {loading && <Loader2 className="h-4 w-4 animate-spin" />}
