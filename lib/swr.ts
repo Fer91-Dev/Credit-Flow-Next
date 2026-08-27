@@ -194,6 +194,19 @@ export interface ClienteDetalle extends Cliente {
   score?: ClienteScore;
   /** El usuario en sesión puede anular pagos (rol admin). */
   puede_anular_pago?: boolean;
+  /**
+   * Exposición del cliente FUERA de la cartera del vendedor en sesión. Solo viene cuando hay
+   * algo que decir (null si no) y solo para vendedores: al admin la lista ya le muestra todo.
+   * Es lo que explica que `estado_cuenta` —que es consolidado, porque el motor de riesgo
+   * evalúa sobre todos los créditos— no cuadre con la lista de créditos que ve.
+   */
+  otros_agentes?: {
+    creditos: number;
+    activos: number;
+    deuda: number;
+    en_mora: number;
+    dias_mora_max: number;
+  } | null;
 }
 
 export interface Credito {

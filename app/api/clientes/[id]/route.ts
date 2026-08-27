@@ -19,7 +19,7 @@ interface RouteParams {
  * Retorna un cliente específico.
  */
 export const GET = withErrorHandler(async (req: NextRequest, { params }: RouteParams) => {
-  const { tenantId, role } = await requireAuth(req);
+  const { tenantId, role, vendedorId } = await requireAuth(req);
   const { id } = await params;
 
   const cliente = await prisma.clientes.findFirst({
@@ -189,10 +189,47 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
     tieneCreditos: creditosConFinanzas.length > 0,
   });
 
-  // REF-XXXXXX: los créditos de la ficha se nombran por el que reemplazan si son refis.
-  const creditosConOrigen = await conNumeroDeOrigen(tenantId, creditosConFinanzas);
+  /**
+   * 🔴 UN VENDEDOR NO LEE LA CARTERA DE SUS COMPAÑEROS.
+   *
+   * `scopeCreditosVendedor` mantiene los créditos ajenos fuera de su lista, de la agenda, de
+   * las campañas, del cobro y de la gestión — pero la ficha del cliente los mostraba enteros:
+   * saldo, plan de cuotas y cada pago. El scoping era un filtro de bandeja de trabajo con una
+   * puerta de atrás, no una barrera. Acá se cierra: **el DETALLE se acota a los suyos.**
+   *
+   * 🔴 Y los AGREGADOS no: `estado_cuenta` y `score` siguen saliendo de TODOS los créditos.
+   * Acotarlos sería cambiar una fuga por algo peor —un vendedor prestándole a ciegas a
+   * alguien que ya debe—: le mostraría deuda $0 y score limpio a un cliente en mora con otro
+   * agente, y después el motor de riesgo le rechazaría el crédito sin que nada en pantalla lo
+   * explique. El motor ya evalúa sobre todos los créditos del cliente (`lib/riesgo-server`),
+   * así que ocultarle el número no protege la decisión: solo lo deja sin entenderla.
+   *
+   * Entre los dos va `otros_agentes`: cuánta exposición hay fuera de su cartera, sin decir de
+   * qué crédito ni con quién. Es lo que hace que el total y la lista puedan no coincidir sin
+   * que parezca un error.
+   */
+  const acotarAlVendedor = role === "vendedor";
+  const propios = acotarAlVendedor
+    ? creditosConFinanzas.filter((c) => c.vendedor_id === vendedorId)
+    : creditosConFinanzas;
+  const ajenos = acotarAlVendedor
+    ? creditosConFinanzas.filter((c) => c.vendedor_id !== vendedorId)
+    : [];
+  const ajenosVivos = ajenos.filter((c) => esCreditoVivo(c.estado));
+  const otros_agentes = ajenos.length > 0
+    ? {
+        creditos: ajenos.length,
+        activos: ajenosVivos.length,
+        deuda: round2(ajenosVivos.reduce((s, c) => s + c.saldo_pendiente, 0)),
+        en_mora: ajenosVivos.filter((c) => c.dias_mora > 0).length,
+        dias_mora_max: ajenosVivos.reduce((m, c) => Math.max(m, c.dias_mora), 0),
+      }
+    : null;
 
-  return successResponse({ ...cliente, creditos: creditosConOrigen, estado_cuenta, sueldo_control, score, puede_anular_pago: esAdmin });
+  // REF-XXXXXX: los créditos de la ficha se nombran por el que reemplazan si son refis.
+  const creditosConOrigen = await conNumeroDeOrigen(tenantId, propios);
+
+  return successResponse({ ...cliente, creditos: creditosConOrigen, estado_cuenta, otros_agentes, sueldo_control, score, puede_anular_pago: esAdmin });
 });
 
 /**

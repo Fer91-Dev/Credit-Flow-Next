@@ -23,7 +23,7 @@ import { EstadoClienteDialog } from "@/components/clientes/EstadoClienteDialog";
 import { NoContactarDialog } from "@/components/clientes/NoContactarDialog";
 import { ProntuarioPanel } from "@/components/clientes/ProntuarioPanel";
 import { abrirRecibo } from "@/lib/recibo";
-import { formatCreditoNumero, formatFecha, formatFechaHora, nombreCompleto, hoyComercial, formatDias } from "@/lib/utils";
+import { formatCreditoNumero, formatFecha, formatFechaHora, nombreCompleto, hoyComercial, formatDias, formatMonto } from "@/lib/utils";
 import { esCreditoVivo, deudaEnRevision, normalizarEstadoCliente, ESTADO_CLIENTE_LABEL, ESTADO_CLIENTE_VARIANT } from "@/lib/domain";
 import type { Role } from "@/lib/auth/roles";
 
@@ -393,6 +393,39 @@ export function ClienteDetail({
             />
             <Stat icon="credit-card" label="Créditos activos" accent="primary" value={String(ec.creditos_activos)} sub={`${ec.creditos_total} en total`} />
             <Stat icon="chart-increasing" label="Total cobrado" accent="success" value={`$${n0(ec.total_cobrado)}`} sub="histórico" />
+          </div>
+        )}
+
+        {/*
+          🔴 Por qué los totales de arriba pueden no cuadrar con la lista de abajo.
+
+          A un vendedor la ficha le muestra el DETALLE de sus créditos nada más —los de otros
+          agentes no son su cartera—, pero los totales y el score salen de TODOS: es la
+          exposición real del cliente y es la que va a usar el motor de riesgo si le otorga.
+          Sin este renglón, la diferencia se lee como un error de cálculo.
+
+          No es una explicación de la pantalla: es el dato que falta, y por eso arranca con
+          los números. Solo aparece cuando hay algo afuera.
+        */}
+        {showCreditos && cliente.otros_agentes && (
+          <div className={`mt-3 rounded-lg border px-3 py-2 ${
+            cliente.otros_agentes.en_mora > 0 ? "border-warning/30 bg-warning/5" : "border-border bg-muted/20"
+          }`}>
+            <p className="text-xs text-foreground">
+              <span className="font-semibold tabular-nums">{cliente.otros_agentes.activos}</span>
+              {cliente.otros_agentes.activos === 1 ? " crédito activo" : " créditos activos"} con otros agentes ·{" "}
+              <span className="font-mono tabular-nums">{formatMonto(cliente.otros_agentes.deuda)}</span>
+              {cliente.otros_agentes.en_mora > 0 && (
+                <span className="text-warning">
+                  {" · "}
+                  <span className="font-semibold tabular-nums">{cliente.otros_agentes.en_mora}</span> en mora de{" "}
+                  {formatDias(cliente.otros_agentes.dias_mora_max)}
+                </span>
+              )}
+            </p>
+            <p className="mt-0.5 text-[11px] text-muted-foreground">
+              Los totales de arriba ya los incluyen. El detalle es de su agente.
+            </p>
           </div>
         )}
       </div>
