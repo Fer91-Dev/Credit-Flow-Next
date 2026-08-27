@@ -726,25 +726,16 @@ function CampanaWorkspace({ creditos, bloqueados, onCancelar, onTerminar }: Work
 
         {/* ── DERECHA: a quién le llega y cuánto se le pide ── */}
         <div className="flex min-w-0 flex-1 flex-col md:min-h-0">
-          <div className="shrink-0 border-b border-edge px-5 py-3">
-            <div className="flex flex-wrap items-center gap-2">
-              <Users className="h-4 w-4 text-primary" />
-              <h2 className="text-sm font-semibold text-foreground">
-                {objetivos.length} destinatario{objetivos.length !== 1 ? "s" : ""}
-              </h2>
-              {bloqueados > 0 && (
-                <span className="rounded border border-warning/30 bg-warning/10 px-1.5 py-0.5 text-[11px] text-warning">
-                  {bloqueados} excluido{bloqueados !== 1 ? "s" : ""} por no contactar
-                </span>
-              )}
-            </div>
-            <PipelineReclamo
-              cuotas={totalCuotas}
-              punitorios={totalMora}
-              quita={totalAhorro}
-              total={totalOfrecido}
-              reducir={!!reducirMovimiento}
-            />
+          <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-edge px-5 py-3">
+            <Users className="h-4 w-4 text-primary" />
+            <h2 className="text-sm font-semibold text-foreground">
+              {objetivos.length} destinatario{objetivos.length !== 1 ? "s" : ""}
+            </h2>
+            {bloqueados > 0 && (
+              <span className="rounded border border-warning/30 bg-warning/10 px-1.5 py-0.5 text-[11px] text-warning">
+                {bloqueados} excluido{bloqueados !== 1 ? "s" : ""} por no contactar
+              </span>
+            )}
           </div>
 
           <div className="md:min-h-0 md:flex-1 overflow-auto">
@@ -758,14 +749,18 @@ function CampanaWorkspace({ creditos, bloqueados, onCancelar, onTerminar }: Work
         </div>
       </div>
 
-      {/* ── Barra de acción ──
-          Solo el número final: el desglose ya está arriba en el pipeline y en el pie de la
-          tabla, y repetirlo por tercera vez obliga a chequear que los tres digan lo mismo. */}
-      <div className="flex shrink-0 flex-wrap items-center justify-between gap-x-6 gap-y-3 border-t border-edge bg-card/40 px-5 py-3">
-        <div>
-          <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Se ofrece cobrar</p>
-          <p className="font-mono text-lg font-bold tabular-nums text-foreground">{formatMonto(totalOfrecido)}</p>
-        </div>
+      {/* ── Barra de acción: el pipeline del cálculo + los botones ──
+          El desglose vive ACÁ y no arriba de la tabla: es el número sobre el que se aprieta
+          "Crear campaña", así que tiene que estar al lado del botón, no a dos paneles de
+          distancia. Además le devuelve a la tabla el alto que le comía la cabecera. */}
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-x-6 gap-y-3 border-t border-edge bg-card/40 px-5 py-2.5">
+        <PipelineReclamo
+          cuotas={totalCuotas}
+          punitorios={totalMora}
+          quita={totalAhorro}
+          total={totalOfrecido}
+          reducir={!!reducirMovimiento}
+        />
         <div className="flex items-center gap-3">
           <button
             type="button"
@@ -812,7 +807,7 @@ function PipelineReclamo({
   ];
 
   return (
-    <div className="mt-2.5 flex flex-wrap items-center gap-y-2">
+    <div className="flex flex-wrap items-center gap-y-2">
       {etapas.map((e, i) => (
         <Fragment key={e.label}>
           <motion.div
