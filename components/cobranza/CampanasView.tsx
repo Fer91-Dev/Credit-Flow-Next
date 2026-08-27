@@ -54,7 +54,7 @@ export function CampanasView({ onArmar }: { onArmar?: () => void } = {}) {
         <p className="text-sm font-semibold text-muted-foreground">Sin campañas todavía</p>
         <p className="text-xs text-muted-foreground/50 max-w-xs leading-relaxed">
           Una campaña le manda el mismo mensaje a un grupo de morosos, con una oferta opcional
-          de quita de punitorios.
+          de descuento sobre los punitorios.
         </p>
         {onArmar && (
           <button
@@ -331,7 +331,7 @@ function CampanaDetalle({ id, onBack }: { id: string; onBack: () => void }) {
       {campana.promo_vence && (
         <p className="text-xs text-muted-foreground">
           Promoción válida hasta <span className="text-foreground">{fmtDate(campana.promo_vence)}</span>
-          {campana.promo_tipo === "quita_interes" && <span className="text-success"> · quita {campana.promo_valor}% del interés de mora</span>}
+          {campana.promo_tipo === "quita_interes" && <span className="text-success"> · descuento {campana.promo_valor}% del interés de mora</span>}
         </p>
       )}
     </div>

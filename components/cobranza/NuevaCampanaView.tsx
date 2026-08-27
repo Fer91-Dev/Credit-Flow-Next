@@ -181,7 +181,7 @@ function CampanaWorkspace({ creditos, bloqueados, onCancelar, onTerminar }: Work
     return (config?.cobranzaConfig?.plantillas_meta ?? [])
       /**
        * 🔴 SOLO LAS DE MORA. Esta campaña se arma sobre créditos en mora: es un reclamo,
-       * lleve o no una quita de interés como incentivo. Ofrecer acá una plantilla de
+       * lleve o no un descuento de interés como incentivo. Ofrecer acá una plantilla de
        * promoción o de información le mandaría a todo el lote un texto que no habla de su
        * deuda.
        */
@@ -214,7 +214,7 @@ function CampanaWorkspace({ creditos, bloqueados, onCancelar, onTerminar }: Work
    *
    * El mensaje lleva el importe de CADA cliente adentro, así que una sola vista previa fija
    * solo prueba el texto del primero: no muestra qué le va a llegar a un moroso de 5 cuotas
-   * ni a uno con quita en cero.
+   * ni a uno con el descuento en cero.
    */
   const [foco, setFoco] = useState<string | null>(null);
 
@@ -475,7 +475,7 @@ function CampanaWorkspace({ creditos, bloqueados, onCancelar, onTerminar }: Work
                           <span className="font-mono tabular-nums text-foreground">{formatMonto(o.oferta.montoConDescuento)}</span>
                           {o.oferta.ahorro > 0 && (
                             <>
-                              {" · quita de "}
+                              {" · descuento de "}
                               <span className="font-mono tabular-nums text-success">{formatMonto(o.oferta.ahorro)}</span>
                             </>
                           )}
@@ -609,7 +609,7 @@ function CampanaWorkspace({ creditos, bloqueados, onCancelar, onTerminar }: Work
                     className="h-4 w-4 rounded border-border accent-success"
                   />
                   <span className="flex items-center gap-1.5 text-sm font-medium text-foreground">
-                    <Sparkles className="h-3.5 w-3.5 text-success" /> Quita de intereses de mora
+                    <Sparkles className="h-3.5 w-3.5 text-success" /> Descuento de intereses de mora
                   </span>
                 </label>
                 {form.promoActiva && (
@@ -622,13 +622,13 @@ function CampanaWorkspace({ creditos, bloqueados, onCancelar, onTerminar }: Work
                         <Input type="date" value={form.promo_vence} onChange={set("promo_vence")} />
                       </Field>
                     </div>
-                    {/* La quita sale SOLO de los punitorios: el capital y el interés pactado no
+                    {/* El descuento sale SOLO de los punitorios: el capital y el interés pactado no
                         se tocan. Con el tope a la vista se entiende por qué subir el % deja de
                         cambiar el total en algún momento. */}
                     <p className="text-[11px] text-muted-foreground">
                       Punitorios de la audiencia:{" "}
                       <span className="font-mono tabular-nums text-foreground">{formatMonto(totalMora)}</span> — es todo lo
-                      que se puede condonar.
+                      que se puede descontar.
                     </p>
                   </>
                 )}
@@ -757,7 +757,7 @@ function CampanaWorkspace({ creditos, bloqueados, onCancelar, onTerminar }: Work
         <PipelineReclamo
           cuotas={totalCuotas}
           punitorios={totalMora}
-          quita={totalAhorro}
+          descuento={totalAhorro}
           total={totalOfrecido}
           reducir={!!reducirMovimiento}
         />
@@ -795,14 +795,14 @@ function CampanaWorkspace({ creditos, bloqueados, onCancelar, onTerminar }: Work
  * leer los cuatro nodos como un flujo y no como cuatro cifras sueltas.
  */
 function PipelineReclamo({
-  cuotas, punitorios, quita, total, reducir,
+  cuotas, punitorios, descuento, total, reducir,
 }: {
-  cuotas: number; punitorios: number; quita: number; total: number; reducir: boolean;
+  cuotas: number; punitorios: number; descuento: number; total: number; reducir: boolean;
 }) {
   const etapas = [
     { label: "Cuotas vencidas", valor: cuotas,     tono: "text-foreground",  op: "+" },
     { label: "Punitorios",      valor: punitorios, tono: "text-warning",     op: "−" },
-    { label: "Quita",           valor: quita,      tono: "text-success",     op: "=" },
+    { label: "Descuento",       valor: descuento,  tono: "text-success",     op: "=" },
     { label: "Se le pide",      valor: total,      tono: "text-foreground",  op: null },
   ];
 
@@ -853,7 +853,7 @@ function TramoPipeline({ op, indice, reducir }: { op: string; indice: number; re
  * La audiencia como TABLA, no como texto corrido.
  *
  * 🔴 El reclamo se compone de tres cosas distintas y antes iban todas en una misma frase
- * ("$1.313.140,27 de cuotas + $885.056,56 de punitorios − $442.528,28 de quita"), así que no
+ * ("$1.313.140,27 de cuotas + $885.056,56 de punitorios − $442.528,28 de descuento"), así que no
  * se sabía si el número grande era una cuota, el total del crédito o lo vencido. Con una
  * columna por concepto, cada importe se lee contra su encabezado y las filas se comparan
  * entre sí. El pie suma lo mismo que la barra de abajo: son los números que salen en los
@@ -889,7 +889,7 @@ function TablaAudiencia({
           <th className={`${th} border-b border-border`}>Atraso</th>
           <th className={`${thNum} border-b border-border`}>Cuotas vencidas</th>
           <th className={`${thNum} border-b border-border`}>Punitorios</th>
-          <th className={`${thNum} border-b border-border`}>Quita</th>
+          <th className={`${thNum} border-b border-border`}>Descuento</th>
           <th className={`${thNum} border-b border-border`}>Se le pide</th>
         </tr>
       </thead>
