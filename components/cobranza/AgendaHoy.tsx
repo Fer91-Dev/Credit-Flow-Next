@@ -276,10 +276,22 @@ function AgendaRow({
 
       {/* Monto / promesa */}
       <div className="hidden sm:block text-right shrink-0">
+        {/*
+          🔴 Con una promesa se muestran LOS DOS números, no solo el prometido.
+          
+          Antes el prometido REEMPLAZABA al vencido, y eso rompía dos cosas. Una: la columna
+          dejaba de sumar el KPI "Vencido en la cola" que está justo arriba —Hernán aportaba
+          $130.000 a la vista y $523.235,89 al total—, así que quien sumaba lo que veía nunca
+          llegaba. Dos, y peor: se perdía el dato con el que se decide si la promesa sirve.
+          Prometer $130.000 sobre $523.235,89 vencidos es cubrir el 25%; sin el segundo
+          número, "prometió $130.000" no dice nada.
+        */}
         {it.promesa_monto != null ? (
           <>
             <p className="font-mono font-bold text-warning">{formatMonto(it.promesa_monto)}</p>
-            <p className="text-[10px] text-muted-foreground/60 uppercase tracking-wide">prometido</p>
+            <p className="text-[10px] text-muted-foreground/60 uppercase tracking-wide">
+              prometido · de {formatMonto(it.vencido)}
+            </p>
           </>
         ) : (
           <>
