@@ -3,7 +3,7 @@
 import { useState } from "react";
 import useSWR, { mutate } from "swr";
 import { HandshakeIcon, Ban } from "lucide-react";
-import { formatMonto, formatFecha, formatFechaHora, formatCreditoNumero, nombreCompleto, hoyComercial, cuandoVence, diasHastaAR } from "@/lib/utils";
+import { formatMonto, formatFecha, formatFechaHora, formatCreditoNumero, nombreCompleto, hoyComercial, cuandoVence, formatDias, diaAR } from "@/lib/utils";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Emoji } from "@/components/ui/Emoji";
 import { DataTable, type Column } from "@/components/ui/DataTable";
@@ -13,6 +13,8 @@ import { FieldLabel, FormActions, IconTextarea } from "@/components/caja/caja-fo
 import { useConfirm } from "@/components/ui/confirm";
 import { useToast } from "@/components/ui/toast";
 import type { Role } from "@/lib/auth/roles";
+import { useCuotas } from "@/lib/swr";
+import { Skeleton } from "@/components/ui/skeleton";
 
 type Promesa = {
   id: string;
@@ -75,10 +77,21 @@ function PromesaDetalle({ promesa, historial, onClose }: {
   historial: Promesa[];
   onClose: () => void;
 }) {
+  /**
+   * El cronograma del crédito, del MISMO endpoint que usa la terminal de cobro. Sin esto el
+   * modal decía cuánto prometió pero no contra qué: no se podía saber si $130.000 sobre dos
+   * cuotas vencidas es una propuesta seria o una forma de ganar tiempo.
+   */
+  const { cuotas, meta, isLoading: cargandoCuotas } = useCuotas(promesa?.credito.id ?? null);
+  const vencidas = cuotas.filter((c) => (c.dias_atraso ?? 0) > 0 && (c.total_cobrar ?? 0) > 0);
+  const exigible = vencidas.reduce((acc, c) => acc + (c.total_cobrar ?? 0), 0);
+  const moraTotal = vencidas.reduce((acc, c) => acc + (c.mora ?? 0), 0);
+
   return (
     <Dialog open={!!promesa} onOpenChange={(o) => { if (!o) onClose(); }}>
-      <DialogContent className="w-[95vw] sm:max-w-lg sm:p-7">
-        <DialogHeader className="pr-8">
+      {/* Ancho: acá adentro entra el plan de cuotas, que es una tabla. */}
+      <DialogContent className="w-[95vw] sm:max-w-3xl sm:p-7 max-h-[92dvh] flex flex-col overflow-hidden">
+        <DialogHeader className="pr-8 shrink-0">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-warning/20 bg-warning/10 text-warning">
               <HandshakeIcon className="h-5 w-5" />
@@ -92,6 +105,8 @@ function PromesaDetalle({ promesa, historial, onClose }: {
           </div>
         </DialogHeader>
 
+        {/* El cuerpo scrollea solo: el header y el botón de cerrar quedan siempre visibles. */}
+        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
         {promesa && (() => {
           /**
            * Cómo se pactó, no solo cuánto.
@@ -107,13 +122,31 @@ function PromesaDetalle({ promesa, historial, onClose }: {
            * `@db.Date`) y `created_at` (un instante) se redondeaban en hora local, y el
            * corrimiento NO se cancelaba entre ellos porque no son el mismo tipo de dato.
            */
+          /**
+           * 🔴 `diaAR` sobre `created_at`, NO `diasHastaAR`.
+           *
+           * `promesa_fecha` es un día pelado y `created_at` un instante. Restarlos con
+           * `diasHastaAR` hacía que el instante aportara 0 o 1 día SEGÚN LA HORA en que se
+           * cargó la gestión: una promesa pactada a las 13:25 daba "-7 días" en vez de -6.
+           * Ahora los dos se reducen antes al mismo día de calendario argentino.
+           */
+          const diaPactado = diaAR(promesa.created_at);
+          const diaLimite = promesa.promesa_fecha ? new Date(promesa.promesa_fecha) : null;
           const plazoDias =
-            promesa.promesa_fecha && diasHastaAR(promesa.promesa_fecha) !== null && diasHastaAR(promesa.created_at) !== null
-              ? (diasHastaAR(promesa.promesa_fecha) as number) - (diasHastaAR(promesa.created_at) as number)
+            diaLimite && diaPactado
+              ? Math.round((diaLimite.getTime() - diaPactado.getTime()) / 86_400_000)
               : null;
+          /**
+           * Qué parte de lo EXIGIBLE cubre, no qué parte del saldo del préstamo.
+           *
+           * Decía "26% del saldo" mientras el detalle de cobranza del mismo crédito decía
+           * "25% de lo vencido": dos denominadores para la misma idea. El saldo incluye
+           * cuotas futuras que hoy no se reclaman, así que medir contra él subestima siempre
+           * lo que la promesa realmente cubre.
+           */
           const cubrePct =
-            promesa.promesa_monto && promesa.credito.saldo_pendiente > 0
-              ? Math.round((promesa.promesa_monto / promesa.credito.saldo_pendiente) * 100)
+            promesa.promesa_monto && exigible > 0
+              ? Math.round((promesa.promesa_monto / exigible) * 100)
               : null;
           const previas = historial.filter((h) => h.id !== promesa.id);
           const cumplidas = previas.filter((h) => h.promesa_estado === "cumplida").length;
@@ -137,12 +170,14 @@ function PromesaDetalle({ promesa, historial, onClose }: {
                     {([
                       ["Crédito", formatCreditoNumero(promesa.credito.numero, promesa.credito.refinancia_a_numero)],
                       ["Documento", promesa.credito.cliente.documento || "—"],
-                      ["Días de mora", `${promesa.credito.dias_mora} d`],
-                      ["Saldo del crédito", formatMonto(promesa.credito.saldo_pendiente)],
+                      ["Días de mora", formatDias(promesa.credito.dias_mora)],
+                      // Lo exigible primero: es contra ESTO que se mide si la promesa sirve.
+                      ["Vencido a hoy", cargandoCuotas ? "…" : formatMonto(exigible)],
+                      ["Saldo del crédito", `${formatMonto(promesa.credito.saldo_pendiente)} (cuotas futuras incluidas)`],
                       [
                         "Monto prometido",
                         promesa.promesa_monto
-                          ? `${formatMonto(promesa.promesa_monto)}${cubrePct != null ? ` · ${cubrePct}% del saldo` : ""}`
+                          ? `${formatMonto(promesa.promesa_monto)}${cubrePct != null ? ` · cubre el ${cubrePct}% de lo vencido` : ""}`
                           : "—",
                       ],
                       ["Se pactó el", formatFechaHora(promesa.created_at)],
@@ -150,7 +185,8 @@ function PromesaDetalle({ promesa, historial, onClose }: {
                         "Fecha límite",
                         `${formatFecha(promesa.promesa_fecha)} · ${diasRestantes(promesa.promesa_fecha)}`,
                       ],
-                      ["Plazo otorgado", plazoDias != null ? `${plazoDias} día${plazoDias === 1 ? "" : "s"}` : "—"],
+                      // Un plazo negativo significa que se pactó una fecha ya vencida: se dice, no se disimula.
+                      ["Plazo otorgado", plazoDias == null ? "—" : plazoDias < 0 ? `se pactó ${formatDias(Math.abs(plazoDias))} después del vencimiento` : formatDias(plazoDias)],
                       ["Próximo contacto", promesa.proximo_contacto ? formatFecha(promesa.proximo_contacto) : "sin agendar"],
                     ] as [string, string][]).map(([k, v], i) => (
                       <tr key={k} className={i % 2 === 1 ? "bg-muted/5" : ""}>
@@ -160,6 +196,78 @@ function PromesaDetalle({ promesa, historial, onClose }: {
                     ))}
                   </tbody>
                 </table>
+              </div>
+
+              {/*
+                EL PLAN DE CUOTAS.
+                
+                Faltaba, y era el contexto que le da sentido a todo lo de arriba. "Prometió
+                $130.000" no dice nada sin ver que debe 2 cuotas de $202.021,58 con
+                $119.192,73 de punitorios encima. El cronograma sale del mismo endpoint que
+                usa la terminal de cobro, así que estos importes son los que se van a cobrar.
+              */}
+              <div>
+                <div className="flex items-baseline justify-between gap-2">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                    Plan de cuotas{cuotas.length ? ` (${cuotas.length})` : ""}
+                  </p>
+                  {vencidas.length > 0 && (
+                    <p className="text-[11px] text-muted-foreground">
+                      {vencidas.length === 1 ? "1 cuota vencida" : `${vencidas.length} cuotas vencidas`}
+                      {moraTotal > 0 && <> · {formatMonto(moraTotal)} de punitorios</>}
+                    </p>
+                  )}
+                </div>
+                {cargandoCuotas ? (
+                  <div className="mt-1.5 space-y-1.5">{[...Array(3)].map((_, i) => <Skeleton key={i} className="h-8 w-full rounded-lg" />)}</div>
+                ) : cuotas.length === 0 ? (
+                  <p className="mt-1.5 rounded-lg border border-dashed border-border/60 px-3 py-5 text-center text-xs text-muted-foreground">
+                    Este crédito no tiene cronograma cargado.
+                  </p>
+                ) : (
+                  <div className="mt-1.5 overflow-x-auto rounded-lg border border-border">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="bg-muted/20 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                          <th className="text-left py-2 px-3">Cuota</th>
+                          <th className="text-left py-2 px-2">Vence</th>
+                          <th className="text-right py-2 px-2">Importe</th>
+                          <th className="text-right py-2 px-2">Punitorios</th>
+                          <th className="text-right py-2 px-3">A cobrar</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {cuotas.map((c) => {
+                          const atraso = c.dias_atraso ?? 0;
+                          const vencida = atraso > 0 && (c.total_cobrar ?? 0) > 0;
+                          return (
+                            <tr key={c.nro} className={`border-t border-border/40 ${vencida ? "bg-destructive/5" : ""}`}>
+                              <td className="py-2 px-3">
+                                <span className="font-mono font-semibold text-foreground">{c.nro}</span>
+                                {vencida && <span className="ml-2 text-[10px] font-semibold uppercase text-destructive">{formatDias(atraso)}</span>}
+                                {c.estado === "pagada" && <span className="ml-2 text-[10px] font-semibold uppercase text-success">pagada</span>}
+                              </td>
+                              <td className="py-2 px-2 text-muted-foreground tabular-nums whitespace-nowrap">{formatFecha(c.fecha_vencimiento)}</td>
+                              <td className="py-2 px-2 text-right font-mono tabular-nums text-foreground">{formatMonto(c.cuota_total)}</td>
+                              <td className="py-2 px-2 text-right font-mono tabular-nums text-destructive">{(c.mora ?? 0) > 0 ? formatMonto(c.mora as number) : "—"}</td>
+                              <td className={`py-2 px-3 text-right font-mono tabular-nums font-semibold ${vencida ? "text-destructive" : "text-muted-foreground"}`}>
+                                {(c.total_cobrar ?? 0) > 0 ? formatMonto(c.total_cobrar as number) : "—"}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+                {/* De dónde sale cada punitorio, con los parámetros de ESTE crédito. */}
+                {moraTotal > 0 && meta?.mora && (
+                  <p className="mt-2 text-[11px] text-muted-foreground">
+                    Punitorios: {(meta.mora.tasaDiaria * 100).toFixed(2)}% por día sobre el importe de cada cuota
+                    {meta.mora.diasGracia > 0 && <>, a partir del día {meta.mora.diasGracia + 1} de atraso</>}
+                    {meta.mora.topePct > 0 && <>, con un techo del {meta.mora.topePct}% de la cuota</>}.
+                  </p>
+                )}
               </div>
 
               {/* Lo que dijo el cliente. */}
@@ -201,6 +309,7 @@ function PromesaDetalle({ promesa, historial, onClose }: {
             </div>
           );
         })()}
+        </div>
       </DialogContent>
     </Dialog>
   );

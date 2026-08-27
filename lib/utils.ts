@@ -155,6 +155,27 @@ export function diasHastaAR(fecha: string | Date | null | undefined): number | n
 }
 
 /**
+ * El día ARGENTINO de un TIMESTAMP, devuelto a medianoche UTC — o sea, en el mismo formato
+ * en el que viaja un `@db.Date`.
+ *
+ * 🔴 Existe porque `diasHastaAR` NO sirve para un timestamp, y usarla ahí fue un error mío:
+ * el "plazo otorgado" de una promesa restaba `promesa_fecha` (un día pelado) contra
+ * `created_at` (un instante), y el instante aportaba 0 o 1 día **según la hora** a la que se
+ * hubiera cargado la gestión. Una promesa pactada a las 13:25 daba "-7 días" en vez de -6.
+ *
+ * Con esto los dos extremos quedan en la misma unidad —día de calendario— antes de restarse.
+ */
+export function diaAR(fecha: string | Date | null | undefined): Date | null {
+  const d = toDate(fecha);
+  if (!d) return null;
+  const ymd = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Argentina/Buenos_Aires",
+    year: "numeric", month: "2-digit", day: "2-digit",
+  }).format(d);
+  return new Date(`${ymd}T00:00:00.000Z`);
+}
+
+/**
  * Cantidad de días, escrita: `1 día` · `47 días`.
  *
  * Pedido explícito del usuario: **nunca la abreviatura "47d"**. En una pantalla de cobranza
