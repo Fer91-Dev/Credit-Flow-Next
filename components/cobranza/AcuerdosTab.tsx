@@ -3,7 +3,7 @@
 import { useState } from "react";
 import useSWR, { mutate } from "swr";
 import { Handshake, Ban, DollarSign, Printer } from "lucide-react";
-import { formatMonto, formatFecha, formatCreditoNumero } from "@/lib/utils";
+import { formatMonto, formatFecha, formatCreditoNumero, cuandoVence } from "@/lib/utils";
 import { StatusBadge, type BadgeVariant } from "@/components/ui/StatusBadge";
 import { DataTable } from "@/components/ui/DataTable";
 import { KpiCard } from "@/components/ui/KpiCard";
@@ -78,15 +78,8 @@ const TABS = [
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json()).then((r) => r.data);
 
-function cuando(fecha: string | null): string {
-  if (!fecha) return "—";
-  const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
-  const f = new Date(fecha); f.setHours(0, 0, 0, 0);
-  const d = Math.round((f.getTime() - hoy.getTime()) / 86_400_000);
-  if (d === 0) return "Hoy";
-  if (d < 0) return `Venció hace ${Math.abs(d)}d`;
-  return `En ${d}d`;
-}
+/** Ver `cuandoVence` en lib/utils: tenía el mismo corrimiento de un día que Promesas. */
+const cuando = (fecha: string | null): string => cuandoVence(fecha);
 
 /** Próxima cuota del acuerdo que falta cobrar (la más vieja sin pagar). */
 function proximaCuota(a: Acuerdo): AcuerdoCuota | null {

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import useSWR, { mutate } from "swr";
 import { HandshakeIcon, Ban } from "lucide-react";
-import { formatMonto, formatFecha, formatFechaHora, formatCreditoNumero, nombreCompleto, hoyComercial } from "@/lib/utils";
+import { formatMonto, formatFecha, formatFechaHora, formatCreditoNumero, nombreCompleto, hoyComercial, cuandoVence, diasHastaAR } from "@/lib/utils";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Emoji } from "@/components/ui/Emoji";
 import { DataTable, type Column } from "@/components/ui/DataTable";
@@ -57,15 +57,8 @@ function estadoBadge(estado: string | null) {
   return                              <StatusBadge label="Pendiente" variant="warning" />;
 }
 
-function diasRestantes(fechaStr: string | null): string {
-  if (!fechaStr) return "—";
-  const hoy = new Date(); hoy.setHours(0,0,0,0);
-  const fecha = new Date(fechaStr); fecha.setHours(0,0,0,0);
-  const diff = Math.round((fecha.getTime() - hoy.getTime()) / 86400000);
-  if (diff === 0) return "Hoy";
-  if (diff < 0)   return `Venció hace ${Math.abs(diff)}d`;
-  return `En ${diff}d`;
-}
+/** Ver `cuandoVence` en lib/utils: redondear en hora local corría todas las fechas un día. */
+const diasRestantes = (fechaStr: string | null): string => cuandoVence(fechaStr);
 
 /**
  * Detalle de una promesa. La fila de la tabla no era clickeable, así que la NOTA —donde el
@@ -108,12 +101,16 @@ function PromesaDetalle({ promesa, historial, onClose }: {
            * le dio, qué parte de la deuda cubre lo prometido, y —sobre todo— cómo cumplió
            * las promesas anteriores.
            */
-          const plazoDias = promesa.promesa_fecha
-            ? Math.round(
-                (new Date(promesa.promesa_fecha).setHours(0, 0, 0, 0) -
-                  new Date(promesa.created_at).setHours(0, 0, 0, 0)) / 86_400_000,
-              )
-            : null;
+          /**
+           * Cuánto plazo se dio: días entre la promesa y su vencimiento. Los dos extremos
+           * pasan por el mismo criterio de día argentino — antes `promesa_fecha` (un
+           * `@db.Date`) y `created_at` (un instante) se redondeaban en hora local, y el
+           * corrimiento NO se cancelaba entre ellos porque no son el mismo tipo de dato.
+           */
+          const plazoDias =
+            promesa.promesa_fecha && diasHastaAR(promesa.promesa_fecha) !== null && diasHastaAR(promesa.created_at) !== null
+              ? (diasHastaAR(promesa.promesa_fecha) as number) - (diasHastaAR(promesa.created_at) as number)
+              : null;
           const cubrePct =
             promesa.promesa_monto && promesa.credito.saldo_pendiente > 0
               ? Math.round((promesa.promesa_monto / promesa.credito.saldo_pendiente) * 100)

@@ -23,7 +23,7 @@ import { EstadoClienteDialog } from "@/components/clientes/EstadoClienteDialog";
 import { NoContactarDialog } from "@/components/clientes/NoContactarDialog";
 import { ProntuarioPanel } from "@/components/clientes/ProntuarioPanel";
 import { abrirRecibo } from "@/lib/recibo";
-import { formatCreditoNumero, formatFecha, formatFechaHora, nombreCompleto } from "@/lib/utils";
+import { formatCreditoNumero, formatFecha, formatFechaHora, nombreCompleto, hoyComercial } from "@/lib/utils";
 import { esCreditoVivo, deudaEnRevision, normalizarEstadoCliente, ESTADO_CLIENTE_LABEL, ESTADO_CLIENTE_VARIANT } from "@/lib/domain";
 import type { Role } from "@/lib/auth/roles";
 
@@ -252,7 +252,12 @@ export function ClienteDetail({
 
   // Historial de promesas de pago del cliente (vigentes + cumplidas + rotas), últimas 6.
   const creditoIds = new Set(creditos.map((c) => c.id));
-  const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
+  /**
+   * `hoyComercial()` y no `setHours(0,0,0,0)`: `promesa_fecha` es un `@db.Date` que llega a
+   * medianoche UTC, y redondear en hora local lo corre un día. Con el patrón viejo, una
+   * promesa que vencía HOY se etiquetaba "Vencida". Ver `cuandoVence` en lib/utils.
+   */
+  const hoy = hoyComercial();
   const promesas = acciones
     .filter((a) => creditoIds.has(a.credito_id) && a.resultado === "promesa_pago" && a.promesa_fecha)
     .sort((a, b) => new Date(b.promesa_fecha as string).getTime() - new Date(a.promesa_fecha as string).getTime())

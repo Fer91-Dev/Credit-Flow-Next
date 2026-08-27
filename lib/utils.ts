@@ -131,6 +131,38 @@ export function hoyComercial(): Date {
  */
 export { inicioDiaAR, finDiaAR, mesAR, ventanaAR, ventanaDias, AR_OFFSET_MS } from "@/lib/domain/fechas";
 
+/**
+ * Días entre HOY (día argentino) y una fecha guardada como `@db.Date`. Negativo = ya pasó.
+ *
+ * 🔴 POR QUÉ NO ALCANZA CON `setHours(0,0,0,0)`.
+ *
+ * Un `@db.Date` viaja como `"2026-08-26T00:00:00.000Z"`: un día pelado, clavado a medianoche
+ * UTC. En el navegador de Argentina ese instante son las **21:00 del día ANTERIOR**, así que
+ * `setHours(0,0,0,0)` —que redondea en hora LOCAL— lo lleva al 25, no al 26.
+ *
+ * Resultado medido: una promesa que vencía HOY se mostraba como "Venció hace 1d", y una que
+ * vence mañana decía "Hoy". **Todas las fechas corridas un día**, en todas las pantallas que
+ * usaban ese patrón. Lo encontró el usuario probando, mirando una promesa del 26/08 que la
+ * pantalla daba por vencida.
+ *
+ * Acá los dos extremos se comparan a medianoche UTC —`hoyComercial()` devuelve el día
+ * argentino en ese mismo formato—, así que la resta da un entero exacto de días.
+ */
+export function diasHastaAR(fecha: string | Date | null | undefined): number | null {
+  const d = toDate(fecha);
+  if (!d) return null;
+  return Math.round((d.getTime() - hoyComercial().getTime()) / 86_400_000);
+}
+
+/** "Hoy" · "En 3d" · "Venció hace 2d", a partir de una fecha `@db.Date`. */
+export function cuandoVence(fecha: string | Date | null | undefined): string {
+  const d = diasHastaAR(fecha);
+  if (d === null) return "—";
+  if (d === 0) return "Hoy";
+  if (d < 0) return `Venció hace ${Math.abs(d)}d`;
+  return `En ${d}d`;
+}
+
 /** Número guardado → texto de input es-AR (para precargar campos en modo edición). */
 export function numeroAInput(n: number): string {
   return n.toLocaleString("es-AR", { maximumFractionDigits: 2 });
