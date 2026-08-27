@@ -1,16 +1,17 @@
 ﻿"use client";
 
 import { useState, useMemo, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { useSWRConfig } from "swr";
 import { AlertCircle, Phone, Mail, Clock, Copy, CheckCheck, Search, DollarSign, ShieldAlert, MessageSquarePlus, CalendarClock, Megaphone, X, Users, TrendingUp, Sun, Handshake } from "lucide-react";
 import { WhatsAppIcon } from "@/components/ui/WhatsAppIcon";
-import { useCreditos, useAccionesCobranza, KEYS, type Credito, type AccionCobranza, type AgendaItem } from "@/lib/swr";
+import { useCreditos, useAccionesCobranza, type Credito, type AccionCobranza, type AgendaItem } from "@/lib/swr";
 import { type Role } from "@/lib/auth/roles";
 import { formatFecha, nombreCompleto, formatDias } from "@/lib/utils";
 import { GestionForm, type CreditoCtx } from "./GestionForm";
 import { CobranzaDetail } from "./CobranzaDetail";
-import { CampaignModal } from "./CampaignModal";
+import { guardarSeleccionCampana, leerSeleccionCampana } from "./seleccion-campana";
 import { CampanasView } from "./CampanasView";
 import { PromesasTab } from "./PromesasTab";
 import { AcuerdosTab } from "./AcuerdosTab";
@@ -70,6 +71,9 @@ const resultadoLabel: Record<AccionCobranza["resultado"], string> = {
 
 type Tab = "hoy" | "morosos" | "promesas" | "acuerdos" | "planillas" | "campanas";
 
+/** Para validar el `?tab=` de la URL: un valor cualquiera no puede dejar la vista en blanco. */
+const TABS_VALIDOS: Tab[] = ["hoy", "morosos", "promesas", "acuerdos", "planillas", "campanas"];
+
 export function CobranzaTable({ role }: { role: Role }) {
   // Campañas (selección masiva + ActionToolbar + pestaña): admin (toda la cartera) y
   // vendedor (scopeado a SUS créditos, tanto en la selección como en el backend).
@@ -78,9 +82,9 @@ export function CobranzaTable({ role }: { role: Role }) {
   const { acciones, mutate: mutateAcciones } = useAccionesCobranza();
   const { mutate: globalMutate } = useSWRConfig();
   const toast = useToast();
+  const router = useRouter();
   const [tab, setTab]           = useState<Tab>("hoy");
   const [mounted, setMounted]   = useState(false);
-  useEffect(() => setMounted(true), []);
   const [filterMora, setFilter] = useState<Severidad>("critica");
   const [search, setSearch]     = useState("");
   const [copiedId, setCopied]   = useState<string | null>(null);
@@ -89,7 +93,32 @@ export function CobranzaTable({ role }: { role: Role }) {
   const [acordando, setAcordando] = useState<string | null>(null);
   const [detalle, setDetalle]   = useState<Credito | null>(null);
   const [seleccion, setSeleccion] = useState<Set<string>>(new Set());
-  const [campaignOpen, setCampaignOpen] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+    /**
+     * La pestaña puede venir por la URL (`/cobranza?tab=campanas`). Es lo que permite que la
+     * pantalla de campaña —que ahora es una ruta y no un modal— vuelva a la pestaña donde
+     * quedó la campaña recién creada. Se lee del `location` y no con `useSearchParams` para
+     * no arrastrar el componente entero a un Suspense por un parámetro opcional.
+     */
+    const t = new URLSearchParams(window.location.search).get("tab");
+    if (t && TABS_VALIDOS.includes(t as Tab)) setTab(t as Tab);
+    // La selección de la campaña sobrevive a ir y volver de `/cobranza/campanas/nueva`: sin
+    // esto, cancelar la campaña devolvía la lista con todos los casilleros destildados.
+    const ids = leerSeleccionCampana();
+    if (ids.length) setSeleccion(new Set(ids));
+  }, []);
+
+  /**
+   * La selección viaja a la pantalla de campaña por `sessionStorage` (ver
+   * `seleccion-campana.ts`): son ids arbitrarios y no entran en la URL.
+   * Se persiste en cada cambio, no solo al abrir la campaña, para que ir y volver —o un F5 en
+   * el medio— no borre lo que el operador venía tildando.
+   */
+  useEffect(() => {
+    if (mounted) guardarSeleccionCampana([...seleccion]);
+  }, [seleccion, mounted]);
 
   /**
    * 🔴 A un fallecido no se le manda una campaña, así que tampoco se lo puede tildar.
@@ -217,13 +246,25 @@ export function CobranzaTable({ role }: { role: Role }) {
       return next;
     });
 
-  const handleCampaignClose = (success?: boolean) => {
-    setCampaignOpen(false);
-    if (success) {
-      setSeleccion(new Set());
-      globalMutate(KEYS.campanas);
-      setTab("campanas");
+  /**
+   * 🔴 La campaña ya no es un modal: es una PANTALLA (`/cobranza/campanas/nueva`).
+   *
+   * Es la herramienta más usada de esta sección y decide un reclamo que sale por escrito a
+   * decenas de clientes de una vez; en una caja de 576px la configuración y la lista de
+   * destinatarios competían por el mismo scroll. Full-bleed, como el simulador de crédito.
+   *
+   * La selección viaja por `sessionStorage` —el efecto de arriba ya la dejó guardada— y del
+   * otro lado se rehidrata contra `/api/creditos`, que es de donde salen `vencido` y
+   * `cuotas_vencidas`. Acá no se manda ninguna foto de importes.
+   */
+  const irACampana = (ids?: string[]) => {
+    if (ids) {
+      setSeleccion(new Set(ids));
+      // El efecto que persiste la selección corre DESPUÉS de este render, y para entonces ya
+      // navegamos: se escribe a mano para que la pantalla de campaña no llegue vacía.
+      guardarSeleccionCampana(ids);
     }
+    router.push("/cobranza/campanas/nueva");
   };
 
   return (
@@ -378,10 +419,7 @@ export function CobranzaTable({ role }: { role: Role }) {
         */}
         {puedeCampanas && (
           <button
-            onClick={() => {
-              if (seleccionados.length === 0) setSeleccion(new Set(visiblesIds));
-              setCampaignOpen(true);
-            }}
+            onClick={() => irACampana(seleccionados.length === 0 ? visiblesIds : undefined)}
             disabled={seleccionados.length === 0 && visiblesIds.length === 0}
             className="flex items-center justify-center gap-2 whitespace-nowrap rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-40"
           >
@@ -643,7 +681,7 @@ export function CobranzaTable({ role }: { role: Role }) {
               <span className="font-semibold">{seleccionados.length}</span> seleccionado{seleccionados.length !== 1 ? "s" : ""}
             </span>
             <button
-              onClick={() => setCampaignOpen(true)}
+              onClick={() => irACampana()}
               className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 transition-opacity"
             >
               <Megaphone className="h-4 w-4" /> Iniciar campaña
@@ -721,23 +759,6 @@ export function CobranzaTable({ role }: { role: Role }) {
         </DialogContent>
       </Dialog>
 
-      {/* Modal de configuración de campaña (solo admin/cobrador) */}
-      {puedeCampanas && (
-        <Dialog open={campaignOpen} onOpenChange={open => { if (!open) setCampaignOpen(false); }}>
-          <DialogContent className="w-[95vw] sm:max-w-xl sm:p-7 max-h-[90dvh] flex flex-col overflow-hidden">
-            <div className="shrink-0">
-              <ModalHeader
-                icon="megaphone"
-                title="Nueva campaña de recuperación"
-                subtitle="Configurá el mensaje y el canal para los créditos seleccionados."
-              />
-            </div>
-            <div className="flex-1 min-h-0 overflow-y-auto pt-1">
-              {campaignOpen && <CampaignModal creditos={seleccionados} onClose={handleCampaignClose} />}
-            </div>
-          </DialogContent>
-        </Dialog>
-      )}
     </div>
   );
 }

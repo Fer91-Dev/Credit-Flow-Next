@@ -295,9 +295,10 @@ const HELP: Record<string, HelpDoc> = {
         titulo: "Armar una campaña",
         pasos: [
           "En Morosos, elegí a quién: filtrá por severidad (Crítica, Alta) o tildá clientes uno por uno.",
-          "Botón «Nueva campaña»: el número que muestra es sobre cuántos va a trabajar. Sin nada tildado, toma los que estás viendo.",
-          "Elegí canal y escribí el mensaje. Los datos entre corchetes —[Nombre], [Monto]— se reemplazan por los de cada cliente.",
+          "Botón «Nueva campaña»: el número que muestra es sobre cuántos va a trabajar. Sin nada tildado, toma los que estás viendo. Se abre en pantalla completa; si volvés, la selección queda como estaba.",
+          "Elegí canal y escribí el mensaje. Los datos entre corchetes —[Nombre], [Monto]— se reemplazan por los de cada cliente; abajo del texto ves el mensaje ya armado con los datos del primero de la lista.",
           "Opcional: quita de interés de mora, como incentivo para que paguen ahora.",
+          "La tabla de la derecha discrimina, cliente por cliente, cuánto es de cuotas vencidas, cuánto de punitorios, cuánto se condona y cuánto se le termina pidiendo. Se reclama lo VENCIDO, no el total del crédito.",
           "Enviar. Va por tandas y muestra el avance; si se corta, volvés a apretar y sigue por donde quedó, sin repetirle a nadie.",
         ],
       },
