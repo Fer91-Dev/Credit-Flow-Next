@@ -7,7 +7,7 @@ import {
 } from "lucide-react";
 import { WhatsAppIcon } from "@/components/ui/WhatsAppIcon";
 import { useAgendaCobranza, type AgendaItem } from "@/lib/swr";
-import { formatMonto, formatFecha, formatCreditoNumero, teclaDelContenedor } from "@/lib/utils";
+import { formatMonto, formatFecha, formatCreditoNumero, teclaDelContenedor, formatDias } from "@/lib/utils";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { KpiCard } from "@/components/ui/KpiCard";
 import { IconBadge } from "@/components/ui/IconBadge";
@@ -316,7 +316,7 @@ function AgendaRow({
 
       {/* Días mora */}
       <div className="shrink-0">
-        <StatusBadge label={`${it.dias_mora}d`} variant={critica ? "destructive" : "warning"} />
+        <StatusBadge label={formatDias(it.dias_mora)} variant={critica ? "destructive" : "warning"} />
       </div>
 
       {/* Acciones */}

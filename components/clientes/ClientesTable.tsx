@@ -16,7 +16,7 @@ import { DataTable, type Column } from "@/components/ui/DataTable";
 import { IconBadge } from "@/components/ui/IconBadge";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { ModalHeader } from "@/components/ui/form-kit";
-import { nombreCompleto, formatFecha } from "@/lib/utils";
+import { nombreCompleto, formatFecha, formatDias } from "@/lib/utils";
 import { normalizarEstadoCliente, ESTADO_CLIENTE_LABEL, ESTADO_CLIENTE_VARIANT } from "@/lib/domain";
 import type { Role } from "@/lib/auth/roles";
 import { useConfirm } from "@/components/ui/confirm";
@@ -456,7 +456,7 @@ function ClienteRow({
           )}
           {c.telefono && <span className="flex items-center gap-1 text-muted-foreground"><Phone className="h-3 w-3" />{c.telefono}</span>}
           {!c.documento && !c.telefono && c.email && <span className="flex items-center gap-1 truncate text-muted-foreground"><Mail className="h-3 w-3" />{c.email}</span>}
-          {dias !== null && <span className="flex items-center gap-1 text-warning"><Clock className="h-3 w-3" />{dias}d</span>}
+          {dias !== null && <span className="flex items-center gap-1 text-warning"><Clock className="h-3 w-3" />{formatDias(dias)}</span>}
           <ScoreBadge score={c.score} size="sm" />
         </div>
       </div>

@@ -7,7 +7,7 @@ import { AlertCircle, Phone, Mail, Clock, Copy, CheckCheck, Search, DollarSign, 
 import { WhatsAppIcon } from "@/components/ui/WhatsAppIcon";
 import { useCreditos, useAccionesCobranza, KEYS, type Credito, type AccionCobranza, type AgendaItem } from "@/lib/swr";
 import { type Role } from "@/lib/auth/roles";
-import { formatFecha, nombreCompleto } from "@/lib/utils";
+import { formatFecha, nombreCompleto, formatDias } from "@/lib/utils";
 import { GestionForm, type CreditoCtx } from "./GestionForm";
 import { CobranzaDetail } from "./CobranzaDetail";
 import { CampaignModal } from "./CampaignModal";
@@ -507,7 +507,7 @@ export function CobranzaTable({ role }: { role: Role }) {
             },
             {
               header: "Días mora", align: "center",
-              cell: (c) => <span className={`font-mono font-bold text-sm ${c.dias_mora > 30 ? "text-destructive" : "text-warning"}`}>{c.dias_mora}d</span>,
+              cell: (c) => <span className={`font-mono font-bold text-sm ${c.dias_mora > 30 ? "text-destructive" : "text-warning"}`}>{formatDias(c.dias_mora)}</span>,
             },
             {
               header: "Severidad", align: "center",

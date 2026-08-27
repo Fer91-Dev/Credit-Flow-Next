@@ -14,7 +14,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { useToast } from "@/components/ui/toast";
 import { useConfirm } from "@/components/ui/confirm";
 import { PLANES, type PlanClave } from "@/lib/planes";
-import { formatFecha, formatFechaHora, formatMonto, parseMontoInput, numeroAInput, esEmailValido } from "@/lib/utils";
+import { formatFecha, formatFechaHora, formatMonto, parseMontoInput, numeroAInput, esEmailValido, formatDias } from "@/lib/utils";
 
 interface TenantRow {
   id: string;
@@ -145,7 +145,7 @@ export function PlataformaView() {
                     <div className="flex items-center gap-2">
                       <StatusBadge label={PLANES[t.plan]?.label ?? t.plan} variant={t.plan === "pro" ? "primary" : "muted"} />
                       {vencida && <span className="text-[10px] font-semibold uppercase tracking-wide text-destructive">vencido</span>}
-                      {porVencer && <span className="text-[10px] font-semibold uppercase tracking-wide text-warning">{dias === 0 ? "vence hoy" : `${dias}d`}</span>}
+                      {porVencer && <span className="text-[10px] font-semibold uppercase tracking-wide text-warning">{dias === 0 ? "vence hoy" : formatDias(dias)}</span>}
                     </div>
                   );
                 },

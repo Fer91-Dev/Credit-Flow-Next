@@ -9,7 +9,7 @@ import { RefinanciarDialog } from "./RefinanciarDialog";
 import { CompararRefiDialog } from "./CompararRefiDialog";
 import { useCreditos, KEYS, type Credito } from "@/lib/swr";
 import { type Role } from "@/lib/auth/roles";
-import { formatCreditoNumero, nombreCompleto, formatFecha, formatFechaHora, eventoPropio, teclaDelContenedor } from "@/lib/utils";
+import { formatCreditoNumero, nombreCompleto, formatFecha, formatFechaHora, eventoPropio, teclaDelContenedor, formatDias } from "@/lib/utils";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { KpiCard } from "@/components/ui/KpiCard";
 import { StatusBadge } from "@/components/ui/StatusBadge";
@@ -310,7 +310,7 @@ export function CreditosTable({ role }: { role: Role }) {
                 cell: (c) => <span className="text-xs text-muted-foreground">{c.tasa}%</span> },
               { header: "Mora", align: "center",
                 cell: (c) => c.dias_mora > 0
-                  ? <StatusBadge label={`${c.dias_mora}d`} variant={c.dias_mora > 30 ? "destructive" : "warning"} />
+                  ? <StatusBadge label={formatDias(c.dias_mora)} variant={c.dias_mora > 30 ? "destructive" : "warning"} />
                   : <span className="text-xs font-medium text-success">Al día</span> },
               /*
                 Sin columna "Acciones": eran cinco íconos pegados, sin texto, que había que
@@ -601,7 +601,7 @@ function RefinanciadosView({ creditos, onOpen, onRefinanciar }: { creditos: Cred
             cell: (p) => <span className={p.nuevo.saldo_pendiente > 0 ? "text-warning font-semibold" : "text-success"}>${n0(p.nuevo.saldo_pendiente)}</span> },
           { header: "Mora", align: "center",
             cell: (p) => p.nuevo.dias_mora > 0
-              ? <StatusBadge label={`${p.nuevo.dias_mora}d`} variant={p.nuevo.dias_mora > 30 ? "destructive" : "warning"} />
+              ? <StatusBadge label={formatDias(p.nuevo.dias_mora)} variant={p.nuevo.dias_mora > 30 ? "destructive" : "warning"} />
               : <span className="text-xs font-medium text-success">Al día</span> },
           { header: "Fecha", className: "whitespace-nowrap",
             cell: (p) => <span className="text-xs text-muted-foreground">{formatFecha(p.nuevo.created_at)}</span> },

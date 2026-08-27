@@ -9,7 +9,7 @@ import {
   AlertDialogTitle, AlertDialogDescription, AlertDialogCancel,
 } from "@/components/ui/alert-dialog";
 import { abrirRecibo } from "@/lib/recibo";
-import { formatNumero, maskMontoInput, parseMontoInput, formatFecha, formatCreditoNumero, nombreCompleto, cn } from "@/lib/utils";
+import { formatNumero, maskMontoInput, parseMontoInput, formatFecha, formatCreditoNumero, nombreCompleto, cn, formatDias } from "@/lib/utils";
 import { refrescarNotificaciones } from "@/lib/swr";
 import { deudaEnRevision } from "@/lib/domain";
 import type { CuotaPersistida, EstadoCuota } from "@/lib/swr";
@@ -149,11 +149,11 @@ type EstadoCred = { label: string; variant: BadgeVariant; bar: string };
 function estadoCredito(c: Credito): EstadoCred {
   const mora = c.dias_mora ?? 0;
   if (mora > 0) {
-    return { label: `Vencido · ${mora}d`, variant: "destructive", bar: "bg-destructive" };
+    return { label: `Vencido · ${formatDias(mora)}`, variant: "destructive", bar: "bg-destructive" };
   }
   const dias = diasHastaVencimiento(c.proximo_pago);
   if (dias !== null && dias >= 0 && dias <= 5) {
-    return { label: dias === 0 ? "Vence hoy" : `Vence en ${dias}d`, variant: "warning", bar: "bg-warning" };
+    return { label: dias === 0 ? "Vence hoy" : `Vence en ${formatDias(dias)}`, variant: "warning", bar: "bg-warning" };
   }
   return { label: "Al día", variant: "success", bar: "bg-success" };
 }

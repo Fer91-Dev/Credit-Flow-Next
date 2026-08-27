@@ -9,7 +9,7 @@ import {
 import { WhatsAppIcon } from "@/components/ui/WhatsAppIcon";
 import { useCampanas, useCampana, KEYS, type CampanaCobranza, type CampanaObjetivo, type CanalCampana, type EstadoCampana } from "@/lib/swr";
 import { construirMensajeCampana, linkWhatsapp, TEMPLATE_DEFAULT } from "@/lib/domain";
-import { formatFecha, nombreCompleto, eventoPropio, teclaDelContenedor } from "@/lib/utils";
+import { formatFecha, nombreCompleto, eventoPropio, teclaDelContenedor, formatDias } from "@/lib/utils";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { DataTable } from "@/components/ui/DataTable";
 import { SummaryStrip } from "@/components/ui/SummaryStrip";
@@ -276,7 +276,7 @@ function CampanaDetalle({ id, onBack }: { id: string; onBack: () => void }) {
               </div>
             ),
           },
-          { header: "Mora", align: "center", cell: (o) => <span className={`font-mono text-sm font-bold ${o.dias_mora > 30 ? "text-destructive" : "text-warning"}`}>{o.dias_mora}d</span> },
+          { header: "Mora", align: "center", cell: (o) => <span className={`font-mono text-sm font-bold ${o.dias_mora > 30 ? "text-destructive" : "text-warning"}`}>{formatDias(o.dias_mora)}</span> },
           { header: "Oferta", align: "right", mono: true, cell: (o) => <span className="font-bold text-foreground">${n0(o.oferta_monto)}</span> },
           {
             header: <span className="text-success">Ahorro</span>, align: "right", mono: true,
@@ -308,7 +308,7 @@ function CampanaDetalle({ id, onBack }: { id: string; onBack: () => void }) {
                 <p className="font-medium text-foreground text-sm truncate">{nombreCompleto(o.credito.cliente)}</p>
                 <p className="text-[11px] text-muted-foreground/60">{o.credito.cliente.telefono || "sin teléfono"}</p>
               </div>
-              <span className={`font-mono text-sm font-bold ${o.dias_mora > 30 ? "text-destructive" : "text-warning"}`}>{o.dias_mora}d</span>
+              <span className={`font-mono text-sm font-bold ${o.dias_mora > 30 ? "text-destructive" : "text-warning"}`}>{formatDias(o.dias_mora)}</span>
             </div>
             <div className="flex items-center justify-between text-xs">
               <span className="text-muted-foreground">Oferta</span>

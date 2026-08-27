@@ -23,7 +23,7 @@ import { EstadoClienteDialog } from "@/components/clientes/EstadoClienteDialog";
 import { NoContactarDialog } from "@/components/clientes/NoContactarDialog";
 import { ProntuarioPanel } from "@/components/clientes/ProntuarioPanel";
 import { abrirRecibo } from "@/lib/recibo";
-import { formatCreditoNumero, formatFecha, formatFechaHora, nombreCompleto, hoyComercial } from "@/lib/utils";
+import { formatCreditoNumero, formatFecha, formatFechaHora, nombreCompleto, hoyComercial, formatDias } from "@/lib/utils";
 import { esCreditoVivo, deudaEnRevision, normalizarEstadoCliente, ESTADO_CLIENTE_LABEL, ESTADO_CLIENTE_VARIANT } from "@/lib/domain";
 import type { Role } from "@/lib/auth/roles";
 
@@ -388,7 +388,7 @@ export function ClienteDetail({
               icon="warning"
               label={ec.en_mora ? "En mora" : "Situación"}
               accent={ec.dias_mora_max > 30 ? "destructive" : ec.en_mora ? "warning" : "success"}
-              value={ec.en_mora ? `${ec.dias_mora_max}d` : "Al día"}
+              value={ec.en_mora ? formatDias(ec.dias_mora_max) : "Al día"}
               sub={ec.en_mora ? `mora $${n0(ec.interes_mora_total)} · ${ec.creditos_en_mora} créd.` : "sin atrasos"}
             />
             <Stat icon="credit-card" label="Créditos activos" accent="primary" value={String(ec.creditos_activos)} sub={`${ec.creditos_total} en total`} />

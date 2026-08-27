@@ -154,13 +154,25 @@ export function diasHastaAR(fecha: string | Date | null | undefined): number | n
   return Math.round((d.getTime() - hoyComercial().getTime()) / 86_400_000);
 }
 
-/** "Hoy" · "En 3d" · "Venció hace 2d", a partir de una fecha `@db.Date`. */
+/**
+ * Cantidad de días, escrita: `1 día` · `47 días`.
+ *
+ * Pedido explícito del usuario: **nunca la abreviatura "47d"**. En una pantalla de cobranza
+ * los días de atraso son el dato con el que se decide a quién apretar; escribirlos es medio
+ * carácter más y se leen sin traducir. El plural va resuelto acá para que no aparezca
+ * "1 días" en ningún lado.
+ */
+export function formatDias(n: number): string {
+  return `${n} ${Math.abs(n) === 1 ? "día" : "días"}`;
+}
+
+/** "Hoy" · "En 3 días" · "Venció hace 2 días", a partir de una fecha `@db.Date`. */
 export function cuandoVence(fecha: string | Date | null | undefined): string {
   const d = diasHastaAR(fecha);
   if (d === null) return "—";
   if (d === 0) return "Hoy";
-  if (d < 0) return `Venció hace ${Math.abs(d)}d`;
-  return `En ${d}d`;
+  if (d < 0) return `Venció hace ${formatDias(Math.abs(d))}`;
+  return `En ${formatDias(d)}`;
 }
 
 /** Número guardado → texto de input es-AR (para precargar campos en modo edición). */

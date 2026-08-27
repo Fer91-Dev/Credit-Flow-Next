@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { HandshakeIcon, CalendarClock, Snowflake, ArrowRight, CheckCheck } from "lucide-react";
 import { useAgendaCobranza, type AgendaItem } from "@/lib/swr";
-import { formatMonto, formatCreditoNumero } from "@/lib/utils";
+import { formatMonto, formatCreditoNumero, formatDias } from "@/lib/utils";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { IconBadge } from "@/components/ui/IconBadge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -90,7 +90,7 @@ export function CobranzaDelDia() {
                     {/* Lo VENCIDO, igual que la agenda: el saldo es el préstamo entero. */}
                     {formatMonto(it.promesa_monto ?? it.vencido)}
                   </span>
-                  <StatusBadge label={`${it.dias_mora}d`} variant={critica ? "destructive" : "warning"} />
+                  <StatusBadge label={formatDias(it.dias_mora)} variant={critica ? "destructive" : "warning"} />
                 </Link>
               );
             })}
