@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ComponentType } from "react";
+import { Fragment, useEffect, useMemo, useState, type ComponentType } from "react";
 import { useRouter } from "next/navigation";
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { mutate as globalMutate } from "swr";
 import { ArrowLeft, Mail, Smartphone, Sparkles, Check, Loader2, Users } from "lucide-react";
 import { WhatsAppIcon } from "@/components/ui/WhatsAppIcon";
@@ -161,6 +162,7 @@ interface WorkspaceProps {
 }
 
 function CampanaWorkspace({ creditos, bloqueados, onCancelar, onTerminar }: WorkspaceProps) {
+  const reducirMovimiento = useReducedMotion();
   const { config } = useConfiguracion();
   const { financiera } = useFinanciera();
   const confirm = useConfirm();
@@ -206,6 +208,15 @@ function CampanaWorkspace({ creditos, bloqueados, onCancelar, onTerminar }: Work
   const [launched, setLaunched] = useState(false);
   const [campanaId, setCampanaId] = useState<string | null>(null);
   const [enviados, setEnviados] = useState<Set<string>>(new Set());
+  /**
+   * Crédito cuya fila está enfocada en la tabla: es el que se usa para mostrar el mensaje ya
+   * resuelto. `null` = todavía no eligió ninguna y manda el primero de la lista.
+   *
+   * El mensaje lleva el importe de CADA cliente adentro, así que una sola vista previa fija
+   * solo prueba el texto del primero: no muestra qué le va a llegar a un moroso de 5 cuotas
+   * ni a uno con quita en cero.
+   */
+  const [foco, setFoco] = useState<string | null>(null);
 
   const descuentoPct = form.promoActiva ? Math.min(100, Math.max(0, parseFloat(form.promo_valor) || 0)) : 0;
 
@@ -240,11 +251,13 @@ function CampanaWorkspace({ creditos, bloqueados, onCancelar, onTerminar }: Work
 
   const totalCuotas = objetivos.reduce((s, o) => s + o.vencidoSinMora, 0);
   const totalMora = objetivos.reduce((s, o) => s + o.mora, 0);
-  const totalSinDescuento = objetivos.reduce((s, o) => s + o.oferta.montoSinDescuento, 0);
   const totalAhorro = objetivos.reduce((s, o) => s + o.oferta.ahorro, 0);
   const totalOfrecido = objetivos.reduce((s, o) => s + o.oferta.montoConDescuento, 0);
   const sinTelefono = objetivos.filter((o) => !o.credito.cliente.telefono).length;
   const sinEmail = objetivos.filter((o) => !o.credito.cliente.email).length;
+
+  /** El destinatario de la vista previa: el de la fila enfocada, o el primero de la lista. */
+  const objetivoFoco = objetivos.find((o) => o.credito.id === foco) ?? objetivos[0] ?? null;
 
   const metaElegida = plantillasMeta.find((p) => p.nombre === form.plantilla_meta) ?? null;
   /**
@@ -517,10 +530,12 @@ function CampanaWorkspace({ creditos, bloqueados, onCancelar, onTerminar }: Work
   // ─────────────────────────────────────────────────────────────────────────────
   return (
     <form onSubmit={handleSubmit} className="flex h-full min-h-0 flex-col">
-      <div className="flex min-h-0 flex-1 overflow-hidden">
+      {/* Dos columnas con scroll propio en desktop; apiladas y con un solo scroll en mobile
+          —dos áreas scrolleables una al lado de la otra en 400px de ancho no son usables. */}
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto md:flex-row md:overflow-hidden">
         {/* ── IZQUIERDA: qué se manda ── */}
-        <div className="flex w-full shrink-0 flex-col border-r border-edge bg-card/40 md:w-[340px] xl:w-[380px]">
-          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
+        <div className="flex w-full shrink-0 flex-col border-b border-edge bg-card/40 md:w-[340px] md:border-b-0 md:border-r xl:w-[380px]">
+          <div className="space-y-4 p-4 md:min-h-0 md:flex-1 md:overflow-y-auto">
             {error && (
               <div className="rounded-lg border border-destructive/20 bg-destructive/10 px-2.5 py-2 text-sm text-destructive">{error}</div>
             )}
@@ -676,19 +691,30 @@ function CampanaWorkspace({ creditos, bloqueados, onCancelar, onTerminar }: Work
               </Field>
 
               {/*
-                El mensaje YA RESUELTO con los datos del primero de la lista. En el modal no
-                entraba, así que los placeholders se mandaban a ciegas: un `[Monto]` mal escrito
-                salía como texto literal a toda la audiencia y recién se veía en el WhatsApp del
-                cliente.
+                El mensaje YA RESUELTO, con los datos del destinatario que el operador tenga
+                enfocado en la tabla. En el modal no entraba, así que los placeholders se
+                mandaban a ciegas: un `[Monto]` mal escrito salía como texto literal a toda la
+                audiencia y recién se veía en el WhatsApp del cliente.
               */}
-              {objetivos.length > 0 && (
+              {objetivoFoco && (
                 <div className="rounded-lg border border-border bg-muted/20 p-3">
                   <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-                    Así lo recibe {nombreCompleto(objetivos[0].credito.cliente)}
+                    Así lo recibe {nombreCompleto(objetivoFoco.credito.cliente)}
                   </p>
-                  <p className="mt-2 whitespace-pre-wrap break-words rounded-lg bg-success/10 px-3 py-2 text-xs leading-relaxed text-foreground">
-                    {mensajePara(objetivos[0])}
-                  </p>
+                  {/* La animación es el acuse de recibo del click en la fila: sin ella, cambiar
+                      de cliente reescribe el texto en el lugar y no se nota que respondió. */}
+                  <AnimatePresence mode="wait">
+                    <motion.p
+                      key={objetivoFoco.credito.id + form.mensaje_template + descuentoPct}
+                      initial={reducirMovimiento ? false : { opacity: 0, y: 6 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={reducirMovimiento ? undefined : { opacity: 0, y: -6 }}
+                      transition={{ duration: 0.18 }}
+                      className="mt-2 whitespace-pre-wrap break-words rounded-lg bg-success/10 px-3 py-2 text-xs leading-relaxed text-foreground"
+                    >
+                      {mensajePara(objetivoFoco)}
+                    </motion.p>
+                  </AnimatePresence>
                 </div>
               )}
 
@@ -699,9 +725,9 @@ function CampanaWorkspace({ creditos, bloqueados, onCancelar, onTerminar }: Work
         </div>
 
         {/* ── DERECHA: a quién le llega y cuánto se le pide ── */}
-        <div className="flex min-w-0 flex-1 flex-col">
-          <div className="flex shrink-0 flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b border-edge px-5 py-3">
-            <div className="flex items-center gap-2">
+        <div className="flex min-w-0 flex-1 flex-col md:min-h-0">
+          <div className="shrink-0 border-b border-edge px-5 py-3">
+            <div className="flex flex-wrap items-center gap-2">
               <Users className="h-4 w-4 text-primary" />
               <h2 className="text-sm font-semibold text-foreground">
                 {objetivos.length} destinatario{objetivos.length !== 1 ? "s" : ""}
@@ -712,24 +738,33 @@ function CampanaWorkspace({ creditos, bloqueados, onCancelar, onTerminar }: Work
                 </span>
               )}
             </div>
-            <p className="text-xs text-muted-foreground">
-              Se reclama lo <span className="font-medium text-foreground">VENCIDO</span> —cuotas impagas + punitorios—, no el
-              total del crédito
-            </p>
+            <PipelineReclamo
+              cuotas={totalCuotas}
+              punitorios={totalMora}
+              quita={totalAhorro}
+              total={totalOfrecido}
+              reducir={!!reducirMovimiento}
+            />
           </div>
 
-          <div className="min-h-0 flex-1 overflow-auto">
-            <TablaAudiencia objetivos={objetivos} totales={{ totalCuotas, totalMora, totalAhorro, totalOfrecido }} />
+          <div className="md:min-h-0 md:flex-1 overflow-auto">
+            <TablaAudiencia
+              objetivos={objetivos}
+              totales={{ totalCuotas, totalMora, totalAhorro, totalOfrecido }}
+              focoId={objetivoFoco?.credito.id ?? null}
+              onFoco={setFoco}
+            />
           </div>
         </div>
       </div>
 
-      {/* ── Barra de acción: el total siempre a la vista ── */}
+      {/* ── Barra de acción ──
+          Solo el número final: el desglose ya está arriba en el pipeline y en el pie de la
+          tabla, y repetirlo por tercera vez obliga a chequear que los tres digan lo mismo. */}
       <div className="flex shrink-0 flex-wrap items-center justify-between gap-x-6 gap-y-3 border-t border-edge bg-card/40 px-5 py-3">
-        <div className="flex flex-wrap items-baseline gap-x-6 gap-y-1">
-          <Cifra label="Vencido total" valor={formatMonto(totalSinDescuento)} />
-          <Cifra label="Quita ofrecida" valor={formatMonto(totalAhorro)} tono={totalAhorro > 0 ? "success" : undefined} />
-          <Cifra label="Se ofrece cobrar" valor={formatMonto(totalOfrecido)} destacado />
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Se ofrece cobrar</p>
+          <p className="font-mono text-lg font-bold tabular-nums text-foreground">{formatMonto(totalOfrecido)}</p>
         </div>
         <div className="flex items-center gap-3">
           <button
@@ -753,17 +788,68 @@ function CampanaWorkspace({ creditos, bloqueados, onCancelar, onTerminar }: Work
   );
 }
 
-function Cifra({ label, valor, tono, destacado }: { label: string; valor: string; tono?: "success"; destacado?: boolean }) {
+/**
+ * El cálculo del reclamo como un PIPELINE, no como una frase.
+ *
+ * 🔴 Antes esto era un renglón de texto ("Se reclama lo VENCIDO —cuotas impagas +
+ * punitorios—, no el total del crédito"): explicaba la fórmula con palabras al lado de una
+ * tabla que la mostraba con números, y nadie lee un pie de página cuando tiene los importes
+ * enfrente. Ahora la fórmula ES el gráfico —las mismas cuatro etapas que las columnas de la
+ * tabla, en el mismo orden, con los totales de la campaña—, así que se entiende de dónde sale
+ * el número final sin traducir nada. El "paquete" que viaja por cada tramo es lo que hace
+ * leer los cuatro nodos como un flujo y no como cuatro cifras sueltas.
+ */
+function PipelineReclamo({
+  cuotas, punitorios, quita, total, reducir,
+}: {
+  cuotas: number; punitorios: number; quita: number; total: number; reducir: boolean;
+}) {
+  const etapas = [
+    { label: "Cuotas vencidas", valor: cuotas,     tono: "text-foreground",  op: "+" },
+    { label: "Punitorios",      valor: punitorios, tono: "text-warning",     op: "−" },
+    { label: "Quita",           valor: quita,      tono: "text-success",     op: "=" },
+    { label: "Se le pide",      valor: total,      tono: "text-foreground",  op: null },
+  ];
+
   return (
-    <div>
-      <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">{label}</p>
-      <p
-        className={`font-mono tabular-nums ${destacado ? "text-lg font-bold" : "text-sm font-semibold"} ${
-          tono === "success" ? "text-success" : "text-foreground"
-        }`}
-      >
-        {valor}
-      </p>
+    <div className="mt-2.5 flex flex-wrap items-center gap-y-2">
+      {etapas.map((e, i) => (
+        <Fragment key={e.label}>
+          <motion.div
+            initial={reducir ? false : { opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.25, delay: reducir ? 0 : i * 0.07 }}
+            className={`rounded-lg border px-2.5 py-1.5 ${
+              // La última etapa es el resultado, no un sumando: se la marca como tal.
+              e.op === null ? "border-primary/40 bg-primary/10" : "border-border bg-muted/20"
+            }`}
+          >
+            <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground">{e.label}</p>
+            <p className={`font-mono text-sm font-semibold tabular-nums ${e.tono}`}>{formatMonto(e.valor)}</p>
+          </motion.div>
+          {e.op && <TramoPipeline op={e.op} indice={i} reducir={reducir} />}
+        </Fragment>
+      ))}
+    </div>
+  );
+}
+
+/** Un tramo del pipeline: la línea, el operador y el paquete que lo recorre. */
+function TramoPipeline({ op, indice, reducir }: { op: string; indice: number; reducir: boolean }) {
+  return (
+    <div className="relative mx-1.5 flex h-8 w-9 shrink-0 items-center sm:mx-2 sm:w-12" aria-hidden>
+      <div className="h-px w-full bg-border" />
+      {!reducir && (
+        <motion.span
+          className="absolute top-1/2 h-1.5 w-1.5 -translate-y-1/2 rounded-full bg-primary"
+          initial={{ left: "0%", opacity: 0 }}
+          animate={{ left: ["0%", "100%"], opacity: [0, 1, 1, 0] }}
+          transition={{ duration: 1.9, repeat: Infinity, delay: indice * 0.45, ease: "easeInOut" }}
+        />
+      )}
+      <span className="absolute left-1/2 z-10 -translate-x-1/2 rounded-full border border-border bg-card px-1.5 text-[11px] font-bold leading-4 text-muted-foreground">
+        {op}
+      </span>
     </div>
   );
 }
@@ -781,6 +867,8 @@ function Cifra({ label, valor, tono, destacado }: { label: string; valor: string
 function TablaAudiencia({
   objetivos,
   totales,
+  focoId,
+  onFoco,
 }: {
   objetivos: {
     credito: Credito;
@@ -789,6 +877,9 @@ function TablaAudiencia({
     mora: number;
   }[];
   totales: { totalCuotas: number; totalMora: number; totalAhorro: number; totalOfrecido: number };
+  /** Fila enfocada: la que alimenta la vista previa del mensaje. */
+  focoId: string | null;
+  onFoco: (id: string) => void;
 }) {
   const th = "px-4 py-2.5 text-left text-[11px] font-bold uppercase tracking-wider text-muted-foreground";
   const thNum = `${th} text-right`;
@@ -808,9 +899,28 @@ function TablaAudiencia({
         </tr>
       </thead>
       <tbody>
-        {objetivos.map((o, i) => (
-          <tr key={o.credito.id} className={`transition-colors hover:bg-muted/20 ${i % 2 === 1 ? "bg-muted/5" : ""}`}>
-            <td className={`${td} min-w-0`}>
+        {objetivos.map((o, i) => {
+          const enFoco = o.credito.id === focoId;
+          return (
+          /* Clickeable: cada mensaje lleva el importe del cliente adentro, así que la vista
+             previa tiene que poder seguir a la fila. Operable por teclado (contrato de diseño). */
+          <tr
+            key={o.credito.id}
+            role="button"
+            tabIndex={0}
+            aria-pressed={enFoco}
+            onClick={() => onFoco(o.credito.id)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onFoco(o.credito.id); }
+            }}
+            className={`cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/50 ${
+              enFoco ? "bg-primary/10" : `hover:bg-muted/20 ${i % 2 === 1 ? "bg-muted/5" : ""}`
+            }`}
+          >
+            <td className={`${td} min-w-0 relative`}>
+              {/* Barra de acento: el fondo solo no alcanza para señalar cuál está alimentando
+                  la vista previa cuando la lista es larga. */}
+              {enFoco && <span className="absolute inset-y-1 left-0 w-0.5 rounded-r bg-primary" />}
               <p className="truncate font-medium text-foreground">{nombreCompleto(o.credito.cliente)}</p>
               <p className="mt-0.5 text-xs text-muted-foreground">
                 {o.credito.numero ? `CRD-${String(o.credito.numero).padStart(6, "0")}` : "Crédito sin número"}
@@ -828,7 +938,8 @@ function TablaAudiencia({
             </td>
             <td className={`${tdNum} font-bold text-foreground`}>{formatMonto(o.oferta.montoConDescuento)}</td>
           </tr>
-        ))}
+          );
+        })}
       </tbody>
       <tfoot className="sticky bottom-0 z-10 bg-card">
         <tr>
