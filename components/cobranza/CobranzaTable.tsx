@@ -698,7 +698,9 @@ export function CobranzaTable({ role }: { role: Role }) {
       />
 
       <Dialog open={!!detalle} onOpenChange={open => { if (!open) setDetalle(null); }}>
-        <DialogContent className="w-[95vw] sm:max-w-lg max-h-[90dvh] flex flex-col overflow-hidden">
+        {/* Ancho: acá adentro entra el plan de cuotas completo, que es una tabla de 6
+            columnas. Con `max-w-lg` los importes se apretaban unos contra otros. */}
+        <DialogContent className="w-[95vw] sm:max-w-3xl max-h-[92dvh] flex flex-col overflow-hidden sm:p-7">
           <DialogHeader className="shrink-0">
             <DialogTitle>Detalle de cobranza</DialogTitle>
           </DialogHeader>

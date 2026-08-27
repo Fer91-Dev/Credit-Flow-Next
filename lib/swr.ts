@@ -566,6 +566,19 @@ export interface CuotaPersistida {
 export interface CuotasCredito {
   credito_id: string;
   cliente: string | null;
+  /** Acuerdo de pago vigente del crédito, con su plan completo (null si no tiene). */
+  acuerdo: {
+    id: string;
+    fecha: string;
+    monto_acordado: number;
+    deuda_original: number;
+    quita: number;
+    congela_punitorios: boolean;
+    total_cuotas: number;
+    cuotas: { id: string; numero: number; vencimiento: string; monto: number; pagado: number; estado: string }[];
+  } | null;
+  /** Condiciones de mora CONGELADAS del crédito: explican de dónde sale cada punitorio. */
+  mora: { activa: boolean; tasaDiaria: number; diasGracia: number; topePct: number };
   frecuencia: string;
   frecuencia_label: { cuotaSingular: string; cuotaPlural: string; adjetivo: string; unidad: string };
   resumen: {

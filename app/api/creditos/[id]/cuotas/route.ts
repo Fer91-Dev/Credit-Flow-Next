@@ -229,6 +229,18 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
       : null,
     frecuencia,
     frecuencia_label: frecuenciaLabel(frecuencia, catalogo),
+    /**
+     * Las condiciones de mora CONGELADAS de este crédito. Viajan para que la pantalla pueda
+     * decir de dónde sale el importe de punitorios —"1% por día a partir del día 3"— en vez
+     * de mostrar un número que el operador no puede defender cuando el cliente lo discute.
+     * Son las del snapshot del crédito, no las de la configuración de hoy.
+     */
+    mora: {
+      activa: moraCred.moraActiva,
+      tasaDiaria: moraCred.tasaMoraDiaria,
+      diasGracia: graciaCred,
+      topePct: moraCred.topeMoraPct,
+    },
     resumen: {
       total: cuotas.length,
       pagadas,
