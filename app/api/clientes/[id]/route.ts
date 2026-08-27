@@ -226,10 +226,18 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
       }
     : null;
 
+  /**
+   * Si esta ficha se puede EDITAR o dar de baja (misma regla que `vendedorPuedeEditar` del
+   * PATCH, resuelta con los créditos que ya están en memoria — sin otra consulta). Es para
+   * que la UI no ofrezca un botón que el servidor va a rechazar; la barrera es el PATCH.
+   */
+  const puede_editar =
+    role !== "vendedor" || creditosConFinanzas.length === 0 || propios.length > 0;
+
   // REF-XXXXXX: los créditos de la ficha se nombran por el que reemplazan si son refis.
   const creditosConOrigen = await conNumeroDeOrigen(tenantId, propios);
 
-  return successResponse({ ...cliente, creditos: creditosConOrigen, estado_cuenta, otros_agentes, sueldo_control, score, puede_anular_pago: esAdmin });
+  return successResponse({ ...cliente, creditos: creditosConOrigen, estado_cuenta, otros_agentes, sueldo_control, score, puede_anular_pago: esAdmin, puede_editar });
 });
 
 /**
@@ -248,7 +256,7 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
  */
 export const PATCH = withErrorHandler(async (req: NextRequest, { params }: RouteParams) => {
   assertSameOrigin(req);
-  const { tenantId, role } = await requireRole(["admin", "vendedor"], req);
+  const { tenantId, role, vendedorId } = await requireRole(["admin", "vendedor"], req);
   const { id } = await params;
 
   // Verificar que el cliente existe y pertenece al usuario
@@ -261,6 +269,10 @@ export const PATCH = withErrorHandler(async (req: NextRequest, { params }: Route
 
   if (!existing) {
     return errorResponse("Cliente no encontrado", "NOT_FOUND", 404);
+  }
+
+  if (role === "vendedor" && !(await vendedorPuedeEditar(tenantId, id, vendedorId))) {
+    return errorResponse(SIN_PERMISO_CLIENTE, "FORBIDDEN", 403);
   }
 
   let body: any;
@@ -589,12 +601,43 @@ export const PATCH = withErrorHandler(async (req: NextRequest, { params }: Route
 });
 
 /**
+ * ¿Este vendedor puede TOCAR la ficha de este cliente?
+ *
+ * 🔴 La regla: tiene que tener al menos un crédito con él. Un cliente no es de nadie —
+ * `clientes` no tiene `vendedor_id`, y cualquier vendedor lo busca y le presta, que es su
+ * trabajo—, pero MODIFICARLO es otra cosa: sin este corte, un vendedor podía cambiarle el
+ * teléfono a un cliente que gestiona un compañero, que es justo por donde se lo reclama.
+ *
+ * 🔴 La excepción que hace que la regla sirva: un cliente SIN NINGÚN crédito es de cualquiera.
+ * Si no, el alta se rompería sola — un vendedor da de alta al cliente, ve un error de tipeo y
+ * ya no puede corregirlo, porque el crédito recién existe un paso después. No es un agujero:
+ * un cliente sin créditos no es la cartera de nadie.
+ *
+ * El admin no entra acá: ve y edita todo el tenant.
+ */
+async function vendedorPuedeEditar(
+  tenantId: string,
+  clienteId: string,
+  vendedorId: string | null | undefined,
+): Promise<boolean> {
+  const conCreditos = await prisma.creditos.groupBy({
+    by: ["vendedor_id"],
+    where: { ...withTenant(tenantId), cliente_id: clienteId },
+  });
+  if (conCreditos.length === 0) return true; // de nadie todavía
+  return !!vendedorId && conCreditos.some((c) => c.vendedor_id === vendedorId);
+}
+
+const SIN_PERMISO_CLIENTE =
+  "Este cliente lo gestiona otro agente. Solo podés modificar clientes con los que tenés al menos un crédito.";
+
+/**
  * DELETE /api/clientes/[id]
  * Elimina un cliente (soft delete: marcar como inactivo).
  */
 export const DELETE = withErrorHandler(async (req: NextRequest, { params }: RouteParams) => {
   assertSameOrigin(req);
-  const { tenantId } = await requireRole(["admin", "vendedor"], req);
+  const { tenantId, role, vendedorId } = await requireRole(["admin", "vendedor"], req);
   const { id } = await params;
 
   // Verificar que pertenece al usuario
@@ -607,6 +650,14 @@ export const DELETE = withErrorHandler(async (req: NextRequest, { params }: Rout
 
   if (!existing) {
     return errorResponse("Cliente no encontrado", "NOT_FOUND", 404);
+  }
+
+  // Dar de baja es la edición más fuerte de todas: rige la misma regla que el PATCH. Dejarlo
+  // afuera sería un agujero en la misma pared —el guard de abajo solo frena si tiene créditos
+  // VIVOS, así que un cliente con la deuda ya saldada por otro agente quedaba a mano de
+  // cualquiera—.
+  if (role === "vendedor" && !(await vendedorPuedeEditar(tenantId, id, vendedorId))) {
+    return errorResponse(SIN_PERMISO_CLIENTE, "FORBIDDEN", 403);
   }
 
   // Guard: no inactivar un cliente que todavía tiene créditos vivos (activo/vencido).

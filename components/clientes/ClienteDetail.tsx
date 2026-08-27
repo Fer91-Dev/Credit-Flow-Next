@@ -205,6 +205,8 @@ export function ClienteDetail({
   }
 
   const ec = cliente.estado_cuenta;
+  /** El backend decide; acá solo se refleja (`undefined` en respuestas viejas = permitido). */
+  const puedeEditar = cliente.puede_editar !== false;
   const creditos = cliente.creditos ?? [];
   // VIVOS (activo + vencido): un crédito atrasado sigue siendo del cliente, no historial.
   const activos = creditos.filter((c) => esCreditoVivo(c.estado));
@@ -351,7 +353,11 @@ export function ClienteDetail({
                       <BellOff className="h-3.5 w-3.5" /> {sinContacto ? "Rehabilitar" : "No contactar"}
                     </button>
                   )}
-                  {onEditar && (
+                  {/* Un vendedor solo modifica clientes con los que tiene al menos un crédito.
+                      Los botones se sacan en vez de deshabilitarse: un botón apagado sin
+                      explicación se prueba igual y termina en un 403. El motivo ya está a la
+                      vista en el renglón de "otros agentes". El servidor rechaza igual. */}
+                  {onEditar && puedeEditar && (
                     <button
                       onClick={onEditar}
                       className="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
@@ -359,7 +365,7 @@ export function ClienteDetail({
                       <Pencil className="h-3.5 w-3.5" /> Editar
                     </button>
                   )}
-                  {onEliminar && (
+                  {onEliminar && puedeEditar && (
                     <button
                       onClick={onEliminar}
                       className="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-xs text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors"
@@ -553,7 +559,7 @@ export function ClienteDetail({
           ]} />
 
           <div className="space-y-4">
-            <InfoBlock icon="envelope" title="Contacto" emptyText="Sin datos de contacto cargados." onEditar={onEditar} items={[
+            <InfoBlock icon="envelope" title="Contacto" emptyText="Sin datos de contacto cargados." onEditar={puedeEditar ? onEditar : undefined} items={[
               { label: "Email", value: cliente.email, icon: Mail, href: cliente.email ? `mailto:${cliente.email}` : undefined, emphasis: true },
               { label: "Teléfono", value: cliente.telefono, icon: Phone, href: cliente.telefono ? `tel:${cliente.telefono}` : undefined, emphasis: true },
             ]} />

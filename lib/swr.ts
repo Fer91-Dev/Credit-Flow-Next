@@ -195,6 +195,12 @@ export interface ClienteDetalle extends Cliente {
   /** El usuario en sesión puede anular pagos (rol admin). */
   puede_anular_pago?: boolean;
   /**
+   * El usuario en sesión puede editar/dar de baja esta ficha. Un vendedor solo puede sobre
+   * clientes con los que tiene al menos un crédito (o que todavía no tienen ninguno). El
+   * admin siempre. La barrera real es `PATCH`/`DELETE /api/clientes/[id]`.
+   */
+  puede_editar?: boolean;
+  /**
    * Exposición del cliente FUERA de la cartera del vendedor en sesión. Solo viene cuando hay
    * algo que decir (null si no) y solo para vendedores: al admin la lista ya le muestra todo.
    * Es lo que explica que `estado_cuenta` —que es consolidado, porque el motor de riesgo
