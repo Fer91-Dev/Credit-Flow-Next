@@ -366,7 +366,7 @@ export function CreditosTable({ role }: { role: Role }) {
                       revele el título, en un teléfono no hay forma de saber qué hace cada uno. */}
                   <div className="pt-2 border-t border-border/70">
                     {c.dias_mora > 0
-                      ? <StatusBadge label={`${c.dias_mora}d mora`} variant={c.dias_mora > 30 ? "destructive" : "warning"} />
+                      ? <StatusBadge label={`${formatDias(c.dias_mora)} de mora`} variant={c.dias_mora > 30 ? "destructive" : "warning"} />
                       : <span className="text-xs font-medium text-success">Al día</span>}
                   </div>
                 </div>
@@ -528,7 +528,7 @@ function RefinanciadosView({ creditos, onOpen, onRefinanciar }: { creditos: Cred
                     <button onClick={() => onOpen(c)} className="min-w-0 flex-1 text-left" title="Ver detalle del crédito">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="font-mono text-xs font-bold text-foreground">{formatCreditoNumero(c.numero, c.refinancia_a_numero)}</span>
-                        <StatusBadge label={`${c.dias_mora}d mora`} variant={c.dias_mora > 30 ? "destructive" : "warning"} />
+                        <StatusBadge label={`${formatDias(c.dias_mora)} de mora`} variant={c.dias_mora > 30 ? "destructive" : "warning"} />
                         {c.es_refinanciacion && (
                           <span className="inline-flex items-center gap-1 rounded-full bg-warning/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-warning" title="Ya proviene de una refinanciación previa: cuidado con encadenar reestructuraciones">
                             <RefreshCw className="h-2.5 w-2.5" /> re-refi
@@ -626,7 +626,7 @@ function RefinanciadosView({ creditos, onOpen, onRefinanciar }: { creditos: Cred
                 <RefreshCw className="h-3 w-3" />{formatCreditoNumero(p.nuevo.numero, p.origen?.numero)}
               </span>
               {p.nuevo.dias_mora > 0
-                ? <StatusBadge label={`${p.nuevo.dias_mora}d mora`} variant={p.nuevo.dias_mora > 30 ? "destructive" : "warning"} />
+                ? <StatusBadge label={`${formatDias(p.nuevo.dias_mora)} de mora`} variant={p.nuevo.dias_mora > 30 ? "destructive" : "warning"} />
                 : <span className="text-xs font-medium text-success">Al día</span>}
             </div>
             <p className="font-medium text-foreground text-sm">{nombreCompleto(p.nuevo.cliente)}</p>

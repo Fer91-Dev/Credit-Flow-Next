@@ -24,7 +24,7 @@ import { DataTable, type Column } from "@/components/ui/DataTable";
 import { Emoji } from "@/components/ui/Emoji";
 import { BuscadorF3 } from "@/components/ui/BuscadorF3";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { ModalHeader } from "@/components/ui/form-kit";
+import { ModalHeader, MODAL_CONTENT_WIDE, SIN_CIERRE_ACCIDENTAL } from "@/components/ui/form-kit";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
 import { esCreditoVivo, contactoBloqueado } from "@/lib/domain";
@@ -580,7 +580,7 @@ export function CobranzaTable({ role }: { role: Role }) {
                 </div>
                 <div className="flex items-center justify-between">
                   <span className={`font-mono font-bold text-xl ${c.dias_mora > 30 ? "text-destructive" : "text-warning"}`}>${n0(c.saldo_pendiente)}</span>
-                  <span className={`font-mono font-bold text-lg ${c.dias_mora > 30 ? "text-destructive" : "text-warning"}`}>{c.dias_mora}d mora</span>
+                  <span className={`font-mono font-bold text-lg ${c.dias_mora > 30 ? "text-destructive" : "text-warning"}`}>{formatDias(c.dias_mora)} de mora</span>
                 </div>
                 {c.interes_mora && c.interes_mora > 0 && (
                   <div className="flex items-center justify-between text-xs">
@@ -675,7 +675,18 @@ export function CobranzaTable({ role }: { role: Role }) {
         los diálogos de esta pantalla cuelgan de la raíz, nunca de una pestaña.
       */}
       <Dialog open={!!gestion} onOpenChange={open => { if (!open) setGestion(null); }}>
-        <DialogContent className="w-[95vw] sm:max-w-lg sm:p-7">
+        {/*
+          🔴 `MODAL_CONTENT` y no un className suelto: le pone el TOPE DE ALTURA.
+          
+          Sin `max-h`, un formulario más alto que la ventana desborda, y `FormActions` —que es
+          `sticky bottom-0`— se pega al borde de la VENTANA en vez de al del modal. Se ve como
+          los botones flotando en el medio, con campos abajo que parecen quedar fuera del
+          formulario. Lo reportó el usuario en "Registrar gestión de cobranza".
+          
+          `SIN_CIERRE_ACCIDENTAL` va junto: acá adentro se tipean importes, motivos y notas, y
+          clickear al costado los perdía sin preguntar nada.
+        */}
+        <DialogContent className={MODAL_CONTENT_WIDE} {...SIN_CIERRE_ACCIDENTAL}>
           <ModalHeader
             icon="speech-balloon"
             title="Registrar gestión de cobranza"

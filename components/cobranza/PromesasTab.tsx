@@ -15,6 +15,7 @@ import { useToast } from "@/components/ui/toast";
 import type { Role } from "@/lib/auth/roles";
 import { useCuotas } from "@/lib/swr";
 import { Skeleton } from "@/components/ui/skeleton";
+import { MODAL_CONTENT, SIN_CIERRE_ACCIDENTAL } from "@/components/ui/form-kit";
 
 type Promesa = {
   id: string;
@@ -339,7 +340,18 @@ function AnularPromesaDialog({ promesa, onClose }: { promesa: Promesa | null; on
 
   return (
     <Dialog open onOpenChange={(o) => { if (!o) { setMotivo(""); setError(null); onClose(); } }}>
-      <DialogContent className="w-[95vw] sm:max-w-lg sm:p-7">
+      {/*
+        🔴 `MODAL_CONTENT` y no un className suelto: le pone el TOPE DE ALTURA.
+      
+        Sin `max-h`, un formulario más alto que la ventana desborda, y `FormActions` —que es
+        `sticky bottom-0`— se pega al borde de la VENTANA en vez de al del modal. Se ve como
+        los botones flotando en el medio, con campos abajo que parecen quedar fuera del
+        formulario. Lo reportó el usuario en "Registrar gestión de cobranza".
+      
+        `SIN_CIERRE_ACCIDENTAL` va junto: acá adentro se tipean importes, motivos y notas, y
+        clickear al costado los perdía sin preguntar nada.
+      */}
+      <DialogContent className={MODAL_CONTENT} {...SIN_CIERRE_ACCIDENTAL}>
         <DialogHeader className="pr-8">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-destructive/20 bg-destructive/10 text-destructive">
@@ -559,7 +571,7 @@ export function PromesasTab({ role }: { role: Role }) {
               cell: (p) => (
                 <div>
                   <span className="font-mono text-xs text-primary">{formatCreditoNumero(p.credito.numero, p.credito.refinancia_a_numero)}</span>
-                  <p className="text-xs text-muted-foreground">{p.credito.dias_mora}d mora · Saldo {formatMonto(p.credito.saldo_pendiente)}</p>
+                  <p className="text-xs text-muted-foreground">{formatDias(p.credito.dias_mora)} de mora · Saldo {formatMonto(p.credito.saldo_pendiente)}</p>
                 </div>
               ),
             },

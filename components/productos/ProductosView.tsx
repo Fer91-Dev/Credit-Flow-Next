@@ -14,7 +14,7 @@ import { Emoji } from "@/components/ui/Emoji";
 import { DataTable, type Column } from "@/components/ui/DataTable";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field, Input, Select, Textarea } from "@/components/ui/field";
-import { ModalHeader, MoneyInput, FormActions, FieldLabel, SIN_CIERRE_ACCIDENTAL } from "@/components/ui/form-kit";
+import { ModalHeader, MoneyInput, FormActions, FieldLabel, SIN_CIERRE_ACCIDENTAL, MODAL_CONTENT } from "@/components/ui/form-kit";
 import { MAX_FOTOS_PRODUCTO } from "@/lib/productos";
 import { useConfirm } from "@/components/ui/confirm";
 import { useToast } from "@/components/ui/toast";
@@ -757,7 +757,18 @@ function MovimientoStockModal({
 
   return (
     <Dialog open={!!mode} onOpenChange={(o) => { if (!o) onClose(false); }}>
-      <DialogContent className="w-[95vw] sm:max-w-lg sm:p-7">
+      {/*
+        🔴 `MODAL_CONTENT` y no un className suelto: le pone el TOPE DE ALTURA.
+      
+        Sin `max-h`, un formulario más alto que la ventana desborda, y `FormActions` —que es
+        `sticky bottom-0`— se pega al borde de la VENTANA en vez de al del modal. Se ve como
+        los botones flotando en el medio, con campos abajo que parecen quedar fuera del
+        formulario. Lo reportó el usuario en "Registrar gestión de cobranza".
+      
+        `SIN_CIERRE_ACCIDENTAL` va junto: acá adentro se tipean importes, motivos y notas, y
+        clickear al costado los perdía sin preguntar nada.
+      */}
+      <DialogContent className={MODAL_CONTENT} {...SIN_CIERRE_ACCIDENTAL}>
         <ModalHeader
           icon={esAjuste ? "counterclockwise-arrows-button" : "package"}
           title={esAjuste ? "Ajustar stock" : "Registrar entrada"}

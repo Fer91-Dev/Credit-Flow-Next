@@ -773,7 +773,7 @@ function CreditosTabla({ creditos, mostrarProximo }: { creditos: CreditoConFinan
                   {mostrarProximo && (
                     <td className="px-3 py-2 tabular-nums border-b border-border/70">
                       {c.dias_mora > 0
-                        ? <span className="text-destructive">{c.dias_mora}d mora</span>
+                        ? <span className="text-destructive">{formatDias(c.dias_mora)} de mora</span>
                         : <span className="text-muted-foreground">{fmtDate(c.cuotas_resumen?.proxima_vencimiento ?? c.proximo_pago)}</span>}
                     </td>
                   )}
