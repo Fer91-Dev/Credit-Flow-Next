@@ -289,8 +289,16 @@ function AgendaRow({
         {it.promesa_monto != null ? (
           <>
             <p className="font-mono font-bold text-warning">{formatMonto(it.promesa_monto)}</p>
-            <p className="text-[10px] text-muted-foreground/60 uppercase tracking-wide">
-              prometido · de {formatMonto(it.vencido)}
+            {/*
+              El vencido NO va con el gris de etiqueta. `text-[10px] text-muted-foreground/60`
+              es para aclaraciones ("1 cuota"); acá adentro hay un IMPORTE, y escondido en ese
+              gris era ilegible — el usuario ni lo vio. Un número que hay que leer se pone al
+              tamaño y al contraste de un número: mono, 11px y `muted-foreground` entero.
+              Solo la palabra que lo rotula queda apagada.
+            */}
+            <p className="text-[11px] text-muted-foreground">
+              <span className="uppercase tracking-wide text-muted-foreground/60">prometido de </span>
+              <span className="font-mono tabular-nums">{formatMonto(it.vencido)}</span>
             </p>
           </>
         ) : (
