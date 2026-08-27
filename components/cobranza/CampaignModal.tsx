@@ -18,7 +18,7 @@ import {
 import { AvisoMeta } from "@/components/clientes/ContactarDialog";
 import { Field, Input, Select, Textarea } from "@/components/ui/field";
 import { FormActions } from "@/components/ui/form-kit";
-import { nombreCompleto } from "@/lib/utils";
+import { nombreCompleto, formatMonto, formatDias } from "@/lib/utils";
 import { useConfirm } from "@/components/ui/confirm";
 import { useToast } from "@/components/ui/toast";
 
@@ -90,13 +90,27 @@ export function CampaignModal({ creditos, onClose }: CampaignModalProps) {
   const objetivos = useMemo(
     () =>
       creditos.map((c) => {
+        /**
+         * 🔴 Sobre lo VENCIDO, no sobre `saldo_pendiente`.
+         *
+         * El servidor ya calculaba bien la oferta que se le manda al cliente (deuda vencida
+         * sin mora + la mora aparte, para poder condonar solo los punitorios). Esta vista
+         * previa lo hacía por su cuenta con el saldo del préstamo, así que el admin veía un
+         * número y al cliente le llegaba otro. Medido sobre los 3 de una campaña: a un moroso
+         * de 5 cuotas le mostraba $663.140,27 MENOS de lo que debía, y a uno de 2 cuotas,
+         * $95.956,84 de más — ni siquiera fallaba siempre para el mismo lado.
+         *
+         * `vencido` viene de `/api/creditos`, que es donde vive la única definición.
+         */
+        const mora = c.interes_mora ?? 0;
+        const vencidoSinMora = Math.max(0, (c.vencido ?? 0) - mora);
         const oferta = calculateRecoveryOffer({
-          saldo: c.saldo_pendiente,
-          interesMora: c.interes_mora ?? 0,
+          saldo: vencidoSinMora,
+          interesMora: mora,
           diasMora: c.dias_mora,
           descuentoPct,
         });
-        return { credito: c, oferta };
+        return { credito: c, oferta, vencidoSinMora, mora };
       }),
     [creditos, descuentoPct],
   );
@@ -474,17 +488,42 @@ export function CampaignModal({ creditos, onClose }: CampaignModalProps) {
 
       {/* Preview de oferta por cliente */}
       <div className="rounded-lg border border-border overflow-hidden">
-        <div className="bg-muted/30 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground border-b border-border">
-          Oferta por cliente
+        <div className="bg-muted/30 px-3 py-2 border-b border-border">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+            Lo que se le ofrece a cada cliente
+          </p>
+          {/*
+            Antes eran dos números pelados y no se sabía si era una cuota, el total o qué.
+            Ahora cada fila dice de qué se compone: cuántas cuotas vencidas, cuánto es
+            punitorio y cuánto se condona. Es lo que va a leer el cliente en el WhatsApp.
+          */}
+          <p className="mt-0.5 text-[11px] text-muted-foreground">
+            Es lo VENCIDO —cuotas impagas + punitorios— con la quita aplicada. No incluye las
+            cuotas que todavía no vencieron.
+          </p>
         </div>
-        <div className="max-h-[28vh] overflow-y-auto divide-y divide-border/50">
+        <div className="max-h-[32vh] overflow-y-auto divide-y divide-border/50">
           {objetivos.map((o) => (
-            <div key={o.credito.id} className="flex items-center justify-between gap-3 px-3 py-2 text-xs">
-              <span className="text-foreground truncate">{nombreCompleto(o.credito.cliente)}</span>
-              <span className="flex items-center gap-3 shrink-0 font-mono">
-                {o.oferta.ahorro > 0 && <span className="text-success">−${n0(o.oferta.ahorro)}</span>}
-                <span className="font-semibold text-foreground">${n0(o.oferta.montoConDescuento)}</span>
-              </span>
+            <div key={o.credito.id} className="px-3 py-2.5 text-xs">
+              <div className="flex items-baseline justify-between gap-3">
+                <span className="font-medium text-foreground truncate">{nombreCompleto(o.credito.cliente)}</span>
+                <span className="shrink-0 font-mono font-bold tabular-nums text-foreground">
+                  {formatMonto(o.oferta.montoConDescuento)}
+                </span>
+              </div>
+              <div className="mt-1 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 text-[11px] text-muted-foreground">
+                <span>
+                  {o.credito.cuotas_vencidas
+                    ? `${o.credito.cuotas_vencidas} ${o.credito.cuotas_vencidas === 1 ? "cuota vencida" : "cuotas vencidas"}`
+                    : "sin cuotas vencidas"}
+                  {" · "}{formatDias(o.credito.dias_mora)} de atraso
+                </span>
+                <span className="font-mono tabular-nums">
+                  {formatMonto(o.vencidoSinMora)} de cuotas
+                  {o.mora > 0 && <> + {formatMonto(o.mora)} de punitorios</>}
+                  {o.oferta.ahorro > 0 && <span className="text-success"> − {formatMonto(o.oferta.ahorro)} de quita</span>}
+                </span>
+              </div>
             </div>
           ))}
         </div>

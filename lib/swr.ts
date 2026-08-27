@@ -221,6 +221,10 @@ export interface Credito {
   proximo_pago?: string | null;
   /** Interés moratorio calculado en el servidor (solo créditos con mora). */
   interes_mora?: number;
+  /** Lo EXIGIBLE hoy: cuotas vencidas impagas + punitorios. NO es el saldo del préstamo. */
+  vencido?: number;
+  /** Cuántas cuotas están vencidas e impagas (para decir "debe 3 cuotas", no solo un total). */
+  cuotas_vencidas?: number;
   /** True si el crédito tiene al menos un pago registrado (bloquea eliminar). */
   /** Tiene ALGÚN pago, anulados incluidos: es lo que impide eliminar el crédito. */
   tiene_pagos?: boolean;

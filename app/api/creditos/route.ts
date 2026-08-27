@@ -2,7 +2,7 @@ import { requireAuth, requireRole, scopeCreditosVendedor, ApiError } from "@/lib
 import { successResponse, errorResponse, withErrorHandler, assertSameOrigin } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
-import { round2, normalizarFrecuencia, resolverFrecuencia, sumarPeriodos, construirPlanAmortizacion, planACuotas, estadoCoherente, etiquetaCaja, esCuentaValida, validarParametrosOtorgamiento, diasMoraActual, buscarPlan, nombrePlan, tasaDesdeCoeficiente, cargosConPlan, CUENTA_LABEL, type Cuenta, ESTADOS_VIVOS, esCreditoVivo, moraDelCredito, moraDesdeCronograma, moraPendienteTotal, deudaEnRevision } from "@/lib/domain";
+import { round2, normalizarFrecuencia, resolverFrecuencia, sumarPeriodos, construirPlanAmortizacion, planACuotas, estadoCoherente, etiquetaCaja, esCuentaValida, validarParametrosOtorgamiento, diasMoraActual, buscarPlan, nombrePlan, tasaDesdeCoeficiente, cargosConPlan, CUENTA_LABEL, type Cuenta, ESTADOS_VIVOS, esCreditoVivo, moraDelCredito, moraDesdeCronograma, moraPendienteTotal, calcularDeudaVencida, deudaEnRevision } from "@/lib/domain";
 import { siguienteNumeroComprobante } from "@/lib/comprobantes";
 import { assertFondosSuficientesTx } from "@/lib/caja-fondos";
 import { lockNumeroCreditoTx, TX_PLATA } from "@/lib/locks";
@@ -47,7 +47,19 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
       where,
       include: {
         // Cuotas mínimas para calcular la mora EXACTA (cuota por cuota, como al cobrar).
-        cuotas: { select: { fecha_vencimiento: true, cuota_total: true, pagado_mora: true } },
+        /**
+         * Se traen los componentes completos de la cuota, no solo lo que necesita la mora:
+         * con esto se calcula también el VENCIDO (lo exigible hoy), que es el número que la
+         * cobranza reclama. Antes cada pantalla lo derivaba por su cuenta o —peor— usaba
+         * `saldo_pendiente`, que es el préstamo entero.
+         */
+        cuotas: {
+          select: {
+            id: true, nro: true, fecha_vencimiento: true, cuota_total: true,
+            capital: true, interes: true, iva: true, seguro: true, gastos: true,
+            pagado_capital: true, pagado_interes: true, pagado_mora: true, pagado_cargos: true,
+          },
+        },
         /**
          * 🔴 `telefono` y `email` FALTABAN, y el tipo `Credito` los declaraba igual.
          *
@@ -107,11 +119,38 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
         { tasaDiaria: mc.tasaMoraDiaria, diasGracia: graciaCred, hoy, topePct: mc.topeMoraPct },
       );
     }
-    // Estado reconciliado: defensa de lectura ante datos legacy. La lista no carga
-    // cuotas, así que se valida contra el saldo (autoritativo, derivado del ledger).
+    /**
+     * Lo EXIGIBLE hoy: cuotas ya vencidas impagas + sus punitorios. Es lo que se reclama en
+     * una cobranza y lo que ofrece una campaña de recupero — NO el `saldo_pendiente`, que es
+     * el préstamo entero con las cuotas futuras adentro.
+     *
+     * Viaja desde acá para que haya UNA sola definición. La vista previa de campañas lo
+     * calculaba por su cuenta con `saldo_pendiente + interés`, y el resultado no coincidía
+     * con lo que el servidor terminaba ofreciéndole al cliente: a un moroso de 5 cuotas le
+     * mostraba $663.140,27 MENOS de lo que debía, y a uno de 2 cuotas, $95.956,84 de más.
+     */
+    let vencido = 0;
+    let cuotas_vencidas = 0;
+    if (dmora > 0 && esCreditoVivo(c.estado) && c.cuotas.length > 0) {
+      const graciaV = (c.cronograma as { diasGracia?: number } | null)?.diasGracia ?? config.simulador.diasGracia;
+      const dv = calcularDeudaVencida(
+        c.cuotas.map((q) => ({
+          id: q.id, nro: q.nro, fechaVencimiento: q.fecha_vencimiento,
+          capital: q.capital, interes: q.interes, cargos: round2(q.iva + q.seguro + q.gastos),
+          cuotaTotal: q.cuota_total,
+          pagadoCapital: q.pagado_capital, pagadoInteres: q.pagado_interes,
+          pagadoMora: q.pagado_mora, pagadoCargos: q.pagado_cargos,
+        })),
+        { moraActiva: mc.moraActiva, tasaMoraDiaria: mc.tasaMoraDiaria, topeMoraPct: mc.topeMoraPct, diasGracia: graciaV, hoy },
+      );
+      vencido = round2(dv.total);
+      cuotas_vencidas = dv.cuotas_vencidas;
+    }
+
+    // Estado reconciliado: defensa de lectura ante datos legacy.
     const estado = estadoCoherente(c.estado, c.saldo_pendiente);
-    const { cuotas: _cuotas, ...credito } = c; // no viajan al cliente: solo alimentan la mora
-    return { ...credito, estado, dias_mora: dmora, interes_mora, tiene_pagos: c.pagos.length > 0, cobros_vivos: c._count.pagos > 0 };
+    const { cuotas: _cuotas, ...credito } = c; // no viajan al cliente: solo alimentan los cálculos
+    return { ...credito, estado, dias_mora: dmora, interes_mora, vencido, cuotas_vencidas, tiene_pagos: c.pagos.length > 0, cobros_vivos: c._count.pagos > 0 };
   });
 
   // El número del crédito que cada refinanciación reemplaza, para poder mostrar REF-000060
