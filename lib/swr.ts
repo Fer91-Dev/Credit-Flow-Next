@@ -895,6 +895,11 @@ export interface Pago {
   credito: { id: string; numero?: number | null; refinancia_a_numero?: number | null; cliente_id: string; cliente: { nombre: string; apellido?: string | null } };
   /** Si el cobro salió de una cuota de ACUERDO DE PAGO: cuál es, y de cuántas. */
   acuerdo_cuota?: { numero: number; acuerdo: { _count: { cuotas: number } } } | null;
+  /** Contra qué cuotas del plan se imputó, y cuánto a cada una. */
+  aplicaciones?: {
+    aplicado_capital: number; aplicado_interes: number; aplicado_mora: number; aplicado_cargos: number;
+    cuota: { nro: number; fecha_vencimiento: string };
+  }[];
 }
 
 // ── Campañas de recuperación de cobranza (Fase 7A) ──────────────────────────
@@ -1491,7 +1496,18 @@ export interface LibreDeuda {
     /** Número del crédito que reemplaza, si es una refinanciación → REF-XXXXXX. */
     refinancia_a_numero?: number | null;
   };
-  totales: { total_pagado: number; cuotas: number; fecha_cancelacion: string | null };
+  totales: {
+    total_pagado: number;
+    /** De qué se compone `total_pagado`: sin esto el certificado no se puede verificar. */
+    capital: number;
+    interes: number;
+    mora: number;
+    cargos: number;
+    /** Cuántos cobros lo formaron. */
+    pagos: number;
+    cuotas: number;
+    fecha_cancelacion: string | null;
+  };
 }
 
 export function useLibreDeuda(creditoId: string | null) {

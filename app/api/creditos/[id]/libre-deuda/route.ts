@@ -40,11 +40,31 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
 
   const [tenant, pagos, cuotas] = await Promise.all([
     prisma.tenants.findUnique({ where: { id: tenantId }, select: { nombre: true } }),
-    prisma.pagos.findMany({ where: { ...withTenant(tenantId), credito_id: id, anulado: false }, select: { monto: true, created_at: true } }),
+    // Con la imputación: un certificado que dice "pagó $X" y nada más no deja verificar de
+    // dónde sale ese número, y es un papel que el cliente guarda como prueba.
+    prisma.pagos.findMany({
+      where: { ...withTenant(tenantId), credito_id: id, anulado: false },
+      select: {
+        monto: true, created_at: true,
+        aplicado_capital: true, aplicado_interes: true, aplicado_mora: true, aplicado_cargos: true,
+      },
+    }),
     prisma.cuotas.count({ where: { ...withTenant(tenantId), credito_id: id } }),
   ]);
 
   const total_pagado = round2(pagos.reduce((s, p) => s + p.monto, 0));
+  /**
+   * De qué se compone lo que pagó. El certificado decía un total pelado, así que no había
+   * forma de verificarlo ni de explicarle al cliente por qué pagó más que el capital que se
+   * llevó: la diferencia es el interés pactado (que es la ganancia) y los punitorios.
+   */
+  const desglose = {
+    capital: round2(pagos.reduce((s, p) => s + p.aplicado_capital, 0)),
+    interes: round2(pagos.reduce((s, p) => s + p.aplicado_interes, 0)),
+    mora: round2(pagos.reduce((s, p) => s + p.aplicado_mora, 0)),
+    cargos: round2(pagos.reduce((s, p) => s + p.aplicado_cargos, 0)),
+    pagos: pagos.length,
+  };
   const fecha_cancelacion = pagos.reduce<Date | null>((acc, p) => (acc && acc > p.created_at ? acc : p.created_at), null);
 
   return successResponse({
@@ -65,6 +85,7 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
     },
     totales: {
       total_pagado,
+      ...desglose,
       cuotas,
       fecha_cancelacion,
     },

@@ -58,6 +58,18 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
         acuerdo_cuota: {
           select: { numero: true, acuerdo: { select: { _count: { select: { cuotas: true } } } } },
         },
+        /**
+         * CONTRA QUÉ CUOTA se imputó. El detalle del pago mostraba cómo se repartió (mora /
+         * interés / capital) pero no a qué cuota fue: para saberlo había que abrir el recibo
+         * en PDF. Son dos enteros y un importe por cuota tocada, casi siempre una.
+         */
+        aplicaciones: {
+          select: {
+            aplicado_capital: true, aplicado_interes: true, aplicado_mora: true, aplicado_cargos: true,
+            cuota: { select: { nro: true, fecha_vencimiento: true } },
+          },
+          orderBy: { cuota: { nro: "asc" } },
+        },
       },
       orderBy: { fecha: "desc" },
       take: limit,

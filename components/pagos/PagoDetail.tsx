@@ -44,6 +44,24 @@ export function PagoDetail({ pago }: { pago: Pago }) {
         <p className="font-mono font-bold text-success text-xl">+${n2(pago.monto)}</p>
       </div>
 
+      {/*
+        EN CONCEPTO DE QUÉ. La imputación de abajo dice cómo se repartió el dinero (mora /
+        interés / capital); esto dice contra QUÉ cuota se aplicó. Sin las dos cosas, el monto
+        no se puede rastrear hasta el plan del cliente sin abrir el recibo en PDF.
+      */}
+      {(pago.aplicaciones?.length ?? 0) > 0 && (
+        <DetailSection icon="receipt" title="En concepto de">
+          <DetailGrid
+            rows={(pago.aplicaciones ?? []).map((a) => [
+              `Cuota ${a.cuota.nro} · vence ${fmtDate(a.cuota.fecha_vencimiento)}`,
+              <span key={a.cuota.nro} className="font-mono text-foreground">
+                ${n2(a.aplicado_capital + a.aplicado_interes + a.aplicado_mora + a.aplicado_cargos)}
+              </span>,
+            ])}
+          />
+        </DetailSection>
+      )}
+
       <DetailSection icon="money-bag" title="Imputación del pago">
         <DetailGrid
           rows={[

@@ -35,7 +35,16 @@ export function imprimirLibreDeuda(ld: LibreDeuda) {
     ["Tipo", ld.credito.tipo],
     ["Monto otorgado", `$${n2(ld.credito.monto_original)}`],
     ["Cuotas", String(ld.totales.cuotas)],
-    ["Total pagado", `$${n2(ld.totales.total_pagado)}`],
+    /**
+     * 🔴 DISCRIMINADO. Decía un total pelado, y es un papel que el cliente guarda como
+     * prueba: sin el desglose no hay forma de verificarlo ni de explicarle por qué pagó más
+     * que el capital que se llevó — la diferencia es el interés pactado y los punitorios.
+     */
+    ["Total pagado", `$${n2(ld.totales.total_pagado)} en ${ld.totales.pagos} pago${ld.totales.pagos === 1 ? "" : "s"}`],
+    ["· Capital", `$${n2(ld.totales.capital)}`],
+    ["· Interés", `$${n2(ld.totales.interes)}`],
+    ...(ld.totales.cargos > 0 ? ([["· Cargos", `$${n2(ld.totales.cargos)}`]] as [string, string][]) : []),
+    ...(ld.totales.mora > 0 ? ([["· Punitorios", `$${n2(ld.totales.mora)}`]] as [string, string][]) : []),
     ["Fecha de otorgamiento", formatFecha(ld.credito.fecha_otorgamiento)],
     ["Fecha de cancelación", ld.totales.fecha_cancelacion ? formatFechaHora(ld.totales.fecha_cancelacion) : "—"],
   ];
@@ -115,7 +124,16 @@ export function LibreDeudaDialog({ creditoId, onClose }: { creditoId: string | n
                     ["Crédito", formatCreditoNumero(ld.credito.numero, ld.credito.refinancia_a_numero)],
                     ["Monto otorgado", `$${n2(ld.credito.monto_original)}`],
                     ["Cuotas", String(ld.totales.cuotas)],
-                    ["Total pagado", `$${n2(ld.totales.total_pagado)}`],
+                    /**
+     * 🔴 DISCRIMINADO. Decía un total pelado, y es un papel que el cliente guarda como
+     * prueba: sin el desglose no hay forma de verificarlo ni de explicarle por qué pagó más
+     * que el capital que se llevó — la diferencia es el interés pactado y los punitorios.
+     */
+    ["Total pagado", `$${n2(ld.totales.total_pagado)} en ${ld.totales.pagos} pago${ld.totales.pagos === 1 ? "" : "s"}`],
+    ["· Capital", `$${n2(ld.totales.capital)}`],
+    ["· Interés", `$${n2(ld.totales.interes)}`],
+    ...(ld.totales.cargos > 0 ? ([["· Cargos", `$${n2(ld.totales.cargos)}`]] as [string, string][]) : []),
+    ...(ld.totales.mora > 0 ? ([["· Punitorios", `$${n2(ld.totales.mora)}`]] as [string, string][]) : []),
                     ["Fecha de cancelación", ld.totales.fecha_cancelacion ? formatFechaHora(ld.totales.fecha_cancelacion) : "—"],
                   ] as [string, string][]).map(([k, v], i) => (
                     <tr key={k} className={i % 2 === 1 ? "bg-muted/5" : ""}>
