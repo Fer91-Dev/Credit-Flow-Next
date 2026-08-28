@@ -1,8 +1,7 @@
 "use client";
 
 import { ShieldAlert, CalendarClock, HandCoins, Handshake, ChevronRight, Printer } from "lucide-react";
-import { imprimirReciboCuota, pagadoDeCuota } from "@/lib/recibo-cuota";
-import { useFinanciera } from "@/lib/swr";
+import { abrirReciboDeCuota, pagadoDeCuota, cantidadCobros } from "@/lib/recibo-cuota";
 import type { Credito, AccionCobranza } from "@/lib/swr";
 import { useCuotas } from "@/lib/swr";
 import { StatusBadge } from "@/components/ui/StatusBadge";
@@ -48,8 +47,6 @@ export function CobranzaDetail({ credito, acciones, onVerPromesa }: {
   onVerPromesa?: (accionId: string) => void;
 }) {
   const { cuotas, meta, isLoading } = useCuotas(credito.id);
-  // El recibo lleva la marca de la FINANCIERA; va contra la misma caché, no repite fetch.
-  const { financiera } = useFinanciera();
 
   const gestiones = acciones
     .filter((a) => a.credito_id === credito.id)
@@ -213,16 +210,16 @@ export function CobranzaDetail({ credito, acciones, onVerPromesa }: {
                           <div className="flex items-center justify-end gap-1.5">
                             <span className="font-mono tabular-nums text-success">{formatMonto(pagado)}</span>
                             <button
-                              onClick={() => imprimirReciboCuota(c, {
-                                cliente: nombreCompleto(credito.cliente),
-                                creditoNumero: credito.numero,
-                                creditoRefiNumero: credito.refinancia_a_numero,
-                                marca: (financiera?.nombre ?? "").trim() || "CreditFlow",
-                              })}
-                              title="Imprimir / reimprimir el recibo de esta cuota"
-                              className="shrink-0 rounded-md border border-border p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                              onClick={() => abrirReciboDeCuota(c)}
+                              title={cantidadCobros(c) > 1 ? `Recibo del último de ${cantidadCobros(c)} cobros (PDF)` : "Recibo de este cobro (PDF)"}
+                              className="relative shrink-0 rounded-md border border-border p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                             >
                               <Printer className="h-3 w-3" />
+                              {cantidadCobros(c) > 1 && (
+                                <span className="absolute -right-1 -top-1 rounded-full bg-primary px-1 text-[9px] font-bold leading-3 text-primary-foreground">
+                                  {cantidadCobros(c)}
+                                </span>
+                              )}
                             </button>
                           </div>
                         ) : (

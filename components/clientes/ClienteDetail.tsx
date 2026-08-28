@@ -5,7 +5,7 @@ import { useSWRConfig } from "swr";
 import {
   Pencil, Trash2, CalendarClock, ChevronRight, Loader2, Mail, MessageCircle, Phone, Printer, ShieldCheck, Ban, Receipt, AlertTriangle, History, BellOff,
 } from "lucide-react";
-import { refrescarNotificaciones, useClienteDetalle, useAccionesCobranza, useCuotas, useFinanciera, KEYS, type CreditoConFinanzas, type EstadoCuota, type CuotaPersistida } from "@/lib/swr";
+import { refrescarNotificaciones, useClienteDetalle, useAccionesCobranza, useCuotas, KEYS, type CreditoConFinanzas, type EstadoCuota, type CuotaPersistida } from "@/lib/swr";
 import { StatusBadge, type BadgeVariant } from "@/components/ui/StatusBadge";
 import { ScoreBadge } from "@/components/ui/ScoreBadge";
 import { Stat } from "@/components/ui/Stat";
@@ -24,7 +24,7 @@ import { EstadoClienteDialog } from "@/components/clientes/EstadoClienteDialog";
 import { NoContactarDialog } from "@/components/clientes/NoContactarDialog";
 import { ProntuarioPanel } from "@/components/clientes/ProntuarioPanel";
 import { abrirRecibo } from "@/lib/recibo";
-import { imprimirReciboCuota, tienePagos, pagadoDeCuota, ultimoPagoDeCuota } from "@/lib/recibo-cuota";
+import { abrirReciboDeCuota, tienePagos, pagadoDeCuota, ultimoPagoDeCuota, cantidadCobros } from "@/lib/recibo-cuota";
 import { formatCreditoNumero, formatFecha, formatFechaHora, nombreCompleto, hoyComercial, formatDias, formatMonto } from "@/lib/utils";
 import { esCreditoVivo, deudaEnRevision, normalizarEstadoCliente, ESTADO_CLIENTE_LABEL, ESTADO_CLIENTE_VARIANT } from "@/lib/domain";
 import type { Role } from "@/lib/auth/roles";
@@ -866,10 +866,6 @@ function CuotasInline({ credito, onCobrar }: {
   credito: CreditoConFinanzas;
   onCobrar?: (credito: CreditoConFinanzas, cuota: CuotaPersistida) => void;
 }) {
-  // El recibo lo firma la FINANCIERA, no el sistema. Se resuelve acá porque este componente
-  // es el dueño del botón; `useFinanciera` va contra la misma cache de SWR, no repite fetch.
-  const { financiera } = useFinanciera();
-  const marcaDoc = (financiera?.nombre ?? "").trim() || "CreditFlow";
   const creditoId = credito.id;
   const creditoNumero = credito.numero;
   const creditoRefiNumero = credito.refinancia_a_numero;
@@ -928,6 +924,7 @@ function CuotasInline({ credito, onCobrar }: {
               {cuotas.map((q, i) => {
                 const bb = CUOTA_BADGE[q.estado];
                 const conPagos = tienePagos(q);
+                const cobros = cantidadCobros(q);
                 const pagadoCuota = pagadoDeCuota(q);
                 const ultimoPago = ultimoPagoDeCuota(q);
                 return (
@@ -976,12 +973,17 @@ function CuotasInline({ credito, onCobrar }: {
                               <span className="block text-[10px] tabular-nums text-muted-foreground">{formatFechaHora(ultimoPago)}</span>
                             )}
                           </span>
-                          <button
-                            onClick={() => imprimirReciboCuota(q, { cliente, creditoNumero, creditoRefiNumero, marca: marcaDoc })}
-                            title="Imprimir / reimprimir el recibo de esta cuota"
-                            className="shrink-0 rounded-md border border-border p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+<button
+                            onClick={() => abrirReciboDeCuota(q)}
+                            title={cobros > 1 ? `Recibo del último de ${cobros} cobros (PDF)` : "Recibo de este cobro (PDF)"}
+                            className="relative shrink-0 rounded-md border border-border p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                           >
                             <Printer className="h-3 w-3" />
+                            {cobros > 1 && (
+                              <span className="absolute -right-1 -top-1 rounded-full bg-primary px-1 text-[9px] font-bold leading-3 text-primary-foreground">
+                                {cobros}
+                              </span>
+                            )}
                           </button>
                         </div>
                       ) : (

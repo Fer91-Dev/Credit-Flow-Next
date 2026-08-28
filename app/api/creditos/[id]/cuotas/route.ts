@@ -38,7 +38,7 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
         include: {
           // Comprobantes (recibos) que imputaron a cada cuota: pago → movimiento de caja.
           aplicaciones: {
-            include: { pago: { select: { fecha: true, created_at: true, movimientos: { select: { tipo: true, serie: true, numero: true } } } } },
+            include: { pago: { select: { id: true, fecha: true, created_at: true, movimientos: { select: { tipo: true, serie: true, numero: true } } } } },
           },
         },
       },
@@ -130,6 +130,9 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
         const mov = a.pago.movimientos.find((m) => m.tipo === "cobro" && m.serie != null && m.numero != null);
         return {
           comprobante: formatComprobante(mov?.serie, mov?.numero),
+          // El PAGO que la imputó: es lo que permite abrir SU recibo en PDF desde la fila de
+          // la cuota, en vez de armar un segundo recibo distinto del oficial.
+          pago_id: a.pago.id,
           fecha: a.pago.fecha,
           fecha_hora: a.pago.created_at, // momento real en que se registró el pago
           monto: round2(a.aplicado_capital + a.aplicado_interes + a.aplicado_mora + a.aplicado_cargos),

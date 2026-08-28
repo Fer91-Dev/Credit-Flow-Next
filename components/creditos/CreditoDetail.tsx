@@ -6,7 +6,7 @@ import { CalendarDays, Wallet, Info, ArrowUpRight, Receipt, Loader2, Printer, Re
 import { refrescarNotificaciones, useAmortizacion, useCuotas, usePagosByCredito, useCreditos, KEYS, type Credito, type EstadoCuota, type Pago, type CuotaPersistida, useFinanciera } from "@/lib/swr";
 import { type Role } from "@/lib/auth/roles";
 import { abrirRecibo } from "@/lib/recibo";
-import { imprimirReciboCuota, tienePagos, pagadoDeCuota } from "@/lib/recibo-cuota";
+import { abrirReciboDeCuota, tienePagos, pagadoDeCuota, cantidadCobros } from "@/lib/recibo-cuota";
 import { imprimirPlanPagos } from "@/lib/plan-print";
 import { PagoForm } from "@/components/pagos/PagoForm";
 import { LibreDeudaDialog } from "./LibreDeudaDialog";
@@ -932,16 +932,16 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
                             <div className="flex items-center justify-end gap-1.5">
                               <span className="font-mono tabular-nums text-success">${n2(pagadoDeCuota(q))}</span>
                               <button
-                                onClick={() => imprimirReciboCuota(q, {
-                                  cliente: nombreCompleto(credito.cliente),
-                                  creditoNumero: credito.numero,
-                                  creditoRefiNumero: credito.refinancia_a_numero,
-                                  marca: (financiera?.nombre ?? "").trim() || "CreditFlow",
-                                })}
-                                title="Imprimir / reimprimir el recibo de esta cuota"
-                                className="shrink-0 rounded-md border border-border p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                                onClick={() => abrirReciboDeCuota(q)}
+                                title={cantidadCobros(q) > 1 ? `Recibo del último de ${cantidadCobros(q)} cobros (PDF)` : "Recibo de este cobro (PDF)"}
+                                className="relative shrink-0 rounded-md border border-border p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                               >
                                 <Printer className="h-3 w-3" />
+                                {cantidadCobros(q) > 1 && (
+                                  <span className="absolute -right-1 -top-1 rounded-full bg-primary px-1 text-[9px] font-bold leading-3 text-primary-foreground">
+                                    {cantidadCobros(q)}
+                                  </span>
+                                )}
                               </button>
                             </div>
                           ) : (

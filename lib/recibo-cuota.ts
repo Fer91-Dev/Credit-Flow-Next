@@ -1,32 +1,25 @@
+import { abrirRecibo } from "@/lib/recibo";
 import type { CuotaPersistida } from "@/lib/swr";
-import { formatCreditoNumero, formatFecha, formatFechaHora, formatNumero } from "@/lib/utils";
 
 /**
- * Recibo imprimible de UNA CUOTA, con los comprobantes que la imputaron.
+ * Helpers de la columna "Pagado" de los planes de cuotas, y el acceso a SU recibo.
  *
- * 🔴 Vive acá y no dentro de una pantalla porque lo usan TRES: la ficha del cliente (que es
- * la que ve Pagos), el detalle del crédito y el detalle de cobranza. Estaba escrito adentro
- * de `ClienteDetail`, así que las otras dos tablas mostraban pagos sin poder imprimir su
- * comprobante — y copiarlo habría dejado tres papeles distintos para el mismo cobro.
+ * 🔴 EL RECIBO ES UNO SOLO: el PDF de `/api/pagos/[id]/recibo`.
  *
- * Es un papel que se lleva el cliente: va con el nombre de la FINANCIERA, no con el del
- * sistema que lo emite.
+ * Acá vivía un segundo recibo, en HTML, generado en el navegador para "la cuota". Tenía dos
+ * problemas de fondo:
+ *
+ *  1. **Mezclaba dos cosas distintas sin distinguirlas.** Arriba el importe pagado
+ *     ($150.000,00) y abajo la composición de la CUOTA (interés $175.000,00 + capital
+ *     $67.425,90 = $242.425,90). El que lo lee entiende que los $175.000 de interés son parte
+ *     de lo que pagó, y no cierra con nada.
+ *  2. **Era un papel paralelo al oficial.** El PDF ya dice, bien discriminado, la imputación
+ *     real del cobro (mora $38.788,14 · interés $111.211,86 · capital $0,00) y contra qué
+ *     cuota se aplicó. Dos comprobantes distintos del mismo cobro es exactamente lo que hace
+ *     que un cliente venga a discutir con un papel en la mano.
+ *
+ * Queda el acceso: desde la fila de la cuota se abre el PDF del pago que la imputó.
  */
-
-const n2 = (x: number) => formatNumero(x, 2);
-
-const ESTADO_LABEL: Record<string, string> = {
-  pagada: "Pagada",
-  parcial: "Parcial",
-  vencida: "Vencida",
-  pendiente: "Pendiente",
-};
-
-function escHtml(s: string): string {
-  return s.replace(/[&<>"']/g, (c) =>
-    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c] as string,
-  );
-}
 
 /** ¿Esta cuota tiene algún cobro imputado? Es lo que decide si se ofrece el recibo. */
 export function tienePagos(cuota: CuotaPersistida): boolean {
@@ -45,88 +38,32 @@ export function pagadoDeCuota(cuota: CuotaPersistida): number {
   );
 }
 
-/** Fecha y hora del último cobro imputado a la cuota (null si no hubo). */
-export function ultimoPagoDeCuota(cuota: CuotaPersistida): string | null {
-  return (cuota.comprobantes ?? []).reduce<string | null>(
-    (acc, c) => (acc && acc > c.fecha_hora ? acc : c.fecha_hora),
-    null,
-  );
+/** El cobro más reciente imputado a la cuota (null si no hay comprobantes). */
+export function ultimoComprobante(cuota: CuotaPersistida) {
+  const comps = cuota.comprobantes ?? [];
+  if (comps.length === 0) return null;
+  return comps.reduce((a, c) => (a.fecha_hora > c.fecha_hora ? a : c));
 }
 
-export function imprimirReciboCuota(
-  cuota: CuotaPersistida,
-  ctx: {
-    cliente: string | null;
-    creditoNumero: number | null | undefined;
-    creditoRefiNumero?: number | null;
-    /** Nombre de la financiera. */
-    marca: string;
-  },
-) {
-  const comps = cuota.comprobantes ?? [];
-  const pagado = comps.length ? comps.reduce((s, c) => s + c.monto, 0) : pagadoDeCuota(cuota);
-  const ultimo = ultimoPagoDeCuota(cuota);
-  /** Lo que falta de la cuota. La mora no entra: `cuota_total` no la incluye. */
-  const restante = Math.max(
-    0,
-    cuota.cuota_total -
-      (cuota.pagado_capital + (cuota.pagado_interes ?? 0) + (cuota.pagado_cargos ?? 0)),
-  );
+/** Fecha y hora del último cobro imputado a la cuota (null si no hubo). */
+export function ultimoPagoDeCuota(cuota: CuotaPersistida): string | null {
+  return ultimoComprobante(cuota)?.fecha_hora ?? null;
+}
 
-  const filas: [string, string][] = [
-    ["Cliente", ctx.cliente ?? "—"],
-    ["Crédito", formatCreditoNumero(ctx.creditoNumero, ctx.creditoRefiNumero)],
-    ["Cuota N°", String(cuota.nro)],
-    ["Vencimiento", formatFecha(cuota.fecha_vencimiento)],
-    ["Pagado el", ultimo ? formatFechaHora(ultimo) : "—"],
-    ["Estado", ESTADO_LABEL[cuota.estado] ?? cuota.estado],
-    ["Interés", `$${n2(cuota.interes)}`],
-    ["Capital", `$${n2(cuota.capital)}`],
-    ["Cuota total", `$${n2(cuota.cuota_total)}`],
-    // Lo primero que pregunta el cliente después de pagar. Estaba solo en el recibo del
-    // pago; el de la cuota decía cuánto entró y no si con eso alcanzaba.
-    ["Queda pendiente", restante > 0 ? `$${n2(restante)}` : "Saldada"],
-  ];
+/**
+ * Abre el recibo OFICIAL en PDF del cobro más reciente de esta cuota.
+ *
+ * Con varios cobros parciales se abre el último: los anteriores siguen accesibles desde el
+ * historial de pagos, que es la lista completa. La fila de la cuota es un atajo al último
+ * comprobante, no un índice de todos.
+ */
+export async function abrirReciboDeCuota(cuota: CuotaPersistida): Promise<void> {
+  const comp = ultimoComprobante(cuota);
+  if (!comp) return;
+  await abrirRecibo(comp.pago_id);
+}
 
-  const win = window.open("", "_blank", "width=520,height=760");
-  if (!win) return;
-
-  const compRows = comps.length
-    ? comps
-        .map(
-          (c) =>
-            `<tr><td class="k">${escHtml(c.comprobante ?? "—")}</td><td class="v">${escHtml(formatFechaHora(c.fecha_hora))} · $${escHtml(n2(c.monto))}</td></tr>`,
-        )
-        .join("")
-    : `<tr><td class="k">—</td><td class="v">Sin comprobantes</td></tr>`;
-
-  win.document.write(`<!doctype html><html lang="es"><head><meta charset="utf-8" />
-    <title>Recibo de cuota</title>
-    <style>
-      * { box-sizing: border-box; }
-      body { font-family: ui-sans-serif, system-ui, "Segoe UI", Arial, sans-serif; color: #0f172a; margin: 0; padding: 32px; }
-      .doc { max-width: 460px; margin: 0 auto; }
-      h1 { font-size: 16px; margin: 0; letter-spacing: .02em; }
-      .sub { color: #64748b; font-size: 12px; margin-top: 2px; }
-      .monto { font-size: 28px; font-weight: 700; font-variant-numeric: tabular-nums; margin: 20px 0; color: #15803d; }
-      table { width: 100%; border-collapse: collapse; font-size: 13px; }
-      td { padding: 8px 0; border-bottom: 1px solid #e2e8f0; vertical-align: top; }
-      td.k { color: #64748b; width: 42%; }
-      td.v { text-align: right; font-weight: 500; }
-      .sec { margin-top: 18px; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: #94a3b8; }
-      .ft { margin-top: 24px; color: #94a3b8; font-size: 11px; text-align: center; }
-      @media print { body { padding: 0; } }
-    </style></head><body><div class="doc">
-      <h1>${escHtml(ctx.marca)} · Recibo de cuota</h1>
-      <div class="sub">${escHtml(formatCreditoNumero(ctx.creditoNumero, ctx.creditoRefiNumero))} · Cuota N° ${cuota.nro}</div>
-      <div class="monto">$${escHtml(n2(pagado > 0 ? pagado : cuota.cuota_total))}</div>
-      <table>${filas.map(([k, v]) => `<tr><td class="k">${escHtml(k)}</td><td class="v">${escHtml(v)}</td></tr>`).join("")}</table>
-      <p class="sec">Comprobantes imputados</p>
-      <table>${compRows}</table>
-      <div class="ft">Generado el ${escHtml(formatFecha(new Date()))}</div>
-    </div>
-    <script>window.onload = function(){ window.print(); }</script>
-    </body></html>`);
-  win.document.close();
-  win.focus();
+/** Cuántos cobros imputaron a esta cuota (para avisar que hay más de uno). */
+export function cantidadCobros(cuota: CuotaPersistida): number {
+  return (cuota.comprobantes ?? []).length;
 }
