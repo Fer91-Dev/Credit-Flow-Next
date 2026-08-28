@@ -67,3 +67,40 @@ export async function abrirReciboDeCuota(cuota: CuotaPersistida): Promise<void> 
 export function cantidadCobros(cuota: CuotaPersistida): number {
   return (cuota.comprobantes ?? []).length;
 }
+
+/**
+ * DE DÓNDE SALE LO QUE RESTA de una cuota que se pagó en parte.
+ *
+ * 🔴 El "a cobrar" de una cuota con un pago a cuenta es un número derivado y no se puede
+ * reconstruir mirando la fila: en la cuota 1 de Marina dice $131.214,04, pero la cuota es de
+ * $242.425,90 y pagó $150.000,00 — la cuenta no cierra hasta que uno sabe que arriba hay
+ * $38.788,14 de punitorios y que la mora se cobra ANTES que la cuota. Esa explicación existía
+ * solo adentro del formulario de cobro, así que para entender el saldo había que abrir la
+ * terminal de pago.
+ *
+ * La identidad, la misma que ya documenta `PagoForm`:
+ *   (cuota + mora devengada) − (todo lo entregado) = pendiente + mora pendiente = "a cobrar"
+ *
+ * `mora` que devuelve el endpoint es la mora PENDIENTE, así que la devengada total se
+ * reconstruye sumándole la ya cobrada (`pagado_mora`).
+ */
+export function derivacionCuota(cuota: CuotaPersistida): {
+  /** Lo que se le exigía por esta cuota: su importe más toda la mora que devengó. */
+  exigido: number;
+  /** Todo lo que el cliente entregó por ella, punitorios incluidos. */
+  entregado: number;
+  /** Cuánto de lo entregado se fue en punitorios (la parte que sorprende). */
+  aMora: number;
+  /** Qué porcentaje de lo exigido llegó a cubrir. */
+  cubiertoPct: number;
+} {
+  const moraDevengada = (cuota.mora ?? 0) + (cuota.pagado_mora ?? 0);
+  const exigido = Math.round((cuota.cuota_total + moraDevengada) * 100) / 100;
+  const entregado = pagadoDeCuota(cuota);
+  return {
+    exigido,
+    entregado,
+    aMora: cuota.pagado_mora ?? 0,
+    cubiertoPct: exigido > 0 ? Math.round((entregado / exigido) * 100) : 0,
+  };
+}

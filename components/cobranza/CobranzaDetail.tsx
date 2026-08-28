@@ -1,7 +1,7 @@
 "use client";
 
 import { ShieldAlert, CalendarClock, HandCoins, Handshake, ChevronRight, Printer } from "lucide-react";
-import { abrirReciboDeCuota, pagadoDeCuota, cantidadCobros } from "@/lib/recibo-cuota";
+import { abrirReciboDeCuota, pagadoDeCuota, cantidadCobros, derivacionCuota } from "@/lib/recibo-cuota";
 import type { Credito, AccionCobranza } from "@/lib/swr";
 import { useCuotas } from "@/lib/swr";
 import { StatusBadge } from "@/components/ui/StatusBadge";
@@ -231,6 +231,12 @@ export function CobranzaDetail({ credito, acciones, onVerPromesa }: {
                       </td>
                       <td className={`py-2 pl-2 text-right font-mono tabular-nums font-semibold ${vencida ? "text-destructive" : "text-muted-foreground"}`}>
                         {(c.total_cobrar ?? 0) > 0 ? formatMonto(c.total_cobrar as number) : "—"}
+                        {/* La cuenta que hace cerrar la fila cuando hubo un pago a cuenta. */}
+                        {pagado > 0 && (c.total_cobrar ?? 0) > 0 && (
+                          <span className="mt-0.5 block text-[10px] font-normal text-muted-foreground">
+                            {formatMonto(derivacionCuota(c).exigido)} − {formatMonto(derivacionCuota(c).entregado)}
+                          </span>
+                        )}
                       </td>
                     </tr>
                   );

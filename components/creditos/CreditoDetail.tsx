@@ -6,7 +6,7 @@ import { CalendarDays, Wallet, Info, ArrowUpRight, Receipt, Loader2, Printer, Re
 import { refrescarNotificaciones, useAmortizacion, useCuotas, usePagosByCredito, useCreditos, KEYS, type Credito, type EstadoCuota, type Pago, type CuotaPersistida, useFinanciera } from "@/lib/swr";
 import { type Role } from "@/lib/auth/roles";
 import { abrirRecibo } from "@/lib/recibo";
-import { abrirReciboDeCuota, tienePagos, pagadoDeCuota, cantidadCobros } from "@/lib/recibo-cuota";
+import { abrirReciboDeCuota, tienePagos, pagadoDeCuota, cantidadCobros, derivacionCuota } from "@/lib/recibo-cuota";
 import { imprimirPlanPagos } from "@/lib/plan-print";
 import { PagoForm } from "@/components/pagos/PagoForm";
 import { LibreDeudaDialog } from "./LibreDeudaDialog";
@@ -962,6 +962,12 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
                             >
                               ${n2(q.total_cobrar ?? q.cuota_total)}
                             </button>
+                          )}
+                          {/* La cuenta que hace cerrar la fila cuando hubo un pago a cuenta. */}
+                          {tienePagos(q) && (q.total_cobrar ?? 0) > 0 && (
+                            <span className="mt-0.5 block font-mono text-[10px] tabular-nums text-muted-foreground">
+                              ${n2(derivacionCuota(q).exigido)} − ${n2(derivacionCuota(q).entregado)}
+                            </span>
                           )}
                         </td>
                       </tr>
