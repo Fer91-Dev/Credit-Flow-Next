@@ -28,6 +28,11 @@ export interface ReciboData {
     anulado_motivo?: string | null;
     /** Cuota del acuerdo de pago que se cobro, si el cobro salio de ahi. */
     acuerdo?: { numero: number; total: number; vencimiento?: Date | string | null } | null;
+    /**
+     * Contra que cuotas del PLAN se imputo, y que quedo pendiente de cada una AL MOMENTO de
+     * este pago (no a hoy: un recibo reimpreso tiene que decir lo mismo que el original).
+     */
+    cuotas?: { nro: number; total: number; vencimiento: Date | string; imputado: number; restante: number }[];
   };
   credito: {
     id: string;
@@ -75,8 +80,27 @@ export async function generarReciboPDF(data: ReciboData): Promise<Uint8Array> {
       return `$${n.toFixed(2)}`;
     }
   };
+  /**
+   * 🔴 `timeZone: "UTC"` — SIN ESTO EL RECIBO IMPRIME EL DÍA ANTERIOR.
+   *
+   * Todas las fechas que pasan por acá son columnas `@db.Date` (el vencimiento de la cuota,
+   * la fecha del pago, el vencimiento del acuerdo): llegan como `YYYY-MM-DDT00:00:00.000Z`,
+   * un día pelado sin hora. Formateadas en la zona del servidor —Argentina, UTC−3— esa
+   * medianoche cae a las 21:00 del día ANTERIOR.
+   *
+   * Medido sobre el recibo de Marina Sosa: la cuota vence el 10/08/2026 y el papel decía
+   * "09 de agosto"; el pago del 28/08 salía como "27 de agosto". El comprobante que se lleva
+   * el cliente tenía mal la fecha de su propio pago.
+   *
+   * Es el mismo defecto que se corrigió en las pantallas el 26/08, pero el PDF traía su
+   * propio formateador y quedó afuera. Mismo criterio que `formatFecha` de `lib/utils`, que
+   * es UTC-safe justamente por esto. NO usar este helper para TIMESTAMPS (ver el pie, que
+   * imprime la hora de emisión y sí va en hora local).
+   */
   const fmtDate = (d: Date) =>
-    new Intl.DateTimeFormat(locale || "es-AR", { day: "2-digit", month: "long", year: "numeric" }).format(d);
+    new Intl.DateTimeFormat(locale || "es-AR", {
+      day: "2-digit", month: "long", year: "numeric", timeZone: "UTC",
+    }).format(d);
 
   const doc = await PDFDocument.create();
   doc.setTitle(`Recibo ${pago.id.slice(0, 8)}`);
@@ -175,7 +199,13 @@ export async function generarReciboPDF(data: ReciboData): Promise<Uint8Array> {
     ? formatCreditoNumero(credito.numero, credito.refinancia_a_numero)
     : credito.id.slice(0, 8).toUpperCase();
   pair("Crédito", `${numeroCredito} · ${credito.tipo_credito}`, colL, y);
-  pair("Saldo pendiente actual", fmtMoney(credito.saldo_pendiente), colR, y);
+  /**
+   * "Capital pendiente" y no "Saldo pendiente actual": `saldo_pendiente` es SOLO capital, y
+   * el recibo ahora dice también lo que falta de las cuotas ($131.214,04 en el de Marina).
+   * Dos números distintos con nombres parecidos en el mismo papel es la receta para que el
+   * cliente crea que le cobraron mal. El capital no incluye el interés todavía no devengado.
+   */
+  pair("Capital pendiente", fmtMoney(credito.saldo_pendiente), colR, y);
   y -= 44;
 
   /**
@@ -194,6 +224,69 @@ export async function generarReciboPDF(data: ReciboData): Promise<Uint8Array> {
       M, y - 14, bold, 11, INK,
     );
     y -= 40;
+  }
+
+  /**
+   * EN CONCEPTO DE QUE. Contra que cuotas del plan se imputo el pago y que quedo pendiente
+   * de cada una.
+   *
+   * 🔴 Sin esto el recibo era una constancia de que entro plata, no de que se pago. El
+   * cliente se llevaba "$150.000,00" y ninguna forma de cotejarlo contra su plan ni de saber
+   * si con eso quedaba al dia. Es el reclamo tipico del mostrador: "yo pague la cuota" contra
+   * "le falta", sin un papel que lo dirima.
+   *
+   * El "queda pendiente" es el del MOMENTO DE ESTE PAGO. Un recibo es un documento historico:
+   * si dijera el saldo de hoy, el mismo papel reimpreso el mes que viene mostraria otro
+   * numero y habria dos versiones del mismo recibo.
+   */
+  const lineasCuota = pago.cuotas ?? [];
+  if (lineasCuota.length > 0) {
+    text("EN CONCEPTO DE", M, y, bold, 9, MUTED);
+    y -= 8;
+    hr(y);
+    y -= 18;
+
+    // Encabezados de la tablita.
+    text("CUOTA", M, y, font, 8, MUTED);
+    text("VENCE", M + 90, y, font, 8, MUTED);
+    textRight("IMPUTADO", right - 130, y, font, 8, MUTED);
+    textRight("QUEDA PENDIENTE", right, y, font, 8, MUTED);
+    y -= 16;
+
+    // Se listan hasta 6: un cobro toca una o dos cuotas casi siempre, y el recibo es de una
+    // sola pagina. Si fueran mas, el resto se resume en un renglon en vez de desbordar.
+    const visibles = lineasCuota.slice(0, 6);
+    for (const c of visibles) {
+      text(`${c.nro} de ${c.total}`, M, y, bold, 10, INK);
+      text(fmtDate(new Date(c.vencimiento)), M + 90, y, font, 10, INK);
+      textRight(fmtMoney(c.imputado), right - 130, y, font, 10, INK);
+      textRight(
+        c.restante > 0 ? fmtMoney(c.restante) : "SALDADA",
+        right, y, bold, 10,
+        c.restante > 0 ? rgb(0.96, 0.62, 0.04) : SUCCESS,
+      );
+      y -= 17;
+    }
+    if (lineasCuota.length > visibles.length) {
+      text(`y ${lineasCuota.length - visibles.length} cuota(s) mas`, M, y, font, 9, MUTED);
+      y -= 17;
+    }
+
+    // El total de lo que sigue debiendo de las cuotas que toco este pago. Es la respuesta a
+    // "y entonces cuanto me falta", que es lo primero que pregunta el cliente.
+    const restanteTotal = lineasCuota.reduce((a, c) => a + c.restante, 0);
+    y -= 2;
+    hr(y);
+    y -= 18;
+    text(
+      restanteTotal > 0 ? "Queda pendiente de estas cuotas" : "Estas cuotas quedaron saldadas",
+      M, y, bold, 10, INK,
+    );
+    textRight(
+      restanteTotal > 0 ? fmtMoney(restanteTotal) : fmtMoney(0),
+      right, y, bold, 11, restanteTotal > 0 ? rgb(0.96, 0.62, 0.04) : SUCCESS,
+    );
+    y -= 34;
   }
 
   // ── Monto pagado (destacado) ──────────────────────────────────────────────

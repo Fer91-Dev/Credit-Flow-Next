@@ -7,6 +7,7 @@ import { getFinanciera } from "@/lib/financiera";
 import { conNumeroDeOrigen } from "@/lib/creditos-numero";
 import { generarReciboPDF } from "@/lib/pdf/recibo";
 import { nombreCompleto } from "@/lib/utils";
+import { round2 } from "@/lib/domain";
 import type { NextRequest } from "next/server";
 
 interface RouteParams {
@@ -54,6 +55,53 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
     return errorResponse("Pago no encontrado", "NOT_FOUND", 404);
   }
 
+  /**
+   * QUÉ CUOTAS PAGÓ Y QUÉ LE QUEDA DE CADA UNA.
+   *
+   * El recibo decía cuánto entró y cómo se repartió (mora / interés / capital), pero no
+   * contra QUÉ. El cliente se llevaba un papel con $150.000,00 y ninguna forma de cotejarlo
+   * contra su plan de cuotas ni de saber si con eso quedaba al día.
+   *
+   * 🔴 El "queda pendiente" se calcula AL MOMENTO DE ESTE PAGO, no a hoy.
+   *
+   * Un recibo es un documento histórico: si imprimiera el saldo de hoy, el mismo papel
+   * reimpreso el mes que viene diría otro número y el cliente tendría dos versiones del
+   * mismo recibo. Se suma lo aplicado a esa cuota por los pagos NO anulados hasta este
+   * inclusive (`created_at <= el de este pago`), así el reimpreso siempre da igual.
+   *
+   * La mora queda afuera de la resta porque `cuota_total` no la incluye: lo que falta de la
+   * cuota es capital + interés + cargos.
+   */
+  const lineas = await prisma.pago_cuota.findMany({
+    where: { ...withTenant(tenantId), pago_id: pago.id },
+    select: {
+      aplicado_capital: true, aplicado_interes: true, aplicado_mora: true, aplicado_cargos: true,
+      cuota: { select: { id: true, nro: true, fecha_vencimiento: true, cuota_total: true } },
+    },
+    orderBy: { cuota: { nro: "asc" } },
+  });
+
+  const idsCuotas = lineas.map((l) => l.cuota.id);
+  const previos = idsCuotas.length
+    ? await prisma.pago_cuota.findMany({
+        where: {
+          ...withTenant(tenantId),
+          cuota_id: { in: idsCuotas },
+          pago: { anulado: false, created_at: { lte: pago.created_at } },
+        },
+        select: { cuota_id: true, aplicado_capital: true, aplicado_interes: true, aplicado_cargos: true },
+      })
+    : [];
+  const pagadoHasta = new Map<string, number>();
+  for (const x of previos) {
+    const acum = pagadoHasta.get(x.cuota_id) ?? 0;
+    pagadoHasta.set(x.cuota_id, acum + x.aplicado_capital + x.aplicado_interes + x.aplicado_cargos);
+  }
+
+  const totalCuotas = await prisma.cuotas.count({
+    where: { ...withTenant(tenantId), credito_id: pago.credito.id },
+  });
+
   const config = await getConfiguracion(tenantId);
   const financiera = await getFinanciera(tenantId); // co-branding del recibo
   // Si el crédito nació de refinanciar otro, el recibo lo nombra REF-<número del original>,
@@ -79,6 +127,14 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
       acuerdo: pago.acuerdo_cuota
         ? { numero: pago.acuerdo_cuota.numero, total: pago.acuerdo_cuota.acuerdo._count.cuotas, vencimiento: pago.acuerdo_cuota.vencimiento }
         : null,
+      // Contra qué cuotas se imputó y qué quedó pendiente de cada una EN ESE MOMENTO.
+      cuotas: lineas.map((l) => ({
+        nro: l.cuota.nro,
+        total: totalCuotas,
+        vencimiento: l.cuota.fecha_vencimiento,
+        imputado: round2(l.aplicado_capital + l.aplicado_interes + l.aplicado_mora + l.aplicado_cargos),
+        restante: round2(Math.max(0, l.cuota.cuota_total - (pagadoHasta.get(l.cuota.id) ?? 0))),
+      })),
     },
     credito: {
       id: pago.credito.id,
