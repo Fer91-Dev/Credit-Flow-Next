@@ -8,7 +8,6 @@ import { type Role } from "@/lib/auth/roles";
 import { abrirRecibo } from "@/lib/recibo";
 import { abrirReciboDeCuota, tienePagos, pagadoDeCuota, cantidadCobros, moraDevengadaDeCuota, ultimoComprobante } from "@/lib/recibo-cuota";
 import { imprimirPlanPagos } from "@/lib/plan-print";
-import { PagoForm } from "@/components/pagos/PagoForm";
 import { LibreDeudaDialog } from "./LibreDeudaDialog";
 import { StatusBadge, type BadgeVariant } from "@/components/ui/StatusBadge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -186,9 +185,7 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
   const toast = useToast();
   const confirm = useConfirm();
   const [reciboBusy, setReciboBusy] = useState<string | null>(null);
-  const [pagoOpen, setPagoOpen] = useState(false);
   /** Cuota que se está cobrando desde el cronograma (null = cobro libre desde el botón de arriba). */
-  const [cuotaACobrar, setCuotaACobrar] = useState<CuotaPersistida | null>(null);
   const [anularPago, setAnularPago] = useState<Pago | null>(null);
   const [anularMotivo, setAnularMotivo] = useState("");
   const [anularBusy, setAnularBusy] = useState(false);
@@ -307,26 +304,10 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
     finally { setReciboBusy(null); }
   };
 
-  // Cobro desde el detalle: al confirmar el pago, revalida cuotas/pagos del
-  // crédito + las cachés globales de cartera/pagos/dashboard/caja.
-  const handlePagoClose = (success?: boolean) => {
-    setPagoOpen(false);
-    setCuotaACobrar(null);
-    if (success) {
-      globalMutate(`/api/creditos/${credito.id}/cuotas`);
-      globalMutate(`/api/creditos/${credito.id}/amortizacion`);
-      globalMutate(`/api/pagos?credito_id=${credito.id}&limit=1000`);
-      globalMutate(KEYS.creditos);
-      globalMutate(KEYS.pagos);
-      globalMutate(KEYS.dashboard);
-      globalMutate("/api/caja");
-    }
-  };
 
   // Solo se puede cobrar un crédito activo con saldo pendiente.
+  /** Hay algo vivo que cobrar: es lo que decide si se ofrece el atajo a la terminal. */
   const puedeCobrar = esCreditoVivo(credito.estado) && credito.saldo_pendiente > 0;
-  /** Abre la terminal de cobro con el importe de ESA cuota ya cargado. */
-  const cobrarCuota = (q: CuotaPersistida) => { setCuotaACobrar(q); setPagoOpen(true); };
 
   const est = estadoBadge(credito.estado, diasMora);
   const totalCobrado = pagos.filter(p => !p.anulado).reduce((s, p) => s + p.monto, 0);
@@ -831,19 +812,22 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
                   Operador
                 </button>
               </div>
-              {/* SECUNDARIO a propósito. La acción principal pasaron a ser los botones de
-                  cada cuota, que son el 90% de los cobros; este queda para lo que ellos no
-                  cubren: varias cuotas juntas o un importe que no coincide con ninguna.
-                  Con los dos en verde relleno competían, y el que menos se usa era el que
-                  más pesaba — una sola acción primaria por pantalla. */}
+              {/*
+                🔴 NO SE COBRA DESDE ACÁ. Lleva a la terminal con este cliente ya cargado.
+
+                El cobro se hacía desde tres pantallas —esta, la ficha del cliente y Pagos—,
+                o sea tres caminos al mismo POST, cada uno con su manejo de errores y su
+                revalidación. Un cobro es el movimiento de plata más frecuente del sistema y
+                no puede tener tres implementaciones que se separen con el tiempo.
+              */}
               {puedeCobrar && (
-                <button
-                  onClick={() => { setCuotaACobrar(null); setPagoOpen(true); }}
-                  title="Cobrar varias cuotas juntas, o un importe distinto al de una cuota"
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                <a
+                  href={`/pagos?cliente=${credito.cliente_id}`}
+                  title="Ir a la terminal de cobro con este cliente cargado"
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-success/30 bg-success/10 px-2.5 py-1 text-[11px] font-medium text-success transition-colors hover:bg-success/20"
                 >
-                  <Wallet className="h-3.5 w-3.5" /> Otro monto
-                </button>
+                  <Wallet className="h-3.5 w-3.5" /> Cobrar
+                </a>
               )}
             </div>
           </div>
@@ -978,16 +962,13 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
                             sin sufijos: el "+mora" que llevaba antes se leía como si al
                             importe todavía hubiera que sumarle algo. La mora ya está
                             discriminada en su columna. */}
-                        <td className="px-3 py-2.5 pr-4 text-right border-b border-border/70">
-                          {q.estado === "pagada" || !puedeCobrar ? null : (
-                            <button
-                              onClick={() => cobrarCuota(q)}
-                              title={`Cobrar la ${unidadCuota} ${q.nro}`}
-                              className="inline-flex items-center justify-center rounded-lg bg-success px-3 py-1.5 font-mono tabular-nums text-[11px] font-semibold text-success-foreground transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-success/40"
-                            >
-                              ${n2(q.total_cobrar ?? q.cuota_total)}
-                            </button>
-                          )}
+                        {/* 🔴 SIN BOTÓN DE COBRO. El cobro vive solo en Pagos: acá se ve lo que
+                            se debe y lo que ya se cobró, no se opera. Ver el comentario de
+                            `irACobrar` más arriba. */}
+                        <td className="px-3 py-2.5 pr-4 text-right font-mono font-semibold tabular-nums text-foreground border-b border-border/70">
+                          {q.estado === "pagada"
+                            ? <span className="text-muted-foreground/20">—</span>
+                            : `$${n2(q.total_cobrar ?? q.cuota_total)}`}
                         </td>
                       </tr>
                     );
@@ -1077,29 +1058,6 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
       )}
 
       {/* Cobro del crédito — formulario de pago preseleccionado a este crédito */}
-      <Dialog open={pagoOpen} onOpenChange={(o) => { if (!o) setPagoOpen(false); }}>
-        <DialogContent className="w-[95vw] sm:max-w-4xl max-h-[90dvh] flex flex-col overflow-hidden">
-          <DialogHeader className="shrink-0">
-            <DialogTitle>Registrar pago · {formatCreditoNumero(credito.numero, credito.refinancia_a_numero)}</DialogTitle>
-          </DialogHeader>
-          <div className="flex-1 min-h-0 overflow-y-auto">
-            {pagoOpen && (
-              <PagoForm
-                creditoId={credito.id}
-                onClose={handlePagoClose}
-                {...(cuotaACobrar
-                  ? {
-                      montoSugerido: cuotaACobrar.total_cobrar ?? cuotaACobrar.cuota_total,
-                      motivoSugerido:
-                        `${cap(unidadCuota)} ${cuotaACobrar.nro} · vence ${fmtDate(cuotaACobrar.fecha_vencimiento)}` +
-                        ((cuotaACobrar.mora ?? 0) > 0 ? ` · incluye $${n2(cuotaACobrar.mora ?? 0)} de mora` : ""),
-                    }
-                  : {})}
-              />
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
 
       {/* Anular pago — motivo + contra-asiento en caja (control de tesorería, solo admin) */}
       <Dialog open={!!anularPago} onOpenChange={(o) => { if (!o) { setAnularPago(null); setAnularMotivo(""); } }}>

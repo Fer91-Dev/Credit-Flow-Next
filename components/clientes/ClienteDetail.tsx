@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useSWRConfig } from "swr";
 import {
-  Pencil, Trash2, CalendarClock, ChevronRight, Loader2, Mail, MessageCircle, Phone, Printer, ShieldCheck, Ban, Receipt, AlertTriangle, History, BellOff,
+  Pencil, Trash2, CalendarClock, ChevronRight, Loader2, Mail, MessageCircle, Phone, Printer, ShieldCheck, Ban, Receipt, AlertTriangle, History, BellOff, Wallet,
 } from "lucide-react";
 import { refrescarNotificaciones, useClienteDetalle, useAccionesCobranza, useCuotas, KEYS, type CreditoConFinanzas, type EstadoCuota, type CuotaPersistida } from "@/lib/swr";
 import { StatusBadge, type BadgeVariant } from "@/components/ui/StatusBadge";
@@ -144,6 +144,19 @@ export function ClienteDetail({
   // Qué secciones se muestran según el contexto.
   const showPersonal = variant !== "pagos";   // datos personales/laborales
   const showCreditos = variant !== "cliente"; // estado de cuenta + créditos + compromisos
+  /**
+   * 🔴 EL COBRO VIVE SOLO EN PAGOS.
+   *
+   * Esta misma ficha se muestra en dos lugares: en Pagos (`variant="pagos"`, que ES la
+   * terminal de cobro) y en Clientes. Se cobraba desde los dos, y además desde el detalle del
+   * crédito: tres caminos al mismo POST, cada uno con su propio manejo de errores, su propia
+   * revalidación y su propia forma de preseleccionar la cuota. Un cobro es el movimiento de
+   * plata más frecuente del sistema y no puede tener tres implementaciones.
+   *
+   * En Clientes la ficha queda de LECTURA, con un botón que trae a Pagos con este cliente ya
+   * cargado (`/pagos?cliente=<id>`): un solo camino de cobro, sin perder el atajo.
+   */
+  const puedeCobrarAca = variant === "pagos";
 
   if (isLoading || !cliente) {
     return (
@@ -311,6 +324,16 @@ export function ClienteDetail({
                       Los botones se sacan en vez de deshabilitarse: un botón apagado sin
                       explicación se prueba igual y termina en un 403. El motivo ya está a la
                       vista en el renglón de "otros agentes". El servidor rechaza igual. */}
+                  {/* Trae a la terminal de cobro con este cliente ya cargado. No cobra acá:
+                      el cobro es de Pagos. Solo si tiene algo vivo que cobrar. */}
+                  {showCreditos && !puedeCobrarAca && activos.length > 0 && (
+                    <a
+                      href={`/pagos?cliente=${cliente.id}`}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-success/30 bg-success/10 px-2.5 py-1.5 text-xs font-medium text-success transition-colors hover:bg-success/20"
+                    >
+                      <Wallet className="h-3.5 w-3.5" /> Cobrar
+                    </a>
+                  )}
                   {onEditar && puedeEditar && (
                     <button
                       onClick={onEditar}
@@ -582,7 +605,7 @@ export function ClienteDetail({
             {activos.length === 0 ? (
               <EmptyRow text="El cliente no tiene créditos activos." />
             ) : (
-              <CreditosTabla creditos={activos} mostrarProximo onCobrar={(c, q) => setCobrando({ credito: c, cuota: q })} />
+              <CreditosTabla creditos={activos} mostrarProximo onCobrar={puedeCobrarAca ? (c, q) => setCobrando({ credito: c, cuota: q }) : undefined} />
             )}
           </section>
         )}

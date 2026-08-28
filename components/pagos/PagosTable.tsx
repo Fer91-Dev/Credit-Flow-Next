@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSWRConfig } from "swr";
 import { Wallet, Search, User, Phone, IdCard, ArrowLeft, Plus, ChevronRight, X, Clock } from "lucide-react";
 import { useClientes, usePagos, KEYS, type Cliente, type Pago } from "@/lib/swr";
@@ -52,6 +52,32 @@ export function PagosTable() {
   );
 
   const elegir = (c: Cliente) => { setSelected(c); setQuery(""); setVerTodos(false); };
+
+  /**
+   * LLEGAR CON EL CLIENTE YA CARGADO: `/pagos?cliente=<id>`.
+   *
+   * Desde que el cobro vive SOLO acá, el detalle del crédito y la ficha de Clientes tienen un
+   * botón "Cobrar" que trae para acá. Sin esto el operador veía la cuota en una pantalla y
+   * tenía que volver a buscar al mismo cliente por DNI en otra — un paso de más en la acción
+   * que más se repite del día.
+   *
+   * Se lee del `location` y no con `useSearchParams` para no arrastrar la pantalla entera a
+   * un Suspense por un parámetro opcional (mismo criterio que el `?tab=` de Cobranzas).
+   * Corre una sola vez: si el operador después elige otro cliente, el parámetro no lo pisa.
+   */
+  const [linkResuelto, setLinkResuelto] = useState(false);
+  useEffect(() => {
+    if (linkResuelto || clientes.length === 0) return;
+    setLinkResuelto(true);
+    const id = new URLSearchParams(window.location.search).get("cliente");
+    if (!id) return;
+    const c = clientes.find((x) => x.id === id);
+    if (c) elegir(c);
+    // La URL vuelve a /pagos: si queda el parámetro, un F5 más tarde reabre una ficha que el
+    // operador ya había cerrado.
+    window.history.replaceState(null, "", "/pagos");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clientes, linkResuelto]);
 
   // Desde un pago reciente → abrir la ficha de su cliente (donde se anula el pago).
   const abrirPorPago = (p: Pago) => {
