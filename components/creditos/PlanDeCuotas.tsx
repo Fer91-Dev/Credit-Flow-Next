@@ -81,24 +81,38 @@ export function PlanDeCuotas({
         <table className="w-full text-xs border-separate border-spacing-0">
           <thead className={denso ? "sticky top-0 z-10" : ""}>
             <tr className={denso ? "bg-card" : "bg-muted/30"}>
+              {/*
+                🔴 LOS OPERADORES EN EL ENCABEZADO. La fila ES una cuenta —cuota + mora −
+                pagado = a cobrar— y nada lo decía: eran ocho importes uno al lado del otro y
+                el operador tenía que adivinar cuál sumaba y cuál restaba. El signo va pegado
+                al nombre de la columna, que es donde se lo lee sin buscarlo.
+
+                Interés y Capital llevan "↳" y no "+": no se suman a la cuota, SON la cuota
+                abierta en dos. Sumarlos daría el doble.
+              */}
               {[
                 { t: "#", a: "text-left", w: "w-9" },
                 { t: "Vencimiento", a: "text-left" },
                 { t: "Cuota", a: "text-right" },
-                { t: "Interés", a: "text-right", w: "hidden sm:table-cell" },
-                { t: "Capital", a: "text-right", w: "hidden sm:table-cell" },
-                { t: "Mora", a: "text-right" },
-                { t: "Pagado", a: "text-right" },
+                { t: "Interés", op: "↳", a: "text-right", w: "hidden sm:table-cell" },
+                { t: "Capital", op: "↳", a: "text-right", w: "hidden sm:table-cell" },
+                { t: "Mora", op: "+", a: "text-right" },
+                { t: "Pagado", op: "−", a: "text-right" },
                 // El número del recibo es un dato que se BUSCA —el cliente llama diciendo
                 // "tengo el REC-000006"—, no un adorno del importe: va en su columna.
                 { t: "Comprobante", a: "text-left" },
                 { t: "Estado", a: "text-left" },
-                { t: "A cobrar", a: `text-right ${pr}` },
+                { t: "A cobrar", op: "=", a: `text-right ${pr}` },
               ].map((h) => (
                 <th
                   key={h.t}
                   className={`${px} ${py} ${h.a} text-[10px] font-semibold uppercase tracking-wide text-muted-foreground border-b border-border ${h.w ?? ""}`}
                 >
+                  {h.op && (
+                    <span className={`mr-1 font-mono text-[11px] ${h.op === "=" ? "text-foreground" : "text-muted-foreground/50"}`}>
+                      {h.op}
+                    </span>
+                  )}
                   {h.t}
                 </th>
               ))}
@@ -138,11 +152,43 @@ export function PlanDeCuotas({
                         <span className={`block ${moraPend > 0 ? "text-destructive" : "text-muted-foreground"}`}>
                           ${n2(moraDev)}
                         </span>
-                        {(q.dias_atraso ?? 0) > 0 && (
-                          <span className="block font-sans text-[10px] font-normal leading-tight text-muted-foreground/70">
-                            {formatDias(q.dias_atraso ?? 0)} de atraso
-                          </span>
-                        )}
+                        {/*
+                          DE DÓNDE SALE ESE IMPORTE, en el renglón. Decía "18 días de atraso",
+                          que no alcanza para verificarlo: faltaba sobre qué base y a qué tasa.
+
+                          🔴 Se devenga sobre la CUOTA COMPLETA, no sobre lo que queda después
+                          de un pago parcial. En la cuota 1 de Marina son 16 días × 1,00% de
+                          $242.425,90 = $38.788,14; sobre el saldo de $131.214,04 darían
+                          $20.994,25 — casi $18.000 de diferencia, así que la base tiene que
+                          estar escrita.
+
+                          🔴 Los días que se muestran son los EFECTIVOS, deducidos de la mora
+                          real, no "atraso − gracia". Medido sobre la base: de 22 cuotas con
+                          mora, 9 no reproducían con esa resta, por dos motivos legítimos —
+                          el TECHO (la mora tocó el 100% de la cuota y dejó de crecer) y la
+                          mora CONGELADA al cobrar (deja de devengar el día del pago: 45 días
+                          efectivos contra 47 de atraso). Mostrar "47 × 1%" al lado de un
+                          importe de 45 días sería publicar una cuenta que no da.
+                        */}
+                        {(() => {
+                          const atraso = q.dias_atraso ?? 0;
+                          if (atraso <= 0 || !mora) return null;
+                          const tasa = mora.tasaDiaria;
+                          const techo = mora.topePct > 0 ? Math.round(q.cuota_total * (mora.topePct / 100) * 100) / 100 : null;
+                          const enTecho = techo != null && Math.abs(moraDev - techo) < 0.02;
+                          const base = q.cuota_total * tasa;
+                          const dias = base > 0 ? Math.round(moraDev / base) : 0;
+                          const reproduce = base > 0 && Math.abs(Math.round(q.cuota_total * tasa * dias * 100) / 100 - moraDev) < 0.02;
+                          return (
+                            <span className="block font-sans text-[10px] font-normal leading-tight text-muted-foreground/70">
+                              {enTecho
+                                ? `techo: ${mora.topePct}% de la cuota`
+                                : reproduce && dias > 0
+                                  ? `${formatDias(dias)} × ${(tasa * 100).toFixed(2)}% de $${n2(q.cuota_total)}`
+                                  : `${formatDias(atraso)} de atraso`}
+                            </span>
+                          );
+                        })()}
                         {(q.pagado_mora ?? 0) > 0 && (
                           <span className="block font-sans text-[10px] font-normal leading-tight text-success">
                             {moraPend > 0 ? `$${n2(q.pagado_mora ?? 0)} cobrada` : "cobrada"}
@@ -244,13 +290,18 @@ export function PlanDeCuotas({
 
       {/* DE DÓNDE SALE LA MORA, con los parámetros congelados de ESTE crédito (no la config de
           hoy): sin esto el importe de la columna no se puede verificar. */}
-      {moraTotal > 0 && mora && (
-        <p className="text-[11px] text-muted-foreground">
-          Mora: {(mora.tasaDiaria * 100).toFixed(2)}% por día sobre el importe de cada cuota
-          {mora.diasGracia > 0 && <>, a partir del día {mora.diasGracia + 1} de atraso</>}
-          {mora.topePct > 0 && <>, con un techo del {mora.topePct}% de la cuota</>}.
-        </p>
-      )}
+      <p className="text-[11px] leading-relaxed text-muted-foreground">
+        <span className="font-mono">Cuota = interés + capital.</span>{" "}
+        <span className="font-mono">A cobrar = cuota + mora − pagado.</span>
+        {moraTotal > 0 && mora && (
+          <>
+            {" "}La mora se devenga sobre el importe de la cuota —no sobre el saldo que queda
+            tras un pago parcial— al {(mora.tasaDiaria * 100).toFixed(2)}% por día
+            {mora.diasGracia > 0 && <>, a partir del día {mora.diasGracia + 1} de atraso</>}
+            {mora.topePct > 0 && <>, con un techo del {mora.topePct}% de la cuota</>}.
+          </>
+        )}
+      </p>
     </div>
   );
 }
