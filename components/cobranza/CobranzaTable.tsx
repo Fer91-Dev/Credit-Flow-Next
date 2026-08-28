@@ -92,6 +92,12 @@ export function CobranzaTable({ role }: { role: Role }) {
   /** Crédito sobre el que se está armando un acuerdo de pago (null = cerrado). */
   const [acordando, setAcordando] = useState<string | null>(null);
   const [detalle, setDetalle]   = useState<Credito | null>(null);
+  /**
+   * Promesa que hay que abrir al aterrizar en la pestaña Promesas. La setea el clic sobre una
+   * gestión del Detalle de cobranza: era el único lugar del que había que salir a buscar a
+   * mano lo que ya se estaba mirando.
+   */
+  const [promesaFoco, setPromesaFoco] = useState<string | null>(null);
   const [seleccion, setSeleccion] = useState<Set<string>>(new Set());
 
   useEffect(() => {
@@ -317,7 +323,7 @@ export function CobranzaTable({ role }: { role: Role }) {
         // una campaña", una instrucción que el usuario tenía que ejecutar a mano.
         <CampanasView onArmar={() => setTab("morosos")} />
       ) : tab === "promesas" ? (
-        <PromesasTab role={role} />
+        <PromesasTab role={role} focoId={promesaFoco} onFocoConsumido={() => setPromesaFoco(null)} />
       ) : tab === "acuerdos" ? (
         <AcuerdosTab role={role} />
       ) : tab === "planillas" ? (
@@ -754,7 +760,19 @@ export function CobranzaTable({ role }: { role: Role }) {
             <DialogTitle>Detalle de cobranza</DialogTitle>
           </DialogHeader>
           <div className="flex-1 min-h-0 overflow-y-auto">
-            {detalle && <CobranzaDetail credito={detalle} acciones={acciones} />}
+            {detalle && (
+              <CobranzaDetail
+                credito={detalle}
+                acciones={acciones}
+                onVerPromesa={(accionId) => {
+                  // El detalle se cierra: la promesa se ve en SU pestaña, con su plan y el
+                  // historial del cliente. Dos diálogos encima no se apilan.
+                  setDetalle(null);
+                  setTab("promesas");
+                  setPromesaFoco(accionId);
+                }}
+              />
+            )}
           </div>
         </DialogContent>
       </Dialog>

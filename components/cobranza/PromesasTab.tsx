@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import useSWR, { mutate } from "swr";
 import { HandshakeIcon, Ban } from "lucide-react";
 import { formatMonto, formatFecha, formatFechaHora, formatCreditoNumero, nombreCompleto, hoyComercial, cuandoVence, formatDias, diaAR } from "@/lib/utils";
@@ -397,7 +397,12 @@ function AnularPromesaDialog({ promesa, onClose }: { promesa: Promesa | null; on
   );
 }
 
-export function PromesasTab({ role }: { role: Role }) {
+export function PromesasTab({ role, focoId, onFocoConsumido }: {
+  role: Role;
+  /** Gestión a abrir en detalle al entrar (llega desde el Detalle de cobranza). */
+  focoId?: string | null;
+  onFocoConsumido?: () => void;
+}) {
   const confirm = useConfirm();
   const toast = useToast();
   const [estadoTab, setEstadoTab] = useState<EstadoTab>("pendiente");
@@ -445,6 +450,27 @@ export function PromesasTab({ role }: { role: Role }) {
 
   /** Promesa abierta en el detalle (la fila no era clickeable: no se podía ver la nota). */
   const [detalle, setDetalle] = useState<Promesa | null>(null);
+
+  /**
+   * Llegar acá desde el Detalle de cobranza abre esa promesa sola.
+   *
+   * Se busca en `todas` —la lista SIN filtrar que ya se pide para los KPI— y no en la de la
+   * sub-pestaña abierta: si viniera de la lista filtrada, una promesa cumplida o rota no se
+   * encontraría estando en "Pendientes", que es la que arranca por defecto, y el click no
+   * haría nada. Además se mueve la sub-pestaña a la que le corresponde, para que al cerrar el
+   * detalle la promesa esté ahí, en la lista de atrás, y no en una pestaña vacía.
+   */
+  useEffect(() => {
+    if (!focoId || todas.length === 0) return;
+    const p = todas.find((x) => x.id === focoId);
+    if (p) {
+      setEstadoTab((p.promesa_estado ?? "pendiente") as EstadoTab);
+      setDetalle(p);
+    }
+    onFocoConsumido?.();
+    // `onFocoConsumido` cambia de identidad en cada render del padre; incluirlo re-dispara el efecto.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focoId, todas]);
 
   const puedeEditar = role === "admin" || role === "cobrador";
 

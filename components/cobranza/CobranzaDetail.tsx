@@ -1,6 +1,6 @@
 "use client";
 
-import { ShieldAlert, CalendarClock, HandCoins, Handshake } from "lucide-react";
+import { ShieldAlert, CalendarClock, HandCoins, Handshake, ChevronRight } from "lucide-react";
 import type { Credito, AccionCobranza } from "@/lib/swr";
 import { useCuotas } from "@/lib/swr";
 import { StatusBadge } from "@/components/ui/StatusBadge";
@@ -39,7 +39,12 @@ const RESULTADO_LABEL: Record<AccionCobranza["resultado"], string> = {
  * se van a cobrar. Una sola fuente: si difirieran, sería el bug que este modal existe para
  * evitar.
  */
-export function CobranzaDetail({ credito, acciones }: { credito: Credito; acciones: AccionCobranza[] }) {
+export function CobranzaDetail({ credito, acciones, onVerPromesa }: {
+  credito: Credito;
+  acciones: AccionCobranza[];
+  /** Abre esa gestión en la pestaña Promesas. Sin handler, las gestiones no son clickeables. */
+  onVerPromesa?: (accionId: string) => void;
+}) {
   const sevVariant = credito.dias_mora > 30 ? "destructive" : "warning";
   const sevLabel = credito.dias_mora > 30 ? "Crítica" : credito.dias_mora > 15 ? "Alta" : "Media";
   const { cuotas, meta, isLoading } = useCuotas(credito.id);
@@ -215,14 +220,44 @@ export function CobranzaDetail({ credito, acciones }: { credito: Credito; accion
           </p>
         ) : (
           <div className="space-y-2">
-            {gestiones.map((g) => (
-              <div key={g.id} className="rounded-lg border border-border bg-muted/10 px-3 py-2.5 space-y-1.5">
+            {gestiones.map((g) => {
+              /**
+               * Una gestión que dejó una PROMESA se abre: acá se ve el compromiso en una
+               * línea, pero el seguimiento —si sigue viva, si ya se rompió, el plan que
+               * cubre, el historial de promesas de ese cliente— vive en su pestaña. Era el
+               * único lugar del que había que salir a buscar a mano lo que ya se estaba
+               * mirando. Las demás gestiones no llevan a ningún lado, así que no se tocan.
+               */
+              const esPromesa = g.resultado === "promesa_pago" && !!onVerPromesa;
+              return (
+              <div
+                key={g.id}
+                {...(esPromesa
+                  ? {
+                      role: "button" as const,
+                      tabIndex: 0,
+                      onClick: () => onVerPromesa!(g.id),
+                      onKeyDown: (e: React.KeyboardEvent) => {
+                        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onVerPromesa!(g.id); }
+                      },
+                      title: "Ver esta promesa en detalle",
+                    }
+                  : {})}
+                className={`rounded-lg border border-border bg-muted/10 px-3 py-2.5 space-y-1.5 ${
+                  esPromesa
+                    ? "cursor-pointer transition-colors hover:border-success/40 hover:bg-success/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+                    : ""
+                }`}
+              >
                 <div className="flex items-center justify-between gap-2">
                   <span className="flex items-center gap-2 text-xs">
                     <StatusBadge label={TIPO_LABEL[g.tipo]} variant="muted" />
                     <span className="font-medium text-foreground">{RESULTADO_LABEL[g.resultado]}</span>
                   </span>
-                  <span className="text-[11px] text-muted-foreground tabular-nums">{fmtDate(g.created_at)}</span>
+                  <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground tabular-nums">
+                    {fmtDate(g.created_at)}
+                    {esPromesa && <ChevronRight className="h-3.5 w-3.5 text-muted-foreground/60" />}
+                  </span>
                 </div>
                 {g.nota && <p className="text-xs text-muted-foreground">{g.nota}</p>}
                 {(g.promesa_monto || g.promesa_fecha) && (
@@ -246,7 +281,8 @@ export function CobranzaDetail({ credito, acciones }: { credito: Credito; accion
                   </p>
                 )}
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </DetailSection>
