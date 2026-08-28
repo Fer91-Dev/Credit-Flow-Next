@@ -188,6 +188,19 @@ export function ClienteDetail({
   const [contactar, setContactar] = useState(false);
   const [cambiarEstado, setCambiarEstado] = useState(false);
   const [noContactar, setNoContactar] = useState(false);
+  /**
+   * Cuota que se está cobrando desde el plan (null = cerrado).
+   *
+   * El diálogo cuelga de la RAÍZ de la ficha y no de la fila expandida: un diálogo montado
+   * dentro de una fila desaparece si el operador colapsa el crédito mientras cobra. Es el
+   * mismo error que ya estaba anotado en Cobranzas para los diálogos dentro de una pestaña.
+   *
+   * 🔴 VA ACÁ ARRIBA, CON LOS DEMÁS HOOKS. Lo declaré una vez debajo del `return` de carga y
+   * la pantalla entera reventó (React #310): mientras la ficha carga, el componente sale
+   * antes y ejecuta un hook MENOS que en el render siguiente. Ningún `useState` de este
+   * archivo puede vivir después de ese return.
+   */
+  const [cobrando, setCobrando] = useState<{ credito: CreditoConFinanzas; cuota: CuotaPersistida } | null>(null);
 
   // Qué secciones se muestran según el contexto.
   const showPersonal = variant !== "pagos";   // datos personales/laborales
@@ -209,14 +222,6 @@ export function ClienteDetail({
   /** El backend decide; acá solo se refleja (`undefined` en respuestas viejas = permitido). */
   const puedeEditar = cliente.puede_editar !== false;
 
-  /**
-   * Cuota que se está cobrando desde el plan (null = cerrado).
-   *
-   * El diálogo cuelga de la RAÍZ de la ficha y no de la fila expandida: un diálogo montado
-   * dentro de una fila desaparece si el operador colapsa el crédito mientras cobra. Es el
-   * mismo error que ya estaba anotado en Cobranzas para los diálogos dentro de una pestaña.
-   */
-  const [cobrando, setCobrando] = useState<{ credito: CreditoConFinanzas; cuota: CuotaPersistida } | null>(null);
   const creditos = cliente.creditos ?? [];
   // VIVOS (activo + vencido): un crédito atrasado sigue siendo del cliente, no historial.
   const activos = creditos.filter((c) => esCreditoVivo(c.estado));
