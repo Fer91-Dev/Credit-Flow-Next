@@ -673,11 +673,12 @@ export function ClienteDetail({
             {cobrando && (
               <PagoForm
                 creditoId={cobrando.credito.id}
-                montoSugerido={cobrando.cuota.total_cobrar ?? cobrando.cuota.cuota_total}
-                motivoSugerido={
-                  `Cuota ${cobrando.cuota.nro} · vence ${formatFecha(cobrando.cuota.fecha_vencimiento)}` +
-                  ((cobrando.cuota.mora ?? 0) > 0 ? ` · incluye $${n2(cobrando.cuota.mora ?? 0)} de mora` : "")
-                }
+                /* La cuota llega SELECCIONADA en la tabla, no como monto fijo: da el mismo
+                   importe y deja extender a la siguiente o pasar a un monto libre. Antes se
+                   mandaba `montoSugerido` + `motivoSugerido`, y con eso el formulario creía
+                   estar cobrando un acuerdo: escondía el casillero «Monto personalizado» y
+                   dejaba la tabla gris pidiendo desactivar algo que no se podía ver. */
+                cuotaHasta={cobrando.cuota.nro}
                 onClose={(ok) => {
                   const creditoId = cobrando.credito.id;
                   setCobrando(null);

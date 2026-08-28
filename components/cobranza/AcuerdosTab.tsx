@@ -335,6 +335,10 @@ export function AcuerdosTab({ role }: { role: Role }) {
               <div className="flex-1 min-h-0 overflow-y-auto">
                 <PagoForm
                   creditoId={cobrando.credito_id}
+                  /* Lo DECLARA: es lo que fija el modo de monto libre y lo que hace que el
+                     pago quede vinculado a la cuota del acuerdo. Antes se deducía del texto
+                     del motivo, que también manda el botón verde de una cuota común. */
+                  esAcuerdo
                   montoSugerido={pendiente > 0 ? pendiente : undefined}
                   motivoSugerido={
                     // Una línea. El párrafo que explicaba "las cuotas de abajo son las del

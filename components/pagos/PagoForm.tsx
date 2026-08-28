@@ -77,6 +77,29 @@ interface PagoFormProps {
   montoSugerido?: number;
   /** Texto que explica de dónde sale el monto sugerido. */
   motivoSugerido?: string;
+  /**
+   * 🔴 El cobro sale de la terminal de un ACUERDO DE PAGO. Se DECLARA, no se deduce.
+   *
+   * Se infería de `motivoSugerido`, y ese texto también lo manda el botón verde de una cuota
+   * normal ("Cuota 2 · vence 10/10/2026"). Con eso, cobrar una cuota común quedaba en modo
+   * acuerdo y rompía dos cosas:
+   *   · el formulario escondía el casillero «Monto personalizado» pero igual arrancaba en ese
+   *     modo, así que la tabla de cuotas quedaba gris con el mensaje "Desactivá «Monto
+   *     personalizado» para elegir cuotas" y no había con qué desactivarlo: el cobro quedaba
+   *     trabado en un importe fijo;
+   *   · y si el crédito tenía un acuerdo vigente, el pago se registraba con su
+   *     `acuerdo_cuota_id` — o sea que un cobro común avanzaba el acuerdo y el recibo decía
+   *     "cuota 2 de 3 del acuerdo". Eso ya no es un problema de pantalla: es un dato mal
+   *     guardado.
+   */
+  esAcuerdo?: boolean;
+  /**
+   * Cuota del crédito con la que arranca la selección (el botón verde del plan). Se
+   * PRESELECCIONA en el modo normal en vez de forzar "monto personalizado": da el mismo
+   * importe —`importeACobrar` de una cuota es su `total_cobrar`— y deja al operador
+   * extenderlo a la siguiente o pasar a un monto libre.
+   */
+  cuotaHasta?: number;
   onClose: (success?: boolean) => void;
 }
 
@@ -238,7 +261,7 @@ function CreditoSeleccionado({ c, onCambiar }: { c: Credito; onCambiar?: () => v
   );
 }
 
-export function PagoForm({ creditoId, clienteId, montoSugerido, motivoSugerido, onClose }: PagoFormProps) {
+export function PagoForm({ creditoId, clienteId, montoSugerido, motivoSugerido, esAcuerdo, cuotaHasta, onClose }: PagoFormProps) {
   const [creditos, setCreditos]     = useState<Credito[]>([]);
   const [selected, setSelected]     = useState<Credito | null>(null);
   const [creditoSel, setCreditoSel] = useState(creditoId ?? "");
@@ -252,11 +275,16 @@ export function PagoForm({ creditoId, clienteId, montoSugerido, motivoSugerido, 
   const [loadingCuotas, setLoadingCuotas] = useState(false);
   /** Acuerdo vigente del crédito elegido (lo trae el endpoint de cuotas). */
   const [acuerdo, setAcuerdo] = useState<AcuerdoDelCredito | null>(null);
-  const [hasta, setHasta]                 = useState<number | null>(null);
+  // Viniendo del botón verde de una cuota, esa cuota arranca seleccionada.
+  const [hasta, setHasta]                 = useState<number | null>(cuotaHasta ?? null);
 
-  // Con monto sugerido (cuota de un acuerdo) se arranca en modo manual: el importe
-  // acordado no coincide con ninguna cuota del crédito, así que elegir cuotas no aplica.
-  const [manual,       setManual]       = useState(montoSugerido != null && montoSugerido > 0);
+  /**
+   * Modo "monto personalizado". Arranca prendido SOLO cobrando un acuerdo: ahí el importe
+   * acordado no coincide con ninguna cuota del crédito, así que elegir cuotas no aplica.
+   * Para una cuota normal el modo es el de siempre —se elige en la tabla— y el casillero
+   * queda a la vista por si el operador quiere cobrar otra cosa.
+   */
+  const [manual,       setManual]       = useState(Boolean(esAcuerdo) && montoSugerido != null && montoSugerido > 0);
   const [montoManual,  setMontoManual]  = useState(
     montoSugerido != null && montoSugerido > 0 ? maskMontoInput(String(Math.round(montoSugerido * 100) / 100).replace(".", ",")) : "",
   );
@@ -338,8 +366,8 @@ export function PagoForm({ creditoId, clienteId, montoSugerido, motivoSugerido, 
 
   const cobrables    = cuotas.filter(c => c.estado !== "pagada");
   const seleccionadas = hasta != null ? cobrables.filter(c => c.nro <= hasta) : [];
-  /** Se está cobrando la cuota de un ACUERDO: viene importe y motivo precargados. */
-  const cobrandoAcuerdo = Boolean(motivoSugerido);
+  /** Se está cobrando la cuota de un ACUERDO. Lo declara quien abre el formulario. */
+  const cobrandoAcuerdo = Boolean(esAcuerdo);
   /** Cuota del acuerdo que se esta cobrando: se guarda en el pago para el recibo. */
   const cuotaAcuerdoId = acuerdo?.proxima?.id ?? null;
 
