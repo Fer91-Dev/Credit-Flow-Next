@@ -14,6 +14,7 @@ import { useConfirm } from "@/components/ui/confirm";
 import { useToast } from "@/components/ui/toast";
 import type { Role } from "@/lib/auth/roles";
 import { useCuotas } from "@/lib/swr";
+import { moraDevengadaDeCuota } from "@/lib/recibo-cuota";
 import { Skeleton } from "@/components/ui/skeleton";
 import { MODAL_CONTENT, SIN_CIERRE_ACCIDENTAL } from "@/components/ui/form-kit";
 
@@ -92,7 +93,7 @@ function PromesaDetalle({ promesa, historial, onClose }: {
    * Distinto de `exigible` a propósito — ese es lo que se reclama hoy, esto es todo lo que
    * el cliente tiene que terminar de pagar por este crédito.
    */
-  const moraTodas = cuotas.reduce((acc, c) => acc + (c.mora ?? 0), 0);
+  const moraTodas = cuotas.reduce((acc, c) => acc + moraDevengadaDeCuota(c), 0);
   const aCobrarTodas = cuotas.reduce((acc, c) => acc + (c.total_cobrar ?? 0), 0);
 
   /**
@@ -291,7 +292,23 @@ function PromesaDetalle({ promesa, historial, onClose }: {
                               </td>
                               <td className="py-2 px-2 text-muted-foreground tabular-nums whitespace-nowrap">{formatFecha(c.fecha_vencimiento)}</td>
                               <td className="py-2 px-2 text-right font-mono tabular-nums text-foreground">{formatMonto(c.cuota_total)}</td>
-                              <td className="py-2 px-2 text-right font-mono tabular-nums text-destructive">{(c.mora ?? 0) > 0 ? formatMonto(c.mora as number) : "—"}</td>
+                              {/* La DEVENGADA, no la pendiente: es la que participa de la cuenta de al lado.
+                            Con los punitorios ya cobrados la columna decia "—" y el renglon
+                            quedaba sin cerrar. */}
+                              <td className="py-2 px-2 text-right font-mono tabular-nums">
+                                {moraDevengadaDeCuota(c) > 0 ? (
+                                  <>
+                                    <span className={(c.mora ?? 0) > 0 ? "text-destructive" : "text-muted-foreground"}>
+                                      {formatMonto(moraDevengadaDeCuota(c))}
+                                    </span>
+                                    {(c.pagado_mora ?? 0) > 0 && (
+                                      <span className="block text-[10px] font-normal text-success">
+                                        {(c.mora ?? 0) > 0 ? `${formatMonto(c.pagado_mora ?? 0)} cobrada` : "cobrada"}
+                                      </span>
+                                    )}
+                                  </>
+                                ) : <span className="text-muted-foreground/30">—</span>}
+                              </td>
                               <td className={`py-2 px-3 text-right font-mono tabular-nums font-semibold ${vencida ? "text-destructive" : "text-muted-foreground"}`}>
                                 {(c.total_cobrar ?? 0) > 0 ? formatMonto(c.total_cobrar as number) : "—"}
                               </td>

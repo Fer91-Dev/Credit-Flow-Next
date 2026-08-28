@@ -69,6 +69,18 @@ export function cantidadCobros(cuota: CuotaPersistida): number {
 }
 
 /**
+ * La mora que la cuota DEVENGÓ en total: la que falta cobrar más la que ya se cobró.
+ *
+ * 🔴 `mora` del endpoint es la PENDIENTE. Mostrar esa en la columna deja la fila sin cerrar
+ * en cuanto se cobra algo de punitorios: la cuota 1 de Marina decía Mora "—" y al lado la
+ * cuenta `$281.214,04 − $150.000,00`, donde esos $281.214,04 son $242.425,90 de cuota MÁS
+ * $38.788,14 de mora que la columna daba por inexistente.
+ */
+export function moraDevengadaDeCuota(cuota: CuotaPersistida): number {
+  return Math.round(((cuota.mora ?? 0) + (cuota.pagado_mora ?? 0)) * 100) / 100;
+}
+
+/**
  * DE DÓNDE SALE LO QUE RESTA de una cuota que se pagó en parte.
  *
  * 🔴 El "a cobrar" de una cuota con un pago a cuenta es un número derivado y no se puede

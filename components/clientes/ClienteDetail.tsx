@@ -24,7 +24,7 @@ import { EstadoClienteDialog } from "@/components/clientes/EstadoClienteDialog";
 import { NoContactarDialog } from "@/components/clientes/NoContactarDialog";
 import { ProntuarioPanel } from "@/components/clientes/ProntuarioPanel";
 import { abrirRecibo } from "@/lib/recibo";
-import { abrirReciboDeCuota, tienePagos, pagadoDeCuota, ultimoPagoDeCuota, cantidadCobros, derivacionCuota } from "@/lib/recibo-cuota";
+import { abrirReciboDeCuota, tienePagos, pagadoDeCuota, ultimoPagoDeCuota, cantidadCobros, derivacionCuota, moraDevengadaDeCuota } from "@/lib/recibo-cuota";
 import { formatCreditoNumero, formatFecha, formatFechaHora, nombreCompleto, hoyComercial, formatDias, formatMonto } from "@/lib/utils";
 import { esCreditoVivo, deudaEnRevision, normalizarEstadoCliente, ESTADO_CLIENTE_LABEL, ESTADO_CLIENTE_VARIANT } from "@/lib/domain";
 import type { Role } from "@/lib/auth/roles";
@@ -873,7 +873,7 @@ function CuotasInline({ credito, onCobrar }: {
   const cliente = meta?.cliente ?? null;
   // Mismo criterio que el Detalle del crédito: solo se cobra sobre un crédito VIVO con saldo.
   const puedeCobrar = !!onCobrar && esCreditoVivo(credito.estado) && credito.saldo_pendiente > 0;
-  const moraTotal = cuotas.reduce((s, q) => s + (q.mora ?? 0), 0);
+  const moraTotalDevengada = cuotas.reduce((s, q) => s + moraDevengadaDeCuota(q), 0);
   const aCobrarTotal =
     Math.round(cuotas.reduce((s, q) => s + (q.estado === "pagada" ? 0 : q.total_cobrar ?? q.cuota_total), 0) * 100) / 100;
 
@@ -934,19 +934,28 @@ function CuotasInline({ credito, onCobrar }: {
                     <td className="px-2 py-1.5 text-right font-mono font-medium text-foreground tabular-nums border-b border-border/30">${n2(q.cuota_total)}</td>
                     <td className="px-2 py-1.5 text-right font-mono text-muted-foreground tabular-nums border-b border-border/30 hidden sm:table-cell">${n2(q.interes)}</td>
                     <td className="px-2 py-1.5 text-right font-mono text-muted-foreground tabular-nums border-b border-border/30 hidden sm:table-cell">${n2(q.capital)}</td>
-                    {/* La MORA faltaba entera: esta es la pantalla desde la que se cobra y los
-                        punitorios no se veían. Con los días al lado, que son los que la generan:
-                        el importe se puede verificar sin salir de la fila. */}
+                    {/* La MORA DEVENGADA, no la pendiente. Es la que participa de la cuenta de al
+                        lado: con los punitorios ya cobrados, la columna decia "—" y el
+                        renglon quedaba sin cerrar ($242.425,90 de cuota no dan $281.214,04).
+                        Cuando ya se cobro, se dice — el operador tiene que poder distinguir
+                        la mora que le falta cobrar de la que ya entro. */}
                     <td className="px-2 py-1.5 text-right font-mono tabular-nums border-b border-border/30">
-                      {(q.mora ?? 0) > 0 ? (
-                        <span className="text-destructive">
-                          ${n2(q.mora ?? 0)}
-                          {(q.dias_atraso ?? 0) > 0 && (
-                            <span className="ml-1 font-sans text-[10px] font-normal text-destructive/60">
-                              {q.dias_atraso} {q.dias_atraso === 1 ? "día" : "días"}
+                      {moraDevengadaDeCuota(q) > 0 ? (
+                        <>
+                          <span className={(q.mora ?? 0) > 0 ? "text-destructive" : "text-muted-foreground"}>
+                            ${n2(moraDevengadaDeCuota(q))}
+                            {(q.dias_atraso ?? 0) > 0 && (
+                              <span className="ml-1 font-sans text-[10px] font-normal text-muted-foreground/60">
+                                {q.dias_atraso} {q.dias_atraso === 1 ? "día" : "días"}
+                              </span>
+                            )}
+                          </span>
+                          {(q.pagado_mora ?? 0) > 0 && (
+                            <span className="block font-sans text-[10px] font-normal text-success">
+                              {(q.mora ?? 0) > 0 ? `$${n2(q.pagado_mora ?? 0)} cobrada` : "cobrada"}
                             </span>
                           )}
-                        </span>
+                        </>
                       ) : (
                         <span className="text-muted-foreground/20">—</span>
                       )}
@@ -1027,7 +1036,7 @@ function CuotasInline({ credito, onCobrar }: {
                 <td className="px-2 py-1.5 text-right font-mono font-bold text-muted-foreground tabular-nums border-t border-border hidden sm:table-cell">${n2(cuotas.reduce((a, q) => a + q.interes, 0))}</td>
                 <td className="px-2 py-1.5 text-right font-mono font-bold text-muted-foreground tabular-nums border-t border-border hidden sm:table-cell">${n2(cuotas.reduce((a, q) => a + q.capital, 0))}</td>
                 <td className="px-2 py-1.5 text-right font-mono font-bold tabular-nums border-t border-border">
-                  {moraTotal > 0 ? <span className="text-destructive">${n2(moraTotal)}</span> : <span className="text-muted-foreground/20">—</span>}
+                  {moraTotalDevengada > 0 ? <span className="text-destructive">${n2(moraTotalDevengada)}</span> : <span className="text-muted-foreground/20">—</span>}
                 </td>
                 <td className="border-t border-border" />
                 <td className="px-2 py-1.5 text-right font-mono font-bold tabular-nums text-success border-t border-border">${n2(cuotas.reduce((a, q) => a + pagadoDeCuota(q), 0))}</td>

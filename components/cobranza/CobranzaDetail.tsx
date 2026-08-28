@@ -1,7 +1,7 @@
 "use client";
 
 import { ShieldAlert, CalendarClock, HandCoins, Handshake, ChevronRight, Printer } from "lucide-react";
-import { abrirReciboDeCuota, pagadoDeCuota, cantidadCobros, derivacionCuota } from "@/lib/recibo-cuota";
+import { abrirReciboDeCuota, pagadoDeCuota, cantidadCobros, derivacionCuota, moraDevengadaDeCuota } from "@/lib/recibo-cuota";
 import type { Credito, AccionCobranza } from "@/lib/swr";
 import { useCuotas } from "@/lib/swr";
 import { StatusBadge } from "@/components/ui/StatusBadge";
@@ -227,7 +227,21 @@ export function CobranzaDetail({ credito, acciones, onVerPromesa }: {
                         )}
                       </td>
                       <td className="py-2 px-2 text-right font-mono tabular-nums text-destructive">
-                        {(c.mora ?? 0) > 0 ? formatMonto(c.mora as number) : "—"}
+                        {/* La DEVENGADA, no la pendiente: es la que participa de la cuenta de al lado.
+                            Con los punitorios ya cobrados la columna decia "—" y el renglon
+                            quedaba sin cerrar. */}
+                        {moraDevengadaDeCuota(c) > 0 ? (
+                          <>
+                            <span className={(c.mora ?? 0) > 0 ? "" : "text-muted-foreground"}>
+                              {formatMonto(moraDevengadaDeCuota(c))}
+                            </span>
+                            {(c.pagado_mora ?? 0) > 0 && (
+                              <span className="block text-[10px] font-normal text-success">
+                                {(c.mora ?? 0) > 0 ? `${formatMonto(c.pagado_mora ?? 0)} cobrada` : "cobrada"}
+                              </span>
+                            )}
+                          </>
+                        ) : "—"}
                       </td>
                       <td className={`py-2 pl-2 text-right font-mono tabular-nums font-semibold ${vencida ? "text-destructive" : "text-muted-foreground"}`}>
                         {(c.total_cobrar ?? 0) > 0 ? formatMonto(c.total_cobrar as number) : "—"}

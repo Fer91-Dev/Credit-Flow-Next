@@ -6,7 +6,7 @@ import { CalendarDays, Wallet, Info, ArrowUpRight, Receipt, Loader2, Printer, Re
 import { refrescarNotificaciones, useAmortizacion, useCuotas, usePagosByCredito, useCreditos, KEYS, type Credito, type EstadoCuota, type Pago, type CuotaPersistida, useFinanciera } from "@/lib/swr";
 import { type Role } from "@/lib/auth/roles";
 import { abrirRecibo } from "@/lib/recibo";
-import { abrirReciboDeCuota, tienePagos, pagadoDeCuota, cantidadCobros, derivacionCuota } from "@/lib/recibo-cuota";
+import { abrirReciboDeCuota, tienePagos, pagadoDeCuota, cantidadCobros, derivacionCuota, moraDevengadaDeCuota } from "@/lib/recibo-cuota";
 import { imprimirPlanPagos } from "@/lib/plan-print";
 import { PagoForm } from "@/components/pagos/PagoForm";
 import { LibreDeudaDialog } from "./LibreDeudaDialog";
@@ -141,7 +141,8 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
   /** La primera cuota sin saldar: es la que el operador va a cobrar. */
   const proximaCuota = cuotas.find((q) => q.estado !== "pagada") ?? null;
   /** Mora devengada de todo el plan (pie de la columna Mora). */
-  const moraTotalPlan = cuotas.reduce((s, q) => s + (q.mora ?? 0), 0);
+  /** Pie de la columna Mora: la DEVENGADA, igual que las celdas. */
+  const moraTotalPlan = cuotas.reduce((s, q) => s + moraDevengadaDeCuota(q), 0);
   /**
    * Lo que el cliente debe HOY por todo el crédito: lo que resta de cada cuota más su mora.
    * Una sola suma de `total_cobrar`, que es lo mismo que muestra la columna "A cobrar" —
@@ -910,16 +911,28 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
                         <td className="px-3 py-2.5 text-right font-mono text-muted-foreground tabular-nums border-b border-border/70 hidden sm:table-cell">${n2(q.capital)}</td>
                         {/* La mora, discriminada. Con los días al lado: son los que la generan,
                             así que el importe se puede verificar sin salir de la fila. */}
+                        {/* La MORA DEVENGADA, no la pendiente. Es la que participa de la cuenta de al
+                        lado: con los punitorios ya cobrados, la columna decia "—" y el
+                        renglon quedaba sin cerrar ($242.425,90 de cuota no dan $281.214,04).
+                        Cuando ya se cobro, se dice — el operador tiene que poder distinguir
+                        la mora que le falta cobrar de la que ya entro. */}
                         <td className="px-3 py-2.5 text-right font-mono tabular-nums border-b border-border/70">
-                          {mora > 0 ? (
-                            <span className="text-destructive">
-                              ${n2(mora)}
-                              {(q.dias_atraso ?? 0) > 0 && (
-                                <span className="ml-1 font-sans text-[10px] font-normal text-destructive/60">
-                                  {q.dias_atraso} {q.dias_atraso === 1 ? "día" : "días"}
+                          {moraDevengadaDeCuota(q) > 0 ? (
+                            <>
+                              <span className={mora > 0 ? "text-destructive" : "text-muted-foreground"}>
+                                ${n2(moraDevengadaDeCuota(q))}
+                                {(q.dias_atraso ?? 0) > 0 && (
+                                  <span className="ml-1 font-sans text-[10px] font-normal text-muted-foreground/60">
+                                    {q.dias_atraso} {q.dias_atraso === 1 ? "día" : "días"}
+                                  </span>
+                                )}
+                              </span>
+                              {(q.pagado_mora ?? 0) > 0 && (
+                                <span className="block font-sans text-[10px] font-normal text-success">
+                                  {mora > 0 ? `$${n2(q.pagado_mora ?? 0)} cobrada` : "cobrada"}
                                 </span>
                               )}
-                            </span>
+                            </>
                           ) : (
                             <span className="text-muted-foreground/20">—</span>
                           )}
