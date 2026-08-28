@@ -14,7 +14,7 @@ import { useConfirm } from "@/components/ui/confirm";
 import { useToast } from "@/components/ui/toast";
 import type { Role } from "@/lib/auth/roles";
 import { useCuotas } from "@/lib/swr";
-import { moraDevengadaDeCuota } from "@/lib/recibo-cuota";
+import { moraDevengadaDeCuota, pagadoDeCuota } from "@/lib/recibo-cuota";
 import { Skeleton } from "@/components/ui/skeleton";
 import { MODAL_CONTENT, SIN_CIERRE_ACCIDENTAL } from "@/components/ui/form-kit";
 
@@ -275,6 +275,9 @@ function PromesaDetalle({ promesa, historial, onClose }: {
                           <th className="text-left py-2 px-3">Cuota</th>
                           <th className="text-left py-2 px-2">Vence</th>
                           <th className="text-right py-2 px-2">Importe</th>
+                          {/* Sin esta columna el renglon no cerraba: con un pago a cuenta,
+                              importe + punitorios no da lo que queda a cobrar. */}
+                          <th className="text-right py-2 px-2">Pagado</th>
                           <th className="text-right py-2 px-2">Punitorios</th>
                           <th className="text-right py-2 px-3">A cobrar</th>
                         </tr>
@@ -292,6 +295,11 @@ function PromesaDetalle({ promesa, historial, onClose }: {
                               </td>
                               <td className="py-2 px-2 text-muted-foreground tabular-nums whitespace-nowrap">{formatFecha(c.fecha_vencimiento)}</td>
                               <td className="py-2 px-2 text-right font-mono tabular-nums text-foreground">{formatMonto(c.cuota_total)}</td>
+                              <td className="py-2 px-2 text-right font-mono tabular-nums">
+                                {pagadoDeCuota(c) > 0
+                                  ? <span className="text-success">{formatMonto(pagadoDeCuota(c))}</span>
+                                  : <span className="text-muted-foreground/30">—</span>}
+                              </td>
                               {/* La DEVENGADA, no la pendiente: es la que participa de la cuenta de al lado.
                             Con los punitorios ya cobrados la columna decia "—" y el renglon
                             quedaba sin cerrar. */}
@@ -330,6 +338,9 @@ function PromesaDetalle({ promesa, historial, onClose }: {
                           </td>
                           <td className="py-2 px-2 text-right font-mono font-bold tabular-nums text-foreground">
                             {formatMonto(cuotas.reduce((a, c) => a + c.cuota_total, 0))}
+                          </td>
+                          <td className="py-2 px-2 text-right font-mono font-bold tabular-nums text-success">
+                            {formatMonto(cuotas.reduce((a, c) => a + pagadoDeCuota(c), 0))}
                           </td>
                           <td className="py-2 px-2 text-right font-mono font-bold tabular-nums text-destructive">
                             {moraTodas > 0 ? formatMonto(moraTodas) : "—"}

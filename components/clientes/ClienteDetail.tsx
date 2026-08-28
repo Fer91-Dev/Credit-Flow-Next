@@ -24,7 +24,7 @@ import { EstadoClienteDialog } from "@/components/clientes/EstadoClienteDialog";
 import { NoContactarDialog } from "@/components/clientes/NoContactarDialog";
 import { ProntuarioPanel } from "@/components/clientes/ProntuarioPanel";
 import { abrirRecibo } from "@/lib/recibo";
-import { abrirReciboDeCuota, tienePagos, pagadoDeCuota, ultimoPagoDeCuota, cantidadCobros, derivacionCuota, moraDevengadaDeCuota } from "@/lib/recibo-cuota";
+import { abrirReciboDeCuota, tienePagos, pagadoDeCuota, ultimoPagoDeCuota, cantidadCobros, moraDevengadaDeCuota } from "@/lib/recibo-cuota";
 import { formatCreditoNumero, formatFecha, formatFechaHora, nombreCompleto, hoyComercial, formatDias, formatMonto } from "@/lib/utils";
 import { esCreditoVivo, deudaEnRevision, normalizarEstadoCliente, ESTADO_CLIENTE_LABEL, ESTADO_CLIENTE_VARIANT } from "@/lib/domain";
 import type { Role } from "@/lib/auth/roles";
@@ -1012,14 +1012,6 @@ function CuotasInline({ credito, onCobrar }: {
                         </button>
                       ) : (
                         <span className="text-muted-foreground/30">—</span>
-                      )}
-                      {/* De dónde sale ese número cuando hubo un pago a cuenta. Sin esto la
-                          fila no cierra sola: la cuota es de $242.425,90, pagó $150.000,00 y
-                          resta $131.214,04. La cuenta aparece recién sumando los punitorios. */}
-                      {conPagos && (q.total_cobrar ?? 0) > 0 && (
-                        <span className="mt-0.5 block font-mono text-[10px] tabular-nums text-muted-foreground">
-                          ${n2(derivacionCuota(q).exigido)} − ${n2(derivacionCuota(q).entregado)}
-                        </span>
                       )}
                     </td>
                   </tr>

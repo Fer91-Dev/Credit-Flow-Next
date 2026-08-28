@@ -379,7 +379,7 @@ export function CreditosTable({ role }: { role: Role }) {
       </div>
 
       <Dialog open={!!detail} onOpenChange={open => { if (!open) setDetail(null); }}>
-        <DialogContent className="w-full max-w-[96vw] lg:max-w-5xl h-[90vh] max-h-[90vh] p-0 gap-0 flex flex-col overflow-hidden">
+        <DialogContent className="w-full max-w-[96vw] lg:max-w-7xl h-[90vh] max-h-[90vh] p-0 gap-0 flex flex-col overflow-hidden">
           <DialogHeader className="px-6 py-4 border-b border-border shrink-0">
             <DialogTitle>Detalle del crédito</DialogTitle>
           </DialogHeader>

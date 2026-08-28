@@ -6,7 +6,7 @@ import { CalendarDays, Wallet, Info, ArrowUpRight, Receipt, Loader2, Printer, Re
 import { refrescarNotificaciones, useAmortizacion, useCuotas, usePagosByCredito, useCreditos, KEYS, type Credito, type EstadoCuota, type Pago, type CuotaPersistida, useFinanciera } from "@/lib/swr";
 import { type Role } from "@/lib/auth/roles";
 import { abrirRecibo } from "@/lib/recibo";
-import { abrirReciboDeCuota, tienePagos, pagadoDeCuota, cantidadCobros, derivacionCuota, moraDevengadaDeCuota } from "@/lib/recibo-cuota";
+import { abrirReciboDeCuota, tienePagos, pagadoDeCuota, cantidadCobros, moraDevengadaDeCuota, ultimoComprobante } from "@/lib/recibo-cuota";
 import { imprimirPlanPagos } from "@/lib/plan-print";
 import { PagoForm } from "@/components/pagos/PagoForm";
 import { LibreDeudaDialog } from "./LibreDeudaDialog";
@@ -118,7 +118,7 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
   onCerrar?: () => void;
 }) {
   const { amortizacion } = useAmortizacion(credito.id);
-  const { cuotas, resumen, isLoading: loadingCuotas } = useCuotas(credito.id);
+  const { cuotas, resumen, meta: metaCuotas, isLoading: loadingCuotas } = useCuotas(credito.id);
   const { financiera } = useFinanciera(); // co-branding de lo que se imprime
 
   /**
@@ -876,10 +876,14 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
                       { t: "Interés", a: "text-right", w: "hidden sm:table-cell" },
                       { t: "Capital", a: "text-right", w: "hidden sm:table-cell" },
                       { t: "Mora", a: "text-right" },
-                      // Lo que YA entró en cada cuota, con su recibo. El detalle del crédito
-                      // mostraba el plan pactado y la deuda, pero no lo cobrado: para saber si
-                      // una cuota tenía un pago parcial había que bajar al historial de pagos.
+                      // Lo que YA entró en cada cuota. El detalle del crédito mostraba el plan
+                      // pactado y la deuda, pero no lo cobrado: para saber si una cuota tenía un
+                      // pago parcial había que bajar al historial de pagos.
                       { t: "Pagado", a: "text-right" },
+                      // El comprobante en su propia columna: el número del recibo es un dato
+                      // que se busca (el cliente llama diciendo "tengo el REC-000006"), no un
+                      // adorno del importe.
+                      { t: "Comprobante", a: "text-left" },
                       { t: "Estado", a: "text-left" },
                       { t: "A cobrar", a: "text-right pr-4" },
                     ].map((h) => (
@@ -919,16 +923,18 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
                         <td className="px-3 py-2.5 text-right font-mono tabular-nums border-b border-border/70">
                           {moraDevengadaDeCuota(q) > 0 ? (
                             <>
-                              <span className={mora > 0 ? "text-destructive" : "text-muted-foreground"}>
+                              {/* El IMPORTE solo en la primera línea, para que quede a la
+                                  misma altura que Cuota / Interés / Capital. Los días de
+                                  atraso —que son de dónde sale ese importe— y lo ya cobrado
+                                  van debajo, sin empujar el número. */}
+                              <span className={`block ${mora > 0 ? "text-destructive" : "text-muted-foreground"}`}>
                                 ${n2(moraDevengadaDeCuota(q))}
-                                {(q.dias_atraso ?? 0) > 0 && (
-                                  <span className="ml-1 font-sans text-[10px] font-normal text-muted-foreground/60">
-                                    {q.dias_atraso} {q.dias_atraso === 1 ? "día" : "días"}
-                                  </span>
-                                )}
+                              </span>
+                              <span className="block font-sans text-[10px] font-normal leading-tight text-muted-foreground/70">
+                                {(q.dias_atraso ?? 0) > 0 && <>{formatDias(q.dias_atraso ?? 0)} de atraso</>}
                               </span>
                               {(q.pagado_mora ?? 0) > 0 && (
-                                <span className="block font-sans text-[10px] font-normal text-success">
+                                <span className="block font-sans text-[10px] font-normal leading-tight text-success">
                                   {mora > 0 ? `$${n2(q.pagado_mora ?? 0)} cobrada` : "cobrada"}
                                 </span>
                               )}
@@ -942,21 +948,27 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
                             puede pedir. Mismo módulo que usa la ficha del cliente. */}
                         <td className="px-3 py-2.5 text-right border-b border-border/70 whitespace-nowrap">
                           {tienePagos(q) ? (
-                            <div className="flex items-center justify-end gap-1.5">
-                              <span className="font-mono tabular-nums text-success">${n2(pagadoDeCuota(q))}</span>
-                              <button
-                                onClick={() => abrirReciboDeCuota(q)}
-                                title={cantidadCobros(q) > 1 ? `Recibo del último de ${cantidadCobros(q)} cobros (PDF)` : "Recibo de este cobro (PDF)"}
-                                className="relative shrink-0 rounded-md border border-border p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                              >
-                                <Printer className="h-3 w-3" />
-                                {cantidadCobros(q) > 1 && (
-                                  <span className="absolute -right-1 -top-1 rounded-full bg-primary px-1 text-[9px] font-bold leading-3 text-primary-foreground">
-                                    {cantidadCobros(q)}
-                                  </span>
-                                )}
-                              </button>
-                            </div>
+                            <span className="font-mono tabular-nums text-success">${n2(pagadoDeCuota(q))}</span>
+                          ) : (
+                            <span className="text-muted-foreground/20">—</span>
+                          )}
+                        </td>
+                        {/* COMPROBANTE: el número del recibo, y el botón que lo abre en PDF.
+                            Con varios cobros parciales se nombra el último y se dice cuántos
+                            hay; los anteriores están en el historial de pagos. */}
+                        <td className="px-3 py-2.5 border-b border-border/70 whitespace-nowrap">
+                          {tienePagos(q) ? (
+                            <button
+                              onClick={() => abrirReciboDeCuota(q)}
+                              title="Abrir el recibo en PDF"
+                              className="inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-1 font-mono text-[11px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                            >
+                              <Printer className="h-3 w-3 shrink-0" />
+                              {ultimoComprobante(q)?.comprobante ?? "Recibo"}
+                              {cantidadCobros(q) > 1 && (
+                                <span className="font-sans text-[10px] text-muted-foreground/60">+{cantidadCobros(q) - 1}</span>
+                              )}
+                            </button>
                           ) : (
                             <span className="text-muted-foreground/20">—</span>
                           )}
@@ -976,12 +988,6 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
                               ${n2(q.total_cobrar ?? q.cuota_total)}
                             </button>
                           )}
-                          {/* La cuenta que hace cerrar la fila cuando hubo un pago a cuenta. */}
-                          {tienePagos(q) && (q.total_cobrar ?? 0) > 0 && (
-                            <span className="mt-0.5 block font-mono text-[10px] tabular-nums text-muted-foreground">
-                              ${n2(derivacionCuota(q).exigido)} − ${n2(derivacionCuota(q).entregado)}
-                            </span>
-                          )}
                         </td>
                       </tr>
                     );
@@ -1000,6 +1006,7 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
                       ${n2(cuotas.reduce((s, q) => s + pagadoDeCuota(q), 0))}
                     </td>
                     <td className="border-t border-border" />
+                    <td className="border-t border-border" />
                     {/* El total de la columna "A cobrar" faltaba: era la única con pie vacío,
                         y es justamente la que suma lo que el cliente debe. Coincide con la
                         tarjeta "Deuda total" de arriba porque sale de la misma suma. */}
@@ -1010,6 +1017,20 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
                 </tfoot>
               </table>
             </div>
+          )}
+          {/*
+            DE DÓNDE SALE LA MORA, con los parámetros CONGELADOS de este crédito (no la
+            configuración de hoy). La columna mostraba un importe que no se podía verificar:
+            para saber si esos $38.788,14 estaban bien había que conocer la tasa, los días de
+            gracia y el techo. El detalle de cobranza y el modal de promesa ya lo decían; acá
+            faltaba.
+          */}
+          {!loadingCuotas && moraTotalPlan > 0 && metaCuotas?.mora && (
+            <p className="text-[11px] text-muted-foreground">
+              Mora: {(metaCuotas.mora.tasaDiaria * 100).toFixed(2)}% por día sobre el importe de cada cuota
+              {metaCuotas.mora.diasGracia > 0 && <>, a partir del día {metaCuotas.mora.diasGracia + 1} de atraso</>}
+              {metaCuotas.mora.topePct > 0 && <>, con un techo del {metaCuotas.mora.topePct}% de la cuota</>}.
+            </p>
           )}
         </section>
       </div>
