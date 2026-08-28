@@ -16,6 +16,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Field, Textarea } from "@/components/ui/field";
 import { useToast } from "@/components/ui/toast";
 import { LibreDeudaDialog } from "@/components/creditos/LibreDeudaDialog";
+import { PagoForm } from "@/components/pagos/PagoForm";
 import { ClienteBureauPanel } from "@/components/clientes/ClienteBureauPanel";
 import { EditarHistorialDialog } from "@/components/clientes/EditarHistorialDialog";
 import { ContactarDialog } from "@/components/clientes/ContactarDialog";
@@ -207,6 +208,15 @@ export function ClienteDetail({
   const ec = cliente.estado_cuenta;
   /** El backend decide; acá solo se refleja (`undefined` en respuestas viejas = permitido). */
   const puedeEditar = cliente.puede_editar !== false;
+
+  /**
+   * Cuota que se está cobrando desde el plan (null = cerrado).
+   *
+   * El diálogo cuelga de la RAÍZ de la ficha y no de la fila expandida: un diálogo montado
+   * dentro de una fila desaparece si el operador colapsa el crédito mientras cobra. Es el
+   * mismo error que ya estaba anotado en Cobranzas para los diálogos dentro de una pestaña.
+   */
+  const [cobrando, setCobrando] = useState<{ credito: CreditoConFinanzas; cuota: CuotaPersistida } | null>(null);
   const creditos = cliente.creditos ?? [];
   // VIVOS (activo + vencido): un crédito atrasado sigue siendo del cliente, no historial.
   const activos = creditos.filter((c) => esCreditoVivo(c.estado));
@@ -628,7 +638,7 @@ export function ClienteDetail({
             {activos.length === 0 ? (
               <EmptyRow text="El cliente no tiene créditos activos." />
             ) : (
-              <CreditosTabla creditos={activos} mostrarProximo />
+              <CreditosTabla creditos={activos} mostrarProximo onCobrar={(c, q) => setCobrando({ credito: c, cuota: q })} />
             )}
           </section>
         )}
@@ -689,6 +699,44 @@ export function ClienteDetail({
       </div>
 
       {/* Anular pago — motivo + contra-asiento en caja (control de tesorería, solo admin) */}
+      {/* Cobro de una cuota puntual del plan. Mismo formulario y mismo preseteo que el
+          Detalle del crédito: el importe llega calculado (cuota + su mora) y editable. */}
+      <Dialog open={!!cobrando} onOpenChange={(o) => { if (!o) setCobrando(null); }}>
+        <DialogContent className="w-[95vw] sm:max-w-4xl max-h-[90dvh] flex flex-col overflow-hidden">
+          <DialogHeader className="shrink-0">
+            <DialogTitle>
+              Registrar pago · {cobrando ? formatCreditoNumero(cobrando.credito.numero, cobrando.credito.refinancia_a_numero) : ""}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="flex-1 min-h-0 overflow-y-auto">
+            {cobrando && (
+              <PagoForm
+                creditoId={cobrando.credito.id}
+                montoSugerido={cobrando.cuota.total_cobrar ?? cobrando.cuota.cuota_total}
+                motivoSugerido={
+                  `Cuota ${cobrando.cuota.nro} · vence ${formatFecha(cobrando.cuota.fecha_vencimiento)}` +
+                  ((cobrando.cuota.mora ?? 0) > 0 ? ` · incluye $${n2(cobrando.cuota.mora ?? 0)} de mora` : "")
+                }
+                onClose={(ok) => {
+                  const creditoId = cobrando.credito.id;
+                  setCobrando(null);
+                  if (!ok) return;
+                  // Todo lo que el cobro movió: la ficha, el plan de ESE crédito, la lista de
+                  // créditos, los pagos, el dashboard y la caja. Y la campanita, que avisa
+                  // los movimientos de caja en vivo.
+                  mutate();
+                  globalMutate(`/api/creditos/${creditoId}/cuotas`);
+                  globalMutate(KEYS.creditos); globalMutate(KEYS.pagos);
+                  globalMutate(KEYS.dashboard); globalMutate("/api/caja");
+                  refrescarNotificaciones();
+                  toast.success("Pago registrado");
+                }}
+              />
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={!!anularPago} onOpenChange={(o) => { if (!o) { setAnularPago(null); setAnularMotivo(""); } }}>
         <DialogContent className="w-[95vw] sm:max-w-md">
           <DialogHeader><DialogTitle>Anular pago</DialogTitle></DialogHeader>
@@ -740,7 +788,12 @@ export function ClienteDetail({
   );
 }
 
-function CreditosTabla({ creditos, mostrarProximo }: { creditos: CreditoConFinanzas[]; mostrarProximo?: boolean }) {
+function CreditosTabla({ creditos, mostrarProximo, onCobrar }: {
+  creditos: CreditoConFinanzas[];
+  mostrarProximo?: boolean;
+  /** Cobrar una cuota puntual. Sin handler, el plan queda de solo lectura. */
+  onCobrar?: (credito: CreditoConFinanzas, cuota: CuotaPersistida) => void;
+}) {
   const [abiertos, setAbiertos] = useState<Set<string>>(new Set());
   const [libreDeudaId, setLibreDeudaId] = useState<string | null>(null);
   const toggle = (id: string) =>
@@ -834,7 +887,7 @@ function CreditosTabla({ creditos, mostrarProximo }: { creditos: CreditoConFinan
                 {abierto && (
                   <tr>
                     <td colSpan={cols} className="border-b border-border/70 bg-muted/[0.03] p-0">
-                      <CuotasInline creditoId={c.id} creditoNumero={c.numero} creditoRefiNumero={c.refinancia_a_numero} />
+                      <CuotasInline credito={c} onCobrar={onCobrar} />
                     </td>
                   </tr>
                 )}
@@ -855,14 +908,34 @@ function FragmentRow({ children }: { children: React.ReactNode }) {
 }
 
 
-/** Plan de cuotas detallado de un crédito, embebido en la fila expandida. */
-function CuotasInline({ creditoId, creditoNumero, creditoRefiNumero }: { creditoId: string; creditoNumero: number | null | undefined; creditoRefiNumero?: number | null }) {
+/**
+ * Plan de cuotas detallado de un crédito, embebido en la fila expandida.
+ *
+ * 🔴 Es la MISMA tabla que la del Detalle del crédito, y tiene que leerse igual.
+ * Estaba a medias: sin la columna de MORA —o sea que la pantalla desde la que se cobra no
+ * mostraba los punitorios—, sin totales, y sobre todo sin la acción. Para cobrar una cuota
+ * había que salir de acá, apretar "Registrar pago", volver a elegir el crédito y volver a
+ * tildar la cuota que ya se estaba mirando. Ahora el botón verde está en su renglón, dice el
+ * importe exacto y abre el cobro con esa cuota puesta, igual que en Créditos.
+ */
+function CuotasInline({ credito, onCobrar }: {
+  credito: CreditoConFinanzas;
+  onCobrar?: (credito: CreditoConFinanzas, cuota: CuotaPersistida) => void;
+}) {
   // El recibo lo firma la FINANCIERA, no el sistema. Se resuelve acá porque este componente
   // es el dueño del botón; `useFinanciera` va contra la misma cache de SWR, no repite fetch.
   const { financiera } = useFinanciera();
   const marcaDoc = (financiera?.nombre ?? "").trim() || "CreditFlow";
+  const creditoId = credito.id;
+  const creditoNumero = credito.numero;
+  const creditoRefiNumero = credito.refinancia_a_numero;
   const { cuotas, resumen, meta, isLoading } = useCuotas(creditoId);
   const cliente = meta?.cliente ?? null;
+  // Mismo criterio que el Detalle del crédito: solo se cobra sobre un crédito VIVO con saldo.
+  const puedeCobrar = !!onCobrar && esCreditoVivo(credito.estado) && credito.saldo_pendiente > 0;
+  const moraTotal = cuotas.reduce((s, q) => s + (q.mora ?? 0), 0);
+  const aCobrarTotal =
+    Math.round(cuotas.reduce((s, q) => s + (q.estado === "pagada" ? 0 : q.total_cobrar ?? q.cuota_total), 0) * 100) / 100;
 
   if (isLoading) {
     return (
@@ -892,14 +965,19 @@ function CuotasInline({ creditoId, creditoNumero, creditoRefiNumero }: { credito
           <table className="w-full text-xs border-separate border-spacing-0">
             <thead className="sticky top-0 z-10">
               <tr className="bg-card">
+                {/* Encabezados todos grises: el color tiene que decir algo (Design Contract §4).
+                    Estaban en naranja y azul, así que la tabla competía consigo misma. */}
                 <th className="px-2 py-1.5 text-left  font-semibold text-muted-foreground border-b border-border w-8">#</th>
                 <th className="px-2 py-1.5 text-left  font-semibold text-muted-foreground border-b border-border">Venc.</th>
-                <th className="px-2 py-1.5 text-right font-semibold text-foreground          border-b border-border">Cuota</th>
-                <th className="px-2 py-1.5 text-right font-semibold text-warning          border-b border-border hidden sm:table-cell">Interés</th>
-                <th className="px-2 py-1.5 text-right font-semibold text-primary          border-b border-border">Capital</th>
+                <th className="px-2 py-1.5 text-right font-semibold text-muted-foreground border-b border-border">Cuota</th>
+                <th className="px-2 py-1.5 text-right font-semibold text-muted-foreground border-b border-border hidden sm:table-cell">Interés</th>
+                <th className="px-2 py-1.5 text-right font-semibold text-muted-foreground border-b border-border hidden sm:table-cell">Capital</th>
+                <th className="px-2 py-1.5 text-right font-semibold text-muted-foreground border-b border-border">Mora</th>
                 <th className="px-2 py-1.5 text-left  font-semibold text-muted-foreground border-b border-border">Estado</th>
                 <th className="px-2 py-1.5 text-left  font-semibold text-muted-foreground border-b border-border hidden md:table-cell">Pago</th>
-                <th className="px-2 py-1.5 text-right font-semibold text-muted-foreground border-b border-border pr-3">Recibo</th>
+                <th className="px-2 py-1.5 text-right font-semibold text-muted-foreground border-b border-border pr-3">
+                  {puedeCobrar ? "A cobrar" : "Recibo"}
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -912,13 +990,44 @@ function CuotasInline({ creditoId, creditoNumero, creditoRefiNumero }: { credito
                   <tr key={q.nro} className={i % 2 === 1 ? "bg-muted/5" : ""}>
                     <td className="px-2 py-1.5 font-mono text-muted-foreground/50 tabular-nums border-b border-border/30">{q.nro}</td>
                     <td className="px-2 py-1.5 text-muted-foreground tabular-nums border-b border-border/30">{fmtDate(q.fecha_vencimiento)}</td>
-                    <td className="px-2 py-1.5 text-right font-mono text-foreground tabular-nums border-b border-border/30">${n2(q.cuota_total)}</td>
-                    <td className="px-2 py-1.5 text-right font-mono text-warning tabular-nums border-b border-border/30 hidden sm:table-cell">${n2(q.interes)}</td>
-                    <td className="px-2 py-1.5 text-right font-mono text-primary tabular-nums border-b border-border/30">${n2(q.capital)}</td>
+                    <td className="px-2 py-1.5 text-right font-mono font-medium text-foreground tabular-nums border-b border-border/30">${n2(q.cuota_total)}</td>
+                    <td className="px-2 py-1.5 text-right font-mono text-muted-foreground tabular-nums border-b border-border/30 hidden sm:table-cell">${n2(q.interes)}</td>
+                    <td className="px-2 py-1.5 text-right font-mono text-muted-foreground tabular-nums border-b border-border/30 hidden sm:table-cell">${n2(q.capital)}</td>
+                    {/* La MORA faltaba entera: esta es la pantalla desde la que se cobra y los
+                        punitorios no se veían. Con los días al lado, que son los que la generan:
+                        el importe se puede verificar sin salir de la fila. */}
+                    <td className="px-2 py-1.5 text-right font-mono tabular-nums border-b border-border/30">
+                      {(q.mora ?? 0) > 0 ? (
+                        <span className="text-destructive">
+                          ${n2(q.mora ?? 0)}
+                          {(q.dias_atraso ?? 0) > 0 && (
+                            <span className="ml-1 font-sans text-[10px] font-normal text-destructive/60">
+                              {q.dias_atraso} {q.dias_atraso === 1 ? "día" : "días"}
+                            </span>
+                          )}
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground/20">—</span>
+                      )}
+                    </td>
                     <td className="px-2 py-1.5 border-b border-border/30"><StatusBadge label={bb.label} variant={bb.variant} /></td>
                     <td className="px-2 py-1.5 text-muted-foreground tabular-nums border-b border-border/30 hidden md:table-cell whitespace-nowrap">{ultimoPago ? formatFechaHora(ultimoPago) : <span className="text-muted-foreground/30">—</span>}</td>
+                    {/*
+                      Una sola columna para la acción del renglón: si la cuota se debe, el botón
+                      de cobrarla; si ya se pagó, su recibo. Son excluyentes —una cuota pagada no
+                      se cobra y una impaga no tiene recibo—, así que dos columnas dejarían la
+                      mitad de las celdas vacías en cualquier plan.
+                    */}
                     <td className="px-2 py-1.5 pr-3 text-right border-b border-border/30">
-                      {tieneRecibo ? (
+                      {q.estado !== "pagada" && puedeCobrar ? (
+                        <button
+                          onClick={() => onCobrar!(credito, q)}
+                          title={`Cobrar la cuota ${q.nro}`}
+                          className="inline-flex items-center justify-center rounded-lg bg-success px-3 py-1.5 font-mono tabular-nums text-[11px] font-semibold text-success-foreground transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-success/40"
+                        >
+                          ${n2(q.total_cobrar ?? q.cuota_total)}
+                        </button>
+                      ) : tieneRecibo ? (
                         <button
                           onClick={() => imprimirReciboCuota(q, { cliente, creditoNumero, creditoRefiNumero, marca: marcaDoc })}
                           title="Imprimir / reimprimir recibo de la cuota"
@@ -934,6 +1043,23 @@ function CuotasInline({ creditoId, creditoNumero, creditoRefiNumero }: { credito
                 );
               })}
             </tbody>
+            {/* Totales: la columna de la derecha es la única que dice cuánto debe el cliente
+                hoy, y era la que no tenía suma. Coincide con la deuda del Detalle del crédito
+                porque sale de las mismas cuotas. */}
+            <tfoot className="sticky bottom-0 z-10">
+              <tr className="bg-muted/40">
+                <td colSpan={2} className="px-2 py-1.5 text-[10px] font-bold uppercase tracking-widest text-muted-foreground border-t border-border">Totales</td>
+                <td className="px-2 py-1.5 text-right font-mono font-bold text-foreground tabular-nums border-t border-border">${n2(cuotas.reduce((a, q) => a + q.cuota_total, 0))}</td>
+                <td className="px-2 py-1.5 text-right font-mono font-bold text-muted-foreground tabular-nums border-t border-border hidden sm:table-cell">${n2(cuotas.reduce((a, q) => a + q.interes, 0))}</td>
+                <td className="px-2 py-1.5 text-right font-mono font-bold text-muted-foreground tabular-nums border-t border-border hidden sm:table-cell">${n2(cuotas.reduce((a, q) => a + q.capital, 0))}</td>
+                <td className="px-2 py-1.5 text-right font-mono font-bold tabular-nums border-t border-border">
+                  {moraTotal > 0 ? <span className="text-destructive">${n2(moraTotal)}</span> : <span className="text-muted-foreground/20">—</span>}
+                </td>
+                <td className="border-t border-border" />
+                <td className="border-t border-border hidden md:table-cell" />
+                <td className="px-2 py-1.5 pr-3 text-right font-mono font-bold text-foreground tabular-nums border-t border-border">${n2(aCobrarTotal)}</td>
+              </tr>
+            </tfoot>
           </table>
         </div>
       </div>
