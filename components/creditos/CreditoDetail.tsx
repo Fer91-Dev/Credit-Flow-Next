@@ -14,7 +14,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Field, Textarea } from "@/components/ui/field";
 import { useToast } from "@/components/ui/toast";
 import { useConfirm } from "@/components/ui/confirm";
-import { formatCreditoNumero, formatFecha, nombreCompleto } from "@/lib/utils";
+import { formatCreditoNumero, formatFecha, formatDias, nombreCompleto } from "@/lib/utils";
 import { Stat } from "@/components/ui/Stat";
 import { Skeleton } from "@/components/ui/skeleton";
 import { esCreditoVivo, montoEnPalabras } from "@/lib/domain";
@@ -116,8 +116,6 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
    *  mostrando dejó de existir o cambió de estado y esta copia quedó vieja. */
   onCerrar?: () => void;
 }) {
-  // Refinanciable = crédito activo y en mora (misma regla que el server exige para reestructurar).
-  const refinanciable = esCreditoVivo(credito.estado) && credito.dias_mora > 0;
   const { amortizacion } = useAmortizacion(credito.id);
   const { cuotas, resumen, isLoading: loadingCuotas } = useCuotas(credito.id);
   const { financiera } = useFinanciera(); // co-branding de lo que se imprime
@@ -150,8 +148,31 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
    */
   const deudaTotal = Math.round(cuotas.reduce((s, q) => s + (q.total_cobrar ?? q.cuota_total), 0) * 100) / 100;
   const unidadCuota = amortizacion?.parametros.frecuencia_label.cuotaSingular ?? "cuota";
-  const moraHoy = credito.dias_mora > 0 ? (credito.interes_mora ?? 0) : 0;
+  /**
+   * 🔴 LA MORA SALE DE LAS CUOTAS, NO DEL CRÉDITO QUE LLEGÓ POR PROP.
+   *
+   * `credito` es una FOTO: la lista guarda el crédito en estado local al abrir el diálogo y
+   * ese objeto no se rehace aunque la caché de `/api/creditos` se revalide. Las cuotas, en
+   * cambio, se vuelven a pedir. Al cobrar desde acá adentro el diálogo quedaba mitad fresco
+   * y mitad viejo, y el número que se rompía era el de plata:
+   *
+   *   Marina Sosa · CRD-000003 · pago de $150.000,00 (imputado $38.788,14 de mora)
+   *     el plan decía   cuota 1 · mora — · a cobrar $131.214,04   (correcto)
+   *     "A cobrar hoy"  decía  $170.002,18, con $38.788,14 de mora   (la que YA se cobró)
+   *
+   * O sea que la pantalla le pedía al operador que cobrara de nuevo una mora ya pagada.
+   *
+   * Ahora los dos números salen de `cuotas`, que es la misma fuente que pinta la columna
+   * "Mora" y los botones verdes del plan: no pueden discrepar ni quedarse viejos. La foto
+   * solo se usa mientras las cuotas todavía no llegaron, para no parpadear "al día".
+   */
+  const moraVivaVencida = cuotasVencidasArr.reduce((a, q) => a + (q.mora ?? 0), 0);
+  const diasMoraVivo = cuotasVencidasArr.reduce((m, q) => Math.max(m, q.dias_atraso ?? 0), 0);
+  const diasMora = loadingCuotas ? credito.dias_mora : diasMoraVivo;
+  const moraHoy = loadingCuotas ? (credito.dias_mora > 0 ? credito.interes_mora ?? 0 : 0) : moraVivaVencida;
   const aCobrarHoy = Math.round((vencidoImpago + moraHoy) * 100) / 100;
+  // Refinanciable = crédito activo y en mora (misma regla que el server exige para reestructurar).
+  const refinanciable = esCreditoVivo(credito.estado) && diasMora > 0;
   const { pagos, isLoading: loadingPagos } = usePagosByCredito(credito.id);
   // Trazabilidad de refinanciación: resuelve el N° del crédito vinculado (origen/destino)
   // desde la lista ya cargada, sin pedir nada extra al server.
@@ -305,7 +326,7 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
   /** Abre la terminal de cobro con el importe de ESA cuota ya cargado. */
   const cobrarCuota = (q: CuotaPersistida) => { setCuotaACobrar(q); setPagoOpen(true); };
 
-  const est = estadoBadge(credito.estado, credito.dias_mora);
+  const est = estadoBadge(credito.estado, diasMora);
   const totalCobrado = pagos.filter(p => !p.anulado).reduce((s, p) => s + p.monto, 0);
   const pagosVivos = pagos.filter(p => !p.anulado).length;
   const pagosAnulados = pagos.length - pagosVivos;
@@ -327,7 +348,7 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
    * Se espera a que carguen las cuotas: con la lista vacía, `cuotasVencidas` es 0 y el botón
    * aparecería un instante antes de esconderse.
    */
-  const puedeEliminar = !credito.tiene_pagos && !loadingCuotas && cuotasVencidas === 0 && credito.dias_mora === 0;
+  const puedeEliminar = !credito.tiene_pagos && !loadingCuotas && cuotasVencidas === 0 && diasMora === 0;
 
   /**
    * Reimprime el PDF "Plan de pagos", en cualquiera de sus dos vistas.
@@ -517,17 +538,17 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
             sub={`${pagosVivos} pago${pagosVivos !== 1 ? "s" : ""}${pagosAnulados > 0 ? ` · ${pagosAnulados} anulado${pagosAnulados !== 1 ? "s" : ""}` : ""}`} />
           <Stat
             icon="warning"
-            label={credito.dias_mora > 0 ? "En mora" : "Próximo pago"}
-            accent={credito.dias_mora > 30 ? "destructive" : credito.dias_mora > 0 ? "warning" : "muted"}
+            label={diasMora > 0 ? "En mora" : "Próximo pago"}
+            accent={diasMora > 30 ? "destructive" : diasMora > 0 ? "warning" : "muted"}
             // "41 días", no "41d": el usuario pidió la palabra entera — la abreviatura
             // obliga a traducirla mentalmente cada vez, y esta tarjeta es de las que se
             // miran de reojo.
             value={
-              credito.dias_mora > 0
-                ? `${credito.dias_mora} ${credito.dias_mora === 1 ? "día" : "días"}`
+              diasMora > 0
+                ? `${diasMora} ${diasMora === 1 ? "día" : "días"}`
                 : credito.proximo_pago ? fmtDate(credito.proximo_pago) : "—"
             }
-            sub={credito.dias_mora > 0 && credito.interes_mora ? `mora $${n2(credito.interes_mora)}` : undefined}
+            sub={diasMora > 0 && moraHoy > 0 ? `mora $${n2(moraHoy)}` : undefined}
           />
         </div>
       </div>
@@ -758,7 +779,7 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
                   {moraHoy > 0 && (
                     <tr>
                       <td className="px-4 py-1.5 font-sans text-muted-foreground">
-                        Mora <span className="text-muted-foreground/50">· {credito.dias_mora} d</span>
+                        Mora <span className="text-muted-foreground/50">· {formatDias(diasMora)}</span>
                       </td>
                       <td className="px-4 py-1.5 text-right text-destructive">${n2(moraHoy)}</td>
                     </tr>

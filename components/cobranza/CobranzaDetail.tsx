@@ -45,8 +45,6 @@ export function CobranzaDetail({ credito, acciones, onVerPromesa }: {
   /** Abre esa gestión en la pestaña Promesas. Sin handler, las gestiones no son clickeables. */
   onVerPromesa?: (accionId: string) => void;
 }) {
-  const sevVariant = credito.dias_mora > 30 ? "destructive" : "warning";
-  const sevLabel = credito.dias_mora > 30 ? "Crítica" : credito.dias_mora > 15 ? "Alta" : "Media";
   const { cuotas, meta, isLoading } = useCuotas(credito.id);
 
   const gestiones = acciones
@@ -61,6 +59,21 @@ export function CobranzaDetail({ credito, acciones, onVerPromesa }: {
   const capitalVencido = exigible - moraTotal;
   const acuerdo = meta?.acuerdo ?? null;
 
+  /**
+   * 🔴 Los días de atraso salen de las CUOTAS, no del `credito` que llegó por prop.
+   *
+   * `credito` es una foto que la lista guardó al abrir el diálogo y que no se rehace aunque
+   * la caché se revalide. Cobrando desde acá adentro, el badge seguía diciendo "18 días ·
+   * Alta" sobre un cliente que acababa de ponerse al día. Es el mismo defecto que en el
+   * Detalle del crédito, donde además rompía un número de plata.
+   *
+   * Mientras las cuotas no llegaron se usa la foto: mejor un dato viejo por un segundo que
+   * parpadear "al día" sobre un moroso.
+   */
+  const diasMora = isLoading ? credito.dias_mora : vencidas.reduce((m, c) => Math.max(m, c.dias_atraso ?? 0), 0);
+  const sevVariant = diasMora > 30 ? "destructive" : "warning";
+  const sevLabel = diasMora > 30 ? "Crítica" : diasMora > 15 ? "Alta" : "Media";
+
   return (
     <div className="space-y-5">
       {/* ── Encabezado ───────────────────────────────────────────────────── */}
@@ -73,7 +86,7 @@ export function CobranzaDetail({ credito, acciones, onVerPromesa }: {
             {credito.cliente.telefono && <> · {credito.cliente.telefono}</>}
           </p>
         </div>
-        <StatusBadge label={`${formatDias(credito.dias_mora)} · ${sevLabel}`} variant={sevVariant} />
+        <StatusBadge label={`${formatDias(diasMora)} · ${sevLabel}`} variant={sevVariant} />
       </div>
 
       {/* ── Lo que se reclama HOY ─────────────────────────────────────────── */}
