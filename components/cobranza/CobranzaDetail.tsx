@@ -1,6 +1,8 @@
 "use client";
 
-import { ShieldAlert, CalendarClock, HandCoins, Handshake, ChevronRight } from "lucide-react";
+import { ShieldAlert, CalendarClock, HandCoins, Handshake, ChevronRight, Printer } from "lucide-react";
+import { imprimirReciboCuota, pagadoDeCuota } from "@/lib/recibo-cuota";
+import { useFinanciera } from "@/lib/swr";
 import type { Credito, AccionCobranza } from "@/lib/swr";
 import { useCuotas } from "@/lib/swr";
 import { StatusBadge } from "@/components/ui/StatusBadge";
@@ -46,6 +48,8 @@ export function CobranzaDetail({ credito, acciones, onVerPromesa }: {
   onVerPromesa?: (accionId: string) => void;
 }) {
   const { cuotas, meta, isLoading } = useCuotas(credito.id);
+  // El recibo lleva la marca de la FINANCIERA; va contra la misma caché, no repite fetch.
+  const { financiera } = useFinanciera();
 
   const gestiones = acciones
     .filter((a) => a.credito_id === credito.id)
@@ -180,7 +184,14 @@ export function CobranzaDetail({ credito, acciones, onVerPromesa }: {
               <tbody>
                 {cuotas.map((c) => {
                   const atraso = c.dias_atraso ?? 0;
-                  const pagado = (c.pagado_capital ?? 0) + (c.pagado_interes ?? 0) + (c.pagado_cargos ?? 0);
+                  /**
+                   * 🔴 Con la MORA adentro. Sumaba capital + interés + cargos, así que un
+                   * cliente que entregó $150.000,00 —de los cuales $38.788,14 fueron
+                   * punitorios— figuraba habiendo pagado $111.211,86. La columna se llama
+                   * "Pagado": tiene que decir lo que el cliente puso, no la parte que fue a
+                   * la cuota. Es la misma cuenta que usa el recibo (`pagadoDeCuota`).
+                   */
+                  const pagado = pagadoDeCuota(c);
                   const vencida = atraso > 0 && (c.total_cobrar ?? 0) > 0;
                   return (
                     <tr key={c.nro} className={`border-b border-border/50 ${vencida ? "bg-destructive/5" : ""}`}>
@@ -195,8 +206,28 @@ export function CobranzaDetail({ credito, acciones, onVerPromesa }: {
                       </td>
                       <td className="py-2 px-2 text-muted-foreground tabular-nums whitespace-nowrap">{fmtDate(c.fecha_vencimiento)}</td>
                       <td className="py-2 px-2 text-right font-mono tabular-nums text-foreground">{formatMonto(c.cuota_total)}</td>
-                      <td className="py-2 px-2 text-right font-mono tabular-nums text-muted-foreground">
-                        {pagado > 0 ? formatMonto(pagado) : "—"}
+                      {/* Con su recibo, siempre que haya cobros. Mismo módulo que la ficha del
+                          cliente y el detalle del crédito: un solo papel para el mismo cobro. */}
+                      <td className="py-2 px-2 text-right whitespace-nowrap">
+                        {pagado > 0 ? (
+                          <div className="flex items-center justify-end gap-1.5">
+                            <span className="font-mono tabular-nums text-success">{formatMonto(pagado)}</span>
+                            <button
+                              onClick={() => imprimirReciboCuota(c, {
+                                cliente: nombreCompleto(credito.cliente),
+                                creditoNumero: credito.numero,
+                                creditoRefiNumero: credito.refinancia_a_numero,
+                                marca: (financiera?.nombre ?? "").trim() || "CreditFlow",
+                              })}
+                              title="Imprimir / reimprimir el recibo de esta cuota"
+                              className="shrink-0 rounded-md border border-border p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                            >
+                              <Printer className="h-3 w-3" />
+                            </button>
+                          </div>
+                        ) : (
+                          <span className="text-muted-foreground/30">—</span>
+                        )}
                       </td>
                       <td className="py-2 px-2 text-right font-mono tabular-nums text-destructive">
                         {(c.mora ?? 0) > 0 ? formatMonto(c.mora as number) : "—"}

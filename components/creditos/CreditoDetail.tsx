@@ -6,6 +6,7 @@ import { CalendarDays, Wallet, Info, ArrowUpRight, Receipt, Loader2, Printer, Re
 import { refrescarNotificaciones, useAmortizacion, useCuotas, usePagosByCredito, useCreditos, KEYS, type Credito, type EstadoCuota, type Pago, type CuotaPersistida, useFinanciera } from "@/lib/swr";
 import { type Role } from "@/lib/auth/roles";
 import { abrirRecibo } from "@/lib/recibo";
+import { imprimirReciboCuota, tienePagos, pagadoDeCuota } from "@/lib/recibo-cuota";
 import { imprimirPlanPagos } from "@/lib/plan-print";
 import { PagoForm } from "@/components/pagos/PagoForm";
 import { LibreDeudaDialog } from "./LibreDeudaDialog";
@@ -874,6 +875,10 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
                       { t: "Interés", a: "text-right", w: "hidden sm:table-cell" },
                       { t: "Capital", a: "text-right", w: "hidden sm:table-cell" },
                       { t: "Mora", a: "text-right" },
+                      // Lo que YA entró en cada cuota, con su recibo. El detalle del crédito
+                      // mostraba el plan pactado y la deuda, pero no lo cobrado: para saber si
+                      // una cuota tenía un pago parcial había que bajar al historial de pagos.
+                      { t: "Pagado", a: "text-right" },
                       { t: "Estado", a: "text-left" },
                       { t: "A cobrar", a: "text-right pr-4" },
                     ].map((h) => (
@@ -919,6 +924,30 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
                             <span className="text-muted-foreground/20">—</span>
                           )}
                         </td>
+                        {/* El recibo va SIEMPRE que haya cobros, no solo con la cuota saldada:
+                            una cuota pagada en parte ya tiene un comprobante que el cliente
+                            puede pedir. Mismo módulo que usa la ficha del cliente. */}
+                        <td className="px-3 py-2.5 text-right border-b border-border/70 whitespace-nowrap">
+                          {tienePagos(q) ? (
+                            <div className="flex items-center justify-end gap-1.5">
+                              <span className="font-mono tabular-nums text-success">${n2(pagadoDeCuota(q))}</span>
+                              <button
+                                onClick={() => imprimirReciboCuota(q, {
+                                  cliente: nombreCompleto(credito.cliente),
+                                  creditoNumero: credito.numero,
+                                  creditoRefiNumero: credito.refinancia_a_numero,
+                                  marca: (financiera?.nombre ?? "").trim() || "CreditFlow",
+                                })}
+                                title="Imprimir / reimprimir el recibo de esta cuota"
+                                className="shrink-0 rounded-md border border-border p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                              >
+                                <Printer className="h-3 w-3" />
+                              </button>
+                            </div>
+                          ) : (
+                            <span className="text-muted-foreground/20">—</span>
+                          )}
+                        </td>
                         <td className="px-3 py-2.5 border-b border-border/70"><StatusBadge label={b.label} variant={b.variant} /></td>
                         {/* Cobrar ESTA cuota. El botón dice el TOTAL a cobrar —cuota + mora—,
                             sin sufijos: el "+mora" que llevaba antes se leía como si al
@@ -947,6 +976,9 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
                     <td className="px-3 py-2.5 text-right font-mono font-bold text-muted-foreground border-t border-border hidden sm:table-cell">${n2(cuotas.reduce((s, q) => s + q.capital, 0))}</td>
                     <td className="px-3 py-2.5 text-right font-mono font-bold text-destructive border-t border-border">
                       {moraTotalPlan > 0 ? `$${n2(moraTotalPlan)}` : <span className="text-muted-foreground/20">—</span>}
+                    </td>
+                    <td className="px-3 py-2.5 text-right font-mono font-bold tabular-nums text-success border-t border-border">
+                      ${n2(cuotas.reduce((s, q) => s + pagadoDeCuota(q), 0))}
                     </td>
                     <td className="border-t border-border" />
                     {/* El total de la columna "A cobrar" faltaba: era la única con pie vacío,

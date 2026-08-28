@@ -24,6 +24,7 @@ import { EstadoClienteDialog } from "@/components/clientes/EstadoClienteDialog";
 import { NoContactarDialog } from "@/components/clientes/NoContactarDialog";
 import { ProntuarioPanel } from "@/components/clientes/ProntuarioPanel";
 import { abrirRecibo } from "@/lib/recibo";
+import { imprimirReciboCuota, tienePagos, pagadoDeCuota, ultimoPagoDeCuota } from "@/lib/recibo-cuota";
 import { formatCreditoNumero, formatFecha, formatFechaHora, nombreCompleto, hoyComercial, formatDias, formatMonto } from "@/lib/utils";
 import { esCreditoVivo, deudaEnRevision, normalizarEstadoCliente, ESTADO_CLIENTE_LABEL, ESTADO_CLIENTE_VARIANT } from "@/lib/domain";
 import type { Role } from "@/lib/auth/roles";
@@ -44,69 +45,7 @@ function n0(x: number) {
 }
 const fmtDate = (s?: string | null) => formatFecha(s);
 
-function escHtml(s: string) {
-  return s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c] ?? c));
-}
 
-/** Abre un recibo imprimible de una cuota (con los comprobantes que la imputaron) y lanza la impresión. */
-function imprimirReciboCuota(
-  cuota: CuotaPersistida,
-  // `marca` es el nombre de la FINANCIERA: es un papel que se lleva el cliente y tiene que
-  // llevar la marca de quien le presta, no la del sistema que emite el recibo.
-  ctx: { cliente: string | null; creditoNumero: number | null | undefined; creditoRefiNumero?: number | null; marca: string },
-) {
-  const marcaDoc = ctx.marca;
-  const comps = cuota.comprobantes ?? [];
-  const pagado = comps.reduce((s, c) => s + c.monto, 0);
-  const badge = CUOTA_BADGE[cuota.estado];
-  // Fecha y hora del último pago imputado a la cuota.
-  const ultimoPago = comps.reduce<string | null>((acc, c) => (acc && acc > c.fecha_hora ? acc : c.fecha_hora), null);
-  const filas: [string, string][] = [
-    ["Cliente", ctx.cliente ?? "—"],
-    ["Crédito", formatCreditoNumero(ctx.creditoNumero, ctx.creditoRefiNumero)],
-    ["Cuota N°", String(cuota.nro)],
-    ["Vencimiento", fmtDate(cuota.fecha_vencimiento)],
-    ["Pagado el", ultimoPago ? formatFechaHora(ultimoPago) : "—"],
-    ["Estado", badge.label],
-    ["Interés", `$${n2(cuota.interes)}`],
-    ["Capital", `$${n2(cuota.capital)}`],
-    ["Cuota total", `$${n2(cuota.cuota_total)}`],
-  ];
-  const win = window.open("", "_blank", "width=520,height=760");
-  if (!win) return;
-  const compRows = comps.length
-    ? comps.map((c) => `<tr><td class="k">${escHtml(c.comprobante ?? "—")}</td><td class="v">${escHtml(formatFechaHora(c.fecha_hora))} · $${escHtml(n2(c.monto))}</td></tr>`).join("")
-    : `<tr><td class="k">—</td><td class="v">Sin comprobantes</td></tr>`;
-  win.document.write(`<!doctype html><html lang="es"><head><meta charset="utf-8" />
-    <title>Recibo de cuota</title>
-    <style>
-      * { box-sizing: border-box; }
-      body { font-family: ui-sans-serif, system-ui, "Segoe UI", Arial, sans-serif; color: #0f172a; margin: 0; padding: 32px; }
-      .doc { max-width: 460px; margin: 0 auto; }
-      h1 { font-size: 16px; margin: 0; letter-spacing: .02em; }
-      .sub { color: #64748b; font-size: 12px; margin-top: 2px; }
-      .monto { font-size: 28px; font-weight: 700; font-variant-numeric: tabular-nums; margin: 20px 0; color: #15803d; }
-      table { width: 100%; border-collapse: collapse; font-size: 13px; }
-      td { padding: 8px 0; border-bottom: 1px solid #e2e8f0; vertical-align: top; }
-      td.k { color: #64748b; width: 42%; }
-      td.v { text-align: right; font-weight: 500; }
-      .sec { margin-top: 18px; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: #94a3b8; }
-      .ft { margin-top: 24px; color: #94a3b8; font-size: 11px; text-align: center; }
-      @media print { body { padding: 0; } }
-    </style></head><body><div class="doc">
-      <h1>${escHtml(marcaDoc)} · Recibo de cuota</h1>
-      <div class="sub">${escHtml(formatCreditoNumero(ctx.creditoNumero, ctx.creditoRefiNumero))} · Cuota N° ${cuota.nro}</div>
-      <div class="monto">$${escHtml(n2(pagado > 0 ? pagado : cuota.cuota_total))}</div>
-      <table>${filas.map(([k, v]) => `<tr><td class="k">${escHtml(k)}</td><td class="v">${escHtml(v)}</td></tr>`).join("")}</table>
-      <p class="sec">Comprobantes imputados</p>
-      <table>${compRows}</table>
-      <div class="ft">Generado el ${escHtml(formatFecha(new Date()))}</div>
-    </div>
-    <script>window.onload = function(){ window.print(); }</script>
-    </body></html>`);
-  win.document.close();
-  win.focus();
-}
 function edad(fechaNac?: string | null): string {
   if (!fechaNac) return "";
   const d = new Date(fechaNac);
@@ -979,7 +918,7 @@ function CuotasInline({ credito, onCobrar }: {
                 <th className="px-2 py-1.5 text-right font-semibold text-muted-foreground border-b border-border hidden sm:table-cell">Capital</th>
                 <th className="px-2 py-1.5 text-right font-semibold text-muted-foreground border-b border-border">Mora</th>
                 <th className="px-2 py-1.5 text-left  font-semibold text-muted-foreground border-b border-border">Estado</th>
-                <th className="px-2 py-1.5 text-left  font-semibold text-muted-foreground border-b border-border hidden md:table-cell">Pago</th>
+                <th className="px-2 py-1.5 text-right font-semibold text-muted-foreground border-b border-border">Pagado</th>
                 <th className="px-2 py-1.5 text-right font-semibold text-muted-foreground border-b border-border pr-3">
                   {puedeCobrar ? "A cobrar" : "Recibo"}
                 </th>
@@ -988,9 +927,9 @@ function CuotasInline({ credito, onCobrar }: {
             <tbody>
               {cuotas.map((q, i) => {
                 const bb = CUOTA_BADGE[q.estado];
-                const comps = q.comprobantes ?? [];
-                const tieneRecibo = comps.length > 0;
-                const ultimoPago = comps.reduce<string | null>((acc, c) => (acc && acc > c.fecha_hora ? acc : c.fecha_hora), null);
+                const conPagos = tienePagos(q);
+                const pagadoCuota = pagadoDeCuota(q);
+                const ultimoPago = ultimoPagoDeCuota(q);
                 return (
                   <tr key={q.nro} className={i % 2 === 1 ? "bg-muted/5" : ""}>
                     <td className="px-2 py-1.5 font-mono text-muted-foreground/50 tabular-nums border-b border-border/30">{q.nro}</td>
@@ -1016,13 +955,41 @@ function CuotasInline({ credito, onCobrar }: {
                       )}
                     </td>
                     <td className="px-2 py-1.5 border-b border-border/30"><StatusBadge label={bb.label} variant={bb.variant} /></td>
-                    <td className="px-2 py-1.5 text-muted-foreground tabular-nums border-b border-border/30 hidden md:table-cell whitespace-nowrap">{ultimoPago ? formatFechaHora(ultimoPago) : <span className="text-muted-foreground/30">—</span>}</td>
                     {/*
-                      Una sola columna para la acción del renglón: si la cuota se debe, el botón
-                      de cobrarla; si ya se pagó, su recibo. Son excluyentes —una cuota pagada no
-                      se cobra y una impaga no tiene recibo—, así que dos columnas dejarían la
-                      mitad de las celdas vacías en cualquier plan.
+                      CUÁNTO entró en esta cuota, no solo cuándo. Decía "28/08/2026, 09:02" y
+                      había que ir al historial de pagos a averiguar de cuánto fue: en la
+                      cuota 1 de Marina entraron $150.000,00 y quedaron $131.214,04, y esos dos
+                      números tienen que leerse en el mismo renglón.
+
+                      Y el RECIBO va acá, junto al importe, siempre que haya cobros. Antes
+                      compartía columna con el botón verde asumiendo que eran excluyentes —una
+                      cuota pagada no se cobra—, pero una cuota pagada EN PARTE es las dos
+                      cosas: se le sigue cobrando y ya tiene un comprobante que el cliente
+                      puede pedir.
                     */}
+                    <td className="px-2 py-1.5 text-right border-b border-border/30 whitespace-nowrap">
+                      {conPagos ? (
+                        <div className="flex items-center justify-end gap-1.5">
+                          <span className="text-right">
+                            <span className="block font-mono tabular-nums text-success">{formatMonto(pagadoCuota)}</span>
+                            {ultimoPago && (
+                              <span className="block text-[10px] tabular-nums text-muted-foreground">{formatFechaHora(ultimoPago)}</span>
+                            )}
+                          </span>
+                          <button
+                            onClick={() => imprimirReciboCuota(q, { cliente, creditoNumero, creditoRefiNumero, marca: marcaDoc })}
+                            title="Imprimir / reimprimir el recibo de esta cuota"
+                            className="shrink-0 rounded-md border border-border p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                          >
+                            <Printer className="h-3 w-3" />
+                          </button>
+                        </div>
+                      ) : (
+                        <span className="text-muted-foreground/30">—</span>
+                      )}
+                    </td>
+                    {/* La acción de cobrar. El recibo ya no comparte esta celda: vive en
+                        "Pagado", que es donde está el cobro al que corresponde. */}
                     <td className="px-2 py-1.5 pr-3 text-right border-b border-border/30">
                       {q.estado !== "pagada" && puedeCobrar ? (
                         <button
@@ -1031,14 +998,6 @@ function CuotasInline({ credito, onCobrar }: {
                           className="inline-flex items-center justify-center rounded-lg bg-success px-3 py-1.5 font-mono tabular-nums text-[11px] font-semibold text-success-foreground transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-success/40"
                         >
                           ${n2(q.total_cobrar ?? q.cuota_total)}
-                        </button>
-                      ) : tieneRecibo ? (
-                        <button
-                          onClick={() => imprimirReciboCuota(q, { cliente, creditoNumero, creditoRefiNumero, marca: marcaDoc })}
-                          title="Imprimir / reimprimir recibo de la cuota"
-                          className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                        >
-                          <Printer className="h-3 w-3" /> Recibo
                         </button>
                       ) : (
                         <span className="text-muted-foreground/30">—</span>
@@ -1061,7 +1020,7 @@ function CuotasInline({ credito, onCobrar }: {
                   {moraTotal > 0 ? <span className="text-destructive">${n2(moraTotal)}</span> : <span className="text-muted-foreground/20">—</span>}
                 </td>
                 <td className="border-t border-border" />
-                <td className="border-t border-border hidden md:table-cell" />
+                <td className="px-2 py-1.5 text-right font-mono font-bold tabular-nums text-success border-t border-border">${n2(cuotas.reduce((a, q) => a + pagadoDeCuota(q), 0))}</td>
                 <td className="px-2 py-1.5 pr-3 text-right font-mono font-bold text-foreground tabular-nums border-t border-border">${n2(aCobrarTotal)}</td>
               </tr>
             </tfoot>
