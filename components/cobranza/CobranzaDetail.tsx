@@ -266,10 +266,18 @@ export function CobranzaDetail({ credito, acciones, onVerPromesa }: {
                     <span>
                       Prometió {g.promesa_monto ? <span className="font-mono tabular-nums font-semibold">{formatMonto(g.promesa_monto)}</span> : "pagar"}
                       {g.promesa_fecha && <> para el {fmtDate(g.promesa_fecha)}</>}
-                      {/* Qué parte de lo vencido cubre: es lo que decide si la promesa sirve. */}
+                      {/* Qué parte de lo vencido cubre —es lo que decide si la promesa sirve— y
+                          cuánto va a QUEDAR debiendo si cumple, que es lo que decide si hay que
+                          volver a llamarlo. Mismo texto que el modal de la promesa: son la
+                          misma frase en dos pantallas y tienen que decir lo mismo. */}
                       {g.promesa_monto && exigible > 0 && (
                         <span className="text-muted-foreground">
                           {" "}— cubre el {Math.round((g.promesa_monto / exigible) * 100)}% de lo vencido
+                          {exigible - g.promesa_monto > 0 && (
+                            <> — quedan{" "}
+                              <span className="font-mono tabular-nums">{formatMonto(exigible - g.promesa_monto)}</span>
+                            </>
+                          )}
                         </span>
                       )}
                     </span>

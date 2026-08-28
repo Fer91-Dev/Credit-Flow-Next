@@ -182,6 +182,8 @@ function PromesaDetalle({ promesa, historial, onClose }: {
             promesa.promesa_monto && exigible > 0
               ? Math.round((promesa.promesa_monto / exigible) * 100)
               : null;
+          /** Lo vencido que seguiría impago si cumple exactamente lo prometido. */
+          const restoTrasPromesa = Math.max(0, exigible - (promesa.promesa_monto ?? 0));
           const previas = historial.filter((h) => h.id !== promesa.id);
           const cumplidas = previas.filter((h) => h.promesa_estado === "cumplida").length;
           const rotas = previas.filter((h) => h.promesa_estado === "incumplida").length;
@@ -211,7 +213,13 @@ function PromesaDetalle({ promesa, historial, onClose }: {
                       [
                         "Monto prometido",
                         promesa.promesa_monto
-                          ? `${formatMonto(promesa.promesa_monto)}${cubrePct != null ? ` · cubre el ${cubrePct}% de lo vencido` : ""}`
+                          ? `${formatMonto(promesa.promesa_monto)}` +
+                            (cubrePct != null ? ` · cubre el ${cubrePct}% de lo vencido` : "") +
+                            // Lo que va a QUEDAR debiendo si cumple. Es el número que decide si
+                            // hay que volver a llamarla el día después, y había que restarlo de
+                            // cabeza. Solo si sobra deuda: con la promesa cubierta, un
+                            // "quedan $0,00" es ruido.
+                            (restoTrasPromesa > 0 ? ` — quedan ${formatMonto(restoTrasPromesa)}` : "")
                           : "—",
                       ],
                       ["Se pactó el", formatFechaHora(promesa.created_at)],
