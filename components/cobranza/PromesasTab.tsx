@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import useSWR, { mutate } from "swr";
-import { HandshakeIcon, Ban } from "lucide-react";
+import { HandshakeIcon, Ban, ChevronDown } from "lucide-react";
 import { formatMonto, formatFecha, formatFechaHora, formatCreditoNumero, nombreCompleto, hoyComercial, cuandoVence, formatDias, diaAR } from "@/lib/utils";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Emoji } from "@/components/ui/Emoji";
@@ -87,6 +87,31 @@ function PromesaDetalle({ promesa, historial, onClose }: {
   const vencidas = cuotas.filter((c) => (c.dias_atraso ?? 0) > 0 && (c.total_cobrar ?? 0) > 0);
   const exigible = vencidas.reduce((acc, c) => acc + (c.total_cobrar ?? 0), 0);
   const moraTotal = vencidas.reduce((acc, c) => acc + (c.mora ?? 0), 0);
+  /**
+   * Totales del PLAN ENTERO (no solo lo vencido): es lo que suma la tabla de abajo.
+   * Distinto de `exigible` a propósito — ese es lo que se reclama hoy, esto es todo lo que
+   * el cliente tiene que terminar de pagar por este crédito.
+   */
+  const moraTodas = cuotas.reduce((acc, c) => acc + (c.mora ?? 0), 0);
+  const aCobrarTodas = cuotas.reduce((acc, c) => acc + (c.total_cobrar ?? 0), 0);
+
+  /**
+   * ¿Queda contenido abajo? Es lo que enciende el degradado del pie.
+   *
+   * Se recalcula al scrollear y cada vez que cambia lo que hay adentro (abrir otra promesa,
+   * o que lleguen las cuotas): si solo se midiera al montar, un diálogo que arranca corto y
+   * después crece —justo lo que pasa cuando llega el cronograma— nunca mostraría el aviso.
+   */
+  const cuerpoRef = useRef<HTMLDivElement | null>(null);
+  const [hayMas, setHayMas] = useState(false);
+  const medir = () => {
+    const el = cuerpoRef.current;
+    if (!el) return;
+    // 8px de tolerancia: el scroll no siempre llega al pixel exacto del final.
+    setHayMas(el.scrollHeight - el.scrollTop - el.clientHeight > 8);
+  };
+  const alScrollear = () => medir();
+  useEffect(() => { medir(); }, [promesa?.id, cuotas.length, cargandoCuotas]);
 
   return (
     <Dialog open={!!promesa} onOpenChange={(o) => { if (!o) onClose(); }}>
@@ -106,8 +131,16 @@ function PromesaDetalle({ promesa, historial, onClose }: {
           </div>
         </DialogHeader>
 
-        {/* El cuerpo scrollea solo: el header y el botón de cerrar quedan siempre visibles. */}
-        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
+        {/*
+          El cuerpo scrollea solo: el header y el botón de cerrar quedan siempre visibles.
+
+          🔴 Y AVISA QUE SIGUE. El contenido no entra en la ventana, así que el último bloque
+          visible quedaba cortado al ras del borde y se leía como que el diálogo terminaba ahí
+          —"se corta en Nota de la gestión"—. Un degradado al pie, que desaparece al llegar al
+          final, dice que hay más sin ocupar lugar ni pedir un scroll con la rueda a ciegas.
+        */}
+        <div className="relative flex-1 min-h-0">
+        <div ref={cuerpoRef} onScroll={alScrollear} className="h-full overflow-y-auto overscroll-contain pb-2">
         {promesa && (() => {
           /**
            * Cómo se pactó, no solo cuánto.
@@ -258,6 +291,29 @@ function PromesaDetalle({ promesa, historial, onClose }: {
                           );
                         })}
                       </tbody>
+                      {/*
+                        TOTALES. La columna "A cobrar" era la única que importaba y la única
+                        sin suma: para saber cuánto hay que cobrarle en total al cliente había
+                        que sumar cinco renglones a mano. El total incluye las cuotas futuras
+                        —es la columna entera—, así que no es lo mismo que "Vencido a hoy" de
+                        arriba, que es solo lo exigible.
+                      */}
+                      <tfoot>
+                        <tr className="border-t border-border bg-muted/30">
+                          <td className="py-2 px-3 text-[10px] font-bold uppercase tracking-widest text-muted-foreground" colSpan={2}>
+                            Totales
+                          </td>
+                          <td className="py-2 px-2 text-right font-mono font-bold tabular-nums text-foreground">
+                            {formatMonto(cuotas.reduce((a, c) => a + c.cuota_total, 0))}
+                          </td>
+                          <td className="py-2 px-2 text-right font-mono font-bold tabular-nums text-destructive">
+                            {moraTodas > 0 ? formatMonto(moraTodas) : "—"}
+                          </td>
+                          <td className="py-2 px-3 text-right font-mono font-bold tabular-nums text-foreground">
+                            {formatMonto(aCobrarTodas)}
+                          </td>
+                        </tr>
+                      </tfoot>
                     </table>
                   </div>
                 )}
@@ -310,6 +366,12 @@ function PromesaDetalle({ promesa, historial, onClose }: {
             </div>
           );
         })()}
+        </div>
+        {hayMas && (
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 flex h-12 items-end justify-center bg-gradient-to-t from-card via-card/80 to-transparent">
+            <ChevronDown className="mb-0.5 h-4 w-4 animate-bounce text-muted-foreground/70" />
+          </div>
+        )}
         </div>
       </DialogContent>
     </Dialog>
