@@ -242,8 +242,15 @@ function CreditoSeleccionado({ c, onCambiar }: { c: Credito; onCambiar?: () => v
             <StatusBadge label={est.label} variant={est.variant} />
           </div>
           <p className="truncate text-xs text-muted-foreground">{nombreCompleto(c.cliente)}</p>
+          {/*
+            🔴 "Capital pendiente", no "Saldo pendiente". Ese campo es SOLO el capital que
+            falta devolver: en CRD-000005 dice $700.000,00 mientras el cliente debe
+            $1.909.817,50 contando interés y punitorios. Llamarlo "saldo" al lado de una tabla
+            que cobra otra cosa es exactamente cómo nace un reclamo de mostrador. Mismo
+            criterio que ya se aplicó en el recibo en PDF.
+          */}
           <div className="flex items-baseline gap-1.5">
-            <span className="text-[10px] uppercase tracking-wide text-muted-foreground/70">Saldo pendiente</span>
+            <span className="text-[10px] uppercase tracking-wide text-muted-foreground/70">Capital pendiente</span>
             <span className="font-mono text-sm font-bold text-foreground tabular-nums">${fmt(c.saldo_pendiente)}</span>
           </div>
         </div>
@@ -701,6 +708,47 @@ export function PagoForm({ creditoId, clienteId, montoSugerido, motivoSugerido, 
               acuerdo, de <strong className="font-mono text-foreground">${fmt2(acuerdo.proxima.pendiente)}</strong>, con vencimiento el {fmtDate(acuerdo.proxima.vencimiento)}.
               {acuerdo.congela_punitorios && " Mientras cumpla no se le devengan punitorios."}
             </p>
+
+            {/*
+              🔴 DE QUÉ SE COMPONE EL ACUERDO. Decía "cobrá $614.546,29" y nada más: no se veía
+              que las 3 cuotas suman $1.843.638,87 sobre una deuda consolidada de $1.129.238,10,
+              o sea $714.400,77 de interés del acuerdo. Es el número que el cliente va a
+              preguntar en el mostrador —"¿por qué termino pagando esto?"— y quien cobra tenía
+              que salir a buscarlo a otra pantalla.
+
+              El interés no es un error: refinanciar a plazo tiene precio y sale de la tasa
+              configurada (o de la del propio crédito si no se fijó una). Pero tiene que estar
+              a la vista de los dos lados del mostrador.
+            */}
+            {acuerdo.deuda_original != null && (() => {
+              const interes = round2(acuerdo.monto_acordado - acuerdo.deuda_original + (acuerdo.quita ?? 0));
+              return (
+                <div className="mt-2 space-y-0.5 border-t border-primary/20 pt-2 font-mono text-[11px] tabular-nums">
+                  <div className="flex justify-between gap-3">
+                    <span className="font-sans text-muted-foreground">Deuda vencida al acordar</span>
+                    <span className="text-foreground">${fmt2(acuerdo.deuda_original)}</span>
+                  </div>
+                  {(acuerdo.quita ?? 0) > 0 && (
+                    <div className="flex justify-between gap-3">
+                      <span className="font-sans text-muted-foreground">Descuento otorgado</span>
+                      <span className="text-success">− ${fmt2(acuerdo.quita ?? 0)}</span>
+                    </div>
+                  )}
+                  {interes > 0 && (
+                    <div className="flex justify-between gap-3">
+                      <span className="font-sans text-muted-foreground">Interés del acuerdo</span>
+                      <span className="text-warning">+ ${fmt2(interes)}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between gap-3 border-t border-primary/20 pt-1">
+                    <span className="font-sans font-semibold text-foreground">
+                      Total del acuerdo · {acuerdo.total_cuotas} cuota{acuerdo.total_cuotas === 1 ? "" : "s"}
+                    </span>
+                    <span className="font-bold text-foreground">${fmt2(acuerdo.monto_acordado)}</span>
+                  </div>
+                </div>
+              );
+            })()}
             <button
               type="button"
               onClick={() => { setManual(true); setMontoManual(maskMontoInput(String(acuerdo.proxima!.pendiente).replace(".", ","))); }}
