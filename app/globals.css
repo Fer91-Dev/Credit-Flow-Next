@@ -299,6 +299,36 @@ summary:focus-visible,
 }
 .animate-pulse-ring { animation: pulse-ring 1.5s ease-in-out infinite; }
 
+/* Brillo que recorre una barra de avance. Marca que el dato está VIVO — el panel se
+   refresca solo y sin esto no se distingue una barra que se movió de una que no. */
+@keyframes brillo-barra {
+  0%   { transform: translateX(-120%); }
+  60%  { transform: translateX(400%); }
+  100% { transform: translateX(400%); }
+}
+.animate-brillo-barra { animation: brillo-barra 2.8s ease-in-out infinite; }
+
+/* Entrada escalonada de las tarjetas del panel. La demora la pone cada tarjeta con
+   `animation-delay` en línea, así el Home se arma de arriba a abajo en vez de aparecer
+   entero de golpe. */
+@keyframes entrada-tarjeta {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.animate-entrada { animation: entrada-tarjeta 0.45s cubic-bezier(0.22, 1, 0.36, 1) both; }
+
+/* Punto "en vivo": el latido del panel. Dos capas — el punto fijo y un anillo que se expande
+   y se desvanece, como el indicador de grabación de una cámara. */
+@keyframes latido-vivo {
+  0%   { transform: scale(0.8); opacity: 0.7; }
+  70%  { transform: scale(2.2); opacity: 0; }
+  100% { transform: scale(2.2); opacity: 0; }
+}
+.animate-latido-vivo { animation: latido-vivo 2s ease-out infinite; }
+
 @media (prefers-reduced-motion: reduce) {
-  .animate-heartbeat, .animate-pulse-ring { animation: none; }
+  .animate-heartbeat, .animate-pulse-ring,
+  .animate-brillo-barra, .animate-entrada, .animate-latido-vivo { animation: none; }
+  /* Sin la entrada animada la tarjeta tiene que quedar VISIBLE, no en su estado inicial. */
+  .animate-entrada { opacity: 1; transform: none; }
 }

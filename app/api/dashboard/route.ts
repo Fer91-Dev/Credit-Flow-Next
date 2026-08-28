@@ -52,7 +52,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   // El desglose por vendedor (rendimiento + morosidad) es solo para admin.
   const esAdmin = role === "admin";
 
-  const [clientes, creditos, pagosTotal, cuotasPeriodo, personal] = await Promise.all([
+  const [clientes, creditos, pagosTotal, cuotasPeriodo, cuotasVivas, pagosHoy, personal] = await Promise.all([
     // Clientes activos (filtra por zona si corresponde)
     prisma.clientes.count({
       where: { ...withTenant(tenantId), estado: { in: [...ESTADOS_VIVOS] }, ...(zona ? { zona } : {}) },
@@ -84,14 +84,46 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
       _count: true,
     }),
 
-    // Cuotas que vencen en el período (esperado vs cobrado)
+    // Cuotas que vencen en el período (esperado vs cobrado).
+    // Trae el vendedor del crédito: es lo que permite abrir el avance de cobranzas POR
+    // vendedor sin una segunda consulta. El período es un mes, no una tabla entera.
     prisma.cuotas.findMany({
       where: {
         ...withTenant(tenantId),
         fecha_vencimiento: { gte: desde, lte: hasta },
         ...(tieneFiltroCredito ? { credito: creditoRel as never } : {}),
       },
+      select: { cuota_total: true, pagado: true, credito: { select: { vendedor_id: true, estado: true } } },
+    }),
+
+    /**
+     * LO QUE FALTA COBRAR de todos los créditos VIVOS: capital + interés + cargos que
+     * todavía no entraron. Es el complemento de "capital en la calle": la calle dice cuánta
+     * plata salió y no volvió, esto dice cuánta va a volver si todos pagan.
+     *
+     * No incluye punitorios: la mora se devenga día a día y ya tiene su propio bloque
+     * ("Exposición en mora"). Meterla acá haría que el número se moviera solo cada noche sin
+     * que nadie hubiera prestado ni cobrado nada.
+     */
+    prisma.cuotas.findMany({
+      where: {
+        ...withTenant(tenantId),
+        credito: { ...creditoRel, estado: { in: [...ESTADOS_VIVOS] } } as never,
+      },
       select: { cuota_total: true, pagado: true },
+    }),
+
+    // Movimiento de HOY (día comercial argentino): lo que entró y lo que se colocó.
+    // Es el pulso que Silvio mira en vivo; sale de los mismos libros que todo lo demás.
+    prisma.pagos.aggregate({
+      where: {
+        ...withTenant(tenantId),
+        anulado: false,
+        fecha: { gte: hoyComercial() },
+        ...(tieneFiltroCredito ? { credito: creditoRel as never } : {}),
+      },
+      _sum: { monto: true },
+      _count: true,
     }),
 
     // Personal del tenant (solo admin; sirve para nombrar el desglose por vendedor)
@@ -137,6 +169,12 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     0
   );
 
+  /**
+   * Lo que falta cobrar de los créditos vivos. `Math.max(0, …)` porque un cobro con excedente
+   * deja `pagado` por encima de la cuota y, sin el corte, esa cuota restaría del total.
+   */
+  const aCobrarTotal = cuotasVivas.reduce((s, c) => s + Math.max(0, c.cuota_total - c.pagado), 0);
+
   const montosMora = {
     total_mora: creditosDM
       .filter((c) => c.dias_mora > 0)
@@ -171,8 +209,21 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
         const enMora = lista
           .filter((c) => c.dias_mora > 0)
           .reduce((s, c) => s + c.saldo_pendiente, 0);
+        /**
+         * Avance de cobranzas DE ESTE VENDEDOR en el período: de lo que le vencía, cuánto
+         * entró. Es la pregunta que el Home contestaba solo para la financiera entera, así
+         * que no se podía saber quién estaba tirando del número y quién lo estaba hundiendo.
+         */
+        const cuotasSuyas = cuotasPeriodo.filter(
+          (q) => (q.credito?.vendedor_id ?? SIN_ASIGNAR) === key,
+        );
+        const espera = cuotasSuyas.reduce((s, q) => s + q.cuota_total, 0);
+        const cobro = cuotasSuyas.reduce((s, q) => s + Math.min(q.pagado, q.cuota_total), 0);
         return {
           vendedor_id: key === SIN_ASIGNAR ? null : key,
+          cobranza_esperado: espera,
+          cobranza_cobrado: cobro,
+          cobranza_avance_pct: espera > 0 ? Math.round((cobro / espera) * 100) : 0,
           // El nombre de la financiera y no "Sin asignar": desde que el dueño puede otorgar
           // sin elegir vendedor, esa fila es su operación propia, no un dato que falta.
           nombre: key === SIN_ASIGNAR ? nombreCasa : nombrePorId.get(key) ?? "—",
@@ -198,7 +249,19 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
       creditos_activos: creditosActivos,
       creditos_pagados: creditosPagados,
       cartera_total: carteraTotal,
+      /**
+       * DINERO EN LA CALLE: el capital que salió y todavía no volvió. Es el mismo número que
+       * `cartera_total` —se expone con el nombre que usa el prestamista, no el contable— y el
+       * mismo que el gráfico llama "Circulación".
+       */
+      capital_en_calle: carteraTotal,
+      /** Lo que falta cobrar de los créditos vivos (capital + interés + cargos, sin mora). */
+      a_cobrar_total: aCobrarTotal,
       mora_critica_count: moraCritica,
+    },
+    hoy: {
+      cobrado: pagosHoy._sum.monto ?? 0,
+      cobros: pagosHoy._count,
     },
     mora: {
       detalle: detalleMotaAlerta,
@@ -220,6 +283,9 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
 type PorVendedor = {
   vendedor_id: string | null;
   nombre: string;
+  cobranza_esperado: number;
+  cobranza_cobrado: number;
+  cobranza_avance_pct: number;
   creditos_otorgados: number;
   monto_otorgado: number;
   cartera: number;

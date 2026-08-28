@@ -1,13 +1,15 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { Role } from "@prisma/client";
 import { CalendarDays, MapPin, UserCog, Target, Trophy, Users2, AlertTriangle, Percent, ShieldCheck, Sparkles, PhoneCall } from "lucide-react";
 import { useZonas, useVendedores, useDashboard, useMiPerfilVendedor, useMisLogros, useReporteCobranza, useMisLiquidaciones, type DashboardFiltros, type VendedorRendimiento, type MiPerfilVendedor } from "@/lib/swr";
 import { LiquidacionesLista } from "@/components/comisiones/LiquidacionesLista";
 import { FiltrosPanel, FiltroChip } from "@/components/ui/FiltrosPanel";
 import { IconBadge } from "@/components/ui/IconBadge";
-import { DashboardKpis, DashboardCobranzaAvance, DashboardMoraGrid, DashboardKpisSkeleton } from "./DashboardMetrics";
+import { DashboardKpis, DashboardCobranzaAvance, DashboardMoraGrid, DashboardKpisSkeleton, PulsoDelDia } from "./DashboardMetrics";
+import { BarraAvance } from "@/components/ui/NumeroAnimado";
+import { formatMonto } from "@/lib/utils";
 import { MetricChart } from "./MetricChart";
 import { CobranzaDelDia } from "./CobranzaDelDia";
 import { CotizacionDolar } from "./CotizacionDolar";
@@ -46,7 +48,29 @@ export function HomeView({ role }: { role: Role }) {
     zona: zona || undefined,
   }), [desde, hasta, vendedorId, zona, esAdmin]);
 
-  const { data, error, isLoading } = useDashboard(filtros);
+  const { data, error, isLoading, mutate } = useDashboard(filtros);
+
+  /**
+   * EL PANEL SE REFRESCA SOLO.
+   *
+   * Silvio lo deja abierto todo el día y tiene que ver el movimiento sin apretar F5. Va cada
+   * 90 segundos, y **solo con la pestaña visible**: en Vercel el recurso escaso es el CPU, y
+   * lo que lo consume es el polleo, no los endpoints (ver la crisis de cuota de agosto). Un
+   * panel olvidado en una pestaña de atrás no puede seguir gastando.
+   *
+   * `revalidateOnFocus` cubre el resto: al volver a la pestaña, el dato se pone al día en el
+   * acto sin haber consultado ni una vez mientras no se lo miraba.
+   */
+  const [actualizado, setActualizado] = useState<Date | null>(null);
+  useEffect(() => {
+    setActualizado(new Date());
+  }, [data]);
+  useEffect(() => {
+    const tick = () => { if (document.visibilityState === "visible") mutate(); };
+    const id = setInterval(tick, 90_000);
+    document.addEventListener("visibilitychange", tick);
+    return () => { clearInterval(id); document.removeEventListener("visibilitychange", tick); };
+  }, [mutate]);
 
   const limpiar = () => { setDesde(""); setHasta(""); setVendedorId(""); setZona(""); };
 
@@ -74,6 +98,8 @@ export function HomeView({ role }: { role: Role }) {
         </div>
       ) : (
         <>
+          {/* El pulso del día va PRIMERO: es lo único que cambia mientras el panel está abierto. */}
+          <PulsoDelDia data={data} actualizado={actualizado} />
           <DashboardKpis data={data} />
           <DashboardCobranzaAvance data={data} />
         </>
@@ -177,6 +203,54 @@ function RendimientoVendedores({ filas }: { filas: VendedorRendimiento[] }) {
         <h3 className="text-sm font-semibold text-foreground">Rendimiento por vendedor</h3>
       </div>
 
+      {/*
+        🔴 AVANCE DE COBRANZAS DE CADA UNO — lo que el panel no contestaba.
+        El avance del período estaba solo consolidado, así que se veía que la financiera iba
+        al 20% y no quién la estaba tirando para arriba y quién para abajo. Va ARRIBA de la
+        tabla y como barra, no como una columna más de números: es lo que se mira primero.
+        Ordenado por lo que falta cobrar, no por porcentaje — el que debe $1.900.000 al 3%
+        importa más que el que debe $40.000 al 10%.
+      */}
+      <div className="mb-5 space-y-3">
+        <div className="flex items-baseline justify-between gap-3">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+            Avance de cobranzas del período
+          </p>
+          <p className="text-[11px] text-muted-foreground">
+            de lo que vencía, cuánto entró
+          </p>
+        </div>
+        {[...filas]
+          .sort((a, b) => (b.cobranza_esperado - b.cobranza_cobrado) - (a.cobranza_esperado - a.cobranza_cobrado))
+          .map((v, i) => {
+            const pct = v.cobranza_avance_pct ?? 0;
+            const falta = Math.max(0, (v.cobranza_esperado ?? 0) - (v.cobranza_cobrado ?? 0));
+            // El tono sale del avance, no de un umbral inventado: 100% cerrado, 60%+ en curso.
+            const tono = pct >= 100 ? "success" : pct >= 60 ? "primary" : pct > 0 ? "warning" : "destructive";
+            const textoTono =
+              tono === "success" ? "text-success" : tono === "primary" ? "text-primary"
+              : tono === "warning" ? "text-warning" : "text-destructive";
+            return (
+              <div key={v.vendedor_id ?? "sin"} className="animate-entrada space-y-1.5" style={{ animationDelay: `${i * 80}ms` }}>
+                <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
+                  <span className="text-sm font-medium text-foreground">{v.nombre}</span>
+                  <span className="font-mono text-xs tabular-nums text-muted-foreground">
+                    <span className={`font-semibold ${textoTono}`}>{formatMonto(v.cobranza_cobrado ?? 0)}</span>
+                    {" de "}{formatMonto(v.cobranza_esperado ?? 0)}
+                    <span className={`ml-2 font-sans font-bold ${textoTono}`}>{pct}%</span>
+                  </span>
+                </div>
+                <BarraAvance pct={pct} tono={tono} demora={i * 80} />
+                {falta > 0 && (
+                  <p className="text-[11px] text-muted-foreground">
+                    falta cobrar <span className="font-mono tabular-nums text-foreground/80">{formatMonto(falta)}</span>
+                  </p>
+                )}
+              </div>
+            );
+          })}
+      </div>
+
       <div className="overflow-x-auto -mx-1">
         <table className="w-full min-w-[640px] text-sm">
           <thead>
@@ -191,8 +265,12 @@ function RendimientoVendedores({ filas }: { filas: VendedorRendimiento[] }) {
             </tr>
           </thead>
           <tbody>
-            {filas.map((v) => (
-              <tr key={v.vendedor_id ?? "sin"} className="border-b border-border/50 hover:bg-muted/20">
+            {filas.map((v, i) => (
+              <tr
+                key={v.vendedor_id ?? "sin"}
+                className="animate-entrada border-b border-border/50 transition-colors hover:bg-muted/20"
+                style={{ animationDelay: `${i * 60}ms` }}
+              >
                 <td className="py-2.5 px-1 font-medium text-foreground">{v.nombre}</td>
                 <td className="py-2.5 px-1 text-right font-mono text-foreground">{v.creditos_otorgados}</td>
                 <td className="py-2.5 px-1 text-right font-mono text-foreground">${n0(v.monto_otorgado)}</td>

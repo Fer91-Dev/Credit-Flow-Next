@@ -3,6 +3,7 @@
 import { Target } from "lucide-react";
 import { useDashboard, type DashboardData, type DashboardFiltros } from "@/lib/swr";
 import { KpiCard } from "@/components/ui/KpiCard";
+import { NumeroAnimado } from "@/components/ui/NumeroAnimado";
 import { IconBadge } from "@/components/ui/IconBadge";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -56,15 +57,99 @@ function CarteraBody({ data }: { data: DashboardData }) {
 
 /* ── Piezas reutilizables (el Home las reordena; la Cartera usa el orden de arriba) ── */
 
-/** Los 4 KPIs principales. */
+/**
+ * Los KPIs principales.
+ *
+ * 🔴 "Cartera total" pasó a llamarse DINERO EN LA CALLE. Es el mismo número —el capital que
+ * salió y todavía no volvió— con el nombre que usa quien presta, no el del balance. Y ahora
+ * lleva debajo lo que falta cobrar (capital + interés + cargos), que es el otro número que
+ * define el negocio y no estaba en ningún lado: la calle dice cuánto se puso, "a cobrar" dice
+ * cuánto tiene que volver.
+ *
+ * Los importes CUENTAN al aparecer y al refrescarse. No es decoración: el panel se actualiza
+ * solo, y un número que cambia sin transición es indistinguible de uno que no cambió.
+ */
 export function DashboardKpis({ data }: { data: DashboardData }) {
   const { resumen } = data;
+  const enCalle = resumen.capital_en_calle ?? resumen.cartera_total;
   return (
-    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-      <KpiCard icon="busts-in-silhouette" label="Clientes activos" value={String(resumen.clientes_activos)} accent="primary" />
-      <KpiCard icon="chart-increasing" label="Créditos activos" value={String(resumen.creditos_activos)} sub={`${resumen.creditos_pagados} pagados`} accent="primary" />
-      <KpiCard icon="money-bag" label="Cartera total" value={`$${n0(resumen.cartera_total)}`} accent="success" mono />
-      <KpiCard icon="warning" label="Mora crítica" value={String(resumen.mora_critica_count)} sub={resumen.mora_critica_count > 0 ? "requieren gestión urgente" : "sin atrasos críticos"} accent={resumen.mora_critica_count > 0 ? "destructive" : "success"} pulse={resumen.mora_critica_count > 0} />
+    <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="animate-entrada">
+        <KpiCard
+          icon="busts-in-silhouette" label="Clientes activos" accent="primary"
+          value={<NumeroAnimado valor={resumen.clientes_activos} />}
+        />
+      </div>
+      <div className="animate-entrada" style={{ animationDelay: "70ms" }}>
+        <KpiCard
+          icon="chart-increasing" label="Créditos activos" accent="primary"
+          value={<NumeroAnimado valor={resumen.creditos_activos} />}
+          sub={`${resumen.creditos_pagados} pagados`}
+        />
+      </div>
+      <div className="animate-entrada" style={{ animationDelay: "140ms" }}>
+        <KpiCard
+          icon="money-with-wings" label="Dinero en la calle" accent="success" mono
+          value={<NumeroAnimado valor={enCalle} decimales={2} prefijo="$" />}
+          sub={
+            <span className="tabular-nums">
+              a cobrar{" "}
+              <span className="font-mono text-foreground/70">
+                <NumeroAnimado valor={resumen.a_cobrar_total ?? 0} decimales={2} prefijo="$" />
+              </span>
+            </span>
+          }
+        />
+      </div>
+      <div className="animate-entrada" style={{ animationDelay: "210ms" }}>
+        <KpiCard
+          icon="warning" label="Mora crítica"
+          value={<NumeroAnimado valor={resumen.mora_critica_count} />}
+          sub={resumen.mora_critica_count > 0 ? "requieren gestión urgente" : "sin atrasos críticos"}
+          accent={resumen.mora_critica_count > 0 ? "destructive" : "success"}
+          pulse={resumen.mora_critica_count > 0}
+        />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * El PULSO del día: lo que entró hoy, en vivo.
+ *
+ * Silvio abre el panel y lo deja abierto. Sin esto, la única forma de saber si hubo movimiento
+ * era comparar de memoria contra lo que había visto un rato antes. El punto que late dice que
+ * el dato está fresco; la hora dice desde cuándo.
+ */
+export function PulsoDelDia({ data, actualizado }: { data: DashboardData; actualizado?: Date | null }) {
+  const hoy = data.hoy ?? { cobrado: 0, cobros: 0 };
+  const hubo = hoy.cobros > 0;
+  return (
+    <div className={`animate-entrada flex flex-wrap items-center gap-x-6 gap-y-2 rounded-2xl border px-5 py-3 ${
+      hubo ? "border-success/30 bg-success/[0.06]" : "border-border/70 bg-card"
+    }`}>
+      <span className="flex items-center gap-2">
+        <span className="relative flex h-2 w-2">
+          <span className={`absolute inline-flex h-full w-full rounded-full animate-latido-vivo ${hubo ? "bg-success" : "bg-muted-foreground/50"}`} />
+          <span className={`relative inline-flex h-2 w-2 rounded-full ${hubo ? "bg-success" : "bg-muted-foreground/50"}`} />
+        </span>
+        <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Hoy</span>
+      </span>
+
+      <div className="flex items-baseline gap-2">
+        <span className={`font-mono text-xl font-bold tabular-nums ${hubo ? "text-success" : "text-muted-foreground"}`}>
+          <NumeroAnimado valor={hoy.cobrado} decimales={2} prefijo="$" />
+        </span>
+        <span className="text-xs text-muted-foreground">
+          cobrados en {hoy.cobros} {hoy.cobros === 1 ? "operación" : "operaciones"}
+        </span>
+      </div>
+
+      {actualizado && (
+        <span className="ml-auto text-[11px] tabular-nums text-muted-foreground/70">
+          actualizado {actualizado.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+        </span>
+      )}
     </div>
   );
 }

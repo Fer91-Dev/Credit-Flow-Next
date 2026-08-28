@@ -952,8 +952,18 @@ export interface DashboardData {
     creditos_activos: number;
     creditos_pagados: number;
     cartera_total: number;
+    /**
+     * DINERO EN LA CALLE: el capital que salió y todavía no volvió. Es el MISMO número que
+     * `cartera_total`, expuesto con el nombre que usa el prestamista; el gráfico lo llama
+     * "Circulación". No son tres cifras distintas.
+     */
+    capital_en_calle: number;
+    /** Lo que falta cobrar de los créditos vivos: capital + interés + cargos, SIN punitorios. */
+    a_cobrar_total: number;
     mora_critica_count: number;
   };
+  /** Movimiento del día comercial argentino. Es el pulso "en vivo" del panel. */
+  hoy: { cobrado: number; cobros: number };
   mora: {
     detalle: { dias_1_30: number; dias_31_60: number; dias_60_mas: number };
     montos: { total_mora: number; mora_critica: number };
@@ -974,6 +984,10 @@ export interface DashboardData {
 export interface VendedorRendimiento {
   vendedor_id: string | null;
   nombre: string;
+  /** De lo que le vencía en el período, cuánto entró. Es su avance de cobranzas. */
+  cobranza_esperado: number;
+  cobranza_cobrado: number;
+  cobranza_avance_pct: number;
   creditos_otorgados: number;
   monto_otorgado: number;
   cartera: number;

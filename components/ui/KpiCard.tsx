@@ -1,5 +1,5 @@
 "use client";
-import type { ComponentType } from "react";
+import type { ComponentType, ReactNode } from "react";
 import { Emoji } from "./Emoji";
 
 export type KpiAccent = "muted" | "success" | "primary" | "warning" | "destructive";
@@ -8,10 +8,11 @@ interface KpiCardProps {
   /** Componente Lucide, o nombre de un Fluent Emoji (`public/emoji/<icon>.svg`). */
   icon: ComponentType<{ className?: string }> | string;
   label: string;
-  value: string;
+  /** Texto, o un nodo (p. ej. `NumeroAnimado`) cuando el número tiene que contar. */
+  value: ReactNode;
   accent?: KpiAccent;
   mono?: boolean;
-  sub?: string;
+  sub?: ReactNode;
   /** Alerta "latiendo": el ícono late y un anillo del acento pulsa (ej. mora crítica > 0). */
   pulse?: boolean;
   /**
