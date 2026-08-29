@@ -257,22 +257,32 @@ export function ClienteDetail({
       {/* ── Encabezado tipo credencial ── */}
       <div className="shrink-0 border-b border-border bg-gradient-to-br from-primary/10 via-transparent to-success/5 px-5 py-4 sm:px-6">
         {/*
-          La credencial: avatar y datos CENTRADOS entre sí, y las acciones al mismo eje.
+          TRES ZONAS, con la identidad al MEDIO.
 
-          El avatar quedaba pegado arriba mientras el texto crecía tres renglones hacia abajo,
-          así que la fila entera se leía torcida. `items-center` los cuelga del mismo eje y la
-          jerarquía queda en el tamaño: nombre grande, estado y DNI en una línea, "cliente
-          desde" en la de abajo, en gris.
+          Es una credencial: el cliente es el asunto de la pantalla, así que ocupa el centro y
+          las acciones se reparten a los costados según a quién sirven — a la izquierda las de
+          la PANTALLA (volver al buscador, cobrar), a la derecha las del CLIENTE (contactarlo,
+          marcarlo, editarlo).
+
+          🔴 Va en `grid` con los costados en `1fr` y no en un flex con `justify-between`: con
+          flex, el centro se corre hacia el lado que tiene menos botones —y los dos costados
+          nunca miden lo mismo—. Con las columnas laterales del mismo ancho, la identidad queda
+          centrada de verdad, tenga uno o cuatro botones al lado.
         */}
-        <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center">
-          {/* Avatar TailGrids (cuadrado, con dot de estado) */}
-          <Avatar name={nombreCompleto(cliente)} seed={cliente.id} size="lg" square status={cliente.estado === "activo" ? "online" : "offline"} />
+        <div className="grid grid-cols-1 items-center gap-4 lg:grid-cols-[1fr_auto_1fr]">
 
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
+          {/* ── IZQUIERDA: acciones de la pantalla ── */}
+          <div className="flex flex-wrap items-center gap-2 lg:justify-self-start">
+            {accionesPantalla}
+          </div>
+
+          {/* ── CENTRO: quién es ── */}
+          <div className="flex min-w-0 flex-col items-center gap-3 text-center sm:flex-row sm:text-left lg:flex-col lg:text-center">
+            <Avatar name={nombreCompleto(cliente)} seed={cliente.id} size="lg" square status={cliente.estado === "activo" ? "online" : "offline"} />
+            <div className="min-w-0">
               <div className="min-w-0">
                 <h2 className="truncate text-2xl font-bold leading-tight tracking-tight text-foreground">{nombreCompleto(cliente)}</h2>
-                <div className="mt-2 flex flex-wrap items-center gap-2.5">
+                <div className="mt-2 flex flex-wrap items-center justify-center gap-2.5 sm:justify-start lg:justify-center">
                   {/* El estado del cliente lo mueve un admin (dialogo). Para el resto es un
                       badge y nada más: no es un dato que se edite al pasar. */}
                   {role === "admin" ? (
@@ -313,82 +323,80 @@ export function ClienteDetail({
                     </span>
                   )}
                 </div>
-              </div>
 
-              {(onEditar || onEliminar || accionesPantalla) && (
-                <div className="flex shrink-0 flex-wrap items-center gap-2">
-                  {accionesPantalla}
-                  {/* Contactar va PRIMERO y en color: es la acción que se usa todos los días
-                      desde esta pantalla, a diferencia de editar y eliminar. */}
-                  {/* A un fallecido no se le escribe: el mensaje le llegaría a la familia con
-                      un reclamo de plata. El servidor lo rechaza igual (CLIENTE_FALLECIDO);
-                      acá se saca el botón para que nadie llegue hasta el error. */}
-                  {showCreditos && !fallecido && !sinContacto && (
-                    <button
-                      type="button"
-                      onClick={() => setContactar(true)}
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/10 px-2.5 py-1.5 text-xs font-medium text-primary hover:bg-primary/20 transition-colors"
-                    >
-                      <MessageCircle className="h-3.5 w-3.5" /> Contactar
-                    </button>
-                  )}
-                  {/* El pedido del titular se registra desde acá, en el mismo lugar donde
-                      está el botón de contactar: es quien atiende el llamado el que lo
-                      escucha. Con el pedido activo, el botón pasa a ser el de revertirlo. */}
-                  {showCreditos && !fallecido && (
-                    <button
-                      type="button"
-                      onClick={() => setNoContactar(true)}
-                      title={sinContacto ? "Volver a habilitar el contacto (solo admin)" : "El cliente pidió que no lo contacten"}
-                      className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors ${
-                        sinContacto
-                          ? "border-warning/30 bg-warning/10 text-warning hover:bg-warning/20"
-                          : "border-border text-muted-foreground hover:bg-muted hover:text-foreground"
-                      }`}
-                    >
-                      <BellOff className="h-3.5 w-3.5" /> {sinContacto ? "Rehabilitar" : "No contactar"}
-                    </button>
-                  )}
-                  {/* Un vendedor solo modifica clientes con los que tiene al menos un crédito.
-                      Los botones se sacan en vez de deshabilitarse: un botón apagado sin
-                      explicación se prueba igual y termina en un 403. El motivo ya está a la
-                      vista en el renglón de "otros agentes". El servidor rechaza igual. */}
-                  {/* Trae a la terminal de cobro con este cliente ya cargado. No cobra acá:
-                      el cobro es de Pagos. Solo si tiene algo vivo que cobrar. */}
-                  {showCreditos && !puedeCobrarAca && activos.length > 0 && (
-                    <a
-                      href={`/pagos?cliente=${cliente.id}`}
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-success/30 bg-success/10 px-2.5 py-1.5 text-xs font-medium text-success transition-colors hover:bg-success/20"
-                    >
-                      <Wallet className="h-3.5 w-3.5" /> Cobrar
-                    </a>
-                  )}
-                  {onEditar && puedeEditar && (
-                    <button
-                      onClick={onEditar}
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-                    >
-                      <Pencil className="h-3.5 w-3.5" /> Editar
-                    </button>
-                  )}
-                  {onEliminar && puedeEditar && (
-                    <button
-                      onClick={onEliminar}
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-xs text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" /> Eliminar
-                    </button>
-                  )}
+                {/* Metadata secundaria: el tercer nivel de la credencial. */}
+                <div className="mt-2 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-xs text-muted-foreground/80 sm:justify-start lg:justify-center">
+                  <span>Cliente desde {fmtDate(cliente.created_at)}</span>
+                  {edad(cliente.fecha_nacimiento) && <span className="flex items-center gap-1"><span className="text-muted-foreground/30">·</span>{edad(cliente.fecha_nacimiento)}</span>}
+                  {cliente.nacionalidad && <span className="flex items-center gap-1"><span className="text-muted-foreground/30">·</span>{cliente.nacionalidad}</span>}
                 </div>
-              )}
+              </div>
             </div>
+          </div>
 
-            {/* Metadata secundaria */}
-            <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground/80">
-              <span>Cliente desde {fmtDate(cliente.created_at)}</span>
-              {edad(cliente.fecha_nacimiento) && <span className="flex items-center gap-1"><span className="text-muted-foreground/30">·</span>{edad(cliente.fecha_nacimiento)}</span>}
-              {cliente.nacionalidad && <span className="flex items-center gap-1"><span className="text-muted-foreground/30">·</span>{cliente.nacionalidad}</span>}
-            </div>
+          {/* ── DERECHA: acciones sobre el CLIENTE ──
+              Contactarlo, marcar que no quiere que lo contacten, editarlo. Son de la persona,
+              no de la pantalla: por eso viven del otro lado de la credencial. */}
+          <div className="flex flex-wrap items-center gap-2 lg:justify-self-end">
+            {/* A un fallecido no se le escribe: el mensaje le llegaría a la familia con
+                un reclamo de plata. El servidor lo rechaza igual (CLIENTE_FALLECIDO);
+                acá se saca el botón para que nadie llegue hasta el error. */}
+            {showCreditos && !fallecido && !sinContacto && (
+              <button
+                type="button"
+                onClick={() => setContactar(true)}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/10 px-2.5 py-1.5 text-xs font-medium text-primary hover:bg-primary/20 transition-colors"
+              >
+                <MessageCircle className="h-3.5 w-3.5" /> Contactar
+              </button>
+            )}
+            {/* El pedido del titular se registra desde acá, en el mismo lugar donde
+                está el botón de contactar: es quien atiende el llamado el que lo
+                escucha. Con el pedido activo, el botón pasa a ser el de revertirlo. */}
+            {showCreditos && !fallecido && (
+              <button
+                type="button"
+                onClick={() => setNoContactar(true)}
+                title={sinContacto ? "Volver a habilitar el contacto (solo admin)" : "El cliente pidió que no lo contacten"}
+                className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors ${
+                  sinContacto
+                    ? "border-warning/30 bg-warning/10 text-warning hover:bg-warning/20"
+                    : "border-border text-muted-foreground hover:bg-muted hover:text-foreground"
+                }`}
+              >
+                <BellOff className="h-3.5 w-3.5" /> {sinContacto ? "Rehabilitar" : "No contactar"}
+              </button>
+            )}
+            {/* Un vendedor solo modifica clientes con los que tiene al menos un crédito.
+                Los botones se sacan en vez de deshabilitarse: un botón apagado sin
+                explicación se prueba igual y termina en un 403. El motivo ya está a la
+                vista en el renglón de "otros agentes". El servidor rechaza igual. */}
+            {/* Trae a la terminal de cobro con este cliente ya cargado. No cobra acá:
+                el cobro es de Pagos. Solo si tiene algo vivo que cobrar. */}
+            {showCreditos && !puedeCobrarAca && activos.length > 0 && (
+              <a
+                href={`/pagos?cliente=${cliente.id}`}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-success/30 bg-success/10 px-2.5 py-1.5 text-xs font-medium text-success transition-colors hover:bg-success/20"
+              >
+                <Wallet className="h-3.5 w-3.5" /> Cobrar
+              </a>
+            )}
+            {onEditar && puedeEditar && (
+              <button
+                onClick={onEditar}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+              >
+                <Pencil className="h-3.5 w-3.5" /> Editar
+              </button>
+            )}
+            {onEliminar && puedeEditar && (
+              <button
+                onClick={onEliminar}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-xs text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors"
+              >
+                <Trash2 className="h-3.5 w-3.5" /> Eliminar
+              </button>
+            )}
           </div>
         </div>
 
