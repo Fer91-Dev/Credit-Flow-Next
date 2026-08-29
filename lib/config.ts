@@ -3,7 +3,7 @@
  * Traduce entre el registro de BD (snake_case, CSV) y el tipo de dominio.
  */
 import { prisma } from "@/lib/prisma";
-import { resolverPlantillasContacto, PLANTILLAS_CONTACTO_DEFAULT, resolverPlantillasMeta, type PlantillasContacto, type PlantillaMeta } from "@/lib/domain";
+import { resolverPlantillasContacto, PLANTILLAS_CONTACTO_DEFAULT, resolverPlantillasMeta, resolverTramosMora, TRAMOS_MORA_DEFAULT, type PlantillasContacto, type PlantillaMeta, type TramosMora } from "@/lib/domain";
 import {
   CONFIG_DEFAULT,
   resolverConfig,
@@ -222,6 +222,11 @@ export interface CobranzaConfig {
   /** Días sin gestión tras los cuales un moroso vuelve a aparecer en la agenda del día. */
   dias_sin_gestion: number;
   /**
+   * Dónde corta cada tramo de mora (media / alta / crítica). Ver `severidadMora` en el
+   * dominio: es la ÚNICA definición, y antes cada pantalla tenía la suya escrita a mano.
+   */
+  tramos_mora: TramosMora;
+  /**
    * Con qué criterio se ordena la cola del día. Va como parámetro y no fijo en el código
    * porque no hay una respuesta correcta: por días se protege la antigüedad de la deuda
    * (cuanto más vieja, menos se recupera), por monto se protege la plata. Default "mora",
@@ -257,6 +262,7 @@ export interface CobranzaConfig {
 
 export const COBRANZA_DEFAULT: CobranzaConfig = {
   dias_sin_gestion: 7,
+  tramos_mora: TRAMOS_MORA_DEFAULT,
   orden: "mora",
   contacto: PLANTILLAS_CONTACTO_DEFAULT,
   // Vacío a propósito: una plantilla de Meta la aprueba Meta, no la puede traer un default.
@@ -273,6 +279,7 @@ export function resolverCobranza(raw: unknown): CobranzaConfig {
   const dias = Number.isFinite(n) && n > 0 ? Math.min(90, Math.max(1, Math.round(n))) : COBRANZA_DEFAULT.dias_sin_gestion;
   return {
     dias_sin_gestion: dias,
+    tramos_mora: resolverTramosMora(r.tramos_mora),
     // Un valor desconocido cae al default en vez de romper la agenda: la config es un JSON
     // libre y puede llegar con basura de una versión vieja o de una edición a mano.
     orden: ORDENES_AGENDA.includes(r.orden as OrdenAgenda) ? (r.orden as OrdenAgenda) : COBRANZA_DEFAULT.orden,

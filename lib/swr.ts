@@ -977,7 +977,14 @@ export interface DashboardData {
   /** Movimiento del día comercial argentino. Es el pulso "en vivo" del panel. */
   hoy: { cobrado: number; cobros: number };
   mora: {
-    detalle: { dias_1_30: number; dias_31_60: number; dias_60_mas: number };
+    /**
+     * Distribución por TRAMO DE MORA, con los cortes que configuró la financiera. Antes eran
+     * tramos fijos propios de esta pantalla (1-30 / 31-60 / +60) que no coincidían con los de
+     * Reportes (15/30): el mismo crédito caía en categorías distintas según dónde se lo mirara.
+     */
+    detalle: { media: number; alta: number; critica: number };
+    /** Hasta qué día llega cada tramo, para poder rotular la distribución con los números reales. */
+    tramos_mora: { media_hasta: number; alta_hasta: number };
     montos: { total_mora: number; mora_critica: number };
   };
   transacciones: {

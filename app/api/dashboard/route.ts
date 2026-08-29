@@ -2,7 +2,8 @@ import { requireAuth } from "@/lib/auth";
 import { successResponse, withErrorHandler } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
-import { diasMoraActual, ESTADOS_VIVOS, esCreditoVivo } from "@/lib/domain";
+import { diasMoraActual, severidadMora, ESTADOS_VIVOS, esCreditoVivo } from "@/lib/domain";
+import { getCobranzaConfig } from "@/lib/config";
 import { hoyComercial } from "@/lib/utils";
 import { nombrePropioFinanciera } from "@/lib/branding";
 import type { NextRequest } from "next/server";
@@ -52,7 +53,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   // El desglose por vendedor (rendimiento + morosidad) es solo para admin.
   const esAdmin = role === "admin";
 
-  const [clientes, creditos, pagosTotal, cuotasPeriodo, cuotasVivas, pagosHoy, personal] = await Promise.all([
+  const [clientes, creditos, pagosTotal, cuotasPeriodo, cuotasVivas, pagosHoy, personal, cobranzaCfg] = await Promise.all([
     // Clientes activos (filtra por zona si corresponde)
     prisma.clientes.count({
       where: { ...withTenant(tenantId), estado: { in: [...ESTADOS_VIVOS] }, ...(zona ? { zona } : {}) },
@@ -133,7 +134,10 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
           select: { id: true, nombre: true },
         })
       : Promise.resolve([] as { id: string; nombre: string }[]),
+    getCobranzaConfig(tenantId),
   ]);
+  // Dónde corta cada tramo de mora, según lo definió la financiera.
+  const tramos = cobranzaCfg.tramos_mora;
 
   // Mora EN VIVO desde `proximo_pago` (el cache `dias_mora` no se avanza día a día): misma
   // fórmula con la que se persiste, pero evaluada hoy → los KPIs de mora no dependen del cron.
@@ -155,12 +159,17 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
    * que `saldo_activo_total` en Reportes.
    */
   const carteraTotal = creditosDM.filter((c) => esCreditoVivo(c.estado)).reduce((sum, c) => sum + c.saldo_pendiente, 0);
-  const moraCritica = creditosDM.filter((c) => c.dias_mora > 30).length;
+  // Los tramos de la financiera, no los que estaban escritos acá (30/60) mientras Reportes
+  // usaba otros (15/30). Ver `severidadMora`: es la única definición.
+  const moraCritica = creditosDM.filter((c) => severidadMora(c.dias_mora, tramos) === "critica").length;
 
   const detalleMotaAlerta = {
-    dias_1_30: creditosDM.filter((c) => c.dias_mora > 0 && c.dias_mora <= 30).length,
-    dias_31_60: creditosDM.filter((c) => c.dias_mora > 30 && c.dias_mora <= 60).length,
-    dias_60_mas: creditosDM.filter((c) => c.dias_mora > 60).length,
+    // La distribución pasa a ser la MISMA que la de Reportes: media / alta / crítica, con los
+    // cortes de la config. Antes eran tramos propios (1-30 / 31-60 / +60) que no coincidían
+    // con ninguna otra pantalla.
+    media: creditosDM.filter((c) => severidadMora(c.dias_mora, tramos) === "media").length,
+    alta: creditosDM.filter((c) => severidadMora(c.dias_mora, tramos) === "alta").length,
+    critica: moraCritica,
   };
 
   const cobranzaEsperado = cuotasPeriodo.reduce((sum, c) => sum + c.cuota_total, 0);
@@ -235,7 +244,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
             .reduce((s, c) => s + c.monto_original, 0),
           cartera,
           en_mora_monto: enMora,
-          mora_critica_count: lista.filter((c) => c.dias_mora > 30).length,
+          mora_critica_count: lista.filter((c) => severidadMora(c.dias_mora, tramos) === "critica").length,
           pct_morosidad: cartera > 0 ? Math.round((enMora / cartera) * 100) : 0,
         };
       })
@@ -265,6 +274,9 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     },
     mora: {
       detalle: detalleMotaAlerta,
+      // Los cortes con los que se armó esa distribución, para poder rotularla con los
+      // números reales en vez de un rango fijo que podría no ser el vigente.
+      tramos_mora: tramos,
       montos: montosMora,
     },
     transacciones: {

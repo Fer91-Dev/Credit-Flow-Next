@@ -3,8 +3,8 @@ import { successResponse, withErrorHandler } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { nombreCompleto, hoyComercial, inicioDiaAR, finDiaAR } from "@/lib/utils";
-import { round2, costoFondeo, resumenOperaciones, diasMoraActual, esCreditoVivo, moraDelCredito, moraDesdeCronograma, moraPendienteTotal } from "@/lib/domain";
-import { getConfiguracion, getRentabilidadConfig } from "@/lib/config";
+import { round2, costoFondeo, resumenOperaciones, diasMoraActual, esCreditoVivo, moraDelCredito, moraDesdeCronograma, moraPendienteTotal, severidadMora } from "@/lib/domain";
+import { getConfiguracion, getRentabilidadConfig, getCobranzaConfig } from "@/lib/config";
 import type { NextRequest } from "next/server";
 
 const MS_DIA = 86_400_000;
@@ -33,7 +33,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   const desdeTs = inicioDiaAR(desdeStr);
   const hastaTs = finDiaAR(hastaStr);
 
-  const [pagos, creditos, config, cfgRent] = await Promise.all([
+  const [pagos, creditos, config, cfgRent, cobranzaCfg] = await Promise.all([
     prisma.pagos.findMany({
       where: { ...withTenant(tenantId), fecha: { gte: desde, lte: hasta }, anulado: false },
       include: { credito: { select: { cliente: { select: { nombre: true, apellido: true } } } } },
@@ -52,7 +52,10 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     }),
     getConfiguracion(tenantId),
     getRentabilidadConfig(tenantId),
+    getCobranzaConfig(tenantId),
   ]);
+  // Dónde corta cada tramo de mora, según lo definió la financiera.
+  const tramos = cobranzaCfg.tramos_mora;
 
   // ── Cobranzas del período ──────────────────────────────────────────────
   const cobranzas = {
@@ -151,10 +154,16 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     en_mora: enMora.length,
     saldo_expuesto: enMora.reduce((s, c) => s + c.saldo_pendiente, 0),
     interes_mora_total: Math.round(interesMoraTotal * 100) / 100,
+    /*
+      Los tramos salen de `severidadMora`, la definición del dominio, con los cortes que la
+      financiera configuró. Estaban escritos acá a mano (15/30) y en el Dashboard con OTROS
+      números (30/60): un crédito de 45 días era "crítico" en esta pantalla y "31 a 60" en la
+      otra. Dos pantallas del mismo sistema diciendo cosas distintas del mismo crédito.
+    */
     por_severidad: {
-      critica: enMora.filter((c) => c.dias_mora > 30).length,
-      alta:    enMora.filter((c) => c.dias_mora > 15 && c.dias_mora <= 30).length,
-      media:   enMora.filter((c) => c.dias_mora > 0 && c.dias_mora <= 15).length,
+      critica: enMora.filter((c) => severidadMora(c.dias_mora, tramos) === "critica").length,
+      alta:    enMora.filter((c) => severidadMora(c.dias_mora, tramos) === "alta").length,
+      media:   enMora.filter((c) => severidadMora(c.dias_mora, tramos) === "media").length,
     },
   };
 

@@ -105,6 +105,17 @@ const AYUDA: Record<string, AyudaBloque> = {
       "Sistema de amortización: hoy Francés (cuota fija todos los períodos).",
     ],
   },
+  tramosMora: {
+    titulo: "Tramos de mora",
+    texto:
+      "La escala de gravedad de un moroso según sus días de atraso. No cambia lo que se le cobra: " +
+      "cambia cómo se lo clasifica en el Home, en Reportes y en la agenda del día.",
+    puntos: [
+      "Media / Alta / Crítica: los dos números definen los tres tramos.",
+      "Es una decisión de la financiera: quien presta a 30 días considera grave a la semana, quien presta a un año recién a los 90.",
+      "Los valores de fábrica (15 y 30) son los que el sistema venía usando: cambiarlos no reescribe nada, solo mueve la clasificación.",
+    ],
+  },
   mora: {
     titulo: "Interés por mora",
     texto:
@@ -1799,6 +1810,58 @@ export function ConfigForm() {
             </div>
           </Section>
 
+          {/* Tramos de mora */}
+          <Section
+            title="Tramos de mora"
+            desc="Dónde corta cada nivel de gravedad según los días de atraso. Es la escala que usan el Home y Reportes."
+            ayuda={AYUDA.tramosMora}
+            onSave={() => save("cobranza", { cobranzaConfig: cobranza })}
+            saving={savingKey === "cobranza"} saved={savedKey === "cobranza"} dirty={isDirty("cobranza")}
+          >
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 max-w-xl">
+              <Field label="Mora media, hasta" hint={`De 1 a ${cobranza.tramos_mora.media_hasta} días de atraso.`}>
+                <Input
+                  type="number" min="1" step="1"
+                  value={cobranza.tramos_mora.media_hasta}
+                  onChange={e => {
+                    const media = Math.max(1, Math.round(parseFloat(e.target.value) || 1));
+                    // La alta no puede quedar por debajo de la media: el tramo intermedio
+                    // desaparecería y todos saltarían de media a crítica sin escala.
+                    setCobranza({ tramos_mora: { media_hasta: media, alta_hasta: Math.max(media + 1, cobranza.tramos_mora.alta_hasta) } });
+                  }}
+                />
+              </Field>
+              <Field
+                label="Mora alta, hasta"
+                hint={`De ${cobranza.tramos_mora.media_hasta + 1} a ${cobranza.tramos_mora.alta_hasta} días. De ahí en más es crítica.`}
+              >
+                <Input
+                  type="number" min={cobranza.tramos_mora.media_hasta + 1} step="1"
+                  value={cobranza.tramos_mora.alta_hasta}
+                  onChange={e => setCobranza({
+                    tramos_mora: {
+                      media_hasta: cobranza.tramos_mora.media_hasta,
+                      alta_hasta: Math.max(cobranza.tramos_mora.media_hasta + 1, Math.round(parseFloat(e.target.value) || 1)),
+                    },
+                  })}
+                />
+              </Field>
+            </div>
+            {/* La escala resultante, escrita: son dos números que definen tres tramos, y sin
+                verlos armados hay que hacer la cuenta de cabeza cada vez. */}
+            <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+              <span className="rounded-lg border border-warning/30 bg-warning/10 px-2.5 py-1 text-warning">
+                Media · 1 a {cobranza.tramos_mora.media_hasta} días
+              </span>
+              <span className="rounded-lg border border-destructive/25 bg-destructive/10 px-2.5 py-1 text-destructive">
+                Alta · {cobranza.tramos_mora.media_hasta + 1} a {cobranza.tramos_mora.alta_hasta} días
+              </span>
+              <span className="rounded-lg border border-destructive/40 bg-destructive/20 px-2.5 py-1 font-semibold text-destructive">
+                Crítica · más de {cobranza.tramos_mora.alta_hasta} días
+              </span>
+            </div>
+          </Section>
+
           {/* Acuerdos de pago */}
           <Section title="Acuerdos de pago" desc="El arreglo informal en cuotas con un moroso: hasta cuántas cuotas, qué lo rompe y quién puede condonar." ayuda={AYUDA.acuerdos}
             onSave={() => save("cobranza", { cobranzaConfig: cobranza })}
@@ -2165,6 +2228,8 @@ function defaultRentabilidad(): RentabilidadConfig {
 function defaultCobranza(): CobranzaConfig {
   return {
     dias_sin_gestion: 7,
+    // Los mismos valores con los que venía funcionando: activar el parámetro no mueve nada.
+    tramos_mora: { media_hasta: 15, alta_hasta: 30 },
     orden: "mora",
     contacto: PLANTILLAS_CONTACTO_DEFAULT,
     plantillas_meta: [],

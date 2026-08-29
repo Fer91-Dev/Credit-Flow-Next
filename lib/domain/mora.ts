@@ -222,10 +222,52 @@ export function interesMora(
 /** Severidad de la mora, alineada con la vista de Cobranza. */
 export type SeveridadMora = "al_dia" | "media" | "alta" | "critica";
 
-export function severidadMora(dias: number): SeveridadMora {
+/**
+ * Hasta cuántos días de atraso llega cada tramo. `critica` es "de ahí en más", no hace falta.
+ *
+ * 🔴 VA COMO PARÁMETRO, NO FIJO EN EL CÓDIGO. Cuándo un moroso pasa a ser "crítico" es una
+ * decisión de cada financiera: una que presta a 30 días lo considera grave a la semana, y una
+ * de préstamos largos recién a los 90. Los defaults son los valores con los que el sistema
+ * venía funcionando, así que activar el parámetro no mueve ningún número.
+ */
+export interface TramosMora {
+  /** Último día del tramo MEDIA (default 15). */
+  media_hasta: number;
+  /** Último día del tramo ALTA (default 30). De ahí en más es CRÍTICA. */
+  alta_hasta: number;
+}
+
+export const TRAMOS_MORA_DEFAULT: TramosMora = { media_hasta: 15, alta_hasta: 30 };
+
+/**
+ * Normaliza los tramos: enteros, positivos y en orden. Si vinieran cruzados —`alta_hasta`
+ * menor que `media_hasta`, por una edición a mano o una config vieja— el tramo ALTA quedaría
+ * vacío y todos los morosos saltarían de media a crítica sin escala intermedia.
+ */
+export function resolverTramosMora(raw: unknown): TramosMora {
+  const r = (raw ?? {}) as Partial<TramosMora>;
+  const ent = (v: unknown, def: number) => {
+    const n = Number(v);
+    return Number.isFinite(n) && n >= 1 ? Math.round(n) : def;
+  };
+  const media = ent(r.media_hasta, TRAMOS_MORA_DEFAULT.media_hasta);
+  const alta = Math.max(media + 1, ent(r.alta_hasta, TRAMOS_MORA_DEFAULT.alta_hasta));
+  return { media_hasta: media, alta_hasta: alta };
+}
+
+/**
+ * En qué tramo de mora cae un crédito según sus días de atraso.
+ *
+ * 🔴 ES LA ÚNICA DEFINICIÓN. Esta función existía y no la usaba NADIE: el Dashboard cortaba
+ * en 30/60, Reportes en 15/30 y el cron notificaba a los 5/15/30, cada uno con los números
+ * escritos a mano en su archivo. Un crédito de 45 días de atraso era "crítico" en Reportes y
+ * "31 a 60" en el Dashboard — dos pantallas del mismo sistema diciendo cosas distintas del
+ * mismo crédito.
+ */
+export function severidadMora(dias: number, tramos: TramosMora = TRAMOS_MORA_DEFAULT): SeveridadMora {
   if (dias <= 0) return "al_dia";
-  if (dias <= 15) return "media";
-  if (dias <= 30) return "alta";
+  if (dias <= tramos.media_hasta) return "media";
+  if (dias <= tramos.alta_hasta) return "alta";
   return "critica";
 }
 

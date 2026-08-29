@@ -163,7 +163,7 @@ export function DashboardCobranzaAvance({ data }: { data: DashboardData }) {
 /** Fila secundaria: distribución de mora · exposición en mora · cobros registrados. */
 export function DashboardMoraGrid({ data }: { data: DashboardData }) {
   const { mora, transacciones } = data;
-  const totalMoraItems = mora.detalle.dias_1_30 + mora.detalle.dias_31_60 + mora.detalle.dias_60_mas;
+  const totalMoraItems = mora.detalle.media + mora.detalle.alta + mora.detalle.critica;
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -175,9 +175,11 @@ export function DashboardMoraGrid({ data }: { data: DashboardData }) {
           <h3 className="text-sm font-semibold text-foreground">Distribución de mora</h3>
         </div>
         <div className="space-y-3">
-          <MoraRow label="1–30 días" count={mora.detalle.dias_1_30} total={totalMoraItems} variant="warning" />
-          <MoraRow label="31–60 días" count={mora.detalle.dias_31_60} total={totalMoraItems} variant="destructive" />
-          <MoraRow label="60+ días" count={mora.detalle.dias_60_mas} total={totalMoraItems} variant="destructive" bold />
+          {/* Las etiquetas se arman con los cortes CONFIGURADOS: si la financiera mueve el
+              tramo, el rótulo se mueve con él en vez de mentir un rango fijo. */}
+          <MoraRow label={`1–${mora.tramos_mora.media_hasta} días`} count={mora.detalle.media} total={totalMoraItems} variant="warning" />
+          <MoraRow label={`${mora.tramos_mora.media_hasta + 1}–${mora.tramos_mora.alta_hasta} días`} count={mora.detalle.alta} total={totalMoraItems} variant="destructive" />
+          <MoraRow label={`+${mora.tramos_mora.alta_hasta} días`} count={mora.detalle.critica} total={totalMoraItems} variant="destructive" bold />
         </div>
         {totalMoraItems === 0 && (
           <p className="text-xs text-success mt-3">Sin créditos en mora</p>
