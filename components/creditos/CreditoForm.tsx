@@ -82,8 +82,6 @@ interface EvalRiesgo {
 interface CreditoFormProps {
   creditoId?: string | null;
   onClose: (success?: boolean) => void;
-  /** Cliente ya elegido (se entra desde su ficha). Solo aplica al alta, no a la edición. */
-  clienteInicial?: string | null;
 }
 
 /* ── Formato de moneda es-AR (helpers centralizados en lib/utils) ─────────────── */
@@ -106,7 +104,7 @@ function useDebounced<T>(value: T, delay = 350): T {
   return debounced;
 }
 
-export function CreditoForm({ creditoId, onClose, clienteInicial }: CreditoFormProps) {
+export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
   const { config, mutate: refrescarConfig } = useConfiguracion();
   const { financiera } = useFinanciera(); // co-branding del PDF (nombre/logo)
   const { perfil } = useMiPerfilVendedor(); // límite de otorgamiento del usuario (null si es admin/sin tope)
@@ -149,9 +147,7 @@ export function CreditoForm({ creditoId, onClose, clienteInicial }: CreditoFormP
 
   // Estado inicial vacío: el simulador no muestra ningún plan hasta que el operador complete todos los campos.
   const [formData, setFormData] = useState({
-    // Se entra desde la ficha de un cliente sin créditos ("Ofrecerle un crédito"): ya se sabe
-    // a quién, así que el selector arranca con él y no hay que buscarlo de nuevo.
-    cliente_id: clienteInicial ?? "", tipo_credito: "personal",
+    cliente_id: "", tipo_credito: "personal",
     monto_original: "", tasa: "", plazo_meses: "",
     // Plan elegido (Configuración → Planes de cuotas). Vacío = se cotiza tipeando la tasa.
     plan_id: "",
