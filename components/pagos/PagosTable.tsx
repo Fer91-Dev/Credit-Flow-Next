@@ -1,18 +1,15 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useSWRConfig } from "swr";
-import { Wallet, Search, User, Phone, IdCard, ArrowLeft, Plus, ChevronRight, X, Clock, TrendingUp, TrendingDown } from "lucide-react";
+import { Wallet, Search, User, Phone, IdCard, ArrowLeft, ChevronRight, X, Clock, TrendingUp, TrendingDown } from "lucide-react";
 import { useClientes, usePagos, KEYS, type Cliente, type Pago, type ResumenPagos } from "@/lib/swr";
 import { ClienteDetail } from "@/components/clientes/ClienteDetail";
 import { BuscadorF3 } from "@/components/ui/BuscadorF3";
 import { Avatar } from "@/components/ui/Avatar";
 import { DataTable } from "@/components/ui/DataTable";
 import { Skeleton } from "@/components/ui/skeleton";
-import { PagoForm } from "./PagoForm";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { StatusBadge } from "@/components/ui/StatusBadge";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { nombreCompleto, formatFecha, formatMonto, formatCreditoNumero } from "@/lib/utils";
 import { round2 } from "@/lib/domain";
 
@@ -24,7 +21,6 @@ import { round2 } from "@/lib/domain";
 export function PagosTable({ clienteInicial = null }: { clienteInicial?: string | null }) {
   const { clientes, isLoading } = useClientes();
   const { pagos, resumen, isLoading: pagosLoading } = usePagos();
-  const { mutate: globalMutate } = useSWRConfig();
 
   const [query, setQuery] = useState("");
   const [verTodos, setVerTodos] = useState(false); // F3: lista completa de clientes A→Z
@@ -42,7 +38,6 @@ export function PagosTable({ clienteInicial = null }: { clienteInicial?: string 
    * (`clienteInicial`), así que el PRIMER render ya es la ficha.
    */
   const [clienteId, setClienteId] = useState<string | null>(clienteInicial);
-  const [nuevoPagoOpen, setNuevoPagoOpen] = useState(false); // pago genérico (busca crédito/cliente en el form)
   /**
    * Los KPI que son un SUBCONJUNTO de la lista de abajo filtran esa lista al tocarlos.
    * Acota lo que se muestra; el número de la tarjeta sigue siendo el del período completo,
@@ -97,17 +92,6 @@ export function PagosTable({ clienteInicial = null }: { clienteInicial?: string 
     setClienteId(p.credito.cliente_id);
     setQuery("");
     setVerTodos(false);
-  };
-
-  // Pago genérico desde la vista de entrada (el operador busca el crédito/cliente en el form).
-  const handleNuevoPagoClose = (success?: boolean) => {
-    setNuevoPagoOpen(false);
-    if (success) {
-      globalMutate(KEYS.creditos);
-      globalMutate(KEYS.pagos);
-      globalMutate(KEYS.dashboard);
-      globalMutate("/api/caja");
-    }
   };
 
   // ── Vista de ficha (cliente seleccionado) ──
@@ -166,42 +150,37 @@ export function PagosTable({ clienteInicial = null }: { clienteInicial?: string 
       />
 
       {/*
-        El buscador es la pantalla: en la terminal de cobro lo primero que pasa es que llega
+        El buscador ES la pantalla: en la terminal de cobro lo primero que pasa es que llega
         alguien y se escanea su DNI. Va grande y a la izquierda, con el acceso a la lista
         completa DENTRO de la caja — el atajo F3 solo existe si hay teclado a mano.
+
+        🔴 No lleva ningún botón al lado. Había un "Registrar pago" que abría el mismo
+        formulario sin crédito ni cuota elegidos: el último resto del segundo camino de cobro
+        que se sacó de la ficha. Todo cobro se pide sobre la cuota que se cobra, y lo que no
+        cubre una cuota entera se resuelve con «Monto personalizado» dentro de ese formulario.
       */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
-        <BuscadorF3
-          size="lg"
-          value={query}
-          onChange={setQuery}
-          placeholder="DNI o nombre del cliente…"
-          autoFocus
-          onF3={() => setVerTodos((v) => !v)}
-          onEnter={() => { if (resultados.length === 1) elegir(resultados[0]); }}
-          onEscape={() => { if (verTodos) setVerTodos(false); else setQuery(""); }}
-          hint="Escaneá el DNI o escribí el nombre — el cobro se registra desde la ficha del cliente."
-          className="w-full sm:flex-1"
-          accionDerecha={
-            <button
-              type="button"
-              onClick={() => setVerTodos((v) => !v)}
-              className="flex items-center gap-2 rounded-lg px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
-            >
-              <kbd className="rounded border border-border bg-muted/50 px-1.5 py-0.5 font-mono text-[10px] font-semibold">F3</kbd>
-              <span className="text-primary">{verTodos ? "cerrar lista" : "lista completa"}</span>
-            </button>
-          }
-        />
-        {/* El escape para lo que no cuelga de ninguna cuota: un crédito sin cronograma, un
-            pago a cuenta. Busca el crédito por N° o DNI dentro del formulario. */}
-        <button
-          onClick={() => setNuevoPagoOpen(true)}
-          className="flex h-14 shrink-0 items-center justify-center gap-2 rounded-xl bg-primary px-5 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 whitespace-nowrap"
-        >
-          <Plus className="h-4 w-4" /> Registrar pago
-        </button>
-      </div>
+      <BuscadorF3
+        size="lg"
+        value={query}
+        onChange={setQuery}
+        placeholder="DNI o nombre del cliente…"
+        autoFocus
+        onF3={() => setVerTodos((v) => !v)}
+        onEnter={() => { if (resultados.length === 1) elegir(resultados[0]); }}
+        onEscape={() => { if (verTodos) setVerTodos(false); else setQuery(""); }}
+        hint="Escaneá el DNI o escribí el nombre — el cobro se registra desde la ficha del cliente."
+        className="w-full sm:max-w-2xl"
+        accionDerecha={
+          <button
+            type="button"
+            onClick={() => setVerTodos((v) => !v)}
+            className="flex items-center gap-2 rounded-lg px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
+          >
+            <kbd className="rounded border border-border bg-muted/50 px-1.5 py-0.5 font-mono text-[10px] font-semibold">F3</kbd>
+            <span className="text-primary">{verTodos ? "cerrar lista" : "lista completa"}</span>
+          </button>
+        }
+      />
 
       {/* El pulso del día. Solo en la vista de entrada: buscando un cliente, estorban. */}
       {!q && !verTodos && (
@@ -246,18 +225,6 @@ export function PagosTable({ clienteInicial = null }: { clienteInicial?: string 
           ))}
         </div>
       )}
-
-      {/* Registrar pago genérico: el operador busca el crédito/cliente dentro del form */}
-      <Dialog open={nuevoPagoOpen} onOpenChange={(o) => { if (!o) setNuevoPagoOpen(false); }}>
-        <DialogContent className="w-[95vw] sm:max-w-5xl max-h-[94dvh] flex flex-col overflow-hidden">
-          <DialogHeader className="shrink-0">
-            <DialogTitle>Registrar pago</DialogTitle>
-          </DialogHeader>
-          <div className="flex-1 min-h-0 flex flex-col">
-            {nuevoPagoOpen && <PagoForm onClose={handleNuevoPagoClose} />}
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
