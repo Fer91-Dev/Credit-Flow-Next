@@ -1,13 +1,14 @@
 "use client";
 
 import { ShieldAlert, CalendarClock, HandCoins, Handshake, ChevronRight, Printer } from "lucide-react";
-import { abrirReciboDeCuota, pagadoDeCuota, cantidadCobros, moraDevengadaDeCuota } from "@/lib/recibo-cuota";
+import { pagadoDeCuota, moraDevengadaDeCuota } from "@/lib/recibo-cuota";
+import { abrirRecibo } from "@/lib/recibo";
 import type { Credito, AccionCobranza } from "@/lib/swr";
 import { useCuotas } from "@/lib/swr";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { DetailSection } from "@/components/ui/DetailGrid";
 import { Skeleton } from "@/components/ui/skeleton";
-import { formatFecha, formatMonto, nombreCompleto, formatDias, formatCreditoNumero } from "@/lib/utils";
+import { formatFecha, formatFechaHora, formatMonto, nombreCompleto, formatDias, formatCreditoNumero } from "@/lib/utils";
 
 const fmtDate = (s?: string | null) => formatFecha(s);
 
@@ -203,24 +204,31 @@ export function CobranzaDetail({ credito, acciones, onVerPromesa }: {
                       </td>
                       <td className="py-2 px-2 text-muted-foreground tabular-nums whitespace-nowrap">{fmtDate(c.fecha_vencimiento)}</td>
                       <td className="py-2 px-2 text-right font-mono tabular-nums text-foreground">{formatMonto(c.cuota_total)}</td>
-                      {/* Con su recibo, siempre que haya cobros. Mismo módulo que la ficha del
-                          cliente y el detalle del crédito: un solo papel para el mismo cobro. */}
+                                      {/*
+                        TODOS los recibos de la cuota, no solo el último. Nombraba al más
+                        reciente y escondía los otros detrás de un contador que no se podía
+                        abrir: con dos cobros parciales, el recibo del primero quedaba
+                        inalcanzable desde su fila. Van en el orden en que se cobraron y con su
+                        importe, que es lo único que los distingue.
+                      */}
                       <td className="py-2 px-2 text-right whitespace-nowrap">
                         {pagado > 0 ? (
-                          <div className="flex items-center justify-end gap-1.5">
+                          <div className="flex flex-col items-end gap-1">
                             <span className="font-mono tabular-nums text-success">{formatMonto(pagado)}</span>
-                            <button
-                              onClick={() => abrirReciboDeCuota(c)}
-                              title={cantidadCobros(c) > 1 ? `Recibo del último de ${cantidadCobros(c)} cobros (PDF)` : "Recibo de este cobro (PDF)"}
-                              className="relative shrink-0 rounded-md border border-border p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                            >
-                              <Printer className="h-3 w-3" />
-                              {cantidadCobros(c) > 1 && (
-                                <span className="absolute -right-1 -top-1 rounded-full bg-primary px-1 text-[9px] font-bold leading-3 text-primary-foreground">
-                                  {cantidadCobros(c)}
-                                </span>
-                              )}
-                            </button>
+                            {[...(c.comprobantes ?? [])]
+                              .sort((a, b2) => a.fecha_hora.localeCompare(b2.fecha_hora))
+                              .map((comp) => (
+                                <button
+                                  key={comp.pago_id}
+                                  onClick={() => abrirRecibo(comp.pago_id)}
+                                  title={`Recibo en PDF · ${formatFechaHora(comp.fecha_hora)}`}
+                                  className="inline-flex items-center gap-1 rounded-md border border-border px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                                >
+                                  <Printer className="h-2.5 w-2.5 shrink-0" />
+                                  {comp.comprobante ?? "Recibo"}
+                                  <span className="tabular-nums text-muted-foreground/60">{formatMonto(comp.monto)}</span>
+                                </button>
+                              ))}
                           </div>
                         ) : (
                           <span className="text-muted-foreground/30">—</span>

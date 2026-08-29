@@ -1,4 +1,3 @@
-import { abrirRecibo } from "@/lib/recibo";
 import type { CuotaPersistida } from "@/lib/swr";
 
 /**
@@ -48,24 +47,6 @@ export function ultimoComprobante(cuota: CuotaPersistida) {
 /** Fecha y hora del último cobro imputado a la cuota (null si no hubo). */
 export function ultimoPagoDeCuota(cuota: CuotaPersistida): string | null {
   return ultimoComprobante(cuota)?.fecha_hora ?? null;
-}
-
-/**
- * Abre el recibo OFICIAL en PDF del cobro más reciente de esta cuota.
- *
- * Con varios cobros parciales se abre el último: los anteriores siguen accesibles desde el
- * historial de pagos, que es la lista completa. La fila de la cuota es un atajo al último
- * comprobante, no un índice de todos.
- */
-export async function abrirReciboDeCuota(cuota: CuotaPersistida): Promise<void> {
-  const comp = ultimoComprobante(cuota);
-  if (!comp) return;
-  await abrirRecibo(comp.pago_id);
-}
-
-/** Cuántos cobros imputaron a esta cuota (para avisar que hay más de uno). */
-export function cantidadCobros(cuota: CuotaPersistida): number {
-  return (cuota.comprobantes ?? []).length;
 }
 
 /**

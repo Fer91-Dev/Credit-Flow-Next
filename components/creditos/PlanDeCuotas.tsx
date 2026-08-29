@@ -1,13 +1,11 @@
 "use client";
 
-import { Printer } from "lucide-react";
+import { Printer, Check } from "lucide-react";
 import { StatusBadge, type BadgeVariant } from "@/components/ui/StatusBadge";
 import type { CuotaPersistida, EstadoCuota } from "@/lib/swr";
-import { formatDias, formatFecha, formatNumero } from "@/lib/utils";
-import {
-  abrirReciboDeCuota, tienePagos, pagadoDeCuota, cantidadCobros,
-  moraDevengadaDeCuota, ultimoComprobante,
-} from "@/lib/recibo-cuota";
+import { formatDias, formatFecha, formatFechaHora, formatNumero } from "@/lib/utils";
+import { abrirRecibo } from "@/lib/recibo";
+import { tienePagos, pagadoDeCuota, moraDevengadaDeCuota } from "@/lib/recibo-cuota";
 
 /**
  * EL PLAN DE CUOTAS. Una sola tabla para todo el sistema.
@@ -101,7 +99,14 @@ export function PlanDeCuotas({
                 // El número del recibo es un dato que se BUSCA —el cliente llama diciendo
                 // "tengo el REC-000006"—, no un adorno del importe: va en su columna.
                 { t: "Comprobante", a: "text-left" },
-                { t: "Estado", a: "text-left" },
+                /*
+                  🔴 SE FUE LA COLUMNA "ESTADO". Decía "Pagada" al lado de un "—" en A cobrar:
+                  dos celdas para una sola idea, y la única que mira el operador —cuánto hay
+                  que cobrar— quedaba vacía justo en las filas resueltas. Ahora la última
+                  columna es LA CONCLUSIÓN del renglón: o dice cuánto se cobra, o dice que ya
+                  está pagada. "Pendiente" no se escribe: era un chip que repetía lo obvio en
+                  cuatro de cada cinco filas.
+                */
                 { t: "A cobrar", op: "=", a: `text-right ${pr}` },
               ].map((h) => (
                 <th
@@ -125,6 +130,8 @@ export function PlanDeCuotas({
               const moraPend = q.mora ?? 0;
               const moraDev = moraDevengadaDeCuota(q);
               const conPagos = tienePagos(q);
+              // En el orden en que se cobraron: un historial se lee del primero al último.
+              const comps = [...(q.comprobantes ?? [])].sort((a, c) => a.fecha_hora.localeCompare(c.fecha_hora));
               const esProxima = proximaNro === q.nro;
               return (
                 <tr
@@ -208,47 +215,71 @@ export function PlanDeCuotas({
                     )}
                   </td>
 
-                  {/* El recibo SIEMPRE que haya cobros, no solo con la cuota saldada: una
-                      cuota pagada en parte ya tiene comprobante que el cliente puede pedir.
-                      Con varios cobros se nombra el último y se dice cuántos más hay. */}
+                  {/*
+                    🔴 TODOS los comprobantes, no solo el último.
+                    Nombraba al más reciente y contaba los otros con un "+1" que no se podía
+                    abrir: la cuota 1 de Marina tuvo dos cobros —REC-000006 por $150.000,00 y
+                    REC-000008 por $133.638,30— y el recibo de los $150.000 quedaba
+                    inalcanzable desde su propia fila. Si el cliente viene con ese papel en la
+                    mano, hay que poder reimprimirlo.
+
+                    Van en el orden en que se cobraron y cada uno con su importe: sin el
+                    monto, dos renglones de "REC-0000xx" no se distinguen.
+                  */}
                   <td className={`${celda} whitespace-nowrap`}>
-                    {conPagos ? (
-                      <button
-                        onClick={() => abrirReciboDeCuota(q)}
-                        title="Abrir el recibo en PDF"
-                        className="inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-1 font-mono text-[11px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                      >
-                        <Printer className="h-3 w-3 shrink-0" />
-                        {ultimoComprobante(q)?.comprobante ?? "Recibo"}
-                        {cantidadCobros(q) > 1 && (
-                          <span className="font-sans text-[10px] text-muted-foreground/60">+{cantidadCobros(q) - 1}</span>
-                        )}
-                      </button>
+                    {comps.length > 0 ? (
+                      <div className="flex flex-col items-start gap-1">
+                        {comps.map((c) => (
+                          <button
+                            key={c.pago_id}
+                            onClick={() => abrirRecibo(c.pago_id)}
+                            title={`Recibo en PDF · ${formatFechaHora(c.fecha_hora)}`}
+                            className="inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-1 font-mono text-[11px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                          >
+                            <Printer className="h-3 w-3 shrink-0" />
+                            {c.comprobante ?? "Recibo"}
+                            <span className="tabular-nums text-muted-foreground/60">${n2(c.monto)}</span>
+                          </button>
+                        ))}
+                      </div>
                     ) : (
                       <span className="text-muted-foreground/20">—</span>
                     )}
                   </td>
 
-                  <td className={celda}><StatusBadge label={b.label} variant={b.variant} /></td>
+                  {/*
+                    LA CONCLUSIÓN DEL RENGLÓN. O se cobra —y dice cuánto— o ya está saldada.
+                    El botón dice el TOTAL —cuota + su mora—, sin sufijos: el "+mora" que
+                    llevaba antes se leía como si al importe todavía hubiera que sumarle algo.
+                    La mora ya está discriminada en su columna.
 
-                  {/* El botón dice el TOTAL a cobrar —cuota + su mora—, sin sufijos: el
-                      "+mora" que llevaba antes se leía como si al importe todavía hubiera que
-                      sumarle algo. La mora ya está discriminada en su columna. */}
+                    Vencida y Parcial se marcan arriba del importe: son la razón por la que ese
+                    número es el que es. "Pendiente" no se marca — sería repetir lo obvio.
+                  */}
                   <td className={`${celda} ${pr} text-right`}>
                     {q.estado === "pagada" ? (
-                      <span className="text-muted-foreground/20">—</span>
-                    ) : onCobrar ? (
-                      <button
-                        onClick={() => onCobrar(q)}
-                        title={`Cobrar la ${unidadCuota} ${q.nro}`}
-                        className="inline-flex items-center justify-center rounded-lg bg-success px-3 py-1.5 font-mono text-[11px] font-semibold tabular-nums text-success-foreground transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-success/40"
-                      >
-                        ${n2(q.total_cobrar ?? q.cuota_total)}
-                      </button>
-                    ) : (
-                      <span className="font-mono font-semibold tabular-nums text-foreground">
-                        ${n2(q.total_cobrar ?? q.cuota_total)}
+                      <span className="inline-flex items-center gap-1.5 rounded-full border border-success/30 bg-success/10 px-2.5 py-1 text-[11px] font-semibold text-success">
+                        <Check className="h-3 w-3" /> Pagada
                       </span>
+                    ) : (
+                      <div className="inline-flex flex-col items-end gap-1">
+                        {(q.estado === "vencida" || q.estado === "parcial") && (
+                          <StatusBadge label={b.label} variant={b.variant} />
+                        )}
+                        {onCobrar ? (
+                          <button
+                            onClick={() => onCobrar(q)}
+                            title={`Cobrar la ${unidadCuota} ${q.nro}`}
+                            className="inline-flex items-center justify-center rounded-lg bg-success px-3 py-1.5 font-mono text-[11px] font-semibold tabular-nums text-success-foreground transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-success/40"
+                          >
+                            ${n2(q.total_cobrar ?? q.cuota_total)}
+                          </button>
+                        ) : (
+                          <span className="font-mono font-semibold tabular-nums text-foreground">
+                            ${n2(q.total_cobrar ?? q.cuota_total)}
+                          </span>
+                        )}
+                      </div>
                     )}
                   </td>
                 </tr>
@@ -276,7 +307,6 @@ export function PlanDeCuotas({
               <td className={`${px} ${py} border-t border-border text-right font-mono font-bold tabular-nums text-success`}>
                 ${n2(pagadoTotal)}
               </td>
-              <td className="border-t border-border" />
               <td className="border-t border-border" />
               {/* La columna que suma lo que el cliente debe hoy. Coincide con la tarjeta
                   "Deuda total" del detalle porque sale de las mismas cuotas. */}
