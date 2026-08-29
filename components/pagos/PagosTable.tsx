@@ -20,14 +20,27 @@ import { nombreCompleto, formatFecha, formatMonto, formatCreditoNumero } from "@
  * operador ingresa un DNI o nombre; al elegir el cliente se muestra su ficha
  * 360 a pantalla completa, desde donde se registra el cobro.
  */
-export function PagosTable() {
+export function PagosTable({ clienteInicial = null }: { clienteInicial?: string | null }) {
   const { clientes, isLoading } = useClientes();
   const { pagos, isLoading: pagosLoading } = usePagos();
   const { mutate: globalMutate } = useSWRConfig();
 
   const [query, setQuery] = useState("");
   const [verTodos, setVerTodos] = useState(false); // F3: lista completa de clientes A→Z
-  const [selected, setSelected] = useState<Cliente | null>(null);
+  /**
+   * 🔴 EL CLIENTE ELEGIDO ES UN **ID**, Y ARRANCA CON EL QUE VINO DEL SERVIDOR.
+   *
+   * Guardaba el objeto `Cliente` entero, sacado de la lista de `useClientes()`, y el
+   * `?cliente=` se resolvía en un efecto DESPUÉS de que esa lista llegara por fetch. Entrar
+   * desde el botón "Cobrar" mostraba entonces el BUSCADOR unos segundos —con sus skeletons y
+   * todo— y recién después saltaba a la ficha: un cambio de pantalla a la vista, en la acción
+   * que más se repite del día.
+   *
+   * No hacía falta esperar nada: lo único que la ficha necesita es el id, porque
+   * `ClienteDetail` trae sus propios datos. El id llega resuelto por el server component
+   * (`clienteInicial`), así que el PRIMER render ya es la ficha.
+   */
+  const [clienteId, setClienteId] = useState<string | null>(clienteInicial);
   const [nuevoPagoOpen, setNuevoPagoOpen] = useState(false); // pago genérico (busca crédito/cliente en el form)
 
   // Búsqueda DNI-aware: matchea por nombre o por documento (también en su forma
@@ -50,38 +63,33 @@ export function PagosTable() {
     [clientes],
   );
 
-  const elegir = (c: Cliente) => { setSelected(c); setQuery(""); setVerTodos(false); };
+  const elegir = (c: Cliente) => { setClienteId(c.id); setQuery(""); setVerTodos(false); };
 
   /**
-   * LLEGAR CON EL CLIENTE YA CARGADO: `/pagos?cliente=<id>`.
-   *
-   * Desde que el cobro vive SOLO acá, el detalle del crédito y la ficha de Clientes tienen un
-   * botón "Cobrar" que trae para acá. Sin esto el operador veía la cuota en una pantalla y
-   * tenía que volver a buscar al mismo cliente por DNI en otra — un paso de más en la acción
-   * que más se repite del día.
-   *
-   * Se lee del `location` y no con `useSearchParams` para no arrastrar la pantalla entera a
-   * un Suspense por un parámetro opcional (mismo criterio que el `?tab=` de Cobranzas).
-   * Corre una sola vez: si el operador después elige otro cliente, el parámetro no lo pisa.
+   * Si se entra de nuevo a `/pagos?cliente=<otro>` con la pantalla ya montada, React conserva
+   * el componente y el inicializador del `useState` NO vuelve a correr. Este efecto sincroniza
+   * ese caso; como depende del valor, no se vuelve a disparar tras limpiar la URL (la prop no
+   * cambia) ni pisa al cliente que el operador elija después a mano.
    */
-  const [linkResuelto, setLinkResuelto] = useState(false);
   useEffect(() => {
-    if (linkResuelto || clientes.length === 0) return;
-    setLinkResuelto(true);
-    const id = new URLSearchParams(window.location.search).get("cliente");
-    if (!id) return;
-    const c = clientes.find((x) => x.id === id);
-    if (c) elegir(c);
-    // La URL vuelve a /pagos: si queda el parámetro, un F5 más tarde reabre una ficha que el
-    // operador ya había cerrado.
-    window.history.replaceState(null, "", "/pagos");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [clientes, linkResuelto]);
+    if (clienteInicial) setClienteId(clienteInicial);
+  }, [clienteInicial]);
+
+  /**
+   * Limpiar `?cliente=` de la URL: si queda, un F5 más tarde reabre una ficha que el operador
+   * ya había cerrado. `replaceState` no re-renderiza ni pierde el estado.
+   */
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).has("cliente")) {
+      window.history.replaceState(null, "", "/pagos");
+    }
+  }, [clienteInicial]);
 
   // Desde un pago reciente → abrir la ficha de su cliente (donde se anula el pago).
   const abrirPorPago = (p: Pago) => {
-    const c = clientes.find((x) => x.id === p.credito.cliente_id);
-    if (c) elegir(c);
+    setClienteId(p.credito.cliente_id);
+    setQuery("");
+    setVerTodos(false);
   };
 
   // Pago genérico desde la vista de entrada (el operador busca el crédito/cliente en el form).
@@ -96,7 +104,7 @@ export function PagosTable() {
   };
 
   // ── Vista de ficha (cliente seleccionado) ──
-  if (selected) {
+  if (clienteId) {
     /**
      * La única acción de pantalla: volver al buscador.
      *
@@ -113,7 +121,7 @@ export function PagosTable() {
       /* Fantasma: la flecha se corre al pasar el mouse, que ya dice "vas hacia atrás" sin
          robarle peso visual a los botones de cobro de las cuotas. */
       <button
-        onClick={() => setSelected(null)}
+        onClick={() => setClienteId(null)}
         className="group inline-flex items-center gap-2 whitespace-nowrap rounded-xl border border-border/70 bg-card/60 px-4 py-2.5 text-sm font-medium text-muted-foreground backdrop-blur transition-colors hover:border-border hover:bg-muted/40 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
       >
         <ArrowLeft className="h-4 w-4 transition-transform duration-200 group-hover:-translate-x-0.5" />
@@ -132,7 +140,7 @@ export function PagosTable() {
         />
         {/* Ficha principal del cliente, con las acciones en su encabezado */}
         <div className="rounded-xl bg-card border border-border overflow-hidden">
-          <ClienteDetail clienteId={selected.id} variant="pagos" accionesPantalla={acciones} />
+          <ClienteDetail clienteId={clienteId} variant="pagos" accionesPantalla={acciones} />
         </div>
       </div>
     );

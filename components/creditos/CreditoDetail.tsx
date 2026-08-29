@@ -1,5 +1,6 @@
 ﻿"use client";
 
+import Link from "next/link";
 import { useState, useRef } from "react";
 import { useSWRConfig } from "swr";
 import { CalendarDays, Wallet, Info, ArrowUpRight, Receipt, Loader2, Printer, RefreshCw, ArrowRight, ShieldCheck, Ban, Trash2, ExternalLink } from "lucide-react";
@@ -815,13 +816,13 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
                 no puede tener tres implementaciones que se separen con el tiempo.
               */}
               {puedeCobrar && (
-                <a
+                <Link
                   href={`/pagos?cliente=${credito.cliente_id}`}
                   title="Ir a la terminal de cobro con este cliente cargado"
                   className="inline-flex items-center gap-1.5 rounded-lg border border-success/30 bg-success/10 px-2.5 py-1 text-[11px] font-medium text-success transition-colors hover:bg-success/20"
                 >
                   <Wallet className="h-3.5 w-3.5" /> Cobrar
-                </a>
+                </Link>
               )}
             </div>
           </div>

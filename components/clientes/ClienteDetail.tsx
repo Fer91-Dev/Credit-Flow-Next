@@ -1,5 +1,6 @@
 ﻿"use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import { useSWRConfig } from "swr";
 import {
@@ -364,12 +365,12 @@ export function ClienteDetail({
                   {/* Trae a la terminal de cobro con este cliente ya cargado. No cobra acá:
                       el cobro es de Pagos. Solo si tiene algo vivo que cobrar. */}
                   {showCreditos && !puedeCobrarAca && activos.length > 0 && (
-                    <a
+                    <Link
                       href={`/pagos?cliente=${cliente.id}`}
                       className="inline-flex items-center gap-1.5 rounded-lg border border-success/30 bg-success/10 px-2.5 py-1.5 text-xs font-medium text-success transition-colors hover:bg-success/20"
                     >
                       <Wallet className="h-3.5 w-3.5" /> Cobrar
-                    </a>
+                    </Link>
                   )}
                   {onEditar && puedeEditar && (
                     <button
@@ -1017,12 +1018,12 @@ function CreditosTabla({ creditos, mostrarProximo, onCobrar, clienteId, abiertoD
                 {/* Cobrar vive SOLO en Pagos. Donde no se cobra, el botón lleva a la terminal
                     con el cliente ya cargado en vez de desaparecer. */}
                 {esCreditoVivo(c.estado) && c.saldo_pendiente > 0 && !onCobrar && clienteId && (
-                  <a
+                  <Link
                     href={`/pagos?cliente=${clienteId}`}
                     className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground transition-opacity hover:opacity-90"
                   >
                     <Wallet className="h-3.5 w-3.5" /> Cobrar en Pagos
-                  </a>
+                  </Link>
                 )}
 
                 {c.estado === "pagado" && (
