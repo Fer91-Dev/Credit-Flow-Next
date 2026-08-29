@@ -130,6 +130,8 @@ export interface PagoImputado {
   anulado?: boolean;
   anulado_motivo?: string | null;
   anulado_at?: string | null;
+  /** Contra qué cuotas del plan se imputó este cobro. */
+  aplicaciones?: { cuota: { nro: number } }[];
 }
 
 /** Crédito enriquecido con sus finanzas, dentro del detalle del cliente. */

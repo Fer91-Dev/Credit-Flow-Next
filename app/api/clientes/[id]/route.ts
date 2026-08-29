@@ -31,7 +31,17 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
       creditos: {
         orderBy: { created_at: "desc" },
         include: {
-          pagos: { orderBy: { fecha: "desc" } },
+          pagos: {
+            orderBy: { fecha: "desc" },
+            // Contra QUÉ cuota se imputó cada cobro. Sin esto el historial dice cuánto entró
+            // y no a cuenta de qué, que es la mitad del dato.
+            include: {
+              aplicaciones: {
+                select: { cuota: { select: { nro: true } } },
+                orderBy: { cuota: { nro: "asc" } },
+              },
+            },
+          },
           cuotas: { orderBy: { nro: "asc" } },
         },
       },

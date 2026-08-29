@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useSWRConfig } from "swr";
 import {
-  Pencil, Trash2, CalendarClock, ChevronRight, Loader2, Mail, MessageCircle, Phone, Printer, ShieldCheck, Ban, Receipt, AlertTriangle, History, BellOff, Wallet,
+  Pencil, Trash2, CalendarClock, ChevronRight, ChevronDown, Loader2, Mail, MessageCircle, Phone, Printer, ShieldCheck, Ban, Receipt, AlertTriangle, History, BellOff, Wallet,
 } from "lucide-react";
 import { refrescarNotificaciones, useClienteDetalle, useAccionesCobranza, useCuotas, KEYS, type CreditoConFinanzas, type EstadoCuota, type CuotaPersistida } from "@/lib/swr";
 import { StatusBadge, type BadgeVariant } from "@/components/ui/StatusBadge";
@@ -599,7 +599,7 @@ export function ClienteDetail({
             {activos.length === 0 ? (
               <EmptyRow text="El cliente no tiene créditos activos." />
             ) : (
-              <CreditosTabla creditos={activos} mostrarProximo onCobrar={puedeCobrarAca ? (c, q) => setCobrando({ credito: c, cuota: q }) : undefined} />
+              <CreditosTabla creditos={activos} clienteId={cliente.id} onCobrar={puedeCobrarAca ? (c, q) => setCobrando({ credito: c, cuota: q }) : undefined} />
             )}
           </section>
         )}
@@ -608,52 +608,110 @@ export function ClienteDetail({
         {showCreditos && historicos.length > 0 && (
           <section className="space-y-2">
             <SectionTitle icon="page-facing-up" text={`Historial de créditos (${historicos.length})`} />
-            <CreditosTabla creditos={historicos} />
+            <CreditosTabla creditos={historicos} clienteId={cliente.id} />
           </section>
         )}
 
-        {/* Historial de pagos (con anulación — control de tesorería) */}
+        {/*
+          HISTORIAL DE PAGOS — línea de tiempo, no tabla.
+
+          🔴 Un pago es un HECHO FECHADO, no una fila de datos. Como tabla competía
+          visualmente con el estado actual del crédito de arriba —dos grillas iguales, una
+          debajo de la otra— y no se distinguía "lo que debe" de "lo que pasó".
+
+          Y decía cuánto entró sin decir CONTRA QUÉ ni cómo se repartió: para saber por qué
+          el cliente sigue debiendo tanto después de pagar $150.000,00 había que abrir el
+          recibo en PDF. Ahora la imputación está en el renglón.
+
+          El PAGO ANULADO se muestra, no se esconde: el hueco en la caja tiene que quedar a
+          la vista, con su motivo.
+        */}
         {showCreditos && pagosCliente.length > 0 && (
           <section className="space-y-2">
             <SectionTitle icon="dollar-banknote" text={`Historial de pagos (${pagosCliente.filter((p) => !p.anulado).length})`} />
-            <div className="rounded-xl border border-border overflow-x-auto">
-              <table className="w-full text-xs border-separate border-spacing-0">
-                <thead>
-                  <tr className="bg-muted/30">
-                    <th className="px-3 py-2.5 text-left font-semibold text-muted-foreground border-b border-border">Fecha</th>
-                    <th className="px-3 py-2.5 text-left font-semibold text-muted-foreground border-b border-border">Crédito</th>
-                    <th className="px-3 py-2.5 text-right font-semibold text-success border-b border-border">Monto</th>
-                    <th className="px-3 py-2.5 text-left font-semibold text-muted-foreground border-b border-border hidden sm:table-cell">Método</th>
-                    <th className="px-3 py-2.5 text-right font-semibold text-muted-foreground border-b border-border pr-4">Acciones</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {pagosCliente.map((p, idx) => (
-                    <tr key={p.id} className={`${idx % 2 === 1 ? "bg-muted/5" : ""} ${p.anulado ? "opacity-50" : ""}`}>
-                      <td className="px-3 py-2 text-muted-foreground tabular-nums border-b border-border/70">{formatFecha(p.fecha)}</td>
-                      <td className="px-3 py-2 font-mono text-primary border-b border-border/70">{formatCreditoNumero(p.creditoNumero, p.creditoRefiNumero)}</td>
-                      <td className="px-3 py-2 text-right font-mono font-semibold border-b border-border/70">
-                        {p.anulado
-                          ? <span className="inline-flex items-center gap-1.5"><StatusBadge label="Anulado" variant="destructive" /><span className="text-muted-foreground line-through">${n0(p.monto)}</span></span>
-                          : <span className="text-success">+${n0(p.monto)}</span>}
-                      </td>
-                      <td className="px-3 py-2 text-muted-foreground border-b border-border/70 hidden sm:table-cell capitalize">{p.metodo}</td>
-                      <td className="px-3 py-2 pr-4 text-right border-b border-border/70">
-                        <div className="inline-flex items-center gap-1.5">
-                          <button onClick={() => handleReciboPago(p.id)} disabled={reciboBusy === p.id} title="Recibo PDF" className="inline-flex items-center justify-center h-7 w-7 rounded-md border border-border text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50 transition-colors">
-                            {reciboBusy === p.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Receipt className="h-3.5 w-3.5" />}
-                          </button>
-                          {puedeAnular && !p.anulado && (
-                            <button onClick={() => { setAnularPago({ id: p.id, monto: p.monto, fecha: p.fecha, creditoNumero: p.creditoNumero, creditoRefiNumero: p.creditoRefiNumero }); setAnularMotivo(""); }} title="Anular pago (contra-asiento en caja)" className="inline-flex items-center justify-center h-7 w-7 rounded-md border border-border text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors">
-                              <Ban className="h-3.5 w-3.5" />
-                            </button>
-                          )}
+            <div className="space-y-3">
+              {pagosCliente.map((p) => {
+                const imputado = [
+                  { k: "Punitorios", v: p.aplicado_mora ?? 0, c: "text-destructive" },
+                  { k: "Interés", v: p.aplicado_interes ?? 0, c: "text-warning" },
+                  { k: "Cargos", v: p.aplicado_cargos ?? 0, c: "text-muted-foreground" },
+                  { k: "Capital", v: p.aplicado_capital ?? 0, c: "text-primary" },
+                ].filter((x) => x.v > 0);
+                const cuotas = p.aplicaciones ?? [];
+                return (
+                  <div key={p.id} className="relative pl-6">
+                    {/* Guía y nodo: es lo que hace que se lea como una secuencia. */}
+                    <span className="absolute inset-y-0 left-[5px] w-px bg-border" aria-hidden />
+                    <span className={`absolute left-0 top-5 h-[11px] w-[11px] rounded-full ring-4 ring-background ${p.anulado ? "bg-muted-foreground/60" : "bg-success"}`} aria-hidden />
+
+                    <div className={`rounded-xl border border-border bg-card p-4 transition-colors hover:border-success/30 ${p.anulado ? "opacity-60" : ""}`}>
+                      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+                        <div className="min-w-0">
+                          <p className={`font-mono text-lg font-bold tabular-nums tracking-tight ${p.anulado ? "text-muted-foreground line-through" : "text-success"}`}>
+                            +${n2(p.monto)}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {cuotas.length > 0 ? (
+                              <>
+                                a cuenta de la{" "}
+                                <span className="font-medium text-foreground">
+                                  {cuotas.length === 1
+                                    ? `cuota ${cuotas[0].cuota.nro}`
+                                    : `cuotas ${cuotas.map((a) => a.cuota.nro).join(", ")}`}
+                                </span>
+                              </>
+                            ) : "cobro registrado"}
+                            {" · "}
+                            <span className="font-mono">{formatCreditoNumero(p.creditoNumero, p.creditoRefiNumero)}</span>
+                          </p>
                         </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                        <div className="flex shrink-0 items-center gap-2">
+                          <span className="text-[11px] tabular-nums text-muted-foreground">{formatFecha(p.fecha)}</span>
+                          {p.anulado
+                            ? <StatusBadge label="Anulado" variant="destructive" />
+                            : <StatusBadge label={p.metodo} variant="muted" />}
+                        </div>
+                      </div>
+
+                      {/* Cómo se repartió el dinero: responde "¿por qué sigue debiendo tanto?". */}
+                      {!p.anulado && imputado.length > 0 && (
+                        <div className="mt-2.5 flex flex-wrap gap-1.5">
+                          {imputado.map((x) => (
+                            <span key={x.k} className="inline-flex items-baseline gap-1.5 rounded-md border border-border/60 bg-muted/20 px-2 py-1 text-[11px]">
+                              <span className="text-muted-foreground">{x.k}</span>
+                              <span className={`font-mono font-medium tabular-nums ${x.c}`}>${n2(x.v)}</span>
+                            </span>
+                          ))}
+                        </div>
+                      )}
+
+                      {p.anulado && p.anulado_motivo && (
+                        <p className="mt-2 text-[11px] text-muted-foreground">Motivo: {p.anulado_motivo}</p>
+                      )}
+
+                      <div className="mt-3 flex items-center justify-end gap-2 border-t border-border/60 pt-2.5">
+                        <button
+                          onClick={() => handleReciboPago(p.id)}
+                          disabled={reciboBusy === p.id}
+                          className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
+                        >
+                          {reciboBusy === p.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Receipt className="h-3 w-3" />}
+                          Recibo
+                        </button>
+                        {puedeAnular && !p.anulado && (
+                          <button
+                            onClick={() => { setAnularPago({ id: p.id, monto: p.monto, fecha: p.fecha, creditoNumero: p.creditoNumero, creditoRefiNumero: p.creditoRefiNumero }); setAnularMotivo(""); }}
+                            title="Anular pago (contra-asiento en caja)"
+                            className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+                          >
+                            <Ban className="h-3 w-3" /> Anular
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </section>
         )}
@@ -750,11 +808,31 @@ export function ClienteDetail({
   );
 }
 
-function CreditosTabla({ creditos, mostrarProximo, onCobrar }: {
+/**
+ * CRÉDITOS ACTIVOS — una CARD por crédito, no una fila de tabla.
+ *
+ * 🔴 Qué estaba mal en la tabla.
+ *  · **No se veía que fuera clickeable.** El despliegue del plan colgaba de un chevron de 14px
+ *    dentro de la celda: había que descubrir por casualidad que la fila hacía algo. Ahora hay
+ *    un botón que dice "Ver cuotas", gira su flecha y lleva `aria-expanded`.
+ *  · **Jerarquía plana.** Siete columnas del mismo peso, donde el nombre del crédito pesaba
+ *    igual que la deuda. La card ordena: identificación arriba, las cifras que se miran en
+ *    tipografía grande, y las acciones al pie.
+ *  · **Contraste.** El saldo iba en `text-warning` (#F59E0B) y la cuota en `text-primary`
+ *    (#6366F1): sobre la card oscura ese indigo da 3,4:1 y reprueba AA (pide 4,5:1). Ahora los
+ *    importes van en `text-foreground` y el color queda para el ESTADO, que es donde significa
+ *    algo.
+ *
+ * La FRANJA de la izquierda codifica la severidad —verde al día, ámbar en mora, roja pasando
+ * los 30 días— para poder barrer una lista de diez créditos sin leer un número.
+ */
+function CreditosTabla({ creditos, mostrarProximo, onCobrar, clienteId }: {
   creditos: CreditoConFinanzas[];
   mostrarProximo?: boolean;
-  /** Cobrar una cuota puntual. Sin handler, el plan queda de solo lectura. */
+  /** Cobrar una cuota puntual. Sin handler, el plan queda de solo lectura (Clientes). */
   onCobrar?: (credito: CreditoConFinanzas, cuota: CuotaPersistida) => void;
+  /** Para el atajo a la terminal cuando desde acá no se cobra. */
+  clienteId?: string;
 }) {
   const [abiertos, setAbiertos] = useState<Set<string>>(new Set());
   const [libreDeudaId, setLibreDeudaId] = useState<string | null>(null);
@@ -764,102 +842,138 @@ function CreditosTabla({ creditos, mostrarProximo, onCobrar }: {
       if (next.has(id)) next.delete(id); else next.add(id);
       return next;
     });
-  const cols = mostrarProximo ? 7 : 6;
 
   return (
-    <div className="rounded-xl border border-border overflow-x-auto">
-      <table className="w-full text-xs border-separate border-spacing-0">
-        <thead>
-          <tr className="bg-muted/30">
-            <th className="px-3 py-2.5 text-left  font-semibold text-muted-foreground border-b border-border">Crédito</th>
-            <th className="px-3 py-2.5 text-right font-semibold text-muted-foreground border-b border-border">Monto</th>
-            <th className="px-3 py-2.5 text-right font-semibold text-warning          border-b border-border">Saldo</th>
-            <th className="px-3 py-2.5 text-right font-semibold text-primary          border-b border-border">Cuota</th>
-            <th className="px-3 py-2.5 text-center font-semibold text-muted-foreground border-b border-border">Cuotas</th>
-            {mostrarProximo && <th className="px-3 py-2.5 text-left font-semibold text-muted-foreground border-b border-border">Próx. venc.</th>}
-            <th className="px-3 py-2.5 text-left  font-semibold text-muted-foreground border-b border-border pr-4">Estado</th>
-          </tr>
-        </thead>
-        <tbody>
-          {creditos.map((c, idx) => {
-            const b = creditoBadge(c.estado, c.dias_mora ?? 0);
-            const tieneCuotas = !!c.cuotas_resumen && c.cuotas_resumen.total > 0;
-            const abierto = abiertos.has(c.id);
-            return (
-              <FragmentRow key={c.id}>
-                <tr
-                  className={`${idx % 2 === 1 ? "bg-muted/5" : ""} ${tieneCuotas ? "cursor-pointer hover:bg-muted/20" : ""}`}
-                  onClick={tieneCuotas ? () => toggle(c.id) : undefined}
-                >
-                  <td className="px-3 py-2 text-foreground border-b border-border/70">
-                    <span className="inline-flex items-center gap-1.5">
-                      {tieneCuotas
-                        ? <ChevronRight className={`h-3.5 w-3.5 text-muted-foreground transition-transform ${abierto ? "rotate-90" : ""}`} />
-                        : <span className="inline-block w-3.5" />}
-                      <span className="font-mono text-[11px] text-muted-foreground/70">{formatCreditoNumero(c.numero, c.refinancia_a_numero)}</span>
-                      <span className="capitalize">{c.tipo_credito}</span>
-                      {/* Que un crédito HAYA NACIDO de refinanciar otro no se veía en la ficha:
-                          la cadena de reestructuraciones de un cliente es justo lo que hay que
-                          leer de un vistazo antes de darle otro. */}
-                      {c.es_refinanciacion && (
-                        <span className="rounded border border-warning/30 bg-warning/10 px-1.5 py-px text-[9px] font-bold uppercase tracking-wide text-warning" title="Nació de refinanciar un crédito anterior">
-                          Refi
-                        </span>
-                      )}
-                      <span className="text-muted-foreground/60"> · {c.tasa}% · {c.plazo_meses} cuotas</span>
-                    </span>
-                  </td>
-                  <td className="px-3 py-2 text-right font-mono text-muted-foreground tabular-nums border-b border-border/70">${n0(c.monto_original)}</td>
-                  <td className="px-3 py-2 text-right font-mono text-warning tabular-nums border-b border-border/70">${n0(c.saldo_pendiente)}</td>
-                  <td className="px-3 py-2 text-right font-mono text-primary tabular-nums border-b border-border/70">${n0(c.cuota)}</td>
-                  <td className="px-3 py-2 text-center tabular-nums border-b border-border/70">
-                    {tieneCuotas ? (
-                      <span className="font-mono text-muted-foreground">
-                        {c.cuotas_resumen!.pagadas}/{c.cuotas_resumen!.total}
-                        {c.cuotas_resumen!.vencidas > 0 && (
-                          <span className="text-destructive"> · {c.cuotas_resumen!.vencidas} venc.</span>
-                        )}
-                      </span>
-                    ) : (
-                      <span className="text-muted-foreground/30">—</span>
-                    )}
-                  </td>
-                  {mostrarProximo && (
-                    <td className="px-3 py-2 tabular-nums border-b border-border/70">
-                      {c.dias_mora > 0
-                        ? <span className="text-destructive">{formatDias(c.dias_mora)} de mora</span>
-                        : <span className="text-muted-foreground">{fmtDate(c.cuotas_resumen?.proxima_vencimiento ?? c.proximo_pago)}</span>}
-                    </td>
-                  )}
-                  <td className="px-3 py-2 pr-4 border-b border-border/70">
-                    <div className="flex items-center gap-2">
-                      <StatusBadge label={b.label} variant={b.variant} />
-                      {c.estado === "pagado" && (
-                        <button
-                          onClick={(e) => { e.stopPropagation(); setLibreDeudaId(c.id); }}
-                          title="Ver / imprimir el libre deuda del crédito cancelado"
-                          className="inline-flex items-center gap-1 rounded-md border border-success/30 bg-success/10 px-2 py-1 text-[11px] font-medium text-success transition-colors hover:bg-success/20"
-                        >
-                          <ShieldCheck className="h-3 w-3" /> Libre deuda
-                        </button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-                {abierto && (
-                  <tr>
-                    <td colSpan={cols} className="border-b border-border/70 bg-muted/[0.03] p-0">
-                      <CuotasInline credito={c} onCobrar={onCobrar} />
-                    </td>
-                  </tr>
+    <div className="space-y-3">
+      {creditos.map((c) => {
+        const b = creditoBadge(c.estado, c.dias_mora ?? 0);
+        const res = c.cuotas_resumen;
+        const tieneCuotas = !!res && res.total > 0;
+        const abierto = abiertos.has(c.id);
+        const mora = c.dias_mora ?? 0;
+        // La franja: el color ES el dato, no decoración.
+        const franja = mora > 30 ? "bg-destructive" : mora > 0 ? "bg-warning" : "bg-success";
+        return (
+          <article
+            key={c.id}
+            className={`group relative overflow-hidden rounded-2xl border bg-card transition-all duration-200
+              ${abierto ? "border-primary/30" : "border-border/70 hover:border-border"}
+              shadow-[0_1px_2px_rgba(0,0,0,0.3),0_10px_24px_-16px_rgba(0,0,0,0.6)]
+              hover:shadow-[0_1px_2px_rgba(0,0,0,0.3),0_18px_38px_-18px_rgba(0,0,0,0.75)]`}
+          >
+            <span className={`absolute inset-y-0 left-0 w-1 ${franja}`} aria-hidden />
+
+            <div className="grid gap-4 py-4 pl-5 pr-4">
+              {/* Identificación + estado */}
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-mono text-base font-bold tracking-tight text-foreground">
+                  {formatCreditoNumero(c.numero, c.refinancia_a_numero)}
+                </span>
+                <StatusBadge label={b.label} variant={b.variant} />
+                {mora > 0 && (
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-destructive/35 bg-destructive/10 px-2 py-0.5 text-[11px] font-semibold text-destructive">
+                    <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-destructive" />
+                    {formatDias(mora)} de mora
+                  </span>
                 )}
-              </FragmentRow>
-            );
-          })}
-        </tbody>
-      </table>
+                {/* Que un crédito HAYA NACIDO de refinanciar otro se lee de un vistazo: la
+                    cadena de reestructuraciones es justo lo que hay que mirar antes de dar otro. */}
+                {c.es_refinanciacion && (
+                  <span className="rounded border border-warning/30 bg-warning/10 px-1.5 py-px text-[9px] font-bold uppercase tracking-wide text-warning" title="Nació de refinanciar un crédito anterior">
+                    Refi
+                  </span>
+                )}
+                <span className="text-xs capitalize text-muted-foreground">
+                  {c.tipo_credito} · {c.tasa}% · {c.plazo_meses} cuotas
+                </span>
+              </div>
+
+              {/* Las cifras que se miran. En `text-foreground`: el color se reserva para el estado. */}
+              <div className="grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-4">
+                <CifraCredito label="Capital pendiente" valor={`$${n2(c.saldo_pendiente)}`}
+                  pie={`de $${n0(c.monto_original)} otorgados`} />
+                <CifraCredito label="Cuota" valor={`$${n2(c.cuota)}`}
+                  pie={tieneCuotas ? `${res!.pagadas} de ${res!.total} pagadas` : "sin cronograma"} />
+                <CifraCredito label={mora > 0 ? "Vencido" : "Próximo pago"}
+                  valor={mora > 0 ? `$${n2(c.interes_mora ? c.cuota + c.interes_mora : c.cuota)}` : fmtDate(res?.proxima_vencimiento ?? c.proximo_pago)}
+                  pie={tieneCuotas && res!.vencidas > 0 ? `${res!.vencidas} cuota${res!.vencidas === 1 ? "" : "s"} vencida${res!.vencidas === 1 ? "" : "s"}` : "al día"}
+                  tono={mora > 0 ? "warning" : undefined} />
+                <CifraCredito label="Cobrado" valor={`$${n2(c.total_cobrado)}`}
+                  pie={`${c.pagos?.length ?? 0} pago${(c.pagos?.length ?? 0) === 1 ? "" : "s"}`} tono="success" />
+              </div>
+
+              {/* Acciones. El botón de despliegue es explícito: era lo que faltaba. */}
+              <div className="flex flex-wrap items-center gap-2">
+                {tieneCuotas && (
+                  <button
+                    type="button"
+                    onClick={() => toggle(c.id)}
+                    aria-expanded={abierto}
+                    className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors
+                      ${abierto
+                        ? "border-primary/40 bg-primary/10 text-primary"
+                        : "border-border bg-muted/20 text-muted-foreground hover:bg-muted/40 hover:text-foreground"}`}
+                  >
+                    {abierto ? "Ocultar cuotas" : "Ver cuotas"}
+                    <ChevronDown className={`h-3.5 w-3.5 transition-transform duration-200 ${abierto ? "rotate-180" : ""}`} />
+                  </button>
+                )}
+
+                {/* Cobrar vive SOLO en Pagos. Donde no se cobra, el botón lleva a la terminal
+                    con el cliente ya cargado en vez de desaparecer. */}
+                {esCreditoVivo(c.estado) && c.saldo_pendiente > 0 && !onCobrar && clienteId && (
+                  <a
+                    href={`/pagos?cliente=${clienteId}`}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground transition-opacity hover:opacity-90"
+                  >
+                    <Wallet className="h-3.5 w-3.5" /> Cobrar en Pagos
+                  </a>
+                )}
+
+                {c.estado === "pagado" && (
+                  <button
+                    type="button"
+                    onClick={() => setLibreDeudaId(c.id)}
+                    title="Ver / imprimir el libre deuda del crédito cancelado"
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-success/30 bg-success/10 px-3 py-1.5 text-xs font-medium text-success transition-colors hover:bg-success/20"
+                  >
+                    <ShieldCheck className="h-3.5 w-3.5" /> Libre deuda
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* El plan. `grid-template-rows` de 0fr a 1fr anima sin conocer la altura, así que
+                no se rompe cuando la tabla crece. */}
+            <div className={`grid transition-[grid-template-rows] duration-300 ease-out ${abierto ? "grid-rows-[1fr]" : "grid-rows-[0fr]"}`}>
+              <div className="overflow-hidden">
+                <div className="border-t border-border px-5 py-4">
+                  {abierto && <CuotasInline credito={c} onCobrar={onCobrar} />}
+                </div>
+              </div>
+            </div>
+          </article>
+        );
+      })}
 
       <LibreDeudaDialog creditoId={libreDeudaId} onClose={() => setLibreDeudaId(null)} />
+    </div>
+  );
+}
+
+/** Una cifra de la card: etiqueta chica, número grande, contexto abajo. */
+function CifraCredito({ label, valor, pie, tono }: {
+  label: string; valor: string; pie?: string; tono?: "success" | "warning";
+}) {
+  return (
+    <div className="min-w-0">
+      <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">{label}</p>
+      <p className={`truncate font-mono text-base font-bold tabular-nums tracking-tight ${
+        tono === "success" ? "text-success" : tono === "warning" ? "text-warning" : "text-foreground"
+      }`}>
+        {valor}
+      </p>
+      {pie && <p className="truncate text-[11px] text-muted-foreground">{pie}</p>}
     </div>
   );
 }
