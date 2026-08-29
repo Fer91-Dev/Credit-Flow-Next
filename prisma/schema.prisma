@@ -141,16 +141,16 @@ model profiles {
 }
 
 model clientes {
-  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  created_at   DateTime @default(now()) @db.Timestamptz(6)
-  nombre       String // nombre(s) de pila
-  apellido     String? // apellido(s) — separado de nombre (modelo normalizado)
-  documento    String?
-  email        String?
-  telefono     String?
-  direccion    String?
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  created_at    DateTime  @default(now()) @db.Timestamptz(6)
+  nombre        String // nombre(s) de pila
+  apellido      String? // apellido(s) — separado de nombre (modelo normalizado)
+  documento     String?
+  email         String?
+  telefono      String?
+  direccion     String?
   // activo | fallecido. Solo un ADMIN puede moverlo (ver PATCH /api/clientes/[id]).
-  estado       String   @default("activo")
+  estado        String    @default("activo")
   // Por qué se cambió el estado. Obligatorio al marcar fallecido: el acta de defunción se
   // pide y se archiva EN PAPEL (decisión del usuario), así que el sistema solo guarda el
   // relato de quién lo registró. Sin esto, un cliente quedaría marcado sin explicación.
@@ -162,11 +162,9 @@ model clientes {
 
   /**
    * NO CONTACTAR — el cliente pidió que no lo llamen ni le escriban.
-   *
    * Distinto de `estado`: el titular sigue vivo y la deuda sigue viva y exigible; lo único
    * que cambia es el CANAL. Se le puede cobrar, se le puede refinanciar y aparece en la
    * cartera; lo que no se puede es mandarle un mensaje.
-   *
    * 🔴 NO es un parámetro de la financiera, y por eso no vive en `configuraciones`: es un
    * pedido del titular. En Argentina, insistir después de que alguien pidió que no lo
    * contacten es exposición directa bajo la ley de Defensa del Consumidor. Que una
@@ -174,14 +172,18 @@ model clientes {
    * toggle, así que el toggle no existe.
    */
   no_contactar        Boolean   @default(false)
-  /** Qué pidió exactamente (por escrito, por teléfono, solo al celular, etc.). Obligatorio al activarlo. */
+  /**
+   * Qué pidió exactamente (por escrito, por teléfono, solo al celular, etc.). Obligatorio al activarlo.
+   */
   no_contactar_motivo String?
-  /** Cuándo se registró el pedido. */
+  /**
+   * Cuándo se registró el pedido.
+   */
   no_contactar_desde  DateTime? @db.Timestamptz(6)
-  tipo_credito String   @default("personal")
-  monto_total  Float    @default(0)
-  zona         String? // zona/barrio para segmentación geográfica (Fase Home)
-  tenant_id    String   @db.Uuid
+  tipo_credito        String    @default("personal")
+  monto_total         Float     @default(0)
+  zona                String? // zona/barrio para segmentación geográfica (Fase Home)
+  tenant_id           String    @db.Uuid
 
   // Datos personales ampliados
   fecha_nacimiento DateTime? @db.Date
@@ -549,19 +551,18 @@ model campanas_cobranza {
 /// y la oferta de recuperación calculada. `monto_recuperado` se actualiza con los
 /// pagos imputados a ese crédito mientras la campaña esté activa.
 model campana_objetivo {
-  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  created_at       DateTime @default(now()) @db.Timestamptz(6)
-  tenant_id        String   @db.Uuid
-  campana_id       String   @db.Uuid
-  credito_id       String   @db.Uuid
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  created_at       DateTime  @default(now()) @db.Timestamptz(6)
+  tenant_id        String    @db.Uuid
+  campana_id       String    @db.Uuid
+  credito_id       String    @db.Uuid
   // Snapshot de la mora al incorporar a la campaña
-  saldo            Float    @default(0) // capital pendiente (NO es lo que se reclama)
-  dias_mora        Int      @default(0)
-  interes_mora     Float    @default(0)
+  saldo            Float     @default(0) // capital pendiente (NO es lo que se reclama)
+  dias_mora        Int       @default(0)
+  interes_mora     Float     @default(0)
   /**
    * Lo que está VENCIDO e impago, con mora: capital + interés + cargos de las cuotas que ya
    * vencieron. Es lo que hay que reclamar, y sobre lo que se calcula la oferta.
-   *
    * 🔴 La campaña armaba la oferta sobre `saldo` (capital). Es el mismo error que se corrigió
    * en el contacto individual, pero multiplicado por toda la lista: a cada moroso le llegaba
    * una cifra que no coincidía con lo que la caja le iba a cobrar. Nulable porque las
@@ -570,25 +571,23 @@ model campana_objetivo {
   vencido          Float?
   cuotas_vencidas  Int?
   // Oferta de recuperación calculada (calculateRecoveryOffer)
-  oferta_monto     Float    @default(0) // monto a cancelar con descuento aplicado
-  oferta_descuento Float    @default(0) // $ de descuento (ahorro) ofrecido
+  oferta_monto     Float     @default(0) // monto a cancelar con descuento aplicado
+  oferta_descuento Float     @default(0) // $ de descuento (ahorro) ofrecido
   /**
    * ── Estado del ENVÍO, por destinatario ──
-   *
    * Sin esto, mandar era todo o nada: el endpoint recorría la lista entera en una sola
    * función y Vercel la corta a los 10 segundos. Una campaña de más de ~8 mails moría a la
    * mitad, y como el candado anti-reenvío es por día, los que faltaban no se podían
    * reintentar hasta mañana — sin que la pantalla dijera cuáles quedaron afuera.
-   *
    * Ahora cada objetivo lleva su propio estado, así el envío se hace por tandas, se puede
    * retomar donde se cortó y se ve a quién le llegó y a quién no.
    */
-  envio_estado     String?  // pendiente | enviado | error | manual
+  envio_estado     String? // pendiente | enviado | error | manual
   envio_at         DateTime? @db.Timestamptz(6)
   envio_error      String?
   // Seguimiento
-  promesa_generada Boolean  @default(false)
-  monto_recuperado Float    @default(0)
+  promesa_generada Boolean   @default(false)
+  monto_recuperado Float     @default(0)
 
   campana campanas_cobranza @relation(fields: [campana_id], references: [id], onDelete: Cascade)
   credito creditos          @relation(fields: [credito_id], references: [id], onDelete: Cascade)
@@ -696,15 +695,15 @@ model planillas_cobranza {
   emitida_por_nombre String?
 
   // ── Rendición: lo que volvió de la calle ──
-  rendida_at          DateTime? @db.Timestamptz(6)
-  rendido_por         String?   @db.Uuid
-  rendido_por_nombre  String?
+  rendida_at         DateTime? @db.Timestamptz(6)
+  rendido_por        String?   @db.Uuid
+  rendido_por_nombre String?
   /// Efectivo que entregó el cobrador, contado en la oficina.
-  total_declarado     Float?
+  total_declarado    Float?
   /// declarado − cargado en el sistema. Sobrante > 0, faltante < 0.
-  diferencia          Float?
+  diferencia         Float?
   /// Por qué no cerró. Obligatorio si hay diferencia.
-  motivo              String?
+  motivo             String?
 
   pagos pagos[]
 
@@ -827,8 +826,8 @@ model pagos {
   /// Sin esto la rendición sería a ojo: hay que poder sumar EXACTAMENTE lo que entró por un
   /// recorrido y compararlo contra lo que el cobrador entregó. Nullable porque la enorme
   /// mayoría de los pagos se cobran en el mostrador y no vienen de ninguna planilla.
-  planilla_id      String?   @db.Uuid
-  planilla         planillas_cobranza? @relation(fields: [planilla_id], references: [id], onDelete: SetNull)
+  planilla_id String?             @db.Uuid
+  planilla    planillas_cobranza? @relation(fields: [planilla_id], references: [id], onDelete: SetNull)
 
   /// Cuota del ACUERDO DE PAGO que se estaba cobrando, si el cobro salió de ahí.
   ///
@@ -922,6 +921,19 @@ model acuerdos_pago {
   /// = (deuda_original − quita) + el interés del acuerdo. Decía "= deuda_original − quita",
   /// que dejó de ser cierto cuando el acuerdo pasó a llevar tasa propia.
   monto_acordado Float
+
+  /// ADELANTO cobrado EN EL ACTO al armar el acuerdo (0 si no hubo).
+  ///
+  /// Es lo primero que hace un cobrador en el mostrador: el cliente trae algo, se le toma, y
+  /// el plan se arma sobre lo que queda. Sin esto había que cobrarlo aparte y el acuerdo
+  /// quedaba armado sobre una deuda que ya no era la real.
+  ///
+  /// 🔴 NO ES UN LIBRO PARALELO: la plata entra como un `pagos` normal —imputado a las
+  /// cuotas, con su asiento de caja y su comprobante— y `entrega_pago_id` apunta a ese pago.
+  /// Este campo es el registro de que ESE cobro fue la entrega de ESTE acuerdo; el importe
+  /// autoritativo sigue siendo el del pago.
+  entrega         Float   @default(0)
+  entrega_pago_id String? @db.Uuid
 
   /// vigente | cumplido | roto | anulado
   estado        String  @default("vigente")

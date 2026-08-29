@@ -138,6 +138,21 @@ export interface CrearAcuerdoInput {
   creditoId: string;
   /** Cantidad de cuotas del acuerdo. */
   cuotas: number;
+  /**
+   * ADELANTO ya cobrado, si el cliente entregó algo en el acto.
+   *
+   * 🔴 ACÁ NO SE COBRA NADA. La entrega entra como un pago normal ANTES de llamar a esta
+   * función —imputado a las cuotas, con su asiento de caja y su comprobante—, así que cuando
+   * el plan se arma la deuda vencida YA viene descontada y el reparto sale solo. Esto es el
+   * registro de que ese cobro fue la entrega de este acuerdo, para el papel y la auditoría.
+   *
+   * El orden importa y no es intercambiable: si el acuerdo se creara primero y el cobro
+   * fallara, el plan quedaría armado sobre una entrega que nunca entró y el cliente debería
+   * más de lo que dice su propio acuerdo. Al revés, un cobro sin acuerdo es un pago legítimo
+   * que se imputó bien y el acuerdo se puede volver a intentar.
+   */
+  entrega?: number;
+  entregaPagoId?: string | null;
   /** Condonación en pesos (sale de mora + interés, nunca del capital). */
   quita?: number;
   /** Primer vencimiento. Default: dentro de un período. */
@@ -190,6 +205,8 @@ export async function crearAcuerdo(input: CrearAcuerdoInput) {
   }
 
   const quita = round2(noNegativo(Number(input.quita ?? 0)));
+  /** Lo que ya entró en el acto. Solo informativo acá: la deuda de arriba ya lo descontó. */
+  const entregaCobrada = round2(noNegativo(Number(input.entrega ?? 0)));
   const tope = quitaMaxima(deuda, input.esAdmin, cfg);
   if (quita > tope) {
     throw new ApiError(
@@ -232,8 +249,11 @@ export async function crearAcuerdo(input: CrearAcuerdoInput) {
       credito_id: creditoId,
       vendedor_id: input.vendedorId ?? credito.vendedor_id,
       fecha: hoy,
+      // Lo vencido AL ARMARLO, ya neto de la entrega (el cobro entró antes: ver `entrega`).
       deuda_original: deuda.total,
       quita,
+      entrega: entregaCobrada,
+      entrega_pago_id: input.entregaPagoId ?? null,
       // Lo que se compromete a pagar = la suma del plan. Con tasa 0 coincide con
       // `deuda_original − quita`; con interés es mayor, y es contra ESTE número que se
       // evalúa si cumplió.
@@ -268,8 +288,9 @@ export async function crearAcuerdo(input: CrearAcuerdoInput) {
       // tiene que decir REF- en la auditoría igual que en la pantalla.
       `Acuerdo de pago sobre ${credito.numero ? formatCreditoNumero(credito.numero, origenRefi) : "crédito"}: ` +
       `$${deuda.total.toLocaleString("es-AR")} vencidos en ${cuotas} cuota(s)` +
-      (quita > 0 ? ` con quita de $${quita.toLocaleString("es-AR")}` : ""),
-    meta: { tipo: "acuerdo_pago", acuerdo_id: acuerdo.id, deuda: deuda.total, quita, monto_acordado: totalAcuerdo, tasa_mensual: tasaAcuerdoPct, cuotas },
+      (quita > 0 ? ` con quita de $${quita.toLocaleString("es-AR")}` : "") +
+      (entregaCobrada > 0 ? ` · entrega de $${entregaCobrada.toLocaleString("es-AR")} cobrada en el acto` : ""),
+    meta: { tipo: "acuerdo_pago", acuerdo_id: acuerdo.id, deuda: deuda.total, quita, entrega: entregaCobrada, monto_acordado: totalAcuerdo, tasa_mensual: tasaAcuerdoPct, cuotas },
   });
 
   return acuerdo;

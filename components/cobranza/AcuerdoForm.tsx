@@ -51,6 +51,9 @@ export function AcuerdoForm({
   const toast = useToast();
   const [cuotas, setCuotas] = useState(3);
   const [quita, setQuita] = useState("");
+  /** Adelanto que el cliente trae en el acto. Se cobra ANTES de armar el plan. */
+  const [entrega, setEntrega] = useState("");
+  const [entregaMetodo, setEntregaMetodo] = useState("efectivo");
   const [primerVto, setPrimerVto] = useState("");
   const [notas, setNotas] = useState("");
   const [loading, setLoading] = useState(false);
@@ -72,12 +75,22 @@ export function AcuerdoForm({
     }
   }, [data, primerVto]);
 
-  const reset = () => { setCuotas(3); setQuita(""); setPrimerVto(""); setNotas(""); setError(null); };
+  const reset = () => { setCuotas(3); setQuita(""); setEntrega(""); setEntregaMetodo("efectivo"); setPrimerVto(""); setNotas(""); setError(null); };
 
   const quitaNum = parseMontoInput(quita);
+  const entregaNum = parseMontoInput(entrega);
   const total = data?.deuda.total ?? 0;
-  const acordado = Math.round((total - quitaNum) * 100) / 100;
+  /**
+   * Lo que se refinancia = lo vencido − la condonación − LO QUE YA ENTREGÓ.
+   *
+   * La entrega sale del total ANTES de calcular el interés del acuerdo: no se le cobra
+   * interés a una plata que ya está en la caja. Es la misma cuenta que hace el cobrador en el
+   * mostrador — "de los cien mil me trajiste treinta, financiamos setenta".
+   */
+  const acordado = Math.round((total - quitaNum - entregaNum) * 100) / 100;
   const excedeQuita = data ? quitaNum > data.limites.quita_maxima : false;
+  /** La entrega no puede llevarse más que la deuda: lo que sobrara no tendría dónde imputarse. */
+  const excedeEntrega = entregaNum > Math.round((total - quitaNum) * 100) / 100 + 0.01;
 
   /**
    * Vista previa del plan, con LA MISMA FUNCIÓN que usa el alta (`planDeAcuerdo`, dominio
@@ -107,20 +120,56 @@ export function AcuerdoForm({
     e.preventDefault();
     if (!creditoId || !data) return;
     const ok = await confirm({
-      title: "¿Armar el acuerdo?",
+      title: entregaNum > 0 ? "¿Cobrar la entrega y armar el acuerdo?" : "¿Armar el acuerdo?",
       // El total del PLAN, no la deuda: es a lo que el cliente se compromete. Decía
       // `acordado` (la deuda sin el interés del acuerdo), así que la confirmación prometía
       // un número que el acuerdo no iba a tener.
       description:
-        `${data.credito.cliente ?? "El cliente"} se compromete a pagar ${formatMonto(totalPlan)} en ${cuotas} cuota(s)` +
+        (entregaNum > 0
+          ? `Se le cobran ${formatMonto(entregaNum)} en ${entregaMetodo} AHORA, y `
+          : "") +
+        `${data.credito.cliente ?? "el cliente"} se compromete a pagar ${formatMonto(totalPlan)} en ${cuotas} cuota(s)` +
         (interesAcuerdo > 0 ? ` (incluye ${formatMonto(interesAcuerdo)} de interés al ${data.limites.tasa_mensual}% mensual)` : "") +
         (quitaNum > 0 ? `, con ${formatMonto(quitaNum)} de condonación` : "") +
         `. Mientras cumpla sale de la cola de morosos${data.limites.congela_punitorios ? " y no se le devengan punitorios" : ""}.`,
-      confirmLabel: "Armar acuerdo",
+      confirmLabel: entregaNum > 0 ? "Cobrar y armar" : "Armar acuerdo",
     });
     if (!ok) return;
     setLoading(true); setError(null);
     try {
+      /**
+       * 🔴 PRIMERO SE COBRA LA ENTREGA, DESPUÉS SE ARMA EL ACUERDO. El orden no es
+       * intercambiable.
+       *
+       * Si el acuerdo se creara primero y el cobro fallara, el plan quedaría armado sobre una
+       * entrega que nunca entró: el cliente debería más de lo que dice su propio acuerdo, y
+       * nadie se enteraría hasta el final. Al revés, un cobro sin acuerdo es un pago legítimo,
+       * bien imputado, y el acuerdo se vuelve a intentar sobre la deuda ya descontada.
+       *
+       * Va por el endpoint de pagos de siempre: se imputa a las cuotas, mueve la caja y emite
+       * su comprobante como cualquier otro cobro. La entrega no es un concepto aparte.
+       */
+      let entregaPagoId: string | null = null;
+      if (entregaNum > 0) {
+        const resPago = await fetch("/api/pagos", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            credito_id: creditoId,
+            monto: entregaNum,
+            metodo: entregaMetodo,
+            notas: "Entrega al armar el acuerdo de pago",
+          }),
+        });
+        const jPago = await resPago.json();
+        if (!jPago.ok) {
+          setError(`No se pudo cobrar la entrega: ${jPago.error}. El acuerdo no se armó.`);
+          setLoading(false);
+          return;
+        }
+        entregaPagoId = jPago.data?.pago?.id ?? null;
+      }
+
       const res = await fetch("/api/cobranza/acuerdos", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -128,13 +177,24 @@ export function AcuerdoForm({
           credito_id: creditoId,
           cuotas,
           quita: quitaNum || undefined,
+          entrega: entregaNum || undefined,
+          entrega_pago_id: entregaPagoId ?? undefined,
           primer_vencimiento: primerVto || undefined,
           notas,
         }),
       });
       const json = await res.json();
-      if (json.ok) { reset(); toast.success("Acuerdo de pago registrado"); onClose(true); }
-      else setError(json.error);
+      if (json.ok) {
+        reset();
+        toast.success(entregaNum > 0 ? "Entrega cobrada y acuerdo registrado" : "Acuerdo de pago registrado");
+        onClose(true);
+      } else {
+        // Si la entrega YA entró, hay que decirlo: la plata está cobrada aunque el acuerdo no
+        // se haya armado. Callarlo llevaría a cobrarla dos veces.
+        setError(entregaPagoId
+          ? `La entrega de ${formatMonto(entregaNum)} SE COBRÓ y quedó imputada, pero el acuerdo no se pudo armar: ${json.error}`
+          : json.error);
+      }
     } catch {
       setError("No se pudo registrar el acuerdo");
     } finally {
@@ -204,6 +264,29 @@ export function AcuerdoForm({
               </div>
             </div>
 
+            {/*
+              LA ENTREGA. Lo primero que pasa en el mostrador: el cliente trae algo y el plan
+              se arma sobre lo que queda. Va acá arriba, pegada a la deuda, porque es la que la
+              modifica — no es un dato más del formulario.
+            */}
+            <div className="flex flex-col gap-1.5">
+              <FieldLabel>Entrega ahora (opcional)</FieldLabel>
+              <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
+                <MoneyInput value={entrega} onChange={setEntrega} currency="$" />
+                <IconSelect icon="dollar-banknote" value={entregaMetodo} onChange={(e) => setEntregaMetodo(e.target.value)}>
+                  <option value="efectivo">Efectivo</option>
+                  <option value="transferencia">Transferencia</option>
+                  <option value="cheque">Cheque</option>
+                  <option value="otro">Otro</option>
+                </IconSelect>
+              </div>
+              <p className={`text-xs ${excedeEntrega ? "text-destructive" : "text-muted-foreground"}`}>
+                {excedeEntrega
+                  ? `No puede superar ${formatMonto(Math.round((total - quitaNum) * 100) / 100)}: no habría dónde imputar el sobrante.`
+                  : "Se cobra en el acto —entra a la caja y se imputa a las cuotas— y el plan se arma sobre lo que queda."}
+              </p>
+            </div>
+
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="flex flex-col gap-1.5">
                 <FieldLabel required>En cuántas cuotas</FieldLabel>
@@ -251,6 +334,32 @@ export function AcuerdoForm({
                     "Cuota 1 / Cuota 2" se confunden con las del crédito, que son otras
                     fechas y otros importes. */}
                 <p className="text-[10px] font-bold uppercase tracking-widest text-primary">Plan del acuerdo</p>
+                {/* De qué monto salen estas cuotas. Sin este renglón, con una entrega cargada
+                    el total del plan no cierra contra la deuda de arriba y parece un error. */}
+                {(entregaNum > 0 || quitaNum > 0) && (
+                  <div className="mt-2 space-y-1 border-b border-primary/15 pb-2 text-sm">
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground">Debe vencido</span>
+                      <span className="font-mono tabular-nums text-foreground">{formatMonto(total)}</span>
+                    </div>
+                    {quitaNum > 0 && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-muted-foreground">Condonación</span>
+                        <span className="font-mono tabular-nums text-success">−{formatMonto(quitaNum)}</span>
+                      </div>
+                    )}
+                    {entregaNum > 0 && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-muted-foreground">Entrega ahora <span className="text-muted-foreground/60">· {entregaMetodo}</span></span>
+                        <span className="font-mono tabular-nums text-success">−{formatMonto(entregaNum)}</span>
+                      </div>
+                    )}
+                    <div className="flex items-center justify-between font-medium">
+                      <span className="text-foreground">Se refinancia</span>
+                      <span className="font-mono tabular-nums text-foreground">{formatMonto(acordado)}</span>
+                    </div>
+                  </div>
+                )}
                 {/* Una cuota por fila: leído en columna se sigue el cronograma de arriba
                     hacia abajo, que es como se le lee al cliente. */}
                 <div className="mt-2 divide-y divide-primary/10">
@@ -317,7 +426,7 @@ export function AcuerdoForm({
             <FormActions
               onCancel={() => { reset(); onClose(false); }}
               loading={loading}
-              disabled={acordado <= 0 || excedeQuita || !primerVto}
+              disabled={acordado <= 0 || excedeQuita || excedeEntrega || !primerVto}
               submitLabel="Armar acuerdo"
               loadingLabel="Registrando…"
             />

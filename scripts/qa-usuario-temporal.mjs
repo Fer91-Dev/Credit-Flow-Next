@@ -7,8 +7,12 @@
  * La contraseña se hashea con `crypt()`/`gen_salt('bf')` de pgcrypto, que es exactamente lo
  * que usa Supabase Auth, así que el login normal la valida.
  *
- *   node --env-file=.env.local scripts/qa-usuario-temporal.mjs crear <password>
+ *   QA_PASSWORD="<clave>" node --env-file=.env.local scripts/qa-usuario-temporal.mjs crear
  *   node --env-file=.env.local scripts/qa-usuario-temporal.mjs borrar
+ *
+ * 🔴 LA CLAVE VA POR VARIABLE DE ENTORNO, NUNCA COMO ARGUMENTO. Un argv queda en el historial
+ * del shell y en la lista de procesos, donde lo ve cualquiera que corra `ps`. Es la misma
+ * regla que siguen los seeds.
  *
  * 🔴 ABORTA si la base es la de PRODUCCIÓN. Esto es una herramienta de desarrollo.
  */
@@ -20,7 +24,7 @@ const REF_PROD = "ilrvvfctzlcbhelxbsar";
 
 const prisma = new PrismaClient();
 const accion = process.argv[2];
-const password = process.argv[3];
+const password = process.env.QA_PASSWORD;
 
 if ((process.env.DATABASE_URL ?? "").includes(REF_PROD)) {
   console.error("🔴 ABORTADO: la conexión apunta a PRODUCCIÓN. Este script es solo para desarrollo.");
@@ -34,7 +38,7 @@ async function borrar() {
 }
 
 async function crear() {
-  if (!password) throw new Error("Falta la contraseña como segundo argumento");
+  if (!password) throw new Error("Falta QA_PASSWORD en el entorno");
   await borrar(); // idempotente: si quedó de una corrida anterior, se rehace
 
   // Tenant donde vive la data de pruebas (el mismo que usan las cuentas reales de DEV).
@@ -85,7 +89,7 @@ async function crear() {
 try {
   if (accion === "crear") await crear();
   else if (accion === "borrar") await borrar();
-  else { console.error("Uso: crear <password> | borrar"); process.exit(1); }
+  else { console.error('Uso: QA_PASSWORD="..." ... crear  |  ... borrar'); process.exit(1); }
 } finally {
   await prisma.$disconnect();
 }

@@ -84,7 +84,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
 /**
  * POST /api/cobranza/acuerdos
  * Arma un acuerdo de pago sobre la deuda VENCIDA de un crédito.
- * Body: { credito_id, cuotas, quita?, primer_vencimiento?, notas? }
+ * Body: { credito_id, cuotas, quita?, entrega?, entrega_pago_id?, primer_vencimiento?, notas? }
  *
  * El vendedor puede armarlo sobre sus propios créditos; la quita que puede otorgar la
  * define la configuración de la financiera (por defecto: ninguna).
@@ -93,7 +93,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
   assertSameOrigin(req);
   const { tenantId, role, vendedorId } = await requireRole(["admin", "vendedor"], req);
 
-  let body: { credito_id?: string; cuotas?: number; quita?: number; primer_vencimiento?: string; notas?: string; autorizacion_admin?: boolean };
+  let body: { credito_id?: string; cuotas?: number; quita?: number; entrega?: number; entrega_pago_id?: string; primer_vencimiento?: string; notas?: string; autorizacion_admin?: boolean };
   try {
     body = await req.json();
   } catch {
@@ -132,6 +132,8 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     creditoId: body.credito_id,
     cuotas: Number(body.cuotas),
     quita: body.quita,
+    entrega: body.entrega,
+    entregaPagoId: body.entrega_pago_id ?? null,
     primerVencimiento,
     notas: body.notas,
     esAdmin: role === "admin",
