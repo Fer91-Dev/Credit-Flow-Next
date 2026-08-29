@@ -394,6 +394,29 @@ export function PagoForm({ creditoId, clienteId, montoSugerido, motivoSugerido, 
   /** Mora devengada de lo seleccionado: se muestra discriminada, no se "avisa". */
   const moraSeleccionada = round2(seleccionadas.reduce((s, c) => s + (c.mora ?? 0), 0));
 
+  /*
+    Los números de la tarjeta de foco. Cada uno se calcula UNA vez acá y se muestra tal cual:
+    la identidad que tiene que cerrar en pantalla es
+
+        (cuota o saldo) + mora devengada = a cobrar
+
+    y `montoCuotas` —el importe que efectivamente se manda al server— es la suma de
+    `importeACobrar`, que es exactamente esos dos sumandos. Si se calculara el desglose por
+    otro camino, la tarjeta podría mostrar una cuenta que no da el total que se cobra.
+  */
+  /** La cuota más vieja de la selección: la que da el vencimiento y el estado del encabezado. */
+  const primeraSel = seleccionadas[0] ?? null;
+  /** Días de atraso de esa cuota (0 si todavía no venció). */
+  const atrasoPrimera = primeraSel ? Math.max(0, -(diasHastaVencimiento(primeraSel.fecha_vencimiento) ?? 0)) : 0;
+  /** Lo programado que resta (capital + interés + cargos), ya neto de lo entregado a cuenta. */
+  const progSeleccionado = round2(seleccionadas.reduce((s, c) => s + importePendiente(c), 0));
+  /** Lo que el cliente ya entregó contra estas cuotas, mora incluida. */
+  const entregadoSeleccionado = round2(
+    seleccionadas.reduce((s, c) => s + c.pagado_capital + (c.pagado_interes ?? 0) + (c.pagado_cargos ?? 0) + (c.pagado_mora ?? 0), 0),
+  );
+  /** Una sola cuota, ya empezada: el renglón dice "saldo de la cuota", no "cuota". */
+  const parcialSel = seleccionadas.length === 1 && entregadoSeleccionado > 0;
+
   // Submit NO cobra directo: abre la confirmación para que un Enter o clic
   // accidental nunca registre un pago.
   const handleSubmit = (e: React.FormEvent) => {
@@ -765,13 +788,15 @@ export function PagoForm({ creditoId, clienteId, montoSugerido, motivoSugerido, 
             al lado de un título que dice "cuota del acuerdo" hace pensar que el acuerdo
             salió mal. Siguen disponibles porque es adonde va a parar la plata, pero
             plegadas: en ese momento no se eligen cuotas, se cobra un importe pactado. */}
-        {creditoSel && (
+        {creditoSel && cobrandoAcuerdo && (
           /*
-            🔴 ABIERTA SIEMPRE. Venía plegada cuando el cobro traía un importe sugerido —que
-            desde que existe el botón verde de cada cuota es el caso NORMAL, no solo el de un
-            acuerdo—, y el usuario no encontraba las cuotas: el título parecía una etiqueta,
-            no un control. Se puede seguir plegando, pero ahora se ve que se puede: la flecha
-            está siempre y gira al abrir/cerrar.
+            🔴 SOLO EN EL ACUERDO. Cobrando una cuota común, esta tabla era un SEGUNDO lugar
+            donde elegir lo que ya se eligió con el botón verde del plan: el operador venía de
+            marcar la cuota y acá se la volvían a pedir, entre las otras cinco. Ese caso ahora
+            lo resuelve la tarjeta de foco de abajo.
+
+            Cobrando un ACUERDO sigue haciendo falta: el importe es el pactado y estas cuotas
+            no son lo que se cobra sino adonde va a parar la plata.
           */
           <details open className="group">
             <summary className="flex cursor-pointer list-none items-center justify-between mb-3">
@@ -983,49 +1008,181 @@ export function PagoForm({ creditoId, clienteId, montoSugerido, motivoSugerido, 
           </details>
         )}
 
-        {/* ── Paso 3: Monto + método ── */}
-        {creditoSel && (
+        {/* ── Paso 2: LA CUOTA QUE SE COBRA ──
+            El foco. Se entra acá desde el botón verde de una cuota, así que la pregunta ya
+            está contestada: esta pantalla la CONFIRMA, con el desglose que el operador le lee
+            al cliente, en vez de volver a pedirla entre las otras cinco filas de una tabla. */}
+        {creditoSel && !cobrandoAcuerdo && (
           <div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <Field
-                label="Monto a cobrar ($)"
-                required={manual}
-                hint={excede ? "⚠ Supera el saldo — el excedente quedará a favor" : (manual ? undefined : "calculado desde las cuotas")}
-              >
-                {manual ? (
-                  <Input
-                    name="monto" type="text" inputMode="decimal" placeholder="85.000,00"
-                    value={montoManual} onChange={e => setMontoManual(maskMontoInput(e.target.value))}
-                    required
-                    className={`text-right font-mono tabular-nums ${excede ? "border-warning focus:ring-warning/20" : ""}`}
-                  />
-                ) : (
-                  <div className="flex h-10 items-center rounded-md border border-border bg-muted/20 px-3 font-mono font-semibold text-foreground">
-                    ${fmt2(montoCuotas)}
-                  </div>
-                )}
-              </Field>
-              <Field label="Método de pago">
-                <Select name="metodo" value={metodo} onChange={e => setMetodo(e.target.value)}>
-                  <option value="efectivo">Efectivo</option>
-                  <option value="transferencia">Transferencia</option>
-                  <option value="cheque">Cheque</option>
-                  <option value="otro">Otro</option>
-                </Select>
-              </Field>
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                {seleccionadas.length > 1 ? `Cuotas a cobrar · ${seleccionadas.length}` : "Cuota a cobrar"}
+              </span>
+              <label className="flex cursor-pointer items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground">
+                <input type="checkbox" checked={manual} onChange={e => setManual(e.target.checked)} className="accent-primary" />
+                Monto personalizado
+              </label>
             </div>
 
-            {monto > 0 && (
-              <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg bg-muted/20 border border-border px-3 py-2.5 text-xs text-muted-foreground">
-                <ArrowRight className="h-3.5 w-3.5 text-primary shrink-0" />
-                <span>Imputación, cuota por cuota:</span>
-                <span className="text-destructive font-medium">Mora</span><span>→</span>
-                <span className="text-warning font-medium">Interés</span><span>→</span>
-                <span className="text-muted-foreground font-medium">Cargos</span><span>→</span>
-                <span className="text-primary font-medium">Capital</span>
+            {loadingCuotas ? (
+              <div className="flex items-center justify-center gap-2 rounded-2xl border border-border py-12 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" /> Cargando cuotas…
               </div>
+            ) : cobrables.length === 0 ? (
+              <p className="rounded-2xl border border-dashed border-border/60 px-4 py-10 text-center text-xs text-muted-foreground/60">
+                Este crédito no tiene cuotas pendientes.
+              </p>
+            ) : (
+              <>
+                {/*
+                  La tarjeta de foco. `key={hasta}` la re-monta al cambiar la selección: la
+                  entrada suave (fade + 10px, la misma de las tarjetas del resto del SaaS) hace
+                  visible que el importe cambió, sin el salto brusco de una tabla que crece.
+                */}
+                <div key={hasta ?? "sin"} className="animate-entrada overflow-hidden rounded-2xl border border-border bg-card">
+                  {/* Encabezado: qué cuota, en qué estado y para cuándo era. */}
+                  <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/70 bg-muted/[0.15] px-5 py-4">
+                    <div className="flex items-center gap-3">
+                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 font-mono text-base font-bold text-primary">
+                        {seleccionadas.length > 1 ? seleccionadas.length : (primeraSel?.nro ?? "—")}
+                      </span>
+                      <div className="min-w-0">
+                        <p className="text-sm font-bold text-foreground">
+                          {seleccionadas.length > 1
+                            ? `Cuotas #${primeraSel?.nro} a #${hasta}`
+                            : `Cuota #${primeraSel?.nro ?? "—"}`}
+                        </p>
+                        {primeraSel && (
+                          <p className="mt-0.5 text-xs tabular-nums text-muted-foreground">
+                            Vence {fmtDate(primeraSel.fecha_vencimiento)}
+                            {atrasoPrimera > 0 && (
+                              <span className="text-destructive"> · {formatDias(atrasoPrimera)} de atraso</span>
+                            )}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    {primeraSel && (
+                      <StatusBadge label={CUOTA_BADGE[primeraSel.estado].label} variant={CUOTA_BADGE[primeraSel.estado].variant} />
+                    )}
+                  </div>
+
+                  {/* El desglose: de dónde sale cada peso del importe de abajo. */}
+                  <div className="px-5 py-4">
+                    {seleccionadas.length > 1 && (
+                      /* Con varias, primero se ven una por una y después el subtotal: si solo
+                         se mostrara la suma, el operador no podría decirle al cliente qué
+                         cuota cubre cada parte de lo que entrega. */
+                      <div className="mb-4 space-y-1.5 border-b border-border/60 pb-4">
+                        {seleccionadas.map(c => (
+                          <div key={c.nro} className="flex items-center justify-between gap-3 text-xs">
+                            <span className="flex items-center gap-2 text-muted-foreground">
+                              <span className="font-mono text-muted-foreground/50">#{c.nro}</span>
+                              <span className="tabular-nums">{fmtDate(c.fecha_vencimiento)}</span>
+                            </span>
+                            <span className="font-mono tabular-nums text-foreground">${fmt2(importeACobrar(c))}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    <div className="space-y-2 text-sm">
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-muted-foreground">
+                          {seleccionadas.length > 1 ? "Cuotas" : parcialSel ? "Saldo de la cuota" : "Cuota"}
+                        </span>
+                        <span className="font-mono tabular-nums text-foreground">${fmt2(progSeleccionado)}</span>
+                      </div>
+                      {moraSeleccionada > 0 && (
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="text-muted-foreground">Mora devengada</span>
+                          <span className="font-mono tabular-nums text-destructive">+${fmt2(moraSeleccionada)}</span>
+                        </div>
+                      )}
+                      {/* Lo ya entregado no entra en la resta —los renglones de arriba ya
+                          vienen netos— pero se dice, porque es lo primero que pregunta el
+                          cliente que dejó algo a cuenta. */}
+                      {entregadoSeleccionado > 0 && (
+                        <div className="flex items-center justify-between gap-3 text-xs">
+                          <span className="text-muted-foreground/70">Ya entregado a cuenta</span>
+                          <span className="font-mono tabular-nums text-success">${fmt2(entregadoSeleccionado)}</span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* El total: es el número que se cobra, así que es el más grande de la
+                        pantalla — y el que se edita si el cliente trae otra cosa. */}
+                    <div className="mt-4 flex flex-wrap items-end justify-between gap-3 border-t border-border pt-4">
+                      <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                        {manual ? "Monto a cobrar" : "A cobrar"}
+                      </span>
+                      {manual ? (
+                        <Input
+                          name="monto" type="text" inputMode="decimal" placeholder="85.000,00"
+                          value={montoManual} onChange={e => setMontoManual(maskMontoInput(e.target.value))}
+                          required
+                          className={`h-12 max-w-[15rem] text-right font-mono text-xl font-bold tabular-nums ${excede ? "border-warning focus:ring-warning/20" : ""}`}
+                        />
+                      ) : (
+                        <span className="font-mono text-3xl font-bold tabular-nums text-foreground">
+                          ${fmt2(montoCuotas)}
+                        </span>
+                      )}
+                    </div>
+                    {excede && (
+                      <p className="mt-2 text-right text-[11px] text-warning">
+                        ⚠ Supera lo adeudado — el excedente queda a favor del cliente
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                {/*
+                  Extender el cobro. La tabla se fue, la posibilidad de cobrar varias cuotas de
+                  una no: queda en un renglón, con el ACUMULADO de cada opción —que es lo que
+                  se cobra al elegirla, no lo que vale esa cuota suelta—.
+                */}
+                {cobrables.length > 1 && !manual && (
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    <span className="text-[11px] text-muted-foreground">Cobrar hasta la cuota</span>
+                    {cobrables.map(c => {
+                      const activa = hasta === c.nro;
+                      const acum = round2(cobrables.filter(x => x.nro <= c.nro).reduce((sum, x) => sum + importeACobrar(x), 0));
+                      return (
+                        <button
+                          key={c.nro}
+                          type="button"
+                          onClick={() => setHasta(c.nro)}
+                          className={cn(
+                            "inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs transition-all duration-200",
+                            activa
+                              ? "border-primary bg-primary/10 text-foreground"
+                              : "border-border text-muted-foreground hover:border-primary/40 hover:bg-muted/30 hover:text-foreground",
+                          )}
+                        >
+                          <span className="font-mono font-semibold">#{c.nro}</span>
+                          <span className="font-mono tabular-nums opacity-70">${fmt2(acum)}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </>
             )}
           </div>
+        )}
+
+        {/* ── Paso 3: método de pago ──
+            El importe ya vive en la tarjeta de arriba; acá queda solo cómo entra la plata. */}
+        {creditoSel && (
+          <Field label="Método de pago">
+            <Select name="metodo" value={metodo} onChange={e => setMetodo(e.target.value)}>
+              <option value="efectivo">Efectivo</option>
+              <option value="transferencia">Transferencia</option>
+              <option value="cheque">Cheque</option>
+              <option value="otro">Otro</option>
+            </Select>
+          </Field>
         )}
 
         {/* Notas */}
@@ -1042,11 +1199,22 @@ export function PagoForm({ creditoId, clienteId, montoSugerido, motivoSugerido, 
         >
           Cancelar
         </button>
+        {/*
+          El botón de plata. Es el mismo que tenía la terminal de Pagos antes de que el cobro
+          pasara a pedirse sobre la cuota: verde, el signo $ en su propia ficha y un brillo que
+          lo recorre. Se mudó acá con el cobro, para que la acción se vea igual en los dos
+          lugares donde el operador la ejecuta.
+        */}
         <button
           type="submit" disabled={!creditoSel || monto <= 0}
-          className="px-5 py-2 rounded-lg bg-success text-success-foreground text-sm font-medium hover:opacity-90 disabled:opacity-40 transition-opacity inline-flex items-center gap-1.5"
+          className="group relative inline-flex items-center gap-2.5 overflow-hidden whitespace-nowrap rounded-xl bg-gradient-to-b from-success to-success/85 px-5 py-2.5 text-sm font-bold text-success-foreground shadow-[0_8px_20px_-10px_color-mix(in_srgb,var(--success)_70%,transparent)] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_14px_30px_-10px_color-mix(in_srgb,var(--success)_85%,transparent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-success/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background active:translate-y-0 disabled:pointer-events-none disabled:translate-y-0 disabled:opacity-40 disabled:shadow-none"
         >
+          <span className="flex h-6 w-6 items-center justify-center rounded-full bg-success-foreground/20 font-mono text-base leading-none">$</span>
           Registrar pago
+          <span
+            aria-hidden
+            className="pointer-events-none absolute inset-y-0 -left-full w-1/2 skew-x-[-20deg] bg-success-foreground/25 transition-[left] duration-500 ease-out group-hover:left-[150%] motion-reduce:hidden group-disabled:hidden"
+          />
         </button>
       </div>
     </form>

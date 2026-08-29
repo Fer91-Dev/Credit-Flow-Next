@@ -328,11 +328,11 @@ export function AcuerdosTab({ role }: { role: Role }) {
         const pendiente = c ? Math.round((c.monto - c.pagado) * 100) / 100 : 0;
         return (
           <Dialog open onOpenChange={(o) => { if (!o) setCobrando(null); }}>
-            <DialogContent className="w-[95vw] sm:max-w-4xl max-h-[90dvh] flex flex-col overflow-hidden">
+            <DialogContent className="w-[95vw] sm:max-w-5xl max-h-[94dvh] flex flex-col overflow-hidden">
               <DialogHeader className="shrink-0">
                 <DialogTitle>Cobrar cuota del acuerdo</DialogTitle>
               </DialogHeader>
-              <div className="flex-1 min-h-0 overflow-y-auto">
+              <div className="flex-1 min-h-0 flex flex-col">
                 <PagoForm
                   creditoId={cobrando.credito_id}
                   /* Lo DECLARA: es lo que fija el modo de monto libre y lo que hace que el

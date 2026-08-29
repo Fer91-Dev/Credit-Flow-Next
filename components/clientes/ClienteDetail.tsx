@@ -808,13 +808,13 @@ export function ClienteDetail({
       {/* Cobro de una cuota puntual del plan. Mismo formulario y mismo preseteo que el
           Detalle del crédito: el importe llega calculado (cuota + su mora) y editable. */}
       <Dialog open={!!cobrando} onOpenChange={(o) => { if (!o) setCobrando(null); }}>
-        <DialogContent className="w-[95vw] sm:max-w-4xl max-h-[90dvh] flex flex-col overflow-hidden">
+        <DialogContent className="w-[95vw] sm:max-w-5xl max-h-[94dvh] flex flex-col overflow-hidden">
           <DialogHeader className="shrink-0">
             <DialogTitle>
               Registrar pago · {cobrando ? formatCreditoNumero(cobrando.credito.numero, cobrando.credito.refinancia_a_numero) : ""}
             </DialogTitle>
           </DialogHeader>
-          <div className="flex-1 min-h-0 overflow-y-auto">
+          <div className="flex-1 min-h-0 flex flex-col">
             {cobrando && (
               <PagoForm
                 creditoId={cobrando.credito.id}

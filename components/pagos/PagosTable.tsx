@@ -212,11 +212,11 @@ export function PagosTable() {
 
       {/* Registrar pago genérico: el operador busca el crédito/cliente dentro del form */}
       <Dialog open={nuevoPagoOpen} onOpenChange={(o) => { if (!o) setNuevoPagoOpen(false); }}>
-        <DialogContent className="w-[95vw] sm:max-w-4xl max-h-[90dvh] flex flex-col overflow-hidden">
+        <DialogContent className="w-[95vw] sm:max-w-5xl max-h-[94dvh] flex flex-col overflow-hidden">
           <DialogHeader className="shrink-0">
             <DialogTitle>Registrar pago</DialogTitle>
           </DialogHeader>
-          <div className="flex-1 min-h-0 overflow-y-auto">
+          <div className="flex-1 min-h-0 flex flex-col">
             {nuevoPagoOpen && <PagoForm onClose={handleNuevoPagoClose} />}
           </div>
         </DialogContent>
