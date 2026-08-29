@@ -49,6 +49,7 @@ const TABS = [
   { id: "rentabilidad", label: "Rentabilidad", emoji: "money-bag" },
   { id: "morosidad", label: "Morosidad", emoji: "warning" },
   { id: "cobranza", label: "Cobranza", emoji: "money-with-wings" },
+  { id: "medios", label: "Medios de pago", emoji: "credit-card" },
   { id: "historico", label: "Histórico", emoji: "calendar" },
 ] as const;
 type TabId = (typeof TABS)[number]["id"];
@@ -68,6 +69,28 @@ function exportarSerie(s: ReporteSerie) {
   descargarCSV(`reporte-mensual_${s.periodo.desde}_${s.periodo.hasta}.csv`, [
     ["Mes", "Operaciones", "Monto otorgado", "Ticket promedio", "Cobrado", "Interés cobrado", "Mora cobrada", "Cargos cobrados", "Ingreso financiero", "Costo fondeo", "Rentabilidad neta", "Cartera fin", "Mora #", "Saldo en mora", "Mora %"],
     ...s.serie.map((p) => [p.mes, p.otorgado_cantidad, p.otorgado_monto, p.ticket_promedio, p.cobrado_total, p.cobrado_interes, p.cobrado_mora, p.cobrado_cargos, p.ingreso_financiero, p.costo_fondeo, p.rentabilidad_neta, p.cartera_capital_fin, p.mora_creditos, p.mora_saldo_expuesto, p.mora_pct]),
+  ]);
+}
+/**
+ * Dos bloques en un solo CSV: el ranking del período y el reparto mes a mes.
+ *
+ * Van juntos porque responden la misma pregunta a dos escalas — cuál se usa más, y si eso se
+ * está moviendo. Separarlos obligaría a bajar dos archivos para leer una sola cosa.
+ */
+function exportarMedios(s: ReporteSerie) {
+  const metodos = s.medios_pago.map((m) => m.metodo);
+  descargarCSV(`reporte-medios-pago_${s.periodo.desde}_${s.periodo.hasta}.csv`, [
+    ["RANKING DEL PERIODO"],
+    ["Medio", "Pagos", "% de pagos", "Clientes distintos", "Monto", "% del monto", "Ticket promedio"],
+    ...s.medios_pago.map((m) => [m.metodo, m.cantidad, m.pct_cantidad, m.clientes, m.monto, m.pct_monto, m.ticket_promedio]),
+    [],
+    ["EVOLUCION MENSUAL (monto cobrado por medio)"],
+    ["Mes", ...metodos, "Total"],
+    ...s.serie.map((p) => [
+      p.mes,
+      ...metodos.map((m) => p.por_metodo?.[m] ?? 0),
+      Object.values(p.por_metodo ?? {}).reduce((a, b) => a + b, 0),
+    ]),
   ]);
 }
 function exportarCobranza(c: ReporteCobranza) {
@@ -211,10 +234,12 @@ export function ReportesView() {
   const puedeExportar =
     tab === "resumen" ? !!reporte && reporte.detalle_pagos.length > 0
     : tab === "cobranza" ? !!cobranza && cobranza.por_vendedor.length > 0
+    : tab === "medios" ? !!serie && serie.medios_pago.length > 0
     : !!serie && serie.serie.length > 0;
   const exportar = () => {
     if (tab === "resumen") { if (reporte) exportarPagos(reporte); }
     else if (tab === "cobranza") { if (cobranza) exportarCobranza(cobranza); }
+    else if (tab === "medios") { if (serie) exportarMedios(serie); }
     else if (serie) exportarSerie(serie);
   };
 
@@ -291,6 +316,7 @@ export function ReportesView() {
           {tab === "rentabilidad" && <TabRentabilidad r={reporte} s={serie} />}
           {tab === "morosidad" && <TabMorosidad r={reporte} s={serie} />}
           {tab === "cobranza" && <TabCobranza c={cobranza} />}
+          {tab === "medios" && <TabMedios s={serie} />}
           {tab === "historico" && <TabHistorico s={serie} />}
         </>
       )}
@@ -489,6 +515,155 @@ function FilaMes({ p }: { p: PuntoMensual }) {
       <td className={`py-2 text-right font-mono ${p.rentabilidad_neta >= 0 ? "text-foreground" : "text-destructive"}`}>${n0(p.rentabilidad_neta)}</td>
       <td className="py-2 text-right font-mono text-muted-foreground">{n1(p.mora_pct)}%</td>
     </tr>
+  );
+}
+
+// ─── Tab: Medios de pago ──────────────────────────────────────────────────────
+
+/** Un color por medio, estable en toda la pestaña (tabla, barras y leyenda). */
+const METODO_COLOR: Record<string, { barra: string; texto: string }> = {
+  efectivo:      { barra: "bg-success",     texto: "text-success" },
+  transferencia: { barra: "bg-primary",     texto: "text-primary" },
+  cheque:        { barra: "bg-warning",     texto: "text-warning" },
+  otro:          { barra: "bg-muted-foreground/50", texto: "text-muted-foreground" },
+};
+const colorMetodo = (m: string) => METODO_COLOR[m] ?? METODO_COLOR.otro;
+
+/**
+ * CÓMO PAGA LA GENTE, y si eso está cambiando.
+ *
+ * El Resumen ya mostraba "cobranzas por método", pero como una foto del rango elegido: se veía
+ * qué se usó, no la tendencia. Que la transferencia le venga comiendo terreno al efectivo
+ * cambia decisiones concretas —cuánta plata hay que tener en la calle, cuánto se arquea, qué
+ * medio conviene empujar— y eso solo se ve mes a mes.
+ *
+ * 🔴 SE MIDEN TRES COSAS DISTINTAS Y NO INTERCAMBIABLES: cuánta PLATA entró por cada medio,
+ * cuántos PAGOS se hicieron con él, y cuántos CLIENTES lo usan. El medio "más usado" por plata
+ * y el más usado por gente pueden no ser el mismo — y cuando difieren, esa diferencia ES la
+ * información: significa que un medio mueve pocos pagos grandes y el otro muchos chicos.
+ */
+function TabMedios({ s }: { s?: ReporteSerie }) {
+  const medios = s?.medios_pago ?? [];
+  if (medios.length === 0) return <Empty>Sin pagos en el período.</Empty>;
+
+  // El ranking ya viene ordenado por cantidad desde el server; el de plata se saca acá.
+  const masElegido = medios[0];
+  const masPlata = [...medios].sort((a, b) => b.monto - a.monto)[0];
+  const totalMonto = medios.reduce((a, m) => a + m.monto, 0);
+  const totalPagos = medios.reduce((a, m) => a + m.cantidad, 0);
+
+  // Evolución: un renglón por mes, apilado por medio. Solo los meses con algo cobrado — un
+  // mes en cero no dice nada del reparto y solo achica las barras de los demás.
+  const meses = (s?.serie ?? []).filter((p) => Object.keys(p.por_metodo ?? {}).length > 0);
+  const maxMes = Math.max(1, ...meses.map((p) => Object.values(p.por_metodo).reduce((a, b) => a + b, 0)));
+  const presentes = medios.map((m) => m.metodo);
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <KpiCard
+          icon="trophy" label="El más elegido"
+          value={metodoLabel[masElegido.metodo] ?? masElegido.metodo}
+          accent="primary"
+          sub={`${masElegido.cantidad} de ${totalPagos} pagos · ${n1(masElegido.pct_cantidad)}%`}
+        />
+        <KpiCard
+          icon="money-bag" label="El que más plata mueve"
+          value={metodoLabel[masPlata.metodo] ?? masPlata.metodo}
+          accent="success"
+          sub={`$${n0(masPlata.monto)} · ${n1(masPlata.pct_monto)}% de lo cobrado`}
+        />
+        <KpiCard
+          icon="chart-increasing" label="Medios en uso"
+          value={String(medios.length)}
+          accent="muted" mono
+          sub={`$${n0(totalMonto)} cobrados en ${totalPagos} pagos`}
+        />
+      </div>
+
+      <Section title="Ranking del período" icon="clipboard">
+        <SimpleTable
+          head={["Medio", "Pagos", "% de pagos", "Clientes", "Monto", "% del monto", "Ticket promedio"]}
+          rows={medios.map((m) => {
+            const c = colorMetodo(m.metodo);
+            return [
+              <span key="b" className="flex items-center gap-2">
+                <span className={`h-2.5 w-2.5 shrink-0 rounded-sm ${c.barra}`} />
+                <span className="font-medium text-foreground">{metodoLabel[m.metodo] ?? m.metodo}</span>
+              </span>,
+              m.cantidad,
+              <span key="pc" className="font-mono text-muted-foreground">{n1(m.pct_cantidad)}%</span>,
+              // Clientes DISTINTOS: quien paga 12 cuotas en efectivo es UN cliente, no doce.
+              <span key="cl" className="font-mono text-foreground">{m.clientes}</span>,
+              <span key="mo" className={`font-mono font-semibold ${c.texto}`}>${n0(m.monto)}</span>,
+              <span key="pm" className="font-mono text-muted-foreground">{n1(m.pct_monto)}%</span>,
+              <span key="tp" className="font-mono text-foreground">${n0(m.ticket_promedio)}</span>,
+            ];
+          })}
+          foot={["Total", totalPagos, "", "", <span key="f" className="font-mono font-bold text-success">${n0(totalMonto)}</span>, "", ""]}
+        />
+      </Section>
+
+      <Section title="Evolución mes a mes" icon="calendar">
+        {meses.length === 0 ? <Empty>Sin cobros en los meses del rango.</Empty> : (
+          <div className="space-y-3">
+            {/* Leyenda arriba: sin ella una barra apilada de cuatro colores no se lee. */}
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
+              {presentes.map((m) => (
+                <span key={m} className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <span className={`h-2.5 w-2.5 rounded-sm ${colorMetodo(m).barra}`} />
+                  {metodoLabel[m] ?? m}
+                </span>
+              ))}
+            </div>
+            <div className="w-full overflow-x-auto">
+              <div className="flex items-end gap-2 min-w-full" style={{ height: 160 }}>
+                {meses.map((p) => {
+                  const total = Object.values(p.por_metodo).reduce((a, b) => a + b, 0);
+                  return (
+                    <div key={p.mes} className="group/bar relative flex h-full min-w-[24px] flex-1 flex-col justify-end">
+                      <div className="flex w-full flex-col-reverse overflow-hidden rounded-t" style={{ height: Math.max(2, (total / maxMes) * 148) }}>
+                        {presentes.map((m) => {
+                          const v = p.por_metodo[m] ?? 0;
+                          if (v <= 0) return null;
+                          return <div key={m} className={colorMetodo(m).barra} style={{ height: `${(v / total) * 100}%` }} />;
+                        })}
+                      </div>
+                      {/* El detalle del mes, discriminado por medio: la barra muestra el
+                          reparto, el tooltip dice de dónde sale cada franja. */}
+                      <div className="pointer-events-none absolute -top-2 left-1/2 z-10 w-max -translate-x-1/2 -translate-y-full rounded-lg border border-border bg-card px-2.5 py-2 text-[10px] opacity-0 shadow-lg transition-opacity group-hover/bar:opacity-100">
+                        <p className="mb-1 font-semibold text-foreground">{mesCorto(p.mes)}</p>
+                        {presentes.map((m) => {
+                          const v = p.por_metodo[m] ?? 0;
+                          if (v <= 0) return null;
+                          return (
+                            <p key={m} className="flex items-center justify-between gap-3 text-muted-foreground">
+                              <span className="flex items-center gap-1.5">
+                                <span className={`h-2 w-2 rounded-sm ${colorMetodo(m).barra}`} />
+                                {metodoLabel[m] ?? m}
+                              </span>
+                              <span className="font-mono text-foreground">${n0(v)}</span>
+                            </p>
+                          );
+                        })}
+                        <p className="mt-1 flex items-center justify-between gap-3 border-t border-border pt-1 font-semibold text-foreground">
+                          <span>Total</span><span className="font-mono">${n0(total)}</span>
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="mt-1.5 flex gap-2 min-w-full">
+                {meses.map((p) => (
+                  <div key={p.mes} className="min-w-[24px] flex-1 truncate text-center text-[9px] text-muted-foreground">{mesCorto(p.mes)}</div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+      </Section>
+    </div>
   );
 }
 

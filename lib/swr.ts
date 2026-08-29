@@ -1839,6 +1839,26 @@ export interface PuntoMensual {
   mora_creditos: number;
   mora_saldo_expuesto: number;
   mora_pct: number;
+  /** Cuánto entró ese mes por cada medio de pago ("efectivo" → 254851.66). */
+  por_metodo: Record<string, number>;
+}
+
+/**
+ * Cómo paga la gente, en todo el período elegido.
+ *
+ * Se cuentan tres cosas que NO son intercambiables: cuánta plata entró por cada medio, cuántos
+ * pagos se hicieron con él, y cuántos clientes distintos lo usan. El medio más usado por plata
+ * y el más usado por gente pueden no ser el mismo, y ahí está la información.
+ */
+export interface MedioPago {
+  metodo: string;
+  monto: number;
+  cantidad: number;
+  /** Clientes DISTINTOS que lo usaron (no pagos: quien paga 12 cuotas cuenta una vez). */
+  clientes: number;
+  ticket_promedio: number;
+  pct_monto: number;
+  pct_cantidad: number;
 }
 
 export interface ReporteSerie {
@@ -1869,6 +1889,8 @@ export interface ReporteSerie {
       mora_pct: number;
     };
   }[];
+  /** Ranking de medios de pago del período, del más usado al menos. */
+  medios_pago: MedioPago[];
 }
 
 /** Serie mensual de Reportes (otorgamiento / cobranza / rentabilidad / mora histórica). */

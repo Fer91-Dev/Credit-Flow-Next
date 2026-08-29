@@ -82,7 +82,13 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
        * Un 143% de más, en el número del que sale la rentabilidad del mes.
        */
       where: { ...withTenant(tenantId), fecha: { gte: desde, lte: hasta }, anulado: false },
-      select: { fecha: true, monto: true, aplicado_capital: true, aplicado_interes: true, aplicado_mora: true, aplicado_cargos: true },
+      select: {
+        fecha: true, monto: true, metodo: true,
+        aplicado_capital: true, aplicado_interes: true, aplicado_mora: true, aplicado_cargos: true,
+        // Para contar CUÁNTAS PERSONAS usan cada medio, no cuántos pagos: un cliente que paga
+        // 12 cuotas en efectivo es UN cliente que usa efectivo, no doce.
+        credito: { select: { cliente_id: true } },
+      },
     }),
     getConfiguracion(tenantId),
     getRentabilidadConfig(tenantId),
@@ -127,6 +133,51 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     cobradoPorMes.set(k, cur);
   }
 
+  /**
+   * CÓMO PAGA LA GENTE, mes a mes y en todo el período.
+   *
+   * El resumen ya mostraba "cobranzas por método", pero como una foto del rango elegido: se
+   * veía qué se usó, no si eso está cambiando. Saber que la transferencia le viene comiendo
+   * terreno al efectivo cambia decisiones concretas —cuánta plata hay que tener en la calle,
+   * cuánto se arquea— y eso solo se ve en la evolución.
+   *
+   * Se cuentan tres cosas distintas y no intercambiables: cuánta PLATA entró por cada medio,
+   * cuántos PAGOS se hicieron, y cuántos CLIENTES lo usan. El medio "más utilizado" por plata
+   * y el más utilizado por gente pueden no ser el mismo, y ahí está la información.
+   */
+  const metodoPorMes = new Map<string, Map<string, { monto: number; cantidad: number }>>();
+  const metodoTotal = new Map<string, { monto: number; cantidad: number; clientes: Set<string> }>();
+  for (const p of pagos) {
+    const k = mesKey(p.fecha);
+    if (!metodoPorMes.has(k)) metodoPorMes.set(k, new Map());
+    const delMes = metodoPorMes.get(k)!;
+    const curMes = delMes.get(p.metodo) ?? { monto: 0, cantidad: 0 };
+    curMes.monto += p.monto; curMes.cantidad += 1;
+    delMes.set(p.metodo, curMes);
+
+    const curTot = metodoTotal.get(p.metodo) ?? { monto: 0, cantidad: 0, clientes: new Set<string>() };
+    curTot.monto += p.monto; curTot.cantidad += 1; curTot.clientes.add(p.credito.cliente_id);
+    metodoTotal.set(p.metodo, curTot);
+  }
+
+  const montoTotalPeriodo = [...metodoTotal.values()].reduce((a, m) => a + m.monto, 0);
+  const pagosTotalPeriodo = [...metodoTotal.values()].reduce((a, m) => a + m.cantidad, 0);
+  /** Ranking del período, del más usado al menos. Ordena por CANTIDAD: "más utilizado" es
+   *  cuántas veces se eligió, no cuánta plata movió (eso va al lado, en su propia columna). */
+  const medios_pago = [...metodoTotal.entries()]
+    .map(([metodo, m]) => ({
+      metodo,
+      monto: round2(m.monto),
+      cantidad: m.cantidad,
+      clientes: m.clientes.size,
+      /** Cuánto se cobra por vez con este medio. Es lo que distingue "muchos pagos chicos" de
+       *  "pocos pagos grandes", que es la diferencia entre la calle y el mostrador. */
+      ticket_promedio: m.cantidad > 0 ? round2(m.monto / m.cantidad) : 0,
+      pct_monto: montoTotalPeriodo > 0 ? round2((m.monto / montoTotalPeriodo) * 100) : 0,
+      pct_cantidad: pagosTotalPeriodo > 0 ? round2((m.cantidad / pagosTotalPeriodo) * 100) : 0,
+    }))
+    .sort((a, b) => b.cantidad - a.cantidad || b.monto - a.monto);
+
   // Punto por mes (incluye la reconstrucción de cartera/mora a fin de mes).
   const serie: PuntoMensual[] = buckets.map((b) => {
     const ot = otorgadoPorMes.get(b.key) ?? { cantidad: 0, monto: 0 };
@@ -151,6 +202,10 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
       mora_creditos: cartera.mora_creditos,
       mora_saldo_expuesto: cartera.mora_saldo_expuesto,
       mora_pct: cartera.mora_pct,
+      /** Cuánto entró ese mes por cada medio. Es lo que dibuja la evolución apilada. */
+      por_metodo: Object.fromEntries(
+        [...(metodoPorMes.get(b.key) ?? new Map()).entries()].map(([m, v]) => [m, round2(v.monto)]),
+      ),
     };
   });
 
@@ -196,5 +251,6 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     serie,
     totales,
     por_anio,
+    medios_pago,
   });
 });
