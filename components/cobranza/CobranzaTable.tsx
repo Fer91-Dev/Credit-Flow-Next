@@ -15,7 +15,6 @@ import { guardarSeleccionCampana, leerSeleccionCampana } from "./seleccion-campa
 import { CampanasView } from "./CampanasView";
 import { PromesasTab } from "./PromesasTab";
 import { AcuerdosTab } from "./AcuerdosTab";
-import { AcuerdoForm } from "./AcuerdoForm";
 import { AgendaHoy } from "./AgendaHoy";
 import { PlanillasTab } from "./PlanillasTab";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -90,7 +89,12 @@ export function CobranzaTable({ role }: { role: Role }) {
   const [copiedId, setCopied]   = useState<string | null>(null);
   const [gestion, setGestion]   = useState<CreditoCtx | null>(null);
   /** Crédito sobre el que se está armando un acuerdo de pago (null = cerrado). */
-  const [acordando, setAcordando] = useState<string | null>(null);
+  /**
+   * Armar un acuerdo abre su propia PANTALLA (`/cobranza/acuerdos/nuevo?credito=…`), no un
+   * modal: la operación tiene tres bloques que se miran entre sí —la deuda, los parámetros y
+   * el plan que resulta— y en un diálogo competían por el mismo scroll.
+   */
+  const irAAcordar = (creditoId: string) => router.push(`/cobranza/acuerdos/nuevo?credito=${creditoId}`);
   const [detalle, setDetalle]   = useState<Credito | null>(null);
   /**
    * Promesa que hay que abrir al aterrizar en la pestaña Promesas. La setea el clic sobre una
@@ -568,7 +572,7 @@ export function CobranzaTable({ role }: { role: Role }) {
                     <MessageSquarePlus className="h-3 w-3" /> Gestionar
                   </button>
                   <button
-                    onClick={(e) => { e.stopPropagation(); setAcordando(c.id); }}
+                    onClick={(e) => { e.stopPropagation(); irAAcordar(c.id); }}
                     title="Armar un acuerdo de pago por lo vencido"
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-muted-foreground hover:bg-muted hover:text-foreground text-xs font-medium transition-colors"
                   >
@@ -654,7 +658,7 @@ export function CobranzaTable({ role }: { role: Role }) {
                   <button onClick={(e) => { e.stopPropagation(); setGestion(c); }} className="flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 text-sm font-medium transition-colors border border-primary/20">
                     <MessageSquarePlus className="h-4 w-4" /> Gestionar
                   </button>
-                  <button onClick={(e) => { e.stopPropagation(); setAcordando(c.id); }} title="Acuerdo de pago" className="flex items-center justify-center h-10 w-10 rounded-lg border border-border text-muted-foreground hover:bg-muted transition-colors">
+                  <button onClick={(e) => { e.stopPropagation(); irAAcordar(c.id); }} title="Acuerdo de pago" className="flex items-center justify-center h-10 w-10 rounded-lg border border-border text-muted-foreground hover:bg-muted transition-colors">
                     <Handshake className="h-4 w-4" />
                   </button>
                   {(() => {
@@ -739,18 +743,6 @@ export function CobranzaTable({ role }: { role: Role }) {
           {gestion && <GestionForm credito={gestion} onClose={handleGestionClose} />}
         </DialogContent>
       </Dialog>
-
-      <AcuerdoForm
-        creditoId={acordando}
-        open={!!acordando}
-        onClose={(ok) => {
-          setAcordando(null);
-          if (!ok) return;
-          // Un acuerdo nuevo saca al crédito de la agenda del día y aparece en su pestaña.
-          globalMutate("/api/cobranza/acuerdos?estado=vigente");
-          globalMutate("/api/cobranza/agenda");
-        }}
-      />
 
       <Dialog open={!!detalle} onOpenChange={open => { if (!open) setDetalle(null); }}>
         {/* Ancho: acá adentro entra el plan de cuotas completo, que es una tabla de 6

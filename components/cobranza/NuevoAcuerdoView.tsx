@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import useSWR from "swr";
-import { Handshake } from "lucide-react";
-import { formatMonto, formatFecha, parseMontoInput } from "@/lib/utils";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { MoneyInput, FieldLabel, FormActions, IconTextarea, IconSelect } from "@/components/caja/caja-form";
+import { useRouter } from "next/navigation";
+import useSWR, { mutate as globalMutate } from "swr";
+import { Handshake, ArrowLeft, Loader2 } from "lucide-react";
+import { formatMonto, formatFecha, formatCreditoNumero, parseMontoInput } from "@/lib/utils";
+import { SystemControls } from "@/components/ui/SystemControls";
+import { MoneyInput, FieldLabel, IconTextarea, IconSelect } from "@/components/caja/caja-form";
 import { useConfirm } from "@/components/ui/confirm";
 import { useToast } from "@/components/ui/toast";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -45,13 +46,20 @@ const fetcher = (url: string) => fetch(url).then((r) => r.json()).then((r) => (r
 
 const ymd = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
-export function AcuerdoForm({
-  creditoId, open, onClose,
-}: {
-  creditoId: string | null;
-  open: boolean;
-  onClose: (ok?: boolean) => void;
-}) {
+/**
+ * 🔴 PANTALLA COMPLETA, NO UN MODAL.
+ *
+ * Armar un acuerdo es una operación con tres bloques que se miran entre sí: el desglose de lo
+ * vencido, los parámetros (entrega, cuotas, condonación) y el plan que resulta. En un diálogo
+ * de 672px los tres competían por el mismo scroll y el plan —que es lo que se le lee al
+ * cliente— quedaba tapado por la barra de acciones fija. Mismo criterio que el simulador de
+ * crédito y el alta de campañas, que se sacaron de un modal por lo mismo.
+ *
+ * A la izquierda se decide, a la derecha se ve el resultado. Los dos a la vista al mismo
+ * tiempo: cambiar la entrega y ver moverse las cuotas es la razón de ser de esta pantalla.
+ */
+export function NuevoAcuerdoView({ creditoId }: { creditoId: string | null }) {
+  const router = useRouter();
   const confirm = useConfirm();
   const toast = useToast();
   const [cuotas, setCuotas] = useState(3);
@@ -66,8 +74,11 @@ export function AcuerdoForm({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  /** Vuelve a Cobranzas, a la pestaña que corresponda. */
+  const volver = (tab?: string) => router.push(tab ? `/cobranza?tab=${tab}` : "/cobranza");
+
   const { data, error: errPreview, isLoading } = useSWR<Preview>(
-    open && creditoId ? `/api/creditos/${creditoId}/acuerdo` : null,
+    creditoId ? `/api/creditos/${creditoId}/acuerdo` : null,
     fetcher,
   );
 
@@ -82,7 +93,6 @@ export function AcuerdoForm({
     }
   }, [data, primerVto]);
 
-  const reset = () => { setCuotas(3); setQuita(""); setEntrega(""); setEntregaMetodo("efectivo"); setAutorizar(false); setPrimerVto(""); setNotas(""); setError(null); };
 
   const quitaNum = parseMontoInput(quita);
   const entregaNum = parseMontoInput(entrega);
@@ -202,9 +212,11 @@ export function AcuerdoForm({
       });
       const json = await res.json();
       if (json.ok) {
-        reset();
         toast.success(entregaNum > 0 ? "Entrega cobrada y acuerdo registrado" : "Acuerdo de pago registrado");
-        onClose(true);
+        // Un acuerdo nuevo saca al crédito de la agenda del día y aparece en su pestaña.
+        globalMutate("/api/cobranza/acuerdos?estado=vigente");
+        globalMutate("/api/cobranza/agenda");
+        volver("acuerdos");
       } else {
         // Si la entrega YA entró, hay que decirlo: la plata está cobrada aunque el acuerdo no
         // se haya armado. Callarlo llevaría a cobrarla dos veces.
@@ -220,22 +232,33 @@ export function AcuerdoForm({
   };
 
   return (
-    <Dialog open={open} onOpenChange={(o) => { if (!o) { reset(); onClose(false); } }}>
-      <DialogContent className="w-[95vw] sm:max-w-2xl sm:p-7 max-h-[90dvh] overflow-y-auto">
-        <DialogHeader className="pr-8">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-primary">
-              <Handshake className="h-5 w-5" />
-            </div>
-            <div>
-              <DialogTitle>Acuerdo de pago</DialogTitle>
-              <p className="mt-0.5 text-xs text-muted-foreground">
-                {data?.credito.cliente ?? "Arreglo de lo que el cliente debe vencido"}
-              </p>
-            </div>
+    <div className="-mx-4 -mb-6 md:-mx-6 md:-mb-8 lg:-mx-8 flex h-[calc(100dvh-3rem)] flex-col bg-background">
+      {/* Encabezado de sección — misma altura (76px) que el PageHeader y el branding del sidebar */}
+      <div className="flex h-[76px] shrink-0 items-center justify-between gap-3 border-b border-edge px-5">
+        <div className="flex min-w-0 items-center gap-3">
+          <button
+            onClick={() => volver("acuerdos")}
+            title="Volver a Cobranzas"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </button>
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-primary">
+            <Handshake className="h-5 w-5" />
           </div>
-        </DialogHeader>
+          <div className="min-w-0">
+            <h1 className="truncate text-base font-semibold leading-tight text-foreground">Acuerdo de pago</h1>
+            <p className="mt-0.5 truncate text-xs text-muted-foreground">
+              {data?.credito.cliente
+                ? `${data.credito.cliente}${data.credito.numero ? ` · ${formatCreditoNumero(data.credito.numero)}` : ""}`
+                : "Arreglo de lo que el cliente debe vencido"}
+            </p>
+          </div>
+        </div>
+        <SystemControls />
+      </div>
 
+      <div className="flex-1 min-h-0 overflow-y-auto px-5 py-5">
         {isLoading ? (
           <div className="space-y-3"><Skeleton className="h-24 rounded-xl" /><Skeleton className="h-32 rounded-xl" /></div>
         ) : errPreview ? (
@@ -252,7 +275,20 @@ export function AcuerdoForm({
             Este crédito no tiene cuotas vencidas impagas: no hay nada que acordar.
           </div>
         ) : (
-          <form onSubmit={submit} className="space-y-5">
+          <form id="form-acuerdo" onSubmit={submit} className="space-y-5">
+            {/*
+              🔴 DOS COLUMNAS: DECIDIR Y VER, AL MISMO TIEMPO.
+
+              Cambiar la entrega o las cuotas y ver moverse el plan es la razón de ser de esta
+              pantalla. En el modal los dos bloques compartían un solo scroll: para mirar el
+              plan había que perder de vista los campos que lo producen, y el operador terminaba
+              subiendo y bajando con el cliente enfrente.
+
+              La derecha queda `sticky`: el plan acompaña el scroll de la izquierda, así que
+              sigue a la vista aunque los parámetros sean largos.
+            */}
+            <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,26rem)] lg:items-start">
+              <div className="space-y-5">
             {error && <div className="rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-2.5 text-sm text-destructive">{error}</div>}
 
             {/* Lo que la financiera pide ANTES de acordar, dicho antes de tocar plata. */}
@@ -373,6 +409,14 @@ export function AcuerdoForm({
               </div>
             )}
 
+            <div className="flex flex-col gap-1.5">
+              <FieldLabel>Nota</FieldLabel>
+              <IconTextarea icon="receipt" value={notas} onChange={(e) => setNotas(e.target.value)} rows={2} placeholder="Detalle del arreglo…" />
+            </div>
+
+              </div>
+
+              <div className="space-y-5 lg:sticky lg:top-0">
             {/* Vista previa del plan: lo que se le dice al cliente. */}
             {plan.length > 0 && (
               <div className="rounded-lg border border-primary/20 bg-primary/5 px-3 py-3">
@@ -465,21 +509,60 @@ export function AcuerdoForm({
               </div>
             )}
 
-            <div className="flex flex-col gap-1.5">
-              <FieldLabel>Nota</FieldLabel>
-              <IconTextarea icon="receipt" value={notas} onChange={(e) => setNotas(e.target.value)} rows={2} placeholder="Detalle del arreglo…" />
+              </div>
             </div>
 
-            <FormActions
-              onCancel={() => { reset(); onClose(false); }}
-              loading={loading}
-              disabled={acordado <= 0 || excedeQuita || excedeEntrega || trabado || !primerVto}
-              submitLabel="Armar acuerdo"
-              loadingLabel="Registrando…"
-            />
           </form>
         )}
-      </DialogContent>
-    </Dialog>
+      </div>
+
+      {/*
+        BARRA FIJA AL PIE, con el número que se le va a decir al cliente.
+
+        En una pantalla completa el botón de confirmar no puede quedar al final del scroll: se
+        aprieta después de mirar el plan, y el plan está arriba a la derecha. Acá está siempre,
+        y al lado el total — que es lo último que se lee en voz alta antes de cerrar el trato.
+      */}
+      {data && !data.acuerdo_vigente && data.deuda.cuotas_vencidas > 0 && (
+        <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-border px-5 py-3">
+          <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1 text-sm">
+            {entregaNum > 0 && (
+              <span className="text-muted-foreground">
+                Entrega ahora{" "}
+                <span className="font-mono font-semibold text-success tabular-nums">{formatMonto(entregaNum)}</span>
+              </span>
+            )}
+            <span className="text-muted-foreground">
+              {plan.length > 0 ? `${plan.length} cuota${plan.length === 1 ? "" : "s"} de ` : "Total "}
+              <span className="font-mono font-semibold text-foreground tabular-nums">
+                {plan.length > 0 ? formatMonto(plan[0].monto) : formatMonto(0)}
+              </span>
+            </span>
+            <span className="font-medium text-foreground">
+              Total del plan{" "}
+              <span className="font-mono font-bold tabular-nums">{formatMonto(totalPlan)}</span>
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => volver("acuerdos")}
+              className="rounded-lg px-4 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              form="form-acuerdo"
+              disabled={loading || acordado <= 0 || excedeQuita || excedeEntrega || trabado || !primerVto}
+              className="inline-flex items-center gap-2 rounded-lg bg-primary px-5 py-2 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-40"
+            >
+              {loading && <Loader2 className="h-4 w-4 animate-spin" />}
+              {loading ? "Registrando…" : entregaNum > 0 ? "Cobrar y armar acuerdo" : "Armar acuerdo"}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
