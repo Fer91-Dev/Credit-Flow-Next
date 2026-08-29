@@ -4,7 +4,7 @@ import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { conNumeroDeOrigen, numerosRefinanciados } from "@/lib/creditos-numero";
 import { sincronizarAcuerdos } from "@/lib/acuerdos";
-import { nombreCompleto, formatCreditoNumero, hoyComercial } from "@/lib/utils";
+import { nombreCompleto, formatCreditoNumero, hoyComercial, ventanaDias, ventanaAR } from "@/lib/utils";
 import { imputarPagoEnCuotas, diasAtraso, round2, etiquetaCaja, cuentaDeMetodo, esCuentaValida, type CuotaParaImputar, moraDelCredito, moraDesdeCronograma, esCreditoVivo, topeMoraPorFallecimiento } from "@/lib/domain";
 import { lockCreditoTx, assertCuotasSinCambios, TX_PLATA } from "@/lib/locks";
 import { lockCuentaTx } from "@/lib/caja-fondos";
@@ -78,6 +78,8 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     prisma.pagos.count({ where }),
   ]);
 
+  const resumen = await resumenTerminal(where);
+
   // Un cobro sobre una refinanciación se identifica como REF-<origen>, igual que el crédito.
   const origenesRefi = await numerosRefinanciados(tenantId, pagos.map((p) => p.credito));
 
@@ -92,8 +94,78 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     total,
     limit,
     offset,
+    resumen,
   });
 });
+
+/**
+ * Los KPI de la terminal de cobro: qué entró HOY y qué se anuló últimamente.
+ *
+ * 🔴 SE AGREGA EN LA BASE, NO SOBRE LA LISTA. La lista viene paginada (100 por defecto), así
+ * que sumarla en el navegador daría el total de la primera página disfrazado de total del día:
+ * un número que arranca bien y empieza a mentir solo, en silencio, cuando la financiera opere
+ * de verdad. Lo mismo con los anulados de 30 días, que casi nunca entran en esa página.
+ *
+ * Recibe el MISMO `where` que la lista, así que el scope del vendedor ya viene aplicado: un
+ * vendedor ve lo que él cobró, no la caja de la financiera.
+ */
+async function resumenTerminal(where: Record<string, unknown>) {
+  const hoy = hoyComercial();
+  const ayer = new Date(hoy);
+  ayer.setUTCDate(ayer.getUTCDate() - 1);
+
+  // `pagos.fecha` es @db.Date (un día pelado, sin hora): se compara con ventanaDias, SIN el
+  // corrimiento horario. `anulado_at` sí es un timestamp y va con la ventana argentina.
+  const diaDe = (d: Date) => {
+    const { desde, hastaExcl } = ventanaDias(d, d);
+    return { gte: desde, lt: hastaExcl };
+  };
+  const hace30 = new Date(hoy);
+  hace30.setUTCDate(hace30.getUTCDate() - 30);
+  const ventana30 = ventanaAR(hace30, hoy);
+
+  const [hoyAgg, ayerAgg, porMetodo, clientesHoy, anuladosAgg] = await Promise.all([
+    prisma.pagos.aggregate({
+      where: { ...where, anulado: false, fecha: diaDe(hoy) },
+      _sum: { monto: true }, _count: true,
+    }),
+    prisma.pagos.aggregate({
+      where: { ...where, anulado: false, fecha: diaDe(ayer) },
+      _sum: { monto: true },
+    }),
+    prisma.pagos.groupBy({
+      by: ["metodo"],
+      where: { ...where, anulado: false, fecha: diaDe(hoy) },
+      _sum: { monto: true },
+    }),
+    // Cuántas PERSONAS distintas pagaron hoy. Se resuelve por crédito y se deduplica por
+    // cliente acá: `pagos` no tiene `cliente_id`, cuelga del crédito.
+    prisma.pagos.findMany({
+      where: { ...where, anulado: false, fecha: diaDe(hoy) },
+      select: { credito: { select: { cliente_id: true } } },
+    }),
+    prisma.pagos.aggregate({
+      where: { ...where, anulado: true, anulado_at: { gte: ventana30.desde, lt: ventana30.hastaExcl } },
+      _sum: { monto: true }, _count: true,
+    }),
+  ]);
+
+  const cobradoHoy = round2(hoyAgg._sum.monto ?? 0);
+  const cobradoAyer = round2(ayerAgg._sum.monto ?? 0);
+
+  return {
+    cobrado_hoy: cobradoHoy,
+    cobrado_ayer: cobradoAyer,
+    /** Variación contra ayer. `null` cuando ayer fue $0: un % sobre cero no significa nada. */
+    variacion_pct: cobradoAyer > 0 ? round2(((cobradoHoy - cobradoAyer) / cobradoAyer) * 100) : null,
+    pagos_hoy: hoyAgg._count,
+    clientes_hoy: new Set(clientesHoy.map((p) => p.credito.cliente_id)).size,
+    /** Lo cobrado hoy por método, para el reparto efectivo/transferencia. */
+    por_metodo_hoy: Object.fromEntries(porMetodo.map((m) => [m.metodo, round2(m._sum.monto ?? 0)])),
+    anulados_30d: anuladosAgg._count,
+    anulados_30d_monto: round2(anuladosAgg._sum.monto ?? 0),
+  };
+}
 
 /**
  * POST /api/pagos

@@ -50,6 +50,8 @@ export function BuscadorF3({
   size = "md",
   autoFocus = false,
   className,
+  accionDerecha,
+  hint,
 }: {
   value: string;
   onChange: (v: string) => void;
@@ -62,6 +64,16 @@ export function BuscadorF3({
   size?: Size;
   autoFocus?: boolean;
   className?: string;
+  /**
+   * Acción que vive DENTRO de la caja, a la derecha (antes de la X de limpiar).
+   *
+   * El atajo F3 solo existe con teclado: en una terminal de cobro se opera con el mouse y el
+   * lector de códigos, así que la misma acción tiene que estar a un clic. Va acá adentro y no
+   * al lado porque es del buscador, no de la pantalla.
+   */
+  accionDerecha?: React.ReactNode;
+  /** Reemplaza al renglón "Tip: presioná F3 …" cuando la pantalla tiene algo mejor que decir. */
+  hint?: React.ReactNode;
 }) {
   const lg = size === "lg";
 
@@ -102,28 +114,35 @@ export function BuscadorF3({
           }}
           className={
             lg
-              ? "h-14 w-full rounded-xl border border-border bg-card pl-12 pr-12 text-base text-foreground placeholder:text-muted-foreground/50 outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/20"
-              : "h-10 w-full rounded-lg border border-border bg-card pl-9 pr-9 text-sm text-foreground placeholder:text-muted-foreground/50 outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/20"
+              ? `h-14 w-full rounded-xl border border-border bg-card pl-12 text-base text-foreground placeholder:text-muted-foreground/50 outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/20 ${accionDerecha ? "pr-52" : "pr-12"}`
+              : `h-10 w-full rounded-lg border border-border bg-card pl-9 text-sm text-foreground placeholder:text-muted-foreground/50 outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/20 ${accionDerecha ? "pr-44" : "pr-9"}`
           }
         />
-        {value && (
-          <button
-            type="button"
-            onClick={() => onChange("")}
-            className={`absolute top-1/2 -translate-y-1/2 flex items-center justify-center rounded-lg text-muted-foreground hover:bg-muted transition-colors ${lg ? "right-3 h-8 w-8" : "right-2 h-6 w-6"}`}
-            aria-label="Limpiar"
-          >
-            <X className={lg ? "h-4 w-4" : "h-3.5 w-3.5"} />
-          </button>
+        {(value || accionDerecha) && (
+          <div className={`absolute top-1/2 flex -translate-y-1/2 items-center gap-2 ${lg ? "right-3" : "right-2"}`}>
+            {value && (
+              <button
+                type="button"
+                onClick={() => onChange("")}
+                className={`flex items-center justify-center rounded-lg text-muted-foreground hover:bg-muted transition-colors ${lg ? "h-8 w-8" : "h-6 w-6"}`}
+                aria-label="Limpiar"
+              >
+                <X className={lg ? "h-4 w-4" : "h-3.5 w-3.5"} />
+              </button>
+            )}
+            {accionDerecha}
+          </div>
         )}
       </div>
-      {f3Hint && (
+      {hint ? (
+        <p className={`text-xs text-muted-foreground/60 ${lg ? "mt-2" : "mt-1.5"}`}>{hint}</p>
+      ) : f3Hint ? (
         <p className={`text-xs text-muted-foreground/60 ${lg ? "mt-2" : "mt-1.5"}`}>
           Tip: presioná{" "}
           <kbd className="rounded border border-border bg-muted/50 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-muted-foreground">F3</kbd>{" "}
           {f3Hint}.
         </p>
-      )}
+      ) : null}
     </div>
   );
 }

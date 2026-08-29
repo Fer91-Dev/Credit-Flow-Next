@@ -2,8 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useSWRConfig } from "swr";
-import { Wallet, Search, User, Phone, IdCard, ArrowLeft, Plus, ChevronRight, X, Clock } from "lucide-react";
-import { useClientes, usePagos, KEYS, type Cliente, type Pago } from "@/lib/swr";
+import { Wallet, Search, User, Phone, IdCard, ArrowLeft, Plus, ChevronRight, X, Clock, TrendingUp, TrendingDown } from "lucide-react";
+import { useClientes, usePagos, KEYS, type Cliente, type Pago, type ResumenPagos } from "@/lib/swr";
 import { ClienteDetail } from "@/components/clientes/ClienteDetail";
 import { BuscadorF3 } from "@/components/ui/BuscadorF3";
 import { Avatar } from "@/components/ui/Avatar";
@@ -14,6 +14,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { nombreCompleto, formatFecha, formatMonto, formatCreditoNumero } from "@/lib/utils";
+import { round2 } from "@/lib/domain";
 
 /**
  * Terminal de pagos: flujo "buscar primero". No se lista nada hasta que el
@@ -22,7 +23,7 @@ import { nombreCompleto, formatFecha, formatMonto, formatCreditoNumero } from "@
  */
 export function PagosTable({ clienteInicial = null }: { clienteInicial?: string | null }) {
   const { clientes, isLoading } = useClientes();
-  const { pagos, isLoading: pagosLoading } = usePagos();
+  const { pagos, resumen, isLoading: pagosLoading } = usePagos();
   const { mutate: globalMutate } = useSWRConfig();
 
   const [query, setQuery] = useState("");
@@ -42,6 +43,12 @@ export function PagosTable({ clienteInicial = null }: { clienteInicial?: string 
    */
   const [clienteId, setClienteId] = useState<string | null>(clienteInicial);
   const [nuevoPagoOpen, setNuevoPagoOpen] = useState(false); // pago genérico (busca crédito/cliente en el form)
+  /**
+   * Los KPI que son un SUBCONJUNTO de la lista de abajo filtran esa lista al tocarlos.
+   * Acota lo que se muestra; el número de la tarjeta sigue siendo el del período completo,
+   * agregado en la base, y no cambia con el filtro.
+   */
+  const [filtro, setFiltro] = useState<"hoy" | "anulados" | null>(null);
 
   // Búsqueda DNI-aware: matchea por nombre o por documento (también en su forma
   // "solo dígitos", para que 20.123.456 encuentre al guardado como 20123456).
@@ -158,9 +165,14 @@ export function PagosTable({ clienteInicial = null }: { clienteInicial?: string 
         accent="primary"
       />
 
-      {/* Buscador + acción */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+      {/*
+        El buscador es la pantalla: en la terminal de cobro lo primero que pasa es que llega
+        alguien y se escanea su DNI. Va grande y a la izquierda, con el acceso a la lista
+        completa DENTRO de la caja — el atajo F3 solo existe si hay teclado a mano.
+      */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
         <BuscadorF3
+          size="lg"
           value={query}
           onChange={setQuery}
           placeholder="DNI o nombre del cliente…"
@@ -168,20 +180,37 @@ export function PagosTable({ clienteInicial = null }: { clienteInicial?: string 
           onF3={() => setVerTodos((v) => !v)}
           onEnter={() => { if (resultados.length === 1) elegir(resultados[0]); }}
           onEscape={() => { if (verTodos) setVerTodos(false); else setQuery(""); }}
-          f3Hint={`para ${verTodos ? "cerrar" : "ver"} la lista completa de clientes`}
-          className="w-full sm:max-w-sm"
+          hint="Escaneá el DNI o escribí el nombre — el cobro se registra desde la ficha del cliente."
+          className="w-full sm:flex-1"
+          accionDerecha={
+            <button
+              type="button"
+              onClick={() => setVerTodos((v) => !v)}
+              className="flex items-center gap-2 rounded-lg px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
+            >
+              <kbd className="rounded border border-border bg-muted/50 px-1.5 py-0.5 font-mono text-[10px] font-semibold">F3</kbd>
+              <span className="text-primary">{verTodos ? "cerrar lista" : "lista completa"}</span>
+            </button>
+          }
         />
+        {/* El escape para lo que no cuelga de ninguna cuota: un crédito sin cronograma, un
+            pago a cuenta. Busca el crédito por N° o DNI dentro del formulario. */}
         <button
           onClick={() => setNuevoPagoOpen(true)}
-          className="flex shrink-0 items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 transition-opacity whitespace-nowrap"
+          className="flex h-14 shrink-0 items-center justify-center gap-2 rounded-xl bg-primary px-5 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 whitespace-nowrap"
         >
           <Plus className="h-4 w-4" /> Registrar pago
         </button>
       </div>
 
+      {/* El pulso del día. Solo en la vista de entrada: buscando un cliente, estorban. */}
+      {!q && !verTodos && (
+        <KpisDelDia resumen={resumen} loading={pagosLoading} filtro={filtro} onFiltro={setFiltro} />
+      )}
+
       {/* Estados */}
       {!q && !verTodos ? (
-        <UltimosPagos pagos={pagos} loading={pagosLoading} onRow={abrirPorPago} />
+        <UltimosPagos pagos={pagos} loading={pagosLoading} onRow={abrirPorPago} filtro={filtro} onLimpiarFiltro={() => setFiltro(null)} />
       ) : isLoading ? (
         <p className="text-sm text-muted-foreground">Buscando…</p>
       ) : lista.length === 0 ? (
@@ -238,24 +267,64 @@ export function PagosTable({ clienteInicial = null }: { clienteInicial?: string 
  * activa) para dar acceso rápido: tocar una fila abre la ficha del cliente, desde donde
  * se puede anular el cobro. Si no hay pagos aún, cae al hero de "buscá un cliente".
  */
-function UltimosPagos({ pagos, loading, onRow }: { pagos: Pago[]; loading: boolean; onRow: (p: Pago) => void }) {
+function UltimosPagos({ pagos, loading, onRow, filtro, onLimpiarFiltro }: {
+  pagos: Pago[];
+  loading: boolean;
+  onRow: (p: Pago) => void;
+  filtro: "hoy" | "anulados" | null;
+  onLimpiarFiltro: () => void;
+}) {
+  const hoyYmd = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Argentina/Buenos_Aires", year: "numeric", month: "2-digit", day: "2-digit",
+  }).format(new Date());
+
+  /**
+   * El filtro acota lo que se MUESTRA de esta lista; no redefine el número de la tarjeta.
+   * `fecha` es un `@db.Date`, así que se compara el día pelado del string ISO — pasarlo por
+   * `new Date()` en zona argentina lo correría al día anterior.
+   */
+  const visibles = !filtro
+    ? pagos
+    : filtro === "anulados"
+      ? pagos.filter((p) => p.anulado)
+      : pagos.filter((p) => !p.anulado && String(p.fecha).slice(0, 10) === hoyYmd);
+
   if (loading) {
     return <div className="space-y-2">{[...Array(5)].map((_, i) => <Skeleton key={i} className="h-12 rounded-lg" />)}</div>;
   }
   if (pagos.length === 0) return <HeroVacio />;
+
+  const titulo = filtro === "hoy" ? "Cobros de hoy" : filtro === "anulados" ? "Pagos anulados" : "Últimos pagos ingresados";
+
   return (
     <div className="space-y-3">
-      <div className="flex items-center gap-2.5">
-        <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-primary">
+      <div className="flex flex-wrap items-center gap-2.5">
+        <div className={`flex h-9 w-9 items-center justify-center rounded-xl border ${
+          filtro === "anulados" ? "border-destructive/20 bg-destructive/10 text-destructive" : "border-primary/20 bg-primary/10 text-primary"
+        }`}>
           <Clock className="h-4 w-4" />
         </div>
-        <div>
-          <h2 className="text-sm font-semibold text-foreground">Últimos pagos ingresados</h2>
+        <div className="min-w-0 flex-1">
+          <h2 className="text-sm font-semibold text-foreground">{titulo}</h2>
           <p className="text-xs text-muted-foreground">Tocá un pago para abrir la ficha del cliente y anularlo si hace falta.</p>
         </div>
+        {filtro && (
+          <button
+            type="button"
+            onClick={onLimpiarFiltro}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted/40 hover:text-foreground"
+          >
+            <X className="h-3 w-3" /> Quitar filtro
+          </button>
+        )}
       </div>
+      {visibles.length === 0 ? (
+        <p className="rounded-xl border border-dashed border-border/60 px-4 py-8 text-center text-xs text-muted-foreground/60">
+          {filtro === "hoy" ? "Todavía no entró ningún cobro hoy." : "No hay pagos anulados entre los últimos ingresados."}
+        </p>
+      ) : (
       <DataTable
-        rows={pagos}
+        rows={visibles}
         rowKey={(p) => p.id}
         pageSize={10}
         onRowClick={onRow}
@@ -282,7 +351,127 @@ function UltimosPagos({ pagos, loading, onRow }: { pagos: Pago[]; loading: boole
               : <StatusBadge label="Registrado" variant="success" /> },
         ]}
       />
+      )}
     </div>
+  );
+}
+
+/**
+ * EL PULSO DEL DÍA. Lo primero que quiere saber quien abre la terminal: cuánto entró hoy,
+ * cuántos cobros fueron, cómo se pagó y qué se anuló.
+ *
+ * 🔴 LOS NÚMEROS SALEN DEL ENDPOINT, agregados sobre toda la tabla (`resumen` de
+ * `GET /api/pagos`). Sumar la lista que se ve abajo daría el total de los primeros 100 pagos
+ * disfrazado de total del día: arrancaría bien y empezaría a mentir solo cuando la financiera
+ * opere de verdad.
+ *
+ * Las dos tarjetas que son un SUBCONJUNTO de la lista de abajo filtran esa lista al tocarlas.
+ */
+function KpisDelDia({ resumen, loading, filtro, onFiltro }: {
+  resumen?: ResumenPagos;
+  loading: boolean;
+  filtro: "hoy" | "anulados" | null;
+  onFiltro: (f: "hoy" | "anulados" | null) => void;
+}) {
+  if (loading || !resumen) {
+    return <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">{[...Array(4)].map((_, i) => <Skeleton key={i} className="h-24 rounded-xl" />)}</div>;
+  }
+
+  const totalHoy = Object.values(resumen.por_metodo_hoy).reduce((a, b) => a + b, 0);
+  const efectivo = resumen.por_metodo_hoy.efectivo ?? 0;
+  const transferencia = resumen.por_metodo_hoy.transferencia ?? 0;
+  const otros = round2(totalHoy - efectivo - transferencia);
+  const pct = (x: number) => (totalHoy > 0 ? Math.round((x / totalHoy) * 100) : 0);
+  const v = resumen.variacion_pct;
+
+  return (
+    <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      {/* Cobrado hoy — el número que se compara contra la caja al cerrar. */}
+      <Caja label="Cobrado hoy">
+        <p className="font-mono text-2xl font-bold tabular-nums text-foreground">{formatMonto(resumen.cobrado_hoy)}</p>
+        {v == null ? (
+          <p className="mt-1 text-[11px] text-muted-foreground/60">ayer no entró nada</p>
+        ) : (
+          <p className={`mt-1 flex items-center gap-1 text-[11px] font-medium ${v >= 0 ? "text-success" : "text-destructive"}`}>
+            {v >= 0 ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
+            {Math.abs(v).toFixed(0)}% vs ayer
+            {/* De dónde sale el porcentaje: el importe con el que se compara, no solo la flecha. */}
+            <span className="font-mono font-normal text-muted-foreground/60">· {formatMonto(resumen.cobrado_ayer)}</span>
+          </p>
+        )}
+      </Caja>
+
+      {/* Pagos hoy — subconjunto de la lista: filtra. */}
+      <Caja
+        label="Pagos hoy"
+        activo={filtro === "hoy"}
+        onClick={() => onFiltro(filtro === "hoy" ? null : "hoy")}
+      >
+        <p className="font-mono text-2xl font-bold tabular-nums text-foreground">{resumen.pagos_hoy}</p>
+        <p className="mt-1 text-[11px] text-muted-foreground/60">
+          {resumen.clientes_hoy} cliente{resumen.clientes_hoy === 1 ? "" : "s"} distinto{resumen.clientes_hoy === 1 ? "" : "s"}
+        </p>
+      </Caja>
+
+      {/* Cómo entró la plata. El reparto se lee de un vistazo antes de arquear. */}
+      <Caja label="Efectivo / Transferencia">
+        {totalHoy === 0 ? (
+          <>
+            <p className="font-mono text-2xl font-bold text-muted-foreground/40">—</p>
+            <p className="mt-1 text-[11px] text-muted-foreground/60">sin cobros hoy</p>
+          </>
+        ) : (
+          <>
+            <p className="font-mono text-2xl font-bold tabular-nums">
+              <span className="text-foreground">{pct(efectivo)}%</span>
+              <span className="text-muted-foreground/30"> / </span>
+              <span className="text-primary">{pct(transferencia)}%</span>
+            </p>
+            <div className="mt-2 flex h-1.5 overflow-hidden rounded-full bg-muted/40">
+              <div className="bg-foreground/70" style={{ width: `${pct(efectivo)}%` }} />
+              <div className="bg-primary" style={{ width: `${pct(transferencia)}%` }} />
+              {otros > 0.01 && <div className="bg-warning" style={{ width: `${pct(otros)}%` }} />}
+            </div>
+            {otros > 0.01 && (
+              <p className="mt-1.5 text-[11px] text-warning">otros medios {pct(otros)}% · {formatMonto(otros)}</p>
+            )}
+          </>
+        )}
+      </Caja>
+
+      {/* Anulados — control de tesorería: es plata que entró y se dio marcha atrás. */}
+      <Caja
+        label="Anulados (30 días)"
+        activo={filtro === "anulados"}
+        onClick={() => onFiltro(filtro === "anulados" ? null : "anulados")}
+      >
+        <p className="font-mono text-2xl font-bold tabular-nums text-foreground">{resumen.anulados_30d}</p>
+        <p className={`mt-1 font-mono text-[11px] tabular-nums ${resumen.anulados_30d_monto > 0 ? "text-destructive" : "text-muted-foreground/60"}`}>
+          {resumen.anulados_30d_monto > 0 ? `−${formatMonto(resumen.anulados_30d_monto)}` : formatMonto(0)}
+        </p>
+      </Caja>
+    </div>
+  );
+}
+
+/** La caja de un KPI. Es un <button> cuando filtra, para que se pueda tabular y activar con Enter. */
+function Caja({ label, children, onClick, activo }: {
+  label: string;
+  children: React.ReactNode;
+  onClick?: () => void;
+  activo?: boolean;
+}) {
+  const Wrapper = onClick ? "button" : "div";
+  return (
+    <Wrapper
+      {...(onClick ? { type: "button" as const, onClick } : {})}
+      className={`w-full rounded-xl border bg-card p-4 text-left transition-colors ${
+        activo ? "border-primary bg-primary/[0.04]" : "border-border"
+      } ${onClick ? "cursor-pointer hover:border-primary/40 hover:bg-muted/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50" : ""}`}
+    >
+      <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">{label}</p>
+      <div className="mt-2">{children}</div>
+    </Wrapper>
   );
 }
 

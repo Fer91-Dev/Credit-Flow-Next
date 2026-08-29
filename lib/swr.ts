@@ -1159,9 +1159,27 @@ export function useCreditos() {
   return { creditos: data?.creditos ?? [], error, isLoading, mutate };
 }
 
+/**
+ * KPI de la terminal de cobro. Los agrega el server sobre TODA la tabla, no sobre la pagina
+ * que devuelve la lista: sumar la lista en el navegador daria el total de los primeros 100
+ * pagos disfrazado de total del dia.
+ */
+export interface ResumenPagos {
+  cobrado_hoy: number;
+  cobrado_ayer: number;
+  /** Variacion contra ayer; null si ayer fue $0 (un % sobre cero no significa nada). */
+  variacion_pct: number | null;
+  pagos_hoy: number;
+  clientes_hoy: number;
+  /** Lo cobrado hoy por metodo (efectivo / transferencia / cheque / otro). */
+  por_metodo_hoy: Record<string, number>;
+  anulados_30d: number;
+  anulados_30d_monto: number;
+}
+
 export function usePagos() {
-  const { data, error, isLoading, mutate } = useSWR<{ pagos: Pago[] }>(KEYS.pagos);
-  return { pagos: data?.pagos ?? [], error, isLoading, mutate };
+  const { data, error, isLoading, mutate } = useSWR<{ pagos: Pago[]; resumen?: ResumenPagos }>(KEYS.pagos);
+  return { pagos: data?.pagos ?? [], resumen: data?.resumen, error, isLoading, mutate };
 }
 
 export function useVendedores() {
