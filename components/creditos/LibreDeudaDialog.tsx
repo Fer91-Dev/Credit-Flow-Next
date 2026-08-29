@@ -6,10 +6,8 @@ import { Emoji } from "@/components/ui/Emoji";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { formatCreditoNumero, formatFecha, formatFechaHora } from "@/lib/utils";
+import { montoALetras } from "@/lib/domain/numero-a-letras";
 
-function n0(x: number) {
-  return new Intl.NumberFormat("es-AR", { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(x);
-}
 function n2(x: number) {
   return new Intl.NumberFormat("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(x);
 }
@@ -17,12 +15,33 @@ function escHtml(s: string) {
   return s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c] ?? c));
 }
 
-/** Texto del certificado (compartido por la vista en pantalla y la impresión). */
+/**
+ * Texto del certificado (compartido por la vista en pantalla y la impresión).
+ *
+ * 🔴 LOS DOS IMPORTES, CADA UNO CON SU NOMBRE.
+ *
+ * Decía "ha cancelado en su totalidad el crédito CRD-000003, otorgado el 02/07/2026 por un
+ * monto de $600.000" — y "por un monto de" se lee pegado a *cancelado*, no a *otorgado*: el
+ * papel parecía decir que el cliente pagó $600.000 cuando pagó $1.253.341,90. El desglose de
+ * la tabla lo desmentía, pero el párrafo es lo que se lee primero.
+ *
+ * Son dos hechos distintos y ninguno reemplaza al otro: el CAPITAL identifica la operación
+ * (lo que el cliente se llevó) y el TOTAL ABONADO es lo que efectivamente pagó — capital +
+ * interés pactado + punitorios. Van los dos, nombrados.
+ *
+ * En letras además de en números, como todo instrumento: ante una discrepancia entre la cifra
+ * y la letra, prevalece la letra. `montoALetras` redondea antes de escribir, así que el texto
+ * no puede contradecir al número impreso al lado.
+ */
 export function libreDeudaTexto(ld: LibreDeuda): string {
   const nro = formatCreditoNumero(ld.credito.numero, ld.credito.refinancia_a_numero);
   const cancel = ld.totales.fecha_cancelacion ? formatFecha(ld.totales.fecha_cancelacion) : "—";
+  const capital = ld.credito.monto_original;
+  const abonado = ld.totales.total_pagado;
   return `Se certifica que ${ld.cliente.nombre}${ld.cliente.documento ? ` (DNI ${ld.cliente.documento})` : ""} ha cancelado en su totalidad el crédito ${nro}, ` +
-    `otorgado el ${formatFecha(ld.credito.fecha_otorgamiento)} por un monto de $${n0(ld.credito.monto_original)} en ${ld.totales.cuotas} cuota${ld.totales.cuotas !== 1 ? "s" : ""}. ` +
+    `otorgado el ${formatFecha(ld.credito.fecha_otorgamiento)} por un capital de $${n2(capital)} (${montoALetras(capital)}) ` +
+    `en ${ld.totales.cuotas} cuota${ld.totales.cuotas !== 1 ? "s" : ""}, ` +
+    `habiendo abonado un total de $${n2(abonado)} (${montoALetras(abonado)}) según el detalle que se acompaña. ` +
     `El crédito se encuentra CANCELADO al ${cancel} y el cliente no registra deuda pendiente con ${ld.empresa} respecto de esta operación.`;
 }
 
