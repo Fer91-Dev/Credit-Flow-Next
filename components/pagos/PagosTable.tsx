@@ -311,7 +311,14 @@ function UltimosPagos({ pagos, loading, onRow, filtro, onLimpiarFiltro }: {
           { header: "Monto", mono: true, align: "right",
             cell: (p) => <span className={`font-semibold ${p.anulado ? "text-muted-foreground" : "text-foreground"}`}>{formatMonto(p.monto, 0)}</span> },
           { header: "Método",
-            cell: (p) => <StatusBadge label={p.metodo} variant="muted" /> },
+            cell: (p) => (
+              <div className="flex flex-wrap items-center gap-1.5">
+                <StatusBadge label={p.metodo} variant="muted" />
+                {/* Un adelanto no es una cuota: entra por el mismo camino y se imputa igual,
+                    así que sin decirlo la fila no se distingue de un cobro común. */}
+                {p.acuerdo_entrega && <StatusBadge label="Entrega de acuerdo" variant="primary" />}
+              </div>
+            ) },
           { header: "Estado", align: "center",
             cell: (p) => p.anulado
               ? <StatusBadge label="Anulado" variant="destructive" />

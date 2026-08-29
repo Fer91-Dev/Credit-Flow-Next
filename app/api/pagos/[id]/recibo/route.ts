@@ -48,6 +48,17 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
       acuerdo_cuota: {
         select: { numero: true, vencimiento: true, acuerdo: { select: { _count: { select: { cuotas: true } } } } },
       },
+      /**
+       * Si este cobro fue la ENTREGA con la que se armó un acuerdo.
+       *
+       * 🔴 Sin esto el adelanto salía en el recibo como una cuota más: entra por el mismo
+       * camino y se imputa igual, así que el papel no lo distinguía. Y no es lo mismo — el
+       * cliente entregó algo a cuenta PARA ARMAR un plan, no pagó una cuota. Es el primer
+       * papel de ese acuerdo y tiene que decirlo.
+       */
+      acuerdo_entrega: {
+        select: { monto_acordado: true, fecha: true, _count: { select: { cuotas: true } } },
+      },
     },
   });
 
@@ -124,6 +135,9 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
       anulado: pago.anulado,
       anulado_motivo: pago.anulado_motivo,
       // "Cuota 2 de 3 del acuerdo de pago" — el concepto por el que se cobro.
+      entrega_acuerdo: pago.acuerdo_entrega
+        ? { total: pago.acuerdo_entrega.monto_acordado, cuotas: pago.acuerdo_entrega._count.cuotas }
+        : null,
       acuerdo: pago.acuerdo_cuota
         ? { numero: pago.acuerdo_cuota.numero, total: pago.acuerdo_cuota.acuerdo._count.cuotas, vencimiento: pago.acuerdo_cuota.vencimiento }
         : null,

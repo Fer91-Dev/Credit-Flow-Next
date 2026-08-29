@@ -28,6 +28,8 @@ export interface ReciboData {
     anulado_motivo?: string | null;
     /** Cuota del acuerdo de pago que se cobro, si el cobro salio de ahi. */
     acuerdo?: { numero: number; total: number; vencimiento?: Date | string | null } | null;
+    /** Si este cobro fue la ENTREGA con la que se armo un acuerdo de pago. */
+    entrega_acuerdo?: { total: number; cuotas: number } | null;
     /**
      * Contra que cuotas del PLAN se imputo, y que quedo pendiente de cada una AL MOMENTO de
      * este pago (no a hoy: un recibo reimpreso tiene que decir lo mismo que el original).
@@ -216,6 +218,21 @@ export async function generarReciboPDF(data: ReciboData): Promise<Uint8Array> {
    * "del acuerdo" en el mismo renglón a propósito: la cuota 2 del acuerdo no es la cuota 2
    * del crédito, y esa confusión es la que hace que el cliente crea que le cobraron mal.
    */
+  /**
+   * ENTREGA de un acuerdo. Va antes que cualquier otro concepto porque es lo que da sentido
+   * al importe: sin este renglon el cliente se lleva un papel que parece el cobro de una
+   * cuota, y despues recibe un plan de cuotas que no lo menciona.
+   */
+  if (pago.entrega_acuerdo) {
+    text("CONCEPTO", M, y, font, 8, MUTED);
+    text("Entrega para armar el acuerdo de pago", M, y - 14, bold, 11, INK);
+    text(
+      `Se financia el resto en ${pago.entrega_acuerdo.cuotas} cuota(s) — total del plan ${fmtMoney(pago.entrega_acuerdo.total)}`,
+      M, y - 28, font, 9, MUTED,
+    );
+    y -= 52;
+  }
+
   if (pago.acuerdo) {
     text("CONCEPTO", M, y, font, 8, MUTED);
     text(

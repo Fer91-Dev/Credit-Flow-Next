@@ -20,6 +20,11 @@ import { planDeAcuerdo } from "@/lib/domain";
  */
 
 interface Preview {
+  /**
+   * ¿La escalera de recupero deja armarlo? Se contesta en el PREVIEW y no al guardar: desde
+   * que el acuerdo cobra una entrega, enterarse al guardar significa que la plata ya entró.
+   */
+  escalera: { permitido: boolean; motivo: string | null; sugerencia: string | null; puede_autorizar: boolean };
   credito: { id: string; numero: number | null; estado: string; cliente: string | null };
   deuda: { capital: number; interes: number; cargos: number; mora: number; total: number; cuotas_vencidas: number };
   limites: {
@@ -54,6 +59,8 @@ export function AcuerdoForm({
   /** Adelanto que el cliente trae en el acto. Se cobra ANTES de armar el plan. */
   const [entrega, setEntrega] = useState("");
   const [entregaMetodo, setEntregaMetodo] = useState("efectivo");
+  /** El admin asume la excepción a la escalera de recupero. Se decide ANTES de cobrar nada. */
+  const [autorizar, setAutorizar] = useState(false);
   const [primerVto, setPrimerVto] = useState("");
   const [notas, setNotas] = useState("");
   const [loading, setLoading] = useState(false);
@@ -75,7 +82,7 @@ export function AcuerdoForm({
     }
   }, [data, primerVto]);
 
-  const reset = () => { setCuotas(3); setQuita(""); setEntrega(""); setEntregaMetodo("efectivo"); setPrimerVto(""); setNotas(""); setError(null); };
+  const reset = () => { setCuotas(3); setQuita(""); setEntrega(""); setEntregaMetodo("efectivo"); setAutorizar(false); setPrimerVto(""); setNotas(""); setError(null); };
 
   const quitaNum = parseMontoInput(quita);
   const entregaNum = parseMontoInput(entrega);
@@ -91,6 +98,15 @@ export function AcuerdoForm({
   const excedeQuita = data ? quitaNum > data.limites.quita_maxima : false;
   /** La entrega no puede llevarse más que la deuda: lo que sobrara no tendría dónde imputarse. */
   const excedeEntrega = entregaNum > Math.round((total - quitaNum) * 100) / 100 + 0.01;
+  /**
+   * 🔴 LA ESCALERA SE PREGUNTA ACÁ, ANTES DE COBRAR.
+   *
+   * Se validaba solo al guardar. Desde que el acuerdo cobra una ENTREGA, llegar hasta ahí
+   * significaba que la plata YA había entrado: el cliente pagaba y el acuerdo no se armaba.
+   * Pasó de verdad, con $32.000 de Estela Moreno.
+   */
+  const escalera = data?.escalera;
+  const trabado = escalera ? !escalera.permitido && !autorizar : false;
 
   /**
    * Vista previa del plan, con LA MISMA FUNCIÓN que usa el alta (`planDeAcuerdo`, dominio
@@ -178,6 +194,7 @@ export function AcuerdoForm({
           cuotas,
           quita: quitaNum || undefined,
           entrega: entregaNum || undefined,
+          autorizacion_admin: autorizar || undefined,
           entrega_pago_id: entregaPagoId ?? undefined,
           primer_vencimiento: primerVto || undefined,
           notas,
@@ -237,6 +254,36 @@ export function AcuerdoForm({
         ) : (
           <form onSubmit={submit} className="space-y-5">
             {error && <div className="rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-2.5 text-sm text-destructive">{error}</div>}
+
+            {/* Lo que la financiera pide ANTES de acordar, dicho antes de tocar plata. */}
+            {escalera && !escalera.permitido && (
+              <div className={`rounded-lg border px-3 py-3 text-sm ${autorizar ? "border-warning/30 bg-warning/10" : "border-destructive/25 bg-destructive/10"}`}>
+                <p className={autorizar ? "text-warning" : "text-destructive"}>
+                  {escalera.motivo} {escalera.sugerencia}
+                </p>
+                {escalera.puede_autorizar && (
+                  /* Solo el admin. Y va como casillero explícito: forzar una regla de la
+                     financiera es una decisión que alguien toma, no un efecto secundario de
+                     apretar Guardar. Queda auditado. */
+                  <label className="mt-2.5 flex cursor-pointer items-start gap-2 text-xs text-foreground">
+                    <input
+                      type="checkbox" checked={autorizar}
+                      onChange={(e) => setAutorizar(e.target.checked)}
+                      className="mt-0.5 accent-warning"
+                    />
+                    <span>
+                      Autorizarlo igual como administrador.
+                      <span className="text-muted-foreground"> Queda registrado en la auditoría.</span>
+                    </span>
+                  </label>
+                )}
+                {!escalera.puede_autorizar && (
+                  <p className="mt-1.5 text-xs text-muted-foreground">
+                    Un administrador puede autorizarlo.
+                  </p>
+                )}
+              </div>
+            )}
 
             {/* Desglose de lo vencido: es lo que se le explica al cliente. */}
             <div className="rounded-lg border border-border bg-muted/20 divide-y divide-border/60 text-sm">
@@ -426,7 +473,7 @@ export function AcuerdoForm({
             <FormActions
               onCancel={() => { reset(); onClose(false); }}
               loading={loading}
-              disabled={acordado <= 0 || excedeQuita || excedeEntrega || !primerVto}
+              disabled={acordado <= 0 || excedeQuita || excedeEntrega || trabado || !primerVto}
               submitLabel="Armar acuerdo"
               loadingLabel="Registrando…"
             />

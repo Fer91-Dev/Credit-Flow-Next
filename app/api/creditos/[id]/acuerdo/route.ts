@@ -5,6 +5,8 @@ import { prisma } from "@/lib/prisma";
 import { deudaVencidaDeCredito, resolverTasaAcuerdo } from "@/lib/acuerdos";
 import { getCobranzaConfig } from "@/lib/config";
 import { quitaMaxima } from "@/lib/domain";
+import { puedeAcordar } from "@/lib/domain/recupero";
+import { senalesRecupero } from "@/lib/recupero-server";
 import type { NextRequest } from "next/server";
 
 interface RouteParams {
@@ -36,12 +38,36 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
 
   const tasaAcuerdo = await resolverTasaAcuerdo(tenantId, credito.tasa, cfg);
 
+  /**
+   * 🔴 ¿SE PUEDE ARMAR? SE PREGUNTA ACÁ, NO AL GUARDAR.
+   *
+   * La escalera de recupero puede bloquear el acuerdo (mora mínima, gestión previa). Eso se
+   * validaba solo en el POST — y desde que el acuerdo cobra una ENTREGA, llegar hasta ahí
+   * significa que la plata YA entró: el cliente pagó y el acuerdo no se armó. Pasó de verdad,
+   * con $32.000 de Estela Moreno.
+   *
+   * Contestándolo en el preview, la pantalla lo muestra antes de que haya un peso de por
+   * medio, y el admin puede autorizar la excepción ANTES de cobrar en vez de descubrirla
+   * después. El POST sigue validando igual: esto informa, no reemplaza la barrera.
+   */
+  const veredicto = puedeAcordar(await senalesRecupero(tenantId, id), cobranza.recupero);
+
   const acuerdoVigente = await prisma.acuerdos_pago.findFirst({
     where: { ...withTenant(tenantId), credito_id: id, estado: "vigente" },
     select: { id: true, monto_acordado: true, fecha: true },
   });
 
   return successResponse({
+    /**
+     * Si NO se puede, por qué y qué hacer. `puede_autorizar` es true solo para el admin: es
+     * quien puede seguir igual asumiendo la decisión, y queda auditado.
+     */
+    escalera: {
+      permitido: veredicto.permitido,
+      motivo: veredicto.permitido ? null : veredicto.motivo ?? null,
+      sugerencia: veredicto.permitido ? null : veredicto.sugerencia ?? null,
+      puede_autorizar: role === "admin",
+    },
     credito: {
       id: credito.id,
       numero: credito.numero,

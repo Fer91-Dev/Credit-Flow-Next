@@ -58,6 +58,8 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
         acuerdo_cuota: {
           select: { numero: true, acuerdo: { select: { _count: { select: { cuotas: true } } } } },
         },
+        /** Si el cobro fue la ENTREGA con la que se armó un acuerdo: no es una cuota más. */
+        acuerdo_entrega: { select: { id: true } },
         /**
          * CONTRA QUÉ CUOTA se imputó. El detalle del pago mostraba cómo se repartió (mora /
          * interés / capital) pero no a qué cuota fue: para saberlo había que abrir el recibo

@@ -839,10 +839,17 @@ model pagos {
   /// SetNull: si el acuerdo se borra, el pago sobrevive (la plata entró igual).
   acuerdo_cuota_id String? @db.Uuid
 
-  credito       creditos           @relation(fields: [credito_id], references: [id], onDelete: Cascade)
-  acuerdo_cuota acuerdo_cuota?     @relation(fields: [acuerdo_cuota_id], references: [id], onDelete: SetNull)
-  aplicaciones  pago_cuota[]
-  movimientos   movimientos_caja[]
+  credito       creditos       @relation(fields: [credito_id], references: [id], onDelete: Cascade)
+  acuerdo_cuota acuerdo_cuota? @relation(fields: [acuerdo_cuota_id], references: [id], onDelete: SetNull)
+
+  /// Si este cobro fue la ENTREGA con la que se armó un acuerdo de pago.
+  ///
+  /// Sin esto el adelanto se ve como una cuota más del crédito: entra por el mismo camino,
+  /// se imputa igual y el recibo no lo distingue. Y no es lo mismo — el cliente entregó algo
+  /// a cuenta para armar un plan, no pagó una cuota.
+  acuerdo_entrega acuerdos_pago?     @relation("EntregaDeAcuerdo")
+  aplicaciones    pago_cuota[]
+  movimientos     movimientos_caja[]
 
   @@index([tenant_id])
 }
@@ -933,7 +940,8 @@ model acuerdos_pago {
   /// Este campo es el registro de que ESE cobro fue la entrega de ESTE acuerdo; el importe
   /// autoritativo sigue siendo el del pago.
   entrega         Float   @default(0)
-  entrega_pago_id String? @db.Uuid
+  entrega_pago_id String? @unique @db.Uuid
+  entrega_pago    pagos?  @relation("EntregaDeAcuerdo", fields: [entrega_pago_id], references: [id], onDelete: SetNull)
 
   /// vigente | cumplido | roto | anulado
   estado        String  @default("vigente")

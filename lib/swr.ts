@@ -897,6 +897,11 @@ export interface Pago {
   credito: { id: string; numero?: number | null; refinancia_a_numero?: number | null; cliente_id: string; cliente: { nombre: string; apellido?: string | null } };
   /** Si el cobro salió de una cuota de ACUERDO DE PAGO: cuál es, y de cuántas. */
   acuerdo_cuota?: { numero: number; acuerdo: { _count: { cuotas: number } } } | null;
+  /**
+   * Si el cobro fue la ENTREGA con la que se armó un acuerdo. No es una cuota del crédito ni
+   * una cuota del acuerdo: es el adelanto que el cliente dejó para poder armar el plan.
+   */
+  acuerdo_entrega?: { id: string } | null;
   /** Contra qué cuotas del plan se imputó, y cuánto a cada una. */
   aplicaciones?: {
     aplicado_capital: number; aplicado_interes: number; aplicado_mora: number; aplicado_cargos: number;
