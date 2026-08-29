@@ -110,19 +110,40 @@ export function PagosTable() {
 
   // ── Vista de ficha (cliente seleccionado) ──
   if (selected) {
+    /**
+     * Las dos acciones de la terminal. Van DENTRO del encabezado de la ficha (ver la prop
+     * `acciones` de `ClienteDetail`): antes ocupaban una franja propia arriba, que empujaba
+     * la credencial y las cuotas hacia abajo sin aportar nada.
+     */
     const acciones = (
       <>
+        {/* Volver al buscador. Fantasma, para que no compita con el cobro: la flecha se
+            corre al pasar el mouse, que ya dice "vas hacia atrás" sin más peso visual. */}
         <button
           onClick={() => setSelected(null)}
-          className="flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg border border-border text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors whitespace-nowrap"
+          className="group inline-flex items-center gap-2 whitespace-nowrap rounded-xl border border-border/70 bg-card/60 px-4 py-2.5 text-sm font-medium text-muted-foreground backdrop-blur transition-colors hover:border-border hover:bg-muted/40 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
         >
-          <ArrowLeft className="h-4 w-4" /> Buscar otro cliente
+          <ArrowLeft className="h-4 w-4 transition-transform duration-200 group-hover:-translate-x-0.5" />
+          Buscar otro cliente
         </button>
+
+        {/*
+          COBRAR. Es la acción por la que existe esta pantalla, así que se ve como plata: verde
+          —el mismo de los botones de cuota, para que se lean como lo mismo—, el signo $ en su
+          propia ficha circular, y un brillo que la recorre al pasar el mouse. El realce va acá
+          y en ningún otro lado de la terminal.
+        */}
         <button
           onClick={() => setPagoOpen(true)}
-          className="flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 transition-opacity whitespace-nowrap"
+          className="group relative inline-flex items-center gap-2.5 overflow-hidden whitespace-nowrap rounded-xl bg-gradient-to-b from-success to-success/85 px-5 py-2.5 text-sm font-bold text-success-foreground shadow-[0_8px_20px_-10px_color-mix(in_srgb,var(--success)_70%,transparent)] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_14px_30px_-10px_color-mix(in_srgb,var(--success)_85%,transparent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-success/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background active:translate-y-0"
         >
-          <Plus className="h-4 w-4" /> Registrar pago
+          <span className="flex h-6 w-6 items-center justify-center rounded-full bg-success-foreground/20 font-mono text-base leading-none">$</span>
+          Registrar pago
+          {/* El brillo: un barrido diagonal que cruza el botón al pasar el mouse. */}
+          <span
+            aria-hidden
+            className="pointer-events-none absolute inset-y-0 -left-full w-1/2 skew-x-[-20deg] bg-success-foreground/25 transition-[left] duration-500 ease-out group-hover:left-[150%] motion-reduce:hidden"
+          />
         </button>
       </>
     );
@@ -136,11 +157,9 @@ export function PagosTable() {
           subtitle="Ficha del cliente · registrar cobro"
           accent="primary"
         />
-        <div className="flex flex-wrap items-center justify-end gap-2">{acciones}</div>
-
-        {/* Ficha principal del cliente */}
+        {/* Ficha principal del cliente, con las acciones en su encabezado */}
         <div className="rounded-xl bg-card border border-border overflow-hidden">
-          <ClienteDetail clienteId={selected.id} variant="pagos" />
+          <ClienteDetail clienteId={selected.id} variant="pagos" accionesPantalla={acciones} />
         </div>
 
         <Dialog open={pagoOpen} onOpenChange={(o) => { if (!o) setPagoOpen(false); }}>

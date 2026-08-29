@@ -96,6 +96,7 @@ function promesaBadge(
 export function ClienteDetail({
   clienteId,
   variant = "full",
+  accionesPantalla,
   onEditar,
   onEliminar,
   role,
@@ -103,6 +104,15 @@ export function ClienteDetail({
   clienteId: string;
   /** "pagos" = solo créditos + plan de cuotas + historial. "cliente" = solo datos personales/laborales. */
   variant?: "full" | "pagos" | "cliente";
+  /**
+   * Acciones de la pantalla contenedora, pintadas DENTRO del encabezado.
+   *
+   * 🔴 Vivían en una barra suelta arriba de la ficha: una franja entera de alto para dos
+   * botones, que empujaba la credencial y las cuotas hacia abajo. Entran acá y la ficha sube.
+   * El comportamiento sigue siendo de quien las pasa (buscar otro cliente, abrir el cobro);
+   * esta ficha solo les da lugar.
+   */
+  accionesPantalla?: React.ReactNode;
   onEditar?: () => void;
   onEliminar?: () => void;
   /** Para ofrecerle a un admin cambiar el estado del cliente. La barrera real es el PATCH. */
@@ -246,12 +256,20 @@ export function ClienteDetail({
     <div className="flex h-full min-h-0 flex-col">
       {/* ── Encabezado tipo credencial ── */}
       <div className="shrink-0 border-b border-border bg-gradient-to-br from-primary/10 via-transparent to-success/5 px-5 py-4 sm:px-6">
-        <div className="flex items-start gap-4">
+        {/*
+          La credencial: avatar y datos CENTRADOS entre sí, y las acciones al mismo eje.
+
+          El avatar quedaba pegado arriba mientras el texto crecía tres renglones hacia abajo,
+          así que la fila entera se leía torcida. `items-center` los cuelga del mismo eje y la
+          jerarquía queda en el tamaño: nombre grande, estado y DNI en una línea, "cliente
+          desde" en la de abajo, en gris.
+        */}
+        <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center">
           {/* Avatar TailGrids (cuadrado, con dot de estado) */}
           <Avatar name={nombreCompleto(cliente)} seed={cliente.id} size="lg" square status={cliente.estado === "activo" ? "online" : "offline"} />
 
           <div className="min-w-0 flex-1">
-            <div className="flex items-start justify-between gap-3">
+            <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
               <div className="min-w-0">
                 <h2 className="truncate text-2xl font-bold leading-tight tracking-tight text-foreground">{nombreCompleto(cliente)}</h2>
                 <div className="mt-2 flex flex-wrap items-center gap-2.5">
@@ -297,8 +315,9 @@ export function ClienteDetail({
                 </div>
               </div>
 
-              {(onEditar || onEliminar) && (
-                <div className="flex shrink-0 items-center gap-2">
+              {(onEditar || onEliminar || accionesPantalla) && (
+                <div className="flex shrink-0 flex-wrap items-center gap-2">
+                  {accionesPantalla}
                   {/* Contactar va PRIMERO y en color: es la acción que se usa todos los días
                       desde esta pantalla, a diferencia de editar y eliminar. */}
                   {/* A un fallecido no se le escribe: el mensaje le llegaría a la familia con
