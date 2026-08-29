@@ -95,7 +95,6 @@ export function PlanDeCuotas({
                 { t: "Interés", op: "↳", a: "text-right", w: "hidden sm:table-cell" },
                 { t: "Capital", op: "↳", a: "text-right", w: "hidden sm:table-cell" },
                 { t: "Mora", op: "+", a: "text-right" },
-                { t: "Pagado", op: "−", a: "text-right" },
                 // El número del recibo es un dato que se BUSCA —el cliente llama diciendo
                 // "tengo el REC-000006"—, no un adorno del importe: va en su columna.
                 { t: "Comprobante", a: "text-left" },
@@ -207,14 +206,6 @@ export function PlanDeCuotas({
                     )}
                   </td>
 
-                  <td className={`${celda} whitespace-nowrap text-right`}>
-                    {conPagos ? (
-                      <span className="font-mono tabular-nums text-success">${n2(pagadoDeCuota(q))}</span>
-                    ) : (
-                      <span className="text-muted-foreground/20">—</span>
-                    )}
-                  </td>
-
                   {/*
                     🔴 TODOS los comprobantes, no solo el último.
                     Nombraba al más reciente y contaba los otros con un "+1" que no se podía
@@ -248,23 +239,36 @@ export function PlanDeCuotas({
                   </td>
 
                   {/*
-                    LA CONCLUSIÓN DEL RENGLÓN. O se cobra —y dice cuánto— o ya está saldada.
-                    El botón dice el TOTAL —cuota + su mora—, sin sufijos: el "+mora" que
-                    llevaba antes se leía como si al importe todavía hubiera que sumarle algo.
-                    La mora ya está discriminada en su columna.
+                    LA CONCLUSIÓN DEL RENGLÓN, con lo cobrado adentro.
 
-                    Vencida y Parcial se marcan arriba del importe: son la razón por la que ese
-                    número es el que es. "Pendiente" no se marca — sería repetir lo obvio.
+                    🔴 "Pagado" era una columna propia que quedaba vacía en cuatro de cada
+                    cinco filas y, en la que estaba resuelta, ponía el importe lejos de la
+                    burbuja que decía "Pagada" —el mismo hecho partido en dos celdas—. Ahora
+                    la burbuja lleva el monto adentro y la tabla gana una columna.
+
+                    Los tres estados posibles del renglón:
+                      · saldada        → "Pagada $283.638,30"
+                      · pagada a medias → cuánto entró, y debajo el botón con lo que resta
+                      · sin tocar       → solo el botón
                   */}
                   <td className={`${celda} ${pr} text-right`}>
                     {q.estado === "pagada" ? (
                       <span className="inline-flex items-center gap-1.5 rounded-full border border-success/30 bg-success/10 px-2.5 py-1 text-[11px] font-semibold text-success">
-                        <Check className="h-3 w-3" /> Pagada
+                        <Check className="h-3 w-3 shrink-0" />
+                        Pagada
+                        <span className="font-mono tabular-nums">${n2(pagadoDeCuota(q))}</span>
                       </span>
                     ) : (
                       <div className="inline-flex flex-col items-end gap-1">
                         {(q.estado === "vencida" || q.estado === "parcial") && (
                           <StatusBadge label={b.label} variant={b.variant} />
+                        )}
+                        {/* Lo que YA entró en una cuota a medio pagar: es el término que hace
+                            cerrar la cuenta del renglón (cuota + mora − pagado = a cobrar). */}
+                        {conPagos && (
+                          <span className="font-mono text-[10px] tabular-nums text-success">
+                            pagó ${n2(pagadoDeCuota(q))}
+                          </span>
                         )}
                         {onCobrar ? (
                           <button
@@ -304,14 +308,16 @@ export function PlanDeCuotas({
               <td className={`${px} ${py} border-t border-border text-right font-mono font-bold tabular-nums text-destructive`}>
                 {moraTotal > 0 ? `$${n2(moraTotal)}` : <span className="text-muted-foreground/20">—</span>}
               </td>
-              <td className={`${px} ${py} border-t border-border text-right font-mono font-bold tabular-nums text-success`}>
-                ${n2(pagadoTotal)}
-              </td>
               <td className="border-t border-border" />
-              {/* La columna que suma lo que el cliente debe hoy. Coincide con la tarjeta
-                  "Deuda total" del detalle porque sale de las mismas cuotas. */}
-              <td className={`${px} ${py} ${pr} border-t border-border text-right font-mono font-bold tabular-nums text-foreground`}>
-                ${n2(aCobrarTotal)}
+              {/* Lo que el cliente debe hoy —coincide con la tarjeta "Deuda total" porque sale
+                  de las mismas cuotas— y debajo lo que ya entró, que perdió su columna. */}
+              <td className={`${px} ${py} ${pr} border-t border-border text-right`}>
+                <span className="block font-mono font-bold tabular-nums text-foreground">${n2(aCobrarTotal)}</span>
+                {pagadoTotal > 0 && (
+                  <span className="block font-mono text-[10px] font-normal tabular-nums text-success">
+                    cobrado ${n2(pagadoTotal)}
+                  </span>
+                )}
               </td>
             </tr>
           </tfoot>
@@ -322,7 +328,7 @@ export function PlanDeCuotas({
           hoy): sin esto el importe de la columna no se puede verificar. */}
       <p className="text-[11px] leading-relaxed text-muted-foreground">
         <span className="font-mono">Cuota = interés + capital.</span>{" "}
-        <span className="font-mono">A cobrar = cuota + mora − pagado.</span>
+        <span className="font-mono">A cobrar = cuota + mora − lo ya pagado.</span>
         {moraTotal > 0 && mora && (
           <>
             {" "}La mora se devenga sobre el importe de la cuota —no sobre el saldo que queda
