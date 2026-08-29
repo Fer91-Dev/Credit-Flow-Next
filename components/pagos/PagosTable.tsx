@@ -28,7 +28,6 @@ export function PagosTable() {
   const [query, setQuery] = useState("");
   const [verTodos, setVerTodos] = useState(false); // F3: lista completa de clientes A→Z
   const [selected, setSelected] = useState<Cliente | null>(null);
-  const [pagoOpen, setPagoOpen] = useState(false);
   const [nuevoPagoOpen, setNuevoPagoOpen] = useState(false); // pago genérico (busca crédito/cliente en el form)
 
   // Búsqueda DNI-aware: matchea por nombre o por documento (también en su forma
@@ -85,18 +84,6 @@ export function PagosTable() {
     if (c) elegir(c);
   };
 
-  const handlePagoClose = (success?: boolean) => {
-    setPagoOpen(false);
-    if (success && selected) {
-      // Refrescar la ficha + cachés de cartera/pagos/caja.
-      globalMutate(`/api/clientes/${selected.id}`);
-      globalMutate(KEYS.creditos);
-      globalMutate(KEYS.pagos);
-      globalMutate(KEYS.dashboard);
-      globalMutate("/api/caja");
-    }
-  };
-
   // Pago genérico desde la vista de entrada (el operador busca el crédito/cliente en el form).
   const handleNuevoPagoClose = (success?: boolean) => {
     setNuevoPagoOpen(false);
@@ -111,41 +98,27 @@ export function PagosTable() {
   // ── Vista de ficha (cliente seleccionado) ──
   if (selected) {
     /**
-     * Las dos acciones de la terminal. Van DENTRO del encabezado de la ficha (ver la prop
-     * `acciones` de `ClienteDetail`): antes ocupaban una franja propia arriba, que empujaba
-     * la credencial y las cuotas hacia abajo sin aportar nada.
+     * La única acción de pantalla: volver al buscador.
+     *
+     * 🔴 Acá había además un botón "Registrar pago" que abría el mismo formulario, pero sin
+     * crédito ni cuota elegidos. Era un SEGUNDO camino para cobrar, compitiendo con los
+     * botones verdes de cada cuota —que ya llegan con el crédito y la cuota puestos y también
+     * permiten monto personalizado—. Se fue: el cobro se pide sobre la cuota que se cobra.
+     *
+     * El cobro que no cuelga de ninguna cuota (un crédito sin cronograma, un pago a cuenta)
+     * sigue existiendo en el "Registrar pago" de la vista de búsqueda, que busca el crédito
+     * por N° o DNI dentro del formulario.
      */
     const acciones = (
-      <>
-        {/* Volver al buscador. Fantasma, para que no compita con el cobro: la flecha se
-            corre al pasar el mouse, que ya dice "vas hacia atrás" sin más peso visual. */}
-        <button
-          onClick={() => setSelected(null)}
-          className="group inline-flex items-center gap-2 whitespace-nowrap rounded-xl border border-border/70 bg-card/60 px-4 py-2.5 text-sm font-medium text-muted-foreground backdrop-blur transition-colors hover:border-border hover:bg-muted/40 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
-        >
-          <ArrowLeft className="h-4 w-4 transition-transform duration-200 group-hover:-translate-x-0.5" />
-          Buscar otro cliente
-        </button>
-
-        {/*
-          COBRAR. Es la acción por la que existe esta pantalla, así que se ve como plata: verde
-          —el mismo de los botones de cuota, para que se lean como lo mismo—, el signo $ en su
-          propia ficha circular, y un brillo que la recorre al pasar el mouse. El realce va acá
-          y en ningún otro lado de la terminal.
-        */}
-        <button
-          onClick={() => setPagoOpen(true)}
-          className="group relative inline-flex items-center gap-2.5 overflow-hidden whitespace-nowrap rounded-xl bg-gradient-to-b from-success to-success/85 px-5 py-2.5 text-sm font-bold text-success-foreground shadow-[0_8px_20px_-10px_color-mix(in_srgb,var(--success)_70%,transparent)] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_14px_30px_-10px_color-mix(in_srgb,var(--success)_85%,transparent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-success/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background active:translate-y-0"
-        >
-          <span className="flex h-6 w-6 items-center justify-center rounded-full bg-success-foreground/20 font-mono text-base leading-none">$</span>
-          Registrar pago
-          {/* El brillo: un barrido diagonal que cruza el botón al pasar el mouse. */}
-          <span
-            aria-hidden
-            className="pointer-events-none absolute inset-y-0 -left-full w-1/2 skew-x-[-20deg] bg-success-foreground/25 transition-[left] duration-500 ease-out group-hover:left-[150%] motion-reduce:hidden"
-          />
-        </button>
-      </>
+      /* Fantasma: la flecha se corre al pasar el mouse, que ya dice "vas hacia atrás" sin
+         robarle peso visual a los botones de cobro de las cuotas. */
+      <button
+        onClick={() => setSelected(null)}
+        className="group inline-flex items-center gap-2 whitespace-nowrap rounded-xl border border-border/70 bg-card/60 px-4 py-2.5 text-sm font-medium text-muted-foreground backdrop-blur transition-colors hover:border-border hover:bg-muted/40 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+      >
+        <ArrowLeft className="h-4 w-4 transition-transform duration-200 group-hover:-translate-x-0.5" />
+        Buscar otro cliente
+      </button>
     );
 
     return (
@@ -161,17 +134,6 @@ export function PagosTable() {
         <div className="rounded-xl bg-card border border-border overflow-hidden">
           <ClienteDetail clienteId={selected.id} variant="pagos" accionesPantalla={acciones} />
         </div>
-
-        <Dialog open={pagoOpen} onOpenChange={(o) => { if (!o) setPagoOpen(false); }}>
-          <DialogContent className="w-[95vw] sm:max-w-4xl max-h-[90dvh] flex flex-col overflow-hidden">
-            <DialogHeader className="shrink-0">
-              <DialogTitle>Registrar pago · {nombreCompleto(selected)}</DialogTitle>
-            </DialogHeader>
-            <div className="flex-1 min-h-0 overflow-y-auto">
-              {pagoOpen && <PagoForm clienteId={selected.id} onClose={handlePagoClose} />}
-            </div>
-          </DialogContent>
-        </Dialog>
       </div>
     );
   }
