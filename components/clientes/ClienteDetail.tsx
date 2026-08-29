@@ -265,6 +265,15 @@ export function ClienteDetail({
           desde" en la de abajo, en gris.
         */}
         <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center">
+          {/*
+            Las acciones de la PANTALLA abren la fila, antes de la credencial: volver al
+            buscador y cobrar son lo que se hace acá, y el cliente es sobre quién se hace.
+            Las acciones sobre la PERSONA —contactar, marcarla— quedan al otro extremo.
+          */}
+          {accionesPantalla && (
+            <div className="flex shrink-0 flex-wrap items-center gap-2">{accionesPantalla}</div>
+          )}
+
           {/* Avatar TailGrids (cuadrado, con dot de estado) */}
           <Avatar name={nombreCompleto(cliente)} seed={cliente.id} size="lg" square status={cliente.estado === "activo" ? "online" : "offline"} />
 
@@ -315,9 +324,8 @@ export function ClienteDetail({
                 </div>
               </div>
 
-              {(onEditar || onEliminar || accionesPantalla) && (
+              {(onEditar || onEliminar || showCreditos) && (
                 <div className="flex shrink-0 flex-wrap items-center gap-2">
-                  {accionesPantalla}
                   {/* Contactar va PRIMERO y en color: es la acción que se usa todos los días
                       desde esta pantalla, a diferencia de editar y eliminar. */}
                   {/* A un fallecido no se le escribe: el mensaje le llegaría a la familia con
