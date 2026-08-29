@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { useSWRConfig } from "swr";
 import {
-  Pencil, Trash2, CalendarClock, ChevronRight, ChevronDown, Loader2, Mail, MessageCircle, Phone, Printer, ShieldCheck, Ban, Receipt, AlertTriangle, History, BellOff, Wallet, Sparkles,
+  Pencil, Trash2, CalendarClock, ChevronRight, ChevronDown, Loader2, Mail, MessageCircle, Phone, Printer, ShieldCheck, Ban, Receipt, AlertTriangle, History, BellOff, Wallet, Sparkles, Handshake,
 } from "lucide-react";
 import { refrescarNotificaciones, useClienteDetalle, useAccionesCobranza, useCuotas, KEYS, type CreditoConFinanzas, type EstadoCuota, type CuotaPersistida } from "@/lib/swr";
 import { StatusBadge, type BadgeVariant } from "@/components/ui/StatusBadge";
@@ -28,7 +28,7 @@ import { ProntuarioPanel } from "@/components/clientes/ProntuarioPanel";
 import { abrirRecibo } from "@/lib/recibo";
 import { moraDevengadaDeCuota } from "@/lib/recibo-cuota";
 import { formatCreditoNumero, formatFecha, formatFechaHora, nombreCompleto, hoyComercial, formatDias, formatMonto } from "@/lib/utils";
-import { esCreditoVivo, deudaEnRevision, normalizarEstadoCliente, ESTADO_CLIENTE_LABEL, ESTADO_CLIENTE_VARIANT } from "@/lib/domain";
+import { esCreditoVivo, deudaEnRevision, normalizarEstadoCliente, round2, ESTADO_CLIENTE_LABEL, ESTADO_CLIENTE_VARIANT } from "@/lib/domain";
 import type { Role } from "@/lib/auth/roles";
 
 function n2(x: number) {
@@ -1116,8 +1116,49 @@ function CuotasInline({ credito, onCobrar }: {
     return <p className="py-5 text-center text-xs text-muted-foreground/60">Sin cronograma de cuotas.</p>;
   }
 
+  /**
+   * 🔴 CON UN ACUERDO VIGENTE HAY DOS PLANES SOBRE LA MISMA DEUDA, Y NO SE COBRA EL MISMO
+   * NÚMERO EN LOS DOS.
+   *
+   * El acuerdo consolida lo vencido y lo reparte en SUS cuotas; el plan del crédito sigue
+   * abajo con las suyas, que es adonde se imputa la plata. Los dos importes son correctos y
+   * distintos: en CRD-000016 la cuota del crédito eran $163.256,25 y la del acuerdo
+   * $218.875,18. La terminal mostraba solo el segundo plan, sin decir que el primero existía,
+   * así que el operador cobraba por el número equivocado y creía que el sistema se
+   * contradecía. Tenía razón en desconfiar: faltaba el renglón que los relaciona.
+   */
+  const acuerdo = meta?.acuerdo ?? null;
+  const proximaAcuerdo = acuerdo?.cuotas.find((c) => c.estado !== "pagada") ?? null;
+
   return (
     <div className="px-3 py-3">
+      {acuerdo && proximaAcuerdo && (
+        <div className="mb-3 rounded-xl border border-primary/25 bg-primary/[0.06] px-3.5 py-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-primary">
+              <Handshake className="h-3.5 w-3.5" /> Acuerdo de pago vigente
+            </p>
+            <span className="text-[11px] tabular-nums text-muted-foreground">
+              total {formatMonto(acuerdo.monto_acordado)} en {acuerdo.total_cuotas} cuota{acuerdo.total_cuotas === 1 ? "" : "s"}
+            </span>
+          </div>
+          <div className="mt-2 flex flex-wrap items-baseline justify-between gap-2">
+            <span className="text-sm text-foreground">
+              Lo pactado es la cuota {proximaAcuerdo.numero} de {acuerdo.total_cuotas}
+              <span className="text-muted-foreground"> · vence {fmtDate(proximaAcuerdo.vencimiento)}</span>
+            </span>
+            <span className="font-mono text-xl font-bold tabular-nums text-foreground">
+              {formatMonto(round2(proximaAcuerdo.monto - proximaAcuerdo.pagado))}
+            </span>
+          </div>
+          {/* La frase que faltaba: por qué los números de abajo son otros. */}
+          <p className="mt-2 border-t border-primary/15 pt-2 text-[11px] leading-relaxed text-muted-foreground">
+            Las cuotas de abajo son las del <span className="text-foreground">crédito</span>: es adonde se imputa la
+            plata, no lo que se le cobra. Para cobrar lo pactado, andá a Cobranzas → Acuerdos.
+          </p>
+        </div>
+      )}
+
       <div className="flex items-center justify-between mb-2">
         <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Plan de cuotas</p>
         {resumen && (
