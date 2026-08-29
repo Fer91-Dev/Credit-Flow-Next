@@ -472,6 +472,22 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     // cambiar el redondeo hoy reescribía la tabla que se le muestra a un crédito viejo,
     // mientras sus cuotas cobradas seguían siendo las originales.
     redondeo: configActual.simulador.redondeoCuota,
+    /**
+     * 🔴 LA CONVENCIÓN CON LA QUE SE COTIZÓ. Era lo último que faltaba congelar.
+     *
+     * `tasa` es un número sin sentido propio: 350 significa cosas distintas según se lea como
+     * nominal anual, efectiva anual o mensual. Se congelaban los cargos, el cronograma, la mora
+     * y el redondeo, pero la convención se seguía leyendo de la config VIGENTE — y la pantalla
+     * de amortización RECONSTRUYE el plan para mostrarlo e imprimirlo.
+     *
+     * Medido sobre CRD-000003 (600.000 al 350, 5 cuotas mensuales): la cuota que se cobra es
+     * $242.425,90 (nominal anual, la vigente al firmar). Con el tenant pasado a efectiva anual
+     * esa misma pantalla mostraría $172.061,88, y con mensual $2.101.138,65 — mientras las
+     * cuotas persistidas, que son las que se cobran, seguirían siendo las de $242.425,90. O
+     * sea: el papel que se lleva el cliente dejaría de coincidir con lo que el sistema le
+     * cobra, sin que nadie tocara ese crédito.
+     */
+    convencion: configActual.convencionTasa,
   };
 
   // ─── Riesgo / originación (motor base, TODOS los planes) ───

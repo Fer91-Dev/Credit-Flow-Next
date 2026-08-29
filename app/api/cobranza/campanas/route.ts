@@ -2,7 +2,7 @@ import { requireRole, scopeCreditosVendedor } from "@/lib/auth";
 import { successResponse, errorResponse, withErrorHandler, assertSameOrigin } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
-import { cuotaMensualFrancesa, tasaPeriodicaSegunConvencion, interesMora, normalizarFrecuencia, calculateRecoveryOffer, diasMoraActual, type FrecuenciaDef, type ConfiguracionFinanciera, moraDelCredito, moraDesdeCronograma, esCreditoVivo, calcularDeudaVencida, round2, deudaEnRevision, contactoBloqueado, resolverPlantillasMeta, type CuotaParaImputar } from "@/lib/domain";
+import { cuotaMensualFrancesa, tasaPeriodicaSegunConvencion, convencionDelCredito, interesMora, normalizarFrecuencia, calculateRecoveryOffer, diasMoraActual, type FrecuenciaDef, type ConfiguracionFinanciera, moraDelCredito, moraDesdeCronograma, esCreditoVivo, calcularDeudaVencida, round2, deudaEnRevision, contactoBloqueado, resolverPlantillasMeta, type CuotaParaImputar } from "@/lib/domain";
 import { getConfiguracion, getCobranzaConfig } from "@/lib/config";
 import { registrarAuditoria } from "@/lib/audit";
 import { hoyComercial, formatCreditoNumero } from "@/lib/utils";
@@ -41,7 +41,10 @@ function interesMoraDe(c: CreditoMora, config: ConfiguracionFinanciera): number 
   }
   const frec = normalizarFrecuencia(c.frecuencia);
   const catFrec = c.frecuencia_def ? [c.frecuencia_def as FrecuenciaDef] : config.simulador.frecuencias;
-  const tasaPeriodica = tasaPeriodicaSegunConvencion(c.tasa, config.convencionTasa, frec, catFrec);
+  // La convención CONGELADA del crédito, igual que `diasGracia` acá abajo: la oferta de la
+  // campaña no puede moverse porque alguien cambió una opción de Configuración.
+  const conv = convencionDelCredito(c.cronograma, config.convencionTasa);
+  const tasaPeriodica = tasaPeriodicaSegunConvencion(c.tasa, conv, frec, catFrec);
   const cuota = cuotaMensualFrancesa(c.monto_original, tasaPeriodica, c.plazo_meses);
   const gracia = (c.cronograma as { diasGracia?: number } | null)?.diasGracia ?? config.simulador.diasGracia;
   return interesMora(cuota, c.dias_mora, { tasaDiaria: mc.tasaMoraDiaria, diasGracia: gracia, topePct: mc.topeMoraPct });

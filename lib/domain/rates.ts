@@ -5,6 +5,7 @@
  * se ingresa como TASA NOMINAL ANUAL capitalizable mensualmente.
  * Ejemplo: tasa = 30  ->  30% N.A.  ->  2.5% mensual.
  */
+import type { ConvencionTasa } from "./config";
 
 /**
  * Tasa periódica mensual (en fracción decimal) a partir de la nominal anual en %.
@@ -65,4 +66,26 @@ export function tasaMensualSegunConvencion(
     default:
       throw new Error(`Convención de tasa desconocida: ${convencion}`);
   }
+}
+
+/**
+ * Con qué convención se cotizó un crédito YA OTORGADO.
+ *
+ * 🔴 `tasa` es un número sin sentido propio: 350 significa cosas distintas leído como nominal
+ * anual, efectiva anual o mensual. Todo lo que reconstruya la cuota de un crédito viejo —la
+ * pantalla de amortización, la ficha del cliente, las campañas, los acuerdos— la necesita, y
+ * la leían de la configuración VIGENTE del tenant. Cambiar esa opción en Configuración
+ * reescribía hacia atrás la cuota de créditos ya firmados, mientras las cuotas persistidas
+ * —las que se cobran— seguían siendo las originales.
+ *
+ * Medido sobre CRD-000003 (600.000 al 350, 5 cuotas mensuales): se cobra $242.425,90; leído
+ * como efectiva anual da $172.061,88 y como mensual $2.101.138,65.
+ *
+ * Mismo criterio que `moraDesdeCronograma`: se congela en el snapshot al otorgar y la config
+ * vigente queda solo como fallback para los créditos anteriores al congelamiento, que es lo
+ * único que hay para ellos.
+ */
+export function convencionDelCredito(cronograma: unknown, vigente: ConvencionTasa): ConvencionTasa {
+  const c = cronograma as { convencion?: ConvencionTasa } | null;
+  return c?.convencion ?? vigente;
 }

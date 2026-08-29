@@ -12,6 +12,7 @@ import {
   frecuenciaLabel,
   resolverFrecuencia,
   resolverCargos,
+  convencionDelCredito,
   type CronogramaConfig,
   type CargosConfig,
   type RedondeoModo,
@@ -53,21 +54,38 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
     return errorResponse("Crédito no encontrado", "NOT_FOUND", 404);
   }
 
-  // La convención de tasa la define la financiera en su configuración.
   const config = await getConfiguracion(tenantId);
   // Catálogo: snapshot del crédito si existe (blindado); si no, config vigente.
   const catalogo = credito.frecuencia_def
     ? [credito.frecuencia_def as unknown as typeof config.simulador.frecuencias[number]]
     : config.simulador.frecuencias;
   const frecuencia = normalizarFrecuencia(credito.frecuencia);
-  const tasaPeriodica = tasaPeriodicaSegunConvencion(credito.tasa, config.convencionTasa, frecuencia, catalogo);
+
+  /**
+   * 🔴 LA CONVENCIÓN CONGELADA AL FIRMAR, no la vigente hoy.
+   *
+   * Esta ruta RECONSTRUYE el plan de un crédito ya otorgado para mostrarlo e imprimirlo, y
+   * leía `config.convencionTasa`. `tasa` es un número sin sentido propio: 350 significa cosas
+   * distintas leído como nominal anual, efectiva anual o mensual. Cambiar esa opción en
+   * Configuración reescribía el plan de TODOS los créditos viejos, mientras las cuotas
+   * persistidas —las que se cobran— seguían siendo las originales.
+   *
+   * Medido sobre CRD-000003 (600.000 al 350, 5 cuotas mensuales): se cobra $242.425,90; con el
+   * tenant en efectiva anual esta pantalla mostraría $172.061,88 y con mensual $2.101.138,65.
+   * El papel del cliente dejaba de coincidir con lo que el sistema le cobra.
+   *
+   * Los créditos otorgados ANTES de que se congelara caen a la config vigente: es lo único que
+   * hay, y es exactamente lo que hacían hasta ahora.
+   */
+  const convencion = convencionDelCredito(credito.cronograma, config.convencionTasa);
+  const tasaPeriodica = tasaPeriodicaSegunConvencion(credito.tasa, convencion, frecuencia, catalogo);
 
   const plan = construirPlanAmortizacion(
     credito.monto_original,
     credito.tasa,
     credito.plazo_meses,
     credito.fecha_inicio,
-    config.convencionTasa,
+    convencion,
     frecuencia,
     {
       // Snapshot del crédito (puede ser PARCIAL en créditos viejos/seed) normalizado sobre la
@@ -97,7 +115,7 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
     parametros: {
       monto: credito.monto_original,
       tasa_ingresada: credito.tasa,
-      convencion_tasa: config.convencionTasa,
+      convencion_tasa: convencion,
       frecuencia,
       frecuencia_label: frecuenciaLabel(frecuencia, catalogo),
       tasa_periodica: tasaPeriodica,

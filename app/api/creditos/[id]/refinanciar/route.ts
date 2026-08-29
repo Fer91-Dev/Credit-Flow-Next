@@ -290,6 +290,8 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
       topePct: config.topeMoraPct,
     },
     redondeo: config.simulador.redondeoCuota,
+    /** La convención con la que se cotiza esta refinanciación (ver el detalle en POST /creditos). */
+    convencion: config.convencionTasa,
   };
   const fechaInicio = body.fecha_inicio ? new Date(body.fecha_inicio) : hoyComercial();
 

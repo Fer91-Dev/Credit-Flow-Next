@@ -6,7 +6,7 @@ import { conNumeroDeOrigen } from "@/lib/creditos-numero";
 import { registrarAuditoria } from "@/lib/audit";
 import { nombreCompleto, hoyComercial } from "@/lib/utils";
 import { normalizarCuit, validarDuplicadoCliente } from "@/lib/clientes-validacion";
-import { calcularScore, diasMoraActual, cuotaMensualFrancesa, tasaPeriodicaSegunConvencion, normalizarFrecuencia, interesMora, diasAtraso, round2, estadoCoherente, esCreditoVivo, moraDelCredito, moraDesdeCronograma, moraPendienteTotal, ESTADOS_CLIENTE, ESTADO_CLIENTE_LABEL, esEstadoClienteValido, normalizarEstadoCliente, type EstadoCliente } from "@/lib/domain";
+import { calcularScore, diasMoraActual, cuotaMensualFrancesa, tasaPeriodicaSegunConvencion, convencionDelCredito, normalizarFrecuencia, interesMora, diasAtraso, round2, estadoCoherente, esCreditoVivo, moraDelCredito, moraDesdeCronograma, moraPendienteTotal, ESTADOS_CLIENTE, ESTADO_CLIENTE_LABEL, esEstadoClienteValido, normalizarEstadoCliente, type EstadoCliente } from "@/lib/domain";
 import { getConfiguracion, getRiesgoConfig } from "@/lib/config";
 import type { NextRequest } from "next/server";
 
@@ -81,7 +81,10 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
     let interes_mora = 0;
     if (c.monto_original > 0 && c.plazo_meses >= 1) {
       const frec = normalizarFrecuencia(c.frecuencia);
-      const tasaPeriodica = tasaPeriodicaSegunConvencion(c.tasa, config.convencionTasa, frec);
+      // La convención CONGELADA del crédito (ver convencionDelCredito): con la vigente,
+      // cambiar esa opción en Configuración reescribía la cuota de créditos ya firmados.
+      const conv = convencionDelCredito(c.cronograma, config.convencionTasa);
+      const tasaPeriodica = tasaPeriodicaSegunConvencion(c.tasa, conv, frec);
       cuota = cuotaMensualFrancesa(c.monto_original, tasaPeriodica, c.plazo_meses);
       // La mora del CRÉDITO, no la de la config de hoy (ver moraDelCredito).
       const mc = moraDelCredito(moraDesdeCronograma(c.cronograma), config);
