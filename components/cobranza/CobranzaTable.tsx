@@ -13,7 +13,6 @@ import { GestionForm, type CreditoCtx } from "./GestionForm";
 import { CobranzaDetail } from "./CobranzaDetail";
 import { guardarSeleccionCampana, leerSeleccionCampana } from "./seleccion-campana";
 import { CampanasView } from "./CampanasView";
-import { PromesasTab } from "./PromesasTab";
 import { AcuerdosTab } from "./AcuerdosTab";
 import { AgendaHoy } from "./AgendaHoy";
 import { PlanillasTab } from "./PlanillasTab";
@@ -68,10 +67,10 @@ const resultadoLabel: Record<AccionCobranza["resultado"], string> = {
   otro:          "Otro",
 };
 
-type Tab = "hoy" | "morosos" | "promesas" | "acuerdos" | "planillas" | "campanas";
+type Tab = "hoy" | "morosos" | "acuerdos" | "planillas" | "campanas";
 
 /** Para validar el `?tab=` de la URL: un valor cualquiera no puede dejar la vista en blanco. */
-const TABS_VALIDOS: Tab[] = ["hoy", "morosos", "promesas", "acuerdos", "planillas", "campanas"];
+const TABS_VALIDOS: Tab[] = ["hoy", "morosos", "acuerdos", "planillas", "campanas"];
 
 export function CobranzaTable({ role }: { role: Role }) {
   // Campañas (selección masiva + ActionToolbar + pestaña): admin (toda la cartera) y
@@ -101,7 +100,6 @@ export function CobranzaTable({ role }: { role: Role }) {
    * gestión del Detalle de cobranza: era el único lugar del que había que salir a buscar a
    * mano lo que ya se estaba mirando.
    */
-  const [promesaFoco, setPromesaFoco] = useState<string | null>(null);
   const [seleccion, setSeleccion] = useState<Set<string>>(new Set());
 
   useEffect(() => {
@@ -282,7 +280,7 @@ export function CobranzaTable({ role }: { role: Role }) {
       <PageHeader
         icon="megaphone"
         title="Cobranzas y Recupero"
-        subtitle="Créditos en mora, promesas de pago y recuperación"
+        subtitle="Créditos en mora, acuerdos de pago y recuperación"
         accent="destructive"
       />
 
@@ -291,7 +289,6 @@ export function CobranzaTable({ role }: { role: Role }) {
         {([
           ["hoy",      "Hoy",      "calendar"],
           ["morosos",  "Morosos",  "money-with-wings"],
-          ["promesas", "Promesas", "handshake"],
           ["acuerdos", "Acuerdos", "scroll"],
           ["planillas", "Planillas", "clipboard"],
           ...(puedeCampanas ? [["campanas", "Campañas", "megaphone"]] : []),
@@ -326,8 +323,6 @@ export function CobranzaTable({ role }: { role: Role }) {
         // `onArmar` lleva a Morosos: el vacío decía "seleccioná clientes en Morosos e iniciá
         // una campaña", una instrucción que el usuario tenía que ejecutar a mano.
         <CampanasView onArmar={() => setTab("morosos")} />
-      ) : tab === "promesas" ? (
-        <PromesasTab role={role} focoId={promesaFoco} onFocoConsumido={() => setPromesaFoco(null)} />
       ) : tab === "acuerdos" ? (
         <AcuerdosTab role={role} />
       ) : tab === "planillas" ? (
@@ -753,17 +748,7 @@ export function CobranzaTable({ role }: { role: Role }) {
           </DialogHeader>
           <div className="flex-1 min-h-0 overflow-y-auto">
             {detalle && (
-              <CobranzaDetail
-                credito={detalle}
-                acciones={acciones}
-                onVerPromesa={(accionId) => {
-                  // El detalle se cierra: la promesa se ve en SU pestaña, con su plan y el
-                  // historial del cliente. Dos diálogos encima no se apilan.
-                  setDetalle(null);
-                  setTab("promesas");
-                  setPromesaFoco(accionId);
-                }}
-              />
+              <CobranzaDetail credito={detalle} acciones={acciones} />
             )}
           </div>
         </DialogContent>

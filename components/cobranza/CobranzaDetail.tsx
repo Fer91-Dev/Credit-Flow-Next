@@ -1,6 +1,6 @@
 "use client";
 
-import { ShieldAlert, CalendarClock, HandCoins, Handshake, ChevronRight, Printer } from "lucide-react";
+import { ShieldAlert, CalendarClock, HandCoins, Handshake, Printer } from "lucide-react";
 import { pagadoDeCuota, moraDevengadaDeCuota } from "@/lib/recibo-cuota";
 import { abrirRecibo } from "@/lib/recibo";
 import type { Credito, AccionCobranza } from "@/lib/swr";
@@ -41,11 +41,9 @@ const RESULTADO_LABEL: Record<AccionCobranza["resultado"], string> = {
  * se van a cobrar. Una sola fuente: si difirieran, sería el bug que este modal existe para
  * evitar.
  */
-export function CobranzaDetail({ credito, acciones, onVerPromesa }: {
+export function CobranzaDetail({ credito, acciones }: {
   credito: Credito;
   acciones: AccionCobranza[];
-  /** Abre esa gestión en la pestaña Promesas. Sin handler, las gestiones no son clickeables. */
-  onVerPromesa?: (accionId: string) => void;
 }) {
   const { cuotas, meta, isLoading } = useCuotas(credito.id);
 
@@ -285,32 +283,23 @@ export function CobranzaDetail({ credito, acciones, onVerPromesa }: {
           <div className="space-y-2">
             {gestiones.map((g) => {
               /**
-               * Una gestión que dejó una PROMESA se abre: acá se ve el compromiso en una
-               * línea, pero el seguimiento —si sigue viva, si ya se rompió, el plan que
-               * cubre, el historial de promesas de ese cliente— vive en su pestaña. Era el
-               * único lugar del que había que salir a buscar a mano lo que ya se estaba
-               * mirando. Las demás gestiones no llevan a ningún lado, así que no se tocan.
+               * 🔴 LA PROMESA ES UNA ANOTACIÓN DE ESTA GESTIÓN, NO UNA SECCIÓN.
+               *
+               * Tenía su propia pestaña con sub-tabs de pendientes/cumplidas/rotas — demasiada
+               * superficie para lo que es: el cobrador llamó y el cliente dijo que el jueves
+               * lleva algo. Eso se anota donde se registró la llamada, no en otro lado al que
+               * hay que ir a buscarlo. La fila abría esa pestaña; ahora muestra acá lo que la
+               * pestaña mostraba: en qué quedó.
+               *
+               * Lo que NO se tocó: la promesa sigue priorizando la agenda del día, el cron la
+               * rompe sola al vencer y el embudo de efectividad la sigue midiendo. Lo que se
+               * fue es la pantalla, no el mecanismo.
                */
-              const esPromesa = g.resultado === "promesa_pago" && !!onVerPromesa;
+              const esPromesa = g.resultado === "promesa_pago";
               return (
               <div
                 key={g.id}
-                {...(esPromesa
-                  ? {
-                      role: "button" as const,
-                      tabIndex: 0,
-                      onClick: () => onVerPromesa!(g.id),
-                      onKeyDown: (e: React.KeyboardEvent) => {
-                        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onVerPromesa!(g.id); }
-                      },
-                      title: "Ver esta promesa en detalle",
-                    }
-                  : {})}
-                className={`rounded-lg border border-border bg-muted/10 px-3 py-2.5 space-y-1.5 ${
-                  esPromesa
-                    ? "cursor-pointer transition-colors hover:border-success/40 hover:bg-success/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
-                    : ""
-                }`}
+                className="rounded-lg border border-border bg-muted/10 px-3 py-2.5 space-y-1.5"
               >
                 <div className="flex items-center justify-between gap-2">
                   <span className="flex items-center gap-2 text-xs">
@@ -319,7 +308,9 @@ export function CobranzaDetail({ credito, acciones, onVerPromesa }: {
                   </span>
                   <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground tabular-nums">
                     {fmtDate(g.created_at)}
-                    {esPromesa && <ChevronRight className="h-3.5 w-3.5 text-muted-foreground/60" />}
+                    {/* En qué quedó la promesa. Es lo único que mostraba la pestaña y que no
+                        estaba acá: sin esto la línea dice qué prometió pero no si cumplió. */}
+                    {esPromesa && <EstadoPromesa estado={g.promesa_estado} />}
                   </span>
                 </div>
                 {g.nota && <p className="text-xs text-muted-foreground">{g.nota}</p>}
@@ -359,4 +350,19 @@ export function CobranzaDetail({ credito, acciones, onVerPromesa }: {
       </DetailSection>
     </div>
   );
+}
+
+/**
+ * En qué quedó la promesa. El cron la resuelve solo al vencer —cumplida si los pagos la
+ * cubren, rota si no—, así que acá solo se lee: es el resultado, no un control.
+ */
+function EstadoPromesa({ estado }: { estado?: string | null }) {
+  if (!estado) return null;
+  const m: Record<string, { label: string; variant: "success" | "destructive" | "warning" }> = {
+    cumplida:   { label: "Cumplida", variant: "success" },
+    incumplida: { label: "Rota",     variant: "destructive" },
+    pendiente:  { label: "Vigente",  variant: "warning" },
+  };
+  const v = m[estado];
+  return v ? <StatusBadge label={v.label} variant={v.variant} /> : null;
 }
