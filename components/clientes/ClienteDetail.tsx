@@ -152,6 +152,19 @@ export function ClienteDetail({
    */
   const puedeCobrarAca = variant === "pagos";
 
+  /**
+   * 🔴 PAGOS ES UNA TERMINAL DE COBRO, NO LA FICHA DEL CLIENTE.
+   *
+   * Las dos pantallas son este mismo componente, así que se veían iguales: quien iba a cobrar
+   * se encontraba con el perfil de bureau, el prontuario y el historial de promesas —tres
+   * bloques que no se miran con el cliente enfrente y que empujan las cuotas abajo del fold—.
+   * Todo eso vive en la ficha, que es donde se estudia al cliente.
+   *
+   * Acá queda lo que hace falta para cobrar: quién es, cómo viene de pagos, sus cuotas ya
+   * abiertas y qué se le cobró antes.
+   */
+  const esTerminal = variant === "pagos";
+
   if (isLoading || !cliente) {
     return (
       <div className="p-5 space-y-4">
@@ -178,6 +191,9 @@ export function ClienteDetail({
   const pagosCliente = creditos
     .flatMap((c) => (c.pagos ?? []).map((p) => ({ ...p, creditoNumero: c.numero, creditoRefiNumero: c.refinancia_a_numero })))
     .sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime());
+  /** Los cobros que siguen en pie (un anulado no cuenta como "último pago"). */
+  const pagosVivos = pagosCliente.filter((p) => !p.anulado);
+  const ultimoPago = pagosVivos[0] ?? null;
 
   const handleReciboPago = async (pagoId: string) => {
     setReciboBusy(pagoId);
@@ -357,8 +373,15 @@ export function ClienteDetail({
           </div>
         </div>
 
-        {/* Estado de cuenta (solo cuando se muestran créditos) */}
-        {showCreditos && (
+        {/*
+          Los KPI cambian según la pantalla, porque la pregunta cambia.
+
+          En la FICHA se estudia al cliente: cuánto debe, cómo viene, cuántos créditos tiene.
+          En la TERMINAL se le cobra, y ahí lo que hace falta es qué se le exige HOY, cuándo
+          vence lo próximo y cómo viene pagando. "Créditos activos: 1" no le sirve a nadie con
+          el cliente enfrente.
+        */}
+        {showCreditos && !esTerminal && (
           <div className="mt-4 grid grid-cols-2 lg:grid-cols-4 gap-3">
             <Stat icon="money-bag" label="Deuda total" accent={ec.deuda_total > 0 ? "warning" : "success"} value={`$${n0(ec.deuda_total)}`} sub="saldo de créditos activos" />
             <Stat
@@ -370,6 +393,43 @@ export function ClienteDetail({
             />
             <Stat icon="credit-card" label="Créditos activos" accent="primary" value={String(ec.creditos_activos)} sub={`${ec.creditos_total} en total`} />
             <Stat icon="chart-increasing" label="Total cobrado" accent="success" value={`$${n0(ec.total_cobrado)}`} sub="histórico" />
+          </div>
+        )}
+
+        {showCreditos && esTerminal && (
+          <div className="mt-4 grid grid-cols-2 lg:grid-cols-4 gap-3">
+            {/* Lo primero: qué se le pide hoy. Es la razón por la que el cliente está parado
+                del otro lado del mostrador. */}
+            <Stat
+              icon="money-bag"
+              label={ec.en_mora ? "Vencido a hoy" : "Deuda total"}
+              accent={ec.en_mora ? "destructive" : "warning"}
+              value={`$${n2(ec.en_mora ? ec.deuda_total + ec.interes_mora_total : ec.deuda_total)}`}
+              sub={ec.en_mora ? `${formatDias(ec.dias_mora_max)} de atraso · mora $${n2(ec.interes_mora_total)}` : "sin atrasos"}
+            />
+            <Stat
+              icon="calendar"
+              label="Próximo vencimiento"
+              accent="primary"
+              value={ec.proximo_pago ? fmtDate(ec.proximo_pago) : "—"}
+              sub={ec.cuota_total_activos > 0 ? `cuota $${n2(ec.cuota_total_activos)}` : "sin cuotas pendientes"}
+            />
+            <Stat
+              icon="chart-increasing"
+              label="Cobrado"
+              accent="success"
+              value={`$${n2(ec.total_cobrado)}`}
+              sub={`${pagosVivos.length} pago${pagosVivos.length === 1 ? "" : "s"}`}
+            />
+            {/* El último cobro: es lo que evita cobrar dos veces lo mismo cuando el cliente
+                vuelve al rato diciendo que ya pagó. */}
+            <Stat
+              icon="receipt"
+              label="Último pago"
+              accent="muted"
+              value={ultimoPago ? `$${n2(ultimoPago.monto)}` : "—"}
+              sub={ultimoPago ? `${fmtDate(ultimoPago.fecha)} · ${ultimoPago.metodo}` : "sin cobros registrados"}
+            />
           </div>
         )}
 
@@ -555,11 +615,11 @@ export function ClienteDetail({
         )}
 
         {/* Perfil crediticio (bureau) — feature premium; se auto-oculta si no está habilitada */}
-        {showCreditos && <ClienteBureauPanel clienteId={clienteId} />}
+        {showCreditos && !esTerminal && <ClienteBureauPanel clienteId={clienteId} />}
 
         {/* Prontuario: cómo LLEGÓ hasta acá, no cómo está. Va después del bureau porque es
             la contracara interna de lo que el bureau dice desde afuera. */}
-        {showCreditos && (
+        {showCreditos && !esTerminal && (
           <section className="space-y-2">
             <SectionTitle icon={History} text="Prontuario del cliente" />
             <ProntuarioPanel clienteId={clienteId} />
@@ -567,7 +627,7 @@ export function ClienteDetail({
         )}
 
         {/* Historial de promesas de pago (vigentes / cumplidas / rotas) */}
-        {showCreditos && promesas.length > 0 && (
+        {showCreditos && !esTerminal && promesas.length > 0 && (
           <section className="space-y-2">
             <SectionTitle icon="handshake" text="Historial de promesas de pago" />
             <div className="rounded-xl border border-border bg-card divide-y divide-border/50">
@@ -599,7 +659,7 @@ export function ClienteDetail({
             {activos.length === 0 ? (
               <EmptyRow text="El cliente no tiene créditos activos." />
             ) : (
-              <CreditosTabla creditos={activos} clienteId={cliente.id} onCobrar={puedeCobrarAca ? (c, q) => setCobrando({ credito: c, cuota: q }) : undefined} />
+              <CreditosTabla creditos={activos} clienteId={cliente.id} abiertoDeEntrada={esTerminal} onCobrar={puedeCobrarAca ? (c, q) => setCobrando({ credito: c, cuota: q }) : undefined} />
             )}
           </section>
         )}
@@ -826,15 +886,23 @@ export function ClienteDetail({
  * La FRANJA de la izquierda codifica la severidad —verde al día, ámbar en mora, roja pasando
  * los 30 días— para poder barrer una lista de diez créditos sin leer un número.
  */
-function CreditosTabla({ creditos, mostrarProximo, onCobrar, clienteId }: {
+function CreditosTabla({ creditos, mostrarProximo, onCobrar, clienteId, abiertoDeEntrada }: {
   creditos: CreditoConFinanzas[];
   mostrarProximo?: boolean;
+  /**
+   * Arranca con el plan DESPLEGADO. En la terminal de cobro las cuotas no son un detalle que
+   * se consulta: son la pantalla. Hacer un clic extra con el cliente enfrente, cada vez, para
+   * ver lo único que se vino a mirar, es un peaje que no paga nada.
+   */
+  abiertoDeEntrada?: boolean;
   /** Cobrar una cuota puntual. Sin handler, el plan queda de solo lectura (Clientes). */
   onCobrar?: (credito: CreditoConFinanzas, cuota: CuotaPersistida) => void;
   /** Para el atajo a la terminal cuando desde acá no se cobra. */
   clienteId?: string;
 }) {
-  const [abiertos, setAbiertos] = useState<Set<string>>(new Set());
+  const [abiertos, setAbiertos] = useState<Set<string>>(
+    () => (abiertoDeEntrada ? new Set(creditos.map((c) => c.id)) : new Set()),
+  );
   const [libreDeudaId, setLibreDeudaId] = useState<string | null>(null);
   const toggle = (id: string) =>
     setAbiertos((prev) => {
