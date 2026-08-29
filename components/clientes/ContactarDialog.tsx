@@ -50,7 +50,17 @@ interface PreviewContacto {
  * números (mora real, deuda, próximo vencimiento) y es editable antes de mandarlo — lo que
  * se lee acá es exactamente lo que le va a llegar.
  */
-export function ContactarDialog({ clienteId, onClose }: { clienteId: string | null; onClose: () => void }) {
+export function ContactarDialog({ clienteId, onClose, motivoInicial }: {
+  clienteId: string | null;
+  onClose: () => void;
+  /**
+   * Con qué motivo se abre. Sin esto lo decide la situación del cliente (mora / información),
+   * que es lo correcto cuando se entra por el botón "Contactar" genérico. Pero al entrar desde
+   * "Ofrecerle una promo" el motivo ya está decidido por quien clickeó, y volver a elegirlo
+   * —con el riesgo de mandar un reclamo de mora a alguien al día— es un paso de más.
+   */
+  motivoInicial?: Motivo;
+}) {
   return (
     <Dialog open={!!clienteId} onOpenChange={(o) => { if (!o) onClose(); }}>
       <DialogContent
@@ -65,18 +75,20 @@ export function ContactarDialog({ clienteId, onClose }: { clienteId: string | nu
         onPointerDownOutside={(e) => e.preventDefault()}
         onInteractOutside={(e) => e.preventDefault()}
       >
-        {clienteId && <Form clienteId={clienteId} onClose={onClose} />}
+        {clienteId && <Form clienteId={clienteId} onClose={onClose} motivoInicial={motivoInicial} />}
       </DialogContent>
     </Dialog>
   );
 }
 
-function Form({ clienteId, onClose }: { clienteId: string; onClose: () => void }) {
+function Form({ clienteId, onClose, motivoInicial }: { clienteId: string; onClose: () => void; motivoInicial?: Motivo }) {
   const toast = useToast();
   const { data, isLoading } = useSWR<PreviewContacto>(`/api/clientes/${clienteId}/contactar`);
   const [canal, setCanal] = useState<Canal>("whatsapp");
-  const [motivo, setMotivo] = useState<Motivo>("mora");
-  const [motivoTocado, setMotivoTocado] = useState(false);
+  const [motivo, setMotivo] = useState<Motivo>(motivoInicial ?? "mora");
+  // Un motivo que llegó DECIDIDO por quien abrió el diálogo cuenta como tocado: si no, el
+  // efecto que lo deduce de la situación del cliente lo pisaría al llegar los datos.
+  const [motivoTocado, setMotivoTocado] = useState(Boolean(motivoInicial));
   const [texto, setTexto] = useState("");
   const [asunto, setAsunto] = useState("");
   const [tocado, setTocado] = useState(false);

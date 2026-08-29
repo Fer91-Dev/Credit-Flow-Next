@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { useSWRConfig } from "swr";
 import {
-  Pencil, Trash2, CalendarClock, ChevronRight, ChevronDown, Loader2, Mail, MessageCircle, Phone, Printer, ShieldCheck, Ban, Receipt, AlertTriangle, History, BellOff, Wallet,
+  Pencil, Trash2, CalendarClock, ChevronRight, ChevronDown, Loader2, Mail, MessageCircle, Phone, Printer, ShieldCheck, Ban, Receipt, AlertTriangle, History, BellOff, Wallet, Sparkles, CreditCard, Megaphone,
 } from "lucide-react";
 import { refrescarNotificaciones, useClienteDetalle, useAccionesCobranza, useCuotas, KEYS, type CreditoConFinanzas, type EstadoCuota, type CuotaPersistida } from "@/lib/swr";
 import { StatusBadge, type BadgeVariant } from "@/components/ui/StatusBadge";
@@ -130,6 +130,8 @@ export function ClienteDetail({
   const [anularBusy, setAnularBusy] = useState(false);
   const [editarHist, setEditarHist] = useState(false);
   const [contactar, setContactar] = useState(false);
+  /** "Ofrecerle una promo": el mismo diálogo de contacto, con el motivo ya decidido. */
+  const [promo, setPromo] = useState(false);
   const [cambiarEstado, setCambiarEstado] = useState(false);
   const [noContactar, setNoContactar] = useState(false);
   /**
@@ -685,7 +687,12 @@ export function ClienteDetail({
           <section className="space-y-2">
             <SectionTitle icon="credit-card" text={`Créditos activos${activos.length ? ` (${activos.length})` : ""}`} />
             {activos.length === 0 ? (
-              <EmptyRow text="El cliente no tiene créditos activos." />
+              <SinCreditosActivos
+                clienteId={cliente.id}
+                yaFueCliente={historicos.length > 0}
+                bloqueado={sinContacto}
+                onPromo={() => setPromo(true)}
+              />
             ) : (
               <CreditosTabla creditos={activos} clienteId={cliente.id} abiertoDeEntrada={esTerminal} onCobrar={puedeCobrarAca ? (c, q) => setCobrando({ credito: c, cuota: q }) : undefined} />
             )}
@@ -877,6 +884,7 @@ export function ClienteDetail({
       {/* Contacto individual (WhatsApp / email). Montado en la RAÍZ del componente, no dentro
           de una sección condicional: si vive en una rama que no se renderiza, no existe. */}
       <ContactarDialog clienteId={contactar ? cliente.id : null} onClose={() => setContactar(false)} />
+      <ContactarDialog clienteId={promo ? cliente.id : null} onClose={() => setPromo(false)} motivoInicial="promocion" />
 
       {noContactar && (
         <NoContactarDialog
@@ -1212,6 +1220,60 @@ function Campo({ label, value, mono, href, icon: Icon, emphasis }: CampoItem) {
           <a href={href} className={`${valueClass} hover:text-primary transition-colors`}>{value}</a>
         ) : (
           <span className={valueClass}>{value}</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * UN CLIENTE SIN CRÉDITOS ACTIVOS ES UNA OPORTUNIDAD, NO UN VACÍO.
+ *
+ * Acá había un renglón gris que decía "el cliente no tiene créditos activos" y nada más. Pero
+ * el que más chance tiene de tomar un crédito es justamente el que ya pagó uno entero: está
+ * enfrente, con la ficha abierta, y la pantalla no ofrecía ningún camino. Las dos salidas
+ * quedan a un clic — prestarle de nuevo, o mandarle una propuesta y que conteste él.
+ */
+function SinCreditosActivos({ clienteId, yaFueCliente, bloqueado, onPromo }: {
+  clienteId: string;
+  /** Ya tuvo créditos antes: cambia el texto, porque no es un cliente nuevo sino uno que volvió. */
+  yaFueCliente: boolean;
+  /** Pidió que no lo contacten: la promo no se ofrece (ver `no_contactar`). */
+  bloqueado: boolean;
+  onPromo: () => void;
+}) {
+  return (
+    <div className="flex flex-col items-center gap-4 rounded-xl border border-dashed border-border/60 px-4 py-8 text-center">
+      <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-primary/20 bg-primary/10">
+        <Sparkles className="h-5 w-5 text-primary" />
+      </div>
+      <div className="space-y-1">
+        <p className="text-sm font-semibold text-foreground">
+          {yaFueCliente ? "Cliente al día, sin crédito vigente" : "Todavía no tomó ningún crédito"}
+        </p>
+        <p className="max-w-sm text-xs leading-relaxed text-muted-foreground/70">
+          {yaFueCliente
+            ? "Ya canceló todo lo que debía. Es el momento de ofrecerle uno nuevo."
+            : "Está dado de alta pero nunca operó."}
+        </p>
+      </div>
+      <div className="flex flex-wrap items-center justify-center gap-2">
+        <Link
+          href={`/creditos/nuevo?cliente=${clienteId}`}
+          className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground transition-opacity hover:opacity-90"
+        >
+          <CreditCard className="h-3.5 w-3.5" /> Ofrecerle un crédito
+        </Link>
+        {/* El cliente que pidió no ser contactado no recibe promociones. La regla ya se
+            respeta en el botón "Contactar" del encabezado; acá también. */}
+        {!bloqueado && (
+          <button
+            type="button"
+            onClick={onPromo}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-border px-4 py-2 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:bg-muted/30 hover:text-foreground"
+          >
+            <Megaphone className="h-3.5 w-3.5" /> Mandarle una promo
+          </button>
         )}
       </div>
     </div>

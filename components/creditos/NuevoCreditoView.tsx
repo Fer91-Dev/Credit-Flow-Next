@@ -14,7 +14,7 @@ import { KEYS } from "@/lib/swr";
  * (no es un modal ni una tarjeta flotante). Al cerrar/otorgar vuelve a la lista
  * de créditos y revalida la caché.
  */
-export function NuevoCreditoView() {
+export function NuevoCreditoView({ clienteInicial = null }: { clienteInicial?: string | null }) {
   const router = useRouter();
 
   const handleClose = (success?: boolean) => {
@@ -50,7 +50,7 @@ export function NuevoCreditoView() {
 
       {/* Workspace a pantalla completa (sin tarjeta) */}
       <div className="flex-1 min-h-0">
-        <CreditoForm creditoId={null} onClose={handleClose} />
+        <CreditoForm creditoId={null} onClose={handleClose} clienteInicial={clienteInicial} />
       </div>
     </div>
   );
