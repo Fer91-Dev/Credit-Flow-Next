@@ -91,9 +91,39 @@ export async function deudaVencidaDeCredito(tenantId: string, creditoId: string)
  * y un acuerdo cerrado como "cumplido" saca al deudor de la cola de cobranza. Todas las
  * demás sumas de pagos del sistema ya lo filtraban; esta era la única que no.
  */
-async function cobradoDesde(tenantId: string, creditoId: string, desde: Date): Promise<number> {
+async function cobradoDesde(
+  tenantId: string,
+  creditoId: string,
+  desde: Date,
+  /**
+   * 🔴 EL INSTANTE EN QUE EL ACUERDO EMPEZÓ A EXISTIR. Sin esto se contaba de más.
+   *
+   * `pagos.fecha` es un `@db.Date` —un día pelado— y `acuerdos_pago.fecha` también, así que
+   * `fecha >= desde` toma TODOS los pagos del día en que se armó el acuerdo, incluidos los
+   * anteriores a armarlo. Con la ENTREGA eso pasó a ser el caso normal, no una rareza: la
+   * entrega se cobra por diseño ANTES de crear el acuerdo, ya se descuenta de la deuda sobre
+   * la que se arma el plan, y encima se contaba como pago DEL plan.
+   *
+   * Medido sobre CRD-000016 (Estela Moreno): un acuerdo de $437.750,36 en 2 cuotas nació con
+   * la cuota 1 mostrando $132.000,00 ya pagados —los $100.000 de la entrega más $32.000 de un
+   * cobro anterior del mismo día— sin que la clienta hubiera pagado una sola cuota del
+   * acuerdo. Con dos cuotas más de esas, el acuerdo se habría dado por cumplido cobrando
+   * $132.000 de menos.
+   *
+   * `created_at` es un TIMESTAMP, así que corta por el momento exacto: cuenta lo que entró
+   * después de armarlo —incluso ese mismo día— y deja afuera lo de antes. Un pago con fecha
+   * retroactiva sigue contando, porque lo que importa es cuándo se registró.
+   */
+  creadoEn: Date,
+): Promise<number> {
   const agg = await prisma.pagos.aggregate({
-    where: { ...withTenant(tenantId), credito_id: creditoId, fecha: { gte: desde }, anulado: false },
+    where: {
+      ...withTenant(tenantId),
+      credito_id: creditoId,
+      fecha: { gte: desde },
+      created_at: { gte: creadoEn },
+      anulado: false,
+    },
     _sum: { monto: true },
   });
   return round2(agg._sum.monto ?? 0);
@@ -300,12 +330,12 @@ export async function crearAcuerdo(input: CrearAcuerdoInput) {
 export async function evaluarAcuerdoPersistido(
   tenantId: string,
   acuerdo: {
-    id: string; credito_id: string; fecha: Date; estado: string; cuotas_para_romper: number;
+    id: string; credito_id: string; fecha: Date; created_at: Date; estado: string; cuotas_para_romper: number;
     cuotas: { numero: number; vencimiento: Date; monto: number }[];
   },
   hoy: Date,
 ) {
-  const cobrado = await cobradoDesde(tenantId, acuerdo.credito_id, acuerdo.fecha);
+  const cobrado = await cobradoDesde(tenantId, acuerdo.credito_id, acuerdo.fecha, acuerdo.created_at);
   return evaluarAcuerdo(
     acuerdo.cuotas.map((c) => ({ numero: c.numero, vencimiento: c.vencimiento, monto: c.monto, pagado: 0 })),
     cobrado,
