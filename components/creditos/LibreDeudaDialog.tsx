@@ -1,110 +1,71 @@
 "use client";
 
-import { Printer } from "lucide-react";
-import { useLibreDeuda, type LibreDeuda } from "@/lib/swr";
+import { useState } from "react";
+import { Download, Loader2 } from "lucide-react";
+import { useLibreDeuda } from "@/lib/swr";
 import { Emoji } from "@/components/ui/Emoji";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { formatCreditoNumero, formatFecha, formatFechaHora } from "@/lib/utils";
-import { montoALetras } from "@/lib/domain/numero-a-letras";
+import { formatCreditoNumero, formatFechaHora } from "@/lib/utils";
+import { libreDeudaTexto } from "@/lib/libre-deuda-texto";
 
 function n2(x: number) {
   return new Intl.NumberFormat("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(x);
 }
-function escHtml(s: string) {
-  return s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c] ?? c));
-}
 
 /**
- * Texto del certificado (compartido por la vista en pantalla y la impresión).
+ * Descarga el certificado en PDF.
  *
- * 🔴 LOS DOS IMPORTES, CADA UNO CON SU NOMBRE.
+ * 🔴 REEMPLAZA A LA VENTANA DE IMPRESIÓN. El certificado se armaba como HTML en un
+ * `window.open` y se mandaba a `window.print()`: el cliente se llevaba lo que su navegador
+ * decidiera —márgenes, el encabezado con la URL, la tipografía del sistema— y no quedaba
+ * archivo de lo emitido. Un papel que se guarda como prueba de cancelación tiene que ser un
+ * PDF, igual que los recibos con los que se coteja.
  *
- * Decía "ha cancelado en su totalidad el crédito CRD-000003, otorgado el 02/07/2026 por un
- * monto de $600.000" — y "por un monto de" se lee pegado a *cancelado*, no a *otorgado*: el
- * papel parecía decir que el cliente pagó $600.000 cuando pagó $1.253.341,90. El desglose de
- * la tabla lo desmentía, pero el párrafo es lo que se lee primero.
- *
- * Son dos hechos distintos y ninguno reemplaza al otro: el CAPITAL identifica la operación
- * (lo que el cliente se llevó) y el TOTAL ABONADO es lo que efectivamente pagó — capital +
- * interés pactado + punitorios. Van los dos, nombrados.
- *
- * En letras además de en números, como todo instrumento: ante una discrepancia entre la cifra
- * y la letra, prevalece la letra. `montoALetras` redondea antes de escribir, así que el texto
- * no puede contradecir al número impreso al lado.
+ * Va por `fetch` y no por un `window.open` directo, como el recibo: así usa el mismo camino
+ * de autenticación que el resto del cliente, sin depender de que el navegador mande las
+ * cookies en una navegación nueva.
  */
-export function libreDeudaTexto(ld: LibreDeuda): string {
-  const nro = formatCreditoNumero(ld.credito.numero, ld.credito.refinancia_a_numero);
-  const cancel = ld.totales.fecha_cancelacion ? formatFecha(ld.totales.fecha_cancelacion) : "—";
-  const capital = ld.credito.monto_original;
-  const abonado = ld.totales.total_pagado;
-  return `Se certifica que ${ld.cliente.nombre}${ld.cliente.documento ? ` (DNI ${ld.cliente.documento})` : ""} ha cancelado en su totalidad el crédito ${nro}, ` +
-    `otorgado el ${formatFecha(ld.credito.fecha_otorgamiento)} por un capital de $${n2(capital)} (${montoALetras(capital)}) ` +
-    `en ${ld.totales.cuotas} cuota${ld.totales.cuotas !== 1 ? "s" : ""}, ` +
-    `habiendo abonado un total de $${n2(abonado)} (${montoALetras(abonado)}) según el detalle que se acompaña. ` +
-    `El crédito se encuentra CANCELADO al ${cancel} y el cliente no registra deuda pendiente con ${ld.empresa} respecto de esta operación.`;
+async function descargarLibreDeuda(creditoId: string, nombreArchivo: string): Promise<void> {
+  const res = await fetch(`/api/creditos/${creditoId}/libre-deuda/pdf`);
+  if (!res.ok) {
+    let msg = "No se pudo generar el certificado";
+    try {
+      const j = await res.json();
+      if (j?.error) msg = j.error;
+    } catch { /* respuesta no-JSON */ }
+    throw new Error(msg);
+  }
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = nombreArchivo;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
 }
 
-/** Abre el certificado de libre deuda imprimible y lanza la impresión. */
-export function imprimirLibreDeuda(ld: LibreDeuda) {
-  const filas: [string, string][] = [
-    ["Cliente", ld.cliente.nombre],
-    ["DNI / Documento", ld.cliente.documento ?? "—"],
-    ["Crédito", formatCreditoNumero(ld.credito.numero, ld.credito.refinancia_a_numero)],
-    ["Tipo", ld.credito.tipo],
-    ["Monto otorgado", `$${n2(ld.credito.monto_original)}`],
-    ["Cuotas", String(ld.totales.cuotas)],
-    /**
-     * 🔴 DISCRIMINADO. Decía un total pelado, y es un papel que el cliente guarda como
-     * prueba: sin el desglose no hay forma de verificarlo ni de explicarle por qué pagó más
-     * que el capital que se llevó — la diferencia es el interés pactado y los punitorios.
-     */
-    ["Total pagado", `$${n2(ld.totales.total_pagado)} en ${ld.totales.pagos} pago${ld.totales.pagos === 1 ? "" : "s"}`],
-    ["· Capital", `$${n2(ld.totales.capital)}`],
-    ["· Interés", `$${n2(ld.totales.interes)}`],
-    ...(ld.totales.cargos > 0 ? ([["· Cargos", `$${n2(ld.totales.cargos)}`]] as [string, string][]) : []),
-    ...(ld.totales.mora > 0 ? ([["· Punitorios", `$${n2(ld.totales.mora)}`]] as [string, string][]) : []),
-    ["Fecha de otorgamiento", formatFecha(ld.credito.fecha_otorgamiento)],
-    ["Fecha de cancelación", ld.totales.fecha_cancelacion ? formatFechaHora(ld.totales.fecha_cancelacion) : "—"],
-  ];
-  const win = window.open("", "_blank", "width=720,height=900");
-  if (!win) return;
-  win.document.write(`<!doctype html><html lang="es"><head><meta charset="utf-8" />
-    <title>Libre deuda ${escHtml(formatCreditoNumero(ld.credito.numero, ld.credito.refinancia_a_numero))}</title>
-    <style>
-      * { box-sizing: border-box; }
-      body { font-family: ui-sans-serif, system-ui, "Segoe UI", Arial, sans-serif; color: #0f172a; margin: 0; padding: 48px; }
-      .doc { max-width: 620px; margin: 0 auto; }
-      .head { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #0f172a; padding-bottom: 12px; }
-      .emp { font-size: 18px; font-weight: 700; }
-      .tag { font-size: 11px; text-transform: uppercase; letter-spacing: .12em; color: #15803d; font-weight: 700; }
-      h1 { font-size: 22px; margin: 28px 0 6px; letter-spacing: .01em; }
-      .lead { font-size: 14px; line-height: 1.7; color: #1e293b; margin: 8px 0 24px; }
-      table { width: 100%; border-collapse: collapse; font-size: 13px; }
-      td { padding: 9px 0; border-bottom: 1px solid #e2e8f0; }
-      td.k { color: #64748b; width: 46%; }
-      td.v { text-align: right; font-weight: 600; }
-      .firma { margin-top: 64px; display: flex; justify-content: space-between; gap: 40px; }
-      .firma div { flex: 1; border-top: 1px solid #94a3b8; padding-top: 6px; text-align: center; font-size: 12px; color: #64748b; }
-      .ft { margin-top: 28px; color: #94a3b8; font-size: 11px; }
-      @media print { body { padding: 24px; } }
-    </style></head><body><div class="doc">
-      <div class="head"><div class="emp">${escHtml(ld.empresa)}</div><div class="tag">Certificado de libre deuda</div></div>
-      <h1>Libre deuda</h1>
-      <p class="lead">${escHtml(libreDeudaTexto(ld))}</p>
-      <table>${filas.map(([k, v]) => `<tr><td class="k">${escHtml(k)}</td><td class="v">${escHtml(v)}</td></tr>`).join("")}</table>
-      <div class="firma"><div>Firma y sello</div><div>Aclaración</div></div>
-      <div class="ft">Emitido el ${escHtml(formatFechaHora(ld.emitido_en))} · ${escHtml(ld.empresa)}</div>
-    </div>
-    <script>window.onload = function(){ window.print(); }</script>
-    </body></html>`);
-  win.document.close();
-  win.focus();
-}
-
-/** Diálogo del certificado de libre deuda: vista en pantalla + impresión. */
+/** Diálogo del certificado de libre deuda: vista en pantalla + descarga del PDF. */
 export function LibreDeudaDialog({ creditoId, onClose }: { creditoId: string | null; onClose: () => void }) {
   const { libreDeuda: ld, isLoading, error } = useLibreDeuda(creditoId);
+  const [bajando, setBajando] = useState(false);
+  const [errorPdf, setErrorPdf] = useState<string | null>(null);
+
+  const bajar = async () => {
+    if (!creditoId || !ld) return;
+    setBajando(true);
+    setErrorPdf(null);
+    try {
+      const nro = formatCreditoNumero(ld.credito.numero, ld.credito.refinancia_a_numero);
+      await descargarLibreDeuda(creditoId, `libre-deuda-${nro}.pdf`);
+    } catch (e) {
+      setErrorPdf(e instanceof Error ? e.message : "No se pudo generar el certificado");
+    } finally {
+      setBajando(false);
+    }
+  };
 
   return (
     <Dialog open={!!creditoId} onOpenChange={(o) => { if (!o) onClose(); }}>
@@ -129,6 +90,8 @@ export function LibreDeudaDialog({ creditoId, onClose }: { creditoId: string | n
           </div>
         ) : (
           <div className="space-y-4">
+            {/* Lo que va a decir el papel, palabra por palabra: sale de la misma función que
+                escribe el PDF, así que lo que se lee acá es lo que se firma. */}
             <div className="rounded-xl border border-success/30 bg-success/5 p-4">
               <p className="text-[10px] font-bold uppercase tracking-widest text-success">{ld.empresa}</p>
               <p className="mt-2 text-sm leading-relaxed text-foreground">{libreDeudaTexto(ld)}</p>
@@ -141,18 +104,19 @@ export function LibreDeudaDialog({ creditoId, onClose }: { creditoId: string | n
                     ["Cliente", ld.cliente.nombre],
                     ["DNI / Documento", ld.cliente.documento ?? "—"],
                     ["Crédito", formatCreditoNumero(ld.credito.numero, ld.credito.refinancia_a_numero)],
-                    ["Monto otorgado", `$${n2(ld.credito.monto_original)}`],
+                    ["Capital otorgado", `$${n2(ld.credito.monto_original)}`],
                     ["Cuotas", String(ld.totales.cuotas)],
                     /**
-     * 🔴 DISCRIMINADO. Decía un total pelado, y es un papel que el cliente guarda como
-     * prueba: sin el desglose no hay forma de verificarlo ni de explicarle por qué pagó más
-     * que el capital que se llevó — la diferencia es el interés pactado y los punitorios.
-     */
-    ["Total pagado", `$${n2(ld.totales.total_pagado)} en ${ld.totales.pagos} pago${ld.totales.pagos === 1 ? "" : "s"}`],
-    ["· Capital", `$${n2(ld.totales.capital)}`],
-    ["· Interés", `$${n2(ld.totales.interes)}`],
-    ...(ld.totales.cargos > 0 ? ([["· Cargos", `$${n2(ld.totales.cargos)}`]] as [string, string][]) : []),
-    ...(ld.totales.mora > 0 ? ([["· Punitorios", `$${n2(ld.totales.mora)}`]] as [string, string][]) : []),
+                     * 🔴 DISCRIMINADO. Es un papel que el cliente guarda como prueba: sin el
+                     * desglose no hay forma de verificarlo ni de explicarle por qué pagó más
+                     * que el capital que se llevó — la diferencia es el interés pactado y los
+                     * punitorios.
+                     */
+                    ["Total abonado", `$${n2(ld.totales.total_pagado)} en ${ld.totales.pagos} pago${ld.totales.pagos === 1 ? "" : "s"}`],
+                    ["· Capital", `$${n2(ld.totales.capital)}`],
+                    ["· Interés", `$${n2(ld.totales.interes)}`],
+                    ...(ld.totales.cargos > 0 ? ([["· Cargos", `$${n2(ld.totales.cargos)}`]] as [string, string][]) : []),
+                    ...(ld.totales.mora > 0 ? ([["· Punitorios", `$${n2(ld.totales.mora)}`]] as [string, string][]) : []),
                     ["Fecha de cancelación", ld.totales.fecha_cancelacion ? formatFechaHora(ld.totales.fecha_cancelacion) : "—"],
                   ] as [string, string][]).map(([k, v], i) => (
                     <tr key={k} className={i % 2 === 1 ? "bg-muted/5" : ""}>
@@ -164,12 +128,20 @@ export function LibreDeudaDialog({ creditoId, onClose }: { creditoId: string | n
               </table>
             </div>
 
+            {errorPdf && (
+              <div className="rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-2.5 text-sm text-destructive">
+                {errorPdf}
+              </div>
+            )}
+
             <div className="flex justify-end">
               <button
-                onClick={() => imprimirLibreDeuda(ld)}
-                className="inline-flex items-center gap-2 rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90"
+                onClick={bajar}
+                disabled={bajando}
+                className="inline-flex items-center gap-2 rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
               >
-                <Printer className="h-4 w-4" /> Imprimir libre deuda
+                {bajando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                {bajando ? "Generando…" : "Descargar libre deuda (PDF)"}
               </button>
             </div>
           </div>

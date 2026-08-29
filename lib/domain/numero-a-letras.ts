@@ -92,17 +92,34 @@ function enteroALetras(n: number, apocope = false): string {
 }
 
 /**
- * Importe completo tal como va en un pagaré o contrato:
- *   1273684.21 → "PESOS UN MILLÓN DOSCIENTOS SETENTA Y TRES MIL SEISCIENTOS OCHENTA Y CUATRO CON 21/100"
+ * Importe completo tal como va en un pagaré, un contrato o un libre deuda:
+ *   1253341.90 → "UN MILLÓN DOSCIENTOS CINCUENTA Y TRES MIL TRESCIENTOS CUARENTA Y UN PESOS CON 90/100"
+ *   600000     → "SEISCIENTOS MIL PESOS CON 00/100"
+ *   1000000    → "UN MILLÓN DE PESOS CON 00/100"
+ *
+ * 🔴 LA MONEDA VA DETRÁS, que es como se escribe acá. Salía "PESOS UN MILLÓN … CON 90/100"
+ * —la forma de las planillas bancarias— y no es como se redacta un instrumento en Argentina.
+ * Que vaya detrás no es cosmético: arrastra dos reglas de gramática que antes no aplicaban,
+ * porque el número pasa a modificar al sustantivo que le sigue.
+ *
+ *   1. **Apócope.** "…CUARENTA Y UN PESOS", nunca "CUARENTA Y UNO PESOS". Por eso
+ *      `enteroALetras` va con `apocope = true`, que con la moneda adelante no correspondía.
+ *   2. **"DE" tras millón/billón.** Se dice "UN MILLÓN DE PESOS", pero "MIL PESOS" sin nada
+ *      en el medio — y solo cuando el número TERMINA ahí: "UN MILLÓN DOSCIENTOS MIL PESOS"
+ *      no lo lleva, porque el sustantivo que manda pasó a ser "mil". Se mira el final del
+ *      texto ya armado, no la magnitud.
+ *
+ * Y el singular: 1 → "UN PESO CON 00/100".
  *
  * Los centavos van como fracción sobre 100 (la forma usada en instrumentos argentinos),
  * no en letras: "CON 21/100" y no "con veintiún centavos".
  *
- * @param monto  importe en pesos. Se redondea a 2 decimales antes de escribirlo, para que
- *               la letra coincida SIEMPRE con el número impreso al lado.
- * @param moneda etiqueta de la moneda; "PESOS" por defecto.
+ * @param monto   importe. Se redondea a 2 decimales antes de escribirlo, para que la letra
+ *                coincida SIEMPRE con el número impreso al lado.
+ * @param singular etiqueta de la moneda en singular; "PESO" por defecto.
+ * @param plural   etiqueta en plural; "PESOS" por defecto.
  */
-export function montoALetras(monto: number, moneda = "PESOS"): string {
+export function montoALetras(monto: number, singular = "PESO", plural = "PESOS"): string {
   if (!Number.isFinite(monto)) throw new Error("Importe inválido para escribir en letras");
   if (monto < 0) throw new Error("Un importe negativo no puede ir en un instrumento de pago");
 
@@ -112,8 +129,11 @@ export function montoALetras(monto: number, moneda = "PESOS"): string {
   const entero = Math.floor(centavosTotales / 100);
   const centavos = centavosTotales % 100;
 
-  const letras = `${moneda} ${enteroALetras(entero)} con ${String(centavos).padStart(2, "0")}/100`;
-  return letras.toUpperCase();
+  const cifra = enteroALetras(entero, true);
+  const pideDe = /(mill(ón|ones)|bill(ón|ones))$/.test(cifra);
+  const moneda = entero === 1 ? singular : plural;
+
+  return `${cifra} ${pideDe ? "de " : ""}${moneda} con ${String(centavos).padStart(2, "0")}/100`.toUpperCase();
 }
 
 /** Versión en minúscula, para textos corridos dentro del contrato. */
