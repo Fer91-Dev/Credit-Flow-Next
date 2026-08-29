@@ -75,10 +75,22 @@ export function PlanDeCuotas({
 
   return (
     <div className="space-y-2">
-      <div className={`rounded-xl border border-border overflow-x-auto ${denso ? "max-h-[46vh] overflow-y-auto" : ""}`}>
+      {/*
+        🔴 EL ENCABEZADO Y LOS TOTALES SE PEGAN SIEMPRE, no solo en la versión densa.
+
+        Un plan de 12 cuotas es más alto que la pantalla, y al bajar a las últimas filas se
+        perdían los nombres de las columnas: quedaban ocho importes sin decir cuál era la cuota,
+        cuál la mora y cuál lo que hay que cobrar. Justo en las filas que más se miran, que son
+        las de abajo. Lo mismo con la fila de Totales, que estaba al final de todo y había que
+        buscarla scrolleando.
+
+        El `overflow-y-auto` va con el alto acotado: sin uno de los dos, `position: sticky` no
+        tiene contenedor contra el cual pegarse y no hace nada.
+      */}
+      <div className={`rounded-xl border border-border overflow-x-auto overflow-y-auto ${denso ? "max-h-[46vh]" : "max-h-[62vh]"}`}>
         <table className="w-full text-xs border-separate border-spacing-0">
-          <thead className={denso ? "sticky top-0 z-10" : ""}>
-            <tr className={denso ? "bg-card" : "bg-muted/30"}>
+          <thead className="sticky top-0 z-10">
+            <tr className="bg-card">
               {/*
                 🔴 LOS OPERADORES EN EL ENCABEZADO. La fila ES una cuenta —cuota + mora −
                 pagado = a cobrar— y nada lo decía: eran ocho importes uno al lado del otro y
@@ -92,8 +104,8 @@ export function PlanDeCuotas({
                 { t: "#", a: "text-left", w: "w-9" },
                 { t: "Vencimiento", a: "text-left" },
                 { t: "Cuota", a: "text-right" },
-                { t: "Interés", op: "↳", a: "text-right", w: "hidden sm:table-cell" },
-                { t: "Capital", op: "↳", a: "text-right", w: "hidden sm:table-cell" },
+                { t: "Interés", op: "↳", a: "text-right", w: "hidden md:table-cell" },
+                { t: "Capital", op: "↳", a: "text-right", w: "hidden md:table-cell" },
                 { t: "Mora", op: "+", a: "text-right" },
                 // El número del recibo es un dato que se BUSCA —el cliente llama diciendo
                 // "tengo el REC-000006"—, no un adorno del importe: va en su columna.
@@ -132,18 +144,24 @@ export function PlanDeCuotas({
               // En el orden en que se cobraron: un historial se lee del primero al último.
               const comps = [...(q.comprobantes ?? [])].sort((a, c) => a.fecha_hora.localeCompare(c.fecha_hora));
               const esProxima = proximaNro === q.nro;
+              /*
+                El `hover` de la fila no es adorno: son ocho números que se leen de punta a
+                punta, así que hace falta poder seguir el renglón con la vista. Va DESPUÉS del
+                zebra en la cadena de clases para que le gane, y la próxima cuota conserva el
+                suyo — su color dice algo que el hover no puede tapar.
+              */
               return (
                 <tr
                   key={q.nro}
                   className={`${idx % 2 === 1 ? "bg-muted/5" : ""} ${q.estado === "pagada" ? "text-muted-foreground/60" : ""} ${
-                    esProxima ? "bg-primary/[0.07]" : ""
+                    esProxima ? "bg-primary/[0.07]" : "hover:bg-muted/20"
                   } ${esProxima && resaltarProxima ? "ring-1 ring-inset ring-primary/50" : ""} transition-colors`}
                 >
                   <td className={`${celda} font-mono tabular-nums text-muted-foreground/50`}>{q.nro}</td>
                   <td className={`${celda} tabular-nums text-muted-foreground`}>{formatFecha(q.fecha_vencimiento)}</td>
                   <td className={`${celda} text-right font-mono font-medium tabular-nums text-foreground`}>${n2(q.cuota_total)}</td>
-                  <td className={`${celda} hidden text-right font-mono tabular-nums text-muted-foreground sm:table-cell`}>${n2(q.interes)}</td>
-                  <td className={`${celda} hidden text-right font-mono tabular-nums text-muted-foreground sm:table-cell`}>${n2(q.capital)}</td>
+                  <td className={`${celda} hidden text-right font-mono tabular-nums text-muted-foreground md:table-cell`}>${n2(q.interes)}</td>
+                  <td className={`${celda} hidden text-right font-mono tabular-nums text-muted-foreground md:table-cell`}>${n2(q.capital)}</td>
 
                   {/*
                     La MORA DEVENGADA, no la pendiente: es la que participa de la cuenta del
@@ -291,18 +309,18 @@ export function PlanDeCuotas({
             })}
           </tbody>
 
-          <tfoot className={denso ? "sticky bottom-0 z-10" : ""}>
-            <tr className={denso ? "bg-card" : "bg-muted/20"}>
+          <tfoot className="sticky bottom-0 z-10">
+            <tr className="bg-card">
               <td colSpan={2} className={`${px} ${py} border-t border-border text-[10px] font-bold uppercase tracking-widest text-muted-foreground`}>
                 Totales
               </td>
               <td className={`${px} ${py} border-t border-border text-right font-mono font-bold tabular-nums text-foreground`}>
                 ${n2(cuotas.reduce((s, q) => s + q.cuota_total, 0))}
               </td>
-              <td className={`${px} ${py} hidden border-t border-border text-right font-mono font-bold tabular-nums text-muted-foreground sm:table-cell`}>
+              <td className={`${px} ${py} hidden border-t border-border text-right font-mono font-bold tabular-nums text-muted-foreground md:table-cell`}>
                 ${n2(cuotas.reduce((s, q) => s + q.interes, 0))}
               </td>
-              <td className={`${px} ${py} hidden border-t border-border text-right font-mono font-bold tabular-nums text-muted-foreground sm:table-cell`}>
+              <td className={`${px} ${py} hidden border-t border-border text-right font-mono font-bold tabular-nums text-muted-foreground md:table-cell`}>
                 ${n2(cuotas.reduce((s, q) => s + q.capital, 0))}
               </td>
               <td className={`${px} ${py} border-t border-border text-right font-mono font-bold tabular-nums text-destructive`}>

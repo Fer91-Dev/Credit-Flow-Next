@@ -467,13 +467,13 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
               un detalle de diseño, es un número que no coincide con el que se cobra. */}
           {/*
             🔴 DEUDA TOTAL, no "saldo pendiente".
-​
+
             `creditos.saldo_pendiente` es solo el CAPITAL que falta amortizar. Mientras el
             crédito no cobró un peso vale exactamente lo mismo que el capital otorgado, así
             que la tarjeta repetía el número de arriba y no informaba nada: en CRD-000068
             decía "$350.000,00" al lado de "Capital otorgado $350.000,00", cuando Bruno debe
             $392.252,19.
-​
+
             Lo que se muestra ahora es lo que el cliente debe: todo lo que resta del plan más
             la mora devengada. Sale de `total_cobrar` cuota por cuota — la MISMA fuente que la
             columna "A cobrar" y su total, así que los tres números de la pantalla cierran
@@ -488,11 +488,11 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
               cuál está pendiente ni cuándo vence. */}
           {/*
             La cuota que toca, CON su mora y clickeable.
-​
+
             Mostraba el importe pactado ($128.523,00) mientras el botón de esa misma cuota
             decía $133.792,44: dos números para lo mismo, y el que aparece más arriba era el
             que NO se cobra. Ahora muestra lo que hay que cobrar y desglosa la mora abajo.
-​
+
             El clic baja al plan de cuotas y deja la fila marcada — pedido del usuario: quería
             llegar al detalle de las cuotas desde acá sin tener que buscar la tabla.
           */}
@@ -534,6 +534,89 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
       {/* ── Cuerpo scrolleable ── */}
       <div className="flex-1 min-h-0 overflow-y-auto px-7 py-5 space-y-6">
 
+        {/* Plan de cuotas (cronograma persistido con estado real) */}
+        <section className="space-y-2" ref={planRef}>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <CalendarDays className="h-4 w-4 text-muted-foreground" />
+              <h3 className="text-sm font-semibold text-foreground">Plan de cuotas</h3>
+            </div>
+            <div className="flex items-center gap-3">
+              {resumen && (
+                <span className="text-[11px] text-muted-foreground/70 tabular-nums">
+                  {resumen.pagadas}/{resumen.total} pagadas
+                  {resumen.vencidas > 0 && <span className="text-destructive"> · {resumen.vencidas} vencida{resumen.vencidas !== 1 ? "s" : ""}</span>}
+                </span>
+              )}
+              {/* Las dos vistas del plan, a un clic. La de operador estaba escondida en el
+                  formulario de edición, que la imprimía con fechas recalculadas desde hoy. */}
+              <div className="inline-flex items-center gap-1">
+                <Printer className="h-3.5 w-3.5 text-muted-foreground" />
+                <button
+                  onClick={() => imprimirPlan("cliente")}
+                  disabled={!amortizacion}
+                  title="Plan de cuotas para entregarle al cliente (PDF)"
+                  className="rounded-lg border border-border px-2.5 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-40"
+                >
+                  Cliente
+                </button>
+                <button
+                  onClick={() => imprimirPlan("operador")}
+                  disabled={!amortizacion}
+                  title="Cronograma completo con interés, capital, cargos y saldo (PDF)"
+                  className="rounded-lg border border-border px-2.5 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-40"
+                >
+                  Operador
+                </button>
+              </div>
+              {/*
+                🔴 NO SE COBRA DESDE ACÁ. Lleva a la terminal con este cliente ya cargado.
+
+                El cobro se hacía desde tres pantallas —esta, la ficha del cliente y Pagos—,
+                o sea tres caminos al mismo POST, cada uno con su manejo de errores y su
+                revalidación. Un cobro es el movimiento de plata más frecuente del sistema y
+                no puede tener tres implementaciones que se separen con el tiempo.
+              */}
+              {puedeCobrar && (
+                <Link
+                  href={`/pagos?cliente=${credito.cliente_id}`}
+                  title="Ir a la terminal de cobro con este cliente cargado"
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-success/30 bg-success/10 px-2.5 py-1 text-[11px] font-medium text-success transition-colors hover:bg-success/20"
+                >
+                  <Wallet className="h-3.5 w-3.5" /> Cobrar
+                </Link>
+              )}
+            </div>
+          </div>
+          {loadingCuotas ? (
+            <Skeleton className="h-48 rounded-xl" />
+          ) : cuotas.length === 0 ? (
+            <p className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground/60 rounded-lg border border-dashed border-border/60 px-4 py-6 text-center">
+              <Info className="h-3.5 w-3.5" /> Sin cronograma persistido para este crédito.
+            </p>
+          ) : (
+            /*
+              Lectura de izquierda a derecha, como una cuenta:
+                  Cuota  =  Interés + Capital        +  Mora   →   A cobrar
+                (pactada)   (de qué se compone)      (recargo)     (lo que se pide)
+
+              Antes cada encabezado tenía su propio color (blanco / naranja / azul) y los
+              importes también, así que la tabla era un arcoíris donde todo pesaba lo mismo.
+              Ahora el color dice algo: la CUOTA en blanco porque es la referencia, su
+              desglose en gris porque es secundario, y la MORA en rojo porque es el único
+              número que no estaba pactado. Los encabezados, todos grises (Design Contract §4).
+            */
+            <PlanDeCuotas
+              cuotas={cuotas}
+              unidadCuota={unidadCuota}
+              proximaNro={proximaCuota?.nro ?? null}
+              resaltarProxima={resaltarProxima}
+              mora={metaCuotas?.mora ?? null}
+              /* Sin `onCobrar`: el cobro vive solo en Pagos. Acá es de lectura. */
+            />
+          )}
+        </section>
+
         {/* Trazabilidad de refinanciación (origen ↔ destino) */}
         {(credito.es_refinanciacion || credito.refinanciado_en) && (
           <div className="flex items-center gap-3 rounded-xl border border-warning/30 bg-warning/5 px-4 py-3">
@@ -559,56 +642,6 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
             </div>
           </div>
         )}
-
-        {/* Evaluación de riesgo/originación congelada al otorgar (feature premium) */}
-        {credito.riesgo_snapshot && (() => {
-          const r = credito.riesgo_snapshot!;
-          const meta = {
-            aprobado:  { ring: "ring-success/30",     text: "text-success",     dot: "bg-success",     label: "Aprobado" },
-            revisar:   { ring: "ring-warning/30",     text: "text-warning",     dot: "bg-warning",     label: "Revisar" },
-            rechazado: { ring: "ring-destructive/30", text: "text-destructive", dot: "bg-destructive", label: "No calificaba" },
-          }[r.semaforo];
-          return (
-            <section className="space-y-2">
-              <div className="flex items-center gap-2">
-                <ShieldCheck className="h-4 w-4 text-primary" />
-                <h3 className="text-sm font-semibold text-foreground">Evaluación de originación</h3>
-                <span className="text-[10px] text-muted-foreground/60">al otorgar</span>
-              </div>
-              <div className={`rounded-xl border border-border bg-card p-4 ring-1 ring-inset ${meta.ring}`}>
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <span className={`inline-flex h-2.5 w-2.5 rounded-full ${meta.dot}`} />
-                    <span className={`text-sm font-semibold ${meta.text}`}>{meta.label}</span>
-                    {r.autorizadoManual && <StatusBadge label="Autorizado por admin" variant="warning" />}
-                  </div>
-                  <span className="text-[11px] text-muted-foreground">Score interno {r.scoreInterno} · {fmtDate(r.evaluadoEl)}</span>
-                </div>
-                {r.motivos?.length > 0 && (
-                  <ul className="mt-2 space-y-1">
-                    {r.motivos.map((m, i) => (
-                      <li key={i} className="flex gap-1.5 text-xs text-muted-foreground"><span className="text-muted-foreground/40">•</span>{m}</li>
-                    ))}
-                  </ul>
-                )}
-                <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 text-[11px]">
-                  <div className="rounded-lg bg-muted/30 px-2.5 py-1.5">
-                    <p className="text-muted-foreground">Ingreso neto</p>
-                    <p className="font-mono font-semibold text-foreground">{r.ingresoNetoMensual > 0 ? `$${n0(r.ingresoNetoMensual)}` : "—"}</p>
-                  </div>
-                  <div className="rounded-lg bg-muted/30 px-2.5 py-1.5">
-                    <p className="text-muted-foreground">Cuota / ingreso</p>
-                    <p className="font-mono font-semibold text-foreground">{r.ratioCuotaIngreso != null ? `${(r.ratioCuotaIngreso * 100).toFixed(0)}%` : "—"}</p>
-                  </div>
-                  <div className="rounded-lg bg-muted/30 px-2.5 py-1.5">
-                    <p className="text-muted-foreground">Cuota máx (capacidad)</p>
-                    <p className="font-mono font-semibold text-foreground">{r.capacidad?.cuotaMaxima > 0 ? `$${n0(r.capacidad.cuotaMaxima)}` : "—"}</p>
-                  </div>
-                </div>
-              </div>
-            </section>
-          );
-        })()}
 
         {/* Pagos registrados */}
         <section className="space-y-2">
@@ -772,88 +805,6 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
           )}
         </section>
 
-        {/* Plan de cuotas (cronograma persistido con estado real) */}
-        <section className="space-y-2" ref={planRef}>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <CalendarDays className="h-4 w-4 text-muted-foreground" />
-              <h3 className="text-sm font-semibold text-foreground">Plan de cuotas</h3>
-            </div>
-            <div className="flex items-center gap-3">
-              {resumen && (
-                <span className="text-[11px] text-muted-foreground/70 tabular-nums">
-                  {resumen.pagadas}/{resumen.total} pagadas
-                  {resumen.vencidas > 0 && <span className="text-destructive"> · {resumen.vencidas} vencida{resumen.vencidas !== 1 ? "s" : ""}</span>}
-                </span>
-              )}
-              {/* Las dos vistas del plan, a un clic. La de operador estaba escondida en el
-                  formulario de edición, que la imprimía con fechas recalculadas desde hoy. */}
-              <div className="inline-flex items-center gap-1">
-                <Printer className="h-3.5 w-3.5 text-muted-foreground" />
-                <button
-                  onClick={() => imprimirPlan("cliente")}
-                  disabled={!amortizacion}
-                  title="Plan de cuotas para entregarle al cliente (PDF)"
-                  className="rounded-lg border border-border px-2.5 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-40"
-                >
-                  Cliente
-                </button>
-                <button
-                  onClick={() => imprimirPlan("operador")}
-                  disabled={!amortizacion}
-                  title="Cronograma completo con interés, capital, cargos y saldo (PDF)"
-                  className="rounded-lg border border-border px-2.5 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-40"
-                >
-                  Operador
-                </button>
-              </div>
-              {/*
-                🔴 NO SE COBRA DESDE ACÁ. Lleva a la terminal con este cliente ya cargado.
-
-                El cobro se hacía desde tres pantallas —esta, la ficha del cliente y Pagos—,
-                o sea tres caminos al mismo POST, cada uno con su manejo de errores y su
-                revalidación. Un cobro es el movimiento de plata más frecuente del sistema y
-                no puede tener tres implementaciones que se separen con el tiempo.
-              */}
-              {puedeCobrar && (
-                <Link
-                  href={`/pagos?cliente=${credito.cliente_id}`}
-                  title="Ir a la terminal de cobro con este cliente cargado"
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-success/30 bg-success/10 px-2.5 py-1 text-[11px] font-medium text-success transition-colors hover:bg-success/20"
-                >
-                  <Wallet className="h-3.5 w-3.5" /> Cobrar
-                </Link>
-              )}
-            </div>
-          </div>
-          {loadingCuotas ? (
-            <Skeleton className="h-48 rounded-xl" />
-          ) : cuotas.length === 0 ? (
-            <p className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground/60 rounded-lg border border-dashed border-border/60 px-4 py-6 text-center">
-              <Info className="h-3.5 w-3.5" /> Sin cronograma persistido para este crédito.
-            </p>
-          ) : (
-            /*
-              Lectura de izquierda a derecha, como una cuenta:
-                  Cuota  =  Interés + Capital        +  Mora   →   A cobrar
-                (pactada)   (de qué se compone)      (recargo)     (lo que se pide)
-
-              Antes cada encabezado tenía su propio color (blanco / naranja / azul) y los
-              importes también, así que la tabla era un arcoíris donde todo pesaba lo mismo.
-              Ahora el color dice algo: la CUOTA en blanco porque es la referencia, su
-              desglose en gris porque es secundario, y la MORA en rojo porque es el único
-              número que no estaba pactado. Los encabezados, todos grises (Design Contract §4).
-            */
-            <PlanDeCuotas
-              cuotas={cuotas}
-              unidadCuota={unidadCuota}
-              proximaNro={proximaCuota?.nro ?? null}
-              resaltarProxima={resaltarProxima}
-              mora={metaCuotas?.mora ?? null}
-              /* Sin `onCobrar`: el cobro vive solo en Pagos. Acá es de lectura. */
-            />
-          )}
-        </section>
       </div>
 
       {/* ── Barra de acciones del crédito ──
