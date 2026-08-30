@@ -294,7 +294,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
   // CONGELADO del plan; el atraso se castiga con mora por cuota vencida.
 
   const config = await getConfiguracion(tenantId);
-  const { fallecidos: fallecidosCfg } = await getCobranzaConfig(tenantId);
+  const { fallecidos: fallecidosCfg, acuerdos: acuerdosCfg } = await getCobranzaConfig(tenantId);
   const fechaPago = body.fecha ? new Date(body.fecha) : hoyComercial();
   // P2 — Un cobro no puede fecharse en el futuro (distorsiona mora, caja y reportes).
   if (Number.isNaN(fechaPago.getTime())) {
@@ -397,7 +397,23 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
   // deja excedente, se rechaza (decisión de tesorería: no inflar la caja ni cerrar el crédito
   // con plata sin imputar; el vuelto físico queda fuera del sistema). El monto ya considera la
   // quita de mora de campaña, así que el máximo cobrable = monto − excedente.
-  if (resultado.excedente > 0) {
+  /**
+   * 🔴 LA ÚNICA EXCEPCIÓN AL SOBREPAGO: el interés de un acuerdo cobrado "aparte".
+   *
+   * Con el modo `ingreso_aparte`, el interés del acuerdo NO se agregó a ninguna cuota del
+   * crédito, así que al cobrar la última cuota pactada sobra plata que no tiene renglón donde
+   * imputarse. Esa plata no es un sobrepago: es lo que la financiera cobra por financiar el
+   * arreglo, y rechazarla dejaba el acuerdo imposible de terminar (medido en CRD-000006: el
+   * acuerdo pedía $1.090.538,83 y el crédito solo absorbía $931.608,57).
+   *
+   * Se acepta SOLO cuando el cobro salió de la terminal del acuerdo (`acuerdoCuotaId`), que se
+   * valida contra el acuerdo vigente de ESTE crédito. Un cobro común con monto de más sigue
+   * rechazándose: ahí el excedente sí es un error de tipeo.
+   */
+  const interesAcuerdoAparte =
+    acuerdosCfg.modo_interes === "ingreso_aparte" && acuerdoCuotaId ? resultado.excedente : 0;
+
+  if (resultado.excedente > 0 && interesAcuerdoAparte === 0) {
     const cobrable = round2(montoPago - resultado.excedente);
     return errorResponse(
       `El monto ($${montoPago.toLocaleString("es-AR")}) supera la deuda total del crédito. Cobrá hasta $${cobrable.toLocaleString("es-AR")}.`,

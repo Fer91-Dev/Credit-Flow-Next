@@ -56,11 +56,24 @@ export interface PagoImputado {
   aplicado_interes: number;
   aplicado_mora: number;
   aplicado_cargos: number;
+  /**
+   * Plata cobrada que NO se imputó a ninguna cuota. Hoy solo la genera el modo de acuerdo
+   * `ingreso_aparte`: es el interés que cobra el acuerdo y que no se agregó a la deuda del
+   * crédito. Cualquier otro sobrepago se rechaza antes de guardarse, así que si esto es > 0
+   * es ingreso de la financiera. Opcional para no romper a quien pase pagos sin el campo.
+   */
+  excedente?: number;
 }
 
-/** Ganancia financiera efectivamente cobrada en un conjunto de pagos (interés + mora + cargos). */
+/**
+ * Ganancia financiera efectivamente cobrada (interés + mora + cargos + interés de acuerdo).
+ *
+ * 🔴 El excedente ENTRA. Con el modo `ingreso_aparte` el interés del acuerdo se cobra sin
+ * imputarse a una cuota; si no se sumara acá, esa plata entraría a la caja y la financiera no
+ * la vería en Reportes — un modo que se llama "ingreso aparte" y no aparecía como ingreso.
+ */
 export function ingresoFinanciero(pagos: PagoImputado[]): number {
-  return round2(pagos.reduce((s, p) => s + p.aplicado_interes + p.aplicado_mora + p.aplicado_cargos, 0));
+  return round2(pagos.reduce((s, p) => s + p.aplicado_interes + p.aplicado_mora + p.aplicado_cargos + (p.excedente ?? 0), 0));
 }
 
 // ─── Buckets mensuales ──────────────────────────────────────────────────────

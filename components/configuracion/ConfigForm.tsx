@@ -6,8 +6,8 @@ import { useConfiguracion, type ConfiguracionFinanciera, type GamificacionConfig
 import { FeatureGate } from "@/components/providers/FeaturesProvider";
 import { FinancieraForm } from "@/components/configuracion/FinancieraForm";
 import { BackupsView } from "@/components/configuracion/BackupsView";
-import type { SimuladorConfig, CargosConfig, FrecuenciaOpcion, DocumentosConfig, ConvencionTasa, BureauConfigurable, BureauProveedorConfig } from "@/lib/domain";
-import { BUREAUS_CONFIGURABLES, BUREAU_LABEL, BUREAU_REQUIERE_CREDENCIALES, resolverProveedoresBureau, DOCUMENTOS_DEFAULT, PLANTILLAS_CONTACTO_DEFAULT, revisarDocumentos, punitorioMensualDesdeDiaria, ORDEN_IMPUTACION, tasaDesdeCoeficiente, textoCuotas } from "@/lib/domain";
+import type { SimuladorConfig, CargosConfig, FrecuenciaOpcion, DocumentosConfig, ConvencionTasa, BureauConfigurable, BureauProveedorConfig, ModoInteresAcuerdo } from "@/lib/domain";
+import { MODOS_INTERES_ACUERDO, MODO_INTERES_LABEL, BUREAUS_CONFIGURABLES, BUREAU_LABEL, BUREAU_REQUIERE_CREDENCIALES, resolverProveedoresBureau, DOCUMENTOS_DEFAULT, PLANTILLAS_CONTACTO_DEFAULT, revisarDocumentos, punitorioMensualDesdeDiaria, ORDEN_IMPUTACION, tasaDesdeCoeficiente, textoCuotas } from "@/lib/domain";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Emoji } from "@/components/ui/Emoji";
 import { Field, Input, Select, Textarea, SecretInput } from "@/components/ui/field";
@@ -542,6 +542,12 @@ export function ConfigForm() {
   /** Patch anidado de la política de acuerdos (vive dentro de cobranza_config). */
   const setAcuerdos = (patch: Partial<CobranzaConfig["acuerdos"]>) =>
     setCobranza({ acuerdos: { ...cobranza.acuerdos, ...patch } });
+  /**
+   * El modo `sin_interes` MANDA sobre la tasa: `resolverTasaAcuerdo` devuelve 0 sin mirar
+   * `tasa_mensual`. Los campos de tasa se apagan en vez de quedar aceptando un número que el
+   * motor ignora — un campo editable que no hace nada es peor que uno que no está.
+   */
+  const sinInteres = cobranza.acuerdos.modo_interes === "sin_interes";
   /** Patch anidado de la escalera de recupero (vive dentro de cobranza_config). */
   const setRecupero = (patch: Partial<CobranzaConfig["recupero"]>) =>
     setCobranza({ recupero: { ...cobranza.recupero, ...patch } });
@@ -1889,6 +1895,30 @@ export function ConfigForm() {
                 />
               </Field>
               {/*
+                🔴 QUÉ PASA CON EL INTERÉS DEL ACUERDO. Va ANTES que la tasa porque la manda:
+                el modo `sin_interes` la deja en 0 sin importar lo que diga el campo de abajo.
+
+                Existe porque sin él el acuerdo con interés NO SE PODÍA TERMINAR DE COBRAR: ese
+                interés no era un renglón de ninguna cuota del crédito, así que al cobrar la
+                última no había contra qué imputarlo y el pago se rechazaba por sobrepago. El
+                cliente pagaba todo lo que el crédito debía y el acuerdo igual quedaba con
+                saldo, hasta que el cron lo marcaba roto. Las tres salidas son legítimas y
+                ninguna es "la correcta", así que la elige cada financiera.
+              */}
+              <Field
+                label="El interés del acuerdo"
+                hint={MODO_INTERES_LABEL[cobranza.acuerdos.modo_interes].detalle}
+              >
+                <Select
+                  value={cobranza.acuerdos.modo_interes}
+                  onChange={e => setAcuerdos({ modo_interes: e.target.value as ModoInteresAcuerdo })}
+                >
+                  {MODOS_INTERES_ACUERDO.map((m) => (
+                    <option key={m} value={m}>{MODO_INTERES_LABEL[m].titulo}</option>
+                  ))}
+                </Select>
+              </Field>
+              {/*
                 🔴 ACÁ `null` NO ES `0`, Y NO SE PUEDEN JUNTAR.
                   null → el acuerdo usa la MISMA tasa que firmó el cliente (`resolverTasaAcuerdo`)
                   0    → el acuerdo NO devenga interés: refinanciarse sale gratis
@@ -1899,9 +1929,12 @@ export function ConfigForm() {
               */}
               <Field
                 label="Tasa del acuerdo"
-                hint="Con la tasa del crédito, el acuerdo le cuesta lo mismo que ya firmó. Con tasa propia en 0 no devenga interés: atrasarse conviene."
+                hint={sinInteres
+                  ? "No aplica: el modo de arriba dice que este acuerdo no cobra interés."
+                  : "Con la tasa del crédito, el acuerdo le cuesta lo mismo que ya firmó. Con tasa propia en 0 no devenga interés: atrasarse conviene."}
               >
                 <Select
+                  disabled={sinInteres}
                   value={cobranza.acuerdos.tasa_mensual === null || cobranza.acuerdos.tasa_mensual === undefined ? "credito" : "propia"}
                   onChange={e => setAcuerdos({ tasa_mensual: e.target.value === "credito" ? null : 0 })}
                 >
@@ -1911,7 +1944,9 @@ export function ConfigForm() {
               </Field>
               <Field
                 label="% mensual del acuerdo"
-                hint={cobranza.acuerdos.tasa_mensual === null || cobranza.acuerdos.tasa_mensual === undefined
+                hint={sinInteres
+                  ? "No aplica: el modo de arriba dice que este acuerdo no cobra interés."
+                  : cobranza.acuerdos.tasa_mensual === null || cobranza.acuerdos.tasa_mensual === undefined
                   ? "Lo define la tasa de cada crédito."
                   : cobranza.acuerdos.tasa_mensual === 0
                   ? "En 0: el acuerdo no devenga interés."
@@ -1919,7 +1954,7 @@ export function ConfigForm() {
               >
                 <Input
                   type="number" min="0" max="100" step="any"
-                  disabled={cobranza.acuerdos.tasa_mensual === null || cobranza.acuerdos.tasa_mensual === undefined}
+                  disabled={sinInteres || cobranza.acuerdos.tasa_mensual === null || cobranza.acuerdos.tasa_mensual === undefined}
                   value={cobranza.acuerdos.tasa_mensual ?? 0}
                   onChange={e => setAcuerdos({ tasa_mensual: Math.max(0, Math.min(100, parseFloat(e.target.value) || 0)) })}
                 />
@@ -2255,7 +2290,7 @@ function defaultCobranza(): CobranzaConfig {
     acuerdos: {
       max_cuotas: 6, dias_entre_cuotas: 30, cuotas_para_romper: 1,
       congela_punitorios: true, saca_de_agenda: true, incluye_no_vencidas: true,
-      quita_max_vendedor_pct: 0, tasa_mensual: null,
+      quita_max_vendedor_pct: 0, tasa_mensual: null, modo_interes: "capitaliza",
     },
     recupero: {
       exigir_gestion_para_acuerdo: false, dias_min_mora_acuerdo: 50,

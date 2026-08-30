@@ -70,7 +70,60 @@ export interface AcuerdosConfig {
    * que prefiera usar el acuerdo como incentivo puro pone 0.
    */
   tasa_mensual: number | null;
+  /**
+   * 🔴 QUÉ HACE EL SISTEMA CON EL INTERÉS QUE COBRA EL ACUERDO.
+   *
+   * Esto no era un parámetro y era un AGUJERO: el interés del acuerdo vivía solo en la tabla
+   * del acuerdo y no existía como renglón en ninguna cuota del crédito, así que al cobrar la
+   * última cuota no había contra qué imputarlo y `POST /pagos` rechazaba el cobro por
+   * sobrepago. Medido en CRD-000006: el acuerdo pedía $1.090.538,83 y el crédito solo podía
+   * absorber $931.608,57 — $158.930,26 sin destino. El cliente pagaba todo lo que el crédito
+   * debía, el crédito se cerraba, y el acuerdo quedaba con saldo pendiente hasta que el cron
+   * lo marcaba ROTO. A alguien que pagó.
+   *
+   * Cada financiera lo resuelve distinto y ninguna de las tres formas es "la correcta", así
+   * que va como parámetro (ver [[feedback_todo_parametrizable]]):
+   *
+   * · `capitaliza` — al firmar, el interés se suma a la deuda del CRÉDITO (como cargo,
+   *   repartido en las cuotas que quedan). El crédito pasa a deber exactamente lo pactado, la
+   *   última cuota se puede cobrar y los dos se cierran juntos. Un solo libro.
+   *
+   * · `sin_interes` — el acuerdo no cobra interés: reparte en cuotas la deuda que ya existe.
+   *   El problema no aparece porque no hay nada extra que imputar. Es el más barato para el
+   *   deudor y el que más chance tiene de cobrarse; la financiera resigna el rendimiento del
+   *   plazo. Fuerza la tasa a 0, gane lo que gane `tasa_mensual`.
+   *
+   * · `ingreso_aparte` — se cobra el interés igual, pero lo que no entra en el crédito NO se
+   *   imputa a ninguna cuota: se registra como ingreso del acuerdo. La plata entra a la caja
+   *   completa. Es el único de los tres en el que el pago no se reparte entero en cuotas, así
+   *   que el auditor lo contempla explícitamente.
+   */
+  modo_interes: ModoInteresAcuerdo;
 }
+
+/** Ver `AcuerdosConfig.modo_interes`. */
+export type ModoInteresAcuerdo = "capitaliza" | "sin_interes" | "ingreso_aparte";
+
+export const MODOS_INTERES_ACUERDO: ModoInteresAcuerdo[] = ["capitaliza", "sin_interes", "ingreso_aparte"];
+
+/** Etiquetas de pantalla. Viven acá para que Configuración y la ayuda digan lo MISMO. */
+export const MODO_INTERES_LABEL: Record<ModoInteresAcuerdo, { titulo: string; detalle: string }> = {
+  capitaliza: {
+    titulo: "Se suma a la deuda del crédito",
+    detalle:
+      "Al firmar el acuerdo, su interés pasa a ser deuda del crédito. El crédito debe exactamente lo pactado y los dos se cierran juntos.",
+  },
+  sin_interes: {
+    titulo: "El acuerdo no cobra interés",
+    detalle:
+      "Reparte en cuotas la deuda que ya existe, sin agregar nada. Es lo más barato para el deudor y lo que más chance tiene de cobrarse; se resigna el rendimiento del plazo.",
+  },
+  ingreso_aparte: {
+    titulo: "Se cobra como ingreso aparte",
+    detalle:
+      "Se cobra el interés igual. Lo que no entra en las cuotas del crédito se registra como ingreso del acuerdo, no queda sin cobrar.",
+  },
+};
 
 export const ACUERDOS_DEFAULT: AcuerdosConfig = {
   max_cuotas: 6,
@@ -81,6 +134,13 @@ export const ACUERDOS_DEFAULT: AcuerdosConfig = {
   incluye_no_vencidas: true,
   quita_max_vendedor_pct: 0,
   tasa_mensual: null,
+  /**
+   * `capitaliza` por default: es el único de los tres que conserva el ingreso del acuerdo Y
+   * deja un solo libro. `ingreso_aparte` cobra lo mismo pero rompe el "el pago se reparte
+   * entero", y `sin_interes` resigna plata — las dos son decisiones que una financiera tiene
+   * que tomar a propósito, no heredar por omisión.
+   */
+  modo_interes: "capitaliza",
 };
 
 const entero = (v: unknown, def: number, min: number, max: number) => {
@@ -112,6 +172,10 @@ export function resolverAcuerdos(raw: unknown): AcuerdosConfig {
       r.tasa_mensual === null || r.tasa_mensual === undefined || r.tasa_mensual === ("" as unknown)
         ? null
         : pct(r.tasa_mensual, 0),
+    // Un valor que no sea uno de los tres cae al default en vez de dejar el motor sin criterio.
+    modo_interes: MODOS_INTERES_ACUERDO.includes(r.modo_interes as ModoInteresAcuerdo)
+      ? (r.modo_interes as ModoInteresAcuerdo)
+      : d.modo_interes,
   };
 }
 

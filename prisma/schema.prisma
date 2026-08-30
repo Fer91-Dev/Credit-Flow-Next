@@ -943,6 +943,15 @@ model acuerdos_pago {
   entrega_pago_id String? @unique @db.Uuid
   entrega_pago    pagos?  @relation("EntregaDeAcuerdo", fields: [entrega_pago_id], references: [id], onDelete: SetNull)
 
+  /// Interés del acuerdo que se PASÓ A DEUDA del crédito al firmarlo (modo `capitaliza`).
+  /// 0 en los otros dos modos.
+  ///
+  /// Se guarda, no se deriva: al anular el acuerdo hay que sacarle al crédito exactamente lo
+  /// que se le puso, y el modo de la financiera pudo haber cambiado en el medio. Derivarlo de
+  /// la config de HOY le devolvería al cliente una deuda que nunca se le cargó, o le dejaría
+  /// puesta una que sí.
+  interes_capitalizado Float @default(0)
+
   /// vigente | cumplido | roto | anulado
   estado        String  @default("vigente")
   motivo_estado String? // por qué se rompió o anuló

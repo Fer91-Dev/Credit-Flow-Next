@@ -3,7 +3,7 @@ import { successResponse, withErrorHandler } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { nombreCompleto, hoyComercial, inicioDiaAR, finDiaAR } from "@/lib/utils";
-import { round2, costoFondeo, resumenOperaciones, diasMoraActual, esCreditoVivo, moraDelCredito, moraDesdeCronograma, moraPendienteTotal, severidadMora } from "@/lib/domain";
+import { round2, costoFondeo, ingresoFinanciero, resumenOperaciones, diasMoraActual, esCreditoVivo, moraDelCredito, moraDesdeCronograma, moraPendienteTotal, severidadMora } from "@/lib/domain";
 import { getConfiguracion, getRentabilidadConfig, getCobranzaConfig } from "@/lib/config";
 import type { NextRequest } from "next/server";
 
@@ -65,6 +65,9 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     total_interes: pagos.reduce((s, p) => s + p.aplicado_interes, 0),
     total_mora:    pagos.reduce((s, p) => s + p.aplicado_mora, 0),
     total_cargos:  pagos.reduce((s, p) => s + p.aplicado_cargos, 0),
+    // Cobrado sin imputar a una cuota: hoy solo el interes de acuerdo del modo
+    // `ingreso_aparte`. Cualquier otro sobrepago se rechaza antes de guardarse.
+    total_excedente: pagos.reduce((s, p) => s + (p.excedente ?? 0), 0),
   };
 
   // ── Operaciones otorgadas en el período (plata nueva: excluye refinanciaciones) ──
@@ -171,7 +174,11 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   // El interés/cargos/mora cobrados son la ganancia intencional del motor. Se descuenta
   // el costo de fondear el capital en la calle (configurable por tenant) para leer la
   // ganancia NETA. Sin costo configurado (deshabilitado) el costo es 0 (= margen bruto).
-  const ingreso_financiero = round2(cobranzas.total_interes + cobranzas.total_mora + cobranzas.total_cargos);
+  // UNA definicion, la del dominio: estaba repetida aca y en /api/reportes/series.
+  const ingreso_financiero = ingresoFinanciero([
+    { aplicado_interes: cobranzas.total_interes, aplicado_mora: cobranzas.total_mora,
+      aplicado_cargos: cobranzas.total_cargos, excedente: cobranzas.total_excedente },
+  ]);
   /**
    * 🔴 SIN `+ 1`. El período contaba un día de más y el costo de fondeo salía inflado.
    *

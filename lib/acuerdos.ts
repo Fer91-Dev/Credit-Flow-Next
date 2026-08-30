@@ -19,6 +19,71 @@ import { calcularDeudaVencida, planDeAcuerdo, evaluarAcuerdo, quitaMaxima, round
 import { hoyComercial, formatCreditoNumero } from "@/lib/utils";
 import { numerosRefinanciados } from "@/lib/creditos-numero";
 
+/**
+ * Cuánto interés le agregó el acuerdo a la deuda. Se DERIVA de lo que ya está guardado
+ * (`monto_acordado` es la suma del plan; `deuda_original − quita` es la base), así que no
+ * hace falta una columna nueva ni puede quedar desincronizado de las cuotas del acuerdo.
+ */
+export function interesDelAcuerdo(a: { monto_acordado: number; deuda_original: number; quita: number }): number {
+  return round2(noNegativo(a.monto_acordado - (a.deuda_original - a.quita)));
+}
+
+/**
+ * Reparte el interés del acuerdo sobre las cuotas VIVAS del crédito, como cargo.
+ *
+ * 🔴 POR QUÉ HACE FALTA. El interés del acuerdo no existía en ningún renglón del crédito, así
+ * que al cobrarlo no había contra qué imputarlo y el pago se rechazaba por sobrepago: el
+ * acuerdo no se podía terminar de cobrar nunca. Con el modo `capitaliza`, al firmar el acuerdo
+ * ese interés PASA A SER DEUDA DEL CRÉDITO y el libro puede absorberlo.
+ *
+ * Va como `gastos` (que es un componente que la imputación ya sabe cobrar, en el mismo tramo
+ * que los cargos) y `cuota_total` se mueve junto — si no, la aritmética interna de la cuota
+ * deja de cerrar y el auditor C4 se pone en rojo con razón.
+ *
+ * El reparto es PROPORCIONAL a lo que cada cuota todavía debe, y la última absorbe la
+ * diferencia de redondeo: repartir en partes iguales le cargaría lo mismo a una cuota casi
+ * saldada que a una intacta.
+ */
+async function capitalizarInteresEnCuotas(
+  tx: Prisma.TransactionClient,
+  tenantId: string,
+  cuotas: { id: string; nro: number; capital: number; interes: number; iva: number; seguro: number; gastos: number; cuota_total: number; pagado_capital: number; pagado_interes: number; pagado_cargos: number }[],
+  interes: number,
+): Promise<number> {
+  if (interes <= 0) return 0;
+
+  const vivas = cuotas
+    .map((c) => ({
+      c,
+      falta: round2(
+        noNegativo(c.capital - c.pagado_capital) +
+        noNegativo(c.interes - c.pagado_interes) +
+        noNegativo(c.iva + c.seguro + c.gastos - c.pagado_cargos),
+      ),
+    }))
+    .filter((x) => x.falta > 0)
+    .sort((a, b) => a.c.nro - b.c.nro);
+
+  // Sin ninguna cuota viva no hay dónde apoyarlo. No se inventa un renglón: se informa 0 y el
+  // acuerdo queda como estaba (es un crédito ya saldado, que no debería estar acordando nada).
+  if (vivas.length === 0) return 0;
+
+  const totalFalta = round2(vivas.reduce((s, x) => s + x.falta, 0));
+  let repartido = 0;
+  for (let i = 0; i < vivas.length; i++) {
+    const { c, falta } = vivas[i];
+    const parte = i === vivas.length - 1
+      ? round2(interes - repartido)                       // la última cierra el redondeo
+      : round2((interes * falta) / totalFalta);
+    repartido = round2(repartido + parte);
+    await tx.cuotas.update({
+      where: { id: c.id },
+      data: { gastos: round2(c.gastos + parte), cuota_total: round2(c.cuota_total + parte) },
+    });
+  }
+  return round2(repartido);
+}
+
 /** Crédito con lo necesario para calcular su deuda vencida. */
 const SELECT_CREDITO = {
   id: true,
@@ -163,8 +228,12 @@ export async function resolverTasaAcuerdo(
   tenantId: string,
   tasaCredito: number,
   cfg?: AcuerdosConfig,
-): Promise<{ tasa: number; origen: "config" | "credito" }> {
+): Promise<{ tasa: number; origen: "config" | "credito" | "modo" }> {
   const acuerdos = cfg ?? (await getCobranzaConfig(tenantId)).acuerdos;
+  // `sin_interes` gana sobre cualquier tasa configurada: es el modo el que dice que este
+  // acuerdo no cobra nada por el plazo, y una tasa cargada en otro campo no puede
+  // contradecirlo sin que el operador entienda por qué le apareció interés.
+  if (acuerdos.modo_interes === "sin_interes") return { tasa: 0, origen: "modo" };
   if (acuerdos.tasa_mensual !== null && acuerdos.tasa_mensual !== undefined) {
     return { tasa: acuerdos.tasa_mensual, origen: "config" };
   }
@@ -285,7 +354,24 @@ export async function crearAcuerdo(input: CrearAcuerdoInput) {
   const plan = planDeAcuerdo(montoAcordado, cuotas, primero, cfg.dias_entre_cuotas, tasaAcuerdoPct);
   const totalAcuerdo = round2(plan.reduce((a, c) => a + c.monto, 0));
 
-  const acuerdo = await prisma.acuerdos_pago.create({
+  /**
+   * El interés que agrega el plan del acuerdo sobre la deuda que ya existía.
+   *
+   * Con `capitaliza` se convierte en deuda del crédito ACÁ MISMO, en la misma transacción que
+   * crea el acuerdo: si se hiciera después y fallara, quedaría un acuerdo pidiendo un importe
+   * que el crédito no puede absorber — que es exactamente el estado roto que esto viene a
+   * arreglar. Con los otros dos modos no se toca ninguna cuota.
+   */
+  const interesAcuerdo = round2(noNegativo(totalAcuerdo - montoAcordado));
+
+  const acuerdo = await prisma.$transaction(async (tx) => {
+  // Lo REALMENTE capitalizado, no lo que se pensaba capitalizar: si el crédito no tenía
+  // ninguna cuota viva donde apoyarlo, el helper devuelve 0 y el acuerdo tiene que decir 0,
+  // o al anularlo le descontaríamos al cliente una deuda que nunca se le cargó.
+  const capitalizado = cfg.modo_interes === "capitaliza"
+    ? await capitalizarInteresEnCuotas(tx, tenantId, credito.cuotas, interesAcuerdo)
+    : 0;
+  return tx.acuerdos_pago.create({
     data: {
       ...withTenant(tenantId),
       credito_id: creditoId,
@@ -296,6 +382,7 @@ export async function crearAcuerdo(input: CrearAcuerdoInput) {
       quita,
       entrega: entregaCobrada,
       entrega_pago_id: input.entregaPagoId ?? null,
+      interes_capitalizado: capitalizado,
       // Lo que se compromete a pagar = la suma del plan. Con tasa 0 coincide con
       // `deuda_original − quita`; con interés es mayor, y es contra ESTE número que se
       // evalúa si cumplió.
@@ -316,6 +403,7 @@ export async function crearAcuerdo(input: CrearAcuerdoInput) {
       },
     },
     include: { cuotas: { orderBy: { numero: "asc" } } },
+  });
   });
 
   const origenRefi = (await numerosRefinanciados(tenantId, [credito])).get(credito.refinancia_a ?? "") ?? null;
@@ -447,9 +535,46 @@ export async function anularAcuerdo(tenantId: string, acuerdoId: string, motivo:
     throw new ApiError(`Solo se puede anular un acuerdo vigente (este está ${a.estado}).`, "ACUERDO_NO_VIGENTE", 409);
   }
 
-  await prisma.acuerdos_pago.updateMany({
-    where: { ...withTenant(tenantId), id: acuerdoId, estado: "vigente" },
-    data: { estado: "anulado", motivo_estado: nota, cerrado_at: new Date() },
+  /**
+   * 🔴 ANULAR TIENE QUE DEVOLVER EL INTERÉS CAPITALIZADO.
+   *
+   * Con el modo `capitaliza`, firmar el acuerdo le sumó ese interés a la deuda del crédito. Si
+   * el acuerdo se anula y eso queda puesto, el cliente sigue debiendo el interés de un arreglo
+   * que ya no existe — y nadie lo va a notar, porque quedó repartido dentro de los cargos de
+   * las cuotas.
+   *
+   * Se saca solo lo que TODAVÍA NO SE COBRÓ (`gastos` no puede bajar de `pagado_cargos`): si
+   * el cliente ya pagó parte de ese interés, esa plata entró y borrarla del libro dejaría una
+   * cuota cobrada por encima de lo que dice deber. Lo cobrado se queda; lo que se devuelve es
+   * la expectativa.
+   */
+  const devuelto = await prisma.$transaction(async (tx) => {
+    await tx.acuerdos_pago.updateMany({
+      where: { ...withTenant(tenantId), id: acuerdoId, estado: "vigente" },
+      data: { estado: "anulado", motivo_estado: nota, cerrado_at: new Date() },
+    });
+    if (a.interes_capitalizado <= 0) return 0;
+
+    const cuotas = await tx.cuotas.findMany({
+      where: { ...withTenant(tenantId), credito_id: a.credito_id },
+      select: { id: true, nro: true, gastos: true, cuota_total: true, pagado_cargos: true },
+      orderBy: { nro: "desc" }, // se saca de las últimas: son las que menos se cobraron
+    });
+
+    let porDevolver = round2(a.interes_capitalizado);
+    let devueltoTotal = 0;
+    for (const c of cuotas) {
+      if (porDevolver <= 0) break;
+      const sacable = round2(noNegativo(Math.min(c.gastos - c.pagado_cargos, porDevolver)));
+      if (sacable <= 0) continue;
+      await tx.cuotas.update({
+        where: { id: c.id },
+        data: { gastos: round2(c.gastos - sacable), cuota_total: round2(c.cuota_total - sacable) },
+      });
+      porDevolver = round2(porDevolver - sacable);
+      devueltoTotal = round2(devueltoTotal + sacable);
+    }
+    return devueltoTotal;
   });
 
   await registrarAuditoria({
@@ -457,8 +582,15 @@ export async function anularAcuerdo(tenantId: string, acuerdoId: string, motivo:
     entidad: "creditos",
     entidadId: a.credito_id,
     accion: "cancelar",
-    descripcion: `Acuerdo de pago ANULADO — ${nota}`,
-    meta: { tipo: "acuerdo_pago", acuerdo_id: acuerdoId, motivo: nota },
+    descripcion: devuelto > 0
+      ? `Acuerdo de pago ANULADO — ${nota}. Se le devolvieron $${devuelto.toLocaleString("es-AR")} de interés capitalizado al crédito.`
+      : `Acuerdo de pago ANULADO — ${nota}`,
+    // Queda la traza de cuánto se capitalizó y cuánto se pudo devolver: si el cliente ya había
+    // pagado parte de ese interés, los dos números no coinciden y hay que poder explicarlo.
+    meta: {
+      tipo: "acuerdo_pago", acuerdo_id: acuerdoId, motivo: nota,
+      interes_capitalizado: a.interes_capitalizado, interes_devuelto: devuelto,
+    },
   });
 
   return a;

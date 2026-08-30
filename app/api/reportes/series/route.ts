@@ -8,6 +8,7 @@ import {
   estadoCarteraAFecha,
   costoFondeo,
   type CreditoLedger,
+  ingresoFinanciero,
 } from "@/lib/domain";
 import { getConfiguracion, getRentabilidadConfig } from "@/lib/config";
 import { inicioDiaAR, finDiaAR, mesAR } from "@/lib/utils";
@@ -85,6 +86,9 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
       select: {
         fecha: true, monto: true, metodo: true,
         aplicado_capital: true, aplicado_interes: true, aplicado_mora: true, aplicado_cargos: true,
+        // Cobrado sin imputar a cuota (interes de acuerdo, modo `ingreso_aparte`): es
+        // ingreso de la financiera y sin esto la serie no lo mostraba.
+        excedente: true,
         // Para contar CUÁNTAS PERSONAS usan cada medio, no cuántos pagos: un cliente que paga
         // 12 cuotas en efectivo es UN cliente que usa efectivo, no doce.
         credito: { select: { cliente_id: true } },
@@ -124,12 +128,12 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     cur.cantidad += 1; cur.monto += c.monto_original;
     otorgadoPorMes.set(k, cur);
   }
-  const cobradoPorMes = new Map<string, { total: number; capital: number; interes: number; mora: number; cargos: number }>();
+  const cobradoPorMes = new Map<string, { total: number; capital: number; interes: number; mora: number; cargos: number; excedente: number }>();
   for (const p of pagos) {
     const k = mesKey(p.fecha);
-    const cur = cobradoPorMes.get(k) ?? { total: 0, capital: 0, interes: 0, mora: 0, cargos: 0 };
+    const cur = cobradoPorMes.get(k) ?? { total: 0, capital: 0, interes: 0, mora: 0, cargos: 0, excedente: 0 };
     cur.total += p.monto; cur.capital += p.aplicado_capital; cur.interes += p.aplicado_interes;
-    cur.mora += p.aplicado_mora; cur.cargos += p.aplicado_cargos;
+    cur.mora += p.aplicado_mora; cur.cargos += p.aplicado_cargos; cur.excedente += p.excedente ?? 0;
     cobradoPorMes.set(k, cur);
   }
 
@@ -181,9 +185,13 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   // Punto por mes (incluye la reconstrucción de cartera/mora a fin de mes).
   const serie: PuntoMensual[] = buckets.map((b) => {
     const ot = otorgadoPorMes.get(b.key) ?? { cantidad: 0, monto: 0 };
-    const co = cobradoPorMes.get(b.key) ?? { total: 0, capital: 0, interes: 0, mora: 0, cargos: 0 };
+    const co = cobradoPorMes.get(b.key) ?? { total: 0, capital: 0, interes: 0, mora: 0, cargos: 0, excedente: 0 };
     const cartera = estadoCarteraAFecha(ledger, b.corte);
-    const ingreso_financiero = round2(co.interes + co.mora + co.cargos);
+    // UNA definicion (lib/domain/reportes). Estaba escrita a mano aca y en /api/reportes,
+    // y las dos se habrian quedado sin el interes de acuerdo cobrado aparte.
+    const ingreso_financiero = ingresoFinanciero([
+      { aplicado_interes: co.interes, aplicado_mora: co.mora, aplicado_cargos: co.cargos, excedente: co.excedente },
+    ]);
     const costo = costoFondeo(cartera.cartera_capital, cfgRent, b.dias, 1);
     return {
       mes: b.key,
