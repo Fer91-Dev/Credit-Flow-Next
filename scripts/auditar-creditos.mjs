@@ -78,7 +78,7 @@ for (const { tenant_id: t } of tenants) {
     const malos = [];
     for (const c of creditos) {
       if (VOID.has(c.estado)) continue;            // los void se chequean en C9
-      if (c.cuotas.length === 0) continue;         // sin plan: lo reporta C12
+      if (c.cuotas.length === 0) continue;         // sin plan: lo reporta C9
       const esperado = r2(c.cuotas.reduce((s, q) => s + Math.max(0, q.capital - q.pagado_capital), 0));
       if (Math.abs(esperado - c.saldo_pendiente) > EPS) {
         malos.push(`${crd(c.numero)} guarda ${m$(c.saldo_pendiente)} y las cuotas dan ${m$(esperado)}`);

@@ -9,7 +9,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { KpiCard } from "@/components/ui/KpiCard";
 import { DataTable } from "@/components/ui/DataTable";
 import { StatusBadge } from "@/components/ui/StatusBadge";
-import type { BadgeVariant } from "@/components/ui/StatusBadge";
+import { accionConfig } from "./accion-badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AuditoriaDetail } from "./AuditoriaDetail";
@@ -31,19 +31,6 @@ const entidadLabel: Record<string, string> = {
   plataforma: "Sistema",
 };
 
-function accionConfig(a: EventoAuditoria["accion"]): { label: string; variant: BadgeVariant } {
-  switch (a) {
-    case "crear":             return { label: "Creado",      variant: "success" };
-    case "actualizar":        return { label: "Actualizado", variant: "primary" };
-    case "eliminar":          return { label: "Eliminado",   variant: "destructive" };
-    case "cancelar":          return { label: "Cancelado",   variant: "muted" };
-    case "anular":            return { label: "Anulado",     variant: "warning" };
-    case "registrar_pago":    return { label: "Pago",        variant: "success" };
-    case "actualizar_config": return { label: "Config",      variant: "warning" };
-    case "backup":            return { label: "Backup",      variant: "primary" };
-    default:                  return { label: a,             variant: "muted" };
-  }
-}
 
 /**
  * Recorte activo de la traza. Vive como un solo estado porque los tres son excluyentes: los

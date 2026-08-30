@@ -4,7 +4,8 @@ import { sincronizarAcuerdos } from "@/lib/acuerdos";
 import { Prisma } from "@prisma/client";
 import { sinDeuda, ESTADOS_VIVOS, resolverPlantillasMeta, type PlantillaMeta } from "@/lib/domain";
 import { enviarWhatsappApi, whatsappApiDisponible, type WhatsappApiConfig } from "@/lib/whatsapp";
-import { hoyComercial } from "@/lib/utils";
+import { hoyComercial, formatCreditoNumero } from "@/lib/utils";
+import { registrarAuditoria } from "@/lib/audit";
 
 // Reglas de mora para disparar notificaciones
 const REGLAS = [
@@ -77,6 +78,10 @@ async function ejecutarCron(req: NextRequest) {
   // que las promesas —el estado se DERIVA de lo cobrado, no de que alguien lo marque— y
   // corre SIEMPRE, para todos los tenants: es actualización de estado, no notificación.
   const acuerdos = await sincronizarAcuerdos({ hoy });
+
+  // Créditos vivos que quedaron sin plan de cuotas: no se pueden cobrar y no los ve nadie.
+  // Solo se detectan y se asientan en Auditoría — la reparación la decide una persona.
+  const sinPlan = await detectarCreditosSinPlan(hoy);
 
   // Obtener todos los tenants con configuración de canales activa
   const configs = await prisma.configuraciones.findMany({
@@ -187,7 +192,7 @@ async function ejecutarCron(req: NextRequest) {
     resultados.push({ tenant_id: config.tenant_id, enviados, errores });
   }
 
-  return NextResponse.json({ ok: true, promesas, acuerdos, reconciliacion, procesados: configs.length, resultados });
+  return NextResponse.json({ ok: true, promesas, acuerdos, reconciliacion, sinPlan, procesados: configs.length, resultados });
 }
 
 /**
@@ -209,6 +214,56 @@ async function reconciliarCreditosSaldados(): Promise<{ cerrados: number }> {
     data: { estado: "pagado", dias_mora: 0, proximo_pago: null },
   });
   return { cerrados: ids.length };
+}
+
+/**
+ * Un crédito VIVO sin plan de cuotas es un callejón sin salida operativo: no tiene cuota que
+ * cobrar, así que no aparece el botón verde del cobro, no entra en la agenda de mora
+ * (`proximo_pago` está vacío) y su saldo no lo respalda ningún renglón. El cliente debe y el
+ * sistema no tiene por dónde cobrarle.
+ *
+ * 🔴 NO SE AUTO-REPARA A PROPÓSITO. Rehacer el plan implica decidir con qué cuota, con qué
+ * vencimientos y con qué tasa — eso lo firma una persona, no un cron de madrugada. Lo que
+ * hace este chequeo es que el caso deje de depender de que alguien se acuerde de correr
+ * `auditar-creditos` (C9): queda asentado en Auditoría, donde se mira.
+ *
+ * Un asiento por crédito y por día: sin el dedup, un crédito roto ensucia la traza con una
+ * entrada diaria hasta que alguien lo resuelva.
+ */
+async function detectarCreditosSinPlan(hoy: Date): Promise<{ detectados: number }> {
+  const rotos = await prisma.creditos.findMany({
+    where: { estado: { in: [...ESTADOS_VIVOS] }, cuotas: { none: {} } },
+    select: { id: true, tenant_id: true, numero: true, saldo_pendiente: true },
+    take: 500, // límite de seguridad
+  });
+  if (rotos.length === 0) return { detectados: 0 };
+
+  // ¿Cuáles ya se avisaron hoy?
+  const yaAvisados = await prisma.auditoria.findMany({
+    where: {
+      entidad: "creditos",
+      accion: "alerta_sin_plan",
+      entidad_id: { in: rotos.map((c) => c.id) },
+      created_at: { gte: hoy },
+    },
+    select: { entidad_id: true },
+  });
+  const avisados = new Set(yaAvisados.map((a) => a.entidad_id));
+
+  let detectados = 0;
+  for (const c of rotos) {
+    if (avisados.has(c.id)) continue;
+    await registrarAuditoria({
+      tenantId: c.tenant_id,
+      entidad: "creditos",
+      entidadId: c.id,
+      accion: "alerta_sin_plan",
+      descripcion: `${formatCreditoNumero(c.numero)} está vivo pero no tiene plan de cuotas: no hay nada que cobrarle. Hay que rehacerle el cronograma o anularlo.`,
+      meta: { saldo_pendiente: c.saldo_pendiente, detectado_por: "cron" },
+    });
+    detectados++;
+  }
+  return { detectados };
 }
 
 // ─── Promesas de pago vencidas (automatización de incumplimiento) ─────────────

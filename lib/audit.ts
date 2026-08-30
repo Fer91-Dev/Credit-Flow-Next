@@ -21,7 +21,10 @@ export type AuditAccion =
   // Contacto individual con un cliente (WhatsApp/email desde su ficha). Se audita SIEMPRE,
   // sea cual sea el motivo: es el registro de que a esa persona se la contactó y qué se le dijo.
   | "contactar"
-  | "backup";
+  | "backup"
+  // Alerta que asienta el cron, sin actor humano: algo que el sistema encontró roto y que
+  // necesita que una persona decida (hoy, el crédito vivo que se quedó sin plan de cuotas).
+  | "alerta_sin_plan";
 
 export interface AuditInput {
   tenantId: string;

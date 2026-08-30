@@ -2,7 +2,8 @@
 
 import { History, Database, Activity } from "lucide-react";
 import type { EventoAuditoria } from "@/lib/swr";
-import { StatusBadge, type BadgeVariant } from "@/components/ui/StatusBadge";
+import { StatusBadge } from "@/components/ui/StatusBadge";
+import { accionConfig } from "./accion-badge";
 import { formatFechaHora } from "@/lib/utils";
 import { DetailSection, DetailGrid } from "@/components/ui/DetailGrid";
 
@@ -12,19 +13,6 @@ const ENTIDAD_LABEL: Record<string, string> = {
   clientes: "Cliente", creditos: "Crédito", pagos: "Pago", configuracion: "Configuración", caja: "Caja", plataforma: "Sistema",
 };
 
-function accionConfig(a: string): { label: string; variant: BadgeVariant } {
-  switch (a) {
-    case "crear":             return { label: "Creado",      variant: "success" };
-    case "actualizar":        return { label: "Actualizado", variant: "primary" };
-    case "eliminar":          return { label: "Eliminado",   variant: "destructive" };
-    case "cancelar":          return { label: "Cancelado",   variant: "muted" };
-    case "anular":            return { label: "Anulado",     variant: "warning" };
-    case "registrar_pago":    return { label: "Pago",        variant: "success" };
-    case "actualizar_config": return { label: "Config",      variant: "warning" };
-    case "backup":            return { label: "Backup",      variant: "primary" };
-    default:                  return { label: a,             variant: "muted" };
-  }
-}
 
 /** Formatea un valor de `meta` para mostrarlo legible. */
 function fmtMetaValue(v: unknown): string {
