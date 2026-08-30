@@ -131,6 +131,14 @@ export function ClienteDetail({
    * archivo puede vivir después de ese return.
    */
   const [cobrando, setCobrando] = useState<{ credito: CreditoConFinanzas; cuota: CuotaPersistida } | null>(null);
+  /**
+   * A cuántos días de atraso el crédito pasa a Legales (Configuración → Cobranza).
+   *
+   * 🔴 Y ESTE TAMBIÉN VA ACÁ ARRIBA, por lo que dice el comentario de recién. Lo puse debajo
+   * del return de carga y rompí la ficha entera con el mismo React #310 que ya estaba
+   * anotado tres renglones más arriba. La regla no es "ningún useState": es NINGÚN HOOK.
+   */
+  const diasLegales = useDiasLegales();
 
   // Qué secciones se muestran según el contexto.
   const showPersonal = variant !== "pagos";   // datos personales/laborales
@@ -185,8 +193,6 @@ export function ClienteDetail({
 
   // Historial de pagos del cliente (aplanado de todos sus créditos), más nuevos primero.
   const puedeAnular = cliente.puede_anular_pago === true;
-  /** A cuántos días de atraso un crédito pasa a Legales (Configuración → Cobranza). */
-  const diasLegales = useDiasLegales();
   const pagosCliente = creditos
     .flatMap((c) => (c.pagos ?? []).map((p) => ({ ...p, creditoNumero: c.numero, creditoRefiNumero: c.refinancia_a_numero })))
     .sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime());
