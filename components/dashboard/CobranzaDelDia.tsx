@@ -1,8 +1,10 @@
 "use client";
 
+import { severidadMora } from "@/lib/domain";
+
 import Link from "next/link";
 import { HandshakeIcon, CalendarClock, Snowflake, ArrowRight, CheckCheck } from "lucide-react";
-import { useAgendaCobranza, type AgendaItem } from "@/lib/swr";
+import { useAgendaCobranza, type AgendaItem, useTramosMora } from "@/lib/swr";
 import { formatMonto, formatCreditoNumero, formatDias } from "@/lib/utils";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { IconBadge } from "@/components/ui/IconBadge";
@@ -21,6 +23,8 @@ const MAX_VISIBLE = 5;
  * en el server; el admin ve todo el tenant). Enlaza a la pestaña "Hoy" de Cobranzas.
  */
 export function CobranzaDelDia() {
+  /** Los cortes media/alta/crítica que definió la financiera (Configuración → Cobranza). */
+  const tramos = useTramosMora();
   const { agenda, error, isLoading } = useAgendaCobranza();
 
   if (isLoading) return <Skeleton className="h-48 rounded-xl" />;
@@ -72,7 +76,7 @@ export function CobranzaDelDia() {
           <div className="space-y-1.5">
             {visibles.map((it) => {
               const Icon = BUCKET_ICON[it.bucket];
-              const critica = it.dias_mora > 30;
+              const critica = severidadMora(it.dias_mora, tramos) === "critica";
               return (
                 <Link
                   key={it.credito_id}

@@ -1,10 +1,12 @@
 "use client";
 
+import { severidadMora } from "@/lib/domain";
+
 import { useState, useMemo } from "react";
 import { Field, Input, Select, Textarea } from "@/components/ui/field";
 import { MoneyInput, FormActions } from "@/components/ui/form-kit";
 import { nombreCompleto, parseMontoInput, maskMontoInput, formatFecha, formatDias } from "@/lib/utils";
-import { useCuotas } from "@/lib/swr";
+import { useCuotas, useTramosMora } from "@/lib/swr";
 import { useConfirm } from "@/components/ui/confirm";
 import { useToast } from "@/components/ui/toast";
 
@@ -28,6 +30,8 @@ function n2(x: number) {
 }
 
 export function GestionForm({ credito, onClose }: GestionFormProps) {
+  /** Los cortes media/alta/crítica que definió la financiera (Configuración → Cobranza). */
+  const tramos = useTramosMora();
   const confirm = useConfirm();
   const toast = useToast();
   /**
@@ -126,7 +130,7 @@ export function GestionForm({ credito, onClose }: GestionFormProps) {
         <p className="text-xs text-muted-foreground mt-0.5">
           Saldo <span className="font-mono text-warning">${n0(credito.saldo_pendiente)}</span>
           {" · "}
-          <span className={credito.dias_mora > 30 ? "text-destructive" : "text-warning"}>{formatDias(credito.dias_mora)} de mora</span>
+          <span className={severidadMora(credito.dias_mora, tramos) === "critica" ? "text-destructive" : "text-warning"}>{formatDias(credito.dias_mora)} de mora</span>
           {credito.cliente.telefono ? ` · ${credito.cliente.telefono}` : ""}
         </p>
       </div>

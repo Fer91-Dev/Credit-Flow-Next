@@ -6,7 +6,7 @@ import { motion } from "framer-motion";
 import { useSWRConfig } from "swr";
 import { AlertCircle, Phone, Mail, Clock, Copy, CheckCheck, Search, DollarSign, ShieldAlert, MessageSquarePlus, CalendarClock, Megaphone, X, Users, TrendingUp, Sun, Handshake } from "lucide-react";
 import { WhatsAppIcon } from "@/components/ui/WhatsAppIcon";
-import { useCreditos, useAccionesCobranza, type Credito, type AccionCobranza, type AgendaItem } from "@/lib/swr";
+import { useCreditos, useAccionesCobranza, type Credito, type AccionCobranza, type AgendaItem, useTramosMora } from "@/lib/swr";
 import { type Role } from "@/lib/auth/roles";
 import { formatFecha, nombreCompleto, formatDias } from "@/lib/utils";
 import { GestionForm, type CreditoCtx } from "./GestionForm";
@@ -26,7 +26,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { ModalHeader, MODAL_CONTENT_WIDE, SIN_CIERRE_ACCIDENTAL } from "@/components/ui/form-kit";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
-import { esCreditoVivo, contactoBloqueado } from "@/lib/domain";
+import { esCreditoVivo, contactoBloqueado, severidadMora } from "@/lib/domain";
 
 function n0(x: number) {
   return new Intl.NumberFormat("es-AR", { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(x);
@@ -73,6 +73,8 @@ type Tab = "hoy" | "morosos" | "acuerdos" | "planillas" | "campanas";
 const TABS_VALIDOS: Tab[] = ["hoy", "morosos", "acuerdos", "planillas", "campanas"];
 
 export function CobranzaTable({ role }: { role: Role }) {
+  /** Los cortes media/alta/crítica que definió la financiera (Configuración → Cobranza). */
+  const tramos = useTramosMora();
   // Campañas (selección masiva + ActionToolbar + pestaña): admin (toda la cartera) y
   // vendedor (scopeado a SUS créditos, tanto en la selección como en el backend).
   const puedeCampanas = role === "admin" || role === "vendedor";
@@ -202,24 +204,26 @@ export function CobranzaTable({ role }: { role: Role }) {
   );
 
   const filtered = useMemo(() => {
+    // Los cortes de la financiera, no 30 y 15 escritos acá: el chip dice "Crítica" y tiene
+    // que filtrar lo mismo que el Home y Reportes llaman crítico.
     const bySeveridad = creditos.filter(c => {
-      if (filterMora === "critica") return c.dias_mora > 30;
-      if (filterMora === "alta")    return c.dias_mora > 15 && c.dias_mora <= 30;
+      if (filterMora === "critica") return severidadMora(c.dias_mora, tramos) === "critica";
+      if (filterMora === "alta")    return severidadMora(c.dias_mora, tramos) === "alta";
       return true;
     });
     const q = search.trim().toLowerCase();
     return q
       ? bySeveridad.filter(c => nombreCompleto(c.cliente).toLowerCase().includes(q))
       : bySeveridad;
-  }, [creditos, filterMora, search]);
+  }, [creditos, filterMora, search, tramos]);
 
   // KPIs from all mora data (portfolio picture)
   const kpis = useMemo(() => ({
     total:       creditos.length,
     saldo:       creditos.reduce((s, c) => s + c.saldo_pendiente, 0),
-    critica:     creditos.filter(c => c.dias_mora > 30).length,
-    alta:        creditos.filter(c => c.dias_mora > 15 && c.dias_mora <= 30).length,
-  }), [creditos]);
+    critica:     creditos.filter(c => severidadMora(c.dias_mora, tramos) === "critica").length,
+    alta:        creditos.filter(c => severidadMora(c.dias_mora, tramos) === "alta").length,
+  }), [creditos, tramos]);
 
   // Total Esperado (saldo de toda la cartera activa) vs Total en Mora (saldo vencido)
   const panel = useMemo(() => {
@@ -540,7 +544,7 @@ export function CobranzaTable({ role }: { role: Role }) {
             },
             {
               header: "Saldo", align: "right", mono: true,
-              cell: (c) => <span className={`font-bold ${c.dias_mora > 30 ? "text-destructive" : "text-warning"}`}>${n0(c.saldo_pendiente)}</span>,
+              cell: (c) => <span className={`font-bold ${severidadMora(c.dias_mora, tramos) === "critica" ? "text-destructive" : "text-warning"}`}>${n0(c.saldo_pendiente)}</span>,
             },
             {
               header: <span className="text-destructive">Interés mora</span>, align: "right", mono: true,
@@ -550,7 +554,7 @@ export function CobranzaTable({ role }: { role: Role }) {
             },
             {
               header: "Días mora", align: "center",
-              cell: (c) => <span className={`font-mono font-bold text-sm ${c.dias_mora > 30 ? "text-destructive" : "text-warning"}`}>{formatDias(c.dias_mora)}</span>,
+              cell: (c) => <span className={`font-mono font-bold text-sm ${severidadMora(c.dias_mora, tramos) === "critica" ? "text-destructive" : "text-warning"}`}>{formatDias(c.dias_mora)}</span>,
             },
             {
               header: "Severidad", align: "center",
@@ -622,8 +626,8 @@ export function CobranzaTable({ role }: { role: Role }) {
                   <StatusBadge label={sev.label} variant={sev.variant} />
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className={`font-mono font-bold text-xl ${c.dias_mora > 30 ? "text-destructive" : "text-warning"}`}>${n0(c.saldo_pendiente)}</span>
-                  <span className={`font-mono font-bold text-lg ${c.dias_mora > 30 ? "text-destructive" : "text-warning"}`}>{formatDias(c.dias_mora)} de mora</span>
+                  <span className={`font-mono font-bold text-xl ${severidadMora(c.dias_mora, tramos) === "critica" ? "text-destructive" : "text-warning"}`}>${n0(c.saldo_pendiente)}</span>
+                  <span className={`font-mono font-bold text-lg ${severidadMora(c.dias_mora, tramos) === "critica" ? "text-destructive" : "text-warning"}`}>{formatDias(c.dias_mora)} de mora</span>
                 </div>
                 {c.interes_mora && c.interes_mora > 0 && (
                   <div className="flex items-center justify-between text-xs">

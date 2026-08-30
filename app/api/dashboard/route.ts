@@ -188,8 +188,10 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     total_mora: creditosDM
       .filter((c) => c.dias_mora > 0)
       .reduce((sum, c) => sum + c.saldo_pendiente, 0),
+    // Mismo corte que el conteo de arriba: si el monto usara 30 fijo y el conteo el tramo
+    // configurado, la tarjeta diría "3 créditos · $X" con un X que no es de esos 3.
     mora_critica: creditosDM
-      .filter((c) => c.dias_mora > 30)
+      .filter((c) => severidadMora(c.dias_mora, tramos) === "critica")
       .reduce((sum, c) => sum + c.saldo_pendiente, 0),
   };
 

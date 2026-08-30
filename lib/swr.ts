@@ -12,7 +12,10 @@ import useSWR, { mutate as globalMutate } from "swr";
 import type {
   SimuladorConfig, DocumentosConfig, TipoMovimiento,
   PoliticaOriginacion, BureauConfig, BureauProveedor, RiesgoConfig,
+  TramosMora,
 } from "@/lib/domain";
+// Valor (no tipo): el default con el que se clasifica mientras la config carga.
+import { TRAMOS_MORA_DEFAULT } from "@/lib/domain";
 import type { CobranzaConfig, CajaConfig, OrdenAgenda } from "@/lib/config";
 export type { CajaConfig };
 
@@ -1631,6 +1634,22 @@ export function useClienteDetalle(clienteId: string | null) {
 export function useConfiguracion() {
   const { data, error, isLoading, mutate } = useSWR<ConfiguracionFinanciera>(KEYS.configuracion, null, PARAMETROS_SWR);
   return { config: data, error, isLoading, mutate };
+}
+
+/**
+ * Los tramos de mora que configuró la financiera (media / alta / crítica).
+ *
+ * 🔴 Sale de acá y no de un número escrito en cada pantalla. Cuando esto no existía, el filtro
+ * "Crítica" de Cobranzas usaba 30, el del Home 60 y el de Reportes 30: el mismo crédito
+ * aparecía o no según en qué lista se lo buscara. Con la config a medio camino era peor —
+ * mover el parámetro cambiaba unas pantallas y otras no.
+ *
+ * Cae al default mientras la config carga, que es el valor con el que el sistema venía
+ * funcionando: nunca clasifica con basura.
+ */
+export function useTramosMora(): TramosMora {
+  const { config } = useConfiguracion();
+  return config?.cobranzaConfig?.tramos_mora ?? TRAMOS_MORA_DEFAULT;
 }
 
 export function useFinanciera() {

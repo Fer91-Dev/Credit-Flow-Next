@@ -7,8 +7,8 @@ import {
   Check, Play, CheckCircle2, Mail, Smartphone, Sparkles, Trash2, Loader2,
 } from "lucide-react";
 import { WhatsAppIcon } from "@/components/ui/WhatsAppIcon";
-import { useCampanas, useCampana, KEYS, type CampanaCobranza, type CampanaObjetivo, type CanalCampana, type EstadoCampana } from "@/lib/swr";
-import { construirMensajeCampana, linkWhatsapp, TEMPLATE_DEFAULT } from "@/lib/domain";
+import { useCampanas, useCampana, KEYS, type CampanaCobranza, type CampanaObjetivo, type CanalCampana, type EstadoCampana, useTramosMora } from "@/lib/swr";
+import { construirMensajeCampana, linkWhatsapp, TEMPLATE_DEFAULT, severidadMora } from "@/lib/domain";
 import { formatFecha, nombreCompleto, eventoPropio, teclaDelContenedor, formatDias } from "@/lib/utils";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { DataTable } from "@/components/ui/DataTable";
@@ -166,6 +166,8 @@ function CampanaCard({ campana: c, onOpen }: { campana: CampanaCobranza; onOpen:
 }
 
 function CampanaDetalle({ id, onBack }: { id: string; onBack: () => void }) {
+  /** Los cortes media/alta/crítica que definió la financiera (Configuración → Cobranza). */
+  const tramos = useTramosMora();
   const { campana, isLoading, mutate } = useCampana(id);
   const { mutate: globalMutate } = useSWRConfig();
   const confirm = useConfirm();
@@ -276,7 +278,7 @@ function CampanaDetalle({ id, onBack }: { id: string; onBack: () => void }) {
               </div>
             ),
           },
-          { header: "Mora", align: "center", cell: (o) => <span className={`font-mono text-sm font-bold ${o.dias_mora > 30 ? "text-destructive" : "text-warning"}`}>{formatDias(o.dias_mora)}</span> },
+          { header: "Mora", align: "center", cell: (o) => <span className={`font-mono text-sm font-bold ${severidadMora(o.dias_mora, tramos) === "critica" ? "text-destructive" : "text-warning"}`}>{formatDias(o.dias_mora)}</span> },
           { header: "Oferta", align: "right", mono: true, cell: (o) => <span className="font-bold text-foreground">${n0(o.oferta_monto)}</span> },
           {
             header: <span className="text-success">Ahorro</span>, align: "right", mono: true,
@@ -308,7 +310,7 @@ function CampanaDetalle({ id, onBack }: { id: string; onBack: () => void }) {
                 <p className="font-medium text-foreground text-sm truncate">{nombreCompleto(o.credito.cliente)}</p>
                 <p className="text-[11px] text-muted-foreground/60">{o.credito.cliente.telefono || "sin teléfono"}</p>
               </div>
-              <span className={`font-mono text-sm font-bold ${o.dias_mora > 30 ? "text-destructive" : "text-warning"}`}>{formatDias(o.dias_mora)}</span>
+              <span className={`font-mono text-sm font-bold ${severidadMora(o.dias_mora, tramos) === "critica" ? "text-destructive" : "text-warning"}`}>{formatDias(o.dias_mora)}</span>
             </div>
             <div className="flex items-center justify-between text-xs">
               <span className="text-muted-foreground">Oferta</span>

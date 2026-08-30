@@ -1,12 +1,14 @@
 "use client";
 
+import { severidadMora } from "@/lib/domain";
+
 import { useMemo, useState } from "react";
 import {
   HandshakeIcon, CalendarClock, Snowflake, MessageSquarePlus,
   Phone, CheckCheck, AlertCircle,
 } from "lucide-react";
 import { WhatsAppIcon } from "@/components/ui/WhatsAppIcon";
-import { useAgendaCobranza, type AgendaItem } from "@/lib/swr";
+import { useAgendaCobranza, type AgendaItem, useTramosMora } from "@/lib/swr";
 import { formatMonto, formatFecha, formatCreditoNumero, teclaDelContenedor, formatDias } from "@/lib/utils";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { KpiCard } from "@/components/ui/KpiCard";
@@ -210,7 +212,9 @@ function AgendaRow({
   onGestionar: () => void;
   onDetalle: () => void;
 }) {
-  const critica = it.dias_mora > 30;
+  /** Los cortes media/alta/crítica que definió la financiera (Configuración → Cobranza). */
+  const tramos = useTramosMora();
+  const critica = severidadMora(it.dias_mora, tramos) === "critica";
   const toast = useToast();
   const [enviando, setEnviando] = useState(false);
 

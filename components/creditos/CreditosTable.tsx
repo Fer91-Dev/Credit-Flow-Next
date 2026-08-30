@@ -7,7 +7,7 @@ import { Plus, FileText, ChevronDown, X, RefreshCw } from "lucide-react";
 import { CreditoDetail } from "./CreditoDetail";
 import { RefinanciarDialog } from "./RefinanciarDialog";
 import { CompararRefiDialog } from "./CompararRefiDialog";
-import { useCreditos, KEYS, type Credito } from "@/lib/swr";
+import { useCreditos, KEYS, type Credito, useTramosMora } from "@/lib/swr";
 import { type Role } from "@/lib/auth/roles";
 import { formatCreditoNumero, nombreCompleto, formatFecha, formatFechaHora, eventoPropio, teclaDelContenedor, formatDias } from "@/lib/utils";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -20,7 +20,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
-import { esCreditoVivo } from "@/lib/domain";
+import { esCreditoVivo, severidadMora } from "@/lib/domain";
 
 function n0(x: number) {
   return new Intl.NumberFormat("es-AR", { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(x);
@@ -56,6 +56,8 @@ function estadoBadge(estado: string, diasMora = 0): { label: string; variant: "p
 }
 
 export function CreditosTable({ role }: { role: Role }) {
+  /** Los cortes media/alta/crítica que definió la financiera (Configuración → Cobranza). */
+  const tramos = useTramosMora();
   const router = useRouter();
   const { creditos, error, isLoading, mutate } = useCreditos();
   const [detail, setDetail]       = useState<Credito | null>(null);
@@ -90,7 +92,7 @@ export function CreditosTable({ role }: { role: Role }) {
       (moraFilter === "all"
         || (moraFilter === "al_dia" && c.dias_mora === 0)
         || (moraFilter === "en_mora" && c.dias_mora > 0)
-        || (moraFilter === "critica" && c.dias_mora > 30))
+        || (moraFilter === "critica" && severidadMora(c.dias_mora, tramos) === "critica"))
     );
   }, [creditos, search, estadoFilter, tipoFilter, moraFilter]);
 
@@ -99,7 +101,7 @@ export function CreditosTable({ role }: { role: Role }) {
     // Cartera VIVA: incluye los vencidos, que siguen siendo plata en la calle.
     activos:      creditos.filter(c => esCreditoVivo(c.estado)).length,
     cartera:      creditos.filter(c => esCreditoVivo(c.estado)).reduce((s, c) => s + c.saldo_pendiente, 0),
-    moraCritica:  creditos.filter(c => c.dias_mora > 30).length,
+    moraCritica:  creditos.filter(c => severidadMora(c.dias_mora, tramos) === "critica").length,
     pagados:      creditos.filter(c => c.estado === "pagado").length,
   }), [creditos]);
 
@@ -310,7 +312,7 @@ export function CreditosTable({ role }: { role: Role }) {
                 cell: (c) => <span className="text-xs text-muted-foreground">{c.tasa}%</span> },
               { header: "Mora", align: "center",
                 cell: (c) => c.dias_mora > 0
-                  ? <StatusBadge label={formatDias(c.dias_mora)} variant={c.dias_mora > 30 ? "destructive" : "warning"} />
+                  ? <StatusBadge label={formatDias(c.dias_mora)} variant={severidadMora(c.dias_mora, tramos) === "critica" ? "destructive" : "warning"} />
                   : <span className="text-xs font-medium text-success">Al día</span> },
               /*
                 Sin columna "Acciones": eran cinco íconos pegados, sin texto, que había que
@@ -366,7 +368,7 @@ export function CreditosTable({ role }: { role: Role }) {
                       revele el título, en un teléfono no hay forma de saber qué hace cada uno. */}
                   <div className="pt-2 border-t border-border/70">
                     {c.dias_mora > 0
-                      ? <StatusBadge label={`${formatDias(c.dias_mora)} de mora`} variant={c.dias_mora > 30 ? "destructive" : "warning"} />
+                      ? <StatusBadge label={`${formatDias(c.dias_mora)} de mora`} variant={severidadMora(c.dias_mora, tramos) === "critica" ? "destructive" : "warning"} />
                       : <span className="text-xs font-medium text-success">Al día</span>}
                   </div>
                 </div>
@@ -417,6 +419,8 @@ export function CreditosTable({ role }: { role: Role }) {
  * origen resuelto desde la misma lista. Click → abre el detalle del crédito nuevo.
  */
 function RefinanciadosView({ creditos, onOpen, onRefinanciar }: { creditos: Credito[]; onOpen: (c: Credito) => void; onRefinanciar: (c: Credito) => void }) {
+  /** Los cortes media/alta/crítica que definió la financiera (Configuración → Cobranza). */
+  const tramos = useTramosMora();
   const porId = useMemo(() => new Map(creditos.map((c) => [c.id, c])), [creditos]);
   const pares = useMemo(
     () =>
@@ -528,7 +532,7 @@ function RefinanciadosView({ creditos, onOpen, onRefinanciar }: { creditos: Cred
                     <button onClick={() => onOpen(c)} className="min-w-0 flex-1 text-left" title="Ver detalle del crédito">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="font-mono text-xs font-bold text-foreground">{formatCreditoNumero(c.numero, c.refinancia_a_numero)}</span>
-                        <StatusBadge label={`${formatDias(c.dias_mora)} de mora`} variant={c.dias_mora > 30 ? "destructive" : "warning"} />
+                        <StatusBadge label={`${formatDias(c.dias_mora)} de mora`} variant={severidadMora(c.dias_mora, tramos) === "critica" ? "destructive" : "warning"} />
                         {c.es_refinanciacion && (
                           <span className="inline-flex items-center gap-1 rounded-full bg-warning/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-warning" title="Ya proviene de una refinanciación previa: cuidado con encadenar reestructuraciones">
                             <RefreshCw className="h-2.5 w-2.5" /> re-refi
@@ -601,7 +605,7 @@ function RefinanciadosView({ creditos, onOpen, onRefinanciar }: { creditos: Cred
             cell: (p) => <span className={p.nuevo.saldo_pendiente > 0 ? "text-warning font-semibold" : "text-success"}>${n0(p.nuevo.saldo_pendiente)}</span> },
           { header: "Mora", align: "center",
             cell: (p) => p.nuevo.dias_mora > 0
-              ? <StatusBadge label={formatDias(p.nuevo.dias_mora)} variant={p.nuevo.dias_mora > 30 ? "destructive" : "warning"} />
+              ? <StatusBadge label={formatDias(p.nuevo.dias_mora)} variant={severidadMora(p.nuevo.dias_mora, tramos) === "critica" ? "destructive" : "warning"} />
               : <span className="text-xs font-medium text-success">Al día</span> },
           { header: "Fecha", className: "whitespace-nowrap",
             cell: (p) => <span className="text-xs text-muted-foreground">{formatFecha(p.nuevo.created_at)}</span> },
@@ -626,7 +630,7 @@ function RefinanciadosView({ creditos, onOpen, onRefinanciar }: { creditos: Cred
                 <RefreshCw className="h-3 w-3" />{formatCreditoNumero(p.nuevo.numero, p.origen?.numero)}
               </span>
               {p.nuevo.dias_mora > 0
-                ? <StatusBadge label={`${formatDias(p.nuevo.dias_mora)} de mora`} variant={p.nuevo.dias_mora > 30 ? "destructive" : "warning"} />
+                ? <StatusBadge label={`${formatDias(p.nuevo.dias_mora)} de mora`} variant={severidadMora(p.nuevo.dias_mora, tramos) === "critica" ? "destructive" : "warning"} />
                 : <span className="text-xs font-medium text-success">Al día</span>}
             </div>
             <p className="font-medium text-foreground text-sm">{nombreCompleto(p.nuevo.cliente)}</p>
