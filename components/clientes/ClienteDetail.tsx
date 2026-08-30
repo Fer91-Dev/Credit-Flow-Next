@@ -1154,11 +1154,27 @@ function CuotasInline({ credito, onCobrar }: {
               {formatMonto(round2(proximaAcuerdo.monto - proximaAcuerdo.pagado))}
             </span>
           </div>
-          {/* La frase que faltaba: por qué los números de abajo son otros. */}
-          <p className="mt-2 border-t border-primary/15 pt-2 text-[11px] leading-relaxed text-muted-foreground">
-            Las cuotas de abajo son las del <span className="text-foreground">crédito</span>: es adonde se imputa la
-            plata, no lo que se le cobra. Para cobrar lo pactado, andá a Cobranzas → Acuerdos.
-          </p>
+          {/*
+            Por qué los números de abajo son otros, y por dónde SÍ se cobra.
+
+            🔴 Acá decía "andá a Cobranzas → Acuerdos" como texto suelto. Es una instrucción
+            para que la persona haga a mano un viaje que la pantalla puede hacer sola, y
+            encima la deja buscando el acuerdo correcto entre todos los de la lista. El
+            enlace lleva a ESTE acuerdo con el cobro abierto.
+          */}
+          <div className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t border-primary/15 pt-2">
+            <p className="text-[11px] leading-relaxed text-muted-foreground">
+              Las cuotas de abajo son las del <span className="text-foreground">crédito</span>: ahí se imputa la
+              plata, no es lo que se le cobra.
+            </p>
+            <Link
+              href={`/cobranza?tab=acuerdos&acuerdo=${acuerdo.id}`}
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+            >
+              Cobrar la cuota pactada
+              <ChevronRight className="h-3.5 w-3.5" />
+            </Link>
+          </div>
         </div>
       )}
 
@@ -1179,6 +1195,19 @@ function CuotasInline({ credito, onCobrar }: {
         /* El botón verde SOLO en Pagos: es la misma ficha que se muestra en Clientes, y el
            cobro se ata a la variante, no al componente. */
         onCobrar={onCobrar ? (q) => onCobrar(credito, q) : undefined}
+        /*
+          🔴 CON UN ACUERDO VIGENTE, ESTE PLAN NO SE COBRA. Había dos botones de cobro sobre
+          la misma deuda con importes distintos, y el de arriba —el pactado— era el correcto.
+          Un párrafo explicándolo no alcanza: mientras el botón verde esté ahí, alguien lo va
+          a apretar, y va a cobrar el número equivocado con el cliente enfrente.
+
+          Se apaga solo cuando el acuerdo deja de estar vigente: `meta.acuerdo` sale de una
+          consulta filtrada por `estado: "vigente"`, así que si el acuerdo se rompe o se
+          cumple, las cuotas del crédito vuelven a habilitarse sin que nadie toque nada.
+        */
+        cobroBloqueado={
+          acuerdo ? "Hay un acuerdo de pago vigente: el cobro va por la cuota pactada" : null
+        }
       />
     </div>
   );

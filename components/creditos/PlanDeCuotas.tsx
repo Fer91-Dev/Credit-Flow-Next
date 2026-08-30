@@ -46,6 +46,15 @@ export interface PlanDeCuotasProps {
    * Créditos y en Clientes desde que el cobro se unificó en Pagos.
    */
   onCobrar?: (cuota: CuotaPersistida) => void;
+  /**
+   * Motivo por el que HOY no se cobra sobre este plan, aunque la pantalla sepa cobrar.
+   *
+   * 🔴 Deshabilitado ≠ ausente. Con un acuerdo vigente el cobro va por el acuerdo, no por
+   * estas cuotas — pero si el botón simplemente desaparece, el operador no lee "acá no", lee
+   * "esta pantalla no cobra" y se va a buscar el camino que ya tenía. El botón se queda,
+   * apagado y sin el verde que invita, y el motivo viaja en el tooltip.
+   */
+  cobroBloqueado?: string | null;
   /** Cómo se llama una cuota en este crédito ("cuota", "semana"…). Solo para el tooltip. */
   unidadCuota?: string;
   /** La cuota que toca cobrar: se marca para que no sea un renglón más entre doce iguales. */
@@ -59,7 +68,7 @@ export interface PlanDeCuotasProps {
 }
 
 export function PlanDeCuotas({
-  cuotas, onCobrar, unidadCuota = "cuota", proximaNro, resaltarProxima, mora, denso,
+  cuotas, onCobrar, cobroBloqueado, unidadCuota = "cuota", proximaNro, resaltarProxima, mora, denso,
 }: PlanDeCuotasProps) {
   if (cuotas.length === 0) return null;
 
@@ -291,8 +300,15 @@ export function PlanDeCuotas({
                         {onCobrar ? (
                           <button
                             onClick={() => onCobrar(q)}
-                            title={`Cobrar la ${unidadCuota} ${q.nro}`}
-                            className="inline-flex items-center justify-center rounded-lg bg-success px-3 py-1.5 font-mono text-[11px] font-semibold tabular-nums text-success-foreground transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-success/40"
+                            disabled={!!cobroBloqueado}
+                            title={cobroBloqueado ?? `Cobrar la ${unidadCuota} ${q.nro}`}
+                            className={
+                              cobroBloqueado
+                                // Sin el verde: el importe sigue siendo cierto (es lo que
+                                // debe la cuota), pero ya no es una invitación a apretarlo.
+                                ? "inline-flex cursor-not-allowed items-center justify-center rounded-lg border border-border bg-muted/40 px-3 py-1.5 font-mono text-[11px] font-semibold tabular-nums text-muted-foreground"
+                                : "inline-flex items-center justify-center rounded-lg bg-success px-3 py-1.5 font-mono text-[11px] font-semibold tabular-nums text-success-foreground transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-success/40"
+                            }
                           >
                             ${n2(q.total_cobrar ?? q.cuota_total)}
                           </button>

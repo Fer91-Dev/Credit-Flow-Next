@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import useSWR, { mutate } from "swr";
 import { Handshake, Ban, DollarSign, Printer } from "lucide-react";
 import { formatMonto, formatFecha, formatCreditoNumero, cuandoVence } from "@/lib/utils";
@@ -124,6 +124,34 @@ export function AcuerdosTab({ role }: { role: Role }) {
   const key = `/api/cobranza/acuerdos${estado ? `?estado=${estado}` : ""}`;
   const { data, isLoading } = useSWR<{ acuerdos: Acuerdo[]; vigentes: number; total: number }>(key, fetcher);
   const acuerdos = data?.acuerdos ?? [];
+
+  /**
+   * Llegada directa desde la ficha del cliente: `/cobranza?tab=acuerdos&acuerdo=<id>` abre el
+   * cobro de ESE acuerdo, no la lista.
+   *
+   * 🔴 Antes la banda del acuerdo decía "andá a Cobranzas → Acuerdos" y ahí terminaba: el
+   * operador tenía que encontrar a mano el acuerdo correcto entre todos los vigentes, con el
+   * cliente esperando. Una pantalla que sabe a cuál ir no debería pedirle a nadie que lo
+   * busque.
+   *
+   * Se dispara UNA sola vez (`yaAbierto`): sin eso, cerrar el diálogo lo volvería a abrir en
+   * el render siguiente y no habría forma de salir. El parámetro se limpia de la URL una vez
+   * consumido, para que recargar la página no lo repita.
+   */
+  const yaAbierto = useRef(false);
+  useEffect(() => {
+    if (yaAbierto.current || acuerdos.length === 0) return;
+    const params = new URLSearchParams(window.location.search);
+    const id = params.get("acuerdo");
+    if (!id) return;
+    const target = acuerdos.find((a) => a.id === id);
+    if (!target) return;          // no está en el filtro actual: no se fuerza nada
+    yaAbierto.current = true;
+    setCobrando(target);
+    params.delete("acuerdo");
+    const qs = params.toString();
+    window.history.replaceState(null, "", `/cobranza${qs ? `?${qs}` : ""}`);
+  }, [acuerdos]);
 
   const totalAcordado = acuerdos.reduce((s, a) => s + a.monto_acordado, 0);
   const totalCobrado = acuerdos.reduce((s, a) => s + a.cobrado, 0);
