@@ -83,6 +83,12 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
       /** Tope de condonación para QUIEN ESTÁ MIRANDO (según su rol). */
       quita_maxima: quitaMaxima(deuda, role === "admin", cfg),
       /**
+       * El % del tope, para poder DECIRLO. "Hasta $147.000" no explica de dónde sale ese
+       * número; "hasta el 75% de los punitorios y el interés" sí, y es lo que el vendedor le
+       * repite al cliente cuando negocia. El admin no tiene tope (llega al 100%).
+       */
+      quita_max_pct: role === "admin" ? 100 : cfg.quita_max_vendedor_pct,
+      /**
        * La tasa con la que se va a armar el plan, ya resuelta, para que la pantalla calcule
        * EL MISMO plan que va a crear el alta. Sin esto el diálogo repartía la deuda en partes
        * iguales y prometía un total que no era el que se creaba.

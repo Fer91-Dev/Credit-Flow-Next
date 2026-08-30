@@ -41,6 +41,8 @@ interface Preview {
     cuotas_para_romper: number;
     congela_punitorios: boolean;
     quita_maxima: number;
+    /** % de lo condonable que puede otorgar quien está mirando (100 para un admin). */
+    quita_max_pct: number;
     /** Tasa con la que el servidor va a armar el plan (% mensual, ya resuelta). */
     tasa_mensual: number;
     /** De dónde salió: la fijó la financiera, o se heredó la del crédito. */
@@ -113,6 +115,12 @@ export function NuevoAcuerdoView({ creditoId }: { creditoId: string | null }) {
    */
   const acordado = Math.round((total - quitaNum - entregaNum) * 100) / 100;
   const excedeQuita = data ? quitaNum > data.limites.quita_maxima : false;
+  /**
+   * El mínimo que el cliente tiene que pagar: la deuda menos todo lo que quien está armando el
+   * acuerdo puede condonar. Es contra este número que se negocia en el mostrador — "de acá no
+   * bajo" —, no contra el descuento.
+   */
+  const pisoQuita = Math.round((total - (data?.limites.quita_maxima ?? 0)) * 100) / 100;
   /** La entrega no puede llevarse más que la deuda: lo que sobrara no tendría dónde imputarse. */
   const excedeEntrega = entregaNum > Math.round((total - quitaNum) * 100) / 100 + 0.01;
   /**
@@ -435,8 +443,28 @@ export function NuevoAcuerdoView({ creditoId }: { creditoId: string | null }) {
               <div className="flex flex-col gap-1.5">
                 <FieldLabel>Condonación (opcional)</FieldLabel>
                 <MoneyInput value={quita} onChange={setQuita} currency="$" />
+                {/*
+                  🔴 EL TOPE SE DICE COMO PISO, no como techo.
+
+                  Decía "hasta $147.000 de condonación", que obliga a hacer la resta de cabeza
+                  para saber lo único que importa en el mostrador: cuál es el mínimo que el
+                  cliente tiene que pagar. El vendedor negocia contra ese piso, no contra el
+                  descuento. Y el % va escrito porque explica de dónde sale el número.
+                */}
                 <p className={`text-xs ${excedeQuita ? "text-destructive" : "text-muted-foreground"}`}>
-                  Hasta {formatMonto(data.limites.quita_maxima)} — sale de los punitorios y el interés, nunca del capital.
+                  {excedeQuita ? (
+                    <>
+                      No podés bajar de <span className="font-mono font-semibold">{formatMonto(pisoQuita)}</span>
+                      {data.limites.quita_max_pct < 100 && <> (tope: {data.limites.quita_max_pct}%)</>}.
+                    </>
+                  ) : (
+                    <>
+                      No podés bajar de <span className="font-mono">{formatMonto(pisoQuita)}</span> — hasta{" "}
+                      {formatMonto(data.limites.quita_maxima)}
+                      {data.limites.quita_max_pct < 100 && <> ({data.limites.quita_max_pct}% de los punitorios y el interés)</>}
+                      , nunca del capital.
+                    </>
+                  )}
                 </p>
               </div>
             )}
