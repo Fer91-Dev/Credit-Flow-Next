@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import useSWR, { mutate as globalMutate } from "swr";
 import { Handshake, ArrowLeft, Loader2 } from "lucide-react";
-import { formatMonto, formatFecha, formatCreditoNumero, parseMontoInput } from "@/lib/utils";
+import { formatMonto, formatFecha, formatCreditoNumero, formatNumero, parseMontoInput, cn } from "@/lib/utils";
 import { SystemControls } from "@/components/ui/SystemControls";
 import { MoneyInput, FieldLabel, IconTextarea, IconSelect } from "@/components/caja/caja-form";
 import { useConfirm } from "@/components/ui/confirm";
@@ -171,7 +171,7 @@ export function NuevoAcuerdoView({ creditoId }: { creditoId: string | null }) {
           : "") +
         `${data.credito.cliente ?? "el cliente"} se compromete a pagar ${formatMonto(totalPlan)} en ${cuotas} cuota(s)` +
         (interesAcuerdo > 0 ? ` (incluye ${formatMonto(interesAcuerdo)} de interés al ${data.limites.tasa_mensual}% mensual)` : "") +
-        (quitaNum > 0 ? `, con ${formatMonto(quitaNum)} de condonación` : "") +
+        (quitaNum > 0 ? `, con ${formatMonto(quitaNum)} de descuento sobre punitorios e interés` : "") +
         `. Mientras cumpla sale de la cola de morosos${data.limites.congela_punitorios ? " y no se le devengan punitorios" : ""}.`,
       confirmLabel: entregaNum > 0 ? "Cobrar y armar" : "Armar acuerdo",
     });
@@ -438,18 +438,63 @@ export function NuevoAcuerdoView({ creditoId }: { creditoId: string | null }) {
               </div>
             </div>
 
-            {/* La quita solo aparece si esta persona puede otorgarla. */}
+            {/*
+              EL DESCUENTO. Solo aparece si esta persona puede otorgarlo.
+
+              🔴 SE LLAMABA "CONDONACIÓN" Y NADIE SABÍA QUÉ ERA. Es el término del código —lo
+              que el motor le perdona a la deuda— y en el mostrador no se dice así: se dice
+              "te bonifico los punitorios". Fernando ya había pedido lo mismo para las
+              campañas de recupero; acá había quedado la palabra vieja.
+
+              🔴 Y SE NEGOCIA EN PORCENTAJES, no en pesos. Nadie ofrece "$224.362,82 de
+              descuento": ofrece "te hago el 50%". Los botones dan los saltos con los que se
+              negocia de verdad y el importe se calcula solo; el campo sigue aceptando un
+              número exacto para cerrar la punta del trato.
+            */}
             {data.limites.quita_maxima > 0 && (
               <div className="flex flex-col gap-1.5">
-                <FieldLabel>Condonación (opcional)</FieldLabel>
-                <MoneyInput value={quita} onChange={setQuita} currency="$" />
-                {/*
-                  🔴 EL TOPE SE DICE COMO PISO, no como techo.
+                <FieldLabel>Descuento sobre punitorios e interés (opcional)</FieldLabel>
 
-                  Decía "hasta $147.000 de condonación", que obliga a hacer la resta de cabeza
-                  para saber lo único que importa en el mostrador: cuál es el mínimo que el
-                  cliente tiene que pagar. El vendedor negocia contra ese piso, no contra el
-                  descuento. Y el % va escrito porque explica de dónde sale el número.
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {[25, 50, 75, 100].map((pct) => {
+                    // El % es del MÁXIMO que esta persona puede dar, no de la deuda: "el 100%"
+                    // para un vendedor con tope del 75% es su 75%, no perdonar todo.
+                    const monto = Math.round(data.limites.quita_maxima * (pct / 100) * 100) / 100;
+                    const activo = Math.abs(quitaNum - monto) < 0.5 && quitaNum > 0;
+                    return (
+                      <button
+                        key={pct}
+                        type="button"
+                        onClick={() => setQuita(activo ? "" : formatNumero(monto, 2))}
+                        className={cn(
+                          "rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors",
+                          activo
+                            ? "border-success bg-success/10 text-success"
+                            : "border-border text-muted-foreground hover:border-success/40 hover:bg-muted/30 hover:text-foreground",
+                        )}
+                      >
+                        {pct === 100 ? "Todo lo que puedo" : `${pct}%`}
+                      </button>
+                    );
+                  })}
+                  {quitaNum > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setQuita("")}
+                      className="rounded-lg px-2.5 py-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
+                    >
+                      Sin descuento
+                    </button>
+                  )}
+                </div>
+
+                <MoneyInput value={quita} onChange={setQuita} currency="$" />
+
+                {/*
+                  🔴 EL TOPE SE DICE COMO PISO, no como techo. "Hasta $224.362,82 de descuento"
+                  obliga a hacer la resta de cabeza para saber lo único que importa con el
+                  cliente enfrente: cuál es el mínimo que tiene que pagar. Se negocia contra
+                  ese piso, no contra el descuento.
                 */}
                 <p className={`text-xs ${excedeQuita ? "text-destructive" : "text-muted-foreground"}`}>
                   {excedeQuita ? (
@@ -457,12 +502,19 @@ export function NuevoAcuerdoView({ creditoId }: { creditoId: string | null }) {
                       No podés bajar de <span className="font-mono font-semibold">{formatMonto(pisoQuita)}</span>
                       {data.limites.quita_max_pct < 100 && <> (tope: {data.limites.quita_max_pct}%)</>}.
                     </>
+                  ) : quitaNum > 0 ? (
+                    <>
+                      Le perdonás el{" "}
+                      <span className="font-semibold text-success">{Math.round((quitaNum / data.limites.quita_maxima) * 100)}%</span>
+                      {" "}de lo que podés · paga <span className="font-mono text-foreground">{formatMonto(acordado)}</span>
+                      {" "}en vez de {formatMonto(total)}
+                    </>
                   ) : (
                     <>
-                      No podés bajar de <span className="font-mono">{formatMonto(pisoQuita)}</span> — hasta{" "}
+                      Sale de los punitorios y el interés, nunca del capital. Podés dar hasta{" "}
                       {formatMonto(data.limites.quita_maxima)}
-                      {data.limites.quita_max_pct < 100 && <> ({data.limites.quita_max_pct}% de los punitorios y el interés)</>}
-                      , nunca del capital.
+                      {data.limites.quita_max_pct < 100 && <> ({data.limites.quita_max_pct}% de lo condonable)</>}
+                      {" "}— no podés bajar de <span className="font-mono">{formatMonto(pisoQuita)}</span>.
                     </>
                   )}
                 </p>
@@ -495,7 +547,7 @@ export function NuevoAcuerdoView({ creditoId }: { creditoId: string | null }) {
                     </div>
                     {quitaNum > 0 && (
                       <div className="flex items-center justify-between">
-                        <span className="text-muted-foreground">Condonación</span>
+                        <span className="text-muted-foreground">Descuento</span>
                         <span className="font-mono tabular-nums text-success">−{formatMonto(quitaNum)}</span>
                       </div>
                     )}

@@ -664,7 +664,7 @@ export function PagoForm({ creditoId, clienteId, montoSugerido, motivoSugerido, 
                     </tr>
                     {(acuerdo.quita ?? 0) > 0 && (
                       <tr>
-                        <td className="py-0.5 font-sans text-muted-foreground">Condonación</td>
+                        <td className="py-0.5 font-sans text-muted-foreground">Descuento</td>
                         <td className="py-0.5 text-right text-success">−${fmt2(acuerdo.quita ?? 0)}</td>
                       </tr>
                     )}
