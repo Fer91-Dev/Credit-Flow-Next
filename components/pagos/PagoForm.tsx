@@ -1129,9 +1129,15 @@ export function PagoForm({ creditoId, clienteId, montoSugerido, motivoSugerido, 
                         </span>
                       )}
                     </div>
+                    {/*
+                      🔴 EL CARTEL DECÍA QUE EL EXCEDENTE "QUEDA A FAVOR DEL CLIENTE". ES FALSO.
+                      `POST /api/pagos` rechaza el cobro con SOBREPAGO (400) apenas la
+                      imputación deja excedente: no existe el saldo a favor, la plata no entra.
+                      El operador leía "queda a favor", confirmaba, y se comía un error.
+                    */}
                     {excede && (
                       <p className="mt-2 text-right text-[11px] text-warning">
-                        ⚠ Supera lo adeudado — el excedente queda a favor del cliente
+                        ⚠ El crédito debe ${fmt2(totalAdeudado)} — de acá para arriba el cobro se rechaza
                       </p>
                     )}
                   </div>
@@ -1238,8 +1244,18 @@ export function PagoForm({ creditoId, clienteId, montoSugerido, motivoSugerido, 
           )}
           <div className="border-t border-border" />
           <Row label="Monto a cobrar" value={`$${fmt2(monto)}`} mono strong accent="text-success" />
+          {/*
+            Mismo aviso que arriba, con el número: el servidor RECHAZA, no guarda un excedente.
+
+            No se deshabilita "Confirmar": este total se calcula en el navegador y ya se
+            equivocó antes (en CRD-000069 decía $550.812,84 sobre una deuda real de
+            $572.845,35, por no contar la mora). Bloquear con un número estimado habría
+            impedido cobrar un crédito entero. Se avisa; la barrera real es el servidor.
+          */}
           {excede && (
-            <p className="text-[11px] text-warning">⚠ Supera el saldo — el excedente quedará a favor del cliente.</p>
+            <p className="text-[11px] text-warning">
+              ⚠ El crédito debe ${fmt2(totalAdeudado)}. Por encima de eso el cobro se rechaza.
+            </p>
           )}
         </div>
 
