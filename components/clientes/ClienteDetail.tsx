@@ -6,9 +6,9 @@ import Link from "next/link";
 import { useState } from "react";
 import { useSWRConfig } from "swr";
 import {
-  Pencil, Trash2, CalendarClock, ChevronRight, ChevronDown, Loader2, Mail, MessageCircle, Phone, Printer, ShieldCheck, Ban, Receipt, AlertTriangle, History, BellOff, Wallet, Sparkles, Handshake,
+  Pencil, Trash2, CalendarClock, ChevronDown, Loader2, Mail, MessageCircle, Phone, Printer, ShieldCheck, Ban, Receipt, AlertTriangle, History, BellOff, Wallet, Sparkles, Handshake,
 } from "lucide-react";
-import { refrescarNotificaciones, useClienteDetalle, useAccionesCobranza, useCuotas, KEYS, type CreditoConFinanzas, type EstadoCuota, type CuotaPersistida, useDiasLegales } from "@/lib/swr";
+import { refrescarNotificaciones, useClienteDetalle, useAccionesCobranza, useCuotas, KEYS, type CreditoConFinanzas, type EstadoCuota, type CuotaPersistida, type CuotasCredito, useDiasLegales } from "@/lib/swr";
 import { StatusBadge, type BadgeVariant } from "@/components/ui/StatusBadge";
 import { ScoreBadge } from "@/components/ui/ScoreBadge";
 import { Stat } from "@/components/ui/Stat";
@@ -131,6 +131,21 @@ export function ClienteDetail({
    * archivo puede vivir después de ese return.
    */
   const [cobrando, setCobrando] = useState<{ credito: CreditoConFinanzas; cuota: CuotaPersistida } | null>(null);
+  /**
+   * Cobro de la cuota PACTADA de un acuerdo vigente (null = cerrado).
+   *
+   * 🔴 SE COBRA ACÁ, NO EN OTRA PANTALLA. Antes el aviso del acuerdo llevaba a
+   * `/cobranza?tab=acuerdos`: el operador veía pasar la pantalla de Cobranzas y recién
+   * después se abría el modal. Fernando: "es un paso sin sentido llevarme a Cobranzas y
+   * Recupero". Y tiene razón de fondo — está en la ficha, con el cliente enfrente y el dato
+   * del acuerdo ya en la mano; no hay nada que ir a buscar a ningún lado.
+   *
+   * Va en la RAÍZ por lo mismo que `cobrando`: un diálogo montado dentro de la fila expandida
+   * del crédito se desmonta si el operador colapsa la fila mientras cobra.
+   */
+  const [cobrandoAcuerdo, setCobrandoAcuerdo] = useState<
+    { creditoId: string; acuerdo: NonNullable<CuotasCredito["acuerdo"]> } | null
+  >(null);
   /**
    * A cuántos días de atraso el crédito pasa a Legales (Configuración → Cobranza).
    *
@@ -687,7 +702,13 @@ export function ClienteDetail({
             {activos.length === 0 ? (
               <SinCreditosActivos yaFueCliente={historicos.length > 0} />
             ) : (
-              <CreditosTabla creditos={activos} clienteId={cliente.id} abiertoDeEntrada={esTerminal} onCobrar={puedeCobrarAca ? (c, q) => setCobrando({ credito: c, cuota: q }) : undefined} />
+              <CreditosTabla
+                creditos={activos}
+                clienteId={cliente.id}
+                abiertoDeEntrada={esTerminal}
+                onCobrar={puedeCobrarAca ? (c, q) => setCobrando({ credito: c, cuota: q }) : undefined}
+                onCobrarAcuerdo={puedeCobrarAca ? (creditoId, acuerdo) => setCobrandoAcuerdo({ creditoId, acuerdo }) : undefined}
+              />
             )}
           </section>
         )}
@@ -845,6 +866,51 @@ export function ClienteDetail({
         </DialogContent>
       </Dialog>
 
+      {/*
+        COBRO DE LA CUOTA PACTADA. Es el MISMO formulario que usa la pestaña de Acuerdos, con
+        los mismos parámetros: `esAcuerdo` es lo que fija el modo de monto libre y lo que ata
+        el pago a la cuota del acuerdo. No es un segundo circuito de cobro — el acuerdo se
+        concilia solo, con los pagos que entran por la vía de siempre.
+      */}
+      <Dialog open={!!cobrandoAcuerdo} onOpenChange={(o) => { if (!o) setCobrandoAcuerdo(null); }}>
+        <DialogContent className="w-[95vw] sm:max-w-5xl max-h-[94dvh] flex flex-col overflow-hidden">
+          <DialogHeader className="shrink-0">
+            <DialogTitle>Cobrar cuota del acuerdo</DialogTitle>
+          </DialogHeader>
+          <div className="flex-1 min-h-0 flex flex-col">
+            {cobrandoAcuerdo && (() => {
+              const ac = cobrandoAcuerdo.acuerdo;
+              const q = ac.cuotas.find((c) => c.estado !== "pagada") ?? null;
+              const pendiente = q ? Math.round((q.monto - q.pagado) * 100) / 100 : 0;
+              return (
+                <PagoForm
+                  creditoId={cobrandoAcuerdo.creditoId}
+                  esAcuerdo
+                  montoSugerido={pendiente > 0 ? pendiente : undefined}
+                  motivoSugerido={
+                    q ? `Cuota ${q.numero} de ${ac.total_cuotas} del acuerdo · vence ${formatFecha(q.vencimiento)}` : undefined
+                  }
+                  onClose={(ok) => {
+                    const creditoId = cobrandoAcuerdo.creditoId;
+                    setCobrandoAcuerdo(null);
+                    if (!ok) return;
+                    // Lo mismo que el cobro de una cuota, más la lista de acuerdos: el cobro
+                    // avanza el plan pactado y esa pantalla lo tiene que reflejar.
+                    mutate();
+                    globalMutate(`/api/creditos/${creditoId}/cuotas`);
+                    globalMutate(KEYS.creditos); globalMutate(KEYS.pagos);
+                    globalMutate(KEYS.dashboard); globalMutate("/api/caja");
+                    globalMutate((k) => typeof k === "string" && k.startsWith("/api/cobranza/acuerdos"));
+                    refrescarNotificaciones();
+                    toast.success("Pago registrado");
+                  }}
+                />
+              );
+            })()}
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={!!anularPago} onOpenChange={(o) => { if (!o) { setAnularPago(null); setAnularMotivo(""); } }}>
         <DialogContent className="w-[95vw] sm:max-w-md">
           <DialogHeader><DialogTitle>Anular pago</DialogTitle></DialogHeader>
@@ -914,7 +980,7 @@ export function ClienteDetail({
  * La FRANJA de la izquierda codifica la severidad —verde al día, ámbar en mora, roja pasando
  * los 30 días— para poder barrer una lista de diez créditos sin leer un número.
  */
-function CreditosTabla({ creditos, mostrarProximo, onCobrar, clienteId, abiertoDeEntrada }: {
+function CreditosTabla({ creditos, mostrarProximo, onCobrar, onCobrarAcuerdo, clienteId, abiertoDeEntrada }: {
   creditos: CreditoConFinanzas[];
   mostrarProximo?: boolean;
   /**
@@ -925,6 +991,8 @@ function CreditosTabla({ creditos, mostrarProximo, onCobrar, clienteId, abiertoD
   abiertoDeEntrada?: boolean;
   /** Cobrar una cuota puntual. Sin handler, el plan queda de solo lectura (Clientes). */
   onCobrar?: (credito: CreditoConFinanzas, cuota: CuotaPersistida) => void;
+  /** Cobrar la cuota PACTADA cuando el crédito tiene un acuerdo vigente. */
+  onCobrarAcuerdo?: (creditoId: string, acuerdo: NonNullable<CuotasCredito["acuerdo"]>) => void;
   /** Para el atajo a la terminal cuando desde acá no se cobra. */
   clienteId?: string;
 }) {
@@ -1047,7 +1115,7 @@ function CreditosTabla({ creditos, mostrarProximo, onCobrar, clienteId, abiertoD
             <div className={`grid transition-[grid-template-rows] duration-300 ease-out ${abierto ? "grid-rows-[1fr]" : "grid-rows-[0fr]"}`}>
               <div className="overflow-hidden">
                 <div className="border-t border-border px-5 py-4">
-                  {abierto && <CuotasInline credito={c} onCobrar={onCobrar} />}
+                  {abierto && <CuotasInline credito={c} onCobrar={onCobrar} onCobrarAcuerdo={onCobrarAcuerdo} />}
                 </div>
               </div>
             </div>
@@ -1093,9 +1161,10 @@ function FragmentRow({ children }: { children: React.ReactNode }) {
  * tildar la cuota que ya se estaba mirando. Ahora el botón verde está en su renglón, dice el
  * importe exacto y abre el cobro con esa cuota puesta, igual que en Créditos.
  */
-function CuotasInline({ credito, onCobrar }: {
+function CuotasInline({ credito, onCobrar, onCobrarAcuerdo }: {
   credito: CreditoConFinanzas;
   onCobrar?: (credito: CreditoConFinanzas, cuota: CuotaPersistida) => void;
+  onCobrarAcuerdo?: (creditoId: string, acuerdo: NonNullable<CuotasCredito["acuerdo"]>) => void;
 }) {
   const creditoId = credito.id;
   const creditoNumero = credito.numero;
@@ -1155,25 +1224,30 @@ function CuotasInline({ credito, onCobrar }: {
             </span>
           </div>
           {/*
-            Por qué los números de abajo son otros, y por dónde SÍ se cobra.
+            Por qué los números de abajo son otros, y el botón que cobra.
 
-            🔴 Acá decía "andá a Cobranzas → Acuerdos" como texto suelto. Es una instrucción
-            para que la persona haga a mano un viaje que la pantalla puede hacer sola, y
-            encima la deja buscando el acuerdo correcto entre todos los de la lista. El
-            enlace lleva a ESTE acuerdo con el cobro abierto.
+            🔴 EL COBRO SE ABRE ACÁ. Primero esto decía "andá a Cobranzas → Acuerdos" (una
+            instrucción para hacer a mano un viaje que la pantalla puede hacer sola) y después
+            fue un enlace a esa pantalla con el modal abierto — pero se veía pasar Cobranzas
+            en el medio. Fernando: "es un paso sin sentido". No hay ningún paso: el operador
+            está en la ficha, con el cliente enfrente y el acuerdo ya cargado en esta misma
+            respuesta. El botón abre el cobro donde está parado.
           */}
           <div className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t border-primary/15 pt-2">
             <p className="text-[11px] leading-relaxed text-muted-foreground">
               Las cuotas de abajo son las del <span className="text-foreground">crédito</span>: ahí se imputa la
               plata, no es lo que se le cobra.
             </p>
-            <Link
-              href={`/cobranza?tab=acuerdos&acuerdo=${acuerdo.id}`}
-              className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
-            >
-              Cobrar la cuota pactada
-              <ChevronRight className="h-3.5 w-3.5" />
-            </Link>
+            {onCobrarAcuerdo && (
+              <button
+                type="button"
+                onClick={() => onCobrarAcuerdo(credito.id, acuerdo)}
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+              >
+                <Handshake className="h-3.5 w-3.5" />
+                Cobrar la cuota pactada
+              </button>
+            )}
           </div>
         </div>
       )}
