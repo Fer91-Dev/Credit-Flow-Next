@@ -27,7 +27,14 @@ interface Preview {
    */
   escalera: { permitido: boolean; motivo: string | null; sugerencia: string | null; puede_autorizar: boolean };
   credito: { id: string; numero: number | null; estado: string; cliente: string | null };
-  deuda: { capital: number; interes: number; cargos: number; mora: number; total: number; cuotas_vencidas: number };
+  deuda: {
+    capital: number; interes: number; cargos: number; mora: number; total: number;
+    cuotas_vencidas: number;
+    /** Cuotas que entran en total (vencidas + por vencer, si la política las incluye). */
+    cuotas_incluidas: number;
+    /** Lo que aportan las cuotas que todavía no vencieron. 0 si no se incluyen. */
+    por_vencer: number;
+  };
   limites: {
     max_cuotas: number;
     dias_entre_cuotas: number;
@@ -341,10 +348,35 @@ export function NuevoAcuerdoView({ creditoId }: { creditoId: string | null }) {
                 <span className="text-muted-foreground">Punitorios</span>
                 <span className="font-mono text-foreground">{formatMonto(data.deuda.mora)}</span>
               </div>
+              {/*
+                Lo que TODAVÍA NO VENCÍA, discriminado. Cuando el acuerdo se lleva el crédito
+                entero (la política de la financiera), el total es más alto que la deuda
+                vencida que el operador le acaba de leer al cliente: sin este renglón parece
+                un error de cuenta.
+              */}
+              {data.deuda.por_vencer > 0 && (
+                <div className="flex items-center justify-between px-3 py-2">
+                  <span className="text-muted-foreground">
+                    Cuotas por vencer
+                    <span className="text-muted-foreground/60"> · {data.deuda.cuotas_incluidas - data.deuda.cuotas_vencidas} que faltan</span>
+                  </span>
+                  <span className="font-mono text-foreground">{formatMonto(data.deuda.por_vencer)}</span>
+                </div>
+              )}
               <div className="flex items-center justify-between bg-muted/40 px-3 py-2.5">
-                <span className="font-medium text-foreground">Debe vencido ({data.deuda.cuotas_vencidas} cuota{data.deuda.cuotas_vencidas === 1 ? "" : "s"})</span>
+                <span className="font-medium text-foreground">
+                  {data.deuda.por_vencer > 0 ? "Toda la deuda" : "Debe vencido"}
+                  {" "}({data.deuda.cuotas_incluidas} cuota{data.deuda.cuotas_incluidas === 1 ? "" : "s"})
+                </span>
                 <span className="font-mono font-bold text-foreground">{formatMonto(data.deuda.total)}</span>
               </div>
+              {data.deuda.por_vencer > 0 && (
+                <p className="px-3 py-2 text-[11px] leading-relaxed text-muted-foreground">
+                  El plan original se cae: el acuerdo se lleva las {data.deuda.cuotas_vencidas} cuota{data.deuda.cuotas_vencidas === 1 ? "" : "s"} vencida{data.deuda.cuotas_vencidas === 1 ? "" : "s"}
+                  {" "}y {data.deuda.cuotas_incluidas - data.deuda.cuotas_vencidas === 1 ? "la que falta" : `las ${data.deuda.cuotas_incluidas - data.deuda.cuotas_vencidas} que faltan`}, así el crédito
+                  queda saldado al terminarlo.
+                </p>
+              )}
             </div>
 
             {/*

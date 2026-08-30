@@ -136,7 +136,7 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
    * cuenta paralela del cliente.
    */
   const cobranzaCfg = await getCobranzaConfig(tenantId);
-  const quitaMax = quitaMaxima({ ...deuda, cuotas_vencidas: 0 }, role === "admin", cobranzaCfg.acuerdos);
+  const quitaMax = quitaMaxima({ ...deuda, cuotas_vencidas: 0, cuotas_incluidas: 0, por_vencer: 0 }, role === "admin", cobranzaCfg.acuerdos);
 
   return successResponse({
     credito: {
@@ -236,7 +236,7 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
    * nunca del capital** (regalar capital es un write-off, otra decisión). El admin llega al
    * 100% de lo condonable; el vendedor, al porcentaje que fije la financiera.
    */
-  const tope = quitaMaxima({ ...deuda, cuotas_vencidas: 0 }, role === "admin", cobranzaCfg.acuerdos);
+  const tope = quitaMaxima({ ...deuda, cuotas_vencidas: 0, cuotas_incluidas: 0, por_vencer: 0 }, role === "admin", cobranzaCfg.acuerdos);
   if (quita.condonado > tope) {
     return errorResponse(
       tope === 0

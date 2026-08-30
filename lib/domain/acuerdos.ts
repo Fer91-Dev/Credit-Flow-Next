@@ -33,6 +33,19 @@ export interface AcuerdosConfig {
   /** Mientras está vigente, el crédito sale de la agenda de morosos (ya está gestionado). */
   saca_de_agenda: boolean;
   /**
+   * El acuerdo se lleva TODO lo que queda del crédito, no solo lo vencido.
+   *
+   * Con `true` (como se opera acá) el plan original se cae: se juntan las cuotas vencidas y
+   * las que faltan vencer, con sus intereses, y el cliente queda con UN solo compromiso. A un
+   * crédito de 3 cuotas con 60 días de atraso no tiene sentido arreglarle dos y dejar la
+   * tercera corriendo.
+   *
+   * Con `false` el acuerdo arregla solo el atraso y el resto del plan sigue su curso — dos
+   * compromisos en paralelo. Es defendible en un crédito largo con dos cuotas vencidas, y por
+   * eso queda como parámetro y no fijo en el código.
+   */
+  incluye_no_vencidas: boolean;
+  /**
    * Quita máxima (%) que puede otorgar un VENDEDOR sin autorización. 0 = no puede condonar.
    *
    * El ADMIN no tiene tope configurable: condona hasta el 100% de lo condonable. Existió un
@@ -65,6 +78,7 @@ export const ACUERDOS_DEFAULT: AcuerdosConfig = {
   cuotas_para_romper: 1,
   congela_punitorios: true,
   saca_de_agenda: true,
+  incluye_no_vencidas: true,
   quita_max_vendedor_pct: 0,
   tasa_mensual: null,
 };
@@ -90,6 +104,7 @@ export function resolverAcuerdos(raw: unknown): AcuerdosConfig {
     cuotas_para_romper: entero(r.cuotas_para_romper, d.cuotas_para_romper, 1, maxCuotas),
     congela_punitorios: bool(r.congela_punitorios, d.congela_punitorios),
     saca_de_agenda: bool(r.saca_de_agenda, d.saca_de_agenda),
+    incluye_no_vencidas: bool(r.incluye_no_vencidas, d.incluye_no_vencidas),
     quita_max_vendedor_pct: pct(r.quita_max_vendedor_pct, d.quita_max_vendedor_pct),
     // `null`/vacío se conserva: significa "heredar la tasa del crédito", que no es lo mismo
     // que 0 (sin interés). Por eso no puede caer al default con un `Number(null) === 0`.
@@ -112,6 +127,17 @@ export interface DeudaVencida {
   total: number;
   /** Cuántas cuotas del crédito están vencidas e impagas. */
   cuotas_vencidas: number;
+  /**
+   * Cuántas cuotas entraron en total (vencidas + por vencer, si se incluyeron).
+   * Con `incluirNoVencidas` en false coincide con `cuotas_vencidas`.
+   */
+  cuotas_incluidas: number;
+  /**
+   * Lo que aportan las cuotas que TODAVÍA NO VENCIERON. Se muestra aparte porque es la parte
+   * que el cliente todavía no debía: sin discriminarla, el total del acuerdo aparece más alto
+   * que la deuda vencida que el operador acaba de leerle y parece un error de cuenta.
+   */
+  por_vencer: number;
 }
 
 export interface OpcionesDeudaVencida {
@@ -121,15 +147,34 @@ export interface OpcionesDeudaVencida {
   topeMoraPct?: number;
   hoy?: Date;
   diasGracia?: number;
+  /**
+   * Incluir también las cuotas que TODAVÍA NO VENCIERON.
+   *
+   * 🔴 Es la decisión de qué ES un acuerdo, y por eso va como parámetro de la financiera.
+   *
+   * Con `false` el acuerdo arregla el ATRASO: lo que no venció sigue su plan y el cliente
+   * queda con dos compromisos en paralelo — el acuerdo y el resto del crédito.
+   *
+   * Con `true` el plan original SE CAE y se junta todo lo que queda en un solo compromiso.
+   * Es lo que hace un cobrador cuando la cosa ya se pudrió: a un crédito de 3 cuotas con 60
+   * días de atraso no tiene sentido arreglarle dos y dejar la tercera corriendo. Además cierra
+   * un agujero real: con `false`, el acuerdo puede quedar CORTO y el crédito sigue vivo con un
+   * saldo después de que el acuerdo se dio por cumplido.
+   */
+  incluirNoVencidas?: boolean;
 }
 
 /**
- * Lo que el cliente debe **HOY**, contando solo las cuotas ya vencidas.
+ * Lo que el cliente debe, para armar un acuerdo.
  *
- * Es la diferencia clave con `calcularDeudaConsolidada` (refinanciación), que toma TODA la
- * deuda viva incluidas las cuotas que todavía no vencieron. Acá no: un acuerdo de pago
- * arregla lo atrasado, no adelanta lo que todavía no se debe. Pedirle a alguien que no
- * puede pagar una cuota que además pague las seis que faltan no es un acuerdo.
+ * Cuánto se toma lo decide `incluirNoVencidas`, que es un parámetro de la financiera:
+ *  - false → solo las cuotas ya vencidas. El acuerdo arregla el ATRASO.
+ *  - true  → todo lo que queda vivo. El plan original SE CAE y se junta en un compromiso.
+ *
+ * Con `true` el resultado es equivalente al de `calcularDeudaConsolidada` (refinanciación) —
+ * la misma deuda, la misma fórmula de mora. Lo que sigue distinguiéndolos es qué pasa después:
+ * la refinanciación CIERRA el crédito y abre uno nuevo; el acuerdo deja el crédito vivo y le
+ * pone un plan de pago encima.
  */
 export function calcularDeudaVencida(
   cuotas: CuotaParaImputar[],
@@ -140,12 +185,14 @@ export function calcularDeudaVencida(
   const tasa = opts.tasaMoraDiaria;
   const gracia = opts.diasGracia;
 
-  let capital = 0, interes = 0, cargos = 0, mora = 0, vencidas = 0;
+  const incluirNoVencidas = opts.incluirNoVencidas ?? false;
+  let capital = 0, interes = 0, cargos = 0, mora = 0, vencidas = 0, incluidas = 0, porVencer = 0;
 
   for (const c of cuotas) {
-    // Solo lo YA VENCIDO. Lo que todavía no venció no entra: pedirle a alguien que no
-    // puede pagar una cuota que además pague las que faltan no es un acuerdo.
-    if (diasAtraso(c.fechaVencimiento, hoy) <= 0) continue;
+    const atraso = diasAtraso(c.fechaVencimiento, hoy);
+    const yaVencio = atraso > 0;
+    // Lo que todavía no venció entra SOLO si la financiera lo pidió (ver `incluirNoVencidas`).
+    if (!yaVencio && !incluirNoVencidas) continue;
 
     const capPend = noNegativo(round2(c.capital - c.pagadoCapital));
     const intPend = noNegativo(round2(c.interes - c.pagadoInteres));
@@ -154,14 +201,18 @@ export function calcularDeudaVencida(
     // Misma fórmula de mora que usa la refinanciación (`calcularDeudaConsolidada`): sobre
     // `cuotaTotal`, no sobre lo pendiente. Si las dos calcularan distinto, refinanciar y
     // acordar darían números diferentes para la misma deuda.
+    // Una cuota que no venció devenga 0: `interesMora` con atraso 0 devuelve 0, así que no
+    // hace falta un caso especial — y si lo hubiera, sería otra fórmula que mantener.
     const moraPlena = moraActiva
-      ? interesMora(c.cuotaTotal, diasAtraso(c.fechaVencimiento, hoy), { tasaDiaria: tasa, diasGracia: gracia, topePct: opts.topeMoraPct })
+      ? interesMora(c.cuotaTotal, atraso, { tasaDiaria: tasa, diasGracia: gracia, topePct: opts.topeMoraPct })
       : 0;
     const moraPend = noNegativo(round2(moraPlena - c.pagadoMora));
 
-    if (capPend + intPend + carPend + moraPend <= 0) continue; // vencida pero saldada
+    if (capPend + intPend + carPend + moraPend <= 0) continue; // ya saldada
 
-    vencidas++;
+    incluidas++;
+    if (yaVencio) vencidas++;
+    else porVencer = round2(porVencer + capPend + intPend + carPend);
     capital = round2(capital + capPend);
     interes = round2(interes + intPend);
     cargos = round2(cargos + carPend);
@@ -172,6 +223,8 @@ export function calcularDeudaVencida(
     capital, interes, cargos, mora,
     total: round2(capital + interes + cargos + mora),
     cuotas_vencidas: vencidas,
+    cuotas_incluidas: incluidas,
+    por_vencer: porVencer,
   };
 }
 

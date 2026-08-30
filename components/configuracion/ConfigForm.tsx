@@ -1945,6 +1945,18 @@ export function ConfigForm() {
                 checked={cobranza.acuerdos.saca_de_agenda}
                 onChange={v => setAcuerdos({ saca_de_agenda: v })}
               />
+              {/* La decisión de QUÉ ES un acuerdo. Va acá y no fija en el código porque las
+                  dos posturas son defendibles según el plazo del crédito que se preste. */}
+              <SwitchRow
+                title="El acuerdo se lleva todo el crédito"
+                desc={
+                  cobranza.acuerdos.incluye_no_vencidas
+                    ? "El plan original se cae: se juntan las cuotas vencidas y las que faltan vencer en un solo compromiso, y al terminarlo el crédito queda saldado."
+                    : "El acuerdo arregla solo el atraso. Lo que todavía no venció sigue su plan, así que el cliente queda con dos compromisos en paralelo."
+                }
+                checked={cobranza.acuerdos.incluye_no_vencidas}
+                onChange={v => setAcuerdos({ incluye_no_vencidas: v })}
+              />
             </div>
           </Section>
 
@@ -2235,7 +2247,7 @@ function defaultCobranza(): CobranzaConfig {
     plantillas_meta: [],
     acuerdos: {
       max_cuotas: 6, dias_entre_cuotas: 30, cuotas_para_romper: 1,
-      congela_punitorios: true, saca_de_agenda: true,
+      congela_punitorios: true, saca_de_agenda: true, incluye_no_vencidas: true,
       quita_max_vendedor_pct: 0, tasa_mensual: null,
     },
     recupero: {

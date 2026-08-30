@@ -51,6 +51,8 @@ export async function deudaVencidaDeCredito(tenantId: string, creditoId: string)
   if (!credito) throw new ApiError("El crédito no existe", "NOT_FOUND", 404);
 
   const config = await getConfiguracion(tenantId);
+  // La política de acuerdos de la financiera: define qué se lleva el acuerdo.
+  const cobranzaCfg = await getCobranzaConfig(tenantId);
   // Días de gracia CONGELADOS en el crédito; si es legacy, los del simulador.
   const gracia = (credito.cronograma as { diasGracia?: number } | null)?.diasGracia ?? config.simulador.diasGracia;
 
@@ -78,6 +80,16 @@ export async function deudaVencidaDeCredito(tenantId: string, creditoId: string)
     // Sin esto se usa el ahora en UTC y, después de las 21:00 de Argentina, el acuerdo se
     // arma sobre un día más de punitorios por cuota que los que muestra la lista.
     hoy: hoyComercial(),
+    /*
+      🔴 EL PLAN SE CAE Y SE JUNTA TODO. Con esto en true —como se opera acá— el acuerdo se
+      lleva las cuotas vencidas Y las que faltan vencer: el cliente queda con UN compromiso en
+      vez de dos corriendo en paralelo, y al terminarlo el crédito cierra en cero.
+
+      Antes tomaba solo lo vencido y el acuerdo podía quedar CORTO: en CRD-000005 (Patricia)
+      el plan de $1.843.638,87 no cubría los $1.909.817,50 que el crédito debía, así que el
+      acuerdo se iba a dar por cumplido dejando $66.178,63 vivos.
+    */
+    incluirNoVencidas: cobranzaCfg.acuerdos.incluye_no_vencidas,
   });
 
   return { credito, deuda, config };
