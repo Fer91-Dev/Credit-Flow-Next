@@ -142,17 +142,60 @@ if (!ADMIN.id || !ADMIN.pass) {
   process.exit(1);
 }
 
-let dni = 30100001; // rango alto, inventado
-const nuevoDni = () => String(dni++);
+/**
+ * IDENTIDADES FIJAS, una por persona sembrada.
+ *
+ * 🔴 ANTES ERA UN CONTADOR: 30100001, 30100002, 30100003... Quince personas de distinta edad
+ * con documentos consecutivos y el mismo teléfono con dos dígitos cambiados. Se leía como lo
+ * que era —una base de prueba— y eso importa: cuando las pantallas se revisan a ojo, un dato
+ * que no parece real no deja ver si el sistema lo está mostrando bien. Un DNI de ocho cifras
+ * que no cierra con la edad de al lado no se nota mal formateado.
+ *
+ * ES TODO FICTICIO. Los documentos siguen inventados, pero ahora son COHERENTES con la fecha
+ * de nacimiento de cada uno: en Argentina el número de DNI va con el año en que se nació
+ * (~21M para 1970, ~31M para 1985, ~42M para 2000), así que un DNI de 42 millones al lado de
+ * "58 años" es un dato que canta. Teléfonos de Tucumán (área 381), que es donde opera la
+ * financiera.
+ *
+ * Está indexado por nombre y no por orden de aparición: al re-sembrar, cada persona conserva
+ * SU documento. Si los datos cambiaran en cada corrida, no se podría comparar una prueba de
+ * hoy con la captura de ayer.
+ */
+const PERSONAS = {
+  "Lucía Ferreyra":     { doc: "34218907", nac: "1989-03-14", tel: "3815247831", ingreso: 1_150_000, ocupacion: "Docente",                empleador: "Escuela N° 12",            situacion: "relacion_dependencia", civil: "casada"   },
+  "Rodrigo Benítez":    { doc: "38472016", nac: "1994-11-02", tel: "3814305827", ingreso:   820_000, ocupacion: "Repartidor",            empleador: "Logística del Norte SRL",  situacion: "relacion_dependencia", civil: "soltero"  },
+  "Marina Sosa":        { doc: "27893145", nac: "1980-06-25", tel: "3815638492", ingreso: 1_400_000, ocupacion: "Comerciante",           empleador: null,                       situacion: "monotributista",       civil: "casada"   },
+  "Hernán Quiroga":     { doc: "31567204", nac: "1985-09-08", tel: "3814729183", ingreso:   950_000, ocupacion: "Albañil",               empleador: null,                       situacion: "autonomo",             civil: "casado"   },
+  "Patricia Ledesma":   { doc: "24106839", nac: "1975-01-30", tel: "3815902744", ingreso: 1_050_000, ocupacion: "Enfermera",             empleador: "Sanatorio Modelo",         situacion: "relacion_dependencia", civil: "divorciada" },
+  "Gustavo Maidana":    { doc: "29734158", nac: "1982-07-19", tel: "3814516093", ingreso:   880_000, ocupacion: "Chofer",                empleador: "Transporte Aconquija",     situacion: "relacion_dependencia", civil: "casado"   },
+  "Silvana Ocampo":     { doc: "33019476", nac: "1987-12-05", tel: "3815384620", ingreso: 1_250_000, ocupacion: "Administrativa",        empleador: "Estudio Contable Paz",     situacion: "relacion_dependencia", civil: "soltera"  },
+  "Emiliano Ruiz Díaz": { doc: "40628137", nac: "1997-04-22", tel: "3814093756", ingreso:   760_000, ocupacion: "Empleado de comercio",  empleador: "Supermercado La Rioja",    situacion: "relacion_dependencia", civil: "soltero"  },
+  "Norberto Aguirre":   { doc: "16482703", nac: "1963-08-11", tel: "3815176284", ingreso: 1_320_000, ocupacion: "Jubilado",              empleador: null,                       situacion: "jubilado",             civil: "viudo"    },
+  "Verónica Paz":       { doc: "36815029", nac: "1992-02-17", tel: "3814860317", ingreso:   990_000, ocupacion: "Peluquera",             empleador: null,                       situacion: "monotributista",       civil: "soltera"  },
+  "Alejandro Cabrera":  { doc: "22947316", nac: "1972-10-03", tel: "3815429608", ingreso: 1_600_000, ocupacion: "Mecánico",              empleador: null,                       situacion: "autonomo",             civil: "casado"   },
+  "Mariela Figueroa":   { doc: "35204871", nac: "1990-05-27", tel: "3814738295", ingreso: 1_080_000, ocupacion: "Cajera",                empleador: "Farmacia del Centro",      situacion: "relacion_dependencia", civil: "casada"   },
+  "Damián Villalba":    { doc: "39516482", nac: "1996-01-09", tel: "3815061937", ingreso:   840_000, ocupacion: "Ayudante de cocina",    empleador: "Rotisería El Buen Sabor",  situacion: "relacion_dependencia", civil: "soltero"  },
+  "Estela Moreno":      { doc: "20738164", nac: "1969-11-23", tel: "3814395720", ingreso: 1_010_000, ocupacion: "Empleada doméstica",    empleador: null,                       situacion: "relacion_dependencia", civil: "separada" },
+  "Federico Ibarra":    { doc: "42085639", nac: "2000-09-15", tel: "3815820476", ingreso:   730_000, ocupacion: "Estudiante",            empleador: null,                       situacion: "otro",                 civil: "soltero"  },
+};
 
 /** Alta de cliente por el endpoint real. */
 async function cliente(nombre, apellido, extra = {}) {
+  const p = PERSONAS[`${nombre} ${apellido}`];
+  if (!p) throw new Error(`Falta la identidad de "${nombre} ${apellido}" en PERSONAS.`);
   return api("POST", "/api/clientes", {
     nombre, apellido,
-    documento: nuevoDni(),
-    telefono: "3815" + String(400000 + (dni % 99999)).slice(0, 6),
+    documento: p.doc,
+    fecha_nacimiento: p.nac,
+    telefono: p.tel,
+    estado_civil: p.civil,
+    situacion_laboral: p.situacion,
+    ocupacion: p.ocupacion,
+    ...(p.empleador ? { empleador: p.empleador } : {}),
+    provincia: "Tucumán",
+    localidad: "San Miguel de Tucumán",
     tipo_credito: "personal",
-    ingreso_mensual: 900_000,
+    ingreso_mensual: p.ingreso,
     zona: MARCA,
     estado: "activo",
     ...extra,
