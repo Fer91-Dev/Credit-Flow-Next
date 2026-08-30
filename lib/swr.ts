@@ -61,6 +61,11 @@ export interface Cliente {
   zona?: string | null;
   /** Estado de la PERSONA: activo | fallecido (ver lib/domain/cliente-estado.ts). */
   estado: string;
+  /**
+   * Días de atraso del crédito MÁS atrasado del cliente. Solo con `scored: true`.
+   * Sirve para marcar en la lista a quien tiene un crédito en Legales.
+   */
+  dias_mora_max?: number;
   /** Por qué se cambió el estado (obligatorio al marcar fallecido: el acta va en papel). */
   estado_motivo?: string | null;
   /** Fecha del deceso — la que frena los punitorios. */

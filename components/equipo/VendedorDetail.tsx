@@ -1,5 +1,7 @@
 "use client";
 
+import { estadoBadgeCredito } from "@/components/creditos/estado-badge";
+
 import { useState, useMemo, useEffect } from "react";
 import { mutate as globalMutate } from "swr";
 import {
@@ -294,7 +296,7 @@ function RendimientoTab({ vendedor }: { vendedor: VendedorDetalle }) {
                   <td className="px-4 py-2.5 font-mono text-xs text-muted-foreground border-b border-border/60">{formatCreditoNumero(c.numero)}</td>
                   <td className="px-4 py-2.5 text-foreground border-b border-border/60">{nombreCompleto(c.cliente)}</td>
                   <td className="px-4 py-2.5 text-right font-mono text-foreground border-b border-border/60">${n0(c.monto_original)}</td>
-                  <td className="px-4 py-2.5 border-b border-border/60"><StatusBadge label={c.estado} variant={c.estado === "activo" ? "primary" : c.estado === "pagado" ? "success" : "muted"} /></td>
+                  <td className="px-4 py-2.5 border-b border-border/60">{(() => { const b = estadoBadgeCredito(c.estado); return <StatusBadge label={b.label} variant={b.variant} />; })()}</td>
                   <td className="px-4 py-2.5 text-right text-xs text-muted-foreground tabular-nums border-b border-border/60 pr-5">{formatFecha(c.created_at)}</td>
                 </tr>
               ))}

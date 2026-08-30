@@ -52,11 +52,17 @@ function whatsappLink(c: Credito): string | null {
 
 type Severidad = "critica" | "alta" | "todas";
 
-function severidadConfig(dias: number): { label: string; variant: "destructive" | "warning" | "muted" } {
-  if (dias > 30) return { label: "Crítica", variant: "destructive" };
-  if (dias > 15) return { label: "Alta",    variant: "warning" };
-  return              { label: "Media",    variant: "muted" };
-}
+/**
+ * 🔴 Tenía los cortes escritos a mano (30 y 15) — la cuarta copia, y la que se me pasó al
+ * unificar las otras tres porque la variable se llama `dias`, no `dias_mora`. Ahora sale de
+ * `severidadMora` con los tramos que configuró la financiera, como el resto.
+ */
+const SEVERIDAD_BADGE: Record<string, { label: string; variant: "destructive" | "warning" | "muted" }> = {
+  critica: { label: "Crítica", variant: "destructive" },
+  alta:    { label: "Alta",    variant: "warning" },
+  media:   { label: "Media",   variant: "muted" },
+  al_dia:  { label: "Al día",  variant: "muted" },
+};
 
 const resultadoLabel: Record<AccionCobranza["resultado"], string> = {
   contactado:    "Contactado",
@@ -558,7 +564,7 @@ export function CobranzaTable({ role }: { role: Role }) {
             },
             {
               header: "Severidad", align: "center",
-              cell: (c) => { const sev = severidadConfig(c.dias_mora); return <StatusBadge label={sev.label} variant={sev.variant} />; },
+              cell: (c) => { const sev = SEVERIDAD_BADGE[severidadMora(c.dias_mora, tramos)]; return <StatusBadge label={sev.label} variant={sev.variant} />; },
             },
             {
               header: "Acción",
@@ -605,7 +611,7 @@ export function CobranzaTable({ role }: { role: Role }) {
             },
           ]}
           renderMobileCard={(c) => {
-            const sev = severidadConfig(c.dias_mora);
+            const sev = SEVERIDAD_BADGE[severidadMora(c.dias_mora, tramos)];
             return (
               <div onClick={() => setDetalle(c)} className={`rounded-xl bg-card border p-4 space-y-3 cursor-pointer active:bg-muted/20 transition-colors ${seleccion.has(c.id) ? "border-primary/40" : "border-border"}`}>
                 <div className="flex items-start justify-between gap-2">

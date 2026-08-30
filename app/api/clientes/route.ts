@@ -148,6 +148,12 @@ async function enriquecerClientes(
     return {
       ...c,
       ultimo_movimiento: new Date(a.ultimoMovimiento).toISOString(),
+      /**
+       * Días del crédito MÁS atrasado del cliente. Ya se calculaba para el score y se
+       * descartaba; con él la lista puede decir que la persona tiene un crédito en Legales sin
+       * abrir su ficha, que es donde el operador lo necesita: se lo ve antes de llamarlo.
+       */
+      dias_mora_max: a.maxDiasMora,
       score: { categoria: score.categoria, label: score.label, puntaje: score.puntaje },
     };
   });

@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Search, User, Phone, Mail, ArrowLeft, Plus, ChevronRight, X, Clock } from "lucide-react";
 import { ClienteForm } from "./ClienteForm";
 import { ClienteDetail } from "./ClienteDetail";
-import { useClientes, KEYS, type Cliente } from "@/lib/swr";
+import { useClientes, KEYS, type Cliente, useDiasLegales } from "@/lib/swr";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { ScoreBadge } from "@/components/ui/ScoreBadge";
@@ -40,6 +40,8 @@ function esInactivo(c: Cliente): boolean {
  */
 export function ClientesTable({ role }: { role?: Role } = {}) {
   const { clientes, isLoading, mutate } = useClientes({ scored: true });
+  /** A cuántos días de atraso un crédito pasa a Legales (Configuración → Cobranza). */
+  const diasLegales = useDiasLegales();
   const { mutate: globalMutate } = useSWRConfig();
   const confirm = useConfirm();
   const toast = useToast();
@@ -122,7 +124,17 @@ export function ClientesTable({ role }: { role?: Role } = {}) {
     { header: "Teléfono", className: "hidden lg:table-cell", cell: (c) => <span className="text-muted-foreground">{c.telefono ?? "—"}</span> },
     { header: "Estado", align: "center", cell: (c) => {
         const e = normalizarEstadoCliente(c.estado);
-        return <StatusBadge label={ESTADO_CLIENTE_LABEL[e]} variant={ESTADO_CLIENTE_VARIANT[e]} />;
+        return (
+          <div className="flex flex-wrap items-center justify-center gap-1.5">
+            <StatusBadge label={ESTADO_CLIENTE_LABEL[e]} variant={ESTADO_CLIENTE_VARIANT[e]} />
+            {/* Que el cliente tenga un crédito en LEGALES se ve acá, sin abrir su ficha: es
+                lo que hay que saber ANTES de llamarlo, no después. El estado de la persona
+                (activo/fallecido) y el de su deuda son cosas distintas y van separadas. */}
+            {diasLegales > 0 && (c.dias_mora_max ?? 0) >= diasLegales && (
+              <StatusBadge label="Legales" variant="info" />
+            )}
+          </div>
+        );
       } },
     { header: "Cargado", align: "right", cell: (c) => <span className="text-muted-foreground tabular-nums">{formatFecha(c.created_at)}</span> },
   ];

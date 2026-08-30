@@ -1,12 +1,14 @@
 ﻿"use client";
 
+import { estadoBadgeCredito } from "@/components/creditos/estado-badge";
+
 import Link from "next/link";
 import { useState } from "react";
 import { useSWRConfig } from "swr";
 import {
   Pencil, Trash2, CalendarClock, ChevronRight, ChevronDown, Loader2, Mail, MessageCircle, Phone, Printer, ShieldCheck, Ban, Receipt, AlertTriangle, History, BellOff, Wallet, Sparkles, Handshake,
 } from "lucide-react";
-import { refrescarNotificaciones, useClienteDetalle, useAccionesCobranza, useCuotas, KEYS, type CreditoConFinanzas, type EstadoCuota, type CuotaPersistida } from "@/lib/swr";
+import { refrescarNotificaciones, useClienteDetalle, useAccionesCobranza, useCuotas, KEYS, type CreditoConFinanzas, type EstadoCuota, type CuotaPersistida, useDiasLegales } from "@/lib/swr";
 import { StatusBadge, type BadgeVariant } from "@/components/ui/StatusBadge";
 import { ScoreBadge } from "@/components/ui/ScoreBadge";
 import { Stat } from "@/components/ui/Stat";
@@ -60,22 +62,6 @@ const SITUACION_LABORAL: Record<string, string> = {
   desempleado: "Desempleado", otro: "Otro",
 };
 
-function creditoBadge(estado: string, diasMora = 0): { label: string; variant: "primary" | "success" | "muted" | "destructive" | "warning" } {
-  // Mismo criterio que CreditoDetail/CreditosTable: un crédito vivo con cuotas vencidas
-  // NO es simplemente "activo". Sin esto la ficha del cliente lo mostraba al día.
-  if (esCreditoVivo(estado) && diasMora > 0) {
-    return { label: "Activo atrasado", variant: diasMora > 30 ? "destructive" : "warning" };
-  }
-  if (estado === "activo") return { label: "Activo", variant: "primary" };
-  if (estado === "pagado") return { label: "Pagado", variant: "success" };
-  if (estado === "cancelado") return { label: "Cancelado", variant: "destructive" };
-  // `refinanciado` caía en el genérico y se leía en minúscula, sin decir que el crédito
-  // sigue vivo en otro número. Es el estado más confuso de los seis si no se nombra.
-  if (estado === "refinanciado") return { label: "Refinanciado", variant: "muted" };
-  if (estado === "vencido") return { label: "Vencido", variant: "destructive" };
-  if (estado === "anulado") return { label: "Anulado", variant: "muted" };
-  return { label: estado, variant: "muted" };
-}
 
 /** Badge de estado de una promesa de pago para la ficha del cliente. */
 function promesaBadge(
@@ -199,6 +185,8 @@ export function ClienteDetail({
 
   // Historial de pagos del cliente (aplanado de todos sus créditos), más nuevos primero.
   const puedeAnular = cliente.puede_anular_pago === true;
+  /** A cuántos días de atraso un crédito pasa a Legales (Configuración → Cobranza). */
+  const diasLegales = useDiasLegales();
   const pagosCliente = creditos
     .flatMap((c) => (c.pagos ?? []).map((p) => ({ ...p, creditoNumero: c.numero, creditoRefiNumero: c.refinancia_a_numero })))
     .sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime());
@@ -315,6 +303,12 @@ export function ClienteDetail({
                     >
                       Migrado
                     </span>
+                  )}
+                  {/* Un crédito en LEGALES se dice acá arriba, con el nombre: es lo que
+                      cambia la conversación entera, y estaba solo en la tarjeta del crédito
+                      —abajo del todo y con el plan desplegado—. */}
+                  {diasLegales > 0 && ec.dias_mora_max >= diasLegales && (
+                    <StatusBadge label="Legales" variant="info" />
                   )}
                   {cliente.documento && (
                     <span className="flex items-baseline gap-1.5">
@@ -928,6 +922,8 @@ function CreditosTabla({ creditos, mostrarProximo, onCobrar, clienteId, abiertoD
   /** Para el atajo a la terminal cuando desde acá no se cobra. */
   clienteId?: string;
 }) {
+  /** A cuántos días de atraso el crédito pasa a Legales (Configuración → Cobranza). */
+  const diasLegales = useDiasLegales();
   const [abiertos, setAbiertos] = useState<Set<string>>(
     () => (abiertoDeEntrada ? new Set(creditos.map((c) => c.id)) : new Set()),
   );
@@ -942,7 +938,8 @@ function CreditosTabla({ creditos, mostrarProximo, onCobrar, clienteId, abiertoD
   return (
     <div className="space-y-3">
       {creditos.map((c) => {
-        const b = creditoBadge(c.estado, c.dias_mora ?? 0);
+        // El badge compartido: el mismo que ven Créditos y Cobranzas, Legales incluido.
+        const b = estadoBadgeCredito(c.estado, c.dias_mora ?? 0, diasLegales);
         const res = c.cuotas_resumen;
         const tieneCuotas = !!res && res.total > 0;
         const abierto = abiertos.has(c.id);
