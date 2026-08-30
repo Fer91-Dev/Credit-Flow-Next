@@ -843,7 +843,17 @@ export function PagoForm({ creditoId, clienteId, montoSugerido, motivoSugerido, 
                         <th className="px-3 py-3 text-left   font-semibold text-muted-foreground border-b border-border">Vencimiento</th>
                         <th className="px-3 py-3 text-right  font-semibold text-muted-foreground border-b border-border">Cuota</th>
                         <th className="px-3 py-3 text-right  font-semibold text-muted-foreground border-b border-border">Mora</th>
-                        <th className="px-3 py-3 text-right  font-semibold text-foreground       border-b border-border">A cobrar</th>
+                        {/*
+                          🔴 "A COBRAR" NO CORRESPONDE COBRANDO UN ACUERDO. Ahi el importe sale
+                          del PLAN DEL ACUERDO de arriba y esta tabla es solo el destino de esa
+                          plata; el numero de esta columna es lo que le falta a la cuota, no lo
+                          que se le va a cobrar. Fernando, cobrando la cuota 2 del acuerdo de
+                          Patricia Ledesma: "no entiendo, no me deberia dejar primero pagar el
+                          saldo de la cuota 2?". Leyo la columna, y la columna decia eso.
+                        */}
+                        <th className="px-3 py-3 text-right  font-semibold text-foreground       border-b border-border">
+                          {cobrandoAcuerdo ? "Le falta" : "A cobrar"}
+                        </th>
                         <th className="px-3 py-3 text-left   font-semibold text-muted-foreground border-b border-border pr-3">Estado</th>
                       </tr>
                     </thead>
@@ -876,7 +886,14 @@ export function PagoForm({ creditoId, clienteId, montoSugerido, motivoSugerido, 
                           <tr
                             onClick={() => !manual && setHasta(c.nro)}
                             className={`${manual ? "opacity-50" : "cursor-pointer hover:bg-muted/20"} ${incluida ? "bg-primary/5" : ""}`}
-                            title={manual ? "Desactivá «Monto personalizado» para elegir cuotas" : "Cobrar hasta esta cuota"}
+                            title={
+                              cobrandoAcuerdo
+                                // El casillero "Monto personalizado" esta OCULTO cobrando un
+                                // acuerdo, asi que el mensaje de abajo mandaba a destildar algo
+                                // que no esta en pantalla.
+                                ? "El importe lo fija el acuerdo; acá se ve dónde se imputa"
+                                : manual ? "Desactivá «Monto personalizado» para elegir cuotas" : "Cobrar hasta esta cuota"
+                            }
                           >
                             <td className="px-2 py-3 text-center border-b border-border/70">
                               <span className={`inline-flex h-4 w-4 items-center justify-center rounded border ${incluida ? "bg-primary border-primary text-primary-foreground" : "border-border"}`}>
