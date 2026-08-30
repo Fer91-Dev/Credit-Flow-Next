@@ -1652,6 +1652,19 @@ export function useTramosMora(): TramosMora {
   return config?.cobranzaConfig?.tramos_mora ?? TRAMOS_MORA_DEFAULT;
 }
 
+/**
+ * A cuántos días de atraso un crédito pasa a LEGALES.
+ *
+ * Es el MISMO número que habilita el acuerdo de pago (`dias_min_mora_acuerdo`): que el crédito
+ * diga "Legales" es, literalmente, la señal de que ya se le puede armar un plan. Un solo
+ * parámetro para las dos cosas — con dos, tarde o temprano quedan distintos y el operador ve
+ * "Legales" en un crédito que el sistema no lo deja acordar.
+ */
+export function useDiasLegales(): number {
+  const { config } = useConfiguracion();
+  return config?.cobranzaConfig?.recupero?.dias_min_mora_acuerdo ?? 0;
+}
+
 export function useFinanciera() {
   const { data, error, isLoading, mutate } = useSWR<Financiera>(KEYS.financiera, null, PARAMETROS_SWR);
   return { financiera: data, error, isLoading, mutate };

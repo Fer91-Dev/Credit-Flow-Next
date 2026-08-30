@@ -1,10 +1,12 @@
 ﻿"use client";
 
+import { estadoBadgeCredito } from "./estado-badge";
+
 import Link from "next/link";
 import { useState, useRef } from "react";
 import { useSWRConfig } from "swr";
 import { CalendarDays, Wallet, Info, ArrowUpRight, Receipt, Loader2, Printer, RefreshCw, ArrowRight, ShieldCheck, Ban, Trash2, ExternalLink } from "lucide-react";
-import { refrescarNotificaciones, useAmortizacion, useCuotas, usePagosByCredito, useCreditos, KEYS, type Credito, type EstadoCuota, type Pago, type CuotaPersistida, useFinanciera } from "@/lib/swr";
+import { refrescarNotificaciones, useAmortizacion, useCuotas, usePagosByCredito, useCreditos, KEYS, type Credito, type EstadoCuota, type Pago, type CuotaPersistida, useFinanciera, useDiasLegales } from "@/lib/swr";
 import { type Role } from "@/lib/auth/roles";
 import { abrirRecibo } from "@/lib/recibo";
 import { moraDevengadaDeCuota } from "@/lib/recibo-cuota";
@@ -31,27 +33,6 @@ const fmtDate = (s: string) => formatFecha(s);
 /** "cuota semanal" → "Cuota semanal". Las etiquetas de frecuencia vienen en minúscula. */
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
-/**
- * Estado del crédito COMO SE LEE, no como se guarda.
- *
- * 🔴 Un crédito con cuotas vencidas decía "Activo" a secas: el mismo badge, del mismo color,
- * que uno que viene pagando en fecha. El atraso vivía aparte, en otra columna o en otra
- * tarjeta, y quien miraba la fila tenía que cruzar dos datos para saber si el cliente debe.
- * "Activo" y "Activo atrasado" son dos situaciones distintas y tienen que verse distinto.
- *
- * El estado guardado no cambia (`activo` sigue siendo `activo`): esto es presentación. La
- * mora entra por parámetro porque se computa EN VIVO, nunca desde el cache.
- */
-function estadoBadge(estado: string, diasMora = 0): { label: string; variant: "primary" | "success" | "muted" | "warning" | "destructive" } {
-  if (esCreditoVivo(estado) && diasMora > 0) {
-    return { label: "Activo atrasado", variant: diasMora > 30 ? "destructive" : "warning" };
-  }
-  if (estado === "activo") return { label: "Activo", variant: "primary" };
-  if (estado === "vencido") return { label: "Activo", variant: "primary" };
-  if (estado === "pagado") return { label: "Pagado", variant: "success" };
-  if (estado === "refinanciado") return { label: "Refinanciado", variant: "warning" };
-  return { label: estado, variant: "muted" };
-}
 
 const metodoLabel: Record<string, string> = {
   efectivo: "Efectivo",
@@ -111,6 +92,8 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
    *  mostrando dejó de existir o cambió de estado y esta copia quedó vieja. */
   onCerrar?: () => void;
 }) {
+  /** A cuántos días de atraso el crédito pasa a Legales (Configuración → Cobranza). */
+  const diasLegales = useDiasLegales();
   const { amortizacion } = useAmortizacion(credito.id);
   const { cuotas, resumen, meta: metaCuotas, isLoading: loadingCuotas } = useCuotas(credito.id);
   const { financiera } = useFinanciera(); // co-branding de lo que se imprime
@@ -304,7 +287,8 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
   /** Hay algo vivo que cobrar: es lo que decide si se ofrece el atajo a la terminal. */
   const puedeCobrar = esCreditoVivo(credito.estado) && credito.saldo_pendiente > 0;
 
-  const est = estadoBadge(credito.estado, diasMora);
+  // El umbral de Legales lo define la financiera (Configuración → Cobranza).
+  const est = estadoBadgeCredito(credito.estado, diasMora, diasLegales);
   const totalCobrado = pagos.filter(p => !p.anulado).reduce((s, p) => s + p.monto, 0);
   const pagosVivos = pagos.filter(p => !p.anulado).length;
   const pagosAnulados = pagos.length - pagosVivos;

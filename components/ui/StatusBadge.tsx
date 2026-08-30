@@ -1,6 +1,6 @@
 import { cn } from "@/lib/utils";
 
-export type BadgeVariant = "success" | "primary" | "warning" | "destructive" | "muted";
+export type BadgeVariant = "success" | "primary" | "warning" | "destructive" | "muted" | "info";
 
 interface StatusBadgeProps {
   label: string;
@@ -11,6 +11,9 @@ interface StatusBadgeProps {
 const styles: Record<BadgeVariant, string> = {
   success:     "bg-success/10 text-success border-success/20",
   primary:     "bg-primary/10 text-primary border-primary/20",
+  // Azul propio, distinto del indigo de `primary`: "Legales" tiene que distinguirse de
+  // "Activo" de un vistazo, y con el mismo color los dos estados se confundían.
+  info:        "bg-sky-500/10 text-sky-400 border-sky-500/25",
   warning:     "bg-warning/10 text-warning border-warning/20",
   destructive: "bg-destructive/10 text-destructive border-destructive/20",
   muted:       "bg-muted/60 text-muted-foreground border-border",

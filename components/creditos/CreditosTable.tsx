@@ -1,5 +1,7 @@
 ﻿"use client";
 
+import { estadoBadgeCredito } from "./estado-badge";
+
 import { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { mutate as globalMutate } from "swr";
@@ -7,7 +9,7 @@ import { Plus, FileText, ChevronDown, X, RefreshCw } from "lucide-react";
 import { CreditoDetail } from "./CreditoDetail";
 import { RefinanciarDialog } from "./RefinanciarDialog";
 import { CompararRefiDialog } from "./CompararRefiDialog";
-import { useCreditos, KEYS, type Credito, useTramosMora } from "@/lib/swr";
+import { useCreditos, KEYS, type Credito, useTramosMora, useDiasLegales } from "@/lib/swr";
 import { type Role } from "@/lib/auth/roles";
 import { formatCreditoNumero, nombreCompleto, formatFecha, formatFechaHora, eventoPropio, teclaDelContenedor, formatDias } from "@/lib/utils";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -42,20 +44,11 @@ const MORA_FILTRO_LABEL: Record<string, string> = { al_dia: "Al día", en_mora: 
  * cruzar dos datos para saber si el cliente debe. El estado GUARDADO no cambia — esto es
  * presentación. La mora llega en vivo desde la lista, nunca del cache.
  */
-function estadoBadge(estado: string, diasMora = 0): { label: string; variant: "primary" | "success" | "muted" | "destructive" | "warning" } {
-  if (esCreditoVivo(estado) && diasMora > 0) {
-    return { label: "Activo atrasado", variant: diasMora > 30 ? "destructive" : "warning" };
-  }
-  if (estado === "activo")       return { label: "Activo",       variant: "primary" };
-  if (estado === "vencido")      return { label: "Activo",       variant: "primary" };
-  if (estado === "pagado")       return { label: "Pagado",       variant: "success" };
-  if (estado === "anulado")      return { label: "Anulado",      variant: "destructive" };
-  if (estado === "cancelado")    return { label: "Cancelado",    variant: "muted" };
-  if (estado === "refinanciado") return { label: "Refinanciado", variant: "warning" };
-  return                                { label: estado,         variant: "muted" };
-}
 
 export function CreditosTable({ role }: { role: Role }) {
+  /** A cuántos días de atraso el crédito pasa a Legales (Configuración → Cobranza). */
+  const diasLegales = useDiasLegales();
+
   /** Los cortes media/alta/crítica que definió la financiera (Configuración → Cobranza). */
   const tramos = useTramosMora();
   const router = useRouter();
@@ -321,7 +314,7 @@ export function CreditosTable({ role }: { role: Role }) {
                 datos contra los que se decide (saldo real, pagos, cuotas).
               */
               { header: "Estado", className: "pr-5",
-                cell: (c) => { const est = estadoBadge(c.estado, c.dias_mora); return <StatusBadge label={est.label} variant={est.variant} />; } },
+                cell: (c) => { const est = estadoBadgeCredito(c.estado, c.dias_mora, diasLegales); return <StatusBadge label={est.label} variant={est.variant} />; } },
             ]}
             footer={
               /*
@@ -339,7 +332,7 @@ export function CreditosTable({ role }: { role: Role }) {
               </tr>
             }
             renderMobileCard={(c) => {
-              const est = estadoBadge(c.estado, c.dias_mora);
+              const est = estadoBadgeCredito(c.estado, c.dias_mora, diasLegales);
               return (
                 <div onClick={(e) => { if (eventoPropio(e)) setDetail(c); }} role="button" tabIndex={0} onKeyDown={(e) => { if (teclaDelContenedor(e) && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); setDetail(c); } }} className="rounded-xl bg-card border border-border p-4 space-y-3 cursor-pointer active:bg-muted/20 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50">
                   <div className="flex items-start justify-between gap-2">

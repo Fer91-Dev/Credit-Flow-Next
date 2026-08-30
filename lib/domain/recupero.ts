@@ -108,7 +108,16 @@ export function etapaRecupero(s: SenalesRecupero): EtapaRecupero {
 export interface RecuperoConfig {
   /** No se arma un acuerdo sin haber contactado al deudor al menos una vez. */
   exigir_gestion_para_acuerdo: boolean;
-  /** Mínimo de días de atraso para poder armar un acuerdo. 0 = sin mínimo. */
+  /**
+   * A cuántos días de atraso el crédito pasa a LEGALES y se le puede armar un acuerdo.
+   *
+   * 🔴 UN SOLO NÚMERO PARA LAS DOS COSAS. El badge azul "Legales" ES la señal de que ya se
+   * puede acordar: por eso no hay un parámetro para el estado y otro para el permiso. Con dos,
+   * tarde o temprano quedan distintos y el operador ve "Legales" en un crédito que el sistema
+   * no lo deja acordar — que es peor que no tener el estado.
+   *
+   * 0 = sin mínimo (nadie pasa a Legales y se puede acordar desde el primer día de atraso).
+   */
   dias_min_mora_acuerdo: number;
   /**
    * No se refinancia sin haber intentado antes un acuerdo y que se haya roto.
@@ -134,7 +143,8 @@ export interface RecuperoConfig {
 
 export const RECUPERO_DEFAULT: RecuperoConfig = {
   exigir_gestion_para_acuerdo: false,
-  dias_min_mora_acuerdo: 0,
+  // 50 días: pasado ese atraso el crédito entra en instancia de recupero.
+  dias_min_mora_acuerdo: 50,
   exigir_acuerdo_para_refinanciar: false,
   dias_min_mora_refinanciar: 0,
   no_bajar_tasa_refinanciando: true,
@@ -142,9 +152,13 @@ export const RECUPERO_DEFAULT: RecuperoConfig = {
 
 export function resolverRecupero(raw: unknown): RecuperoConfig {
   const r = (raw ?? {}) as Partial<RecuperoConfig>;
+  /**
+   * 0 es un valor VÁLIDO —apaga la etapa—, no "vino vacío". Con la condición `n > 0`, poner 0
+   * a mano caía al default y la etapa no se podía apagar nunca.
+   */
   const dia = (v: unknown, def: number) => {
     const n = Number(v);
-    return Number.isFinite(n) && n > 0 ? Math.min(365, Math.round(n)) : def;
+    return Number.isFinite(n) && n >= 0 ? Math.min(365, Math.round(n)) : def;
   };
   return {
     exigir_gestion_para_acuerdo: r.exigir_gestion_para_acuerdo === true,

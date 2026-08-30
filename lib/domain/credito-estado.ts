@@ -119,3 +119,51 @@ export function estadoCoherente(
   }
   return base;
 }
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Estado OPERATIVO (lo que se muestra) — derivado, no persistido
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Cómo se ve el crédito en pantalla. NO es una columna: se deriva de `estado` + los días de
+ * atraso de hoy.
+ *
+ * 🔴 SE DERIVA, NO SE GUARDA. "Legales" podría haber sido un séptimo valor de
+ * `creditos.estado`, y sería un error: habría que escribirlo con un job diario, y el día que
+ * el job no corra el crédito muestra un estado viejo. Peor: si el cliente paga y vuelve a
+ * estar al día, alguien tiene que acordarse de sacarlo. Es el mismo criterio que ya usa la
+ * mora (`diasMoraActual`): se calcula sobre `proximo_pago`, que sí se mantiene al día, así
+ * que nunca puede quedar desincronizado ni depende del cron.
+ */
+export type EstadoOperativo =
+  | "activo"
+  | "atrasado"
+  | "legales"
+  | "pagado"
+  | "cancelado"
+  | "anulado"
+  | "refinanciado";
+
+/**
+ * A los `diasLegales` días de atraso el crédito pasa a LEGALES.
+ *
+ * Ese mismo número es el que habilita el acuerdo de pago (`dias_min_mora_acuerdo`): que el
+ * crédito diga "Legales" ES la señal de que ya se le puede ofrecer un plan. Un solo número
+ * para las dos cosas — si fueran dos parámetros, tarde o temprano quedarían distintos y el
+ * operador vería "Legales" en un crédito que el sistema no lo deja acordar.
+ *
+ * `diasLegales` en 0 = la etapa está apagada y nada pasa a Legales.
+ */
+export function estadoOperativo(
+  estado: string | null | undefined,
+  diasMora: number,
+  diasLegales: number,
+): EstadoOperativo {
+  if (estado === "pagado") return "pagado";
+  if (estado === "cancelado") return "cancelado";
+  if (estado === "anulado") return "anulado";
+  if (estado === "refinanciado") return "refinanciado";
+  if (diasMora <= 0) return "activo";
+  return diasLegales > 0 && diasMora >= diasLegales ? "legales" : "atrasado";
+}

@@ -2025,7 +2025,14 @@ export function ConfigForm() {
             saving={savingKey === "cobranza"} saved={savedKey === "cobranza"} dirty={isDirty("cobranza")}
           >
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 max-w-xl">
-              <Field label="Días mínimos de atraso para un acuerdo" hint="Antes de eso no se puede armar. 0 = sin mínimo.">
+              <Field
+                label="Pasa a LEGALES a los… (días de atraso)"
+                hint={
+                  cobranza.recupero.dias_min_mora_acuerdo > 0
+                    ? `A los ${cobranza.recupero.dias_min_mora_acuerdo} días el crédito se muestra en azul como "Legales", y recién ahí se le puede armar un acuerdo de pago.`
+                    : "0 = ningún crédito pasa a Legales y se puede acordar desde el primer día de atraso."
+                }
+              >
                 <Input
                   type="number" min="0" max="365" step="1"
                   value={cobranza.recupero.dias_min_mora_acuerdo}
@@ -2251,7 +2258,7 @@ function defaultCobranza(): CobranzaConfig {
       quita_max_vendedor_pct: 0, tasa_mensual: null,
     },
     recupero: {
-      exigir_gestion_para_acuerdo: false, dias_min_mora_acuerdo: 0,
+      exigir_gestion_para_acuerdo: false, dias_min_mora_acuerdo: 50,
       exigir_acuerdo_para_refinanciar: false, dias_min_mora_refinanciar: 0,
       no_bajar_tasa_refinanciando: true,
     },
