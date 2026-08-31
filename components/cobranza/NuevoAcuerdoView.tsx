@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import useSWR, { mutate as globalMutate } from "swr";
 import { Handshake, ArrowLeft, Loader2 } from "lucide-react";
-import { formatMonto, formatFecha, formatCreditoNumero, formatNumero, parseMontoInput, cn } from "@/lib/utils";
+import { formatMonto, formatFecha, formatCreditoNumero, formatNumero, formatDias, parseMontoInput, cn } from "@/lib/utils";
 import { SystemControls } from "@/components/ui/SystemControls";
 import { MoneyInput, FieldLabel, IconTextarea, IconSelect } from "@/components/caja/caja-form";
 import { useConfirm } from "@/components/ui/confirm";
@@ -49,6 +49,10 @@ interface Preview {
     tasa_origen: "config" | "credito";
   };
   acuerdo_vigente: { id: string; monto_acordado: number; fecha: string } | null;
+  /** Otros créditos del MISMO cliente que también están vencidos. Es un aviso, no una acción. */
+  otros_creditos_en_mora: { id: string; numero: number | null; saldo_pendiente: number; dias_mora: number; tiene_acuerdo: boolean }[];
+  /** Si el cliente ya tiene un acuerdo andando, la fecha con la que conviene sincronizar. */
+  sincronizar_con: { credito_numero: number | null; vencimiento: string; monto: number } | null;
 }
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json()).then((r) => (r.ok ? r.data : Promise.reject(new Error(r.error))));
@@ -96,9 +100,23 @@ export function NuevoAcuerdoView({ creditoId }: { creditoId: string | null }) {
     if (!data) return;
     setCuotas((c) => Math.min(c, data.limites.max_cuotas));
     if (!primerVto) {
-      const d = new Date();
-      d.setDate(d.getDate() + data.limites.dias_entre_cuotas);
-      setPrimerVto(ymd(d));
+      /**
+       * 🔴 SI EL CLIENTE YA TIENE UN ACUERDO ANDANDO, ESTE ARRANCA EL MISMO DÍA.
+       *
+       * Por defecto la primera cuota va a `dias_entre_cuotas` de HOY, así que dos acuerdos
+       * armados en días distintos le dan al cliente DOS fechas de pago para la misma plata —
+       * y al cobrador, dos visitas. Con Estela Moreno coincidieron de casualidad, porque los
+       * dos se armaron el mismo día; no se puede dejar librado a eso.
+       *
+       * Es solo el valor propuesto: el campo sigue siendo editable.
+       */
+      if (data.sincronizar_con) {
+        setPrimerVto(String(data.sincronizar_con.vencimiento).slice(0, 10));
+      } else {
+        const d = new Date();
+        d.setDate(d.getDate() + data.limites.dias_entre_cuotas);
+        setPrimerVto(ymd(d));
+      }
     }
   }, [data, primerVto]);
 
@@ -305,6 +323,41 @@ export function NuevoAcuerdoView({ creditoId }: { creditoId: string | null }) {
             <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,26rem)] lg:items-start">
               <div className="space-y-5">
             {error && <div className="rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-2.5 text-sm text-destructive">{error}</div>}
+
+            {/*
+              🔴 EL OTRO CRÉDITO VENCIDO DEL MISMO CLIENTE.
+
+              El acuerdo se arma sobre UN crédito. Si la persona tiene otro vencido, nadie lo
+              decía: se cerraba el arreglo por uno, el otro seguía corriendo, y el cliente se
+              iba creyendo que quedaba al día. Va ARRIBA de todo porque cambia lo que hay que
+              negociar, no es un detalle del final.
+
+              Informa y no actúa: no arma nada solo. Que el operador decida si abre el segundo
+              acuerdo es una decisión de negocio, y además cada crédito exige su propia gestión
+              previa.
+            */}
+            {data.otros_creditos_en_mora.length > 0 && (
+              <div className="rounded-lg border border-warning/30 bg-warning/10 px-3 py-3 text-sm">
+                <p className="font-medium text-warning">
+                  Este cliente tiene {data.otros_creditos_en_mora.length === 1 ? "otro crédito vencido" : `otros ${data.otros_creditos_en_mora.length} créditos vencidos`}
+                </p>
+                <ul className="mt-2 space-y-1">
+                  {data.otros_creditos_en_mora.map((o) => (
+                    <li key={o.id} className="flex flex-wrap items-baseline gap-x-2 text-xs text-muted-foreground">
+                      <span className="font-mono text-foreground">{formatCreditoNumero(o.numero)}</span>
+                      <span className="font-mono">{formatMonto(o.saldo_pendiente)}</span>
+                      <span>· {formatDias(o.dias_mora)} de atraso</span>
+                      {o.tiene_acuerdo
+                        ? <span className="text-success">· ya tiene acuerdo</span>
+                        : <span className="text-warning">· sin acuerdo</span>}
+                    </li>
+                  ))}
+                </ul>
+                <p className="mt-2 border-t border-warning/20 pt-2 text-xs text-muted-foreground">
+                  Este acuerdo cubre solo {formatCreditoNumero(data.credito.numero)}. Para el resto hay que armar el suyo.
+                </p>
+              </div>
+            )}
 
             {/* Lo que la financiera pide ANTES de acordar, dicho antes de tocar plata. */}
             {escalera && !escalera.permitido && (

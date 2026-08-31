@@ -470,6 +470,22 @@ export function ClienteDetail({
               consolida la deuda. Una sola fuente: si la ficha y el acuerdo dijeran importes
               distintos, el operador no sabría a cuál creerle — y ya nos pasó.
             */}
+            {/*
+              Con acuerdos vigentes, lo primero NO es la deuda: es lo que se le pide este mes.
+              Con dos créditos arreglados el operador no tenía dónde ver el total y le decía
+              un importe por crédito; el cliente escucha UN número.
+            */}
+            {ec.acuerdos_vigentes > 0 && (
+              <Stat
+                icon="handshake"
+                label="Cuota pactada"
+                accent="success"
+                value={`$${n2(ec.cuota_pactada_total)}`}
+                sub={ec.acuerdos_vigentes === 1
+                  ? "1 acuerdo vigente"
+                  : `${ec.acuerdos_vigentes} acuerdos vigentes · suma de sus cuotas`}
+              />
+            )}
             <Stat
               icon="money-bag"
               label="Debe hoy"

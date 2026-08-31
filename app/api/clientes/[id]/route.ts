@@ -182,6 +182,15 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
      * único de los tres que contesta la pregunta que se hace quien abre la ficha, y es el
      * mismo número que ofrece el acuerdo de pago — una sola fuente, no dos cuentas parecidas.
      */
+    /**
+     * Compromiso PACTADO del cliente: cuántos acuerdos vigentes tiene y cuánto suman sus
+     * próximas cuotas. Con dos créditos arreglados, ni el operador ni el cliente tenían dónde
+     * ver el número total — y es el que se dice en el mostrador ("este mes pagás $X").
+     */
+    acuerdos_vigentes: activos.filter((c) => c.acuerdo).length,
+    cuota_pactada_total: round2(
+      activos.reduce((s, c) => s + (c.acuerdo?.proxima?.pendiente ?? 0), 0),
+    ),
     deuda_hoy: round2(
       activos.reduce((s, c) => s + c.saldo_pendiente + c.interes_pendiente, 0) +
       enMora.reduce((s, c) => s + c.interes_mora, 0),

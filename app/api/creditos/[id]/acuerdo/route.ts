@@ -4,7 +4,8 @@ import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { deudaVencidaDeCredito, resolverTasaAcuerdo } from "@/lib/acuerdos";
 import { getCobranzaConfig } from "@/lib/config";
-import { quitaMaxima } from "@/lib/domain";
+import { quitaMaxima, diasMoraActual } from "@/lib/domain";
+import { hoyComercial } from "@/lib/utils";
 import { puedeAcordar } from "@/lib/domain/recupero";
 import { senalesRecupero } from "@/lib/recupero-server";
 import type { NextRequest } from "next/server";
@@ -57,7 +58,60 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
     select: { id: true, monto_acordado: true, fecha: true },
   });
 
+  /**
+   * 🔴 LOS OTROS CRÉDITOS EN MORA DEL MISMO CLIENTE.
+   *
+   * Un acuerdo se arma sobre UN crédito. Si la persona tiene otro vencido, nadie se lo decía:
+   * se cerraba el arreglo por uno, el otro seguía corriendo, y el cliente se iba creyendo que
+   * quedaba al día. Fernando lo probó con Estela Moreno — dos créditos, dos deudas, y la
+   * pantalla mostrando una sola.
+   *
+   * No se arma nada automáticamente: se INFORMA, con el número, y el operador decide.
+   */
+  const otros = credito.cliente
+    ? await prisma.creditos.findMany({
+        where: {
+          ...withTenant(tenantId),
+          cliente_id: credito.cliente.id,
+          id: { not: id },
+          estado: { in: ["activo", "vencido"] },
+        },
+        select: {
+          id: true, numero: true, estado: true, saldo_pendiente: true, proximo_pago: true,
+          acuerdos: { where: { estado: "vigente" }, select: { id: true, cuotas: { orderBy: { numero: "asc" }, select: { numero: true, vencimiento: true, monto: true, pagado: true, estado: true } } } },
+        },
+      })
+    : [];
+  const hoyCom = hoyComercial();
+  const otrosEnMora = otros
+    .map((c) => ({
+      id: c.id,
+      numero: c.numero,
+      saldo_pendiente: c.saldo_pendiente,
+      dias_mora: c.proximo_pago ? diasMoraActual(c.proximo_pago, hoyCom) : 0,
+      tiene_acuerdo: c.acuerdos.length > 0,
+    }))
+    // La consulta ya trajo solo créditos vivos; acá se filtra por mora real (en vivo).
+    .filter((c) => c.dias_mora > 0);
+
+  /**
+   * Si el cliente YA tiene un acuerdo vigente en otro crédito, la primera cuota de este se
+   * propone en LA MISMA FECHA. Sin esto quedaban dos calendarios: el acuerdo pone el primer
+   * vencimiento a `dias_entre_cuotas` de HOY, así que dos arreglos armados en días distintos
+   * le dan al cliente dos fechas de pago para la misma plata.
+   */
+  const conAcuerdo = otros.find((c) => c.acuerdos.length > 0);
+  const proximaDelOtro = conAcuerdo?.acuerdos[0]?.cuotas.find((q) => q.estado !== "pagada") ?? null;
+
   return successResponse({
+    /**
+     * Otros créditos del mismo cliente que también están vencidos, y la fecha con la que
+     * sincronizar si ya tiene un acuerdo andando. Los dos son AVISOS: no cambian nada solos.
+     */
+    otros_creditos_en_mora: otrosEnMora,
+    sincronizar_con: proximaDelOtro
+      ? { credito_numero: conAcuerdo!.numero, vencimiento: proximaDelOtro.vencimiento, monto: proximaDelOtro.monto }
+      : null,
     /**
      * Si NO se puede, por qué y qué hacer. `puede_autorizar` es true solo para el admin: es
      * quien puede seguir igual asumiendo la decisión, y queda auditado.

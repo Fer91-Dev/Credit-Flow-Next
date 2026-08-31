@@ -208,6 +208,10 @@ export interface EstadoCuenta {
    * Es el número que hay que mostrar cuando la pantalla dice "deuda".
    */
   deuda_hoy: number;
+  /** Cuántos créditos suyos tienen acuerdo de pago vigente. */
+  acuerdos_vigentes: number;
+  /** Suma de las próximas cuotas PACTADAS: lo que se le pide este período. */
+  cuota_pactada_total: number;
   total_cobrado: number;
   en_mora: boolean;
   creditos_en_mora: number;
