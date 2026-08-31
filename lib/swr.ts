@@ -185,7 +185,15 @@ export interface CreditoConFinanzas {
 export interface EstadoCuenta {
   creditos_total: number;
   creditos_activos: number;
+  /** Solo CAPITAL pendiente de los créditos vivos. NO es lo que el cliente debe. */
   deuda_total: number;
+  /** Interés y cargos del plan todavía sin cobrar. */
+  interes_pendiente_total: number;
+  /**
+   * LO QUE EL CLIENTE DEBE HOY: capital + interés del plan + punitorios.
+   * Es el número que hay que mostrar cuando la pantalla dice "deuda".
+   */
+  deuda_hoy: number;
   total_cobrado: number;
   en_mora: boolean;
   creditos_en_mora: number;

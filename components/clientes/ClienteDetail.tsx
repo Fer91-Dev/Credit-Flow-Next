@@ -426,7 +426,16 @@ export function ClienteDetail({
         */}
         {showCreditos && !esTerminal && (
           <div className="mt-4 grid grid-cols-2 lg:grid-cols-4 gap-3">
-            <Stat icon="money-bag" label="Deuda total" accent={ec.deuda_total > 0 ? "warning" : "success"} value={`$${n0(ec.deuda_total)}`} sub="saldo de créditos activos" />
+            {/* Misma corrección que en la variante de Pagos: decía "Deuda total" y mostraba
+                el CAPITAL pelado. El sub discrimina para que el número se pueda auditar de un
+                vistazo contra el detalle del crédito. */}
+            <Stat
+              icon="money-bag"
+              label="Debe hoy"
+              accent={ec.deuda_hoy > 0 ? "warning" : "success"}
+              value={`$${n0(ec.deuda_hoy)}`}
+              sub={`capital $${n0(ec.deuda_total)} + interés $${n0(ec.interes_pendiente_total)}${ec.interes_mora_total > 0 ? ` + mora $${n0(ec.interes_mora_total)}` : ""}`}
+            />
             <Stat
               icon="warning"
               label={ec.en_mora ? "En mora" : "Situación"}
@@ -443,12 +452,35 @@ export function ClienteDetail({
           <div className="mt-4 grid grid-cols-2 lg:grid-cols-4 gap-3">
             {/* Lo primero: qué se le pide hoy. Es la razón por la que el cliente está parado
                 del otro lado del mostrador. */}
+            {/*
+              🔴 ACÁ SE MOSTRABA UN NÚMERO QUE NO ERA NINGUNA DE LAS DOS COSAS QUE DECÍA.
+
+              El valor era `deuda_total + interes_mora_total`, y `deuda_total` es solo CAPITAL.
+              O sea: capital + punitorios, sin el interés del plan.
+
+                · No era "Vencido a hoy": adentro estaba el capital de cuotas que todavía no
+                  vencieron.
+                · No era "Deuda total": le faltaba el interés. En CRD-000006 mostraba
+                  $973.032,51 sobre una deuda real de $1.636.172,78 — $663.140,27 sin contar.
+
+              Y cuando el cliente NO estaba en mora era peor: decía "Deuda total" y mostraba el
+              capital pelado, sin un peso de interés.
+
+              Ahora sale `deuda_hoy`, que es el MISMO número con el que el acuerdo de pago
+              consolida la deuda. Una sola fuente: si la ficha y el acuerdo dijeran importes
+              distintos, el operador no sabría a cuál creerle — y ya nos pasó.
+            */}
             <Stat
               icon="money-bag"
-              label={ec.en_mora ? "Vencido a hoy" : "Deuda total"}
+              label="Debe hoy"
               accent={ec.en_mora ? "destructive" : "warning"}
-              value={`$${n2(ec.en_mora ? ec.deuda_total + ec.interes_mora_total : ec.deuda_total)}`}
-              sub={ec.en_mora ? `${formatDias(ec.dias_mora_max)} de atraso · mora $${n2(ec.interes_mora_total)}` : "sin atrasos"}
+              value={`$${n2(ec.deuda_hoy)}`}
+              /* Discriminado: de dónde sale cada peso, que es lo que se le explica al cliente. */
+              sub={
+                ec.en_mora
+                  ? `capital $${n2(ec.deuda_total)} + interés $${n2(ec.interes_pendiente_total)} + mora $${n2(ec.interes_mora_total)} · ${formatDias(ec.dias_mora_max)} de atraso`
+                  : `capital $${n2(ec.deuda_total)} + interés $${n2(ec.interes_pendiente_total)} · sin atrasos`
+              }
             />
             <Stat
               icon="calendar"

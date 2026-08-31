@@ -132,9 +132,22 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
 
     // No exponemos las filas de cuotas completas en la ficha (las trae /cuotas),
     // solo el resumen; quitamos `cuotas` del payload del crédito.
+    /**
+     * Interés del plan todavía no cobrado.
+     *
+     * 🔴 SIN ESTO LA FICHA NO PODÍA DECIR CUÁNTO DEBE EL CLIENTE. `saldo_pendiente` es solo
+     * CAPITAL, así que el KPI de deuda mostraba $973.032,51 en un crédito que debía
+     * $1.636.172,78 — se comía $663.140,27 de interés. Es el mismo criterio con el que se
+     * cobra y con el que el acuerdo consolida la deuda (`calcularDeudaVencida`): cada cuota
+     * viva debe su interés completo.
+     */
+    const interes_pendiente = round2(
+      c.cuotas.reduce((s, q) => s + Math.max(0, q.interes - q.pagado_interes) + Math.max(0, q.iva + q.seguro + q.gastos - q.pagado_cargos), 0),
+    );
+
     const { cuotas: _omit, ...rest } = c;
     void _omit;
-    return { ...rest, estado: estadoReal, dias_mora: diasMora, cuota, interes_mora, total_cobrado, cuotas_resumen };
+    return { ...rest, estado: estadoReal, dias_mora: diasMora, cuota, interes_mora, interes_pendiente, total_cobrado, cuotas_resumen };
   });
 
   const activos = creditosConFinanzas.filter((c) => esCreditoVivo(c.estado));
@@ -143,7 +156,10 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
   const estado_cuenta = {
     creditos_total: creditosConFinanzas.length,
     creditos_activos: activos.length,
+    /** Solo CAPITAL. Se conserva porque hay pantallas que muestran cartera, no deuda. */
     deuda_total: round2(activos.reduce((s, c) => s + c.saldo_pendiente, 0)),
+    /** Interés (y cargos) del plan sin cobrar de los créditos vivos. */
+    interes_pendiente_total: round2(activos.reduce((s, c) => s + c.interes_pendiente, 0)),
     total_cobrado: round2(creditosConFinanzas.reduce((s, c) => s + c.total_cobrado, 0)),
     en_mora: enMora.length > 0,
     creditos_en_mora: enMora.length,
@@ -154,6 +170,15 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
       .filter((d): d is Date => d instanceof Date)
       .sort((a, b) => a.getTime() - b.getTime())[0] ?? null,
     cuota_total_activos: round2(activos.reduce((s, c) => s + c.cuota, 0)),
+    /**
+     * LO QUE EL CLIENTE DEBE HOY, completo: capital + interés del plan + punitorios. Es el
+     * único de los tres que contesta la pregunta que se hace quien abre la ficha, y es el
+     * mismo número que ofrece el acuerdo de pago — una sola fuente, no dos cuentas parecidas.
+     */
+    deuda_hoy: round2(
+      activos.reduce((s, c) => s + c.saldo_pendiente + c.interes_pendiente, 0) +
+      enMora.reduce((s, c) => s + c.interes_mora, 0),
+    ),
   };
 
   // Control de integridad del sueldo (rol-aware): la UI muestra el contador y bloquea el
