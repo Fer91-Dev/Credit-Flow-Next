@@ -38,7 +38,7 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
         include: {
           // Comprobantes (recibos) que imputaron a cada cuota: pago → movimiento de caja.
           aplicaciones: {
-            include: { pago: { select: { id: true, fecha: true, created_at: true, movimientos: { select: { tipo: true, serie: true, numero: true } } } } },
+            include: { pago: { select: { id: true, fecha: true, monto: true, created_at: true, movimientos: { select: { tipo: true, serie: true, numero: true } } } } },
           },
         },
       },
@@ -136,6 +136,16 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
           fecha: a.pago.fecha,
           fecha_hora: a.pago.created_at, // momento real en que se registró el pago
           monto: round2(a.aplicado_capital + a.aplicado_interes + a.aplicado_mora + a.aplicado_cargos),
+          /**
+           * 🔴 EL TOTAL DEL RECIBO, no solo lo que cayó en ESTA cuota.
+           *
+           * Un cobro se reparte entre varias cuotas, así que el mismo REC-000015 aparecía dos
+           * veces con $22.039,60 y $159.991,11 — y ninguno de los dos es el importe que dice
+           * el papel que el cliente tiene en la mano ($182.030,71). Fernando: "el cliente se
+           * lleva esos recibos para saber qué pagó" y ninguna cifra le coincidía. Con el
+           * total al lado, la fila se lee "de este recibo, tanto entró acá".
+           */
+          monto_pago: a.pago.monto,
         };
       })
       .filter((x) => x.monto > 0);

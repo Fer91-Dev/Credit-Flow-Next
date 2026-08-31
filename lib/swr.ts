@@ -624,7 +624,13 @@ export interface CuotaPersistida {
   /** Lo que hay que cobrar para saldarla hoy: lo que falta de la cuota + su mora. */
   total_cobrar?: number;
   /** Recibos que imputaron a la cuota (comprobante REC + fecha/hora del pago + monto aplicado). */
-  comprobantes?: { comprobante: string | null; pago_id: string; fecha: string; fecha_hora: string; monto: number }[];
+  comprobantes?: {
+    comprobante: string | null; pago_id: string; fecha: string; fecha_hora: string;
+    /** Lo que de ESE cobro se imputó a ESTA cuota. */
+    monto: number;
+    /** El total del cobro. Distinto de `monto` cuando el pago se repartió entre varias cuotas. */
+    monto_pago?: number;
+  }[];
 }
 
 /** Libro mayor de cuotas de un crédito (cronograma persistido + resumen). */

@@ -78,6 +78,8 @@ export function PlanDeCuotas({
   const celda = `${px} ${py} border-b border-border/70`;
 
   const moraTotal = cuotas.reduce((s, q) => s + moraDevengadaDeCuota(q), 0);
+  /** Lo que de esa mora TODAVIA no se cobro. Decide si el total va en rojo o no. */
+  const moraPendienteVista = cuotas.reduce((s, q) => s + (q.mora ?? 0), 0);
   const pagadoTotal = cuotas.reduce((s, q) => s + pagadoDeCuota(q), 0);
   const aCobrarTotal =
     Math.round(cuotas.reduce((s, q) => s + (q.estado === "pagada" ? 0 : q.total_cobrar ?? q.cuota_total), 0) * 100) / 100;
@@ -264,6 +266,16 @@ export function PlanDeCuotas({
                             <Printer className="h-3 w-3 shrink-0" />
                             {c.comprobante ?? "Recibo"}
                             <span className="tabular-nums text-muted-foreground/60">${n2(c.monto)}</span>
+                            {/*
+                              🔴 CUANDO EL RECIBO SE REPARTIO, DECIRLO. Un cobro cae en varias
+                              cuotas, asi que el mismo REC-000015 aparecia dos veces con
+                              $22.039,60 y $159.991,11 — y ninguno es el importe que dice el
+                              papel que el cliente tiene en la mano ($182.030,71). Con el total
+                              al lado, la fila se lee "de este recibo, tanto entro aca".
+                            */}
+                            {c.monto_pago != null && Math.abs(c.monto_pago - c.monto) > 0.01 && (
+                              <span className="tabular-nums text-muted-foreground/40">de ${n2(c.monto_pago)}</span>
+                            )}
                           </button>
                         ))}
                       </div>
@@ -346,8 +358,21 @@ export function PlanDeCuotas({
               <td className={`${px} ${py} hidden border-t border-border text-right font-mono font-bold tabular-nums text-muted-foreground md:table-cell`}>
                 ${n2(cuotas.reduce((s, q) => s + q.capital, 0))}
               </td>
-              <td className={`${px} ${py} border-t border-border text-right font-mono font-bold tabular-nums text-destructive`}>
-                {moraTotal > 0 ? `$${n2(moraTotal)}` : <span className="text-muted-foreground/20">—</span>}
+              {/*
+                🔴 EL TOTAL DE MORA EN ROJO SOBRE UN CREDITO YA PAGADO. `moraTotal` es la
+                DEVENGADA (pendiente + ya cobrada), asi que en un credito saldado son
+                punitorios que ya entraron — y el rojo los mostraba como si se debieran.
+                Fernando: "que son los $56.323,40?". El rojo queda solo si falta cobrar algo.
+              */}
+              <td className={`${px} ${py} border-t border-border text-right font-mono font-bold tabular-nums ${moraPendienteVista > 0 ? "text-destructive" : "text-muted-foreground"}`}>
+                {moraTotal > 0 ? (
+                  <>
+                    ${n2(moraTotal)}
+                    {moraPendienteVista <= 0 && (
+                      <span className="block text-[10px] font-normal text-success">cobrada</span>
+                    )}
+                  </>
+                ) : <span className="text-muted-foreground/20">—</span>}
               </td>
               <td className="border-t border-border" />
               {/* Lo que el cliente debe hoy —coincide con la tarjeta "Deuda total" porque sale
