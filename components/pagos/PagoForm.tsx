@@ -843,7 +843,7 @@ export function PagoForm({ creditoId, clienteId, montoSugerido, motivoSugerido, 
                 <div className="max-h-[42vh] overflow-auto">
                   <table className="w-full min-w-[34rem] text-xs border-separate border-spacing-0">
                     <thead className="sticky top-0 z-10">
-                      <tr className="bg-card">
+                      <tr className="bg-muted">
                         <th className="px-2 py-3 text-center font-semibold text-muted-foreground border-b border-border w-8"></th>
                         <th className="px-2 py-3 text-left   font-semibold text-muted-foreground border-b border-border w-8">#</th>
                         <th className="px-3 py-3 text-left   font-semibold text-muted-foreground border-b border-border">Vencimiento</th>

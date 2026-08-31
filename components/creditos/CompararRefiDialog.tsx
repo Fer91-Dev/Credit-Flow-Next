@@ -221,7 +221,7 @@ function PlanTable({ amort, loading, error }: { amort?: Amortizacion; loading: b
       <div className="max-h-[38vh] overflow-auto">
         <table className="w-full min-w-[30rem] text-xs border-separate border-spacing-0">
           <thead className="sticky top-0 z-10">
-            <tr className="bg-card">
+            <tr className="bg-muted">
               <th className="border-b border-border px-2 py-2 text-left font-semibold text-muted-foreground w-8">#</th>
               <th className="border-b border-border px-3 py-2 text-left font-semibold text-muted-foreground">Vencimiento</th>
               <th className="border-b border-border px-3 py-2 text-right font-semibold text-foreground">Cuota</th>

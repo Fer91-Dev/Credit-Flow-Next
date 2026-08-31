@@ -1371,7 +1371,7 @@ function CuotasInline({ credito, onCobrar, onCobrarAcuerdo }: {
                 una línea por fila.
               */}
               <thead>
-                <tr className="bg-card">
+                <tr className="bg-muted">
                   {[
                     { t: "#", a: "text-left", w: "w-9" },
                     { t: "Vencimiento", a: "text-left" },
@@ -1453,7 +1453,7 @@ function CuotasInline({ credito, onCobrar, onCobrarAcuerdo }: {
               </tbody>
               {/* El total, para que la tabla cierre sola y no haya que buscarlo arriba. */}
               <tfoot>
-                <tr className="bg-card">
+                <tr className="bg-muted">
                   <td colSpan={3} className="px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
                     Total pactado
                   </td>

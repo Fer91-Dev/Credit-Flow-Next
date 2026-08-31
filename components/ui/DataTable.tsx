@@ -167,7 +167,7 @@ export function DataTable<T>({
         <div className="overflow-x-auto">
           <table className="w-full text-sm border-separate border-spacing-0">
             <thead>
-              <tr className="bg-muted/30">
+              <tr className="bg-muted">
                 {columns.map((c, i) => (
                   <th key={i} className={`${TH_BASE} ${alignClass(c)} ${c.className ?? ""}`}>{c.header}</th>
                 ))}
@@ -214,7 +214,7 @@ export function DataTable<T>({
         <div className="overflow-x-auto" style={showPager && minBodyH ? { minHeight: minBodyH } : undefined}>
           <table ref={tableRef} className="w-full text-sm border-separate border-spacing-0">
             <thead>
-              <tr className={`bg-muted/30 ${stickyHeader ? "sticky top-0 z-10" : ""}`}>
+              <tr className={`bg-muted ${stickyHeader ? "sticky top-0 z-10" : ""}`}>
                 {columns.map((c, i) => (
                   <th key={i} className={`${TH_BASE} ${alignClass(c)} ${c.className ?? ""}`}>{c.header}</th>
                 ))}

@@ -100,8 +100,20 @@ export function PlanDeCuotas({
       */}
       <div className={`rounded-xl border border-border overflow-x-auto overflow-y-auto ${denso ? "max-h-[46vh]" : "max-h-[62vh]"}`}>
         <table className="w-full text-xs border-separate border-spacing-0">
+          {/*
+            🔴 LA CABECERA TENÍA EL MISMO FONDO QUE LAS FILAS (`bg-card`), así que se leía como
+            un renglón más de la tabla. Fernando: "los encabezados parecen una línea más".
+            Va sobre `bg-muted` —una superficie distinta— y con la línea de abajo a opacidad
+            plena, contra el `border-border/50` de las filas: la cabecera CIERRA, las filas
+            separan. Mismo criterio que `DataTable`, para que no haya dos estilos de tabla.
+
+            🔴 OPACO, NO `bg-muted/40`. Esta cabecera es STICKY: con un fondo semitransparente
+            las filas se ven pasar por debajo al scrollear. `--muted` es un color sólido y
+            distinto de `--card` en los dos temas (más oscuro en oscuro, gris claro en claro),
+            así que sirve para las dos cosas a la vez.
+          */}
           <thead className="sticky top-0 z-10">
-            <tr className="bg-card">
+            <tr className="bg-muted">
               {/*
                 🔴 LOS OPERADORES EN EL ENCABEZADO. La fila ES una cuenta —cuota + mora −
                 pagado = a cobrar— y nada lo decía: eran ocho importes uno al lado del otro y
@@ -345,7 +357,7 @@ export function PlanDeCuotas({
           </tbody>
 
           <tfoot className="sticky bottom-0 z-10">
-            <tr className="bg-card">
+            <tr className="bg-muted">
               <td colSpan={2} className={`${px} ${py} border-t border-border text-[10px] font-bold uppercase tracking-widest text-muted-foreground`}>
                 Totales
               </td>

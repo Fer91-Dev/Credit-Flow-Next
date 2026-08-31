@@ -929,7 +929,7 @@ function TablaAudiencia({
 
   return (
     <table className="w-full border-separate border-spacing-0">
-      <thead className="sticky top-0 z-10 bg-card">
+      <thead className="sticky top-0 z-10 bg-muted">
         <tr>
           <th className={`${th} border-b border-border`}>Cliente</th>
           <th className={`${th} border-b border-border`}>Atraso</th>

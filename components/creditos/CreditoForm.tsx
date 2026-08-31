@@ -1489,7 +1489,7 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
                  "Plan de pagos" y con el botón Imprimir. Va sobre la tabla y no celda por
                  celda porque las columnas de cargos aparecen y desaparecen según la config. */
               <table className="w-full text-xs border-separate border-spacing-0 [&_th:first-child]:pl-4 [&_td:first-child]:pl-4 [&_th:last-child]:pr-4 [&_td:last-child]:pr-4">
-                <thead className="sticky top-0 z-10 bg-card">
+                <thead className="sticky top-0 z-10 bg-muted">
                   <tr>
                     <th className="px-2.5 py-2.5 text-left text-[11px] font-bold uppercase tracking-wider text-muted-foreground border-b border-border w-9">#</th>
                     <th className="px-2.5 py-2.5 text-left text-[11px] font-bold uppercase tracking-wider text-muted-foreground border-b border-border">Vencimiento</th>
@@ -1744,7 +1744,7 @@ function PlanCliente({ cuotas, totalCuotas, comisionUpfront, totalAPagar }: {
           // La medianera solo existe cuando hay dos columnas de verdad; apilado no separa nada.
           <div key={i} className={i === 1 ? "lg:border-l lg:border-border/50" : ""}>
             <table className={`w-full text-sm border-separate border-spacing-0 ${canal}`}>
-              <thead className="sticky top-0 z-10 bg-card">
+              <thead className="sticky top-0 z-10 bg-muted">
                 <tr>
                   <th className={`${th} w-14`}>Cuota</th>
                   <th className={th}>Vence</th>
