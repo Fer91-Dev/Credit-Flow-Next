@@ -478,12 +478,12 @@ export function ClienteDetail({
             {ec.acuerdos_vigentes > 0 && (
               <Stat
                 icon="handshake"
-                label="Cuota pactada"
+                label="Falta del acuerdo"
                 accent="success"
-                value={`$${n2(ec.cuota_pactada_total)}`}
-                sub={ec.acuerdos_vigentes === 1
-                  ? "1 acuerdo vigente"
-                  : `${ec.acuerdos_vigentes} acuerdos vigentes · suma de sus cuotas`}
+                value={`$${n2(ec.acuerdo_pendiente_total)}`}
+                /* La próxima cuota va en el subtítulo: es OTRA pregunta ("cuánto le cobro
+                   ahora") y no puede ser el número grande, porque no baja al pagar. */
+                sub={`${ec.acuerdos_vigentes === 1 ? "1 acuerdo vigente" : `${ec.acuerdos_vigentes} acuerdos vigentes`} · próxima cuota $${n2(ec.cuota_pactada_total)}`}
               />
             )}
             <Stat
@@ -1333,10 +1333,58 @@ function CuotasInline({ credito, onCobrar, onCobrarAcuerdo }: {
             está en la ficha, con el cliente enfrente y el acuerdo ya cargado en esta misma
             respuesta. El botón abre el cobro donde está parado.
           */}
+          {/*
+            🔴 EL PLAN DEL ACUERDO, ACÁ. Fernando: "el pago de las cuotas del acuerdo solo debe
+            impactarse y generar el recibo en el plan de cuotas del acuerdo". El pago SÍ avanza
+            el acuerdo —la cuota queda pagada— pero eso solo se veía en Cobranzas → Acuerdos, y
+            el recibo aparecía únicamente en la fila del plan viejo del crédito, que es donde
+            nadie lo busca. Es el plan que rige: va acá, con su comprobante en la fila.
+          */}
+          <div className="mt-2.5 overflow-hidden rounded-lg border border-primary/20">
+            <table className="w-full text-xs">
+              <tbody>
+                {acuerdo.cuotas.map((q) => {
+                  const pend = round2(q.monto - q.pagado);
+                  const esProxima = q.id === proximaAcuerdo.id;
+                  return (
+                    <tr
+                      key={q.id}
+                      className={`border-b border-primary/10 last:border-0 ${esProxima ? "bg-primary/[0.07]" : ""}`}
+                    >
+                      <td className="px-3 py-2 whitespace-nowrap">
+                        <span className={esProxima ? "font-semibold text-foreground" : "text-muted-foreground"}>
+                          Cuota {q.numero} de {acuerdo.total_cuotas}
+                        </span>
+                        <span className="ml-2 text-muted-foreground/70">{fmtDate(q.vencimiento)}</span>
+                      </td>
+                      <td className="px-3 py-2 text-left">
+                        {q.comprobante && (
+                          <span className="font-mono text-[11px] text-muted-foreground">{q.comprobante}</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2 text-right">
+                        {q.estado === "pagada"
+                          ? <StatusBadge label="Pagada" variant="success" />
+                          : esProxima
+                            ? <StatusBadge label="A cobrar" variant="primary" />
+                            : null}
+                      </td>
+                      <td className="px-3 py-2 pr-3 text-right font-mono tabular-nums">
+                        {q.estado === "pagada"
+                          ? <span className="text-success">{formatMonto(q.pagado)}</span>
+                          : <span className={esProxima ? "font-semibold text-foreground" : "text-muted-foreground"}>{formatMonto(pend)}</span>}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
           <div className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t border-primary/15 pt-2">
             <p className="text-[11px] leading-relaxed text-muted-foreground">
-              Las cuotas de abajo son las del <span className="text-foreground">crédito</span>: ahí se imputa la
-              plata, no es lo que se le cobra.
+              El plan de abajo es el del <span className="text-foreground">crédito</span>: es el detalle contable de
+              dónde cae la plata, no lo que se le cobra.
             </p>
             {onCobrarAcuerdo && (
               <button
@@ -1365,8 +1413,17 @@ function CuotasInline({ credito, onCobrar, onCobrarAcuerdo }: {
         de verdad, y es lo que explica por qué la mora quedó congelada en ese número. Lo que
         cambia es el encabezado y el conteo, que dejan de leerse como una alarma.
       */}
+      {/*
+        🔴 CON ACUERDO, EL PLAN DEL CRÉDITO ARRANCA PLEGADO. Es el detalle contable de dónde
+        cayó la plata, no el compromiso: mostrarlo abierto con sus badges rojos al lado del
+        plan que sí rige era pedirle al operador que adivine cuál mirar. Se despliega cuando
+        hace falta explicar de dónde salió la deuda — que es lo único para lo que sirve ahora.
+      */}
+      <details open={!acuerdo} className="group/plan">
+      <summary className={acuerdo ? "cursor-pointer list-none" : "list-none"}>
       <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 mb-2">
         <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+          {acuerdo && <ChevronDown className="mr-1 inline h-3 w-3 transition-transform group-open/plan:rotate-180" />}
           {acuerdo ? "Plan original del crédito" : "Plan de cuotas"}
           {acuerdo && (
             <span className="ml-1.5 font-semibold normal-case tracking-normal text-muted-foreground/60">
@@ -1385,6 +1442,7 @@ function CuotasInline({ credito, onCobrar, onCobrarAcuerdo }: {
           </span>
         )}
       </div>
+      </summary>
       <PlanDeCuotas
         cuotas={cuotas}
         mora={meta?.mora ?? null}
@@ -1406,6 +1464,7 @@ function CuotasInline({ credito, onCobrar, onCobrarAcuerdo }: {
           acuerdo ? "Hay un acuerdo de pago vigente: el cobro va por la cuota pactada" : null
         }
       />
+      </details>
     </div>
   );
 }

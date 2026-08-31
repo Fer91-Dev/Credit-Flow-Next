@@ -188,6 +188,18 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
      * ver el número total — y es el que se dice en el mostrador ("este mes pagás $X").
      */
     acuerdos_vigentes: activos.filter((c) => c.acuerdo).length,
+    /**
+     * 🔴 LO QUE FALTA DEL ACUERDO, no la suma de las próximas cuotas.
+     *
+     * Mostraba `Σ proxima.pendiente` y Fernando pagó una cuota sin que el número se moviera:
+     * al pagar la 1 pasaba a la 2, que vale lo mismo. Y encima sumaba una cuota que vence el
+     * 30/10 con otra del 30/09, como si las dos fueran hoy. Este baja con cada peso que entra,
+     * que es lo que se espera de un saldo.
+     */
+    acuerdo_pendiente_total: round2(
+      activos.reduce((s, c) => s + (c.acuerdo?.pendiente_total ?? 0), 0),
+    ),
+    /** La cuota pactada que toca cobrar ahora, y cuándo. Es otra pregunta, y va aparte. */
     cuota_pactada_total: round2(
       activos.reduce((s, c) => s + (c.acuerdo?.proxima?.pendiente ?? 0), 0),
     ),

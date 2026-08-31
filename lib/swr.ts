@@ -150,6 +150,8 @@ export interface AcuerdoDelCredito {
   al_dia: boolean;
   proxima: { numero: number; total: number; vencimiento: string; pendiente: number } | null;
   total_cuotas: number;
+  /** Lo que falta cobrar del acuerdo entero (baja con cada pago). */
+  pendiente_total: number;
 }
 
 export interface CreditoConFinanzas {
@@ -212,6 +214,8 @@ export interface EstadoCuenta {
   acuerdos_vigentes: number;
   /** Suma de las próximas cuotas PACTADAS: lo que se le pide este período. */
   cuota_pactada_total: number;
+  /** Lo que falta cobrar de TODOS sus acuerdos. Baja con cada pago. */
+  acuerdo_pendiente_total: number;
   total_cobrado: number;
   en_mora: boolean;
   creditos_en_mora: number;
@@ -636,7 +640,7 @@ export interface CuotasCredito {
     quita: number;
     congela_punitorios: boolean;
     total_cuotas: number;
-    cuotas: { id: string; numero: number; vencimiento: string; monto: number; pagado: number; estado: string }[];
+    cuotas: { id: string; numero: number; vencimiento: string; monto: number; pagado: number; estado: string; comprobante?: string | null; pago_id?: string | null }[];
   } | null;
   /** Condiciones de mora CONGELADAS del crédito: explican de dónde sale cada punitorio. */
   mora: { activa: boolean; tasaDiaria: number; diasGracia: number; topePct: number };

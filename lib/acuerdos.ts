@@ -605,6 +605,15 @@ export interface AcuerdoEnPantalla {
   proxima: { numero: number; total: number; vencimiento: Date; pendiente: number } | null;
   /** Cuántas cuotas tiene el plan pactado, para poder decir "2 de 3". */
   total_cuotas: number;
+  /**
+   * Lo que falta cobrar del acuerdo ENTERO.
+   *
+   * 🔴 Es distinto de `proxima.pendiente` y hay que tener las dos. Fernando pagó la cuota 1 y
+   * el KPI no se movió: mostraba la suma de las PRÓXIMAS cuotas, y al pagar la 1 pasó a la 2,
+   * que vale lo mismo. Un número que no baja cuando entra plata no sirve para saber cómo va
+   * el arreglo.
+   */
+  pendiente_total: number;
 }
 
 /**
@@ -646,6 +655,7 @@ export async function situacionAcuerdoPorCredito(
       id: a.id,
       al_dia: alDia,
       total_cuotas: a.cuotas.length,
+      pendiente_total: round2(a.cuotas.reduce((s, c) => s + noNegativo(c.monto - c.pagado), 0)),
       proxima: prox
         ? { numero: prox.numero, total: prox.monto, vencimiento: prox.vencimiento, pendiente: round2(noNegativo(prox.monto - prox.pagado)) }
         : null,

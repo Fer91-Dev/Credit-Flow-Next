@@ -185,7 +185,26 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
       // acuerdo. Sin eso, la terminal de cobro mostraba "$81.876,14" sin origen: el operador
       // lo había visto desglosado al armarlo y acá volvía a aparecer como un número suelto.
       id: true, fecha: true, monto_acordado: true, deuda_original: true, quita: true, congela_punitorios: true,
-      cuotas: { orderBy: { numero: "asc" }, select: { id: true, numero: true, vencimiento: true, monto: true, pagado: true, estado: true } },
+      cuotas: {
+        orderBy: { numero: "asc" },
+        select: {
+          id: true, numero: true, vencimiento: true, monto: true, pagado: true, estado: true,
+          /**
+           * 🔴 EL RECIBO DE LA CUOTA PACTADA. Sin esto el comprobante solo aparecía en la fila
+           * del plan VIEJO del crédito — donde el operador no lo busca. Fernando: "el pago de
+           * las cuotas del acuerdo solo debe impactarse y generar el recibo en el plan de
+           * cuotas del acuerdo". El pago es uno solo y el recibo también; lo que faltaba era
+           * mostrarlo también acá, que es donde se lo espera.
+           */
+          pagos: {
+            where: { anulado: false },
+            select: {
+              id: true, fecha: true,
+              movimientos: { where: { tipo: "cobro" }, select: { serie: true, numero: true } },
+            },
+          },
+        },
+      },
     },
   });
   const proximaAcuerdo = acuerdo?.cuotas.find((c) => c.estado !== "pagada") ?? null;
@@ -209,15 +228,22 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
            * había forma de ver de dónde salía. Es "cuota 1 de 3 del acuerdo", y eso se
            * entiende viendo el plan, no leyendo un párrafo que lo explique.
            */
-          cuotas: acuerdo.cuotas.map((c) => ({
-            // El id viaja para que el cobro pueda decir QUÉ cuota del acuerdo se pagó.
-            id: c.id,
-            numero: c.numero,
-            vencimiento: c.vencimiento,
-            monto: c.monto,
-            pagado: c.pagado,
-            estado: c.estado,
-          })),
+          cuotas: acuerdo.cuotas.map((c) => {
+            // El comprobante de ESTA cuota pactada: el cobro que la pagó.
+            const mov = c.pagos.flatMap((g) => g.movimientos).find((mv) => mv.serie && mv.numero != null);
+            return {
+              // El id viaja para que el cobro pueda decir QUÉ cuota del acuerdo se pagó.
+              id: c.id,
+              numero: c.numero,
+              vencimiento: c.vencimiento,
+              monto: c.monto,
+              pagado: c.pagado,
+              estado: c.estado,
+              comprobante: mov ? formatComprobante(mov.serie, mov.numero) : null,
+              /** Para poder abrir el PDF del recibo desde la fila de la cuota pactada. */
+              pago_id: c.pagos[0]?.id ?? null,
+            };
+          }),
           proxima: proximaAcuerdo
             ? {
                 id: proximaAcuerdo.id,
