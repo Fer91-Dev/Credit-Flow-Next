@@ -91,7 +91,13 @@ export function CobranzaTable({ role }: { role: Role }) {
   const router = useRouter();
   const [tab, setTab]           = useState<Tab>("hoy");
   const [mounted, setMounted]   = useState(false);
-  const [filterMora, setFilter] = useState<Severidad>("critica");
+  /**
+   * 🔴 ARRANCA EN "TODAS". Arrancaba en "crítica" y eso ESCONDÍA morosos: quien abría la
+   * pestaña veía una lista corta y creía que era toda la cartera vencida. Un filtro puesto de
+   * fábrica que recorta datos es peor que no tener filtro — el que recorta tiene que ser el
+   * operador, a propósito.
+   */
+  const [filterMora, setFilter] = useState<Severidad>("todas");
   const [search, setSearch]     = useState("");
   const [copiedId, setCopied]   = useState<string | null>(null);
   const [gestion, setGestion]   = useState<CreditoCtx | null>(null);
@@ -516,6 +522,19 @@ export function CobranzaTable({ role }: { role: Role }) {
                     {nombreCompleto(c.cliente)}
                     {/* El motivo, en la fila: si no, un casillero apagado no explica nada. */}
                     {noContactable(c) && <StatusBadge label={motivoCorto(c)} variant={c.cliente?.no_contactar ? "warning" : "destructive"} />}
+                    {/*
+                      🔴 EL ACUERDO VIGENTE, AL LADO DEL NOMBRE. Antes no se notaba: el crédito
+                      figuraba en la lista de morosos como cualquier otro y el cobrador lo
+                      llamaba a reclamarle una deuda que ya estaba arreglada — la forma más
+                      rápida de que deje de cumplir. Va junto al nombre porque es lo primero
+                      que hay que saber antes de levantar el teléfono.
+                    */}
+                    {c.acuerdo && (
+                      <StatusBadge
+                        label={c.acuerdo.al_dia ? "En acuerdo" : "Acuerdo atrasado"}
+                        variant={c.acuerdo.al_dia ? "success" : "destructive"}
+                      />
+                    )}
                   </p>
                   {(() => {
                     const u = ultimaPorCredito.get(c.id);
@@ -576,10 +595,18 @@ export function CobranzaTable({ role }: { role: Role }) {
                   >
                     <MessageSquarePlus className="h-3 w-3" /> Gestionar
                   </button>
+                  {/*
+                    Con un acuerdo vigente el botón se APAGA: el backend ya rechaza el segundo
+                    (un crédito no puede tener dos arreglos sobre la misma deuda, se
+                    conciliarían con los mismos pagos), así que ofrecerlo era mandar al
+                    operador a un error evitable. Apagado y no escondido: el motivo va en el
+                    tooltip, y así se entiende que la acción existe pero ya está usada.
+                  */}
                   <button
-                    onClick={(e) => { e.stopPropagation(); irAAcordar(c.id); }}
-                    title="Armar un acuerdo de pago por lo vencido"
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-muted-foreground hover:bg-muted hover:text-foreground text-xs font-medium transition-colors"
+                    onClick={(e) => { e.stopPropagation(); if (!c.acuerdo) irAAcordar(c.id); }}
+                    disabled={!!c.acuerdo}
+                    title={c.acuerdo ? "Ya tiene un acuerdo de pago vigente" : "Armar un acuerdo de pago por lo vencido"}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-muted-foreground text-xs font-medium transition-colors enabled:hover:bg-muted enabled:hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     <Handshake className="h-3 w-3" /> Acordar
                   </button>
@@ -663,7 +690,7 @@ export function CobranzaTable({ role }: { role: Role }) {
                   <button onClick={(e) => { e.stopPropagation(); setGestion(c); }} className="flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 text-sm font-medium transition-colors border border-primary/20">
                     <MessageSquarePlus className="h-4 w-4" /> Gestionar
                   </button>
-                  <button onClick={(e) => { e.stopPropagation(); irAAcordar(c.id); }} title="Acuerdo de pago" className="flex items-center justify-center h-10 w-10 rounded-lg border border-border text-muted-foreground hover:bg-muted transition-colors">
+                  <button onClick={(e) => { e.stopPropagation(); if (!c.acuerdo) irAAcordar(c.id); }} disabled={!!c.acuerdo} title={c.acuerdo ? "Ya tiene un acuerdo de pago vigente" : "Acuerdo de pago"} className="flex items-center justify-center h-10 w-10 rounded-lg border border-border text-muted-foreground transition-colors enabled:hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40">
                     <Handshake className="h-4 w-4" />
                   </button>
                   {(() => {
