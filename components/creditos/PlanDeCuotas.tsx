@@ -127,7 +127,14 @@ export function PlanDeCuotas({
                   está pagada. "Pendiente" no se escribe: era un chip que repetía lo obvio en
                   cuatro de cada cinco filas.
                 */
-                { t: "A cobrar", op: "=", a: `text-right ${pr}` },
+                /*
+                  🔴 CON EL COBRO BLOQUEADO NO DICE "A COBRAR". Con un acuerdo vigente esta
+                  columna mostraba $304.745,00 al lado de una cuota pactada de $271.730,95, y
+                  el título afirmaba que eso era lo que había que cobrar. No lo es: es lo que
+                  le falta a esa cuota del plan viejo. Mismo arreglo que ya se hizo en el modal
+                  de cobro del acuerdo.
+                */
+                { t: cobroBloqueado ? "Le falta" : "A cobrar", op: "=", a: `text-right ${pr}` },
               ].map((h) => (
                 <th
                   key={h.t}
@@ -362,7 +369,12 @@ export function PlanDeCuotas({
           hoy): sin esto el importe de la columna no se puede verificar. */}
       <p className="text-[11px] leading-relaxed text-muted-foreground">
         <span className="font-mono">Cuota = interés + capital.</span>{" "}
-        <span className="font-mono">A cobrar = cuota + mora − lo ya pagado.</span>
+        <span className="font-mono">
+          {cobroBloqueado ? "Le falta" : "A cobrar"} = cuota + mora − lo ya pagado.
+        </span>
+        {/* Por qué este plan está de referencia y no se cobra. Va en el pie, con el resto de
+            las aclaraciones del cálculo, no como un cartel más arriba. */}
+        {cobroBloqueado && <> {cobroBloqueado}.</>}
         {moraTotal > 0 && mora && (
           <>
             {" "}La mora se devenga sobre el importe de la cuota —no sobre el saldo que queda

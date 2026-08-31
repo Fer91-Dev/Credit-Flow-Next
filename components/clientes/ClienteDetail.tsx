@@ -1087,11 +1087,24 @@ function CreditosTabla({ creditos, mostrarProximo, onCobrar, onCobrarAcuerdo, cl
                   {formatCreditoNumero(c.numero, c.refinancia_a_numero)}
                 </span>
                 <StatusBadge label={b.label} variant={b.variant} />
+                {/*
+                  🔴 "EN ACUERDO" EN VERDE Y "82 DÍAS DE MORA" EN ROJO, EN EL MISMO RENGLÓN.
+                  Se contradecían. Con un acuerdo vigente los punitorios están CONGELADOS: ese
+                  atraso ya no crece ni se le sigue cobrando, así que el chip deja de latir en
+                  rojo y lo dice. El número se conserva —es la historia del crédito— pero
+                  subordinado al estado, que es el que manda.
+                */}
                 {mora > 0 && (
-                  <span className="inline-flex items-center gap-1.5 rounded-full border border-destructive/35 bg-destructive/10 px-2 py-0.5 text-[11px] font-semibold text-destructive">
-                    <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-destructive" />
-                    {formatDias(mora)} de mora
-                  </span>
+                  acuerdoVig ? (
+                    <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-muted/30 px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+                      {formatDias(mora)} de mora · congelada
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1.5 rounded-full border border-destructive/35 bg-destructive/10 px-2 py-0.5 text-[11px] font-semibold text-destructive">
+                      <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-destructive" />
+                      {formatDias(mora)} de mora
+                    </span>
+                  )
                 )}
                 {/* Que un crédito HAYA NACIDO de refinanciar otro se lee de un vistazo: la
                     cadena de reestructuraciones es justo lo que hay que mirar antes de dar otro. */}
@@ -1109,8 +1122,20 @@ function CreditosTabla({ creditos, mostrarProximo, onCobrar, onCobrarAcuerdo, cl
               <div className="grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-4">
                 <CifraCredito label="Capital pendiente" valor={`$${n2(c.saldo_pendiente)}`}
                   pie={`de $${n0(c.monto_original)} otorgados`} />
-                <CifraCredito label="Cuota" valor={`$${n2(c.cuota)}`}
-                  pie={tieneCuotas ? `${res!.pagadas} de ${res!.total} pagadas` : "sin cronograma"} />
+                {/*
+                  🔴 DOS COSAS LLAMADAS "CUOTA" EN LA MISMA FILA. Con un acuerdo vigente acá
+                  decía "CUOTA $217.675,00" al lado de "CUOTA PACTADA $271.730,95", y nada
+                  indicaba cuál había que cobrar. La del plan viejo se conserva como
+                  referencia —sirve para explicarle al cliente de dónde salió su deuda— pero
+                  se nombra por lo que es y queda en gris.
+                */}
+                <CifraCredito
+                  label={acuerdoVig ? "Cuota original" : "Cuota"}
+                  valor={`$${n2(c.cuota)}`}
+                  pie={acuerdoVig
+                    ? "del plan que se cayó"
+                    : tieneCuotas ? `${res!.pagadas} de ${res!.total} pagadas` : "sin cronograma"}
+                  tono={acuerdoVig ? "muted" : undefined} />
                 {/*
                   🔴 CON UN ACUERDO VIGENTE, ESTE RECUADRO NO PUEDE HABLAR DEL PLAN VIEJO.
 
@@ -1203,13 +1228,15 @@ function CreditosTabla({ creditos, mostrarProximo, onCobrar, onCobrarAcuerdo, cl
 
 /** Una cifra de la card: etiqueta chica, número grande, contexto abajo. */
 function CifraCredito({ label, valor, pie, tono }: {
-  label: string; valor: string; pie?: string; tono?: "success" | "warning";
+  label: string; valor: string; pie?: string;
+  /** `muted` = dato de referencia, no lo que hay que mirar (ej. la cuota del plan caído). */
+  tono?: "success" | "warning" | "muted";
 }) {
   return (
     <div className="min-w-0">
       <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">{label}</p>
       <p className={`truncate font-mono text-base font-bold tabular-nums tracking-tight ${
-        tono === "success" ? "text-success" : tono === "warning" ? "text-warning" : "text-foreground"
+        tono === "success" ? "text-success" : tono === "warning" ? "text-warning" : tono === "muted" ? "text-muted-foreground" : "text-foreground"
       }`}>
         {valor}
       </p>
@@ -1325,12 +1352,35 @@ function CuotasInline({ credito, onCobrar, onCobrarAcuerdo }: {
         </div>
       )}
 
-      <div className="flex items-center justify-between mb-2">
-        <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Plan de cuotas</p>
+      {/*
+        🔴 EL TÍTULO TIENE QUE DECIR QUE ESTE PLAN YA NO RIGE.
+
+        Decía "PLAN DE CUOTAS" a secas, con tres filas "Vencida" en rojo debajo — lo que más
+        grita en la pantalla — sobre un crédito cuyo cliente está al día con su acuerdo.
+        Fernando: "no se distingue cuál es el plan de cuotas original y que ya está caído".
+        El aviso vivía en un párrafo dentro de la banda de arriba, y un párrafo no compite con
+        tres badges rojos.
+
+        Los estados de las cuotas NO se tocan: siguen diciendo "vencida" porque su fecha pasó
+        de verdad, y es lo que explica por qué la mora quedó congelada en ese número. Lo que
+        cambia es el encabezado y el conteo, que dejan de leerse como una alarma.
+      */}
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 mb-2">
+        <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+          {acuerdo ? "Plan original del crédito" : "Plan de cuotas"}
+          {acuerdo && (
+            <span className="ml-1.5 font-semibold normal-case tracking-normal text-muted-foreground/60">
+              · reemplazado por el acuerdo
+            </span>
+          )}
+        </p>
         {resumen && (
           <span className="text-[11px] text-muted-foreground/70 tabular-nums">
             {resumen.pagadas}/{resumen.total} pagadas
-            {resumen.vencidas > 0 && <span className="text-destructive"> · {resumen.vencidas} vencida{resumen.vencidas !== 1 ? "s" : ""}</span>}
+            {/* Con un acuerdo encima, "3 vencidas" en rojo dice lo contrario de lo que pasa. */}
+            {resumen.vencidas > 0 && (
+              <span className={acuerdo ? "" : "text-destructive"}> · {resumen.vencidas} vencida{resumen.vencidas !== 1 ? "s" : ""}</span>
+            )}
             {" · "}saldo <span className="font-mono">${n0(resumen.saldo_capital)}</span>
           </span>
         )}
