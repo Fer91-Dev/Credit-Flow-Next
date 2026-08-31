@@ -651,7 +651,12 @@ export interface CuotasCredito {
     quita: number;
     congela_punitorios: boolean;
     total_cuotas: number;
-    cuotas: { id: string; numero: number; vencimiento: string; monto: number; pagado: number; estado: string; comprobante?: string | null; pago_id?: string | null }[];
+    cuotas: {
+      id: string; numero: number; vencimiento: string; monto: number; pagado: number; estado: string;
+      /** Todos los cobros que cubrieron la cuota pactada (una puede pagarse con dos). */
+      recibos?: { comprobante: string | null; pago_id: string; monto: number; monto_pago: number }[];
+      comprobante?: string | null; pago_id?: string | null;
+    }[];
   } | null;
   /** Condiciones de mora CONGELADAS del crédito: explican de dónde sale cada punitorio. */
   mora: { activa: boolean; tasaDiaria: number; diasGracia: number; topePct: number };

@@ -18,6 +18,7 @@ import { getConfiguracion, getCobranzaConfig } from "@/lib/config";
 import { calcularDeudaVencida, planDeAcuerdo, evaluarAcuerdo, quitaMaxima, round2, noNegativo, tasaPeriodicaSegunConvencion, type CuotaParaImputar, type DeudaVencida, type AcuerdosConfig, moraDelCredito, moraDesdeCronograma } from "@/lib/domain";
 import { hoyComercial, formatCreditoNumero } from "@/lib/utils";
 import { numerosRefinanciados } from "@/lib/creditos-numero";
+import { formatComprobante } from "@/lib/comprobantes";
 
 /**
  * Cuánto interés le agregó el acuerdo a la deuda. Se DERIVA de lo que ya está guardado
@@ -594,6 +595,56 @@ export async function anularAcuerdo(tenantId: string, acuerdoId: string, motivo:
   });
 
   return a;
+}
+
+/**
+ * Qué recibo pagó cada cuota PACTADA. Se DERIVA de los cobros, no del vínculo que manda el
+ * navegador.
+ *
+ * 🔴 POR QUÉ NO SE USA `pagos.acuerdo_cuota_id`. Ese campo lo manda la pantalla al cobrar, y
+ * si el formulario venía con datos viejos —o el cobro salió por otro camino— queda en NULL.
+ * Pasó de verdad: en CRD-000016 el REC-000015 quedó sin vínculo, así que la cuota 2 del
+ * acuerdo aparecía PAGADA pero sin ningún recibo al lado. El dinero estaba, el papel no se
+ * podía encontrar.
+ *
+ * Acá se reparte igual que `sincronizarAcuerdos` reparte el `pagado`: los cobros posteriores
+ * al acuerdo, en orden, llenando cuota por cuota. Mismo criterio ⇒ el recibo que se muestra
+ * es siempre el que explica ese `pagado`, y se arregla solo en los acuerdos ya cargados.
+ */
+export async function recibosPorCuotaDeAcuerdo(
+  tenantId: string,
+  acuerdo: { credito_id: string; fecha: Date; created_at: Date; cuotas: { id: string; numero: number; monto: number }[] },
+): Promise<Map<string, { comprobante: string | null; pago_id: string; monto: number; monto_pago: number }[]>> {
+  const pagos = await prisma.pagos.findMany({
+    // El MISMO filtro que `cobradoDesde`: si tomara otros pagos, el recibo no explicaría el
+    // `pagado` que muestra la cuota de al lado.
+    where: {
+      ...withTenant(tenantId), credito_id: acuerdo.credito_id, anulado: false,
+      fecha: { gte: acuerdo.fecha }, created_at: { gte: acuerdo.created_at },
+    },
+    orderBy: { created_at: "asc" },
+    select: { id: true, monto: true, movimientos: { where: { tipo: "cobro" }, select: { serie: true, numero: true } } },
+  });
+
+  const out = new Map<string, { comprobante: string | null; pago_id: string; monto: number; monto_pago: number }[]>();
+  let idx = 0;
+  let sobrante = 0; // lo que quedó del pago anterior tras cubrir una cuota
+  for (const c of [...acuerdo.cuotas].sort((x, y) => x.numero - y.numero)) {
+    let falta = round2(c.monto);
+    const lista: { comprobante: string | null; pago_id: string; monto: number; monto_pago: number }[] = [];
+    while (falta > 0.009 && (sobrante > 0.009 || idx < pagos.length)) {
+      if (sobrante <= 0.009) { sobrante = round2(pagos[idx].monto); }
+      const p = pagos[idx];
+      const usa = round2(Math.min(sobrante, falta));
+      const mov = p.movimientos.find((mv) => mv.serie && mv.numero != null);
+      lista.push({ comprobante: mov ? formatComprobante(mov.serie, mov.numero) : null, pago_id: p.id, monto: usa, monto_pago: p.monto });
+      sobrante = round2(sobrante - usa);
+      falta = round2(falta - usa);
+      if (sobrante <= 0.009) idx++;
+    }
+    if (lista.length) out.set(c.id, lista);
+  }
+  return out;
 }
 
 /** Lo que las pantallas necesitan saber del acuerdo vigente de un crédito. */

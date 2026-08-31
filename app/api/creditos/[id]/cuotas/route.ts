@@ -4,6 +4,7 @@ import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { frecuenciaLabel, normalizarFrecuencia, diasAtraso, round2, interesMora, moraDelCredito, moraDesdeCronograma, topeMoraDeCuota, fechaTopeMora, topeMoraPorFallecimiento, type FrecuenciaDef } from "@/lib/domain";
 import { getConfiguracion, getCobranzaConfig } from "@/lib/config";
+import { recibosPorCuotaDeAcuerdo } from "@/lib/acuerdos";
 import { formatComprobante } from "@/lib/comprobantes";
 import { nombreCompleto, hoyComercial } from "@/lib/utils";
 import type { Prisma } from "@prisma/client";
@@ -211,22 +212,11 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
         orderBy: { numero: "asc" },
         select: {
           id: true, numero: true, vencimiento: true, monto: true, pagado: true, estado: true,
-          /**
-           * 🔴 EL RECIBO DE LA CUOTA PACTADA. Sin esto el comprobante solo aparecía en la fila
-           * del plan VIEJO del crédito — donde el operador no lo busca. Fernando: "el pago de
-           * las cuotas del acuerdo solo debe impactarse y generar el recibo en el plan de
-           * cuotas del acuerdo". El pago es uno solo y el recibo también; lo que faltaba era
-           * mostrarlo también acá, que es donde se lo espera.
-           */
-          pagos: {
-            where: { anulado: false },
-            select: {
-              id: true, fecha: true,
-              movimientos: { where: { tipo: "cobro" }, select: { serie: true, numero: true } },
-            },
-          },
         },
       },
+      // Los dos cortes con los que se decide qué cobros alimentan este acuerdo.
+      credito_id: true,
+      created_at: true,
   } satisfies Prisma.acuerdos_pagoSelect;
 
   /**
@@ -245,6 +235,18 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
       select: SELECT_ACUERDO,
     }));
   const proximaAcuerdo = acuerdo?.cuotas.find((c) => c.estado !== "pagada") ?? null;
+  /**
+   * 🔴 EL RECIBO DE CADA CUOTA PACTADA SE DERIVA, no sale de `pagos.acuerdo_cuota_id`.
+   *
+   * Ese vínculo lo manda la pantalla al cobrar y puede quedar en NULL —pasó con el REC-000015
+   * de CRD-000016—, y ahí la cuota figuraba PAGADA sin ningún recibo al lado: la plata estaba
+   * y el papel no se podía encontrar. Repartiendo los cobros igual que `sincronizarAcuerdos`
+   * reparte el `pagado`, el recibo que se muestra SIEMPRE explica ese importe, y los acuerdos
+   * ya cargados se arreglan solos.
+   */
+  const recibosAcuerdo = acuerdo
+    ? await recibosPorCuotaDeAcuerdo(tenantId, acuerdo)
+    : new Map<string, { comprobante: string | null; pago_id: string; monto: number; monto_pago: number }[]>();
 
   return successResponse({
     credito_id: credito.id,
@@ -267,8 +269,8 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
            * entiende viendo el plan, no leyendo un párrafo que lo explique.
            */
           cuotas: acuerdo.cuotas.map((c) => {
-            // El comprobante de ESTA cuota pactada: el cobro que la pagó.
-            const mov = c.pagos.flatMap((g) => g.movimientos).find((mv) => mv.serie && mv.numero != null);
+            // Los cobros que cubrieron ESTA cuota pactada, en orden.
+            const recs = recibosAcuerdo.get(c.id) ?? [];
             return {
               // El id viaja para que el cobro pueda decir QUÉ cuota del acuerdo se pagó.
               id: c.id,
@@ -277,9 +279,11 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
               monto: c.monto,
               pagado: c.pagado,
               estado: c.estado,
-              comprobante: mov ? formatComprobante(mov.serie, mov.numero) : null,
+              /** Todos los recibos que la pagaron: una cuota pactada puede cubrirse con dos cobros. */
+              recibos: recs,
+              comprobante: recs[0]?.comprobante ?? null,
               /** Para poder abrir el PDF del recibo desde la fila de la cuota pactada. */
-              pago_id: c.pagos[0]?.id ?? null,
+              pago_id: recs[0]?.pago_id ?? null,
             };
           }),
           proxima: proximaAcuerdo

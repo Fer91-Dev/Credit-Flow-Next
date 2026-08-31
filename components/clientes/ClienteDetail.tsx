@@ -1377,10 +1377,29 @@ function CuotasInline({ credito, onCobrar, onCobrarAcuerdo }: {
                         </span>
                         <span className="ml-2 text-muted-foreground/70">{fmtDate(q.vencimiento)}</span>
                       </td>
+                      {/*
+                        TODOS los recibos, no solo el primero: una cuota pactada se puede
+                        cubrir con dos cobros, y mostrar uno solo deja al cliente buscando el
+                        otro. Cuando el cobro se repartió entre cuotas se dice de cuánto era,
+                        igual que en el plan del crédito.
+                      */}
                       <td className="px-3 py-2 text-left">
-                        {q.comprobante && (
-                          <span className="font-mono text-[11px] text-muted-foreground">{q.comprobante}</span>
-                        )}
+                        <div className="flex flex-col gap-0.5">
+                          {(q.recibos ?? []).map((rc) => (
+                            <button
+                              key={rc.pago_id + rc.monto}
+                              type="button"
+                              onClick={() => abrirRecibo(rc.pago_id)}
+                              title="Ver el recibo en PDF"
+                              className="text-left font-mono text-[11px] text-muted-foreground transition-colors hover:text-foreground"
+                            >
+                              {rc.comprobante ?? "Recibo"}
+                              {Math.abs(rc.monto_pago - rc.monto) > 0.01 && (
+                                <span className="text-muted-foreground/50"> · {formatMonto(rc.monto)} de {formatMonto(rc.monto_pago)}</span>
+                              )}
+                            </button>
+                          ))}
+                        </div>
                       </td>
                       <td className="px-3 py-2 text-right">
                         {q.estado === "pagada"
