@@ -1360,56 +1360,90 @@ function CuotasInline({ credito, onCobrar, onCobrarAcuerdo }: {
             el recibo aparecía únicamente en la fila del plan viejo del crédito, que es donde
             nadie lo busca. Es el plan que rige: va acá, con su comprobante en la fila.
           */}
-          <div className="mt-2.5 overflow-hidden rounded-lg border border-primary/20">
-            <table className="w-full text-xs">
+          <div className="mt-2.5 overflow-hidden rounded-lg border border-border">
+            <table className="w-full border-separate border-spacing-0 text-xs">
+              {/*
+                🔴 ENCABEZADO Y COLUMNAS DE VERDAD. Estaba armada como una lista de renglones
+                sueltos: sin títulos, con divisiones apenas visibles y los importes sin alinear.
+                Fernando: "no se ve como una tabla de cuotas, es una tabla floja". Al lado del
+                plan del crédito —que sí tiene encabezados— parecía un apunte. Mismo lenguaje
+                que `PlanDeCuotas`: cabecera gris en mayúsculas, importes en mono a la derecha,
+                una línea por fila.
+              */}
+              <thead>
+                <tr className="bg-card">
+                  {[
+                    { t: "#", a: "text-left", w: "w-9" },
+                    { t: "Vencimiento", a: "text-left" },
+                    { t: "Comprobante", a: "text-left" },
+                    { t: "Estado", a: "text-center" },
+                    { t: "Importe", a: "text-right pr-3" },
+                  ].map((h) => (
+                    <th
+                      key={h.t}
+                      className={`px-3 py-2 ${h.a} ${h.w ?? ""} border-b border-border text-[10px] font-semibold uppercase tracking-wide text-muted-foreground`}
+                    >
+                      {h.t}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
               <tbody>
                 {acuerdo.cuotas.map((q) => {
                   const pend = round2(q.monto - q.pagado);
                   const esProxima = !!acuerdoVigenteAca && q.id === proximaAcuerdo?.id;
+                  const pagada = q.estado === "pagada";
                   return (
                     <tr
                       key={q.id}
-                      className={`border-b border-primary/10 last:border-0 ${esProxima ? "bg-primary/[0.07]" : ""}`}
+                      className={`${esProxima ? "bg-primary/[0.07]" : "hover:bg-muted/20"} transition-colors`}
                     >
-                      <td className="px-3 py-2 whitespace-nowrap">
-                        <span className={esProxima ? "font-semibold text-foreground" : "text-muted-foreground"}>
-                          Cuota {q.numero} de {acuerdo.total_cuotas}
+                      <td className="border-b border-border/60 px-3 py-2.5 font-mono text-muted-foreground">
+                        {q.numero}
+                      </td>
+                      <td className="whitespace-nowrap border-b border-border/60 px-3 py-2.5">
+                        <span className={esProxima ? "font-medium text-foreground" : "text-muted-foreground"}>
+                          {fmtDate(q.vencimiento)}
                         </span>
-                        <span className="ml-2 text-muted-foreground/70">{fmtDate(q.vencimiento)}</span>
                       </td>
                       {/*
-                        TODOS los recibos, no solo el primero: una cuota pactada se puede
-                        cubrir con dos cobros, y mostrar uno solo deja al cliente buscando el
-                        otro. Cuando el cobro se repartió entre cuotas se dice de cuánto era,
-                        igual que en el plan del crédito.
+                        TODOS los recibos, no solo el primero: una cuota pactada se puede cubrir
+                        con dos cobros, y mostrar uno solo deja al cliente buscando el otro.
                       */}
-                      <td className="px-3 py-2 text-left">
-                        <div className="flex flex-col gap-0.5">
-                          {(q.recibos ?? []).map((rc) => (
-                            <button
-                              key={rc.pago_id + rc.monto}
-                              type="button"
-                              onClick={() => abrirRecibo(rc.pago_id)}
-                              title="Ver el recibo en PDF"
-                              className="text-left font-mono text-[11px] text-muted-foreground transition-colors hover:text-foreground"
-                            >
-                              {rc.comprobante ?? "Recibo"}
-                              {Math.abs(rc.monto_pago - rc.monto) > 0.01 && (
-                                <span className="text-muted-foreground/50"> · {formatMonto(rc.monto)} de {formatMonto(rc.monto_pago)}</span>
-                              )}
-                            </button>
-                          ))}
-                        </div>
+                      <td className="border-b border-border/60 px-3 py-2.5">
+                        {(q.recibos ?? []).length > 0 ? (
+                          <div className="flex flex-col items-start gap-1">
+                            {(q.recibos ?? []).map((rc) => (
+                              <button
+                                key={rc.pago_id + rc.monto}
+                                type="button"
+                                onClick={() => abrirRecibo(rc.pago_id)}
+                                title="Ver el recibo en PDF"
+                                className="inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-1 font-mono text-[11px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                              >
+                                <Printer className="h-3 w-3 shrink-0" />
+                                {rc.comprobante ?? "Recibo"}
+                                {Math.abs(rc.monto_pago - rc.monto) > 0.01 && (
+                                  <span className="tabular-nums text-muted-foreground/50">
+                                    {formatMonto(rc.monto)} de {formatMonto(rc.monto_pago)}
+                                  </span>
+                                )}
+                              </button>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-muted-foreground/20">—</span>
+                        )}
                       </td>
-                      <td className="px-3 py-2 text-right">
-                        {q.estado === "pagada"
+                      <td className="border-b border-border/60 px-3 py-2.5 text-center">
+                        {pagada
                           ? <StatusBadge label="Pagada" variant="success" />
                           : esProxima
                             ? <StatusBadge label="A cobrar" variant="primary" />
-                            : null}
+                            : <span className="text-muted-foreground/20">—</span>}
                       </td>
-                      <td className="px-3 py-2 pr-3 text-right font-mono tabular-nums">
-                        {q.estado === "pagada"
+                      <td className="border-b border-border/60 px-3 py-2.5 pr-3 text-right font-mono tabular-nums">
+                        {pagada
                           ? <span className="text-success">{formatMonto(q.pagado)}</span>
                           : <span className={esProxima ? "font-semibold text-foreground" : "text-muted-foreground"}>{formatMonto(pend)}</span>}
                       </td>
@@ -1417,6 +1451,18 @@ function CuotasInline({ credito, onCobrar, onCobrarAcuerdo }: {
                   );
                 })}
               </tbody>
+              {/* El total, para que la tabla cierre sola y no haya que buscarlo arriba. */}
+              <tfoot>
+                <tr className="bg-card">
+                  <td colSpan={3} className="px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                    Total pactado
+                  </td>
+                  <td className="px-3 py-2" />
+                  <td className="px-3 py-2 pr-3 text-right font-mono font-bold tabular-nums text-foreground">
+                    {formatMonto(acuerdo.monto_acordado)}
+                  </td>
+                </tr>
+              </tfoot>
             </table>
           </div>
 
