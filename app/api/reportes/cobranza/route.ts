@@ -20,6 +20,13 @@ import type { NextRequest } from "next/server";
  *  - Recupero: mora e importe cobrados en el período.
  *  - Desglose por canal (tipo de gestión) y por vendedor (dueño del crédito gestionado).
  *
+ * 🔴 "POR VENDEDOR" ES EL DUEÑO DEL CRÉDITO, NO QUIEN LLAMÓ. Y está bien que así sea: la
+ * pregunta que contesta este reporte es "cómo se está recuperando la cartera de X", no
+ * "cuánto trabajó X". Desde 2026-08-31 las gestiones SÍ guardan a su autor
+ * (`acciones_cobranza.gestionado_por*`), así que la segunda pregunta ya se puede contestar —
+ * pero con OTRO corte, no cambiando el significado de éste. Mezclar los dos criterios en un
+ * mismo número es la forma más rápida de que nadie sepa qué está mirando.
+ *
  * Alcance: admin ve TODO el tenant; el vendedor ve SOLO la efectividad sobre sus propios
  * créditos (scoping anti-IDOR) — para que cada uno mida su gestión y el admin al equipo.
  */

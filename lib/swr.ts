@@ -665,6 +665,13 @@ export interface AccionCobranza {
   promesa_fecha: string | null;
   promesa_estado: "pendiente" | "cumplida" | "incumplida" | null;
   proximo_contacto: string | null;
+  /** true = la generó el motor automático (cron), no una persona. */
+  automatico?: boolean;
+  /**
+   * Quién la hizo, con el nombre CONGELADO al momento de gestionar. Null en las automáticas
+   * y en las gestiones viejas (anteriores a que se empezara a guardar el autor).
+   */
+  gestionado_por_nombre?: string | null;
   credito: { id: string; cliente: { nombre: string; apellido?: string | null } };
 }
 

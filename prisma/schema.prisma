@@ -889,6 +889,20 @@ model acciones_cobranza {
   automatico       Boolean   @default(false) // true = enviado por el motor automático (cron)
   promesa_estado   String? // pendiente | cumplida | incumplida (solo cuando resultado = promesa_pago)
 
+  /// QUIÉN hizo la gestión. Mismo patrón que `creditos.otorgado_por`: el id para poder
+  /// agrupar y el nombre CONGELADO para que la ficha siga diciendo quién llamó aunque
+  /// después se borre o se renombre la cuenta.
+  ///
+  /// 🔴 Faltaba por completo: una gestión de cobranza no registraba autor. El módulo entero
+  /// existe para dejar constancia de que a alguien se lo contactó, y no se sabía quién lo
+  /// hizo. Nulo en las gestiones AUTOMÁTICAS (`automatico = true`), que no tienen persona
+  /// detrás — ahí el null es el dato correcto, no un faltante.
+  gestionado_por          String? @db.Uuid // profiles.id de quien la registró
+  gestionado_por_nombre   String? // nombre al momento de gestionar
+  /// Ficha comercial de quien gestionó, si era un vendedor. Se guarda en vez de resolverse
+  /// por join para que el reporte de "quién trabajó" no dependa de que la cuenta siga viva.
+  gestionado_por_vendedor String? @db.Uuid
+
   credito creditos @relation(fields: [credito_id], references: [id], onDelete: Cascade)
 
   @@index([tenant_id, credito_id])

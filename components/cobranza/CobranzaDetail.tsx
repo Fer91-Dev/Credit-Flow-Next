@@ -307,6 +307,18 @@ export function CobranzaDetail({ credito, acciones }: {
                     <span className="font-medium text-foreground">{RESULTADO_LABEL[g.resultado]}</span>
                   </span>
                   <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground tabular-nums">
+                    {/*
+                      QUIÉN la hizo. El módulo entero existe para dejar constancia de que a
+                      alguien se lo contactó, y hasta ahora no se sabía quién había llamado:
+                      no se podía repartir el trabajo ni preguntarle a nadie por una gestión
+                      mal cargada. Las viejas y las del cron no lo tienen y no muestran nada,
+                      que es lo honesto — no había dato, no se inventa uno.
+                    */}
+                    {g.automatico
+                      ? <span className="not-tabular-nums text-muted-foreground/70">automática</span>
+                      : g.gestionado_por_nombre
+                        ? <span className="not-tabular-nums text-muted-foreground/70">{g.gestionado_por_nombre}</span>
+                        : null}
                     {fmtDate(g.created_at)}
                     {/* En qué quedó la promesa. Es lo único que mostraba la pestaña y que no
                         estaba acá: sin esto la línea dice qué prometió pero no si cumplió. */}

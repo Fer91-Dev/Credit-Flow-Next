@@ -51,7 +51,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
 export const POST = withErrorHandler(async (req: NextRequest) => {
   assertSameOrigin(req);
   // Registrar gestión de cobranza: admin, cobrador y vendedor (este último, solo SUS créditos).
-  const { tenantId, role, vendedorId } = await requireRole(["admin", "vendedor"], req);
+  const { tenantId, role, vendedorId, userId, nombre, email } = await requireRole(["admin", "vendedor"], req);
 
   let body: any;
   try {
@@ -91,6 +91,16 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
       proximo_contacto: body.proximo_contacto ? new Date(body.proximo_contacto) : null,
       // Si es una promesa de pago, nace en estado pendiente
       promesa_estado: body.resultado === "promesa_pago" ? "pendiente" : null,
+      /**
+       * 🔴 QUIÉN LA HIZO. No se guardaba: el módulo entero existe para dejar constancia de
+       * que a alguien se lo contactó, y no había forma de saber quién lo hizo ni de reclamarle
+       * a nadie una gestión mal cargada. El nombre va CONGELADO (igual que en `creditos`
+       * y en `auditoria`) para que la ficha lo siga diciendo aunque después se borre la cuenta.
+       */
+      gestionado_por: userId,
+      gestionado_por_nombre: nombre?.trim() || email || null,
+      // La ficha comercial, si quien gestionó es un vendedor (un admin no tiene).
+      gestionado_por_vendedor: vendedorId ?? null,
       ...withTenant(tenantId),
     },
     include: { credito: { select: { id: true, cliente: { select: { nombre: true, apellido: true } } } } },
