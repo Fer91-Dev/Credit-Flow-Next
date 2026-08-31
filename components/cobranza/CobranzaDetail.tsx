@@ -121,10 +121,24 @@ export function CobranzaDetail({ credito, acciones }: {
         )}
       </div>
 
-      {/* ── El acuerdo, si tiene uno ──────────────────────────────────────── */}
+      {/*
+        ── El acuerdo, si tiene uno ────────────────────────────────────────
+
+        🔴 EL TÍTULO SALE DEL ESTADO. El endpoint ahora devuelve también el acuerdo CERRADO
+        (para que su plan no desaparezca de la ficha al cumplirse), así que decir "vigente" de
+        entrada sería afirmar algo falso sobre un acuerdo cumplido o roto.
+      */}
       {acuerdo && (
-        <DetailSection icon="handshake" title="Acuerdo de pago vigente">
-          <div className="rounded-lg border border-primary/25 bg-primary/5 px-4 py-3 space-y-2">
+        <DetailSection
+          icon="handshake"
+          title={
+            acuerdo.estado === "vigente" ? "Acuerdo de pago vigente"
+              : acuerdo.estado === "cumplido" ? "Acuerdo de pago cumplido"
+              : acuerdo.estado === "roto" ? "Acuerdo de pago roto"
+              : "Acuerdo de pago anulado"
+          }
+        >
+          <div className={`rounded-lg border px-4 py-3 space-y-2 ${acuerdo.estado === "vigente" ? "border-primary/25 bg-primary/5" : "border-border bg-muted/20"}`}>
             <div className="flex items-baseline justify-between gap-2">
               <span className="text-xs text-muted-foreground">
                 Firmado el {fmtDate(acuerdo.fecha)} · {acuerdo.total_cuotas} cuotas
@@ -134,7 +148,7 @@ export function CobranzaDetail({ credito, acciones }: {
             <p className="text-[11px] text-muted-foreground">
               Sobre {formatMonto(acuerdo.deuda_original)} de deuda vencida
               {acuerdo.quita > 0 && <> · quita de {formatMonto(acuerdo.quita)}</>}
-              {acuerdo.congela_punitorios && <> · <span className="text-success">los punitorios están congelados</span></>}
+              {acuerdo.congela_punitorios && acuerdo.estado === "vigente" && <> · <span className="text-success">los punitorios están congelados</span></>}
             </p>
             <div className="space-y-1 pt-1">
               {acuerdo.cuotas.map((c) => (

@@ -1300,29 +1300,49 @@ function CuotasInline({ credito, onCobrar, onCobrarAcuerdo }: {
    * contradecía. Tenía razón en desconfiar: faltaba el renglón que los relaciona.
    */
   const acuerdo = meta?.acuerdo ?? null;
+  /**
+   * 🔴 VIGENTE vs CERRADO. El plan del acuerdo se muestra SIEMPRE —también cumplido o roto,
+   * porque es el registro de lo que el cliente pactó y pagó— pero solo el VIGENTE bloquea el
+   * cobro del plan viejo, ofrece el botón y pliega las cuotas del crédito. Antes se filtraba
+   * en el servidor y al cumplirse el acuerdo su plan desaparecía de la ficha.
+   */
+  const acuerdoVigenteAca = acuerdo?.estado === "vigente" ? acuerdo : null;
   const proximaAcuerdo = acuerdo?.cuotas.find((c) => c.estado !== "pagada") ?? null;
+  const ACUERDO_BADGE: Record<string, { label: string; variant: "primary" | "success" | "destructive" | "muted" }> = {
+    vigente:  { label: "Acuerdo de pago vigente",  variant: "primary" },
+    cumplido: { label: "Acuerdo de pago cumplido", variant: "success" },
+    roto:     { label: "Acuerdo de pago roto",     variant: "destructive" },
+    anulado:  { label: "Acuerdo de pago anulado",  variant: "muted" },
+  };
+  const acEstado = acuerdo ? ACUERDO_BADGE[acuerdo.estado] ?? ACUERDO_BADGE.vigente : null;
 
   return (
     <div className="px-3 py-3">
-      {acuerdo && proximaAcuerdo && (
-        <div className="mb-3 rounded-xl border border-primary/25 bg-primary/[0.06] px-3.5 py-3">
+      {acuerdo && (
+        <div className={`mb-3 rounded-xl border px-3.5 py-3 ${acuerdoVigenteAca ? "border-primary/25 bg-primary/[0.06]" : "border-border bg-muted/20"}`}>
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-primary">
-              <Handshake className="h-3.5 w-3.5" /> Acuerdo de pago vigente
+            <p className={`flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest ${acuerdoVigenteAca ? "text-primary" : "text-muted-foreground"}`}>
+              <Handshake className="h-3.5 w-3.5" /> {acEstado!.label}
             </p>
             <span className="text-[11px] tabular-nums text-muted-foreground">
               total {formatMonto(acuerdo.monto_acordado)} en {acuerdo.total_cuotas} cuota{acuerdo.total_cuotas === 1 ? "" : "s"}
             </span>
           </div>
-          <div className="mt-2 flex flex-wrap items-baseline justify-between gap-2">
-            <span className="text-sm text-foreground">
-              Lo pactado es la cuota {proximaAcuerdo.numero} de {acuerdo.total_cuotas}
-              <span className="text-muted-foreground"> · vence {fmtDate(proximaAcuerdo.vencimiento)}</span>
-            </span>
-            <span className="font-mono text-xl font-bold tabular-nums text-foreground">
-              {formatMonto(round2(proximaAcuerdo.monto - proximaAcuerdo.pagado))}
-            </span>
-          </div>
+          {proximaAcuerdo ? (
+            <div className="mt-2 flex flex-wrap items-baseline justify-between gap-2">
+              <span className="text-sm text-foreground">
+                Lo pactado es la cuota {proximaAcuerdo.numero} de {acuerdo.total_cuotas}
+                <span className="text-muted-foreground"> · vence {fmtDate(proximaAcuerdo.vencimiento)}</span>
+              </span>
+              <span className="font-mono text-xl font-bold tabular-nums text-foreground">
+                {formatMonto(round2(proximaAcuerdo.monto - proximaAcuerdo.pagado))}
+              </span>
+            </div>
+          ) : (
+            <p className="mt-2 text-sm text-muted-foreground">
+              Las {acuerdo.total_cuotas} cuotas pactadas se cobraron.
+            </p>
+          )}
           {/*
             Por qué los números de abajo son otros, y el botón que cobra.
 
@@ -1345,7 +1365,7 @@ function CuotasInline({ credito, onCobrar, onCobrarAcuerdo }: {
               <tbody>
                 {acuerdo.cuotas.map((q) => {
                   const pend = round2(q.monto - q.pagado);
-                  const esProxima = q.id === proximaAcuerdo.id;
+                  const esProxima = !!acuerdoVigenteAca && q.id === proximaAcuerdo?.id;
                   return (
                     <tr
                       key={q.id}
@@ -1386,7 +1406,7 @@ function CuotasInline({ credito, onCobrar, onCobrarAcuerdo }: {
               El plan de abajo es el del <span className="text-foreground">crédito</span>: es el detalle contable de
               dónde cae la plata, no lo que se le cobra.
             </p>
-            {onCobrarAcuerdo && (
+            {onCobrarAcuerdo && acuerdoVigenteAca && (
               <button
                 type="button"
                 onClick={() => onCobrarAcuerdo(credito.id, acuerdo)}
@@ -1419,13 +1439,13 @@ function CuotasInline({ credito, onCobrar, onCobrarAcuerdo }: {
         plan que sí rige era pedirle al operador que adivine cuál mirar. Se despliega cuando
         hace falta explicar de dónde salió la deuda — que es lo único para lo que sirve ahora.
       */}
-      <details open={!acuerdo} className="group/plan">
-      <summary className={acuerdo ? "cursor-pointer list-none" : "list-none"}>
+      <details open={!acuerdoVigenteAca} className="group/plan">
+      <summary className={acuerdoVigenteAca ? "cursor-pointer list-none" : "list-none"}>
       <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 mb-2">
         <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-          {acuerdo && <ChevronDown className="mr-1 inline h-3 w-3 transition-transform group-open/plan:rotate-180" />}
-          {acuerdo ? "Plan original del crédito" : "Plan de cuotas"}
-          {acuerdo && (
+          {acuerdoVigenteAca && <ChevronDown className="mr-1 inline h-3 w-3 transition-transform group-open/plan:rotate-180" />}
+          {acuerdoVigenteAca ? "Plan original del crédito" : "Plan de cuotas"}
+          {acuerdoVigenteAca && (
             <span className="ml-1.5 font-semibold normal-case tracking-normal text-muted-foreground/60">
               · reemplazado por el acuerdo
             </span>
@@ -1436,7 +1456,7 @@ function CuotasInline({ credito, onCobrar, onCobrarAcuerdo }: {
             {resumen.pagadas}/{resumen.total} pagadas
             {/* Con un acuerdo encima, "3 vencidas" en rojo dice lo contrario de lo que pasa. */}
             {resumen.vencidas > 0 && (
-              <span className={acuerdo ? "" : "text-destructive"}> · {resumen.vencidas} vencida{resumen.vencidas !== 1 ? "s" : ""}</span>
+              <span className={acuerdoVigenteAca ? "" : "text-destructive"}> · {resumen.vencidas} vencida{resumen.vencidas !== 1 ? "s" : ""}</span>
             )}
             {" · "}saldo <span className="font-mono">${n0(resumen.saldo_capital)}</span>
           </span>
@@ -1461,7 +1481,7 @@ function CuotasInline({ credito, onCobrar, onCobrarAcuerdo }: {
           cumple, las cuotas del crédito vuelven a habilitarse sin que nadie toque nada.
         */
         cobroBloqueado={
-          acuerdo ? "Hay un acuerdo de pago vigente: el cobro va por la cuota pactada" : null
+          acuerdoVigenteAca ? "Hay un acuerdo de pago vigente: el cobro va por la cuota pactada" : null
         }
       />
       </details>

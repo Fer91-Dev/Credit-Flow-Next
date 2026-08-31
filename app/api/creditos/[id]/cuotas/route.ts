@@ -6,6 +6,7 @@ import { frecuenciaLabel, normalizarFrecuencia, diasAtraso, round2, interesMora,
 import { getConfiguracion, getCobranzaConfig } from "@/lib/config";
 import { formatComprobante } from "@/lib/comprobantes";
 import { nombreCompleto, hoyComercial } from "@/lib/utils";
+import type { Prisma } from "@prisma/client";
 import type { NextRequest } from "next/server";
 
 interface RouteParams {
@@ -188,9 +189,20 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
    * un crédito: sin el dato, quien cobra desde Pagos no tiene forma de saber que hay un
    * arreglo y le cobraría la cuota del crédito en vez de la pactada, que es otro importe.
    */
-  const acuerdo = await prisma.acuerdos_pago.findFirst({
-    where: { ...withTenant(tenantId), credito_id: id, estado: "vigente" },
-    select: {
+  /**
+   * 🔴 NO SOLO EL VIGENTE: TAMBIÉN EL YA CERRADO.
+   *
+   * Se filtraba por `estado: "vigente"`, así que al cumplirse el acuerdo su plan DESAPARECÍA
+   * de la ficha y quedaba solo el plan viejo del crédito, con los recibos repartidos en
+   * fragmentos. Fernando: "cuando se cancela el crédito el plan de cuotas del acuerdo
+   * desaparece y queda el plan de cuotas viejo". Y es justo cuando más se necesita: es el
+   * registro de lo que el cliente pactó y cumplió.
+   *
+   * Se prefiere el vigente; si no hay, el último cerrado. `estado` viaja para que quien lo
+   * consuma sepa si todavía se puede cobrar contra él — las ACCIONES siguen atadas a vigente.
+   */
+  const SELECT_ACUERDO = {
+      estado: true,
       // `deuda_original` y `quita` viajan para poder mostrar de qué se COMPONE el total del
       // acuerdo. Sin eso, la terminal de cobro mostraba "$81.876,14" sin origen: el operador
       // lo había visto desglosado al armarlo y acá volvía a aparecer como un número suelto.
@@ -215,8 +227,23 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
           },
         },
       },
-    },
-  });
+  } satisfies Prisma.acuerdos_pagoSelect;
+
+  /**
+   * Se busca el VIGENTE y, si no hay, el último cerrado. Dos consultas explícitas en vez de
+   * un `orderBy` por estado: ordenar el estado alfabéticamente pondría "vigente" ÚLTIMO
+   * (anulado < cumplido < roto < vigente), justo al revés de lo que hace falta.
+   */
+  const acuerdo =
+    (await prisma.acuerdos_pago.findFirst({
+      where: { ...withTenant(tenantId), credito_id: id, estado: "vigente" },
+      select: SELECT_ACUERDO,
+    })) ??
+    (await prisma.acuerdos_pago.findFirst({
+      where: { ...withTenant(tenantId), credito_id: id },
+      orderBy: { created_at: "desc" },
+      select: SELECT_ACUERDO,
+    }));
   const proximaAcuerdo = acuerdo?.cuotas.find((c) => c.estado !== "pagada") ?? null;
 
   return successResponse({
@@ -225,6 +252,7 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
     acuerdo: acuerdo
       ? {
           id: acuerdo.id,
+          estado: acuerdo.estado,
           fecha: acuerdo.fecha,
           monto_acordado: acuerdo.monto_acordado,
           deuda_original: acuerdo.deuda_original,

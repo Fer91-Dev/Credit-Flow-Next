@@ -637,9 +637,14 @@ export interface CuotaPersistida {
 export interface CuotasCredito {
   credito_id: string;
   cliente: string | null;
-  /** Acuerdo de pago vigente del crédito, con su plan completo (null si no tiene). */
+  /**
+   * Acuerdo de pago del crédito con su plan completo (null si nunca tuvo). Puede estar
+   * CERRADO: se devuelve igual porque es el registro de lo que el cliente pactó y pagó.
+   * Las acciones (cobrar) van solo si `estado === "vigente"`.
+   */
   acuerdo: {
     id: string;
+    estado: "vigente" | "cumplido" | "roto" | "anulado";
     fecha: string;
     monto_acordado: number;
     deuda_original: number;

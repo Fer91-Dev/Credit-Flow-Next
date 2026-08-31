@@ -332,7 +332,13 @@ export function PagoForm({ creditoId, clienteId, montoSugerido, motivoSugerido, 
         if (!j.ok) return;
         const cs: CuotaPersistida[] = j.data.cuotas || [];
         setCuotas(cs);
-        setAcuerdo(j.data.acuerdo ?? null);
+        /**
+         * 🔴 SOLO EL VIGENTE. Desde que el endpoint devuelve también el acuerdo CERRADO —para
+         * que su plan no desaparezca de la ficha al cumplirse— acá hay que filtrarlo: un
+         * acuerdo cumplido no fija el importe a cobrar ni tiene cuota que imputar. Sin esto,
+         * un cobro común sobre un crédito con acuerdo viejo se precargaría con datos muertos.
+         */
+        setAcuerdo(j.data.acuerdo?.estado === "vigente" ? j.data.acuerdo : null);
         const proxima = cs.find(c => c.estado !== "pagada");
         setHasta(proxima ? proxima.nro : null);
       })
