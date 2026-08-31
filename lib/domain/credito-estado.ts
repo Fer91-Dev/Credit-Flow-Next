@@ -140,10 +140,23 @@ export type EstadoOperativo =
   | "activo"
   | "atrasado"
   | "legales"
+  // Con un acuerdo de pago VIGENTE el crédito deja de leerse por su plan viejo: ese plan se
+  // cayó y el compromiso es otro. Ver `estadoOperativo`.
+  | "en_acuerdo"
+  | "acuerdo_atrasado"
   | "pagado"
   | "cancelado"
   | "anulado"
   | "refinanciado";
+
+/**
+ * Situación del acuerdo de pago vigente de un crédito, para `estadoOperativo`.
+ * `null` = no tiene acuerdo vigente.
+ */
+export interface SituacionAcuerdo {
+  /** ¿Está al día con las cuotas PACTADAS? (ninguna cuota del acuerdo vencida impaga). */
+  alDia: boolean;
+}
 
 /**
  * A los `diasLegales` días de atraso el crédito pasa a LEGALES.
@@ -159,11 +172,27 @@ export function estadoOperativo(
   estado: string | null | undefined,
   diasMora: number,
   diasLegales: number,
+  acuerdo?: SituacionAcuerdo | null,
 ): EstadoOperativo {
   if (estado === "pagado") return "pagado";
   if (estado === "cancelado") return "cancelado";
   if (estado === "anulado") return "anulado";
   if (estado === "refinanciado") return "refinanciado";
+  /**
+   * 🔴 EL ACUERDO GANA SOBRE LA MORA DEL PLAN VIEJO.
+   *
+   * Con un acuerdo vigente el plan original SE CAYÓ: sus cuotas siguen con fecha pasada
+   * —y por eso figuran vencidas— pero ya no son lo que el cliente se comprometió a pagar.
+   * Sin esto, alguien que está cumpliendo su arreglo al pie de la letra aparecía como
+   * "Legales" o "Activo atrasado" en todas las pantallas, y el operador lo llamaba como a
+   * un moroso. Fernando lo vio en Patricia Ledesma: al día con el acuerdo y con la ficha
+   * gritando "2 cuotas vencidas".
+   *
+   * Lo que NO se hace es esconder el problema: si dejó de pagar las cuotas PACTADAS, el
+   * crédito dice `acuerdo_atrasado`, que es peor señal que un atraso común — rompió un
+   * arreglo que él mismo pidió.
+   */
+  if (acuerdo) return acuerdo.alDia ? "en_acuerdo" : "acuerdo_atrasado";
   if (diasMora <= 0) return "activo";
   return diasLegales > 0 && diasMora >= diasLegales ? "legales" : "atrasado";
 }

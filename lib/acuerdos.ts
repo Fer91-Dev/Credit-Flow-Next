@@ -596,6 +596,64 @@ export async function anularAcuerdo(tenantId: string, acuerdoId: string, motivo:
   return a;
 }
 
+/** Lo que las pantallas necesitan saber del acuerdo vigente de un crédito. */
+export interface AcuerdoEnPantalla {
+  id: string;
+  /** ¿Está al día con las cuotas PACTADAS? (ninguna vencida sin cubrir). */
+  al_dia: boolean;
+  /** Cuota pactada que toca cobrar, con lo que le falta. `null` = ya se pagaron todas. */
+  proxima: { numero: number; total: number; vencimiento: Date; pendiente: number } | null;
+  /** Cuántas cuotas tiene el plan pactado, para poder decir "2 de 3". */
+  total_cuotas: number;
+}
+
+/**
+ * Situación del acuerdo VIGENTE de cada crédito, para las pantallas.
+ *
+ * 🔴 POR QUÉ EXISTE. Con un acuerdo vigente el plan original del crédito SE CAYÓ, pero sus
+ * cuotas conservan la fecha que tenían: siguen figurando vencidas. Sin este dato, un cliente
+ * que cumple su arreglo al pie de la letra aparecía como "Legales" en todas las pantallas y
+ * la ficha le gritaba "2 cuotas vencidas". El operador lo llamaba como a un moroso.
+ *
+ * Devuelve también la próxima cuota pactada porque es LO QUE HAY QUE COBRARLE: la pantalla
+ * que sabe que hay un acuerdo tiene que poder decir el importe correcto, no el del plan viejo.
+ */
+export async function situacionAcuerdoPorCredito(
+  tenantId: string,
+  creditoIds?: string[],
+): Promise<Map<string, AcuerdoEnPantalla>> {
+  const filas = await prisma.acuerdos_pago.findMany({
+    where: {
+      ...withTenant(tenantId),
+      estado: "vigente",
+      ...(creditoIds ? { credito_id: { in: creditoIds } } : {}),
+    },
+    select: {
+      id: true, credito_id: true,
+      cuotas: { orderBy: { numero: "asc" }, select: { numero: true, vencimiento: true, monto: true, pagado: true, estado: true } },
+    },
+  });
+  const hoy = hoyComercial();
+  const out = new Map<string, AcuerdoEnPantalla>();
+  for (const a of filas) {
+    const impagas = a.cuotas.filter((c) => c.estado !== "pagada");
+    const prox = impagas[0] ?? null;
+    // Al día = ninguna cuota pactada quedó con la fecha pasada sin cubrir. Se compara contra
+    // el día ARGENTINO: con el ahora en UTC, después de las 21:00 una cuota que vence hoy ya
+    // contaría como incumplida.
+    const alDia = !impagas.some((c) => c.vencimiento < hoy);
+    out.set(a.credito_id, {
+      id: a.id,
+      al_dia: alDia,
+      total_cuotas: a.cuotas.length,
+      proxima: prox
+        ? { numero: prox.numero, total: prox.monto, vencimiento: prox.vencimiento, pendiente: round2(noNegativo(prox.monto - prox.pagado)) }
+        : null,
+    });
+  }
+  return out;
+}
+
 /**
  * IDs de créditos con acuerdo vigente. Lo usa la agenda de cobranza para sacarlos de la
  * cola: alguien que está cumpliendo un arreglo ya está gestionado, y llamarlo igual es la

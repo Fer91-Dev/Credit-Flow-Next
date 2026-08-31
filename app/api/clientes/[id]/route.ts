@@ -8,6 +8,7 @@ import { nombreCompleto, hoyComercial } from "@/lib/utils";
 import { normalizarCuit, validarDuplicadoCliente } from "@/lib/clientes-validacion";
 import { calcularScore, diasMoraActual, cuotaMensualFrancesa, tasaPeriodicaSegunConvencion, convencionDelCredito, normalizarFrecuencia, interesMora, diasAtraso, round2, estadoCoherente, esCreditoVivo, moraDelCredito, moraDesdeCronograma, moraPendienteTotal, ESTADOS_CLIENTE, ESTADO_CLIENTE_LABEL, esEstadoClienteValido, normalizarEstadoCliente, type EstadoCliente } from "@/lib/domain";
 import { getConfiguracion, getRiesgoConfig } from "@/lib/config";
+import { situacionAcuerdoPorCredito } from "@/lib/acuerdos";
 import type { NextRequest } from "next/server";
 
 interface RouteParams {
@@ -59,6 +60,12 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
   // Mismo criterio que /api/creditos y /api/reportes: cuota por frecuencia,
   // interés moratorio = cuota × tasa diaria × días, solo créditos activos en mora.
   const config = await getConfiguracion(tenantId);
+  /**
+   * Acuerdos VIGENTES de estos créditos. Con uno encima, el plan viejo se cayó: sus cuotas
+   * siguen figurando vencidas pero ya no son lo que el cliente se comprometió a pagar, y sin
+   * este dato la ficha lo mostraba como moroso estando al día.
+   */
+  const acuerdos = await situacionAcuerdoPorCredito(tenantId, cliente.creditos.map((c) => c.id));
 
   const creditosConFinanzas = cliente.creditos.map((c) => {
     // Estado reconciliado: nunca mostrar un terminal SALDADO (pagado/cancelado)
@@ -147,7 +154,7 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
 
     const { cuotas: _omit, ...rest } = c;
     void _omit;
-    return { ...rest, estado: estadoReal, dias_mora: diasMora, cuota, interes_mora, interes_pendiente, total_cobrado, cuotas_resumen };
+    return { ...rest, estado: estadoReal, dias_mora: diasMora, cuota, interes_mora, interes_pendiente, total_cobrado, cuotas_resumen, acuerdo: acuerdos.get(c.id) ?? null };
   });
 
   const activos = creditosConFinanzas.filter((c) => esCreditoVivo(c.estado));

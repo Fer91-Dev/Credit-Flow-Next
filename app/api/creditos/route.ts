@@ -7,6 +7,7 @@ import { siguienteNumeroComprobante } from "@/lib/comprobantes";
 import { assertFondosSuficientesTx } from "@/lib/caja-fondos";
 import { lockNumeroCreditoTx, TX_PLATA } from "@/lib/locks";
 import { getConfiguracion } from "@/lib/config";
+import { situacionAcuerdoPorCredito } from "@/lib/acuerdos";
 import { conNumeroDeOrigen } from "@/lib/creditos-numero";
 import { registrarAuditoria } from "@/lib/audit";
 import { registrarMovimientoStock } from "@/lib/stock";
@@ -94,6 +95,10 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   // Solo se calcula para créditos activos en mora; el resto queda en 0.
   const config = await getConfiguracion(tenantId);
   const hoy = hoyComercial();
+  // Acuerdos vigentes: con uno encima el crédito NO se lee por su plan viejo (ver
+  // `situacionAcuerdoPorCredito`). Sin esto, la lista mostraba "Legales" a alguien que está
+  // cumpliendo su arreglo.
+  const acuerdosVig = await situacionAcuerdoPorCredito(tenantId, creditos.map((c) => c.id));
   const creditosConMora = creditos.map((c) => {
     // Mora EN VIVO desde `proximo_pago` (no del cache `dias_mora`, que no se avanza día a día):
     // misma fórmula con la que se persiste, pero evaluada hoy → independiente del cron.
@@ -150,7 +155,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     // Estado reconciliado: defensa de lectura ante datos legacy.
     const estado = estadoCoherente(c.estado, c.saldo_pendiente);
     const { cuotas: _cuotas, ...credito } = c; // no viajan al cliente: solo alimentan los cálculos
-    return { ...credito, estado, dias_mora: dmora, interes_mora, vencido, cuotas_vencidas, tiene_pagos: c.pagos.length > 0, cobros_vivos: c._count.pagos > 0 };
+    return { ...credito, estado, dias_mora: dmora, interes_mora, vencido, cuotas_vencidas, tiene_pagos: c.pagos.length > 0, cobros_vivos: c._count.pagos > 0, acuerdo: acuerdosVig.get(c.id) ?? null };
   });
 
   // El número del crédito que cada refinanciación reemplaza, para poder mostrar REF-000060

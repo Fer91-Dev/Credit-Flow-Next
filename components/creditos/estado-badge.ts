@@ -6,7 +6,7 @@
  * tabla de estados es exactamente cómo una pantalla termina diciendo algo distinto de la otra
  * sobre el mismo crédito.
  */
-import { estadoOperativo, type EstadoOperativo } from "@/lib/domain";
+import { estadoOperativo, type EstadoOperativo, type SituacionAcuerdo } from "@/lib/domain";
 import type { BadgeVariant } from "@/components/ui/StatusBadge";
 
 const BADGE: Record<EstadoOperativo, { label: string; variant: BadgeVariant }> = {
@@ -15,6 +15,11 @@ const BADGE: Record<EstadoOperativo, { label: string; variant: BadgeVariant }> =
   // Azul: el crédito ya está en instancia de recupero y ADEMÁS es la señal de que se le
   // puede armar un acuerdo de pago. Por eso no va en rojo — no es una alarma, es una etapa.
   legales:      { label: "Legales",         variant: "info" },
+  // Está cumpliendo un arreglo: NO es un moroso. Verde, como cualquier crédito sano — que es
+  // lo que es mientras pague lo pactado.
+  en_acuerdo:       { label: "En acuerdo",       variant: "success" },
+  // Rompió lo que él mismo pidió. Peor señal que un atraso común, y por eso en rojo.
+  acuerdo_atrasado: { label: "Acuerdo atrasado", variant: "destructive" },
   pagado:       { label: "Pagado",          variant: "success" },
   cancelado:    { label: "Cancelado",       variant: "muted" },
   anulado:      { label: "Anulado",         variant: "destructive" },
@@ -29,6 +34,7 @@ export function estadoBadgeCredito(
   estado: string | null | undefined,
   diasMora = 0,
   diasLegales = 0,
+  acuerdo?: SituacionAcuerdo | null,
 ): { label: string; variant: BadgeVariant } {
-  return BADGE[estadoOperativo(estado, diasMora, diasLegales)];
+  return BADGE[estadoOperativo(estado, diasMora, diasLegales, acuerdo)];
 }

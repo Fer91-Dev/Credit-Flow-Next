@@ -1045,7 +1045,9 @@ function CreditosTabla({ creditos, mostrarProximo, onCobrar, onCobrarAcuerdo, cl
     <div className="space-y-3">
       {creditos.map((c) => {
         // El badge compartido: el mismo que ven Créditos y Cobranzas, Legales incluido.
-        const b = estadoBadgeCredito(c.estado, c.dias_mora ?? 0, diasLegales);
+        // El acuerdo vigente manda sobre todo lo que este bloque dice del crédito.
+        const acuerdoVig = c.acuerdo ?? null;
+        const b = estadoBadgeCredito(c.estado, c.dias_mora ?? 0, diasLegales, acuerdoVig ? { alDia: acuerdoVig.al_dia } : null);
         const res = c.cuotas_resumen;
         const tieneCuotas = !!res && res.total > 0;
         const abierto = abiertos.has(c.id);
@@ -1093,10 +1095,33 @@ function CreditosTabla({ creditos, mostrarProximo, onCobrar, onCobrarAcuerdo, cl
                   pie={`de $${n0(c.monto_original)} otorgados`} />
                 <CifraCredito label="Cuota" valor={`$${n2(c.cuota)}`}
                   pie={tieneCuotas ? `${res!.pagadas} de ${res!.total} pagadas` : "sin cronograma"} />
-                <CifraCredito label={mora > 0 ? "Vencido" : "Próximo pago"}
-                  valor={mora > 0 ? `$${n2(c.interes_mora ? c.cuota + c.interes_mora : c.cuota)}` : fmtDate(res?.proxima_vencimiento ?? c.proximo_pago)}
-                  pie={tieneCuotas && res!.vencidas > 0 ? `${res!.vencidas} cuota${res!.vencidas === 1 ? "" : "s"} vencida${res!.vencidas === 1 ? "" : "s"}` : "al día"}
-                  tono={mora > 0 ? "warning" : undefined} />
+                {/*
+                  🔴 CON UN ACUERDO VIGENTE, ESTE RECUADRO NO PUEDE HABLAR DEL PLAN VIEJO.
+
+                  Decía "Vencido $283.610,49 · 2 cuotas vencidas" sobre un crédito cuyo cliente
+                  estaba al día con su acuerdo. Las cuotas de abajo SÍ tienen la fecha pasada
+                  —eso es cierto y por eso la mora quedó congelada donde quedó— pero ya no son
+                  el compromiso: el plan se cayó cuando se firmó el arreglo. El operador abría
+                  la ficha y veía un moroso.
+
+                  Con acuerdo vigente muestra LO QUE HAY QUE COBRAR: la cuota pactada, con su
+                  número y su vencimiento. Es el mismo dato que usa el botón de cobro, así que
+                  no hay dos importes distintos en la misma pantalla.
+                */}
+                {acuerdoVig ? (
+                  <CifraCredito
+                    label={acuerdoVig.al_dia ? "Cuota pactada" : "Cuota pactada vencida"}
+                    valor={acuerdoVig.proxima ? `$${n2(acuerdoVig.proxima.pendiente)}` : "—"}
+                    pie={acuerdoVig.proxima
+                      ? `cuota ${acuerdoVig.proxima.numero} de ${acuerdoVig.total_cuotas} · vence ${fmtDate(acuerdoVig.proxima.vencimiento)}`
+                      : "el acuerdo ya está cubierto"}
+                    tono={acuerdoVig.al_dia ? undefined : "warning"} />
+                ) : (
+                  <CifraCredito label={mora > 0 ? "Vencido" : "Próximo pago"}
+                    valor={mora > 0 ? `$${n2(c.interes_mora ? c.cuota + c.interes_mora : c.cuota)}` : fmtDate(res?.proxima_vencimiento ?? c.proximo_pago)}
+                    pie={tieneCuotas && res!.vencidas > 0 ? `${res!.vencidas} cuota${res!.vencidas === 1 ? "" : "s"} vencida${res!.vencidas === 1 ? "" : "s"}` : "al día"}
+                    tono={mora > 0 ? "warning" : undefined} />
+                )}
                 <CifraCredito label="Cobrado" valor={`$${n2(c.total_cobrado)}`}
                   pie={`${c.pagos?.length ?? 0} pago${(c.pagos?.length ?? 0) === 1 ? "" : "s"}`} tono="success" />
               </div>

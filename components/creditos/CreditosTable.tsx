@@ -314,7 +314,7 @@ export function CreditosTable({ role }: { role: Role }) {
                 datos contra los que se decide (saldo real, pagos, cuotas).
               */
               { header: "Estado", className: "pr-5",
-                cell: (c) => { const est = estadoBadgeCredito(c.estado, c.dias_mora, diasLegales); return <StatusBadge label={est.label} variant={est.variant} />; } },
+                cell: (c) => { const est = estadoBadgeCredito(c.estado, c.dias_mora, diasLegales, (c.acuerdo ? { alDia: c.acuerdo.al_dia } : null)); return <StatusBadge label={est.label} variant={est.variant} />; } },
             ]}
             footer={
               /*
@@ -332,7 +332,7 @@ export function CreditosTable({ role }: { role: Role }) {
               </tr>
             }
             renderMobileCard={(c) => {
-              const est = estadoBadgeCredito(c.estado, c.dias_mora, diasLegales);
+              const est = estadoBadgeCredito(c.estado, c.dias_mora, diasLegales, (c.acuerdo ? { alDia: c.acuerdo.al_dia } : null));
               return (
                 <div onClick={(e) => { if (eventoPropio(e)) setDetail(c); }} role="button" tabIndex={0} onKeyDown={(e) => { if (teclaDelContenedor(e) && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); setDetail(c); } }} className="rounded-xl bg-card border border-border p-4 space-y-3 cursor-pointer active:bg-muted/20 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50">
                   <div className="flex items-start justify-between gap-2">

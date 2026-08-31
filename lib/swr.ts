@@ -143,8 +143,22 @@ export interface PagoImputado {
 }
 
 /** Crédito enriquecido con sus finanzas, dentro del detalle del cliente. */
+/** Acuerdo de pago VIGENTE de un crédito, tal como lo mandan los endpoints. */
+export interface AcuerdoDelCredito {
+  id: string;
+  /** ¿Cumple con las cuotas PACTADAS? Es lo que decide si se lo trata como moroso o no. */
+  al_dia: boolean;
+  proxima: { numero: number; total: number; vencimiento: string; pendiente: number } | null;
+  total_cuotas: number;
+}
+
 export interface CreditoConFinanzas {
   id: string;
+  /**
+   * Acuerdo de pago vigente (null = no tiene). Con uno encima, el plan de cuotas de abajo
+   * dejó de ser el compromiso: lo que se cobra es la cuota pactada.
+   */
+  acuerdo?: AcuerdoDelCredito | null;
   numero?: number | null;
   tipo_credito: string;
   monto_original: number;
@@ -234,6 +248,8 @@ export interface ClienteDetalle extends Cliente {
 }
 
 export interface Credito {
+  /** Acuerdo de pago vigente (null = no tiene). Ver `AcuerdoDelCredito`. */
+  acuerdo?: AcuerdoDelCredito | null;
   id: string;
   numero?: number | null;
   /** Número del crédito que esta refinanciación reemplaza: se muestra como REF-XXXXXX. */
