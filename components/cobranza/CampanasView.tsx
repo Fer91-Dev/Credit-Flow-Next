@@ -4,10 +4,10 @@ import { useState, type ComponentType } from "react";
 import { useSWRConfig } from "swr";
 import {
   Megaphone, Users, HandCoins, TrendingUp, ChevronLeft,
-  Check, Play, CheckCircle2, Mail, Smartphone, Sparkles, Trash2, Loader2,
+  Check, Play, CheckCircle2, Mail, Smartphone, Sparkles, Trash2, Loader2, Send,
 } from "lucide-react";
 import { WhatsAppIcon } from "@/components/ui/WhatsAppIcon";
-import { useCampanas, useCampana, KEYS, type CampanaCobranza, type CampanaObjetivo, type CanalCampana, type EstadoCampana, useTramosMora } from "@/lib/swr";
+import { useCampanas, useCampana, useConfiguracion, KEYS, type CampanaCobranza, type CampanaObjetivo, type CanalCampana, type EstadoCampana, useTramosMora } from "@/lib/swr";
 import { construirMensajeCampana, linkWhatsapp, TEMPLATE_DEFAULT, severidadMora } from "@/lib/domain";
 import { formatFecha, nombreCompleto, eventoPropio, teclaDelContenedor, formatDias } from "@/lib/utils";
 import { StatusBadge } from "@/components/ui/StatusBadge";
@@ -174,8 +174,64 @@ function CampanaDetalle({ id, onBack }: { id: string; onBack: () => void }) {
   const toast = useToast();
   const [busy, setBusy] = useState(false);
   const [abiertos, setAbiertos] = useState<Set<string>>(new Set());
+  const { config } = useConfiguracion();
+  const [enviando, setEnviando] = useState(false);
+  const [progreso, setProgreso] = useState<{ enviados: number; pendientes: number } | null>(null);
 
   const refresh = () => { mutate(); globalMutate(KEYS.campanas); };
+
+  /**
+   * A quiénes todavía no se les mandó nada.
+   *
+   * 🔴 `envio_estado` ARRANCA EN "pendiente", NO EN NULL. Lo escribí como `!o.envio_estado` y
+   * el botón no aparecía nunca: "pendiente" es un texto, o sea verdadero. Los seis objetivos
+   * de la base estaban así. Los estados son: pendiente | enviado | manual | error.
+   */
+  const pendientesEnvio = (campana?.objetivos ?? [])
+    .filter((o) => !o.envio_estado || o.envio_estado === "pendiente" || o.envio_estado === "error").length;
+  /**
+   * ¿El canal puede mandar SOLO? Email sí (Resend/SMTP ya configurado); WhatsApp solo si está
+   * cargada la API de Meta. Sin eso el envío es a mano, cliente por cliente, con el botón de
+   * cada fila — y hay que DECIRLO, porque un botón que no aparece no explica nada.
+   */
+  const canalAutomatico = campana?.canal === "email" || (campana?.canal === "whatsapp" && !!config?.whatsappConfig?.enabled);
+
+  /**
+   * 🔴 EL ENVÍO VIVÍA SOLO EN LA PANTALLA DE ALTA.
+   *
+   * El endpoint existía y funcionaba, pero el único botón que lo llamaba estaba en
+   * `NuevaCampanaView`: una campaña ya creada NO SE PODÍA ENVIAR NUNCA MÁS. Si no se mandaba
+   * en el momento de armarla, quedaba muerta y había que rehacerla. Fernando lo encontró
+   * probando: creó "Recurero Julio 26", la activó, y no había forma de que saliera.
+   *
+   * Se llama POR TANDAS, igual que en el alta: el servidor manda lo que le entra en su
+   * ventana de tiempo y avisa si quedan pendientes. Los ya enviados quedan marcados en la
+   * base, así que cada vuelta toma solo los que faltan y nadie recibe el mensaje dos veces.
+   */
+  const enviarCampana = async () => {
+    const ok = await confirm({
+      title: `¿Enviar a ${pendientesEnvio} destinatario${pendientesEnvio === 1 ? "" : "s"}?`,
+      description: "Se manda el mensaje de la campaña. A quien ya se le envió no se le repite.",
+      confirmLabel: "Enviar",
+    });
+    if (!ok) return;
+    setEnviando(true);
+    setProgreso(null);
+    try {
+      for (let vueltas = 0; vueltas < 40; vueltas++) {
+        const res = await fetch(`/api/cobranza/campanas/${id}/enviar`, { method: "POST" });
+        const json = await res.json();
+        if (!json.ok) { toast.error(json.error || "No se pudo enviar"); return; }
+        setProgreso(json.data.progreso ?? null);
+        if (!json.data.quedan_pendientes) break;
+      }
+      refresh();
+      toast.success("Campaña enviada");
+    } finally {
+      setEnviando(false);
+      setProgreso(null);
+    }
+  };
 
   const cambiarEstado = async (estado: EstadoCampana) => {
     const ok = await confirm({
@@ -252,6 +308,49 @@ function CampanaDetalle({ id, onBack }: { id: string; onBack: () => void }) {
         <h2 className="text-lg font-semibold text-foreground">{campana.nombre}</h2>
         {campana.descripcion && <p className="text-sm text-muted-foreground">{campana.descripcion}</p>}
       </div>
+
+      {/*
+        EL ENVÍO. Va acá arriba, entre el nombre y los números: es la acción de la pantalla.
+
+        🔴 Si el canal NO puede mandar solo, se DICE en vez de esconder el botón. Un botón que
+        no aparece no explica nada — Fernando armó una campaña de WhatsApp, la activó, y estuvo
+        buscando qué la enviaba: la API de Meta no estaba cargada, así que el envío era a mano
+        y nadie se lo dijo.
+      */}
+      {pendientesEnvio > 0 && (
+        canalAutomatico ? (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-success/25 bg-success/[0.06] px-4 py-3">
+            <p className="text-sm text-foreground">
+              Falta enviarle a <span className="font-semibold">{pendientesEnvio}</span> de {campana.objetivos.length}
+              <span className="text-muted-foreground"> · por {campana.canal}</span>
+            </p>
+            <button
+              onClick={enviarCampana}
+              disabled={enviando || busy}
+              className="inline-flex shrink-0 items-center gap-2 rounded-lg bg-success px-4 py-2 text-sm font-medium text-success-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
+            >
+              {enviando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+              {enviando
+                ? progreso
+                  // Con muchos destinatarios el envío tarda: sin el contador, un botón que dice
+                  // "Enviando…" durante un minuto parece colgado y alguien lo va a recargar.
+                  ? `Enviando… ${progreso.enviados} de ${progreso.enviados + progreso.pendientes}`
+                  : "Enviando…"
+                : `Enviar a ${pendientesEnvio}`}
+            </button>
+          </div>
+        ) : (
+          <div className="rounded-xl border border-warning/25 bg-warning/[0.06] px-4 py-3">
+            <p className="text-sm text-warning">Esta campaña se envía a mano</p>
+            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+              El envío automático por WhatsApp necesita la API de Meta cargada en
+              Configuración → Comunicaciones. Sin eso, usá el botón de cada fila para abrirle el
+              chat a cada cliente con el mensaje ya escrito.
+              {" "}Faltan <span className="text-foreground">{pendientesEnvio}</span> de {campana.objetivos.length}.
+            </p>
+          </div>
+        )
+      )}
 
       <SummaryStrip
         items={[

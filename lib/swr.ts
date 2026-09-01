@@ -1009,6 +1009,11 @@ export interface CampanaObjetivo {
   oferta_descuento: number;
   promesa_generada: boolean;
   monto_recuperado: number;
+  /**
+   * Cómo salió el mensaje de este objetivo: `enviado` por la API, `manual` (lo manda una
+   * persona por wa.me), `error`, o null si todavía no se intentó.
+   */
+  envio_estado?: "pendiente" | "enviado" | "manual" | "error" | null;
   credito: {
     id: string;
     numero: number | null;
