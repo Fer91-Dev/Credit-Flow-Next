@@ -43,7 +43,22 @@ const TENANT = "00000000-0000-0000-0000-000000000001";
 const MARCA = "CASOS-PRUEBA";
 
 const m$ = (n) => `$${(n ?? 0).toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-const hoy = () => { const d = new Date(); d.setUTCHours(0, 0, 0, 0); return d; };
+/**
+ * 🔴 EL DÍA ES EL ARGENTINO, NO EL DE UTC.
+ *
+ * Con `setUTCHours(0,0,0,0)` esto sembraba bien todo el día y se rompía después de las 21:00
+ * de Argentina: para UTC ya era mañana, y el primer pago se rechazaba con
+ * "La fecha del pago no puede ser futura" (FECHA_INVALIDA). El servidor valida contra
+ * `hoyComercial()` de `lib/utils.ts`, así que el seed tiene que usar la MISMA definición:
+ * el calendario de Buenos Aires, fijado a medianoche UTC para poder hacer aritmética.
+ */
+const hoy = () => {
+  const ymd = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Argentina/Buenos_Aires",
+    year: "numeric", month: "2-digit", day: "2-digit",
+  }).format(new Date());
+  return new Date(`${ymd}T00:00:00.000Z`);
+};
 const diaISO = (offset = 0) => { const d = hoy(); d.setUTCDate(d.getUTCDate() + offset); return d.toISOString().slice(0, 10); };
 
 // ── Sesión ───────────────────────────────────────────────────────────────────
@@ -177,6 +192,8 @@ const PERSONAS = {
   "Damián Villalba":    { doc: "39516482", nac: "1996-01-09", tel: "3815061937", ingreso:   840_000, ocupacion: "Ayudante de cocina",    empleador: "Rotisería El Buen Sabor",  situacion: "relacion_dependencia", civil: "soltero"  },
   "Estela Moreno":      { doc: "20738164", nac: "1969-11-23", tel: "3814395720", ingreso: 1_010_000, ocupacion: "Empleada doméstica",    empleador: null,                       situacion: "relacion_dependencia", civil: "separada" },
   "Federico Ibarra":    { doc: "42085639", nac: "2000-09-15", tel: "3815820476", ingreso:   730_000, ocupacion: "Estudiante",            empleador: null,                       situacion: "otro",                 civil: "soltero"  },
+  "Ramón Coronel":      { doc: "26514083", nac: "1978-04-06", tel: "3814267539", ingreso:   910_000, ocupacion: "Pintor de obra",        empleador: null,                       situacion: "autonomo",             civil: "casado"   },
+  "Claudia Nieva":      { doc: "30248715", nac: "1983-10-21", tel: "3815693148", ingreso: 1_120_000, ocupacion: "Vendedora",             empleador: "Tienda El Progreso",       situacion: "relacion_dependencia", civil: "casada"   },
 };
 
 /** Alta de cliente por el endpoint real. */
@@ -460,6 +477,48 @@ if (ANDREA) {
     });
     anotar(17, `CAMPAÑA — ${morosos.length} morosos, quita del 30% de punitorios`);
   }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// 18 y 19 ── LOS DOS MOROSOS VÍRGENES, PARA OPERAR EN VIVO
+//
+// Todo lo demás de este seed llega YA RESUELTO: el acuerdo hecho, la refinanciación hecha.
+// Sirve para mostrar cómo QUEDA, no cómo SE HACE. Estos dos quedan parados justo antes del
+// clic, con la escalera de recupero ya satisfecha (`lib/domain/recupero.ts`):
+//
+//   ACORDAR      pide  dias_min_mora_acuerdo (50)      + una gestión registrada
+//   REFINANCIAR  pide  dias_min_mora_refinanciar (60)  + un acuerdo YA ROTO
+//
+// La mora no se puede fabricar el mismo día: sale del vencimiento contra hoy. Por eso el
+// crédito se otorga con la fecha corrida hacia atrás — por el endpoint real, con su
+// desembolso de caja y su plan, como cualquier otro.
+// ═════════════════════════════════════════════════════════════════════════════
+
+// 18 ── LISTO PARA ACORDAR: en mora, contactado, sin acuerdo ──────────────────
+{
+  const c = await cliente("Ramón", "Coronel");
+  const cr = await credito(c.id, { monto: 750_000, cuotas: 6, iniciaHace: 92 });
+  await gestionar(cr.id, { tipo: "llamada", resultado: "contactado", nota: "Atendió. Pide un plan en cuotas para ponerse al día." });
+  const m18 = await prisma.creditos.findUnique({ where: { id: cr.id }, select: { dias_mora: true } });
+  anotar(18, `LISTO PARA ACORDAR — Ramón Coronel · ${m18?.dias_mora ?? "?"} días de atraso · gestión hecha, SIN acuerdo`);
+}
+
+// 19 ── LISTO PARA REFINANCIAR: con un acuerdo roto encima ────────────────────
+{
+  const c = await cliente("Claudia", "Nieva");
+  const cr = await credito(c.id, { monto: 880_000, cuotas: 6, iniciaHace: 140 });
+  await gestionar(cr.id, { tipo: "visita", resultado: "contactado", nota: "Se le armó un plan y no pagó ninguna cuota." });
+  const ac = await api("POST", "/api/cobranza/acuerdos", { credito_id: cr.id, cuotas: 3, notas: `${MARCA} — incumplido, habilita refinanciar` });
+  // Mismo mecanismo que el caso 6: el estado del acuerdo se DERIVA de los pagos, así que
+  // para dejarlo roto se le atrasan los vencimientos. No hay (ni debe haber) un botón.
+  const cuotasAc = await prisma.acuerdo_cuota.findMany({ where: { acuerdo_id: ac.id }, orderBy: { numero: "asc" } });
+  for (const [i, q] of cuotasAc.entries()) {
+    const v = hoy(); v.setUTCDate(v.getUTCDate() - (55 - i * 20));
+    await prisma.acuerdo_cuota.update({ where: { id: q.id }, data: { vencimiento: v } });
+  }
+  await prisma.acuerdos_pago.update({ where: { id: ac.id }, data: { fecha: new Date(hoy().getTime() - 65 * 86400000) } });
+  const m19 = await prisma.creditos.findUnique({ where: { id: cr.id }, select: { dias_mora: true } });
+  anotar(19, `LISTO PARA REFINANCIAR — Claudia Nieva · ${m19?.dias_mora ?? "?"} días de atraso · acuerdo ROTO encima`);
 }
 
 console.log("\n" + "═".repeat(70));
