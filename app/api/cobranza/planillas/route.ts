@@ -1,4 +1,4 @@
-import { requireAuth } from "@/lib/auth";
+import { requireAuth, scopePlanillasPropias } from "@/lib/auth";
 import { successResponse, withErrorHandler } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
@@ -16,13 +16,17 @@ import type { NextRequest } from "next/server";
  * mismo problema que `creditos.dias_mora`. Acá se calcula al leer, siempre exacto.
  */
 export const GET = withErrorHandler(async (req: NextRequest) => {
-  const { tenantId } = await requireAuth(req);
+  const ctx = await requireAuth(req);
+  const { tenantId } = ctx;
   const url = new URL(req.url);
   const estado = url.searchParams.get("estado");
 
   const planillas = await prisma.planillas_cobranza.findMany({
     where: {
       ...withTenant(tenantId),
+      // Un vendedor ve SOLO las planillas que emitió él. Sin esto veía las de todos los
+      // cobradores, con su diferencia y su rendición.
+      ...scopePlanillasPropias(ctx),
       ...(estado && estado !== "todas" ? { estado } : {}),
     },
     select: {

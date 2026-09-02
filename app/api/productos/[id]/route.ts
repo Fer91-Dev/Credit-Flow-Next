@@ -1,4 +1,4 @@
-import { requireAuth, requireRole } from "@/lib/auth";
+import { requireAuth, requireRole, scopeCreditosVendedor } from "@/lib/auth";
 import { successResponse, errorResponse, withErrorHandler, assertSameOrigin } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
@@ -17,7 +17,8 @@ interface RouteParams {
  * Ficha del producto + cantidad de créditos asociados. Lectura admin + vendedor.
  */
 export const GET = withErrorHandler(async (req: NextRequest, { params }: RouteParams) => {
-  const { tenantId } = await requireAuth(req);
+  const ctx = await requireAuth(req);
+  const { tenantId } = ctx;
   const { id } = await params;
 
   const producto = await prisma.productos.findFirst({
@@ -27,9 +28,16 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
     return errorResponse("Producto no encontrado", "NOT_FOUND", 404);
   }
 
-  // Créditos donde se vendió este producto (trazabilidad operativa).
+  /*
+    Créditos donde se vendió este producto (trazabilidad operativa).
+
+    🔴 SCOPEADO AL VENDEDOR. Esta lista trae nombre de cliente y monto, así que sin el filtro
+    un vendedor abría la ficha de cualquier producto y leía a qué clientes se lo vendieron sus
+    compañeros y por cuánto. El admin la sigue viendo entera. `creditos_count` sale de esta
+    misma lista, así que acompaña el recorte en vez de delatar el total.
+  */
   const creditosRaw = await prisma.creditos.findMany({
-    where: { ...withTenant(tenantId), producto_id: id },
+    where: { ...withTenant(tenantId), ...scopeCreditosVendedor(ctx), producto_id: id },
     select: {
       id: true, numero: true, producto_cantidad: true, monto_original: true,
       estado: true, created_at: true,

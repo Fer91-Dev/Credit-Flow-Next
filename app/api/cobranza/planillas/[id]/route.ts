@@ -1,4 +1,4 @@
-import { requireAuth } from "@/lib/auth";
+import { requireAuth, scopePlanillasPropias } from "@/lib/auth";
 import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
@@ -19,11 +19,14 @@ interface RouteParams { params: Promise<{ id: string }> }
  * renglón — que es exactamente para lo que sirve.
  */
 export const GET = withErrorHandler(async (req: NextRequest, { params }: RouteParams) => {
-  const { tenantId } = await requireAuth(req);
+  const ctx = await requireAuth(req);
+  const { tenantId } = ctx;
   const { id } = await params;
 
   const planilla = await prisma.planillas_cobranza.findFirst({
-    where: { ...withTenant(tenantId), id },
+    // El scope va en el WHERE, no en un chequeo posterior: así una planilla ajena devuelve
+    // el mismo 404 que una inexistente y no se puede sondear cuáles existen.
+    where: { ...withTenant(tenantId), ...scopePlanillasPropias(ctx), id },
   });
   if (!planilla) return errorResponse("La planilla no existe.", "NOT_FOUND", 404);
 

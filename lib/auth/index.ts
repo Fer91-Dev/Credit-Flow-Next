@@ -188,3 +188,29 @@ export function scopeCreditosVendedor(
   if (ctx.role !== "vendedor") return {};
   return { vendedor_id: ctx.vendedorId ?? NO_VENDEDOR };
 }
+
+/**
+ * Scoping anti-IDOR para `planillas_cobranza`.
+ *
+ * 🔴 POR QUÉ EXISTE. La planilla se ARMABA scopeada (`POST /api/cobranza/planilla` combina
+ * `scopeCreditosVendedor`, así que un vendedor solo puede meter sus propios créditos) pero
+ * después se LISTABA sin filtro: cualquiera con sesión veía las planillas de todos los
+ * cobradores, con su total esperado, lo cobrado, **la diferencia y la rendición**. Es
+ * exactamente el mismo agujero que tuvo la ficha del cliente: la barrera estaba en la puerta
+ * de entrada y no en la de salida.
+ *
+ * El corte va por `emitida_por` (el usuario que la emitió) y NO por `cobrador`, que es TEXTO
+ * LIBRE a propósito — el cobrador de calle no tiene cuenta en el sistema, así que filtrar por
+ * ese campo sería comparar nombres escritos a mano.
+ *
+ *  - admin: ve todas las del tenant.
+ *  - cualquier otro rol: solo las que emitió él.
+ *
+ * Úsese combinado con withTenant: { ...withTenant(tenantId), ...scopePlanillasPropias(ctx) }
+ */
+export function scopePlanillasPropias(
+  ctx: Pick<AuthContext, "role" | "userId">
+): { emitida_por?: string } {
+  if (ctx.role === "admin") return {};
+  return { emitida_por: ctx.userId ?? NO_VENDEDOR };
+}

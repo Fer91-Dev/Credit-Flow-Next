@@ -127,6 +127,21 @@ export function withErrorHandler<A extends any[]>(
         if (msg.includes('foreign key constraint')) {
           return errorResponse('Referencia inválida', 'INVALID_REFERENCE', 400);
         }
+        /*
+          🔴 UN ID MAL FORMADO ES UN 404, NO UN 500.
+
+          Casi todas las claves de este esquema son UUID, y Postgres rechaza cualquier cosa
+          que no lo sea: Prisma lo devuelve como P2023 "Inconsistent column data: Malformed
+          ObjectID / uuid". Sin este branch, pegarle a `/api/cobranza/planillas/pepe` —o a
+          cualquier ruta con [id]— daba **500 INTERNAL_ERROR** en las 92 rutas: se reportaba a
+          Sentry como si el servidor se hubiera roto, cuando lo único que pasó es que el id no
+          existe. Apareció probando el scoping de planillas (2026-09-02).
+
+          Va acá y no en cada ruta a propósito: es una sola definición para toda la API.
+        */
+        if (msg.includes('malformed') || msg.includes('inconsistent column data')) {
+          return errorResponse('No existe', 'NOT_FOUND', 404);
+        }
         if (msg.includes('not found')) {
           // 🔴 Se loguea aunque sea un 4xx. Este branch atrapa el P2025 de Prisma ("depends
           // on records that were required but not found"), que puede venir de CUALQUIER
