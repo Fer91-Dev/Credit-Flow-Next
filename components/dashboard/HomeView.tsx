@@ -71,41 +71,53 @@ export function HomeView({ role }: { role: Role }) {
 
   const limpiar = () => { setDesde(""); setHasta(""); setVendedorId(""); setZona(""); };
 
+  /* Una sola instancia del CONTROL de filtros, usada en los tres estados
+     (cargando / error / con datos). Ojo: `filtros` (arriba) son los VALORES. */
+  const controlFiltros = (
+    <FiltrosHome
+      esAdmin={esAdmin}
+      desde={desde} hasta={hasta} vendedorId={vendedorId} zona={zona}
+      setDesde={setDesde} setHasta={setHasta} setVendedorId={setVendedorId} setZona={setZona}
+      vendedores={vendedores} zonas={zonas} limpiar={limpiar}
+    />
+  );
+
   return (
     <div className="space-y-6">
-      {/* ── 1 · Filtros (compactos, a la derecha) ── */}
-      {/* Gobiernan todo lo de abajo, así que van antes de los números que mueven. */}
-      <div className="flex justify-end">
-        <FiltrosHome
-          esAdmin={esAdmin}
-          desde={desde} hasta={hasta} vendedorId={vendedorId} zona={zona}
-          setDesde={setDesde} setHasta={setHasta} setVendedorId={setVendedorId} setZona={setZona}
-          vendedores={vendedores} zonas={zonas} limpiar={limpiar}
-        />
-      </div>
-
-      {/* ── 2 · LA PLATA, arriba de todo ──
+      {/* ── 1 · LA PLATA, arriba de todo ──
           Antes lo primero de la pantalla era la cotización del dólar: siete cifras de
           contexto ganándole en presencia a lo único que es de la financiera. Ahora abre con
-          cuánto tiene prestado y cuánto le deben, y enseguida cuánto entró hoy. */}
+          cuánto tiene prestado y cuánto le deben, y enseguida cuánto entró hoy.
+
+          🔴 LOS FILTROS VAN DENTRO de esta tarjeta, en su esquina. Sueltos en una fila propia
+          eran un botón flotando solo en una banda vacía, y esa banda partía la vista en dos
+          (lo marcó Fernando). Van con los números que gobiernan. Mientras carga o si falla,
+          se muestran igual acá abajo: si desaparecieran, un filtro que no devuelve datos
+          dejaría al usuario sin forma de sacarlo. */}
       {isLoading ? (
-        <DashboardKpisSkeleton />
+        <>
+          <div className="flex justify-end">{controlFiltros}</div>
+          <DashboardKpisSkeleton />
+        </>
       ) : error || !data ? (
-        <div className="rounded-xl bg-destructive/10 border border-destructive/30 p-4 text-destructive text-sm">
-          {error?.message || "Sin datos disponibles"}
-        </div>
+        <>
+          <div className="flex justify-end">{controlFiltros}</div>
+          <div className="rounded-xl bg-destructive/10 border border-destructive/30 p-4 text-destructive text-sm">
+            {error?.message || "Sin datos disponibles"}
+          </div>
+        </>
       ) : (
         <>
-          <DashboardDinero data={data} />
+          <DashboardDinero data={data} acciones={controlFiltros} />
           {/* El pulso del día: lo único que cambia mientras el panel está abierto. */}
           <PulsoDelDia data={data} actualizado={actualizado} />
         </>
       )}
 
-      {/* ── 3 · Cotización del dólar: contexto, no protagonista. Nace contraída. ── */}
+      {/* ── 2 · Cotización del dólar: contexto, no protagonista. Nace contraída. ── */}
       <CotizacionDolar />
 
-      {/* ── 4 · Conteos + avance de cobranzas (reaccionan a los filtros) ── */}
+      {/* ── 3 · Conteos + avance de cobranzas (reaccionan a los filtros) ── */}
       {!isLoading && data && (
         <>
           <DashboardKpis data={data} />
@@ -113,19 +125,19 @@ export function HomeView({ role }: { role: Role }) {
         </>
       )}
 
-      {/* ── 5 · Lo accionable de hoy: agenda de cobranza (scopeada al vendedor; admin ve todo) ── */}
+      {/* ── 4 · Lo accionable de hoy: agenda de cobranza (scopeada al vendedor; admin ve todo) ── */}
       <CobranzaDelDia />
 
-      {/* ── 6 · Rendimiento del equipo (admin) o del propio usuario (vendedor) ── */}
+      {/* ── 5 · Rendimiento del equipo (admin) o del propio usuario (vendedor) ── */}
       {esAdmin && <RendimientoVendedores filas={data?.por_vendedor ?? []} />}
       {esAdmin && <ObjetivosEquipo vendedores={vendedores} />}
       {!esAdmin && perfil && <MiConfiguracionVendedor perfil={perfil} />}
       {!esAdmin && <MiEfectividadCobranza />}
 
-      {/* ── 7 · Tendencia mensual (analítico: cobranzas · morosidad · circulación) ── */}
+      {/* ── 6 · Tendencia mensual (analítico: cobranzas · morosidad · circulación) ── */}
       <MetricChart vendedorId={esAdmin ? (vendedorId || undefined) : undefined} />
 
-      {/* ── 8 · Distribución de mora · Exposición en mora · Cobros registrados ── */}
+      {/* ── 7 · Distribución de mora · Exposición en mora · Cobros registrados ── */}
       {data && <DashboardMoraGrid data={data} />}
     </div>
   );
