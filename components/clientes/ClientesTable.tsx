@@ -257,17 +257,37 @@ export function ClientesTable({ role }: { role?: Role } = {}) {
         accent="primary"
       />
 
-      {/* Buscador (mismo tamaño que Productos) */}
+      {/*
+        Mismo aspecto que el buscador de Pagos, a pedido del usuario. No es cosmética: los dos
+        hacen lo MISMO —buscar una persona para operar sobre ella— y estaban con tamaños
+        distintos, así que la misma acción se veía como dos cosas según la pantalla.
+
+        El botón "lista completa" es el atajo con el mouse: el hint prometía F3 y en una
+        terminal se opera con el mouse. Es el mismo `verTodos` que el teclado, no un segundo
+        camino.
+      */}
       <BuscadorF3
+        size="lg"
         value={query}
         onChange={setQuery}
         placeholder="DNI o nombre del cliente…"
         onF3={() => setVerTodos((v) => !v)}
         f3Hint="para ver la lista completa de clientes"
+        hint="Escaneá el DNI o escribí el nombre — desde la ficha se edita, se otorga y se cobra."
         onEnter={() => { if (resultados.length === 1) elegir(resultados[0]); }}
         onEscape={() => { if (verTodos) setVerTodos(false); else setQuery(""); }}
         autoFocus
-        className="w-full sm:max-w-sm"
+        className="w-full sm:max-w-2xl"
+        accionDerecha={
+          <button
+            type="button"
+            onClick={() => setVerTodos((v) => !v)}
+            className="flex items-center gap-2 rounded-lg px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
+          >
+            <kbd className="rounded border border-border bg-muted/50 px-1.5 py-0.5 font-mono text-[10px] font-semibold">F3</kbd>
+            <span className="text-primary">{verTodos ? "cerrar lista" : "lista completa"}</span>
+          </button>
+        }
       />
 
       {/* Filtros: solo inactivos + recién cargados (por fecha de alta) */}
@@ -304,7 +324,7 @@ export function ClientesTable({ role }: { role?: Role } = {}) {
 
       {/* Tabla de recién cargados (aparece/desaparece con fade; se oculta si hay búsqueda) */}
       <AnimatePresence initial={false}>
-        {recientes && !q && (
+        {recientes && !q && !verTodos && (
           <motion.section
             key="recientes"
             initial={{ opacity: 0, y: -8 }}
@@ -338,8 +358,17 @@ export function ClientesTable({ role }: { role?: Role } = {}) {
         )}
       </AnimatePresence>
 
-      {/* Estados (ocultos en modo "recién cargados" sin búsqueda para que no se apilen listas) */}
-      {(!recientes || q) && (soloInactivos && !q ? (
+      {/*
+        Estados. Se ocultan en modo "recién cargados" sin búsqueda para que no se apilen dos
+        listas de clientes.
+
+        🔴 PERO `verTodos` MANDA. Con un filtro de recién cargados puesto, F3 no hacía NADA:
+        el atajo prendía el estado, la lista se armaba, y esta condición la tapaba. Desde
+        afuera se veía como un atajo roto — y ya se había hecho el trabajo de traerla.
+        Ahora la lista completa gana: es una acción explícita del usuario, contra un filtro
+        que dejó puesto antes.
+      */}
+      {(!recientes || q || verTodos) && (soloInactivos && !q ? (
         isLoading ? (
           <p className="text-sm text-muted-foreground">Cargando…</p>
         ) : inactivos.length === 0 ? (
