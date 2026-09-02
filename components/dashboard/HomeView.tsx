@@ -73,10 +73,8 @@ export function HomeView({ role }: { role: Role }) {
 
   return (
     <div className="space-y-6">
-      {/* ── Cotización del dólar del día (siempre arriba: Blue + Oficial protagonistas, resto en cuadrícula) ── */}
-      <CotizacionDolar />
-
       {/* ── 1 · Filtros (compactos, a la derecha) ── */}
+      {/* Gobiernan todo lo de abajo, así que van antes de los números que mueven. */}
       <div className="flex justify-end">
         <FiltrosHome
           esAdmin={esAdmin}
@@ -86,7 +84,10 @@ export function HomeView({ role }: { role: Role }) {
         />
       </div>
 
-      {/* ── 2 · KPIs + avance de cobranzas (reaccionan a los filtros) ── */}
+      {/* ── 2 · LA PLATA, arriba de todo ──
+          Antes lo primero de la pantalla era la cotización del dólar: siete cifras de
+          contexto ganándole en presencia a lo único que es de la financiera. Ahora abre con
+          cuánto tiene prestado y cuánto le deben, y enseguida cuánto entró hoy. */}
       {isLoading ? (
         <DashboardKpisSkeleton />
       ) : error || !data ? (
@@ -95,32 +96,36 @@ export function HomeView({ role }: { role: Role }) {
         </div>
       ) : (
         <>
-          {/* El pulso del día va PRIMERO: es lo único que cambia mientras el panel está abierto. */}
-          <PulsoDelDia data={data} actualizado={actualizado} />
-          {/*
-            El dinero va ANTES que los conteos: la primera pregunta del administrador cuando
-            abre el panel es cuánta plata tiene afuera y cuánta le deben, no cuántas fichas
-            hay cargadas. Los conteos contextualizan esas dos cifras, no al revés.
-          */}
           <DashboardDinero data={data} />
+          {/* El pulso del día: lo único que cambia mientras el panel está abierto. */}
+          <PulsoDelDia data={data} actualizado={actualizado} />
+        </>
+      )}
+
+      {/* ── 3 · Cotización del dólar: contexto, no protagonista. Nace contraída. ── */}
+      <CotizacionDolar />
+
+      {/* ── 4 · Conteos + avance de cobranzas (reaccionan a los filtros) ── */}
+      {!isLoading && data && (
+        <>
           <DashboardKpis data={data} />
           <DashboardCobranzaAvance data={data} />
         </>
       )}
 
-      {/* ── 3 · Lo accionable de hoy: agenda de cobranza (scopeada al vendedor; admin ve todo) ── */}
+      {/* ── 5 · Lo accionable de hoy: agenda de cobranza (scopeada al vendedor; admin ve todo) ── */}
       <CobranzaDelDia />
 
-      {/* ── 4 · Rendimiento del equipo (admin) o del propio usuario (vendedor) ── */}
+      {/* ── 6 · Rendimiento del equipo (admin) o del propio usuario (vendedor) ── */}
       {esAdmin && <RendimientoVendedores filas={data?.por_vendedor ?? []} />}
       {esAdmin && <ObjetivosEquipo vendedores={vendedores} />}
       {!esAdmin && perfil && <MiConfiguracionVendedor perfil={perfil} />}
       {!esAdmin && <MiEfectividadCobranza />}
 
-      {/* ── 5 · Tendencia mensual (analítico: cobranzas · morosidad · circulación) ── */}
+      {/* ── 7 · Tendencia mensual (analítico: cobranzas · morosidad · circulación) ── */}
       <MetricChart vendedorId={esAdmin ? (vendedorId || undefined) : undefined} />
 
-      {/* ── 6 · Distribución de mora · Exposición en mora · Cobros registrados ── */}
+      {/* ── 8 · Distribución de mora · Exposición en mora · Cobros registrados ── */}
       {data && <DashboardMoraGrid data={data} />}
     </div>
   );

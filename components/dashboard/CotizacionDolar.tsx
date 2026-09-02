@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect, useState } from "react";
+import { ChevronDown } from "lucide-react";
 import { useCotizacion, type Cotizacion } from "@/lib/swr";
 import { Emoji } from "@/components/ui/Emoji";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -18,7 +20,7 @@ const META: Record<string, { label: string; icon: string }> = {
   tarjeta:         { label: "Tarjeta",   icon: "credit-card" },
   cripto:          { label: "Cripto",    icon: "gem-stone" },
 };
-/** Protagonistas (arriba, cards grandes) y secundarias (cuadrícula, siempre visibles). */
+/** Protagonistas (siempre visibles) y secundarias (aparecen al desplegar). */
 const PRINCIPALES = ["blue", "oficial"];
 const SECUNDARIAS = ["bolsa", "contadoconliqui", "mayorista", "tarjeta", "cripto"];
 
@@ -33,13 +35,37 @@ function fmtHora(iso?: string): string {
   } catch { return ""; }
 }
 
+/** Recuerda si el panel quedó desplegado. Es una comodidad del navegador, no un dato. */
+const CLAVE = "cf:dolarAbierto";
+
 /**
- * Cotización del dólar (dolarapi.com). **Blue y Oficial** van arriba como protagonistas
- * (cards grandes; Blue es la referencia de valorización del SaaS) y el resto de los tipos
- * (MEP, CCL, Mayorista, Tarjeta, Cripto) siempre visibles en una cuadrícula compacta.
+ * Cotización del dólar (dolarapi.com). **Blue y Oficial** siempre visibles; el resto
+ * (MEP, CCL, Mayorista, Tarjeta, Cripto) se despliega.
+ *
+ * 🔴 NACE CERRADO, Y ES EL PUNTO. Este panel ocupaba siete cotizaciones arriba de todo y le
+ * ganaba en presencia a la plata de la financiera, que es lo que el administrador abre a mirar.
+ * Cerrado deja dos cifras de contexto; las otras cinco están a un clic para quien las necesita.
+ * La preferencia se guarda en el navegador de cada uno: el que las mira todos los días no
+ * tiene que volver a abrirlo cada mañana.
  */
 export function CotizacionDolar() {
   const { cotizaciones, isLoading, error } = useCotizacion();
+  const [abierto, setAbierto] = useState(false);
+
+  /*
+    Se lee en un efecto y no durante el render: el server no tiene localStorage, y si el primer
+    render del cliente dependiera de él, React vería dos HTML distintos y tiraría el árbol.
+  */
+  useEffect(() => {
+    try { setAbierto(window.localStorage.getItem(CLAVE) === "1"); } catch { /* modo privado */ }
+  }, []);
+
+  const alternar = () => {
+    setAbierto((v) => {
+      try { window.localStorage.setItem(CLAVE, v ? "0" : "1"); } catch { /* modo privado */ }
+      return !v;
+    });
+  };
 
   if (isLoading) return <Skeleton className="h-40 rounded-2xl" />;
   if (error || cotizaciones.length === 0) return null; // si el servicio falla, no rompe el Home
@@ -77,13 +103,39 @@ export function CotizacionDolar() {
         ))}
       </div>
 
-      {/* Secundarias en cuadrícula (siempre visibles) */}
+      {/*
+        Las otras cinco, desplegables. El botón dice CUÁNTAS hay y con qué nombre: un chevron
+        pelado obliga a abrir para enterarse de qué esconde. No lleva ninguna instrucción de
+        uso ("clic para ver…"): el chevron ya es esa instrucción.
+      */}
       {secundarias.length > 0 && (
-        <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
-          {secundarias.map((c) => (
-            <SecundariaTile key={c.casa} c={c} />
-          ))}
-        </div>
+        <>
+          <button
+            type="button"
+            onClick={alternar}
+            aria-expanded={abierto}
+            className="group mt-3 flex w-full items-center justify-center gap-2 rounded-lg border border-border/60 bg-muted/10 py-2
+              text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted/30 hover:text-foreground"
+          >
+            {abierto ? "Ocultar" : secundarias.map((c) => META[c.casa]?.label ?? c.nombre).join(" · ")}
+            <ChevronDown className={`h-3.5 w-3.5 transition-transform duration-200 ${abierto ? "rotate-180" : ""}`} />
+          </button>
+
+          {/*
+            `grid-rows` de 0fr a 1fr: es la única forma de animar de "nada" a "lo que mida el
+            contenido" sin fijar una altura a mano, que se rompería al cambiar la cantidad de
+            cotizaciones o al achicar la ventana.
+          */}
+          <div className={`grid transition-[grid-template-rows] duration-300 ease-out ${abierto ? "grid-rows-[1fr]" : "grid-rows-[0fr]"}`}>
+            <div className="overflow-hidden">
+              <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+                {secundarias.map((c) => (
+                  <SecundariaTile key={c.casa} c={c} />
+                ))}
+              </div>
+            </div>
+          </div>
+        </>
       )}
     </div>
   );

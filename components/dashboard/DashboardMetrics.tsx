@@ -132,32 +132,32 @@ export function DashboardDinero({ data }: { data: DashboardData }) {
   const pctCapital = deuda > 0 ? Math.round((prestado / deuda) * 100) : 0;
 
   return (
-    <div className="animate-entrada relative overflow-hidden rounded-2xl border border-border/70 bg-card p-5
+    <div className="animate-entrada relative overflow-hidden rounded-2xl border border-border/70 bg-card px-6 py-7 sm:px-8 sm:py-9
       shadow-[0_1px_2px_rgba(0,0,0,0.3),0_12px_30px_-16px_rgba(0,0,0,0.7)]" style={{ animationDelay: "35ms" }}>
       <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-white/10" />
       <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-white/[0.05] via-transparent to-transparent" />
 
-      <div className="relative grid gap-5 sm:grid-cols-2">
-        <div className="flex items-start gap-3">
+      <div className="relative grid gap-8 sm:grid-cols-2 sm:gap-10">
+        <div className="flex items-start gap-4">
           <IconBadge emoji="money-with-wings" accent="primary" />
           <div className="min-w-0">
             <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Prestado</p>
-            <p className="font-mono text-2xl font-bold tabular-nums text-primary sm:text-3xl">
+            <p className="mt-2 font-mono text-3xl font-bold tabular-nums text-primary sm:text-4xl">
               <NumeroAnimado valor={prestado} decimales={2} prefijo="$" />
             </p>
-            <p className="mt-0.5 text-[11px] text-muted-foreground">capital en la calle</p>
+            <p className="mt-1.5 text-[11px] text-muted-foreground">capital en la calle</p>
           </div>
         </div>
 
         {/* La línea divisoria solo en desktop: apilado, dos cifras seguidas ya se leen separadas. */}
-        <div className="flex items-start gap-3 sm:border-l sm:border-border/70 sm:pl-5">
+        <div className="flex items-start gap-4 sm:border-l sm:border-border/70 sm:pl-10">
           <IconBadge emoji="chart-increasing" accent="success" />
           <div className="min-w-0">
             <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Deuda total</p>
-            <p className="font-mono text-2xl font-bold tabular-nums text-success sm:text-3xl">
+            <p className="mt-2 font-mono text-3xl font-bold tabular-nums text-success sm:text-4xl">
               <NumeroAnimado valor={deuda} decimales={2} prefijo="$" />
             </p>
-            <p className="mt-0.5 text-[11px] text-muted-foreground">lo que deben los clientes</p>
+            <p className="mt-1.5 text-[11px] text-muted-foreground">lo que deben los clientes</p>
           </div>
         </div>
       </div>
@@ -167,12 +167,12 @@ export function DashboardDinero({ data }: { data: DashboardData }) {
         que se vea de un vistazo qué parte de lo que le deben es plata que puso la financiera
         y qué parte es lo que gana. Sin la barra habría que restar dos números de memoria.
       */}
-      <div className="relative mt-5">
-        <div className="flex h-2.5 w-full overflow-hidden rounded-full bg-muted/40">
+      <div className="relative mt-8 border-t border-border/50 pt-6">
+        <div className="flex h-3 w-full overflow-hidden rounded-full bg-muted/40">
           <div className="bg-primary transition-[width] duration-[900ms] ease-out" style={{ width: `${pctCapital}%` }} />
           <div className="bg-success transition-[width] duration-[900ms] ease-out" style={{ width: `${100 - pctCapital}%` }} />
         </div>
-        <div className="mt-2 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+        <div className="mt-3 flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2">
           <span className="flex items-baseline gap-1.5 text-[11px] text-muted-foreground">
             <span className="inline-block h-2 w-2 shrink-0 translate-y-px rounded-full bg-primary" />
             Capital
