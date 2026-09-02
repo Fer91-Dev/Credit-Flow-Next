@@ -71,6 +71,9 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
         proximo_pago: true,
         vendedor_id: true,
         es_refinanciacion: true,
+        // Para contar CUÁNTOS clientes están prestando ahora mismo. Sale de esta query, que ya
+        // se hace: un cliente con tres créditos es UNO, así que un count no serviría.
+        cliente_id: true,
       },
     }),
 
@@ -148,6 +151,14 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   }));
 
   const creditosActivos = creditosDM.filter((c) => esCreditoVivo(c.estado)).length;
+  /*
+    Clientes que HOY tienen plata prestada. Distinto de `clientes_activos`, que son todas las
+    fichas vivas: de 103 clientes puede haber 14 prestando y 89 que ya cancelaron o nunca
+    tomaron nada. `Set` y no un count, porque un cliente con tres créditos es un solo cliente.
+  */
+  const clientesConCredito = new Set(
+    creditosDM.filter((c) => esCreditoVivo(c.estado)).map((c) => c.cliente_id),
+  ).size;
   const creditosPagados = creditosDM.filter((c) => c.estado === "pagado").length;
   /**
    * 🔴 Solo créditos VIVOS. Sumaba TODOS, así que la cartera del Home incluía el saldo de los
@@ -257,6 +268,8 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   return successResponse({
     resumen: {
       clientes_activos: clientes,
+      /** De los activos, cuántos tienen al menos un crédito vivo. */
+      clientes_con_credito: clientesConCredito,
       creditos_activos: creditosActivos,
       creditos_pagados: creditosPagados,
       cartera_total: carteraTotal,

@@ -75,9 +75,16 @@ export function DashboardKpis({ data }: { data: DashboardData }) {
   return (
     <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
       <div className="animate-entrada">
+        {/*
+          El `sub` no es decorativo: era la ÚNICA de las cuatro tarjetas sin línea de abajo, y
+          el hueco hacía que la fila se leyera despareja (Fernando lo marcó el 2026-09-02).
+          Va un DATO, no una frase — de 103 fichas vivas puede haber 14 prestando: eso es lo
+          que no se sabía mirando el 103 solo.
+        */}
         <KpiCard
           icon="busts-in-silhouette" label="Clientes activos" accent="primary"
           value={<NumeroAnimado valor={resumen.clientes_activos} />}
+          sub={`${resumen.clientes_con_credito} con crédito vigente`}
         />
       </div>
       <div className="animate-entrada" style={{ animationDelay: "70ms" }}>

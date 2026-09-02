@@ -1029,6 +1029,8 @@ export interface CampanaDetalle extends CampanaCobranza {
 export interface DashboardData {
   resumen: {
     clientes_activos: number;
+    /** De los clientes activos, cuántos tienen al menos un crédito vivo (no es un subconjunto de créditos: un cliente con tres cuenta una vez). */
+    clientes_con_credito: number;
     creditos_activos: number;
     creditos_pagados: number;
     cartera_total: number;
