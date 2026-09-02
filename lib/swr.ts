@@ -1698,6 +1698,22 @@ export function useClienteDetalle(clienteId: string | null) {
   return { cliente: data, error, isLoading, mutate };
 }
 
+/** Una observación libre sobre el cliente. `fecha` es CUÁNDO PASÓ; `created_at`, cuándo se cargó. */
+export interface ObservacionCliente {
+  id: string;
+  fecha: string;
+  texto: string;
+  autor_nombre: string | null;
+  created_at: string;
+}
+
+export function useObservacionesCliente(clienteId: string | null) {
+  const { data, error, isLoading, mutate } = useSWR<{ observaciones: ObservacionCliente[] }>(
+    clienteId ? `/api/clientes/${clienteId}/observaciones` : null,
+  );
+  return { observaciones: data?.observaciones ?? [], error, isLoading, mutate };
+}
+
 export function useConfiguracion() {
   const { data, error, isLoading, mutate } = useSWR<ConfiguracionFinanciera>(KEYS.configuracion, null, PARAMETROS_SWR);
   return { config: data, error, isLoading, mutate };

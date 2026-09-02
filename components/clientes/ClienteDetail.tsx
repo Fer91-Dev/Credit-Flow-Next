@@ -18,6 +18,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field, Textarea } from "@/components/ui/field";
 import { useToast } from "@/components/ui/toast";
+import { ObservacionesPanel } from "@/components/clientes/ObservacionesPanel";
 import { LibreDeudaDialog } from "@/components/creditos/LibreDeudaDialog";
 import { PagoForm } from "@/components/pagos/PagoForm";
 import { PlanDeCuotas } from "@/components/creditos/PlanDeCuotas";
@@ -714,6 +715,21 @@ export function ClienteDetail({
           <section className="space-y-2">
             <SectionTitle icon={History} text="Prontuario del cliente" />
             <ProntuarioPanel clienteId={clienteId} />
+          </section>
+        )}
+
+        {/*
+          Observaciones: lo que no entra en ningún campo. Va DESPUÉS del prontuario (que es lo
+          que el sistema deduce solo) y antes de las promesas: primero lo que se sabe, después
+          lo que alguien anotó a mano.
+
+          No se esconde detrás de `showCreditos`: un cliente sin créditos también necesita que
+          se le anote algo — de hecho es cuando más falta hace.
+        */}
+        {!esTerminal && (
+          <section className="space-y-2">
+            <SectionTitle icon="clipboard" text="Observaciones" />
+            <ObservacionesPanel clienteId={clienteId} />
           </section>
         )}
 

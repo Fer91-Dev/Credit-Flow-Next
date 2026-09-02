@@ -232,6 +232,7 @@ model clientes {
   creditos         creditos[]
   solicitudes      solicitudes[]
   consultas_bureau consultas_bureau[]
+  observaciones    observaciones_cliente[]
 
   // El identificador ÚNICO es el CUIT/CUIL (en AR puede haber DNI repetidos). Los
   // null se permiten (Postgres los trata como distintos): clientes sin CUIT cargado.
@@ -1106,4 +1107,36 @@ model configuraciones {
   documentos_config     Json? // DocumentosConfig — jurisdicción, punitorios, modo del pagaré y qué cláusulas
   // lleva la solicitud/mutuo. Ver lib/domain/documentos.ts
   updated_at            DateTime @updatedAt @db.Timestamptz(6)
+}
+
+/// Observaciones libres sobre un cliente: lo que no entra en ningún campo y hace falta que
+/// quede escrito ("se mudó, ahora vive en lo de la hermana", "trabaja de noche, llamar de
+/// mañana", "el hijo dijo que él se hace cargo").
+///
+/// 🔴 LA FECHA LA ESCRIBE EL USUARIO, y por eso es una columna aparte de `created_at`.
+/// Son dos hechos distintos: `fecha` es CUÁNDO PASÓ lo que se anota, `created_at` es cuándo
+/// se cargó. Se anota el lunes algo que pasó el viernes, y si el listado se ordenara por la
+/// carga la historia quedaría contada al revés. Es `@db.Date` (sin hora ni zona) porque nadie
+/// recuerda a qué hora se mudó un cliente.
+///
+/// Distinto de `acciones_cobranza`: aquello es la GESTIÓN de un crédito en mora (tipo,
+/// resultado, promesa) y cuelga del crédito. Esto cuelga del CLIENTE y no presupone deuda.
+model observaciones_cliente {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  tenant_id  String   @db.Uuid
+  cliente_id String   @db.Uuid
+
+  /// Cuándo pasó lo que se anota (lo elige quien carga; por defecto hoy).
+  fecha DateTime @db.Date
+  texto String
+
+  /// Quién la escribió. Congelado como en `auditoria`: si se borra la cuenta, la observación
+  /// se sigue leyendo con el nombre de quien la puso.
+  autor        String? @db.Uuid
+  autor_nombre String?
+
+  cliente clientes @relation(fields: [cliente_id], references: [id], onDelete: Cascade)
+
+  @@index([tenant_id, cliente_id, fecha])
 }
