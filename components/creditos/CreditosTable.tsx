@@ -136,6 +136,15 @@ export function CreditosTable({ role }: { role: Role }) {
           parecía una alerta y no lo que es, la cantidad de filas que hay en esa vista.
         */}
         <div className="flex flex-wrap items-center justify-between gap-3">
+          {/*
+            El CTA va a la IZQUIERDA y las pestañas a la derecha.
+
+            🔴 El slot se renderiza SIEMPRE, aunque el botón no esté. En "Refinanciados" no hay
+            CTA, y sin este div vacío el `justify-between` se queda con un solo hijo y le manda
+            las pestañas a la izquierda: al cambiar de pestaña saltaban de un lado al otro de
+            la pantalla. El hueco las deja quietas.
+          */}
+          <div>{tab === "creditos" && cta}</div>
           <div className="inline-flex items-center gap-1 rounded-xl border border-border bg-muted/40 p-1 shadow-[inset_0_1px_3px_0_rgba(0,0,0,0.20)]">
             {([
               { id: "creditos" as const,      emoji: "credit-card",                  label: "Créditos",      count: creditos.length, tone: "text-muted-foreground" },
@@ -169,7 +178,6 @@ export function CreditosTable({ role }: { role: Role }) {
               );
             })}
           </div>
-          {tab === "creditos" && cta}
         </div>
 
         {isLoading ? (
