@@ -7,7 +7,7 @@ import { useZonas, useVendedores, useDashboard, useMiPerfilVendedor, useMisLogro
 import { LiquidacionesLista } from "@/components/comisiones/LiquidacionesLista";
 import { FiltrosPanel, FiltroChip } from "@/components/ui/FiltrosPanel";
 import { IconBadge } from "@/components/ui/IconBadge";
-import { DashboardKpis, DashboardCobranzaAvance, DashboardMoraGrid, DashboardKpisSkeleton, PulsoDelDia } from "./DashboardMetrics";
+import { DashboardKpis, DashboardDinero, DashboardCobranzaAvance, DashboardMoraGrid, DashboardKpisSkeleton, PulsoDelDia } from "./DashboardMetrics";
 import { BarraAvance } from "@/components/ui/NumeroAnimado";
 import { formatMonto } from "@/lib/utils";
 import { MetricChart } from "./MetricChart";
@@ -16,9 +16,6 @@ import { CotizacionDolar } from "./CotizacionDolar";
 import { MedallaBadge, RangoBadge, InsigniaChip } from "@/components/ui/Medalla";
 import { Emoji } from "@/components/ui/Emoji";
 
-function n0(x: number) {
-  return new Intl.NumberFormat("es-AR", { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(x);
-}
 function n1(x: number) {
   return new Intl.NumberFormat("es-AR", { minimumFractionDigits: 0, maximumFractionDigits: 1 }).format(x);
 }
@@ -100,6 +97,12 @@ export function HomeView({ role }: { role: Role }) {
         <>
           {/* El pulso del día va PRIMERO: es lo único que cambia mientras el panel está abierto. */}
           <PulsoDelDia data={data} actualizado={actualizado} />
+          {/*
+            El dinero va ANTES que los conteos: la primera pregunta del administrador cuando
+            abre el panel es cuánta plata tiene afuera y cuánta le deben, no cuántas fichas
+            hay cargadas. Los conteos contextualizan esas dos cifras, no al revés.
+          */}
+          <DashboardDinero data={data} />
           <DashboardKpis data={data} />
           <DashboardCobranzaAvance data={data} />
         </>
@@ -214,7 +217,7 @@ function RendimientoVendedores({ filas }: { filas: VendedorRendimiento[] }) {
       <div className="mb-5 space-y-3">
         <div className="flex items-baseline justify-between gap-3">
           <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-            Avance de cobranzas del período
+            Cobrando
           </p>
           <p className="text-[11px] text-muted-foreground">
             de lo que vencía, cuánto entró
@@ -251,6 +254,22 @@ function RendimientoVendedores({ filas }: { filas: VendedorRendimiento[] }) {
           })}
       </div>
 
+      {/*
+        Las DOS mitades del trabajo del vendedor, rotuladas igual y una debajo de la otra:
+        arriba cómo viene COBRANDO, acá cómo viene COLOCANDO. Estaban las dos, pero sin nombre:
+        la de arriba se llamaba "Avance de cobranzas del período" y la tabla no se llamaba
+        nada, así que parecían un bloque y su apéndice en vez de las dos caras de lo mismo.
+        Es rótulo, no explicación — el sistema no tiene que contar qué hace cada columna.
+      */}
+      <div className="mb-3 flex items-baseline justify-between gap-3 border-t border-border/70 pt-4">
+        <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+          Colocando
+        </p>
+        <p className="text-[11px] text-muted-foreground">
+          qué prestó cada uno y cómo le está volviendo
+        </p>
+      </div>
+
       <div className="overflow-x-auto -mx-1">
         <table className="w-full min-w-[640px] text-sm">
           <thead>
@@ -273,9 +292,9 @@ function RendimientoVendedores({ filas }: { filas: VendedorRendimiento[] }) {
               >
                 <td className="py-2.5 px-1 font-medium text-foreground">{v.nombre}</td>
                 <td className="py-2.5 px-1 text-right font-mono text-foreground">{v.creditos_otorgados}</td>
-                <td className="py-2.5 px-1 text-right font-mono text-foreground">${n0(v.monto_otorgado)}</td>
-                <td className="py-2.5 px-1 text-right font-mono text-foreground">${n0(v.cartera)}</td>
-                <td className="py-2.5 px-1 text-right font-mono text-warning">${n0(v.en_mora_monto)}</td>
+                <td className="py-2.5 px-1 text-right font-mono text-foreground">{formatMonto(v.monto_otorgado)}</td>
+                <td className="py-2.5 px-1 text-right font-mono text-foreground">{formatMonto(v.cartera)}</td>
+                <td className="py-2.5 px-1 text-right font-mono text-warning">{formatMonto(v.en_mora_monto)}</td>
                 <td className="py-2.5 px-1 text-right font-mono">
                   <span className={v.mora_critica_count > 0 ? "text-destructive font-semibold" : "text-muted-foreground/40"}>
                     {v.mora_critica_count}
@@ -348,10 +367,10 @@ function MiConfiguracionVendedor({ perfil }: { perfil: MiPerfilVendedor }) {
     if (partes.length) reglas.push({ label: "Por tipo de crédito", valor: partes.join(" · ") });
   }
   if (cfg?.tramos?.length) {
-    reglas.push({ label: "Escalonada por volumen", valor: cfg.tramos.map((t) => `desde $${n0(t.desde)} → ${t.pct}%`).join(" · ") });
+    reglas.push({ label: "Escalonada por volumen", valor: cfg.tramos.map((t) => `desde ${formatMonto(t.desde)} → ${t.pct}%`).join(" · ") });
   }
   if (cfg?.bonus_meta) {
-    reglas.push({ label: "Bonus por meta", valor: cfg.bonus_meta.tipo === "monto" ? `$${n0(cfg.bonus_meta.valor)}` : `${cfg.bonus_meta.valor}% sobre lo vendido` });
+    reglas.push({ label: "Bonus por meta", valor: cfg.bonus_meta.tipo === "monto" ? formatMonto(cfg.bonus_meta.valor) : `${cfg.bonus_meta.valor}% sobre lo vendido` });
   }
 
   const m = perfil.meta_vigente;
@@ -395,11 +414,11 @@ function MiConfiguracionVendedor({ perfil }: { perfil: MiPerfilVendedor }) {
       {/* Rendimiento propio */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <MiStat icon="credit-card" label="Créditos otorgados" value={String(r.creditos_otorgados)} />
-        <MiStat icon="dollar-banknote" label="Vendido" value={`$${n0(r.monto_vendido)}`} accent="success" />
+        <MiStat icon="dollar-banknote" label="Vendido" value={formatMonto(r.monto_vendido)} accent="success" />
         <MiStat
           icon="bar-chart"
           label={r.comision_es_acumulada ? "Comisión acumulada" : "Comisión del período"}
-          value={`$${n0(r.comision_total)}`}
+          value={formatMonto(r.comision_total)}
           accent="warning"
         />
         <MiStat icon="bullseye" label="Avance meta" value={`${perfil.meta_vigente?.cumplimiento.avance_monto ?? 0}%`} accent="primary" />
@@ -431,7 +450,7 @@ function MiConfiguracionVendedor({ perfil }: { perfil: MiPerfilVendedor }) {
           </div>
           {perfil.limite_aprobacion != null ? (
             <>
-              <p className="text-2xl font-bold font-mono text-foreground">${n0(perfil.limite_aprobacion)}</p>
+              <p className="text-2xl font-bold font-mono text-foreground">{formatMonto(perfil.limite_aprobacion)}</p>
               <p className="text-[11px] text-muted-foreground/70 mt-1">Monto máximo que podés otorgar sin autorización de un superior.</p>
             </>
           ) : (
@@ -529,7 +548,7 @@ function MiEfectividadCobranza() {
             <MiStat icon="bar-chart" label="Gestiones" value={String(e.gestiones)} />
             <MiStat icon="handshake" label="Tasa de contacto" value={`${n1(e.tasa_contacto)}%`} accent="primary" />
             <MiStat icon="bullseye" label="Promesas" value={`${e.promesas} · ${n1(e.tasa_cumplimiento)}%`} accent="warning" />
-            <MiStat icon="dollar-banknote" label="Mora recuperada" value={`$${n0(cobranza!.recupero.mora_cobrada)}`} accent="success" />
+            <MiStat icon="dollar-banknote" label="Mora recuperada" value={formatMonto(cobranza!.recupero.mora_cobrada)} accent="success" />
           </div>
           <div className="space-y-2">
             {etapas.map((et) => {
@@ -566,7 +585,7 @@ function MiStat({ icon, label, value, accent }: { icon: typeof Target | string; 
 }
 
 function MiMetaBarra({ label, actual, meta, avance, money }: { label: string; actual: number; meta: number; avance: number; money?: boolean }) {
-  const fmt = (v: number) => (money ? `$${n0(v)}` : String(v));
+  const fmt = (v: number) => (money ? formatMonto(v) : String(v));
   const pct = Math.min(100, avance);
   const color = avance >= 100 ? "bg-success" : avance >= 60 ? "bg-warning" : "bg-primary";
   return (
@@ -623,7 +642,7 @@ function ObjetivosEquipo({ vendedores }: { vendedores: ReturnType<typeof useVend
                   {v.nombre}
                 </span>
                 <span className="font-mono text-xs text-muted-foreground">
-                  ${n0(v.vendido)}{v.meta > 0 && <> / <span className="text-foreground">${n0(v.meta)}</span></>}
+                  {formatMonto(v.vendido)}{v.meta > 0 && <> / <span className="text-foreground">{formatMonto(v.meta)}</span></>}
                 </span>
               </div>
               {v.meta > 0 ? (
@@ -634,7 +653,7 @@ function ObjetivosEquipo({ vendedores }: { vendedores: ReturnType<typeof useVend
                   <span className={`text-xs font-mono font-semibold w-10 text-right ${cumplido ? "text-success" : "text-foreground"}`}>{v.avance}%</span>
                 </div>
               ) : (
-                <p className="text-[11px] text-muted-foreground/50">Sin meta asignada · comisión ${n0(v.comision)}</p>
+                <p className="text-[11px] text-muted-foreground/50">Sin meta asignada · comisión {formatMonto(v.comision)}</p>
               )}
             </div>
           );

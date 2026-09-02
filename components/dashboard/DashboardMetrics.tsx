@@ -6,6 +6,7 @@ import { KpiCard } from "@/components/ui/KpiCard";
 import { NumeroAnimado } from "@/components/ui/NumeroAnimado";
 import { IconBadge } from "@/components/ui/IconBadge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { formatMonto } from "@/lib/utils";
 
 function n0(num: number) {
   return new Intl.NumberFormat("es-AR", { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(num);
@@ -71,9 +72,8 @@ function CarteraBody({ data }: { data: DashboardData }) {
  */
 export function DashboardKpis({ data }: { data: DashboardData }) {
   const { resumen } = data;
-  const enCalle = resumen.capital_en_calle ?? resumen.cartera_total;
   return (
-    <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+    <div className="grid grid-cols-2 gap-4 lg:grid-cols-3">
       <div className="animate-entrada">
         {/*
           El `sub` no es decorativo: era la ÚNICA de las cuatro tarjetas sin línea de abajo, y
@@ -96,26 +96,96 @@ export function DashboardKpis({ data }: { data: DashboardData }) {
       </div>
       <div className="animate-entrada" style={{ animationDelay: "140ms" }}>
         <KpiCard
-          icon="money-with-wings" label="Dinero en la calle" accent="success" mono
-          value={<NumeroAnimado valor={enCalle} decimales={2} prefijo="$" />}
-          sub={
-            <span className="tabular-nums">
-              a cobrar{" "}
-              <span className="font-mono text-foreground/70">
-                <NumeroAnimado valor={resumen.a_cobrar_total ?? 0} decimales={2} prefijo="$" />
-              </span>
-            </span>
-          }
-        />
-      </div>
-      <div className="animate-entrada" style={{ animationDelay: "210ms" }}>
-        <KpiCard
           icon="warning" label="Mora crítica"
           value={<NumeroAnimado valor={resumen.mora_critica_count} />}
           sub={resumen.mora_critica_count > 0 ? "requieren gestión urgente" : "sin atrasos críticos"}
           accent={resumen.mora_critica_count > 0 ? "destructive" : "success"}
           pulse={resumen.mora_critica_count > 0}
         />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * LOS DOS NÚMEROS DEL NEGOCIO, uno al lado del otro y del mismo tamaño.
+ *
+ * Antes vivían en la misma tarjeta y con jerarquías distintas: "Dinero en la calle" en grande
+ * y "a cobrar" abajo, en gris de 11 píxeles, como si fuera una nota al pie. Son las dos cifras
+ * que el administrador mira todos los días y ninguna es el pie de la otra:
+ *
+ *   PRESTADO  = capital que salió y todavía no volvió (`saldo_pendiente` de los créditos vivos;
+ *               verificado: es capital puro, sin interés).
+ *   DEUDA     = todo lo que falta cobrar de las cuotas vivas: ese capital MÁS el interés y los
+ *               cargos que todavía no se ganaron. Sin punitorios.
+ *
+ * La barra existe para que la relación se ENTIENDA sin leer nada: la deuda es una sola barra
+ * partida en la plata que vuelve y la plata que se gana. El tercer número no es una consulta
+ * nueva ni una fórmula paralela — es la resta de los dos que están arriba, así que no puede
+ * discrepar con ellos.
+ */
+export function DashboardDinero({ data }: { data: DashboardData }) {
+  const { resumen } = data;
+  const prestado = resumen.capital_en_calle ?? resumen.cartera_total;
+  const deuda = resumen.a_cobrar_total ?? 0;
+  const ganancia = Math.max(0, deuda - prestado);
+  const pctCapital = deuda > 0 ? Math.round((prestado / deuda) * 100) : 0;
+
+  return (
+    <div className="animate-entrada relative overflow-hidden rounded-2xl border border-border/70 bg-card p-5
+      shadow-[0_1px_2px_rgba(0,0,0,0.3),0_12px_30px_-16px_rgba(0,0,0,0.7)]" style={{ animationDelay: "35ms" }}>
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-white/10" />
+      <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-white/[0.05] via-transparent to-transparent" />
+
+      <div className="relative grid gap-5 sm:grid-cols-2">
+        <div className="flex items-start gap-3">
+          <IconBadge emoji="money-with-wings" accent="primary" />
+          <div className="min-w-0">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Prestado</p>
+            <p className="font-mono text-2xl font-bold tabular-nums text-primary sm:text-3xl">
+              <NumeroAnimado valor={prestado} decimales={2} prefijo="$" />
+            </p>
+            <p className="mt-0.5 text-[11px] text-muted-foreground">capital en la calle</p>
+          </div>
+        </div>
+
+        {/* La línea divisoria solo en desktop: apilado, dos cifras seguidas ya se leen separadas. */}
+        <div className="flex items-start gap-3 sm:border-l sm:border-border/70 sm:pl-5">
+          <IconBadge emoji="chart-increasing" accent="success" />
+          <div className="min-w-0">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Deuda total</p>
+            <p className="font-mono text-2xl font-bold tabular-nums text-success sm:text-3xl">
+              <NumeroAnimado valor={deuda} decimales={2} prefijo="$" />
+            </p>
+            <p className="mt-0.5 text-[11px] text-muted-foreground">lo que deben los clientes</p>
+          </div>
+        </div>
+      </div>
+
+      {/*
+        Una sola barra = la deuda entera, partida en sus dos pedazos. Es el punto del bloque:
+        que se vea de un vistazo qué parte de lo que le deben es plata que puso la financiera
+        y qué parte es lo que gana. Sin la barra habría que restar dos números de memoria.
+      */}
+      <div className="relative mt-5">
+        <div className="flex h-2.5 w-full overflow-hidden rounded-full bg-muted/40">
+          <div className="bg-primary transition-[width] duration-[900ms] ease-out" style={{ width: `${pctCapital}%` }} />
+          <div className="bg-success transition-[width] duration-[900ms] ease-out" style={{ width: `${100 - pctCapital}%` }} />
+        </div>
+        <div className="mt-2 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+          <span className="flex items-baseline gap-1.5 text-[11px] text-muted-foreground">
+            <span className="inline-block h-2 w-2 shrink-0 translate-y-px rounded-full bg-primary" />
+            Capital
+            <span className="font-mono font-semibold tabular-nums text-foreground">{formatMonto(prestado)}</span>
+            <span className="tabular-nums">· {pctCapital}%</span>
+          </span>
+          <span className="flex items-baseline gap-1.5 text-[11px] text-muted-foreground">
+            <span className="inline-block h-2 w-2 shrink-0 translate-y-px rounded-full bg-success" />
+            Interés y cargos
+            <span className="font-mono font-semibold tabular-nums text-foreground">{formatMonto(ganancia)}</span>
+            <span className="tabular-nums">· {100 - pctCapital}%</span>
+          </span>
+        </div>
       </div>
     </div>
   );
