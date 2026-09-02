@@ -67,6 +67,8 @@ interface EvalRiesgo {
   motivos: string[];
   ratioCuotaIngreso: number | null;
   bloquea: boolean;
+  /** true si el corte es un impedimento absoluto (cuotas vencidas), no `accionAlNoCalificar`. */
+  bloqueoDuro: boolean;
   ingresoNetoMensual: number;
   /** Suma de cuotas mensuales de otros créditos vivos del cliente. */
   deudaCuotaMensualVigente: number;
@@ -1350,7 +1352,27 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
                       </p>
                     </div>
                   )}
-                  {riesgoRechazado && riesgoEval.bloquea && (
+                  {/*
+                    DOS cortes distintos, y el cartel tiene que decir CUÁL fue.
+
+                    Antes los dos mostraban "la política bloquea a quien no califica, sin
+                    excepciones", que describe `accionAlNoCalificar: "bloquear"`. En un tenant
+                    con ese parámetro en "autorizar" —el default— el cartel culpaba a una
+                    opción que el operador no tiene puesta, y el admin salía a buscar el
+                    casillero de autorización que nunca iba a aparecer, porque lo que lo
+                    frenaba era otra regla.
+                  */}
+                  {riesgoRechazado && riesgoEval.bloqueoDuro && (
+                    <div className="mt-3 flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2">
+                      <Info className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+                      <p className="text-xs text-destructive">
+                        <span className="font-semibold">No se puede otorgar, y esto no se autoriza.</span>{" "}
+                        El cliente tiene cuotas vencidas impagas. Es la única regla del motor que no admite
+                        autorización del administrador. Se apaga en Configuración → Riesgo / Originación.
+                      </p>
+                    </div>
+                  )}
+                  {riesgoRechazado && riesgoEval.bloquea && !riesgoEval.bloqueoDuro && (
                     <div className="mt-3 flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2">
                       <Info className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
                       <p className="text-xs text-destructive">

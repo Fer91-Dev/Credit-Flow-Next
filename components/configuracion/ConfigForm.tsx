@@ -421,6 +421,7 @@ const AYUDA: Record<string, AyudaBloque> = {
       "Tope por múltiplo de ingreso y límites de monto.",
       "Máx. créditos activos y bloqueo por mora previa.",
       "Si no califica: avisar y dejar autorizar, o bloquear.",
+      "Cuotas vencidas impagas: es la única regla que puede frenar el otorgamiento aunque «Si no califica» esté en «autorizar». Con la excepción prendida, el admin puede firmarlo igual y queda registrado quién lo autorizó; el vendedor nunca.",
     ],
   },
   documentos: {
@@ -1654,10 +1655,26 @@ export function ConfigForm() {
 
               <SwitchRow
                 title="Bloquear si tiene cuotas vencidas impagas"
-                desc="Impedimento absoluto: no se puede otorgar a un cliente que ya está en mora, ni siquiera con autorización del admin."
+                desc="No se le otorga a un cliente que ya está en mora con la financiera."
                 checked={riesgo.politica.bloquearConCuotasVencidas}
                 onChange={v => setRiesgo({ bloquearConCuotasVencidas: v })}
               />
+
+              {/*
+                Anidado y solo visible con el freno prendido: por sí solo no significa nada, y
+                suelto en la lista se leería como una regla más en vez de como la excepción de
+                la de arriba.
+              */}
+              {riesgo.politica.bloquearConCuotasVencidas && (
+                <div className="ml-4 border-l-2 border-border pl-4">
+                  <SwitchRow
+                    title="…pero un administrador puede autorizarlo igual"
+                    desc="Apagado, el freno de arriba no lo levanta nadie. Prendido, el admin puede firmar el otorgamiento asumiendo el riesgo, y queda registrado quién lo autorizó. El vendedor nunca puede."
+                    checked={riesgo.politica.permitirOverrideCuotasVencidas}
+                    onChange={v => setRiesgo({ permitirOverrideCuotasVencidas: v })}
+                  />
+                </div>
+              )}
 
               <SwitchRow
                 title="Rechazar con cheques rechazados"
@@ -2353,6 +2370,7 @@ function defaultRiesgo(): RiesgoConfig {
       maxEdicionesSueldoVendedor: 3,
       alertaSaltoSueldoPct: 50,
       bloquearConCuotasVencidas: true,
+      permitirOverrideCuotasVencidas: false,
       accionAlNoCalificar: "autorizar",
     },
     bureau: { proveedor: "manual", enabled: false, endpoint: "", token: "", usuario: "" },

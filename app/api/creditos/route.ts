@@ -546,6 +546,13 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
       capacidad: ev.capacidad,
       scoreInterno: ev.scoreInterno.categoria,
       autorizadoManual,
+      /*
+        QUIÉN lo firmó, no solo que se firmó. `autorizadoManual: true` sin nombre obliga a
+        cruzar la hora del crédito contra la auditoría para saber quién asumió el riesgo —
+        y este snapshot es justamente lo que se mira meses después, cuando el crédito cayó.
+        Se guarda nombre y email (no la contraseña ni el token, obviamente).
+      */
+      autorizadoPor: autorizadoManual ? { userId, nombre: nombre ?? null, email: email ?? null } : null,
       evaluadoEl: new Date().toISOString(),
     } as unknown as Prisma.InputJsonValue;
   }

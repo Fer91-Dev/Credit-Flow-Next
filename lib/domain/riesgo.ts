@@ -96,11 +96,23 @@ export interface PoliticaOriginacion {
    */
   alertaSaltoSueldoPct: number;
   /**
-   * Bloqueo DURO si el cliente tiene cuotas vencidas impagas en créditos vigentes. Es un
-   * impedimento absoluto: no se puede otorgar ni con autorización del admin (a diferencia
-   * del resto, que respeta `accionAlNoCalificar`). No se le presta a quien ya está en mora.
+   * Frena el otorgamiento si el cliente tiene cuotas vencidas impagas en créditos vigentes.
+   * No se le presta a quien ya está en mora.
    */
   bloquearConCuotasVencidas: boolean;
+  /**
+   * Deja que un ADMIN pase por encima del freno anterior, firmándolo (queda auditado).
+   * Apagado por defecto: la regla es el guardarraíl más básico del negocio.
+   *
+   * 🔴 POR QUÉ EXISTE ESTE PARÁMETRO. Hasta el 2026-09-02 el freno era absoluto, sin override
+   * ni de admin. Suena más seguro y en la práctica es al revés: el día que hay que prestarle a
+   * un cliente bueno con un atraso puntual, la única salida era apagar
+   * `bloquearConCuotasVencidas` entero — y eso apaga el aviso para TODOS los clientes, para
+   * siempre, y nadie lo vuelve a prender. Un override firmado y auditado es estrictamente
+   * mejor que una regla apagada. Además "el admin no puede" era una decisión de negocio
+   * escrita a fuego en el código, no una configuración de la financiera.
+   */
+  permitirOverrideCuotasVencidas: boolean;
   /** Qué hace el sistema si el cliente NO califica: cortar el otorgamiento o permitir con autorización del admin. */
   accionAlNoCalificar: "bloquear" | "autorizar";
 }
@@ -119,7 +131,8 @@ export const POLITICA_ORIGINACION_DEFAULT: PoliticaOriginacion = {
   maxCreditosActivos: 0, // sin límite por defecto (cada financiera define su apetito)
   maxEdicionesSueldoVendedor: 3, // un vendedor puede editar el sueldo 3 veces; luego lo resetea un admin
   alertaSaltoSueldoPct: 50, // subir el sueldo +50% de golpe exige un motivo (auditado)
-  bloquearConCuotasVencidas: true, // no se le presta a quien ya está en mora (bloqueo duro)
+  bloquearConCuotasVencidas: true, // no se le presta a quien ya está en mora
+  permitirOverrideCuotasVencidas: false, // ...y por defecto ni el admin lo pasa por encima
   // Por defecto avisa y deja autorizar (mismo criterio que el límite de otorgamiento del vendedor).
   accionAlNoCalificar: "autorizar",
 };
@@ -308,8 +321,16 @@ export interface ResultadoOriginacion {
   /** Ratio cuota/ingreso (incluye deuda vigente). `null` si no hay ingreso. */
   ratioCuotaIngreso: number | null;
   capacidad: CapacidadPago;
-  /** true si el sistema debe CORTAR el otorgamiento (rechazado + política "bloquear"). */
+  /** true si el sistema debe CORTAR el otorgamiento (bloqueo duro, o rechazado + política "bloquear"). */
   bloquea: boolean;
+  /**
+   * true si el corte viene de un IMPEDIMENTO ABSOLUTO (hoy: cuotas vencidas impagas), no de
+   * `accionAlNoCalificar`. Existe porque los dos casos se cortaban igual y el simulador le
+   * echaba la culpa al parámetro equivocado: mostraba "la política bloquea a quien no
+   * califica, sin excepciones" en tenants que tienen ese parámetro justamente en "autorizar".
+   * Quien lea esto tiene que poder decirle al operador CUÁL regla lo frenó y dónde se cambia.
+   */
+  bloqueoDuro: boolean;
 }
 
 /**
@@ -439,11 +460,20 @@ export function evaluarOriginacion(
     motivos.push("Sin historial interno ni consulta a bureau: revisar manualmente.");
   }
 
-  // 8) Cuotas vencidas impagas → BLOQUEO DURO (no se le presta a quien ya está en mora).
+  /*
+    8) Cuotas vencidas impagas. Rechaza siempre; que sea un impedimento ABSOLUTO o uno que el
+    admin pueda firmar lo decide `permitirOverrideCuotasVencidas` (apagado por defecto).
+    El motivo cambia con él: si el override está abierto, decir "no se puede otorgar" sería
+    mentirle al operador, que tiene el casillero justo abajo.
+  */
   if (politica.bloquearConCuotasVencidas && entrada.tieneCuotasVencidas) {
     escalar("rechazado");
-    bloqueoDuro = true;
-    motivos.push("Tiene cuotas vencidas impagas en créditos vigentes: no se puede otorgar.");
+    if (politica.permitirOverrideCuotasVencidas) {
+      motivos.push("Tiene cuotas vencidas impagas en créditos vigentes: requiere autorización de un administrador.");
+    } else {
+      bloqueoDuro = true;
+      motivos.push("Tiene cuotas vencidas impagas en créditos vigentes: no se puede otorgar.");
+    }
   }
 
   // 9) Tope de créditos activos simultáneos (respeta accionAlNoCalificar, salvo que ya haya bloqueo duro).
@@ -458,5 +488,5 @@ export function evaluarOriginacion(
   const semaforo = semaforos[nivel];
   // Bloquea si: impedimento absoluto (mora) o política dura ("bloquear") ante un rechazo.
   const bloquea = bloqueoDuro || (semaforo === "rechazado" && politica.accionAlNoCalificar === "bloquear");
-  return { semaforo, motivos, ratioCuotaIngreso: ratio, capacidad, bloquea };
+  return { semaforo, motivos, ratioCuotaIngreso: ratio, capacidad, bloquea, bloqueoDuro };
 }
