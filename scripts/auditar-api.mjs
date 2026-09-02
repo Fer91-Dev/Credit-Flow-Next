@@ -34,6 +34,26 @@ const EXCEPCIONES = {
   "cotizacion/route.ts":        "proxy a dolarapi.com; no toca la base",
 };
 
+/**
+ * Excepciones POR REGLA, verificadas a mano el 2026-09-02. Distinto de `EXCEPCIONES`, que
+ * exime a la ruta entera: acá se apaga UNA regla y el resto se le sigue aplicando.
+ *
+ * 🔴 Cada entrada dice POR QUÉ. Si el motivo deja de ser cierto hay que BORRAR la línea, no
+ * ampliarla. Una lista de excepciones sin motivo se convierte en el lugar donde se esconden
+ * los bugs, y entonces el auditor deja de servir para lo único que sirve: que un hallazgo
+ * nuevo se vea.
+ */
+const EXCEPCIONES_POR_REGLA = {
+  "admin/financieras/route.ts":  { "queries de Prisma sin withTenant": "el owner del SaaS opera cross-tenant a propósito; barrera = requireOwner en cada handler (verificado)" },
+  "admin/planes/route.ts":       { "queries de Prisma sin withTenant": "ídem", "findUnique sin chequeo de tenant": "ídem" },
+  "admin/tenants/route.ts":      { "queries de Prisma sin withTenant": "ídem" },
+  "admin/tenants/[id]/route.ts": { "queries de Prisma sin withTenant": "ídem", "findUnique sin chequeo de tenant": "ídem" },
+  "branding/route.ts":           { "sin requireAuth/requireRole": "branding público pre-login (solo nombre + logo); excluye el tenant de plataforma" },
+  "cron/suscripciones/route.ts": { "sin requireAuth/requireRole": "job externo; Bearer CRON_SECRET fail-closed en producción", "queries de Prisma sin withTenant": "degrada suscripciones vencidas de TODOS los tenants: es su trabajo", "handler que escribe SIN assertSameOrigin": "no lo llama un navegador" },
+  "usuarios/check-username/route.ts": { "queries de Prisma sin withTenant": "el username es único GLOBAL, por eso no se filtra por tenant; requireRole(admin)", "findUnique sin chequeo de tenant": "ídem" },
+  "clientes/route.ts":           { "toca créditos con rol vendedor y sin scoping": "DECISIÓN DOCUMENTADA (CLAUDE.md): estado_cuenta y score salen de TODOS los créditos del cliente; acotarlos mostraría deuda $0 de un moroso y el vendedor prestaría a ciegas" },
+};
+
 function archivos(dir, acc = []) {
   for (const e of readdirSync(dir)) {
     const p = join(dir, e);
@@ -54,7 +74,10 @@ function codigoDesnudo(src) {
 }
 
 const hallazgos = [];
-const add = (nivel, ruta, regla, detalle) => hallazgos.push({ nivel, ruta, regla, detalle });
+const add = (nivel, ruta, regla, detalle) => {
+  if (EXCEPCIONES_POR_REGLA[ruta]?.[regla]) return; // verificado a mano; el motivo está arriba
+  hallazgos.push({ nivel, ruta, regla, detalle });
+};
 
 const rutas = archivos(RAIZ).sort();
 let conAuth = 0, mutaciones = 0;
@@ -160,7 +183,7 @@ for (const f of rutas) {
   */
   const tocaCreditos = /prisma\.(creditos|cuotas|pagos|acciones_cobranza|acuerdos_pago)\./.test(code);
   const admiteVendedor = /requireRole\(\s*\[[^\]]*"vendedor"/.test(code) || /requireAuth\s*\(/.test(code);
-  if (tocaCreditos && admiteVendedor && !exento && !/scopeCreditosVendedor|vendedorPuedeEditar|vendedorId/.test(code)) {
+  if (tocaCreditos && admiteVendedor && !exento && !/scopeCreditosVendedor|scopePlanillasPropias|vendedorPuedeEditar|vendedorId/.test(code)) {
     add("ALTO", rel, "toca créditos con rol vendedor y sin scoping", "falta scopeCreditosVendedor");
   }
 
