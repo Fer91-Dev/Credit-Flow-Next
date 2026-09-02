@@ -1,4 +1,5 @@
 import { requireRole, scopeCreditosVendedor } from "@/lib/auth";
+import { scopeCreditoParaCobrar } from "@/lib/cobranza-scope";
 import { successResponse, errorResponse, withErrorHandler, assertSameOrigin } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
@@ -25,8 +26,22 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
 
   const where: Record<string, any> = { ...withTenant(tenantId) };
   if (creditoId) where.credito_id = creditoId;
-  // Anti-IDOR: el vendedor solo ve gestiones de los créditos que él otorgó.
-  const scope = scopeCreditosVendedor({ role, vendedorId });
+
+  /*
+    Anti-IDOR: el vendedor solo ve gestiones de los créditos que él otorgó.
+
+    🔴 CON UNA EXCEPCIÓN, y solo una: cuando se pide el historial de UN crédito puntual
+    (`?credito_id=`) y la financiera tiene la cobranza abierta. Si no, pasaba lo absurdo: el
+    compañero puede cobrarle al cliente y anotar que lo llamó, pero no puede LEER lo que
+    anotó el que llamó antes que él — y termina repitiendo la misma llamada. El historial de
+    un crédito es lo primero que se mira antes de levantar el teléfono.
+
+    Sin `credito_id` esto es la BANDEJA de trabajo (todas las gestiones de la financiera) y
+    ahí el scope no se toca: eso sí es leer la cartera ajena.
+  */
+  const scope = creditoId
+    ? await scopeCreditoParaCobrar({ role, vendedorId, tenantId })
+    : scopeCreditosVendedor({ role, vendedorId });
   if (scope.vendedor_id) where.credito = { vendedor_id: scope.vendedor_id };
 
   const [acciones, total] = await Promise.all([
@@ -73,7 +88,10 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
   // El crédito debe existir y pertenecer al tenant. Anti-IDOR: un vendedor solo
   // puede gestionar la mora de créditos que él otorgó.
   const credito = await prisma.creditos.findFirst({
-    where: { ...withTenant(tenantId), ...scopeCreditosVendedor({ role, vendedorId }), id: body.credito_id },
+    // Misma regla que el cobro: si la financiera tiene la cobranza abierta, cualquier agente
+    // puede dejar anotado que contactó a un cliente. Cobrar y no poder anotar la llamada
+    // dejaba la gestión sin registrar, que es peor que no tenerla.
+    where: { ...withTenant(tenantId), ...(await scopeCreditoParaCobrar({ role, vendedorId, tenantId })), id: body.credito_id },
     include: { cliente: { select: { nombre: true, apellido: true } } },
   });
   if (!credito) {
