@@ -1,4 +1,5 @@
 import { requireAuth, scopeCreditosVendedor } from "@/lib/auth";
+import { scopeCreditoParaCobrar } from "@/lib/cobranza-scope";
 import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
@@ -27,7 +28,7 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
   const { id } = await params;
 
   const credito = await prisma.creditos.findFirst({
-    where: { ...withTenant(tenantId), ...scopeCreditosVendedor({ role, vendedorId }), id },
+    where: { ...withTenant(tenantId), ...(await scopeCreditoParaCobrar({ role, vendedorId, tenantId })), id },
     select: {
       id: true,
       frecuencia: true,

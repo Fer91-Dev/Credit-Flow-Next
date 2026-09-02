@@ -184,6 +184,7 @@ const AYUDA: Record<string, AyudaBloque> = {
       + "una de $500.000,00 con 20 días. Con «el que más plata debe» se invierte: primero los $500.000,00. "
       + "Importa porque nadie llama la lista entera: el que queda al final no se llama.",
     puntos: [
+      "Cobranza abierta: si un agente puede cobrarle a un cliente de otro. Apagada, el día que el agente que otorgó el crédito no viene, su cliente entra a pagar y el que lo atiende ve cero créditos. La plata entra siempre a la caja de quien cobra —es el que tiene los billetes— y el recupero se le acredita al dueño del crédito, así que al ausente no se le cae la meta.",
       "Días sin gestión: con 7, un moroso al que nadie llamó reaparece en «Hoy» a la semana de la última gestión.",
       "A quién llamar primero: ordena solo adentro de cada grupo. Una promesa vencida siempre va antes que un enfriado.",
       "El importe que muestra la agenda es lo VENCIDO (cuotas impagas + punitorios), no el préstamo entero.",
@@ -1817,6 +1818,21 @@ export function ConfigForm() {
 
           {/* ─── Documentos del crédito (solicitud/mutuo + pagaré) ─── */}
           {activeTab === "cobranza" && <>
+          {/*
+            Va PRIMERO en la pestana: decide QUIEN puede cobrar, que es mas de fondo que
+            como se ordena la cola del dia.
+          */}
+          <Section title="Quien puede cobrar" desc="Si un agente puede cobrarle a un cliente de otro agente." ayuda={AYUDA.cobranza}
+            onSave={() => save("cobranza", { cobranzaConfig: cobranza })}
+            saving={savingKey === "cobranza"} saved={savedKey === "cobranza"} dirty={isDirty("cobranza")}>
+            <SwitchRow
+              title="Cobranza abierta"
+              desc="Cualquier agente le puede cobrar a cualquier cliente y ver el credito con su plan de cuotas. La plata entra a la caja de quien cobra; el recupero se le sigue acreditando al agente dueno del credito. Apagado, cada uno cobra solo lo suyo y un cliente no puede pagar si su agente no esta."
+              checked={cobranza.cobranza_abierta}
+              onChange={v => setCobranza({ cobranza_abierta: v })}
+            />
+          </Section>
+
           {/* Agenda de cobranza */}
           <Section title="Agenda de cobranza" desc="Cada cuántos días un moroso sin gestionar vuelve a aparecer en la cola del día, y con qué criterio se ordena." ayuda={AYUDA.cobranza}
             onSave={() => save("cobranza", { cobranzaConfig: cobranza })}
@@ -2317,6 +2333,7 @@ function defaultCobranza(): CobranzaConfig {
     // Los mismos valores con los que venía funcionando: activar el parámetro no mueve nada.
     tramos_mora: { media_hasta: 15, alta_hasta: 30 },
     orden: "mora",
+    cobranza_abierta: true,
     contacto: PLANTILLAS_CONTACTO_DEFAULT,
     plantillas_meta: [],
     acuerdos: {

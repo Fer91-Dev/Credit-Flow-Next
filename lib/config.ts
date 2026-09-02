@@ -258,6 +258,31 @@ export interface CobranzaConfig {
    * gestionando con los herederos. Ver `lib/domain/cliente-estado.ts`.
    */
   fallecidos: FallecidosConfig;
+  /**
+   * COBRANZA ABIERTA: cualquier agente puede cobrarle a cualquier cliente de la financiera,
+   * aunque el crédito lo haya otorgado otro.
+   *
+   * 🔴 POR QUÉ EXISTE. El scoping por vendedor se puso para que nadie lea la cartera de sus
+   * compañeros, y se aplicó también al cobro. Consecuencia real: si el agente que otorgó el
+   * crédito no vino a trabajar, el cliente entra a pagar, el que lo atiende abre su ficha y
+   * ve CERO créditos — el sistema le dice que no debe nada. El cliente se va con la plata y
+   * la mora que genera después es real. Una cobranza no puede depender de la asistencia de
+   * un empleado.
+   *
+   * Lo que abre y lo que NO:
+   *   ABRE  → ver los créditos de ESE cliente con su plan, cobrarlos y gestionarlos.
+   *   NO abre → listar la cartera ajena, sus comisiones, ni la agenda de otro. Las listas
+   *             (`/api/creditos`, agenda, campañas) siguen scopeadas.
+   *
+   * Lo que NO cambia:
+   *   - La plata entra a la caja de QUIEN COBRA, que es el que tiene los billetes. Mandarla a
+   *     la caja del ausente le crearía un saldo que no puede contar en su arqueo.
+   *   - El recupero se le sigue acreditando al DUEÑO del crédito: el avance de cobranza por
+   *     vendedor se calcula sobre las cuotas de sus créditos, sin mirar quién registró el pago.
+   *
+   * Prendido por defecto: en una oficina de barrio el mostrador atiende al que llega.
+   */
+  cobranza_abierta: boolean;
 }
 
 export const COBRANZA_DEFAULT: CobranzaConfig = {
@@ -270,6 +295,7 @@ export const COBRANZA_DEFAULT: CobranzaConfig = {
   acuerdos: ACUERDOS_DEFAULT,
   recupero: RECUPERO_DEFAULT,
   fallecidos: FALLECIDOS_DEFAULT,
+  cobranza_abierta: true,
 };
 
 /** Mezcla con defaults y acota `dias_sin_gestion` a 1..90. */
@@ -291,6 +317,8 @@ export function resolverCobranza(raw: unknown): CobranzaConfig {
     contacto: resolverPlantillasContacto(r.contacto),
     plantillas_meta: resolverPlantillasMeta(r.plantillas_meta),
     fallecidos: resolverFallecidos(r.fallecidos),
+    // `!== false` y no `=== true`: una config vieja no tiene la clave, y ahí el default manda.
+    cobranza_abierta: r.cobranza_abierta !== false,
   };
 }
 

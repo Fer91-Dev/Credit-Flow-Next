@@ -1,4 +1,5 @@
 import { requireRole, scopeCreditosVendedor, ApiError } from "@/lib/auth";
+import { scopeCreditoParaCobrar } from "@/lib/cobranza-scope";
 import { successResponse, errorResponse, withErrorHandler, assertSameOrigin } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
@@ -246,7 +247,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
 
   // Anti-IDOR: un vendedor solo puede cobrar sobre créditos que él otorgó.
   const credito = await prisma.creditos.findFirst({
-    where: { ...withTenant(tenantId), ...scopeCreditosVendedor({ role, vendedorId }), id: body.credito_id },
+    where: { ...withTenant(tenantId), ...(await scopeCreditoParaCobrar({ role, vendedorId, tenantId })), id: body.credito_id },
     include: { cliente: true, cuotas: { orderBy: { nro: "asc" } } },
   });
 

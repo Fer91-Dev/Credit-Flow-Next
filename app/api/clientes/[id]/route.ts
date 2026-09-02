@@ -7,7 +7,7 @@ import { registrarAuditoria } from "@/lib/audit";
 import { nombreCompleto, hoyComercial } from "@/lib/utils";
 import { normalizarCuit, validarDuplicadoCliente } from "@/lib/clientes-validacion";
 import { calcularScore, diasMoraActual, cuotaMensualFrancesa, tasaPeriodicaSegunConvencion, convencionDelCredito, normalizarFrecuencia, interesMora, diasAtraso, round2, estadoCoherente, esCreditoVivo, moraDelCredito, moraDesdeCronograma, moraPendienteTotal, ESTADOS_CLIENTE, ESTADO_CLIENTE_LABEL, esEstadoClienteValido, normalizarEstadoCliente, type EstadoCliente } from "@/lib/domain";
-import { getConfiguracion, getRiesgoConfig } from "@/lib/config";
+import { getConfiguracion, getRiesgoConfig, getCobranzaConfig } from "@/lib/config";
 import { situacionAcuerdoPorCredito } from "@/lib/acuerdos";
 import type { NextRequest } from "next/server";
 
@@ -274,7 +274,20 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
    * qué crédito ni con quién. Es lo que hace que el total y la lista puedan no coincidir sin
    * que parezca un error.
    */
-  const acotarAlVendedor = role === "vendedor";
+  /*
+    🔴 CON "COBRANZA ABIERTA" EL RECORTE SE LEVANTA — a propósito.
+
+    El recorte existe para que un vendedor no lea la cartera de sus compañeros, y para las
+    LISTAS sigue valiendo. Pero acá se está mirando la ficha de UN cliente que está parado
+    enfrente para pagar: si se le ocultan los créditos de otro agente, el que atiende ve
+    "cero créditos", el cliente se va sin pagar y la mora que genera después es real. Ver
+    `cobranza_abierta` en lib/config.ts.
+
+    Lo que se abre es exactamente esto: los créditos de ESE cliente, con su plan, para poder
+    cobrarlos. La lista de créditos, la agenda y las campañas siguen scopeadas.
+  */
+  const { cobranza_abierta } = await getCobranzaConfig(tenantId);
+  const acotarAlVendedor = role === "vendedor" && !cobranza_abierta;
   const propios = acotarAlVendedor
     ? creditosConFinanzas.filter((c) => c.vendedor_id === vendedorId)
     : creditosConFinanzas;
