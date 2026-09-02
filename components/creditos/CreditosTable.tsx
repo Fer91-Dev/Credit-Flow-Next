@@ -5,28 +5,26 @@ import { estadoBadgeCredito } from "./estado-badge";
 import { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { mutate as globalMutate } from "swr";
-import { Plus, FileText, ChevronDown, X, RefreshCw } from "lucide-react";
+import { FileText, ChevronDown, X, RefreshCw } from "lucide-react";
 import { CreditoDetail } from "./CreditoDetail";
 import { RefinanciarDialog } from "./RefinanciarDialog";
 import { CompararRefiDialog } from "./CompararRefiDialog";
 import { useCreditos, KEYS, type Credito, useTramosMora, useDiasLegales } from "@/lib/swr";
 import { type Role } from "@/lib/auth/roles";
-import { formatCreditoNumero, nombreCompleto, formatFecha, formatFechaHora, eventoPropio, teclaDelContenedor, formatDias } from "@/lib/utils";
+import { formatCreditoNumero, nombreCompleto, formatFecha, formatFechaHora, eventoPropio, teclaDelContenedor, formatDias, formatMonto } from "@/lib/utils";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { KpiCard } from "@/components/ui/KpiCard";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { DataTable } from "@/components/ui/DataTable";
 import { BuscadorF3 } from "@/components/ui/BuscadorF3";
+import { AccionPrimaria } from "@/components/ui/AccionPrimaria";
+import { Emoji } from "@/components/ui/Emoji";
 import { FiltrosPanel, FiltroChip } from "@/components/ui/FiltrosPanel";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { esCreditoVivo, severidadMora } from "@/lib/domain";
-
-function n0(x: number) {
-  return new Intl.NumberFormat("es-AR", { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(x);
-}
 
 const SEL =
   "h-10 rounded-lg border border-border bg-muted/40 pl-3 pr-8 text-sm text-foreground " +
@@ -109,15 +107,12 @@ export function CreditosTable({ role }: { role: Role }) {
   const hasFilters = !!(search || estadoFilter !== "all" || tipoFilter !== "all" || moraFilter !== "all");
   const clearFilters = () => { setSearch(""); setEstado("all"); setTipo("all"); setMora("all"); };
 
-  const cta = (
-    <button
-      onClick={openNew}
-      className="flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:opacity-90 transition-opacity text-sm font-medium whitespace-nowrap"
-    >
-      <Plus className="h-4 w-4" />
-      Nuevo crédito
-    </button>
-  );
+  /*
+    El emoji es `handshake` y no `credit-card` a propósito: la sección se llama Créditos y ya
+    lleva la tarjeta en el PageHeader, y acá el negocio no es una tarjeta de crédito sino un
+    préstamo que se pacta. El MISMO emoji lo usa el modal que abre este botón.
+  */
+  const cta = <AccionPrimaria emoji="handshake" onClick={openNew}>Nuevo crédito</AccionPrimaria>;
 
   return (
     <>
@@ -129,25 +124,50 @@ export function CreditosTable({ role }: { role: Role }) {
           accent="primary"
         />
 
-        {/* ── Tabs (Créditos / Refinanciados) + CTA ── */}
+        {/*
+          ── Pestañas (Créditos / Refinanciados) + CTA ──
+
+          Parten la pantalla en dos vistas distintas y antes pesaban menos que un filtro: una
+          píldora gris de 1,5 de alto. Ahora el contenedor es un POZO (sombra interior, la
+          misma idea que los inputs) y la pestaña activa sale del pozo — elevada, con el
+          anillo del acento. Así se lee cuál está puesta sin tener que comparar dos grises.
+
+          El contador va en las DOS, no solo en Refinanciados: un número suelto de un lado
+          parecía una alerta y no lo que es, la cantidad de filas que hay en esa vista.
+        */}
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="inline-flex rounded-lg border border-border bg-muted/30 p-0.5">
-            <button
-              onClick={() => setTab("creditos")}
-              className={`rounded-md px-3.5 py-1.5 text-sm font-medium transition-colors ${tab === "creditos" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
-            >
-              Créditos
-            </button>
-            <button
-              onClick={() => setTab("refinanciados")}
-              className={`flex items-center gap-1.5 rounded-md px-3.5 py-1.5 text-sm font-medium transition-colors ${tab === "refinanciados" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
-            >
-              <RefreshCw className="h-3.5 w-3.5" />
-              Refinanciados
-              {refiCount > 0 && (
-                <span className="rounded-full bg-warning/15 px-1.5 text-[10px] font-bold text-warning">{refiCount}</span>
-              )}
-            </button>
+          <div className="inline-flex items-center gap-1 rounded-xl border border-border bg-muted/40 p-1 shadow-[inset_0_1px_3px_0_rgba(0,0,0,0.20)]">
+            {([
+              { id: "creditos" as const,      emoji: "credit-card",                  label: "Créditos",      count: creditos.length, tone: "text-muted-foreground" },
+              { id: "refinanciados" as const, emoji: "counterclockwise-arrows-button", label: "Refinanciados", count: refiCount,       tone: "text-warning" },
+            ]).map((t) => {
+              const activa = tab === t.id;
+              return (
+                <button
+                  key={t.id}
+                  onClick={() => setTab(t.id)}
+                  aria-pressed={activa}
+                  className={`group flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-all duration-200 ${
+                    activa
+                      ? "bg-card text-foreground shadow-[0_1px_2px_rgba(0,0,0,0.28),0_6px_14px_-8px_rgba(0,0,0,0.6)] ring-1 ring-inset ring-primary/30"
+                      : "text-muted-foreground hover:bg-card/50 hover:text-foreground"
+                  }`}
+                >
+                  <Emoji
+                    name={t.emoji}
+                    className={`h-4 w-4 transition-all duration-200 ${activa ? "" : "opacity-60 group-hover:opacity-100 group-hover:scale-110"}`}
+                  />
+                  {t.label}
+                  {t.count > 0 && (
+                    <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold tabular-nums ${
+                      activa ? `bg-muted ${t.tone}` : "bg-muted/60 text-muted-foreground"
+                    }`}>
+                      {t.count}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
           </div>
           {tab === "creditos" && cta}
         </div>
@@ -176,11 +196,17 @@ export function CreditosTable({ role }: { role: Role }) {
             onClick={kpis.activos > 0 ? () => { setEstado("activo"); setMora("all"); } : undefined}
             active={estadoFilter === "activo" && moraFilter === "all"}
           />
-          <KpiCard icon="money-bag" label="Cartera activa" value={`$${n0(kpis.cartera)}`} accent="success" mono />
+          <KpiCard icon="money-bag" label="Cartera activa" value={formatMonto(kpis.cartera)} accent="success" mono />
           <KpiCard
             icon="warning" label="Mora crítica" value={String(kpis.moraCritica)}
             accent={kpis.moraCritica > 0 ? "destructive" : "muted"}
-            sub={kpis.moraCritica > 0 ? "más de 30 días" : "sin atrasos críticos"}
+            /*
+              El corte NO es fijo: "crítica" es todo lo que pasa `tramos.alta_hasta`, que es un
+              parámetro del tenant (Configuración → tramos de mora). Estaba escrito "más de 30
+              días" a mano, y con la config actual el corte real son 49: la tarjeta contaba una
+              cosa y el rótulo decía otra.
+            */
+            sub={kpis.moraCritica > 0 ? `más de ${formatDias(tramos.alta_hasta)}` : "sin atrasos críticos"}
             onClick={kpis.moraCritica > 0 ? () => { setMora("critica"); setEstado("all"); } : undefined}
             active={moraFilter === "critica"}
           />
@@ -298,11 +324,7 @@ export function CreditosTable({ role }: { role: Role }) {
               { header: "Tipo",
                 cell: (c) => <StatusBadge label={c.tipo_credito === "productos" ? "Producto" : c.tipo_credito} variant={c.tipo_credito === "productos" ? "primary" : "muted"} /> },
               { header: "Monto orig.", mono: true,
-                cell: (c) => <span className="text-foreground">${n0(c.monto_original)}</span> },
-              { header: "Saldo", mono: true,
-                cell: (c) => <span className={c.saldo_pendiente > 0 ? "text-warning font-semibold" : "text-success"}>${n0(c.saldo_pendiente)}</span> },
-              { header: "Tasa", mono: true,
-                cell: (c) => <span className="text-xs text-muted-foreground">{c.tasa}%</span> },
+                cell: (c) => <span className="text-foreground">{formatMonto(c.monto_original)}</span> },
               { header: "Mora", align: "center",
                 cell: (c) => c.dias_mora > 0
                   ? <StatusBadge label={formatDias(c.dias_mora)} variant={severidadMora(c.dias_mora, tramos) === "critica" ? "destructive" : "warning"} />
@@ -318,17 +340,32 @@ export function CreditosTable({ role }: { role: Role }) {
             ]}
             footer={
               /*
-                🔴 Los colSpan tienen que sumar la cantidad de columnas. Sumaban 9 contra 11:
-                el total de "Monto orig." se dibujaba bajo "Agente" y el de "Saldo" bajo
-                "Tipo". Ahora son 10 columnas → 5 + 1 + 1 + 3.
+                🔴 Los colSpan tienen que sumar la cantidad de columnas. Ya se rompió una vez
+                (sumaban 9 contra 11 y los totales caían bajo la columna equivocada). Hoy son
+                OCHO: N° · Otorgado · Cliente · Agente · Tipo · Monto orig. · Mora · Estado
+                → 5 + 1 + 2.
+
+                🔴 EL SALDO SIGUE ACÁ AUNQUE SE HAYA IDO SU COLUMNA. La columna se sacó porque
+                el saldo de cada crédito ya se ve al abrir la fila, pero el TOTAL de lo que
+                deben los créditos filtrados no está en ningún otro lado: el KPI "Cartera
+                activa" siempre mide la cartera entera, nunca lo filtrado. Sin esto, filtrar
+                por "Mora crítica" dejaba de responder cuánta plata hay ahí. Va rotulado,
+                porque un número sin columna arriba no se explica solo.
               */
               <tr className="bg-muted/20">
-                <td colSpan={5} className="px-4 py-3 text-[10px] font-bold text-muted-foreground uppercase tracking-widest border-t border-border">
-                  Totales ({filtered.length})
+                <td colSpan={5} className="px-4 py-3 border-t border-border">
+                  <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                    <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
+                      Totales ({filtered.length})
+                    </span>
+                    <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">
+                      Saldo pendiente
+                    </span>
+                    <span className="font-mono text-sm font-bold text-warning tabular-nums">{formatMonto(totals.saldo)}</span>
+                  </div>
                 </td>
-                <td className="px-4 py-3 text-right font-mono font-bold text-foreground border-t border-border">${n0(totals.monto)}</td>
-                <td className="px-4 py-3 text-right font-mono font-bold text-warning border-t border-border">${n0(totals.saldo)}</td>
-                <td colSpan={3} className="border-t border-border pr-5" />
+                <td className="px-4 py-3 text-right font-mono font-bold text-foreground border-t border-border">{formatMonto(totals.monto)}</td>
+                <td colSpan={2} className="border-t border-border pr-5" />
               </tr>
             }
             renderMobileCard={(c) => {
@@ -347,12 +384,12 @@ export function CreditosTable({ role }: { role: Role }) {
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <p className="text-[10px] text-muted-foreground">Monto original</p>
-                      <p className="font-mono font-semibold text-foreground">${n0(c.monto_original)}</p>
+                      <p className="font-mono font-semibold text-foreground">{formatMonto(c.monto_original)}</p>
                     </div>
                     <div>
                       <p className="text-[10px] text-muted-foreground">Saldo pendiente</p>
                       <p className={`font-mono font-bold ${c.saldo_pendiente > 0 ? "text-warning" : "text-success"}`}>
-                        ${n0(c.saldo_pendiente)}
+                        {formatMonto(c.saldo_pendiente)}
                       </p>
                     </div>
                   </div>
@@ -478,7 +515,7 @@ function RefinanciadosView({ creditos, onOpen, onRefinanciar }: { creditos: Cred
             onClick={() => setRecupero("todas")}
             active={recupero === "todas"}
           />
-          <KpiCard icon="money-bag" label="Capital consolidado" value={`$${n0(totalConsolidado)}`} accent="primary" mono />
+          <KpiCard icon="money-bag" label="Capital consolidado" value={formatMonto(totalConsolidado)} accent="primary" mono />
           <KpiCard
             icon="check-mark-button" label="Al día (recuperados)" value={String(alDia)} accent="success" sub={`${tasaRecupero}% de recupero`}
             onClick={alDia > 0 ? () => setRecupero("al_dia") : undefined}
@@ -538,7 +575,7 @@ function RefinanciadosView({ creditos, onOpen, onRefinanciar }: { creditos: Cred
                     </button>
                     <div className="shrink-0 text-right">
                       <p className="text-[10px] uppercase tracking-wide text-muted-foreground/70">Saldo</p>
-                      <p className="font-mono text-xs font-semibold text-warning tabular-nums">${n0(c.saldo_pendiente)}</p>
+                      <p className="font-mono text-xs font-semibold text-warning tabular-nums">{formatMonto(c.saldo_pendiente)}</p>
                     </div>
                     <button
                       onClick={() => onRefinanciar(c)}
@@ -593,9 +630,9 @@ function RefinanciadosView({ creditos, onOpen, onRefinanciar }: { creditos: Cred
           { header: "Cliente",
             cell: (p) => <span className="font-medium text-foreground">{nombreCompleto(p.nuevo.cliente)}</span> },
           { header: "Capital consolidado", mono: true,
-            cell: (p) => <span className="text-foreground">${n0(p.nuevo.monto_original)}</span> },
+            cell: (p) => <span className="text-foreground">{formatMonto(p.nuevo.monto_original)}</span> },
           { header: "Saldo", mono: true,
-            cell: (p) => <span className={p.nuevo.saldo_pendiente > 0 ? "text-warning font-semibold" : "text-success"}>${n0(p.nuevo.saldo_pendiente)}</span> },
+            cell: (p) => <span className={p.nuevo.saldo_pendiente > 0 ? "text-warning font-semibold" : "text-success"}>{formatMonto(p.nuevo.saldo_pendiente)}</span> },
           { header: "Mora", align: "center",
             cell: (p) => p.nuevo.dias_mora > 0
               ? <StatusBadge label={formatDias(p.nuevo.dias_mora)} variant={severidadMora(p.nuevo.dias_mora, tramos) === "critica" ? "destructive" : "warning"} />
@@ -630,7 +667,7 @@ function RefinanciadosView({ creditos, onOpen, onRefinanciar }: { creditos: Cred
             <p className="text-[11px] text-muted-foreground">Origen: {p.origen ? formatCreditoNumero(p.origen.numero) : "—"} · {formatFecha(p.nuevo.created_at)}</p>
             <div className="flex items-center justify-between pt-1 border-t border-border/70">
               <span className="text-[10px] text-muted-foreground">Capital consolidado</span>
-              <span className="font-mono font-semibold text-foreground">${n0(p.nuevo.monto_original)}</span>
+              <span className="font-mono font-semibold text-foreground">{formatMonto(p.nuevo.monto_original)}</span>
             </div>
             {p.origen && (
               <button
@@ -675,9 +712,7 @@ function EmptyState({ hasFilters, onNew, onClear }: { hasFilters: boolean; onNew
           Limpiar filtros
         </button>
       ) : (
-        <button onClick={onNew} className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm hover:opacity-90 transition-opacity">
-          <Plus className="h-4 w-4" /> Nuevo crédito
-        </button>
+        <AccionPrimaria emoji="handshake" onClick={onNew}>Nuevo crédito</AccionPrimaria>
       )}
     </div>
   );

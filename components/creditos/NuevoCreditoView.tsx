@@ -38,7 +38,7 @@ export function NuevoCreditoView() {
             <ArrowLeft className="h-4 w-4" />
           </button>
           <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-border/60 bg-muted/40">
-            <Emoji name="credit-card" className="h-5 w-5" />
+            <Emoji name="handshake" className="h-5 w-5" />
           </div>
           <div className="min-w-0">
             <h1 className="text-base font-semibold text-foreground leading-tight truncate">Simulador de crédito</h1>
