@@ -422,6 +422,7 @@ const AYUDA: Record<string, AyudaBloque> = {
       "Máx. créditos activos y bloqueo por mora previa.",
       "Si no califica: avisar y dejar autorizar, o bloquear.",
       "Cuotas vencidas impagas: es la única regla que puede frenar el otorgamiento aunque «Si no califica» esté en «autorizar». Con la excepción prendida, el admin puede firmarlo igual y queda registrado quién lo autorizó; el vendedor nunca.",
+      "Sin sueldo cargado: no hay capacidad de pago que evaluar, así que el ratio y el múltiplo de ingreso no corren. Por defecto lo firma un administrador; también se puede bloquear o dejar pasar con aviso.",
     ],
   },
   documentos: {
@@ -1651,6 +1652,20 @@ export function ConfigForm() {
                     <option value="bloquear">Bloquear el otorgamiento</option>
                   </Select>
                 </Field>
+                {/*
+                  Va pegado al de arriba porque es el mismo tipo de decisión, pero para el caso
+                  en que NO HAY con qué evaluar. Sin sueldo, la capacidad de pago da cero y
+                  todas las reglas que cuelgan del ingreso quedan mudas: lo que se elige acá es
+                  qué pasa entonces.
+                */}
+                <Field label="Si el cliente no tiene sueldo cargado" hint="Sin ingreso no hay capacidad de pago que evaluar">
+                  <Select value={riesgo.politica.accionSinIngreso}
+                    onChange={e => setRiesgo({ accionSinIngreso: e.target.value as RiesgoConfig["politica"]["accionSinIngreso"] })}>
+                    <option value="autorizar">Pedir autorización del administrador</option>
+                    <option value="bloquear">Bloquear hasta cargarle el sueldo</option>
+                    <option value="permitir">Solo avisar y otorgar igual</option>
+                  </Select>
+                </Field>
               </div>
 
               <SwitchRow
@@ -2371,6 +2386,7 @@ function defaultRiesgo(): RiesgoConfig {
       alertaSaltoSueldoPct: 50,
       bloquearConCuotasVencidas: true,
       permitirOverrideCuotasVencidas: false,
+      accionSinIngreso: "autorizar",
       accionAlNoCalificar: "autorizar",
     },
     bureau: { proveedor: "manual", enabled: false, endpoint: "", token: "", usuario: "" },

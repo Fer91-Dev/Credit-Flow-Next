@@ -115,6 +115,22 @@ export interface PoliticaOriginacion {
   permitirOverrideCuotasVencidas: boolean;
   /** Qué hace el sistema si el cliente NO califica: cortar el otorgamiento o permitir con autorización del admin. */
   accionAlNoCalificar: "bloquear" | "autorizar";
+  /**
+   * Qué hacer cuando el cliente NO TIENE SUELDO CARGADO.
+   *
+   * 🔴 ESTE PARÁMETRO TAPA UN AGUJERO REAL, no es una preferencia. Sin ingreso, la capacidad
+   * de pago da CERO y todas las reglas que cuelgan del sueldo —ratio cuota/ingreso, múltiplo
+   * de ingreso, monto máximo sugerido— quedan mudas. Hasta el 2026-09-02 eso caía en
+   * "revisar", que suena a advertencia y en la práctica es un permiso: nadie revisa nada,
+   * el server solo actúa sobre "rechazado", y el crédito salía sin freno ni firma. En la base
+   * de Silvio son 86 de 103 clientes (la cartera migrada del Excel), o sea que el motor
+   * estaba apagado para la mayoría de su cartera sin que nadie se enterara.
+   *
+   *   "permitir"  → como antes: avisa y otorga.
+   *   "autorizar" → rechaza, pero un ADMIN lo firma (queda registrado quién). Es el default.
+   *   "bloquear"  → no se otorga hasta cargarle el sueldo.
+   */
+  accionSinIngreso: "permitir" | "autorizar" | "bloquear";
 }
 
 /** Default razonable (mercado AR). Se puede sobrescribir por tenant desde Configuración. */
@@ -135,6 +151,9 @@ export const POLITICA_ORIGINACION_DEFAULT: PoliticaOriginacion = {
   permitirOverrideCuotasVencidas: false, // ...y por defecto ni el admin lo pasa por encima
   // Por defecto avisa y deja autorizar (mismo criterio que el límite de otorgamiento del vendedor).
   accionAlNoCalificar: "autorizar",
+  // Sin sueldo no se otorga solo: lo firma un admin. Prestar sin saber cuánto gana el cliente
+  // es una decisión, y una decisión tiene que tener autor.
+  accionSinIngreso: "autorizar",
 };
 
 /** Proveedor de bureau de crédito. `manual` = el analista carga los valores a mano. */
@@ -364,8 +383,23 @@ export function evaluarOriginacion(
   // capacidad, no este número), pero justo en el borde es donde el operador lo mira.
   const ratio = ingreso > 0 ? Math.round(((entrada.cuotaMensualEquivalenteConCargos + deudaVigente) / ingreso) * 10000) / 10000 : null;
   if (ingreso <= 0) {
-    escalar("revisar");
-    motivos.push("Sin ingreso declarado: no se puede evaluar la capacidad de pago.");
+    /*
+      Sin sueldo no hay capacidad que evaluar: `cuotaMaxima` da 0 y ninguna de las reglas que
+      cuelgan del ingreso llega a correr. Lo que pasa entonces lo decide la financiera, no el
+      código — ver `accionSinIngreso`.
+    */
+    if (politica.accionSinIngreso === "permitir") {
+      escalar("revisar");
+      motivos.push("Sin ingreso declarado: no se puede evaluar la capacidad de pago.");
+    } else {
+      escalar("rechazado");
+      if (politica.accionSinIngreso === "bloquear") {
+        bloqueoDuro = true;
+        motivos.push("Sin ingreso declarado: no se puede otorgar hasta cargarle el sueldo al cliente.");
+      } else {
+        motivos.push("Sin ingreso declarado: no se puede evaluar la capacidad de pago, así que requiere autorización de un administrador.");
+      }
+    }
   } else if (entrada.cuotaMensualEquivalenteConCargos > capacidad.cuotaMaxima) {
     /**
      * Se pasa del ratio. Antes era rechazo directo; ahora hay una segunda mirada.

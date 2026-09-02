@@ -539,6 +539,25 @@ export const PATCH = withErrorHandler(async (req: NextRequest, { params }: Route
   if ("ingreso_mensual" in updateData) {
     const nuevo = updateData.ingreso_mensual as number | null;
     const anterior = existing.ingreso_mensual;
+
+    /*
+      🔴 NO SE PUEDE VACIAR EL SUELDO DE UN CLIENTE QUE YA LO TIENE.
+
+      Sin esto, el alta quedaba blindada (el POST exige el ingreso) y la edición seguía siendo
+      la puerta de atrás: bastaba con guardar la ficha con el campo en blanco para dejar al
+      cliente sin sueldo, y ahí el motor de riesgo se queda mudo (capacidad de pago cero, ratio
+      y múltiplo de ingreso sin correr).
+
+      Los MIGRADOS quedan afuera: nacieron sin sueldo a propósito, y exigírselo en cada
+      edición haría imposible corregirles un teléfono.
+    */
+    if (!existing.migrado && anterior != null && anterior > 0 && (nuevo == null || nuevo <= 0)) {
+      return errorResponse(
+        "No se puede dejar sin sueldo a un cliente que ya lo tenía: es la variable con la que se evalúa su capacidad de pago.",
+        "INGRESO_REQUERIDO", 400,
+      );
+    }
+
     if (nuevo !== anterior) {
       const { politica } = await getRiesgoConfig(tenantId);
       const motivo = typeof body.motivo_sueldo === "string" ? body.motivo_sueldo.trim() : "";

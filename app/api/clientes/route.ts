@@ -197,6 +197,27 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     return errorResponse("Email inválido", "INVALID_INPUT", 400);
   }
 
+  /*
+    🔴 EL SUELDO ES OBLIGATORIO, Y LA BARRERA VA ACÁ.
+
+    `ClienteForm` ya lo exigía, pero solo en el navegador: este endpoint aceptaba el alta sin
+    ingreso y lo guardaba en null. Y un cliente sin sueldo deja MUDO al motor de riesgo — la
+    capacidad de pago da cero, y el ratio cuota/ingreso y el múltiplo de ingreso no llegan a
+    correr (ver `accionSinIngreso` en lib/domain/riesgo.ts). O sea que el agujero no era de
+    prolijidad: era la forma de entrar un cliente que el motor no puede evaluar.
+
+    Los 86 migrados del Excel de Silvio están exentos por diseño y no pasan por acá: se
+    cargaron directo contra la base. Este endpoint solo crea clientes nuevos.
+  */
+  const ingresoAlta = numOrNull(body.ingreso_mensual);
+  if (ingresoAlta == null || ingresoAlta <= 0) {
+    return errorResponse(
+      "El ingreso mensual es obligatorio y tiene que ser mayor a cero: sin él no se puede evaluar la capacidad de pago.",
+      "INGRESO_REQUERIDO",
+      400,
+    );
+  }
+
   // Unicidad por CUIT/CUIL (en AR puede haber DNI repetidos). Si el DNI ya existe,
   // se exige el CUIT para diferenciar a la persona.
   const doc = body.documento?.trim() || null;
@@ -234,7 +255,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
       empleador: body.empleador?.trim() || null,
       antiguedad_laboral_meses: numOrNull(body.antiguedad_laboral_meses, true),
       // Ingresos
-      ingreso_mensual: numOrNull(body.ingreso_mensual),
+      ingreso_mensual: ingresoAlta,
       otros_ingresos: numOrNull(body.otros_ingresos),
       // Consentimiento para consulta a bureaus (Ley 25.326)
       consentimiento_bureau: body.consentimiento_bureau === true,
