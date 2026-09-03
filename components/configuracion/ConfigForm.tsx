@@ -815,50 +815,60 @@ export function ConfigForm() {
             </div>
           )}
 
-          {/*
-            BUSCADOR DE PARÁMETROS. Son 11 pestañas y 92 parámetros: sin esto, encontrar "días
-            de gracia" exige acordarse de que vive en Simulador y no en Motor.
-
-            No filtra la pantalla: LLEVA hasta el parámetro. Cambia de pestaña, baja hasta el
-            bloque y lo enmarca un momento. Filtrar dejaría campos sueltos fuera de su bloque,
-            y un parámetro sin su contexto —qué otros lo acompañan, qué botón lo guarda— se
-            entiende mal.
-          */}
-          <BuscadorF3
-            value={buscar}
-            onChange={setBuscar}
-            placeholder="Buscar un parámetro… (mora, gracia, comisión, pagaré)"
-            onF3={() => setBuscar("")}
-            f3Hint="para limpiar la búsqueda"
-            onEscape={() => setBuscar("")}
-            className="w-full sm:max-w-md"
-          />
-          {resultados.length > 0 && (
-            <div className="-mt-2 overflow-hidden rounded-xl border border-border bg-card">
-              {resultados.map((r) => (
-                <button
-                  key={`${r.tab}-${r.seccion}-${r.label}`}
-                  type="button"
-                  onClick={() => irAlParametro(r)}
-                  className="group flex w-full items-center gap-3 border-b border-border/50 px-4 py-2.5 text-left transition-colors last:border-0 hover:bg-accent"
-                >
-                  <span className="relative h-4 w-0.5 shrink-0 rounded-full bg-primary opacity-0 transition-opacity group-hover:opacity-100" />
-                  <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">{r.label}</span>
-                  <span className="shrink-0 text-[11px] text-muted-foreground">{r.seccion}</span>
-                  <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                    {TAB_LABEL[r.tab] ?? r.tab}
-                  </span>
-                </button>
-              ))}
-            </div>
-          )}
-          {buscar.trim().length >= 2 && resultados.length === 0 && (
-            <p className="-mt-2 text-xs text-muted-foreground">Ningún parámetro coincide con «{buscar.trim()}».</p>
-          )}
-
           <SeccionResaltada.Provider value={resaltada}>
           <div className="grid grid-cols-1 gap-5 md:grid-cols-[190px_1fr]">
             {/* ─ Rail de secciones (patrón settings: nav lateral) ─ */}
+            {/*
+              Columna izquierda: buscador + rail. Van envueltos en UN solo hijo de la grilla —
+              sueltos, el buscador ocupaba la primera celda y el rail se corría a la segunda,
+              partiendo la pantalla al medio.
+            */}
+            <div className="flex flex-col">
+            {/*
+              BUSCADOR DE PARÁMETROS, dentro de la columna del rail y no arriba de todo.
+
+              Suelto a lo ancho empujaba la configuración entera hacia abajo y se comía la
+              primera pantalla. Acá ocupa el hueco que el rail ya tenía, así que no le roba
+              altura a nada, y queda del ancho de la columna sin necesidad de fijarle un
+              tamaño a mano.
+
+              Los resultados van en `absolute`: si empujaran el rail, elegir un parámetro
+              movería las pestañas debajo del cursor mientras se lee la lista.
+            */}
+            <div className="relative md:mb-3">
+              <BuscadorF3
+                value={buscar}
+                onChange={setBuscar}
+                placeholder="Buscar parámetro…"
+                onF3={() => setBuscar("")}
+                onEscape={() => setBuscar("")}
+                className="w-full"
+              />
+              {resultados.length > 0 && (
+                <div className="absolute left-0 right-0 top-full z-30 mt-1.5 max-h-[60vh] w-[min(26rem,80vw)] overflow-y-auto rounded-xl border border-border bg-card shadow-[0_12px_30px_-10px_rgba(0,0,0,0.7)]">
+                  {resultados.map((r) => (
+                    <button
+                      key={`${r.tab}-${r.seccion}-${r.label}`}
+                      type="button"
+                      onClick={() => irAlParametro(r)}
+                      className="group flex w-full items-center gap-2.5 border-b border-border/50 px-3 py-2.5 text-left transition-colors last:border-0 hover:bg-accent"
+                    >
+                      <span className="h-4 w-0.5 shrink-0 rounded-full bg-primary opacity-0 transition-opacity group-hover:opacity-100" />
+                      <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">{r.label}</span>
+                      <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                        {TAB_LABEL[r.tab] ?? r.tab}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+              {buscar.trim().length >= 2 && resultados.length === 0 && (
+                <div className="absolute left-0 right-0 top-full z-30 mt-1.5 w-[min(26rem,80vw)] rounded-xl border border-border bg-card px-3 py-2.5">
+                  <p className="text-xs text-muted-foreground">Ningún parámetro coincide con «{buscar.trim()}».</p>
+                </div>
+              )}
+            </div>
+
             <nav className="-mx-1 flex gap-1 overflow-x-auto px-1 md:mx-0 md:flex-col md:overflow-visible md:px-0">
               {([
                 { key: "financiera",     label: "Datos de la financiera", emoji: "office-building" },
@@ -901,6 +911,7 @@ export function ConfigForm() {
                 El resto tiene un valor por defecto y en 0 simplemente queda apagado.
               </p>
             </nav>
+            </div>
 
             {/* ─ Contenido de la sección activa ─ */}
             <div className="min-w-0 space-y-4">
