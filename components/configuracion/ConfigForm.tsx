@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import * as React from "react";
+import { useEffect, useRef, useState, useMemo } from "react";
 import { Check, Loader2, Percent, Plus, X, MessageSquare, Phone, Mail, HelpCircle } from "lucide-react";
 import { useConfiguracion, type ConfiguracionFinanciera, type GamificacionConfig, type RentabilidadConfig, type RiesgoConfig, type CobranzaConfig, type CajaConfig, type NotificacionesConfig, type OrdenAgenda } from "@/lib/swr";
 import { FeatureGate } from "@/components/providers/FeaturesProvider";
@@ -11,6 +12,8 @@ import { MODOS_INTERES_ACUERDO, MODO_INTERES_LABEL, BUREAUS_CONFIGURABLES, BUREA
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Emoji } from "@/components/ui/Emoji";
 import { Field, Input, NumeroInput, Select, Textarea, SecretInput } from "@/components/ui/field";
+import { anclaSeccion, buscarParametros, type ParametroIndexado } from "@/lib/config-indice";
+import { BuscadorF3 } from "@/components/ui/BuscadorF3";
 import {
   advertirTasaAcuerdo, advertirMoraDiaria, advertirTopeMora, advertirDiasGracia,
   advertirCuotasAcuerdo, advertirMaxCreditosActivos, advertirRatioCuotaIngreso,
@@ -99,6 +102,22 @@ const TOPES_MORA = [
   { pct: 200, label: "2 veces el valor de la cuota (200%)" },
   { pct: 300, label: "3 veces el valor de la cuota (300%)" },
 ] as const;
+
+/*
+  Qué sección trajo el buscador. Va por contexto y no como prop: `Section` se usa en más de
+  veinte lugares y pasarle el dato a cada uno sería veinte oportunidades de olvidarse — y el
+  que se olvide no falla, simplemente no se ilumina, que es el peor tipo de error porque no
+  se nota hasta que alguien busca justo ese parámetro.
+*/
+const SeccionResaltada = React.createContext<string | null>(null);
+
+/** Nombre visible de cada pestaña, para el chip de los resultados del buscador. */
+const TAB_LABEL: Record<string, string> = {
+  financiera: "Financiera", motor: "Motor", simulador: "Simulador",
+  comunicaciones: "Comunicaciones", gamificacion: "Gamificación", rentabilidad: "Rentabilidad",
+  riesgo: "Riesgo", cobranza: "Cobranza", cajas: "Cajas", documentos: "Documentos",
+  notificaciones: "Notificaciones", backups: "Respaldos",
+};
 
 const AYUDA: Record<string, AyudaBloque> = {
   motor: {
@@ -469,6 +488,30 @@ export function ConfigForm() {
    * y habría que rearmarla desde cero.
    */
   const modoRedondeoPrevio = useRef<"entero" | "multiplo" | null>(null);
+  /* Buscador de parámetros: `resaltada` es la sección a la que llevó el último resultado. */
+  const [buscar, setBuscar] = useState("");
+  const [resaltada, setResaltada] = useState<string | null>(null);
+  const resultados = useMemo(() => buscarParametros(buscar), [buscar]);
+
+  /**
+   * Lleva hasta el parámetro: cambia de pestaña, baja hasta su bloque y lo enmarca.
+   *
+   * El scroll va en un `setTimeout(0)` y no derecho: al cambiar de pestaña, el bloque destino
+   * todavía no está en el DOM, así que `scrollIntoView` no encontraría nada. El tick le da a
+   * React el tiempo de pintar la pestaña nueva.
+   */
+  const irAlParametro = (p: ParametroIndexado) => {
+    setActiveTab(p.tab as typeof activeTab);
+    setBuscar("");
+    const ancla = anclaSeccion(p.seccion);
+    setResaltada(ancla);
+    setTimeout(() => {
+      document.getElementById(ancla)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 0);
+    // El marco se apaga solo: es para encontrar el bloque, no para quedarse puesto.
+    setTimeout(() => setResaltada(null), 2600);
+  };
+
   const [activeTab, setActiveTab] = useState<"financiera" | "motor" | "simulador" | "comunicaciones" | "gamificacion" | "rentabilidad" | "riesgo" | "cobranza" | "cajas" | "documentos" | "notificaciones" | "backups">("financiera");
 
   // Hidratar el form local cuando llega la config.
@@ -772,6 +815,48 @@ export function ConfigForm() {
             </div>
           )}
 
+          {/*
+            BUSCADOR DE PARÁMETROS. Son 11 pestañas y 92 parámetros: sin esto, encontrar "días
+            de gracia" exige acordarse de que vive en Simulador y no en Motor.
+
+            No filtra la pantalla: LLEVA hasta el parámetro. Cambia de pestaña, baja hasta el
+            bloque y lo enmarca un momento. Filtrar dejaría campos sueltos fuera de su bloque,
+            y un parámetro sin su contexto —qué otros lo acompañan, qué botón lo guarda— se
+            entiende mal.
+          */}
+          <BuscadorF3
+            value={buscar}
+            onChange={setBuscar}
+            placeholder="Buscar un parámetro… (mora, gracia, comisión, pagaré)"
+            onF3={() => setBuscar("")}
+            f3Hint="para limpiar la búsqueda"
+            onEscape={() => setBuscar("")}
+            className="w-full sm:max-w-md"
+          />
+          {resultados.length > 0 && (
+            <div className="-mt-2 overflow-hidden rounded-xl border border-border bg-card">
+              {resultados.map((r) => (
+                <button
+                  key={`${r.tab}-${r.seccion}-${r.label}`}
+                  type="button"
+                  onClick={() => irAlParametro(r)}
+                  className="group flex w-full items-center gap-3 border-b border-border/50 px-4 py-2.5 text-left transition-colors last:border-0 hover:bg-accent"
+                >
+                  <span className="relative h-4 w-0.5 shrink-0 rounded-full bg-primary opacity-0 transition-opacity group-hover:opacity-100" />
+                  <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">{r.label}</span>
+                  <span className="shrink-0 text-[11px] text-muted-foreground">{r.seccion}</span>
+                  <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    {TAB_LABEL[r.tab] ?? r.tab}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+          {buscar.trim().length >= 2 && resultados.length === 0 && (
+            <p className="-mt-2 text-xs text-muted-foreground">Ningún parámetro coincide con «{buscar.trim()}».</p>
+          )}
+
+          <SeccionResaltada.Provider value={resaltada}>
           <div className="grid grid-cols-1 gap-5 md:grid-cols-[190px_1fr]">
             {/* ─ Rail de secciones (patrón settings: nav lateral) ─ */}
             <nav className="-mx-1 flex gap-1 overflow-x-auto px-1 md:mx-0 md:flex-col md:overflow-visible md:px-0">
@@ -2367,6 +2452,7 @@ export function ConfigForm() {
 
             </div>{/* /contenido */}
           </div>{/* /grid rail+contenido */}
+          </SeccionResaltada.Provider>
         </div>
       )}
     </div>
@@ -2553,8 +2639,20 @@ function Section({ title, desc, children, onSave, saving, saved, dirty, enabled,
   /** Ayuda contextual del bloque (botón "?"). */
   ayuda?: AyudaBloque;
 }) {
+  /*
+    El ancla sale del TÍTULO, no de una prop: así una sección nueva queda enlazable sin que
+    nadie se acuerde de declararle un id. El buscador de arriba usa la misma función.
+  */
+  const ancla = anclaSeccion(title);
+  const resaltada = React.useContext(SeccionResaltada);
+  const esta = resaltada === ancla;
   return (
-    <div className="rounded-xl bg-card border border-border p-5 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)]">
+    <div
+      id={ancla}
+      className={`scroll-mt-24 rounded-xl bg-card border p-5 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)] transition-all duration-500 ${
+        esta ? "border-primary/60 ring-2 ring-primary/30" : "border-border"
+      }`}
+    >
       <div className="mb-4 flex items-start justify-between gap-3">
         <div>
           <h3 className="text-base font-semibold text-foreground">{title}</h3>
