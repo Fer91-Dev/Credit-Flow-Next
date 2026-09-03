@@ -19,19 +19,28 @@ interface RouteParams {
  *
  * Le manda al cliente el comprobante de un cobro.
  *
- * ── LOS DOS CANALES NO MANDAN LO MISMO, Y NO ES UNA LIMITACIÓN QUE SE PUEDA TAPAR ──
+ * ── LOS DOS CANALES NO MANDAN LO MISMO ──
  *
  *   EMAIL    → el PDF adjunto. Es el comprobante de verdad.
- *   WHATSAPP → el DETALLE en texto (recibo, monto, crédito). No el PDF.
+ *   WHATSAPP → el DETALLE en texto (concepto, monto, crédito). No el PDF.
  *
- * Meta solo manda documentos desde una URL PÚBLICA, y publicar recibos significa dejar en
- * internet, sin contraseña, el nombre y la deuda de cada cliente — con que alguien pruebe
- * ids ya tiene la cartera. El texto lleva los mismos datos que el papel y no expone nada.
- * Si la financiera quiere el PDF por WhatsApp, primero hay que resolver dónde vive el archivo
- * y con qué permiso se lee, que es un problema aparte y más grande que este botón.
+ * 🔴 Y NO ES PORQUE NO SE PUEDA. Meta acepta documentos de dos formas: desde una URL pública
+ * —que acá no sirve, publicar recibos sería dejar en internet el nombre y la deuda de cada
+ * cliente— o SUBIENDO el archivo a Meta (`POST /media`) y mandándolo por su id. Ese segundo
+ * camino no expone nada y es perfectamente viable.
+ *
+ * Lo que traba es otra cosa: la VENTANA DE 24 HORAS. Meta solo entrega mensajes libres —texto
+ * o archivo— si el cliente escribió en las últimas 24 h. Alguien que vino a pagar al mostrador
+ * no escribió, así que fuera de esa ventana solo entra una PLANTILLA APROBADA, y para mandar
+ * un PDF hace falta una plantilla con encabezado de tipo documento, aprobada de antemano por
+ * Meta. Eso no se resuelve programando.
+ *
+ * Decisión de Fernando (2026-09-03): queda el texto. Cuando la financiera conecte WhatsApp
+ * Business API y tenga esa plantilla aprobada, se agrega el envío del PDF por `/media`.
  *
  * Si WhatsApp no está configurado por API, se devuelve el link de `wa.me` con el texto ya
- * armado: el operador lo manda desde su teléfono. Es lo mismo que hacen las campañas.
+ * armado: el operador lo manda desde su teléfono. Es lo mismo que hacen las campañas — y ahí
+ * el límite SÍ es duro: un link `wa.me` solo puede llevar texto.
  */
 export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteParams) => {
   assertSameOrigin(req);

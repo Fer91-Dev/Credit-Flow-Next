@@ -479,9 +479,11 @@ export function PagoForm({ creditoId, clienteId, montoSugerido, motivoSugerido, 
   /**
    * Manda el comprobante al cliente.
    *
-   * 🔴 Los dos canales NO mandan lo mismo, y el resultado lo dice: por email va el PDF
-   * adjunto; por WhatsApp, el detalle en texto. Meta solo manda documentos desde una URL
-   * pública, y publicar recibos sería dejar en internet el nombre y la deuda de cada cliente.
+   * 🔴 Los dos canales NO mandan lo mismo, y el menú lo dice: por email va el PDF adjunto;
+   * por WhatsApp, el detalle en texto. El motivo NO es que Meta no pueda mandar archivos
+   * —puede, subiéndolos a `/media`— sino la ventana de 24 h: fuera de ella solo entrega
+   * plantillas aprobadas, y para un PDF hace falta una con encabezado de documento. Ver el
+   * detalle en `app/api/pagos/[id]/enviar/route.ts`.
    *
    * Si WhatsApp no está configurado por API, el server devuelve el link de `wa.me` con el
    * texto listo y se abre para que lo mande el operador. No es un error: es el modo manual.
