@@ -66,7 +66,7 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
       marca,
       html:
         `<p>Hola ${recibo.nombreCliente},</p>` +
-        `<p>Adjuntamos el comprobante de tu pago de <strong>${monto}</strong> correspondiente a ${credito}.</p>` +
+        `<p>Adjuntamos el comprobante de tu pago de <strong>${monto}</strong>${recibo.concepto ? ` de ${recibo.concepto}` : ""} del Crédito ${credito}.</p>` +
         `<p>Gracias.<br/>${marca}</p>`,
       adjuntos: [{ nombre: `comprobante-${credito}.pdf`, contenido: recibo.pdf }],
     });
@@ -88,9 +88,18 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
       "SIN_TELEFONO", 400,
     );
   }
+  /*
+    El mensaje dice QUÉ se pagó, no solo cuánto. Sin el concepto, el cliente recibe un monto
+    suelto y no puede cotejarlo contra su plan: no sabe si le acreditaron la cuota que él
+    creía, y termina llamando para preguntar. El concepto sale de la misma función que arma
+    el recibo, así que el papel y el mensaje dicen lo mismo.
+  */
+  // Sin concepto (un cobro que no se imputó a ninguna cuota) la frase se arma sin él, en vez
+  // de meter un relleno que se lee mal.
+  const deQue = recibo.concepto ? ` de ${recibo.concepto}` : "";
   const texto =
-    `Hola ${recibo.nombreCliente}, recibimos tu pago de ${monto} para ${credito}. ` +
-    `¡Gracias! — ${marca}`;
+    `Hola ${recibo.nombreCliente}, recibimos tu pago de ${monto}${deQue} ` +
+    `del Crédito ${credito}. ¡Gracias! — ${marca}`;
 
   const { whatsappConfig } = await getComunicacionConfig(tenantId);
   if (!whatsappApiDisponible(whatsappConfig)) {

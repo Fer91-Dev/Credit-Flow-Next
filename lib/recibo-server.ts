@@ -6,7 +6,7 @@ import { getFinanciera } from "@/lib/financiera";
 import { conNumeroDeOrigen } from "@/lib/creditos-numero";
 import { generarReciboPDF } from "@/lib/pdf/recibo";
 import { nombreCompleto } from "@/lib/utils";
-import { round2 } from "@/lib/domain";
+import { round2, conceptoDePago } from "@/lib/domain";
 
 /**
  * Arma el PDF del comprobante de un pago.
@@ -24,7 +24,7 @@ export async function armarReciboDePago(
   tenantId: string,
   pagoId: string,
   ctx: Pick<AuthContext, "role" | "vendedorId">,
-): Promise<{ pdf: Uint8Array; nombreCliente: string; numeroCredito: number | null; monto: number; email: string | null; telefono: string | null } | null> {
+): Promise<{ pdf: Uint8Array; concepto: string | null; nombreCliente: string; numeroCredito: number | null; monto: number; email: string | null; telefono: string | null } | null> {
   const id = pagoId;
   const { role, vendedorId } = ctx;
 
@@ -173,6 +173,21 @@ export async function armarReciboDePago(
 
   return {
     pdf,
+    /*
+      El CONCEPTO del cobro, con la misma función que usa el mensaje al cliente. Sale de acá
+      y no se rearma afuera: el recibo y el WhatsApp tienen que decir lo mismo del mismo pago.
+    */
+    concepto: conceptoDePago({
+      cuotas: lineas.map((l) => ({
+        nro: l.cuota.nro,
+        imputado: round2(l.aplicado_capital + l.aplicado_interes + l.aplicado_mora + l.aplicado_cargos),
+        restante: round2(Math.max(0, l.cuota.cuota_total - (pagadoHasta.get(l.cuota.id) ?? 0))),
+      })),
+      acuerdo: pago.acuerdo_cuota
+        ? { numero: pago.acuerdo_cuota.numero, total: pago.acuerdo_cuota.acuerdo._count.cuotas }
+        : null,
+      entregaAcuerdo: pago.acuerdo_entrega ? { cuotas: pago.acuerdo_entrega._count.cuotas } : null,
+    }),
     nombreCliente: nombreCompleto(pago.credito.cliente),
     numeroCredito: pago.credito.numero,
     monto: pago.monto,

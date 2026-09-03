@@ -136,3 +136,53 @@ export function linkWhatsapp(telefono: string | null | undefined, texto: string)
   const t = encodeURIComponent(texto);
   return tel ? `https://wa.me/${tel}?text=${t}` : `https://wa.me/?text=${t}`;
 }
+
+/**
+ * CONCEPTO de un cobro: qué se pagó, en una frase.
+ *
+ * ── POR QUÉ ES UNA FUNCIÓN Y NO UN TEXTO ARMADO EN EL LUGAR ──
+ *
+ * Un cobro no siempre es "una cuota". Puede cubrir VARIAS de una vez, puede ser un pago
+ * PARCIAL de una sola, puede ser una cuota de un ACUERDO de pago (que no coincide con
+ * ninguna cuota del crédito, así que el cliente no puede cotejarla contra su plan) o la
+ * ENTREGA con la que se armó ese acuerdo. Si cada pantalla lo redactara por su cuenta,
+ * el recibo diría una cosa y el WhatsApp otra sobre el mismo cobro.
+ *
+ * Devuelve el concepto SIN el nombre del crédito: quien llama decide si lo agrega.
+ */
+export function conceptoDePago(p: {
+  /** Cuotas del crédito contra las que se imputó, en orden. */
+  cuotas: { nro: number; imputado: number; restante: number }[];
+  /** Si fue una cuota de un acuerdo de pago. */
+  acuerdo?: { numero: number; total: number } | null;
+  /** Si fue la entrega con la que se armó un acuerdo. */
+  entregaAcuerdo?: { cuotas: number } | null;
+}): string | null {
+  if (p.entregaAcuerdo) return `la entrega del acuerdo de pago en ${p.entregaAcuerdo.cuotas} cuotas`;
+  if (p.acuerdo) return `la cuota ${p.acuerdo.numero} de ${p.acuerdo.total} del acuerdo de pago`;
+
+  const cs = p.cuotas ?? [];
+  // Sin imputación no se inventa un concepto: quien llama arma la frase sin él. Un relleno
+  // como "tu crédito" da una frase que se lee mal y no agrega ningún dato.
+  if (cs.length === 0) return null;
+
+  if (cs.length === 1) {
+    const c = cs[0];
+    // "parte de la cuota" y no "la cuota": si quedó saldo, decirle que pagó LA cuota es
+    // prometerle que está al día con ella, y el mes que viene aparece debiendo algo que
+    // creía saldado.
+    return c.restante > 0 ? `parte de la cuota ${c.nro}` : `la cuota ${c.nro}`;
+  }
+
+  const nros = cs.map((c) => c.nro);
+  const ultima = cs[cs.length - 1];
+  if (ultima.restante > 0) {
+    const enteras = nros.slice(0, -1);
+    const lista = enteras.length === 1 ? `la cuota ${enteras[0]}` : `las cuotas ${enteras.slice(0, -1).join(", ")} y ${enteras[enteras.length - 1]}`;
+    return `${lista} y parte de la ${ultima.nro}`;
+  }
+  const lista = nros.length === 2
+    ? `${nros[0]} y ${nros[1]}`
+    : `${nros.slice(0, -1).join(", ")} y ${nros[nros.length - 1]}`;
+  return `las cuotas ${lista}`;
+}
