@@ -11,6 +11,10 @@ import { MODOS_INTERES_ACUERDO, MODO_INTERES_LABEL, BUREAUS_CONFIGURABLES, BUREA
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Emoji } from "@/components/ui/Emoji";
 import { Field, Input, NumeroInput, Select, Textarea, SecretInput } from "@/components/ui/field";
+import {
+  advertirTasaAcuerdo, advertirMoraDiaria, advertirTopeMora, advertirDiasGracia,
+  advertirCuotasAcuerdo, advertirMaxCreditosActivos, advertirRatioCuotaIngreso,
+} from "@/lib/domain/config-advertencias";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
@@ -1011,7 +1015,7 @@ export function ConfigForm() {
 
               <SubGrupo titulo="Cuándo empieza a correr la mora" nota="todas las frecuencias">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <Field label="Días de gracia" hint="Tolerancia tras el vencimiento antes de la mora">
+                  <Field label="Días de gracia" advertencia={advertirDiasGracia(form.simulador.diasGracia)} hint="Tolerancia tras el vencimiento antes de la mora">
                     <NumeroInput min="0" decimales={false}
                   value={form.simulador.diasGracia}
                   onValueChange={v => setSim("diasGracia", Math.max(0, v))}
@@ -1207,7 +1211,7 @@ export function ConfigForm() {
             onSave={() => save("mora", { moraActiva: form.moraActiva, tasaMoraDiaria: form.tasaMoraDiaria, topeMoraPct: form.topeMoraPct })}
             saving={savingKey === "mora"} saved={savedKey === "mora"} dirty={isDirty("mora")}>
             <div className={`grid grid-cols-1 gap-4 sm:grid-cols-2 max-w-2xl transition-opacity ${form.moraActiva ? "" : "opacity-50"}`}>
-              <Field required={form.moraActiva} label="Tasa de mora diaria (%)" hint="Porcentaje diario sobre la base de mora">
+              <Field required={form.moraActiva} label="Tasa de mora diaria (%)" advertencia={form.moraActiva ? advertirMoraDiaria(form.tasaMoraDiaria * 100) : null} hint="Porcentaje diario sobre la base de mora">
                 <div className="relative">
                   <NumeroInput min="0" disabled={!form.moraActiva} className="pr-7" value={Number((form.tasaMoraDiaria * 100).toFixed(4))}
                         onValueChange={v => set("tasaMoraDiaria", (v) / 100)} />
@@ -1218,6 +1222,7 @@ export function ConfigForm() {
               <Field
                 label="Hasta dónde puede crecer la mora de una cuota"
                 hint={topeConsecuencia}
+                advertencia={form.moraActiva ? advertirTopeMora(form.topeMoraPct) : null}
               >
                 {/*
                   Se elige de una LISTA y se expresa en CUOTAS, no en un % libre.
@@ -1568,7 +1573,7 @@ export function ConfigForm() {
           >
             <div className="space-y-5">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <Field required label="Ratio cuota / ingreso máx (%)" hint="La cuota no puede superar este % del ingreso neto del cliente. En 0 nadie califica.">
+                <Field required label="Ratio cuota / ingreso máx (%)" advertencia={advertirRatioCuotaIngreso(riesgo.politica.ratioCuotaIngresoMax)} hint="La cuota no puede superar este % del ingreso neto del cliente. En 0 nadie califica.">
                   <div className="relative">
                     <Input type="number" min="1" max="100" step="1"
                       value={Number((riesgo.politica.ratioCuotaIngresoMax * 100).toFixed(0))}
@@ -1616,7 +1621,7 @@ export function ConfigForm() {
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <Field label="Máx. créditos activos por cliente" hint="Tope de créditos vigentes simultáneos. 0 = sin límite">
+                <Field label="Máx. créditos activos por cliente" advertencia={advertirMaxCreditosActivos(riesgo.politica.maxCreditosActivos)} hint="Tope de créditos vigentes simultáneos. 0 = sin límite">
                   <Input type="number" min="0" step="1" value={riesgo.politica.maxCreditosActivos}
                     onChange={e => setRiesgo({ maxCreditosActivos: Math.max(0, Math.trunc(parseFloat(e.target.value) || 0)) })}
                     className="font-mono tabular-nums" />
@@ -1929,7 +1934,7 @@ export function ConfigForm() {
             onSave={() => save("cobranza", { cobranzaConfig: cobranza })}
             saving={savingKey === "cobranza"} saved={savedKey === "cobranza"} dirty={isDirty("cobranza")}>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 max-w-3xl">
-              <Field required label="Máximo de cuotas" hint="El techo del vendedor: hasta en cuántos pagos puede repartir lo vencido sin consultar. Con 6 puede ofrecer 6, no 8.">
+              <Field required label="Máximo de cuotas" advertencia={advertirCuotasAcuerdo(cobranza.acuerdos.max_cuotas)} hint="El techo del vendedor: hasta en cuántos pagos puede repartir lo vencido sin consultar. Con 6 puede ofrecer 6, no 8.">
                 <NumeroInput min="1" max="60" decimales={false}
                   value={cobranza.acuerdos.max_cuotas}
                   onValueChange={v => setAcuerdos({ max_cuotas: Math.max(1, Math.min(60, Math.round(v))) })}
@@ -1997,6 +2002,7 @@ export function ConfigForm() {
               </Field>
               <Field
                 label="% mensual del acuerdo"
+                advertencia={sinInteres ? null : advertirTasaAcuerdo(cobranza.acuerdos.tasa_mensual)}
                 hint={sinInteres
                   ? "No aplica: el modo de arriba dice que este acuerdo no cobra interés."
                   : cobranza.acuerdos.tasa_mensual === null || cobranza.acuerdos.tasa_mensual === undefined

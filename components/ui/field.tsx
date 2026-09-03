@@ -1,5 +1,5 @@
 import * as React from "react";
-import { ChevronDown } from "lucide-react";
+import { AlertTriangle, ChevronDown } from "lucide-react";
 import { cn, soloDigitos, formatCuit } from "@/lib/utils";
 import { revisarPassword, type ContextoPassword } from "@/lib/domain";
 
@@ -14,23 +14,48 @@ interface FieldProps {
   hint?: React.ReactNode;
   /** Mensaje de error de validación. Si está presente, reemplaza al hint y se ve en rojo. */
   error?: string;
+  /**
+   * ADVERTENCIA sobre el VALOR cargado: el campo es válido y se guarda igual, pero ese número
+   * casi siempre es un error de quien lo puso (ver `lib/domain/config-advertencias.ts`).
+   *
+   * 🔴 No reemplaza al hint, se suma. Son dos cosas distintas: el hint explica PARA QUÉ sirve
+   * el campo y hay que poder seguir leyéndolo; la advertencia dice qué pasa con el número que
+   * está escrito ahí ahora. Y no bloquea: la financiera manda — lo que no puede pasar es que
+   * cargue algo así sin enterarse de la consecuencia.
+   */
+  advertencia?: React.ReactNode;
   children: React.ReactNode;
   className?: string;
 }
 
-export function Field({ label, required, hint, error, children, className }: FieldProps) {
+export function Field({ label, required, hint, error, advertencia, children, className }: FieldProps) {
   return (
     <div className={cn("flex flex-col gap-1.5", className)}>
-      <label className="text-xs font-medium text-muted-foreground">
+      <label className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
         {label}
         {required && <span className="text-destructive ml-0.5">*</span>}
+        {/* El triángulo también en la etiqueta: el aviso está abajo y en un formulario largo
+            el ojo barre las etiquetas, no los pies de campo. */}
+        {advertencia && !error && <TrianguloAviso className="h-3.5 w-3.5 shrink-0 text-warning" />}
       </label>
       {children}
       {error
         ? <p className="text-xs text-destructive">{error}</p>
         : hint && <p className="text-xs text-muted-foreground/60">{hint}</p>}
+      {advertencia && !error && (
+        <div className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/[0.07] px-2.5 py-2">
+          <TrianguloAviso className="mt-0.5 h-3.5 w-3.5 shrink-0 text-warning" />
+          <p className="text-[11px] leading-relaxed text-warning">{advertencia}</p>
+        </div>
+      )}
     </div>
   );
+}
+
+/** Triángulo de advertencia. Va acá y no como import suelto para que el aviso se vea igual
+ *  en todos lados: un campo con un ícono distinto se lee como otra cosa. */
+function TrianguloAviso({ className }: { className?: string }) {
+  return <AlertTriangle className={className} aria-hidden />;
 }
 
 const inputBase =
