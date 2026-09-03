@@ -1,7 +1,8 @@
 ﻿"use client";
 
 import { useState, useEffect, Fragment } from "react";
-import { ArrowRight, Check, CheckCircle2, ChevronDown, CornerDownRight, Loader2, Printer, Search, X, AlertTriangle } from "lucide-react";
+import { ArrowRight, Check, CheckCircle2, ChevronDown, CornerDownRight, Loader2, Printer, Search, X, AlertTriangle, Send, Mail } from "lucide-react";
+import { WhatsAppIcon } from "@/components/ui/WhatsAppIcon";
 import { Field, Input, Select, Textarea } from "@/components/ui/field";
 import { StatusBadge, type BadgeVariant } from "@/components/ui/StatusBadge";
 import {
@@ -302,6 +303,9 @@ export function PagoForm({ creditoId, clienteId, montoSugerido, motivoSugerido, 
   const [confirmOpen,  setConfirmOpen]  = useState(false);
   const [result,       setResult]       = useState<{ pagoId: string; imp: Imputacion } | null>(null);
   const [reciboBusy,   setReciboBusy]   = useState(false);
+  const [envioBusy,    setEnvioBusy]    = useState<"email" | "whatsapp" | null>(null);
+  const [menuEnvio,    setMenuEnvio]    = useState(false);
+  const [envioMsg,     setEnvioMsg]     = useState<{ ok: boolean; texto: string } | null>(null);
 
   // Carga inicial de créditos VIVOS (activo + vencido). Con "activo" a secas, un
   // moroso al que ya se le cobró una vez desaparecía de la terminal: el cobro lo pasa a
@@ -472,6 +476,47 @@ export function PagoForm({ creditoId, clienteId, montoSugerido, motivoSugerido, 
     finally { setReciboBusy(false); }
   };
 
+  /**
+   * Manda el comprobante al cliente.
+   *
+   * 🔴 Los dos canales NO mandan lo mismo, y el resultado lo dice: por email va el PDF
+   * adjunto; por WhatsApp, el detalle en texto. Meta solo manda documentos desde una URL
+   * pública, y publicar recibos sería dejar en internet el nombre y la deuda de cada cliente.
+   *
+   * Si WhatsApp no está configurado por API, el server devuelve el link de `wa.me` con el
+   * texto listo y se abre para que lo mande el operador. No es un error: es el modo manual.
+   */
+  const enviarComprobante = async (canal: "email" | "whatsapp") => {
+    if (!result || envioBusy) return;
+    setMenuEnvio(false);
+    setEnvioBusy(canal);
+    try {
+      const r = await fetch(`/api/pagos/${result.pagoId}/enviar`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ canal }),
+      });
+      const j = await r.json().catch(() => null);
+      const data = j?.data ?? j;
+      if (!r.ok) { setEnvioMsg({ ok: false, texto: j?.error ?? "No se pudo enviar el comprobante." }); return; }
+      if (data?.manual && data?.link) {
+        window.open(data.link, "_blank", "noopener");
+        setEnvioMsg({ ok: true, texto: "Se abrió WhatsApp con el mensaje listo para enviar." });
+        return;
+      }
+      setEnvioMsg({
+        ok: true,
+        texto: canal === "email"
+          ? `Comprobante enviado a ${data?.destino ?? "su email"}.`
+          : `Comprobante enviado por WhatsApp a ${data?.destino ?? "su teléfono"}.`,
+      });
+    } catch {
+      setEnvioMsg({ ok: false, texto: "No se pudo enviar el comprobante." });
+    } finally {
+      setEnvioBusy(null);
+    }
+  };
+
   // ── Modal de éxito: el pago ya se registró ──
   if (result) {
     const { imp } = result;
@@ -505,6 +550,14 @@ export function PagoForm({ creditoId, clienteId, montoSugerido, motivoSugerido, 
           <Row label="Nuevo saldo" value={`$${fmt2(imp.nuevoSaldo)}`} mono strong />
         </div>
 
+        {/* Resultado del envío: se dice acá y no con un toast — el operador está mirando esta
+            tarjeta y a veces tiene al cliente enfrente esperando la confirmación. */}
+        {envioMsg && (
+          <p className={`w-full max-w-sm text-center text-xs ${envioMsg.ok ? "text-success" : "text-destructive"}`}>
+            {envioMsg.texto}
+          </p>
+        )}
+
         <div className="flex w-full max-w-sm flex-col items-center gap-2 sm:flex-row">
           <button
             type="button" onClick={verRecibo} disabled={reciboBusy}
@@ -512,6 +565,50 @@ export function PagoForm({ creditoId, clienteId, montoSugerido, motivoSugerido, 
           >
             {reciboBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />} Ver recibo
           </button>
+
+          {/* Enviar: un botón con sus dos canales. El menú se cierra al elegir o con Escape. */}
+          <div className="relative w-full sm:flex-1">
+            <button
+              type="button"
+              onClick={() => setMenuEnvio((v) => !v)}
+              disabled={!!envioBusy}
+              aria-expanded={menuEnvio}
+              className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-border px-4 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted/40 hover:text-foreground disabled:opacity-50"
+            >
+              {envioBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+              Enviar comprobante
+            </button>
+            {menuEnvio && (
+              <>
+                {/* Capa para cerrar al tocar afuera, sin robarle el foco al menú. */}
+                <div className="fixed inset-0 z-40" onClick={() => setMenuEnvio(false)} aria-hidden />
+                <div
+                  className="absolute bottom-full left-0 right-0 z-50 mb-1.5 overflow-hidden rounded-lg border border-border bg-card shadow-[0_12px_30px_-10px_rgba(0,0,0,0.7)]"
+                  onKeyDown={(e) => { if (e.key === "Escape") setMenuEnvio(false); }}
+                >
+                  <button
+                    type="button" onClick={() => enviarComprobante("email")}
+                    className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm text-foreground transition-colors hover:bg-accent"
+                  >
+                    <Mail className="h-4 w-4 text-muted-foreground" />
+                    <span className="flex-1">Por email</span>
+                    <span className="text-[10px] text-muted-foreground">PDF adjunto</span>
+                  </button>
+                  <button
+                    type="button" onClick={() => enviarComprobante("whatsapp")}
+                    className="flex w-full items-center gap-2 border-t border-border/50 px-3 py-2.5 text-left text-sm text-foreground transition-colors hover:bg-accent"
+                  >
+                    <WhatsAppIcon className="h-4 w-4 text-muted-foreground" />
+                    <span className="flex-1">Por WhatsApp</span>
+                    {/* Se dice ACÁ que va el detalle y no el PDF: si el operador cree que mandó
+                        el papel y el cliente lo pide, la que queda mal es la financiera. */}
+                    <span className="text-[10px] text-muted-foreground">el detalle</span>
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+
           <button
             type="button" onClick={() => onClose(true)}
             className="w-full rounded-lg bg-success px-4 py-2 text-sm font-medium text-success-foreground transition-opacity hover:opacity-90 sm:flex-1"

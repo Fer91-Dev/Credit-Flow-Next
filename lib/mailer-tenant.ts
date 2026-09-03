@@ -61,7 +61,15 @@ export function motivoEmailNoDisponible(cfg: EmailTenantConfig | null): string |
  */
 export async function enviarEmailTenant(
   cfg: EmailTenantConfig | null,
-  { to, subject, html, marca }: { to: string; subject: string; html: string; marca: string },
+  { to, subject, html, marca, adjuntos }: {
+    to: string; subject: string; html: string; marca: string;
+    /**
+     * Archivos a adjuntar. Los dos proveedores lo soportan pero con nombres distintos, así
+     * que se normaliza acá: quien llama pasa el nombre y los bytes, y no tiene que saber si
+     * la financiera manda por SMTP o por Resend.
+     */
+    adjuntos?: { nombre: string; contenido: Uint8Array }[];
+  },
 ): Promise<ResultadoEnvio> {
   const impedimento = motivoEmailNoDisponible(cfg);
   if (impedimento) return { ok: false, error: impedimento };
@@ -86,12 +94,19 @@ export async function enviarEmailTenant(
               auth: { user: c.user!, pass: c.pass! },
             },
       );
-      await transporter.sendMail({ from, to, subject, html });
+      await transporter.sendMail({
+        from, to, subject, html,
+        attachments: adjuntos?.map((a) => ({ filename: a.nombre, content: Buffer.from(a.contenido) })),
+      });
       return { ok: true, via: "smtp" };
     }
 
     const resend = new Resend(c.api_key!);
-    const { error } = await resend.emails.send({ from, to, subject, html });
+    const { error } = await resend.emails.send({
+      from, to, subject, html,
+      // Resend espera el contenido en base64.
+      attachments: adjuntos?.map((a) => ({ filename: a.nombre, content: Buffer.from(a.contenido).toString("base64") })),
+    });
     if (error) return { ok: false, error: traducirError(error.message, !!c.from_email), via: "resend" };
     return { ok: true, via: "resend" };
   } catch (e) {
