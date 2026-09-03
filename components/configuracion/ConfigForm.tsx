@@ -10,7 +10,7 @@ import type { SimuladorConfig, CargosConfig, FrecuenciaOpcion, DocumentosConfig,
 import { MODOS_INTERES_ACUERDO, MODO_INTERES_LABEL, BUREAUS_CONFIGURABLES, BUREAU_LABEL, BUREAU_REQUIERE_CREDENCIALES, resolverProveedoresBureau, DOCUMENTOS_DEFAULT, PLANTILLAS_CONTACTO_DEFAULT, revisarDocumentos, punitorioMensualDesdeDiaria, ORDEN_IMPUTACION, tasaDesdeCoeficiente, textoCuotas } from "@/lib/domain";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Emoji } from "@/components/ui/Emoji";
-import { Field, Input, Select, Textarea, SecretInput } from "@/components/ui/field";
+import { Field, Input, NumeroInput, Select, Textarea, SecretInput } from "@/components/ui/field";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
@@ -842,13 +842,15 @@ export function ConfigForm() {
                     alcanzaba — la respuesta tiene que estar pegada al campo.
                   */}
                   <Field label="Monto ($)" hint={<EstadoParam on={form.simulador.montoDefault > 0} siOn="Se carga solo en el simulador" siOff="El simulador arranca vacío" />}>
-                    <Input type="number" min="0" step="any" value={form.simulador.montoDefault}
-                      onChange={e => setSim("montoDefault", parseFloat(e.target.value) || 0)} />
+                    <NumeroInput min="0"
+                  value={form.simulador.montoDefault}
+                  onValueChange={v => setSim("montoDefault", v)}
+                />
                   </Field>
                   <Field label={`Tasa (% ${CONV_CORTA[form.convencionTasa]})`} hint={<EstadoParam on={form.simulador.tasaBase > 0} siOn="Se carga sola en el simulador" siOff="El simulador arranca vacío" />}>
                     <div className="relative">
-                      <Input type="number" min="0" step="0.5" value={form.simulador.tasaBase}
-                        onChange={e => setSim("tasaBase", parseFloat(e.target.value) || 0)} className="pr-7" />
+                      <NumeroInput min="0" className="pr-7" value={form.simulador.tasaBase}
+                        onValueChange={v => setSim("tasaBase", v)} />
                       <Percent className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
                     </div>
                   </Field>
@@ -858,24 +860,28 @@ export function ConfigForm() {
               <SubGrupo titulo="Límites de lo que se puede otorgar" nota="En 0 el límite no se aplica">
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                   <Field label="Monto mínimo ($)" hint={<EstadoParam on={form.simulador.montoMin > 0} siOn="No se otorga menos" siOff="Sin mínimo" />}>
-                    <Input type="number" min="0" step="any" value={form.simulador.montoMin}
-                      onChange={e => setSim("montoMin", parseFloat(e.target.value) || 0)} />
+                    <NumeroInput min="0"
+                  value={form.simulador.montoMin}
+                  onValueChange={v => setSim("montoMin", v)}
+                />
                   </Field>
                   <Field label="Monto máximo ($)" hint={<EstadoParam on={form.simulador.montoMax > 0} siOn="No se otorga más" siOff="Sin tope" />}>
-                    <Input type="number" min="0" step="any" value={form.simulador.montoMax}
-                      onChange={e => setSim("montoMax", parseFloat(e.target.value) || 0)} />
+                    <NumeroInput min="0"
+                  value={form.simulador.montoMax}
+                  onValueChange={v => setSim("montoMax", v)}
+                />
                   </Field>
                   <Field label="Tasa mínima (%)" hint={<EstadoParam on={form.simulador.tasaMin > 0} siOn="No se otorga por debajo" siOff="Sin mínimo" />}>
                     <div className="relative">
-                      <Input type="number" min="0" step="0.5" value={form.simulador.tasaMin}
-                        onChange={e => setSim("tasaMin", parseFloat(e.target.value) || 0)} className="pr-7" />
+                      <NumeroInput min="0" className="pr-7" value={form.simulador.tasaMin}
+                        onValueChange={v => setSim("tasaMin", v)} />
                       <Percent className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
                     </div>
                   </Field>
                   <Field label="Tasa máxima (%)" hint={<EstadoParam on={form.simulador.tasaMax > 0} siOn="No se otorga por encima" siOff="Sin tope" />}>
                     <div className="relative">
-                      <Input type="number" min="0" step="0.5" value={form.simulador.tasaMax}
-                        onChange={e => setSim("tasaMax", parseFloat(e.target.value) || 0)} className="pr-7" />
+                      <NumeroInput min="0" className="pr-7" value={form.simulador.tasaMax}
+                        onValueChange={v => setSim("tasaMax", v)} />
                       <Percent className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
                     </div>
                   </Field>
@@ -956,8 +962,10 @@ export function ConfigForm() {
               </Field>
               {form.simulador.redondeoCuota.modo === "multiplo" && (
                 <Field required label="Múltiplo" hint="Ej: 100 deja las cuotas de a $100">
-                  <Input type="number" min="1" step="1" value={form.simulador.redondeoCuota.multiplo}
-                    onChange={e => setSim("redondeoCuota", { ...form.simulador.redondeoCuota, multiplo: parseInt(e.target.value) || 1 })} />
+                  <NumeroInput min="1" decimales={false}
+                  value={form.simulador.redondeoCuota.multiplo}
+                  onValueChange={v => setSim("redondeoCuota", { ...form.simulador.redondeoCuota, multiplo: v })}
+                />
                 </Field>
               )}
             </div>
@@ -1004,8 +1012,10 @@ export function ConfigForm() {
               <SubGrupo titulo="Cuándo empieza a correr la mora" nota="todas las frecuencias">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <Field label="Días de gracia" hint="Tolerancia tras el vencimiento antes de la mora">
-                    <Input type="number" min="0" step="1" value={form.simulador.diasGracia}
-                      onChange={e => setSim("diasGracia", Math.max(0, parseInt(e.target.value) || 0))} />
+                    <NumeroInput min="0" decimales={false}
+                  value={form.simulador.diasGracia}
+                  onValueChange={v => setSim("diasGracia", Math.max(0, v))}
+                />
                   </Field>
                   <div className="flex items-end pb-2 text-xs">
                     <EstadoParam
@@ -1097,8 +1107,10 @@ export function ConfigForm() {
                     gastos, que guardan la fracción. Cada pantalla convierte lo suyo.)
                   */}
                   <Field required={form.simulador.cargos.comisionOtorgamiento.activo} label={form.simulador.cargos.comisionOtorgamiento.modo === "fijo" ? "Valor ($)" : "Valor (%)"}>
-                    <Input type="number" min="0" step="0.5" value={form.simulador.cargos.comisionOtorgamiento.valor}
-                      onChange={e => setCargo("comisionOtorgamiento", "valor", parseFloat(e.target.value) || 0)} />
+                    <NumeroInput min="0"
+                  value={form.simulador.cargos.comisionOtorgamiento.valor}
+                  onValueChange={v => setCargo("comisionOtorgamiento", "valor", v)}
+                />
                   </Field>
                   <Field label="¿Financiada?" hint="Se suma al capital y se amortiza">
                     <Select value={form.simulador.cargos.comisionOtorgamiento.financiada ? "si" : "no"}
@@ -1118,8 +1130,10 @@ export function ConfigForm() {
                 error={errorKey === "cargo-iva" ? saveError ?? undefined : undefined}>
                 <div className="max-w-[12rem]">
                   <Field required={form.simulador.cargos.iva.activo} label="Tasa de IVA (%)">
-                    <Input type="number" min="0" step="0.5" value={Number((form.simulador.cargos.iva.tasa * 100).toFixed(2))}
-                      onChange={e => setCargo("iva", "tasa", (parseFloat(e.target.value) || 0) / 100)} />
+                    <NumeroInput min="0"
+                  value={Number((form.simulador.cargos.iva.tasa * 100).toFixed(2))}
+                  onValueChange={v => setCargo("iva", "tasa", (v) / 100)}
+                />
                   </Field>
                 </div>
               </CargoBlock>
@@ -1195,13 +1209,8 @@ export function ConfigForm() {
             <div className={`grid grid-cols-1 gap-4 sm:grid-cols-2 max-w-2xl transition-opacity ${form.moraActiva ? "" : "opacity-50"}`}>
               <Field required={form.moraActiva} label="Tasa de mora diaria (%)" hint="Porcentaje diario sobre la base de mora">
                 <div className="relative">
-                  <Input
-                    type="number" min="0" step="0.1"
-                    value={Number((form.tasaMoraDiaria * 100).toFixed(4))}
-                    onChange={e => set("tasaMoraDiaria", (parseFloat(e.target.value) || 0) / 100)}
-                    disabled={!form.moraActiva}
-                    className="pr-7"
-                  />
+                  <NumeroInput min="0" disabled={!form.moraActiva} className="pr-7" value={Number((form.tasaMoraDiaria * 100).toFixed(4))}
+                        onValueChange={v => set("tasaMoraDiaria", (v) / 100)} />
                   <Percent className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
                 </div>
               </Field>
@@ -1839,10 +1848,9 @@ export function ConfigForm() {
             saving={savingKey === "cobranza"} saved={savedKey === "cobranza"} dirty={isDirty("cobranza")}>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 max-w-xl">
               <Field label="Días sin gestión" hint="Un moroso reaparece en la agenda si nadie lo contactó en esta cantidad de días (1–90).">
-                <Input
-                  type="number" min="1" max="90" step="1"
+                <NumeroInput min="1" max="90" decimales={false}
                   value={cobranza.dias_sin_gestion}
-                  onChange={e => setCobranza({ dias_sin_gestion: Math.max(1, Math.min(90, Math.round(parseFloat(e.target.value) || 1))) })}
+                  onValueChange={v => setCobranza({ dias_sin_gestion: Math.max(1, Math.min(90, Math.round(v))) })}
                 />
               </Field>
               {/*
@@ -1922,24 +1930,21 @@ export function ConfigForm() {
             saving={savingKey === "cobranza"} saved={savedKey === "cobranza"} dirty={isDirty("cobranza")}>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 max-w-3xl">
               <Field required label="Máximo de cuotas" hint="El techo del vendedor: hasta en cuántos pagos puede repartir lo vencido sin consultar. Con 6 puede ofrecer 6, no 8.">
-                <Input
-                  type="number" min="1" max="60" step="1"
+                <NumeroInput min="1" max="60" decimales={false}
                   value={cobranza.acuerdos.max_cuotas}
-                  onChange={e => setAcuerdos({ max_cuotas: Math.max(1, Math.min(60, Math.round(parseFloat(e.target.value) || 1))) })}
+                  onValueChange={v => setAcuerdos({ max_cuotas: Math.max(1, Math.min(60, Math.round(v))) })}
                 />
               </Field>
               <Field required label="Días entre cuotas" hint="Cada cuánto vence una cuota del acuerdo: 30 = mensual · 15 = quincenal · 7 = semanal. No depende de la frecuencia del crédito.">
-                <Input
-                  type="number" min="1" max="365" step="1"
+                <NumeroInput min="1" max="365" decimales={false}
                   value={cobranza.acuerdos.dias_entre_cuotas}
-                  onChange={e => setAcuerdos({ dias_entre_cuotas: Math.max(1, Math.min(365, Math.round(parseFloat(e.target.value) || 1))) })}
+                  onValueChange={v => setAcuerdos({ dias_entre_cuotas: Math.max(1, Math.min(365, Math.round(v))) })}
                 />
               </Field>
               <Field label="Cuotas impagas que lo rompen" hint="Con 1 se cae al primer faltazo; con 2 o 3 tolerás un tropiezo. Al romperse vuelve a morosos y los punitorios corren de nuevo.">
-                <Input
-                  type="number" min="1" step="1"
+                <NumeroInput min="1" decimales={false}
                   value={cobranza.acuerdos.cuotas_para_romper}
-                  onChange={e => setAcuerdos({ cuotas_para_romper: Math.max(1, Math.round(parseFloat(e.target.value) || 1)) })}
+                  onValueChange={v => setAcuerdos({ cuotas_para_romper: Math.max(1, Math.round(v)) })}
                 />
               </Field>
               {/*
@@ -2000,18 +2005,15 @@ export function ConfigForm() {
                   ? "En 0: el acuerdo no devenga interés."
                   : "Se aplica a todos los acuerdos, sea cual sea la tasa del crédito."}
               >
-                <Input
-                  type="number" min="0" max="100" step="any"
-                  disabled={sinInteres || cobranza.acuerdos.tasa_mensual === null || cobranza.acuerdos.tasa_mensual === undefined}
+                <NumeroInput min="0" max="100" disabled={sinInteres || cobranza.acuerdos.tasa_mensual === null || cobranza.acuerdos.tasa_mensual === undefined}
                   value={cobranza.acuerdos.tasa_mensual ?? 0}
-                  onChange={e => setAcuerdos({ tasa_mensual: Math.max(0, Math.min(100, parseFloat(e.target.value) || 0)) })}
+                  onValueChange={v => setAcuerdos({ tasa_mensual: Math.max(0, Math.min(100, v)) })}
                 />
               </Field>
               <Field label="Descuento máx. del vendedor (%)" hint="Cuánto de los punitorios e interés puede perdonar el vendedor por su cuenta. En 0 no descuenta nada: todo descuento lo firma un admin, que no tiene tope. El capital nunca se toca.">
-                <Input
-                  type="number" min="0" max="100" step="1"
+                <NumeroInput min="0" max="100" decimales={false}
                   value={cobranza.acuerdos.quita_max_vendedor_pct}
-                  onChange={e => setAcuerdos({ quita_max_vendedor_pct: Math.max(0, Math.min(100, parseFloat(e.target.value) || 0)) })}
+                  onValueChange={v => setAcuerdos({ quita_max_vendedor_pct: Math.max(0, Math.min(100, v)) })}
                 />
               </Field>
             </div>
@@ -2116,17 +2118,15 @@ export function ConfigForm() {
                     : "0 = ningún crédito pasa a Legales y se puede acordar desde el primer día de atraso."
                 }
               >
-                <Input
-                  type="number" min="0" max="365" step="1"
+                <NumeroInput min="0" max="365" decimales={false}
                   value={cobranza.recupero.dias_min_mora_acuerdo}
-                  onChange={e => setRecupero({ dias_min_mora_acuerdo: Math.max(0, Math.min(365, Math.round(parseFloat(e.target.value) || 0))) })}
+                  onValueChange={v => setRecupero({ dias_min_mora_acuerdo: Math.max(0, Math.min(365, Math.round(v))) })}
                 />
               </Field>
               <Field label="Días mínimos de atraso para refinanciar" hint="La refinanciación mata el crédito y crea otro: conviene reservarla para el atraso grande. 0 = sin mínimo.">
-                <Input
-                  type="number" min="0" max="365" step="1"
+                <NumeroInput min="0" max="365" decimales={false}
                   value={cobranza.recupero.dias_min_mora_refinanciar}
-                  onChange={e => setRecupero({ dias_min_mora_refinanciar: Math.max(0, Math.min(365, Math.round(parseFloat(e.target.value) || 0))) })}
+                  onValueChange={v => setRecupero({ dias_min_mora_refinanciar: Math.max(0, Math.min(365, Math.round(v))) })}
                 />
               </Field>
             </div>
@@ -2166,20 +2166,18 @@ export function ConfigForm() {
                 label="Gasto máximo del vendedor ($)"
                 hint="Cuánto puede descontar de su propia caja sin que lo apruebes. En 0 no registra ninguno: se los cargás vos."
               >
-                <Input
-                  type="number" min="0" step="1000"
+                <NumeroInput min="0"
                   value={caja.tope_gasto_vendedor}
-                  onChange={e => setCaja({ tope_gasto_vendedor: Math.max(0, parseFloat(e.target.value) || 0) })}
+                  onValueChange={v => setCaja({ tope_gasto_vendedor: Math.max(0, v) })}
                 />
               </Field>
               <Field
                 label="Días para anular un cobro"
                 hint="Pasado este plazo desde que se registró, el cobro queda firme y solo se corrige con un ajuste de caja (0 = solo el mismo día)."
               >
-                <Input
-                  type="number" min="0" max="365" step="1"
+                <NumeroInput min="0" max="365" decimales={false}
                   value={caja.dias_anulacion_pago}
-                  onChange={e => setCaja({ dias_anulacion_pago: Math.max(0, Math.min(365, Math.round(parseFloat(e.target.value) || 0))) })}
+                  onValueChange={v => setCaja({ dias_anulacion_pago: Math.max(0, Math.min(365, Math.round(v))) })}
                 />
               </Field>
             </div>

@@ -40,6 +40,68 @@ export function Input({ className, ...props }: React.InputHTMLAttributes<HTMLInp
   return <input className={cn(inputBase, className)} {...props} />;
 }
 
+/**
+ * Input NUMÉRICO que se deja tipear.
+ *
+ * ── EL PROBLEMA QUE RESUELVE ──
+ *
+ * El patrón que estaba en los 33 campos de Configuración era:
+ *
+ *     <Input type="number" value={n} onChange={e => set(Math.max(0, parseFloat(e.target.value) || 0))} />
+ *
+ * y pelea contra quien escribe, por dos motivos:
+ *
+ *  1. **No se puede vaciar el campo.** Al borrar todo, `e.target.value` es "", `parseFloat("")`
+ *     da NaN, el `|| 0` lo convierte en 0 y el input controlado vuelve a escribir "0". Nunca
+ *     queda vacío para tipear un número nuevo: hay que borrar dígito por dígito peleando.
+ *  2. **No se puede escribir un decimal.** Para llegar a "0,5" hay que pasar por "0," —
+ *     `parseFloat("0.")` da 0, el valor se reescribe como "0" y el punto desaparece. Es
+ *     literalmente imposible tipear medio punto de mora en orden.
+ *
+ * ── CÓMO LO RESUELVE ──
+ *
+ * Mientras el campo tiene el foco manda el TEXTO que la persona está escribiendo, no el número
+ * del estado. El número se avisa hacia arriba solo cuando el texto parsea a algo finito, así
+ * que los estados intermedios ("", "0.", "-") no lo pisan. Al salir del campo, la pantalla se
+ * sincroniza con el valor que quedó guardado — si escribió algo imposible, ahí lo ve corregido.
+ *
+ * El padre sigue haciendo su propio clamp (`Math.max(0, Math.min(100, v))`): eso no cambia, y
+ * es lo que hace que la migración de los 33 campos sea mecánica.
+ *
+ * Es `type="text"` con `inputMode="decimal"`: el `type="number"` trae las flechitas, cambia el
+ * valor con la rueda del mouse sin querer, y en es-AR discute con la coma decimal.
+ */
+export function NumeroInput({
+  value, onValueChange, className, decimales = true, ...props
+}: Omit<React.InputHTMLAttributes<HTMLInputElement>, "value" | "onChange" | "type"> & {
+  value: number;
+  onValueChange: (v: number) => void;
+  /** false = solo enteros (no admite coma ni punto). */
+  decimales?: boolean;
+}) {
+  const [texto, setTexto] = React.useState<string | null>(null);
+
+  return (
+    <input
+      {...props}
+      type="text"
+      inputMode={decimales ? "decimal" : "numeric"}
+      className={cn(inputBase, "tabular-nums", className)}
+      value={texto ?? String(value)}
+      onChange={(e) => {
+        // Se acepta la coma como separador decimal: es lo que tiene el teclado de acá.
+        const crudo = e.target.value.replace(",", ".");
+        const limpio = decimales ? crudo.replace(/[^\d.]/g, "") : crudo.replace(/\D/g, "");
+        setTexto(limpio);
+        const n = parseFloat(limpio);
+        if (Number.isFinite(n)) onValueChange(n);
+      }}
+      onFocus={(e) => { setTexto(String(value)); props.onFocus?.(e); }}
+      onBlur={(e) => { setTexto(null); props.onBlur?.(e); }}
+    />
+  );
+}
+
 /** Props comunes de los inputs "value-based" que sanitizan la entrada. */
 type SanitizedProps = Omit<React.InputHTMLAttributes<HTMLInputElement>, "value" | "onChange" | "type"> & {
   value: string;
