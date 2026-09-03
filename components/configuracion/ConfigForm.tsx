@@ -7,7 +7,7 @@ import { FeatureGate } from "@/components/providers/FeaturesProvider";
 import { FinancieraForm } from "@/components/configuracion/FinancieraForm";
 import { BackupsView } from "@/components/configuracion/BackupsView";
 import type { SimuladorConfig, CargosConfig, FrecuenciaOpcion, DocumentosConfig, ConvencionTasa, BureauConfigurable, BureauProveedorConfig, ModoInteresAcuerdo } from "@/lib/domain";
-import { MODOS_INTERES_ACUERDO, MODO_INTERES_LABEL, BUREAUS_CONFIGURABLES, BUREAU_LABEL, BUREAU_REQUIERE_CREDENCIALES, resolverProveedoresBureau, DOCUMENTOS_DEFAULT, PLANTILLAS_CONTACTO_DEFAULT, revisarDocumentos, punitorioMensualDesdeDiaria, ORDEN_IMPUTACION, tasaDesdeCoeficiente, textoCuotas } from "@/lib/domain";
+import { MODOS_INTERES_ACUERDO, MODO_INTERES_LABEL, BUREAUS_CONFIGURABLES, BUREAU_LABEL, BUREAU_REQUIERE_CREDENCIALES, resolverProveedoresBureau, DOCUMENTOS_DEFAULT, PLANTILLAS_CONTACTO_DEFAULT, revisarDocumentos, punitorioMensualDesdeDiaria, ORDEN_IMPUTACION, tasaDesdeCoeficiente, textoCuotas, planDeAcuerdo, round2 } from "@/lib/domain";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Emoji } from "@/components/ui/Emoji";
 import { Field, Input, NumeroInput, Select, Textarea, SecretInput } from "@/components/ui/field";
@@ -618,6 +618,52 @@ export function ConfigForm() {
       : topeDias > 0
         ? `La mora de CADA cuota corre normal los primeros ${topeDias} días de atraso y ahí se detiene: nunca supera ${form.topeMoraPct / 100} ${form.topeMoraPct === 100 ? "vez" : "veces"} lo que vale esa cuota. Cobrás menos en los que pagan muy tarde, pero la deuda sigue siendo pagable y los reportes muestran plata real.`
         : `La mora de cada cuota se detiene al llegar al ${form.topeMoraPct}% de lo que vale esa cuota.`;
+  /**
+   * AYUDA DE ACUERDOS, armada con los números de ESTA financiera.
+   *
+   * 🔴 No es un ejemplo genérico a propósito. Lo que decide si un acuerdo sirve o no es una
+   * comparación —cuánto cuesta el acuerdo contra cuánto cuesta NO acordar— y los dos lados de
+   * esa cuenta salen de parámetros que la financiera puede mover. Con un ejemplo fijo, el día
+   * que alguien cambia la mora el texto queda mintiendo. Mismo criterio que `topeConsecuencia`
+   * y que las etiquetas de los tramos de mora.
+   */
+  const ayudaAcuerdos = (() => {
+    const base = AYUDA.acuerdos;
+    if (!form) return base;
+    const moraMensualPct = round2(form.tasaMoraDiaria * 100 * 30);
+    const DEUDA = 100_000;
+    const dias = cobranza.acuerdos.dias_entre_cuotas * cobranza.acuerdos.max_cuotas;
+    // Lo que acumula de punitorios si NO acuerda, acotado por el techo configurado.
+    const moraSinAcordar = form.moraActiva
+      ? Math.min(
+          form.topeMoraPct > 0 ? DEUDA * (form.topeMoraPct / 100) : Infinity,
+          DEUDA * form.tasaMoraDiaria * dias,
+        )
+      : 0;
+    const plan = planDeAcuerdo(DEUDA, cobranza.acuerdos.max_cuotas, new Date(), cobranza.acuerdos.dias_entre_cuotas, cobranza.acuerdos.tasa_mensual ?? 0);
+    const totalAcuerdo = plan.reduce((t, c) => t + c.monto, 0);
+    const $ = (n: number) => `$${n.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+    return {
+      ...base,
+      ejemplo:
+        `Con TU configuración, sobre una deuda vencida de ${$(DEUDA)} en ${cobranza.acuerdos.max_cuotas} cuotas: ` +
+        `el acuerdo le sale ${$(totalAcuerdo)} (${$(totalAcuerdo - DEUDA)} de interés). ` +
+        (form.moraActiva
+          ? `Si NO acuerda, en esos ${dias} días acumula ${$(moraSinAcordar)} de punitorios. ` +
+            (totalAcuerdo - DEUDA < moraSinAcordar
+              ? `Acordar le conviene, que es lo único que hace que el acuerdo exista.`
+              : `🔴 Acordar le sale MÁS CARO que seguir en mora: nadie va a firmar esto.`)
+          : "La mora está apagada, así que no hay con qué comparar."),
+      puntos: [
+        `El interés del acuerdo compite contra TUS punitorios. Al firmar, la mora se congela, así que el deudor compara una cosa contra la otra: con ${form.tasaMoraDiaria * 100}% diario, quedarse en mora le cuesta ~${moraMensualPct}% al mes. Por encima de eso, el acuerdo no se firma nunca.`,
+        `En 0% el acuerdo es gratis, y ahí atrasarse conviene: el cliente aprende que dejando de pagar consigue un plan sin interés. Un valor bajo pero distinto de cero saca ese incentivo sin volverlo incobrable.`,
+        `Los términos se CONGELAN al firmar cada acuerdo. Cambiar esto después no toca los que ya están firmados — solo vale para los nuevos.`,
+        ...(base.puntos ?? []),
+      ],
+    };
+  })();
+
   const avisosDocs = revisarDocumentos(docs, punitorioMensual);
 
   // Rentabilidad: costo de fondeo para la ganancia NETA de Reportes.
@@ -1930,7 +1976,7 @@ export function ConfigForm() {
           </Section>
 
           {/* Acuerdos de pago */}
-          <Section title="Acuerdos de pago" desc="El arreglo informal en cuotas con un moroso: hasta cuántas cuotas, qué lo rompe y quién puede condonar." ayuda={AYUDA.acuerdos}
+          <Section title="Acuerdos de pago" desc="El arreglo informal en cuotas con un moroso: hasta cuántas cuotas, qué lo rompe y quién puede condonar." ayuda={ayudaAcuerdos}
             onSave={() => save("cobranza", { cobranzaConfig: cobranza })}
             saving={savingKey === "cobranza"} saved={savedKey === "cobranza"} dirty={isDirty("cobranza")}>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 max-w-3xl">
