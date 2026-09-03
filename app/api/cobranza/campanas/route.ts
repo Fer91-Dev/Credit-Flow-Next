@@ -111,6 +111,12 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     return errorResponse(`canal debe ser uno de: ${CANALES.join(", ")}`, "INVALID_INPUT", 400);
   }
   const promoTipo = body.promo_tipo || "ninguna";
+  /*
+    QUÉ RECLAMA la campaña. Se valida contra la lista en vez de confiar en el body: el valor
+    viene del navegador y define qué se le guarda a cada objetivo. Default "mora", que es
+    como se comportaba antes de que existieran los recordatorios.
+  */
+  const tipoCampana = body.tipo === "vencimiento" ? "vencimiento" : "mora";
   if (!PROMOS.includes(promoTipo)) {
     return errorResponse(`promo_tipo debe ser uno de: ${PROMOS.join(", ")}`, "INVALID_INPUT", 400);
   }
@@ -264,15 +270,32 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
       diasMora: dm,
       descuentoPct: promoValor,
     });
+    /*
+      En un RECORDATORIO se congela la cuota que se le avisa y su fecha. No es adorno: el
+      monto de esa cuota puede cambiar después (un pago parcial la baja), y el mensaje que
+      salió decía otra cifra. Sin el snapshot, la campaña vieja mostraría un número que
+      nadie mandó.
+    */
+    const proxima = c.cuotas
+      .filter((q) => q.cuota_total > q.pagado_capital + q.pagado_interes + q.pagado_cargos)
+      .sort((a, b) => a.nro - b.nro)[0];
+    const cuotaProxima = proxima
+      ? round2(Math.max(0, proxima.cuota_total - (proxima.pagado_capital + proxima.pagado_interes + proxima.pagado_cargos)))
+      : 0;
+
     return {
       credito_id: c.id,
       saldo: c.saldo_pendiente,     // capital, se conserva como referencia
       vencido: round2(dv.total),    // lo exigible hoy, con mora
+      cuota_monto: tipoCampana === "vencimiento" ? cuotaProxima : null,
+      vence_el: tipoCampana === "vencimiento" ? (proxima?.fecha_vencimiento ?? null) : null,
       cuotas_vencidas: dv.cuotas_vencidas,
       dias_mora: dm,
       interes_mora: dv.mora,
-      oferta_monto: oferta.montoConDescuento,
-      oferta_descuento: oferta.descuento,
+      // En un recordatorio no hay descuento posible (no hay punitorios): lo que se le
+      // comunica es la cuota, tal cual.
+      oferta_monto: tipoCampana === "vencimiento" ? cuotaProxima : oferta.montoConDescuento,
+      oferta_descuento: tipoCampana === "vencimiento" ? 0 : oferta.descuento,
       envio_estado: "pendiente",
     };
   });
@@ -287,6 +310,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
         descripcion: body.descripcion?.trim() || null,
         canal,
         estado: "borrador",
+        tipo: tipoCampana,
         promo_tipo: promoTipo,
         promo_valor: promoValor,
         promo_vence: body.promo_vence ? new Date(body.promo_vence) : null,

@@ -12,6 +12,7 @@ import {
   construirMensajeCampana,
   linkWhatsapp,
   TEMPLATE_DEFAULT,
+  TEMPLATE_VENCIMIENTO_DEFAULT,
   plantillaMetaParaCampana,
   riesgoEnvioMeta,
   CATEGORIA_META_LABEL,
@@ -23,11 +24,11 @@ import { Field, Input, Select, Textarea } from "@/components/ui/field";
 import { SystemControls } from "@/components/ui/SystemControls";
 import { Emoji } from "@/components/ui/Emoji";
 import { Skeleton } from "@/components/ui/skeleton";
-import { nombreCompleto, formatMonto, formatDias } from "@/lib/utils";
+import { nombreCompleto, formatMonto, formatDias , formatFecha } from "@/lib/utils";
 import { useConfirm } from "@/components/ui/confirm";
 import { useToast } from "@/components/ui/toast";
 import { type Role } from "@/lib/auth/roles";
-import { leerSeleccionCampana, limpiarSeleccionCampana } from "./seleccion-campana";
+import { leerSeleccionCampana, limpiarSeleccionCampana, leerTipoCampana, limpiarTipoCampana, type TipoCampana } from "./seleccion-campana";
 
 const CANAL_META: Record<CanalCampana, { label: string; icon: ComponentType<{ className?: string }> }> = {
   whatsapp: { label: "WhatsApp", icon: WhatsAppIcon },
@@ -199,7 +200,9 @@ function CampanaWorkspace({ role, creditos, bloqueados, onCancelar, onTerminar }
     promoActiva: true,
     promo_valor: "50",
     promo_vence: "",
-    mensaje_template: TEMPLATE_DEFAULT,
+    // El texto por defecto depende de a quién se le habla: al que está al día no se le
+    // dice que regularice su situación.
+    mensaje_template: leerTipoCampana() === "vencimiento" ? TEMPLATE_VENCIMIENTO_DEFAULT : TEMPLATE_DEFAULT,
     /** Nombre de la plantilla de Meta elegida ("" = texto libre). */
     plantilla_meta: "",
   });
@@ -242,6 +245,18 @@ function CampanaWorkspace({ role, creditos, bloqueados, onCancelar, onTerminar }
   const topeConocido = role === "admin" || !!config?.cobranzaConfig;
   const excedeTope = topeConocido && form.promoActiva && descuentoPct > topeDescuento;
 
+  /*
+    QUÉ RECLAMA esta campaña. Viene de la pestaña que la armó (Morosos o Vencimientos).
+
+    🔴 Cambia la ARITMÉTICA, no solo los rótulos. En una de mora la base es lo VENCIDO y hay
+    punitorios que se pueden condonar; en una de vencimiento el cliente está AL DÍA, no debe
+    nada todavía y lo que se le recuerda es la cuota que viene. Si se calculara igual, cada
+    fila mostraría $0,00 —porque `vencido` es cero— y saldría un mensaje diciéndole que debe
+    nada a alguien que sí tiene que pagar el jueves.
+  */
+  const [tipoCampana] = useState<TipoCampana>(() => leerTipoCampana());
+  const esRecordatorio = tipoCampana === "vencimiento";
+
   // Oferta por crédito (cálculo client-side con el mismo dominio que el server).
   const objetivos = useMemo(
     () =>
@@ -258,8 +273,11 @@ function CampanaWorkspace({ role, creditos, bloqueados, onCancelar, onTerminar }
          *
          * `vencido` viene de `/api/creditos`, que es donde vive la única definición.
          */
-        const mora = c.interes_mora ?? 0;
-        const vencidoSinMora = Math.max(0, (c.vencido ?? 0) - mora);
+        // En un recordatorio no hay mora: la base es la cuota que está por vencer.
+        const mora = esRecordatorio ? 0 : (c.interes_mora ?? 0);
+        const vencidoSinMora = esRecordatorio
+          ? (c.cuota_proxima ?? 0)
+          : Math.max(0, (c.vencido ?? 0) - mora);
         const oferta = calculateRecoveryOffer({
           saldo: vencidoSinMora,
           interesMora: mora,
@@ -268,7 +286,7 @@ function CampanaWorkspace({ role, creditos, bloqueados, onCancelar, onTerminar }
         });
         return { credito: c, oferta, vencidoSinMora, mora };
       }),
-    [creditos, descuentoPct],
+    [creditos, descuentoPct, esRecordatorio],
   );
 
   const totalCuotas = objetivos.reduce((s, o) => s + o.vencidoSinMora, 0);
@@ -306,6 +324,7 @@ function CampanaWorkspace({ role, creditos, bloqueados, onCancelar, onTerminar }
       saldo: o.credito.saldo_pendiente,
       dias: o.credito.dias_mora,
       descuento: o.oferta.ahorro,
+      vence: o.credito.proximo_pago ? formatFecha(o.credito.proximo_pago) : null,
     });
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -341,6 +360,9 @@ function CampanaWorkspace({ role, creditos, bloqueados, onCancelar, onTerminar }
         promo_valor: descuentoPct,
         promo_vence: form.promo_vence || undefined,
         mensaje_template: form.mensaje_template.trim() || undefined,
+        // Qué reclama la campaña: sin esto, un recordatorio quedaba guardado como reclamo de
+        // mora y en la lista de campañas viejas no habría forma de distinguirlos.
+        tipo: tipoCampana,
         // Con qué plantilla salió. Si Meta observa el número hay que poder decir qué campañas
         // usaron una plantilla aprobada y cuáles salieron como texto libre.
         plantilla_meta: form.plantilla_meta || undefined,
@@ -630,6 +652,12 @@ function CampanaWorkspace({ role, creditos, bloqueados, onCancelar, onTerminar }
             </section>
 
             {/* Promoción */}
+            {/*
+              El incentivo es "descuento de intereses de MORA". En un recordatorio no hay mora
+              todavía: no hay nada que descontar, y ofrecer un descuento del 0% de $0,00 sería
+              prometerle algo vacío al cliente. El bloque entero no se muestra.
+            */}
+            {!esRecordatorio && (
             <section className="space-y-2.5">
               <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Incentivo</p>
               <div className={`space-y-3 rounded-lg border p-3 transition-colors ${form.promoActiva ? "border-success/30 bg-success/5" : "border-border"}`}>
@@ -680,6 +708,7 @@ function CampanaWorkspace({ role, creditos, bloqueados, onCancelar, onTerminar }
                 )}
               </div>
             </section>
+            )}
 
             {/* ── Plantilla aprobada por Meta (opcional, solo WhatsApp) ── */}
             <section className="space-y-2.5">
@@ -789,6 +818,7 @@ function CampanaWorkspace({ role, creditos, bloqueados, onCancelar, onTerminar }
               objetivos={objetivos}
               totales={{ totalCuotas, totalMora, totalAhorro, totalOfrecido }}
               focoId={objetivoFoco?.credito.id ?? null}
+              esRecordatorio={esRecordatorio}
               onFoco={setFoco}
             />
           </div>
@@ -910,6 +940,7 @@ function TablaAudiencia({
   totales,
   focoId,
   onFoco,
+  esRecordatorio,
 }: {
   objetivos: {
     credito: Credito;
@@ -921,6 +952,8 @@ function TablaAudiencia({
   /** Fila enfocada: la que alimenta la vista previa del mensaje. */
   focoId: string | null;
   onFoco: (id: string) => void;
+  /** Recordatorio de vencimiento: no hay atraso ni punitorios que mostrar. */
+  esRecordatorio?: boolean;
 }) {
   const th = "px-4 py-2.5 text-left text-[11px] font-bold uppercase tracking-wider text-muted-foreground";
   const thNum = `${th} text-right`;
@@ -931,12 +964,17 @@ function TablaAudiencia({
     <table className="w-full border-separate border-spacing-0">
       <thead className="sticky top-0 z-10 bg-muted">
         <tr>
+          {/*
+            Los rótulos cambian con el tipo: en un recordatorio no hay atraso ni punitorios, y
+            dejar las columnas con esos nombres en cero le haría creer al operador que el
+            cálculo falló. Las que no aplican no se muestran vacías: no se muestran.
+          */}
           <th className={`${th} border-b border-border`}>Cliente</th>
-          <th className={`${th} border-b border-border`}>Atraso</th>
-          <th className={`${thNum} border-b border-border`}>Cuotas vencidas</th>
-          <th className={`${thNum} border-b border-border`}>Punitorios</th>
-          <th className={`${thNum} border-b border-border`}>Descuento</th>
-          <th className={`${thNum} border-b border-border`}>Se le pide</th>
+          <th className={`${th} border-b border-border`}>{esRecordatorio ? "Vence" : "Atraso"}</th>
+          <th className={`${thNum} border-b border-border`}>{esRecordatorio ? "Cuota" : "Cuotas vencidas"}</th>
+          {!esRecordatorio && <th className={`${thNum} border-b border-border`}>Punitorios</th>}
+          {!esRecordatorio && <th className={`${thNum} border-b border-border`}>Descuento</th>}
+          <th className={`${thNum} border-b border-border`}>{esRecordatorio ? "Se le recuerda" : "Se le pide"}</th>
         </tr>
       </thead>
       <tbody>
@@ -966,17 +1004,25 @@ function TablaAudiencia({
               <p className="mt-0.5 text-xs text-muted-foreground">
                 {o.credito.numero ? `CRD-${String(o.credito.numero).padStart(6, "0")}` : "Crédito sin número"}
                 {" · "}
-                {o.credito.cuotas_vencidas
+                {esRecordatorio
+                  ? "al día"
+                  : o.credito.cuotas_vencidas
                   ? `${o.credito.cuotas_vencidas} ${o.credito.cuotas_vencidas === 1 ? "cuota impaga" : "cuotas impagas"}`
                   : "sin cuotas vencidas"}
               </p>
             </td>
-            <td className={`${td} whitespace-nowrap text-muted-foreground`}>{formatDias(o.credito.dias_mora)}</td>
-            <td className={`${tdNum} text-foreground`}>{formatMonto(o.vencidoSinMora)}</td>
-            <td className={`${tdNum} ${o.mora > 0 ? "text-warning" : "text-muted-foreground"}`}>{formatMonto(o.mora)}</td>
-            <td className={`${tdNum} ${o.oferta.ahorro > 0 ? "text-success" : "text-muted-foreground"}`}>
-              {o.oferta.ahorro > 0 ? `− ${formatMonto(o.oferta.ahorro)}` : formatMonto(0)}
+            <td className={`${td} whitespace-nowrap text-muted-foreground`}>
+              {esRecordatorio ? formatFecha(o.credito.proximo_pago) : formatDias(o.credito.dias_mora)}
             </td>
+            <td className={`${tdNum} text-foreground`}>{formatMonto(o.vencidoSinMora)}</td>
+            {!esRecordatorio && (
+              <td className={`${tdNum} ${o.mora > 0 ? "text-warning" : "text-muted-foreground"}`}>{formatMonto(o.mora)}</td>
+            )}
+            {!esRecordatorio && (
+              <td className={`${tdNum} ${o.oferta.ahorro > 0 ? "text-success" : "text-muted-foreground"}`}>
+                {o.oferta.ahorro > 0 ? `− ${formatMonto(o.oferta.ahorro)}` : formatMonto(0)}
+              </td>
+            )}
             <td className={`${tdNum} font-bold text-foreground`}>{formatMonto(o.oferta.montoConDescuento)}</td>
           </tr>
           );
@@ -987,11 +1033,17 @@ function TablaAudiencia({
           <td className={`${td} border-t border-border font-semibold text-foreground`} colSpan={2}>
             Total de la campaña
           </td>
+          {/* 🔴 Las mismas columnas que el thead. Un pie con más celdas que encabezados corre
+              los totales bajo la columna equivocada — ya pasó una vez en Créditos. */}
           <td className={`${tdNum} border-t border-border text-foreground`}>{formatMonto(totales.totalCuotas)}</td>
-          <td className={`${tdNum} border-t border-border text-warning`}>{formatMonto(totales.totalMora)}</td>
-          <td className={`${tdNum} border-t border-border text-success`}>
-            {totales.totalAhorro > 0 ? `− ${formatMonto(totales.totalAhorro)}` : formatMonto(0)}
-          </td>
+          {!esRecordatorio && (
+            <td className={`${tdNum} border-t border-border text-warning`}>{formatMonto(totales.totalMora)}</td>
+          )}
+          {!esRecordatorio && (
+            <td className={`${tdNum} border-t border-border text-success`}>
+              {totales.totalAhorro > 0 ? `− ${formatMonto(totales.totalAhorro)}` : formatMonto(0)}
+            </td>
+          )}
           <td className={`${tdNum} border-t border-border font-bold text-foreground`}>{formatMonto(totales.totalOfrecido)}</td>
         </tr>
       </tfoot>

@@ -286,6 +286,8 @@ export interface Credito {
   vencido?: number;
   /** Cuántas cuotas están vencidas e impagas (para decir "debe 3 cuotas", no solo un total). */
   cuotas_vencidas?: number;
+  /** Lo que falta pagar de la cuota impaga más vieja (la que apunta `proximo_pago`). */
+  cuota_proxima?: number;
   /** True si el crédito tiene al menos un pago registrado (bloquea eliminar). */
   /** Tiene ALGÚN pago, anulados incluidos: es lo que impide eliminar el crédito. */
   tiene_pagos?: boolean;

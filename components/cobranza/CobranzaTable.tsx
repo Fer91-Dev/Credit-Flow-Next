@@ -13,6 +13,7 @@ import { GestionForm, type CreditoCtx } from "./GestionForm";
 import { CobranzaDetail } from "./CobranzaDetail";
 import { guardarSeleccionCampana, leerSeleccionCampana } from "./seleccion-campana";
 import { CampanasView } from "./CampanasView";
+import { VencimientosTab } from "./VencimientosTab";
 import { AcuerdosTab } from "./AcuerdosTab";
 import { AgendaHoy } from "./AgendaHoy";
 import { PlanillasTab } from "./PlanillasTab";
@@ -73,10 +74,10 @@ const resultadoLabel: Record<AccionCobranza["resultado"], string> = {
   otro:          "Otro",
 };
 
-type Tab = "hoy" | "morosos" | "acuerdos" | "planillas" | "campanas";
+type Tab = "hoy" | "vencimientos" | "morosos" | "acuerdos" | "planillas" | "campanas";
 
 /** Para validar el `?tab=` de la URL: un valor cualquiera no puede dejar la vista en blanco. */
-const TABS_VALIDOS: Tab[] = ["hoy", "morosos", "acuerdos", "planillas", "campanas"];
+const TABS_VALIDOS: Tab[] = ["hoy", "vencimientos", "morosos", "acuerdos", "planillas", "campanas"];
 
 export function CobranzaTable({ role }: { role: Role }) {
   /** Los cortes media/alta/crítica que definió la financiera (Configuración → Cobranza). */
@@ -304,6 +305,9 @@ export function CobranzaTable({ role }: { role: Role }) {
       <div className="relative flex gap-1 border-b border-border -mt-2">
         {([
           ["hoy",      "Hoy",      "calendar"],
+          // Vencimientos va ANTES de Morosos: es el paso previo. Avisarle al que le vence el
+          // jueves es lo que evita que el lunes esté en la lista de al lado.
+          ["vencimientos", "Vencimientos", "alarm-clock"],
           ["morosos",  "Morosos",  "money-with-wings"],
           ["acuerdos", "Acuerdos", "scroll"],
           ["planillas", "Planillas", "clipboard"],
@@ -333,7 +337,9 @@ export function CobranzaTable({ role }: { role: Role }) {
         ))}
       </div>
 
-      {tab === "hoy" ? (
+      {tab === "vencimientos" ? (
+        <VencimientosTab />
+      ) : tab === "hoy" ? (
         <AgendaHoy onGestionar={abrirGestionDesdeAgenda} onDetalle={abrirDetallePorId} />
       ) : tab === "campanas" ? (
         // `onArmar` lleva a Morosos: el vacío decía "seleccioná clientes en Morosos e iniciá

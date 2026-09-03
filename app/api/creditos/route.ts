@@ -155,7 +155,25 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     // Estado reconciliado: defensa de lectura ante datos legacy.
     const estado = estadoCoherente(c.estado, c.saldo_pendiente);
     const { cuotas: _cuotas, ...credito } = c; // no viajan al cliente: solo alimentan los cálculos
-    return { ...credito, estado, dias_mora: dmora, interes_mora, vencido, cuotas_vencidas, tiene_pagos: c.pagos.length > 0, cobros_vivos: c._count.pagos > 0, acuerdo: acuerdosVig.get(c.id) ?? null };
+    /*
+      LA CUOTA QUE VIENE: lo que falta pagar de la cuota impaga más vieja — la misma que
+      apunta `proximo_pago`.
+
+      🔴 No es `cuota_total` a secas: si esa cuota tiene un pago parcial, lo que se le pide
+      es el resto. Mandarle un recordatorio por el total de una cuota que ya pagó a medias
+      es el tipo de error que hace que el cliente deje de creerle a los avisos.
+
+      Hace falta para las campañas de VENCIMIENTO (avisar antes de que se atrase); en las de
+      mora la base sigue siendo `vencido`.
+    */
+    const proxima = c.cuotas
+      .filter((q) => q.cuota_total > (q.pagado_capital + q.pagado_interes + q.pagado_cargos))
+      .sort((a, b) => a.nro - b.nro)[0];
+    const cuota_proxima = proxima
+      ? round2(Math.max(0, proxima.cuota_total - (proxima.pagado_capital + proxima.pagado_interes + proxima.pagado_cargos)))
+      : 0;
+
+    return { ...credito, estado, dias_mora: dmora, interes_mora, vencido, cuotas_vencidas, cuota_proxima, tiene_pagos: c.pagos.length > 0, cobros_vivos: c._count.pagos > 0, acuerdo: acuerdosVig.get(c.id) ?? null };
   });
 
   // El número del crédito que cada refinanciación reemplaza, para poder mostrar REF-000060

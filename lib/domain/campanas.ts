@@ -14,10 +14,22 @@ export type CanalCampana = "whatsapp" | "email" | "sms";
 export type EstadoCampana = "borrador" | "activa" | "finalizada";
 export type PromoTipo = "ninguna" | "quita_interes";
 
-/** Plantilla por defecto del mensaje de campaña (placeholders entre corchetes). */
+/** Plantilla por defecto del RECLAMO DE MORA (placeholders entre corchetes). */
 export const TEMPLATE_DEFAULT =
   "Hola [Nombre], tenemos una propuesta de pago para tu crédito. " +
   "Cancelando ahora $[Monto] regularizás tu situación con un beneficio especial. ¡Escribinos!";
+
+/**
+ * Plantilla por defecto del RECORDATORIO DE VENCIMIENTO.
+ *
+ * 🔴 No comparte texto con la de mora, y no es un detalle de redacción: al que está al día no
+ * se le habla de "regularizar tu situación" ni de un "beneficio especial". Ese mensaje lo
+ * trata de deudor cuando todavía no lo es, y es la forma más rápida de que un buen cliente
+ * deje de leer los avisos.
+ */
+export const TEMPLATE_VENCIMIENTO_DEFAULT =
+  "Hola [Nombre], te recordamos que el [Vence] vence tu cuota de $[Monto]. " +
+  "Si ya lo abonaste, ignorá este mensaje. ¡Gracias!";
 
 export interface RecoveryInput {
   /** Saldo de capital pendiente del crédito. */
@@ -72,7 +84,7 @@ export function calculateRecoveryOffer(input: RecoveryInput): RecoveryOffer {
  */
 export function construirMensajeCampana(
   template: string,
-  data: { nombre: string; monto: number; saldo?: number; dias?: number; descuento?: number },
+  data: { nombre: string; monto: number; saldo?: number; dias?: number; descuento?: number; vence?: string | null },
 ): string {
   /**
    * 🔴 CON CENTAVOS. Redondeaba a pesos enteros, así que un reclamo de $289.727,56 salía
@@ -89,6 +101,9 @@ export function construirMensajeCampana(
     saldo: data.saldo !== undefined ? fmt(data.saldo) : "",
     dias: data.dias !== undefined ? String(data.dias) : "",
     descuento: data.descuento !== undefined ? fmt(data.descuento) : "",
+    // Para los recordatorios: la fecha en que vence la cuota. Vacío en los reclamos de mora,
+    // donde la fecha ya pasó y lo que importa es cuánto se atrasó.
+    vence: data.vence ?? "",
   };
 
   return template.replace(/\[(\w+)\]/g, (full, key: string) => {

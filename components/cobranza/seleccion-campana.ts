@@ -48,3 +48,29 @@ export function limpiarSeleccionCampana(): void {
     /* ver arriba */
   }
 }
+
+/**
+ * TIPO de campaña que se está armando, para que la pantalla de alta sepa qué mostrar.
+ *
+ * Viaja junto con la selección y por el mismo motivo: es un dato de "este rato y esta
+ * pestaña", no algo que valga la pena poner en la URL ni recordar entre sesiones.
+ *
+ * "mora"        → sale de Morosos. La base es lo vencido y hay punitorios que condonar.
+ * "vencimiento" → sale de Vencimientos. Está al día y se le recuerda la cuota que viene:
+ *                 no hay mora ni descuento posible.
+ */
+export type TipoCampana = "mora" | "vencimiento";
+const KEY_TIPO = "cf:campana:tipo";
+
+export function guardarTipoCampana(t: TipoCampana): void {
+  try { sessionStorage.setItem(KEY_TIPO, t); } catch { /* modo privado */ }
+}
+
+/** Por defecto "mora": es como se comportaba antes de que existieran los recordatorios. */
+export function leerTipoCampana(): TipoCampana {
+  try { return sessionStorage.getItem(KEY_TIPO) === "vencimiento" ? "vencimiento" : "mora"; } catch { return "mora"; }
+}
+
+export function limpiarTipoCampana(): void {
+  try { sessionStorage.removeItem(KEY_TIPO); } catch { /* modo privado */ }
+}

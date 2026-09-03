@@ -530,6 +530,18 @@ model campanas_cobranza {
   descripcion      String?
   canal            String    @default("whatsapp") // whatsapp | email | sms
   estado           String    @default("borrador") // borrador | activa | finalizada
+  /**
+   * QUÉ RECLAMA la campaña. Son dos cosas distintas y no se pueden mezclar en una lista:
+   *
+   *   "mora"        → a los que YA se atrasaron. La base es lo VENCIDO y hay punitorios que
+   *                   se pueden condonar. Es lo único que existía.
+   *   "vencimiento" → a los que están AL DÍA y les vence una cuota. No hay mora ni punitorios
+   *                   que descontar: es un recordatorio para que no se atrasen.
+   *
+   * Sin este campo, una campaña de recordatorio quedaba guardada como si fuera un reclamo de
+   * mora, y en la lista de campañas viejas nadie podría distinguir una de otra.
+   */
+  tipo             String    @default("mora") // mora | vencimiento
   promo_tipo       String    @default("ninguna") // ninguna | quita_interes
   promo_valor      Float     @default(0) // % de descuento sobre el interés de mora
   promo_vence      DateTime? @db.Date // plazo límite para acogerse a la promo
@@ -571,6 +583,15 @@ model campana_objetivo {
    */
   vencido          Float?
   cuotas_vencidas  Int?
+  /**
+   * Snapshot para las campañas de VENCIMIENTO (tipo = "vencimiento"): qué cuota se le
+   * recuerda y para cuándo. Nulos en las campañas de mora, donde la base es `vencido`.
+   * Se congelan igual que el resto: el monto de la cuota puede cambiar si después se le
+   * imputa un pago parcial, y el mensaje que salió decía otra cifra.
+   */
+  cuota_monto      Float?
+  vence_el         DateTime? @db.Date
+
   // Oferta de recuperación calculada (calculateRecoveryOffer)
   oferta_monto     Float     @default(0) // monto a cancelar con descuento aplicado
   oferta_descuento Float     @default(0) // $ de descuento (ahorro) ofrecido
