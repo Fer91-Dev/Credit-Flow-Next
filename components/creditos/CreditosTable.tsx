@@ -5,7 +5,7 @@ import { estadoBadgeCredito } from "./estado-badge";
 import { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { mutate as globalMutate } from "swr";
-import { FileText, ChevronDown, X, RefreshCw } from "lucide-react";
+import { FileText, ChevronDown, X, RefreshCw, History } from "lucide-react";
 import { CreditoDetail } from "./CreditoDetail";
 import { RefinanciarDialog } from "./RefinanciarDialog";
 import { CompararRefiDialog } from "./CompararRefiDialog";
@@ -149,7 +149,8 @@ export function CreditosTable({ role }: { role: Role }) {
     lleva la tarjeta en el PageHeader, y acá el negocio no es una tarjeta de crédito sino un
     préstamo que se pacta. El MISMO emoji lo usa el modal que abre este botón.
   */
-  const cta = <AccionPrimaria emoji="handshake" onClick={openNew}>Nuevo crédito</AccionPrimaria>;
+  // `size="lg"` para que quede a la misma altura que el buscador con el que comparte renglón.
+  const cta = <AccionPrimaria size="lg" emoji="handshake" onClick={openNew}>Nuevo crédito</AccionPrimaria>;
 
   return (
     <>
@@ -373,13 +374,21 @@ export function CreditosTable({ role }: { role: Role }) {
           filtrado aparece y desaparece adentro de él sin correr nada de lugar.
         */}
         <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-border/60 pb-3">
-          <h2 className="text-sm font-semibold text-foreground">Registro de créditos</h2>
+          <div className="flex items-center gap-2">
+            <History className="h-4 w-4 text-muted-foreground" />
+            <h2 className="text-sm font-semibold text-foreground">Registro de créditos</h2>
+            {/*
+              🔴 El conteo va PEGADO al título, como píldora — no suelto al otro extremo.
+              Colgado del lado derecho era un número flotando en el aire: no se sabía si
+              contaba lo de la tabla, lo de la cartera o lo del filtro. Al lado del título
+              queda claro que cuenta ESA lista, y es la misma píldora que ya usan las
+              pestañas de arriba, así que el número se lee igual en los dos lugares.
+            */}
+            <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-bold tabular-nums text-muted-foreground">
+              {hasFilters ? `${filtered.length} de ${creditos.length}` : creditos.length}
+            </span>
+          </div>
           <div className="flex items-center gap-3">
-            <p className="text-xs tabular-nums text-muted-foreground">
-              {hasFilters
-                ? `${filtered.length} de ${creditos.length} créditos`
-                : `${creditos.length} créditos`}
-            </p>
             {hasFilters && (
               /*
                 El atajo se anuncia ACÁ, sobre el botón que hace exactamente lo mismo, y solo
@@ -609,6 +618,15 @@ function RefinanciadosView({ creditos, onOpen, onRefinanciar }: { creditos: Cred
   const alDia = pares.filter((p) => p.nuevo.dias_mora === 0).length;
   const enMora = pares.filter((p) => p.nuevo.dias_mora > 0).length;
   const tasaRecupero = pares.length > 0 ? Math.round((alDia / pares.length) * 100) : 0;
+  // La PLATA detrás de cada conteo, igual que en la pestaña Créditos: "5 volvieron a mora" no
+  // dice si eso es un problema chico o la mitad de la cartera reestructurada.
+  const saldoAlDia = pares.filter((p) => p.nuevo.dias_mora === 0).reduce((s, p) => s + p.nuevo.saldo_pendiente, 0);
+  const saldoEnMora = pares.filter((p) => p.nuevo.dias_mora > 0).reduce((s, p) => s + p.nuevo.saldo_pendiente, 0);
+  const promedioConsolidado = pares.length > 0 ? totalConsolidado / pares.length : 0;
+
+  /** El filtro propio de ESTA sección: cómo viene el recupero. Es su criterio, no el de Créditos. */
+  const resumenRecupero = recupero === "al_dia" ? "Al día" : recupero === "en_mora" ? "Volvieron a mora" : undefined;
+  const limpiarRecupero = () => { setRecupero("todas"); setBusq(""); };
 
   return (
     <div className="space-y-6">
@@ -618,18 +636,24 @@ function RefinanciadosView({ creditos, onOpen, onRefinanciar }: { creditos: Cred
           {/* "Capital consolidado" es una suma: no hay un subconjunto que le corresponda. */}
           <KpiCard
             icon="counterclockwise-arrows-button" label="Refinanciaciones" value={String(pares.length)} accent="warning"
+            sub={`de ${creditos.length} créditos otorgados`}
             onClick={() => setRecupero("todas")}
             active={recupero === "todas"}
           />
-          <KpiCard icon="money-bag" label="Capital consolidado" value={formatMonto(totalConsolidado)} accent="primary" mono />
           <KpiCard
-            icon="check-mark-button" label="Al día (recuperados)" value={String(alDia)} accent="success" sub={`${tasaRecupero}% de recupero`}
+            icon="money-bag" label="Capital consolidado" value={formatMonto(totalConsolidado)} accent="primary" mono
+            sub={`${pares.length} operaci${pares.length !== 1 ? "ones" : "ón"} · promedio ${formatMonto(promedioConsolidado)}`}
+          />
+          <KpiCard
+            icon="check-mark-button" label="Al día (recuperados)" value={String(alDia)} accent="success"
+            sub={alDia > 0 ? `${formatMonto(saldoAlDia)} por cobrar · ${tasaRecupero}% de recupero` : "ninguno todavía"}
             onClick={alDia > 0 ? () => setRecupero("al_dia") : undefined}
             active={recupero === "al_dia"}
           />
           <KpiCard
             icon="warning" label="Volvieron a mora" value={String(enMora)}
-            accent={enMora > 0 ? "destructive" : "muted"} sub={enMora > 0 ? "reincidencia" : "ninguno"}
+            accent={enMora > 0 ? "destructive" : "muted"}
+            sub={enMora > 0 ? `${formatMonto(saldoEnMora)} otra vez en riesgo` : "ninguno"}
             onClick={enMora > 0 ? () => setRecupero("en_mora") : undefined}
             active={recupero === "en_mora"}
           />
@@ -652,12 +676,14 @@ function RefinanciadosView({ creditos, onOpen, onRefinanciar }: { creditos: Cred
           </p>
         ) : (
           <>
+            {/* El mismo campo grande de la pestaña Créditos y de la terminal de Pagos. Sin el
+                renglón "Tip: presioná F3 …": el atajo se anuncia sobre el botón que limpia. */}
             <BuscadorF3
+              size="lg"
               value={busq}
               onChange={setBusq}
               placeholder="Buscar por N° (CRD-…), DNI o nombre…"
-              onF3={() => setBusq("")}
-              f3Hint="para ver todos los morosos"
+              onF3={limpiarRecupero}
             />
             {candFiltrados.length === 0 ? (
               <p className="px-1 py-4 text-center text-xs text-muted-foreground/60">Sin resultados para “{busq}”.</p>
@@ -699,14 +725,55 @@ function RefinanciadosView({ creditos, onOpen, onRefinanciar }: { creditos: Cred
 
       {/* ── Historial de refinanciaciones (antes → después) ── */}
       <div className="space-y-3">
-        <div className="flex items-baseline justify-between gap-2">
-          <h3 className="text-sm font-semibold text-foreground">Historial de refinanciaciones</h3>
+        {/*
+          Mismo encabezado que "Registro de créditos": ícono, título, el conteo como píldora
+          pegada al título, y a la derecha el filtro. Lo que cambia es el CRITERIO, que es el
+          de esta sección: acá no se filtra por estado ni por tipo, sino por cómo viene el
+          recupero — si la refinanciación se está pagando o si volvió a mora.
+        */}
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-border/60 pb-3">
+          <div className="flex items-center gap-2">
+            <History className="h-4 w-4 text-muted-foreground" />
+            <h3 className="text-sm font-semibold text-foreground">Historial de refinanciaciones</h3>
+            {pares.length > 0 && (
+              <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-bold tabular-nums text-muted-foreground">
+                {recupero === "todas" ? pares.length : `${paresVisibles.length} de ${pares.length}`}
+              </span>
+            )}
+          </div>
           {pares.length > 0 && (
-            <span className="text-[11px] text-muted-foreground">
-              {recupero === "todas"
-                ? `${pares.length} operaci${pares.length !== 1 ? "ones" : "ón"}`
-                : `${paresVisibles.length} de ${pares.length} · ${recupero === "al_dia" ? "al día" : "volvieron a mora"}`}
-            </span>
+            <div className="flex items-center gap-3">
+              <FiltrosPanel
+                label="Filtrar"
+                resumen={resumenRecupero}
+                activos={recupero === "todas" ? 0 : 1}
+                onLimpiar={() => setRecupero("todas")}
+                align="right"
+                width={280}
+              >
+                <label className="flex flex-col gap-1">
+                  <span className="text-[11px] font-medium text-muted-foreground">Recupero</span>
+                  <div className="relative">
+                    <select value={recupero} onChange={(e) => setRecupero(e.target.value as typeof recupero)} className={SEL}>
+                      <option value="todas">Todas las refinanciaciones</option>
+                      <option value="al_dia">Se están pagando (al día)</option>
+                      <option value="en_mora">Volvieron a mora</option>
+                    </select>
+                    <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  </div>
+                </label>
+              </FiltrosPanel>
+              {(recupero !== "todas" || busq) && (
+                <button
+                  onClick={limpiarRecupero}
+                  title="Limpiar la búsqueda y el filtro"
+                  className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  <X className="h-3 w-3" /> Limpiar filtros
+                  <kbd className="rounded border border-border bg-muted/50 px-1.5 py-0.5 font-mono text-[10px] font-semibold">F3</kbd>
+                </button>
+              )}
+            </div>
           )}
         </div>
 

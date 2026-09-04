@@ -38,6 +38,7 @@ export function AccionPrimaria({
   className = "",
   type = "button",
   disabled,
+  size = "md",
 }: {
   /** Fluent Emoji de `public/emoji/`. Usar el MISMO que el modal que abre. */
   emoji: string;
@@ -46,14 +47,22 @@ export function AccionPrimaria({
   className?: string;
   type?: "button" | "submit";
   disabled?: boolean;
+  /**
+   * `"lg"` iguala la altura del buscador grande (`BuscadorF3 size="lg"`, `h-14`). Cuando los
+   * dos comparten renglón —como en Créditos— un botón de `h-10` al lado de una caja de `h-14`
+   * se lee como algo secundario, y es al revés: es la acción principal de la pantalla.
+   */
+  size?: "md" | "lg";
 }) {
+  const lg = size === "lg";
   return (
     <button
       type={type}
       onClick={onClick}
       disabled={disabled}
-      className={`group relative inline-flex items-center gap-2.5 overflow-hidden rounded-xl
-        bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground whitespace-nowrap
+      className={`group relative inline-flex items-center overflow-hidden rounded-xl
+        bg-primary font-semibold text-primary-foreground whitespace-nowrap
+        ${lg ? "h-14 gap-3 px-6 text-base" : "gap-2.5 px-5 py-2.5 text-sm"}
         shadow-[0_1px_2px_rgba(0,0,0,0.28),0_10px_24px_-14px_rgba(0,0,0,0.65)]
         transition-all duration-200 ease-out
         hover:-translate-y-0.5 hover:bg-primary/95
@@ -83,7 +92,7 @@ export function AccionPrimaria({
 
       <Emoji
         name={emoji}
-        className="relative h-4 w-4 transition-transform duration-300 group-hover:scale-110 motion-reduce:transition-none"
+        className={`relative transition-transform duration-300 group-hover:scale-110 motion-reduce:transition-none ${lg ? "h-5 w-5" : "h-4 w-4"}`}
       />
       <span className="relative">{children}</span>
     </button>
