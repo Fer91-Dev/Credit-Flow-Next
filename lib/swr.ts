@@ -1092,6 +1092,7 @@ export interface VendedorRendimiento {
 
 export const KEYS = {
   clientes:      "/api/clientes?limit=1000",
+  clientesKpis:  "/api/clientes/kpis",
   creditos:      "/api/creditos?limit=1000",
   pagos:         "/api/pagos?limit=500",
   dashboard:     "/api/dashboard",
@@ -1238,11 +1239,31 @@ export interface Financiera {
  * `total` es el conteo real de lo que matchea, no el de la página: es lo que permite decir
  * "20 de 340" sin mentir.
  */
-export function useClientes(opts?: { scored?: boolean; q?: string; limit?: number }) {
+/** Los cuatro KPI de Clientes, agregados en el SERVIDOR sobre toda la cartera. */
+export interface KpisClientes {
+  total: number;
+  enfriados: number;
+  riesgo: number;
+  nuevos: number;
+  /** El corte de inactividad vigente (días), para escribirlo sin repetir el número. */
+  dias_inactividad: number;
+}
+
+/**
+ * KPI de Clientes. Clave propia y no junto a la lista: la lista se vuelve a pedir con cada
+ * búsqueda y estos números no dependen de lo que se busque.
+ */
+export function useKpisClientes() {
+  const { data, error, isLoading, mutate } = useSWR<KpisClientes>(KEYS.clientesKpis);
+  return { kpis: data, error, isLoading, mutate };
+}
+
+export function useClientes(opts?: { scored?: boolean; q?: string; limit?: number; filtro?: string | null }) {
   const params = new URLSearchParams();
   if (opts?.scored) params.set("scored", "true");
   if (opts?.q) params.set("q", opts.q);
   if (opts?.limit) params.set("limit", String(opts.limit));
+  if (opts?.filtro) params.set("filtro", opts.filtro);
   const qs = params.toString();
   const key = qs ? `${KEYS.clientes}&${qs}` : KEYS.clientes;
   const { data, error, isLoading, mutate } = useSWR<{ clientes: Cliente[]; total: number }>(key);

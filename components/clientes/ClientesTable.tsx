@@ -2,11 +2,12 @@
 
 import { useMemo, useState, useRef, useEffect } from "react";
 import { useSWRConfig } from "swr";
-import { Search, User, Phone, Mail, ArrowLeft, Plus, ChevronRight, Clock } from "lucide-react";
+import { Search, User, Phone, Mail, ArrowLeft, Plus, ChevronRight, Clock, X } from "lucide-react";
 import { ClienteForm } from "./ClienteForm";
 import { ClienteDetail } from "./ClienteDetail";
-import { useClientes, KEYS, type Cliente, useDiasLegales } from "@/lib/swr";
+import { useClientes, useKpisClientes, KEYS, type Cliente, useDiasLegales } from "@/lib/swr";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { KpiCard } from "@/components/ui/KpiCard";
 import { ScoreBadge } from "@/components/ui/ScoreBadge";
 import { Avatar } from "@/components/ui/Avatar";
 import { BuscadorF3 } from "@/components/ui/BuscadorF3";
@@ -19,6 +20,13 @@ import { useConfirm } from "@/components/ui/confirm";
 import { useToast } from "@/components/ui/toast";
 
 type Sel = { id: string; nombre: string };
+
+/** Qué lista se está viendo cuando un KPI está prendido. El título lo dice el recorte. */
+const TITULO_RECORTE: Record<"enfriados" | "riesgo" | "nuevos", string> = {
+  enfriados: "Clientes sin movimiento",
+  riesgo: "Clientes con calificación C o D",
+  nuevos: "Clientes cargados este mes",
+};
 
 /**
  * Clientes con flujo "buscar primero" (igual que Pagos): no se lista nada hasta
@@ -39,7 +47,17 @@ export function ClientesTable({ role }: { role?: Role } = {}) {
    * de ella no aparecía y la pantalla decía "Sin coincidencias" como si no existiera.
    * `total` es cuántos matchean de verdad, no cuántos entraron en la respuesta.
    */
-  const { clientes, total, isLoading, mutate } = useClientes({ scored: true, q: qServidor, limit: 1000 });
+  /**
+   * Recorte encendido desde un KPI. Es el ÚNICO filtro de la pantalla y no tiene control
+   * propio: se prende clickeando el número que lo nombra y se apaga volviéndolo a clickear.
+   * Nadie abre un desplegable para descubrir que tiene clientes enfriados; ver "14" sí lleva
+   * a hacer algo.
+   */
+  const [recorte, setRecorte] = useState<"enfriados" | "riesgo" | "nuevos" | null>(null);
+  const { clientes, total, isLoading, mutate } = useClientes({ scored: true, q: qServidor, limit: 1000, filtro: recorte });
+  const { kpis } = useKpisClientes();
+  /** Un KPI prendido se apaga al volver a clickearlo. */
+  const alternar = (r: "enfriados" | "riesgo" | "nuevos") => setRecorte((prev) => (prev === r ? null : r));
   /** A cuántos días de atraso un crédito pasa a Legales (Configuración → Cobranza). */
   const diasLegales = useDiasLegales();
   const { mutate: globalMutate } = useSWRConfig();
@@ -61,6 +79,8 @@ export function ClientesTable({ role }: { role?: Role } = {}) {
    */
   const enSincro = query.trim() === qServidor;
   const resultados = qServidor && enSincro ? clientes : [];
+  /** Con un KPI prendido la lista se muestra sin necesidad de buscar: el recorte ES la lista. */
+  const recortados = recorte && !qServidor ? clientes : [];
 
   // Todos los clientes ordenados alfabéticamente (para la vista "ver todos" con F3).
   const todosOrdenados = useMemo(
@@ -92,7 +112,8 @@ export function ClientesTable({ role }: { role?: Role } = {}) {
     const wasEditing = editingId;
     setDialog(false); setEditingId(null);
     if (!success) return;
-    mutate(); globalMutate(KEYS.dashboard);
+    // Los KPI se agregan en el server: si no se invalidan, siguen contando al cliente que ya no está.
+    mutate(); globalMutate(KEYS.dashboard); globalMutate(KEYS.clientesKpis);
     if (wasEditing) globalMutate(`/api/clientes/${wasEditing}`); // refrescar la ficha abierta
     if (creado) setSelected({ id: creado.id, nombre: nombreCompleto(creado) }); // saltar a la ficha del nuevo
   };
@@ -125,7 +146,7 @@ export function ClientesTable({ role }: { role?: Role } = {}) {
       { optimisticData: { clientes: clientes.filter((c) => c.id !== id), total: Math.max(0, total - 1) }, rollbackOnError: true },
     ).catch(() => {});
     if (fallo) { toast.error(motivo ?? "No se pudo eliminar el cliente"); return; }
-    globalMutate(KEYS.dashboard);
+    globalMutate(KEYS.dashboard); globalMutate(KEYS.clientesKpis);
     toast.success(`Cliente ${nombre} eliminado`);
     setSelected(null);
   };
@@ -223,6 +244,49 @@ export function ClientesTable({ role }: { role?: Role } = {}) {
         hace nada hasta que se hace otra cosa primero. Lo único que vive dentro de la caja es
         "F3 · lista completa", que es la acción propia de este buscador.
       */}
+      {/*
+        🔴 KPI EN LUGAR DE UN BOTÓN DE FILTRO.
+
+        Clientes era la única sección que abría en blanco y sin nada que mirar. Un filtro exige
+        que ya sepas qué buscar; el número te lo muestra. Los tres de la derecha son
+        subconjuntos de la cartera, así que —como en el resto del SaaS— son clickeables y
+        encienden su propio recorte. "Clientes" no: es el universo, clickearlo no recortaría
+        nada.
+
+        Los cuatro se agregan en el SERVIDOR sobre toda la cartera. Sumarlos acá daría el total
+        de la página disfrazado de total, y un KPI que dice 14 cuando son 40 es peor que no
+        tenerlo, porque se actúa sobre él.
+      */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <KpiCard icon="busts-in-silhouette" label="Clientes" value={String(kpis?.total ?? 0)} accent="primary" />
+        <KpiCard
+          icon="hourglass-done"
+          label="Sin movimiento"
+          value={String(kpis?.enfriados ?? 0)}
+          accent={(kpis?.enfriados ?? 0) > 0 ? "warning" : "muted"}
+          sub={`más de ${formatDias(kpis?.dias_inactividad ?? 90)} sin pagar ni pedir`}
+          onClick={(kpis?.enfriados ?? 0) > 0 ? () => alternar("enfriados") : undefined}
+          active={recorte === "enfriados"}
+        />
+        <KpiCard
+          icon="warning"
+          label="Calificación C o D"
+          value={String(kpis?.riesgo ?? 0)}
+          accent={(kpis?.riesgo ?? 0) > 0 ? "destructive" : "muted"}
+          sub="mirar antes de prestarles"
+          onClick={(kpis?.riesgo ?? 0) > 0 ? () => alternar("riesgo") : undefined}
+          active={recorte === "riesgo"}
+        />
+        <KpiCard
+          icon="calendar"
+          label="Cargados este mes"
+          value={String(kpis?.nuevos ?? 0)}
+          accent={(kpis?.nuevos ?? 0) > 0 ? "success" : "muted"}
+          onClick={(kpis?.nuevos ?? 0) > 0 ? () => alternar("nuevos") : undefined}
+          active={recorte === "nuevos"}
+        />
+      </div>
+
       <BuscadorF3
         size="lg"
         value={query}
@@ -247,9 +311,48 @@ export function ClientesTable({ role }: { role?: Role } = {}) {
       />
 
 
-      {/* Sin búsqueda: la lista completa si la pidió con F3, y si no el estado inicial. */}
+      {/*
+        Sin búsqueda: manda el recorte del KPI si hay uno prendido, después la lista completa
+        si la pidió con F3, y si no el estado inicial. El recorte gana porque es lo último que
+        el operador clickeó.
+      */}
       {!q ? (
-        verTodos ? (
+        recorte ? (
+          <div className="space-y-2 max-w-[22rem]">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/60 pb-2">
+              <p className="text-xs font-semibold text-foreground">{TITULO_RECORTE[recorte]}</p>
+              <button
+                onClick={() => setRecorte(null)}
+                className="flex items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
+              >
+                <X className="h-3 w-3" /> Ver todos
+              </button>
+            </div>
+            {isLoading ? (
+              <p className="text-sm text-muted-foreground">Cargando…</p>
+            ) : recortados.length === 0 ? (
+              <p className="rounded-xl border border-dashed border-border/60 p-8 text-center text-sm text-muted-foreground">
+                Ninguno para mostrar.
+              </p>
+            ) : (
+              <>
+                <p className="text-xs text-muted-foreground">
+                  {total} cliente{total !== 1 ? "s" : ""}
+                </p>
+                {recortados.slice(0, 100).map((c) => (
+                  /* En "sin movimiento" la fila muestra hace cuánto que no opera: es el dato
+                     por el que se lo está mirando, y sin él la lista es solo nombres. */
+                  <ClienteRow key={c.id} cliente={c} onClick={() => elegir(c)} mostrarInactividad={recorte === "enfriados"} />
+                ))}
+                {total > 100 && (
+                  <p className="pt-1 text-center text-xs text-muted-foreground/60">
+                    Mostrando 100 de {total}.
+                  </p>
+                )}
+              </>
+            )}
+          </div>
+        ) : verTodos ? (
           <div ref={listaRef} className="space-y-2 max-w-[22rem]">
             <p className="text-xs text-muted-foreground">
               {total} cliente{total !== 1 ? "s" : ""} · orden alfabético

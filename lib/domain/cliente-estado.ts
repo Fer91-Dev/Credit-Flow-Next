@@ -143,3 +143,32 @@ export function contactoBloqueado(
 export function deudaEnRevision(cliente: { estado?: string | null } | null | undefined): boolean {
   return normalizarEstadoCliente(cliente?.estado) === "fallecido";
 }
+
+/**
+ * ── INACTIVIDAD COMERCIAL ─────────────────────────────────────────────────────
+ *
+ * Cuántos días sin un solo movimiento (ni un pago ni un crédito nuevo) hacen que un cliente
+ * cuente como "enfriado". No es lo mismo que `estado: "inactivo"`, que es el borrado lógico:
+ * acá el cliente está vivo y habilitado, simplemente dejó de operar. Es una oportunidad
+ * comercial, no una de cobranza — al que debe lo agarra Cobranzas.
+ *
+ * 🔴 ES UNA CONSTANTE A PROPÓSITO, y la decisión es de Fernando (2026-09-04).
+ *
+ * La regla del proyecto es que nada de negocio va fijo en el código, porque el SaaS se vende
+ * a otras financieras. Pero esa regla es sobre lo que el sistema HACE CUMPLIR con plata:
+ * tasas, topes, mora, comisiones, plazos. Este número no decide nada — no cobra, no bloquea,
+ * no cambia una cuota. Es dónde se corta una lista de "a quiénes llamar", y sumarlo a
+ * Configuración le agregaría al usuario un parámetro más que mantener a cambio de nada.
+ *
+ * Vive en el dominio y no en la pantalla para que haya UNA definición: la usan el KPI, el
+ * filtro que ese KPI enciende y cualquier cosa que venga después.
+ */
+export const DIAS_INACTIVIDAD_COMERCIAL = 90;
+
+/** ¿Pasó más de `DIAS_INACTIVIDAD_COMERCIAL` desde su último movimiento? */
+export function esClienteEnfriado(ultimoMovimiento: Date | string | null | undefined, hoy = new Date()): boolean {
+  if (!ultimoMovimiento) return false;
+  const t = typeof ultimoMovimiento === "string" ? new Date(ultimoMovimiento).getTime() : ultimoMovimiento.getTime();
+  if (Number.isNaN(t)) return false;
+  return hoy.getTime() - t > DIAS_INACTIVIDAD_COMERCIAL * 24 * 60 * 60 * 1000;
+}

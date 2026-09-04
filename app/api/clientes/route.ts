@@ -3,8 +3,8 @@ import { successResponse, errorResponse, withErrorHandler, assertSameOrigin } fr
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { registrarAuditoria } from "@/lib/audit";
-import { calcularScore, diasMoraActual, esCreditoVivo } from "@/lib/domain";
-import { nombreCompleto, hoyComercial } from "@/lib/utils";
+import { nombreCompleto } from "@/lib/utils";
+import { enriquecerClientes, kpisClientes, type FiltroClientes } from "@/lib/clientes-agregado";
 import { normalizarCuit, validarDuplicadoCliente } from "@/lib/clientes-validacion";
 import type { NextRequest } from "next/server";
 
@@ -14,6 +14,7 @@ import type { NextRequest } from "next/server";
  * Query params opcionales:
  * - ?q=perez — BUSCA por nombre, apellido o documento (ver abajo)
  * - ?estado=activo — filtrar por estado
+ * - ?filtro=enfriados|riesgo|nuevos — los recortes que encienden los KPI de la pantalla
  * - ?limit=10 — paginación (defecto 100)
  * - ?offset=0 — paginación
  */
@@ -28,6 +29,9 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   // Así los pickers de cliente (créditos, pagos) y el resto traen la lista liviana.
   const scored = url.searchParams.get("scored") === "true";
   const q = (url.searchParams.get("q") ?? "").trim();
+  const filtroRaw = url.searchParams.get("filtro");
+  const filtro: FiltroClientes =
+    filtroRaw === "enfriados" || filtroRaw === "riesgo" || filtroRaw === "nuevos" ? filtroRaw : null;
 
   const where: Record<string, any> = { ...withTenant(tenantId) };
   if (estado) {
@@ -37,12 +41,12 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   /**
    * 🔴 LA BÚSQUEDA SE HACE ACÁ, NO EN EL NAVEGADOR.
    *
-   * La pantalla de Clientes filtraba en memoria la lista que recibía — y esa lista son los
-   * **100 más nuevos** (el `limit` por defecto, ordenado por `created_at desc`). O sea que
-   * buscar por DNI recorría solo a los últimos 100 cargados: pasado ese número, un cliente
-   * viejo dejaba de aparecer y la pantalla decía "Sin coincidencias", exactamente igual que
-   * si no existiera. Con 86 clientes en producción faltaban 14 altas para que empezara a
-   * pasar, en silencio y sin ningún error.
+   * La pantalla de Clientes filtraba en memoria la lista que recibía — y esa lista es una
+   * PÁGINA (`limit`, ordenada por `created_at desc`; hoy la pantalla pide 1000). O sea que
+   * buscar por DNI recorría solo lo que hubiera entrado: pasado ese tope, un cliente viejo
+   * dejaba de aparecer y la pantalla decía "Sin coincidencias", exactamente igual que si no
+   * existiera — sin error y sin aviso. Con la búsqueda acá, el tope deja de aplicar a
+   * ENCONTRAR gente: se escanea toda la tabla y `total` dice cuántos matchean de verdad.
    *
    * El documento se compara también en su forma "solo dígitos": el operador tipea 20123456
    * y en la base puede estar "20.123.456".
@@ -55,6 +59,16 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
       { documento: { contains: q, mode: "insensitive" } },
       ...(digitos.length >= 2 ? [{ documento: { contains: digitos } }] : []),
     ];
+  }
+
+  /**
+   * Los recortes de los KPI son DERIVADOS (el último movimiento y el score no son columnas),
+   * así que no hay forma de filtrarlos en SQL: se resuelven en el agregado y lo que vuelve son
+   * los ids. Se paga el costo solo cuando el operador clickea un KPI, no en cada búsqueda.
+   */
+  if (filtro) {
+    const { ids } = await kpisClientes(tenantId);
+    where.id = { in: ids[filtro] };
   }
 
   const [clientesRows, total] = await Promise.all([
@@ -77,112 +91,6 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   });
 });
 
-/**
- * Agrega a cada cliente de la página dos derivados calculados (no persistidos):
- * - `ultimo_movimiento`: fecha del último pago o del último crédito otorgado.
- * - `score`: calificación crediticia derivada del comportamiento (ver lib/domain/scoring).
- *
- * Acotado a los IDs de la página, así no escanea toda la cartera del tenant.
- */
-async function enriquecerClientes(
-  tenantId: string,
-  rows: Array<{ id: string; created_at: Date }>
-) {
-  if (rows.length === 0) return rows;
-
-  const clienteIds = rows.map((c) => c.id);
-
-  const creditos = await prisma.creditos.findMany({
-    where: { ...withTenant(tenantId), cliente_id: { in: clienteIds } },
-    select: { id: true, cliente_id: true, estado: true, dias_mora: true, proximo_pago: true, created_at: true },
-  });
-
-  const creditoIds = creditos.map((c) => c.id);
-  const creditoACliente = new Map(creditos.map((c) => [c.id, c.cliente_id]));
-
-  const [pagos, cuotas] = await Promise.all([
-    creditoIds.length
-      ? prisma.pagos.findMany({
-          where: { ...withTenant(tenantId), credito_id: { in: creditoIds } },
-          select: { credito_id: true, fecha: true },
-        })
-      : Promise.resolve([] as Array<{ credito_id: string; fecha: Date }>),
-    creditoIds.length
-      ? prisma.cuotas.findMany({
-          where: { ...withTenant(tenantId), credito_id: { in: creditoIds } },
-          select: { credito_id: true, estado: true, fecha_vencimiento: true },
-        })
-      : Promise.resolve([] as Array<{ credito_id: string; estado: string; fecha_vencimiento: Date }>),
-  ]);
-
-  // Acumuladores por cliente
-  type Agg = {
-    tieneCreditos: boolean;
-    maxDiasMora: number;
-    cuotasVencidas: number;
-    cuotasCumplidas: number;
-    ultimoMovimiento: number; // epoch ms
-  };
-  const agg = new Map<string, Agg>();
-  for (const c of rows) {
-    agg.set(c.id, {
-      tieneCreditos: false,
-      maxDiasMora: 0,
-      cuotasVencidas: 0,
-      cuotasCumplidas: 0,
-      ultimoMovimiento: c.created_at.getTime(),
-    });
-  }
-
-  const hoyMora = hoyComercial();
-  for (const cr of creditos) {
-    const a = agg.get(cr.cliente_id);
-    if (!a) continue;
-    a.tieneCreditos = true;
-    // Mora EN VIVO desde `proximo_pago` (cron-independiente), no del cache `dias_mora`.
-    const dm = cr.proximo_pago ? diasMoraActual(cr.proximo_pago, hoyMora) : cr.dias_mora;
-    if (esCreditoVivo(cr.estado) && dm > a.maxDiasMora) a.maxDiasMora = dm;
-    a.ultimoMovimiento = Math.max(a.ultimoMovimiento, cr.created_at.getTime());
-  }
-
-  for (const p of pagos) {
-    const clienteId = creditoACliente.get(p.credito_id);
-    const a = clienteId ? agg.get(clienteId) : undefined;
-    if (a) a.ultimoMovimiento = Math.max(a.ultimoMovimiento, p.fecha.getTime());
-  }
-
-  const hoy = Date.now();
-  for (const q of cuotas) {
-    const clienteId = creditoACliente.get(q.credito_id);
-    const a = clienteId ? agg.get(clienteId) : undefined;
-    if (!a) continue;
-    if (q.fecha_vencimiento.getTime() < hoy) {
-      a.cuotasVencidas += 1;
-      if (q.estado === "pagada") a.cuotasCumplidas += 1;
-    }
-  }
-
-  return rows.map((c) => {
-    const a = agg.get(c.id)!;
-    const score = calcularScore({
-      maxDiasMora: a.maxDiasMora,
-      cuotasVencidas: a.cuotasVencidas,
-      cuotasCumplidas: a.cuotasCumplidas,
-      tieneCreditos: a.tieneCreditos,
-    });
-    return {
-      ...c,
-      ultimo_movimiento: new Date(a.ultimoMovimiento).toISOString(),
-      /**
-       * Días del crédito MÁS atrasado del cliente. Ya se calculaba para el score y se
-       * descartaba; con él la lista puede decir que la persona tiene un crédito en Legales sin
-       * abrir su ficha, que es donde el operador lo necesita: se lo ve antes de llamarlo.
-       */
-      dias_mora_max: a.maxDiasMora,
-      score: { categoria: score.categoria, label: score.label, puntaje: score.puntaje },
-    };
-  });
-}
 
 /**
  * POST /api/clientes
