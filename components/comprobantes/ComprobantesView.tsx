@@ -1,15 +1,15 @@
 "use client";
 
 import { useState } from "react";
-import { Receipt, Search, ChevronDown, Download, Users, Landmark } from "lucide-react";
+import { ChevronDown, Download, Users, Landmark, X, History } from "lucide-react";
 import { useComprobantes, type Comprobante, type MovimientoCaja } from "@/lib/swr";
 import { descargarCSV } from "@/lib/csv";
 import { formatFecha, formatFechaHora } from "@/lib/utils";
 import { SERIE_LABEL } from "@/lib/comprobantes";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { StatusBadge, type BadgeVariant } from "@/components/ui/StatusBadge";
-import { FiltrosPanel, FiltroChip } from "@/components/ui/FiltrosPanel";
-import { IconBadge } from "@/components/ui/IconBadge";
+import { FiltrosPanel } from "@/components/ui/FiltrosPanel";
+import { BuscadorF3 } from "@/components/ui/BuscadorF3";
 import { DataTable } from "@/components/ui/DataTable";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { MovimientoDetail } from "@/components/caja/MovimientoDetail";
@@ -78,8 +78,22 @@ export function ComprobantesView() {
 
   const { comprobantes, total, isLoading, error } = useComprobantes({ q, serie, cuenta, desde, hasta });
 
-  const fActivos = (serie !== "all" ? 1 : 0) + (cuenta !== "all" ? 1 : 0) + (desde || hasta ? 1 : 0);
+  /**
+   * El criterio de ESTA sección: la SERIE del comprobante, la CUENTA y el rango de fechas
+   * contables. Es lo que dice el botón cuando hay algo puesto, en vez de la palabra "Filtrar".
+   */
+  const etiquetasFiltro = [
+    serie !== "all" ? `Serie ${serie}` : null,
+    cuenta !== "all" ? cuentaLabel[cuenta] ?? cuenta : null,
+    desde || hasta ? `${fmtD(desde)} → ${fmtD(hasta)}` : null,
+  ].filter((x): x is string => !!x);
+  const fActivos = etiquetasFiltro.length;
+  const resumenFiltros =
+    fActivos === 1 ? etiquetasFiltro[0] :
+    fActivos > 1   ? `${fActivos} filtros` : undefined;
+  const hayFiltros = !!(q || fActivos > 0);
   const limpiarFiltros = () => { setSerie("all"); setCuenta("all"); setDesde(""); setHasta(""); };
+  const limpiarTodo = () => { setQ(""); limpiarFiltros(); };
 
   return (
     <div className="space-y-6">
@@ -90,22 +104,28 @@ export function ComprobantesView() {
         accent="primary"
       />
 
-      {/* Toolbar: buscador visible + panel de filtros compacto + export */}
-      <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-        <div className="relative flex-1 min-w-[200px] sm:max-w-sm">
-          <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="N° comprobante, origen, destino, detalle…" className={`${INPUT} w-full pl-9`} />
-        </div>
+      {/*
+        Toolbar: buscar y filtrar en un solo control, con el CSV al lado.
 
+        🔴 El buscador era un `<input>` armado a mano con una lupa encima — el ÚNICO campo de
+        búsqueda del sistema que no usaba el componente compartido. No tenía el atajo F3, ni la
+        X para limpiar, y era de otro tamaño que el de todas las demás pantallas.
+      */}
+      <div className="flex flex-wrap items-center gap-3">
+        <BuscadorF3
+          size="lg"
+          value={q}
+          onChange={setQ}
+          placeholder="N° comprobante, origen, destino, detalle…"
+          onF3={limpiarTodo}
+          className="w-full sm:w-[32rem]"
+          accionDerecha={
         <FiltrosPanel
+          label="Filtrar"
+          resumen={resumenFiltros}
           activos={fActivos}
           onLimpiar={limpiarFiltros}
           align="right"
-          chips={<>
-            {serie !== "all" && <FiltroChip onClear={() => setSerie("all")}>Serie {serie}</FiltroChip>}
-            {cuenta !== "all" && <FiltroChip onClear={() => setCuenta("all")}>{cuentaLabel[cuenta] ?? cuenta}</FiltroChip>}
-            {(desde || hasta) && <FiltroChip onClear={() => { setDesde(""); setHasta(""); }}>{fmtD(desde)} → {fmtD(hasta)}</FiltroChip>}
-          </>}
         >
           <label className="flex flex-col gap-1">
             <span className="text-[11px] font-medium text-muted-foreground">Serie</span>
@@ -142,34 +162,46 @@ export function ComprobantesView() {
             </label>
           </div>
         </FiltrosPanel>
+          }
+        />
 
-        <div className="flex items-center gap-2 sm:ml-auto">
-          {/*
-            El CSV baja LO QUE ESTÁ EN PANTALLA. Mientras eso sea todo, no hace falta decir
-            nada; cuando la consulta pasa el tope del servidor hay que avisarlo, porque un
-            registro contable exportado a medias en silencio se usa creyendo que está entero.
-          */}
-          <span className="text-xs text-muted-foreground whitespace-nowrap">
-            {total} comprobante{total !== 1 ? "s" : ""}
-            {comprobantes.length < total && (
-              <span className="text-warning"> · se listan {comprobantes.length}</span>
-            )}
-          </span>
-          <button
-            onClick={() => exportarCSV(comprobantes)}
-            disabled={comprobantes.length === 0}
-            className="flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-border text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-40 transition-colors text-sm font-medium whitespace-nowrap"
-          >
-            <Download className="h-4 w-4" /> CSV
-          </button>
-        </div>
+        {/* `h-14` para quedar a la altura del buscador con el que comparte renglón. */}
+        <button
+          onClick={() => exportarCSV(comprobantes)}
+          disabled={comprobantes.length === 0}
+          className="ml-auto flex h-14 items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-border px-5 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-40"
+        >
+          <Download className="h-4 w-4" /> CSV
+        </button>
       </div>
 
       <section className="space-y-3">
-        <div className="flex items-center gap-2 border-b border-border pb-2">
-          <IconBadge emoji="receipt" accent="primary" />
-          <h2 className="text-sm font-semibold text-foreground">Registro de comprobantes</h2>
-          {!isLoading && !error && <span className="text-xs text-muted-foreground/60">· {total}</span>}
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-border/60 pb-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <History className="h-4 w-4 text-muted-foreground" />
+            <h2 className="text-sm font-semibold text-foreground">Registro de comprobantes</h2>
+            {!isLoading && !error && (
+              <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-bold tabular-nums text-muted-foreground">{total}</span>
+            )}
+            {/*
+              El CSV baja LO QUE ESTÁ EN PANTALLA. Mientras eso sea todo, no hace falta decir
+              nada; cuando la consulta pasa el tope del servidor hay que avisarlo, porque un
+              registro contable exportado a medias en silencio se usa creyendo que está entero.
+            */}
+            {comprobantes.length < total && (
+              <span className="text-[11px] text-warning">se listan {comprobantes.length}</span>
+            )}
+          </div>
+          {hayFiltros && (
+            <button
+              onClick={limpiarTodo}
+              title="Limpiar la búsqueda y los filtros"
+              className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <X className="h-3 w-3" /> Limpiar filtros
+              <kbd className="rounded border border-border bg-muted/50 px-1.5 py-0.5 font-mono text-[10px] font-semibold">F3</kbd>
+            </button>
+          )}
         </div>
         <DataTable<Comprobante>
           rows={comprobantes}

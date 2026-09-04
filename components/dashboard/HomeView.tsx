@@ -5,7 +5,7 @@ import type { Role } from "@prisma/client";
 import { CalendarDays, MapPin, UserCog, Target, Trophy, Users2, AlertTriangle, Percent, ShieldCheck, Sparkles, PhoneCall } from "lucide-react";
 import { useZonas, useVendedores, useDashboard, useMiPerfilVendedor, useMisLogros, useReporteCobranza, useMisLiquidaciones, type DashboardFiltros, type VendedorRendimiento, type MiPerfilVendedor } from "@/lib/swr";
 import { LiquidacionesLista } from "@/components/comisiones/LiquidacionesLista";
-import { FiltrosPanel, FiltroChip } from "@/components/ui/FiltrosPanel";
+import { FiltrosPanel } from "@/components/ui/FiltrosPanel";
 import { IconBadge } from "@/components/ui/IconBadge";
 import { DashboardKpis, DashboardDinero, DashboardCobranzaAvance, DashboardMoraGrid, DashboardKpisSkeleton, PulsoDelDia } from "./DashboardMetrics";
 import { BarraAvance } from "@/components/ui/NumeroAnimado";
@@ -144,9 +144,14 @@ export function HomeView({ role }: { role: Role }) {
 }
 
 /**
- * Filtros del Home usando el patrón estándar del SaaS (`FiltrosPanel`): botón compacto
- * + panel flotante + chips removibles. Cada sección arma sus campos y chips; el shell
- * (abrir/cerrar, contador, "Limpiar") lo aporta el componente compartido.
+ * Filtros del Home usando el patrón estándar del SaaS (`FiltrosPanel`): botón compacto +
+ * panel flotante. Cada sección arma sus campos; el shell (abrir/cerrar, contador, "Limpiar")
+ * lo aporta el componente compartido.
+ *
+ * 🔴 Acá el patrón se aplica SOLO en el botón, a diferencia del resto de las secciones. Home
+ * no tiene buscador ni tabla que contar, y este filtro no recorta una lista: RECALCULA todo el
+ * tablero. Por eso vive en el rincón del bloque de dinero, que es al que aplica, y no en una
+ * barra propia.
  */
 function FiltrosHome({
   esAdmin, desde, hasta, vendedorId, zona, vendedores, zonas, limpiar,
@@ -160,20 +165,32 @@ function FiltrosHome({
   setDesde: (v: string) => void; setHasta: (v: string) => void;
   setVendedorId: (v: string) => void; setZona: (v: string) => void;
 }) {
-  const activos = (desde ? 1 : 0) + (hasta ? 1 : 0) + (esAdmin && vendedorId ? 1 : 0) + (zona ? 1 : 0);
   const vendNombre = vendedores.find((v) => v.id === vendedorId)?.nombre;
   const fmt = (s: string) => (s ? s.split("-").reverse().join("/") : "…");
 
+  /**
+   * El criterio de ESTA pantalla: PERÍODO, EMPLEADO y ZONA. Con algo puesto el botón lo dice
+   * —"Andrea", "Zona Norte"— en vez de "Filtros 2", y desaparecen los chips que repetían el
+   * mismo dato al lado. El rango de fechas cuenta como UN filtro, no como dos: "desde" y
+   * "hasta" son las dos puntas de una sola cosa.
+   */
+  const etiquetasFiltro = [
+    desde || hasta ? `${fmt(desde)} → ${fmt(hasta)}` : null,
+    esAdmin && vendedorId ? vendNombre ?? "Empleado" : null,
+    zona || null,
+  ].filter((x): x is string => !!x);
+  const activos = etiquetasFiltro.length;
+  const resumen =
+    activos === 1 ? etiquetasFiltro[0] :
+    activos > 1   ? `${activos} filtros` : undefined;
+
   return (
     <FiltrosPanel
+      label="Filtrar"
+      resumen={resumen}
       activos={activos}
       onLimpiar={limpiar}
       align="right"
-      chips={<>
-        {(desde || hasta) && <FiltroChip onClear={() => { setDesde(""); setHasta(""); }}>{fmt(desde)} → {fmt(hasta)}</FiltroChip>}
-        {esAdmin && vendedorId && <FiltroChip onClear={() => setVendedorId("")}>{vendNombre ?? "Empleado"}</FiltroChip>}
-        {zona && <FiltroChip onClear={() => setZona("")}>{zona}</FiltroChip>}
-      </>}
     >
       <div className="grid grid-cols-2 gap-3">
         <label className="flex flex-col gap-1">

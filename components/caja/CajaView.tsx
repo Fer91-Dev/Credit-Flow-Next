@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { mutate as globalMutate } from "swr";
-import { Landmark, ArrowDownLeft, ArrowUpRight, Scale, Download, Plus, ChevronDown, ArrowLeftRight, ClipboardCheck, Wallet, Banknote, CircleDollarSign, FileText, CreditCard, ArrowRight, Users, X, PiggyBank, Wrench } from "lucide-react";
+import { Landmark, ArrowDownLeft, ArrowUpRight, Scale, Download, Plus, ChevronDown, ArrowLeftRight, ClipboardCheck, Wallet, Banknote, CircleDollarSign, FileText, CreditCard, ArrowRight, Users, X, PiggyBank, Wrench, History } from "lucide-react";
 import { IconBadge } from "@/components/ui/IconBadge";
 import { DataTable } from "@/components/ui/DataTable";
 import { CuentaCard, CUENTAS, CUENTA_META } from "@/components/caja/CuentaCard";
@@ -17,7 +17,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { KpiCard } from "@/components/ui/KpiCard";
 import { StatusBadge, type BadgeVariant } from "@/components/ui/StatusBadge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { FiltrosPanel, FiltroChip } from "@/components/ui/FiltrosPanel";
+import { FiltrosPanel } from "@/components/ui/FiltrosPanel";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useConfirm } from "@/components/ui/confirm";
 import { useToast } from "@/components/ui/toast";
@@ -133,7 +133,19 @@ export function CajaView() {
     return `${corta(desde)} al ${corta(hasta)}`;
   })();
 
-  const filtrosActivos = (tipo !== "all" ? 1 : 0) + (cuenta !== "all" ? 1 : 0);
+  /**
+   * El criterio de ESTA sección: el TIPO de movimiento y la CUENTA. El período NO entra acá
+   * —vive afuera, en su propia barra— porque no recorta la lista: cambia los KPI de ingresos y
+   * egresos. Esconderlo dentro del panel sería tapar lo que más se toca de esta pantalla.
+   */
+  const etiquetasFiltro = [
+    tipo !== "all" ? TIPO_META[tipo as MovimientoCaja["tipo"]]?.label ?? tipo : null,
+    cuenta !== "all" ? CUENTA_META[cuenta as CuentaCaja]?.label ?? cuenta : null,
+  ].filter((x): x is string => !!x);
+  const filtrosActivos = etiquetasFiltro.length;
+  const resumenFiltros =
+    filtrosActivos === 1 ? etiquetasFiltro[0] :
+    filtrosActivos > 1   ? `${filtrosActivos} filtros` : undefined;
   // "Sucio" = algo distinto del estado inicial (este mes, sin filtros) → hay qué limpiar.
   const rangoDefault = presets[0];
   const haySucio = filtrosActivos > 0 || desde !== rangoDefault.desde || hasta !== rangoDefault.hasta;
@@ -318,12 +330,10 @@ export function CajaView() {
                     el de la barra, que además restablece el período. Dos botones "Limpiar"
                     con alcances distintos era una trampa. */}
                 <FiltrosPanel
+                  label="Filtrar"
+                  resumen={resumenFiltros}
                   activos={filtrosActivos}
                   align="right"
-                  chips={<>
-                    {tipo !== "all" && <FiltroChip onClear={() => setTipo("all")}>{TIPO_META[tipo as MovimientoCaja["tipo"]]?.label ?? tipo}</FiltroChip>}
-                    {cuenta !== "all" && <FiltroChip onClear={() => setCuenta("all")}>{CUENTA_META[cuenta as CuentaCaja]?.label ?? cuenta}</FiltroChip>}
-                  </>}
                 >
                   <label className="flex flex-col gap-1">
                     <span className="text-[11px] font-medium text-muted-foreground">Tipo</span>
@@ -369,20 +379,20 @@ export function CajaView() {
               </div>
             </div>
 
-            {/* Resumen de lo aplicado, pegado a la tabla: cuántos movimientos se están
-                viendo y de qué recorte salen. */}
-            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 border-t border-border/60 px-3 py-2 text-[11px] text-muted-foreground">
-              <span>
-                {caja ? <><span className="font-semibold text-foreground">{caja.movimientos.length}</span> movimiento{caja.movimientos.length === 1 ? "" : "s"}</> : "Cargando…"}
+          </div>
+
+          {/* Encabezado del libro: título, el conteo como píldora y de qué período sale. El
+              "N filtros aplicados" que estaba acá ya no hace falta: lo dice el propio botón. */}
+          <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-border/60 pb-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <History className="h-4 w-4 text-muted-foreground" />
+              <h2 className="text-sm font-semibold text-foreground">Libro de movimientos</h2>
+              <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-bold tabular-nums text-muted-foreground">
+                {caja ? caja.movimientos.length : "…"}
               </span>
-              <span className="text-muted-foreground/40">·</span>
-              <span className="font-mono">{desde.split("-").reverse().join("/")} — {hasta.split("-").reverse().join("/")}</span>
-              {filtrosActivos > 0 && (
-                <>
-                  <span className="text-muted-foreground/40">·</span>
-                  <span>{filtrosActivos} filtro{filtrosActivos === 1 ? "" : "s"} aplicado{filtrosActivos === 1 ? "" : "s"}</span>
-                </>
-              )}
+              <span className="font-mono text-[11px] text-muted-foreground/60">
+                {desde.split("-").reverse().join("/")} — {hasta.split("-").reverse().join("/")}
+              </span>
             </div>
           </div>
           <DataTable<MovimientoCaja>
