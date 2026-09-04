@@ -139,14 +139,85 @@ export function CreditosTable({ role }: { role: Role }) {
         */}
         <div className="flex flex-wrap items-center justify-between gap-3">
           {/*
-            El CTA va a la IZQUIERDA y las pestañas a la derecha.
+            ── IZQUIERDA: buscar y luego el CTA. Derecha: las pestañas. ──
 
-            🔴 El slot se renderiza SIEMPRE, aunque el botón no esté. En "Refinanciados" no hay
-            CTA, y sin este div vacío el `justify-between` se queda con un solo hijo y le manda
-            las pestañas a la izquierda: al cambiar de pestaña saltaban de un lado al otro de
-            la pantalla. El hueco las deja quietas.
+            🔴 La búsqueda va ACÁ ARRIBA, pegada a "Nuevo crédito", no debajo de los KPI.
+            Son las dos cosas que se hacen al entrar —buscar a alguien, o dar de alta— y
+            tenerlas separadas por la fila de tarjetas obligaba a bajar la vista para lo
+            más frecuente. El filtro viaja DENTRO de la caja de búsqueda (`accionDerecha`),
+            así que los tres controles ocupan un solo renglón.
+
+            🔴 El contenedor se renderiza SIEMPRE, aunque esté vacío. En "Refinanciados" no
+            hay ni buscador ni CTA, y sin este div el `justify-between` se queda con un solo
+            hijo y le manda las pestañas a la izquierda: al cambiar de pestaña saltaban de un
+            lado al otro de la pantalla. El hueco las deja quietas.
           */}
-          <div>{tab === "creditos" && cta}</div>
+          <div className="flex flex-1 flex-wrap items-center gap-3 sm:flex-none">
+            {tab === "creditos" && (
+              <>
+                <BuscadorF3
+                  value={search}
+                  onChange={setSearch}
+                  placeholder="Buscar por cliente o N° (CRD-…)…"
+                  // F3 limpia la búsqueda Y los filtros: limpiar solo el texto no alcanzaba
+                  // si lo puesto era un filtro de estado o mora (y con la búsqueda vacía
+                  // parecía que la tecla no hacía nada).
+                  onF3={() => { setSearch(""); setEstado("all"); setTipo("all"); setMora("all"); }}
+                  // Ancho fijo en desktop: `w-full` empujaría el CTA al renglón siguiente.
+                  // La caja carga adentro el botón de filtros, así que necesita aire.
+                  className="w-full sm:w-[30rem]"
+                  accionDerecha={
+                    <FiltrosPanel
+                      size="sm"
+                      activos={filtrosActivos}
+                      onLimpiar={() => { setEstado("all"); setTipo("all"); setMora("all"); }}
+                      align="right"
+                    >
+                      <label className="flex flex-col gap-1">
+                        <span className="text-[11px] font-medium text-muted-foreground">Estado</span>
+                        <div className="relative">
+                          <select value={estadoFilter} onChange={e => setEstado(e.target.value)} className={SEL}>
+                            <option value="all">Todos los estados</option>
+                            <option value="activo">Activos</option>
+                            <option value="pagado">Pagados</option>
+                            <option value="refinanciado">Refinanciados</option>
+                            <option value="anulado">Anulados</option>
+                          </select>
+                          <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                        </div>
+                      </label>
+                      <label className="flex flex-col gap-1">
+                        <span className="text-[11px] font-medium text-muted-foreground">Tipo</span>
+                        <div className="relative">
+                          <select value={tipoFilter} onChange={e => setTipo(e.target.value)} className={SEL}>
+                            <option value="all">Todos los tipos</option>
+                            <option value="personal">Personal</option>
+                            <option value="empresarial">Empresarial</option>
+                            <option value="productos">Producto</option>
+                            <option value="otro">Otro</option>
+                          </select>
+                          <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                        </div>
+                      </label>
+                      <label className="flex flex-col gap-1">
+                        <span className="text-[11px] font-medium text-muted-foreground">Mora</span>
+                        <div className="relative">
+                          <select value={moraFilter} onChange={e => setMora(e.target.value)} className={SEL}>
+                            <option value="all">Cualquier estado de mora</option>
+                            <option value="al_dia">Al día</option>
+                            <option value="en_mora">En mora (1+ días)</option>
+                            <option value="critica">Mora crítica (+30 días)</option>
+                          </select>
+                          <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                        </div>
+                      </label>
+                    </FiltrosPanel>
+                  }
+                />
+                {cta}
+              </>
+            )}
+          </div>
           <div className="inline-flex items-center gap-1 rounded-xl border border-border bg-muted/40 p-1 shadow-[inset_0_1px_3px_0_rgba(0,0,0,0.20)]">
             {([
               { id: "creditos" as const,      emoji: "credit-card",                  label: "Créditos",      count: creditos.length, tone: "text-muted-foreground" },
@@ -227,88 +298,16 @@ export function CreditosTable({ role }: { role: Role }) {
           />
         </div>
 
-        {/* ── Filter Toolbar ──
-            🔴 El botón "Filtros" vive DENTRO de la caja de búsqueda, no al lado.
-            Buscar y filtrar son la misma acción —acotar la lista— y separados en dos
-            controles la barra quedaba partida en dos bloques que competían. Es el mismo
-            criterio del bloque de dinero del Home, donde el filtro va en el rincón de la
-            tarjeta a la que aplica. `accionDerecha` de BuscadorF3 existe para esto.
-
-            Los chips de lo que está filtrado bajan al renglón de abajo (adentro no
-            entrarían) y ocupan el lugar del viejo "Tip: presioná F3 …": el atajo sigue
-            andando, pero el renglón ahora dice QUÉ está filtrado en vez de explicar una
-            tecla. */}
-        <div className="space-y-2">
-          <BuscadorF3
-            value={search}
-            onChange={setSearch}
-            placeholder="Buscar por cliente o N° (CRD-…)…"
-            // F3 limpia la búsqueda Y los filtros: limpiar solo el texto no alcanzaba si
-            // lo puesto era un filtro de estado o mora (y con la búsqueda vacía parecía
-            // que la tecla no hacía nada).
-            onF3={() => { setSearch(""); setEstado("all"); setTipo("all"); setMora("all"); }}
-            // Más ancha que antes: ahora la caja carga también el botón de filtros, y con
-            // `max-w-sm` el placeholder quedaba cortado.
-            className="w-full sm:max-w-lg"
-            accionDerecha={
-              <FiltrosPanel
-                size="sm"
-                activos={filtrosActivos}
-                onLimpiar={() => { setEstado("all"); setTipo("all"); setMora("all"); }}
-                align="right"
-              >
-                <label className="flex flex-col gap-1">
-                  <span className="text-[11px] font-medium text-muted-foreground">Estado</span>
-                  <div className="relative">
-                    <select value={estadoFilter} onChange={e => setEstado(e.target.value)} className={SEL}>
-                      <option value="all">Todos los estados</option>
-                      <option value="activo">Activos</option>
-                      <option value="pagado">Pagados</option>
-                      <option value="refinanciado">Refinanciados</option>
-                      <option value="anulado">Anulados</option>
-                    </select>
-                    <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  </div>
-                </label>
-                <label className="flex flex-col gap-1">
-                  <span className="text-[11px] font-medium text-muted-foreground">Tipo</span>
-                  <div className="relative">
-                    <select value={tipoFilter} onChange={e => setTipo(e.target.value)} className={SEL}>
-                      <option value="all">Todos los tipos</option>
-                      <option value="personal">Personal</option>
-                      <option value="empresarial">Empresarial</option>
-                      <option value="productos">Producto</option>
-                      <option value="otro">Otro</option>
-                    </select>
-                    <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  </div>
-                </label>
-                <label className="flex flex-col gap-1">
-                  <span className="text-[11px] font-medium text-muted-foreground">Mora</span>
-                  <div className="relative">
-                    <select value={moraFilter} onChange={e => setMora(e.target.value)} className={SEL}>
-                      <option value="all">Cualquier estado de mora</option>
-                      <option value="al_dia">Al día</option>
-                      <option value="en_mora">En mora (1+ días)</option>
-                      <option value="critica">Mora crítica (+30 días)</option>
-                    </select>
-                    <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  </div>
-                </label>
-              </FiltrosPanel>
-            }
-          />
-
-          {/* Qué está filtrado, debajo de la caja. Los chips son removibles uno por uno:
-              quitar "En mora" sin perder "Personal" es el gesto que se hace todo el tiempo. */}
-          {filtrosActivos > 0 && (
-            <div className="flex flex-wrap items-center gap-2">
-              {estadoFilter !== "all" && <FiltroChip onClear={() => setEstado("all")}>{ESTADO_FILTRO_LABEL[estadoFilter] ?? estadoFilter}</FiltroChip>}
-              {tipoFilter !== "all" && <FiltroChip onClear={() => setTipo("all")}>{TIPO_FILTRO_LABEL[tipoFilter] ?? tipoFilter}</FiltroChip>}
-              {moraFilter !== "all" && <FiltroChip onClear={() => setMora("all")}>{MORA_FILTRO_LABEL[moraFilter] ?? moraFilter}</FiltroChip>}
-            </div>
-          )}
-        </div>
+        {/* Qué está filtrado. Los chips son removibles uno por uno: quitar "En mora" sin
+            perder "Personal" es el gesto que se hace todo el tiempo. Van acá y no arriba
+            porque la caja de búsqueda ya comparte renglón con el CTA y las pestañas. */}
+        {filtrosActivos > 0 && (
+          <div className="flex flex-wrap items-center gap-2">
+            {estadoFilter !== "all" && <FiltroChip onClear={() => setEstado("all")}>{ESTADO_FILTRO_LABEL[estadoFilter] ?? estadoFilter}</FiltroChip>}
+            {tipoFilter !== "all" && <FiltroChip onClear={() => setTipo("all")}>{TIPO_FILTRO_LABEL[tipoFilter] ?? tipoFilter}</FiltroChip>}
+            {moraFilter !== "all" && <FiltroChip onClear={() => setMora("all")}>{MORA_FILTRO_LABEL[moraFilter] ?? moraFilter}</FiltroChip>}
+          </div>
+        )}
 
         {/* Conteo + limpiar — solo cuando hay filtros (el total ya lo da el KPI). */}
         {hasFilters && (
