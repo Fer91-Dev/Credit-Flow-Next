@@ -1,9 +1,9 @@
 ﻿"use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { mutate as globalMutate } from "swr";
 import { Landmark, ArrowDownLeft, ArrowUpRight, Scale, Download, Plus, ChevronDown, ArrowLeftRight, ClipboardCheck, Wallet, Banknote, CircleDollarSign, FileText, CreditCard, ArrowRight, Users, X, PiggyBank, Wrench, History } from "lucide-react";
-import { IconBadge } from "@/components/ui/IconBadge";
+import { BuscadorF3 } from "@/components/ui/BuscadorF3";
 import { DataTable } from "@/components/ui/DataTable";
 import { CuentaCard, CUENTAS, CUENTA_META } from "@/components/caja/CuentaCard";
 import { Emoji } from "@/components/ui/Emoji";
@@ -134,6 +134,32 @@ export function CajaView() {
   })();
 
   /**
+   * 🔴 LA BÚSQUEDA NO TOCA LOS KPI, Y ESO ES EL PUNTO.
+   *
+   * Filtra en el navegador sobre los movimientos del período que ya llegaron. Podría mandarse
+   * al servidor, pero ahí sería peor: `periodo` (los ingresos y egresos que muestran las
+   * tarjetas) se calcula sobre los movimientos que devuelve la consulta, así que buscar
+   * "Gómez" haría que los totales del mes pasaran a ser los de Gómez. Buscar es ENCONTRAR una
+   * fila, no recalcular el período.
+   *
+   * Se busca por comprobante, cliente, origen, destino, detalle y monto: el monto porque la
+   * pregunta real suele ser "¿de dónde salieron esos 150.000?".
+   */
+  const [busq, setBusq] = useState("");
+  const movimientosVisibles = useMemo(() => {
+    const t = busq.trim().toLowerCase();
+    if (!t || !caja) return caja?.movimientos ?? [];
+    const digitos = t.replace(/[^0-9]/g, "");
+    return caja.movimientos.filter((m) => {
+      const campos = [m.comprobante, m.cliente, m.origen, m.destino, m.descripcion];
+      if (campos.some((c) => (c ?? "").toLowerCase().includes(t))) return true;
+      // El monto se compara sin signo ni separadores: se tipea 150000 y en pantalla dice -150.000,00
+      if (digitos.length >= 2 && String(Math.abs(m.monto)).replace(".", "").includes(digitos)) return true;
+      return false;
+    });
+  }, [caja, busq]);
+
+  /**
    * El criterio de ESTA sección: el TIPO de movimiento y la CUENTA. El período NO entra acá
    * —vive afuera, en su propia barra— porque no recorta la lista: cambia los KPI de ingresos y
    * egresos. Esconderlo dentro del panel sería tapar lo que más se toca de esta pantalla.
@@ -148,9 +174,10 @@ export function CajaView() {
     filtrosActivos > 1   ? `${filtrosActivos} filtros` : undefined;
   // "Sucio" = algo distinto del estado inicial (este mes, sin filtros) → hay qué limpiar.
   const rangoDefault = presets[0];
-  const haySucio = filtrosActivos > 0 || desde !== rangoDefault.desde || hasta !== rangoDefault.hasta;
+  // El texto buscado también ensucia: si no, "Limpiar" desaparecía con la tabla recortada.
+  const haySucio = filtrosActivos > 0 || !!busq || desde !== rangoDefault.desde || hasta !== rangoDefault.hasta;
   const limpiarTodo = () => {
-    setTipo("all"); setCuenta("all");
+    setBusq(""); setTipo("all"); setCuenta("all");
     setDesde(rangoDefault.desde); setHasta(rangoDefault.hasta);
   };
 
@@ -275,17 +302,29 @@ export function CajaView() {
               justo encima de la tabla: así se lee "esta tabla, recortada así" en vez de
               filtros sueltos arriba de la pantalla, lejos de lo que filtran. */}
           <section className="space-y-3">
-          <div className="flex items-center gap-2 border-b border-border pb-2">
-            <IconBadge emoji="bank" accent="primary" />
-            <h2 className="text-sm font-semibold text-foreground">Movimientos de caja</h2>
+          {/* Encabezado del libro: título + el conteo como píldora + de qué período sale.
+              Cuando hay un término escrito el conteo dice "12 de 340": la búsqueda recorta
+              la tabla, y callar cuántos quedaron afuera haría creer que eso es todo. */}
+          <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-border/60 pb-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <History className="h-4 w-4 text-muted-foreground" />
+              <h2 className="text-sm font-semibold text-foreground">Movimientos de caja</h2>
+              <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-bold tabular-nums text-muted-foreground">
+                {!caja ? "…" : busq.trim() ? `${movimientosVisibles.length} de ${caja.movimientos.length}` : caja.movimientos.length}
+              </span>
+              <span className="font-mono text-[11px] text-muted-foreground/60">
+                {desde.split("-").reverse().join("/")} — {hasta.split("-").reverse().join("/")}
+              </span>
+            </div>
           </div>
           {/* ── Filtros de la tabla ─────────────────────────────────────────────
               Antes eran tres mecanismos sueltos en una fila (dos inputs de fecha, el
               panel de Filtros y los presets al otro extremo) y ninguno decía qué estaba
               aplicado: los presets no se marcaban y no había forma de volver atrás.
-              Ahora es UNA barra, pegada a la tabla, con jerarquía: el período manda
-              (es el filtro principal de una caja), lo demás queda en el panel, y los
-              chips + "Limpiar" muestran y deshacen lo activo. */}
+              Ahora es UNA barra, pegada a la tabla, con jerarquía: el PERÍODO manda y se
+              queda a la vista —es el filtro principal de una caja, y además mueve los KPI de
+              ingresos y egresos, así que esconderlo sería tapar lo que más se toca—; buscar y
+              filtrar comparten un solo control a la derecha, y "Limpiar" deshace todo. */}
           <div className="rounded-xl border border-border bg-card">
             <div className="flex flex-col gap-3 p-3 lg:flex-row lg:items-center lg:justify-between">
               <div className="flex flex-wrap items-center gap-2">
@@ -326,9 +365,16 @@ export function CajaView() {
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
-                {/* Sin `onLimpiar`: el panel no dibuja SU botón de limpiar. Hay uno solo,
-                    el de la barra, que además restablece el período. Dos botones "Limpiar"
-                    con alcances distintos era una trampa. */}
+                <BuscadorF3
+                  value={busq}
+                  onChange={setBusq}
+                  placeholder="Comprobante, cliente, detalle o monto…"
+                  onF3={limpiarTodo}
+                  className="w-full sm:w-[26rem]"
+                  /* Sin `onLimpiar`: el panel no dibuja SU botón de limpiar. Hay uno solo,
+                     el de la barra, que además restablece el período. Dos botones "Limpiar"
+                     con alcances distintos era una trampa. */
+                  accionDerecha={
                 <FiltrosPanel
                   label="Filtrar"
                   resumen={resumenFiltros}
@@ -366,6 +412,8 @@ export function CajaView() {
                     </div>
                   </label>
                 </FiltrosPanel>
+                  }
+                />
 
                 {/* Aparece solo si hay algo que deshacer — incluido un período cambiado. */}
                 {haySucio && (
@@ -380,23 +428,8 @@ export function CajaView() {
             </div>
 
           </div>
-
-          {/* Encabezado del libro: título, el conteo como píldora y de qué período sale. El
-              "N filtros aplicados" que estaba acá ya no hace falta: lo dice el propio botón. */}
-          <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-border/60 pb-3">
-            <div className="flex flex-wrap items-center gap-2">
-              <History className="h-4 w-4 text-muted-foreground" />
-              <h2 className="text-sm font-semibold text-foreground">Libro de movimientos</h2>
-              <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-bold tabular-nums text-muted-foreground">
-                {caja ? caja.movimientos.length : "…"}
-              </span>
-              <span className="font-mono text-[11px] text-muted-foreground/60">
-                {desde.split("-").reverse().join("/")} — {hasta.split("-").reverse().join("/")}
-              </span>
-            </div>
-          </div>
           <DataTable<MovimientoCaja>
-            rows={caja.movimientos}
+            rows={movimientosVisibles}
             rowKey={(m) => m.id}
             onRowClick={(m) => setDetalle(m)}
             empty={{ icon: "bank", title: "Sin movimientos en el período seleccionado" }}
