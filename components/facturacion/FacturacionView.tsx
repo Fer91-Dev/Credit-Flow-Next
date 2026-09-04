@@ -5,12 +5,17 @@ import { Check, Sparkles, MessageCircle, Mail } from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { PLANES, PLAN_CLAVES, CONTACTO_SAAS, type PlanClave } from "@/lib/planes";
+import { PLANES, PLAN_CLAVES, CONTACTO_SAAS, hayFeaturesExclusivas, type PlanClave } from "@/lib/planes";
 import { formatFecha, formatMonto } from "@/lib/utils";
 
 const MSG_PRO = "Hola! Quiero contratar el plan Pro de CreditFlow (filtro de clientes / motor de riesgo). ¿Cómo coordinamos el pago?";
 const WHATSAPP_URL = `https://wa.me/${CONTACTO_SAAS.whatsapp}?text=${encodeURIComponent(MSG_PRO)}`;
 const EMAIL_URL = `mailto:${CONTACTO_SAAS.email}?subject=${encodeURIComponent("Quiero el plan Pro de CreditFlow")}&body=${encodeURIComponent(MSG_PRO)}`;
+
+// Contacto de SOPORTE (sin el texto de venta): es lo que corresponde cuando no hay nada que
+// contratar. Los de arriba llevan el mensaje "quiero contratar el Pro" ya escrito.
+const WHATSAPP_SOPORTE = `https://wa.me/${CONTACTO_SAAS.whatsapp}`;
+const EMAIL_SOPORTE = `mailto:${CONTACTO_SAAS.email}?subject=${encodeURIComponent("Consulta sobre CreditFlow")}`;
 
 interface Suscripcion {
   plan: PlanClave;
@@ -34,6 +39,7 @@ export function FacturacionView() {
   const { data, isLoading } = useSWR<{ suscripcion: Suscripcion; esOwner?: boolean } | null>("/api/suscripciones/estado", fetcher);
   const sus = data?.suscripcion;
   const planActual: PlanClave = sus?.plan ?? "free";
+  const hayExclusivas = hayFeaturesExclusivas();
 
   return (
     <div className="space-y-6">
@@ -63,6 +69,38 @@ export function FacturacionView() {
             </div>
           </div>
 
+          {/* ── Todo incluido: no hay nada exclusivo que vender ────────────────────────
+              No es una pantalla apagada a mano: sale de `hayFeaturesExclusivas()`, que mira
+              el catálogo de planes. Mientras ningún plan habilite algo que el Free no tenga,
+              mostrar una comparativa y un botón "Quiero el Pro" sería ofrecerle al cliente
+              algo que ya tiene. Si mañana un plan suma una feature propia, la comparativa y
+              el CTA vuelven solos. */}
+          {!hayExclusivas ? (
+            <div className="rounded-xl border border-success/25 bg-success/[0.04] p-5">
+              <div className="flex items-center gap-2">
+                <Check className="h-4 w-4 text-success" />
+                <h3 className="text-sm font-semibold text-foreground">Tenés todas las funciones habilitadas</h3>
+              </div>
+              <p className="mt-1 text-sm text-muted-foreground">
+                No hay funciones reservadas a un plan superior: tu financiera opera con el sistema completo,
+                verificación en bureaus incluida.
+              </p>
+              <ul className="mt-4 space-y-2">
+                {PLANES.free.incluye.map((item, i) => (
+                  <li key={i} className="flex items-start gap-2 text-sm text-foreground">
+                    <Check className="mt-0.5 h-4 w-4 shrink-0 text-success" />
+                    {item}
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-4 border-t border-border/60 pt-3 text-sm text-muted-foreground">
+                ¿Dudas con tu plan? Escribinos por{" "}
+                <a href={WHATSAPP_SOPORTE} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">WhatsApp</a> o{" "}
+                <a href={EMAIL_SOPORTE} className="text-primary hover:underline">email</a>.
+              </p>
+            </div>
+          ) : (
+          <>
           {/* Comparativa de planes */}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             {PLAN_CLAVES.map((clave) => {
@@ -119,6 +157,8 @@ export function FacturacionView() {
                 </a>
               </div>
             </div>
+          )}
+          </>
           )}
         </div>
       )}

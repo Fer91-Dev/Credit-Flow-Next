@@ -35,7 +35,32 @@ export type FeatureKey = keyof typeof FEATURES;
 
 export const FEATURE_KEYS = Object.keys(FEATURES) as FeatureKey[];
 
-/** ¿La lista de features del tenant incluye esta clave? */
+/**
+ * 🔴 FEATURES LIBERADAS — incluidas en TODOS los planes, sin importar `tenants.features`.
+ *
+ * Decisión de Fernando (2026-09-04): la única feature paga era la verificación en bureaus, y
+ * de los cuatro proveedores el único que funciona es el **BCRA, que es gratuito y público**.
+ * Nosis, Veraz y Credixa están cableados pero esperan que la financiera contrate el servicio
+ * y cargue SU credencial — o sea, le paga al proveedor, no al SaaS. Cobrar un plan Pro por
+ * eso no se sostiene.
+ *
+ * La maquinaria de entitlements NO se borra, y esa es la parte importante: el día que algo
+ * cueste plata de verdad por tenant (volumen de WhatsApp Cloud API, SMS, almacenamiento de
+ * documentos, retención de backups), se saca su clave de esta lista y vuelve a estar gateada
+ * sin escribir una línea de infraestructura.
+ *
+ * Sacar/poner una clave acá abre y cierra a la vez la barrera del server (`requireFeature`)
+ * y el gate de la UI (`useHasFeature`/`FeatureGate`): las dos pasan por `hasFeature`.
+ */
+export const FEATURES_INCLUIDAS: FeatureKey[] = ["bureau_credito"];
+
+/** ¿La clave viene incluida en todos los planes? */
+export function featureIncluida(key: FeatureKey): boolean {
+  return FEATURES_INCLUIDAS.includes(key);
+}
+
+/** ¿El tenant tiene esta feature? Incluida en todos los planes, o habilitada en el suyo. */
 export function hasFeature(features: string[] | undefined | null, key: FeatureKey): boolean {
+  if (featureIncluida(key)) return true;
   return Array.isArray(features) && features.includes(key);
 }

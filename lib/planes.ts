@@ -22,25 +22,30 @@ export const PLANES: Record<PlanClave, PlanDef> = {
     clave: "free",
     label: "Free",
     features: [],
-    descripcion: "Todo lo esencial para operar la financiera + motor de originación.",
+    descripcion: "El sistema completo: operación, motor de originación y verificación en bureaus.",
     incluye: [
       "Clientes, créditos, pagos y cobranza",
       "Caja y comprobantes",
       "Reportes y auditoría",
       "Productos y control de stock",
       "Motor de originación: límites por sueldo, tope de créditos, bloqueo por mora",
+      "Verificación en BCRA / Nosis / Veraz (situación, score, cheques, deuda)",
     ],
   },
   pro: {
     clave: "pro",
     label: "Pro",
-    features: ["bureau_credito"],
-    descripcion: "Todo lo de Free + verificación externa en bureaus de crédito.",
-    incluye: [
-      "Todo lo del plan Free",
-      "Verificación en BCRA / Nosis / Veraz (situación, score, cheques, deuda)",
-      "Consulta de bureau desde la ficha del cliente y al otorgar",
-    ],
+    /**
+     * 🔴 SIN FEATURES EXCLUSIVAS HOY (2026-09-04). La verificación en bureaus pasó a estar
+     * incluida en todos los planes (ver `FEATURES_INCLUIDAS` en `lib/entitlements.ts`), así
+     * que el Pro no habilita nada que el Free no tenga. El plan se conserva en el catálogo
+     * —lo referencian `suscripciones.plan`, el cron de vencimientos y el panel de
+     * plataforma— y `hayFeaturesExclusivas()` hace que la pantalla de facturación deje de
+     * vender un plan vacío hasta que vuelva a tener algo adentro.
+     */
+    features: [],
+    descripcion: "Reservado para las funciones que se cobren aparte. Hoy no habilita nada extra.",
+    incluye: ["Todo lo del plan Free"],
   },
 };
 
@@ -65,4 +70,17 @@ export function esPlanValido(p: string): p is PlanClave {
 /** Features que corresponden a un plan (para sincronizar `tenants.features`). */
 export function featuresDePlan(plan: PlanClave): string[] {
   return [...(PLANES[plan]?.features ?? [])];
+}
+
+/**
+ * ¿Hay algún plan pago que habilite algo que el Free no tenga?
+ *
+ * Se calcula del catálogo en vez de escribirse a mano: hoy da `false` (todo está incluido) y
+ * la pantalla de Plan y facturación muestra "todo incluido" sin CTA de venta. El día que se
+ * agregue una feature exclusiva a un plan, la comparativa y el botón de contratar vuelven
+ * solos — no hay nada que acordarse de reactivar.
+ */
+export function hayFeaturesExclusivas(): boolean {
+  const gratis = new Set(PLANES.free.features);
+  return PLAN_CLAVES.some((c) => PLANES[c].features.some((f) => !gratis.has(f)));
 }
