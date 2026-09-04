@@ -19,7 +19,7 @@ import { DataTable } from "@/components/ui/DataTable";
 import { BuscadorF3 } from "@/components/ui/BuscadorF3";
 import { AccionPrimaria } from "@/components/ui/AccionPrimaria";
 import { Emoji } from "@/components/ui/Emoji";
-import { FiltrosPanel, FiltroChip } from "@/components/ui/FiltrosPanel";
+import { FiltrosPanel } from "@/components/ui/FiltrosPanel";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
@@ -31,7 +31,7 @@ const SEL =
   "outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/20 " +
   "appearance-none cursor-pointer [&>option]:bg-card [&>option]:text-foreground";
 
-// Etiquetas de los filtros para los chips del FiltrosPanel.
+// Nombre visible de cada filtro. Es lo que muestra el propio botón "Filtrar" cuando hay uno puesto.
 const ESTADO_FILTRO_LABEL: Record<string, string> = { activo: "Activos", pagado: "Pagados", refinanciado: "Refinanciados", anulado: "Anulados" };
 const TIPO_FILTRO_LABEL: Record<string, string> = { personal: "Personal", empresarial: "Empresarial", productos: "Producto", otro: "Otro" };
 const MORA_FILTRO_LABEL: Record<string, string> = { al_dia: "Al día", en_mora: "En mora", critica: "Mora crítica" };
@@ -127,8 +127,21 @@ export function CreditosTable({ role }: { role: Role }) {
   const refiCount = useMemo(() => creditos.filter((c) => c.es_refinanciacion).length, [creditos]);
 
   const hasFilters = !!(search || estadoFilter !== "all" || tipoFilter !== "all" || moraFilter !== "all");
-  /** Cuántos filtros del panel están puestos (el texto de búsqueda no cuenta: tiene su propia X). */
-  const filtrosActivos = (estadoFilter !== "all" ? 1 : 0) + (tipoFilter !== "all" ? 1 : 0) + (moraFilter !== "all" ? 1 : 0);
+  /** Los filtros puestos, con el nombre que ve el usuario (el texto de búsqueda no cuenta: tiene su propia X). */
+  const etiquetasFiltro = [
+    estadoFilter !== "all" ? ESTADO_FILTRO_LABEL[estadoFilter] ?? estadoFilter : null,
+    tipoFilter   !== "all" ? TIPO_FILTRO_LABEL[tipoFilter]     ?? tipoFilter   : null,
+    moraFilter   !== "all" ? MORA_FILTRO_LABEL[moraFilter]     ?? moraFilter   : null,
+  ].filter((x): x is string => !!x);
+  const filtrosActivos = etiquetasFiltro.length;
+  /**
+   * Lo que dice el botón cuando hay algo puesto. Con UNO se nombra —"Mora crítica" dice más
+   * que "Filtrar 1"—; con varios no entran en un botón, así que se cuentan y el detalle se ve
+   * abriendo el panel, que es donde además se cambian.
+   */
+  const resumenFiltros =
+    filtrosActivos === 1 ? etiquetasFiltro[0] :
+    filtrosActivos > 1   ? `${filtrosActivos} filtros` : undefined;
   const clearFilters = () => { setSearch(""); setEstado("all"); setTipo("all"); setMora("all"); };
 
   /*
@@ -197,6 +210,8 @@ export function CreditosTable({ role }: { role: Role }) {
                       // (buscar, filtrar, dar de alta), y un sustantivo entre dos verbos se
                       // lee como un rótulo y no como algo que se puede apretar.
                       label="Filtrar"
+                      // Con algo puesto el botón deja de decir "Filtrar" y dice QUÉ filtra.
+                      resumen={resumenFiltros}
                       activos={filtrosActivos}
                       onLimpiar={() => { setEstado("all"); setTipo("all"); setMora("all"); }}
                       align="right"
@@ -358,13 +373,7 @@ export function CreditosTable({ role }: { role: Role }) {
           filtrado aparece y desaparece adentro de él sin correr nada de lugar.
         */}
         <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-border/60 pb-3">
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-            <h2 className="text-sm font-semibold text-foreground">Registro de créditos</h2>
-            {/* Removibles de a uno: quitar "En mora" sin perder "Personal" es el gesto de todos los días. */}
-            {estadoFilter !== "all" && <FiltroChip onClear={() => setEstado("all")}>{ESTADO_FILTRO_LABEL[estadoFilter] ?? estadoFilter}</FiltroChip>}
-            {tipoFilter !== "all" && <FiltroChip onClear={() => setTipo("all")}>{TIPO_FILTRO_LABEL[tipoFilter] ?? tipoFilter}</FiltroChip>}
-            {moraFilter !== "all" && <FiltroChip onClear={() => setMora("all")}>{MORA_FILTRO_LABEL[moraFilter] ?? moraFilter}</FiltroChip>}
-          </div>
+          <h2 className="text-sm font-semibold text-foreground">Registro de créditos</h2>
           <div className="flex items-center gap-3">
             <p className="text-xs tabular-nums text-muted-foreground">
               {hasFilters
@@ -372,8 +381,19 @@ export function CreditosTable({ role }: { role: Role }) {
                 : `${creditos.length} créditos`}
             </p>
             {hasFilters && (
-              <button onClick={clearFilters} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors">
+              /*
+                El atajo se anuncia ACÁ, sobre el botón que hace exactamente lo mismo, y solo
+                cuando hay algo que limpiar. No es el renglón de instrucciones que estaba antes
+                bajo el buscador —que se leía siempre, incluso sin nada puesto—: es la tecla
+                escrita sobre su propia acción, como la muestra cualquier menú.
+              */
+              <button
+                onClick={clearFilters}
+                title="Limpiar la búsqueda y los filtros"
+                className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+              >
                 <X className="h-3 w-3" /> Limpiar filtros
+                <kbd className="rounded border border-border bg-muted/50 px-1.5 py-0.5 font-mono text-[10px] font-semibold">F3</kbd>
               </button>
             )}
           </div>

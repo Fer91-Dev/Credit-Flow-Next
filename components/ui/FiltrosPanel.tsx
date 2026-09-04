@@ -27,6 +27,7 @@ export function FiltrosPanel({
   align = "left",
   width = 340,
   label = "Filtros",
+  resumen,
 }: {
   /** Cantidad de filtros activos (alimenta el badge y el estado "activo" del botón). */
   activos: number;
@@ -41,6 +42,13 @@ export function FiltrosPanel({
   /** Ancho máximo del panel en px (se acota a 92vw en mobile). */
   width?: number;
   label?: string;
+  /**
+   * Qué DICE el botón cuando hay algo filtrado (ej. "Mora crítica", "2 filtros"). Con esto el
+   * propio botón es el estado del filtro, así que no hace falta repetirlo abajo en un chip:
+   * eran dos controles para lo mismo, y el de abajo aparecía y desaparecía moviendo la página.
+   * Sin `resumen`, el botón conserva su etiqueta fija y muestra el contador como badge.
+   */
+  resumen?: string;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -64,8 +72,11 @@ export function FiltrosPanel({
             open || activos ? "border-primary/40 bg-primary/10 text-foreground" : "border-border text-muted-foreground hover:bg-muted/40 hover:text-foreground"
           }`}
         >
-          <SlidersHorizontal className="h-3.5 w-3.5" /> {label}
-          {activos > 0 && (
+          <SlidersHorizontal className="h-3.5 w-3.5" />
+          {/* Con algo filtrado el botón dice QUÉ está filtrado; si no, su etiqueta fija. */}
+          {activos > 0 && resumen ? resumen : label}
+          {/* El badge sobra cuando el texto ya nombra lo aplicado: sería contar dos veces. */}
+          {activos > 0 && !resumen && (
             <span className="ml-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold text-primary-foreground">{activos}</span>
           )}
           <ChevronDown className={`h-3.5 w-3.5 transition-transform ${open ? "rotate-180" : ""}`} />
