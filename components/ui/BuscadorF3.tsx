@@ -119,7 +119,20 @@ export function BuscadorF3({
           }
         />
         {(value || accionDerecha) && (
-          <div className={`absolute top-1/2 flex -translate-y-1/2 items-center gap-2 ${lg ? "right-3" : "right-2"}`}>
+          /*
+            🔴 CENTRADO CON `inset-y-0`, NO CON `-translate-y-1/2`.
+
+            El centrado por transform se veía idéntico, pero **un transform crea un stacking
+            context**: todo lo que cuelgue de acá queda encerrado en él, y su `z-index` deja de
+            competir contra el resto de la página. Con un desplegable adentro (el panel de
+            filtros de Créditos), su `z-40` valía solo puertas adentro de esta cajita y las
+            tarjetas de KPI —que vienen después en el DOM— se le montaban encima: el panel se
+            abría y no se podían leer las opciones.
+
+            `inset-y-0` + `items-center` centra igual sin transform, así que el z-index del
+            desplegable vuelve a valer contra toda la pantalla.
+          */
+          <div className={`absolute inset-y-0 flex items-center gap-2 ${lg ? "right-3" : "right-2"}`}>
             {value && (
               <button
                 type="button"

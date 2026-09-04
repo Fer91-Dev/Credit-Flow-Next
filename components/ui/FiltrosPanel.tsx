@@ -27,7 +27,6 @@ export function FiltrosPanel({
   align = "left",
   width = 340,
   label = "Filtros",
-  size = "md",
 }: {
   /** Cantidad de filtros activos (alimenta el badge y el estado "activo" del botón). */
   activos: number;
@@ -42,13 +41,6 @@ export function FiltrosPanel({
   /** Ancho máximo del panel en px (se acota a 92vw en mobile). */
   width?: number;
   label?: string;
-  /**
-   * `"sm"` achica el botón para que entre DENTRO de un campo de búsqueda (`accionDerecha`
-   * de `BuscadorF3`). El `h-9` normal deja 2px de aire arriba y abajo dentro de una caja
-   * de `h-10` y se ve apretado; el `h-8` respira. El panel flotante no cambia de tamaño:
-   * lo que se achica es el disparador, no el contenido.
-   */
-  size?: "md" | "sm";
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -68,9 +60,7 @@ export function FiltrosPanel({
         <button
           type="button"
           onClick={() => setOpen((o) => !o)}
-          className={`flex items-center gap-1.5 rounded-lg border font-medium transition-colors ${
-            size === "sm" ? "h-8 px-2.5 text-xs" : "h-9 px-3 text-sm"
-          } ${
+          className={`flex items-center gap-1.5 h-9 px-3 rounded-lg border text-sm font-medium transition-colors ${
             open || activos ? "border-primary/40 bg-primary/10 text-foreground" : "border-border text-muted-foreground hover:bg-muted/40 hover:text-foreground"
           }`}
         >
@@ -83,7 +73,7 @@ export function FiltrosPanel({
 
         {open && (
           <div
-            className={`absolute ${align === "right" ? "right-0" : "left-0"} top-full z-30 mt-2 rounded-xl border border-border bg-card p-4 shadow-lg shadow-black/40 space-y-3`}
+            className={`absolute ${align === "right" ? "right-0" : "left-0"} top-full z-40 mt-2 rounded-xl border border-border bg-card p-4 shadow-lg shadow-black/40 space-y-3`}
             style={{ width: `min(92vw, ${width}px)` }}
           >
             {/* Encabezado: título + limpiar (solo si hay activos) + cerrar */}

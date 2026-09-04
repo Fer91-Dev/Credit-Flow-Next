@@ -87,14 +87,36 @@ export function CreditosTable({ role }: { role: Role }) {
     );
   }, [creditos, search, estadoFilter, tipoFilter, moraFilter]);
 
-  // KPIs from all credits (portfolio picture, not filter-dependent)
-  const kpis = useMemo(() => ({
+  /**
+   * KPIs de TODA la cartera (foto del negocio, no dependen del filtro puesto).
+   *
+   * Cada tarjeta lleva además el DATO que la explica, no una frase: cuántos de los activos
+   * están al día y cuántos atrasados, cuánto es la cuota promedio de la cartera, cuánta plata
+   * hay parada en la mora crítica. Un número solo dice "5" y no dice si eso son $50.000 o
+   * $5.000.000 — que es lo que cambia qué se hace el lunes.
+   */
+  const kpis = useMemo(() => {
     // Cartera VIVA: incluye los vencidos, que siguen siendo plata en la calle.
-    activos:      creditos.filter(c => esCreditoVivo(c.estado)).length,
-    cartera:      creditos.filter(c => esCreditoVivo(c.estado)).reduce((s, c) => s + c.saldo_pendiente, 0),
-    moraCritica:  creditos.filter(c => severidadMora(c.dias_mora, tramos) === "critica").length,
-    pagados:      creditos.filter(c => c.estado === "pagado").length,
-  }), [creditos]);
+    const vivos = creditos.filter(c => esCreditoVivo(c.estado));
+    const criticos = creditos.filter(c => severidadMora(c.dias_mora, tramos) === "critica");
+    const pagados = creditos.filter(c => c.estado === "pagado");
+    const cartera = vivos.reduce((s, c) => s + c.saldo_pendiente, 0);
+    return {
+      activos:       vivos.length,
+      alDia:         vivos.filter(c => c.dias_mora === 0).length,
+      enMora:        vivos.filter(c => c.dias_mora > 0).length,
+      cartera,
+      // Promedio por crédito vivo: dice si la cartera son pocos grandes o muchos chicos.
+      promedio:      vivos.length > 0 ? cartera / vivos.length : 0,
+      moraCritica:   criticos.length,
+      // La plata parada en mora crítica. El conteo solo no alcanza para dimensionar el riesgo.
+      montoCritico:  criticos.reduce((s, c) => s + c.saldo_pendiente, 0),
+      pagados:       pagados.length,
+      // Capital que se prestó y volvió completo (los ya cancelados).
+      montoPagado:   pagados.reduce((s, c) => s + c.monto_original, 0),
+      total:         creditos.length,
+    };
+  }, [creditos, tramos]);
 
   const totals = useMemo(() => ({
     monto:  filtered.reduce((s, c) => s + c.monto_original, 0),
@@ -156,19 +178,25 @@ export function CreditosTable({ role }: { role: Role }) {
             {tab === "creditos" && (
               <>
                 <BuscadorF3
+                  // El mismo campo grande de la terminal de Pagos: es el control con el que
+                  // más se trabaja de la pantalla y ahora lo parece.
+                  size="lg"
                   value={search}
                   onChange={setSearch}
                   placeholder="Buscar por cliente o N° (CRD-…)…"
                   // F3 limpia la búsqueda Y los filtros: limpiar solo el texto no alcanzaba
                   // si lo puesto era un filtro de estado o mora (y con la búsqueda vacía
-                  // parecía que la tecla no hacía nada).
+                  // parecía que la tecla no hacía nada). No se anuncia en pantalla.
                   onF3={() => { setSearch(""); setEstado("all"); setTipo("all"); setMora("all"); }}
                   // Ancho fijo en desktop: `w-full` empujaría el CTA al renglón siguiente.
                   // La caja carga adentro el botón de filtros, así que necesita aire.
-                  className="w-full sm:w-[30rem]"
+                  className="w-full sm:w-[34rem]"
                   accionDerecha={
                     <FiltrosPanel
-                      size="sm"
+                      // "Filtrar" y no "Filtros": el renglón es una fila de acciones
+                      // (buscar, filtrar, dar de alta), y un sustantivo entre dos verbos se
+                      // lee como un rótulo y no como algo que se puede apretar.
+                      label="Filtrar"
                       activos={filtrosActivos}
                       onLimpiar={() => { setEstado("all"); setTipo("all"); setMora("all"); }}
                       align="right"
@@ -218,7 +246,9 @@ export function CreditosTable({ role }: { role: Role }) {
               </>
             )}
           </div>
-          <div className="inline-flex items-center gap-1 rounded-xl border border-border bg-muted/40 p-1 shadow-[inset_0_1px_3px_0_rgba(0,0,0,0.20)]">
+          {/* Sin borde: el pozo ya se lee por el fondo y la sombra interior, y la línea de
+              alrededor competía con el anillo de la pestaña activa. */}
+          <div className="inline-flex items-center gap-1 rounded-xl bg-muted/40 p-1 shadow-[inset_0_1px_3px_0_rgba(0,0,0,0.20)]">
             {([
               { id: "creditos" as const,      emoji: "credit-card",                  label: "Créditos",      count: creditos.length, tone: "text-muted-foreground" },
               { id: "refinanciados" as const, emoji: "counterclockwise-arrows-button", label: "Refinanciados", count: refiCount,       tone: "text-warning" },
@@ -274,10 +304,18 @@ export function CreditosTable({ role }: { role: Role }) {
           */}
           <KpiCard
             icon="page-facing-up" label="Créditos activos" value={String(kpis.activos)} accent="primary"
+            // Cuántos de esos activos vienen bien y cuántos no: el total solo no distingue
+            // una cartera sana de una que está por explotar.
+            sub={kpis.activos > 0 ? `${kpis.alDia} al día · ${kpis.enMora} en mora` : "ninguno vivo"}
             onClick={kpis.activos > 0 ? () => { setEstado("activo"); setMora("all"); } : undefined}
             active={estadoFilter === "activo" && moraFilter === "all"}
           />
-          <KpiCard icon="money-bag" label="Cartera activa" value={formatMonto(kpis.cartera)} accent="success" mono />
+          <KpiCard
+            icon="money-bag" label="Cartera activa" value={formatMonto(kpis.cartera)} accent="success" mono
+            // De dónde sale el número: entre cuántos créditos se reparte. Dice si la cartera
+            // son pocos grandes o muchos chicos, que es otro riesgo.
+            sub={kpis.activos > 0 ? `${kpis.activos} créditos · promedio ${formatMonto(kpis.promedio)}` : "sin saldo por cobrar"}
+          />
           <KpiCard
             icon="warning" label="Mora crítica" value={String(kpis.moraCritica)}
             accent={kpis.moraCritica > 0 ? "destructive" : "muted"}
@@ -287,39 +325,59 @@ export function CreditosTable({ role }: { role: Role }) {
               días" a mano, y con la config actual el corte real son 49: la tarjeta contaba una
               cosa y el rótulo decía otra.
             */
-            sub={kpis.moraCritica > 0 ? `más de ${formatDias(tramos.alta_hasta)}` : "sin atrasos críticos"}
+            /*
+              Y con la PLATA, no solo el conteo: "5 créditos" no dice si son $50.000 o
+              $5.000.000, que es lo que decide si esto se atiende el lunes a primera hora.
+            */
+            sub={kpis.moraCritica > 0
+              ? `${formatMonto(kpis.montoCritico)} · más de ${formatDias(tramos.alta_hasta)}`
+              : "sin atrasos críticos"}
             onClick={kpis.moraCritica > 0 ? () => { setMora("critica"); setEstado("all"); } : undefined}
             active={moraFilter === "critica"}
           />
           <KpiCard
             icon="check-mark-button" label="Créditos pagados" value={String(kpis.pagados)} accent="muted"
+            // Cuánto capital se prestó y volvió completo, y sobre qué total se mide.
+            sub={kpis.pagados > 0
+              ? `${formatMonto(kpis.montoPagado)} otorgados · ${kpis.pagados} de ${kpis.total}`
+              : `ninguno de ${kpis.total}`}
             onClick={kpis.pagados > 0 ? () => { setEstado("pagado"); setMora("all"); } : undefined}
             active={estadoFilter === "pagado"}
           />
         </div>
 
-        {/* Qué está filtrado. Los chips son removibles uno por uno: quitar "En mora" sin
-            perder "Personal" es el gesto que se hace todo el tiempo. Van acá y no arriba
-            porque la caja de búsqueda ya comparte renglón con el CTA y las pestañas. */}
-        {filtrosActivos > 0 && (
-          <div className="flex flex-wrap items-center gap-2">
+        {/*
+          ── ENCABEZADO DE LA TABLA ──
+
+          🔴 Los chips de lo filtrado y el conteo VIVEN ACÁ ADENTRO, no en renglones propios.
+
+          Antes cada filtro que se ponía agregaba DOS filas nuevas —una con los chips, otra con
+          "5 de 23 créditos · Limpiar filtros"— y la tabla se iba para abajo: al filtrar, la
+          pantalla se movía justo cuando el operador iba a leer el resultado. Este renglón
+          existe SIEMPRE (es el título de la tabla, que igual hacía falta), así que lo que está
+          filtrado aparece y desaparece adentro de él sin correr nada de lugar.
+        */}
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-border/60 pb-3">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+            <h2 className="text-sm font-semibold text-foreground">Registro de créditos</h2>
+            {/* Removibles de a uno: quitar "En mora" sin perder "Personal" es el gesto de todos los días. */}
             {estadoFilter !== "all" && <FiltroChip onClear={() => setEstado("all")}>{ESTADO_FILTRO_LABEL[estadoFilter] ?? estadoFilter}</FiltroChip>}
             {tipoFilter !== "all" && <FiltroChip onClear={() => setTipo("all")}>{TIPO_FILTRO_LABEL[tipoFilter] ?? tipoFilter}</FiltroChip>}
             {moraFilter !== "all" && <FiltroChip onClear={() => setMora("all")}>{MORA_FILTRO_LABEL[moraFilter] ?? moraFilter}</FiltroChip>}
           </div>
-        )}
-
-        {/* Conteo + limpiar — solo cuando hay filtros (el total ya lo da el KPI). */}
-        {hasFilters && (
-          <div className="flex items-center justify-between">
-            <p className="text-xs text-muted-foreground">
-              {filtered.length} de {creditos.length} créditos
+          <div className="flex items-center gap-3">
+            <p className="text-xs tabular-nums text-muted-foreground">
+              {hasFilters
+                ? `${filtered.length} de ${creditos.length} créditos`
+                : `${creditos.length} créditos`}
             </p>
-            <button onClick={clearFilters} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors">
-              <X className="h-3 w-3" /> Limpiar filtros
-            </button>
+            {hasFilters && (
+              <button onClick={clearFilters} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors">
+                <X className="h-3 w-3" /> Limpiar filtros
+              </button>
+            )}
           </div>
-        )}
+        </div>
 
         {/* ── Content ── */}
         {filtered.length === 0 ? (
