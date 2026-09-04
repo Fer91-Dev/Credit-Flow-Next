@@ -35,7 +35,8 @@ function asegurarListener() {
  * de búsqueda del sistema:
  *  - En buscadores que SELECCIONAN un registro (cliente/crédito): F3 abre/cierra la lista completa.
  *  - En filtros de tabla: F3 limpia el filtro para ver todo.
- * La acción concreta la decide el caller vía `onF3`; el hint la describe con `f3Hint`.
+ * La acción concreta la decide el caller vía `onF3`. NO se anuncia con un renglón de tip:
+ * el atajo se escribe sobre el botón que hace lo mismo (ver "Limpiar filtros ⌨F3").
  *
  * `size`: "lg" = buscador grande (elegir cliente/crédito) · "md" = filtro de tabla.
  */
@@ -44,7 +45,6 @@ export function BuscadorF3({
   onChange,
   placeholder,
   onF3,
-  f3Hint,
   onEnter,
   onEscape,
   size = "md",
@@ -57,8 +57,6 @@ export function BuscadorF3({
   onChange: (v: string) => void;
   placeholder?: string;
   onF3: () => void;
-  /** Frase que sigue a "presioná F3 para …" (ej. "ver la lista completa"). Si falta, no hay hint. */
-  f3Hint?: string;
   onEnter?: () => void;
   onEscape?: () => void;
   size?: Size;
@@ -72,7 +70,12 @@ export function BuscadorF3({
    * al lado porque es del buscador, no de la pantalla.
    */
   accionDerecha?: React.ReactNode;
-  /** Reemplaza al renglón "Tip: presioná F3 …" cuando la pantalla tiene algo mejor que decir. */
+  /**
+   * Renglón bajo la caja. Antes servía para el "Tip: presioná F3 …", que se sacó de TODAS las
+   * secciones: era una instrucción fija que se leía incluso con la pantalla vacía. El atajo
+   * ahora se anuncia sobre el botón que lo ejecuta ("Limpiar filtros ⌨F3"). Queda para lo que
+   * la pantalla sí tenga que decir en ese lugar.
+   */
   hint?: React.ReactNode;
 }) {
   const lg = size === "lg";
@@ -147,15 +150,9 @@ export function BuscadorF3({
           </div>
         )}
       </div>
-      {hint ? (
+      {hint && (
         <p className={`text-xs text-muted-foreground/60 ${lg ? "mt-2" : "mt-1.5"}`}>{hint}</p>
-      ) : f3Hint ? (
-        <p className={`text-xs text-muted-foreground/60 ${lg ? "mt-2" : "mt-1.5"}`}>
-          Tip: presioná{" "}
-          <kbd className="rounded border border-border bg-muted/50 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-muted-foreground">F3</kbd>{" "}
-          {f3Hint}.
-        </p>
-      ) : null}
+      )}
     </div>
   );
 }

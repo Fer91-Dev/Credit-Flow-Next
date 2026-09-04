@@ -3,7 +3,7 @@
 import { useMemo, useState, useRef, useEffect } from "react";
 import { useSWRConfig } from "swr";
 import { motion, AnimatePresence } from "framer-motion";
-import { Search, User, Phone, Mail, ArrowLeft, Plus, ChevronRight, X, Clock } from "lucide-react";
+import { Search, User, Phone, Mail, ArrowLeft, Plus, ChevronRight, X, Clock, ChevronDown, History } from "lucide-react";
 import { ClienteForm } from "./ClienteForm";
 import { ClienteDetail } from "./ClienteDetail";
 import { useClientes, KEYS, type Cliente, useDiasLegales } from "@/lib/swr";
@@ -12,8 +12,8 @@ import { StatusBadge } from "@/components/ui/StatusBadge";
 import { ScoreBadge } from "@/components/ui/ScoreBadge";
 import { Avatar } from "@/components/ui/Avatar";
 import { BuscadorF3 } from "@/components/ui/BuscadorF3";
+import { FiltrosPanel } from "@/components/ui/FiltrosPanel";
 import { DataTable, type Column } from "@/components/ui/DataTable";
-import { IconBadge } from "@/components/ui/IconBadge";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { ModalHeader } from "@/components/ui/form-kit";
 import { nombreCompleto, formatFecha, formatDias } from "@/lib/utils";
@@ -23,6 +23,12 @@ import { useConfirm } from "@/components/ui/confirm";
 import { useToast } from "@/components/ui/toast";
 
 type Sel = { id: string; nombre: string };
+
+/** Select del panel de filtros — el mismo de las demás secciones. */
+const SEL_FILTRO =
+  "h-10 rounded-lg border border-border bg-muted/40 pl-3 pr-8 text-sm text-foreground " +
+  "outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/20 " +
+  "appearance-none cursor-pointer [&>option]:bg-card [&>option]:text-foreground";
 
 const DIAS_INACTIVIDAD = 90;
 const MS_INACTIVIDAD = DIAS_INACTIVIDAD * 24 * 60 * 60 * 1000;
@@ -138,6 +144,19 @@ export function ClientesTable({ role }: { role?: Role } = {}) {
       } },
     { header: "Cargado", align: "right", cell: (c) => <span className="text-muted-foreground tabular-nums">{formatFecha(c.created_at)}</span> },
   ];
+
+  /**
+   * El criterio de ESTA sección: quién dejó de operar (inactivos) y quién entró hace poco.
+   * Es lo que dice el botón "Filtrar" cuando hay algo puesto, en vez de la palabra fija.
+   */
+  const etiquetasFiltro = [
+    soloInactivos ? `Inactivos (+${DIAS_INACTIVIDAD} días)` : null,
+    recientes ? (recientes === "hoy" ? "Cargados hoy" : recientes === "mes" ? "Cargados este mes" : "Cargados este año") : null,
+  ].filter((x): x is string => !!x);
+  const filtrosActivos = etiquetasFiltro.length;
+  const resumenFiltros =
+    filtrosActivos === 1 ? etiquetasFiltro[0] :
+    filtrosActivos > 1   ? `${filtrosActivos} filtros` : undefined;
 
   const openNew = () => { setEditingId(null); setDialog(true); };
   const openEdit = (id: string) => { setEditingId(id); setDialog(true); };
@@ -266,60 +285,80 @@ export function ClientesTable({ role }: { role?: Role } = {}) {
         terminal se opera con el mouse. Es el mismo `verTodos` que el teclado, no un segundo
         camino.
       */}
-      <BuscadorF3
-        size="lg"
-        value={query}
-        onChange={setQuery}
-        placeholder="DNI o nombre del cliente…"
-        onF3={() => setVerTodos((v) => !v)}
-        f3Hint="para ver la lista completa de clientes"
-        hint="Escaneá el DNI o escribí el nombre — desde la ficha se edita, se otorga y se cobra."
-        onEnter={() => { if (resultados.length === 1) elegir(resultados[0]); }}
-        onEscape={() => { if (verTodos) setVerTodos(false); else setQuery(""); }}
-        autoFocus
-        className="w-full sm:max-w-2xl"
-        accionDerecha={
-          <button
-            type="button"
-            onClick={() => setVerTodos((v) => !v)}
-            className="flex items-center gap-2 rounded-lg px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
-          >
-            <kbd className="rounded border border-border bg-muted/50 px-1.5 py-0.5 font-mono text-[10px] font-semibold">F3</kbd>
-            <span className="text-primary">{verTodos ? "cerrar lista" : "lista completa"}</span>
-          </button>
-        }
-      />
+      {/*
+        🔴 ACÁ EL FILTRO NO VA ADENTRO DE LA CAJA, y es a propósito.
 
-      {/* Filtros: solo inactivos + recién cargados (por fecha de alta) */}
-      <div className="flex flex-wrap items-center gap-2">
-        <button
-          onClick={() => setSoloInactivos((v) => !v)}
-          className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-            soloInactivos
-              ? "bg-warning/15 text-warning border border-warning/40"
-              : "border border-border text-muted-foreground hover:bg-muted"
-          }`}
-        >
-          <Clock className="h-3.5 w-3.5" />
-          Solo inactivos (+{DIAS_INACTIVIDAD}d)
-          {inactivos.length > 0 && (
-            <span className={`font-mono font-bold ${soloInactivos ? "" : "text-foreground"}`}>{inactivos.length}</span>
-          )}
-        </button>
-        <div className="flex items-center gap-1 rounded-lg border border-border p-0.5">
-          <span className="pl-2 pr-1 text-[11px] font-medium text-muted-foreground">Recién cargados:</span>
-          {([["hoy", "Hoy"], ["mes", "Este mes"], ["anio", "Este año"]] as const).map(([key, lbl]) => (
+        En el resto de las secciones el botón "Filtrar" vive dentro del buscador. Este ya
+        tiene adentro su propia acción —"F3 · lista completa"—, que es la que define a esta
+        pantalla: acá no se filtra una tabla, se BUSCA una persona. Meter los dos controles
+        adentro los apretaba contra el texto. Así que el filtro va pegado a la derecha, en el
+        mismo renglón: una sola fila de controles, que es lo que importa del patrón.
+      */}
+      <div className="flex flex-wrap items-center gap-3">
+        <BuscadorF3
+          size="lg"
+          value={query}
+          onChange={setQuery}
+          placeholder="DNI o nombre del cliente…"
+          onF3={() => setVerTodos((v) => !v)}
+          hint="Escaneá el DNI o escribí el nombre — desde la ficha se edita, se otorga y se cobra."
+          onEnter={() => { if (resultados.length === 1) elegir(resultados[0]); }}
+          onEscape={() => { if (verTodos) setVerTodos(false); else setQuery(""); }}
+          autoFocus
+          className="w-full sm:max-w-2xl"
+          accionDerecha={
             <button
-              key={key}
-              onClick={() => setRecientes((r) => (r === key ? null : key))}
-              className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
-                recientes === key ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
-              }`}
+              type="button"
+              onClick={() => setVerTodos((v) => !v)}
+              className="flex items-center gap-2 rounded-lg px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
             >
-              {lbl}
+              <kbd className="rounded border border-border bg-muted/50 px-1.5 py-0.5 font-mono text-[10px] font-semibold">F3</kbd>
+              <span className="text-primary">{verTodos ? "cerrar lista" : "lista completa"}</span>
             </button>
-          ))}
-        </div>
+          }
+        />
+        {/* El criterio de ESTA sección: quién dejó de operar y quién entró hace poco. */}
+        <FiltrosPanel
+          label="Filtrar"
+          resumen={resumenFiltros}
+          activos={filtrosActivos}
+          onLimpiar={() => { setSoloInactivos(false); setRecientes(null); }}
+          align="right"
+          width={300}
+        >
+          <label className="flex flex-col gap-1">
+            <span className="text-[11px] font-medium text-muted-foreground">Actividad</span>
+            <div className="relative">
+              <select
+                value={soloInactivos ? "inactivos" : ""}
+                onChange={(e) => setSoloInactivos(e.target.value === "inactivos")}
+                className={SEL_FILTRO}
+              >
+                <option value="">Todos los clientes</option>
+                <option value="inactivos">
+                  Solo inactivos (más de {DIAS_INACTIVIDAD} días){inactivos.length > 0 ? ` · ${inactivos.length}` : ""}
+                </option>
+              </select>
+              <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            </div>
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-[11px] font-medium text-muted-foreground">Recién cargados</span>
+            <div className="relative">
+              <select
+                value={recientes ?? ""}
+                onChange={(e) => setRecientes((e.target.value || null) as typeof recientes)}
+                className={SEL_FILTRO}
+              >
+                <option value="">Cualquier fecha de alta</option>
+                <option value="hoy">Hoy</option>
+                <option value="mes">Este mes</option>
+                <option value="anio">Este año</option>
+              </select>
+              <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            </div>
+          </label>
+        </FiltrosPanel>
       </div>
 
       {/* Tabla de recién cargados (aparece/desaparece con fade; se oculta si hay búsqueda) */}
@@ -333,12 +372,24 @@ export function ClientesTable({ role }: { role?: Role } = {}) {
             transition={{ duration: 0.2, ease: "easeOut" }}
             className="space-y-3"
           >
-            <div className="flex items-center gap-2 border-b border-border pb-2">
-              <IconBadge emoji="busts-in-silhouette" accent="primary" />
-              <h2 className="text-sm font-semibold text-foreground">
-                Clientes cargados {recientes === "hoy" ? "hoy" : recientes === "mes" ? "este mes" : "este año"}
-              </h2>
-              <span className="text-xs text-muted-foreground/60">· {recientesClientes.length}</span>
+            {/* Encabezado con el conteo pegado al título, como en el resto del SaaS. */}
+            <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-border/60 pb-3">
+              <div className="flex items-center gap-2">
+                <History className="h-4 w-4 text-muted-foreground" />
+                <h2 className="text-sm font-semibold text-foreground">
+                  Clientes cargados {recientes === "hoy" ? "hoy" : recientes === "mes" ? "este mes" : "este año"}
+                </h2>
+                <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-bold tabular-nums text-muted-foreground">
+                  {recientesClientes.length}
+                </span>
+              </div>
+              <button
+                onClick={() => { setSoloInactivos(false); setRecientes(null); }}
+                title="Limpiar los filtros"
+                className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <X className="h-3 w-3" /> Limpiar filtros
+              </button>
             </div>
             {recientesClientes.length === 0 ? (
               <p className="rounded-xl border border-dashed border-border/60 p-8 text-center text-sm text-muted-foreground">

@@ -2,8 +2,9 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { mutate as globalMutate } from "swr";
-import { Plus, Pencil, Trash2, ImagePlus, Loader2, X, Link as LinkIcon, LayoutGrid, List, ArrowDownToLine, SlidersHorizontal, Image as ImageIcon, ChevronLeft, ChevronRight, Info, GripVertical, Star } from "lucide-react";
+import { Plus, Pencil, Trash2, ImagePlus, Loader2, X, Link as LinkIcon, LayoutGrid, List, ArrowDownToLine, SlidersHorizontal, Image as ImageIcon, ChevronLeft, ChevronRight, Info, GripVertical, Star, ChevronDown, History } from "lucide-react";
 import { BuscadorF3 } from "@/components/ui/BuscadorF3";
+import { FiltrosPanel } from "@/components/ui/FiltrosPanel";
 import { useProductos, useProducto, KEYS, type Producto, type MovimientoStock } from "@/lib/swr";
 import { parseMontoInput, formatFecha, formatFechaHora, formatCreditoNumero, teclaDelContenedor } from "@/lib/utils";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -18,6 +19,12 @@ import { ModalHeader, MoneyInput, FormActions, FieldLabel, SIN_CIERRE_ACCIDENTAL
 import { MAX_FOTOS_PRODUCTO } from "@/lib/productos";
 import { useConfirm } from "@/components/ui/confirm";
 import { useToast } from "@/components/ui/toast";
+
+/** Select del panel de filtros — el mismo de las demás secciones. */
+const SEL_FILTRO =
+  "h-10 rounded-lg border border-border bg-muted/40 pl-3 pr-8 text-sm text-foreground " +
+  "outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/20 " +
+  "appearance-none cursor-pointer [&>option]:bg-card [&>option]:text-foreground";
 
 function n0(x: number) {
   return new Intl.NumberFormat("es-AR", { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(x);
@@ -99,6 +106,22 @@ export function ProductosView() {
 
   const refrescar = () => { mutate(); globalMutate(KEYS.productos); };
 
+  /**
+   * El criterio de ESTA sección: categoría, si se muestran los dados de baja y si se recorta
+   * a lo que está por faltar. Es lo que dice el botón de filtro cuando hay algo puesto.
+   */
+  const etiquetasFiltro = [
+    catFiltro || null,
+    soloActivos ? "Solo activos" : null,
+    soloBajoStock ? "Bajo stock" : null,
+  ].filter((x): x is string => !!x);
+  const filtrosActivos = etiquetasFiltro.length;
+  const resumenFiltros =
+    filtrosActivos === 1 ? etiquetasFiltro[0] :
+    filtrosActivos > 1   ? `${filtrosActivos} filtros` : undefined;
+  const hayFiltros = !!(q || filtrosActivos > 0);
+  const limpiarTodo = () => { setQ(""); setCatFiltro(""); setSoloActivos(false); setSoloBajoStock(false); };
+
   const openNew = () => { setEditing(null); setFormOpen(true); };
   const openEdit = (p: Producto) => { setEditing(p); setFormOpen(true); };
 
@@ -131,32 +154,61 @@ export function ProductosView() {
         accent="primary"
       />
 
-      {/* Toolbar (la regla: el header solo lleva SystemControls; los CTA van acá) */}
-      <div className="flex flex-wrap items-start gap-2">
+      {/* Toolbar (la regla: el header solo lleva SystemControls; los CTA van acá).
+          Buscar y filtrar en un solo control, igual que en Créditos: la categoría y el
+          "solo activos" eran dos controles sueltos al lado del buscador. */}
+      <div className="flex flex-wrap items-center gap-3">
         <BuscadorF3
+          size="lg"
           value={q}
           onChange={setQ}
           placeholder="Buscar por nombre o SKU…"
-          onF3={() => setQ("")}
-          f3Hint="para limpiar el filtro y ver todos"
-          className="flex-1 min-w-[200px] sm:max-w-sm"
+          onF3={limpiarTodo}
+          className="w-full sm:w-[30rem]"
+          accionDerecha={
+            <FiltrosPanel
+              label="Filtrar"
+              resumen={resumenFiltros}
+              activos={filtrosActivos}
+              onLimpiar={() => { setCatFiltro(""); setSoloActivos(false); setSoloBajoStock(false); }}
+              align="right"
+            >
+              {/* El criterio de ESTA sección: categoría, si se muestran los dados de baja y si
+                  se recorta a lo que está por faltar. */}
+              <label className="flex flex-col gap-1">
+                <span className="text-[11px] font-medium text-muted-foreground">Categoría</span>
+                <div className="relative">
+                  <select value={catFiltro} onChange={(e) => setCatFiltro(e.target.value)} className={SEL_FILTRO}>
+                    <option value="">Todas las categorías</option>
+                    {categorias.map((c) => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                  <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                </div>
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className="text-[11px] font-medium text-muted-foreground">Estado</span>
+                <div className="relative">
+                  <select value={soloActivos ? "activos" : ""} onChange={(e) => setSoloActivos(e.target.value === "activos")} className={SEL_FILTRO}>
+                    <option value="">Activos y dados de baja</option>
+                    <option value="activos">Solo activos</option>
+                  </select>
+                  <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                </div>
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className="text-[11px] font-medium text-muted-foreground">Stock</span>
+                <div className="relative">
+                  <select value={soloBajoStock ? "bajo" : ""} onChange={(e) => setSoloBajoStock(e.target.value === "bajo")} className={SEL_FILTRO}>
+                    <option value="">Cualquier nivel de stock</option>
+                    <option value="bajo">Solo bajo o sin stock</option>
+                  </select>
+                  <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                </div>
+              </label>
+            </FiltrosPanel>
+          }
         />
-        {/* Filtros inline (son pocos y entran cómodos) + acciones, alineados a la derecha */}
         <div className="ml-auto flex flex-wrap items-center gap-2">
-          <select
-            value={catFiltro}
-            onChange={(e) => setCatFiltro(e.target.value)}
-            className="h-10 rounded-lg border border-border bg-card px-3 text-sm outline-none focus:border-primary"
-          >
-            <option value="">Todas las categorías</option>
-            {categorias.map((c) => <option key={c} value={c}>{c}</option>)}
-          </select>
-          <button
-            onClick={() => setSoloActivos((v) => !v)}
-            className={`h-10 rounded-lg border px-3 text-sm font-medium transition-colors ${soloActivos ? "border-primary/30 bg-primary/10 text-foreground" : "border-border text-muted-foreground hover:bg-muted/20"}`}
-          >
-            Solo activos
-          </button>
           {/* Toggle tarjetas / tabla */}
           <div className="flex h-10 items-center rounded-lg border border-border p-0.5">
             <button
@@ -174,11 +226,12 @@ export function ProductosView() {
               <List className="h-4 w-4" />
             </button>
           </div>
+          {/* `h-14` para quedar a la misma altura que el buscador con el que comparte renglón. */}
           <button
             onClick={openNew}
-            className="flex h-10 items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 whitespace-nowrap"
+            className="flex h-14 items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-primary px-6 text-base font-semibold text-primary-foreground transition-opacity hover:opacity-90"
           >
-            <Plus className="h-4 w-4" /> Nuevo producto
+            <Plus className="h-5 w-5" /> Nuevo producto
           </button>
         </div>
       </div>
@@ -209,10 +262,25 @@ export function ProductosView() {
             <EmptyState onNew={openNew} />
           ) : (
           <section className="space-y-3">
-            {/* Título de la lista: deja claro que esto es el stock/inventario */}
-            <div className="flex items-center gap-2 border-b border-border pb-2">
-              <Emoji name="package" className="h-4 w-4" />
-              <h2 className="text-sm font-semibold text-foreground">Stock de productos</h2>
+            {/* Título de la lista + el conteo pegado (deja claro que esto es el inventario). */}
+            <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-border/60 pb-3">
+              <div className="flex items-center gap-2">
+                <History className="h-4 w-4 text-muted-foreground" />
+                <h2 className="text-sm font-semibold text-foreground">Stock de productos</h2>
+                <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-bold tabular-nums text-muted-foreground">
+                  {hayFiltros ? `${filtrados.length} de ${productos.length}` : productos.length}
+                </span>
+              </div>
+              {hayFiltros && (
+                <button
+                  onClick={limpiarTodo}
+                  title="Limpiar la búsqueda y los filtros"
+                  className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  <X className="h-3 w-3" /> Limpiar filtros
+                  <kbd className="rounded border border-border bg-muted/50 px-1.5 py-0.5 font-mono text-[10px] font-semibold">F3</kbd>
+                </button>
+              )}
             </div>
 
             {filtrados.length === 0 ? (

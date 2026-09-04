@@ -4,7 +4,7 @@ import { useState, useMemo, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { useSWRConfig } from "swr";
-import { AlertCircle, Phone, Mail, Clock, Copy, CheckCheck, Search, DollarSign, ShieldAlert, MessageSquarePlus, CalendarClock, Megaphone, X, Users, TrendingUp, Sun, Handshake } from "lucide-react";
+import { AlertCircle, Phone, Mail, Clock, Copy, CheckCheck, Search, DollarSign, ShieldAlert, MessageSquarePlus, CalendarClock, Megaphone, X, Users, TrendingUp, Sun, Handshake, ChevronDown, History } from "lucide-react";
 import { WhatsAppIcon } from "@/components/ui/WhatsAppIcon";
 import { useCreditos, useAccionesCobranza, type Credito, type AccionCobranza, type AgendaItem, useTramosMora } from "@/lib/swr";
 import { type Role } from "@/lib/auth/roles";
@@ -23,6 +23,7 @@ import { StatusBadge } from "@/components/ui/StatusBadge";
 import { DataTable, type Column } from "@/components/ui/DataTable";
 import { Emoji } from "@/components/ui/Emoji";
 import { BuscadorF3 } from "@/components/ui/BuscadorF3";
+import { FiltrosPanel } from "@/components/ui/FiltrosPanel";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ModalHeader, MODAL_CONTENT_WIDE, SIN_CIERRE_ACCIDENTAL } from "@/components/ui/form-kit";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -52,6 +53,12 @@ function whatsappLink(c: Credito): string | null {
 }
 
 type Severidad = "critica" | "alta" | "todas";
+
+/** Select del panel de filtros — el mismo de las demás secciones. */
+const SEL_FILTRO =
+  "h-10 rounded-lg border border-border bg-muted/40 pl-3 pr-8 text-sm text-foreground " +
+  "outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/20 " +
+  "appearance-none cursor-pointer [&>option]:bg-card [&>option]:text-foreground";
 
 /**
  * 🔴 Tenía los cortes escritos a mano (30 y 15) — la cuarta copia, y la que se me pasó al
@@ -100,6 +107,17 @@ export function CobranzaTable({ role }: { role: Role }) {
    */
   const [filterMora, setFilter] = useState<Severidad>("todas");
   const [search, setSearch]     = useState("");
+  /**
+   * Los nombres de los tramos salen de la CONFIG del tenant, no escritos a mano: los cortes
+   * (15–30, +30) son parámetros de la financiera y estaban puestos a dedo en los botones, así
+   * que con otra configuración el rótulo mentía. Es lo que muestra el botón "Filtrar".
+   */
+  const SEVERIDAD_LABEL = {
+    alta: `Mora alta (${formatDias(tramos.media_hasta + 1)} a ${formatDias(tramos.alta_hasta)})`,
+    critica: `Mora crítica (más de ${formatDias(tramos.alta_hasta)})`,
+  } as const;
+  const resumenFiltros = filterMora === "todas" ? undefined : SEVERIDAD_LABEL[filterMora];
+  const limpiarTodo = () => { setSearch(""); setFilter("todas"); };
   const [copiedId, setCopied]   = useState<string | null>(null);
   const [gestion, setGestion]   = useState<CreditoCtx | null>(null);
   /** Crédito sobre el que se está armando un acuerdo de pago (null = cerrado). */
@@ -392,37 +410,45 @@ export function CobranzaTable({ role }: { role: Role }) {
         />
       </div>
 
-      {/* ── Filter Toolbar ── */}
-      <div className="flex flex-col sm:flex-row sm:items-start gap-3">
+      {/* ── Filter Toolbar: buscar, filtrar y la acción, en un renglón ── */}
+      <div className="flex flex-wrap items-center gap-3">
         <BuscadorF3
+          size="lg"
           value={search}
           onChange={setSearch}
           placeholder="Buscar por cliente…"
-          onF3={() => setSearch("")}
-          f3Hint="para limpiar el filtro y ver todos"
-          className="flex-1"
+          onF3={limpiarTodo}
+          className="w-full sm:w-[30rem]"
+          accionDerecha={
+            <FiltrosPanel
+              label="Filtrar"
+              resumen={resumenFiltros}
+              activos={filterMora === "todas" ? 0 : 1}
+              onLimpiar={() => setFilter("todas")}
+              align="right"
+              width={280}
+            >
+              {/*
+                El criterio de ESTA sección es la SEVERIDAD del atraso: es lo único sobre lo
+                que se decide a quién apretar primero. Los tres botones sueltos que estaban
+                al lado del buscador decían lo mismo ocupando todo el renglón, y los cortes
+                (15–30, +30) son parámetros del tenant, así que se leen de la config en vez
+                de estar escritos a mano.
+              */}
+              <label className="flex flex-col gap-1">
+                <span className="text-[11px] font-medium text-muted-foreground">Severidad de la mora</span>
+                <div className="relative">
+                  <select value={filterMora} onChange={(e) => setFilter(e.target.value as Severidad)} className={SEL_FILTRO}>
+                    <option value="todas">Toda la mora</option>
+                    <option value="alta">{SEVERIDAD_LABEL.alta}</option>
+                    <option value="critica">{SEVERIDAD_LABEL.critica}</option>
+                  </select>
+                  <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                </div>
+              </label>
+            </FiltrosPanel>
+          }
         />
-        <div className="flex gap-2">
-          {(["critica", "alta", "todas"] as Severidad[]).map(key => {
-            const active = filterMora === key;
-            const cfg = {
-              critica: { label: "Crítica (+30d)", activeClass: "bg-destructive text-destructive-foreground" },
-              alta:    { label: "Alta (15–30d)", activeClass: "bg-warning text-warning-foreground" },
-              todas:   { label: "Todas",         activeClass: "bg-primary text-primary-foreground" },
-            }[key];
-            return (
-              <button
-                key={key}
-                onClick={() => setFilter(key)}
-                className={`px-3.5 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
-                  active ? cfg.activeClass : "border border-border text-muted-foreground hover:bg-muted"
-                }`}
-              >
-                {cfg.label}
-              </button>
-            );
-          })}
-        </div>
 
         {/*
           🔴 La campaña existía pero no se veía.
@@ -448,9 +474,9 @@ export function CobranzaTable({ role }: { role: Role }) {
           <button
             onClick={() => irACampana(seleccionados.length === 0 ? visiblesIds : undefined)}
             disabled={seleccionados.length === 0 && visiblesIds.length === 0}
-            className="flex items-center justify-center gap-2 whitespace-nowrap rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-40"
+            className="ml-auto flex h-14 items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-primary px-6 text-base font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-40"
           >
-            <Megaphone className="h-4 w-4" />
+            <Megaphone className="h-5 w-5" />
             Nueva campaña
             <span className="rounded bg-primary-foreground/20 px-1.5 py-0.5 text-xs tabular-nums">
               {seleccionados.length || visiblesIds.length}
@@ -459,13 +485,30 @@ export function CobranzaTable({ role }: { role: Role }) {
         )}
       </div>
 
-      {/* Count */}
-      <p className="text-xs text-muted-foreground">
-        {sortedFiltered.length === creditos.length
-          ? `${creditos.length} crédito${creditos.length !== 1 ? "s" : ""} en mora`
-          : `${sortedFiltered.length} de ${creditos.length} en mora`}
-        {bloqueadosVisibles > 0 && ` · ${bloqueadosVisibles} sin contactar (fallecido)`}
-      </p>
+      {/* Encabezado de la lista: el conteo va pegado al título, no suelto arriba de la tabla. */}
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-border/60 pb-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <History className="h-4 w-4 text-muted-foreground" />
+          <h2 className="text-sm font-semibold text-foreground">Créditos en mora</h2>
+          <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-bold tabular-nums text-muted-foreground">
+            {sortedFiltered.length === creditos.length ? creditos.length : `${sortedFiltered.length} de ${creditos.length}`}
+          </span>
+          {/* A quién NO se le puede mandar nada, aunque esté en la lista. */}
+          {bloqueadosVisibles > 0 && (
+            <span className="text-[11px] text-muted-foreground/60">{bloqueadosVisibles} sin contactar (fallecido)</span>
+          )}
+        </div>
+        {(search || filterMora !== "todas") && (
+          <button
+            onClick={limpiarTodo}
+            title="Limpiar la búsqueda y los filtros"
+            className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <X className="h-3 w-3" /> Limpiar filtros
+            <kbd className="rounded border border-border bg-muted/50 px-1.5 py-0.5 font-mono text-[10px] font-semibold">F3</kbd>
+          </button>
+        )}
+      </div>
 
       {/* ── Content ── */}
       {creditos.length === 0 ? (
