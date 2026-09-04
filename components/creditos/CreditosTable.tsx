@@ -105,6 +105,8 @@ export function CreditosTable({ role }: { role: Role }) {
   const refiCount = useMemo(() => creditos.filter((c) => c.es_refinanciacion).length, [creditos]);
 
   const hasFilters = !!(search || estadoFilter !== "all" || tipoFilter !== "all" || moraFilter !== "all");
+  /** Cuántos filtros del panel están puestos (el texto de búsqueda no cuenta: tiene su propia X). */
+  const filtrosActivos = (estadoFilter !== "all" ? 1 : 0) + (tipoFilter !== "all" ? 1 : 0) + (moraFilter !== "all" ? 1 : 0);
   const clearFilters = () => { setSearch(""); setEstado("all"); setTipo("all"); setMora("all"); };
 
   /*
@@ -225,68 +227,87 @@ export function CreditosTable({ role }: { role: Role }) {
           />
         </div>
 
-        {/* ── Filter Toolbar ── */}
-        <div className="flex flex-col sm:flex-row sm:items-start gap-3">
+        {/* ── Filter Toolbar ──
+            🔴 El botón "Filtros" vive DENTRO de la caja de búsqueda, no al lado.
+            Buscar y filtrar son la misma acción —acotar la lista— y separados en dos
+            controles la barra quedaba partida en dos bloques que competían. Es el mismo
+            criterio del bloque de dinero del Home, donde el filtro va en el rincón de la
+            tarjeta a la que aplica. `accionDerecha` de BuscadorF3 existe para esto.
+
+            Los chips de lo que está filtrado bajan al renglón de abajo (adentro no
+            entrarían) y ocupan el lugar del viejo "Tip: presioná F3 …": el atajo sigue
+            andando, pero el renglón ahora dice QUÉ está filtrado en vez de explicar una
+            tecla. */}
+        <div className="space-y-2">
           <BuscadorF3
             value={search}
             onChange={setSearch}
             placeholder="Buscar por cliente o N° (CRD-…)…"
-            // F3 limpia la búsqueda Y los filtros: el hint promete "ver todos", y
-            // limpiar solo el texto no cumplía si lo puesto era un filtro de estado o
-            // mora (y con la búsqueda vacía parecía que la tecla no hacía nada).
+            // F3 limpia la búsqueda Y los filtros: limpiar solo el texto no alcanzaba si
+            // lo puesto era un filtro de estado o mora (y con la búsqueda vacía parecía
+            // que la tecla no hacía nada).
             onF3={() => { setSearch(""); setEstado("all"); setTipo("all"); setMora("all"); }}
-            f3Hint="para limpiar la búsqueda y los filtros"
-            className="w-full sm:max-w-sm"
+            // Más ancha que antes: ahora la caja carga también el botón de filtros, y con
+            // `max-w-sm` el placeholder quedaba cortado.
+            className="w-full sm:max-w-lg"
+            accionDerecha={
+              <FiltrosPanel
+                size="sm"
+                activos={filtrosActivos}
+                onLimpiar={() => { setEstado("all"); setTipo("all"); setMora("all"); }}
+                align="right"
+              >
+                <label className="flex flex-col gap-1">
+                  <span className="text-[11px] font-medium text-muted-foreground">Estado</span>
+                  <div className="relative">
+                    <select value={estadoFilter} onChange={e => setEstado(e.target.value)} className={SEL}>
+                      <option value="all">Todos los estados</option>
+                      <option value="activo">Activos</option>
+                      <option value="pagado">Pagados</option>
+                      <option value="refinanciado">Refinanciados</option>
+                      <option value="anulado">Anulados</option>
+                    </select>
+                    <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  </div>
+                </label>
+                <label className="flex flex-col gap-1">
+                  <span className="text-[11px] font-medium text-muted-foreground">Tipo</span>
+                  <div className="relative">
+                    <select value={tipoFilter} onChange={e => setTipo(e.target.value)} className={SEL}>
+                      <option value="all">Todos los tipos</option>
+                      <option value="personal">Personal</option>
+                      <option value="empresarial">Empresarial</option>
+                      <option value="productos">Producto</option>
+                      <option value="otro">Otro</option>
+                    </select>
+                    <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  </div>
+                </label>
+                <label className="flex flex-col gap-1">
+                  <span className="text-[11px] font-medium text-muted-foreground">Mora</span>
+                  <div className="relative">
+                    <select value={moraFilter} onChange={e => setMora(e.target.value)} className={SEL}>
+                      <option value="all">Cualquier estado de mora</option>
+                      <option value="al_dia">Al día</option>
+                      <option value="en_mora">En mora (1+ días)</option>
+                      <option value="critica">Mora crítica (+30 días)</option>
+                    </select>
+                    <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  </div>
+                </label>
+              </FiltrosPanel>
+            }
           />
-          <FiltrosPanel
-            activos={(estadoFilter !== "all" ? 1 : 0) + (tipoFilter !== "all" ? 1 : 0) + (moraFilter !== "all" ? 1 : 0)}
-            onLimpiar={() => { setEstado("all"); setTipo("all"); setMora("all"); }}
-            align="right"
-            chips={<>
+
+          {/* Qué está filtrado, debajo de la caja. Los chips son removibles uno por uno:
+              quitar "En mora" sin perder "Personal" es el gesto que se hace todo el tiempo. */}
+          {filtrosActivos > 0 && (
+            <div className="flex flex-wrap items-center gap-2">
               {estadoFilter !== "all" && <FiltroChip onClear={() => setEstado("all")}>{ESTADO_FILTRO_LABEL[estadoFilter] ?? estadoFilter}</FiltroChip>}
               {tipoFilter !== "all" && <FiltroChip onClear={() => setTipo("all")}>{TIPO_FILTRO_LABEL[tipoFilter] ?? tipoFilter}</FiltroChip>}
               {moraFilter !== "all" && <FiltroChip onClear={() => setMora("all")}>{MORA_FILTRO_LABEL[moraFilter] ?? moraFilter}</FiltroChip>}
-            </>}
-          >
-            <label className="flex flex-col gap-1">
-              <span className="text-[11px] font-medium text-muted-foreground">Estado</span>
-              <div className="relative">
-                <select value={estadoFilter} onChange={e => setEstado(e.target.value)} className={SEL}>
-                  <option value="all">Todos los estados</option>
-                  <option value="activo">Activos</option>
-                  <option value="pagado">Pagados</option>
-                  <option value="refinanciado">Refinanciados</option>
-                  <option value="anulado">Anulados</option>
-                </select>
-                <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              </div>
-            </label>
-            <label className="flex flex-col gap-1">
-              <span className="text-[11px] font-medium text-muted-foreground">Tipo</span>
-              <div className="relative">
-                <select value={tipoFilter} onChange={e => setTipo(e.target.value)} className={SEL}>
-                  <option value="all">Todos los tipos</option>
-                  <option value="personal">Personal</option>
-                  <option value="empresarial">Empresarial</option>
-                  <option value="productos">Producto</option>
-                  <option value="otro">Otro</option>
-                </select>
-                <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              </div>
-            </label>
-            <label className="flex flex-col gap-1">
-              <span className="text-[11px] font-medium text-muted-foreground">Mora</span>
-              <div className="relative">
-                <select value={moraFilter} onChange={e => setMora(e.target.value)} className={SEL}>
-                  <option value="all">Cualquier estado de mora</option>
-                  <option value="al_dia">Al día</option>
-                  <option value="en_mora">En mora (1+ días)</option>
-                  <option value="critica">Mora crítica (+30 días)</option>
-                </select>
-                <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              </div>
-            </label>
-          </FiltrosPanel>
+            </div>
+          )}
         </div>
 
         {/* Conteo + limpiar — solo cuando hay filtros (el total ya lo da el KPI). */}
