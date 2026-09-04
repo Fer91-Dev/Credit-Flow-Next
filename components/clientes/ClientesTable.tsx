@@ -13,6 +13,7 @@ import { BuscadorF3 } from "@/components/ui/BuscadorF3";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { ModalHeader } from "@/components/ui/form-kit";
 import { nombreCompleto, formatDias } from "@/lib/utils";
+import { useDebounce } from "@/lib/use-debounce";
 import type { Role } from "@/lib/auth/roles";
 import { useConfirm } from "@/components/ui/confirm";
 import { useToast } from "@/components/ui/toast";
@@ -25,32 +26,41 @@ type Sel = { id: string; nombre: string };
  * con editar/eliminar. El alta de clientes está siempre disponible.
  */
 export function ClientesTable({ role }: { role?: Role } = {}) {
-  const { clientes, isLoading, mutate } = useClientes({ scored: true });
+  /**
+   * 🔴 El término se DEBOUNCEA antes de viajar: cada tecla dispara una consulta al servidor y
+   * escribir un DNI son ocho. 250 ms alcanzan para que no salga una por dígito y no se sienta
+   * lento al tipear.
+   */
+  const [query, setQuery] = useState("");
+  const qServidor = useDebounce(query.trim(), 250);
+  /**
+   * La búsqueda corre en el SERVIDOR (`?q=`). Antes la lista llegaba entera y se filtraba en
+   * memoria: el filtro solo veía lo que hubiera entrado en la página, así que un cliente fuera
+   * de ella no aparecía y la pantalla decía "Sin coincidencias" como si no existiera.
+   * `total` es cuántos matchean de verdad, no cuántos entraron en la respuesta.
+   */
+  const { clientes, total, isLoading, mutate } = useClientes({ scored: true, q: qServidor, limit: 1000 });
   /** A cuántos días de atraso un crédito pasa a Legales (Configuración → Cobranza). */
   const diasLegales = useDiasLegales();
   const { mutate: globalMutate } = useSWRConfig();
   const confirm = useConfirm();
   const toast = useToast();
 
-  const [query, setQuery] = useState("");
   const [verTodos, setVerTodos] = useState(false); // F3 en el buscador: lista completa A→Z
   const [selected, setSelected] = useState<Sel | null>(null);
   const [dialogOpen, setDialog] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
 
-  // Búsqueda DNI-aware: nombre o documento (también en forma "solo dígitos").
-  const resultados = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return [];
-    const qDigits = q.replace(/\D/g, "");
-    return clientes.filter((c) => {
-      const nombre = nombreCompleto(c).toLowerCase();
-      const doc = (c.documento || "").toLowerCase();
-      const docDigits = doc.replace(/\D/g, "");
-      const match = nombre.includes(q) || doc.includes(q) || (qDigits.length > 0 && docDigits.includes(qDigits));
-      return match;
-    });
-  }, [clientes, query]);
+  /**
+   * Los resultados YA vienen filtrados por el servidor (nombre, apellido y documento, este
+   * último también en su forma "solo dígitos"). Acá no se vuelve a filtrar: hacerlo escondería
+   * matches que el servidor sí encontró.
+   *
+   * Mientras el debounce no alcanzó al input, `clientes` todavía trae lo del término anterior:
+   * se muestra vacío en vez de una lista que no corresponde a lo que se está viendo escrito.
+   */
+  const enSincro = query.trim() === qServidor;
+  const resultados = qServidor && enSincro ? clientes : [];
 
   // Todos los clientes ordenados alfabéticamente (para la vista "ver todos" con F3).
   const todosOrdenados = useMemo(
@@ -107,9 +117,12 @@ export function ClientesTable({ role }: { role?: Role } = {}) {
           motivo = (await res.json().catch(() => null))?.error ?? null;
           throw new Error("delete failed");
         }
-        return { clientes: (current?.clientes ?? []).filter((c) => c.id !== id) };
+        // Se descuenta también del total: si no, el conteo sigue diciendo el número viejo
+        // hasta que revalide, y el operador ve una lista con uno menos y un total que no cambió.
+        const restantes = (current?.clientes ?? []).filter((c) => c.id !== id);
+        return { clientes: restantes, total: Math.max(0, (current?.total ?? 0) - 1) };
       },
-      { optimisticData: { clientes: clientes.filter((c) => c.id !== id) }, rollbackOnError: true },
+      { optimisticData: { clientes: clientes.filter((c) => c.id !== id), total: Math.max(0, total - 1) }, rollbackOnError: true },
     ).catch(() => {});
     if (fallo) { toast.error(motivo ?? "No se pudo eliminar el cliente"); return; }
     globalMutate(KEYS.dashboard);
@@ -239,7 +252,7 @@ export function ClientesTable({ role }: { role?: Role } = {}) {
         verTodos ? (
           <div ref={listaRef} className="space-y-2 max-w-[22rem]">
             <p className="text-xs text-muted-foreground">
-              {todosOrdenados.length} cliente{todosOrdenados.length !== 1 ? "s" : ""} · orden alfabético
+              {total} cliente{total !== 1 ? "s" : ""} · orden alfabético
             </p>
             {isLoading ? (
               <p className="text-sm text-muted-foreground">Cargando…</p>
@@ -256,9 +269,9 @@ export function ClientesTable({ role }: { role?: Role } = {}) {
                 {todosOrdenados.slice(0, 100).map((c) => (
                   <ClienteRow key={c.id} cliente={c} onClick={() => elegir(c)} mostrarInactividad={false} />
                 ))}
-                {todosOrdenados.length > 100 && (
+                {total > 100 && (
                   <p className="pt-1 text-center text-xs text-muted-foreground/60">
-                    Mostrando 100 de {todosOrdenados.length}. Escribí en el buscador para filtrar.
+                    Mostrando 100 de {total}. Escribí en el buscador para encontrar a alguien puntual.
                   </p>
                 )}
               </>
@@ -285,7 +298,10 @@ export function ClientesTable({ role }: { role?: Role } = {}) {
       ) : (
         <div className="space-y-2 max-w-[22rem]">
           <p className="text-xs text-muted-foreground">
-            {resultados.length} resultado{resultados.length !== 1 ? "s" : ""}
+            {/* El total lo cuenta el SERVIDOR sobre toda la tabla; abajo se muestran los
+                primeros 20. Decir "20 resultados" cuando hay 340 sería mentir por recorte. */}
+            {total} resultado{total !== 1 ? "s" : ""}
+            {total > 20 && <span className="text-muted-foreground/60"> · se muestran los primeros 20</span>}
           </p>
           {resultados.slice(0, 20).map((c) => (
             <ClienteRow key={c.id} cliente={c} onClick={() => elegir(c)} mostrarInactividad={false} />

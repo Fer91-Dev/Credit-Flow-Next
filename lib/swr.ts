@@ -1226,10 +1226,27 @@ export interface Financiera {
  * Lista de clientes. Por defecto liviana (sin scoring). Pasar `{ scored: true }`
  * para incluir el score derivado y `ultimo_movimiento` (3 queries extra en el server).
  */
-export function useClientes(opts?: { scored?: boolean }) {
-  const key = opts?.scored ? `${KEYS.clientes}&scored=true` : KEYS.clientes;
-  const { data, error, isLoading, mutate } = useSWR<{ clientes: Cliente[] }>(key);
-  return { clientes: data?.clientes ?? [], error, isLoading, mutate };
+/**
+ * Lista de clientes.
+ *
+ * 🔴 `q` BUSCA EN EL SERVIDOR. Antes la pantalla recibía la lista y filtraba en memoria, pero
+ * lo que recibe son los 100 más nuevos: pasado ese número, buscar a un cliente viejo devolvía
+ * "Sin coincidencias" como si no existiera. Ahora el término viaja en la query y la búsqueda
+ * corre contra TODA la tabla.
+ *
+ * `limit` sirve para la "lista completa" (F3), que necesita más que la página por defecto.
+ * `total` es el conteo real de lo que matchea, no el de la página: es lo que permite decir
+ * "20 de 340" sin mentir.
+ */
+export function useClientes(opts?: { scored?: boolean; q?: string; limit?: number }) {
+  const params = new URLSearchParams();
+  if (opts?.scored) params.set("scored", "true");
+  if (opts?.q) params.set("q", opts.q);
+  if (opts?.limit) params.set("limit", String(opts.limit));
+  const qs = params.toString();
+  const key = qs ? `${KEYS.clientes}&${qs}` : KEYS.clientes;
+  const { data, error, isLoading, mutate } = useSWR<{ clientes: Cliente[]; total: number }>(key);
+  return { clientes: data?.clientes ?? [], total: data?.total ?? 0, error, isLoading, mutate };
 }
 
 /** Zonas distintas cargadas en los clientes (para filtros). Query liviano. */

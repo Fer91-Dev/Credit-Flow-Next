@@ -12,6 +12,7 @@ import type { NextRequest } from "next/server";
  * GET /api/clientes
  * Retorna lista de clientes del usuario autenticado.
  * Query params opcionales:
+ * - ?q=perez — BUSCA por nombre, apellido o documento (ver abajo)
  * - ?estado=activo — filtrar por estado
  * - ?limit=10 — paginación (defecto 100)
  * - ?offset=0 — paginación
@@ -26,10 +27,34 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   // El scoring derivado (3 queries extra) solo se calcula si se pide explícitamente.
   // Así los pickers de cliente (créditos, pagos) y el resto traen la lista liviana.
   const scored = url.searchParams.get("scored") === "true";
+  const q = (url.searchParams.get("q") ?? "").trim();
 
   const where: Record<string, any> = { ...withTenant(tenantId) };
   if (estado) {
     where.estado = estado;
+  }
+
+  /**
+   * 🔴 LA BÚSQUEDA SE HACE ACÁ, NO EN EL NAVEGADOR.
+   *
+   * La pantalla de Clientes filtraba en memoria la lista que recibía — y esa lista son los
+   * **100 más nuevos** (el `limit` por defecto, ordenado por `created_at desc`). O sea que
+   * buscar por DNI recorría solo a los últimos 100 cargados: pasado ese número, un cliente
+   * viejo dejaba de aparecer y la pantalla decía "Sin coincidencias", exactamente igual que
+   * si no existiera. Con 86 clientes en producción faltaban 14 altas para que empezara a
+   * pasar, en silencio y sin ningún error.
+   *
+   * El documento se compara también en su forma "solo dígitos": el operador tipea 20123456
+   * y en la base puede estar "20.123.456".
+   */
+  if (q) {
+    const digitos = q.replace(/\D/g, "");
+    where.OR = [
+      { nombre:    { contains: q, mode: "insensitive" } },
+      { apellido:  { contains: q, mode: "insensitive" } },
+      { documento: { contains: q, mode: "insensitive" } },
+      ...(digitos.length >= 2 ? [{ documento: { contains: digitos } }] : []),
+    ];
   }
 
   const [clientesRows, total] = await Promise.all([
