@@ -33,7 +33,7 @@ const SEL =
 
 // Nombre visible de cada filtro. Es lo que muestra el propio botón "Filtrar" cuando hay uno puesto.
 const ESTADO_FILTRO_LABEL: Record<string, string> = { activo: "Activos", pagado: "Pagados", refinanciado: "Refinanciados", anulado: "Anulados" };
-const TIPO_FILTRO_LABEL: Record<string, string> = { personal: "Personal", empresarial: "Empresarial", productos: "Producto", otro: "Otro" };
+const TIPO_FILTRO_LABEL: Record<string, string> = { personal: "Personal", productos: "Producto" };
 const MORA_FILTRO_LABEL: Record<string, string> = { al_dia: "Al día", en_mora: "En mora", critica: "Mora crítica" };
 
 /**
@@ -236,9 +236,7 @@ export function CreditosTable({ role }: { role: Role }) {
                           <select value={tipoFilter} onChange={e => setTipo(e.target.value)} className={SEL}>
                             <option value="all">Todos los tipos</option>
                             <option value="personal">Personal</option>
-                            <option value="empresarial">Empresarial</option>
                             <option value="productos">Producto</option>
-                            <option value="otro">Otro</option>
                           </select>
                           <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                         </div>

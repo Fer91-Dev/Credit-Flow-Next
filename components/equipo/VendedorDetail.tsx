@@ -9,7 +9,7 @@ import {
   MapPin, Layers, Plus, X, Award, Wallet, Send, ArrowDownToLine, CalendarRange,
 } from "lucide-react";
 import { refrescarNotificaciones, useVendedorDetalle, useMetasVendedor, useLogrosVendedor, useConfiguracion, useVendedorCaja, useLiquidacionesDe, KEYS, type VendedorDetalle, type ComisionConfig, type MetaVendedor, type PeriodoGamificacion, type CuentaCaja, type MovimientoCaja } from "@/lib/swr";
-import { calcularComisionTotal, comisionDeVenta, rangoDePeriodo, periodoActual, PERIODOS_META, PERIODO_LABEL, type TipoPeriodo } from "@/lib/domain";
+import { calcularComisionTotal, comisionDeVenta, rangoDePeriodo, periodoActual, PERIODOS_META, PERIODO_LABEL, TIPOS_CREDITO_COMISION, type TipoPeriodo } from "@/lib/domain";
 import { MedallaBadge, RangoBadge, InsigniaChip } from "@/components/ui/Medalla";
 import { LiquidacionesLista } from "@/components/comisiones/LiquidacionesLista";
 import { MovimientoDetail } from "@/components/caja/MovimientoDetail";
@@ -342,8 +342,7 @@ function ComisionesTab({ vendedor, guardar }: { vendedor: VendedorDetalle; guard
   const [porTipoOn, setPorTipoOn] = useState(!!cfg?.por_tipo);
   const [porTipo, setPorTipo] = useState({
     personal: cfg?.por_tipo?.personal != null ? String(cfg.por_tipo.personal) : "",
-    empresarial: cfg?.por_tipo?.empresarial != null ? String(cfg.por_tipo.empresarial) : "",
-    otro: cfg?.por_tipo?.otro != null ? String(cfg.por_tipo.otro) : "",
+    productos: cfg?.por_tipo?.productos != null ? String(cfg.por_tipo.productos) : "",
   });
   const [tramosOn, setTramosOn] = useState(!!cfg?.tramos?.length);
   const [tramos, setTramos] = useState<{ desde: string; pct: string }[]>(
@@ -362,8 +361,8 @@ function ComisionesTab({ vendedor, guardar }: { vendedor: VendedorDetalle; guard
   const buildConfig = (): ComisionConfig | null => {
     const por_tipo = porTipoOn
       ? (() => {
-          const out: { personal?: number; empresarial?: number; otro?: number } = {};
-          (["personal", "empresarial", "otro"] as const).forEach((k) => { if (porTipo[k] !== "") out[k] = parseFloat(porTipo[k]) || 0; });
+          const out: { personal?: number; productos?: number } = {};
+          TIPOS_CREDITO_COMISION.forEach((k) => { if (porTipo[k] !== "") out[k] = parseFloat(porTipo[k]) || 0; });
           return Object.keys(out).length ? out : undefined;
         })()
       : undefined;
@@ -417,8 +416,8 @@ function ComisionesTab({ vendedor, guardar }: { vendedor: VendedorDetalle; guard
 
       {/* Por tipo de crédito */}
       <BloqueToggle titulo="% por tipo de crédito" hint="Tiene prioridad sobre la base y los tramos" on={porTipoOn} onToggle={setPorTipoOn} icon="credit-card">
-        <div className="grid grid-cols-3 gap-3">
-          {(["personal", "empresarial", "otro"] as const).map((k) => (
+        <div className="grid grid-cols-2 gap-3">
+          {TIPOS_CREDITO_COMISION.map((k) => (
             <Field key={k} label={k.charAt(0).toUpperCase() + k.slice(1) + " (%)"}>
               <Input type="number" min="0" max="100" step="any" placeholder="—" value={porTipo[k]}
                 onChange={(e) => setPorTipo((p) => ({ ...p, [k]: e.target.value }))} className="font-mono tabular-nums text-center" />

@@ -877,9 +877,7 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
             <Field label="Tipo de crédito" required>
               <Select name="tipo_credito" value={formData.tipo_credito} onChange={set("tipo_credito")} required>
                 <option value="personal">Personal</option>
-                <option value="empresarial">Empresarial</option>
                 <option value="productos">Productos</option>
-                <option value="otro">Otro</option>
               </Select>
             </Field>
             {/*

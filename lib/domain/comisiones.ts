@@ -58,7 +58,25 @@ export function comisionDeVenta(montoOtorgado: number, comisionPct: number): num
  * Todo es informativo: no mueve caja ni toca el motor financiero.
  * ──────────────────────────────────────────────────────────────────────── */
 
-export type TipoCreditoComision = "personal" | "empresarial" | "otro";
+/**
+ * Tipos de crédito que admiten un % de comisión propio.
+ *
+ * 🔴 SON LOS MISMOS DOS QUE OFRECE EL SIMULADOR (decisión de Fernando, 2026-09-04): la
+ * financiera presta DINERO o financia un PRODUCTO, y no hay un tercer caso. Antes eran
+ * "personal | empresarial | otro" — y `productos` ni figuraba, así que un crédito de
+ * producto no podía tener su propia comisión y caía siempre en el % base, justo el caso
+ * donde una tasa distinta tiene más sentido (el margen de la venta no es el del préstamo).
+ */
+import { TIPOS_CREDITO, type TipoCredito } from "./credito-estado";
+
+export type TipoCreditoComision = TipoCredito;
+
+/**
+ * Los MISMOS tipos que ofrece el simulador, no una copia. Antes eran dos listas escritas a
+ * mano y ya habían divergido: acá faltaba `productos`, así que un crédito de producto nunca
+ * podía tener su propio %. Derivándola, agregar o sacar un tipo alcanza uno solo.
+ */
+export const TIPOS_CREDITO_COMISION = TIPOS_CREDITO;
 
 export interface ComisionTramo { desde: number; pct: number }
 export interface ComisionBonus { tipo: "monto" | "porcentaje"; valor: number }
@@ -122,7 +140,7 @@ export function normalizarComisionConfig(raw: unknown, basePctFallback = 0): Com
   if (r.por_tipo && typeof r.por_tipo === "object") {
     const src = r.por_tipo as Record<string, unknown>;
     const out: Partial<Record<TipoCreditoComision, number>> = {};
-    for (const k of ["personal", "empresarial", "otro"] as const) {
+    for (const k of TIPOS_CREDITO_COMISION) {
       if (src[k] != null && src[k] !== "") out[k] = normalizarComisionPct(src[k]);
     }
     if (Object.keys(out).length > 0) por_tipo = out;

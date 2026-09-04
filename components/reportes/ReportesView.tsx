@@ -32,8 +32,10 @@ const estadoLabel: Record<string, string> = {
 const metodoLabel: Record<string, string> = {
   efectivo: "Efectivo", transferencia: "Transferencia", cheque: "Cheque", otro: "Otro",
 };
+/* Solo los dos tipos vigentes. Se lee con `?? t.tipo`, así que un tipo desconocido -de datos
+   viejos o de otra financiera- se muestra crudo en vez de quedar en blanco. */
 const tipoLabel: Record<string, string> = {
-  personal: "Personal", empresarial: "Empresarial", productos: "Productos", otro: "Otro",
+  personal: "Personal", productos: "Productos",
 };
 const canalLabel: Record<string, string> = {
   llamada: "Llamada", whatsapp: "WhatsApp", email: "Email", visita: "Visita", otro: "Otro",

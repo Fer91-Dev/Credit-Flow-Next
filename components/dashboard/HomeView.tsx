@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { Role } from "@prisma/client";
 import { CalendarDays, MapPin, UserCog, Target, Trophy, Users2, AlertTriangle, Percent, ShieldCheck, Sparkles, PhoneCall } from "lucide-react";
 import { useZonas, useVendedores, useDashboard, useMiPerfilVendedor, useMisLogros, useReporteCobranza, useMisLiquidaciones, type DashboardFiltros, type VendedorRendimiento, type MiPerfilVendedor } from "@/lib/swr";
+import { TIPOS_CREDITO_COMISION } from "@/lib/domain";
 import { LiquidacionesLista } from "@/components/comisiones/LiquidacionesLista";
 import { FiltrosPanel } from "@/components/ui/FiltrosPanel";
 import { IconBadge } from "@/components/ui/IconBadge";
@@ -395,7 +396,7 @@ function MiConfiguracionVendedor({ perfil }: { perfil: MiPerfilVendedor }) {
   const reglas: { label: string; valor: string }[] = [];
   reglas.push({ label: "Comisión base", valor: `${perfil.comision_pct}%` });
   if (cfg?.por_tipo) {
-    const partes = (["personal", "empresarial", "otro"] as const)
+    const partes = [...TIPOS_CREDITO_COMISION]
       .filter((k) => cfg.por_tipo?.[k] != null)
       .map((k) => `${k.charAt(0).toUpperCase() + k.slice(1)} ${cfg.por_tipo![k]}%`);
     if (partes.length) reglas.push({ label: "Por tipo de crédito", valor: partes.join(" · ") });

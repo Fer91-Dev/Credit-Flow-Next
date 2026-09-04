@@ -196,3 +196,26 @@ export function estadoOperativo(
   if (diasMora <= 0) return "activo";
   return diasLegales > 0 && diasMora >= diasLegales ? "legales" : "atrasado";
 }
+
+/**
+ * ── TIPOS DE CRÉDITO ─────────────────────────────────────────────────────────
+ *
+ * Qué se financia: DINERO (personal) o un PRODUCTO del catálogo. No hay un tercer caso.
+ *
+ * 🔴 Eran cuatro — se sacaron "empresarial" y "otro" (decisión de Fernando, 2026-09-04).
+ * Ninguno de los dos tenía un solo crédito en dev ni en producción: eran opciones muertas
+ * que igual aparecían en el simulador, en el filtro de la lista y en los reportes.
+ *
+ * Esta lista es la ÚNICA: de acá salen también los tipos que admiten comisión propia
+ * (`TIPOS_CREDITO_COMISION` en `comisiones.ts`). Antes eran dos listas escritas a mano y
+ * habían divergido: la de comisiones decía "personal | empresarial | otro" y **no incluía
+ * `productos`**, así que un crédito de producto no podía tener su propio %, justo el caso
+ * donde una tasa distinta tiene más sentido (el margen de una venta no es el de un préstamo).
+ */
+export const TIPOS_CREDITO = ["personal", "productos"] as const;
+export type TipoCredito = (typeof TIPOS_CREDITO)[number];
+
+/** ¿El string es un tipo de crédito que el sistema admite? Barrera del POST de créditos. */
+export function esTipoCreditoValido(v: unknown): v is TipoCredito {
+  return typeof v === "string" && (TIPOS_CREDITO as readonly string[]).includes(v);
+}

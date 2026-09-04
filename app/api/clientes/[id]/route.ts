@@ -330,7 +330,7 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
  *   "telefono": "string",
  *   "direccion": "string",
  *   "estado": "activo|inactivo",
- *   "tipo_credito": "personal|empresarial|otro"
+ *   "tipo_credito": "personal|productos"
  * }
  */
 export const PATCH = withErrorHandler(async (req: NextRequest, { params }: RouteParams) => {

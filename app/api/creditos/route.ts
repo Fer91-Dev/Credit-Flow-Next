@@ -2,7 +2,7 @@ import { requireAuth, requireRole, scopeCreditosVendedor, ApiError } from "@/lib
 import { successResponse, errorResponse, withErrorHandler, assertSameOrigin } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
-import { round2, normalizarFrecuencia, resolverFrecuencia, sumarPeriodos, construirPlanAmortizacion, planACuotas, estadoCoherente, etiquetaCaja, esCuentaValida, validarParametrosOtorgamiento, diasMoraActual, buscarPlan, nombrePlan, tasaDesdeCoeficiente, cargosConPlan, CUENTA_LABEL, type Cuenta, ESTADOS_VIVOS, esCreditoVivo, moraDelCredito, moraDesdeCronograma, moraPendienteTotal, calcularDeudaVencida, deudaEnRevision } from "@/lib/domain";
+import { round2, normalizarFrecuencia, resolverFrecuencia, sumarPeriodos, construirPlanAmortizacion, planACuotas, estadoCoherente, etiquetaCaja, esCuentaValida, validarParametrosOtorgamiento, diasMoraActual, buscarPlan, nombrePlan, tasaDesdeCoeficiente, cargosConPlan, CUENTA_LABEL, type Cuenta, ESTADOS_VIVOS, esCreditoVivo, moraDelCredito, moraDesdeCronograma, moraPendienteTotal, calcularDeudaVencida, deudaEnRevision, esTipoCreditoValido, TIPOS_CREDITO } from "@/lib/domain";
 import { siguienteNumeroComprobante } from "@/lib/comprobantes";
 import { assertFondosSuficientesTx } from "@/lib/caja-fondos";
 import { lockNumeroCreditoTx, TX_PLATA } from "@/lib/locks";
@@ -194,7 +194,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
  * Body requerido:
  * {
  *   "cliente_id": "uuid",
- *   "tipo_credito": "personal|empresarial|otro",
+ *   "tipo_credito": "personal|productos",
  *   "monto_original": 1000000,
  *   "tasa": 2.5,
  *   "plazo_meses": 12,
@@ -253,6 +253,20 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     if (!(field in body)) {
       return errorResponse(`Campo '${field}' requerido`, "INVALID_INPUT", 400);
     }
+  }
+
+  /**
+   * 🔴 El tipo se valida contra la lista del dominio. Antes se guardaba lo que viniera en el
+   * body: la pantalla ofrecía cuatro opciones y el server aceptaba cualquier string, así que
+   * un tipo desconocido entraba igual y después la lista no sabía cómo rotularlo ni filtrarlo.
+   * Ahora que son dos, la barrera está donde tiene que estar.
+   */
+  if (!esTipoCreditoValido(body.tipo_credito)) {
+    return errorResponse(
+      `Tipo de crédito inválido. Los admitidos son: ${TIPOS_CREDITO.join(", ")}.`,
+      "INVALID_INPUT",
+      400,
+    );
   }
 
   // Validar que el cliente existe y pertenece al usuario

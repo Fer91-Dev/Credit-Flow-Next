@@ -342,7 +342,7 @@ export interface ResumenVendedor {
 /** Comisión avanzada por vendedor (Fase 2). null = % plano (comision_pct). */
 export interface ComisionConfig {
   base_pct: number;
-  por_tipo?: { personal?: number; empresarial?: number; otro?: number };
+  por_tipo?: { personal?: number; productos?: number };
   tramos?: { desde: number; pct: number }[];
   bonus_meta?: { tipo: "monto" | "porcentaje"; valor: number } | null;
 }
