@@ -58,6 +58,12 @@ export function CreditosTable({ role }: { role: Role }) {
   const [tipoFilter, setTipo]     = useState("all");
   const [moraFilter, setMora]     = useState("all");
   const [tab, setTab]             = useState<"creditos" | "refinanciados">("creditos");
+  /**
+   * Buscador de la pestaña Refinanciados. El estado vive ACÁ, en el padre, porque la caja se
+   * dibuja en el renglón de arriba —el que comparten las dos pestañas— y la lista que filtra
+   * está adentro de `RefinanciadosView`.
+   */
+  const [busqRefi, setBusqRefi]   = useState("");
 
   /**
    * Acá solo se DA DE ALTA. Anular y eliminar se disparan desde el detalle, que es donde se
@@ -189,6 +195,24 @@ export function CreditosTable({ role }: { role: Role }) {
             lado al otro de la pantalla. El hueco las deja quietas.
           */}
           <div className="flex flex-1 flex-wrap items-center gap-3 sm:flex-none">
+            {tab === "refinanciados" && (
+              /*
+                🔴 EL PLACEHDER DICE QUÉ FILTRA, Y NO ES UN DETALLE.
+
+                Acá arriba la caja está en el mismo lugar que la de Créditos, que recorta la
+                tabla de abajo. Pero esta NO: filtra los candidatos a refinanciar del panel, y
+                el historial queda intacto. Sin decirlo en el placeholder, la posición promete
+                una cosa y el control hace otra.
+              */
+              <BuscadorF3
+                size="lg"
+                value={busqRefi}
+                onChange={setBusqRefi}
+                placeholder="Buscar un crédito en mora para refinanciar…"
+                onF3={() => setBusqRefi("")}
+                className="w-full sm:w-[34rem]"
+              />
+            )}
             {tab === "creditos" && (
               <>
                 <BuscadorF3
@@ -304,7 +328,7 @@ export function CreditosTable({ role }: { role: Role }) {
             Error al cargar créditos: {error.message}
           </div>
         ) : tab === "refinanciados" ? (
-          <RefinanciadosView creditos={creditos} onOpen={setDetail} onRefinanciar={setRefinanciar} />
+          <RefinanciadosView creditos={creditos} busq={busqRefi} setBusq={setBusqRefi} onOpen={setDetail} onRefinanciar={setRefinanciar} />
         ) : (
         <div className="space-y-5">
 
@@ -561,7 +585,7 @@ export function CreditosTable({ role }: { role: Role }) {
  * Cada fila es una refinanciación: el crédito nuevo (es_refinanciacion) y su crédito
  * origen resuelto desde la misma lista. Click → abre el detalle del crédito nuevo.
  */
-function RefinanciadosView({ creditos, onOpen, onRefinanciar }: { creditos: Credito[]; onOpen: (c: Credito) => void; onRefinanciar: (c: Credito) => void }) {
+function RefinanciadosView({ creditos, busq, setBusq, onOpen, onRefinanciar }: { creditos: Credito[]; busq: string; setBusq: (v: string) => void; onOpen: (c: Credito) => void; onRefinanciar: (c: Credito) => void }) {
   /** Los cortes media/alta/crítica que definió la financiera (Configuración → Cobranza). */
   const tramos = useTramosMora();
   const porId = useMemo(() => new Map(creditos.map((c) => [c.id, c])), [creditos]);
@@ -579,7 +603,6 @@ function RefinanciadosView({ creditos, onOpen, onRefinanciar }: { creditos: Cred
     () => creditos.filter((c) => esCreditoVivo(c.estado) && c.dias_mora > 0).sort((a, b) => b.dias_mora - a.dias_mora),
     [creditos],
   );
-  const [busq, setBusq] = useState("");
   /**
    * Recorte del historial: todas / las que se están pagando / las que volvieron a mora.
    *
@@ -674,15 +697,15 @@ function RefinanciadosView({ creditos, onOpen, onRefinanciar }: { creditos: Cred
           </p>
         ) : (
           <>
-            {/* El mismo campo grande de la pestaña Créditos y de la terminal de Pagos. Sin el
-                renglón "Tip: presioná F3 …": el atajo se anuncia sobre el botón que limpia. */}
-            <BuscadorF3
-              size="lg"
-              value={busq}
-              onChange={setBusq}
-              placeholder="Buscar por N° (CRD-…), DNI o nombre…"
-              onF3={limpiarRecupero}
-            />
+            {/* La caja de búsqueda vive ARRIBA, en el renglón que comparten las dos pestañas
+                (mismo lugar que en Créditos). Acá queda el conteo de lo que dejó a la vista:
+                con la caja lejos de la lista, sin este renglón no se entendería por qué de
+                golpe hay tres candidatos en vez de veinte. */}
+            <p className="text-xs text-muted-foreground">
+              {busq.trim()
+                ? <>{candFiltrados.length} de {candidatos.length} en mora · filtrado por “{busq.trim()}”</>
+                : <>{candidatos.length} crédito{candidatos.length === 1 ? "" : "s"} en mora</>}
+            </p>
             {candFiltrados.length === 0 ? (
               <p className="px-1 py-4 text-center text-xs text-muted-foreground/60">Sin resultados para “{busq}”.</p>
             ) : (
@@ -762,13 +785,14 @@ function RefinanciadosView({ creditos, onOpen, onRefinanciar }: { creditos: Cred
                 </label>
               </FiltrosPanel>
               {(recupero !== "todas" || busq) && (
+                /* Sin el atajo escrito: acá F3 limpia SOLO la búsqueda (es lo que hace la
+                   caja de arriba), no el filtro de recupero. Anunciarlo prometería de más. */
                 <button
                   onClick={limpiarRecupero}
                   title="Limpiar la búsqueda y el filtro"
                   className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
                 >
                   <X className="h-3 w-3" /> Limpiar filtros
-                  <kbd className="rounded border border-border bg-muted/50 px-1.5 py-0.5 font-mono text-[10px] font-semibold">F3</kbd>
                 </button>
               )}
             </div>
