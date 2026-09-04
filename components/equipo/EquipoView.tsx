@@ -1,14 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ShieldOff, ShieldCheck, ArrowLeft, Pencil, KeyRound, UserX, UserCheck, Plus, LayoutGrid, List, Trash2 } from "lucide-react";
+import { ShieldOff, ShieldCheck, ArrowLeft, Pencil, KeyRound, UserX, UserCheck, Plus, LayoutGrid, List, Trash2, X, History } from "lucide-react";
 import { useEquipo, useUsuarios, useVendedores, type MiembroEquipo, type Usuario, type Vendedor } from "@/lib/swr";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { KpiCard } from "@/components/ui/KpiCard";
 import { DataTable, type Column } from "@/components/ui/DataTable";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { BuscadorF3 } from "@/components/ui/BuscadorF3";
-import { FiltrosPanel, FiltroChip } from "@/components/ui/FiltrosPanel";
+import { FiltrosPanel } from "@/components/ui/FiltrosPanel";
 import { Field, Select } from "@/components/ui/field";
 import { Avatar } from "@/components/ui/Avatar";
 import { MetaBar } from "@/components/ui/MetaBar";
@@ -216,7 +216,19 @@ export function EquipoView() {
     comision: equipo.reduce((s, m) => s + (m.resumen?.comision_total ?? 0), 0),
   }), [equipo]);
 
-  const filtrosActivos = (rol ? 1 : 0) + (tipo ? 1 : 0) + (recientes ? 1 : 0);
+  /**
+   * El criterio de ESTA sección: ROL de acceso, TIPO de integrante (con ficha / solo cuenta /
+   * sin cuenta) y fecha de ALTA. Es lo que dice el botón de filtro cuando hay algo puesto.
+   */
+  const etiquetasFiltro = [
+    rol ? ROLE_LABEL[rol as keyof typeof ROLE_LABEL] : null,
+    tipo ? (tipo === "agente" ? "Con ficha" : tipo === "solo_cuenta" ? "Sin ficha" : "Sin cuenta") : null,
+    recientes ? `Alta: ${RECIENTE_LABEL[recientes]}` : null,
+  ].filter((x): x is string => !!x);
+  const filtrosActivos = etiquetasFiltro.length;
+  const resumenFiltros =
+    filtrosActivos === 1 ? etiquetasFiltro[0] :
+    filtrosActivos > 1   ? `${filtrosActivos} filtros` : undefined;
   const limpiarTodo = () => { setSearch(""); setRol(""); setTipo(""); setRecientes(""); };
 
   /**
@@ -465,9 +477,57 @@ export function EquipoView() {
         />
       </div>
 
-      {/* Toolbar propia: el CTA nunca va dentro del PageHeader (regla del proyecto). */}
-      <div className="flex items-center justify-end gap-2">
-        <div className="flex h-10 items-center rounded-lg border border-border p-0.5">
+      {/* Toolbar propia: el CTA nunca va dentro del PageHeader (regla del proyecto).
+          Buscar → filtrar → cambiar de vista → dar de alta, todo en un renglón. */}
+      <div className="flex flex-wrap items-center gap-3">
+        <BuscadorF3
+          size="lg"
+          value={search}
+          onChange={setSearch}
+          // Mismo criterio que Créditos: limpia búsqueda Y filtros, así F3 siempre devuelve
+          // la lista completa y no queda como que "no hace nada".
+          onF3={limpiarTodo}
+          placeholder="Buscar por nombre, email, usuario o zona…"
+          className="w-full sm:w-[32rem]"
+          accionDerecha={
+            <FiltrosPanel
+              label="Filtrar"
+              resumen={resumenFiltros}
+              activos={filtrosActivos}
+              onLimpiar={() => { setRol(""); setTipo(""); setRecientes(""); }}
+              align="right"
+            >
+              <Field label="Rol de acceso">
+                <Select value={rol} onChange={(e) => setRol(e.target.value)}>
+                  <option value="">Todos</option>
+                  <option value="admin">Administrador</option>
+                  <option value="vendedor">Vendedor</option>
+                  {/* "Cobrador" NO se ofrece: el rol está deprecado, no se puede crear
+                      ninguno y filtrar por él solo devolvía una lista vacía. */}
+                </Select>
+              </Field>
+              <Field label="Tipo">
+                <Select value={tipo} onChange={(e) => setTipo(e.target.value)}>
+                  <option value="">Todos</option>
+                  <option value="agente">Con ficha de agente</option>
+                  <option value="solo_cuenta">Solo cuenta (no vende)</option>
+                  <option value="sin_acceso">Sin cuenta de acceso</option>
+                </Select>
+              </Field>
+              {/* "Recién cargados" de Agentes, acá como un filtro más del panel estándar
+                  (en Agentes era una barra aparte, contra la convención del SaaS). */}
+              <Field label="Recién cargados">
+                <Select value={recientes} onChange={(e) => setRecientes(e.target.value as Reciente)}>
+                  <option value="">Cualquier fecha de alta</option>
+                  <option value="hoy">Hoy</option>
+                  <option value="mes">Este mes</option>
+                  <option value="anio">Este año</option>
+                </Select>
+              </Field>
+            </FiltrosPanel>
+          }
+        />
+        <div className="ml-auto flex h-10 items-center rounded-lg border border-border p-0.5">
           <button
             type="button"
             onClick={() => cambiarVista("cards")}
@@ -501,65 +561,25 @@ export function EquipoView() {
         </button>
       </div>
 
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div className="sm:max-w-md sm:flex-1">
-          <BuscadorF3
-            value={search}
-            onChange={setSearch}
-            // Mismo criterio que Créditos: limpia búsqueda Y filtros, así F3 siempre
-            // devuelve la lista completa y no queda como que "no hace nada".
-            onF3={limpiarTodo}
-            f3Hint="para limpiar la búsqueda y los filtros"
-            size="md"
-            placeholder="Buscar por nombre, email, usuario o zona…"
-          />
+      {/* Encabezado de la lista: título + conteo pegado + limpiar con el atajo escrito. */}
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-border/60 pb-3">
+        <div className="flex items-center gap-2">
+          <History className="h-4 w-4 text-muted-foreground" />
+          <h2 className="text-sm font-semibold text-foreground">Personas de la financiera</h2>
+          <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-bold tabular-nums text-muted-foreground">
+            {search || filtrosActivos ? `${filtradas.length} de ${equipo.length}` : equipo.length}
+          </span>
         </div>
-        <FiltrosPanel
-          activos={filtrosActivos}
-          onLimpiar={() => { setRol(""); setTipo(""); setRecientes(""); }}
-          align="right"
-          chips={
-            <>
-              {rol && <FiltroChip onClear={() => setRol("")}>Rol: {ROLE_LABEL[rol as keyof typeof ROLE_LABEL]}</FiltroChip>}
-              {tipo && (
-                <FiltroChip onClear={() => setTipo("")}>
-                  {tipo === "agente" ? "Con ficha" : tipo === "solo_cuenta" ? "Sin ficha" : "Sin cuenta"}
-                </FiltroChip>
-              )}
-              {recientes && (
-                <FiltroChip onClear={() => setRecientes("")}>Alta: {RECIENTE_LABEL[recientes]}</FiltroChip>
-              )}
-            </>
-          }
-        >
-          <Field label="Rol de acceso">
-            <Select value={rol} onChange={(e) => setRol(e.target.value)}>
-              <option value="">Todos</option>
-              <option value="admin">Administrador</option>
-              <option value="vendedor">Vendedor</option>
-              {/* "Cobrador" NO se ofrece: el rol está deprecado, no se puede crear
-                  ninguno y filtrar por él solo devolvía una lista vacía. */}
-            </Select>
-          </Field>
-          <Field label="Tipo">
-            <Select value={tipo} onChange={(e) => setTipo(e.target.value)}>
-              <option value="">Todos</option>
-              <option value="agente">Con ficha de agente</option>
-              <option value="solo_cuenta">Solo cuenta (no vende)</option>
-              <option value="sin_acceso">Sin cuenta de acceso</option>
-            </Select>
-          </Field>
-          {/* "Recién cargados" de Agentes, acá como un filtro más del panel estándar
-              (en Agentes era una barra aparte, contra la convención del SaaS). */}
-          <Field label="Recién cargados">
-            <Select value={recientes} onChange={(e) => setRecientes(e.target.value as Reciente)}>
-              <option value="">Cualquier fecha de alta</option>
-              <option value="hoy">Hoy</option>
-              <option value="mes">Este mes</option>
-              <option value="anio">Este año</option>
-            </Select>
-          </Field>
-        </FiltrosPanel>
+        {(search || filtrosActivos > 0) && (
+          <button
+            onClick={limpiarTodo}
+            title="Limpiar la búsqueda y los filtros"
+            className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <X className="h-3 w-3" /> Limpiar filtros
+            <kbd className="rounded border border-border bg-muted/50 px-1.5 py-0.5 font-mono text-[10px] font-semibold">F3</kbd>
+          </button>
+        )}
       </div>
 
       {vista === "cards" ? (

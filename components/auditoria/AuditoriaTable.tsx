@@ -1,9 +1,9 @@
 ﻿"use client";
 
 import { useState, useMemo } from "react";
-import { ChevronDown, X } from "lucide-react";
+import { ChevronDown, X, History } from "lucide-react";
 import { BuscadorF3 } from "@/components/ui/BuscadorF3";
-import { FiltrosPanel, FiltroChip } from "@/components/ui/FiltrosPanel";
+import { FiltrosPanel } from "@/components/ui/FiltrosPanel";
 import { useAuditoria, type EventoAuditoria } from "@/lib/swr";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { KpiCard } from "@/components/ui/KpiCard";
@@ -37,6 +37,13 @@ const entidadLabel: Record<string, string> = {
  * KPIs prenden uno y apagan el resto, y "todos" es el estado limpio.
  */
 type Ventana = "todos" | "hoy" | "semana" | "pagos";
+
+/** Nombre visible de cada recorte. Es lo que muestra el botón "Filtrar" cuando hay uno puesto. */
+const VENTANA_LABEL: Record<Exclude<Ventana, "todos">, string> = {
+  hoy: "Hoy",
+  semana: "Últimos 7 días",
+  pagos: "Pagos",
+};
 
 export function AuditoriaTable() {
   const [search, setSearch]     = useState("");
@@ -74,6 +81,22 @@ export function AuditoriaTable() {
 
   const hasFilters = !!(search || entidad !== "all" || ventana !== "todos");
   const clearFilters = () => { setSearch(""); setEntidad("all"); setVentana("todos"); };
+
+  /**
+   * Lo que dice el botón de filtro cuando hay algo puesto. El criterio de ESTA sección son la
+   * ENTIDAD y la VENTANA de tiempo — no hay estados ni montos que filtrar en una traza.
+   *
+   * La ventana entra en la cuenta aunque se prenda desde un KPI y no desde el panel: si no, el
+   * botón diría "Filtrar" con la lista recortada a los eventos de hoy, que es justamente el
+   * caso en el que hay que avisar.
+   */
+  const etiquetasFiltro = [
+    entidad !== "all" ? entidadLabel[entidad] ?? entidad : null,
+    ventana !== "todos" ? VENTANA_LABEL[ventana] : null,
+  ].filter((x): x is string => !!x);
+  const resumenFiltros =
+    etiquetasFiltro.length === 1 ? etiquetasFiltro[0] :
+    etiquetasFiltro.length > 1   ? `${etiquetasFiltro.length} filtros` : undefined;
   /** Un KPI prendido se apaga al volver a clickearlo. */
   const alternar = (v: Ventana) => setVentana(prev => (prev === v ? "todos" : v));
 
@@ -122,60 +145,81 @@ export function AuditoriaTable() {
             />
           </div>
 
-          {/* Toolbar */}
-          <div className="flex flex-col sm:flex-row sm:items-start gap-3">
-            <BuscadorF3
-              value={search}
-              onChange={setSearch}
-              placeholder="Buscar en la descripción…"
-              // F3 limpia TODO, no solo el texto: el hint decía "ver todo" pero dejaba
-              // puesto el filtro de entidad, así que la lista seguía recortada y parecía
-              // que el atajo no había funcionado.
-              onF3={() => clearFilters()}
-              f3Hint="para limpiar la búsqueda y los filtros"
-              className="flex-1"
-            />
-            <FiltrosPanel
-              activos={entidad !== "all" ? 1 : 0}
-              onLimpiar={() => setEntidad("all")}
-              align="right"
-              chips={entidad !== "all" ? <FiltroChip onClear={() => setEntidad("all")}>{entidadLabel[entidad] ?? entidad}</FiltroChip> : undefined}
-            >
-              <label className="flex flex-col gap-1">
-                <span className="text-[11px] font-medium text-muted-foreground">Entidad</span>
-                <div className="relative">
-                  <select value={entidad} onChange={e => setEntidad(e.target.value)} className={SEL}>
-                    <option value="all">Todas las entidades</option>
-                    <option value="clientes">Clientes</option>
-                    <option value="creditos">Créditos</option>
-                    <option value="pagos">Pagos</option>
-                    <option value="configuracion">Configuración</option>
-                    <option value="plataforma">Sistema</option>
-                  </select>
-                  <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                </div>
-              </label>
-            </FiltrosPanel>
-          </div>
+          {/* Toolbar: buscar y filtrar en un solo control (mismo patrón que Créditos). */}
+          <BuscadorF3
+            size="lg"
+            value={search}
+            onChange={setSearch}
+            placeholder="Buscar en la descripción…"
+            // F3 limpia TODO, no solo el texto: dejar puesto el filtro de entidad hacía que
+            // la lista siguiera recortada y pareciera que el atajo no había funcionado.
+            onF3={() => clearFilters()}
+            className="w-full"
+            accionDerecha={
+              <FiltrosPanel
+                label="Filtrar"
+                resumen={resumenFiltros}
+                activos={etiquetasFiltro.length}
+                // Limpia también la ventana, que se prende desde los KPI: si no, "Limpiar"
+                // dejaba la lista recortada a los eventos de hoy.
+                onLimpiar={() => { setEntidad("all"); setVentana("todos"); }}
+                align="right"
+              >
+                <label className="flex flex-col gap-1">
+                  <span className="text-[11px] font-medium text-muted-foreground">Entidad</span>
+                  <div className="relative">
+                    <select value={entidad} onChange={e => setEntidad(e.target.value)} className={SEL}>
+                      <option value="all">Todas las entidades</option>
+                      <option value="clientes">Clientes</option>
+                      <option value="creditos">Créditos</option>
+                      <option value="pagos">Pagos</option>
+                      <option value="configuracion">Configuración</option>
+                      <option value="plataforma">Sistema</option>
+                    </select>
+                    <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  </div>
+                </label>
+                <label className="flex flex-col gap-1">
+                  <span className="text-[11px] font-medium text-muted-foreground">Período</span>
+                  <div className="relative">
+                    <select value={ventana} onChange={e => setVentana(e.target.value as Ventana)} className={SEL}>
+                      <option value="todos">Toda la traza</option>
+                      <option value="hoy">Hoy</option>
+                      <option value="semana">Últimos 7 días</option>
+                      <option value="pagos">Solo pagos registrados</option>
+                    </select>
+                    <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  </div>
+                </label>
+              </FiltrosPanel>
+            }
+          />
 
-          {/* Count + clear */}
-          <div className="flex items-center justify-between">
-            {/*
-              `total` es el que cuenta la BASE para el filtro puesto; `eventos.length` es lo
-              que entró en la página. Cuando no coinciden hay que decirlo: si no, la pantalla
-              muestra un recorte y lo presenta como si fuera todo.
-            */}
-            <p className="text-xs text-muted-foreground">
-              {hasFilters
-                ? `${filtered.length} de ${total} evento${total !== 1 ? "s" : ""}`
-                : `${total} evento${total !== 1 ? "s" : ""} registrado${total !== 1 ? "s" : ""}`}
+          {/* Encabezado de la tabla: título + conteo pegado + limpiar. */}
+          <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-border/60 pb-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <History className="h-4 w-4 text-muted-foreground" />
+              <h2 className="text-sm font-semibold text-foreground">Traza de eventos</h2>
+              {/*
+                `total` cuenta la BASE para el filtro puesto; `eventos.length` es lo que entró
+                en la página. Cuando no coinciden hay que decirlo: si no, la pantalla muestra
+                un recorte y lo presenta como si fuera todo.
+              */}
+              <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-bold tabular-nums text-muted-foreground">
+                {hasFilters ? `${filtered.length} de ${total}` : total}
+              </span>
               {eventos.length < total && (
-                <span className="text-muted-foreground/60"> · se muestran los {eventos.length} más recientes</span>
+                <span className="text-[11px] text-muted-foreground/60">se muestran los {eventos.length} más recientes</span>
               )}
-            </p>
+            </div>
             {hasFilters && (
-              <button onClick={clearFilters} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors">
+              <button
+                onClick={clearFilters}
+                title="Limpiar la búsqueda y los filtros"
+                className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+              >
                 <X className="h-3 w-3" /> Limpiar filtros
+                <kbd className="rounded border border-border bg-muted/50 px-1.5 py-0.5 font-mono text-[10px] font-semibold">F3</kbd>
               </button>
             )}
           </div>

@@ -2,9 +2,9 @@
 
 import { useState } from "react";
 import { BuscadorF3 } from "@/components/ui/BuscadorF3";
-import { FiltrosPanel, FiltroChip } from "@/components/ui/FiltrosPanel";
+import { FiltrosPanel } from "@/components/ui/FiltrosPanel";
 import { Field, Input, Select } from "@/components/ui/field";
-import { Download } from "lucide-react";
+import { Download, X, History } from "lucide-react";
 import { useMovimientosStock, type MovimientoStockGlobal } from "@/lib/swr";
 import { descargarCSV } from "@/lib/csv";
 import { formatFechaHora, formatCreditoNumero } from "@/lib/utils";
@@ -53,7 +53,19 @@ export function MovimientosStockView() {
 
   const { movimientos, total, totales, isLoading, error } = useMovimientosStock({ q, tipo, desde, hasta });
 
-  const filtrosActivos = (tipo !== "all" ? 1 : 0) + (desde || hasta ? 1 : 0);
+  /**
+   * El criterio de ESTA sección: el TIPO de movimiento y el RANGO de fechas. Es lo que dice el
+   * botón de filtro cuando hay algo puesto, en vez de "Filtrar".
+   */
+  const etiquetasFiltro = [
+    tipo !== "all" ? ETIQUETA_MOVIMIENTO_STOCK[tipo as keyof typeof ETIQUETA_MOVIMIENTO_STOCK] ?? tipo : null,
+    desde && hasta ? `${desde} a ${hasta}` : desde ? `desde ${desde}` : hasta ? `hasta ${hasta}` : null,
+  ].filter((x): x is string => !!x);
+  const filtrosActivos = etiquetasFiltro.length;
+  const resumenFiltros =
+    filtrosActivos === 1 ? etiquetasFiltro[0] :
+    filtrosActivos > 1   ? `${filtrosActivos} filtros` : undefined;
+  const hayFiltros = !!(q || filtrosActivos > 0);
   const limpiarTodo = () => { setQ(""); setTipo("all"); setDesde(""); setHasta(""); };
 
   return (
@@ -72,67 +84,68 @@ export function MovimientosStockView() {
         <KpiCard icon="warning" label="Salidas" value={`−${n0(totales.salidas)} u.`} accent="warning" mono />
       </div>
 
-      {/* Barra de acciones */}
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-xs text-muted-foreground">{total} movimiento{total !== 1 ? "s" : ""}</span>
+      {/* Buscar y filtrar en un solo control, con el CSV al lado (mismo patrón que Créditos). */}
+      <div className="flex flex-wrap items-center gap-3">
+        <BuscadorF3
+          size="lg"
+          value={q}
+          onChange={setQ}
+          placeholder="Buscar por producto, SKU o motivo…"
+          onF3={limpiarTodo}
+          className="w-full sm:w-[34rem]"
+          accionDerecha={
+            <FiltrosPanel
+              label="Filtrar"
+              resumen={resumenFiltros}
+              activos={filtrosActivos}
+              onLimpiar={limpiarTodo}
+              align="right"
+            >
+              <Field label="Tipo de movimiento">
+                <Select value={tipo} onChange={(e) => setTipo(e.target.value)}>
+                  <option value="all">Todos</option>
+                  {TIPOS_MOVIMIENTO_STOCK.map((t) => (
+                    <option key={t} value={t}>{ETIQUETA_MOVIMIENTO_STOCK[t]}</option>
+                  ))}
+                </Select>
+              </Field>
+              <div className="grid grid-cols-2 gap-2">
+                <Field label="Desde">
+                  <Input type="date" value={desde} max={hasta || undefined} onChange={(e) => setDesde(e.target.value)} />
+                </Field>
+                <Field label="Hasta">
+                  <Input type="date" value={hasta} min={desde || undefined} onChange={(e) => setHasta(e.target.value)} />
+                </Field>
+              </div>
+            </FiltrosPanel>
+          }
+        />
         <button
           onClick={() => exportarCSV(movimientos)}
           disabled={movimientos.length === 0}
-          className="ml-auto flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-border text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-40 transition-colors text-sm font-medium whitespace-nowrap"
+          className="flex h-14 items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-border px-5 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-40"
         >
           <Download className="h-4 w-4" /> CSV
         </button>
       </div>
 
-      {/* Filtros — mismo patrón que el resto del SaaS: buscador con F3 a la izquierda y
-          los filtros en un panel plegable a la derecha, con chips de lo aplicado. Antes
-          eran cuatro controles a todo el ancho, que era el estilo viejo. */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div className="sm:max-w-md sm:flex-1">
-          <BuscadorF3
-            value={q}
-            onChange={setQ}
-            placeholder="Buscar por producto, SKU o motivo…"
-            onF3={limpiarTodo}
-            f3Hint="para limpiar la búsqueda y los filtros"
-          />
+      {/* Encabezado de la tabla: el conteo va pegado al título, no suelto arriba. */}
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-border/60 pb-3">
+        <div className="flex items-center gap-2">
+          <History className="h-4 w-4 text-muted-foreground" />
+          <h2 className="text-sm font-semibold text-foreground">Kardex de movimientos</h2>
+          <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-bold tabular-nums text-muted-foreground">{total}</span>
         </div>
-        <FiltrosPanel
-          activos={filtrosActivos}
-          onLimpiar={limpiarTodo}
-          align="right"
-          chips={
-            <>
-              {tipo !== "all" && (
-                <FiltroChip onClear={() => setTipo("all")}>
-                  {ETIQUETA_MOVIMIENTO_STOCK[tipo as keyof typeof ETIQUETA_MOVIMIENTO_STOCK] ?? tipo}
-                </FiltroChip>
-              )}
-              {(desde || hasta) && (
-                <FiltroChip onClear={() => { setDesde(""); setHasta(""); }}>
-                  {desde && hasta ? `${desde} a ${hasta}` : desde ? `desde ${desde}` : `hasta ${hasta}`}
-                </FiltroChip>
-              )}
-            </>
-          }
-        >
-          <Field label="Tipo de movimiento">
-            <Select value={tipo} onChange={(e) => setTipo(e.target.value)}>
-              <option value="all">Todos</option>
-              {TIPOS_MOVIMIENTO_STOCK.map((t) => (
-                <option key={t} value={t}>{ETIQUETA_MOVIMIENTO_STOCK[t]}</option>
-              ))}
-            </Select>
-          </Field>
-          <div className="grid grid-cols-2 gap-2">
-            <Field label="Desde">
-              <Input type="date" value={desde} max={hasta || undefined} onChange={(e) => setDesde(e.target.value)} />
-            </Field>
-            <Field label="Hasta">
-              <Input type="date" value={hasta} min={desde || undefined} onChange={(e) => setHasta(e.target.value)} />
-            </Field>
-          </div>
-        </FiltrosPanel>
+        {hayFiltros && (
+          <button
+            onClick={limpiarTodo}
+            title="Limpiar la búsqueda y los filtros"
+            className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <X className="h-3 w-3" /> Limpiar filtros
+            <kbd className="rounded border border-border bg-muted/50 px-1.5 py-0.5 font-mono text-[10px] font-semibold">F3</kbd>
+          </button>
+        )}
       </div>
 
       <DataTable<MovimientoStockGlobal>

@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { mutate as globalMutate } from "swr";
 import {
   Plus, Building2, Wallet, ArrowDownLeft, ArrowUpRight, Pencil, Trash2,
-  Mail, Phone, IdCard, X, FileText, MapPin, Tag, Power,
+  Mail, Phone, IdCard, X, FileText, MapPin, Tag, Power, ChevronDown, History,
 } from "lucide-react";
 import {
   useProveedores, useProveedor, KEYS,
@@ -15,8 +15,8 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { KpiCard } from "@/components/ui/KpiCard";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Emoji } from "@/components/ui/Emoji";
 import { BuscadorF3 } from "@/components/ui/BuscadorF3";
+import { FiltrosPanel } from "@/components/ui/FiltrosPanel";
 import { DataTable, type Column } from "@/components/ui/DataTable";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field, Input, Select } from "@/components/ui/field";
@@ -31,6 +31,12 @@ function n2(x: number) {
   return new Intl.NumberFormat("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(x);
 }
 const fmtDate = (s: string) => formatFecha(s);
+
+/** Select del panel de filtros — el mismo de las demás secciones. */
+const SEL_FILTRO =
+  "h-10 rounded-lg border border-border bg-muted/40 pl-3 pr-8 text-sm text-foreground " +
+  "outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/20 " +
+  "appearance-none cursor-pointer [&>option]:bg-card [&>option]:text-foreground";
 
 export function ProveedoresView() {
   const { proveedores, deudaTotal, isLoading, error, mutate } = useProveedores();
@@ -93,12 +99,19 @@ export function ProveedoresView() {
     toast.success(`Proveedor ${p.nombre} eliminado`);
   };
 
+  /** El criterio de filtro de esta sección: cuándo se cargó el proveedor. */
+  const RECIENTE_LABEL = { hoy: "Cargados hoy", mes: "Cargados este mes", anio: "Cargados este año" } as const;
+  const resumenFiltros = recientes ? RECIENTE_LABEL[recientes] : undefined;
+  const hayFiltros = !!(q || recientes);
+  const limpiarTodo = () => { setQ(""); setRecientes(null); };
+
+  // `h-14` para quedar a la misma altura que el buscador con el que comparte renglón.
   const cta = (
     <button
       onClick={openNew}
-      className="flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:opacity-90 transition-opacity text-sm font-medium whitespace-nowrap"
+      className="flex h-14 items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-primary px-6 text-base font-semibold text-primary-foreground transition-opacity hover:opacity-90"
     >
-      <Plus className="h-4 w-4" /> Nuevo proveedor
+      <Plus className="h-5 w-5" /> Nuevo proveedor
     </button>
   );
 
@@ -110,17 +123,46 @@ export function ProveedoresView() {
         subtitle="Gastos, fondeo y cuenta corriente"
         accent="primary"
       />
-      {/* Toolbar: buscador (tamaño Productos) + CTA */}
-      <div className="flex flex-wrap items-start gap-2">
+      {/* Toolbar: buscar, filtrar y dar de alta en un renglón (mismo patrón que Créditos). */}
+      <div className="flex flex-wrap items-center gap-3">
         <BuscadorF3
+          size="lg"
           value={q}
           onChange={setQ}
           placeholder="Buscar por nombre, CUIT, email o rubro…"
-          onF3={() => setQ("")}
-          f3Hint="para limpiar el filtro y ver todos"
-          className="flex-1 min-w-[200px] sm:max-w-sm"
+          onF3={limpiarTodo}
+          className="w-full sm:w-[32rem]"
+          accionDerecha={
+            <FiltrosPanel
+              label="Filtrar"
+              resumen={resumenFiltros}
+              activos={recientes ? 1 : 0}
+              onLimpiar={() => setRecientes(null)}
+              align="right"
+              width={280}
+            >
+              {/* El criterio de ESTA sección: por ahora, cuándo se cargó el proveedor. No hay
+                  estados ni montos que filtrar — la deuda se lee en la columna. */}
+              <label className="flex flex-col gap-1">
+                <span className="text-[11px] font-medium text-muted-foreground">Recién cargados</span>
+                <div className="relative">
+                  <select
+                    value={recientes ?? ""}
+                    onChange={(e) => setRecientes((e.target.value || null) as typeof recientes)}
+                    className={SEL_FILTRO}
+                  >
+                    <option value="">Cualquier fecha de alta</option>
+                    <option value="hoy">Hoy</option>
+                    <option value="mes">Este mes</option>
+                    <option value="anio">Este año</option>
+                  </select>
+                  <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                </div>
+              </label>
+            </FiltrosPanel>
+          }
         />
-        <div className="sm:ml-auto">{cta}</div>
+        <div className="ml-auto">{cta}</div>
       </div>
 
       {isLoading ? (
@@ -139,27 +181,26 @@ export function ProveedoresView() {
             <KpiCard icon="office-building" label="Activos" value={String(totales.activos)} accent="primary" />
           </div>
 
-          {/* Título de la lista + filtro "recién cargados" */}
-          <div className="flex flex-wrap items-center gap-2 border-b border-border pb-2">
-            <Emoji name="delivery-truck" className="h-4 w-4" />
-            <h2 className="text-sm font-semibold text-foreground">
-              {recientes ? `Proveedores cargados ${recientes === "hoy" ? "hoy" : recientes === "mes" ? "este mes" : "este año"}` : "Listado de Proveedores"}
-            </h2>
-            {recientes && <span className="text-xs text-muted-foreground/60">· {filtrados.length}</span>}
-            <div className="ml-auto flex items-center gap-1 rounded-lg border border-border p-0.5">
-              <span className="pl-2 pr-1 text-[11px] font-medium text-muted-foreground">Recién cargados:</span>
-              {([["hoy", "Hoy"], ["mes", "Este mes"], ["anio", "Este año"]] as const).map(([key, lbl]) => (
-                <button
-                  key={key}
-                  onClick={() => setRecientes((r) => (r === key ? null : key))}
-                  className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
-                    recientes === key ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  {lbl}
-                </button>
-              ))}
+          {/* Encabezado de la lista: el conteo va pegado al título, no suelto. La barra de
+              "Recién cargados" se mudó al panel de filtros, que es donde vive el criterio. */}
+          <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-border/60 pb-3">
+            <div className="flex items-center gap-2">
+              <History className="h-4 w-4 text-muted-foreground" />
+              <h2 className="text-sm font-semibold text-foreground">Listado de proveedores</h2>
+              <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-bold tabular-nums text-muted-foreground">
+                {hayFiltros ? `${filtrados.length} de ${proveedores.length}` : proveedores.length}
+              </span>
             </div>
+            {hayFiltros && (
+              <button
+                onClick={limpiarTodo}
+                title="Limpiar la búsqueda y los filtros"
+                className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <X className="h-3 w-3" /> Limpiar filtros
+                <kbd className="rounded border border-border bg-muted/50 px-1.5 py-0.5 font-mono text-[10px] font-semibold">F3</kbd>
+              </button>
+            )}
           </div>
 
           <DataTable<Proveedor>
