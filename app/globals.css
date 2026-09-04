@@ -357,6 +357,18 @@ summary:focus-visible,
     appearance: base-select;
   }
 
+  /* 🔴 CENTRAR EL CONTENIDO A MANO. Con `base-select` el select deja de ser el widget
+     del sistema —que centraba su texto solo— y pasa a ser un contenedor flex común. Como
+     todos los campos del SaaS tienen alto fijo (`h-10` en `inputBase`) y padding solo
+     horizontal, el valor elegido quedaba pegado al borde de arriba en TODOS los
+     desplegables. Se centra explícitamente, que es lo que hacía el nativo. */
+  select {
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-start;
+    text-align: start;
+  }
+
   ::picker(select) {
     border: 1px solid var(--border);
     border-radius: 0.75rem;
