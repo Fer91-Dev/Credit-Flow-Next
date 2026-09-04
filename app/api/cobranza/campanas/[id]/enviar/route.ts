@@ -8,6 +8,7 @@ import { enviarWhatsappApi, whatsappApiDisponible, type WhatsappApiConfig } from
 import { nombreCompleto } from "@/lib/utils";
 import { enviarEmailTenant, motivoEmailNoDisponible, type EmailTenantConfig } from "@/lib/mailer-tenant";
 import { getFinanciera } from "@/lib/financiera";
+import { registrarAuditoria } from "@/lib/audit";
 import type { NextRequest } from "next/server";
 
 /**
@@ -294,6 +295,31 @@ export const POST = withErrorHandler(async (
       where: { ...withTenant(tenantId), campana_id: id, OR: [{ envio_estado: null }, { envio_estado: { in: ["pendiente", "error"] } }] },
     }),
   ]);
+
+  /**
+   * 🔴 UNA línea por tanda, no una por destinatario.
+   *
+   * El contacto de cada cliente ya queda en `acciones_cobranza`, que es su historial. Lo que
+   * faltaba era el hecho de negocio: alguien apretó Enviar y salieron N mensajes a nombre de
+   * la financiera. Sin esto, un envío masivo —lo más visible que hace el sistema hacia
+   * afuera— era lo único que no se podía rastrear desde Auditoría.
+   *
+   * Se anota solo si se procesó a alguien: las tandas que no hacen nada no ensucian la traza.
+   */
+  if (procesados > 0) {
+    const conError = resultados.filter((r) => r.ok === false).length;
+    await registrarAuditoria({
+      tenantId,
+      entidad: "campana",
+      entidadId: id,
+      accion: "actualizar",
+      descripcion:
+        `Campaña "${campana.nombre}" enviada por ${canal}: ${procesados} destinatario${procesados === 1 ? "" : "s"} procesado${procesados === 1 ? "" : "s"}` +
+        (conError > 0 ? `, ${conError} con error` : "") +
+        (restantes > 0 ? `, quedan ${restantes} pendiente${restantes === 1 ? "" : "s"}` : ""),
+      meta: { canal, procesados, con_error: conError, enviados, pendientes: restantes },
+    });
+  }
 
   return successResponse({
     campana_id: id,

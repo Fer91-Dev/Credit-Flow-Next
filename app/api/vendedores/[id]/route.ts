@@ -195,6 +195,9 @@ export const DELETE = withErrorHandler(async (req: NextRequest, { params }: Rout
     select: { id: true, email: true, role: true, es_titular: true, es_owner: true },
   });
 
+  /** Si además de la ficha hay que destruir los logins. Se decide con las guardas de abajo. */
+  let borrarCuentas = false;
+
   if (eliminarCuenta && cuentas.length > 0) {
     // El titular de la financiera (y el dueño del SaaS) no se pueden borrar por esta
     // puerta. `DELETE /api/usuarios/[id]` ya los protege, pero esta ruta también borra
@@ -221,21 +224,44 @@ export const DELETE = withErrorHandler(async (req: NextRequest, { params }: Rout
         return errorResponse("No podés eliminar la cuenta del último administrador.", "LAST_ADMIN", 400);
       }
     }
-    // Borrado definitivo de cada cuenta: profile (corta el acceso) + auth.users (libera el email).
-    const admin = createAdminClient();
-    for (const c of cuentas) {
-      await prisma.profiles.delete({ where: { id: c.id } });
-      await admin.auth.admin.deleteUser(c.id).catch(() => {});
-    }
-  } else {
-    // Comportamiento por defecto: desvincular el/los profile(s) y conservar el login.
-    await prisma.profiles.updateMany({
-      where: { ...withTenant(tenantId), vendedor_id: id },
-      data: { vendedor_id: null },
-    });
+    borrarCuentas = true;
   }
 
-  await prisma.vendedores.delete({ where: { id } });
+  /**
+   * 🔴 EL ORDEN ES LO QUE IMPORTA ACÁ, Y ESTABA AL REVÉS.
+   *
+   * Antes se borraban los `profiles` y se destruían los `auth.users` PRIMERO, y recién
+   * después se borraba el agente. Si ese último paso fallaba —una FK con RESTRICT, la
+   * conexión caída— el agente seguía existiendo pero sus logins ya no: `auth.users` no se
+   * recupera, así que la persona quedaba sin poder entrar y sin forma de deshacerlo salvo
+   * dándola de alta de nuevo a mano.
+   *
+   * Ahora todo lo que vive en la base va junto en UNA transacción (si algo falla, no se
+   * borró nada), y el efecto EXTERNO e irreversible —borrar la cuenta de Supabase Auth—
+   * corre después del commit, cuando ya no hay nada que pueda echarse atrás.
+   */
+  await prisma.$transaction(async (tx) => {
+    if (borrarCuentas) {
+      await tx.profiles.deleteMany({ where: { ...withTenant(tenantId), vendedor_id: id } });
+    } else {
+      // Comportamiento por defecto: desvincular el/los profile(s) y conservar el login.
+      await tx.profiles.updateMany({
+        where: { ...withTenant(tenantId), vendedor_id: id },
+        data: { vendedor_id: null },
+      });
+    }
+    await tx.vendedores.delete({ where: { id } });
+  });
+
+  if (borrarCuentas) {
+    // Ya no hay vuelta atrás en la base: se libera el email en Auth. Un fallo acá deja una
+    // cuenta de Auth sin profile —inofensiva, no puede entrar a ningún lado— en vez de un
+    // agente sin acceso.
+    const admin = createAdminClient();
+    for (const c of cuentas) {
+      await admin.auth.admin.deleteUser(c.id).catch(() => {});
+    }
+  }
 
   await registrarAuditoria({
     tenantId,

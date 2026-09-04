@@ -221,10 +221,15 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     }
 
     if (ccPassword) await supabase.auth.admin.updateUserById(prof.id, { password: ccPassword }).catch(() => {});
-    const vendedor = await prisma.vendedores.create({ data: datosVendedor });
-    await prisma.profiles.update({
-      where: { id: prof.id },
-      data: { full_name: vendedor.nombre, nombre: nombrePila, apellido, tenant_id: tenantId, role: ccRol, activo: true, vendedor_id: vendedor.id, username: ccUsername },
+    // La ficha y el vínculo con la cuenta van JUNTOS: si el update del profile falla, el
+    // agente no tiene que quedar creado y sin acceso (ver la nota de la rama de abajo).
+    const vendedor = await prisma.$transaction(async (tx) => {
+      const v = await tx.vendedores.create({ data: datosVendedor });
+      await tx.profiles.update({
+        where: { id: prof.id },
+        data: { full_name: v.nombre, nombre: nombrePila, apellido, tenant_id: tenantId, role: ccRol, activo: true, vendedor_id: v.id, username: ccUsername },
+      });
+      return v;
     });
     await registrarAuditoria({
       tenantId, entidad: "vendedores", entidadId: vendedor.id, accion: "crear",
@@ -259,33 +264,46 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
 
   // 2) Crear el agente + su profile. Si algo falla, revertir la cuenta de Auth recién creada.
   try {
-    const vendedor = await prisma.vendedores.create({ data: datosVendedor });
+    /**
+     * 🔴 LAS DOS ESCRITURAS VAN EN UNA TRANSACCIÓN, Y NO ES UN DETALLE.
+     *
+     * Estaban sueltas: si el `upsert` del profile fallaba, el `catch` de abajo borraba la
+     * cuenta de Auth —bien— pero el AGENTE ya creado se quedaba ahí, sin profile y sin
+     * login. Justo lo que esta ruta promete que no puede pasar ("cuenta de acceso
+     * OBLIGATORIA", el motivo por el que se crea el Auth primero). Y como el email ya estaba
+     * tomado por la ficha, dar de alta de nuevo a la misma persona chocaba con un 409.
+     */
+    const vendedor = await prisma.$transaction(async (tx) => {
+      const v = await tx.vendedores.create({ data: datosVendedor });
 
-    await prisma.profiles.upsert({
-      where: { id: created.user.id },
-      create: {
-        id: created.user.id,
-        email: ccEmail,
-        username: ccUsername,
-        full_name: vendedor.nombre,
-        nombre: nombrePila,
-        apellido,
-        tenant_id: tenantId,
-        role: ccRol,
-        activo: true,
-        vendedor_id: vendedor.id,
-      },
-      update: {
-        email: ccEmail,
-        username: ccUsername,
-        full_name: vendedor.nombre,
-        nombre: nombrePila,
-        apellido,
-        tenant_id: tenantId,
-        role: ccRol,
-        activo: true,
-        vendedor_id: vendedor.id,
-      },
+      await tx.profiles.upsert({
+        where: { id: created.user.id },
+        create: {
+          id: created.user.id,
+          email: ccEmail,
+          username: ccUsername,
+          full_name: v.nombre,
+          nombre: nombrePila,
+          apellido,
+          tenant_id: tenantId,
+          role: ccRol,
+          activo: true,
+          vendedor_id: v.id,
+        },
+        update: {
+          email: ccEmail,
+          username: ccUsername,
+          full_name: v.nombre,
+          nombre: nombrePila,
+          apellido,
+          tenant_id: tenantId,
+          role: ccRol,
+          activo: true,
+          vendedor_id: v.id,
+        },
+      });
+
+      return v;
     });
 
     await registrarAuditoria({

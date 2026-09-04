@@ -2,6 +2,7 @@ import { requireRole, scopeCreditosVendedor } from "@/lib/auth";
 import { successResponse, errorResponse, withErrorHandler, assertSameOrigin } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
+import { registrarAuditoria } from "@/lib/audit";
 import { numerosRefinanciados } from "@/lib/creditos-numero";
 import { diasMoraActual } from "@/lib/domain";
 import { hoyComercial } from "@/lib/utils";
@@ -129,6 +130,30 @@ export const PATCH = withErrorHandler(async (req: NextRequest) => {
       ...(motivo
         ? { nota: `${accion.nota ? `${accion.nota}\n` : ""}Promesa anulada: ${motivo}` }
         : {}),
+    },
+  });
+
+  /**
+   * 🔴 Dar una promesa por cumplida es afirmar que alguien pagó, y anularla es borrar un
+   * compromiso que el cobrador había registrado. Las dos cosas cambian los KPIs de recupero
+   * y ninguna dejaba rastro: el motivo de la anulación quedaba pegado al pie de la nota,
+   * donde se pierde entre el texto libre del cobrador y no dice QUIÉN la anuló.
+   */
+  await registrarAuditoria({
+    tenantId,
+    // Va contra el CRÉDITO, igual que las gestiones de cobranza: es ahí donde alguien
+    // reconstruye la historia del deudor, no en una entidad "promesa" que no existe.
+    entidad: "creditos",
+    entidadId: accion.credito_id,
+    accion: "actualizar",
+    descripcion:
+      `Promesa de pago: ${accion.promesa_estado ?? "pendiente"} → ${body.promesa_estado}` +
+      (motivo ? ` · motivo: ${motivo}` : ""),
+    meta: {
+      promesa_id: id,
+      estado_anterior: accion.promesa_estado,
+      estado_nuevo: body.promesa_estado,
+      ...(motivo ? { motivo } : {}),
     },
   });
 

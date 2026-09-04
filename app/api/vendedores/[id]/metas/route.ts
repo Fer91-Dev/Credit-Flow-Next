@@ -151,8 +151,37 @@ export const PATCH = withErrorHandler(async (req: NextRequest, { params }: Route
 
   const meta = await prisma.metas_vendedor.update({ where: { id: metaId }, data });
   await sincronizarMetaVigente(tenantId, id);
+
+  /**
+   * 🔴 Una meta no es un dato informativo: es la vara contra la que se liquida el bonus.
+   * Bajarla después de cerrado el período cambia lo que el agente COBRA, y hasta acá eso
+   * no dejaba ninguna huella. Se anota el antes → después de cada campo tocado, no un
+   * "meta actualizada" que no permite reconstruir nada.
+   */
+  const cambios = camposCambiados(existing, meta);
+  await registrarAuditoria({
+    tenantId, entidad: "vendedores", entidadId: id, accion: "actualizar",
+    descripcion: `Meta ${meta.periodo} modificada: ${cambios.length > 0 ? cambios.join("; ") : "sin cambios de valor"}`,
+    meta: { meta_id: metaId, periodo: meta.periodo, cambios },
+  });
+
   return successResponse(meta);
 });
+
+/** Antes → después de los campos que definen la meta, para que la auditoría sirva. */
+function camposCambiados(
+  antes: { estado: string; meta_monto: number; meta_cantidad: number; meta_cobranza: number },
+  despues: { estado: string; meta_monto: number; meta_cantidad: number; meta_cobranza: number },
+): string[] {
+  const money = (n: number) =>
+    `$${n.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const out: string[] = [];
+  if (antes.estado !== despues.estado) out.push(`estado ${antes.estado} → ${despues.estado}`);
+  if (antes.meta_monto !== despues.meta_monto) out.push(`monto ${money(antes.meta_monto)} → ${money(despues.meta_monto)}`);
+  if (antes.meta_cantidad !== despues.meta_cantidad) out.push(`cantidad ${antes.meta_cantidad} → ${despues.meta_cantidad}`);
+  if (antes.meta_cobranza !== despues.meta_cobranza) out.push(`cobranza ${money(antes.meta_cobranza)} → ${money(despues.meta_cobranza)}`);
+  return out;
+}
 
 /**
  * DELETE /api/vendedores/[id]/metas?metaId=...
@@ -169,5 +198,21 @@ export const DELETE = withErrorHandler(async (req: NextRequest, { params }: Rout
 
   await prisma.metas_vendedor.delete({ where: { id: metaId } });
   await sincronizarMetaVigente(tenantId, id);
+
+  // Es un borrado DEFINITIVO de un período que pudo haber liquidado comisión. Los objetivos
+  // se guardan en la auditoría porque después del delete no quedan en ningún otro lado.
+  const money = (n: number) =>
+    `$${n.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  await registrarAuditoria({
+    tenantId, entidad: "vendedores", entidadId: id, accion: "eliminar",
+    descripcion:
+      `Meta eliminada (${existing.periodo}): monto ${money(existing.meta_monto)}, ` +
+      `${existing.meta_cantidad} créditos, cobranza ${money(existing.meta_cobranza)}`,
+    meta: {
+      meta_id: metaId, periodo: existing.periodo, estado: existing.estado,
+      meta_monto: existing.meta_monto, meta_cantidad: existing.meta_cantidad, meta_cobranza: existing.meta_cobranza,
+    },
+  });
+
   return successResponse({ id: metaId, deleted: true });
 });

@@ -44,12 +44,18 @@ const EXCEPCIONES = {
  * nuevo se vea.
  */
 const EXCEPCIONES_POR_REGLA = {
-  "admin/financieras/route.ts":  { "queries de Prisma sin withTenant": "el owner del SaaS opera cross-tenant a propósito; barrera = requireOwner en cada handler (verificado)" },
+  "admin/financieras/route.ts":  {
+    "queries de Prisma sin withTenant": "el owner del SaaS opera cross-tenant a propósito; barrera = requireOwner en cada handler (verificado)",
+    "handler con 3+ escrituras sin $transaction": "NO PUEDE ir en una transacción: crear la cuenta de Supabase Auth es un efecto EXTERNO a Postgres. Se resuelve con compensación en cada paso (falla Auth → borra el tenant; falla el profile → borra Auth + tenant), que es el patrón que manda la convención para efectos externos",
+  },
+  "cobranza/campanas/[id]/enviar/route.ts": {
+    "handler con 3+ escrituras sin $transaction": "es un bucle que manda mails y WhatsApps REALES durante hasta 45 s: una transacción tendría locks abiertos todo ese rato y un rollback borraría el registro de mensajes que ya salieron (no se pueden des-enviar). El checkpoint por destinatario (`envio_estado`) es justamente lo que permite retomar una tanda cortada",
+  },
   "admin/planes/route.ts":       { "queries de Prisma sin withTenant": "ídem", "findUnique sin chequeo de tenant": "ídem" },
   "admin/tenants/route.ts":      { "queries de Prisma sin withTenant": "ídem" },
   "admin/tenants/[id]/route.ts": { "queries de Prisma sin withTenant": "ídem", "findUnique sin chequeo de tenant": "ídem" },
   "branding/route.ts":           { "sin requireAuth/requireRole": "branding público pre-login (solo nombre + logo); excluye el tenant de plataforma" },
-  "cron/suscripciones/route.ts": { "sin requireAuth/requireRole": "job externo; Bearer CRON_SECRET fail-closed en producción", "queries de Prisma sin withTenant": "degrada suscripciones vencidas de TODOS los tenants: es su trabajo", "handler que escribe SIN assertSameOrigin": "no lo llama un navegador" },
+  "cron/suscripciones/route.ts": { "sin requireAuth/requireRole": "job externo; Bearer CRON_SECRET fail-closed en producción", "queries de Prisma sin withTenant": "degrada suscripciones vencidas de TODOS los tenants: es su trabajo", "handler que escribe SIN assertSameOrigin": "no lo llama un navegador", "findUnique sin chequeo de tenant": "lee las features del tenant que está degradando, para dejarlas anotadas en la auditoría antes de vaciarlas; el id sale de su propia consulta de suscripciones, no de un input" },
   "usuarios/check-username/route.ts": { "queries de Prisma sin withTenant": "el username es único GLOBAL, por eso no se filtra por tenant; requireRole(admin)", "findUnique sin chequeo de tenant": "ídem" },
   "clientes/route.ts":           { "toca créditos con rol vendedor y sin scoping": "DECISIÓN DOCUMENTADA (CLAUDE.md): estado_cuenta y score salen de TODOS los créditos del cliente; acotarlos mostraría deuda $0 de un moroso y el vendedor prestaría a ciegas" },
 };
