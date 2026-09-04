@@ -332,3 +332,67 @@ summary:focus-visible,
   /* Sin la entrada animada la tarjeta tiene que quedar VISIBLE, no en su estado inicial. */
   .animate-entrada { opacity: 1; transform: none; }
 }
+
+/* ─── Desplegable de los <select> con la piel del SaaS ───────────────────────
+
+   La lista que se abre al clickear un <select> NO la dibuja la página: la dibuja el
+   sistema operativo. Por eso ignora todo el CSS y sale cuadrada y blanca aunque las
+   opciones estén pintadas (el componente Select ya usa `[&>option]:bg-card`): lo
+   pintado son las opciones, la CAJA que las contiene es del sistema.
+
+   El "customizable select" de Chromium lo resuelve: con `appearance: base-select` el
+   desplegable deja de ser el widget nativo y pasa a ser un elemento del DOM, estilable
+   con `::picker(select)`.
+
+   🔴 VA DETRÁS DE `@supports` A PROPÓSITO. Es una capacidad de Chromium; Firefox y
+   Safari no la entienden y ahí el bloque entero no se aplica, así que el select sigue
+   siendo el nativo de siempre. Es mejora progresiva pura: donde anda se ve como el
+   resto del SaaS, donde no anda no se rompe nada.
+
+   No hay que tocar ningún componente: son 94 selects en 30 archivos y esto los alcanza
+   a todos desde acá. */
+@supports (appearance: base-select) {
+  select,
+  ::picker(select) {
+    appearance: base-select;
+  }
+
+  ::picker(select) {
+    border: 1px solid var(--border);
+    border-radius: 0.75rem;
+    background: var(--popover);
+    padding: 0.25rem;
+    /* La misma sombra que el panel de filtros: los dos son cosas que flotan sobre la
+       pantalla y tienen que leerse como la misma familia. */
+    box-shadow: 0 10px 30px -10px rgb(0 0 0 / 0.5);
+  }
+
+  select option {
+    border-radius: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    color: var(--popover-foreground);
+    background: transparent;
+  }
+
+  /* Hover y teclado se ven IGUAL: con flechas la opción activa tiene que resaltarse
+     como si el mouse estuviera encima, o navegar sin mouse es a ciegas. */
+  select option:hover,
+  select option:focus {
+    background: color-mix(in oklab, var(--muted) 70%, transparent);
+  }
+
+  /* La opción puesta, con el acento — el mismo criterio que el ítem activo del menú.
+     El color del texto es el MISMO de las demás opciones: lo que distingue a la elegida
+     es el fondo. Pisarlo con otro color arriesga poco contraste en el modo claro, donde
+     el fallback sin `color-mix` pinta el acento sólido. */
+  select option:checked {
+    background: color-mix(in oklab, var(--primary) 18%, transparent);
+    color: var(--popover-foreground);
+  }
+
+  /* La flecha nativa se apaga: cada Select ya dibuja su propio ChevronDown, y con
+     `base-select` volvían a aparecer las dos. */
+  select::picker-icon {
+    display: none;
+  }
+}
