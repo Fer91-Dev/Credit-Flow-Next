@@ -11,6 +11,7 @@ import { lockCreditoTx, assertCuotasSinCambios, TX_PLATA } from "@/lib/locks";
 import { lockCuentaTx } from "@/lib/caja-fondos";
 import { siguienteNumeroComprobante } from "@/lib/comprobantes";
 import { getConfiguracion, getCobranzaConfig } from "@/lib/config";
+import { assertPuedeCobrar } from "@/lib/recupero-server";
 import { registrarAuditoria } from "@/lib/audit";
 import type { NextRequest } from "next/server";
 
@@ -295,7 +296,31 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
   // CONGELADO del plan; el atraso se castiga con mora por cuota vencida.
 
   const config = await getConfiguracion(tenantId);
-  const { fallecidos: fallecidosCfg, acuerdos: acuerdosCfg } = await getCobranzaConfig(tenantId);
+  const { fallecidos: fallecidosCfg, acuerdos: acuerdosCfg, recupero: recuperoCfg } = await getCobranzaConfig(tenantId);
+
+  /**
+   * 🔴 ÚLTIMO ESCALÓN DE LA ESCALERA: pasado el umbral de refinanciación, el plan de pagos
+   * original se da por CAÍDO y este crédito ya no se cobra contra él.
+   *
+   * Sin esta guarda, un crédito de 117 días de atraso se seguía cobrando cuota por cuota de un
+   * cronograma que nadie va a terminar: entraba plata, la deuda nunca se recalculaba, y los
+   * honorarios por gestión de cobranza —que solo nacen al refinanciar— no se aplicaban jamás.
+   * Peor: cobrar sobre un plan caído lo "revive", y el crédito volvía a figurar como uno más.
+   *
+   * Va ACÁ y no en la pantalla porque este endpoint es por donde entra toda la plata del
+   * sistema: el cobro de mostrador, la terminal del acuerdo y la carga masiva de planillas
+   * llaman los tres a `POST /api/pagos`. Un bloqueo que solo existe en el front no bloquea.
+   *
+   * `es_entrega_acuerdo` no es una llave maestra: adentro se revalida contra `puedeAcordar`,
+   * así que solo pasa la entrega de un acuerdo que la escalera efectivamente permite armar.
+   */
+  const cobroAutorizadoPorAdmin = await assertPuedeCobrar(
+    tenantId,
+    body.credito_id,
+    recuperoCfg,
+    { role, autorizacionAdmin: body.autorizacion_admin === true },
+    { entregaDeAcuerdo: body.es_entrega_acuerdo === true },
+  );
   const fechaPago = body.fecha ? new Date(body.fecha) : hoyComercial();
   // P2 — Un cobro no puede fecharse en el futuro (distorsiona mora, caja y reportes).
   if (Number.isNaN(fechaPago.getTime())) {
@@ -623,6 +648,12 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
       cuotas_afectadas: resultado.aplicaciones.map((a) => a.nro),
       descuento_mora_pct: descuentoMoraPct,
       ahorro_mora: resultado.ahorroMora,
+      /**
+       * El cobro estaba bloqueado por el umbral de refinanciación y un admin lo autorizó
+       * igual. Se asienta SIEMPRE que pase: es la excepción a la regla más fuerte del
+       * pipeline y tiene que poder rastrearse quién la usó y sobre qué crédito.
+       */
+      ...(cobroAutorizadoPorAdmin ? { autorizacion_admin_cobro_bloqueado: true } : {}),
     },
   });
 

@@ -10,7 +10,7 @@ import { prisma } from "@/lib/prisma";
 import { withTenant } from "@/app/lib/db";
 import { hoyComercial } from "@/lib/utils";
 import {
-  etapaRecupero, puedeAcordar, puedeRefinanciar, puedeUsarTasa, diasMoraActual,
+  etapaRecupero, puedeAcordar, puedeRefinanciar, puedeUsarTasa, puedeCobrar, diasMoraActual,
   type SenalesRecupero, type EtapaRecupero, type RecuperoConfig, type VeredictoEscalera,
 } from "@/lib/domain";
 import { ApiError } from "@/lib/auth";
@@ -102,6 +102,45 @@ export async function assertPuedeRefinanciar(
 }
 
 /**
+ * Hace cumplir el CIERRE de la escalera antes de un COBRO: pasado el umbral de
+ * refinanciación, el plan viejo ya no se cobra.
+ *
+ * 🔴 ESTE ES EL CAMINO POR DONDE ENTRA TODA LA PLATA DEL SISTEMA. La carga masiva de
+ * planillas y el cobro de mostrador pasan los dos por `POST /api/pagos`, así que la guarda va
+ * ahí y no en la pantalla: un bloqueo que solo existe en el front no bloquea nada.
+ *
+ * Devuelve `true` cuando la regla SÍ bloqueaba y un admin la autorizó igual — el caller lo
+ * necesita para dejarlo asentado en la auditoría. `false` = no había nada que autorizar.
+ */
+export async function assertPuedeCobrar(
+  tenantId: string,
+  creditoId: string,
+  cfg: RecuperoConfig,
+  actor?: ActorEscalera,
+  opts?: { entregaDeAcuerdo?: boolean },
+): Promise<boolean> {
+  // Atajo: con la regla apagada no se consulta la base. Es el caso de casi todos los cobros,
+  // y son seis consultas que no tiene sentido pagar en el camino caliente del dinero.
+  if (!cfg.bloquear_cobro_sin_refinanciar) return false;
+  const v = puedeCobrar(await senalesRecupero(tenantId, creditoId), cfg, opts);
+  return lanzarSiBloquea(v, "COBRO_REQUIERE_REFINANCIAR", actor);
+}
+
+/**
+ * El mismo veredicto, para MOSTRARLO antes de que haya un peso de por medio.
+ *
+ * Es la lección de la entrega de Estela Moreno, aplicada acá: si el operador se entera del
+ * bloqueo recién al apretar "Cobrar", ya escribió el monto delante del cliente. La pantalla
+ * de cobro lo pregunta al elegir el crédito.
+ */
+export async function veredictoCobro(
+  tenantId: string, creditoId: string, cfg: RecuperoConfig,
+): Promise<VeredictoEscalera> {
+  if (!cfg.bloquear_cobro_sin_refinanciar) return { permitido: true };
+  return puedeCobrar(await senalesRecupero(tenantId, creditoId), cfg);
+}
+
+/**
  * La tasa pactada no puede quedar por debajo de la del crédito original: bajarla es una
  * quita que no pasa por el tope de las quitas ni queda registrada como tal.
  */
@@ -111,9 +150,10 @@ export function assertPuedeUsarTasa(
   lanzarSiBloquea(puedeUsarTasa(tasaNueva, tasaOriginal, cfg), "TASA_MENOR_A_ORIGINAL", actor);
 }
 
-function lanzarSiBloquea(v: VeredictoEscalera, code: string, actor?: ActorEscalera): void {
-  if (v.permitido) return;
-  if (autorizaAdmin(actor)) return; // el admin asume la decisión (se audita en el caller)
+/** `true` si la regla bloqueaba y el admin la autorizó igual (para asentarlo en la auditoría). */
+function lanzarSiBloquea(v: VeredictoEscalera, code: string, actor?: ActorEscalera): boolean {
+  if (v.permitido) return false;
+  if (autorizaAdmin(actor)) return true; // el admin asume la decisión (se audita en el caller)
   // El mensaje lleva la sugerencia pegada: una negativa sin alternativa deja al operador
   // frente al cliente sin saber qué ofrecerle. Y si quien pregunta es admin, se le dice que
   // puede seguir igual — si no, el 409 parece un bug del sistema.

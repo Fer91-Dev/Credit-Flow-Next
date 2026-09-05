@@ -141,6 +141,25 @@ export interface RecuperoConfig {
   /** Mínimo de días de atraso para poder refinanciar. 0 = sin mínimo. */
   dias_min_mora_refinanciar: number;
   /**
+   * PASADO EL MÍNIMO DE REFINANCIACIÓN, EL CRÉDITO YA NO SE COBRA.
+   *
+   * Es la regla que cierra la escalera. Sin ella, un crédito de 117 días de atraso se seguía
+   * cobrando cuota por cuota de un plan que ya se cayó: entraba plata contra un cronograma
+   * que nadie va a terminar, la deuda nunca se recalculaba y los honorarios por gestión de
+   * cobranza —que es lo que la financiera cobra por haber trabajado ese recupero— no se
+   * aplicaban nunca, porque solo nacen al refinanciar.
+   *
+   * 🔴 USA `dias_min_mora_refinanciar`, NO UN NÚMERO PROPIO. Es el mismo umbral leído de los
+   * dos lados: por debajo se cobra y no se refinancia; a partir de ahí se refinancia y no se
+   * cobra. Con dos parámetros quedaría una franja donde no se puede ninguna de las dos cosas,
+   * o una donde se pueden las dos, y el operador no tendría cómo saber cuál manda.
+   *
+   * Tres cosas que NO bloquea, y las tres a propósito (ver `puedeCobrar`): el crédito con un
+   * acuerdo VIGENTE, la entrega con la que se arma un acuerdo, y el caso en que la
+   * refinanciación tampoco esté abierta. Ver el detalle en cada guarda.
+   */
+  bloquear_cobro_sin_refinanciar: boolean;
+  /**
    * HONORARIOS POR GESTIÓN DE COBRANZA en la refinanciación.
    *
    * Llegar a refinanciar cuesta trabajo —llamadas, visitas, campañas— y ese costo hoy lo
@@ -180,6 +199,9 @@ export const RECUPERO_DEFAULT: RecuperoConfig = {
   max_acuerdos_rotos: 2,
   exigir_acuerdo_para_refinanciar: false,
   dias_min_mora_refinanciar: 0,
+  // Apagado de fábrica, como el resto de la escalera: cortarle el cobro a un crédito vivo es
+  // la decisión más fuerte del pipeline y no la puede tomar un default.
+  bloquear_cobro_sin_refinanciar: false,
   no_bajar_tasa_refinanciando: true,
   // Arranca APAGADO: cobrarle honorarios al deudor es una decisión de cada financiera, y el
   // sistema no puede empezar a sumarle plata a una deuda porque sí.
@@ -207,6 +229,7 @@ export function resolverRecupero(raw: unknown): RecuperoConfig {
     })(),
     exigir_acuerdo_para_refinanciar: r.exigir_acuerdo_para_refinanciar === true,
     dias_min_mora_refinanciar: dia(r.dias_min_mora_refinanciar, RECUPERO_DEFAULT.dias_min_mora_refinanciar),
+    bloquear_cobro_sin_refinanciar: r.bloquear_cobro_sin_refinanciar === true,
     honorarios_gestion_activo: r.honorarios_gestion_activo === true,
     // Acotado a 0–100: un % fuera de rango sobre una deuda consolidada es plata de verdad.
     honorarios_gestion_pct: (() => {
@@ -333,4 +356,73 @@ export function puedeRefinanciar(s: SenalesRecupero, cfg: RecuperoConfig): Vered
     };
   }
   return PERMITIDO;
+}
+
+/**
+ * ¿SE PUEDE COBRAR ESTE CRÉDITO, O YA HAY QUE REFINANCIARLO?
+ *
+ * El último escalón de la escalera, y el único que en vez de abrir una puerta cierra otra:
+ * pasado `dias_min_mora_refinanciar`, el plan de pagos original se considera CAÍDO y no se
+ * cobra más contra él. La deuda se recalcula refinanciando, y ahí es donde entran los
+ * honorarios por gestión de cobranza.
+ *
+ * Se apoya en `puedeRefinanciar`, así que las tres excepciones no son casos especiales
+ * sueltos: son consecuencia de una sola idea — **no se bloquea un cobro si no hay otra vía
+ * abierta para que esa plata entre.**
+ */
+export function puedeCobrar(
+  s: SenalesRecupero,
+  cfg: RecuperoConfig,
+  opts?: {
+    /**
+     * Este cobro es la ENTREGA con la que se está armando un acuerdo de pago, no una cuota
+     * más del plan caído. Se acepta solo si la escalera efectivamente permite acordar hoy
+     * (se revalida acá abajo), así que la bandera no alcanza para saltearse nada.
+     */
+    entregaDeAcuerdo?: boolean;
+  },
+): VeredictoEscalera {
+  if (!cfg.bloquear_cobro_sin_refinanciar) return PERMITIDO;
+
+  /**
+   * Sin umbral no hay "pasado el atraso". `dias_min_mora_refinanciar` en 0 significa "se
+   * puede refinanciar desde el primer día", NO "dejá de cobrar desde el primer día": leerlo
+   * al revés apagaría la cobranza entera de la financiera con un cero.
+   */
+  if (cfg.dias_min_mora_refinanciar <= 0) return PERMITIDO;
+  if (s.diasMora < cfg.dias_min_mora_refinanciar) return PERMITIDO;
+
+  /**
+   * ACUERDO VIGENTE: se cobra. El deudor está cumpliendo lo que se pactó y el cobro es
+   * justamente el del acuerdo — bloquearlo mataría el escalón que la financiera acaba de
+   * ofrecerle. Los días siguen corriendo igual (el acuerdo no mueve `proximo_pago`), así que
+   * sin esta guarda todo acuerdo armado cerca del umbral se volvía incobrable a los pocos días.
+   */
+  if (s.acuerdoVigente) return PERMITIDO;
+
+  /**
+   * ENTREGA DE UN ACUERDO NUEVO: se cobra, si la escalera admite armarlo. No es una cuota del
+   * plan caído, es el anticipo del arreglo que lo reemplaza — el mismo rol que la primera
+   * cuota de una refinanciación. Y va revalidado contra `puedeAcordar`, que es la barrera
+   * real: si el crédito ya agotó el tope de acuerdos rotos, la entrega tampoco entra.
+   */
+  if (opts?.entregaDeAcuerdo && puedeAcordar(s, cfg).permitido) return PERMITIDO;
+
+  /**
+   * 🔴 NUNCA CERRAR LAS DOS PUERTAS A LA VEZ.
+   *
+   * Es la misma guarda que protege al acuerdo del callejón sin salida, mirada desde el otro
+   * lado. Si por la configuración del tenant este crédito TAMPOCO puede refinanciarse hoy
+   * (ej. `exigir_acuerdo_para_refinanciar` sin ningún acuerdo roto todavía), bloquearle el
+   * cobro lo dejaría sin ninguna forma de recibir plata: ni cuota, ni acuerdo, ni plan nuevo.
+   * Antes que un crédito congelado, se sigue cobrando y el mensaje de la refinanciación ya
+   * dice qué falta para habilitarla.
+   */
+  if (!puedeRefinanciar(s, cfg).permitido) return PERMITIDO;
+
+  return {
+    permitido: false,
+    motivo: `Este crédito lleva ${s.diasMora} día${s.diasMora === 1 ? "" : "s"} de atraso y la financiera no admite cobros pasados los ${cfg.dias_min_mora_refinanciar}: el plan de pagos original se da por caído y ya no se cobra contra él.`,
+    sugerencia: "Refinanciá el crédito: se recalcula toda la deuda en un plan nuevo, con los honorarios por gestión de cobranza, y el cliente paga la primera cuota de ese plan.",
+  };
 }

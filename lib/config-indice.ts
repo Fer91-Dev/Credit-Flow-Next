@@ -108,6 +108,7 @@ export const PARAMETROS: ParametroIndexado[] = [
   { label: "Sacarlo de la agenda del día", tab: "cobranza", seccion: "Clientes fallecidos" },
   { label: "Acuerdos rotos antes de tener que refinanciar", tab: "cobranza", seccion: "Escalera de recupero" },
   { label: "Días mínimos de atraso para refinanciar", tab: "cobranza", seccion: "Escalera de recupero" },
+  { label: "Pasado ese atraso, no dejar cobrar el crédito: hay que refinanciarlo", tab: "cobranza", seccion: "Escalera de recupero" },
   { label: "Cobrar honorarios por gestión de cobranza al refinanciar", tab: "cobranza", seccion: "Escalera de recupero" },
   { label: "Honorarios (% de la deuda consolidada)", tab: "cobranza", seccion: "Escalera de recupero" },
   { label: "Exigir haberlo contactado antes de armar un acuerdo", tab: "cobranza", seccion: "Escalera de recupero" },

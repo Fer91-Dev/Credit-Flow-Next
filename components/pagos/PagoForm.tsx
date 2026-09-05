@@ -1,7 +1,8 @@
 ﻿"use client";
 
 import { useState, useEffect, Fragment } from "react";
-import { ArrowRight, Check, CheckCircle2, ChevronDown, CornerDownRight, Loader2, Printer, Search, X, AlertTriangle, Send, Mail } from "lucide-react";
+import Link from "next/link";
+import { ArrowRight, Check, CheckCircle2, ChevronDown, CornerDownRight, Loader2, Printer, Search, X, AlertTriangle, Send, Mail, Ban } from "lucide-react";
 import { WhatsAppIcon } from "@/components/ui/WhatsAppIcon";
 import { Field, Input, Select, Textarea } from "@/components/ui/field";
 import { StatusBadge, type BadgeVariant } from "@/components/ui/StatusBadge";
@@ -31,6 +32,19 @@ function Row({ label, value, mono, strong, accent }: {
       <span className={cn("tabular-nums", mono && "font-mono", strong ? "font-bold text-foreground" : "text-foreground", accent)}>{value}</span>
     </div>
   );
+}
+
+/**
+ * ¿Este crédito todavía se cobra? Lo contesta `GET /api/creditos/[id]/cuotas` al elegirlo,
+ * para que el bloqueo aparezca ANTES de que el operador escriba un importe delante del
+ * cliente y no como un error al confirmar.
+ */
+interface VeredictoCobro {
+  permitido: boolean;
+  motivo: string | null;
+  sugerencia: string | null;
+  /** El admin puede seguir igual asumiendo la decisión; queda auditado. */
+  puede_autorizar: boolean;
 }
 
 interface Credito {
@@ -283,6 +297,10 @@ export function PagoForm({ creditoId, clienteId, montoSugerido, motivoSugerido, 
   const [loadingCuotas, setLoadingCuotas] = useState(false);
   /** Acuerdo vigente del crédito elegido (lo trae el endpoint de cuotas). */
   const [acuerdo, setAcuerdo] = useState<AcuerdoDelCredito | null>(null);
+  /** Veredicto de cobrabilidad del crédito elegido (escalera de recupero). */
+  const [cobro, setCobro] = useState<VeredictoCobro | null>(null);
+  /** El admin decidió cobrar igual sobre un crédito que ya debería refinanciarse. */
+  const [autorizar, setAutorizar] = useState(false);
   // Viniendo del botón verde de una cuota, esa cuota arranca seleccionada.
   const [hasta, setHasta]                 = useState<number | null>(cuotaHasta ?? null);
 
@@ -328,7 +346,7 @@ export function PagoForm({ creditoId, clienteId, montoSugerido, motivoSugerido, 
 
   // Cuotas del crédito seleccionado
   useEffect(() => {
-    if (!creditoSel) { setCuotas([]); setHasta(null); setAcuerdo(null); return; }
+    if (!creditoSel) { setCuotas([]); setHasta(null); setAcuerdo(null); setCobro(null); setAutorizar(false); return; }
     setLoadingCuotas(true);
     fetch(`/api/creditos/${creditoSel}/cuotas`)
       .then(r => r.json())
@@ -343,6 +361,8 @@ export function PagoForm({ creditoId, clienteId, montoSugerido, motivoSugerido, 
          * un cobro común sobre un crédito con acuerdo viejo se precargaría con datos muertos.
          */
         setAcuerdo(j.data.acuerdo?.estado === "vigente" ? j.data.acuerdo : null);
+        setCobro(j.data.cobro ?? null);
+        setAutorizar(false); // cambiar de crédito nunca arrastra la autorización del anterior
         const proxima = cs.find(c => c.estado !== "pagada");
         setHasta(proxima ? proxima.nro : null);
       })
@@ -427,11 +447,18 @@ export function PagoForm({ creditoId, clienteId, montoSugerido, motivoSugerido, 
   /** Una sola cuota, ya empezada: el renglón dice "saldo de la cuota", no "cuota". */
   const parcialSel = seleccionadas.length === 1 && entregadoSeleccionado > 0;
 
+  /**
+   * El crédito ya pasó el umbral de refinanciación: el plan viejo se da por caído y no se
+   * cobra más contra él. Si el admin autoriza la excepción, el bloqueo se levanta acá y la
+   * autorización viaja en el POST (el server la revalida: un vendedor no puede mandarla).
+   */
+  const cobroBloqueado = cobro != null && !cobro.permitido && !autorizar;
+
   // Submit NO cobra directo: abre la confirmación para que un Enter o clic
   // accidental nunca registre un pago.
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!creditoSel || monto <= 0) return;
+    if (!creditoSel || monto <= 0 || cobroBloqueado) return;
     setError(null);
     setConfirmOpen(true);
   };
@@ -450,6 +477,9 @@ export function PagoForm({ creditoId, clienteId, montoSugerido, motivoSugerido, 
         body: JSON.stringify({
           credito_id: creditoSel, monto, metodo, notas,
           ...(cobrandoAcuerdo && cuotaAcuerdoId ? { acuerdo_cuota_id: cuotaAcuerdoId } : {}),
+          // Excepción del admin al bloqueo por atraso. El server la vuelve a validar contra
+          // el rol: mandarla desde un vendedor no levanta nada.
+          ...(cobro && !cobro.permitido && autorizar ? { autorizacion_admin: true } : {}),
         }),
       });
       const json = await res.json();
@@ -884,6 +914,46 @@ export function PagoForm({ creditoId, clienteId, montoSugerido, motivoSugerido, 
             >
               Cobrar ${fmt2(acuerdo.proxima.pendiente)}
             </button>
+          </div>
+        )}
+
+        {/*
+          🔴 EL PLAN DE PAGOS SE CAYÓ: ACÁ YA NO SE COBRA.
+          Aparece al elegir el crédito, no al confirmar. El operador tiene al cliente
+          enfrente: enterarse del bloqueo después de haberle dicho un importe es la misma
+          situación que ya costó la entrega de un acuerdo que nunca se armó.
+        */}
+        {cobro && !cobro.permitido && (
+          <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-4 space-y-3">
+            <div className="flex items-start gap-2.5">
+              <Ban className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+              <div className="space-y-1.5">
+                <p className="text-sm font-semibold text-destructive">Este crédito ya no se cobra: hay que refinanciarlo</p>
+                {cobro.motivo && <p className="text-xs leading-relaxed text-foreground/80">{cobro.motivo}</p>}
+                {cobro.sugerencia && <p className="text-xs leading-relaxed text-foreground/80">{cobro.sugerencia}</p>}
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-3 pl-6">
+              <Link
+                href="/creditos"
+                className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition-opacity hover:opacity-90"
+              >
+                Ir a Créditos para refinanciar <ArrowRight className="h-3.5 w-3.5" />
+              </Link>
+              {/* La válvula de escape del admin, con el mismo criterio que el resto de la
+                  escalera: el vendedor no la ve, y usarla queda asentado en la auditoría. */}
+              {cobro.puede_autorizar && (
+                <label className="flex cursor-pointer items-center gap-1.5 text-xs text-muted-foreground">
+                  <input
+                    type="checkbox"
+                    checked={autorizar}
+                    onChange={(e) => setAutorizar(e.target.checked)}
+                    className="accent-destructive"
+                  />
+                  Cobrar igual — queda registrado a mi nombre
+                </label>
+              )}
+            </div>
           </div>
         )}
 
@@ -1334,7 +1404,7 @@ export function PagoForm({ creditoId, clienteId, montoSugerido, motivoSugerido, 
           lugares donde el operador la ejecuta.
         */}
         <button
-          type="submit" disabled={!creditoSel || monto <= 0}
+          type="submit" disabled={!creditoSel || monto <= 0 || cobroBloqueado}
           className="group relative inline-flex items-center gap-2.5 overflow-hidden whitespace-nowrap rounded-xl bg-gradient-to-b from-success to-success/85 px-5 py-2.5 text-sm font-bold text-success-foreground shadow-[0_8px_20px_-10px_color-mix(in_srgb,var(--success)_70%,transparent)] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_14px_30px_-10px_color-mix(in_srgb,var(--success)_85%,transparent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-success/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background active:translate-y-0 disabled:pointer-events-none disabled:translate-y-0 disabled:opacity-40 disabled:shadow-none"
         >
           <span className="flex h-6 w-6 items-center justify-center rounded-full bg-success-foreground/20 font-mono text-base leading-none">$</span>

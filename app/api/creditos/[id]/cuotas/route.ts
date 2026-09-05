@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { frecuenciaLabel, normalizarFrecuencia, diasAtraso, round2, interesMora, moraDelCredito, moraDesdeCronograma, topeMoraDeCuota, fechaTopeMora, topeMoraPorFallecimiento, type FrecuenciaDef } from "@/lib/domain";
 import { getConfiguracion, getCobranzaConfig } from "@/lib/config";
 import { recibosPorCuotaDeAcuerdo } from "@/lib/acuerdos";
+import { veredictoCobro } from "@/lib/recupero-server";
 import { formatComprobante } from "@/lib/comprobantes";
 import { nombreCompleto, hoyComercial } from "@/lib/utils";
 import type { Prisma } from "@prisma/client";
@@ -95,8 +96,18 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
    * las que ya estaban vencidas. Tiene que estar acá y en `POST /pagos` con el mismo dato, o
    * la pantalla le diría un importe al operador y la caja tomaría otro.
    */
-  const { fallecidos: fallecidosCfg } = await getCobranzaConfig(tenantId);
+  const { fallecidos: fallecidosCfg, recupero: recuperoCfg } = await getCobranzaConfig(tenantId);
   const topeAbsoluto = topeMoraPorFallecimiento(hoy, credito.cliente, fallecidosCfg);
+
+  /**
+   * ¿ESTE CRÉDITO TODAVÍA SE COBRA, o ya hay que refinanciarlo?
+   *
+   * Se contesta ACÁ, que es lo que la terminal de cobro pide al elegir el crédito, y no al
+   * apretar "Cobrar". Es la misma lección que dejó la entrega de Estela Moreno en el acuerdo:
+   * si el operador se entera del bloqueo recién al confirmar, ya le dijo un importe al cliente
+   * que tiene enfrente. La barrera real sigue siendo `POST /api/pagos`; esto informa.
+   */
+  const cobro = await veredictoCobro(tenantId, id, recuperoCfg);
 
   const cuotas = credito.cuotas.map((c) => {
     const restante_capital = round2(Math.max(0, c.capital - c.pagado_capital));
@@ -252,6 +263,16 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
   return successResponse({
     credito_id: credito.id,
     cliente: credito.cliente ? nombreCompleto(credito.cliente) : null,
+    /**
+     * Si NO se puede cobrar, por qué y qué hacer en su lugar. `puede_autorizar` es true solo
+     * para el admin: es quien puede seguir igual asumiendo la decisión, y queda auditado.
+     */
+    cobro: {
+      permitido: cobro.permitido,
+      motivo: cobro.motivo ?? null,
+      sugerencia: cobro.sugerencia ?? null,
+      puede_autorizar: role === "admin",
+    },
     acuerdo: acuerdo
       ? {
           id: acuerdo.id,

@@ -186,6 +186,8 @@ const AYUDA: Record<string, AyudaBloque> = {
     puntos: [
       "De fábrica está todo apagado: se puede ir directo a cualquiera de los tres.",
       "Los mínimos de atraso evitan refinanciar a alguien por tres días de demora.",
+      "El mínimo para refinanciar puede además CERRAR el cobro: pasado ese atraso el plan viejo se da por caído y la terminal lo rechaza, así la deuda se recalcula y se aplican los honorarios de gestión.",
+      "Ese corte respeta lo que ya está en marcha: un acuerdo vigente se sigue cobrando, y la entrega con la que se arma uno nuevo también entra.",
       "Exigir el acuerdo antes de refinanciar es la regla fuerte: obliga a intentar lo que se puede deshacer.",
       "El piso de tasa viene prendido: es el único que no ordena un proceso, tapa una fuga de plata.",
       "Un administrador puede pasar por encima de cualquiera de estas reglas; el vendedor no. Queda auditado.",
@@ -2289,6 +2291,20 @@ export function ConfigForm() {
             </div>
             <div className="mt-4 flex flex-col gap-3 max-w-3xl">
               {/*
+                El cierre de la escalera. Va PRIMERO del grupo porque es el que más cambia la
+                operación diaria: convierte el mínimo de arriba en un corte, no en un permiso.
+              */}
+              <SwitchRow
+                title="Pasado ese atraso, no dejar cobrar el crédito: hay que refinanciarlo"
+                desc={
+                  cobranza.recupero.dias_min_mora_refinanciar > 0
+                    ? `A partir de los ${cobranza.recupero.dias_min_mora_refinanciar} días de atraso el plan de pagos se da por caído y la terminal de cobro lo rechaza. La deuda se recalcula refinanciando, que es donde se aplican los honorarios por gestión de cobranza. Un crédito con acuerdo vigente se sigue cobrando, y un administrador puede autorizar el cobro igual.`
+                    : "Necesita un mínimo de días de atraso para refinanciar: con 0 no hay a partir de cuándo cortar, así que esta regla no se aplica."
+                }
+                checked={cobranza.recupero.bloquear_cobro_sin_refinanciar}
+                onChange={v => setRecupero({ bloquear_cobro_sin_refinanciar: v })}
+              />
+              {/*
                 Honorarios por gestión de cobranza. Van acá y no en Configuración → Cargos
                 porque NO son un cargo de todos los créditos: solo los lleva el crédito que
                 nace de una refinanciación.
@@ -2523,6 +2539,7 @@ function defaultCobranza(): CobranzaConfig {
     recupero: {
       exigir_gestion_para_acuerdo: false, dias_min_mora_acuerdo: 50, max_acuerdos_rotos: 2,
       exigir_acuerdo_para_refinanciar: false, dias_min_mora_refinanciar: 0,
+      bloquear_cobro_sin_refinanciar: false,
       no_bajar_tasa_refinanciando: true,
       honorarios_gestion_activo: false, honorarios_gestion_pct: 0,
     },

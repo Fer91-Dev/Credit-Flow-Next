@@ -218,6 +218,18 @@ export function NuevoAcuerdoView({ creditoId }: { creditoId: string | null }) {
             monto: entregaNum,
             metodo: entregaMetodo,
             notas: "Entrega al armar el acuerdo de pago",
+            /**
+             * Esta entrega NO es una cuota del plan caído: es el anticipo del arreglo que lo
+             * reemplaza. Sin decirlo, el bloqueo por atraso ("pasados los N días hay que
+             * refinanciar") la rechazaba y el acuerdo se volvía imposible de armar justo
+             * cuando corresponde armarlo. El server lo revalida contra `puedeAcordar`, así
+             * que la bandera no saltea nada: si la escalera no admite el acuerdo, tampoco
+             * admite su entrega.
+             */
+            es_entrega_acuerdo: true,
+            // Y si el admin ya autorizó el acuerdo por encima de la escalera, la misma
+            // autorización tiene que valer para su entrega, o se frena en el primer paso.
+            autorizacion_admin: autorizar || undefined,
           }),
         });
         const jPago = await resPago.json();
