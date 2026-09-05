@@ -1676,6 +1676,12 @@ export interface RefinanciacionPreview {
   /** Cuánto puede descontar quien hace la operación (`quitaMaxima`, la regla del POST). */
   limites?: { quita_maxima: number };
   /**
+   * Honorarios por gestión de cobranza del crédito nuevo. `pct` es el SUGERIDO (el de
+   * Configuración) y `negociable` dice si quien está mirando puede pactar otro: el admin sí
+   * —queda auditado—, el vendedor lleva el que fijó la financiera.
+   */
+  honorarios?: { activo: boolean; pct: number; monto: number; negociable: boolean };
+  /**
    * Parámetros del motor con los que el POST va a armar el plan del crédito nuevo. Viajan
    * para que el diálogo previsualice EL MISMO cronograma con la misma función del dominio.
    */

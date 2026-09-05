@@ -164,6 +164,8 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
       activo: cobranzaCfg.recupero.honorarios_gestion_activo,
       pct: cobranzaCfg.recupero.honorarios_gestion_pct,
       monto: honorarios,
+      /** Solo el admin puede pactar un honorario distinto al configurado (queda auditado). */
+      negociable: role === "admin",
     },
     /**
      * Los parámetros con los que el POST va a armar el plan del crédito nuevo.
@@ -297,9 +299,39 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
    * 🔴 Y VIAJAN COMO CARGO DEL PLAN NUEVO, no sumados al capital: se reparten entre las
    * cuotas y no devengan interés. Sumarlos al capital sería cobrar interés sobre un honorario.
    */
-  const honorarios = cobranzaCfg.recupero.honorarios_gestion_activo
-    ? round2((deuda.total * cobranzaCfg.recupero.honorarios_gestion_pct) / 100)
+  const honorariosPctCfg = cobranzaCfg.recupero.honorarios_gestion_activo
+    ? cobranzaCfg.recupero.honorarios_gestion_pct
     : 0;
+
+  /**
+   * 🔴 EL HONORARIO ES NEGOCIABLE, PERO NO POR CUALQUIERA.
+   *
+   * Refinanciar es un arreglo entre el que presta y el que intenta devolver: hay clientes a
+   * los que se les cobra la gestión y otros a los que no. Por eso el % del body puede pisar
+   * al de Configuración — que pasa a ser el SUGERIDO, no una condena.
+   *
+   * Quién puede moverlo es la misma regla que rige todo lo demás de esta pantalla: el ADMIN
+   * decide y queda auditado; el vendedor lleva el que fijó la financiera. Si un vendedor
+   * pudiera bajarlo a cero, el tope de quitas no serviría de nada: alcanzaría con regalar el
+   * honorario en vez de descontar la deuda, y sería exactamente el mismo agujero por otra
+   * puerta.
+   */
+  let honorariosPct = honorariosPctCfg;
+  if (body.honorarios_pct != null && body.honorarios_pct !== "") {
+    const p = Number(body.honorarios_pct);
+    if (!isFinite(p) || p < 0 || p > 100) {
+      return errorResponse("Honorarios inválidos: tiene que ser un porcentaje entre 0 y 100.", "INVALID_INPUT", 400);
+    }
+    if (role !== "admin" && round2(p) !== round2(honorariosPctCfg)) {
+      return errorResponse(
+        `Los honorarios de gestión los negocia un administrador. Con tu usuario se aplican los ${honorariosPctCfg}% que fijó la financiera.`,
+        "HONORARIOS_NO_NEGOCIABLES",
+        403,
+      );
+    }
+    honorariosPct = p;
+  }
+  const honorarios = round2((deuda.total * honorariosPct) / 100);
 
   // Snapshots vigentes para el crédito NUEVO (mismo criterio que POST /creditos).
   const frecuencia = normalizarFrecuencia(body.frecuencia ?? credito.frecuencia);
@@ -423,12 +455,13 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
     entidad: "creditos",
     entidadId: credito.id,
     accion: "refinanciar",
-    descripcion: `Crédito ${numeroViejo} refinanciado en ${numeroNuevo(nuevo.numero)} — deuda consolidada $${deuda.total.toLocaleString("es-AR")}${quita.condonado > 0 ? `, quita $${quita.condonado.toLocaleString("es-AR")}` : ""}${motivo ? ` — ${motivo}` : ""}`,
+    descripcion: `Crédito ${numeroViejo} refinanciado en ${numeroNuevo(nuevo.numero)} — deuda consolidada $${deuda.total.toLocaleString("es-AR")}${quita.condonado > 0 ? `, quita $${quita.condonado.toLocaleString("es-AR")}` : ""}${honorarios > 0 ? `, honorarios de gestión $${honorarios.toLocaleString("es-AR")} (${honorariosPct}%)` : ""}${honorariosPct !== honorariosPctCfg ? ` [pactado por administrador; el configurado es ${honorariosPctCfg}%]` : ""}${motivo ? ` — ${motivo}` : ""}`,
     meta: {
       credito_origen: credito.numero,
       credito_nuevo: nuevo.numero,
       deuda_consolidada: deuda,
       quita: { tipo: quitaTipo, condonado: quita.condonado },
+      honorarios: { pct: honorariosPct, pct_configurado: honorariosPctCfg, monto: honorarios },
       nuevo_capital: nuevoCapital,
       tasa,
       plazo_meses: plazoMeses,

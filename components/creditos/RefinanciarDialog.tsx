@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { mutate as globalMutate } from "swr";
 import { Percent, Hash, Scissors, Ban } from "lucide-react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
@@ -84,6 +84,23 @@ function RefinanciarForm({ credito, onClose }: { credito: Credito; onClose: (suc
   const excedeTope = condonado > topeQuita;
 
   /**
+   * HONORARIOS DE GESTIÓN, negociables.
+   *
+   * El % de Configuración es el SUGERIDO: refinanciar es un arreglo, y hay clientes a los
+   * que se les cobra la gestión y otros a los que no. Quién puede moverlo lo decide el
+   * server (`honorarios.negociable`): el admin sí y queda auditado, el vendedor lleva el que
+   * fijó la financiera. Vacío o 0 = no se cobra, aunque el parámetro esté activo.
+   */
+  const honCfg = preview?.honorarios;
+  const [honPct, setHonPct] = useState<string>("");
+  useEffect(() => {
+    if (honCfg) setHonPct(honCfg.pct ? String(honCfg.pct) : "");
+  }, [honCfg?.pct]);
+  const honPctNum = Math.max(0, Math.min(100, parseFloat(honPct) || 0));
+  /** Sale de la deuda consolidada ORIGINAL, no del capital ya descontado: igual que el server. */
+  const honMonto = Math.round(base * honPctNum) / 100;
+
+  /**
    * EL PLAN DEL CRÉDITO NUEVO, previsualizado.
    *
    * 🔴 El diálogo pedía tasa y cantidad de cuotas y no mostraba nada más: el operador
@@ -107,13 +124,22 @@ function RefinanciarForm({ credito, onClose }: { credito: Credito; onClose: (suc
         hoyComercial(),
         m.convencion_tasa as never,
         (preview?.sugerido.frecuencia ?? "mensual") as never,
-        { cargos: m.cargos as never, redondeo: m.redondeo as never, cronograma: m.cronograma as never },
+        {
+          // El cargo se recalcula con el % que se está tipeando, no con el que mandó el
+          // server: si no, la cuota previsualizada no es la que va a quedar.
+          cargos: {
+            ...(m.cargos as Record<string, unknown>),
+            honorariosGestion: honMonto > 0 ? { activo: true, total: honMonto } : undefined,
+          } as never,
+          redondeo: m.redondeo as never,
+          cronograma: m.cronograma as never,
+        },
         m.frecuencias as never,
       );
     } catch {
       return null;
     }
-  }, [preview, nuevoCapital, tasaNum, plazoNum]);
+  }, [preview, nuevoCapital, tasaNum, plazoNum, honMonto]);
 
   /** Lo que termina pagando con el plan nuevo, y cuánto de eso es interés nuevo. */
   const totalNuevo = plan ? Math.round(plan.cuotas.reduce((s, c) => s + c.cuotaTotal, 0) * 100) / 100 : 0;
@@ -136,6 +162,7 @@ function RefinanciarForm({ credito, onClose }: { credito: Credito; onClose: (suc
           plazo_meses: plazoNum,
           quita_tipo: quitaTipo,
           quita_valor: quitaTipo === "porcentaje" ? (parseFloat(quitaPct) || 0) : parseMontoInput(quitaMonto) || 0,
+          honorarios_pct: honPct.trim() === "" ? 0 : honPctNum,
           motivo: motivo.trim() || null,
         }),
       });
@@ -223,6 +250,35 @@ function RefinanciarForm({ credito, onClose }: { credito: Credito; onClose: (suc
             )}
           </div>
 
+          {/*
+            HONORARIOS DE GESTIÓN. Solo aparece si la financiera los tiene activos.
+            El admin lo negocia (vacío o 0 = no se cobran); el vendedor lo ve pero no lo toca.
+          */}
+          {honCfg?.activo && (
+            <div className="space-y-1">
+              <FieldLabel>Honorarios por gestión de cobranza</FieldLabel>
+              {honCfg.negociable ? (
+                <IconInput
+                  icon={Percent}
+                  inputMode="decimal"
+                  value={honPct}
+                  placeholder="0"
+                  onChange={(e) => setHonPct(e.target.value.replace(/[^0-9.,]/g, "").replace(",", "."))}
+                />
+              ) : (
+                <div className="flex h-11 items-center rounded-lg border border-border bg-muted/20 px-3 text-sm text-muted-foreground">
+                  {honCfg.pct}% — lo fija la financiera
+                </div>
+              )}
+              <p className="text-[11px] text-muted-foreground">
+                {honMonto > 0
+                  ? <>Se cobran <strong className="text-foreground">${n2(honMonto)}</strong> sobre la deuda consolidada, repartidos en las cuotas del plan nuevo. No suman capital, así que no generan interés.</>
+                  : <>Sin honorarios: este cliente no paga la gestión.</>}
+                {honCfg.negociable && <> Dejalo vacío para no cobrarlos.</>}
+              </p>
+            </div>
+          )}
+
           {/* Condiciones del nuevo crédito */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-1">
@@ -261,6 +317,14 @@ function RefinanciarForm({ credito, onClose }: { credito: Credito; onClose: (suc
               <div className="flex items-center justify-between text-sm">
                 <span className="text-muted-foreground">Descuento al cliente</span>
                 <span className="font-mono text-success tabular-nums">− ${n2(condonado)}</span>
+              </div>
+            )}
+            {honMonto > 0 && (
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-muted-foreground">Honorarios de gestión ({honPctNum}%)</span>
+                {/* NO se suma al capital: va como cargo en las cuotas. Por eso se muestra
+                    aparte y no dentro del importe de abajo. */}
+                <span className="font-mono text-warning tabular-nums">+ ${n2(honMonto)} en cuotas</span>
               </div>
             )}
             <div className="flex items-center justify-between">
