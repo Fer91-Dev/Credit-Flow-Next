@@ -58,8 +58,11 @@ export function limpiarSeleccionCampana(): void {
  * "mora"        → sale de Morosos. La base es lo vencido y hay punitorios que condonar.
  * "vencimiento" → sale de Vencimientos. Está al día y se le recuerda la cuota que viene:
  *                 no hay mora ni descuento posible.
+ * "refinanciacion" → NO sale de ninguna pestaña: lo elige la propia pantalla de campaña
+ *                 cuando la selección trae créditos cuyo plan ya venció y no se pueden
+ *                 cobrar. No lleva importe ni descuento; invita a reestructurar.
  */
-export type TipoCampana = "mora" | "vencimiento";
+export type TipoCampana = "mora" | "vencimiento" | "refinanciacion";
 const KEY_TIPO = "cf:campana:tipo";
 
 export function guardarTipoCampana(t: TipoCampana): void {

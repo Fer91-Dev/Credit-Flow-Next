@@ -277,7 +277,7 @@ const HELP: Record<string, HelpDoc> = {
           { term: "Hoy (agenda)", desc: "Cola priorizada de a quién contactar: promesas vencidas → agendados → morosos enfriados. Scopeada al vendedor." },
           { term: "Morosos", desc: "Créditos en mora con días e interés moratorio. Desde acá registrás gestiones (llamada, WhatsApp, visita…). Si el cliente promete pagar, la promesa queda anotada en esa misma gestión: se concilia sola al cobrar, el cron rompe las vencidas y la vas a ver en la agenda del día." },
           { term: "Acuerdos", desc: "Los planes de pago vigentes, cumplidos y rotos. El sistema los evalúa solo: no hay que marcarlos a mano." },
-          { term: "Campañas", desc: "Envíos masivos a un grupo de morosos (Email/WhatsApp) con descuento de interés opcional." },
+          { term: "Campañas", desc: "Envíos masivos a un grupo de morosos (Email/WhatsApp) con descuento de interés opcional. Si entre los elegidos hay créditos cuyo plan ya venció, la pantalla separa dos audiencias: a unos se les reclama el pago y a los otros se los invita a refinanciar, porque a esos ya no se les puede cobrar." },
       { term: "No contactar", desc: "Si el cliente pide que no lo llamen, se registra desde su ficha. Deja de recibir mensajes y sale de la agenda, pero la deuda sigue viva y se le puede cobrar. Levantarlo solo lo puede hacer un admin." },
         ],
       },

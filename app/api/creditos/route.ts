@@ -6,7 +6,8 @@ import { round2, normalizarFrecuencia, resolverFrecuencia, sumarPeriodos, constr
 import { siguienteNumeroComprobante } from "@/lib/comprobantes";
 import { assertFondosSuficientesTx } from "@/lib/caja-fondos";
 import { lockNumeroCreditoTx, TX_PLATA } from "@/lib/locks";
-import { getConfiguracion } from "@/lib/config";
+import { getConfiguracion, getCobranzaConfig } from "@/lib/config";
+import { cobroBloqueadoPorCredito } from "@/lib/recupero-server";
 import { situacionAcuerdoPorCredito } from "@/lib/acuerdos";
 import { conNumeroDeOrigen } from "@/lib/creditos-numero";
 import { registrarAuditoria } from "@/lib/audit";
@@ -175,6 +176,26 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
 
     return { ...credito, estado, dias_mora: dmora, interes_mora, vencido, cuotas_vencidas, cuota_proxima, tiene_pagos: c.pagos.length > 0, cobros_vivos: c._count.pagos > 0, acuerdo: acuerdosVig.get(c.id) ?? null };
   });
+
+  /**
+   * ¿Cuáles de estos créditos YA NO SE COBRAN y hay que refinanciar?
+   *
+   * Lo contesta el server y no la pantalla porque depende de los acuerdos ROTOS de cada
+   * crédito, que la lista no trae (ver `cobroBloqueadoPorCredito`). Con esto, las campañas
+   * pueden separar a quién se le reclama un pago y a quién se lo invita a reestructurar, en
+   * vez de prometerle un descuento a alguien cuyo cobro la terminal va a rechazar.
+   *
+   * Una sola consulta agrupada para todo el lote, y ninguna si la regla está apagada.
+   */
+  const { recupero: recuperoCfg } = await getCobranzaConfig(tenantId);
+  const bloqueados = await cobroBloqueadoPorCredito(
+    tenantId,
+    creditosConMora.map((c) => ({ id: c.id, diasMora: c.dias_mora, acuerdoVigente: c.acuerdo != null })),
+    recuperoCfg,
+  );
+  for (const c of creditosConMora as (typeof creditosConMora[number] & { cobro_bloqueado?: boolean })[]) {
+    c.cobro_bloqueado = bloqueados.get(c.id) ?? false;
+  }
 
   // El número del crédito que cada refinanciación reemplaza, para poder mostrar REF-000060
   // en vez de un CRD- suelto sin relación visible con su origen. Una sola query para el lote.

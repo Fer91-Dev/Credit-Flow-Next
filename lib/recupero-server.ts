@@ -164,6 +164,60 @@ export async function veredictoCobro(
 }
 
 /**
+ * ¿CUÁLES DE ESTOS CRÉDITOS YA NO SE COBRAN? — el mismo veredicto, pero para una LISTA.
+ *
+ * 🔴 POR QUÉ NO LO PUEDE DECIDIR LA PANTALLA. Parece que alcanzaría con mirar los días de
+ * atraso, pero no: el bloqueo también depende de si el crédito tiene un acuerdo vigente y de
+ * si la refinanciación está efectivamente abierta —y eso último sale de cuántos acuerdos
+ * ROTOS arrastra, un dato que la lista de créditos no trae. Con la regla "exigir un acuerdo
+ * roto antes de refinanciar" prendida, un crédito de 118 días sin ningún acuerdo roto SÍ se
+ * cobra; el navegador lo marcaría como incobrable y la campaña dejaría afuera a alguien que
+ * podía pagar hoy.
+ *
+ * Los acuerdos rotos se cuentan de TODOS los créditos en UNA consulta agrupada, no de a uno:
+ * `senalesRecupero` hace cinco consultas por crédito, y sobre una lista de mil sería absurdo.
+ * Es exacto igualmente porque `puedeCobrar` —sin la excepción de la entrega— solo mira días de
+ * mora, acuerdo vigente y acuerdos rotos.
+ */
+export async function cobroBloqueadoPorCredito(
+  tenantId: string,
+  creditos: { id: string; diasMora: number; acuerdoVigente: boolean }[],
+  cfg: RecuperoConfig,
+): Promise<Map<string, boolean>> {
+  const out = new Map<string, boolean>();
+  // Con la regla apagada no se bloquea ninguno: ni vale la consulta.
+  if (!cfg.bloquear_cobro_sin_refinanciar || creditos.length === 0) {
+    for (const c of creditos) out.set(c.id, false);
+    return out;
+  }
+
+  const rotos = await prisma.acuerdos_pago.groupBy({
+    by: ["credito_id"],
+    where: { ...withTenant(tenantId), estado: "roto", credito_id: { in: creditos.map((c) => c.id) } },
+    _count: { _all: true },
+  });
+  const rotosPorCredito = new Map(rotos.map((r) => [r.credito_id, r._count._all]));
+
+  for (const c of creditos) {
+    const v = puedeCobrar(
+      {
+        diasMora: c.diasMora,
+        acuerdoVigente: c.acuerdoVigente,
+        acuerdosRotos: rotosPorCredito.get(c.id) ?? 0,
+        // No los mira `puedeCobrar` sin la excepción de la entrega; van en cero para no
+        // pagar cinco consultas por crédito.
+        gestiones: 0,
+        promesaPendiente: false,
+        promesasIncumplidas: 0,
+      },
+      cfg,
+    );
+    out.set(c.id, !v.permitido);
+  }
+  return out;
+}
+
+/**
  * La tasa pactada no puede quedar por debajo de la del crédito original: bajarla es una
  * quita que no pasa por el tope de las quitas ni queda registrada como tal.
  */

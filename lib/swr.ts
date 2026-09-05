@@ -299,6 +299,12 @@ export interface Credito {
   refinancia_a?: string | null;
   /** (En el viejo) refinanciación que reemplazó a este crédito. */
   refinanciado_en?: string | null;
+  /**
+   * El plan de este crédito ya se dio por caído: pasó el umbral de refinanciación y la
+   * terminal de cobro lo rechaza. Lo resuelve el SERVER (depende de los acuerdos rotos, que
+   * esta lista no trae). `false` también cuando la regla está apagada.
+   */
+  cobro_bloqueado?: boolean;
   /** Crédito de producto: unidades financiadas (capital = precio × cantidad). */
   producto_cantidad?: number | null;
   /** Crédito de producto: producto financiado (el cliente se lo lleva en vez de dinero). */
@@ -993,6 +999,11 @@ export interface CampanaCobranza {
   descripcion: string | null;
   canal: CanalCampana;
   estado: EstadoCampana;
+  /**
+   * QUÉ RECLAMA la campaña: "mora" (reclamo de pago), "vencimiento" (recordatorio) o
+   * "refinanciacion" (invitación a reestructurar, para los créditos cuyo plan ya venció).
+   */
+  tipo?: "mora" | "vencimiento" | "refinanciacion";
   promo_tipo: PromoTipo;
   promo_valor: number;
   promo_vence: string | null;

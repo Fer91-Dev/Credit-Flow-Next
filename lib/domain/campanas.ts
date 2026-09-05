@@ -31,6 +31,22 @@ export const TEMPLATE_VENCIMIENTO_DEFAULT =
   "Hola [Nombre], te recordamos que el [Vence] vence tu cuota de $[Monto]. " +
   "Si ya lo abonaste, ignorá este mensaje. ¡Gracias!";
 
+/**
+ * Plantilla por defecto de la INVITACIÓN A REFINANCIAR.
+ *
+ * 🔴 NO LLEVA IMPORTE, y es deliberado. A esta persona el plan ya se le cayó: no se le puede
+ * cobrar, así que "cancelando ahora $X" sería prometerle algo que la terminal va a rechazar
+ * cuando se presente. Y la deuda que se consolida al refinanciar no es la vencida —se lleva
+ * el plan entero— crece con la mora cada día y se renegocia con la persona enfrente, con su
+ * descuento y sus honorarios. Cualquier número que saliera acá sería otro al llegar.
+ *
+ * Lo concreto que sí puede decir el mensaje son los días de atraso, que no se discuten.
+ */
+export const TEMPLATE_REFINANCIACION_DEFAULT =
+  "Hola [Nombre], tu plan de pagos venció: llevás [Dias] días de atraso. " +
+  "Podemos reestructurar toda tu deuda en un plan nuevo, con cuotas que puedas pagar. " +
+  "Acercate o escribinos y lo armamos.";
+
 export interface RecoveryInput {
   /** Saldo de capital pendiente del crédito. */
   saldo: number;

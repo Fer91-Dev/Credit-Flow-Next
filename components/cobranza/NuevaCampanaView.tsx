@@ -17,6 +17,7 @@ import {
   riesgoEnvioMeta,
   CATEGORIA_META_LABEL,
   contactoBloqueado,
+  TEMPLATE_REFINANCIACION_DEFAULT,
   type CanalCampana,
 } from "@/lib/domain";
 import { AvisoMeta } from "@/components/clientes/ContactarDialog";
@@ -28,7 +29,7 @@ import { nombreCompleto, formatMonto, formatDias , formatFecha } from "@/lib/uti
 import { useConfirm } from "@/components/ui/confirm";
 import { useToast } from "@/components/ui/toast";
 import { type Role } from "@/lib/auth/roles";
-import { leerSeleccionCampana, limpiarSeleccionCampana, leerTipoCampana, limpiarTipoCampana, type TipoCampana } from "./seleccion-campana";
+import { leerSeleccionCampana, limpiarSeleccionCampana, guardarSeleccionCampana, leerTipoCampana, limpiarTipoCampana, type TipoCampana } from "./seleccion-campana";
 
 const CANAL_META: Record<CanalCampana, { label: string; icon: ComponentType<{ className?: string }> }> = {
   whatsapp: { label: "WhatsApp", icon: WhatsAppIcon },
@@ -97,7 +98,7 @@ export function NuevaCampanaView({ role }: { role: Role }) {
           <div className="min-w-0">
             <h1 className="truncate text-base font-semibold leading-tight text-foreground">Nueva campaña de recuperación</h1>
             <p className="mt-0.5 truncate text-xs text-muted-foreground">
-              Reclamo masivo a los créditos en mora seleccionados
+              Reclamo masivo a los créditos seleccionados
             </p>
           </div>
         </div>
@@ -118,8 +119,16 @@ export function NuevaCampanaView({ role }: { role: Role }) {
             creditos={seleccionados}
             bloqueados={bloqueados}
             onCancelar={() => volver()}
-            onTerminar={() => {
-              limpiarSeleccionCampana();
+            onTerminar={(restantes) => {
+              /**
+               * Si quedó la OTRA audiencia sin su campaña, la selección se conserva.
+               *
+               * Son los mismos clientes que se acaban de tildar: obligarlo a volver a
+               * Cobranzas y buscarlos de a uno es la forma más segura de que la segunda
+               * campaña —la de refinanciación, casi siempre— no se mande nunca.
+               */
+              if (restantes && restantes.length > 0) guardarSeleccionCampana(restantes);
+              else limpiarSeleccionCampana();
               globalMutate(KEYS.campanas);
               volver("campanas");
             }}
@@ -162,10 +171,11 @@ interface WorkspaceProps {
   creditos: Credito[];
   bloqueados: number;
   onCancelar: () => void;
-  onTerminar: () => void;
+  /** `restantes` = ids de la audiencia que quedó sin campaña, para no perder la selección. */
+  onTerminar: (restantes?: string[]) => void;
 }
 
-function CampanaWorkspace({ role, creditos, bloqueados, onCancelar, onTerminar }: WorkspaceProps) {
+function CampanaWorkspace({ role, creditos: todosCreditos, bloqueados, onCancelar, onTerminar }: WorkspaceProps) {
   const reducirMovimiento = useReducedMotion();
   const { config } = useConfiguracion();
   const { financiera } = useFinanciera();
@@ -224,7 +234,23 @@ function CampanaWorkspace({ role, creditos, bloqueados, onCancelar, onTerminar }
    */
   const [foco, setFoco] = useState<string | null>(null);
 
-  const descuentoPct = form.promoActiva ? Math.min(100, Math.max(0, parseFloat(form.promo_valor) || 0)) : 0;
+  /*
+    QUÉ RECLAMA esta campaña. Arranca en lo que dijo la pestaña que la armó (Morosos o
+    Vencimientos) y puede cambiar acá: los morosos cuyo plan ya venció no van en una campaña
+    de reclamo sino en una de refinanciación (ver el corte de audiencias más abajo).
+  */
+  const [tipoCampana, setTipoCampana] = useState<TipoCampana>(() => leerTipoCampana());
+  const esRecordatorio = tipoCampana === "vencimiento";
+  const esRefinanciacion = tipoCampana === "refinanciacion";
+
+  /**
+   * En una campaña de refinanciación no hay descuento posible: la quita de la campaña se
+   * aplica AL COBRAR, y a estos créditos no se les cobra. El descuento de una refinanciación
+   * se pacta en su pantalla, cliente por cliente y con su tope.
+   */
+  const descuentoPct = form.promoActiva && tipoCampana !== "refinanciacion"
+    ? Math.min(100, Math.max(0, parseFloat(form.promo_valor) || 0))
+    : 0;
 
   /**
    * 🔴 Tope de descuento del vendedor (Configuración → Cobranza → Acuerdos).
@@ -243,7 +269,7 @@ function CampanaWorkspace({ role, creditos, bloqueados, onCancelar, onTerminar }
    * pantalla y se corregía solo un instante después.
    */
   const topeConocido = role === "admin" || !!config?.cobranzaConfig;
-  const excedeTope = topeConocido && form.promoActiva && descuentoPct > topeDescuento;
+  const excedeTope = topeConocido && form.promoActiva && tipoCampana !== "refinanciacion" && descuentoPct > topeDescuento;
 
   /*
     QUÉ RECLAMA esta campaña. Viene de la pestaña que la armó (Morosos o Vencimientos).
@@ -254,8 +280,55 @@ function CampanaWorkspace({ role, creditos, bloqueados, onCancelar, onTerminar }
     fila mostraría $0,00 —porque `vencido` es cero— y saldría un mensaje diciéndole que debe
     nada a alguien que sí tiene que pagar el jueves.
   */
-  const [tipoCampana] = useState<TipoCampana>(() => leerTipoCampana());
-  const esRecordatorio = tipoCampana === "vencimiento";
+  /**
+   * 🔴 DOS AUDIENCIAS, NO UNA.
+   *
+   * Pasado el umbral de refinanciación el plan se da por caído y la terminal rechaza el cobro.
+   * A esa gente no se le puede mandar "cancelando ahora $X regularizás tu situación": vendría
+   * a pagar y el sistema la rechazaría. Y encima se le estarían regalando los punitorios y
+   * salteando los honorarios de gestión, que solo se cobran al refinanciar.
+   *
+   * `cobro_bloqueado` lo decide el SERVER, no estos días de atraso: depende también del
+   * acuerdo vigente y de los acuerdos rotos (ver `cobroBloqueadoPorCredito`). El backend
+   * vuelve a hacer el corte al crear la campaña; esto es para que se vea antes.
+   */
+  const { paraCobrar, paraRefinanciar } = useMemo(() => ({
+    paraCobrar: todosCreditos.filter((c) => !c.cobro_bloqueado),
+    paraRefinanciar: todosCreditos.filter((c) => !!c.cobro_bloqueado),
+  }), [todosCreditos]);
+
+  const creditos = esRefinanciacion ? paraRefinanciar : paraCobrar;
+  /** La otra audiencia, la que NO entra en esta campaña. Se conserva para la siguiente. */
+  const restantes = () => (esRefinanciacion ? paraCobrar : paraRefinanciar).map((c) => c.id);
+
+  /**
+   * Cambiar de audiencia cambia el texto por defecto — pero solo si el operador no lo tocó.
+   * Pisarle un mensaje que escribió a mano por haber clickeado una pestaña sería peor que
+   * dejarle el texto equivocado: al menos el equivocado se ve.
+   */
+  const cambiarTipo = (t: TipoCampana) => {
+    setTipoCampana(t);
+    setForm((p) => {
+      const esDefault = [TEMPLATE_DEFAULT, TEMPLATE_VENCIMIENTO_DEFAULT, TEMPLATE_REFINANCIACION_DEFAULT]
+        .includes(p.mensaje_template.trim());
+      if (!esDefault) return p;
+      const nuevo = t === "refinanciacion" ? TEMPLATE_REFINANCIACION_DEFAULT
+        : t === "vencimiento" ? TEMPLATE_VENCIMIENTO_DEFAULT
+        : TEMPLATE_DEFAULT;
+      return { ...p, mensaje_template: nuevo };
+    });
+  };
+
+  /**
+   * Si la selección quedó toda de un lado, la pantalla se planta sola en esa audiencia: no
+   * tiene sentido pedirle que elija entre dos grupos cuando uno está vacío.
+   */
+  useEffect(() => {
+    if (tipoCampana === "vencimiento") return;
+    if (paraCobrar.length === 0 && paraRefinanciar.length > 0 && tipoCampana !== "refinanciacion") cambiarTipo("refinanciacion");
+    if (paraRefinanciar.length === 0 && tipoCampana === "refinanciacion") cambiarTipo("mora");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paraCobrar.length, paraRefinanciar.length, tipoCampana]);
 
   // Oferta por crédito (cálculo client-side con el mismo dominio que el server).
   const objetivos = useMemo(
@@ -345,7 +418,16 @@ function CampanaWorkspace({ role, creditos, bloqueados, onCancelar, onTerminar }
     }
     const ok = await confirm({
       title: "¿Crear campaña?",
-      description: `Se creará la campaña "${form.nombre.trim()}" con ${creditos.length} crédito${creditos.length !== 1 ? "s" : ""} en mora por ${CANAL_META[form.canal].label}.`,
+      description:
+        `Se creará la campaña "${form.nombre.trim()}" con ${creditos.length} crédito${creditos.length !== 1 ? "s" : ""} ` +
+        (esRefinanciacion
+          ? "cuyo plan ya venció, invitándolos a refinanciar"
+          : esRecordatorio ? "por vencer" : "en mora") +
+        ` por ${CANAL_META[form.canal].label}.` +
+        // Que quede dicho ANTES de crear: la otra mitad de la selección sigue esperando.
+        (restantes().length > 0
+          ? ` Los otros ${restantes().length} quedan seleccionados para su propia campaña.`
+          : ""),
       confirmLabel: "Crear campaña",
     });
     if (!ok) return;
@@ -384,7 +466,7 @@ function CampanaWorkspace({ role, creditos, bloqueados, onCancelar, onTerminar }
         setLaunched(true);
       } else {
         toast.success("Campaña creada");
-        onTerminar();
+        onTerminar(restantes());
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error");
@@ -569,7 +651,7 @@ function CampanaWorkspace({ role, creditos, bloqueados, onCancelar, onTerminar }
 
         <div className="flex shrink-0 items-center justify-end gap-3 border-t border-edge bg-card/40 px-5 py-3">
           <button
-            onClick={onTerminar}
+            onClick={() => onTerminar(restantes())}
             className="rounded-lg bg-primary px-5 py-2 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
           >
             Listo
@@ -657,7 +739,7 @@ function CampanaWorkspace({ role, creditos, bloqueados, onCancelar, onTerminar }
               todavía: no hay nada que descontar, y ofrecer un descuento del 0% de $0,00 sería
               prometerle algo vacío al cliente. El bloque entero no se muestra.
             */}
-            {!esRecordatorio && (
+            {!esRecordatorio && !esRefinanciacion && (
             <section className="space-y-2.5">
               <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Incentivo</p>
               <div className={`space-y-3 rounded-lg border p-3 transition-colors ${form.promoActiva ? "border-success/30 bg-success/5" : "border-border"}`}>
@@ -793,6 +875,25 @@ function CampanaWorkspace({ role, creditos, bloqueados, onCancelar, onTerminar }
                 </div>
               )}
 
+              {/*
+                🔴 [Monto] EN UNA INVITACIÓN A REFINANCIAR ES EL BUG QUE ESTA PANTALLA EVITA.
+
+                El importe que resuelve el placeholder es lo VENCIDO hoy. Al refinanciar se
+                consolida el plan entero —incluidas las cuotas que todavía no vencieron— así
+                que el número del mensaje va a ser menor que el que se le va a pedir cuando
+                venga. La plantilla por defecto no lo usa; esto cubre al que lo escriba a mano.
+
+                Avisa, no bloquea: puede haber un texto donde el importe tenga sentido ("hoy
+                debés $X vencidos"), y decidirlo es del que escribe.
+              */}
+              {esRefinanciacion && /\[monto\]/i.test(form.mensaje_template) && (
+                <div className="rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-[11px] leading-relaxed text-foreground">
+                  <strong>Ojo con [Monto]:</strong> resuelve lo <strong>vencido hoy</strong>, no la deuda que se
+                  consolida al refinanciar —que se lleva también las cuotas por vencer y crece con la mora—. El
+                  cliente va a leer un importe y al llegar se le va a pedir otro.
+                </div>
+              )}
+
               {/* ── Aviso de políticas de Meta. Informa, no bloquea. ── */}
               {riesgo.nivel && <AvisoMeta nivel={riesgo.nivel} titulo={riesgo.titulo} puntos={riesgo.puntos} />}
             </section>
@@ -811,7 +912,51 @@ function CampanaWorkspace({ role, creditos, bloqueados, onCancelar, onTerminar }
                 {bloqueados} excluido{bloqueados !== 1 ? "s" : ""} por no contactar
               </span>
             )}
+
+            {/*
+              🔴 EL CORTE ENTRE LAS DOS AUDIENCIAS.
+
+              Aparece solo cuando la selección trae de las dos clases: si son todos de un lado
+              no hay nada que elegir y el control sería un adorno. Elegir un grupo cambia la
+              campaña entera —mensaje, incentivo y a quiénes se les manda—, así que va acá
+              arriba, encima de la lista que modifica, y no escondido entre los parámetros.
+            */}
+            {paraCobrar.length > 0 && paraRefinanciar.length > 0 && !esRecordatorio && (
+              <div className="ml-auto flex items-center gap-1 rounded-lg border border-border p-0.5">
+                {([
+                  { t: "mora" as TipoCampana, label: "Reclamar el pago", n: paraCobrar.length },
+                  { t: "refinanciacion" as TipoCampana, label: "Invitar a refinanciar", n: paraRefinanciar.length },
+                ]).map(({ t, label, n }) => (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => cambiarTipo(t)}
+                    aria-pressed={tipoCampana === t}
+                    className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+                      tipoCampana === t
+                        ? "bg-primary/15 text-primary"
+                        : "text-muted-foreground hover:bg-muted/40 hover:text-foreground"
+                    }`}
+                  >
+                    {label} <span className="font-mono tabular-nums">({n})</span>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
+
+          {/*
+            Por qué estos créditos no van en la misma campaña que los demás. Es el dato que
+            explica el corte de arriba, y va una sola vez arriba de la tabla — no repetido en
+            cada fila.
+          */}
+          {esRefinanciacion && (
+            <div className="shrink-0 border-b border-edge bg-warning/[0.06] px-5 py-2.5 text-xs text-foreground">
+              El plan de pagos de estos créditos ya venció: la terminal de cobro los rechaza. Al
+              refinanciar se consolida <strong>todo el plan</strong>, no solo lo vencido que se ve
+              acá, y ahí se aplican los honorarios por gestión de cobranza.
+            </div>
+          )}
 
           <div className="md:min-h-0 md:flex-1 overflow-auto">
             <TablaAudiencia
@@ -819,6 +964,7 @@ function CampanaWorkspace({ role, creditos, bloqueados, onCancelar, onTerminar }
               totales={{ totalCuotas, totalMora, totalAhorro, totalOfrecido }}
               focoId={objetivoFoco?.credito.id ?? null}
               esRecordatorio={esRecordatorio}
+              esRefinanciacion={esRefinanciacion}
               onFoco={setFoco}
             />
           </div>
@@ -835,6 +981,7 @@ function CampanaWorkspace({ role, creditos, bloqueados, onCancelar, onTerminar }
           punitorios={totalMora}
           descuento={totalAhorro}
           total={totalOfrecido}
+          esRefinanciacion={esRefinanciacion}
           reducir={!!reducirMovimiento}
         />
         <div className="flex items-center gap-3">
@@ -871,11 +1018,21 @@ function CampanaWorkspace({ role, creditos, bloqueados, onCancelar, onTerminar }
  * leer los cuatro nodos como un flujo y no como cuatro cifras sueltas.
  */
 function PipelineReclamo({
-  cuotas, punitorios, descuento, total, reducir,
+  cuotas, punitorios, descuento, total, reducir, esRefinanciacion,
 }: {
   cuotas: number; punitorios: number; descuento: number; total: number; reducir: boolean;
+  /** Invitación a refinanciar: no hay descuento, y el resultado no es lo que se le pide. */
+  esRefinanciacion?: boolean;
 }) {
-  const etapas = [
+  const etapas = esRefinanciacion
+    // Sin etapa de descuento: no hay ninguno que ofrecer. Y el resultado es lo que deben HOY,
+    // no lo que se les reclama — la refinanciación se lleva además lo que todavía no venció.
+    ? [
+        { label: "Cuotas vencidas", valor: cuotas,     tono: "text-foreground", op: "+" },
+        { label: "Punitorios",      valor: punitorios, tono: "text-warning",    op: "=" },
+        { label: "Vencido hoy",     valor: total,      tono: "text-foreground", op: null },
+      ]
+    : [
     { label: "Cuotas vencidas", valor: cuotas,     tono: "text-foreground",  op: "+" },
     { label: "Punitorios",      valor: punitorios, tono: "text-warning",     op: "−" },
     { label: "Descuento",       valor: descuento,  tono: "text-success",     op: "=" },
@@ -941,6 +1098,7 @@ function TablaAudiencia({
   focoId,
   onFoco,
   esRecordatorio,
+  esRefinanciacion,
 }: {
   objetivos: {
     credito: Credito;
@@ -954,6 +1112,12 @@ function TablaAudiencia({
   onFoco: (id: string) => void;
   /** Recordatorio de vencimiento: no hay atraso ni punitorios que mostrar. */
   esRecordatorio?: boolean;
+  /**
+   * Invitación a refinanciar: no hay descuento (la quita de la campaña se aplica al cobrar y
+   * a estos no se les cobra), y la última columna es lo que deben HOY —no lo que se les pide,
+   * porque no se les pide nada: se los invita a reestructurar.
+   */
+  esRefinanciacion?: boolean;
 }) {
   const th = "px-4 py-2.5 text-left text-[11px] font-bold uppercase tracking-wider text-muted-foreground";
   const thNum = `${th} text-right`;
@@ -973,8 +1137,10 @@ function TablaAudiencia({
           <th className={`${th} border-b border-border`}>{esRecordatorio ? "Vence" : "Atraso"}</th>
           <th className={`${thNum} border-b border-border`}>{esRecordatorio ? "Cuota" : "Cuotas vencidas"}</th>
           {!esRecordatorio && <th className={`${thNum} border-b border-border`}>Punitorios</th>}
-          {!esRecordatorio && <th className={`${thNum} border-b border-border`}>Descuento</th>}
-          <th className={`${thNum} border-b border-border`}>{esRecordatorio ? "Se le recuerda" : "Se le pide"}</th>
+          {!esRecordatorio && !esRefinanciacion && <th className={`${thNum} border-b border-border`}>Descuento</th>}
+          <th className={`${thNum} border-b border-border`}>
+            {esRecordatorio ? "Se le recuerda" : esRefinanciacion ? "Vencido hoy" : "Se le pide"}
+          </th>
         </tr>
       </thead>
       <tbody>
@@ -1018,7 +1184,7 @@ function TablaAudiencia({
             {!esRecordatorio && (
               <td className={`${tdNum} ${o.mora > 0 ? "text-warning" : "text-muted-foreground"}`}>{formatMonto(o.mora)}</td>
             )}
-            {!esRecordatorio && (
+            {!esRecordatorio && !esRefinanciacion && (
               <td className={`${tdNum} ${o.oferta.ahorro > 0 ? "text-success" : "text-muted-foreground"}`}>
                 {o.oferta.ahorro > 0 ? `− ${formatMonto(o.oferta.ahorro)}` : formatMonto(0)}
               </td>
@@ -1039,7 +1205,7 @@ function TablaAudiencia({
           {!esRecordatorio && (
             <td className={`${tdNum} border-t border-border text-warning`}>{formatMonto(totales.totalMora)}</td>
           )}
-          {!esRecordatorio && (
+          {!esRecordatorio && !esRefinanciacion && (
             <td className={`${tdNum} border-t border-border text-success`}>
               {totales.totalAhorro > 0 ? `− ${formatMonto(totales.totalAhorro)}` : formatMonto(0)}
             </td>

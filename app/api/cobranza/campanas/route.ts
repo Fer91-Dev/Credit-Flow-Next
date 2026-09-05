@@ -7,10 +7,17 @@ import { getConfiguracion, getCobranzaConfig } from "@/lib/config";
 import { registrarAuditoria } from "@/lib/audit";
 import { hoyComercial, formatCreditoNumero } from "@/lib/utils";
 import { numerosRefinanciados } from "@/lib/creditos-numero";
+import { cobroBloqueadoPorCredito } from "@/lib/recupero-server";
+import { creditosConAcuerdoVigente } from "@/lib/acuerdos";
 import type { NextRequest } from "next/server";
 
 const CANALES = ["whatsapp", "email", "sms"];
 const PROMOS = ["ninguna", "quita_interes"];
+/**
+ * QUÉ RECLAMA la campaña. `refinanciacion` se suma como VALOR de la columna `tipo` que ya
+ * existía (mora | vencimiento): no hace falta tocar el esquema.
+ */
+const TIPOS_CAMPANA = ["mora", "vencimiento", "refinanciacion"];
 
 type CreditoMora = {
   id: string;
@@ -116,7 +123,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     viene del navegador y define qué se le guarda a cada objetivo. Default "mora", que es
     como se comportaba antes de que existieran los recordatorios.
   */
-  const tipoCampana = body.tipo === "vencimiento" ? "vencimiento" : "mora";
+  const tipoCampana = TIPOS_CAMPANA.includes(body.tipo) ? (body.tipo as string) : "mora";
   if (!PROMOS.includes(promoTipo)) {
     return errorResponse(`promo_tipo debe ser uno de: ${PROMOS.join(", ")}`, "INVALID_INPUT", 400);
   }
@@ -124,7 +131,17 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     return errorResponse("Campo requerido: credito_ids (no vacío)", "INVALID_INPUT", 400);
   }
 
-  const promoValor = promoTipo === "quita_interes"
+  /**
+   * 🔴 UNA CAMPAÑA DE REFINANCIACIÓN NO LLEVA DESCUENTO DE PUNITORIOS.
+   *
+   * El descuento de la campaña se aplica AL COBRAR, y a estos créditos justamente ya no se
+   * les cobra: sería prometer una quita que la terminal nunca va a poder dar. El descuento de
+   * una refinanciación es otro —se pacta cliente por cliente en su pantalla, con su tope— así
+   * que acá se fuerza a "ninguna" en vez de rechazar el pedido.
+   */
+  const promoEfectiva = tipoCampana === "refinanciacion" ? "ninguna" : promoTipo;
+
+  const promoValor = promoEfectiva === "quita_interes"
     ? Math.min(100, Math.max(0, Number(body.promo_valor) || 0))
     : 0;
 
@@ -200,8 +217,39 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
   const cobrable = (c: (typeof candidatos)[number]) =>
     esCreditoVivo(c.estado) && !contactoBloqueado(c.cliente, { bloqueaFallecidos: polFallecidos.bloquea_contacto }).bloqueado;
 
-  const creditos = candidatos.filter(cobrable);
-  const excluidos = candidatos.filter((c) => !cobrable(c));
+  /**
+   * 🔴 EL CORTE ENTRE RECLAMAR Y REFINANCIAR.
+   *
+   * Pasado el umbral de refinanciación el plan se da por caído y la terminal rechaza el
+   * cobro. Mandarle a esa gente un "cancelando ahora $X regularizás tu situación" es
+   * prometer algo que el propio sistema va a negar cuando se presenten a pagar — y encima
+   * regala los punitorios y saltea los honorarios de gestión, que solo se cobran al
+   * refinanciar. Son dos audiencias distintas y no pueden ir en la misma campaña.
+   *
+   * El veredicto sale de la escalera (acuerdo vigente y acuerdos rotos incluidos), no de
+   * mirar los días: ver `cobroBloqueadoPorCredito`. Un recordatorio de VENCIMIENTO no entra
+   * acá — sus destinatarios están al día por definición.
+   */
+  const hoyCorte = hoyComercial();
+  const acuerdosVigentes = await creditosConAcuerdoVigente(tenantId);
+  const bloqueados = await cobroBloqueadoPorCredito(
+    tenantId,
+    candidatos.map((c) => ({
+      id: c.id,
+      diasMora: c.proximo_pago ? diasMoraActual(c.proximo_pago, hoyCorte) : c.dias_mora,
+      acuerdoVigente: acuerdosVigentes.has(c.id),
+    })),
+    cobranzaCfg.recupero,
+  );
+  /** ¿Este crédito corresponde al TIPO de campaña que se está armando? */
+  const delTipo = (c: (typeof candidatos)[number]) => {
+    if (tipoCampana === "vencimiento") return true;
+    const bloqueado = bloqueados.get(c.id) ?? false;
+    return tipoCampana === "refinanciacion" ? bloqueado : !bloqueado;
+  };
+
+  const creditos = candidatos.filter((c) => cobrable(c) && delTipo(c));
+  const excluidos = candidatos.filter((c) => !(cobrable(c) && delTipo(c)));
   // Para nombrar a los excluidos como los ve el operador (REF-000060, no CRD-000061).
   const origenesRefi = await numerosRefinanciados(tenantId, excluidos);
 
@@ -211,13 +259,19 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
    * falleció. Decir "no es cobrable: vencido" ahí sería mentirle al operador sobre algo que
    * sí puede arreglar. Se usa la misma función para el error y para la lista de excluidos.
    */
-  const motivoExclusion = (c: (typeof candidatos)[number]): string =>
-    contactoBloqueado(c.cliente, { bloqueaFallecidos: polFallecidos.bloquea_contacto }).motivo
-      ?? (c.estado === "refinanciado"
-        ? "Ya se refinanció: su deuda está en el crédito nuevo"
-        : c.estado === "pagado" || c.estado === "cancelado"
-          ? "Ya está saldado"
-          : `No es cobrable (${c.estado})`);
+  const motivoExclusion = (c: (typeof candidatos)[number]): string => {
+    const porContacto = contactoBloqueado(c.cliente, { bloqueaFallecidos: polFallecidos.bloquea_contacto }).motivo;
+    if (porContacto) return porContacto;
+    // Quedó afuera por ser de la OTRA audiencia, no por un problema del crédito.
+    if (!delTipo(c)) {
+      return tipoCampana === "refinanciacion"
+        ? "Todavía se le puede cobrar: va en una campaña de reclamo, no en una de refinanciación"
+        : "Su plan ya venció y no se le puede cobrar: corresponde invitarlo a refinanciar";
+    }
+    if (c.estado === "refinanciado") return "Ya se refinanció: su deuda está en el crédito nuevo";
+    if (c.estado === "pagado" || c.estado === "cancelado") return "Ya está saldado";
+    return `No es cobrable (${c.estado})`;
+  };
 
   if (creditos.length === 0) {
     const detalle = excluidos.length
@@ -311,7 +365,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
         canal,
         estado: "borrador",
         tipo: tipoCampana,
-        promo_tipo: promoTipo,
+        promo_tipo: promoEfectiva,
         promo_valor: promoValor,
         promo_vence: body.promo_vence ? new Date(body.promo_vence) : null,
         mensaje_template: body.mensaje_template?.trim() || null,
@@ -342,7 +396,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     entidadId: campana.id,
     accion: "crear",
     descripcion: `Campaña de cobranza "${campana.nombre}" (${canal}) con ${objetivosData.length} crédito(s)`,
-    meta: { canal, promo_tipo: promoTipo, promo_valor: promoValor, objetivos: objetivosData.length },
+    meta: { canal, promo_tipo: promoEfectiva, promo_valor: promoValor, objetivos: objetivosData.length },
   });
 
   return successResponse({

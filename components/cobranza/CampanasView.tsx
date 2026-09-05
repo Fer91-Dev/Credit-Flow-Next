@@ -4,7 +4,7 @@ import { useState, type ComponentType } from "react";
 import { useSWRConfig } from "swr";
 import {
   Megaphone, Users, HandCoins, TrendingUp, ChevronLeft,
-  Check, Play, CheckCircle2, Mail, Smartphone, Sparkles, Trash2, Loader2, Send,
+  Check, Play, CheckCircle2, Mail, Smartphone, Sparkles, Trash2, Loader2, Send, RefreshCcw,
 } from "lucide-react";
 import { WhatsAppIcon } from "@/components/ui/WhatsAppIcon";
 import { useCampanas, useCampana, useConfiguracion, KEYS, type CampanaCobranza, type CampanaObjetivo, type CanalCampana, type EstadoCampana, useTramosMora } from "@/lib/swr";
@@ -156,7 +156,21 @@ function CampanaCard({ campana: c, onOpen }: { campana: CampanaCobranza; onOpen:
       <div className="flex items-center gap-5 mt-3 text-xs">
         <span className="flex items-center gap-1.5 text-muted-foreground"><Users className="h-3.5 w-3.5" /> {c.metricas.alcance}</span>
         <span className="flex items-center gap-1.5 text-muted-foreground"><HandCoins className="h-3.5 w-3.5" /> {c.metricas.promesas} promesas</span>
-        <span className="flex items-center gap-1.5 font-mono text-success"><TrendingUp className="h-3.5 w-3.5" /> ${n0(c.metricas.recuperado)}</span>
+        {/*
+          🔴 En una campaña de REFINANCIACIÓN lo recuperado siempre da $0 y no significa nada:
+          el cliente no paga el crédito viejo —a ese ya no se le cobra—, refinancia y paga el
+          NUEVO, que es otro crédito y no es objetivo de esta campaña. Mostrar ese cero al lado
+          de las promesas la haría leer como un fracaso. Atribuir la refinanciación a la
+          campaña que la provocó está pendiente.
+        */}
+        {c.tipo !== "refinanciacion" && (
+          <span className="flex items-center gap-1.5 font-mono text-success"><TrendingUp className="h-3.5 w-3.5" /> ${n0(c.metricas.recuperado)}</span>
+        )}
+        {c.tipo === "refinanciacion" && (
+          <span className="flex items-center gap-1 text-[11px] text-warning ml-auto">
+            <RefreshCcw className="h-3 w-3" /> invitación a refinanciar
+          </span>
+        )}
         {c.promo_tipo === "quita_interes" && (
           <span className="flex items-center gap-1 text-[11px] text-success ml-auto"><Sparkles className="h-3 w-3" /> −{c.promo_valor}% mora</span>
         )}
