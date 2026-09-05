@@ -97,8 +97,31 @@ export async function assertPuedeAcordar(
 /** Ídem para la REFINANCIACIÓN, que es el escalón irreversible. */
 export async function assertPuedeRefinanciar(
   tenantId: string, creditoId: string, cfg: RecuperoConfig, actor?: ActorEscalera,
+  opts?: {
+    /**
+     * La ENTREGA de esta misma refinanciación ya se cobró (el cliente puso plata para que la
+     * deuda a consolidar sea menor). Ver abajo por qué cambia la lectura de los días.
+     */
+    entregaCobrada?: boolean;
+  },
 ): Promise<void> {
-  lanzarSiBloquea(puedeRefinanciar(await senalesRecupero(tenantId, creditoId), cfg), "ESCALERA_REFINANCIACION", actor);
+  const s = await senalesRecupero(tenantId, creditoId);
+  /**
+   * 🔴 LA ENTREGA NO PUEDE VOLVER IMPOSIBLE LA REFINANCIACIÓN QUE LA MOTIVÓ.
+   *
+   * Un cobro mueve `proximo_pago` a la cuota más vieja que quede impaga, así que una entrega
+   * grande baja los días de atraso — incluso a 0 si tapó todo lo vencido. Sin esta corrección,
+   * el operador cobraba la entrega y acto seguido el server le contestaba "todavía no llegó al
+   * mínimo de días para refinanciar": la plata adentro y el arreglo imposible de cerrar.
+   *
+   * Ese descenso no significa que el cliente se haya puesto al día: es el anticipo del plan
+   * nuevo. Se levanta SOLO el piso de días; el resto de la escalera (exigir un acuerdo roto
+   * antes de refinanciar) se sigue evaluando igual, porque eso no lo cambia haber cobrado.
+   */
+  const senales = opts?.entregaCobrada
+    ? { ...s, diasMora: Math.max(s.diasMora, cfg.dias_min_mora_refinanciar) }
+    : s;
+  lanzarSiBloquea(puedeRefinanciar(senales, cfg), "ESCALERA_REFINANCIACION", actor);
 }
 
 /**
@@ -117,7 +140,7 @@ export async function assertPuedeCobrar(
   creditoId: string,
   cfg: RecuperoConfig,
   actor?: ActorEscalera,
-  opts?: { entregaDeAcuerdo?: boolean },
+  opts?: { entregaDe?: "acuerdo" | "refinanciacion" },
 ): Promise<boolean> {
   // Atajo: con la regla apagada no se consulta la base. Es el caso de casi todos los cobros,
   // y son seis consultas que no tiene sentido pagar en el camino caliente del dinero.

@@ -311,15 +311,16 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
    * sistema: el cobro de mostrador, la terminal del acuerdo y la carga masiva de planillas
    * llaman los tres a `POST /api/pagos`. Un bloqueo que solo existe en el front no bloquea.
    *
-   * `es_entrega_acuerdo` no es una llave maestra: adentro se revalida contra `puedeAcordar`,
-   * así que solo pasa la entrega de un acuerdo que la escalera efectivamente permite armar.
+   * `entrega_de` no es una llave maestra: adentro cada valor se revalida contra la guarda de
+   * su escalón (`puedeAcordar` / `puedeRefinanciar`), así que solo pasa la entrega de un
+   * arreglo que la escalera efectivamente permite armar.
    */
   const cobroAutorizadoPorAdmin = await assertPuedeCobrar(
     tenantId,
     body.credito_id,
     recuperoCfg,
     { role, autorizacionAdmin: body.autorizacion_admin === true },
-    { entregaDeAcuerdo: body.es_entrega_acuerdo === true },
+    { entregaDe: body.entrega_de === "acuerdo" || body.entrega_de === "refinanciacion" ? body.entrega_de : undefined },
   );
   const fechaPago = body.fecha ? new Date(body.fecha) : hoyComercial();
   // P2 — Un cobro no puede fecharse en el futuro (distorsiona mora, caja y reportes).

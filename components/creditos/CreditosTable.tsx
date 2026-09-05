@@ -7,7 +7,6 @@ import { useRouter } from "next/navigation";
 import { mutate as globalMutate } from "swr";
 import { FileText, ChevronDown, X, RefreshCw, History } from "lucide-react";
 import { CreditoDetail } from "./CreditoDetail";
-import { RefinanciarDialog } from "./RefinanciarDialog";
 import { CompararRefiDialog } from "./CompararRefiDialog";
 import { useCreditos, KEYS, type Credito, useTramosMora, useDiasLegales } from "@/lib/swr";
 import { type Role } from "@/lib/auth/roles";
@@ -52,7 +51,13 @@ export function CreditosTable({ role }: { role: Role }) {
   const router = useRouter();
   const { creditos, error, isLoading, mutate } = useCreditos();
   const [detail, setDetail]       = useState<Credito | null>(null);
-  const [refinanciar, setRefinanciar] = useState<Credito | null>(null);
+  /**
+   * Refinanciar ya no abre un diálogo: es una PANTALLA propia (`/creditos/[id]/refinanciar`).
+   * La operación se decide comparando la deuda que se da de baja con las cuotas que nacen, y
+   * en un modal los dos bloques competían por el mismo scroll. Además, con URL propia el
+   * bloqueo de cobro de Pagos puede enlazar directo al crédito que hay que refinanciar.
+   */
+  const irARefinanciar = (c: Credito) => router.push(`/creditos/${c.id}/refinanciar`);
   const [search, setSearch]       = useState("");
   const [estadoFilter, setEstado] = useState("all");
   const [tipoFilter, setTipo]     = useState("all");
@@ -328,7 +333,7 @@ export function CreditosTable({ role }: { role: Role }) {
             Error al cargar créditos: {error.message}
           </div>
         ) : tab === "refinanciados" ? (
-          <RefinanciadosView creditos={creditos} busq={busqRefi} setBusq={setBusqRefi} onOpen={setDetail} onRefinanciar={setRefinanciar} />
+          <RefinanciadosView creditos={creditos} busq={busqRefi} setBusq={setBusqRefi} onOpen={setDetail} onRefinanciar={irARefinanciar} />
         ) : (
         <div className="space-y-5">
 
@@ -557,7 +562,7 @@ export function CreditosTable({ role }: { role: Role }) {
               <CreditoDetail
                 credito={detail}
                 role={role}
-                onRefinanciar={(c) => { setDetail(null); setRefinanciar(c); }}
+                onRefinanciar={(c) => { setDetail(null); irARefinanciar(c); }}
                 // Saltar al otro extremo de la refinanciación: se cambia el crédito DENTRO del
                 // mismo modal, sin cerrarlo y volver a abrirlo.
                 onAbrirCredito={(c) => setDetail(c)}
@@ -569,13 +574,6 @@ export function CreditosTable({ role }: { role: Role }) {
         </DialogContent>
       </Dialog>
 
-      <RefinanciarDialog
-        credito={refinanciar}
-        onClose={(success) => {
-          setRefinanciar(null);
-          if (success) { mutate(); globalMutate(KEYS.dashboard); }
-        }}
-      />
     </>
   );
 }

@@ -155,8 +155,8 @@ export interface RecuperoConfig {
    * o una donde se pueden las dos, y el operador no tendría cómo saber cuál manda.
    *
    * Tres cosas que NO bloquea, y las tres a propósito (ver `puedeCobrar`): el crédito con un
-   * acuerdo VIGENTE, la entrega con la que se arma un acuerdo, y el caso en que la
-   * refinanciación tampoco esté abierta. Ver el detalle en cada guarda.
+   * acuerdo VIGENTE, la entrega con la que se arma el arreglo que lo reemplaza (acuerdo o
+   * refinanciación), y el caso en que la refinanciación tampoco esté abierta.
    */
   bloquear_cobro_sin_refinanciar: boolean;
   /**
@@ -375,11 +375,14 @@ export function puedeCobrar(
   cfg: RecuperoConfig,
   opts?: {
     /**
-     * Este cobro es la ENTREGA con la que se está armando un acuerdo de pago, no una cuota
-     * más del plan caído. Se acepta solo si la escalera efectivamente permite acordar hoy
-     * (se revalida acá abajo), así que la bandera no alcanza para saltearse nada.
+     * Este cobro es la ENTREGA con la que se está armando un arreglo, no una cuota más del
+     * plan caído: el anticipo del acuerdo o de la refinanciación que lo reemplaza.
+     *
+     * No es una llave maestra: cada valor se revalida contra la guarda de SU escalón
+     * (`puedeAcordar` / `puedeRefinanciar`), así que la bandera no alcanza para saltearse
+     * nada — si la escalera no admite el arreglo, tampoco admite su entrega.
      */
-    entregaDeAcuerdo?: boolean;
+    entregaDe?: "acuerdo" | "refinanciacion";
   },
 ): VeredictoEscalera {
   if (!cfg.bloquear_cobro_sin_refinanciar) return PERMITIDO;
@@ -401,12 +404,18 @@ export function puedeCobrar(
   if (s.acuerdoVigente) return PERMITIDO;
 
   /**
-   * ENTREGA DE UN ACUERDO NUEVO: se cobra, si la escalera admite armarlo. No es una cuota del
-   * plan caído, es el anticipo del arreglo que lo reemplaza — el mismo rol que la primera
-   * cuota de una refinanciación. Y va revalidado contra `puedeAcordar`, que es la barrera
-   * real: si el crédito ya agotó el tope de acuerdos rotos, la entrega tampoco entra.
+   * ENTREGA DEL ARREGLO QUE REEMPLAZA AL PLAN CAÍDO: se cobra, si la escalera admite armarlo.
+   *
+   * No es una cuota del plan viejo: es el anticipo del acuerdo o de la refinanciación que lo
+   * sustituye — el mismo rol que la primera cuota del crédito nuevo. Y hay clientes que
+   * justamente vienen a entregar algo para que la deuda que se consolida sea menor.
+   *
+   * Cada una se valida contra la guarda de SU escalón, que es la barrera real: si el crédito
+   * agotó el tope de acuerdos rotos, la entrega de un acuerdo no entra; y la de una
+   * refinanciación solo entra si refinanciar está efectivamente abierto.
    */
-  if (opts?.entregaDeAcuerdo && puedeAcordar(s, cfg).permitido) return PERMITIDO;
+  if (opts?.entregaDe === "acuerdo" && puedeAcordar(s, cfg).permitido) return PERMITIDO;
+  if (opts?.entregaDe === "refinanciacion" && puedeRefinanciar(s, cfg).permitido) return PERMITIDO;
 
   /**
    * 🔴 NUNCA CERRAR LAS DOS PUERTAS A LA VEZ.

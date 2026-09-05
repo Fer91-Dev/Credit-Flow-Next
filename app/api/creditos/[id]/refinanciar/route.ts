@@ -16,10 +16,27 @@ interface RouteParams {
 }
 
 /**
+ * Cuánto vale un `entrega_pago_id` como prueba de que el cobro es parte de ESTA operación.
+ * Media hora: alcanza de sobra para armar la refinanciación con el cliente enfrente, y no
+ * tanto como para que un cobro de la mañana sirva de excusa a la tarde.
+ */
+const VENTANA_ENTREGA_MS = 30 * 60 * 1000;
+
+/**
  * Carga el crédito (scopeado anti-IDOR) con sus cuotas y valida que sea refinanciable.
  * Devuelve { error } (Response) o { credito, config, deuda } listo para operar.
  */
-async function cargarRefinanciable(req: NextRequest, id: string) {
+async function cargarRefinanciable(
+  req: NextRequest,
+  id: string,
+  opts?: {
+    /**
+     * Id del pago con el que se cobró la ENTREGA de esta misma refinanciación, si la hubo.
+     * Se valida acá adentro; un id que no cumpla las condiciones se ignora, no habilita nada.
+     */
+    entregaPagoId?: string;
+  },
+) {
   const { tenantId, role, vendedorId, userId, nombre, email } = await requireRole(["admin", "vendedor"], req);
 
   const credito = await prisma.creditos.findFirst({
@@ -79,7 +96,36 @@ async function cargarRefinanciable(req: NextRequest, id: string) {
    * herramienta de recupero justo para el perfil que la necesita.
    */
   const moraHoy = diasMoraActual(credito.proximo_pago, hoyComercial());
-  if (moraHoy <= 0) {
+
+  /**
+   * ¿Se acaba de cobrar la ENTREGA de esta refinanciación?
+   *
+   * Importa porque un cobro corre `proximo_pago` a la cuota más vieja que siga impaga: una
+   * entrega que tapó todo lo vencido deja el crédito "al día" y, sin esto, el server rechazaba
+   * la refinanciación un segundo después de haber cobrado para hacerla. La plata adentro y el
+   * arreglo trabado.
+   *
+   * Las condiciones son estrictas para que el id no sea una llave: tiene que ser un pago de
+   * ESTE crédito y de esta financiera, no anulado, que no sea la cuota de un acuerdo, y
+   * recién registrado. Un pago viejo no habilita refinanciar un crédito que se puso al día.
+   */
+  let entregaCobrada = false;
+  if (opts?.entregaPagoId) {
+    const pago = await prisma.pagos.findFirst({
+      where: {
+        ...withTenant(tenantId),
+        id: opts.entregaPagoId,
+        credito_id: id,
+        anulado: false,
+        acuerdo_cuota_id: null,
+        created_at: { gte: new Date(Date.now() - VENTANA_ENTREGA_MS) },
+      },
+      select: { id: true },
+    });
+    entregaCobrada = pago != null;
+  }
+
+  if (moraHoy <= 0 && !entregaCobrada) {
     return { error: errorResponse("No se puede refinanciar un crédito al día: la refinanciación es para deuda en mora.", "NOT_IN_ARREARS", 409), tenantId, role, vendedorId } as const;
   }
 
@@ -113,7 +159,7 @@ async function cargarRefinanciable(req: NextRequest, id: string) {
     hoy: hoyComercial(),
   });
 
-  return { credito, config, deuda, moraHoy, tenantId, role, vendedorId, userId, nombre, email } as const;
+  return { credito, config, deuda, moraHoy, entregaCobrada, tenantId, role, vendedorId, userId, nombre, email } as const;
 }
 
 /**
@@ -240,22 +286,31 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
 export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteParams) => {
   assertSameOrigin(req);
   const { id } = await params;
-  const r = await cargarRefinanciable(req, id);
-  if ("error" in r && r.error) return r.error;
-  const { credito, config, deuda, tenantId, role, userId, nombre, email } = r as Extract<typeof r, { credito: object }>;
-  const cobranzaCfg = await getCobranzaConfig(tenantId);
+
+  /**
+   * El body se lee ANTES de cargar el contexto, y no es un detalle de orden: trae
+   * `entrega_pago_id`, y de si esa entrega es válida depende una de las validaciones que
+   * hace `cargarRefinanciable` (un crédito que quedó al día por haber cobrado la entrega
+   * sigue siendo refinanciable). Leerlo no requiere sesión; la barrera de rol está adentro.
+   */
   let body: any;
   try {
     body = await req.json();
   } catch {
     return errorResponse("Body JSON inválido", "INVALID_JSON", 400);
   }
+  const entregaPagoId = typeof body?.entrega_pago_id === "string" && body.entrega_pago_id ? body.entrega_pago_id : undefined;
+
+  const r = await cargarRefinanciable(req, id, { entregaPagoId });
+  if ("error" in r && r.error) return r.error;
+  const { credito, config, deuda, entregaCobrada, tenantId, role, userId, nombre, email } = r as Extract<typeof r, { credito: object }>;
+  const cobranzaCfg = await getCobranzaConfig(tenantId);
 
   // Escalera de recupero: la refinanciación es el escalón irreversible (mata el crédito y
   // crea otro). Si la financiera exige agotar antes el acuerdo de pago, se corta acá.
   // Va DESPUÉS de leer el body: la autorización del admin viene ahí.
   const actorEscalera = { role, autorizacionAdmin: body?.autorizacion_admin === true };
-  await assertPuedeRefinanciar(tenantId, id, cobranzaCfg.recupero, actorEscalera);
+  await assertPuedeRefinanciar(tenantId, id, cobranzaCfg.recupero, actorEscalera, { entregaCobrada });
 
   const tasa = Number(body.tasa);
   const plazoMeses = Math.trunc(Number(body.plazo_meses));
@@ -491,6 +546,13 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
       tasa,
       plazo_meses: plazoMeses,
       frecuencia,
+      /**
+       * La ENTREGA que el cliente puso para achicar la deuda antes de consolidarla. No hay
+       * columna que las vincule (el pago ya vive en `pagos`, con su recibo y su movimiento de
+       * caja), así que el nexo queda acá: es lo que permite explicar por qué la deuda
+       * consolidada es menor que la que muestra el crédito viejo.
+       */
+      ...(entregaCobrada ? { entrega_pago_id: entregaPagoId } : {}),
     },
   });
 

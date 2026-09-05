@@ -226,7 +226,7 @@ export function NuevoAcuerdoView({ creditoId }: { creditoId: string | null }) {
              * que la bandera no saltea nada: si la escalera no admite el acuerdo, tampoco
              * admite su entrega.
              */
-            es_entrega_acuerdo: true,
+            entrega_de: "acuerdo",
             // Y si el admin ya autorizó el acuerdo por encima de la escalera, la misma
             // autorización tiene que valer para su entrega, o se frena en el primer paso.
             autorizacion_admin: autorizar || undefined,

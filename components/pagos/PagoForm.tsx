@@ -934,11 +934,14 @@ export function PagoForm({ creditoId, clienteId, montoSugerido, motivoSugerido, 
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-3 pl-6">
+              {/* Directo a refinanciar ESTE crédito. Antes esto era un enlace a la lista y el
+                  operador tenía que volver a buscarlo; desde que refinanciar es una pantalla
+                  con URL propia, el circuito "no se cobra → refinanciá" cierra en un clic. */}
               <Link
-                href="/creditos"
+                href={`/creditos/${creditoSel}/refinanciar`}
                 className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition-opacity hover:opacity-90"
               >
-                Ir a Créditos para refinanciar <ArrowRight className="h-3.5 w-3.5" />
+                Refinanciar este crédito <ArrowRight className="h-3.5 w-3.5" />
               </Link>
               {/* La válvula de escape del admin, con el mismo criterio que el resto de la
                   escalera: el vendedor no la ve, y usarla queda asentado en la auditoría. */}

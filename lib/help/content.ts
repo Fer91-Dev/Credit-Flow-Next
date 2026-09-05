@@ -120,8 +120,10 @@ const HELP: Record<string, HelpDoc> = {
         titulo: "Refinanciar / reestructurar deuda",
         pasos: [
           "Entrá a la pestaña \"Refinanciados\": buscá el crédito en mora por N°, DNI o nombre y tocá \"Refinanciar\".",
-          "También podés hacerlo desde el detalle de un crédito moroso (botón \"Refinanciar\" arriba a la derecha).",
-          "En el diálogo ves la deuda viva a consolidar; podés renegociar tasa/plazo y aplicar una quita (%, monto o ninguna).",
+          "También podés hacerlo desde el detalle de un crédito moroso, o desde el aviso que aparece en Pagos cuando un crédito ya no se puede cobrar.",
+          "Se abre en pantalla completa: a la izquierda la deuda que se da de baja y los parámetros, a la derecha el plan del crédito nuevo, que se recalcula mientras escribís.",
+          "Si el cliente pone plata en el acto, cargala en \"Entrega ahora\": se cobra con su recibo y su movimiento de caja, y el crédito nuevo nace por lo que queda.",
+          "Podés renegociar tasa y cuotas, hacerle un descuento (%, monto o ninguno) y ajustar los honorarios por gestión de cobranza.",
           "Al confirmar, el crédito viejo queda \"refinanciado\" (saldo $0) y nace uno nuevo con la deuda consolidada.",
         ],
       },
