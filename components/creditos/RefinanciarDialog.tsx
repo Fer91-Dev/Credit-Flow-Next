@@ -198,15 +198,58 @@ function RefinanciarForm({ credito, onClose }: { credito: Credito; onClose: (suc
         </div>
       ) : (
         <>
+          {/*
+            🔴 EL PLAN VIEJO SE DA DE BAJA, Y ESO TIENE QUE LEERSE ANTES QUE EL NÚMERO.
+
+            Refinanciar no es cobrar: mata el plan actual y arma otro. El crédito viejo queda
+            cerrado y SIN botones de cobro — no se le cobra nunca más. Si el diálogo empieza
+            por el importe, se lee como una liquidación y no como lo que es.
+
+            Y el corte vencido / por vencer no es decoración: la ficha del crédito muestra "A
+            cobrar hoy", que son SOLO las cuotas vencidas. Acá el total es más grande porque
+            se lleva TODO el plan. Sin partirlo, el operador ve dos números distintos para lo
+            que parece la misma deuda y no tiene con qué cruzarlos.
+          */}
+          <div className="rounded-xl border border-warning/40 bg-warning/[0.06] p-4 space-y-2">
+            <div className="flex items-start gap-2">
+              <Ban className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
+              <p className="text-xs text-foreground">
+                El plan de <strong>{formatCreditoNumero(credito.numero)}</strong> se da de baja: queda cerrado en $0 y
+                <strong> ya no se le cobra más</strong>. Todo lo que sigue abajo pasa al crédito nuevo.
+              </p>
+            </div>
+          </div>
+
           {/* Desglose de la deuda viva a consolidar */}
           <div className="rounded-xl border border-border bg-muted/20 p-4 space-y-2">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Deuda viva a consolidar</p>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Deuda del plan que se da de baja</p>
+            {preview.composicion && (
+              <div className="space-y-1 border-b border-border pb-2">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-muted-foreground">
+                    Ya vencido · {preview.composicion.vencidas} cuota{preview.composicion.vencidas === 1 ? "" : "s"} + mora
+                  </span>
+                  <span className="font-mono tabular-nums text-warning">
+                    ${n2(preview.composicion.monto_vencido + preview.composicion.mora)}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-muted-foreground">
+                    Todavía no vencido · {preview.composicion.por_vencer} cuota{preview.composicion.por_vencer === 1 ? "" : "s"}
+                  </span>
+                  <span className="font-mono tabular-nums text-muted-foreground">${n2(preview.composicion.monto_por_vencer)}</span>
+                </div>
+                <p className="pt-0.5 text-[11px] text-muted-foreground/70">
+                  En la ficha del crédito, «A cobrar hoy» es solo la primera línea. Refinanciar se lleva las dos.
+                </p>
+              </div>
+            )}
             <Row label="Capital pendiente" value={preview.deuda.capital} />
             <Row label="Interés pendiente" value={preview.deuda.interes} />
             {preview.deuda.cargos > 0 && <Row label="Cargos pendientes" value={preview.deuda.cargos} />}
             <Row label="Mora acumulada" value={preview.deuda.mora} accent="warning" />
             <div className="flex items-center justify-between border-t border-border pt-2">
-              <span className="text-sm font-semibold text-foreground">Total adeudado</span>
+              <span className="text-sm font-semibold text-foreground">Total que se consolida</span>
               <span className="font-mono text-base font-bold text-foreground tabular-nums">${n2(preview.deuda.total)}</span>
             </div>
           </div>

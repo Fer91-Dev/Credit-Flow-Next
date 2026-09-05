@@ -139,6 +139,29 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
   const quitaMax = quitaMaxima({ ...deuda, cuotas_vencidas: 0, cuotas_incluidas: 0, por_vencer: 0 }, role === "admin", cobranzaCfg.acuerdos);
 
   /**
+   * 🔴 EL CORTE VENCIDO / POR VENCER — sin esto el diálogo confunde.
+   *
+   * La ficha del crédito muestra "A cobrar hoy", que son SOLO las cuotas vencidas. Acá el
+   * total es otro y más grande, porque refinanciar se lleva TODO el plan, incluidas las
+   * cuotas que todavía no vencieron. El operador veía dos números distintos para lo que
+   * parecía la misma deuda y no tenía con qué cruzarlos.
+   *
+   * Partiéndolo, el número de la ficha se reconoce adentro de este: vencido + por vencer +
+   * mora = total. La mora va entera del lado vencido, que es de donde sale.
+   */
+  const hoyRef = hoyComercial();
+  const comp = { vencidas: 0, monto_vencido: 0, por_vencer: 0, monto_por_vencer: 0 };
+  for (const q of credito.cuotas) {
+    const pend = round2(
+      (q.capital - q.pagado_capital) + (q.interes - q.pagado_interes) +
+      (round2(q.iva + q.seguro + q.gastos) - q.pagado_cargos),
+    );
+    if (pend <= 0.005) continue;
+    if (q.fecha_vencimiento < hoyRef) { comp.vencidas += 1; comp.monto_vencido = round2(comp.monto_vencido + pend); }
+    else { comp.por_vencer += 1; comp.monto_por_vencer = round2(comp.monto_por_vencer + pend); }
+  }
+
+  /**
    * Los honorarios que va a llevar el crédito nuevo, con la MISMA cuenta que hace el POST.
    * Viajan al diálogo para que el operador los vea ANTES de confirmar: es plata que se le
    * suma a la deuda del cliente, y enterarse después de creado el crédito no es una opción.
@@ -160,6 +183,8 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
     deuda,
     sugerido: { tasa: credito.tasa, plazo_meses: credito.plazo_meses, frecuencia: credito.frecuencia },
     limites: { quita_maxima: quitaMax },
+    /** Cómo se compone la deuda: lo que ya venció (con su mora) y lo que todavía no. */
+    composicion: { ...comp, mora: deuda.mora },
     honorarios: {
       activo: cobranzaCfg.recupero.honorarios_gestion_activo,
       pct: cobranzaCfg.recupero.honorarios_gestion_pct,

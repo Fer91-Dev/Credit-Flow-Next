@@ -1682,6 +1682,12 @@ export interface RefinanciacionPreview {
    */
   honorarios?: { activo: boolean; pct: number; monto: number; negociable: boolean };
   /**
+   * Cómo se compone la deuda: lo VENCIDO (con su mora) y lo que todavía NO venció.
+   * Refinanciar se lleva las dos cosas; la ficha del crédito solo muestra lo vencido, así
+   * que sin este corte los dos números no se pueden cruzar.
+   */
+  composicion?: { vencidas: number; monto_vencido: number; por_vencer: number; monto_por_vencer: number; mora: number };
+  /**
    * Parámetros del motor con los que el POST va a armar el plan del crédito nuevo. Viajan
    * para que el diálogo previsualice EL MISMO cronograma con la misma función del dominio.
    */
