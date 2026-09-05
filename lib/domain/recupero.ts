@@ -124,6 +124,20 @@ export interface RecuperoConfig {
    * Es la regla fuerte: obliga a agotar lo reversible antes de matar el crédito.
    */
   exigir_acuerdo_para_refinanciar: boolean;
+  /**
+   * Cuántos acuerdos ROTOS admite un crédito antes de que no se le pueda armar otro.
+   *
+   * 🔴 Es una regla de la ESCALERA, no un término del acuerdo: por eso vive acá y no en
+   * `AcuerdosConfig`, que guarda las condiciones (cuotas, tasa, quita) de cada acuerdo.
+   *
+   * Sin tope, el acuerdo se vuelve la forma de esquivar el escalón siguiente: un deudor puede
+   * encadenar acuerdos rotos para siempre y no llegar nunca a la refinanciación, que es donde
+   * la financiera recalcula la deuda y cobra los honorarios de gestión. El sistema solo impedía
+   * dos acuerdos VIGENTES a la vez; la cantidad total era libre.
+   *
+   * 0 = sin tope.
+   */
+  max_acuerdos_rotos: number;
   /** Mínimo de días de atraso para poder refinanciar. 0 = sin mínimo. */
   dias_min_mora_refinanciar: number;
   /**
@@ -162,6 +176,8 @@ export const RECUPERO_DEFAULT: RecuperoConfig = {
   exigir_gestion_para_acuerdo: false,
   // 50 días: pasado ese atraso el crédito entra en instancia de recupero.
   dias_min_mora_acuerdo: 50,
+  // Dos oportunidades: rota la segunda, el paso siguiente es refinanciar.
+  max_acuerdos_rotos: 2,
   exigir_acuerdo_para_refinanciar: false,
   dias_min_mora_refinanciar: 0,
   no_bajar_tasa_refinanciando: true,
@@ -184,6 +200,11 @@ export function resolverRecupero(raw: unknown): RecuperoConfig {
   return {
     exigir_gestion_para_acuerdo: r.exigir_gestion_para_acuerdo === true,
     dias_min_mora_acuerdo: dia(r.dias_min_mora_acuerdo, RECUPERO_DEFAULT.dias_min_mora_acuerdo),
+    max_acuerdos_rotos: (() => {
+      const n = Number(r.max_acuerdos_rotos);
+      // 0 es válido (= sin tope), así que no alcanza con `n > 0` para detectar "vino vacío".
+      return Number.isFinite(n) && n >= 0 ? Math.min(20, Math.round(n)) : RECUPERO_DEFAULT.max_acuerdos_rotos;
+    })(),
     exigir_acuerdo_para_refinanciar: r.exigir_acuerdo_para_refinanciar === true,
     dias_min_mora_refinanciar: dia(r.dias_min_mora_refinanciar, RECUPERO_DEFAULT.dias_min_mora_refinanciar),
     honorarios_gestion_activo: r.honorarios_gestion_activo === true,
@@ -225,7 +246,38 @@ export function puedeAcordar(s: SenalesRecupero, cfg: RecuperoConfig): Veredicto
       sugerencia: "Llamalo y registrá la gestión; después armás el acuerdo.",
     };
   }
+  /**
+   * 🔴 EL TOPE DE ACUERDOS ROTOS — es lo que impide quedarse dando vueltas en este escalón.
+   *
+   * Sin él, un deudor puede encadenar acuerdos rotos indefinidamente y no llegar nunca a la
+   * refinanciación, que es donde la financiera recalcula la deuda y cobra los honorarios de
+   * gestión. El acuerdo pasaba de ser un escalón a ser la forma de esquivar el siguiente.
+   *
+   * Va ÚLTIMO a propósito: los otros dos motivos ("todavía no llegó al mínimo", "falta
+   * gestionarlo") son transitorios y se resuelven esperando o llamando. Este no se resuelve:
+   * la salida es refinanciar, y el mensaje lo dice.
+   */
+  if (topeAcuerdosAgotado(s, cfg)) {
+    return {
+      permitido: false,
+      motivo: `Ya rompió ${s.acuerdosRotos} acuerdo${s.acuerdosRotos === 1 ? "" : "s"} de pago y la financiera admite hasta ${cfg.max_acuerdos_rotos}.`,
+      sugerencia: "El paso siguiente es refinanciar: se recalcula toda la deuda en un crédito nuevo.",
+    };
+  }
   return PERMITIDO;
+}
+
+/**
+ * ¿Se agotaron las oportunidades de acordar? (tope alcanzado y activo).
+ *
+ * Vive acá y no dentro de `puedeAcordar` porque lo consultan LOS DOS lados de la escalera: el
+ * acuerdo para cerrarse, y la refinanciación para abrirse (ver `puedeRefinanciar`).
+ */
+export function topeAcuerdosAgotado(
+  s: Pick<SenalesRecupero, "acuerdosRotos">,
+  cfg: { max_acuerdos_rotos: number },
+): boolean {
+  return cfg.max_acuerdos_rotos > 0 && s.acuerdosRotos >= cfg.max_acuerdos_rotos;
 }
 
 /**
@@ -248,6 +300,20 @@ export function puedeUsarTasa(
 
 /** ¿Se le puede refinanciar? (además de estar en mora y vivo, que valida el server) */
 export function puedeRefinanciar(s: SenalesRecupero, cfg: RecuperoConfig): VeredictoEscalera {
+  /**
+   * 🔴 SI SE AGOTARON LOS ACUERDOS, EL MÍNIMO DE DÍAS NO APLICA.
+   *
+   * Es la guarda contra el callejón sin salida, y es la parte que Fernando pidió expresamente
+   * ("siempre evitando pisarse con los días para refinanciar"). Con el tope de acuerdos
+   * alcanzado y todavía por debajo del mínimo de días, el crédito quedaría sin NINGUNA puerta:
+   * no se puede acordar (tope) y no se puede refinanciar (días). Ese estado no puede existir.
+   *
+   * Con los números de fábrica no pasa —romper dos acuerdos lleva más días que el mínimo—,
+   * pero el SaaS se vende a otras financieras y una configuración distinta lo produce sola.
+   * La regla se sostiene por diseño y no porque los números de hoy se lleven bien.
+   */
+  if (topeAcuerdosAgotado(s, cfg)) return PERMITIDO;
+
   if (cfg.dias_min_mora_refinanciar > 0 && s.diasMora < cfg.dias_min_mora_refinanciar) {
     return {
       permitido: false,

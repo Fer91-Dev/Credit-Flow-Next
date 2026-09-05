@@ -106,6 +106,7 @@ export const PARAMETROS: ParametroIndexado[] = [
   { label: "Frenar los punitorios", tab: "cobranza", seccion: "Clientes fallecidos" },
   { label: "Bloquear el contacto", tab: "cobranza", seccion: "Clientes fallecidos" },
   { label: "Sacarlo de la agenda del día", tab: "cobranza", seccion: "Clientes fallecidos" },
+  { label: "Acuerdos rotos antes de tener que refinanciar", tab: "cobranza", seccion: "Escalera de recupero" },
   { label: "Días mínimos de atraso para refinanciar", tab: "cobranza", seccion: "Escalera de recupero" },
   { label: "Cobrar honorarios por gestión de cobranza al refinanciar", tab: "cobranza", seccion: "Escalera de recupero" },
   { label: "Honorarios (% de la deuda consolidada)", tab: "cobranza", seccion: "Escalera de recupero" },

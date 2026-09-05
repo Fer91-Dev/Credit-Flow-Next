@@ -2271,7 +2271,16 @@ export function ConfigForm() {
                   onValueChange={v => setRecupero({ dias_min_mora_acuerdo: Math.max(0, Math.min(365, Math.round(v))) })}
                 />
               </Field>
-              <Field label="Días mínimos de atraso para refinanciar" hint="La refinanciación mata el crédito y crea otro: conviene reservarla para el atraso grande. 0 = sin mínimo.">
+              <Field
+                label="Acuerdos rotos antes de tener que refinanciar"
+                hint="Cuántas veces se le puede volver a armar un acuerdo a alguien que ya rompió uno. Alcanzado el tope, la única salida es refinanciar. 0 = sin tope."
+              >
+                <NumeroInput min="0" max="20" decimales={false}
+                  value={cobranza.recupero.max_acuerdos_rotos}
+                  onValueChange={v => setRecupero({ max_acuerdos_rotos: Math.max(0, Math.min(20, Math.round(v))) })}
+                />
+              </Field>
+              <Field label="Días mínimos de atraso para refinanciar" hint="La refinanciación mata el crédito y crea otro: conviene reservarla para el atraso grande. 0 = sin mínimo. Si ya se agotaron los acuerdos, este mínimo no aplica: si no, el crédito quedaría sin ninguna salida.">
                 <NumeroInput min="0" max="365" decimales={false}
                   value={cobranza.recupero.dias_min_mora_refinanciar}
                   onValueChange={v => setRecupero({ dias_min_mora_refinanciar: Math.max(0, Math.min(365, Math.round(v))) })}
@@ -2512,7 +2521,7 @@ function defaultCobranza(): CobranzaConfig {
       quita_max_vendedor_pct: 0, tasa_mensual: null, modo_interes: "capitaliza",
     },
     recupero: {
-      exigir_gestion_para_acuerdo: false, dias_min_mora_acuerdo: 50,
+      exigir_gestion_para_acuerdo: false, dias_min_mora_acuerdo: 50, max_acuerdos_rotos: 2,
       exigir_acuerdo_para_refinanciar: false, dias_min_mora_refinanciar: 0,
       no_bajar_tasa_refinanciando: true,
       honorarios_gestion_activo: false, honorarios_gestion_pct: 0,
