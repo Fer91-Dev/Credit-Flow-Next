@@ -79,10 +79,25 @@ export interface CargosConfig {
   seguro: { activo: boolean; modo: SeguroModo; valor: number };
   /** Gastos administrativos por cuota: fijo o % de la cuota pura. */
   gastosAdministrativos: { activo: boolean; modo: GastoModo; valor: number };
+  /**
+   * HONORARIOS POR GESTIÓN DE COBRANZA — solo en refinanciaciones.
+   *
+   * A diferencia de los otros cuatro, este NO sale de Configuración → Cargos: lo inyecta
+   * `POST /creditos/[id]/refinanciar` al armar el crédito nuevo, calculado como un % de la
+   * deuda consolidada (Configuración → Cobranza → Escalera de recupero). Por eso viaja como
+   * un TOTAL ya resuelto y no como un modo+valor: el % se aplicó sobre la deuda vieja, que
+   * el motor de amortización no conoce.
+   *
+   * 🔴 ES UN CARGO, NO CAPITAL. Se reparte entre las cuotas del plan nuevo y por lo tanto
+   * NO devenga interés. Sumarlo al capital habría sido cobrar interés sobre un honorario.
+   *
+   * Como cualquier otro cargo, queda congelado en el snapshot del crédito al refinanciar.
+   */
+  honorariosGestion?: { activo: boolean; total: number };
 }
 
 /** Una columna de cargo per-cuota a discriminar en el detalle del operador. */
-export type CargoCuotaCol = { key: "iva" | "seguro" | "gastos"; label: string };
+export type CargoCuotaCol = { key: "iva" | "seguro" | "gastos" | "honorarios"; label: string };
 
 /**
  * Columnas de cargos per-cuota ACTIVAS según la config, en orden y con su rótulo.
@@ -105,6 +120,10 @@ export function cargoColumnasActivas(cargos: CargosConfig): CargoCuotaCol[] {
   if (cargos.gastosAdministrativos.activo) {
     const g = cargos.gastosAdministrativos;
     cols.push({ key: "gastos", label: g.modo === "fijo" ? "Gastos administrativos" : `Gastos administrativos ${pct(g.valor)}%` });
+  }
+  // Solo aparece en las refinanciaciones que lo llevan (ver `honorariosGestion`).
+  if (cargos.honorariosGestion?.activo) {
+    cols.push({ key: "honorarios", label: "Honorarios de gestión" });
   }
   return cols;
 }

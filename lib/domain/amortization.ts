@@ -22,7 +22,8 @@ export interface CuotaPlan {
   iva: number; // IVA sobre el interés
   seguro: number; // seguro del período
   gastos: number; // gastos administrativos del período
-  cuotaTotal: number; // cuota + iva + seguro + gastos (con redondeo aplicado)
+  honorarios: number; // honorarios de gestión de cobranza (solo refinanciaciones), prorrateados
+  cuotaTotal: number; // cuota + iva + seguro + gastos + honorarios (con redondeo aplicado)
 }
 
 export interface PlanAmortizacion {
@@ -40,7 +41,8 @@ export interface PlanAmortizacion {
   totalIva: number;
   totalSeguro: number;
   totalGastos: number;
-  totalCargos: number; // iva + seguro + gastos + (comisión si NO financiada)
+  totalHonorarios: number;
+  totalCargos: number; // iva + seguro + gastos + honorarios + (comisión si NO financiada)
   /** Suma de la columna que paga el cliente (las `cuotaTotal` YA redondeadas). Sin comisión upfront. */
   totalCuotas: number;
   totalConCargos: number; // total efectivo que paga el cliente = totalCuotas + comisión upfront
@@ -190,7 +192,9 @@ export function construirPlanAmortizacion(
   const cuotas: CuotaPlan[] = [];
   let totalInteresCents = 0;
   let totalPagadoCents = 0;
-  let totalIva = 0, totalSeguro = 0, totalGastos = 0;
+  let totalIva = 0, totalSeguro = 0, totalGastos = 0, totalHonorarios = 0;
+  /** Honorarios ya imputados: la cuota de ajuste cobra el resto exacto (ver abajo). */
+  let honorariosAcum = 0;
 
   for (let nro = 1; nro <= nCuotas; nro++) {
     const saldoInicialCents = saldoCents;
@@ -206,7 +210,7 @@ export function construirPlanAmortizacion(
     // Cargos del período, sobre la cuota ANTES de redondear: son un % del interés, del
     // saldo o de la cuota de tabla, no del importe redondeado.
     const cuotaPuraTeorica = fromCents(esAjuste ? saldoCents + interesCents : cuotaCents);
-    let iva = 0, seguro = 0, gastos = 0;
+    let iva = 0, seguro = 0, gastos = 0, honorarios = 0;
     if (cargos?.iva?.activo) iva = round2(interes * cargos.iva.tasa);
     if (cargos?.seguro?.activo) {
       const s = cargos.seguro;
@@ -220,7 +224,29 @@ export function construirPlanAmortizacion(
       const g = cargos.gastosAdministrativos;
       gastos = round2(g.modo === "porcentaje" ? cuotaPuraTeorica * g.valor : g.valor);
     }
-    const cargosCents = toCents(round2(iva + seguro + gastos));
+    /**
+     * Honorarios de gestión: un TOTAL fijo repartido en partes iguales entre las cuotas.
+     *
+     * Se prorratea y no se capitaliza a propósito: es lo que costó gestionar la cobranza,
+     * no plata prestada, así que no tiene por qué devengar interés. La última cuota absorbe
+     * la diferencia del redondeo para que la suma de las partes dé exactamente el total
+     * cobrado — si no, quedaban centavos colgados que el cliente no podía pagar.
+     */
+    if (cargos?.honorariosGestion?.activo && nCuotas > 0) {
+      const totalHon = round2(cargos.honorariosGestion.total);
+      /**
+       * 🔴 EL RESTO VA EN LA CUOTA DE AJUSTE, no en "la última por número".
+       *
+       * `esAjuste` es la fila que cierra el plan —la última, o la que salda el saldo antes si
+       * el capital se agota—, así que es la única que se cumple siempre. Repartir en partes
+       * iguales redondeadas dejaba centavos: sobre $173.526,51 en 6 cuotas sobraban $0,03, y
+       * un cargo que no cierra deja la cuota impagable para siempre (la imputación trabaja
+       * por componente y el capital nunca se salda).
+       */
+      honorarios = esAjuste ? round2(totalHon - honorariosAcum) : round2(totalHon / nCuotas);
+      honorariosAcum = round2(honorariosAcum + honorarios);
+    }
+    const cargosCents = toCents(round2(iva + seguro + gastos + honorarios));
 
     /**
      * 🔴 El redondeo se aplica a la cuota total y el CAPITAL absorbe la diferencia; no se
@@ -267,6 +293,7 @@ export function construirPlanAmortizacion(
 
     totalIva = round2(totalIva + iva);
     totalSeguro = round2(totalSeguro + seguro);
+    totalHonorarios = round2(totalHonorarios + honorarios);
     totalGastos = round2(totalGastos + gastos);
 
     cuotas.push({
@@ -277,7 +304,7 @@ export function construirPlanAmortizacion(
       interes,
       capital,
       saldo: fromCents(Math.max(0, saldoCents)),
-      iva, seguro, gastos, cuotaTotal,
+      iva, seguro, gastos, honorarios, cuotaTotal,
     });
 
     if (saldoCents <= 0) break;
@@ -286,7 +313,7 @@ export function construirPlanAmortizacion(
   const totalPagado = fromCents(totalPagadoCents);
   // Comisión NO financiada = costo extra cobrado al inicio (no entra en las cuotas).
   const comisionUpfront = comision > 0 && !comisionFinanciada ? comision : 0;
-  const totalCargos = round2(totalIva + totalSeguro + totalGastos + comisionUpfront);
+  const totalCargos = round2(totalIva + totalSeguro + totalGastos + totalHonorarios + comisionUpfront);
   /**
    * 🔴 El total se suma de las cuotas REDONDEADAS, no de sus componentes. Sumar
    * `cuotaPura + iva + seguro + gastos` devuelve el importe exacto que el motor calculó
@@ -309,6 +336,7 @@ export function construirPlanAmortizacion(
     totalSeguro,
     totalGastos,
     totalCargos,
+    totalHonorarios,
     totalCuotas,
     totalConCargos,
     cuotas,

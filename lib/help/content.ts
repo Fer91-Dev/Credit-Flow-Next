@@ -418,6 +418,8 @@ const HELP: Record<string, HelpDoc> = {
         items: [
           "Configuración → Cobranza: cada cuántos días reaparece un moroso sin gestionar, el tope de cuotas del acuerdo, qué lo rompe y cuánto puede condonar un vendedor.",
           "Configuración → Cobranza → Escalera de recupero: si querés obligar a subir los escalones en orden (no refinanciar sin haber intentado un acuerdo antes). De fábrica está apagado.",
+          "Configuración → Cobranza → Escalera de recupero: los honorarios por gestión de cobranza. Si están activos, el crédito que nace de una refinanciación lleva un cargo por ese % de la deuda que se consolidó. Se calcula DESPUÉS del descuento —así una quita no se lleva puesto el honorario— y va repartido en las cuotas, no sumado al capital: por eso no devenga interés.",
+          "Configuración → Cobranza → Escalera de recupero: los honorarios por gestión de cobranza. Si están activos, el crédito que nace de una refinanciación lleva un cargo por ese % de la deuda que se consolidó. Se calcula DESPUÉS del descuento —así una quita no se lleva puesto el honorario— y va repartido en las cuotas, no sumado al capital: por eso no devenga interés.",
         ],
       },
     ],

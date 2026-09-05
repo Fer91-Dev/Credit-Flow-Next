@@ -138,6 +138,15 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
   const cobranzaCfg = await getCobranzaConfig(tenantId);
   const quitaMax = quitaMaxima({ ...deuda, cuotas_vencidas: 0, cuotas_incluidas: 0, por_vencer: 0 }, role === "admin", cobranzaCfg.acuerdos);
 
+  /**
+   * Los honorarios que va a llevar el crédito nuevo, con la MISMA cuenta que hace el POST.
+   * Viajan al diálogo para que el operador los vea ANTES de confirmar: es plata que se le
+   * suma a la deuda del cliente, y enterarse después de creado el crédito no es una opción.
+   */
+  const honorarios = cobranzaCfg.recupero.honorarios_gestion_activo
+    ? round2((deuda.total * cobranzaCfg.recupero.honorarios_gestion_pct) / 100)
+    : 0;
+
   return successResponse({
     credito: {
       id: credito.id,
@@ -151,6 +160,11 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
     deuda,
     sugerido: { tasa: credito.tasa, plazo_meses: credito.plazo_meses, frecuencia: credito.frecuencia },
     limites: { quita_maxima: quitaMax },
+    honorarios: {
+      activo: cobranzaCfg.recupero.honorarios_gestion_activo,
+      pct: cobranzaCfg.recupero.honorarios_gestion_pct,
+      monto: honorarios,
+    },
     /**
      * Los parámetros con los que el POST va a armar el plan del crédito nuevo.
      *
@@ -166,7 +180,11 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
     motor: {
       convencion_tasa: config.convencionTasa,
       frecuencias: config.simulador.frecuencias,
-      cargos: config.simulador.cargos,
+      // Con honorarios activos el preview tiene que armar el plan con el MISMO cargo que el
+      // POST, o la cuota que se le muestra al cliente sale más barata que la que va a pagar.
+      cargos: honorarios > 0
+        ? { ...config.simulador.cargos, honorariosGestion: { activo: true, total: honorarios } }
+        : config.simulador.cargos,
       redondeo: config.simulador.redondeoCuota,
       cronograma: {
         diaCorte: config.simulador.diaCorte,
@@ -268,9 +286,26 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
   });
   if (invalido) return errorResponse(invalido, "INVALID_INPUT", 400);
 
+  /**
+   * HONORARIOS POR GESTIÓN DE COBRANZA.
+   *
+   * 🔴 SE CALCULAN DESPUÉS DE LA QUITA, sobre la deuda consolidada ORIGINAL. Si salieran del
+   * capital ya descontado, el vendedor podría usar su tope de quita para achicar también el
+   * honorario de la financiera — el mismo agujero que el tope de condonación cierra del otro
+   * lado. El descuento es una concesión al cliente; el honorario es lo que costó gestionarlo.
+   *
+   * 🔴 Y VIAJAN COMO CARGO DEL PLAN NUEVO, no sumados al capital: se reparten entre las
+   * cuotas y no devengan interés. Sumarlos al capital sería cobrar interés sobre un honorario.
+   */
+  const honorarios = cobranzaCfg.recupero.honorarios_gestion_activo
+    ? round2((deuda.total * cobranzaCfg.recupero.honorarios_gestion_pct) / 100)
+    : 0;
+
   // Snapshots vigentes para el crédito NUEVO (mismo criterio que POST /creditos).
   const frecuencia = normalizarFrecuencia(body.frecuencia ?? credito.frecuencia);
-  const cargosSnapshot = config.simulador.cargos;
+  const cargosSnapshot = honorarios > 0
+    ? { ...config.simulador.cargos, honorariosGestion: { activo: true, total: honorarios } }
+    : config.simulador.cargos;
   const frecuenciaDef = resolverFrecuencia(frecuencia, config.simulador.frecuencias);
   const cronogramaSnapshot = {
     diaCorte: config.simulador.diaCorte,

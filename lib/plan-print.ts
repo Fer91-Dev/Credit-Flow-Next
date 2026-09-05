@@ -20,6 +20,8 @@ export interface FilaPlanPrint {
   iva: number;
   seguro: number;
   gastos: number;
+  /** Solo en refinanciaciones con honorarios de gestión; 0 en el resto. */
+  honorarios?: number;
   cuotaTotal: number;
   saldo: number;
 }
@@ -96,8 +98,8 @@ export function imprimirPlanPagos(data: PlanPrintData, vista: VistaPlan): void {
   // si no, modo histórico (una sola columna "Cargos") cuando hayCargos.
   const cols = data.cargoCols ?? [];
   const discriminar = cols.length > 0;
-  const totalPorKey = (key: "iva" | "seguro" | "gastos") =>
-    data.cuotas.reduce((s, r) => s + r[key], 0);
+  const totalPorKey = (key: CargoCuotaCol["key"]) =>
+    data.cuotas.reduce((s, r) => s + (r[key] ?? 0), 0);
 
   /**
    * Clase de la columna que lleva LO QUE EL CLIENTE PAGA. Con cargos es la columna "A pagar";

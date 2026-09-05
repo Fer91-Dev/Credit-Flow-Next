@@ -127,6 +127,23 @@ export interface RecuperoConfig {
   /** Mínimo de días de atraso para poder refinanciar. 0 = sin mínimo. */
   dias_min_mora_refinanciar: number;
   /**
+   * HONORARIOS POR GESTIÓN DE COBRANZA en la refinanciación.
+   *
+   * Llegar a refinanciar cuesta trabajo —llamadas, visitas, campañas— y ese costo hoy lo
+   * absorbía entera la financiera. Cuando está activo, el crédito NUEVO nace con un cargo
+   * igual a este % de la deuda consolidada.
+   *
+   * 🔴 ES UN CARGO DEL PLAN NUEVO, NO CAPITAL: se reparte entre las cuotas y por lo tanto
+   * NO devenga interés (ver `honorariosGestion` en `config.ts`). Cobrar interés sobre un
+   * honorario sería cobrar dos veces por lo mismo.
+   *
+   * 🔴 Y SE APLICA DESPUÉS DE LA QUITA. Si se sumara antes, el descuento del vendedor podría
+   * borrar el honorario de la financiera — justo el abuso que el tope de quitas evita.
+   */
+  honorarios_gestion_activo: boolean;
+  /** % de la deuda consolidada que se cobra como honorarios. 0 = no se cobra nada. */
+  honorarios_gestion_pct: number;
+  /**
    * La refinanciación no puede pactarse por DEBAJO de la tasa del crédito original.
    *
    * 🔴 Sin esto, bajar la tasa al refinanciar es una quita invisible: sobre una deuda
@@ -148,6 +165,10 @@ export const RECUPERO_DEFAULT: RecuperoConfig = {
   exigir_acuerdo_para_refinanciar: false,
   dias_min_mora_refinanciar: 0,
   no_bajar_tasa_refinanciando: true,
+  // Arranca APAGADO: cobrarle honorarios al deudor es una decisión de cada financiera, y el
+  // sistema no puede empezar a sumarle plata a una deuda porque sí.
+  honorarios_gestion_activo: false,
+  honorarios_gestion_pct: 0,
 };
 
 export function resolverRecupero(raw: unknown): RecuperoConfig {
@@ -165,6 +186,12 @@ export function resolverRecupero(raw: unknown): RecuperoConfig {
     dias_min_mora_acuerdo: dia(r.dias_min_mora_acuerdo, RECUPERO_DEFAULT.dias_min_mora_acuerdo),
     exigir_acuerdo_para_refinanciar: r.exigir_acuerdo_para_refinanciar === true,
     dias_min_mora_refinanciar: dia(r.dias_min_mora_refinanciar, RECUPERO_DEFAULT.dias_min_mora_refinanciar),
+    honorarios_gestion_activo: r.honorarios_gestion_activo === true,
+    // Acotado a 0–100: un % fuera de rango sobre una deuda consolidada es plata de verdad.
+    honorarios_gestion_pct: (() => {
+      const n = Number(r.honorarios_gestion_pct);
+      return Number.isFinite(n) && n >= 0 ? Math.min(100, n) : RECUPERO_DEFAULT.honorarios_gestion_pct;
+    })(),
     // Protector por defecto: es el único de la escalera que arranca prendido, porque no
     // ordena un proceso — tapa una fuga de plata.
     no_bajar_tasa_refinanciando:

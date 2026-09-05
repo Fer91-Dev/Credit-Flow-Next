@@ -127,3 +127,21 @@ export function advertirRatioCuotaIngreso(ratio: number | null | undefined): Adv
     `gastos de vivir: el cliente cae en mora aunque quiera pagar.`
   );
 }
+
+/**
+ * Honorarios por gestión de cobranza al refinanciar.
+ *
+ * Es plata que se le SUMA a la deuda de alguien que ya no pudo pagar. Un porcentaje alto
+ * sobre una deuda consolidada —que ya trae capital, interés y punitorios acumulados— hace
+ * justo lo contrario de lo que busca una refinanciación: la vuelve más cara todavía y
+ * empuja a que se rompa de nuevo.
+ */
+export function advertirHonorariosGestion(pct: number | null | undefined): Advertencia {
+  if (pct == null || pct <= 15) return null;
+  const base = 1_000_000;
+  return (
+    `Al ${pct}%, refinanciar una deuda de ${pesos(base)} le suma ${pesos((base * pct) / 100)} ` +
+    `de honorarios. La refinanciación es la última chance antes de ejecutar: encarecerla ` +
+    `demasiado es lo que hace que se rompa otra vez. Por encima del 15% conviene revisarlo.`
+  );
+}

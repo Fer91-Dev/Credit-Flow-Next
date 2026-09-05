@@ -15,7 +15,7 @@ import { Field, Input, NumeroInput, Select, Textarea, SecretInput } from "@/comp
 import { anclaSeccion, buscarParametros, type ParametroIndexado } from "@/lib/config-indice";
 import { BuscadorF3 } from "@/components/ui/BuscadorF3";
 import {
-  advertirTasaAcuerdo, advertirMoraDiaria, advertirTopeMora, advertirDiasGracia,
+  advertirTasaAcuerdo, advertirMoraDiaria, advertirTopeMora, advertirDiasGracia, advertirHonorariosGestion,
   advertirCuotasAcuerdo, advertirMaxCreditosActivos, advertirRatioCuotaIngreso,
 } from "@/lib/domain/config-advertencias";
 import { StatusBadge } from "@/components/ui/StatusBadge";
@@ -2279,6 +2279,29 @@ export function ConfigForm() {
               </Field>
             </div>
             <div className="mt-4 flex flex-col gap-3 max-w-3xl">
+              {/*
+                Honorarios por gestión de cobranza. Van acá y no en Configuración → Cargos
+                porque NO son un cargo de todos los créditos: solo los lleva el crédito que
+                nace de una refinanciación.
+              */}
+              <SwitchRow
+                title="Cobrar honorarios por gestión de cobranza al refinanciar"
+                desc="Llegar a refinanciar cuesta llamadas, visitas y campañas. Con esto, el crédito nuevo nace con un cargo por ese trabajo."
+                checked={cobranza.recupero.honorarios_gestion_activo}
+                onChange={v => setRecupero({ honorarios_gestion_activo: v })}
+              />
+              {cobranza.recupero.honorarios_gestion_activo && (
+                <Field
+                  label="Honorarios (% de la deuda consolidada)"
+                  hint="Se calcula sobre toda la deuda que se refinancia y DESPUÉS del descuento, así una quita no se lleva puesto el honorario. Va como cargo repartido en las cuotas del plan nuevo: no suma capital, así que no devenga interés."
+                  advertencia={advertirHonorariosGestion(cobranza.recupero.honorarios_gestion_pct)}
+                >
+                  <NumeroInput min="0" max="100"
+                    value={cobranza.recupero.honorarios_gestion_pct}
+                    onValueChange={v => setRecupero({ honorarios_gestion_pct: Math.max(0, Math.min(100, v)) })}
+                  />
+                </Field>
+              )}
               <SwitchRow
                 title="Exigir haberlo contactado antes de armar un acuerdo"
                 desc="Sin al menos una gestión registrada, no se puede acordar. Evita el acuerdo de escritorio, armado sin hablar con el deudor."
@@ -2492,6 +2515,7 @@ function defaultCobranza(): CobranzaConfig {
       exigir_gestion_para_acuerdo: false, dias_min_mora_acuerdo: 50,
       exigir_acuerdo_para_refinanciar: false, dias_min_mora_refinanciar: 0,
       no_bajar_tasa_refinanciando: true,
+      honorarios_gestion_activo: false, honorarios_gestion_pct: 0,
     },
     fallecidos: { frena_punitorios: true, bloquea_contacto: true, saca_de_agenda: true },
   };
