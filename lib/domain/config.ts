@@ -69,6 +69,30 @@ export interface PlazoOpcion {
   activo: boolean;
 }
 
+/**
+ * Los planes SIEMPRE se presentan de menos a más cuotas.
+ *
+ * El orden guardado es el de carga: el plan que la financiera agrega hoy queda último, así que
+ * sumar "1 cuota" a una lista que arrancaba en 2 lo dejaba abajo de "60 cuotas" — en el
+ * desplegable del simulador y en la lista de Configuración. Nadie busca un plazo por orden de
+ * alta; se busca por cuántas cuotas son.
+ *
+ * Se ordena al RESOLVER la config, no al guardarla: así también quedan ordenados los planes que
+ * ya están cargados, sin tocar el JSON de ningún tenant. Y nada depende de la posición en el
+ * arreglo —el plan por defecto es un número de cuotas y los planes se buscan por id— así que
+ * reordenar es seguro.
+ *
+ * Con la misma cantidad de cuotas manda el que vale para TODAS las frecuencias (el histórico),
+ * y después alfabético por frecuencia: dos "6 cuotas" tienen que salir siempre en el mismo
+ * orden, o la lista se reacomoda sola entre una carga y otra.
+ */
+export function ordenarPlanes(plazos: PlazoOpcion[]): PlazoOpcion[] {
+  return [...plazos].sort((a, b) => {
+    if (a.cuotas !== b.cuotas) return a.cuotas - b.cuotas;
+    return (a.frecuencia ?? "").localeCompare(b.frecuencia ?? "");
+  });
+}
+
 /** Cargos que afectan la cuota total y/o el costo financiero. */
 export interface CargosConfig {
   /** Comisión de otorgamiento: % del monto o monto fijo; opcionalmente financiada al capital. */
@@ -327,10 +351,11 @@ export function resolverSimulador(
   return {
     ...SIMULADOR_DEFAULT,
     ...limpio,
-    plazos:
+    plazos: ordenarPlanes(
       Array.isArray(parcial.plazos) && parcial.plazos.length > 0
         ? parcial.plazos
         : SIMULADOR_DEFAULT.plazos,
+    ),
     frecuencias:
       Array.isArray(parcial.frecuencias) && parcial.frecuencias.length > 0
         ? parcial.frecuencias

@@ -8,6 +8,7 @@ import {
   CONFIG_DEFAULT,
   resolverConfig,
   resolverSimulador,
+  ordenarPlanes,
   resolverGamificacion,
   type ConfiguracionFinanciera,
   type ConvencionTasa,
@@ -63,16 +64,27 @@ export async function guardarConfiguracion(
   tenantId: string,
   config: ConfiguracionFinanciera
 ): Promise<ConfiguracionFinanciera> {
+  /**
+   * Los planes se guardan YA ordenados por cantidad de cuotas.
+   *
+   * `resolverSimulador` los ordena igual al leer —así los tenants viejos se acomodan solos—,
+   * pero esta función devuelve lo que se guardó y la pantalla de Configuración pinta esa
+   * respuesta: sin ordenar acá, el plan recién agregado se quedaba al final hasta recargar.
+   */
+  const guardado: ConfiguracionFinanciera = {
+    ...config,
+    simulador: { ...config.simulador, plazos: ordenarPlanes(config.simulador.plazos) },
+  };
   const data = {
-    convencion_tasa: config.convencionTasa,
-    sistema_amortizacion: config.sistemaAmortizacion,
-    mora_activa: config.moraActiva,
-    tasa_mora_diaria: config.tasaMoraDiaria,
-    tope_mora_pct: config.topeMoraPct ?? CONFIG_DEFAULT.topeMoraPct,
-    imputar_cargos: config.imputarCargos,
-    moneda: config.moneda,
-    locale: config.locale,
-    simulador: config.simulador as unknown as Prisma.InputJsonValue,
+    convencion_tasa: guardado.convencionTasa,
+    sistema_amortizacion: guardado.sistemaAmortizacion,
+    mora_activa: guardado.moraActiva,
+    tasa_mora_diaria: guardado.tasaMoraDiaria,
+    tope_mora_pct: guardado.topeMoraPct ?? CONFIG_DEFAULT.topeMoraPct,
+    imputar_cargos: guardado.imputarCargos,
+    moneda: guardado.moneda,
+    locale: guardado.locale,
+    simulador: guardado.simulador as unknown as Prisma.InputJsonValue,
   };
 
   await prisma.configuraciones.upsert({
@@ -81,7 +93,7 @@ export async function guardarConfiguracion(
     update: data,
   });
 
-  return config;
+  return guardado;
 }
 
 // ─── Canales de comunicación (WhatsApp, SMS, Email) ─────────────────────────
