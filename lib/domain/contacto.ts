@@ -124,6 +124,40 @@ export function renderPlantillaContacto(plantilla: string, d: DatosPlantillaCont
 }
 
 /**
+ * LO QUE SE LE AGREGA AL AVISO DE MORA CUANDO ARRASTRA CRÉDITOS QUE YA NO SE COBRAN.
+ *
+ * 🔴 Un cliente puede tener varios créditos, y no todos en el mismo escalón: uno de veinte
+ * días que se cobra normal y otro de ciento veinte cuyo plan ya venció. El aviso de mora
+ * reclama SOLO lo cobrable —si sumara los dos, le pediría por escrito una plata que la
+ * terminal después le va a rechazar— pero callar el otro sería peor todavía: el cliente
+ * pagaría lo que dice el mensaje y se iría creyendo que quedó al día.
+ *
+ * Va como texto del sistema y no como plantilla editable a propósito: no es una preferencia
+ * de redacción, es la parte del mensaje que evita que el importe de arriba se lea como el
+ * total de lo que debe. Una financiera que la borrara volvería a tener el problema.
+ */
+export function avisoCreditosARefinanciar(numeros: string[]): string {
+  if (numeros.length === 0) return "";
+  const lista = numeros.join(", ");
+  return numeros.length === 1
+    ? ` Aparte, el plan de ${lista} venció y ya no se cobra en cuotas: acercate y lo reestructuramos.`
+    : ` Aparte, los planes de ${lista} vencieron y ya no se cobran en cuotas: acercate y los reestructuramos.`;
+}
+
+/**
+ * El mensaje cuando NO hay NADA cobrable: todo lo que el cliente debe está pasado el umbral
+ * de refinanciación.
+ *
+ * Reemplaza al aviso de mora entero, no lo acompaña: con la plantilla de mora, `[vencido]`
+ * daría $0,00 y saldría un reclamo pidiéndole cero pesos. Por eso tampoco lleva importe —la
+ * deuda que se va a consolidar se calcula con la persona enfrente y crece con la mora cada
+ * día— y sí lleva los días, que son el dato que no se discute.
+ */
+export const PLANTILLA_SOLO_REFINANCIAR =
+  "Hola [nombre], te escribimos de [financiera]. Tu plan de pagos venció hace [dias] días y ya no se cobra en cuotas. " +
+  "Podemos reestructurar toda tu deuda en un plan nuevo, con cuotas que puedas pagar. Acercate o respondé este mensaje y lo armamos.";
+
+/**
  * Textos por defecto. Neutros a propósito: los escribe cada financiera desde Configuración.
  */
 export const PLANTILLAS_CONTACTO_DEFAULT: PlantillasContacto = {

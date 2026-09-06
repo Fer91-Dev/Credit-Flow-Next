@@ -990,6 +990,12 @@ export interface CampanaMetricas {
   alcance: number;
   promesas: number;
   recuperado: number;
+  /**
+   * Objetivos que terminaron REFINANCIADOS. Es el resultado de una campaña de invitación a
+   * refinanciar, donde `recuperado` siempre da $0: el cliente no paga el crédito viejo —a ese
+   * ya no se le cobra— sino el nuevo, que es otro crédito y no es objetivo de la campaña.
+   */
+  refinanciados?: number;
 }
 
 export interface CampanaCobranza {
@@ -1833,6 +1839,11 @@ export interface AgendaItem {
   /** Cuántas cuotas están vencidas e impagas. */
   cuotas_vencidas: number;
   dias_mora: number;
+  /**
+   * El plan de este crédito ya venció: la terminal rechaza su cobro y lo que corresponde es
+   * invitarlo a refinanciar, no reclamarle un pago.
+   */
+  cobro_bloqueado?: boolean;
   promesa_monto: number | null;
   bucket: "promesa" | "agendado" | "enfriado";
   motivo: string;

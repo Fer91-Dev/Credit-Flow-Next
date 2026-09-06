@@ -214,7 +214,8 @@ function AgendaRow({
 }) {
   /** Los cortes media/alta/crítica que definió la financiera (Configuración → Cobranza). */
   const tramos = useTramosMora();
-  const critica = severidadMora(it.dias_mora, tramos) === "critica";
+  const severidad = severidadMora(it.dias_mora, tramos);
+  const critica = severidad === "critica";
   const toast = useToast();
   const [enviando, setEnviando] = useState(false);
 
@@ -320,7 +321,18 @@ function AgendaRow({
 
       {/* Días mora */}
       <div className="shrink-0">
-        <StatusBadge label={formatDias(it.dias_mora)} variant={critica ? "destructive" : "warning"} />
+        <div className="flex items-center gap-1.5">
+          {/*
+            🔴 "YA NO SE COBRA", EN LA COLA DEL DÍA.
+
+            Es la pantalla que el vendedor usa todas las mañanas: sin esto llamaba a reclamar
+            un pago que la terminal después rechaza. El mensaje de WhatsApp ya se adapta solo
+            —invita a refinanciar en vez de reclamar—, pero el operador tiene que saberlo
+            ANTES de levantar el teléfono, no enterarse por el texto que le salió.
+          */}
+          {it.cobro_bloqueado && <StatusBadge label="Refinanciar" variant="warning" />}
+          <StatusBadge label={formatDias(it.dias_mora)} variant={critica ? "destructive" : "warning"} />
+        </div>
       </div>
 
       {/* Acciones */}
@@ -335,9 +347,29 @@ function AgendaRow({
           type="button"
           onClick={reclamarWhatsapp}
           disabled={!it.telefono || enviando}
-          title={it.telefono ? "Reclamar por WhatsApp (queda registrado en la ficha)" : "Sin teléfono cargado"}
+          title={
+            !it.telefono
+              ? "Sin teléfono cargado"
+              : it.cobro_bloqueado
+                ? "Invitar a refinanciar por WhatsApp (queda registrado en la ficha)"
+                : "Reclamar por WhatsApp (queda registrado en la ficha)"
+          }
+          /*
+            🔴 EL COLOR ES EL TRAMO DE MORA, no el del logo de WhatsApp.
+
+            Los mismos cortes que ya pinta la financiera en el resto de Cobranzas (media /
+            alta / crítica). El botón se lee de un vistazo en una cola de cuarenta renglones:
+            en rojo, el que hay que llamar hoy. Con el verde fijo de la marca, el de 120 días
+            y el de 3 se veían idénticos y la cola se atendía en el orden en que caía.
+          */
           className={`hidden sm:flex items-center justify-center h-7 w-7 rounded-lg transition-colors ${
-            it.telefono ? "text-success hover:bg-success/10 disabled:opacity-50" : "text-muted-foreground/20 cursor-not-allowed"
+            !it.telefono
+              ? "text-muted-foreground/20 cursor-not-allowed"
+              : severidad === "critica"
+                ? "text-destructive hover:bg-destructive/10 disabled:opacity-50"
+                : severidad === "alta"
+                  ? "text-warning hover:bg-warning/10 disabled:opacity-50"
+                  : "text-success hover:bg-success/10 disabled:opacity-50"
           }`}
         >
           <WhatsAppIcon className="h-3.5 w-3.5" />

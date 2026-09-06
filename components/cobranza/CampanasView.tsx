@@ -166,6 +166,13 @@ function CampanaCard({ campana: c, onOpen }: { campana: CampanaCobranza; onOpen:
         {c.tipo !== "refinanciacion" && (
           <span className="flex items-center gap-1.5 font-mono text-success"><TrendingUp className="h-3.5 w-3.5" /> ${n0(c.metricas.recuperado)}</span>
         )}
+        {/* El resultado de una campaña de refinanciación: cuántos terminaron reestructurados.
+            Se deriva del estado del crédito, así que aparece solo si de verdad pasó. */}
+        {(c.metricas.refinanciados ?? 0) > 0 && (
+          <span className="flex items-center gap-1.5 text-warning">
+            <RefreshCcw className="h-3.5 w-3.5" /> {c.metricas.refinanciados} refinanciado{c.metricas.refinanciados === 1 ? "" : "s"}
+          </span>
+        )}
         {c.tipo === "refinanciacion" && (
           <span className="flex items-center gap-1 text-[11px] text-warning ml-auto">
             <RefreshCcw className="h-3 w-3" /> invitación a refinanciar

@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { getCobranzaConfig, getConfiguracion } from "@/lib/config";
 import { sincronizarAcuerdos, creditosConAcuerdoVigente, cubiertoPorAcuerdo } from "@/lib/acuerdos";
 import { numerosRefinanciados } from "@/lib/creditos-numero";
+import { cobroBloqueadoPorCredito } from "@/lib/recupero-server";
 import {
   diasMoraActual, ESTADOS_VIVOS, calcularDeudaVencida, moraDelCredito, moraDesdeCronograma,
   round2, type CuotaParaImputar,
@@ -41,6 +42,12 @@ interface AgendaItem {
   /** Cuántas cuotas están vencidas e impagas (para decir "debe 3 cuotas", no solo un total). */
   cuotas_vencidas: number;
   dias_mora: number;
+  /**
+   * El plan de este crédito ya venció y la terminal rechaza su cobro: no hay que ir a
+   * reclamarle un pago, hay que invitarlo a refinanciar. Lo resuelve el server porque
+   * depende también del acuerdo vigente y de los acuerdos rotos.
+   */
+  cobro_bloqueado: boolean;
   promesa_monto: number | null;
   bucket: Bucket;
   motivo: string;
@@ -49,7 +56,7 @@ interface AgendaItem {
 
 export const GET = withErrorHandler(async (req: NextRequest) => {
   const { tenantId, role, vendedorId } = await requireAuth(req);
-  const { dias_sin_gestion, orden, acuerdos, fallecidos } = await getCobranzaConfig(tenantId);
+  const { dias_sin_gestion, orden, acuerdos, fallecidos, recupero } = await getCobranzaConfig(tenantId);
   const config = await getConfiguracion(tenantId);
 
   // Los acuerdos se ponen al día ANTES de armar la cola: uno que se rompió ayer tiene que
@@ -57,7 +64,13 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   await sincronizarAcuerdos({ tenantId });
   // Quien está cumpliendo un arreglo ya está gestionado. Llamarlo igual es la forma más
   // rápida de que deje de cumplirlo. Es parametrizable: hay financieras que igual llaman.
-  const conAcuerdo = acuerdos.saca_de_agenda ? await creditosConAcuerdoVigente(tenantId) : new Map<string, Date>();
+  /**
+   * Los acuerdos vigentes se leen SIEMPRE. La política decide si sacan de la COLA a quien
+   * está cumpliendo; el corte de "este crédito ya no se cobra" los necesita igual, porque un
+   * acuerdo vigente lo mantiene cobrable por más días de atraso que arrastre.
+   */
+  const acuerdosVigentes = await creditosConAcuerdoVigente(tenantId);
+  const conAcuerdo = acuerdos.saca_de_agenda ? acuerdosVigentes : new Map<string, Date>();
 
   const hoy = hoyComercial();
   const hoyMs = hoy.getTime();
@@ -195,12 +208,30 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
       vencido: round2(dv.total),
       cuotas_vencidas: dv.cuotas_vencidas,
       dias_mora: diasMoraActual(c.proximo_pago, hoy),
+      cobro_bloqueado: false, // se completa abajo, con una sola consulta para todo el lote
       promesa_monto: bucket === "promesa" ? (promesaPend?.promesa_monto ?? null) : null,
       bucket,
       motivo,
       fecha,
     });
   }
+
+  /**
+   * ¿Cuáles de estos ya no se cobran? Una sola consulta agrupada para toda la cola, después
+   * de armarla: llamar a alguien a reclamarle un pago que la terminal va a rechazar es la
+   * misma promesa vacía que ya apareció en las campañas y en la planilla de calle, pero en la
+   * pantalla que el vendedor usa todos los días.
+   */
+  const bloqueados = await cobroBloqueadoPorCredito(
+    tenantId,
+    items.map((it) => ({
+      id: it.credito_id,
+      diasMora: it.dias_mora,
+      acuerdoVigente: acuerdosVigentes.has(it.credito_id),
+    })),
+    recupero,
+  );
+  for (const it of items) it.cobro_bloqueado = bloqueados.get(it.credito_id) ?? false;
 
   /**
    * El GRUPO manda siempre (promesa → agendado → enfriado): eso es urgencia, no preferencia.

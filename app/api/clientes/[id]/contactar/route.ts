@@ -10,8 +10,11 @@ import {
   calcularDeudaConsolidada, calcularDeudaVencida, diasAtraso, moraDelCredito, moraDesdeCronograma, type CuotaParaImputar,
   plantillaDe, cuentaComoGestion, MOTIVO_LABEL, tipoGestionDeCanal, resolverPlantillasContacto, type MotivoContacto,
   deudaEnRevision, contactoBloqueado, resolverPlantillasMeta, renderPlantillaMeta,
+  avisoCreditosARefinanciar, PLANTILLA_SOLO_REFINANCIAR,
 } from "@/lib/domain";
-import { nombreCompleto, hoyComercial } from "@/lib/utils";
+import { nombreCompleto, hoyComercial, formatCreditoNumero } from "@/lib/utils";
+import { cobroBloqueadoPorCredito } from "@/lib/recupero-server";
+import { creditosConAcuerdoVigente } from "@/lib/acuerdos";
 import { enviarEmailTenant, motivoEmailNoDisponible, type EmailTenantConfig } from "@/lib/mailer-tenant";
 import { enviarWhatsappApi, whatsappApiDisponible, type WhatsappApiConfig } from "@/lib/whatsapp";
 import type { NextRequest } from "next/server";
@@ -36,7 +39,7 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
   const r = await cargarContactable(ctx, id);
   if ("error" in r && r.error) return r.error;
 
-  const { cliente, datos, comm } = r as Extract<typeof r, { cliente: object }>;
+  const { cliente, datos, comm, refinanciar } = r as Extract<typeof r, { cliente: object }>;
   // Una config guardada ANTES de que existiera este bloque no trae `contacto`: se resuelve
   // sobre los defaults en vez de romper.
   const cobranzaCfg = await getCobranzaConfig(ctx.tenantId);
@@ -61,7 +64,7 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
   const mensajes = Object.fromEntries(
     MOTIVOS.map((m) => {
       const { texto, asunto } = plantillaDe(plantillas, m);
-      return [m, { texto: render(texto, datos), asunto: render(asunto, datos), label: MOTIVO_LABEL[m] }];
+      return [m, { texto: textoMotivo(m, texto, datos, refinanciar), asunto: render(asunto, datos), label: MOTIVO_LABEL[m] }];
     }),
   );
 
@@ -99,7 +102,7 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
   const { id } = await params;
   const r = await cargarContactable(ctx, id);
   if ("error" in r && r.error) return r.error;
-  const { cliente, datos, comm, creditoParaGestion } = r as Extract<typeof r, { cliente: object }>;
+  const { cliente, datos, comm, creditoParaGestion, refinanciar } = r as Extract<typeof r, { cliente: object }>;
 
   const body = await req.json().catch(() => null);
   if (!body) return errorResponse("Body JSON inválido", "INVALID_JSON", 400);
@@ -130,6 +133,18 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
    * deuda por escrito a alguien a quien se le estaba por hacer una oferta, y además quedaría
    * registrado como promoción —que no cuenta como gestión— un reclamo que sí lo es.
    */
+  /**
+   * Una plantilla de Meta es un texto FIJO y aprobado: no se le puede agregar la línea de la
+   * refinanciación ni sacarle el importe. Si a este cliente no le queda nada cobrable, ese
+   * texto le reclamaría $0,00 por escrito. Se corta acá.
+   */
+  if (plantillaMeta && plantillaMeta.motivo === "mora" && !refinanciar.hayCobrable) {
+    return errorResponse(
+      "Este cliente no tiene deuda cobrable: sus créditos ya no se cobran en cuotas y hay que refinanciarlos. Mandale el aviso de mora sin plantilla de Meta, que se adapta solo.",
+      "COBRO_REQUIERE_REFINANCIAR",
+      409,
+    );
+  }
   if (plantillaMeta && plantillaMeta.motivo !== motivo)
     return errorResponse(
       `La plantilla "${plantillaMeta.nombre}" es para ${MOTIVO_LABEL[plantillaMeta.motivo].toLowerCase()}, no para ${MOTIVO_LABEL[motivo].toLowerCase()}.`,
@@ -140,7 +155,7 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
   // Sin plantilla de Meta, el operador puede editar el texto; si no lo toca, va la del tenant.
   const texto = plantillaMeta
     ? renderPlantillaMeta(plantillaMeta, datos)
-    : typeof body.mensaje === "string" && body.mensaje.trim() ? body.mensaje.trim() : render(base.texto, datos);
+    : typeof body.mensaje === "string" && body.mensaje.trim() ? body.mensaje.trim() : textoMotivo(motivo, base.texto, datos, refinanciar);
   const asunto = typeof body.asunto === "string" && body.asunto.trim() ? body.asunto.trim() : render(base.asunto, datos);
   if (!texto) return errorResponse("El mensaje está vacío.", "INVALID_INPUT", 400);
 
@@ -252,7 +267,7 @@ async function cargarContactable(ctx: Ctx, id: string) {
       creditos: {
         orderBy: { created_at: "desc" },
         select: {
-          id: true, estado: true, saldo_pendiente: true, proximo_pago: true, vendedor_id: true,
+          id: true, numero: true, estado: true, saldo_pendiente: true, proximo_pago: true, vendedor_id: true,
           cronograma: true, cuotas: { orderBy: { nro: "asc" } },
         },
       },
@@ -295,7 +310,35 @@ async function cargarContactable(ctx: Ctx, id: string) {
   const conMora = vivos
     .map((c) => ({ ...c, dias: diasMoraActual(c.proximo_pago, hoy) }))
     .sort((a, b) => b.dias - a.dias);
-  const peor = conMora[0];
+
+  /**
+   * 🔴 UN CLIENTE PUEDE TENER CRÉDITOS EN ESCALONES DISTINTOS.
+   *
+   * Uno de veinte días que se cobra normal y otro de ciento veinte cuyo plan ya venció. El
+   * aviso de mora reclama SOLO lo cobrable: sumarlos le pediría por escrito una plata que la
+   * terminal después le rechaza, que es el mismo error que ya apareció en las campañas y en
+   * la planilla de calle, pero de a un cliente por vez.
+   *
+   * Los otros no se ocultan —el mensaje los nombra al final e invita a reestructurarlos—:
+   * callarlos sería peor, el cliente pagaría lo que dice el mensaje y se iría creyendo que
+   * quedó al día.
+   */
+  const acuerdosVigentes = await creditosConAcuerdoVigente(ctx.tenantId);
+  const bloqueadosMap = await cobroBloqueadoPorCredito(
+    ctx.tenantId,
+    conMora.map((c) => ({ id: c.id, diasMora: c.dias, acuerdoVigente: acuerdosVigentes.has(c.id) })),
+    (await getCobranzaConfig(ctx.tenantId)).recupero,
+  );
+  const cobrables = conMora.filter((c) => !bloqueadosMap.get(c.id));
+  const aRefinanciar = conMora.filter((c) => bloqueadosMap.get(c.id));
+  const numerosARefinanciar = aRefinanciar.map((c) => formatCreditoNumero(c.numero));
+
+  /**
+   * El crédito del que HABLA el mensaje: el más atrasado de los que todavía se cobran. Si no
+   * queda ninguno, el más atrasado a secas — ahí el mensaje ya no reclama, invita a
+   * refinanciar, y los días que nombra tienen que ser los de ese crédito.
+   */
+  const peor = cobrables[0] ?? conMora[0];
 
   const financiera = await getFinanciera(ctx.tenantId);
   const commRaw = await getComunicacionConfig(ctx.tenantId);
@@ -331,7 +374,7 @@ async function cargarContactable(ctx: Ctx, id: string) {
   let venc = { total: 0, cuotas: 0 };
   let nroCuotaVencida: number | null = null;
 
-  for (const c of vivos) {
+  for (const c of cobrables) {
     const cuotasDom: CuotaParaImputar[] = c.cuotas.map((q) => ({
       id: q.id, nro: q.nro, fechaVencimiento: q.fecha_vencimiento,
       capital: q.capital, interes: q.interes, cargos: round2(q.iva + q.seguro + q.gastos),
@@ -381,8 +424,14 @@ async function cargarContactable(ctx: Ctx, id: string) {
   return {
     cliente,
     comm,
-    // La gestión se cuelga del crédito MÁS ATRASADO: es del que se está hablando.
+    // La gestión se cuelga del crédito MÁS ATRASADO de los que se hablan en el mensaje.
     creditoParaGestion: peor?.id ?? vivos[0]?.id ?? null,
+    /**
+     * Los créditos de este cliente cuyo plan ya venció. Con esto el mensaje puede nombrarlos
+     * en vez de sumarlos, y saber si NO quedó nada cobrable (ahí el aviso de mora se
+     * reemplaza entero por la invitación a refinanciar).
+     */
+    refinanciar: { numeros: numerosARefinanciar, hayCobrable: cobrables.length > 0 },
     datos: {
       nombre: cliente.nombre,
       financiera: financiera?.nombre || "tu financiera",
@@ -406,6 +455,26 @@ async function cargarContactable(ctx: Ctx, id: string) {
  * se sustituía (al cliente le llegaba el texto literal), y los importes salían redondeados a
  * pesos enteros, así que el mensaje decía una cifra y la caja cobraba otra.
  */
+/**
+ * El texto de un motivo, con el corte entre lo cobrable y lo que hay que refinanciar.
+ *
+ * Vive acá y lo usan el GET (la vista previa) y el POST (el envío) para que el operador mande
+ * exactamente lo que leyó. Es el mismo criterio de una sola definición que ya rige para los
+ * importes: dos caminos distintos terminan siendo dos mensajes distintos.
+ */
+function textoMotivo(
+  motivo: MotivoContacto,
+  base: string,
+  d: DatosPlantillaContacto,
+  refi: { numeros: string[]; hayCobrable: boolean },
+): string {
+  if (motivo !== "mora") return render(base, d);
+  // Nada cobrable: el aviso de mora pediría $0,00. Se reemplaza entero por la invitación.
+  if (!refi.hayCobrable && refi.numeros.length > 0) return render(PLANTILLA_SOLO_REFINANCIAR, d);
+  // Hay algo que reclamar: se reclama eso, y se nombran aparte los que ya no se cobran.
+  return render(base, d) + avisoCreditosARefinanciar(refi.numeros);
+}
+
 function render(plantilla: string, d: DatosPlantillaContacto): string {
   return renderPlantillaContacto(plantilla, d);
 }

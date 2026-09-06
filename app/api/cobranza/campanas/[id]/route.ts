@@ -9,11 +9,16 @@ import type { NextRequest } from "next/server";
 
 const ESTADOS = ["borrador", "activa", "finalizada"];
 
-function metricasDe(objetivos: { promesa_generada: boolean; monto_recuperado: number }[]) {
+function metricasDe(
+  objetivos: { promesa_generada: boolean; monto_recuperado: number; credito?: { estado: string } | null }[],
+) {
   return {
     alcance: objetivos.length,
     promesas: objetivos.filter((o) => o.promesa_generada).length,
     recuperado: objetivos.reduce((s, o) => s + o.monto_recuperado, 0),
+    /** Cuántos terminaron refinanciados — el resultado de una campaña de invitación a
+     *  refinanciar, que en `recuperado` siempre da $0. Ver la nota en el listado. */
+    refinanciados: objetivos.filter((o) => o.credito?.estado === "refinanciado").length,
   };
 }
 
@@ -33,7 +38,7 @@ export const GET = withErrorHandler(async (req: NextRequest, ctx: { params: Prom
         include: {
           credito: {
             select: {
-              id: true, numero: true, dias_mora: true, proximo_pago: true,
+              id: true, numero: true, dias_mora: true, proximo_pago: true, estado: true,
               cliente: { select: { id: true, nombre: true, apellido: true, telefono: true, email: true } },
             },
           },

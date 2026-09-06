@@ -58,11 +58,27 @@ function interesMoraDe(c: CreditoMora, config: ConfiguracionFinanciera): number 
 }
 
 /** Métricas agregadas de una campaña a partir de sus objetivos. */
-function metricasDe(objetivos: { promesa_generada: boolean; monto_recuperado: number }[]) {
+function metricasDe(
+  objetivos: { promesa_generada: boolean; monto_recuperado: number; credito?: { estado: string } | null }[],
+) {
   return {
     alcance: objetivos.length,
     promesas: objetivos.filter((o) => o.promesa_generada).length,
     recuperado: objetivos.reduce((s, o) => s + o.monto_recuperado, 0),
+    /**
+     * 🔴 CUÁNTOS DE ESTOS CRÉDITOS TERMINARON REFINANCIADOS — el resultado de una campaña de
+     * invitación a refinanciar, que en `recuperado` siempre iba a dar $0.
+     *
+     * El cliente no paga el crédito viejo (a ese ya no se le cobra): refinancia y paga el
+     * NUEVO, que es otro crédito y no es objetivo de esta campaña. Así que el único número
+     * que medía el éxito daba cero y la campaña se leía como un fracaso.
+     *
+     * Se DERIVA del estado del crédito, sin columna nueva ni escritura: y es exacto por
+     * construcción, porque un crédito ya refinanciado no puede haber entrado como objetivo
+     * —el alta de la campaña solo admite créditos vivos—, así que si hoy figura
+     * `refinanciado`, se refinanció DESPUÉS de que la campaña saliera.
+     */
+    refinanciados: objetivos.filter((o) => o.credito?.estado === "refinanciado").length,
   };
 }
 
@@ -77,7 +93,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
 
   const campanas = await prisma.campanas_cobranza.findMany({
     where: { ...withTenant(tenantId), ...scopeCreditosVendedor(ctx) },
-    include: { objetivos: { select: { promesa_generada: true, monto_recuperado: true } } },
+    include: { objetivos: { select: { promesa_generada: true, monto_recuperado: true, credito: { select: { estado: true } } } } },
     orderBy: { created_at: "desc" },
   });
 
