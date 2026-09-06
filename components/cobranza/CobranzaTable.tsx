@@ -584,6 +584,16 @@ export function CobranzaTable({ role }: { role: Role }) {
                         variant={c.acuerdo.al_dia ? "success" : "destructive"}
                       />
                     )}
+                    {/*
+                      🔴 "YA NO SE COBRA", AL LADO DEL NOMBRE.
+
+                      Pasado el umbral de refinanciación la terminal rechaza el cobro de este
+                      crédito. Sin marcarlo acá, el cobrador lo elige para una campaña, lo mete
+                      en el recorrido o le toma una promesa, y se entera del bloqueo recién
+                      cuando ya habló con el cliente. Mismo criterio que el acuerdo vigente: es
+                      lo primero que hay que saber antes de levantar el teléfono.
+                    */}
+                    {c.cobro_bloqueado && <StatusBadge label="Refinanciar" variant="warning" />}
                   </p>
                   {(() => {
                     const u = ultimaPorCredito.get(c.id);
@@ -704,6 +714,8 @@ export function CobranzaTable({ role }: { role: Role }) {
                     )}
                     <p className="font-medium text-foreground text-sm truncate">{nombreCompleto(c.cliente)}</p>
                     {noContactable(c) && <StatusBadge label={motivoCorto(c)} variant={c.cliente?.no_contactar ? "warning" : "destructive"} />}
+                    {/* Mismo aviso que en la tabla: este crédito ya no se cobra. */}
+                    {c.cobro_bloqueado && <StatusBadge label="Refinanciar" variant="warning" />}
                   </div>
                   <StatusBadge label={sev.label} variant={sev.variant} />
                 </div>

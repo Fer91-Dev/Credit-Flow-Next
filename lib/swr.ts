@@ -1878,6 +1878,12 @@ export interface PlanillaCalle {
   /** `creditos` = filas de la planilla; `clientes` = titulares distintos (no es lo mismo). */
   zonas: { zona: string | null; filas: FilaPlanilla[]; clientes: number; creditos: number; total: number }[];
   totales: { clientes: number; creditos: number; total: number; zonas: number };
+  /**
+   * Los que quedaron FUERA del recorrido porque su plan ya venció y no se les puede cobrar.
+   * No es un error del filtro: si fueran a la planilla, el cobrador les tomaría la plata en
+   * la puerta y al volver el sistema se la rechazaría.
+   */
+  a_refinanciar?: { creditos: number; clientes: number };
 }
 /**
  * Planilla de cobranza en calle (agrupada por zona), scopeada al vendedor.

@@ -191,6 +191,22 @@ export function PlanillaCalleDialog({ open, onClose }: { open: boolean; onClose:
                   <Dato label="Créditos" valor={String(planilla!.totales.creditos)} />
                   <Dato label="A cobrar" valor={formatMonto(planilla!.totales.total)} alerta />
                 </div>
+                {/*
+                  🔴 QUIÉNES QUEDARON FUERA DEL RECORRIDO, Y POR QUÉ.
+
+                  Un crédito cuyo plan ya venció no se puede cobrar: si fuera en la planilla, el
+                  cobrador le tomaría la plata en la puerta y al volver el sistema se la
+                  rechazaría — efectivo cobrado sin poder imputar y una rendición que no cierra.
+                  Se los saca, pero hay que DECIRLO: si no, el recorrido tiene menos puertas de
+                  las que el operador esperaba y no hay nada que lo explique.
+                */}
+                {(planilla?.a_refinanciar?.creditos ?? 0) > 0 && (
+                  <p className="mt-2 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-[11px] leading-relaxed text-foreground">
+                    <strong>{planilla!.a_refinanciar!.creditos} crédito{planilla!.a_refinanciar!.creditos === 1 ? "" : "s"}</strong>
+                    {" "}quedaron fuera del recorrido: su plan de pagos ya venció y no se les puede cobrar.
+                    Corresponde invitarlos a refinanciar desde una campaña.
+                  </p>
+                )}
                 <div className="mt-3 space-y-1 border-t border-border pt-2.5">
                   {planilla!.zonas.map((z) => (
                     <div key={z.zona ?? SIN_ZONA} className="flex items-baseline justify-between text-xs">

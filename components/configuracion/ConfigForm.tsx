@@ -7,7 +7,7 @@ import { useConfiguracion, type ConfiguracionFinanciera, type GamificacionConfig
 import { FeatureGate } from "@/components/providers/FeaturesProvider";
 import { FinancieraForm } from "@/components/configuracion/FinancieraForm";
 import { BackupsView } from "@/components/configuracion/BackupsView";
-import type { SimuladorConfig, CargosConfig, FrecuenciaOpcion, DocumentosConfig, ConvencionTasa, BureauConfigurable, BureauProveedorConfig, ModoInteresAcuerdo } from "@/lib/domain";
+import type { SimuladorConfig, CargosConfig, FrecuenciaOpcion, DocumentosConfig, ConvencionTasa, BureauConfigurable, BureauProveedorConfig, ModoInteresAcuerdo, RecuperoConfig } from "@/lib/domain";
 import { MODOS_INTERES_ACUERDO, MODO_INTERES_LABEL, BUREAUS_CONFIGURABLES, BUREAU_LABEL, BUREAU_REQUIERE_CREDENCIALES, resolverProveedoresBureau, DOCUMENTOS_DEFAULT, PLANTILLAS_CONTACTO_DEFAULT, revisarDocumentos, punitorioMensualDesdeDiaria, ORDEN_IMPUTACION, tasaDesdeCoeficiente, textoCuotas, planDeAcuerdo, round2 } from "@/lib/domain";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Emoji } from "@/components/ui/Emoji";
@@ -21,6 +21,8 @@ import {
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
+import useSWR from "swr";
+import { useDebounce } from "@/lib/use-debounce";
 import { formatFecha, formatMonto, formatNumero } from "@/lib/utils";
 import { PlantillasContactoEditor } from "@/components/configuracion/PlantillasContactoEditor";
 import { PlantillasMetaEditor } from "@/components/configuracion/PlantillasMetaEditor";
@@ -2259,6 +2261,7 @@ export function ConfigForm() {
             onSave={() => save("cobranza", { cobranzaConfig: cobranza })}
             saving={savingKey === "cobranza"} saved={savedKey === "cobranza"} dirty={isDirty("cobranza")}
           >
+            <EscaleraResumen r={cobranza.recupero} />
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 max-w-xl">
               <Field
                 label="Pasa a LEGALES a los… (días de atraso)"
@@ -2304,6 +2307,11 @@ export function ConfigForm() {
                 checked={cobranza.recupero.bloquear_cobro_sin_refinanciar}
                 onChange={v => setRecupero({ bloquear_cobro_sin_refinanciar: v })}
               />
+              {/* El alcance real del corte, con la cartera de hoy. Se muestra siempre —esté
+                  prendida o no— porque el momento de saberlo es ANTES de prenderla. */}
+              <div className="-mt-1 pl-1">
+                <ImpactoBloqueo dias={cobranza.recupero.dias_min_mora_refinanciar} />
+              </div>
               {/*
                 Honorarios por gestión de cobranza. Van acá y no en Configuración → Cargos
                 porque NO son un cargo de todos los créditos: solo los lleva el crédito que
@@ -2566,6 +2574,137 @@ function defaultNotificaciones(): NotificacionesConfig {
  * Este look ya existía repetido a mano en seis lugares del formulario; acá queda en uno solo
  * para que no se despeguen entre sí.
  */
+/**
+ * LA ESCALERA DE RECUPERO, LEÍDA CON LOS NÚMEROS DE ESTA FINANCIERA.
+ *
+ * 🔴 POR QUÉ EXISTE. Son cinco parámetros que interactúan y se van ajustando de a uno, con
+ * semanas de distancia. Cada campo dice qué hace ÉL, y ninguno dice qué produce el conjunto —
+ * así que la pregunta que de verdad importa ("¿qué le pasa a un moroso de 90 días?") no tenía
+ * respuesta en ninguna pantalla.
+ *
+ * El caso que lo motivó: con "exigir un acuerdo roto antes de refinanciar" prendido, un
+ * crédito de 118 días que NUNCA tuvo un acuerdo se sigue cobrando y no se puede refinanciar —
+ * o sea, la regla de "pasados los 60 días hay que refinanciar" no le aplica y nunca se le
+ * cobran los honorarios de gestión. El sistema hace lo que se le pidió, pero el efecto es lo
+ * contrario de lo que se buscaba, y no había dónde verlo.
+ *
+ * Se DERIVA de los campos de abajo y se actualiza mientras se escribe: no es un parámetro más
+ * ni un texto de ayuda que pueda quedar desactualizado.
+ */
+/**
+ * CUÁNTOS CRÉDITOS DEJARÍAN DE COBRARSE con este corte.
+ *
+ * 🔴 Es el dato que faltaba para no prender el interruptor a ciegas. Prender la regla corta
+ * la cobranza de una parte de la cartera; sin el número, el alcance se descubre cuando un
+ * vendedor choca con la pantalla y el cliente ya está enfrente.
+ *
+ * Se pide con los días que se están ESCRIBIENDO, no con los guardados, así se puede tantear
+ * un valor antes de dejarlo. Con debounce: si no, sale una consulta por tecla.
+ */
+function ImpactoBloqueo({ dias }: { dias: number }) {
+  const diasDebounced = useDebounce(dias, 400);
+  const { data } = useSWR<{ dias: number; creditos: number; clientes: number; capital_pendiente: number }>(
+    diasDebounced > 0 ? `/api/cobranza/impacto-bloqueo?dias=${diasDebounced}` : null,
+  );
+
+  if (dias <= 0) return null;
+  // Mientras el número viejo no corresponda a lo que dice el campo, no se muestra nada: un
+  // impacto que no es el del valor escrito es peor que ninguno.
+  if (!data || data.dias !== diasDebounced || diasDebounced !== dias) {
+    return <p className="text-[11px] text-muted-foreground/60">Calculando el alcance…</p>;
+  }
+
+  if (data.creditos === 0) {
+    return (
+      <p className="text-[11px] text-muted-foreground">
+        Hoy no hay ningún crédito con ese atraso: prenderla no cambia nada todavía.
+      </p>
+    );
+  }
+
+  return (
+    <p className="text-[11px] leading-relaxed text-warning">
+      Hoy dejarían de cobrarse <strong>{data.creditos} crédito{data.creditos === 1 ? "" : "s"}</strong>
+      {data.clientes !== data.creditos && <> de {data.clientes} cliente{data.clientes === 1 ? "" : "s"}</>}
+      , con {formatMonto(data.capital_pendiente)} de capital pendiente. Habría que refinanciarlos.
+    </p>
+  );
+}
+
+function EscaleraResumen({ r }: { r: RecuperoConfig }) {
+  const dias = (n: number) => `${n} día${n === 1 ? "" : "s"}`;
+
+  const pasos: { cuando: string; que: string; tono: "normal" | "aviso" | "corte" }[] = [];
+
+  pasos.push({
+    cuando: r.dias_min_mora_acuerdo > 0 ? `Hasta los ${dias(r.dias_min_mora_acuerdo - 1)}` : "Desde el día 1",
+    que: "Se cobra normal. Se gestiona, se toman promesas de pago.",
+    tono: "normal",
+  });
+
+  if (r.dias_min_mora_acuerdo > 0) {
+    pasos.push({
+      cuando: `A los ${dias(r.dias_min_mora_acuerdo)}`,
+      que: "Pasa a LEGALES. Se le puede armar un acuerdo de pago y se sigue cobrando.",
+      tono: "aviso",
+    });
+  }
+
+  if (r.bloquear_cobro_sin_refinanciar && r.dias_min_mora_refinanciar > 0) {
+    pasos.push({
+      cuando: `A los ${dias(r.dias_min_mora_refinanciar)}`,
+      que: r.exigir_acuerdo_para_refinanciar
+        ? "Deja de cobrarse y hay que refinanciar — PERO solo si ya rompió un acuerdo. Al que nunca tuvo uno se le sigue cobrando el plan viejo y no se le puede refinanciar."
+        : `Deja de cobrarse: el plan se da por caído y hay que refinanciar${r.honorarios_gestion_activo && r.honorarios_gestion_pct > 0 ? `, con ${r.honorarios_gestion_pct}% de honorarios de gestión` : ""}.`,
+      tono: r.exigir_acuerdo_para_refinanciar ? "aviso" : "corte",
+    });
+  } else if (r.dias_min_mora_refinanciar > 0) {
+    pasos.push({
+      cuando: `A los ${dias(r.dias_min_mora_refinanciar)}`,
+      que: "Recién ahí se puede refinanciar, pero el crédito se sigue cobrando igual.",
+      tono: "normal",
+    });
+  }
+
+  if (r.max_acuerdos_rotos > 0) {
+    pasos.push({
+      cuando: `Con ${r.max_acuerdos_rotos} acuerdo${r.max_acuerdos_rotos === 1 ? "" : "s"} roto${r.max_acuerdos_rotos === 1 ? "" : "s"}`,
+      que: "No se le arma otro acuerdo: la única salida es refinanciar.",
+      tono: "corte",
+    });
+  }
+
+  const COLOR = {
+    normal: "border-border bg-muted/20 text-muted-foreground",
+    aviso: "border-warning/30 bg-warning/[0.07] text-foreground",
+    corte: "border-primary/30 bg-primary/[0.07] text-foreground",
+  } as const;
+
+  return (
+    <div className="mb-4 space-y-1.5">
+      <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+        Así queda tu escalera
+      </p>
+      {pasos.map((p, i) => (
+        <div key={i} className={`flex flex-col gap-0.5 rounded-lg border px-3 py-2 sm:flex-row sm:items-baseline sm:gap-3 ${COLOR[p.tono]}`}>
+          <span className="shrink-0 font-mono text-[11px] font-semibold tabular-nums">{p.cuando}</span>
+          <span className="text-[11px] leading-relaxed">{p.que}</span>
+        </div>
+      ))}
+      {/*
+        El caso que más confunde, dicho de frente. Sin esta línea el operador lee "a los 60 no
+        se cobra más" y no se entera de que a media cartera no le aplica.
+      */}
+      {r.bloquear_cobro_sin_refinanciar && r.dias_min_mora_refinanciar > 0 && r.exigir_acuerdo_para_refinanciar && (
+        <p className="pt-0.5 text-[11px] leading-relaxed text-warning">
+          Con «exigir un acuerdo roto» prendido, el corte de los {dias(r.dias_min_mora_refinanciar)} solo alcanza a
+          quien ya rompió un acuerdo. Apagalo si querés que aplique a todos.
+        </p>
+      )}
+    </div>
+  );
+}
+
 function SwitchRow({ title, desc, checked, onChange }: { title: string; desc?: string; checked: boolean; onChange: (v: boolean) => void }) {
   return (
     <div className={`flex items-center justify-between gap-3 rounded-lg border border-border px-4 py-3 transition-colors ${checked ? "bg-primary/[0.06] ring-1 ring-inset ring-primary/25" : "bg-muted/30"}`}>

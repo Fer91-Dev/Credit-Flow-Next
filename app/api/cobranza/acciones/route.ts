@@ -5,6 +5,8 @@ import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { registrarAuditoria } from "@/lib/audit";
 import { nombreCompleto } from "@/lib/utils";
+import { getCobranzaConfig } from "@/lib/config";
+import { veredictoCobro } from "@/lib/recupero-server";
 import type { NextRequest } from "next/server";
 
 const TIPOS = ["llamada", "whatsapp", "email", "visita", "otro"];
@@ -96,6 +98,30 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
   });
   if (!credito) {
     return errorResponse("Crédito no encontrado", "INVALID_REFERENCE", 400);
+  }
+
+  /**
+   * 🔴 NO SE REGISTRA UNA PROMESA DE PAGO SOBRE UN CRÉDITO QUE YA NO SE COBRA.
+   *
+   * Pasado el umbral de refinanciación la terminal rechaza el cobro, así que esa promesa es
+   * imposible de cumplir por construcción: el cliente se compromete, viene con la plata, se
+   * la rechazan, y el cron después le marca la promesa como ROTA — le queda un incumplimiento
+   * en el historial por algo que el sistema no lo dejó hacer.
+   *
+   * Se bloquea SOLO la promesa. La gestión (la llamada, la visita, el resultado "contactado")
+   * se sigue registrando igual: anotar que se lo contactó es justamente lo que hay que hacer
+   * con esta persona, y perder el registro sería peor.
+   */
+  if (body.resultado === "promesa_pago") {
+    const { recupero } = await getCobranzaConfig(tenantId);
+    const v = await veredictoCobro(tenantId, credito.id, recupero);
+    if (!v.permitido) {
+      return errorResponse(
+        `No se puede tomar una promesa de pago sobre este crédito: ${v.motivo ?? "su plan ya venció"} ${v.sugerencia ?? ""}`.trim(),
+        "COBRO_REQUIERE_REFINANCIAR",
+        409,
+      );
+    }
   }
 
   const accion = await prisma.acciones_cobranza.create({

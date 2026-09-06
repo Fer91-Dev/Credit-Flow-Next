@@ -8,6 +8,7 @@ import type { Role } from "@/lib/auth/roles";
 import { getCobranzaConfig, getConfiguracion } from "@/lib/config";
 import { sincronizarAcuerdos, creditosConAcuerdoVigente, cubiertoPorAcuerdo } from "@/lib/acuerdos";
 import { numerosRefinanciados } from "@/lib/creditos-numero";
+import { cobroBloqueadoPorCredito } from "@/lib/recupero-server";
 import {
   diasMoraActual, ESTADOS_VIVOS, calcularDeudaVencida, moraDelCredito, moraDesdeCronograma,
   contactoBloqueado, round2, type CuotaParaImputar,
@@ -87,12 +88,18 @@ async function armarPlanilla(
   opts: { diasAdelante: number; zonasPedidas: string[] },
 ) {
   const { diasAdelante, zonasPedidas } = opts;
-  const { acuerdos, fallecidos } = await getCobranzaConfig(tenantId);
+  const { acuerdos, fallecidos, recupero } = await getCobranzaConfig(tenantId);
   const config = await getConfiguracion(tenantId);
 
   // Igual que la agenda: los acuerdos se ponen al día ANTES de decidir a quién visitar.
   await sincronizarAcuerdos({ tenantId });
-  const conAcuerdo = acuerdos.saca_de_agenda ? await creditosConAcuerdoVigente(tenantId) : new Map<string, Date>();
+  /**
+   * Los acuerdos vigentes se leen SIEMPRE, aunque la política no saque de la agenda a quien
+   * está cumpliendo: el corte de "este crédito ya no se cobra" también los necesita, y un
+   * crédito con acuerdo vigente SÍ se cobra por más días de atraso que arrastre.
+   */
+  const acuerdosVigentes = await creditosConAcuerdoVigente(tenantId);
+  const conAcuerdo = acuerdos.saca_de_agenda ? acuerdosVigentes : new Map<string, Date>();
 
   const hoy = hoyComercial();
   const corte = new Date(hoy.getTime() + diasAdelante * 86_400_000);
@@ -129,6 +136,30 @@ async function armarPlanilla(
 
   const origenes = await numerosRefinanciados(tenantId, creditos);
 
+  /**
+   * 🔴 EL CRÉDITO QUE YA NO SE COBRA NO VA A LA PLANILLA DE CALLE.
+   *
+   * Es el peor lugar donde podía quedar el hueco: el cobrador sale con el papel, toca la
+   * puerta, le toman la plata EN MANO, y al volver la terminal le rechaza el cobro porque ese
+   * crédito hay que refinanciarlo. Queda efectivo cobrado que no se puede imputar, una
+   * rendición que no cierra y un cliente que ya pagó. Los otros huecos de este tipo prometen;
+   * este cobra de verdad.
+   *
+   * Se los saca del recorrido —si no está en la planilla, no se cobra, sin ambigüedad— y se
+   * los cuenta aparte: no desaparecen, van por una campaña de invitación a refinanciar, que
+   * es lo que corresponde hacer con ellos.
+   */
+  const bloqueadosMap = await cobroBloqueadoPorCredito(
+    tenantId,
+    creditos.map((c) => ({
+      id: c.id,
+      diasMora: c.proximo_pago ? diasMoraActual(c.proximo_pago, hoy) : 0,
+      acuerdoVigente: acuerdosVigentes.has(c.id),
+    })),
+    recupero,
+  );
+  const aRefinanciar = { creditos: 0, clientes: new Set<string>() };
+
   /** Domicilio en una línea, que es como se lee caminando. */
   const domicilio = (c: { direccion: string | null; piso: string | null; depto: string | null; localidad: string | null }) => {
     const calle = c.direccion?.trim();
@@ -142,6 +173,12 @@ async function armarPlanilla(
   for (const c of creditos) {
     if (cubiertoPorAcuerdo(conAcuerdo, c.id, c.proximo_pago)) continue;
     if (!c.cliente) continue;
+    // No se cobra: fuera del recorrido, contado aparte (ver arriba).
+    if (bloqueadosMap.get(c.id)) {
+      aRefinanciar.creditos += 1;
+      aRefinanciar.clientes.add(c.cliente_id);
+      continue;
+    }
 
     const zona = c.cliente.zona?.trim() || "";
     const clave = zona || "__sin__";
@@ -232,6 +269,12 @@ async function armarPlanilla(
       total: round2(zonas.reduce((s, z) => s + z.total, 0)),
       zonas: zonas.length,
     },
+    /**
+     * Los que quedaron FUERA del recorrido porque su plan ya venció y no se les puede cobrar.
+     * Viaja para que la pantalla lo diga: sin esto, el cobrador ve menos puertas de las que
+     * esperaba y no hay nada que lo explique.
+     */
+    a_refinanciar: { creditos: aRefinanciar.creditos, clientes: aRefinanciar.clientes.size },
   };
 }
 
