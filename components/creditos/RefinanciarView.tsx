@@ -62,6 +62,8 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
   }, [preview]);
 
   const honCfg = preview?.honorarios;
+  // Arranca en el TECHO de la banda: la financiera propone su máximo y de ahí se negocia
+  // para abajo. Al revés que la quita, que arranca en cero y se agrega.
   useEffect(() => {
     if (honCfg) setHonPct(honCfg.pct ? String(honCfg.pct) : "");
   }, [honCfg?.pct]);
@@ -115,6 +117,13 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
 
   const honPctNum = Math.max(0, Math.min(100, parseFloat(honPct) || 0));
   const honMonto = r2((baseNeta * honPctNum) / 100);
+  /**
+   * La banda que fijó la financiera para quien está operando (para un admin es 0–100: su
+   * decisión queda auditada en vez de limitada). Con la banda cerrada no hay nada que pactar.
+   */
+  const bandaAbierta = !!honCfg?.activo && honCfg.min < honCfg.max;
+  const honFueraDeBanda =
+    !!honCfg?.activo && (honPctNum < honCfg.min - 0.005 || honPctNum > honCfg.max + 0.005);
 
   /** La entrega no puede llevarse toda la deuda: eso ya no es refinanciar, es cancelar. */
   const excedeEntrega = entregaNum > 0 && entregaNum >= r2(base - 0.01);
@@ -154,7 +163,7 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
   const interesNuevo = plan ? r2(totalNuevo - nuevoCapital) : 0;
 
   const valido =
-    !!preview && nuevoCapital > 0 && !excedeEntrega && !excedeTope &&
+    !!preview && nuevoCapital > 0 && !excedeEntrega && !excedeTope && !honFueraDeBanda &&
     isFinite(tasaNum) && tasaNum >= 0 && isFinite(plazoNum) && plazoNum >= 1;
 
   const submit = async (e: React.FormEvent) => {
@@ -413,28 +422,48 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
                   )}
                 </div>
 
-                {/* HONORARIOS DE GESTIÓN. Solo si la financiera los tiene activos. */}
+                {/*
+                  HONORARIOS DE GESTIÓN, dentro de la BANDA que fijó la financiera.
+
+                  🔴 El porcentaje se pacta ACÁ, con el cliente enfrente; Configuración fija
+                  entre qué valores. Antes el número se definía en los dos lugares —el mismo
+                  dato escrito dos veces— y encima limitaba al revés: el vendedor quedaba
+                  clavado en el configurado y el admin podía poner cualquier cosa.
+
+                  Con la banda cerrada (mínimo = máximo) no hay nada que negociar y el campo
+                  se muestra como dato, no como control: un input que no cambia nada es peor
+                  que no tenerlo.
+                */}
                 {honCfg?.activo && (
                   <div className="space-y-1">
                     <FieldLabel>Honorarios por gestión de cobranza</FieldLabel>
-                    {honCfg.negociable ? (
+                    {bandaAbierta ? (
                       <IconInput
                         icon={Percent}
                         inputMode="decimal"
                         value={honPct}
-                        placeholder="0"
+                        placeholder={String(honCfg.max)}
+                        aria-invalid={honFueraDeBanda}
                         onChange={(e) => setHonPct(e.target.value.replace(/[^0-9.,]/g, "").replace(",", "."))}
                       />
                     ) : (
                       <div className="flex h-11 items-center rounded-lg border border-border bg-muted/20 px-3 text-sm text-muted-foreground">
-                        {honCfg.pct}% — lo fija la financiera
+                        {honCfg.max}% — lo fija la financiera
                       </div>
                     )}
-                    <p className="text-[11px] text-muted-foreground">
-                      {honMonto > 0
-                        ? <>Se cobran <strong className="text-foreground">${n2(honMonto)}</strong> sobre la deuda que se consolida, repartidos en las cuotas del plan nuevo. No suman capital, así que no generan interés.</>
-                        : <>Sin honorarios: este cliente no paga la gestión.</>}
-                      {honCfg.negociable && <> Dejalo vacío para no cobrarlos.</>}
+                    <p className={`text-[11px] ${honFueraDeBanda ? "text-destructive" : "text-muted-foreground"}`}>
+                      {honFueraDeBanda ? (
+                        <>Fuera de lo permitido: se pacta entre <strong>{honCfg.min}%</strong> y <strong>{honCfg.max}%</strong>.</>
+                      ) : (
+                        <>
+                          {honMonto > 0
+                            ? <>Se cobran <strong className="text-foreground">${n2(honMonto)}</strong> sobre la deuda que se consolida, repartidos en las cuotas del plan nuevo. No suman capital, así que no generan interés.</>
+                            : <>Sin honorarios: este cliente no paga la gestión.</>}
+                          {bandaAbierta && (
+                            <> Podés pactar entre {honCfg.min}% y {honCfg.max}%.</>
+                          )}
+                        </>
+                      )}
                     </p>
                   </div>
                 )}

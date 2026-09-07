@@ -174,8 +174,24 @@ export interface RecuperoConfig {
    * borrar el honorario de la financiera — justo el abuso que el tope de quitas evita.
    */
   honorarios_gestion_activo: boolean;
-  /** % de la deuda consolidada que se cobra como honorarios. 0 = no se cobra nada. */
-  honorarios_gestion_pct: number;
+  /**
+   * LA BANDA DEL HONORARIO, no su valor.
+   *
+   * 🔴 Configuración fija el MÍNIMO y el MÁXIMO; el porcentaje concreto se decide al
+   * refinanciar, con el cliente enfrente. Antes acá vivía un número solo y el mismo dato se
+   * definía en dos lugares: la financiera lo escribía en Configuración y el operador volvía a
+   * escribirlo en la pantalla, sin que ninguno de los dos mandara del todo. Peor: el vendedor
+   * quedaba clavado en el valor configurado y el admin podía poner cualquier cosa, así que el
+   * parámetro no limitaba a quien había que limitar.
+   *
+   * Es el mismo modelo que ya rige la quita —la financiera pone el tope, la concesión se
+   * negocia por operación— y es lo que el propio Fernando describió del honorario: "es medio
+   * negociable entre el que presta y el que intenta devolver".
+   *
+   * Con `min` igual a `max` no hay negociación posible: es la forma de dejarlo fijo.
+   */
+  honorarios_gestion_min: number;
+  honorarios_gestion_max: number;
   /**
    * La refinanciación no puede pactarse por DEBAJO de la tasa del crédito original.
    *
@@ -206,7 +222,8 @@ export const RECUPERO_DEFAULT: RecuperoConfig = {
   // Arranca APAGADO: cobrarle honorarios al deudor es una decisión de cada financiera, y el
   // sistema no puede empezar a sumarle plata a una deuda porque sí.
   honorarios_gestion_activo: false,
-  honorarios_gestion_pct: 0,
+  honorarios_gestion_min: 0,
+  honorarios_gestion_max: 0,
 };
 
 export function resolverRecupero(raw: unknown): RecuperoConfig {
@@ -232,9 +249,22 @@ export function resolverRecupero(raw: unknown): RecuperoConfig {
     bloquear_cobro_sin_refinanciar: r.bloquear_cobro_sin_refinanciar === true,
     honorarios_gestion_activo: r.honorarios_gestion_activo === true,
     // Acotado a 0–100: un % fuera de rango sobre una deuda consolidada es plata de verdad.
-    honorarios_gestion_pct: (() => {
-      const n = Number(r.honorarios_gestion_pct);
-      return Number.isFinite(n) && n >= 0 ? Math.min(100, n) : RECUPERO_DEFAULT.honorarios_gestion_pct;
+    /**
+     * La banda, con COMPATIBILIDAD hacia atrás: los tenants que ya tenían un
+     * `honorarios_gestion_pct` guardado pasan a `min = max = ese número`, o sea exactamente
+     * el comportamiento que ya tenían. Abrir la banda es una decisión de cada financiera, no
+     * algo que aparezca solo el día que se actualiza el sistema.
+     */
+    ...(() => {
+      const pct = (v: unknown, def: number) => {
+        const n = Number(v);
+        return Number.isFinite(n) && n >= 0 ? Math.min(100, n) : def;
+      };
+      const legacy = pct((r as { honorarios_gestion_pct?: unknown }).honorarios_gestion_pct, 0);
+      const min = r.honorarios_gestion_min !== undefined ? pct(r.honorarios_gestion_min, legacy) : legacy;
+      const max = r.honorarios_gestion_max !== undefined ? pct(r.honorarios_gestion_max, legacy) : legacy;
+      // Un mínimo por encima del máximo no describe ninguna banda: se ordenan.
+      return { honorarios_gestion_min: Math.min(min, max), honorarios_gestion_max: Math.max(min, max) };
     })(),
     // Protector por defecto: es el único de la escalera que arranca prendido, porque no
     // ordena un proceso — tapa una fuga de plata.
@@ -434,4 +464,45 @@ export function puedeCobrar(
     motivo: `Este crédito lleva ${s.diasMora} día${s.diasMora === 1 ? "" : "s"} de atraso y la financiera no admite cobros pasados los ${cfg.dias_min_mora_refinanciar}: el plan de pagos original se da por caído y ya no se cobra contra él.`,
     sugerencia: "Refinanciá el crédito: se recalcula toda la deuda en un plan nuevo, con los honorarios por gestión de cobranza, y el cliente paga la primera cuota de ese plan.",
   };
+}
+
+/**
+ * ENTRE QUÉ VALORES SE PUEDE PACTAR EL HONORARIO, para quien está operando.
+ *
+ * Una sola definición para los tres lugares que la necesitan: el preview de la pantalla (que
+ * la muestra), el POST (que rechaza fuera de rango) y el resumen de Configuración. Si cada
+ * uno la calculara, la pantalla ofrecería un rango y el server aceptaría otro.
+ *
+ * El ADMIN no tiene banda —igual que con la quita, un límite que él mismo edita en
+ * Configuración no es un límite—, pero su decisión queda auditada.
+ */
+export function bandaHonorarios(
+  cfg: Pick<RecuperoConfig, "honorarios_gestion_activo" | "honorarios_gestion_min" | "honorarios_gestion_max">,
+  esAdmin: boolean,
+): { min: number; max: number } {
+  if (!cfg.honorarios_gestion_activo) return { min: 0, max: 0 };
+  if (esAdmin) return { min: 0, max: 100 };
+  return { min: cfg.honorarios_gestion_min, max: cfg.honorarios_gestion_max };
+}
+
+/** ¿Este porcentaje se puede pactar? Devuelve el motivo si no. */
+export function puedeUsarHonorarios(
+  pct: number,
+  cfg: Pick<RecuperoConfig, "honorarios_gestion_activo" | "honorarios_gestion_min" | "honorarios_gestion_max">,
+  esAdmin: boolean,
+): VeredictoEscalera {
+  const { min, max } = bandaHonorarios(cfg, esAdmin);
+  if (!Number.isFinite(pct) || pct < 0 || pct > 100) {
+    return { permitido: false, motivo: "Los honorarios tienen que ser un porcentaje entre 0 y 100." };
+  }
+  if (pct < min || pct > max) {
+    return {
+      permitido: false,
+      motivo: min === max
+        ? `Los honorarios de gestión los fijó la financiera en ${max}% y no se negocian.`
+        : `Los honorarios de gestión se pactan entre ${min}% y ${max}%, y pusiste ${pct}%.`,
+      sugerencia: "Un administrador puede pactar otro valor, y queda registrado.",
+    };
+  }
+  return PERMITIDO;
 }

@@ -190,6 +190,7 @@ const AYUDA: Record<string, AyudaBloque> = {
       "Los mínimos de atraso evitan refinanciar a alguien por tres días de demora.",
       "El mínimo para refinanciar puede además CERRAR el cobro: pasado ese atraso el plan viejo se da por caído y la terminal lo rechaza, así la deuda se recalcula y se aplican los honorarios de gestión.",
       "Ese corte respeta lo que ya está en marcha: un acuerdo vigente se sigue cobrando, y la entrega con la que se arma uno nuevo también entra.",
+      "Los honorarios de gestión se configuran como una BANDA (mínimo y máximo), no como un número: el porcentaje se pacta al refinanciar, con el cliente enfrente. Con mínimo igual a máximo queda fijo.",
       "Exigir el acuerdo antes de refinanciar es la regla fuerte: obliga a intentar lo que se puede deshacer.",
       "El piso de tasa viene prendido: es el único que no ordena un proceso, tapa una fuga de plata.",
       "Un administrador puede pasar por encima de cualquiera de estas reglas; el vendedor no. Queda auditado.",
@@ -2324,16 +2325,48 @@ export function ConfigForm() {
                 onChange={v => setRecupero({ honorarios_gestion_activo: v })}
               />
               {cobranza.recupero.honorarios_gestion_activo && (
-                <Field
-                  label="Honorarios (% de la deuda consolidada)"
-                  hint="Se calcula sobre toda la deuda que se refinancia y DESPUÉS del descuento, así una quita no se lleva puesto el honorario. Va como cargo repartido en las cuotas del plan nuevo: no suma capital, así que no devenga interés."
-                  advertencia={advertirHonorariosGestion(cobranza.recupero.honorarios_gestion_pct)}
-                >
-                  <NumeroInput min="0" max="100"
-                    value={cobranza.recupero.honorarios_gestion_pct}
-                    onValueChange={v => setRecupero({ honorarios_gestion_pct: Math.max(0, Math.min(100, v)) })}
-                  />
-                </Field>
+                <>
+                  {/*
+                    🔴 ACÁ SE FIJA LA BANDA, NO EL NÚMERO.
+
+                    El porcentaje concreto se pacta al refinanciar, con el cliente enfrente:
+                    "es medio negociable entre el que presta y el que intenta devolver". Antes
+                    acá había un valor único y el operador volvía a escribirlo en la pantalla,
+                    así que el mismo dato se definía en dos lugares y ninguno mandaba del todo.
+                    Y limitaba al revés: el vendedor quedaba clavado en el número configurado y
+                    el admin podía poner cualquier cosa.
+
+                    Es el mismo modelo que la quita: la financiera pone el rango, la concesión
+                    se decide por operación. Con mínimo igual a máximo, queda fijo.
+                  */}
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 max-w-xl">
+                    <Field
+                      label="Honorarios mínimos (%)"
+                      hint="Por debajo de esto no se puede pactar. Es el piso que protege a la financiera."
+                    >
+                      <NumeroInput min="0" max="100"
+                        value={cobranza.recupero.honorarios_gestion_min}
+                        onValueChange={v => setRecupero({ honorarios_gestion_min: Math.max(0, Math.min(100, v)) })}
+                      />
+                    </Field>
+                    <Field
+                      label="Honorarios máximos (%)"
+                      hint="Es el que se propone por defecto al refinanciar; de ahí se negocia para abajo."
+                      advertencia={advertirHonorariosGestion(cobranza.recupero.honorarios_gestion_max)}
+                    >
+                      <NumeroInput min="0" max="100"
+                        value={cobranza.recupero.honorarios_gestion_max}
+                        onValueChange={v => setRecupero({ honorarios_gestion_max: Math.max(0, Math.min(100, v)) })}
+                      />
+                    </Field>
+                  </div>
+                  <p className="-mt-1 text-[11px] leading-relaxed text-muted-foreground">
+                    {cobranza.recupero.honorarios_gestion_min >= cobranza.recupero.honorarios_gestion_max
+                      ? <>Mínimo y máximo iguales: el honorario queda <strong>fijo en {cobranza.recupero.honorarios_gestion_max}%</strong> y no se negocia.</>
+                      : <>El operador va a poder pactar entre <strong>{cobranza.recupero.honorarios_gestion_min}%</strong> y <strong>{cobranza.recupero.honorarios_gestion_max}%</strong>. Un administrador puede salirse de la banda, y queda registrado.</>}
+                    {" "}Se calcula sobre toda la deuda que se refinancia y DESPUÉS del descuento, así una quita no se lleva puesto el honorario. Va como cargo repartido en las cuotas del plan nuevo: no suma capital, así que no devenga interés.
+                  </p>
+                </>
               )}
               <SwitchRow
                 title="Exigir haberlo contactado antes de armar un acuerdo"
@@ -2549,7 +2582,7 @@ function defaultCobranza(): CobranzaConfig {
       exigir_acuerdo_para_refinanciar: false, dias_min_mora_refinanciar: 0,
       bloquear_cobro_sin_refinanciar: false,
       no_bajar_tasa_refinanciando: true,
-      honorarios_gestion_activo: false, honorarios_gestion_pct: 0,
+      honorarios_gestion_activo: false, honorarios_gestion_min: 0, honorarios_gestion_max: 0,
     },
     fallecidos: { frena_punitorios: true, bloquea_contacto: true, saca_de_agenda: true },
   };
@@ -2655,7 +2688,7 @@ function EscaleraResumen({ r }: { r: RecuperoConfig }) {
       cuando: `A los ${dias(r.dias_min_mora_refinanciar)}`,
       que: r.exigir_acuerdo_para_refinanciar
         ? "Deja de cobrarse y hay que refinanciar — PERO solo si ya rompió un acuerdo. Al que nunca tuvo uno se le sigue cobrando el plan viejo y no se le puede refinanciar."
-        : `Deja de cobrarse: el plan se da por caído y hay que refinanciar${r.honorarios_gestion_activo && r.honorarios_gestion_pct > 0 ? `, con ${r.honorarios_gestion_pct}% de honorarios de gestión` : ""}.`,
+        : `Deja de cobrarse: el plan se da por caído y hay que refinanciar${r.honorarios_gestion_activo && r.honorarios_gestion_max > 0 ? `, con honorarios de gestión ${r.honorarios_gestion_min === r.honorarios_gestion_max ? `del ${r.honorarios_gestion_max}%` : `de entre ${r.honorarios_gestion_min}% y ${r.honorarios_gestion_max}%`}` : ""}.`,
       tono: r.exigir_acuerdo_para_refinanciar ? "aviso" : "corte",
     });
   } else if (r.dias_min_mora_refinanciar > 0) {

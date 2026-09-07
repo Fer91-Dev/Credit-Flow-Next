@@ -7,6 +7,7 @@ import { getConfiguracion, getCobranzaConfig } from "@/lib/config";
 import { quitaMaxima } from "@/lib/domain/acuerdos";
 import { lockNumeroCreditoTx, TX_PLATA } from "@/lib/locks";
 import { assertPuedeRefinanciar, assertPuedeUsarTasa } from "@/lib/recupero-server";
+import { bandaHonorarios, puedeUsarHonorarios } from "@/lib/domain";
 import { registrarAuditoria } from "@/lib/audit";
 import { formatCreditoNumero, nombreCompleto, hoyComercial } from "@/lib/utils";
 import type { NextRequest } from "next/server";
@@ -212,9 +213,15 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
    * Viajan al diálogo para que el operador los vea ANTES de confirmar: es plata que se le
    * suma a la deuda del cliente, y enterarse después de creado el crédito no es una opción.
    */
-  const honorarios = cobranzaCfg.recupero.honorarios_gestion_activo
-    ? round2((deuda.total * cobranzaCfg.recupero.honorarios_gestion_pct) / 100)
+  /**
+   * El honorario que se propone: el TECHO de la banda. La financiera aspira a su máximo y la
+   * concesión es bajarlo — al revés que la quita, que arranca en cero y se agrega.
+   */
+  const bandaHon = bandaHonorarios(cobranzaCfg.recupero, role === "admin");
+  const honorariosPropuesto = cobranzaCfg.recupero.honorarios_gestion_activo
+    ? cobranzaCfg.recupero.honorarios_gestion_max
     : 0;
+  const honorarios = round2((deuda.total * honorariosPropuesto) / 100);
 
   return successResponse({
     credito: {
@@ -233,7 +240,10 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
     composicion: { ...comp, mora: deuda.mora },
     honorarios: {
       activo: cobranzaCfg.recupero.honorarios_gestion_activo,
-      pct: cobranzaCfg.recupero.honorarios_gestion_pct,
+      /** El propuesto (el techo de la banda) y entre qué valores lo puede mover quien opera. */
+      pct: honorariosPropuesto,
+      min: bandaHon.min,
+      max: bandaHon.max,
       monto: honorarios,
       /** Solo el admin puede pactar un honorario distinto al configurado (queda auditado). */
       negociable: role === "admin",
@@ -380,7 +390,7 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
    * cuotas y no devengan interés. Sumarlos al capital sería cobrar interés sobre un honorario.
    */
   const honorariosPctCfg = cobranzaCfg.recupero.honorarios_gestion_activo
-    ? cobranzaCfg.recupero.honorarios_gestion_pct
+    ? cobranzaCfg.recupero.honorarios_gestion_max
     : 0;
 
   /**
@@ -399,13 +409,16 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
   let honorariosPct = honorariosPctCfg;
   if (body.honorarios_pct != null && body.honorarios_pct !== "") {
     const p = Number(body.honorarios_pct);
-    if (!isFinite(p) || p < 0 || p > 100) {
-      return errorResponse("Honorarios inválidos: tiene que ser un porcentaje entre 0 y 100.", "INVALID_INPUT", 400);
-    }
-    if (role !== "admin" && round2(p) !== round2(honorariosPctCfg)) {
+    /**
+     * Se valida contra la BANDA que fijó la financiera, con la misma función que la pantalla
+     * usa para mostrarla. El admin no tiene banda —un límite que él mismo edita no es un
+     * límite— pero su decisión queda en la auditoría de abajo.
+     */
+    const v = puedeUsarHonorarios(p, cobranzaCfg.recupero, role === "admin");
+    if (!v.permitido) {
       return errorResponse(
-        `Los honorarios de gestión los negocia un administrador. Con tu usuario se aplican los ${honorariosPctCfg}% que fijó la financiera.`,
-        "HONORARIOS_NO_NEGOCIABLES",
+        [v.motivo, role === "admin" ? null : v.sugerencia].filter(Boolean).join(" "),
+        "HONORARIOS_FUERA_DE_BANDA",
         403,
       );
     }

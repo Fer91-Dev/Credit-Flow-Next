@@ -1697,7 +1697,13 @@ export interface RefinanciacionPreview {
    * Configuración) y `negociable` dice si quien está mirando puede pactar otro: el admin sí
    * —queda auditado—, el vendedor lleva el que fijó la financiera.
    */
-  honorarios?: { activo: boolean; pct: number; monto: number; negociable: boolean };
+  /**
+   * Honorarios por gestión del crédito nuevo. `pct` es el PROPUESTO (el techo de la banda) y
+   * `min`/`max` son los valores entre los que quien está operando puede pactarlo — la
+   * financiera fija la banda en Configuración, no el número. Para un admin la banda es
+   * 0–100: su decisión queda auditada en vez de limitada.
+   */
+  honorarios?: { activo: boolean; pct: number; monto: number; negociable: boolean; min: number; max: number };
   /**
    * Cómo se compone la deuda: lo VENCIDO (con su mora) y lo que todavía NO venció.
    * Refinanciar se lleva las dos cosas; la ficha del crédito solo muestra lo vencido, así
