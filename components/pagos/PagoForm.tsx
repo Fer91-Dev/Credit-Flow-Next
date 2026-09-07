@@ -791,7 +791,7 @@ export function PagoForm({ creditoId, clienteId, montoSugerido, motivoSugerido, 
               const base = round2(acuerdo.deuda_original! - (acuerdo.quita ?? 0));
               const interes = round2(acuerdo.monto_acordado - base);
               return (
-                <table className="mt-2 w-full text-[11px]">
+                <table className="mt-2 w-full text-xs">
                   <tbody className="font-mono tabular-nums">
                     <tr>
                       <td className="py-0.5 font-sans text-muted-foreground">Deuda vencida al acordar</td>
@@ -1013,8 +1013,10 @@ export function PagoForm({ creditoId, clienteId, montoSugerido, motivoSugerido, 
             ) : (
               <div className="rounded-xl border border-border overflow-hidden">
                 <div className="max-h-[42vh] overflow-auto">
-                  <table className="w-full min-w-[34rem] text-xs border-separate border-spacing-0">
-                    <thead className="sticky top-0 z-10">
+                  <table className="w-full min-w-[34rem] text-sm border-separate border-spacing-0">
+                    {/* Los encabezados son ETIQUETAS, no números: se quedan chicos aunque la
+                        tabla haya subido a `text-sm` para que los importes se lean. */}
+                    <thead className="sticky top-0 z-10 text-xs">
                       <tr className="bg-muted">
                         <th className="px-2 py-3 text-center font-semibold text-muted-foreground border-b border-border w-8"></th>
                         <th className="px-2 py-3 text-left   font-semibold text-muted-foreground border-b border-border w-8">#</th>
@@ -1139,7 +1141,7 @@ export function PagoForm({ creditoId, clienteId, montoSugerido, motivoSugerido, 
                                       (cuota + moraDevengada) − (pagadoCuota + pagadoMora)
                                         = pendiente + moraPendiente = "a cobrar"
                                   */}
-                                  <table className="mt-3 w-full text-[11px]">
+                                  <table className="mt-3 w-full text-xs">
                                     <tbody className="font-mono tabular-nums">
                                       <tr>
                                         <td className="py-1 font-sans text-muted-foreground">

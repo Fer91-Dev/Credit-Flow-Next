@@ -99,7 +99,16 @@ export function PlanDeCuotas({
         tiene contenedor contra el cual pegarse y no hace nada.
       */}
       <div className={`rounded-xl border border-border overflow-x-auto overflow-y-auto ${denso ? "max-h-[46vh]" : "max-h-[62vh]"}`}>
-        <table className="w-full text-xs border-separate border-spacing-0">
+        {/*
+          🔴 LA TABLA VA EN `text-sm`, NO EN `text-xs`, Y ES A PROPÓSITO.
+
+          La densidad global del SaaS está al 81,25%, así que un `text-xs` acá termina midiendo
+          menos de 10px y un `text-[11px]`, menos de 9. Sirve para una tabla que se escanea de
+          reojo; no para importes que el operador LE LEE EN VOZ ALTA al cliente, le dicta por
+          teléfono o el cliente compara contra el papel que tiene en la mano. Los encabezados
+          sí se quedan chicos: son etiquetas, no números.
+        */}
+        <table className="w-full text-sm border-separate border-spacing-0">
           {/*
             🔴 LA CABECERA TENÍA EL MISMO FONDO QUE LAS FILAS (`bg-card`), así que se leía como
             un renglón más de la tabla. Fernando: "los encabezados parecen una línea más".
@@ -112,7 +121,9 @@ export function PlanDeCuotas({
             distinto de `--card` en los dos temas (más oscuro en oscuro, gris claro en claro),
             así que sirve para las dos cosas a la vez.
           */}
-          <thead className="sticky top-0 z-10">
+          {/* Los encabezados son ETIQUETAS, no números: se quedan chicos aunque la tabla
+              haya subido a `text-sm` para que los importes se lean. */}
+          <thead className="sticky top-0 z-10 text-xs">
             <tr className="bg-muted">
               {/*
                 🔴 LOS OPERADORES EN EL ENCABEZADO. La fila ES una cuenta —cuota + mora −

@@ -180,7 +180,7 @@ export function CobranzaDetail({ credito, acciones }: {
           </p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-xs">
+            <table className="w-full text-sm">
               <thead>
                 <tr className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground border-b border-border">
                   <th className="text-left py-2 pr-2">Cuota</th>
