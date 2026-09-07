@@ -411,23 +411,29 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
                       <p className="pt-0.5 text-[11px] text-muted-foreground/70">
                         En la ficha del crédito, «A cobrar hoy» es solo la primera línea. Refinanciar se lleva las dos.
                       </p>
-                      {/*
-                        El interés que NO se cobra. Un ahorro que no se dice no existe para el
-                        que lo recibe: es lo primero que el operador le puede contar al cliente
-                        cuando le explica por qué le conviene reestructurar hoy.
-                      */}
-                      {(preview.composicion.interes_no_devengado ?? 0) > 0.005 && (
-                        <div className="flex items-center justify-between pt-1 text-xs">
-                          <span className="text-muted-foreground">
-                            Interés que todavía no corrió <span className="text-muted-foreground/60">· no se cobra</span>
-                          </span>
-                          <span className="font-mono tabular-nums text-success">− ${n2(preview.composicion.interes_no_devengado ?? 0)}</span>
-                        </div>
-                      )}
+
                     </div>
                   )}
                   <Row label="Capital pendiente" value={preview.deuda.capital} />
                   <Row label="Interés pendiente" value={preview.deuda.interes} />
+                  {/*
+                    🔴 PEGADO AL NÚMERO QUE MODIFICA, Y DICIENDO "YA DESCONTADO".
+
+                    Estaba arriba del desglose y con signo menos, así que se leía como una
+                    resta pendiente: el operador podía creer que había que restarlo del
+                    interés de abajo, cuando ese interés YA sale neto. Es el mismo error de
+                    doble conteo que tenía el renglón del interés del plan nuevo.
+
+                    Igual tiene que estar dicho: es plata que el cliente se ahorra respecto
+                    del plan original, y un ahorro que no se nombra no existe para el que lo
+                    recibe. Es lo primero que el operador le puede contar cuando le explica
+                    por qué le conviene reestructurar hoy.
+                  */}
+                  {(preview.composicion?.interes_no_devengado ?? 0) > 0.005 && (
+                    <p className="-mt-1 pl-0.5 text-[11px] leading-relaxed text-success">
+                      Ya descontados ${n2(preview.composicion!.interes_no_devengado!)} de interés que todavía no corrió: no se le cobra el tiempo que no usó.
+                    </p>
+                  )}
                   {preview.deuda.cargos > 0 && <Row label="Cargos pendientes" value={preview.deuda.cargos} />}
                   <Row label="Mora acumulada" value={preview.deuda.mora} accent="warning" />
                   <div className="flex items-center justify-between border-t border-border pt-2">
