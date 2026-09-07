@@ -392,7 +392,15 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
               La derecha queda `sticky`, así el plan del crédito nuevo acompaña el scroll de
               los parámetros que lo producen. Mismo criterio que el alta de acuerdos.
             */}
-            <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,26rem)] lg:items-start">
+            {/*
+              🔴 EL REPARTO DEL ANCHO, DESPUÉS DE ACOTAR EL FORMULARIO.
+
+              Los campos de la izquierda ahora topan en dos módulos, así que esa columna dejó
+              de necesitar todo lo que tenía: el sobrante se lo lleva el plan, que es lo que el
+              operador le lee al cliente y lo que más gana con el espacio. En pantallas muy
+              anchas crece un escalón más.
+            */}
+            <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,30rem)] xl:grid-cols-[minmax(0,1fr)_minmax(0,36rem)] lg:items-start">
               <div className="space-y-5">
                 {formError && (
                   <div className="rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-2.5 text-sm text-destructive">
@@ -756,14 +764,23 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
                       </p>
                     </div>
 
-                    <div className="mt-2.5 max-h-[38vh] divide-y divide-primary/10 overflow-y-auto">
+                    {/*
+                      🔴 EN COLUMNAS, NO EN UNA LÍNEA CORRIDA.
+
+                      Antes cada fila era "Cuota 1 de 3 · 07/10/2026 … $434.266,29" en un solo
+                      renglón, así que las fechas quedaban a distinta distancia según el número
+                      de cuota y el ojo no podía bajar por ninguna de las dos. Con el número, la
+                      fecha y el importe en su columna, el plan se recorre de arriba abajo — que
+                      es como se le lee al cliente.
+                    */}
+                    <div className="mt-2.5 max-h-[46vh] divide-y divide-primary/10 overflow-y-auto">
                       {plan.cuotas.map((c) => (
-                        <div key={c.nro} className="flex items-center justify-between gap-3 py-1.5 text-xs">
+                        <div key={c.nro} className="grid grid-cols-[auto_1fr_auto] items-baseline gap-x-3 py-2 text-xs">
                           <span className="text-muted-foreground">
-                            Cuota {c.nro} de {plan.cuotas.length}
-                            <span className="text-muted-foreground/50"> · </span>
-                            {formatFecha(c.fecha)}
+                            Cuota <span className="font-mono tabular-nums text-foreground">{c.nro}</span>
+                            <span className="text-muted-foreground/50"> de {plan.cuotas.length}</span>
                           </span>
+                          <span className="font-mono tabular-nums text-muted-foreground">{formatFecha(c.fecha)}</span>
                           <span className="font-mono font-semibold tabular-nums text-foreground">${n2(c.cuotaTotal)}</span>
                         </div>
                       ))}
