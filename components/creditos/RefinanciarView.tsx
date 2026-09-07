@@ -207,7 +207,18 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
   }, [preview, nuevoCapital, tasaNum, plazoNum, honMonto]);
 
   const totalNuevo = plan ? r2(plan.cuotas.reduce((s, c) => s + c.cuotaTotal, 0)) : 0;
-  const interesNuevo = plan ? r2(totalNuevo - nuevoCapital) : 0;
+  /**
+   * 🔴 EL INTERÉS ES EL INTERÉS, NO "TODO LO QUE NO ES CAPITAL".
+   *
+   * Se calculaba como `total − capital`, así que se comía los honorarios adentro: sobre
+   * $746.688,16 a 2 cuotas mostraba $415.203,88 de "interés" cuando el interés real es
+   * $340.535,06 y los otros $74.668,82 son la gestión. Y como los honorarios ya figuran
+   * arriba en su propio renglón, quedaban contados dos veces para el que lee.
+   *
+   * Ahora sale de sumar el interés de cada cuota —el que calculó el motor— y los honorarios
+   * van en su propia línea, así los tres renglones dan el total.
+   */
+  const interesNuevo = plan ? r2(plan.cuotas.reduce((s, c) => s + c.interes, 0)) : 0;
 
   const valido =
     !!preview && nuevoCapital > 0 && !excedeEntrega && !excedeTope && !honFueraDeBanda && !tasaTrabada &&
@@ -686,6 +697,14 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
                           <td className="py-1 font-sans text-muted-foreground">Interés del nuevo plan</td>
                           <td className="py-1 text-right text-warning">+${n2(interesNuevo)}</td>
                         </tr>
+                        {/* Los honorarios, en su propio renglón: sumados al interés hacían
+                            aparecer un número que no era ni una cosa ni la otra. */}
+                        {honMonto > 0 && (
+                          <tr>
+                            <td className="py-1 font-sans text-muted-foreground">Honorarios de gestión</td>
+                            <td className="py-1 text-right text-warning">+${n2(honMonto)}</td>
+                          </tr>
+                        )}
                         <tr className="border-t border-primary/20">
                           <td className="pt-2 font-sans font-semibold text-foreground">Total a pagar</td>
                           <td className="pt-2 text-right text-base font-bold text-foreground">${n2(totalNuevo)}</td>
