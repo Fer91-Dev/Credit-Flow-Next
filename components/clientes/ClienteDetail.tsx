@@ -1084,8 +1084,21 @@ function CreditosTabla({ creditos, mostrarProximo, onCobrar, onCobrarAcuerdo, cl
         const tieneCuotas = !!res && res.total > 0;
         const abierto = abiertos.has(c.id);
         const mora = c.dias_mora ?? 0;
+        /**
+         * 🔴 UN CRÉDITO QUE YA NO EXISTE NO PUEDE SEGUIR EN VERDE.
+         *
+         * La franja pintaba por mora, y un refinanciado tiene mora 0 (su saldo quedó en $0),
+         * así que salía VERDE — el mismo color que un crédito al día. Al lado mostraba
+         * "próximo pago 10/06/2026" y "3 cuotas vencidas", de un plan que se dio de baja.
+         * Fernando lo leyó como que el crédito seguía activo, y la tarjeta se lo estaba
+         * diciendo. El estado manda sobre la mora: si el crédito murió, la franja es gris.
+         */
+        const muerto = c.estado === "refinanciado" || c.estado === "anulado";
+        /** El crédito nuevo al que se le trasladó la deuda, para poder nombrarlo. */
+        const destino = c.refinanciado_en ? creditos.find((x) => x.id === c.refinanciado_en) : undefined;
         // La franja: el color ES el dato, no decoración.
-        const franja = mora > 30 ? "bg-destructive" : mora > 0 ? "bg-warning" : "bg-success";
+        const franja = muerto ? "bg-muted-foreground/40"
+          : mora > 30 ? "bg-destructive" : mora > 0 ? "bg-warning" : "bg-success";
         return (
           <article
             key={c.id}
@@ -1146,12 +1159,16 @@ function CreditosTabla({ creditos, mostrarProximo, onCobrar, onCobrarAcuerdo, cl
                   se nombra por lo que es y queda en gris.
                 */}
                 <CifraCredito
-                  label={acuerdoVig ? "Cuota original" : "Cuota"}
+                  label={muerto || acuerdoVig ? "Cuota original" : "Cuota"}
                   valor={`$${n2(c.cuota)}`}
-                  pie={acuerdoVig
-                    ? "del plan que se cayó"
-                    : tieneCuotas ? `${res!.pagadas} de ${res!.total} pagadas` : "sin cronograma"}
-                  tono={acuerdoVig ? "muted" : undefined} />
+                  pie={c.estado === "refinanciado"
+                    ? "del plan que se dio de baja"
+                    : c.estado === "anulado"
+                      ? "del plan anulado"
+                      : acuerdoVig
+                        ? "del plan que se cayó"
+                        : tieneCuotas ? `${res!.pagadas} de ${res!.total} pagadas` : "sin cronograma"}
+                  tono={muerto || acuerdoVig ? "muted" : undefined} />
                 {/*
                   🔴 CON UN ACUERDO VIGENTE, ESTE RECUADRO NO PUEDE HABLAR DEL PLAN VIEJO.
 
@@ -1165,7 +1182,24 @@ function CreditosTabla({ creditos, mostrarProximo, onCobrar, onCobrarAcuerdo, cl
                   número y su vencimiento. Es el mismo dato que usa el botón de cobro, así que
                   no hay dos importes distintos en la misma pantalla.
                 */}
-                {acuerdoVig ? (
+                {/*
+                  🔴 UN PLAN DADO DE BAJA NO TIENE "PRÓXIMO PAGO" NI CUOTAS VENCIDAS.
+
+                  Sobre CRD-000006 —refinanciado, saldo $0— esta celda decía "Próximo pago
+                  10/06/2026 · 3 cuotas vencidas". Es literalmente cierto en la base (las
+                  cuotas no se marcan pagadas al refinanciar: no se pagaron, se mudaron) pero
+                  como dato es falso: a ese crédito no se le cobra nada nunca más. En su lugar
+                  va DÓNDE ESTÁ AHORA la deuda, que es lo que el operador necesita saber.
+                */}
+                {c.estado === "refinanciado" ? (
+                  <CifraCredito
+                    label="Deuda trasladada"
+                    valor={destino ? formatCreditoNumero(destino.numero, destino.refinancia_a_numero) : "crédito nuevo"}
+                    pie="se cobra en ese crédito"
+                    tono="muted" />
+                ) : c.estado === "anulado" ? (
+                  <CifraCredito label="Anulado" valor="—" pie="no se cobra" tono="muted" />
+                ) : acuerdoVig ? (
                   <CifraCredito
                     label={acuerdoVig.al_dia ? "Cuota pactada" : "Cuota pactada vencida"}
                     valor={acuerdoVig.proxima ? `$${n2(acuerdoVig.proxima.pendiente)}` : "—"}
@@ -1179,8 +1213,11 @@ function CreditosTabla({ creditos, mostrarProximo, onCobrar, onCobrarAcuerdo, cl
                     pie={tieneCuotas && res!.vencidas > 0 ? `${res!.vencidas} cuota${res!.vencidas === 1 ? "" : "s"} vencida${res!.vencidas === 1 ? "" : "s"}` : "al día"}
                     tono={mora > 0 ? "warning" : undefined} />
                 )}
+                {/* En un crédito dado de baja, el pie dice CUÁNDO se cobró eso: si no, un
+                    "$400.000,00 · 1 pago" en verde se lee como plata entrando hoy. */}
                 <CifraCredito label="Cobrado" valor={`$${n2(c.total_cobrado)}`}
-                  pie={`${c.pagos?.length ?? 0} pago${(c.pagos?.length ?? 0) === 1 ? "" : "s"}`} tono="success" />
+                  pie={`${c.pagos?.length ?? 0} pago${(c.pagos?.length ?? 0) === 1 ? "" : "s"}${c.estado === "refinanciado" ? " · antes de refinanciarse" : ""}`}
+                  tono={muerto ? "muted" : "success"} />
               </div>
 
               {/* La entrega con la que nació, si vino de una refinanciación. Va DEBAJO de las
