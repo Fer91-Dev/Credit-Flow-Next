@@ -817,6 +817,24 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
                           <td className="pt-2 font-sans font-semibold text-foreground">Total a pagar</td>
                           <td className="pt-2 text-right text-lg font-bold text-foreground">${n2(totalNuevo)}</td>
                         </tr>
+                        {/*
+                          🔴 LA ENTREGA, TAMBIÉN DE ESTE LADO.
+
+                          Mecánicamente pertenece al crédito VIEJO —es el último pago de ese
+                          plan, y es lo que baja la deuda antes de armar este— pero para el
+                          cliente es parte del mismo arreglo: "puse tanto y me refinanciaste el
+                          resto". Estando solo arriba, el renglón de abajo aparecía con un
+                          número que no salía de ninguna de las cuentas visibles en este
+                          bloque. Acá la última línea se puede seguir con el dedo.
+                        */}
+                        {entregaNum > 0 && (
+                          <tr>
+                            <td className="py-1 font-sans text-muted-foreground">
+                              Entrega ya cobrada <span className="text-muted-foreground/60">· {entregaMetodo}</span>
+                            </td>
+                            <td className="py-1 text-right text-success">+${n2(entregaNum)}</td>
+                          </tr>
+                        )}
                       </tbody>
                     </table>
 
