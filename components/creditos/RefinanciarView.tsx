@@ -415,7 +415,30 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
                     </div>
                   )}
                   <Row label="Capital pendiente" value={preview.deuda.capital} />
-                  <Row label="Interés pendiente" value={preview.deuda.interes} />
+                  {/*
+                    🔴 LA RESTA A LA VISTA, no un neto que aparece hecho.
+
+                    El interés que se consolida sale del plan MENOS el que todavía no corrió.
+                    Mostrando solo el neto, el operador no puede cruzarlo con nada: el número
+                    del plan de pagos que el cliente tiene en la mano dice $663.140,27 y acá
+                    veía $657.401,26 sin explicación. Con los tres renglones, el total de
+                    abajo es literalmente la suma de lo que se ve.
+                  */}
+                  {(preview.composicion?.interes_no_devengado ?? 0) > 0.005 ? (
+                    <>
+                      <Row label="Interés del plan" value={r2(preview.deuda.interes + (preview.composicion!.interes_no_devengado ?? 0))} />
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-muted-foreground">
+                          Interés que todavía no corrió
+                          <span className="text-muted-foreground/60"> · de la cuota que aún no venció</span>
+                        </span>
+                        <span className="font-mono tabular-nums text-success">− ${n2(preview.composicion!.interes_no_devengado ?? 0)}</span>
+                      </div>
+                      <Row label="Interés pendiente" value={preview.deuda.interes} />
+                    </>
+                  ) : (
+                    <Row label="Interés pendiente" value={preview.deuda.interes} />
+                  )}
                   {/*
                     🔴 PEGADO AL NÚMERO QUE MODIFICA, Y DICIENDO "YA DESCONTADO".
 
@@ -430,8 +453,8 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
                     por qué le conviene reestructurar hoy.
                   */}
                   {(preview.composicion?.interes_no_devengado ?? 0) > 0.005 && (
-                    <p className="-mt-1 pl-0.5 text-[11px] leading-relaxed text-success">
-                      Ya descontados ${n2(preview.composicion!.interes_no_devengado!)} de interés que todavía no corrió: no se le cobra el tiempo que no usó.
+                    <p className="-mt-0.5 pl-0.5 text-[11px] leading-relaxed text-muted-foreground/70">
+                      No se le cobra el tiempo que todavía no usó de esa cuota.
                     </p>
                   )}
                   {preview.deuda.cargos > 0 && <Row label="Cargos pendientes" value={preview.deuda.cargos} />}
@@ -448,9 +471,11 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
                 */}
                 <div className="space-y-2">
                   <FieldLabel>Entrega ahora (opcional)</FieldLabel>
-                  <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
-                    <MoneyInput value={entrega} onChange={setEntrega} />
-                    <IconSelect icon="dollar-banknote" value={entregaMetodo} onChange={(e) => setEntregaMetodo(e.target.value)}>
+                  {/* Importe y método juntos, del ancho de lo que se escribe: un monto no
+                      necesita setecientos píxeles y el método pegado se lee como una sola cosa. */}
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="w-56 shrink-0"><MoneyInput value={entrega} onChange={setEntrega} /></div>
+                    <IconSelect icon="dollar-banknote" className="w-44" value={entregaMetodo} onChange={(e) => setEntregaMetodo(e.target.value)}>
                       <option value="efectivo">Efectivo</option>
                       <option value="transferencia">Transferencia</option>
                       <option value="cheque">Cheque</option>
@@ -487,11 +512,12 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
                       icon={Percent}
                       inputMode="decimal"
                       placeholder="Ej: 10"
+                      className="max-w-32"
                       value={quitaPct}
                       onChange={(e) => setQuitaPct(e.target.value.replace(/[^0-9.,]/g, "").replace(",", "."))}
                     />
                   )}
-                  {quitaTipo === "monto" && <MoneyInput value={quitaMonto} onChange={setQuitaMonto} />}
+                  {quitaTipo === "monto" && <div className="max-w-56"><MoneyInput value={quitaMonto} onChange={setQuitaMonto} /></div>}
                   {quitaTipo !== "ninguna" && (
                     <p className={`text-xs ${excedeTope ? "text-destructive" : "text-muted-foreground"}`}>
                       {topeQuita > 0
@@ -523,10 +549,11 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
                         value={honPct}
                         placeholder={String(honCfg.max)}
                         aria-invalid={honFueraDeBanda}
+                        className="max-w-32"
                         onChange={(e) => setHonPct(e.target.value.replace(/[^0-9.,]/g, "").replace(",", "."))}
                       />
                     ) : (
-                      <div className="flex h-11 items-center rounded-lg border border-border bg-muted/20 px-3 text-sm text-muted-foreground">
+                      <div className="flex h-11 max-w-64 items-center rounded-lg border border-border bg-muted/20 px-3 text-sm text-muted-foreground">
                         {honCfg.max}% — lo fija la financiera
                       </div>
                     )}
@@ -558,6 +585,7 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
                       inputMode="decimal"
                       value={tasa}
                       aria-invalid={tasaFueraDeBanda}
+                      className="max-w-32"
                       onChange={(e) => setTasa(e.target.value.replace(/[^0-9.,]/g, "").replace(",", "."))}
                     />
                     {/*
@@ -605,6 +633,7 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
                       <IconSelect
                         icon={Hash}
                         value={plazo}
+                        className="max-w-40"
                         onChange={(e) => setPlazo(e.target.value)}
                       >
                         {plazosPermitidos.map((n) => (
@@ -618,6 +647,7 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
                         icon={Hash}
                         inputMode="numeric"
                         value={plazo}
+                        className="max-w-40"
                         onChange={(e) => setPlazo(e.target.value.replace(/[^0-9]/g, ""))}
                       />
                     )}
@@ -630,7 +660,7 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
                     value={motivo}
                     onChange={(e) => setMotivo(e.target.value)}
                     placeholder="Ej: reestructuración por mora reiterada"
-                    className="h-11 w-full rounded-lg border border-border bg-muted/40 px-3 text-sm text-foreground placeholder:text-muted-foreground/40 outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/20"
+                    className="h-11 w-full max-w-xl rounded-lg border border-border bg-muted/40 px-3 text-sm text-foreground placeholder:text-muted-foreground/40 outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/20"
                   />
                 </div>
               </div>
