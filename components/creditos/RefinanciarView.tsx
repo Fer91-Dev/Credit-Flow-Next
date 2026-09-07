@@ -18,6 +18,13 @@ function n2(x: number) {
 }
 const r2 = (x: number) => Math.round(x * 100) / 100;
 
+/** Cómo se abrevia cada convención de tasa. Mismo vocabulario que Configuración y el simulador. */
+const CONVENCION_CORTA: Record<string, string> = {
+  nominal_anual: "T.N.A.",
+  efectiva_anual: "T.E.A.",
+  mensual: "T.M.",
+};
+
 type QuitaTipo = "ninguna" | "porcentaje" | "monto";
 
 /**
@@ -147,6 +154,9 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
    * con un desplegable sin opciones.
    */
   const plazosPermitidos = preview?.plazos?.cuotas ?? [];
+
+  /** "T.N.A." / "T.E.A." / "T.M." — la convención con la que la financiera expresa sus tasas. */
+  const convencion = CONVENCION_CORTA[preview?.motor?.convencion_tasa ?? ""] ?? "";
 
   const bandaTasa = preview?.tasa;
   const pisoTasa = bandaTasa ? Math.max(bandaTasa.min, bandaTasa.piso_original ?? 0) : 0;
@@ -510,7 +520,9 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
                 {/* Condiciones del nuevo crédito */}
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div className="space-y-1">
-                    <FieldLabel required>Tasa (%)</FieldLabel>
+                    {/* La convención, igual que en el simulador: con T.N.A. estos números son
+                        ANUALES, y sin decirlo un 20 se lee como mensual. */}
+                    <FieldLabel required>Tasa (%{convencion ? ` ${convencion}` : ""})</FieldLabel>
                     <IconInput
                       icon={Percent}
                       inputMode="decimal"

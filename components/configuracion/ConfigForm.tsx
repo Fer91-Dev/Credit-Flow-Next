@@ -2446,13 +2446,20 @@ export function ConfigForm() {
                 Vacío (0 y 0) = sigue mandando la del Simulador, que es como venía funcionando.
               */}
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 max-w-xl">
-                <Field label="Tasa mínima al refinanciar (%)" hint="Vacío o 0 = se usa la del Simulador, la misma con la que se otorga.">
+                {/*
+                  🔴 LA CONVENCIÓN, EN EL RÓTULO. Con T.N.A. el sistema trabaja en ANUAL —la
+                  tasa base son 360%— y sin decirlo acá el campo se lee como si fuera mensual:
+                  se cargó 20 pensando en 20% mensual y quedó una banda de 20% anual, o sea la
+                  doceava parte de lo que se presta. El simulador ya muestra la convención al
+                  lado de su tasa; acá faltaba.
+                */}
+                <Field label={`Tasa mínima al refinanciar (% ${CONV_CORTA[form.convencionTasa]})`} hint="Vacío o 0 = se usa la del Simulador, la misma con la que se otorga.">
                   <NumeroInput min="0" max="1000"
                     value={cobranza.recupero.tasa_refinanciacion_min}
                     onValueChange={v => setRecupero({ tasa_refinanciacion_min: Math.max(0, Math.min(1000, v)) })}
                   />
                 </Field>
-                <Field label="Tasa máxima al refinanciar (%)" hint="El techo de lo que se puede pactar en un plan nuevo.">
+                <Field label={`Tasa máxima al refinanciar (% ${CONV_CORTA[form.convencionTasa]})`} hint="El techo de lo que se puede pactar en un plan nuevo.">
                   <NumeroInput min="0" max="1000"
                     value={cobranza.recupero.tasa_refinanciacion_max}
                     onValueChange={v => setRecupero({ tasa_refinanciacion_max: Math.max(0, Math.min(1000, v)) })}
@@ -2461,7 +2468,7 @@ export function ConfigForm() {
               </div>
               <p className="-mt-1 text-[11px] leading-relaxed text-muted-foreground">
                 {cobranza.recupero.tasa_refinanciacion_max > 0
-                  ? <>Al refinanciar se va a poder pactar entre <strong>{cobranza.recupero.tasa_refinanciacion_min}%</strong> y <strong>{cobranza.recupero.tasa_refinanciacion_max}%</strong>, independiente de los límites con los que otorgás.</>
+                  ? <>Al refinanciar se va a poder pactar entre <strong>{cobranza.recupero.tasa_refinanciacion_min}%</strong> y <strong>{cobranza.recupero.tasa_refinanciacion_max}% {CONV_CORTA[form.convencionTasa]}</strong>, independiente de los límites con los que otorgás. Para comparar: hoy otorgás entre {form.simulador.tasaMin}% y {form.simulador.tasaMax}%.</>
                   : <>Sin banda propia: al refinanciar rigen los mismos límites de tasa del Simulador. Cargá un máximo si querés reestructurar con otro rango.</>}
               </p>
               <SwitchRow
