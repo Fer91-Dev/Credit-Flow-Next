@@ -877,20 +877,50 @@ export function ConfigForm() {
             </div>
 
             <nav className="-mx-1 flex gap-1 overflow-x-auto px-1 md:mx-0 md:flex-col md:overflow-visible md:px-0">
+              {/*
+                🔴 EL ORDEN SIGUE EL CICLO DEL CRÉDITO, no el orden en que se fueron agregando.
+
+                Antes Comunicaciones, Gamificación y Rentabilidad quedaban metidas entre el
+                Simulador y el Riesgo, o sea justo en el medio de "cómo presto", cortando el
+                hilo. Ahora se lee de arriba abajo como se opera: quién soy → cómo presto →
+                cómo cobro → cómo hablo → cómo mido. Los separadores no son botones.
+              */}
               {([
+                { grupo: "Quién soy" },
                 { key: "financiera",     label: "Datos de la financiera", emoji: "office-building" },
+                { grupo: "Cómo presto" },
                 { key: "motor",          label: "Motor financiero",       emoji: "gear" },
                 { key: "simulador",      label: "Simulador",              emoji: "bar-chart" },
-                { key: "comunicaciones", label: "Comunicaciones",         emoji: "speech-balloon" },
-                { key: "gamificacion",   label: "Gamificación",           emoji: "trophy" },
-                { key: "rentabilidad",   label: "Rentabilidad",           emoji: "chart-increasing" },
                 { key: "riesgo",         label: "Riesgo / Originación",   emoji: "shield" },
+                { key: "documentos",     label: "Documentos",             emoji: "scroll" },
+                { grupo: "Cómo cobro" },
                 { key: "cobranza",       label: "Cobranza",               emoji: "telephone" },
                 { key: "cajas",          label: "Cajas",                  emoji: "money-bag" },
-                { key: "documentos",     label: "Documentos",             emoji: "scroll" },
-                { key: "notificaciones", label: "Notificaciones",          emoji: "bell" },
+                { grupo: "Cómo hablo" },
+                { key: "comunicaciones", label: "Comunicaciones",         emoji: "speech-balloon" },
+                { key: "notificaciones", label: "Notificaciones",         emoji: "bell" },
+                { grupo: "Cómo mido" },
+                { key: "rentabilidad",   label: "Rentabilidad",           emoji: "chart-increasing" },
+                { key: "gamificacion",   label: "Gamificación",           emoji: "trophy" },
+                { grupo: "Respaldo" },
                 { key: "backups",        label: "Respaldos",              emoji: "package" },
               ] as const).map(tab => {
+                /**
+                 * Las etiquetas de grupo son separadores, no elementos interactivos: mismo
+                 * criterio que el sidebar de la app. En mobile la barra es horizontal y con
+                 * scroll, así que ahí no se muestran — ocuparían un ancho que hace falta para
+                 * las pestañas y no aportan en una fila.
+                 */
+                if ("grupo" in tab) {
+                  return (
+                    <p
+                      key={tab.grupo}
+                      className="mt-3 hidden px-3 pb-1 text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60 first:mt-0 md:block"
+                    >
+                      {tab.grupo}
+                    </p>
+                  );
+                }
                 const active = activeTab === tab.key;
                 return (
                   <button
@@ -1466,7 +1496,7 @@ export function ConfigForm() {
           </>}
 
           {/* ─── Comunicaciones tab ─── */}
-          {activeTab === "comunicaciones" && (
+          {activeTab === "comunicaciones" && <>
           <Section
             title="Canales de comunicación"
             desc="Configura los canales para notificaciones automáticas de cobranza (recordatorios, mora, vencimientos)."
@@ -1619,7 +1649,43 @@ export function ConfigForm() {
               </CanalesBlock>
             </div>
           </Section>
-          )}
+
+          {/*
+            🔴 LOS TEXTOS VIVEN CON SU CANAL.
+
+            Estos dos bloques estaban en la pestaña Cobranza, mientras las credenciales del
+            WhatsApp y del email —el canal por el que salen— estaban acá. Configurabas el
+            canal en un lado y lo que viaja por ese canal en otro, así que cuando un mensaje
+            salía mal no había forma de saber en cuál de las dos pestañas buscar.
+
+            Siguen guardando en `cobranzaConfig` (es donde viven los textos); la pestaña es
+            solo dónde se muestran.
+          */}
+          <Section
+            title="Mensajes al cliente"
+            desc="Lo que se le manda por WhatsApp o email desde la ficha, según el motivo."
+            ayuda={AYUDA.plantillas}
+            onSave={() => save("cobranza", { cobranzaConfig: cobranza })}
+            saving={savingKey === "cobranza"} saved={savedKey === "cobranza"} dirty={isDirty("cobranza")}
+          >
+            <PlantillasContactoEditor valor={cobranza.contacto} onChange={setContacto} />
+          </Section>
+
+          {/* Plantillas aprobadas por Meta (WhatsApp Business) */}
+          <Section
+            title="Plantillas aprobadas por Meta"
+            desc="Las que Meta ya aprobó para WhatsApp Business. Opcionales: sin ellas se manda texto libre y el sistema avisa del riesgo."
+            ayuda={AYUDA.plantillas_meta}
+            onSave={() => save("cobranza", { cobranzaConfig: cobranza })}
+            saving={savingKey === "cobranza"} saved={savedKey === "cobranza"} dirty={isDirty("cobranza")}
+          >
+            <PlantillasMetaEditor
+              valor={cobranza.plantillas_meta}
+              onChange={(plantillas_meta) => setCobranza({ plantillas_meta })}
+            />
+          </Section>
+
+          </>}
 
           {/* ─── Gamificación ─── */}
           {activeTab === "gamificacion" && (
@@ -2266,31 +2332,6 @@ export function ConfigForm() {
                 onChange={v => setFallecidos({ saca_de_agenda: v })}
               />
             </div>
-          </Section>
-
-          {/* Plantillas del contacto individual */}
-          <Section
-            title="Mensajes al cliente"
-            desc="Lo que se le manda por WhatsApp o email desde la ficha, según el motivo."
-            ayuda={AYUDA.plantillas}
-            onSave={() => save("cobranza", { cobranzaConfig: cobranza })}
-            saving={savingKey === "cobranza"} saved={savedKey === "cobranza"} dirty={isDirty("cobranza")}
-          >
-            <PlantillasContactoEditor valor={cobranza.contacto} onChange={setContacto} />
-          </Section>
-
-          {/* Plantillas aprobadas por Meta (WhatsApp Business) */}
-          <Section
-            title="Plantillas aprobadas por Meta"
-            desc="Las que Meta ya aprobó para WhatsApp Business. Opcionales: sin ellas se manda texto libre y el sistema avisa del riesgo."
-            ayuda={AYUDA.plantillas_meta}
-            onSave={() => save("cobranza", { cobranzaConfig: cobranza })}
-            saving={savingKey === "cobranza"} saved={savedKey === "cobranza"} dirty={isDirty("cobranza")}
-          >
-            <PlantillasMetaEditor
-              valor={cobranza.plantillas_meta}
-              onChange={(plantillas_meta) => setCobranza({ plantillas_meta })}
-            />
           </Section>
 
 
