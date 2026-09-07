@@ -18,7 +18,11 @@ import type { CuotaParaImputar } from "./payments";
 export interface DeudaConsolidada {
   /** Capital pendiente (saldo de capital de las cuotas no saldadas). */
   capital: number;
-  /** Interés corriente pendiente (congelado del plan, no cobrado). */
+  /**
+   * Interés DEVENGADO pendiente: el del plan, prorrateado por el tiempo efectivamente
+   * transcurrido de cada período. El de las cuotas vencidas entra entero; el de la cuota en
+   * curso, solo la parte corrida; el de las que todavía no empezaron, nada.
+   */
   interes: number;
   /** Cargos pendientes del período (IVA + seguro + gastos no cobrados). */
   cargos: number;
@@ -26,6 +30,12 @@ export interface DeudaConsolidada {
   mora: number;
   /** Total adeudado = capital + interés + cargos + mora. */
   total: number;
+  /**
+   * El interés que NO se cobra por no haber transcurrido todavía. Viaja para poder mostrarlo:
+   * es plata que el cliente se ahorra respecto del plan original y merece estar dicha, no
+   * simplemente ausente de la cuenta.
+   */
+  interesNoDevengado: number;
 }
 
 export interface OpcionesDeudaConsolidada {
@@ -37,12 +47,43 @@ export interface OpcionesDeudaConsolidada {
   diasGracia?: number;
   /** Techo de la mora (% de la cuota). 0/ausente = sin tope. Ver `interesMora`. */
   topeMoraPct?: number;
+  /**
+   * Fecha de inicio del crédito: es donde arranca el período de la PRIMERA cuota, y hace
+   * falta para poder prorratear su interés. Sin ella esa cuota se toma entera (conservador).
+   */
+  fechaInicio?: Date;
 }
 
 /**
  * Calcula la deuda viva de un crédito a partir de sus cuotas, lista para consolidar.
  * Reusa el mismo cálculo de mora dinámica que el motor de imputación de pagos.
  */
+/**
+ * QUÉ PARTE DEL INTERÉS DE UN PERÍODO YA SE GANÓ.
+ *
+ * 🔴 El interés de una cuota se devenga DÍA A DÍA sobre el saldo, no de golpe al vencer. Si
+ * el período todavía está corriendo, la financiera ganó solo la parte transcurrida: cobrar el
+ * resto es cobrar por tiempo que el cliente no usó.
+ *
+ * Antes se consolidaba el interés de TODAS las cuotas, vencidas o no, y encima ese importe
+ * pasaba a ser capital del crédito nuevo — o sea que el interés no devengado también generaba
+ * interés. En CRD-000006 eran $59.303,10 de una cuota que vencía tres días después; en un
+ * crédito de doce cuotas refinanciado en el segundo mes serían diez cuotas de interés futuro
+ * cobradas por adelantado y capitalizadas.
+ *
+ * Devuelve 1 si el período ya cerró, 0 si todavía no empezó, y la fracción transcurrida si
+ * está corriendo.
+ */
+function proporcionDevengada(inicio: Date | null, vencimiento: Date, hoy: Date): number {
+  if (hoy >= vencimiento) return 1;
+  // Sin fecha de inicio no hay período que medir: se toma entero para no cobrar de menos.
+  if (!inicio) return 1;
+  if (hoy <= inicio) return 0;
+  const totalDias = diasAtraso(inicio, vencimiento);
+  if (totalDias <= 0) return 1;
+  return diasAtraso(inicio, hoy) / totalDias;
+}
+
 export function calcularDeudaConsolidada(
   cuotas: CuotaParaImputar[],
   opciones: OpcionesDeudaConsolidada = {}
@@ -55,8 +96,20 @@ export function calcularDeudaConsolidada(
   let cargos = 0;
   let mora = 0;
 
-  for (const c of cuotas) {
-    const interesPend = noNegativo(round2(c.interes - c.pagadoInteres));
+  let interesNoDevengado = 0;
+
+  for (let idx = 0; idx < cuotas.length; idx++) {
+    const c = cuotas[idx];
+    /**
+     * El período de esta cuota va desde el vencimiento de la anterior (o desde el inicio del
+     * crédito, para la primera) hasta el suyo. Es sobre ese tramo que corre su interés.
+     */
+    const inicioPeriodo = idx === 0 ? (opciones.fechaInicio ?? null) : cuotas[idx - 1].fechaVencimiento;
+    const proporcion = proporcionDevengada(inicioPeriodo, c.fechaVencimiento, hoy);
+    const interesDevengado = round2(c.interes * proporcion);
+    // Lo que se dejó de cobrar por no haber transcurrido: viaja para poder mostrarlo.
+    interesNoDevengado = round2(interesNoDevengado + noNegativo(round2(c.interes - interesDevengado)));
+    const interesPend = noNegativo(round2(interesDevengado - c.pagadoInteres));
     const cargosPend = noNegativo(round2(c.cargos - c.pagadoCargos));
     const capitalPend = noNegativo(round2(c.capital - c.pagadoCapital));
 
@@ -73,7 +126,7 @@ export function calcularDeudaConsolidada(
   }
 
   const total = round2(capital + interes + cargos + mora);
-  return { capital, interes, cargos, mora, total };
+  return { capital, interes, cargos, mora, total, interesNoDevengado };
 }
 
 /** Tipo de quita (condonación) aplicada sobre la deuda consolidada al refinanciar. */

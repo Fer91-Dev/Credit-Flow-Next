@@ -267,7 +267,7 @@ async function cargarContactable(ctx: Ctx, id: string) {
       creditos: {
         orderBy: { created_at: "desc" },
         select: {
-          id: true, numero: true, estado: true, saldo_pendiente: true, proximo_pago: true, vendedor_id: true,
+          id: true, numero: true, estado: true, saldo_pendiente: true, proximo_pago: true, vendedor_id: true, fecha_inicio: true,
           cronograma: true, cuotas: { orderBy: { nro: "asc" } },
         },
       },
@@ -388,7 +388,12 @@ async function cargarContactable(ctx: Ctx, id: string) {
     // Argentina se le cobra —y se le INFORMA— un dia de mora de mas.
     const opts = { moraActiva: mc.moraActiva, tasaMoraDiaria: mc.tasaMoraDiaria, topeMoraPct: mc.topeMoraPct, diasGracia: gracia, hoy };
 
-    deudaTotal += calcularDeudaConsolidada(cuotasDom, opts).total;
+    /**
+     * `deudaViva` es "lo que debe si cancela HOY", así que el interés va DEVENGADO: cobrarle
+     * el de un período que todavía está corriendo sería cobrarle por tiempo que no usó. Le
+     * pasamos la fecha de inicio para que la primera cuota también se pueda prorratear.
+     */
+    deudaTotal += calcularDeudaConsolidada(cuotasDom, { ...opts, fechaInicio: c.fecha_inicio }).total;
 
     const dv = calcularDeudaVencida(cuotasDom, opts);
     venc = { total: venc.total + dv.total, cuotas: venc.cuotas + dv.cuotas_vencidas };

@@ -158,6 +158,11 @@ async function cargarRefinanciable(
     // Dia comercial argentino (mismo criterio que el resto del sistema): sin esto, entre
     // las 21:00 y la medianoche de Argentina se consolida un dia de mora de mas.
     hoy: hoyComercial(),
+    /**
+     * Dónde arranca el período de la PRIMERA cuota. Sin esto no se puede prorratear su
+     * interés y se cobraría entero aunque el período recién esté empezando.
+     */
+    fechaInicio: credito.fecha_inicio,
   });
 
   return { credito, config, deuda, moraHoy, entregaCobrada, tenantId, role, vendedorId, userId, nombre, email } as const;
@@ -237,7 +242,16 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
     sugerido: { tasa: credito.tasa, plazo_meses: credito.plazo_meses, frecuencia: credito.frecuencia },
     limites: { quita_maxima: quitaMax },
     /** Cómo se compone la deuda: lo que ya venció (con su mora) y lo que todavía no. */
-    composicion: { ...comp, mora: deuda.mora },
+    composicion: {
+      ...comp,
+      mora: deuda.mora,
+      /**
+       * El interés que NO se le cobra por no haber transcurrido. Se muestra: es plata que el
+       * cliente se ahorra respecto del plan original, y un ahorro que no se dice no existe
+       * para el que lo recibe.
+       */
+      interes_no_devengado: deuda.interesNoDevengado,
+    },
     honorarios: {
       activo: cobranzaCfg.recupero.honorarios_gestion_activo,
       /** El propuesto (el techo de la banda) y entre qué valores lo puede mover quien opera. */

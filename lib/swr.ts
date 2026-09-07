@@ -1719,7 +1719,11 @@ export interface RefinanciacionPreview {
    * Refinanciar se lleva las dos cosas; la ficha del crédito solo muestra lo vencido, así
    * que sin este corte los dos números no se pueden cruzar.
    */
-  composicion?: { vencidas: number; monto_vencido: number; por_vencer: number; monto_por_vencer: number; mora: number };
+  composicion?: {
+    vencidas: number; monto_vencido: number; por_vencer: number; monto_por_vencer: number; mora: number;
+    /** Interés que NO se cobra por no haber transcurrido todavía (ahorro para el cliente). */
+    interes_no_devengado?: number;
+  };
   /**
    * Parámetros del motor con los que el POST va a armar el plan del crédito nuevo. Viajan
    * para que el diálogo previsualice EL MISMO cronograma con la misma función del dominio.

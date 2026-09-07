@@ -411,6 +411,19 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
                       <p className="pt-0.5 text-[11px] text-muted-foreground/70">
                         En la ficha del crédito, «A cobrar hoy» es solo la primera línea. Refinanciar se lleva las dos.
                       </p>
+                      {/*
+                        El interés que NO se cobra. Un ahorro que no se dice no existe para el
+                        que lo recibe: es lo primero que el operador le puede contar al cliente
+                        cuando le explica por qué le conviene reestructurar hoy.
+                      */}
+                      {(preview.composicion.interes_no_devengado ?? 0) > 0.005 && (
+                        <div className="flex items-center justify-between pt-1 text-xs">
+                          <span className="text-muted-foreground">
+                            Interés que todavía no corrió <span className="text-muted-foreground/60">· no se cobra</span>
+                          </span>
+                          <span className="font-mono tabular-nums text-success">− ${n2(preview.composicion.interes_no_devengado ?? 0)}</span>
+                        </div>
+                      )}
                     </div>
                   )}
                   <Row label="Capital pendiente" value={preview.deuda.capital} />
