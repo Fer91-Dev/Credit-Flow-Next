@@ -1705,6 +1705,14 @@ export interface RefinanciacionPreview {
    */
   honorarios?: { activo: boolean; pct: number; monto: number; negociable: boolean; min: number; max: number };
   /**
+   * Entre qué tasas se puede pactar la refinanciación. `propia` = sale de la banda de
+   * Refinanciaciones; si es false se heredó la del Simulador (la de otorgar).
+   * `piso_original` es el piso adicional de ESTE crédito cuando rige "no bajar la tasa".
+   */
+  tasa?: { min: number; max: number; propia: boolean; piso_original: number | null };
+  /** Quien está mirando puede pasar por encima de los límites (admin); queda auditado. */
+  puede_autorizar?: boolean;
+  /**
    * Cómo se compone la deuda: lo VENCIDO (con su mora) y lo que todavía NO venció.
    * Refinanciar se lleva las dos cosas; la ficha del crédito solo muestra lo vencido, así
    * que sin este corte los dos números no se pueden cruzar.

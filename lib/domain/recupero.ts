@@ -193,6 +193,22 @@ export interface RecuperoConfig {
   honorarios_gestion_min: number;
   honorarios_gestion_max: number;
   /**
+   * LA BANDA DE TASA PROPIA DE LA REFINANCIACIÓN.
+   *
+   * 🔴 Refinanciar no es prestar. Hasta acá la tasa del plan nuevo se validaba contra la
+   * `tasaMin`/`tasaMax` del Simulador, o sea la misma banda con la que se otorga plata nueva
+   * — y no son el mismo producto: al que ya incumplió se le puede reestructurar más caro, y
+   * eso no debería obligar a subir el techo de todos los créditos nuevos.
+   *
+   * Mismo modelo que los honorarios: la financiera fija el rango, la tasa concreta se pacta
+   * al refinanciar.
+   *
+   * 0 y 0 = SIN banda propia: se sigue usando la del Simulador. Es el default, así que
+   * actualizar el sistema no le cambia los límites a nadie.
+   */
+  tasa_refinanciacion_min: number;
+  tasa_refinanciacion_max: number;
+  /**
    * La refinanciación no puede pactarse por DEBAJO de la tasa del crédito original.
    *
    * 🔴 Sin esto, bajar la tasa al refinanciar es una quita invisible: sobre una deuda
@@ -224,6 +240,9 @@ export const RECUPERO_DEFAULT: RecuperoConfig = {
   honorarios_gestion_activo: false,
   honorarios_gestion_min: 0,
   honorarios_gestion_max: 0,
+  // Sin banda propia: manda la del Simulador, que es como venía funcionando.
+  tasa_refinanciacion_min: 0,
+  tasa_refinanciacion_max: 0,
 };
 
 export function resolverRecupero(raw: unknown): RecuperoConfig {
@@ -265,6 +284,16 @@ export function resolverRecupero(raw: unknown): RecuperoConfig {
       const max = r.honorarios_gestion_max !== undefined ? pct(r.honorarios_gestion_max, legacy) : legacy;
       // Un mínimo por encima del máximo no describe ninguna banda: se ordenan.
       return { honorarios_gestion_min: Math.min(min, max), honorarios_gestion_max: Math.max(min, max) };
+    })(),
+    ...(() => {
+      const t = (v: unknown) => {
+        const n = Number(v);
+        return Number.isFinite(n) && n >= 0 ? Math.min(1000, n) : 0;
+      };
+      const min = t(r.tasa_refinanciacion_min);
+      const max = t(r.tasa_refinanciacion_max);
+      // Un mínimo por encima del máximo no describe ninguna banda: se ordenan.
+      return { tasa_refinanciacion_min: Math.min(min, max), tasa_refinanciacion_max: Math.max(min, max) };
     })(),
     // Protector por defecto: es el único de la escalera que arranca prendido, porque no
     // ordena un proceso — tapa una fuga de plata.
@@ -505,4 +534,24 @@ export function puedeUsarHonorarios(
     };
   }
   return PERMITIDO;
+}
+
+/**
+ * ENTRE QUÉ TASAS se puede pactar una refinanciación.
+ *
+ * Si la financiera no definió una banda propia (0 y 0), manda la del Simulador — la misma con
+ * la que se otorga. Es el comportamiento histórico y el default.
+ *
+ * ⚠️ Esto es la banda COMERCIAL. Encima puede regir `no_bajar_tasa_refinanciando`, que pone un
+ * piso distinto por crédito (la tasa del original) y se evalúa aparte en `puedeUsarTasa`: son
+ * dos protecciones distintas y las dos tienen que cumplirse.
+ */
+export function bandaTasaRefinanciacion(
+  cfg: Pick<RecuperoConfig, "tasa_refinanciacion_min" | "tasa_refinanciacion_max">,
+  simulador: { tasaMin: number; tasaMax: number },
+): { min: number; max: number; propia: boolean } {
+  const propia = cfg.tasa_refinanciacion_max > 0;
+  return propia
+    ? { min: cfg.tasa_refinanciacion_min, max: cfg.tasa_refinanciacion_max, propia: true }
+    : { min: simulador.tasaMin, max: simulador.tasaMax, propia: false };
 }

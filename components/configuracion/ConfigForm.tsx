@@ -179,7 +179,7 @@ const AYUDA: Record<string, AyudaBloque> = {
       "ponele el techo que te parezca: por encima de ese número, el gasto lo cargás vos desde la caja principal.",
   },
   escalera: {
-    titulo: "Escalera de recupero",
+    titulo: "Refinanciaciones",
     texto:
       "Cuando alguien se atrasa hay tres formas de recuperarlo, de la más blanda a la más definitiva: " +
       "la promesa de pago (un compromiso verbal, no toca nada), el acuerdo (reparte lo vencido en cuotas y el " +
@@ -191,6 +191,8 @@ const AYUDA: Record<string, AyudaBloque> = {
       "El mínimo para refinanciar puede además CERRAR el cobro: pasado ese atraso el plan viejo se da por caído y la terminal lo rechaza, así la deuda se recalcula y se aplican los honorarios de gestión.",
       "Ese corte respeta lo que ya está en marcha: un acuerdo vigente se sigue cobrando, y la entrega con la que se arma uno nuevo también entra.",
       "Los honorarios de gestión se configuran como una BANDA (mínimo y máximo), no como un número: el porcentaje se pacta al refinanciar, con el cliente enfrente. Con mínimo igual a máximo queda fijo.",
+      "La TASA del plan nuevo tiene su propia banda: refinanciar y prestar plata nueva no son el mismo producto. Vacía, rigen los límites del Simulador.",
+      "Las condiciones del ACUERDO (a los cuántos días pasa a Legales, cuántos acuerdos rotos se admiten, si hay que contactarlo antes) están en el bloque Acuerdos de pago.",
       "Exigir el acuerdo antes de refinanciar es la regla fuerte: obliga a intentar lo que se puede deshacer.",
       "El piso de tasa viene prendido: es el único que no ordena un proceso, tapa una fuga de plata.",
       "Un administrador puede pasar por encima de cualquiera de estas reglas; el vendedor no. Queda auditado.",
@@ -2195,6 +2197,44 @@ export function ConfigForm() {
                 checked={cobranza.acuerdos.incluye_no_vencidas}
                 onChange={v => setAcuerdos({ incluye_no_vencidas: v })}
               />
+              {/*
+                🔴 CUÁNDO SE PUEDE ACORDAR Y HASTA CUÁNDO — vive acá, no en Refinanciaciones.
+
+                Estos tres son condiciones del ACUERDO, y estaban en el bloque de la escalera
+                junto a los de refinanciación. Con el bloque renombrado a "Refinanciaciones"
+                habrían quedado bajo un título que no los describe: "pasa a Legales a los 50
+                días" no es un parámetro de la refinanciación.
+              */}
+              <SwitchRow
+                title="Exigir haberlo contactado antes de armar un acuerdo"
+                desc="Sin al menos una gestión registrada, no se puede acordar. Evita el acuerdo de escritorio, armado sin hablar con el deudor."
+                checked={cobranza.recupero.exigir_gestion_para_acuerdo}
+                onChange={v => setRecupero({ exigir_gestion_para_acuerdo: v })}
+              />
+            </div>
+            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 max-w-xl">
+              <Field
+                label="Pasa a LEGALES a los… (días de atraso)"
+                hint={
+                  cobranza.recupero.dias_min_mora_acuerdo > 0
+                    ? `A los ${cobranza.recupero.dias_min_mora_acuerdo} días el crédito se muestra en azul como "Legales", y recién ahí se le puede armar un acuerdo de pago.`
+                    : "0 = ningún crédito pasa a Legales y se puede acordar desde el primer día de atraso."
+                }
+              >
+                <NumeroInput min="0" max="365" decimales={false}
+                  value={cobranza.recupero.dias_min_mora_acuerdo}
+                  onValueChange={v => setRecupero({ dias_min_mora_acuerdo: Math.max(0, Math.min(365, Math.round(v))) })}
+                />
+              </Field>
+              <Field
+                label="Acuerdos rotos antes de tener que refinanciar"
+                hint="Cuántas veces se le puede volver a armar un acuerdo a alguien que ya rompió uno. Alcanzado el tope, la única salida es refinanciar. 0 = sin tope."
+              >
+                <NumeroInput min="0" max="20" decimales={false}
+                  value={cobranza.recupero.max_acuerdos_rotos}
+                  onValueChange={v => setRecupero({ max_acuerdos_rotos: Math.max(0, Math.min(20, Math.round(v))) })}
+                />
+              </Field>
             </div>
           </Section>
 
@@ -2254,38 +2294,16 @@ export function ConfigForm() {
           </Section>
 
 
-          {/* Escalera de recupero */}
+          {/* Refinanciaciones: cuándo se deja de cobrar y con qué límites se arma el plan nuevo */}
           <Section
-            title="Escalera de recupero"
-            desc="Si hay que agotar lo blando antes de lo irreversible: promesa → acuerdo → refinanciación."
+            title="Refinanciaciones"
+            desc="Cuándo un crédito deja de cobrarse y hay que reestructurarlo, y entre qué valores se pacta el plan nuevo."
             ayuda={AYUDA.escalera}
             onSave={() => save("cobranza", { cobranzaConfig: cobranza })}
             saving={savingKey === "cobranza"} saved={savedKey === "cobranza"} dirty={isDirty("cobranza")}
           >
             <EscaleraResumen r={cobranza.recupero} />
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 max-w-xl">
-              <Field
-                label="Pasa a LEGALES a los… (días de atraso)"
-                hint={
-                  cobranza.recupero.dias_min_mora_acuerdo > 0
-                    ? `A los ${cobranza.recupero.dias_min_mora_acuerdo} días el crédito se muestra en azul como "Legales", y recién ahí se le puede armar un acuerdo de pago.`
-                    : "0 = ningún crédito pasa a Legales y se puede acordar desde el primer día de atraso."
-                }
-              >
-                <NumeroInput min="0" max="365" decimales={false}
-                  value={cobranza.recupero.dias_min_mora_acuerdo}
-                  onValueChange={v => setRecupero({ dias_min_mora_acuerdo: Math.max(0, Math.min(365, Math.round(v))) })}
-                />
-              </Field>
-              <Field
-                label="Acuerdos rotos antes de tener que refinanciar"
-                hint="Cuántas veces se le puede volver a armar un acuerdo a alguien que ya rompió uno. Alcanzado el tope, la única salida es refinanciar. 0 = sin tope."
-              >
-                <NumeroInput min="0" max="20" decimales={false}
-                  value={cobranza.recupero.max_acuerdos_rotos}
-                  onValueChange={v => setRecupero({ max_acuerdos_rotos: Math.max(0, Math.min(20, Math.round(v))) })}
-                />
-              </Field>
               <Field label="Días mínimos de atraso para refinanciar" hint="La refinanciación mata el crédito y crea otro: conviene reservarla para el atraso grande. 0 = sin mínimo. Si ya se agotaron los acuerdos, este mínimo no aplica: si no, el crédito quedaría sin ninguna salida.">
                 <NumeroInput min="0" max="365" decimales={false}
                   value={cobranza.recupero.dias_min_mora_refinanciar}
@@ -2368,12 +2386,35 @@ export function ConfigForm() {
                   </p>
                 </>
               )}
-              <SwitchRow
-                title="Exigir haberlo contactado antes de armar un acuerdo"
-                desc="Sin al menos una gestión registrada, no se puede acordar. Evita el acuerdo de escritorio, armado sin hablar con el deudor."
-                checked={cobranza.recupero.exigir_gestion_para_acuerdo}
-                onChange={v => setRecupero({ exigir_gestion_para_acuerdo: v })}
-              />
+              {/*
+                🔴 LA BANDA DE TASA PROPIA DE LA REFINANCIACIÓN.
+
+                Hasta acá la tasa del plan nuevo se validaba contra la del Simulador, o sea la
+                misma con la que se otorga plata nueva. No son el mismo producto: al que ya
+                incumplió se lo puede reestructurar más caro, y eso no debería obligar a
+                subirle el techo a todos los créditos nuevos.
+
+                Vacío (0 y 0) = sigue mandando la del Simulador, que es como venía funcionando.
+              */}
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 max-w-xl">
+                <Field label="Tasa mínima al refinanciar (%)" hint="Vacío o 0 = se usa la del Simulador, la misma con la que se otorga.">
+                  <NumeroInput min="0" max="1000"
+                    value={cobranza.recupero.tasa_refinanciacion_min}
+                    onValueChange={v => setRecupero({ tasa_refinanciacion_min: Math.max(0, Math.min(1000, v)) })}
+                  />
+                </Field>
+                <Field label="Tasa máxima al refinanciar (%)" hint="El techo de lo que se puede pactar en un plan nuevo.">
+                  <NumeroInput min="0" max="1000"
+                    value={cobranza.recupero.tasa_refinanciacion_max}
+                    onValueChange={v => setRecupero({ tasa_refinanciacion_max: Math.max(0, Math.min(1000, v)) })}
+                  />
+                </Field>
+              </div>
+              <p className="-mt-1 text-[11px] leading-relaxed text-muted-foreground">
+                {cobranza.recupero.tasa_refinanciacion_max > 0
+                  ? <>Al refinanciar se va a poder pactar entre <strong>{cobranza.recupero.tasa_refinanciacion_min}%</strong> y <strong>{cobranza.recupero.tasa_refinanciacion_max}%</strong>, independiente de los límites con los que otorgás.</>
+                  : <>Sin banda propia: al refinanciar rigen los mismos límites de tasa del Simulador. Cargá un máximo si querés reestructurar con otro rango.</>}
+              </p>
               <SwitchRow
                 title="No refinanciar por debajo de la tasa original"
                 desc="Bajar la tasa al refinanciar es una condonación encubierta: no queda registrada como quita ni respeta su tope. Sobre una deuda de $221.000 a 3 cuotas, pasar de 60% a 20% regala unos $15.000. Subirla sigue libre, y un administrador puede autorizar la baja igual."
@@ -2583,6 +2624,7 @@ function defaultCobranza(): CobranzaConfig {
       bloquear_cobro_sin_refinanciar: false,
       no_bajar_tasa_refinanciando: true,
       honorarios_gestion_activo: false, honorarios_gestion_min: 0, honorarios_gestion_max: 0,
+      tasa_refinanciacion_min: 0, tasa_refinanciacion_max: 0,
     },
     fallecidos: { frena_punitorios: true, bloquea_contacto: true, saca_de_agenda: true },
   };

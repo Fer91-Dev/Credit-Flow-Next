@@ -7,7 +7,7 @@ import { getConfiguracion, getCobranzaConfig } from "@/lib/config";
 import { quitaMaxima } from "@/lib/domain/acuerdos";
 import { lockNumeroCreditoTx, TX_PLATA } from "@/lib/locks";
 import { assertPuedeRefinanciar, assertPuedeUsarTasa } from "@/lib/recupero-server";
-import { bandaHonorarios, puedeUsarHonorarios } from "@/lib/domain";
+import { bandaHonorarios, puedeUsarHonorarios, bandaTasaRefinanciacion } from "@/lib/domain";
 import { registrarAuditoria } from "@/lib/audit";
 import { formatCreditoNumero, nombreCompleto, hoyComercial } from "@/lib/utils";
 import type { NextRequest } from "next/server";
@@ -244,6 +244,17 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
       pct: honorariosPropuesto,
       min: bandaHon.min,
       max: bandaHon.max,
+    },
+    /** Si quien está mirando puede pasar por encima de los límites (admin), y queda auditado. */
+    puede_autorizar: role === "admin",
+    /**
+     * Entre qué tasas se puede pactar esta refinanciación. `propia` dice si sale de la banda
+     * de Refinanciaciones o si se heredó la del Simulador (la de otorgar).
+     */
+    tasa: {
+      ...bandaTasaRefinanciacion(cobranzaCfg.recupero, config.simulador),
+      /** Piso adicional por crédito: no se puede pactar por debajo de la tasa del original. */
+      piso_original: cobranzaCfg.recupero.no_bajar_tasa_refinanciando ? credito.tasa : null,
       monto: honorarios,
       /** Solo el admin puede pactar un honorario distinto al configurado (queda auditado). */
       negociable: role === "admin",
@@ -368,7 +379,51 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
    * 350% mensual aunque la financiera tuviera `tasaMax` en 15, o un plazo/frecuencia que
    * tiene apagados. El crédito resultante era indistinguible de uno otorgado normalmente.
    */
-  const invalido = validarParametrosOtorgamiento(config.simulador, {
+  /**
+   * 🔴 LA TASA SE VALIDA CONTRA LA BANDA DE REFINANCIACIÓN, NO CONTRA LA DE OTORGAR.
+   *
+   * Refinanciar y prestar plata nueva no son el mismo producto: al que ya incumplió se lo
+   * puede reestructurar más caro sin tener que subirle el techo a todos los créditos nuevos.
+   * Si la financiera no definió una banda propia, `bandaTasaRefinanciacion` devuelve la del
+   * Simulador y todo sigue como antes.
+   *
+   * Se reemplazan los dos límites sobre una copia de la config del simulador para que el
+   * resto de la validación —plazo habilitado, frecuencia, monto— siga siendo la MISMA función
+   * que valida un otorgamiento. Tener una segunda versión "para refinanciar" garantizaría que
+   * los dos caminos se separen con el tiempo.
+   */
+  const bandaTasa = bandaTasaRefinanciacion(cobranzaCfg.recupero, config.simulador);
+  const fueraDeBanda = tasa < bandaTasa.min - 0.005 || tasa > bandaTasa.max + 0.005;
+  if (fueraDeBanda) {
+    /**
+     * 🔴 Y ACÁ TIENE QUE HABER SALIDA, O SE ARMA UN CALLEJÓN.
+     *
+     * Los dos límites se pisan: la banda comercial y el piso de "no bajar de la tasa
+     * original". Un crédito pactado por ENCIMA del techo de la banda —uno viejo, de cuando la
+     * financiera cobraba más— no tiene ninguna tasa válida: el piso le exige 800% y el techo
+     * le permite 700%. Sin esta autorización ese crédito no se podría refinanciar nunca, que
+     * es justo lo contrario de lo que la banda busca.
+     *
+     * Es la misma válvula que el resto de la escalera: el admin decide, el vendedor no, y
+     * queda asentado en la auditoría de más abajo.
+     */
+    if (!(role === "admin" && body.autorizacion_admin === true)) {
+      return errorResponse(
+        `La tasa se pacta entre ${bandaTasa.min}% y ${bandaTasa.max}% al refinanciar${bandaTasa.propia ? "" : " (los límites del simulador, porque no hay una banda propia configurada)"}.` +
+          (role === "admin" ? " Como administrador podés autorizarlo igual, y queda registrado." : " Lo tiene que autorizar un administrador."),
+        "TASA_FUERA_DE_BANDA",
+        403,
+      );
+    }
+  }
+  /**
+   * La tasa ya se validó arriba, con el rol en la mano; acá se apaga ese chequeo (0 = sin
+   * límite) para que el resto —plazo habilitado, frecuencia, monto— siga pasando por la MISMA
+   * función que valida un otorgamiento.
+   */
+  const simParaRefi = { ...config.simulador, tasaMin: 0, tasaMax: 0 };
+
+  const invalido = validarParametrosOtorgamiento(simParaRefi, {
     monto: nuevoCapital,
     tasa,
     plazoMeses,

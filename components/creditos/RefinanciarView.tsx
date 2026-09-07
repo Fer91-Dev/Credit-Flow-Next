@@ -51,6 +51,8 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
   const [quitaMonto, setQuitaMonto] = useState("");
   const [honPct, setHonPct] = useState("");
   const [motivo, setMotivo] = useState("");
+  /** El admin decidió pactar una tasa fuera de la banda. Viaja al POST y queda auditado. */
+  const [autorizarTasa, setAutorizarTasa] = useState(false);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
@@ -122,6 +124,22 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
    * decisión queda auditada en vez de limitada). Con la banda cerrada no hay nada que pactar.
    */
   const bandaAbierta = !!honCfg?.activo && honCfg.min < honCfg.max;
+
+  /**
+   * Los límites de la TASA: la banda comercial de la financiera y, encima, el piso de este
+   * crédito si rige "no bajar de la tasa original". El piso efectivo es el mayor de los dos.
+   */
+  const bandaTasa = preview?.tasa;
+  const pisoTasa = bandaTasa ? Math.max(bandaTasa.min, bandaTasa.piso_original ?? 0) : 0;
+  const tasaFueraDeBanda =
+    !!bandaTasa && isFinite(tasaNum) && (tasaNum < pisoTasa - 0.005 || tasaNum > bandaTasa.max + 0.005);
+  /**
+   * 🔴 SIN ESTO HAY CRÉDITOS IMPOSIBLES DE REFINANCIAR. Los dos límites se pisan: uno pactado
+   * por encima del techo de la banda —uno viejo, de cuando la financiera cobraba más— tiene un
+   * piso mayor que su techo y ninguna tasa lo satisface. La autorización del admin es la
+   * única salida, y queda registrada.
+   */
+  const tasaTrabada = tasaFueraDeBanda && !(preview?.puede_autorizar && autorizarTasa);
   const honFueraDeBanda =
     !!honCfg?.activo && (honPctNum < honCfg.min - 0.005 || honPctNum > honCfg.max + 0.005);
 
@@ -163,7 +181,7 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
   const interesNuevo = plan ? r2(totalNuevo - nuevoCapital) : 0;
 
   const valido =
-    !!preview && nuevoCapital > 0 && !excedeEntrega && !excedeTope && !honFueraDeBanda &&
+    !!preview && nuevoCapital > 0 && !excedeEntrega && !excedeTope && !honFueraDeBanda && !tasaTrabada &&
     isFinite(tasaNum) && tasaNum >= 0 && isFinite(plazoNum) && plazoNum >= 1;
 
   const submit = async (e: React.FormEvent) => {
@@ -234,6 +252,8 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
           quita_valor: quitaTipo === "porcentaje" ? (parseFloat(quitaPct) || 0) : parseMontoInput(quitaMonto) || 0,
           honorarios_pct: honPct.trim() === "" ? 0 : honPctNum,
           motivo: motivo.trim() || null,
+          // El admin asume pactar fuera de la banda de tasa. El server revalida el rol.
+          ...(tasaFueraDeBanda && autorizarTasa ? { autorizacion_admin: true } : {}),
           // Con qué pago se cobró la entrega. El server lo valida y, si es de esta operación,
           // no le exige al crédito seguir en mora: la entrega pudo haberlo puesto al día.
           entrega_pago_id: entregaPagoId ?? undefined,
@@ -476,8 +496,38 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
                       icon={Percent}
                       inputMode="decimal"
                       value={tasa}
+                      aria-invalid={tasaFueraDeBanda}
                       onChange={(e) => setTasa(e.target.value.replace(/[^0-9.,]/g, "").replace(",", "."))}
                     />
+                    {/*
+                      🔴 LOS LÍMITES, A LA VISTA. Son dos y se pisan: la banda que fijó la
+                      financiera para refinanciar, y el piso de ESTE crédito cuando rige "no
+                      bajar de la tasa original" —bajarla sería una condonación encubierta que
+                      no pasa por el tope de las quitas—. Sin mostrarlos, el operador los
+                      descubría al mandar el formulario y comerse un 400.
+                    */}
+                    {bandaTasa && tasaFueraDeBanda && preview?.puede_autorizar && (
+                      <label className="flex cursor-pointer items-center gap-1.5 text-[11px] text-muted-foreground">
+                        <input
+                          type="checkbox"
+                          checked={autorizarTasa}
+                          onChange={(e) => setAutorizarTasa(e.target.checked)}
+                          className="accent-destructive"
+                        />
+                        Pactar esta tasa igual — queda registrado a mi nombre
+                      </label>
+                    )}
+                    {bandaTasa && (
+                      <p className={`text-[11px] ${tasaTrabada ? "text-destructive" : "text-muted-foreground"}`}>
+                        {pisoTasa > bandaTasa.max
+                          ? <>Este crédito está pactado al {bandaTasa.piso_original}% y no se puede refinanciar por debajo, pero la financiera admite hasta {bandaTasa.max}%. Lo tiene que autorizar un administrador.</>
+                          : <>Entre {pisoTasa}% y {bandaTasa.max}%
+                              {bandaTasa.piso_original != null && bandaTasa.piso_original > bandaTasa.min
+                                ? <> — el piso es la tasa del crédito original.</>
+                                : <>.</>}
+                            </>}
+                      </p>
+                    )}
                   </div>
                   <div className="space-y-1">
                     <FieldLabel required>Cuotas</FieldLabel>

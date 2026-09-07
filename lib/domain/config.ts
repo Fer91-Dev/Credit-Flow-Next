@@ -108,7 +108,7 @@ export interface CargosConfig {
    *
    * A diferencia de los otros cuatro, este NO sale de Configuración → Cargos: lo inyecta
    * `POST /creditos/[id]/refinanciar` al armar el crédito nuevo, calculado como un % de la
-   * deuda consolidada (Configuración → Cobranza → Escalera de recupero). Por eso viaja como
+   * deuda consolidada (Configuración → Cobranza → Refinanciaciones). Por eso viaja como
    * un TOTAL ya resuelto y no como un modo+valor: el % se aplicó sobre la deuda vieja, que
    * el motor de amortización no conoce.
    *
