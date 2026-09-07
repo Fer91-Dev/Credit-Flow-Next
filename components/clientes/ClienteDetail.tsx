@@ -8,7 +8,7 @@ import { useSWRConfig } from "swr";
 import {
   Pencil, Trash2, CalendarClock, ChevronDown, Loader2, Mail, MessageCircle, Phone, Printer, ShieldCheck, Ban, Receipt, AlertTriangle, History, BellOff, Wallet, Sparkles, Handshake,
 } from "lucide-react";
-import { refrescarNotificaciones, useClienteDetalle, useAccionesCobranza, useCuotas, KEYS, type CreditoConFinanzas, type EstadoCuota, type CuotaPersistida, type CuotasCredito, useDiasLegales } from "@/lib/swr";
+import { refrescarNotificaciones, useClienteDetalle, useAccionesCobranza, useCuotas, KEYS, type CreditoConFinanzas, type EstadoCuota, type CuotaPersistida, type CuotasCredito, useDiasLegales, useOrigenRefinanciacion } from "@/lib/swr";
 import { StatusBadge, type BadgeVariant } from "@/components/ui/StatusBadge";
 import { ScoreBadge } from "@/components/ui/ScoreBadge";
 import { Stat } from "@/components/ui/Stat";
@@ -1183,6 +1183,10 @@ function CreditosTabla({ creditos, mostrarProximo, onCobrar, onCobrarAcuerdo, cl
                   pie={`${c.pagos?.length ?? 0} pago${(c.pagos?.length ?? 0) === 1 ? "" : "s"}`} tono="success" />
               </div>
 
+              {/* La entrega con la que nació, si vino de una refinanciación. Va DEBAJO de las
+                  cifras y no entre ellas: es contexto, no un total de este crédito. */}
+              {c.es_refinanciacion && <EntregaDeOrigen creditoId={c.id} numeroOrigen={c.refinancia_a_numero} />}
+
               {/* Acciones. El botón de despliegue es explícito: era lo que faltaba. */}
               <div className="flex flex-wrap items-center gap-2">
                 {tieneCuotas && (
@@ -1243,6 +1247,35 @@ function CreditosTabla({ creditos, mostrarProximo, onCobrar, onCobrarAcuerdo, cl
 }
 
 /** Una cifra de la card: etiqueta chica, número grande, contexto abajo. */
+/**
+ * LA ENTREGA CON LA QUE NACIÓ UN CRÉDITO REFINANCIADO.
+ *
+ * 🔴 POR QUÉ HACE FALTA. En la ficha del cliente, REF-000006 mostraba "COBRADO $0,00 · 0
+ * pagos" mientras el crédito viejo mostraba "$400.000,00 · 1 pago". Parecía que la
+ * refinanciación no había cobrado nada, cuando el cliente acababa de poner esa plata como
+ * parte del mismo arreglo.
+ *
+ * 🔴 Y POR QUÉ EL NÚMERO NO SE MUEVE. Ese pago canceló deuda del crédito VIEJO; lo que quedó
+ * es lo que se novó en este. El capital de este crédito YA está neto de esa entrega, así que
+ * sumarla a su "cobrado" diría que de $1.261.949,15 ya pagó $400.000 y que debe $861.949,15
+ * — y no: debe los $1.261.949,15 enteros. Sería un saldo falso en la cara del operador.
+ *
+ * Se muestra como CONTEXTO, fuera de los totales: la plata se ve donde el cliente la busca,
+ * dice de dónde salió, y ninguno de los dos libros queda mal.
+ */
+function EntregaDeOrigen({ creditoId, numeroOrigen }: { creditoId: string; numeroOrigen?: number | null }) {
+  const { origen } = useOrigenRefinanciacion(creditoId);
+  const entrega = origen?.entrega;
+  if (!entrega || entrega.anulado || entrega.monto <= 0) return null;
+  return (
+    <p className="text-xs text-muted-foreground">
+      Nació con una entrega de{" "}
+      <span className="font-mono font-semibold tabular-nums text-success">${n2(entrega.monto)}</span>{" "}
+      en {entrega.metodo}, cobrada sobre {formatCreditoNumero(numeroOrigen ?? null)} antes de armar este plan.
+    </p>
+  );
+}
+
 function CifraCredito({ label, valor, pie, tono }: {
   label: string; valor: string; pie?: string;
   /** `muted` = dato de referencia, no lo que hay que mirar (ej. la cuota del plan caído). */
