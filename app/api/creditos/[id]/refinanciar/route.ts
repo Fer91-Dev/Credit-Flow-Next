@@ -673,6 +673,9 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
        * consolidada es menor que la que muestra el crédito viejo.
        */
       ...(entregaCobrada ? { entrega_pago_id: entregaPagoId } : {}),
+      // El interés que NO se consolidó por no haber transcurrido: es parte de cómo se armó
+      // esta deuda y sin él la cuenta de la ficha no se puede reconstruir.
+      interes_no_devengado: deuda.interesNoDevengado,
     },
   });
 

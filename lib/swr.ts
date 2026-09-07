@@ -1745,6 +1745,31 @@ export function useRefinanciacionPreview(creditoId: string | null) {
   return { preview: data, error, isLoading };
 }
 
+/**
+ * DE DÓNDE SALIÓ un crédito que nació de una refinanciación: la deuda que se consolidó, la
+ * entrega que el cliente puso en el acto, el descuento y los honorarios. Sale de la auditoría
+ * del crédito ORIGEN, así que no hay columnas duplicadas que puedan desincronizarse.
+ *
+ * `null` en `origen` = este crédito no viene de una refinanciación. Key condicional: solo se
+ * pide para los que la tienen.
+ */
+export interface OrigenRefinanciacion {
+  fecha: string;
+  quien: string | null;
+  deuda_consolidada: { capital?: number; interes?: number; cargos?: number; mora?: number; total?: number } | null;
+  quita: number;
+  honorarios: { monto: number; pct: number } | null;
+  nuevo_capital: number | null;
+  entrega: { monto: number; metodo: string; fecha: string; anulado: boolean } | null;
+}
+
+export function useOrigenRefinanciacion(creditoId: string | null) {
+  const { data, isLoading } = useSWR<{ origen: OrigenRefinanciacion | null }>(
+    creditoId ? `/api/creditos/${creditoId}/origen-refinanciacion` : null,
+  );
+  return { origen: data?.origen ?? null, isLoading };
+}
+
 /** Cronograma de cuotas PERSISTIDO de un crédito. Key condicional. */
 export function useCuotas(creditoId: string | null) {
   const { data, error, isLoading, mutate } = useSWR<CuotasCredito>(

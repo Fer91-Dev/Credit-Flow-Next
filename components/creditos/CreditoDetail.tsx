@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useState, useRef } from "react";
 import { useSWRConfig } from "swr";
 import { CalendarDays, Wallet, Info, ArrowUpRight, Receipt, Loader2, Printer, RefreshCw, ArrowRight, ShieldCheck, Ban, Trash2, ExternalLink } from "lucide-react";
-import { refrescarNotificaciones, useAmortizacion, useCuotas, usePagosByCredito, useCreditos, KEYS, type Credito, type EstadoCuota, type Pago, type CuotaPersistida, useFinanciera, useDiasLegales } from "@/lib/swr";
+import { refrescarNotificaciones, useAmortizacion, useCuotas, usePagosByCredito, useCreditos, KEYS, type Credito, type EstadoCuota, type Pago, type CuotaPersistida, useFinanciera, useDiasLegales, useOrigenRefinanciacion } from "@/lib/swr";
 import { type Role } from "@/lib/auth/roles";
 import { abrirRecibo } from "@/lib/recibo";
 import { moraDevengadaDeCuota } from "@/lib/recibo-cuota";
@@ -18,7 +18,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Field, Textarea } from "@/components/ui/field";
 import { useToast } from "@/components/ui/toast";
 import { useConfirm } from "@/components/ui/confirm";
-import { formatCreditoNumero, formatFecha, formatDias, nombreCompleto } from "@/lib/utils";
+import { formatCreditoNumero, formatFecha, formatDias, formatMonto, nombreCompleto } from "@/lib/utils";
 import { Stat } from "@/components/ui/Stat";
 import { Skeleton } from "@/components/ui/skeleton";
 import { esCreditoVivo, montoEnPalabras } from "@/lib/domain";
@@ -63,6 +63,19 @@ const BTN_ACCION =
  * venía la deuda había que cerrar el modal, volver a la lista y buscar el número a mano.
  * Queda como texto plano cuando el crédito no está en la lista cargada (no hay a dónde ir).
  */
+/** Un renglón de la cuenta de cómo se armó el crédito refinanciado. */
+function FilaOrigen({ label, valor, tono }: { label: string; valor: number; tono?: "success" | "warning" | "destructive" }) {
+  const color = tono === "success" ? "text-success" : tono === "warning" ? "text-warning" : tono === "destructive" ? "text-destructive line-through" : "text-foreground";
+  return (
+    <div className="flex items-center justify-between gap-3 text-xs">
+      <span className="text-muted-foreground">{label}</span>
+      <span className={`font-mono tabular-nums ${color}`}>
+        {valor < 0 ? "− " : tono === "warning" ? "+ " : ""}{formatMonto(Math.abs(valor))}
+      </span>
+    </div>
+  );
+}
+
 function VinculoRefi({ credito, numeroOrigen, fallback, onAbrir }: {
   credito: Credito | undefined;
   numeroOrigen?: number | null;
@@ -157,6 +170,12 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
   // desde la lista ya cargada, sin pedir nada extra al server.
   const { creditos } = useCreditos();
   const origenRefi = credito.refinancia_a ? creditos.find((c) => c.id === credito.refinancia_a) : undefined;
+  /**
+   * Cómo se armó ESTE crédito, si nació de una refinanciación. Sale de la auditoría del
+   * crédito origen: la deuda que se consolidó, la entrega que el cliente puso en el acto, el
+   * descuento y los honorarios. Sin esto la ficha mostraba un préstamo sin historia.
+   */
+  const { origen: origenRefinanciacion } = useOrigenRefinanciacion(credito.es_refinanciacion ? credito.id : null);
   const destinoRefi = credito.refinanciado_en ? creditos.find((c) => c.id === credito.refinanciado_en) : undefined;
 
   const { mutate: globalMutate } = useSWRConfig();
@@ -613,6 +632,52 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
                   <VinculoRefi credito={origenRefi} fallback="crédito anterior" onAbrir={onAbrirCredito} />
                   {origenRefi && <span className="text-muted-foreground">· {nombreCompleto(origenRefi.cliente)}</span>}
                 </p>
+              )}
+              {/*
+                🔴 CÓMO SE ARMÓ ESTE CRÉDITO, no solo de dónde viene.
+
+                El cartel decía "Proviene de refinanciar CRD-000006" y nada más: se veía un
+                préstamo de $751.949,15 sin rastro de que el cliente había entregado $910.000
+                en el acto, ni de qué deuda se consolidó, ni de si hubo descuento. Para
+                reconstruirlo había que abrir el crédito viejo y revisar sus pagos — y con ese
+                crédito cerrado en $0, dentro de seis meses eso es arqueología.
+
+                Los renglones son la cuenta completa: de la deuda vieja a este capital.
+              */}
+              {credito.es_refinanciacion && origenRefinanciacion && (
+                <div className="mt-2 space-y-1 border-t border-warning/20 pt-2">
+                  {origenRefinanciacion.deuda_consolidada?.total != null && (
+                    <FilaOrigen label="Deuda que se consolidó" valor={origenRefinanciacion.deuda_consolidada.total} />
+                  )}
+                  {origenRefinanciacion.entrega && (
+                    <FilaOrigen
+                      label={`Entrega cobrada en el acto · ${origenRefinanciacion.entrega.metodo}${origenRefinanciacion.entrega.anulado ? " (ANULADA)" : ""}`}
+                      valor={-origenRefinanciacion.entrega.monto}
+                      tono={origenRefinanciacion.entrega.anulado ? "destructive" : "success"}
+                    />
+                  )}
+                  {origenRefinanciacion.quita > 0 && (
+                    <FilaOrigen label="Descuento al cliente" valor={-origenRefinanciacion.quita} tono="success" />
+                  )}
+                  {origenRefinanciacion.honorarios && origenRefinanciacion.honorarios.monto > 0 && (
+                    <FilaOrigen
+                      label={`Honorarios de gestión (${origenRefinanciacion.honorarios.pct}%) · repartidos en las cuotas`}
+                      valor={origenRefinanciacion.honorarios.monto}
+                      tono="warning"
+                    />
+                  )}
+                  {origenRefinanciacion.nuevo_capital != null && (
+                    <div className="flex items-center justify-between gap-3 border-t border-warning/20 pt-1.5 text-xs">
+                      <span className="font-semibold text-foreground">Capital de este crédito</span>
+                      <span className="font-mono font-bold tabular-nums text-foreground">{formatMonto(origenRefinanciacion.nuevo_capital)}</span>
+                    </div>
+                  )}
+                  {origenRefinanciacion.quien && (
+                    <p className="pt-0.5 text-[11px] text-muted-foreground/70">
+                      Refinanciado por {origenRefinanciacion.quien} el {formatFecha(origenRefinanciacion.fecha)}.
+                    </p>
+                  )}
+                </div>
               )}
               {credito.refinanciado_en && (
                 <p className="flex flex-wrap items-center gap-1.5">
