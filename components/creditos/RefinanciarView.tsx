@@ -759,12 +759,20 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
                   <div className="rounded-xl border border-primary/20 bg-primary/5 p-3.5">
                     <div className="flex items-baseline justify-between gap-2">
                       <p className="text-[10px] font-bold uppercase tracking-widest text-primary">Cómo queda el crédito nuevo</p>
-                      <p className="font-mono text-[11px] tabular-nums text-muted-foreground">
+                      <p className="font-mono text-xs tabular-nums text-muted-foreground">
                         {plan.cuotas.length} cuota{plan.cuotas.length === 1 ? "" : "s"} · {tasaNum}%
                       </p>
                     </div>
 
                     {/*
+                      🔴 ACÁ EL TEXTO VA MÁS GRANDE QUE EN EL RESTO DEL SAAS, A PROPÓSITO.
+
+                      La densidad global está al 81,25%, así que un `text-xs` termina midiendo
+                      menos de 10px y un `text-[11px]`, menos de 9. Sirve para una tabla que se
+                      escanea; no para el plan de cuotas, que es lo que el operador LE LEE EN
+                      VOZ ALTA al cliente y lo que el cliente después mira en el papel. Acá se
+                      usa `text-sm` y el total va a `text-lg`: es el número de la operación.
+
                       🔴 EN COLUMNAS, NO EN UNA LÍNEA CORRIDA.
 
                       Antes cada fila era "Cuota 1 de 3 · 07/10/2026 … $434.266,29" en un solo
@@ -775,7 +783,7 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
                     */}
                     <div className="mt-2.5 max-h-[46vh] divide-y divide-primary/10 overflow-y-auto">
                       {plan.cuotas.map((c) => (
-                        <div key={c.nro} className="grid grid-cols-[auto_1fr_auto] items-baseline gap-x-3 py-2 text-xs">
+                        <div key={c.nro} className="grid grid-cols-[auto_1fr_auto] items-baseline gap-x-3 py-2 text-sm">
                           <span className="text-muted-foreground">
                             Cuota <span className="font-mono tabular-nums text-foreground">{c.nro}</span>
                             <span className="text-muted-foreground/50"> de {plan.cuotas.length}</span>
@@ -787,7 +795,7 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
                     </div>
 
                     {/* La cuenta, para que el total no aparezca de la nada. */}
-                    <table className="mt-2.5 w-full border-t border-primary/20 pt-2 text-[11px]">
+                    <table className="mt-2.5 w-full border-t border-primary/20 pt-2 text-sm">
                       <tbody className="font-mono tabular-nums">
                         <tr>
                           <td className="pt-2 font-sans text-muted-foreground">Capital del nuevo crédito</td>
@@ -807,7 +815,7 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
                         )}
                         <tr className="border-t border-primary/20">
                           <td className="pt-2 font-sans font-semibold text-foreground">Total a pagar</td>
-                          <td className="pt-2 text-right text-base font-bold text-foreground">${n2(totalNuevo)}</td>
+                          <td className="pt-2 text-right text-lg font-bold text-foreground">${n2(totalNuevo)}</td>
                         </tr>
                       </tbody>
                     </table>
@@ -817,7 +825,7 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
                       Debía X y va a terminar pagando Y — con la entrega adentro, porque esa
                       plata también la puso el cliente y tiene que estar en la cuenta.
                     */}
-                    <p className="mt-2 flex items-center justify-between gap-2 rounded-md bg-muted/30 px-2.5 py-1.5 text-[11px]">
+                    <p className="mt-2 flex items-center justify-between gap-2 rounded-md bg-muted/30 px-2.5 py-2 text-sm">
                       <span className="text-muted-foreground">
                         Debía <span className="font-mono text-foreground">${n2(base)}</span> · termina pagando
                       </span>
@@ -834,7 +842,8 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
       {/* Barra fija: el resumen y la acción, siempre a la vista */}
       {preview && (
         <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-edge px-5 py-3">
-          <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-xs">
+          {/* Los tres números sobre los que se aprieta el botón: van legibles, no en 9px. */}
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-sm">
             {entregaNum > 0 && (
               <span className="text-muted-foreground">
                 Entrega ahora <span className="font-mono font-semibold tabular-nums text-success">${n2(entregaNum)}</span>
