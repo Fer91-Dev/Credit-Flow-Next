@@ -30,6 +30,7 @@ function n0(x: number) {
   return new Intl.NumberFormat("es-AR", { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(x);
 }
 const fmtDate = (s: string) => formatFecha(s);
+const r2 = (x: number) => Math.round(x * 100) / 100;
 /** "cuota semanal" → "Cuota semanal". Las etiquetas de frecuencia vienen en minúscula. */
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
@@ -646,8 +647,24 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
               */}
               {credito.es_refinanciacion && origenRefinanciacion && (
                 <div className="mt-2 space-y-1 border-t border-warning/20 pt-2">
+                  {/*
+                    🔴 LA DEUDA VA BRUTA, ANTES DE LA ENTREGA.
+
+                    `deuda_consolidada` ya viene NETA —la entrega se cobra antes de armar el
+                    plan, así que cuando el server la calcula ya está descontada—. Mostrándola
+                    con la entrega debajo, la resta se leía como pendiente y los tres renglones
+                    no daban el capital: $1.261.949,15 − $400.000,00 no es $1.261.949,15.
+
+                    Es la TERCERA vez en el día que aparece este mismo error, en tres pantallas
+                    distintas: un neto puesto al lado de la resta que lo produjo. La regla que
+                    queda: si se muestra la resta, arriba va el BRUTO; si se muestra el neto,
+                    la resta no se repite.
+                  */}
                   {origenRefinanciacion.deuda_consolidada?.total != null && (
-                    <FilaOrigen label="Deuda que se consolidó" valor={origenRefinanciacion.deuda_consolidada.total} />
+                    <FilaOrigen
+                      label={origenRefinanciacion.entrega && !origenRefinanciacion.entrega.anulado ? "Deuda del plan viejo" : "Deuda que se consolidó"}
+                      valor={r2(origenRefinanciacion.deuda_consolidada.total + (origenRefinanciacion.entrega && !origenRefinanciacion.entrega.anulado ? origenRefinanciacion.entrega.monto : 0))}
+                    />
                   )}
                   {origenRefinanciacion.entrega && (
                     <FilaOrigen
@@ -659,18 +676,21 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
                   {origenRefinanciacion.quita > 0 && (
                     <FilaOrigen label="Descuento al cliente" valor={-origenRefinanciacion.quita} tono="success" />
                   )}
+                  {origenRefinanciacion.nuevo_capital != null && (
+                    <div className="flex items-center justify-between gap-3 border-t border-warning/20 pt-1.5 text-xs">
+                      <span className="font-semibold text-foreground">Capital de este crédito</span>
+                      <span className="font-mono font-bold tabular-nums text-foreground">{formatMonto(origenRefinanciacion.nuevo_capital)}</span>
+                    </div>
+                  )}
+                  {/* Los honorarios van DESPUÉS del capital y a propósito: no lo suman, se
+                      reparten como cargo en las cuotas. Ponerlos arriba haría que la cuenta
+                      de la resta no cerrara. */}
                   {origenRefinanciacion.honorarios && origenRefinanciacion.honorarios.monto > 0 && (
                     <FilaOrigen
                       label={`Honorarios de gestión (${origenRefinanciacion.honorarios.pct}%) · repartidos en las cuotas`}
                       valor={origenRefinanciacion.honorarios.monto}
                       tono="warning"
                     />
-                  )}
-                  {origenRefinanciacion.nuevo_capital != null && (
-                    <div className="flex items-center justify-between gap-3 border-t border-warning/20 pt-1.5 text-xs">
-                      <span className="font-semibold text-foreground">Capital de este crédito</span>
-                      <span className="font-mono font-bold tabular-nums text-foreground">{formatMonto(origenRefinanciacion.nuevo_capital)}</span>
-                    </div>
                   )}
                   {origenRefinanciacion.quien && (
                     <p className="pt-0.5 text-[11px] text-muted-foreground/70">
