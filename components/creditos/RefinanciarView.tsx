@@ -18,6 +18,17 @@ function n2(x: number) {
 }
 const r2 = (x: number) => Math.round(x * 100) / 100;
 
+/**
+ * EL MÓDULO DE ANCHO DEL FORMULARIO.
+ *
+ * Un solo criterio para toda la columna: `CAMPO` es un módulo y `PAR` son dos. Todo mide uno
+ * o dos, así que todo cae sobre la misma grilla invisible y queda alineado sin que haya que
+ * elegir un ancho por campo — que es como se llegó a tener un porcentaje de dos dígitos en un
+ * input de 700px al lado de otro de 128.
+ */
+const CAMPO = "sm:max-w-56";
+const PAR = "sm:max-w-lg";
+
 /** Cómo se abrevia cada convención de tasa. Mismo vocabulario que Configuración y el simulador. */
 const CONVENCION_CORTA: Record<string, string> = {
   nominal_anual: "T.N.A.",
@@ -466,203 +477,226 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
                 </div>
 
                 {/*
-                  ENTREGA. Va inmediatamente debajo de la deuda porque es lo primero que la
-                  cambia: el cliente pone plata ahora y lo que se consolida es lo que queda.
+                  🔴 DOS GRUPOS Y UN MÓDULO DE ANCHO ÚNICO.
+
+                  Antes eran seis bloques sueltos apilados a lo largo, cada uno con el ancho
+                  que le tocó: un porcentaje de dos dígitos ocupando 700px al lado de otro de
+                  128, sin nada que los relacionara. Y poner el ancho campo por campo rompía
+                  el desplegable — el ancho iba al `select` y la flecha, que se posiciona
+                  contra el contenedor, quedaba flotando lejos del campo.
+
+                  El criterio ahora es uno solo: `CAMPO` es un módulo, `PAR` son dos módulos
+                  con dos campos adentro. Todo mide uno o dos módulos, así que todo queda
+                  alineado sobre la misma grilla invisible. Y los campos vuelven a ser
+                  `w-full` de su contenedor, que es lo que esos componentes esperan.
+
+                  Los dos encabezados agrupan por lo que cada cosa HACE: lo que cambia la
+                  deuda que se consolida, y lo que define el plan nuevo.
                 */}
-                <div className="space-y-2">
-                  <FieldLabel>Entrega ahora (opcional)</FieldLabel>
-                  {/* Importe y método juntos, del ancho de lo que se escribe: un monto no
-                      necesita setecientos píxeles y el método pegado se lee como una sola cosa. */}
-                  <div className="flex flex-wrap items-center gap-2">
-                    <div className="w-56 shrink-0"><MoneyInput value={entrega} onChange={setEntrega} /></div>
-                    <IconSelect icon="dollar-banknote" className="w-44" value={entregaMetodo} onChange={(e) => setEntregaMetodo(e.target.value)}>
-                      <option value="efectivo">Efectivo</option>
-                      <option value="transferencia">Transferencia</option>
-                      <option value="cheque">Cheque</option>
-                      <option value="otro">Otro</option>
-                    </IconSelect>
-                  </div>
-                  <p className={`text-xs ${excedeEntrega ? "text-destructive" : "text-muted-foreground"}`}>
-                    {excedeEntrega
-                      ? <>La entrega se lleva toda la deuda: eso ya no es refinanciar, es cancelar el crédito. Cobralo desde Pagos.</>
-                      : entregaNum > 0
-                        ? <>Se cobran <strong className="text-foreground">${n2(entregaNum)}</strong> en el acto, con su recibo y su movimiento de caja. Se consolidan <strong className="text-foreground">${n2(baseNeta)}</strong>.</>
-                        : <>Si el cliente pone algo ahora, se cobra primero y el crédito nuevo nace por lo que quede.</>}
+                <section className="space-y-4 rounded-xl border border-border bg-muted/[0.06] p-4">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                    El arreglo con el cliente
                   </p>
-                </div>
 
-                {/*
-                  DESCUENTO AL CLIENTE (en la jerga: quita o condonación). Manda el término
-                  llano, y el tope se muestra como DATO — antes el vendedor descubría su
-                  límite recién al mandar el formulario y comerse un 403.
-                */}
-                <div className="space-y-2">
-                  <FieldLabel>Descuento al cliente (opcional)</FieldLabel>
-                  <Segmented<QuitaTipo>
-                    value={quitaTipo}
-                    onChange={setQuitaTipo}
-                    options={[
-                      { value: "ninguna", label: "Sin descuento", icon: Ban },
-                      { value: "porcentaje", label: "% sobre la deuda", icon: Percent },
-                      { value: "monto", label: "Monto fijo", icon: Scissors },
-                    ]}
-                  />
-                  {quitaTipo === "porcentaje" && (
-                    <IconInput
-                      icon={Percent}
-                      inputMode="decimal"
-                      placeholder="Ej: 10"
-                      className="max-w-32"
-                      value={quitaPct}
-                      onChange={(e) => setQuitaPct(e.target.value.replace(/[^0-9.,]/g, "").replace(",", "."))}
-                    />
-                  )}
-                  {quitaTipo === "monto" && <div className="max-w-56"><MoneyInput value={quitaMonto} onChange={setQuitaMonto} /></div>}
-                  {quitaTipo !== "ninguna" && (
-                    <p className={`text-xs ${excedeTope ? "text-destructive" : "text-muted-foreground"}`}>
-                      {topeQuita > 0
-                        ? <>Hasta ${n2(topeQuita)} — sale de la mora y el interés, nunca del capital.{entregaNum > 0 && <> La entrega ya se llevó parte de eso.</>}</>
-                        : <>No podés descontar nada. Lo tiene que autorizar un administrador.</>}
+                  {/*
+                    ENTREGA. Va primero porque es lo primero que cambia la deuda: el cliente
+                    pone plata ahora y lo que se consolida es lo que queda.
+                  */}
+                  <div className="space-y-1.5">
+                    <FieldLabel>Entrega ahora (opcional)</FieldLabel>
+                    {/* Importe y método pegados: son una sola cosa, no dos campos sueltos. */}
+                    <div className={`grid grid-cols-2 gap-2 ${PAR}`}>
+                      <MoneyInput value={entrega} onChange={setEntrega} />
+                      <IconSelect icon="dollar-banknote" value={entregaMetodo} onChange={(e) => setEntregaMetodo(e.target.value)}>
+                        <option value="efectivo">Efectivo</option>
+                        <option value="transferencia">Transferencia</option>
+                        <option value="cheque">Cheque</option>
+                        <option value="otro">Otro</option>
+                      </IconSelect>
+                    </div>
+                    <p className={`text-xs ${excedeEntrega ? "text-destructive" : "text-muted-foreground"}`}>
+                      {excedeEntrega
+                        ? <>La entrega se lleva toda la deuda: eso ya no es refinanciar, es cancelar el crédito. Cobralo desde Pagos.</>
+                        : entregaNum > 0
+                          ? <>Se cobran <strong className="text-foreground">${n2(entregaNum)}</strong> en el acto, con su recibo y su movimiento de caja. Se consolidan <strong className="text-foreground">${n2(baseNeta)}</strong>.</>
+                          : <>Si el cliente pone algo ahora, se cobra primero y el crédito nuevo nace por lo que quede.</>}
                     </p>
-                  )}
-                </div>
+                  </div>
 
-                {/*
-                  HONORARIOS DE GESTIÓN, dentro de la BANDA que fijó la financiera.
-
-                  🔴 El porcentaje se pacta ACÁ, con el cliente enfrente; Configuración fija
-                  entre qué valores. Antes el número se definía en los dos lugares —el mismo
-                  dato escrito dos veces— y encima limitaba al revés: el vendedor quedaba
-                  clavado en el configurado y el admin podía poner cualquier cosa.
-
-                  Con la banda cerrada (mínimo = máximo) no hay nada que negociar y el campo
-                  se muestra como dato, no como control: un input que no cambia nada es peor
-                  que no tenerlo.
-                */}
-                {honCfg?.activo && (
-                  <div className="space-y-1">
-                    <FieldLabel>Honorarios por gestión de cobranza</FieldLabel>
-                    {bandaAbierta ? (
-                      <IconInput
-                        icon={Percent}
-                        inputMode="decimal"
-                        value={honPct}
-                        placeholder={String(honCfg.max)}
-                        aria-invalid={honFueraDeBanda}
-                        className="max-w-32"
-                        onChange={(e) => setHonPct(e.target.value.replace(/[^0-9.,]/g, "").replace(",", "."))}
+                  {/*
+                    DESCUENTO AL CLIENTE (en la jerga: quita o condonación). Manda el término
+                    llano, y el tope se muestra como DATO — antes el vendedor descubría su
+                    límite recién al mandar el formulario y comerse un 403.
+                  */}
+                  <div className="space-y-1.5">
+                    <FieldLabel>Descuento al cliente (opcional)</FieldLabel>
+                    <div className={PAR}>
+                      <Segmented<QuitaTipo>
+                        value={quitaTipo}
+                        onChange={setQuitaTipo}
+                        options={[
+                          { value: "ninguna", label: "Sin descuento", icon: Ban },
+                          { value: "porcentaje", label: "% sobre la deuda", icon: Percent },
+                          { value: "monto", label: "Monto fijo", icon: Scissors },
+                        ]}
                       />
-                    ) : (
-                      <div className="flex h-11 max-w-64 items-center rounded-lg border border-border bg-muted/20 px-3 text-sm text-muted-foreground">
-                        {honCfg.max}% — lo fija la financiera
+                    </div>
+                    {quitaTipo === "porcentaje" && (
+                      <div className={CAMPO}>
+                        <IconInput
+                          icon={Percent}
+                          inputMode="decimal"
+                          placeholder="Ej: 10"
+                          value={quitaPct}
+                          onChange={(e) => setQuitaPct(e.target.value.replace(/[^0-9.,]/g, "").replace(",", "."))}
+                        />
                       </div>
                     )}
-                    <p className={`text-[11px] ${honFueraDeBanda ? "text-destructive" : "text-muted-foreground"}`}>
-                      {honFueraDeBanda ? (
-                        <>Fuera de lo permitido: se pacta entre <strong>{honCfg.min}%</strong> y <strong>{honCfg.max}%</strong>.</>
-                      ) : (
-                        <>
-                          {honMonto > 0
-                            ? <>Se cobran <strong className="text-foreground">${n2(honMonto)}</strong> sobre la deuda que se consolida, repartidos en las cuotas del plan nuevo. No suman capital, así que no generan interés.</>
-                            : <>Sin honorarios: este cliente no paga la gestión.</>}
-                          {bandaAbierta && (
-                            <> Podés pactar entre {honCfg.min}% y {honCfg.max}%.</>
-                          )}
-                        </>
-                      )}
-                    </p>
-                  </div>
-                )}
-
-                {/* Condiciones del nuevo crédito */}
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <div className="space-y-1">
-                    {/* La convención, igual que en el simulador: con T.N.A. estos números son
-                        ANUALES, y sin decirlo un 20 se lee como mensual. */}
-                    <FieldLabel required>Tasa (%{convencion ? ` ${convencion}` : ""})</FieldLabel>
-                    <IconInput
-                      icon={Percent}
-                      inputMode="decimal"
-                      value={tasa}
-                      aria-invalid={tasaFueraDeBanda}
-                      className="max-w-32"
-                      onChange={(e) => setTasa(e.target.value.replace(/[^0-9.,]/g, "").replace(",", "."))}
-                    />
-                    {/*
-                      🔴 LOS LÍMITES, A LA VISTA. Son dos y se pisan: la banda que fijó la
-                      financiera para refinanciar, y el piso de ESTE crédito cuando rige "no
-                      bajar de la tasa original" —bajarla sería una condonación encubierta que
-                      no pasa por el tope de las quitas—. Sin mostrarlos, el operador los
-                      descubría al mandar el formulario y comerse un 400.
-                    */}
-                    {bandaTasa && tasaFueraDeBanda && preview?.puede_autorizar && (
-                      <label className="flex cursor-pointer items-center gap-1.5 text-[11px] text-muted-foreground">
-                        <input
-                          type="checkbox"
-                          checked={autorizarTasa}
-                          onChange={(e) => setAutorizarTasa(e.target.checked)}
-                          className="accent-destructive"
-                        />
-                        Pactar esta tasa igual — queda registrado a mi nombre
-                      </label>
+                    {quitaTipo === "monto" && (
+                      <div className={CAMPO}><MoneyInput value={quitaMonto} onChange={setQuitaMonto} /></div>
                     )}
-                    {bandaTasa && (
-                      <p className={`text-[11px] ${tasaTrabada ? "text-destructive" : "text-muted-foreground"}`}>
-                        {pisoTasa > bandaTasa.max
-                          ? <>Este crédito está pactado al {bandaTasa.piso_original}% y no se puede refinanciar por debajo, pero la financiera admite hasta {bandaTasa.max}%. Lo tiene que autorizar un administrador.</>
-                          : <>Entre {pisoTasa}% y {bandaTasa.max}%
-                              {bandaTasa.piso_original != null && bandaTasa.piso_original > bandaTasa.min
-                                ? <> — el piso es la tasa del crédito original.</>
-                                : <>.</>}
-                            </>}
+                    {quitaTipo !== "ninguna" && (
+                      <p className={`text-xs ${excedeTope ? "text-destructive" : "text-muted-foreground"}`}>
+                        {topeQuita > 0
+                          ? <>Hasta ${n2(topeQuita)} — sale de la mora y el interés, nunca del capital.{entregaNum > 0 && <> La entrega ya se llevó parte de eso.</>}</>
+                          : <>No podés descontar nada. Lo tiene que autorizar un administrador.</>}
                       </p>
                     )}
                   </div>
-                  <div className="space-y-1">
-                    <FieldLabel required>Cuotas</FieldLabel>
-                    {/*
-                      🔴 SE ELIGE DE UNA LISTA, NO SE ESCRIBE.
 
-                      Era un campo libre: se podía tipear 999 y la pantalla armaba el plan con
-                      999 cuotas, tan campante. El servidor lo rechazaba —pero recién al
-                      confirmar, con el cliente enfrente y el plan ya leído en voz alta. Los
-                      plazos que la financiera admite para reestructurar salen de Configuración
-                      → Cobranza → Refinanciaciones.
-                    */}
-                    {plazosPermitidos.length > 0 ? (
-                      <IconSelect
-                        icon={Hash}
-                        value={plazo}
-                        className="max-w-40"
-                        onChange={(e) => setPlazo(e.target.value)}
-                      >
-                        {plazosPermitidos.map((n) => (
-                          <option key={n} value={String(n)}>
-                            {n} {n === 1 ? "cuota" : "cuotas"}
-                          </option>
-                        ))}
-                      </IconSelect>
-                    ) : (
+                  {/*
+                    HONORARIOS DE GESTIÓN, dentro de la BANDA que fijó la financiera.
+
+                    🔴 El porcentaje se pacta ACÁ, con el cliente enfrente; Configuración fija
+                    entre qué valores. Antes el número se definía en los dos lugares —el mismo
+                    dato escrito dos veces— y encima limitaba al revés: el vendedor quedaba
+                    clavado en el configurado y el admin podía poner cualquier cosa.
+
+                    Con la banda cerrada (mínimo = máximo) no hay nada que negociar y el campo
+                    se muestra como dato, no como control: un input que no cambia nada es peor
+                    que no tenerlo.
+                  */}
+                  {honCfg?.activo && (
+                    <div className="space-y-1.5">
+                      <FieldLabel>Honorarios por gestión de cobranza</FieldLabel>
+                      <div className={CAMPO}>
+                        {bandaAbierta ? (
+                          <IconInput
+                            icon={Percent}
+                            inputMode="decimal"
+                            value={honPct}
+                            placeholder={String(honCfg.max)}
+                            aria-invalid={honFueraDeBanda}
+                            onChange={(e) => setHonPct(e.target.value.replace(/[^0-9.,]/g, "").replace(",", "."))}
+                          />
+                        ) : (
+                          <div className="flex h-12 items-center rounded-lg border border-border bg-muted/20 px-3 text-sm text-muted-foreground">
+                            {honCfg.max}% — lo fija la financiera
+                          </div>
+                        )}
+                      </div>
+                      <p className={`text-xs ${honFueraDeBanda ? "text-destructive" : "text-muted-foreground"}`}>
+                        {honFueraDeBanda ? (
+                          <>Fuera de lo permitido: se pacta entre <strong>{honCfg.min}%</strong> y <strong>{honCfg.max}%</strong>.</>
+                        ) : (
+                          <>
+                            {honMonto > 0
+                              ? <>Se cobran <strong className="text-foreground">${n2(honMonto)}</strong> sobre la deuda que se consolida, repartidos en las cuotas del plan nuevo. No suman capital, así que no generan interés.</>
+                              : <>Sin honorarios: este cliente no paga la gestión.</>}
+                            {bandaAbierta && <> Podés pactar entre {honCfg.min}% y {honCfg.max}%.</>}
+                          </>
+                        )}
+                      </p>
+                    </div>
+                  )}
+                </section>
+
+                <section className="space-y-4 rounded-xl border border-border bg-muted/[0.06] p-4">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                    El plan nuevo
+                  </p>
+
+                  <div className={`grid grid-cols-2 gap-2 ${PAR}`}>
+                    <div className="space-y-1.5">
+                      {/* La convención, igual que en el simulador: con T.N.A. estos números
+                          son ANUALES, y sin decirlo un 20 se lee como mensual. */}
+                      <FieldLabel required>Tasa (%{convencion ? ` ${convencion}` : ""})</FieldLabel>
                       <IconInput
-                        icon={Hash}
-                        inputMode="numeric"
-                        value={plazo}
-                        className="max-w-40"
-                        onChange={(e) => setPlazo(e.target.value.replace(/[^0-9]/g, ""))}
+                        icon={Percent}
+                        inputMode="decimal"
+                        value={tasa}
+                        aria-invalid={tasaFueraDeBanda}
+                        onChange={(e) => setTasa(e.target.value.replace(/[^0-9.,]/g, "").replace(",", "."))}
                       />
-                    )}
+                    </div>
+                    <div className="space-y-1.5">
+                      <FieldLabel required>Cuotas</FieldLabel>
+                      {/*
+                        🔴 SE ELIGE DE UNA LISTA, NO SE ESCRIBE. Era un campo libre: se podía
+                        tipear 999 y la pantalla armaba el plan con 999 cuotas. El servidor lo
+                        rechazaba —pero recién al confirmar, con el cliente enfrente y el plan
+                        ya leído en voz alta. Los plazos salen de Configuración → Cobranza →
+                        Refinanciaciones.
+                      */}
+                      {plazosPermitidos.length > 0 ? (
+                        <IconSelect icon={Hash} value={plazo} onChange={(e) => setPlazo(e.target.value)}>
+                          {plazosPermitidos.map((n) => (
+                            <option key={n} value={String(n)}>
+                              {n} {n === 1 ? "cuota" : "cuotas"}
+                            </option>
+                          ))}
+                        </IconSelect>
+                      ) : (
+                        <IconInput
+                          icon={Hash}
+                          inputMode="numeric"
+                          value={plazo}
+                          onChange={(e) => setPlazo(e.target.value.replace(/[^0-9]/g, ""))}
+                        />
+                      )}
+                    </div>
                   </div>
-                </div>
 
-                <div className="space-y-1">
-                  <FieldLabel>Motivo / nota (opcional)</FieldLabel>
-                  <input
-                    value={motivo}
-                    onChange={(e) => setMotivo(e.target.value)}
-                    placeholder="Ej: reestructuración por mora reiterada"
-                    className="h-11 w-full max-w-xl rounded-lg border border-border bg-muted/40 px-3 text-sm text-foreground placeholder:text-muted-foreground/40 outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/20"
-                  />
-                </div>
+                  {/*
+                    🔴 LOS LÍMITES DE LA TASA, A LA VISTA. Son dos y se pisan: la banda que
+                    fijó la financiera para refinanciar, y el piso de ESTE crédito cuando rige
+                    "no bajar de la tasa original" —bajarla sería una condonación encubierta
+                    que no pasa por el tope de las quitas—. Sin mostrarlos, el operador los
+                    descubría al mandar el formulario y comerse un 400.
+                  */}
+                  {bandaTasa && tasaFueraDeBanda && preview?.puede_autorizar && (
+                    <label className="flex cursor-pointer items-center gap-1.5 text-xs text-muted-foreground">
+                      <input
+                        type="checkbox"
+                        checked={autorizarTasa}
+                        onChange={(e) => setAutorizarTasa(e.target.checked)}
+                        className="accent-destructive"
+                      />
+                      Pactar esta tasa igual — queda registrado a mi nombre
+                    </label>
+                  )}
+                  {bandaTasa && (
+                    <p className={`text-xs ${tasaTrabada ? "text-destructive" : "text-muted-foreground"}`}>
+                      {pisoTasa > bandaTasa.max
+                        ? <>Este crédito está pactado al {bandaTasa.piso_original}% y no se puede refinanciar por debajo, pero la financiera admite hasta {bandaTasa.max}%. Lo tiene que autorizar un administrador.</>
+                        : <>Entre {pisoTasa}% y {bandaTasa.max}%
+                            {bandaTasa.piso_original != null && bandaTasa.piso_original > bandaTasa.min
+                              ? <> — el piso es la tasa del crédito original.</>
+                              : <>.</>}
+                          </>}
+                    </p>
+                  )}
+
+                  <div className="space-y-1.5">
+                    <FieldLabel>Motivo / nota (opcional)</FieldLabel>
+                    <input
+                      value={motivo}
+                      onChange={(e) => setMotivo(e.target.value)}
+                      placeholder="Ej: reestructuración por mora reiterada"
+                      className={`h-12 w-full rounded-lg border border-border bg-muted/40 px-3 text-sm text-foreground placeholder:text-muted-foreground/40 outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/20 ${PAR}`}
+                    />
+                  </div>
+                </section>
               </div>
 
               {/* ── Columna derecha: cómo queda el crédito nuevo ── */}
