@@ -279,6 +279,12 @@ export interface Credito {
   dias_mora: number;
   estado: string;
   created_at: string;
+  /**
+   * CUÁNDO SE OTORGÓ: la fecha desde la que corre el plan, no cuándo se cargó en el sistema.
+   * Hoy coinciden porque el simulador otorga con fecha de hoy, pero el backend acepta una
+   * fecha pasada (para migrar una cartera vieja), y ahí el dato que importa es este.
+   */
+  fecha_inicio?: string;
   proximo_pago?: string | null;
   /** Interés moratorio calculado en el servidor (solo créditos con mora). */
   interes_mora?: number;

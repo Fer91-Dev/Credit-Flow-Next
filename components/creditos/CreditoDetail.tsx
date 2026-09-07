@@ -400,17 +400,32 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
               {credito.tipo_credito === "productos" ? "Producto" : credito.tipo_credito} · {credito.tasa}% TNA ·{" "}
               {credito.plazo_meses} {amortizacion?.parametros.frecuencia_label.cuotaPlural ?? "cuotas"}
             </p>
-            {/* QUIÉN otorgó. Distinto de a quién se le atribuye la venta: con más de un
-                administrador, "la casa" deja de identificar a nadie. Se muestra el nombre
-                congelado al otorgar, así sigue respondiendo aunque la cuenta ya no exista. */}
-            {credito.otorgado_por_nombre && (
-              <p className="text-xs text-muted-foreground">
-                Otorgado por <span className="font-medium text-foreground">{credito.otorgado_por_nombre}</span>
-                {credito.vendedor?.nombre && credito.vendedor.nombre !== credito.otorgado_por_nombre
-                  ? <> · atribuido a {credito.vendedor.nombre}</>
-                  : null}
-              </p>
-            )}
+            {/*
+              CUÁNDO y QUIÉN otorgó.
+
+              🔴 La fecha va SIEMPRE, aunque no se sepa quién: es el dato desde el que se
+              cuenta todo lo demás —los días de atraso, la antigüedad del cliente, si el
+              crédito es viejo o de ayer— y no estaba en ninguna parte de la ficha. Para
+              saberlo había que abrir el cronograma y deducirlo del primer vencimiento.
+
+              Se usa `fecha_inicio` y no `created_at`: es la fecha desde la que corre el plan.
+              Hoy coinciden porque el simulador otorga con fecha de hoy, pero el backend acepta
+              una fecha pasada —hace falta para cargar una cartera vieja— y ahí el que importa
+              es este.
+
+              El nombre es el CONGELADO al otorgar, así sigue respondiendo aunque la cuenta ya
+              no exista. Y "atribuido a" aparece solo cuando difiere: con más de un
+              administrador, "la casa" deja de identificar a nadie.
+            */}
+            <p className="text-xs text-muted-foreground">
+              Otorgado el <span className="font-medium text-foreground">{formatFecha(credito.fecha_inicio ?? credito.created_at)}</span>
+              {credito.otorgado_por_nombre && (
+                <> · por <span className="font-medium text-foreground">{credito.otorgado_por_nombre}</span></>
+              )}
+              {credito.vendedor?.nombre && credito.vendedor.nombre !== credito.otorgado_por_nombre
+                ? <> · atribuido a {credito.vendedor.nombre}</>
+                : null}
+            </p>
             {credito.tipo_credito === "productos" && credito.producto && (
               <p className="text-xs text-foreground flex items-center gap-1.5">
                 <span className="inline-flex items-center rounded-md bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary ring-1 ring-inset ring-primary/20">Producto</span>
