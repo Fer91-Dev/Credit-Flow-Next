@@ -110,6 +110,7 @@ export const PARAMETROS: ParametroIndexado[] = [
   { label: "Días mínimos de atraso para refinanciar", tab: "cobranza", seccion: "Refinanciaciones" },
   { label: "Pasado ese atraso, no dejar cobrar el crédito: hay que refinanciarlo", tab: "cobranza", seccion: "Refinanciaciones" },
   { label: "Cobrar honorarios por gestión de cobranza al refinanciar", tab: "cobranza", seccion: "Refinanciaciones" },
+  { label: "En cuántas cuotas se puede reestructurar", tab: "cobranza", seccion: "Refinanciaciones" },
   { label: "Tasa mínima al refinanciar (%)", tab: "cobranza", seccion: "Refinanciaciones" },
   { label: "Tasa máxima al refinanciar (%)", tab: "cobranza", seccion: "Refinanciaciones" },
   { label: "Honorarios mínimos (%)", tab: "cobranza", seccion: "Refinanciaciones" },

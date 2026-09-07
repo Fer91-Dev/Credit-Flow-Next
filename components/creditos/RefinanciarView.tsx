@@ -60,7 +60,19 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
   useEffect(() => {
     if (!preview) return;
     setTasa((t) => (t === "" ? String(preview.sugerido.tasa) : t));
-    setPlazo((p) => (p === "" ? String(preview.sugerido.plazo_meses) : p));
+    /**
+     * El plazo del crédito original puede no estar entre los que se admiten para refinanciar
+     * (son dos listas distintas). Si no está, se elige el más cercano hacia arriba: dejarlo
+     * preseleccionado en un valor inválido haría que el desplegable arranque mostrando algo
+     * que el servidor va a rechazar.
+     */
+    setPlazo((p) => {
+      if (p !== "") return p;
+      const sug = preview.sugerido.plazo_meses;
+      const lista = preview.plazos?.cuotas ?? [];
+      if (lista.length === 0) return String(sug);
+      return String(lista.includes(sug) ? sug : (lista.find((n) => n >= sug) ?? lista[lista.length - 1]));
+    });
   }, [preview]);
 
   const honCfg = preview?.honorarios;
@@ -129,6 +141,13 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
    * Los límites de la TASA: la banda comercial de la financiera y, encima, el piso de este
    * crédito si rige "no bajar de la tasa original". El piso efectivo es el mayor de los dos.
    */
+  /**
+   * Los plazos que la financiera admite para reestructurar. Si la lista está vacía (no hay
+   * planes configurados) el campo vuelve a ser libre: es preferible poder operar a quedarse
+   * con un desplegable sin opciones.
+   */
+  const plazosPermitidos = preview?.plazos?.cuotas ?? [];
+
   const bandaTasa = preview?.tasa;
   const pisoTasa = bandaTasa ? Math.max(bandaTasa.min, bandaTasa.piso_original ?? 0) : 0;
   const tasaFueraDeBanda =
@@ -531,12 +550,35 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
                   </div>
                   <div className="space-y-1">
                     <FieldLabel required>Cuotas</FieldLabel>
-                    <IconInput
-                      icon={Hash}
-                      inputMode="numeric"
-                      value={plazo}
-                      onChange={(e) => setPlazo(e.target.value.replace(/[^0-9]/g, ""))}
-                    />
+                    {/*
+                      🔴 SE ELIGE DE UNA LISTA, NO SE ESCRIBE.
+
+                      Era un campo libre: se podía tipear 999 y la pantalla armaba el plan con
+                      999 cuotas, tan campante. El servidor lo rechazaba —pero recién al
+                      confirmar, con el cliente enfrente y el plan ya leído en voz alta. Los
+                      plazos que la financiera admite para reestructurar salen de Configuración
+                      → Cobranza → Refinanciaciones.
+                    */}
+                    {plazosPermitidos.length > 0 ? (
+                      <IconSelect
+                        icon={Hash}
+                        value={plazo}
+                        onChange={(e) => setPlazo(e.target.value)}
+                      >
+                        {plazosPermitidos.map((n) => (
+                          <option key={n} value={String(n)}>
+                            {n} {n === 1 ? "cuota" : "cuotas"}
+                          </option>
+                        ))}
+                      </IconSelect>
+                    ) : (
+                      <IconInput
+                        icon={Hash}
+                        inputMode="numeric"
+                        value={plazo}
+                        onChange={(e) => setPlazo(e.target.value.replace(/[^0-9]/g, ""))}
+                      />
+                    )}
                   </div>
                 </div>
 

@@ -191,7 +191,8 @@ const AYUDA: Record<string, AyudaBloque> = {
       "El mínimo para refinanciar puede además CERRAR el cobro: pasado ese atraso el plan viejo se da por caído y la terminal lo rechaza, así la deuda se recalcula y se aplican los honorarios de gestión.",
       "Ese corte respeta lo que ya está en marcha: un acuerdo vigente se sigue cobrando, y la entrega con la que se arma uno nuevo también entra.",
       "Los honorarios de gestión se configuran como una BANDA (mínimo y máximo), no como un número: el porcentaje se pacta al refinanciar, con el cliente enfrente. Con mínimo igual a máximo queda fijo.",
-      "La TASA del plan nuevo tiene su propia banda: refinanciar y prestar plata nueva no son el mismo producto. Vacía, rigen los límites del Simulador.",
+      "La TASA del plan nuevo tiene su propia banda, y los PLAZOS su propia lista: refinanciar y prestar plata nueva no son el mismo producto. Vacíos, rigen los del Simulador.",
+      "El monto NO tiene tope al refinanciar: el capital es la deuda que el cliente ya tiene, no una decisión comercial. Ponerle el techo de otorgamiento impedía reestructurar justo las deudas grandes.",
       "Las condiciones del ACUERDO (a los cuántos días pasa a Legales, cuántos acuerdos rotos se admiten, si hay que contactarlo antes) están en el bloque Acuerdos de pago.",
       "Exigir el acuerdo antes de refinanciar es la regla fuerte: obliga a intentar lo que se puede deshacer.",
       "El piso de tasa viene prendido: es el único que no ordena un proceso, tapa una fuga de plata.",
@@ -2427,6 +2428,13 @@ export function ConfigForm() {
                   </p>
                 </>
               )}
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-muted-foreground">En cuántas cuotas se puede reestructurar</label>
+                <CuotasRefinanciacion
+                  valor={cobranza.recupero.cuotas_refinanciacion}
+                  onChange={(cuotas_refinanciacion) => setRecupero({ cuotas_refinanciacion })}
+                />
+              </div>
               {/*
                 🔴 LA BANDA DE TASA PROPIA DE LA REFINANCIACIÓN.
 
@@ -2665,7 +2673,7 @@ function defaultCobranza(): CobranzaConfig {
       bloquear_cobro_sin_refinanciar: false,
       no_bajar_tasa_refinanciando: true,
       honorarios_gestion_activo: false, honorarios_gestion_min: 0, honorarios_gestion_max: 0,
-      tasa_refinanciacion_min: 0, tasa_refinanciacion_max: 0,
+      tasa_refinanciacion_min: 0, tasa_refinanciacion_max: 0, cuotas_refinanciacion: [],
     },
     fallecidos: { frena_punitorios: true, bloquea_contacto: true, saca_de_agenda: true },
   };
@@ -2744,6 +2752,74 @@ function ImpactoBloqueo({ dias }: { dias: number }) {
       {data.clientes !== data.creditos && <> de {data.clientes} cliente{data.clientes === 1 ? "" : "s"}</>}
       , con {formatMonto(data.capital_pendiente)} de capital pendiente. Habría que refinanciarlos.
     </p>
+  );
+}
+
+/**
+ * EN CUÁNTAS CUOTAS SE PUEDE REESTRUCTURAR — la lista, no un número.
+ *
+ * 🔴 Antes la pantalla de refinanciación tenía un campo libre: se podía escribir 999 y armaba
+ * el plan con 999 cuotas. El servidor lo rechazaba, pero recién al confirmar — con el cliente
+ * enfrente y el plan ya leído en voz alta.
+ *
+ * Es una lista PROPIA y no la del Simulador porque reestructurar y prestar no se ofrecen en
+ * los mismos plazos: al que arrastra 120 días se lo puede estirar a 24 aunque la financiera no
+ * otorgue a más de 12. Vacía = se usan los planes del Simulador, que es como venía andando.
+ */
+function CuotasRefinanciacion({ valor, onChange }: { valor: number[]; onChange: (v: number[]) => void }) {
+  const [nuevo, setNuevo] = useState("");
+
+  const agregar = () => {
+    const n = Math.round(Number(nuevo));
+    if (!Number.isFinite(n) || n < 1 || n > 360) return;
+    onChange([...new Set([...valor, n])].sort((a, b) => a - b));
+    setNuevo("");
+  };
+
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-center gap-1.5">
+        {valor.length === 0 ? (
+          <span className="text-[11px] text-muted-foreground">
+            Sin lista propia: al refinanciar se ofrecen los planes del Simulador.
+          </span>
+        ) : (
+          valor.map((n) => (
+            <button
+              key={n}
+              type="button"
+              onClick={() => onChange(valor.filter((x) => x !== n))}
+              title={`Quitar ${n} cuotas`}
+              className="group inline-flex items-center gap-1 rounded-lg border border-primary/30 bg-primary/10 px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:border-destructive/40 hover:bg-destructive/10"
+            >
+              <span className="font-mono tabular-nums">{n}</span>
+              <X className="h-3 w-3 text-muted-foreground group-hover:text-destructive" />
+            </button>
+          ))
+        )}
+      </div>
+      <div className="flex items-center gap-2">
+        <input
+          type="number"
+          min="1"
+          max="360"
+          inputMode="numeric"
+          value={nuevo}
+          placeholder="Ej: 12"
+          onChange={(e) => setNuevo(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); agregar(); } }}
+          className="h-10 w-28 rounded-lg border border-border bg-muted/40 px-3 text-sm text-foreground outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/20"
+        />
+        <button
+          type="button"
+          onClick={agregar}
+          disabled={!nuevo.trim()}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-medium text-muted-foreground transition-colors enabled:hover:bg-muted enabled:hover:text-foreground disabled:opacity-40"
+        >
+          <Plus className="h-3.5 w-3.5" /> Agregar plazo
+        </button>
+      </div>
+    </div>
   );
 }
 

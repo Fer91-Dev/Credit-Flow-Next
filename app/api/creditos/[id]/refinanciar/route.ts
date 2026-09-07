@@ -7,7 +7,7 @@ import { getConfiguracion, getCobranzaConfig } from "@/lib/config";
 import { quitaMaxima } from "@/lib/domain/acuerdos";
 import { lockNumeroCreditoTx, TX_PLATA } from "@/lib/locks";
 import { assertPuedeRefinanciar, assertPuedeUsarTasa } from "@/lib/recupero-server";
-import { bandaHonorarios, puedeUsarHonorarios, bandaTasaRefinanciacion } from "@/lib/domain";
+import { bandaHonorarios, puedeUsarHonorarios, bandaTasaRefinanciacion, plazosRefinanciacion } from "@/lib/domain";
 import { registrarAuditoria } from "@/lib/audit";
 import { formatCreditoNumero, nombreCompleto, hoyComercial } from "@/lib/utils";
 import type { NextRequest } from "next/server";
@@ -245,6 +245,8 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
       min: bandaHon.min,
       max: bandaHon.max,
     },
+    /** En cuántas cuotas se puede reestructurar. `propia` = lista de Refinanciaciones. */
+    plazos: plazosRefinanciacion(cobranzaCfg.recupero, config.simulador.plazos),
     /** Si quien está mirando puede pasar por encima de los límites (admin), y queda auditado. */
     puede_autorizar: role === "admin",
     /**
@@ -417,11 +419,47 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
     }
   }
   /**
-   * La tasa ya se validó arriba, con el rol en la mano; acá se apaga ese chequeo (0 = sin
-   * límite) para que el resto —plazo habilitado, frecuencia, monto— siga pasando por la MISMA
-   * función que valida un otorgamiento.
+   * 🔴 EN CUÁNTAS CUOTAS — contra la lista de la refinanciación, no la del Simulador.
+   *
+   * Reestructurar y prestar no se ofrecen en los mismos plazos. Y sobre todo: la pantalla
+   * dejaba escribir cualquier número y armaba el plan con él; el rechazo llegaba recién al
+   * confirmar, con el cliente enfrente.
    */
-  const simParaRefi = { ...config.simulador, tasaMin: 0, tasaMax: 0 };
+  const plazosRefi = plazosRefinanciacion(cobranzaCfg.recupero, config.simulador.plazos);
+  if (plazosRefi.cuotas.length > 0 && !plazosRefi.cuotas.includes(plazoMeses)) {
+    return errorResponse(
+      `No se puede refinanciar en ${plazoMeses} cuota${plazoMeses === 1 ? "" : "s"}. ` +
+        `La financiera admite: ${plazosRefi.cuotas.join(", ")}.`,
+      "PLAZO_NO_HABILITADO",
+      400,
+    );
+  }
+
+  /**
+   * 🔴 LOS LÍMITES DE OTORGAR NO RIGEN AL REFINANCIAR, Y ESTE ERA UN BLOQUEO REAL.
+   *
+   * El capital de una refinanciación NO se elige: es la deuda que el cliente ya tiene. Con
+   * `montoMax` en $500.000 —el techo con el que la financiera presta plata nueva— una deuda
+   * consolidada de $1.667.688,16 se rechazaba con "el monto supera el máximo permitido", y ese
+   * crédito no se podía reestructurar de ninguna manera. Ponerle un tope a lo que ya se debe
+   * no protege nada: impide justamente el recupero.
+   *
+   * Se apagan monto, tasa y plazo (0 = sin límite; los tres se validaron acá arriba con el rol
+   * y las bandas propias) y el resto —frecuencia, coherencia del plan— sigue pasando por la
+   * MISMA función que valida un otorgamiento, para no tener dos versiones que se separen.
+   */
+  const simParaRefi = {
+    ...config.simulador,
+    tasaMin: 0, tasaMax: 0,
+    montoMin: 0, montoMax: 0,
+    /**
+     * ⚠️ Una lista VACÍA no significa "sin límite" en `validarParametrosOtorgamiento`:
+     * significa que NINGÚN plazo está habilitado, y rechaza todo. El plazo ya se validó unas
+     * líneas más arriba contra la lista de refinanciación —con un mensaje que además nombra
+     * los admitidos—, así que acá se deja pasar exactamente el que llegó.
+     */
+    plazos: [{ cuotas: plazoMeses, activo: true }],
+  };
 
   const invalido = validarParametrosOtorgamiento(simParaRefi, {
     monto: nuevoCapital,

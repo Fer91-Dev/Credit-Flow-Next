@@ -209,6 +209,20 @@ export interface RecuperoConfig {
   tasa_refinanciacion_min: number;
   tasa_refinanciacion_max: number;
   /**
+   * EN CUÁNTAS CUOTAS SE PUEDE REESTRUCTURAR.
+   *
+   * 🔴 Su propia lista, no la del Simulador. Reestructurar una deuda caída y prestar plata
+   * nueva no se ofrecen en los mismos plazos: al que viene arrastrando 120 días de atraso se
+   * le puede estirar a 24 aunque la financiera no otorgue a más de 12, o al revés, acotarlo a
+   * pocas cuotas para no volver a quedar colgado.
+   *
+   * Y sobre todo: la pantalla dejaba escribir CUALQUIER número —999 incluido— y armaba el
+   * plan con él. El servidor lo rechazaba recién al confirmar, con el cliente enfrente.
+   *
+   * Lista VACÍA = se usan los planes activos del Simulador, que es como venía funcionando.
+   */
+  cuotas_refinanciacion: number[];
+  /**
    * La refinanciación no puede pactarse por DEBAJO de la tasa del crédito original.
    *
    * 🔴 Sin esto, bajar la tasa al refinanciar es una quita invisible: sobre una deuda
@@ -243,6 +257,8 @@ export const RECUPERO_DEFAULT: RecuperoConfig = {
   // Sin banda propia: manda la del Simulador, que es como venía funcionando.
   tasa_refinanciacion_min: 0,
   tasa_refinanciacion_max: 0,
+  // Vacía: manda la lista de planes del Simulador.
+  cuotas_refinanciacion: [],
 };
 
 export function resolverRecupero(raw: unknown): RecuperoConfig {
@@ -295,6 +311,14 @@ export function resolverRecupero(raw: unknown): RecuperoConfig {
       // Un mínimo por encima del máximo no describe ninguna banda: se ordenan.
       return { tasa_refinanciacion_min: Math.min(min, max), tasa_refinanciacion_max: Math.max(min, max) };
     })(),
+    /** Enteros 1..360, sin repetidos y ordenados. Una lista sucia sería una lista mentirosa. */
+    cuotas_refinanciacion: Array.isArray(r.cuotas_refinanciacion)
+      ? [...new Set(
+          r.cuotas_refinanciacion
+            .map((n) => Math.round(Number(n)))
+            .filter((n) => Number.isFinite(n) && n >= 1 && n <= 360),
+        )].sort((a, b) => a - b)
+      : [],
     // Protector por defecto: es el único de la escalera que arranca prendido, porque no
     // ordena un proceso — tapa una fuga de plata.
     no_bajar_tasa_refinanciando:
@@ -554,4 +578,22 @@ export function bandaTasaRefinanciacion(
   return propia
     ? { min: cfg.tasa_refinanciacion_min, max: cfg.tasa_refinanciacion_max, propia: true }
     : { min: simulador.tasaMin, max: simulador.tasaMax, propia: false };
+}
+
+/**
+ * EN CUÁNTAS CUOTAS se puede refinanciar, para esta financiera.
+ *
+ * Si no definió una lista propia, se usan los planes ACTIVOS del Simulador — el comportamiento
+ * histórico. Una sola definición para los tres que la necesitan: el preview que arma el
+ * desplegable, el POST que rechaza, y el resumen de Configuración.
+ */
+export function plazosRefinanciacion(
+  cfg: Pick<RecuperoConfig, "cuotas_refinanciacion">,
+  planesSimulador: { cuotas: number; activo: boolean }[],
+): { cuotas: number[]; propia: boolean } {
+  if (cfg.cuotas_refinanciacion.length > 0) {
+    return { cuotas: cfg.cuotas_refinanciacion, propia: true };
+  }
+  const delSimulador = [...new Set(planesSimulador.filter((p) => p.activo).map((p) => p.cuotas))].sort((a, b) => a - b);
+  return { cuotas: delSimulador, propia: false };
 }
