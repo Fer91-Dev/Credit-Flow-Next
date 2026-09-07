@@ -38,7 +38,26 @@ export function planACuotas(plan: PlanAmortizacion): FilaCuota[] {
     interes: c.interes,
     iva: c.iva,
     seguro: c.seguro,
-    gastos: c.gastos,
+    /**
+     * 🔴 LOS HONORARIOS DE GESTIÓN VAN ADENTRO DE `gastos`, y no es un detalle contable.
+     *
+     * `cuotas` tiene tres columnas de cargo —iva, seguro y gastos— y los honorarios de una
+     * refinanciación son un cargo por cuota más, sin columna propia. Al mapear el plan se
+     * perdían: la cuota quedaba guardada con el `cuota_total` correcto (que SÍ los incluye) y
+     * un desglose que sumaba menos.
+     *
+     * Y eso no era solo prolijidad: `imputarPagoEnCuotas` acota lo cobrable de cada cuota a
+     * `capital + interés + (iva + seguro + gastos) + mora`. Con los honorarios afuera, cobrar
+     * la cuota completa daba SOBREPAGO y se rechazaba; y si el cliente pagaba solo hasta donde
+     * el sistema imputaba, la cuota se marcaba pagada y la financiera nunca cobraba la gestión
+     * —justamente lo que la refinanciación existe para cobrar—. Es el mismo agujero que ya
+     * había mordido con el interés del acuerdo en modo `ingreso_aparte`.
+     *
+     * Sumarlos acá cierra la aritmética de la cuota sin tocar el esquema. El desglose no se
+     * pierde: vive en el snapshot `cargos` del crédito y en la auditoría de la refinanciación.
+     * En un otorgamiento normal `honorarios` es 0, así que no cambia nada.
+     */
+    gastos: round2(c.gastos + c.honorarios),
     cuota_total: c.cuotaTotal,
   }));
 }
