@@ -22,6 +22,17 @@ export interface ReciboData {
     aplicado_cargos: number;
     aplicado_capital: number;
     excedente: number;
+    /**
+     * Quita de punitorios de una campaña, aplicada en ESTE cobro. 0 = no hubo.
+     *
+     * 🔴 El recibo tiene que decirlo. Sin la línea, el papel muestra "Interés por mora
+     * $19.636,50" cuando lo devengado según el contrato eran $24.545,62, y los $4.909,12 de
+     * diferencia no aparecen: el que rehaga la cuenta —el cliente, un contador, un abogado—
+     * encuentra un faltante sin explicación. Y es una condonación, plata que la financiera
+     * resignó: sin constancia no se distingue de un cobrador que cobró de menos.
+     */
+    descuento_mora_pct?: number;
+    ahorro_mora?: number;
     created_at: Date;
     /** Si el pago fue anulado: el recibo sale con marca de agua "ANULADO". */
     anulado?: boolean;
@@ -326,7 +337,22 @@ export async function generarReciboPDF(data: ReciboData): Promise<Uint8Array> {
     textRight(fmtMoney(value), right, y, font, 10, color);
     y -= 18;
   };
-  rowImput("Interés por mora", pago.aplicado_mora, pago.aplicado_mora > 0 ? rgb(0.94, 0.27, 0.27) : MUTED);
+  /**
+   * Con quita, la mora va DISCRIMINADA: lo devengado, lo condonado y lo que quedó. Sin los
+   * tres renglones el número de abajo no se puede reconstruir desde el contrato.
+   */
+  const ahorro = pago.ahorro_mora ?? 0;
+  if (ahorro > 0) {
+    rowImput("Interés por mora devengado", pago.aplicado_mora + ahorro, rgb(0.94, 0.27, 0.27));
+    rowImput(
+      `Descuento por campaña${pago.descuento_mora_pct ? ` (${pago.descuento_mora_pct}% de los punitorios)` : ""}`,
+      -ahorro,
+      SUCCESS,
+    );
+    rowImput("Interés por mora a pagar", pago.aplicado_mora, pago.aplicado_mora > 0 ? rgb(0.94, 0.27, 0.27) : MUTED);
+  } else {
+    rowImput("Interés por mora", pago.aplicado_mora, pago.aplicado_mora > 0 ? rgb(0.94, 0.27, 0.27) : MUTED);
+  }
   rowImput("Interés del período", pago.aplicado_interes, pago.aplicado_interes > 0 ? rgb(0.96, 0.62, 0.04) : MUTED);
   if (pago.aplicado_cargos > 0) rowImput("Cargos (IVA / seguro / gastos)", pago.aplicado_cargos, rgb(0.55, 0.55, 0.95));
   rowImput("Capital", pago.aplicado_capital, pago.aplicado_capital > 0 ? PRIMARY : MUTED);

@@ -529,6 +529,15 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
         aplicado_cargos: resultado.totales.cargos,
         aplicado_capital: resultado.totales.capital,
         excedente: resultado.excedente,
+        /**
+         * 🔴 LA QUITA, CONGELADA EN EL PAGO. Estaba solo en el `meta` de la auditoría, así
+         * que el recibo no podía nombrarla: decía la mora ya descontada y los pesos
+         * condonados no figuraban en ningún lado. Se guarda acá y no se deriva de la campaña
+         * al imprimir — la campaña se finaliza o le cambian el %, y un recibo reimpreso
+         * diría algo distinto del que se le entregó al cliente ese día.
+         */
+        descuento_mora_pct: descuentoMoraPct,
+        ahorro_mora: resultado.ahorroMora,
         // Qué cuota del ACUERDO se estaba cobrando (null = cobro normal del crédito). Se
         // valida contra el acuerdo vigente de ESTE crédito, así que un id ajeno no entra.
         acuerdo_cuota_id: acuerdoCuotaId,

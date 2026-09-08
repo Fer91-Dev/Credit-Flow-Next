@@ -136,6 +136,10 @@ export async function armarReciboDePago(
       aplicado_cargos: pago.aplicado_cargos,
       aplicado_capital: pago.aplicado_capital,
       excedente: pago.excedente,
+      // La quita de campaña que se aplicó en este cobro, congelada en el pago: el recibo
+      // reimpreso dentro de seis meses dice lo mismo que el que se entregó ese día.
+      descuento_mora_pct: pago.descuento_mora_pct,
+      ahorro_mora: pago.ahorro_mora,
       created_at: pago.created_at,
       anulado: pago.anulado,
       anulado_motivo: pago.anulado_motivo,

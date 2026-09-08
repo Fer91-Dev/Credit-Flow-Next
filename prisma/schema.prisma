@@ -837,6 +837,23 @@ model pagos {
   aplicado_cargos  Float     @default(0)
   aplicado_capital Float     @default(0)
   excedente        Float     @default(0)
+
+  /// QUITA DE PUNITORIOS QUE SE APLICÓ EN ESTE COBRO, congelada.
+  ///
+  /// El % vigente de la campaña al momento de cobrar y los pesos efectivamente condonados.
+  /// Se guardaban solo en el `meta` de la auditoría, así que el RECIBO no podía nombrarlos:
+  /// el papel decía "Interés por mora $19.636,50" cuando lo devengado eran $24.545,62, y los
+  /// $4.909,12 de diferencia no figuraban en ningún lado. Quien rehiciera la cuenta —el
+  /// cliente, un contador, un abogado— encontraba un faltante sin explicación, y desde el
+  /// control interno no se distinguía una condonación aprobada de un cobrador que cobró de
+  /// menos.
+  ///
+  /// Va CONGELADO en el pago y no se deriva de la campaña al imprimir: la campaña se
+  /// finaliza, se le cambia el %, o se borra, y el recibo reimpreso diría otra cosa que la
+  /// que se le entregó al cliente ese día.
+  descuento_mora_pct Float @default(0)
+  ahorro_mora        Float @default(0)
+
   // Anulación de pago (tesorería): no se borra, se marca anulado + contra-asiento en caja.
   // Solo dentro de la ventana configurable (cobranza_config.dias_anulacion_pago).
   anulado          Boolean   @default(false)
