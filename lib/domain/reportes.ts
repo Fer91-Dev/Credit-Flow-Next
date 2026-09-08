@@ -133,7 +133,21 @@ export interface CreditoLedger {
   cuotas: CuotaLedger[];
 }
 
+/**
+ * Estados que NO son cartera.
+ *
+ * 🔴 `incobrable` entró acá y no estaba. Un crédito castigado es capital que la financiera ya
+ * dio por perdido: contarlo como cartera activa infla el saldo colocado, empeora el % de mora
+ * para siempre —el castigado nunca sale de la mora, por definición— y hace que el reporte de
+ * rentabilidad mienta sobre plata que no va a entrar. Con los tres casos de dev eran
+ * $6.850.000,00 de capital pendiente contados como cartera viva.
+ *
+ * No se pierde de vista: sale por separado, en `cartera_castigada`. Sacarlo del denominador
+ * es lo que hace que el % de mora vuelva a medir la cartera que se está trabajando, que es
+ * para lo que sirve ese número.
+ */
 const VOID = new Set(["anulado", "refinanciado"]);
+const CASTIGADO = new Set(["incobrable"]);
 
 function toDate(d: Date | string): Date {
   return d instanceof Date ? d : new Date(d);
@@ -153,12 +167,24 @@ export interface EstadoCartera {
   mora_creditos: number;
   mora_saldo_expuesto: number;
   mora_pct: number;
+  /**
+   * Capital pendiente de los créditos DADOS POR INCOBRABLES al corte. Va aparte de
+   * `cartera_capital` a propósito: no es cartera, es lo que se está tratando de recuperar por
+   * otra vía. Sumarlo arriba inflaría el saldo y el % de mora; esconderlo haría desaparecer
+   * plata que sí se prestó.
+   */
+  cartera_castigada: number;
+  /** Cuántos créditos la componen. */
+  castigados_creditos: number;
 }
 
 /**
  * Reconstruye cartera y morosidad a una fecha de corte, usando SOLO datos inmutables del
  * ledger (cuotas + aplicaciones de pago con su fecha). Un crédito:
  *  - se ignora si nació después del corte (`inicio > corte`) o si está void (anulado/refinanciado);
+ *  - si está CASTIGADO (incobrable) suma en `cartera_castigada` y no en la cartera ni en la
+ *    mora: es capital dado por perdido, y contarlo arriba infla el saldo y arruina el % de
+ *    mora para siempre;
  *  - aporta a la cartera su capital pendiente al corte (Σ capital − capital pagado hasta el corte);
  *  - está EN MORA si tiene alguna cuota con `fecha_venc + gracia < corte` y capital sin saldar.
  *    El saldo expuesto del crédito en mora es su capital pendiente total al corte.
@@ -167,6 +193,8 @@ export function estadoCarteraAFecha(creditos: CreditoLedger[], corte: Date): Est
   let carteraCapital = 0;
   let moraCreditos = 0;
   let moraExpuesto = 0;
+  let castigadaCapital = 0;
+  let castigadosCreditos = 0;
 
   for (const c of creditos) {
     if (VOID.has(c.estado)) continue;
@@ -186,6 +214,13 @@ export function estadoCarteraAFecha(creditos: CreditoLedger[], corte: Date): Est
     pendiente = round2(pendiente);
     if (pendiente <= 0.01) continue; // ya saldado al corte → fuera de cartera
 
+    // Castigado: capital pendiente que se contabiliza APARTE, ni en la cartera ni en la mora.
+    if (CASTIGADO.has(c.estado)) {
+      castigadaCapital += pendiente;
+      castigadosCreditos += 1;
+      continue;
+    }
+
     carteraCapital += pendiente;
     if (enMora) {
       moraCreditos += 1;
@@ -200,6 +235,8 @@ export function estadoCarteraAFecha(creditos: CreditoLedger[], corte: Date): Est
     mora_creditos: moraCreditos,
     mora_saldo_expuesto: moraExpuesto,
     mora_pct: carteraCapital > 0 ? round2((moraExpuesto / carteraCapital) * 100) : 0,
+    cartera_castigada: round2(castigadaCapital),
+    castigados_creditos: castigadosCreditos,
   };
 }
 

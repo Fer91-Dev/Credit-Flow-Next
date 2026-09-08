@@ -69,8 +69,8 @@ function exportarPagos(r: Reporte) {
 }
 function exportarSerie(s: ReporteSerie) {
   descargarCSV(`reporte-mensual_${s.periodo.desde}_${s.periodo.hasta}.csv`, [
-    ["Mes", "Operaciones", "Monto otorgado", "Ticket promedio", "Cobrado", "Interés cobrado", "Mora cobrada", "Cargos cobrados", "Ingreso financiero", "Costo fondeo", "Rentabilidad neta", "Cartera fin", "Mora #", "Saldo en mora", "Mora %"],
-    ...s.serie.map((p) => [p.mes, p.otorgado_cantidad, p.otorgado_monto, p.ticket_promedio, p.cobrado_total, p.cobrado_interes, p.cobrado_mora, p.cobrado_cargos, p.ingreso_financiero, p.costo_fondeo, p.rentabilidad_neta, p.cartera_capital_fin, p.mora_creditos, p.mora_saldo_expuesto, p.mora_pct]),
+    ["Mes", "Operaciones", "Monto otorgado", "Ticket promedio", "Cobrado", "Interés cobrado", "Mora cobrada", "Cargos cobrados", "Ingreso financiero", "Costo fondeo", "Rentabilidad neta", "Cartera fin", "Mora #", "Saldo en mora", "Mora %", "Cartera castigada"],
+    ...s.serie.map((p) => [p.mes, p.otorgado_cantidad, p.otorgado_monto, p.ticket_promedio, p.cobrado_total, p.cobrado_interes, p.cobrado_mora, p.cobrado_cargos, p.ingreso_financiero, p.costo_fondeo, p.rentabilidad_neta, p.cartera_capital_fin, p.mora_creditos, p.mora_saldo_expuesto, p.mora_pct, p.cartera_castigada]),
   ]);
 }
 /**
@@ -443,6 +443,33 @@ function TabMorosidad({ r, s }: { r: Reporte; s?: ReporteSerie }) {
         <KpiCard icon="dollar-banknote" label="Interés de mora" value={`$${n0(r.morosidad.interes_mora_total)}`} accent="warning" mono />
         <KpiCard icon="warning" label="Mora crítica (+30d)" value={String(sev.critica)} accent={sev.critica > 0 ? "destructive" : "muted"} />
       </div>
+      {/*
+        🔴 LA CARTERA CASTIGADA, APARTE DE LA MORA.
+        Un incobrable salió de la cartera y de la morosidad —contarlo ahí infla el saldo
+        colocado y deja el % de mora arruinado para siempre, porque un castigado nunca sale de
+        la mora—. Pero es plata que se prestó y no volvió, así que esconderla sería peor.
+        Aparece solo cuando existe: un renglón permanente en $0,00 se aprende a ignorar.
+      */}
+      {(s?.totales.cartera_castigada ?? 0) > 0 && (
+        <div className="rounded-xl border border-destructive/25 bg-destructive/[0.06] px-4 py-3">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Cartera castigada</p>
+              <p className="text-xs text-muted-foreground">
+                {s!.totales.castigados_creditos} crédito{s!.totales.castigados_creditos === 1 ? "" : "s"} dado
+                {s!.totales.castigados_creditos === 1 ? "" : "s"} por incobrable{s!.totales.castigados_creditos === 1 ? "" : "s"} — fuera de la cartera y de la morosidad de arriba.
+              </p>
+            </div>
+            <span className="font-mono text-xl font-bold tabular-nums text-destructive">${n0(s!.totales.cartera_castigada)}</span>
+          </div>
+          <p className="mt-1.5 text-[11px] leading-relaxed text-muted-foreground/80">
+            No se cuenta como cartera porque no es plata que se esté trabajando, y no se cuenta
+            como mora porque un castigado nunca sale de ahí: dejarlo adentro haría que el
+            porcentaje de morosidad no volviera a bajar nunca. Se sigue reclamando en
+            Cobranzas → Incobrables, y el costo de fondearla sí se sigue pagando.
+          </p>
+        </div>
+      )}
       <Section title="Evolución de la morosidad (% del capital)" icon="warning">
         <BarChart data={moraPct} accent="warning" format={(v) => `${n1(v)}%`} />
         <p className="mt-2 text-[11px] text-muted-foreground">Reconstruida a fin de cada mes desde el ledger de cuotas y pagos.</p>

@@ -33,6 +33,8 @@ interface PuntoMensual {
   mora_creditos: number;
   mora_saldo_expuesto: number;
   mora_pct: number;
+  cartera_castigada: number;
+  castigados_creditos: number;
 }
 
 /**
@@ -192,7 +194,15 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     const ingreso_financiero = ingresoFinanciero([
       { aplicado_interes: co.interes, aplicado_mora: co.mora, aplicado_cargos: co.cargos, excedente: co.excedente },
     ]);
-    const costo = costoFondeo(cartera.cartera_capital, cfgRent, b.dias, 1);
+    /**
+     * 🔴 EL FONDEO SE PAGA TAMBIÉN POR LO CASTIGADO.
+     *
+     * La cartera excluye los incobrables —no es plata que se esté trabajando— pero el costo
+     * de fondearla no: esos pesos salieron de la caja y nunca volvieron, así que se siguen
+     * financiando. Cobrarle fondeo solo a la cartera activa haría que castigar un crédito
+     * MEJORE la rentabilidad del mes, que es exactamente al revés de lo que pasó.
+     */
+    const costo = costoFondeo(cartera.cartera_capital + cartera.cartera_castigada, cfgRent, b.dias, 1);
     return {
       mes: b.key,
       otorgado_cantidad: ot.cantidad,
@@ -210,6 +220,14 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
       mora_creditos: cartera.mora_creditos,
       mora_saldo_expuesto: cartera.mora_saldo_expuesto,
       mora_pct: cartera.mora_pct,
+      /**
+       * Capital dado por INCOBRABLE al cierre de ese mes. Va aparte de la cartera: no es plata
+       * colocada que se está trabajando, es lo que se dio por perdido y se recupera por otra
+       * vía. Sumarlo arriba inflaba el saldo y dejaba el % de mora arruinado para siempre,
+       * porque un castigado nunca sale de la mora.
+       */
+      cartera_castigada: cartera.cartera_castigada,
+      castigados_creditos: cartera.castigados_creditos,
       /** Cuánto entró ese mes por cada medio. Es lo que dibuja la evolución apilada. */
       por_metodo: Object.fromEntries(
         [...(metodoPorMes.get(b.key) ?? new Map()).entries()].map(([m, v]) => [m, round2(v.monto)]),
@@ -229,6 +247,8 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     cartera_capital_fin: ult?.cartera_capital_fin ?? 0,
     mora_saldo_expuesto: ult?.mora_saldo_expuesto ?? 0,
     mora_pct: ult?.mora_pct ?? 0,
+    cartera_castigada: ult?.cartera_castigada ?? 0,
+    castigados_creditos: ult?.castigados_creditos ?? 0,
   };
 
   // Pivote año → meses (para el tab Histórico).

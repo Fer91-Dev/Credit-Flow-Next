@@ -2119,6 +2119,13 @@ export interface PuntoMensual {
   mora_creditos: number;
   mora_saldo_expuesto: number;
   mora_pct: number;
+  /**
+   * Capital dado por INCOBRABLE al cierre del mes. Fuera de `cartera_capital_fin` y de la
+   * mora: es plata que se dio por perdida y se recupera por otra vía. Contarla arriba inflaba
+   * el saldo colocado y dejaba el % de mora arruinado para siempre.
+   */
+  cartera_castigada: number;
+  castigados_creditos: number;
   /** Cuánto entró ese mes por cada medio de pago ("efectivo" → 254851.66). */
   por_metodo: Record<string, number>;
 }
@@ -2156,6 +2163,8 @@ export interface ReporteSerie {
     cartera_capital_fin: number;
     mora_saldo_expuesto: number;
     mora_pct: number;
+    cartera_castigada: number;
+    castigados_creditos: number;
   };
   por_anio: {
     anio: string;
