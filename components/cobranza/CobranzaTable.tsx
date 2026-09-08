@@ -422,27 +422,27 @@ export function CobranzaTable({ role }: { role: Role }) {
    */
   const exportarMorosos = () => {
     /**
-     * El archivo es para MANDAR, así que solo entra el que se puede mandar: los que no
-     * tienen un celular utilizable quedan afuera en vez de salir como una fila vacía que la
-     * herramienta de envío después descarta sola. Cuántos quedaron afuera lo dice el aviso,
-     * para que no sea un descarte silencioso.
+     * VA LA AUDIENCIA ENTERA, con o sin celular.
+     *
+     * Los que no tienen número salían afuera del archivo —el razonamiento era que una fila
+     * sin celular no se puede mandar— y estaba mal: el que arma el envío completa esos
+     * números a mano sobre la misma planilla, y para eso tiene que verlos ahí. Sacarlos lo
+     * obligaba a cruzar dos listas para descubrir a quién le falta el dato.
+     *
+     * La celda queda vacía, que es lo que corresponde: dice "no lo tenemos", no lo inventa.
      */
     const filas = creditos
       .filter(c => destinatariosIds.includes(c.id))
       .map(c => ({ c, tel: normalizarTelefonoAR(c.cliente?.telefono) }));
-    const conCelular = filas.filter(f => f.tel);
-    if (conCelular.length === 0) {
-      toast.error("Ninguno de estos morosos tiene un celular cargado.");
-      return;
-    }
+    if (filas.length === 0) return;
     descargarCSV(`morosos_${new Date().toISOString().slice(0, 10)}.csv`, [
       ["DNI", "Nombre", "Celular"],
-      ...conCelular.map(({ c, tel }) => [c.cliente?.documento ?? "", nombreCompleto(c.cliente), tel]),
+      ...filas.map(({ c, tel }) => [c.cliente?.documento ?? "", nombreCompleto(c.cliente), tel ?? ""]),
     ]);
-    const sinTel = filas.length - conCelular.length;
+    const sinTel = filas.filter(f => !f.tel).length;
     toast.success(
-      `${conCelular.length} moroso${conCelular.length === 1 ? "" : "s"} exportado${conCelular.length === 1 ? "" : "s"}` +
-      (sinTel > 0 ? ` · ${sinTel} sin celular quedaron afuera` : ""),
+      `${filas.length} moroso${filas.length === 1 ? "" : "s"} exportado${filas.length === 1 ? "" : "s"}` +
+      (sinTel > 0 ? ` · ${sinTel} sin celular, para completar a mano` : ""),
     );
   };
 
