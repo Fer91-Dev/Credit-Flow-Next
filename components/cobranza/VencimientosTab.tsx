@@ -9,7 +9,7 @@ import { Emoji } from "@/components/ui/Emoji";
 import { Skeleton } from "@/components/ui/skeleton";
 import { BuscadorF3 } from "@/components/ui/BuscadorF3";
 import { guardarSeleccionCampana, guardarTipoCampana } from "./seleccion-campana";
-import { esCreditoVivo } from "@/lib/domain";
+import { esCreditoVivo, contactoBloqueado } from "@/lib/domain";
 import { formatMonto, formatFecha, nombreCompleto, formatCreditoNumero, hoyComercial } from "@/lib/utils";
 
 /** YYYY-MM-DD del día comercial argentino, corrido `n` días. */
@@ -40,7 +40,20 @@ export function VencimientosTab() {
   const [desde, setDesde] = useState(diaISO(0));
   const [hasta, setHasta] = useState(diaISO(7));
   const [q, setQ] = useState("");
-  const [sel, setSel] = useState<Set<string>>(new Set());
+  /**
+   * 🔴 QUIÉNES QUEDAN AFUERA, no quiénes están adentro.
+   *
+   * Era al revés —un `Set` de seleccionados que arrancaba vacío— y de ahí salía el defecto:
+   * el botón nacía apagado diciendo "Avisar a …", así que el operador filtraba un rango,
+   * veía su lista y quedaba trabado hasta descubrir de casualidad que los casilleros servían
+   * para destrabar el botón. Tildar el «todos» era un peaje, no una decisión.
+   *
+   * Dado vuelta, el estado natural —vacío— significa "van todos los que estoy viendo", que
+   * es lo que el operador iba a hacer igual: filtrar "esta semana" y avisarles. Los casilleros
+   * pasan a leerse por lo que hacen —destildar es sacar a alguien— y no hay ningún paso
+   * previo que adivinar ni que explicar con un texto.
+   */
+  const [excluidos, setExcluidos] = useState<Set<string>>(new Set());
 
   const hoy = diaISO(0);
 
@@ -62,18 +75,26 @@ export function VencimientosTab() {
       .sort((a, b) => (a.proximo_pago ?? "").localeCompare(b.proximo_pago ?? ""));
   }, [creditos, desde, hasta, q, hoy]);
 
-  const seleccionados = filas.filter((c) => sel.has(c.id));
-  const montoSeleccionado = seleccionados.reduce((s, c) => s + (c.cuota_proxima ?? 0), 0);
+  /**
+   * A quien no se puede contactar —fallecido, o pidió que no lo contacten— no entra ni
+   * tildándolo: contarlo prometería un alcance que el envío después no cumple.
+   */
+  const contactables = filas.filter((c) => !contactoBloqueado(c.cliente).bloqueado);
+  /** Los que van a recibir el aviso: los que se están viendo, menos los que se sacaron. */
+  const destinatarios = contactables.filter((c) => !excluidos.has(c.id));
+  const montoSeleccionado = destinatarios.reduce((s, c) => s + (c.cuota_proxima ?? 0), 0);
   const totalRango = filas.reduce((s, c) => s + (c.cuota_proxima ?? 0), 0);
   const venceHoy = filas.filter((c) => c.proximo_pago?.slice(0, 10) === hoy).length;
   const sinContacto = filas.filter((c) => !c.cliente?.telefono && !c.cliente?.email).length;
 
+  const incluido = (id: string) => !excluidos.has(id);
+
   const toggle = (id: string) =>
-    setSel((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
+    setExcluidos((e) => { const n = new Set(e); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
   const armarCampana = () => {
-    if (seleccionados.length === 0) return;
-    guardarSeleccionCampana(seleccionados.map((c) => c.id));
+    if (destinatarios.length === 0) return;
+    guardarSeleccionCampana(destinatarios.map((c) => c.id));
     // El tipo viaja con la selección: la pantalla de campaña muestra columnas distintas según
     // si va a reclamar mora o a recordar un vencimiento.
     guardarTipoCampana("vencimiento");
@@ -139,12 +160,15 @@ export function VencimientosTab() {
         <button
           type="button"
           onClick={armarCampana}
-          disabled={seleccionados.length === 0}
+          disabled={destinatarios.length === 0}
           className="flex shrink-0 items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-40"
         >
           <Emoji name="megaphone" className="h-4 w-4" />
-          Avisar a {seleccionados.length || "…"}
-          {seleccionados.length > 0 && (
+          {/* El número ES la explicación: dice sobre cuántos va a trabajar antes de apretarlo,
+              y cambia solo al tildar o al mover el rango. No hace falta ningún texto que
+              cuente cómo se usa la pantalla. */}
+          Avisar a {destinatarios.length}
+          {destinatarios.length > 0 && (
             <span className="font-mono text-xs opacity-80">· {formatMonto(montoSeleccionado)}</span>
           )}
         </button>
@@ -165,16 +189,27 @@ export function VencimientosTab() {
             header: (
               <input
                 type="checkbox"
-                aria-label="Seleccionar todos"
-                checked={filas.length > 0 && seleccionados.length === filas.length}
-                onChange={(e) => setSel(e.target.checked ? new Set(filas.map((c) => c.id)) : new Set())}
+                aria-label={destinatarios.length === contactables.length ? "Sacar a todos" : "Incluir a todos"}
+                // Arranca marcado porque el estado inicial es "van todos". Destildarlo los
+                // saca a todos, que es el único modo de dejar el botón sin nadie.
+                checked={contactables.length > 0 && excluidos.size === 0}
+                onChange={(e) => setExcluidos(e.target.checked ? new Set() : new Set(contactables.map((c) => c.id)))}
                 className="accent-primary"
               />
             ),
             className: "w-10",
             cell: (c) => (
-              <input type="checkbox" checked={sel.has(c.id)} onChange={() => toggle(c.id)}
-                onClick={(e) => e.stopPropagation()} aria-label={`Seleccionar ${nombreCompleto(c.cliente)}`} className="accent-primary" />
+              <input
+                type="checkbox"
+                checked={incluido(c.id)}
+                // A quien no se puede contactar no se lo puede elegir: entraría en el conteo
+                // y el envío después lo saltea, prometiendo un alcance que no se cumple.
+                disabled={contactoBloqueado(c.cliente).bloqueado}
+                onChange={() => toggle(c.id)}
+                onClick={(e) => e.stopPropagation()}
+                aria-label={`Incluir a ${nombreCompleto(c.cliente)}`}
+                className="accent-primary disabled:opacity-30"
+              />
             ),
           },
           {

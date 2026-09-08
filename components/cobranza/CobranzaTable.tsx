@@ -137,6 +137,24 @@ export function CobranzaTable({ role }: { role: Role }) {
    * mano lo que ya se estaba mirando.
    */
   const [seleccion, setSeleccion] = useState<Set<string>>(new Set());
+  /**
+   * 🔴 SIN TILDAR NADA, VAN TODOS — Y LOS CASILLEROS TIENEN QUE MOSTRARLO.
+   *
+   * El botón de campaña ya trabajaba sobre lo que se está viendo cuando no había nada
+   * tildado, pero la lista decía lo contrario: todos los casilleros en blanco se leen "no
+   * elegiste a nadie" al lado de un botón que dice "Nueva campaña · 5". Esa contradicción es
+   * la que empujaba a tildar el «todos» para destrabar algo que nunca estuvo trabado, y la
+   * que hacía que no se entendiera por dónde se empieza.
+   *
+   * `recorte` distingue los dos estados sin inventar valores falsos dentro del `Set`:
+   *   false → van TODOS los visibles (arranca así, y vuelve acá si se los tilda a todos)
+   *   true  → va exactamente lo que está en `seleccion`, aunque sea nadie
+   *
+   * El `Set` sigue guardando ids reales: esta selección se persiste y la pantalla de campaña
+   * se la devuelve (`restantes`) con la audiencia que quedó sin mandar. Un modelo de
+   * "excluidos" rompería ese ida y vuelta.
+   */
+  const [recorte, setRecorte] = useState(false);
 
   useEffect(() => {
     setMounted(true);
@@ -151,18 +169,8 @@ export function CobranzaTable({ role }: { role: Role }) {
     // La selección de la campaña sobrevive a ir y volver de `/cobranza/campanas/nueva`: sin
     // esto, cancelar la campaña devolvía la lista con todos los casilleros destildados.
     const ids = leerSeleccionCampana();
-    if (ids.length) setSeleccion(new Set(ids));
+    if (ids.length) { setSeleccion(new Set(ids)); setRecorte(true); }
   }, []);
-
-  /**
-   * La selección viaja a la pantalla de campaña por `sessionStorage` (ver
-   * `seleccion-campana.ts`): son ids arbitrarios y no entran en la URL.
-   * Se persiste en cada cambio, no solo al abrir la campaña, para que ir y volver —o un F5 en
-   * el medio— no borre lo que el operador venía tildando.
-   */
-  useEffect(() => {
-    if (mounted) guardarSeleccionCampana([...seleccion]);
-  }, [seleccion, mounted]);
 
   /**
    * 🔴 A un fallecido no se le manda una campaña, así que tampoco se lo puede tildar.
@@ -176,14 +184,20 @@ export function CobranzaTable({ role }: { role: Role }) {
   /** Etiqueta corta del motivo, para el badge de la fila. */
   const motivoCorto = (c: Credito) => (c.cliente?.no_contactar ? "No contactar" : "Fallecido");
 
-  const toggleSel = (id: string) =>
-    setSeleccion(prev => {
-      const cred = allCreditos.find(c => c.id === id);
-      if (cred && noContactable(cred)) return prev;
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
-    });
+  /**
+   * Destildar el primero no borra a los demás: parte de la lista completa y saca ese, que es
+   * lo que la pantalla venía mostrando. Y volver a tenerlos a todos vuelve al estado inicial,
+   * para que el conteo siga al filtro de severidad si el operador lo mueve.
+   */
+  const toggleSel = (id: string) => {
+    const cred = allCreditos.find(c => c.id === id);
+    if (cred && noContactable(cred)) return;
+    const base = recorte ? new Set(seleccion) : new Set(visiblesIds);
+    base.has(id) ? base.delete(id) : base.add(id);
+    const todos = visiblesIds.length > 0 && visiblesIds.every(x => base.has(x));
+    setRecorte(!todos);
+    setSeleccion(todos ? new Set() : base);
+  };
 
   // Última gestión por crédito (acciones vienen ordenadas por fecha desc).
   const ultimaPorCredito = useMemo(() => {
@@ -324,21 +338,57 @@ export function CobranzaTable({ role }: { role: Role }) {
 
   const sortedFiltered = [...filtered].sort((a, b) => b.dias_mora - a.dias_mora);
 
-  // ── Selección de audiencia para campañas ──
-  const seleccionados = useMemo(() => creditos.filter(c => seleccion.has(c.id)), [creditos, seleccion]);
-  // "Seleccionar todos" son todos los CONTACTABLES: si arrastrara a los fallecidos, el tilde
-  // de la cabecera volvería a prometer un número que la campaña después no cumple.
+  // ── Audiencia de la campaña ──
+  // "Todos" son todos los CONTACTABLES: si arrastrara a los fallecidos, el tilde de la
+  // cabecera volvería a prometer un número que la campaña después no cumple.
   const visiblesIds = sortedFiltered.filter(c => !noContactable(c)).map(c => c.id);
-  const todasVisiblesSel = visiblesIds.length > 0 && visiblesIds.every(id => seleccion.has(id));
+  /**
+   * Los que van a recibir la campaña. Sin recorte, los que se están viendo.
+   *
+   * Con recorte NO se cruza contra `visiblesIds` sino contra toda la mora: la pantalla de
+   * campaña devuelve la audiencia que quedó sin mandar (`restantes`) y esos ids pueden no
+   * entrar en el filtro de severidad que el operador tenga puesto al volver. Intersectando
+   * con lo visible, esa segunda campaña —la de refinanciación, casi siempre— se perdía.
+   */
+  const destinatariosIds = recorte
+    ? creditos.filter(c => seleccion.has(c.id) && !noContactable(c)).map(c => c.id)
+    : visiblesIds;
+  const clave = destinatariosIds.join(",");
+  const seleccionados = useMemo(
+    () => creditos.filter(c => clave.length > 0 && clave.split(",").includes(c.id)),
+    [creditos, clave],
+  );
+  /** ¿Está incluido en el envío? Sin recorte, todo lo visible lo está. */
+  const incluido = (id: string) => (recorte ? seleccion.has(id) : visiblesIds.includes(id));
+  const todasVisiblesSel = visiblesIds.length > 0 && destinatariosIds.length === visiblesIds.length;
   const bloqueadosVisibles = sortedFiltered.filter(noContactable).length;
 
-  const toggleTodasVisibles = () =>
-    setSeleccion(prev => {
-      const next = new Set(prev);
-      if (todasVisiblesSel) visiblesIds.forEach(id => next.delete(id));
-      else visiblesIds.forEach(id => next.add(id));
-      return next;
-    });
+  /**
+   * La selección viaja a la pantalla de campaña por `sessionStorage` (ver
+   * `seleccion-campana.ts`): son ids arbitrarios y no entran en la URL.
+   * Se persiste en cada cambio, no solo al abrir la campaña, para que ir y volver —o un F5 en
+   * el medio— no borre lo que el operador venía tildando.
+   */
+  useEffect(() => {
+    // Se guarda la audiencia REAL (con o sin recorte), que es lo que la pantalla de campaña
+    // va a leer: guardar el `Set` crudo dejaba vacío el estado "van todos".
+    // Con recorte se guarda la selección CRUDA: `destinatariosIds` depende de la lista ya
+    // cargada, y persistir eso durante el primer render —cuando todavía no llegó nada— borraba
+    // la selección que se acababa de restaurar al volver de la pantalla de campaña.
+    if (mounted) guardarSeleccionCampana(recorte ? [...seleccion] : destinatariosIds);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clave, recorte, seleccion, mounted]);
+
+
+  /**
+   * El tilde de la cabecera. Marcado = van todos; destildarlo tiene que dejar la lista en
+   * NADIE, no volver al estado inicial —que también significa "todos"— o el clic no haría
+   * nada visible.
+   */
+  const toggleTodasVisibles = () => {
+    if (todasVisiblesSel) { setRecorte(true); setSeleccion(new Set()); }
+    else { setRecorte(false); setSeleccion(new Set()); }
+  };
 
   /**
    * 🔴 La campaña ya no es un modal: es una PANTALLA (`/cobranza/campanas/nueva`).
@@ -537,14 +587,14 @@ export function CobranzaTable({ role }: { role: Role }) {
         */}
         {puedeCampanas && (
           <button
-            onClick={() => irACampana(seleccionados.length === 0 ? visiblesIds : undefined)}
-            disabled={seleccionados.length === 0 && visiblesIds.length === 0}
+            onClick={() => irACampana(destinatariosIds)}
+            disabled={destinatariosIds.length === 0}
             className="ml-auto flex h-14 items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-primary px-6 text-base font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-40"
           >
             <Megaphone className="h-5 w-5" />
             Nueva campaña
             <span className="rounded bg-primary-foreground/20 px-1.5 py-0.5 text-xs tabular-nums">
-              {seleccionados.length || visiblesIds.length}
+              {destinatariosIds.length}
             </span>
           </button>
         )}
@@ -585,7 +635,7 @@ export function CobranzaTable({ role }: { role: Role }) {
           rows={sortedFiltered}
           rowKey={(c) => c.id}
           onRowClick={(c) => setDetalle(c)}
-          rowClassName={(c) => (seleccion.has(c.id) ? "bg-primary/5" : "")}
+          rowClassName={(c) => (incluido(c.id) ? "bg-primary/5" : "")}
           zebra
           pageSize={12}
           footer={
@@ -622,7 +672,7 @@ export function CobranzaTable({ role }: { role: Role }) {
               cell: (c) => (
                 <input
                   type="checkbox"
-                  checked={seleccion.has(c.id)}
+                  checked={incluido(c.id)}
                   disabled={noContactable(c)}
                   title={noContactable(c) ? `${contactoBloqueado(c.cliente).motivo}: no entra en campañas` : undefined}
                   onChange={() => toggleSel(c.id)}
@@ -789,13 +839,13 @@ export function CobranzaTable({ role }: { role: Role }) {
           renderMobileCard={(c) => {
             const sev = SEVERIDAD_BADGE[severidadMora(c.dias_mora, tramos)];
             return (
-              <div onClick={() => setDetalle(c)} className={`rounded-xl bg-card border p-4 space-y-3 cursor-pointer active:bg-muted/20 transition-colors ${seleccion.has(c.id) ? "border-primary/40" : "border-border"}`}>
+              <div onClick={() => setDetalle(c)} className={`rounded-xl bg-card border p-4 space-y-3 cursor-pointer active:bg-muted/20 transition-colors ${incluido(c.id) ? "border-primary/40" : "border-border"}`}>
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex items-center gap-2.5 min-w-0" onClick={(e) => e.stopPropagation()}>
                     {puedeCampanas && (
                       <input
                         type="checkbox"
-                        checked={seleccion.has(c.id)}
+                        checked={incluido(c.id)}
                         disabled={noContactable(c)}
                         title={noContactable(c) ? `${contactoBloqueado(c.cliente).motivo}` : undefined}
                         onChange={() => toggleSel(c.id)}
@@ -870,23 +920,33 @@ export function CobranzaTable({ role }: { role: Role }) {
       </div>
       )}
 
-      {/* ── ActionToolbar: acciones masivas sobre la selección (solo campañas) ── */}
-      {puedeCampanas && seleccionados.length > 0 && (
+      {/*
+        ── ActionToolbar: solo cuando el operador RECORTÓ la lista ──
+
+        🔴 Antes aparecía apenas había alguien seleccionado, y con "sin tildar = van todos"
+        eso es siempre: quedaba una barra flotante permanente repitiendo el conteo y el botón
+        que ya están arriba. Dos controles para la misma acción, y encima uno tapando la
+        última fila de la tabla.
+
+        Ahora aparece solo cuando el operador sacó a alguien de la lista, que es cuando hace
+        falta: dice sobre cuántos quedó parado y permite volver a todos con una cruz.
+      */}
+      {puedeCampanas && recorte && seleccionados.length > 0 && (
         <div className="fixed inset-x-0 bottom-4 z-40 flex justify-center px-4 pointer-events-none">
           <div className="pointer-events-auto flex items-center gap-3 rounded-xl border border-border bg-card/95 backdrop-blur px-4 py-3 shadow-lg shadow-black/40">
             <span className="flex items-center gap-2 text-sm text-foreground">
               <Users className="h-4 w-4 text-primary" />
-              <span className="font-semibold">{seleccionados.length}</span> seleccionado{seleccionados.length !== 1 ? "s" : ""}
+              <span className="font-semibold">{seleccionados.length}</span> de {visiblesIds.length}
             </span>
             <button
-              onClick={() => irACampana()}
+              onClick={() => irACampana(destinatariosIds)}
               className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 transition-opacity"
             >
               <Megaphone className="h-4 w-4" /> Iniciar campaña
             </button>
             <button
-              onClick={() => setSeleccion(new Set())}
-              title="Limpiar selección"
+              onClick={() => { setRecorte(false); setSeleccion(new Set()); }}
+              title="Volver a todos"
               className="flex items-center justify-center h-8 w-8 rounded-lg text-muted-foreground hover:bg-muted transition-colors"
             >
               <X className="h-4 w-4" />
