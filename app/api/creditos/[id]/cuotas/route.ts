@@ -109,6 +109,36 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
    */
   const cobro = await veredictoCobro(tenantId, id, recuperoCfg);
 
+  /**
+   * 🔴 EL DESCUENTO DE UNA CAMPAÑA VIGENTE, TAMBIÉN ACÁ.
+   *
+   * `POST /pagos` ya lo aplicaba —reduce la mora devengada por el % de la promo— pero esta
+   * pantalla seguía mostrando los punitorios PLENOS. Así que a un cliente al que la campaña
+   * le prometió por escrito $203.092,31, el Detalle de cobranza y la terminal le decían
+   * $206.365,05. Si el cobrador cobraba lo que veía en pantalla, el cliente pagaba $2.363,65
+   * de más (el motor descuenta igual y el sobrante se va a capital): la financiera no perdía
+   * plata, pero no cumplía lo que había prometido.
+   *
+   * Es el mismo error de las dos fórmulas que ya mordió con los cargos del plan, con el
+   * acuerdo y con el fallecimiento. La condición es exactamente la del cobro: campaña
+   * ACTIVA —una en borrador no descuenta nada— y promo vigente a la fecha.
+   */
+  const objetivosCampana = await prisma.campana_objetivo.findMany({
+    where: { ...withTenant(tenantId), credito_id: id, campana: { estado: "activa" } },
+    include: { campana: { select: { id: true, nombre: true, promo_tipo: true, promo_valor: true, promo_vence: true } } },
+  });
+  const promo = objetivosCampana.reduce<{ pct: number; nombre: string; vence: Date | null } | null>((mejor, o) => {
+    const c = o.campana;
+    const vigente = c.promo_tipo === "quita_interes" && c.promo_valor > 0 && (!c.promo_vence || c.promo_vence >= hoy);
+    if (!vigente) return mejor;
+    return !mejor || c.promo_valor > mejor.pct
+      ? { pct: c.promo_valor, nombre: c.nombre, vence: c.promo_vence }
+      : mejor;
+  }, null);
+  const factorMora = 1 - Math.min(100, Math.max(0, promo?.pct ?? 0)) / 100;
+  /** Punitorios condonados por la promo, para poder decirlo y no solo mostrarlo más chico. */
+  let ahorroPromo = 0;
+
   const cuotas = credito.cuotas.map((c) => {
     const restante_capital = round2(Math.max(0, c.capital - c.pagado_capital));
     // Días de atraso de ESTA cuota. Sale de acá y no del navegador porque es el número que
@@ -129,10 +159,13 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
       c.fecha_vencimiento,
       fechaTopeMora(topeMoraDeCuota(c.fecha_vencimiento, hoy, congeladaAl), topeAbsoluto),
     );
-    const moraPlena = moraCred.moraActiva
+    const moraSinPromo = moraCred.moraActiva
       ? interesMora(c.cuota_total, diasQueDevengan, { tasaDiaria: moraCred.tasaMoraDiaria, diasGracia: graciaCred, topePct: moraCred.topeMoraPct })
       : 0;
+    // La quita de campaña reduce la mora devengada, con la MISMA cuenta que `POST /pagos`.
+    const moraPlena = round2(moraSinPromo * factorMora);
     const moraPend = capitalSaldado ? 0 : round2(Math.max(0, moraPlena - c.pagado_mora));
+    if (!capitalSaldado) ahorroPromo = round2(ahorroPromo + Math.max(0, round2(moraSinPromo - moraPlena)));
     const pendienteCuota = round2(Math.max(0, c.cuota_total - (c.pagado_capital + c.pagado_interes + c.pagado_cargos)));
 
     // Recibos (comprobantes) que imputaron a esta cuota.
@@ -273,6 +306,14 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
       sugerencia: cobro.sugerencia ?? null,
       puede_autorizar: role === "admin",
     },
+    /**
+     * La promoción que está bajando los punitorios. Viaja para que la pantalla pueda DECIRLO:
+     * un importe más chico sin explicación es indistinguible de un error de cálculo, y el
+     * cobrador tiene que poder contestarle al cliente por qué le sale eso.
+     */
+    promocion: promo
+      ? { pct: promo.pct, campana: promo.nombre, vence: promo.vence, ahorro: ahorroPromo }
+      : null,
     acuerdo: acuerdo
       ? {
           id: acuerdo.id,

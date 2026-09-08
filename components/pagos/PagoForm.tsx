@@ -16,6 +16,15 @@ import { refrescarNotificaciones } from "@/lib/swr";
 import { deudaEnRevision } from "@/lib/domain";
 import type { CuotaPersistida, EstadoCuota } from "@/lib/swr";
 
+/**
+ * Quita de punitorios de una campaña ACTIVA, tal como la devuelve el endpoint de cuotas.
+ *
+ * 🔴 Antes el operador no se enteraba. El descuento se aplicaba al imputar el pago y recién
+ * aparecía en la pantalla de éxito, con el cobro ya hecho: al cliente se le había prometido
+ * un importe por WhatsApp y la terminal le mostraba otro, más alto.
+ */
+type PromoVigente = { pct: number; campana: string; vence: string | null; ahorro: number };
+
 /** Desglose de imputación que devuelve POST /api/pagos. */
 type Imputacion = {
   aplicadoMora: number; aplicadoInteres: number; aplicadoCargos: number; aplicadoCapital: number;
@@ -299,6 +308,11 @@ export function PagoForm({ creditoId, clienteId, montoSugerido, motivoSugerido, 
   const [acuerdo, setAcuerdo] = useState<AcuerdoDelCredito | null>(null);
   /** Veredicto de cobrabilidad del crédito elegido (escalera de recupero). */
   const [cobro, setCobro] = useState<VeredictoCobro | null>(null);
+  /**
+   * Promoción de campaña vigente sobre este crédito. Los punitorios de la tabla YA vienen
+   * descontados: esto es para poder decir por qué, antes de cobrar y no después.
+   */
+  const [promo, setPromo] = useState<PromoVigente | null>(null);
   /** El admin decidió cobrar igual sobre un crédito que ya debería refinanciarse. */
   const [autorizar, setAutorizar] = useState(false);
   // Viniendo del botón verde de una cuota, esa cuota arranca seleccionada.
@@ -346,7 +360,7 @@ export function PagoForm({ creditoId, clienteId, montoSugerido, motivoSugerido, 
 
   // Cuotas del crédito seleccionado
   useEffect(() => {
-    if (!creditoSel) { setCuotas([]); setHasta(null); setAcuerdo(null); setCobro(null); setAutorizar(false); return; }
+    if (!creditoSel) { setCuotas([]); setHasta(null); setAcuerdo(null); setCobro(null); setPromo(null); setAutorizar(false); return; }
     setLoadingCuotas(true);
     fetch(`/api/creditos/${creditoSel}/cuotas`)
       .then(r => r.json())
@@ -362,6 +376,7 @@ export function PagoForm({ creditoId, clienteId, montoSugerido, motivoSugerido, 
          */
         setAcuerdo(j.data.acuerdo?.estado === "vigente" ? j.data.acuerdo : null);
         setCobro(j.data.cobro ?? null);
+        setPromo(j.data.promocion ?? null);
         setAutorizar(false); // cambiar de crédito nunca arrastra la autorización del anterior
         const proxima = cs.find(c => c.estado !== "pagada");
         setHasta(proxima ? proxima.nro : null);
@@ -956,6 +971,40 @@ export function PagoForm({ creditoId, clienteId, montoSugerido, motivoSugerido, 
                   Cobrar igual — queda registrado a mi nombre
                 </label>
               )}
+            </div>
+          </div>
+        )}
+
+        {/*
+          🔴 HAY UN DESCUENTO PROMETIDO Y ESTÁ APLICADO. DECILO ANTES DE COBRAR.
+
+          La quita de punitorios de una campaña se aplicaba al imputar el pago y solo se veía
+          DESPUÉS, en la pantalla de éxito ("Ahorro por promoción"). Hasta entonces el
+          cobrador miraba los punitorios plenos: si le cobraba al cliente lo que decía la
+          pantalla, el cliente pagaba de más —el motor descontaba igual y el sobrante caía a
+          capital— y la financiera no cumplía lo que había mandado por escrito.
+
+          Ahora los punitorios de la tabla ya vienen con la quita adentro, así que este cartel
+          es lo que explica por qué son más bajos: sin él, un importe menor sin motivo es
+          indistinguible de un error de cálculo.
+        */}
+        {promo && promo.ahorro > 0 && (
+          <div className="rounded-xl border border-success/30 bg-success/[0.07] p-4">
+            <div className="flex items-start gap-2.5">
+              <Check className="mt-0.5 h-4 w-4 shrink-0 text-success" />
+              <div className="space-y-1">
+                <p className="text-sm font-semibold text-success">
+                  Descuento de campaña aplicado: {promo.pct}% de los punitorios
+                </p>
+                <p className="text-xs leading-relaxed text-foreground/80">
+                  Los punitorios de abajo ya salen con la quita adentro:{" "}
+                  <strong className="text-foreground">${fmt2(promo.ahorro)}</strong> menos.
+                  Sale de la campaña <strong className="text-foreground">{promo.campana}</strong>
+                  {promo.vence
+                    ? <> y vale hasta el <strong className="text-foreground">{formatFecha(promo.vence)}</strong>.</>
+                    : <>, sin fecha de corte.</>}
+                </p>
+              </div>
             </div>
           </div>
         )}

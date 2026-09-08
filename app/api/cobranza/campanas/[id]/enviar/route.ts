@@ -306,6 +306,24 @@ export const POST = withErrorHandler(async (
    *
    * Se anota solo si se procesó a alguien: las tandas que no hacen nada no ensucian la traza.
    */
+  /**
+   * 🔴 MANDAR LA CAMPAÑA LA ACTIVA. Antes eran dos botones sueltos y el descuento colgaba
+   * del segundo.
+   *
+   * La quita de punitorios que promete el mensaje solo se aplica al cobrar si la campaña
+   * está en estado "activa" (`POST /pagos` filtra por `campana: { estado: "activa" }`). Las
+   * campañas nacen en "borrador" y "Activar" era un botón aparte, así que se podían mandar
+   * los mensajes prometiendo el 10% y dejar la campaña en borrador: el cliente venía con su
+   * WhatsApp en la mano y la terminal le cobraba los punitorios completos.
+   *
+   * Enviar ES activar: desde el momento en que el mensaje salió, la financiera está obligada
+   * a lo que prometió. El botón "Activar" sigue existiendo para activarla sin enviar (envío
+   * manual, por otro canal), pero ya no es el único camino.
+   */
+  if (procesados > 0 && campana.estado === "borrador") {
+    await prisma.campanas_cobranza.update({ where: { id }, data: { estado: "activa" } });
+  }
+
   if (procesados > 0) {
     const conError = resultados.filter((r) => r.ok === false).length;
     await registrarAuditoria({
@@ -317,7 +335,7 @@ export const POST = withErrorHandler(async (
         `Campaña "${campana.nombre}" enviada por ${canal}: ${procesados} destinatario${procesados === 1 ? "" : "s"} procesado${procesados === 1 ? "" : "s"}` +
         (conError > 0 ? `, ${conError} con error` : "") +
         (restantes > 0 ? `, quedan ${restantes} pendiente${restantes === 1 ? "" : "s"}` : ""),
-      meta: { canal, procesados, con_error: conError, enviados, pendientes: restantes },
+      meta: { canal, procesados, con_error: conError, enviados, pendientes: restantes, activada: campana.estado === "borrador" },
     });
   }
 

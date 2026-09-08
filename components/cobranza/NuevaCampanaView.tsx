@@ -943,50 +943,68 @@ function CampanaWorkspace({ role, creditos: todosCreditos, bloqueados, onCancela
                 {bloqueados} excluido{bloqueados !== 1 ? "s" : ""} por no contactar
               </span>
             )}
-
-            {/*
-              🔴 EL CORTE ENTRE LAS DOS AUDIENCIAS.
-
-              Aparece solo cuando la selección trae de las dos clases: si son todos de un lado
-              no hay nada que elegir y el control sería un adorno. Elegir un grupo cambia la
-              campaña entera —mensaje, incentivo y a quiénes se les manda—, así que va acá
-              arriba, encima de la lista que modifica, y no escondido entre los parámetros.
-            */}
-            {(() => {
-              /**
-               * Los grupos que la selección REALMENTE trae. El de recordatorio entró acá
-               * porque antes no era un grupo: era un modo pegado en `sessionStorage` que se
-               * podía aplicar sobre cualquiera. Si la selección viene mezclada —gente al día
-               * y morosos, que es lo normal si se seleccionó "todos"— el operador tiene que
-               * poder ver los dos envíos y mandarlos por separado, nunca en el mismo.
-               */
-              const grupos = ([
-                { t: "vencimiento" as TipoCampana,    label: "Recordar el vencimiento", n: paraRecordar.length },
-                { t: "mora" as TipoCampana,           label: "Reclamar el pago",        n: paraCobrar.length },
-                { t: "refinanciacion" as TipoCampana, label: "Invitar a refinanciar",   n: paraRefinanciar.length },
-              ]).filter((g) => g.n > 0);
-              if (grupos.length < 2) return null;
-              return (
-              <div className="ml-auto flex items-center gap-1 rounded-lg border border-border p-0.5">
-                {grupos.map(({ t, label, n }) => (
-                  <button
-                    key={t}
-                    type="button"
-                    onClick={() => cambiarTipo(t)}
-                    aria-pressed={tipoCampana === t}
-                    className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
-                      tipoCampana === t
-                        ? "bg-primary/15 text-primary"
-                        : "text-muted-foreground hover:bg-muted/40 hover:text-foreground"
-                    }`}
-                  >
-                    {label} <span className="font-mono tabular-nums">({n})</span>
-                  </button>
-                ))}
-              </div>
-              );
-            })()}
           </div>
+
+          {/*
+            ── EL CORTE ENTRE LAS AUDIENCIAS ──
+
+            🔴 Estaba metido en el renglón del título, en `text-xs`, apretado contra el conteo
+            de destinatarios: el control que cambia la campaña ENTERA —a quiénes se les manda,
+            qué mensaje, qué incentivo y qué importe— parecía un filtro de tabla. Se leía
+            tarde o no se leía, y el operador armaba el envío sin saber que la selección traía
+            dos grupos distintos.
+
+            Ahora es su propia banda arriba de la lista, del ancho de lo que modifica, con el
+            grupo activo marcado y el otro dicho como lo que es: gente que queda para su
+            propia campaña, no una opción escondida.
+          */}
+          {(() => {
+            const grupos = ([
+              { t: "vencimiento" as TipoCampana,    label: "Recordar el vencimiento", detalle: "todavía no deben nada",         n: paraRecordar.length },
+              { t: "mora" as TipoCampana,           label: "Reclamar el pago",        detalle: "con punitorios",                n: paraCobrar.length },
+              { t: "refinanciacion" as TipoCampana, label: "Invitar a refinanciar",   detalle: "su plan ya no se puede cobrar", n: paraRefinanciar.length },
+            ]).filter((g) => g.n > 0);
+            if (grupos.length < 2) return null;
+            return (
+              <div className="shrink-0 border-b border-edge bg-muted/[0.04] px-5 py-3">
+                <p className="mb-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                  La selección trae {grupos.length} grupos · se manda uno por vez
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {grupos.map(({ t, label, detalle, n }) => {
+                    const activo = tipoCampana === t;
+                    return (
+                      <button
+                        key={t}
+                        type="button"
+                        onClick={() => cambiarTipo(t)}
+                        aria-pressed={activo}
+                        className={`flex min-w-[11rem] flex-1 items-center gap-3 rounded-xl border px-3.5 py-2.5 text-left transition-colors ${
+                          activo
+                            ? "border-primary bg-primary/10 ring-1 ring-primary/30"
+                            : "border-border bg-card hover:border-border hover:bg-muted/40"
+                        }`}
+                      >
+                        <span
+                          className={`flex h-8 min-w-8 items-center justify-center rounded-lg px-1.5 font-mono text-sm font-bold tabular-nums ${
+                            activo ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
+                          }`}
+                        >
+                          {n}
+                        </span>
+                        <span className="min-w-0">
+                          <span className={`block truncate text-sm font-semibold ${activo ? "text-foreground" : "text-muted-foreground"}`}>
+                            {label}
+                          </span>
+                          <span className="block truncate text-[11px] text-muted-foreground">{detalle}</span>
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })()}
 
           {/*
             Por qué estos créditos no van en la misma campaña que los demás. Es el dato que

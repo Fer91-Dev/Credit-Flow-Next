@@ -679,6 +679,12 @@ export interface CuotasCredito {
   } | null;
   /** Condiciones de mora CONGELADAS del crédito: explican de dónde sale cada punitorio. */
   mora: { activa: boolean; tasaDiaria: number; diasGracia: number; topePct: number };
+  /**
+   * Campaña ACTIVA con quita de punitorios vigente sobre este crédito. Los punitorios que
+   * vienen en `cuotas` YA salen descontados (igual que al cobrar): esto es para poder decir
+   * por qué son más bajos. `null` = no hay ninguna.
+   */
+  promocion: { pct: number; campana: string; vence: string | null; ahorro: number } | null;
   frecuencia: string;
   frecuencia_label: { cuotaSingular: string; cuotaPlural: string; adjetivo: string; unidad: string };
   resumen: {
