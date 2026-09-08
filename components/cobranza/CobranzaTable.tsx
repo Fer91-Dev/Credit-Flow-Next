@@ -9,7 +9,7 @@ import { WhatsAppIcon } from "@/components/ui/WhatsAppIcon";
 import { descargarCSV } from "@/lib/csv";
 import { useCreditos, useAccionesCobranza, type Credito, type AccionCobranza, type AgendaItem, useTramosMora } from "@/lib/swr";
 import { type Role } from "@/lib/auth/roles";
-import { formatFecha, nombreCompleto, formatDias, formatMonto, formatCreditoNumero } from "@/lib/utils";
+import { formatFecha, nombreCompleto, formatDias, formatMonto } from "@/lib/utils";
 import { GestionForm, type CreditoCtx } from "./GestionForm";
 import { CobranzaDetail } from "./CobranzaDetail";
 import { guardarSeleccionCampana, leerSeleccionCampana, guardarTipoCampana } from "./seleccion-campana";
@@ -406,8 +406,12 @@ export function CobranzaTable({ role }: { role: Role }) {
    * EXPORTAR LA LISTA para mandar los mensajes con una herramienta de afuera.
    *
    * Mientras la financiera no tenga la API de WhatsApp, los envíos masivos salen por un
-   * servicio de terceros: hay que poder bajarse a quiénes hay que contactar, con el teléfono
-   * ya normalizado y los números que va a llevar el mensaje.
+   * servicio de terceros: hay que poder bajarse a quiénes hay que contactar. Van tres
+   * columnas —DNI, nombre y celular— porque el texto del mensaje se redacta afuera; no hace
+   * falta arrastrar la deuda a un archivo que después nadie va a mirar.
+   *
+   * El celular sale en formato internacional (`5493814516093`), que es el que las APIs de
+   * envío exigen: el número como está cargado en la ficha se descarta en silencio.
    *
    * 🔴 EXPORTA LA MISMA AUDIENCIA QUE LA CAMPAÑA, y eso no es comodidad: es lo que impide
    * que el archivo sea la puerta de atrás del "no contactar". Un fallecido o alguien que
@@ -415,42 +419,30 @@ export function CobranzaTable({ role }: { role: Role }) {
    * lista cruda, terminaría igual en el blast de la herramienta externa y el bloqueo no
    * habría servido para nada. Sale exactamente lo mismo que recibiría la campaña: el filtro
    * de severidad puesto, el recorte que haya hecho el operador, y sin los bloqueados.
-   *
-   * Los importes van formateados en es-AR y sin símbolo: Excel los lee como número.
    */
   const exportarMorosos = () => {
-    const filas = creditos.filter(c => destinatariosIds.includes(c.id));
-    if (filas.length === 0) return;
-    const num = (x: number | undefined | null) =>
-      new Intl.NumberFormat("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(x ?? 0);
+    /**
+     * El archivo es para MANDAR, así que solo entra el que se puede mandar: los que no
+     * tienen un celular utilizable quedan afuera en vez de salir como una fila vacía que la
+     * herramienta de envío después descarta sola. Cuántos quedaron afuera lo dice el aviso,
+     * para que no sea un descarte silencioso.
+     */
+    const filas = creditos
+      .filter(c => destinatariosIds.includes(c.id))
+      .map(c => ({ c, tel: normalizarTelefonoAR(c.cliente?.telefono) }));
+    const conCelular = filas.filter(f => f.tel);
+    if (conCelular.length === 0) {
+      toast.error("Ninguno de estos morosos tiene un celular cargado.");
+      return;
+    }
     descargarCSV(`morosos_${new Date().toISOString().slice(0, 10)}.csv`, [
-      [
-        "Cliente", "Documento", "Telefono", "WhatsApp", "Email", "Credito",
-        "Dias de atraso", "Cuotas vencidas", "Vencido", "Punitorios", "Saldo del prestamo",
-        "Vencio el", "Severidad",
-      ],
-      ...filas.map(c => [
-        nombreCompleto(c.cliente),
-        c.cliente?.documento ?? "",
-        c.cliente?.telefono ?? "",
-        // Formato internacional, el que piden las herramientas de envío masivo. Vacío si el
-        // teléfono cargado no alcanza: mejor una celda vacía que un número que no existe.
-        normalizarTelefonoAR(c.cliente?.telefono) ?? "",
-        c.cliente?.email ?? "",
-        formatCreditoNumero(c.numero, c.refinancia_a_numero),
-        c.dias_mora,
-        c.cuotas_vencidas ?? "",
-        num(c.vencido),
-        num(c.interes_mora),
-        num(c.saldo_pendiente),
-        c.proximo_pago ? formatFecha(c.proximo_pago) : "",
-        SEVERIDAD_BADGE[severidadMora(c.dias_mora, tramos)]?.label ?? "",
-      ]),
+      ["DNI", "Nombre", "Celular"],
+      ...conCelular.map(({ c, tel }) => [c.cliente?.documento ?? "", nombreCompleto(c.cliente), tel]),
     ]);
-    const sinTel = filas.filter(c => !normalizarTelefonoAR(c.cliente?.telefono)).length;
+    const sinTel = filas.length - conCelular.length;
     toast.success(
-      `${filas.length} moroso${filas.length === 1 ? "" : "s"} exportado${filas.length === 1 ? "" : "s"}` +
-      (sinTel > 0 ? ` · ${sinTel} sin teléfono utilizable` : ""),
+      `${conCelular.length} moroso${conCelular.length === 1 ? "" : "s"} exportado${conCelular.length === 1 ? "" : "s"}` +
+      (sinTel > 0 ? ` · ${sinTel} sin celular quedaron afuera` : ""),
     );
   };
 
