@@ -264,6 +264,23 @@ export interface RecuperoConfig {
    * ninguna puerta: ni cobrar ni refinanciar.
    */
   max_refinanciaciones_encadenadas: number;
+  /**
+   * PASAR A INCOBRABLE SOLO, cuando la refinanciación se cae.
+   *
+   * Es el último escalón y el que cierra la escalera: una deuda que ya agotó las
+   * refinanciaciones que la financiera admite y encima pasó el umbral de atraso no tiene
+   * ningún paso siguiente adentro del sistema. Sin esto queda `vencido` para siempre,
+   * inflando la cartera y ensuciando la lista de morosos todos los días.
+   *
+   * 🔴 APAGADO DE FÁBRICA, y no por prudencia genérica: marcar plata como perdida sin que
+   * nadie apriete nada es la decisión más fuerte que puede tomar un automatismo. Prendido, lo
+   * ejecuta el cron con el mismo criterio con el que vence las promesas.
+   *
+   * Usa `dias_min_mora_refinanciar`, el MISMO umbral con el que se cae el plan: con un número
+   * propio quedaría una franja donde la refinanciación está caída y el crédito no es
+   * incobrable, y nadie sabría qué se hace ahí.
+   */
+  pasar_a_incobrable_auto: boolean;
 }
 
 export const RECUPERO_DEFAULT: RecuperoConfig = {
@@ -280,6 +297,8 @@ export const RECUPERO_DEFAULT: RecuperoConfig = {
   no_bajar_tasa_refinanciando: true,
   // Una sola: refinanciar una refinanciación capitaliza interés sobre interés capitalizado.
   max_refinanciaciones_encadenadas: 1,
+  // Apagado: marcar plata como perdida sin que nadie apriete nada no puede ser un default.
+  pasar_a_incobrable_auto: false,
   // Arranca APAGADO: cobrarle honorarios al deudor es una decisión de cada financiera, y el
   // sistema no puede empezar a sumarle plata a una deuda porque sí.
   honorarios_gestion_activo: false,
@@ -354,6 +373,7 @@ export function resolverRecupero(raw: unknown): RecuperoConfig {
     // ordena un proceso — tapa una fuga de plata.
     no_bajar_tasa_refinanciando:
       r.no_bajar_tasa_refinanciando === false ? false : RECUPERO_DEFAULT.no_bajar_tasa_refinanciando,
+    pasar_a_incobrable_auto: r.pasar_a_incobrable_auto === true,
     max_refinanciaciones_encadenadas: (() => {
       const n = Number(r.max_refinanciaciones_encadenadas);
       // `undefined` en una config vieja cae al default; un 0 explícito significa "sin tope".
@@ -420,6 +440,39 @@ export function topeAcuerdosAgotado(
   cfg: { max_acuerdos_rotos: number },
 ): boolean {
   return cfg.max_acuerdos_rotos > 0 && s.acuerdosRotos >= cfg.max_acuerdos_rotos;
+}
+
+/** ¿La deuda ya agotó las refinanciaciones que la financiera admite? */
+export function topeCadenaAlcanzado(s: SenalesRecupero, cfg: RecuperoConfig): boolean {
+  return (
+    cfg.max_refinanciaciones_encadenadas > 0 &&
+    (s.refinanciacionesEncadenadas ?? 0) >= cfg.max_refinanciaciones_encadenadas
+  );
+}
+
+/**
+ * ¿HAY QUE DAR ESTE CRÉDITO POR INCOBRABLE?
+ *
+ * El último escalón, y se contesta con las mismas señales que el resto: no hay un umbral
+ * nuevo ni un campo que mantener. Las cuatro condiciones, y por qué cada una:
+ *
+ *  1. La financiera lo pidió (`pasar_a_incobrable_auto`). Apagado, esto no pasa nunca solo.
+ *  2. Hay umbral de refinanciación. Sin él no existe el momento en que "el plan se cae".
+ *  3. Pasó ese umbral. Es el MISMO número con el que el plan se da por caído: un segundo
+ *     parámetro dejaría una franja donde la refinanciación está caída y el crédito no es
+ *     incobrable, y nadie sabría qué se hace ahí.
+ *  4. La deuda ya agotó las refinanciaciones. Si todavía se puede refinanciar, el paso
+ *     siguiente es refinanciar — darla por perdida antes se saltea un escalón entero.
+ *
+ * Y un acuerdo VIGENTE lo frena: está cumpliendo algo que él mismo pidió. Darlo por perdido
+ * mientras paga sería castigarlo por el plan viejo, que es justo el que el acuerdo reemplazó.
+ */
+export function debeDarsePorIncobrable(s: SenalesRecupero, cfg: RecuperoConfig): boolean {
+  if (!cfg.pasar_a_incobrable_auto) return false;
+  if (cfg.dias_min_mora_refinanciar <= 0) return false;
+  if (s.diasMora < cfg.dias_min_mora_refinanciar) return false;
+  if (s.acuerdoVigente) return false;
+  return topeCadenaAlcanzado(s, cfg);
 }
 
 /**
@@ -504,8 +557,8 @@ export function puedeRefinanciar(s: SenalesRecupero, cfg: RecuperoConfig): Vered
    * financiera admite, y ningún día de espera lo cambia. Mezclarla con las otras le
    * ofrecería al operador una salida que no existe.
    */
-  const encadenadas = s.refinanciacionesEncadenadas ?? 0;
-  if (cfg.max_refinanciaciones_encadenadas > 0 && encadenadas >= cfg.max_refinanciaciones_encadenadas) {
+  if (topeCadenaAlcanzado(s, cfg)) {
+    const encadenadas = s.refinanciacionesEncadenadas ?? 0;
     return {
       permitido: false,
       motivo:

@@ -2504,6 +2504,12 @@ export function ConfigForm() {
                   : <>Sin tope, la misma deuda se puede refinanciar indefinidamente y cada vez el interés impago pasa a capital y vuelve a generar interés.</>}
               </p>
               <SwitchRow
+                title="Dar por incobrable cuando la refinanciación se cae"
+                desc="Es el final de la escalera: pasado el mismo umbral con el que el plan se da por caído, una deuda que ya agotó las refinanciaciones pasa sola a incobrable. Sale de la cartera, de morosos y de la agenda, y los punitorios se frenan ese día — pero se le puede seguir cobrando y queda para trabajar con recupero. Apagado, hay que declararlo a mano desde el crédito."
+                checked={cobranza.recupero.pasar_a_incobrable_auto}
+                onChange={v => setRecupero({ pasar_a_incobrable_auto: v })}
+              />
+              <SwitchRow
                 title="No refinanciar por debajo de la tasa original"
                 desc="Bajar la tasa es una condonación encubierta: no queda registrada como quita ni respeta su tope. Sobre una deuda consolidada de $2.326.775,16 a 3 cuotas, pasar de 350% a 20% resigna $1.393.844,17. Apagalo si querés que reestructurar sea MÁS BARATO que el crédito original —el piso atado al crédito viejo hace que el precio dependa de cuándo se otorgó, que es arbitrario—: ahí la tasa mínima de arriba pasa a ser el único control. Subirla siempre está permitido, y un administrador puede autorizar la baja aunque el piso esté prendido."
                 checked={cobranza.recupero.no_bajar_tasa_refinanciando}
@@ -2711,6 +2717,7 @@ function defaultCobranza(): CobranzaConfig {
       exigir_acuerdo_para_refinanciar: false, dias_min_mora_refinanciar: 0,
       bloquear_cobro_sin_refinanciar: false,
       no_bajar_tasa_refinanciando: true, max_refinanciaciones_encadenadas: 1,
+      pasar_a_incobrable_auto: false,
       honorarios_gestion_activo: false, honorarios_gestion_min: 0, honorarios_gestion_max: 0,
       tasa_refinanciacion_min: 0, tasa_refinanciacion_max: 0, cuotas_refinanciacion: [],
     },
@@ -2911,6 +2918,14 @@ function EscaleraResumen({ r }: { r: RecuperoConfig }) {
         ? "Refinanciado una vez"
         : `Refinanciada ${r.max_refinanciaciones_encadenadas} veces`,
       que: "Esa deuda no se vuelve a refinanciar: queda el acuerdo de pago, o legales. El cobro se reabre para que no quede sin ninguna puerta.",
+      tono: "corte",
+    });
+  }
+
+  if (r.pasar_a_incobrable_auto && r.dias_min_mora_refinanciar > 0 && r.max_refinanciaciones_encadenadas > 0) {
+    pasos.push({
+      cuando: `Refinanciada y a los ${dias(r.dias_min_mora_refinanciar)}`,
+      que: "Pasa sola a INCOBRABLE: sale de la cartera, de morosos y de la agenda, y los punitorios se frenan. Se le sigue pudiendo cobrar.",
       tono: "corte",
     });
   }

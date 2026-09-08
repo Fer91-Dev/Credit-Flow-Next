@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { sincronizarAcuerdos } from "@/lib/acuerdos";
 import { Prisma } from "@prisma/client";
-import { sinDeuda, ESTADOS_VIVOS, resolverPlantillasMeta, type PlantillaMeta } from "@/lib/domain";
+import { sinDeuda, ESTADOS_VIVOS, resolverPlantillasMeta, debeDarsePorIncobrable, resolverRecupero, diasMoraActual, type PlantillaMeta } from "@/lib/domain";
 import { enviarWhatsappApi, whatsappApiDisponible, type WhatsappApiConfig } from "@/lib/whatsapp";
 import { hoyComercial, formatCreditoNumero } from "@/lib/utils";
 import { registrarAuditoria } from "@/lib/audit";
@@ -81,6 +81,10 @@ async function ejecutarCron(req: NextRequest) {
 
   // Créditos vivos que quedaron sin plan de cuotas: no se pueden cobrar y no los ve nadie.
   // Solo se detectan y se asientan en Auditoría — la reparación la decide una persona.
+  // El último escalón: la refinanciación que se cayó pasa a incobrable. Es la ÚNICA tarea de
+  // este cron que toma una decisión en vez de reconciliar un hecho, así que se configura.
+  const incobrables = await pasarRefinanciacionesCaidasAIncobrable(hoyComercial());
+
   const sinPlan = await detectarCreditosSinPlan(hoy);
 
   // Obtener todos los tenants con configuración de canales activa
@@ -192,7 +196,7 @@ async function ejecutarCron(req: NextRequest) {
     resultados.push({ tenant_id: config.tenant_id, enviados, errores });
   }
 
-  return NextResponse.json({ ok: true, promesas, acuerdos, reconciliacion, sinPlan, procesados: configs.length, resultados });
+  return NextResponse.json({ ok: true, promesas, acuerdos, reconciliacion, incobrables, sinPlan, procesados: configs.length, resultados });
 }
 
 /**
@@ -230,6 +234,107 @@ async function reconciliarCreditosSaldados(): Promise<{ cerrados: number }> {
  * Un asiento por crédito y por día: sin el dedup, un crédito roto ensucia la traza con una
  * entrada diaria hasta que alguien lo resuelva.
  */
+/**
+ * LA REFINANCIACIÓN QUE SE CAYÓ PASA A INCOBRABLE.
+ *
+ * El último escalón de la escalera y el único que no tenía quién lo ejecutara: hasta acá un
+ * crédito que fracasaba también su refinanciación quedaba `vencido` para siempre, contando en
+ * la cartera y apareciendo en la lista de morosos todos los días.
+ *
+ * 🔴 CORRE SOLO SI LA FINANCIERA LO PIDIÓ (`pasar_a_incobrable_auto`), y arranca apagado.
+ * Marcar plata como perdida sin que nadie apriete nada es la decisión más fuerte que puede
+ * tomar un automatismo. A diferencia de las otras tareas de este cron —que reconcilian estado
+ * contra hechos ya ocurridos— ésta TOMA una decisión, y por eso es la única que se configura.
+ *
+ * La regla vive en el dominio (`debeDarsePorIncobrable`) y es la misma que contesta la
+ * pantalla. Acá solo se resuelven los datos: días de mora en vivo, acuerdo vigente y
+ * profundidad de la cadena de refinanciaciones.
+ *
+ * Cada pase queda en Auditoría con su motivo. Sin eso, un crédito aparecería marcado como
+ * perdido sin que nadie pueda decir cuándo ni por qué.
+ */
+async function pasarRefinanciacionesCaidasAIncobrable(hoy: Date): Promise<{ marcados: number }> {
+  const tenants = await prisma.configuraciones.findMany({
+    select: { tenant_id: true, cobranza_config: true },
+  });
+
+  let marcados = 0;
+  for (const t of tenants) {
+    const cfg = resolverRecupero((t.cobranza_config as { recupero?: unknown } | null)?.recupero);
+    if (!cfg.pasar_a_incobrable_auto) continue;
+
+    // Solo REFINANCIACIONES vivas: un crédito original que se atrasa todavía tiene el escalón
+    // de refinanciar por delante, y darlo por perdido antes se saltea un escalón entero.
+    const candidatos = await prisma.creditos.findMany({
+      where: {
+        tenant_id: t.tenant_id,
+        estado: { in: [...ESTADOS_VIVOS] },
+        es_refinanciacion: true,
+      },
+      select: {
+        id: true, numero: true, proximo_pago: true, refinancia_a: true, saldo_pendiente: true,
+        cliente: { select: { nombre: true, apellido: true } },
+      },
+      take: 2000, // límite de seguridad, igual que las otras tareas
+    });
+    if (candidatos.length === 0) continue;
+
+    const conAcuerdo = new Set(
+      (await prisma.acuerdos_pago.findMany({
+        where: { tenant_id: t.tenant_id, estado: "vigente", credito_id: { in: candidatos.map((c) => c.id) } },
+        select: { credito_id: true },
+      })).map((a) => a.credito_id),
+    );
+
+    // Profundidad de la cadena: una consulta para todo el tenant, se camina en memoria.
+    const refis = await prisma.creditos.findMany({
+      where: { tenant_id: t.tenant_id, es_refinanciacion: true },
+      select: { id: true, refinancia_a: true },
+    });
+    const origenDe = new Map(refis.map((r) => [r.id, r.refinancia_a]));
+    const profundidad = (id: string) => {
+      let n = 0;
+      let cursor: string | null | undefined = origenDe.has(id) ? id : null;
+      while (cursor && n < 20) { n++; cursor = origenDe.get(cursor) ?? null; }
+      return n;
+    };
+
+    for (const c of candidatos) {
+      const diasMora = diasMoraActual(c.proximo_pago, hoy);
+      const debe = debeDarsePorIncobrable(
+        {
+          diasMora,
+          acuerdoVigente: conAcuerdo.has(c.id),
+          refinanciacionesEncadenadas: profundidad(c.id),
+          // No los mira esta regla; van en cero para no pagar consultas por crédito.
+          gestiones: 0, promesaPendiente: false, promesasIncumplidas: 0, acuerdosRotos: 0,
+        },
+        cfg,
+      );
+      if (!debe) continue;
+
+      const motivo = `Refinanciación caída: ${diasMora} días de atraso y sin más refinanciaciones disponibles.`;
+      await prisma.creditos.update({
+        where: { id: c.id },
+        data: { estado: "incobrable", incobrable_at: hoy, incobrable_motivo: motivo },
+      });
+      marcados++;
+
+      await registrarAuditoria({
+        tenantId: t.tenant_id,
+        entidad: "creditos",
+        entidadId: c.id,
+        accion: "actualizar",
+        descripcion:
+          `${formatCreditoNumero(c.numero)} de ${[c.cliente?.nombre, c.cliente?.apellido].filter(Boolean).join(" ")} ` +
+          `pasó a INCOBRABLE por ${diasMora} días de atraso sobre una refinanciación`,
+        meta: { estado: "incobrable", automatico: true, dias_mora: diasMora, saldo: c.saldo_pendiente, motivo },
+      });
+    }
+  }
+  return { marcados };
+}
+
 async function detectarCreditosSinPlan(hoy: Date): Promise<{ detectados: number }> {
   const rotos = await prisma.creditos.findMany({
     where: { estado: { in: [...ESTADOS_VIVOS] }, cuotas: { none: {} } },

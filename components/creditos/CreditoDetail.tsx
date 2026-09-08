@@ -194,6 +194,10 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
   const [accionPagos, setAccionPagos] = useState<"devolver" | "conservar">("devolver");
   const [anularCreditoBusy, setAnularCreditoBusy] = useState(false);
   const [eliminarBusy, setEliminarBusy] = useState(false);
+  /** Declarar incobrable / devolver al circuito. Ver `handleIncobrable`. */
+  const [incobrableOpen, setIncobrableOpen] = useState(false);
+  const [incobrableMotivo, setIncobrableMotivo] = useState("");
+  const [incobrableBusy, setIncobrableBusy] = useState(false);
 
   /**
    * Ir al plan de cuotas desde la tarjeta de arriba.
@@ -272,6 +276,53 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
   };
 
   /** Borrado definitivo. El server lo rechaza si el crédito tiene pagos. */
+  /**
+   * DAR POR INCOBRABLE, o devolver al circuito.
+   *
+   * Es el final de la escalera de recupero: el crédito sale de la cartera, de la lista de
+   * morosos y de la agenda, y los punitorios se frenan ese día. Pero NO desaparece ni se
+   * salda — la deuda existe, se ejecuta el pagaré, y si el cliente aparece a pagar algo se le
+   * cobra igual. Por eso no es "anular" ni "eliminar", que están al lado y hacen otra cosa.
+   *
+   * El motivo es obligatorio al declararlo: es una decisión contable y dentro de un año nadie
+   * se acuerda de por qué se tomó. Al revertirlo no hace falta — lo que se anota es la vuelta.
+   */
+  const handleIncobrable = async (aIncobrable: boolean) => {
+    if (aIncobrable && incobrableMotivo.trim().length < 3) return;
+    if (!aIncobrable) {
+      const ok = await confirm({
+        title: `¿Devolver ${formatCreditoNumero(credito.numero, credito.refinancia_a_numero)} al circuito?`,
+        description: "Vuelve a la cartera, a la lista de morosos y a la agenda, y los punitorios arrancan a correr otra vez desde hoy.",
+        confirmLabel: "Devolver al circuito",
+      });
+      if (!ok) return;
+    }
+    setIncobrableBusy(true);
+    try {
+      const res = await fetch(`/api/creditos/${credito.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(
+          aIncobrable
+            ? { estado: "incobrable", incobrable_motivo: incobrableMotivo.trim() }
+            // Vuelve a "vencido" y no a "activo": tiene cuotas vencidas impagas —por eso se
+            // había dado por perdido— y el ledger las sigue teniendo.
+            : { estado: "vencido" },
+        ),
+      });
+      const json = await res.json();
+      if (!json.ok) { toast.error(json.error || "No se pudo cambiar el estado"); return; }
+      toast.success(aIncobrable ? "Crédito dado por incobrable" : "Crédito devuelto al circuito");
+      setIncobrableOpen(false);
+      setIncobrableMotivo("");
+      onCerrar?.();
+    } catch {
+      toast.error("No se pudo cambiar el estado");
+    } finally {
+      setIncobrableBusy(false);
+    }
+  };
+
   const handleEliminarCredito = async () => {
     const ok = await confirm({
       title: `¿Eliminar crédito ${formatCreditoNumero(credito.numero, credito.refinancia_a_numero)}?`,
@@ -945,7 +996,30 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
             Para cambiar algo de verdad están ANULAR (revierte la caja) y REFINANCIAR
             (consolida la deuda en un crédito nuevo). Los dos cuadran los libros y se auditan.
           */}
-          {credito.estado !== "anulado" && (
+          {/*
+            DAR POR INCOBRABLE. Solo sobre un crédito vivo y solo para el admin: sacar una
+            deuda de la cartera no es una decisión de mostrador. Y si YA está incobrable, el
+            mismo lugar ofrece la vuelta — un estado del que no se puede salir sería una
+            trampa, y el cliente que aparece a pagar todo tiene que poder volver al circuito.
+          */}
+          {role === "admin" && esCreditoVivo(credito.estado) && (
+            <button
+              onClick={() => { setIncobrableMotivo(""); setIncobrableOpen(true); }}
+              className={`${BTN_ACCION} hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive`}
+            >
+              <Ban className="h-3.5 w-3.5" /> Dar por incobrable
+            </button>
+          )}
+          {role === "admin" && credito.estado === "incobrable" && (
+            <button
+              onClick={() => handleIncobrable(false)}
+              disabled={incobrableBusy}
+              className={`${BTN_ACCION} hover:border-success/40 hover:bg-success/10 hover:text-success`}
+            >
+              {incobrableBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />} Devolver al circuito
+            </button>
+          )}
+          {credito.estado !== "anulado" && credito.estado !== "incobrable" && (
             <button
               onClick={() => { setAnularCreditoMotivo(""); setAccionPagos("devolver"); setAnularCreditoOpen(true); }}
               className={`${BTN_ACCION} hover:border-warning/40 hover:bg-warning/10 hover:text-warning`}
@@ -970,6 +1044,55 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
       )}
 
       {/* Cobro del crédito — formulario de pago preseleccionado a este crédito */}
+
+      {/*
+        DAR POR INCOBRABLE — el motivo es el registro de una decisión contable.
+        Se dice lo que pasa y lo que NO pasa: la confusión natural es creer que esto salda o
+        borra la deuda, y es al revés — sigue viva y se sigue pudiendo cobrar.
+      */}
+      <Dialog open={incobrableOpen} onOpenChange={(o) => { if (!o) { setIncobrableOpen(false); setIncobrableMotivo(""); } }}>
+        <DialogContent className="w-[95vw] sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>¿Dar por incobrable {formatCreditoNumero(credito.numero, credito.refinancia_a_numero)}?</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-2.5 text-xs leading-relaxed text-muted-foreground">
+              Sale de la cartera, de la lista de morosos y de la agenda, y los punitorios se
+              frenan hoy. <strong className="text-foreground">La deuda no se borra ni se salda</strong>:
+              queda en {formatMonto(credito.saldo_pendiente)} para reclamar por otra vía, y si el
+              cliente aparece a pagar algo se le cobra igual.
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-muted-foreground">Por qué se da por incobrable</label>
+              <textarea
+                value={incobrableMotivo}
+                onChange={(e) => setIncobrableMotivo(e.target.value)}
+                rows={3}
+                placeholder="Ej: se ejecutó el pagaré, expediente 1234/26"
+                className="w-full rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/40 outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/20"
+              />
+              <p className="text-[11px] text-muted-foreground">
+                Queda con la fecha en la auditoría y en la ficha del crédito.
+              </p>
+            </div>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => { setIncobrableOpen(false); setIncobrableMotivo(""); }}
+                className="rounded-lg px-3 py-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => handleIncobrable(true)}
+                disabled={incobrableBusy || incobrableMotivo.trim().length < 3}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-destructive px-4 py-2 text-sm font-medium text-destructive-foreground transition-opacity hover:opacity-90 disabled:opacity-40"
+              >
+                {incobrableBusy && <Loader2 className="h-3.5 w-3.5 animate-spin" />} Dar por incobrable
+              </button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Anular pago — motivo + contra-asiento en caja (control de tesorería, solo admin) */}
       <Dialog open={!!anularPago} onOpenChange={(o) => { if (!o) { setAnularPago(null); setAnularMotivo(""); } }}>
