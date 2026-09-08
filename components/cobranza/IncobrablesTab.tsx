@@ -51,6 +51,41 @@ import { formatMonto, formatFecha, formatDias, nombreCompleto, hoyComercial } fr
  * Y los que PAGARON ALGO después del castigo van marcados: demostraron voluntad de pago y son
  * los mejores candidatos de toda la lista.
  */
+/**
+ * 🔴 CUÁNTA PLATA SALIÓ DE LA CAJA Y CUÁNTA VOLVIÓ, mirando TODA LA CADENA.
+ *
+ * El primer intento usaba el `monto_original` del incobrable, y estaba mal justo en el número
+ * que esta pantalla existe para mostrar: en una refinanciación ese campo NO es plata prestada
+ * — es la deuda vieja consolidada, capital + interés capitalizado + punitorios. Sobre el caso
+ * de Ricardo decía "prestado $3.150.000,00" cuando lo que salió de la caja fueron $1.200.000.
+ * O sea: el error que la pantalla denuncia (negociar contra un número inflado por su propio
+ * interés), cometido por la pantalla misma.
+ *
+ * Lo prestado de verdad es el `monto_original` del crédito RAÍZ de la cadena, y lo recuperado
+ * es todo lo que se cobró en cualquier eslabón: las cuotas que pagó del original antes de
+ * refinanciar cuentan igual que las que pagó después.
+ *
+ * Se camina en memoria sobre la lista que la pantalla ya tiene —los créditos refinanciados
+ * siguen ahí— así que no cuesta ninguna consulta. Corte a 20 saltos como red contra un ciclo.
+ */
+function plataDeLaCadena(
+  credito: { id: string; monto_original: number; cobrado?: number; refinancia_a?: string | null },
+  porId: Map<string, { id: string; monto_original: number; cobrado?: number; refinancia_a?: string | null }>,
+): { prestado: number; cobrado: number } {
+  let cobrado = credito.cobrado ?? 0;
+  let actual = credito;
+  let saltos = 0;
+  while (actual.refinancia_a && saltos < 20) {
+    const previo = porId.get(actual.refinancia_a);
+    if (!previo) break;
+    cobrado += previo.cobrado ?? 0;
+    actual = previo;
+    saltos++;
+  }
+  // `actual` quedó en la raíz: el único eslabón cuyo monto es plata que de verdad se entregó.
+  return { prestado: actual.monto_original, cobrado: Math.round(cobrado * 100) / 100 };
+}
+
 export function IncobrablesTab() {
   const router = useRouter();
   const toast = useToast();
@@ -58,6 +93,7 @@ export function IncobrablesTab() {
   const [q, setQ] = useState("");
 
   const hoy = hoyComercial();
+  const porId = useMemo(() => new Map(creditos.map((c) => [c.id, c])), [creditos]);
 
   const filas = useMemo(() => {
     const texto = q.trim().toLowerCase();
@@ -71,7 +107,8 @@ export function IncobrablesTab() {
       .map((c) => {
         const desde = c.incobrable_at ? new Date(c.incobrable_at) : null;
         const diasCastigado = desde ? Math.max(0, Math.floor((hoy.getTime() - desde.getTime()) / 86_400_000)) : 0;
-        return { c, diasCastigado, riesgo: c.capital_en_riesgo ?? c.monto_original, cobrado: c.cobrado ?? 0 };
+        const { prestado, cobrado } = plataDeLaCadena(c, porId);
+        return { c, diasCastigado, prestado, cobrado, riesgo: Math.round(Math.max(0, prestado - cobrado) * 100) / 100 };
       })
       /**
        * Primero lo que más plata puede devolver y hace menos que se castigó. La antigüedad
@@ -82,7 +119,7 @@ export function IncobrablesTab() {
   }, [creditos, q, hoy]);
 
   const kpis = useMemo(() => {
-    const prestado = filas.reduce((s, f) => s + f.c.monto_original, 0);
+    const prestado = filas.reduce((s, f) => s + f.prestado, 0);
     const recuperado = filas.reduce((s, f) => s + f.cobrado, 0);
     return {
       casos: filas.length,
@@ -107,13 +144,13 @@ export function IncobrablesTab() {
      */
     descargarCSV(`incobrables_${new Date().toISOString().slice(0, 10)}.csv`, [
       ["DNI", "Nombre", "Celular", "Credito", "Deuda reclamada", "Capital prestado", "Ya recuperado", "Capital en riesgo", "Castigado el", "Dias castigado", "Motivo"],
-      ...filas.map(({ c, diasCastigado, riesgo, cobrado }) => [
+      ...filas.map(({ c, diasCastigado, riesgo, cobrado, prestado }) => [
         c.cliente?.documento ?? "",
         nombreCompleto(c.cliente),
         normalizarTelefonoAR(c.cliente?.telefono) ?? "",
         c.numero ? `REF-${String(c.refinancia_a_numero ?? c.numero).padStart(6, "0")}` : "",
         num(c.vencido ?? c.saldo_pendiente),
-        num(c.monto_original),
+        num(prestado),
         num(cobrado),
         num(riesgo),
         c.incobrable_at ? formatFecha(c.incobrable_at) : "",
@@ -246,9 +283,9 @@ export function IncobrablesTab() {
              * deuda de la columna anterior no lo dice, está inflada por su propio interés.
              */
             header: "Prestado / recuperado", align: "right", mono: true,
-            cell: ({ c, cobrado }) => (
+            cell: ({ cobrado, prestado }) => (
               <div className="leading-tight">
-                <span className="text-sm text-foreground">{formatMonto(c.monto_original)}</span>
+                <span className="text-sm text-foreground">{formatMonto(prestado)}</span>
                 <span className={`block text-[10px] ${cobrado > 0 ? "text-success" : "text-muted-foreground"}`}>
                   volvió {formatMonto(cobrado)}
                 </span>
@@ -269,7 +306,7 @@ export function IncobrablesTab() {
             ),
           },
         ]}
-        renderMobileCard={({ c, cobrado, riesgo, diasCastigado }) => (
+        renderMobileCard={({ c, cobrado, riesgo, diasCastigado, prestado }) => (
           <div className="space-y-2 rounded-xl border border-border bg-card p-4">
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0">
@@ -282,7 +319,7 @@ export function IncobrablesTab() {
               <div className="leading-tight">
                 <span className="font-mono text-xl font-bold text-destructive">{formatMonto(riesgo)}</span>
                 <span className="block text-[10px] text-muted-foreground">
-                  en riesgo · prestado {formatMonto(c.monto_original)} · volvió {formatMonto(cobrado)}
+                  en riesgo · prestado {formatMonto(prestado)} · volvió {formatMonto(cobrado)}
                 </span>
               </div>
               <span className="text-[11px] text-muted-foreground">hace {formatDias(diasCastigado)}</span>
@@ -297,7 +334,9 @@ export function IncobrablesTab() {
       */}
       <p className="text-[11px] leading-relaxed text-muted-foreground/80">
         Lo que se reclama es la deuda nominal: incluye el interés que se capitalizó al
-        refinanciar y los punitorios acumulados hasta el día del castigo. Para decidir cuánto
+        refinanciar y los punitorios acumulados hasta el día del castigo. "Prestado" es la
+        plata que de verdad salió de la caja —el crédito original, no la deuda consolidada— y
+        "volvió" es todo lo cobrado en cualquier eslabón de la cadena. Para decidir cuánto
         aceptar, el número es el <strong className="text-foreground">capital en riesgo</strong>:
         arriba de eso la financiera no perdió plata prestada, y cualquier peso por debajo sigue
         siendo recupero sobre algo que ya estaba dado por perdido.
