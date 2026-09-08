@@ -15,7 +15,7 @@ import { ApiError } from "@/lib/auth";
 import { registrarAuditoria } from "@/lib/audit";
 import { getAuditActor } from "@/lib/audit-context";
 import { getConfiguracion, getCobranzaConfig } from "@/lib/config";
-import { calcularDeudaVencida, planDeAcuerdo, evaluarAcuerdo, quitaMaxima, round2, noNegativo, tasaPeriodicaSegunConvencion, type CuotaParaImputar, type DeudaVencida, type AcuerdosConfig, moraDelCredito, moraDesdeCronograma } from "@/lib/domain";
+import { calcularDeudaVencida, planDeAcuerdo, evaluarAcuerdo, quitaMaxima, round2, noNegativo, tasaPeriodicaSegunConvencion, type CuotaParaImputar, type DeudaVencida, type AcuerdosConfig, moraDelCredito, moraDesdeCronograma, puedeAcordarPorEstado } from "@/lib/domain";
 import { hoyComercial, formatCreditoNumero } from "@/lib/utils";
 import { numerosRefinanciados } from "@/lib/creditos-numero";
 import { formatComprobante } from "@/lib/comprobantes";
@@ -289,9 +289,13 @@ export async function crearAcuerdo(input: CrearAcuerdoInput) {
   const actor = getAuditActor();
   const { credito, deuda } = await deudaVencidaDeCredito(tenantId, creditoId);
 
-  if (credito.estado !== "activo" && credito.estado !== "vencido") {
+  // La MISMA regla que contesta el preview (`puedeAcordarPorEstado`), no una copia: si acá
+  // dijera algo distinto, la pantalla dejaría llegar hasta cobrar la entrega y el guardado
+  // rechazaría después.
+  const porEstado = puedeAcordarPorEstado(credito.estado);
+  if (!porEstado.permitido) {
     throw new ApiError(
-      `No se puede acordar sobre un crédito ${credito.estado}. El acuerdo es para deuda viva en mora.`,
+      [porEstado.motivo, porEstado.sugerencia].filter(Boolean).join(" "),
       "CREDITO_NO_ACORDABLE",
       409,
     );

@@ -25,7 +25,7 @@ interface Preview {
    * ¿La escalera de recupero deja armarlo? Se contesta en el PREVIEW y no al guardar: desde
    * que el acuerdo cobra una entrega, enterarse al guardar significa que la plata ya entró.
    */
-  escalera: { permitido: boolean; motivo: string | null; sugerencia: string | null; puede_autorizar: boolean };
+  escalera: { permitido: boolean; motivo: string | null; sugerencia: string | null; puede_autorizar: boolean; autorizable: boolean };
   credito: { id: string; numero: number | null; estado: string; cliente: string | null };
   deuda: {
     capital: number; interes: number; cargos: number; mora: number; total: number;
@@ -393,7 +393,10 @@ export function NuevoAcuerdoView({ creditoId }: { creditoId: string | null }) {
                     </span>
                   </label>
                 )}
-                {!escalera.puede_autorizar && (
+                {/* Solo si la regla ADMITE excepción. Un crédito refinanciado no la admite:
+                    decirle al vendedor que pida un permiso que nadie le puede dar lo manda a
+                    dar una vuelta para volver al mismo lugar. */}
+                {!escalera.puede_autorizar && escalera.autorizable && (
                   <p className="mt-1.5 text-xs text-muted-foreground">
                     Un administrador puede autorizarlo.
                   </p>

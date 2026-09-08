@@ -4,7 +4,7 @@ import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { deudaVencidaDeCredito, resolverTasaAcuerdo } from "@/lib/acuerdos";
 import { getCobranzaConfig } from "@/lib/config";
-import { quitaMaxima, diasMoraActual } from "@/lib/domain";
+import { quitaMaxima, diasMoraActual, puedeAcordarPorEstado } from "@/lib/domain";
 import { hoyComercial } from "@/lib/utils";
 import { puedeAcordar } from "@/lib/domain/recupero";
 import { senalesRecupero } from "@/lib/recupero-server";
@@ -51,7 +51,21 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
    * medio, y el admin puede autorizar la excepción ANTES de cobrar en vez de descubrirla
    * después. El POST sigue validando igual: esto informa, no reemplaza la barrera.
    */
-  const veredicto = puedeAcordar(await senalesRecupero(tenantId, id), cobranza.recupero);
+  /**
+   * 🔴 Y EL ESTADO DEL CRÉDITO, QUE FALTABA EN ESTA MISMA LECCIÓN.
+   *
+   * La escalera se contestaba acá; el estado no. Así, la pantalla dejaba armar un acuerdo
+   * sobre un crédito REFINANCIADO —cuya deuda ya se mudó al crédito nuevo— hasta el final,
+   * cobrar la entrega, y recién ahí `crearAcuerdo` devolvía el 409. La plata ya había
+   * entrado, que es exactamente el caso que este comentario documenta con Estela Moreno.
+   *
+   * El estado manda sobre la escalera: si el crédito no admite acuerdo, decir "te falta una
+   * gestión previa" sería mandar al operador a resolver algo que no destraba nada.
+   */
+  const porEstado = puedeAcordarPorEstado(credito.estado);
+  const veredicto = porEstado.permitido
+    ? puedeAcordar(await senalesRecupero(tenantId, id), cobranza.recupero)
+    : porEstado;
 
   const acuerdoVigente = await prisma.acuerdos_pago.findFirst({
     where: { ...withTenant(tenantId), credito_id: id, estado: "vigente" },
@@ -120,7 +134,20 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
       permitido: veredicto.permitido,
       motivo: veredicto.permitido ? null : veredicto.motivo ?? null,
       sugerencia: veredicto.permitido ? null : veredicto.sugerencia ?? null,
-      puede_autorizar: role === "admin",
+      /**
+       * ¿La regla que bloquea ADMITE que alguien la saltee?
+       *
+       * Las de la ESCALERA sí: son políticas de proceso que la financiera se puso y su dueño
+       * puede levantar. La del ESTADO no: un crédito refinanciado no tiene deuda que acordar,
+       * y autorizarlo igual pactaría cobrar dos veces la misma plata. No hay decisión que
+       * tomar ahí.
+       *
+       * Viaja aparte de `puede_autorizar` porque la pantalla dice cosas distintas: sin este
+       * dato, a un vendedor le mostraba "un administrador puede autorizarlo" sobre un crédito
+       * refinanciado — lo mandaba a pedir un permiso que nadie le puede dar.
+       */
+      autorizable: porEstado.permitido,
+      puede_autorizar: role === "admin" && porEstado.permitido,
     },
     credito: {
       id: credito.id,

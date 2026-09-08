@@ -387,6 +387,39 @@ export function topeAcuerdosAgotado(
 }
 
 /**
+ * ¿ESTE CRÉDITO ADMITE UN ACUERDO, por su estado?
+ *
+ * ── POR QUÉ ES UNA FUNCIÓN Y NO UN `if` EN EL POST ──
+ *
+ * La regla existía —`crearAcuerdo` rechaza cualquier estado que no sea activo o vencido—
+ * pero solo AL GUARDAR. La pantalla de armar un acuerdo dejaba elegir un crédito
+ * `refinanciado`, calcular el plan, pactarlo con el cliente y **cobrar la entrega**; recién
+ * ahí llegaba el 409. La plata ya había entrado.
+ *
+ * Es exactamente el error que ese archivo documenta unas líneas más arriba con la escalera
+ * de recupero y los $32.000 de Estela Moreno, arreglado para la escalera y no para el
+ * estado. Ahora la misma función la usan el preview —que lo muestra antes de que haya un
+ * peso de por medio— y el POST, que sigue siendo la barrera.
+ *
+ * Un crédito refinanciado es el caso que más importa: su deuda ya se mudó al crédito nuevo,
+ * así que un acuerdo sobre él pactaría cobrar dos veces la misma plata.
+ */
+export function puedeAcordarPorEstado(estado: string): VeredictoEscalera {
+  if (estado === "activo" || estado === "vencido") return PERMITIDO;
+  const motivo =
+    estado === "refinanciado"
+      ? "Este crédito ya se refinanció: su deuda está en el crédito nuevo y acá no queda nada que acordar."
+      : estado === "anulado"
+        ? "Este crédito está anulado: no hay deuda que acordar."
+        : "Este crédito ya está saldado: no hay deuda que acordar.";
+  const sugerencia =
+    estado === "refinanciado"
+      ? "Si hay que reestructurar de nuevo, el acuerdo va sobre el crédito nuevo."
+      : undefined;
+  return { permitido: false, motivo, ...(sugerencia ? { sugerencia } : {}) };
+}
+
+/**
  * ¿Se puede pactar ESA tasa al refinanciar? Separada de `puedeRefinanciar` porque se evalúa
  * más tarde: la tasa recién se conoce cuando el operador la escribe.
  */
