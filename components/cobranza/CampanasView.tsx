@@ -285,6 +285,9 @@ function CampanaDetalle({ id, onBack }: { id: string; onBack: () => void }) {
     const texto = construirMensajeCampana(template, {
       nombre: nombreCompleto(o.credito.cliente), monto: o.oferta_monto,
       saldo: o.saldo, dias: o.dias_mora, descuento: o.oferta_descuento,
+      // El mismo plazo que sale por el envío automático: abrir el WhatsApp a mano desde acá
+      // no puede mandar un texto distinto del que recibieron los demás.
+      promoVence: campana?.promo_vence ? formatFecha(campana.promo_vence) : null,
     });
     window.open(linkWhatsapp(o.credito.cliente.telefono, texto), "_blank");
     setAbiertos((p) => new Set(p).add(o.id));

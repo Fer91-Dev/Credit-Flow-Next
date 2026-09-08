@@ -2,7 +2,7 @@ import { requireRole, scopeCreditosVendedor } from "@/lib/auth";
 import { successResponse, errorResponse, withErrorHandler, assertSameOrigin } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
-import { cuotaMensualFrancesa, tasaPeriodicaSegunConvencion, convencionDelCredito, interesMora, normalizarFrecuencia, calculateRecoveryOffer, diasMoraActual, type FrecuenciaDef, type ConfiguracionFinanciera, moraDelCredito, moraDesdeCronograma, esCreditoVivo, calcularDeudaVencida, round2, deudaEnRevision, contactoBloqueado, resolverPlantillasMeta, type CuotaParaImputar } from "@/lib/domain";
+import { cuotaMensualFrancesa, tasaPeriodicaSegunConvencion, convencionDelCredito, interesMora, normalizarFrecuencia, calculateRecoveryOffer, diasMoraActual, type FrecuenciaDef, type ConfiguracionFinanciera, moraDelCredito, moraDesdeCronograma, esCreditoVivo, calcularDeudaVencida, round2, deudaEnRevision, contactoBloqueado, resolverPlantillasMeta, promoVigenteAl, type CuotaParaImputar } from "@/lib/domain";
 import { getConfiguracion, getCobranzaConfig } from "@/lib/config";
 import { registrarAuditoria } from "@/lib/audit";
 import { hoyComercial, formatCreditoNumero } from "@/lib/utils";
@@ -190,6 +190,39 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
       "QUITA_EXCEDIDA",
       403,
     );
+  }
+
+  /**
+   * 🔴 UN DESCUENTO SIN FECHA DE CORTE ES UNA CONDONACIÓN PERMANENTE.
+   *
+   * `promo_vence` era opcional. Sin fecha, `promoVigenteAl` da vigente para siempre: la quita
+   * se le sigue aplicando a esos créditos CADA VEZ que paguen, hasta que alguien se acuerde
+   * de finalizar la campaña a mano. Un incentivo de recupero es lo contrario de eso — vale
+   * porque vence ("pagá antes del 20 y te perdono los punitorios"); sin plazo no apura a
+   * nadie y regala punitorios por olvido.
+   *
+   * Se exige solo cuando hay quita: una campaña sin descuento no tiene nada que vencer.
+   *
+   * Las campañas YA creadas sin fecha se respetan (ver `promoVigenteAl`): quitarles el
+   * descuento retroactivamente sería incumplir algo que ya se le prometió al cliente por
+   * escrito. Esto corta las nuevas.
+   */
+  const promoVence = body.promo_vence ? new Date(body.promo_vence) : null;
+  if (promoValor > 0) {
+    if (!promoVence || Number.isNaN(promoVence.getTime())) {
+      return errorResponse(
+        "Un descuento tiene que tener fecha de vencimiento: hasta cuándo puede acogerse el cliente.",
+        "INVALID_INPUT",
+        400,
+      );
+    }
+    if (!promoVigenteAl(promoVence, hoyComercial())) {
+      return errorResponse(
+        "La fecha de la promoción ya pasó: el descuento nacería vencido.",
+        "INVALID_INPUT",
+        400,
+      );
+    }
   }
 
   // Créditos del tenant entre los solicitados (multi-tenant: nunca por id suelto).
@@ -408,7 +441,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
         tipo: tipoCampana,
         promo_tipo: promoEfectiva,
         promo_valor: promoValor,
-        promo_vence: body.promo_vence ? new Date(body.promo_vence) : null,
+        promo_vence: promoVence,
         mensaje_template: body.mensaje_template?.trim() || null,
         /**
          * Con qué plantilla aprobada salió, o null si fue texto libre. Se valida contra las

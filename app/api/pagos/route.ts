@@ -6,7 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { conNumeroDeOrigen, numerosRefinanciados } from "@/lib/creditos-numero";
 import { sincronizarAcuerdos } from "@/lib/acuerdos";
 import { nombreCompleto, formatCreditoNumero, hoyComercial, ventanaDias, ventanaAR } from "@/lib/utils";
-import { imputarPagoEnCuotas, diasAtraso, round2, etiquetaCaja, cuentaDeMetodo, esCuentaValida, type CuotaParaImputar, moraDelCredito, moraDesdeCronograma, esCreditoVivo, topeMoraPorFallecimiento } from "@/lib/domain";
+import { imputarPagoEnCuotas, diasAtraso, round2, etiquetaCaja, cuentaDeMetodo, esCuentaValida, type CuotaParaImputar, moraDelCredito, moraDesdeCronograma, esCreditoVivo, topeMoraPorFallecimiento, promoVigenteAl } from "@/lib/domain";
 import { lockCreditoTx, assertCuotasSinCambios, TX_PLATA } from "@/lib/locks";
 import { lockCuentaTx } from "@/lib/caja-fondos";
 import { siguienteNumeroComprobante } from "@/lib/comprobantes";
@@ -347,7 +347,10 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
   });
   const descuentoMoraPct = objetivosActivos.reduce((max, o) => {
     const c = o.campana;
-    const vigente = c.promo_tipo === "quita_interes" && (!c.promo_vence || c.promo_vence >= fechaPago);
+    // 🔴 Por DÍA, no por instante: `promo_vence` es un `@db.Date` (medianoche UTC) y
+    // `fechaPago` puede traer hora, así que el `>=` de antes anulaba el descuento durante
+    // todo el último día de la oferta — el día que la gente efectivamente usa.
+    const vigente = c.promo_tipo === "quita_interes" && promoVigenteAl(c.promo_vence, fechaPago);
     return vigente ? Math.max(max, c.promo_valor) : max;
   }, 0);
 

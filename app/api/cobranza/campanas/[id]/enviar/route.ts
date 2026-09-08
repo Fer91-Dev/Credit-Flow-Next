@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { getComunicacionConfig, getCobranzaConfig } from "@/lib/config";
 import { construirMensajeCampana, linkWhatsapp, contactoBloqueado, esCreditoVivo, resolverPlantillasMeta } from "@/lib/domain";
 import { enviarWhatsappApi, whatsappApiDisponible, type WhatsappApiConfig } from "@/lib/whatsapp";
-import { nombreCompleto } from "@/lib/utils";
+import { nombreCompleto, formatFecha } from "@/lib/utils";
 import { enviarEmailTenant, motivoEmailNoDisponible, type EmailTenantConfig } from "@/lib/mailer-tenant";
 import { getFinanciera } from "@/lib/financiera";
 import { registrarAuditoria } from "@/lib/audit";
@@ -185,6 +185,9 @@ export const POST = withErrorHandler(async (
       saldo:    objetivo.saldo,
       dias:     objetivo.dias_mora,
       descuento: objetivo.oferta_descuento,
+      // Hasta cuándo vale el descuento. Es el dato que convierte la oferta en oferta: sin
+      // plazo el cliente la lee sin apuro y paga la semana que viene, ya sin la quita.
+      promoVence: campana.promo_vence ? formatFecha(campana.promo_vence) : null,
     });
 
     // ── EMAIL ─────────────────────────────────────────────────────────────────

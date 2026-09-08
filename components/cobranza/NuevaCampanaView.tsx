@@ -18,6 +18,7 @@ import {
   CATEGORIA_META_LABEL,
   contactoBloqueado,
   TEMPLATE_REFINANCIACION_DEFAULT,
+  TEMPLATE_MORA_SIN_PROMO,
   type CanalCampana,
 } from "@/lib/domain";
 import { AvisoMeta } from "@/components/clientes/ContactarDialog";
@@ -25,7 +26,7 @@ import { Field, Input, Select, Textarea } from "@/components/ui/field";
 import { SystemControls } from "@/components/ui/SystemControls";
 import { Emoji } from "@/components/ui/Emoji";
 import { Skeleton } from "@/components/ui/skeleton";
-import { nombreCompleto, formatMonto, formatDias , formatFecha } from "@/lib/utils";
+import { nombreCompleto, formatMonto, formatDias , formatFecha, hoyComercial } from "@/lib/utils";
 import { useConfirm } from "@/components/ui/confirm";
 import { useToast } from "@/components/ui/toast";
 import { type Role } from "@/lib/auth/roles";
@@ -203,13 +204,36 @@ function CampanaWorkspace({ role, creditos: todosCreditos, bloqueados, onCancela
       .map((p) => ({ ...p, ...plantillaMetaParaCampana(p, marca) }));
   }, [config, financiera]);
 
+  /**
+   * Los cuatro textos de fábrica. Sirve para saber si el operador escribió el suyo: si el
+   * mensaje sigue siendo uno de estos, cambiar de audiencia o apagar el descuento lo
+   * reemplaza; si lo redactó a mano, no se le toca.
+   */
+  const TEMPLATES_DEFAULT = [
+    TEMPLATE_DEFAULT, TEMPLATE_MORA_SIN_PROMO, TEMPLATE_VENCIMIENTO_DEFAULT, TEMPLATE_REFINANCIACION_DEFAULT,
+  ];
+
+  /** Hoy en el día comercial argentino (YYYY-MM-DD), para el default y el mínimo del calendario. */
+  const HOY_ISO = hoyComercial().toISOString().slice(0, 10);
+
   const [form, setForm] = useState({
     nombre: "",
     descripcion: "",
     canal: "whatsapp" as CanalCampana,
     promoActiva: true,
     promo_valor: "50",
-    promo_vence: "",
+    /**
+     * 🔴 ARRANCA HOY, Y NO SE PUEDE DEJAR VACÍO.
+     *
+     * Era opcional y venía en blanco. Sin fecha, el descuento no vence nunca: se le vuelve a
+     * aplicar a esos créditos cada vez que paguen, hasta que alguien finalice la campaña a
+     * mano. Un incentivo de recupero vale porque vence — "pagá hoy y te perdono los
+     * punitorios" —; sin plazo no apura a nadie y se regalan punitorios por olvido.
+     *
+     * El default es el MISMO DÍA, que es el caso normal de una campaña de cobranza; correrlo
+     * a una semana es un clic en el calendario.
+     */
+    promo_vence: HOY_ISO,
     // El texto por defecto depende de a quién se le habla: al que está al día no se le
     // dice que regularice su situación.
     mensaje_template: leerTipoCampana() === "vencimiento" ? TEMPLATE_VENCIMIENTO_DEFAULT : TEMPLATE_DEFAULT,
@@ -270,6 +294,9 @@ function CampanaWorkspace({ role, creditos: todosCreditos, bloqueados, onCancela
    */
   const topeConocido = role === "admin" || !!config?.cobranzaConfig;
   const excedeTope = topeConocido && form.promoActiva && tipoCampana !== "refinanciacion" && descuentoPct > topeDescuento;
+  /** Hay descuento ofrecido y no hay hasta cuándo, o la fecha ya pasó. */
+  const promoSinFecha = descuentoPct > 0 && !form.promo_vence;
+  const promoVencida = descuentoPct > 0 && !!form.promo_vence && form.promo_vence < HOY_ISO;
 
   /*
     QUÉ RECLAMA esta campaña. Viene de la pestaña que la armó (Morosos o Vencimientos).
@@ -326,12 +353,11 @@ function CampanaWorkspace({ role, creditos: todosCreditos, bloqueados, onCancela
   const cambiarTipo = (t: TipoCampana) => {
     setTipoCampana(t);
     setForm((p) => {
-      const esDefault = [TEMPLATE_DEFAULT, TEMPLATE_VENCIMIENTO_DEFAULT, TEMPLATE_REFINANCIACION_DEFAULT]
-        .includes(p.mensaje_template.trim());
+      const esDefault = TEMPLATES_DEFAULT.includes(p.mensaje_template.trim());
       if (!esDefault) return p;
       const nuevo = t === "refinanciacion" ? TEMPLATE_REFINANCIACION_DEFAULT
         : t === "vencimiento" ? TEMPLATE_VENCIMIENTO_DEFAULT
-        : TEMPLATE_DEFAULT;
+        : p.promoActiva ? TEMPLATE_DEFAULT : TEMPLATE_MORA_SIN_PROMO;
       return { ...p, mensaje_template: nuevo };
     });
   };
@@ -429,6 +455,8 @@ function CampanaWorkspace({ role, creditos: todosCreditos, bloqueados, onCancela
       dias: o.credito.dias_mora,
       descuento: o.oferta.ahorro,
       vence: o.credito.proximo_pago ? formatFecha(o.credito.proximo_pago) : null,
+      // La vista previa tiene que mostrar EXACTAMENTE lo que va a salir, plazo incluido.
+      promoVence: descuentoPct > 0 && form.promo_vence ? formatFecha(form.promo_vence) : null,
     });
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -439,6 +467,14 @@ function CampanaWorkspace({ role, creditos: todosCreditos, bloqueados, onCancela
     }
     // Redundante con el `disabled` del botón y con el 403 del servidor, a propósito: es el
     // único de los tres que explica el motivo si alguien llega igual (Enter en un campo).
+    if (promoSinFecha || promoVencida) {
+      setError(
+        promoSinFecha
+          ? "El descuento necesita una fecha de vencimiento: hasta cuándo puede acogerse el cliente."
+          : "La fecha del descuento ya pasó. Poné hoy o una fecha posterior.",
+      );
+      return;
+    }
     if (excedeTope) {
       setError(
         topeDescuento === 0
@@ -778,7 +814,24 @@ function CampanaWorkspace({ role, creditos: todosCreditos, bloqueados, onCancela
                   <input
                     type="checkbox"
                     checked={form.promoActiva}
-                    onChange={(e) => setForm((p) => ({ ...p, promoActiva: e.target.checked }))}
+                    onChange={(e) => {
+                      const activa = e.target.checked;
+                      setForm((p) => {
+                        /**
+                         * Prender o apagar el descuento cambia el texto por defecto: el de la
+                         * promo nombra el plazo (`[Promo_vence]`) y sin promo esa variable
+                         * queda vacía, dejando "hasta el " en el medio de la frase. Igual que
+                         * al cambiar de audiencia, un texto escrito a mano no se pisa.
+                         */
+                        const esDefault = TEMPLATES_DEFAULT.includes(p.mensaje_template.trim());
+                        if (!esDefault || tipoCampana !== "mora") return { ...p, promoActiva: activa };
+                        return {
+                          ...p,
+                          promoActiva: activa,
+                          mensaje_template: activa ? TEMPLATE_DEFAULT : TEMPLATE_MORA_SIN_PROMO,
+                        };
+                      });
+                    }}
                     className="h-4 w-4 rounded border-border accent-success"
                   />
                   <span className="flex items-center gap-1.5 text-sm font-medium text-foreground">
@@ -796,8 +849,17 @@ function CampanaWorkspace({ role, creditos: todosCreditos, bloqueados, onCancela
                           className={excedeTope ? "border-destructive focus:ring-destructive/20" : undefined}
                         />
                       </Field>
-                      <Field label="Válida hasta" hint="Plazo para acogerse">
-                        <Input type="date" value={form.promo_vence} onChange={set("promo_vence")} />
+                      {/* El calendario no deja elegir ayer: un descuento que nace vencido no
+                          descuenta nada y el cliente se entera al llegar a pagar. */}
+                      <Field label="Válida hasta" hint="Último día para acogerse">
+                        <Input
+                          type="date"
+                          value={form.promo_vence}
+                          min={HOY_ISO}
+                          onChange={set("promo_vence")}
+                          aria-invalid={promoSinFecha || promoVencida}
+                          className={promoSinFecha || promoVencida ? "border-destructive focus:ring-destructive/20" : undefined}
+                        />
                       </Field>
                     </div>
                     {/* El descuento sale SOLO de los punitorios: el capital y el interés pactado no
@@ -808,6 +870,12 @@ function CampanaWorkspace({ role, creditos: todosCreditos, bloqueados, onCancela
                         {topeDescuento === 0
                           ? "No podés ofrecer descuento en una campaña. Pedile a un administrador que la arme."
                           : `Te pasaste del tope: como máximo podés ofrecer ${topeDescuento}% de los punitorios.`}
+                      </p>
+                    ) : promoSinFecha || promoVencida ? (
+                      <p className="text-[11px] font-medium text-destructive">
+                        {promoSinFecha
+                          ? "Poné hasta cuándo vale el descuento. Sin fecha se les sigue aplicando para siempre, cada vez que paguen."
+                          : "Esa fecha ya pasó: el descuento nacería vencido y al cliente se le cobrarían los punitorios enteros."}
                       </p>
                     ) : (
                       <p className="text-[11px] text-muted-foreground">
@@ -1056,7 +1124,7 @@ function CampanaWorkspace({ role, creditos: todosCreditos, bloqueados, onCancela
           </button>
           <button
             type="submit"
-            disabled={loading || excedeTope}
+            disabled={loading || excedeTope || promoSinFecha || promoVencida}
             className="inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-5 py-2 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
           >
             {loading && <Loader2 className="h-4 w-4 animate-spin" />}

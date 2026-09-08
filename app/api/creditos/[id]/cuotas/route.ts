@@ -3,7 +3,7 @@ import { scopeCreditoParaCobrar } from "@/lib/cobranza-scope";
 import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
-import { frecuenciaLabel, normalizarFrecuencia, diasAtraso, round2, interesMora, moraDelCredito, moraDesdeCronograma, topeMoraDeCuota, fechaTopeMora, topeMoraPorFallecimiento, type FrecuenciaDef } from "@/lib/domain";
+import { frecuenciaLabel, normalizarFrecuencia, diasAtraso, round2, interesMora, moraDelCredito, moraDesdeCronograma, topeMoraDeCuota, fechaTopeMora, topeMoraPorFallecimiento, promoVigenteAl, type FrecuenciaDef } from "@/lib/domain";
 import { getConfiguracion, getCobranzaConfig } from "@/lib/config";
 import { recibosPorCuotaDeAcuerdo } from "@/lib/acuerdos";
 import { veredictoCobro } from "@/lib/recupero-server";
@@ -129,7 +129,7 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
   });
   const promo = objetivosCampana.reduce<{ pct: number; nombre: string; vence: Date | null } | null>((mejor, o) => {
     const c = o.campana;
-    const vigente = c.promo_tipo === "quita_interes" && c.promo_valor > 0 && (!c.promo_vence || c.promo_vence >= hoy);
+    const vigente = c.promo_tipo === "quita_interes" && c.promo_valor > 0 && promoVigenteAl(c.promo_vence, hoy);
     if (!vigente) return mejor;
     return !mejor || c.promo_valor > mejor.pct
       ? { pct: c.promo_valor, nombre: c.nombre, vence: c.promo_vence }

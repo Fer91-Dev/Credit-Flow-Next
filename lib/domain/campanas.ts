@@ -14,10 +14,30 @@ export type CanalCampana = "whatsapp" | "email" | "sms";
 export type EstadoCampana = "borrador" | "activa" | "finalizada";
 export type PromoTipo = "ninguna" | "quita_interes";
 
-/** Plantilla por defecto del RECLAMO DE MORA (placeholders entre corchetes). */
+/**
+ * Plantilla por defecto del RECLAMO DE MORA (placeholders entre corchetes).
+ *
+ * 🔴 DICE HASTA CUÁNDO. El descuento ahora tiene fecha obligatoria, y una oferta que vence
+ * sin decir cuándo no es una oferta: el cliente la lee sin apuro, paga la semana que viene y
+ * se encuentra con los punitorios enteros en la caja. "beneficio especial" tampoco decía qué
+ * beneficio ni cuánto — el importe con la quita ya adentro y la fecha son los dos datos que
+ * hacen que el mensaje sirva para algo.
+ */
 export const TEMPLATE_DEFAULT =
   "Hola [Nombre], tenemos una propuesta de pago para tu crédito. " +
-  "Cancelando ahora $[Monto] regularizás tu situación con un beneficio especial. ¡Escribinos!";
+  "Cancelando $[Monto] hasta el [Promo_vence] regularizás tu situación con un descuento en los intereses de mora. ¡Escribinos!";
+
+/**
+ * Reclamo de mora SIN descuento.
+ *
+ * 🔴 Hace falta porque el texto con promo nombra el plazo (`[Promo_vence]`), y si el operador
+ * apaga el incentivo esa variable queda vacía: el mensaje salía "Cancelando $X hasta el
+ * regularizás tu situación", con un hueco en el medio. Un descuento no es obligatorio; una
+ * frase que se entienda, sí.
+ */
+export const TEMPLATE_MORA_SIN_PROMO =
+  "Hola [Nombre], te escribimos por tu crédito. " +
+  "Para regularizar tu situación tenés que abonar $[Monto]. Comunicate con nosotros.";
 
 /**
  * Plantilla por defecto del RECORDATORIO DE VENCIMIENTO.
@@ -100,7 +120,12 @@ export function calculateRecoveryOffer(input: RecoveryInput): RecoveryOffer {
  */
 export function construirMensajeCampana(
   template: string,
-  data: { nombre: string; monto: number; saldo?: number; dias?: number; descuento?: number; vence?: string | null },
+  data: {
+    nombre: string; monto: number; saldo?: number; dias?: number; descuento?: number;
+    vence?: string | null;
+    /** Último día para acogerse al descuento (ya formateado). Distinto de `vence`. */
+    promoVence?: string | null;
+  },
 ): string {
   /**
    * 🔴 CON CENTAVOS. Redondeaba a pesos enteros, así que un reclamo de $289.727,56 salía
@@ -120,6 +145,12 @@ export function construirMensajeCampana(
     // Para los recordatorios: la fecha en que vence la cuota. Vacío en los reclamos de mora,
     // donde la fecha ya pasó y lo que importa es cuánto se atrasó.
     vence: data.vence ?? "",
+    /**
+     * Hasta cuándo vale el DESCUENTO. No es lo mismo que `vence` —esa es la fecha de la
+     * cuota— y confundirlos en un reclamo de mora le daría al cliente una fecha ya pasada
+     * como plazo para acogerse a la oferta.
+     */
+    promo_vence: data.promoVence ?? "",
   };
 
   return template.replace(/\[(\w+)\]/g, (full, key: string) => {
@@ -201,4 +232,27 @@ export function conceptoDePago(p: {
     ? `${nros[0]} y ${nros[1]}`
     : `${nros.slice(0, -1).join(", ")} y ${nros[nros.length - 1]}`;
   return `las cuotas ${lista}`;
+}
+
+/**
+ * ¿La promoción de una campaña sigue vigente EN ESA FECHA?
+ *
+ * ── POR QUÉ NO ES UN `>=` Y CHAU ──
+ *
+ * `promo_vence` es una columna `@db.Date`: llega como la medianoche UTC de ese día. La fecha
+ * del cobro, en cambio, puede traer hora. Comparadas como instantes, un descuento que vence
+ * el 08/09 dejaba de aplicarse a cualquier cobro hecho DESPUÉS de las 00:00 de ese mismo
+ * día — o sea, todo el último día de la oferta, que suele ser el que la gente usa.
+ *
+ * Se comparan DÍAS, que es lo que dice el mensaje que le llegó al cliente ("válida hasta el
+ * 08/09"): el día del vencimiento cuenta entero.
+ *
+ * Sin fecha se toma como vigente. Eso es un descuento sin corte y hoy no se puede crear —el
+ * campo es obligatorio cuando hay quita—, pero las campañas viejas lo tienen y quitárselo
+ * retroactivamente sería incumplir algo que ya se prometió por escrito.
+ */
+export function promoVigenteAl(vence: Date | string | null | undefined, fecha: Date): boolean {
+  if (!vence) return true;
+  const dia = (d: Date | string) => (typeof d === "string" ? d : d.toISOString()).slice(0, 10);
+  return dia(vence) >= dia(fecha);
 }
