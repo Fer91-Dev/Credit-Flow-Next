@@ -11,7 +11,7 @@ import { type Role } from "@/lib/auth/roles";
 import { formatFecha, nombreCompleto, formatDias, formatMonto } from "@/lib/utils";
 import { GestionForm, type CreditoCtx } from "./GestionForm";
 import { CobranzaDetail } from "./CobranzaDetail";
-import { guardarSeleccionCampana, leerSeleccionCampana } from "./seleccion-campana";
+import { guardarSeleccionCampana, leerSeleccionCampana, guardarTipoCampana } from "./seleccion-campana";
 import { CampanasView } from "./CampanasView";
 import { VencimientosTab } from "./VencimientosTab";
 import { AcuerdosTab } from "./AcuerdosTab";
@@ -358,6 +358,20 @@ export function CobranzaTable({ role }: { role: Role }) {
       // navegamos: se escribe a mano para que la pantalla de campaña no llegue vacía.
       guardarSeleccionCampana(ids);
     }
+    /**
+     * 🔴 EL TIPO VIAJA CON LA SELECCIÓN, Y DESDE ACÁ NO VIAJABA.
+     *
+     * La pestaña Vencimientos escribía `guardarTipoCampana("vencimiento")` y esta no
+     * escribía nada, así que el valor quedaba en el `sessionStorage` de la sesión anterior.
+     * Armar una campaña desde Morosos después de una de vencimientos dibujaba la pantalla en
+     * modo recordatorio: los morosos salían rotulados "al día", con su fecha de vencimiento
+     * ya pasada presentada como futura y los punitorios en $0,00.
+     *
+     * De acá sale siempre gente en mora — es la pestaña de morosos —, así que el tipo es
+     * "mora". La pantalla de campaña además lo vuelve a deducir de los créditos: esto es
+     * para que llegue bien, no lo único que lo sostiene.
+     */
+    guardarTipoCampana("mora");
     router.push("/cobranza/campanas/nueva");
   };
 

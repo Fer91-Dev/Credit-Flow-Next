@@ -292,14 +292,31 @@ function CampanaWorkspace({ role, creditos: todosCreditos, bloqueados, onCancela
    * acuerdo vigente y de los acuerdos rotos (ver `cobroBloqueadoPorCredito`). El backend
    * vuelve a hacer el corte al crear la campaña; esto es para que se vea antes.
    */
-  const { paraCobrar, paraRefinanciar } = useMemo(() => ({
-    paraCobrar: todosCreditos.filter((c) => !c.cobro_bloqueado),
+  /**
+   * 🔴 Y LA TERCERA: EL QUE ESTÁ AL DÍA NO ES EL QUE ESTÁ EN MORA.
+   *
+   * El corte de recordatorio no existía acá: `esRecordatorio` salía de un `sessionStorage`
+   * que la pestaña Vencimientos escribía y NADIE volvía a poner en "mora". Armando una
+   * campaña desde Morosos después de una de vencimientos, la pantalla dibujaba las columnas
+   * del recordatorio sobre cinco morosos: los rotulaba "al día" —un literal, no un dato—,
+   * mostraba como próximo vencimiento una fecha de hace 28 días y dejaba los punitorios en
+   * $0,00. A Rodrigo Benítez le iba a salir "te recordamos que el 10/08/2026 vence tu cuota
+   * de $181.819,43" cuando esa fecha ya pasó y debe $206.365,05 con la mora adentro.
+   *
+   * Ahora la audiencia se DEDUCE de los créditos y no de lo que quedó guardado: los que no
+   * tienen nada vencido se recuerdan, los que sí se reclaman, y los que ya no se pueden
+   * cobrar se invitan a refinanciar. Tres grupos que nunca se mezclan en un mismo envío.
+   */
+  const { paraRecordar, paraCobrar, paraRefinanciar } = useMemo(() => ({
+    paraRecordar:    todosCreditos.filter((c) => !c.cobro_bloqueado && c.dias_mora <= 0),
+    paraCobrar:      todosCreditos.filter((c) => !c.cobro_bloqueado && c.dias_mora > 0),
     paraRefinanciar: todosCreditos.filter((c) => !!c.cobro_bloqueado),
   }), [todosCreditos]);
 
-  const creditos = esRefinanciacion ? paraRefinanciar : paraCobrar;
-  /** La otra audiencia, la que NO entra en esta campaña. Se conserva para la siguiente. */
-  const restantes = () => (esRefinanciacion ? paraCobrar : paraRefinanciar).map((c) => c.id);
+  const creditos = esRefinanciacion ? paraRefinanciar : esRecordatorio ? paraRecordar : paraCobrar;
+  /** Las otras audiencias, las que NO entran en esta campaña. Se conservan para la siguiente. */
+  const restantes = () =>
+    todosCreditos.filter((c) => !creditos.some((x) => x.id === c.id)).map((c) => c.id);
 
   /**
    * Cambiar de audiencia cambia el texto por defecto — pero solo si el operador no lo tocó.
@@ -324,11 +341,25 @@ function CampanaWorkspace({ role, creditos: todosCreditos, bloqueados, onCancela
    * tiene sentido pedirle que elija entre dos grupos cuando uno está vacío.
    */
   useEffect(() => {
+    /**
+     * 🔴 UNA AUDIENCIA VACÍA NO SE MUESTRA: SE CORRIGE.
+     *
+     * El primer corte es el del recordatorio, y es el que faltaba. Si el tipo que quedó
+     * guardado dice "vencimiento" pero en la selección no hay UNO SOLO al día, no es una
+     * campaña de vencimientos: es una de mora rotulada mal. Se cae al grupo que sí tiene
+     * gente en vez de dibujar cinco filas que dicen "al día" sobre cinco morosos.
+     */
+    if (tipoCampana === "vencimiento" && paraRecordar.length === 0) {
+      cambiarTipo(paraCobrar.length > 0 ? "mora" : paraRefinanciar.length > 0 ? "refinanciacion" : "mora");
+      return;
+    }
     if (tipoCampana === "vencimiento") return;
     if (paraCobrar.length === 0 && paraRefinanciar.length > 0 && tipoCampana !== "refinanciacion") cambiarTipo("refinanciacion");
-    if (paraRefinanciar.length === 0 && tipoCampana === "refinanciacion") cambiarTipo("mora");
+    if (paraRefinanciar.length === 0 && tipoCampana === "refinanciacion") {
+      cambiarTipo(paraCobrar.length > 0 ? "mora" : paraRecordar.length > 0 ? "vencimiento" : "mora");
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [paraCobrar.length, paraRefinanciar.length, tipoCampana]);
+  }, [paraRecordar.length, paraCobrar.length, paraRefinanciar.length, tipoCampana]);
 
   // Oferta por crédito (cálculo client-side con el mismo dominio que el server).
   const objetivos = useMemo(
@@ -921,12 +952,23 @@ function CampanaWorkspace({ role, creditos: todosCreditos, bloqueados, onCancela
               campaña entera —mensaje, incentivo y a quiénes se les manda—, así que va acá
               arriba, encima de la lista que modifica, y no escondido entre los parámetros.
             */}
-            {paraCobrar.length > 0 && paraRefinanciar.length > 0 && !esRecordatorio && (
+            {(() => {
+              /**
+               * Los grupos que la selección REALMENTE trae. El de recordatorio entró acá
+               * porque antes no era un grupo: era un modo pegado en `sessionStorage` que se
+               * podía aplicar sobre cualquiera. Si la selección viene mezclada —gente al día
+               * y morosos, que es lo normal si se seleccionó "todos"— el operador tiene que
+               * poder ver los dos envíos y mandarlos por separado, nunca en el mismo.
+               */
+              const grupos = ([
+                { t: "vencimiento" as TipoCampana,    label: "Recordar el vencimiento", n: paraRecordar.length },
+                { t: "mora" as TipoCampana,           label: "Reclamar el pago",        n: paraCobrar.length },
+                { t: "refinanciacion" as TipoCampana, label: "Invitar a refinanciar",   n: paraRefinanciar.length },
+              ]).filter((g) => g.n > 0);
+              if (grupos.length < 2) return null;
+              return (
               <div className="ml-auto flex items-center gap-1 rounded-lg border border-border p-0.5">
-                {([
-                  { t: "mora" as TipoCampana, label: "Reclamar el pago", n: paraCobrar.length },
-                  { t: "refinanciacion" as TipoCampana, label: "Invitar a refinanciar", n: paraRefinanciar.length },
-                ]).map(({ t, label, n }) => (
+                {grupos.map(({ t, label, n }) => (
                   <button
                     key={t}
                     type="button"
@@ -942,7 +984,8 @@ function CampanaWorkspace({ role, creditos: todosCreditos, bloqueados, onCancela
                   </button>
                 ))}
               </div>
-            )}
+              );
+            })()}
           </div>
 
           {/*
@@ -982,6 +1025,7 @@ function CampanaWorkspace({ role, creditos: todosCreditos, bloqueados, onCancela
           descuento={totalAhorro}
           total={totalOfrecido}
           esRefinanciacion={esRefinanciacion}
+          esRecordatorio={esRecordatorio}
           reducir={!!reducirMovimiento}
         />
         <div className="flex items-center gap-3">
@@ -1018,13 +1062,22 @@ function CampanaWorkspace({ role, creditos: todosCreditos, bloqueados, onCancela
  * leer los cuatro nodos como un flujo y no como cuatro cifras sueltas.
  */
 function PipelineReclamo({
-  cuotas, punitorios, descuento, total, reducir, esRefinanciacion,
+  cuotas, punitorios, descuento, total, reducir, esRefinanciacion, esRecordatorio,
 }: {
   cuotas: number; punitorios: number; descuento: number; total: number; reducir: boolean;
   /** Invitación a refinanciar: no hay descuento, y el resultado no es lo que se le pide. */
   esRefinanciacion?: boolean;
+  /**
+   * Recordatorio: no hay nada vencido, así que no hay fórmula. Faltaba este caso y la barra
+   * seguía diciendo "Cuotas vencidas + Punitorios − Descuento = Se le pide" mientras la tabla
+   * de arriba, en la misma pantalla, encabezaba "Se le recuerda". Dos vocabularios para el
+   * mismo envío, y el de abajo hablaba de una deuda que estos clientes no tienen.
+   */
+  esRecordatorio?: boolean;
 }) {
-  const etapas = esRefinanciacion
+  const etapas = esRecordatorio
+    ? [{ label: "Se le recuerda", valor: total, tono: "text-foreground", op: null }]
+    : esRefinanciacion
     // Sin etapa de descuento: no hay ninguno que ofrecer. Y el resultado es lo que deben HOY,
     // no lo que se les reclama — la refinanciación se lleva además lo que todavía no venció.
     ? [
@@ -1170,7 +1223,13 @@ function TablaAudiencia({
               <p className="mt-0.5 text-xs text-muted-foreground">
                 {o.credito.numero ? `CRD-${String(o.credito.numero).padStart(6, "0")}` : "Crédito sin número"}
                 {" · "}
-                {esRecordatorio
+                {/*
+                  🔴 "al día" SALE DEL CRÉDITO, no del modo de la pantalla. Era un literal:
+                  en modo recordatorio la fila lo escribía siempre, así que un moroso de 28
+                  días figuraba como al día. Ahora, si la fila trae atraso, lo dice — aunque
+                  la campaña se haya armado como recordatorio.
+                */}
+                {esRecordatorio && o.credito.dias_mora <= 0
                   ? "al día"
                   : o.credito.cuotas_vencidas
                   ? `${o.credito.cuotas_vencidas} ${o.credito.cuotas_vencidas === 1 ? "cuota impaga" : "cuotas impagas"}`
@@ -1178,7 +1237,11 @@ function TablaAudiencia({
               </p>
             </td>
             <td className={`${td} whitespace-nowrap text-muted-foreground`}>
-              {esRecordatorio ? formatFecha(o.credito.proximo_pago) : formatDias(o.credito.dias_mora)}
+              {/* Lo mismo con la fecha: "vence el 10/08/2026" sobre algo que venció hace 28
+                  días es el mismo error escrito de otra forma. */}
+              {esRecordatorio && o.credito.dias_mora <= 0
+                ? formatFecha(o.credito.proximo_pago)
+                : formatDias(o.credito.dias_mora)}
             </td>
             <td className={`${tdNum} text-foreground`}>{formatMonto(o.vencidoSinMora)}</td>
             {!esRecordatorio && (

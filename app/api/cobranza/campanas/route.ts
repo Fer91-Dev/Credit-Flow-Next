@@ -257,11 +257,31 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     })),
     cobranzaCfg.recupero,
   );
-  /** ¿Este crédito corresponde al TIPO de campaña que se está armando? */
+  /**
+   * ¿Este crédito corresponde al TIPO de campaña que se está armando?
+   *
+   * 🔴 UNA CAMPAÑA DE VENCIMIENTOS ACEPTABA A CUALQUIERA.
+   *
+   * Decía `if (tipoCampana === "vencimiento") return true;`: sin ningún corte. Con ese tipo
+   * en el body —y llegaba solo, porque el tipo vive en el `sessionStorage` del navegador y la
+   * pestaña Morosos nunca lo reescribía— un moroso de 28 días entraba a un recordatorio. El
+   * server le armaba `oferta_monto = cuotaProxima` y `vence_el` con la fecha de la cuota más
+   * vieja, o sea una fecha PASADA, y le mandaba "te recordamos que el 10/08/2026 vence tu
+   * cuota de $181.819,43" cuando debía $206.365,05 con los punitorios adentro.
+   *
+   * Los tres tipos son excluyentes y se resuelven con el mismo dato con el que se cobra:
+   * bloqueado → refinanciación; con atraso → reclamo; sin nada vencido → recordatorio.
+   */
+  const diasDe = (c: (typeof candidatos)[number]) =>
+    c.proximo_pago ? diasMoraActual(c.proximo_pago, hoyCorte) : c.dias_mora;
+
   const delTipo = (c: (typeof candidatos)[number]) => {
-    if (tipoCampana === "vencimiento") return true;
     const bloqueado = bloqueados.get(c.id) ?? false;
-    return tipoCampana === "refinanciacion" ? bloqueado : !bloqueado;
+    if (tipoCampana === "refinanciacion") return bloqueado;
+    if (bloqueado) return false;
+    // Un reclamo sin nada vencido pediría $0,00; un recordatorio con atraso trataría de al
+    // día a un moroso. Ninguno de los dos es un envío que se pueda mandar.
+    return tipoCampana === "vencimiento" ? diasDe(c) <= 0 : diasDe(c) > 0;
   };
 
   const creditos = candidatos.filter((c) => cobrable(c) && delTipo(c));
@@ -280,9 +300,14 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     if (porContacto) return porContacto;
     // Quedó afuera por ser de la OTRA audiencia, no por un problema del crédito.
     if (!delTipo(c)) {
-      return tipoCampana === "refinanciacion"
-        ? "Todavía se le puede cobrar: va en una campaña de reclamo, no en una de refinanciación"
-        : "Su plan ya venció y no se le puede cobrar: corresponde invitarlo a refinanciar";
+      const bloqueado = bloqueados.get(c.id) ?? false;
+      if (tipoCampana === "refinanciacion") {
+        return "Todavía se le puede cobrar: va en una campaña de reclamo, no en una de refinanciación";
+      }
+      if (bloqueado) return "Su plan ya venció y no se le puede cobrar: corresponde invitarlo a refinanciar";
+      return tipoCampana === "vencimiento"
+        ? "Ya está en mora: le corresponde un reclamo con los punitorios, no un recordatorio"
+        : "Está al día: no hay nada vencido que reclamarle, le corresponde un recordatorio";
     }
     if (c.estado === "refinanciado") return "Ya se refinanció: su deuda está en el crédito nuevo";
     if (c.estado === "pagado" || c.estado === "cancelado") return "Ya está saldado";
