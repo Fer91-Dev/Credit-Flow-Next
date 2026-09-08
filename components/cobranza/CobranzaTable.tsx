@@ -4,11 +4,12 @@ import { useState, useMemo, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { useSWRConfig } from "swr";
-import { AlertCircle, Phone, Mail, Clock, Copy, CheckCheck, Search, DollarSign, ShieldAlert, MessageSquarePlus, CalendarClock, Megaphone, X, Users, TrendingUp, Sun, Handshake, ChevronDown, History } from "lucide-react";
+import { AlertCircle, Phone, Mail, Clock, Copy, CheckCheck, Search, DollarSign, ShieldAlert, MessageSquarePlus, CalendarClock, Megaphone, X, Users, TrendingUp, Sun, Handshake, ChevronDown, History, Download } from "lucide-react";
 import { WhatsAppIcon } from "@/components/ui/WhatsAppIcon";
+import { descargarCSV } from "@/lib/csv";
 import { useCreditos, useAccionesCobranza, type Credito, type AccionCobranza, type AgendaItem, useTramosMora } from "@/lib/swr";
 import { type Role } from "@/lib/auth/roles";
-import { formatFecha, nombreCompleto, formatDias, formatMonto } from "@/lib/utils";
+import { formatFecha, nombreCompleto, formatDias, formatMonto, formatCreditoNumero } from "@/lib/utils";
 import { GestionForm, type CreditoCtx } from "./GestionForm";
 import { CobranzaDetail } from "./CobranzaDetail";
 import { guardarSeleccionCampana, leerSeleccionCampana, guardarTipoCampana } from "./seleccion-campana";
@@ -28,7 +29,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { ModalHeader, MODAL_CONTENT_WIDE, SIN_CIERRE_ACCIDENTAL } from "@/components/ui/form-kit";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
-import { esCreditoVivo, contactoBloqueado, severidadMora } from "@/lib/domain";
+import { esCreditoVivo, contactoBloqueado, severidadMora, normalizarTelefonoAR } from "@/lib/domain";
 
 function n0(x: number) {
   return new Intl.NumberFormat("es-AR", { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(x);
@@ -401,6 +402,58 @@ export function CobranzaTable({ role }: { role: Role }) {
    * otro lado se rehidrata contra `/api/creditos`, que es de donde salen `vencido` y
    * `cuotas_vencidas`. Acá no se manda ninguna foto de importes.
    */
+  /**
+   * EXPORTAR LA LISTA para mandar los mensajes con una herramienta de afuera.
+   *
+   * Mientras la financiera no tenga la API de WhatsApp, los envíos masivos salen por un
+   * servicio de terceros: hay que poder bajarse a quiénes hay que contactar, con el teléfono
+   * ya normalizado y los números que va a llevar el mensaje.
+   *
+   * 🔴 EXPORTA LA MISMA AUDIENCIA QUE LA CAMPAÑA, y eso no es comodidad: es lo que impide
+   * que el archivo sea la puerta de atrás del "no contactar". Un fallecido o alguien que
+   * pidió que no lo contacten está excluido del envío por el sistema; si el export sacara la
+   * lista cruda, terminaría igual en el blast de la herramienta externa y el bloqueo no
+   * habría servido para nada. Sale exactamente lo mismo que recibiría la campaña: el filtro
+   * de severidad puesto, el recorte que haya hecho el operador, y sin los bloqueados.
+   *
+   * Los importes van formateados en es-AR y sin símbolo: Excel los lee como número.
+   */
+  const exportarMorosos = () => {
+    const filas = creditos.filter(c => destinatariosIds.includes(c.id));
+    if (filas.length === 0) return;
+    const num = (x: number | undefined | null) =>
+      new Intl.NumberFormat("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(x ?? 0);
+    descargarCSV(`morosos_${new Date().toISOString().slice(0, 10)}.csv`, [
+      [
+        "Cliente", "Documento", "Telefono", "WhatsApp", "Email", "Credito",
+        "Dias de atraso", "Cuotas vencidas", "Vencido", "Punitorios", "Saldo del prestamo",
+        "Vencio el", "Severidad",
+      ],
+      ...filas.map(c => [
+        nombreCompleto(c.cliente),
+        c.cliente?.documento ?? "",
+        c.cliente?.telefono ?? "",
+        // Formato internacional, el que piden las herramientas de envío masivo. Vacío si el
+        // teléfono cargado no alcanza: mejor una celda vacía que un número que no existe.
+        normalizarTelefonoAR(c.cliente?.telefono) ?? "",
+        c.cliente?.email ?? "",
+        formatCreditoNumero(c.numero, c.refinancia_a_numero),
+        c.dias_mora,
+        c.cuotas_vencidas ?? "",
+        num(c.vencido),
+        num(c.interes_mora),
+        num(c.saldo_pendiente),
+        c.proximo_pago ? formatFecha(c.proximo_pago) : "",
+        SEVERIDAD_BADGE[severidadMora(c.dias_mora, tramos)]?.label ?? "",
+      ]),
+    ]);
+    const sinTel = filas.filter(c => !normalizarTelefonoAR(c.cliente?.telefono)).length;
+    toast.success(
+      `${filas.length} moroso${filas.length === 1 ? "" : "s"} exportado${filas.length === 1 ? "" : "s"}` +
+      (sinTel > 0 ? ` · ${sinTel} sin teléfono utilizable` : ""),
+    );
+  };
+
   const irACampana = (ids?: string[]) => {
     if (ids) {
       setSeleccion(new Set(ids));
@@ -585,11 +638,31 @@ export function CobranzaTable({ role }: { role: Role }) {
           completo: pide zonas. Su lugar es donde está el resto de su ciclo (emitir, cargar
           los cobros, rendir), no colgada de una lista con la que no tiene relación.
         */}
+        {/*
+          Descargar va PEGADO a la campaña y no en un menú aparte: es la misma lista y la
+          misma decisión —a quiénes contactar—, resuelta por dos caminos según si el mensaje
+          lo manda el sistema o una herramienta de afuera. El conteo es el mismo en los dos
+          botones, que es lo que deja claro que trabajan sobre lo mismo.
+        */}
+        {puedeCampanas && (
+          <button
+            onClick={exportarMorosos}
+            disabled={destinatariosIds.length === 0}
+            title="Descargar la lista para enviar desde otra herramienta"
+            className="ml-auto flex h-14 items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-border px-5 text-base font-medium text-muted-foreground transition-colors enabled:hover:bg-muted enabled:hover:text-foreground disabled:opacity-40"
+          >
+            <Download className="h-5 w-5" />
+            Descargar
+            <span className="rounded bg-muted px-1.5 py-0.5 text-xs tabular-nums">
+              {destinatariosIds.length}
+            </span>
+          </button>
+        )}
         {puedeCampanas && (
           <button
             onClick={() => irACampana(destinatariosIds)}
             disabled={destinatariosIds.length === 0}
-            className="ml-auto flex h-14 items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-primary px-6 text-base font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-40"
+            className="flex h-14 items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-primary px-6 text-base font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-40"
           >
             <Megaphone className="h-5 w-5" />
             Nueva campaña

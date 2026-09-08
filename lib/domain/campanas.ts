@@ -160,17 +160,40 @@ export function construirMensajeCampana(
 }
 
 /**
- * Normaliza un teléfono argentino a dígitos para `wa.me`.
- * - Quita todo lo no numérico.
- * - Si ya empieza con 54 lo respeta; si no, antepone 54 (código de Argentina).
- * Devuelve null si no hay dígitos suficientes.
+ * Normaliza un teléfono argentino al formato internacional de WhatsApp: `549<área><número>`.
+ *
+ * ── EL 9 NO ES OPCIONAL ──
+ *
+ * Antes devolvía `54` + los dígitos, o sea `543814516093`. Los links de `wa.me` funcionaban
+ * igual porque WhatsApp resuelve el número aunque le falte el 9, pero ese mismo número
+ * exportado a una herramienta de envío masivo de afuera no resuelve nada: las APIs piden el
+ * E.164 exacto (`+5493814516093`) y el que no lo cumple se descarta en silencio. Con el 9
+ * puesto sirven los dos usos, así que es una sola forma y no dos.
+ *
+ * También se limpia el `0` de larga distancia (`0381…`), que es prefijo NACIONAL y no va en
+ * el internacional.
+ *
+ * ⚠️ Lo que NO resuelve: el `15` viejo escrito en el medio (`381 15 4516093`). Sacarlo exige
+ * saber cuántos dígitos tiene el código de área —son 2, 3 o 4— y adivinarlo mal rompe un
+ * número que estaba bien. Esos hay que corregirlos en la ficha del cliente.
+ *
+ * Devuelve null si no hay dígitos suficientes: mejor una celda vacía en el export que un
+ * número que no existe.
  */
 export function normalizarTelefonoAR(telefono?: string | null): string | null {
   if (!telefono) return null;
   let d = telefono.replace(/\D/g, "");
   if (d.length < 6) return null;
-  if (!d.startsWith("54")) d = "54" + d;
-  return d;
+  // Salida internacional marcada a la vieja usanza (00 54 …).
+  if (d.startsWith("0054")) d = d.slice(2);
+  // Parte nacional: sin el 54 del país si ya venía.
+  let nac = d.startsWith("54") ? d.slice(2) : d;
+  // El 0 de larga distancia es nacional; en el internacional no va.
+  nac = nac.replace(/^0+/, "");
+  if (nac.length < 6) return null;
+  // El 9 marca "móvil" y es el que exigen las APIs de WhatsApp.
+  if (!nac.startsWith("9")) nac = "9" + nac;
+  return "54" + nac;
 }
 
 /**
