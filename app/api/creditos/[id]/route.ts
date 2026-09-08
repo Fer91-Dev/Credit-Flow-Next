@@ -176,6 +176,38 @@ export const PATCH = withErrorHandler(async (req: NextRequest, { params }: Route
     if (motivoRechazo) {
       return errorResponse(motivoRechazo, "INVALID_STATE", 409);
     }
+
+    /**
+     * 🔴 DAR POR INCOBRABLE ES UNA DECISIÓN CONTABLE, Y SE ANOTA COMO TAL.
+     *
+     * Es el final de la escalera: el crédito sale de la cartera, de la lista de morosos y de
+     * la agenda, y los punitorios dejan de correr. Tres cosas que valen plata, así que no
+     * puede quedar como un cambio de estado anónimo.
+     *
+     * - Solo el ADMIN, que ya lo garantiza el `requireRole` de esta ruta: sacar una deuda
+     *   de la cartera no es una decisión de mostrador.
+     * - El MOTIVO es obligatorio: dentro de un año nadie se acuerda de por qué se tomó.
+     * - La FECHA la pone el server, no el body: es hasta dónde devengan los punitorios, y
+     *   dejarla llegar del navegador sería dejar elegir cuánta mora se perdona.
+     *
+     * Y al revés: si vuelve al circuito —porque pagó, o porque se resolvió— se limpian las
+     * dos columnas. Un `incobrable_at` colgado en un crédito activo seguiría frenándole la
+     * mora sin que nada lo explique.
+     */
+    if (objetivo === "incobrable") {
+      // Se lee del BODY y no de `updateData` a propósito: `incobrable_motivo` no está en la
+      // lista blanca de campos editables, así que solo se puede escribir como parte de esta
+      // decisión — nunca suelto, sobre un crédito que no se está declarando incobrable.
+      const motivo = typeof body.incobrable_motivo === "string" ? body.incobrable_motivo.trim() : "";
+      if (motivo.length < 3) {
+        return errorResponse("Poné por qué se da por incobrable: queda como registro de la decisión.", "INVALID_INPUT", 400);
+      }
+      updateData.incobrable_motivo = motivo;
+      updateData.incobrable_at = new Date();
+    } else if (existing.estado === "incobrable") {
+      updateData.incobrable_at = null;
+      updateData.incobrable_motivo = null;
+    }
   }
 
   const updated = await prisma.creditos.update({

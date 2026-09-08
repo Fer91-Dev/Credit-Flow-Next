@@ -343,7 +343,9 @@ export function PagoForm({ creditoId, clienteId, montoSugerido, motivoSugerido, 
   // moroso al que ya se le cobró una vez desaparecía de la terminal: el cobro lo pasa a
   // "vencido" y dejaba de listarse justo a quien más hay que cobrarle.
   useEffect(() => {
-    fetch("/api/creditos?estado=vivos&limit=1000")
+    // `cobrables`, no `vivos`: incluye los INCOBRABLES. Están fuera del circuito pero su
+    // deuda existe, y el que aparece a pagar algo tiene que poder ser encontrado acá.
+    fetch("/api/creditos?estado=cobrables&limit=1000")
       .then(r => r.json())
       .then(j => {
         if (!j.ok) return;

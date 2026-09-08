@@ -24,6 +24,9 @@ const BADGE: Record<EstadoOperativo, { label: string; variant: BadgeVariant }> =
   cancelado:    { label: "Cancelado",       variant: "muted" },
   anulado:      { label: "Anulado",         variant: "destructive" },
   refinanciado: { label: "Refinanciado",    variant: "warning" },
+  // Dado por perdido en el circuito normal. Rojo y no gris: la deuda EXISTE y es reclamable
+  // —se ejecuta el pagaré, se trabaja con recupero—, así que no es un crédito archivado.
+  incobrable:   { label: "Incobrable",      variant: "destructive" },
 };
 
 /**

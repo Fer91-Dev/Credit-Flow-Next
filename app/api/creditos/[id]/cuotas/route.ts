@@ -3,7 +3,7 @@ import { scopeCreditoParaCobrar } from "@/lib/cobranza-scope";
 import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
-import { frecuenciaLabel, normalizarFrecuencia, diasAtraso, round2, interesMora, moraDelCredito, moraDesdeCronograma, topeMoraDeCuota, fechaTopeMora, topeMoraPorFallecimiento, promoVigenteAl, type FrecuenciaDef } from "@/lib/domain";
+import { frecuenciaLabel, normalizarFrecuencia, diasAtraso, round2, interesMora, moraDelCredito, moraDesdeCronograma, topeMoraDeCuota, fechaTopeMora, topeMoraPorFallecimiento, topeMoraPorIncobrable, topeMoraMasTemprano, promoVigenteAl, type FrecuenciaDef } from "@/lib/domain";
 import { getConfiguracion, getCobranzaConfig } from "@/lib/config";
 import { recibosPorCuotaDeAcuerdo } from "@/lib/acuerdos";
 import { veredictoCobro } from "@/lib/recupero-server";
@@ -35,6 +35,10 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
       frecuencia: true,
       frecuencia_def: true,
       cronograma: true, // condiciones de mora congeladas al otorgar
+      // Un incobrable frena los punitorios el día en que se declaró: seguir devengando sobre
+      // una deuda que se mandó a ejecutar infla un número que nadie va a cobrar.
+      estado: true,
+      incobrable_at: true,
       // `estado`/`estado_fecha` del cliente: un fallecido frena los punitorios de todo el plan.
       cliente: { select: { nombre: true, apellido: true, estado: true, estado_fecha: true } },
       cuotas: {
@@ -97,7 +101,13 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
    * la pantalla le diría un importe al operador y la caja tomaría otro.
    */
   const { fallecidos: fallecidosCfg, recupero: recuperoCfg } = await getCobranzaConfig(tenantId);
-  const topeAbsoluto = topeMoraPorFallecimiento(hoy, credito.cliente, fallecidosCfg);
+  // El más TEMPRANO de los dos frenos absolutos: el fallecimiento del titular y la
+  // declaración de incobrable. Tiene que salir igual que en `POST /pagos` o la pantalla
+  // diría un importe y la caja tomaría otro.
+  const topeAbsoluto = topeMoraMasTemprano(
+    topeMoraPorFallecimiento(hoy, credito.cliente, fallecidosCfg),
+    topeMoraPorIncobrable(hoy, credito),
+  );
 
   /**
    * ¿ESTE CRÉDITO TODAVÍA SE COBRA, o ya hay que refinanciarlo?

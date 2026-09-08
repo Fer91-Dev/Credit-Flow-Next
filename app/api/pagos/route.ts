@@ -6,7 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { conNumeroDeOrigen, numerosRefinanciados } from "@/lib/creditos-numero";
 import { sincronizarAcuerdos } from "@/lib/acuerdos";
 import { nombreCompleto, formatCreditoNumero, hoyComercial, ventanaDias, ventanaAR } from "@/lib/utils";
-import { imputarPagoEnCuotas, diasAtraso, round2, etiquetaCaja, cuentaDeMetodo, esCuentaValida, type CuotaParaImputar, moraDelCredito, moraDesdeCronograma, esCreditoVivo, topeMoraPorFallecimiento, promoVigenteAl } from "@/lib/domain";
+import { imputarPagoEnCuotas, diasAtraso, round2, etiquetaCaja, cuentaDeMetodo, esCuentaValida, type CuotaParaImputar, moraDelCredito, moraDesdeCronograma, esCreditoCobrable, topeMoraPorFallecimiento, topeMoraPorIncobrable, topeMoraMasTemprano, promoVigenteAl } from "@/lib/domain";
 import { lockCreditoTx, assertCuotasSinCambios, TX_PLATA } from "@/lib/locks";
 import { lockCuentaTx } from "@/lib/caja-fondos";
 import { siguienteNumeroComprobante } from "@/lib/comprobantes";
@@ -273,7 +273,14 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
    * las DOS deudas, la vieja resucitada y la consolidada. `refinanciado` está declarado como
    * estado void justamente para esto — la lista blanca lo cubre sin poder olvidarse ninguno.
    */
-  if (!esCreditoVivo(credito.estado)) {
+  /**
+   * 🔴 `esCreditoCobrable`, NO `esCreditoVivo`. Son dos cosas distintas desde que existe el
+   * incobrable: ese crédito salió del circuito normal —de la cartera, de morosos, de la
+   * agenda— pero su deuda no desapareció, y recuperar algo es exactamente para lo que se lo
+   * declaró. Con `esCreditoVivo` acá, el cliente que aparece a pagar después de que se le
+   * ejecutó el pagaré se comía un rechazo.
+   */
+  if (!esCreditoCobrable(credito.estado)) {
     const motivo =
       credito.estado === "anulado"
         ? "está anulado"
@@ -420,7 +427,12 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     // Cliente fallecido: la mora se frena en la fecha del deceso, para TODAS las cuotas.
     // Va en el cobro y no solo en la pantalla, o el cronograma diría un número y la caja
     // tomaría otro — el error de las dos fórmulas que ya mordió con los cargos y el acuerdo.
-    moraTopeAbsoluto: topeMoraPorFallecimiento(fechaPago, credito.cliente, fallecidosCfg),
+    // Dos frenos absolutos posibles, y manda el más TEMPRANO: el fallecimiento del titular y
+    // la declaración de incobrable. Elegir uno solo dejaría correr mora que el otro ya frenó.
+    moraTopeAbsoluto: topeMoraMasTemprano(
+      topeMoraPorFallecimiento(fechaPago, credito.cliente, fallecidosCfg),
+      topeMoraPorIncobrable(fechaPago, credito),
+    ),
   });
 
   // P1 — Sobrepago: el cobro no puede exceder la deuda total del crédito. Si la imputación
@@ -509,7 +521,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
       where: { ...withTenant(tenantId), id: body.credito_id },
       select: { estado: true },
     });
-    if (!estadoAhora || !esCreditoVivo(estadoAhora.estado)) {
+    if (!estadoAhora || !esCreditoCobrable(estadoAhora.estado)) {
       throw new ApiError(
         "El crédito dejó de admitir cobros mientras se procesaba este pago (se anuló o se refinanció).",
         "INVALID_STATE",

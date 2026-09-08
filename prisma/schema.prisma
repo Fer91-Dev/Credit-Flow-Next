@@ -283,6 +283,18 @@ model creditos {
   proximo_pago     DateTime? @db.Date
   dias_mora        Int       @default(0)
   estado           String    @default("activo")
+
+  /// CUÁNDO se dio por incobrable, y POR QUÉ. Solo cuando `estado = "incobrable"`.
+  ///
+  /// La fecha no es decorativa: es hasta dónde devengan los punitorios. Seguir cargando mora
+  /// sobre una deuda que se mandó a ejecutar infla un número que nadie va a cobrar y que
+  /// además ya no es el que se reclama —de ahí en más corre el interés judicial—. Mismo
+  /// criterio que el freno por fallecimiento y que el de un acuerdo vigente.
+  ///
+  /// El motivo es obligatorio al declararlo: dar por perdida una deuda es una decisión
+  /// contable, y dentro de un año nadie se acuerda de por qué se tomó.
+  incobrable_at     DateTime? @db.Timestamptz(6)
+  incobrable_motivo String?
   cargos           Json? // snapshot de CargosConfig vigente al otorgar (congela los cargos del crédito)
   cronograma       Json? // snapshot del cronograma (corte/día venc/gracia/feriados) vigente al otorgar
   tenant_id        String    @db.Uuid

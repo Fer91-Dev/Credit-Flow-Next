@@ -2,7 +2,7 @@ import { requireAuth, requireRole, scopeCreditosVendedor, ApiError } from "@/lib
 import { successResponse, errorResponse, withErrorHandler, assertSameOrigin } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
-import { round2, normalizarFrecuencia, resolverFrecuencia, sumarPeriodos, construirPlanAmortizacion, planACuotas, estadoCoherente, etiquetaCaja, esCuentaValida, validarParametrosOtorgamiento, diasMoraActual, buscarPlan, nombrePlan, tasaDesdeCoeficiente, cargosConPlan, CUENTA_LABEL, type Cuenta, ESTADOS_VIVOS, esCreditoVivo, moraDelCredito, moraDesdeCronograma, moraPendienteTotal, calcularDeudaVencida, deudaEnRevision, esTipoCreditoValido, TIPOS_CREDITO } from "@/lib/domain";
+import { round2, normalizarFrecuencia, resolverFrecuencia, sumarPeriodos, construirPlanAmortizacion, planACuotas, estadoCoherente, etiquetaCaja, esCuentaValida, validarParametrosOtorgamiento, diasMoraActual, buscarPlan, nombrePlan, tasaDesdeCoeficiente, cargosConPlan, CUENTA_LABEL, type Cuenta, ESTADOS_VIVOS, ESTADOS_COBRABLES, esCreditoVivo, moraDelCredito, moraDesdeCronograma, moraPendienteTotal, calcularDeudaVencida, deudaEnRevision, esTipoCreditoValido, TIPOS_CREDITO } from "@/lib/domain";
 import { siguienteNumeroComprobante } from "@/lib/comprobantes";
 import { assertFondosSuficientesTx } from "@/lib/caja-fondos";
 import { lockNumeroCreditoTx, TX_PLATA } from "@/lib/locks";
@@ -37,10 +37,18 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
 
   // Anti-IDOR: el vendedor solo ve SUS créditos; admin/cobrador ven todo el tenant.
   const where: Record<string, any> = { ...withTenant(tenantId), ...scopeCreditosVendedor({ role, vendedorId }) };
-  // `estado=vivos` = activo + vencido, o sea "sigue en cartera y se le puede cobrar".
-  // Un `vencido` es un activo atrasado; filtrar por "activo" a secas deja afuera justo a
-  // los morosos. Ver ESTADOS_VIVOS en lib/domain/credito-estado.ts.
+  /**
+   * `estado=vivos` = activo + vencido: sigue en la cartera y en el circuito normal. Un
+   * `vencido` es un activo atrasado; filtrar por "activo" a secas deja afuera justo a los
+   * morosos. Ver ESTADOS_VIVOS en lib/domain/credito-estado.ts.
+   *
+   * 🔴 `estado=cobrables` suma los INCOBRABLES, y es el que usa la terminal de cobro. Están
+   * fuera de la cartera pero su deuda existe: si el cliente aparece a pagar algo después de
+   * que se le ejecutó el pagaré, el operador tiene que poder encontrar el crédito para
+   * imputarlo. Con `vivos` la búsqueda no lo devolvía y la plata no tenía dónde entrar.
+   */
   if (estado === "vivos") where.estado = { in: [...ESTADOS_VIVOS] };
+  else if (estado === "cobrables") where.estado = { in: [...ESTADOS_COBRABLES] };
   else if (estado) where.estado = estado;
   if (clienteId) where.cliente_id = clienteId;
 
