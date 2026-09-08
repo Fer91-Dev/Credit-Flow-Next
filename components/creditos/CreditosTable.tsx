@@ -4,9 +4,7 @@ import { estadoBadgeCredito } from "./estado-badge";
 
 import { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { mutate as globalMutate } from "swr";
 import { FileText, ChevronDown, X, RefreshCw, History } from "lucide-react";
-import { CreditoDetail } from "./CreditoDetail";
 import { CompararRefiDialog } from "./CompararRefiDialog";
 import { useCreditos, KEYS, type Credito, useTramosMora, useDiasLegales } from "@/lib/swr";
 import { type Role } from "@/lib/auth/roles";
@@ -19,9 +17,6 @@ import { BuscadorF3 } from "@/components/ui/BuscadorF3";
 import { AccionPrimaria } from "@/components/ui/AccionPrimaria";
 import { Emoji } from "@/components/ui/Emoji";
 import { FiltrosPanel } from "@/components/ui/FiltrosPanel";
-import {
-  Dialog, DialogContent, DialogHeader, DialogTitle,
-} from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { esCreditoVivo, severidadMora } from "@/lib/domain";
 
@@ -49,8 +44,20 @@ export function CreditosTable({ role }: { role: Role }) {
   /** Los cortes media/alta/crítica que definió la financiera (Configuración → Cobranza). */
   const tramos = useTramosMora();
   const router = useRouter();
-  const { creditos, error, isLoading, mutate } = useCreditos();
-  const [detail, setDetail]       = useState<Credito | null>(null);
+  const { creditos, error, isLoading } = useCreditos();
+  /**
+   * 🔴 EL DETALLE ES UNA PANTALLA, NO UN DIÁLOGO DE ESTA LISTA.
+   *
+   * Era un modal, y desde que el crédito tiene dirección propia (`/creditos/[id]`) eso dejaba
+   * la misma información con dos caminos: abierta desde una fila se veía en una ventana
+   * flotante, y llegando por un link —de la ficha del cliente, de refinanciar, de la agenda—
+   * se veía como pantalla. Dos presentaciones del mismo dato, cada una con su forma de
+   * cerrarse y su propio comportamiento del botón de atrás.
+   *
+   * Con la ruta hay uno solo: la fila navega, el back del navegador vuelve a la lista, y el
+   * crédito se puede compartir, dejar abierto en otra pestaña o recargar.
+   */
+  const irACredito = (c: Credito) => router.push(`/creditos/${c.id}`);
   /**
    * Refinanciar ya no abre un diálogo: es una PANTALLA propia (`/creditos/[id]/refinanciar`).
    * La operación se decide comparando la deuda que se da de baja con las cuotas que nacen, y
@@ -334,7 +341,7 @@ export function CreditosTable({ role }: { role: Role }) {
             Error al cargar créditos: {error.message}
           </div>
         ) : tab === "refinanciados" ? (
-          <RefinanciadosView creditos={creditos} busq={busqRefi} setBusq={setBusqRefi} onOpen={setDetail} onRefinanciar={irARefinanciar} />
+          <RefinanciadosView creditos={creditos} busq={busqRefi} setBusq={setBusqRefi} onOpen={irACredito} onRefinanciar={irARefinanciar} />
         ) : (
         <div className="space-y-5">
 
@@ -444,7 +451,7 @@ export function CreditosTable({ role }: { role: Role }) {
             rows={filtered}
             rowKey={(c) => c.id}
             pageSize={12}
-            onRowClick={(c) => setDetail(c)}
+            onRowClick={(c) => irACredito(c)}
             zebra
             columns={[
               { header: "N°", className: "whitespace-nowrap",
@@ -514,7 +521,7 @@ export function CreditosTable({ role }: { role: Role }) {
             renderMobileCard={(c) => {
               const est = estadoBadgeCredito(c.estado, c.dias_mora, diasLegales, (c.acuerdo ? { alDia: c.acuerdo.al_dia } : null));
               return (
-                <div onClick={(e) => { if (eventoPropio(e)) setDetail(c); }} role="button" tabIndex={0} onKeyDown={(e) => { if (teclaDelContenedor(e) && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); setDetail(c); } }} className="rounded-xl bg-card border border-border p-4 space-y-3 cursor-pointer active:bg-muted/20 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50">
+                <div onClick={(e) => { if (eventoPropio(e)) irACredito(c); }} role="button" tabIndex={0} onKeyDown={(e) => { if (teclaDelContenedor(e) && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); irACredito(c); } }} className="rounded-xl bg-card border border-border p-4 space-y-3 cursor-pointer active:bg-muted/20 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50">
                   <div className="flex items-start justify-between gap-2">
                     <div>
                       <p className="font-mono text-[11px] text-muted-foreground">{formatCreditoNumero(c.numero, c.refinancia_a_numero)}</p>
@@ -552,28 +559,6 @@ export function CreditosTable({ role }: { role: Role }) {
         </div>
         )}
       </div>
-
-      <Dialog open={!!detail} onOpenChange={open => { if (!open) setDetail(null); }}>
-        <DialogContent className="w-full max-w-[96vw] lg:max-w-7xl h-[90vh] max-h-[90vh] p-0 gap-0 flex flex-col overflow-hidden">
-          <DialogHeader className="px-6 py-4 border-b border-border shrink-0">
-            <DialogTitle>Detalle del crédito</DialogTitle>
-          </DialogHeader>
-          <div className="flex-1 min-h-0 overflow-hidden">
-            {detail && (
-              <CreditoDetail
-                credito={detail}
-                role={role}
-                onRefinanciar={(c) => { setDetail(null); irARefinanciar(c); }}
-                // Saltar al otro extremo de la refinanciación: se cambia el crédito DENTRO del
-                // mismo modal, sin cerrarlo y volver a abrirlo.
-                onAbrirCredito={(c) => setDetail(c)}
-                // Anular/eliminar dejan vieja la copia del crédito que muestra este modal.
-                onCerrar={() => { setDetail(null); mutate(); }}
-              />
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
 
     </>
   );
