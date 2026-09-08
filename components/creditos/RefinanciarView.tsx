@@ -1,9 +1,10 @@
 "use client";
 
 import { useState, useMemo, useEffect } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { mutate as globalMutate } from "swr";
-import { Percent, Hash, Scissors, Ban, ArrowLeft, RefreshCcw, Loader2 } from "lucide-react";
+import { Percent, Hash, Scissors, Ban, ArrowLeft, RefreshCcw, Loader2, ExternalLink } from "lucide-react";
 import { MoneyInput, Segmented, IconInput, IconSelect, FieldLabel } from "@/components/ui/form-kit";
 import { SystemControls } from "@/components/ui/SystemControls";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -12,6 +13,32 @@ import { useConfirm } from "@/components/ui/confirm";
 import { KEYS, useRefinanciacionPreview, refrescarNotificaciones } from "@/lib/swr";
 import { formatCreditoNumero, formatFecha, formatMonto, formatDias, parseMontoInput, hoyComercial } from "@/lib/utils";
 import { construirPlanAmortizacion } from "@/lib/domain";
+
+/**
+ * El número del crédito, clickeable, hacia su detalle.
+ *
+ * 🔴 ABRE EN UNA PESTAÑA NUEVA, y no es un capricho. Esta pantalla se completa con el cliente
+ * enfrente: la entrega que trajo, el descuento que se le pactó, la tasa, el plazo. Navegar
+ * dentro de la misma pestaña para chequear el plan viejo tiraría todo eso y habría que
+ * volver a arrancar la conversación desde cero.
+ *
+ * El destino es `/creditos?credito=<id>`, que abre el detalle en la lista: el detalle es un
+ * diálogo y no una ruta propia, así que esa es su dirección.
+ */
+function LinkCredito({ id, numero, className = "" }: { id: string; numero: number | null | undefined; className?: string }) {
+  return (
+    <Link
+      href={`/creditos?credito=${id}`}
+      target="_blank"
+      rel="noopener"
+      title="Ver el detalle de este crédito en otra pestaña"
+      className={`inline-flex items-center gap-1 rounded font-mono font-bold text-primary underline-offset-2 transition-colors hover:underline ${className}`}
+    >
+      {formatCreditoNumero(numero ?? null)}
+      <ExternalLink className="h-3 w-3 shrink-0 opacity-70" />
+    </Link>
+  );
+}
 
 function n2(x: number) {
   return new Intl.NumberFormat("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(x);
@@ -350,8 +377,12 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
             <RefreshCcw className="h-5 w-5" />
           </div>
           <div className="min-w-0">
-            <h1 className="truncate text-base font-semibold leading-tight text-foreground">
-              {credito ? `Refinanciar ${formatCreditoNumero(credito.numero)}` : "Refinanciar crédito"}
+            {/* El número del título también lleva al crédito: es el primer lugar donde el
+                operador lo lee, y buscarlo a mano en la lista era el único camino. */}
+            <h1 className="flex items-center gap-1.5 truncate text-base font-semibold leading-tight text-foreground">
+              {credito
+                ? <>Refinanciar <LinkCredito id={creditoId} numero={credito.numero} className="text-base font-semibold" /></>
+                : "Refinanciar crédito"}
             </h1>
             <p className="mt-0.5 truncate text-xs text-muted-foreground">
               {credito
@@ -381,7 +412,7 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
               <div className="flex items-start gap-2">
                 <Ban className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
                 <p className="text-xs text-foreground">
-                  El plan de <strong>{formatCreditoNumero(credito?.numero ?? null)}</strong> se da de baja: queda cerrado en $0 y
+                  El plan de <LinkCredito id={creditoId} numero={credito?.numero} /> se da de baja: queda cerrado en $0 y
                   <strong> ya no se le cobra más</strong>. Todo lo que sigue pasa al crédito nuevo.
                 </p>
               </div>
