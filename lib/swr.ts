@@ -1726,7 +1726,7 @@ export interface RefinanciacionPreview {
    * Refinanciaciones; si es false se heredó la del Simulador (la de otorgar).
    * `piso_original` es el piso adicional de ESTE crédito cuando rige "no bajar la tasa".
    */
-  tasa?: { min: number; max: number; propia: boolean; piso_original: number | null };
+  tasa?: { min: number; max: number; propia: boolean; piso_original: number | null; original: number };
   /** En cuántas cuotas se puede reestructurar. `propia` = lista propia de Refinanciaciones. */
   plazos?: { cuotas: number[]; propia: boolean };
   /** Quien está mirando puede pasar por encima de los límites (admin); queda auditado. */

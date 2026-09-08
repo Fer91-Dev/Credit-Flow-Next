@@ -223,6 +223,9 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
    * concesión es bajarlo — al revés que la quita, que arranca en cero y se agrega.
    */
   const bandaHon = bandaHonorarios(cobranzaCfg.recupero, role === "admin");
+  // Entre qué tasas se puede pactar ESTA refinanciación. Se resuelve una vez: la usan la
+  // banda que viaja a la pantalla y la tasa sugerida, que tienen que ser coherentes.
+  const bandaTasaPreview = bandaTasaRefinanciacion(cobranzaCfg.recupero, config.simulador);
   const honorariosPropuesto = cobranzaCfg.recupero.honorarios_gestion_activo
     ? cobranzaCfg.recupero.honorarios_gestion_max
     : 0;
@@ -239,7 +242,28 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
       dias_mora: moraHoy,
     },
     deuda,
-    sugerido: { tasa: credito.tasa, plazo_meses: credito.plazo_meses, frecuencia: credito.frecuencia },
+    /**
+     * 🔴 LA TASA SUGERIDA, ACOTADA A LA BANDA DE REFINANCIACIÓN.
+     *
+     * Era `credito.tasa` a secas: la del crédito viejo, sin mirar entre qué valores se puede
+     * pactar el nuevo. Mientras rigió "no bajar de la tasa original" no se notaba, porque esa
+     * tasa ERA el piso. Con el piso apagado —reestructurar más barato que el original— la
+     * pantalla proponía igual la tasa vieja, o sea el extremo más caro, y había que acordarse
+     * de bajarla en cada refinanciación: la política quedaba escrita en Configuración y
+     * desmentida por el valor que aparece en el campo.
+     *
+     * Y había un caso donde ya estaba mal: un crédito pactado POR ENCIMA del techo de la
+     * banda —uno viejo, de cuando la financiera cobraba más— prellenaba una tasa fuera de
+     * rango, así que el formulario nacía en error, con el campo en rojo antes de tocar nada.
+     *
+     * Se acota y listo. No elige política: propone continuidad con el crédito viejo cuando
+     * esa tasa es válida, y el borde más cercano cuando no lo es.
+     */
+    sugerido: {
+      tasa: Math.min(Math.max(credito.tasa, bandaTasaPreview.min), bandaTasaPreview.max),
+      plazo_meses: credito.plazo_meses,
+      frecuencia: credito.frecuencia,
+    },
     limites: { quita_maxima: quitaMax },
     /** Cómo se compone la deuda: lo que ya venció (con su mora) y lo que todavía no. */
     composicion: {
@@ -268,9 +292,19 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
      * de Refinanciaciones o si se heredó la del Simulador (la de otorgar).
      */
     tasa: {
-      ...bandaTasaRefinanciacion(cobranzaCfg.recupero, config.simulador),
+      ...bandaTasaPreview,
       /** Piso adicional por crédito: no se puede pactar por debajo de la tasa del original. */
       piso_original: cobranzaCfg.recupero.no_bajar_tasa_refinanciando ? credito.tasa : null,
+      /**
+       * La tasa del crédito viejo, siempre — sea o no un piso.
+       *
+       * Mientras rigió "no bajar de la original" el dato viajaba como `piso_original` y la
+       * pantalla lo nombraba solo para explicar por qué no se podía bajar. Apagado el piso,
+       * la tasa nueva puede ser cualquiera dentro de la banda y ese número deja de estar en
+       * ningún lado: el operador pacta 150% sin ver contra qué está comparando. Es el punto
+       * de referencia de toda la conversación con el cliente.
+       */
+      original: credito.tasa,
       monto: honorarios,
       /** Solo el admin puede pactar un honorario distinto al configurado (queda auditado). */
       negociable: role === "admin",

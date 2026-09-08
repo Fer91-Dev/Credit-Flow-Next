@@ -145,3 +145,34 @@ export function advertirHonorariosGestion(pct: number | null | undefined): Adver
     `demasiado es lo que hace que se rompa otra vez. Por encima del 15% conviene revisarlo.`
   );
 }
+
+/**
+ * EL PISO DE TASA APAGADO, Y SIN BANDA PROPIA QUE LO REEMPLACE.
+ *
+ * "No refinanciar por debajo de la tasa original" existe porque bajar la tasa es una
+ * condonación que NO pasa por el tope de las quitas ni queda registrada como tal. Apagarlo es
+ * una decisión legítima —el piso atado al crédito viejo hace que el precio de reestructurar
+ * dependa de cuándo se otorgó el original, que es arbitrario— pero deja a la banda propia
+ * como el ÚNICO control que queda.
+ *
+ * Con esa banda en cero, no queda ninguno: cualquiera puede refinanciar al 0% y regalar todo
+ * el interés sin que figure en ningún lado. Medido sobre una deuda consolidada de
+ * $2.326.775,16 a 3 cuotas, pasar de 350% a 20% resigna $1.393.844,17.
+ *
+ * No es un error de configuración: es el agujero que se abre y hay que verlo antes.
+ */
+export function advertirPisoTasaRefinanciacion(
+  pisoActivo: boolean | null | undefined,
+  tasaMinRefi: number | null | undefined,
+  tasaMinSimulador: number | null | undefined,
+): Advertencia {
+  if (pisoActivo) return null;
+  // Con banda propia manda su mínimo; sin ella, el del Simulador.
+  const piso = (tasaMinRefi ?? 0) > 0 ? (tasaMinRefi ?? 0) : (tasaMinSimulador ?? 0);
+  if (piso > 0) return null;
+  return (
+    `Con el piso apagado y sin tasa mínima, se puede refinanciar al 0%: el interés se regala ` +
+    `entero y no queda registrado como quita ni pasa por su tope. Poné una tasa mínima acá ` +
+    `abajo, que es el único control que queda.`
+  );
+}

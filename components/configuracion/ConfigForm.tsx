@@ -16,7 +16,7 @@ import { anclaSeccion, buscarParametros, type ParametroIndexado } from "@/lib/co
 import { BuscadorF3 } from "@/components/ui/BuscadorF3";
 import {
   advertirTasaAcuerdo, advertirMoraDiaria, advertirTopeMora, advertirDiasGracia, advertirHonorariosGestion,
-  advertirCuotasAcuerdo, advertirMaxCreditosActivos, advertirRatioCuotaIngreso,
+  advertirCuotasAcuerdo, advertirMaxCreditosActivos, advertirRatioCuotaIngreso, advertirPisoTasaRefinanciacion,
 } from "@/lib/domain/config-advertencias";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -195,7 +195,7 @@ const AYUDA: Record<string, AyudaBloque> = {
       "El monto NO tiene tope al refinanciar: el capital es la deuda que el cliente ya tiene, no una decisión comercial. Ponerle el techo de otorgamiento impedía reestructurar justo las deudas grandes.",
       "Las condiciones del ACUERDO (a los cuántos días pasa a Legales, cuántos acuerdos rotos se admiten, si hay que contactarlo antes) están en el bloque Acuerdos de pago.",
       "Exigir el acuerdo antes de refinanciar es la regla fuerte: obliga a intentar lo que se puede deshacer.",
-      "El piso de tasa viene prendido: es el único que no ordena un proceso, tapa una fuga de plata.",
+      "El piso de tasa (no bajar de la del crédito original) es el único que no ordena un proceso: tapa una fuga de plata, porque bajar la tasa condona interés sin pasar por el tope de las quitas. Viene prendido. Apagándolo, reestructurar puede salir más barato que el crédito viejo —que suele ser lo razonable, si el cliente no pudo pagar el original— y ahí la tasa mínima de la banda queda como único control.",
       "Un administrador puede pasar por encima de cualquiera de estas reglas; el vendedor no. Queda auditado.",
     ],
     ejemplo:
@@ -2453,7 +2453,15 @@ export function ConfigForm() {
                   doceava parte de lo que se presta. El simulador ya muestra la convención al
                   lado de su tasa; acá faltaba.
                 */}
-                <Field label={`Tasa mínima al refinanciar (% ${CONV_CORTA[form.convencionTasa]})`} hint="Vacío o 0 = se usa la del Simulador, la misma con la que se otorga.">
+                <Field
+                  label={`Tasa mínima al refinanciar (% ${CONV_CORTA[form.convencionTasa]})`}
+                  hint="Vacío o 0 = se usa la del Simulador, la misma con la que se otorga."
+                  advertencia={advertirPisoTasaRefinanciacion(
+                    cobranza.recupero.no_bajar_tasa_refinanciando,
+                    cobranza.recupero.tasa_refinanciacion_min,
+                    form.simulador.tasaMin,
+                  )}
+                >
                   <NumeroInput min="0" max="1000"
                     value={cobranza.recupero.tasa_refinanciacion_min}
                     onValueChange={v => setRecupero({ tasa_refinanciacion_min: Math.max(0, Math.min(1000, v)) })}
@@ -2473,7 +2481,7 @@ export function ConfigForm() {
               </p>
               <SwitchRow
                 title="No refinanciar por debajo de la tasa original"
-                desc="Bajar la tasa al refinanciar es una condonación encubierta: no queda registrada como quita ni respeta su tope. Sobre una deuda de $221.000 a 3 cuotas, pasar de 60% a 20% regala unos $15.000. Subirla sigue libre, y un administrador puede autorizar la baja igual."
+                desc="Bajar la tasa es una condonación encubierta: no queda registrada como quita ni respeta su tope. Sobre una deuda consolidada de $2.326.775,16 a 3 cuotas, pasar de 350% a 20% resigna $1.393.844,17. Apagalo si querés que reestructurar sea MÁS BARATO que el crédito original —el piso atado al crédito viejo hace que el precio dependa de cuándo se otorgó, que es arbitrario—: ahí la tasa mínima de arriba pasa a ser el único control. Subirla siempre está permitido, y un administrador puede autorizar la baja aunque el piso esté prendido."
                 checked={cobranza.recupero.no_bajar_tasa_refinanciando}
                 onChange={v => setRecupero({ no_bajar_tasa_refinanciando: v })}
               />

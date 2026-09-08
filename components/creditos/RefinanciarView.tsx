@@ -724,6 +724,17 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
                             {bandaTasa.piso_original != null && bandaTasa.piso_original > bandaTasa.min
                               ? <> — el piso es la tasa del crédito original.</>
                               : <>.</>}
+                            {/*
+                              🔴 CONTRA QUÉ SE COMPARA. Con el piso prendido la tasa vieja ERA
+                              el mínimo, así que estaba a la vista sola. Apagado, el operador
+                              pacta un número dentro de la banda sin ver el del crédito que
+                              está dando de baja, que es el punto de referencia de toda la
+                              conversación con el cliente. Se muestra solo si difiere: repetir
+                              el mismo número dos veces no informa nada.
+                            */}
+                            {Math.abs(bandaTasa.original - (parseFloat(tasa) || 0)) > 0.005 && (
+                              <> El crédito original está al <strong>{bandaTasa.original}%</strong>.</>
+                            )}
                           </>}
                     </p>
                   )}

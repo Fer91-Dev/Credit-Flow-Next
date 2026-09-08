@@ -248,9 +248,31 @@ function Deltas({ a, b, entrega }: { a: Amortizacion; b: Amortizacion; entrega: 
           <span className="font-mono text-xs font-bold tabular-nums text-success">${n2(entrega)}</span>
         </div>
       )}
+      {/*
+        🔴 LA EXPLICACIÓN SE DERIVA DE LOS NÚMEROS, NO SE AFIRMA.
+        Decía "la cuota y el total suben porque…" como un hecho. Con el piso de tasa apagado
+        —refinanciar más barato que el crédito original— el total puede BAJAR, y entonces el
+        pie contradecía a la tabla que tenía justo encima. Lo que siempre es cierto es de qué
+        está hecho el capital nuevo; si sube o baja lo dicen las filas de arriba.
+      */}
       <p className="text-[10px] leading-relaxed text-muted-foreground/70">
-        La cuota y el total suben porque la refinanciación consolida la deuda vencida (capital + interés + mora acumulada) en un capital nuevo, sobre el que se vuelve a aplicar interés
-        {b.resumen.total_honorarios > 0 && <>, y suma ${n2(b.resumen.total_honorarios)} de honorarios de gestión repartidos en las cuotas</>}.
+        {(() => {
+          const dTotal = b.resumen.total_con_cargos - a.resumen.total_con_cargos;
+          const tasaBaja = b.parametros.tasa_ingresada < a.parametros.tasa_ingresada;
+          return (
+            <>
+              La refinanciación consolida la deuda vencida (capital + interés + mora acumulada) en un capital nuevo, sobre el que se vuelve a aplicar interés
+              {b.resumen.total_honorarios > 0 && <>, y suma ${n2(b.resumen.total_honorarios)} de honorarios de gestión repartidos en las cuotas</>}.
+              {" "}
+              {dTotal > 0
+                ? <>Por eso el total sube: se paga interés sobre interés que antes no se había pagado.</>
+                : dTotal < 0
+                  ? <>El total igual baja porque el plan nuevo se pactó al {b.parametros.tasa_ingresada}% contra el {a.parametros.tasa_ingresada}% del original.</>
+                  : <>El total queda igual.</>}
+              {tasaBaja && dTotal > 0 && <> La tasa bajó del {a.parametros.tasa_ingresada}% al {b.parametros.tasa_ingresada}%, pero no alcanza a compensar el capital consolidado.</>}
+            </>
+          );
+        })()}
       </p>
     </div>
   );
