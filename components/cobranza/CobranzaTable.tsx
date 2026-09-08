@@ -8,7 +8,7 @@ import { AlertCircle, Phone, Mail, Clock, Copy, CheckCheck, Search, DollarSign, 
 import { WhatsAppIcon } from "@/components/ui/WhatsAppIcon";
 import { useCreditos, useAccionesCobranza, type Credito, type AccionCobranza, type AgendaItem, useTramosMora } from "@/lib/swr";
 import { type Role } from "@/lib/auth/roles";
-import { formatFecha, nombreCompleto, formatDias } from "@/lib/utils";
+import { formatFecha, nombreCompleto, formatDias, formatMonto } from "@/lib/utils";
 import { GestionForm, type CreditoCtx } from "./GestionForm";
 import { CobranzaDetail } from "./CobranzaDetail";
 import { guardarSeleccionCampana, leerSeleccionCampana } from "./seleccion-campana";
@@ -36,21 +36,24 @@ function n0(x: number) {
 
 const fmtDate = (s: string) => formatFecha(s);
 
-/** Sanitiza un teléfono a solo dígitos para usar en un enlace wa.me. */
-function telDigits(tel?: string | null): string {
-  return (tel ?? "").replace(/\D/g, "");
-}
-
-/** Construye el enlace de WhatsApp con un mensaje de reclamo prellenado. */
-function whatsappLink(c: Credito): string | null {
-  const num = telDigits(c.cliente.telefono);
-  if (!num) return null;
-  const msg =
-    `Hola ${nombreCompleto(c.cliente)}, le escribimos por su crédito con ${c.dias_mora} ` +
-    `día${c.dias_mora !== 1 ? "s" : ""} de atraso y un saldo de $${n0(c.saldo_pendiente)}. ` +
-    `Por favor comuníquese para regularizar su situación. ¡Gracias!`;
-  return `https://wa.me/${num}?text=${encodeURIComponent(msg)}`;
-}
+/**
+ * 🔴 ACÁ SE ARMABA EL RECLAMO DE WHATSAPP A MANO, Y RECLAMABA MAL.
+ *
+ * Había una `whatsappLink(c)` que construía el texto en el navegador con
+ * `saldo_pendiente`, o sea el préstamo ENTERO, cuotas que todavía no vencieron incluidas.
+ * Sobre CRD-000002 el mensaje decía "un saldo de $450.000" mientras el Detalle de cobranza
+ * —tres clics más allá, en la misma pantalla— decía que lo exigible hoy son $205.455,96.
+ * Reclamar el resto es exigir la caducidad de plazos sin que se haya dado la condición.
+ *
+ * Y el importe era lo menos grave. Ese `<a href>` no pasaba por ningún lado: no usaba la
+ * plantilla que la financiera configuró, no respetaba "no contactar" ni fallecido (el link
+ * se abría igual), no dejaba gestión en el prontuario, no se auditaba y no llevaba el aviso
+ * de refinanciación de los que ya no se pueden cobrar. Se mandaba y no existía.
+ *
+ * Este mismo defecto ya se había corregido en la Agenda de hoy y quedó esta segunda copia.
+ * Ahora las dos van por `POST /api/clientes/[id]/contactar`, que es el único lugar donde el
+ * mensaje se arma con los números reales y queda registrado.
+ */
 
 type Severidad = "critica" | "alta" | "todas";
 
@@ -256,7 +259,12 @@ export function CobranzaTable({ role }: { role: Role }) {
     alta:        creditos.filter(c => severidadMora(c.dias_mora, tramos) === "alta").length,
   }), [creditos, tramos]);
 
-  // Total Esperado (saldo de toda la cartera activa) vs Total en Mora (saldo vencido)
+  /**
+   * Partición de la CARTERA por saldo: esperado = al día + en mora. Los tres son
+   * `saldo_pendiente` a propósito —es la plata colocada, no la exigible— porque si "en mora"
+   * fuera lo vencido, las tres barras dejarían de sumar y el gráfico mentiría. La deuda
+   * exigible tiene su lugar en la columna "Vencido" de la lista.
+   */
   const panel = useMemo(() => {
     const activos = allCreditos.filter(c => esCreditoVivo(c.estado));
     const esperado = activos.reduce((s, c) => s + c.saldo_pendiente, 0);
@@ -264,11 +272,54 @@ export function CobranzaTable({ role }: { role: Role }) {
     return { esperado, enMora, alDia: Math.max(0, esperado - enMora) };
   }, [allCreditos, creditos]);
 
+  /**
+   * Datos del cliente al portapapeles, para pegarlos en donde el operador los necesite.
+   *
+   * Dice VENCIDO —lo exigible hoy— y no el saldo del préstamo: es el número con el que se
+   * llama, y era el mismo error del WhatsApp. El saldo va detrás, dicho con todas las letras,
+   * porque el operador a veces necesita los dos y no puede quedar en la duda de cuál es cuál.
+   */
   const handleGestionar = async (c: Credito) => {
-    const msg = `${nombreCompleto(c.cliente)} | Mora: ${c.dias_mora}d | Saldo: $${n0(c.saldo_pendiente)}${c.cliente.telefono ? ` | Tel: ${c.cliente.telefono}` : ""}`;
+    const msg =
+      `${nombreCompleto(c.cliente)} | Mora: ${formatDias(c.dias_mora)}` +
+      ` | Vencido: ${formatMonto(c.vencido ?? 0)} | Saldo del préstamo: ${formatMonto(c.saldo_pendiente)}` +
+      `${c.cliente.telefono ? ` | Tel: ${c.cliente.telefono}` : ""}`;
     await navigator.clipboard.writeText(msg);
     setCopied(c.id);
     setTimeout(() => setCopied(null), 2000);
+  };
+
+  /**
+   * Reclamo por WhatsApp. El texto lo arma el SERVIDOR con la plantilla de la financiera y
+   * los importes reales, registra la gestión en el prontuario y devuelve el link de wa.me
+   * para que lo abra una persona. Mismo camino que el botón de la Agenda y el de la ficha:
+   * un solo texto, un solo número, un solo rastro.
+   *
+   * Si el cliente está marcado "no contactar" o fallecido, el servidor devuelve 409 y el
+   * mensaje no se abre — antes el link se abría igual porque era un `<a href>` pelado.
+   */
+  const [reclamando, setReclamando] = useState<string | null>(null);
+  const reclamarWhatsapp = async (c: Credito) => {
+    if (reclamando) return;
+    setReclamando(c.id);
+    try {
+      const res = await fetch(`/api/clientes/${c.cliente_id}/contactar`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ canal: "whatsapp", motivo: "mora" }),
+      });
+      const json = await res.json();
+      if (!json.ok) { toast.error(json.error || "No se pudo preparar el WhatsApp"); return; }
+      if (json.data?.link) window.open(json.data.link, "_blank", "noopener");
+      toast.success("WhatsApp preparado y registrado en la ficha");
+      // El contacto ES una gestión: la lista de gestiones y la cola del día lo reflejan.
+      mutateAcciones();
+      globalMutate("/api/cobranza/agenda");
+    } catch {
+      toast.error("No se pudo preparar el WhatsApp");
+    } finally {
+      setReclamando(null);
+    }
   };
 
   const sortedFiltered = [...filtered].sort((a, b) => b.dias_mora - a.dias_mora);
@@ -528,8 +579,11 @@ export function CobranzaTable({ role }: { role: Role }) {
               <td colSpan={puedeCampanas ? 3 : 2} className="px-4 py-3 text-[10px] font-bold text-muted-foreground uppercase tracking-widest border-t border-border">
                 Total ({sortedFiltered.length})
               </td>
-              <td className="px-4 py-3 text-right font-mono font-bold text-destructive border-t border-border">
-                ${n0(sortedFiltered.reduce((s, c) => s + c.saldo_pendiente, 0))}
+              <td className="px-4 py-3 text-right font-mono font-bold text-destructive border-t border-border leading-tight">
+                {formatMonto(sortedFiltered.reduce((s, c) => s + (c.vencido ?? 0), 0))}
+                <span className="block text-[10px] font-normal text-muted-foreground">
+                  préstamo {formatMonto(sortedFiltered.reduce((s, c) => s + c.saldo_pendiente, 0))}
+                </span>
               </td>
               <td className="px-4 py-3 text-right font-mono font-bold text-destructive border-t border-border">
                 ${n0(sortedFiltered.reduce((s, c) => s + (c.interes_mora ?? 0), 0))}
@@ -627,8 +681,29 @@ export function CobranzaTable({ role }: { role: Role }) {
               ),
             },
             {
-              header: "Saldo", align: "right", mono: true,
-              cell: (c) => <span className={`font-bold ${severidadMora(c.dias_mora, tramos) === "critica" ? "text-destructive" : "text-warning"}`}>${n0(c.saldo_pendiente)}</span>,
+              /**
+               * 🔴 LO VENCIDO ADELANTE, EL SALDO DETRÁS.
+               *
+               * Esta columna mostraba `saldo_pendiente` —el préstamo entero— pintado de rojo
+               * según la severidad de la mora. Sobre Rodrigo Benítez decía $450.000,00 cuando
+               * lo que hay que reclamarle son $206.365,05: el operador trabaja esta lista para
+               * salir a cobrar, y el número grande y rojo era el único que no podía pedir.
+               *
+               * Es el mismo criterio del Detalle de cobranza y del reclamo por WhatsApp: lo
+               * exigible manda, y el saldo del préstamo queda abajo, dicho con todas las
+               * letras, porque también hace falta y no puede confundirse con el otro.
+               */
+              header: "Vencido", align: "right", mono: true,
+              cell: (c) => (
+                <div className="leading-tight">
+                  <span className={`font-bold ${severidadMora(c.dias_mora, tramos) === "critica" ? "text-destructive" : "text-warning"}`}>
+                    {formatMonto(c.vencido ?? 0)}
+                  </span>
+                  <span className="block text-[10px] font-normal text-muted-foreground">
+                    préstamo {formatMonto(c.saldo_pendiente)}
+                  </span>
+                </div>
+              ),
             },
             {
               header: <span className="text-destructive">Interés mora</span>, align: "right", mono: true,
@@ -670,19 +745,20 @@ export function CobranzaTable({ role }: { role: Role }) {
                     <Handshake className="h-3 w-3" /> Acordar
                   </button>
                   {(() => {
-                    const wa = whatsappLink(c);
+                    const puede = !!c.cliente.telefono && !noContactable(c);
                     return (
-                      <a
-                        href={wa ?? undefined}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        onClick={(e) => { e.stopPropagation(); if (!wa) e.preventDefault(); }}
-                        title={wa ? "Reclamar por WhatsApp" : "Sin teléfono cargado"}
-                        aria-disabled={!wa}
-                        className={`flex items-center justify-center h-7 w-7 rounded-lg transition-colors ${wa ? "text-success hover:bg-success/10" : "text-muted-foreground/20 cursor-not-allowed"}`}
+                      <button
+                        onClick={(e) => { e.stopPropagation(); reclamarWhatsapp(c); }}
+                        disabled={!puede || reclamando === c.id}
+                        title={
+                          !c.cliente.telefono ? "Sin teléfono cargado"
+                          : noContactable(c) ? (contactoBloqueado(c.cliente).motivo ?? "No se puede contactar")
+                          : "Reclamar por WhatsApp"
+                        }
+                        className={`flex items-center justify-center h-7 w-7 rounded-lg transition-colors ${puede ? "text-success enabled:hover:bg-success/10" : "text-muted-foreground/20 cursor-not-allowed"} disabled:opacity-60`}
                       >
                         <WhatsAppIcon className="h-3.5 w-3.5" />
-                      </a>
+                      </button>
                     );
                   })()}
                   <button
@@ -719,8 +795,12 @@ export function CobranzaTable({ role }: { role: Role }) {
                   </div>
                   <StatusBadge label={sev.label} variant={sev.variant} />
                 </div>
-                <div className="flex items-center justify-between">
-                  <span className={`font-mono font-bold text-xl ${severidadMora(c.dias_mora, tramos) === "critica" ? "text-destructive" : "text-warning"}`}>${n0(c.saldo_pendiente)}</span>
+                <div className="flex items-end justify-between">
+                  {/* Mismo criterio que la tabla: el número grande es lo que se reclama. */}
+                  <div className="leading-tight">
+                    <span className={`font-mono font-bold text-xl ${severidadMora(c.dias_mora, tramos) === "critica" ? "text-destructive" : "text-warning"}`}>{formatMonto(c.vencido ?? 0)}</span>
+                    <span className="block text-[10px] text-muted-foreground">vencido · préstamo {formatMonto(c.saldo_pendiente)}</span>
+                  </div>
                   <span className={`font-mono font-bold text-lg ${severidadMora(c.dias_mora, tramos) === "critica" ? "text-destructive" : "text-warning"}`}>{formatDias(c.dias_mora)} de mora</span>
                 </div>
                 {c.interes_mora && c.interes_mora > 0 && (
@@ -754,15 +834,16 @@ export function CobranzaTable({ role }: { role: Role }) {
                   <button onClick={(e) => { e.stopPropagation(); if (!c.acuerdo) irAAcordar(c.id); }} disabled={!!c.acuerdo} title={c.acuerdo ? "Ya tiene un acuerdo de pago vigente" : "Acuerdo de pago"} className="flex items-center justify-center h-10 w-10 rounded-lg border border-border text-muted-foreground transition-colors enabled:hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40">
                     <Handshake className="h-4 w-4" />
                   </button>
-                  {(() => {
-                    const wa = whatsappLink(c);
-                    if (!wa) return null;
-                    return (
-                      <a href={wa} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} title="Reclamar por WhatsApp" className="flex items-center justify-center h-10 w-10 rounded-lg border border-success/30 bg-success/10 text-success hover:bg-success/20 transition-colors">
-                        <WhatsAppIcon className="h-4 w-4" />
-                      </a>
-                    );
-                  })()}
+                  {c.cliente.telefono && !noContactable(c) && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); reclamarWhatsapp(c); }}
+                      disabled={reclamando === c.id}
+                      title="Reclamar por WhatsApp"
+                      className="flex items-center justify-center h-10 w-10 rounded-lg border border-success/30 bg-success/10 text-success transition-colors enabled:hover:bg-success/20 disabled:opacity-60"
+                    >
+                      <WhatsAppIcon className="h-4 w-4" />
+                    </button>
+                  )}
                   <button onClick={(e) => { e.stopPropagation(); handleGestionar(c); }} title="Copiar datos" className="flex items-center justify-center h-10 w-10 rounded-lg border border-border text-muted-foreground hover:bg-muted transition-colors">
                     {copiedId === c.id ? <CheckCheck className="h-4 w-4 text-success" /> : <Copy className="h-4 w-4" />}
                   </button>
