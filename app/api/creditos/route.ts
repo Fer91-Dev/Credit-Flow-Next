@@ -2,7 +2,7 @@ import { requireAuth, requireRole, scopeCreditosVendedor, ApiError } from "@/lib
 import { successResponse, errorResponse, withErrorHandler, assertSameOrigin } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
-import { round2, normalizarFrecuencia, resolverFrecuencia, sumarPeriodos, construirPlanAmortizacion, planACuotas, estadoCoherente, etiquetaCaja, esCuentaValida, validarParametrosOtorgamiento, diasMoraActual, buscarPlan, nombrePlan, tasaDesdeCoeficiente, cargosConPlan, CUENTA_LABEL, type Cuenta, ESTADOS_VIVOS, ESTADOS_COBRABLES, esCreditoVivo, moraDelCredito, moraDesdeCronograma, moraPendienteTotal, calcularDeudaVencida, deudaEnRevision, esTipoCreditoValido, TIPOS_CREDITO } from "@/lib/domain";
+import { round2, normalizarFrecuencia, resolverFrecuencia, sumarPeriodos, construirPlanAmortizacion, planACuotas, estadoCoherente, etiquetaCaja, esCuentaValida, validarParametrosOtorgamiento, diasMoraActual, buscarPlan, nombrePlan, tasaDesdeCoeficiente, cargosConPlan, CUENTA_LABEL, type Cuenta, ESTADOS_VIVOS, ESTADOS_COBRABLES, esCreditoVivo, esCreditoCobrable, topeMoraPorIncobrable, moraDelCredito, moraDesdeCronograma, moraPendienteTotal, calcularDeudaVencida, deudaEnRevision, esTipoCreditoValido, TIPOS_CREDITO } from "@/lib/domain";
 import { siguienteNumeroComprobante } from "@/lib/comprobantes";
 import { assertFondosSuficientesTx } from "@/lib/caja-fondos";
 import { lockNumeroCreditoTx, TX_PLATA } from "@/lib/locks";
@@ -112,6 +112,14 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     // Mora EN VIVO desde `proximo_pago` (no del cache `dias_mora`, que no se avanza día a día):
     // misma fórmula con la que se persiste, pero evaluada hoy → independiente del cron.
     const dmora = c.proximo_pago ? diasMoraActual(c.proximo_pago, hoy) : c.dias_mora;
+    /**
+     * 🔴 HASTA QUÉ DÍA SE EVALÚA ESTE CRÉDITO.
+     *
+     * Para uno vivo es hoy. Para uno dado por INCOBRABLE es el día en que se lo declaró: los
+     * punitorios se frenaron ahí, así que calcular su deuda con la fecha de hoy mostraría una
+     * mora que el cobro no le va a cobrar — el error de las dos fórmulas otra vez.
+     */
+    const hoyCredito = topeMoraPorIncobrable(hoy, c) ?? hoy;
     let interes_mora = 0;
     // Manda lo CONGELADO en el crédito, no la config de hoy. Tener `config.moraActiva` en
     // esta condición hacía que apagar la mora de la financiera mostrara $0 en la lista de
@@ -121,7 +129,9 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     if (
       mc.moraActiva &&
       dmora > 0 &&
-      esCreditoVivo(c.estado) && // un vencido devenga mora igual que un activo atrasado
+      // `cobrable` y no `vivo`: un INCOBRABLE tiene deuda reclamable y hay que poder verla.
+      // Su mora no crece —`hoyCredito` la congela— pero la acumulada hasta ahí se reclama.
+      esCreditoCobrable(c.estado) &&
       c.monto_original > 0 &&
       c.plazo_meses >= 1
     ) {
@@ -130,7 +140,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
       // de la más vieja, que con varias vencidas mostraba menos de la mitad de lo real.
       interes_mora = moraPendienteTotal(
         c.cuotas.map((q) => ({ fechaVencimiento: q.fecha_vencimiento, cuotaTotal: q.cuota_total, pagadoMora: q.pagado_mora })),
-        { tasaDiaria: mc.tasaMoraDiaria, diasGracia: graciaCred, hoy, topePct: mc.topeMoraPct },
+        { tasaDiaria: mc.tasaMoraDiaria, diasGracia: graciaCred, hoy: hoyCredito, topePct: mc.topeMoraPct },
       );
     }
     /**
@@ -145,7 +155,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
      */
     let vencido = 0;
     let cuotas_vencidas = 0;
-    if (dmora > 0 && esCreditoVivo(c.estado) && c.cuotas.length > 0) {
+    if (dmora > 0 && esCreditoCobrable(c.estado) && c.cuotas.length > 0) {
       const graciaV = (c.cronograma as { diasGracia?: number } | null)?.diasGracia ?? config.simulador.diasGracia;
       const dv = calcularDeudaVencida(
         c.cuotas.map((q) => ({
@@ -155,11 +165,33 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
           pagadoCapital: q.pagado_capital, pagadoInteres: q.pagado_interes,
           pagadoMora: q.pagado_mora, pagadoCargos: q.pagado_cargos,
         })),
-        { moraActiva: mc.moraActiva, tasaMoraDiaria: mc.tasaMoraDiaria, topeMoraPct: mc.topeMoraPct, diasGracia: graciaV, hoy },
+        { moraActiva: mc.moraActiva, tasaMoraDiaria: mc.tasaMoraDiaria, topeMoraPct: mc.topeMoraPct, diasGracia: graciaV, hoy: hoyCredito },
       );
       vencido = round2(dv.total);
       cuotas_vencidas = dv.cuotas_vencidas;
     }
+
+    /**
+     * 🔴 CUÁNTO VOLVIÓ DE ESTE CRÉDITO, en total y desde siempre.
+     *
+     * Es el número que falta para negociar una deuda castigada, y no estaba en ninguna
+     * pantalla. La deuda que se reclama es NOMINAL —capital, interés capitalizado y
+     * punitorios— y no dice nada sobre si la financiera está ganando o perdiendo. Lo que hay
+     * que mirar para decidir cuánto aceptar es otra cosa: cuánta plata salió de la caja y
+     * cuánta volvió.
+     *
+     * Sobre CRD-000019: la deuda dice $2.326.775,16, pero lo que se prestó fueron
+     * $880.000,00 y volvieron $0,00. Cobrar $500.000,00 no es "aceptar el 21%": es recuperar
+     * más de la mitad del capital. Sin este dato el operador negocia contra un número
+     * inflado por su propio interés y regala el caso o lo pierde.
+     *
+     * Sale de las cuotas que ya se traen para la mora: cero consultas extra.
+     */
+    const cobrado = round2(
+      c.cuotas.reduce((acc, q) => acc + q.pagado_capital + q.pagado_interes + q.pagado_mora + q.pagado_cargos, 0),
+    );
+    /** Capital que la financiera todavía no recuperó. El piso real de cualquier negociación. */
+    const capital_en_riesgo = round2(Math.max(0, c.monto_original - cobrado));
 
     // Estado reconciliado: defensa de lectura ante datos legacy.
     const estado = estadoCoherente(c.estado, c.saldo_pendiente);
@@ -182,7 +214,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
       ? round2(Math.max(0, proxima.cuota_total - (proxima.pagado_capital + proxima.pagado_interes + proxima.pagado_cargos)))
       : 0;
 
-    return { ...credito, estado, dias_mora: dmora, interes_mora, vencido, cuotas_vencidas, cuota_proxima, tiene_pagos: c.pagos.length > 0, cobros_vivos: c._count.pagos > 0, acuerdo: acuerdosVig.get(c.id) ?? null };
+    return { ...credito, estado, dias_mora: dmora, interes_mora, vencido, cuotas_vencidas, cuota_proxima, cobrado, capital_en_riesgo, tiene_pagos: c.pagos.length > 0, cobros_vivos: c._count.pagos > 0, acuerdo: acuerdosVig.get(c.id) ?? null };
   });
 
   /**

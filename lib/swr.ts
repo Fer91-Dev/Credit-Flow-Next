@@ -294,6 +294,17 @@ export interface Credito {
   cuotas_vencidas?: number;
   /** Lo que falta pagar de la cuota impaga más vieja (la que apunta `proximo_pago`). */
   cuota_proxima?: number;
+  /** Todo lo que se cobró de este crédito desde siempre (capital + interés + mora + cargos). */
+  cobrado?: number;
+  /**
+   * Capital prestado que todavía no volvió. Es el PISO de cualquier negociación sobre una
+   * deuda castigada: la deuda nominal está inflada por su propio interés y no dice si la
+   * financiera está ganando o perdiendo.
+   */
+  capital_en_riesgo?: number;
+  /** Cuándo se dio por incobrable, y por qué. Solo con `estado === "incobrable"`. */
+  incobrable_at?: string | null;
+  incobrable_motivo?: string | null;
   /** True si el crédito tiene al menos un pago registrado (bloquea eliminar). */
   /** Tiene ALGÚN pago, anulados incluidos: es lo que impide eliminar el crédito. */
   tiene_pagos?: boolean;

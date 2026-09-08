@@ -18,6 +18,7 @@ import { VencimientosTab } from "./VencimientosTab";
 import { AcuerdosTab } from "./AcuerdosTab";
 import { AgendaHoy } from "./AgendaHoy";
 import { PlanillasTab } from "./PlanillasTab";
+import { IncobrablesTab } from "./IncobrablesTab";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { KpiCard } from "@/components/ui/KpiCard";
 import { StatusBadge } from "@/components/ui/StatusBadge";
@@ -85,10 +86,10 @@ const resultadoLabel: Record<AccionCobranza["resultado"], string> = {
   otro:          "Otro",
 };
 
-type Tab = "hoy" | "vencimientos" | "morosos" | "acuerdos" | "planillas" | "campanas";
+type Tab = "hoy" | "vencimientos" | "morosos" | "acuerdos" | "planillas" | "campanas" | "incobrables";
 
 /** Para validar el `?tab=` de la URL: un valor cualquiera no puede dejar la vista en blanco. */
-const TABS_VALIDOS: Tab[] = ["hoy", "vencimientos", "morosos", "acuerdos", "planillas", "campanas"];
+const TABS_VALIDOS: Tab[] = ["hoy", "vencimientos", "morosos", "acuerdos", "planillas", "campanas", "incobrables"];
 
 export function CobranzaTable({ role }: { role: Role }) {
   /** Los cortes media/alta/crítica que definió la financiera (Configuración → Cobranza). */
@@ -363,6 +364,8 @@ export function CobranzaTable({ role }: { role: Role }) {
   const incluido = (id: string) => (recorte ? seleccion.has(id) : visiblesIds.includes(id));
   const todasVisiblesSel = visiblesIds.length > 0 && destinatariosIds.length === visiblesIds.length;
   const bloqueadosVisibles = sortedFiltered.filter(noContactable).length;
+  /** ¿Hay cartera castigada? De eso depende que la pestaña Incobrables exista. */
+  const hayIncobrables = allCreditos.some((c) => c.estado === "incobrable");
 
   /**
    * La selección viaja a la pantalla de campaña por `sessionStorage` (ver
@@ -489,6 +492,18 @@ export function CobranzaTable({ role }: { role: Role }) {
           ["morosos",  "Morosos",  "money-with-wings"],
           ["acuerdos", "Acuerdos", "scroll"],
           ["planillas", "Planillas", "clipboard"],
+          /**
+           * INCOBRABLES va ÚLTIMA de las de trabajo, y solo si hay alguno.
+           *
+           * El orden de estas pestañas es el de la escalera: se le avisa antes de que venza,
+           * se le reclama cuando se atrasa, se acuerda, se sale a la calle. Los incobrables
+           * son lo que quedó después de todo eso, así que van al final.
+           *
+           * Y no se muestra vacía a propósito: una pestaña permanente que dice "no hay
+           * incobrables" es una que se aprende a ignorar, y cuando aparezca el primero nadie
+           * la va a mirar. Que aparezca ES la señal.
+           */
+          ...(hayIncobrables ? [["incobrables", "Incobrables", "cross-mark"]] : []),
           ...(puedeCampanas ? [["campanas", "Campañas", "megaphone"]] : []),
         ] as [Tab, string, string][]).map(([key, label, emoji]) => (
           <button
@@ -527,6 +542,8 @@ export function CobranzaTable({ role }: { role: Role }) {
         <AcuerdosTab role={role} />
       ) : tab === "planillas" ? (
         <PlanillasTab role={role} />
+      ) : tab === "incobrables" ? (
+        <IncobrablesTab />
       ) : (
       <>
       {isLoading ? (
