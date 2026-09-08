@@ -271,10 +271,34 @@ export function IncobrablesTab() {
             },
           },
           {
+            /**
+             * 🔴 CUÁNTAS VECES LO PRESTADO, debajo del importe.
+             *
+             * El importe reclamado solo no se puede explicar mirándolo: sobre Ricardo Paz son
+             * $6.745.339,99 —capital consolidado, más el interés del plan de la refinanciación,
+             * más los punitorios hasta el castigo— sobre $1.200.000,00 que salieron de la caja.
+             * Es exactamente el número que el cliente va a rechazar ("¿cómo me cobran seis
+             * millones si me prestaron uno?"), y el operador tiene que verlo venir.
+             *
+             * El múltiplo es el dato que convierte esa cifra en información: dice de una que
+             * la deuda está inflada por su propio interés y cuánto margen real hay para
+             * negociar. Sin él, "se le reclama" es una cifra grande sin contexto.
+             */
             header: "Se le reclama", align: "right", mono: true,
-            cell: ({ c }) => (
-              <span className="text-sm text-muted-foreground">{formatMonto(c.vencido || c.saldo_pendiente)}</span>
-            ),
+            cell: ({ c, prestado }) => {
+              const reclamado = c.vencido || c.saldo_pendiente;
+              const veces = prestado > 0 ? reclamado / prestado : 0;
+              return (
+                <div className="leading-tight">
+                  <span className="text-sm text-muted-foreground">{formatMonto(reclamado)}</span>
+                  {veces > 0 && (
+                    <span className="block text-[10px] text-warning">
+                      {veces.toLocaleString("es-AR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}× lo prestado
+                    </span>
+                  )}
+                </div>
+              );
+            },
           },
           {
             /**
@@ -333,8 +357,9 @@ export function IncobrablesTab() {
         que se decide cuánto aceptar, y sin él las dos columnas de arriba son dos números más.
       */}
       <p className="text-[11px] leading-relaxed text-muted-foreground/80">
-        Lo que se reclama es la deuda nominal: incluye el interés que se capitalizó al
-        refinanciar y los punitorios acumulados hasta el día del castigo. "Prestado" es la
+        Lo que se reclama es la deuda nominal: el capital con el que nació la refinanciación,
+        más el interés de ese plan y los punitorios acumulados hasta el día del castigo — por
+        eso puede ser varias veces la plata que se prestó. "Prestado" es la
         plata que de verdad salió de la caja —el crédito original, no la deuda consolidada— y
         "volvió" es todo lo cobrado en cualquier eslabón de la cadena. Para decidir cuánto
         aceptar, el número es el <strong className="text-foreground">capital en riesgo</strong>:
