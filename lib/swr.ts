@@ -571,6 +571,8 @@ export interface CuotaAmortizacion {
   iva: number;
   seguro: number;
   gastos: number;
+  /** Honorarios de gestión prorrateados: solo en refinanciaciones, 0 en el resto. */
+  honorarios: number;
   cuotaTotal: number;
 }
 
@@ -589,6 +591,8 @@ export interface Amortizacion {
     cft_anual: number | null;
     plazo_meses: number;
     n_cuotas: number;
+    /** Columnas de cargo a discriminar al reimprimir, según los cargos DE ESE crédito. */
+    cargo_cols: { key: "iva" | "seguro" | "gastos" | "honorarios"; label: string }[];
   };
   resumen: {
     cuota: number;
@@ -601,6 +605,7 @@ export interface Amortizacion {
     total_iva: number;
     total_seguro: number;
     total_gastos: number;
+    total_honorarios: number;
     total_cargos: number;
     /** Suma de la columna del cliente (cuotas redondeadas), SIN la comisión que paga al firmar. */
     total_cuotas: number;

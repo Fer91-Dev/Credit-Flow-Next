@@ -352,15 +352,22 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
       convencion: a.parametros.convencion_tasa,
       freqLabelPlural: a.parametros.frecuencia_label.cuotaPlural,
       hayCargos: a.resumen.total_cargos > 0,
+      // Qué cargos discriminar: los del crédito, no los activos hoy en Configuración. En una
+      // refinanciación esto agrega la columna "Honorarios de gestión".
+      cargoCols: a.parametros.cargo_cols,
       cuotas: a.cuotas.map((r) => ({
         nro: r.nro, fecha: r.fecha, cuota: r.cuota, interes: r.interes, capital: r.capital,
-        iva: r.iva, seguro: r.seguro, gastos: r.gastos, cuotaTotal: r.cuotaTotal, saldo: r.saldo,
+        iva: r.iva, seguro: r.seguro, gastos: r.gastos, honorarios: r.honorarios,
+        cuotaTotal: r.cuotaTotal, saldo: r.saldo,
       })),
       totales: {
         cuota: a.resumen.total_pagado,
         interes: a.resumen.total_intereses,
         capital: a.parametros.monto,
-        cargos: a.resumen.total_iva + a.resumen.total_seguro + a.resumen.total_gastos,
+        // 🔴 Los honorarios entran acá. Sin ellos el pie de "cargos" del plan reimpreso de
+        // una refinanciación quedaba en $0,00 y el total del papel no llegaba a lo que el
+        // sistema le cobra al cliente.
+        cargos: a.resumen.total_iva + a.resumen.total_seguro + a.resumen.total_gastos + a.resumen.total_honorarios,
         // Es el pie de la COLUMNA de cuotas: no lleva la comisión de otorgamiento, que va en
         // su propia línea abajo. Acá iba `total_con_cargos`, que ya la incluye, así que el
         // "Total a pagar" del PDF reimpreso la contaba dos veces y no coincidía con el que

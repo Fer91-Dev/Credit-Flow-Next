@@ -13,6 +13,7 @@ import {
   frecuenciaLabel,
   resolverFrecuencia,
   resolverCargos,
+  cargoColumnasActivas,
   convencionDelCredito,
   type CronogramaConfig,
   type CargosConfig,
@@ -81,6 +82,8 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
   const convencion = convencionDelCredito(credito.cronograma, config.convencionTasa);
   const tasaPeriodica = tasaPeriodicaSegunConvencion(credito.tasa, convencion, frecuencia, catalogo);
 
+  const cargosDelCredito = resolverCargos(credito.cargos as Partial<CargosConfig> | null, config.simulador.cargos);
+
   const plan = construirPlanAmortizacion(
     credito.monto_original,
     credito.tasa,
@@ -91,7 +94,7 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
     {
       // Snapshot del crédito (puede ser PARCIAL en créditos viejos/seed) normalizado sobre la
       // config vigente → todos los sub-cargos existen y el motor no revienta con `.activo`.
-      cargos: resolverCargos(credito.cargos as Partial<CargosConfig> | null, config.simulador.cargos),
+      cargos: cargosDelCredito,
       // Redondeo CONGELADO al otorgar (créditos viejos no lo tienen → config vigente). Sin
       // esto, cambiar el redondeo reescribía la tabla que se muestra de un crédito ya dado,
       // y esa tabla dejaba de coincidir con las cuotas que se le están cobrando.
@@ -127,6 +130,9 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
       cft_anual: cftDelPlan(plan, credito.monto_original, resolverFrecuencia(frecuencia, catalogo).periodosAnio)?.anual ?? null,
       plazo_meses: credito.plazo_meses,
       n_cuotas: credito.plazo_meses,
+      // Qué columnas de cargo discriminar al reimprimir: las mismas que se activaron al
+      // otorgar ESE crédito, no las que estén activas hoy en Configuración.
+      cargo_cols: cargoColumnasActivas(cargosDelCredito),
     },
     resumen: {
       cuota: plan.cuota,
@@ -139,6 +145,10 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
       total_iva: plan.totalIva,
       total_seguro: plan.totalSeguro,
       total_gastos: plan.totalGastos,
+      // Honorarios de gestión de una refinanciación (0 en un crédito común). Se expone
+      // aparte porque quien reimprime el plan tiene que poder discriminarlos: son un cargo
+      // que no sale de Configuración sino del acuerdo con ese cliente.
+      total_honorarios: plan.totalHonorarios,
       total_cargos: plan.totalCargos,
       // Suma de la columna que paga el cliente (cuotas ya redondeadas), SIN la comisión que
       // abona al firmar. `total_con_cargos` sí la incluye: no son intercambiables.

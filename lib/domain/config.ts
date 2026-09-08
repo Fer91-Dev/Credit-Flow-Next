@@ -331,6 +331,26 @@ export function resolverCargos(
     iva: { ...base.iva, ...c?.iva },
     seguro: { ...base.seguro, ...c?.seguro },
     gastosAdministrativos: { ...base.gastosAdministrativos, ...c?.gastosAdministrativos },
+    /**
+     * 🔴 LOS HONORARIOS VIAJAN CON EL CRÉDITO, NO CON LA CONFIGURACIÓN.
+     *
+     * Este campo se enumeraba antes y se PERDÍA: la función devolvía un objeto literal con
+     * los otros cuatro cargos y nada más. Como `base` es la config del tenant —que nunca
+     * lleva honorarios, porque el % se pacta en cada refinanciación— el único lugar donde
+     * existe el dato es el snapshot del crédito, y era justo el que se descartaba.
+     *
+     * Medido sobre REF-000006: el crédito cobra 3 cuotas de $728.801,91 ($2.186.405,74), y
+     * todo lo que reconstruye el plan desde el snapshot —el detalle del crédito, el PDF
+     * "Plan de pagos" reimpreso y la pantalla de comparar refinanciación— mostraba
+     * $686.736,94 y $2.060.210,82. Faltaban los $126.194,92 de honorarios en un papel que
+     * se le entrega al cliente.
+     *
+     * No tiene default en `base` a propósito: un crédito común no lleva honorarios y la
+     * clave no debe aparecer.
+     */
+    ...(c?.honorariosGestion ?? base.honorariosGestion
+      ? { honorariosGestion: { ...(base.honorariosGestion ?? { activo: false, total: 0 }), ...c?.honorariosGestion } }
+      : {}),
   };
 }
 

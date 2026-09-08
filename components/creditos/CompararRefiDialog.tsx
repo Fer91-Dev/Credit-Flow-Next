@@ -4,13 +4,27 @@ import { useState } from "react";
 import { ArrowRight, ExternalLink } from "lucide-react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { ModalHeader } from "@/components/ui/form-kit";
-import { useAmortizacion, type Credito, type Amortizacion } from "@/lib/swr";
+import { useAmortizacion, useOrigenRefinanciacion, type Credito, type Amortizacion } from "@/lib/swr";
 import { formatCreditoNumero, formatFecha } from "@/lib/utils";
 
-function n0(x: number) {
-  return new Intl.NumberFormat("es-AR", { maximumFractionDigits: 0 }).format(x);
-}
+/**
+ * Importes SIEMPRE con centavos. Antes esta pantalla redondeaba a pesos (`n0`) mientras la
+ * tabla de cuotas de abajo mostraba centavos: el mismo plan escrito de dos maneras en la
+ * misma pantalla, y los totales no cerraban contra el papel del cliente por unos centavos.
+ */
 function n2(x: number) {
+  return new Intl.NumberFormat("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(x);
+}
+/**
+ * Porcentajes de tasa CON DOS DECIMALES, aunque sean cerrados.
+ *
+ * 🔴 No es cosmético. La T.E.A. de un crédito al 350% nominal es 2.056,80%, y sin decimales
+ * salía "2.057%" — donde el punto es el separador de miles argentino. Debajo de un renglón
+ * que dice "350% T.N.A.", cualquiera lee "2,057%" y entiende que el costo efectivo es una
+ * fracción de la tasa nominal, o sea lo contrario de lo que pasa. Con la coma decimal a la
+ * vista ("2.056,80%") el punto se lee como lo que es.
+ */
+function pct(x: number) {
   return new Intl.NumberFormat("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(x);
 }
 const CONV_LABEL: Record<string, string> = {
@@ -45,6 +59,20 @@ function CompararBody({ origen, nuevo, onOpenCredito }: { origen: Credito; nuevo
   const b = useAmortizacion(nuevo.id);
   const [plan, setPlan] = useState<"original" | "nuevo">("original");
 
+  /**
+   * LA ENTREGA QUE EL CLIENTE PUSO EN EL ACTO.
+   *
+   * 🔴 Faltaba, y es plata del cliente. Esta pantalla compara dos contratos —"así se otorgó"
+   * contra "así quedó"— pero entre uno y otro puede haber habido un pago que redujo la deuda
+   * antes de consolidarla. Sin mostrarlo, el capital nuevo aparece salido de la nada: no hay
+   * forma de explicar por qué no es toda la deuda vieja.
+   *
+   * Se lee del pago (no del `meta` de la auditoría), así que una entrega anulada después
+   * deja de contarse en vez de seguir figurando.
+   */
+  const { origen: refi } = useOrigenRefinanciacion(nuevo.id);
+  const entregaVigente = refi?.entrega && !refi.entrega.anulado ? refi.entrega.monto : 0;
+
   const planAmort = plan === "original" ? a.amortizacion : b.amortizacion;
   const planLoading = plan === "original" ? a.isLoading : b.isLoading;
 
@@ -65,7 +93,7 @@ function CompararBody({ origen, nuevo, onOpenCredito }: { origen: Credito; nuevo
 
       {/* Diferencias clave */}
       {a.amortizacion && b.amortizacion && (
-        <Deltas a={a.amortizacion} b={b.amortizacion} />
+        <Deltas a={a.amortizacion} b={b.amortizacion} entrega={entregaVigente} />
       )}
 
       {/* Plan de cuotas (por defecto el original: "cómo era al principio") */}
@@ -123,21 +151,30 @@ function TermCard({ titulo, sub, credito, amort, loading, error, accent, onOpen 
         </div>
       ) : (
         <dl className="space-y-1.5">
-          <Line label={accent === "warning" ? "Capital consolidado" : "Monto otorgado"} value={`$${n0(amort.parametros.monto)}`} strong />
+          <Line label={accent === "warning" ? "Capital consolidado" : "Monto otorgado"} value={`$${n2(amort.parametros.monto)}`} strong />
           <Line label="Tasa" value={tasa} />
           {/* La T.E.A. y el C.F.T. vienen en FRACCIÓN (0,6321), no en porcentaje: van ×100.
               Sin eso, un 63,21% se mostraba como "1%" y hacía ver la refinanciación como
               gratis justo en la pantalla donde el cliente compara las dos opciones. */}
-          {tea != null && <Line label="Costo efectivo (T.E.A.)" value={`${n0(tea * 100)}%`} muted />}
+          {tea != null && <Line label="Costo efectivo (T.E.A.)" value={`${pct(tea * 100)}%`} muted />}
           {amort.parametros.cft_anual != null && (
-            <Line label="Costo total (C.F.T.)" value={`${n0(amort.parametros.cft_anual * 100)}%`} />
+            <Line label="Costo total (C.F.T.)" value={`${pct(amort.parametros.cft_anual * 100)}%`} />
           )}
           <Line label="Cuotas" value={`${amort.parametros.n_cuotas} × ${amort.parametros.frecuencia_label.adjetivo}`} />
           {/* `cuota_total` = lo que paga el cliente. `cuota_mensual` es la cuota pura, sin
               cargos ni redondeo: comparar dos ofertas por ese número no compara nada. */}
-          <Line label="Cuota" value={`$${n0(amort.resumen.cuota_total)}`} strong />
-          <Line label="Interés total" value={`$${n0(amort.resumen.total_intereses)}`} muted />
-          <Line label="Total a pagar" value={`$${n0(amort.resumen.total_con_cargos)}`} strong />
+          <Line label="Cuota" value={`$${n2(amort.resumen.cuota_total)}`} strong />
+          <Line label="Interés total" value={`$${n2(amort.resumen.total_intereses)}`} muted />
+          {/*
+            🔴 LOS HONORARIOS, DISCRIMINADOS. Están adentro de la cuota y del total, pero no
+            son interés ni capital: es lo que se cobró por gestionar la cobranza. Sin este
+            renglón, "Capital + Interés" no daba el "Total a pagar" y el número de abajo
+            parecía mal calculado. Solo aparece en la refinanciación que los lleva.
+          */}
+          {amort.resumen.total_honorarios > 0 && (
+            <Line label="Honorarios de gestión" value={`$${n2(amort.resumen.total_honorarios)}`} muted />
+          )}
+          <Line label="Total a pagar" value={`$${n2(amort.resumen.total_con_cargos)}`} strong />
         </dl>
       )}
     </div>
@@ -158,7 +195,7 @@ function Line({ label, value, strong, muted }: { label: string; value: string; s
  * el nuevo y la diferencia (con signo). Aclara que se comparan planes de distinta cantidad de
  * cuotas, para que el número no quede "suelto" sin contexto.
  */
-function Deltas({ a, b }: { a: Amortizacion; b: Amortizacion }) {
+function Deltas({ a, b, entrega }: { a: Amortizacion; b: Amortizacion; entrega: number }) {
   const filas = [
     {
       label: "Cuota",
@@ -186,18 +223,34 @@ function Deltas({ a, b }: { a: Amortizacion; b: Amortizacion }) {
               <p className="text-[10px] text-muted-foreground">{f.nota}</p>
             </div>
             <div className="flex items-center gap-2 font-mono text-xs tabular-nums">
-              <span className="text-muted-foreground">${n0(f.orig)}</span>
+              <span className="text-muted-foreground">${n2(f.orig)}</span>
               <ArrowRight className="h-3 w-3 shrink-0 text-warning" />
-              <span className="font-bold text-foreground">${n0(f.refi)}</span>
+              <span className="font-bold text-foreground">${n2(f.refi)}</span>
               <span className={`rounded px-1.5 py-0.5 text-[11px] font-semibold ${up ? "bg-destructive/10 text-destructive" : "bg-success/10 text-success"}`}>
-                {up ? "+" : d < 0 ? "−" : ""}${n0(Math.abs(d))}
+                {up ? "+" : d < 0 ? "−" : ""}${n2(Math.abs(d))}
               </span>
             </div>
           </div>
         );
       })}
+      {/*
+        LA ENTREGA, EN SU PROPIO RENGLÓN. No es una diferencia entre los dos planes —no
+        pertenece a ninguno de los dos— así que no puede ir como una fila más de la tabla de
+        arriba: es plata que el cliente pagó ENTRE los dos contratos y que bajó la deuda antes
+        de consolidarla. Sin ella, el "total a pagar" de la derecha no se puede explicar.
+      */}
+      {entrega > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-t border-border/60 pt-2.5">
+          <div className="min-w-0">
+            <p className="text-xs font-medium text-foreground">Entrega en el acto</p>
+            <p className="text-[10px] text-muted-foreground">ya cobrada, bajó la deuda antes de consolidarla</p>
+          </div>
+          <span className="font-mono text-xs font-bold tabular-nums text-success">${n2(entrega)}</span>
+        </div>
+      )}
       <p className="text-[10px] leading-relaxed text-muted-foreground/70">
-        La cuota y el total suben porque la refinanciación consolida la deuda vencida (capital + interés + mora acumulada) en un capital nuevo, sobre el que se vuelve a aplicar interés.
+        La cuota y el total suben porque la refinanciación consolida la deuda vencida (capital + interés + mora acumulada) en un capital nuevo, sobre el que se vuelve a aplicar interés
+        {b.resumen.total_honorarios > 0 && <>, y suma ${n2(b.resumen.total_honorarios)} de honorarios de gestión repartidos en las cuotas</>}.
       </p>
     </div>
   );
