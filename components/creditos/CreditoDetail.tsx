@@ -361,6 +361,22 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
        * meses. Afirmar eso en un documento que se firma es afirmar algo que no pasó.
        */
       montoLabel: credito.es_refinanciacion ? "Deuda consolidada" : "Monto solicitado",
+      /**
+       * De qué está hecho ese capital. Sale del evento de auditoría de la refinanciación —la
+       * misma fuente que la ficha— así que el papel y la pantalla no pueden discrepar. Si el
+       * evento no está (una refinanciación vieja, anterior al registro), no se inventa: se
+       * omite el párrafo entero en vez de imprimir un desglose que no cuadre.
+       */
+      refinanciacion:
+        credito.es_refinanciacion && origenRefinanciacion?.deuda_consolidada && credito.refinancia_a_numero
+          ? {
+              origen: formatCreditoNumero(credito.refinancia_a_numero),
+              capital: origenRefinanciacion.deuda_consolidada.capital ?? 0,
+              interes: origenRefinanciacion.deuda_consolidada.interes ?? 0,
+              mora: origenRefinanciacion.deuda_consolidada.mora ?? 0,
+              cargos: origenRefinanciacion.deuda_consolidada.cargos ?? 0,
+            }
+          : null,
       capital: a.parametros.monto,
       tasa: a.parametros.tasa_ingresada,
       convencion: a.parametros.convencion_tasa,

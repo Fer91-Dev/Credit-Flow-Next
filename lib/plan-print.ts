@@ -59,6 +59,26 @@ export interface PlanPrintData {
    * no pasó.
    */
   montoLabel?: string;
+  /**
+   * DE DÓNDE SALIÓ ESTE CAPITAL, cuando el crédito nació de refinanciar otro.
+   *
+   * 🔴 El papel no decía que era una refinanciación. El número lo codifica (REF-000019) pero
+   * el documento no explicaba que reemplaza a un crédito anterior ni por qué el capital es
+   * $2.326.775,16 cuando lo que se prestó fueron $880.000,00: el interés impago y los
+   * punitorios se capitalizaron. Sin eso, el papel se lee como un préstamo nuevo por una
+   * suma que nadie recibió, y la única explicación queda en la memoria del que atendió.
+   *
+   * Va en las DOS vistas: la del cliente es justamente la que tiene que poder explicarse
+   * sola cuando el cliente la mira de nuevo en su casa.
+   */
+  refinanciacion?: {
+    /** Número del crédito que se da de baja, ya formateado (CRD-XXXXXX). */
+    origen: string;
+    capital: number;
+    interes: number;
+    mora: number;
+    cargos?: number;
+  } | null;
   capital: number;
   /** Tasa ingresada (numérica), se muestra junto a la convención. */
   tasa: number;
@@ -315,6 +335,14 @@ tfoot td.pg{background:#0B1220;border-left:1px solid #3A4356}
         ? `\n    <p class="ftxt">El C.F.T. (Costo Financiero Total) expresa el costo anual del crédito incluyendo intereses, impuestos, seguros y gastos. Es el indicador que permite comparar distintas ofertas de financiación.</p>`
         : ""
     }
+    ${data.refinanciacion
+      ? `
+    <p class="ftxt"><strong>Este plan reemplaza al ${esc(data.refinanciacion.origen)}</strong>, que queda cerrado y sin saldo. ` +
+        `El capital de ${formatMonto(capital)} se compone del capital pendiente de ese crédito (${formatMonto(data.refinanciacion.capital)}), ` +
+        `el interés devengado y no pagado (${formatMonto(data.refinanciacion.interes)})` +
+        `${(data.refinanciacion.cargos ?? 0) > 0 ? `, los cargos pendientes (${formatMonto(data.refinanciacion.cargos ?? 0)})` : ""} ` +
+        `y los punitorios acumulados (${formatMonto(data.refinanciacion.mora)}). Esos importes pasan a formar parte del capital y devengan interés en el plan nuevo.</p>`
+      : ""}
     ${data.financiera?.nombre?.trim() ? '<p class="pwr">powered by CreditFlow</p>' : ""}
   </div>
 </div>
