@@ -741,6 +741,9 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
   function imprimirPlan(vistaImp: "operador" | "cliente") {
     if (!plan) return;
     imprimirPlanPagos({
+      // El simulador SÍ está cotizando, así que el pie y la fecha de "cotización" quedan como
+      // están; lo que faltaba acá era el nombre, para que el papel diga a quién se le cotizó.
+      cliente: clienteSel ? nombreCompleto(clienteSel) : null,
       capital: montoNum,
       tasa: parseFloat(formData.tasa) || 0,
       convencion,

@@ -36,6 +36,29 @@ export interface PlanPrintData {
    * Opcional: en el simulador, antes de otorgar, el crédito todavía no tiene número.
    */
   numeroCredito?: string | null;
+  /**
+   * A NOMBRE DE QUIÉN. El documento no lo decía en ningún lado: salía con el número del
+   * crédito y nada más, así que dos planes impresos seguidos son indistinguibles, y archivado
+   * no sirve para nada. Es el papel que el cliente se lleva y contra el que después discute
+   * un importe. Opcional: en el simulador todavía puede no haber cliente elegido.
+   */
+  cliente?: string | null;
+  /**
+   * CUÁNDO SE OTORGÓ, para un crédito que ya existe.
+   *
+   * 🔴 El encabezado decía "Fecha de cotización de financiación" con la fecha de HOY. En el
+   * simulador es correcto —se está cotizando— pero reimprimiendo el plan de un crédito
+   * otorgado hace tres meses, el papel se fechaba hoy: el cliente terminaba con dos planes
+   * idénticos con fechas distintas y ninguna era la de su crédito.
+   */
+  fechaOtorgamiento?: Date | string | null;
+  /**
+   * Rótulo del importe principal. Por defecto "Monto solicitado", que es lo correcto al
+   * otorgar. En una REFINANCIACIÓN es falso: el cliente no pidió esa plata ni la recibió —es
+   * la deuda que se le consolidó— y decirlo así en un papel que va a firmar afirma algo que
+   * no pasó.
+   */
+  montoLabel?: string;
   capital: number;
   /** Tasa ingresada (numérica), se muestra junto a la convención. */
   tasa: number;
@@ -259,15 +282,16 @@ tfoot td.pg{background:#0B1220;border-left:1px solid #3A4356}
     }<span class="bname">${esc(data.financiera?.nombre?.trim() || "CreditFlow")}</span></div>
     <div class="cotblk">
       ${data.numeroCredito ? `<span class="cotlabel">Crédito</span><span class="cotval" style="font-family:ui-monospace,monospace">${esc(data.numeroCredito)}</span>` : ""}
-      <span class="cotlabel">Fecha de cotización de financiación</span>
-      <span class="cotval">${hoy}</span>
+      ${data.cliente ? `<span class="cotlabel">Cliente</span><span class="cotval" style="font-size:14px">${esc(data.cliente)}</span>` : ""}
+      <span class="cotlabel">${data.fechaOtorgamiento ? "Otorgado el" : "Fecha de cotización de financiación"}</span>
+      <span class="cotval">${data.fechaOtorgamiento ? formatFecha(data.fechaOtorgamiento) : hoy}</span>
     </div>
   </div>
   <div class="band">
     <!-- El capital también en LETRAS: es lo que va al pagaré, donde la letra le gana al
          número si no coinciden. Tenerlo en el mismo papel permite cotejarlo sin abrir el
          sistema. -->
-    <div class="kitem"><span class="klabel">Monto solicitado</span><span class="kval">${formatMonto(capital)}</span><span class="kletras">${esc(montoEnPalabras(capital))}</span></div>
+    <div class="kitem"><span class="klabel">${esc(data.montoLabel ?? "Monto solicitado")}</span><span class="kval">${formatMonto(capital)}</span><span class="kletras">${esc(montoEnPalabras(capital))}</span></div>
     <div class="kitem"><span class="klabel">Tasa</span><span class="kval">${data.tasa}% ${convLabel}</span></div>
     <div class="kitem"><span class="klabel">Cuotas</span><span class="kval">${nCuotas} – ${freqLabel}</span></div>${
       data.cft != null
@@ -284,7 +308,9 @@ tfoot td.pg{background:#0B1220;border-left:1px solid #3A4356}
     </table>
   </div>
   <div class="footer">
-    <p class="ftxt">Este documento es un resumen informativo generado al momento de la simulación. Los importes pueden estar sujetos a modificaciones según las condiciones contractuales.</p>${
+    <p class="ftxt">${data.fechaOtorgamiento
+      ? "Este documento es un resumen informativo del plan de pagos pactado. Los importes no incluyen los punitorios que se devenguen por pagos fuera de término."
+      : "Este documento es un resumen informativo generado al momento de la simulación. Los importes pueden estar sujetos a modificaciones según las condiciones contractuales."}</p>${
       data.cft != null
         ? `\n    <p class="ftxt">El C.F.T. (Costo Financiero Total) expresa el costo anual del crédito incluyendo intereses, impuestos, seguros y gastos. Es el indicador que permite comparar distintas ofertas de financiación.</p>`
         : ""

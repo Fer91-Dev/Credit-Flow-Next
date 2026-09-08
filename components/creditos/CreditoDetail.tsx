@@ -345,8 +345,22 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
     const a = amortizacion;
     if (!a) return;
     imprimirPlanPagos({
-      // El papel que se lleva el cliente dice de QUÉ crédito es.
+      // El papel que se lleva el cliente dice de QUÉ crédito es y DE QUIÉN.
       numeroCredito: formatCreditoNumero(credito.numero, credito.refinancia_a_numero),
+      cliente: nombreCompleto(credito.cliente),
+      /**
+       * La fecha del CRÉDITO, no la de la impresión: reimprimir el plan de uno otorgado en
+       * abril fechaba el papel hoy, y el cliente terminaba con dos planes idénticos con
+       * fechas distintas, ninguna de las cuales era la de su crédito.
+       */
+      fechaOtorgamiento: credito.fecha_inicio ?? credito.created_at,
+      /**
+       * 🔴 EN UNA REFINANCIACIÓN NO HAY "MONTO SOLICITADO". El cliente no pidió esa plata ni
+       * la recibió: es su deuda vieja consolidada. Sobre REF-000019 el papel decía "Monto
+       * solicitado $2.326.775,16" cuando lo que se prestó fueron $880.000,00 hace cinco
+       * meses. Afirmar eso en un documento que se firma es afirmar algo que no pasó.
+       */
+      montoLabel: credito.es_refinanciacion ? "Deuda consolidada" : "Monto solicitado",
       capital: a.parametros.monto,
       tasa: a.parametros.tasa_ingresada,
       convencion: a.parametros.convencion_tasa,
