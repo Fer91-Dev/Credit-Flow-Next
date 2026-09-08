@@ -22,13 +22,15 @@ import { construirPlanAmortizacion } from "@/lib/domain";
  * dentro de la misma pestaña para chequear el plan viejo tiraría todo eso y habría que
  * volver a arrancar la conversación desde cero.
  *
- * El destino es `/creditos?credito=<id>`, que abre el detalle en la lista: el detalle es un
- * diálogo y no una ruta propia, así que esa es su dirección.
+ * El destino es `/creditos/<id>`, la pantalla del crédito. Antes fue `/creditos?credito=<id>`
+ * —la lista abriendo el diálogo— y se veía el rebote: aterrizabas en una tabla que no
+ * pediste y un instante después te saltaba un modal encima. Un link tiene que llevar a lo
+ * que dice, no a otra pantalla que después te lleva.
  */
 function LinkCredito({ id, numero, className = "" }: { id: string; numero: number | null | undefined; className?: string }) {
   return (
     <Link
-      href={`/creditos?credito=${id}`}
+      href={`/creditos/${id}`}
       target="_blank"
       rel="noopener"
       title="Ver el detalle de este crédito en otra pestaña"

@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { WhatsAppIcon } from "@/components/ui/WhatsAppIcon";
 import { useAgendaCobranza, type AgendaItem, useTramosMora } from "@/lib/swr";
+import { CreditoLink } from "@/components/ui/CreditoLink";
 import { formatMonto, formatFecha, formatCreditoNumero, teclaDelContenedor, formatDias } from "@/lib/utils";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { KpiCard } from "@/components/ui/KpiCard";
@@ -266,7 +267,7 @@ function AgendaRow({
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <p className="font-medium text-foreground truncate">{it.cliente}</p>
-          <span className="font-mono text-[11px] text-primary/80 shrink-0">{formatCreditoNumero(it.credito_numero, it.credito_refinancia_a_numero)}</span>
+          <CreditoLink id={it.credito_id} numero={it.credito_numero} numeroOrigen={it.credito_refinancia_a_numero} conIcono={false} className="text-[11px] shrink-0" />
         </div>
         <p className="mt-0.5 text-[11px] text-muted-foreground/70 truncate">
           {it.motivo}

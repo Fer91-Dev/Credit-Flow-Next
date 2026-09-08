@@ -2,12 +2,11 @@
 
 import { estadoBadgeCredito } from "./estado-badge";
 
-import { useState, useMemo, useEffect, useRef } from "react";
+import { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { mutate as globalMutate } from "swr";
 import { FileText, ChevronDown, X, RefreshCw, History } from "lucide-react";
 import { CreditoDetail } from "./CreditoDetail";
-import { useToast } from "@/components/ui/toast";
 import { CompararRefiDialog } from "./CompararRefiDialog";
 import { useCreditos, KEYS, type Credito, useTramosMora, useDiasLegales } from "@/lib/swr";
 import { type Role } from "@/lib/auth/roles";
@@ -50,7 +49,6 @@ export function CreditosTable({ role }: { role: Role }) {
   /** Los cortes media/alta/crítica que definió la financiera (Configuración → Cobranza). */
   const tramos = useTramosMora();
   const router = useRouter();
-  const toast = useToast();
   const { creditos, error, isLoading, mutate } = useCreditos();
   const [detail, setDetail]       = useState<Credito | null>(null);
   /**
@@ -72,36 +70,6 @@ export function CreditosTable({ role }: { role: Role }) {
    */
   const [busqRefi, setBusqRefi]   = useState("");
 
-  /**
-   * ABRIR UN CRÉDITO DESDE UN LINK: `/creditos?credito=<id>`.
-   *
-   * El detalle es un diálogo de esta lista, así que hasta ahora no tenía dirección: cualquier
-   * pantalla que nombrara un crédito —la de refinanciar, la comparación, la ficha del
-   * cliente— solo podía escribir el número y dejar al operador buscarlo a mano.
-   *
-   * Se aplica UNA vez y después se limpia el parámetro de la URL: es una acción de llegada,
-   * no un estado de la pantalla. Sin limpiarlo, cerrar el diálogo y recargar lo reabría, y no
-   * habría forma de quedarse en la lista.
-   *
-   * Espera a que los créditos estén cargados (`isLoading`) porque el diálogo necesita el
-   * objeto entero, no el id: es la misma lista que ya se pide para la tabla, no una consulta
-   * extra.
-   */
-  const abiertoPorUrl = useRef(false);
-  useEffect(() => {
-    if (abiertoPorUrl.current || isLoading || creditos.length === 0) return;
-    const id = new URLSearchParams(window.location.search).get("credito");
-    if (!id) return;
-    abiertoPorUrl.current = true;
-    const c = creditos.find((x) => x.id === id);
-    // Si el id no está en la lista, se dice. Abrir la pantalla sin el diálogo y sin
-    // explicación deja al operador creyendo que el link no hizo nada.
-    if (c) setDetail(c);
-    else toast.error("No se encontró ese crédito. Puede haberse eliminado.");
-    const url = new URL(window.location.href);
-    url.searchParams.delete("credito");
-    window.history.replaceState({}, "", url.pathname + url.search);
-  }, [creditos, isLoading]);
 
   /**
    * Acá solo se DA DE ALTA. Anular y eliminar se disparan desde el detalle, que es donde se

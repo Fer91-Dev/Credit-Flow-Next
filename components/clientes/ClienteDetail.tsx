@@ -30,6 +30,7 @@ import { NoContactarDialog } from "@/components/clientes/NoContactarDialog";
 import { ProntuarioPanel } from "@/components/clientes/ProntuarioPanel";
 import { abrirRecibo } from "@/lib/recibo";
 import { moraDevengadaDeCuota } from "@/lib/recibo-cuota";
+import { CreditoLink } from "@/components/ui/CreditoLink";
 import { formatCreditoNumero, formatFecha, formatFechaHora, nombreCompleto, hoyComercial, formatDias, formatMonto } from "@/lib/utils";
 import { esCreditoVivo, deudaEnRevision, normalizarEstadoCliente, round2, ESTADO_CLIENTE_LABEL, ESTADO_CLIENTE_VARIANT } from "@/lib/domain";
 import type { Role } from "@/lib/auth/roles";
@@ -210,7 +211,7 @@ export function ClienteDetail({
   // Historial de pagos del cliente (aplanado de todos sus créditos), más nuevos primero.
   const puedeAnular = cliente.puede_anular_pago === true;
   const pagosCliente = creditos
-    .flatMap((c) => (c.pagos ?? []).map((p) => ({ ...p, creditoNumero: c.numero, creditoRefiNumero: c.refinancia_a_numero })))
+    .flatMap((c) => (c.pagos ?? []).map((p) => ({ ...p, creditoId: c.id, creditoNumero: c.numero, creditoRefiNumero: c.refinancia_a_numero })))
     .sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime());
   /** Los cobros que siguen en pie (un anulado no cuenta como "último pago"). */
   const pagosVivos = pagosCliente.filter((p) => !p.anulado);
@@ -835,7 +836,7 @@ export function ClienteDetail({
                               </>
                             ) : "cobro registrado"}
                             {" · "}
-                            <span className="font-mono">{formatCreditoNumero(p.creditoNumero, p.creditoRefiNumero)}</span>
+                            <CreditoLink id={p.creditoId} numero={p.creditoNumero} numeroOrigen={p.creditoRefiNumero} conIcono={false} />
                           </p>
                         </div>
                         <div className="flex shrink-0 items-center gap-2">
@@ -1112,9 +1113,14 @@ function CreditosTabla({ creditos, mostrarProximo, onCobrar, onCobrarAcuerdo, cl
             <div className="grid gap-4 py-4 pl-5 pr-4">
               {/* Identificación + estado */}
               <div className="flex flex-wrap items-center gap-2">
-                <span className="font-mono text-base font-bold tracking-tight text-foreground">
-                  {formatCreditoNumero(c.numero, c.refinancia_a_numero)}
-                </span>
+                {/* El número es la puerta al crédito: era el dato que más se mira de esta
+                    tarjeta y el único que no llevaba a ningún lado. */}
+                <CreditoLink
+                  id={c.id}
+                  numero={c.numero}
+                  numeroOrigen={c.refinancia_a_numero}
+                  className="text-base font-bold tracking-tight"
+                />
                 <StatusBadge label={b.label} variant={b.variant} />
                 {/*
                   🔴 "EN ACUERDO" EN VERDE Y "82 DÍAS DE MORA" EN ROJO, EN EL MISMO RENGLÓN.
@@ -1194,7 +1200,9 @@ function CreditosTabla({ creditos, mostrarProximo, onCobrar, onCobrarAcuerdo, cl
                 {c.estado === "refinanciado" ? (
                   <CifraCredito
                     label="Deuda trasladada"
-                    valor={destino ? formatCreditoNumero(destino.numero, destino.refinancia_a_numero) : "crédito nuevo"}
+                    valor={destino
+                      ? <CreditoLink id={destino.id} numero={destino.numero} numeroOrigen={destino.refinancia_a_numero} className="text-sm font-bold" />
+                      : "crédito nuevo"}
                     pie="se cobra en ese crédito"
                     tono="muted" />
                 ) : c.estado === "anulado" ? (
@@ -1222,7 +1230,7 @@ function CreditosTabla({ creditos, mostrarProximo, onCobrar, onCobrarAcuerdo, cl
 
               {/* La entrega con la que nació, si vino de una refinanciación. Va DEBAJO de las
                   cifras y no entre ellas: es contexto, no un total de este crédito. */}
-              {c.es_refinanciacion && <EntregaDeOrigen creditoId={c.id} numeroOrigen={c.refinancia_a_numero} />}
+              {c.es_refinanciacion && <EntregaDeOrigen creditoId={c.id} origenId={c.refinancia_a} numeroOrigen={c.refinancia_a_numero} />}
 
               {/* Acciones. El botón de despliegue es explícito: era lo que faltaba. */}
               <div className="flex flex-wrap items-center gap-2">
@@ -1300,7 +1308,7 @@ function CreditosTabla({ creditos, mostrarProximo, onCobrar, onCobrarAcuerdo, cl
  * Se muestra como CONTEXTO, fuera de los totales: la plata se ve donde el cliente la busca,
  * dice de dónde salió, y ninguno de los dos libros queda mal.
  */
-function EntregaDeOrigen({ creditoId, numeroOrigen }: { creditoId: string; numeroOrigen?: number | null }) {
+function EntregaDeOrigen({ creditoId, origenId, numeroOrigen }: { creditoId: string; origenId?: string | null; numeroOrigen?: number | null }) {
   const { origen } = useOrigenRefinanciacion(creditoId);
   const entrega = origen?.entrega;
   if (!entrega || entrega.anulado || entrega.monto <= 0) return null;
@@ -1308,13 +1316,15 @@ function EntregaDeOrigen({ creditoId, numeroOrigen }: { creditoId: string; numer
     <p className="text-xs text-muted-foreground">
       Nació con una entrega de{" "}
       <span className="font-mono font-semibold tabular-nums text-success">${n2(entrega.monto)}</span>{" "}
-      en {entrega.metodo}, cobrada sobre {formatCreditoNumero(numeroOrigen ?? null)} antes de armar este plan.
+      en {entrega.metodo}, cobrada sobre <CreditoLink id={origenId} numero={numeroOrigen} conIcono={false} /> antes de armar este plan.
     </p>
   );
 }
 
 function CifraCredito({ label, valor, pie, tono }: {
-  label: string; valor: string; pie?: string;
+  // `valor` acepta un nodo y no solo texto: la deuda trasladada muestra el número del crédito
+  // nuevo, y ese número tiene que poder ser un enlace.
+  label: string; valor: React.ReactNode; pie?: string;
   /** `muted` = dato de referencia, no lo que hay que mirar (ej. la cuota del plan caído). */
   tono?: "success" | "warning" | "muted";
 }) {

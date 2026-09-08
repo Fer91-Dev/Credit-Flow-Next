@@ -8,6 +8,7 @@ import { useCuotas } from "@/lib/swr";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { DetailSection } from "@/components/ui/DetailGrid";
 import { Skeleton } from "@/components/ui/skeleton";
+import { CreditoLink } from "@/components/ui/CreditoLink";
 import { formatFecha, formatFechaHora, formatMonto, nombreCompleto, formatDias, formatCreditoNumero } from "@/lib/utils";
 
 const fmtDate = (s?: string | null) => formatFecha(s);
@@ -81,7 +82,7 @@ export function CobranzaDetail({ credito, acciones }: {
         <div>
           <p className="text-lg font-semibold text-foreground">{nombreCompleto(credito.cliente)}</p>
           <p className="text-xs text-muted-foreground mt-0.5">
-            <span className="font-mono">{formatCreditoNumero(credito.numero)}</span>
+            <CreditoLink id={credito.id} numero={credito.numero} numeroOrigen={credito.refinancia_a_numero} conIcono={false} />
             {" · "}{credito.tipo_credito} · {credito.tasa}% · {credito.plazo_meses} cuotas
             {credito.cliente.telefono && <> · {credito.cliente.telefono}</>}
           </p>
