@@ -84,6 +84,15 @@ export interface SenalesRecupero {
   acuerdosRotos: number;
   /** El crédito ya se refinanció (estado `refinanciado`). */
   refinanciado?: boolean;
+  /**
+   * Cuántas refinanciaciones hay DETRÁS de este crédito.
+   *
+   * 0 = es un crédito original. 1 = nació de refinanciar uno. 2 = de refinanciar una
+   * refinanciación. Se cuenta caminando la cadena `refinancia_a` hacia atrás, no con un
+   * contador guardado: un campo que hay que acordarse de incrementar se desincroniza el
+   * primer día.
+   */
+  refinanciacionesEncadenadas?: number;
 }
 
 /**
@@ -235,6 +244,26 @@ export interface RecuperoConfig {
    * queda auditada — el que regala plata es el dueño, no el que atiende.
    */
   no_bajar_tasa_refinanciando: boolean;
+  /**
+   * CUÁNTAS VECES SE PUEDE REFINANCIAR LA MISMA DEUDA, una detrás de otra.
+   *
+   * 🔴 Es el único escalón que no tenía tope. Los acuerdos rotos sí (`max_acuerdos_rotos`),
+   * y por la misma razón: sin límite, el escalón se vuelve la forma de no llegar nunca al
+   * siguiente. Pero acá es peor que en los acuerdos, porque refinanciar CAPITALIZA: el
+   * interés impago pasa a capital y vuelve a devengar interés. Sobre CRD-000019 fueron
+   * $880.000,00 prestados contra $2.326.775,16 consolidados en cinco meses; encadenar dos
+   * más arma una deuda que ya no tiene relación con la plata que salió de la caja, y que el
+   * cliente no va a poder pagar nunca.
+   *
+   * 1 = una sola (lo que decidió la financiera): un crédito que YA es una refinanciación no
+   * se vuelve a refinanciar. 0 = sin tope.
+   *
+   * ⚠️ No cierra las dos puertas: el tope se evalúa DENTRO de `puedeRefinanciar`, así que la
+   * guarda de `puedeCobrar` —"si no se puede refinanciar, se puede cobrar"— vuelve a abrir el
+   * cobro sola. Sin eso, un crédito pasado del umbral y con el tope alcanzado quedaba sin
+   * ninguna puerta: ni cobrar ni refinanciar.
+   */
+  max_refinanciaciones_encadenadas: number;
 }
 
 export const RECUPERO_DEFAULT: RecuperoConfig = {
@@ -249,6 +278,8 @@ export const RECUPERO_DEFAULT: RecuperoConfig = {
   // la decisión más fuerte del pipeline y no la puede tomar un default.
   bloquear_cobro_sin_refinanciar: false,
   no_bajar_tasa_refinanciando: true,
+  // Una sola: refinanciar una refinanciación capitaliza interés sobre interés capitalizado.
+  max_refinanciaciones_encadenadas: 1,
   // Arranca APAGADO: cobrarle honorarios al deudor es una decisión de cada financiera, y el
   // sistema no puede empezar a sumarle plata a una deuda porque sí.
   honorarios_gestion_activo: false,
@@ -323,6 +354,11 @@ export function resolverRecupero(raw: unknown): RecuperoConfig {
     // ordena un proceso — tapa una fuga de plata.
     no_bajar_tasa_refinanciando:
       r.no_bajar_tasa_refinanciando === false ? false : RECUPERO_DEFAULT.no_bajar_tasa_refinanciando,
+    max_refinanciaciones_encadenadas: (() => {
+      const n = Number(r.max_refinanciaciones_encadenadas);
+      // `undefined` en una config vieja cae al default; un 0 explícito significa "sin tope".
+      return Number.isFinite(n) && n >= 0 ? Math.min(20, Math.trunc(n)) : RECUPERO_DEFAULT.max_refinanciaciones_encadenadas;
+    })(),
   };
 }
 
@@ -458,6 +494,25 @@ export function puedeRefinanciar(s: SenalesRecupero, cfg: RecuperoConfig): Vered
       permitido: false,
       motivo: `Todavía no se puede refinanciar: lleva ${s.diasMora} día${s.diasMora === 1 ? "" : "s"} de atraso y la financiera pide al menos ${cfg.dias_min_mora_refinanciar}.`,
       sugerencia: "Mientras tanto, ofrecele un acuerdo de pago sobre lo vencido.",
+    };
+  }
+  /**
+   * 🔴 EL TOPE DE LA CADENA VA ANTES QUE LAS DEMÁS REGLAS.
+   *
+   * Las otras dicen "todavía no" —falta atraso, falta romper un acuerdo— y se destraban
+   * solas con el tiempo. Esta dice "ya no": la deuda agotó las refinanciaciones que la
+   * financiera admite, y ningún día de espera lo cambia. Mezclarla con las otras le
+   * ofrecería al operador una salida que no existe.
+   */
+  const encadenadas = s.refinanciacionesEncadenadas ?? 0;
+  if (cfg.max_refinanciaciones_encadenadas > 0 && encadenadas >= cfg.max_refinanciaciones_encadenadas) {
+    return {
+      permitido: false,
+      motivo:
+        cfg.max_refinanciaciones_encadenadas === 1
+          ? "Este crédito ya es una refinanciación, y la financiera admite una sola: no se puede volver a refinanciar la misma deuda."
+          : `Esta deuda ya se refinanció ${encadenadas} ${encadenadas === 1 ? "vez" : "veces"} y la financiera admite ${cfg.max_refinanciaciones_encadenadas}.`,
+      sugerencia: "Armale un acuerdo de pago sobre lo vencido, o pasalo a legales.",
     };
   }
   if (cfg.exigir_acuerdo_para_refinanciar && s.acuerdosRotos === 0) {

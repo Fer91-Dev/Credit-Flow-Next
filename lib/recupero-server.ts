@@ -25,9 +25,31 @@ import { ApiError } from "@/lib/auth";
 export async function senalesRecupero(tenantId: string, creditoId: string): Promise<SenalesRecupero> {
   const credito = await prisma.creditos.findFirst({
     where: { ...withTenant(tenantId), id: creditoId },
-    select: { estado: true, proximo_pago: true },
+    select: { estado: true, proximo_pago: true, es_refinanciacion: true, refinancia_a: true },
   });
   if (!credito) throw new ApiError("El crédito no existe", "NOT_FOUND", 404);
+
+  /**
+   * CUÁNTAS REFINANCIACIONES HAY DETRÁS, caminando la cadena `refinancia_a` hacia atrás.
+   *
+   * Se cuenta y no se guarda, por la misma razón que la etapa y la mora: un contador que hay
+   * que acordarse de incrementar se desincroniza el primer día, y este decide si una deuda se
+   * puede volver a refinanciar.
+   *
+   * El corte a 20 saltos no es un límite de negocio —el tope real lo pone la configuración—
+   * sino una red contra un ciclo en los datos: sin él, un `refinancia_a` que apunte en círculo
+   * cuelga la request para siempre. Con el tope en 1 la cadena casi nunca pasa de un salto.
+   */
+  let encadenadas = 0;
+  let anterior = credito.es_refinanciacion ? credito.refinancia_a : null;
+  while (anterior && encadenadas < 20) {
+    encadenadas++;
+    const previo = await prisma.creditos.findFirst({
+      where: { ...withTenant(tenantId), id: anterior },
+      select: { es_refinanciacion: true, refinancia_a: true },
+    });
+    anterior = previo?.es_refinanciacion ? previo.refinancia_a : null;
+  }
 
   const [gestiones, promesaPendiente, promesasIncumplidas, acuerdoVigente, acuerdosRotos] = await Promise.all([
     // Solo gestiones HUMANAS: los envíos de campaña y las alertas del cron llevan
@@ -57,6 +79,7 @@ export async function senalesRecupero(tenantId: string, creditoId: string): Prom
     acuerdoVigente: acuerdoVigente > 0,
     acuerdosRotos,
     refinanciado: credito.estado === "refinanciado",
+    refinanciacionesEncadenadas: encadenadas,
   };
 }
 
@@ -198,12 +221,43 @@ export async function cobroBloqueadoPorCredito(
   });
   const rotosPorCredito = new Map(rotos.map((r) => [r.credito_id, r._count._all]));
 
+  /**
+   * 🔴 LA PROFUNDIDAD DE LA CADENA TAMBIÉN ENTRA ACÁ, O SE ARMA EL CALLEJÓN.
+   *
+   * `puedeCobrar` cierra el cobro pasado el umbral, pero tiene una guarda: si tampoco se
+   * puede refinanciar, vuelve a abrirlo — nunca las dos puertas cerradas. Esa guarda llama a
+   * `puedeRefinanciar`, así que necesita saber cuántas refinanciaciones lleva la deuda.
+   *
+   * Sin este dato, esta función pasaba 0 y una refinanciación de 60 días quedaba con el cobro
+   * bloqueado Y el tope de cadena alcanzado: ni cobrar ni refinanciar. Y encima la lista le
+   * ofrecía "Refinanciar" al operador, que es la acción que el server iba a rechazar.
+   *
+   * Se resuelve con UNA consulta: todas las refinanciaciones del tenant con su origen. La
+   * cadena se camina en memoria — son pocas filas y ya están todas acá.
+   */
+  const profundidad = new Map<string, number>();
+  if (cfg.max_refinanciaciones_encadenadas > 0) {
+    const refis = await prisma.creditos.findMany({
+      where: { ...withTenant(tenantId), es_refinanciacion: true },
+      select: { id: true, refinancia_a: true },
+    });
+    const origenDe = new Map(refis.map((r) => [r.id, r.refinancia_a]));
+    for (const c of creditos) {
+      let n = 0;
+      let cursor: string | null | undefined = origenDe.has(c.id) ? c.id : null;
+      // El corte a 20 es una red contra un ciclo en los datos, no un límite de negocio.
+      while (cursor && n < 20) { n++; cursor = origenDe.get(cursor) ?? null; }
+      profundidad.set(c.id, n);
+    }
+  }
+
   for (const c of creditos) {
     const v = puedeCobrar(
       {
         diasMora: c.diasMora,
         acuerdoVigente: c.acuerdoVigente,
         acuerdosRotos: rotosPorCredito.get(c.id) ?? 0,
+        refinanciacionesEncadenadas: profundidad.get(c.id) ?? 0,
         // No los mira `puedeCobrar` sin la excepción de la entrega; van en cero para no
         // pagar cinco consultas por crédito.
         gestiones: 0,

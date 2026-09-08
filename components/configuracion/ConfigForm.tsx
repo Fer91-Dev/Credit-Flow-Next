@@ -2479,6 +2479,30 @@ export function ConfigForm() {
                   ? <>Al refinanciar se va a poder pactar entre <strong>{cobranza.recupero.tasa_refinanciacion_min}%</strong> y <strong>{cobranza.recupero.tasa_refinanciacion_max}% {CONV_CORTA[form.convencionTasa]}</strong>, independiente de los límites con los que otorgás. Para comparar: hoy otorgás entre {form.simulador.tasaMin}% y {form.simulador.tasaMax}%.</>
                   : <>Sin banda propia: al refinanciar rigen los mismos límites de tasa del Simulador. Cargá un máximo si querés reestructurar con otro rango.</>}
               </p>
+              {/*
+                🔴 EL ÚNICO ESCALÓN QUE NO TENÍA TOPE.
+                Los acuerdos rotos sí lo tienen, y por la misma razón: sin límite, el escalón
+                se vuelve la forma de no llegar nunca al siguiente. Pero acá es peor, porque
+                refinanciar CAPITALIZA — el interés impago pasa a capital y vuelve a devengar
+                interés. Encadenar refinanciaciones arma una deuda que ya no tiene relación
+                con la plata que salió de la caja.
+              */}
+              <div className="max-w-xl">
+                <Field
+                  label="Cuántas veces se puede refinanciar la misma deuda"
+                  hint="Con 1, un crédito que ya es una refinanciación no se vuelve a refinanciar: la salida pasa a ser el acuerdo de pago o legales. 0 = sin tope."
+                >
+                  <NumeroInput min="0" max="20" decimales={false}
+                    value={cobranza.recupero.max_refinanciaciones_encadenadas}
+                    onValueChange={v => setRecupero({ max_refinanciaciones_encadenadas: Math.max(0, Math.min(20, Math.round(v))) })}
+                  />
+                </Field>
+              </div>
+              <p className="-mt-1 text-[11px] leading-relaxed text-muted-foreground">
+                {cobranza.recupero.max_refinanciaciones_encadenadas > 0
+                  ? <>Alcanzado el tope no se cierra el cobro: si un crédito no se puede refinanciar, la terminal vuelve a aceptarle pagos. Nunca quedan las dos puertas cerradas.</>
+                  : <>Sin tope, la misma deuda se puede refinanciar indefinidamente y cada vez el interés impago pasa a capital y vuelve a generar interés.</>}
+              </p>
               <SwitchRow
                 title="No refinanciar por debajo de la tasa original"
                 desc="Bajar la tasa es una condonación encubierta: no queda registrada como quita ni respeta su tope. Sobre una deuda consolidada de $2.326.775,16 a 3 cuotas, pasar de 350% a 20% resigna $1.393.844,17. Apagalo si querés que reestructurar sea MÁS BARATO que el crédito original —el piso atado al crédito viejo hace que el precio dependa de cuándo se otorgó, que es arbitrario—: ahí la tasa mínima de arriba pasa a ser el único control. Subirla siempre está permitido, y un administrador puede autorizar la baja aunque el piso esté prendido."
@@ -2686,7 +2710,7 @@ function defaultCobranza(): CobranzaConfig {
       exigir_gestion_para_acuerdo: false, dias_min_mora_acuerdo: 50, max_acuerdos_rotos: 2,
       exigir_acuerdo_para_refinanciar: false, dias_min_mora_refinanciar: 0,
       bloquear_cobro_sin_refinanciar: false,
-      no_bajar_tasa_refinanciando: true,
+      no_bajar_tasa_refinanciando: true, max_refinanciaciones_encadenadas: 1,
       honorarios_gestion_activo: false, honorarios_gestion_min: 0, honorarios_gestion_max: 0,
       tasa_refinanciacion_min: 0, tasa_refinanciacion_max: 0, cuotas_refinanciacion: [],
     },
@@ -2877,6 +2901,16 @@ function EscaleraResumen({ r }: { r: RecuperoConfig }) {
     pasos.push({
       cuando: `Con ${r.max_acuerdos_rotos} acuerdo${r.max_acuerdos_rotos === 1 ? "" : "s"} roto${r.max_acuerdos_rotos === 1 ? "" : "s"}`,
       que: "No se le arma otro acuerdo: la única salida es refinanciar.",
+      tono: "corte",
+    });
+  }
+
+  if (r.max_refinanciaciones_encadenadas > 0) {
+    pasos.push({
+      cuando: r.max_refinanciaciones_encadenadas === 1
+        ? "Refinanciado una vez"
+        : `Refinanciada ${r.max_refinanciaciones_encadenadas} veces`,
+      que: "Esa deuda no se vuelve a refinanciar: queda el acuerdo de pago, o legales. El cobro se reabre para que no quede sin ninguna puerta.",
       tono: "corte",
     });
   }
