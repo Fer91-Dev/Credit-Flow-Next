@@ -121,9 +121,10 @@ export function IncobrablesTab() {
             capitalEnRiesgo: riesgo,
             deudaReclamada: c.vencido || c.saldo_pendiente,
             diasCastigado,
-            // Pagó DESPUÉS del castigo: la señal más fuerte de esta cartera. Se aproxima por
-            // "hay cobros y el crédito quedó parcial", que es lo que el ledger deja ver.
-            pagoPostCastigo: (c.cobrado ?? 0) > 0,
+            // Pagó DESPUÉS del castigo, con la fecha del pago contra la del castigo. No es
+            // "tiene algún cobro": el que pagó tres cuotas y después desapareció no es el que
+            // apareció a pagar cuando ya nadie le reclamaba, y son ofertas distintas.
+            pagoPostCastigo: (c.cobrado_post_castigo ?? 0) > 0,
           },
           cfgOferta,
         );
@@ -146,7 +147,7 @@ export function IncobrablesTab() {
       recuperado,
       riesgo: filas.reduce((s, f) => s + f.riesgo, 0),
       // Los que pagaron algo DESPUÉS de darse por perdidos: la mejor señal de la lista.
-      conSenal: filas.filter((f) => f.cobrado > 0).length,
+      conSenal: filas.filter((f) => (f.c.cobrado_post_castigo ?? 0) > 0).length,
     };
   }, [filas]);
 
@@ -213,7 +214,7 @@ export function IncobrablesTab() {
           value={String(kpis.casos)}
           // Los que ya pagaron algo después del castigo son los que hay que trabajar primero:
           // demostraron voluntad de pago, que es lo más escaso en esta cartera.
-          sub={kpis.conSenal > 0 ? `${kpis.conSenal} ya pagaron algo` : undefined}
+          sub={kpis.conSenal > 0 ? `${kpis.conSenal} pagaron ya castigados` : undefined}
           accent={kpis.casos > 0 ? "destructive" : "muted"}
         />
         <KpiCard icon="dollar-banknote" label="Capital prestado" value={formatMonto(kpis.prestado)} accent="muted" mono />
@@ -272,9 +273,10 @@ export function IncobrablesTab() {
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-1.5">
                   <p className="truncate font-medium text-foreground">{nombreCompleto(c.cliente)}</p>
-                  {/* Pagó algo DESPUÉS de darse por perdido: es el mejor candidato de la
-                      lista y no se ve en ningún otro número de la fila. */}
-                  {cobrado > 0 && <StatusBadge label="Ya pagó algo" variant="success" />}
+                  {/* Pagó DESPUÉS de darse por perdido: el mejor candidato de la lista, y no
+                      se ve en ningún otro número de la fila. No es "tiene algún cobro" — eso
+                      lo tiene cualquiera que pagó dos cuotas hace un año. */}
+                  {(c.cobrado_post_castigo ?? 0) > 0 && <StatusBadge label="Pagó ya castigado" variant="success" />}
                   {contactoBloqueado(c.cliente).bloqueado && (
                     <StatusBadge label={c.cliente?.no_contactar ? "No contactar" : "Fallecido"} variant="warning" />
                   )}
@@ -380,7 +382,7 @@ export function IncobrablesTab() {
                 <p className="truncate font-medium text-foreground">{nombreCompleto(c.cliente)}</p>
                 <CreditoLink id={c.id} numero={c.numero} numeroOrigen={c.refinancia_a_numero} conIcono={false} className="text-[11px]" />
               </div>
-              {cobrado > 0 && <StatusBadge label="Ya pagó algo" variant="success" />}
+              {(c.cobrado_post_castigo ?? 0) > 0 && <StatusBadge label="Pagó ya castigado" variant="success" />}
             </div>
             <div className="flex items-end justify-between">
               <div className="leading-tight">

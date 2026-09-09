@@ -199,6 +199,7 @@ async function main() {
        * pantalla lee como "ya pagó algo": un cliente que aparece a pagar cuando su deuda ya
        * estaba dada por perdida es el mejor candidato de toda la cartera.
        */
+      let pagoPost = null;
       if (c.cobradoDespuesDelCastigo > 0) {
         const q = cuotasRefi.find((x) => x.estado !== "pagada");
         if (q) {
@@ -206,6 +207,8 @@ async function main() {
           q.pagado_capital = round2(q.pagado_capital + c.cobradoDespuesDelCastigo);
           q.estado = "parcial";
           cobrado = round2(cobrado + c.cobradoDespuesDelCastigo);
+          // Se guarda para crear el PAGO de verdad más abajo, con fecha posterior al castigo.
+          pagoPost = { nro: q.nro, monto: c.cobradoDespuesDelCastigo };
         }
       }
 
@@ -231,6 +234,39 @@ async function main() {
       });
       await tx.cuotas.createMany({ data: cuotasRefi.map((q) => ({ ...q, credito_id: refi.id })) });
       await tx.creditos.update({ where: { id: original.id }, data: { refinanciado_en: refi.id } });
+
+      /**
+       * 🔴 EL COBRO POSTERIOR AL CASTIGO VA COMO PAGO DE VERDAD, con su fecha.
+       *
+       * Marcar la cuota como parcial no alcanza: el motor de la oferta mira la FECHA del pago
+       * contra la del castigo para decidir si el cliente sigue enganchado, y esa señal es la
+       * que más mueve el número sugerido. Sin la fila de `pagos` el caso se ve igual que uno
+       * que pagó hace un año y dejó de aparecer, que es justo lo contrario.
+       */
+      if (pagoPost) {
+        const cuota = await tx.cuotas.findFirst({
+          where: { credito_id: refi.id, nro: pagoPost.nro }, select: { id: true },
+        });
+        // Diez días después del castigo: apareció cuando su deuda ya estaba dada por perdida.
+        const fechaPago = new Date(fechaCastigo.getTime() + 10 * DIA);
+        const pago = await tx.pagos.create({
+          data: {
+            tenant_id: TENANT_ID, credito_id: refi.id, monto: pagoPost.monto,
+            fecha: fechaPago, metodo: "efectivo",
+            aplicado_capital: pagoPost.monto, aplicado_interes: 0, aplicado_mora: 0, aplicado_cargos: 0,
+            notas: "Recupero sobre deuda castigada",
+          },
+          select: { id: true },
+        });
+        if (cuota) {
+          await tx.pago_cuota.create({
+            data: {
+              tenant_id: TENANT_ID, pago_id: pago.id, cuota_id: cuota.id,
+              aplicado_capital: pagoPost.monto, aplicado_interes: 0, aplicado_mora: 0, aplicado_cargos: 0,
+            },
+          });
+        }
+      }
 
       // El riesgo se mide contra lo PRESTADO (el crédito original), no contra la deuda
       // consolidada: es el criterio de la pantalla, y los números tienen que coincidir.

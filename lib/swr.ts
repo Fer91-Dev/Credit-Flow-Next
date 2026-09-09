@@ -302,6 +302,12 @@ export interface Credito {
    * financiera está ganando o perdiendo.
    */
   capital_en_riesgo?: number;
+  /**
+   * Lo que pagó DESPUÉS de que se lo dio por incobrable. Es la señal más fuerte de la cartera
+   * castigada y el motor de la oferta la usa para pedirle más: el que pagó y dejó de aparecer
+   * no es lo mismo que el que apareció a pagar cuando ya nadie le reclamaba.
+   */
+  cobrado_post_castigo?: number;
   /** Cuándo se dio por incobrable, y por qué. Solo con `estado === "incobrable"`. */
   incobrable_at?: string | null;
   incobrable_motivo?: string | null;

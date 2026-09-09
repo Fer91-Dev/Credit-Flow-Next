@@ -108,6 +108,35 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   // `situacionAcuerdoPorCredito`). Sin esto, la lista mostraba "Legales" a alguien que está
   // cumpliendo su arreglo.
   const acuerdosVig = await situacionAcuerdoPorCredito(tenantId, creditos.map((c) => c.id));
+
+  /**
+   * 🔴 CUÁNTO PAGÓ DESPUÉS DE QUE SE LO DIO POR PERDIDO.
+   *
+   * Es la señal más fuerte de la cartera castigada —alguien que puso plata sobre una deuda que
+   * ya nadie le reclamaba sigue enganchado— y el motor de la oferta la usa para pedirle más.
+   * Aproximarla con "tiene algún cobro" la haría fallar justo al revés en el caso más común:
+   * el que pagó tres cuotas religiosamente y DESPUÉS dejó de aparecer cobraría el bonus que
+   * merece el que sigue pagando hoy, y el sistema le sugeriría una oferta demasiado dura.
+   *
+   * Una sola consulta, y solo si hay incobrables: son pocos por definición.
+   */
+  const incobrables = creditos.filter((c) => c.estado === "incobrable" && c.incobrable_at);
+  const cobradoPostCastigo = new Map<string, number>();
+  if (incobrables.length > 0) {
+    const pagos = await prisma.pagos.findMany({
+      where: { ...withTenant(tenantId), anulado: false, credito_id: { in: incobrables.map((c) => c.id) } },
+      select: { credito_id: true, monto: true, fecha: true },
+    });
+    const castigoDe = new Map(incobrables.map((c) => [c.id, c.incobrable_at as Date]));
+    for (const p of pagos) {
+      const corte = castigoDe.get(p.credito_id);
+      // `>=` y no `>`: el cobro del mismo día del castigo es el caso típico —se lo declara
+      // incobrable y el cliente aparece esa misma tarde—, y descartarlo perdería la señal.
+      if (corte && p.fecha.getTime() >= corte.getTime()) {
+        cobradoPostCastigo.set(p.credito_id, round2((cobradoPostCastigo.get(p.credito_id) ?? 0) + p.monto));
+      }
+    }
+  }
   const creditosConMora = creditos.map((c) => {
     // Mora EN VIVO desde `proximo_pago` (no del cache `dias_mora`, que no se avanza día a día):
     // misma fórmula con la que se persiste, pero evaluada hoy → independiente del cron.
@@ -214,7 +243,9 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
       ? round2(Math.max(0, proxima.cuota_total - (proxima.pagado_capital + proxima.pagado_interes + proxima.pagado_cargos)))
       : 0;
 
-    return { ...credito, estado, dias_mora: dmora, interes_mora, vencido, cuotas_vencidas, cuota_proxima, cobrado, capital_en_riesgo, tiene_pagos: c.pagos.length > 0, cobros_vivos: c._count.pagos > 0, acuerdo: acuerdosVig.get(c.id) ?? null };
+    return { ...credito, estado, dias_mora: dmora, interes_mora, vencido, cuotas_vencidas, cuota_proxima, cobrado, capital_en_riesgo,
+      /** Lo que pagó DESPUÉS del castigo. 0 en todo lo que no es incobrable. */
+      cobrado_post_castigo: cobradoPostCastigo.get(c.id) ?? 0, tiene_pagos: c.pagos.length > 0, cobros_vivos: c._count.pagos > 0, acuerdo: acuerdosVig.get(c.id) ?? null };
   });
 
   /**
