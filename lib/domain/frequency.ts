@@ -122,7 +122,10 @@ export function sumarPeriodos(
   const def = resolverFrecuencia(frecuencia, catalogo);
   if (def.esMensual) return sumarMeses(fecha, n);
   const d = new Date(fecha.getTime());
-  d.setDate(d.getDate() + n * def.dias);
+  // UTC, por el mismo motivo que `sumarMeses`: el cronograma no puede depender del huso del
+  // servidor. Con métodos locales, un crédito semanal otorgado cerca de un cambio de día
+  // corría todos sus vencimientos según dónde estuviera corriendo el proceso.
+  d.setUTCDate(d.getUTCDate() + n * def.dias);
   return d;
 }
 

@@ -108,8 +108,10 @@ export function derivarEstadoCuotas(
   totalCapitalPagado: number,
   hoy: Date = new Date()
 ): EstadoCuotaDerivado[] {
-  // Normalizamos "hoy" a medianoche para comparar contra fechas de vencimiento (DATE).
-  const hoyMid = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate());
+  // Normalizamos "hoy" a medianoche UTC para comparar contra fechas de vencimiento, que son
+  // `@db.Date` (medianoche UTC). Con getters locales los dos lados se corrían igual y la
+  // comparación seguía dando bien, pero el criterio queda alineado con el resto del dominio.
+  const hoyMid = new Date(Date.UTC(hoy.getUTCFullYear(), hoy.getUTCMonth(), hoy.getUTCDate()));
   let restanteAcumulado = Math.max(0, totalCapitalPagado);
 
   return [...cuotas]
@@ -132,7 +134,7 @@ export function derivarEstadoCuotas(
       // Vencida: cualquier cuota no saldada cuya fecha ya pasó.
       if (estado !== "pagada") {
         const venc = aDate(c.fecha_vencimiento);
-        const vencMid = new Date(venc.getFullYear(), venc.getMonth(), venc.getDate());
+        const vencMid = new Date(Date.UTC(venc.getUTCFullYear(), venc.getUTCMonth(), venc.getUTCDate()));
         if (vencMid < hoyMid) estado = "vencida";
       }
 

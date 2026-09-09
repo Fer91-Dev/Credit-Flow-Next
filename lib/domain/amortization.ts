@@ -116,14 +116,34 @@ export function capitalMaximoFrances(
   return round2((cuotaMaxima * (1 - factor)) / tasaMensual);
 }
 
-/** Suma `n` meses a una fecha, ajustando fin de mes (ej: 31 ene + 1 = 28/29 feb). */
+/**
+ * Suma `n` meses a una fecha, ajustando fin de mes (ej: 31 ene + 1 = 28/29 feb).
+ *
+ * 🔴 EN UTC, NO EN HORA LOCAL. (Hallazgo C1 de la auditoría financiera.)
+ *
+ * Usaba `getDate`/`setMonth`/`setDate`, que leen y escriben en el huso del SERVIDOR, mientras
+ * que todo lo que después consume estas fechas —`diasAtraso`, `calcularVencimientos`,
+ * `hoyComercial` y la columna `@db.Date`, que es medianoche UTC— trabaja en UTC. Mezclarlos
+ * hacía que el cronograma dependiera de dónde corre el proceso.
+ *
+ * Medido: un crédito de $600.000 a 6 cuotas otorgado el 01/03/2026 salía
+ *   en un servidor UTC   → 01/04 · 01/05 · 01/06 · 01/07 · 01/08 · 01/09
+ *   en un servidor UTC−3 → 29/03 · 29/04 · 29/05 · 29/06 · 29/07 · 29/08
+ * No es un día de corrimiento: es otro cronograma. Pasa los días 1, 29, 30 y 31 (24 de las
+ * 365 fechas posibles de otorgamiento).
+ *
+ * Hoy no muerde porque producción corre en Vercel, que es UTC. Muerde el día que el servidor
+ * quede en hora local —la migración al VPS de Brasil— y ahí no solo nacerían mal los créditos
+ * nuevos: la pantalla de amortización, que RECONSTRUYE el plan, empezaría a imprimirle al
+ * cliente fechas distintas de las cuotas que se le están cobrando.
+ */
 export function sumarMeses(fecha: Date, n: number): Date {
   const d = new Date(fecha.getTime());
-  const diaOriginal = d.getDate();
-  d.setMonth(d.getMonth() + n);
-  // Si el mes destino tiene menos días, setMonth desborda: corregimos al último día.
-  if (d.getDate() < diaOriginal) {
-    d.setDate(0);
+  const diaOriginal = d.getUTCDate();
+  d.setUTCMonth(d.getUTCMonth() + n);
+  // Si el mes destino tiene menos días, setUTCMonth desborda: corregimos al último día.
+  if (d.getUTCDate() < diaOriginal) {
+    d.setUTCDate(0);
   }
   return d;
 }
