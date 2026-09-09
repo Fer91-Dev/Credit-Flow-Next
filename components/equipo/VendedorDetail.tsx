@@ -532,8 +532,14 @@ function MetasTab({ vendedor, onMetaChanged }: { vendedor: VendedorDetalle; onMe
   const [periodo, setPeriodo] = useState<TipoPeriodo>(periodoDefault);
 
   const [creando, setCreando] = useState(false);
-  const [anio, setAnio] = useState(() => new Date().getUTCFullYear());
-  const [indice, setIndice] = useState(() => new Date().getUTCMonth() + 1);
+  /**
+   * 🔴 GETTERS LOCALES, NO UTC. Estaba `getUTCFullYear()`/`getUTCMonth()` sobre una fecha
+   * LOCAL: el navegador del operador está en Argentina, así que entre las 21:00 y la
+   * medianoche el mes UTC ya es el siguiente. El 31 a las 22:00 esta pantalla abría en el mes
+   * que viene y el vendedor veía su meta del mes que cierra en cero.
+   */
+  const [anio, setAnio] = useState(() => new Date().getFullYear());
+  const [indice, setIndice] = useState(() => new Date().getMonth() + 1);
   const [mMonto, setMMonto] = useState("");
   const [mCant, setMCant] = useState("");
   const [mCobr, setMCobr] = useState("");

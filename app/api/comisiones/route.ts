@@ -1,7 +1,7 @@
 import { requireRole } from "@/lib/auth";
 import { successResponse, errorResponse, withErrorHandler, assertSameOrigin } from "@/app/lib/api";
 import { esCuentaValida, rangoDePeriodo, PERIODOS_META, type TipoPeriodo, type Cuenta } from "@/lib/domain";
-import { inicioDiaAR } from "@/lib/utils";
+import { inicioDiaAR, hoyComercial } from "@/lib/utils";
 import { comisionesDelPeriodo, liquidarComision, historialLiquidaciones } from "@/lib/liquidaciones";
 import type { NextRequest } from "next/server";
 
@@ -15,7 +15,15 @@ import type { NextRequest } from "next/server";
 
 /** Lee y valida el período del querystring. Default: el mes en curso. */
 function periodoDeQuery(url: URL): { tipo: TipoPeriodo; anio: number; indice: number } {
-  const hoy = new Date();
+  /**
+   * 🔴 EL DÍA ARGENTINO, NO EL DEL SERVIDOR.
+   *
+   * El servidor corre en UTC, así que entre las 21:00 y la medianoche de Argentina `new Date()`
+   * ya está en el día siguiente. Para elegir el período por defecto eso es plata: el 31 a las
+   * 22:00 el mes en curso pasaba a ser el SIGUIENTE, y la pantalla abría vacía justo la noche
+   * del cierre. `hoyComercial()` es la definición única del día comercial en todo el sistema.
+   */
+  const hoy = hoyComercial();
   const tipoRaw = url.searchParams.get("tipo") ?? "mensual";
   const tipo = (PERIODOS_META as readonly string[]).includes(tipoRaw)
     ? (tipoRaw as TipoPeriodo)
@@ -79,7 +87,8 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
   const tipo = (PERIODOS_META as readonly string[]).includes(body.tipo ?? "")
     ? (body.tipo as TipoPeriodo)
     : "mensual";
-  const hoy = new Date();
+  // Mismo criterio que arriba: el día argentino, no el del servidor.
+  const hoy = hoyComercial();
   const anio = Number(body.anio) || hoy.getUTCFullYear();
   const indice = Number(body.indice) || hoy.getUTCMonth() + 1;
   const { desde, hasta, etiqueta } = rangoDePeriodo(tipo, anio, indice);

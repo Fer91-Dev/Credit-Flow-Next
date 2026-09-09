@@ -3,7 +3,7 @@ import { successResponse, withErrorHandler } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { nombrePropioFinanciera } from "@/lib/branding";
-import { inicioDiaAR, finDiaAR } from "@/lib/utils";
+import { inicioDiaAR, finDiaAR, hoyComercial } from "@/lib/utils";
 import {
   resumenEmbudoCobranza,
   recuperoCobranza,
@@ -37,9 +37,17 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   const creditoFilter = scope.vendedor_id ? { credito: { vendedor_id: scope.vendedor_id } } : {};
 
   const url = new URL(req.url);
-  const hoy = new Date();
+  /**
+   * 🔴 EL DÍA ARGENTINO, NO EL DEL SERVIDOR.
+   *
+   * El servidor corre en UTC, así que entre las 21:00 y la medianoche de Argentina `new Date()`
+   * ya está en el día siguiente. Para elegir el período por defecto eso es plata: el 31 a las
+   * 22:00 el mes en curso pasaba a ser el SIGUIENTE, y la pantalla abría vacía justo la noche
+   * del cierre. `hoyComercial()` es la definición única del día comercial en todo el sistema.
+   */
+  const hoy = hoyComercial();
   const desdeStr = url.searchParams.get("desde")
-    || new Date(hoy.getFullYear(), hoy.getMonth(), 1).toISOString().slice(0, 10);
+    || new Date(Date.UTC(hoy.getUTCFullYear(), hoy.getUTCMonth(), 1)).toISOString().slice(0, 10);
   const hastaStr = url.searchParams.get("hasta") || hoy.toISOString().slice(0, 10);
 
   const desde = new Date(`${desdeStr}T00:00:00.000Z`);

@@ -55,7 +55,14 @@ const CAMPOS_COMPLETITUD: (keyof DatosPersonales)[] = [
 ];
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const HOY = new Date().toISOString().slice(0, 10);
+/**
+ * Hoy en la zona del operador. `toISOString()` da el día UTC de un instante local: después de
+ * las 21:00 en Argentina devolvía MAÑANA, y el campo de fecha admitía una fecha futura.
+ */
+const HOY = (() => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+})();
 
 /** Edad a partir de "AAAA-MM-DD". null si no hay fecha o es inválida/futura. */
 function calcularEdad(iso: string): number | null {

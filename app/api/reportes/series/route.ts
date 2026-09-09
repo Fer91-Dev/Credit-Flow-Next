@@ -11,7 +11,7 @@ import {
   ingresoFinanciero,
 } from "@/lib/domain";
 import { getConfiguracion, getRentabilidadConfig } from "@/lib/config";
-import { inicioDiaAR, finDiaAR, mesAR } from "@/lib/utils";
+import { inicioDiaAR, finDiaAR, mesAR, hoyComercial } from "@/lib/utils";
 import type { NextRequest } from "next/server";
 
 const MAX_MESES = 36; // cota de cómputo (reconstrucción O(meses × cuotas))
@@ -48,7 +48,15 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   const { tenantId } = await requireRole(["admin"], req);
 
   const url = new URL(req.url);
-  const hoy = new Date();
+  /**
+   * 🔴 EL DÍA ARGENTINO, NO EL DEL SERVIDOR.
+   *
+   * El servidor corre en UTC, así que entre las 21:00 y la medianoche de Argentina `new Date()`
+   * ya está en el día siguiente. Para elegir el período por defecto eso es plata: el 31 a las
+   * 22:00 el mes en curso pasaba a ser el SIGUIENTE, y la pantalla abría vacía justo la noche
+   * del cierre. `hoyComercial()` es la definición única del día comercial en todo el sistema.
+   */
+  const hoy = hoyComercial();
   const hastaStr = url.searchParams.get("hasta") || hoy.toISOString().slice(0, 10);
   const desdeStr = url.searchParams.get("desde")
     || new Date(Date.UTC(hoy.getUTCFullYear(), hoy.getUTCMonth() - 11, 1)).toISOString().slice(0, 10);

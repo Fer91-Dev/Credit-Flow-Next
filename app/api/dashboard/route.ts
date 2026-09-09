@@ -33,11 +33,19 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   const hastaStr = url.searchParams.get("hasta");
 
   // Rango del avance de cobranzas: el indicado o, por defecto, el mes en curso.
-  const ahora = new Date();
-  const desde = desdeStr ? new Date(`${desdeStr}T00:00:00.000Z`) : new Date(ahora.getFullYear(), ahora.getMonth(), 1);
+  /**
+   * 🔴 EL DÍA ARGENTINO, NO EL DEL SERVIDOR.
+   *
+   * El servidor corre en UTC, así que entre las 21:00 y la medianoche de Argentina `new Date()`
+   * ya está en el día siguiente. Para elegir el período por defecto eso es plata: el 31 a las
+   * 22:00 el mes en curso pasaba a ser el SIGUIENTE, y la pantalla abría vacía justo la noche
+   * del cierre. `hoyComercial()` es la definición única del día comercial en todo el sistema.
+   */
+  const ahora = hoyComercial();
+  const desde = desdeStr ? new Date(`${desdeStr}T00:00:00.000Z`) : new Date(Date.UTC(ahora.getUTCFullYear(), ahora.getUTCMonth(), 1));
   const hasta = hastaStr
     ? new Date(`${hastaStr}T23:59:59.999Z`)
-    : new Date(ahora.getFullYear(), ahora.getMonth() + 1, 1);
+    : new Date(Date.UTC(ahora.getUTCFullYear(), ahora.getUTCMonth() + 1, 1));
 
   // Filtro de créditos por vendedor y/o zona del cliente (se reutiliza en varias queries).
   const creditoFiltro: Record<string, unknown> = { ...withTenant(tenantId) };

@@ -3,6 +3,7 @@ import { successResponse, withErrorHandler } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import type { NextRequest } from "next/server";
+import { hoyComercial } from "@/lib/utils";
 
 /**
  * GET /api/dashboard/series
@@ -27,7 +28,15 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   const vendedorId =
     role === "vendedor" ? (miVendedorId ?? "00000000-0000-0000-0000-000000000000") : vendedorParam;
 
-  const now = new Date();
+  /**
+   * 🔴 EL DÍA ARGENTINO, NO EL DEL SERVIDOR.
+   *
+   * El servidor corre en UTC, así que entre las 21:00 y la medianoche de Argentina `new Date()`
+   * ya está en el día siguiente. Para elegir el período por defecto eso es plata: el 31 a las
+   * 22:00 el mes en curso pasaba a ser el SIGUIENTE, y la pantalla abría vacía justo la noche
+   * del cierre. `hoyComercial()` es la definición única del día comercial en todo el sistema.
+   */
+  const now = hoyComercial();
   // 12 buckets: del mes (actual − 11) al actual, en UTC (las fechas son @db.Date UTC).
   const meses: { key: string; label: string }[] = [];
   for (let i = 11; i >= 0; i--) {
