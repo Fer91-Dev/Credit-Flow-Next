@@ -112,6 +112,56 @@ export const PATCH = withErrorHandler(async (req: NextRequest, { params }: Route
     { campo: "cliente_id", etiqueta: "el cliente" },
     { campo: "vendedor_id", etiqueta: "el vendedor" },
   ];
+  /**
+   * 🔴 EL LEDGER NO SE EDITA A MANO. (Hallazgo C2 de la auditoría financiera.)
+   *
+   * `saldo_pendiente`, `proximo_pago` y `dias_mora` estaban en la lista blanca de campos
+   * editables, y los tres son plata:
+   *
+   * · `saldo_pendiente` ES la deuda. Un `PATCH {saldo_pendiente: 0}` dejaba el crédito sin
+   *   deuda con las cuotas impagas —rompiendo la identidad `saldo = Σ capital pendiente` que
+   *   sostiene todo el resto—, sin movimiento de caja, sin comprobante y sin contra-asiento.
+   *   Y como la auditoría guardaba `meta: updateData`, tampoco quedaba escrito cuánto debía
+   *   antes: la operación era invisible después del hecho.
+   *
+   * · `proximo_pago` gobierna los DÍAS DE MORA en toda la app (`diasMoraActual`): la agenda
+   *   del día, la lista de morosos, las campañas, la ficha del cliente y la planilla de calle.
+   *   Corriéndolo a futuro, un crédito atrasado desaparece del radar de cobranza y del % de
+   *   morosidad del vendedor. `POST /api/creditos` ya se defiende de esto al otorgar —lo
+   *   pisa con la fecha de la primera cuota— y este PATCH dejaba la misma puerta abierta
+   *   para siempre.
+   *
+   * · `dias_mora` es el cache de lo anterior.
+   *
+   * Los tres los escribe el MOTOR: `POST /api/pagos` al imputar, el cron al reconciliar, y
+   * los endpoints de anulación, refinanciación y cierre de incobrable — todos dentro de la
+   * transacción del hecho de negocio que los justifica y con su asiento de caja.
+   *
+   * Se rechazan en vez de ignorarse en silencio: un endpoint que contesta "actualizado"
+   * sobre un campo que descartó es peor que uno que falla.
+   */
+  const LEDGER_NO_EDITABLE: { campo: string; etiqueta: string; via: string }[] = [
+    { campo: "saldo_pendiente", etiqueta: "el saldo", via: "cobrá el crédito, anulalo o refinancialo" },
+    { campo: "proximo_pago", etiqueta: "la fecha del próximo pago", via: "sale del cronograma; se mueve al cobrar" },
+    { campo: "dias_mora", etiqueta: "los días de mora", via: "se calculan solos desde el vencimiento impago más viejo" },
+  ];
+  for (const { campo, etiqueta, via } of LEDGER_NO_EDITABLE) {
+    if (!(campo in body) || body[campo] === undefined) continue;
+    const actual = (existing as Record<string, any>)[campo];
+    const igual = typeof actual === "number" && typeof body[campo] === "number"
+      ? Math.abs(actual - body[campo]) < 0.01
+      : actual instanceof Date
+        ? actual.toISOString().slice(0, 10) === String(body[campo] ?? "").slice(0, 10)
+        : (actual ?? null) === (body[campo] ?? null);
+    if (!igual) {
+      return errorResponse(
+        `No se puede editar ${etiqueta} a mano: lo lleva el libro mayor del crédito (${via}).`,
+        "LEDGER_NO_EDITABLE",
+        409,
+      );
+    }
+  }
+
   for (const { campo, etiqueta } of CONDICIONES_FIRMES) {
     if (!(campo in body) || body[campo] === undefined) continue;
     const actual = (existing as Record<string, any>)[campo];
@@ -135,17 +185,12 @@ export const PATCH = withErrorHandler(async (req: NextRequest, { params }: Route
   // afuera si el crédito es de PRODUCTOS o se lo quiere volver de productos — ese tipo está
   // atado al stock y al `producto_id`, y cambiarlo por acá dejaría el kardex descuadrado.
   const puedeReclasificar = existing.tipo_credito !== "productos" && body.tipo_credito !== "productos";
-  const allowedFields = ["saldo_pendiente", "proximo_pago", "dias_mora", "estado",
-    ...(puedeReclasificar ? ["tipo_credito"] : [])];
+  // Lo único que este PATCH mueve: el ESTADO (declarar incobrable, devolver al circuito) y la
+  // reclasificación del tipo. El ledger va por `LEDGER_NO_EDITABLE`, arriba.
+  const allowedFields = ["estado", ...(puedeReclasificar ? ["tipo_credito"] : [])];
 
   allowedFields.forEach((field) => {
-    if (field in body) {
-      if (field === "proximo_pago") {
-        updateData[field] = body[field] ? new Date(body[field]) : null;
-      } else {
-        updateData[field] = body[field];
-      }
-    }
+    if (field in body) updateData[field] = body[field];
   });
 
   if (Object.keys(updateData).length === 0) {
@@ -165,9 +210,8 @@ export const PATCH = withErrorHandler(async (req: NextRequest, { params }: Route
         400
       );
     }
-    // Saldo efectivo tras este PATCH (puede venir junto en el mismo body).
-    const saldoEfectivo =
-      "saldo_pendiente" in updateData ? Number(updateData.saldo_pendiente) : existing.saldo_pendiente;
+    // El saldo ya no puede llegar en el body (ver `LEDGER_NO_EDITABLE`): manda el persistido.
+    const saldoEfectivo = existing.saldo_pendiente;
     const cuotas = await prisma.cuotas.findMany({
       where: { credito_id: id },
       select: { estado: true, pagado_capital: true, capital: true },
