@@ -609,6 +609,9 @@ export function ConfigForm() {
   /** Patch anidado de la escalera de recupero (vive dentro de cobranza_config). */
   const setRecupero = (patch: Partial<CobranzaConfig["recupero"]>) =>
     setCobranza({ recupero: { ...cobranza.recupero, ...patch } });
+  /** Patch anidado de la oferta de cancelación sobre incobrables. */
+  const setOferta = (patch: Partial<CobranzaConfig["oferta_recupero"]>) =>
+    setCobranza({ oferta_recupero: { ...cobranza.oferta_recupero, ...patch } });
   /** Patch anidado de la política de clientes fallecidos. */
   const setFallecidos = (patch: Partial<CobranzaConfig["fallecidos"]>) =>
     setCobranza({ fallecidos: { ...cobranza.fallecidos, ...patch } });
@@ -2509,6 +2512,58 @@ export function ConfigForm() {
                 checked={cobranza.recupero.pasar_a_incobrable_auto}
                 onChange={v => setRecupero({ pasar_a_incobrable_auto: v })}
               />
+              {/*
+                CUÁNTO OFRECERLE A UN INCOBRABLE. Es otra pregunta que la escalera: esta no
+                decide qué se puede hacer, decide cuánta plata pedir cuando ya no queda
+                escalón. El techo es siempre el capital que no volvió — recuperar la PÉRDIDA,
+                no cobrar interés sobre una deuda que se dio por perdida.
+              */}
+              <div className="rounded-lg border border-border bg-muted/[0.04] p-3.5 space-y-3">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                  Cuánto ofrecerle a un incobrable para que cancele
+                </p>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  <Field
+                    label="Baja por mes castigado (%)"
+                    hint="Cuánto cae lo que se le puede pedir por cada mes desde el castigo. 0 = la antigüedad no descuenta."
+                  >
+                    <NumeroInput min="0" max="100"
+                      value={cobranza.oferta_recupero.merma_mensual_pct}
+                      onValueChange={v => setOferta({ merma_mensual_pct: Math.max(0, Math.min(100, v)) })}
+                    />
+                  </Field>
+                  <Field
+                    label="Piso (% del capital perdido)"
+                    hint="Por debajo de esto no conviene cerrar: se sigue reclamando."
+                  >
+                    <NumeroInput min="0" max="100"
+                      value={cobranza.oferta_recupero.piso_recupero_pct}
+                      onValueChange={v => setOferta({ piso_recupero_pct: Math.max(0, Math.min(100, v)) })}
+                    />
+                  </Field>
+                  <Field
+                    label="Suma si pagó ya castigado (%)"
+                    hint="La señal más fuerte de esta cartera: al que puso plata sobre una deuda perdida se le puede pedir más."
+                  >
+                    <NumeroInput min="0" max="100"
+                      value={cobranza.oferta_recupero.bonus_pago_post_castigo_pct}
+                      onValueChange={v => setOferta({ bonus_pago_post_castigo_pct: Math.max(0, Math.min(100, v)) })}
+                    />
+                  </Field>
+                </div>
+                <p className="text-[11px] leading-relaxed text-muted-foreground">
+                  {(() => {
+                    const o = cobranza.oferta_recupero;
+                    const pct = Math.min(100, Math.max(o.piso_recupero_pct, 100 - 4 * o.merma_mensual_pct));
+                    return (
+                      <>Con estos valores, a alguien castigado hace <strong>4 meses</strong> que nunca pagó nada
+                      el sistema va a sugerir cobrarle el <strong>{pct}%</strong> del capital que no volvió.
+                      El resto se condona y el crédito se cierra. Es una <strong>sugerencia</strong>: el que
+                      atiende puede pactar otro número y queda asentado cuánto se sugirió y cuánto se cerró.</>
+                    );
+                  })()}
+                </p>
+              </div>
               <SwitchRow
                 title="No refinanciar por debajo de la tasa original"
                 desc="Bajar la tasa es una condonación encubierta: no queda registrada como quita ni respeta su tope. Sobre una deuda consolidada de $2.326.775,16 a 3 cuotas, pasar de 350% a 20% resigna $1.393.844,17. Apagalo si querés que reestructurar sea MÁS BARATO que el crédito original —el piso atado al crédito viejo hace que el precio dependa de cuándo se otorgó, que es arbitrario—: ahí la tasa mínima de arriba pasa a ser el único control. Subirla siempre está permitido, y un administrador puede autorizar la baja aunque el piso esté prendido."
@@ -2721,6 +2776,7 @@ function defaultCobranza(): CobranzaConfig {
       honorarios_gestion_activo: false, honorarios_gestion_min: 0, honorarios_gestion_max: 0,
       tasa_refinanciacion_min: 0, tasa_refinanciacion_max: 0, cuotas_refinanciacion: [],
     },
+    oferta_recupero: { merma_mensual_pct: 8, piso_recupero_pct: 40, bonus_pago_post_castigo_pct: 15 },
     fallecidos: { frena_punitorios: true, bloquea_contacto: true, saca_de_agenda: true },
   };
 }

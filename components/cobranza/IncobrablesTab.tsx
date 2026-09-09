@@ -10,9 +10,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { BuscadorF3 } from "@/components/ui/BuscadorF3";
 import { CreditoLink } from "@/components/ui/CreditoLink";
 import { useToast } from "@/components/ui/toast";
-import { useCreditos } from "@/lib/swr";
+import { useCreditos, useOfertaRecupero } from "@/lib/swr";
 import { descargarCSV } from "@/lib/csv";
-import { contactoBloqueado, normalizarTelefonoAR } from "@/lib/domain";
+import { contactoBloqueado, normalizarTelefonoAR, sugerirOfertaCancelacion } from "@/lib/domain";
 import { formatMonto, formatFecha, formatDias, nombreCompleto, hoyComercial } from "@/lib/utils";
 
 /**
@@ -90,6 +90,8 @@ export function IncobrablesTab() {
   const router = useRouter();
   const toast = useToast();
   const { creditos, isLoading } = useCreditos();
+  /** Con qué criterio sugerir la cancelación. Lo fija la financiera en Configuración. */
+  const cfgOferta = useOfertaRecupero();
   const [q, setQ] = useState("");
 
   const hoy = hoyComercial();
@@ -108,7 +110,24 @@ export function IncobrablesTab() {
         const desde = c.incobrable_at ? new Date(c.incobrable_at) : null;
         const diasCastigado = desde ? Math.max(0, Math.floor((hoy.getTime() - desde.getTime()) / 86_400_000)) : 0;
         const { prestado, cobrado } = plataDeLaCadena(c, porId);
-        return { c, diasCastigado, prestado, cobrado, riesgo: Math.round(Math.max(0, prestado - cobrado) * 100) / 100 };
+        const riesgo = Math.round(Math.max(0, prestado - cobrado) * 100) / 100;
+        /**
+         * El número que el operador va a decir por teléfono. Sale del motor, no del ojo: a
+         * ojo se acepta de menos cuando el caso era bueno y se planta de más cuando ya no da,
+         * y ahí se termina cobrando cero.
+         */
+        const oferta = sugerirOfertaCancelacion(
+          {
+            capitalEnRiesgo: riesgo,
+            deudaReclamada: c.vencido || c.saldo_pendiente,
+            diasCastigado,
+            // Pagó DESPUÉS del castigo: la señal más fuerte de esta cartera. Se aproxima por
+            // "hay cobros y el crédito quedó parcial", que es lo que el ledger deja ver.
+            pagoPostCastigo: (c.cobrado ?? 0) > 0,
+          },
+          cfgOferta,
+        );
+        return { c, diasCastigado, prestado, cobrado, riesgo, oferta };
       })
       /**
        * Primero lo que más plata puede devolver y hace menos que se castigó. La antigüedad
@@ -143,8 +162,8 @@ export function IncobrablesTab() {
      * de afuera negocia contra el número nominal y acepta cualquier cosa o no cierra nunca.
      */
     descargarCSV(`incobrables_${new Date().toISOString().slice(0, 10)}.csv`, [
-      ["DNI", "Nombre", "Celular", "Credito", "Deuda reclamada", "Capital prestado", "Ya recuperado", "Capital en riesgo", "Castigado el", "Dias castigado", "Motivo"],
-      ...filas.map(({ c, diasCastigado, riesgo, cobrado, prestado }) => [
+      ["DNI", "Nombre", "Celular", "Credito", "Deuda reclamada", "Capital prestado", "Ya recuperado", "Capital en riesgo", "Ofrecerle", "% de la perdida", "Castigado el", "Dias castigado", "Motivo"],
+      ...filas.map(({ c, diasCastigado, riesgo, cobrado, prestado, oferta }) => [
         c.cliente?.documento ?? "",
         nombreCompleto(c.cliente),
         normalizarTelefonoAR(c.cliente?.telefono) ?? "",
@@ -153,6 +172,8 @@ export function IncobrablesTab() {
         num(prestado),
         num(cobrado),
         num(riesgo),
+        oferta ? num(oferta.monto) : "",
+        oferta ? oferta.pctDelRiesgo : "",
         c.incobrable_at ? formatFecha(c.incobrable_at) : "",
         diasCastigado,
         c.incobrable_motivo ?? "",
@@ -321,6 +342,28 @@ export function IncobrablesTab() {
             cell: ({ riesgo }) => <span className="font-bold text-destructive">{formatMonto(riesgo)}</span>,
           },
           {
+            /**
+             * 🔴 EL NÚMERO QUE SE DICE POR TELÉFONO.
+             *
+             * Es el punto de llegada de toda la fila: con lo prestado, lo que volvió y hace
+             * cuánto que está castigado, cuánto conviene pedirle para cerrar. Va con su
+             * porcentaje sobre la pérdida, que es lo que hace que se pueda discutir —"le
+             * estoy pidiendo el 93% de lo que perdimos" es una frase; "$1.119.960,00" no.
+             */
+            header: <span className="text-success">Ofrecerle</span>, align: "right", mono: true,
+            cell: ({ oferta }) => {
+              if (!oferta) return <span className="text-xs text-muted-foreground/50">—</span>;
+              return (
+                <div className="leading-tight" title={`100% ${oferta.motivos.map((m) => `${m.puntos > 0 ? "+" : ""}${m.puntos}% ${m.texto}`).join(" ")}`}>
+                  <span className="font-bold text-success">{formatMonto(oferta.monto)}</span>
+                  <span className="block text-[10px] text-muted-foreground">
+                    {oferta.pctDelRiesgo}% de la pérdida{oferta.enElPiso ? " · en el piso" : ""}
+                  </span>
+                </div>
+              );
+            },
+          },
+          {
             header: "Castigado", align: "center",
             cell: ({ c, diasCastigado }) => (
               <div className="leading-tight">
@@ -364,7 +407,11 @@ export function IncobrablesTab() {
         "volvió" es todo lo cobrado en cualquier eslabón de la cadena. Para decidir cuánto
         aceptar, el número es el <strong className="text-foreground">capital en riesgo</strong>:
         arriba de eso la financiera no perdió plata prestada, y cualquier peso por debajo sigue
-        siendo recupero sobre algo que ya estaba dado por perdido.
+        siendo recupero sobre algo que ya estaba dado por perdido. La columna{" "}
+        <strong className="text-foreground">Ofrecerle</strong> es ese capital ajustado por lo
+        que hace más difícil el cobro —cuánto hace que está castigado— y por lo que lo hace más
+        fácil —si apareció a pagar algo—. Es una sugerencia, no un límite: el criterio se
+        configura en Cobranza → Refinanciaciones.
       </p>
     </div>
   );

@@ -15,7 +15,7 @@ import type {
   TramosMora,
 } from "@/lib/domain";
 // Valor (no tipo): el default con el que se clasifica mientras la config carga.
-import { TRAMOS_MORA_DEFAULT } from "@/lib/domain";
+import { TRAMOS_MORA_DEFAULT, resolverOfertaRecupero, type OfertaRecuperoConfig } from "@/lib/domain";
 import type { CobranzaConfig, CajaConfig, OrdenAgenda } from "@/lib/config";
 export type { CajaConfig };
 
@@ -1888,6 +1888,15 @@ export function useTramosMora(): TramosMora {
 export function useDiasLegales(): number {
   const { config } = useConfiguracion();
   return config?.cobranzaConfig?.recupero?.dias_min_mora_acuerdo ?? 0;
+}
+
+/**
+ * Con qué criterio sugerirle una cancelación a un incobrable (Configuración → Cobranza →
+ * Refinanciaciones). Sin config guardada caen los defaults del dominio.
+ */
+export function useOfertaRecupero(): OfertaRecuperoConfig {
+  const { config } = useConfiguracion();
+  return resolverOfertaRecupero(config?.cobranzaConfig?.oferta_recupero);
 }
 
 export function useFinanciera() {

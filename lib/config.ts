@@ -26,6 +26,9 @@ import {
   type AcuerdosConfig,
   resolverRecupero,
   RECUPERO_DEFAULT,
+  resolverOfertaRecupero,
+  OFERTA_RECUPERO_DEFAULT,
+  type OfertaRecuperoConfig,
   type RecuperoConfig,
   resolverFallecidos,
   FALLECIDOS_DEFAULT,
@@ -265,6 +268,14 @@ export interface CobranzaConfig {
    */
   recupero: RecuperoConfig;
   /**
+   * CUÁNTO OFRECERLE A UN INCOBRABLE para que cancele y se cierre el caso.
+   *
+   * Va en su propio bloque y no dentro de `recupero` porque contesta otra pregunta: la
+   * escalera decide QUÉ SE PUEDE HACER con un moroso, y esto decide CUÁNTA PLATA PEDIRLE
+   * cuando ya no queda escalón. Ver `lib/domain/recupero-oferta.ts`.
+   */
+  oferta_recupero: OfertaRecuperoConfig;
+  /**
    * Qué hace el sistema con la deuda de un cliente FALLECIDO. Va como parámetro y no fijo en
    * el código: hay financieras que frenan todo y esperan la sucesión, y otras que siguen
    * gestionando con los herederos. Ver `lib/domain/cliente-estado.ts`.
@@ -306,6 +317,7 @@ export const COBRANZA_DEFAULT: CobranzaConfig = {
   plantillas_meta: [],
   acuerdos: ACUERDOS_DEFAULT,
   recupero: RECUPERO_DEFAULT,
+  oferta_recupero: OFERTA_RECUPERO_DEFAULT,
   fallecidos: FALLECIDOS_DEFAULT,
   cobranza_abierta: true,
 };
@@ -323,6 +335,7 @@ export function resolverCobranza(raw: unknown): CobranzaConfig {
     orden: ORDENES_AGENDA.includes(r.orden as OrdenAgenda) ? (r.orden as OrdenAgenda) : COBRANZA_DEFAULT.orden,
     acuerdos: resolverAcuerdos(r.acuerdos),
     recupero: resolverRecupero(r.recupero),
+    oferta_recupero: resolverOfertaRecupero(r.oferta_recupero),
     // Plantillas del contacto individual desde la ficha del cliente. Viven acá y no en una
     // columna nueva porque son textos de gestión del cliente, del mismo orden que el resto
     // de este bloque; `resolverPlantillasContacto` completa con los defaults del dominio.
