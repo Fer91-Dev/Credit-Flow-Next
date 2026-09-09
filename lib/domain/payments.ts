@@ -310,8 +310,34 @@ export function imputarPagoEnCuotas(
     totales.interes = round2(totales.interes + aInteres);
     totales.cargos = round2(totales.cargos + aCargos);
     totales.capital = round2(totales.capital + aCapital);
-    // Mora condonada por la quita en esta cuota (informativo).
-    ahorroMora = round2(ahorroMora + noNegativo(round2(moraPlena - moraDevengada)));
+    /**
+     * 🔴 LO CONDONADO DE VERDAD EN ESTE PAGO, no la quita teórica de la cuota.
+     * (Hallazgo A3 de la auditoría financiera.)
+     *
+     * Sumaba `moraPlena − moraDevengada` entero apenas la cuota entraba en el reparto, aunque
+     * el pago cubriera una fracción de sus punitorios. Medido: con una quita del 50% sobre una
+     * cuota con $37.798,79 de mora plena, un pago de $5.000,00 hacía que el recibo declarara
+     * **$18.899,39 condonados** — la quita completa— cuando el cliente había saldado $5.000,00
+     * y todavía debía $13.899,39 de la mora ya descontada.
+     *
+     * No es cosmético: `pagos.ahorro_mora` se persiste, sale impreso en el recibo que el
+     * cliente se lleva y alimenta el "cuánto condonamos" de los reportes. Los tres decían de
+     * más.
+     *
+     * La quita se REALIZA en proporción a la mora que este pago efectivamente salda. Si paga
+     * la mitad de los punitorios descontados, se ganó la mitad del descuento; el resto se le
+     * acredita cuando pague el resto. Sumado a lo largo de los pagos parciales da exactamente
+     * la quita total, sin declararla toda en el primero.
+     *
+     * Caso borde: con quita del 100% la mora devengada es 0 y no hay proporción que medir —
+     * el punitorio se le perdona entero por el solo hecho de que la campaña lo alcanza, así
+     * que se acredita completo en el pago que toca la cuota.
+     */
+    const quitaDeLaCuota = noNegativo(round2(moraPlena - moraDevengada));
+    if (quitaDeLaCuota > 0) {
+      const proporcion = moraDevengada > 0 ? Math.min(1, aMora / moraDevengada) : 1;
+      ahorroMora = round2(ahorroMora + round2(quitaDeLaCuota * proporcion));
+    }
   }
 
   return { aplicaciones, totales, excedente: round2(restante), ahorroMora };
