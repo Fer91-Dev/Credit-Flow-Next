@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { withTenant } from "@/app/lib/db";
-import { calcularScore, diasMoraActual, esCreditoVivo, esClienteEnfriado, DIAS_INACTIVIDAD_COMERCIAL } from "@/lib/domain";
+import { cuotaCerradaSinPago, calcularScore, diasMoraActual, esCreditoVivo, esClienteEnfriado, DIAS_INACTIVIDAD_COMERCIAL } from "@/lib/domain";
 import { hoyComercial } from "@/lib/utils";
 
 /**
@@ -91,6 +91,24 @@ export async function agregarClientes(
     const clienteId = creditoACliente.get(q.credito_id);
     const a = clienteId ? agg.get(clienteId) : undefined;
     if (!a) continue;
+    /**
+     * 🔴 UNA CUOTA CERRADA SIN PAGO NO ES UN INCUMPLIMIENTO. (Hallazgo A2 de la auditoría.)
+     *
+     * Esto contaba TODA cuota con vencimiento pasado como "vencida" y solo las `pagada` como
+     * cumplidas — sin mirar el estado del crédito. Las cuotas de un crédito REFINANCIADO
+     * nunca se marcan pagadas (la deuda se mudó, no se pagó), así que le arruinaban el
+     * cumplimiento al cliente para siempre. Lo mismo las de un crédito ANULADO, que ni
+     * siquiera debió existir.
+     *
+     * Medido sobre la base de prueba: tres clientes caían de B (75 puntos) a C (45–52) solo
+     * por esto. Y es doble castigo: el score YA penaliza la refinanciación aparte
+     * (`refinanciacionMax`). Cruzar de B a C los marca como riesgo en el motor de
+     * originación, o sea que se les negaba o encarecía un crédito por un dato mal contado.
+     *
+     * Se excluyen del denominador Y del numerador: no son ni cumplimiento ni incumplimiento,
+     * simplemente no son historial de pago.
+     */
+    if (cuotaCerradaSinPago(q.estado)) continue;
     if (q.fecha_vencimiento.getTime() < hoy) {
       a.cuotasVencidas += 1;
       if (q.estado === "pagada") a.cuotasCumplidas += 1;
