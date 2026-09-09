@@ -364,8 +364,6 @@ export function CobranzaTable({ role }: { role: Role }) {
   const incluido = (id: string) => (recorte ? seleccion.has(id) : visiblesIds.includes(id));
   const todasVisiblesSel = visiblesIds.length > 0 && destinatariosIds.length === visiblesIds.length;
   const bloqueadosVisibles = sortedFiltered.filter(noContactable).length;
-  /** ¿Hay cartera castigada? De eso depende que la pestaña Incobrables exista. */
-  const hayIncobrables = allCreditos.some((c) => c.estado === "incobrable");
 
   /**
    * La selección viaja a la pantalla de campaña por `sessionStorage` (ver
@@ -493,17 +491,22 @@ export function CobranzaTable({ role }: { role: Role }) {
           ["acuerdos", "Acuerdos", "scroll"],
           ["planillas", "Planillas", "clipboard"],
           /**
-           * INCOBRABLES va ÚLTIMA de las de trabajo, y solo si hay alguno.
+           * INCOBRABLES va última de las de trabajo: el orden de estas pestañas es el de la
+           * escalera —se avisa antes del vencimiento, se reclama, se acuerda, se sale a la
+           * calle— y los incobrables son lo que quedó después de todo eso.
            *
-           * El orden de estas pestañas es el de la escalera: se le avisa antes de que venza,
-           * se le reclama cuando se atrasa, se acuerda, se sale a la calle. Los incobrables
-           * son lo que quedó después de todo eso, así que van al final.
+           * 🔴 SE MUESTRA SIEMPRE, aunque no haya ninguno. Estuvo condicionada a que existiera
+           * al menos uno, con el argumento de que una pestaña vacía permanente se aprende a
+           * ignorar. El argumento era cierto y el costo, peor: esa pregunta se contesta con
+           * `/api/creditos`, que lista mil créditos y le calcula a cada uno la mora en vivo y
+           * lo vencido. Hasta que esa consulta vuelve, la barra se dibuja SIN la pestaña y la
+           * agrega unos segundos después — la navegación entera salta en cada carga.
            *
-           * Y no se muestra vacía a propósito: una pestaña permanente que dice "no hay
-           * incobrables" es una que se aprende a ignorar, y cuando aparezca el primero nadie
-           * la va a mirar. Que aparezca ES la señal.
+           * Y no se arreglaba solo al haber incobrables: el salto no viene de que esté vacía,
+           * viene de que la navegación dependa de datos lentos. Una barra de pestañas tiene
+           * que ser estable desde el primer píxel; lo que puede tardar es el contenido.
            */
-          ...(hayIncobrables ? [["incobrables", "Incobrables", "cross-mark"]] : []),
+          ["incobrables", "Incobrables", "cross-mark"],
           ...(puedeCampanas ? [["campanas", "Campañas", "megaphone"]] : []),
         ] as [Tab, string, string][]).map(([key, label, emoji]) => (
           <button

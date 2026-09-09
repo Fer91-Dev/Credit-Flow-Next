@@ -190,11 +190,13 @@ export function IncobrablesTab() {
   if (creditos.filter((c) => c.estado === "incobrable").length === 0) {
     return (
       <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-border py-16 text-center">
-        <p className="text-sm font-medium text-foreground">No hay créditos dados por incobrables.</p>
+        <p className="text-sm font-medium text-foreground">Todavía no hay cartera castigada.</p>
         <p className="max-w-md text-xs leading-relaxed text-muted-foreground">
           Acá caen las deudas que se dieron por perdidas en el circuito normal: una
-          refinanciación que también se atrasó, o un crédito que un administrador dio de baja
-          a mano. Siguen siendo reclamables y se les puede cobrar.
+          refinanciación que también se atrasó, o un crédito que un administrador dio de baja a
+          mano. Salen de la cartera, de la lista de morosos y de la agenda, y los punitorios se
+          frenan — pero siguen siendo reclamables y se les puede cobrar. Esta pantalla dice
+          cuánto conviene ofrecerle a cada uno para cerrar el caso.
         </p>
       </div>
     );
