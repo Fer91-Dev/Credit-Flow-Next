@@ -44,10 +44,24 @@ const TENANT_ID = "00000000-0000-0000-0000-000000000001";
 const round2 = (x) => Math.round(x * 100) / 100;
 const DIA = 86_400_000;
 
-/** Fecha a N días de hoy (UTC, para columnas @db.Date). */
+/**
+ * Fecha a N días de hoy, contando desde el DÍA COMERCIAL ARGENTINO.
+ *
+ * 🔴 Usaba el día UTC y por eso las fechas sembradas salían corridas un día. La aplicación
+ * cuenta todo desde `hoyComercial()` —el día en Argentina, UTC−3—, así que entre las 21:00 y
+ * la medianoche de acá el día UTC ya es el siguiente: sembrar "hace 25 días" dejaba un castigo
+ * que la pantalla leía como de hace 24, y el monto sugerido salía distinto del esperado
+ * ($1.123.200,00 en vez de $1.119.960,00 sobre Ricardo Paz).
+ *
+ * No es un detalle del seed: es la misma regla que el resto del sistema, y un dato de prueba
+ * que no la respeta hace dudar del motor cuando el que está mal es el dato.
+ */
 function haceDias(n) {
-  const h = new Date();
-  return new Date(Date.UTC(h.getUTCFullYear(), h.getUTCMonth(), h.getUTCDate()) - n * DIA);
+  const ymd = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Argentina/Buenos_Aires",
+    year: "numeric", month: "2-digit", day: "2-digit",
+  }).format(new Date());
+  return new Date(new Date(`${ymd}T00:00:00.000Z`).getTime() - n * DIA);
 }
 function sumarMeses(fecha, meses) {
   return new Date(Date.UTC(fecha.getUTCFullYear(), fecha.getUTCMonth() + meses, fecha.getUTCDate()));
