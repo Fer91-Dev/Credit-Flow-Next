@@ -215,7 +215,11 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
     entidadId: id,
     accion: "anular",
     descripcion: `Pago de $${pago.monto.toLocaleString("es-AR")} anulado — ${numeroFmt} · ${nombreCompleto(credito.cliente)}${motivo ? ` — ${motivo}` : ""}`,
-    meta: { monto: pago.monto, credito_id: credito.id, motivo, saldo_nuevo: saldoCapital, estado_nuevo: nuevoEstado, contra_asientos: cobros.length },
+    meta: { monto: pago.monto, credito_id: credito.id, motivo, contra_asientos: cobros.length },
+    // Cómo quedó el crédito: anular un cobro le devuelve la deuda, y hay que poder ver de
+    // cuánto venía y a cuánto volvió.
+    antes: { saldo_pendiente: credito.saldo_pendiente, estado: credito.estado },
+    despues: { saldo_pendiente: saldoCapital, estado: nuevoEstado },
   });
 
   return successResponse({ anulado: true, credito_id: credito.id, saldo_pendiente: saldoCapital, estado: nuevoEstado });

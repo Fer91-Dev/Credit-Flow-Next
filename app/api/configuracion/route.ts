@@ -506,12 +506,37 @@ export const PUT = withErrorHandler(async (req: NextRequest) => {
   }
   const notificaciones = await getNotificacionesConfig(tenantId);
 
+  /**
+   * 🔴 QUÉ DECÍA ANTES. (Hallazgo A5 de la auditoría financiera.)
+   *
+   * Guardaba `campos: Object.keys(body)`: los NOMBRES de lo que se tocó, ni los valores
+   * nuevos ni los viejos. Y acá viven la tasa moratoria, el tope de mora, la convención de
+   * tasa, los cargos y los topes de quita — parámetros que deciden cuánta plata se cobra. Un
+   * registro que dice "se tocó `tasa_mora_diaria`" no sirve para nada seis meses después.
+   *
+   * Se comparan los campos ESCALARES del motor, que son los que cambian el cálculo. Los
+   * bloques JSON grandes (simulador, cobranza, caja) siguen listados por nombre: meterlos
+   * enteros en cada registro llenaría la tabla de auditoría con copias de la configuración.
+   */
+  const despuesConfig = await getConfiguracion(tenantId);
+  const escalares = (c: typeof actual) => ({
+    convencion_tasa: c.convencionTasa,
+    sistema_amortizacion: c.sistemaAmortizacion,
+    mora_activa: c.moraActiva,
+    tasa_mora_diaria: c.tasaMoraDiaria,
+    tope_mora_pct: c.topeMoraPct,
+    imputar_cargos: c.imputarCargos,
+    moneda: c.moneda,
+  });
+
   await registrarAuditoria({
     tenantId,
     entidad: "configuracion",
     accion: "actualizar_config",
     descripcion: "Configuración del motor financiero actualizada",
     meta: { campos: Object.keys(body) },
+    antes: escalares(actual),
+    despues: escalares(despuesConfig),
   });
 
   return successResponse({ ...guardada, ...maskCommConfig(comm), gamificacionConfig: gamificacion, rentabilidadConfig: rentabilidad, riesgoConfig: riesgo, cobranzaConfig: cobranza, cajaConfig: caja, notificacionesConfig: notificaciones });

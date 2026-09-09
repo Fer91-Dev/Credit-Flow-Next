@@ -267,6 +267,25 @@ export const PATCH = withErrorHandler(async (req: NextRequest, { params }: Route
     accion: "actualizar",
     descripcion: `Crédito de ${nombreCompleto(updated.cliente)} actualizado`,
     meta: updateData,
+    /**
+     * Qué decía antes de esta edición. Sin esto, un cambio de estado quedaba como un dato
+     * suelto ("estado: incobrable") sin decir de dónde venía.
+     *
+     * Solo la superficie que este PATCH puede tocar: pasar la fila entera arrastraba el
+     * `cliente` incluido y los snapshots JSON a cada registro de auditoría.
+     */
+    antes: {
+      estado: existing.estado,
+      tipo_credito: existing.tipo_credito,
+      incobrable_at: existing.incobrable_at,
+      incobrable_motivo: existing.incobrable_motivo,
+    },
+    despues: {
+      estado: updated.estado,
+      tipo_credito: updated.tipo_credito,
+      incobrable_at: updated.incobrable_at,
+      incobrable_motivo: updated.incobrable_motivo,
+    },
   });
 
   return successResponse(updated);

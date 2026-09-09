@@ -254,6 +254,15 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
       total_cobrado: totalCobrado,
       accion_pagos: tienePagos ? (devolver ? "devolver" : "conservar") : null,
     },
+    // El credito como estaba antes de anularse. Anular revierte plata, asi que tiene que
+    // poder reconstruirse que se revirtio.
+    antes: {
+      estado: existing.estado,
+      saldo_pendiente: existing.saldo_pendiente,
+      proximo_pago: existing.proximo_pago,
+      motivo_anulacion: existing.motivo_anulacion,
+    },
+    despues: { estado: "anulado", saldo_pendiente: 0, proximo_pago: null, motivo_anulacion: motivo },
   });
 
   return successResponse({
