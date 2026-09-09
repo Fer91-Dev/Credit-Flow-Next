@@ -293,3 +293,117 @@ function lanzarSiBloquea(v: VeredictoEscalera, code: string, actor?: ActorEscale
     : "";
   throw new ApiError([v.motivo, v.sugerencia].filter(Boolean).join(" ") + puedeForzar, code, 409);
 }
+
+/** Lo que salió de la caja y lo que volvió, en toda la cadena de un crédito. */
+export interface PlataDeCadena {
+  /** `monto_original` del crédito RAÍZ: la única plata que de verdad se entregó. */
+  prestado: number;
+  /** Todo lo cobrado en cualquier eslabón de la cadena. */
+  recuperado: number;
+  /** Lo prestado que todavía no volvió. El piso de cualquier negociación. */
+  enRiesgo: number;
+  raizId: string;
+  eslabones: number;
+}
+
+/**
+ * CUÁNTA PLATA SALIÓ DE LA CAJA Y CUÁNTA VOLVIÓ, mirando toda la cadena de refinanciaciones.
+ *
+ * 🔴 No se puede usar el `monto_original` del crédito que se está mirando. En un refinanciado
+ * ese campo NO es plata prestada: es la deuda vieja consolidada —capital, más el interés que
+ * se capitalizó, más los punitorios—. Sobre el caso de Ricardo Paz dice $3.150.000,00 cuando
+ * lo que salió de la ventanilla fueron $1.200.000,00. Tomarlo como "lo prestado" comete el
+ * mismo error de anatocismo que la deuda nominal, y encima al revés de lo que conviene: haría
+ * creer que se perdió casi el triple de lo que se perdió.
+ *
+ * Lo prestado de verdad es el `monto_original` del crédito RAÍZ, y lo recuperado es todo lo
+ * que se cobró en CUALQUIER eslabón: las cuotas que pagó del original antes de refinanciar
+ * valen igual que las que pagó después.
+ *
+ * 🔴 ES LA ÚNICA DEFINICIÓN. La pestaña Incobrables hacía esta misma caminata en el navegador
+ * y la vista previa de la campaña la habría hecho por tercera vez. Tres copias de la cuenta
+ * que decide cuánta plata se resigna es exactamente cómo dos pantallas terminan diciendo
+ * números distintos sobre el mismo caso.
+ *
+ * Va POR LOTE porque el caso normal es una lista: la pestaña trae todos los castigados de una.
+ * Se resuelve nivel por nivel (una consulta por salto, no una por crédito) y corta a los 20
+ * saltos como red contra un ciclo de datos.
+ */
+export async function plataDeLaCadenaLote(
+  tenantId: string,
+  creditoIds: string[],
+): Promise<Map<string, PlataDeCadena>> {
+  const r2 = (n: number) => Math.round(n * 100) / 100;
+  const salida = new Map<string, PlataDeCadena>();
+  if (creditoIds.length === 0) return salida;
+
+  /** Estado de la caminata de cada cadena: en qué eslabón va y qué acumuló. */
+  const enCurso = new Map(
+    creditoIds.map((id) => [id, { actual: id, recuperado: 0, prestado: 0, raizId: id, eslabones: 0 }]),
+  );
+
+  for (let salto = 0; salto < 20 && enCurso.size > 0; salto++) {
+    const pendientes = [...new Set([...enCurso.values()].map((e) => e.actual))];
+    const filas = await prisma.creditos.findMany({
+      where: { ...withTenant(tenantId), id: { in: pendientes } },
+      select: {
+        id: true,
+        monto_original: true,
+        refinancia_a: true,
+        // Lo cobrado sale de las CUOTAS y no de `pagos`: un pago anulado se revierte en las
+        // cuotas, así que sumarlo desde ahí contaría plata que se devolvió.
+        cuotas: { select: { pagado_capital: true, pagado_interes: true, pagado_mora: true, pagado_cargos: true } },
+      },
+    });
+    const porId = new Map(filas.map((f) => [f.id, f]));
+
+    for (const [origenId, e] of [...enCurso]) {
+      const fila = porId.get(e.actual);
+      if (!fila) {
+        // Se cortó la cadena (el eslabón previo no existe o quedó fuera del tenant): se cierra
+        // con lo acumulado hasta acá en vez de perder el caso entero.
+        enCurso.delete(origenId);
+        salida.set(origenId, {
+          prestado: r2(e.prestado), recuperado: r2(e.recuperado),
+          enRiesgo: r2(Math.max(0, e.prestado - e.recuperado)), raizId: e.raizId, eslabones: e.eslabones,
+        });
+        continue;
+      }
+      e.recuperado += fila.cuotas.reduce(
+        (a, q) => a + q.pagado_capital + q.pagado_interes + q.pagado_mora + q.pagado_cargos,
+        0,
+      );
+      // Solo el eslabón RAÍZ aporta capital prestado: los demás son deuda consolidada. Como se
+      // sobrescribe en cada salto, al llegar al final queda el de la raíz.
+      e.prestado = fila.monto_original;
+      e.raizId = fila.id;
+      e.eslabones++;
+
+      if (!fila.refinancia_a) {
+        enCurso.delete(origenId);
+        salida.set(origenId, {
+          prestado: r2(e.prestado), recuperado: r2(e.recuperado),
+          enRiesgo: r2(Math.max(0, e.prestado - e.recuperado)), raizId: e.raizId, eslabones: e.eslabones,
+        });
+      } else {
+        e.actual = fila.refinancia_a;
+      }
+    }
+  }
+
+  // Cadenas que tocaron el corte de 20 saltos: se devuelven con lo acumulado.
+  for (const [origenId, e] of enCurso) {
+    salida.set(origenId, {
+      prestado: r2(e.prestado), recuperado: r2(e.recuperado),
+      enRiesgo: r2(Math.max(0, e.prestado - e.recuperado)), raizId: e.raizId, eslabones: e.eslabones,
+    });
+  }
+
+  return salida;
+}
+
+/** La cadena de UN crédito. Atajo sobre `plataDeLaCadenaLote`. */
+export async function plataDeLaCadena(tenantId: string, creditoId: string): Promise<PlataDeCadena> {
+  const lote = await plataDeLaCadenaLote(tenantId, [creditoId]);
+  return lote.get(creditoId) ?? { prestado: 0, recuperado: 0, enRiesgo: 0, raizId: creditoId, eslabones: 0 };
+}

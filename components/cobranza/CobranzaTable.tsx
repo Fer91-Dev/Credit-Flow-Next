@@ -372,14 +372,34 @@ export function CobranzaTable({ role }: { role: Role }) {
    * el medio— no borre lo que el operador venía tildando.
    */
   useEffect(() => {
-    // Se guarda la audiencia REAL (con o sin recorte), que es lo que la pantalla de campaña
-    // va a leer: guardar el `Set` crudo dejaba vacío el estado "van todos".
-    // Con recorte se guarda la selección CRUDA: `destinatariosIds` depende de la lista ya
-    // cargada, y persistir eso durante el primer render —cuando todavía no llegó nada— borraba
-    // la selección que se acababa de restaurar al volver de la pantalla de campaña.
-    if (mounted) guardarSeleccionCampana(recorte ? [...seleccion] : destinatariosIds);
+    /**
+     * 🔴 SOLO MIENTRAS MOROSOS SEA LA PESTAÑA VISIBLE.
+     *
+     * Este componente no es la tabla de morosos: es la PÁGINA entera de Cobranza, y sigue
+     * montado con todas sus pestañas adentro. Sin el corte por pestaña, este efecto escribía
+     * la audiencia de morosos en el `sessionStorage` compartido cada vez que SWR revalidaba
+     * `/api/creditos` —o sea cada pocos segundos— **estuviera Fernando en la pestaña que
+     * estuviera**.
+     *
+     * Consecuencia medida: desde Incobrables se apretaba "Campaña de recupero", el botón
+     * guardaba los cuatro castigados, y en el camino a la pantalla de campaña este efecto los
+     * pisaba con los morosos. Llegabas a la campaña y veías a Verónica Paz y Marina Sosa —dos
+     * morosos de 30 días— en vez de los castigados que acababas de elegir. El botón hacía
+     * bien su parte; lo que fallaba era que otra pestaña escribía encima.
+     *
+     * Lo mismo valía para Vencimientos, que escribe su selección al hacer clic: cualquier
+     * revalidación posterior se la comía.
+     */
+    if (mounted && tab === "morosos") {
+      // Se guarda la audiencia REAL (con o sin recorte), que es lo que la pantalla de campaña
+      // va a leer: guardar el `Set` crudo dejaba vacío el estado "van todos".
+      // Con recorte se guarda la selección CRUDA: `destinatariosIds` depende de la lista ya
+      // cargada, y persistir eso durante el primer render —cuando todavía no llegó nada—
+      // borraba la selección que se acababa de restaurar al volver de la pantalla de campaña.
+      guardarSeleccionCampana(recorte ? [...seleccion] : destinatariosIds);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [clave, recorte, seleccion, mounted]);
+  }, [clave, recorte, seleccion, mounted, tab]);
 
 
   /**

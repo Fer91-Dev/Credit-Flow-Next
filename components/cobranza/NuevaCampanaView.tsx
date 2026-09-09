@@ -6,7 +6,7 @@ import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { mutate as globalMutate } from "swr";
 import { ArrowLeft, Mail, Smartphone, Sparkles, Check, Loader2, Users } from "lucide-react";
 import { WhatsAppIcon } from "@/components/ui/WhatsAppIcon";
-import { useCreditos, useConfiguracion, useFinanciera, KEYS, type Credito } from "@/lib/swr";
+import { useCreditos, useConfiguracion, useFinanciera, useOfertaRecupero, KEYS, type Credito } from "@/lib/swr";
 import {
   calculateRecoveryOffer,
   construirMensajeCampana,
@@ -19,6 +19,8 @@ import {
   contactoBloqueado,
   TEMPLATE_REFINANCIACION_DEFAULT,
   TEMPLATE_MORA_SIN_PROMO,
+  TEMPLATE_RECUPERO_DEFAULT,
+  sugerirOfertaCancelacion,
   type CanalCampana,
 } from "@/lib/domain";
 import { AvisoMeta } from "@/components/clientes/ContactarDialog";
@@ -211,6 +213,7 @@ function CampanaWorkspace({ role, creditos: todosCreditos, bloqueados, onCancela
    */
   const TEMPLATES_DEFAULT = [
     TEMPLATE_DEFAULT, TEMPLATE_MORA_SIN_PROMO, TEMPLATE_VENCIMIENTO_DEFAULT, TEMPLATE_REFINANCIACION_DEFAULT,
+    TEMPLATE_RECUPERO_DEFAULT,
   ];
 
   /** Hoy en el día comercial argentino (YYYY-MM-DD), para el default y el mínimo del calendario. */
@@ -236,9 +239,16 @@ function CampanaWorkspace({ role, creditos: todosCreditos, bloqueados, onCancela
     promo_vence: HOY_ISO,
     // El texto por defecto depende de a quién se le habla: al que está al día no se le
     // dice que regularice su situación.
-    mensaje_template: leerTipoCampana() === "vencimiento" ? TEMPLATE_VENCIMIENTO_DEFAULT : TEMPLATE_DEFAULT,
+    mensaje_template: leerTipoCampana() === "vencimiento"
+      ? TEMPLATE_VENCIMIENTO_DEFAULT
+      : leerTipoCampana() === "recupero"
+        ? TEMPLATE_RECUPERO_DEFAULT
+        : TEMPLATE_DEFAULT,
     /** Nombre de la plantilla de Meta elegida ("" = texto libre). */
     plantilla_meta: "",
+    /** Recupero: fijar un mismo % para todos en vez de la sugerencia por caso. */
+    recuperoPctFijo: false,
+    recupero_pct: "50",
   });
   const [loading, setLoading] = useState(false);
   const [enviandoApi, setEnviandoApi] = useState(false);
@@ -266,14 +276,27 @@ function CampanaWorkspace({ role, creditos: todosCreditos, bloqueados, onCancela
   const [tipoCampana, setTipoCampana] = useState<TipoCampana>(() => leerTipoCampana());
   const esRecordatorio = tipoCampana === "vencimiento";
   const esRefinanciacion = tipoCampana === "refinanciacion";
+  /** Oferta de cancelación sobre deuda ya dada por perdida (pestaña Incobrables). */
+  const esRecupero = tipoCampana === "recupero";
+  /** Con qué criterio sugerir la cancelación. Lo fija la financiera en Configuración. */
+  const cfgOferta = useOfertaRecupero();
 
   /**
    * En una campaña de refinanciación no hay descuento posible: la quita de la campaña se
    * aplica AL COBRAR, y a estos créditos no se les cobra. El descuento de una refinanciación
    * se pacta en su pantalla, cliente por cliente y con su tope.
    */
-  const descuentoPct = form.promoActiva && tipoCampana !== "refinanciacion"
+  const descuentoPct = form.promoActiva && tipoCampana !== "refinanciacion" && tipoCampana !== "recupero"
     ? Math.min(100, Math.max(0, parseFloat(form.promo_valor) || 0))
+    : 0;
+  /**
+   * En un RECUPERO el número no es un descuento sobre punitorios: es qué porcentaje del
+   * CAPITAL EN RIESGO se le pide a cada uno. Vacío o 0 = lo que sugiere el motor para cada
+   * caso, que es lo normal; un valor fijo es la "liquidación de cartera vieja", pareja para
+   * todos.
+   */
+  const pctRecuperoFijo = esRecupero && form.recuperoPctFijo
+    ? Math.min(100, Math.max(0, parseFloat(form.recupero_pct) || 0))
     : 0;
 
   /**
@@ -295,8 +318,14 @@ function CampanaWorkspace({ role, creditos: todosCreditos, bloqueados, onCancela
   const topeConocido = role === "admin" || !!config?.cobranzaConfig;
   const excedeTope = topeConocido && form.promoActiva && tipoCampana !== "refinanciacion" && descuentoPct > topeDescuento;
   /** Hay descuento ofrecido y no hay hasta cuándo, o la fecha ya pasó. */
-  const promoSinFecha = descuentoPct > 0 && !form.promo_vence;
-  const promoVencida = descuentoPct > 0 && !!form.promo_vence && form.promo_vence < HOY_ISO;
+  /**
+   * Una oferta sin plazo no apura a nadie y queda viva para siempre. Vale igual para el
+   * descuento de mora y para la propuesta de cancelación de un castigado — ahí incluso más:
+   * dentro de seis meses alguien puede presentarse con el WhatsApp en la mano.
+   */
+  const ofertaConPlazo = descuentoPct > 0 || esRecupero;
+  const promoSinFecha = ofertaConPlazo && !form.promo_vence;
+  const promoVencida = ofertaConPlazo && !!form.promo_vence && form.promo_vence < HOY_ISO;
 
   /*
     QUÉ RECLAMA esta campaña. Viene de la pestaña que la armó (Morosos o Vencimientos).
@@ -334,13 +363,30 @@ function CampanaWorkspace({ role, creditos: todosCreditos, bloqueados, onCancela
    * tienen nada vencido se recuerdan, los que sí se reclaman, y los que ya no se pueden
    * cobrar se invitan a refinanciar. Tres grupos que nunca se mezclan en un mismo envío.
    */
-  const { paraRecordar, paraCobrar, paraRefinanciar } = useMemo(() => ({
-    paraRecordar:    todosCreditos.filter((c) => !c.cobro_bloqueado && c.dias_mora <= 0),
-    paraCobrar:      todosCreditos.filter((c) => !c.cobro_bloqueado && c.dias_mora > 0),
-    paraRefinanciar: todosCreditos.filter((c) => !!c.cobro_bloqueado),
-  }), [todosCreditos]);
+  /**
+   * 🔴 Y LA CUARTA: EL CASTIGADO NO ES UN MOROSO MÁS.
+   *
+   * A un incobrable no se le reclama: su deuda nominal es varias veces lo que se le prestó
+   * —capital, interés capitalizado y punitorios— y mandársela es la forma más rápida de que
+   * la conversación se corte. Lo que se le manda es una OFERTA para cancelar.
+   *
+   * Sin este corte, un castigado caía en "invitar a refinanciar" (por `cobro_bloqueado`), que
+   * es justo lo contrario de lo que corresponde: a un incobrable ya no se lo refinancia. Los
+   * otros tres grupos lo excluyen explícitamente además de por descarte.
+   */
+  const { paraRecordar, paraCobrar, paraRefinanciar, paraRecuperar } = useMemo(() => {
+    const castigado = (c: Credito) => c.estado === "incobrable";
+    return {
+      paraRecordar:    todosCreditos.filter((c) => !castigado(c) && !c.cobro_bloqueado && c.dias_mora <= 0),
+      paraCobrar:      todosCreditos.filter((c) => !castigado(c) && !c.cobro_bloqueado && c.dias_mora > 0),
+      paraRefinanciar: todosCreditos.filter((c) => !castigado(c) && !!c.cobro_bloqueado),
+      paraRecuperar:   todosCreditos.filter(castigado),
+    };
+  }, [todosCreditos]);
 
-  const creditos = esRefinanciacion ? paraRefinanciar : esRecordatorio ? paraRecordar : paraCobrar;
+  const creditos = esRecupero
+    ? paraRecuperar
+    : esRefinanciacion ? paraRefinanciar : esRecordatorio ? paraRecordar : paraCobrar;
   /** Las otras audiencias, las que NO entran en esta campaña. Se conservan para la siguiente. */
   const restantes = () =>
     todosCreditos.filter((c) => !creditos.some((x) => x.id === c.id)).map((c) => c.id);
@@ -357,35 +403,36 @@ function CampanaWorkspace({ role, creditos: todosCreditos, bloqueados, onCancela
       if (!esDefault) return p;
       const nuevo = t === "refinanciacion" ? TEMPLATE_REFINANCIACION_DEFAULT
         : t === "vencimiento" ? TEMPLATE_VENCIMIENTO_DEFAULT
+        : t === "recupero" ? TEMPLATE_RECUPERO_DEFAULT
         : p.promoActiva ? TEMPLATE_DEFAULT : TEMPLATE_MORA_SIN_PROMO;
       return { ...p, mensaje_template: nuevo };
     });
   };
 
   /**
-   * Si la selección quedó toda de un lado, la pantalla se planta sola en esa audiencia: no
-   * tiene sentido pedirle que elija entre dos grupos cuando uno está vacío.
+   * Si el grupo elegido quedó VACÍO, la pantalla se corrige sola y se planta en uno que tenga
+   * gente. No es cosmético: con el tipo colgado de un `sessionStorage` que la pestaña anterior
+   * escribió, la vista dibujaba las columnas de un recordatorio sobre cinco morosos —los
+   * rotulaba "al día", mostraba una fecha de vencimiento ya pasada y los punitorios en $0,00—
+   * y de ahí salía el envío.
+   *
+   * Se resuelve por orden de preferencia y no caso por caso: con cuatro audiencias, la cadena
+   * de ternarios que había ya se había vuelto imposible de leer y de completar sin olvidarse
+   * una combinación.
    */
   useEffect(() => {
-    /**
-     * 🔴 UNA AUDIENCIA VACÍA NO SE MUESTRA: SE CORRIGE.
-     *
-     * El primer corte es el del recordatorio, y es el que faltaba. Si el tipo que quedó
-     * guardado dice "vencimiento" pero en la selección no hay UNO SOLO al día, no es una
-     * campaña de vencimientos: es una de mora rotulada mal. Se cae al grupo que sí tiene
-     * gente en vez de dibujar cinco filas que dicen "al día" sobre cinco morosos.
-     */
-    if (tipoCampana === "vencimiento" && paraRecordar.length === 0) {
-      cambiarTipo(paraCobrar.length > 0 ? "mora" : paraRefinanciar.length > 0 ? "refinanciacion" : "mora");
-      return;
-    }
-    if (tipoCampana === "vencimiento") return;
-    if (paraCobrar.length === 0 && paraRefinanciar.length > 0 && tipoCampana !== "refinanciacion") cambiarTipo("refinanciacion");
-    if (paraRefinanciar.length === 0 && tipoCampana === "refinanciacion") {
-      cambiarTipo(paraCobrar.length > 0 ? "mora" : paraRecordar.length > 0 ? "vencimiento" : "mora");
-    }
+    const cuantos: Record<TipoCampana, number> = {
+      vencimiento: paraRecordar.length,
+      mora: paraCobrar.length,
+      refinanciacion: paraRefinanciar.length,
+      recupero: paraRecuperar.length,
+    };
+    if (cuantos[tipoCampana] > 0) return;
+    const alternativa = (["mora", "vencimiento", "refinanciacion", "recupero"] as TipoCampana[])
+      .find((t) => cuantos[t] > 0);
+    if (alternativa) cambiarTipo(alternativa);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [paraRecordar.length, paraCobrar.length, paraRefinanciar.length, tipoCampana]);
+  }, [paraRecordar.length, paraCobrar.length, paraRefinanciar.length, paraRecuperar.length, tipoCampana]);
 
   // Oferta por crédito (cálculo client-side con el mismo dominio que el server).
   const objetivos = useMemo(
@@ -414,15 +461,65 @@ function CampanaWorkspace({ role, creditos: todosCreditos, bloqueados, onCancela
           diasMora: c.dias_mora,
           descuentoPct,
         });
-        return { credito: c, oferta, vencidoSinMora, mora };
+
+        /**
+         * 🔴 LA OFERTA DE UN CASTIGADO SE CALCULA DISTINTO, Y CON EL MISMO MOTOR QUE EL RESTO.
+         *
+         * No sale de lo vencido con un descuento sobre punitorios: sale del CAPITAL EN RIESGO
+         * —lo que salió de la ventanilla en toda la cadena menos todo lo que volvió— ponderado
+         * por hace cuánto está castigado y por si apareció a pagar algo. Es `sugerirOferta-
+         * Cancelacion`, la misma función que usa la pestaña Incobrables y el cierre del caso,
+         * así que el importe del WhatsApp es el mismo que el operador ve cuando el cliente se
+         * presenta a pagar.
+         *
+         * Con un % fijo cargado la campaña lo pisa parejo para todos: es la liquidación de
+         * cartera vieja, y se dice como tal en la pantalla.
+         */
+        const deudaCastigo = c.vencido || c.saldo_pendiente;
+        const riesgo = c.capital_en_riesgo ?? 0;
+        const sugerida = esRecupero
+          ? sugerirOfertaCancelacion(
+              {
+                capitalEnRiesgo: riesgo,
+                deudaReclamada: deudaCastigo,
+                diasCastigado: c.incobrable_at
+                  ? Math.max(0, Math.floor((hoyComercial().getTime() - new Date(c.incobrable_at).getTime()) / 86_400_000))
+                  : 0,
+                pagoPostCastigo: (c.cobrado_post_castigo ?? 0) > 0,
+              },
+              cfgOferta,
+            )
+          : null;
+        const montoRecupero = esRecupero
+          ? (pctRecuperoFijo > 0
+              ? Math.round(Math.min(deudaCastigo, (riesgo * pctRecuperoFijo) / 100) * 100) / 100
+              : (sugerida?.monto ?? deudaCastigo))
+          : 0;
+        const condonaRecupero = esRecupero ? Math.round(Math.max(0, deudaCastigo - montoRecupero) * 100) / 100 : 0;
+
+        return {
+          credito: c, oferta, vencidoSinMora, mora,
+          recupero: esRecupero
+            ? { deuda: deudaCastigo, riesgo, monto: montoRecupero, condona: condonaRecupero, sugerida }
+            : null,
+        };
       }),
-    [creditos, descuentoPct, esRecordatorio],
+    [creditos, descuentoPct, esRecordatorio, esRecupero, pctRecuperoFijo, cfgOferta],
   );
 
-  const totalCuotas = objetivos.reduce((s, o) => s + o.vencidoSinMora, 0);
+  const totalCuotas = esRecupero
+    ? objetivos.reduce((s, o) => s + (o.recupero?.deuda ?? 0), 0)
+    : objetivos.reduce((s, o) => s + o.vencidoSinMora, 0);
   const totalMora = objetivos.reduce((s, o) => s + o.mora, 0);
-  const totalAhorro = objetivos.reduce((s, o) => s + o.oferta.ahorro, 0);
-  const totalOfrecido = objetivos.reduce((s, o) => s + o.oferta.montoConDescuento, 0);
+  // En recupero el "ahorro" es lo CONDONADO: punitorios, interés del plan y capital.
+  const totalAhorro = esRecupero
+    ? objetivos.reduce((s, o) => s + (o.recupero?.condona ?? 0), 0)
+    : objetivos.reduce((s, o) => s + o.oferta.ahorro, 0);
+  const totalOfrecido = esRecupero
+    ? objetivos.reduce((s, o) => s + (o.recupero?.monto ?? 0), 0)
+    : objetivos.reduce((s, o) => s + o.oferta.montoConDescuento, 0);
+  /** Lo que de verdad se perdió: capital prestado que no volvió, sumando la audiencia. */
+  const totalRiesgo = objetivos.reduce((s, o) => s + (o.recupero?.riesgo ?? 0), 0);
   const sinTelefono = objetivos.filter((o) => !o.credito.cliente.telefono).length;
   const sinEmail = objetivos.filter((o) => !o.credito.cliente.email).length;
 
@@ -450,10 +547,12 @@ function CampanaWorkspace({ role, creditos: todosCreditos, bloqueados, onCancela
   const mensajePara = (o: (typeof objetivos)[number]) =>
     construirMensajeCampana(form.mensaje_template, {
       nombre: nombreCompleto(o.credito.cliente),
-      monto: o.oferta.montoConDescuento,
+      // En un recupero [Monto] es lo que se le OFRECE para cancelar, no lo que se le reclama.
+      monto: o.recupero ? o.recupero.monto : o.oferta.montoConDescuento,
       saldo: o.credito.saldo_pendiente,
+      deuda: o.recupero?.deuda,
       dias: o.credito.dias_mora,
-      descuento: o.oferta.ahorro,
+      descuento: o.recupero ? o.recupero.condona : o.oferta.ahorro,
       vence: o.credito.proximo_pago ? formatFecha(o.credito.proximo_pago) : null,
       // La vista previa tiene que mostrar EXACTAMENTE lo que va a salir, plazo incluido.
       promoVence: descuentoPct > 0 && form.promo_vence ? formatFecha(form.promo_vence) : null,
@@ -487,9 +586,11 @@ function CampanaWorkspace({ role, creditos: todosCreditos, bloqueados, onCancela
       title: "¿Crear campaña?",
       description:
         `Se creará la campaña "${form.nombre.trim()}" con ${creditos.length} crédito${creditos.length !== 1 ? "s" : ""} ` +
-        (esRefinanciacion
-          ? "cuyo plan ya venció, invitándolos a refinanciar"
-          : esRecordatorio ? "por vencer" : "en mora") +
+        (esRecupero
+          ? "dados por incobrables, ofreciéndoles cancelar"
+          : esRefinanciacion
+            ? "cuyo plan ya venció, invitándolos a refinanciar"
+            : esRecordatorio ? "por vencer" : "en mora") +
         ` por ${CANAL_META[form.canal].label}.` +
         // Que quede dicho ANTES de crear: la otra mitad de la selección sigue esperando.
         (restantes().length > 0
@@ -505,8 +606,12 @@ function CampanaWorkspace({ role, creditos: todosCreditos, bloqueados, onCancela
         nombre: form.nombre.trim(),
         descripcion: form.descripcion.trim() || undefined,
         canal: form.canal,
-        promo_tipo: form.promoActiva ? "quita_interes" : "ninguna",
-        promo_valor: descuentoPct,
+        // En un recupero la quita es sobre el TOTAL (punitorios, interés y capital), no sobre
+        // los punitorios: se resigna plata prestada y tiene que quedar registrado como tal.
+        promo_tipo: esRecupero ? "quita_total" : form.promoActiva ? "quita_interes" : "ninguna",
+        // Y el valor no es un descuento: es qué % del capital en riesgo se le pide a cada uno.
+        // 0 = la sugerencia del motor, caso por caso.
+        promo_valor: esRecupero ? pctRecuperoFijo : descuentoPct,
         promo_vence: form.promo_vence || undefined,
         mensaje_template: form.mensaje_template.trim() || undefined,
         // Qué reclama la campaña: sin esto, un recordatorio quedaba guardado como reclamo de
@@ -806,7 +911,7 @@ function CampanaWorkspace({ role, creditos: todosCreditos, bloqueados, onCancela
               todavía: no hay nada que descontar, y ofrecer un descuento del 0% de $0,00 sería
               prometerle algo vacío al cliente. El bloque entero no se muestra.
             */}
-            {!esRecordatorio && !esRefinanciacion && (
+            {!esRecordatorio && !esRefinanciacion && !esRecupero && (
             <section className="space-y-2.5">
               <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Incentivo</p>
               <div className={`space-y-3 rounded-lg border p-3 transition-colors ${form.promoActiva ? "border-success/30 bg-success/5" : "border-border"}`}>
@@ -889,6 +994,67 @@ function CampanaWorkspace({ role, creditos: todosCreditos, bloqueados, onCancela
                 )}
               </div>
             </section>
+            )}
+
+            {/*
+              ── LA OFERTA DE RECUPERO ──
+
+              No es el bloque de incentivo con otro nombre. Allá se descuentan PUNITORIOS
+              sobre una deuda viva; acá se resigna capital de una deuda ya dada por perdida, y
+              lo que se define no es un descuento sino cuánto se le pide a cada uno.
+
+              Por eso el número que manda es el capital en riesgo —la plata que de verdad
+              salió de la ventanilla y no volvió— y no la deuda nominal, que está inflada por
+              su propio interés.
+            */}
+            {esRecupero && (
+              <section className="space-y-2.5">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">La oferta</p>
+                <div className="space-y-3 rounded-lg border border-success/30 bg-success/5 p-3">
+                  <p className="text-[11px] leading-relaxed text-muted-foreground">
+                    A cada uno se le ofrece lo que calcula el motor de recupero según hace cuánto
+                    está castigado y si apareció a pagar algo. Del total prestado y no recuperado
+                    —<span className="font-mono tabular-nums text-destructive">{formatMonto(totalRiesgo)}</span>— se
+                    ofrece recuperar <span className="font-mono tabular-nums text-success">{formatMonto(totalOfrecido)}</span>.
+                  </p>
+                  <label className="flex cursor-pointer items-start gap-2">
+                    <input
+                      type="checkbox"
+                      checked={form.recuperoPctFijo}
+                      onChange={(e) => setForm((p) => ({ ...p, recuperoPctFijo: e.target.checked }))}
+                      className="mt-0.5 h-4 w-4 rounded border-border accent-success"
+                    />
+                    <span className="text-sm font-medium text-foreground">
+                      Un mismo porcentaje para todos
+                      <span className="mt-0.5 block text-[11px] font-normal text-muted-foreground">
+                        Liquidación de cartera vieja: pisa la sugerencia caso por caso.
+                      </span>
+                    </span>
+                  </label>
+                  {form.recuperoPctFijo && (
+                    <Field label="% del capital en riesgo" hint="Sobre lo prestado que no volvió, no sobre la deuda">
+                      <Input type="number" min="0" max="100" step="5" value={form.recupero_pct} onChange={set("recupero_pct")} />
+                    </Field>
+                  )}
+                  <Field label="Válida hasta" hint="Último día para aceptar la propuesta">
+                    <Input
+                      type="date"
+                      value={form.promo_vence}
+                      min={HOY_ISO}
+                      onChange={set("promo_vence")}
+                      aria-invalid={promoSinFecha || promoVencida}
+                      className={promoSinFecha || promoVencida ? "border-destructive focus:ring-destructive/20" : undefined}
+                    />
+                  </Field>
+                  {(promoSinFecha || promoVencida) && (
+                    <p className="text-[11px] font-medium text-destructive">
+                      {promoSinFecha
+                        ? "Poné hasta cuándo vale la propuesta. Sin fecha queda viva para siempre y dentro de seis meses alguien se presenta con el mensaje en la mano."
+                        : "Esa fecha ya pasó: la oferta nacería vencida."}
+                    </p>
+                  )}
+                </div>
+              </section>
             )}
 
             {/* ── Plantilla aprobada por Meta (opcional, solo WhatsApp) ── */}
@@ -1031,6 +1197,7 @@ function CampanaWorkspace({ role, creditos: todosCreditos, bloqueados, onCancela
               { t: "vencimiento" as TipoCampana,    label: "Recordar el vencimiento", detalle: "todavía no deben nada",         n: paraRecordar.length },
               { t: "mora" as TipoCampana,           label: "Reclamar el pago",        detalle: "con punitorios",                n: paraCobrar.length },
               { t: "refinanciacion" as TipoCampana, label: "Invitar a refinanciar",   detalle: "su plan ya no se puede cobrar", n: paraRefinanciar.length },
+              { t: "recupero" as TipoCampana,       label: "Ofrecer cancelación",     detalle: "deuda dada por perdida",        n: paraRecuperar.length },
             ]).filter((g) => g.n > 0);
             if (grupos.length < 2) return null;
             return (
@@ -1079,6 +1246,15 @@ function CampanaWorkspace({ role, creditos: todosCreditos, bloqueados, onCancela
             explica el corte de arriba, y va una sola vez arriba de la tabla — no repetido en
             cada fila.
           */}
+          {esRecupero && (
+            <div className="shrink-0 border-b border-edge bg-success/[0.06] px-5 py-2.5 text-xs leading-relaxed text-foreground">
+              Estas deudas ya se dieron por perdidas. Lo que se manda no es un reclamo sino una
+              propuesta para cerrar: se ofrece un importe y se <strong>condona el resto</strong>
+              {" "}—punitorios, interés del plan y capital—. Cuando el cliente acepte, el caso se
+              cierra desde la pestaña Incobrables.
+            </div>
+          )}
+
           {esRefinanciacion && (
             <div className="shrink-0 border-b border-edge bg-warning/[0.06] px-5 py-2.5 text-xs text-foreground">
               El plan de pagos de estos créditos ya venció: la terminal de cobro los rechaza. Al
@@ -1094,6 +1270,7 @@ function CampanaWorkspace({ role, creditos: todosCreditos, bloqueados, onCancela
               focoId={objetivoFoco?.credito.id ?? null}
               esRecordatorio={esRecordatorio}
               esRefinanciacion={esRefinanciacion}
+              esRecupero={esRecupero}
               onFoco={setFoco}
             />
           </div>
@@ -1112,6 +1289,7 @@ function CampanaWorkspace({ role, creditos: todosCreditos, bloqueados, onCancela
           total={totalOfrecido}
           esRefinanciacion={esRefinanciacion}
           esRecordatorio={esRecordatorio}
+          esRecupero={esRecupero}
           reducir={!!reducirMovimiento}
         />
         <div className="flex items-center gap-3">
@@ -1148,9 +1326,16 @@ function CampanaWorkspace({ role, creditos: todosCreditos, bloqueados, onCancela
  * leer los cuatro nodos como un flujo y no como cuatro cifras sueltas.
  */
 function PipelineReclamo({
-  cuotas, punitorios, descuento, total, reducir, esRefinanciacion, esRecordatorio,
+  cuotas, punitorios, descuento, total, reducir, esRefinanciacion, esRecordatorio, esRecupero,
 }: {
   cuotas: number; punitorios: number; descuento: number; total: number; reducir: boolean;
+  /**
+   * Oferta de recupero: la fórmula es otra y los rótulos también. Acá "cuotas" trae la deuda
+   * nominal entera y "descuento" lo condonado —que incluye capital—, así que dejar los
+   * nombres de la barra de mora diría "Cuotas vencidas − Descuento" sobre una operación
+   * donde lo que se resigna es plata prestada.
+   */
+  esRecupero?: boolean;
   /** Invitación a refinanciar: no hay descuento, y el resultado no es lo que se le pide. */
   esRefinanciacion?: boolean;
   /**
@@ -1161,7 +1346,13 @@ function PipelineReclamo({
    */
   esRecordatorio?: boolean;
 }) {
-  const etapas = esRecordatorio
+  const etapas = esRecupero
+    ? [
+        { label: "Se le reclama", valor: cuotas,    tono: "text-muted-foreground", op: "−" },
+        { label: "Se condona",    valor: descuento, tono: "text-warning",          op: "=" },
+        { label: "Se le ofrece",  valor: total,     tono: "text-success",          op: null },
+      ]
+    : esRecordatorio
     ? [{ label: "Se le recuerda", valor: total, tono: "text-foreground", op: null }]
     : esRefinanciacion
     // Sin etapa de descuento: no hay ninguno que ofrecer. Y el resultado es lo que deben HOY,
@@ -1238,12 +1429,15 @@ function TablaAudiencia({
   onFoco,
   esRecordatorio,
   esRefinanciacion,
+  esRecupero,
 }: {
   objetivos: {
     credito: Credito;
     oferta: { montoConDescuento: number; ahorro: number };
     vencidoSinMora: number;
     mora: number;
+    /** Solo en las campañas de recupero: la propuesta de cancelación de ese castigado. */
+    recupero: { deuda: number; riesgo: number; monto: number; condona: number } | null;
   }[];
   totales: { totalCuotas: number; totalMora: number; totalAhorro: number; totalOfrecido: number };
   /** Fila enfocada: la que alimenta la vista previa del mensaje. */
@@ -1257,11 +1451,89 @@ function TablaAudiencia({
    * porque no se les pide nada: se los invita a reestructurar.
    */
   esRefinanciacion?: boolean;
+  /**
+   * Oferta de recupero: las columnas son OTRAS, no las mismas con otro rótulo. No hay cuotas
+   * vencidas ni punitorios que discriminar —la deuda de un castigado se negocia entera— y sí
+   * hace falta ver hace cuánto está castigado y cuánto se resigna. Por eso va su propia tabla
+   * en vez de una quinta tanda de condicionales sobre la de mora.
+   */
+  esRecupero?: boolean;
 }) {
   const th = "px-4 py-2.5 text-left text-[11px] font-bold uppercase tracking-wider text-muted-foreground";
   const thNum = `${th} text-right`;
   const td = "px-4 py-3 text-sm";
   const tdNum = `${td} text-right font-mono tabular-nums`;
+
+  if (esRecupero) {
+    return (
+      <table className="w-full border-separate border-spacing-0">
+        <thead className="sticky top-0 z-10 bg-muted">
+          <tr>
+            <th className={`${th} border-b border-border`}>Cliente</th>
+            <th className={`${th} border-b border-border`}>Castigado</th>
+            <th className={`${thNum} border-b border-border`}>Se le reclama</th>
+            <th className={`${thNum} border-b border-border`}>Capital en riesgo</th>
+            <th className={`${thNum} border-b border-border`}>Se condona</th>
+            <th className={`${thNum} border-b border-border`}>Se le ofrece</th>
+          </tr>
+        </thead>
+        <tbody>
+          {objetivos.map((o, i) => {
+            const enFoco = o.credito.id === focoId;
+            const r = o.recupero;
+            return (
+              <tr
+                key={o.credito.id}
+                role="button"
+                tabIndex={0}
+                aria-pressed={enFoco}
+                onClick={() => onFoco(o.credito.id)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onFoco(o.credito.id); }
+                }}
+                className={`cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/50 ${
+                  enFoco ? "bg-primary/10" : `hover:bg-muted/20 ${i % 2 === 1 ? "bg-muted/5" : ""}`
+                }`}
+              >
+                <td className={`${td} min-w-0 relative`}>
+                  {enFoco && <span className="absolute inset-y-1 left-0 w-0.5 rounded-r bg-primary" />}
+                  <p className="truncate font-medium text-foreground">{nombreCompleto(o.credito.cliente)}</p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    {o.credito.numero ? `CRD-${String(o.credito.numero).padStart(6, "0")}` : "Crédito sin número"}
+                    {(o.credito.cobrado_post_castigo ?? 0) > 0 && (
+                      <span className="text-success"> · pagó ya castigado</span>
+                    )}
+                  </p>
+                </td>
+                <td className={`${td} whitespace-nowrap text-muted-foreground`}>
+                  {o.credito.incobrable_at ? formatFecha(o.credito.incobrable_at) : "—"}
+                </td>
+                {/* La deuda nominal va en gris y sin protagonismo: es el número que NO se le
+                    dice al cliente, y está acá solo para dimensionar lo que se resigna. */}
+                <td className={`${tdNum} text-muted-foreground`}>{formatMonto(r?.deuda ?? 0)}</td>
+                <td className={`${tdNum} font-semibold text-destructive`}>{formatMonto(r?.riesgo ?? 0)}</td>
+                <td className={`${tdNum} text-warning`}>{formatMonto(r?.condona ?? 0)}</td>
+                <td className={`${tdNum} font-bold text-success`}>{formatMonto(r?.monto ?? 0)}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+        <tfoot className="sticky bottom-0 z-10 bg-card">
+          <tr>
+            <td className={`${td} border-t border-border font-semibold text-foreground`} colSpan={2}>
+              Total de la campaña
+            </td>
+            <td className={`${tdNum} border-t border-border text-muted-foreground`}>{formatMonto(totales.totalCuotas)}</td>
+            <td className={`${tdNum} border-t border-border font-semibold text-destructive`}>
+              {formatMonto(objetivos.reduce((s, o) => s + (o.recupero?.riesgo ?? 0), 0))}
+            </td>
+            <td className={`${tdNum} border-t border-border text-warning`}>{formatMonto(totales.totalAhorro)}</td>
+            <td className={`${tdNum} border-t border-border font-bold text-success`}>{formatMonto(totales.totalOfrecido)}</td>
+          </tr>
+        </tfoot>
+      </table>
+    );
+  }
 
   return (
     <table className="w-full border-separate border-spacing-0">

@@ -10,7 +10,12 @@ import { round2 } from "./money";
 import type { PlanAmortizacion } from "./amortization";
 
 /** Estado de una cuota dentro del cronograma. */
-export type EstadoCuota = "pendiente" | "parcial" | "pagada" | "vencida";
+/**
+ * `condonada`: se perdonó al cerrar un caso incobrable. NO es "pagada" —nadie puso esa plata—
+ * y por eso no cuenta como cuota cumplida en el historial del cliente ni en el scoring; lo que
+ * sí hace es dejar de deber (ver `cuotaSaldada` en credito-estado.ts).
+ */
+export type EstadoCuota = "pendiente" | "parcial" | "pagada" | "vencida" | "condonada";
 
 /** Fila de cuota lista para persistir (mapeo del plan de amortización). */
 export interface FilaCuota {

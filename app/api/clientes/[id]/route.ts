@@ -120,19 +120,33 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
     // Argentina una cuota que vence hoy ya se mostraba como vencida.
     const hoy = hoyComercial();
     const estadosCuota = c.cuotas.map((q) => {
+      /**
+       * 🔴 CONDONADA gana sobre todo lo demás. Se perdonó al cerrar un caso incobrable, así
+       * que `pagado_capital` quedó corto a propósito: sin este corte, la ficha de un cliente
+       * cuyo caso ya se cerró seguía mostrando sus cuotas como VENCIDAS y contándolas en el
+       * resumen. El cliente tiene la cancelación por escrito y la pantalla lo trataba de
+       * moroso.
+       *
+       * Y no se cuenta como "pagada": nadie puso esa plata, y el historial de cumplimiento
+       * es justamente lo que no hay que falsear.
+       */
+      if (q.estado === "condonada") return "condonada";
       const capitalSaldado = q.pagado_capital >= round2(q.capital);
       if (capitalSaldado) return "pagada";
       if (diasAtraso(q.fecha_vencimiento, hoy) > 0) return "vencida";
       if (q.pagado_capital > 0 || q.pagado_interes > 0 || q.pagado_mora > 0 || q.pagado_cargos > 0) return "parcial";
       return "pendiente";
     });
-    const proximaIdx = estadosCuota.findIndex((e) => e !== "pagada");
+    // La "próxima" es la primera que todavía se puede cobrar: una condonada ya no lo es.
+    const proximaIdx = estadosCuota.findIndex((e) => e !== "pagada" && e !== "condonada");
     const cuotas_resumen = {
       total: c.cuotas.length,
       pagadas: estadosCuota.filter((e) => e === "pagada").length,
       pendientes: estadosCuota.filter((e) => e === "pendiente").length,
       parciales: estadosCuota.filter((e) => e === "parcial").length,
       vencidas: estadosCuota.filter((e) => e === "vencida").length,
+      /** Perdonadas al cerrar un caso incobrable. Ni cobradas ni exigibles. */
+      condonadas: estadosCuota.filter((e) => e === "condonada").length,
       proxima_nro: proximaIdx >= 0 ? c.cuotas[proximaIdx].nro : null,
       proxima_vencimiento: proximaIdx >= 0 ? c.cuotas[proximaIdx].fecha_vencimiento : null,
     };

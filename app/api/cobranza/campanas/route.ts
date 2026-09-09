@@ -2,22 +2,33 @@ import { requireRole, scopeCreditosVendedor } from "@/lib/auth";
 import { successResponse, errorResponse, withErrorHandler, assertSameOrigin } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
-import { cuotaMensualFrancesa, tasaPeriodicaSegunConvencion, convencionDelCredito, interesMora, normalizarFrecuencia, calculateRecoveryOffer, diasMoraActual, type FrecuenciaDef, type ConfiguracionFinanciera, moraDelCredito, moraDesdeCronograma, esCreditoVivo, calcularDeudaVencida, round2, deudaEnRevision, contactoBloqueado, resolverPlantillasMeta, promoVigenteAl, type CuotaParaImputar } from "@/lib/domain";
+import { cuotaMensualFrancesa, tasaPeriodicaSegunConvencion, convencionDelCredito, interesMora, normalizarFrecuencia, calculateRecoveryOffer, diasMoraActual, type FrecuenciaDef, type ConfiguracionFinanciera, moraDelCredito, moraDesdeCronograma, esCreditoVivo, esCreditoIncobrable, topeMoraPorIncobrable, calcularDeudaConsolidada, sugerirOfertaCancelacion, resolverOfertaRecupero, calcularDeudaVencida, round2, deudaEnRevision, contactoBloqueado, resolverPlantillasMeta, promoVigenteAl, type CuotaParaImputar } from "@/lib/domain";
 import { getConfiguracion, getCobranzaConfig } from "@/lib/config";
 import { registrarAuditoria } from "@/lib/audit";
 import { hoyComercial, formatCreditoNumero } from "@/lib/utils";
 import { numerosRefinanciados } from "@/lib/creditos-numero";
-import { cobroBloqueadoPorCredito } from "@/lib/recupero-server";
+import { cobroBloqueadoPorCredito, plataDeLaCadenaLote } from "@/lib/recupero-server";
 import { creditosConAcuerdoVigente } from "@/lib/acuerdos";
 import type { NextRequest } from "next/server";
 
 const CANALES = ["whatsapp", "email", "sms"];
-const PROMOS = ["ninguna", "quita_interes"];
+/**
+ * `quita_total` es la de RECUPERO y no se puede confundir con `quita_interes`.
+ *
+ *  - `quita_interes` perdona PUNITORIOS sobre una deuda viva: la financiera resigna un
+ *    recargo, y el capital y el interés pactado se cobran enteros.
+ *  - `quita_total` perdona TODO lo que exceda la oferta —punitorios, interés del plan y
+ *    capital—, porque la deuda ya se dio por perdida y lo que se busca es recuperar algo.
+ *
+ * Con un solo nombre, una campaña que resigna capital quedaría registrada como si solo
+ * hubiera descontado recargos, y no habría forma de saber cuánto se perdonó de verdad.
+ */
+const PROMOS = ["ninguna", "quita_interes", "quita_total"];
 /**
  * QUÉ RECLAMA la campaña. `refinanciacion` se suma como VALOR de la columna `tipo` que ya
  * existía (mora | vencimiento): no hace falta tocar el esquema.
  */
-const TIPOS_CAMPANA = ["mora", "vencimiento", "refinanciacion"];
+const TIPOS_CAMPANA = ["mora", "vencimiento", "refinanciacion", "recupero"];
 
 type CreditoMora = {
   id: string;
@@ -155,13 +166,46 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
    * una refinanciación es otro —se pacta cliente por cliente en su pantalla, con su tope— así
    * que acá se fuerza a "ninguna" en vez de rechazar el pedido.
    */
-  const promoEfectiva = tipoCampana === "refinanciacion" ? "ninguna" : promoTipo;
+  const promoEfectiva = tipoCampana === "refinanciacion"
+    ? "ninguna"
+    /**
+     * En una campaña de RECUPERO la quita es siempre sobre el total y no es opcional: lo que
+     * se le manda al cliente es "pagás esto y no debés nada más", así que perdonar el resto
+     * —punitorios, interés del plan y capital— es la campaña misma. Se fuerza en vez de
+     * confiar en lo que mande el navegador.
+     */
+    : tipoCampana === "recupero" ? "quita_total"
+    : promoTipo;
 
-  const promoValor = promoEfectiva === "quita_interes"
-    ? Math.min(100, Math.max(0, Number(body.promo_valor) || 0))
-    : 0;
+  /**
+   * Qué significa `promo_valor` según el tipo:
+   *  - `quita_interes` → % de los PUNITORIOS que se perdona al cobrar.
+   *  - `quita_total`   → % del CAPITAL EN RIESGO que se le pide a cada cliente, como override
+   *                      del motor de recupero. 0 = usar lo que sugiere el motor para cada uno
+   *                      (que es el caso normal: el motor ya pondera antigüedad y señales).
+   */
+  const promoValor = promoEfectiva === "ninguna"
+    ? 0
+    : Math.min(100, Math.max(0, Number(body.promo_valor) || 0));
 
   const cobranzaCfg = await getCobranzaConfig(tenantId);
+
+  /**
+   * 🔴 UNA CAMPAÑA DE RECUPERO LA ARMA UN ADMIN.
+   *
+   * Es la misma regla con la que se declara incobrable y con la que se cierra el caso: acá se
+   * resigna CAPITAL, no un recargo. Y hay una razón práctica además de la contable: el cierre
+   * solo lo puede ejecutar un administrador, así que un vendedor que mandara estas ofertas
+   * estaría prometiendo por escrito algo que él después no puede cumplir — el mismo defecto
+   * que el descuento de campaña que se ofrecía y no se aplicaba, pero sobre millones.
+   */
+  if (tipoCampana === "recupero" && ctx.role !== "admin") {
+    return errorResponse(
+      "Una campaña de recupero la tiene que armar un administrador: perdona capital de una deuda ya dada por perdida.",
+      "FORBIDDEN",
+      403,
+    );
+  }
 
   /**
    * 🔴 EL TOPE DE DESCUENTO DEL VENDEDOR TAMBIÉN RIGE ACÁ.
@@ -181,7 +225,11 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
    * El admin no tiene tope, por la misma razón que en acuerdos: un límite que él mismo edita
    * en Configuración no es un límite.
    */
-  const topePromo = ctx.role === "admin" ? 100 : cobranzaCfg.acuerdos.quita_max_vendedor_pct;
+  // `quita_total` no pasa por este tope: es admin-only por definición (ver arriba), y el tope
+  // está expresado como % de PUNITORIOS, que no es lo que se resigna en un recupero.
+  const topePromo = ctx.role === "admin" || promoEfectiva === "quita_total"
+    ? 100
+    : cobranzaCfg.acuerdos.quita_max_vendedor_pct;
   if (promoValor > topePromo) {
     return errorResponse(
       topePromo === 0
@@ -208,17 +256,26 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
    * escrito. Esto corta las nuevas.
    */
   const promoVence = body.promo_vence ? new Date(body.promo_vence) : null;
-  if (promoValor > 0) {
+  /**
+   * En un RECUPERO la oferta siempre lleva plazo, aunque `promo_valor` sea 0 (el monto lo
+   * pone el motor por cliente). Una propuesta de cancelación sin fecha no apura a nadie y
+   * queda viva para siempre: dentro de seis meses alguien la presenta y hay que respetarla.
+   */
+  if (promoValor > 0 || tipoCampana === "recupero") {
     if (!promoVence || Number.isNaN(promoVence.getTime())) {
       return errorResponse(
-        "Un descuento tiene que tener fecha de vencimiento: hasta cuándo puede acogerse el cliente.",
+        tipoCampana === "recupero"
+          ? "La propuesta de cancelación tiene que tener fecha límite: sin plazo queda viva para siempre y dentro de seis meses alguien se presenta con el mensaje en la mano."
+          : "Un descuento tiene que tener fecha de vencimiento: hasta cuándo puede acogerse el cliente.",
         "INVALID_INPUT",
         400,
       );
     }
     if (!promoVigenteAl(promoVence, hoyComercial())) {
       return errorResponse(
-        "La fecha de la promoción ya pasó: el descuento nacería vencido.",
+        tipoCampana === "recupero"
+          ? "La fecha límite ya pasó: la propuesta nacería vencida."
+          : "La fecha de la promoción ya pasó: el descuento nacería vencido.",
         "INVALID_INPUT",
         400,
       );
@@ -231,6 +288,8 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     where: { ...withTenant(tenantId), ...scopeCreditosVendedor(ctx), id: { in: body.credito_ids } },
     select: {
       id: true, numero: true, saldo_pendiente: true, dias_mora: true, proximo_pago: true, estado: true,
+      // Hasta dónde devengó la mora de un castigado, y desde cuándo se cuenta su antigüedad.
+      incobrable_at: true, fecha_inicio: true,
       es_refinanciacion: true, refinancia_a: true, refinanciado_en: true,
       monto_original: true, plazo_meses: true, tasa: true,
       frecuencia: true, frecuencia_def: true, cronograma: true,
@@ -263,8 +322,22 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
    * DESPUÉS de armada la campaña, el corte del envío sigue cubriendo ese caso.
    */
   const polFallecidos = cobranzaCfg.fallecidos;
+  /**
+   * 🔴 UN CASTIGADO NO ES "VIVO", Y AUN ASÍ SE LE ESCRIBE.
+   *
+   * El corte era `esCreditoVivo` a secas, así que una campaña armada desde Incobrables
+   * rebotaba entera con "Ningún crédito válido para la campaña. No es cobrable (incobrable)".
+   * Y estaba bien mientras el único envío posible fuera un reclamo: a alguien que ya se dio
+   * por perdido no se le reclama el nominal. Pero la campaña de RECUPERO existe justamente
+   * para esa gente, y ahí lo que se manda no es un reclamo sino una oferta de cancelación.
+   *
+   * Los dos conjuntos siguen sin mezclarse: en un recupero entran SOLO los castigados, y en
+   * cualquier otro tipo, solo los vivos.
+   */
+  const enCartera = (c: (typeof candidatos)[number]) =>
+    tipoCampana === "recupero" ? esCreditoIncobrable(c.estado) : esCreditoVivo(c.estado);
   const cobrable = (c: (typeof candidatos)[number]) =>
-    esCreditoVivo(c.estado) && !contactoBloqueado(c.cliente, { bloqueaFallecidos: polFallecidos.bloquea_contacto }).bloqueado;
+    enCartera(c) && !contactoBloqueado(c.cliente, { bloqueaFallecidos: polFallecidos.bloquea_contacto }).bloqueado;
 
   /**
    * 🔴 EL CORTE ENTRE RECLAMAR Y REFINANCIAR.
@@ -310,6 +383,12 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
 
   const delTipo = (c: (typeof candidatos)[number]) => {
     const bloqueado = bloqueados.get(c.id) ?? false;
+    // El recupero se define por el ESTADO, no por la escalera: un castigado ya salió del
+    // circuito y `cobro_bloqueado` no dice nada útil sobre él.
+    if (tipoCampana === "recupero") return esCreditoIncobrable(c.estado);
+    // Y al revés: un castigado nunca entra en los otros tres tipos, aunque su atraso lo
+    // hiciera parecer un moroso más. Lo cubre `enCartera`; esto lo deja dicho acá también.
+    if (esCreditoIncobrable(c.estado)) return false;
     if (tipoCampana === "refinanciacion") return bloqueado;
     if (bloqueado) return false;
     // Un reclamo sin nada vencido pediría $0,00; un recordatorio con atraso trataría de al
@@ -334,6 +413,20 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     // Quedó afuera por ser de la OTRA audiencia, no por un problema del crédito.
     if (!delTipo(c)) {
       const bloqueado = bloqueados.get(c.id) ?? false;
+      /**
+       * 🔴 EL CASTIGADO SE EXPLICA PRIMERO.
+       *
+       * Sin esta rama caía en el corte de mora/vencimiento y salía "Está al día: no hay nada
+       * vencido que reclamarle" sobre alguien que debe seis millones desde hace ocho meses.
+       * El motivo era técnicamente cierto —su deuda no cuenta como vencida en ese cálculo—
+       * pero le decía al operador exactamente lo contrario de lo que pasa.
+       */
+      if (esCreditoIncobrable(c.estado)) {
+        return "Está dado por incobrable: le corresponde una campaña de recupero, no un reclamo";
+      }
+      if (tipoCampana === "recupero") {
+        return "Todavía está en el circuito normal: no es una deuda dada por perdida";
+      }
       if (tipoCampana === "refinanciacion") {
         return "Todavía se le puede cobrar: va en una campaña de reclamo, no en una de refinanciación";
       }
@@ -341,6 +434,12 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
       return tipoCampana === "vencimiento"
         ? "Ya está en mora: le corresponde un reclamo con los punitorios, no un recordatorio"
         : "Está al día: no hay nada vencido que reclamarle, le corresponde un recordatorio";
+    }
+    if (tipoCampana === "recupero" && !esCreditoIncobrable(c.estado)) {
+      return "Todavía está en el circuito normal: no es una deuda dada por perdida";
+    }
+    if (esCreditoIncobrable(c.estado)) {
+      return "Está dado por incobrable: le corresponde una campaña de recupero, no un reclamo";
     }
     if (c.estado === "refinanciado") return "Ya se refinanció: su deuda está en el crédito nuevo";
     if (c.estado === "pagado" || c.estado === "cancelado") return "Ya está saldado";
@@ -356,6 +455,36 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
 
   const config = await getConfiguracion(tenantId);
   const hoyCamp = hoyComercial();
+
+  /**
+   * SEÑALES DE RECUPERO, solo si la campaña es de esa clase.
+   *
+   * La oferta de un castigado no sale de lo vencido: sale del CAPITAL EN RIESGO —lo que salió
+   * de la ventanilla en toda la cadena menos todo lo que volvió— ponderado por hace cuánto
+   * está castigado y por si apareció a pagar algo después. Es el mismo motor que usa la
+   * pestaña Incobrables y el cierre del caso, así que el importe del WhatsApp es exactamente
+   * el que el operador va a ver cuando el cliente se presente.
+   */
+  const esRecupero = tipoCampana === "recupero";
+  const cadenas = esRecupero
+    ? await plataDeLaCadenaLote(tenantId, creditos.map((c) => c.id))
+    : new Map<string, { prestado: number; recuperado: number; enRiesgo: number }>();
+  const pagoPostCastigo = new Set<string>();
+  if (esRecupero) {
+    const conCastigo = creditos.filter((c) => c.incobrable_at);
+    if (conCastigo.length > 0) {
+      const pagos = await prisma.pagos.findMany({
+        where: { ...withTenant(tenantId), anulado: false, credito_id: { in: conCastigo.map((c) => c.id) } },
+        select: { credito_id: true, fecha: true },
+      });
+      const castigoDe = new Map(conCastigo.map((c) => [c.id, c.incobrable_at as Date]));
+      for (const p of pagos) {
+        const corte = castigoDe.get(p.credito_id);
+        if (corte && p.fecha.getTime() >= corte.getTime()) pagoPostCastigo.add(p.credito_id);
+      }
+    }
+  }
+  const cfgOferta = resolverOfertaRecupero(cobranzaCfg.oferta_recupero);
 
   // Snapshot de mora + oferta de recuperación por crédito. Mora EN VIVO desde `proximo_pago`
   // (no del cache `dias_mora`, que no se avanza día a día) → la oferta refleja la mora de hoy.
@@ -385,9 +514,28 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     }));
     const mc = moraDelCredito(moraDesdeCronograma(c.cronograma), config);
     const gracia = (c.cronograma as { diasGracia?: number } | null)?.diasGracia ?? config.simulador.diasGracia;
+    /**
+     * 🔴 EN UN CASTIGADO LA DEUDA SE MIDE AL DÍA DEL CASTIGO.
+     *
+     * Los punitorios se frenaron ahí. Calcularla con la fecha de hoy le mandaría al cliente
+     * una mora que la pestaña no muestra y que la caja no le va a cobrar — el error de las
+     * dos fórmulas, que en este sistema ya mordió tres veces.
+     */
+    const corteCredito = topeMoraPorIncobrable(hoyCamp, c) ?? hoyCamp;
     const dv = calcularDeudaVencida(cuotasDom, {
-      moraActiva: mc.moraActiva, tasaMoraDiaria: mc.tasaMoraDiaria, topeMoraPct: mc.topeMoraPct, diasGracia: gracia, hoy: hoyCamp,
+      moraActiva: mc.moraActiva, tasaMoraDiaria: mc.tasaMoraDiaria, topeMoraPct: mc.topeMoraPct, diasGracia: gracia, hoy: corteCredito,
     });
+    /**
+     * Y se extingue el crédito ENTERO, no solo lo vencido: la oferta de recupero cancela la
+     * deuda completa. En los castigados que llegan por el camino normal las cuotas ya
+     * vencieron todas y los dos números coinciden; cuando no, manda este.
+     */
+    const deudaTotal = esRecupero
+      ? calcularDeudaConsolidada(cuotasDom, {
+          moraActiva: mc.moraActiva, tasaMoraDiaria: mc.tasaMoraDiaria, topeMoraPct: mc.topeMoraPct,
+          diasGracia: gracia, hoy: corteCredito, fechaInicio: c.fecha_inicio,
+        }).total
+      : round2(dv.total);
 
     // La oferta se calcula sobre lo vencido SIN mora, con la mora aparte: es lo que
     // `calculateRecoveryOffer` espera para poder condonar solo los punitorios.
@@ -411,10 +559,44 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
       ? round2(Math.max(0, proxima.cuota_total - (proxima.pagado_capital + proxima.pagado_interes + proxima.pagado_cargos)))
       : 0;
 
+    /**
+     * LA OFERTA DE UN CASTIGADO. No es un descuento sobre lo vencido: es cuánto conviene
+     * pedirle para cerrar, calculado sobre la plata que de verdad se perdió.
+     *
+     * `promo_valor` en 0 —el caso normal— usa la sugerencia del motor, que pondera la
+     * antigüedad del castigo y si el cliente apareció a pagar algo. Con un valor cargado, la
+     * campaña fija un porcentaje único del capital en riesgo para todos: es la "liquidación
+     * de cartera vieja", y se guarda como tal para poder auditarla después.
+     */
+    const cadena = cadenas.get(c.id);
+    const riesgo = cadena?.enRiesgo ?? 0;
+    const ofertaRecupero = esRecupero
+      ? (promoValor > 0
+          ? { monto: round2(Math.min(deudaTotal, (riesgo * promoValor) / 100)) }
+          : sugerirOfertaCancelacion(
+              {
+                capitalEnRiesgo: riesgo,
+                deudaReclamada: deudaTotal,
+                diasCastigado: c.incobrable_at
+                  ? Math.max(0, Math.floor((hoyCamp.getTime() - new Date(c.incobrable_at).getTime()) / 86_400_000))
+                  : 0,
+                pagoPostCastigo: pagoPostCastigo.has(c.id),
+              },
+              cfgOferta,
+            ))
+      : null;
+    /**
+     * Sin capital en riesgo el motor no sugiere nada (ya se recuperó todo lo prestado y la
+     * oferta la decide una persona). En una campaña masiva eso no puede quedar en $0,00: se
+     * cae a la deuda entera, que es lo que se le pediría si no hubiera oferta.
+     */
+    const montoRecupero = ofertaRecupero?.monto ?? deudaTotal;
+
     return {
       credito_id: c.id,
       saldo: c.saldo_pendiente,     // capital, se conserva como referencia
-      vencido: round2(dv.total),    // lo exigible hoy, con mora
+      // En un recupero, lo que se extingue es TODA la deuda, no solo lo vencido.
+      vencido: esRecupero ? deudaTotal : round2(dv.total),
       cuota_monto: tipoCampana === "vencimiento" ? cuotaProxima : null,
       vence_el: tipoCampana === "vencimiento" ? (proxima?.fecha_vencimiento ?? null) : null,
       cuotas_vencidas: dv.cuotas_vencidas,
@@ -422,8 +604,14 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
       interes_mora: dv.mora,
       // En un recordatorio no hay descuento posible (no hay punitorios): lo que se le
       // comunica es la cuota, tal cual.
-      oferta_monto: tipoCampana === "vencimiento" ? cuotaProxima : oferta.montoConDescuento,
-      oferta_descuento: tipoCampana === "vencimiento" ? 0 : oferta.descuento,
+      oferta_monto: esRecupero
+        ? montoRecupero
+        : tipoCampana === "vencimiento" ? cuotaProxima : oferta.montoConDescuento,
+      // Lo CONDONADO: en un recupero es todo lo que excede la oferta —punitorios, interés del
+      // plan y capital—, no solo el recargo. Es el número que dice cuánta plata se resigna.
+      oferta_descuento: esRecupero
+        ? round2(Math.max(0, deudaTotal - montoRecupero))
+        : tipoCampana === "vencimiento" ? 0 : oferta.descuento,
       envio_estado: "pendiente",
     };
   });

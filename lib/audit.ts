@@ -24,7 +24,13 @@ export type AuditAccion =
   | "backup"
   // Alerta que asienta el cron, sin actor humano: algo que el sistema encontró roto y que
   // necesita que una persona decida (hoy, el crédito vivo que se quedó sin plan de cuotas).
-  | "alerta_sin_plan";
+  | "alerta_sin_plan"
+  /**
+   * Cierre de un caso incobrable: se cobró lo pactado y se condonó el resto. Acción propia y
+   * no "cancelar" porque lo que hay que poder rastrear es la PLATA RESIGNADA — cuánto sugirió
+   * el motor, cuánto se aceptó y quién firmó la diferencia.
+   */
+  | "cerrar_incobrable";
 
 export interface AuditInput {
   tenantId: string;

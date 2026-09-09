@@ -22,6 +22,12 @@ export const SERIE_LABEL = {
   COM: "Comisión de otorgamiento",
   APO: "Aporte de capital",
   RET: "Retiro de utilidades",
+  /**
+   * Cierre de un caso incobrable: lo que el cliente pagó para cancelar una deuda que ya se
+   * había dado por perdida. Serie propia y no REC porque no es una cobranza del circuito
+   * normal — es plata que se creía irrecuperable, y en el libro tiene que poder distinguirse.
+   */
+  RCP: "Recupero de incobrable",
 } as const;
 
 export type SerieComprobante = keyof typeof SERIE_LABEL;

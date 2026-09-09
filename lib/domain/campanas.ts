@@ -62,6 +62,23 @@ export const TEMPLATE_VENCIMIENTO_DEFAULT =
  *
  * Lo concreto que sí puede decir el mensaje son los días de atraso, que no se discuten.
  */
+/**
+ * Plantilla por defecto de la OFERTA DE RECUPERO (deuda ya dada por perdida).
+ *
+ * 🔴 NO NOMBRA LA DEUDA NOMINAL, y es a propósito. Sobre un castigado esa cifra es varias
+ * veces lo que se prestó —capital, más el interés que se capitalizó al refinanciar, más los
+ * punitorios—, y es exactamente el número que hace que el cliente corte el teléfono: "¿cómo
+ * me cobran seis millones si me prestaron uno?". Lo que abre la conversación es el importe
+ * con el que cancela y la palabra "cancelás", no el reclamo.
+ *
+ * Lleva el plazo sí o sí: una propuesta de cancelación sin fecha no apura a nadie y queda
+ * viva para siempre.
+ */
+export const TEMPLATE_RECUPERO_DEFAULT =
+  "Hola [Nombre], te escribimos por tu deuda. Tenemos una propuesta para cerrarla: " +
+  "abonando $[Monto] hasta el [Promo_vence] queda cancelada y no debés nada más. " +
+  "Es por única vez. Escribinos y lo coordinamos.";
+
 export const TEMPLATE_REFINANCIACION_DEFAULT =
   "Hola [Nombre], tu plan de pagos venció: llevás [Dias] días de atraso. " +
   "Podemos reestructurar toda tu deuda en un plan nuevo, con cuotas que puedas pagar. " +
@@ -122,6 +139,8 @@ export function construirMensajeCampana(
   template: string,
   data: {
     nombre: string; monto: number; saldo?: number; dias?: number; descuento?: number;
+    /** Deuda nominal completa. Solo tiene sentido en un recupero; ver `TEMPLATE_RECUPERO_DEFAULT`. */
+    deuda?: number;
     vence?: string | null;
     /** Último día para acogerse al descuento (ya formateado). Distinto de `vence`. */
     promoVence?: string | null;
@@ -142,6 +161,12 @@ export function construirMensajeCampana(
     saldo: data.saldo !== undefined ? fmt(data.saldo) : "",
     dias: data.dias !== undefined ? String(data.dias) : "",
     descuento: data.descuento !== undefined ? fmt(data.descuento) : "",
+    /**
+     * La deuda ENTERA, para el que quiera nombrarla. La plantilla de recupero no la usa
+     * —esa cifra es la que corta la conversación— pero el que redacta a mano puede querer
+     * decir "de $X quedan $Y", y entonces tiene que salir el mismo número que ve el operador.
+     */
+    deuda: data.deuda !== undefined ? fmt(data.deuda) : "",
     // Para los recordatorios: la fecha en que vence la cuota. Vacío en los reclamos de mora,
     // donde la fecha ya pasó y lo que importa es cuánto se atrasó.
     vence: data.vence ?? "",

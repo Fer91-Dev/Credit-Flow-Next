@@ -7,6 +7,7 @@ import { siguienteNumeroComprobante } from "@/lib/comprobantes";
 import { assertFondosSuficientesTx } from "@/lib/caja-fondos";
 import { lockNumeroCreditoTx, TX_PLATA } from "@/lib/locks";
 import { getConfiguracion, getCobranzaConfig } from "@/lib/config";
+import { plataDeLaCadenaLote } from "@/lib/recupero-server";
 import { cobroBloqueadoPorCredito } from "@/lib/recupero-server";
 import { situacionAcuerdoPorCredito } from "@/lib/acuerdos";
 import { conNumeroDeOrigen } from "@/lib/creditos-numero";
@@ -121,6 +122,20 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
    * Una sola consulta, y solo si hay incobrables: son pocos por definición.
    */
   const incobrables = creditos.filter((c) => c.estado === "incobrable" && c.incobrable_at);
+  /**
+   * 🔴 CUÁNTA PLATA SALIÓ DE VERDAD DE LA CAJA, mirando toda la cadena.
+   *
+   * `monto_original` no sirve para esto en un refinanciado: ahí es la deuda vieja
+   * consolidada —capital + interés capitalizado + punitorios—, y sobre el caso de Ricardo Paz
+   * dice $3.150.000,00 cuando lo que salió de la ventanilla fueron $1.200.000,00. El
+   * `capital_en_riesgo` de este endpoint se calculaba así y estaba mal por casi el triple; la
+   * pestaña Incobrables lo sabía y hacía su propia caminata en el navegador para no usarlo.
+   *
+   * Ahora la cuenta vive en UN lado y viaja desde acá: la pestaña, la campaña de recupero y
+   * el cierre del caso hablan del mismo número. Solo para los castigados —son pocos por
+   * definición— y en una consulta por salto de cadena, no una por crédito.
+   */
+  const cadenas = await plataDeLaCadenaLote(tenantId, incobrables.map((c) => c.id));
   const cobradoPostCastigo = new Map<string, number>();
   if (incobrables.length > 0) {
     const pagos = await prisma.pagos.findMany({
@@ -219,8 +234,15 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     const cobrado = round2(
       c.cuotas.reduce((acc, q) => acc + q.pagado_capital + q.pagado_interes + q.pagado_mora + q.pagado_cargos, 0),
     );
-    /** Capital que la financiera todavía no recuperó. El piso real de cualquier negociación. */
-    const capital_en_riesgo = round2(Math.max(0, c.monto_original - cobrado));
+    /**
+     * Capital que la financiera todavía no recuperó. El piso real de cualquier negociación.
+     *
+     * En un castigado sale de la CADENA (lo prestado en la raíz menos todo lo cobrado en
+     * cualquier eslabón). En el resto, del propio crédito: no hay cadena que recorrer y
+     * `monto_original` sí es plata entregada.
+     */
+    const cadena = cadenas.get(c.id) ?? null;
+    const capital_en_riesgo = cadena ? cadena.enRiesgo : round2(Math.max(0, c.monto_original - cobrado));
 
     // Estado reconciliado: defensa de lectura ante datos legacy.
     const estado = estadoCoherente(c.estado, c.saldo_pendiente);
@@ -244,6 +266,8 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
       : 0;
 
     return { ...credito, estado, dias_mora: dmora, interes_mora, vencido, cuotas_vencidas, cuota_proxima, cobrado, capital_en_riesgo,
+      /** Lo prestado y lo recuperado de TODA la cadena. Solo en los castigados. */
+      prestado_cadena: cadena?.prestado ?? null, recuperado_cadena: cadena?.recuperado ?? null,
       /** Lo que pagó DESPUÉS del castigo. 0 en todo lo que no es incobrable. */
       cobrado_post_castigo: cobradoPostCastigo.get(c.id) ?? 0, tiene_pagos: c.pagos.length > 0, cobros_vivos: c._count.pagos > 0, acuerdo: acuerdosVig.get(c.id) ?? null };
   });

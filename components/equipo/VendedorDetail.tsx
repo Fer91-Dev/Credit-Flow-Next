@@ -832,6 +832,7 @@ function LogrosTab({ vendedorId }: { vendedorId: string }) {
 const CAJA_TIPO_META: Record<MovimientoCaja["tipo"], { label: string; variant: "primary" | "success" | "warning" | "destructive" | "muted" }> = {
   desembolso:         { label: "Desembolso",   variant: "warning" },
   cobro:              { label: "Cobro",         variant: "success" },
+  recupero:           { label: "Recupero",      variant: "success" },
   devolucion:         { label: "Devolución",    variant: "destructive" },
   reversa_desembolso: { label: "Reversa",       variant: "primary" },
   ajuste:             { label: "Ajuste",        variant: "muted" },

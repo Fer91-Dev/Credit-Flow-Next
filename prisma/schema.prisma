@@ -295,6 +295,29 @@ model creditos {
   /// contable, y dentro de un año nadie se acuerda de por qué se tomó.
   incobrable_at     DateTime? @db.Timestamptz(6)
   incobrable_motivo String?
+
+  /// CIERRE DEL CASO por recupero: el cliente aceptó una oferta, pagó, y la deuda se terminó.
+  ///
+  /// Sin esto, cobrarle a un incobrable lo que el motor sugiere lo dejaba debiendo el resto y
+  /// el crédito abierto para siempre — se le prometía por escrito que cerraba y no cerraba.
+  ///
+  /// `recupero_at` es el marcador (null = nunca se cerró así). El crédito queda en estado
+  /// `cancelado`, que es el cierre administrativo saldado: la deuda es cero porque se condonó.
+  ///
+  /// 🔴 `recupero_condonado` y `recupero_perdida` NO son el mismo número y la diferencia es la
+  /// que decide si la financiera cree que perdió seis millones o uno. Lo condonado es deuda
+  /// NOMINAL (capital del crédito + interés del plan + punitorios); la pérdida es la plata que
+  /// salió de la ventanilla y no volvió, medida contra el crédito RAÍZ de la cadena. En un
+  /// refinanciado el "capital" incluye interés capitalizado, así que derivar una de la otra
+  /// contaría como perdida una ganancia que nunca fue plata.
+  recupero_at        DateTime? @db.Timestamptz(6)
+  recupero_cobrado   Float?
+  recupero_condonado Float?
+  recupero_perdida   Float?
+  /// Lo que había sugerido el motor. La diferencia contra lo cobrado es la que hay que poder
+  /// explicar después: sin esto no se audita si se cerró bien o se regaló el caso.
+  recupero_sugerido  Float?
+  recupero_nota      String?
   cargos           Json? // snapshot de CargosConfig vigente al otorgar (congela los cargos del crédito)
   cronograma       Json? // snapshot del cronograma (corte/día venc/gracia/feriados) vigente al otorgar
   tenant_id        String    @db.Uuid
@@ -799,13 +822,18 @@ model cuotas {
   gastos            Float    @default(0)
   cuota_total       Float // cuota total planificada (con redondeo)
   // Estado autoritativo (escrito por el motor de pagos en 6B; en 6A se derivaba).
-  estado            String   @default("pendiente") // pendiente | parcial | pagada | vencida
+  estado            String   @default("pendiente") // pendiente | parcial | pagada | vencida | condonada
   pagado            Float    @default(0) // total aplicado a la cuota (capital+interes+mora+cargos)
   // Desglose de lo aplicado por componente (Fase 6B)
   pagado_capital    Float    @default(0)
   pagado_interes    Float    @default(0)
   pagado_mora       Float    @default(0)
   pagado_cargos     Float    @default(0)
+  /// Lo PERDONADO en esta cuota al cerrar un caso incobrable (estado `condonada`).
+  ///
+  /// Va aparte de `pagado` porque no es lo mismo: nadie puso esa plata. Sumarla ahí haría que
+  /// los reportes de cobranza contaran como recaudado algo que se resignó.
+  condonado         Float    @default(0)
 
   credito      creditos     @relation(fields: [credito_id], references: [id], onDelete: Cascade)
   aplicaciones pago_cuota[]

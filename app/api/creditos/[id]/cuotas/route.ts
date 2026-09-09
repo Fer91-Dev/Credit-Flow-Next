@@ -150,16 +150,32 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
   let ahorroPromo = 0;
 
   const cuotas = credito.cuotas.map((c) => {
-    const restante_capital = round2(Math.max(0, c.capital - c.pagado_capital));
+    /**
+     * 🔴 UNA CUOTA CONDONADA NO SE VUELVE A EVALUAR.
+     *
+     * Al cerrar un caso incobrable el cliente paga una parte y se le perdona el resto, así
+     * que `pagado_capital` queda corto A PROPÓSITO —marcarlo completo diría que entró plata
+     * que no entró—. Sin este corte, el plan de un crédito ya cerrado se dibujaba entero en
+     * rojo: cuotas "Vencida" con sus punitorios corriendo, sobre alguien que no debe nada y a
+     * quien se le entregó la cancelación por escrito.
+     *
+     * Es el mismo criterio que `cuotaSaldada` en el dominio: el único estado de cuota que le
+     * gana al ledger, porque la deuda no se extinguió pagando sino perdonando.
+     */
+    const condonada = c.estado === "condonada";
+    // En una condonada no queda nada por cobrar: lo que faltaba se perdonó, y mostrarlo como
+    // "restante" haría que la ficha del cliente siguiera diciendo que debe.
+    const restante_capital = condonada ? 0 : round2(Math.max(0, c.capital - c.pagado_capital));
     // Días de atraso de ESTA cuota. Sale de acá y no del navegador porque es el número que
     // explica el importe de mora: los dos tienen que salir del mismo "hoy comercial", o la
     // pantalla mostraría 70 días al lado de una mora calculada sobre 69.
     const dias_atraso = diasAtraso(c.fecha_vencimiento, hoy);
-    const capitalSaldado = c.pagado_capital >= round2(c.capital);
+    const capitalSaldado = condonada || c.pagado_capital >= round2(c.capital);
     // Estado de presentación: capital saldado = pagada; si no, vencida si ya
     // venció; parcial si hubo alguna imputación; sino pendiente.
     let estado: string;
-    if (capitalSaldado) estado = "pagada";
+    if (condonada) estado = "condonada";
+    else if (capitalSaldado) estado = "pagada";
     else if (dias_atraso > 0) estado = "vencida";
     else if (c.pagado_capital > 0 || c.pagado_interes > 0 || c.pagado_mora > 0 || c.pagado_cargos > 0) estado = "parcial";
     else estado = "pendiente";
@@ -176,7 +192,9 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
     const moraPlena = round2(moraSinPromo * factorMora);
     const moraPend = capitalSaldado ? 0 : round2(Math.max(0, moraPlena - c.pagado_mora));
     if (!capitalSaldado) ahorroPromo = round2(ahorroPromo + Math.max(0, round2(moraSinPromo - moraPlena)));
-    const pendienteCuota = round2(Math.max(0, c.cuota_total - (c.pagado_capital + c.pagado_interes + c.pagado_cargos)));
+    const pendienteCuota = condonada
+      ? 0
+      : round2(Math.max(0, c.cuota_total - (c.pagado_capital + c.pagado_interes + c.pagado_cargos)));
 
     // Recibos (comprobantes) que imputaron a esta cuota.
     const comprobantes = c.aplicaciones
@@ -235,7 +253,11 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
   const vencidas = cuotas.filter((c) => c.estado === "vencida").length;
   const parciales = cuotas.filter((c) => c.estado === "parcial").length;
   const pendientes = cuotas.filter((c) => c.estado === "pendiente").length;
-  const proxima = cuotas.find((c) => c.estado !== "pagada") ?? null;
+  /** Perdonadas al cerrar un caso incobrable: ni cobradas ni exigibles. */
+  const condonadas = cuotas.filter((c) => c.estado === "condonada").length;
+  // La próxima a cobrar es la primera que TODAVÍA SE PUEDE cobrar. Una condonada no lo es:
+  // sin excluirla, un crédito ya cerrado seguía anunciando su cuota 1 como la que viene.
+  const proxima = cuotas.find((c) => c.estado !== "pagada" && c.estado !== "condonada") ?? null;
   const saldo_capital = cuotas.reduce((s, c) => s + c.restante_capital, 0);
 
   /**
@@ -391,6 +413,7 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
       parciales,
       pendientes,
       vencidas,
+      condonadas,
       proxima_cuota: proxima
         ? { nro: proxima.nro, fecha_vencimiento: proxima.fecha_vencimiento, cuota_total: proxima.cuota_total }
         : null,

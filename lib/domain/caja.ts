@@ -9,6 +9,17 @@ import { round2 } from "./money";
 export type TipoMovimiento =
   | "desembolso"        // egreso: plata entregada al otorgar
   | "cobro"             // ingreso: pago del cliente
+  /**
+   * Ingreso: lo que se recupera de una deuda YA DADA POR PERDIDA, al cerrar un caso
+   * incobrable.
+   *
+   * 🔴 No es un `cobro`. Un cobro es plata que el negocio esperaba y que estaba contada en la
+   * cartera; esto es plata que ya se había resignado. Mezclarlos hace que el mes en que
+   * entran $1.119.960,00 de un caso castigado se lea como una cobranza normal, y que el
+   * recupero —la única métrica que dice si trabajar la cartera vieja sirve para algo— no se
+   * pueda medir por ningún lado.
+   */
+  | "recupero"
   | "devolucion"        // egreso: devolución al cliente (p. ej. al anular)
   | "reversa_desembolso"// ingreso: se deshace el desembolso (al anular)
   | "ajuste"            // manual (ingreso o egreso)

@@ -3,7 +3,7 @@ import { successResponse, errorResponse, withErrorHandler, assertSameOrigin } fr
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { getComunicacionConfig, getCobranzaConfig } from "@/lib/config";
-import { construirMensajeCampana, linkWhatsapp, contactoBloqueado, esCreditoVivo, resolverPlantillasMeta } from "@/lib/domain";
+import { construirMensajeCampana, linkWhatsapp, contactoBloqueado, esCreditoVivo, esCreditoIncobrable, resolverPlantillasMeta } from "@/lib/domain";
 import { enviarWhatsappApi, whatsappApiDisponible, type WhatsappApiConfig } from "@/lib/whatsapp";
 import { nombreCompleto, formatFecha } from "@/lib/utils";
 import { enviarEmailTenant, motivoEmailNoDisponible, type EmailTenantConfig } from "@/lib/mailer-tenant";
@@ -168,7 +168,16 @@ export const POST = withErrorHandler(async (
      * Es el mismo tipo de corte que el del fallecido: la lista se arma antes, la realidad
      * cambia después, y el chequeo va donde se aprieta el gatillo.
      */
-    if (!esCreditoVivo(objetivo.credito.estado)) {
+    /**
+     * En una campaña de RECUPERO el destinatario es justamente un castigado, que no es
+     * "vivo": sin esta rama el envío rebotaba entero. Lo que sí sigue cortando es el caso ya
+     * CERRADO —pasa a `cancelado`— y cae en el mensaje de abajo: si entre que se armó la
+     * campaña y el envío el cliente vino y canceló, no se le puede mandar la oferta otra vez.
+     */
+    const sigueEnLaCampana = campana.tipo === "recupero"
+      ? esCreditoIncobrable(objetivo.credito.estado)
+      : esCreditoVivo(objetivo.credito.estado);
+    if (!sigueEnLaCampana) {
       const motivo = objetivo.credito.estado === "refinanciado"
         ? "Se refinanció después de armar la campaña: su deuda está en el crédito nuevo"
         : objetivo.credito.estado === "pagado" || objetivo.credito.estado === "cancelado"
@@ -185,6 +194,8 @@ export const POST = withErrorHandler(async (
       saldo:    objetivo.saldo,
       dias:     objetivo.dias_mora,
       descuento: objetivo.oferta_descuento,
+      // La deuda nominal congelada al armar la campaña, por si el texto la nombra.
+      deuda:    objetivo.vencido ?? undefined,
       // Hasta cuándo vale el descuento. Es el dato que convierte la oferta en oferta: sin
       // plazo el cliente la lee sin apuro y paga la semana que viene, ya sin la quita.
       promoVence: campana.promo_vence ? formatFecha(campana.promo_vence) : null,

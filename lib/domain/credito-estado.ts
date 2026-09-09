@@ -146,8 +146,24 @@ export function esEstadoVoid(estado: string): boolean {
   return (ESTADOS_VOID as readonly string[]).includes(estado);
 }
 
-/** ¿Una cuota tiene su capital saldado? (autoritativo: el capital, no el `estado`). */
+/**
+ * ¿Una cuota dejó de deber? (autoritativo: el capital, no el `estado`).
+ *
+ * 🔴 CON UNA SOLA EXCEPCIÓN: la cuota CONDONADA.
+ *
+ * Es el único caso donde el estado le gana al ledger, y tiene que serlo: al cerrar un caso
+ * incobrable el cliente paga una parte y la financiera perdona el resto. Esa plata no entró
+ * —`pagado_capital` sigue corto a propósito, porque marcarla como pagada haría que los
+ * reportes de cobranza contaran como recaudado algo que se resignó— pero la deuda tampoco
+ * existe más: se perdonó por escrito.
+ *
+ * Sin esta línea, `sinDeuda` diría que el crédito todavía debe, `validarTransicionEstado`
+ * rechazaría cerrarlo y `estadoCoherente` lo degradaría a "activo" en la próxima lectura. El
+ * caso volvería a la vida solo, y el cliente al que se le prometió el cierre seguiría
+ * apareciendo como deudor.
+ */
 function cuotaSaldada(q: LedgerCuota): boolean {
+  if (q.estado === "condonada") return true;
   return q.pagado_capital >= round2(q.capital) - EPS;
 }
 

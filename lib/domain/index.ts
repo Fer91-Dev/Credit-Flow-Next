@@ -27,6 +27,7 @@ export * from "./prontuario";
 export * from "./numero-a-letras";
 export * from "./recupero";
 export * from "./recupero-oferta";
+export * from "./recupero-cierre";
 export * from "./contrato-requisitos";
 export * from "./documentos";
 export * from "./password";

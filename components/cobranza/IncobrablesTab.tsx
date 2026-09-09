@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Download, Megaphone } from "lucide-react";
+import { Download, Megaphone, HandCoins, Phone } from "lucide-react";
 import { DataTable } from "@/components/ui/DataTable";
 import { KpiCard } from "@/components/ui/KpiCard";
 import { StatusBadge } from "@/components/ui/StatusBadge";
@@ -11,6 +11,9 @@ import { BuscadorF3 } from "@/components/ui/BuscadorF3";
 import { CreditoLink } from "@/components/ui/CreditoLink";
 import { useToast } from "@/components/ui/toast";
 import { useCreditos, useOfertaRecupero } from "@/lib/swr";
+import { CerrarCasoDialog } from "./CerrarCasoDialog";
+import { GestionCasoDialog } from "./GestionCasoDialog";
+import { guardarSeleccionCampana, guardarTipoCampana } from "./seleccion-campana";
 import { descargarCSV } from "@/lib/csv";
 import { contactoBloqueado, normalizarTelefonoAR, sugerirOfertaCancelacion } from "@/lib/domain";
 import { formatMonto, formatFecha, formatDias, nombreCompleto, hoyComercial } from "@/lib/utils";
@@ -51,51 +54,19 @@ import { formatMonto, formatFecha, formatDias, nombreCompleto, hoyComercial } fr
  * Y los que PAGARON ALGO después del castigo van marcados: demostraron voluntad de pago y son
  * los mejores candidatos de toda la lista.
  */
-/**
- * 🔴 CUÁNTA PLATA SALIÓ DE LA CAJA Y CUÁNTA VOLVIÓ, mirando TODA LA CADENA.
- *
- * El primer intento usaba el `monto_original` del incobrable, y estaba mal justo en el número
- * que esta pantalla existe para mostrar: en una refinanciación ese campo NO es plata prestada
- * — es la deuda vieja consolidada, capital + interés capitalizado + punitorios. Sobre el caso
- * de Ricardo decía "prestado $3.150.000,00" cuando lo que salió de la caja fueron $1.200.000.
- * O sea: el error que la pantalla denuncia (negociar contra un número inflado por su propio
- * interés), cometido por la pantalla misma.
- *
- * Lo prestado de verdad es el `monto_original` del crédito RAÍZ de la cadena, y lo recuperado
- * es todo lo que se cobró en cualquier eslabón: las cuotas que pagó del original antes de
- * refinanciar cuentan igual que las que pagó después.
- *
- * Se camina en memoria sobre la lista que la pantalla ya tiene —los créditos refinanciados
- * siguen ahí— así que no cuesta ninguna consulta. Corte a 20 saltos como red contra un ciclo.
- */
-function plataDeLaCadena(
-  credito: { id: string; monto_original: number; cobrado?: number; refinancia_a?: string | null },
-  porId: Map<string, { id: string; monto_original: number; cobrado?: number; refinancia_a?: string | null }>,
-): { prestado: number; cobrado: number } {
-  let cobrado = credito.cobrado ?? 0;
-  let actual = credito;
-  let saltos = 0;
-  while (actual.refinancia_a && saltos < 20) {
-    const previo = porId.get(actual.refinancia_a);
-    if (!previo) break;
-    cobrado += previo.cobrado ?? 0;
-    actual = previo;
-    saltos++;
-  }
-  // `actual` quedó en la raíz: el único eslabón cuyo monto es plata que de verdad se entregó.
-  return { prestado: actual.monto_original, cobrado: Math.round(cobrado * 100) / 100 };
-}
-
 export function IncobrablesTab() {
   const router = useRouter();
   const toast = useToast();
-  const { creditos, isLoading } = useCreditos();
+  const { creditos, isLoading, mutate } = useCreditos();
   /** Con qué criterio sugerir la cancelación. Lo fija la financiera en Configuración. */
   const cfgOferta = useOfertaRecupero();
   const [q, setQ] = useState("");
+  /** Caso que se está cerrando (`null` = ninguno). */
+  const [cerrando, setCerrando] = useState<string | null>(null);
+  /** Caso que se está gestionando: llamarlo, anotar qué contestó, ver qué se hizo antes. */
+  const [gestionando, setGestionando] = useState<string | null>(null);
 
   const hoy = hoyComercial();
-  const porId = useMemo(() => new Map(creditos.map((c) => [c.id, c])), [creditos]);
 
   const filas = useMemo(() => {
     const texto = q.trim().toLowerCase();
@@ -109,8 +80,16 @@ export function IncobrablesTab() {
       .map((c) => {
         const desde = c.incobrable_at ? new Date(c.incobrable_at) : null;
         const diasCastigado = desde ? Math.max(0, Math.floor((hoy.getTime() - desde.getTime()) / 86_400_000)) : 0;
-        const { prestado, cobrado } = plataDeLaCadena(c, porId);
-        const riesgo = Math.round(Math.max(0, prestado - cobrado) * 100) / 100;
+        /**
+         * Lo prestado y lo recuperado salen del SERVER (`plataDeLaCadenaLote`), que recorre
+         * la cadena de refinanciaciones. Esta pantalla lo hacía por su cuenta en el navegador
+         * porque el `capital_en_riesgo` del endpoint estaba mal para los refinanciados; ya no:
+         * la cuenta que decide cuánta plata se resigna vive en un solo lado, y la campaña de
+         * recupero y el cierre del caso usan exactamente la misma.
+         */
+        const prestado = c.prestado_cadena ?? c.monto_original;
+        const cobrado = c.recuperado_cadena ?? c.cobrado ?? 0;
+        const riesgo = c.capital_en_riesgo ?? Math.round(Math.max(0, prestado - cobrado) * 100) / 100;
         /**
          * El número que el operador va a decir por teléfono. Sale del motor, no del ojo: a
          * ojo se acepta de menos cuando el caso era bueno y se planta de más cuando ya no da,
@@ -252,7 +231,20 @@ export function IncobrablesTab() {
           */}
           <button
             type="button"
-            onClick={() => router.push("/cobranza/campanas/nueva")}
+            onClick={() => {
+              /**
+               * 🔴 EL BOTÓN NAVEGABA Y NADA MÁS.
+               *
+               * No escribía ni la selección ni el tipo, así que la pantalla de campaña
+               * levantaba lo que hubiera quedado en el `sessionStorage` de una campaña
+               * anterior —los sobrantes que se conservan a propósito para no perderlos— y
+               * mostraba otros clientes. El contador decía "3" y aparecían tres personas
+               * distintas: coincidía el número, no la gente.
+               */
+              guardarSeleccionCampana(contactables.map((f) => f.c.id));
+              guardarTipoCampana("recupero");
+              router.push("/cobranza/campanas/nueva");
+            }}
             disabled={contactables.length === 0}
             className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-40"
           >
@@ -376,6 +368,39 @@ export function IncobrablesTab() {
               </div>
             ),
           },
+          {
+            /**
+             * 🔴 EL BOTÓN QUE FALTABA, y sin el cual toda la fila era decorativa.
+             *
+             * La columna "Ofrecerle" decía cuánto pedirle, el operador llamaba, el cliente
+             * aceptaba... y no había con qué cerrarlo: se le cobraba por la terminal común y
+             * el pago se imputaba contra la deuda nominal, dejándolo debiendo el resto y el
+             * crédito abierto para siempre. Se le prometía el cierre y el sistema no cerraba.
+             */
+            header: "", align: "right",
+            cell: ({ c }) => (
+              <div className="flex items-center justify-end gap-1.5">
+                {/* Gestionar va PRIMERO: es lo que se hace muchas veces antes de que haya algo
+                    que cerrar. Recuperar cartera vieja es insistir. */}
+                <button
+                  type="button"
+                  onClick={() => setGestionando(c.id)}
+                  title="Llamarlo, mandarle la propuesta y anotar qué contestó"
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                >
+                  <Phone className="h-3.5 w-3.5" /> Gestionar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCerrando(c.id)}
+                  title="Cobrar lo pactado, condonar el resto y cerrar el crédito"
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-success/30 bg-success/10 px-2.5 py-1.5 text-xs font-semibold text-success transition-colors hover:bg-success/20"
+                >
+                  <HandCoins className="h-3.5 w-3.5" /> Cerrar
+                </button>
+              </div>
+            ),
+          },
         ]}
         renderMobileCard={({ c, cobrado, riesgo, diasCastigado, prestado }) => (
           <div className="space-y-2 rounded-xl border border-border bg-card p-4">
@@ -395,8 +420,47 @@ export function IncobrablesTab() {
               </div>
               <span className="text-[11px] text-muted-foreground">hace {formatDias(diasCastigado)}</span>
             </div>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setGestionando(c.id)}
+                className="flex items-center justify-center gap-1.5 rounded-lg border border-border py-2 text-xs font-medium text-muted-foreground"
+              >
+                <Phone className="h-3.5 w-3.5" /> Gestionar
+              </button>
+              <button
+                type="button"
+                onClick={() => setCerrando(c.id)}
+                className="flex items-center justify-center gap-1.5 rounded-lg border border-success/30 bg-success/10 py-2 text-xs font-semibold text-success"
+              >
+                <HandCoins className="h-3.5 w-3.5" /> Cerrar
+              </button>
+            </div>
           </div>
         )}
+      />
+
+      {/*
+        La gestión se abre sobre la FILA ya calculada: así el diálogo muestra el mismo importe
+        sugerido que la columna "Ofrecerle", sin recalcularlo por su cuenta.
+      */}
+      {(() => {
+        const f = filas.find((x) => x.c.id === gestionando);
+        return (
+          <GestionCasoDialog
+            credito={f?.c ?? null}
+            oferta={f?.oferta ?? null}
+            diasCastigado={f?.diasCastigado ?? 0}
+            onClose={() => setGestionando(null)}
+          />
+        );
+      })()}
+
+      <CerrarCasoDialog
+        creditoId={cerrando}
+        onClose={() => setCerrando(null)}
+        // Cerrado deja de ser incobrable: sale de esta lista y los KPI se recalculan.
+        onCerrado={() => mutate()}
       />
 
       {/*

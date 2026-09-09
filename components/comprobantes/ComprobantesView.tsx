@@ -24,6 +24,7 @@ const fmtD = (s: string) => (s ? s.split("-").reverse().join("/") : "…");
 const TIPO_META: Record<MovimientoCaja["tipo"], { label: string; variant: BadgeVariant }> = {
   desembolso:         { label: "Desembolso",   variant: "warning" },
   cobro:              { label: "Cobro",         variant: "success" },
+  recupero:           { label: "Recupero",      variant: "success" },
   devolucion:         { label: "Devolución",    variant: "destructive" },
   reversa_desembolso: { label: "Reversa",       variant: "primary" },
   ajuste:             { label: "Ajuste",        variant: "muted" },

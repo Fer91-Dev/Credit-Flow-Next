@@ -15,7 +15,7 @@ import type {
   TramosMora,
 } from "@/lib/domain";
 // Valor (no tipo): el default con el que se clasifica mientras la config carga.
-import { TRAMOS_MORA_DEFAULT, resolverOfertaRecupero, type OfertaRecuperoConfig } from "@/lib/domain";
+import { TRAMOS_MORA_DEFAULT, resolverOfertaRecupero, type OfertaRecuperoConfig, type OfertaSugerida } from "@/lib/domain";
 import type { CobranzaConfig, CajaConfig, OrdenAgenda } from "@/lib/config";
 export type { CajaConfig };
 
@@ -192,6 +192,8 @@ export interface CreditoConFinanzas {
     pendientes: number;
     parciales: number;
     vencidas: number;
+    /** Perdonadas al cerrar un caso incobrable. Ni cobradas ni exigibles. */
+    condonadas?: number;
     proxima_nro: number | null;
     proxima_vencimiento: string | null;
   };
@@ -302,6 +304,13 @@ export interface Credito {
    * financiera está ganando o perdiendo.
    */
   capital_en_riesgo?: number;
+  /**
+   * Las dos patas de `capital_en_riesgo`, mirando TODA la cadena de refinanciaciones: lo que
+   * salió de la ventanilla (el `monto_original` del crédito RAÍZ, no el de este eslabón) y lo
+   * que volvió en cualquiera de ellos. Solo viajan en los créditos castigados.
+   */
+  prestado_cadena?: number | null;
+  recuperado_cadena?: number | null;
   /**
    * Lo que pagó DESPUÉS de que se lo dio por incobrable. Es la señal más fuerte de la cartera
    * castigada y el motor de la oferta la usa para pedirle más: el que pagó y dejó de aparecer
@@ -633,7 +642,7 @@ export interface Amortizacion {
 }
 
 /** Estado derivado de una cuota del cronograma persistido (Fase 6A). */
-export type EstadoCuota = "pendiente" | "parcial" | "pagada" | "vencida";
+export type EstadoCuota = "pendiente" | "parcial" | "pagada" | "vencida" | "condonada";
 
 /** Cuota PERSISTIDA con su estado derivado, de GET /api/creditos/[id]/cuotas. */
 export interface CuotaPersistida {
@@ -710,6 +719,8 @@ export interface CuotasCredito {
     parciales: number;
     pendientes: number;
     vencidas: number;
+    /** Perdonadas al cerrar un caso incobrable: ni cobradas ni exigibles. */
+    condonadas?: number;
     proxima_cuota: { nro: number; fecha_vencimiento: string; cuota_total: number } | null;
     saldo_capital: number;
   };
@@ -1710,6 +1721,31 @@ export function useLibreDeuda(creditoId: string | null) {
   return { libreDeuda: data, error, isLoading };
 }
 
+/**
+ * EL CASO DE UN INCOBRABLE, con todo lo que hace falta para negociarlo y cerrarlo.
+ *
+ * Sale del server y no se recalcula acá a propósito: la deuda se evalúa al día del castigo
+ * (los punitorios se frenaron ahí) y la plata prestada sale del crédito RAÍZ de la cadena, no
+ * del `monto_original` del refinanciado. Dos cuentas que el navegador ya erró una vez.
+ */
+export interface CasoRecupero {
+  credito: { id: string; numero: number | null; cliente: string; incobrable_at: string | null; incobrable_motivo: string | null };
+  /** Lo que se extingue al cerrar: capital + interés del plan + cargos + punitorios. */
+  deuda: { total: number; capital: number; interes: number; cargos: number; mora: number };
+  /** Plata de verdad: la que salió de la ventanilla y la que volvió, en toda la cadena. */
+  cadena: { prestado: number; recuperado: number; eslabones: number };
+  capital_en_riesgo: number;
+  dias_castigado: number;
+  oferta: OfertaSugerida | null;
+}
+
+export function useCasoRecupero(creditoId: string | null) {
+  const { data, error, isLoading } = useSWR<CasoRecupero>(
+    creditoId ? `/api/creditos/${creditoId}/recupero` : null,
+  );
+  return { caso: data, error, isLoading };
+}
+
 /** Desglose de la deuda viva a consolidar al refinanciar un crédito. */
 export interface DeudaConsolidada {
   capital: number;
@@ -2067,6 +2103,17 @@ export function useAuditoria(filtros?: { entidad?: string; accion?: string; desd
 
 export function useAccionesCobranza() {
   const { data, error, isLoading, mutate } = useSWR<{ acciones: AccionCobranza[] }>(KEYS.acciones);
+  return { acciones: data?.acciones ?? [], error, isLoading, mutate };
+}
+
+/**
+ * El historial de gestiones de UN crédito. Es lo primero que se mira antes de levantar el
+ * teléfono: sin él, dos personas llaman al mismo deudor el mismo día y le repiten la oferta.
+ */
+export function useAccionesDeCredito(creditoId: string | null) {
+  const { data, error, isLoading, mutate } = useSWR<{ acciones: AccionCobranza[] }>(
+    creditoId ? `/api/cobranza/acciones?credito_id=${creditoId}` : null,
+  );
   return { acciones: data?.acciones ?? [], error, isLoading, mutate };
 }
 

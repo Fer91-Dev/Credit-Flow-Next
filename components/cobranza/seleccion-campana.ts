@@ -61,17 +61,33 @@ export function limpiarSeleccionCampana(): void {
  * "refinanciacion" → NO sale de ninguna pestaña: lo elige la propia pantalla de campaña
  *                 cuando la selección trae créditos cuyo plan ya venció y no se pueden
  *                 cobrar. No lleva importe ni descuento; invita a reestructurar.
+ * "recupero"    → sale de Incobrables. La deuda ya se dio por perdida: no se reclama el
+ *                 nominal —está inflado por su propio interés y es lo que hace que el
+ *                 cliente corte— sino que se le OFRECE un monto para cancelar, el que
+ *                 calcula el motor de recupero. La quita es sobre el TOTAL, no sobre los
+ *                 punitorios: acá se resigna capital y hay que poder decirlo.
  */
-export type TipoCampana = "mora" | "vencimiento" | "refinanciacion";
+export type TipoCampana = "mora" | "vencimiento" | "refinanciacion" | "recupero";
 const KEY_TIPO = "cf:campana:tipo";
 
 export function guardarTipoCampana(t: TipoCampana): void {
   try { sessionStorage.setItem(KEY_TIPO, t); } catch { /* modo privado */ }
 }
 
-/** Por defecto "mora": es como se comportaba antes de que existieran los recordatorios. */
+const TIPOS: readonly TipoCampana[] = ["mora", "vencimiento", "refinanciacion", "recupero"];
+
+/**
+ * Por defecto "mora": es como se comportaba antes de que existieran los recordatorios.
+ *
+ * 🔴 Leía SOLO "vencimiento" y todo lo demás caía en "mora". Con eso, una campaña armada
+ * desde Incobrables llegaba a la pantalla como un reclamo de mora común: le habría mandado a
+ * gente castigada la deuda nominal entera, que es exactamente el número que no se le dice.
+ */
 export function leerTipoCampana(): TipoCampana {
-  try { return sessionStorage.getItem(KEY_TIPO) === "vencimiento" ? "vencimiento" : "mora"; } catch { return "mora"; }
+  try {
+    const v = sessionStorage.getItem(KEY_TIPO) as TipoCampana | null;
+    return v && TIPOS.includes(v) ? v : "mora";
+  } catch { return "mora"; }
 }
 
 export function limpiarTipoCampana(): void {

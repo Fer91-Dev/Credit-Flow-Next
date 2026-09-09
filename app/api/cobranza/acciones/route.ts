@@ -7,6 +7,7 @@ import { registrarAuditoria } from "@/lib/audit";
 import { nombreCompleto } from "@/lib/utils";
 import { getCobranzaConfig } from "@/lib/config";
 import { veredictoCobro } from "@/lib/recupero-server";
+import { esCreditoIncobrable } from "@/lib/domain";
 import type { NextRequest } from "next/server";
 
 const TIPOS = ["llamada", "whatsapp", "email", "visita", "otro"];
@@ -112,7 +113,17 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
    * se sigue registrando igual: anotar que se lo contactó es justamente lo que hay que hacer
    * con esta persona, y perder el registro sería peor.
    */
-  if (body.resultado === "promesa_pago") {
+  /**
+   * 🔴 SALVO EN UN INCOBRABLE, donde la promesa es lo único que queda.
+   *
+   * La guarda de abajo existe para no dejar prometer un pago que la terminal va a rechazar y
+   * que el cron después marcaría como incumplido. En un castigado la situación es la
+   * contraria: su plan no se puede refinanciar (llegó al tope de la cadena) pero SÍ admite
+   * que entre plata —es a lo que apunta toda la pestaña Incobrables—, y lo que se promete es
+   * la oferta de cancelación. Bloquearla dejaría al operador negociando por teléfono sin
+   * poder anotar en ningún lado lo que el cliente se comprometió a pagar.
+   */
+  if (body.resultado === "promesa_pago" && !esCreditoIncobrable(credito.estado)) {
     const { recupero } = await getCobranzaConfig(tenantId);
     const v = await veredictoCobro(tenantId, credito.id, recupero);
     if (!v.permitido) {
