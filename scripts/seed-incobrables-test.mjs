@@ -167,6 +167,18 @@ async function main() {
     await prisma.$transaction(async (tx) => {
       const base = (await tx.creditos.aggregate({ where: { tenant_id: TENANT_ID }, _max: { numero: true } }))._max.numero ?? 0;
 
+      /**
+       * Siguiente numero de comprobante de una serie. La app usa
+       * `siguienteNumeroComprobante` con advisory lock; aca alcanza con max+1 porque el seed
+       * corre solo y en una transaccion.
+       */
+      const proximoComprobante = async (serie) => {
+        const max = await tx.movimientos_caja.aggregate({
+          where: { tenant_id: TENANT_ID, serie }, _max: { numero: true },
+        });
+        return (max._max.numero ?? 0) + 1;
+      };
+
       // ── 1. El crédito ORIGINAL, ya refinanciado: cerrado y sin saldo ──
       const original = await tx.creditos.create({
         data: {
@@ -184,6 +196,27 @@ async function main() {
           fecha_vencimiento: f.fecha_vencimiento, saldo_inicial: f.saldo_inicial,
           capital: f.capital, interes: f.interes, cuota_total: f.cuota_total, estado: "pendiente",
         })),
+      });
+
+      /**
+       * 🔴 EL DESEMBOLSO TIENE QUE QUEDAR ASENTADO.
+       *
+       * El seed creaba el credito y no movia la caja, asi que `auditar-caja` reportaba
+       * "6 creditos de efectivo sin desembolso" y no habia forma de distinguir eso de una
+       * fuga real. Un auditor que falla siempre no audita nada.
+       *
+       * Egreso (monto negativo), igual que `POST /api/creditos`: la plata salio de la caja
+       * principal el dia que se otorgo.
+       */
+      await tx.movimientos_caja.create({
+        data: {
+          tenant_id: TENANT_ID, fecha: fechaOriginal, tipo: "desembolso",
+          monto: -c.original.monto, metodo: "efectivo", cuenta: "efectivo",
+          credito_id: original.id, vendedor_id: null,
+          origen: "Caja principal (Efectivo)", destino: `${cliente.nombre} ${cliente.apellido}`,
+          serie: "DES", numero: await proximoComprobante("DES"),
+          descripcion: `Desembolso CRD-${String(original.numero).padStart(6, "0")} · ${cliente.nombre} ${cliente.apellido}`,
+        },
       });
 
       // ── 2. La REFINANCIACIÓN, que también se cayó ──
@@ -280,6 +313,24 @@ async function main() {
             },
           });
         }
+        /**
+         * Y su asiento de caja. Sin esto quedaban dos pagos sin movimiento y la caja de dev
+         * no cerraba nunca: `auditar-caja` marcaba $360.000 de diferencia entre lo cobrado y
+         * lo asentado, que es exactamente el sintoma de una fuga -- pero era el seed.
+         *
+         * Tipo `recupero`, no `cobro`: es plata sobre una deuda ya dada por perdida, que es
+         * de lo que trata este caso de prueba.
+         */
+        await tx.movimientos_caja.create({
+          data: {
+            tenant_id: TENANT_ID, fecha: fechaPago, tipo: "recupero",
+            monto: pagoPost.monto, metodo: "efectivo", cuenta: "efectivo",
+            credito_id: refi.id, pago_id: pago.id, vendedor_id: null,
+            origen: `${cliente.nombre} ${cliente.apellido}`, destino: "Caja principal (Efectivo)",
+            serie: "RCP", numero: await proximoComprobante("RCP"),
+            descripcion: `Recupero REF-${String(original.numero).padStart(6, "0")} · ${cliente.nombre} ${cliente.apellido}`,
+          },
+        });
       }
 
       // El riesgo se mide contra lo PRESTADO (el crédito original), no contra la deuda

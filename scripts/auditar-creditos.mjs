@@ -43,6 +43,18 @@ function detalle(lista, n = 5) {
 /** Estados que NO son cartera viva: su saldo tiene que estar en 0. */
 const VOID = new Set(["anulado", "refinanciado"]);
 
+/**
+ * Estados en los que una cuota DEJO DE DEBERSE sin que entrara la plata (hallazgo A1 de la
+ * auditoria financiera). Espeja `ESTADOS_CUOTA_CERRADA` del dominio.
+ *
+ * Sin esto el auditor fallaba sobre los creditos cerrados por recupero: veia cuotas con
+ * `pagado_capital` corto -- correcto, nadie puso esa plata -- y las contaba como deuda viva.
+ * Un auditor que falla siempre no audita nada: el descuadre real queda tapado por el ruido.
+ */
+const CUOTA_CERRADA = new Set(["condonada", "trasladada", "anulada"]);
+/** True si la cuota todavia debe capital (las cerradas sin pago no deben nada). */
+const cuotaDebe = (q) => !CUOTA_CERRADA.has(q.estado) && q.pagado_capital < r2(q.capital) - 0.01;
+
 const tenants = await prisma.profiles.findMany({
   where: { es_owner: false, tenant_id: { not: null } },
   select: { tenant_id: true },
@@ -79,7 +91,9 @@ for (const { tenant_id: t } of tenants) {
     for (const c of creditos) {
       if (VOID.has(c.estado)) continue;            // los void se chequean en C9
       if (c.cuotas.length === 0) continue;         // sin plan: lo reporta C9
-      const esperado = r2(c.cuotas.reduce((s, q) => s + Math.max(0, q.capital - q.pagado_capital), 0));
+      const esperado = r2(c.cuotas
+        .filter((q) => !CUOTA_CERRADA.has(q.estado))
+        .reduce((s, q) => s + Math.max(0, q.capital - q.pagado_capital), 0));
       if (Math.abs(esperado - c.saldo_pendiente) > EPS) {
         malos.push(`${crd(c.numero)} guarda ${m$(c.saldo_pendiente)} y las cuotas dan ${m$(esperado)}`);
       }
@@ -197,7 +211,7 @@ for (const { tenant_id: t } of tenants) {
     const saldadosAbiertos = [], pagadosConDeuda = [];
     for (const c of creditos) {
       if (VOID.has(c.estado)) continue;
-      const todasSaldadas = c.cuotas.length > 0 && c.cuotas.every((q) => q.pagado_capital >= r2(q.capital) - 0.01);
+      const todasSaldadas = c.cuotas.length > 0 && c.cuotas.every((q) => !cuotaDebe(q));
       const sinDeuda = c.saldo_pendiente <= 0.01 && todasSaldadas;
       if (sinDeuda && c.estado !== "pagado" && c.estado !== "cancelado") {
         saldadosAbiertos.push(`${crd(c.numero)} está ${c.estado} con todo saldado`);
@@ -223,7 +237,7 @@ for (const { tenant_id: t } of tenants) {
     const malos = [];
     for (const c of creditos) {
       if (VOID.has(c.estado) || c.estado === "pagado" || c.cuotas.length === 0) continue;
-      const impagas = c.cuotas.filter((q) => q.pagado_capital < r2(q.capital) - 0.01);
+      const impagas = c.cuotas.filter(cuotaDebe);
       const esperada = impagas.length
         ? impagas.reduce((a, b) => (a.fecha_vencimiento <= b.fecha_vencimiento ? a : b)).fecha_vencimiento
         : null;

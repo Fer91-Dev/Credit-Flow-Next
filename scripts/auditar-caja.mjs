@@ -90,8 +90,18 @@ for (const t of tenants) {
 
   // ── I4/I5. Cobros y anulaciones ─────────────────────────────────────────
   console.log("\nI4. COBROS Y ANULACIONES");
-  const cobros = movs.filter((x) => x.tipo === "cobro");
-  chk(cobros.length === pagos.length, "un cobro asentado por cada pago", `cobros ${cobros.length} vs pagos ${pagos.length}`);
+  /**
+   * `recupero` TAMBIEN es un cobro para este control.
+   *
+   * Es plata de un cliente que entra contra un credito, solo que sobre una deuda ya dada por
+   * perdida -- tiene su tipo propio para poder medir el recupero por separado (ver
+   * `TipoMovimiento` en lib/domain/caja.ts). Este auditor solo miraba "cobro", asi que apenas
+   * se cerro el primer caso incobrable empezo a reportar un descuadre que no existia: 15
+   * cobros contra 19 pagos, $1.070.000 de diferencia. Un auditor que falla siempre no audita
+   * nada -- el descuadre REAL queda tapado por el ruido.
+   */
+  const cobros = movs.filter((x) => x.tipo === "cobro" || x.tipo === "recupero");
+  chk(cobros.length === pagos.length, "un cobro o recupero asentado por cada pago", `cobros ${cobros.length} vs pagos ${pagos.length}`);
   const sc = cobros.reduce((s, x) => s + x.monto, 0), sp = pagos.reduce((s, p) => s + p.monto, 0);
   chk(Math.abs(sc - sp) < 0.01, "los importes cobrados = los pagos registrados", `${m(sc)} vs ${m(sp)}`);
 

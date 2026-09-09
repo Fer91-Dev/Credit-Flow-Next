@@ -14,6 +14,11 @@ node_modules/
 # Operativos locales: secretos (contraseñas) + scripts one-shot de migración/prod
 *.local.json
 _*.mjs
+# ...salvo los HELPERS COMPARTIDOS, que no son one-shot ni tienen secretos: los importan los
+# auditores y los backfills, que sí están versionados. Sin ellos, un clon nuevo del repo tiene
+# los auditores pero no puede correrlos.
+!scripts/_conexion.mjs
+!scripts/_indice.mjs
 
 # Misc
 .DS_Store
