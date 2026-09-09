@@ -3,7 +3,7 @@ import { scopeCreditoParaCobrar } from "@/lib/cobranza-scope";
 import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
-import { frecuenciaLabel, normalizarFrecuencia, diasAtraso, round2, interesMora, moraDelCredito, moraDesdeCronograma, topeMoraDeCuota, fechaTopeMora, topeMoraPorFallecimiento, topeMoraPorIncobrable, topeMoraMasTemprano, promoVigenteAl, type FrecuenciaDef } from "@/lib/domain";
+import { cuotaCerradaSinPago, frecuenciaLabel, normalizarFrecuencia, diasAtraso, round2, interesMora, moraDelCredito, moraDesdeCronograma, topeMoraDeCuota, fechaTopeMora, topeMoraPorFallecimiento, topeMoraPorIncobrable, topeMoraMasTemprano, promoVigenteAl, type FrecuenciaDef } from "@/lib/domain";
 import { getConfiguracion, getCobranzaConfig } from "@/lib/config";
 import { recibosPorCuotaDeAcuerdo } from "@/lib/acuerdos";
 import { veredictoCobro } from "@/lib/recupero-server";
@@ -162,7 +162,9 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
      * Es el mismo criterio que `cuotaSaldada` en el dominio: el único estado de cuota que le
      * gana al ledger, porque la deuda no se extinguió pagando sino perdonando.
      */
-    const condonada = c.estado === "condonada";
+    // Cerrada sin pago: condonada, trasladada a una refinanciación, o anulada. En las tres la
+    // cuota dejó de deberse aunque `pagado_capital` haya quedado corto (nadie puso esa plata).
+    const condonada = cuotaCerradaSinPago(c.estado);
     // En una condonada no queda nada por cobrar: lo que faltaba se perdonó, y mostrarlo como
     // "restante" haría que la ficha del cliente siguiera diciendo que debe.
     const restante_capital = condonada ? 0 : round2(Math.max(0, c.capital - c.pagado_capital));
@@ -174,7 +176,7 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
     // Estado de presentación: capital saldado = pagada; si no, vencida si ya
     // venció; parcial si hubo alguna imputación; sino pendiente.
     let estado: string;
-    if (condonada) estado = "condonada";
+    if (condonada) estado = c.estado;
     else if (capitalSaldado) estado = "pagada";
     else if (dias_atraso > 0) estado = "vencida";
     else if (c.pagado_capital > 0 || c.pagado_interes > 0 || c.pagado_mora > 0 || c.pagado_cargos > 0) estado = "parcial";
@@ -254,10 +256,10 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
   const parciales = cuotas.filter((c) => c.estado === "parcial").length;
   const pendientes = cuotas.filter((c) => c.estado === "pendiente").length;
   /** Perdonadas al cerrar un caso incobrable: ni cobradas ni exigibles. */
-  const condonadas = cuotas.filter((c) => c.estado === "condonada").length;
+  const condonadas = cuotas.filter((c) => cuotaCerradaSinPago(c.estado)).length;
   // La próxima a cobrar es la primera que TODAVÍA SE PUEDE cobrar. Una condonada no lo es:
   // sin excluirla, un crédito ya cerrado seguía anunciando su cuota 1 como la que viene.
-  const proxima = cuotas.find((c) => c.estado !== "pagada" && c.estado !== "condonada") ?? null;
+  const proxima = cuotas.find((c) => c.estado !== "pagada" && !cuotaCerradaSinPago(c.estado)) ?? null;
   const saldo_capital = cuotas.reduce((s, c) => s + c.restante_capital, 0);
 
   /**

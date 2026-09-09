@@ -147,9 +147,35 @@ export function esEstadoVoid(estado: string): boolean {
 }
 
 /**
+ * Estados en los que una cuota DEJÓ DE DEBERSE sin que entrara la plata.
+ *
+ * 🔴 EL CAPITAL FANTASMA. (Hallazgo A1 de la auditoría financiera.)
+ *
+ * Cuando un crédito se refinancia o se anula, su `saldo_pendiente` pasa a 0 pero sus cuotas
+ * quedaban con el capital pendiente entero — a propósito: no se pagaron, así que marcarlas
+ * "pagada" sería mentir. El problema es que quedaban IGUALES a una cuota viva impaga, y la
+ * única defensa era que cada consulta se acordara de filtrar por el estado del CRÉDITO.
+ *
+ * Medido sobre la base de prueba: 14 créditos fuera de cartera conservaban $13.056.955,27 de
+ * capital pendiente en sus cuotas. Una agregación sobre `cuotas` sin ese filtro daba
+ * $34.285.721,72 de cartera contra los $11.228.766,45 reales — más del triple. Y una consulta
+ * que sí olvidó el filtro es la que corrompía el score del cliente (hallazgo A2).
+ *
+ * Ahora el estado de la cuota lo dice por sí mismo, sin depender de que el que escriba la
+ * próxima consulta se acuerde de mirar el crédito.
+ */
+export const ESTADOS_CUOTA_CERRADA = ["condonada", "trasladada", "anulada"] as const;
+export type EstadoCuotaCerrada = (typeof ESTADOS_CUOTA_CERRADA)[number];
+
+/** True si la cuota se cerró sin cobrarse (condonada, trasladada a una refi, o anulada). */
+export function cuotaCerradaSinPago(estado: string | null | undefined): boolean {
+  return (ESTADOS_CUOTA_CERRADA as readonly string[]).includes(estado ?? "");
+}
+
+/**
  * ¿Una cuota dejó de deber? (autoritativo: el capital, no el `estado`).
  *
- * 🔴 CON UNA SOLA EXCEPCIÓN: la cuota CONDONADA.
+ * 🔴 CON UNA SOLA EXCEPCIÓN: las cuotas CERRADAS SIN PAGO.
  *
  * Es el único caso donde el estado le gana al ledger, y tiene que serlo: al cerrar un caso
  * incobrable el cliente paga una parte y la financiera perdona el resto. Esa plata no entró
@@ -163,7 +189,7 @@ export function esEstadoVoid(estado: string): boolean {
  * apareciendo como deudor.
  */
 function cuotaSaldada(q: LedgerCuota): boolean {
-  if (q.estado === "condonada") return true;
+  if (cuotaCerradaSinPago(q.estado)) return true;
   return q.pagado_capital >= round2(q.capital) - EPS;
 }
 

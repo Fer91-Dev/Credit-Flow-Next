@@ -139,6 +139,10 @@ const CUOTA_BADGE: Record<EstadoCuota, { label: string; variant: BadgeVariant }>
   pendiente: { label: "Pendiente", variant: "muted" },
   // Se perdonó al cerrar un caso incobrable. En gris y no en verde: no la pagó nadie.
   condonada: { label: "Condonada", variant: "muted" },
+  // Cierres SIN pago: la cuota dejó de deberse pero nadie puso esa plata. En gris, nunca en
+  // verde — verde es "cobrado".
+  trasladada: { label: "Trasladada", variant: "muted" },
+  anulada:   { label: "Anulada",    variant: "muted" },
 };
 
 /** Lo PROGRAMADO que falta de la cuota (capital + interés + cargos), sin mora. */

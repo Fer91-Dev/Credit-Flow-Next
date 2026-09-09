@@ -6,6 +6,7 @@ import { conNumeroDeOrigen } from "@/lib/creditos-numero";
 import { TX_PLATA } from "@/lib/locks";
 import { registrarAuditoria } from "@/lib/audit";
 import { aplicarYRegistrarStock } from "@/lib/stock";
+import { ESTADOS_CUOTA_CERRADA } from "@/lib/domain";
 import { formatCreditoNumero, nombreCompleto, hoyComercial } from "@/lib/utils";
 import { round2, etiquetaCaja, esCuentaValida, esCreditoVivo, type Cuenta } from "@/lib/domain";
 import { siguienteNumeroComprobante } from "@/lib/comprobantes";
@@ -119,13 +120,24 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
        * el Home informaba $14.371.741,22 de cartera contra los $11.721.741,22 reales, y la
        * fila "anulado" de Cartera por estado mostraba saldo pendiente que nadie debe.
        *
-       * Es exactamente lo que ya hace `refinanciar` al cerrar el crédito viejo. Las CUOTAS no
-       * se tocan —igual que ahí—: son el registro de cuál era el plan, y marcarlas pagadas
-       * sería mentir sobre algo que no se pagó. Nadie las lee para un anulado porque todo
-       * pasa antes por `esCreditoVivo`.
+       * Es exactamente lo que ya hace `refinanciar` al cerrar el crédito viejo.
+       *
+       * 🔴 Y las CUOTAS ahora SÍ se marcan (hallazgo A1 de la auditoría). Acá decía que nadie
+       * las lee "porque todo pasa antes por `esCreditoVivo`", y era una suposición: el
+       * agregado que calcula el score del cliente las leía sin ese filtro y contaba las cuotas
+       * de un crédito anulado como incumplimientos para siempre. Con `anulada` el estado lo
+       * dice por sí mismo y no depende de que cada consulta se acuerde de mirar el crédito.
        */
       data: { estado: "anulado", proximo_pago: null, saldo_pendiente: 0, motivo_anulacion: motivo },
     });
+    if (marcado.count > 0) {
+      // Solo las que todavía debían: una cuota pagada de verdad sigue siendo `pagada`, y el
+      // `pagado_capital` no se toca (es el registro de lo que se llegó a cobrar).
+      await tx.cuotas.updateMany({
+        where: { ...withTenant(tenantId), credito_id: id, estado: { notIn: ["pagada", ...ESTADOS_CUOTA_CERRADA] } },
+        data: { estado: "anulada" },
+      });
+    }
     if (marcado.count === 0) {
       throw new ApiError("El crédito cambió de estado mientras se anulaba. Volvé a abrirlo para ver cómo quedó.", "INVALID_STATE", 409);
     }

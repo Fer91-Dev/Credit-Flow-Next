@@ -2,7 +2,7 @@ import { requireRole, scopeCreditosVendedor } from "@/lib/auth";
 import { successResponse, errorResponse, withErrorHandler, assertSameOrigin } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
-import { calcularDeudaConsolidada, aplicarQuita, construirPlanAmortizacion, planACuotas, normalizarFrecuencia, resolverFrecuencia, round2, estadoCoherente, type CuotaParaImputar, type TipoQuita, esCreditoVivo, moraDelCredito, moraDesdeCronograma, diasMoraActual, validarParametrosOtorgamiento, deudaEnRevision } from "@/lib/domain";
+import { ESTADOS_CUOTA_CERRADA, calcularDeudaConsolidada, aplicarQuita, construirPlanAmortizacion, planACuotas, normalizarFrecuencia, resolverFrecuencia, round2, estadoCoherente, type CuotaParaImputar, type TipoQuita, esCreditoVivo, moraDelCredito, moraDesdeCronograma, diasMoraActual, validarParametrosOtorgamiento, deudaEnRevision } from "@/lib/domain";
 import { getConfiguracion, getCobranzaConfig } from "@/lib/config";
 import { quitaMaxima } from "@/lib/domain/acuerdos";
 import { lockNumeroCreditoTx, TX_PLATA } from "@/lib/locks";
@@ -666,6 +666,30 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
         gastos: f.gastos,
         cuota_total: f.cuota_total,
       })),
+    });
+
+    /**
+     * 🔴 LAS CUOTAS DEL VIEJO QUEDAN MARCADAS. (Hallazgo A1 de la auditoría.)
+     *
+     * Antes se dejaban tal cual: el crédito pasaba a saldo 0 pero sus cuotas seguían con el
+     * capital pendiente entero, indistinguibles de las de un crédito vivo impago. La única
+     * defensa era que cada consulta se acordara de filtrar por el estado del CRÉDITO, y una
+     * que se olvidó —el agregado del score— contaba esas cuotas como incumplimientos para
+     * siempre.
+     *
+     * `trasladada` dice exactamente lo que pasó: no se pagaron, se mudaron al crédito nuevo.
+     * No se marcan "pagada" porque nadie puso esa plata, y `pagado_capital` queda como está:
+     * el registro de cuánto se había cobrado de este plan antes de reestructurarlo.
+     *
+     * Solo las que todavía debían algo: una cuota efectivamente pagada sigue siendo `pagada`.
+     */
+    await tx.cuotas.updateMany({
+      where: {
+        ...withTenant(tenantId),
+        credito_id: credito.id,
+        estado: { notIn: ["pagada", ...ESTADOS_CUOTA_CERRADA] },
+      },
+      data: { estado: "trasladada" },
     });
 
     // Cierra el crédito original: deuda saldada por refinanciación (no por cobro).

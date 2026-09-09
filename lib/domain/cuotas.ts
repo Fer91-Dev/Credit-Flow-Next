@@ -9,13 +9,22 @@
 import { round2 } from "./money";
 import type { PlanAmortizacion } from "./amortization";
 
-/** Estado de una cuota dentro del cronograma. */
 /**
- * `condonada`: se perdonó al cerrar un caso incobrable. NO es "pagada" —nadie puso esa plata—
- * y por eso no cuenta como cuota cumplida en el historial del cliente ni en el scoring; lo que
- * sí hace es dejar de deber (ver `cuotaSaldada` en credito-estado.ts).
+ * Estado de una cuota dentro del cronograma.
+ *
+ * Los cuatro primeros describen el camino normal. Los tres últimos son estados CERRADOS que
+ * NO son "pagada": en los tres la cuota dejó de deberse sin que entrara la plata, y por eso
+ * ninguno cuenta como cuota cumplida en el historial del cliente ni en el scoring.
+ *
+ *  · `condonada`  — se perdonó al cerrar un caso incobrable.
+ *  · `trasladada` — la deuda se mudó a una refinanciación. No se pagó: cambió de crédito.
+ *  · `anulada`    — el crédito se anuló; el desembolso volvió a la caja.
+ *
+ * Ver `ESTADOS_CUOTA_CERRADA` y `cuotaSaldada` en credito-estado.ts.
  */
-export type EstadoCuota = "pendiente" | "parcial" | "pagada" | "vencida" | "condonada";
+export type EstadoCuota =
+  | "pendiente" | "parcial" | "pagada" | "vencida"
+  | "condonada" | "trasladada" | "anulada";
 
 /** Fila de cuota lista para persistir (mapeo del plan de amortización). */
 export interface FilaCuota {

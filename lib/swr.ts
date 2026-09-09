@@ -642,7 +642,13 @@ export interface Amortizacion {
 }
 
 /** Estado derivado de una cuota del cronograma persistido (Fase 6A). */
-export type EstadoCuota = "pendiente" | "parcial" | "pagada" | "vencida" | "condonada";
+/**
+ * Espejo de `EstadoCuota` del dominio. Los tres últimos son cierres SIN pago: la cuota dejó
+ * de deberse pero nadie puso esa plata (ver `ESTADOS_CUOTA_CERRADA` en credito-estado.ts).
+ */
+export type EstadoCuota =
+  | "pendiente" | "parcial" | "pagada" | "vencida"
+  | "condonada" | "trasladada" | "anulada";
 
 /** Cuota PERSISTIDA con su estado derivado, de GET /api/creditos/[id]/cuotas. */
 export interface CuotaPersistida {

@@ -6,7 +6,7 @@ import { conNumeroDeOrigen } from "@/lib/creditos-numero";
 import { registrarAuditoria } from "@/lib/audit";
 import { nombreCompleto, hoyComercial } from "@/lib/utils";
 import { normalizarCuit, validarDuplicadoCliente } from "@/lib/clientes-validacion";
-import { calcularScore, diasMoraActual, cuotaMensualFrancesa, tasaPeriodicaSegunConvencion, convencionDelCredito, normalizarFrecuencia, interesMora, diasAtraso, round2, estadoCoherente, esCreditoVivo, moraDelCredito, moraDesdeCronograma, moraPendienteTotal, ESTADOS_CLIENTE, ESTADO_CLIENTE_LABEL, esEstadoClienteValido, normalizarEstadoCliente, type EstadoCliente } from "@/lib/domain";
+import { cuotaCerradaSinPago, calcularScore, diasMoraActual, cuotaMensualFrancesa, tasaPeriodicaSegunConvencion, convencionDelCredito, normalizarFrecuencia, interesMora, diasAtraso, round2, estadoCoherente, esCreditoVivo, moraDelCredito, moraDesdeCronograma, moraPendienteTotal, ESTADOS_CLIENTE, ESTADO_CLIENTE_LABEL, esEstadoClienteValido, normalizarEstadoCliente, type EstadoCliente } from "@/lib/domain";
 import { getConfiguracion, getRiesgoConfig, getCobranzaConfig } from "@/lib/config";
 import { situacionAcuerdoPorCredito } from "@/lib/acuerdos";
 import type { NextRequest } from "next/server";
@@ -130,7 +130,7 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
        * Y no se cuenta como "pagada": nadie puso esa plata, y el historial de cumplimiento
        * es justamente lo que no hay que falsear.
        */
-      if (q.estado === "condonada") return "condonada";
+      if (cuotaCerradaSinPago(q.estado)) return q.estado;
       const capitalSaldado = q.pagado_capital >= round2(q.capital);
       if (capitalSaldado) return "pagada";
       if (diasAtraso(q.fecha_vencimiento, hoy) > 0) return "vencida";
@@ -138,7 +138,7 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
       return "pendiente";
     });
     // La "próxima" es la primera que todavía se puede cobrar: una condonada ya no lo es.
-    const proximaIdx = estadosCuota.findIndex((e) => e !== "pagada" && e !== "condonada");
+    const proximaIdx = estadosCuota.findIndex((e) => e !== "pagada" && !cuotaCerradaSinPago(e));
     const cuotas_resumen = {
       total: c.cuotas.length,
       pagadas: estadosCuota.filter((e) => e === "pagada").length,
@@ -146,7 +146,7 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
       parciales: estadosCuota.filter((e) => e === "parcial").length,
       vencidas: estadosCuota.filter((e) => e === "vencida").length,
       /** Perdonadas al cerrar un caso incobrable. Ni cobradas ni exigibles. */
-      condonadas: estadosCuota.filter((e) => e === "condonada").length,
+      condonadas: estadosCuota.filter((e) => cuotaCerradaSinPago(e)).length,
       proxima_nro: proximaIdx >= 0 ? c.cuotas[proximaIdx].nro : null,
       proxima_vencimiento: proximaIdx >= 0 ? c.cuotas[proximaIdx].fecha_vencimiento : null,
     };
