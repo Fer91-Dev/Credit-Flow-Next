@@ -9,11 +9,21 @@
  * match por prefijo, así que `/creditos/nuevo` cae en `/creditos` si no tiene entrada propia.
  */
 
+import type { BadgeVariant } from "@/components/ui/StatusBadge";
+
 export type HelpBlock =
   | { kind: "pasos"; titulo: string; pasos: string[] }
   | { kind: "definiciones"; titulo: string; items: { term: string; desc: string }[] }
   | { kind: "tips"; titulo: string; items: string[] }
-  | { kind: "texto"; titulo: string; parrafos: string[] };
+  | { kind: "texto"; titulo: string; parrafos: string[] }
+  /**
+   * Leyenda de ESTADOS: la etiqueta con su color, y al lado qué significa.
+   *
+   * 🔴 El panel la dibuja con el MISMO `StatusBadge` que usan las tablas, así que el color de
+   * la ayuda es literalmente el color de la pantalla. Una leyenda que describe los colores con
+   * palabras se desincroniza el día que alguien cambia una variante y nadie se entera.
+   */
+  | { kind: "estados"; titulo: string; nota?: string; items: { label: string; variant: BadgeVariant; desc: string }[] };
 
 export interface HelpDoc {
   /** Título del panel (suele coincidir con el nombre de la sección). */
@@ -138,10 +148,53 @@ const HELP: Record<string, HelpDoc> = {
         ],
       },
       {
-        kind: "tips",
-        titulo: "Estados",
+        kind: "texto",
+        titulo: "Antes de leer los colores",
+        parrafos: [
+          "El sistema guarda SIETE estados: activo, vencido, pagado, cancelado, anulado, refinanciado e incobrable. Todo lo demás que ves en la etiqueta —“Activo atrasado”, “Legales”, “En acuerdo”, “con recupero”— no es un estado guardado: se calcula al dibujarla, con los días de atraso y el acuerdo que tenga encima.",
+          "Por eso el mismo crédito puede verse de cinco maneras distintas sin que nadie haya tocado nada: lo que cambió fue el calendario.",
+        ],
+      },
+      {
+        kind: "estados",
+        titulo: "Los colores del crédito",
+        nota: "Manda el primero que aplique, de arriba hacia abajo: un incobrable nunca dice “Legales”.",
         items: [
-          "Activo / Vencido / Pagado / Anulado / Refinanciado. El estado siempre refleja el ledger de cuotas, no se toca a mano.",
+          { label: "Activo", variant: "primary", desc: "Vivo y al día. No debe ninguna cuota vencida." },
+          { label: "Activo atrasado", variant: "warning", desc: "Vivo, con al menos una cuota vencida. Los punitorios corren." },
+          { label: "Legales", variant: "info", desc: "Pasó el umbral de atraso que fija la financiera (Configuración → Cobranza). No es una alarma: es la etapa donde ya se le puede ofrecer un acuerdo de pago." },
+          { label: "En acuerdo", variant: "success", desc: "Tiene un acuerdo vigente y está cumpliendo lo pactado. NO es un moroso: el plan viejo se cayó y lo que rige es el arreglo." },
+          { label: "Acuerdo atrasado", variant: "destructive", desc: "Tiene acuerdo vigente y dejó de pagarlo. Peor señal que un atraso común: rompió un arreglo que él mismo pidió." },
+          { label: "Pagado", variant: "success", desc: "Terminó de pagar todo el cronograma." },
+          { label: "Cancelado", variant: "muted", desc: "Se cerró el caso de un incobrable: cobró lo acordado y se le condonó el resto. Queda en $0,00." },
+          { label: "Anulado", variant: "destructive", desc: "Se deshizo la operación. Conserva el registro y el motivo, y revierte la caja y el stock." },
+          { label: "Refinanciado", variant: "warning", desc: "Su deuda se mudó a un crédito nuevo. Queda en $0,00, pero la plata no volvió: está viva en el otro crédito." },
+          { label: "Incobrable", variant: "destructive", desc: "Se dio por perdido el circuito normal de cobranza. Sale de morosos, de la agenda y de la cartera, PERO la deuda existe y se le puede cobrar. Los punitorios se frenan el día del castigo." },
+          { label: "Incobrable · con recupero", variant: "destructive", desc: "El mismo estado, con una diferencia que importa: ya entró plata después del castigo. Es el mejor candidato de toda la cartera perdida." },
+        ],
+      },
+      {
+        kind: "estados",
+        titulo: "Los colores de la cuota",
+        nota: "Las tres últimas cierran la cuota SIN que se haya pagado. Van en gris, nunca en verde: verde es plata cobrada.",
+        items: [
+          { label: "Pendiente", variant: "muted", desc: "Todavía no vence y no se pagó nada." },
+          { label: "Parcial", variant: "warning", desc: "Entró algo, pero no alcanzó para saldar su capital." },
+          { label: "Pagada", variant: "success", desc: "Su capital está saldado." },
+          { label: "Vencida", variant: "destructive", desc: "Pasó la fecha y sigue impaga. Se recalcula contra el día de hoy, no contra un evento." },
+          { label: "Condonada", variant: "muted", desc: "Se perdonó al cerrar el caso de un incobrable." },
+          { label: "Trasladada", variant: "muted", desc: "Se mudó al crédito nuevo de una refinanciación. No se pagó: cambió de plan." },
+          { label: "Anulada", variant: "muted", desc: "Se anuló el crédito entero." },
+        ],
+      },
+      {
+        kind: "tips",
+        titulo: "Reglas que conviene saber",
+        items: [
+          "El estado nunca se escribe a mano: sale del libro de cuotas. Editarlo desde la pantalla está bloqueado a propósito.",
+          "Al dado por incobrable SE LE PUEDE COBRAR — salvo que esté dentro de una campaña de recupero: ahí ya se le ofreció un importe por escrito y el camino es cerrar el caso desde Incobrables.",
+          "Un cobro parcial NO le levanta el castigo. Si lo levantara, los punitorios volverían a correr desde el vencimiento original y pagar le saldría más caro que no pagar.",
+          "Un incobrable sale de ese estado por dos puertas: terminando de pagar, o cerrando el caso.",
         ],
       },
     ],

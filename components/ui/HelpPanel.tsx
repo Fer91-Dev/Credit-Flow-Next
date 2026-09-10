@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { HelpCircle, X, Lightbulb } from "lucide-react";
 import type { HelpDoc, HelpBlock } from "@/lib/help/content";
+import { StatusBadge } from "@/components/ui/StatusBadge";
 
 interface HelpPanelProps {
   doc: HelpDoc | null;
@@ -135,6 +136,33 @@ function Block({ block }: { block: HelpBlock }) {
               </li>
             ))}
           </ol>
+        </div>
+      );
+
+    /*
+      LEYENDA DE ESTADOS. La etiqueta se dibuja con el MISMO `StatusBadge` de las tablas: el
+      color de la ayuda no se describe con palabras, se muestra. Así no puede desincronizarse
+      de la pantalla el día que alguien cambie una variante.
+
+      En dos columnas —badge a la izquierda, significado a la derecha— y no como lista de
+      definiciones: lo que el operador trae en la cabeza es el color que acaba de ver, y tiene
+      que poder barrer la columna izquierda hasta encontrarlo.
+    */
+    case "estados":
+      return (
+        <div>
+          <SectionTitle>{block.titulo}</SectionTitle>
+          <dl className="space-y-2.5">
+            {block.items.map((it, i) => (
+              <div key={i} className="grid grid-cols-[8.5rem_1fr] items-start gap-3">
+                <dt className="pt-px"><StatusBadge label={it.label} variant={it.variant} /></dt>
+                <dd className="text-sm leading-relaxed text-muted-foreground">{it.desc}</dd>
+              </div>
+            ))}
+          </dl>
+          {block.nota && (
+            <p className="mt-3 border-t border-border pt-2.5 text-xs leading-relaxed text-muted-foreground/80">{block.nota}</p>
+          )}
         </div>
       );
 
