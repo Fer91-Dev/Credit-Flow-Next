@@ -93,10 +93,18 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
   const diasMoraMax = pendientes.reduce((m, x) => Math.max(m, x.dias), 0);
   const proximaCuota = pendientes[0] ?? null;
 
-  // Si el crédito estaba SALDADO (pagado/cancelado) y este pago lo reabre, vuelve a activo/vencido.
+  /**
+   * Si el crédito estaba SALDADO (pagado/cancelado) y este pago lo reabre, vuelve a
+   * activo/vencido.
+   *
+   * 🔴 SALVO QUE VINIERA DE UN CASTIGO. Anular el cobro que terminó de pagar un crédito
+   * **incobrable** lo dejaba en "vencido": la anulación deshacía el pago pero también, de
+   * paso, el castigo — y con él el congelamiento de la mora. Deshacer un cobro tiene que
+   * devolver al crédito exactamente al estado del que salió, ni más ni menos.
+   */
   let nuevoEstado = credito.estado;
   if ((credito.estado === "pagado" || credito.estado === "cancelado") && !todasSaldadas) {
-    nuevoEstado = diasMoraMax > 0 ? "vencido" : "activo";
+    nuevoEstado = credito.incobrable_at ? "incobrable" : diasMoraMax > 0 ? "vencido" : "activo";
   }
 
   // Movimientos de cobro a revertir con contra-asiento (normalmente uno).

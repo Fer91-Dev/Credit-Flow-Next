@@ -204,6 +204,37 @@ export function sinDeuda(saldoPendiente: number, cuotas?: LedgerCuota[]): boolea
 }
 
 /**
+ * EL ESTADO QUE LE CORRESPONDE AL CRÉDITO DESPUÉS DE MOVER EL LEDGER (cobrar o anular).
+ *
+ * 🔴 EL CASTIGO NO SE LEVANTA SOLO PORQUE ENTRÓ PLATA.
+ *
+ * Cobrar y anular derivaban el estado del ledger a secas —saldado → "pagado", con atraso →
+ * "vencido", al día → "activo"— sin mirar de dónde venía. Sobre un crédito **incobrable** eso
+ * lo resucitaba: un cobro de $1.000,00 a cuenta de la mora lo devolvía a "vencido".
+ *
+ * Y no era solo cosmético. `topeMoraPorIncobrable` congela el reloj de la mora en
+ * `incobrable_at`, pero solo mientras el estado SEA "incobrable": al pasar a "vencido" el
+ * tope desaparecía y la mora volvía a correr desde el vencimiento original, retroactiva.
+ * Medido sobre un caso real de dev (REF-000036, castigado el 31/07, cobrado el 10/09): el
+ * cliente pagó $1.000,00 y su deuda pasó de $1.953.214,94 a $2.158.536,89. **Pagar le costó
+ * $205.321,95.** Además el crédito volvía a la cartera y a los KPI de mora con capital que ya
+ * se había dado por perdido, y desaparecía de la pestaña Incobrables en medio de su gestión.
+ *
+ * La regla: el incobrable sale de ese estado por UNA sola puerta hacia abajo —terminar de
+ * cobrarse— y por otra que es una decisión explícita, el cierre del caso, que lo deja
+ * "cancelado" desde su propio endpoint. Un pago parcial lo deja como estaba.
+ */
+export function estadoTrasMoverLedger(
+  estadoActual: string,
+  ledger: { todasSaldadas: boolean; diasMoraMax: number },
+): string {
+  if (ledger.todasSaldadas) return "pagado";
+  // El castigo sobrevive a los cobros parciales; solo se levanta pagando todo.
+  if (estadoActual === "incobrable") return "incobrable";
+  return ledger.diasMoraMax > 0 ? "vencido" : "activo";
+}
+
+/**
  * Validación de ESCRITURA: ¿es admisible setear `objetivo` dado el ledger actual?
  * - Estados saldados (pagado/cancelado): solo si no hay deuda.
  * - Resto (activo/vencido/anulado): siempre admisible.

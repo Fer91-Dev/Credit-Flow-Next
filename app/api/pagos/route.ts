@@ -6,7 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { conNumeroDeOrigen, numerosRefinanciados } from "@/lib/creditos-numero";
 import { sincronizarAcuerdos } from "@/lib/acuerdos";
 import { nombreCompleto, formatCreditoNumero, hoyComercial, ventanaDias, ventanaAR } from "@/lib/utils";
-import { imputarPagoEnCuotas, diasAtraso, round2, etiquetaCaja, cuentaDeMetodo, esCuentaValida, type CuotaParaImputar, moraDelCredito, moraDesdeCronograma, esCreditoCobrable, topeMoraPorFallecimiento, topeMoraPorIncobrable, topeMoraMasTemprano, promoVigenteAl } from "@/lib/domain";
+import { imputarPagoEnCuotas, diasAtraso, round2, etiquetaCaja, cuentaDeMetodo, esCuentaValida, type CuotaParaImputar, moraDelCredito, moraDesdeCronograma, esCreditoCobrable, estadoTrasMoverLedger, topeMoraPorFallecimiento, topeMoraPorIncobrable, topeMoraMasTemprano, promoVigenteAl } from "@/lib/domain";
 import { lockCreditoTx, assertCuotasSinCambios, TX_PLATA } from "@/lib/locks";
 import { lockCuentaTx } from "@/lib/caja-fondos";
 import { siguienteNumeroComprobante } from "@/lib/comprobantes";
@@ -604,10 +604,16 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
       where: { id: body.credito_id },
       data: {
         saldo_pendiente: saldoCapital,
-        // P3 — Estado coherente con el ledger tras cobrar: saldado → "pagado"; si quedan
-        // cuotas vencidas → "vencido"; si el pago dejó el crédito al día → "activo" (antes
-        // arrastraba "vencido" hasta que lo reconciliaba una lectura o el cron).
-        estado: todasSaldadas ? "pagado" : diasMoraMax > 0 ? "vencido" : "activo",
+        /**
+         * P3 — Estado coherente con el ledger tras cobrar: saldado → "pagado"; si quedan
+         * cuotas vencidas → "vencido"; si el pago dejó el crédito al día → "activo" (antes
+         * arrastraba "vencido" hasta que lo reconciliaba una lectura o el cron).
+         *
+         * 🔴 Vía `estadoTrasMoverLedger`, que además preserva el INCOBRABLE ante un cobro
+         * parcial. Con la fórmula suelta acá, cobrarle algo a un crédito castigado lo
+         * devolvía a la cartera y le descongelaba la mora (ver el comentario del dominio).
+         */
+        estado: estadoTrasMoverLedger(credito.estado, { todasSaldadas, diasMoraMax }),
         dias_mora: todasSaldadas ? 0 : diasMoraMax,
         proximo_pago: todasSaldadas ? null : (proximaCuota?.c.fecha_vencimiento ?? null),
       },
