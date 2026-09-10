@@ -5,7 +5,9 @@ import { ArrowLeft } from "lucide-react";
 import { CreditoDetail } from "./CreditoDetail";
 import { SystemControls } from "@/components/ui/SystemControls";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useCreditos, type Credito } from "@/lib/swr";
+import { useCreditos, useDiasLegales, type Credito } from "@/lib/swr";
+import { StatusBadge } from "@/components/ui/StatusBadge";
+import { estadoBadgeCredito } from "./estado-badge";
 import { formatCreditoNumero, nombreCompleto } from "@/lib/utils";
 import { type Role } from "@/lib/auth/roles";
 
@@ -39,6 +41,8 @@ import { type Role } from "@/lib/auth/roles";
 export function CreditoPagina({ id, role }: { id: string; role?: Role }) {
   const router = useRouter();
   const { creditos, isLoading, error, mutate } = useCreditos();
+  /** A cuántos días de atraso pasa a Legales (Configuración). Lo necesita el badge. */
+  const diasLegales = useDiasLegales();
   const credito = creditos.find((c) => c.id === id) ?? null;
 
   const volver = () => router.push("/creditos");
@@ -58,9 +62,19 @@ export function CreditoPagina({ id, role }: { id: string; role?: Role }) {
             <ArrowLeft className="h-4 w-4" />
           </button>
           <div className="min-w-0">
-            <h1 className="truncate font-mono text-base font-semibold leading-tight text-foreground">
-              {credito ? formatCreditoNumero(credito.numero, credito.refinancia_a_numero) : "Crédito"}
-            </h1>
+            {/*
+              El numero, el ESTADO y el titular viven SOLO aca.
+
+              El cuerpo del detalle los repetia enteros veinte pixeles mas abajo -- numero en
+              24px, badge y nombre -- asi que la pantalla arrancaba diciendo dos veces lo mismo
+              y le comia al plan de cuotas el alto que necesita para verse sin scroll.
+            */}
+            <div className="flex min-w-0 items-center gap-2">
+              <h1 className="truncate font-mono text-base font-semibold leading-tight text-foreground">
+                {credito ? formatCreditoNumero(credito.numero, credito.refinancia_a_numero) : "Crédito"}
+              </h1>
+              {credito && <StatusBadge {...estadoBadgeCredito(credito.estado, credito.dias_mora, diasLegales)} />}
+            </div>
             <p className="mt-0.5 truncate text-xs text-muted-foreground">
               {credito ? nombreCompleto(credito.cliente) : "Detalle del crédito"}
             </p>
