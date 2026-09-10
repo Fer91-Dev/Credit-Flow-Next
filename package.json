@@ -11,7 +11,8 @@
     "reset:test": "node --env-file=.env.local prisma/sql/reset_datos_ficticios.mjs",
     "seed:productos": "node scripts/seed-catalogo.mjs",
     "seed:reportes": "node scripts/seed-reportes-demo.mjs",
-    "lint": "eslint app components lib --quiet"
+    "lint": "eslint app components lib --quiet",
+    "probar:motor": "node scripts/probar-motor.mjs"
   },
   "dependencies": {
     "@prisma/client": "^6.0.0",

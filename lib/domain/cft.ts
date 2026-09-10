@@ -20,10 +20,30 @@
  * la misma técnica que usa el motor de riesgo para el monto sugerido, y es robusta acá porque
  * el flujo tiene un solo cambio de signo (sale plata una vez, entra n veces) → una sola raíz.
  *
- * 🔴 Invariante que hay que preservar: SIN CARGOS, el C.F.T. tiene que dar EXACTAMENTE la
- * T.E.A. Si difieren, hay un error de convención en uno de los dos. Por eso se descuenta por
- * NÚMERO DE PERÍODO (k = 1, 2, 3…) y se anualiza con `periodosAnio`, igual que
- * `efectivaAnualDesdePeriodica`, y no por días corridos entre fechas.
+ * 🔴 Invariante que hay que preservar: SIN CARGOS y sobre el flujo EXACTO, el C.F.T. tiene
+ * que dar la T.E.A. clavada. Si difieren, hay un error de convención en uno de los dos. Por
+ * eso se descuenta por NÚMERO DE PERÍODO (k = 1, 2, 3…) y se anualiza con `periodosAnio`,
+ * igual que `efectivaAnualDesdePeriodica`, y no por días corridos entre fechas.
+ *
+ * 🔴 LO QUE ESA INVARIANTE **NO** DICE, Y COSTÓ UN HALLAZGO (B1).
+ *
+ * Sobre el cronograma REAL el C.F.T. no da la T.E.A., y está bien que no la dé. El plan se
+ * emite redondeado al centavo —es el papel que el cliente firma— y ese redondeo es plata:
+ * el C.F.T. es, por definición, la tasa que iguala lo que RECIBE con lo que efectivamente
+ * PAGA, así que tiene que salir del cronograma emitido y no de una cuota teórica.
+ *
+ * Medido: un crédito de $1 al 120% tiene una cuota exacta de $0,402115 y se emite
+ * $0,40 · $0,40 · $0,41. Paga $0,003656 de más, que sobre un capital de un peso son **22
+ * puntos** de T.E.A. (218,23% contra 213,84%). El número está bien; el capital es absurdo.
+ *
+ * En el rango que una financiera opera de verdad el efecto desaparece: con el mínimo de
+ * $20.000 el peor caso medido (24 cuotas al 500%) se despega **0,0093 puntos porcentuales**,
+ * y de $150.000 para arriba no llega a la milésima. Calcularlo sobre cuotas sin redondear
+ * "arreglaría" el caso de $1 publicando un costo que no coincide con ningún pago real.
+ *
+ * `scripts/probar-motor.mjs` verifica las tres cosas por separado: la convención sobre el
+ * flujo exacto, la bisección contra una T.I.R. independiente, y que el desvío por redondeo
+ * quede por debajo de 0,05 pp en todo el rango operable.
  */
 import type { PlanAmortizacion } from "./amortization";
 
