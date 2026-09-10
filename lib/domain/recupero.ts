@@ -134,6 +134,33 @@ export interface RecuperoConfig {
    */
   dias_min_mora_acuerdo: number;
   /**
+   * ENTREGA MÍNIMA para poder refinanciar, como % de la deuda que se consolida.
+   *
+   * 🔴 QUÉ PROBLEMA RESUELVE.
+   *
+   * Refinanciar sin entrega es apostar de nuevo a la misma persona que ya no pagó, y por más
+   * plata: la cuota del plan nuevo sale bastante más cara que la que no pudo pagar —medido
+   * sobre un caso real, 79,6% más—. Si el cliente no llega, lo único que se logra es agrandar
+   * el número que después se va a castigar.
+   *
+   * Con entrega cambian las dos cosas que importan:
+   *
+   *  - **Recupera capital.** La entrega se cobra como un pago normal ANTES de consolidar, así
+   *    que baja la deuda que se refinancia y devuelve plata a la caja el mismo día.
+   *  - **Compromete.** Quien pone plata para reestructurar está mostrando la voluntad que la
+   *    refinanciación necesita para no ser una apuesta. Y si no puede juntar el mínimo, esa
+   *    es justamente la señal de que le corresponde un ACUERDO —cuota casi igual a la que
+   *    tenía— y no una refinanciación.
+   *
+   * El default es 10%: es alcanzable —quien no junta uno de cada diez pesos de su deuda no va
+   * a pagar un plan 80% más caro—, y sobre el caso medido devuelve el 20% del capital que
+   * estaba en riesgo. 0 = no se exige entrega.
+   *
+   * Se mide sobre la deuda consolidada ANTES de la entrega: una deuda vieja e inflada pide
+   * más plata en el mostrador, que es lo correcto, porque es la que más riesgo arrastra.
+   */
+  entrega_minima_pct: number;
+  /**
    * No se refinancia sin haber intentado antes un acuerdo y que se haya roto.
    * Es la regla fuerte: obliga a agotar lo reversible antes de matar el crédito.
    */
@@ -296,6 +323,8 @@ export const RECUPERO_DEFAULT: RecuperoConfig = {
   max_acuerdos_rotos: 2,
   exigir_acuerdo_para_refinanciar: false,
   dias_min_mora_refinanciar: 0,
+  // Uno de cada diez pesos de la deuda, en el mostrador, antes de rearmar el plan.
+  entrega_minima_pct: 10,
   // Apagado de fábrica, como el resto de la escalera: cortarle el cobro a un crédito vivo es
   // la decisión más fuerte del pipeline y no la puede tomar un default.
   bloquear_cobro_sin_refinanciar: false,
@@ -365,6 +394,10 @@ export function resolverRecupero(raw: unknown): RecuperoConfig {
       const max = t(r.tasa_refinanciacion_max);
       // Un mínimo por encima del máximo no describe ninguna banda: se ordenan.
       return { tasa_refinanciacion_min: Math.min(min, max), tasa_refinanciacion_max: Math.max(min, max) };
+    })(),
+    entrega_minima_pct: (() => {
+      const n = Number(r.entrega_minima_pct);
+      return Number.isFinite(n) && n >= 0 ? Math.min(100, n) : RECUPERO_DEFAULT.entrega_minima_pct;
     })(),
     /** Enteros 1..360, sin repetidos y ordenados. Una lista sucia sería una lista mentirosa. */
     cuotas_refinanciacion: Array.isArray(r.cuotas_refinanciacion)
@@ -836,6 +869,27 @@ export function bandaTasaRefinanciacion(
  * histórico. Una sola definición para los tres que la necesitan: el preview que arma el
  * desplegable, el POST que rechaza, y el resumen de Configuración.
  */
+/**
+ * ¿Alcanza la entrega para refinanciar esta deuda?
+ *
+ * `deudaConsolidada` va SIN la entrega descontada: es lo que se debía antes de que el cliente
+ * pusiera un peso. Devuelve el mínimo exigido y si la entrega lo cubre.
+ */
+export function entregaMinimaRefinanciacion(
+  deudaConsolidada: number,
+  entrega: number,
+  cfg: Pick<RecuperoConfig, "entrega_minima_pct">,
+): { exigida: boolean; minimo: number; alcanza: boolean; falta: number } {
+  const pct = cfg.entrega_minima_pct;
+  if (!(pct > 0) || !(deudaConsolidada > 0)) {
+    return { exigida: false, minimo: 0, alcanza: true, falta: 0 };
+  }
+  const minimo = Math.round(deudaConsolidada * (pct / 100) * 100) / 100;
+  // Un centavo de tolerancia: el mínimo sale de un porcentaje y el operador tipea el importe.
+  const alcanza = entrega >= minimo - 0.01;
+  return { exigida: true, minimo, alcanza, falta: alcanza ? 0 : Math.round((minimo - entrega) * 100) / 100 };
+}
+
 export function plazosRefinanciacion(
   cfg: Pick<RecuperoConfig, "cuotas_refinanciacion">,
   planesSimulador: { cuotas: number; activo: boolean }[],

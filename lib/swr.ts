@@ -1777,7 +1777,12 @@ export interface RefinanciacionPreview {
   deuda: DeudaConsolidada;
   sugerido: { tasa: number; plazo_meses: number; frecuencia: string };
   /** Cuánto puede descontar quien hace la operación (`quitaMaxima`, la regla del POST). */
-  limites?: { quita_maxima: number };
+  limites?: {
+    quita_maxima: number;
+    /** Piso de entrega para poder refinanciar: % que fija la financiera y su importe. */
+    entrega_minima_pct?: number;
+    entrega_minima?: number;
+  };
   /**
    * Honorarios por gestión de cobranza del crédito nuevo. `pct` es el SUGERIDO (el de
    * Configuración) y `negociable` dice si quien está mirando puede pactar otro: el admin sí

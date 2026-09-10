@@ -2355,7 +2355,33 @@ export function ConfigForm() {
                   onValueChange={v => setRecupero({ dias_min_mora_refinanciar: Math.max(0, Math.min(365, Math.round(v))) })}
                 />
               </Field>
+              {/*
+                LA ENTREGA MÍNIMA. Es el parámetro que decide si refinanciar es un recupero o
+                una apuesta: sin plata en el mostrador se le pide una cuota bastante más cara
+                a quien ya no pudo pagar la anterior.
+              */}
+              <Field
+                label="Entrega mínima para refinanciar (% de la deuda)"
+                hint="Cuánto tiene que poner el cliente en el acto para que se le rearme el plan. Baja la deuda que se consolida y devuelve plata a la caja el mismo día. 0 = no se exige. Si no llega al mínimo, lo que corresponde es un acuerdo de pago."
+              >
+                <NumeroInput min="0" max="100" decimales={false}
+                  value={cobranza.recupero.entrega_minima_pct}
+                  onValueChange={v => setRecupero({ entrega_minima_pct: Math.max(0, Math.min(100, Math.round(v))) })}
+                />
+              </Field>
             </div>
+            {/*
+              El número en pesos, no el porcentaje: "10%" no dice nada frente al cliente y
+              "$69.860,75 sobre una deuda de $698.607,45" sí.
+            */}
+            {cobranza.recupero.entrega_minima_pct > 0 && (
+              <p className="mt-2 max-w-xl text-xs leading-relaxed text-muted-foreground">
+                Sobre una deuda de <span className="font-mono text-foreground">$100.000,00</span> el cliente
+                tendría que dejar <span className="font-mono font-semibold text-foreground">
+                  ${(1000 * cobranza.recupero.entrega_minima_pct).toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span> antes de firmar. Un administrador puede autorizar una refinanciación sin llegar al mínimo, y queda registrado.
+              </p>
+            )}
             <div className="mt-4 flex flex-col gap-3 max-w-3xl">
               {/*
                 El cierre de la escalera. Va PRIMERO del grupo porque es el que más cambia la
@@ -2770,7 +2796,7 @@ function defaultCobranza(): CobranzaConfig {
     recupero: {
       exigir_gestion_para_acuerdo: false, dias_min_mora_acuerdo: 50, max_acuerdos_rotos: 2,
       exigir_acuerdo_para_refinanciar: false, dias_min_mora_refinanciar: 0,
-      bloquear_cobro_sin_refinanciar: false,
+      bloquear_cobro_sin_refinanciar: false, entrega_minima_pct: 10,
       no_bajar_tasa_refinanciando: true, max_refinanciaciones_encadenadas: 1,
       pasar_a_incobrable_auto: false,
       honorarios_gestion_activo: false, honorarios_gestion_min: 0, honorarios_gestion_max: 0,

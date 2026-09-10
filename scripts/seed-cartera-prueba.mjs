@@ -30,7 +30,7 @@
  *    5  atraso que habilita el acuerdo     antesala del acuerdo
  *    6  acuerdo vigente y al día           badge "En acuerdo"
  *    7  acuerdo ROTO                       "Acuerdo atrasado" y habilita refinanciar
- *    8  refinanciado, la refi se paga      refinanciación completa
+ *    8  refinanciado CON ENTREGA           refinanciación completa (entrega + plan nuevo)
  *    9  incobrable sin recupero            paso a incobrables
  *   10  incobrable con cobro posterior     "· con recupero" y campaña de RECUPERO
  *
@@ -264,10 +264,33 @@ paso("LOS 10 CASOS");
 {
   const c = await cliente("Oscar", "Ledesma");
   const viejo = await otorgar(c, 350_000, 3, 30 + DIAS_REFI + 15);
+
+  /*
+    LA ENTREGA, PRIMERO. La financiera exige un mínimo para refinanciar
+    (`entrega_minima_pct`), así que el camino es el mismo que hace la pantalla: se cobra la
+    entrega como un pago normal —con `entrega_de: "refinanciacion"`, que es lo que la deja
+    pasar el bloqueo por atraso— y después se refinancia pasando el id de ese pago.
+
+    Sin esto el server contesta 409 ENTREGA_MINIMA_REFINANCIACION, que es la regla
+    funcionando: no se reestructura sin que el cliente ponga plata.
+  */
+  const prev = await api("GET", `/api/creditos/${viejo}/refinanciar`);
+  const minimo = prev.ok ? (prev.data.limites?.entrega_minima ?? 0) : 0;
+  let entregaId;
+  if (minimo > 0) {
+    const pe = await api("POST", "/api/pagos", {
+      credito_id: viejo, monto: minimo, metodo: "efectivo",
+      notas: "Entrega al refinanciar el crédito", entrega_de: "refinanciacion",
+    });
+    if (!pe.ok) mal("entrega del caso 8", pe.error);
+    else entregaId = pe.data.pago.id;
+  }
+
   const r = await api("POST", `/api/creditos/${viejo}/refinanciar`, {
     tasa: TASA, plazo_meses: plazoRefi(3), frecuencia: "mensual",
     quita_tipo: "porcentaje", quita_valor: 10, honorarios_pct: 0,
     motivo: "Reestructuración acordada con el cliente.",
+    ...(entregaId ? { entrega_pago_id: entregaId } : {}),
   });
   if (!r.ok) { mal("refinanciar el caso 8", r.error); }
   else {
@@ -281,7 +304,7 @@ paso("LOS 10 CASOS");
     });
     if (!pago.ok) mal("cobrar la refi del caso 8", pago.error);
     registrar(8, "refinanciado, y la refi se está pagando", nuevo,
-      `con quita del 10% · cuota 1 cobrada ${f(c1.total_cobrar)}`);
+      `entrega ${f(minimo)} · quita 10% · cuota 1 cobrada ${f(c1.total_cobrar)}`);
   }
 }
 

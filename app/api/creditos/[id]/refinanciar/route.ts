@@ -2,7 +2,7 @@ import { requireRole, scopeCreditosVendedor } from "@/lib/auth";
 import { successResponse, errorResponse, withErrorHandler, assertSameOrigin } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
-import { ESTADOS_CUOTA_CERRADA, calcularDeudaConsolidada, aplicarQuita, construirPlanAmortizacion, planACuotas, normalizarFrecuencia, resolverFrecuencia, round2, estadoCoherente, type CuotaParaImputar, type TipoQuita, esCreditoVivo, moraDelCredito, moraDesdeCronograma, diasMoraActual, validarParametrosOtorgamiento, deudaEnRevision } from "@/lib/domain";
+import { ESTADOS_CUOTA_CERRADA, calcularDeudaConsolidada, aplicarQuita, construirPlanAmortizacion, planACuotas, normalizarFrecuencia, resolverFrecuencia, round2, estadoCoherente, type CuotaParaImputar, type TipoQuita, esCreditoVivo, moraDelCredito, moraDesdeCronograma, diasMoraActual, validarParametrosOtorgamiento, deudaEnRevision, entregaMinimaRefinanciacion } from "@/lib/domain";
 import { getConfiguracion, getCobranzaConfig } from "@/lib/config";
 import { quitaMaxima } from "@/lib/domain/acuerdos";
 import { lockNumeroCreditoTx, TX_PLATA } from "@/lib/locks";
@@ -111,6 +111,8 @@ async function cargarRefinanciable(
    * recién registrado. Un pago viejo no habilita refinanciar un crédito que se puso al día.
    */
   let entregaCobrada = false;
+  // El IMPORTE, no solo que exista: sobre él se mide la entrega mínima exigida.
+  let entregaMonto = 0;
   if (opts?.entregaPagoId) {
     const pago = await prisma.pagos.findFirst({
       where: {
@@ -121,9 +123,35 @@ async function cargarRefinanciable(
         acuerdo_cuota_id: null,
         created_at: { gte: new Date(Date.now() - VENTANA_ENTREGA_MS) },
       },
-      select: { id: true },
+      select: { id: true, monto: true },
     });
     entregaCobrada = pago != null;
+    /**
+     * 🔴 LA ENTREGA ES TODO LO QUE ENTRO EN LA VENTANA, NO SOLO EL ULTIMO RECIBO.
+     *
+     * El id prueba la INTENCION -que este cobro es parte de esta operacion-, pero el importe
+     * exigido se mide contra todo lo que el cliente puso. Pasa de verdad: el operador cobra
+     * $20.000, el server le dice que faltan, el cliente completa con $41.000 y se emite un
+     * segundo recibo. Mirando solo el ultimo, el sistema veia $41.000 cuando en la caja
+     * habian entrado $61.000, y seguia rechazando una entrega que ya alcanzaba.
+     *
+     * Los mismos filtros que validan el id: de ESTE credito, de esta financiera, no anulados,
+     * que no sean cuota de un acuerdo y dentro de la media hora. Un cobro de la mañana no
+     * cuenta a la tarde.
+     */
+    if (entregaCobrada) {
+      const suma = await prisma.pagos.aggregate({
+        where: {
+          ...withTenant(tenantId),
+          credito_id: id,
+          anulado: false,
+          acuerdo_cuota_id: null,
+          created_at: { gte: new Date(Date.now() - VENTANA_ENTREGA_MS) },
+        },
+        _sum: { monto: true },
+      });
+      entregaMonto = Math.round((suma._sum.monto ?? 0) * 100) / 100;
+    }
   }
 
   if (moraHoy <= 0 && !entregaCobrada) {
@@ -165,7 +193,7 @@ async function cargarRefinanciable(
     fechaInicio: credito.fecha_inicio,
   });
 
-  return { credito, config, deuda, moraHoy, entregaCobrada, tenantId, role, vendedorId, userId, nombre, email } as const;
+  return { credito, config, deuda, moraHoy, entregaCobrada, entregaMonto, tenantId, role, vendedorId, userId, nombre, email } as const;
 }
 
 /**
@@ -264,7 +292,19 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
       plazo_meses: credito.plazo_meses,
       frecuencia: credito.frecuencia,
     },
-    limites: { quita_maxima: quitaMax },
+    /*
+      La ENTREGA MINIMA viaja en el preview y no se descubre al confirmar: es la misma
+      leccion de la entrega de Estela Moreno. Si el operador se entera del piso recien al
+      apretar "Refinanciar", ya le dijo al cliente que se lo rearmaba.
+
+      `deuda.total` aca todavia no tiene entrega descontada (el preview corre antes de
+      cobrarla), asi que es la base correcta.
+    */
+    limites: {
+      quita_maxima: quitaMax,
+      entrega_minima_pct: cobranzaCfg.recupero.entrega_minima_pct,
+      entrega_minima: entregaMinimaRefinanciacion(deuda.total, 0, cobranzaCfg.recupero).minimo,
+    },
     /** Cómo se compone la deuda: lo que ya venció (con su mora) y lo que todavía no. */
     composicion: {
       ...comp,
@@ -374,7 +414,7 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
 
   const r = await cargarRefinanciable(req, id, { entregaPagoId });
   if ("error" in r && r.error) return r.error;
-  const { credito, config, deuda, entregaCobrada, tenantId, role, userId, nombre, email } = r as Extract<typeof r, { credito: object }>;
+  const { credito, config, deuda, entregaCobrada, entregaMonto, tenantId, role, userId, nombre, email } = r as Extract<typeof r, { credito: object }>;
   const cobranzaCfg = await getCobranzaConfig(tenantId);
 
   // Escalera de recupero: la refinanciación es el escalón irreversible (mata el crédito y
@@ -389,6 +429,39 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
   if (!isFinite(plazoMeses) || plazoMeses < 1) return errorResponse("Plazo inválido (mínimo 1 cuota)", "INVALID_INPUT", 400);
   // Piso de tasa: refinanciar más barato es una quita que esquiva el tope de las quitas.
   assertPuedeUsarTasa(tasa, credito.tasa, cobranzaCfg.recupero, actorEscalera);
+
+  /**
+   * 🔴 LA ENTREGA MÍNIMA. No se refinancia sin que el cliente ponga plata.
+   *
+   * `deuda.total` ya viene NETA de la entrega —se cobró como un pago normal antes de llegar
+   * acá, y bajó las cuotas—, así que para medir el porcentaje hay que reconstruir la deuda
+   * como estaba en el mostrador: lo que queda más lo que entregó.
+   *
+   * Bloquea como el resto de la escalera, con la excepción explícita del admin: va a haber
+   * un caso donde el cliente trae el 9% y negarse sería absurdo. Queda auditado.
+   */
+  const entregaMin = entregaMinimaRefinanciacion(
+    round2(deuda.total + entregaMonto),
+    entregaMonto,
+    cobranzaCfg.recupero,
+  );
+  if (entregaMin.exigida && !entregaMin.alcanza) {
+    const permitidoPorAdmin = role === "admin" && body.autorizacion_admin === true;
+    if (!permitidoPorAdmin) {
+      return errorResponse(
+        `Para refinanciar hace falta una entrega de al menos $${entregaMin.minimo.toLocaleString("es-AR", { minimumFractionDigits: 2 })} ` +
+        `(${cobranzaCfg.recupero.entrega_minima_pct}% de la deuda). ` +
+        (entregaMonto > 0
+          ? `Trajo $${entregaMonto.toLocaleString("es-AR", { minimumFractionDigits: 2 })}: faltan $${entregaMin.falta.toLocaleString("es-AR", { minimumFractionDigits: 2 })}. `
+          : "No se registró ninguna entrega. ") +
+        `Si no puede juntarla, lo que corresponde es un acuerdo de pago: la cuota queda parecida a la que ya tenía.` +
+        (role === "admin" ? " Como administrador podés autorizarlo igual, y queda registrado." : ""),
+        "ENTREGA_MINIMA_REFINANCIACION",
+        409,
+      );
+    }
+  }
+  const entregaAutorizadaPorAdmin = entregaMin.exigida && !entregaMin.alcanza;
 
   // Quita opcional sobre la base consolidada (condonación parcial como incentivo).
   const quitaTipo = (["ninguna", "porcentaje", "monto"].includes(body.quita_tipo) ? body.quita_tipo : "ninguna") as TipoQuita;
@@ -743,7 +816,10 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
     entidadId: nuevo.id,
     accion: "crear",
     descripcion: `Crédito ${numeroNuevo(nuevo.numero)} creado por refinanciación de ${numeroViejo} — $${nuevoCapital.toLocaleString("es-AR")}`,
-    meta: { refinancia_a: credito.numero, monto: nuevoCapital, tasa, plazo_meses: plazoMeses, frecuencia, es_refinanciacion: true },
+    meta: { refinancia_a: credito.numero, monto: nuevoCapital, tasa, plazo_meses: plazoMeses, frecuencia, es_refinanciacion: true,
+      entrega: entregaMonto,
+      // Un mínimo salteado por decisión del admin tiene que quedar dicho, no deducible.
+      ...(entregaAutorizadaPorAdmin ? { entrega_minima_omitida: entregaMin.minimo } : {}) },
   });
 
   return successResponse(

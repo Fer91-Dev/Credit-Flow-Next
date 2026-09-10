@@ -215,6 +215,15 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
   /** La entrega no puede llevarse toda la deuda: eso ya no es refinanciar, es cancelar. */
   const excedeEntrega = entregaNum > 0 && entregaNum >= r2(base - 0.01);
 
+  /*
+    EL PISO DE ENTREGA que fija la financiera (Configuracion -> Cobranza -> Refinanciaciones).
+    Se muestra desde el arranque y no al confirmar: el operador tiene al cliente enfrente y
+    necesita saber cuanto pedirle ANTES de prometerle nada. El server lo vuelve a validar.
+  */
+  const entregaMinPct = preview?.limites?.entrega_minima_pct ?? 0;
+  const entregaMin = preview?.limites?.entrega_minima ?? 0;
+  const faltaEntrega = entregaMinPct > 0 && entregaNum < r2(entregaMin - 0.01);
+
   /**
    * EL PLAN DEL CRÉDITO NUEVO. Se arma con `construirPlanAmortizacion`, la MISMA función que
    * usa el POST, y con los parámetros del motor que manda el server: compartir la función Y
@@ -261,7 +270,7 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
   const interesNuevo = plan ? r2(plan.cuotas.reduce((s, c) => s + c.interes, 0)) : 0;
 
   const valido =
-    !!preview && nuevoCapital > 0 && !excedeEntrega && !excedeTope && !honFueraDeBanda && !tasaTrabada &&
+    !!preview && nuevoCapital > 0 && !excedeEntrega && !faltaEntrega && !excedeTope && !honFueraDeBanda && !tasaTrabada &&
     isFinite(tasaNum) && tasaNum >= 0 && isFinite(plazoNum) && plazoNum >= 1;
 
   const submit = async (e: React.FormEvent) => {
@@ -555,12 +564,20 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
                         <option value="otro">Otro</option>
                       </IconSelect>
                     </div>
-                    <p className={`text-xs ${excedeEntrega ? "text-destructive" : "text-muted-foreground"}`}>
+                    {/*
+                      El piso, en PESOS y antes de tipear nada. "10%" no le sirve al operador
+                      que tiene al cliente enfrente; "$69.860,75" sí.
+                    */}
+                    <p className={`text-xs ${excedeEntrega || faltaEntrega ? "text-destructive" : "text-muted-foreground"}`}>
                       {excedeEntrega
                         ? <>La entrega se lleva toda la deuda: eso ya no es refinanciar, es cancelar el crédito. Cobralo desde Pagos.</>
-                        : entregaNum > 0
-                          ? <>Se cobran <strong className="text-foreground">${n2(entregaNum)}</strong> en el acto, con su recibo y su movimiento de caja. Se consolidan <strong className="text-foreground">${n2(baseNeta)}</strong>.</>
-                          : <>Si el cliente pone algo ahora, se cobra primero y el crédito nuevo nace por lo que quede.</>}
+                        : faltaEntrega
+                          ? <>Esta financiera pide una entrega de al menos <strong className="text-foreground">${n2(entregaMin)}</strong> ({entregaMinPct}% de la deuda) para refinanciar
+                            {entregaNum > 0 ? <> — faltan <strong className="text-foreground">${n2(r2(entregaMin - entregaNum))}</strong></> : null}.
+                            Si no puede juntarla, lo que corresponde es un <strong className="text-foreground">acuerdo de pago</strong>: la cuota queda parecida a la que ya tenía.</>
+                          : entregaNum > 0
+                            ? <>Se cobran <strong className="text-foreground">${n2(entregaNum)}</strong> en el acto, con su recibo y su movimiento de caja. Se consolidan <strong className="text-foreground">${n2(baseNeta)}</strong>.</>
+                            : <>Si el cliente pone algo ahora, se cobra primero y el crédito nuevo nace por lo que quede.</>}
                     </p>
                   </div>
 
