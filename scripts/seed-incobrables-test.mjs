@@ -251,7 +251,10 @@ async function main() {
         const q = cuotasRefi.find((x) => x.estado !== "pagada");
         if (q) {
           q.pagado = round2(q.pagado + c.cobradoDespuesDelCastigo);
-          q.pagado_capital = round2(q.pagado_capital + c.cobradoDespuesDelCastigo);
+          // A MORA, no a capital: es el orden que aplica el motor y el que decide cuánto
+          // saldo queda. Con esto `capitalPagado` no lo cuenta y el saldo del crédito queda
+          // en el capital entero, que es lo correcto: el recupero no llegó a tocarlo.
+          q.pagado_mora = round2((q.pagado_mora ?? 0) + c.cobradoDespuesDelCastigo);
           q.estado = "parcial";
           cobrado = round2(cobrado + c.cobradoDespuesDelCastigo);
           // Se guarda para crear el PAGO de verdad más abajo, con fecha posterior al castigo.
@@ -300,7 +303,20 @@ async function main() {
           data: {
             tenant_id: TENANT_ID, credito_id: refi.id, monto: pagoPost.monto,
             fecha: fechaPago, metodo: "efectivo",
-            aplicado_capital: pagoPost.monto, aplicado_interes: 0, aplicado_mora: 0, aplicado_cargos: 0,
+            /**
+             * 🔴 EL RECUPERO SE IMPUTA A MORA, NO A CAPITAL.
+             *
+             * Escribía `aplicado_capital: monto` a mano, salteándose el orden de imputación
+             * que el motor aplica siempre —mora, interés, cargos y recién capital (art. 903
+             * CCyC, no configurable)—. El caso sembrado quedaba mostrando algo que la app
+             * misma no puede producir: el capital pendiente bajaba $180.000,00 con
+             * $258.652,31 de mora impaga arriba.
+             *
+             * La cuota 1 de estos casos siempre tiene mora devengada mayor al recupero, así
+             * que el pago entero cae en mora y el capital no se toca. Si algún día el monto
+             * sembrado supera la mora, esto hay que pasarlo por `imputarPagoEnCuotas`.
+             */
+            aplicado_capital: 0, aplicado_interes: 0, aplicado_mora: pagoPost.monto, aplicado_cargos: 0,
             notas: "Recupero sobre deuda castigada",
           },
           select: { id: true },
@@ -309,7 +325,7 @@ async function main() {
           await tx.pago_cuota.create({
             data: {
               tenant_id: TENANT_ID, pago_id: pago.id, cuota_id: cuota.id,
-              aplicado_capital: pagoPost.monto, aplicado_interes: 0, aplicado_mora: 0, aplicado_cargos: 0,
+              aplicado_capital: 0, aplicado_interes: 0, aplicado_mora: pagoPost.monto, aplicado_cargos: 0,
             },
           });
         }

@@ -1119,6 +1119,8 @@ function CreditosTabla({ creditos, mostrarProximo, onCobrar, onCobrarAcuerdo, cl
         const acuerdoVig = c.acuerdo ?? null;
         const b = estadoBadgeCredito(c.estado, c.dias_mora ?? 0, diasLegales, acuerdoVig ? { alDia: acuerdoVig.al_dia } : null);
         const res = c.cuotas_resumen;
+        /** Cobros que siguen en pie: los anulados se revirtieron, no se cobraron. */
+        const pagosVivosDelCredito = (c.pagos ?? []).filter((p) => !p.anulado).length;
         const tieneCuotas = !!res && res.total > 0;
         const abierto = abiertos.has(c.id);
         const mora = c.dias_mora ?? 0;
@@ -1260,8 +1262,16 @@ function CreditosTabla({ creditos, mostrarProximo, onCobrar, onCobrarAcuerdo, cl
                 )}
                 {/* En un crédito dado de baja, el pie dice CUÁNDO se cobró eso: si no, un
                     "$400.000,00 · 1 pago" en verde se lee como plata entrando hoy. */}
+                {/*
+                  🔴 EL CONTEO CUENTA LOS PAGOS VIVOS, no las filas de la tabla.
+
+                  Era `c.pagos.length` a secas, así que los ANULADOS entraban en el número
+                  mientras el importe de arriba (`total_cobrado`) sí los descuenta. Un crédito
+                  con un cobro y dos reversas mostraba "$180.000,00 · 3 pagos": el pie
+                  desmentía a la cifra que estaba explicando. Un cobro anulado no es un cobro.
+                */}
                 <CifraCredito label="Cobrado" valor={`$${n2(c.total_cobrado)}`}
-                  pie={`${c.pagos?.length ?? 0} pago${(c.pagos?.length ?? 0) === 1 ? "" : "s"}${c.estado === "refinanciado" ? " · antes de refinanciarse" : ""}`}
+                  pie={`${pagosVivosDelCredito} pago${pagosVivosDelCredito === 1 ? "" : "s"}${c.estado === "refinanciado" ? " · antes de refinanciarse" : ""}`}
                   tono={muerto ? "muted" : "success"} />
               </div>
 
