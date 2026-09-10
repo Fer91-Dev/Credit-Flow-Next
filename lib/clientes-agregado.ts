@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { withTenant } from "@/app/lib/db";
 import { cuotaCerradaSinPago, calcularScore, diasMoraActual, esCreditoVivo, esClienteEnfriado, DIAS_INACTIVIDAD_COMERCIAL } from "@/lib/domain";
-import { hoyComercial } from "@/lib/utils";
+import { hoyComercial, inicioDiaAR } from "@/lib/utils";
 
 /**
  * DERIVADOS DEL CLIENTE — lo que no está guardado y se calcula del comportamiento.
@@ -181,9 +181,28 @@ export async function kpisClientes(tenantId: string): Promise<KpisClientes & { i
   });
 
   const agg = await agregarClientes(tenantId, rows);
+  /**
+   * 🔴 EL PRIMER DÍA DEL MES **ARGENTINO**, NO EL DEL SERVIDOR.
+   *
+   * Decía "en hora local del server (el tenant es de una sola plaza)" y esa suposición es
+   * falsa: el servidor es Vercel y corre en UTC. Construir el primero de mes con los getters
+   * locales daba `01/09 00:00 UTC`, que en Argentina son las 21:00 del 31/08 — así que los
+   * clientes dados de alta en las últimas tres horas del mes contaban como "nuevos" del mes
+   * siguiente.
+   *
+   * Y se da vuelta al mudar de servidor: medido, la misma línea devuelve `01/09T00:00Z` en un
+   * servidor UTC y `01/09T03:00Z` en uno argentino. Con el VPS de Brasil (UTC−3) el corte
+   * cambiaría solo, sin que nadie toque una línea.
+   *
+   * `inicioDiaAR` da el primer instante del día argentino, que es lo único que este corte
+   * quiere decir. Ver `lib/domain/fechas.ts`.
+   */
+  // `ahora` sigue siendo el INSTANTE (lo usa el corte de inactividad, que cuenta dias
+  // corridos y no depende del calendario). El corte del MES si depende, y va aparte.
   const ahora = new Date();
-  // Primer día del mes en curso, en hora local del server (el tenant es de una sola plaza).
-  const desdeMes = new Date(ahora.getFullYear(), ahora.getMonth(), 1).getTime();
+  const hoyAR = hoyComercial();
+  const primeroDelMes = `${hoyAR.getUTCFullYear()}-${String(hoyAR.getUTCMonth() + 1).padStart(2, "0")}-01`;
+  const desdeMes = inicioDiaAR(primeroDelMes).getTime();
 
   const ids = { enfriados: [] as string[], riesgo: [] as string[], nuevos: [] as string[] };
 

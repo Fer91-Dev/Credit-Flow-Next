@@ -19,6 +19,7 @@ import { readdirSync, statSync, readFileSync } from "node:fs";
 import { join, relative } from "node:path";
 
 const RAIZ = "app/api";
+const RAIZ_PROY = join(RAIZ, "..", "..");
 const METODOS = ["GET", "POST", "PUT", "PATCH", "DELETE"];
 const MUTACIONES = ["POST", "PUT", "PATCH", "DELETE"];
 
@@ -223,6 +224,72 @@ for (const f of rutas) {
 // ── Informe ──
 const ORDEN = { ALTO: 0, MEDIO: 1, BAJO: 2 };
 hallazgos.sort((a, b) => ORDEN[a.nivel] - ORDEN[b.nivel] || a.ruta.localeCompare(b.ruta));
+
+// ════════════════════════════════════════════════════════════════════════════
+// LA HORA DEL SERVIDOR NO ES LA HORA DE LA FINANCIERA
+// ════════════════════════════════════════════════════════════════════════════
+/**
+ * 🔴 POR QUÉ ESTA REGLA EXISTE.
+ *
+ * Todo el sistema razona en el día ARGENTINO (UTC−3), y para eso hay UNA definición:
+ * `hoyComercial()`, más `inicioDiaAR` / `finDiaAR` / `mesAR` para los TIMESTAMP y
+ * `ventanaDias` / `mesDeFecha` para las columnas `@db.Date`.
+ *
+ * El riesgo no es "usar UTC": es usar los getters LOCALES del servidor, porque entonces la
+ * respuesta depende de dónde esté corriendo. Medido con la misma fecha guardada
+ * (`2026-08-01T00:00:00Z`, un `@db.Date` = día pelado):
+ *
+ *     TZ=UTC                  getters locales → 2026-08-01   ✓
+ *     TZ=America/Sao_Paulo    getters locales → 2026-07-31   ✗  (el mes anterior)
+ *     TZ=…/Buenos_Aires       getters locales → 2026-07-31   ✗
+ *
+ * Hoy corre en Vercel, que es UTC, así que buena parte de eso funciona por casualidad. Con la
+ * mudanza al VPS de Brasil (UTC−3) cada uno de esos lugares se corre un día — y el primero de
+ * cada mes, un mes.
+ *
+ * NO todo uso de un getter local está mal: `d.setDate(d.getDate() + n)` es invariante al huso
+ * (conserva la hora de pared y acá no hay horario de verano), y se verificó midiéndolo. Lo que
+ * rompe es CONSTRUIR una fecha desde componentes locales — `new Date(a.getFullYear(), …)` — o
+ * LEER un día guardado con `.getDate()` para mostrarlo o agrupar por él.
+ *
+ * Por eso esto marca candidatos, no culpables: los del navegador quedan afuera (ahí "local" es
+ * la máquina del operador, que está en Argentina) y solo se mira el código de servidor.
+ */
+{
+  const SERVIDOR = [join(RAIZ_PROY, "lib"), join(RAIZ_PROY, "app", "api")];
+  /** Construir una fecha desde componentes locales, o leer un día guardado con getters locales. */
+  const CONSTRUYE = /new Date\(\s*\w+\.get(?:FullYear|Month|Date)\(\)/;
+  const LEE = /\.get(?:FullYear|Month|Date|Hours)\(\)/g;
+  /** Invariantes al huso, verificados midiéndolos: sumar/restar días u meses sobre la MISMA fecha. */
+  const INVARIANTE = /\.set(?:Date|Month|FullYear)\(\s*\w+\.get(?:Date|Month|FullYear)\(\)\s*[+-]/;
+
+  function ts(dir, acc = []) {
+    let entradas;
+    try { entradas = readdirSync(dir); } catch { return acc; }
+    for (const e of entradas) {
+      const p = join(dir, e);
+      if (statSync(p).isDirectory()) ts(p, acc);
+      else if (e.endsWith(".ts")) acc.push(p);
+    }
+    return acc;
+  }
+
+  for (const f of ts(SERVIDOR[0]).concat(ts(SERVIDOR[1]))) {
+    const rel = relative(RAIZ_PROY, f).replace(/\\/g, "/");
+    const lineas = readFileSync(f, "utf8").split("\n");
+    for (let i = 0; i < lineas.length; i++) {
+      const l = lineas[i];
+      if (/^\s*(\/\/|\*|\/\*)/.test(l)) continue;      // comentarios no
+      if (!LEE.test(l)) { LEE.lastIndex = 0; continue; }
+      LEE.lastIndex = 0;
+      if (INVARIANTE.test(l)) continue;                  // verificado invariante al huso
+      const nivel = CONSTRUYE.test(l) ? "ALTO" : "BAJO";
+      add(nivel, rel,
+        "hora local del servidor en una fecha (usar hoyComercial / inicioDiaAR / mesDeFecha)",
+        `L${i + 1}: ${l.trim().slice(0, 90)}`);
+    }
+  }
+}
 
 console.log("=".repeat(78));
 console.log("  AUDITORÍA ESTÁTICA DE LA API");
