@@ -2,7 +2,7 @@ import { requireAuth, requireRole, scopeCreditosVendedor, ApiError } from "@/lib
 import { successResponse, errorResponse, withErrorHandler, assertSameOrigin } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
-import { round2, normalizarFrecuencia, resolverFrecuencia, sumarPeriodos, construirPlanAmortizacion, planACuotas, estadoCoherente, etiquetaCaja, esCuentaValida, validarParametrosOtorgamiento, diasMoraActual, buscarPlan, nombrePlan, tasaDesdeCoeficiente, cargosConPlan, CUENTA_LABEL, type Cuenta, ESTADOS_VIVOS, ESTADOS_COBRABLES, esCreditoVivo, esCreditoCobrable, topeMoraPorIncobrable, moraDelCredito, moraDesdeCronograma, moraPendienteTotal, calcularDeudaVencida, deudaEnRevision, esTipoCreditoValido, TIPOS_CREDITO } from "@/lib/domain";
+import { puedeDarsePorIncobrableManual, round2, normalizarFrecuencia, resolverFrecuencia, sumarPeriodos, construirPlanAmortizacion, planACuotas, estadoCoherente, etiquetaCaja, esCuentaValida, validarParametrosOtorgamiento, diasMoraActual, buscarPlan, nombrePlan, tasaDesdeCoeficiente, cargosConPlan, CUENTA_LABEL, type Cuenta, ESTADOS_VIVOS, ESTADOS_COBRABLES, esCreditoVivo, esCreditoCobrable, topeMoraPorIncobrable, moraDelCredito, moraDesdeCronograma, moraPendienteTotal, calcularDeudaVencida, deudaEnRevision, esTipoCreditoValido, TIPOS_CREDITO } from "@/lib/domain";
 import { siguienteNumeroComprobante } from "@/lib/comprobantes";
 import { assertFondosSuficientesTx } from "@/lib/caja-fondos";
 import { lockNumeroCreditoTx, TX_PLATA } from "@/lib/locks";
@@ -136,6 +136,15 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
    * definición— y en una consulta por salto de cadena, no una por crédito.
    */
   const cadenas = await plataDeLaCadenaLote(tenantId, incobrables.map((c) => c.id));
+  /**
+   * Cuántas refinanciaciones hay DETRÁS de cada crédito vivo que nació de una. Hace falta
+   * para saber si la deuda ya agotó los escalones que la financiera admite, que es una de las
+   * señales de `puedeDarsePorIncobrableManual`. Solo para los que son refinanciación: en un
+   * crédito original la respuesta es 0 sin consultar nada.
+   */
+  const refis = creditos.filter((c) => c.es_refinanciacion && c.refinancia_a);
+  const cadenasRefi = refis.length > 0 ? await plataDeLaCadenaLote(tenantId, refis.map((c) => c.id)) : new Map();
+  const cfgRecupero = (await getCobranzaConfig(tenantId)).recupero;
   const cobradoPostCastigo = new Map<string, number>();
   if (incobrables.length > 0) {
     const pagos = await prisma.pagos.findMany({
@@ -265,7 +274,33 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
       ? round2(Math.max(0, proxima.cuota_total - (proxima.pagado_capital + proxima.pagado_interes + proxima.pagado_cargos)))
       : 0;
 
+    /**
+     * ¿SE PUEDE DAR POR INCOBRABLE A MANO? `null` = sí; con objeto = no, y por qué.
+     *
+     * Viaja desde acá para que la pantalla pueda deshabilitar el botón con el motivo a la
+     * vista, en vez de dejar apretar y contestar 409. La barrera de verdad sigue siendo el
+     * PATCH: esto es para que se vea antes.
+     */
+    const eslabones = cadenasRefi.get(c.id)?.eslabones ?? 1;
+    const vered = esCreditoVivo(estado)
+      ? puedeDarsePorIncobrableManual(
+          {
+            diasMora: dmora,
+            gestiones: 0, promesaPendiente: false, promesasIncumplidas: 0,
+            acuerdoVigente: !!acuerdosVig.get(c.id),
+            acuerdosRotos: 0,
+            refinanciado: false,
+            refinanciacionesEncadenadas: Math.max(0, eslabones - 1),
+          },
+          cfgRecupero,
+        )
+      : null;
+
     return { ...credito, estado, dias_mora: dmora, interes_mora, vencido, cuotas_vencidas, cuota_proxima, cobrado, capital_en_riesgo,
+      /** Por qué NO se puede dar por incobrable (null = se puede). Ver `puedeDarsePorIncobrableManual`. */
+      incobrable_bloqueo: vered && !vered.permitido ? { motivo: vered.motivo ?? "", sugerencia: vered.sugerencia ?? "" } : null,
+      /** Se puede, pero conviene saber esto antes de apretar. */
+      incobrable_advertencia: vered?.advertencia ?? null,
       /** Lo prestado y lo recuperado de TODA la cadena. Solo en los castigados. */
       prestado_cadena: cadena?.prestado ?? null, recuperado_cadena: cadena?.recuperado ?? null,
       /** Lo que pagó DESPUÉS del castigo. 0 en todo lo que no es incobrable. */

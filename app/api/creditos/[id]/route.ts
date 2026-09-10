@@ -5,9 +5,11 @@ import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { conNumeroDeOrigen } from "@/lib/creditos-numero";
 import { registrarAuditoria } from "@/lib/audit";
+import { getCobranzaConfig } from "@/lib/config";
+import { senalesRecupero } from "@/lib/recupero-server";
 import { aplicarYRegistrarStock } from "@/lib/stock";
 import { formatCreditoNumero, nombreCompleto, hoyComercial } from "@/lib/utils";
-import { validarTransicionEstado, estadoCoherente } from "@/lib/domain";
+import { puedeDarsePorIncobrableManual, validarTransicionEstado, estadoCoherente } from "@/lib/domain";
 import type { NextRequest } from "next/server";
 
 interface RouteParams {
@@ -239,6 +241,26 @@ export const PATCH = withErrorHandler(async (req: NextRequest, { params }: Route
      * mora sin que nada lo explique.
      */
     if (objetivo === "incobrable") {
+      /**
+       * 🔴 Y NO SE PUEDE DAR POR INCOBRABLE CUALQUIER COSA.
+       *
+       * El botón solo pedía ser admin, así que se podía marcar como perdido un crédito
+       * otorgado el mismo día. Eso no es una decisión contable: saca el crédito de la
+       * cartera, lo borra de morosos y de la agenda y FRENA LOS PUNITORIOS. La regla vive en
+       * el dominio (`puedeDarsePorIncobrableManual`), al lado del resto de la escalera, y es
+       * la misma que la pantalla usa para deshabilitar el botón — acá es la barrera de verdad.
+       */
+      const cobranzaCfg = await getCobranzaConfig(tenantId);
+      const senales = await senalesRecupero(tenantId, id);
+      const veredicto = puedeDarsePorIncobrableManual(senales, cobranzaCfg.recupero);
+      if (!veredicto.permitido) {
+        return errorResponse(
+          `${veredicto.motivo}${veredicto.sugerencia ? ` ${veredicto.sugerencia}` : ""}`,
+          "NO_SE_PUEDE_INCOBRABLE",
+          409,
+        );
+      }
+
       // Se lee del BODY y no de `updateData` a propósito: `incobrable_motivo` no está en la
       // lista blanca de campos editables, así que solo se puede escribir como parte de esta
       // decisión — nunca suelto, sobre un crédito que no se está declarando incobrable.

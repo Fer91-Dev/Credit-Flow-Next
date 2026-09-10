@@ -388,6 +388,12 @@ export interface VeredictoEscalera {
   motivo?: string;
   /** Qué corresponde hacer antes, para que el mensaje no sea solo una negativa. */
   sugerencia?: string;
+  /**
+   * Se puede, PERO hay algo que el que aprieta tiene que saber. No bloquea: se muestra en la
+   * confirmación. Es para los casos donde la regla no alcanza para prohibir pero tampoco
+   * conviene que la decisión se tome a ciegas.
+   */
+  advertencia?: string;
 }
 
 const PERMITIDO: VeredictoEscalera = { permitido: true };
@@ -473,6 +479,82 @@ export function debeDarsePorIncobrable(s: SenalesRecupero, cfg: RecuperoConfig):
   if (s.diasMora < cfg.dias_min_mora_refinanciar) return false;
   if (s.acuerdoVigente) return false;
   return topeCadenaAlcanzado(s, cfg);
+}
+
+/**
+ * ¿SE PUEDE DAR ESTE CRÉDITO POR INCOBRABLE A MANO?
+ *
+ * `debeDarsePorIncobrable` contesta si el sistema tiene que hacerlo SOLO. Esta contesta otra
+ * cosa: si una persona puede apretar el botón. Son distintas porque el disparador es distinto
+ * —allá es el cron, acá es un administrador que ya sabe algo del caso— pero el piso es el
+ * mismo, y no lo había: el botón solo pedía ser admin.
+ *
+ * 🔴 EL AGUJERO: se podía dar por incobrable un crédito otorgado el mismo día. Marcar plata
+ * como perdida saca el crédito de la cartera, lo borra de la lista de morosos y de la agenda,
+ * y FRENA LOS PUNITORIOS. Sobre un crédito recién otorgado eso no es una decisión contable:
+ * es un error de tipeo con consecuencias en los reportes.
+ *
+ * Lo que bloquea, y por qué solo esto:
+ *
+ *  1. **Que no esté en mora suficiente.** Es el piso duro. Se usa el umbral de la instancia
+ *     de recupero que la financiera ya configuró —el de refinanciación, o el de acuerdo si
+ *     aquel está apagado— en vez de inventar un parámetro nuevo. Si los dos están en cero, la
+ *     escalera está apagada y queda el mínimo irreductible: tiene que deber algo vencido.
+ *
+ *  2. **Que tenga un acuerdo VIGENTE.** Está cumpliendo algo que él mismo pidió; darlo por
+ *     perdido mientras paga sería castigarlo por el plan viejo, que es justo el que el
+ *     acuerdo reemplazó. Mismo criterio que la guarda automática.
+ *
+ * Lo que NO bloquea, y avisa:
+ *
+ *  · **Que todavía se pueda refinanciar.** "Se agotaron los recursos" incluye haber
+ *    intentado reestructurar, así que lo correcto sería exigirlo. Pero bloquear ahí deja sin
+ *    salida al caso real que no pasa por la escalera —el titular que desapareció, el que se
+ *    murió sin sucesión— y obligaría a simular una refinanciación para poder cerrarlo. Se
+ *    avisa en la confirmación y decide la persona, que para eso es admin y queda auditado.
+ */
+export function puedeDarsePorIncobrableManual(
+  s: SenalesRecupero,
+  cfg: RecuperoConfig,
+): VeredictoEscalera {
+  /**
+   * El umbral de la instancia de recupero. Con los dos apagados queda 1: el mínimo
+   * irreductible es que tenga UN día de atraso — o sea, que no sea un crédito al día.
+   */
+  const umbral = Math.max(
+    1,
+    cfg.dias_min_mora_refinanciar > 0 ? cfg.dias_min_mora_refinanciar : cfg.dias_min_mora_acuerdo,
+  );
+
+  if (s.diasMora < umbral) {
+    return {
+      permitido: false,
+      motivo:
+        s.diasMora <= 0
+          ? "Este crédito está al día: no hay nada que dar por perdido."
+          : `Lleva ${s.diasMora} ${s.diasMora === 1 ? "día" : "días"} de atraso y recién entra en instancia de recupero a los ${umbral}.`,
+      sugerencia: "Trabajalo por cobranza: gestionalo, tomale una promesa o armale un acuerdo.",
+    };
+  }
+
+  if (s.acuerdoVigente) {
+    return {
+      permitido: false,
+      motivo: "Tiene un acuerdo de pago vigente: está cumpliendo lo que se pactó.",
+      sugerencia: "Si dejó de pagar lo acordado, el acuerdo se rompe solo y ahí sí se puede.",
+    };
+  }
+
+  if (!topeCadenaAlcanzado(s, cfg)) {
+    return {
+      permitido: true,
+      advertencia:
+        "Esta deuda todavía se puede refinanciar. Dándola por incobrable te salteás ese escalón: " +
+        "sale de la cartera, deja de aparecer en morosos y los punitorios se frenan.",
+    };
+  }
+
+  return { permitido: true };
 }
 
 /**

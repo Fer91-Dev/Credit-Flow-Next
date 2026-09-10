@@ -312,6 +312,14 @@ export interface Credito {
   prestado_cadena?: number | null;
   recuperado_cadena?: number | null;
   /**
+   * Por qué NO se puede dar por incobrable a mano (`null` = se puede). Lo calcula el server con
+   * `puedeDarsePorIncobrableManual`; la pantalla lo usa para deshabilitar el botón con el motivo
+   * a la vista. La barrera de verdad es el PATCH.
+   */
+  incobrable_bloqueo?: { motivo: string; sugerencia: string } | null;
+  /** Se puede, pero conviene saberlo antes de apretar (ej: todavía se podría refinanciar). */
+  incobrable_advertencia?: string | null;
+  /**
    * Lo que pagó DESPUÉS de que se lo dio por incobrable. Es la señal más fuerte de la cartera
    * castigada y el motor de la oferta la usa para pedirle más: el que pagó y dejó de aparecer
    * no es lo mismo que el que apareció a pagar cuando ya nadie le reclamaba.

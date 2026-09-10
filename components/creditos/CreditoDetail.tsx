@@ -12,6 +12,7 @@ import { abrirRecibo } from "@/lib/recibo";
 import { moraDevengadaDeCuota } from "@/lib/recibo-cuota";
 import { imprimirPlanPagos } from "@/lib/plan-print";
 import { LibreDeudaDialog } from "./LibreDeudaDialog";
+import { Emoji } from "@/components/ui/Emoji";
 import { PlanDeCuotas } from "./PlanDeCuotas";
 import { StatusBadge, type BadgeVariant } from "@/components/ui/StatusBadge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -470,97 +471,132 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
     <div className="flex h-full min-h-0 flex-col">
       {/* ── Resumen ── */}
       <div className="shrink-0 border-b border-border px-7 py-5">
-        <div className="flex items-start justify-between gap-4 mb-5">
-          <div className="space-y-1.5">
-            <div className="flex items-center gap-3">
+        {/*
+          EL ENCABEZADO ES EL CONTRATO, no un titulo con un numero al costado.
+
+          Antes eran dos bloques pegados a los extremos con `justify-between` y NADA en el
+          medio: en una pantalla ancha quedaba un hueco enorme y el importe, suelto arriba a
+          la derecha, se leia como una etiqueta mas. Y las condiciones que definen la
+          operacion --tasa, plazo, frecuencia, fecha-- vivian apretadas en un renglon gris de
+          12px, que es donde va lo que no importa.
+
+          Ahora el centro lo ocupan esas condiciones, presentadas como DATOS con su rotulo, y
+          el capital pasa a una tarjeta propia que dice lo que es: la plata que se le entrego
+          a esta persona, con el importe en letras debajo --el mismo que va al pagare-- y
+          quien y cuando la entrego.
+        */}
+        <div className="mb-5 flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+          <div className="min-w-0 flex-1 space-y-3">
+            <div className="flex flex-wrap items-center gap-3">
               <span className="font-mono text-2xl font-black text-primary tracking-tight leading-none">
                 {formatCreditoNumero(credito.numero, credito.refinancia_a_numero)}
               </span>
               <StatusBadge label={est.label} variant={est.variant} />
             </div>
-            <p className="text-sm font-semibold text-foreground">{nombreCompleto(credito.cliente)}</p>
-            {/*
-              `plazo_meses` es el NÚMERO DE CUOTAS, no meses: acá decía "6 meses" para un
-              crédito de 6 cuotas SEMANALES, que se termina de pagar en mes y medio. Se nombra
-              con la frecuencia real del crédito.
-            */}
-            <p className="text-xs text-muted-foreground">
-              {credito.tipo_credito === "productos" ? "Producto" : credito.tipo_credito} · {credito.tasa}% TNA ·{" "}
-              {credito.plazo_meses} {amortizacion?.parametros.frecuencia_label.cuotaPlural ?? "cuotas"}
-            </p>
-            {/*
-              CUÁNDO y QUIÉN otorgó.
+            <p className="text-base font-semibold text-foreground">{nombreCompleto(credito.cliente)}</p>
 
-              🔴 La fecha va SIEMPRE, aunque no se sepa quién: es el dato desde el que se
-              cuenta todo lo demás —los días de atraso, la antigüedad del cliente, si el
-              crédito es viejo o de ayer— y no estaba en ninguna parte de la ficha. Para
-              saberlo había que abrir el cronograma y deducirlo del primer vencimiento.
-
-              Se usa `fecha_inicio` y no `created_at`: es la fecha desde la que corre el plan.
-              Hoy coinciden porque el simulador otorga con fecha de hoy, pero el backend acepta
-              una fecha pasada —hace falta para cargar una cartera vieja— y ahí el que importa
-              es este.
-
-              El nombre es el CONGELADO al otorgar, así sigue respondiendo aunque la cuenta ya
-              no exista. Y "atribuido a" aparece solo cuando difiere: con más de un
-              administrador, "la casa" deja de identificar a nadie.
-            */}
-            <p className="text-xs text-muted-foreground">
-              Otorgado el <span className="font-medium text-foreground">{formatFecha(credito.fecha_inicio ?? credito.created_at)}</span>
-              {credito.otorgado_por_nombre && (
-                <> · por <span className="font-medium text-foreground">{credito.otorgado_por_nombre}</span></>
-              )}
-              {credito.vendedor?.nombre && credito.vendedor.nombre !== credito.otorgado_por_nombre
-                ? <> · atribuido a {credito.vendedor.nombre}</>
-                : null}
-            </p>
             {credito.tipo_credito === "productos" && credito.producto && (
-              <p className="text-xs text-foreground flex items-center gap-1.5">
+              <p className="flex items-center gap-1.5 text-xs text-foreground">
                 <span className="inline-flex items-center rounded-md bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary ring-1 ring-inset ring-primary/20">Producto</span>
-                {credito.producto.nombre}{credito.producto_cantidad && credito.producto_cantidad > 1 ? ` ×${credito.producto_cantidad}` : ""}
+                {credito.producto.nombre}{credito.producto_cantidad && credito.producto_cantidad > 1 ? ` x${credito.producto_cantidad}` : ""}
               </p>
             )}
+
+            {/*
+              Las condiciones pactadas, cada una con su rotulo: "350%" sin decir de que no es
+              un dato, es un numero.
+
+              `plazo_meses` es el NUMERO DE CUOTAS, no meses: decia "6 meses" para un credito
+              de 6 cuotas SEMANALES, que se termina de pagar en mes y medio. Se nombra con la
+              frecuencia real del credito.
+            */}
+            <dl className="grid max-w-lg grid-cols-2 gap-x-6 gap-y-3 border-t border-border/60 pt-3 sm:grid-cols-3">
+              <div>
+                <dt className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Tasa</dt>
+                <dd className="font-mono text-sm font-semibold tabular-nums text-foreground">
+                  {credito.tasa}% <span className="font-sans text-xs font-normal text-muted-foreground">TNA</span>
+                </dd>
+              </div>
+              <div>
+                <dt className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Plazo</dt>
+                <dd className="text-sm font-semibold text-foreground">
+                  {credito.plazo_meses}{" "}
+                  <span className="text-xs font-normal text-muted-foreground">
+                    {amortizacion?.parametros.frecuencia_label.cuotaPlural ?? "cuotas"}
+                  </span>
+                </dd>
+              </div>
+              <div>
+                <dt className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Frecuencia</dt>
+                <dd className="text-sm font-semibold capitalize text-foreground">
+                  {amortizacion?.parametros.frecuencia_label.adjetivo ?? credito.frecuencia ?? "mensual"}
+                </dd>
+              </div>
+            </dl>
           </div>
 
           {/*
-            El CAPITAL OTORGADO, enfrentado al número de crédito.
+            EL PRESTAMO. Tarjeta propia, con el mismo tratamiento de elevacion que los KPI
+            (luz cenital + `rounded-2xl`) porque es el dato del que cuelga toda la operacion:
+            contra el se leen el interes, el total y lo cobrado.
 
-            No estaba en ningún lado: se confundía con "Saldo pendiente" solo mientras el
-            crédito no tuviera un peso cobrado. En cuanto entra el primer pago el saldo baja y
-            el monto original —que es la referencia de toda la operación, contra la que se lee
-            el interés, el total y lo cobrado— desaparecía de la pantalla.
-
-            Va acá y no como quinta tarjeta porque no es un ESTADO que cambia: es una condición
-            del contrato, como la tasa y el plazo. Las tarjetas de abajo muestran cómo viene el
-            crédito; el encabezado, qué se firmó.
+            El importe EN LETRAS va debajo porque es lo que se escribe en el pagare, donde la
+            letra le gana al numero si no coinciden -- poder cotejarlo contra el papel sin
+            abrir otra pantalla es el punto.
           */}
-          <div className="shrink-0 flex flex-col items-end gap-2">
-            <div className="text-right">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-                {credito.tipo_credito === "productos" ? "Capital financiado" : "Capital otorgado"}
-              </p>
-              <p className="text-2xl font-bold font-mono tabular-nums leading-tight text-foreground">
-                ${n2(credito.monto_original)}
-              </p>
-              {/* El mismo importe en letras: es lo que va al pagaré, donde la letra le gana
-                  al número si no coinciden. Verlo acá permite cotejarlo contra el papel. */}
-              <p className="mt-1 max-w-[22rem] text-[11px] leading-snug text-muted-foreground first-letter:uppercase">
-                {montoEnPalabras(credito.monto_original)}
-              </p>
+          <div className="flex shrink-0 flex-col gap-2 lg:w-[20rem]">
+            <div className="relative overflow-hidden rounded-2xl border border-border bg-card p-4 shadow-sm">
+              <span aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-px bg-white/10" />
+              <span aria-hidden className="pointer-events-none absolute inset-0 bg-gradient-to-b from-white/[0.05] to-transparent" />
+              <div className="relative">
+                <div className="flex items-center gap-2">
+                  <Emoji name="money-bag" className="h-4 w-4" />
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                    {credito.tipo_credito === "productos" ? "Financiado" : "Prestado"}
+                  </p>
+                </div>
+                <p className="mt-1.5 font-mono text-3xl font-bold leading-none tabular-nums text-foreground">
+                  ${n2(credito.monto_original)}
+                </p>
+                <p className="mt-2 text-[11px] leading-snug text-muted-foreground first-letter:uppercase">
+                  {montoEnPalabras(credito.monto_original)}
+                </p>
+                {/*
+                  CUANDO y QUIEN. Se usa `fecha_inicio` y no `created_at`: es la fecha desde la
+                  que corre el plan. Hoy coinciden porque el simulador otorga con fecha de hoy,
+                  pero el backend acepta una fecha pasada --hace falta para cargar una cartera
+                  vieja-- y ahi el que importa es este. El nombre va CONGELADO al otorgar, asi
+                  sigue respondiendo aunque la cuenta ya no exista, y "atribuido a" aparece solo
+                  cuando difiere: con mas de un administrador, "la casa" deja de identificar a
+                  nadie.
+                */}
+                <p className="mt-3 border-t border-border/60 pt-2.5 text-[11px] text-muted-foreground">
+                  Entregado el{" "}
+                  <span className="font-medium text-foreground">
+                    {formatFecha(credito.fecha_inicio ?? credito.created_at)}
+                  </span>
+                  {credito.otorgado_por_nombre && (
+                    <> por <span className="font-medium text-foreground">{credito.otorgado_por_nombre}</span></>
+                  )}
+                  {credito.vendedor?.nombre && credito.vendedor.nombre !== credito.otorgado_por_nombre
+                    ? <> - atribuido a {credito.vendedor.nombre}</>
+                    : null}
+                </p>
+              </div>
             </div>
 
-            {/* Acción destacada: refinanciar/reestructurar (solo si el crédito está en mora). */}
+            {/* Accion destacada: refinanciar/reestructurar (solo si el credito esta en mora). */}
             {refinanciable && onRefinanciar && (
-              <div className="flex flex-col items-end gap-1">
+              <div className="flex flex-col gap-1">
                 <button
                   onClick={() => onRefinanciar(credito)}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-warning/30 bg-warning/10 px-3.5 py-2 text-sm font-medium text-warning transition-colors hover:bg-warning/20"
-                  title="Consolidar la deuda vencida en un crédito nuevo (no mueve caja)"
+                  className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-warning/30 bg-warning/10 px-3.5 py-2 text-sm font-medium text-warning transition-colors hover:bg-warning/20"
+                  title="Consolidar la deuda vencida en un credito nuevo (no mueve caja)"
                 >
                   <RefreshCw className="h-4 w-4" /> Refinanciar
                 </button>
                 {credito.es_refinanciacion && (
-                  <span className="text-[10px] text-warning/80">⚠ ya proviene de otra refinanciación</span>
+                  <span className="text-center text-[10px] text-warning/80">ya proviene de otra refinanciacion</span>
                 )}
               </div>
             )}
@@ -642,10 +678,26 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
       <div className="flex-1 min-h-0 overflow-y-auto px-7 py-5 space-y-6">
 
         {/* Plan de cuotas (cronograma persistido con estado real) */}
-        <section className="space-y-2" ref={planRef}>
-          <div className="flex items-center justify-between">
+        {/*
+          EL PLAN DE CUOTAS ES LA SECCION PRINCIPAL DE ESTA PANTALLA, y no lo parecia.
+
+          Dos problemas, y el segundo costaba clics de verdad:
+
+          1. Iba suelto sobre el fondo, con un titulo de 14px al mismo peso que cualquier otro
+             renglon. Es la tabla que el operador viene a mirar: ahora va en su propia card
+             --el mismo tratamiento que el resto del SaaS-- para que se lea como un bloque y
+             no como texto corrido.
+
+          2. Su barra --las dos impresiones y COBRAR-- scrolleaba junto con la tabla. En un
+             plan de 12 cuotas, para cobrar habia que volver a subir. Ahora esa barra es
+             `sticky`: queda pegada arriba del area scrolleable mientras se recorre el plan.
+             El `-mx-*` con `px-*` la hace sangrar hasta el borde de la card para que las
+             filas no se vean pasar por debajo del fondo.
+        */}
+        <section className="overflow-hidden rounded-xl border border-border bg-card" ref={planRef}>
+          <div className="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-3 border-b border-border bg-card/95 px-4 py-3 backdrop-blur">
             <div className="flex items-center gap-2">
-              <CalendarDays className="h-4 w-4 text-muted-foreground" />
+              <Emoji name="calendar" className="h-4 w-4" />
               <h3 className="text-sm font-semibold text-foreground">Plan de cuotas</h3>
             </div>
             <div className="flex items-center gap-3">
@@ -695,6 +747,7 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
               )}
             </div>
           </div>
+          <div className="px-4 pb-4 pt-3">
           {loadingCuotas ? (
             <Skeleton className="h-48 rounded-xl" />
           ) : cuotas.length === 0 ? (
@@ -722,6 +775,7 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
               /* Sin `onCobrar`: el cobro vive solo en Pagos. Acá es de lectura. */
             />
           )}
+          </div>
         </section>
 
         {/* Trazabilidad de refinanciación (origen ↔ destino) */}
@@ -1002,10 +1056,28 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
             mismo lugar ofrece la vuelta — un estado del que no se puede salir sería una
             trampa, y el cliente que aparece a pagar todo tiene que poder volver al circuito.
           */}
+          {/*
+            🔴 Y NO SOBRE CUALQUIER CRÉDITO.
+            
+            El botón solo pedía ser admin, así que se podía marcar como perdido un crédito
+            otorgado el mismo día. Marcar plata como perdida lo saca de la cartera, lo borra de
+            morosos y de la agenda y FRENA LOS PUNITORIOS: sobre un crédito recién otorgado eso
+            no es una decisión contable, es un error con consecuencias en los reportes.
+
+            El veredicto lo calcula el server (`puedeDarsePorIncobrableManual`) y viaja en la
+            lista; el PATCH lo vuelve a chequear. Acá el botón queda deshabilitado con el
+            motivo en el título, para que se vea ANTES de apretar y no como un 409 después.
+          */}
           {role === "admin" && esCreditoVivo(credito.estado) && (
             <button
               onClick={() => { setIncobrableMotivo(""); setIncobrableOpen(true); }}
-              className={`${BTN_ACCION} hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive`}
+              disabled={!!credito.incobrable_bloqueo}
+              title={
+                credito.incobrable_bloqueo
+                  ? `${credito.incobrable_bloqueo.motivo} ${credito.incobrable_bloqueo.sugerencia}`.trim()
+                  : "Sacar la deuda de la cartera y darla por perdida"
+              }
+              className={`${BTN_ACCION} hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-border disabled:hover:bg-transparent disabled:hover:text-muted-foreground`}
             >
               <Ban className="h-3.5 w-3.5" /> Dar por incobrable
             </button>
@@ -1062,6 +1134,17 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
               queda en {formatMonto(credito.saldo_pendiente)} para reclamar por otra vía, y si el
               cliente aparece a pagar algo se le cobra igual.
             </div>
+            {/*
+              Se PUEDE, pero hay un escalón sin usar. No bloquea —el que aprieta puede saber
+              algo que el sistema no, como que el titular desapareció— pero la decisión no se
+              toma a ciegas: refinanciar es el paso que todavía queda y frenar los punitorios
+              es irreversible en la práctica.
+            */}
+            {credito.incobrable_advertencia && (
+              <div className="rounded-lg border border-warning/30 bg-warning/10 px-3 py-2.5 text-xs leading-relaxed text-foreground">
+                {credito.incobrable_advertencia}
+              </div>
+            )}
             <div className="space-y-1.5">
               <label className="text-xs font-medium text-muted-foreground">Por qué se da por incobrable</label>
               <textarea
