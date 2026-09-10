@@ -262,6 +262,42 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
     }
   }, [preview, nuevoCapital, tasaNum, plazoNum, honMonto]);
 
+  /**
+   * 🔴 EL PLAN QUE HABRIA SALIDO SIN LA ENTREGA. Existe solo para poder decir el ahorro.
+   *
+   * Es la pregunta que hace todo el mundo la primera vez, Fernando incluido: "puse
+   * $98.824,07, ¿por que el total no bajo $98.824,07?". Baja MAS — $163.245,48 — porque la
+   * entrega no descuenta del total: descuenta del CAPITAL, y ese capital ya no genera
+   * interes. Los $64.421,41 de diferencia son interes que dejo de devengarse.
+   *
+   * Sin decirlo, el numero se lee como un error de la pantalla. Dicho, es el mejor argumento
+   * que tiene el operador para pedir la entrega: cada peso que traiga le ahorra $1,65.
+   */
+  const planSinEntrega = useMemo(() => {
+    const m = preview?.motor;
+    if (!m || entregaNum <= 0) return null;
+    const capitalSinEntrega = r2(nuevoCapital + entregaNum);
+    if (capitalSinEntrega <= 0 || !isFinite(tasaNum) || tasaNum < 0 || !isFinite(plazoNum) || plazoNum < 1) return null;
+    try {
+      return construirPlanAmortizacion(
+        capitalSinEntrega, tasaNum, plazoNum, hoyComercial(),
+        m.convencion_tasa as never,
+        (preview?.sugerido.frecuencia ?? "mensual") as never,
+        {
+          cargos: {
+            ...(m.cargos as Record<string, unknown>),
+            honorariosGestion: honMonto > 0 ? { activo: true, total: honMonto } : undefined,
+          } as never,
+          redondeo: m.redondeo as never,
+          cronograma: m.cronograma as never,
+        },
+        m.frecuencias as never,
+      );
+    } catch {
+      return null;
+    }
+  }, [preview, nuevoCapital, entregaNum, tasaNum, plazoNum, honMonto]);
+
   const totalNuevo = plan ? r2(plan.cuotas.reduce((s, c) => s + c.cuotaTotal, 0)) : 0;
   /**
    * 🔴 EL INTERÉS ES EL INTERÉS, NO "TODO LO QUE NO ES CAPITAL".
@@ -945,6 +981,28 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
                       </span>
                       <span className="font-mono font-bold tabular-nums text-foreground">${n2(r2(totalNuevo + entregaNum))}</span>
                     </p>
+
+                    {/*
+                      LO QUE LE AHORRA LA ENTREGA. Va DESPUES del total, como conclusion.
+
+                      La entrega no descuenta del total: descuenta del capital, y ese capital
+                      dejo de generar interes. Por eso el total baja mas que la entrega, y por
+                      eso hay que decirlo — si no, el numero parece un error de la pantalla.
+                    */}
+                    {(() => {
+                      if (!planSinEntrega || entregaNum <= 0) return null;
+                      const totalSin = r2(planSinEntrega.cuotas.reduce((s, c) => s + c.cuotaTotal, 0));
+                      const ahorro = r2(totalSin - totalNuevo - entregaNum);
+                      if (ahorro <= 0.01) return null;
+                      return (
+                        <p className="mt-1.5 rounded-md border border-success/25 bg-success/[0.07] px-2.5 py-2 text-xs leading-relaxed text-foreground">
+                          Sin la entrega terminaba pagando <span className="font-mono">${n2(totalSin)}</span>.
+                          Poniendo <span className="font-mono font-semibold">${n2(entregaNum)}</span> hoy
+                          se ahorra <span className="font-mono font-bold text-success">${n2(ahorro)}</span> de interés:
+                          el capital baja y ese capital ya no devenga.
+                        </p>
+                      );
+                    })()}
                   </div>
                 )}
               </div>
