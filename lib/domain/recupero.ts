@@ -322,7 +322,8 @@ export const RECUPERO_DEFAULT: RecuperoConfig = {
   // Dos oportunidades: rota la segunda, el paso siguiente es refinanciar.
   max_acuerdos_rotos: 2,
   exigir_acuerdo_para_refinanciar: false,
-  dias_min_mora_refinanciar: 0,
+  // Mismo umbral que el acuerdo: uno solo gobierna todo el recupero (ver `resolverRecupero`).
+  dias_min_mora_refinanciar: 50,
   // Uno de cada diez pesos de la deuda, en el mostrador, antes de rearmar el plan.
   entrega_minima_pct: 10,
   // Apagado de fábrica, como el resto de la escalera: cortarle el cobro a un crédito vivo es
@@ -357,14 +358,35 @@ export function resolverRecupero(raw: unknown): RecuperoConfig {
   };
   return {
     exigir_gestion_para_acuerdo: r.exigir_gestion_para_acuerdo === true,
-    dias_min_mora_acuerdo: dia(r.dias_min_mora_acuerdo, RECUPERO_DEFAULT.dias_min_mora_acuerdo),
     max_acuerdos_rotos: (() => {
       const n = Number(r.max_acuerdos_rotos);
       // 0 es válido (= sin tope), así que no alcanza con `n > 0` para detectar "vino vacío".
       return Number.isFinite(n) && n >= 0 ? Math.min(20, Math.round(n)) : RECUPERO_DEFAULT.max_acuerdos_rotos;
     })(),
     exigir_acuerdo_para_refinanciar: r.exigir_acuerdo_para_refinanciar === true,
-    dias_min_mora_refinanciar: dia(r.dias_min_mora_refinanciar, RECUPERO_DEFAULT.dias_min_mora_refinanciar),
+    /**
+     * 🔴 UN SOLO UMBRAL DE DIAS PARA TODO EL RECUPERO.
+     *
+     * Eran dos numeros distintos -50 para acordar, 60 para refinanciar- y eso no describia
+     * ninguna politica: describia dos, y el operador tenia que acordarse de cual regia cual.
+     * Peor, el de refinanciar es ademas el que corta el cobro del plan viejo, asi que entre
+     * los dias 50 y 60 el credito estaba en una zona donde se podia acordar, se podia cobrar
+     * y no se podia refinanciar, sin que nada en pantalla lo dijera.
+     *
+     * Ahora es UNO: pasado ese atraso el credito entra en recupero, y ahi se abren las dos
+     * salidas -acuerdo y refinanciacion- para que el operador elija con el cliente enfrente.
+     * Decision de Fernando.
+     *
+     * Se toma el MAYOR de los dos guardados. Es lo conservador: unificar hacia abajo
+     * adelantaria el corte del cobro, que es la regla que mas mueve la operacion diaria, y
+     * eso no puede pasar por un cambio de forma de la configuracion.
+     */
+    ...(() => {
+      const acuerdo = dia(r.dias_min_mora_acuerdo, RECUPERO_DEFAULT.dias_min_mora_acuerdo);
+      const refi = dia(r.dias_min_mora_refinanciar, RECUPERO_DEFAULT.dias_min_mora_refinanciar);
+      const unico = Math.max(acuerdo, refi);
+      return { dias_min_mora_acuerdo: unico, dias_min_mora_refinanciar: unico };
+    })(),
     bloquear_cobro_sin_refinanciar: r.bloquear_cobro_sin_refinanciar === true,
     honorarios_gestion_activo: r.honorarios_gestion_activo === true,
     // Acotado a 0–100: un % fuera de rango sobre una deuda consolidada es plata de verdad.
@@ -688,15 +710,35 @@ export function puedeRefinanciar(s: SenalesRecupero, cfg: RecuperoConfig): Vered
       sugerencia: "Armale un acuerdo de pago sobre lo vencido, o pasalo a legales.",
     };
   }
+  /**
+   * 🔴 CON UN ACUERDO VIGENTE NO SE REFINANCIA. LAS DOS SALIDAS NO SE PISAN.
+   *
+   * Estaba adentro del `if` de "exigir acuerdo antes de refinanciar", asi que con esa regla
+   * apagada -que es como opera Silvio- un credito que estaba CUMPLIENDO su acuerdo aparecia
+   * en la lista de candidatos con el boton activo. Visto en la cartera de prueba: Hector
+   * Ibarra, al dia con su acuerdo de $222.036,08 por cuota, y el sistema ofreciendo
+   * reestructurarlo a $332.941,48.
+   *
+   * Son dos arreglos sobre la misma deuda y solo puede regir uno. El acuerdo ya prohibe
+   * armar un segundo mientras haya uno vigente (`crearAcuerdo`); esta es la otra mitad de
+   * esa regla, y no depende de ninguna configuracion: mientras el cliente cumpla lo que
+   * pacto, no se le cambia el trato por uno mas caro.
+   *
+   * No arma un callejon: con un acuerdo vigente el cobro sigue abierto (`puedeCobrar` lo
+   * deja pasar), y el dia que el acuerdo se rompe la refinanciacion se habilita sola.
+   */
+  if (s.acuerdoVigente) {
+    return {
+      permitido: false,
+      motivo: "Este crédito tiene un acuerdo de pago vigente: mientras lo esté cumpliendo no corresponde refinanciarlo.",
+      sugerencia: "Cobrale la cuota pactada. Si rompe el acuerdo, la refinanciación se habilita sola.",
+    };
+  }
   if (cfg.exigir_acuerdo_para_refinanciar && s.acuerdosRotos === 0) {
     return {
       permitido: false,
-      motivo: s.acuerdoVigente
-        ? "Este crédito tiene un acuerdo vigente: mientras lo esté cumpliendo no corresponde refinanciarlo."
-        : "La financiera pide agotar el acuerdo de pago antes de refinanciar.",
-      sugerencia: s.acuerdoVigente
-        ? "Esperá a que lo cumpla o a que se rompa."
-        : "Armale un acuerdo sobre lo vencido; si lo rompe, ahí sí se refinancia.",
+      motivo: "La financiera pide agotar el acuerdo de pago antes de refinanciar.",
+      sugerencia: "Armale un acuerdo sobre lo vencido; si lo rompe, ahí sí se refinancia.",
     };
   }
   return PERMITIDO;

@@ -2283,17 +2283,34 @@ export function ConfigForm() {
               />
             </div>
             <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 max-w-xl">
+              {/*
+                🔴 UN SOLO NUMERO GOBIERNA TODO EL RECUPERO.
+
+                Eran dos campos -uno aca para acordar, otro abajo para refinanciar- con dos
+                valores distintos, y eso no describia una politica sino dos. Entre un umbral y
+                el otro el credito quedaba en una zona donde se podia acordar, se podia cobrar
+                y no se podia refinanciar, sin que nada lo dijera.
+
+                Ahora este campo escribe los DOS: pasado ese atraso el credito entra en
+                recupero y se abren las dos salidas, para que el operador elija con el cliente
+                enfrente. El otro campo se saco.
+              */}
               <Field
-                label="Pasa a LEGALES a los… (días de atraso)"
+                label="Entra en RECUPERO a los… (días de atraso)"
                 hint={
                   cobranza.recupero.dias_min_mora_acuerdo > 0
-                    ? `A los ${cobranza.recupero.dias_min_mora_acuerdo} días el crédito se muestra en azul como "Legales", y recién ahí se le puede armar un acuerdo de pago.`
-                    : "0 = ningún crédito pasa a Legales y se puede acordar desde el primer día de atraso."
+                    ? `A los ${cobranza.recupero.dias_min_mora_acuerdo} días el crédito se muestra en azul como "Legales" y se abren las dos salidas: acuerdo de pago y refinanciación. Un solo umbral para las dos, para que no se pisen.`
+                    : "0 = ningún crédito pasa a Legales, y se puede acordar o refinanciar desde el primer día de atraso."
                 }
               >
                 <NumeroInput min="0" max="365" decimales={false}
                   value={cobranza.recupero.dias_min_mora_acuerdo}
-                  onValueChange={v => setRecupero({ dias_min_mora_acuerdo: Math.max(0, Math.min(365, Math.round(v))) })}
+                  onValueChange={v => {
+                    const n = Math.max(0, Math.min(365, Math.round(v)));
+                    // Los dos, siempre iguales: `resolverRecupero` los unifica igual, pero el
+                    // formulario tiene que mostrar el mismo numero que va a quedar guardado.
+                    setRecupero({ dias_min_mora_acuerdo: n, dias_min_mora_refinanciar: n });
+                  }}
                 />
               </Field>
               <Field
@@ -2348,13 +2365,23 @@ export function ConfigForm() {
             saving={savingKey === "cobranza"} saved={savedKey === "cobranza"} dirty={isDirty("cobranza")}
           >
             <EscaleraResumen r={cobranza.recupero} />
+            {/*
+              El umbral de dias NO se edita aca: es el mismo que el del acuerdo y vive en el
+              bloque de arriba. Se muestra como DATO para que quien configura las
+              refinanciaciones no tenga que ir a buscarlo -- pero un solo lugar donde se
+              cambia, o vuelven a divergir.
+            */}
+            <p className="max-w-xl rounded-lg border border-border/60 bg-muted/20 px-3 py-2 text-xs leading-relaxed text-muted-foreground">
+              {cobranza.recupero.dias_min_mora_refinanciar > 0 ? (
+                <>Se puede refinanciar a partir de los <strong className="font-mono text-foreground">{cobranza.recupero.dias_min_mora_refinanciar} días</strong> de
+                atraso — el mismo umbral con el que se habilita el acuerdo de pago. Se cambia arriba,
+                en <strong className="text-foreground">Entra en recupero a los…</strong></>
+              ) : (
+                <>Sin umbral de días: se puede refinanciar desde el primer día de atraso. Se cambia arriba,
+                en <strong className="text-foreground">Entra en recupero a los…</strong></>
+              )}
+            </p>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 max-w-xl">
-              <Field label="Días mínimos de atraso para refinanciar" hint="La refinanciación mata el crédito y crea otro: conviene reservarla para el atraso grande. 0 = sin mínimo. Si ya se agotaron los acuerdos, este mínimo no aplica: si no, el crédito quedaría sin ninguna salida.">
-                <NumeroInput min="0" max="365" decimales={false}
-                  value={cobranza.recupero.dias_min_mora_refinanciar}
-                  onValueChange={v => setRecupero({ dias_min_mora_refinanciar: Math.max(0, Math.min(365, Math.round(v))) })}
-                />
-              </Field>
               {/*
                 LA ENTREGA MÍNIMA. Es el parámetro que decide si refinanciar es un recupero o
                 una apuesta: sin plata en el mostrador se le pide una cuota bastante más cara
@@ -2795,7 +2822,7 @@ function defaultCobranza(): CobranzaConfig {
     },
     recupero: {
       exigir_gestion_para_acuerdo: false, dias_min_mora_acuerdo: 50, max_acuerdos_rotos: 2,
-      exigir_acuerdo_para_refinanciar: false, dias_min_mora_refinanciar: 0,
+      exigir_acuerdo_para_refinanciar: false, dias_min_mora_refinanciar: 50,
       bloquear_cobro_sin_refinanciar: false, entrega_minima_pct: 10,
       no_bajar_tasa_refinanciando: true, max_refinanciaciones_encadenadas: 1,
       pasar_a_incobrable_auto: false,
