@@ -327,7 +327,11 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     body.credito_id,
     recuperoCfg,
     { role, autorizacionAdmin: body.autorizacion_admin === true },
-    { entregaDe: body.entrega_de === "acuerdo" || body.entrega_de === "refinanciacion" ? body.entrega_de : undefined },
+    {
+      entregaDe: body.entrega_de === "acuerdo" || body.entrega_de === "refinanciacion" ? body.entrega_de : undefined,
+      // Habilita la regla de la campaña de recupero, que solo mira a los castigados.
+      estadoCredito: credito.estado,
+    },
   );
   const fechaPago = body.fecha ? new Date(body.fecha) : hoyComercial();
   // P2 — Un cobro no puede fecharse en el futuro (distorsiona mora, caja y reportes).

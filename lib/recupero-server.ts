@@ -108,6 +108,52 @@ function autorizaAdmin(actor?: ActorEscalera): boolean {
 }
 
 /**
+ * ¿HAY UNA OFERTA DE RECUPERO EN LA CALLE PARA ESTE CRÉDITO?
+ *
+ * Regla de Fernando: al castigado se le cobra, salvo que esté dentro de una campaña de
+ * Incobrables. El motivo es el mismo por el que un acuerdo vigente apaga el cobro del plan
+ * viejo: la campaña ya le mandó al cliente un número —"pagá $800.000,00 y cancelás todo"—
+ * y la terminal cobraría OTRO, el pleno, imputado mora → interés → cargos → capital. Dos
+ * importes sobre la misma deuda, con el cliente enfrente, y el que vale es el que se le
+ * prometió por escrito.
+ *
+ * El camino correcto cuando aparece a pagar la oferta es **cerrar el caso** desde
+ * Incobrables: cobra lo acordado, condona el resto y deja el crédito en `cancelado` con la
+ * pérdida registrada. Un cobro suelto por la terminal no condona nada, así que el cliente
+ * pagaría la oferta y seguiría debiendo.
+ *
+ * 🔴 NO ES UN PORTAZO. Si el cliente aparece con MENOS de la oferta, rechazarle la plata a un
+ * deudor castigado es lo peor que puede pasar en toda la pantalla. Por eso bloquea como el
+ * resto de la escalera: con la excepción explícita del admin (`autorizacion_admin`), que ve
+ * el motivo y decide. El vendedor no puede pisarla.
+ *
+ * Solo mira campañas `activa`: una finalizada o en borrador no le prometió nada a nadie.
+ */
+export async function veredictoCobroEnCampanaRecupero(
+  tenantId: string,
+  creditoId: string,
+  estadoCredito: string,
+): Promise<VeredictoEscalera> {
+  // Solo aplica al castigado. Un crédito del circuito normal en una campaña de MORA se sigue
+  // cobrando igual: ahí la campaña descuenta punitorios, no perdona capital.
+  if (estadoCredito !== "incobrable") return { permitido: true };
+  const objetivo = await prisma.campana_objetivo.findFirst({
+    where: {
+      ...withTenant(tenantId),
+      credito_id: creditoId,
+      campana: { estado: "activa", tipo: "recupero" },
+    },
+    select: { campana: { select: { nombre: true } } },
+  });
+  if (!objetivo) return { permitido: true };
+  return {
+    permitido: false,
+    motivo: `Este crédito está dentro de la campaña de recupero "${objetivo.campana.nombre}", que ya le ofreció al cliente un importe para cancelar toda la deuda. Cobrarle acá le imputaría otro número y seguiría debiendo.`,
+    sugerencia: "Cerrá el caso desde Incobrables: cobra lo acordado, condona el resto y deja el crédito cancelado.",
+  };
+}
+
+/**
  * Hace cumplir la escalera antes de un ACUERDO. Lanza 409 con el motivo y la sugerencia.
  * Con la config en sus defaults nunca lanza — la escalera arranca apagada.
  */
@@ -163,8 +209,18 @@ export async function assertPuedeCobrar(
   creditoId: string,
   cfg: RecuperoConfig,
   actor?: ActorEscalera,
-  opts?: { entregaDe?: "acuerdo" | "refinanciacion" },
+  opts?: { entregaDe?: "acuerdo" | "refinanciacion"; estadoCredito?: string },
 ): Promise<boolean> {
+  /**
+   * La campaña de recupero se evalúa ANTES del atajo de abajo: no depende de
+   * `bloquear_cobro_sin_refinanciar` —esa regla es la escalera del crédito vivo— y un
+   * castigado ya salió de esa escalera. Cuesta una consulta y solo para los incobrables,
+   * que son pocos por definición; el resto de los cobros no la paga.
+   */
+  const campana = await veredictoCobroEnCampanaRecupero(tenantId, creditoId, opts?.estadoCredito ?? "");
+  if (!campana.permitido) {
+    if (lanzarSiBloquea(campana, "COBRO_EN_CAMPANA_RECUPERO", actor)) return true;
+  }
   // Atajo: con la regla apagada no se consulta la base. Es el caso de casi todos los cobros,
   // y son seis consultas que no tiene sentido pagar en el camino caliente del dinero.
   if (!cfg.bloquear_cobro_sin_refinanciar) return false;
@@ -180,8 +236,11 @@ export async function assertPuedeCobrar(
  * de cobro lo pregunta al elegir el crédito.
  */
 export async function veredictoCobro(
-  tenantId: string, creditoId: string, cfg: RecuperoConfig,
+  tenantId: string, creditoId: string, cfg: RecuperoConfig, estadoCredito?: string,
 ): Promise<VeredictoEscalera> {
+  // Mismo orden que `assertPuedeCobrar`, o la pantalla diría que se puede y el server no.
+  const campana = await veredictoCobroEnCampanaRecupero(tenantId, creditoId, estadoCredito ?? "");
+  if (!campana.permitido) return campana;
   if (!cfg.bloquear_cobro_sin_refinanciar) return { permitido: true };
   return puedeCobrar(await senalesRecupero(tenantId, creditoId), cfg);
 }

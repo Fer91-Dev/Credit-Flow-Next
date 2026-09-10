@@ -117,7 +117,9 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
    * si el operador se entera del bloqueo recién al confirmar, ya le dijo un importe al cliente
    * que tiene enfrente. La barrera real sigue siendo `POST /api/pagos`; esto informa.
    */
-  const cobro = await veredictoCobro(tenantId, id, recuperoCfg);
+  // El estado va porque el veredicto incluye la regla de la campaña de recupero, que
+  // solo aplica a los castigados (ver `veredictoCobroEnCampanaRecupero`).
+  const cobro = await veredictoCobro(tenantId, id, recuperoCfg, credito.estado);
 
   /**
    * 🔴 EL DESCUENTO DE UNA CAMPAÑA VIGENTE, TAMBIÉN ACÁ.
