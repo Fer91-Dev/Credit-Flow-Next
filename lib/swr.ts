@@ -1777,6 +1777,11 @@ export interface RefinanciacionPreview {
   deuda: DeudaConsolidada;
   sugerido: { tasa: number; plazo_meses: number; frecuencia: string };
   /** Cuánto puede descontar quien hace la operación (`quitaMaxima`, la regla del POST). */
+  /**
+   * ¿La escalera admite refinanciar este crédito HOY? Viaja en el preview para que la pantalla
+   * lo diga al abrirse y no al confirmar. La barrera real es el POST.
+   */
+  bloqueo?: { permitido: boolean; motivo: string | null; sugerencia: string | null; puede_autorizar: boolean };
   limites?: {
     quita_maxima: number;
     /** Piso de entrega para poder refinanciar: % que fija la financiera y su importe. */

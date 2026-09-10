@@ -220,6 +220,13 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
     Se muestra desde el arranque y no al confirmar: el operador tiene al cliente enfrente y
     necesita saber cuanto pedirle ANTES de prometerle nada. El server lo vuelve a validar.
   */
+  /*
+    LA ESCALERA. Se llega a esta pantalla desde una lista que solo mira dias de atraso, asi
+    que puede abrirse sobre un credito que el server no admite reestructurar todavia. Sin
+    esto, el plan nuevo se armaba entero y el 409 llegaba al confirmar.
+  */
+  const bloqueoEscalera = preview?.bloqueo && preview.bloqueo.permitido === false ? preview.bloqueo : null;
+
   const entregaMinPct = preview?.limites?.entrega_minima_pct ?? 0;
   const entregaMin = preview?.limites?.entrega_minima ?? 0;
   const faltaEntrega = entregaMinPct > 0 && entregaNum < r2(entregaMin - 0.01);
@@ -270,7 +277,7 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
   const interesNuevo = plan ? r2(plan.cuotas.reduce((s, c) => s + c.interes, 0)) : 0;
 
   const valido =
-    !!preview && nuevoCapital > 0 && !excedeEntrega && !faltaEntrega && !excedeTope && !honFueraDeBanda && !tasaTrabada &&
+    !!preview && !bloqueoEscalera && nuevoCapital > 0 && !excedeEntrega && !faltaEntrega && !excedeTope && !honFueraDeBanda && !tasaTrabada &&
     isFinite(tasaNum) && tasaNum >= 0 && isFinite(plazoNum) && plazoNum >= 1;
 
   const submit = async (e: React.FormEvent) => {
@@ -414,6 +421,34 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
           </div>
         ) : (
           <form id="form-refinanciar" onSubmit={submit} className="space-y-5">
+            {/*
+              🔴 LA ESCALERA, PRIMERO DE TODO.
+
+              Si este crédito todavía no se puede refinanciar, eso va ARRIBA del formulario y
+              no abajo del botón: se llega acá desde una lista que solo mira días de atraso, y
+              hasta ahora el plan nuevo se armaba entero para que el 409 llegara al confirmar
+              —con el cliente enfrente y el número ya dicho—. El mensaje trae la alternativa
+              pegada, porque una negativa sin salida deja al operador sin qué ofrecer.
+            */}
+            {bloqueoEscalera && (
+              <div className="rounded-xl border border-destructive/40 bg-destructive/[0.07] px-4 py-3">
+                <div className="flex items-start gap-2">
+                  <Ban className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+                  <div className="space-y-1">
+                    <p className="text-xs font-semibold text-destructive">Todavía no se puede refinanciar</p>
+                    <p className="text-xs leading-relaxed text-foreground">{bloqueoEscalera.motivo}</p>
+                    {bloqueoEscalera.sugerencia && (
+                      <p className="text-xs leading-relaxed text-muted-foreground">{bloqueoEscalera.sugerencia}</p>
+                    )}
+                    {bloqueoEscalera.puede_autorizar && (
+                      <p className="text-[11px] leading-relaxed text-muted-foreground/80">
+                        Como administrador podés autorizarlo igual desde el detalle del crédito; queda registrado.
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
             {/*
               🔴 EL PLAN VIEJO SE DA DE BAJA, Y ESO SE LEE ANTES QUE CUALQUIER NÚMERO.
               Refinanciar no es cobrar: mata el plan actual y arma otro. Si la pantalla

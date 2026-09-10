@@ -196,6 +196,30 @@ export async function assertPuedeRefinanciar(
 }
 
 /**
+ * El mismo veredicto de la refinanciación, para MOSTRARLO antes de que haya nada firmado.
+ *
+ * 🔴 POR QUÉ HACE FALTA, SI YA ESTÁ EL ASSERT.
+ *
+ * El assert corre en el POST, o sea al confirmar. La pantalla de refinanciación se abre desde
+ * la lista de candidatos —que solo mira días de atraso— y hasta ahora no preguntaba nada: se
+ * armaba el plan nuevo entero, con el cliente enfrente, y el 409 llegaba al apretar
+ * "Refinanciar". Medido en dev: sobre un crédito de 9 días de atraso el preview contestaba
+ * que se podía y el POST lo rechazaba con "la financiera pide al menos 60".
+ *
+ * Es exactamente la lección de la entrega de Estela Moreno, que este archivo ya aplica al
+ * COBRO (`veredictoCobro`) y a la entrega mínima. Faltaba el escalón del medio.
+ *
+ * Sin `entregaCobrada`: el preview corre ANTES de cobrar nada, y esa corrección existe para
+ * que una entrega grande no vuelva imposible su propia refinanciación — no para levantar el
+ * piso de días de un crédito que todavía no llegó.
+ */
+export async function veredictoRefinanciar(
+  tenantId: string, creditoId: string, cfg: RecuperoConfig,
+): Promise<VeredictoEscalera> {
+  return puedeRefinanciar(await senalesRecupero(tenantId, creditoId), cfg);
+}
+
+/**
  * Hace cumplir el CIERRE de la escalera antes de un COBRO: pasado el umbral de
  * refinanciación, el plan viejo ya no se cobra.
  *

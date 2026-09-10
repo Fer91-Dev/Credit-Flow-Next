@@ -6,7 +6,7 @@ import { ESTADOS_CUOTA_CERRADA, calcularDeudaConsolidada, aplicarQuita, construi
 import { getConfiguracion, getCobranzaConfig } from "@/lib/config";
 import { quitaMaxima } from "@/lib/domain/acuerdos";
 import { lockNumeroCreditoTx, TX_PLATA } from "@/lib/locks";
-import { assertPuedeRefinanciar, assertPuedeUsarTasa } from "@/lib/recupero-server";
+import { assertPuedeRefinanciar, assertPuedeUsarTasa, veredictoRefinanciar } from "@/lib/recupero-server";
 import { bandaHonorarios, puedeUsarHonorarios, bandaTasaRefinanciacion, plazosRefinanciacion } from "@/lib/domain";
 import { registrarAuditoria } from "@/lib/audit";
 import { formatCreditoNumero, nombreCompleto, hoyComercial } from "@/lib/utils";
@@ -207,6 +207,7 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
   if ("error" in r && r.error) return r.error;
   const { credito, deuda, moraHoy, config, tenantId, role } = r as Extract<typeof r, { credito: object }>;
 
+
   /**
    * El TOPE de descuento de quien está mirando la pantalla.
    *
@@ -216,6 +217,8 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
    * cuenta paralela del cliente.
    */
   const cobranzaCfg = await getCobranzaConfig(tenantId);
+  // El veredicto de la escalera, para decirlo ANTES de armar el plan (ver `bloqueo` abajo).
+  const veredicto = await veredictoRefinanciar(tenantId, id, cobranzaCfg.recupero);
   const quitaMax = quitaMaxima({ ...deuda, cuotas_vencidas: 0, cuotas_incluidas: 0, por_vencer: 0 }, role === "admin", cobranzaCfg.acuerdos);
 
   /**
@@ -300,6 +303,18 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
       `deuda.total` aca todavia no tiene entrega descontada (el preview corre antes de
       cobrarla), asi que es la base correcta.
     */
+    /*
+      🔴 EL VEREDICTO DE LA ESCALERA, ACA. La lista de candidatos solo mira dias de
+      atraso, asi que se puede llegar a esta pantalla con un credito que el POST va a
+      rechazar. Antes eso se descubria al confirmar, con el plan nuevo ya armado y el
+      cliente enfrente. La barrera real sigue siendo el POST; esto informa.
+    */
+    bloqueo: {
+      permitido: veredicto.permitido,
+      motivo: veredicto.motivo ?? null,
+      sugerencia: veredicto.sugerencia ?? null,
+      puede_autorizar: role === "admin",
+    },
     limites: {
       quita_maxima: quitaMax,
       entrega_minima_pct: cobranzaCfg.recupero.entrega_minima_pct,
