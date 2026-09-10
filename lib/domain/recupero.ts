@@ -85,6 +85,11 @@ export interface SenalesRecupero {
   /** El crédito ya se refinanció (estado `refinanciado`). */
   refinanciado?: boolean;
   /**
+   * El crédito ya fue dado por INCOBRABLE. Es el final de la escalera: no hay un escalón
+   * siguiente que ofrecerle, así que ninguna regla puede mandarlo a uno.
+   */
+  incobrable?: boolean;
+  /**
    * Cuántas refinanciaciones hay DETRÁS de este crédito.
    *
    * 0 = es un crédito original. 1 = nació de refinanciar uno. 2 = de refinanciar una
@@ -692,6 +697,27 @@ export function puedeCobrar(
   },
 ): VeredictoEscalera {
   if (!cfg.bloquear_cobro_sin_refinanciar) return PERMITIDO;
+
+  /**
+   * 🔴 AL CASTIGADO SE LE COBRA. NO HAY ESCALON SIGUIENTE.
+   *
+   * Esta regla dice "pasado el atraso, no cobres el plan viejo: refinancialo". Sobre un
+   * crédito dado por INCOBRABLE eso no tiene sentido en ningún idioma: la financiera ya
+   * decidió que la gestión se agotó y lo sacó del circuito, y la pantalla le contestaba al
+   * operador "refinanciá el crédito" sobre una deuda que se dio por perdida.
+   *
+   * Y no era teórico: un incobrable arrastra por definición más atraso que cualquier umbral,
+   * así que la regla lo agarraba SIEMPRE. Solo se salvaban los que además ya habían agotado
+   * el tope de refinanciaciones encadenadas, por la guarda de "nunca las dos puertas
+   * cerradas" de más abajo. Los demás quedaban con el botón de cobrar a la vista y un 409 al
+   * apretarlo, justo el caso para el que existe `ESTADOS_COBRABLES`: que la plata que aparece
+   * después del castigo tenga dónde entrar.
+   *
+   * Lo que SÍ sigue frenando el cobro de un castigado es la campaña de recupero, que se
+   * evalúa aparte (`veredictoCobroEnCampanaRecupero`): ahí hay una oferta por escrito con un
+   * número distinto, y el camino es cerrar el caso.
+   */
+  if (s.incobrable) return PERMITIDO;
 
   /**
    * Sin umbral no hay "pasado el atraso". `dias_min_mora_refinanciar` en 0 significa "se

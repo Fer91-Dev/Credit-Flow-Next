@@ -78,6 +78,8 @@ export async function senalesRecupero(tenantId: string, creditoId: string): Prom
     promesasIncumplidas,
     acuerdoVigente: acuerdoVigente > 0,
     acuerdosRotos,
+    // El final de la escalera: ninguna regla puede mandarlo a un escalón siguiente.
+    incobrable: credito.estado === "incobrable",
     refinanciado: credito.estado === "refinanciado",
     refinanciacionesEncadenadas: encadenadas,
   };
@@ -263,7 +265,7 @@ export async function veredictoCobro(
  */
 export async function cobroBloqueadoPorCredito(
   tenantId: string,
-  creditos: { id: string; diasMora: number; acuerdoVigente: boolean }[],
+  creditos: { id: string; diasMora: number; acuerdoVigente: boolean; incobrable?: boolean }[],
   cfg: RecuperoConfig,
 ): Promise<Map<string, boolean>> {
   const out = new Map<string, boolean>();
@@ -315,6 +317,8 @@ export async function cobroBloqueadoPorCredito(
       {
         diasMora: c.diasMora,
         acuerdoVigente: c.acuerdoVigente,
+        // El castigado no se bloquea: la escalera se terminó para él (ver `puedeCobrar`).
+        incobrable: c.incobrable === true,
         acuerdosRotos: rotosPorCredito.get(c.id) ?? 0,
         refinanciacionesEncadenadas: profundidad.get(c.id) ?? 0,
         // No los mira `puedeCobrar` sin la excepción de la entrega; van en cero para no

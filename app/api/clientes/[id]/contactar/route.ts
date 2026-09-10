@@ -326,7 +326,9 @@ async function cargarContactable(ctx: Ctx, id: string) {
   const acuerdosVigentes = await creditosConAcuerdoVigente(ctx.tenantId);
   const bloqueadosMap = await cobroBloqueadoPorCredito(
     ctx.tenantId,
-    conMora.map((c) => ({ id: c.id, diasMora: c.dias, acuerdoVigente: acuerdosVigentes.has(c.id) })),
+    conMora.map((c) => ({ id: c.id, diasMora: c.dias, acuerdoVigente: acuerdosVigentes.has(c.id),
+      // Al castigado la escalera ya no le bloquea el cobro (ver `puedeCobrar`).
+      incobrable: c.estado === "incobrable" })),
     (await getCobranzaConfig(ctx.tenantId)).recupero,
   );
   const cobrables = conMora.filter((c) => !bloqueadosMap.get(c.id));

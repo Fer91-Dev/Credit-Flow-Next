@@ -269,7 +269,25 @@ export const PATCH = withErrorHandler(async (req: NextRequest, { params }: Route
         return errorResponse("Poné por qué se da por incobrable: queda como registro de la decisión.", "INVALID_INPUT", 400);
       }
       updateData.incobrable_motivo = motivo;
-      updateData.incobrable_at = new Date();
+      /**
+       * 🔴 `hoyComercial()`, NO `new Date()`.
+       *
+       * Guardaba el INSTANTE del click -13:05:42- mientras los pagos se fechan a medianoche
+       * UTC del dia calendario argentino, que es la unica definicion de "hoy" del sistema. La
+       * comparacion "el cobro entro despues del castigo" es `fecha >= incobrable_at`, asi que
+       * un pago del MISMO dia daba false: 00:00 < 13:05.
+       *
+       * Y ese es justo el caso tipico -se lo declara incobrable y el cliente aparece esa misma
+       * tarde-, el que el comentario de `esRecuperoPostCastigo` dice que no hay que perder.
+       * Se perdia entero: `cobrado_post_castigo` quedaba en $0,00, el motor de la oferta de
+       * recupero se quedaba sin su senal mas fuerte -y le ofrecia condiciones mas duras
+       * justamente al mejor candidato de la cartera castigada- y el badge no decia
+       * "con recupero".
+       *
+       * El cron ya lo hacia bien (`incobrable_at: hoy`). Eran dos caminos escribiendo la misma
+       * columna con dos relojes distintos.
+       */
+      updateData.incobrable_at = hoyComercial();
     } else if (existing.estado === "incobrable") {
       updateData.incobrable_at = null;
       updateData.incobrable_motivo = null;

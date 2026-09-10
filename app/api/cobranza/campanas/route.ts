@@ -335,6 +335,9 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
       id: c.id,
       diasMora: c.proximo_pago ? diasMoraActual(c.proximo_pago, hoyCorte) : c.dias_mora,
       acuerdoVigente: acuerdosVigentes.has(c.id),
+      // Los candidatos de una campaña de RECUPERO son castigados por definición, y a un
+      // castigado la escalera ya no le bloquea el cobro: no hay escalón siguiente.
+      incobrable: esCreditoIncobrable(c.estado),
     })),
     cobranzaCfg.recupero,
   );
