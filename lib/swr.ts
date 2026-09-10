@@ -185,6 +185,8 @@ export interface CreditoConFinanzas {
   interes_mora: number;
   total_cobrado: number;
   pagos: PagoImputado[];
+  /** Cuándo se lo dio por incobrable. Marca el corte entre "pagó" y "pagó DESPUÉS del castigo". */
+  incobrable_at?: string | null;
   /** Resumen del cronograma persistido (Fase 6A), derivado de los pagos reales. */
   cuotas_resumen?: {
     total: number;

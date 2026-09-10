@@ -73,7 +73,7 @@ export function CreditoPagina({ id, role }: { id: string; role?: Role }) {
               <h1 className="truncate font-mono text-base font-semibold leading-tight text-foreground">
                 {credito ? formatCreditoNumero(credito.numero, credito.refinancia_a_numero) : "Crédito"}
               </h1>
-              {credito && <StatusBadge {...estadoBadgeCredito(credito.estado, credito.dias_mora, diasLegales)} />}
+              {credito && <StatusBadge {...estadoBadgeCredito(credito.estado, credito.dias_mora, diasLegales, null, (credito.cobrado_post_castigo ?? 0) > 0)} />}
             </div>
             <p className="mt-0.5 truncate text-xs text-muted-foreground">
               {credito ? nombreCompleto(credito.cliente) : "Detalle del crédito"}

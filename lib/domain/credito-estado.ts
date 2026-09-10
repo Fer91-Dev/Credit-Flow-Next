@@ -112,6 +112,28 @@ export function topeMoraPorIncobrable(
   return corte.getTime() < hoy.getTime() ? corte : hoy;
 }
 
+/**
+ * ¿Este cobro entró DESPUÉS del castigo?
+ *
+ * Es la señal más fuerte de toda la cartera castigada: el que apareció a pagar cuando ya
+ * nadie le reclamaba no es lo mismo que el que pagó tres cuotas y desapareció. La usan el
+ * motor de la oferta de recupero, la lista de créditos y el badge de la pantalla, así que la
+ * regla vive acá y no repetida en cada uno.
+ *
+ * `>=` y no `>`: el cobro del MISMO día del castigo es el caso típico —se lo declara
+ * incobrable y el cliente aparece esa misma tarde— y descartarlo perdería justo la señal.
+ */
+export function esRecuperoPostCastigo(
+  fechaPago: Date | string,
+  incobrableAt: Date | string | null | undefined,
+): boolean {
+  if (!incobrableAt) return false;
+  const corte = incobrableAt instanceof Date ? incobrableAt : new Date(incobrableAt);
+  const f = fechaPago instanceof Date ? fechaPago : new Date(fechaPago);
+  if (Number.isNaN(corte.getTime()) || Number.isNaN(f.getTime())) return false;
+  return f.getTime() >= corte.getTime();
+}
+
 /** El más TEMPRANO de dos topes de mora (fallecimiento, incobrable). `null` = sin tope. */
 export function topeMoraMasTemprano(a: Date | null, b: Date | null): Date | null {
   if (!a) return b;

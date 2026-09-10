@@ -32,7 +32,7 @@ import { abrirRecibo } from "@/lib/recibo";
 import { moraDevengadaDeCuota } from "@/lib/recibo-cuota";
 import { CreditoLink } from "@/components/ui/CreditoLink";
 import { formatCreditoNumero, formatFecha, formatFechaHora, nombreCompleto, hoyComercial, formatDias, formatMonto } from "@/lib/utils";
-import { esCreditoVivo, esCreditoCobrable, deudaEnRevision, normalizarEstadoCliente, round2, ESTADO_CLIENTE_LABEL, ESTADO_CLIENTE_VARIANT } from "@/lib/domain";
+import { esCreditoVivo, esCreditoCobrable, esRecuperoPostCastigo, deudaEnRevision, normalizarEstadoCliente, round2, ESTADO_CLIENTE_LABEL, ESTADO_CLIENTE_VARIANT } from "@/lib/domain";
 import type { Role } from "@/lib/auth/roles";
 
 function n2(x: number) {
@@ -1117,7 +1117,14 @@ function CreditosTabla({ creditos, mostrarProximo, onCobrar, onCobrarAcuerdo, cl
         // El badge compartido: el mismo que ven Créditos y Cobranzas, Legales incluido.
         // El acuerdo vigente manda sobre todo lo que este bloque dice del crédito.
         const acuerdoVig = c.acuerdo ?? null;
-        const b = estadoBadgeCredito(c.estado, c.dias_mora ?? 0, diasLegales, acuerdoVig ? { alDia: acuerdoVig.al_dia } : null);
+        /*
+          "Con recupero": entró plata DESPUÉS del castigo. Sin esto la fila decía "Incobrable"
+          con "$180.000,00 cobrado" al lado y se leía como un error de la pantalla. Se calcula
+          acá con los pagos que la ficha ya trae —la regla es la misma del dominio— en vez de
+          pedirle un campo más al endpoint.
+        */
+        const conRecupero = (c.pagos ?? []).some((p) => !p.anulado && esRecuperoPostCastigo(p.fecha, c.incobrable_at));
+        const b = estadoBadgeCredito(c.estado, c.dias_mora ?? 0, diasLegales, acuerdoVig ? { alDia: acuerdoVig.al_dia } : null, conRecupero);
         const res = c.cuotas_resumen;
         /** Cobros que siguen en pie: los anulados se revirtieron, no se cobraron. */
         const pagosVivosDelCredito = (c.pagos ?? []).filter((p) => !p.anulado).length;

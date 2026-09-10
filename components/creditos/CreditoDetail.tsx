@@ -366,7 +366,7 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
   const puedeCobrar = esCreditoCobrable(credito.estado) && credito.saldo_pendiente > 0;
 
   // El umbral de Legales lo define la financiera (Configuración → Cobranza).
-  const est = estadoBadgeCredito(credito.estado, diasMora, diasLegales);
+  const est = estadoBadgeCredito(credito.estado, diasMora, diasLegales, null, (credito.cobrado_post_castigo ?? 0) > 0);
   const totalCobrado = pagos.filter(p => !p.anulado).reduce((s, p) => s + p.monto, 0);
   const pagosVivos = pagos.filter(p => !p.anulado).length;
   const pagosAnulados = pagos.length - pagosVivos;

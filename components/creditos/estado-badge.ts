@@ -32,12 +32,25 @@ const BADGE: Record<EstadoOperativo, { label: string; variant: BadgeVariant }> =
 /**
  * @param diasLegales A cuántos días de atraso pasa a Legales (Configuración → Cobranza).
  *                    0 = la etapa está apagada.
+ * @param conRecupero Entró plata DESPUÉS del castigo. Solo aplica a `incobrable`.
+ *
+ * 🔴 "Con recupero" NO ES UN ESTADO NUEVO: es un adjetivo sobre `incobrable`.
+ *
+ * La lista de estados del crédito ya son siete y el enum no crece por esto. Un incobrable que
+ * está recibiendo plata sigue siendo un incobrable —su capital está castigado y su mora
+ * congelada—; lo único que cambia es que el caso tiene movimiento, y eso vale decirlo porque
+ * si no la pantalla se lee como una contradicción: "Incobrable" arriba y "Cobrado
+ * $180.000,00" abajo. El color no cambia: la deuda sigue dada por perdida.
  */
 export function estadoBadgeCredito(
   estado: string | null | undefined,
   diasMora = 0,
   diasLegales = 0,
   acuerdo?: SituacionAcuerdo | null,
+  conRecupero = false,
 ): { label: string; variant: BadgeVariant } {
-  return BADGE[estadoOperativo(estado, diasMora, diasLegales, acuerdo)];
+  const op = estadoOperativo(estado, diasMora, diasLegales, acuerdo);
+  const b = BADGE[op];
+  if (op === "incobrable" && conRecupero) return { ...b, label: "Incobrable · con recupero" };
+  return b;
 }

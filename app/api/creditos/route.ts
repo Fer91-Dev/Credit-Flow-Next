@@ -2,7 +2,7 @@ import { requireAuth, requireRole, scopeCreditosVendedor, ApiError } from "@/lib
 import { successResponse, errorResponse, withErrorHandler, assertSameOrigin } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
-import { puedeDarsePorIncobrableManual, round2, normalizarFrecuencia, resolverFrecuencia, sumarPeriodos, construirPlanAmortizacion, planACuotas, estadoCoherente, etiquetaCaja, esCuentaValida, validarParametrosOtorgamiento, diasMoraActual, buscarPlan, nombrePlan, tasaDesdeCoeficiente, cargosConPlan, CUENTA_LABEL, type Cuenta, ESTADOS_VIVOS, ESTADOS_COBRABLES, esCreditoVivo, esCreditoCobrable, topeMoraPorIncobrable, moraDelCredito, moraDesdeCronograma, moraPendienteTotal, calcularDeudaVencida, deudaEnRevision, esTipoCreditoValido, TIPOS_CREDITO } from "@/lib/domain";
+import { puedeDarsePorIncobrableManual, round2, normalizarFrecuencia, resolverFrecuencia, sumarPeriodos, construirPlanAmortizacion, planACuotas, estadoCoherente, etiquetaCaja, esCuentaValida, validarParametrosOtorgamiento, diasMoraActual, buscarPlan, nombrePlan, tasaDesdeCoeficiente, cargosConPlan, CUENTA_LABEL, type Cuenta, ESTADOS_VIVOS, ESTADOS_COBRABLES, esCreditoVivo, esCreditoCobrable, topeMoraPorIncobrable, esRecuperoPostCastigo, moraDelCredito, moraDesdeCronograma, moraPendienteTotal, calcularDeudaVencida, deudaEnRevision, esTipoCreditoValido, TIPOS_CREDITO } from "@/lib/domain";
 import { siguienteNumeroComprobante } from "@/lib/comprobantes";
 import { assertFondosSuficientesTx } from "@/lib/caja-fondos";
 import { lockNumeroCreditoTx, TX_PLATA } from "@/lib/locks";
@@ -153,10 +153,9 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     });
     const castigoDe = new Map(incobrables.map((c) => [c.id, c.incobrable_at as Date]));
     for (const p of pagos) {
-      const corte = castigoDe.get(p.credito_id);
-      // `>=` y no `>`: el cobro del mismo día del castigo es el caso típico —se lo declara
-      // incobrable y el cliente aparece esa misma tarde—, y descartarlo perdería la señal.
-      if (corte && p.fecha.getTime() >= corte.getTime()) {
+      // La regla ("¿entró después del castigo?") vive en el dominio: la comparten el motor de
+      // la oferta, esta lista y el badge de la ficha del cliente.
+      if (esRecuperoPostCastigo(p.fecha, castigoDe.get(p.credito_id) ?? null)) {
         cobradoPostCastigo.set(p.credito_id, round2((cobradoPostCastigo.get(p.credito_id) ?? 0) + p.monto));
       }
     }
