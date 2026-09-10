@@ -710,34 +710,90 @@ function RefinanciadosView({ creditos, busq, setBusq, onOpen, onRefinanciar }: {
               <p className="px-1 py-4 text-center text-xs text-muted-foreground/60">Sin resultados para “{busq}”.</p>
             ) : (
               <div className="max-h-[42vh] space-y-2 overflow-auto pr-1">
-                {candFiltrados.map((c) => (
-                  <div key={c.id} className="flex items-center gap-3 rounded-lg border border-border bg-muted/10 px-3 py-2.5">
+                {candFiltrados.map((c) => {
+                  /*
+                    🔴 EL NÚMERO QUE VA ACÁ ES LA DEUDA A CONSOLIDAR, NO EL SALDO.
+
+                    Decía "SALDO $260.000,00" y la operación que abría el botón de al lado era
+                    de $604.659,31: `saldo_pendiente` es solo el capital, y refinanciar
+                    consolida capital + interés devengado + cargos + punitorios. Medido sobre
+                    los cinco candidatos de la cartera de prueba, la lista mostraba menos de la
+                    mitad en todos. `deuda_refinanciacion` lo calcula el server con la MISMA
+                    función del dominio que arma el crédito nuevo.
+                  */
+                  const aConsolidar = c.deuda_refinanciacion ?? c.saldo_pendiente;
+                  const bloqueo = c.refinanciar_bloqueo ?? null;
+                  const critico = severidadMora(c.dias_mora, tramos) === "critica";
+                  return (
+                  <div
+                    key={c.id}
+                    className={`group relative flex items-center gap-4 overflow-hidden rounded-xl border bg-card py-3 pl-4 pr-3 transition-colors ${
+                      bloqueo ? "border-border/60" : "border-border hover:border-warning/40"
+                    }`}
+                  >
+                    {/* Barra de severidad: el atraso se lee antes que ninguna palabra. */}
+                    <span
+                      aria-hidden
+                      className={`absolute inset-y-0 left-0 w-1 ${bloqueo ? "bg-muted-foreground/25" : critico ? "bg-destructive" : "bg-warning"}`}
+                    />
                     <button onClick={() => onOpen(c)} className="min-w-0 flex-1 text-left" title="Ver detalle del crédito">
+                      {/*
+                        EL N° DE CRÉDITO MANDA. Antes era un `text-xs` igual que el resto y se
+                        perdía como un texto más; es el identificador con el que el operador
+                        busca el papel. Va en el tamaño del renglón y en el color del acento.
+                      */}
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-mono text-xs font-bold text-foreground">{formatCreditoNumero(c.numero, c.refinancia_a_numero)}</span>
-                        <StatusBadge label={`${formatDias(c.dias_mora)} de mora`} variant={severidadMora(c.dias_mora, tramos) === "critica" ? "destructive" : "warning"} />
+                        <span className="font-mono text-sm font-bold tracking-tight text-primary">
+                          {formatCreditoNumero(c.numero, c.refinancia_a_numero)}
+                        </span>
+                        <StatusBadge label={`${formatDias(c.dias_mora)} de mora`} variant={critico ? "destructive" : "warning"} />
                         {c.es_refinanciacion && (
                           <span className="inline-flex items-center gap-1 rounded-full bg-warning/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-warning" title="Ya proviene de una refinanciación previa: cuidado con encadenar reestructuraciones">
                             <RefreshCw className="h-2.5 w-2.5" /> re-refi
                           </span>
                         )}
                       </div>
-                      <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                        {nombreCompleto(c.cliente)}{c.cliente.documento ? ` · DNI ${c.cliente.documento}` : ""}
-                      </p>
+                      {/*
+                        EL CLIENTE, con cara de persona y no de subtítulo gris: inicial en un
+                        chip y el nombre en el color del texto. El DNI queda de apoyo, que es
+                        el rol que tiene — se usa para confirmar, no para identificar de un
+                        vistazo.
+                      */}
+                      <div className="mt-1.5 flex items-center gap-2">
+                        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[10px] font-bold uppercase text-primary">
+                          {(c.cliente.nombre ?? "?").trim().charAt(0)}
+                        </span>
+                        <span className="min-w-0 truncate text-sm font-medium text-foreground">{nombreCompleto(c.cliente)}</span>
+                        {c.cliente.documento && (
+                          <span className="shrink-0 font-mono text-[11px] text-muted-foreground/70">DNI {c.cliente.documento}</span>
+                        )}
+                      </div>
+                      {/*
+                        El motivo del bloqueo, en la fila. Sin esto el operador aprieta y se
+                        entera al confirmar, con el cliente enfrente y el plan ya armado.
+                      */}
+                      {bloqueo && (
+                        <p className="mt-1.5 text-[11px] leading-snug text-muted-foreground">{bloqueo.motivo}</p>
+                      )}
                     </button>
                     <div className="shrink-0 text-right">
-                      <p className="text-[10px] uppercase tracking-wide text-muted-foreground/70">Saldo</p>
-                      <p className="font-mono text-xs font-semibold text-warning tabular-nums">{formatMonto(c.saldo_pendiente)}</p>
+                      <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/70">A consolidar</p>
+                      <p className={`font-mono text-base font-bold tabular-nums ${bloqueo ? "text-muted-foreground" : "text-warning"}`}>
+                        {formatMonto(aConsolidar)}
+                      </p>
+                      <p className="text-[10px] text-muted-foreground/60">capital + interés + mora</p>
                     </div>
                     <button
                       onClick={() => onRefinanciar(c)}
-                      className="shrink-0 inline-flex items-center gap-1.5 rounded-lg bg-warning/15 px-3 py-1.5 text-xs font-medium text-warning transition-colors hover:bg-warning/25"
+                      disabled={!!bloqueo}
+                      title={bloqueo ? `${bloqueo.motivo} ${bloqueo.sugerencia}`.trim() : "Consolidar esta deuda en un crédito nuevo"}
+                      className="shrink-0 inline-flex items-center gap-1.5 rounded-lg bg-warning px-3.5 py-2 text-xs font-semibold text-warning-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground disabled:opacity-100"
                     >
                       <RefreshCw className="h-3.5 w-3.5" /> Refinanciar
                     </button>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </>

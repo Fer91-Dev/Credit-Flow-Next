@@ -2,7 +2,7 @@ import { requireAuth, requireRole, scopeCreditosVendedor, ApiError } from "@/lib
 import { successResponse, errorResponse, withErrorHandler, assertSameOrigin } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
-import { puedeDarsePorIncobrableManual, round2, normalizarFrecuencia, resolverFrecuencia, sumarPeriodos, construirPlanAmortizacion, planACuotas, estadoCoherente, etiquetaCaja, esCuentaValida, validarParametrosOtorgamiento, diasMoraActual, buscarPlan, nombrePlan, tasaDesdeCoeficiente, cargosConPlan, CUENTA_LABEL, type Cuenta, ESTADOS_VIVOS, ESTADOS_COBRABLES, esCreditoVivo, esCreditoCobrable, topeMoraPorIncobrable, esRecuperoPostCastigo, moraDelCredito, moraDesdeCronograma, moraPendienteTotal, calcularDeudaVencida, deudaEnRevision, esTipoCreditoValido, TIPOS_CREDITO } from "@/lib/domain";
+import { puedeDarsePorIncobrableManual, round2, normalizarFrecuencia, resolverFrecuencia, sumarPeriodos, construirPlanAmortizacion, planACuotas, estadoCoherente, etiquetaCaja, esCuentaValida, validarParametrosOtorgamiento, diasMoraActual, buscarPlan, nombrePlan, tasaDesdeCoeficiente, cargosConPlan, CUENTA_LABEL, type Cuenta, ESTADOS_VIVOS, ESTADOS_COBRABLES, esCreditoVivo, esCreditoCobrable, topeMoraPorIncobrable, esRecuperoPostCastigo, moraDelCredito, moraDesdeCronograma, moraPendienteTotal, calcularDeudaVencida, deudaEnRevision, esTipoCreditoValido, TIPOS_CREDITO, calcularDeudaConsolidada, puedeRefinanciar } from "@/lib/domain";
 import { siguienteNumeroComprobante } from "@/lib/comprobantes";
 import { assertFondosSuficientesTx } from "@/lib/caja-fondos";
 import { lockNumeroCreditoTx, TX_PLATA } from "@/lib/locks";
@@ -145,6 +145,18 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   const refis = creditos.filter((c) => c.es_refinanciacion && c.refinancia_a);
   const cadenasRefi = refis.length > 0 ? await plataDeLaCadenaLote(tenantId, refis.map((c) => c.id)) : new Map();
   const cfgRecupero = (await getCobranzaConfig(tenantId)).recupero;
+  /**
+   * Acuerdos ROTOS por credito. Los mira `puedeRefinanciar` cuando la financiera exige haber
+   * intentado un acuerdo antes de reestructurar. Una consulta agrupada para toda la lista, no
+   * una por credito.
+   */
+  const rotosPorCredito = new Map<string, number>(
+    (await prisma.acuerdos_pago.groupBy({
+      by: ["credito_id"],
+      where: { ...withTenant(tenantId), estado: "roto", credito_id: { in: creditos.map((c) => c.id) } },
+      _count: { _all: true },
+    })).map((r) => [r.credito_id, r._count._all]),
+  );
   const cobradoPostCastigo = new Map<string, number>();
   if (incobrables.length > 0) {
     const pagos = await prisma.pagos.findMany({
@@ -224,6 +236,45 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     }
 
     /**
+     * 🔴 LO QUE SE VA A REFINANCIAR. No es el saldo, y no es lo vencido.
+     *
+     * La lista de candidatos a refinanciar mostraba `saldo_pendiente` rotulado "SALDO" y el
+     * operador entraba a la pantalla creyendo ese numero. Medido sobre la cartera de prueba:
+     *
+     *     CRD-000007   la lista decia $260.000,00   la operacion era $604.659,31
+     *     CRD-000006   la lista decia $300.000,00   la operacion era $628.950,27
+     *
+     * Mas del doble en todos los casos, porque refinanciar consolida capital + interes
+     * devengado + cargos + punitorios, y `saldo_pendiente` es solo el capital. Tampoco sirve
+     * `vencido`: ese deja afuera el capital de las cuotas que todavia no vencieron, y la
+     * refinanciacion se las lleva igual.
+     *
+     * Se calcula con `calcularDeudaConsolidada`, LA MISMA funcion que usa
+     * `POST /creditos/[id]/refinanciar` para armar el credito nuevo. Una sola definicion: si
+     * la lista tuviera la suya, volveria a divergir el dia que se toque una.
+     *
+     * Sale de las cuotas que ya se traen para la mora: cero consultas extra.
+     */
+    let deuda_refinanciacion = 0;
+    if (dmora > 0 && esCreditoVivo(c.estado) && c.cuotas.length > 0) {
+      const graciaR = (c.cronograma as { diasGracia?: number } | null)?.diasGracia ?? config.simulador.diasGracia;
+      const dc = calcularDeudaConsolidada(
+        c.cuotas.map((q) => ({
+          id: q.id, nro: q.nro, fechaVencimiento: q.fecha_vencimiento,
+          capital: q.capital, interes: q.interes, cargos: round2(q.iva + q.seguro + q.gastos),
+          cuotaTotal: q.cuota_total,
+          pagadoCapital: q.pagado_capital, pagadoInteres: q.pagado_interes,
+          pagadoMora: q.pagado_mora, pagadoCargos: q.pagado_cargos,
+        })),
+        {
+          moraActiva: mc.moraActiva, tasaMoraDiaria: mc.tasaMoraDiaria, topeMoraPct: mc.topeMoraPct,
+          diasGracia: graciaR, hoy: hoyCredito, fechaInicio: c.fecha_inicio,
+        },
+      );
+      deuda_refinanciacion = round2(dc.total);
+    }
+
+    /**
      * 🔴 CUÁNTO VOLVIÓ DE ESTE CRÉDITO, en total y desde siempre.
      *
      * Es el número que falta para negociar una deuda castigada, y no estaba en ninguna
@@ -281,28 +332,44 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
      * PATCH: esto es para que se vea antes.
      */
     const eslabones = cadenasRefi.get(c.id)?.eslabones ?? 1;
-    const vered = esCreditoVivo(estado)
-      ? puedeDarsePorIncobrableManual(
-          {
-            diasMora: dmora,
-            gestiones: 0, promesaPendiente: false, promesasIncumplidas: 0,
-            acuerdoVigente: !!acuerdosVig.get(c.id),
-            acuerdosRotos: 0,
-            refinanciado: false,
-            refinanciacionesEncadenadas: Math.max(0, eslabones - 1),
-          },
-          cfgRecupero,
-        )
-      : null;
+    /*
+      Las señales de la escalera, armadas UNA vez y usadas por los dos veredictos. Las
+      gestiones y las promesas van en cero: ninguna de las dos reglas que se evaluan aca las
+      mira, y traerlas costaria cinco consultas por credito.
+    */
+    const senales = {
+      diasMora: dmora,
+      gestiones: 0, promesaPendiente: false, promesasIncumplidas: 0,
+      acuerdoVigente: !!acuerdosVig.get(c.id),
+      acuerdosRotos: rotosPorCredito.get(c.id) ?? 0,
+      refinanciado: estado === "refinanciado",
+      refinanciacionesEncadenadas: Math.max(0, eslabones - 1),
+    };
+    const vered = esCreditoVivo(estado) ? puedeDarsePorIncobrableManual(senales, cfgRecupero) : null;
+    /**
+     * 🔴 ¿SE PUEDE REFINANCIAR HOY? `null` = si; con objeto = no, y por que.
+     *
+     * La pestaña Refinanciados armaba su lista de candidatos con "vivo y con mora" a secas, y
+     * le ofrecia el boton a creditos que el server rechaza: uno de 9 dias de atraso entraba
+     * en la lista y el 409 llegaba recien al confirmar, con el plan nuevo ya armado.
+     *
+     * Es el mismo veredicto del dominio que hace cumplir `assertPuedeRefinanciar`, asi que la
+     * lista no puede opinar distinto del endpoint.
+     */
+    const veredRefi = esCreditoVivo(estado) && dmora > 0 ? puedeRefinanciar(senales, cfgRecupero) : null;
 
     return { ...credito, estado, dias_mora: dmora, interes_mora, vencido, cuotas_vencidas, cuota_proxima, cobrado, capital_en_riesgo,
       /** Por qué NO se puede dar por incobrable (null = se puede). Ver `puedeDarsePorIncobrableManual`. */
       incobrable_bloqueo: vered && !vered.permitido ? { motivo: vered.motivo ?? "", sugerencia: vered.sugerencia ?? "" } : null,
       /** Se puede, pero conviene saber esto antes de apretar. */
       incobrable_advertencia: vered?.advertencia ?? null,
+      /** Por qué NO se puede refinanciar (null = se puede). Ver `puedeRefinanciar`. */
+      refinanciar_bloqueo: veredRefi && !veredRefi.permitido
+        ? { motivo: veredRefi.motivo ?? "", sugerencia: veredRefi.sugerencia ?? "" } : null,
       /** Lo prestado y lo recuperado de TODA la cadena. Solo en los castigados. */
       prestado_cadena: cadena?.prestado ?? null, recuperado_cadena: cadena?.recuperado ?? null,
       /** Lo que pagó DESPUÉS del castigo. 0 en todo lo que no es incobrable. */
+      deuda_refinanciacion,
       cobrado_post_castigo: cobradoPostCastigo.get(c.id) ?? 0, tiene_pagos: c.pagos.length > 0, cobros_vivos: c._count.pagos > 0, acuerdo: acuerdosVig.get(c.id) ?? null };
   });
 

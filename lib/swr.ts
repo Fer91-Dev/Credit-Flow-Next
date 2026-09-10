@@ -322,10 +322,22 @@ export interface Credito {
   /** Se puede, pero conviene saberlo antes de apretar (ej: todavía se podría refinanciar). */
   incobrable_advertencia?: string | null;
   /**
+   * Por qué NO se puede refinanciar este crédito hoy (`null` = se puede). Lo decide el mismo
+   * veredicto del dominio que hace cumplir el POST, así que la lista no puede ofrecer algo
+   * que el server vaya a rechazar.
+   */
+  refinanciar_bloqueo?: { motivo: string; sugerencia: string } | null;
+  /**
    * Lo que pagó DESPUÉS de que se lo dio por incobrable. Es la señal más fuerte de la cartera
    * castigada y el motor de la oferta la usa para pedirle más: el que pagó y dejó de aparecer
    * no es lo mismo que el que apareció a pagar cuando ya nadie le reclamaba.
    */
+  /**
+   * Lo que se consolidaria si se refinanciara HOY: capital pendiente + interes devengado +
+   * cargos + punitorios. NO es `saldo_pendiente` (solo capital) ni `vencido` (deja afuera las
+   * cuotas por vencer). Sale de la misma funcion del dominio que usa la refinanciacion.
+   */
+  deuda_refinanciacion?: number;
   cobrado_post_castigo?: number;
   /** Cuándo se dio por incobrable, y por qué. Solo con `estado === "incobrable"`. */
   incobrable_at?: string | null;
