@@ -30,43 +30,18 @@ const PROMOS = ["ninguna", "quita_interes", "quita_total"];
  */
 const TIPOS_CAMPANA = ["mora", "vencimiento", "refinanciacion", "recupero"];
 
-type CreditoMora = {
-  id: string;
-  saldo_pendiente: number;
-  dias_mora: number;
-  estado: string;
-  monto_original: number;
-  plazo_meses: number;
-  tasa: number;
-  frecuencia: string;
-  frecuencia_def: unknown;
-  cronograma: unknown;
-};
+/*
+  🔴 ACÁ VIVÍA `interesMoraDe`, Y NO LA LLAMABA NADIE.
 
-/** Interés de mora de un crédito, con el mismo criterio que GET /api/creditos. */
-function interesMoraDe(c: CreditoMora, config: ConfiguracionFinanciera): number {
-  // Condiciones del crédito, no de la config actual. Y VIVO incluye a los vencidos: un
-  // crédito al que ya se le cobró estando en mora es justamente el que va a una campaña.
-  const mc = moraDelCredito(moraDesdeCronograma(c.cronograma), config);
-  if (
-    !mc.moraActiva ||
-    c.dias_mora <= 0 ||
-    !esCreditoVivo(c.estado) ||
-    c.monto_original <= 0 ||
-    c.plazo_meses < 1
-  ) {
-    return 0;
-  }
-  const frec = normalizarFrecuencia(c.frecuencia);
-  const catFrec = c.frecuencia_def ? [c.frecuencia_def as FrecuenciaDef] : config.simulador.frecuencias;
-  // La convención CONGELADA del crédito, igual que `diasGracia` acá abajo: la oferta de la
-  // campaña no puede moverse porque alguien cambió una opción de Configuración.
-  const conv = convencionDelCredito(c.cronograma, config.convencionTasa);
-  const tasaPeriodica = tasaPeriodicaSegunConvencion(c.tasa, conv, frec, catFrec);
-  const cuota = cuotaMensualFrancesa(c.monto_original, tasaPeriodica, c.plazo_meses);
-  const gracia = (c.cronograma as { diasGracia?: number } | null)?.diasGracia ?? config.simulador.diasGracia;
-  return interesMora(cuota, c.dias_mora, { tasaDiaria: mc.tasaMoraDiaria, diasGracia: gracia, topePct: mc.topeMoraPct });
-}
+  Calculaba el punitorio con `c.dias_mora`, el CACHE, que solo se escribe al cobrar, anular,
+  refinanciar o reconciliar: nada lo avanza día a día. Un crédito que se atrasó ayer lo tiene
+  en 0. El resto de este endpoint ya usa `diasMoraActual(c.proximo_pago, hoy)` justamente por
+  eso, así que la función quedaba como la única fuente que podía contestar distinto — y lo que
+  sale de acá se le manda por WhatsApp al cliente con un importe adentro.
+
+  No fallaba porque estaba muerta. Se borra en vez de arreglarse: la mora en vivo ya está
+  resuelta abajo, y dejarla habilitada era esperar a que alguien la enchufara.
+*/
 
 /** Métricas agregadas de una campaña a partir de sus objetivos. */
 function metricasDe(
