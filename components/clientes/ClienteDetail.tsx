@@ -32,7 +32,7 @@ import { abrirRecibo } from "@/lib/recibo";
 import { moraDevengadaDeCuota } from "@/lib/recibo-cuota";
 import { CreditoLink } from "@/components/ui/CreditoLink";
 import { formatCreditoNumero, formatFecha, formatFechaHora, nombreCompleto, hoyComercial, formatDias, formatMonto } from "@/lib/utils";
-import { esCreditoVivo, deudaEnRevision, normalizarEstadoCliente, round2, ESTADO_CLIENTE_LABEL, ESTADO_CLIENTE_VARIANT } from "@/lib/domain";
+import { esCreditoVivo, esCreditoCobrable, deudaEnRevision, normalizarEstadoCliente, round2, ESTADO_CLIENTE_LABEL, ESTADO_CLIENTE_VARIANT } from "@/lib/domain";
 import type { Role } from "@/lib/auth/roles";
 
 function n2(x: number) {
@@ -206,7 +206,26 @@ export function ClienteDetail({
   const creditos = cliente.creditos ?? [];
   // VIVOS (activo + vencido): un crédito atrasado sigue siendo del cliente, no historial.
   const activos = creditos.filter((c) => esCreditoVivo(c.estado));
-  const historicos = creditos.filter((c) => !esCreditoVivo(c.estado));
+  /**
+   * 🔴 EL INCOBRABLE CON SALDO NO ES HISTORIAL: ES DEUDA QUE TODAVÍA SE COBRA.
+   *
+   * Caía en "Historial de créditos", que es una lista de solo lectura, así que el crédito
+   * quedaba a la vista pero SIN NINGÚN BOTÓN DE COBRO — ni el verde de la cuota en la
+   * terminal, ni el "Cobrar en Pagos" de la ficha. Y si era el único crédito del cliente, la
+   * pantalla mostraba además "Cliente al día, sin crédito vigente · ya canceló todo lo que
+   * debía" sobre alguien que debe $800.000,00.
+   *
+   * El backend nunca estuvo de acuerdo con eso: `POST /api/pagos` valida con
+   * `esCreditoCobrable` —no con `esCreditoVivo`— y `GET /api/creditos?estado=cobrables`
+   * devuelve los incobrables a propósito, justo para que la plata que aparece después de
+   * declararlo perdido tenga dónde entrar. Era la UI la que no ofrecía el camino.
+   *
+   * Va en su propia sección y NO adentro de "Créditos activos": salió de la cartera, y
+   * mezclarlo ahí volvería a contar como cartera sana algo que ya se castigó.
+   */
+  const enRecupero = (c: CreditoConFinanzas) => c.estado === "incobrable" && c.saldo_pendiente > 0;
+  const incobrables = creditos.filter(enRecupero);
+  const historicos = creditos.filter((c) => !esCreditoVivo(c.estado) && !enRecupero(c));
 
   // Historial de pagos del cliente (aplanado de todos sus créditos), más nuevos primero.
   const puedeAnular = cliente.puede_anular_pago === true;
@@ -381,7 +400,7 @@ export function ClienteDetail({
                       vista en el renglón de "otros agentes". El servidor rechaza igual. */}
                   {/* Trae a la terminal de cobro con este cliente ya cargado. No cobra acá:
                       el cobro es de Pagos. Solo si tiene algo vivo que cobrar. */}
-                  {showCreditos && !puedeCobrarAca && activos.length > 0 && (
+                  {showCreditos && !puedeCobrarAca && (activos.length > 0 || incobrables.length > 0) && (
                     <Link
                       href={`/pagos?cliente=${cliente.id}`}
                       className="inline-flex items-center gap-1.5 rounded-lg border border-success/30 bg-success/10 px-2.5 py-1.5 text-xs font-medium text-success transition-colors hover:bg-success/20"
@@ -761,7 +780,7 @@ export function ClienteDetail({
         )}
 
         {/* Créditos activos */}
-        {showCreditos && (
+        {showCreditos && (activos.length > 0 || incobrables.length === 0) && (
           <section className="space-y-2">
             <SectionTitle icon="credit-card" text={`Créditos activos${activos.length ? ` (${activos.length})` : ""}`} />
             {activos.length === 0 ? (
@@ -775,6 +794,24 @@ export function ClienteDetail({
                 onCobrarAcuerdo={puedeCobrarAca ? (creditoId, acuerdo) => setCobrandoAcuerdo({ creditoId, acuerdo }) : undefined}
               />
             )}
+          </section>
+        )}
+
+        {/*
+          Dados por incobrable, con la deuda todavía en pie. Se cobra igual que un activo
+          —mismo plan, misma imputación, mismo recibo—; lo único distinto es que este crédito
+          ya no cuenta como cartera.
+        */}
+        {showCreditos && incobrables.length > 0 && (
+          <section className="space-y-2">
+            <SectionTitle icon="warning" text={`Dados por incobrable, con deuda (${incobrables.length})`} />
+            <CreditosTabla
+              creditos={incobrables}
+              clienteId={cliente.id}
+              abiertoDeEntrada={esTerminal}
+              onCobrar={puedeCobrarAca ? (c, q) => setCobrando({ credito: c, cuota: q }) : undefined}
+              onCobrarAcuerdo={puedeCobrarAca ? (creditoId, acuerdo) => setCobrandoAcuerdo({ creditoId, acuerdo }) : undefined}
+            />
           </section>
         )}
 
@@ -1251,7 +1288,7 @@ function CreditosTabla({ creditos, mostrarProximo, onCobrar, onCobrarAcuerdo, cl
 
                 {/* Cobrar vive SOLO en Pagos. Donde no se cobra, el botón lleva a la terminal
                     con el cliente ya cargado en vez de desaparecer. */}
-                {esCreditoVivo(c.estado) && c.saldo_pendiente > 0 && !onCobrar && clienteId && (
+                {esCreditoCobrable(c.estado) && c.saldo_pendiente > 0 && !onCobrar && clienteId && (
                   <Link
                     href={`/pagos?cliente=${clienteId}`}
                     className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground transition-opacity hover:opacity-90"
@@ -1367,8 +1404,12 @@ function CuotasInline({ credito, onCobrar, onCobrarAcuerdo }: {
   const creditoRefiNumero = credito.refinancia_a_numero;
   const { cuotas, resumen, meta, isLoading } = useCuotas(creditoId);
   const cliente = meta?.cliente ?? null;
-  // Mismo criterio que el Detalle del crédito: solo se cobra sobre un crédito VIVO con saldo.
-  const puedeCobrar = !!onCobrar && esCreditoVivo(credito.estado) && credito.saldo_pendiente > 0;
+  /**
+   * Mismo criterio que el Detalle del crédito y que `POST /api/pagos`: se cobra sobre un
+   * crédito COBRABLE con saldo. Cobrable ≠ vivo: el incobrable salió de la cartera pero su
+   * deuda existe, y si el cliente aparece a pagar hay que poder imputarlo.
+   */
+  const puedeCobrar = !!onCobrar && esCreditoCobrable(credito.estado) && credito.saldo_pendiente > 0;
   const moraTotalDevengada = cuotas.reduce((s, q) => s + moraDevengadaDeCuota(q), 0);
   const aCobrarTotal =
     Math.round(cuotas.reduce((s, q) => s + (q.estado === "pagada" ? 0 : q.total_cobrar ?? q.cuota_total), 0) * 100) / 100;

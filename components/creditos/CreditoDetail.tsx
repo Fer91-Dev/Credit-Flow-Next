@@ -22,7 +22,7 @@ import { useConfirm } from "@/components/ui/confirm";
 import { formatCreditoNumero, formatFecha, formatDias, formatMonto, nombreCompleto } from "@/lib/utils";
 import { Stat } from "@/components/ui/Stat";
 import { Skeleton } from "@/components/ui/skeleton";
-import { esCreditoVivo, montoEnPalabras } from "@/lib/domain";
+import { esCreditoVivo, esCreditoCobrable, montoEnPalabras } from "@/lib/domain";
 
 function n2(x: number) {
   return new Intl.NumberFormat("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(x);
@@ -355,9 +355,15 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
   };
 
 
-  // Solo se puede cobrar un crédito activo con saldo pendiente.
-  /** Hay algo vivo que cobrar: es lo que decide si se ofrece el atajo a la terminal. */
-  const puedeCobrar = esCreditoVivo(credito.estado) && credito.saldo_pendiente > 0;
+  /**
+   * Hay algo que cobrar: es lo que decide si se ofrece el atajo a la terminal.
+   *
+   * 🔴 `esCreditoCobrable`, NO `esCreditoVivo` — el mismo criterio con el que valida
+   * `POST /api/pagos`. Con `esCreditoVivo` acá, un crédito dado por incobrable se abría sin
+   * botón de cobro aunque el backend aceptara el pago: el operador que tenía al cliente
+   * enfrente con la plata en la mano no encontraba por dónde entrarla.
+   */
+  const puedeCobrar = esCreditoCobrable(credito.estado) && credito.saldo_pendiente > 0;
 
   // El umbral de Legales lo define la financiera (Configuración → Cobranza).
   const est = estadoBadgeCredito(credito.estado, diasMora, diasLegales);
