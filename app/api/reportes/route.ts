@@ -53,7 +53,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
         estado: true, monto_original: true, saldo_pendiente: true,
         tasa: true, plazo_meses: true, frecuencia: true, frecuencia_def: true, dias_mora: true, proximo_pago: true,
         cronograma: true, // trae la mora congelada del crédito
-        created_at: true, es_refinanciacion: true, tipo_credito: true,
+        created_at: true, fecha_inicio: true, es_refinanciacion: true, tipo_credito: true,
         // Sin las cuotas no se puede calcular la mora real: se devenga POR CUOTA vencida.
         cuotas: { select: { fecha_vencimiento: true, cuota_total: true, pagado_mora: true } },
       },
@@ -80,11 +80,21 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
 
   // ── Operaciones otorgadas en el período (plata nueva: excluye refinanciaciones) ──
   /**
-   * `creditos.created_at` es un TIMESTAMP: se acota con los bordes del dia ARGENTINO. Con los
-   * bordes UTC (`desde`/`hasta`, que si sirven para `pagos.fecha`, que es DATE) un credito
-   * otorgado despues de las 21:00 del ultimo dia caia en el periodo siguiente.
+   * 🔴 EL PERIODO SE CORTA POR `fecha_inicio`, NO POR `created_at`.
+   *
+   * Cortaba por `created_at` —cuándo se CARGÓ el registro— y eso no es cuándo se otorgó. El
+   * sistema ya tiene una respuesta a esa pregunta y es `fecha_inicio`: con ella se fecha el
+   * asiento de DESEMBOLSO en la caja. Cortando por `created_at`, una operación cargada con
+   * fecha pasada aparecía en el reporte de un mes y su egreso en la caja de otro: dos
+   * pantallas diciendo números distintos del mismo hecho, que es exactamente lo que estas
+   * fechas están para evitar.
+   *
+   * Y al cambiar de columna cambian los bordes: `fecha_inicio` es `@db.Date` —un día pelado a
+   * medianoche UTC— así que se acota con `desde`/`hasta` (bordes UTC) y NO con los bordes
+   * argentinos, que son para los TIMESTAMP. Correrle tres horas a un DATE lo rompe.
+   * Ver `lib/domain/fechas.ts`.
    */
-  const creditosPeriodo = creditos.filter((c) => c.created_at >= desdeTs && c.created_at <= hastaTs);
+  const creditosPeriodo = creditos.filter((c) => c.fecha_inicio >= desde && c.fecha_inicio <= hasta);
   const operaciones = resumenOperaciones(creditosPeriodo);
   const tipoMap = new Map<string, { tipo: string; cantidad: number; monto: number }>();
   for (const c of creditosPeriodo) {

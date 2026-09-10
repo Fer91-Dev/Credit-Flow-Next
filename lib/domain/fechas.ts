@@ -40,6 +40,21 @@ export function mesAR(d: Date): string {
 }
 
 /**
+ * El mes (YYYY-MM) de un día guardado en una columna `@db.Date`. Para agrupar por mes.
+ *
+ * 🔴 NO ES `mesAR`, Y CONFUNDIRLOS CORRE UN MES ENTERO DE LUGAR.
+ *
+ * `mesAR` le resta tres horas porque recibe un INSTANTE. Un `@db.Date` no tiene hora: se
+ * guarda a medianoche UTC, así que restarle tres horas lo manda al día anterior — y el
+ * primero de cada mes, al mes anterior. Un crédito con `fecha_inicio` 01/08 caía en julio.
+ *
+ * Misma regla que `ventanaDias` frente a `ventanaAR`: la columna DATE no se corre.
+ */
+export function mesDeFecha(d: Date): string {
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+
+/**
  * Ventana de TIMESTAMPS que cubre un rango de días guardado en columnas `@db.Date`
  * (`[desde, hasta]`, ambos inclusivos, a medianoche UTC).
  *

@@ -465,8 +465,23 @@ export function CreditosTable({ role }: { role: Role }) {
                     )}
                   </div>
                 ) },
+              /*
+                🔴 "OTORGADO" ES `fecha_inicio`, NO `created_at`.
+
+                `created_at` es cuándo se CARGÓ el registro; `fecha_inicio` es desde cuándo
+                corre el crédito, y es la que el resto del sistema trata como la fecha del
+                otorgamiento: el detalle dice "Entregado el ..." con ella, y —lo que decide—
+                el asiento de DESEMBOLSO en la caja se fecha con ella.
+
+                Coinciden siempre que se otorga con fecha de hoy, que es el caso normal. Se
+                separan cuando se carga una operación con fecha pasada —que el backend acepta
+                a propósito, hace falta para migrar una cartera vieja— y ahí la columna decía
+                una fecha y la caja otra sobre el mismo crédito.
+
+                Sin hora: `fecha_inicio` es un `@db.Date` y no tiene una que mostrar.
+              */
               { header: "Otorgado", className: "whitespace-nowrap",
-                cell: (c) => <span className="text-xs text-muted-foreground tabular-nums">{formatFechaHora(c.created_at)}</span> },
+                cell: (c) => <span className="text-xs text-muted-foreground tabular-nums">{formatFecha(c.fecha_inicio ?? c.created_at)}</span> },
               { header: "Cliente",
                 cell: (c) => <span className="font-medium text-foreground">{nombreCompleto(c.cliente)}</span> },
               { header: "Agente",
@@ -527,7 +542,8 @@ export function CreditosTable({ role }: { role: Role }) {
                       <p className="font-mono text-[11px] text-muted-foreground">{formatCreditoNumero(c.numero, c.refinancia_a_numero)}</p>
                       <p className="font-medium text-foreground text-sm">{nombreCompleto(c.cliente)}</p>
                       <p className="text-xs text-muted-foreground mt-0.5">{c.tipo_credito === "productos" ? "Producto" : c.tipo_credito} · {c.tasa}% TNA · {c.plazo_meses}m</p>
-                      <p className="text-[10px] text-muted-foreground/70 mt-0.5">{formatFechaHora(c.created_at)} · {c.vendedor?.nombre ?? "Sin agente"}</p>
+                      {/* Misma fecha que la columna de escritorio: la del otorgamiento. */}
+                      <p className="text-[10px] text-muted-foreground/70 mt-0.5">{formatFecha(c.fecha_inicio ?? c.created_at)} · {c.vendedor?.nombre ?? "Sin agente"}</p>
                     </div>
                     <StatusBadge label={est.label} variant={est.variant} />
                   </div>

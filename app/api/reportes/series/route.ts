@@ -11,7 +11,7 @@ import {
   ingresoFinanciero,
 } from "@/lib/domain";
 import { getConfiguracion, getRentabilidadConfig } from "@/lib/config";
-import { inicioDiaAR, finDiaAR, mesAR, hoyComercial } from "@/lib/utils";
+import { inicioDiaAR, finDiaAR, mesAR, mesDeFecha, hoyComercial } from "@/lib/utils";
 import type { NextRequest } from "next/server";
 
 const MAX_MESES = 36; // cota de cómputo (reconstrucción O(meses × cuotas))
@@ -132,8 +132,13 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     if (c.es_refinanciacion || c.estado === "anulado") continue;
     // `created_at` es TIMESTAMP: bordes y mes segun el dia ARGENTINO. Con UTC, un credito
     // otorgado despues de las 21:00 del ultimo dia del mes caia en el mes siguiente.
-    if (c.created_at < desdeTs || c.created_at > hastaTs) continue;
-    const k = mesAR(c.created_at);
+    /*
+      Por `fecha_inicio`, igual que el reporte y que el asiento de desembolso en la caja
+      (ver la nota en `app/api/reportes/route.ts`). Bordes UTC y `mesDeFecha`, no `mesAR`:
+      es una columna `@db.Date` y correrle tres horas la manda al mes anterior.
+    */
+    if (c.fecha_inicio < desde || c.fecha_inicio > hasta) continue;
+    const k = mesDeFecha(c.fecha_inicio);
     const cur = otorgadoPorMes.get(k) ?? { cantidad: 0, monto: 0 };
     cur.cantidad += 1; cur.monto += c.monto_original;
     otorgadoPorMes.set(k, cur);

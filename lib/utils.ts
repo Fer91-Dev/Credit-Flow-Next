@@ -129,7 +129,7 @@ export function hoyComercial(): Date {
  *
  * Cuándo NO usarlo (columnas `@db.Date`) está documentado en el archivo del dominio.
  */
-export { inicioDiaAR, finDiaAR, mesAR, ventanaAR, ventanaDias, AR_OFFSET_MS } from "@/lib/domain/fechas";
+export { inicioDiaAR, finDiaAR, mesAR, mesDeFecha, ventanaAR, ventanaDias, AR_OFFSET_MS } from "@/lib/domain/fechas";
 
 /**
  * Días entre HOY (día argentino) y una fecha guardada como `@db.Date`. Negativo = ya pasó.
