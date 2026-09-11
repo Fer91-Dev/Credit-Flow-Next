@@ -22,7 +22,7 @@ import { useConfirm } from "@/components/ui/confirm";
 import { formatCreditoNumero, formatFecha, formatDias, formatMonto, nombreCompleto } from "@/lib/utils";
 import { Stat } from "@/components/ui/Stat";
 import { Skeleton } from "@/components/ui/skeleton";
-import { esCreditoVivo, esCreditoCobrable, montoEnPalabras } from "@/lib/domain";
+import { esCreditoVivo, esCreditoCobrable, montoEnPalabras, cargosDeCuota } from "@/lib/domain";
 
 function n2(x: number) {
   return new Intl.NumberFormat("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(x);
@@ -129,7 +129,7 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
   const capitalVencido = cuotasVencidasArr.reduce((a, q) => a + Math.max(0, q.capital - q.pagado_capital), 0);
   const interesVencido = cuotasVencidasArr.reduce((a, q) => a + Math.max(0, q.interes - (q.pagado_interes ?? 0)), 0);
   const cargosVencidos = cuotasVencidasArr.reduce(
-    (a, q) => a + Math.max(0, (q.iva + q.seguro + q.gastos) - (q.pagado_cargos ?? 0)), 0);
+    (a, q) => a + Math.max(0, cargosDeCuota(q) - (q.pagado_cargos ?? 0)), 0);
   /** La primera cuota sin saldar: es la que el operador va a cobrar. */
   const proximaCuota = cuotas.find((q) => q.estado !== "pagada") ?? null;
   /** Mora devengada de todo el plan (pie de la columna Mora). */

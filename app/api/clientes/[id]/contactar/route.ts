@@ -10,8 +10,7 @@ import {
   calcularDeudaConsolidada, calcularDeudaVencida, diasAtraso, moraDelCredito, moraDesdeCronograma, type CuotaParaImputar,
   plantillaDe, cuentaComoGestion, MOTIVO_LABEL, tipoGestionDeCanal, resolverPlantillasContacto, type MotivoContacto,
   deudaEnRevision, contactoBloqueado, resolverPlantillasMeta, renderPlantillaMeta,
-  avisoCreditosARefinanciar, PLANTILLA_SOLO_REFINANCIAR,
-} from "@/lib/domain";
+  avisoCreditosARefinanciar, PLANTILLA_SOLO_REFINANCIAR, cargosDeCuota } from "@/lib/domain";
 import { nombreCompleto, hoyComercial, formatCreditoNumero } from "@/lib/utils";
 import { cobroBloqueadoPorCredito } from "@/lib/recupero-server";
 import { creditosConAcuerdoVigente } from "@/lib/acuerdos";
@@ -379,7 +378,7 @@ async function cargarContactable(ctx: Ctx, id: string) {
   for (const c of cobrables) {
     const cuotasDom: CuotaParaImputar[] = c.cuotas.map((q) => ({
       id: q.id, nro: q.nro, fechaVencimiento: q.fecha_vencimiento,
-      capital: q.capital, interes: q.interes, cargos: round2(q.iva + q.seguro + q.gastos),
+      capital: q.capital, interes: q.interes, cargos: cargosDeCuota(q),
       cuotaTotal: q.cuota_total,
       pagadoCapital: q.pagado_capital, pagadoInteres: q.pagado_interes,
       pagadoMora: q.pagado_mora, pagadoCargos: q.pagado_cargos,

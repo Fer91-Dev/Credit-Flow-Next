@@ -683,6 +683,8 @@ export interface CuotaPersistida {
   iva: number;
   seguro: number;
   gastos: number;
+  /** Honorarios por gestión prorrateados (migración 007). 0 fuera de las refinanciaciones. */
+  honorarios?: number;
   cuota_total: number;
   estado: EstadoCuota;
   pagado_capital: number;

@@ -820,6 +820,10 @@ model cuotas {
   iva               Float    @default(0)
   seguro            Float    @default(0)
   gastos            Float    @default(0)
+  /// Honorarios por gestión de cobranza prorrateados en esta cuota. Se cobran al refinanciar
+  /// y NO capitalizan: es lo que costó gestionar, no plata prestada. Van con los cargos —
+  /// `cargosDeCuota()` en `lib/domain/cuotas.ts` es la única definición de esa suma.
+  honorarios        Float    @default(0)
   cuota_total       Float // cuota total planificada (con redondeo)
   // Estado autoritativo (escrito por el motor de pagos en 6B; en 6A se derivaba).
   estado            String   @default("pendiente") // pendiente | parcial | pagada | vencida | condonada

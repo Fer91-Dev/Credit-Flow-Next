@@ -15,7 +15,7 @@ import { ApiError } from "@/lib/auth";
 import { registrarAuditoria } from "@/lib/audit";
 import { getAuditActor } from "@/lib/audit-context";
 import { getConfiguracion, getCobranzaConfig } from "@/lib/config";
-import { calcularDeudaVencida, planDeAcuerdo, evaluarAcuerdo, quitaMaxima, round2, noNegativo, tasaPeriodicaSegunConvencion, type CuotaParaImputar, type DeudaVencida, type AcuerdosConfig, moraDelCredito, moraDesdeCronograma, puedeAcordarPorEstado } from "@/lib/domain";
+import { calcularDeudaVencida, planDeAcuerdo, evaluarAcuerdo, quitaMaxima, round2, noNegativo, tasaPeriodicaSegunConvencion, type CuotaParaImputar, type DeudaVencida, type AcuerdosConfig, moraDelCredito, moraDesdeCronograma, puedeAcordarPorEstado, cargosDeCuota } from "@/lib/domain";
 import { hoyComercial, formatCreditoNumero } from "@/lib/utils";
 import { numerosRefinanciados } from "@/lib/creditos-numero";
 import { formatComprobante } from "@/lib/comprobantes";
@@ -59,7 +59,7 @@ async function capitalizarInteresEnCuotas(
       falta: round2(
         noNegativo(c.capital - c.pagado_capital) +
         noNegativo(c.interes - c.pagado_interes) +
-        noNegativo(c.iva + c.seguro + c.gastos - c.pagado_cargos),
+        noNegativo(cargosDeCuota(c) - c.pagado_cargos),
       ),
     }))
     .filter((x) => x.falta > 0)
@@ -99,7 +99,7 @@ const SELECT_CREDITO = {
   cuotas: {
     select: {
       id: true, nro: true, fecha_vencimiento: true,
-      capital: true, interes: true, iva: true, seguro: true, gastos: true, cuota_total: true,
+      capital: true, interes: true, iva: true, seguro: true, gastos: true, honorarios: true, cuota_total: true,
       pagado_capital: true, pagado_interes: true, pagado_mora: true, pagado_cargos: true,
     },
   },
@@ -128,7 +128,7 @@ export async function deudaVencidaDeCredito(tenantId: string, creditoId: string)
     fechaVencimiento: c.fecha_vencimiento,
     capital: c.capital,
     interes: c.interes,
-    cargos: round2(c.iva + c.seguro + c.gastos),
+    cargos: cargosDeCuota(c),
     cuotaTotal: c.cuota_total,
     pagadoCapital: c.pagado_capital,
     pagadoInteres: c.pagado_interes,

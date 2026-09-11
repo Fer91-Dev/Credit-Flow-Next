@@ -1,6 +1,7 @@
 "use client";
 
 import { Printer, Check } from "lucide-react";
+import { cargosDeCuota } from "@/lib/domain";
 import { StatusBadge, type BadgeVariant } from "@/components/ui/StatusBadge";
 import type { CuotaPersistida, EstadoCuota } from "@/lib/swr";
 import { formatDias, formatFecha, formatFechaHora, formatNumero } from "@/lib/utils";
@@ -83,6 +84,16 @@ export function PlanDeCuotas({
   const pr = denso ? "pr-3" : "pr-4";
   const celda = `${px} ${py} border-b border-border/70`;
 
+  /*
+    ¿Este plan lleva cargos? Y si los lleva, ¿son SOLO honorarios de gestión? De eso depende
+    que la columna aparezca y cómo se llame: un otorgamiento normal no tiene cargos y una
+    columna de ceros es ruido, mientras que en una refinanciación el único cargo suele ser el
+    honorario y nombrarlo vale más que decir "cargos".
+  */
+  const hayCargos = cuotas.some((q) => cargosDeCuota(q) > 0);
+  const soloHonorarios = hayCargos && cuotas.every((q) => (q.iva ?? 0) + (q.seguro ?? 0) + (q.gastos ?? 0) === 0);
+  const rotuloCargos = soloHonorarios ? "Honorarios" : "Cargos";
+
   const moraTotal = cuotas.reduce((s, q) => s + moraDevengadaDeCuota(q), 0);
   /** Lo que de esa mora TODAVIA no se cobro. Decide si el total va en rojo o no. */
   const moraPendienteVista = cuotas.reduce((s, q) => s + (q.mora ?? 0), 0);
@@ -129,7 +140,20 @@ export function PlanDeCuotas({
           */}
           {/* Los encabezados son ETIQUETAS, no números: se quedan chicos aunque la tabla
               haya subido a `text-sm` para que los importes se lean. */}
-          <thead className="sticky top-0 z-10 text-xs">
+          {/*
+          🔴 LA FILA TIENE QUE CERRAR: cuota = interés + capital + cargos.
+
+          Las columnas Interés y Capital llevan "↳" porque SON la cuota abierta. Con cargos
+          encima dejaban de sumar: sobre una refinanciación con honorarios, $77.661,55 de
+          interés + $63.610,09 de capital daban $141.271,64 contra una cuota de $150.371,89, y
+          los $9.100,25 que faltaban no estaban en ninguna columna. El operador veía una resta
+          que no cierra y no tenía dónde buscar la diferencia.
+
+          La columna aparece SOLO si el plan lleva cargos —en un otorgamiento normal son cero y
+          una columna de ceros es ruido— y se nombra por lo que es: si lo único que hay son
+          honorarios de gestión, dice "Honorarios", no "Cargos".
+        */}
+        <thead className="sticky top-0 z-10 text-xs">
             <tr className="bg-muted">
               {/*
                 🔴 LOS OPERADORES EN EL ENCABEZADO. La fila ES una cuenta —cuota + mora −
@@ -146,6 +170,7 @@ export function PlanDeCuotas({
                 { t: "Cuota", a: "text-right" },
                 { t: "Interés", op: "↳", a: "text-right", w: "hidden md:table-cell" },
                 { t: "Capital", op: "↳", a: "text-right", w: "hidden md:table-cell" },
+                ...(hayCargos ? [{ t: rotuloCargos, op: "↳", a: "text-right", w: "hidden lg:table-cell" }] : []),
                 { t: "Mora", op: "+", a: "text-right" },
                 // El número del recibo es un dato que se BUSCA —el cliente llama diciendo
                 // "tengo el REC-000006"—, no un adorno del importe: va en su columna.
@@ -209,6 +234,14 @@ export function PlanDeCuotas({
                   <td className={`${celda} text-right font-mono font-medium tabular-nums text-foreground`}>${n2(q.cuota_total)}</td>
                   <td className={`${celda} hidden text-right font-mono tabular-nums text-muted-foreground md:table-cell`}>${n2(q.interes)}</td>
                   <td className={`${celda} hidden text-right font-mono tabular-nums text-muted-foreground md:table-cell`}>${n2(q.capital)}</td>
+                  {hayCargos && (
+                    <td
+                      className={`${celda} hidden text-right font-mono tabular-nums text-muted-foreground lg:table-cell`}
+                      title={soloHonorarios ? "Honorarios por gestión de cobranza, prorrateados en el plan" : "IVA, seguro, gastos y honorarios de esta cuota"}
+                    >
+                      ${n2(cargosDeCuota(q))}
+                    </td>
+                  )}
 
                   {/*
                     La MORA DEVENGADA, no la pendiente: es la que participa de la cuenta del

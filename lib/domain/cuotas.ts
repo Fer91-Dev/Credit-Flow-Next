@@ -36,7 +36,26 @@ export interface FilaCuota {
   iva: number;
   seguro: number;
   gastos: number;
+  honorarios: number;
   cuota_total: number;
+}
+
+/**
+ * LOS CARGOS DE UNA CUOTA. Una sola definición, y por eso existe.
+ *
+ * 🔴 Estaba escrita a mano en QUINCE lugares como `iva + seguro + gastos`: la imputación de
+ * pagos, la deuda vencida, la consolidación al refinanciar, el cierre de un incobrable, las
+ * campañas, la agenda, la planilla, el auditor… Agregar una cuarta columna con esa dispersión
+ * significaba que olvidar UNO dejaba la cuota con un desglose que suma menos que su
+ * `cuota_total` — y eso no es un error de presentación: `imputarPagoEnCuotas` acota lo
+ * cobrable a la suma de los componentes, así que la cuota quedaría impagable para siempre.
+ *
+ * Ahora la suma vive acá. Si mañana aparece un quinto cargo, se toca una línea.
+ */
+export function cargosDeCuota(
+  q: { iva?: number | null; seguro?: number | null; gastos?: number | null; honorarios?: number | null },
+): number {
+  return round2((q.iva ?? 0) + (q.seguro ?? 0) + (q.gastos ?? 0) + (q.honorarios ?? 0));
 }
 
 /**
@@ -53,25 +72,19 @@ export function planACuotas(plan: PlanAmortizacion): FilaCuota[] {
     iva: c.iva,
     seguro: c.seguro,
     /**
-     * 🔴 LOS HONORARIOS DE GESTIÓN VAN ADENTRO DE `gastos`, y no es un detalle contable.
+     * 🔴 LOS HONORARIOS, EN SU PROPIA COLUMNA (migración 007).
      *
-     * `cuotas` tiene tres columnas de cargo —iva, seguro y gastos— y los honorarios de una
-     * refinanciación son un cargo por cuota más, sin columna propia. Al mapear el plan se
-     * perdían: la cuota quedaba guardada con el `cuota_total` correcto (que SÍ los incluye) y
-     * un desglose que sumaba menos.
+     * Antes se sumaban a `gastos` porque `cuotas` no tenía dónde ponerlos, y ahí quedaban
+     * indistinguibles de los gastos administrativos: el cliente veía "gastos $9.100,25" sobre
+     * una refinanciación sin saber que estaba pagando el honorario de la gestión que lo llevó
+     * ahí — que es justamente el cargo que conviene tener nombrado —, y si algún día se
+     * activaban los gastos administrativos los dos conceptos se mezclaban para siempre.
      *
-     * Y eso no era solo prolijidad: `imputarPagoEnCuotas` acota lo cobrable de cada cuota a
-     * `capital + interés + (iva + seguro + gastos) + mora`. Con los honorarios afuera, cobrar
-     * la cuota completa daba SOBREPAGO y se rechazaba; y si el cliente pagaba solo hasta donde
-     * el sistema imputaba, la cuota se marcaba pagada y la financiera nunca cobraba la gestión
-     * —justamente lo que la refinanciación existe para cobrar—. Es el mismo agujero que ya
-     * había mordido con el interés del acuerdo en modo `ingreso_aparte`.
-     *
-     * Sumarlos acá cierra la aritmética de la cuota sin tocar el esquema. El desglose no se
-     * pierde: vive en el snapshot `cargos` del crédito y en la auditoría de la refinanciación.
-     * En un otorgamiento normal `honorarios` es 0, así que no cambia nada.
+     * Lo que NO cambia es que forman parte de los cargos de la cuota: `cargosDeCuota()` los
+     * suma junto con el resto, y de eso depende que la cuota se pueda cobrar entera.
      */
-    gastos: round2(c.gastos + c.honorarios),
+    gastos: c.gastos,
+    honorarios: c.honorarios,
     cuota_total: c.cuotaTotal,
   }));
 }

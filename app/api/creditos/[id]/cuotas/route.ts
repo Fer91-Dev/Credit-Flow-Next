@@ -237,6 +237,9 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
       iva: c.iva,
       seguro: c.seguro,
       gastos: c.gastos,
+      // Cuarta columna de cargo (migración 007): honorarios por gestión de una refinanciación.
+      // Sin esto la pantalla mostraba capital + interés y quedaba un hueco sin explicar.
+      honorarios: c.honorarios,
       cuota_total: c.cuota_total,
       estado,
       pagado_capital: c.pagado_capital,

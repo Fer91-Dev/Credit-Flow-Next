@@ -33,8 +33,7 @@ import { prisma } from "@/lib/prisma";
 import {
   calcularDeudaConsolidada, calcularCierreRecupero, sugerirOfertaCancelacion, resolverOfertaRecupero,
   imputarPagoEnCuotas, moraDelCredito, moraDesdeCronograma, round2, cuentaDeMetodo, etiquetaCaja,
-  esCreditoIncobrable, topeMoraPorIncobrable, type CuotaParaImputar,
-} from "@/lib/domain";
+  esCreditoIncobrable, topeMoraPorIncobrable, type CuotaParaImputar, cargosDeCuota } from "@/lib/domain";
 import { getConfiguracion, getCobranzaConfig } from "@/lib/config";
 import { plataDeLaCadena } from "@/lib/recupero-server";
 import { lockCreditoTx, assertCuotasSinCambios, TX_PLATA } from "@/lib/locks";
@@ -105,7 +104,7 @@ async function cargarCaso(req: NextRequest, id: string) {
     fechaVencimiento: c.fecha_vencimiento,
     capital: c.capital,
     interes: c.interes,
-    cargos: round2(c.iva + c.seguro + c.gastos),
+    cargos: cargosDeCuota(c),
     cuotaTotal: c.cuota_total,
     pagadoCapital: c.pagado_capital,
     pagadoInteres: c.pagado_interes,
@@ -344,7 +343,7 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
       const pagadoInteres = round2(c.pagado_interes + (a?.aplicadoInteres ?? 0));
       const pagadoMora = round2(c.pagado_mora + (a?.aplicadoMora ?? 0));
       const pagadoCargos = round2(c.pagado_cargos + (a?.aplicadoCargos ?? 0));
-      const cargosCuota = round2(c.iva + c.seguro + c.gastos);
+      const cargosCuota = cargosDeCuota(c);
 
       // Lo que queda debiéndose de esta cuota después de imputar. Sin la mora: los punitorios
       // no son parte del plan congelado y ya vienen contados en el total condonado del crédito.

@@ -162,7 +162,7 @@ export function imprimirPlanPagos(data: PlanPrintData, vista: VistaPlan): void {
     if (esOp) {
       const cargosCells = discriminar
         ? cols.map(c => `<td class="r mn cg">${formatMonto(r[c.key])}</td>`).join('') + `<td class="r mn fw pg">${formatMonto(r.cuotaTotal)}</td>`
-        : (hayCargos ? `<td class="r mn">${formatMonto(r.iva + r.seguro + r.gastos)}</td><td class="r mn fw pg">${formatMonto(r.cuotaTotal)}</td>` : '');
+        : (hayCargos ? `<td class="r mn">${formatMonto(r.iva + r.seguro + r.gastos + (r.honorarios ?? 0))}</td><td class="r mn fw pg">${formatMonto(r.cuotaTotal)}</td>` : '');
       return `<tr${ev}><td class="nm c">${r.nro}</td><td>${formatFecha(r.fecha)}</td><td class="r mn${pgCuota}">${formatMonto(r.cuota)}</td><td class="r mn">${formatMonto(r.interes)}</td><td class="r mn">${formatMonto(r.capital)}</td>${cargosCells}<td class="r mn">${formatMonto(r.saldo)}</td></tr>`;
     }
     return `<tr${ev}><td class="nm c">${r.nro} de ${nCuotas}</td><td>${formatFecha(r.fecha)}</td><td class="r mn fw">${formatMonto(r.cuotaTotal)}</td></tr>`;

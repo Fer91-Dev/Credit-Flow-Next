@@ -11,8 +11,7 @@ import { numerosRefinanciados } from "@/lib/creditos-numero";
 import { cobroBloqueadoPorCredito } from "@/lib/recupero-server";
 import {
   diasMoraActual, ESTADOS_VIVOS, calcularDeudaVencida, moraDelCredito, moraDesdeCronograma,
-  contactoBloqueado, round2, type CuotaParaImputar,
-} from "@/lib/domain";
+  contactoBloqueado, round2, type CuotaParaImputar, cargosDeCuota } from "@/lib/domain";
 import { nombreCompleto, hoyComercial, formatMonto } from "@/lib/utils";
 import type { NextRequest } from "next/server";
 
@@ -186,7 +185,7 @@ async function armarPlanilla(
 
     const cuotasDom: CuotaParaImputar[] = c.cuotas.map((q) => ({
       id: q.id, nro: q.nro, fechaVencimiento: q.fecha_vencimiento,
-      capital: q.capital, interes: q.interes, cargos: round2(q.iva + q.seguro + q.gastos),
+      capital: q.capital, interes: q.interes, cargos: cargosDeCuota(q),
       cuotaTotal: q.cuota_total,
       pagadoCapital: q.pagado_capital, pagadoInteres: q.pagado_interes,
       pagadoMora: q.pagado_mora, pagadoCargos: q.pagado_cargos,

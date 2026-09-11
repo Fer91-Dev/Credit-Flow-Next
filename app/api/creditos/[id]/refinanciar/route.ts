@@ -2,7 +2,7 @@ import { requireRole, scopeCreditosVendedor } from "@/lib/auth";
 import { successResponse, errorResponse, withErrorHandler, assertSameOrigin } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
-import { ESTADOS_CUOTA_CERRADA, calcularDeudaConsolidada, aplicarQuita, construirPlanAmortizacion, planACuotas, normalizarFrecuencia, resolverFrecuencia, round2, estadoCoherente, type CuotaParaImputar, type TipoQuita, esCreditoVivo, moraDelCredito, moraDesdeCronograma, diasMoraActual, validarParametrosOtorgamiento, deudaEnRevision, entregaMinimaRefinanciacion, sugerirRefinanciacion } from "@/lib/domain";
+import { ESTADOS_CUOTA_CERRADA, calcularDeudaConsolidada, aplicarQuita, construirPlanAmortizacion, planACuotas, normalizarFrecuencia, resolverFrecuencia, round2, estadoCoherente, type CuotaParaImputar, type TipoQuita, esCreditoVivo, moraDelCredito, moraDesdeCronograma, diasMoraActual, validarParametrosOtorgamiento, deudaEnRevision, entregaMinimaRefinanciacion, sugerirRefinanciacion, cargosDeCuota } from "@/lib/domain";
 import { getConfiguracion, getCobranzaConfig, getRiesgoConfig } from "@/lib/config";
 import { quitaMaxima } from "@/lib/domain/acuerdos";
 import { lockNumeroCreditoTx, TX_PLATA } from "@/lib/locks";
@@ -167,7 +167,7 @@ async function cargarRefinanciable(
     fechaVencimiento: c.fecha_vencimiento,
     capital: c.capital,
     interes: c.interes,
-    cargos: round2(c.iva + c.seguro + c.gastos),
+    cargos: cargosDeCuota(c),
     cuotaTotal: c.cuota_total,
     pagadoCapital: c.pagado_capital,
     pagadoInteres: c.pagado_interes,
@@ -279,7 +279,7 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
   for (const q of credito.cuotas) {
     const pend = round2(
       (q.capital - q.pagado_capital) + (q.interes - q.pagado_interes) +
-      (round2(q.iva + q.seguro + q.gastos) - q.pagado_cargos),
+      (cargosDeCuota(q) - q.pagado_cargos),
     );
     if (pend <= 0.005) continue;
     if (q.fecha_vencimiento < hoyRef) { comp.vencidas += 1; comp.monto_vencido = round2(comp.monto_vencido + pend); }

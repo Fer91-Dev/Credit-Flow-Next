@@ -167,7 +167,10 @@ for (const { tenant_id: t } of tenants) {
     const totalMal = [], pagadoMal = [], sobrepagadas = [], negativas = [];
     for (const c of creditos) {
       for (const q of c.cuotas) {
-        const compuesto = r2(q.capital + q.interes + q.iva + q.seguro + q.gastos);
+        // `honorarios` es la CUARTA columna de cargo (migracion 007). Se suma aca a mano,
+        // como el resto: un auditor que importara `cargosDeCuota` solo comprobaria que el
+        // dominio coincide consigo mismo.
+        const compuesto = r2(q.capital + q.interes + q.iva + q.seguro + q.gastos + (q.honorarios ?? 0));
         if (Math.abs(compuesto - q.cuota_total) > EPS) {
           totalMal.push(`${crd(c.numero)} cta ${q.nro}: ${m$(q.cuota_total)} vs ${m$(compuesto)}`);
         }
