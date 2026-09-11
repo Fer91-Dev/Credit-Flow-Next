@@ -166,7 +166,18 @@ export function PlanDeCuotas({
           una columna de ceros es ruido— y se nombra por lo que es: si lo único que hay son
           honorarios de gestión, dice "Honorarios", no "Cargos".
         */}
-        <thead className="sticky top-0 z-10 text-xs">
+        {/*
+          🔴 EL `sticky` SOLO TIENE SENTIDO CON UN CONTENEDOR QUE SCROLLEE.
+
+          Sin alto acotado no hay a qué pegarse dentro de la tarjeta, así que el encabezado se
+          pega al SCROLL DE LA PÁGINA: queda flotando arriba de todo mientras las filas le
+          pasan por debajo, y eso se lee exactamente como el scroll interno que se vino a
+          sacar. Fernando lo vio enseguida: "la tabla sigue teniendo un scroll".
+
+          Con la sección plegable la tabla se abre entera y no hace falta: el encabezado se va
+          de pantalla con sus filas, como cualquier tabla.
+        */}
+        <thead className={`text-xs ${sinAlto ? "" : "sticky top-0 z-10"}`}>
             <tr className="bg-muted">
               {/*
                 🔴 LOS OPERADORES EN EL ENCABEZADO. La fila ES una cuenta —cuota + mora −
@@ -419,7 +430,7 @@ export function PlanDeCuotas({
             })}
           </tbody>
 
-          <tfoot className="sticky bottom-0 z-10">
+          <tfoot className={sinAlto ? "" : "sticky bottom-0 z-10"}>
             <tr className="bg-muted">
               <td colSpan={2} className={`${px} ${py} border-t border-border text-[10px] font-bold uppercase tracking-widest text-muted-foreground`}>
                 Totales
@@ -433,6 +444,22 @@ export function PlanDeCuotas({
               <td className={`${px} ${py} hidden border-t border-border text-right font-mono font-bold tabular-nums text-muted-foreground md:table-cell`}>
                 ${n2(cuotas.reduce((s, q) => s + q.capital, 0))}
               </td>
+              {/*
+                🔴 LA CELDA DE HONORARIOS FALTABA, Y CORRIA TODA LA FILA UN LUGAR.
+
+                Al sumar la columna al encabezado y al cuerpo me olvide del pie: el total de
+                MORA caia debajo de HONORARIOS y el de A COBRAR debajo de COMPROBANTE. Una fila
+                de totales desalineada es peor que no tenerla -- el operador lee el numero que
+                esta debajo de la columna equivocada y se lo dicta al cliente.
+
+                Va condicionada igual que las otras dos: si la columna no existe, la celda
+                tampoco, o el corrimiento pasa a ser al reves.
+              */}
+              {hayCargos && (
+                <td className={`${px} ${py} hidden border-t border-border text-right font-mono font-bold tabular-nums text-muted-foreground lg:table-cell`}>
+                  ${n2(cuotas.reduce((s, q) => s + cargosDeCuota(q), 0))}
+                </td>
+              )}
               {/*
                 🔴 EL TOTAL DE MORA EN ROJO SOBRE UN CREDITO YA PAGADO. `moraTotal` es la
                 DEVENGADA (pendiente + ya cobrada), asi que en un credito saldado son
