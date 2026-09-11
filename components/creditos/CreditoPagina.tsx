@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, RefreshCcw } from "lucide-react";
 import { CreditoDetail } from "./CreditoDetail";
 import { SystemControls } from "@/components/ui/SystemControls";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -69,10 +69,28 @@ export function CreditoPagina({ id, role }: { id: string; role?: Role }) {
               24px, badge y nombre -- asi que la pantalla arrancaba diciendo dos veces lo mismo
               y le comia al plan de cuotas el alto que necesita para verse sin scroll.
             */}
-            <div className="flex min-w-0 items-center gap-2">
-              <h1 className="truncate font-mono text-base font-semibold leading-tight text-foreground">
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
+              {/*
+                🔴 EN UNA REFINANCIACIÓN EL NÚMERO VA EN ÁMBAR, no en el color del texto.
+
+                El prefijo "REF-" ya lo dice, pero un prefijo se lee y un color se ve: la
+                pantalla tiene que anunciar que esto NO es un crédito común antes de que nadie
+                lea nada. Es el mismo ámbar del badge "Refinanciado" y de la tarjeta de abajo:
+                un solo color para un solo concepto, en toda la pantalla.
+              */}
+              <h1 className={`truncate font-mono text-base font-semibold leading-tight ${
+                credito?.es_refinanciacion ? "text-warning" : "text-foreground"
+              }`}>
                 {credito ? formatCreditoNumero(credito.numero, credito.refinancia_a_numero) : "Crédito"}
               </h1>
+              {credito?.es_refinanciacion && (
+                <span
+                  className="inline-flex shrink-0 items-center gap-1 rounded-full bg-warning/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-warning ring-1 ring-inset ring-warning/30"
+                  title="Este crédito nació de reestructurar otro: su capital es deuda consolidada, no plata prestada"
+                >
+                  <RefreshCcw className="h-3 w-3" /> Refinanciación
+                </span>
+              )}
               {credito && <StatusBadge {...estadoBadgeCredito(credito.estado, credito.dias_mora, diasLegales, null, (credito.cobrado_post_castigo ?? 0) > 0)} />}
             </div>
             <p className="mt-0.5 truncate text-xs text-muted-foreground">

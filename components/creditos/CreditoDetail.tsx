@@ -496,15 +496,49 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
             entrego, en letras --el mismo importe que va al pagare, donde la letra le gana al
             numero si no coinciden--, en que condiciones, y quien y cuando lo entrego.
           */}
-          <div className="relative col-span-2 overflow-hidden rounded-xl border border-border bg-card p-4 shadow-sm">
+          {/*
+            🔴 UNA REFINANCIACIÓN NO SE LEE COMO UN CRÉDITO, Y ANTES SÍ.
+
+            La tarjeta decía "PRESTADO $546.015,12" sobre un crédito donde NO se prestó nada:
+            de la caja habían salido $260.000,00 y el resto es interés, cargos y punitorios del
+            plan viejo, capitalizados. El rótulo no era un detalle de estilo — era falso, y es
+            el número contra el que se mide si la financiera gana o pierde.
+
+            El ámbar es el color que este sistema ya usa para "refinanciado" (el badge de
+            estado), así que no se inventa un lenguaje nuevo: se aplica el que existe. El
+            borde, el acento del título y el velo de fondo dicen "esto es otra cosa" antes de
+            que se lea una palabra, que es exactamente lo que pedía Fernando.
+          */}
+          <div className={`relative col-span-2 overflow-hidden rounded-xl border p-4 shadow-sm ${
+            credito.es_refinanciacion ? "border-warning/40 bg-warning/[0.05]" : "border-border bg-card"
+          }`}>
             <span aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-px bg-white/10" />
             <span aria-hidden className="pointer-events-none absolute inset-0 bg-gradient-to-b from-white/[0.05] to-transparent" />
+            {/* La franja lateral: el mismo recurso que marca la severidad en las listas. */}
+            {credito.es_refinanciacion && (
+              <span aria-hidden className="pointer-events-none absolute inset-y-0 left-0 w-1 bg-warning" />
+            )}
             <div className="relative">
-              <div className="flex items-center gap-2">
-                <Emoji name="money-bag" className="h-4 w-4" />
-                <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-                  {credito.tipo_credito === "productos" ? "Financiado" : "Prestado"}
+              <div className="flex flex-wrap items-center gap-2">
+                <Emoji name={credito.es_refinanciacion ? "counterclockwise-arrows-button" : "money-bag"} className="h-4 w-4" />
+                <p className={`text-[10px] font-bold uppercase tracking-widest ${credito.es_refinanciacion ? "text-warning" : "text-muted-foreground"}`}>
+                  {credito.es_refinanciacion
+                    ? "Deuda consolidada"
+                    : credito.tipo_credito === "productos" ? "Financiado" : "Prestado"}
                 </p>
+                {/*
+                  De dónde viene, con link. Es el dato que convierte el número en una historia:
+                  sin él "deuda consolidada" no dice consolidada DE QUÉ.
+                */}
+                {credito.es_refinanciacion && credito.refinancia_a && (
+                  <Link
+                    href={`/creditos/${credito.refinancia_a}`}
+                    className="rounded-md bg-warning/15 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-warning ring-1 ring-inset ring-warning/25 transition-colors hover:bg-warning/25"
+                    title="Ver el crédito que esta refinanciación reemplazó"
+                  >
+                    viene de {formatCreditoNumero(credito.refinancia_a_numero ?? null)}
+                  </Link>
+                )}
                 {credito.tipo_credito === "productos" && credito.producto && (
                   <span className="truncate rounded-md bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary ring-1 ring-inset ring-primary/20">
                     {credito.producto.nombre}{credito.producto_cantidad && credito.producto_cantidad > 1 ? ` x${credito.producto_cantidad}` : ""}
@@ -540,7 +574,8 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
                 sigue respondiendo aunque la cuenta ya no exista.
               */}
               <p className="mt-1.5 text-[11px] text-muted-foreground">
-                Entregado el{" "}
+                {/* No se "entregó" nada: la deuda se mudó de un crédito a otro y la caja no se movió. */}
+                {credito.es_refinanciacion ? "Reestructurado el " : "Entregado el "}
                 <span className="font-medium text-foreground">
                   {formatFecha(credito.fecha_inicio ?? credito.created_at)}
                 </span>
