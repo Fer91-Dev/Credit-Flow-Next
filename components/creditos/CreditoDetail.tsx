@@ -5,7 +5,7 @@ import { estadoBadgeCredito } from "./estado-badge";
 import Link from "next/link";
 import { useState, useRef } from "react";
 import { useSWRConfig } from "swr";
-import { CalendarDays, Wallet, Info, ArrowUpRight, Receipt, Loader2, Printer, RefreshCw, ArrowRight, ShieldCheck, Ban, Trash2, ExternalLink } from "lucide-react";
+import { CalendarDays, Wallet, Info, ArrowUpRight, Receipt, Loader2, Printer, RefreshCw, ArrowRight, ShieldCheck, Ban, Trash2, ExternalLink, ChevronDown } from "lucide-react";
 import { refrescarNotificaciones, useAmortizacion, useCuotas, usePagosByCredito, useCreditos, KEYS, type Credito, type EstadoCuota, type Pago, type CuotaPersistida, useFinanciera, useDiasLegales, useOrigenRefinanciacion } from "@/lib/swr";
 import { type Role } from "@/lib/auth/roles";
 import { abrirRecibo } from "@/lib/recibo";
@@ -184,6 +184,12 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
   const toast = useToast();
   const confirm = useConfirm();
   const [reciboBusy, setReciboBusy] = useState<string | null>(null);
+  /**
+   * El plan arranca PLEGADO: el pedido fue "que haya que hacer click para desplegar".
+   * Se guarda en estado y no solo en el DOM porque el encabezado cambia con él (plegado
+   * muestra el saldo; abierto, la tabla ya lo dice).
+   */
+  const [planAbierto, setPlanAbierto] = useState(false);
   /** Cuota que se está cobrando desde el cronograma (null = cobro libre desde el botón de arriba). */
   const [anularPago, setAnularPago] = useState<Pago | null>(null);
   const [anularMotivo, setAnularMotivo] = useState("");
@@ -207,9 +213,12 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
    * hay que scrollear a buscarlo. La tarjeta que dice qué cuota toca ahora lleva hasta ahí y
    * deja la fila resaltada unos segundos, para no perderla entre doce renglones iguales.
    */
-  const planRef = useRef<HTMLElement>(null);
+  const planRef = useRef<HTMLDetailsElement>(null);
   const [resaltarProxima, setResaltarProxima] = useState(false);
   const irAlPlan = () => {
+    // El KPI de la cuota baja al plan: si esta plegado, tiene que ABRIRLO — si no, el
+    // clic lleva a un titulo cerrado y la cuota que se queria ver sigue escondida.
+    setPlanAbierto(true);
     planRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     setResaltarProxima(true);
     window.setTimeout(() => setResaltarProxima(false), 2600);
@@ -679,13 +688,47 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
              El `-mx-*` con `px-*` la hace sangrar hasta el borde de la card para que las
              filas no se vean pasar por debajo del fondo.
         */}
-        <section className="overflow-hidden rounded-xl border border-border bg-card" ref={planRef}>
-          <div className="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-3 border-b border-border bg-card/95 px-4 py-3 backdrop-blur">
+        {/*
+          🔴 EL PLAN SE DESPLIEGA CON UN CLIC, Y NO TIENE SCROLL PROPIO.
+
+          Tenía el alto acotado con `overflow-y-auto` para que el encabezado quedara `sticky`, y
+          el precio era un scroll DENTRO de la tarjeta que tapaba el botón de cobrar mientras se
+          bajaba. Fernando lo marcó dos veces; la segunda propuso la salida: que haya que hacer
+          clic para ver las cuotas.
+
+          Plegado, el encabezado no es un título vacío: dice cuántas van pagadas, cuántas
+          vencidas y el saldo — el operador que solo quiere saber cómo viene el crédito no
+          necesita abrirlo. Y las acciones (imprimir, refinanciar, cobrar) quedan SIEMPRE a la
+          vista, que es lo que el scroll rompió.
+
+          `<details>` y no un `useState`: trae el teclado, el foco y `aria-expanded` de fabrica.
+        */}
+        <details open={planAbierto} onToggle={(e) => setPlanAbierto((e.target as HTMLDetailsElement).open)}
+          className="group/plan overflow-hidden rounded-xl border border-border bg-card" ref={planRef}>
+          <summary className="flex cursor-pointer flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3 list-none transition-colors hover:bg-muted/20 [&::-webkit-details-marker]:hidden">
             <div className="flex items-center gap-2">
-              <Emoji name="calendar" className="h-4 w-4" />
-              <h3 className="text-sm font-semibold text-foreground">Plan de cuotas</h3>
+              <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform duration-200 group-open/plan:rotate-180" />
+              <Emoji name={credito.es_refinanciacion ? "counterclockwise-arrows-button" : "calendar"} className="h-4 w-4" />
+              {/*
+                El plan de una refinanciación se nombra como lo que es. En ámbar, el mismo color
+                con el que la pantalla marca todo lo demás de la refinanciación.
+              */}
+              <h3 className={`text-sm font-semibold ${credito.es_refinanciacion ? "text-warning" : "text-foreground"}`}>
+                {credito.es_refinanciacion ? "Plan de cuotas de la refinanciación" : "Plan de cuotas"}
+              </h3>
+              {/* Plegado, el resumen ES la sección: sin esto el título no dice nada. */}
+              {!planAbierto && resumen && (
+                <span className="text-[11px] tabular-nums text-muted-foreground/70">
+                  · saldo <span className="font-mono">${n2(resumen.saldo_capital)}</span>
+                </span>
+              )}
             </div>
-            <div className="flex items-center gap-3">
+            {/* Los controles no disparan el plegado: cada uno hace lo suyo. */}
+            <div
+              className="flex items-center gap-3"
+              onClick={(e) => e.stopPropagation()}
+              role="presentation"
+            >
               {resumen && (
                 <span className="text-[11px] text-muted-foreground/70 tabular-nums">
                   {resumen.pagadas}/{resumen.total} pagadas
@@ -754,7 +797,7 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
                 </Link>
               )}
             </div>
-          </div>
+          </summary>
           <div className="px-4 pb-4 pt-3">
           {loadingCuotas ? (
             <Skeleton className="h-48 rounded-xl" />
@@ -781,10 +824,12 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
               resaltarProxima={resaltarProxima}
               mora={metaCuotas?.mora ?? null}
               /* Sin `onCobrar`: el cobro vive solo en Pagos. Acá es de lectura. */
+              /* Sin alto acotado: la sección se despliega entera y el que scrollea es la página. */
+              sinAlto
             />
           )}
           </div>
-        </section>
+        </details>
 
         {/* Trazabilidad de refinanciación (origen ↔ destino) */}
         {(credito.es_refinanciacion || credito.refinanciado_en) && (

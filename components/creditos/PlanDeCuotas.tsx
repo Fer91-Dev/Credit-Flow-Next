@@ -72,10 +72,12 @@ export interface PlanDeCuotasProps {
   mora?: { tasaDiaria: number; diasGracia: number; topePct: number } | null;
   /** Versión embebida (fila expandida): menos padding y alto acotado con scroll propio. */
   denso?: boolean;
+  /** Sin alto acotado: la tabla se muestra entera y el que scrollea es la página. */
+  sinAlto?: boolean;
 }
 
 export function PlanDeCuotas({
-  cuotas, onCobrar, cobroBloqueado, unidadCuota = "cuota", proximaNro, resaltarProxima, mora, denso,
+  cuotas, onCobrar, cobroBloqueado, unidadCuota = "cuota", proximaNro, resaltarProxima, mora, denso, sinAlto,
 }: PlanDeCuotasProps) {
   if (cuotas.length === 0) return null;
 
@@ -115,7 +117,18 @@ export function PlanDeCuotas({
         El `overflow-y-auto` va con el alto acotado: sin uno de los dos, `position: sticky` no
         tiene contenedor contra el cual pegarse y no hace nada.
       */}
-      <div className={`rounded-xl border border-border overflow-x-auto overflow-y-auto ${denso ? "max-h-[46vh]" : "max-h-[62vh]"}`}>
+      {/*
+        🔴 SIN SCROLL PROPIO CUANDO EL PLAN SE DESPLIEGA A PEDIDO.
+
+        El alto acotado existía para que el encabezado pudiera quedar `sticky`, y el precio era
+        un scroll DENTRO de la tarjeta que tapaba el botón de cobrar mientras se bajaba — lo
+        marcó Fernando dos veces. Con la sección plegada por defecto el problema desaparece
+        solo: la tabla se abre entera y el que scrollea es la página, que es lo normal.
+
+        `overflow-x-auto` se queda: en pantallas angostas la tabla es más ancha que la tarjeta
+        y ahí sí hace falta correrla de costado.
+      */}
+      <div className={`rounded-xl border border-border overflow-x-auto ${sinAlto ? "" : `overflow-y-auto ${denso ? "max-h-[46vh]" : "max-h-[62vh]"}`}`}>
         {/*
           🔴 LA TABLA VA EN `text-sm`, NO EN `text-xs`, Y ES A PROPÓSITO.
 

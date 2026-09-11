@@ -43,20 +43,34 @@ export function Stat({
   return (
     <Wrapper
       {...(onClick ? { type: "button" as const, onClick, title } : {})}
-      className={`w-full text-left rounded-xl bg-card border border-border p-3 ${
+      className={`flex h-full w-full flex-col rounded-xl border border-border bg-card p-3 text-left ${
         onClick
           ? "cursor-pointer transition-colors hover:bg-muted/20 hover:border-primary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
           : ""
       }`}
     >
-      <div className="flex items-start justify-between mb-1.5">
-        <p className="text-[11px] font-medium text-muted-foreground leading-tight pr-1">{label}</p>
+      {/*
+        🔴 LAS TRES ZONAS TIENEN ALTO RESERVADO, Y POR ESO LA FRANJA SE LEE.
+
+        Antes cada tarjeta medía lo que medía su contenido: un rótulo largo como "Cuota mensual
+        1 de 6" se parte en dos líneas y empuja su importe hacia abajo, mientras el de al lado
+        —"Total cobrado", una sola línea— lo deja arriba; y una tarjeta sin `sub` termina más
+        corta que sus vecinas. El resultado son cuatro importes a cuatro alturas distintas: el
+        ojo tiene que buscar cada uno en vez de barrer la fila de un tirón, que es para lo que
+        existe una franja de KPI.
+
+        Reservar el alto —dos líneas de rótulo, una de pie— cuesta unos píxeles de aire en las
+        tarjetas cortas y alinea las cuatro. El pie vacío NO se rellena con un espacio duro:
+        se reserva con `min-h`, así el lector de pantalla no anuncia una línea en blanco.
+      */}
+      <div className="mb-1.5 flex min-h-[2.1rem] items-start justify-between gap-2">
+        <p className="text-[11px] font-medium leading-tight text-muted-foreground">{label}</p>
         <div className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md border ${isEmoji ? "bg-muted/40 border-border" : `${c.bg} ${c.border}`}`}>
           {isEmoji ? <Emoji name={icon} className="h-3.5 w-3.5" /> : Icon && <Icon className={`h-3 w-3 ${c.text}`} />}
         </div>
       </div>
-      <p className={`text-lg font-bold font-mono ${c.text}`}>{value}</p>
-      {sub && <p className="text-[10px] text-muted-foreground/60 mt-0.5">{sub}</p>}
+      <p className={`font-mono text-lg font-bold leading-tight ${c.text}`}>{value}</p>
+      <p className="mt-0.5 min-h-[0.95rem] text-[10px] leading-tight text-muted-foreground/60">{sub}</p>
     </Wrapper>
   );
 }
