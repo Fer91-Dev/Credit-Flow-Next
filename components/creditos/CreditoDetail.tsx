@@ -668,8 +668,15 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
         </div>
       </div>
 
-      {/* ── Cuerpo scrolleable ── */}
-      <div className="flex-1 min-h-0 overflow-y-auto px-7 py-5 space-y-6">
+      {/*
+        ── Cuerpo ──
+
+        🔴 SIN SCROLL PROPIO. Tenía `flex-1 min-h-0 overflow-y-auto`, así que todo lo que no
+        fueran los KPI ni la barra de acciones quedaba encerrado en una ventana de unos 300px
+        — y el plan de cuotas, que es la sección principal, se veía por una rendija. Ahora la
+        página entera fluye y scrollea el navegador (ver `CreditoPagina`).
+      */}
+      <div className="flex-1 px-7 py-5 space-y-6">
 
         {/* Plan de cuotas (cronograma persistido con estado real) */}
         {/*
@@ -841,7 +848,13 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
                   <span className="text-muted-foreground">Proviene de refinanciar</span>
                   <ArrowRight className="h-3 w-3 text-warning" />
                   <VinculoRefi credito={origenRefi} fallback="crédito anterior" onAbrir={onAbrirCredito} />
-                  {origenRefi && <span className="text-muted-foreground">· {nombreCompleto(origenRefi.cliente)}</span>}
+                  {/* El titular, en el color del texto: es una persona, no un pie de pagina. */}
+                  {origenRefi && (
+                    <>
+                      <span className="text-muted-foreground/50">·</span>
+                      <span className="font-medium text-foreground">{nombreCompleto(origenRefi.cliente)}</span>
+                    </>
+                  )}
                 </p>
               )}
               {/*
@@ -1091,8 +1104,13 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
           competir con la acción principal (cobrar la cuota, que son los botones verdes del
           cronograma). Secundarias a propósito: bordeadas, y el color lo pone recién el hover
           según lo que hace cada una. */}
+      {/*
+        Las acciones destructivas cierran el documento en vez de quedar clavadas abajo. Son
+        las tres cosas que casi nunca se hacen —anular, eliminar, dar por incobrable— y
+        tenerlas siempre a un centímetro del pulgar no era una ventaja.
+      */}
       {esAdmin && (
-        <div className="shrink-0 flex flex-wrap items-center justify-end gap-2 border-t border-border px-7 py-3">
+        <div className="mt-2 flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-border px-7 py-3">
           {/*
             Sin "Editar". Las condiciones de un crédito otorgado son FIRMES desde el 15/08
             (capital, tasa, cuotas, frecuencia, cliente y vendedor los rechaza el PATCH con

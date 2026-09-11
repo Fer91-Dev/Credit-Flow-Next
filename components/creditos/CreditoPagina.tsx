@@ -49,9 +49,22 @@ export function CreditoPagina({ id, role }: { id: string; role?: Role }) {
   const irA = (c: Credito) => router.push(`/creditos/${c.id}`);
 
   return (
-    <div className="-mx-4 -mb-6 md:-mx-6 md:-mb-8 lg:-mx-8 flex h-[calc(100dvh-3rem)] flex-col bg-background">
+    /*
+      🔴 LA PÁGINA CRECE; NO ES UNA VENTANA DE ALTO FIJO.
+
+      Era `h-[calc(100dvh-3rem)]` con el cuerpo en `overflow-y-auto`: los KPI arriba y la barra
+      de acciones abajo quedaban clavados, y todo lo del medio —el plan de cuotas, que es la
+      razón de esta pantalla— vivía en una ventanita de unos 300px. Por eso la tabla "se
+      escondía dentro del scroll" por más que se le sacara el suyo propio: no era la tabla, era
+      el contenedor.
+
+      Ahora la página fluye como un documento y scrollea el navegador. El encabezado se queda
+      `sticky` —con el número, el cliente y el estado— porque es la identidad de lo que se
+      está mirando y perderla al bajar es lo único que el alto fijo resolvía bien.
+    */
+    <div className="-mx-4 -mb-6 md:-mx-6 md:-mb-8 lg:-mx-8 flex min-h-[calc(100dvh-3rem)] flex-col bg-background">
       {/* Encabezado — misma altura (76px) que el PageHeader, el sidebar y Refinanciar. */}
-      <div className="flex h-[76px] shrink-0 items-center justify-between gap-3 border-b border-edge px-5">
+      <div className="sticky top-0 z-30 flex h-[76px] shrink-0 items-center justify-between gap-3 border-b border-edge bg-background/95 px-5 backdrop-blur">
         <div className="flex min-w-0 items-center gap-3">
           <button
             type="button"
@@ -93,7 +106,13 @@ export function CreditoPagina({ id, role }: { id: string; role?: Role }) {
               )}
               {credito && <StatusBadge {...estadoBadgeCredito(credito.estado, credito.dias_mora, diasLegales, null, (credito.cobrado_post_castigo ?? 0) > 0)} />}
             </div>
-            <p className="mt-0.5 truncate text-xs text-muted-foreground">
+            {/*
+              EL CLIENTE NO ES UN SUBTÍTULO. Iba en `text-xs` gris, del mismo peso que
+              cualquier pie de página, cuando es la otra mitad de la identidad de esta
+              pantalla: el operador tiene a esa persona enfrente o al teléfono. Sube al color
+              del texto y a un cuerpo que se lee sin acercarse.
+            */}
+            <p className="mt-0.5 truncate text-sm font-medium text-foreground">
               {credito ? nombreCompleto(credito.cliente) : "Detalle del crédito"}
             </p>
           </div>
@@ -101,7 +120,7 @@ export function CreditoPagina({ id, role }: { id: string; role?: Role }) {
         <SystemControls />
       </div>
 
-      <div className="min-h-0 flex-1 overflow-hidden">
+      <div className="flex min-h-0 flex-1 flex-col">
         {isLoading ? (
           <div className="space-y-3 p-6">
             <Skeleton className="h-24 rounded-xl" />
