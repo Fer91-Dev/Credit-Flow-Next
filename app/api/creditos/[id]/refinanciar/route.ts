@@ -2,11 +2,11 @@ import { requireRole, scopeCreditosVendedor } from "@/lib/auth";
 import { successResponse, errorResponse, withErrorHandler, assertSameOrigin } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
-import { ESTADOS_CUOTA_CERRADA, calcularDeudaConsolidada, aplicarQuita, construirPlanAmortizacion, planACuotas, normalizarFrecuencia, resolverFrecuencia, round2, estadoCoherente, type CuotaParaImputar, type TipoQuita, esCreditoVivo, moraDelCredito, moraDesdeCronograma, diasMoraActual, validarParametrosOtorgamiento, deudaEnRevision, entregaMinimaRefinanciacion } from "@/lib/domain";
-import { getConfiguracion, getCobranzaConfig } from "@/lib/config";
+import { ESTADOS_CUOTA_CERRADA, calcularDeudaConsolidada, aplicarQuita, construirPlanAmortizacion, planACuotas, normalizarFrecuencia, resolverFrecuencia, round2, estadoCoherente, type CuotaParaImputar, type TipoQuita, esCreditoVivo, moraDelCredito, moraDesdeCronograma, diasMoraActual, validarParametrosOtorgamiento, deudaEnRevision, entregaMinimaRefinanciacion, sugerirRefinanciacion } from "@/lib/domain";
+import { getConfiguracion, getCobranzaConfig, getRiesgoConfig } from "@/lib/config";
 import { quitaMaxima } from "@/lib/domain/acuerdos";
 import { lockNumeroCreditoTx, TX_PLATA } from "@/lib/locks";
-import { assertPuedeRefinanciar, assertPuedeUsarTasa, veredictoRefinanciar } from "@/lib/recupero-server";
+import { assertPuedeRefinanciar, assertPuedeUsarTasa, veredictoRefinanciar, plataDeLaCadena } from "@/lib/recupero-server";
 import { bandaHonorarios, puedeUsarHonorarios, bandaTasaRefinanciacion, plazosRefinanciacion } from "@/lib/domain";
 import { registrarAuditoria } from "@/lib/audit";
 import { formatCreditoNumero, nombreCompleto, hoyComercial } from "@/lib/utils";
@@ -219,6 +219,37 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
   const cobranzaCfg = await getCobranzaConfig(tenantId);
   // El veredicto de la escalera, para decirlo ANTES de armar el plan (ver `bloqueo` abajo).
   const veredicto = await veredictoRefinanciar(tenantId, id, cobranzaCfg.recupero);
+
+  /**
+   * 🔴 LOS DATOS CON LOS QUE SE PROPONE EL PLAN.
+   *
+   * `plataDeLaCadena` da lo que de verdad salio de la caja: en un refinanciado
+   * `monto_original` es la deuda vieja consolidada, no plata entregada, y medir la ganancia
+   * contra ese numero la infla. La misma cuenta que usa la pestaña Incobrables.
+   *
+   * La CUOTA FALLIDA es la del plan que se cayo: evidencia dura de lo que este cliente no
+   * puede pagar. Se toma la primera del cronograma -en el sistema frances son todas iguales
+   * salvo el centavo que absorbe la ultima-.
+   */
+  const cadena = await plataDeLaCadena(tenantId, id);
+  const riesgoCfg = await getRiesgoConfig(tenantId);
+  const entradaSugerencia = {
+    deudaConsolidada: deuda.total,
+    prestadoCadena: cadena.prestado,
+    recuperadoCadena: cadena.recuperado,
+    cuotaFallida: credito.cuotas[0]?.cuota_total ?? 0,
+    ingresoMensual: credito.cliente?.ingreso_mensual ?? null,
+    ratioCuotaIngreso: riesgoCfg.politica.ratioCuotaIngresoMax,
+    plazos: plazosRefinanciacion(cobranzaCfg.recupero, config.simulador.plazos).cuotas,
+    banda: bandaTasaRefinanciacion(cobranzaCfg.recupero, config.simulador),
+    periodosAnio: 12,
+    /**
+     * Cuantas veces lo prestado tiene que devolver el plan para que refinanciar valga mas que
+     * acordar. 1,5x: por debajo de eso el acuerdo rinde parecido, tiene una cuota mucho mas
+     * pagable y se gestiona mas barato.
+     */
+    margenMinimo: 1.5,
+  };
   const quitaMax = quitaMaxima({ ...deuda, cuotas_vencidas: 0, cuotas_incluidas: 0, por_vencer: 0 }, role === "admin", cobranzaCfg.acuerdos);
 
   /**
@@ -314,6 +345,35 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
       motivo: veredicto.motivo ?? null,
       sugerencia: veredicto.sugerencia ?? null,
       puede_autorizar: role === "admin",
+    },
+    /*
+      🔴 QUE TASA Y QUE PLAZO PROPONE EL SISTEMA.
+
+      La pantalla proponia la tasa del credito viejo, y sobre una deuda ya inflada por su
+      propio interes eso produce planes que no se pueden pagar en NINGUN plazo. Esto hace la
+      cuenta al reves: parte de lo que el cliente puede pagar y despeja la tasa.
+
+      Viaja con TODAS las opciones evaluadas, no solo la elegida: el operador tiene al cliente
+      enfrente y puede querer estirar el plazo. Y con la capacidad, para que la pantalla pueda
+      decir de donde sale el numero en vez de mostrar una cifra sin origen.
+    */
+    sugerencia: sugerirRefinanciacion(entradaSugerencia),
+    /*
+      El CONTEXTO con el que se arma la sugerencia, sin la deuda: la pantalla la recalcula sola
+      porque la entrega y el descuento la mueven en vivo. Con esto puede diagnosticar CUALQUIER
+      tasa y plazo que escriba el operador -- que es el pedido: "siempre con la alerta del
+      sistema de que pasa si pone esa tasa".
+    */
+    contexto_sugerencia: {
+      prestadoCadena: entradaSugerencia.prestadoCadena,
+      recuperadoCadena: entradaSugerencia.recuperadoCadena,
+      cuotaFallida: entradaSugerencia.cuotaFallida,
+      ingresoMensual: entradaSugerencia.ingresoMensual,
+      ratioCuotaIngreso: entradaSugerencia.ratioCuotaIngreso,
+      plazos: entradaSugerencia.plazos,
+      banda: entradaSugerencia.banda,
+      periodosAnio: entradaSugerencia.periodosAnio,
+      margenMinimo: entradaSugerencia.margenMinimo,
     },
     limites: {
       quita_maxima: quitaMax,

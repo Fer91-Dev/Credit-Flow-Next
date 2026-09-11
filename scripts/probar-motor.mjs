@@ -53,6 +53,7 @@ const { tasaPeriodicaSegunConvencion } = await dom("frequency");
 const { calcularDeudaVencida, planDeAcuerdo } = await dom("acuerdos");
 const { calcularDeudaConsolidada, aplicarQuita } = await dom("refinanciacion");
 const { calcularCierreRecupero } = await dom("recupero-cierre");
+const { sugerirRefinanciacion, diagnosticarRefinanciacion, capacidadDePago } = await dom("refinanciacion-sugerida");
 const { round2 } = await dom("money");
 
 // ── informe ─────────────────────────────────────────────────────────────────
@@ -261,6 +262,77 @@ H("6. REFINANCIACIÓN");
   ok(cerca(q4.nuevoCapital, 0) && cerca(q4.condonado, 1250), "una quita mayor que la deuda la deja en cero, nunca en negativo");
   const q5 = aplicarQuita(1250, "porcentaje", 500);
   ok(cerca(q5.nuevoCapital, 0), "un porcentaje mayor a 100 se acota a 100");
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+H("6b. TASA Y PLAZO SUGERIDOS AL REFINANCIAR");
+// ════════════════════════════════════════════════════════════════════════════
+{
+  /*
+    El caso REAL de la cartera: $260.000 prestados que se convirtieron en $604.659,31 de
+    deuda, y una cuota fallida de $143.163,84.
+  */
+  const base = {
+    deudaConsolidada: 604659.31, prestadoCadena: 260000, recuperadoCadena: 0,
+    cuotaFallida: 143163.84, ingresoMensual: 2500000, ratioCuotaIngreso: 0.5,
+    plazos: [1, 2, 3, 6, 9, 12], banda: { min: 120, max: 360 }, periodosAnio: 12, margenMinimo: 1.5,
+  };
+
+  // La capacidad manda la EVIDENCIA cuando es menor que el ingreso.
+  const cap = capacidadDePago(base);
+  ok(cap.origen === "cuota_anterior" && cerca(cap.cuota, 143163.84),
+    "la capacidad sale de la cuota que ya no pudo pagar", `${cap.origen} ${F(cap.cuota)}`);
+  // Y del INGRESO cuando el ingreso es el que aprieta.
+  const cap2 = capacidadDePago({ ...base, ingresoMensual: 200000 });
+  ok(cap2.origen === "ingreso" && cerca(cap2.cuota, 100000),
+    "y del ingreso cuando el ingreso es el que aprieta", `${cap2.origen} ${F(cap2.cuota)}`);
+
+  const sug = sugerirRefinanciacion(base);
+  ok(sug.veredicto === "refinanciar" && sug.mejor !== null, "propone un plan", sug.motivo.slice(0, 60));
+  if (sug.mejor) {
+    ok(sug.mejor.cuota <= cap.cuota + 0.01, "la cuota propuesta entra en la capacidad",
+      `${F(sug.mejor.cuota)} <= ${F(cap.cuota)}`);
+    ok(sug.mejor.tasaAnual >= base.banda.min && sug.mejor.tasaAnual <= base.banda.max,
+      "la tasa propuesta cae dentro de la banda", `${sug.mejor.tasaAnual}%`);
+    ok(sug.mejor.multiplo >= base.margenMinimo, "y el plan devuelve el margen minimo",
+      `${sug.mejor.multiplo}x`);
+    // EL MAS CORTO que sirve, no el que mas cobra.
+    const sirven = sug.opciones.filter((o) => o.pagable && o.rentable);
+    ok(sug.mejor.plazoMeses === Math.min(...sirven.map((o) => o.plazoMeses)),
+      "elige el plazo MAS CORTO que sirve, no el que mas cobra",
+      `${sug.mejor.plazoMeses} cuotas de ${sirven.length} que servian`);
+  }
+
+  // Plazos que no sirven a NINGUNA tasa: la cuota no baja del reparto sin interes.
+  const cortos = sug.opciones.filter((o) => o.plazoMeses <= 3);
+  ok(cortos.every((o) => !o.pagable), "marca impagables los plazos donde ni con tasa 0 alcanza",
+    cortos.map((o) => o.plazoMeses + "c").join(","));
+
+  // Sin datos no inventa.
+  const sinDatos = sugerirRefinanciacion({ ...base, cuotaFallida: 0, ingresoMensual: null });
+  ok(sinDatos.veredicto === "sin_datos" && sinDatos.mejor === null, "sin datos no propone nada");
+
+  // Deuda enorme contra capacidad chica -> manda al acuerdo.
+  const imposible = sugerirRefinanciacion({ ...base, deudaConsolidada: 8000000, plazos: [1, 2, 3] });
+  ok(imposible.veredicto === "acuerdo" && imposible.mejor === null,
+    "cuando no hay plan pagable, manda al acuerdo de pago");
+
+  // ── El diagnostico de lo que escriba el operador ────────────────────────
+  const dOk = diagnosticarRefinanciacion(sug.mejor.tasaAnual, sug.mejor.plazoMeses, base);
+  ok(dOk?.nivel === "ok", "el plan propuesto se diagnostica OK", dOk?.nivel);
+
+  const dCaro = diagnosticarRefinanciacion(360, 3, base);
+  ok(dCaro?.nivel === "alerta" && !dCaro.pagable,
+    "al 360% en 3 cuotas avisa que la cuota no se va a pagar", `${F(dCaro?.cuota ?? 0)}`);
+  ok((dCaro?.excesoCuota ?? 0) > 0, "y dice cuanto se pasa de la capacidad", F(dCaro?.excesoCuota ?? 0));
+
+  // Un plan que ni recupera el capital.
+  const dPobre = diagnosticarRefinanciacion(0, 1, { ...base, deudaConsolidada: 100000, prestadoCadena: 260000 });
+  ok(dPobre?.nivel === "alerta" && !dPobre.rentable,
+    "avisa cuando el plan no recupera ni lo que salio de la caja", F(dPobre?.total ?? 0));
+
+  ok(diagnosticarRefinanciacion(-5, 3, base) === null, "una tasa negativa no se diagnostica");
+  ok(diagnosticarRefinanciacion(200, 0, base) === null, "un plazo de cero cuotas tampoco");
 }
 
 // ════════════════════════════════════════════════════════════════════════════

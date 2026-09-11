@@ -18,6 +18,7 @@ export * from "./planes";
 export * from "./mora";
 export * from "./payments";
 export * from "./refinanciacion";
+export * from "./refinanciacion-sugerida";
 export * from "./acuerdos";
 export * from "./cuotas";
 export * from "./credito-estado";

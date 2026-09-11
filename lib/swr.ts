@@ -17,6 +17,7 @@ import type {
 // Valor (no tipo): el default con el que se clasifica mientras la config carga.
 import { TRAMOS_MORA_DEFAULT, resolverOfertaRecupero, type OfertaRecuperoConfig, type OfertaSugerida } from "@/lib/domain";
 import type { CobranzaConfig, CajaConfig, OrdenAgenda } from "@/lib/config";
+import type { SugerenciaRefi, EntradaSugerenciaRefi } from "@/lib/domain";
 export type { CajaConfig };
 
 export type { SimuladorConfig, DocumentosConfig };
@@ -1794,6 +1795,10 @@ export interface RefinanciacionPreview {
    * lo diga al abrirse y no al confirmar. La barrera real es el POST.
    */
   bloqueo?: { permitido: boolean; motivo: string | null; sugerencia: string | null; puede_autorizar: boolean };
+  /** Qué tasa y plazo propone el sistema, y con qué datos lo calculó. Ver `sugerirRefinanciacion`. */
+  sugerencia?: SugerenciaRefi;
+  /** El contexto para diagnosticar en vivo lo que escriba el operador (la deuda la pone la pantalla). */
+  contexto_sugerencia?: Omit<EntradaSugerenciaRefi, "deudaConsolidada">;
   limites?: {
     quita_maxima: number;
     /** Piso de entrega para poder refinanciar: % que fija la financiera y su importe. */

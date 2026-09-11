@@ -12,7 +12,7 @@ import { useToast } from "@/components/ui/toast";
 import { useConfirm } from "@/components/ui/confirm";
 import { KEYS, useRefinanciacionPreview, refrescarNotificaciones } from "@/lib/swr";
 import { formatCreditoNumero, formatFecha, formatMonto, formatDias, parseMontoInput, hoyComercial } from "@/lib/utils";
-import { construirPlanAmortizacion } from "@/lib/domain";
+import { construirPlanAmortizacion, diagnosticarRefinanciacion } from "@/lib/domain";
 
 /**
  * El número del crédito, clickeable, hacia su detalle.
@@ -106,7 +106,20 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
   // La tasa y el plazo arrancan en los del crédito original; el preview los trae resueltos.
   useEffect(() => {
     if (!preview) return;
-    setTasa((t) => (t === "" ? String(preview.sugerido.tasa) : t));
+    /*
+      🔴 ARRANCA EN LO QUE PROPONE EL MOTOR, NO EN LA TASA DEL CREDITO VIEJO.
+
+      Proponer continuidad con el credito original suena razonable y no lo es: la deuda que se
+      consolida ya viene inflada por su propio interes y sus punitorios, asi que esa misma tasa
+      sobre esa base produce cuotas que el cliente no puede pagar -- en el caso medido, ningun
+      plazo bajaba de lo que ya habia dejado de pagar-. `sugerirRefinanciacion` hace la cuenta
+      al reves: parte de la capacidad de pago y despeja la tasa.
+
+      Si el motor no encuentra un plan (manda al acuerdo), se cae a la propuesta vieja para que
+      la pantalla igual abra con algo coherente.
+    */
+    const mejor = preview.sugerencia?.mejor ?? null;
+    setTasa((t) => (t === "" ? String(mejor ? mejor.tasaAnual : preview.sugerido.tasa) : t));
     /**
      * El plazo del crédito original puede no estar entre los que se admiten para refinanciar
      * (son dos listas distintas). Si no está, se elige el más cercano hacia arriba: dejarlo
@@ -115,6 +128,7 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
      */
     setPlazo((p) => {
       if (p !== "") return p;
+      if (mejor) return String(mejor.plazoMeses);
       const sug = preview.sugerido.plazo_meses;
       const lista = preview.plazos?.cuotas ?? [];
       if (lista.length === 0) return String(sug);
@@ -297,6 +311,21 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
       return null;
     }
   }, [preview, nuevoCapital, entregaNum, tasaNum, plazoNum, honMonto]);
+
+  /**
+   * 🔴 QUE PASA SI SE PACTA ESTA TASA Y ESTE PLAZO. Pedido literal de Fernando: el
+   * sistema propone, pero se puede escribir cualquier cosa "siempre con la alerta de parte del
+   * sistema de que pasa si pone esa tasa".
+   *
+   * Se recalcula en vivo porque la entrega y el descuento mueven el capital sobre el que se
+   * arma el plan: el diagnostico tiene que hablar del credito que se va a firmar, no del que
+   * habia cuando se abrio la pantalla.
+   */
+  const diagnostico = useMemo(() => {
+    const ctx = preview?.contexto_sugerencia;
+    if (!ctx || nuevoCapital <= 0 || !isFinite(tasaNum) || !isFinite(plazoNum)) return null;
+    return diagnosticarRefinanciacion(tasaNum, plazoNum, { ...ctx, deudaConsolidada: nuevoCapital });
+  }, [preview, nuevoCapital, tasaNum, plazoNum]);
 
   const totalNuevo = plan ? r2(plan.cuotas.reduce((s, c) => s + c.cuotaTotal, 0)) : 0;
   /**
@@ -745,6 +774,54 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
                     El plan nuevo
                   </p>
 
+                  {/*
+                    🔴 LO QUE PROPONE EL SISTEMA, ANTES DE LOS CAMPOS.
+
+                    La tasa y el plazo ya vienen cargados con esto; el bloque existe para que el
+                    operador sepa DE DÓNDE salen y pueda volver si los movió. Y cuando el motor
+                    no encuentra un plan pagable, lo dice: esa negativa vale más que cualquier
+                    sugerencia, porque es el caso donde refinanciar sólo agranda la deuda que
+                    después se va a castigar.
+                  */}
+                  {preview?.sugerencia && preview.sugerencia.veredicto !== "sin_datos" && (
+                    <div className={`rounded-lg border px-3 py-2.5 ${
+                      preview.sugerencia.veredicto === "refinanciar"
+                        ? "border-primary/25 bg-primary/[0.06]"
+                        : "border-warning/30 bg-warning/[0.07]"
+                    }`}>
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                        {preview.sugerencia.veredicto === "refinanciar" ? "Lo que propone el sistema" : "El sistema no recomienda refinanciar"}
+                      </p>
+                      <p className="mt-1 text-xs leading-relaxed text-foreground">{preview.sugerencia.motivo}</p>
+                      <p className="mt-1.5 text-[11px] text-muted-foreground">
+                        Capacidad de pago estimada: <span className="font-mono text-foreground">${n2(preview.sugerencia.capacidad.cuota)}</span> por cuota
+                        {preview.sugerencia.capacidad.origen === "cuota_anterior"
+                          ? " — la cuota que ya no pudo pagar"
+                          : " — del ingreso declarado en su ficha"}.
+                      </p>
+                      {/* Las alternativas: el operador puede estirar el plazo si el cliente lo pide. */}
+                      {preview.sugerencia.opciones.some((o) => o.pagable) && (
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          {preview.sugerencia.opciones.filter((o) => o.pagable).map((o) => (
+                            <button
+                              key={o.plazoMeses}
+                              type="button"
+                              onClick={() => { setTasa(String(o.tasaAnual)); setPlazo(String(o.plazoMeses)); }}
+                              className={`rounded-md border px-2 py-1 font-mono text-[11px] transition-colors ${
+                                plazoNum === o.plazoMeses
+                                  ? "border-primary/50 bg-primary/15 text-primary"
+                                  : "border-border bg-card text-muted-foreground hover:border-primary/30 hover:text-foreground"
+                              }`}
+                              title={`${o.plazoMeses} cuotas de $${n2(o.cuota)} · total $${n2(o.total)} · devuelve ${o.multiplo.toFixed(2)}× lo prestado`}
+                            >
+                              {o.plazoMeses}c · {o.tasaAnual}% · ${n2(o.cuota)}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   <div className={`grid grid-cols-2 gap-2 ${PAR}`}>
                     <div className="space-y-1.5">
                       {/* La convención, igual que en el simulador: con T.N.A. estos números
@@ -785,6 +862,34 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
                       )}
                     </div>
                   </div>
+
+                  {/*
+                    🔴 QUÉ PASA CON LO QUE ESCRIBIÓ, SIEMPRE. No es una validación: es un
+                    diagnóstico. El operador puede pactar lo que quiera —hay casos donde sabe
+                    algo que el sistema no— pero no puede firmarlo sin que la pantalla le haya
+                    dicho qué significa. Se recalcula con cada tecla, sobre el capital que de
+                    verdad va a quedar (con la entrega y el descuento ya aplicados).
+                  */}
+                  {diagnostico && (
+                    <div className={`rounded-lg border px-3 py-2.5 ${
+                      diagnostico.nivel === "alerta" ? "border-destructive/40 bg-destructive/[0.07]"
+                      : diagnostico.nivel === "aviso" ? "border-warning/35 bg-warning/[0.07]"
+                      : "border-success/25 bg-success/[0.06]"
+                    }`}>
+                      <div className="flex items-start gap-2">
+                        <span aria-hidden className={`mt-1 h-2 w-2 shrink-0 rounded-full ${
+                          diagnostico.nivel === "alerta" ? "bg-destructive"
+                          : diagnostico.nivel === "aviso" ? "bg-warning" : "bg-success"
+                        }`} />
+                        <div className="min-w-0 space-y-1">
+                          <p className="text-xs leading-relaxed text-foreground">{diagnostico.mensaje}</p>
+                          <p className="font-mono text-[11px] text-muted-foreground">
+                            cuota ${n2(diagnostico.cuota)} · total ${n2(diagnostico.total)} · devuelve {diagnostico.multiplo.toFixed(2)}× lo prestado
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
 
                   {/*
                     🔴 LOS LÍMITES DE LA TASA, A LA VISTA. Son dos y se pisan: la banda que
