@@ -276,6 +276,7 @@ H("6b. TASA Y PLAZO SUGERIDOS AL REFINANCIAR");
     deudaConsolidada: 604659.31, prestadoCadena: 260000, recuperadoCadena: 0,
     cuotaFallida: 143163.84, ingresoMensual: 2500000, ratioCuotaIngreso: 0.5,
     plazos: [1, 2, 3, 6, 9, 12], banda: { min: 120, max: 360 }, periodosAnio: 12, margenMinimo: 1.5,
+    honorariosPct: 0,
   };
 
   // La capacidad manda la EVIDENCIA cuando es menor que el ingreso.
@@ -330,6 +331,33 @@ H("6b. TASA Y PLAZO SUGERIDOS AL REFINANCIAR");
   const dPobre = diagnosticarRefinanciacion(0, 1, { ...base, deudaConsolidada: 100000, prestadoCadena: 260000 });
   ok(dPobre?.nivel === "alerta" && !dPobre.rentable,
     "avisa cuando el plan no recupera ni lo que salio de la caja", F(dPobre?.total ?? 0));
+
+  /*
+    🔴 LOS HONORARIOS SON PARTE DE LA CUOTA. Lo destapo la primera refinanciacion real:
+    el motor proponia una cuota de $157.054,30 y el plan salio con $150.371,89 -- $9.100,25 de
+    cada cuota eran honorarios que la cuenta no miraba. Entro por poco; con una capacidad mas
+    ajustada, el plan propuesto se habria pasado de lo que el cliente puede pagar.
+  */
+  const conHon = { ...base, honorariosPct: 10 };
+  const sugHon = sugerirRefinanciacion(conHon);
+  ok(sugHon.mejor !== null, "con honorarios sigue encontrando un plan");
+  if (sugHon.mejor) {
+    ok(sugHon.mejor.cuota <= cap.cuota + 0.01,
+      "la cuota propuesta INCLUYE los honorarios y sigue entrando en la capacidad",
+      `${F(sugHon.mejor.cuota)} <= ${F(cap.cuota)}`);
+    // Y es mas cara que sin honorarios al mismo plazo: la plata del cliente es la misma.
+    const sinHon = sug.opciones.find((o) => o.plazoMeses === sugHon.mejor.plazoMeses);
+    if (sinHon) ok(sugHon.mejor.tasaAnual < sinHon.tasaAnual,
+      "con honorarios la tasa baja: la cuota es la misma y hay que repartirla",
+      `${sugHon.mejor.tasaAnual}% vs ${sinHon.tasaAnual}%`);
+  }
+  const dHon = diagnosticarRefinanciacion(200, 6, conHon);
+  const dSin = diagnosticarRefinanciacion(200, 6, base);
+  ok((dHon?.cuota ?? 0) > (dSin?.cuota ?? 0),
+    "el diagnostico tambien cuenta los honorarios en la cuota",
+    `${F(dHon?.cuota ?? 0)} vs ${F(dSin?.cuota ?? 0)}`);
+  ok(cerca((dHon?.cuota ?? 0) - (dSin?.cuota ?? 0), round2(round2(base.deudaConsolidada * 0.10) / 6), 0.02),
+    "y la diferencia es exactamente el honorario por cuota");
 
   ok(diagnosticarRefinanciacion(-5, 3, base) === null, "una tasa negativa no se diagnostica");
   ok(diagnosticarRefinanciacion(200, 0, base) === null, "un plazo de cero cuotas tampoco");

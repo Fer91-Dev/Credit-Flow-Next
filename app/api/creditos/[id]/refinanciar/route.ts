@@ -231,6 +231,10 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
    * puede pagar. Se toma la primera del cronograma -en el sistema frances son todas iguales
    * salvo el centavo que absorbe la ultima-.
    */
+  // El honorario que se propone: el TECHO configurado. Lo usan la sugerencia y la pantalla.
+  const honorariosPropuesto = cobranzaCfg.recupero.honorarios_gestion_activo
+    ? cobranzaCfg.recupero.honorarios_gestion_max
+    : 0;
   const cadena = await plataDeLaCadena(tenantId, id);
   const riesgoCfg = await getRiesgoConfig(tenantId);
   const entradaSugerencia = {
@@ -242,6 +246,13 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
     ratioCuotaIngreso: riesgoCfg.politica.ratioCuotaIngresoMax,
     plazos: plazosRefinanciacion(cobranzaCfg.recupero, config.simulador.plazos).cuotas,
     banda: bandaTasaRefinanciacion(cobranzaCfg.recupero, config.simulador),
+    /*
+      Los honorarios que la pantalla PRELLENA -el techo configurado, `honorarios_gestion_max`-,
+      no el techo de la banda del rol: para un admin ese techo es 100% y el motor propondria
+      planes con honorarios absurdos. Proponer con los honorarios mas altos que la financiera
+      pide es lo conservador: si el operador los baja, la cuota baja con ellos.
+    */
+    honorariosPct: honorariosPropuesto,
     periodosAnio: 12,
     /**
      * Cuantas veces lo prestado tiene que devolver el plan para que refinanciar valga mas que
@@ -288,9 +299,6 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
   // Entre qué tasas se puede pactar ESTA refinanciación. Se resuelve una vez: la usan la
   // banda que viaja a la pantalla y la tasa sugerida, que tienen que ser coherentes.
   const bandaTasaPreview = bandaTasaRefinanciacion(cobranzaCfg.recupero, config.simulador);
-  const honorariosPropuesto = cobranzaCfg.recupero.honorarios_gestion_activo
-    ? cobranzaCfg.recupero.honorarios_gestion_max
-    : 0;
   const honorarios = round2((deuda.total * honorariosPropuesto) / 100);
 
   return successResponse({
@@ -372,6 +380,7 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
       ratioCuotaIngreso: entradaSugerencia.ratioCuotaIngreso,
       plazos: entradaSugerencia.plazos,
       banda: entradaSugerencia.banda,
+      honorariosPct: entradaSugerencia.honorariosPct,
       periodosAnio: entradaSugerencia.periodosAnio,
       margenMinimo: entradaSugerencia.margenMinimo,
     },

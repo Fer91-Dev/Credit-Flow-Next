@@ -42,6 +42,22 @@ export interface EntradaSugerenciaRefi {
   plazos: number[];
   /** La banda de tasas pactables (Cobranza → Refinanciaciones). */
   banda: { min: number; max: number };
+  /**
+   * 🔴 LOS HONORARIOS POR GESTIÓN, QUE TAMBIÉN LOS PAGA EL CLIENTE.
+   *
+   * Se cobran como un cargo repartido en las cuotas, así que la cuota real es la francesa MÁS
+   * su parte de honorarios. Sin esto el motor prometía una cuota que no era la que el cliente
+   * iba a pagar: en la primera refinanciación real (CRD-000007) proponía $157.054,30 y el plan
+   * salió con $150.371,89 de cuota, porque $9.100,25 de cada una eran honorarios que la cuenta
+   * no había mirado. Entró por poco; con una capacidad más ajustada, el plan propuesto se
+   * habría pasado de lo que el cliente puede pagar — rompiendo la única promesa que hace este
+   * módulo.
+   *
+   * Se asume el TECHO de la banda, que es con lo que la pantalla prellena el campo: proponer
+   * un plan que funciona con los honorarios más altos es lo conservador. Si el operador los
+   * baja, la cuota baja con ellos.
+   */
+  honorariosPct: number;
   /** 12 mensual, 52 semanal, 365 diaria. */
   periodosAnio: number;
   /**
@@ -77,9 +93,18 @@ export interface SugerenciaRefi {
   motivo: string;
 }
 
-/** La cuota francesa de un capital a una tasa ANUAL y un plazo, en la frecuencia dada. */
-function cuotaDe(capital: number, tasaAnual: number, n: number, periodosAnio: number): number {
-  return round2(capital * factorFrances(tasaAnual / 100 / periodosAnio, n));
+/** Lo que cada cuota lleva de honorarios por gestión: el total, repartido en partes iguales. */
+function honorariosPorCuota(capital: number, pct: number, n: number): number {
+  if (!(pct > 0) || n < 1) return 0;
+  return round2(round2(capital * (pct / 100)) / n);
+}
+
+/**
+ * La cuota COMPLETA: la francesa más su parte de honorarios. Es la que el cliente paga, y por
+ * lo tanto la única contra la que tiene sentido medir si puede pagarla.
+ */
+function cuotaDe(capital: number, tasaAnual: number, n: number, periodosAnio: number, honPct = 0): number {
+  return round2(capital * factorFrances(tasaAnual / 100 / periodosAnio, n) + honorariosPorCuota(capital, honPct, n));
 }
 
 /**
@@ -149,7 +174,16 @@ export function sugerirRefinanciacion(e: EntradaSugerenciaRefi): SugerenciaRefi 
      * baja de ahí — pasa cuando la deuda es tan grande frente a la capacidad que ni repartirla
      * sin interés alcanza, y es un dato en sí mismo: ese plazo no sirve a ninguna tasa.
      */
-    const iIdeal = tasaPeriodicaDesdeCoeficiente(cap.cuota / e.deudaConsolidada, n);
+    /*
+      El objetivo que se le pide a la parte FRANCESA es la capacidad MENOS lo que esa cuota va
+      a llevar de honorarios: son plata del cliente igual, y si no se descuentan acá la cuota
+      emitida termina por encima de lo que puede pagar.
+    */
+    const honCuota = honorariosPorCuota(e.deudaConsolidada, e.honorariosPct, n);
+    const objetivoFrances = round2(cap.cuota - honCuota);
+    const iIdeal = objetivoFrances > 0
+      ? tasaPeriodicaDesdeCoeficiente(objetivoFrances / e.deudaConsolidada, n)
+      : null;
     /**
      * 🔴 LA TASA SE REDONDEA HACIA ABAJO, NO AL MAS CERCANO.
      *
@@ -168,7 +202,7 @@ export function sugerirRefinanciacion(e: EntradaSugerenciaRefi): SugerenciaRefi 
     const tasaAnual = tasaIdeal == null
       ? e.banda.min
       : Math.min(e.banda.max, Math.max(e.banda.min, tasaIdeal));
-    const cuota = cuotaDe(e.deudaConsolidada, tasaAnual, n, e.periodosAnio);
+    const cuota = cuotaDe(e.deudaConsolidada, tasaAnual, n, e.periodosAnio, e.honorariosPct);
     const total = round2(cuota * n);
     const multiplo = e.prestadoCadena > 0 ? round2((e.recuperadoCadena + total) / e.prestadoCadena) : 0;
     return {
@@ -238,7 +272,7 @@ export function diagnosticarRefinanciacion(
   if (e.deudaConsolidada <= 0) return null;
 
   const cap = capacidadDePago(e);
-  const cuota = cuotaDe(e.deudaConsolidada, tasaAnual, plazoMeses, e.periodosAnio);
+  const cuota = cuotaDe(e.deudaConsolidada, tasaAnual, plazoMeses, e.periodosAnio, e.honorariosPct);
   const total = round2(cuota * plazoMeses);
   const multiplo = e.prestadoCadena > 0 ? round2((e.recuperadoCadena + total) / e.prestadoCadena) : 0;
   const recuperaCapital = e.prestadoCadena <= 0 || round2(e.recuperadoCadena + total) >= e.prestadoCadena;
