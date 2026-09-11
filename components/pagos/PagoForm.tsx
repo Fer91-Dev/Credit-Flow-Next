@@ -13,7 +13,7 @@ import {
 import { abrirRecibo } from "@/lib/recibo";
 import { formatNumero, maskMontoInput, parseMontoInput, formatFecha, formatCreditoNumero, nombreCompleto, cn, formatDias } from "@/lib/utils";
 import { refrescarNotificaciones } from "@/lib/swr";
-import { deudaEnRevision } from "@/lib/domain";
+import { deudaEnRevision, cuotaCerradaSinPago } from "@/lib/domain";
 import type { CuotaPersistida, EstadoCuota } from "@/lib/swr";
 
 /**
@@ -386,7 +386,10 @@ export function PagoForm({ creditoId, clienteId, montoSugerido, motivoSugerido, 
         setCobro(j.data.cobro ?? null);
         setPromo(j.data.promocion ?? null);
         setAutorizar(false); // cambiar de crédito nunca arrastra la autorización del anterior
-        const proxima = cs.find(c => c.estado !== "pagada");
+        // Una cuota cerrada sin pago (trasladada/condonada/anulada) no es cobrable: ya no se
+        // debe. Hoy no debería llegar ninguna —el auditor verifica que no cuelguen de un
+        // crédito cobrable— pero la regla vive en el dominio y acá había una copia a mano.
+        const proxima = cs.find(c => c.estado !== "pagada" && !cuotaCerradaSinPago(c.estado));
         setHasta(proxima ? proxima.nro : null);
       })
       .finally(() => setLoadingCuotas(false));
@@ -424,7 +427,7 @@ export function PagoForm({ creditoId, clienteId, montoSugerido, motivoSugerido, 
   const esPrioritarioCliente = detectorPrioridad(creditos);
   const esPrioritarioResult  = detectorPrioridad(resultados);
 
-  const cobrables    = cuotas.filter(c => c.estado !== "pagada");
+  const cobrables    = cuotas.filter(c => c.estado !== "pagada" && !cuotaCerradaSinPago(c.estado));
   const seleccionadas = hasta != null ? cobrables.filter(c => c.nro <= hasta) : [];
   /** Se está cobrando la cuota de un ACUERDO. Lo declara quien abre el formulario. */
   const cobrandoAcuerdo = Boolean(esAcuerdo);

@@ -22,7 +22,7 @@ import { useConfirm } from "@/components/ui/confirm";
 import { formatCreditoNumero, formatFecha, formatDias, formatMonto, nombreCompleto } from "@/lib/utils";
 import { Stat } from "@/components/ui/Stat";
 import { Skeleton } from "@/components/ui/skeleton";
-import { esCreditoVivo, esCreditoCobrable, montoEnPalabras, cargosDeCuota } from "@/lib/domain";
+import { esCreditoVivo, esCreditoCobrable, montoEnPalabras, cargosDeCuota, cuotaCerradaSinPago } from "@/lib/domain";
 
 function n2(x: number) {
   return new Intl.NumberFormat("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(x);
@@ -118,8 +118,21 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
    * tabla, así que el número de "a cobrar hoy" siempre cuadra con lo de arriba.
    */
   const hoyMs = Date.now();
+  /**
+   * 🔴 UNA CUOTA CERRADA SIN PAGO NO ESTÁ VENCIDA: YA NO SE DEBE.
+   *
+   * El filtro era `estado !== "pagada"` a secas, así que las `trasladada`, `condonada` y
+   * `anulada` —que tienen fecha pasada porque nunca se pagaron— contaban como vencidas. Sobre
+   * CRD-000007, refinanciado y con saldo $0,00, la pantalla decía "En mora · 90 días" al lado
+   * de una deuda de $0,00. La base decía `dias_mora: 0`: los 90 los inventaba esta línea.
+   *
+   * Es el hallazgo A1 de la auditoría financiera otra vez —el que borró $13.056.955,27 de
+   * capital fantasma— pero en la pantalla: el motor ya usa `cuotaCerradaSinPago` en todos
+   * lados y acá había quedado una copia a mano de la regla.
+   */
+  const cuotaViva = (q: { estado: string }) => q.estado !== "pagada" && !cuotaCerradaSinPago(q.estado);
   const cuotasVencidasArr = cuotas.filter(
-    (q) => q.estado !== "pagada" && new Date(q.fecha_vencimiento).getTime() < hoyMs,
+    (q) => cuotaViva(q) && new Date(q.fecha_vencimiento).getTime() < hoyMs,
   );
   const cuotasVencidas = cuotasVencidasArr.length;
   const vencidoImpago = cuotasVencidasArr.reduce((acc, q) => {
@@ -131,7 +144,8 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
   const cargosVencidos = cuotasVencidasArr.reduce(
     (a, q) => a + Math.max(0, cargosDeCuota(q) - (q.pagado_cargos ?? 0)), 0);
   /** La primera cuota sin saldar: es la que el operador va a cobrar. */
-  const proximaCuota = cuotas.find((q) => q.estado !== "pagada") ?? null;
+  /* Misma regla: una cuota trasladada no es "la próxima a pagar", ya no se debe. */
+  const proximaCuota = cuotas.find(cuotaViva) ?? null;
   /** Mora devengada de todo el plan (pie de la columna Mora). */
   /** Pie de la columna Mora: la DEVENGADA, igual que las celdas. */
   const moraTotalPlan = cuotas.reduce((s, q) => s + moraDevengadaDeCuota(q), 0);
