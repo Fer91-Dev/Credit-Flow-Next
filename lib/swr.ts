@@ -726,6 +726,12 @@ export interface CuotasCredito {
     deuda_original: number;
     quita: number;
     congela_punitorios: boolean;
+    /**
+     * Interés del acuerdo que se PASÓ A DEUDA del crédito al firmarlo (modo `capitaliza`).
+     * 0 en los otros modos. Es la diferencia entre lo que el acuerdo consolidó y lo que el
+     * crédito debe hoy: sin él los dos importes se leen como una contradicción.
+     */
+    interes_capitalizado: number;
     total_cuotas: number;
     cuotas: {
       id: string; numero: number; vencimiento: string; monto: number; pagado: number; estado: string;

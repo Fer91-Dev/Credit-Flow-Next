@@ -21,6 +21,20 @@ import type { CuotaParaImputar } from "./payments";
 // Configuración — TODO parametrizable por financiera (el SaaS se vende a varias)
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * Cuánto interés le agregó el acuerdo a la deuda que ya existía.
+ *
+ * Se DERIVA de lo guardado (`monto_acordado` es la suma del plan; `deuda_original − quita` es
+ * la base), así que no hace falta una columna nueva ni puede quedar desincronizado.
+ *
+ * 🔴 Vivía en `lib/acuerdos.ts`, que importa Prisma — o sea inalcanzable desde el
+ * navegador. La terminal de cobro y el detalle del crédito lo resolvían cada uno con su
+ * resta escrita a mano. Es aritmética pura: su lugar es acá, donde la usan los dos lados.
+ */
+export function interesDelAcuerdo(a: { monto_acordado: number; deuda_original: number; quita: number }): number {
+  return round2(noNegativo(a.monto_acordado - (a.deuda_original - a.quita)));
+}
+
 export interface AcuerdosConfig {
   /** Máximo de cuotas que puede tener un acuerdo. */
   max_cuotas: number;

@@ -292,6 +292,17 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
       // acuerdo. Sin eso, la terminal de cobro mostraba "$81.876,14" sin origen: el operador
       // lo había visto desglosado al armarlo y acá volvía a aparecer como un número suelto.
       id: true, fecha: true, monto_acordado: true, deuda_original: true, quita: true, congela_punitorios: true,
+      /**
+       * 🔴 SIN ESTO, LOS TRES IMPORTES DE LA PANTALLA NO CIERRAN.
+       *
+       * Con `modo_interes: "capitaliza"` el interés del acuerdo se reparte como cargo sobre
+       * las cuotas VIVAS del crédito al firmarlo. Desde ese momento la deuda del crédito es
+       * mayor que la que el acuerdo consolidó, y el detalle mostraba las dos sin nada que
+       * las relacionara: en CRD-000006, "Deuda total $631.409,64" arriba y "Deuda que se
+       * consolidó $565.768,80" abajo. La diferencia es este número (más la mora que
+       * devenga, ver el hallazgo). Viaja para poder decirlo en un renglón.
+       */
+      interes_capitalizado: true,
       cuotas: {
         orderBy: { numero: "asc" },
         select: {
@@ -362,6 +373,7 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
           deuda_original: acuerdo.deuda_original,
           quita: acuerdo.quita,
           congela_punitorios: acuerdo.congela_punitorios,
+          interes_capitalizado: acuerdo.interes_capitalizado,
           total_cuotas: acuerdo.cuotas.length,
           /**
            * El plan ENTERO del acuerdo. Ya se consultaba para resolver `proxima` y se

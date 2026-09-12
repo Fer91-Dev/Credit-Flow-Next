@@ -22,7 +22,25 @@ import { useConfirm } from "@/components/ui/confirm";
 import { formatCreditoNumero, formatFecha, formatDias, formatMonto, nombreCompleto } from "@/lib/utils";
 import { Stat } from "@/components/ui/Stat";
 import { Skeleton } from "@/components/ui/skeleton";
-import { esCreditoVivo, esCreditoCobrable, montoEnPalabras, cargosDeCuota, cuotaCerradaSinPago } from "@/lib/domain";
+import { esCreditoVivo, esCreditoCobrable, montoEnPalabras, cargosDeCuota, cuotaCerradaSinPago, interesDelAcuerdo } from "@/lib/domain";
+
+/**
+ * Un renglón de la cuenta del acuerdo: etiqueta a la izquierda, importe con signo a la
+ * derecha. Mismo formato que la cuenta de la refinanciación (`FilaOrigen`) — son la misma
+ * clase de dato y leerlos distinto obligaría a reaprender la pantalla.
+ */
+function FilaAcuerdo({ label, valor, tono }: { label: string; valor: number; tono?: "success" | "warning" }) {
+  return (
+    <div className="flex items-center justify-between gap-3 text-xs">
+      <span className="text-muted-foreground">{label}</span>
+      <span className={`font-mono tabular-nums ${
+        tono === "success" ? "text-success" : tono === "warning" ? "text-warning" : "text-foreground"
+      }`}>
+        {valor < 0 ? "\u2212" : ""}{formatMonto(Math.abs(valor))}
+      </span>
+    </div>
+  );
+}
 
 function n2(x: number) {
   return new Intl.NumberFormat("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(x);
@@ -114,6 +132,45 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
   const { financiera } = useFinanciera(); // co-branding de lo que se imprime
 
   /**
+   * 🔴 EL ACUERDO DE PAGO MANDA SOBRE TODO LO QUE ESTA PANTALLA DICE DEL CRÉDITO.
+   *
+   * Entrar al detalle de un crédito con un acuerdo vigente no se distinguía en nada de entrar
+   * al de un moroso cualquiera: "En mora · 61 días" en rojo, "Cuota mensual 1 de 3 ·
+   * $237.815,60" como si fuera lo que hay que cobrar, y el botón de refinanciar ofrecido. Las
+   * tres cosas son falsas cuando hay un arreglo firmado: la mora está congelada, lo que se
+   * cobra es la cuota PACTADA —otro importe— y el server rechaza refinanciar.
+   *
+   * Los datos ya venían en la misma respuesta que las cuotas; la pantalla no los miraba. La
+   * ficha del cliente y la terminal de cobro sí, así que el mismo crédito se leía distinto
+   * según por dónde se entrara.
+   *
+   * VIGENTE vs CERRADO: el endpoint devuelve también el acuerdo cumplido/roto/anulado —es el
+   * registro de lo que el cliente pactó— pero solo el vigente cambia cómo se opera.
+   */
+  const acuerdo = metaCuotas?.acuerdo ?? null;
+  const acuerdoVigente = acuerdo?.estado === "vigente" ? acuerdo : null;
+  /**
+   * ¿Cumple? Lo contesta el SERVER (`situacionAcuerdoPorCredito`), contra el día argentino:
+   * calculado acá con el reloj del navegador, después de las 21:00 una cuota que vence hoy
+   * ya contaría como incumplida y el crédito se pintaría de rojo por el huso horario.
+   */
+  const acuerdoAlDia =
+    credito.acuerdo?.al_dia ??
+    /* Si la lista todavía no llegó (pestaña nueva, caché fría), el respaldo es el estado que
+       la conciliación dejó grabado en las cuotas pactadas — también calculado en el server.
+       Dar por supuesto "al día" pintaría de verde, por un instante, a alguien que rompió. */
+    !(acuerdoVigente?.cuotas.some((c) => c.estado === "vencida") ?? false);
+  const proximaPactada = acuerdoVigente?.cuotas.find((c) => c.estado !== "pagada") ?? null;
+  const pactadaPendiente = proximaPactada ? r2(proximaPactada.monto - proximaPactada.pagado) : 0;
+  const pactadasPagadas = acuerdoVigente?.cuotas.filter((c) => c.estado === "pagada").length ?? 0;
+  /** Lo que falta cobrar del acuerdo entero. Baja con cada cobro imputado a una cuota pactada. */
+  const faltaAcuerdo = acuerdoVigente
+    ? r2(acuerdoVigente.cuotas.reduce((t, c) => t + Math.max(0, c.monto - c.pagado), 0))
+    : 0;
+  /** Lo ya cobrado del acuerdo: el complemento del anterior sobre el total pactado. */
+  const cobradoAcuerdo = acuerdoVigente ? r2(acuerdoVigente.monto_acordado - faltaAcuerdo) : 0;
+
+  /**
    * Lo vencido e impago, y la mora corrida. Se derivan de las MISMAS cuotas que muestra la
    * tabla, así que el número de "a cobrar hoy" siempre cuadra con lo de arriba.
    */
@@ -180,7 +237,16 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
   const moraHoy = loadingCuotas ? (credito.dias_mora > 0 ? credito.interes_mora ?? 0 : 0) : moraVivaVencida;
   const aCobrarHoy = Math.round((vencidoImpago + moraHoy) * 100) / 100;
   // Refinanciable = crédito activo y en mora (misma regla que el server exige para reestructurar).
-  const refinanciable = esCreditoVivo(credito.estado) && diasMora > 0;
+  /**
+   * 🔴 Y QUE LA ESCALERA DE RECUPERO LO PERMITA, que acá no se preguntaba.
+   *
+   * `refinanciar_bloqueo` lo resuelve el server con la misma función del dominio que después
+   * rechaza el POST (`puedeRefinanciar`), y la lista de candidatos de Cobranza ya lo respeta.
+   * Esta pantalla no: con un acuerdo VIGENTE —que bloquea refinanciar sin excepción— seguía
+   * ofreciendo el botón, y el operador se enteraba recién en la pantalla siguiente.
+   */
+  const bloqueoRefi = credito.refinanciar_bloqueo ?? null;
+  const refinanciable = esCreditoVivo(credito.estado) && diasMora > 0 && !bloqueoRefi;
   const { pagos, isLoading: loadingPagos } = usePagosByCredito(credito.id);
   // Trazabilidad de refinanciación: resuelve el N° del crédito vinculado (origen/destino)
   // desde la lista ya cargada, sin pedir nada extra al server.
@@ -228,6 +294,9 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
    * deja la fila resaltada unos segundos, para no perderla entre doce renglones iguales.
    */
   const planRef = useRef<HTMLDetailsElement>(null);
+  /** Mismo recurso para el acuerdo: el KPI de la cuota pactada baja hasta su plan. */
+  const acuerdoRef = useRef<HTMLDivElement>(null);
+  const irAlAcuerdo = () => acuerdoRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   const [resaltarProxima, setResaltarProxima] = useState(false);
   const irAlPlan = () => {
     // El KPI de la cuota baja al plan: si esta plegado, tiene que ABRIRLO — si no, el
@@ -388,8 +457,13 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
    */
   const puedeCobrar = esCreditoCobrable(credito.estado) && credito.saldo_pendiente > 0;
 
-  // El umbral de Legales lo define la financiera (Configuración → Cobranza).
-  const est = estadoBadgeCredito(credito.estado, diasMora, diasLegales, null, (credito.cobrado_post_castigo ?? 0) > 0);
+  /*
+    El badge de estado vive en el encabezado de la página (`CreditoPagina`), que es donde
+    quedaron el número, el titular y el estado. Acá había quedado un `estadoBadgeCredito`
+    huérfano —calculado y nunca renderizado— desde esa mudanza, y encima pasando `null` en
+    el lugar del acuerdo. Se va: una copia muerta de una regla es una copia que alguien
+    termina arreglando en vez de la viva.
+  */
   const totalCobrado = pagos.filter(p => !p.anulado).reduce((s, p) => s + p.monto, 0);
   const pagosVivos = pagos.filter(p => !p.anulado).length;
   const pagosAnulados = pagos.length - pagosVivos;
@@ -647,6 +721,33 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
             El clic baja al plan de cuotas y deja la fila marcada — pedido del usuario: quería
             llegar al detalle de las cuotas desde acá sin tener que buscar la tabla.
           */}
+          {/*
+            🔴 CON UN ACUERDO VIGENTE, ESTA TARJETA NO PUEDE MOSTRAR LA CUOTA DEL PLAN.
+
+            Son dos importes distintos sobre la misma deuda y el de esta tarjeta es el que NO
+            se cobra: el acuerdo consolida todo el plan —lo vencido y lo que falta vencer— y
+            lo reparte en SUS cuotas, con su propia tasa y su quita. El operador veía
+            "$237.815,60" arriba de todo y cobraba por ese número.
+
+            Mismo criterio y mismas palabras que la ficha del cliente y la terminal de cobro:
+            lo que manda es la cuota PACTADA. La del plan no desaparece —abajo, en la tabla,
+            que es donde se imputa la plata— pero deja de ser el titular.
+          */}
+          {acuerdoVigente ? (
+            <Stat
+              icon="handshake"
+              label={acuerdoAlDia ? "Cuota pactada" : "Cuota pactada vencida"}
+              accent={acuerdoAlDia ? "primary" : "destructive"}
+              value={proximaPactada ? `$${n2(pactadaPendiente)}` : "—"}
+              sub={
+                proximaPactada
+                  ? `cuota ${proximaPactada.numero} de ${acuerdoVigente.total_cuotas} · vence ${fmtDate(proximaPactada.vencimiento)}`
+                  : "las cuotas pactadas se cobraron"
+              }
+              onClick={irAlAcuerdo}
+              title="Ver el plan del acuerdo"
+            />
+          ) : (
           <Stat
             icon="chart-increasing"
             label={proximaCuota ? `${cap(unidadCuota)} ${proximaCuota.nro} de ${cuotas.length}` : cap(unidadCuota)}
@@ -661,14 +762,31 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
             onClick={proximaCuota ? irAlPlan : undefined}
             title={proximaCuota ? "Ver el plan de cuotas" : undefined}
           />
+          )}
           {/* El conteo excluye los anulados: decía "1 pago" con "$0 cobrado" al lado. */}
           <Stat icon="chart-increasing" label="Total cobrado" accent="success"
             value={`$${n2(totalCobrado)}`}
             sub={`${pagosVivos} pago${pagosVivos !== 1 ? "s" : ""}${pagosAnulados > 0 ? ` · ${pagosAnulados} anulado${pagosAnulados !== 1 ? "s" : ""}` : ""}`} />
+          {/*
+            🔴 "EN MORA · 61 DÍAS" EN ROJO SOBRE ALGUIEN QUE ESTÁ CUMPLIENDO SU ARREGLO.
+
+            Con un acuerdo que congela punitorios, ese atraso ya no crece ni se le sigue
+            cobrando: el endpoint de cuotas devenga la mora hasta la FECHA DEL ACUERDO y no
+            hasta hoy. El número se conserva —es la historia del crédito y explica de dónde
+            salió la deuda que se pactó— pero deja de ser una alarma y dice desde cuándo
+            está quieto. Es lo mismo que ya hace la ficha del cliente.
+
+            Si el acuerdo NO congela punitorios (lo decide la financiera en Configuración), la
+            mora sigue corriendo de verdad y la tarjeta se queda como estaba: ahí el rojo es
+            cierto.
+          */}
+          {(() => {
+            const moraCongelada = !!acuerdoVigente && acuerdoVigente.congela_punitorios && diasMora > 0;
+            return (
           <Stat
-            icon="warning"
-            label={diasMora > 0 ? "En mora" : "Próximo pago"}
-            accent={diasMora > 30 ? "destructive" : diasMora > 0 ? "warning" : "muted"}
+            icon={moraCongelada ? "handshake" : "warning"}
+            label={moraCongelada ? "Mora congelada" : diasMora > 0 ? "En mora" : "Próximo pago"}
+            accent={moraCongelada ? "muted" : diasMora > 30 ? "destructive" : diasMora > 0 ? "warning" : "muted"}
             // "41 días", no "41d": el usuario pidió la palabra entera — la abreviatura
             // obliga a traducirla mentalmente cada vez, y esta tarjeta es de las que se
             // miran de reojo.
@@ -677,8 +795,16 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
                 ? `${diasMora} ${diasMora === 1 ? "día" : "días"}`
                 : credito.proximo_pago ? fmtDate(credito.proximo_pago) : "—"
             }
-            sub={diasMora > 0 && moraHoy > 0 ? `mora $${n2(moraHoy)}` : undefined}
+            sub={
+              moraCongelada
+                ? `no corre desde el acuerdo del ${fmtDate(acuerdoVigente!.fecha)}`
+                : diasMora > 0 && moraHoy > 0 ? `mora $${n2(moraHoy)}` : undefined
+            }
+            onClick={moraCongelada ? irAlAcuerdo : undefined}
+            title={moraCongelada ? "Ver el acuerdo que la congeló" : undefined}
           />
+            );
+          })()}
         </div>
       </div>
 
@@ -691,6 +817,212 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
         página entera fluye y scrollea el navegador (ver `CreditoPagina`).
       */}
       <div className="flex-1 px-7 py-5 space-y-6">
+
+        {/*
+          🔴 EL ACUERDO DE PAGO, ANTES QUE EL PLAN — porque es lo que lo rige.
+
+          Un acuerdo se arma cuando el plan se cayó: consolida TODA la deuda del crédito (lo
+          vencido y lo que falta vencer, por `incluirPorVencer`), le aplica la quita y su
+          propia tasa, y la reparte en cuotas nuevas. A partir de ahí hay DOS planes sobre la
+          misma deuda y solo uno es el compromiso. Esta pantalla mostraba únicamente el otro.
+
+          Va arriba del plan de cuotas y no al final con la trazabilidad de refinanciación:
+          no es un antecedente, es lo que hay que cobrar hoy.
+
+          ÁMBAR vs ÍNDIGO. El ámbar es de la refinanciación —de dónde viene el crédito, un
+          hecho que no cambia—; el índigo es del acuerdo —cómo está hoy, y mañana puede no
+          estar—. Es el mismo índigo con el que la terminal de cobro y la ficha del cliente
+          ya marcan los acuerdos: un color por concepto en todo el SaaS.
+
+          Un acuerdo CERRADO (cumplido, roto, anulado) se muestra igual, en gris: es el
+          registro de lo que la persona pactó y pagó, y es justo lo que hay que mirar antes
+          de ofrecerle otro. Lo que no se muestra es "lo que se cobra": ya no rige.
+        */}
+        {acuerdo && (() => {
+          const EST = {
+            vigente:  { label: "Acuerdo de pago vigente",  chip: "Vigente"  },
+            cumplido: { label: "Acuerdo de pago cumplido", chip: "Cumplido" },
+            roto:     { label: "Acuerdo de pago roto",     chip: "Roto"     },
+            anulado:  { label: "Acuerdo de pago anulado",  chip: "Anulado"  },
+          }[acuerdo.estado] ?? { label: "Acuerdo de pago", chip: acuerdo.estado };
+          /* El interés que el acuerdo agregó. Sale del DOMINIO y no de una resta escrita acá:
+             es el mismo número que muestra la terminal de cobro al imputar la cuota pactada. */
+          const interesAcuerdo = interesDelAcuerdo(acuerdo);
+          /* Tono: el vigente al día en índigo, el vigente incumplido en rojo, el cerrado en gris. */
+          const tono = !acuerdoVigente
+            ? { borde: "border-border", fondo: "bg-muted/20", franja: "bg-muted-foreground/30", texto: "text-muted-foreground", suave: "border-border" }
+            : acuerdoAlDia
+              ? { borde: "border-primary/30", fondo: "bg-primary/[0.05]", franja: "bg-primary", texto: "text-primary", suave: "border-primary/20" }
+              : { borde: "border-destructive/35", fondo: "bg-destructive/[0.05]", franja: "bg-destructive", texto: "text-destructive", suave: "border-destructive/20" };
+          return (
+            <section ref={acuerdoRef} className={`relative overflow-hidden rounded-xl border ${tono.borde} ${tono.fondo}`}>
+              {/* La franja lateral: el mismo recurso con el que la pantalla marca una
+                  refinanciación y la severidad en las listas. */}
+              <span aria-hidden className={`pointer-events-none absolute inset-y-0 left-0 w-1 ${tono.franja}`} />
+              <div className="px-4 py-3.5">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <Emoji name="handshake" className="h-4 w-4" />
+                    <h3 className={`text-sm font-semibold ${tono.texto}`}>{EST.label}</h3>
+                    {/* Con el acuerdo vigente el chip dice si CUMPLE, que es el dato que
+                        decide si esta persona es morosa o no. Cerrado, dice cómo terminó. */}
+                    <span className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ring-1 ring-inset ${
+                      acuerdoVigente
+                        ? acuerdoAlDia
+                          ? "bg-success/10 text-success ring-success/25"
+                          : "bg-destructive/10 text-destructive ring-destructive/25"
+                        : "bg-muted/40 text-muted-foreground ring-border"
+                    }`}>
+                      {acuerdoVigente ? (acuerdoAlDia ? "Cumpliendo" : "Con cuotas vencidas") : EST.chip}
+                    </span>
+                  </div>
+                  <span className="text-[11px] text-muted-foreground">
+                    firmado el <span className="font-medium text-foreground">{formatFecha(acuerdo.fecha)}</span>
+                  </span>
+                </div>
+
+                {/*
+                  LO QUE HAY QUE COBRAR, en el tamaño en el que se lee de lejos. Es el mismo
+                  importe que precarga la terminal de cobro: si acá dijera otro, el operador
+                  tendría que elegir entre dos pantallas del mismo sistema.
+                */}
+                {acuerdoVigente && (
+                  <div className={`mt-3 flex flex-wrap items-baseline justify-between gap-2 border-t ${tono.suave} pt-3`}>
+                    {proximaPactada ? (
+                      <>
+                        <span className="text-sm text-foreground">
+                          Se cobra la cuota pactada{" "}
+                          <span className="font-semibold">{proximaPactada.numero} de {acuerdoVigente.total_cuotas}</span>
+                          <span className="text-muted-foreground"> · vence {fmtDate(proximaPactada.vencimiento)}</span>
+                        </span>
+                        <span className={`font-mono text-2xl font-bold leading-none tabular-nums ${acuerdoAlDia ? "text-foreground" : "text-destructive"}`}>
+                          ${n2(pactadaPendiente)}
+                        </span>
+                      </>
+                    ) : (
+                      <span className="text-sm text-muted-foreground">
+                        Las {acuerdoVigente.total_cuotas} cuotas pactadas se cobraron.
+                      </span>
+                    )}
+                  </div>
+                )}
+
+                {/*
+                  🔴 DE DÓNDE SALE EL TOTAL PACTADO, discriminado.
+
+                  Sin esto el panel diría "$1.041.632,00" y nadie puede explicarle al cliente
+                  por qué debe eso si su crédito decía otra cosa. Son tres movimientos: lo que
+                  se consolidó, lo que se le perdonó y lo que el acuerdo cobra por financiarlo.
+                  La resta va completa: arriba el BRUTO, y el neto es el renglón del total.
+                */}
+                <div className={`mt-3 space-y-1 border-t ${tono.suave} pt-2.5`}>
+                  <FilaAcuerdo label="Deuda del crédito que se consolidó" valor={acuerdo.deuda_original} />
+                  {acuerdo.quita > 0 && (
+                    <FilaAcuerdo label="Descuento al cliente" valor={-acuerdo.quita} tono="success" />
+                  )}
+                  {interesAcuerdo !== 0 && (
+                    <FilaAcuerdo label="Interés del acuerdo" valor={interesAcuerdo} tono="warning" />
+                  )}
+                  <div className={`flex items-center justify-between gap-3 border-t ${tono.suave} pt-1.5 text-xs`}>
+                    <span className="font-semibold text-foreground">
+                      Total pactado en {acuerdo.total_cuotas} cuota{acuerdo.total_cuotas === 1 ? "" : "s"}
+                    </span>
+                    <span className="font-mono font-bold tabular-nums text-foreground">{formatMonto(acuerdo.monto_acordado)}</span>
+                  </div>
+                  {acuerdoVigente && (
+                    <>
+                      <FilaAcuerdo label={`Cobrado · ${pactadasPagadas} de ${acuerdo.total_cuotas} cuotas pactadas`} valor={-cobradoAcuerdo} tono="success" />
+                      <div className={`flex items-center justify-between gap-3 border-t ${tono.suave} pt-1.5 text-xs`}>
+                        <span className="font-semibold text-foreground">Falta del acuerdo</span>
+                        <span className={`font-mono font-bold tabular-nums ${tono.texto}`}>{formatMonto(faltaAcuerdo)}</span>
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                {/*
+                  🔴 POR QUÉ "DEUDA TOTAL" (arriba) NO ES "DEUDA QUE SE CONSOLIDÓ" (acá).
+
+                  Con el modo `capitaliza` —el que usa esta financiera— el interés del acuerdo
+                  se reparte como cargo sobre las cuotas vivas del crédito en el acto de
+                  firmarlo. Desde ese momento el crédito debe más de lo que el acuerdo
+                  consolidó, y las dos cifras conviven en la misma pantalla. Sin este renglón
+                  se leen como un error del sistema; con él, como lo que son: la misma deuda en
+                  dos momentos.
+                */}
+                {acuerdo.interes_capitalizado > 0 && (
+                  <p className="mt-2.5 text-[11px] text-muted-foreground">
+                    Los{" "}
+                    <span className="font-mono tabular-nums text-foreground">{formatMonto(acuerdo.interes_capitalizado)}</span>{" "}
+                    de interés del acuerdo se pasaron a las cuotas del crédito al firmarlo, como cargo: por eso
+                    la deuda del crédito, arriba, es mayor que la que el acuerdo consolidó.
+                  </p>
+                )}
+
+                {/* Por qué la mora de arriba está quieta. Es el término congelado del acuerdo,
+                    no una decisión de esta pantalla. */}
+                {acuerdoVigente && acuerdoVigente.congela_punitorios && (
+                  <p className="mt-2.5 text-[11px] text-muted-foreground">
+                    Mientras cumpla, no se le devengan punitorios: la mora quedó congelada al {formatFecha(acuerdo.fecha)}.
+                  </p>
+                )}
+
+                {/*
+                  EL PLAN PACTADO, plegado. Es el registro de qué cuota se pagó y con qué
+                  recibo — el mismo que ya muestran la ficha del cliente y la terminal.
+                */}
+                <details className="group/ac mt-3">
+                  <summary className="flex cursor-pointer list-none items-center gap-1.5 text-[11px] font-medium text-muted-foreground transition-colors hover:text-foreground [&::-webkit-details-marker]:hidden">
+                    <ChevronDown className="h-3.5 w-3.5 transition-transform duration-200 group-open/ac:rotate-180" />
+                    Ver las {acuerdo.total_cuotas} cuotas pactadas
+                  </summary>
+                  <div className="mt-2 overflow-x-auto rounded-lg border border-border">
+                    <table className="w-full border-separate border-spacing-0 text-xs">
+                      <thead>
+                        <tr className="bg-muted/30 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                          <th className="border-b border-border px-3 py-1.5 text-left">#</th>
+                          <th className="border-b border-border px-3 py-1.5 text-left">Vencimiento</th>
+                          <th className="border-b border-border px-3 py-1.5 text-right">Pactado</th>
+                          <th className="border-b border-border px-3 py-1.5 text-right">Cobrado</th>
+                          <th className="border-b border-border px-3 py-1.5 text-left">Comprobante</th>
+                          <th className="border-b border-border px-3 py-1.5 text-right">Falta</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {acuerdo.cuotas.map((c) => {
+                          const falta = r2(Math.max(0, c.monto - c.pagado));
+                          const esProxima = acuerdoVigente != null && proximaPactada?.numero === c.numero;
+                          /* Una cuota pactada puede cubrirse con dos cobros: van todos. */
+                          const recibos = c.recibos ?? (c.comprobante ? [{ comprobante: c.comprobante, pago_id: c.pago_id ?? "", monto: c.pagado, monto_pago: c.pagado }] : []);
+                          return (
+                            <tr key={c.id} className={esProxima ? "bg-primary/[0.06]" : undefined}>
+                              <td className="border-b border-border/60 px-3 py-1.5 font-mono tabular-nums text-muted-foreground">{c.numero}</td>
+                              <td className="border-b border-border/60 px-3 py-1.5 tabular-nums text-foreground">{fmtDate(c.vencimiento)}</td>
+                              <td className="border-b border-border/60 px-3 py-1.5 text-right font-mono tabular-nums text-foreground">{formatMonto(c.monto)}</td>
+                              <td className="border-b border-border/60 px-3 py-1.5 text-right font-mono tabular-nums text-success">
+                                {c.pagado > 0 ? formatMonto(c.pagado) : <span className="text-muted-foreground/50">—</span>}
+                              </td>
+                              <td className="border-b border-border/60 px-3 py-1.5 font-mono text-[11px] text-muted-foreground">
+                                {recibos.length > 0
+                                  ? recibos.map((r) => r.comprobante ?? "s/n").join(" · ")
+                                  : <span className="text-muted-foreground/50">—</span>}
+                              </td>
+                              <td className={`border-b border-border/60 px-3 py-1.5 text-right font-mono tabular-nums ${
+                                falta === 0 ? "text-muted-foreground/50" : c.estado === "vencida" ? "text-destructive" : "text-foreground"
+                              }`}>
+                                {falta === 0 ? "saldada" : formatMonto(falta)}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </details>
+              </div>
+            </section>
+          );
+        })()}
 
         {/* Plan de cuotas (cronograma persistido con estado real) */}
         {/*
@@ -737,6 +1069,20 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
               <h3 className={`text-sm font-semibold ${credito.es_refinanciacion ? "text-warning" : "text-foreground"}`}>
                 {credito.es_refinanciacion ? "Plan de cuotas de la refinanciación" : "Plan de cuotas"}
               </h3>
+              {/*
+                🔴 CON UN ACUERDO VIGENTE ESTE PLAN YA NO ES EL COMPROMISO, pero sigue siendo
+                el LIBRO: cada cobro de una cuota pactada se imputa acá abajo, cuota por cuota.
+                Las dos cosas son ciertas y se contradicen si no se dicen juntas — por eso el
+                rótulo, y no un título tachado que haría pensar que la tabla quedó muerta.
+              */}
+              {acuerdoVigente && (
+                <span
+                  className="rounded-md bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold text-primary ring-1 ring-inset ring-primary/20"
+                  title="El compromiso vigente es el plan del acuerdo, arriba. Este plan sigue siendo el libro donde se imputa cada cobro."
+                >
+                  regido por el acuerdo
+                </span>
+              )}
               {/* Plegado, el resumen ES la sección: sin esto el título no dice nada. */}
               {!planAbierto && resumen && (
                 <span className="text-[11px] tabular-nums text-muted-foreground/70">
@@ -807,6 +1153,22 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
                   <RefreshCw className="h-3.5 w-3.5" /> Refinanciar
                   {credito.es_refinanciacion && <span className="text-warning/70">*</span>}
                 </button>
+              )}
+              {/*
+                🔴 EL BOTÓN BLOQUEADO SE QUEDA, EN GRIS Y CON EL MOTIVO.
+
+                Sacarlo del todo dejaría al operador buscando una acción que existe y no
+                encuentra —y con un acuerdo vigente encima, creyendo que el sistema se la
+                comió—. El motivo y la sugerencia los escribe el mismo dominio que rechaza el
+                POST, así que la pantalla no inventa una explicación propia.
+              */}
+              {bloqueoRefi && esCreditoVivo(credito.estado) && diasMora > 0 && onRefinanciar && (
+                <span
+                  title={`${bloqueoRefi.motivo} ${bloqueoRefi.sugerencia}`}
+                  className="inline-flex cursor-not-allowed items-center gap-1.5 rounded-lg border border-border bg-muted/20 px-2.5 py-1 text-[11px] font-medium text-muted-foreground/70"
+                >
+                  <RefreshCw className="h-3.5 w-3.5" /> Refinanciar
+                </span>
               )}
               {puedeCobrar && (
                 <Link

@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { ArrowLeft, RefreshCcw } from "lucide-react";
+import { ArrowLeft, RefreshCcw, Handshake } from "lucide-react";
 import { CreditoDetail } from "./CreditoDetail";
 import { SystemControls } from "@/components/ui/SystemControls";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -44,6 +44,20 @@ export function CreditoPagina({ id, role }: { id: string; role?: Role }) {
   /** A cuántos días de atraso pasa a Legales (Configuración). Lo necesita el badge. */
   const diasLegales = useDiasLegales();
   const credito = creditos.find((c) => c.id === id) ?? null;
+  /**
+   * 🔴 EL ACUERDO DE PAGO VIGENTE, QUE ESTA PANTALLA IGNORABA.
+   *
+   * `estadoBadgeCredito` recibe la situación del acuerdo desde 2026-08 y sabe contestar
+   * "En acuerdo" (verde) o "Acuerdo atrasado" (rojo). La lista de Créditos se la pasa; acá
+   * iba `null` fijo. Resultado: la fila de la lista decía "En acuerdo" y, al hacerle clic,
+   * la pantalla del mismo crédito decía "Legales" — dos veredictos distintos sobre la misma
+   * persona, a un clic de distancia.
+   *
+   * `credito.acuerdo` solo viene cuando el acuerdo está VIGENTE (lo filtra
+   * `situacionAcuerdoPorCredito`), y su `al_dia` lo resuelve el server contra el día
+   * argentino: después de las 21:00 el navegador daría por incumplida una cuota que vence hoy.
+   */
+  const acuerdo = credito?.acuerdo ?? null;
 
   const volver = () => router.push("/creditos");
   const irA = (c: Credito) => router.push(`/creditos/${c.id}`);
@@ -104,7 +118,34 @@ export function CreditoPagina({ id, role }: { id: string; role?: Role }) {
                   <RefreshCcw className="h-3 w-3" /> Refinanciación
                 </span>
               )}
-              {credito && <StatusBadge {...estadoBadgeCredito(credito.estado, credito.dias_mora, diasLegales, null, (credito.cobrado_post_castigo ?? 0) > 0)} />}
+              {/*
+                EL CHIP DEL ACUERDO VA ANTES QUE EL BADGE, y no lo reemplaza: el badge dice
+                en qué ESTADO está el crédito ("En acuerdo" / "Acuerdo atrasado"); el chip
+                dice que hay un contrato nuevo de por medio, que es lo que cambia cómo se
+                opera la pantalla — lo que se cobra es la cuota pactada, no la del plan.
+
+                Ámbar y índigo conviven a propósito: el ámbar habla del ORIGEN del crédito
+                (nació de refinanciar otro, y eso no cambia nunca) y el índigo de su SITUACIÓN
+                de hoy (hay un acuerdo corriendo, y mañana puede no haberlo). Un crédito puede
+                ser las dos cosas.
+              */}
+              {acuerdo && (
+                <span
+                  className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ring-1 ring-inset ${
+                    acuerdo.al_dia
+                      ? "bg-primary/15 text-primary ring-primary/30"
+                      : "bg-destructive/15 text-destructive ring-destructive/30"
+                  }`}
+                  title={
+                    acuerdo.al_dia
+                      ? "Tiene un acuerdo de pago vigente y lo est\u00e1 cumpliendo: lo que se cobra es la cuota pactada, no la del plan original"
+                      : "Tiene un acuerdo de pago vigente con cuotas pactadas vencidas"
+                  }
+                >
+                  <Handshake className="h-3 w-3" /> Acuerdo de pago
+                </span>
+              )}
+              {credito && <StatusBadge {...estadoBadgeCredito(credito.estado, credito.dias_mora, diasLegales, acuerdo ? { alDia: acuerdo.al_dia } : null, (credito.cobrado_post_castigo ?? 0) > 0)} />}
             </div>
             {/*
               EL CLIENTE NO ES UN SUBTÍTULO. Iba en `text-xs` gris, del mismo peso que

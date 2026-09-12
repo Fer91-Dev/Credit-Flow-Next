@@ -20,14 +20,9 @@ import { hoyComercial, formatCreditoNumero } from "@/lib/utils";
 import { numerosRefinanciados } from "@/lib/creditos-numero";
 import { formatComprobante } from "@/lib/comprobantes";
 
-/**
- * Cuánto interés le agregó el acuerdo a la deuda. Se DERIVA de lo que ya está guardado
- * (`monto_acordado` es la suma del plan; `deuda_original − quita` es la base), así que no
- * hace falta una columna nueva ni puede quedar desincronizado de las cuotas del acuerdo.
- */
-export function interesDelAcuerdo(a: { monto_acordado: number; deuda_original: number; quita: number }): number {
-  return round2(noNegativo(a.monto_acordado - (a.deuda_original - a.quita)));
-}
+/* `interesDelAcuerdo` se mudó a `lib/domain/acuerdos.ts` (aritmética pura, la usan las dos
+   puntas) y se re-exporta acá para no tocar a quien ya lo importaba desde este módulo. */
+export { interesDelAcuerdo } from "@/lib/domain";
 
 /**
  * Reparte el interés del acuerdo sobre las cuotas VIVAS del crédito, como cargo.
