@@ -5,6 +5,7 @@ import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { conNumeroDeOrigen, numerosRefinanciados } from "@/lib/creditos-numero";
 import { sincronizarAcuerdos } from "@/lib/acuerdos";
+import * as Sentry from "@sentry/nextjs";
 import { nombreCompleto, formatCreditoNumero, hoyComercial, ventanaDias, ventanaAR } from "@/lib/utils";
 import { imputarPagoEnCuotas, diasAtraso, round2, etiquetaCaja, cuentaDeMetodo, esCuentaValida, type CuotaParaImputar, moraDelCredito, moraDesdeCronograma, esCreditoCobrable, estadoTrasMoverLedger, topeMoraPorFallecimiento, topeMoraPorIncobrable, topeMoraMasTemprano, promoVigenteAl, cargosDeCuota, baseMoraDeCuota } from "@/lib/domain";
 import { lockCreditoTx, assertCuotasSinCambios, TX_PLATA } from "@/lib/locks";
@@ -744,13 +745,37 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     },
   });
 
-  // Auto-conciliación de promesas de pago pendientes (no bloquea la respuesta)
-  conciliarPromesas(body.credito_id, tenantId, montoPago).catch(() => {});
-
-  // Y del ACUERDO de pago, si el crédito tiene uno vigente: el cliente que termina de
-  // pagar lo acordado tiene que verlo cumplido al instante, no cuando corra el cron.
-  // Fire-and-forget con el mismo criterio: nunca frenar el cobro por un efecto de estado.
-  sincronizarAcuerdos({ tenantId, creditoId: body.credito_id }).catch(() => {});
+  /**
+   * 🔴 LOS EFECTOS DE ESTADO SE ESPERAN. NO SON "FIRE AND FORGET".
+   *
+   * Estaban lanzados sin `await` y con `.catch(() => {})`, con la idea de no frenar el cobro.
+   * El problema es que una promesa que queda colgando cuando la respuesta ya salió puede no
+   * ejecutarse nunca: Next desarma el contexto del request, y si además tira un error, ese
+   * `.catch` vacío lo hace desaparecer sin dejar rastro.
+   *
+   * Pasó de verdad, y es el caso que este comentario ya prometía resolver: Fernando cobró la
+   * última cuota del acuerdo de Héctor Ibarra (CRD-000006) y la pantalla siguió mostrando el
+   * acuerdo VIGENTE con el crédito debiendo $10,00. El acuerdo recién se cerró —y la quita
+   * recién se condonó— cuatro minutos después, cuando alguien abrió Cobranza. O sea que el
+   * "al instante" del comentario nunca fue cierto: dependía de que alguien pasara por una
+   * pantalla, o del cron de la madrugada.
+   *
+   * Ahora se esperan, en paralelo. Cuestan unas consultas y el cobro es la operación donde
+   * peor se paga una inconsistencia: el operador tiene al cliente enfrente.
+   *
+   * Lo que NO cambia: un error acá no puede voltear el cobro. La plata YA entró y su
+   * transacción ya commiteó; devolver un 500 haría que el operador lo cobre de nuevo. Se
+   * atrapa, se manda a Sentry —que es lo que faltaba— y la respuesta sale igual. El cron
+   * sigue siendo la red de contención.
+   */
+  await Promise.all([
+    conciliarPromesas(body.credito_id, tenantId, montoPago).catch((e) => {
+      Sentry.captureException(e, { tags: { efecto: "conciliar_promesas" }, extra: { credito_id: body.credito_id } });
+    }),
+    sincronizarAcuerdos({ tenantId, creditoId: body.credito_id }).catch((e) => {
+      Sentry.captureException(e, { tags: { efecto: "sincronizar_acuerdos" }, extra: { credito_id: body.credito_id } });
+    }),
+  ]);
 
   return successResponse(
     {
