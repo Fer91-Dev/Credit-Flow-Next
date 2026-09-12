@@ -323,6 +323,18 @@ export function PagoForm({ creditoId, clienteId, montoSugerido, motivoSugerido, 
   const [autorizar, setAutorizar] = useState(false);
   // Viniendo del botón verde de una cuota, esa cuota arranca seleccionada.
   const [hasta, setHasta]                 = useState<number | null>(cuotaHasta ?? null);
+  /**
+   * 🔴 HASTA QUÉ CUOTA DEL ACUERDO LLEGA EL COBRO — para poder ADELANTAR.
+   *
+   * Faltaba: la terminal cobraba siempre la próxima y nada más, así que un cliente que venía
+   * con plata para pagar dos cuotas juntas no tenía por dónde. El ledger ya lo soportaba —el
+   * avance del acuerdo se deriva del total cobrado desde que se firmó—; lo que faltaba era
+   * la pantalla y poder decirlo en el recibo (`acuerdo_cuota_hasta`).
+   *
+   * `null` = la próxima sola, que es el caso normal. La selección es ACUMULATIVA: no se puede
+   * pagar la cuota 2 sin la 1, porque el acuerdo se concilia repartiendo el total en orden.
+   */
+  const [hastaAcuerdo, setHastaAcuerdo] = useState<number | null>(null);
 
   /**
    * Modo "monto personalizado". Arranca prendido SOLO cobrando un acuerdo: ahí el importe
@@ -433,9 +445,32 @@ export function PagoForm({ creditoId, clienteId, montoSugerido, motivoSugerido, 
   const cobrandoAcuerdo = Boolean(esAcuerdo);
   /** Cuota del acuerdo que se esta cobrando: se guarda en el pago para el recibo. */
   const cuotaAcuerdoId = acuerdo?.proxima?.id ?? null;
+  /**
+   * El TRAMO de cuotas pactadas que cubre este cobro: de la próxima hasta la que se eligió.
+   * Con `hastaAcuerdo` en null es una sola.
+   */
+  const tramoAcuerdo = acuerdo?.proxima
+    ? (acuerdo.cuotas ?? []).filter(
+        (c) => c.numero >= acuerdo.proxima!.numero && c.numero <= (hastaAcuerdo ?? acuerdo.proxima!.numero),
+      )
+    : [];
+  /**
+   * 🔴 EL IMPORTE DE UN ACUERDO NO SE TIPEA: es la suma de las cuotas pactadas elegidas.
+   *
+   * "Las cuotas del acuerdo se deben cubrir en su totalidad" (Fernando). Y no es solo una
+   * política: el avance del acuerdo se mide comparando lo cobrado contra el plan, así que un
+   * pago a medias deja una cuota que no está pagada ni vencida — y en el vencimiento
+   * siguiente el acuerdo se rompe por una cuota que el cliente cree cubierta.
+   *
+   * El server valida lo mismo (`ACUERDO_CUOTA_INCOMPLETA`): esto evita el error, no lo
+   * reemplaza.
+   */
+  const montoAcuerdo = round2(tramoAcuerdo.reduce((t, c) => t + Math.max(0, round2(c.monto - c.pagado)), 0));
 
   const montoCuotas  = round2(seleccionadas.reduce((s, c) => s + importeACobrar(c), 0));
-  const monto        = manual ? parseMontoInput(montoManual) : montoCuotas;
+  const monto        = cobrandoAcuerdo && montoAcuerdo > 0
+    ? montoAcuerdo
+    : manual ? parseMontoInput(montoManual) : montoCuotas;
   /**
    * "Excede" = se paga más que TODO lo adeudado → el sobrante queda a favor. OJO: NO comparar
    * contra `saldo_pendiente`, que es solo el CAPITAL: una cuota normal (capital + interés) ya
@@ -503,6 +538,11 @@ export function PagoForm({ creditoId, clienteId, montoSugerido, motivoSugerido, 
         body: JSON.stringify({
           credito_id: creditoSel, monto, metodo, notas,
           ...(cobrandoAcuerdo && cuotaAcuerdoId ? { acuerdo_cuota_id: cuotaAcuerdoId } : {}),
+          // Hasta qué cuota pactada llega, si el cliente adelantó. El server lo valida contra
+          // el acuerdo vigente y lo guarda para que el recibo diga "cuotas 1 y 2 de 3".
+          ...(cobrandoAcuerdo && cuotaAcuerdoId && hastaAcuerdo != null && acuerdo?.proxima && hastaAcuerdo > acuerdo.proxima.numero
+            ? { acuerdo_cuota_hasta: hastaAcuerdo }
+            : {}),
           // Excepción del admin al bloqueo por atraso. El server la vuelve a validar contra
           // el rol: mandarla desde un vendedor no levanta nada.
           ...(cobro && !cobro.permitido && autorizar ? { autorizacion_admin: true } : {}),
@@ -845,25 +885,72 @@ export function PagoForm({ creditoId, clienteId, montoSugerido, motivoSugerido, 
                 </table>
               );
             })()}
+            {/*
+              🔴 SE PUEDE ADELANTAR. Estas filas ahora se eligen.
+
+              Faltaba: la terminal cobraba la próxima cuota pactada y nada más, así que un
+              cliente que venía con plata para pagar dos juntas no tenía por dónde — había que
+              cobrarle una, cerrar, y volver a abrir la terminal. El ledger ya lo soportaba
+              (el avance del acuerdo se deriva del total cobrado desde que se firmó).
+
+              La selección es ACUMULATIVA, igual que en el plan del crédito: clickear la cuota
+              3 toma la 1, la 2 y la 3. No hay forma de pagar la 2 sin la 1, porque la
+              conciliación reparte lo cobrado en orden y saltearse una dejaría el acuerdo
+              diciendo que la primera sigue impaga.
+
+              Y el importe NO se tipea: es la suma exacta de lo elegido. Una cuota pactada se
+              cobra entera (el server también lo valida).
+            */}
             <div className="mt-2 divide-y divide-primary/10">
               {acuerdo.cuotas.map((c) => {
                 const pendiente = round2(c.monto - c.pagado);
-                const esLaQueSeCobra = c.estado !== "pagada" && acuerdo.proxima?.numero === c.numero;
+                const enElTramo = tramoAcuerdo.some((x) => x.numero === c.numero);
+                const elegible = c.estado !== "pagada" && acuerdo.proxima != null && c.numero >= acuerdo.proxima.numero;
+                const elegir = () => setHastaAcuerdo(c.numero === acuerdo.proxima?.numero ? null : c.numero);
                 return (
                   <div
                     key={c.numero}
-                    className={`flex items-center justify-between gap-3 px-1.5 py-1.5 text-xs ${esLaQueSeCobra ? "rounded-md bg-primary/10" : ""}`}
+                    {...(elegible
+                      ? {
+                          role: "button" as const,
+                          tabIndex: 0,
+                          onClick: elegir,
+                          onKeyDown: (e: React.KeyboardEvent) => {
+                            if (e.key === "Enter" || e.key === " ") { e.preventDefault(); elegir(); }
+                          },
+                          title: c.numero === acuerdo.proxima?.numero
+                            ? "Cobrar solo esta cuota"
+                            : `Adelantar: cobrar hasta la cuota ${c.numero}`,
+                        }
+                      : {})}
+                    className={`flex items-center justify-between gap-3 rounded-md px-1.5 py-2 text-xs transition-colors ${
+                      enElTramo ? "bg-primary/10" : elegible ? "cursor-pointer hover:bg-primary/[0.06]" : ""
+                    } ${elegible ? "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50" : ""}`}
                   >
-                    <span className={esLaQueSeCobra ? "font-medium text-foreground" : "text-muted-foreground"}>
-                      Cuota {c.numero} de {acuerdo.total_cuotas} del acuerdo<span className="text-muted-foreground/50"> · </span>{fmtDate(c.vencimiento)}
+                    <span className="flex items-center gap-2">
+                      {/* El casillero dice que esto se elige. Sin él, que las filas sean
+                          clickeables es un secreto que hay que descubrir pasándoles el mouse. */}
+                      {elegible && (
+                        <span
+                          aria-hidden
+                          className={`flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-[4px] border transition-colors ${
+                            enElTramo ? "border-primary bg-primary text-primary-foreground" : "border-border"
+                          }`}
+                        >
+                          {enElTramo && <Check className="h-2.5 w-2.5" strokeWidth={3} />}
+                        </span>
+                      )}
+                      <span className={enElTramo ? "font-medium text-foreground" : "text-muted-foreground"}>
+                        Cuota {c.numero} de {acuerdo.total_cuotas} del acuerdo<span className="text-muted-foreground/50"> · </span>{fmtDate(c.vencimiento)}
+                      </span>
                     </span>
                     <span className="flex items-center gap-2">
                       {c.estado === "pagada"
                         ? <StatusBadge label="Pagada" variant="success" />
-                        : esLaQueSeCobra
+                        : enElTramo
                           ? <span className="text-[10px] font-semibold uppercase tracking-wide text-primary">cobrando</span>
                           : null}
-                      <span className={`font-mono tabular-nums ${esLaQueSeCobra ? "font-bold text-foreground" : "text-muted-foreground"}`}>
+                      <span className={`font-mono tabular-nums ${enElTramo ? "font-bold text-foreground" : "text-muted-foreground"}`}>
                         ${fmt2(pendiente > 0 ? pendiente : c.monto)}
                       </span>
                     </span>
@@ -871,6 +958,21 @@ export function PagoForm({ creditoId, clienteId, montoSugerido, motivoSugerido, 
                 );
               })}
             </div>
+
+            {/*
+              EL TOTAL DEL TRAMO. Adelantando dos cuotas, el importe que se cobra no está
+              escrito en ningún renglón: son dos sumandos y el operador tendría que sumarlos
+              de memoria antes de pedirle la plata al cliente.
+            */}
+            {tramoAcuerdo.length > 1 && (
+              <div className="mt-2 flex items-center justify-between gap-3 border-t border-primary/20 pt-2.5">
+                <span className="text-xs font-semibold text-foreground">
+                  Se cobran {tramoAcuerdo.length} cuotas juntas
+                  <span className="font-normal text-muted-foreground"> · adelanta hasta la {hastaAcuerdo}</span>
+                </span>
+                <span className="font-mono text-base font-bold tabular-nums text-foreground">${fmt2(montoAcuerdo)}</span>
+              </div>
+            )}
             {acuerdo.congela_punitorios && (
               <p className="mt-2 text-[11px] text-muted-foreground">Mientras cumpla no se le devengan punitorios.</p>
             )}
@@ -1496,7 +1598,20 @@ export function PagoForm({ creditoId, clienteId, montoSugerido, motivoSugerido, 
           {selected && <Row label="Crédito" value={formatCreditoNumero(selected.numero, selected.refinancia_a_numero)} mono />}
           {selected && <Row label="Cliente" value={nombreCompleto(selected.cliente)} />}
           <Row label="Método" value={metodo.charAt(0).toUpperCase() + metodo.slice(1)} />
-          {!manual && seleccionadas.length > 0 && (
+          {/* Cobrando un acuerdo, lo que se confirma son las cuotas PACTADAS — no las del
+              crédito, que son otro importe y otra numeración. Sin este renglón, adelantar dos
+              cuotas se confirmaba con un total sin nada que dijera de qué se compone. */}
+          {cobrandoAcuerdo && tramoAcuerdo.length > 0 && (
+            <Row
+              label={tramoAcuerdo.length === 1 ? "Cuota del acuerdo" : "Cuotas del acuerdo"}
+              value={
+                tramoAcuerdo.length === 1
+                  ? `${tramoAcuerdo[0].numero} de ${acuerdo?.total_cuotas ?? tramoAcuerdo.length}`
+                  : `${tramoAcuerdo[0].numero} a ${tramoAcuerdo[tramoAcuerdo.length - 1].numero} de ${acuerdo?.total_cuotas ?? tramoAcuerdo.length}`
+              }
+            />
+          )}
+          {!cobrandoAcuerdo && !manual && seleccionadas.length > 0 && (
             <Row label="Cuotas" value={`${seleccionadas.length} (hasta #${hasta})`} />
           )}
           <div className="border-t border-border" />

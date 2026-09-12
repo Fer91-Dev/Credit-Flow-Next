@@ -930,6 +930,15 @@ model pagos {
   /// SetNull: si el acuerdo se borra, el pago sobrevive (la plata entró igual).
   acuerdo_cuota_id String? @db.Uuid
 
+  /// Número de la ÚLTIMA cuota pactada que cubrió este cobro, cuando ADELANTÓ varias.
+  /// NULL = cubrió solo la de `acuerdo_cuota_id`, que es el caso normal.
+  ///
+  /// El avance del acuerdo se deriva del total cobrado, así que un pago por el doble ya
+  /// marcaba dos cuotas pagadas; lo que faltaba era poder DECIRLO. Sin esto el recibo de un
+  /// cobro que cubrió la 1 y la 2 decía "la cuota 1 de 3", y es el papel que el cliente se
+  /// lleva a su casa.
+  acuerdo_cuota_hasta Int?
+
   credito       creditos       @relation(fields: [credito_id], references: [id], onDelete: Cascade)
   acuerdo_cuota acuerdo_cuota? @relation(fields: [acuerdo_cuota_id], references: [id], onDelete: SetNull)
 

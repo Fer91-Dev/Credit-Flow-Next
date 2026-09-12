@@ -248,13 +248,32 @@ export function linkWhatsapp(telefono: string | null | undefined, texto: string)
 export function conceptoDePago(p: {
   /** Cuotas del crédito contra las que se imputó, en orden. */
   cuotas: { nro: number; imputado: number; restante: number }[];
-  /** Si fue una cuota de un acuerdo de pago. */
-  acuerdo?: { numero: number; total: number } | null;
+  /**
+   * Si fue una cuota de un acuerdo de pago. `hasta` viene cuando el cobro ADELANTÓ varias:
+   * es el número de la última cubierta.
+   */
+  acuerdo?: { numero: number; total: number; hasta?: number | null } | null;
   /** Si fue la entrega con la que se armó un acuerdo. */
   entregaAcuerdo?: { cuotas: number } | null;
 }): string | null {
   if (p.entregaAcuerdo) return `la entrega del acuerdo de pago en ${p.entregaAcuerdo.cuotas} cuotas`;
-  if (p.acuerdo) return `la cuota ${p.acuerdo.numero} de ${p.acuerdo.total} del acuerdo de pago`;
+  if (p.acuerdo) {
+    /*
+      🔴 UN COBRO PUEDE ADELANTAR VARIAS CUOTAS PACTADAS, y el papel tiene que decirlo.
+      Con el rango sin escribir, un cobro que cubrió la 1 y la 2 salía como "la cuota 1 de 3":
+      el cliente se lleva a su casa un comprobante que dice la mitad de lo que pagó.
+    */
+    const hasta = p.acuerdo.hasta ?? p.acuerdo.numero;
+    if (hasta > p.acuerdo.numero) {
+      const nros: number[] = [];
+      for (let n = p.acuerdo.numero; n <= hasta; n++) nros.push(n);
+      const lista = nros.length === 2
+        ? `${nros[0]} y ${nros[1]}`
+        : `${nros.slice(0, -1).join(", ")} y ${nros[nros.length - 1]}`;
+      return `las cuotas ${lista} de ${p.acuerdo.total} del acuerdo de pago`;
+    }
+    return `la cuota ${p.acuerdo.numero} de ${p.acuerdo.total} del acuerdo de pago`;
+  }
 
   const cs = p.cuotas ?? [];
   // Sin imputación no se inventa un concepto: quien llama arma la frase sin él. Un relleno

@@ -56,6 +56,7 @@ const { calcularCierreRecupero } = await dom("recupero-cierre");
 const { sugerirRefinanciacion, diagnosticarRefinanciacion, capacidadDePago } = await dom("refinanciacion-sugerida");
 const { round2 } = await dom("money");
 const { baseMoraDeCuota } = await dom("cuotas");
+const { conceptoDePago } = await dom("campanas");
 
 // ── informe ─────────────────────────────────────────────────────────────────
 const F = (n) => Number(n).toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -540,6 +541,37 @@ H("10. AL CUMPLIRSE EL ACUERDO, LA QUITA SE CONDONA EN EL CRÉDITO");
   const cz = cierreDeAcuerdoCumplido(repartir, AC3);
   ok(cerca(cz.tope, 0), "sin capitalizar el inter\u00e9s entero, el tope se achica y no baja de cero", F(cz.tope));
   ok(cerca(cz.condonado, 0), "y por lo tanto no se condona nada", F(cz.condonado));
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+H("11. EL RECIBO DICE QUÉ CUOTAS PACTADAS CUBRIÓ EL COBRO");
+// ════════════════════════════════════════════════════════════════════════════
+/*
+  Un cobro puede ADELANTAR varias cuotas del acuerdo. El avance ya se derivaba del total
+  cobrado, pero el recibo imprimia "la cuota 1 de 3" sobre un pago que cubrio la 1 y la 2: el
+  papel que el cliente se lleva a su casa decia la mitad de lo que entrego.
+*/
+{
+  const una = conceptoDePago({ cuotas: [], acuerdo: { numero: 1, total: 3 } });
+  ok(una === "la cuota 1 de 3 del acuerdo de pago", "una sola cuota pactada se nombra igual que siempre", String(una));
+
+  const dos = conceptoDePago({ cuotas: [], acuerdo: { numero: 1, hasta: 2, total: 3 } });
+  ok(dos === "las cuotas 1 y 2 de 3 del acuerdo de pago", "dos cuotas adelantadas se nombran las dos", String(dos));
+
+  const tres = conceptoDePago({ cuotas: [], acuerdo: { numero: 1, hasta: 3, total: 3 } });
+  ok(tres === "las cuotas 1, 2 y 3 de 3 del acuerdo de pago", "y con tres, la enumeracion cierra con 'y'", String(tres));
+
+  // `hasta` igual al numero es una sola: no puede salir "las cuotas 2 y 2".
+  const igual = conceptoDePago({ cuotas: [], acuerdo: { numero: 2, hasta: 2, total: 3 } });
+  ok(igual === "la cuota 2 de 3 del acuerdo de pago", "hasta = numero sigue siendo una sola", String(igual));
+
+  // Los pagos viejos no tienen `hasta`: tienen que seguir imprimiendo lo mismo.
+  const viejo = conceptoDePago({ cuotas: [], acuerdo: { numero: 2, hasta: null, total: 4 } });
+  ok(viejo === "la cuota 2 de 4 del acuerdo de pago", "sin `hasta` (pagos anteriores) no cambia nada", String(viejo));
+
+  // La entrega del acuerdo le gana a todo: es otro concepto.
+  const ent = conceptoDePago({ cuotas: [], acuerdo: { numero: 1, hasta: 2, total: 3 }, entregaAcuerdo: { cuotas: 3 } });
+  ok(ent === "la entrega del acuerdo de pago en 3 cuotas", "la entrega sigue teniendo prioridad", String(ent));
 }
 
 // ════════════════════════════════════════════════════════════════════════════

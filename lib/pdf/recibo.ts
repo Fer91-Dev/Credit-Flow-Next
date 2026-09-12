@@ -38,7 +38,7 @@ export interface ReciboData {
     anulado?: boolean;
     anulado_motivo?: string | null;
     /** Cuota del acuerdo de pago que se cobro, si el cobro salio de ahi. */
-    acuerdo?: { numero: number; total: number; vencimiento?: Date | string | null } | null;
+    acuerdo?: { numero: number; total: number; hasta?: number | null; vencimiento?: Date | string | null } | null;
     /** Si este cobro fue la ENTREGA con la que se armo un acuerdo de pago. */
     entrega_acuerdo?: { total: number; cuotas: number } | null;
     /**
@@ -246,9 +246,19 @@ export async function generarReciboPDF(data: ReciboData): Promise<Uint8Array> {
 
   if (pago.acuerdo) {
     text("CONCEPTO", M, y, font, 8, MUTED);
+    /*
+      Un cobro puede ADELANTAR varias cuotas pactadas. Sin el rango escrito, el papel que el
+      cliente se lleva a su casa dice "Cuota 1 de 3" sobre un pago que cubrio la 1 y la 2 —
+      la mitad de lo que entrego. El vencimiento solo se imprime cuando es UNA cuota: con un
+      rango, la fecha de la primera no describe el pago.
+    */
+    const hastaAc = pago.acuerdo.hasta ?? pago.acuerdo.numero;
+    const varias = hastaAc > pago.acuerdo.numero;
     text(
-      `Cuota ${pago.acuerdo.numero} de ${pago.acuerdo.total} del acuerdo de pago` +
-        (pago.acuerdo.vencimiento ? ` · vence ${fmtDate(new Date(pago.acuerdo.vencimiento))}` : ""),
+      (varias
+        ? `Cuotas ${pago.acuerdo.numero} a ${hastaAc} de ${pago.acuerdo.total} del acuerdo de pago`
+        : `Cuota ${pago.acuerdo.numero} de ${pago.acuerdo.total} del acuerdo de pago`) +
+        (!varias && pago.acuerdo.vencimiento ? ` · vence ${fmtDate(new Date(pago.acuerdo.vencimiento))}` : ""),
       M, y - 14, bold, 11, INK,
     );
     y -= 40;

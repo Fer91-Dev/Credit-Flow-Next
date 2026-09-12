@@ -989,8 +989,11 @@ export function ClienteDetail({
                   creditoId={cobrandoAcuerdo.creditoId}
                   esAcuerdo
                   montoSugerido={pendiente > 0 ? pendiente : undefined}
+                  /* Nombra la PRÓXIMA cuota pactada, que es donde arranca el cobro. Cuántas
+                     cubre se elige adentro —se pueden adelantar varias— así que la frase no
+                     promete un total: dice desde dónde. */
                   motivoSugerido={
-                    q ? `Cuota ${q.numero} de ${ac.total_cuotas} del acuerdo · vence ${formatFecha(q.vencimiento)}` : undefined
+                    q ? `Arranca en la cuota ${q.numero} de ${ac.total_cuotas} del acuerdo · vence ${formatFecha(q.vencimiento)}` : undefined
                   }
                   onClose={(ok) => {
                     const creditoId = cobrandoAcuerdo.creditoId;

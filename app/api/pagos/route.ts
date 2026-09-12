@@ -403,6 +403,12 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
    * financiera) no se guarda, se ignora. Nunca confiar en un id que llega del navegador.
    */
   let acuerdoCuotaId: string | null = null;
+  /**
+   * Hasta qué cuota pactada llega este cobro cuando ADELANTA varias. `null` = solo la de
+   * `acuerdoCuotaId`. Se guarda con el pago: el recibo tiene que decir lo mismo dentro de
+   * seis meses, y el reparto de lo cobrado se recalcula cada vez que el total cambia.
+   */
+  let acuerdoCuotaHasta: number | null = null;
   if (typeof body.acuerdo_cuota_id === "string" && body.acuerdo_cuota_id) {
     const cuotaAcuerdo = await prisma.acuerdo_cuota.findFirst({
       where: {
@@ -410,9 +416,54 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
         id: body.acuerdo_cuota_id,
         acuerdo: { ...withTenant(tenantId), credito_id: body.credito_id, estado: "vigente" },
       },
-      select: { id: true },
+      select: {
+        id: true, numero: true, monto: true, pagado: true,
+        acuerdo: { select: { id: true, cuotas: { select: { numero: true, monto: true, pagado: true }, orderBy: { numero: "asc" } } } },
+      },
     });
     acuerdoCuotaId = cuotaAcuerdo?.id ?? null;
+
+    if (cuotaAcuerdo) {
+      /**
+       * 🔴 UNA CUOTA PACTADA SE COBRA ENTERA. Decisión de Fernando, y es la que hace que
+       * el acuerdo se pueda seguir: su avance se mide comparando lo cobrado contra el plan,
+       * así que un pago a medias deja una cuota que no está pagada ni vencida — y el día del
+       * vencimiento siguiente el acuerdo se rompe por una cuota que el cliente cree cubierta.
+       *
+       * Quien quiera entregar algo a cuenta sin tocar el acuerdo lo puede hacer igual: es un
+       * cobro común del crédito, sin `acuerdo_cuota_id`. Esta barrera solo aplica al cobro
+       * que se declara "cuota del acuerdo".
+       *
+       * Y de paso habilita ADELANTAR: `acuerdo_cuota_hasta` dice hasta dónde llega, y el
+       * importe tiene que cubrir todas las de ese tramo. El ledger ya lo soportaba —el
+       * avance se deriva del total cobrado—; lo que faltaba era decirlo en el recibo.
+       */
+      const pactadas = cuotaAcuerdo.acuerdo.cuotas;
+      const pedido = Number(body.acuerdo_cuota_hasta);
+      const hasta = Number.isInteger(pedido) && pedido > cuotaAcuerdo.numero ? pedido : cuotaAcuerdo.numero;
+      const tramo = pactadas.filter((c) => c.numero >= cuotaAcuerdo.numero && c.numero <= hasta);
+      if (tramo.length === 0) {
+        return errorResponse("La cuota del acuerdo no existe", "INVALID_INPUT", 400);
+      }
+      if (hasta > cuotaAcuerdo.numero && tramo[tramo.length - 1].numero !== hasta) {
+        return errorResponse("No existe esa cuota del acuerdo", "INVALID_INPUT", 400);
+      }
+      acuerdoCuotaHasta = hasta > cuotaAcuerdo.numero ? hasta : null;
+
+      const debido = round2(tramo.reduce((t, c) => t + Math.max(0, round2(c.monto - c.pagado)), 0));
+      // Un centavo de tolerancia: el importe lo arma la pantalla con la misma resta, pero dos
+      // redondeos independientes pueden separarse por el último dígito.
+      if (Math.abs(montoPago - debido) > 0.01) {
+        const cuantas = tramo.length === 1
+          ? `la cuota ${cuotaAcuerdo.numero}`
+          : `las cuotas ${cuotaAcuerdo.numero} a ${hasta}`;
+        return errorResponse(
+          `Una cuota del acuerdo se cobra entera. Para ${cuantas} hay que cobrar $${debido.toLocaleString("es-AR", { minimumFractionDigits: 2 })}.`,
+          "ACUERDO_CUOTA_INCOMPLETA",
+          400,
+        );
+      }
+    }
   }
 
   // Condiciones de mora CONGELADAS al otorgar este crédito (la config actual solo es
@@ -557,6 +608,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
         // Qué cuota del ACUERDO se estaba cobrando (null = cobro normal del crédito). Se
         // valida contra el acuerdo vigente de ESTE crédito, así que un id ajeno no entra.
         acuerdo_cuota_id: acuerdoCuotaId,
+        acuerdo_cuota_hasta: acuerdoCuotaHasta,
         // De qué planilla de calle salió este cobro (null = cobro de mostrador). Validada
         // arriba contra el tenant: un id ajeno no entra.
         planilla_id: planillaId,

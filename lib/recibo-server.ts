@@ -148,7 +148,13 @@ export async function armarReciboDePago(
         ? { total: pago.acuerdo_entrega.monto_acordado, cuotas: pago.acuerdo_entrega._count.cuotas }
         : null,
       acuerdo: pago.acuerdo_cuota
-        ? { numero: pago.acuerdo_cuota.numero, total: pago.acuerdo_cuota.acuerdo._count.cuotas, vencimiento: pago.acuerdo_cuota.vencimiento }
+        ? {
+            numero: pago.acuerdo_cuota.numero,
+            /* Hasta qué cuota llegó el cobro, si adelantó varias. */
+            hasta: pago.acuerdo_cuota_hasta,
+            total: pago.acuerdo_cuota.acuerdo._count.cuotas,
+            vencimiento: pago.acuerdo_cuota.vencimiento,
+          }
         : null,
       // Contra qué cuotas se imputó y qué quedó pendiente de cada una EN ESE MOMENTO.
       cuotas: lineas.map((l) => ({
@@ -188,7 +194,7 @@ export async function armarReciboDePago(
         restante: round2(Math.max(0, l.cuota.cuota_total - (pagadoHasta.get(l.cuota.id) ?? 0))),
       })),
       acuerdo: pago.acuerdo_cuota
-        ? { numero: pago.acuerdo_cuota.numero, total: pago.acuerdo_cuota.acuerdo._count.cuotas }
+        ? { numero: pago.acuerdo_cuota.numero, hasta: pago.acuerdo_cuota_hasta, total: pago.acuerdo_cuota.acuerdo._count.cuotas }
         : null,
       entregaAcuerdo: pago.acuerdo_entrega ? { cuotas: pago.acuerdo_entrega._count.cuotas } : null,
     }),
