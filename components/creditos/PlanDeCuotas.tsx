@@ -263,6 +263,36 @@ export function PlanDeCuotas({
                 todas las filas miden lo mismo.
               */
               const esVencida = q.estado === "vencida";
+              /*
+                LA CUENTA DE LA MORA, para el `title` de la columna.
+
+                🔴 Los días se DEDUCEN del importe real, no se calculan como "atraso −
+                gracia". Medido sobre la base: de 22 cuotas con mora, 9 no reproducían con esa
+                resta, por dos motivos legítimos — el TECHO (la mora llegó al tope y dejó de
+                crecer) y la mora CONGELADA al cobrar o al firmar un acuerdo (deja de devengar
+                ese día). Publicar "47 × 1%" al lado de un importe de 45 días sería una cuenta
+                que no da.
+
+                🔴 Y la base NO es `cuota_total`: hay que sacarle lo capitalizado después de
+                originar la cuota (el interés de un acuerdo). `baseMoraDeCuota` es la misma
+                definición que usa el motor.
+              */
+              const detalleMora = (() => {
+                const atraso = q.dias_atraso ?? 0;
+                if (moraDev <= 0 || atraso <= 0 || !mora) return null;
+                const baseCuota = baseMoraDeCuota({ cuota_total: q.cuota_total, capitalizado: q.capitalizado ?? 0 });
+                const techo = mora.topePct > 0 ? Math.round(baseCuota * (mora.topePct / 100) * 100) / 100 : null;
+                if (techo != null && Math.abs(moraDev - techo) < 0.02) {
+                  return `Llegó al techo: ${mora.topePct}% de $${n2(baseCuota)}`;
+                }
+                const porDia = baseCuota * mora.tasaDiaria;
+                const dias = porDia > 0 ? Math.round(moraDev / porDia) : 0;
+                const reproduce = porDia > 0 && Math.abs(Math.round(baseCuota * mora.tasaDiaria * dias * 100) / 100 - moraDev) < 0.02;
+                return reproduce && dias > 0
+                  ? `${formatDias(dias)} × ${(mora.tasaDiaria * 100).toFixed(2)}% de $${n2(baseCuota)} = $${n2(moraDev)}` +
+                    (atraso !== dias ? ` · ${formatDias(atraso)} de atraso, ${formatDias(atraso - dias)} sin devengar` : "")
+                  : `${formatDias(atraso)} de atraso`;
+              })();
               return (
                 <tr
                   key={q.nro}
@@ -293,82 +323,29 @@ export function PlanDeCuotas({
                     La MORA DEVENGADA, no la pendiente: es la que participa de la cuenta del
                     renglón. Con los punitorios ya cobrados la columna decía "—" y la fila
                     quedaba sin cerrar ($242.425,90 de cuota no dan $281.214,04).
-                    El importe solo en la primera línea, a la misma altura que Cuota / Interés
-                    / Capital; los días de atraso —de donde sale— y lo ya cobrado, debajo.
                   */}
-                  <td className={`${celda} text-right font-mono tabular-nums`}>
+                  {/*
+                    🔴 LA COLUMNA MUESTRA EL IMPORTE Y NADA MÁS.
+
+                    Tenía los días debajo, y eso puso dos números distintos en la misma pantalla:
+                    el KPI de arriba dice "En mora · 11 días" y la fila decía "9 días". Los dos
+                    son ciertos — 11 son los días de ATRASO y 9 los que DEVENGAN, porque los
+                    primeros 2 son de gracia — pero nadie tiene por qué deducir eso mirando una
+                    tabla, y Fernando lo leyó como un error. Con razón: una pantalla que muestra
+                    11 y 9 sin explicar la resta se está contradiciendo.
+
+                    El importe sí coincide siempre, que es lo que se cobra. Los días y la cuenta
+                    entera quedan en el `title`, y la regla de la gracia en el cuadro de abajo.
+                  */}
+                  <td
+                    className={`${celda} text-right font-mono tabular-nums`}
+                    title={detalleMora ?? undefined}
+                  >
                     {moraDev > 0 ? (
                       <>
                         <span className={`block ${moraPend > 0 ? "text-destructive" : "text-muted-foreground"}`}>
                           ${n2(moraDev)}
                         </span>
-                        {/*
-                          DE DÓNDE SALE ESE IMPORTE, en el renglón. Decía "18 días de atraso",
-                          que no alcanza para verificarlo: faltaba sobre qué base y a qué tasa.
-
-                          🔴 Se devenga sobre la CUOTA COMPLETA, no sobre lo que queda después
-                          de un pago parcial. En la cuota 1 de Marina son 16 días × 1,00% de
-                          $242.425,90 = $38.788,14; sobre el saldo de $131.214,04 darían
-                          $20.994,25 — casi $18.000 de diferencia, así que la base tiene que
-                          estar escrita.
-
-                          🔴 Los días que se muestran son los EFECTIVOS, deducidos de la mora
-                          real, no "atraso − gracia". Medido sobre la base: de 22 cuotas con
-                          mora, 9 no reproducían con esa resta, por dos motivos legítimos —
-                          el TECHO (la mora tocó el 100% de la cuota y dejó de crecer) y la
-                          mora CONGELADA al cobrar (deja de devengar el día del pago: 45 días
-                          efectivos contra 47 de atraso). Mostrar "47 × 1%" al lado de un
-                          importe de 45 días sería publicar una cuenta que no da.
-                        */}
-                        {/*
-                          🔴 LA CUENTA COMPLETA SE MUDÓ AL CUADRO DE REGLAS, abajo.
-
-                          Acá decía "9 días × 0,50% de $110.125,31" bajo cada importe: tres
-                          renglónes de letra chica repitiendo la MISMA fórmula con distintos
-                          números, que es lo que hacía que la columna se viera cargada. La regla
-                          es una sola y vale para todas las filas: va escrita una vez.
-
-                          Lo que queda en la fila son los DÍAS — el único dato que cambia de
-                          cuota a cuota y sin el cual el importe no se puede verificar. La
-                          cuenta entera sigue disponible en el `title`, para el que la quiera
-                          confirmar sin sacar la calculadora.
-                        */}
-                        {(() => {
-                          const atraso = q.dias_atraso ?? 0;
-                          if (atraso <= 0 || !mora) return null;
-                          const tasa = mora.tasaDiaria;
-                          /*
-                            🔴 LA BASE NO ES `cuota_total`: hay que sacarle lo que se capitalizó
-                            después de originar la cuota (el interés de un acuerdo). Con la columna
-                            cruda, este renglón publicaba "58 días × 0,50% de $184.353,18" al lado de
-                            un importe calculado sobre $165.187,97 — una cuenta que no da.
-                            `baseMoraDeCuota` es la misma definición que usa el motor.
-                          */
-                          const baseCuota = baseMoraDeCuota({ cuota_total: q.cuota_total, capitalizado: q.capitalizado ?? 0 });
-                          const techo = mora.topePct > 0 ? Math.round(baseCuota * (mora.topePct / 100) * 100) / 100 : null;
-                          const enTecho = techo != null && Math.abs(moraDev - techo) < 0.02;
-                          const base = baseCuota * tasa;
-                          const dias = base > 0 ? Math.round(moraDev / base) : 0;
-                          const reproduce = base > 0 && Math.abs(Math.round(baseCuota * tasa * dias * 100) / 100 - moraDev) < 0.02;
-                          return (
-                            <span
-                              className="block font-sans text-[10px] font-normal leading-tight text-muted-foreground/70"
-                              title={
-                                enTecho
-                                  ? `Tocó el techo: ${mora.topePct}% de $${n2(baseCuota)}`
-                                  : reproduce && dias > 0
-                                    ? `${formatDias(dias)} × ${(tasa * 100).toFixed(2)}% de $${n2(baseCuota)} = $${n2(moraDev)}`
-                                    : undefined
-                              }
-                            >
-                              {enTecho
-                                ? `techo ${mora.topePct}%`
-                                : reproduce && dias > 0
-                                  ? formatDias(dias)
-                                  : `${formatDias(atraso)} de atraso`}
-                            </span>
-                          );
-                        })()}
                         {(q.pagado_mora ?? 0) > 0 && (
                           <span className="block font-sans text-[10px] font-normal leading-tight text-success">
                             {moraPend > 0 ? `$${n2(q.pagado_mora ?? 0)} cobrada` : "cobrada"}
@@ -613,8 +590,21 @@ export function PlanDeCuotas({
               <p>
                 La mora corre sobre el <strong className="font-medium text-foreground">importe de la cuota</strong>,
                 no sobre el saldo que queda tras un pago parcial
-                {mora.diasGracia > 0 && <>, a partir del día {mora.diasGracia + 1} de atraso</>}
                 {mora.topePct > 0 && <>, y deja de crecer al llegar al {mora.topePct}% de la cuota</>}.
+                {/*
+                  🔴 LA GRACIA, EXPLICADA COMO UNA RESTA.
+
+                  Decía "a partir del día 3 de atraso", que es exacto y no ayuda: arriba el KPI
+                  dice "En mora · 11 días" y el punitorio está calculado sobre 9. Escrita como
+                  resta, la diferencia deja de ser un misterio.
+                */}
+                {mora.diasGracia > 0 && (
+                  <>
+                    {" "}Los primeros{" "}
+                    <strong className="font-medium text-foreground">{formatDias(mora.diasGracia)}</strong>{" "}
+                    de atraso no devengan, así que se cobran los días de atraso menos {mora.diasGracia}.
+                  </>
+                )}
               </p>
             )}
             {/*
