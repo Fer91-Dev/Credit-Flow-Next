@@ -1219,8 +1219,20 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
 
           `<details>` y no un `useState`: trae el teclado, el foco y `aria-expanded` de fabrica.
         */}
+        {/*
+          🔴 LA LUZ DEL BORDE, CON LA REGLA DE UNA SOLA POR PANTALLA.
+
+          El plan ya arrancaba plegado, pero nada pedía que se abriera: un borde quieto se lee
+          como decoración. Es el mismo recurso que el panel del acuerdo (`.borde-luz`).
+
+          Y por eso mismo: si hay un acuerdo VIGENTE, la luz es del acuerdo y no de acá. Con
+          las dos encendidas ninguna llama la atención — y además sería al revés de lo que
+          hay que mirar, porque con un acuerdo encima este plan NO es lo que se cobra.
+        */}
         <details open={planAbierto} onToggle={(e) => setPlanAbierto((e.target as HTMLDetailsElement).open)}
-          className="group/plan overflow-hidden rounded-xl border border-border bg-card" ref={planRef}>
+          className={`group/plan relative overflow-hidden rounded-xl border border-border bg-card ${
+            !planAbierto && !acuerdoVigente ? "borde-luz" : ""
+          }`} ref={planRef}>
           <summary className="flex cursor-pointer flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3 list-none transition-colors hover:bg-muted/20 [&::-webkit-details-marker]:hidden">
             <div className="flex items-center gap-2">
               <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform duration-200 group-open/plan:rotate-180" />
@@ -1258,12 +1270,18 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
                   no se cobra · manda el acuerdo
                 </span>
               )}
-              {/* Plegado, el resumen ES la sección: sin esto el título no dice nada. */}
-              {!planAbierto && resumen && (
-                <span className="text-[11px] tabular-nums text-muted-foreground/70">
-                  · saldo <span className="font-mono">${n2(resumen.saldo_capital)}</span>
-                </span>
-              )}
+              {/*
+                🔴 EL SALDO NO VA ACÁ: YA ESTÁ ARRIBA.
+
+                Plegado, el título decía "· saldo $200.000,00" — el MISMO número que el KPI
+                "Deuda total" muestra veinte píxeles más arriba, como "capital $200.000,00".
+                Un dato repetido en la misma pantalla es un lugar de más donde puede quedar
+                viejo, y no agrega nada: el que lo quiere ver ya lo vio.
+
+                Lo que SÍ queda es el conteo de cuotas (pagadas / vencidas), que no está en
+                ningún KPI y es lo único que esta sección puede decir de sí misma sin abrirse.
+                Vive en el bloque de la derecha, con las acciones.
+              */}
             </div>
             {/* Los controles no disparan el plegado: cada uno hace lo suyo. */}
             <div

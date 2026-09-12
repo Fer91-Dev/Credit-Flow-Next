@@ -250,15 +250,33 @@ export function PlanDeCuotas({
                 zebra en la cadena de clases para que le gane, y la próxima cuota conserva el
                 suyo — su color dice algo que el hover no puede tapar.
               */
+              /*
+                🔴 UNA CUOTA VENCIDA SE PINTA ENTERA, y por eso ya no lleva burbuja.
+
+                El badge "Vencida" vivía en la celda de "A cobrar", encima del importe: le
+                agregaba un renglón a ESA fila y no a las demás, así que la tabla quedaba
+                descuadrada — lo marcó Fernando. Y era redundante dos veces: la fecha ya pasó
+                y la mora está en rojo al lado.
+
+                El color hace el trabajo sin ocupar lugar: fondo rojo tenue, franja a la
+                izquierda y el número de cuota en rojo. Se lee de un vistazo, desde lejos, y
+                todas las filas miden lo mismo.
+              */
+              const esVencida = q.estado === "vencida";
               return (
                 <tr
                   key={q.nro}
-                  className={`${idx % 2 === 1 ? "bg-muted/5" : ""} ${q.estado === "pagada" ? "text-muted-foreground/60" : ""} ${
-                    esProxima ? "bg-primary/[0.07]" : "hover:bg-muted/20"
+                  className={`${idx % 2 === 1 && !esVencida ? "bg-muted/5" : ""} ${q.estado === "pagada" ? "text-muted-foreground/60" : ""} ${
+                    esProxima ? "bg-primary/[0.07]" : esVencida ? "bg-destructive/[0.07] hover:bg-destructive/[0.11]" : "hover:bg-muted/20"
                   } ${esProxima && resaltarProxima ? "ring-1 ring-inset ring-primary/50" : ""} transition-colors`}
                 >
-                  <td className={`${celda} font-mono tabular-nums text-muted-foreground/50`}>{q.nro}</td>
-                  <td className={`${celda} tabular-nums text-muted-foreground`}>{formatFecha(q.fecha_vencimiento)}</td>
+                  <td className={`${celda} relative font-mono tabular-nums ${esVencida ? "font-semibold text-destructive" : "text-muted-foreground/50"}`}>
+                    {esVencida && <span aria-hidden className="absolute inset-y-0 left-0 w-0.5 bg-destructive" />}
+                    {q.nro}
+                  </td>
+                  <td className={`${celda} whitespace-nowrap tabular-nums ${esVencida ? "text-destructive" : "text-muted-foreground"}`}>
+                    {formatFecha(q.fecha_vencimiento)}
+                  </td>
                   <td className={`${celda} text-right font-mono font-medium tabular-nums text-foreground`}>${n2(q.cuota_total)}</td>
                   <td className={`${celda} hidden text-right font-mono tabular-nums text-muted-foreground md:table-cell`}>${n2(q.interes)}</td>
                   <td className={`${celda} hidden text-right font-mono tabular-nums text-muted-foreground md:table-cell`}>${n2(q.capital)}</td>
@@ -302,6 +320,19 @@ export function PlanDeCuotas({
                           efectivos contra 47 de atraso). Mostrar "47 × 1%" al lado de un
                           importe de 45 días sería publicar una cuenta que no da.
                         */}
+                        {/*
+                          🔴 LA CUENTA COMPLETA SE MUDÓ AL CUADRO DE REGLAS, abajo.
+
+                          Acá decía "9 días × 0,50% de $110.125,31" bajo cada importe: tres
+                          renglónes de letra chica repitiendo la MISMA fórmula con distintos
+                          números, que es lo que hacía que la columna se viera cargada. La regla
+                          es una sola y vale para todas las filas: va escrita una vez.
+
+                          Lo que queda en la fila son los DÍAS — el único dato que cambia de
+                          cuota a cuota y sin el cual el importe no se puede verificar. La
+                          cuenta entera sigue disponible en el `title`, para el que la quiera
+                          confirmar sin sacar la calculadora.
+                        */}
                         {(() => {
                           const atraso = q.dias_atraso ?? 0;
                           if (atraso <= 0 || !mora) return null;
@@ -320,11 +351,20 @@ export function PlanDeCuotas({
                           const dias = base > 0 ? Math.round(moraDev / base) : 0;
                           const reproduce = base > 0 && Math.abs(Math.round(baseCuota * tasa * dias * 100) / 100 - moraDev) < 0.02;
                           return (
-                            <span className="block font-sans text-[10px] font-normal leading-tight text-muted-foreground/70">
+                            <span
+                              className="block font-sans text-[10px] font-normal leading-tight text-muted-foreground/70"
+                              title={
+                                enTecho
+                                  ? `Tocó el techo: ${mora.topePct}% de $${n2(baseCuota)}`
+                                  : reproduce && dias > 0
+                                    ? `${formatDias(dias)} × ${(tasa * 100).toFixed(2)}% de $${n2(baseCuota)} = $${n2(moraDev)}`
+                                    : undefined
+                              }
+                            >
                               {enTecho
-                                ? `techo: ${mora.topePct}% de la cuota`
+                                ? `techo ${mora.topePct}%`
                                 : reproduce && dias > 0
-                                  ? `${formatDias(dias)} × ${(tasa * 100).toFixed(2)}% de $${n2(baseCuota)}`
+                                  ? formatDias(dias)
                                   : `${formatDias(atraso)} de atraso`}
                             </span>
                           );
@@ -336,7 +376,9 @@ export function PlanDeCuotas({
                         )}
                       </>
                     ) : (
-                      <span className="text-muted-foreground/20">—</span>
+                      /* El hueco se marca con un guion tenue y CENTRADO en la columna: alineado
+                         a la derecha como un importe, parecía un número cortado. */
+                      <span className="text-muted-foreground/25">—</span>
                     )}
                   </td>
 
@@ -411,7 +453,18 @@ export function PlanDeCuotas({
                           por qué no se cobra. Es justo el dato que hay que poder explicarle al
                           cliente.
                         */}
-                        {(q.estado === "vencida" || q.estado === "parcial" || cuotaCerradaSinPago(q.estado)) && (
+                        {/*
+                          🔴 LA VENCIDA YA NO LLEVA BURBUJA: la fila entera está en rojo.
+
+                          El badge sumaba un renglón encima del importe SOLO en esa fila, así
+                          que la tabla quedaba descuadrada — y decía algo que la fecha pasada,
+                          el fondo rojo y la mora al lado ya dicen tres veces.
+
+                          Las PARCIALES y las CERRADAS sí la conservan: ahí el estado no se
+                          deduce de ningún otro dato de la fila. Una "trasladada" con $0,00 al
+                          final, sin la burbuja, es un renglón mudo.
+                        */}
+                        {(q.estado === "parcial" || cuotaCerradaSinPago(q.estado)) && (
                           <StatusBadge label={b.label} variant={b.variant} />
                         )}
                         {/* Y CUÁNTO se perdonó. Una cuota condonada sin el importe esconde la
@@ -444,7 +497,7 @@ export function PlanDeCuotas({
                             ${n2(q.total_cobrar ?? q.cuota_total)}
                           </button>
                         ) : (
-                          <span className="font-mono font-semibold tabular-nums text-foreground">
+                          <span className={`font-mono font-semibold tabular-nums ${esVencida ? "text-destructive" : "text-foreground"}`}>
                             ${n2(q.total_cobrar ?? q.cuota_total)}
                           </span>
                         )}
@@ -525,38 +578,79 @@ export function PlanDeCuotas({
         </table>
       </div>
 
-      {/* DE DÓNDE SALE LA MORA, con los parámetros congelados de ESTE crédito (no la config de
-          hoy): sin esto el importe de la columna no se puede verificar. */}
-      <p className="text-[11px] leading-relaxed text-muted-foreground">
-        <span className="font-mono">Cuota = interés + capital.</span>{" "}
-        <span className="font-mono">
-          {cobroBloqueado ? "Le falta" : "A cobrar"} = cuota + mora − lo ya pagado.
-        </span>
-        {/* Por qué este plan está de referencia y no se cobra. Va en el pie, con el resto de
-            las aclaraciones del cálculo, no como un cartel más arriba. */}
-        {cobroBloqueado && <> {cobroBloqueado}.</>}
-        {moraTotal > 0 && mora && (
-          <>
-            {" "}La mora se devenga sobre el importe de la cuota —no sobre el saldo que queda
-            tras un pago parcial— al {(mora.tasaDiaria * 100).toFixed(2)}% por día
-            {mora.diasGracia > 0 && <>, a partir del día {mora.diasGracia + 1} de atraso</>}
-            {mora.topePct > 0 && <>, con un techo del {mora.topePct}% de la cuota</>}.
+      {/*
+        🔴 LAS REGLAS DEL PLAN, EN UN CUADRO — no en un párrafo de letra chica.
+
+        Era un `<p>` de 11px gris corrido, con las fórmulas mezcladas dentro del texto: se
+        leía como el pie de página de un contrato y nadie lo miraba. Y cada fila repetía
+        abajo del importe su propia versión de la misma cuenta ("9 días × 0,50% de
+        $110.125,31"), que es lo que hacía ver la tabla cargada — lo marcó Fernando.
+
+        La regla es UNA y vale para todas las filas: va escrita una vez, en su cuadro, con las
+        fórmulas como fórmulas (chip monoespaciado) y el texto en prosa aparte. Los
+        parámetros son los CONGELADOS de este crédito, no los de la configuración de hoy: sin
+        eso el importe de la columna no se puede verificar.
+      */}
+      <div className="rounded-xl border border-border bg-muted/20 px-4 py-3.5">
+        <p className="mb-2.5 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+          Cómo se calcula
+        </p>
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-2">
+          <Formula>Cuota = interés + capital</Formula>
+          <Formula>{cobroBloqueado ? "Le falta" : "A cobrar"} = cuota + mora − lo ya pagado</Formula>
+          {moraTotal > 0 && mora && (
+            <Formula acento>
+              Mora = días de atraso × {(mora.tasaDiaria * 100).toFixed(2)}% × importe de la cuota
+            </Formula>
+          )}
+        </div>
+        {(cobroBloqueado || (moraTotal > 0 && mora)) && (
+          <div className="mt-3 space-y-1.5 border-t border-border/60 pt-3 text-xs leading-relaxed text-muted-foreground">
+            {/* Por qué este plan está de referencia y no se cobra. Va acá, con el resto de
+                las aclaraciones del cálculo, no como un cartel más arriba. */}
+            {cobroBloqueado && <p>{cobroBloqueado}.</p>}
+            {moraTotal > 0 && mora && (
+              <p>
+                La mora corre sobre el <strong className="font-medium text-foreground">importe de la cuota</strong>,
+                no sobre el saldo que queda tras un pago parcial
+                {mora.diasGracia > 0 && <>, a partir del día {mora.diasGracia + 1} de atraso</>}
+                {mora.topePct > 0 && <>, y deja de crecer al llegar al {mora.topePct}% de la cuota</>}.
+              </p>
+            )}
             {/*
               Y si parte de la cuota se agregó después, por qué la base no es el importe que
-              se lee en la columna "Cuota". Sin este renglón, el pie estaría diciendo que la
-              mora sale del importe de la cuota mientras cada fila muestra otra base.
+              se lee en la columna "Cuota". Sin esto, el cuadro estaría diciendo que la mora
+              sale del importe de la cuota mientras cada fila se calcula sobre otra base.
             */}
-            {capitalizadoTotal > 0 && (
-              <>
-                {" "}De ese importe quedan afuera los{" "}
-                <span className="font-mono">${n2(capitalizadoTotal)}</span>{" "}
+            {moraTotal > 0 && mora && capitalizadoTotal > 0 && (
+              <p>
+                De ese importe quedan afuera los{" "}
+                <span className="font-mono font-medium tabular-nums text-foreground">${n2(capitalizadoTotal)}</span>{" "}
                 de interés de acuerdo que se capitalizaron en el plan: se cobran como cargo, pero no
                 devengan punitorios por días anteriores a que existieran.
-              </>
+              </p>
             )}
-          </>
+          </div>
         )}
-      </p>
+      </div>
     </div>
+  );
+}
+
+/**
+ * Una fórmula del cuadro de reglas: chip monoespaciado, para que se lea como una cuenta y no
+ * como una frase. Iban sueltas dentro del párrafo y se perdían entre el texto.
+ */
+function Formula({ children, acento }: { children: React.ReactNode; acento?: boolean }) {
+  return (
+    <span
+      className={`inline-flex items-center rounded-lg border px-2.5 py-1.5 font-mono text-xs ${
+        acento
+          ? "border-destructive/25 bg-destructive/[0.07] text-destructive"
+          : "border-border bg-card text-foreground"
+      }`}
+    >
+      {children}
+    </span>
   );
 }
