@@ -1,7 +1,7 @@
 "use client";
 
 import { Printer, Check } from "lucide-react";
-import { cargosDeCuota, baseMoraDeCuota } from "@/lib/domain";
+import { cargosDeCuota, baseMoraDeCuota, cuotaCerradaSinPago } from "@/lib/domain";
 import { StatusBadge, type BadgeVariant } from "@/components/ui/StatusBadge";
 import type { CuotaPersistida, EstadoCuota } from "@/lib/swr";
 import { formatDias, formatFecha, formatFechaHora, formatNumero } from "@/lib/utils";
@@ -99,6 +99,8 @@ export function PlanDeCuotas({
   const moraTotal = cuotas.reduce((s, q) => s + moraDevengadaDeCuota(q), 0);
   /** Lo que se agregó al plan capitalizando el interés de un acuerdo: explica la base de mora. */
   const capitalizadoTotal = Math.round(cuotas.reduce((s, q) => s + (q.capitalizado ?? 0), 0) * 100) / 100;
+  /** Lo perdonado en el plan: la quita de un acuerdo cumplido o el cierre de un incobrable. */
+  const condonadoTotal = Math.round(cuotas.reduce((s, q) => s + (q.condonado ?? 0), 0) * 100) / 100;
   /** Lo que de esa mora TODAVIA no se cobro. Decide si el total va en rojo o no. */
   const moraPendienteVista = cuotas.reduce((s, q) => s + (q.mora ?? 0), 0);
   const pagadoTotal = cuotas.reduce((s, q) => s + pagadoDeCuota(q), 0);
@@ -402,8 +404,22 @@ export function PlanDeCuotas({
                       </span>
                     ) : (
                       <div className="inline-flex flex-col items-end gap-1">
-                        {(q.estado === "vencida" || q.estado === "parcial") && (
+                        {/*
+                          🔴 LAS CERRADAS SIN PAGO TAMBIÉN LLEVAN SU BURBUJA. La condición era
+                          solo vencida/parcial, así que una cuota `condonada` o `trasladada`
+                          apareció siempre como un renglón mudo con "$0,00" al final: nada decía
+                          por qué no se cobra. Es justo el dato que hay que poder explicarle al
+                          cliente.
+                        */}
+                        {(q.estado === "vencida" || q.estado === "parcial" || cuotaCerradaSinPago(q.estado)) && (
                           <StatusBadge label={b.label} variant={b.variant} />
+                        )}
+                        {/* Y CUÁNTO se perdonó. Una cuota condonada sin el importe esconde la
+                            plata que la financiera resignó — $121.712,81 en CRD-000005. */}
+                        {(q.condonado ?? 0) > 0 && (
+                          <span className="font-mono text-[10px] tabular-nums text-warning">
+                            condonó ${n2(q.condonado ?? 0)}
+                          </span>
                         )}
                         {/* Lo que YA entró en una cuota a medio pagar: es el término que hace
                             cerrar la cuenta del renglón (cuota + mora − pagado = a cobrar). */}
@@ -494,6 +510,13 @@ export function PlanDeCuotas({
                 {pagadoTotal > 0 && (
                   <span className="block font-mono text-[10px] font-normal tabular-nums text-success">
                     cobrado ${n2(pagadoTotal)}
+                  </span>
+                )}
+                {/* Lo resignado, al lado de lo cobrado: son los dos modos en que una cuota deja
+                    de deberse, y el segundo no tenía dónde leerse. */}
+                {condonadoTotal > 0 && (
+                  <span className="block font-mono text-[10px] font-normal tabular-nums text-warning">
+                    condonado ${n2(condonadoTotal)}
                   </span>
                 )}
               </td>

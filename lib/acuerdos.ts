@@ -15,7 +15,7 @@ import { ApiError } from "@/lib/auth";
 import { registrarAuditoria } from "@/lib/audit";
 import { getAuditActor } from "@/lib/audit-context";
 import { getConfiguracion, getCobranzaConfig } from "@/lib/config";
-import { calcularDeudaVencida, planDeAcuerdo, evaluarAcuerdo, quitaMaxima, round2, noNegativo, tasaPeriodicaSegunConvencion, type CuotaParaImputar, type DeudaVencida, type AcuerdosConfig, moraDelCredito, moraDesdeCronograma, puedeAcordarPorEstado, cargosDeCuota, baseMoraDeCuota } from "@/lib/domain";
+import { calcularDeudaVencida, planDeAcuerdo, evaluarAcuerdo, quitaMaxima, round2, noNegativo, tasaPeriodicaSegunConvencion, type CuotaParaImputar, type DeudaVencida, type AcuerdosConfig, moraDelCredito, moraDesdeCronograma, puedeAcordarPorEstado, cargosDeCuota, baseMoraDeCuota, cuotaCerradaSinPago, estadoTrasMoverLedger, cierreDeAcuerdoCumplido } from "@/lib/domain";
 import { hoyComercial, formatCreditoNumero } from "@/lib/utils";
 import { numerosRefinanciados } from "@/lib/creditos-numero";
 import { formatComprobante } from "@/lib/comprobantes";
@@ -460,6 +460,109 @@ export async function evaluarAcuerdoPersistido(
   );
 }
 
+
+/**
+ * CERRAR EL CRÉDITO CUANDO SU ACUERDO SE CUMPLIÓ.
+ *
+ * 🔴 QUÉ ARREGLA. La quita se descontaba del plan pactado pero nunca de las cuotas del
+ * crédito, así que el cliente pagaba todo lo acordado, el acuerdo cerraba CUMPLIDO y el
+ * crédito seguía debiendo exactamente la quita — volvía a la cola de morosos después de
+ * haber cumplido. En CRD-000006 eran $10,00; con una quita real, decenas de miles.
+ *
+ * Va en la MISMA transacción que cierra el acuerdo. Separarlas dejaría una ventana en la que
+ * el acuerdo figura cumplido y el crédito moroso, que es justo el estado que esto elimina.
+ *
+ * La aritmética (cuánto, con qué tope y en qué cuotas) vive en el dominio:
+ * `cierreDeAcuerdoCumplido`. Acá solo se escribe.
+ */
+async function cerrarCreditoDeAcuerdoCumplido(
+  tx: Prisma.TransactionClient,
+  tenantId: string,
+  acuerdo: { id: string; credito_id: string; deuda_original: number; quita: number; monto_acordado: number; interes_capitalizado: number },
+): Promise<{ condonado: number; sinCondonar: number; cuotas: number; cerro: boolean } | null> {
+  const credito = await tx.creditos.findFirst({
+    where: { ...withTenant(tenantId), id: acuerdo.credito_id },
+    select: {
+      id: true, estado: true,
+      cuotas: {
+        select: {
+          id: true, nro: true, fecha_vencimiento: true, estado: true,
+          capital: true, interes: true, iva: true, seguro: true, gastos: true, honorarios: true,
+          condonado: true, pagado_capital: true, pagado_interes: true, pagado_mora: true, pagado_cargos: true,
+        },
+        orderBy: { nro: "asc" },
+      },
+    },
+  });
+  if (!credito) return null;
+
+  /* Las cerradas sin pago (trasladadas a una refi, anuladas, ya condonadas) no entran: su
+     deuda no existe más y contarlas haría "condonar" algo que ya no se debe. */
+  const vivas = credito.cuotas.filter((c) => !cuotaCerradaSinPago(c.estado));
+  const cierre = cierreDeAcuerdoCumplido(
+    vivas.map((c) => ({
+      id: c.id, nro: c.nro,
+      capital: c.capital, interes: c.interes, cargos: cargosDeCuota(c),
+      pagadoCapital: c.pagado_capital, pagadoInteres: c.pagado_interes, pagadoCargos: c.pagado_cargos,
+    })),
+    acuerdo,
+  );
+
+  const porId = new Map(cierre.porCuota.map((x) => [x.id, x.condonado]));
+  for (const c of vivas) {
+    const parte = porId.get(c.id);
+    if (!parte) continue;
+    await tx.cuotas.update({
+      where: { id: c.id },
+      data: {
+        /*
+          🔴 CONDONADA, NO PAGADA — aunque casi toda la cuota se haya cobrado.
+
+          `pagado_capital` tiene que seguir diciendo la plata que de verdad entró: si se la
+          marcara pagada con los importes completos, los reportes de cobranza contarían como
+          recaudado lo que se resignó. Y `condonada` es además el único estado que le gana al
+          ledger en `cuotaSaldada`: sin él, `sinDeuda` seguiría diciendo que el crédito debe y
+          la próxima lectura lo devolvería a "activo". Lo perdonado queda a la vista en su
+          columna, al lado del recibo de lo que sí se pagó.
+        */
+        estado: "condonada",
+        condonado: round2(c.condonado + parte),
+      },
+    });
+  }
+
+  /* ¿Quedó en cero? Se pregunta DESPUÉS de condonar y con los datos ya corregidos: si sobró
+     algo por encima del tope (`sinCondonar`), el crédito NO se cierra, y eso es lo correcto —
+     hay plata que falta y taparla sería el defecto de nuevo, al revés. */
+  const todasSaldadas = cierre.sinCondonar <= 0.01;
+  const saldoCapital = round2(noNegativo(
+    vivas.reduce((t, c) => {
+      const condonadaAhora = porId.has(c.id);
+      return t + (condonadaAhora ? 0 : noNegativo(round2(c.capital - c.pagado_capital)));
+    }, 0),
+  ));
+
+  if (todasSaldadas) {
+    await tx.creditos.update({
+      where: { id: credito.id },
+      data: {
+        saldo_pendiente: 0,
+        /* `estadoTrasMoverLedger` y no "pagado" a mano: preserva el INCOBRABLE (un castigado
+           que cumple un acuerdo no vuelve a la cartera por eso) y es la misma función con la
+           que cierra el cobro normal. */
+        estado: estadoTrasMoverLedger(credito.estado, { todasSaldadas: true, diasMoraMax: 0 }),
+        dias_mora: 0,
+        proximo_pago: null,
+      },
+    });
+  } else if (cierre.condonado > 0) {
+    // Se perdonó parte pero algo sigue vivo: al menos que el saldo refleje el libro.
+    await tx.creditos.update({ where: { id: credito.id }, data: { saldo_pendiente: saldoCapital } });
+  }
+
+  return { condonado: cierre.condonado, sinCondonar: cierre.sinCondonar, cuotas: cierre.porCuota.length, cerro: todasSaldadas };
+}
+
 /**
  * Recorre los acuerdos VIGENTES y los pone al día: marca cumplidos los que se terminaron
  * de pagar y rotos los que acumularon cuotas impagas. Devuelve el resumen.
@@ -487,7 +590,24 @@ export async function sincronizarAcuerdos(opts: { tenantId?: string; creditoId?:
       continue;
     }
 
-    await prisma.$transaction(async (tx) => {
+    /* La transacción DEVUELVE el resultado del cierre en vez de escribirlo en una variable
+       de afuera: la auditoría se asienta después (no bloqueante, y si falla no tiene que
+       voltear el cierre), y así TypeScript puede seguirle el tipo. */
+    /*
+      🔴 QUIÉN CERRÓ EL ACUERDO, NO SOLO QUÉ PASÓ.
+
+      `sincronizarAcuerdos` corre desde el cron, desde tres pantallas de Cobranza y detrás de
+      cada pago, así que dos procesos pueden mirar el mismo acuerdo vigente a la vez. El
+      `updateMany` con `estado: "vigente"` ya garantiza que lo cierre uno solo — pero la
+      auditoría se escribía afuera y sin mirar ese resultado, así que el PERDEDOR asentaba
+      igual "Acuerdo de pago CUMPLIDO". Quedaban dos eventos para un solo cierre.
+
+      Apareció probando esta misma función: el cobro de la última cuota y la pantalla de
+      Acuerdos entraron juntos y dejaron dos asientos, uno con el detalle de la condonación y
+      otro sin él. `propio` dice si este proceso fue el que lo cerró; si no, no hay nada que
+      contar.
+    */
+    const resultado = await prisma.$transaction(async (tx) => {
       // Guarda anti-carrera: solo cierra si sigue vigente (otro proceso pudo cerrarlo).
       const upd = await tx.acuerdos_pago.updateMany({
         where: { id: a.id, estado: "vigente" },
@@ -500,10 +620,27 @@ export async function sincronizarAcuerdos(opts: { tenantId?: string; creditoId?:
               : `Incumplió ${ev.cuotas_incumplidas} cuota(s) del acuerdo`,
         },
       });
-      if (upd.count === 0) return;
-      if (ev.estado === "cumplido") cumplidos++;
-      else rotos++;
+      // Lo cerró otro proceso entre nuestra lectura y este update: no es nuestro.
+      if (upd.count === 0) return { propio: false, cierre: null };
+      if (ev.estado === "cumplido") {
+        cumplidos++;
+        /*
+          🔴 EL CRÉDITO SE CIERRA CON EL ACUERDO, no después.
+
+          La quita se descontaba del plan pactado y nunca de las cuotas del crédito: el
+          cliente terminaba de pagar, el acuerdo quedaba CUMPLIDO y el crédito seguía
+          debiendo justo la quita. Volvía a la cola de morosos alguien que había cumplido.
+
+          Va en esta transacción para que no exista un instante con el acuerdo cumplido y el
+          crédito moroso — y si algo falla, no se cierra ninguno de los dos.
+        */
+        return { propio: true, cierre: await cerrarCreditoDeAcuerdoCumplido(tx, a.tenant_id, a) };
+      }
+      rotos++;
+      return { propio: true, cierre: null };
     });
+    if (!resultado.propio) continue;
+    const cierreOk = resultado.cierre;
 
     await actualizarCuotasCobradas(a, ev.cobrado);
 
@@ -514,9 +651,20 @@ export async function sincronizarAcuerdos(opts: { tenantId?: string; creditoId?:
       accion: "actualizar",
       descripcion:
         ev.estado === "cumplido"
-          ? `Acuerdo de pago CUMPLIDO: se cobró la totalidad de $${a.monto_acordado.toLocaleString("es-AR")}`
+          ? `Acuerdo de pago CUMPLIDO: se cobró la totalidad de $${a.monto_acordado.toLocaleString("es-AR")}` +
+            /* La quita SE APLICA acá, así que acá se asienta: es una condonación de deuda y
+               tiene que poder rastrearse sin reconstruirla de dos tablas. */
+            (cierreOk && cierreOk.condonado > 0
+              ? ` · se condonaron $${cierreOk.condonado.toLocaleString("es-AR")} de quita en ${cierreOk.cuotas} cuota(s) y el crédito quedó ${cierreOk.cerro ? "cerrado" : "ABIERTO"}`
+              : "") +
+            (cierreOk && cierreOk.sinCondonar > 0
+              ? ` · 🔴 quedaron $${cierreOk.sinCondonar.toLocaleString("es-AR")} sin cubrir por encima de la quita: NO se condonaron`
+              : "")
           : `Acuerdo de pago ROTO: ${ev.cuotas_incumplidas} cuota(s) vencidas sin pagar (quedaba $${ev.pendiente.toLocaleString("es-AR")})`,
-      meta: { tipo: "acuerdo_pago", acuerdo_id: a.id, estado: ev.estado, cobrado: ev.cobrado, pendiente: ev.pendiente },
+      meta: {
+        tipo: "acuerdo_pago", acuerdo_id: a.id, estado: ev.estado, cobrado: ev.cobrado, pendiente: ev.pendiente,
+        ...(cierreOk ? { quita_condonada: cierreOk.condonado, sin_condonar: cierreOk.sinCondonar, credito_cerrado: cierreOk.cerro } : {}),
+      },
     });
   }
 

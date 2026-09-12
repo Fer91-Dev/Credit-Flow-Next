@@ -704,6 +704,12 @@ export interface CuotaPersistida {
    * `cuota_total − capitalizado` (`baseMoraDeCuota` en el dominio).
    */
   capitalizado?: number;
+  /**
+   * Lo PERDONADO en esta cuota: la quita al cumplirse un acuerdo, o lo resignado al cerrar un
+   * caso incobrable. No es plata que entró —`pagado_*` sigue diciendo solo eso— pero tampoco
+   * se debe más.
+   */
+  condonado?: number;
   /** Lo que hay que cobrar para saldarla hoy: lo que falta de la cuota + su mora. */
   total_cobrar?: number;
   /** Recibos que imputaron a la cuota (comprobante REC + fecha/hora del pago + monto aplicado). */

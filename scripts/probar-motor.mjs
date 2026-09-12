@@ -50,7 +50,7 @@ const { imputarPagoEnCuotas } = await dom("payments");
 const { interesMora } = await dom("mora");
 const { cftDelPlan, calcularCFT } = await dom("cft");
 const { tasaPeriodicaSegunConvencion } = await dom("frequency");
-const { calcularDeudaVencida, planDeAcuerdo } = await dom("acuerdos");
+const { calcularDeudaVencida, planDeAcuerdo, cierreDeAcuerdoCumplido } = await dom("acuerdos");
 const { calcularDeudaConsolidada, aplicarQuita } = await dom("refinanciacion");
 const { calcularCierreRecupero } = await dom("recupero-cierre");
 const { sugerirRefinanciacion, diagnosticarRefinanciacion, capacidadDePago } = await dom("refinanciacion-sugerida");
@@ -464,6 +464,82 @@ H("9. LO CAPITALIZADO DESPUÉS NO DEVENGA PUNITORIOS HACIA ATRÁS");
   // capital 300.000,00 + interés 195.563,91 + cargos 57.495,63 + mora 70.204,89
   ok(cerca(deudaHoy.mora, 70204.89), "la mora del plan queda donde estaba al firmar", F(deudaHoy.mora));
   ok(cerca(deudaHoy.total, 623264.43), "y la deuda del cr\u00e9dito ya no se pasa del acuerdo", F(deudaHoy.total));
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+H("10. AL CUMPLIRSE EL ACUERDO, LA QUITA SE CONDONA EN EL CRÉDITO");
+// ════════════════════════════════════════════════════════════════════════════
+/*
+  La quita se descontaba del plan pactado —el cliente paga menos— pero nunca de las cuotas del
+  CRÉDITO. Así que al terminar de pagar todo lo acordado el acuerdo cerraba CUMPLIDO y el
+  crédito seguía debiendo exactamente la quita: volvía a la cola de morosos alguien que había
+  cumplido. En CRD-000006 son $10,00; con una quita real (el tope del admin es el 100% de la
+  mora más el interés) son decenas de miles.
+
+  El cierre condona lo que falta, pero NUNCA más que lo que la financiera aceptó resignar.
+*/
+{
+  // El acuerdo real de CRD-000006.
+  const AC = { deuda_original: 565768.80, quita: 10, monto_acordado: 623254.43, interes_capitalizado: 57495.63 };
+  const cuota = (nro, capital, interes, cargos, pagCap) => ({
+    id: "c" + nro, nro, capital, interes, cargos,
+    pagadoCapital: pagCap, pagadoInteres: interes, pagadoCargos: cargos,
+  });
+  // Pagó los $623.254,43 pactados: las dos primeras quedan saldadas y a la tercera le faltan
+  // los $10,00 de la quita, apoyados sobre el capital (la imputación cobra mora e interés
+  // primero, así que el faltante se va al final de la fila).
+  const pagadas = [
+    cuota(1, 75187.97, 90000.00, 19165.21, 75187.97),
+    cuota(2, 97744.36, 67443.61, 19165.21, 97744.36),
+    cuota(3, 127067.67, 38120.30, 19165.21, 127057.67),
+  ];
+  const c = cierreDeAcuerdoCumplido(pagadas, AC);
+  ok(cerca(c.tope, 10), "el tope de la condonaci\u00f3n es la quita pactada", F(c.tope));
+  ok(cerca(c.condonado, 10), "se condona exactamente lo que falta", F(c.condonado));
+  ok(cerca(c.sinCondonar, 0), "y no queda nada sin cubrir", F(c.sinCondonar));
+  ok(c.porCuota.length === 1 && c.porCuota[0].nro === 3, "cae en la \u00faltima cuota, que es donde falta");
+
+  // Un crédito que ya cerró con la plata no necesita que se le perdone nada.
+  const todoPago = [cuota(1, 1000, 200, 50, 1000)];
+  const c0 = cierreDeAcuerdoCumplido(todoPago, { deuda_original: 1250, quita: 0, monto_acordado: 1250, interes_capitalizado: 0 });
+  ok(cerca(c0.condonado, 0), "sin nada pendiente no se condona nada", F(c0.condonado));
+
+  /*
+    🔴 EL TOPE NO ES DECORATIVO. Si falta MUCHO más que la quita, eso no es el descuento:
+    es un pago que no llegó o una cuenta que no cierra. Se condona la quita y nada más; el
+    resto queda declarado para que el cierre pueda informarlo y el crédito NO se cierre.
+  */
+  const faltaDeMas = [
+    cuota(1, 75187.97, 90000.00, 19165.21, 75187.97),
+    cuota(2, 97744.36, 67443.61, 19165.21, 97744.36),
+    cuota(3, 127067.67, 38120.30, 19165.21, 126567.67),
+  ];
+  const cx = cierreDeAcuerdoCumplido(faltaDeMas, AC);
+  ok(cerca(cx.condonado, 10), "con un faltante mayor, se condona solo hasta la quita", F(cx.condonado));
+  ok(cerca(cx.sinCondonar, 490), "y el resto queda declarado, no perdonado", F(cx.sinCondonar));
+
+  // Reparto: se va llenando desde la primera cuota con faltante hasta agotar el tope.
+  const AC2 = { deuda_original: 100000, quita: 1000, monto_acordado: 104000, interes_capitalizado: 5000 };
+  const repartir = [
+    { id: "a", nro: 1, capital: 1000, interes: 0, cargos: 0, pagadoCapital: 1000, pagadoInteres: 0, pagadoCargos: 0 },
+    { id: "b", nro: 2, capital: 1000, interes: 0, cargos: 0, pagadoCapital: 700, pagadoInteres: 0, pagadoCargos: 0 },
+    { id: "c", nro: 3, capital: 1000, interes: 0, cargos: 0, pagadoCapital: 200, pagadoInteres: 0, pagadoCargos: 0 },
+  ];
+  const cr = cierreDeAcuerdoCumplido(repartir, AC2);
+  ok(cerca(cr.tope, 1000), "el tope con inter\u00e9s capitalizado completo sigue siendo la quita", F(cr.tope));
+  ok(cerca(cr.condonado, 1000), "se reparte hasta agotar el tope", F(cr.condonado));
+  ok(cr.porCuota.length === 2 && cr.porCuota[0].nro === 2 && cerca(cr.porCuota[0].condonado, 300),
+    "la primera con faltante se cubre entera", cr.porCuota.map((x) => `${x.nro}:${F(x.condonado)}`).join(" "));
+  ok(cerca(cr.sinCondonar, 100), "y lo que excede el tope queda afuera", F(cr.sinCondonar));
+
+  /*
+    Si el interés del acuerdo NO pudo capitalizarse entero en el crédito, el crédito debe menos
+    y el sobrante a perdonar baja en la misma medida. Nunca negativo.
+  */
+  const AC3 = { deuda_original: 100000, quita: 1000, monto_acordado: 104000, interes_capitalizado: 3000 };
+  const cz = cierreDeAcuerdoCumplido(repartir, AC3);
+  ok(cerca(cz.tope, 0), "sin capitalizar el inter\u00e9s entero, el tope se achica y no baja de cero", F(cz.tope));
+  ok(cerca(cz.condonado, 0), "y por lo tanto no se condona nada", F(cz.condonado));
 }
 
 // ════════════════════════════════════════════════════════════════════════════

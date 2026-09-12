@@ -35,6 +35,105 @@ export function interesDelAcuerdo(a: { monto_acordado: number; deuda_original: n
   return round2(noNegativo(a.monto_acordado - (a.deuda_original - a.quita)));
 }
 
+/** Una cuota del CRÉDITO, para repartir la condonación de cierre. Sin mora: ver abajo. */
+export interface CuotaParaCierreAcuerdo {
+  id: string;
+  nro: number;
+  capital: number;
+  interes: number;
+  cargos: number;
+  pagadoCapital: number;
+  pagadoInteres: number;
+  pagadoCargos: number;
+}
+
+export interface CierreAcuerdoCumplido {
+  /** Lo que se perdona en total para que el crédito cierre en cero. */
+  condonado: number;
+  /** Tope: lo que la financiera aceptó resignar al firmar. Nunca se condona más que esto. */
+  tope: number;
+  /** Lo que quedó pendiente por ENCIMA del tope y NO se condona. Si es > 0, hay que mirarlo. */
+  sinCondonar: number;
+  /** En qué cuotas cae, en orden. Solo las que reciben algo. */
+  porCuota: { id: string; nro: number; condonado: number }[];
+}
+
+/**
+ * EL CIERRE DE UN ACUERDO CUMPLIDO: qué se le perdona al crédito para que cierre en cero.
+ *
+ * 🔴 EL AGUJERO QUE TAPA
+ *
+ * La QUITA se descuenta del plan pactado —el cliente paga menos— pero nunca se descontaba de
+ * las cuotas del CRÉDITO. Así que al terminar de pagar todo lo acordado:
+ *
+ *   · el acuerdo cerraba CUMPLIDO,
+ *   · y el crédito quedaba debiendo exactamente la quita, volviendo a la cola de morosos.
+ *
+ * En CRD-000006 son $10,00 y se lee como un redondeo. Con una quita real —el tope del admin
+ * es el 100% de la mora más el interés— son decenas de miles: al cliente se le prometió por
+ * escrito un descuento que el libro nunca aplicó. Es la misma clase de defecto que
+ * `modo_interes` ya documenta al revés (el crédito cerraba y el acuerdo quedaba abierto).
+ *
+ * 🔴 POR QUÉ LO QUE QUEDA ES CAPITAL, SI LA QUITA SALE DE LA MORA Y EL INTERÉS
+ *
+ * `quitaMaxima` impide condonar capital, y es correcto: al FIRMAR, el descuento se calcula
+ * sobre la mora y el interés. Pero la imputación cobra en orden mora → interés → cargos →
+ * capital, así que cuando el acuerdo termina de pagarse la mora y el interés ya entraron y el
+ * resto sin cubrir se apoya sobre el capital. No es un descuento nuevo sobre el capital: es el
+ * libro poniéndose al día con un descuento que ya se había pactado.
+ *
+ * 🔴 LA MORA NO ENTRA EN LA CUENTA
+ *
+ * Se mide el pendiente del PLAN (capital + interés + cargos), no los punitorios. Con
+ * `congela_punitorios` no hay mora nueva y da lo mismo; sin él, la mora siguió corriendo
+ * durante el acuerdo y ESA no es parte del trato — la financiera eligió no congelarla.
+ * Perdonarla acá sería regalar plata que el acuerdo nunca prometió resignar.
+ *
+ * 🔴 Y POR QUÉ HAY UN TOPE
+ *
+ * Se condona lo que falta, pero NUNCA más que lo que la financiera aceptó resignar. Si
+ * sobrara algo por encima de eso, no es la quita: es un pago que no llegó o una cuenta que no
+ * cierra, y taparlo con una condonación automática borraría la evidencia. Queda en
+ * `sinCondonar` para que el cierre lo pueda informar.
+ *
+ * El tope es la quita más la diferencia entre el interés que el acuerdo cobra y el que se
+ * llegó a capitalizar en el crédito: si no entró todo (no había cuotas vivas donde apoyarlo),
+ * el crédito debe menos y el sobrante a perdonar es menor en la misma medida.
+ *
+ * Dominio PURO.
+ */
+export function cierreDeAcuerdoCumplido(
+  cuotas: CuotaParaCierreAcuerdo[],
+  acuerdo: { deuda_original: number; quita: number; monto_acordado: number; interes_capitalizado: number },
+): CierreAcuerdoCumplido {
+  const tope = round2(noNegativo(
+    acuerdo.quita + acuerdo.interes_capitalizado - interesDelAcuerdo(acuerdo),
+  ));
+
+  let restante = tope;
+  let condonado = 0;
+  let pendienteTotal = 0;
+  const porCuota: { id: string; nro: number; condonado: number }[] = [];
+
+  // En orden de cuota: la imputación cobra así, con lo cual el faltante se apoya naturalmente
+  // en las últimas. Recorrerlas al revés repartiría la condonación donde no falta nada.
+  for (const c of [...cuotas].sort((a, b) => a.nro - b.nro)) {
+    const pendiente = round2(
+      noNegativo(round2(c.capital - c.pagadoCapital)) +
+      noNegativo(round2(c.interes - c.pagadoInteres)) +
+      noNegativo(round2(c.cargos - c.pagadoCargos)),
+    );
+    pendienteTotal = round2(pendienteTotal + pendiente);
+    if (pendiente <= 0 || restante <= 0) continue;
+    const parte = round2(Math.min(pendiente, restante));
+    restante = round2(restante - parte);
+    condonado = round2(condonado + parte);
+    porCuota.push({ id: c.id, nro: c.nro, condonado: parte });
+  }
+
+  return { condonado, tope, sinCondonar: round2(noNegativo(pendienteTotal - condonado)), porCuota };
+}
+
 export interface AcuerdosConfig {
   /** Máximo de cuotas que puede tener un acuerdo. */
   max_cuotas: number;

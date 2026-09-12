@@ -245,6 +245,10 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
          cuenta de la mora con la base REAL: sin ella, el renglón decía "58 días × 0,50% de
          $184.353,18" y esa multiplicación ya no da el importe de al lado. */
       capitalizado: c.capitalizado,
+      /* Lo PERDONADO en esta cuota. Nunca viajaba, así que el plan podía mostrar una cuota
+         "Condonada" sin decir de cuánto: sobre CRD-000005 eran $121.712,81 resignados que no
+         aparecían en ninguna pantalla. */
+      condonado: c.condonado,
       estado,
       pagado_capital: c.pagado_capital,
       pagado_interes: c.pagado_interes,
