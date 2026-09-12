@@ -53,6 +53,7 @@ const { tasaPeriodicaSegunConvencion } = await dom("frequency");
 const { calcularDeudaVencida, planDeAcuerdo, cierreDeAcuerdoCumplido } = await dom("acuerdos");
 const { calcularDeudaConsolidada, aplicarQuita } = await dom("refinanciacion");
 const { calcularCierreRecupero } = await dom("recupero-cierre");
+const { puedeAcordarPorEstado } = await dom("recupero");
 const { sugerirRefinanciacion, diagnosticarRefinanciacion, capacidadDePago } = await dom("refinanciacion-sugerida");
 const { round2 } = await dom("money");
 const { baseMoraDeCuota } = await dom("cuotas");
@@ -572,6 +573,32 @@ H("11. EL RECIBO DICE QUÉ CUOTAS PACTADAS CUBRIÓ EL COBRO");
   // La entrega del acuerdo le gana a todo: es otro concepto.
   const ent = conceptoDePago({ cuotas: [], acuerdo: { numero: 1, hasta: 2, total: 3 }, entregaAcuerdo: { cuotas: 3 } });
   ok(ent === "la entrega del acuerdo de pago en 3 cuotas", "la entrega sigue teniendo prioridad", String(ent));
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+H("12. POR QUE UN CREDITO NO ADMITE ACUERDO");
+// ════════════════════════════════════════════════════════════════════════════
+/*
+  El motivo lo lee el operador en pantalla y decide que hacer con él, así que tiene que ser
+  cierto. El comodín era "ya está saldado" para todo lo que no fuera refinanciado ni anulado:
+  sobre CRD-000011, con $698.345,88 vivos y 272 dias de atraso, el preview contestaba que no
+  debía nada.
+*/
+{
+  ok(puedeAcordarPorEstado("activo").permitido, "un credito activo admite acuerdo");
+  ok(puedeAcordarPorEstado("vencido").permitido, "uno vencido tambien");
+
+  const inc = puedeAcordarPorEstado("incobrable");
+  ok(!inc.permitido, "un incobrable NO admite acuerdo");
+  ok(!/saldado/i.test(inc.motivo ?? ""), "y su motivo NO dice que este saldado", inc.motivo ?? "");
+  ok(/recupero/i.test(inc.motivo ?? "") || /recupero/i.test(inc.sugerencia ?? ""),
+    "manda a Recupero, que es donde si se puede hacer algo", (inc.motivo ?? "") + " / " + (inc.sugerencia ?? ""));
+
+  const pag = puedeAcordarPorEstado("pagado");
+  ok(!pag.permitido && /saldado/i.test(pag.motivo ?? ""), "un pagado si esta saldado, y lo dice", pag.motivo ?? "");
+
+  const refi = puedeAcordarPorEstado("refinanciado");
+  ok(!refi.permitido && /crédito nuevo/i.test(refi.motivo ?? ""), "un refinanciado manda al credito nuevo", refi.motivo ?? "");
 }
 
 // ════════════════════════════════════════════════════════════════════════════

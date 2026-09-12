@@ -637,16 +637,33 @@ export function puedeDarsePorIncobrableManual(
  */
 export function puedeAcordarPorEstado(estado: string): VeredictoEscalera {
   if (estado === "activo" || estado === "vencido") return PERMITIDO;
+  /**
+   * 🔴 UN INCOBRABLE NO ESTÁ SALDADO, Y LA PANTALLA LO DECÍA.
+   *
+   * El comodín era "ya está saldado: no hay deuda que acordar" para todo lo que no fuera
+   * refinanciado ni anulado — así que sobre CRD-000011 (Ramón Nieva), con $698.345,88 vivos
+   * y 272 días de atraso, el preview del acuerdo contestaba que no debía nada. Es falso, y
+   * es justo lo contrario de lo que significa el estado: un incobrable está en ROJO porque
+   * la deuda EXISTE y es reclamable.
+   *
+   * Bloquearlo sigue siendo correcto —un castigado se trabaja desde Recupero, con una oferta
+   * de cancelación, que es otra herramienta— pero el motivo tiene que decir eso y mandar a
+   * donde sí se puede hacer algo.
+   */
   const motivo =
     estado === "refinanciado"
       ? "Este crédito ya se refinanció: su deuda está en el crédito nuevo y acá no queda nada que acordar."
       : estado === "anulado"
         ? "Este crédito está anulado: no hay deuda que acordar."
-        : "Este crédito ya está saldado: no hay deuda que acordar.";
+        : estado === "incobrable"
+          ? "Este crédito está dado por incobrable: su deuda sigue viva, pero se trabaja desde Recupero."
+          : "Este crédito ya está saldado: no hay deuda que acordar.";
   const sugerencia =
     estado === "refinanciado"
       ? "Si hay que reestructurar de nuevo, el acuerdo va sobre el crédito nuevo."
-      : undefined;
+      : estado === "incobrable"
+        ? "Cerrale el caso con una oferta de cancelación: entra lo que el cliente puede pagar y se condona el resto."
+        : undefined;
   return { permitido: false, motivo, ...(sugerencia ? { sugerencia } : {}) };
 }
 
