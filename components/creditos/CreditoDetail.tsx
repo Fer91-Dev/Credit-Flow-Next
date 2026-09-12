@@ -31,9 +31,18 @@ import { esCreditoVivo, esCreditoCobrable, montoEnPalabras, cargosDeCuota, cuota
  */
 function FilaAcuerdo({ label, valor, tono }: { label: string; valor: number; tono?: "success" | "warning" }) {
   return (
-    <div className="flex items-center justify-between gap-3 text-xs">
-      <span className="text-muted-foreground">{label}</span>
-      <span className={`font-mono tabular-nums ${
+    /*
+      🔴 AIRE. Los renglónes iban a `text-xs` con 4px entre uno y otro: seis importes
+      apilados sin respirar, imposibles de barrer con la vista. Ahora cada uno tiene su
+      alto propio y una línea tenue que lo separa del de abajo — la misma lectura que un
+      extracto bancario, que es exactamente lo que este bloque es.
+
+      Y el número sube a 13px con peso: a 11px la JetBrains Mono se ve fina y apretada, y
+      esta es la columna que el operador le lee al cliente por teléfono.
+    */
+    <div className="flex items-baseline justify-between gap-4 py-2">
+      <span className="text-[13px] leading-snug text-muted-foreground">{label}</span>
+      <span className={`shrink-0 font-mono text-[13px] font-medium tabular-nums ${
         tono === "success" ? "text-success" : tono === "warning" ? "text-warning" : "text-foreground"
       }`}>
         {valor < 0 ? "\u2212" : ""}{formatMonto(Math.abs(valor))}
@@ -848,6 +857,10 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
           /* El interés que el acuerdo agregó. Sale del DOMINIO y no de una resta escrita acá:
              es el mismo número que muestra la terminal de cobro al imputar la cuota pactada. */
           const interesAcuerdo = interesDelAcuerdo(acuerdo);
+          /* Los totales del pie salen de las MISMAS filas que dibuja la tabla — no del
+             acuerdo—: un pie que sumara otra fuente podría no dar lo que se ve arriba. */
+          const cobradoAcuerdoPlan = r2(acuerdo.cuotas.reduce((t, x) => t + x.pagado, 0));
+          const faltaPlan = r2(acuerdo.cuotas.reduce((t, x) => t + Math.max(0, x.monto - x.pagado), 0));
           /* Tono: el vigente al día en índigo, el vigente incumplido en rojo, el cerrado en gris. */
           const tono = !acuerdoVigente
             ? { borde: "border-border", fondo: "bg-muted/20", franja: "bg-muted-foreground/30", texto: "text-muted-foreground", suave: "border-border" }
@@ -859,11 +872,11 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
               {/* La franja lateral: el mismo recurso con el que la pantalla marca una
                   refinanciación y la severidad en las listas. */}
               <span aria-hidden className={`pointer-events-none absolute inset-y-0 left-0 w-1 ${tono.franja}`} />
-              <div className="px-4 py-3.5">
+              <div className="px-5 py-4">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
                     <Emoji name="handshake" className="h-4 w-4" />
-                    <h3 className={`text-sm font-semibold ${tono.texto}`}>{EST.label}</h3>
+                    <h3 className={`text-[15px] font-semibold leading-none ${tono.texto}`}>{EST.label}</h3>
                     {/* Con el acuerdo vigente el chip dice si CUMPLE, que es el dato que
                         decide si esta persona es morosa o no. Cerrado, dice cómo terminó. */}
                     <span className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ring-1 ring-inset ${
@@ -887,7 +900,7 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
                   tendría que elegir entre dos pantallas del mismo sistema.
                 */}
                 {acuerdoVigente && (
-                  <div className={`mt-3 flex flex-wrap items-baseline justify-between gap-2 border-t ${tono.suave} pt-3`}>
+                  <div className={`mt-3.5 flex flex-wrap items-baseline justify-between gap-3 border-t ${tono.suave} pt-3.5`}>
                     {proximaPactada ? (
                       <>
                         <span className="text-sm text-foreground">
@@ -915,7 +928,7 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
                   se consolidó, lo que se le perdonó y lo que el acuerdo cobra por financiarlo.
                   La resta va completa: arriba el BRUTO, y el neto es el renglón del total.
                 */}
-                <div className={`mt-3 space-y-1 border-t ${tono.suave} pt-2.5`}>
+                <div className={`mt-4 divide-y divide-border/40 border-t ${tono.suave} pt-1`}>
                   <FilaAcuerdo label="Deuda del crédito que se consolidó" valor={acuerdo.deuda_original} />
                   {acuerdo.quita > 0 && (
                     <FilaAcuerdo label="Descuento al cliente" valor={-acuerdo.quita} tono="success" />
@@ -923,18 +936,27 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
                   {interesAcuerdo !== 0 && (
                     <FilaAcuerdo label="Interés del acuerdo" valor={interesAcuerdo} tono="warning" />
                   )}
-                  <div className={`flex items-center justify-between gap-3 border-t ${tono.suave} pt-1.5 text-xs`}>
-                    <span className="font-semibold text-foreground">
+                  {/*
+                    Los SUBTOTALES pesan más que sus sumandos: 14px y semibold en el rótulo,
+                    16px bold en el importe. Antes iban al mismo tamaño que todo lo demás y
+                    la cuenta se leía como una lista plana de seis números iguales.
+                  */}
+                  <div className="flex items-baseline justify-between gap-4 py-2.5">
+                    <span className="text-sm font-semibold leading-snug text-foreground">
                       Total pactado en {acuerdo.total_cuotas} cuota{acuerdo.total_cuotas === 1 ? "" : "s"}
                     </span>
-                    <span className="font-mono font-bold tabular-nums text-foreground">{formatMonto(acuerdo.monto_acordado)}</span>
+                    <span className="shrink-0 font-mono text-base font-bold tabular-nums text-foreground">
+                      {formatMonto(acuerdo.monto_acordado)}
+                    </span>
                   </div>
                   {acuerdoVigente && (
                     <>
                       <FilaAcuerdo label={`Cobrado · ${pactadasPagadas} de ${acuerdo.total_cuotas} cuotas pactadas`} valor={-cobradoAcuerdo} tono="success" />
-                      <div className={`flex items-center justify-between gap-3 border-t ${tono.suave} pt-1.5 text-xs`}>
-                        <span className="font-semibold text-foreground">Falta del acuerdo</span>
-                        <span className={`font-mono font-bold tabular-nums ${tono.texto}`}>{formatMonto(faltaAcuerdo)}</span>
+                      <div className="flex items-baseline justify-between gap-4 py-2.5">
+                        <span className="text-sm font-semibold leading-snug text-foreground">Falta del acuerdo</span>
+                        <span className={`shrink-0 font-mono text-base font-bold tabular-nums ${tono.texto}`}>
+                          {formatMonto(faltaAcuerdo)}
+                        </span>
                       </div>
                     </>
                   )}
@@ -951,9 +973,9 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
                   dos momentos.
                 */}
                 {acuerdo.interes_capitalizado > 0 && (
-                  <p className="mt-2.5 text-[11px] text-muted-foreground">
+                  <p className="mt-4 text-xs leading-relaxed text-muted-foreground">
                     Los{" "}
-                    <span className="font-mono tabular-nums text-foreground">{formatMonto(acuerdo.interes_capitalizado)}</span>{" "}
+                    <span className="font-mono font-medium tabular-nums text-foreground">{formatMonto(acuerdo.interes_capitalizado)}</span>{" "}
                     de interés del acuerdo se pasaron a las cuotas del crédito al firmarlo, como cargo: por eso
                     la deuda del crédito, arriba, es mayor que la que el acuerdo consolidó.
                   </p>
@@ -962,7 +984,7 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
                 {/* Por qué la mora de arriba está quieta. Es el término congelado del acuerdo,
                     no una decisión de esta pantalla. */}
                 {acuerdoVigente && acuerdoVigente.congela_punitorios && (
-                  <p className="mt-2.5 text-[11px] text-muted-foreground">
+                  <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
                     Mientras cumpla, no se le devengan punitorios: la mora quedó congelada al {formatFecha(acuerdo.fecha)}.
                   </p>
                 )}
@@ -971,21 +993,37 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
                   EL PLAN PACTADO, plegado. Es el registro de qué cuota se pagó y con qué
                   recibo — el mismo que ya muestran la ficha del cliente y la terminal.
                 */}
-                <details className="group/ac mt-3">
-                  <summary className="flex cursor-pointer list-none items-center gap-1.5 text-[11px] font-medium text-muted-foreground transition-colors hover:text-foreground [&::-webkit-details-marker]:hidden">
+                <details className="group/ac mt-4">
+                  <summary className="flex cursor-pointer list-none items-center gap-1.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground [&::-webkit-details-marker]:hidden">
                     <ChevronDown className="h-3.5 w-3.5 transition-transform duration-200 group-open/ac:rotate-180" />
                     Ver las {acuerdo.total_cuotas} cuotas pactadas
+                    {/* Plegado, el resumen dice de cuánto es cada una: sin esto el título no
+                        informa nada y hay que abrirlo para saber si vale la pena. */}
+                    <span className="font-mono text-[11px] tabular-nums text-muted-foreground/60">
+                      · {formatMonto(acuerdo.cuotas[0]?.monto ?? 0)} c/u
+                    </span>
                   </summary>
-                  <div className="mt-2 overflow-x-auto rounded-lg border border-border">
-                    <table className="w-full border-separate border-spacing-0 text-xs">
+                  {/*
+                    🔴 LA TABLA TERMINA EN SU TOTAL, y respira.
+
+                    Tenía `py-1.5` (6px) por celda y no tenía pie: tres renglónes apretados de
+                    $207.751,47 y ninguna línea que dijera cuánto suman. En una tabla de plata
+                    el total no es un extra — es la fila que se mira primero, y la única que
+                    cruza contra el bloque de arriba.
+
+                    La fila que toca cobrar lleva una barra índigo a la izquierda además del
+                    fondo: sobre el tema oscuro un `bg-primary/[0.06]` solo casi no se ve.
+                  */}
+                  <div className="mt-2.5 overflow-x-auto rounded-lg border border-border">
+                    <table className="w-full border-separate border-spacing-0 text-[13px]">
                       <thead>
-                        <tr className="bg-muted/30 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                          <th className="border-b border-border px-3 py-1.5 text-left">#</th>
-                          <th className="border-b border-border px-3 py-1.5 text-left">Vencimiento</th>
-                          <th className="border-b border-border px-3 py-1.5 text-right">Pactado</th>
-                          <th className="border-b border-border px-3 py-1.5 text-right">Cobrado</th>
-                          <th className="border-b border-border px-3 py-1.5 text-left">Comprobante</th>
-                          <th className="border-b border-border px-3 py-1.5 text-right">Falta</th>
+                        <tr className="bg-muted/40 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                          <th className="w-8 border-b border-border px-3 py-2.5 text-left font-semibold">#</th>
+                          <th className="border-b border-border px-3 py-2.5 text-left font-semibold">Vencimiento</th>
+                          <th className="border-b border-border px-3 py-2.5 text-right font-semibold">Pactado</th>
+                          <th className="border-b border-border px-3 py-2.5 text-right font-semibold">Cobrado</th>
+                          <th className="border-b border-border px-3 py-2.5 text-left font-semibold">Comprobante</th>
+                          <th className="border-b border-border px-3 py-2.5 pr-4 text-right font-semibold">Falta</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -994,21 +1032,25 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
                           const esProxima = acuerdoVigente != null && proximaPactada?.numero === c.numero;
                           /* Una cuota pactada puede cubrirse con dos cobros: van todos. */
                           const recibos = c.recibos ?? (c.comprobante ? [{ comprobante: c.comprobante, pago_id: c.pago_id ?? "", monto: c.pagado, monto_pago: c.pagado }] : []);
+                          const celdaAc = "border-b border-border/50 px-3 py-2.5";
                           return (
-                            <tr key={c.id} className={esProxima ? "bg-primary/[0.06]" : undefined}>
-                              <td className="border-b border-border/60 px-3 py-1.5 font-mono tabular-nums text-muted-foreground">{c.numero}</td>
-                              <td className="border-b border-border/60 px-3 py-1.5 tabular-nums text-foreground">{fmtDate(c.vencimiento)}</td>
-                              <td className="border-b border-border/60 px-3 py-1.5 text-right font-mono tabular-nums text-foreground">{formatMonto(c.monto)}</td>
-                              <td className="border-b border-border/60 px-3 py-1.5 text-right font-mono tabular-nums text-success">
-                                {c.pagado > 0 ? formatMonto(c.pagado) : <span className="text-muted-foreground/50">—</span>}
+                            <tr key={c.id} className={`transition-colors ${esProxima ? "bg-primary/[0.07]" : "hover:bg-muted/20"}`}>
+                              <td className={`${celdaAc} relative font-mono tabular-nums text-muted-foreground`}>
+                                {esProxima && <span aria-hidden className="absolute inset-y-0 left-0 w-0.5 bg-primary" />}
+                                {c.numero}
                               </td>
-                              <td className="border-b border-border/60 px-3 py-1.5 font-mono text-[11px] text-muted-foreground">
+                              <td className={`${celdaAc} tabular-nums text-foreground`}>{fmtDate(c.vencimiento)}</td>
+                              <td className={`${celdaAc} text-right font-mono font-medium tabular-nums text-foreground`}>{formatMonto(c.monto)}</td>
+                              <td className={`${celdaAc} text-right font-mono tabular-nums text-success`}>
+                                {c.pagado > 0 ? formatMonto(c.pagado) : <span className="text-muted-foreground/40">—</span>}
+                              </td>
+                              <td className={`${celdaAc} font-mono text-xs text-muted-foreground`}>
                                 {recibos.length > 0
                                   ? recibos.map((r) => r.comprobante ?? "s/n").join(" · ")
-                                  : <span className="text-muted-foreground/50">—</span>}
+                                  : <span className="text-muted-foreground/40">—</span>}
                               </td>
-                              <td className={`border-b border-border/60 px-3 py-1.5 text-right font-mono tabular-nums ${
-                                falta === 0 ? "text-muted-foreground/50" : c.estado === "vencida" ? "text-destructive" : "text-foreground"
+                              <td className={`${celdaAc} pr-4 text-right font-mono tabular-nums ${
+                                falta === 0 ? "text-success" : c.estado === "vencida" ? "font-semibold text-destructive" : "text-foreground"
                               }`}>
                                 {falta === 0 ? "saldada" : formatMonto(falta)}
                               </td>
@@ -1016,6 +1058,25 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
                           );
                         })}
                       </tbody>
+                      {/* El pie: los mismos tres importes del bloque de arriba, sumados por
+                          columna. Si alguna vez no coincidieran, se ve en el acto. */}
+                      <tfoot>
+                        <tr className="bg-muted">
+                          <td colSpan={2} className="px-3 py-2.5 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                            Totales
+                          </td>
+                          <td className="px-3 py-2.5 text-right font-mono font-bold tabular-nums text-foreground">
+                            {formatMonto(acuerdo.monto_acordado)}
+                          </td>
+                          <td className="px-3 py-2.5 text-right font-mono font-bold tabular-nums text-success">
+                            {cobradoAcuerdoPlan > 0 ? formatMonto(cobradoAcuerdoPlan) : <span className="font-normal text-muted-foreground/40">—</span>}
+                          </td>
+                          <td className="px-3 py-2.5" />
+                          <td className={`px-3 py-2.5 pr-4 text-right font-mono font-bold tabular-nums ${faltaPlan > 0 ? tono.texto : "text-success"}`}>
+                            {faltaPlan > 0 ? formatMonto(faltaPlan) : "saldado"}
+                          </td>
+                        </tr>
+                      </tfoot>
                     </table>
                   </div>
                 </details>
