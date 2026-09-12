@@ -861,6 +861,27 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
              acuerdo—: un pie que sumara otra fuente podría no dar lo que se ve arriba. */
           const cobradoAcuerdoPlan = r2(acuerdo.cuotas.reduce((t, x) => t + x.pagado, 0));
           const faltaPlan = r2(acuerdo.cuotas.reduce((t, x) => t + Math.max(0, x.monto - x.pagado), 0));
+          /**
+           * 🔴 QUÉ CUOTAS PACTADAS CUBRIÓ CADA RECIBO.
+           *
+           * Adelantando dos cuotas hay UN cobro y UN comprobante, así que la columna
+           * repetía "REC-000008" en dos filas sin decir por qué — se lee como si el número
+           * estuviera duplicado. Fernando lo marcó: "me gustaría tener un recibo específico
+           * de cada cuota".
+           *
+           * El comprobante es el documento de CAJA y hay uno por movimiento de plata: dos
+           * papeles numerados para una sola entrega descuadrarían el arqueo. Lo que sí se
+           * puede es que el número diga a qué cuotas alcanzó, que es la información que
+           * faltaba.
+           */
+          const cuotasPorRecibo = new Map<string, number[]>();
+          for (const q of acuerdo.cuotas) {
+            for (const rec of q.recibos ?? []) {
+              const ya = cuotasPorRecibo.get(rec.pago_id) ?? [];
+              if (!ya.includes(q.numero)) ya.push(q.numero);
+              cuotasPorRecibo.set(rec.pago_id, ya);
+            }
+          }
           /* Tono: el vigente al día en índigo, el vigente incumplido en rojo, el cerrado en gris. */
           const tono = !acuerdoVigente
             ? { borde: "border-border", fondo: "bg-muted/20", franja: "bg-muted-foreground/30", texto: "text-muted-foreground", suave: "border-border" }
@@ -1051,10 +1072,47 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
                               <td className={`${celdaAc} text-right font-mono tabular-nums text-success`}>
                                 {c.pagado > 0 ? formatMonto(c.pagado) : <span className="text-muted-foreground/40">—</span>}
                               </td>
-                              <td className={`${celdaAc} font-mono text-xs text-muted-foreground`}>
-                                {recibos.length > 0
-                                  ? recibos.map((r) => r.comprobante ?? "s/n").join(" · ")
-                                  : <span className="text-muted-foreground/40">—</span>}
+                              {/*
+                                🔴 EL COMPROBANTE SE IMPRIME DESDE ACÁ. Estaba como texto pelado:
+                                se veía el número y no había forma de sacar el papel — había que
+                                bajar al plan del crédito y buscar el mismo recibo entre sus
+                                cuotas. Es el mismo botón que ya tiene el plan de abajo.
+
+                                Y cuando un recibo cubrió VARIAS cuotas pactadas, lo dice. Sin
+                                eso, el mismo número repetido en dos filas se lee como un error.
+                              */}
+                              <td className={`${celdaAc} text-xs`}>
+                                {recibos.length > 0 ? (
+                                  <div className="flex flex-col items-start gap-1">
+                                    {recibos.map((rec) => {
+                                      const cubre = cuotasPorRecibo.get(rec.pago_id) ?? [];
+                                      return (
+                                        <button
+                                          key={rec.pago_id || rec.comprobante}
+                                          type="button"
+                                          onClick={() => rec.pago_id && handleRecibo(rec.pago_id)}
+                                          disabled={!rec.pago_id || reciboBusy === rec.pago_id}
+                                          title={
+                                            cubre.length > 1
+                                              ? `Recibo en PDF · cubre las cuotas ${cubre.join(" y ")} del acuerdo`
+                                              : "Recibo en PDF"
+                                          }
+                                          className="inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-1 font-mono text-[11px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-default disabled:opacity-60"
+                                        >
+                                          <Printer className="h-3 w-3 shrink-0" />
+                                          {rec.comprobante ?? "s/n"}
+                                          {cubre.length > 1 && (
+                                            <span className="font-sans text-[10px] text-muted-foreground/60">
+                                              cubre {cubre.join(" y ")}
+                                            </span>
+                                          )}
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                ) : (
+                                  <span className="text-muted-foreground/40">—</span>
+                                )}
                               </td>
                               <td className={`${celdaAc} pr-4 text-right font-mono tabular-nums ${
                                 falta === 0 ? "text-success" : c.estado === "vencida" ? "font-semibold text-destructive" : "text-foreground"
