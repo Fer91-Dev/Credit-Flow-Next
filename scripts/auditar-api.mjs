@@ -289,6 +289,38 @@ hallazgos.sort((a, b) => ORDEN[a.nivel] - ORDEN[b.nivel] || a.ruta.localeCompare
         `L${i + 1}: ${l.trim().slice(0, 90)}`);
     }
   }
+
+  /**
+   * 🔴 Y LA MISMA TRAMPA, DEL LADO DE LA SALIDA: `Intl.DateTimeFormat` SIN `timeZone`.
+   *
+   * `Intl` sin zona usa la del PROCESO, que en Vercel y en el server de desarrollo es UTC. Los
+   * getters locales al menos se ven raros; esto se lee como código correcto y formatea mal.
+   *
+   * Lo encontró Fernando en un papel: el certificado de libre deuda de Héctor Ibarra decía
+   * que canceló "a las 10:39 p. m." un cobro que entró a las 7:39 p. m. Tres horas de más en
+   * un documento que el cliente guarda como prueba — y después de las 21:00, un DÍA de más.
+   *
+   * Se marca cuando el formato incluye HORA (`timeStyle`, `hour`): ahí la zona cambia el
+   * resultado siempre. Un formato de solo fecha sobre una columna `@db.Date` se resuelve con
+   * `timeZone: "UTC"` y ya está cubierto por la regla de arriba.
+   */
+  const CON_HORA = /Intl\.DateTimeFormat\([^)]*$|timeStyle|hour:\s*["']2-digit["']|hour:\s*["']numeric["']/;
+  for (const f of ts(SERVIDOR[0]).concat(ts(SERVIDOR[1]))) {
+    const rel = relative(RAIZ_PROY, f).replace(/\\/g, "/");
+    const txt = readFileSync(f, "utf8");
+    const lineas = txt.split("\n");
+    for (let i = 0; i < lineas.length; i++) {
+      if (!/Intl\.DateTimeFormat/.test(lineas[i])) continue;
+      if (/^\s*(\/\/|\*|\/\*)/.test(lineas[i])) continue;
+      // La llamada puede ocupar varias líneas: se mira el bloque hasta cerrar el paréntesis.
+      const bloque = lineas.slice(i, i + 6).join(" ");
+      if (!CON_HORA.test(bloque)) continue;              // solo fecha: lo cubre la regla de arriba
+      if (/timeZone/.test(bloque)) continue;             // la zona está escrita: OK
+      add("ALTO", rel,
+        "Intl.DateTimeFormat con HORA y sin `timeZone` (usa la del proceso, que es UTC)",
+        `L${i + 1}: ${lineas[i].trim().slice(0, 90)}`);
+    }
+  }
 }
 
 console.log("=".repeat(78));

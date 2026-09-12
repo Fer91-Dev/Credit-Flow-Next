@@ -117,6 +117,19 @@ export function LibreDeudaDialog({ creditoId, onClose }: { creditoId: string | n
                     ["· Interés", `$${n2(ld.totales.interes)}`],
                     ...(ld.totales.cargos > 0 ? ([["· Cargos", `$${n2(ld.totales.cargos)}`]] as [string, string][]) : []),
                     ...(ld.totales.mora > 0 ? ([["· Punitorios", `$${n2(ld.totales.mora)}`]] as [string, string][]) : []),
+                    /*
+                      🔴 LO CONDONADO, SI LO HUBO. Sin este renglón la tabla dice "Capital
+                      otorgado $300.000,00" arriba y "· Capital $299.990,00" abajo, y los diez
+                      pesos quedan sin explicación en un certificado de cancelación TOTAL. No
+                      se suma al total abonado —nadie puso esa plata— así que va aparte, con
+                      la suma que cierra contra el capital otorgado.
+                    */
+                    ...((ld.totales.condonado ?? 0) > 0
+                      ? ([
+                          ["Condonado (no se cobró)", `$${n2(ld.totales.condonado ?? 0)}`],
+                          ["Capital cubierto (pagado + condonado)", `$${n2(Math.round((ld.totales.capital + (ld.totales.condonado ?? 0)) * 100) / 100)}`],
+                        ] as [string, string][])
+                      : []),
                     ["Fecha de cancelación", ld.totales.fecha_cancelacion ? formatFechaHora(ld.totales.fecha_cancelacion) : "—"],
                   ] as [string, string][]).map(([k, v], i) => (
                     <tr key={k} className={i % 2 === 1 ? "bg-muted/5" : ""}>

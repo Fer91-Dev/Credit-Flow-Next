@@ -1757,6 +1757,9 @@ export interface LibreDeuda {
     interes: number;
     mora: number;
     cargos: number;
+    /** Lo PERDONADO (quita de un acuerdo cumplido, cierre de un incobrable). 0 si no hubo.
+     *  No entra en `total_pagado`: nadie puso esa plata. */
+    condonado: number;
     /** Cuántos cobros lo formaron. */
     pagos: number;
     cuotas: number;

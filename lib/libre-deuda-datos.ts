@@ -39,6 +39,11 @@ export interface DatosLibreDeuda {
     interes: number;
     mora: number;
     cargos: number;
+    /**
+     * Lo PERDONADO en el camino: la quita de un acuerdo cumplido, o lo resignado al cerrar un
+     * caso incobrable. Sin este número el certificado no cierra — ver abajo.
+     */
+    condonado: number;
     pagos: number;
     cuotas: number;
     fecha_cancelacion: Date | null;
@@ -83,10 +88,26 @@ export async function datosLibreDeuda(
         aplicado_capital: true, aplicado_interes: true, aplicado_mora: true, aplicado_cargos: true,
       },
     }),
-    prisma.cuotas.count({ where: { ...withTenant(tenantId), credito_id: creditoId } }),
+    prisma.cuotas.findMany({
+      where: { ...withTenant(tenantId), credito_id: creditoId },
+      select: { condonado: true },
+    }),
   ]);
 
   const total_pagado = round2(pagos.reduce((s, p) => s + p.monto, 0));
+  /**
+   * 🔴 LO CONDONADO TIENE QUE ESTAR, O EL CERTIFICADO NO CIERRA.
+   *
+   * El papel dice "capital otorgado $300.000,00" arriba y "Capital $299.990,00" en el
+   * desglose, porque el desglose suma lo IMPUTADO y esos $10,00 no se pagaron: se
+   * condonaron al cumplirse el acuerdo (eran la quita). Sin decirlo, el certificado tiene
+   * diez pesos sin explicación en un documento que certifica cancelación total — y con una
+   * quita de verdad son decenas de miles.
+   *
+   * No es plata que entró, así que NO se suma al total abonado: va nombrada aparte, que es
+   * el mismo criterio con el que `cuotas.condonado` existe separado de `pagado`.
+   */
+  const condonado = round2(cuotas.reduce((s, q) => s + q.condonado, 0));
   /**
    * De qué se compone lo que pagó. El certificado decía un total pelado, así que no había
    * forma de verificarlo ni de explicarle al cliente por qué pagó más que el capital que se
@@ -97,6 +118,7 @@ export async function datosLibreDeuda(
     interes: round2(pagos.reduce((s, p) => s + p.aplicado_interes, 0)),
     mora: round2(pagos.reduce((s, p) => s + p.aplicado_mora, 0)),
     cargos: round2(pagos.reduce((s, p) => s + p.aplicado_cargos, 0)),
+    condonado,
     pagos: pagos.length,
   };
   const fecha_cancelacion = pagos.reduce<Date | null>(
@@ -123,7 +145,7 @@ export async function datosLibreDeuda(
         fecha_otorgamiento: credito.fecha_inicio ?? credito.created_at,
         refinancia_a_numero: origenNum ?? null,
       },
-      totales: { total_pagado, ...desglose, cuotas, fecha_cancelacion },
+      totales: { total_pagado, ...desglose, cuotas: cuotas.length, fecha_cancelacion },
     },
   };
 }

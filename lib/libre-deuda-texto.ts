@@ -27,6 +27,8 @@ export interface LibreDeudaTexto {
   totales: {
     total_pagado: number;
     cuotas: number;
+    /** Lo perdonado (quita de un acuerdo, cierre de un incobrable). 0 si no hubo. */
+    condonado?: number;
     fecha_cancelacion: string | Date | null;
   };
 }
@@ -55,6 +57,7 @@ export function libreDeudaTexto(ld: LibreDeudaTexto): string {
   const cancel = ld.totales.fecha_cancelacion ? formatFecha(ld.totales.fecha_cancelacion) : "—";
   const capital = ld.credito.monto_original;
   const abonado = ld.totales.total_pagado;
+  const condonado = ld.totales.condonado ?? 0;
   const cuotas = ld.totales.cuotas;
 
   return (
@@ -64,6 +67,15 @@ export function libreDeudaTexto(ld: LibreDeudaTexto): string {
     `por un capital de $${n2(capital)} (${montoALetras(capital)}) ` +
     `en ${cuotas} cuota${cuotas !== 1 ? "s" : ""}, ` +
     `habiendo abonado un total de $${n2(abonado)} (${montoALetras(abonado)}) ` +
+    /*
+      🔴 SI HUBO CONDONACIÓN, EL PÁRRAFO LA DICE.
+      Certificar cancelación total callando que una parte se perdonó deja un papel que no
+      cierra contra su propio desglose — y el párrafo es lo que se lee primero. No se suma
+      al total abonado: nadie puso esa plata.
+    */
+    (condonado > 0
+      ? `y habiéndosele condonado $${n2(condonado)} (${montoALetras(condonado)}) `
+      : "") +
     `según el detalle que se acompaña. ` +
     `El crédito se encuentra CANCELADO al ${cancel} y el cliente no registra deuda pendiente ` +
     `con ${ld.empresa} respecto de esta operación.`

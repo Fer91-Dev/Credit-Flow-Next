@@ -402,7 +402,9 @@ export async function generarReciboPDF(data: ReciboData): Promise<Uint8Array> {
   const footerY = M + 8;
   hr(footerY + 22);
   text(
-    `Comprobante generado el ${new Intl.DateTimeFormat(locale || "es-AR", { dateStyle: "long", timeStyle: "short" }).format(new Date())}`,
+    /* La zona va ESCRITA: sin ella `Intl` usa la del proceso, que corre en UTC. El recibo
+       decía tres horas de más, y después de las 21:00 un día de más. */
+    `Comprobante generado el ${new Intl.DateTimeFormat(locale || "es-AR", { dateStyle: "long", timeStyle: "short", timeZone: "America/Argentina/Buenos_Aires" }).format(new Date())}`,
     M, footerY, font, 8, MUTED,
   );
   textRight(

@@ -16,6 +16,7 @@
  * operador leyó antes de emitirlo digan exactamente lo mismo.
  */
 import { formatCreditoNumero } from "@/lib/utils";
+import { round2 } from "@/lib/domain";
 import { libreDeudaTexto } from "@/lib/libre-deuda-texto";
 import type { DatosLibreDeuda } from "@/lib/libre-deuda-datos";
 import { PDFDocument, StandardFonts, rgb, type PDFFont } from "pdf-lib";
@@ -57,11 +58,24 @@ export async function generarLibreDeudaPDF(data: LibreDeudaPDFData): Promise<Uin
     new Intl.DateTimeFormat(locale || "es-AR", {
       day: "2-digit", month: "long", year: "numeric", timeZone: "UTC",
     }).format(typeof d === "string" ? new Date(d) : d);
-  /** La cancelación es un TIMESTAMP (cuándo entró el último cobro): va en hora local. */
+  /**
+   * La cancelación es un TIMESTAMP (cuándo entró el último cobro).
+   *
+   * 🔴 VA EN HORA DE ARGENTINA, ESCRITA. Sin `timeZone`, `Intl` usa la del proceso — y el
+   * proceso corre en UTC, tanto en Vercel como en el server de desarrollo. Así el certificado
+   * de Héctor Ibarra decía que canceló "a las 10:39 p. m." un cobro que entró a las 7:39 p. m.:
+   * tres horas de más en un papel que el cliente guarda como prueba, y que puede caer al
+   * DÍA SIGUIENTE en cualquier cobro después de las 21:00.
+   *
+   * "Hora local" no existe en el servidor. La zona se escribe siempre, como en
+   * `formatFechaHora` — que es lo que ya usa la pantalla, y por eso la pantalla decía bien
+   * la hora mientras el PDF decía otra.
+   */
   const fmtStamp = (d: Date | string | null) =>
     d
-      ? new Intl.DateTimeFormat(locale || "es-AR", { dateStyle: "long", timeStyle: "short" })
-          .format(typeof d === "string" ? new Date(d) : d)
+      ? new Intl.DateTimeFormat(locale || "es-AR", {
+          dateStyle: "long", timeStyle: "short", timeZone: "America/Argentina/Buenos_Aires",
+        }).format(typeof d === "string" ? new Date(d) : d)
       : "—";
 
   const numeroCredito = formatCreditoNumero(credito.numero, credito.refinancia_a_numero);
@@ -180,6 +194,22 @@ export async function generarLibreDeudaPDF(data: LibreDeudaPDFData): Promise<Uin
   fila("Interés", fmtMoney(totales.interes), { sangria: true });
   if (totales.cargos > 0) fila("Cargos (IVA / seguro / gastos)", fmtMoney(totales.cargos), { sangria: true });
   if (totales.mora > 0) fila("Punitorios", fmtMoney(totales.mora), { sangria: true, color: rgb(0.94, 0.27, 0.27) });
+
+  /*
+    🔴 LO CONDONADO, SI LO HUBO. Sin este renglón el papel dice "capital otorgado
+    $300.000,00" arriba y "Capital $299.990,00" abajo, sin nada que explique los diez pesos
+    — en un certificado de cancelación TOTAL. No entra en el total abonado (nadie puso esa
+    plata): va después de la suma, con su propio nombre.
+  */
+  if (totales.condonado > 0) {
+    y -= 4;
+    fila("Condonado (no se cobró)", fmtMoney(totales.condonado), { sangria: true });
+    fila(
+      "Capital otorgado, cubierto entre lo pagado y lo condonado",
+      fmtMoney(round2(totales.capital + totales.condonado)),
+      { sangria: true },
+    );
+  }
 
   y -= 6;
   hr(y);
