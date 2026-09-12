@@ -994,14 +994,21 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
                   recibo — el mismo que ya muestran la ficha del cliente y la terminal.
                 */}
                 <details className="group/ac mt-4">
-                  <summary className="flex cursor-pointer list-none items-center gap-1.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground [&::-webkit-details-marker]:hidden">
-                    <ChevronDown className="h-3.5 w-3.5 transition-transform duration-200 group-open/ac:rotate-180" />
+                  {/*
+                    🔴 ESTO ES UN CONTROL, Y TENÍA CARA DE PIE DE PÁGINA.
+
+                    Iba en gris de 11px, del mismo tono que las dos notas que tiene encima: no
+                    había forma de saber que se podía clickear. Ahora se lee como lo que es —
+                    en el color del acento, con el chevron del mismo color y un fondo que
+                    aparece al pasar el mouse.
+
+                    Y NO repite el importe de la cuota: estaba dos veces en la misma pantalla
+                    (acá y arriba, en "Se cobra la cuota pactada"), y una tercera al desplegar.
+                    Un mismo número en tres lugares es tres lugares donde puede quedar viejo.
+                  */}
+                  <summary className="inline-flex cursor-pointer list-none items-center gap-1.5 rounded-lg px-2 py-1.5 -ml-2 text-xs font-semibold text-primary transition-colors hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 [&::-webkit-details-marker]:hidden">
+                    <ChevronDown className="h-4 w-4 transition-transform duration-200 group-open/ac:rotate-180" />
                     Ver las {acuerdo.total_cuotas} cuotas pactadas
-                    {/* Plegado, el resumen dice de cuánto es cada una: sin esto el título no
-                        informa nada y hay que abrirlo para saber si vale la pena. */}
-                    <span className="font-mono text-[11px] tabular-nums text-muted-foreground/60">
-                      · {formatMonto(acuerdo.cuotas[0]?.monto ?? 0)} c/u
-                    </span>
                   </summary>
                   {/*
                     🔴 LA TABLA TERMINA EN SU TOTAL, y respira.
@@ -1135,13 +1142,25 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
                 el LIBRO: cada cobro de una cuota pactada se imputa acá abajo, cuota por cuota.
                 Las dos cosas son ciertas y se contradicen si no se dicen juntas — por eso el
                 rótulo, y no un título tachado que haría pensar que la tabla quedó muerta.
+
+                🔴 Y SE DICE EN CASTELLANO. Decía "regido por el acuerdo": es exacto y no
+                significa nada para el que lo lee. Fernando lo preguntó —"no entiendo qué
+                sería"— y si lo pregunta él, que conoce el sistema, el cobrador no lo va ni a
+                intentar. Lo que el operador necesita saber es UNA cosa: que estos importes no
+                son los que tiene que pedirle al cliente. Eso va en el rótulo; el resto, en el
+                tooltip, para el que quiera entender por qué la tabla sigue viva.
               */}
               {acuerdoVigente && (
                 <span
-                  className="rounded-md bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold text-primary ring-1 ring-inset ring-primary/20"
-                  title="El compromiso vigente es el plan del acuerdo, arriba. Este plan sigue siendo el libro donde se imputa cada cobro."
+                  className="rounded-md bg-warning/10 px-2 py-0.5 text-[10px] font-semibold text-warning ring-1 ring-inset ring-warning/25"
+                  title={
+                    "Estos importes NO son los que se le cobran hoy. Al firmar el acuerdo, toda la deuda de este plan " +
+                    "se consolidó en las cuotas pactadas de arriba, y esas son las que se cobran.\n\n" +
+                    "La tabla sigue acá porque es el libro del crédito: cada cobro del acuerdo se imputa en estas cuotas, " +
+                    "cuota por cuota, y es lo que explica de dónde salió la deuda que se pactó."
+                  }
                 >
-                  regido por el acuerdo
+                  no se cobra · manda el acuerdo
                 </span>
               )}
               {/* Plegado, el resumen ES la sección: sin esto el título no dice nada. */}
