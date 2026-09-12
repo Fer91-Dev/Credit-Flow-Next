@@ -303,9 +303,18 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
    * deja la fila resaltada unos segundos, para no perderla entre doce renglones iguales.
    */
   const planRef = useRef<HTMLDetailsElement>(null);
-  /** Mismo recurso para el acuerdo: el KPI de la cuota pactada baja hasta su plan. */
-  const acuerdoRef = useRef<HTMLDivElement>(null);
-  const irAlAcuerdo = () => acuerdoRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  /**
+   * Mismo recurso para el acuerdo: el KPI de la cuota pactada baja hasta su panel.
+   *
+   * El panel arranca PLEGADO —pedido de Fernando— así que bajar hasta él sin abrirlo
+   * dejaría al operador mirando un título cerrado, igual que pasaba con el plan de cuotas.
+   */
+  const acuerdoRef = useRef<HTMLDetailsElement>(null);
+  const [acuerdoAbierto, setAcuerdoAbierto] = useState(false);
+  const irAlAcuerdo = () => {
+    setAcuerdoAbierto(true);
+    acuerdoRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
   const [resaltarProxima, setResaltarProxima] = useState(false);
   const irAlPlan = () => {
     // El KPI de la cuota baja al plan: si esta plegado, tiene que ABRIRLO — si no, el
@@ -889,13 +898,37 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
               ? { borde: "border-primary/30", fondo: "bg-primary/[0.05]", franja: "bg-primary", texto: "text-primary", suave: "border-primary/20" }
               : { borde: "border-destructive/35", fondo: "bg-destructive/[0.05]", franja: "bg-destructive", texto: "text-destructive", suave: "border-destructive/20" };
           return (
-            <section ref={acuerdoRef} className={`relative overflow-hidden rounded-xl border ${tono.borde} ${tono.fondo}`}>
+            /*
+              🔴 EL PANEL ARRANCA PLEGADO, Y LA LUZ DEL BORDE ES LA QUE PIDE QUE SE ABRA.
+
+              Abierto ocupaba media pantalla arriba del plan de cuotas: seis renglones de
+              cuenta, dos notas y la tabla pactada, antes de llegar a lo que el operador vino
+              a mirar. Plegado entra en dos renglones — y los dos que quedan son los que
+              importan: en qué estado está el acuerdo y qué cuota se cobra.
+
+              Una tarjeta plegada, sin embargo, no tiene cómo pedir que la abran: un borde
+              quieto se lee como decoración. La luz da una vuelta cada cuatro segundos y lo
+              dice sin una instrucción escrita (`.borde-luz`, en globals.css).
+
+              Se apaga al abrirlo —ya hizo su trabajo— y NO se enciende en un acuerdo cerrado:
+              ahí no hay nada que atender, es historia. Una sola luz por pantalla.
+            */
+            <details
+              ref={acuerdoRef}
+              open={acuerdoAbierto}
+              onToggle={(e) => setAcuerdoAbierto((e.target as HTMLDetailsElement).open)}
+              style={{ "--cf-luz": acuerdoAlDia ? "var(--primary)" : "var(--destructive)" } as React.CSSProperties}
+              className={`group/acu relative overflow-hidden rounded-xl border ${tono.borde} ${tono.fondo} ${
+                acuerdoVigente && !acuerdoAbierto ? "borde-luz" : ""
+              }`}
+            >
               {/* La franja lateral: el mismo recurso con el que la pantalla marca una
                   refinanciación y la severidad en las listas. */}
               <span aria-hidden className={`pointer-events-none absolute inset-y-0 left-0 w-1 ${tono.franja}`} />
-              <div className="px-5 py-4">
+              <summary className="cursor-pointer list-none px-5 py-4 transition-colors hover:bg-foreground/[0.03] [&::-webkit-details-marker]:hidden">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
+                    <ChevronDown className={`h-4 w-4 transition-transform duration-200 group-open/acu:rotate-180 ${tono.texto}`} />
                     <Emoji name="handshake" className="h-4 w-4" />
                     <h3 className={`text-[15px] font-semibold leading-none ${tono.texto}`}>{EST.label}</h3>
                     {/* Con el acuerdo vigente el chip dice si CUMPLE, que es el dato que
@@ -940,7 +973,11 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
                     )}
                   </div>
                 )}
+              </summary>
 
+              {/* El detalle: la cuenta, las notas y el plan pactado. Todo lo que no hace falta
+                  para saber qué se cobra hoy. */}
+              <div className="px-5 pb-4">
                 {/*
                   🔴 DE DÓNDE SALE EL TOTAL PACTADO, discriminado.
 
@@ -949,7 +986,7 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
                   se consolidó, lo que se le perdonó y lo que el acuerdo cobra por financiarlo.
                   La resta va completa: arriba el BRUTO, y el neto es el renglón del total.
                 */}
-                <div className={`mt-4 divide-y divide-border/40 border-t ${tono.suave} pt-1`}>
+                <div className={`divide-y divide-border/40 border-t ${tono.suave} pt-1`}>
                   <FilaAcuerdo label="Deuda del crédito que se consolidó" valor={acuerdo.deuda_original} />
                   {acuerdo.quita > 0 && (
                     <FilaAcuerdo label="Descuento al cliente" valor={-acuerdo.quita} tono="success" />
@@ -1146,7 +1183,7 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
                   </div>
                 </details>
               </div>
-            </section>
+            </details>
           );
         })()}
 

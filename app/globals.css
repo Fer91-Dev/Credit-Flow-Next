@@ -333,6 +333,64 @@ summary:focus-visible,
   .animate-entrada { opacity: 1; transform: none; }
 }
 
+/* ─── Luz que recorre el borde ────────────────────────────────────────────────
+
+   Una tarjeta PLEGADA que hay que abrir no tiene forma de pedirlo: un borde quieto se lee
+   como decoración. Esta luz da una vuelta cada cuatro segundos y dice "acá hay algo", sin
+   ocupar un centímetro más de pantalla ni agregar una instrucción escrita.
+
+   🔴 Se usa con CUENTA GOTAS: una sola por pantalla, y solo donde hay algo que atender.
+   Dos cosas latiendo a la vez no llaman la atención, la reparten.
+
+   Cómo funciona: un `::before` del tamaño exacto de la tarjeta, pintado con un
+   `conic-gradient` que gira, y recortado a una franja de 1px con dos máscaras que se
+   restan (`mask-composite: exclude`). El ángulo es una variable REGISTRADA con
+   `@property` — sin registrar, el navegador no sabe interpolar un ángulo y la animación
+   salta en vez de girar.
+
+   El degradado es casi todo transparente: la luz es un arco corto, no un aro entero. */
+@property --cf-angulo-borde {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: false;
+}
+
+@keyframes cf-girar-borde {
+  to { --cf-angulo-borde: 360deg; }
+}
+
+.borde-luz {
+  position: relative;
+}
+
+.borde-luz::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: conic-gradient(
+    from var(--cf-angulo-borde),
+    transparent 0deg,
+    transparent 285deg,
+    color-mix(in oklab, var(--cf-luz, var(--primary)) 85%, transparent) 330deg,
+    color-mix(in oklab, var(--cf-luz, var(--primary)) 25%, transparent) 350deg,
+    transparent 360deg
+  );
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  animation: cf-girar-borde 4s linear infinite;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Sin movimiento la luz no se apaga: se queda quieta como un borde de acento. Apagarla
+     del todo le sacaría a la tarjeta plegada la única señal de que se abre. */
+  .borde-luz::before { animation: none; background: color-mix(in oklab, var(--cf-luz, var(--primary)) 45%, transparent); }
+}
+
 /* ─── Desplegable de los <select> con la piel del SaaS ───────────────────────
 
    La lista que se abre al clickear un <select> NO la dibuja la página: la dibuja el
