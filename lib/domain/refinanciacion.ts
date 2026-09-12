@@ -115,7 +115,7 @@ export function calcularDeudaConsolidada(
 
     const dias = diasAtraso(c.fechaVencimiento, hoy);
     const moraPlena = moraActiva
-      ? interesMora(c.cuotaTotal, dias, { tasaDiaria: opciones.tasaMoraDiaria, diasGracia: opciones.diasGracia, topePct: opciones.topeMoraPct })
+      ? interesMora(c.baseMora, dias, { tasaDiaria: opciones.tasaMoraDiaria, diasGracia: opciones.diasGracia, topePct: opciones.topeMoraPct })
       : 0;
     const moraPend = noNegativo(round2(moraPlena - c.pagadoMora));
 

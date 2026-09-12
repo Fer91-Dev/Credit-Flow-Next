@@ -52,6 +52,40 @@ export interface FilaCuota {
  *
  * Ahora la suma vive acá. Si mañana aparece un quinto cargo, se toca una línea.
  */
+/**
+ * LA BASE SOBRE LA QUE CORRE EL PUNITORIO. Una sola definición, para las cinco cuentas de
+ * mora del sistema (la pantalla, la imputación al cobrar, el acuerdo, la refinanciación y
+ * los KPI); si dos calcularan distinto, el crédito mostraría un importe y la caja cobraría
+ * otro.
+ *
+ * 🔴 NO ES `cuota_total`. Al firmar un acuerdo en modo `capitaliza`, su interés se reparte
+ * como cargo sobre las cuotas vivas: `gastos` sube y `cuota_total` sube con él. Como
+ * `cuota_total` era también la base del punitorio, agrandarla reescribía hacia atrás la mora
+ * ya devengada — los mismos días de atraso sobre una base mayor.
+ *
+ * Sobre CRD-000006 (Héctor Ibarra), acuerdo del 10/09/2026:
+ *
+ *     al firmar         base $165.187,97  →  mora congelada $70.204,89
+ *     tras capitalizar  base $184.353,18  →  mora congelada $78.350,10
+ *                                             —————————————————
+ *                                             $8.145,21 de más
+ *
+ * Y el crédito quedaba debiendo $631.409,64 contra un acuerdo de $623.254,43: pagando las
+ * tres cuotas pactadas completas, el acuerdo cerraba CUMPLIDO y el crédito seguía con
+ * $8.145,21 vivos. El cliente volvía a ser moroso después de pagar todo lo pactado.
+ *
+ * La regla: el interés de un acuerdo YA ES el precio del atraso. Cobrarle punitorios encima
+ * es interés sobre interés sobre interés (art. 770 CCyC). Queda fuera de la base, y no solo
+ * mientras el acuerdo está vigente: también si se rompe, porque los días ya corridos siguen
+ * siendo anteriores a que esa deuda existiera.
+ *
+ * `capitalizado` es OBLIGATORIO a propósito: una consulta de Prisma que no lo traiga no
+ * compila, y así ningún `select` puede volver a la base vieja por olvido.
+ */
+export function baseMoraDeCuota(q: { cuota_total: number; capitalizado: number }): number {
+  return round2(Math.max(0, q.cuota_total - q.capitalizado));
+}
+
 export function cargosDeCuota(
   q: { iva?: number | null; seguro?: number | null; gastos?: number | null; honorarios?: number | null },
 ): number {

@@ -2,7 +2,7 @@ import { requireAuth, requireRole, scopeCreditosVendedor, ApiError } from "@/lib
 import { successResponse, errorResponse, withErrorHandler, assertSameOrigin } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
-import { puedeDarsePorIncobrableManual, round2, normalizarFrecuencia, resolverFrecuencia, sumarPeriodos, construirPlanAmortizacion, planACuotas, estadoCoherente, etiquetaCaja, esCuentaValida, validarParametrosOtorgamiento, diasMoraActual, buscarPlan, nombrePlan, tasaDesdeCoeficiente, cargosConPlan, CUENTA_LABEL, type Cuenta, ESTADOS_VIVOS, ESTADOS_COBRABLES, esCreditoVivo, esCreditoCobrable, topeMoraPorIncobrable, esRecuperoPostCastigo, moraDelCredito, moraDesdeCronograma, moraPendienteTotal, calcularDeudaVencida, deudaEnRevision, esTipoCreditoValido, TIPOS_CREDITO, calcularDeudaConsolidada, puedeRefinanciar, cargosDeCuota } from "@/lib/domain";
+import { puedeDarsePorIncobrableManual, round2, normalizarFrecuencia, resolverFrecuencia, sumarPeriodos, construirPlanAmortizacion, planACuotas, estadoCoherente, etiquetaCaja, esCuentaValida, validarParametrosOtorgamiento, diasMoraActual, buscarPlan, nombrePlan, tasaDesdeCoeficiente, cargosConPlan, CUENTA_LABEL, type Cuenta, ESTADOS_VIVOS, ESTADOS_COBRABLES, esCreditoVivo, esCreditoCobrable, topeMoraPorIncobrable, esRecuperoPostCastigo, moraDelCredito, moraDesdeCronograma, moraPendienteTotal, calcularDeudaVencida, deudaEnRevision, esTipoCreditoValido, TIPOS_CREDITO, calcularDeudaConsolidada, puedeRefinanciar, cargosDeCuota, baseMoraDeCuota } from "@/lib/domain";
 import { siguienteNumeroComprobante } from "@/lib/comprobantes";
 import { assertFondosSuficientesTx } from "@/lib/caja-fondos";
 import { lockNumeroCreditoTx, TX_PLATA } from "@/lib/locks";
@@ -66,7 +66,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
          */
         cuotas: {
           select: {
-            id: true, nro: true, fecha_vencimiento: true, cuota_total: true,
+            id: true, nro: true, fecha_vencimiento: true, cuota_total: true, capitalizado: true,
             capital: true, interes: true, iva: true, seguro: true, gastos: true, honorarios: true,
             pagado_capital: true, pagado_interes: true, pagado_mora: true, pagado_cargos: true,
           },
@@ -203,7 +203,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
       // Cuota por cuota, igual que la imputación al cobrar. Antes era UNA cuota × los días
       // de la más vieja, que con varias vencidas mostraba menos de la mitad de lo real.
       interes_mora = moraPendienteTotal(
-        c.cuotas.map((q) => ({ fechaVencimiento: q.fecha_vencimiento, cuotaTotal: q.cuota_total, pagadoMora: q.pagado_mora })),
+        c.cuotas.map((q) => ({ fechaVencimiento: q.fecha_vencimiento, baseMora: baseMoraDeCuota(q), pagadoMora: q.pagado_mora })),
         { tasaDiaria: mc.tasaMoraDiaria, diasGracia: graciaCred, hoy: hoyCredito, topePct: mc.topeMoraPct },
       );
     }
@@ -225,7 +225,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
         c.cuotas.map((q) => ({
           id: q.id, nro: q.nro, fechaVencimiento: q.fecha_vencimiento,
           capital: q.capital, interes: q.interes, cargos: cargosDeCuota(q),
-          cuotaTotal: q.cuota_total,
+          baseMora: baseMoraDeCuota(q),
           pagadoCapital: q.pagado_capital, pagadoInteres: q.pagado_interes,
           pagadoMora: q.pagado_mora, pagadoCargos: q.pagado_cargos,
         })),
@@ -262,7 +262,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
         c.cuotas.map((q) => ({
           id: q.id, nro: q.nro, fechaVencimiento: q.fecha_vencimiento,
           capital: q.capital, interes: q.interes, cargos: cargosDeCuota(q),
-          cuotaTotal: q.cuota_total,
+          baseMora: baseMoraDeCuota(q),
           pagadoCapital: q.pagado_capital, pagadoInteres: q.pagado_interes,
           pagadoMora: q.pagado_mora, pagadoCargos: q.pagado_cargos,
         })),

@@ -824,6 +824,14 @@ model cuotas {
   /// y NO capitalizan: es lo que costó gestionar, no plata prestada. Van con los cargos —
   /// `cargosDeCuota()` en `lib/domain/cuotas.ts` es la única definición de esa suma.
   honorarios        Float    @default(0)
+  /// Cuánto de esta cuota se agregó DESPUÉS de originarla, capitalizando el interés de un
+  /// acuerdo de pago (modo `capitaliza`). Está incluido en `gastos` y en `cuota_total` —el
+  /// cobro lo imputa como cualquier cargo— pero se RESTA de la base de mora: son días de
+  /// atraso anteriores a que esa deuda existiera, y cobrar punitorios sobre el interés de un
+  /// acuerdo es interés sobre interés sobre interés.
+  ///
+  /// `baseMoraDeCuota()` en `lib/domain/cuotas.ts` es la única definición de esa resta.
+  capitalizado      Float    @default(0)
   cuota_total       Float // cuota total planificada (con redondeo)
   // Estado autoritativo (escrito por el motor de pagos en 6B; en 6A se derivaba).
   estado            String   @default("pendiente") // pendiente | parcial | pagada | vencida | condonada

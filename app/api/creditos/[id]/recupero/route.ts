@@ -33,7 +33,7 @@ import { prisma } from "@/lib/prisma";
 import {
   calcularDeudaConsolidada, calcularCierreRecupero, sugerirOfertaCancelacion, resolverOfertaRecupero,
   imputarPagoEnCuotas, moraDelCredito, moraDesdeCronograma, round2, cuentaDeMetodo, etiquetaCaja,
-  esCreditoIncobrable, topeMoraPorIncobrable, type CuotaParaImputar, cargosDeCuota } from "@/lib/domain";
+  esCreditoIncobrable, topeMoraPorIncobrable, type CuotaParaImputar, cargosDeCuota, baseMoraDeCuota } from "@/lib/domain";
 import { getConfiguracion, getCobranzaConfig } from "@/lib/config";
 import { plataDeLaCadena } from "@/lib/recupero-server";
 import { lockCreditoTx, assertCuotasSinCambios, TX_PLATA } from "@/lib/locks";
@@ -105,7 +105,7 @@ async function cargarCaso(req: NextRequest, id: string) {
     capital: c.capital,
     interes: c.interes,
     cargos: cargosDeCuota(c),
-    cuotaTotal: c.cuota_total,
+    baseMora: baseMoraDeCuota(c),
     pagadoCapital: c.pagado_capital,
     pagadoInteres: c.pagado_interes,
     pagadoMora: c.pagado_mora,

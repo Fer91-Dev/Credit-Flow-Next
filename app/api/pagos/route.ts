@@ -6,7 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { conNumeroDeOrigen, numerosRefinanciados } from "@/lib/creditos-numero";
 import { sincronizarAcuerdos } from "@/lib/acuerdos";
 import { nombreCompleto, formatCreditoNumero, hoyComercial, ventanaDias, ventanaAR } from "@/lib/utils";
-import { imputarPagoEnCuotas, diasAtraso, round2, etiquetaCaja, cuentaDeMetodo, esCuentaValida, type CuotaParaImputar, moraDelCredito, moraDesdeCronograma, esCreditoCobrable, estadoTrasMoverLedger, topeMoraPorFallecimiento, topeMoraPorIncobrable, topeMoraMasTemprano, promoVigenteAl, cargosDeCuota } from "@/lib/domain";
+import { imputarPagoEnCuotas, diasAtraso, round2, etiquetaCaja, cuentaDeMetodo, esCuentaValida, type CuotaParaImputar, moraDelCredito, moraDesdeCronograma, esCreditoCobrable, estadoTrasMoverLedger, topeMoraPorFallecimiento, topeMoraPorIncobrable, topeMoraMasTemprano, promoVigenteAl, cargosDeCuota, baseMoraDeCuota } from "@/lib/domain";
 import { lockCreditoTx, assertCuotasSinCambios, TX_PLATA } from "@/lib/locks";
 import { lockCuentaTx } from "@/lib/caja-fondos";
 import { siguienteNumeroComprobante } from "@/lib/comprobantes";
@@ -372,7 +372,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     capital: c.capital,
     interes: c.interes,
     cargos: cargosDeCuota(c),
-    cuotaTotal: c.cuota_total,
+    baseMora: baseMoraDeCuota(c),
     pagadoCapital: c.pagado_capital,
     pagadoInteres: c.pagado_interes,
     pagadoMora: c.pagado_mora,

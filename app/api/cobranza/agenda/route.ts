@@ -8,7 +8,7 @@ import { numerosRefinanciados } from "@/lib/creditos-numero";
 import { cobroBloqueadoPorCredito } from "@/lib/recupero-server";
 import {
   diasMoraActual, ESTADOS_VIVOS, calcularDeudaVencida, moraDelCredito, moraDesdeCronograma,
-  round2, type CuotaParaImputar, cargosDeCuota } from "@/lib/domain";
+  round2, type CuotaParaImputar, cargosDeCuota, baseMoraDeCuota } from "@/lib/domain";
 import { nombreCompleto, hoyComercial } from "@/lib/utils";
 import type { NextRequest } from "next/server";
 
@@ -185,7 +185,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     const cuotasDom: CuotaParaImputar[] = c.cuotas.map((q) => ({
       id: q.id, nro: q.nro, fechaVencimiento: q.fecha_vencimiento,
       capital: q.capital, interes: q.interes, cargos: cargosDeCuota(q),
-      cuotaTotal: q.cuota_total,
+      baseMora: baseMoraDeCuota(q),
       pagadoCapital: q.pagado_capital, pagadoInteres: q.pagado_interes,
       pagadoMora: q.pagado_mora, pagadoCargos: q.pagado_cargos,
     }));

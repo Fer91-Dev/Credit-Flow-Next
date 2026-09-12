@@ -137,8 +137,15 @@ export interface CuotaParaImputar {
   interes: number;
   /** Cargos del período = iva + seguro + gastos (congelados). */
   cargos: number;
-  /** Valor de la cuota para el cálculo de mora (cuota_total del plan). */
-  cuotaTotal: number;
+  /**
+   * Base sobre la que corre el punitorio de esta cuota.
+   *
+   * 🔴 NO es `cuota_total` a secas: hay que restarle lo que se capitalizó después de
+   * originarla. Se arma SIEMPRE con `baseMoraDeCuota()`, que es la única definición — el
+   * campo se llamó `cuotaTotal` hasta que esa resta existió, y ese nombre invitaba a pasarle
+   * la columna cruda.
+   */
+  baseMora: number;
   /** Lo ya aplicado a esta cuota (de pagos anteriores). */
   pagadoCapital: number;
   pagadoInteres: number;
@@ -266,7 +273,7 @@ export function imputarPagoEnCuotas(
       c.fechaVencimiento,
       fechaTopeMora(topeMoraDeCuota(c.fechaVencimiento, hoy, congeladaAl), topeAbsoluto),
     );
-    const moraPlena = moraActiva ? interesMora(c.cuotaTotal, diasMora, { tasaDiaria: tasaMoraDiaria, diasGracia, topePct: opciones.topeMoraPct }) : 0;
+    const moraPlena = moraActiva ? interesMora(c.baseMora, diasMora, { tasaDiaria: tasaMoraDiaria, diasGracia, topePct: opciones.topeMoraPct }) : 0;
     // La quita de campaña reduce la mora devengada (lo condonado se reporta como ahorro).
     const moraDevengada = round2(moraPlena * factorMora);
     const moraPend = noNegativo(round2(moraDevengada - c.pagadoMora));

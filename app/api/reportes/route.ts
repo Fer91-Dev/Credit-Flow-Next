@@ -3,7 +3,7 @@ import { successResponse, withErrorHandler } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { nombreCompleto, hoyComercial, inicioDiaAR, finDiaAR } from "@/lib/utils";
-import { round2, costoFondeo, ingresoFinanciero, resumenOperaciones, diasMoraActual, esCreditoVivo, moraDelCredito, moraDesdeCronograma, moraPendienteTotal, severidadMora } from "@/lib/domain";
+import { round2, costoFondeo, ingresoFinanciero, resumenOperaciones, diasMoraActual, esCreditoVivo, moraDelCredito, moraDesdeCronograma, moraPendienteTotal, severidadMora, baseMoraDeCuota } from "@/lib/domain";
 import { getConfiguracion, getRentabilidadConfig, getCobranzaConfig } from "@/lib/config";
 import type { NextRequest } from "next/server";
 
@@ -55,7 +55,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
         cronograma: true, // trae la mora congelada del crédito
         created_at: true, fecha_inicio: true, es_refinanciacion: true, tipo_credito: true,
         // Sin las cuotas no se puede calcular la mora real: se devenga POR CUOTA vencida.
-        cuotas: { select: { fecha_vencimiento: true, cuota_total: true, pagado_mora: true } },
+        cuotas: { select: { fecha_vencimiento: true, cuota_total: true, capitalizado: true, pagado_mora: true } },
       },
     }),
     getConfiguracion(tenantId),
@@ -165,7 +165,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     interesMoraTotal += moraPendienteTotal(
       c.cuotas.map((q) => ({
         fechaVencimiento: q.fecha_vencimiento,
-        cuotaTotal: q.cuota_total,
+        baseMora: baseMoraDeCuota(q),
         pagadoMora: q.pagado_mora,
       })),
       { tasaDiaria: mc.tasaMoraDiaria, diasGracia: gracia, topePct: mc.topeMoraPct, hoy: hoyMora },

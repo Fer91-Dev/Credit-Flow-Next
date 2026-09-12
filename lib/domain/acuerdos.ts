@@ -282,7 +282,7 @@ export function calcularDeudaVencida(
     // Una cuota que no venció devenga 0: `interesMora` con atraso 0 devuelve 0, así que no
     // hace falta un caso especial — y si lo hubiera, sería otra fórmula que mantener.
     const moraPlena = moraActiva
-      ? interesMora(c.cuotaTotal, atraso, { tasaDiaria: tasa, diasGracia: gracia, topePct: opts.topeMoraPct })
+      ? interesMora(c.baseMora, atraso, { tasaDiaria: tasa, diasGracia: gracia, topePct: opts.topeMoraPct })
       : 0;
     const moraPend = noNegativo(round2(moraPlena - c.pagadoMora));
 

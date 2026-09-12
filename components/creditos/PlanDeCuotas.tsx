@@ -1,7 +1,7 @@
 "use client";
 
 import { Printer, Check } from "lucide-react";
-import { cargosDeCuota } from "@/lib/domain";
+import { cargosDeCuota, baseMoraDeCuota } from "@/lib/domain";
 import { StatusBadge, type BadgeVariant } from "@/components/ui/StatusBadge";
 import type { CuotaPersistida, EstadoCuota } from "@/lib/swr";
 import { formatDias, formatFecha, formatFechaHora, formatNumero } from "@/lib/utils";
@@ -97,6 +97,8 @@ export function PlanDeCuotas({
   const rotuloCargos = soloHonorarios ? "Honorarios" : "Cargos";
 
   const moraTotal = cuotas.reduce((s, q) => s + moraDevengadaDeCuota(q), 0);
+  /** Lo que se agregó al plan capitalizando el interés de un acuerdo: explica la base de mora. */
+  const capitalizadoTotal = Math.round(cuotas.reduce((s, q) => s + (q.capitalizado ?? 0), 0) * 100) / 100;
   /** Lo que de esa mora TODAVIA no se cobro. Decide si el total va en rojo o no. */
   const moraPendienteVista = cuotas.reduce((s, q) => s + (q.mora ?? 0), 0);
   const pagadoTotal = cuotas.reduce((s, q) => s + pagadoDeCuota(q), 0);
@@ -302,17 +304,25 @@ export function PlanDeCuotas({
                           const atraso = q.dias_atraso ?? 0;
                           if (atraso <= 0 || !mora) return null;
                           const tasa = mora.tasaDiaria;
-                          const techo = mora.topePct > 0 ? Math.round(q.cuota_total * (mora.topePct / 100) * 100) / 100 : null;
+                          /*
+                            🔴 LA BASE NO ES `cuota_total`: hay que sacarle lo que se capitalizó
+                            después de originar la cuota (el interés de un acuerdo). Con la columna
+                            cruda, este renglón publicaba "58 días × 0,50% de $184.353,18" al lado de
+                            un importe calculado sobre $165.187,97 — una cuenta que no da.
+                            `baseMoraDeCuota` es la misma definición que usa el motor.
+                          */
+                          const baseCuota = baseMoraDeCuota({ cuota_total: q.cuota_total, capitalizado: q.capitalizado ?? 0 });
+                          const techo = mora.topePct > 0 ? Math.round(baseCuota * (mora.topePct / 100) * 100) / 100 : null;
                           const enTecho = techo != null && Math.abs(moraDev - techo) < 0.02;
-                          const base = q.cuota_total * tasa;
+                          const base = baseCuota * tasa;
                           const dias = base > 0 ? Math.round(moraDev / base) : 0;
-                          const reproduce = base > 0 && Math.abs(Math.round(q.cuota_total * tasa * dias * 100) / 100 - moraDev) < 0.02;
+                          const reproduce = base > 0 && Math.abs(Math.round(baseCuota * tasa * dias * 100) / 100 - moraDev) < 0.02;
                           return (
                             <span className="block font-sans text-[10px] font-normal leading-tight text-muted-foreground/70">
                               {enTecho
                                 ? `techo: ${mora.topePct}% de la cuota`
                                 : reproduce && dias > 0
-                                  ? `${formatDias(dias)} × ${(tasa * 100).toFixed(2)}% de $${n2(q.cuota_total)}`
+                                  ? `${formatDias(dias)} × ${(tasa * 100).toFixed(2)}% de $${n2(baseCuota)}`
                                   : `${formatDias(atraso)} de atraso`}
                             </span>
                           );
@@ -508,6 +518,19 @@ export function PlanDeCuotas({
             tras un pago parcial— al {(mora.tasaDiaria * 100).toFixed(2)}% por día
             {mora.diasGracia > 0 && <>, a partir del día {mora.diasGracia + 1} de atraso</>}
             {mora.topePct > 0 && <>, con un techo del {mora.topePct}% de la cuota</>}.
+            {/*
+              Y si parte de la cuota se agregó después, por qué la base no es el importe que
+              se lee en la columna "Cuota". Sin este renglón, el pie estaría diciendo que la
+              mora sale del importe de la cuota mientras cada fila muestra otra base.
+            */}
+            {capitalizadoTotal > 0 && (
+              <>
+                {" "}De ese importe quedan afuera los{" "}
+                <span className="font-mono">${n2(capitalizadoTotal)}</span>{" "}
+                de interés de acuerdo que se capitalizaron en el plan: se cobran como cargo, pero no
+                devengan punitorios por días anteriores a que existieran.
+              </>
+            )}
           </>
         )}
       </p>

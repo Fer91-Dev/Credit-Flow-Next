@@ -15,7 +15,7 @@ import { ApiError } from "@/lib/auth";
 import { registrarAuditoria } from "@/lib/audit";
 import { getAuditActor } from "@/lib/audit-context";
 import { getConfiguracion, getCobranzaConfig } from "@/lib/config";
-import { calcularDeudaVencida, planDeAcuerdo, evaluarAcuerdo, quitaMaxima, round2, noNegativo, tasaPeriodicaSegunConvencion, type CuotaParaImputar, type DeudaVencida, type AcuerdosConfig, moraDelCredito, moraDesdeCronograma, puedeAcordarPorEstado, cargosDeCuota } from "@/lib/domain";
+import { calcularDeudaVencida, planDeAcuerdo, evaluarAcuerdo, quitaMaxima, round2, noNegativo, tasaPeriodicaSegunConvencion, type CuotaParaImputar, type DeudaVencida, type AcuerdosConfig, moraDelCredito, moraDesdeCronograma, puedeAcordarPorEstado, cargosDeCuota, baseMoraDeCuota } from "@/lib/domain";
 import { hoyComercial, formatCreditoNumero } from "@/lib/utils";
 import { numerosRefinanciados } from "@/lib/creditos-numero";
 import { formatComprobante } from "@/lib/comprobantes";
@@ -43,7 +43,7 @@ export { interesDelAcuerdo } from "@/lib/domain";
 async function capitalizarInteresEnCuotas(
   tx: Prisma.TransactionClient,
   tenantId: string,
-  cuotas: { id: string; nro: number; capital: number; interes: number; iva: number; seguro: number; gastos: number; cuota_total: number; pagado_capital: number; pagado_interes: number; pagado_cargos: number }[],
+  cuotas: { id: string; nro: number; capital: number; interes: number; iva: number; seguro: number; gastos: number; capitalizado: number; cuota_total: number; pagado_capital: number; pagado_interes: number; pagado_cargos: number }[],
   interes: number,
 ): Promise<number> {
   if (interes <= 0) return 0;
@@ -74,7 +74,23 @@ async function capitalizarInteresEnCuotas(
     repartido = round2(repartido + parte);
     await tx.cuotas.update({
       where: { id: c.id },
-      data: { gastos: round2(c.gastos + parte), cuota_total: round2(c.cuota_total + parte) },
+      data: {
+        gastos: round2(c.gastos + parte),
+        cuota_total: round2(c.cuota_total + parte),
+        /**
+         * 🔴 LA MARCA, SIN LA CUAL ESTA PLATA DEVENGA PUNITORIOS HACIA ATRÁS.
+         *
+         * `cuota_total` era también la base del punitorio, así que agrandarla reescribía la
+         * mora YA devengada: los mismos días de atraso, sobre una base mayor. En CRD-000006
+         * la mora congelada saltó de $70.204,89 a $78.350,10 en el acto de firmar —
+         * $8.145,21 de punitorios sobre un interés que en esos días no existía.
+         *
+         * Con la marca puesta, `baseMoraDeCuota()` la resta y la mora queda donde estaba.
+         * Se ACUMULA (`c.capitalizado + parte`): un crédito puede pasar por más de un
+         * acuerdo, y cada uno deja lo suyo.
+         */
+        capitalizado: round2(c.capitalizado + parte),
+      },
     });
   }
   return round2(repartido);
@@ -94,7 +110,7 @@ const SELECT_CREDITO = {
   cuotas: {
     select: {
       id: true, nro: true, fecha_vencimiento: true,
-      capital: true, interes: true, iva: true, seguro: true, gastos: true, honorarios: true, cuota_total: true,
+      capital: true, interes: true, iva: true, seguro: true, gastos: true, honorarios: true, cuota_total: true, capitalizado: true,
       pagado_capital: true, pagado_interes: true, pagado_mora: true, pagado_cargos: true,
     },
   },
@@ -124,7 +140,7 @@ export async function deudaVencidaDeCredito(tenantId: string, creditoId: string)
     capital: c.capital,
     interes: c.interes,
     cargos: cargosDeCuota(c),
-    cuotaTotal: c.cuota_total,
+    baseMora: baseMoraDeCuota(c),
     pagadoCapital: c.pagado_capital,
     pagadoInteres: c.pagado_interes,
     pagadoMora: c.pagado_mora,
@@ -557,7 +573,7 @@ export async function anularAcuerdo(tenantId: string, acuerdoId: string, motivo:
 
     const cuotas = await tx.cuotas.findMany({
       where: { ...withTenant(tenantId), credito_id: a.credito_id },
-      select: { id: true, nro: true, gastos: true, cuota_total: true, pagado_cargos: true },
+      select: { id: true, nro: true, gastos: true, capitalizado: true, cuota_total: true, pagado_cargos: true },
       orderBy: { nro: "desc" }, // se saca de las últimas: son las que menos se cobraron
     });
 
@@ -569,7 +585,17 @@ export async function anularAcuerdo(tenantId: string, acuerdoId: string, motivo:
       if (sacable <= 0) continue;
       await tx.cuotas.update({
         where: { id: c.id },
-        data: { gastos: round2(c.gastos - sacable), cuota_total: round2(c.cuota_total - sacable) },
+        data: {
+          gastos: round2(c.gastos - sacable),
+          cuota_total: round2(c.cuota_total - sacable),
+          /*
+            La marca se va con la plata. `Math.min` porque `sacable` sale de `gastos`, que
+            puede tener cargos de origen además de lo capitalizado: sin el tope, anular un
+            acuerdo dejaría la marca en negativo y esos cargos de origen quedarían sin
+            devengar punitorios para siempre.
+          */
+          capitalizado: round2(noNegativo(c.capitalizado - Math.min(sacable, c.capitalizado))),
+        },
       });
       porDevolver = round2(porDevolver - sacable);
       devueltoTotal = round2(devueltoTotal + sacable);

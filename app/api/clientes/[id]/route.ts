@@ -6,7 +6,7 @@ import { conNumeroDeOrigen } from "@/lib/creditos-numero";
 import { registrarAuditoria } from "@/lib/audit";
 import { nombreCompleto, hoyComercial } from "@/lib/utils";
 import { normalizarCuit, validarDuplicadoCliente } from "@/lib/clientes-validacion";
-import { cuotaCerradaSinPago, calcularScore, diasMoraActual, cuotaMensualFrancesa, tasaPeriodicaSegunConvencion, convencionDelCredito, normalizarFrecuencia, interesMora, diasAtraso, round2, estadoCoherente, esCreditoVivo, moraDelCredito, moraDesdeCronograma, moraPendienteTotal, ESTADOS_CLIENTE, ESTADO_CLIENTE_LABEL, esEstadoClienteValido, normalizarEstadoCliente, type EstadoCliente, cargosDeCuota } from "@/lib/domain";
+import { cuotaCerradaSinPago, calcularScore, diasMoraActual, cuotaMensualFrancesa, tasaPeriodicaSegunConvencion, convencionDelCredito, normalizarFrecuencia, interesMora, diasAtraso, round2, estadoCoherente, esCreditoVivo, moraDelCredito, moraDesdeCronograma, moraPendienteTotal, ESTADOS_CLIENTE, ESTADO_CLIENTE_LABEL, esEstadoClienteValido, normalizarEstadoCliente, type EstadoCliente, cargosDeCuota, baseMoraDeCuota } from "@/lib/domain";
 import { getConfiguracion, getRiesgoConfig, getCobranzaConfig } from "@/lib/config";
 import { situacionAcuerdoPorCredito } from "@/lib/acuerdos";
 import type { NextRequest } from "next/server";
@@ -107,7 +107,7 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
         // La lista de créditos siempre pasó los dos; por eso las dos pantallas discrepaban.
         const graciaCred = (c.cronograma as { diasGracia?: number } | null)?.diasGracia ?? config.simulador.diasGracia;
         interes_mora = moraPendienteTotal(
-          c.cuotas.map((q) => ({ fechaVencimiento: q.fecha_vencimiento, cuotaTotal: q.cuota_total, pagadoMora: q.pagado_mora })),
+          c.cuotas.map((q) => ({ fechaVencimiento: q.fecha_vencimiento, baseMora: baseMoraDeCuota(q), pagadoMora: q.pagado_mora })),
           { tasaDiaria: mc.tasaMoraDiaria, diasGracia: graciaCred, hoy: hoyComercial(), topePct: mc.topeMoraPct },
         );
       }

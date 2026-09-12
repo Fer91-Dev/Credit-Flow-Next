@@ -75,8 +75,9 @@ export function diasMoraActual(proximoPago: Date | string | null | undefined, ho
 /** Lo mínimo de una cuota para calcular su mora. */
 export interface CuotaParaMora {
   fechaVencimiento: Date;
-  /** Valor de la cuota, que es la base sobre la que corre el punitorio. */
-  cuotaTotal: number;
+  /** Base sobre la que corre el punitorio. Se arma con `baseMoraDeCuota()`, nunca con
+   *  `cuota_total` crudo: lo capitalizado después de originar la cuota no devenga. */
+  baseMora: number;
   /** Mora ya cobrada de esta cuota (se descuenta de lo devengado). */
   pagadoMora?: number;
 }
@@ -104,7 +105,7 @@ export function moraPendienteTotal(
   for (const c of cuotas) {
     const dias = diasAtraso(c.fechaVencimiento, tope);
     if (dias <= 0) continue;
-    const devengada = interesMora(c.cuotaTotal, dias, {
+    const devengada = interesMora(c.baseMora, dias, {
       tasaDiaria: opciones.tasaDiaria,
       diasGracia: opciones.diasGracia,
       topePct: opciones.topePct,

@@ -3,7 +3,7 @@ import { scopeCreditoParaCobrar } from "@/lib/cobranza-scope";
 import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
-import { cuotaCerradaSinPago, frecuenciaLabel, normalizarFrecuencia, diasAtraso, round2, interesMora, moraDelCredito, moraDesdeCronograma, topeMoraDeCuota, fechaTopeMora, topeMoraPorFallecimiento, topeMoraPorIncobrable, topeMoraMasTemprano, promoVigenteAl, type FrecuenciaDef } from "@/lib/domain";
+import { cuotaCerradaSinPago, frecuenciaLabel, normalizarFrecuencia, diasAtraso, round2, interesMora, moraDelCredito, moraDesdeCronograma, topeMoraDeCuota, fechaTopeMora, topeMoraPorFallecimiento, topeMoraPorIncobrable, topeMoraMasTemprano, promoVigenteAl, type FrecuenciaDef, baseMoraDeCuota } from "@/lib/domain";
 import { getConfiguracion, getCobranzaConfig } from "@/lib/config";
 import { recibosPorCuotaDeAcuerdo } from "@/lib/acuerdos";
 import { veredictoCobro } from "@/lib/recupero-server";
@@ -190,7 +190,7 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
       fechaTopeMora(topeMoraDeCuota(c.fecha_vencimiento, hoy, congeladaAl), topeAbsoluto),
     );
     const moraSinPromo = moraCred.moraActiva
-      ? interesMora(c.cuota_total, diasQueDevengan, { tasaDiaria: moraCred.tasaMoraDiaria, diasGracia: graciaCred, topePct: moraCred.topeMoraPct })
+      ? interesMora(baseMoraDeCuota(c), diasQueDevengan, { tasaDiaria: moraCred.tasaMoraDiaria, diasGracia: graciaCred, topePct: moraCred.topeMoraPct })
       : 0;
     // La quita de campaña reduce la mora devengada, con la MISMA cuenta que `POST /pagos`.
     const moraPlena = round2(moraSinPromo * factorMora);
@@ -241,6 +241,10 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
       // Sin esto la pantalla mostraba capital + interés y quedaba un hueco sin explicar.
       honorarios: c.honorarios,
       cuota_total: c.cuota_total,
+      /* La parte capitalizada por un acuerdo. Viaja para que el plan pueda escribir la
+         cuenta de la mora con la base REAL: sin ella, el renglón decía "58 días × 0,50% de
+         $184.353,18" y esa multiplicación ya no da el importe de al lado. */
+      capitalizado: c.capitalizado,
       estado,
       pagado_capital: c.pagado_capital,
       pagado_interes: c.pagado_interes,

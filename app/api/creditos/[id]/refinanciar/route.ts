@@ -2,7 +2,7 @@ import { requireRole, scopeCreditosVendedor } from "@/lib/auth";
 import { successResponse, errorResponse, withErrorHandler, assertSameOrigin } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
-import { ESTADOS_CUOTA_CERRADA, calcularDeudaConsolidada, aplicarQuita, construirPlanAmortizacion, planACuotas, normalizarFrecuencia, resolverFrecuencia, round2, estadoCoherente, type CuotaParaImputar, type TipoQuita, esCreditoVivo, moraDelCredito, moraDesdeCronograma, diasMoraActual, validarParametrosOtorgamiento, deudaEnRevision, entregaMinimaRefinanciacion, sugerirRefinanciacion, cargosDeCuota } from "@/lib/domain";
+import { ESTADOS_CUOTA_CERRADA, calcularDeudaConsolidada, aplicarQuita, construirPlanAmortizacion, planACuotas, normalizarFrecuencia, resolverFrecuencia, round2, estadoCoherente, type CuotaParaImputar, type TipoQuita, esCreditoVivo, moraDelCredito, moraDesdeCronograma, diasMoraActual, validarParametrosOtorgamiento, deudaEnRevision, entregaMinimaRefinanciacion, sugerirRefinanciacion, cargosDeCuota, baseMoraDeCuota } from "@/lib/domain";
 import { getConfiguracion, getCobranzaConfig, getRiesgoConfig } from "@/lib/config";
 import { quitaMaxima } from "@/lib/domain/acuerdos";
 import { lockNumeroCreditoTx, TX_PLATA } from "@/lib/locks";
@@ -168,7 +168,7 @@ async function cargarRefinanciable(
     capital: c.capital,
     interes: c.interes,
     cargos: cargosDeCuota(c),
-    cuotaTotal: c.cuota_total,
+    baseMora: baseMoraDeCuota(c),
     pagadoCapital: c.pagado_capital,
     pagadoInteres: c.pagado_interes,
     pagadoMora: c.pagado_mora,

@@ -55,6 +55,7 @@ const { calcularDeudaConsolidada, aplicarQuita } = await dom("refinanciacion");
 const { calcularCierreRecupero } = await dom("recupero-cierre");
 const { sugerirRefinanciacion, diagnosticarRefinanciacion, capacidadDePago } = await dom("refinanciacion-sugerida");
 const { round2 } = await dom("money");
+const { baseMoraDeCuota } = await dom("cuotas");
 
 // ── informe ─────────────────────────────────────────────────────────────────
 const F = (n) => Number(n).toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -192,7 +193,7 @@ H("4. IMPUTACIÓN DEL PAGO (mora → interés → cargos → capital)");
 {
   const cuotas = [{
     id: "c1", nro: 1, fechaVencimiento: new Date(Date.UTC(2026, 0, 1)),
-    capital: 1000, interes: 200, cargos: 50, cuotaTotal: 1250,
+    capital: 1000, interes: 200, cargos: 50, baseMora: 1250,
     pagadoCapital: 0, pagadoInteres: 0, pagadoMora: 0, pagadoCargos: 0,
   }];
   const opciones = { hoy: new Date(Date.UTC(2026, 1, 1)), tasaMoraDiaria: 0.005, diasGracia: 0, topeMoraPct: 0 };
@@ -237,7 +238,7 @@ H("6. REFINANCIACIÓN");
   */
   const cuotaVieja = [{
     id: "c1", nro: 1, fechaVencimiento: new Date(Date.UTC(2026, 0, 1)),
-    capital: 1000, interes: 200, cargos: 50, cuotaTotal: 1250,
+    capital: 1000, interes: 200, cargos: 50, baseMora: 1250,
     pagadoCapital: 0, pagadoInteres: 0, pagadoMora: 0, pagadoCargos: 0,
   }];
   const opc = { hoy: new Date(Date.UTC(2026, 2, 1)), moraActiva: false, fechaInicio: new Date(Date.UTC(2025, 11, 1)) };
@@ -395,9 +396,9 @@ H("8. ACUERDO DE PAGO");
 // ════════════════════════════════════════════════════════════════════════════
 {
   const cuotas = [
-    { nro: 1, fechaVencimiento: new Date(Date.UTC(2026, 0, 1)), capital: 1000, interes: 200, cargos: 0, cuotaTotal: 1200, pagadoCapital: 0, pagadoInteres: 0, pagadoMora: 0, pagadoCargos: 0 },
-    { nro: 2, fechaVencimiento: new Date(Date.UTC(2026, 1, 1)), capital: 1000, interes: 100, cargos: 0, cuotaTotal: 1100, pagadoCapital: 0, pagadoInteres: 0, pagadoMora: 0, pagadoCargos: 0 },
-    { nro: 3, fechaVencimiento: new Date(Date.UTC(2026, 11, 1)), capital: 1000, interes: 50, cargos: 0, cuotaTotal: 1050, pagadoCapital: 0, pagadoInteres: 0, pagadoMora: 0, pagadoCargos: 0 },
+    { nro: 1, fechaVencimiento: new Date(Date.UTC(2026, 0, 1)), capital: 1000, interes: 200, cargos: 0, baseMora: 1200, pagadoCapital: 0, pagadoInteres: 0, pagadoMora: 0, pagadoCargos: 0 },
+    { nro: 2, fechaVencimiento: new Date(Date.UTC(2026, 1, 1)), capital: 1000, interes: 100, cargos: 0, baseMora: 1100, pagadoCapital: 0, pagadoInteres: 0, pagadoMora: 0, pagadoCargos: 0 },
+    { nro: 3, fechaVencimiento: new Date(Date.UTC(2026, 11, 1)), capital: 1000, interes: 50, cargos: 0, baseMora: 1050, pagadoCapital: 0, pagadoInteres: 0, pagadoMora: 0, pagadoCargos: 0 },
   ];
   const dv = calcularDeudaVencida(cuotas, { hoy: new Date(Date.UTC(2026, 2, 1)), tasaMoraDiaria: 0, diasGracia: 0, topeMoraPct: 0 });
   ok(cerca(dv.total, 2300), "la deuda vencida toma solo las cuotas ya vencidas", F(dv.total));
@@ -414,6 +415,55 @@ H("8. ACUERDO DE PAGO");
   ok(round2(conInt.reduce((s, c) => s + c.monto, 0)) > 2300,
     "con interes pactado el acuerdo suma mas que la deuda original",
     F(round2(conInt.reduce((s, c) => s + c.monto, 0))));
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+H("9. LO CAPITALIZADO DESPUÉS NO DEVENGA PUNITORIOS HACIA ATRÁS");
+// ════════════════════════════════════════════════════════════════════════════
+/*
+  Al firmar un acuerdo en modo `capitaliza`, su interés se reparte como cargo sobre las cuotas
+  vivas: `gastos` sube y `cuota_total` sube con él. Como `cuota_total` era TAMBIÉN la base del
+  punitorio, agrandarla reescribía la mora ya devengada: los mismos días de atraso, sobre una
+  base mayor. Sobre CRD-000006 fueron $8.145,21 de punitorios sobre un interés que en esos
+  días no existía, y dejaban al crédito debiendo más de lo que el acuerdo pedía: pagando todo
+  lo pactado, el cliente volvía a ser moroso.
+
+  `baseMoraDeCuota` es la única definición de esa resta y estas pruebas la fijan.
+*/
+{
+  // La cuota real de CRD-000006, con y sin el interés del acuerdo encima.
+  const SIN = { cuota_total: 165187.97, capitalizado: 0 };
+  const CON = { cuota_total: 184353.18, capitalizado: 19165.21 };
+  ok(cerca(baseMoraDeCuota(SIN), 165187.97), "sin capitalizar, la base es la cuota entera", F(baseMoraDeCuota(SIN)));
+  ok(cerca(baseMoraDeCuota(CON), 165187.97), "capitalizado el inter\u00e9s, la base NO se mueve", F(baseMoraDeCuota(CON)));
+
+  // Y por lo tanto la mora congelada tampoco: 58 días al 0,50% sobre la misma base.
+  const moraSin = interesMora(baseMoraDeCuota(SIN), 58, { tasaDiaria: 0.005, diasGracia: 0, topePct: 50 });
+  const moraCon = interesMora(baseMoraDeCuota(CON), 58, { tasaDiaria: 0.005, diasGracia: 0, topePct: 50 });
+  ok(cerca(moraSin, 47904.51), "la mora de la cuota 1 al firmar el acuerdo", F(moraSin));
+  ok(cerca(moraCon, moraSin), "y sigue siendo la misma despu\u00e9s de capitalizar", F(moraCon));
+  // Lo que se evita: la base vieja daba $53.462,42 — $5.557,91 de más en UNA cuota.
+  const moraVieja = interesMora(CON.cuota_total, 58, { tasaDiaria: 0.005, diasGracia: 0, topePct: 50 });
+  ok(cerca(round2(moraVieja - moraCon), 5557.91), "el defecto que se corrige, medido", F(round2(moraVieja - moraCon)));
+
+  // Nunca negativa: anular un acuerdo no puede dejar una base por debajo de cero.
+  ok(baseMoraDeCuota({ cuota_total: 100, capitalizado: 250 }) === 0, "la base nunca es negativa");
+
+  /*
+    Y el efecto que importa: con la base corregida, la deuda del crédito deja de pasarse de
+    lo que el acuerdo pide. Las tres cuotas de CRD-000006, con la mora congelada al 10/09.
+  */
+  const tresCuotas = [
+    { id: "c1", nro: 1, fechaVencimiento: new Date(Date.UTC(2026, 6, 12)), capital: 75187.97, interes: 90000, cargos: 19165.21, baseMora: baseMoraDeCuota(CON), pagadoCapital: 0, pagadoInteres: 0, pagadoMora: 0, pagadoCargos: 0 },
+    { id: "c2", nro: 2, fechaVencimiento: new Date(Date.UTC(2026, 7, 12)), capital: 97744.36, interes: 67443.61, cargos: 19165.21, baseMora: baseMoraDeCuota(CON), pagadoCapital: 0, pagadoInteres: 0, pagadoMora: 0, pagadoCargos: 0 },
+    { id: "c3", nro: 3, fechaVencimiento: new Date(Date.UTC(2026, 8, 12)), capital: 127067.67, interes: 38120.30, cargos: 19165.21, baseMora: baseMoraDeCuota(CON), pagadoCapital: 0, pagadoInteres: 0, pagadoMora: 0, pagadoCargos: 0 },
+  ];
+  const deudaHoy = calcularDeudaVencida(tresCuotas, {
+    hoy: new Date(Date.UTC(2026, 8, 10)), tasaMoraDiaria: 0.005, diasGracia: 2, topeMoraPct: 50, incluirNoVencidas: true,
+  });
+  // capital 300.000,00 + interés 195.563,91 + cargos 57.495,63 + mora 70.204,89
+  ok(cerca(deudaHoy.mora, 70204.89), "la mora del plan queda donde estaba al firmar", F(deudaHoy.mora));
+  ok(cerca(deudaHoy.total, 623264.43), "y la deuda del cr\u00e9dito ya no se pasa del acuerdo", F(deudaHoy.total));
 }
 
 // ════════════════════════════════════════════════════════════════════════════
