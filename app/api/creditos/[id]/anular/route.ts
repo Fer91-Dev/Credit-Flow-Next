@@ -90,12 +90,26 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
   });
   const ctaRev = desembolsoMov?.cuenta;
   const cuentaReversa: Cuenta = esCuentaValida(ctaRev) ? ctaRev : "efectivo";
-  const cobrosPorCuenta = devolver
-    ? await prisma.movimientos_caja.groupBy({
-        by: ["cuenta"],
+  /**
+   * 🔴 UNA DEVOLUCION POR COBRO, NO UNA POR CUENTA.
+   *
+   * Estaba agrupado por cuenta: un solo egreso cubría todos los cobros de esa caja. La plata
+   * salía bien, pero el asiento no decía QUÉ cobro devolvía, y eso rompe dos cosas:
+   *
+   *  · la trazabilidad — es justo lo que se arregló en `POST /pagos/[id]/anular`, donde el
+   *    contra-asiento ANP apunta al pago que anula; acá seguía sin apuntar a ninguno;
+   *  · los auditores — `auditar-metas` exige un contra-asiento con `pago_id` por cada pago
+   *    anulado, y desde que esta anulación marca sus pagos (ver más abajo) reportaba seis sin
+   *    reversa que sí existían, solo que sin el vínculo.
+   *
+   * Por cobro sale además gratis lo que el groupBy resolvía a mano: cada devolución vuelve por
+   * la cuenta del cobro que revierte, sin tener que sumarlos por cuenta primero.
+   */
+  const cobrosADevolver = devolver
+    ? await prisma.movimientos_caja.findMany({
         // Solo cobros de pagos NO anulados (los anulados ya se revirtieron con su contra-asiento).
         where: { ...withTenant(tenantId), credito_id: id, tipo: "cobro", pago: { anulado: false } },
-        _sum: { monto: true },
+        select: { monto: true, cuenta: true, metodo: true, pago_id: true },
       })
     : [];
 
@@ -131,12 +145,86 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
       data: { estado: "anulado", proximo_pago: null, saldo_pendiente: 0, motivo_anulacion: motivo },
     });
     if (marcado.count > 0) {
-      // Solo las que todavía debían: una cuota pagada de verdad sigue siendo `pagada`, y el
-      // `pagado_capital` no se toca (es el registro de lo que se llegó a cobrar).
-      await tx.cuotas.updateMany({
-        where: { ...withTenant(tenantId), credito_id: id, estado: { notIn: ["pagada", ...ESTADOS_CUOTA_CERRADA] } },
-        data: { estado: "anulada" },
-      });
+      if (devolver && tienePagos) {
+        /**
+         * 🔴 SI LA PLATA SE DEVUELVE, LOS PAGOS QUEDAN ANULADOS. NO ALCANZA CON LA CAJA.
+         *
+         * La caja ya salía bien —el egreso de devolución cancela los cobros—, pero las filas
+         * de `pagos` seguían con `anulado: false`. Y TODOS los agregados de cobranza filtran
+         * por ese campo y ninguno mira el estado del crédito, así que seguían contando como
+         * cobrado algo que volvió al bolsillo del cliente. Medido sobre CRD-000027:
+         *
+         *     terminal de cobro, "cobrado hoy"    $2.634.938,53   real $2.082.946,66
+         *     reporte de cobranza, total cobrado  $2.634.938,53   real $2.082.946,66
+         *                                         ——————————————
+         *                                         $551.991,87 de más (26,5%)
+         *
+         * Es la misma familia que el defecto de agosto del reporte de recupero: aquel arregló
+         * el filtro `anulado: false` y no vio que el crédito entero pudiera anularse con
+         * devolución. Se resuelve donde corresponde —marcando el hecho— y no pidiéndole a cada
+         * consulta futura que se acuerde de mirar dos tablas. Mismo criterio con el que las
+         * cuotas dejaron de depender de `esCreditoVivo` (hallazgo A1).
+         *
+         * 🔴 Y SE REVIERTE LA IMPUTACIÓN, porque marcar el flag a secas deja el libro mintiendo
+         * de otra forma: `auditar-creditos` exige que ningún `pago_cuota` cuelgue de un pago
+         * anulado, y las cuotas seguirían mostrando `pagado_capital` de plata que se devolvió.
+         * Es exactamente lo que hace `POST /pagos/[id]/anular`, y por eso se hace igual.
+         *
+         * Con `conservar` NO se toca nada: ahí la plata se quedó en la caja, el cobro existió
+         * y contarlo como cobranza es correcto.
+         */
+        await tx.pago_cuota.deleteMany({ where: { ...withTenant(tenantId), pago: { credito_id: id, anulado: false } } });
+        await tx.pagos.updateMany({
+          where: { ...withTenant(tenantId), credito_id: id, anulado: false },
+          data: {
+            anulado: true,
+            anulado_at: new Date(),
+            anulado_motivo: `Crédito ${numeroFmt} anulado con devolución de lo cobrado`,
+          },
+        });
+        /*
+          Sin imputación viva, ninguna cuota está pagada: todas quedan `anulada` y en cero.
+          `condonado` no se toca — es una decisión de la financiera, no plata del cliente.
+        */
+        await tx.cuotas.updateMany({
+          where: { ...withTenant(tenantId), credito_id: id },
+          data: {
+            estado: "anulada",
+            pagado: 0, pagado_capital: 0, pagado_interes: 0, pagado_mora: 0, pagado_cargos: 0,
+          },
+        });
+        /**
+         * 🔴 Y EL ACUERDO DE PAGO, SI HABÍA UNO.
+         *
+         * Su estado se DERIVA de lo cobrado desde que se firmó, y acá lo cobrado acaba de
+         * volver a cero. Sin esto quedaba un acuerdo "CUMPLIDO" colgado de un crédito que no
+         * existe y donde nadie pagó nada — lo marcó `auditar-metas` en el acto: "figura
+         * CUMPLIDO sin estar saldado, cobrado $0,00 de $551.991,87".
+         *
+         * Va a `anulado` y no a `roto`: el deudor no incumplió nada, se deshizo la operación
+         * entera. "Roto" lo dejaría en la cola de refinanciación y lo marcaría como
+         * incumplidor en su historial, por un crédito que la financiera dio de baja.
+         */
+        await tx.acuerdos_pago.updateMany({
+          where: { ...withTenant(tenantId), credito_id: id, estado: { notIn: ["anulado"] } },
+          data: {
+            estado: "anulado",
+            motivo_estado: `Crédito ${numeroFmt} anulado con devolución de lo cobrado`,
+            cerrado_at: new Date(),
+          },
+        });
+        await tx.acuerdo_cuota.updateMany({
+          where: { ...withTenant(tenantId), acuerdo: { credito_id: id } },
+          data: { pagado: 0, estado: "pendiente" },
+        });
+      } else {
+        // Sin devolución: una cuota pagada de verdad sigue siendo `pagada`, y el
+        // `pagado_capital` no se toca (es el registro de lo que se llegó a cobrar).
+        await tx.cuotas.updateMany({
+          where: { ...withTenant(tenantId), credito_id: id, estado: { notIn: ["pagada", ...ESTADOS_CUOTA_CERRADA] } },
+          data: { estado: "anulada" },
+        });
+      }
     }
     if (marcado.count === 0) {
       throw new ApiError("El crédito cambió de estado mientras se anulaba. Volvé a abrirlo para ver cómo quedó.", "INVALID_STATE", 409);
@@ -214,10 +302,10 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
     // Devolución de lo cobrado (egreso), si corresponde — una pata por cada cuenta donde
     // entraron los cobros, para que cada cuenta (efectivo/banco/dólares) se revierta bien.
     if (devolver && totalCobrado > 0) {
-      for (const g of cobrosPorCuenta) {
-        const montoDev = round2(g._sum.monto ?? 0);
+      for (const cobro of cobrosADevolver) {
+        const montoDev = round2(cobro.monto);
         if (montoDev <= 0) continue;
-        const ctaDev: Cuenta = esCuentaValida(g.cuenta) ? g.cuenta : "efectivo";
+        const ctaDev: Cuenta = esCuentaValida(cobro.cuenta) ? cobro.cuenta : "efectivo";
         const numDev = await siguienteNumeroComprobante(tx, tenantId, "DEV");
         await tx.movimientos_caja.create({
           data: {
@@ -225,8 +313,11 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
             fecha: hoyComercial(),
             tipo: "devolucion",
             monto: -montoDev,
-            cuenta: ctaDev,
+            cuenta: ctaDev, // vuelve por la cuenta por la que entró ese cobro
+            metodo: cobro.metodo,
             credito_id: id,
+            // 🔴 El vínculo con el cobro que revierte: sin esto el asiento no dice qué devuelve.
+            pago_id: cobro.pago_id,
             vendedor_id: existing.vendedor_id, // la devolución sale de la misma caja del vendedor
             origen: etiquetaCaja(!!existing.vendedor_id, ctaDev),
             destino: nombreCompleto(existing.cliente),

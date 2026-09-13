@@ -61,19 +61,45 @@ for (const { tenant_id: t } of tenants) {
   console.log("\nM1. PAGOS ANULADOS");
   const anulados = await prisma.pagos.findMany({
     where: { tenant_id: t, anulado: true },
-    select: { id: true, monto: true },
+    select: { id: true, credito_id: true, monto: true },
   });
   if (anulados.length === 0) {
     info("no hay pagos anulados en esta base (el filtro anulado:false igual es obligatorio)");
   } else {
     info(`${anulados.length} pagos anulados por ${m$(r2(anulados.reduce((s, p) => s + p.monto, 0)))}`);
-    // Todo pago anulado tiene que tener su contra-asiento en la caja.
-    const conReversa = await prisma.movimientos_caja.findMany({
-      where: { tenant_id: t, pago_id: { in: anulados.map((p) => p.id) }, monto: { lt: 0 } },
-      select: { pago_id: true },
+    /**
+     * Todo pago anulado tiene que tener su contra-asiento en la caja.
+     *
+     * 🔴 SE BUSCA POR PAGO **O** POR CREDITO, y no solo por `pago_id`.
+     *
+     * Hay dos caminos que devuelven plata y no emiten el mismo asiento:
+     *
+     *   · anular UN PAGO            -> un ANP por cobro, con `pago_id`. 1 a 1.
+     *   · anular EL CREDITO con
+     *     devolucion de lo cobrado  -> un DEV que puede cubrir VARIOS cobros.
+     *
+     * El segundo hoy tambien lleva `pago_id` (se corrigio junto con esto), pero cualquier
+     * base con anulaciones anteriores tiene devoluciones agrupadas que no lo llevan, y esta
+     * regla las reportaba como "sin reversa" cuando la plata SI habia vuelto. Un auditor que
+     * falla por un vinculo faltante tapa el descuadre que de verdad importa: que la plata no
+     * haya salido.
+     *
+     * Lo que se verifica es eso: que exista el egreso. El importe se controla en
+     * `auditar-caja` (I4), que compara los totales.
+     */
+    const reversas = await prisma.movimientos_caja.findMany({
+      where: {
+        tenant_id: t, monto: { lt: 0 },
+        OR: [
+          { pago_id: { in: anulados.map((p) => p.id) } },
+          { tipo: "devolucion", credito_id: { in: [...new Set(anulados.map((p) => p.credito_id))] } },
+        ],
+      },
+      select: { pago_id: true, credito_id: true },
     });
-    const conRev = new Set(conReversa.map((m) => m.pago_id));
-    const sinRev = anulados.filter((p) => !conRev.has(p.id));
+    const porPago = new Set(reversas.map((m) => m.pago_id).filter(Boolean));
+    const porCredito = new Set(reversas.map((m) => m.credito_id).filter(Boolean));
+    const sinRev = anulados.filter((p) => !porPago.has(p.id) && !porCredito.has(p.credito_id));
     chequeo(
       sinRev.length === 0,
       "todo pago anulado tiene su contra-asiento en caja",

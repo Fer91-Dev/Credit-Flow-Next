@@ -43,7 +43,7 @@ for (const t of tenants) {
     where: { tenant_id: T },
     select: { id: true, numero: true, estado: true, monto_original: true, producto_id: true, es_refinanciacion: true },
   });
-  const pagos = await prisma.pagos.findMany({ where: { tenant_id: T }, select: { id: true, monto: true, anulado: true } });
+  const pagos = await prisma.pagos.findMany({ where: { tenant_id: T }, select: { id: true, credito_id: true, monto: true, anulado: true } });
   const porCredito = new Map(creditos.map((c) => [c.id, c]));
 
   // ── I1. Signos ──────────────────────────────────────────────────────────
@@ -105,11 +105,39 @@ for (const t of tenants) {
   const sc = cobros.reduce((s, x) => s + x.monto, 0), sp = pagos.reduce((s, p) => s + p.monto, 0);
   chk(Math.abs(sc - sp) < 0.01, "los importes cobrados = los pagos registrados", `${m(sc)} vs ${m(sp)}`);
 
+  /**
+   * 🔴 LA DEVOLUCION YA NO ES UNA POR PAGO, Y LA REGLA TUVO QUE DEJAR DE CONTARLAS.
+   *
+   * Habia dos formas de devolver plata y esta regla solo conocia una:
+   *
+   *   · anular UN PAGO          -> un contra-asiento ANP por cada cobro. 1 a 1.
+   *   · anular EL CREDITO con
+   *     devolucion de lo cobrado -> un DEV por CUENTA, que puede cubrir varios pagos.
+   *
+   * Con la segunda, contar movimientos da un descuadre que no existe (1 devolucion contra 2
+   * pagos anulados), y un auditor que falla siempre no audita nada: el descuadre REAL queda
+   * tapado por el ruido. Es la misma leccion que ya dejo `recupero` unas lineas mas arriba.
+   *
+   * Asi que se verifica COBERTURA y no cantidad: que todo pago anulado tenga devolucion en su
+   * credito, y que los importes cierren. Lo que se cuenta aparte es la COMISION de
+   * otorgamiento: cuando un credito se anula tambien se devuelve, y sale con el mismo tipo
+   * `devolucion` aunque no sea plata que puso el cliente.
+   */
   const anulados = pagos.filter((p) => p.anulado);
   const devol = movs.filter((x) => x.tipo === "devolucion");
-  chk(devol.length === anulados.length, "una devolucion por cada pago anulado", `${devol.length} vs ${anulados.length}`);
-  const sd = Math.abs(devol.reduce((s, x) => s + x.monto, 0)), sa = anulados.reduce((s, p) => s + p.monto, 0);
-  chk(Math.abs(sd - sa) < 0.01, "lo devuelto = lo anulado", `${m(sd)} vs ${m(sa)}`);
+  const creditosConDevolucion = new Set(devol.map((x) => x.credito_id).filter(Boolean));
+  const sinCubrir = anulados.filter((p) => !creditosConDevolucion.has(p.credito_id));
+  chk(sinCubrir.length === 0, "todo pago anulado tiene su devolucion asentada",
+    sinCubrir.length ? `${sinCubrir.length} sin contra-asiento` : `${anulados.length} anulados, ${devol.length} devoluciones`);
+
+  const idsAnulados = new Set(creditos.filter((c) => c.estado === "anulado").map((c) => c.id));
+  const comisionesDevueltas = movs
+    .filter((x) => x.tipo === "comision_otorgamiento" && x.credito_id && idsAnulados.has(x.credito_id))
+    .reduce((s, x) => s + x.monto, 0);
+  const sd = Math.abs(devol.reduce((s, x) => s + x.monto, 0));
+  const sa = anulados.reduce((s, p) => s + p.monto, 0);
+  chk(Math.abs(sd - (sa + comisionesDevueltas)) < 0.01, "lo devuelto = lo anulado + las comisiones de creditos anulados",
+    `${m(sd)} vs ${m(sa)}${comisionesDevueltas > 0 ? ` + ${m(comisionesDevueltas)}` : ""}`);
 
   // ── I6. Créditos anulados ───────────────────────────────────────────────
   console.log("\nI5. CREDITOS ANULADOS");
