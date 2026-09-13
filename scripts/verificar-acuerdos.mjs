@@ -183,7 +183,15 @@ const TASA = Number(CFG.simulador?.tasaBase ?? 360);
 const PLAZOS = (CFG.simulador?.plazos ?? []).filter((p) => p.activo).map((p) => p.cuotas).sort((a, b) => a - b);
 const plazo = (n) => (PLAZOS.includes(n) ? n : PLAZOS.find((p) => p >= n) ?? PLAZOS[0] ?? 3);
 const DIAS_ACUERDO = Number(REC.dias_min_mora_acuerdo ?? 50);
-const INCLUIR_NO_VENCIDAS = ACU.incluir_no_vencidas === true;
+/*
+  🔴 `incluye_no_vencidas`, NO `incluir_`. Lo escribí mal y el verificador leyó `undefined`:
+  quedó en `false` mientras la financiera la tiene en `true`. No falló de casualidad —el caso
+  de prueba tiene las tres cuotas vencidas, así que la opción no cambiaba nada—, pero sobre un
+  crédito con cuotas por vencer mi deuda habría dado menos que la del sistema y el verificador
+  habría marcado un defecto que no existe. Un test que miente en contra es tan caro como uno
+  que miente a favor.
+*/
+const INCLUIR_NO_VENCIDAS = ACU.incluye_no_vencidas === true;
 const MODO_INTERES = ACU.modo_interes ?? "capitaliza";
 const hoyAR = (() => { const d = new Date(Date.now() - 3 * 3600e3); return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())); })();
 
@@ -504,9 +512,30 @@ ok(vivos === 1, "y queda UN solo acuerdo vigente", `${vivos} vigente(s)`);
 H1("FASE F — ANULAR: devuelve el interés capitalizado y deja el crédito como estaba");
 // ════════════════════════════════════════════════════════════════════════════
 
-const ID_F = await creditoAtrasado("Acuerdo", "Anula", 240_000, 3, 15);
+/*
+  Este caso va a SEIS cuotas a propósito: con el crédito naciendo hace 105 días, las tres
+  primeras están vencidas y las tres últimas NO. Es el único de los tres que ejercita
+  `incluye_no_vencidas` — los otros tienen todo vencido, así que la opción no cambia nada y
+  el verificador pasaría igual estuviera puesta o no.
+*/
+const ID_F = await creditoAtrasado("Acuerdo", "Anula", 240_000, 6, 15);
 const crF0 = await leerCredito(ID_F);
 const cuotasF0 = await leerCuotas(ID_F);
+
+const prevF = await api("GET", `/api/creditos/${ID_F}/acuerdo`);
+const miDeudaF = deudaVencidaMia(cuotasF0, hoyAR, moraCfg, INCLUIR_NO_VENCIDAS);
+const porVencer = cuotasF0.filter((q) => diasAtraso(q.fecha_vencimiento, hoyAR) <= 0).length;
+ok(porVencer > 0, `el crédito tiene ${porVencer} cuota(s) que todavía NO vencieron`,
+  `${cuotasF0.length - porVencer} vencidas`);
+ok(igual(prevF.data?.deuda?.total, miDeudaF.total),
+  INCLUIR_NO_VENCIDAS
+    ? "la financiera consolida TODO: la deuda incluye lo que no venció"
+    : "la financiera arregla solo el ATRASO: lo que no venció queda afuera",
+  `${f(prevF.data?.deuda?.total)} vs mío ${f(miDeudaF.total)}`);
+ok(igual(prevF.data?.deuda?.cuotas_incluidas, miDeudaF.incluidas),
+  "y entran las mismas cuotas que yo cuento",
+  `${prevF.data?.deuda?.cuotas_incluidas} vs mío ${miDeudaF.incluidas}`);
+
 const armadoF = await api("POST", "/api/cobranza/acuerdos", {
   credito_id: ID_F, cuotas: 3, quita: 0, primer_vencimiento: dentroDe(15),
   notas: "Verificador de acuerdos: caso que se anula.",
