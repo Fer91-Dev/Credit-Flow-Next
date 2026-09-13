@@ -138,6 +138,29 @@ const registrar = (n, titulo, creditoId, nota, completo = true) => {
   (completo ? bien : mal)(`caso ${n} — ${titulo}`, nota);
 };
 
+/**
+ * 🔴 LA QUITA DEL ACUERDO VA EN PESOS, NO EN PORCENTAJE.
+ *
+ * Este seed mandaba `quita: 10` con el comentario "quita 10%", y el endpoint la tomó por lo
+ * que dice su contrato: DIEZ PESOS. El caso sembrado tenía entonces una quita de $10,00 — que
+ * no prueba nada, porque con ese importe da lo mismo que la condonación funcione o no — y
+ * encima produjo el "$10,00 de saldo" que Fernando encontró a mano en CRD-000006 y costó media
+ * mañana entender.
+ *
+ * Se confundía con `refinanciar`, que SÍ recibe `quita_tipo: "porcentaje"` + `quita_valor`.
+ * Son dos endpoints distintos con dos contratos distintos, y acá se sigue el de cada uno.
+ *
+ * El camino es el MISMO que hace la pantalla: se lee el tope real del crédito
+ * (`limites.quita_maxima`, lo condonable de mora e interés, nunca capital) y se toma el
+ * porcentaje de ESE número. Así la quita sembrada es plata de verdad y el cierre del acuerdo
+ * tiene algo que condonar.
+ */
+async function quitaEnPesos(creditoId, pct) {
+  const prev = await api("GET", `/api/creditos/${creditoId}/acuerdo`);
+  const tope = prev.ok ? Number(prev.data.limites?.quita_maxima ?? 0) : 0;
+  return Math.round(tope * (pct / 100) * 100) / 100;
+}
+
 /** Deja registrada una gestion HUMANA: la escalera exige haber contactado antes de acordar. */
 async function gestionar(creditoId, tipo, resultado, nota, extra = {}) {
   const r = await api("POST", "/api/cobranza/acciones", { credito_id: creditoId, tipo, resultado, nota, ...extra });
@@ -217,12 +240,14 @@ paso("LOS 10 CASOS");
   const id = await otorgar(c, 300_000, 3, 30 + DIAS_ACUERDO + 10);
   // La escalera NO deja acordar con alguien a quien nadie llamo: primero la gestion.
   await gestionar(id, "llamada", "renegociacion", "Atendio y pidio un plan de pagos.");
+  const quita6 = await quitaEnPesos(id, 10);
   const a = await api("POST", "/api/cobranza/acuerdos", {
-    credito_id: id, cuotas: 3, quita: 10, primer_vencimiento: dentroDe(20),
+    credito_id: id, cuotas: 3, quita: quita6, primer_vencimiento: dentroDe(20),
     notas: "Acuerdo telefónico: tres pagos mensuales.",
   });
   if (!a.ok) mal("acuerdo del caso 6", a.error);
-  registrar(6, "acuerdo vigente, al día", id, a.ok ? "3 cuotas pactadas, primera a 20 días" : "sin acuerdo", a.ok);
+  registrar(6, "acuerdo vigente, al día", id,
+    a.ok ? `3 cuotas pactadas, primera a 20 días · quita ${f(quita6)}` : "sin acuerdo", a.ok);
 }
 
 // 7 — acuerdo ROTO: se pacta con vencimientos ya pasados y no se paga.
