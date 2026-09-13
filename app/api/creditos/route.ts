@@ -635,10 +635,27 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
       const sugerencia = vendedorId
         ? "Pedí una entrega al administrador para poder otorgar."
         : "Registrá un ingreso en la caja antes de otorgar.";
+      /*
+        🔴 400, NO 403 — y no es cosmético.
+
+        Este pre-chequeo devolvía 403 mientras el control autoritativo que corre dentro de la
+        transacción (`assertFondosSuficientesTx`) devuelve 400 para EXACTAMENTE la misma
+        condición. O sea: el mismo hecho salía con un estado u otro según quién ganara una
+        carrera, y ninguna de las dos respuestas era predecible desde afuera.
+
+        Además 403 acá significa otra cosa. El bloque de arriba lo usa para `LIMIT_EXCEEDED`,
+        que SÍ es un permiso: este vendedor no puede otorgar ese monto. Que la caja esté vacía
+        no es un permiso — cualquiera con la misma caja financiada puede hacerlo. Mezclarlos
+        hace que un monitoreo o una integración que mire el estado lea "acceso denegado" donde
+        hay "falta plata".
+
+        400 es lo que ya eligió `lib/caja-fondos.ts`, que usan la caja, la transferencia y el
+        control de adentro. El que estaba fuera de línea era este.
+      */
       return errorResponse(
         `No hay saldo suficiente en ${dondeCaja} de ${CUENTA_LABEL[cuentaDesembolso]}. Disponible: $${disponible.toLocaleString("es-AR")} — necesitás $${Number(body.monto_original).toLocaleString("es-AR")}. ${sugerencia}`,
         "INSUFFICIENT_FUNDS",
-        403,
+        400,
       );
     }
   }
