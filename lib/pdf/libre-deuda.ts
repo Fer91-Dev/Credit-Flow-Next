@@ -200,13 +200,35 @@ export async function generarLibreDeudaPDF(data: LibreDeudaPDFData): Promise<Uin
     $300.000,00" arriba y "Capital $299.990,00" abajo, sin nada que explique los diez pesos
     — en un certificado de cancelación TOTAL. No entra en el total abonado (nadie puso esa
     plata): va después de la suma, con su propio nombre.
+
+    🔴 Y LA SUMA DE ABAJO CIERRA CONTRA EL PLAN, NO CONTRA EL CAPITAL.
+
+    El rótulo decía "Capital otorgado, cubierto entre lo pagado y lo condonado" y el importe
+    era `capital + condonado`. Eso es cierto SOLO cuando lo perdonado es exclusivamente
+    capital, que es el caso con el que se escribió: los $10,00 de CRD-000006. Pero la
+    condonación cubre el PENDIENTE de la cuota —capital, interés y cargos—, así que apenas
+    queda interés sin pagar el renglón se pasa:
+
+        CRD-000004   anunciaba "capital otorgado"  $355.218,53
+                     prestado de verdad            $320.000,00   → $35.218,53 de más
+        CRD-000005   anunciaba                     $283.116,32
+                     prestado de verdad            $280.000,00   → $3.116,32 de más
+
+    Y el mismo PDF imprime "Capital otorgado $320.000,00" unos renglones más arriba: el
+    certificado se contradecía solo, en el único papel donde la financiera declara por escrito
+    que alguien no debe nada.
+
+    La cuenta que cierra en los dos casos es contra el PLAN: lo imputado a capital, interés y
+    cargos más lo condonado da el total de las cuotas. Los punitorios quedan afuera porque no
+    son parte del plan — se devengan encima de él. Comprobado sobre los seis créditos
+    cancelados de la cartera, con `verificar-libre-deuda.mjs`.
   */
   if (totales.condonado > 0) {
     y -= 4;
     fila("Condonado (no se cobró)", fmtMoney(totales.condonado), { sangria: true });
     fila(
-      "Capital otorgado, cubierto entre lo pagado y lo condonado",
-      fmtMoney(round2(totales.capital + totales.condonado)),
+      "Deuda del plan, cubierta entre lo pagado y lo condonado",
+      fmtMoney(round2(totales.capital + totales.interes + totales.cargos + totales.condonado)),
       { sangria: true },
     );
   }

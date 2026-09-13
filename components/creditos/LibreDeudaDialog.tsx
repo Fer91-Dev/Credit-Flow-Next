@@ -121,13 +121,31 @@ export function LibreDeudaDialog({ creditoId, onClose }: { creditoId: string | n
                       🔴 LO CONDONADO, SI LO HUBO. Sin este renglón la tabla dice "Capital
                       otorgado $300.000,00" arriba y "· Capital $299.990,00" abajo, y los diez
                       pesos quedan sin explicación en un certificado de cancelación TOTAL. No
-                      se suma al total abonado —nadie puso esa plata— así que va aparte, con
-                      la suma que cierra contra el capital otorgado.
+                      se suma al total abonado —nadie puso esa plata— así que va aparte.
+
+                      🔴 Y LA SUMA DE ABAJO ES CONTRA EL PLAN, NO CONTRA EL CAPITAL.
+
+                      Decía "Capital cubierto (pagado + condonado)" y mostraba
+                      `capital + condonado`. Eso solo es cierto cuando lo perdonado es
+                      exclusivamente capital, que es el caso en el que se escribió (los $10,00
+                      de CRD-000006). La condonación cubre el PENDIENTE de la cuota —capital,
+                      interés y cargos—, así que en cuanto queda interés sin pagar el renglón
+                      se pasa: sobre CRD-000004 anunciaba $355.218,53 de "capital otorgado"
+                      cuando lo prestado fueron $320.000,00, contradiciendo a la fila que está
+                      cuatro renglones más arriba en la MISMA tabla.
+
+                      La cuenta que cierra siempre es contra el plan: lo imputado a capital,
+                      interés y cargos, más lo condonado, da el total de las cuotas. Los
+                      punitorios quedan afuera porque no son parte del plan. Verificado sobre
+                      los seis créditos cancelados de la cartera.
                     */
                     ...((ld.totales.condonado ?? 0) > 0
                       ? ([
                           ["Condonado (no se cobró)", `$${n2(ld.totales.condonado ?? 0)}`],
-                          ["Capital cubierto (pagado + condonado)", `$${n2(Math.round((ld.totales.capital + (ld.totales.condonado ?? 0)) * 100) / 100)}`],
+                          [
+                            "Deuda del plan, cubierta entre lo pagado y lo condonado",
+                            `$${n2(Math.round((ld.totales.capital + ld.totales.interes + ld.totales.cargos + (ld.totales.condonado ?? 0)) * 100) / 100)}`,
+                          ],
                         ] as [string, string][])
                       : []),
                     ["Fecha de cancelación", ld.totales.fecha_cancelacion ? formatFechaHora(ld.totales.fecha_cancelacion) : "—"],
