@@ -773,6 +773,8 @@ export interface CuotasCredito {
   } | null;
   /** Condiciones de mora CONGELADAS del crédito: explican de dónde sale cada punitorio. */
   mora: { activa: boolean; tasaDiaria: number; diasGracia: number; topePct: number };
+  /** Si el crédito se refinanció: el día en que este plan se cerró y la deuda se mudó. */
+  refinanciado_al?: string | null;
   /**
    * Campaña ACTIVA con quita de punitorios vigente sobre este crédito. Los punitorios que
    * vienen en `cuotas` YA salen descontados (igual que al cobrar): esto es para poder decir

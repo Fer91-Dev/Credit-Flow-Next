@@ -486,6 +486,16 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
      * de mostrar un número que el operador no puede defender cuando el cliente lo discute.
      * Son las del snapshot del crédito, no las de la configuración de hoy.
      */
+    /**
+     * CUÁNDO SE CERRÓ ESTE PLAN, si el crédito se refinanció.
+     *
+     * Sin esta fecha, los cobros del plan se leen como si hubieran entrado DESPUÉS de que el
+     * crédito cayera — que es imposible y no es lo que pasó: la entrega se cobra en el acto,
+     * minutos ANTES de firmar la refinanciación, porque es lo que reduce la deuda que se va a
+     * consolidar. Fernando: "eso de que imputen pagos en el crédito ya caído me hace un bardo
+     * la cabeza". La pantalla no le estaba dando el dato para ordenarlo.
+     */
+    refinanciado_al: fechaRefi,
     mora: {
       activa: moraCred.moraActiva,
       tasaDiaria: moraCred.tasaMoraDiaria,

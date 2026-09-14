@@ -1496,6 +1496,32 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
             </div>
           </summary>
           <div className="px-4 pb-4 pt-3">
+          {/*
+            🔴 CUÁNDO SE CERRÓ ESTE PLAN — porque si no, los cobros parecen posteriores.
+
+            La entrega de una refinanciación se cobra EN EL ACTO, minutos antes de firmar: es
+            lo que reduce la deuda que se va a consolidar. Pero la tabla muestra el cobro y el
+            estado "trasladada" juntos, sin ninguna referencia de tiempo, y entonces se lee
+            como si se le hubiera imputado plata a un crédito ya caído. Fernando: "eso de que
+            imputen pagos en el crédito ya caído me hace un bardo la cabeza".
+
+            No era un problema de él: el dato que ordena la secuencia no estaba en la pantalla.
+          */}
+          {credito.estado === "refinanciado" && metaCuotas?.refinanciado_al && (
+            <p className="mb-3 flex flex-wrap items-center gap-x-1.5 gap-y-1 rounded-lg border border-warning/25 bg-warning/[0.06] px-3 py-2 text-[11px] leading-snug text-muted-foreground">
+              <RefreshCw className="h-3.5 w-3.5 shrink-0 text-warning" />
+              <span>
+                Este plan se cerró el{" "}
+                <span className="font-medium text-foreground">{formatFecha(metaCuotas.refinanciado_al)}</span>
+                {destinoRefi && (
+                  <> al refinanciarse en <span className="font-medium text-warning">{formatCreditoNumero(destinoRefi.numero ?? null, credito.numero)}</span></>
+                )}
+                . Los cobros que se ven acá son <span className="text-foreground">anteriores</span> a esa fecha —
+                la entrega se cobra en el acto, justo antes de firmar. Después, este crédito no recibió ni va a
+                recibir un peso más.
+              </span>
+            </p>
+          )}
           {loadingCuotas ? (
             <Skeleton className="h-48 rounded-xl" />
           ) : cuotas.length === 0 ? (
