@@ -69,6 +69,9 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
             id: true, nro: true, fecha_vencimiento: true, cuota_total: true, capitalizado: true,
             capital: true, interes: true, iva: true, seguro: true, gastos: true, honorarios: true,
             pagado_capital: true, pagado_interes: true, pagado_mora: true, pagado_cargos: true,
+            // Punitorios ya perdonados por una campana (migracion 010): sin esto la mora se
+            // recalcularia al 100% y lo condonado volveria a ser deuda.
+            condonado_mora: true,
           },
         },
         /**
@@ -203,7 +206,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
       // Cuota por cuota, igual que la imputación al cobrar. Antes era UNA cuota × los días
       // de la más vieja, que con varias vencidas mostraba menos de la mitad de lo real.
       interes_mora = moraPendienteTotal(
-        c.cuotas.map((q) => ({ fechaVencimiento: q.fecha_vencimiento, baseMora: baseMoraDeCuota(q), pagadoMora: q.pagado_mora })),
+        c.cuotas.map((q) => ({ fechaVencimiento: q.fecha_vencimiento, baseMora: baseMoraDeCuota(q), pagadoMora: q.pagado_mora, condonadoMora: q.condonado_mora })),
         { tasaDiaria: mc.tasaMoraDiaria, diasGracia: graciaCred, hoy: hoyCredito, topePct: mc.topeMoraPct },
       );
     }
@@ -228,6 +231,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
           baseMora: baseMoraDeCuota(q),
           pagadoCapital: q.pagado_capital, pagadoInteres: q.pagado_interes,
           pagadoMora: q.pagado_mora, pagadoCargos: q.pagado_cargos,
+      condonadoMora: q.condonado_mora,
         })),
         { moraActiva: mc.moraActiva, tasaMoraDiaria: mc.tasaMoraDiaria, topeMoraPct: mc.topeMoraPct, diasGracia: graciaV, hoy: hoyCredito },
       );
@@ -265,6 +269,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
           baseMora: baseMoraDeCuota(q),
           pagadoCapital: q.pagado_capital, pagadoInteres: q.pagado_interes,
           pagadoMora: q.pagado_mora, pagadoCargos: q.pagado_cargos,
+      condonadoMora: q.condonado_mora,
         })),
         {
           moraActiva: mc.moraActiva, tasaMoraDiaria: mc.tasaMoraDiaria, topeMoraPct: mc.topeMoraPct,

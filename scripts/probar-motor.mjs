@@ -196,7 +196,7 @@ H("4. IMPUTACIÓN DEL PAGO (mora → interés → cargos → capital)");
   const cuotas = [{
     id: "c1", nro: 1, fechaVencimiento: new Date(Date.UTC(2026, 0, 1)),
     capital: 1000, interes: 200, cargos: 50, baseMora: 1250,
-    pagadoCapital: 0, pagadoInteres: 0, pagadoMora: 0, pagadoCargos: 0,
+    pagadoCapital: 0, pagadoInteres: 0, pagadoMora: 0, pagadoCargos: 0, condonadoMora: 0,
   }];
   const opciones = { hoy: new Date(Date.UTC(2026, 1, 1)), tasaMoraDiaria: 0.005, diasGracia: 0, topeMoraPct: 0 };
 
@@ -241,7 +241,7 @@ H("6. REFINANCIACIÓN");
   const cuotaVieja = [{
     id: "c1", nro: 1, fechaVencimiento: new Date(Date.UTC(2026, 0, 1)),
     capital: 1000, interes: 200, cargos: 50, baseMora: 1250,
-    pagadoCapital: 0, pagadoInteres: 0, pagadoMora: 0, pagadoCargos: 0,
+    pagadoCapital: 0, pagadoInteres: 0, pagadoMora: 0, pagadoCargos: 0, condonadoMora: 0,
   }];
   const opc = { hoy: new Date(Date.UTC(2026, 2, 1)), moraActiva: false, fechaInicio: new Date(Date.UTC(2025, 11, 1)) };
   const d = calcularDeudaConsolidada(cuotaVieja, opc);
@@ -398,9 +398,9 @@ H("8. ACUERDO DE PAGO");
 // ════════════════════════════════════════════════════════════════════════════
 {
   const cuotas = [
-    { nro: 1, fechaVencimiento: new Date(Date.UTC(2026, 0, 1)), capital: 1000, interes: 200, cargos: 0, baseMora: 1200, pagadoCapital: 0, pagadoInteres: 0, pagadoMora: 0, pagadoCargos: 0 },
-    { nro: 2, fechaVencimiento: new Date(Date.UTC(2026, 1, 1)), capital: 1000, interes: 100, cargos: 0, baseMora: 1100, pagadoCapital: 0, pagadoInteres: 0, pagadoMora: 0, pagadoCargos: 0 },
-    { nro: 3, fechaVencimiento: new Date(Date.UTC(2026, 11, 1)), capital: 1000, interes: 50, cargos: 0, baseMora: 1050, pagadoCapital: 0, pagadoInteres: 0, pagadoMora: 0, pagadoCargos: 0 },
+    { nro: 1, fechaVencimiento: new Date(Date.UTC(2026, 0, 1)), capital: 1000, interes: 200, cargos: 0, baseMora: 1200, pagadoCapital: 0, pagadoInteres: 0, pagadoMora: 0, pagadoCargos: 0, condonadoMora: 0 },
+    { nro: 2, fechaVencimiento: new Date(Date.UTC(2026, 1, 1)), capital: 1000, interes: 100, cargos: 0, baseMora: 1100, pagadoCapital: 0, pagadoInteres: 0, pagadoMora: 0, pagadoCargos: 0, condonadoMora: 0 },
+    { nro: 3, fechaVencimiento: new Date(Date.UTC(2026, 11, 1)), capital: 1000, interes: 50, cargos: 0, baseMora: 1050, pagadoCapital: 0, pagadoInteres: 0, pagadoMora: 0, pagadoCargos: 0, condonadoMora: 0 },
   ];
   const dv = calcularDeudaVencida(cuotas, { hoy: new Date(Date.UTC(2026, 2, 1)), tasaMoraDiaria: 0, diasGracia: 0, topeMoraPct: 0 });
   ok(cerca(dv.total, 2300), "la deuda vencida toma solo las cuotas ya vencidas", F(dv.total));
@@ -456,9 +456,9 @@ H("9. LO CAPITALIZADO DESPUÉS NO DEVENGA PUNITORIOS HACIA ATRÁS");
     lo que el acuerdo pide. Las tres cuotas de CRD-000006, con la mora congelada al 10/09.
   */
   const tresCuotas = [
-    { id: "c1", nro: 1, fechaVencimiento: new Date(Date.UTC(2026, 6, 12)), capital: 75187.97, interes: 90000, cargos: 19165.21, baseMora: baseMoraDeCuota(CON), pagadoCapital: 0, pagadoInteres: 0, pagadoMora: 0, pagadoCargos: 0 },
-    { id: "c2", nro: 2, fechaVencimiento: new Date(Date.UTC(2026, 7, 12)), capital: 97744.36, interes: 67443.61, cargos: 19165.21, baseMora: baseMoraDeCuota(CON), pagadoCapital: 0, pagadoInteres: 0, pagadoMora: 0, pagadoCargos: 0 },
-    { id: "c3", nro: 3, fechaVencimiento: new Date(Date.UTC(2026, 8, 12)), capital: 127067.67, interes: 38120.30, cargos: 19165.21, baseMora: baseMoraDeCuota(CON), pagadoCapital: 0, pagadoInteres: 0, pagadoMora: 0, pagadoCargos: 0 },
+    { id: "c1", nro: 1, fechaVencimiento: new Date(Date.UTC(2026, 6, 12)), capital: 75187.97, interes: 90000, cargos: 19165.21, baseMora: baseMoraDeCuota(CON), pagadoCapital: 0, pagadoInteres: 0, pagadoMora: 0, pagadoCargos: 0, condonadoMora: 0 },
+    { id: "c2", nro: 2, fechaVencimiento: new Date(Date.UTC(2026, 7, 12)), capital: 97744.36, interes: 67443.61, cargos: 19165.21, baseMora: baseMoraDeCuota(CON), pagadoCapital: 0, pagadoInteres: 0, pagadoMora: 0, pagadoCargos: 0, condonadoMora: 0 },
+    { id: "c3", nro: 3, fechaVencimiento: new Date(Date.UTC(2026, 8, 12)), capital: 127067.67, interes: 38120.30, cargos: 19165.21, baseMora: baseMoraDeCuota(CON), pagadoCapital: 0, pagadoInteres: 0, pagadoMora: 0, pagadoCargos: 0, condonadoMora: 0 },
   ];
   const deudaHoy = calcularDeudaVencida(tresCuotas, {
     hoy: new Date(Date.UTC(2026, 8, 10)), tasaMoraDiaria: 0.005, diasGracia: 2, topeMoraPct: 50, incluirNoVencidas: true,
@@ -599,6 +599,69 @@ H("12. POR QUE UN CREDITO NO ADMITE ACUERDO");
 
   const refi = puedeAcordarPorEstado("refinanciado");
   ok(!refi.permitido && /crédito nuevo/i.test(refi.motivo ?? ""), "un refinanciado manda al credito nuevo", refi.motivo ?? "");
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+H("13. LA QUITA DE CAMPAÑA NO VUELVE A COBRARSE");
+// ════════════════════════════════════════════════════════════════════════════
+/*
+  La quita se aplicaba como un FACTOR al calcular la mora, sin guardarse: mientras la campaña
+  estaba activa la cuota pedía el 80%, y al vencer volvía a calcularse al 100%, con lo cual lo
+  perdonado REAPARECÍA como deuda y el cobro siguiente lo levantaba. Sobre CRD-000065 fueron
+  5.919,24 pesos que se le prometieron por escrito a un cliente que pagó en plazo.
+
+  Se prueban los dos pasos, que es donde se rompía: el cobro CON promo perdona su parte, y el
+  cobro siguiente SIN promo no la recobra.
+*/
+{
+  const VENCE = new Date(Date.UTC(2026, 0, 1));
+  const HOY = new Date(Date.UTC(2026, 1, 20)); // 50 dias de atraso
+  const PARAM = { tasaMoraDiaria: 0.005, diasGracia: 0, topeMoraPct: 0, hoy: HOY };
+  const cuota = () => ({
+    id: "q1", nro: 1, fechaVencimiento: VENCE, capital: 10000, interes: 2000, cargos: 0,
+    baseMora: 12000, pagadoCapital: 0, pagadoInteres: 0, pagadoMora: 0, pagadoCargos: 0, condonadoMora: 0,
+  });
+
+  // Mora plena a 50 dias: 12000 × 0,5% × 50 = 3000.
+  const plena = interesMora(12000, 50, { tasaDiaria: 0.005, diasGracia: 0, topePct: 0 });
+  ok(cerca(plena, 3000), "la mora plena de la cuota", F(plena));
+
+  // Con 20% de quita se piden 2400, y se perdonan 600.
+  const conPromo = imputarPagoEnCuotas(2400, [cuota()], { ...PARAM, descuentoMoraPct: 20 });
+  const a1 = conPromo.aplicaciones[0];
+  ok(cerca(a1.aplicadoMora, 2400), "con 20% de quita se cobran 2400 de mora", F(a1.aplicadoMora));
+  ok(cerca(a1.condonadoMora, 600), "y se perdonan 600, que quedan asentados en la cuota", F(a1.condonadoMora));
+  ok(cerca(conPromo.ahorroMora, a1.condonadoMora),
+    "el ahorro que informa el recibo = lo que se asienta en la cuota (una sola cuenta)",
+    F(conPromo.ahorroMora));
+
+  // 🔴 El paso que fallaba: la campaña venció y la cuota ya no debe nada de mora.
+  const despues = { ...cuota(), pagadoMora: 2400, condonadoMora: 600 };
+  const sinPromo = imputarPagoEnCuotas(12000, [despues], PARAM);
+  const a2 = sinPromo.aplicaciones[0];
+  ok(cerca(a2.aplicadoMora, 0),
+    "🔴 vencida la campaña, NO se le recobran los 600 perdonados", F(a2.aplicadoMora));
+  ok(cerca(a2.aplicadoCapital + a2.aplicadoInteres, 12000),
+    "el pago entero va a interés y capital, como corresponde",
+    F(round2(a2.aplicadoCapital + a2.aplicadoInteres)));
+
+  // Y el descuento se gana PAGANDO: medio pago, medio descuento.
+  const mitad = imputarPagoEnCuotas(1200, [cuota()], { ...PARAM, descuentoMoraPct: 20 });
+  ok(cerca(mitad.aplicaciones[0].condonadoMora, 300),
+    "pagando la mitad de la mora descontada se gana la mitad del descuento",
+    F(mitad.aplicaciones[0].condonadoMora));
+
+  // Con 100% de quita no hay proporción que medir: se perdona todo de una vez.
+  const total = imputarPagoEnCuotas(12000, [cuota()], { ...PARAM, descuentoMoraPct: 100 });
+  const aT = total.aplicaciones[0];
+  ok(cerca(aT.aplicadoMora, 0) && cerca(aT.condonadoMora, 3000),
+    "con 100% de quita no entra un peso de mora y se perdona toda",
+    `cobrado ${F(aT.aplicadoMora)} · perdonado ${F(aT.condonadoMora)}`);
+
+  // La deuda vencida de un acuerdo tampoco puede consolidar lo ya perdonado.
+  const dvPerdonada = calcularDeudaVencida([despues], { ...PARAM, tasaMoraDiaria: 0.005, diasGracia: 0, topeMoraPct: 0 });
+  ok(cerca(dvPerdonada.mora, 0),
+    "🔴 y un acuerdo no consolida como deuda la mora que ya se perdonó", F(dvPerdonada.mora));
 }
 
 // ════════════════════════════════════════════════════════════════════════════

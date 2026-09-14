@@ -846,6 +846,20 @@ model cuotas {
   /// Va aparte de `pagado` porque no es lo mismo: nadie puso esa plata. Sumarla ahí haría que
   /// los reportes de cobranza contaran como recaudado algo que se resignó.
   condonado         Float    @default(0)
+  /// PUNITORIOS perdonados de forma definitiva por la quita de una campaña (migración 010).
+  ///
+  /// 🔴 POR QUÉ EXISTE. La quita de campaña se aplicaba como un FACTOR al calcular la mora, sin
+  /// guardarse en ningún lado: mientras la campaña estaba activa la cuota pedía el 80%, y al
+  /// vencer volvía a calcularse al 100%, con lo cual lo perdonado REAPARECÍA como deuda y el
+  /// cobro siguiente lo levantaba. Sobre CRD-000065 fueron $5.919,24 que se le prometieron por
+  /// escrito y se le recobraron igual.
+  ///
+  /// La mora EXIGIBLE de la cuota es la devengada menos esto. Una vez perdonada, no vuelve.
+  ///
+  /// 🔴 Y VA APARTE DE `condonado`: ese es lo perdonado del PLAN (capital + interés + cargos),
+  /// y el certificado de libre deuda lo usa para cerrar contra el total de las cuotas. La mora
+  /// se devenga ENCIMA del plan, no dentro; mezclarlas haría que esa cuenta diera de más.
+  condonado_mora    Float    @default(0)
 
   credito      creditos     @relation(fields: [credito_id], references: [id], onDelete: Cascade)
   aplicaciones pago_cuota[]

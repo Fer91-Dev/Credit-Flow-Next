@@ -383,7 +383,13 @@ export function calcularDeudaVencida(
     const moraPlena = moraActiva
       ? interesMora(c.baseMora, atraso, { tasaDiaria: tasa, diasGracia: gracia, topePct: opts.topeMoraPct })
       : 0;
-    const moraPend = noNegativo(round2(moraPlena - c.pagadoMora));
+    /*
+      🔴 Lo YA RESUELTO de la mora son DOS cosas: la plata que entro y la que se perdono
+      definitivamente por una campana (`condonadoMora`, migracion 010). Restar solo lo pagado
+      hacia que un acuerdo o una refinanciacion consolidaran como deuda punitorios que la
+      financiera ya habia resignado por escrito.
+    */
+    const moraPend = noNegativo(round2(moraPlena - c.pagadoMora - c.condonadoMora));
 
     if (capPend + intPend + carPend + moraPend <= 0) continue; // ya saldada
 

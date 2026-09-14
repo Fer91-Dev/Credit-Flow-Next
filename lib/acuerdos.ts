@@ -112,6 +112,8 @@ const SELECT_CREDITO = {
       id: true, nro: true, fecha_vencimiento: true,
       capital: true, interes: true, iva: true, seguro: true, gastos: true, honorarios: true, cuota_total: true, capitalizado: true,
       pagado_capital: true, pagado_interes: true, pagado_mora: true, pagado_cargos: true,
+      // Punitorios ya perdonados por una campana (migracion 010).
+      condonado_mora: true,
     },
   },
 } satisfies Prisma.creditosSelect;
@@ -145,6 +147,7 @@ export async function deudaVencidaDeCredito(tenantId: string, creditoId: string)
     pagadoInteres: c.pagado_interes,
     pagadoMora: c.pagado_mora,
     pagadoCargos: c.pagado_cargos,
+    condonadoMora: c.condonado_mora,
   }));
 
   // Lo que se acuerda es la deuda bajo las condiciones del crédito, no las de hoy.

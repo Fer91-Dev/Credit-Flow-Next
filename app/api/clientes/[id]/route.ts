@@ -107,7 +107,7 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
         // La lista de créditos siempre pasó los dos; por eso las dos pantallas discrepaban.
         const graciaCred = (c.cronograma as { diasGracia?: number } | null)?.diasGracia ?? config.simulador.diasGracia;
         interes_mora = moraPendienteTotal(
-          c.cuotas.map((q) => ({ fechaVencimiento: q.fecha_vencimiento, baseMora: baseMoraDeCuota(q), pagadoMora: q.pagado_mora })),
+          c.cuotas.map((q) => ({ fechaVencimiento: q.fecha_vencimiento, baseMora: baseMoraDeCuota(q), pagadoMora: q.pagado_mora, condonadoMora: q.condonado_mora })),
           { tasaDiaria: mc.tasaMoraDiaria, diasGracia: graciaCred, hoy: hoyComercial(), topePct: mc.topeMoraPct },
         );
       }

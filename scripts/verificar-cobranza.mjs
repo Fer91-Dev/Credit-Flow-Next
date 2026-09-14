@@ -36,8 +36,20 @@ const db = new PrismaClient();
 
 const f = (n) => "$" + Number(n ?? 0).toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const iso = (d) => new Date(d).toISOString().slice(0, 10);
-const hace = (n) => { const d = new Date(); d.setUTCDate(d.getUTCDate() - n); return iso(d); };
-const dentroDe = (n) => { const d = new Date(); d.setUTCDate(d.getUTCDate() + n); return iso(d); };
+/*
+  🔴 LOS DIAS SE CUENTAN DESDE EL DIA COMERCIAL ARGENTINO, NO DESDE UTC.
+
+  Estaban calculados sobre `new Date()` en UTC, y despues de las 21:00 de Argentina UTC ya paso
+  de dia: `hace(1)` devolvia la fecha de HOY en Argentina. El caso "la promo ya vencio" quedaba
+  fechado el mismo dia, el sistema aplicaba el descuento — que es lo correcto, la oferta corre
+  todo su ultimo dia — y el verificador reportaba un defecto inexistente a las 22:00 y ninguno
+  a las 10:00. Un test que cambia de resultado segun la hora es peor que no tenerlo.
+
+  El sistema entero razona en dia comercial (`hoyComercial`), asi que el script tambien.
+*/
+const diaAR = () => { const d = new Date(Date.now() - 3 * 3600e3); return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())); };
+const hace = (n) => { const d = diaAR(); d.setUTCDate(d.getUTCDate() - n); return iso(d); };
+const dentroDe = (n) => { const d = diaAR(); d.setUTCDate(d.getUTCDate() + n); return iso(d); };
 const cent = (n) => Math.round(Number(n) * 100);
 const r2 = (n) => Math.round(Number(n) * 100) / 100;
 const nn = (n) => Math.max(0, n);
@@ -82,7 +94,7 @@ const moraCfg = {
 const TASA = Number(CFG.simulador?.tasaBase ?? 360);
 const PLAZOS = (CFG.simulador?.plazos ?? []).filter((p) => p.activo).map((p) => p.cuotas).sort((a, b) => a - b);
 const plazo = (n) => (PLAZOS.includes(n) ? n : PLAZOS.find((p) => p >= n) ?? PLAZOS[0] ?? 3);
-const hoyAR = (() => { const d = new Date(Date.now() - 3 * 3600e3); return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())); })();
+const hoyAR = diaAR();
 console.log(`base: ${BASE}`);
 console.log(`mora: ${moraCfg.tasaDiaria * 100}%/día · gracia ${moraCfg.diasGracia} días · tope ${moraCfg.topePct}%`);
 
@@ -96,6 +108,24 @@ function moraDeCuota(base, dias) {
   return m;
 }
 const baseMora = (q) => r2(nn(q.cuota_total - q.capitalizado));
+
+/*
+  Este verificador OTORGA varios creditos para tener morosos propios, asi que consume caja. Si
+  la principal no da, se carga un aporte de capital por la API — un asiento legitimo, con su
+  comprobante — en vez de escribir el saldo a mano. Sin esto el script falla por falta de
+  fondos y parece un bug del sistema cuando es solo una base de desarrollo gastada.
+*/
+const NECESARIO = 1_500_000;
+const saldoCaja = () => api("GET", "/api/caja").then((r) => Number(r.data?.saldos_por_cuenta?.efectivo ?? 0));
+const efectivoHoy = await saldoCaja();
+if (efectivoHoy < NECESARIO) {
+  const falta = Math.ceil((NECESARIO - efectivoHoy) / 100_000) * 100_000;
+  const ap = await api("POST", "/api/caja", {
+    concepto: "aporte_capital", monto: falta, cuenta: "efectivo", metodo: "efectivo",
+    descripcion: "Verificador de cobranza: capital para otorgar los casos de prueba",
+  });
+  console.log(`caja: ${f(efectivoHoy)} → aporte de ${f(falta)} ${ap.ok ? "ok" : "FALLÓ: " + ap.error}`);
+}
 
 const sello = Date.now().toString().slice(-6);
 let dni = 69_000_000 + Number(sello.slice(-5));
@@ -448,9 +478,16 @@ const cuota1Post = await db.cuotas.findFirst({
 const moraPlena1 = r2(moraDeCuota(baseMora(cuotasD[0]), diasAtraso(cuotasD[0].fecha_vencimiento, hoyAR)));
 const perdonado1 = r2(moraPlena1 - miMoraCuota1);
 
-ok(igual(r2(pago2.aplicado_mora - perdonado1), miMoraCuota2Plena, 3),
+/*
+  Esta comparación restaba `perdonado1` porque modelaba el comportamiento ROTO: el segundo
+  cobro levantaba la mora de la cuota 2 MÁS lo que se le había perdonado a la cuota 1. Con la
+  columna `condonado_mora` puesta, ese arrastre ya no existe y el cobro paga exactamente la
+  mora de SU cuota. Se deja dicho porque un test que sigue restando algo que ya no pasa es un
+  test que está midiendo el bug en vez del arreglo.
+*/
+ok(igual(pago2.aplicado_mora, miMoraCuota2Plena, 3),
   "la cuota 2 se cobra con su mora entera — ese cobro no tenía descuento",
-  `${f(r2(pago2.aplicado_mora - perdonado1))} vs mi cuenta ${f(miMoraCuota2Plena)}`);
+  `${f(pago2.aplicado_mora)} vs mi cuenta ${f(miMoraCuota2Plena)}`);
 
 ok(igual(cuota1Post.pagado_mora, miMoraCuota1, 3),
   "🔴 lo perdonado NO puede volver a cobrarse: la cuota 1 debería quedar en lo que se le cobró con la promo",

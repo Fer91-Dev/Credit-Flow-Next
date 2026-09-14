@@ -151,6 +151,16 @@ export interface CuotaParaImputar {
   pagadoInteres: number;
   pagadoMora: number;
   pagadoCargos: number;
+  /**
+   * Punitorios ya PERDONADOS de esta cuota por la quita de una campaña (migración 010).
+   *
+   * 🔴 OBLIGATORIO A PROPÓSITO, igual que `baseMora`. Sin este dato la mora se recalcula al
+   * 100% en cuanto la campaña vence, y lo que se le perdonó al cliente vuelve a ser deuda:
+   * sobre CRD-000065 fueron $5.919,24 prometidos por escrito y recobrados igual. Que el campo
+   * sea requerido hace que un `select` de Prisma que lo omita no compile, así que ninguna
+   * consulta puede volver a la cuenta vieja por olvido.
+   */
+  condonadoMora: number;
 }
 
 /** Aplicación de un pago a una cuota concreta. */
@@ -165,6 +175,14 @@ export interface AplicacionCuota {
   moraDevengada: number;
   /** Días de atraso de la cuota al momento del pago (informativo). */
   diasAtraso: number;
+  /**
+   * Punitorios que este pago PERDONA de forma definitiva en esta cuota (quita de campaña).
+   *
+   * Viaja para que el servidor lo asiente en `cuotas.condonado_mora`: sin persistirlo, el
+   * descuento vuelve a ser un factor que se recalcula, y lo perdonado reaparece como deuda en
+   * cuanto la campaña vence.
+   */
+  condonadoMora: number;
 }
 
 export interface OpcionesImputacionCuotas {
@@ -274,9 +292,21 @@ export function imputarPagoEnCuotas(
       fechaTopeMora(topeMoraDeCuota(c.fechaVencimiento, hoy, congeladaAl), topeAbsoluto),
     );
     const moraPlena = moraActiva ? interesMora(c.baseMora, diasMora, { tasaDiaria: tasaMoraDiaria, diasGracia, topePct: opciones.topeMoraPct }) : 0;
-    // La quita de campaña reduce la mora devengada (lo condonado se reporta como ahorro).
-    const moraDevengada = round2(moraPlena * factorMora);
-    const moraPend = noNegativo(round2(moraDevengada - c.pagadoMora));
+    /**
+     * 🔴 LA QUITA SE APLICA SOBRE LO QUE TODAVÍA SE DEBE, Y LO PERDONADO SE ASIENTA.
+     *
+     * Antes era `moraPlena * factorMora` a secas. Eso alcanzaba para cobrar menos ESE día,
+     * pero no dejaba rastro: al vencer la campaña, `moraPlena` volvía al 100% y el 20%
+     * perdonado reaparecía como deuda de la misma cuota. El cliente pagaba en plazo y
+     * terminaba pagando todo.
+     *
+     * Ahora lo ya resuelto son DOS cosas: la plata que entró (`pagadoMora`) y la que se
+     * perdonó para siempre (`condonadoMora`). El descuento corre sobre el resto.
+     */
+    const moraResuelta = round2(c.pagadoMora + c.condonadoMora);
+    const moraRestantePlena = noNegativo(round2(moraPlena - moraResuelta));
+    const moraDevengada = round2(moraRestantePlena * factorMora);
+    const moraPend = moraDevengada;
 
     // Cuota ya saldada por completo (sin mora pendiente) → se salta.
     if (interesPend <= 0 && cargosPend <= 0 && capitalPend <= 0 && moraPend <= 0) continue;
@@ -303,6 +333,25 @@ export function imputarPagoEnCuotas(
 
     if (aMora === 0 && aInteres === 0 && aCargos === 0 && aCapital === 0) continue;
 
+    /**
+     * 🔴 CUÁNTA MORA SE PERDONA DEFINITIVAMENTE EN ESTA CUOTA, CON ESTE PAGO.
+     *
+     * Se gana en proporción a lo que se paga, no de entrada. Si el descuento es del 20% y
+     * entraron $23.676,94 de mora, eso saldó $29.596,18 a precio de lista: los $5.919,24 de
+     * diferencia quedan perdonados y no vuelven. Si el cliente paga la mitad, se le perdona
+     * la mitad — el descuento se gana pagando, que es exactamente lo que dice la oferta.
+     *
+     * Con el 100% de quita no hay plata que prorratear (`factorMora` es 0 y `aMora` también),
+     * así que se perdona todo el resto de una vez. Sin este caso aparte la cuenta sería una
+     * división por cero, y la cuota quedaría debiendo la mora entera pese a la promesa.
+     */
+    let condonadoMoraNuevo = 0;
+    if (factorMora < 1 && moraRestantePlena > 0) {
+      condonadoMoraNuevo = factorMora === 0
+        ? moraRestantePlena
+        : round2(Math.min(moraRestantePlena, round2(aMora / factorMora)) - aMora);
+    }
+
     aplicaciones.push({
       id: c.id,
       nro: c.nro,
@@ -312,6 +361,7 @@ export function imputarPagoEnCuotas(
       aplicadoCapital: aCapital,
       moraDevengada,
       diasAtraso: dias,
+      condonadoMora: condonadoMoraNuevo,
     });
     totales.mora = round2(totales.mora + aMora);
     totales.interes = round2(totales.interes + aInteres);
@@ -339,12 +389,14 @@ export function imputarPagoEnCuotas(
      * Caso borde: con quita del 100% la mora devengada es 0 y no hay proporción que medir —
      * el punitorio se le perdona entero por el solo hecho de que la campaña lo alcanza, así
      * que se acredita completo en el pago que toca la cuota.
+     *
+     * 🔴 Y ES EL MISMO NÚMERO QUE SE ASIENTA EN LA CUOTA (`condonadoMora`), no una segunda
+     * cuenta. Estaban por duplicado unas líneas más arriba: la que informa el recibo y la que
+     * queda perdonada en el libro. Dos fórmulas para el mismo peso terminan separándose, y
+     * entonces el recibo dice que se condonó una cosa y la cuota queda debiendo otra — que es
+     * exactamente la clase de defecto que esta columna vino a cerrar.
      */
-    const quitaDeLaCuota = noNegativo(round2(moraPlena - moraDevengada));
-    if (quitaDeLaCuota > 0) {
-      const proporcion = moraDevengada > 0 ? Math.min(1, aMora / moraDevengada) : 1;
-      ahorroMora = round2(ahorroMora + round2(quitaDeLaCuota * proporcion));
-    }
+    ahorroMora = round2(ahorroMora + condonadoMoraNuevo);
   }
 
   return { aplicaciones, totales, excedente: round2(restante), ahorroMora };

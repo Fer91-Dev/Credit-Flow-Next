@@ -80,6 +80,15 @@ export interface CuotaParaMora {
   baseMora: number;
   /** Mora ya cobrada de esta cuota (se descuenta de lo devengado). */
   pagadoMora?: number;
+  /**
+   * Mora ya PERDONADA definitivamente por la quita de una campana (migracion 010).
+   *
+   * Se descuenta igual que lo cobrado: en los dos casos la cuota dejo de deber ese punitorio.
+   * Sin esto, los KPI de mora seguian contando como exigible lo que la financiera ya habia
+   * resignado por escrito, y el total de la cartera en mora salia mas alto que lo que el
+   * sistema le iba a cobrar.
+   */
+  condonadoMora?: number;
 }
 
 /**
@@ -110,7 +119,7 @@ export function moraPendienteTotal(
       diasGracia: opciones.diasGracia,
       topePct: opciones.topePct,
     });
-    const pendiente = devengada - (c.pagadoMora ?? 0);
+    const pendiente = devengada - (c.pagadoMora ?? 0) - (c.condonadoMora ?? 0);
     if (pendiente > 0) total = round2(total + pendiente);
   }
   return round2(total);

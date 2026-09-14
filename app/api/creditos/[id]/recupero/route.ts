@@ -110,6 +110,7 @@ async function cargarCaso(req: NextRequest, id: string) {
     pagadoInteres: c.pagado_interes,
     pagadoMora: c.pagado_mora,
     pagadoCargos: c.pagado_cargos,
+    condonadoMora: c.condonado_mora,
   }));
 
   const moraCred = moraDelCredito(moraDesdeCronograma(credito.cronograma), config);

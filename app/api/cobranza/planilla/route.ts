@@ -189,6 +189,7 @@ async function armarPlanilla(
       baseMora: baseMoraDeCuota(q),
       pagadoCapital: q.pagado_capital, pagadoInteres: q.pagado_interes,
       pagadoMora: q.pagado_mora, pagadoCargos: q.pagado_cargos,
+      condonadoMora: q.condonado_mora,
     }));
     // Condiciones de mora CONGELADAS en el crédito, no las de hoy: el papel que el cliente
     // tiene en la mano tiene que decir lo mismo que su ficha y que la caja.

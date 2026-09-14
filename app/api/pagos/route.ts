@@ -378,6 +378,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     pagadoInteres: c.pagado_interes,
     pagadoMora: c.pagado_mora,
     pagadoCargos: c.pagado_cargos,
+    condonadoMora: c.condonado_mora,
   }));
 
   const graciaCred = (credito.cronograma as { diasGracia?: number } | null)?.diasGracia ?? config.simulador.diasGracia;
@@ -530,6 +531,15 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     const pagadoInteres = round2(c.pagado_interes + (a?.aplicadoInteres ?? 0));
     const pagadoMora = round2(c.pagado_mora + (a?.aplicadoMora ?? 0));
     const pagadoCargos = round2(c.pagado_cargos + (a?.aplicadoCargos ?? 0));
+    /*
+      🔴 LA MORA PERDONADA SE ACUMULA EN LA CUOTA (migracion 010).
+
+      Sin esto la quita de campana era un factor que se recalculaba: mientras la campana estaba
+      activa la cuota pedia el 80%, y al vencer volvia al 100%, con lo cual lo perdonado
+      reaparecia como deuda y el cobro siguiente lo levantaba. Se ACUMULA porque un credito
+      puede pasar por varias campanas y por varios cobros parciales, y cada uno gana su parte.
+    */
+    const condonadoMora = round2(c.condonado_mora + (a?.condonadoMora ?? 0));
     const capitalSaldado = pagadoCapital >= round2(c.capital);
     const dias = diasAtraso(c.fecha_vencimiento, fechaPago);
     let estado: string;
@@ -538,7 +548,8 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     else if (dias > 0) estado = "vencida";
     else estado = "pendiente";
     return {
-      c, a, pagadoCapital, pagadoInteres, pagadoMora, pagadoCargos, capitalSaldado, dias, estado,
+      c, a, pagadoCapital, pagadoInteres, pagadoMora, pagadoCargos, condonadoMora,
+      capitalSaldado, dias, estado,
     };
   });
 
@@ -652,6 +663,12 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
           pagado_mora: x.pagadoMora,
           pagado_cargos: x.pagadoCargos,
           pagado: round2(x.pagadoCapital + x.pagadoInteres + x.pagadoMora + x.pagadoCargos),
+          /*
+            No entra en `pagado`: nadie puso esa plata. Sumarla ahi haria que los reportes de
+            cobranza contaran como recaudado lo que la financiera resigno — el mismo criterio
+            con el que `condonado` ya vive aparte.
+          */
+          condonado_mora: x.condonadoMora,
           estado: x.estado,
         },
       });

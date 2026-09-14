@@ -489,6 +489,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
       baseMora: baseMoraDeCuota(q),
       pagadoCapital: q.pagado_capital, pagadoInteres: q.pagado_interes,
       pagadoMora: q.pagado_mora, pagadoCargos: q.pagado_cargos,
+      condonadoMora: q.condonado_mora,
     }));
     const mc = moraDelCredito(moraDesdeCronograma(c.cronograma), config);
     const gracia = (c.cronograma as { diasGracia?: number } | null)?.diasGracia ?? config.simulador.diasGracia;

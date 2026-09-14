@@ -192,10 +192,19 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
     const moraSinPromo = moraCred.moraActiva
       ? interesMora(baseMoraDeCuota(c), diasQueDevengan, { tasaDiaria: moraCred.tasaMoraDiaria, diasGracia: graciaCred, topePct: moraCred.topeMoraPct })
       : 0;
-    // La quita de campaña reduce la mora devengada, con la MISMA cuenta que `POST /pagos`.
-    const moraPlena = round2(moraSinPromo * factorMora);
-    const moraPend = capitalSaldado ? 0 : round2(Math.max(0, moraPlena - c.pagado_mora));
-    if (!capitalSaldado) ahorroPromo = round2(ahorroPromo + Math.max(0, round2(moraSinPromo - moraPlena)));
+    /*
+      La quita de campaña reduce la mora devengada, con la MISMA cuenta que `POST /pagos`.
+
+      🔴 Y SOBRE LO QUE TODAVÍA SE DEBE, no sobre el total. Lo ya resuelto son dos cosas: la
+      plata que entró (`pagado_mora`) y la que se perdonó para siempre (`condonado_mora`,
+      migración 010). Sin restar la segunda, esta pantalla volvía a mostrar la mora entera en
+      cuanto la campaña vencía — la misma deuda resucitada que el cobro siguiente levantaba.
+    */
+    const moraResuelta = round2(c.pagado_mora + c.condonado_mora);
+    const moraRestantePlena = Math.max(0, round2(moraSinPromo - moraResuelta));
+    const moraPlena = round2(moraRestantePlena * factorMora);
+    const moraPend = capitalSaldado ? 0 : moraPlena;
+    if (!capitalSaldado) ahorroPromo = round2(ahorroPromo + Math.max(0, round2(moraRestantePlena - moraPlena)));
     const pendienteCuota = condonada
       ? 0
       : round2(Math.max(0, c.cuota_total - (c.pagado_capital + c.pagado_interes + c.pagado_cargos)));

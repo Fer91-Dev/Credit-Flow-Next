@@ -173,6 +173,7 @@ async function cargarRefinanciable(
     pagadoInteres: c.pagado_interes,
     pagadoMora: c.pagado_mora,
     pagadoCargos: c.pagado_cargos,
+    condonadoMora: c.condonado_mora,
   }));
 
   // Mora con las condiciones del crédito ORIGINAL: la deuda que se consolida es la que se
