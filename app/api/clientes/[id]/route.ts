@@ -38,7 +38,18 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
             // y no a cuenta de qué, que es la mitad del dato.
             include: {
               aplicaciones: {
-                select: { cuota: { select: { nro: true } } },
+                /*
+                  🔴 CUÁNTO cayó en cada cuota, y cuánto valía esa cuota.
+
+                  Con el número de cuota a secas, el historial no podía distinguir un cobro
+                  que SALDÓ la cuota de una entrega a cuenta, y las llamaba igual: "a cuenta
+                  de la cuota 3" sobre un cliente que había pagado la cuota entera. Suena a
+                  que dejó algo, que es exactamente lo contrario de lo que pasó.
+                */
+                select: {
+                  aplicado_capital: true, aplicado_interes: true, aplicado_cargos: true, aplicado_mora: true,
+                  cuota: { select: { nro: true, cuota_total: true } },
+                },
                 orderBy: { cuota: { nro: "asc" } },
               },
             },

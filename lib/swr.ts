@@ -139,8 +139,19 @@ export interface PagoImputado {
   anulado?: boolean;
   anulado_motivo?: string | null;
   anulado_at?: string | null;
-  /** Contra qué cuotas del plan se imputó este cobro. */
-  aplicaciones?: { cuota: { nro: number } }[];
+  /**
+   * Contra qué cuotas del plan se imputó este cobro, y con cuánto.
+   *
+   * Los importes viajan para poder decir si el cobro SALDÓ la cuota o fue una entrega a
+   * cuenta: son dos hechos distintos y el historial los mostraba con la misma frase.
+   */
+  aplicaciones?: {
+    aplicado_capital?: number;
+    aplicado_interes?: number;
+    aplicado_cargos?: number;
+    aplicado_mora?: number;
+    cuota: { nro: number; cuota_total?: number };
+  }[];
 }
 
 /** Crédito enriquecido con sus finanzas, dentro del detalle del cliente. */

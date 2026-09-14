@@ -1291,7 +1291,7 @@ function CreditosTabla({ creditos, mostrarProximo, onCobrar, onCobrarAcuerdo, cl
                 <div className="border-t border-border px-5 py-4">
                   {abiertoPagos && (
                     <>
-                      <p className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                      <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                         Historial de pagos
                       </p>
                       <PagosInline
@@ -1382,6 +1382,50 @@ function FragmentRow({ children }: { children: React.ReactNode }) {
  * importe exacto y abre el cobro con esa cuota puesta, igual que en Créditos.
  */
 /**
+ * QUÉ DICE EL RENGLÓN DE UN COBRO.
+ *
+ * 🔴 Decía "a cuenta de la cuota 3" SIEMPRE, incluso cuando el cliente había pagado la cuota
+ * entera. "A cuenta" significa que entregó algo y quedó debiendo: es exactamente lo contrario
+ * de lo que hizo, y el que lee la ficha se queda con que el cliente dejó un saldo abierto.
+ * Fernando, sobre el cobro de $75.678,86 de CRD-000004 que saldó la cuota 3 completa.
+ *
+ * Ahora el renglón distingue los dos hechos, que son distintos:
+ *   · el cobro CUBRIÓ la cuota  →  "Pago de la cuota 3"
+ *   · cubrió una parte          →  "Entrega a cuenta de la cuota 3"
+ *   · varias, mezcladas         →  "Pago de la cuota 1 · a cuenta de la cuota 2"
+ *
+ * Se compara lo aplicado AL PLAN (capital + interés + cargos) contra el valor de la cuota.
+ * Los punitorios quedan afuera de la comparación a propósito: son el precio del atraso, no
+ * parte de la cuota, y sumarlos haría que un cobro de mora sola pareciera saldarla.
+ *
+ * Si el dato no viaja —una respuesta vieja en el caché de SWR— no se afirma ninguna de las
+ * dos cosas: se dice a qué cuota se imputó y nada más. Es preferible decir menos que decir
+ * algo que puede ser falso.
+ */
+function frasePago(aplicaciones: NonNullable<PagoImputado["aplicaciones"]>): string {
+  if (aplicaciones.length === 0) return "Cobro registrado";
+  const lista = (ns: number[]) =>
+    ns.length === 1 ? `${ns[0]}` : `${ns.slice(0, -1).join(", ")} y ${ns[ns.length - 1]}`;
+  const tramo = (verbo: string, ns: number[]) =>
+    ns.length === 1 ? `${verbo} la cuota ${ns[0]}` : `${verbo} las cuotas ${lista(ns)}`;
+
+  const nros = aplicaciones.map((a) => a.cuota.nro);
+  if (aplicaciones.some((a) => a.cuota.cuota_total == null)) return tramo("Imputado a", nros);
+
+  const cubrio = (a: (typeof aplicaciones)[number]) => {
+    const alPlan = round2((a.aplicado_capital ?? 0) + (a.aplicado_interes ?? 0) + (a.aplicado_cargos ?? 0));
+    return alPlan >= round2(a.cuota.cuota_total!) - 0.01;
+  };
+  const saldadas = aplicaciones.filter(cubrio).map((a) => a.cuota.nro);
+  const parciales = aplicaciones.filter((a) => !cubrio(a)).map((a) => a.cuota.nro);
+
+  const partes: string[] = [];
+  if (saldadas.length > 0) partes.push(tramo("Pago de", saldadas));
+  if (parciales.length > 0) partes.push(tramo(partes.length > 0 ? "a cuenta de" : "Entrega a cuenta de", parciales));
+  return partes.join(" · ");
+}
+
+/**
  * LOS COBROS DE UN CRÉDITO — línea de tiempo, adentro de su propia tarjeta.
  *
  * 🔴 Antes vivía como una sección suelta al pie de la ficha, con TODOS los pagos del cliente
@@ -1424,60 +1468,49 @@ function PagosInline({ pagos, puedeAnular, reciboBusy, onRecibo, onAnular }: {
           <div key={p.id} className="relative pl-6">
             {/* Guía y nodo: es lo que hace que se lea como una secuencia. */}
             <span className="absolute inset-y-0 left-[5px] w-px bg-border" aria-hidden />
-            <span className={`absolute left-0 top-5 h-[11px] w-[11px] rounded-full ring-4 ring-background ${p.anulado ? "bg-muted-foreground/60" : "bg-success"}`} aria-hidden />
+            <span className={`absolute left-0 top-5 h-3 w-3 rounded-full ring-4 ring-background ${p.anulado ? "bg-muted-foreground/60" : "bg-success"}`} aria-hidden />
 
             <div className={`rounded-xl border border-border bg-card p-4 transition-colors hover:border-success/30 ${p.anulado ? "opacity-60" : ""}`}>
-              <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+              <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1.5">
                 <div className="min-w-0">
-                  <p className={`font-mono text-lg font-bold tabular-nums tracking-tight ${p.anulado ? "text-muted-foreground line-through" : "text-success"}`}>
+                  <p className={`font-mono text-xl font-bold tabular-nums tracking-tight ${p.anulado ? "text-muted-foreground line-through" : "text-success"}`}>
                     +${n2(p.monto)}
                   </p>
-                  <p className="text-xs text-muted-foreground">
-                    {cuotas.length > 0 ? (
-                      <>
-                        a cuenta de la{" "}
-                        <span className="font-medium text-foreground">
-                          {cuotas.length === 1
-                            ? `cuota ${cuotas[0].cuota.nro}`
-                            : `cuotas ${cuotas.map((a) => a.cuota.nro).join(", ")}`}
-                        </span>
-                      </>
-                    ) : "cobro registrado"}
-                  </p>
+                  <p className="text-sm font-medium text-foreground/90">{frasePago(cuotas)}</p>
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
-                  <span className="text-[11px] tabular-nums text-muted-foreground">{formatFecha(p.fecha)}</span>
+                  <span className="font-mono text-xs font-semibold tabular-nums text-foreground/80">{formatFecha(p.fecha)}</span>
                   {p.anulado
                     ? <StatusBadge label="Anulado" variant="destructive" />
-                    : <StatusBadge label={p.metodo} variant="muted" />}
+                    : <StatusBadge label={p.metodo} variant="primary" className="capitalize" />}
                 </div>
               </div>
 
               {/* Cómo se repartió el dinero: responde "¿por qué sigue debiendo tanto?". */}
               {!p.anulado && imputado.length > 0 && (
-                <div className="mt-2.5 flex flex-wrap gap-1.5">
+                <div className="mt-3 flex flex-wrap gap-2">
                   {imputado.map((x) => (
-                    <span key={x.k} className="inline-flex items-baseline gap-1.5 rounded-md border border-border/60 bg-muted/20 px-2 py-1 text-[11px]">
+                    <span key={x.k} className="inline-flex items-baseline gap-1.5 rounded-md border border-border bg-muted/30 px-2.5 py-1 text-xs">
                       <span className="text-muted-foreground">{x.k}</span>
-                      <span className={`font-mono font-medium tabular-nums ${x.c}`}>${n2(x.v)}</span>
+                      <span className={`font-mono font-semibold tabular-nums ${x.c}`}>${n2(x.v)}</span>
                     </span>
                   ))}
                 </div>
               )}
 
               {p.anulado && p.anulado_motivo && (
-                <p className="mt-2 text-[11px] text-muted-foreground">Motivo: {p.anulado_motivo}</p>
+                <p className="mt-2.5 text-xs text-muted-foreground">Motivo: <span className="text-foreground/80">{p.anulado_motivo}</span></p>
               )}
 
               {(onRecibo || (puedeAnular && onAnular)) && (
-                <div className="mt-3 flex items-center justify-end gap-2 border-t border-border/60 pt-2.5">
+                <div className="mt-3.5 flex items-center justify-end gap-2 border-t border-border pt-3">
                   {onRecibo && (
                     <button
                       onClick={() => onRecibo(p.id)}
                       disabled={reciboBusy === p.id}
-                      className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-muted/40 px-3 py-1.5 text-xs font-semibold text-foreground transition-colors hover:border-primary/40 hover:bg-muted disabled:opacity-50"
                     >
-                      {reciboBusy === p.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Receipt className="h-3 w-3" />}
+                      {reciboBusy === p.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Receipt className="h-4 w-4 text-primary" />}
                       Recibo
                     </button>
                   )}
@@ -1485,9 +1518,9 @@ function PagosInline({ pagos, puedeAnular, reciboBusy, onRecibo, onAnular }: {
                     <button
                       onClick={() => onAnular(p)}
                       title="Anular pago (contra-asiento en caja)"
-                      className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-destructive/40 bg-destructive/[0.07] px-3 py-1.5 text-xs font-semibold text-destructive transition-colors hover:border-destructive/60 hover:bg-destructive/15"
                     >
-                      <Ban className="h-3 w-3" /> Anular
+                      <Ban className="h-4 w-4" /> Anular
                     </button>
                   )}
                 </div>
