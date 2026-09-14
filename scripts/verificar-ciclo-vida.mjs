@@ -378,12 +378,53 @@ H1("FASE 5 — REFINANCIAR: la deuda consolidada, sin mover caja");
 // ════════════════════════════════════════════════════════════════════════════
 
 const antesRefi = (await api("GET", `/api/creditos/${ID2}/cuotas`)).data.cuotas;
-const deudaMia = r2(antesRefi.reduce((s, q) => s + (q.total_cobrar ?? 0), 0));
+const deudaPrevia = r2(antesRefi.reduce((s, q) => s + (q.total_cobrar ?? 0), 0));
+
+/*
+  🔴 LA ENTREGA MINIMA, PRIMERO. La financiera exige que el cliente ponga plata para
+  reestructurar (`entrega_minima_pct`), y este verificador es anterior a esa regla: pedia la
+  refinanciacion en seco y se comia un 409 — la regla funcionando, reportada como defecto.
+
+  El camino es el mismo que hace la pantalla: se cobra la entrega como un pago normal, con
+  `entrega_de: "refinanciacion"`, que es lo que la deja pasar el bloqueo por atraso; y despues
+  se refinancia pasando el id de ese pago.
+
+  Se lee el minimo del propio preview en vez de calcularlo: si manana la financiera lo cambia,
+  el verificador acompana solo.
+*/
+const prevRefi = await api("GET", `/api/creditos/${ID2}/refinanciar`);
+const minimoEntrega = prevRefi.ok ? r2(prevRefi.data.limites?.entrega_minima ?? 0) : 0;
+let entregaRefiId;
+if (minimoEntrega > 0) {
+  const pe = await api("POST", "/api/pagos", {
+    credito_id: ID2, monto: minimoEntrega, metodo: "efectivo",
+    notas: "Entrega al refinanciar", entrega_de: "refinanciacion",
+  });
+  ok(pe.ok, `entrega mínima cobrada · ${f(minimoEntrega)}`, pe.error ?? "");
+  entregaRefiId = pe.data?.pago?.id ?? pe.data?.id;
+}
+
+// La caja se mide DESPUES de la entrega: ese cobro sí mueve plata; la refinanciación no.
 const cajaAntesRefi = await saldoCaja();
+
+/*
+  🔴 Y LA DEUDA SE RECALCULA DESPUES DE LA ENTREGA.
+
+  La entrega es un cobro de verdad: baja la deuda antes de consolidarla. Midiendola antes, el
+  verificador esperaba un credito nuevo mas grande que el real — exactamente por el importe de
+  la entrega — y reportaba un descuadre que no existia. De paso queda comprobado que la
+  entrega SIRVE para algo: si no bajara la deuda, el cliente estaria poniendo plata para nada.
+*/
+const trasEntrega = (await api("GET", `/api/creditos/${ID2}/cuotas`)).data.cuotas;
+const deudaMia = r2(trasEntrega.reduce((s, q) => s + (q.total_cobrar ?? 0), 0));
+ok(igual(r2(deudaPrevia - deudaMia), minimoEntrega, 200),
+  "la entrega baja la deuda que se va a consolidar",
+  `${f(deudaPrevia)} − ${f(minimoEntrega)} = ${f(deudaMia)}`);
 
 const refi = await api("POST", `/api/creditos/${ID2}/refinanciar`, {
   tasa: TASA_OK, plazo_meses: plazoValido(3), frecuencia: "mensual", quita_tipo: "ninguna", quita_valor: 0,
   honorarios_pct: 0, motivo: "ciclo de vida",
+  ...(entregaRefiId ? { entrega_pago_id: entregaRefiId } : {}),
 });
 ok(refi.ok, "refinanciación aceptada", refi.error ?? "");
 if (!refi.ok) { console.log("\nno se puede seguir sin la refinanciación."); }
