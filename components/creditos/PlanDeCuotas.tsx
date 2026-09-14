@@ -103,6 +103,18 @@ export function PlanDeCuotas({
   const condonadoTotal = Math.round(cuotas.reduce((s, q) => s + (q.condonado ?? 0), 0) * 100) / 100;
   /** Lo que de esa mora TODAVIA no se cobro. Decide si el total va en rojo o no. */
   const moraPendienteVista = cuotas.reduce((s, q) => s + (q.mora ?? 0), 0);
+  /**
+   * 🔴 CUÁNTA DE ESA MORA ENTRÓ DE VERDAD.
+   *
+   * El pie decía "cobrada" con solo mirar que no quedara mora PENDIENTE, y en un crédito
+   * refinanciado eso pasó a ser falso: la columna suma también los punitorios que la cuota
+   * había devengado y NO se alcanzaron a cobrar —se financiaron adentro del crédito nuevo—.
+   * Sobre CRD-000009 el pie decía "$52.860,15 cobrada" cuando entraron $34.689,47. Fernando
+   * lo vio de una: "¿por qué lo suma con $17.620,05 y $550,63?".
+   */
+  const moraCobradaTotal = Math.round(cuotas.reduce((s, q) => s + (q.pagado_mora ?? 0), 0) * 100) / 100;
+  /** Lo que devengó y no entró porque la deuda se mudó a una refinanciación. */
+  const moraTrasladada = Math.round((moraTotal - moraCobradaTotal - moraPendienteVista) * 100) / 100;
   const pagadoTotal = cuotas.reduce((s, q) => s + pagadoDeCuota(q), 0);
   const aCobrarTotal =
     Math.round(cuotas.reduce((s, q) => s + (q.estado === "pagada" ? 0 : q.total_cobrar ?? q.cuota_total), 0) * 100) / 100;
@@ -555,9 +567,23 @@ export function PlanDeCuotas({
                 {moraTotal > 0 ? (
                   <>
                     ${n2(moraTotal)}
-                    {moraPendienteVista <= 0 && (
+                    {/* Con una parte trasladada, el pie discrimina: decir "cobrada" a secas
+                        sobre un total que incluye punitorios que nunca entraron es afirmar
+                        que entró plata que no entró. */}
+                    {moraTrasladada > 0.009 ? (
+                      <>
+                        {moraCobradaTotal > 0 && (
+                          <span className="block font-sans text-[10px] font-normal leading-tight text-success">
+                            ${n2(moraCobradaTotal)} cobrada
+                          </span>
+                        )}
+                        <span className="block font-sans text-[10px] font-normal leading-tight text-warning">
+                          ${n2(moraTrasladada)} al refinanciar
+                        </span>
+                      </>
+                    ) : moraPendienteVista <= 0 ? (
                       <span className="block text-[10px] font-normal text-success">cobrada</span>
-                    )}
+                    ) : null}
                   </>
                 ) : <span className="text-muted-foreground/20">—</span>}
               </td>
