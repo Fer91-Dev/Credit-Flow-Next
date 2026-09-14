@@ -216,6 +216,15 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
   /** Mora devengada de todo el plan (pie de la columna Mora). */
   /** Pie de la columna Mora: la DEVENGADA, igual que las celdas. */
   const moraTotalPlan = cuotas.reduce((s, q) => s + moraDevengadaDeCuota(q), 0);
+  /**
+   * 🔴 CON UN ACUERDO ENCIMA, CADA KPI TIENE QUE DECIR DE CUÁL DE LOS DOS PLANES HABLA.
+   *
+   * La franja mezcla los dos: lo prestado, la deuda y lo cobrado son del CRÉDITO; la cuota
+   * pactada es del ACUERDO. Fernando: "no se sabe si son datos del acuerdo o del crédito
+   * original". Sin acuerdo no hay ambigüedad y las etiquetas no se muestran.
+   */
+  const DEL_CREDITO = acuerdo ? "del crédito" : undefined;
+  const DEL_ACUERDO = acuerdo ? "del acuerdo" : undefined;
   /** La suma nominal del plan: es el número que muestra la fila "Totales" del cronograma. */
   const sumaPlan = cuotas.reduce((s, q) => s + q.cuota_total, 0);
   /* La cuenta que une ese total con lo que el acuerdo consolidó. Null si no cierra exacta. */
@@ -671,6 +680,13 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
                     {credito.producto.nombre}{credito.producto_cantidad && credito.producto_cantidad > 1 ? ` x${credito.producto_cantidad}` : ""}
                   </span>
                 )}
+                {/* Con un acuerdo encima, la franja habla de dos planes: esta tarjeta es del
+                    crédito, y lo dice igual que sus vecinas. */}
+                {DEL_CREDITO && (
+                  <span className="rounded border border-border bg-muted/40 px-1.5 py-px text-[9px] font-bold uppercase tracking-wider text-muted-foreground">
+                    {DEL_CREDITO}
+                  </span>
+                )}
               </div>
               <p className="mt-1.5 font-mono text-2xl font-bold leading-none tabular-nums text-foreground">
                 ${n2(credito.monto_original)}
@@ -736,6 +752,7 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
             deuda, no la deuda.
           */}
           <Stat icon="money-bag" label="Deuda total" accent={deudaTotal > 0 ? "warning" : "success"}
+            tag={DEL_CREDITO}
             value={`$${n2(deudaTotal)}`}
             sub={deudaTotal > 0 ? `capital $${n2(credito.saldo_pendiente)}${moraTotalPlan > 0 ? ` · mora $${n2(moraTotalPlan)}` : ""}` : undefined} />
           {/* CUÁL y CUÁNTO, no "la cuota" en abstracto: el operador necesita saber qué le
@@ -768,6 +785,8 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
               icon="handshake"
               label={acuerdoAlDia ? "Cuota pactada" : "Cuota pactada vencida"}
               accent={acuerdoAlDia ? "primary" : "destructive"}
+              tag={DEL_ACUERDO}
+              tagAcento
               value={proximaPactada ? `$${n2(pactadaPendiente)}` : "—"}
               sub={
                 proximaPactada
@@ -795,6 +814,7 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
           )}
           {/* El conteo excluye los anulados: decía "1 pago" con "$0 cobrado" al lado. */}
           <Stat icon="chart-increasing" label="Total cobrado" accent="success"
+            tag={DEL_CREDITO}
             value={`$${n2(totalCobrado)}`}
             sub={`${pagosVivos} pago${pagosVivos !== 1 ? "s" : ""}${pagosAnulados > 0 ? ` · ${pagosAnulados} anulado${pagosAnulados !== 1 ? "s" : ""}` : ""}`} />
           {/*
@@ -817,6 +837,9 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
             icon={moraCongelada ? "handshake" : "warning"}
             label={moraCongelada ? "Mora congelada" : diasMora > 0 ? "En mora" : "Próximo pago"}
             accent={moraCongelada ? "muted" : diasMora > 30 ? "destructive" : diasMora > 0 ? "warning" : "muted"}
+            /* Los días de atraso son del CRÉDITO aunque sea el acuerdo el que los congeló:
+               el pie ya dice quién frenó el reloj. */
+            tag={DEL_CREDITO}
             // "41 días", no "41d": el usuario pidió la palabra entera — la abreviatura
             // obliga a traducirla mentalmente cada vez, y esta tarjeta es de las que se
             // miran de reojo.

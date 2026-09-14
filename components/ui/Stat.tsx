@@ -12,6 +12,8 @@ export function Stat({
   label,
   value,
   sub,
+  tag,
+  tagAcento,
   accent,
   onClick,
   title,
@@ -21,6 +23,22 @@ export function Stat({
   label: string;
   value: string;
   sub?: string;
+  /**
+   * DE QUÉ HABLA ESTA TARJETA, cuando la pantalla muestra dos cosas a la vez.
+   *
+   * 🔴 En un crédito con acuerdo de pago, la franja mezcla números del CRÉDITO (lo prestado,
+   * la deuda, lo cobrado) con números del ACUERDO (la cuota pactada), y nada lo decía:
+   * "no se sabe si son datos del acuerdo o del crédito original" (Fernando, 14/09/2026).
+   * Cuatro importes de plata sin saber a cuál de los dos planes pertenece cada uno.
+   *
+   * Se usa SOLO cuando hay ambigüedad real. Sin acuerdo no hay dos planes, y entonces la
+   * etiqueta sería ruido: la tarjeta habla del crédito y no hay otra cosa de la que hablar.
+   * Y si se etiqueta una de la fila, se etiquetan TODAS: media fila rotulada deja a la otra
+   * media sin decir nada, que es el problema de origen.
+   */
+  tag?: string;
+  /** La etiqueta se tiñe del acento de la tarjeta (para distinguir el grupo minoritario). */
+  tagAcento?: boolean;
   accent: StatAccent;
   /** Si viene, la tarjeta se vuelve un botón: hover, foco y cursor. */
   onClick?: () => void;
@@ -69,6 +87,15 @@ export function Stat({
           {isEmoji ? <Emoji name={icon} className="h-3.5 w-3.5" /> : Icon && <Icon className={`h-3 w-3 ${c.text}`} />}
         </div>
       </div>
+      {/* La etiqueta va ARRIBA del importe: pegada al rótulo se pelea con el ícono, y abajo
+          se confunde con el pie, que explica el número y no de quién es. */}
+      {tag && (
+        <span className={`mb-1 inline-flex w-fit items-center rounded border px-1.5 py-px text-[9px] font-bold uppercase tracking-wider ${
+          tagAcento ? `${c.bg} ${c.border} ${c.text}` : "border-border bg-muted/40 text-muted-foreground"
+        }`}>
+          {tag}
+        </span>
+      )}
       <p className={`font-mono text-lg font-bold leading-tight ${c.text}`}>{value}</p>
       <p className="mt-0.5 min-h-[0.95rem] text-[10px] leading-tight text-muted-foreground/60">{sub}</p>
     </Wrapper>
