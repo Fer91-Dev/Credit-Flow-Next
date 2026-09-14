@@ -346,11 +346,24 @@ export function PlanDeCuotas({
                         <span className={`block ${moraPend > 0 ? "text-destructive" : "text-muted-foreground"}`}>
                           ${n2(moraDev)}
                         </span>
-                        {(q.pagado_mora ?? 0) > 0 && (
+                        {(q.pagado_mora ?? 0) > 0 ? (
                           <span className="block font-sans text-[10px] font-normal leading-tight text-success">
                             {moraPend > 0 ? `$${n2(q.pagado_mora ?? 0)} cobrada` : "cobrada"}
                           </span>
-                        )}
+                        ) : q.mora_historica != null ? (
+                          /*
+                            🔴 ESTA MORA NO SE COBRA: SE MUDÓ.
+
+                            En un crédito refinanciado, lo que la cuota había devengado y no se
+                            alcanzó a cobrar con la entrega quedó financiado adentro del
+                            capital del crédito nuevo. El importe tiene que verse —si no, esa
+                            plata desaparece de la pantalla— pero sin que nadie lo lea como
+                            algo que todavía se reclama.
+                          */
+                          <span className="block font-sans text-[10px] font-normal leading-tight text-warning">
+                            al refinanciar
+                          </span>
+                        ) : null}
                       </>
                     ) : (
                       /* El hueco se marca con un guion tenue y CENTRADO en la columna: alineado

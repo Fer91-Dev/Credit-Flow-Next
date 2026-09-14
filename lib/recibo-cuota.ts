@@ -58,5 +58,18 @@ export function ultimoPagoDeCuota(cuota: CuotaPersistida): string | null {
  * $38.788,14 de mora que la columna daba por inexistente.
  */
 export function moraDevengadaDeCuota(cuota: CuotaPersistida): number {
+  /*
+    🔴 EN UN CRÉDITO REFINANCIADO MANDA LA MORA CONGELADA AL MUDARSE LA DEUDA.
+
+    Sus cuotas quedan en `trasladada` y dejan de devengar, así que `mora` es 0 y la columna
+    mostraba solo lo que se alcanzó a COBRAR con la entrega. El resto de los punitorios —los
+    que se financiaron adentro del crédito nuevo— no aparecía en ninguna parte: sobre
+    CRD-000009 eran $18.170,68 sin rastro. `mora_historica` es lo que esa cuota había
+    devengado el día de la refinanciación, y es el número que corresponde mostrar acá.
+
+    Sigue sin ser cobrable: `mora` (el pendiente) sigue en 0 y es esa la que alimenta
+    "A cobrar".
+  */
+  if (cuota.mora_historica != null) return Math.round(cuota.mora_historica * 100) / 100;
   return Math.round(((cuota.mora ?? 0) + (cuota.pagado_mora ?? 0)) * 100) / 100;
 }

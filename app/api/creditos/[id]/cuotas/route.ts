@@ -3,7 +3,7 @@ import { scopeCreditoParaCobrar } from "@/lib/cobranza-scope";
 import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
-import { cuotaCerradaSinPago, frecuenciaLabel, normalizarFrecuencia, diasAtraso, round2, moraRestanteDeCuota, moraDelCredito, moraDesdeCronograma, topeMoraDeCuota, fechaTopeMora, topeMoraPorFallecimiento, topeMoraPorIncobrable, topeMoraMasTemprano, promoVigenteAl, type FrecuenciaDef, baseMoraDeCuota, pendienteSinMoraDeCuota } from "@/lib/domain";
+import { cuotaCerradaSinPago, frecuenciaLabel, normalizarFrecuencia, diasAtraso, round2, interesMora, moraRestanteDeCuota, moraDelCredito, moraDesdeCronograma, topeMoraDeCuota, fechaTopeMora, topeMoraPorFallecimiento, topeMoraPorIncobrable, topeMoraMasTemprano, promoVigenteAl, type FrecuenciaDef, baseMoraDeCuota, pendienteSinMoraDeCuota } from "@/lib/domain";
 import { getConfiguracion, getCobranzaConfig } from "@/lib/config";
 import { recibosPorCuotaDeAcuerdo } from "@/lib/acuerdos";
 import { veredictoCobro } from "@/lib/recupero-server";
@@ -39,6 +39,9 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
       // una deuda que se mandó a ejecutar infla un número que nadie va a cobrar.
       estado: true,
       incobrable_at: true,
+      /* A qué crédito se le mudó la deuda. Su fecha de inicio ES la fecha en que se
+         refinanció, y con ella se reconstruye la mora que cada cuota tenía ese día. */
+      refinanciado_en: true,
       // `estado`/`estado_fecha` del cliente: un fallecido frena los punitorios de todo el plan.
       cliente: { select: { nombre: true, apellido: true, estado: true, estado_fecha: true } },
       cuotas: {
@@ -76,6 +79,31 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
    */
   const config = await getConfiguracion(tenantId);
   const moraCred = moraDelCredito(moraDesdeCronograma(credito.cronograma), config);
+
+  /**
+   * 🔴 LA MORA QUE CADA CUOTA TENÍA EL DÍA QUE SE MUDÓ LA DEUDA.
+   *
+   * Un crédito refinanciado tiene sus cuotas en `trasladada`: dejaron de devengar, y con
+   * razón —la deuda se fue a otro crédito—, así que la columna MORA muestra únicamente lo
+   * que se alcanzó a COBRAR con la entrega. El resto de los punitorios no está en ninguna
+   * columna: se financió adentro del capital del crédito nuevo.
+   *
+   * Sobre CRD-000009 eso deja $18.170,68 sin rastro en pantalla. Fernando: "¿pero dónde se
+   * discriminan esos $52.860,15?".
+   *
+   * Se recalcula la mora de cada cuota CONGELADA a la fecha de la refinanciación —la fecha
+   * de inicio del crédito que la recibió— y viaja como un dato aparte, `mora_historica`.
+   * Aparte a propósito: es un HISTÓRICO, no un pendiente. Si alimentara `mora` volvería a
+   * aparecer en "A cobrar", que es exactamente lo que no puede pasar sobre un crédito muerto.
+   */
+  let fechaRefi: Date | null = null;
+  if (credito.estado === "refinanciado" && credito.refinanciado_en) {
+    const nuevo = await prisma.creditos.findFirst({
+      where: { ...withTenant(tenantId), id: credito.refinanciado_en },
+      select: { fecha_inicio: true, created_at: true },
+    });
+    fechaRefi = nuevo?.fecha_inicio ?? nuevo?.created_at ?? null;
+  }
   const graciaCred = (credito.cronograma as { diasGracia?: number } | null)?.diasGracia ?? config.simulador.diasGracia;
 
   /**
@@ -278,6 +306,15 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
       restante_capital,
       // Mora devengada de ESTA cuota (0 si no venció o si la financiera la tiene apagada).
       mora: moraPend,
+      /* Solo en un crédito REFINANCIADO: lo que esta cuota había devengado el día en que la
+         deuda se mudó. Es histórico y no se cobra — ver el bloque de `fechaRefi`. */
+      mora_historica: fechaRefi && moraCred.moraActiva
+        ? interesMora(
+            baseMoraDeCuota(c),
+            diasAtraso(c.fecha_vencimiento, fechaRefi),
+            { tasaDiaria: moraCred.tasaMoraDiaria, diasGracia: graciaCred, topePct: moraCred.topeMoraPct },
+          )
+        : null,
       dias_atraso,
       // Lo que hay que cobrar para saldarla HOY: lo que falta de la cuota más su mora.
       total_cobrar: round2(pendienteCuota + moraPend),

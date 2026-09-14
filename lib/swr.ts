@@ -705,6 +705,13 @@ export interface CuotaPersistida {
   restante_capital: number;
   /** Mora devengada de ESTA cuota, calculada por el motor con las condiciones congeladas. */
   mora?: number;
+  /**
+   * Solo en un crédito REFINANCIADO: la mora que esta cuota había devengado el día en que la
+   * deuda se mudó al crédito nuevo. Es HISTÓRICA — no se cobra, y por eso viaja separada de
+   * `mora`: si alimentara el pendiente volvería a aparecer en "A cobrar" sobre un crédito
+   * que ya no existe.
+   */
+  mora_historica?: number | null;
   /** Días de atraso de ESTA cuota. Es lo que explica el importe de mora de al lado; viene del
    *  server para que use el mismo "hoy comercial" con el que se calculó esa mora. */
   dias_atraso?: number;
