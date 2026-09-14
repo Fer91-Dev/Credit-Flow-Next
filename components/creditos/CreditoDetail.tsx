@@ -1292,19 +1292,28 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
           `<details>` y no un `useState`: trae el teclado, el foco y `aria-expanded` de fabrica.
         */}
         {/*
-          🔴 LA LUZ DEL BORDE, CON LA REGLA DE UNA SOLA POR PANTALLA.
+          🔴 LA LUZ DEL BORDE, Y POR QUÉ ACÁ HAY DOS.
 
-          El plan ya arrancaba plegado, pero nada pedía que se abriera: un borde quieto se lee
-          como decoración. Es el mismo recurso que el panel del acuerdo (`.borde-luz`).
+          El plan arranca plegado y nada pedía que se abriera: un borde quieto se lee como
+          decoración. Es el mismo recurso que el panel del acuerdo (`.borde-luz`).
 
-          Y por eso mismo: si hay un acuerdo VIGENTE, la luz es del acuerdo y no de acá. Con
-          las dos encendidas ninguna llama la atención — y además sería al revés de lo que
-          hay que mirar, porque con un acuerdo encima este plan NO es lo que se cobra.
+          La regla era "una sola por pantalla", así que con un acuerdo vigente esta se
+          apagaba. La consecuencia no estaba prevista: el crédito —que sigue vivo, que es el
+          contrato, y sobre el que se imputa cada peso que entra— quedaba como un renglón
+          gris debajo de un panel que brilla. Fernando: "el acuerdo le quita protagonismo al
+          crédito que aún sigue vivo" (14/09/2026).
+
+          Se encienden las dos, pero NO del mismo color, que es lo que haría que se
+          estorbaran: el acuerdo en indigo (lo que se cobra hoy) y el crédito en ÁMBAR —el
+          mismo `--warning` del KPI "Deuda total", que es su número—. Dos luces iguales
+          reparten la atención; dos colores distintos dicen que son dos cosas distintas, y
+          cada una remite al color con el que la pantalla ya viene hablando de ella.
         */}
         <details open={planAbierto} onToggle={(e) => setPlanAbierto((e.target as HTMLDetailsElement).open)}
-          className={`group/plan relative overflow-hidden rounded-xl border border-border bg-card ${
-            !planAbierto && !acuerdoVigente ? "borde-luz" : ""
-          }`} ref={planRef}>
+          style={{ "--cf-luz": acuerdoVigente ? "var(--warning)" : "var(--primary)" } as React.CSSProperties}
+          className={`group/plan relative overflow-hidden rounded-xl border bg-card ${
+            acuerdoVigente ? "border-warning/25" : "border-border"
+          } ${!planAbierto ? "borde-luz" : ""}`} ref={planRef}>
           <summary className="flex cursor-pointer flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3 list-none transition-colors hover:bg-muted/20 [&::-webkit-details-marker]:hidden">
             <div className="flex items-center gap-2">
               <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform duration-200 group-open/plan:rotate-180" />
