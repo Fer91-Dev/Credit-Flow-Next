@@ -1583,13 +1583,34 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
                           valor={bruto}
                         />
                         {punitorios > 0 && (
-                          <p className="pl-1 text-[11px] leading-snug text-muted-foreground">
-                            suma de sus cuotas{" "}
-                            <span className="font-mono tabular-nums text-foreground/80">{formatMonto(plan)}</span>
-                            {" + punitorios "}
-                            <span className="font-mono tabular-nums text-destructive/90">{formatMonto(punitorios)}</span>
-                            {" — el plan de cuotas nunca incluye la mora, se calcula aparte"}
-                          </p>
+                          <>
+                            <p className="pl-1 text-[11px] leading-snug text-muted-foreground">
+                              suma de sus cuotas{" "}
+                              <span className="font-mono tabular-nums text-foreground/80">{formatMonto(plan)}</span>
+                              {" + punitorios "}
+                              <span className="font-mono tabular-nums text-destructive/90">{formatMonto(punitorios)}</span>
+                              {" — el plan de cuotas nunca incluye la mora, se calcula aparte"}
+                            </p>
+                            {/*
+                              🔴 Y ADÓNDE FUE CADA MITAD DE ESOS PUNITORIOS.
+
+                              Fernando: "¿pero dónde se discriminan esos $52.860,15?". En el
+                              plan del crédito viejo solo se ven los que se COBRARON con la
+                              entrega: el resto no figura en ninguna columna porque dejó de
+                              deberse ahí — se mudó a este crédito, adentro de su capital. Sin
+                              este renglón, ese pedazo de plata desaparece de la pantalla
+                              justo cuando alguien intenta seguirle el rastro.
+                            */}
+                            {ap && ap.mora > 0 && (
+                              <p className="pl-1 text-[11px] leading-snug text-muted-foreground">
+                                de esos punitorios,{" "}
+                                <span className="font-mono tabular-nums text-success">{formatMonto(ap.mora)}</span>
+                                {" se cobraron con la entrega y "}
+                                <span className="font-mono tabular-nums text-warning">{formatMonto(r2(punitorios - ap.mora))}</span>
+                                {" quedaron financiados en este crédito"}
+                              </p>
+                            )}
+                          </>
                         )}
                       </>
                     );
