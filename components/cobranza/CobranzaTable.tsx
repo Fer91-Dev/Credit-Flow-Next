@@ -1107,7 +1107,16 @@ export function CobranzaTable({ role }: { role: Role }) {
           <DialogHeader className="shrink-0">
             <DialogTitle>Detalle de cobranza</DialogTitle>
           </DialogHeader>
-          <div className="flex-1 min-h-0 overflow-y-auto">
+          {/*
+            🔴 EL CANALETE DEL SCROLL. El contenido llegaba hasta el borde del área que
+            scrollea, así que la barra quedaba pegada a la tabla del plan de cuotas y la
+            columna "A cobrar" —que es la que se mira— parecía cortada contra ella.
+
+            `-mr-4 pr-4` corre la barra hacia el padding del diálogo y le deja al contenido
+            su respiro: la barra queda donde tiene que estar, contra el borde, y la tabla
+            termina donde terminaba antes.
+          */}
+          <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain -mr-4 pr-4">
             {detalle && (
               <CobranzaDetail credito={detalle} acciones={acciones} />
             )}
