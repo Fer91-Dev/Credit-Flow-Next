@@ -45,7 +45,7 @@ export interface ReciboData {
      * Contra que cuotas del PLAN se imputo, y que quedo pendiente de cada una AL MOMENTO de
      * este pago (no a hoy: un recibo reimpreso tiene que decir lo mismo que el original).
      */
-    cuotas?: { nro: number; total: number; vencimiento: Date | string; imputado: number; restante: number }[];
+    cuotas?: { nro: number; total: number; vencimiento: Date | string; imputado: number; restante: number; condonado?: number }[];
   };
   credito: {
     id: string;
@@ -298,8 +298,17 @@ export async function generarReciboPDF(data: ReciboData): Promise<Uint8Array> {
       text(`${c.nro} de ${c.total}`, M, y, bold, 10, INK);
       text(fmtDate(new Date(c.vencimiento)), M + 90, y, font, 10, INK);
       textRight(fmtMoney(c.imputado), right - 130, y, font, 10, INK);
+      /*
+        🔴 UNA CUOTA QUE SE PERDONÓ NO DICE "SALDADA" A SECAS.
+
+        Saldada suena a pagada, y no lo está: al cerrar el acuerdo cumplido (o un caso
+        incobrable) la financiera resigna lo que faltaba. El cliente tiene derecho a que el
+        papel diga cuál de las dos cosas pasó — y a tener la constancia de la condonación,
+        que es el papel que hace falta si mañana alguien le reclama ese saldo.
+      */
+      const perdonada = c.restante <= 0 && (c.condonado ?? 0) > 0;
       textRight(
-        c.restante > 0 ? fmtMoney(c.restante) : "SALDADA",
+        c.restante > 0 ? fmtMoney(c.restante) : perdonada ? "CONDONADA" : "SALDADA",
         right, y, bold, 10,
         c.restante > 0 ? rgb(0.96, 0.62, 0.04) : SUCCESS,
       );
@@ -313,9 +322,21 @@ export async function generarReciboPDF(data: ReciboData): Promise<Uint8Array> {
     // El total de lo que sigue debiendo de las cuotas que toco este pago. Es la respuesta a
     // "y entonces cuanto me falta", que es lo primero que pregunta el cliente.
     const restanteTotal = lineasCuota.reduce((a, c) => a + c.restante, 0);
+    const condonadoTotal = lineasCuota.reduce((a, c) => a + (c.condonado ?? 0), 0);
     y -= 2;
     hr(y);
     y -= 18;
+    /*
+      LO CONDONADO, EN SU PROPIO RENGLON Y CON SU NOMBRE. Antes esta plata figuraba como
+      "Queda pendiente": el recibo del ultimo cobro de un acuerdo cumplido decia que quedaban
+      68.713,53 pesos sobre un credito que estaba cerrado y en cero. El papel que el cliente
+      guarda es el peor lugar para una deuda que no existe.
+    */
+    if (condonadoTotal > 0) {
+      text("Condonado de estas cuotas", M, y, bold, 10, INK);
+      textRight(fmtMoney(condonadoTotal), right, y, bold, 11, SUCCESS);
+      y -= 17;
+    }
     text(
       restanteTotal > 0 ? "Queda pendiente de estas cuotas" : "Estas cuotas quedaron saldadas",
       M, y, bold, 10, INK,

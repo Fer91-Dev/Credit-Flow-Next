@@ -6,7 +6,7 @@ import { getFinanciera } from "@/lib/financiera";
 import { conNumeroDeOrigen } from "@/lib/creditos-numero";
 import { generarReciboPDF } from "@/lib/pdf/recibo";
 import { nombreCompleto } from "@/lib/utils";
-import { round2, conceptoDePago } from "@/lib/domain";
+import { round2, conceptoDePago, cuotaCerradaSinPago } from "@/lib/domain";
 
 /**
  * Arma el PDF del comprobante de un pago.
@@ -92,7 +92,22 @@ export async function armarReciboDePago(
     where: { ...withTenant(tenantId), pago_id: pago.id },
     select: {
       aplicado_capital: true, aplicado_interes: true, aplicado_mora: true, aplicado_cargos: true,
-      cuota: { select: { id: true, nro: true, fecha_vencimiento: true, cuota_total: true } },
+      cuota: {
+        select: {
+          id: true, nro: true, fecha_vencimiento: true, cuota_total: true,
+          /*
+            🔴 LO PERDONADO NO ES DEUDA, Y EL RECIBO LO DECÍA COMO SI LO FUERA.
+
+            Al cumplirse un acuerdo, el cierre condona lo que quedaba del plan del crédito
+            (`cierreDeAcuerdoCumplido`) en la MISMA transacción que el último cobro. El recibo
+            de ese cobro restaba solo lo pagado, así que Patricia se llevó un papel que decía
+            "Queda pendiente de estas cuotas $68.713,53" sobre un crédito que la pantalla
+            marca PAGADO y saldo $0,00. Es el peor lugar donde puede estar ese número: el
+            papel es lo que el cliente guarda y lo que trae al mostrador.
+          */
+          condonado: true, condonado_mora: true, estado: true,
+        },
+      },
     },
     orderBy: { cuota: { nro: "asc" } },
   });
@@ -113,6 +128,20 @@ export async function armarReciboDePago(
     const acum = pagadoHasta.get(x.cuota_id) ?? 0;
     pagadoHasta.set(x.cuota_id, acum + x.aplicado_capital + x.aplicado_interes + x.aplicado_cargos);
   }
+
+  /**
+   * LO QUE QUEDA DE UNA CUOTA DESPUÉS DE ESTE PAGO — una sola definición para el PDF y para
+   * el mensaje que se le manda al cliente, que tienen que decir lo mismo del mismo cobro.
+   *
+   * Descuenta lo pagado hasta este cobro Y lo condonado: son las dos formas en que una cuota
+   * deja de deberse. Una cuota CERRADA SIN PAGO (condonada al cerrar un incobrable,
+   * trasladada a una refinanciación, anulada) no debe nada por definición.
+   */
+  const condonadoDe = (c: { condonado: number; condonado_mora: number }) => round2(c.condonado + c.condonado_mora);
+  const restanteDe = (c: { id: string; cuota_total: number; condonado: number; condonado_mora: number; estado: string }) =>
+    cuotaCerradaSinPago(c.estado)
+      ? 0
+      : round2(Math.max(0, c.cuota_total - (pagadoHasta.get(c.id) ?? 0) - condonadoDe(c)));
 
   const totalCuotas = await prisma.cuotas.count({
     where: { ...withTenant(tenantId), credito_id: pago.credito.id },
@@ -162,7 +191,11 @@ export async function armarReciboDePago(
         total: totalCuotas,
         vencimiento: l.cuota.fecha_vencimiento,
         imputado: round2(l.aplicado_capital + l.aplicado_interes + l.aplicado_mora + l.aplicado_cargos),
-        restante: round2(Math.max(0, l.cuota.cuota_total - (pagadoHasta.get(l.cuota.id) ?? 0))),
+        restante: restanteDe(l.cuota),
+        /* Lo perdonado de esa cuota: el recibo lo NOMBRA en vez de hacerlo desaparecer de la
+           resta. Es la constancia de la condonación, que es justo el papel que el cliente
+           necesita tener si mañana alguien le reclama ese saldo. */
+        condonado: condonadoDe(l.cuota),
       })),
     },
     credito: {
@@ -191,7 +224,7 @@ export async function armarReciboDePago(
       cuotas: lineas.map((l) => ({
         nro: l.cuota.nro,
         imputado: round2(l.aplicado_capital + l.aplicado_interes + l.aplicado_mora + l.aplicado_cargos),
-        restante: round2(Math.max(0, l.cuota.cuota_total - (pagadoHasta.get(l.cuota.id) ?? 0))),
+        restante: restanteDe(l.cuota),
       })),
       acuerdo: pago.acuerdo_cuota
         ? { numero: pago.acuerdo_cuota.numero, hasta: pago.acuerdo_cuota_hasta, total: pago.acuerdo_cuota.acuerdo._count.cuotas }
