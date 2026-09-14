@@ -1023,19 +1023,43 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
                 {/*
                   🔴 POR QUÉ "DEUDA TOTAL" (arriba) NO ES "DEUDA QUE SE CONSOLIDÓ" (acá).
 
-                  Con el modo `capitaliza` —el que usa esta financiera— el interés del acuerdo
-                  se reparte como cargo sobre las cuotas vivas del crédito en el acto de
-                  firmarlo. Desde ese momento el crédito debe más de lo que el acuerdo
-                  consolidó, y las dos cifras conviven en la misma pantalla. Sin este renglón
-                  se leen como un error del sistema; con él, como lo que son: la misma deuda en
-                  dos momentos.
+                  Son la misma deuda contada con piezas distintas, y hay que decir CUÁLES:
+
+                  · lo que se consolidó lleva adentro los PUNITORIOS que había el día que se
+                    firmó, y el plan de cuotas no los lleva nunca (la mora no es parte de la
+                    cuota: se calcula aparte, cuota por cuota);
+                  · el plan de cuotas lleva adentro el INTERÉS DEL ACUERDO, que con el modo
+                    `capitaliza` se repartió como cargo sobre sus cuotas vivas al firmarlo, y
+                    la deuda consolidada no lo llevaba todavía.
+
+                  🔴 ANTES ESTE RENGLÓN AFIRMABA ALGO FALSO. Decía que "la deuda del crédito,
+                  arriba, es mayor que la que el acuerdo consolidó". Es cierto recién firmado y
+                  deja de serlo con el primer cobro: sobre CRD-000008, el KPI marcaba
+                  $370.068,08 contra $479.045,11 consolidados — la pantalla explicaba la
+                  diferencia al revés de como era. Fernando lo encontró comparando las dos
+                  cifras (14/09/2026). Una explicación que se vuelve mentira con el uso es peor
+                  que ninguna: ahora dice de qué está hecha cada una y no en qué orden quedan.
                 */}
-                {acuerdo.interes_capitalizado > 0 && (
+                {(acuerdo.interes_capitalizado > 0 || moraTotalPlan > 0) && (
                   <p className="mt-4 text-xs leading-relaxed text-muted-foreground">
-                    Los{" "}
-                    <span className="font-mono font-medium tabular-nums text-foreground">{formatMonto(acuerdo.interes_capitalizado)}</span>{" "}
-                    de interés del acuerdo se pasaron a las cuotas del crédito al firmarlo, como cargo: por eso
-                    la deuda del crédito, arriba, es mayor que la que el acuerdo consolidó.
+                    Los dos totales no coinciden porque no están hechos de lo mismo.{" "}
+                    {acuerdo.interes_capitalizado > 0 && (
+                      <>
+                        Los{" "}
+                        <span className="font-mono font-medium tabular-nums text-foreground">{formatMonto(acuerdo.interes_capitalizado)}</span>{" "}
+                        de interés del acuerdo se pasaron a las cuotas del crédito al firmarlo, como cargo, así que
+                        el plan de abajo los tiene adentro y la deuda consolidada no.{" "}
+                      </>
+                    )}
+                    {moraTotalPlan > 0 && (
+                      <>
+                        Y al revés con los punitorios: la deuda que se consolidó lleva los{" "}
+                        <span className="font-mono font-medium tabular-nums text-foreground">{formatMonto(moraTotalPlan)}</span>{" "}
+                        de mora que había ese día
+                        {acuerdoVigente?.congela_punitorios ? <>, congelados desde entonces</> : null}, y el plan de
+                        cuotas no lleva mora nunca: se calcula aparte, cuota por cuota.
+                      </>
+                    )}
                   </p>
                 )}
 
