@@ -275,8 +275,25 @@ export interface ResumenOperaciones {
  * `refinanciado` NO se excluye: esa plata sí se prestó en su momento; lo que se excluye es la
  * refinanciación (`es_refinanciacion`), que es deuda mudada y no plata nueva.
  */
+/**
+ * 🔴 QUE ES "PLATA NUEVA PUESTA EN LA CALLE". Una sola definicion, y por eso existe.
+ *
+ * Quedan afuera dos cosas, por razones distintas:
+ *  · las REFINANCIACIONES consolidan deuda que ya estaba prestada: contarlas seria contar el
+ *    mismo peso dos veces, y ademas dejaria que un vendedor cumpla su meta reestructurando su
+ *    propia cartera sin colocar nada;
+ *  · los ANULADOS son operaciones que se deshicieron: el desembolso volvio a la caja.
+ *
+ * Estaba escrita dos veces — aca y a mano en el desglose por tipo de `GET /api/reportes`, que
+ * salteaba solo las refinanciaciones — y las dos se separaron: el titular decia
+ * 28.930.000 pesos y la tabla de abajo, en la misma pantalla, sumaba 33.070.000.
+ */
+export function esOperacionColocada(c: { es_refinanciacion: boolean; estado: string }): boolean {
+  return !c.es_refinanciacion && c.estado !== "anulado";
+}
+
 export function resumenOperaciones(creditos: OperacionCredito[]): ResumenOperaciones {
-  const nuevos = creditos.filter((c) => !c.es_refinanciacion && c.estado !== "anulado");
+  const nuevos = creditos.filter(esOperacionColocada);
   const n = nuevos.length;
   const monto = round2(nuevos.reduce((s, c) => s + c.monto_original, 0));
   return {

@@ -3,7 +3,7 @@ import { successResponse, withErrorHandler } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { nombreCompleto, hoyComercial, inicioDiaAR, finDiaAR } from "@/lib/utils";
-import { round2, costoFondeo, ingresoFinanciero, resumenOperaciones, diasMoraActual, esCreditoVivo, moraDelCredito, moraDesdeCronograma, moraPendienteTotal, severidadMora, baseMoraDeCuota } from "@/lib/domain";
+import { round2, costoFondeo, ingresoFinanciero, resumenOperaciones, esOperacionColocada, diasMoraActual, esCreditoVivo, moraDelCredito, moraDesdeCronograma, moraPendienteTotal, severidadMora, baseMoraDeCuota } from "@/lib/domain";
 import { getConfiguracion, getRentabilidadConfig, getCobranzaConfig } from "@/lib/config";
 import type { NextRequest } from "next/server";
 
@@ -96,9 +96,24 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
    */
   const creditosPeriodo = creditos.filter((c) => c.fecha_inicio >= desde && c.fecha_inicio <= hasta);
   const operaciones = resumenOperaciones(creditosPeriodo);
+  /**
+   * 🔴 EL DESGLOSE POR TIPO SE ARMA SOBRE EL MISMO CONJUNTO QUE EL TITULAR.
+   *
+   * Salteaba las refinanciaciones pero NO los anulados, mientras `resumenOperaciones` saltea
+   * las dos cosas. Resultado: la tarjeta decía "otorgado $28.930.000,00" y la tabla de abajo,
+   * en la misma pantalla, sumaba $33.070.000,00. Son $4.140.000,00 —un 14%— de operaciones
+   * que se deshicieron, contadas como colocación en el desglose y no en el total.
+   *
+   * Nadie suma una tabla a mano para descubrirlo: se lee el titular, o se lee una fila, y las
+   * dos cosas parecen ciertas.
+   *
+   * `OPERACION_COLOCADA` es ahora la ÚNICA definición de "esto es plata nueva puesta en la
+   * calle", y la usan el resumen y el desglose. Mientras estuvo escrita dos veces, se
+   * separaron.
+   */
+  const colocadas = creditosPeriodo.filter(esOperacionColocada);
   const tipoMap = new Map<string, { tipo: string; cantidad: number; monto: number }>();
-  for (const c of creditosPeriodo) {
-    if (c.es_refinanciacion) continue;
+  for (const c of colocadas) {
     const cur = tipoMap.get(c.tipo_credito) ?? { tipo: c.tipo_credito, cantidad: 0, monto: 0 };
     cur.cantidad += 1;
     cur.monto += c.monto_original;

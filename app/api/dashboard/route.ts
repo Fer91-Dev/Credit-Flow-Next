@@ -180,14 +180,32 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   const carteraTotal = creditosDM.filter((c) => esCreditoVivo(c.estado)).reduce((sum, c) => sum + c.saldo_pendiente, 0);
   // Los tramos de la financiera, no los que estaban escritos acá (30/60) mientras Reportes
   // usaba otros (15/30). Ver `severidadMora`: es la única definición.
-  const moraCritica = creditosDM.filter((c) => severidadMora(c.dias_mora, tramos) === "critica").length;
+  /**
+   * 🔴 LA MORA SE MIDE SOBRE LA CARTERA VIVA, Y ANTES NO.
+   *
+   * Estos filtros corrían sobre TODOS los créditos: contaban incobrables y anulados. Medido
+   * sobre la base de desarrollo: 52 créditos en los tramos contra 46 realmente en mora — 4
+   * incobrables y 2 anulados de más —, y el KPI "mora crítica" del Home marcaba 20 donde
+   * Reportes marcaba 16: un 25% de más en el número que decide si hay que salir a la calle.
+   *
+   * Los anulados son los más claros: el crédito se deshizo, no hay deuda ni hay a quién
+   * reclamarle. Los incobrables tienen deuda viva, pero están fuera de la cartera y se
+   * gestionan desde Recupero, que es otra pantalla con otros números.
+   *
+   * `esCreditoVivo` es el mismo filtro que ya usaban `cartera_total`, `creditos_activos` y
+   * `clientes_con_credito` en este MISMO endpoint, y el que usa Reportes para su morosidad.
+   * La distribución de mora era la única parte que se había quedado sin él.
+   */
+  const enCartera = creditosDM.filter((c) => esCreditoVivo(c.estado));
+
+  const moraCritica = enCartera.filter((c) => severidadMora(c.dias_mora, tramos) === "critica").length;
 
   const detalleMotaAlerta = {
     // La distribución pasa a ser la MISMA que la de Reportes: media / alta / crítica, con los
     // cortes de la config. Antes eran tramos propios (1-30 / 31-60 / +60) que no coincidían
     // con ninguna otra pantalla.
-    media: creditosDM.filter((c) => severidadMora(c.dias_mora, tramos) === "media").length,
-    alta: creditosDM.filter((c) => severidadMora(c.dias_mora, tramos) === "alta").length,
+    media: enCartera.filter((c) => severidadMora(c.dias_mora, tramos) === "media").length,
+    alta: enCartera.filter((c) => severidadMora(c.dias_mora, tramos) === "alta").length,
     critica: moraCritica,
   };
 
@@ -204,12 +222,14 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   const aCobrarTotal = cuotasVivas.reduce((s, c) => s + Math.max(0, c.cuota_total - c.pagado), 0);
 
   const montosMora = {
-    total_mora: creditosDM
+    // Misma cartera viva que el conteo: el importe y la cantidad tienen que hablar de los
+    // MISMOS créditos, o la tarjeta dice "16 créditos · $X" con un X que no es de esos 16.
+    total_mora: enCartera
       .filter((c) => c.dias_mora > 0)
       .reduce((sum, c) => sum + c.saldo_pendiente, 0),
     // Mismo corte que el conteo de arriba: si el monto usara 30 fijo y el conteo el tramo
     // configurado, la tarjeta diría "3 créditos · $X" con un X que no es de esos 3.
-    mora_critica: creditosDM
+    mora_critica: enCartera
       .filter((c) => severidadMora(c.dias_mora, tramos) === "critica")
       .reduce((sum, c) => sum + c.saldo_pendiente, 0),
   };
@@ -235,8 +255,15 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
 
     porVendedor = Array.from(grupos.entries())
       .map(([key, lista]) => {
-        const cartera = lista.reduce((s, c) => s + c.saldo_pendiente, 0);
-        const enMora = lista
+        /*
+          🔴 La cartera y la mora del agente, sobre sus créditos VIVOS — igual que el total
+          de la financiera unas líneas más arriba. Sumando todo, un vendedor con dos
+          incobrables viejos aparecía con más cartera y más morosidad de la que tiene, y su
+          `pct_morosidad` salía calculado contra una base que no existe.
+        */
+        const vivosDelAgente = lista.filter((c) => esCreditoVivo(c.estado));
+        const cartera = vivosDelAgente.reduce((s, c) => s + c.saldo_pendiente, 0);
+        const enMora = vivosDelAgente
           .filter((c) => c.dias_mora > 0)
           .reduce((s, c) => s + c.saldo_pendiente, 0);
         /**
@@ -265,7 +292,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
             .reduce((s, c) => s + c.monto_original, 0),
           cartera,
           en_mora_monto: enMora,
-          mora_critica_count: lista.filter((c) => severidadMora(c.dias_mora, tramos) === "critica").length,
+          mora_critica_count: vivosDelAgente.filter((c) => severidadMora(c.dias_mora, tramos) === "critica").length,
           pct_morosidad: cartera > 0 ? Math.round((enMora / cartera) * 100) : 0,
         };
       })
