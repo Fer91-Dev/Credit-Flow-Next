@@ -1910,7 +1910,11 @@ export interface OrigenRefinanciacion {
   quita: number;
   honorarios: { monto: number; pct: number } | null;
   nuevo_capital: number | null;
-  entrega: { monto: number; metodo: string; fecha: string; anulado: boolean } | null;
+  entrega: {
+    monto: number; metodo: string; fecha: string; anulado: boolean;
+    /** A qué componente fue esa plata. Sirve para reconstruir la deuda BRUTA discriminada. */
+    aplicado?: { mora: number; interes: number; cargos: number; capital: number };
+  } | null;
 }
 
 export function useOrigenRefinanciacion(creditoId: string | null) {

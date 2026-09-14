@@ -1548,12 +1548,52 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
                     queda: si se muestra la resta, arriba va el BRUTO; si se muestra el neto,
                     la resta no se repite.
                   */}
-                  {origenRefinanciacion.deuda_consolidada?.total != null && (
-                    <FilaOrigen
-                      label={origenRefinanciacion.entrega && !origenRefinanciacion.entrega.anulado ? "Deuda del plan viejo" : "Deuda que se consolidó"}
-                      valor={r2(origenRefinanciacion.deuda_consolidada.total + (origenRefinanciacion.entrega && !origenRefinanciacion.entrega.anulado ? origenRefinanciacion.entrega.monto : 0))}
-                    />
-                  )}
+                  {origenRefinanciacion.deuda_consolidada?.total != null && (() => {
+                    /**
+                     * 🔴 DE QUÉ ESTÁ HECHA ESA DEUDA — porque si no, no coincide con nada.
+                     *
+                     * El plan del crédito viejo suma $330.375,95 y acá decía $383.236,10, sin
+                     * nada que los uniera. Fernando, sobre CRD-000009: "¿por qué la deuda del
+                     * crédito viejo no me coincide con los $330.375,95?". La respuesta son los
+                     * punitorios: el plan de cuotas nunca los incluye —la mora se calcula
+                     * aparte, cuota por cuota— y la deuda que se consolida sí.
+                     *
+                     * Es el MISMO malentendido que con el acuerdo de pago, y la misma
+                     * respuesta: mostrar la cuenta en vez de explicarla.
+                     *
+                     * La deuda viene NETA (la entrega se cobró antes de armar el plan), así
+                     * que para decir el bruto discriminado hay que devolverle a cada
+                     * componente lo que la entrega se llevó de él. Si la entrega se anuló, no
+                     * hay nada que devolver.
+                     */
+                    const dc = origenRefinanciacion.deuda_consolidada!;
+                    const viva = origenRefinanciacion.entrega && !origenRefinanciacion.entrega.anulado
+                      ? origenRefinanciacion.entrega
+                      : null;
+                    const ap = viva?.aplicado;
+                    const bruto = r2((dc.total ?? 0) + (viva?.monto ?? 0));
+                    const plan = ap
+                      ? r2((dc.capital ?? 0) + (dc.interes ?? 0) + (dc.cargos ?? 0) + ap.capital + ap.interes + ap.cargos)
+                      : r2((dc.capital ?? 0) + (dc.interes ?? 0) + (dc.cargos ?? 0));
+                    const punitorios = ap ? r2((dc.mora ?? 0) + ap.mora) : r2(dc.mora ?? 0);
+                    return (
+                      <>
+                        <FilaOrigen
+                          label={viva ? "Deuda del plan viejo" : "Deuda que se consolidó"}
+                          valor={bruto}
+                        />
+                        {punitorios > 0 && (
+                          <p className="pl-1 text-[11px] leading-snug text-muted-foreground">
+                            suma de sus cuotas{" "}
+                            <span className="font-mono tabular-nums text-foreground/80">{formatMonto(plan)}</span>
+                            {" + punitorios "}
+                            <span className="font-mono tabular-nums text-destructive/90">{formatMonto(punitorios)}</span>
+                            {" — el plan de cuotas nunca incluye la mora, se calcula aparte"}
+                          </p>
+                        )}
+                      </>
+                    );
+                  })()}
                   {origenRefinanciacion.entrega && (
                     <FilaOrigen
                       label={`Entrega cobrada en el acto · ${origenRefinanciacion.entrega.metodo}${origenRefinanciacion.entrega.anulado ? " (ANULADA)" : ""}`}

@@ -59,13 +59,33 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
    * El importe de la entrega sale del PAGO, no del `meta`: si el cobro se anuló después, esto
    * lo refleja en vez de seguir mostrando una entrega que ya no existe.
    */
-  let entrega: { monto: number; metodo: string; fecha: Date; anulado: boolean } | null = null;
+  let entrega: {
+    monto: number; metodo: string; fecha: Date; anulado: boolean;
+    aplicado: { mora: number; interes: number; cargos: number; capital: number };
+  } | null = null;
   if (meta.entrega_pago_id) {
     const pago = await prisma.pagos.findFirst({
       where: { ...withTenant(tenantId), id: meta.entrega_pago_id },
-      select: { monto: true, metodo: true, fecha: true, anulado: true },
+      /*
+        🔴 CÓMO SE IMPUTÓ LA ENTREGA, no solo cuánto fue.
+
+        `deuda_consolidada` viene NETA: la entrega se cobra ANTES de armar el plan, así que
+        cuando el server la calcula ya está descontada. Sin saber a qué componente fue esa
+        plata, la ficha no puede reconstruir la deuda BRUTA discriminada — y entonces no puede
+        contestar la pregunta que se hace cualquiera que mire las dos pantallas: "el plan del
+        crédito viejo suma $330.375,95, ¿por qué acá dice $383.236,10?". La respuesta son los
+        punitorios, y para decirla hay que poder sumarle a la mora neta la parte de la entrega
+        que se llevó mora.
+      */
+      select: { monto: true, metodo: true, fecha: true, anulado: true, aplicado_mora: true, aplicado_interes: true, aplicado_cargos: true, aplicado_capital: true },
     });
-    if (pago) entrega = { monto: round2(pago.monto), metodo: pago.metodo, fecha: pago.fecha, anulado: pago.anulado };
+    if (pago) entrega = {
+      monto: round2(pago.monto), metodo: pago.metodo, fecha: pago.fecha, anulado: pago.anulado,
+      aplicado: {
+        mora: round2(pago.aplicado_mora), interes: round2(pago.aplicado_interes),
+        cargos: round2(pago.aplicado_cargos), capital: round2(pago.aplicado_capital),
+      },
+    };
   }
 
   return successResponse({
