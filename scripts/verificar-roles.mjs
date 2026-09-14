@@ -164,23 +164,32 @@ const cliV = await vend("POST", "/api/clientes", {
 });
 ok(cliV.ok, "el vendedor puede dar de alta un cliente", cliV.error ?? "");
 
-// Primero hay que fondear SU caja: la suya arranca en cero y el control de fondos es real.
-const entrega = await admin("POST", "/api/equipo", {
-  vendedor_id: fichaQA.id, monto: 400_000, cuenta: "efectivo",
-  descripcion: "Verificador de roles: entrega para operar",
-}).catch(() => ({ ok: false }));
-if (!entrega.ok) {
-  // Si el endpoint de entrega tiene otro contrato, se fondea por el libro (es dato de prueba).
-  await db.movimientos_caja.create({
-    data: {
-      tenant_id: TENANT, fecha: new Date(new Date().toISOString().slice(0, 10) + "T00:00:00.000Z"),
-      tipo: "aporte_capital", monto: 400_000, cuenta: "efectivo", vendedor_id: fichaQA.id,
-      origen: "Verificador de roles", destino: "Caja QA Vendedor",
-      descripcion: "Verificador de roles: fondeo de la caja del vendedor temporal",
-    },
+/*
+  Primero hay que fondear SU caja: la suya arranca en cero y el control de fondos es real.
+
+  Se hace por la via del sistema — `POST /api/vendedores/[id]/caja` con accion "entrega" —,
+  que ademas VERIFICA esa ruta: es la que el mensaje de "no hay saldo" le recomienda al
+  vendedor ("Pedi una entrega al administrador"). Escribir el movimiento a mano habria dejado
+  sin probar justamente eso, y la caja principal sin su egreso.
+*/
+const ENTREGA = 400_000;
+const casaAntes = Number((await admin("GET", "/api/caja")).data?.saldos_por_cuenta?.efectivo ?? 0);
+if (casaAntes < ENTREGA) {
+  await admin("POST", "/api/caja", {
+    concepto: "aporte_capital", monto: 1_000_000, cuenta: "efectivo", metodo: "efectivo",
+    descripcion: "Verificador de roles: capital para la entrega",
   });
 }
-ok(true, "su caja queda fondeada para poder otorgar", f(400_000));
+const entrega = await admin("POST", `/api/vendedores/${fichaQA.id}/caja`, {
+  accion: "entrega", monto: ENTREGA, cuenta: "efectivo",
+  descripcion: "Verificador de roles: entrega para operar",
+});
+ok(entrega.ok, `el admin le entrega ${f(ENTREGA)} a su caja`, entrega.error ?? "");
+const suSaldo = await db.movimientos_caja.aggregate({
+  where: { tenant_id: TENANT, vendedor_id: fichaQA.id }, _sum: { monto: true },
+});
+ok((suSaldo._sum.monto ?? 0) >= ENTREGA, "y le entra a la caja del agente, no a la principal",
+  f(suSaldo._sum.monto ?? 0));
 
 const intento = await vend("POST", "/api/creditos", {
   cliente_id: cliV.data.id, tipo_credito: "personal", monto_original: 100_000,

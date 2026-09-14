@@ -1,6 +1,6 @@
 import { requireRole } from "@/lib/auth";
 import { successResponse, errorResponse, withErrorHandler, assertSameOrigin } from "@/app/lib/api";
-import { esCuentaValida, rangoDePeriodo, PERIODOS_META, type TipoPeriodo, type Cuenta } from "@/lib/domain";
+import { esCuentaValida, rangoDePeriodo, indiceDePeriodoValido, periodosPorAnio, PERIODOS_META, type TipoPeriodo, type Cuenta } from "@/lib/domain";
 import { inicioDiaAR, hoyComercial } from "@/lib/utils";
 import { comisionesDelPeriodo, liquidarComision, historialLiquidaciones } from "@/lib/liquidaciones";
 import type { NextRequest } from "next/server";
@@ -40,6 +40,18 @@ function periodoDeQuery(url: URL): { tipo: TipoPeriodo; anio: number; indice: nu
 export const GET = withErrorHandler(async (req: NextRequest) => {
   const { tenantId } = await requireRole(["admin"], req);
   const { tipo, anio, indice } = periodoDeQuery(new URL(req.url));
+  /*
+    🔴 Un indice fuera de rango armaba una fecha invalida y reventaba en Prisma con un 500
+    mudo ("Error interno del servidor"). Medido: `?tipo=mensual&indice=17` y
+    `?tipo=trimestral&indice=9`. Ahora se contesta que el periodo no existe, con el rango que
+    si se acepta — que es lo unico que le sirve a quien esta del otro lado.
+  */
+  if (!indiceDePeriodoValido(tipo, indice)) {
+    return errorResponse(
+      `El período ${tipo} ${indice} no existe: tiene que estar entre 1 y ${periodosPorAnio(tipo)}.`,
+      "INVALID_INPUT", 400,
+    );
+  }
   const { desde, hasta, etiqueta } = rangoDePeriodo(tipo, anio, indice);
 
   /**
@@ -89,8 +101,25 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     : "mensual";
   // Mismo criterio que arriba: el día argentino, no el del servidor.
   const hoy = hoyComercial();
-  const anio = Number(body.anio) || hoy.getUTCFullYear();
-  const indice = Number(body.indice) || hoy.getUTCMonth() + 1;
+  const anio = Number.isFinite(Number(body.anio)) && Number(body.anio) > 0
+    ? Number(body.anio)
+    : hoy.getUTCFullYear();
+  /*
+    🔴 `Number(body.indice) || <mes actual>` trataba el 0 como "no vino".
+
+    Pedir el periodo 0 liquidaba EL MES EN CURSO sin avisar: se pide un periodo y se paga
+    otro, con su asiento de caja y su comprobante. Un 0 es un valor mandado, no un valor
+    ausente, y la diferencia entre las dos cosas es plata.
+  */
+  const indice = body.indice === undefined || body.indice === null
+    ? hoy.getUTCMonth() + 1
+    : Number(body.indice);
+  if (!indiceDePeriodoValido(tipo, indice)) {
+    return errorResponse(
+      `El período ${tipo} ${indice} no existe: tiene que estar entre 1 y ${periodosPorAnio(tipo)}.`,
+      "INVALID_INPUT", 400,
+    );
+  }
   const { desde, hasta, etiqueta } = rangoDePeriodo(tipo, anio, indice);
 
   const liq = await liquidarComision({

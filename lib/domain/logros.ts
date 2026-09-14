@@ -191,8 +191,51 @@ export function etiquetaPeriodo(periodo: TipoPeriodo, anio: number, indice: numb
   return `${anio}-${pad2(indice)}`;
 }
 
-/** Rango de fechas [desde, hasta] (YYYY-MM-DD) de un período. */
+/**
+ * Cuántos períodos de este tipo entran en un año. Es el rango válido de `indice` (1..N).
+ *
+ * Existe para poder VALIDAR antes de armar fechas: ver `rangoDePeriodo`.
+ */
+export function periodosPorAnio(periodo: TipoPeriodo): number {
+  if (periodo === "anual") return 1;
+  if (periodo === "semestral") return 2;
+  if (periodo === "trimestral") return 4;
+  return 12;
+}
+
+/** ¿El índice cae dentro del año para este tipo de período? */
+export function indiceDePeriodoValido(periodo: TipoPeriodo, indice: number): boolean {
+  return Number.isInteger(indice) && indice >= 1 && indice <= periodosPorAnio(periodo);
+}
+
+/**
+ * Rango de fechas [desde, hasta] (YYYY-MM-DD) de un período.
+ *
+ * 🔴 VALIDA EL ÍNDICE, y antes no.
+ *
+ * El `else` final —el caso mensual— tomaba `indice` como número de mes sin mirarlo. Con un 17
+ * armaba la cadena `"2026-17-01"`, que es una fecha INVÁLIDA, y esa cadena viajaba hasta
+ * Prisma: `Invalid value for argument 'gte'`, o sea un 500 con "Error interno del servidor"
+ * en la cara del operador. Medido sobre `POST /api/comisiones`: índices 17, 99 y −3 en
+ * mensual, y 9 en trimestral (que arranca el mes 25), todos 500. El GET, igual.
+ *
+ * No era exótico llegar ahí: la pantalla ofrece tipos de período y el endpoint acepta
+ * cualquier `indice` numérico; un selector mal sincronizado —o una URL copiada de otro tipo
+ * de período— alcanzaba. Y el error que se veía no decía absolutamente nada del problema.
+ *
+ * Ahora tira un error con un mensaje que se puede mostrar, y los endpoints lo convierten en
+ * un 400 que dice qué índice se esperaba.
+ */
 export function rangoDePeriodo(periodo: TipoPeriodo, anio: number, indice: number): { desde: string; hasta: string; etiqueta: string } {
+  if (!Number.isInteger(anio) || anio < 1900 || anio > 2999) {
+    throw new Error(`Año inválido: ${anio}.`);
+  }
+  if (!indiceDePeriodoValido(periodo, indice)) {
+    const max = periodosPorAnio(periodo);
+    throw new Error(
+      `El período ${PERIODO_LABEL[periodo].toLowerCase()} ${indice} no existe: tiene que estar entre 1 y ${max}.`,
+    );
+  }
   let mesIni: number, mesFin: number;
   if (periodo === "anual") { mesIni = 1; mesFin = 12; }
   else if (periodo === "trimestral") { mesIni = (indice - 1) * 3 + 1; mesFin = mesIni + 2; }
