@@ -89,6 +89,57 @@ export interface CuotaParaMora {
    * sistema le iba a cobrar.
    */
   condonadoMora?: number;
+  /**
+   * Lo que la cuota TODAVÍA DEBE sin contar punitorios (capital + interés + cargos).
+   * Se arma con `pendienteSinMoraDeCuota()`.
+   *
+   * 🔴 OBLIGATORIO A PROPÓSITO, igual que `baseMora` y `condonadoMora`. Sin este dato una
+   * cuota YA SALDADA seguía devengando mora para siempre, y el cobro siguiente la levantaba:
+   * sobre CRD-000004 fueron $10.973,43 cobrados sobre una cuota pagada en fecha un mes antes.
+   * Que el campo sea requerido hace que ningún `select` ni ningún `map` pueda volver a la
+   * cuenta vieja por olvido.
+   */
+  pendienteSinMora: number;
+}
+
+/**
+ * MORA PENDIENTE DE UNA CUOTA, a precio de lista (antes de la quita de una campaña).
+ *
+ * 🔴 ES LA ÚNICA DEFINICIÓN, y existe por un defecto que costó plata: la pantalla
+ * (`/creditos/[id]/cuotas`) cortaba la mora de una cuota saldada y el motor de imputación
+ * (`imputarPagoEnCuotas`) no, así que una cuota pagada EN FECHA seguía devengando punitorios
+ * y el cobro del mes siguiente se los llevaba. La pantalla mostraba $0,00 y la caja cobraba.
+ * Dos cuentas para el mismo peso siempre terminan separándose; ahora hay una sola.
+ *
+ * Las dos reglas que aplica:
+ *
+ * 1. **Una cuota SALDADA deja de devengar.** Si no debe capital, interés ni cargos, su
+ *    punitorio es 0 — y con eso queda cortada también la mora de una cuota pagada TARDE: al
+ *    imputar el pago se le cobraron los días corridos hasta esa fecha, y desde que quedó
+ *    saldada no corre un día más. El reloj se detiene solo, sin necesidad de guardar la fecha
+ *    de pago.
+ * 2. **Lo ya resuelto se descuenta**: la plata que entró (`pagadoMora`) y la que se perdonó
+ *    para siempre por una campaña (`condonadoMora`, migración 010).
+ *
+ * 🔴 Lo que NO hace, a propósito: frenar la mora por un pago PARCIAL. Una cuota a la que le
+ * falta un peso sigue impaga, y congelarle los punitorios convertiría cualquier pago simbólico
+ * en un freno gratuito del reloj.
+ *
+ * @param diasQueDevengan Días por los que corresponde cobrar (ya recortados por el freno de
+ *   un acuerdo, el fallecimiento o la declaración de incobrable). No son necesariamente los
+ *   días de atraso REALES, que se siguen informando enteros.
+ */
+export function moraRestanteDeCuota(
+  c: CuotaParaMora,
+  diasQueDevengan: number,
+  config: ConfigMora & { moraActiva?: boolean } = {},
+): number {
+  if (config.moraActiva === false) return 0;
+  // La cuota ya no debe nada: el punitorio se detuvo el día en que se saldó.
+  if (c.pendienteSinMora <= 0) return 0;
+  const devengada = interesMora(c.baseMora, diasQueDevengan, config);
+  const resuelta = (c.pagadoMora ?? 0) + (c.condonadoMora ?? 0);
+  return Math.max(0, round2(devengada - resuelta));
 }
 
 /**
@@ -114,12 +165,13 @@ export function moraPendienteTotal(
   for (const c of cuotas) {
     const dias = diasAtraso(c.fechaVencimiento, tope);
     if (dias <= 0) continue;
-    const devengada = interesMora(c.baseMora, dias, {
+    // Misma cuenta que hace el cobro, cuota por cuota (incluida la regla de la cuota saldada:
+    // sin ella, los KPI seguían contando punitorios de cuotas que el cliente ya pagó).
+    const pendiente = moraRestanteDeCuota(c, dias, {
       tasaDiaria: opciones.tasaDiaria,
       diasGracia: opciones.diasGracia,
       topePct: opciones.topePct,
     });
-    const pendiente = devengada - (c.pagadoMora ?? 0) - (c.condonadoMora ?? 0);
     if (pendiente > 0) total = round2(total + pendiente);
   }
   return round2(total);

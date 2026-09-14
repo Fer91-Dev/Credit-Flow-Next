@@ -14,7 +14,7 @@
  */
 
 import { round2, noNegativo } from "./money";
-import { diasAtraso, interesMora } from "./mora";
+import { diasAtraso, moraRestanteDeCuota } from "./mora";
 import type { CuotaParaImputar } from "./payments";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -375,21 +375,30 @@ export function calcularDeudaVencida(
     const intPend = noNegativo(round2(c.interes - c.pagadoInteres));
     const carPend = noNegativo(round2(c.cargos - c.pagadoCargos));
 
-    // Misma fórmula de mora que usa la refinanciación (`calcularDeudaConsolidada`): sobre
-    // `cuotaTotal`, no sobre lo pendiente. Si las dos calcularan distinto, refinanciar y
-    // acordar darían números diferentes para la misma deuda.
-    // Una cuota que no venció devenga 0: `interesMora` con atraso 0 devuelve 0, así que no
-    // hace falta un caso especial — y si lo hubiera, sería otra fórmula que mantener.
-    const moraPlena = moraActiva
-      ? interesMora(c.baseMora, atraso, { tasaDiaria: tasa, diasGracia: gracia, topePct: opts.topeMoraPct })
-      : 0;
     /*
-      🔴 Lo YA RESUELTO de la mora son DOS cosas: la plata que entro y la que se perdono
-      definitivamente por una campana (`condonadoMora`, migracion 010). Restar solo lo pagado
-      hacia que un acuerdo o una refinanciacion consolidaran como deuda punitorios que la
-      financiera ya habia resignado por escrito.
+      Misma cuenta de mora que usa el cobro y que la refinanciación: `moraRestanteDeCuota`, la
+      única definición. Si cada una calculara por su cuenta, cobrar, acordar y refinanciar
+      darían números distintos para la misma deuda.
+
+      Incluye las dos reglas que importan acá: una cuota SALDADA no devenga (sin eso, un
+      acuerdo consolidaba punitorios de cuotas que el cliente ya había pagado), y lo ya
+      resuelto son DOS cosas —la plata que entró y la que se perdonó por una campaña
+      (`condonadoMora`, migración 010)—.
+
+      Una cuota que no venció devenga 0: `interesMora` con atraso 0 devuelve 0, así que no
+      hace falta un caso especial — y si lo hubiera, sería otra fórmula que mantener.
     */
-    const moraPend = noNegativo(round2(moraPlena - c.pagadoMora - c.condonadoMora));
+    const moraPend = moraRestanteDeCuota(
+      {
+        fechaVencimiento: c.fechaVencimiento,
+        baseMora: c.baseMora,
+        pagadoMora: c.pagadoMora,
+        condonadoMora: c.condonadoMora,
+        pendienteSinMora: round2(capPend + intPend + carPend),
+      },
+      atraso,
+      { moraActiva, tasaDiaria: tasa, diasGracia: gracia, topePct: opts.topeMoraPct },
+    );
 
     if (capPend + intPend + carPend + moraPend <= 0) continue; // ya saldada
 

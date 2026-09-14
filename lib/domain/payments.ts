@@ -10,7 +10,7 @@
  * Si tras cubrir todo aún sobra dinero, se reporta como excedente (saldo a favor).
  */
 import { round2, noNegativo } from "./money";
-import { diasAtraso, interesMora, topeMoraDeCuota, fechaTopeMora } from "./mora";
+import { diasAtraso, moraRestanteDeCuota, topeMoraDeCuota, fechaTopeMora } from "./mora";
 
 /** Cómo se imputan los cargos del período respecto del interés. */
 export type ModoImputacionCargos = "integrado" | "separado";
@@ -291,7 +291,21 @@ export function imputarPagoEnCuotas(
       c.fechaVencimiento,
       fechaTopeMora(topeMoraDeCuota(c.fechaVencimiento, hoy, congeladaAl), topeAbsoluto),
     );
-    const moraPlena = moraActiva ? interesMora(c.baseMora, diasMora, { tasaDiaria: tasaMoraDiaria, diasGracia, topePct: opciones.topeMoraPct }) : 0;
+    /**
+     * 🔴 LA MORA SALE DE `moraRestanteDeCuota`, LA ÚNICA DEFINICIÓN (ver mora.ts).
+     *
+     * Acá estaba escrita a mano y le faltaba la regla que la pantalla sí tenía: **una cuota
+     * saldada deja de devengar**. Así que una cuota pagada EN FECHA seguía acumulando
+     * punitorios, y el cobro del mes siguiente se los llevaba antes de tocar la cuota nueva.
+     * Medido en dev sobre CRD-000004: $10.973,43 cobrados sobre la cuota 1, pagada completa
+     * el día de su vencimiento — y la cuota 2 quedó PARCIAL después de que el cliente pagara
+     * exactamente el importe que la pantalla le pidió. A 29 días × 0,50% son 14,5% de una
+     * cuota, de más, a cada cliente PUNTUAL, todos los meses.
+     *
+     * `pendienteSinMora` es lo que decide: capital + interés + cargos que la cuota todavía
+     * debe, con el mismo criterio con el que se imputa el pago unas líneas más abajo.
+     */
+    const pendienteSinMora = round2(interesPend + cargosPend + capitalPend);
     /**
      * 🔴 LA QUITA SE APLICA SOBRE LO QUE TODAVÍA SE DEBE, Y LO PERDONADO SE ASIENTA.
      *
@@ -303,8 +317,17 @@ export function imputarPagoEnCuotas(
      * Ahora lo ya resuelto son DOS cosas: la plata que entró (`pagadoMora`) y la que se
      * perdonó para siempre (`condonadoMora`). El descuento corre sobre el resto.
      */
-    const moraResuelta = round2(c.pagadoMora + c.condonadoMora);
-    const moraRestantePlena = noNegativo(round2(moraPlena - moraResuelta));
+    const moraRestantePlena = moraRestanteDeCuota(
+      {
+        fechaVencimiento: c.fechaVencimiento,
+        baseMora: c.baseMora,
+        pagadoMora: c.pagadoMora,
+        condonadoMora: c.condonadoMora,
+        pendienteSinMora,
+      },
+      diasMora,
+      { moraActiva, tasaDiaria: tasaMoraDiaria, diasGracia, topePct: opciones.topeMoraPct },
+    );
     const moraDevengada = round2(moraRestantePlena * factorMora);
     const moraPend = moraDevengada;
 

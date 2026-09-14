@@ -3,7 +3,7 @@ import { successResponse, withErrorHandler } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { nombreCompleto, hoyComercial, inicioDiaAR, finDiaAR } from "@/lib/utils";
-import { round2, costoFondeo, ingresoFinanciero, resumenOperaciones, esOperacionColocada, diasMoraActual, esCreditoVivo, moraDelCredito, moraDesdeCronograma, moraPendienteTotal, severidadMora, baseMoraDeCuota } from "@/lib/domain";
+import { round2, costoFondeo, ingresoFinanciero, resumenOperaciones, esOperacionColocada, diasMoraActual, esCreditoVivo, moraDelCredito, moraDesdeCronograma, moraPendienteTotal, severidadMora, baseMoraDeCuota, pendienteSinMoraDeCuota } from "@/lib/domain";
 import { getConfiguracion, getRentabilidadConfig, getCobranzaConfig } from "@/lib/config";
 import type { NextRequest } from "next/server";
 
@@ -55,7 +55,16 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
         cronograma: true, // trae la mora congelada del crédito
         created_at: true, fecha_inicio: true, es_refinanciacion: true, tipo_credito: true,
         // Sin las cuotas no se puede calcular la mora real: se devenga POR CUOTA vencida.
-        cuotas: { select: { fecha_vencimiento: true, cuota_total: true, capitalizado: true, pagado_mora: true } },
+        cuotas: {
+          select: {
+            fecha_vencimiento: true, cuota_total: true, capitalizado: true, pagado_mora: true,
+            // Los componentes y lo cobrado de cada uno: hacen falta para saber si la cuota ya
+            // esta SALDADA. Una cuota saldada deja de devengar punitorios, y sin este dato el
+            // reporte seguia sumando mora de cuotas que el cliente ya pago.
+            capital: true, interes: true, iva: true, seguro: true, gastos: true, honorarios: true,
+            pagado_capital: true, pagado_interes: true, pagado_cargos: true, condonado_mora: true,
+          },
+        },
       },
     }),
     getConfiguracion(tenantId),
@@ -182,6 +191,8 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
         fechaVencimiento: q.fecha_vencimiento,
         baseMora: baseMoraDeCuota(q),
         pagadoMora: q.pagado_mora,
+        condonadoMora: q.condonado_mora,
+        pendienteSinMora: pendienteSinMoraDeCuota(q),
       })),
       { tasaDiaria: mc.tasaMoraDiaria, diasGracia: gracia, topePct: mc.topeMoraPct, hoy: hoyMora },
     );

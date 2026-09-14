@@ -47,7 +47,7 @@ const dom = async (m) => import(pathToFileURL(join(dir, m + ".js")).href);
 
 const { construirPlanAmortizacion, cuotaMensualFrancesa } = await dom("amortization");
 const { imputarPagoEnCuotas } = await dom("payments");
-const { interesMora } = await dom("mora");
+const { interesMora, moraPendienteTotal } = await dom("mora");
 const { cftDelPlan, calcularCFT } = await dom("cft");
 const { tasaPeriodicaSegunConvencion } = await dom("frequency");
 const { calcularDeudaVencida, planDeAcuerdo, cierreDeAcuerdoCumplido } = await dom("acuerdos");
@@ -662,6 +662,120 @@ H("13. LA QUITA DE CAMPAÑA NO VUELVE A COBRARSE");
   const dvPerdonada = calcularDeudaVencida([despues], { ...PARAM, tasaMoraDiaria: 0.005, diasGracia: 0, topeMoraPct: 0 });
   ok(cerca(dvPerdonada.mora, 0),
     "🔴 y un acuerdo no consolida como deuda la mora que ya se perdonó", F(dvPerdonada.mora));
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+H("14. EL QUE PAGA PUNTUAL NO PAGA PUNITORIOS");
+// ════════════════════════════════════════════════════════════════════════════
+/*
+  🔴 EL CASO NORMAL DE UN CLIENTE BUENO, que era justo el que no estaba cubierto.
+
+  Una cuota PAGADA EN SU FECHA seguía devengando mora, porque `imputarPagoEnCuotas` no tenía
+  la regla que la pantalla sí tenía ("cuota saldada → mora 0"). El cobro del mes siguiente se
+  llevaba esos punitorios ANTES de tocar la cuota nueva, así que el cliente pagaba exactamente
+  el importe que la pantalla le pedía y igual le quedaba una cuota PARCIAL.
+
+  Medido en dev sobre CRD-000004 (Norma Agüero, jubilada, pagó los dos meses en fecha):
+  10.973,43 pesos cobrados sobre la cuota 1 con el segundo pago. En CRD-000005 (Carlos Nieva)
+  fueron 39.920,43. A 29 días × 0,50% son 14,5% de una cuota, de más, todos los meses, y no
+  al moroso: al que paga bien.
+
+  Ninguno de los diez verificadores lo encontró porque ninguno pagaba EN FECHA DOS MESES
+  SEGUIDOS. Esa es la prueba que va acá.
+*/
+{
+  const V1 = new Date(Date.UTC(2026, 6, 21)); // vence la cuota 1
+  const V2 = new Date(Date.UTC(2026, 7, 21)); // vence la cuota 2 (31 días después)
+  const TOTAL = 75678.86;
+  const PARAM = { tasaMoraDiaria: 0.005, diasGracia: 0, topeMoraPct: 0 };
+
+  const plan = () => [
+    { id: "q1", nro: 1, fechaVencimiento: V1, capital: 15678.86, interes: 60000, cargos: 0,
+      baseMora: TOTAL, pagadoCapital: 0, pagadoInteres: 0, pagadoMora: 0, pagadoCargos: 0, condonadoMora: 0 },
+    { id: "q2", nro: 2, fechaVencimiento: V2, capital: 16862.25, interes: 58816.61, cargos: 0,
+      baseMora: TOTAL, pagadoCapital: 0, pagadoInteres: 0, pagadoMora: 0, pagadoCargos: 0, condonadoMora: 0 },
+  ];
+  // Asienta en las cuotas lo que imputó un pago, como lo hace `POST /pagos` en la base.
+  const asentar = (cuotas, res) => {
+    for (const a of res.aplicaciones) {
+      const q = cuotas.find((x) => x.id === a.id);
+      q.pagadoCapital = round2(q.pagadoCapital + a.aplicadoCapital);
+      q.pagadoInteres = round2(q.pagadoInteres + a.aplicadoInteres);
+      q.pagadoCargos = round2(q.pagadoCargos + a.aplicadoCargos);
+      q.pagadoMora = round2(q.pagadoMora + a.aplicadoMora);
+      q.condonadoMora = round2(q.condonadoMora + a.condonadoMora);
+    }
+    return cuotas;
+  };
+
+  const cuotas = plan();
+  // Mes 1: paga la cuota entera el día que vence.
+  const pago1 = imputarPagoEnCuotas(TOTAL, cuotas, { ...PARAM, hoy: V1 });
+  const p1 = pago1.aplicaciones[0];
+  ok(cerca(p1.aplicadoMora, 0) && cerca(round2(p1.aplicadoCapital + p1.aplicadoInteres), TOTAL),
+    "pagando en fecha, la cuota 1 se cubre sin un peso de mora",
+    `mora ${F(p1.aplicadoMora)} · cuota ${F(round2(p1.aplicadoCapital + p1.aplicadoInteres))}`);
+  asentar(cuotas, pago1);
+
+  // Mes 2: paga la cuota entera el día que vence. La cuota 1 ya está saldada.
+  const pago2 = imputarPagoEnCuotas(TOTAL, cuotas, { ...PARAM, hoy: V2 });
+  const enQ1 = pago2.aplicaciones.find((a) => a.id === "q1");
+  const enQ2 = pago2.aplicaciones.find((a) => a.id === "q2");
+  // Lo que cobraba de más: 75.678,86 × 0,5% × 31 días.
+  const deMas = round2(TOTAL * 0.005 * 31);
+  ok(!enQ1,
+    "🔴 el segundo pago NO toca la cuota 1: pagada en fecha, dejó de devengar",
+    enQ1 ? `le cobró ${F(enQ1.aplicadoMora)} de mora (el bug cobraba ${F(deMas)})` : "");
+  ok(enQ2 && cerca(round2(enQ2.aplicadoCapital + enQ2.aplicadoInteres), TOTAL),
+    "🔴 y la cuota 2 queda CUBIERTA con el importe que la pantalla pidió",
+    enQ2 ? F(round2(enQ2.aplicadoCapital + enQ2.aplicadoInteres)) : "no la tocó");
+  asentar(cuotas, pago2);
+  ok(cerca(round2(cuotas[1].capital - cuotas[1].pagadoCapital), 0),
+    "no queda saldo: el cliente que pagó puntual no debe nada",
+    F(round2(cuotas[1].capital - cuotas[1].pagadoCapital)));
+
+  // Y lo mismo tienen que decir los KPI y el acuerdo, o vuelve a haber dos cuentas.
+  const paraMora = cuotas.map((q) => ({
+    fechaVencimiento: q.fechaVencimiento, baseMora: q.baseMora,
+    pagadoMora: q.pagadoMora, condonadoMora: q.condonadoMora,
+    pendienteSinMora: round2(
+      Math.max(0, round2(q.capital - q.pagadoCapital)) +
+      Math.max(0, round2(q.interes - q.pagadoInteres)) +
+      Math.max(0, round2(q.cargos - q.pagadoCargos)),
+    ),
+  }));
+  const kpi = moraPendienteTotal(paraMora, { tasaDiaria: 0.005, diasGracia: 0, topePct: 0, hoy: new Date(Date.UTC(2026, 8, 14)) });
+  ok(cerca(kpi, 0), "🔴 los KPI de mora tampoco cuentan punitorios de cuotas ya pagadas", F(kpi));
+  const dvPuntual = calcularDeudaVencida(cuotas, { ...PARAM, hoy: new Date(Date.UTC(2026, 8, 14)) });
+  ok(cerca(dvPuntual.total, 0), "🔴 y un acuerdo no tiene nada que consolidar", F(dvPuntual.total));
+
+  /*
+    LA CONTRACARA, que es la que impide "arreglar" esto de más: la cuota tiene que estar
+    SALDADA. Un pago parcial NO frena el reloj — si lo frenara, cualquiera pararía los
+    punitorios entregando un peso.
+  */
+  const tarde = plan().slice(0, 1);
+  const V1_MAS_10 = new Date(Date.UTC(2026, 6, 31));
+  const V1_MAS_40 = new Date(Date.UTC(2026, 7, 30));
+  // Paga TODO diez días tarde: 10 días de mora + la cuota entera.
+  const mora10 = round2(TOTAL * 0.005 * 10);
+  const saldaTarde = imputarPagoEnCuotas(round2(TOTAL + mora10), tarde, { ...PARAM, hoy: V1_MAS_10 });
+  ok(cerca(saldaTarde.aplicaciones[0].aplicadoMora, mora10),
+    "pagando 10 días tarde se cobran esos 10 días de punitorios", F(saldaTarde.aplicaciones[0].aplicadoMora));
+  asentar(tarde, saldaTarde);
+  const treintaDespues = imputarPagoEnCuotas(1000, tarde, { ...PARAM, hoy: V1_MAS_40 });
+  ok(treintaDespues.aplicaciones.length === 0 && cerca(treintaDespues.excedente, 1000),
+    "🔴 y la mora se corta EN LA FECHA DE PAGO: 30 días después no devengó un peso más",
+    `cobró ${F(round2(1000 - treintaDespues.excedente))}`);
+
+  const parcial = plan().slice(0, 1);
+  const entrega = imputarPagoEnCuotas(1000, parcial, { ...PARAM, hoy: V1_MAS_10 });
+  asentar(parcial, entrega);
+  const sigueCorriendo = imputarPagoEnCuotas(50000, parcial, { ...PARAM, hoy: V1_MAS_40 });
+  const moraEsperada = round2(round2(TOTAL * 0.005 * 40) - parcial[0].pagadoMora);
+  ok(cerca(sigueCorriendo.aplicaciones[0].aplicadoMora, moraEsperada),
+    "🔴 una entrega a cuenta NO congela la mora: la cuota sigue impaga y sigue devengando",
+    `${F(sigueCorriendo.aplicaciones[0].aplicadoMora)} esperado ${F(moraEsperada)}`);
 }
 
 // ════════════════════════════════════════════════════════════════════════════

@@ -2,7 +2,7 @@ import { requireAuth, requireRole, scopeCreditosVendedor, ApiError } from "@/lib
 import { successResponse, errorResponse, withErrorHandler, assertSameOrigin } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
-import { puedeDarsePorIncobrableManual, round2, normalizarFrecuencia, resolverFrecuencia, sumarPeriodos, construirPlanAmortizacion, planACuotas, estadoCoherente, etiquetaCaja, esCuentaValida, validarParametrosOtorgamiento, diasMoraActual, buscarPlan, nombrePlan, tasaDesdeCoeficiente, cargosConPlan, CUENTA_LABEL, type Cuenta, ESTADOS_VIVOS, ESTADOS_COBRABLES, esCreditoVivo, esCreditoCobrable, topeMoraPorIncobrable, esRecuperoPostCastigo, moraDelCredito, moraDesdeCronograma, moraPendienteTotal, calcularDeudaVencida, deudaEnRevision, esTipoCreditoValido, TIPOS_CREDITO, calcularDeudaConsolidada, puedeRefinanciar, cargosDeCuota, baseMoraDeCuota } from "@/lib/domain";
+import { puedeDarsePorIncobrableManual, round2, normalizarFrecuencia, resolverFrecuencia, sumarPeriodos, construirPlanAmortizacion, planACuotas, estadoCoherente, etiquetaCaja, esCuentaValida, validarParametrosOtorgamiento, diasMoraActual, buscarPlan, nombrePlan, tasaDesdeCoeficiente, cargosConPlan, CUENTA_LABEL, type Cuenta, ESTADOS_VIVOS, ESTADOS_COBRABLES, esCreditoVivo, esCreditoCobrable, topeMoraPorIncobrable, esRecuperoPostCastigo, moraDelCredito, moraDesdeCronograma, moraPendienteTotal, calcularDeudaVencida, deudaEnRevision, esTipoCreditoValido, TIPOS_CREDITO, calcularDeudaConsolidada, puedeRefinanciar, cargosDeCuota, baseMoraDeCuota, pendienteSinMoraDeCuota } from "@/lib/domain";
 import { siguienteNumeroComprobante } from "@/lib/comprobantes";
 import { assertFondosSuficientesTx } from "@/lib/caja-fondos";
 import { lockNumeroCreditoTx, TX_PLATA } from "@/lib/locks";
@@ -206,7 +206,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
       // Cuota por cuota, igual que la imputación al cobrar. Antes era UNA cuota × los días
       // de la más vieja, que con varias vencidas mostraba menos de la mitad de lo real.
       interes_mora = moraPendienteTotal(
-        c.cuotas.map((q) => ({ fechaVencimiento: q.fecha_vencimiento, baseMora: baseMoraDeCuota(q), pagadoMora: q.pagado_mora, condonadoMora: q.condonado_mora })),
+        c.cuotas.map((q) => ({ fechaVencimiento: q.fecha_vencimiento, baseMora: baseMoraDeCuota(q), pagadoMora: q.pagado_mora, condonadoMora: q.condonado_mora, pendienteSinMora: pendienteSinMoraDeCuota(q) })),
         { tasaDiaria: mc.tasaMoraDiaria, diasGracia: graciaCred, hoy: hoyCredito, topePct: mc.topeMoraPct },
       );
     }

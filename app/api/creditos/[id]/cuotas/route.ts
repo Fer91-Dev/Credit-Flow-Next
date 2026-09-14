@@ -3,7 +3,7 @@ import { scopeCreditoParaCobrar } from "@/lib/cobranza-scope";
 import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
-import { cuotaCerradaSinPago, frecuenciaLabel, normalizarFrecuencia, diasAtraso, round2, interesMora, moraDelCredito, moraDesdeCronograma, topeMoraDeCuota, fechaTopeMora, topeMoraPorFallecimiento, topeMoraPorIncobrable, topeMoraMasTemprano, promoVigenteAl, type FrecuenciaDef, baseMoraDeCuota } from "@/lib/domain";
+import { cuotaCerradaSinPago, frecuenciaLabel, normalizarFrecuencia, diasAtraso, round2, moraRestanteDeCuota, moraDelCredito, moraDesdeCronograma, topeMoraDeCuota, fechaTopeMora, topeMoraPorFallecimiento, topeMoraPorIncobrable, topeMoraMasTemprano, promoVigenteAl, type FrecuenciaDef, baseMoraDeCuota, pendienteSinMoraDeCuota } from "@/lib/domain";
 import { getConfiguracion, getCobranzaConfig } from "@/lib/config";
 import { recibosPorCuotaDeAcuerdo } from "@/lib/acuerdos";
 import { veredictoCobro } from "@/lib/recupero-server";
@@ -189,22 +189,34 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
       c.fecha_vencimiento,
       fechaTopeMora(topeMoraDeCuota(c.fecha_vencimiento, hoy, congeladaAl), topeAbsoluto),
     );
-    const moraSinPromo = moraCred.moraActiva
-      ? interesMora(baseMoraDeCuota(c), diasQueDevengan, { tasaDiaria: moraCred.tasaMoraDiaria, diasGracia: graciaCred, topePct: moraCred.topeMoraPct })
-      : 0;
     /*
-      La quita de campaña reduce la mora devengada, con la MISMA cuenta que `POST /pagos`.
+      🔴 LA MORA SALE DE `moraRestanteDeCuota`, la MISMA función que usa `POST /pagos`.
 
-      🔴 Y SOBRE LO QUE TODAVÍA SE DEBE, no sobre el total. Lo ya resuelto son dos cosas: la
-      plata que entró (`pagado_mora`) y la que se perdonó para siempre (`condonado_mora`,
-      migración 010). Sin restar la segunda, esta pantalla volvía a mostrar la mora entera en
-      cuanto la campaña vencía — la misma deuda resucitada que el cobro siguiente levantaba.
+      Acá estaba escrita a mano, con la regla de la cuota saldada (`capitalSaldado ? 0 : …`)
+      que al motor de imputación le faltaba: la pantalla mostraba $0,00 y la caja cobraba
+      igual. Que fueran dos cuentas separadas ERA el defecto — una cuota pagada en fecha
+      seguía devengando punitorios en el libro y el cobro del mes siguiente se los llevaba.
+      Ahora hay una sola definición y las dos rutas contestan el mismo número.
+
+      Lo que ya no se debe entra por `pendienteSinMora`; lo ya resuelto de la mora son dos
+      cosas: la plata que entró (`pagado_mora`) y la que se perdonó para siempre
+      (`condonado_mora`, migración 010).
     */
-    const moraResuelta = round2(c.pagado_mora + c.condonado_mora);
-    const moraRestantePlena = Math.max(0, round2(moraSinPromo - moraResuelta));
-    const moraPlena = round2(moraRestantePlena * factorMora);
-    const moraPend = capitalSaldado ? 0 : moraPlena;
-    if (!capitalSaldado) ahorroPromo = round2(ahorroPromo + Math.max(0, round2(moraRestantePlena - moraPlena)));
+    const moraRestantePlena = moraRestanteDeCuota(
+      {
+        fechaVencimiento: c.fecha_vencimiento,
+        baseMora: baseMoraDeCuota(c),
+        pagadoMora: c.pagado_mora,
+        condonadoMora: c.condonado_mora,
+        // Una cuota CONDONADA/trasladada/anulada dejó de deber aunque `pagado_*` quede corto.
+        pendienteSinMora: condonada ? 0 : pendienteSinMoraDeCuota(c),
+      },
+      diasQueDevengan,
+      { moraActiva: moraCred.moraActiva, tasaDiaria: moraCred.tasaMoraDiaria, diasGracia: graciaCred, topePct: moraCred.topeMoraPct },
+    );
+    // La quita de campaña reduce lo que se cobra, con la MISMA cuenta que `POST /pagos`.
+    const moraPend = round2(moraRestantePlena * factorMora);
+    ahorroPromo = round2(ahorroPromo + Math.max(0, round2(moraRestantePlena - moraPend)));
     const pendienteCuota = condonada
       ? 0
       : round2(Math.max(0, c.cuota_total - (c.pagado_capital + c.pagado_interes + c.pagado_cargos)));

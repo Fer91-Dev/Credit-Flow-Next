@@ -93,6 +93,33 @@ export function cargosDeCuota(
 }
 
 /**
+ * LO QUE LA CUOTA TODAVÍA DEBE, SIN CONTAR PUNITORIOS: capital + interés + cargos pendientes.
+ *
+ * 🔴 De este número depende que la cuota siga devengando mora o no (ver `moraRestanteDeCuota`
+ * en mora.ts). Si da 0, la cuota está SALDADA y el punitorio se detiene ahí.
+ *
+ * Adaptador snake_case para las filas de `cuotas` que vienen de Prisma; el dominio trabaja
+ * con los mismos componentes en camelCase. Una sola resta, para que la pantalla, el cobro,
+ * el acuerdo, la refinanciación y los KPI no puedan contestar distinto la misma pregunta.
+ */
+export function pendienteSinMoraDeCuota(q: {
+  capital: number;
+  interes: number;
+  iva?: number | null;
+  seguro?: number | null;
+  gastos?: number | null;
+  honorarios?: number | null;
+  pagado_capital: number;
+  pagado_interes: number;
+  pagado_cargos: number;
+}): number {
+  const capital = Math.max(0, round2(q.capital - q.pagado_capital));
+  const interes = Math.max(0, round2(q.interes - q.pagado_interes));
+  const cargos = Math.max(0, round2(cargosDeCuota(q) - q.pagado_cargos));
+  return round2(capital + interes + cargos);
+}
+
+/**
  * Mapea el plan de amortización ya calculado a filas de cuota persistibles.
  * No recalcula nada: reusa cada `CuotaPlan` de `plan.cuotas`.
  */

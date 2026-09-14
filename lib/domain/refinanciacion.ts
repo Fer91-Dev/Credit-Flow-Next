@@ -11,7 +11,7 @@
  * lo que costaría cancelar el crédito hoy.
  */
 import { round2, noNegativo } from "./money";
-import { diasAtraso, interesMora } from "./mora";
+import { diasAtraso, moraRestanteDeCuota } from "./mora";
 import type { CuotaParaImputar } from "./payments";
 
 /** Desglose de la deuda viva a consolidar al refinanciar. */
@@ -114,10 +114,31 @@ export function calcularDeudaConsolidada(
     const capitalPend = noNegativo(round2(c.capital - c.pagadoCapital));
 
     const dias = diasAtraso(c.fechaVencimiento, hoy);
-    const moraPlena = moraActiva
-      ? interesMora(c.baseMora, dias, { tasaDiaria: opciones.tasaMoraDiaria, diasGracia: opciones.diasGracia, topePct: opciones.topeMoraPct })
-      : 0;
-    const moraPend = noNegativo(round2(moraPlena - c.pagadoMora));
+    /*
+      La misma cuenta de mora que el cobro y el acuerdo (`moraRestanteDeCuota`). Trae dos
+      reglas que acá faltaban: una cuota SALDADA no devenga —se estaba consolidando en el
+      crédito nuevo el punitorio de cuotas ya pagadas— y lo condonado por una campaña se
+      descuenta igual que lo cobrado, porque en los dos casos la cuota dejó de deberlo.
+
+      🔴 El "pendiente sin mora" es la deuda REAL de la cuota, no la proporcional: el interés
+      se devenga a prorrata para valuar la deuda al día de hoy, pero si a la cuota le falta
+      interés por vencer igual sigue impaga, y una cuota impaga devenga.
+    */
+    const moraPend = moraRestanteDeCuota(
+      {
+        fechaVencimiento: c.fechaVencimiento,
+        baseMora: c.baseMora,
+        pagadoMora: c.pagadoMora,
+        condonadoMora: c.condonadoMora,
+        pendienteSinMora: round2(
+          capitalPend +
+          cargosPend +
+          noNegativo(round2(c.interes - c.pagadoInteres)),
+        ),
+      },
+      dias,
+      { moraActiva, tasaDiaria: opciones.tasaMoraDiaria, diasGracia: opciones.diasGracia, topePct: opciones.topeMoraPct },
+    );
 
     capital = round2(capital + capitalPend);
     interes = round2(interes + interesPend);
