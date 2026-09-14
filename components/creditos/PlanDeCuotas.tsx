@@ -343,7 +343,23 @@ export function PlanDeCuotas({
                   >
                     {moraDev > 0 ? (
                       <>
-                        <span className={`block ${moraPend > 0 ? "text-destructive" : "text-muted-foreground"}`}>
+                        {/*
+                          🔴 LA MORA VA EN ROJO SIEMPRE, esté cobrada o no.
+
+                          Iba en gris cuando no quedaba nada pendiente, y ahí el importe se
+                          confundía con el resto de las columnas del plan: en un crédito
+                          refinanciado, los $17.620,05 de punitorios de una cuota se leían
+                          igual que su interés o su capital. El rojo es el color con el que
+                          esta pantalla dice "esto es punitorio", no "esto se debe" — lo que
+                          se debe o no lo dicen la etiqueta de abajo ("cobrada", "al
+                          refinanciar") y la columna A COBRAR, que es la que manda.
+
+                          Pedido de Fernando (14/09/2026). El TOTAL de la fila de abajo
+                          conserva su regla —gris si ya no falta cobrar nada—, que salió de un
+                          pedido suyo anterior: sobre un crédito saldado, un total en rojo se
+                          leía como deuda viva ("¿qué son los $56.323,40?").
+                        */}
+                        <span className="block text-destructive">
                           ${n2(moraDev)}
                         </span>
                         {(q.pagado_mora ?? 0) > 0 ? (

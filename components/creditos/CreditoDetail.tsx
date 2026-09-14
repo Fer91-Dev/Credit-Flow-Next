@@ -751,10 +751,35 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
             entre sí. El capital queda abajo, que es donde corresponde: es un componente de la
             deuda, no la deuda.
           */}
+          {/*
+            🔴 EN UN CRÉDITO REFINANCIADO, "DEUDA TOTAL $0,00" NO INFORMA NADA.
+
+            Es cierto —ya no se le cobra— pero es el único KPI que podría contar lo que pasó, y
+            decía cero al lado de un plan de tres cuotas con sus importes y sus punitorios. Lo
+            que hace falta saber de un crédito refinanciado es CUÁNTO se llevó la operación:
+            la suma de su plan más los punitorios que había devengado, que es exactamente lo
+            que suma la fila TOTALES de la tabla de abajo.
+
+            Fernando (14/09/2026): "se puede poner un KPI acá que me muestre Deuda del plan,
+            así sirve para darse cuenta que ese es el monto que se traslada".
+
+            Los dos sumandos van en el pie: el número tiene que poder cotejarse contra la
+            tabla sin hacer cuentas. Lo que se trasladó de verdad —esto menos la entrega que
+            se cobró en el acto— lo dice el panel del crédito nuevo, que es donde está la
+            resta completa.
+          */}
+          {credito.estado === "refinanciado" ? (
+            <Stat icon="counterclockwise-arrows-button" label="Deuda del plan" accent="warning"
+              value={`$${n2(r2(sumaPlan + moraTotalPlan))}`}
+              sub={`plan $${n2(sumaPlan)}${moraTotalPlan > 0 ? ` + punitorios $${n2(moraTotalPlan)}` : ""}`}
+              onClick={irAlPlan}
+              title="Ver el plan que se trasladó" />
+          ) : (
           <Stat icon="money-bag" label="Deuda total" accent={deudaTotal > 0 ? "warning" : "success"}
             tag={DEL_CREDITO}
             value={`$${n2(deudaTotal)}`}
             sub={deudaTotal > 0 ? `capital $${n2(credito.saldo_pendiente)}${moraTotalPlan > 0 ? ` · mora $${n2(moraTotalPlan)}` : ""}` : undefined} />
+          )}
           {/* CUÁL y CUÁNTO, no "la cuota" en abstracto: el operador necesita saber qué le
               toca cobrar ahora. Antes mostraba el importe genérico del plan, que no dice
               cuál está pendiente ni cuándo vence. */}
