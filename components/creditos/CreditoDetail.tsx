@@ -13,6 +13,7 @@ import { moraDevengadaDeCuota } from "@/lib/recibo-cuota";
 import { imprimirPlanPagos } from "@/lib/plan-print";
 import { LibreDeudaDialog } from "./LibreDeudaDialog";
 import { Emoji } from "@/components/ui/Emoji";
+import { calcularPuenteDeuda, PuenteDeudaPanel } from "@/components/creditos/PuenteDeuda";
 import { PlanDeCuotas } from "./PlanDeCuotas";
 import { StatusBadge, type BadgeVariant } from "@/components/ui/StatusBadge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -215,6 +216,17 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
   /** Mora devengada de todo el plan (pie de la columna Mora). */
   /** Pie de la columna Mora: la DEVENGADA, igual que las celdas. */
   const moraTotalPlan = cuotas.reduce((s, q) => s + moraDevengadaDeCuota(q), 0);
+  /** La suma nominal del plan: es el número que muestra la fila "Totales" del cronograma. */
+  const sumaPlan = cuotas.reduce((s, q) => s + q.cuota_total, 0);
+  /* La cuenta que une ese total con lo que el acuerdo consolidó. Null si no cierra exacta. */
+  const puenteDeuda = acuerdo
+    ? calcularPuenteDeuda({
+        deudaOriginal: acuerdo.deuda_original,
+        interesCapitalizado: acuerdo.interes_capitalizado,
+        sumaPlan,
+        moraPlan: moraTotalPlan,
+      })
+    : null;
   /**
    * Lo que el cliente debe HOY por todo el crédito: lo que resta de cada cuota más su mora.
    * Una sola suma de `total_cobrar`, que es lo mismo que muestra la columna "A cobrar" —
@@ -1040,7 +1052,23 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
                   cifras (14/09/2026). Una explicación que se vuelve mentira con el uso es peor
                   que ninguna: ahora dice de qué está hecha cada una y no en qué orden quedan.
                 */}
-                {(acuerdo.interes_capitalizado > 0 || moraTotalPlan > 0) && (
+                {/*
+                  LA CUENTA, NO EL PÁRRAFO.
+
+                  Acá había una explicación en palabras de por qué este total y el del plan de
+                  cuotas no coinciden. Fernando la leyó dos veces y no le cerró: "no entiendo
+                  sinceramente, por eso te pido que sea lo más claro posible y que se refleje
+                  en la pantalla". Tenía razón — un párrafo no se puede verificar con una
+                  calculadora, y estos son dos importes de plata.
+
+                  Ahora se muestra la resta con sus tres sumandos (ver `PuenteDeuda`). El
+                  párrafo queda SOLO para los casos en que la cuenta no cierra exacta —si el
+                  cliente pagó cuotas antes de firmar— porque ahí el renglón de punitorios
+                  estaría absorbiendo esa diferencia y diría un número que no es.
+                */}
+                {puenteDeuda ? (
+                  <PuenteDeudaPanel puente={puenteDeuda} cuotasPlan={cuotas.length} />
+                ) : (acuerdo.interes_capitalizado > 0 || moraTotalPlan > 0) ? (
                   <p className="mt-4 text-xs leading-relaxed text-muted-foreground">
                     Los dos totales no coinciden porque no están hechos de lo mismo.{" "}
                     {acuerdo.interes_capitalizado > 0 && (
@@ -1053,15 +1081,12 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
                     )}
                     {moraTotalPlan > 0 && (
                       <>
-                        Y al revés con los punitorios: la deuda que se consolidó lleva los{" "}
-                        <span className="font-mono font-medium tabular-nums text-foreground">{formatMonto(moraTotalPlan)}</span>{" "}
-                        de mora que había ese día
-                        {acuerdoVigente?.congela_punitorios ? <>, congelados desde entonces</> : null}, y el plan de
-                        cuotas no lleva mora nunca: se calcula aparte, cuota por cuota.
+                        Y al revés con los punitorios: la deuda que se consolidó lleva la mora que había
+                        ese día, y el plan de cuotas no lleva mora nunca: se calcula aparte, cuota por cuota.
                       </>
                     )}
                   </p>
-                )}
+                ) : null}
 
                 {/* Por qué la mora de arriba está quieta. Es el término congelado del acuerdo,
                     no una decisión de esta pantalla. */}

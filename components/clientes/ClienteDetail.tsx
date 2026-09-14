@@ -22,6 +22,7 @@ import { ObservacionesPanel } from "@/components/clientes/ObservacionesPanel";
 import { LibreDeudaDialog } from "@/components/creditos/LibreDeudaDialog";
 import { PagoForm } from "@/components/pagos/PagoForm";
 import { PlanDeCuotas } from "@/components/creditos/PlanDeCuotas";
+import { calcularPuenteDeuda, PuenteDeudaPanel } from "@/components/creditos/PuenteDeuda";
 import { ClienteBureauPanel } from "@/components/clientes/ClienteBureauPanel";
 import { EditarHistorialDialog } from "@/components/clientes/EditarHistorialDialog";
 import { ContactarDialog } from "@/components/clientes/ContactarDialog";
@@ -1550,6 +1551,8 @@ function CuotasInline({ credito, onCobrar, onCobrarAcuerdo }: {
    */
   const puedeCobrar = !!onCobrar && esCreditoCobrable(credito.estado) && credito.saldo_pendiente > 0;
   const moraTotalDevengada = cuotas.reduce((s, q) => s + moraDevengadaDeCuota(q), 0);
+  /** La suma nominal del plan: el mismo número que muestra la fila "Totales" de la tabla. */
+  const sumaPlanCredito = cuotas.reduce((s, q) => s + q.cuota_total, 0);
   const aCobrarTotal =
     Math.round(cuotas.reduce((s, q) => s + (q.estado === "pagada" ? 0 : q.total_cobrar ?? q.cuota_total), 0) * 100) / 100;
 
@@ -1576,6 +1579,15 @@ function CuotasInline({ credito, onCobrar, onCobrarAcuerdo }: {
    * contradecía. Tenía razón en desconfiar: faltaba el renglón que los relaciona.
    */
   const acuerdo = meta?.acuerdo ?? null;
+  /* La cuenta que une el total del acuerdo con el del plan de abajo. Null si no cierra. */
+  const puenteDeudaAcuerdo = acuerdo
+    ? calcularPuenteDeuda({
+        deudaOriginal: acuerdo.deuda_original,
+        interesCapitalizado: acuerdo.interes_capitalizado,
+        sumaPlan: sumaPlanCredito,
+        moraPlan: moraTotalDevengada,
+      })
+    : null;
   /**
    * 🔴 VIGENTE vs CERRADO. El plan del acuerdo se muestra SIEMPRE —también cumplido o roto,
    * porque es el registro de lo que el cliente pactó y pagó— pero solo el VIGENTE bloquea el
@@ -1741,6 +1753,17 @@ function CuotasInline({ credito, onCobrar, onCobrarAcuerdo }: {
               </tfoot>
             </table>
           </div>
+
+          {/*
+            🔴 LA CUENTA QUE UNE LOS DOS TOTALES.
+
+            Arriba está lo que el acuerdo consolidó y abajo la fila "Totales" del plan del
+            crédito, y son números distintos de la misma deuda. Decirlo en una frase no
+            alcanzó: Fernando comparó $479.045,11 con $454.670,16 y no le cerró, con razón —
+            un importe de plata tiene que poder verificarse con una calculadora. Va la resta
+            con sus tres sumandos; se omite sola si no cierra exacta (ver `PuenteDeuda`).
+          */}
+          {puenteDeudaAcuerdo && <PuenteDeudaPanel puente={puenteDeudaAcuerdo} cuotasPlan={cuotas.length} />}
 
           <div className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t border-primary/15 pt-2">
             <p className="text-[11px] leading-relaxed text-muted-foreground">
