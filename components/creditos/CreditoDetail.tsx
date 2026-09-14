@@ -1643,7 +1643,19 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
                         {fmtDate(p.fecha)}
                         {p.acuerdo_cuota && (
                           <span className="ml-1.5 inline-flex items-center rounded-full bg-primary/10 px-1.5 py-0.5 align-middle text-[9px] font-semibold uppercase tracking-wide text-primary">
-                            Acuerdo {p.acuerdo_cuota.numero}/{p.acuerdo_cuota.acuerdo._count.cuotas}
+                            {/*
+                              🔴 EL RANGO, CUANDO EL COBRO ADELANTÓ VARIAS CUOTAS PACTADAS.
+
+                              Decía "Acuerdo 2/3" sobre un cobro de $301.354,55 que pagó la 2
+                              Y la 3, así que la 3 parecía faltar — y el importe, que es el
+                              doble de una cuota, quedaba sin explicación. El recibo en PDF ya
+                              decía "Cuotas 2 a 3 de 3": el papel y la pantalla contaban
+                              historias distintas del mismo cobro.
+                            */}
+                            Acuerdo{" "}
+                            {p.acuerdo_cuota_hasta && p.acuerdo_cuota_hasta > p.acuerdo_cuota.numero
+                              ? `${p.acuerdo_cuota.numero} a ${p.acuerdo_cuota_hasta}/${p.acuerdo_cuota.acuerdo._count.cuotas}`
+                              : `${p.acuerdo_cuota.numero}/${p.acuerdo_cuota.acuerdo._count.cuotas}`}
                           </span>
                         )}
                       </td>

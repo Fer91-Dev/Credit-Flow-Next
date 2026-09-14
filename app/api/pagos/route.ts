@@ -61,6 +61,13 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
         acuerdo_cuota: {
           select: { numero: true, acuerdo: { select: { _count: { select: { cuotas: true } } } } },
         },
+        /*
+          `acuerdo_cuota_hasta` NO se declara acá: esta consulta es un `include`, así que los
+          escalares de `pagos` ya viajan todos. Declararlo no compila —Prisma no admite un
+          campo escalar dentro de un include— y el dato ya estaba: lo que faltaba era que la
+          pantalla lo usara. Sin él, el cobro que adelanta dos cuotas pactadas se rotula con
+          la primera sola y la segunda parece impaga.
+        */
         /** Si el cobro fue la ENTREGA con la que se armó un acuerdo: no es una cuota más. */
         acuerdo_entrega: { select: { id: true } },
         /**
