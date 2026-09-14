@@ -1595,6 +1595,14 @@ function CuotasInline({ credito, onCobrar, onCobrarAcuerdo }: {
    * en el servidor y al cumplirse el acuerdo su plan desaparecía de la ficha.
    */
   const acuerdoVigenteAca = acuerdo?.estado === "vigente" ? acuerdo : null;
+  /**
+   * 🔴 EL ACUERDO CUMPLIDO VA EN VERDE, no en el gris de "cerrado".
+   *
+   * Cumplirlo es el único final bueno que tiene un acuerdo —el cliente pagó todo lo pactado y
+   * el crédito cerró en cero— y compartía color con el roto y el anulado. Mismo criterio que
+   * el panel del detalle del crédito (pedido de Fernando, 14/09/2026).
+   */
+  const acuerdoCumplidoAca = acuerdo?.estado === "cumplido";
   const proximaAcuerdo = acuerdo?.cuotas.find((c) => c.estado !== "pagada") ?? null;
   const ACUERDO_BADGE: Record<string, { label: string; variant: "primary" | "success" | "destructive" | "muted" }> = {
     vigente:  { label: "Acuerdo de pago vigente",  variant: "primary" },
@@ -1607,9 +1615,15 @@ function CuotasInline({ credito, onCobrar, onCobrarAcuerdo }: {
   return (
     <div className="px-3 py-3">
       {acuerdo && (
-        <div className={`mb-3 rounded-xl border px-3.5 py-3 ${acuerdoVigenteAca ? "border-primary/25 bg-primary/[0.06]" : "border-border bg-muted/20"}`}>
+        <div className={`mb-3 rounded-xl border px-3.5 py-3 ${
+          acuerdoVigenteAca ? "border-primary/25 bg-primary/[0.06]"
+            : acuerdoCumplidoAca ? "border-success/30 bg-success/[0.05]"
+            : "border-border bg-muted/20"
+        }`}>
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className={`flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest ${acuerdoVigenteAca ? "text-primary" : "text-muted-foreground"}`}>
+            <p className={`flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest ${
+              acuerdoVigenteAca ? "text-primary" : acuerdoCumplidoAca ? "text-success" : "text-muted-foreground"
+            }`}>
               <Handshake className="h-3.5 w-3.5" /> {acEstado!.label}
             </p>
             <span className="text-[11px] tabular-nums text-muted-foreground">

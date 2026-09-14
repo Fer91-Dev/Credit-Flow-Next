@@ -927,7 +927,20 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
             }
           }
           /* Tono: el vigente al día en índigo, el vigente incumplido en rojo, el cerrado en gris. */
-          const tono = !acuerdoVigente
+          /**
+           * 🔴 UN ACUERDO CUMPLIDO SE MUESTRA EN VERDE, no en el gris de "cerrado".
+           *
+           * Todos los acuerdos que ya no están vigentes compartían el mismo gris: el que se
+           * cumplió, el que se rompió y el que se anuló. Pero cumplirlo es el único final
+           * bueno que tiene un acuerdo —el cliente pagó todo lo pactado y el crédito cerró en
+           * cero— y la pantalla lo archivaba con el mismo color que a un incumplimiento.
+           * Pedido de Fernando (14/09/2026), sobre CRD-000008 al terminar de pagarlo.
+           *
+           * El gris queda para los otros dos finales, que sí son historia sin mérito.
+           */
+          const tono = acuerdo.estado === "cumplido"
+            ? { borde: "border-success/35", fondo: "bg-success/[0.05]", franja: "bg-success", texto: "text-success", suave: "border-success/20" }
+            : !acuerdoVigente
             ? { borde: "border-border", fondo: "bg-muted/20", franja: "bg-muted-foreground/30", texto: "text-muted-foreground", suave: "border-border" }
             : acuerdoAlDia
               ? { borde: "border-primary/30", fondo: "bg-primary/[0.05]", franja: "bg-primary", texto: "text-primary", suave: "border-primary/20" }
@@ -973,7 +986,9 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
                         ? acuerdoAlDia
                           ? "bg-success/10 text-success ring-success/25"
                           : "bg-destructive/10 text-destructive ring-destructive/25"
-                        : "bg-muted/40 text-muted-foreground ring-border"
+                        : acuerdo.estado === "cumplido"
+                          ? "bg-success/10 text-success ring-success/25"
+                          : "bg-muted/40 text-muted-foreground ring-border"
                     }`}>
                       {acuerdoVigente ? (acuerdoAlDia ? "Cumpliendo" : "Con cuotas vencidas") : EST.chip}
                     </span>
