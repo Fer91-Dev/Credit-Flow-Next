@@ -9,9 +9,32 @@ import { StatusBadge } from "@/components/ui/StatusBadge";
 import { DetailSection } from "@/components/ui/DetailGrid";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CreditoLink } from "@/components/ui/CreditoLink";
-import { formatFecha, formatFechaHora, formatMonto, nombreCompleto, formatDias, formatCreditoNumero } from "@/lib/utils";
+import { Emoji } from "@/components/ui/Emoji";
+import { formatFecha, formatFechaHora, formatMonto, nombreCompleto, formatDias, formatCreditoNumero, hoyComercial } from "@/lib/utils";
 
 const fmtDate = (s?: string | null) => formatFecha(s);
+
+/**
+ * CUÁNDO CAE LA PROMESA, dicho como lo diría una persona.
+ *
+ * Una fecha suelta ("18/09/2026") obliga a hacer la cuenta mentalmente para saber si todavía
+ * hay que esperar o si ya se incumplió, que es lo único que se quiere saber. Se mide contra
+ * el día comercial argentino, igual que el resto del sistema.
+ */
+function cuandoPromesa(fecha?: string | null): string {
+  if (!fecha) return "Vigente";
+  const d = new Date(fecha);
+  if (Number.isNaN(d.getTime())) return "Vigente";
+  const hoy = hoyComercial();
+  const dias = Math.round(
+    (Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()) -
+      Date.UTC(hoy.getUTCFullYear(), hoy.getUTCMonth(), hoy.getUTCDate())) / 86400000,
+  );
+  if (dias === 0) return "Vence hoy";
+  if (dias === 1) return "Vence mañana";
+  if (dias > 1) return `En ${formatDias(dias)}`;
+  return dias === -1 ? "Venció ayer" : `Venció hace ${formatDias(-dias)}`;
+}
 
 const TIPO_LABEL: Record<AccionCobranza["tipo"], string> = {
   llamada: "Llamada", whatsapp: "WhatsApp", email: "Email", visita: "Visita", otro: "Otro",
@@ -59,6 +82,23 @@ export function CobranzaDetail({ credito, acciones }: {
   const moraTotal = vencidas.reduce((s, c) => s + (c.mora ?? 0), 0);
   const capitalVencido = exigible - moraTotal;
   const acuerdo = meta?.acuerdo ?? null;
+
+  /**
+   * 🔴 LA PROMESA VIGENTE SE MUESTRA ARRIBA, NO SEPULTADA EN EL HISTORIAL.
+   *
+   * Vivía como un renglón más del "Historial de gestiones", al final del modal y debajo del
+   * plan de cuotas: había que scrollear hasta el fondo y leer las gestiones una por una para
+   * descubrir que el cliente se había comprometido a pagar. Fernando: "me costó encontrar la
+   * promesa de pago que me dijiste que tenía".
+   *
+   * Y es el dato que cambia la acción: a alguien que prometió pagar el viernes no se lo
+   * vuelve a llamar hoy. Va junto a lo que se reclama, que es lo que el cobrador mira antes
+   * de levantar el teléfono.
+   *
+   * Solo la PENDIENTE: una cumplida o incumplida es historia y se queda abajo, donde está el
+   * resto de la historia.
+   */
+  const promesa = gestiones.find((g) => g.resultado === "promesa_pago" && g.promesa_estado === "pendiente") ?? null;
 
   /**
    * 🔴 Los días de atraso salen de las CUOTAS, no del `credito` que llegó por prop.
@@ -121,6 +161,38 @@ export function CobranzaDetail({ credito, acciones }: {
           </>
         )}
       </div>
+
+      {/* ── La promesa de pago vigente ─────────────────────────────────────── */}
+      {promesa && (
+        <div className="rounded-xl border border-warning/40 bg-warning/[0.07] p-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <Emoji name="alarm-clock" className="h-4 w-4" />
+              <h3 className="text-sm font-semibold text-foreground">Prometió pagar</h3>
+            </div>
+            <StatusBadge label={cuandoPromesa(promesa.promesa_fecha)} variant="warning" />
+          </div>
+          <div className="mt-2 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+            <p className="font-mono text-2xl font-bold tabular-nums text-warning">
+              {promesa.promesa_monto ? formatMonto(promesa.promesa_monto) : "sin monto"}
+            </p>
+            {promesa.promesa_fecha && (
+              <p className="text-sm text-foreground/80">para el <span className="font-semibold">{fmtDate(promesa.promesa_fecha)}</span></p>
+            )}
+          </div>
+          {/* Qué parte de lo vencido cubre: es lo que decide si la promesa alcanza o hay que
+              volver a llamarlo. Mismo texto que el renglón del historial: una sola cuenta. */}
+          {promesa.promesa_monto != null && exigible > 0 && (
+            <p className="mt-1.5 text-xs text-muted-foreground">
+              Cubre el {Math.round((promesa.promesa_monto / exigible) * 100)}% de lo vencido
+              {exigible - promesa.promesa_monto > 0.009 && (
+                <> · quedarían <span className="font-mono tabular-nums text-foreground/80">{formatMonto(exigible - promesa.promesa_monto)}</span> sin cubrir</>
+              )}
+            </p>
+          )}
+          {promesa.nota && <p className="mt-2 border-t border-warning/20 pt-2 text-xs text-muted-foreground">{promesa.nota}</p>}
+        </div>
+      )}
 
       {/*
         ── El acuerdo, si tiene uno ────────────────────────────────────────

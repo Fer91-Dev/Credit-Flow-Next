@@ -1098,9 +1098,12 @@ export function CobranzaTable({ role }: { role: Role }) {
       </Dialog>
 
       <Dialog open={!!detalle} onOpenChange={open => { if (!open) setDetalle(null); }}>
-        {/* Ancho: acá adentro entra el plan de cuotas completo, que es una tabla de 6
-            columnas. Con `max-w-lg` los importes se apretaban unos contra otros. */}
-        <DialogContent className="w-[95vw] sm:max-w-3xl max-h-[92dvh] flex flex-col overflow-hidden sm:p-7">
+        {/* Ancho: acá adentro entra el plan de cuotas completo —una tabla de seis columnas—,
+            el acuerdo con su plan y el historial de gestiones. Con `max-w-lg` los importes se
+            apretaban unos contra otros; con `3xl` el plan seguía entrando justo y todo lo de
+            abajo quedaba fuera de la primera pantalla, que es lo que hizo que una promesa de
+            pago vigente costara encontrar (Fernando, 14/09/2026). */}
+        <DialogContent className="w-[95vw] sm:max-w-5xl max-h-[94dvh] flex flex-col overflow-hidden sm:p-7">
           <DialogHeader className="shrink-0">
             <DialogTitle>Detalle de cobranza</DialogTitle>
           </DialogHeader>
