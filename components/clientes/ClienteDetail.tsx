@@ -8,7 +8,7 @@ import { useSWRConfig } from "swr";
 import {
   Pencil, Trash2, CalendarClock, ChevronDown, Loader2, Mail, MessageCircle, Phone, Printer, ShieldCheck, Ban, Receipt, AlertTriangle, History, BellOff, Wallet, Sparkles, Handshake,
 } from "lucide-react";
-import { refrescarNotificaciones, useClienteDetalle, useAccionesCobranza, useCuotas, KEYS, type CreditoConFinanzas, type EstadoCuota, type CuotaPersistida, type CuotasCredito, useDiasLegales, useOrigenRefinanciacion } from "@/lib/swr";
+import { refrescarNotificaciones, useClienteDetalle, useAccionesCobranza, useCuotas, KEYS, type CreditoConFinanzas, type EstadoCuota, type CuotaPersistida, type CuotasCredito, type PagoImputado, useDiasLegales, useOrigenRefinanciacion } from "@/lib/swr";
 import { StatusBadge, type BadgeVariant } from "@/components/ui/StatusBadge";
 import { ScoreBadge } from "@/components/ui/ScoreBadge";
 import { Stat } from "@/components/ui/Stat";
@@ -790,6 +790,10 @@ export function ClienteDetail({
                 creditos={activos}
                 clienteId={cliente.id}
                 abiertoDeEntrada={esTerminal}
+                puedeAnular={puedeAnular}
+                reciboBusy={reciboBusy}
+                onRecibo={handleReciboPago}
+                onAnular={(pago, credito) => { setAnularPago({ id: pago.id, monto: pago.monto, fecha: pago.fecha, creditoNumero: credito.numero, creditoRefiNumero: credito.refinancia_a_numero }); setAnularMotivo(""); }}
                 onCobrar={puedeCobrarAca ? (c, q) => setCobrando({ credito: c, cuota: q }) : undefined}
                 onCobrarAcuerdo={puedeCobrarAca ? (creditoId, acuerdo) => setCobrandoAcuerdo({ creditoId, acuerdo }) : undefined}
               />
@@ -809,6 +813,10 @@ export function ClienteDetail({
               creditos={incobrables}
               clienteId={cliente.id}
               abiertoDeEntrada={esTerminal}
+              puedeAnular={puedeAnular}
+              reciboBusy={reciboBusy}
+              onRecibo={handleReciboPago}
+              onAnular={(pago, credito) => { setAnularPago({ id: pago.id, monto: pago.monto, fecha: pago.fecha, creditoNumero: credito.numero, creditoRefiNumero: credito.refinancia_a_numero }); setAnularMotivo(""); }}
               onCobrar={puedeCobrarAca ? (c, q) => setCobrando({ credito: c, cuota: q }) : undefined}
               onCobrarAcuerdo={puedeCobrarAca ? (creditoId, acuerdo) => setCobrandoAcuerdo({ creditoId, acuerdo }) : undefined}
             />
@@ -819,113 +827,17 @@ export function ClienteDetail({
         {showCreditos && historicos.length > 0 && (
           <section className="space-y-2">
             <SectionTitle icon="page-facing-up" text={`Historial de créditos (${historicos.length})`} />
-            <CreditosTabla creditos={historicos} clienteId={cliente.id} />
+            <CreditosTabla
+              creditos={historicos}
+              clienteId={cliente.id}
+              puedeAnular={puedeAnular}
+              reciboBusy={reciboBusy}
+              onRecibo={handleReciboPago}
+              onAnular={(pago, credito) => { setAnularPago({ id: pago.id, monto: pago.monto, fecha: pago.fecha, creditoNumero: credito.numero, creditoRefiNumero: credito.refinancia_a_numero }); setAnularMotivo(""); }}
+            />
           </section>
         )}
 
-        {/*
-          HISTORIAL DE PAGOS — línea de tiempo, no tabla.
-
-          🔴 Un pago es un HECHO FECHADO, no una fila de datos. Como tabla competía
-          visualmente con el estado actual del crédito de arriba —dos grillas iguales, una
-          debajo de la otra— y no se distinguía "lo que debe" de "lo que pasó".
-
-          Y decía cuánto entró sin decir CONTRA QUÉ ni cómo se repartió: para saber por qué
-          el cliente sigue debiendo tanto después de pagar $150.000,00 había que abrir el
-          recibo en PDF. Ahora la imputación está en el renglón.
-
-          El PAGO ANULADO se muestra, no se esconde: el hueco en la caja tiene que quedar a
-          la vista, con su motivo.
-        */}
-        {showCreditos && pagosCliente.length > 0 && (
-          <section className="space-y-2">
-            <SectionTitle icon="dollar-banknote" text={`Historial de pagos (${pagosCliente.filter((p) => !p.anulado).length})`} />
-            <div className="space-y-3">
-              {pagosCliente.map((p) => {
-                const imputado = [
-                  { k: "Punitorios", v: p.aplicado_mora ?? 0, c: "text-destructive" },
-                  { k: "Interés", v: p.aplicado_interes ?? 0, c: "text-warning" },
-                  { k: "Cargos", v: p.aplicado_cargos ?? 0, c: "text-muted-foreground" },
-                  { k: "Capital", v: p.aplicado_capital ?? 0, c: "text-primary" },
-                ].filter((x) => x.v > 0);
-                const cuotas = p.aplicaciones ?? [];
-                return (
-                  <div key={p.id} className="relative pl-6">
-                    {/* Guía y nodo: es lo que hace que se lea como una secuencia. */}
-                    <span className="absolute inset-y-0 left-[5px] w-px bg-border" aria-hidden />
-                    <span className={`absolute left-0 top-5 h-[11px] w-[11px] rounded-full ring-4 ring-background ${p.anulado ? "bg-muted-foreground/60" : "bg-success"}`} aria-hidden />
-
-                    <div className={`rounded-xl border border-border bg-card p-4 transition-colors hover:border-success/30 ${p.anulado ? "opacity-60" : ""}`}>
-                      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-                        <div className="min-w-0">
-                          <p className={`font-mono text-lg font-bold tabular-nums tracking-tight ${p.anulado ? "text-muted-foreground line-through" : "text-success"}`}>
-                            +${n2(p.monto)}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            {cuotas.length > 0 ? (
-                              <>
-                                a cuenta de la{" "}
-                                <span className="font-medium text-foreground">
-                                  {cuotas.length === 1
-                                    ? `cuota ${cuotas[0].cuota.nro}`
-                                    : `cuotas ${cuotas.map((a) => a.cuota.nro).join(", ")}`}
-                                </span>
-                              </>
-                            ) : "cobro registrado"}
-                            {" · "}
-                            <CreditoLink id={p.creditoId} numero={p.creditoNumero} numeroOrigen={p.creditoRefiNumero} conIcono={false} />
-                          </p>
-                        </div>
-                        <div className="flex shrink-0 items-center gap-2">
-                          <span className="text-[11px] tabular-nums text-muted-foreground">{formatFecha(p.fecha)}</span>
-                          {p.anulado
-                            ? <StatusBadge label="Anulado" variant="destructive" />
-                            : <StatusBadge label={p.metodo} variant="muted" />}
-                        </div>
-                      </div>
-
-                      {/* Cómo se repartió el dinero: responde "¿por qué sigue debiendo tanto?". */}
-                      {!p.anulado && imputado.length > 0 && (
-                        <div className="mt-2.5 flex flex-wrap gap-1.5">
-                          {imputado.map((x) => (
-                            <span key={x.k} className="inline-flex items-baseline gap-1.5 rounded-md border border-border/60 bg-muted/20 px-2 py-1 text-[11px]">
-                              <span className="text-muted-foreground">{x.k}</span>
-                              <span className={`font-mono font-medium tabular-nums ${x.c}`}>${n2(x.v)}</span>
-                            </span>
-                          ))}
-                        </div>
-                      )}
-
-                      {p.anulado && p.anulado_motivo && (
-                        <p className="mt-2 text-[11px] text-muted-foreground">Motivo: {p.anulado_motivo}</p>
-                      )}
-
-                      <div className="mt-3 flex items-center justify-end gap-2 border-t border-border/60 pt-2.5">
-                        <button
-                          onClick={() => handleReciboPago(p.id)}
-                          disabled={reciboBusy === p.id}
-                          className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
-                        >
-                          {reciboBusy === p.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Receipt className="h-3 w-3" />}
-                          Recibo
-                        </button>
-                        {puedeAnular && !p.anulado && (
-                          <button
-                            onClick={() => { setAnularPago({ id: p.id, monto: p.monto, fecha: p.fecha, creditoNumero: p.creditoNumero, creditoRefiNumero: p.creditoRefiNumero }); setAnularMotivo(""); }}
-                            title="Anular pago (contra-asiento en caja)"
-                            className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
-                          >
-                            <Ban className="h-3 w-3" /> Anular
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </section>
-        )}
       </div>
 
       {/* Anular pago — motivo + contra-asiento en caja (control de tesorería, solo admin) */}
@@ -1085,9 +997,15 @@ export function ClienteDetail({
  * La FRANJA de la izquierda codifica la severidad —verde al día, ámbar en mora, roja pasando
  * los 30 días— para poder barrer una lista de diez créditos sin leer un número.
  */
-function CreditosTabla({ creditos, mostrarProximo, onCobrar, onCobrarAcuerdo, clienteId, abiertoDeEntrada }: {
+function CreditosTabla({ creditos, mostrarProximo, onCobrar, onCobrarAcuerdo, clienteId, abiertoDeEntrada, puedeAnular, reciboBusy, onRecibo, onAnular }: {
   creditos: CreditoConFinanzas[];
   mostrarProximo?: boolean;
+  /** Tesorería: quién puede anular un cobro (contra-asiento en caja). Solo admin. */
+  puedeAnular?: boolean;
+  /** Id del pago cuyo recibo se está abriendo, para el spinner del botón. */
+  reciboBusy?: string | null;
+  onRecibo?: (pagoId: string) => void;
+  onAnular?: (pago: PagoImputado, credito: CreditoConFinanzas) => void;
   /**
    * Arranca con el plan DESPLEGADO. En la terminal de cobro las cuotas no son un detalle que
    * se consulta: son la pantalla. Hacer un clic extra con el cliente enfrente, cada vez, para
@@ -1106,13 +1024,20 @@ function CreditosTabla({ creditos, mostrarProximo, onCobrar, onCobrarAcuerdo, cl
   const [abiertos, setAbiertos] = useState<Set<string>>(
     () => (abiertoDeEntrada ? new Set(creditos.map((c) => c.id)) : new Set()),
   );
+  /**
+   * Los pagos abren APARTE del plan: son dos preguntas distintas —"qué le queda por pagar" y
+   * "qué pagó"— y obligar a abrir las dos juntas llenaría la tarjeta de un crédito de doce
+   * cuotas con doce filas más que nadie pidió.
+   */
+  const [abiertosPagos, setAbiertosPagos] = useState<Set<string>>(new Set());
   const [libreDeudaId, setLibreDeudaId] = useState<string | null>(null);
-  const toggle = (id: string) =>
-    setAbiertos((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
-    });
+  const alternar = (set: Set<string>, id: string) => {
+    const next = new Set(set);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  };
+  const toggle = (id: string) => setAbiertos((prev) => alternar(prev, id));
+  const togglePagos = (id: string) => setAbiertosPagos((prev) => alternar(prev, id));
 
   return (
     <div className="space-y-3">
@@ -1133,6 +1058,9 @@ function CreditosTabla({ creditos, mostrarProximo, onCobrar, onCobrarAcuerdo, cl
         const pagosVivosDelCredito = (c.pagos ?? []).filter((p) => !p.anulado).length;
         const tieneCuotas = !!res && res.total > 0;
         const abierto = abiertos.has(c.id);
+        /* Todos los cobros del crédito, anulados incluidos: el hueco en la caja se muestra. */
+        const pagosDelCredito = c.pagos ?? [];
+        const abiertoPagos = abiertosPagos.has(c.id);
         const mora = c.dias_mora ?? 0;
         /**
          * 🔴 UN CRÉDITO QUE YA NO EXISTE NO PUEDE SEGUIR EN VERDE.
@@ -1306,6 +1234,23 @@ function CreditosTabla({ creditos, mostrarProximo, onCobrar, onCobrarAcuerdo, cl
                   </button>
                 )}
 
+                {/* Los cobros de ESTE crédito, en su propia tarjeta. Antes eran una lista
+                    suelta al pie de la ficha con los pagos de todos los créditos juntos. */}
+                {pagosDelCredito.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => togglePagos(c.id)}
+                    aria-expanded={abiertoPagos}
+                    className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors
+                      ${abiertoPagos
+                        ? "border-success/40 bg-success/10 text-success"
+                        : "border-border bg-muted/20 text-muted-foreground hover:bg-muted/40 hover:text-foreground"}`}
+                  >
+                    {abiertoPagos ? "Ocultar pagos" : `Ver pagos (${pagosDelCredito.length})`}
+                    <ChevronDown className={`h-3.5 w-3.5 transition-transform duration-200 ${abiertoPagos ? "rotate-180" : ""}`} />
+                  </button>
+                )}
+
                 {/* Cobrar vive SOLO en Pagos. Donde no se cobra, el botón lleva a la terminal
                     con el cliente ya cargado en vez de desaparecer. */}
                 {esCreditoCobrable(c.estado) && c.saldo_pendiente > 0 && !onCobrar && clienteId && (
@@ -1336,6 +1281,28 @@ function CreditosTabla({ creditos, mostrarProximo, onCobrar, onCobrarAcuerdo, cl
               <div className="overflow-hidden">
                 <div className="border-t border-border px-5 py-4">
                   {abierto && <CuotasInline credito={c} onCobrar={onCobrar} onCobrarAcuerdo={onCobrarAcuerdo} />}
+                </div>
+              </div>
+            </div>
+
+            {/* Y los cobros, con la misma mecánica: lo que el crédito ya recibió. */}
+            <div className={`grid transition-[grid-template-rows] duration-300 ease-out ${abiertoPagos ? "grid-rows-[1fr]" : "grid-rows-[0fr]"}`}>
+              <div className="overflow-hidden">
+                <div className="border-t border-border px-5 py-4">
+                  {abiertoPagos && (
+                    <>
+                      <p className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                        Historial de pagos
+                      </p>
+                      <PagosInline
+                        pagos={pagosDelCredito}
+                        puedeAnular={puedeAnular}
+                        reciboBusy={reciboBusy}
+                        onRecibo={onRecibo}
+                        onAnular={onAnular ? (pago) => onAnular(pago, c) : undefined}
+                      />
+                    </>
+                  )}
                 </div>
               </div>
             </div>
@@ -1414,6 +1381,125 @@ function FragmentRow({ children }: { children: React.ReactNode }) {
  * tildar la cuota que ya se estaba mirando. Ahora el botón verde está en su renglón, dice el
  * importe exacto y abre el cobro con esa cuota puesta, igual que en Créditos.
  */
+/**
+ * LOS COBROS DE UN CRÉDITO — línea de tiempo, adentro de su propia tarjeta.
+ *
+ * 🔴 Antes vivía como una sección suelta al pie de la ficha, con TODOS los pagos del cliente
+ * mezclados y cada renglón diciendo a qué crédito pertenecía. Con un cliente de tres créditos
+ * eso obliga a leer el número de crédito de cada fila para saber qué está mirando, y a
+ * recorrer toda la lista para reconstruir la historia de uno solo. Pedido de Fernando
+ * (14/09/2026): que el historial viva DENTRO de su crédito, como el plan de cuotas.
+ *
+ * Por eso acá el renglón ya no repite el crédito: se sabe por dónde está.
+ *
+ * Un pago es un HECHO FECHADO, no una fila de datos, y dice CONTRA QUÉ se imputó y cómo se
+ * repartió: sin eso, para saber por qué el cliente sigue debiendo tanto después de pagar
+ * $150.000,00 había que abrir el recibo en PDF.
+ *
+ * El PAGO ANULADO se muestra, no se esconde: el hueco en la caja queda a la vista con su motivo.
+ */
+function PagosInline({ pagos, puedeAnular, reciboBusy, onRecibo, onAnular }: {
+  pagos: PagoImputado[];
+  puedeAnular?: boolean;
+  reciboBusy?: string | null;
+  onRecibo?: (pagoId: string) => void;
+  onAnular?: (pago: PagoImputado) => void;
+}) {
+  // Más nuevos primero: la última vez que pagó es lo que se mira.
+  const ordenados = [...pagos].sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime());
+  if (ordenados.length === 0) {
+    return <p className="text-xs text-muted-foreground">Todavía no entró ningún cobro de este crédito.</p>;
+  }
+  return (
+    <div className="space-y-3">
+      {ordenados.map((p) => {
+        const imputado = [
+          { k: "Punitorios", v: p.aplicado_mora ?? 0, c: "text-destructive" },
+          { k: "Interés", v: p.aplicado_interes ?? 0, c: "text-warning" },
+          { k: "Cargos", v: p.aplicado_cargos ?? 0, c: "text-muted-foreground" },
+          { k: "Capital", v: p.aplicado_capital ?? 0, c: "text-primary" },
+        ].filter((x) => x.v > 0);
+        const cuotas = p.aplicaciones ?? [];
+        return (
+          <div key={p.id} className="relative pl-6">
+            {/* Guía y nodo: es lo que hace que se lea como una secuencia. */}
+            <span className="absolute inset-y-0 left-[5px] w-px bg-border" aria-hidden />
+            <span className={`absolute left-0 top-5 h-[11px] w-[11px] rounded-full ring-4 ring-background ${p.anulado ? "bg-muted-foreground/60" : "bg-success"}`} aria-hidden />
+
+            <div className={`rounded-xl border border-border bg-card p-4 transition-colors hover:border-success/30 ${p.anulado ? "opacity-60" : ""}`}>
+              <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+                <div className="min-w-0">
+                  <p className={`font-mono text-lg font-bold tabular-nums tracking-tight ${p.anulado ? "text-muted-foreground line-through" : "text-success"}`}>
+                    +${n2(p.monto)}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {cuotas.length > 0 ? (
+                      <>
+                        a cuenta de la{" "}
+                        <span className="font-medium text-foreground">
+                          {cuotas.length === 1
+                            ? `cuota ${cuotas[0].cuota.nro}`
+                            : `cuotas ${cuotas.map((a) => a.cuota.nro).join(", ")}`}
+                        </span>
+                      </>
+                    ) : "cobro registrado"}
+                  </p>
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
+                  <span className="text-[11px] tabular-nums text-muted-foreground">{formatFecha(p.fecha)}</span>
+                  {p.anulado
+                    ? <StatusBadge label="Anulado" variant="destructive" />
+                    : <StatusBadge label={p.metodo} variant="muted" />}
+                </div>
+              </div>
+
+              {/* Cómo se repartió el dinero: responde "¿por qué sigue debiendo tanto?". */}
+              {!p.anulado && imputado.length > 0 && (
+                <div className="mt-2.5 flex flex-wrap gap-1.5">
+                  {imputado.map((x) => (
+                    <span key={x.k} className="inline-flex items-baseline gap-1.5 rounded-md border border-border/60 bg-muted/20 px-2 py-1 text-[11px]">
+                      <span className="text-muted-foreground">{x.k}</span>
+                      <span className={`font-mono font-medium tabular-nums ${x.c}`}>${n2(x.v)}</span>
+                    </span>
+                  ))}
+                </div>
+              )}
+
+              {p.anulado && p.anulado_motivo && (
+                <p className="mt-2 text-[11px] text-muted-foreground">Motivo: {p.anulado_motivo}</p>
+              )}
+
+              {(onRecibo || (puedeAnular && onAnular)) && (
+                <div className="mt-3 flex items-center justify-end gap-2 border-t border-border/60 pt-2.5">
+                  {onRecibo && (
+                    <button
+                      onClick={() => onRecibo(p.id)}
+                      disabled={reciboBusy === p.id}
+                      className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
+                    >
+                      {reciboBusy === p.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Receipt className="h-3 w-3" />}
+                      Recibo
+                    </button>
+                  )}
+                  {puedeAnular && onAnular && !p.anulado && (
+                    <button
+                      onClick={() => onAnular(p)}
+                      title="Anular pago (contra-asiento en caja)"
+                      className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+                    >
+                      <Ban className="h-3 w-3" /> Anular
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function CuotasInline({ credito, onCobrar, onCobrarAcuerdo }: {
   credito: CreditoConFinanzas;
   onCobrar?: (credito: CreditoConFinanzas, cuota: CuotaPersistida) => void;
