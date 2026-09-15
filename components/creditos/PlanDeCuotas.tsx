@@ -384,11 +384,13 @@ export function PlanDeCuotas({
                         <span className={`block ${moraPend > 0 ? "text-destructive" : q.mora_historica != null && (q.pagado_mora ?? 0) <= 0 ? "text-warning" : "text-success"}`}>
                           ${n2(moraDev)}
                         </span>
-                        {(q.pagado_mora ?? 0) > 0 ? (
-                          <span className="block font-sans text-[10px] font-normal leading-tight text-success">
-                            {moraPend > 0 ? `$${n2(q.pagado_mora ?? 0)} cobrada` : "cobrada"}
-                          </span>
-                        ) : q.mora_historica != null ? (
+                        {/* Solo el ESTADO ("cobrada"), sin importe: lo que entró ya está en la
+                            columna PAGADO, y repetirlo acá era el mismo número dos veces en el
+                            renglón (Fernando, 15/09/2026). Con mora a medio cobrar no se dice
+                            nada — el pendiente real ya lo dice A COBRAR. */}
+                        {(q.pagado_mora ?? 0) > 0 && moraPend <= 0 ? (
+                          <span className="block font-sans text-[10px] font-normal leading-tight text-success">cobrada</span>
+                        ) : q.mora_historica != null && (q.pagado_mora ?? 0) <= 0 ? (
                           /*
                             🔴 ESTA MORA NO SE COBRA: SE MUDÓ.
 
