@@ -1684,11 +1684,31 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
                     );
                   })()}
                   {origenRefinanciacion.entrega && (
-                    <FilaOrigen
-                      label={`Entrega cobrada en el acto · ${origenRefinanciacion.entrega.metodo}${origenRefinanciacion.entrega.anulado ? " (ANULADA)" : ""}`}
-                      valor={-origenRefinanciacion.entrega.monto}
-                      tono={origenRefinanciacion.entrega.anulado ? "destructive" : "success"}
-                    />
+                    <>
+                      <FilaOrigen
+                        label={`Entrega cobrada en el acto · ${origenRefinanciacion.entrega.metodo}${origenRefinanciacion.entrega.anulado ? " (ANULADA)" : ""}`}
+                        valor={-origenRefinanciacion.entrega.monto}
+                        tono={origenRefinanciacion.entrega.anulado ? "destructive" : "success"}
+                      />
+                      {/* La entrega es un cobro y se muestra como todos los cobros: con su recibo
+                          y su fecha y hora (Fernando, 15/09/2026). */}
+                      {origenRefinanciacion.entrega.pago_id && (
+                        <div className="flex items-center gap-2 pl-1 text-[11px]">
+                          <button
+                            type="button"
+                            onClick={() => handleRecibo(origenRefinanciacion.entrega!.pago_id!)}
+                            title="Recibo en PDF"
+                            className="inline-flex h-6 items-center gap-1.5 rounded-md border border-border px-2 font-mono text-[11px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                          >
+                            <Printer className="h-3 w-3 shrink-0" />
+                            {origenRefinanciacion.entrega.comprobante ?? "Recibo"}
+                          </button>
+                          {origenRefinanciacion.entrega.fecha_hora && (
+                            <span className="font-mono tabular-nums text-foreground/80">{formatFechaHora(origenRefinanciacion.entrega.fecha_hora)}</span>
+                          )}
+                        </div>
+                      )}
+                    </>
                   )}
                   {origenRefinanciacion.quita > 0 && (
                     <FilaOrigen label="Descuento al cliente" valor={-origenRefinanciacion.quita} tono="success" />

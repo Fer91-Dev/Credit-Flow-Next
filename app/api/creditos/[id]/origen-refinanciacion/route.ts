@@ -3,6 +3,7 @@ import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api"
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { round2 } from "@/lib/domain";
+import { formatComprobante } from "@/lib/comprobantes";
 import type { NextRequest } from "next/server";
 
 interface RouteParams {
@@ -61,6 +62,8 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
    */
   let entrega: {
     monto: number; metodo: string; fecha: Date; anulado: boolean;
+    /** Cuándo se registró y con qué recibo: es un cobro, y se muestra como todos los cobros. */
+    fecha_hora: Date; pago_id: string; comprobante: string | null;
     aplicado: { mora: number; interes: number; cargos: number; capital: number };
   } | null = null;
   if (meta.entrega_pago_id) {
@@ -77,10 +80,17 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
         punitorios, y para decirla hay que poder sumarle a la mora neta la parte de la entrega
         que se llevó mora.
       */
-      select: { monto: true, metodo: true, fecha: true, anulado: true, aplicado_mora: true, aplicado_interes: true, aplicado_cargos: true, aplicado_capital: true },
+      select: {
+        id: true, monto: true, metodo: true, fecha: true, created_at: true, anulado: true,
+        aplicado_mora: true, aplicado_interes: true, aplicado_cargos: true, aplicado_capital: true,
+        movimientos: { where: { tipo: "cobro" }, select: { serie: true, numero: true } },
+      },
     });
+    const mov = pago?.movimientos.find((m) => m.serie && m.numero != null);
     if (pago) entrega = {
       monto: round2(pago.monto), metodo: pago.metodo, fecha: pago.fecha, anulado: pago.anulado,
+      fecha_hora: pago.created_at, pago_id: pago.id,
+      comprobante: mov ? formatComprobante(mov.serie, mov.numero) : null,
       aplicado: {
         mora: round2(pago.aplicado_mora), interes: round2(pago.aplicado_interes),
         cargos: round2(pago.aplicado_cargos), capital: round2(pago.aplicado_capital),

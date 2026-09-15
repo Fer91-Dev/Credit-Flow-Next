@@ -1921,6 +1921,8 @@ export interface OrigenRefinanciacion {
   nuevo_capital: number | null;
   entrega: {
     monto: number; metodo: string; fecha: string; anulado: boolean;
+    /** Cuándo se registró y con qué recibo: es un cobro, y se muestra como todos los cobros. */
+    fecha_hora?: string; pago_id?: string; comprobante?: string | null;
     /** A qué componente fue esa plata. Sirve para reconstruir la deuda BRUTA discriminada. */
     aplicado?: { mora: number; interes: number; cargos: number; capital: number };
   } | null;
