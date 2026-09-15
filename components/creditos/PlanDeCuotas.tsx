@@ -356,22 +356,27 @@ export function PlanDeCuotas({
                     {moraDev > 0 ? (
                       <>
                         {/*
-                          🔴 LA MORA VA EN ROJO SIEMPRE, esté cobrada o no.
+                          🔴 TRES ESTADOS DE LA MORA, TRES COLORES. Y cada uno significa algo.
 
-                          Iba en gris cuando no quedaba nada pendiente, y ahí el importe se
-                          confundía con el resto de las columnas del plan: en un crédito
-                          refinanciado, los $17.620,05 de punitorios de una cuota se leían
-                          igual que su interés o su capital. El rojo es el color con el que
-                          esta pantalla dice "esto es punitorio", no "esto se debe" — lo que
-                          se debe o no lo dicen la etiqueta de abajo ("cobrada", "al
-                          refinanciar") y la columna A COBRAR, que es la que manda.
+                          En gris, el importe se confundía con el resto de las columnas: en un
+                          crédito refinanciado, los $17.620,05 de punitorios de una cuota se
+                          leían igual que su interés o su capital. Fernando pidió el rojo, se
+                          lo puse para las tres, y en la cuota siguiente que cobró volvió la
+                          pregunta dada vuelta: "¿por qué en mora dice $14.040,98 si ya está
+                          pagada?". Tenía razón: en esta pantalla el ROJO significa "esto se
+                          debe", y pintar de rojo plata que ya entró es decir lo contrario de
+                          lo que pasó.
 
-                          Pedido de Fernando (14/09/2026). El TOTAL de la fila de abajo
-                          conserva su regla —gris si ya no falta cobrar nada—, que salió de un
-                          pedido suyo anterior: sobre un crédito saldado, un total en rojo se
-                          leía como deuda viva ("¿qué son los $56.323,40?").
+                          Así que el color dice en cuál de los tres estados está:
+                            · rojo   — pendiente: todavía se le cobra
+                            · verde  — cobrada: entró a la caja (el mismo verde de la plata
+                                       que entra en toda la aplicación)
+                            · ámbar  — al refinanciar: se mudó al crédito nuevo, no se cobra
+
+                          Y sigue sin confundirse con las otras columnas, que es de donde
+                          salió el pedido original.
                         */}
-                        <span className="block text-destructive">
+                        <span className={`block ${moraPend > 0 ? "text-destructive" : q.mora_historica != null && (q.pagado_mora ?? 0) <= 0 ? "text-warning" : "text-success"}`}>
                           ${n2(moraDev)}
                         </span>
                         {(q.pagado_mora ?? 0) > 0 ? (
@@ -563,7 +568,15 @@ export function PlanDeCuotas({
                 punitorios que ya entraron — y el rojo los mostraba como si se debieran.
                 Fernando: "que son los $56.323,40?". El rojo queda solo si falta cobrar algo.
               */}
-              <td className={`${px} ${py} border-t border-border text-right font-mono font-bold tabular-nums ${moraPendienteVista > 0 ? "text-destructive" : "text-muted-foreground"}`}>
+              {/* El total sigue la misma regla que las filas: rojo lo que se debe, verde lo
+                  que entró, ámbar lo que se trasladó. Antes era gris cuando no quedaba nada
+                  pendiente, y ese gris fue lo que hizo que la mora se leyera como una columna
+                  más del plan. */}
+              <td className={`${px} ${py} border-t border-border text-right font-mono font-bold tabular-nums ${
+                moraPendienteVista > 0 ? "text-destructive"
+                  : moraTrasladada > 0.009 && moraCobradaTotal <= 0 ? "text-warning"
+                  : "text-success"
+              }`}>
                 {moraTotal > 0 ? (
                   <>
                     ${n2(moraTotal)}
