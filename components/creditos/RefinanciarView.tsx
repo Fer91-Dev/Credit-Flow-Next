@@ -873,7 +873,7 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
                       <p className="mt-1.5 text-[11px] text-muted-foreground">
                         Capacidad de pago estimada: <span className="font-mono text-foreground">${n2(preview.sugerencia.capacidad.cuota)}</span> por cuota
                         {preview.sugerencia.capacidad.origen === "cuota_anterior"
-                          ? " — la cuota que ya no pudo pagar"
+                          ? " — la cuota mensual que ya no pudo sostener, sin contar punitorios"
                           : " — del ingreso declarado en su ficha"}.
                       </p>
                       {/* Las alternativas: el operador puede estirar el plazo si el cliente lo pide. */}

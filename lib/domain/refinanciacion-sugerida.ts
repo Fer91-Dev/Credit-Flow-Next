@@ -291,7 +291,7 @@ export function diagnosticarRefinanciacion(
   }
   if (!pagable) {
     const ref = cap.origen === "cuota_anterior"
-      ? "la cuota que el cliente ya no pudo pagar"
+      ? "la cuota mensual que el cliente ya no pudo sostener, sin contar punitorios"
       : `el ${Math.round(e.ratioCuotaIngreso * 100)}% de su ingreso declarado`;
     return {
       cuota, total, multiplo, pagable, rentable, excesoCuota, nivel: "alerta",
