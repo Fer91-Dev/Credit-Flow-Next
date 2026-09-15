@@ -215,6 +215,11 @@ export function PlanDeCuotas({
                 // El número del recibo es un dato que se BUSCA —el cliente llama diciendo
                 // "tengo el REC-000006"—, no un adorno del importe: va en su columna.
                 { t: "Comprobante", a: "text-left" },
+                /* Cuándo entró y cuánto, cada uno en su columna. Iban apretados adentro del
+                   chip del recibo y no se podían leer como datos: Fernando pidió columnas
+                   (15/09/2026). Se ocultan en pantallas chicas, como el desglose de la cuota. */
+                { t: "Fecha de pago", a: "text-left", w: "hidden md:table-cell" },
+                { t: "Pagado", a: "text-right", w: "hidden md:table-cell" },
                 /*
                   🔴 SE FUE LA COLUMNA "ESTADO". Decía "Pagada" al lado de un "—" en A cobrar:
                   dos celdas para una sola idea, y la única que mira el operador —cuánto hay
@@ -424,26 +429,53 @@ export function PlanDeCuotas({
                             key={c.pago_id}
                             onClick={() => abrirRecibo(c.pago_id)}
                             title="Recibo en PDF"
-                            className="inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-1 font-mono text-[11px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                            className="inline-flex h-7 items-center gap-1.5 rounded-md border border-border px-2 font-mono text-[11px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                           >
                             <Printer className="h-3 w-3 shrink-0" />
                             {c.comprobante ?? "Recibo"}
-                            {/* CUÁNDO entró. Estaba solo en el tooltip, y un cobro sin fecha a la
-                                vista no se puede cotejar con la caja ni con el cliente. Pedido de
-                                Fernando (15/09/2026). */}
-                            <span className="tabular-nums text-foreground/80">{formatFechaHora(c.fecha_hora)}</span>
-                            <span className="tabular-nums text-muted-foreground/60">${n2(c.monto)}</span>
-                            {/*
-                              🔴 CUANDO EL RECIBO SE REPARTIO, DECIRLO. Un cobro cae en varias
-                              cuotas, asi que el mismo REC-000015 aparecia dos veces con
-                              $22.039,60 y $159.991,11 — y ninguno es el importe que dice el
-                              papel que el cliente tiene en la mano ($182.030,71). Con el total
-                              al lado, la fila se lee "de este recibo, tanto entro aca".
-                            */}
-                            {c.monto_pago != null && Math.abs(c.monto_pago - c.monto) > 0.01 && (
-                              <span className="tabular-nums text-muted-foreground/40">de ${n2(c.monto_pago)}</span>
-                            )}
                           </button>
+                        ))}
+                      </div>
+                    ) : (
+                      <span className="text-muted-foreground/20">—</span>
+                    )}
+                  </td>
+
+                  {/* CUÁNDO entró cada cobro. Una línea por recibo, a la misma altura que su
+                      chip, para que se lea de corrido: recibo → fecha → monto. */}
+                  <td className={`${celda} hidden whitespace-nowrap md:table-cell`}>
+                    {comps.length > 0 ? (
+                      <div className="flex flex-col items-start gap-1">
+                        {comps.map((c) => (
+                          <span key={c.pago_id} className="flex h-7 items-center font-mono text-[11px] tabular-nums text-foreground/80">
+                            {formatFechaHora(c.fecha_hora)}
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      <span className="text-muted-foreground/20">—</span>
+                    )}
+                  </td>
+
+                  {/*
+                    CUÁNTO entró en ESTA cuota de cada recibo.
+
+                    🔴 CUANDO EL RECIBO SE REPARTIÓ, DECIRLO. Un cobro cae en varias cuotas, así
+                    que el mismo REC-000015 aparecía dos veces con $22.039,60 y $159.991,11 — y
+                    ninguno es el importe que dice el papel que el cliente tiene en la mano
+                    ($182.030,71). Con el total debajo, la celda se lee "de este recibo, tanto
+                    entró acá".
+                  */}
+                  <td className={`${celda} hidden whitespace-nowrap text-right md:table-cell`}>
+                    {comps.length > 0 ? (
+                      <div className="flex flex-col items-end gap-1">
+                        {comps.map((c) => (
+                          <span key={c.pago_id} className="flex h-7 flex-col items-end justify-center font-mono text-[11px] tabular-nums leading-tight">
+                            <span className="text-success">${n2(c.monto)}</span>
+                            {c.monto_pago != null && Math.abs(c.monto_pago - c.monto) > 0.01 && (
+                              <span className="text-[10px] text-muted-foreground/50">de ${n2(c.monto_pago)}</span>
+                            )}
+                          </span>
                         ))}
                       </div>
                     ) : (
@@ -605,6 +637,10 @@ export function PlanDeCuotas({
                 ) : <span className="text-muted-foreground/20">—</span>}
               </td>
               <td className="border-t border-border" />
+              {/* Las dos columnas nuevas (fecha · pagado) también llevan su celda vacía en el
+                  pie: sin ellas el total de A COBRAR se corre dos lugares a la izquierda. */}
+              <td className="hidden border-t border-border md:table-cell" />
+              <td className="hidden border-t border-border md:table-cell" />
               {/* Lo que el cliente debe hoy —coincide con la tarjeta "Deuda total" porque sale
                   de las mismas cuotas— y debajo lo que ya entró, que perdió su columna. */}
               <td className={`${px} ${py} ${pr} border-t border-border text-right`}>
