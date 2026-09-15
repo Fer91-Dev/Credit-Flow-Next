@@ -10,6 +10,10 @@
  *      entrega, peso por peso?
  *   2. Una vez refinanciado, ¿los pagos impactan SOLO en las cuotas del crédito nuevo? El
  *      crédito viejo no puede recibir un peso más, ni por error ni a propósito.
+ *   3. Si una cuota YA SE PAGÓ con sus punitorios y después el crédito se refinancia igual
+ *      —porque dejó de pagar las que seguían—, ¿esos punitorios ya cobrados se vuelven a
+ *      sumar a la deuda que se consolida? (Fernando: "esos $14.040,98, ¿por qué se suman al
+ *      total de la deuda?"). Sería cobrarle dos veces lo mismo.
  *
  * 🔴 CADA IMPORTE SE RECALCULA A MANO, sin importar `lib/domain`. Un verificador que llama a
  * la misma función que el sistema no verifica nada: reproduce el bug con él. Acá la
@@ -137,6 +141,7 @@ const CUOTAS = 3;
 const DIAS_ATRAS = 30 + DIAS_MIN_REFI + 10;
 
 let clienteId = null;
+let clienteId2 = null;
 try {
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -371,22 +376,122 @@ ok(cerca(aCobrarViejo, 0),
 ok(planViejoFinal.refinanciado_al != null,
   "el plan viejo informa el día en que se cerró", iso(planViejoFinal.refinanciado_al));
 
+// ════════════════════════════════════════════════════════════════════════════
+H1("FASE 6 — LOS PUNITORIOS YA COBRADOS NO SE VUELVEN A COBRAR");
+// ════════════════════════════════════════════════════════════════════════════
+/*
+  🔴 LA PREGUNTA DE FERNANDO, PROBADA.
+
+  Un cliente paga la cuota 1 CON sus punitorios. Después deja de pagar y el crédito se
+  refinancia igual. ¿Esos punitorios que ya entraron a la caja se vuelven a sumar en la deuda
+  que se consolida? Si se sumaran, el cliente los pagaría DOS VECES: una en efectivo y otra
+  financiada adentro del capital del crédito nuevo.
+
+  Se arma un crédito con sus tres cuotas vencidas, se cobra la primera entera —punitorios
+  incluidos— y se le pide al sistema la deuda a consolidar. Esa deuda tiene que ser,
+  exactamente, lo que falta de las cuotas 2 y 3 más SUS punitorios. Ni un peso de la cuota 1.
+*/
+const DNI2 = "39777002";
+const DIAS_ATRAS_2 = 160; // las tres cuotas vencidas: hace 130, 100 y 70 días
+
+await db.clientes.deleteMany({ where: { documento: DNI2 } });
+const rc2 = await api("POST", "/api/clientes", {
+  nombre: "Verificador", apellido: "Doble Cobro", documento: DNI2,
+  telefono: "3810000002", direccion: "Laboratorio 2", zona: "PRUEBA-REFI",
+  ocupacion: "Prueba", situacion_laboral: "otro", ingreso_mensual: 2_000_000, tipo_credito: "personal",
+});
+ok(rc2.ok, "segundo cliente de prueba creado", rc2.error ?? "");
+const cli2 = await db.clientes.findFirst({ where: { documento: DNI2 }, select: { id: true } });
+clienteId2 = cli2?.id ?? null;
+
+const rcr2 = await api("POST", "/api/creditos", {
+  cliente_id: clienteId2, tipo_credito: "personal", monto_original: MONTO, tasa: TASA,
+  plazo_meses: CUOTAS, frecuencia: "mensual", cuenta_desembolso: "banco", fecha_inicio: hace(DIAS_ATRAS_2),
+});
+ok(rcr2.ok, `crédito otorgado ${f(MONTO)} con sus ${CUOTAS} cuotas vencidas`, rcr2.error ?? "");
+if (!rcr2.ok) throw new Error("sin el segundo crédito no se puede seguir");
+const c2id = rcr2.data.credito?.id ?? rcr2.data.id;
+
+const planB = (await api("GET", `/api/creditos/${c2id}/cuotas`)).data;
+const q1 = planB.cuotas[0];
+/* La mora de la cuota 1, recalculada a mano. */
+const base1 = r2(q1.cuota_total - (q1.capitalizado ?? 0));
+const mora1Mia = moraDe(base1, diasAtraso(new Date(q1.fecha_vencimiento), hoy), TASA_MORA, GRACIA, TOPE_MORA);
+ok(cerca(q1.mora, mora1Mia), "la mora de la cuota 1, recalculada a mano",
+  `${f(q1.mora)} vs mi cuenta ${f(mora1Mia)}`);
+
+H2("se cobra la cuota 1 ENTERA, con sus punitorios");
+/* El plan ya está caído (70 días), así que el cobro va con autorización del admin: es la
+   salida que el propio sistema ofrece, y queda registrada. Lo que se verifica es la deuda,
+   no la barrera — esa ya se probó en la fase 2. */
+const totalQ1 = r2(q1.total_cobrar ?? q1.cuota_total);
+const rp1 = await api("POST", "/api/pagos", {
+  credito_id: c2id, monto: totalQ1, metodo: "efectivo", fecha: iso(hoy),
+  notas: "Verificador: cuota 1 entera", autorizacion_admin: true,
+});
+ok(rp1.ok, `cobrada la cuota 1 completa ${f(totalQ1)}`, rp1.error ?? "");
+if (!rp1.ok) throw new Error("no se pudo cobrar la cuota 1: " + rp1.error);
+
+const pago1 = await db.pagos.findUnique({
+  where: { id: rp1.data.pago?.id ?? rp1.data.id },
+  select: { aplicado_mora: true, aplicado_interes: true, aplicado_capital: true },
+});
+ok(cerca(pago1.aplicado_mora, mora1Mia),
+  "🔴 los punitorios de la cuota 1 ENTRARON a la caja con ese cobro",
+  `${f(pago1.aplicado_mora)} vs mi cuenta ${f(mora1Mia)}`);
+
+const q1Db = await db.cuotas.findFirst({ where: { credito_id: c2id, nro: 1 }, select: { estado: true, pagado_mora: true } });
+ok(q1Db.estado === "pagada", "y la cuota 1 queda PAGADA", q1Db.estado);
+
+H2("la deuda a consolidar NO los vuelve a contar");
+const prevB = await api("GET", `/api/creditos/${c2id}/refinanciar`);
+ok(prevB.ok, "el crédito sigue siendo refinanciable", prevB.error ?? "");
+const deudaB = r2(prevB.data.deuda.total);
+
+/* Mi cuenta: lo que falta de las cuotas 2 y 3, más SUS punitorios. La cuota 1 no entra. */
+const planB2 = (await api("GET", `/api/creditos/${c2id}/cuotas`)).data;
+let miDeuda = 0, miMora23 = 0;
+for (const q of planB2.cuotas) {
+  if (q.nro === 1) continue;
+  const pend = r2(q.cuota_total - (q.pagado_capital + (q.pagado_interes ?? 0) + (q.pagado_cargos ?? 0)));
+  const base = r2(q.cuota_total - (q.capitalizado ?? 0));
+  const m = moraDe(base, diasAtraso(new Date(q.fecha_vencimiento), hoy), TASA_MORA, GRACIA, TOPE_MORA);
+  miDeuda = r2(miDeuda + pend + m);
+  miMora23 = r2(miMora23 + m);
+}
+ok(cerca(deudaB, miDeuda),
+  "🔴 LA DEUDA = lo que falta de las cuotas 2 y 3 + SUS punitorios",
+  `${f(deudaB)} vs mi cuenta ${f(miDeuda)}`);
+ok(cerca(prevB.data.deuda.mora, miMora23),
+  "🔴 y su renglón de punitorios NO incluye los de la cuota 1",
+  `${f(prevB.data.deuda.mora)} son los de las cuotas 2 y 3 · los ${f(mora1Mia)} de la cuota 1 quedaron afuera`);
+ok(c2(deudaB) < c2(r2(miDeuda + mora1Mia)),
+  "🔴 si se hubieran vuelto a sumar, la deuda sería mayor — y no lo es",
+  `sería ${f(r2(miDeuda + mora1Mia))} y es ${f(deudaB)}`);
+
+H2("y la cuota 1 no aporta nada a la consolidación");
+const q1Post = planB2.cuotas.find((q) => q.nro === 1);
+ok(cerca(q1Post.mora ?? 0, 0),
+  "una cuota SALDADA deja de devengar punitorios", f(q1Post.mora));
+ok(cerca(q1Post.total_cobrar ?? 0, 0),
+  "y no se le reclama nada", f(q1Post.total_cobrar));
+
 } catch (e) {
   fallos++;
   fallas.push("CORTE: " + e.message);
   console.log(`\n  🔴 CORTE: ${e.message}`);
 } finally {
   // ── limpieza: la base queda como estaba ───────────────────────────────────
-  if (clienteId) {
-    const creds = await db.creditos.findMany({ where: { cliente_id: clienteId }, select: { id: true } });
+  for (const cid of [clienteId, clienteId2].filter(Boolean)) {
+    const creds = await db.creditos.findMany({ where: { cliente_id: cid }, select: { id: true } });
     const ids = creds.map((c) => c.id);
     if (ids.length) {
       // Los movimientos van ANTES: la FK es SetNull, no cascada (el libro es append-only).
       await db.movimientos_caja.deleteMany({ where: { OR: [{ credito_id: { in: ids } }, { pago: { credito_id: { in: ids } } }] } });
     }
-    await db.clientes.delete({ where: { id: clienteId } }).catch(() => {});
-    console.log("\n  · cliente de prueba y sus créditos borrados; la caja vuelve a su saldo");
+    await db.clientes.delete({ where: { id: cid } }).catch(() => {});
   }
+  if (clienteId || clienteId2) console.log("\n  · clientes de prueba y sus créditos borrados; la caja vuelve a su saldo");
   await db.$disconnect();
 }
 
