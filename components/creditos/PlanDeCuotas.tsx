@@ -533,13 +533,8 @@ export function PlanDeCuotas({
                             condonó ${n2(q.condonado ?? 0)}
                           </span>
                         )}
-                        {/* Lo que YA entró en una cuota a medio pagar: es el término que hace
-                            cerrar la cuenta del renglón (cuota + mora − pagado = a cobrar). */}
-                        {conPagos && (
-                          <span className="font-mono text-[10px] tabular-nums text-success">
-                            pagó ${n2(pagadoDeCuota(q))}
-                          </span>
-                        )}
+                        {/* Lo que ya entró vive ahora en la columna PAGADO: repetirlo acá era el
+                            mismo número dos veces en el mismo renglón (Fernando, 15/09/2026). */}
                         {onCobrar ? (
                           <button
                             onClick={() => onCobrar(q)}
