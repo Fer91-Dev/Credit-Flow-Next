@@ -89,10 +89,29 @@ export function CreditosTable({ role }: { role: Role }) {
    */
   const openNew = () => router.push("/creditos/nuevo");
 
+  /**
+   * 🔴 CADA PESTAÑA MUESTRA LO SUYO: en Créditos, créditos; en Refinanciados, refinanciaciones.
+   *
+   * La lista traía las dos cosas mezcladas y el REF- aparecía entre los CRD-, con el contador
+   * de la pestaña Créditos contándolo también. Pedido de Fernando (14/09/2026).
+   *
+   * El criterio es el mismo que ya usa Reportes con `esOperacionColocada`: una refinanciación
+   * NO es plata nueva colocada, es deuda que ya estaba prestada y cambió de plan. Por eso no
+   * cuenta como un crédito otorgado — y por eso mismo tiene su propia pestaña, donde se la ve
+   * junto al crédito del que salió, que es la única forma en que ese número se entiende.
+   *
+   * El crédito ORIGEN sí se queda acá, con su estado "Refinanciado": fue plata que la
+   * financiera desembolsó de verdad, y sacarlo borraría de la lista un desembolso real.
+   */
+  const deLaPestana = useMemo(
+    () => (tab === "creditos" ? creditos.filter((c) => !c.es_refinanciacion) : creditos),
+    [creditos, tab],
+  );
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     const qNum = q.replace(/[^0-9]/g, ""); // dígitos del término (para buscar por número)
-    return creditos.filter(c =>
+    return deLaPestana.filter(c =>
       (!q
         || nombreCompleto(c.cliente).toLowerCase().includes(q)
         || formatCreditoNumero(c.numero, c.refinancia_a_numero).toLowerCase().includes(q)
@@ -104,7 +123,7 @@ export function CreditosTable({ role }: { role: Role }) {
         || (moraFilter === "en_mora" && c.dias_mora > 0)
         || (moraFilter === "critica" && severidadMora(c.dias_mora, tramos) === "critica"))
     );
-  }, [creditos, search, estadoFilter, tipoFilter, moraFilter]);
+  }, [deLaPestana, search, estadoFilter, tipoFilter, moraFilter]);
 
   /**
    * KPIs de TODA la cartera (foto del negocio, no dependen del filtro puesto).
@@ -144,6 +163,8 @@ export function CreditosTable({ role }: { role: Role }) {
 
   // Cantidad de créditos nacidos de una refinanciación (badge de la pestaña).
   const refiCount = useMemo(() => creditos.filter((c) => c.es_refinanciacion).length, [creditos]);
+  /* Y los que son créditos a secas: el badge tiene que contar lo que la lista muestra. */
+  const creditosCount = creditos.length - refiCount;
 
   const hasFilters = !!(search || estadoFilter !== "all" || tipoFilter !== "all" || moraFilter !== "all");
   /** Los filtros puestos, con el nombre que ve el usuario (el texto de búsqueda no cuenta: tiene su propia X). */
@@ -301,7 +322,7 @@ export function CreditosTable({ role }: { role: Role }) {
               alrededor competía con el anillo de la pestaña activa. */}
           <div className="inline-flex items-center gap-1 rounded-xl bg-muted/40 p-1 shadow-[inset_0_1px_3px_0_rgba(0,0,0,0.20)]">
             {([
-              { id: "creditos" as const,      emoji: "credit-card",                  label: "Créditos",      count: creditos.length, tone: "text-muted-foreground" },
+              { id: "creditos" as const,      emoji: "credit-card",                  label: "Créditos",      count: creditosCount,   tone: "text-muted-foreground" },
               { id: "refinanciados" as const, emoji: "counterclockwise-arrows-button", label: "Refinanciados", count: refiCount,       tone: "text-warning" },
             ]).map((t) => {
               const activa = tab === t.id;
@@ -420,7 +441,7 @@ export function CreditosTable({ role }: { role: Role }) {
               pestañas de arriba, así que el número se lee igual en los dos lugares.
             */}
             <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-bold tabular-nums text-muted-foreground">
-              {hasFilters ? `${filtered.length} de ${creditos.length}` : creditos.length}
+              {hasFilters ? `${filtered.length} de ${deLaPestana.length}` : deLaPestana.length}
             </span>
           </div>
           <div className="flex items-center gap-3">
