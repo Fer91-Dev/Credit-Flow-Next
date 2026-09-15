@@ -219,7 +219,7 @@ export function PlanDeCuotas({
                    chip del recibo y no se podían leer como datos: Fernando pidió columnas
                    (15/09/2026). Se ocultan en pantallas chicas, como el desglose de la cuota. */
                 { t: "Fecha de pago", a: "text-left", w: "hidden md:table-cell" },
-                { t: "Pagado", a: "text-right", w: "hidden md:table-cell" },
+                { t: "Monto cobrado", a: "text-right", w: "hidden md:table-cell" },
                 /*
                   🔴 SE FUE LA COLUMNA "ESTADO". Decía "Pagada" al lado de un "—" en A cobrar:
                   dos celdas para una sola idea, y la única que mira el operador —cuánto hay
