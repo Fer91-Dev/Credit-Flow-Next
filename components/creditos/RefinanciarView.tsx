@@ -193,8 +193,8 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
   const honPctNum = Math.max(0, Math.min(100, parseFloat(honPct) || 0));
   const honMonto = r2((baseNeta * honPctNum) / 100);
   /**
-   * La banda que fijó la financiera para quien está operando (para un admin es 0–100: su
-   * decisión queda auditada en vez de limitada). Con la banda cerrada no hay nada que pactar.
+   * La banda que fijó la financiera, y vale para TODOS —el admin incluido— (Fernando,
+   * 15/09/2026). Con la banda cerrada no hay nada que pactar.
    */
   const bandaAbierta = !!honCfg?.activo && honCfg.min < honCfg.max;
 

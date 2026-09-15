@@ -296,7 +296,7 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
    * El honorario que se propone: el TECHO de la banda. La financiera aspira a su máximo y la
    * concesión es bajarlo — al revés que la quita, que arranca en cero y se agrega.
    */
-  const bandaHon = bandaHonorarios(cobranzaCfg.recupero, role === "admin");
+  const bandaHon = bandaHonorarios(cobranzaCfg.recupero);
   // Entre qué tasas se puede pactar ESTA refinanciación. Se resuelve una vez: la usan la
   // banda que viaja a la pantalla y la tasa sugerida, que tienen que ser coherentes.
   const bandaTasaPreview = bandaTasaRefinanciacion(cobranzaCfg.recupero, config.simulador);
@@ -713,13 +713,9 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
      * usa para mostrarla. El admin no tiene banda —un límite que él mismo edita no es un
      * límite— pero su decisión queda en la auditoría de abajo.
      */
-    const v = puedeUsarHonorarios(p, cobranzaCfg.recupero, role === "admin");
+    const v = puedeUsarHonorarios(p, cobranzaCfg.recupero);
     if (!v.permitido) {
-      return errorResponse(
-        [v.motivo, role === "admin" ? null : v.sugerencia].filter(Boolean).join(" "),
-        "HONORARIOS_FUERA_DE_BANDA",
-        403,
-      );
+      return errorResponse([v.motivo, v.sugerencia].filter(Boolean).join(" "), "HONORARIOS_FUERA_DE_BANDA", 403);
     }
     honorariosPct = p;
   }

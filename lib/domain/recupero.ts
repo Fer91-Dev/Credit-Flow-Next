@@ -867,15 +867,18 @@ export function puedeCobrar(
  * la muestra), el POST (que rechaza fuera de rango) y el resumen de Configuración. Si cada
  * uno la calculara, la pantalla ofrecería un rango y el server aceptaría otro.
  *
- * El ADMIN no tiene banda —igual que con la quita, un límite que él mismo edita en
- * Configuración no es un límite—, pero su decisión queda auditada.
+ * 🔴 LA BANDA VALE PARA TODOS, EL ADMIN INCLUIDO. Antes el admin no tenía banda (0–100%),
+ * con el argumento de que un límite que él mismo edita en Configuración no es un límite. En
+ * la práctica, con la banda en 1%–5%, la pantalla le dejaba escribir 100% sin una sola
+ * advertencia y le cobraba al cliente $490.120,30 de honorarios sobre $545.120,30 de deuda.
+ * Fernando (15/09/2026): "esto no debe pasar ni aun en la cuenta administrador". Si el admin
+ * necesita otro valor, cambia la banda en Configuración — un solo camino, y queda registrado
+ * ahí, no escondido en una refinanciación puntual.
  */
 export function bandaHonorarios(
   cfg: Pick<RecuperoConfig, "honorarios_gestion_activo" | "honorarios_gestion_min" | "honorarios_gestion_max">,
-  esAdmin: boolean,
 ): { min: number; max: number } {
   if (!cfg.honorarios_gestion_activo) return { min: 0, max: 0 };
-  if (esAdmin) return { min: 0, max: 100 };
   return { min: cfg.honorarios_gestion_min, max: cfg.honorarios_gestion_max };
 }
 
@@ -883,9 +886,8 @@ export function bandaHonorarios(
 export function puedeUsarHonorarios(
   pct: number,
   cfg: Pick<RecuperoConfig, "honorarios_gestion_activo" | "honorarios_gestion_min" | "honorarios_gestion_max">,
-  esAdmin: boolean,
 ): VeredictoEscalera {
-  const { min, max } = bandaHonorarios(cfg, esAdmin);
+  const { min, max } = bandaHonorarios(cfg);
   if (!Number.isFinite(pct) || pct < 0 || pct > 100) {
     return { permitido: false, motivo: "Los honorarios tienen que ser un porcentaje entre 0 y 100." };
   }
@@ -895,7 +897,7 @@ export function puedeUsarHonorarios(
       motivo: min === max
         ? `Los honorarios de gestión los fijó la financiera en ${max}% y no se negocian.`
         : `Los honorarios de gestión se pactan entre ${min}% y ${max}%, y pusiste ${pct}%.`,
-      sugerencia: "Un administrador puede pactar otro valor, y queda registrado.",
+      sugerencia: "La banda se cambia en Configuración → Cobranza, no en la refinanciación.",
     };
   }
   return PERMITIDO;
