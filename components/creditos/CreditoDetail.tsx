@@ -1790,6 +1790,13 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
                           cargado. Y el número es el DEL ACUERDO, no el del crédito. */}
                       <td className="px-3 py-2 text-muted-foreground tabular-nums border-b border-border/70">
                         {fmtDate(p.fecha)}
+                        {/* La entrega de una refinanciación se llama por su nombre: no es "un
+                            pago más" ni "a cuenta de la cuota 2". */}
+                        {p.entrega_refinanciacion && (
+                          <span className="ml-1.5 inline-flex items-center rounded-full bg-warning/10 px-1.5 py-0.5 align-middle text-[9px] font-semibold uppercase tracking-wide text-warning">
+                            Entrega · refinanciación
+                          </span>
+                        )}
                         {p.acuerdo_cuota && (
                           <span className="ml-1.5 inline-flex items-center rounded-full bg-primary/10 px-1.5 py-0.5 align-middle text-[9px] font-semibold uppercase tracking-wide text-primary">
                             {/*

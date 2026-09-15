@@ -255,8 +255,11 @@ export function conceptoDePago(p: {
   acuerdo?: { numero: number; total: number; hasta?: number | null } | null;
   /** Si fue la entrega con la que se armó un acuerdo. */
   entregaAcuerdo?: { cuotas: number } | null;
+  /** Si fue la entrega con la que se refinanció el crédito. */
+  entregaRefinanciacion?: { creditoNuevo: number | null } | null;
 }): string | null {
   if (p.entregaAcuerdo) return `la entrega del acuerdo de pago en ${p.entregaAcuerdo.cuotas} cuotas`;
+  if (p.entregaRefinanciacion) return "la entrega para refinanciar el crédito";
   if (p.acuerdo) {
     /*
       🔴 UN COBRO PUEDE ADELANTAR VARIAS CUOTAS PACTADAS, y el papel tiene que decirlo.

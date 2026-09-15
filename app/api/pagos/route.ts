@@ -5,6 +5,7 @@ import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { conNumeroDeOrigen, numerosRefinanciados } from "@/lib/creditos-numero";
 import { sincronizarAcuerdos } from "@/lib/acuerdos";
+import { entregasDeRefinanciacion } from "@/lib/entrega-refinanciacion";
 import * as Sentry from "@sentry/nextjs";
 import { nombreCompleto, formatCreditoNumero, hoyComercial, ventanaDias, ventanaAR } from "@/lib/utils";
 import { imputarPagoEnCuotas, diasAtraso, round2, etiquetaCaja, cuentaDeMetodo, esCuentaValida, type CuotaParaImputar, moraDelCredito, moraDesdeCronograma, esCreditoCobrable, estadoTrasMoverLedger, topeMoraPorFallecimiento, topeMoraPorIncobrable, topeMoraMasTemprano, promoVigenteAl, cargosDeCuota, baseMoraDeCuota } from "@/lib/domain";
@@ -94,10 +95,13 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
 
   // Un cobro sobre una refinanciación se identifica como REF-<origen>, igual que el crédito.
   const origenesRefi = await numerosRefinanciados(tenantId, pagos.map((p) => p.credito));
+  // Qué cobros fueron la entrega de una refinanciación: el historial los rotula por su nombre.
+  const entregasRefi = await entregasDeRefinanciacion(tenantId, pagos.map((p) => p.id));
 
   return successResponse({
     pagos: pagos.map((p) => ({
       ...p,
+      entrega_refinanciacion: entregasRefi.get(p.id) ?? null,
       credito: {
         ...p.credito,
         refinancia_a_numero: p.credito.es_refinanciacion && p.credito.refinancia_a ? origenesRefi.get(p.credito.refinancia_a) ?? null : null,

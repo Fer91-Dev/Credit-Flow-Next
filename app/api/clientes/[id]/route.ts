@@ -2,6 +2,7 @@ import { requireAuth, requireRole } from "@/lib/auth";
 import { successResponse, errorResponse, withErrorHandler, assertSameOrigin } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
+import { entregasDeRefinanciacion } from "@/lib/entrega-refinanciacion";
 import { conNumeroDeOrigen } from "@/lib/creditos-numero";
 import { registrarAuditoria } from "@/lib/audit";
 import { nombreCompleto, hoyComercial } from "@/lib/utils";
@@ -77,6 +78,9 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
    * este dato la ficha lo mostraba como moroso estando al día.
    */
   const acuerdos = await situacionAcuerdoPorCredito(tenantId, cliente.creditos.map((c) => c.id));
+
+  // Qué cobros fueron la entrega de una refinanciación: el historial los llama por su nombre.
+  const entregasRefi = await entregasDeRefinanciacion(tenantId, cliente.creditos.flatMap((c) => c.pagos.map((p) => p.id)));
 
   const creditosConFinanzas = cliente.creditos.map((c) => {
     // Estado reconciliado: nunca mostrar un terminal SALDADO (pagado/cancelado)
@@ -179,7 +183,11 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
 
     const { cuotas: _omit, ...rest } = c;
     void _omit;
-    return { ...rest, estado: estadoReal, dias_mora: diasMora, cuota, interes_mora, interes_pendiente, total_cobrado, cuotas_resumen, acuerdo: acuerdos.get(c.id) ?? null };
+    return {
+      ...rest,
+      pagos: c.pagos.map((p) => ({ ...p, entrega_refinanciacion: entregasRefi.get(p.id) ?? null })),
+      estado: estadoReal, dias_mora: diasMora, cuota, interes_mora, interes_pendiente, total_cobrado, cuotas_resumen, acuerdo: acuerdos.get(c.id) ?? null,
+    };
   });
 
   const activos = creditosConFinanzas.filter((c) => esCreditoVivo(c.estado));

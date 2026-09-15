@@ -5,6 +5,7 @@ import { getConfiguracion } from "@/lib/config";
 import { getFinanciera } from "@/lib/financiera";
 import { conNumeroDeOrigen } from "@/lib/creditos-numero";
 import { generarReciboPDF } from "@/lib/pdf/recibo";
+import { entregasDeRefinanciacion } from "@/lib/entrega-refinanciacion";
 import { nombreCompleto } from "@/lib/utils";
 import { round2, conceptoDePago, cuotaCerradaSinPago } from "@/lib/domain";
 
@@ -143,6 +144,8 @@ export async function armarReciboDePago(
       ? 0
       : round2(Math.max(0, c.cuota_total - (pagadoHasta.get(c.id) ?? 0) - condonadoDe(c)));
 
+  const entregaRefi = (await entregasDeRefinanciacion(tenantId, [pago.id])).get(pago.id) ?? null;
+
   const totalCuotas = await prisma.cuotas.count({
     where: { ...withTenant(tenantId), credito_id: pago.credito.id },
   });
@@ -185,6 +188,9 @@ export async function armarReciboDePago(
             vencimiento: pago.acuerdo_cuota.vencimiento,
           }
         : null,
+      /* Si fue la ENTREGA con la que se refinanció el crédito: el papel lo dice como concepto,
+         no "a cuenta de la cuota 2". Ver `entregasDeRefinanciacion`. */
+      entrega_refinanciacion: entregaRefi ? { credito_nuevo: entregaRefi.credito_nuevo } : null,
       // Contra qué cuotas se imputó y qué quedó pendiente de cada una EN ESE MOMENTO.
       cuotas: lineas.map((l) => ({
         nro: l.cuota.nro,
@@ -230,6 +236,7 @@ export async function armarReciboDePago(
         ? { numero: pago.acuerdo_cuota.numero, hasta: pago.acuerdo_cuota_hasta, total: pago.acuerdo_cuota.acuerdo._count.cuotas }
         : null,
       entregaAcuerdo: pago.acuerdo_entrega ? { cuotas: pago.acuerdo_entrega._count.cuotas } : null,
+      entregaRefinanciacion: entregaRefi ? { creditoNuevo: entregaRefi.credito_nuevo } : null,
     }),
     nombreCliente: nombreCompleto(pago.credito.cliente),
     numeroCredito: pago.credito.numero,

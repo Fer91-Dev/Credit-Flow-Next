@@ -1477,7 +1477,11 @@ function PagosInline({ pagos, puedeAnular, reciboBusy, onRecibo, onAnular }: {
                   <p className={`font-mono text-xl font-bold tabular-nums tracking-tight ${p.anulado ? "text-muted-foreground line-through" : "text-success"}`}>
                     +${n2(p.monto)}
                   </p>
-                  <p className="text-sm font-medium text-foreground/90">{frasePago(cuotas)}</p>
+                  <p className="text-sm font-medium text-foreground/90">
+                    {p.entrega_refinanciacion
+                      ? <>Entrega para refinanciar el crédito{p.entrega_refinanciacion.credito_nuevo != null && <> · sigue en <span className="font-mono text-warning">{formatCreditoNumero(p.entrega_refinanciacion.credito_nuevo, null)}</span></>}</>
+                      : frasePago(cuotas)}
+                  </p>
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
                   <span className="font-mono text-xs font-semibold tabular-nums text-foreground/80">{formatFecha(p.fecha)}</span>

@@ -139,6 +139,8 @@ export interface PagoImputado {
   anulado?: boolean;
   anulado_motivo?: string | null;
   anulado_at?: string | null;
+  /** Si el cobro fue la ENTREGA con la que se refinanció el crédito. */
+  entrega_refinanciacion?: { credito_nuevo: number | null } | null;
   /**
    * Contra qué cuotas del plan se imputó este cobro, y con cuánto.
    *
@@ -733,6 +735,8 @@ export interface CuotaPersistida {
   /** Recibos que imputaron a la cuota (comprobante REC + fecha/hora del pago + monto aplicado). */
   comprobantes?: {
     comprobante: string | null; pago_id: string; fecha: string; fecha_hora: string;
+    /** Si ese cobro fue la entrega con la que se refinanció el crédito. */
+    entrega_refinanciacion?: boolean;
     /** Lo que de ESE cobro se imputó a ESTA cuota. */
     monto: number;
     /** El total del cobro. Distinto de `monto` cuando el pago se repartió entre varias cuotas. */
@@ -1090,6 +1094,8 @@ export interface Pago {
    * una cuota del acuerdo: es el adelanto que el cliente dejó para poder armar el plan.
    */
   acuerdo_entrega?: { id: string } | null;
+  /** Si el cobro fue la ENTREGA con la que se refinanció el crédito (y en qué crédito siguió). */
+  entrega_refinanciacion?: { credito_nuevo: number | null } | null;
   /** Contra qué cuotas del plan se imputó, y cuánto a cada una. */
   aplicaciones?: {
     aplicado_capital: number; aplicado_interes: number; aplicado_mora: number; aplicado_cargos: number;

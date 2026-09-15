@@ -435,6 +435,11 @@ export function PlanDeCuotas({
                           >
                             <Printer className="h-3 w-3 shrink-0" />
                             {c.comprobante ?? "Recibo"}
+                            {/* La entrega de la refinanciación, por su nombre: el cliente no vino
+                                a pagar esta cuota, vino a refinanciar (Fernando, 15/09/2026). */}
+                            {c.entrega_refinanciacion && (
+                              <span className="font-sans text-[9px] font-bold uppercase tracking-wide text-warning">entrega</span>
+                            )}
                           </button>
                         ))}
                       </div>

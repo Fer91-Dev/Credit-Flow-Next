@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { cuotaCerradaSinPago, frecuenciaLabel, normalizarFrecuencia, diasAtraso, round2, interesMora, moraRestanteDeCuota, moraDelCredito, moraDesdeCronograma, topeMoraDeCuota, fechaTopeMora, topeMoraPorFallecimiento, topeMoraPorIncobrable, topeMoraMasTemprano, promoVigenteAl, type FrecuenciaDef, baseMoraDeCuota, pendienteSinMoraDeCuota } from "@/lib/domain";
 import { getConfiguracion, getCobranzaConfig } from "@/lib/config";
 import { recibosPorCuotaDeAcuerdo } from "@/lib/acuerdos";
+import { entregasDeRefinanciacion } from "@/lib/entrega-refinanciacion";
 import { veredictoCobro } from "@/lib/recupero-server";
 import { formatComprobante } from "@/lib/comprobantes";
 import { nombreCompleto, hoyComercial } from "@/lib/utils";
@@ -104,6 +105,11 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
     });
     fechaRefi = nuevo?.fecha_inicio ?? nuevo?.created_at ?? null;
   }
+  /* Qué cobro fue la ENTREGA con la que este crédito se refinanció: su chip lo dice por su
+     nombre en vez de "a cuenta de la cuota 2". Solo en un crédito refinanciado. */
+  const entregasRefi = fechaRefi
+    ? await entregasDeRefinanciacion(tenantId, credito.cuotas.flatMap((q) => q.aplicaciones.map((a) => a.pago.id)))
+    : new Map<string, { credito_nuevo: number | null }>();
   const graciaCred = (credito.cronograma as { diasGracia?: number } | null)?.diasGracia ?? config.simulador.diasGracia;
 
   /**
@@ -274,6 +280,8 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
            * total al lado, la fila se lee "de este recibo, tanto entró acá".
            */
           monto_pago: a.pago.monto,
+          /** Si ese cobro fue la entrega de la refinanciación. */
+          entrega_refinanciacion: entregasRefi.has(a.pago.id),
         };
       })
       .filter((x) => x.monto > 0);
