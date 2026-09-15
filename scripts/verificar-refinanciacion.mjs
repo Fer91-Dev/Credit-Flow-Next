@@ -300,6 +300,32 @@ ok(cuotasViejas.every((q) => q.estado === "trasladada"),
   "todas sus cuotas quedan TRASLADADAS (ni pagadas ni vencidas)",
   [...new Set(cuotasViejas.map((q) => q.estado))].join(", "));
 
+/*
+  🔴 EL DESGLOSE DE CADA CUOTA NUEVA TIENE QUE SUMAR SU TOTAL, honorarios incluidos.
+
+  Punto ciego que este verificador tenía: pagaba la cuota 1 del crédito nuevo y daba por
+  bueno que quedara "pagada" mirando solo el capital. Pero `cuota_total` incluía los
+  honorarios de gestión y la columna `honorarios` estaba en cero — el `createMany` de la
+  refinanciación nunca los persistió desde que la migración 007 les dio columna propia. El
+  sobrante del pago caía en la cuota 2 y nadie lo notaba. Los honorarios no se cobraban
+  nunca. Lo encontró Fernando en su primera refinanciación real (15/09/2026).
+*/
+const evRefi = await db.auditoria.findFirst({
+  where: { entidad: "creditos", entidad_id: viejoId, accion: "refinanciar" },
+  orderBy: { created_at: "desc" }, select: { meta: true },
+});
+const honPactados = r2(evRefi?.meta?.honorarios?.monto ?? 0);
+const cuotasNuevas = await db.cuotas.findMany({ where: { credito_id: nuevoId }, orderBy: { nro: "asc" },
+  select: { nro: true, capital: true, interes: true, iva: true, seguro: true, gastos: true, honorarios: true, cuota_total: true } });
+const descuadradas = cuotasNuevas.filter((q) => !cerca(q.capital + q.interes + q.iva + q.seguro + q.gastos + q.honorarios, q.cuota_total));
+ok(descuadradas.length === 0,
+  "🔴 en cada cuota nueva, capital + interés + cargos = cuota_total (si no, es impagable)",
+  descuadradas.length ? descuadradas.map((q) => `cuota ${q.nro}: componentes ${f(q.capital + q.interes + q.iva + q.seguro + q.gastos + q.honorarios)} vs total ${f(q.cuota_total)}`).join(" · ") : `${cuotasNuevas.length} cuotas cierran`);
+const honEnCuotas = r2(cuotasNuevas.reduce((s, q) => s + q.honorarios, 0));
+ok(cerca(honEnCuotas, honPactados),
+  "🔴 los honorarios de gestión pactados están repartidos en las cuotas",
+  `${f(honEnCuotas)} en cuotas vs ${f(honPactados)} pactados`);
+
 const cajaDespues = r2((await api("GET", "/api/caja")).data.saldo_total);
 ok(cerca(cajaAntes, cajaDespues),
   "🔴 refinanciar NO mueve la caja: no hay plata nueva, es deuda que cambia de lugar",

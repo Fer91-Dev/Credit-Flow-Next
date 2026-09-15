@@ -818,6 +818,17 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
         iva: f.iva,
         seguro: f.seguro,
         gastos: f.gastos,
+        /*
+          🔴 LOS HONORARIOS SE PERSISTEN. Desde la migración 007 el motor los pone en su propia
+          columna, pero este `createMany` nunca se actualizó: `cuota_total` los incluía y el
+          desglose no, así que la cuota sumaba menos que su total. Y eso no es cosmético:
+          `imputarPagoEnCuotas` acota lo cobrable a la suma de los componentes, con lo cual el
+          cliente pagaba la cuota "entera", el sobrante caía en la siguiente, y los honorarios
+          de gestión —lo que la financiera cobra por haber trabajado ese recupero— no se
+          cobraban NUNCA. Medido sobre REF-000013 en dev: $24.506,02 pactados, $0,00 en las
+          cuotas. Lo encontró Fernando revisando su primera refinanciación (15/09/2026).
+        */
+        honorarios: f.honorarios,
         cuota_total: f.cuota_total,
       })),
     });

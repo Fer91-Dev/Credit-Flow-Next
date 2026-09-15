@@ -90,31 +90,33 @@ H1("FASE A — LO QUE EL VENDEDOR VE: su cartera, no la de al lado");
 // ════════════════════════════════════════════════════════════════════════════
 
 /*
-  Un crédito que NO es suyo.
+  Un crédito que NO es suyo — Y QUE ES DE LABORATORIO.
 
-  🔴 `NOT: { vendedor_id: x }` no alcanza: en SQL, `vendedor_id <> x` es NULL para las filas
-  sin dueño, así que las descarta en silencio — y los créditos que otorga un admin tienen
-  `vendedor_id` nulo, que son casi todos los de esta base. Con ese filtro el script no
-  encontraba ninguno y se caía.
+  🔴 Antes tomaba "el primer crédito activo de otro agente" de la base, y en la FASE C le
+  COBRABA una cuota. Sobre una base con clientes sembrados como reales eso le cobró $151.357,72
+  a Rosana Paz (CRD-000001), un crédito que Fernando estaba usando para sus pruebas: quedó con
+  la cuota 1 pagada por "QA Vendedor" sin que nadie la hubiera cobrado. Un verificador no
+  puede mover un peso de un crédito que no creó.
 
-  Para el scoping los dos casos son lo mismo: `scopeCreditosVendedor` filtra por SU id, así
-  que ni el de otro agente ni el de la casa entran en su lista. Se prefiere uno con dueño
-  distinto si existe, porque es el caso que además prueba que no se robe el mérito.
+  Se crea acá, como ADMIN y a nombre de la casa (`vendedor_id` nulo): para el scoping es lo
+  mismo que uno de otro agente —`scopeCreditosVendedor` filtra por SU id y los dos quedan
+  afuera—, la caja principal tiene fondos, y al final se borra con su cliente.
 */
-const ajeno =
-  (await db.creditos.findFirst({
-    where: {
-      tenant_id: TENANT, estado: { in: ["activo", "vencido"] },
-      vendedor_id: { not: null, notIn: [fichaQA.id] },
-    },
-    orderBy: { numero: "asc" },
-    select: { id: true, numero: true, vendedor_id: true, cliente_id: true },
-  })) ??
-  (await db.creditos.findFirst({
-    where: { tenant_id: TENANT, estado: { in: ["activo", "vencido"] }, vendedor_id: null },
-    orderBy: { numero: "asc" },
-    select: { id: true, numero: true, vendedor_id: true, cliente_id: true },
-  }));
+const cliAjeno = await admin("POST", "/api/clientes", {
+  nombre: "Rol", apellido: `Ajeno ${sello}`, documento: String(74_000_000 + Number(sello.slice(-5))),
+  telefono: "3815554445", zona: "PRUEBA-ROLES", tipo_credito: "personal",
+  ingreso_mensual: 2_000_000, situacion_laboral: "relacion_dependencia",
+});
+ok(cliAjeno.ok, "cliente de laboratorio para el crédito ajeno", cliAjeno.error ?? "");
+const cliAjenoId = cliAjeno.data?.cliente?.id ?? cliAjeno.data?.id;
+const crAjeno = await admin("POST", "/api/creditos", {
+  cliente_id: cliAjenoId, tipo_credito: "personal", monto_original: 100_000, tasa: 360,
+  plazo_meses: 3, frecuencia: "mensual", cuenta_desembolso: "banco",
+});
+ok(crAjeno.ok, "crédito ajeno otorgado por la casa ($100.000,00)", crAjeno.error ?? "");
+const ajeno = crAjeno.ok
+  ? await db.creditos.findUnique({ where: { id: crAjeno.data.credito?.id ?? crAjeno.data.id }, select: { id: true, numero: true, vendedor_id: true, cliente_id: true } })
+  : null;
 ok(!!ajeno, "hay un crédito que no es suyo para probar",
   ajeno ? `${rot(ajeno.numero)} · ${ajeno.vendedor_id ? "de otro agente" : "de la casa (lo otorgó un admin)"}` : "ninguno");
 if (!ajeno) { console.error("sin un crédito ajeno no se puede seguir"); process.exit(1); }
@@ -337,6 +339,19 @@ await db.creditos.delete({ where: { id: crOtro.id } });
 await db.clientes.delete({ where: { id: cliOtro.id } });
 await db.tenants.delete({ where: { id: otroTenant.id } });
 ok(true, "la financiera vecina de prueba se borró", `era ${otroTenant.id.slice(0, 8)}`);
+
+// ── limpieza: nada de laboratorio queda en la base ───────────────────────────
+{
+  const labs = await db.clientes.findMany({ where: { tenant_id: TENANT, zona: "PRUEBA-ROLES" }, select: { id: true } });
+  const creds = await db.creditos.findMany({ where: { cliente_id: { in: labs.map((c) => c.id) } }, select: { id: true } });
+  const ids = creds.map((c) => c.id);
+  // Los movimientos ANTES: la FK es SetNull, no cascada (el libro es append-only).
+  await db.movimientos_caja.deleteMany({ where: { OR: [{ credito_id: { in: ids } }, { pago: { credito_id: { in: ids } } }] } });
+  await db.clientes.deleteMany({ where: { id: { in: labs.map((c) => c.id) } } });
+  // Y la entrega con la que se fondeó la caja del vendedor QA, que no es plata real.
+  await db.movimientos_caja.deleteMany({ where: { tenant_id: TENANT, descripcion: { contains: "Verificador de roles" } } });
+  ok(true, "los clientes y créditos de laboratorio se borraron", `${labs.length} cliente(s), ${ids.length} crédito(s)`);
+}
 
 // ════════════════════════════════════════════════════════════════════════════
 await db.$disconnect();
