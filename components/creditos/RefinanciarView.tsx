@@ -643,7 +643,9 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
                   Los dos encabezados agrupan por lo que cada cosa HACE: lo que cambia la
                   deuda que se consolida, y lo que define el plan nuevo.
                 */}
-                <section className="space-y-4 rounded-xl border border-border bg-muted/[0.06] p-4">
+                {/* Aire entre los tres tratos (entrega · descuento · honorarios): pegados, se
+                    leían como un solo formulario largo y no como tres decisiones distintas. */}
+                <section className="space-y-5 rounded-xl border border-border bg-muted/[0.06] p-4 sm:p-5">
                   <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
                     El arreglo con el cliente
                   </p>
@@ -652,7 +654,7 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
                     ENTREGA. Va primero porque es lo primero que cambia la deuda: el cliente
                     pone plata ahora y lo que se consolida es lo que queda.
                   */}
-                  <div className="space-y-1.5">
+                  <div className="space-y-2">
                     <FieldLabel>Entrega ahora (opcional)</FieldLabel>
                     {/* Importe y método pegados: son una sola cosa, no dos campos sueltos. */}
                     <div className={`grid grid-cols-2 gap-2 ${PAR}`}>
@@ -686,7 +688,7 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
                     llano, y el tope se muestra como DATO — antes el vendedor descubría su
                     límite recién al mandar el formulario y comerse un 403.
                   */}
-                  <div className="space-y-1.5">
+                  <div className="space-y-2.5">
                     <FieldLabel>Descuento al cliente (opcional)</FieldLabel>
                     <div className={PAR}>
                       <Segmented<QuitaTipo>
@@ -699,26 +701,101 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
                         ]}
                       />
                     </div>
-                    {quitaTipo === "porcentaje" && (
-                      <div className={CAMPO}>
-                        <IconInput
-                          icon={Percent}
-                          inputMode="decimal"
-                          placeholder="Ej: 10"
-                          value={quitaPct}
-                          onChange={(e) => setQuitaPct(e.target.value.replace(/[^0-9.,]/g, "").replace(",", "."))}
-                        />
-                      </div>
-                    )}
-                    {quitaTipo === "monto" && (
-                      <div className={CAMPO}><MoneyInput value={quitaMonto} onChange={setQuitaMonto} /></div>
-                    )}
+                    {/*
+                      🔴 EL DESCUENTO SE VE MIENTRAS SE TIPEA, Y EN LAS DOS UNIDADES.
+
+                      Antes acá había un campo pegado a una frase suelta —"Hasta $188.168,43 —
+                      sale de la mora y el interés, nunca del capital. La entrega ya se llevó
+                      parte de eso"— y el operador no tenía forma de saber qué producía el
+                      número que estaba escribiendo. Fernando: "no entiendo qué es; acá se
+                      debería mostrar la sugerencia según el descuento a aplicar".
+
+                      Tenía razón dos veces. El tope es un LÍMITE, no el resultado, y estaba
+                      escrito como si fuera lo único que hay para decir; y el resultado —lo que
+                      el cliente se ahorra y lo que pasa a deber— no estaba en ninguna parte
+                      hasta confirmar.
+
+                      Ahora el campo vive en su propio recuadro con la cuenta al lado: el 10%
+                      se traduce a pesos, el monto fijo se traduce a porcentaje, y abajo la
+                      resta completa. El tope queda como lo que es: una línea aparte que dice
+                      hasta dónde se puede llegar y por qué.
+                    */}
                     {quitaTipo !== "ninguna" && (
-                      <p className={`text-xs ${excedeTope ? "text-destructive" : "text-muted-foreground"}`}>
-                        {topeQuita > 0
-                          ? <>Hasta ${n2(topeQuita)} — sale de la mora y el interés, nunca del capital.{entregaNum > 0 && <> La entrega ya se llevó parte de eso.</>}</>
-                          : <>No podés descontar nada. Lo tiene que autorizar un administrador.</>}
-                      </p>
+                      <div className="space-y-3 rounded-lg border border-border/70 bg-background/40 p-3">
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+                          {quitaTipo === "porcentaje" ? (
+                            <div className={CAMPO}>
+                              <IconInput
+                                icon={Percent}
+                                inputMode="decimal"
+                                placeholder="Ej: 10"
+                                value={quitaPct}
+                                onChange={(e) => setQuitaPct(e.target.value.replace(/[^0-9.,]/g, "").replace(",", "."))}
+                              />
+                            </div>
+                          ) : (
+                            <div className={CAMPO}><MoneyInput value={quitaMonto} onChange={setQuitaMonto} /></div>
+                          )}
+                          {/* La traducción a la otra unidad: el operador negocia en una y el
+                              cliente entiende la otra. */}
+                          {condonado > 0 && (
+                            <p className="text-sm text-muted-foreground">
+                              <span className="font-mono font-semibold text-success">${n2(condonado)}</span>
+                              {" de descuento"}
+                              {baseNeta > 0 && (
+                                <span className="text-muted-foreground/70">
+                                  {" · "}{r2((condonado / baseNeta) * 100)}% de la deuda
+                                </span>
+                              )}
+                            </p>
+                          )}
+                        </div>
+
+                        {/* La resta, completa. Es la misma que va a quedar en el crédito. */}
+                        {condonado > 0 && (
+                          <div className="space-y-1 border-t border-border/50 pt-2.5 text-xs">
+                            <div className="flex items-baseline justify-between gap-3">
+                              <span className="text-muted-foreground">Deuda que se consolida</span>
+                              <span className="font-mono tabular-nums text-foreground">${n2(baseNeta)}</span>
+                            </div>
+                            <div className="flex items-baseline justify-between gap-3">
+                              <span className="text-muted-foreground">Descuento al cliente</span>
+                              <span className="font-mono tabular-nums text-success">−${n2(condonado)}</span>
+                            </div>
+                            <div className="flex items-baseline justify-between gap-3 border-t border-border/50 pt-1.5">
+                              <span className="font-semibold text-foreground">El cliente pasa a deber</span>
+                              <span className="font-mono font-bold tabular-nums text-foreground">${n2(nuevoCapital)}</span>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* El TOPE, como lo que es: hasta dónde se puede llegar, y por qué. */}
+                        {topeQuita > 0 ? (
+                          <div className={`space-y-0.5 border-t border-border/50 pt-2.5 text-xs ${excedeTope ? "text-destructive" : "text-muted-foreground"}`}>
+                            {excedeTope ? (
+                              <p>
+                                Te pasaste por <strong className="font-mono">${n2(r2(condonado - topeQuita))}</strong>.
+                                {" "}Lo máximo que podés descontar es <strong className="font-mono">${n2(topeQuita)}</strong>
+                                {baseNeta > 0 && <> ({r2((topeQuita / baseNeta) * 100)}% de la deuda)</>}.
+                              </p>
+                            ) : (
+                              <p>
+                                Podés descontar hasta <strong className="font-mono text-foreground">${n2(topeQuita)}</strong>
+                                {baseNeta > 0 && <> — el {r2((topeQuita / baseNeta) * 100)}% de esta deuda</>}.
+                              </p>
+                            )}
+                            <p className="text-muted-foreground/70">
+                              El descuento sale de los punitorios y del interés, nunca del capital: la plata
+                              prestada no se regala.
+                              {entregaNum > 0 && <> La entrega de ${n2(entregaNum)} ya se llevó parte de esos punitorios, así que el tope bajó en esa medida.</>}
+                            </p>
+                          </div>
+                        ) : (
+                          <p className="border-t border-border/50 pt-2.5 text-xs text-destructive">
+                            No podés descontar nada. Lo tiene que autorizar un administrador.
+                          </p>
+                        )}
+                      </div>
                     )}
                   </div>
 
@@ -735,7 +812,7 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
                     que no tenerlo.
                   */}
                   {honCfg?.activo && (
-                    <div className="space-y-1.5">
+                    <div className="space-y-2">
                       <FieldLabel>Honorarios por gestión de cobranza</FieldLabel>
                       <div className={CAMPO}>
                         {bandaAbierta ? (
