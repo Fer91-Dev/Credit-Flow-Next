@@ -790,7 +790,7 @@ export async function anularAcuerdo(tenantId: string, acuerdoId: string, motivo:
 export async function recibosPorCuotaDeAcuerdo(
   tenantId: string,
   acuerdo: { credito_id: string; fecha: Date; created_at: Date; cuotas: { id: string; numero: number; monto: number }[] },
-): Promise<Map<string, { comprobante: string | null; pago_id: string; monto: number; monto_pago: number }[]>> {
+): Promise<Map<string, { comprobante: string | null; pago_id: string; monto: number; monto_pago: number; fecha_hora: Date }[]>> {
   const pagos = await prisma.pagos.findMany({
     // El MISMO filtro que `cobradoDesde`: si tomara otros pagos, el recibo no explicaría el
     // `pagado` que muestra la cuota de al lado.
@@ -799,21 +799,21 @@ export async function recibosPorCuotaDeAcuerdo(
       fecha: { gte: acuerdo.fecha }, created_at: { gte: acuerdo.created_at },
     },
     orderBy: { created_at: "asc" },
-    select: { id: true, monto: true, movimientos: { where: { tipo: "cobro" }, select: { serie: true, numero: true } } },
+    select: { id: true, monto: true, created_at: true, movimientos: { where: { tipo: "cobro" }, select: { serie: true, numero: true } } },
   });
 
-  const out = new Map<string, { comprobante: string | null; pago_id: string; monto: number; monto_pago: number }[]>();
+  const out = new Map<string, { comprobante: string | null; pago_id: string; monto: number; monto_pago: number; fecha_hora: Date }[]>();
   let idx = 0;
   let sobrante = 0; // lo que quedó del pago anterior tras cubrir una cuota
   for (const c of [...acuerdo.cuotas].sort((x, y) => x.numero - y.numero)) {
     let falta = round2(c.monto);
-    const lista: { comprobante: string | null; pago_id: string; monto: number; monto_pago: number }[] = [];
+    const lista: { comprobante: string | null; pago_id: string; monto: number; monto_pago: number; fecha_hora: Date }[] = [];
     while (falta > 0.009 && (sobrante > 0.009 || idx < pagos.length)) {
       if (sobrante <= 0.009) { sobrante = round2(pagos[idx].monto); }
       const p = pagos[idx];
       const usa = round2(Math.min(sobrante, falta));
       const mov = p.movimientos.find((mv) => mv.serie && mv.numero != null);
-      lista.push({ comprobante: mov ? formatComprobante(mov.serie, mov.numero) : null, pago_id: p.id, monto: usa, monto_pago: p.monto });
+      lista.push({ comprobante: mov ? formatComprobante(mov.serie, mov.numero) : null, pago_id: p.id, monto: usa, monto_pago: p.monto, fecha_hora: p.created_at });
       sobrante = round2(sobrante - usa);
       falta = round2(falta - usa);
       if (sobrante <= 0.009) idx++;

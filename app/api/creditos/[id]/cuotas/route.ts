@@ -407,7 +407,7 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
    */
   const recibosAcuerdo = acuerdo
     ? await recibosPorCuotaDeAcuerdo(tenantId, acuerdo)
-    : new Map<string, { comprobante: string | null; pago_id: string; monto: number; monto_pago: number }[]>();
+    : new Map<string, { comprobante: string | null; pago_id: string; monto: number; monto_pago: number; fecha_hora: Date }[]>();
 
   return successResponse({
     credito_id: credito.id,

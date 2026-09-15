@@ -767,7 +767,7 @@ export interface CuotasCredito {
     cuotas: {
       id: string; numero: number; vencimiento: string; monto: number; pagado: number; estado: string;
       /** Todos los cobros que cubrieron la cuota pactada (una puede pagarse con dos). */
-      recibos?: { comprobante: string | null; pago_id: string; monto: number; monto_pago: number }[];
+      recibos?: { comprobante: string | null; pago_id: string; monto: number; monto_pago: number; fecha_hora?: string }[];
       comprobante?: string | null; pago_id?: string | null;
     }[];
   } | null;

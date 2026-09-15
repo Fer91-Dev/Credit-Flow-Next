@@ -20,7 +20,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Field, Textarea } from "@/components/ui/field";
 import { useToast } from "@/components/ui/toast";
 import { useConfirm } from "@/components/ui/confirm";
-import { formatCreditoNumero, formatFecha, formatDias, formatMonto, nombreCompleto } from "@/lib/utils";
+import { formatCreditoNumero, formatFecha, formatFechaHora, formatDias, formatMonto, nombreCompleto } from "@/lib/utils";
 import { Stat } from "@/components/ui/Stat";
 import { Skeleton } from "@/components/ui/skeleton";
 import { esCreditoVivo, esCreditoCobrable, montoEnPalabras, cargosDeCuota, cuotaCerradaSinPago, interesDelAcuerdo } from "@/lib/domain";
@@ -1200,6 +1200,9 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
                           <th className="border-b border-border px-3 py-2.5 text-right font-semibold">Pactado</th>
                           <th className="border-b border-border px-3 py-2.5 text-right font-semibold">Cobrado</th>
                           <th className="border-b border-border px-3 py-2.5 text-left font-semibold">Comprobante</th>
+                          {/* Cuándo entró cada recibo, en su columna: igual que el plan del crédito
+                              (Fernando, 15/09/2026). */}
+                          <th className="border-b border-border px-3 py-2.5 text-left font-semibold">Fecha de pago</th>
                           <th className="border-b border-border px-3 py-2.5 pr-4 text-right font-semibold">Falta</th>
                         </tr>
                       </thead>
@@ -1263,6 +1266,19 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
                                   <span className="text-muted-foreground/40">—</span>
                                 )}
                               </td>
+                              <td className={`${celdaAc} whitespace-nowrap text-xs`}>
+                                {recibos.length > 0 ? (
+                                  <div className="flex flex-col items-start gap-1">
+                                    {recibos.map((rec) => (
+                                      <span key={rec.pago_id || rec.comprobante} className="flex h-[26px] items-center font-mono text-[11px] tabular-nums text-foreground/80">
+                                        {rec.fecha_hora ? formatFechaHora(rec.fecha_hora) : "—"}
+                                      </span>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <span className="text-muted-foreground/40">—</span>
+                                )}
+                              </td>
                               <td className={`${celdaAc} pr-4 text-right font-mono tabular-nums ${
                                 falta === 0 ? "text-success" : c.estado === "vencida" ? "font-semibold text-destructive" : "text-foreground"
                               }`}>
@@ -1285,6 +1301,7 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
                           <td className="px-3 py-2.5 text-right font-mono font-bold tabular-nums text-success">
                             {cobradoAcuerdoPlan > 0 ? formatMonto(cobradoAcuerdoPlan) : <span className="font-normal text-muted-foreground/40">—</span>}
                           </td>
+                          <td className="px-3 py-2.5" />
                           <td className="px-3 py-2.5" />
                           <td className={`px-3 py-2.5 pr-4 text-right font-mono font-bold tabular-nums ${faltaPlan > 0 ? tono.texto : "text-success"}`}>
                             {faltaPlan > 0 ? formatMonto(faltaPlan) : "saldado"}

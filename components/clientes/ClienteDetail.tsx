@@ -1678,6 +1678,10 @@ function CuotasInline({ credito, onCobrar, onCobrarAcuerdo }: {
                     { t: "#", a: "text-left", w: "w-9" },
                     { t: "Vencimiento", a: "text-left" },
                     { t: "Comprobante", a: "text-left" },
+                    /* Cuándo y cuánto, cada uno en su columna — igual que el plan del crédito
+                       (Fernando, 15/09/2026). */
+                    { t: "Fecha de pago", a: "text-left" },
+                    { t: "Monto cobrado", a: "text-right" },
                     { t: "Estado", a: "text-center" },
                     { t: "Importe", a: "text-right pr-3" },
                   ].map((h) => (
@@ -1721,16 +1725,40 @@ function CuotasInline({ credito, onCobrar, onCobrarAcuerdo }: {
                                 type="button"
                                 onClick={() => abrirRecibo(rc.pago_id)}
                                 title="Ver el recibo en PDF"
-                                className="inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-1 font-mono text-[11px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                                className="inline-flex h-7 items-center gap-1.5 rounded-md border border-border px-2 font-mono text-[11px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                               >
                                 <Printer className="h-3 w-3 shrink-0" />
                                 {rc.comprobante ?? "Recibo"}
-                                {Math.abs(rc.monto_pago - rc.monto) > 0.01 && (
-                                  <span className="tabular-nums text-muted-foreground/50">
-                                    {formatMonto(rc.monto)} de {formatMonto(rc.monto_pago)}
-                                  </span>
-                                )}
                               </button>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-muted-foreground/20">—</span>
+                        )}
+                      </td>
+                      <td className="whitespace-nowrap border-b border-border/60 px-3 py-2.5">
+                        {(q.recibos ?? []).length > 0 ? (
+                          <div className="flex flex-col items-start gap-1">
+                            {(q.recibos ?? []).map((rc) => (
+                              <span key={rc.pago_id + rc.monto} className="flex h-7 items-center font-mono text-[11px] tabular-nums text-foreground/80">
+                                {rc.fecha_hora ? formatFechaHora(rc.fecha_hora) : "—"}
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-muted-foreground/20">—</span>
+                        )}
+                      </td>
+                      <td className="whitespace-nowrap border-b border-border/60 px-3 py-2.5 text-right">
+                        {(q.recibos ?? []).length > 0 ? (
+                          <div className="flex flex-col items-end gap-1">
+                            {(q.recibos ?? []).map((rc) => (
+                              <span key={rc.pago_id + rc.monto} className="flex h-7 flex-col items-end justify-center font-mono text-[11px] tabular-nums leading-tight">
+                                <span className="text-success">{formatMonto(rc.monto)}</span>
+                                {Math.abs(rc.monto_pago - rc.monto) > 0.01 && (
+                                  <span className="text-[10px] text-muted-foreground/50">de {formatMonto(rc.monto_pago)}</span>
+                                )}
+                              </span>
                             ))}
                           </div>
                         ) : (
@@ -1759,6 +1787,8 @@ function CuotasInline({ credito, onCobrar, onCobrarAcuerdo }: {
                   <td colSpan={3} className="px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
                     Total pactado
                   </td>
+                  <td className="px-3 py-2" />
+                  <td className="px-3 py-2" />
                   <td className="px-3 py-2" />
                   <td className="px-3 py-2 pr-3 text-right font-mono font-bold tabular-nums text-foreground">
                     {formatMonto(acuerdo.monto_acordado)}
