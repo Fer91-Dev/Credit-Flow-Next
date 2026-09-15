@@ -423,11 +423,15 @@ export function PlanDeCuotas({
                           <button
                             key={c.pago_id}
                             onClick={() => abrirRecibo(c.pago_id)}
-                            title={`Recibo en PDF · ${formatFechaHora(c.fecha_hora)}`}
+                            title="Recibo en PDF"
                             className="inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-1 font-mono text-[11px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                           >
                             <Printer className="h-3 w-3 shrink-0" />
                             {c.comprobante ?? "Recibo"}
+                            {/* CUÁNDO entró. Estaba solo en el tooltip, y un cobro sin fecha a la
+                                vista no se puede cotejar con la caja ni con el cliente. Pedido de
+                                Fernando (15/09/2026). */}
+                            <span className="tabular-nums text-foreground/80">{formatFechaHora(c.fecha_hora)}</span>
                             <span className="tabular-nums text-muted-foreground/60">${n2(c.monto)}</span>
                             {/*
                               🔴 CUANDO EL RECIBO SE REPARTIO, DECIRLO. Un cobro cae en varias
