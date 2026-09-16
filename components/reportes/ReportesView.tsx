@@ -5,7 +5,7 @@ import { motion } from "framer-motion";
 import { Download, Printer } from "lucide-react";
 import { useReportes, useReporteSerie, useReporteCobranza, useFinanciera, type Reporte, type ReporteSerie, type PuntoMensual, type ReporteCobranza } from "@/lib/swr";
 import { descargarCSV } from "@/lib/csv";
-import { formatFecha } from "@/lib/utils";
+import { formatFecha, formatDias } from "@/lib/utils";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { KpiCard } from "@/components/ui/KpiCard";
 import { Emoji } from "@/components/ui/Emoji";
@@ -435,13 +435,18 @@ function TabMorosidad({ r, s }: { r: Reporte; s?: ReporteSerie }) {
   const moraPct: Punto[] = (s?.serie ?? []).map((p) => ({ label: mesCorto(p.mes), value: p.mora_pct, hint: `${n1(p.mora_pct)}% · $${n0(p.mora_saldo_expuesto)}` }));
   const expuesto: Punto[] = (s?.serie ?? []).map((p) => ({ label: mesCorto(p.mes), value: p.mora_saldo_expuesto, hint: `$${n0(p.mora_saldo_expuesto)}` }));
   const sev = r.morosidad.por_severidad;
+  // Los tramos son los que la financiera configuró; se escriben con la palabra "días".
+  const tm = r.morosidad.tramos_mora ?? { media_hasta: 15, alta_hasta: 30 };
+  const tramoCritica = `más de ${formatDias(tm.alta_hasta)}`;
+  const tramoAlta = `${tm.media_hasta + 1} a ${formatDias(tm.alta_hasta)}`;
+  const tramoMedia = `1 a ${formatDias(tm.media_hasta)}`;
   return (
     <div className="space-y-5">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <KpiCard icon="warning" label="Créditos en mora" value={String(r.morosidad.en_mora)} accent={r.morosidad.en_mora > 0 ? "destructive" : "success"} />
         <KpiCard icon="money-bag" label="Saldo expuesto" value={`$${n0(r.morosidad.saldo_expuesto)}`} accent="destructive" mono />
         <KpiCard icon="dollar-banknote" label="Interés de mora" value={`$${n0(r.morosidad.interes_mora_total)}`} accent="warning" mono />
-        <KpiCard icon="warning" label="Mora crítica (+30d)" value={String(sev.critica)} accent={sev.critica > 0 ? "destructive" : "muted"} />
+        <KpiCard icon="warning" label={`Mora crítica (${tramoCritica})`} value={String(sev.critica)} accent={sev.critica > 0 ? "destructive" : "muted"} />
       </div>
       {/*
         🔴 LA CARTERA CASTIGADA, APARTE DE LA MORA.
@@ -480,9 +485,9 @@ function TabMorosidad({ r, s }: { r: Reporte; s?: ReporteSerie }) {
         </Section>
         <Section title="Severidad actual" icon="warning">
           <Donut segments={[
-            { label: "Crítica (+30d)", value: sev.critica, accent: "destructive" },
-            { label: "Alta (15–30d)", value: sev.alta, accent: "warning" },
-            { label: "Media (1–15d)", value: sev.media, accent: "primary" },
+            { label: `Crítica (${tramoCritica})`, value: sev.critica, accent: "destructive" },
+            { label: `Alta (${tramoAlta})`, value: sev.alta, accent: "warning" },
+            { label: `Media (${tramoMedia})`, value: sev.media, accent: "primary" },
           ]} />
         </Section>
       </div>

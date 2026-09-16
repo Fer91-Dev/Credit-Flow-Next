@@ -864,6 +864,8 @@ export interface Reporte {
     saldo_expuesto: number;
     interes_mora_total: number;
     por_severidad: { critica: number; alta: number; media: number };
+    /** Cortes configurados por la financiera (Configuración → Cobranza). */
+    tramos_mora?: { media_hasta: number; alta_hasta: number };
   };
   detalle_pagos: {
     fecha: string;

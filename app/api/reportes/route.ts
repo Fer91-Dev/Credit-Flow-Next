@@ -212,6 +212,9 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
       alta:    enMora.filter((c) => severidadMora(c.dias_mora, tramos) === "alta").length,
       media:   enMora.filter((c) => severidadMora(c.dias_mora, tramos) === "media").length,
     },
+    // Los cortes viajan con los conteos: el front los escribe en las etiquetas ("16 a 30
+    // días") en vez de tener 15/30 a mano, que dejaba de ser cierto apenas se configuraban.
+    tramos_mora: { media_hasta: tramos.media_hasta, alta_hasta: tramos.alta_hasta },
   };
 
   // ── Rentabilidad NETA (ingreso financiero cobrado − costo de fondeo) ────
