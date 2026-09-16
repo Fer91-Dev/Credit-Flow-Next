@@ -7,7 +7,7 @@ import { conNumeroDeOrigen } from "@/lib/creditos-numero";
 import { registrarAuditoria } from "@/lib/audit";
 import { nombreCompleto, hoyComercial } from "@/lib/utils";
 import { normalizarCuit, validarDuplicadoCliente } from "@/lib/clientes-validacion";
-import { cuotaCerradaSinPago, calcularScore, diasMoraActual, cuotaMensualFrancesa, tasaPeriodicaSegunConvencion, convencionDelCredito, normalizarFrecuencia, interesMora, diasAtraso, round2, estadoCoherente, esCreditoVivo, moraDelCredito, moraDesdeCronograma, moraPendienteTotal, ESTADOS_CLIENTE, ESTADO_CLIENTE_LABEL, esEstadoClienteValido, normalizarEstadoCliente, type EstadoCliente, cargosDeCuota, baseMoraDeCuota, pendienteSinMoraDeCuota } from "@/lib/domain";
+import { cuotaCerradaSinPago, calcularScore, diasMoraActual, cuotaMensualFrancesa, tasaPeriodicaSegunConvencion, convencionDelCredito, normalizarFrecuencia, interesMora, diasAtraso, round2, estadoCoherente, esCreditoVivo, moraDelCredito, moraDesdeCronograma, moraPendienteTotal, calcularDeudaVencida, ESTADOS_CLIENTE, ESTADO_CLIENTE_LABEL, esEstadoClienteValido, normalizarEstadoCliente, type EstadoCliente, cargosDeCuota, baseMoraDeCuota, pendienteSinMoraDeCuota } from "@/lib/domain";
 import { getConfiguracion, getRiesgoConfig, getCobranzaConfig } from "@/lib/config";
 import { situacionAcuerdoPorCredito } from "@/lib/acuerdos";
 import type { NextRequest } from "next/server";
@@ -127,6 +127,37 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
         );
       }
     }
+    /**
+     * 🔴 LO EXIGIBLE HOY, CUOTA POR CUOTA — la misma cuenta que la lista de créditos.
+     *
+     * La ficha no lo mandaba, y la tarjeta del crédito lo armaba sola como "una cuota más la
+     * mora total": sobre CRD-000007, con dos cuotas vencidas, decía "Vencido $124.491,72"
+     * cuando el plan de abajo sumaba $230.442,12. Es exactamente la aproximación que ya
+     * había mordido en los KPI de mora —UNA cuota × algo— y que se queda corta apenas hay
+     * más de una vencida. Fernando lo vio comparando los dos números (16/09/2026).
+     *
+     * `calcularDeudaVencida` es lo que usa `/api/creditos`, lo que arma el acuerdo y lo que
+     * cobra la caja: una sola definición.
+     */
+    let vencido = 0;
+    let cuotas_vencidas = 0;
+    if (enMora && c.cuotas.length > 0) {
+      const mc = moraDelCredito(moraDesdeCronograma(c.cronograma), config);
+      const graciaV = (c.cronograma as { diasGracia?: number } | null)?.diasGracia ?? config.simulador.diasGracia;
+      const dv = calcularDeudaVencida(
+        c.cuotas.map((q) => ({
+          id: q.id, nro: q.nro, fechaVencimiento: q.fecha_vencimiento,
+          capital: q.capital, interes: q.interes, cargos: cargosDeCuota(q),
+          baseMora: baseMoraDeCuota(q),
+          pagadoCapital: q.pagado_capital, pagadoInteres: q.pagado_interes,
+          pagadoMora: q.pagado_mora, pagadoCargos: q.pagado_cargos,
+          condonadoMora: q.condonado_mora,
+        })),
+        { moraActiva: mc.moraActiva, tasaMoraDiaria: mc.tasaMoraDiaria, topeMoraPct: mc.topeMoraPct, diasGracia: graciaV, hoy: hoyComercial() },
+      );
+      vencido = round2(dv.total);
+      cuotas_vencidas = dv.cuotas_vencidas;
+    }
     const total_cobrado = c.pagos.filter((p) => !p.anulado).reduce((s, p) => s + p.monto, 0);
 
     // Cronograma persistido: estado AUTORITATIVO (escrito por el motor cuota-dirigido,
@@ -186,7 +217,7 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
     return {
       ...rest,
       pagos: c.pagos.map((p) => ({ ...p, entrega_refinanciacion: entregasRefi.get(p.id) ?? null })),
-      estado: estadoReal, dias_mora: diasMora, cuota, interes_mora, interes_pendiente, total_cobrado, cuotas_resumen, acuerdo: acuerdos.get(c.id) ?? null,
+      estado: estadoReal, dias_mora: diasMora, cuota, interes_mora, vencido, cuotas_vencidas, interes_pendiente, total_cobrado, cuotas_resumen, acuerdo: acuerdos.get(c.id) ?? null,
     };
   });
 

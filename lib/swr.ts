@@ -197,6 +197,9 @@ export interface CreditoConFinanzas {
   proximo_pago?: string | null;
   cuota: number;
   interes_mora: number;
+  /** Lo EXIGIBLE hoy: cuotas vencidas impagas + sus punitorios, cuota por cuota. */
+  vencido?: number;
+  cuotas_vencidas?: number;
   total_cobrado: number;
   pagos: PagoImputado[];
   /** Cuándo se lo dio por incobrable. Marca el corte entre "pagó" y "pagó DESPUÉS del castigo". */

@@ -1195,7 +1195,10 @@ function CreditosTabla({ creditos, mostrarProximo, onCobrar, onCobrarAcuerdo, cl
                     tono={acuerdoVig.al_dia ? undefined : "warning"} />
                 ) : (
                   <CifraCredito label={mora > 0 ? "Vencido" : "Próximo pago"}
-                    valor={mora > 0 ? `$${n2(c.interes_mora ? c.cuota + c.interes_mora : c.cuota)}` : fmtDate(res?.proxima_vencimiento ?? c.proximo_pago)}
+                    /* `vencido` sale del server, cuota por cuota (calcularDeudaVencida). Antes se
+                       armaba acá como "una cuota + la mora total", que con dos vencidas mostraba
+                       $124.491,72 sobre un plan que sumaba $230.442,12 (CRD-000007). */
+                    valor={mora > 0 ? `$${n2(c.vencido ?? (c.interes_mora ? c.cuota + c.interes_mora : c.cuota))}` : fmtDate(res?.proxima_vencimiento ?? c.proximo_pago)}
                     pie={tieneCuotas && res!.vencidas > 0 ? `${res!.vencidas} cuota${res!.vencidas === 1 ? "" : "s"} vencida${res!.vencidas === 1 ? "" : "s"}` : "al día"}
                     tono={mora > 0 ? "warning" : undefined} />
                 )}
