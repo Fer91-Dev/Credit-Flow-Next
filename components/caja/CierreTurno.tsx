@@ -31,6 +31,7 @@ function Diferencia({ valor }: { valor: number }) {
 }
 
 const etiquetaTipo = (t: string) => TIPO_LABEL_ACTA[t as TipoMovimiento] ?? t;
+const usdFmt = (n: number) => `U$S ${new Intl.NumberFormat("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n)}`;
 
 export function CerrarTurnoDialog({ open, onClose, propia, nombreCaja }: {
   open: boolean;
@@ -45,20 +46,29 @@ export function CerrarTurnoDialog({ open, onClose, propia, nombreCaja }: {
   const { turno, mutate, key } = useCierresTurno(propia);
   const [contado, setContado] = useState("");
   const [fondo, setFondo] = useState("");
+  const [usdContado, setUsdContado] = useState("");
+  const [usdFondo, setUsdFondo] = useState("");
   const [observacion, setObservacion] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Al abrir, el turno se relee: los cobros del día tienen que estar en la cuenta.
-  useEffect(() => { if (open) { mutate(); setContado(""); setFondo(""); setObservacion(""); setError(null); } }, [open, mutate]);
+  useEffect(() => { if (open) { mutate(); setContado(""); setFondo(""); setUsdContado(""); setUsdFondo(""); setObservacion(""); setError(null); } }, [open, mutate]);
 
   const contadoNum = contado.trim() === "" ? null : parseMontoInput(contado);
   const fondoNum = fondo.trim() === "" ? 0 : parseMontoInput(fondo);
   const ev = turno && contadoNum !== null ? evaluarCierre(turno.saldoSistema, contadoNum, fondoNum) : null;
+  // Dólares: mismo esquema, en U$S. El bloque existe solo si la caja tiene dólares.
+  const usd = turno?.dolares ?? null;
+  const usdContadoNum = usdContado.trim() === "" ? null : parseMontoInput(usdContado);
+  const usdFondoNum = usdFondo.trim() === "" ? 0 : parseMontoInput(usdFondo);
+  const evUsd = usd && usdContadoNum !== null ? evaluarCierre(usd.saldoSistema, usdContadoNum, usdFondoNum) : null;
+  const faltaUsd = !!usd && usdContadoNum === null;
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!turno || contadoNum === null || !ev || ev.error) return;
+    if (usd && (usdContadoNum === null || !evUsd || evUsd.error)) return;
     const ok = await confirm({
       title: "¿Cerrar el turno?",
       description:
@@ -67,7 +77,10 @@ export function CerrarTurnoDialog({ open, onClose, propia, nombreCaja }: {
           : "El conteo cuadra con el sistema. ") +
         (ev.retiro > 0
           ? `${propia ? "Se rinden" : "Se retiran"} ${formatMonto(ev.retiro)} y quedan ${formatMonto(ev.fondo)} en la caja.`
-          : `No se retira nada: quedan ${formatMonto(ev.fondo)} en la caja.`),
+          : `No se retira nada: quedan ${formatMonto(ev.fondo)} en la caja.`) +
+        (evUsd
+          ? ` Dólares: ${evUsd.diferencia === 0 ? "cuadra" : `${evUsd.diferencia > 0 ? "sobrante" : "faltante"} de ${usdFmt(Math.abs(evUsd.diferencia))}`}; ${propia ? "se rinden" : "se retiran"} ${usdFmt(evUsd.retiro)} y quedan ${usdFmt(evUsd.fondo)}.`
+          : ""),
       confirmLabel: "Cerrar turno",
       tone: "danger",
     });
@@ -77,7 +90,7 @@ export function CerrarTurnoDialog({ open, onClose, propia, nombreCaja }: {
       const res = await fetch(propia ? "/api/me/caja/cierre-turno" : "/api/caja/cierre-turno", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ contado: contadoNum, fondo: fondoNum, observacion }),
+        body: JSON.stringify({ contado: contadoNum, fondo: fondoNum, observacion, dolares: usd ? { contado: usdContadoNum, fondo: usdFondoNum } : null }),
       });
       const json = await res.json();
       if (!json.ok) { setError(json.error || "No se pudo cerrar el turno"); return; }
@@ -107,7 +120,7 @@ export function CerrarTurnoDialog({ open, onClose, propia, nombreCaja }: {
           icon="locked-with-key"
           accent="primary"
           title="Cerrar turno"
-          subtitle={`${nombreCaja} · Efectivo. Se cuenta, se cuadra y ${propia ? "se rinde el sobrante a la caja principal" : "se retira el sobrante"}; queda el fondo para mañana.`}
+          subtitle={`${nombreCaja} · Efectivo${usd ? " y dólares" : ""}. Se cuenta, se cuadra y ${propia ? "se rinde el sobrante a la caja principal" : "se retira el sobrante"}; queda el fondo para mañana.`}
         />
         <form onSubmit={submit} className="space-y-5">
           {error && <div className="rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-2.5 text-sm text-destructive">{error}</div>}
@@ -166,6 +179,43 @@ export function CerrarTurnoDialog({ open, onClose, propia, nombreCaja }: {
                 </div>
               )}
 
+              {/* DÓLARES: son billetes, se cuentan y se retiran igual, en U$S. Solo si hay. */}
+              {usd && (
+                <div className="space-y-3 rounded-xl border border-border p-3">
+                  <div className="flex items-baseline justify-between gap-3">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Dólares · sistema</p>
+                    <p className="whitespace-nowrap font-mono text-sm font-semibold text-foreground">{usdFmt(usd.saldoSistema)}</p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="flex flex-col gap-1.5">
+                      <FieldLabel required>U$S contados</FieldLabel>
+                      <MoneyInput value={usdContado} onChange={setUsdContado} currency="U$S" placeholder="0,00" required />
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <FieldLabel>Quedan</FieldLabel>
+                      <MoneyInput value={usdFondo} onChange={setUsdFondo} currency="U$S" placeholder="0,00" />
+                    </div>
+                  </div>
+                  {evUsd && (
+                    <div className="flex items-center justify-between gap-3 text-xs">
+                      <span className={evUsd.diferencia === 0 ? "text-success" : "text-warning"}>
+                        {evUsd.diferencia === 0 ? "Cuadra" : evUsd.diferencia > 0 ? `Sobrante ${usdFmt(evUsd.diferencia)}` : `Faltante ${usdFmt(Math.abs(evUsd.diferencia))}`}
+                      </span>
+                      <span className="whitespace-nowrap font-mono text-foreground">{propia ? "Se rinden" : "Retiro"} {usdFmt(Math.max(0, evUsd.retiro))}</span>
+                    </div>
+                  )}
+                  {evUsd?.error && <p className="text-xs text-destructive">{evUsd.error}</p>}
+                </div>
+              )}
+
+              {/* Banco no se cuenta ni se retira (se concilia con un arqueo contra el extracto);
+                  el acta lo deja asentado como posición al cierre. */}
+              {turno && turno.posicion.banco !== 0 && (
+                <p className="text-xs text-muted-foreground">
+                  Banco al cierre: <span className="font-mono text-foreground">{formatMonto(turno.posicion.banco)}</span> · queda asentado en el acta, no se cuenta.
+                </p>
+              )}
+
               <div className="flex flex-col gap-1.5">
                 <FieldLabel>Observación</FieldLabel>
                 <IconTextarea icon="receipt" value={observacion} onChange={(e) => setObservacion(e.target.value)} rows={2} placeholder="Queda en el acta" />
@@ -173,7 +223,7 @@ export function CerrarTurnoDialog({ open, onClose, propia, nombreCaja }: {
             </div>
           </div>
 
-          <FormActions onCancel={() => onClose(false)} loading={loading} disabled={!turno || contadoNum === null || !!ev?.error} submitLabel="Cerrar turno" loadingLabel="Cerrando…" />
+          <FormActions onCancel={() => onClose(false)} loading={loading} disabled={!turno || contadoNum === null || !!ev?.error || faltaUsd || !!evUsd?.error} submitLabel="Cerrar turno" loadingLabel="Cerrando…" />
         </form>
       </DialogContent>
     </Dialog>
@@ -219,6 +269,7 @@ export function CierresTurnoPanel({ cierres, mostrarCaja = false, nombreCajaDe }
           { header: "Diferencia", align: "right", mono: true, cell: (c) => <Diferencia valor={c.diferencia} /> },
           { header: "Retiro", align: "right", mono: true, cell: (c) => <span className="text-foreground">{formatMonto(c.retiro)}</span> },
           { header: "Quedó", align: "right", mono: true, cell: (c) => <span className="text-muted-foreground">{formatMonto(c.fondo)}</span> },
+          { header: "U$S", align: "right", mono: true, className: "hidden md:table-cell", cell: (c) => c.dolares ? <span className="text-foreground" title={`Contados ${usdFmt(c.dolares.fisico)} · retiro ${usdFmt(c.dolares.retiro)} · quedan ${usdFmt(c.dolares.fondo)}`}>{usdFmt(c.dolares.fisico)}</span> : <span className="text-muted-foreground/40">—</span> },
           { header: "Cerró", className: "hidden lg:table-cell", cell: (c) => <span className="text-muted-foreground">{c.cerrado_por_nombre ?? "—"}</span> },
           {
             header: "", align: "right" as const,
@@ -249,6 +300,16 @@ export function CierresTurnoPanel({ cierres, mostrarCaja = false, nombreCajaDe }
               </li>
             ))}
           </ul>
+          {detalle.dolares && (
+            <p className="text-xs text-muted-foreground">
+              <span className="text-foreground">Dólares:</span> apertura {usdFmt(detalle.dolares.apertura)} · sistema {usdFmt(detalle.dolares.sistema)} · contados {usdFmt(detalle.dolares.fisico)} · diferencia {usdFmt(detalle.dolares.diferencia)} · retiro {usdFmt(detalle.dolares.retiro)} · quedan {usdFmt(detalle.dolares.fondo)}
+            </p>
+          )}
+          {detalle.posicion && (
+            <p className="text-xs text-muted-foreground">
+              <span className="text-foreground">Posición al cierre:</span> efectivo {formatMonto(detalle.posicion.efectivo)} · banco {formatMonto(detalle.posicion.banco)} · dólares {usdFmt(detalle.posicion.dolares)}
+            </p>
+          )}
           {detalle.observacion && <p className="text-muted-foreground"><span className="text-foreground">Observación:</span> {detalle.observacion}</p>}
         </div>
       )}

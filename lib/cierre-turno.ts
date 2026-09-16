@@ -21,10 +21,26 @@ import type { Prisma } from "@prisma/client";
 
 const CUENTA_CIERRE: Cuenta = "efectivo";
 
-/** El último cierre de esa caja/cuenta, o null si nunca se cerró. */
+/** La cuenta de los dólares dentro del acta (misma forma que las columnas de efectivo). */
+export interface CierreDolares {
+  abierto_desde: string | null;
+  apertura: number; ingresos: number; egresos: number; sistema: number;
+  fisico: number; diferencia: number; retiro: number; fondo: number;
+  detalle: Record<string, { cantidad: number; monto: number }>;
+  arqueo_id: string | null; retiro_id: string | null;
+}
+
+const usdTexto = (n: number) => `U$S ${Number(n).toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+/**
+ * El último cierre de esa caja que cerró ESA cuenta, o null si nunca se cerró. El acta es
+ * una sola por cierre (fila `cuenta = "efectivo"`); los dólares viajan adentro, así que "el
+ * último cierre de dólares" es el último que los incluyó. Banco no se cierra nunca.
+ */
 export async function ultimoCierre(tenantId: string, vendedorId: string | null, cuenta: Cuenta = CUENTA_CIERRE) {
+  if (cuenta === "banco") return null;
   return prisma.cierres_turno.findFirst({
-    where: { ...withTenant(tenantId), vendedor_id: vendedorId, cuenta },
+    where: { ...withTenant(tenantId), vendedor_id: vendedorId, cuenta: CUENTA_CIERRE, ...(cuenta === "dolares" ? { incluye_dolares: true } : {}) },
     orderBy: { created_at: "desc" },
   });
 }
@@ -33,19 +49,30 @@ export async function ultimoCierre(tenantId: string, vendedorId: string | null, 
  * El turno ABIERTO de una caja: desde el último cierre hasta ahora. Es lo que ve el modal
  * antes de contar, y la misma cuenta que después se congela en el acta.
  */
-export async function turnoAbierto(tenantId: string, vendedorId: string | null, cuenta: Cuenta = CUENTA_CIERRE) {
-  const previo = await ultimoCierre(tenantId, vendedorId, cuenta);
-  const movs = await prisma.movimientos_caja.findMany({
-    where: { ...withTenant(tenantId), vendedor_id: vendedorId, cuenta },
-    select: { monto: true, tipo: true, created_at: true },
-  });
+export async function turnoAbierto(tenantId: string, vendedorId: string | null) {
+  const [previo, previoUsd, movs] = await Promise.all([
+    ultimoCierre(tenantId, vendedorId, "efectivo"),
+    ultimoCierre(tenantId, vendedorId, "dolares"),
+    prisma.movimientos_caja.findMany({
+      where: { ...withTenant(tenantId), vendedor_id: vendedorId },
+      select: { monto: true, tipo: true, cuenta: true, created_at: true },
+    }),
+  ]);
   const ahora = new Date();
-  const resumen = resumirTurno(movs, previo?.created_at ?? null, ahora);
+  const porCuenta = (c: Cuenta) => movs.filter((m) => m.cuenta === c);
+  const resumen = resumirTurno(porCuenta("efectivo"), previo?.created_at ?? null, ahora);
+  const usd = resumirTurno(porCuenta("dolares"), previoUsd?.created_at ?? null, ahora);
+  const banco = round2(porCuenta("banco").reduce((t, m) => t + m.monto, 0));
   return {
-    cuenta,
+    cuenta: CUENTA_CIERRE,
     abierto_desde: previo?.created_at ?? null,
     fondo_anterior: previo?.fondo ?? null,
     ...resumen,
+    // Dólares: solo si hay algo que contar (saldo o movimientos en el turno).
+    dolares: usd.saldoSistema !== 0 || usd.cantidad > 0
+      ? { abierto_desde: previoUsd?.created_at ?? null, ...usd }
+      : null,
+    posicion: { efectivo: resumen.saldoSistema, banco, dolares: usd.saldoSistema },
   };
 }
 
@@ -56,6 +83,8 @@ export interface CerrarTurnoInput {
   contado: number;
   /** Lo que queda en la caja para el turno siguiente. */
   fondo: number;
+  /** Dólares contados y fondo en U$S; se omite si la caja no tiene dólares. */
+  dolares?: { contado: number; fondo: number } | null;
   observacion?: string;
 }
 
@@ -70,24 +99,22 @@ export async function cerrarTurno(input: CerrarTurnoInput) {
     ? (await prisma.vendedores.findFirst({ where: { ...withTenant(tenantId), id: vendedorId }, select: { nombre: true } }))?.nombre ?? "agente"
     : null;
 
-  const cierre = await prisma.$transaction(async (tx) => {
-    await lockCuentaTx(tx, tenantId, vendedorId, cuenta);
-    const previo = await tx.cierres_turno.findFirst({
-      where: { ...withTenant(tenantId), vendedor_id: vendedorId, cuenta },
-      orderBy: { created_at: "desc" },
-    });
-    const movs = await tx.movimientos_caja.findMany({
-      where: { ...withTenant(tenantId), vendedor_id: vendedorId, cuenta },
-      select: { monto: true, tipo: true, created_at: true },
-    });
-    const ahora = new Date();
-    const resumen = resumirTurno(movs, previo?.created_at ?? null, ahora);
-    const ev = evaluarCierre(resumen.saldoSistema, input.contado, input.fondo);
-    if (ev.error) throw new ApiError(ev.error, "INVALID_INPUT", 400);
+  /**
+   * Una cuenta (efectivo o dólares): arqueo + retiro. Devuelve la cuenta del acta para esa
+   * moneda. Se corre para efectivo siempre y para dólares si vinieron.
+   */
+  async function cerrarCuenta(
+    tx: Prisma.TransactionClient, cuenta: Cuenta, contado: number, fondo: number, previoAt: Date | null, ahora: Date,
+    movs: { monto: number; tipo: string; created_at: Date }[],
+  ) {
+    const resumen = resumirTurno(movs, previoAt, ahora);
+    const ev = evaluarCierre(resumen.saldoSistema, contado, fondo);
+    if (ev.error) throw new ApiError(`${cuenta === "dolares" ? "Dólares: " : ""}${ev.error}`, "INVALID_INPUT", 400);
+    const sufijo = cuenta === "dolares" ? " (dólares)" : "";
 
     // 1) Arqueo: concilia la diferencia con un ajuste ARQ (o cuadra, y solo deja el acta).
     const arqueo = await arqueoEnTx(tx, {
-      tenantId, vendedorId, cuenta, montoFisico: input.contado, modo: "auto",
+      tenantId, vendedorId, cuenta, montoFisico: contado, modo: "auto",
       fecha, observacion: observacion ? `Cierre de turno · ${observacion}` : "Cierre de turno",
       nombreCaja, actor,
     });
@@ -97,20 +124,21 @@ export async function cerrarTurno(input: CerrarTurnoInput) {
     if (ev.retiro > 0) {
       if (esVendedor) {
         // Rendición a la principal: dos patas, como en `registrarMovimientoCajaVendedor`.
+        // Misma cuenta de los dos lados: nunca se cruza moneda.
         const cajaVend = `Caja de ${nombreCaja} (${CUENTA_LABEL[cuenta]})`;
         const cajaPpal = `Caja principal (${CUENTA_LABEL[cuenta]})`;
         const mv = await tx.movimientos_caja.create({
           data: {
             ...withTenant(tenantId), fecha, tipo: "rendicion", monto: -ev.retiro, cuenta, vendedor_id: vendedorId,
             origen: cajaVend, destino: cajaPpal, serie: "REN", numero: await siguienteNumeroComprobante(tx, tenantId, "REN"),
-            descripcion: `Rendición por cierre de turno${observacion ? ` · ${observacion}` : ""}`,
+            descripcion: `Rendición por cierre de turno${sufijo}${observacion ? ` · ${observacion}` : ""}`,
           },
         });
         await tx.movimientos_caja.create({
           data: {
             ...withTenant(tenantId), fecha, tipo: "rendicion", monto: ev.retiro, cuenta, vendedor_id: null,
             origen: cajaVend, destino: cajaPpal, serie: "REN", numero: await siguienteNumeroComprobante(tx, tenantId, "REN"),
-            descripcion: `Rendición de ${nombreCaja} por cierre de turno`,
+            descripcion: `Rendición de ${nombreCaja} por cierre de turno${sufijo}`,
           },
         });
         retiroId = mv.id;
@@ -120,32 +148,67 @@ export async function cerrarTurno(input: CerrarTurnoInput) {
             ...withTenant(tenantId), fecha, tipo: "cierre_turno", monto: -ev.retiro, cuenta, vendedor_id: null,
             origen: etiquetaCaja(false, cuenta), destino: "Retiro de cierre (titular)",
             serie: "CIE", numero: await siguienteNumeroComprobante(tx, tenantId, "CIE"),
-            descripcion: `Retiro de cierre de turno${observacion ? ` · ${observacion}` : ""}`,
+            descripcion: `Retiro de cierre de turno${sufijo}${observacion ? ` · ${observacion}` : ""}`,
           },
         });
         retiroId = mv.id;
       }
     }
+    return {
+      apertura: resumen.apertura, ingresos: resumen.ingresos, egresos: resumen.egresos, sistema: resumen.saldoSistema,
+      fisico: round2(contado), diferencia: ev.diferencia, retiro: ev.retiro, fondo: ev.fondo,
+      detalle: resumen.detalle, arqueo_id: arqueo.id, retiro_id: retiroId,
+    };
+  }
+
+  const cierre = await prisma.$transaction(async (tx) => {
+    await lockCuentaTx(tx, tenantId, vendedorId, "efectivo");
+    if (input.dolares) await lockCuentaTx(tx, tenantId, vendedorId, "dolares");
+    const [previo, previoUsd] = await Promise.all([
+      tx.cierres_turno.findFirst({ where: { ...withTenant(tenantId), vendedor_id: vendedorId, cuenta: "efectivo" }, orderBy: { created_at: "desc" } }),
+      tx.cierres_turno.findFirst({ where: { ...withTenant(tenantId), vendedor_id: vendedorId, cuenta: "efectivo", incluye_dolares: true }, orderBy: { created_at: "desc" } }),
+    ]);
+    const movs = await tx.movimientos_caja.findMany({
+      where: { ...withTenant(tenantId), vendedor_id: vendedorId },
+      select: { monto: true, tipo: true, cuenta: true, created_at: true },
+    });
+    const ahora = new Date();
+    const porCuenta = (c: Cuenta) => movs.filter((m) => m.cuenta === c);
+
+    const ef = await cerrarCuenta(tx, "efectivo", input.contado, input.fondo, previo?.created_at ?? null, ahora, porCuenta("efectivo"));
+    const usd = input.dolares
+      ? await cerrarCuenta(tx, "dolares", input.dolares.contado, input.dolares.fondo, previoUsd?.created_at ?? null, ahora, porCuenta("dolares"))
+      : null;
+    // Posición al cierre: lo que queda en cada cuenta después del retiro. Banco no se
+    // cuenta ni se retira: es su saldo de sistema (se concilia aparte, contra el extracto).
+    const posicion = {
+      efectivo: ef.fondo,
+      banco: round2(porCuenta("banco").reduce((t, m) => t + m.monto, 0)),
+      dolares: usd ? usd.fondo : round2(porCuenta("dolares").reduce((t, m) => t + m.monto, 0)),
+    };
 
     // 3) El acta, congelada.
     return tx.cierres_turno.create({
       data: {
         ...withTenant(tenantId),
-        fecha, vendedor_id: vendedorId, cuenta,
+        fecha, vendedor_id: vendedorId, cuenta: "efectivo",
         numero: await siguienteNumeroComprobante(tx, tenantId, "CIE"),
         abierto_desde: previo?.created_at ?? null,
         cerrado_at: ahora,
-        saldo_apertura: resumen.apertura,
-        ingresos: resumen.ingresos,
-        egresos: resumen.egresos,
-        saldo_sistema: resumen.saldoSistema,
-        saldo_fisico: round2(input.contado),
-        diferencia: ev.diferencia,
-        retiro: ev.retiro,
-        fondo: ev.fondo,
-        detalle: resumen.detalle,
-        arqueo_id: arqueo.id,
-        retiro_id: retiroId,
+        saldo_apertura: ef.apertura,
+        ingresos: ef.ingresos,
+        egresos: ef.egresos,
+        saldo_sistema: ef.sistema,
+        saldo_fisico: ef.fisico,
+        diferencia: ef.diferencia,
+        retiro: ef.retiro,
+        fondo: ef.fondo,
+        detalle: ef.detalle,
+        arqueo_id: ef.arqueo_id,
+        retiro_id: ef.retiro_id,
+        dolares: usd ? { abierto_desde: previoUsd?.created_at?.toISOString() ?? null, ...usd } : undefined,
+        incluye_dolares: !!usd,
+        posicion,
         observacion,
         cerrado_por: actor?.userId ?? null,
         cerrado_por_nombre: actor?.nombre ?? null,
@@ -153,9 +216,9 @@ export async function cerrarTurno(input: CerrarTurnoInput) {
     });
   }, {
     // Es la transacción más larga del sistema (candado + arqueo + retiro en dos patas + tres
-    // numeraciones + acta): con la base a ~190 ms por consulta pasa los 5 s por defecto y
-    // Prisma la cierra a la mitad. Es la acción de fin del día; puede tardar.
-    timeout: 30_000,
+    // numeraciones + acta, por dos monedas): con la base a ~190 ms por consulta pasa los 5 s
+    // por defecto y Prisma la cierra a la mitad. Es la acción de fin del día; puede tardar.
+    timeout: 45_000,
     maxWait: 10_000,
   });
 
@@ -165,7 +228,10 @@ export async function cerrarTurno(input: CerrarTurnoInput) {
     descripcion:
       `Cierre de turno (${quien}): apertura ${formatPesos(cierre.saldo_apertura)}, ingresos ${formatPesos(cierre.ingresos)}, ` +
       `egresos ${formatPesos(cierre.egresos)}, sistema ${formatPesos(cierre.saldo_sistema)}, contado ${formatPesos(cierre.saldo_fisico)}, ` +
-      `diferencia ${formatPesos(cierre.diferencia)}, retiro ${formatPesos(cierre.retiro)}, queda ${formatPesos(cierre.fondo)}`,
+      `diferencia ${formatPesos(cierre.diferencia)}, retiro ${formatPesos(cierre.retiro)}, queda ${formatPesos(cierre.fondo)}` +
+      (cierre.incluye_dolares && cierre.dolares && typeof cierre.dolares === "object"
+        ? ` · dólares: contado ${usdTexto((cierre.dolares as { fisico: number }).fisico)}, retiro ${usdTexto((cierre.dolares as { retiro: number }).retiro)}`
+        : ""),
     meta: { tipo: "cierre_turno", vendedor_id: vendedorId, cuenta, arqueo_id: cierre.arqueo_id, retiro_id: cierre.retiro_id, numero: cierre.numero },
   });
 
@@ -197,6 +263,7 @@ export function serializarCierre(c: {
   abierto_desde: Date | null; cerrado_at: Date; saldo_apertura: number; ingresos: number; egresos: number;
   saldo_sistema: number; saldo_fisico: number; diferencia: number; retiro: number; fondo: number;
   detalle: unknown; arqueo_id: string | null; retiro_id: string | null; observacion: string | null;
+  dolares?: unknown; incluye_dolares?: boolean; posicion?: unknown;
   cerrado_por_nombre: string | null; vendedor?: { nombre: string } | null;
 }) {
   return {
@@ -207,6 +274,8 @@ export function serializarCierre(c: {
     saldo_fisico: c.saldo_fisico, diferencia: c.diferencia, retiro: c.retiro, fondo: c.fondo,
     detalle: (c.detalle ?? {}) as Record<string, { cantidad: number; monto: number }>,
     arqueo_id: c.arqueo_id, retiro_id: c.retiro_id, observacion: c.observacion, cerrado_por_nombre: c.cerrado_por_nombre,
+    dolares: (c.incluye_dolares && c.dolares && typeof c.dolares === "object" ? c.dolares : null) as CierreDolares | null,
+    posicion: (c.posicion && typeof c.posicion === "object" ? c.posicion : null) as { efectivo: number; banco: number; dolares: number } | null,
   };
 }
 

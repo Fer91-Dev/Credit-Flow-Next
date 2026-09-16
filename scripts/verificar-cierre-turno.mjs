@@ -49,6 +49,7 @@ if (!fichaQA) { console.error("falta el vendedor temporal: corré `qa-usuario-te
 const TENANT = fichaQA.tenant_id;
 const sello = String(Date.now()).slice(-6);
 const creados = { cierres: [], arqueos: [], movs: [], clientes: [] };
+const tInicio = new Date();
 const saldoDe = async (vendedorId, cuenta = "efectivo") => {
   const r = await db.movimientos_caja.aggregate({ where: { tenant_id: TENANT, vendedor_id: vendedorId, cuenta }, _sum: { monto: true } });
   return Math.round((r._sum.monto ?? 0) * 100) / 100;
@@ -123,6 +124,47 @@ try {
   ok(igual(principalAhora, principalAntes - 1_000), "la principal quedó con $1.000,00 menos: exactamente el faltante del agente", `${f(principalAntes)} → ${f(principalAhora)}`);
 
   // ═════════════════════════════════════════════════════════════════════════
+  H1("FASE 2b · Dólares en la misma acta (y posición de las tres cuentas)");
+  const tU = new Date();
+  const usdPpalAntes = await saldoDe(null, "dolares");
+  const apoUsd = await admin("POST", "/api/caja", { concepto: "aporte_capital", monto: 1_000, cuenta: "dolares", descripcion: `Verificador ${sello}: dólares para la entrega` });
+  ok(apoUsd.ok, "la principal recibe U$S 1.000,00 de capital", apoUsd.error ?? "");
+  const entUsd = await admin("POST", `/api/vendedores/${fichaQA.id}/caja`, { accion: "entrega", monto: 1_000, cuenta: "dolares", descripcion: `Verificador de cierre ${sello}: entrega U$S` });
+  ok(entUsd.ok, "y se los entrega al agente (dólares → dólares)", entUsd.error ?? "");
+  const entPesos = await admin("POST", `/api/vendedores/${fichaQA.id}/caja`, { accion: "entrega", monto: 20_000, cuenta: "efectivo", descripcion: `Verificador de cierre ${sello}: entrega pesos` });
+  ok(entPesos.ok, "más $20.000,00 en efectivo para que el turno tenga las dos monedas", entPesos.error ?? "");
+  const tU2 = await vend("GET", "/api/me/caja/cierre-turno");
+  const TU = tU2.data?.turno ?? {};
+  ok(!!TU.dolares, "el turno abierto trae el bloque de dólares porque hay saldo en U$S", JSON.stringify(TU.dolares && { sistema: TU.dolares.saldoSistema }));
+  ok(igual(TU.dolares?.saldoSistema ?? 0, 1_000) && igual(TU.dolares?.apertura ?? 1, 0), "dólares: apertura U$S 0,00 + ingresos = sistema U$S 1.000,00", `${TU.dolares?.apertura} + ${TU.dolares?.ingresos}`);
+  ok(TU.posicion && igual(TU.posicion.efectivo, 20_000) && igual(TU.posicion.dolares, 1_000), "la posición dice efectivo $20.000,00 y U$S 1.000,00", JSON.stringify(TU.posicion));
+  const cU = await vend("POST", "/api/me/caja/cierre-turno", { contado: 20_000, fondo: 0, dolares: { contado: 990, fondo: 100 } });
+  ok(cU.ok, "cierra contando $20.000,00 y U$S 990,00 (faltante U$S 10,00), dejando U$S 100,00", cU.error ?? cU.data?.comprobante);
+  const AU = cU.data ?? {};
+  if (cU.ok) { creados.cierres.push(AU.id); creados.arqueos.push(AU.arqueo_id); if (AU.dolares?.arqueo_id) creados.arqueos.push(AU.dolares.arqueo_id); }
+  ok(!!AU.dolares, "el acta trae el bloque de dólares");
+  ok(igual(AU.dolares?.sistema ?? 0, 1_000) && igual(AU.dolares?.fisico ?? 0, 990) && igual(AU.dolares?.diferencia ?? 0, -10), "dólares: sistema 1.000 · contado 990 · diferencia −10", JSON.stringify(AU.dolares && { s: AU.dolares.sistema, f: AU.dolares.fisico, d: AU.dolares.diferencia }));
+  ok(igual(AU.dolares?.retiro ?? 0, 890) && igual(AU.dolares?.fondo ?? 0, 100), "dólares: retiro 890 · quedan 100", `${AU.dolares?.retiro} / ${AU.dolares?.fondo}`);
+  ok(igual(await saldoDe(fichaQA.id, "dolares"), 100), "la caja del agente queda en U$S 100,00", String(await saldoDe(fichaQA.id, "dolares")));
+  ok(igual(await saldoDe(fichaQA.id), 0), "y en $0,00 de efectivo", String(await saldoDe(fichaQA.id)));
+  ok(igual(await saldoDe(null, "dolares"), usdPpalAntes + 1_000 - 1_000 + 890), "la principal recibió U$S 890,00 de la rendición", String(await saldoDe(null, "dolares")));
+  const arqUsd = await db.movimientos_caja.findFirst({ where: { tenant_id: TENANT, vendedor_id: fichaQA.id, cuenta: "dolares", serie: "ARQ", created_at: { gt: tU } } });
+  ok(!!arqUsd && igual(arqUsd.monto, -10), "el faltante de U$S 10,00 se concilió con un ARQ en dólares", arqUsd ? String(arqUsd.monto) : "no hay");
+  ok(AU.posicion && igual(AU.posicion.efectivo, 0) && igual(AU.posicion.dolares, 100), "posición al cierre: efectivo $0,00 · dólares U$S 100,00", JSON.stringify(AU.posicion));
+  // segundo turno de dólares: abre con los 100 que quedaron; cierra rindiendo todo
+  const tU3 = await vend("GET", "/api/me/caja/cierre-turno");
+  ok(igual(tU3.data?.turno?.dolares?.apertura ?? -1, 100), "el turno siguiente abre con U$S 100,00", String(tU3.data?.turno?.dolares?.apertura));
+  const cU2 = await vend("POST", "/api/me/caja/cierre-turno", { contado: 0, fondo: 0, dolares: { contado: 100, fondo: 0 } });
+  ok(cU2.ok, "cierra rindiendo los U$S 100,00", cU2.error ?? "");
+  if (cU2.ok) { creados.cierres.push(cU2.data.id); creados.arqueos.push(cU2.data.arqueo_id); if (cU2.data.dolares?.arqueo_id) creados.arqueos.push(cU2.data.dolares.arqueo_id); }
+  ok(igual(await saldoDe(fichaQA.id, "dolares"), 0), "la caja del agente queda en U$S 0,00");
+  // la principal vuelve a su saldo en dólares: +1.000 aporte −1.000 entrega +890 +100 = +990; el aporte se borra en la limpieza → −10 (el faltante)
+  const movsU = await db.movimientos_caja.findMany({ where: { tenant_id: TENANT, created_at: { gt: tU }, OR: [{ vendedor_id: fichaQA.id }, { cuenta: "dolares" }, { descripcion: { contains: `Verificador de cierre ${sello}` } }] }, select: { id: true } });
+  creados.movs.push(...movsU.map((m) => m.id));
+  const sinUsd = await vend("POST", "/api/me/caja/cierre-turno", { contado: 0, fondo: 0, dolares: { contado: 5, fondo: 10 } });
+  ok(!sinUsd.ok && sinUsd.status === 400 && /Dólares/.test(sinUsd.error ?? ""), "dólares: fondo mayor que lo contado → 400 con el prefijo Dólares", sinUsd.error ?? "");
+
+  // ═════════════════════════════════════════════════════════════════════════
   H1("FASE 3 · Validaciones");
   const malo1 = await vend("POST", "/api/me/caja/cierre-turno", { contado: 100, fondo: 200 });
   ok(!malo1.ok && malo1.status === 400, "fondo mayor que lo contado → 400", malo1.error ?? "");
@@ -194,6 +236,10 @@ try {
   await db.clientes.deleteMany({ where: { id: { in: labs.map((c) => c.id) } } });
   await db.movimientos_caja.deleteMany({ where: { tenant_id: TENANT, descripcion: { contains: `Verificador ${sello}` } } });
   await db.movimientos_caja.deleteMany({ where: { tenant_id: TENANT, descripcion: { contains: `Verificador de cierre ${sello}` } } });
+  // Las patas de la principal de cada rendición del agente QA no llevan `vendedor_id` ni el
+  // sello: se reconocen por el nombre del agente en la glosa. Sin esto quedaban +$20.000,00
+  // en la principal de dev (16/09/2026).
+  await db.movimientos_caja.deleteMany({ where: { tenant_id: TENANT, vendedor_id: null, created_at: { gt: tInicio }, descripcion: { contains: "QA Vendedor (temporal)" } } });
   console.log(`  borrados: ${idsMov.length} movimientos, ${creados.cierres.length} actas, ${creados.arqueos.length} arqueos, ${labs.length} cliente(s)`);
   await db.$disconnect();
   console.log(`\n${"═".repeat(78)}\n  ${fallos === 0 ? "✅" : "❌"} ${pruebas - fallos}/${pruebas} verificaciones OK${fallos ? ` · ${fallos} FALLA(S)` : ""}\n${"═".repeat(78)}`);

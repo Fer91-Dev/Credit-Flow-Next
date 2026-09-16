@@ -31,12 +31,21 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
   assertSameOrigin(req);
   const { tenantId, vendedorId } = await requireAuth(req);
   if (!vendedorId) return errorResponse("Tu usuario no está vinculado a un vendedor", "NO_VENDEDOR", 400);
-  let body: { contado?: number; fondo?: number; observacion?: string };
+  let body: { contado?: number; fondo?: number; observacion?: string; dolares?: { contado?: number; fondo?: number } | null };
   try { body = await req.json(); } catch { return errorResponse("Body JSON inválido", "INVALID_JSON", 400); }
   const contado = Number(body.contado);
   const fondo = body.fondo === undefined || body.fondo === null ? 0 : Number(body.fondo);
   if (!Number.isFinite(contado) || contado < 0) return errorResponse("Indicá el efectivo contado (cero o más)", "INVALID_INPUT", 400);
   if (!Number.isFinite(fondo) || fondo < 0) return errorResponse("El fondo que queda tiene que ser cero o más", "INVALID_INPUT", 400);
-  const cierre = await cerrarTurno({ tenantId, vendedorId, contado, fondo, observacion: body.observacion });
+  // Dólares: opcionales; si vienen, se cuentan y se cuadran igual que el efectivo, en U$S.
+  let dolares: { contado: number; fondo: number } | null = null;
+  if (body.dolares) {
+    const c = Number(body.dolares.contado);
+    const f = body.dolares.fondo === undefined || body.dolares.fondo === null ? 0 : Number(body.dolares.fondo);
+    if (!Number.isFinite(c) || c < 0) return errorResponse("Dólares: indicá lo contado (cero o más)", "INVALID_INPUT", 400);
+    if (!Number.isFinite(f) || f < 0) return errorResponse("Dólares: el fondo que queda tiene que ser cero o más", "INVALID_INPUT", 400);
+    dolares = { contado: c, fondo: f };
+  }
+  const cierre = await cerrarTurno({ tenantId, vendedorId, contado, fondo, dolares, observacion: body.observacion });
   return successResponse(serializarCierre(cierre), 201);
 });

@@ -1674,19 +1674,37 @@ export interface CierreTurno {
   retiro_id: string | null;
   observacion: string | null;
   cerrado_por_nombre: string | null;
+  /** Los dólares del mismo cierre (en U$S), o null si el turno no tenía. */
+  dolares: {
+    abierto_desde: string | null;
+    apertura: number; ingresos: number; egresos: number; sistema: number;
+    fisico: number; diferencia: number; retiro: number; fondo: number;
+    detalle: Record<string, { cantidad: number; monto: number }>;
+    arqueo_id: string | null; retiro_id: string | null;
+  } | null;
+  /** Posición de las tres cuentas al cierre (informativa). */
+  posicion: { efectivo: number; banco: number; dolares: number } | null;
 }
 
-/** El turno ABIERTO de una caja (desde el último cierre hasta ahora). */
-export interface TurnoAbierto {
-  cuenta: string;
-  abierto_desde: string | null;
-  fondo_anterior: number | null;
+/** La cuenta de una moneda del turno abierto. */
+export interface ResumenTurno {
+  abierto_desde?: string | null;
   apertura: number;
   ingresos: number;
   egresos: number;
   saldoSistema: number;
   cantidad: number;
   detalle: Record<string, { cantidad: number; monto: number }>;
+}
+
+/** El turno ABIERTO de una caja (desde el último cierre hasta ahora). */
+export interface TurnoAbierto extends ResumenTurno {
+  cuenta: string;
+  abierto_desde: string | null;
+  fondo_anterior: number | null;
+  /** Dólares del turno, o null si no hay saldo ni movimientos en U$S. */
+  dolares: ResumenTurno | null;
+  posicion: { efectivo: number; banco: number; dolares: number };
 }
 
 /** `propia` = la caja del usuario (agente); si no, la principal (admin). */

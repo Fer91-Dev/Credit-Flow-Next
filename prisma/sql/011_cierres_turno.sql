@@ -27,6 +27,11 @@ CREATE TABLE IF NOT EXISTS cierres_turno (
   arqueo_id      UUID,
   retiro_id      UUID,
   observacion    TEXT,
+  -- Dólares en la misma acta (misma cuenta que las columnas de arriba, en U$S); null = no había.
+  dolares        JSONB,
+  incluye_dolares BOOLEAN NOT NULL DEFAULT false,
+  -- Posición de las tres cuentas al cierre (informativa): { efectivo, banco, dolares }.
+  posicion       JSONB,
   cerrado_por        UUID,
   cerrado_por_nombre TEXT
 );

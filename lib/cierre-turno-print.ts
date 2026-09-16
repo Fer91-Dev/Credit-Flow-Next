@@ -19,6 +19,7 @@ export interface ActaCierreData {
 
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 const signo = (n: number) => (n > 0 ? "+" : n < 0 ? "−" : "");
+const usd = (n: number) => `U$S ${new Intl.NumberFormat("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n)}`;
 
 export function imprimirActaCierre(data: ActaCierreData): void {
   const w = window.open("", "_blank", "width=900,height=900");
@@ -34,6 +35,36 @@ export function imprimirActaCierre(data: ActaCierreData): void {
     </tr>`).join("");
   const dif = c.diferencia;
   const difTexto = dif === 0 ? "Cuadra exacto" : dif > 0 ? `Sobrante ${formatMonto(dif)}` : `Faltante ${formatMonto(Math.abs(dif))}`;
+  const u = c.dolares;
+  const difUsd = u ? (u.diferencia === 0 ? "Cuadra exacto" : u.diferencia > 0 ? `Sobrante ${usd(u.diferencia)}` : `Faltante ${usd(Math.abs(u.diferencia))}`) : "";
+  const bloqueDolares = u ? `
+  <div class="sec">
+    <p class="ttl">Dólares</p>
+    <div class="grid">
+      <div class="lines">
+        <div class="ln"><span class="k">Saldo de apertura</span><span class="mn">${usd(u.apertura)}</span></div>
+        <div class="ln ev"><span class="k">+ Ingresos del turno</span><span class="mn">${usd(u.ingresos)}</span></div>
+        <div class="ln"><span class="k">− Egresos del turno</span><span class="mn">${usd(u.egresos)}</span></div>
+        <div class="ln tot"><span class="k">Saldo de sistema</span><span class="mn">${usd(u.sistema)}</span></div>
+      </div>
+      <div class="lines">
+        <div class="ln"><span class="k">Dólares contados</span><span class="mn">${usd(u.fisico)}</span></div>
+        <div class="ln ev"><span class="k">Diferencia contra el sistema</span><span class="mn ${u.diferencia < 0 ? "neg" : u.diferencia > 0 ? "ok" : ""}">${esc(difUsd)}</span></div>
+        <div class="ln"><span class="k">${c.vendedor_id ? "Rendido a la caja principal" : "Retiro de cierre"}</span><span class="mn">${usd(u.retiro)}</span></div>
+        <div class="ln tot"><span class="k">Quedan en caja</span><span class="mn">${usd(u.fondo)}</span></div>
+      </div>
+    </div>
+  </div>` : "";
+  const pos = c.posicion;
+  const bloquePosicion = pos ? `
+  <div class="sec">
+    <p class="ttl">Posición al cierre</p>
+    <div class="lines">
+      <div class="ln"><span class="k">Efectivo (queda en caja)</span><span class="mn">${formatMonto(pos.efectivo)}</span></div>
+      <div class="ln ev"><span class="k">Banco (saldo de sistema; se concilia contra el extracto, no se cuenta)</span><span class="mn">${formatMonto(pos.banco)}</span></div>
+      <div class="ln"><span class="k">Dólares${u ? " (quedan en caja)" : " (saldo de sistema)"}</span><span class="mn">${usd(pos.dolares)}</span></div>
+    </div>
+  </div>` : "";
 
   w.document.write(`<!DOCTYPE html>
 <html lang="es">
@@ -99,7 +130,7 @@ tbody tr:last-child td{border-bottom:none}
     </div>
     <div class="cotblk">
       <span class="cotlabel">Acta</span><span class="cotval">${esc(c.comprobante)}</span>
-      <span class="cotlabel">Caja</span><span class="cotval" style="font-family:inherit">${esc(data.caja)} · Efectivo</span>
+      <span class="cotlabel">Caja</span><span class="cotval" style="font-family:inherit">${esc(data.caja)} · Efectivo${u ? " y dólares" : ""}</span>
       <span class="cotlabel">Turno</span><span class="cotval" style="font-size:12px">${c.abierto_desde ? `${formatFechaHora(c.abierto_desde)} → ` : "hasta el "}${formatFechaHora(c.cerrado_at)}</span>
     </div>
   </div>
@@ -135,6 +166,8 @@ tbody tr:last-child td{border-bottom:none}
     </table>
   </div>
 
+  ${bloqueDolares}
+  ${bloquePosicion}
   ${c.observacion ? `<div class="note"><strong>Observación:</strong> ${esc(c.observacion)}</div>` : ""}
   ${dif !== 0 ? `<div class="note">La diferencia se concilió en el mismo acto con un ajuste de caja, para que el sistema quede en lo contado.</div>` : ""}
 

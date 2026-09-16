@@ -837,6 +837,17 @@ model cierres_turno {
   retiro_id String? @db.Uuid // movimiento CIE (o la pata REN del vendedor)
   observacion String?
 
+  /// DÓLARES, en la misma acta. Son billetes: se cuentan, se cuadran y se retiran igual que
+  /// el efectivo, en U$S. Null = el turno no tenía dólares (ni saldo ni movimientos). Trae la
+  /// misma cuenta que las columnas de arriba: { apertura, ingresos, egresos, sistema, fisico,
+  /// diferencia, retiro, fondo, detalle, arqueo_id, retiro_id }.
+  dolares         Json?
+  incluye_dolares Boolean @default(false) // para buscar "el último cierre que contó dólares"
+  /// Posición de las tres cuentas al cierre, a título informativo: { efectivo, banco, dolares }.
+  /// Banco no se cuenta ni se retira (se concilia con un arqueo contra el extracto), pero el
+  /// papel del día dice cuánto había en cada lado.
+  posicion        Json?
+
   cerrado_por        String? @db.Uuid
   cerrado_por_nombre String?
 
