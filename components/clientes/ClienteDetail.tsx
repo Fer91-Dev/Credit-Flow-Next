@@ -16,7 +16,7 @@ import { Emoji } from "@/components/ui/Emoji";
 import { Avatar } from "@/components/ui/Avatar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Field, Textarea } from "@/components/ui/field";
+import { Field } from "@/components/ui/field";
 import { useToast } from "@/components/ui/toast";
 import { ObservacionesPanel } from "@/components/clientes/ObservacionesPanel";
 import { LibreDeudaDialog } from "@/components/creditos/LibreDeudaDialog";
@@ -30,6 +30,7 @@ import { EstadoClienteDialog } from "@/components/clientes/EstadoClienteDialog";
 import { NoContactarDialog } from "@/components/clientes/NoContactarDialog";
 import { ProntuarioPanel } from "@/components/clientes/ProntuarioPanel";
 import { abrirRecibo } from "@/lib/recibo";
+import { AnularPagoDialog, type PagoAAnular } from "@/components/pagos/AnularPagoDialog";
 import { imprimirEstadoCuenta } from "@/lib/estado-cuenta-print";
 import { moraDevengadaDeCuota } from "@/lib/recibo-cuota";
 import { CreditoLink } from "@/components/ui/CreditoLink";
@@ -115,9 +116,7 @@ export function ClienteDetail({
   const toast = useToast();
   const { mutate: globalMutate } = useSWRConfig();
   const [reciboBusy, setReciboBusy] = useState<string | null>(null);
-  const [anularPago, setAnularPago] = useState<{ id: string; monto: number; fecha: string; creditoNumero?: number | null; creditoRefiNumero?: number | null } | null>(null);
-  const [anularMotivo, setAnularMotivo] = useState("");
-  const [anularBusy, setAnularBusy] = useState(false);
+  const [anularPago, setAnularPago] = useState<PagoAAnular | null>(null);
   const [editarHist, setEditarHist] = useState(false);
   const [contactar, setContactar] = useState(false);
   const [cambiarEstado, setCambiarEstado] = useState(false);
@@ -241,28 +240,6 @@ export function ClienteDetail({
   const handleReciboPago = async (pagoId: string) => {
     setReciboBusy(pagoId);
     try { await abrirRecibo(pagoId); } catch { /* silencioso */ } finally { setReciboBusy(null); }
-  };
-  const handleAnularPago = async () => {
-    if (!anularPago) return;
-    setAnularBusy(true);
-    try {
-      const res = await fetch(`/api/pagos/${anularPago.id}/anular`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ motivo: anularMotivo.trim() || undefined }),
-      });
-      const json = await res.json();
-      if (!json.ok) { toast.error(json.error || "No se pudo anular el pago"); return; }
-      toast.success("Pago anulado y caja cuadrada");
-      refrescarNotificaciones(); // movió caja: que la campanita avise ya
-      setAnularPago(null); setAnularMotivo("");
-      mutate(); // revalida la ficha del cliente
-      globalMutate(KEYS.creditos); globalMutate(KEYS.pagos); globalMutate(KEYS.dashboard); globalMutate("/api/caja");
-    } catch {
-      toast.error("No se pudo anular el pago");
-    } finally {
-      setAnularBusy(false);
-    }
   };
 
   // Estado de la PERSONA (no del crédito). Un fallecido tiene la deuda en revisión: no se
@@ -797,7 +774,7 @@ export function ClienteDetail({
                 puedeAnular={puedeAnular}
                 reciboBusy={reciboBusy}
                 onRecibo={handleReciboPago}
-                onAnular={(pago, credito) => { setAnularPago({ id: pago.id, monto: pago.monto, fecha: pago.fecha, creditoNumero: credito.numero, creditoRefiNumero: credito.refinancia_a_numero }); setAnularMotivo(""); }}
+                onAnular={(pago, credito) => setAnularPago({ id: pago.id, monto: pago.monto, fecha: pago.fecha, metodo: pago.metodo, cuotas: pago.aplicaciones?.map((a) => a.cuota.nro), credito: { id: credito.id, numero: credito.numero, refinancia_a_numero: credito.refinancia_a_numero }, cliente: nombreCompleto(cliente) })}
                 onCobrar={puedeCobrarAca ? (c, q) => setCobrando({ credito: c, cuota: q }) : undefined}
                 onCobrarAcuerdo={puedeCobrarAca ? (creditoId, acuerdo) => setCobrandoAcuerdo({ creditoId, acuerdo }) : undefined}
               />
@@ -822,7 +799,7 @@ export function ClienteDetail({
               puedeAnular={puedeAnular}
               reciboBusy={reciboBusy}
               onRecibo={handleReciboPago}
-              onAnular={(pago, credito) => { setAnularPago({ id: pago.id, monto: pago.monto, fecha: pago.fecha, creditoNumero: credito.numero, creditoRefiNumero: credito.refinancia_a_numero }); setAnularMotivo(""); }}
+              onAnular={(pago, credito) => setAnularPago({ id: pago.id, monto: pago.monto, fecha: pago.fecha, metodo: pago.metodo, cuotas: pago.aplicaciones?.map((a) => a.cuota.nro), credito: { id: credito.id, numero: credito.numero, refinancia_a_numero: credito.refinancia_a_numero }, cliente: nombreCompleto(cliente) })}
               onCobrar={puedeCobrarAca ? (c, q) => setCobrando({ credito: c, cuota: q }) : undefined}
               onCobrarAcuerdo={puedeCobrarAca ? (creditoId, acuerdo) => setCobrandoAcuerdo({ creditoId, acuerdo }) : undefined}
             />
@@ -841,7 +818,7 @@ export function ClienteDetail({
               puedeAnular={puedeAnular}
               reciboBusy={reciboBusy}
               onRecibo={handleReciboPago}
-              onAnular={(pago, credito) => { setAnularPago({ id: pago.id, monto: pago.monto, fecha: pago.fecha, creditoNumero: credito.numero, creditoRefiNumero: credito.refinancia_a_numero }); setAnularMotivo(""); }}
+              onAnular={(pago, credito) => setAnularPago({ id: pago.id, monto: pago.monto, fecha: pago.fecha, metodo: pago.metodo, cuotas: pago.aplicaciones?.map((a) => a.cuota.nro), credito: { id: credito.id, numero: credito.numero, refinancia_a_numero: credito.refinancia_a_numero }, cliente: nombreCompleto(cliente) })}
             />
           </section>
         )}
@@ -936,27 +913,15 @@ export function ClienteDetail({
         </DialogContent>
       </Dialog>
 
-      <Dialog open={!!anularPago} onOpenChange={(o) => { if (!o) { setAnularPago(null); setAnularMotivo(""); } }}>
-        <DialogContent className="w-[95vw] sm:max-w-md">
-          <DialogHeader><DialogTitle>Anular pago</DialogTitle></DialogHeader>
-          {anularPago && (
-            <div className="space-y-4">
-              <div className="rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-2.5 text-xs text-muted-foreground">
-                Se anulará el cobro de <span className="font-mono font-semibold text-foreground">${n0(anularPago.monto)}</span> del {formatFecha(anularPago.fecha)} ({formatCreditoNumero(anularPago.creditoNumero, anularPago.creditoRefiNumero)}): se revierte la imputación en las cuotas, se recalcula el crédito y se hace un <strong className="text-foreground">contra-asiento en la caja</strong>. El pago queda registrado como anulado (no se borra).
-              </div>
-              <Field label="Motivo (opcional)" hint="Queda en la auditoría">
-                <Textarea rows={2} value={anularMotivo} onChange={(e) => setAnularMotivo(e.target.value)} placeholder="Ej.: monto mal cargado, crédito equivocado…" />
-              </Field>
-              <div className="flex justify-end gap-2">
-                <button onClick={() => { setAnularPago(null); setAnularMotivo(""); }} className="rounded-lg px-3 py-1.5 text-xs text-muted-foreground hover:bg-muted">Cancelar</button>
-                <button onClick={handleAnularPago} disabled={anularBusy} className="inline-flex items-center gap-1.5 rounded-lg bg-destructive px-3 py-1.5 text-xs font-medium text-destructive-foreground hover:bg-destructive/90 disabled:opacity-50">
-                  {anularBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Ban className="h-3.5 w-3.5" />} Anular pago
-                </button>
-              </div>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
+      <AnularPagoDialog
+        pago={anularPago}
+        onClose={() => setAnularPago(null)}
+        onAnulado={() => {
+          setAnularPago(null);
+          mutate(); // revalida la ficha del cliente
+          globalMutate(KEYS.creditos); globalMutate(KEYS.pagos); globalMutate(KEYS.dashboard); globalMutate("/api/caja");
+        }}
+      />
 
       {/* Editar historia clínica del cliente migrado (solo admin) */}
       <EditarHistorialDialog

@@ -11,6 +11,7 @@ import { type Role } from "@/lib/auth/roles";
 import { abrirRecibo } from "@/lib/recibo";
 import { moraDevengadaDeCuota } from "@/lib/recibo-cuota";
 import { imprimirPlanPagos } from "@/lib/plan-print";
+import { AnularPagoDialog } from "@/components/pagos/AnularPagoDialog";
 import { imprimirEstadoCuenta } from "@/lib/estado-cuenta-print";
 import { LibreDeudaDialog } from "./LibreDeudaDialog";
 import { Emoji } from "@/components/ui/Emoji";
@@ -303,8 +304,6 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
   const [planAbierto, setPlanAbierto] = useState(false);
   /** Cuota que se está cobrando desde el cronograma (null = cobro libre desde el botón de arriba). */
   const [anularPago, setAnularPago] = useState<Pago | null>(null);
-  const [anularMotivo, setAnularMotivo] = useState("");
-  const [anularBusy, setAnularBusy] = useState(false);
   // Acciones sobre el CRÉDITO (distintas de las de un pago suelto).
   const [libreDeudaOpen, setLibreDeudaOpen] = useState(false);
   const [anularCreditoOpen, setAnularCreditoOpen] = useState(false);
@@ -358,27 +357,6 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
     globalMutate("/api/caja");
   };
 
-  const handleAnular = async () => {
-    if (!anularPago) return;
-    setAnularBusy(true);
-    try {
-      const res = await fetch(`/api/pagos/${anularPago.id}/anular`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ motivo: anularMotivo.trim() || undefined }),
-      });
-      const json = await res.json();
-      if (!json.ok) { toast.error(json.error || "No se pudo anular el pago"); return; }
-      toast.success("Pago anulado y caja cuadrada");
-      refrescarNotificaciones(); // movió caja: que la campanita avise ya
-      setAnularPago(null); setAnularMotivo("");
-      revalidar();
-    } catch {
-      toast.error("No se pudo anular el pago");
-    } finally {
-      setAnularBusy(false);
-    }
-  };
 
   /**
    * Anula el CRÉDITO: lo deja sin efecto conservando el registro, y cuadra la caja
@@ -1871,7 +1849,7 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
                           </button>
                           {puedeAnular && !p.anulado && (
                             <button
-                              onClick={() => { setAnularPago(p); setAnularMotivo(""); }}
+                              onClick={() => setAnularPago(p)}
                               title="Anular pago (contra-asiento en caja)"
                               className="inline-flex items-center justify-center h-7 w-7 rounded-md border border-border text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors"
                             >
@@ -2102,29 +2080,11 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
       </Dialog>
 
       {/* Anular pago — motivo + contra-asiento en caja (control de tesorería, solo admin) */}
-      <Dialog open={!!anularPago} onOpenChange={(o) => { if (!o) { setAnularPago(null); setAnularMotivo(""); } }}>
-        <DialogContent className="w-[95vw] sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Anular pago</DialogTitle>
-          </DialogHeader>
-          {anularPago && (
-            <div className="space-y-4">
-              <div className="rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-2.5 text-xs text-muted-foreground">
-                Se anulará el cobro de <span className="font-mono font-semibold text-foreground">${n2(anularPago.monto)}</span> del {fmtDate(anularPago.fecha)}: se revierte la imputación en las cuotas, se recalcula el crédito y se hace un <strong className="text-foreground">contra-asiento en la caja</strong>. El pago queda registrado como anulado (no se borra).
-              </div>
-              <Field label="Motivo (opcional)" hint="Queda en la auditoría">
-                <Textarea rows={2} value={anularMotivo} onChange={(e) => setAnularMotivo(e.target.value)} placeholder="Ej.: monto mal cargado, crédito equivocado…" />
-              </Field>
-              <div className="flex justify-end gap-2">
-                <button onClick={() => { setAnularPago(null); setAnularMotivo(""); }} className="rounded-lg px-3 py-1.5 text-xs text-muted-foreground hover:bg-muted">Cancelar</button>
-                <button onClick={handleAnular} disabled={anularBusy} className="inline-flex items-center gap-1.5 rounded-lg bg-destructive px-3 py-1.5 text-xs font-medium text-destructive-foreground hover:bg-destructive/90 disabled:opacity-50">
-                  {anularBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Ban className="h-3.5 w-3.5" />} Anular pago
-                </button>
-              </div>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
+      <AnularPagoDialog
+        pago={anularPago ? { id: anularPago.id, monto: anularPago.monto, fecha: anularPago.fecha, metodo: anularPago.metodo, credito: { id: credito.id, numero: credito.numero, refinancia_a_numero: credito.refinancia_a_numero }, cliente: nombreCompleto(credito.cliente) } : null}
+        onClose={() => setAnularPago(null)}
+        onAnulado={() => { setAnularPago(null); revalidar(); }}
+      />
 
       {/* Anular el CRÉDITO — motivo + qué se hace con lo ya cobrado (la caja tiene que
           cuadrar en las dos direcciones). */}
