@@ -11,6 +11,7 @@ import { type Role } from "@/lib/auth/roles";
 import { abrirRecibo } from "@/lib/recibo";
 import { moraDevengadaDeCuota } from "@/lib/recibo-cuota";
 import { imprimirPlanPagos } from "@/lib/plan-print";
+import { imprimirEstadoCuenta } from "@/lib/estado-cuenta-print";
 import { LibreDeudaDialog } from "./LibreDeudaDialog";
 import { Emoji } from "@/components/ui/Emoji";
 import { calcularPuenteDeuda, PuenteDeudaPanel } from "@/components/creditos/PuenteDeuda";
@@ -1452,6 +1453,25 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
                   className="rounded-lg border border-border px-2.5 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-40"
                 >
                   Operador
+                </button>
+                {/* El ESTADO DE CUENTA no es el plan: es lo pagado y lo que falta, hoy, cuota
+                    por cuota. Sale de las mismas cuotas que dibuja la tabla de abajo. */}
+                <button
+                  onClick={() => metaCuotas && imprimirEstadoCuenta({
+                    numeroCredito: formatCreditoNumero(credito.numero, credito.refinancia_a_numero),
+                    cliente: nombreCompleto(credito.cliente),
+                    documento: credito.cliente?.documento,
+                    fechaOtorgamiento: credito.fecha_inicio ?? credito.created_at,
+                    capitalOtorgado: credito.monto_original,
+                    tasa: credito.tasa,
+                    plan: metaCuotas,
+                    financiera,
+                  })}
+                  disabled={!metaCuotas || cuotas.length === 0}
+                  title="Estado de cuenta: qué está pagado y qué falta, cuota por cuota (PDF)"
+                  className="rounded-lg border border-border px-2.5 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-40"
+                >
+                  Estado de cuenta
                 </button>
               </div>
               {/*

@@ -8,7 +8,7 @@ import { useSWRConfig } from "swr";
 import {
   Pencil, Trash2, CalendarClock, ChevronDown, Loader2, Mail, MessageCircle, Phone, Printer, ShieldCheck, Ban, Receipt, AlertTriangle, History, BellOff, Wallet, Sparkles, Handshake,
 } from "lucide-react";
-import { refrescarNotificaciones, useClienteDetalle, useAccionesCobranza, useCuotas, KEYS, type CreditoConFinanzas, type EstadoCuota, type CuotaPersistida, type CuotasCredito, type PagoImputado, useDiasLegales, useOrigenRefinanciacion } from "@/lib/swr";
+import { refrescarNotificaciones, useClienteDetalle, useAccionesCobranza, useCuotas, KEYS, type CreditoConFinanzas, type EstadoCuota, type CuotaPersistida, type CuotasCredito, type PagoImputado, useDiasLegales, useOrigenRefinanciacion, useFinanciera } from "@/lib/swr";
 import { StatusBadge, type BadgeVariant } from "@/components/ui/StatusBadge";
 import { ScoreBadge } from "@/components/ui/ScoreBadge";
 import { Stat } from "@/components/ui/Stat";
@@ -30,6 +30,7 @@ import { EstadoClienteDialog } from "@/components/clientes/EstadoClienteDialog";
 import { NoContactarDialog } from "@/components/clientes/NoContactarDialog";
 import { ProntuarioPanel } from "@/components/clientes/ProntuarioPanel";
 import { abrirRecibo } from "@/lib/recibo";
+import { imprimirEstadoCuenta } from "@/lib/estado-cuenta-print";
 import { moraDevengadaDeCuota } from "@/lib/recibo-cuota";
 import { CreditoLink } from "@/components/ui/CreditoLink";
 import { formatCreditoNumero, formatFecha, formatFechaHora, nombreCompleto, hoyComercial, formatDias, formatMonto } from "@/lib/utils";
@@ -790,6 +791,8 @@ export function ClienteDetail({
               <CreditosTabla
                 creditos={activos}
                 clienteId={cliente.id}
+                clienteNombre={nombreCompleto(cliente)}
+                clienteDocumento={cliente.documento}
                 abiertoDeEntrada={esTerminal}
                 puedeAnular={puedeAnular}
                 reciboBusy={reciboBusy}
@@ -813,6 +816,8 @@ export function ClienteDetail({
             <CreditosTabla
               creditos={incobrables}
               clienteId={cliente.id}
+              clienteNombre={nombreCompleto(cliente)}
+              clienteDocumento={cliente.documento}
               abiertoDeEntrada={esTerminal}
               puedeAnular={puedeAnular}
               reciboBusy={reciboBusy}
@@ -831,6 +836,8 @@ export function ClienteDetail({
             <CreditosTabla
               creditos={historicos}
               clienteId={cliente.id}
+              clienteNombre={nombreCompleto(cliente)}
+              clienteDocumento={cliente.documento}
               puedeAnular={puedeAnular}
               reciboBusy={reciboBusy}
               onRecibo={handleReciboPago}
@@ -998,8 +1005,11 @@ export function ClienteDetail({
  * La FRANJA de la izquierda codifica la severidad —verde al día, ámbar en mora, roja pasando
  * los 30 días— para poder barrer una lista de diez créditos sin leer un número.
  */
-function CreditosTabla({ creditos, mostrarProximo, onCobrar, onCobrarAcuerdo, clienteId, abiertoDeEntrada, puedeAnular, reciboBusy, onRecibo, onAnular }: {
+function CreditosTabla({ creditos, mostrarProximo, onCobrar, onCobrarAcuerdo, clienteId, clienteNombre, clienteDocumento, abiertoDeEntrada, puedeAnular, reciboBusy, onRecibo, onAnular }: {
   creditos: CreditoConFinanzas[];
+  /** A nombre de quién sale el estado de cuenta. */
+  clienteNombre?: string;
+  clienteDocumento?: string | null;
   mostrarProximo?: boolean;
   /** Tesorería: quién puede anular un cobro (contra-asiento en caja). Solo admin. */
   puedeAnular?: boolean;
@@ -1032,6 +1042,31 @@ function CreditosTabla({ creditos, mostrarProximo, onCobrar, onCobrarAcuerdo, cl
    */
   const [abiertosPagos, setAbiertosPagos] = useState<Set<string>>(new Set());
   const [libreDeudaId, setLibreDeudaId] = useState<string | null>(null);
+  const { financiera } = useFinanciera();
+  const [estadoBusy, setEstadoBusy] = useState<string | null>(null);
+  /**
+   * ESTADO DE CUENTA: qué tiene pagado y qué no, cuota por cuota, para ver o imprimir.
+   * Pedido de Silvio (16/09/2026). Los datos son la misma respuesta que dibuja el plan
+   * (`/api/creditos/[id]/cuotas`): se pide al clic, no se mantiene montada por tarjeta.
+   */
+  const imprimirEstado = async (c: CreditoConFinanzas) => {
+    setEstadoBusy(c.id);
+    try {
+      const res = await fetch(`/api/creditos/${c.id}/cuotas`);
+      const json = await res.json();
+      if (!json.ok) return;
+      imprimirEstadoCuenta({
+        numeroCredito: formatCreditoNumero(c.numero, c.refinancia_a_numero),
+        cliente: clienteNombre ?? json.data.cliente ?? "",
+        documento: clienteDocumento,
+        fechaOtorgamiento: c.fecha_inicio ?? c.created_at,
+        capitalOtorgado: c.monto_original,
+        tasa: c.tasa,
+        plan: json.data,
+        financiera,
+      });
+    } finally { setEstadoBusy(null); }
+  };
   const alternar = (set: Set<string>, id: string) => {
     const next = new Set(set);
     if (next.has(id)) next.delete(id); else next.add(id);
@@ -1252,6 +1287,20 @@ function CreditosTabla({ creditos, mostrarProximo, onCobrar, onCobrarAcuerdo, cl
                   >
                     {abiertoPagos ? "Ocultar pagos" : `Ver pagos (${pagosDelCredito.length})`}
                     <ChevronDown className={`h-3.5 w-3.5 transition-transform duration-200 ${abiertoPagos ? "rotate-180" : ""}`} />
+                  </button>
+                )}
+
+                {/* El estado de cuenta: lo pagado y lo que falta, cuota por cuota, en un papel. */}
+                {tieneCuotas && (
+                  <button
+                    type="button"
+                    onClick={() => imprimirEstado(c)}
+                    disabled={estadoBusy === c.id}
+                    title="Ver o imprimir el estado de cuenta de este crédito"
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-muted/20 px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/40 hover:text-foreground disabled:opacity-50"
+                  >
+                    {estadoBusy === c.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Printer className="h-3.5 w-3.5" />}
+                    Estado de cuenta
                   </button>
                 )}
 
