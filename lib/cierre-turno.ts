@@ -16,6 +16,7 @@ import { CUENTA_LABEL, etiquetaCaja, resumirTurno, evaluarCierre, formatPesos, r
 import { siguienteNumeroComprobante } from "@/lib/comprobantes";
 import { lockCuentaTx } from "@/lib/caja-fondos";
 import { arqueoEnTx } from "@/lib/arqueo";
+import { parVendedorEnTx } from "@/lib/caja-vendedor";
 import { hoyComercial } from "@/lib/utils";
 import type { Prisma } from "@prisma/client";
 
@@ -28,6 +29,7 @@ export interface CierreDolares {
   fisico: number; diferencia: number; retiro: number; fondo: number;
   detalle: Record<string, { cantidad: number; monto: number }>;
   arqueo_id: string | null; retiro_id: string | null;
+  diferenciaPendiente?: boolean;
 }
 
 const usdTexto = (n: number) => `U$S ${Number(n).toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -112,34 +114,29 @@ export async function cerrarTurno(input: CerrarTurnoInput) {
     if (ev.error) throw new ApiError(`${cuenta === "dolares" ? "Dólares: " : ""}${ev.error}`, "INVALID_INPUT", 400);
     const sufijo = cuenta === "dolares" ? " (dólares)" : "";
 
-    // 1) Arqueo: concilia la diferencia con un ajuste ARQ (o cuadra, y solo deja el acta).
+    // 1) Arqueo. La principal (admin) concilia la diferencia en el acto con un ajuste ARQ.
+    //    El agente solo la DECLARA: queda pendiente para que el administrador decida, igual
+    //    que en su arqueo suelto — es la decisión que no puede tomar sobre su propia caja.
     const arqueo = await arqueoEnTx(tx, {
-      tenantId, vendedorId, cuenta, montoFisico: contado, modo: "auto",
+      tenantId, vendedorId, cuenta, montoFisico: contado, modo: esVendedor ? "declarado" : "auto",
       fecha, observacion: observacion ? `Cierre de turno · ${observacion}` : "Cierre de turno",
       nombreCaja, actor,
     });
+    const ajustado = arqueo.estado !== "pendiente"; // cuadrado o conciliado: el sistema ya está en lo contado
 
     // 2) Retiro: lo contado menos el fondo. Después de esto la caja queda en `fondo`.
     let retiroId: string | null = null;
     if (ev.retiro > 0) {
       if (esVendedor) {
-        // Rendición a la principal: dos patas, como en `registrarMovimientoCajaVendedor`.
-        // Misma cuenta de los dos lados: nunca se cruza moneda.
+        // Rendición a la principal: la misma escritura que "Rendir efectivo", misma cuenta de
+        // los dos lados (nunca se cruza moneda).
         const cajaVend = `Caja de ${nombreCaja} (${CUENTA_LABEL[cuenta]})`;
         const cajaPpal = `Caja principal (${CUENTA_LABEL[cuenta]})`;
-        const mv = await tx.movimientos_caja.create({
-          data: {
-            ...withTenant(tenantId), fecha, tipo: "rendicion", monto: -ev.retiro, cuenta, vendedor_id: vendedorId,
-            origen: cajaVend, destino: cajaPpal, serie: "REN", numero: await siguienteNumeroComprobante(tx, tenantId, "REN"),
-            descripcion: `Rendición por cierre de turno${sufijo}${observacion ? ` · ${observacion}` : ""}`,
-          },
-        });
-        await tx.movimientos_caja.create({
-          data: {
-            ...withTenant(tenantId), fecha, tipo: "rendicion", monto: ev.retiro, cuenta, vendedor_id: null,
-            origen: cajaVend, destino: cajaPpal, serie: "REN", numero: await siguienteNumeroComprobante(tx, tenantId, "REN"),
-            descripcion: `Rendición de ${nombreCaja} por cierre de turno${sufijo}`,
-          },
+        const mv = await parVendedorEnTx(tx, {
+          tenantId, vendedorId: vendedorId as string, accion: "rendicion", abs: ev.retiro, cuentaVendedor: cuenta, cuentaPrincipal: cuenta, fecha,
+          origenVendedor: cajaVend, destinoVendedor: cajaPpal, origenPrincipal: cajaVend, destinoPrincipal: cajaPpal,
+          descVendedor: `Rendición por cierre de turno${sufijo}${observacion ? ` · ${observacion}` : ""}`,
+          descPrincipal: `Rendición de ${nombreCaja} por cierre de turno${sufijo}`,
         });
         retiroId = mv.id;
       } else {
@@ -158,6 +155,11 @@ export async function cerrarTurno(input: CerrarTurnoInput) {
       apertura: resumen.apertura, ingresos: resumen.ingresos, egresos: resumen.egresos, sistema: resumen.saldoSistema,
       fisico: round2(contado), diferencia: ev.diferencia, retiro: ev.retiro, fondo: ev.fondo,
       detalle: resumen.detalle, arqueo_id: arqueo.id, retiro_id: retiroId,
+      // Lo que dice el SISTEMA después del cierre: igual al fondo si la diferencia se
+      // concilió; si quedó pendiente (agente), el sistema sigue arrastrándola hasta que
+      // el administrador la resuelva.
+      saldoDespues: round2(resumen.saldoSistema + (ajustado ? ev.diferencia : 0) - ev.retiro),
+      diferenciaPendiente: !ajustado && ev.diferencia !== 0,
     };
   }
 
@@ -182,9 +184,11 @@ export async function cerrarTurno(input: CerrarTurnoInput) {
     // Posición al cierre: lo que queda en cada cuenta después del retiro. Banco no se
     // cuenta ni se retira: es su saldo de sistema (se concilia aparte, contra el extracto).
     const posicion = {
-      efectivo: ef.fondo,
+      efectivo: ef.saldoDespues,
       banco: round2(porCuenta("banco").reduce((t, m) => t + m.monto, 0)),
-      dolares: usd ? usd.fondo : round2(porCuenta("dolares").reduce((t, m) => t + m.monto, 0)),
+      dolares: usd ? usd.saldoDespues : round2(porCuenta("dolares").reduce((t, m) => t + m.monto, 0)),
+      // Diferencias declaradas por el agente que Silvio todavía tiene que conciliar.
+      pendiente: ef.diferenciaPendiente || !!usd?.diferenciaPendiente,
     };
 
     // 3) El acta, congelada.
@@ -206,7 +210,7 @@ export async function cerrarTurno(input: CerrarTurnoInput) {
         detalle: ef.detalle,
         arqueo_id: ef.arqueo_id,
         retiro_id: ef.retiro_id,
-        dolares: usd ? { abierto_desde: previoUsd?.created_at?.toISOString() ?? null, ...usd } : undefined,
+        dolares: usd ? { abierto_desde: previoUsd?.created_at?.toISOString() ?? null, ...usd, saldoDespues: undefined, diferenciaPendiente: usd.diferenciaPendiente } : undefined,
         incluye_dolares: !!usd,
         posicion,
         observacion,
@@ -275,7 +279,7 @@ export function serializarCierre(c: {
     detalle: (c.detalle ?? {}) as Record<string, { cantidad: number; monto: number }>,
     arqueo_id: c.arqueo_id, retiro_id: c.retiro_id, observacion: c.observacion, cerrado_por_nombre: c.cerrado_por_nombre,
     dolares: (c.incluye_dolares && c.dolares && typeof c.dolares === "object" ? c.dolares : null) as CierreDolares | null,
-    posicion: (c.posicion && typeof c.posicion === "object" ? c.posicion : null) as { efectivo: number; banco: number; dolares: number } | null,
+    posicion: (c.posicion && typeof c.posicion === "object" ? c.posicion : null) as { efectivo: number; banco: number; dolares: number; pendiente?: boolean } | null,
   };
 }
 

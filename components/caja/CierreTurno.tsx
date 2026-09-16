@@ -168,7 +168,7 @@ export function CerrarTurnoDialog({ open, onClose, propia, nombreCaja }: {
                   <div className={`flex items-center justify-between rounded-lg border px-3 py-2.5 text-sm ${
                     ev.diferencia === 0 ? "border-success/30 bg-success/10 text-success" : "border-warning/30 bg-warning/10 text-warning"
                   }`}>
-                    <span>{ev.diferencia === 0 ? "Cuadra exacto" : ev.diferencia > 0 ? "Sobrante" : "Faltante"}</span>
+                    <span>{ev.diferencia === 0 ? "Cuadra exacto" : `${ev.diferencia > 0 ? "Sobrante" : "Faltante"}${propia ? " · queda declarado para el administrador" : ""}`}</span>
                     <span className="font-mono font-bold">{ev.diferencia > 0 ? "+" : ev.diferencia < 0 ? "−" : ""}{formatMonto(Math.abs(ev.diferencia))}</span>
                   </div>
                   <div className="flex items-center justify-between rounded-lg border border-border bg-muted/30 px-3 py-2.5 text-sm">
@@ -304,6 +304,9 @@ export function CierresTurnoPanel({ cierres, mostrarCaja = false, nombreCajaDe }
             <p className="text-xs text-muted-foreground">
               <span className="text-foreground">Dólares:</span> apertura {usdFmt(detalle.dolares.apertura)} · sistema {usdFmt(detalle.dolares.sistema)} · contados {usdFmt(detalle.dolares.fisico)} · diferencia {usdFmt(detalle.dolares.diferencia)} · retiro {usdFmt(detalle.dolares.retiro)} · quedan {usdFmt(detalle.dolares.fondo)}
             </p>
+          )}
+          {detalle.posicion?.pendiente && (
+            <p className="text-xs text-warning">La diferencia quedó declarada: el administrador la concilia desde el panel de arqueos.</p>
           )}
           {detalle.posicion && (
             <p className="text-xs text-muted-foreground">

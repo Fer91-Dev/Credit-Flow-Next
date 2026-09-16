@@ -60,7 +60,7 @@ export function imprimirActaCierre(data: ActaCierreData): void {
   <div class="sec">
     <p class="ttl">Posición al cierre</p>
     <div class="lines">
-      <div class="ln"><span class="k">Efectivo (queda en caja)</span><span class="mn">${formatMonto(pos.efectivo)}</span></div>
+      <div class="ln"><span class="k">Efectivo (saldo de sistema al cierre${pos.pendiente ? ", con la diferencia pendiente" : ""})</span><span class="mn">${formatMonto(pos.efectivo)}</span></div>
       <div class="ln ev"><span class="k">Banco (saldo de sistema; se concilia contra el extracto, no se cuenta)</span><span class="mn">${formatMonto(pos.banco)}</span></div>
       <div class="ln"><span class="k">Dólares${u ? " (quedan en caja)" : " (saldo de sistema)"}</span><span class="mn">${usd(pos.dolares)}</span></div>
     </div>
@@ -169,7 +169,9 @@ tbody tr:last-child td{border-bottom:none}
   ${bloqueDolares}
   ${bloquePosicion}
   ${c.observacion ? `<div class="note"><strong>Observación:</strong> ${esc(c.observacion)}</div>` : ""}
-  ${dif !== 0 ? `<div class="note">La diferencia se concilió en el mismo acto con un ajuste de caja, para que el sistema quede en lo contado.</div>` : ""}
+  ${dif !== 0 || (u && u.diferencia !== 0) ? (c.posicion?.pendiente
+    ? `<div class="note"><strong>Diferencia declarada, pendiente de conciliación.</strong> El agente no ajusta su propia caja: el administrador la revisa y decide el ajuste. Hasta entonces el saldo de sistema la sigue arrastrando.</div>`
+    : `<div class="note">La diferencia se concilió en el mismo acto con un ajuste de caja, para que el sistema quede en lo contado.</div>`) : ""}
 
   <div class="firmas">
     <div class="firma">Cerró: ${esc(c.cerrado_por_nombre ?? "—")}</div>

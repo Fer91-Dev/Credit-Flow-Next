@@ -91,6 +91,50 @@ export async function cajaDeVendedor(tenantId: string, vendedorId: string | null
 export type AccionCaja = "entrega" | "rendicion";
 
 /**
+ * Las DOS PATAS de una entrega o rendición, dentro de una transacción abierta por otro.
+ * La usan `registrarMovimientoCajaVendedor` (la acción suelta) y el cierre de turno del
+ * agente (que rinde el sobrante): una sola escritura, para que las glosas, los signos y el
+ * control de fondos no puedan divergir. Devuelve la pata del vendedor.
+ */
+export async function parVendedorEnTx(tx: Prisma.TransactionClient, p: {
+  tenantId: string; vendedorId: string; accion: AccionCaja; abs: number;
+  cuentaVendedor: Cuenta; cuentaPrincipal: Cuenta; fecha: Date;
+  origenVendedor: string; destinoVendedor: string; origenPrincipal: string; destinoPrincipal: string;
+  descVendedor: string; descPrincipal: string;
+}) {
+  const { tenantId, vendedorId, accion, abs, cuentaVendedor, cuentaPrincipal, fecha } = p;
+  const signoVendedor = accion === "entrega" ? abs : -abs; // entrega ingresa al vendedor; rendición egresa
+  const serie: SerieComprobante = accion === "entrega" ? "ENT" : "REN";
+  // Fondos (anti-race): rendición sale de la caja del vendedor; entrega, de la principal.
+  if (accion === "rendicion") {
+    await assertFondosSuficientesTx(tx, {
+      tenantId, vendedorId, cuenta: cuentaVendedor, monto: abs,
+      mensaje: (disp) => `No podés rendir más de lo que tenés en ${CUENTA_LABEL[cuentaVendedor]} (disponible ${formatPesos(disp)}).`,
+    });
+  } else {
+    await assertFondosSuficientesTx(tx, {
+      tenantId, vendedorId: null, cuenta: cuentaPrincipal, monto: abs,
+      mensaje: (disp) => `La caja principal no tiene saldo suficiente en ${CUENTA_LABEL[cuentaPrincipal]} (disponible ${formatPesos(disp)}).`,
+    });
+  }
+  const mv = await tx.movimientos_caja.create({
+    data: {
+      ...withTenant(tenantId), fecha, tipo: accion, monto: signoVendedor, cuenta: cuentaVendedor, vendedor_id: vendedorId,
+      origen: p.origenVendedor, destino: p.destinoVendedor, serie, numero: await siguienteNumeroComprobante(tx, tenantId, serie),
+      descripcion: p.descVendedor,
+    },
+  });
+  await tx.movimientos_caja.create({
+    data: {
+      ...withTenant(tenantId), fecha, tipo: accion, monto: -signoVendedor, cuenta: cuentaPrincipal, vendedor_id: null, // pata de la caja principal
+      origen: p.origenPrincipal, destino: p.destinoPrincipal, serie, numero: await siguienteNumeroComprobante(tx, tenantId, serie),
+      descripcion: p.descPrincipal,
+    },
+  });
+  return mv;
+}
+
+/**
  * Registra un movimiento entre la caja principal y la caja del vendedor como un
  * PAR de filas (mantiene el saldo total del tenant intacto; solo cambia de manos):
  *  - entrega:   +X a la caja del vendedor, −X a la principal.
@@ -107,8 +151,6 @@ export async function registrarMovimientoCajaVendedor(opts: {
 }) {
   const { tenantId, vendedorId, accion, monto, cuentaVendedor, cuentaPrincipal } = opts;
   const abs = round2(Math.abs(monto));
-  const signoVendedor = accion === "entrega" ? abs : -abs; // entrega ingresa al vendedor; rendición egresa
-
   /**
    * 🔴 Las dos patas se escriben con el MISMO valor absoluto, así que cruzar monedas creaba
    * plata de la nada: una entrega de 100 desde `efectivo` (pesos) hacia `dolares` sacaba
@@ -156,53 +198,11 @@ export async function registrarMovimientoCajaVendedor(opts: {
   }
 
   // Cada pata (vendedor + principal) es un comprobante propio con su número único.
-  const serie: SerieComprobante = accion === "entrega" ? "ENT" : "REN";
   const fecha = hoyComercial();
-  const movVendedor = await prisma.$transaction(async (tx) => {
-    // Fondos (anti-race): rendición sale de la caja del vendedor; entrega, de la principal.
-    if (accion === "rendicion") {
-      await assertFondosSuficientesTx(tx, {
-        tenantId, vendedorId, cuenta: cuentaVendedor, monto: abs,
-        mensaje: (disp) => `No podés rendir más de lo que tenés en ${CUENTA_LABEL[cuentaVendedor]} (disponible ${formatPesos(disp)}).`,
-      });
-    } else {
-      await assertFondosSuficientesTx(tx, {
-        tenantId, vendedorId: null, cuenta: cuentaPrincipal, monto: abs,
-        mensaje: (disp) => `La caja principal no tiene saldo suficiente en ${CUENTA_LABEL[cuentaPrincipal]} (disponible ${formatPesos(disp)}).`,
-      });
-    }
-    const mv = await tx.movimientos_caja.create({
-      data: {
-        ...withTenant(tenantId),
-        fecha,
-        tipo: accion,
-        monto: signoVendedor,
-        cuenta: cuentaVendedor,
-        vendedor_id: vendedorId,
-        origen: origenVendedor,
-        destino: destinoVendedor,
-        serie,
-        numero: await siguienteNumeroComprobante(tx, tenantId, serie),
-        descripcion: descVendedor,
-      },
-    });
-    await tx.movimientos_caja.create({
-      data: {
-        ...withTenant(tenantId),
-        fecha,
-        tipo: accion,
-        monto: -signoVendedor,
-        cuenta: cuentaPrincipal,
-        vendedor_id: null, // pata de la caja principal
-        origen: origenPrincipal,
-        destino: destinoPrincipal,
-        serie,
-        numero: await siguienteNumeroComprobante(tx, tenantId, serie),
-        descripcion: descPrincipal,
-      },
-    });
-    return mv;
-  });
+  const movVendedor = await prisma.$transaction((tx) => parVendedorEnTx(tx, {
+    tenantId, vendedorId, accion, abs, cuentaVendedor, cuentaPrincipal, fecha,
+    origenVendedor, destinoVendedor, origenPrincipal, destinoPrincipal, descVendedor, descPrincipal,
+  }));
 
   await registrarAuditoria({
     tenantId,

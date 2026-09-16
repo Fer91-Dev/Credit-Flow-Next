@@ -1681,9 +1681,10 @@ export interface CierreTurno {
     fisico: number; diferencia: number; retiro: number; fondo: number;
     detalle: Record<string, { cantidad: number; monto: number }>;
     arqueo_id: string | null; retiro_id: string | null;
+    diferenciaPendiente?: boolean;
   } | null;
-  /** Posición de las tres cuentas al cierre (informativa). */
-  posicion: { efectivo: number; banco: number; dolares: number } | null;
+  /** Posición de las tres cuentas al cierre (informativa). `pendiente`: el agente declaró una diferencia que el admin aún no concilió. */
+  posicion: { efectivo: number; banco: number; dolares: number; pendiente?: boolean } | null;
 }
 
 /** La cuenta de una moneda del turno abierto. */

@@ -95,21 +95,34 @@ try {
   creados.movs.push(...despues.map((m) => m.id));
   const arq = despues.find((m) => m.serie === "ARQ");
   const ren = despues.find((m) => m.serie === "REN");
-  ok(!!arq && igual(arq.monto, -1_000), "el faltante se concilió con un ajuste ARQ de −$1.000,00", arq ? f(arq.monto) : "no hay ARQ");
+  // El agente NO concilia su propia caja: declara. Igual que su arqueo suelto.
+  ok(!arq, "el faltante NO se ajustó solo: el agente lo declara, no lo concilia", arq ? f(arq.monto) : "sin ARQ");
   ok(!!ren && igual(ren.monto, -(CONTADO - FONDO)), "el retiro del agente es una rendición REN (egreso)", ren ? f(ren.monto) : "no hay REN");
-  ok(igual(await saldoDe(fichaQA.id), FONDO), "la caja del agente queda EXACTAMENTE en el fondo", f(await saldoDe(fichaQA.id)));
+  // sistema − retiro = fondo + |faltante|: el sistema todavía cree que esos $1.000 están.
+  ok(igual(await saldoDe(fichaQA.id), FONDO + 1_000), "el sistema de su caja arrastra la diferencia: fondo + faltante sin conciliar", f(await saldoDe(fichaQA.id)));
+  ok(A.posicion?.pendiente === true && igual(A.posicion?.efectivo ?? 0, FONDO + 1_000), "el acta marca la diferencia como pendiente y la posición la incluye", JSON.stringify(A.posicion));
   const patas = await db.movimientos_caja.findMany({ where: { tenant_id: TENANT, vendedor_id: null, serie: "REN", created_at: { gt: t0 } }, select: { id: true, monto: true } });
   creados.movs.push(...patas.map((m) => m.id));
   ok(patas.length === 1 && igual(patas[0].monto, CONTADO - FONDO), "y la principal recibió la pata de la rendición", patas[0] ? f(patas[0].monto) : "sin pata");
   const arqueoRow = await db.arqueos_caja.findUnique({ where: { id: A.arqueo_id ?? "00000000-0000-0000-0000-000000000000" } });
-  ok(arqueoRow?.estado === "conciliado" && igual(arqueoRow.diferencia, -1_000), "el arqueo del cierre quedó conciliado", arqueoRow?.estado ?? "-");
+  ok(arqueoRow?.estado === "pendiente" && igual(arqueoRow.diferencia, -1_000), "el arqueo del cierre quedó PENDIENTE para el administrador", arqueoRow?.estado ?? "-");
+  const bandeja = await admin("GET", "/api/caja/arqueo?estado=pendiente");
+  ok((bandeja.data?.arqueos ?? []).some((a) => a.id === A.arqueo_id), "y aparece en la bandeja de pendientes del admin");
+  const conc = await admin("POST", `/api/caja/arqueo/${A.arqueo_id}/conciliar`, { nota: "Verificador: faltante aceptado" });
+  ok(conc.ok, "el admin concilia la diferencia", conc.error ?? "");
+  const arqDespues = (await movsDesde(fichaQA.id, t0)).find((m) => m.serie === "ARQ");
+  if (arqDespues) creados.movs.push(arqDespues.id);
+  ok(!!arqDespues && igual(arqDespues.monto, -1_000), "recién ahí aparece el ajuste ARQ de −$1.000,00 en la caja del agente", arqDespues ? f(arqDespues.monto) : "no hay ARQ");
+  ok(igual(await saldoDe(fichaQA.id), FONDO), "y la caja del agente queda EXACTAMENTE en el fondo", f(await saldoDe(fichaQA.id)));
 
   // ═════════════════════════════════════════════════════════════════════════
   H1("FASE 2 · Segundo turno: la apertura es el fondo que quedó");
   const turno2 = await vend("GET", "/api/me/caja/cierre-turno");
   const T2 = turno2.data?.turno ?? {};
-  ok(igual(T2.apertura, FONDO), "el turno nuevo abre con el fondo del cierre anterior", f(T2.apertura));
-  ok(T2.cantidad === 0 && igual(T2.ingresos, 0) && igual(T2.egresos, 0), "y sin movimientos todavía", `${T2.cantidad} mov.`);
+  // La conciliación del admin es un movimiento del turno NUEVO: abre con lo que dejó el
+  // sistema (fondo + faltante) y ya tiene el ARQ que lo baja al fondo.
+  ok(igual(T2.apertura, FONDO + 1_000), "el turno nuevo abre con lo que dejó el sistema al cierre", f(T2.apertura));
+  ok(T2.cantidad === 1 && igual(T2.egresos, 1_000) && igual(T2.saldoSistema, FONDO), "y ya tiene el ajuste del admin: sistema = fondo", `${T2.cantidad} mov. · sistema ${f(T2.saldoSistema)}`);
   ok(!!T2.abierto_desde, "sabe desde cuándo está abierto", T2.abierto_desde);
   const c2 = await vend("POST", "/api/me/caja/cierre-turno", { contado: FONDO, fondo: 0 });
   ok(c2.ok, "cierra el segundo turno rindiendo todo", c2.error ?? c2.data?.comprobante);
@@ -145,15 +158,18 @@ try {
   ok(!!AU.dolares, "el acta trae el bloque de dólares");
   ok(igual(AU.dolares?.sistema ?? 0, 1_000) && igual(AU.dolares?.fisico ?? 0, 990) && igual(AU.dolares?.diferencia ?? 0, -10), "dólares: sistema 1.000 · contado 990 · diferencia −10", JSON.stringify(AU.dolares && { s: AU.dolares.sistema, f: AU.dolares.fisico, d: AU.dolares.diferencia }));
   ok(igual(AU.dolares?.retiro ?? 0, 890) && igual(AU.dolares?.fondo ?? 0, 100), "dólares: retiro 890 · quedan 100", `${AU.dolares?.retiro} / ${AU.dolares?.fondo}`);
-  ok(igual(await saldoDe(fichaQA.id, "dolares"), 100), "la caja del agente queda en U$S 100,00", String(await saldoDe(fichaQA.id, "dolares")));
+  ok(igual(await saldoDe(fichaQA.id, "dolares"), 110), "la caja del agente queda en U$S 110,00 (fondo 100 + faltante 10 sin conciliar)", String(await saldoDe(fichaQA.id, "dolares")));
   ok(igual(await saldoDe(fichaQA.id), 0), "y en $0,00 de efectivo", String(await saldoDe(fichaQA.id)));
   ok(igual(await saldoDe(null, "dolares"), usdPpalAntes + 1_000 - 1_000 + 890), "la principal recibió U$S 890,00 de la rendición", String(await saldoDe(null, "dolares")));
+  ok(AU.posicion && igual(AU.posicion.efectivo, 0) && igual(AU.posicion.dolares, 110) && AU.posicion.pendiente === true, "posición al cierre: efectivo $0,00 · dólares U$S 110,00 · pendiente", JSON.stringify(AU.posicion));
+  const concU = await admin("POST", `/api/caja/arqueo/${AU.dolares?.arqueo_id}/conciliar`, { nota: "Verificador: faltante U$S aceptado" });
+  ok(concU.ok, "el admin concilia el faltante en dólares", concU.error ?? "");
   const arqUsd = await db.movimientos_caja.findFirst({ where: { tenant_id: TENANT, vendedor_id: fichaQA.id, cuenta: "dolares", serie: "ARQ", created_at: { gt: tU } } });
-  ok(!!arqUsd && igual(arqUsd.monto, -10), "el faltante de U$S 10,00 se concilió con un ARQ en dólares", arqUsd ? String(arqUsd.monto) : "no hay");
-  ok(AU.posicion && igual(AU.posicion.efectivo, 0) && igual(AU.posicion.dolares, 100), "posición al cierre: efectivo $0,00 · dólares U$S 100,00", JSON.stringify(AU.posicion));
+  ok(!!arqUsd && igual(arqUsd.monto, -10), "y el ARQ de −U$S 10,00 queda en la caja del agente", arqUsd ? String(arqUsd.monto) : "no hay");
+  ok(igual(await saldoDe(fichaQA.id, "dolares"), 100), "la caja del agente queda en U$S 100,00", String(await saldoDe(fichaQA.id, "dolares")));
   // segundo turno de dólares: abre con los 100 que quedaron; cierra rindiendo todo
   const tU3 = await vend("GET", "/api/me/caja/cierre-turno");
-  ok(igual(tU3.data?.turno?.dolares?.apertura ?? -1, 100), "el turno siguiente abre con U$S 100,00", String(tU3.data?.turno?.dolares?.apertura));
+  ok(igual(tU3.data?.turno?.dolares?.apertura ?? -1, 110) && igual(tU3.data?.turno?.dolares?.saldoSistema ?? -1, 100), "el turno siguiente abre con U$S 110,00 y el ARQ del admin lo deja en 100", `${tU3.data?.turno?.dolares?.apertura} → ${tU3.data?.turno?.dolares?.saldoSistema}`);
   const cU2 = await vend("POST", "/api/me/caja/cierre-turno", { contado: 0, fondo: 0, dolares: { contado: 100, fondo: 0 } });
   ok(cU2.ok, "cierra rindiendo los U$S 100,00", cU2.error ?? "");
   if (cU2.ok) { creados.cierres.push(cU2.data.id); creados.arqueos.push(cU2.data.arqueo_id); if (cU2.data.dolares?.arqueo_id) creados.arqueos.push(cU2.data.dolares.arqueo_id); }
@@ -189,6 +205,8 @@ try {
   ok(hoyOk.ok, "con fecha de hoy entra (turno abierto)", hoyOk.error ?? "");
   const trfAtras = await admin("POST", "/api/caja/transferencia", { origen: "efectivo", destino: "banco", monto: 1, fecha: iso(ayer) });
   ok(!trfAtras.ok && trfAtras.status === 409, "una transferencia con fecha de ayer también rebota", String(trfAtras.status));
+  const arqAtras = await admin("POST", "/api/caja/arqueo", { cuenta: "efectivo", monto_fisico: 0, fecha: iso(ayer) });
+  ok(!arqAtras.ok && arqAtras.status === 409, "y un arqueo con fecha de ayer también (metería su ajuste en el acta)", String(arqAtras.status));
 
   // Cobro con fecha atrasada: el pago conserva la fecha; a la caja entra hoy.
   const cli = await admin("POST", "/api/clientes", { nombre: "Cierre", apellido: `Turno ${sello}`, documento: String(75_000_000 + Number(sello)), telefono: "3815554446", zona: "PRUEBA-CIERRE", tipo_credito: "personal", ingreso_mensual: 2_000_000, situacion_laboral: "relacion_dependencia" });

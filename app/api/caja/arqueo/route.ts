@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { esCuentaValida, esEstadoArqueo, type Cuenta } from "@/lib/domain";
 import { registrarArqueo, serializarArqueo } from "@/lib/arqueo";
 import { hoyComercial } from "@/lib/utils";
+import { assertTurnoAbierto } from "@/lib/cierre-turno";
 import type { Prisma } from "@prisma/client";
 import type { NextRequest } from "next/server";
 
@@ -74,6 +75,8 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
   if (Number.isNaN(fecha.getTime())) {
     return errorResponse("Fecha de arqueo inválida", "FECHA_INVALIDA", 400);
   }
+  // Un arqueo con fecha dentro de un turno ya cerrado metería su ajuste en un acta firmada.
+  await assertTurnoAbierto(tenantId, null, cuenta as Cuenta, fecha);
 
   const arqueo = await registrarArqueo({
     tenantId,

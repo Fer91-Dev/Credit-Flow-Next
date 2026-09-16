@@ -70,10 +70,15 @@ H = { Cookie: login.headers.getSetCookie().map((c) => c.split(";")[0]).join("; "
 console.log(`base: ${BASE}`);
 
 // ── El libro, sumado acá ────────────────────────────────────────────────────
-/** Saldo de una cuenta de la caja PRINCIPAL (vendedor_id null), sumando el libro. */
+/**
+ * Saldo de una cuenta de la caja PRINCIPAL (vendedor_id null), sumando el libro. Sin cuenta
+ * = el `saldo_total` del endpoint, que es SOLO PESOS (efectivo + banco): los dólares son otra
+ * moneda y viajan aparte (`saldo_dolares`). Sumarlos 1:1 daba $500,00 de más el primer día
+ * que la caja tuvo U$S 500,00 (16/09/2026).
+ */
 async function saldoMio(cuenta) {
   const movs = await db.movimientos_caja.findMany({
-    where: { vendedor_id: null, ...(cuenta ? { cuenta } : {}) },
+    where: { vendedor_id: null, ...(cuenta ? { cuenta } : { cuenta: { in: ["efectivo", "banco"] } }) },
     select: { monto: true },
   });
   return r2(movs.reduce((s, m) => s + m.monto, 0));
