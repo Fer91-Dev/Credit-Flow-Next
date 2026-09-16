@@ -76,6 +76,7 @@ export const TIPO_LABEL_ACTA: Record<TipoMovimiento, string> = {
   devolucion: "Devoluciones",
   reversa_desembolso: "Reversas de desembolso",
   ajuste: "Ajustes",
+  gasto: "Gastos",
   transferencia: "Transferencias entre cuentas",
   entrega: "Entregas a agentes",
   rendicion: "Rendiciones de agentes",

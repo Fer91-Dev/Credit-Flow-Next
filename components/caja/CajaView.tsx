@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { mutate as globalMutate } from "swr";
-import { Landmark, ArrowDownLeft, ArrowUpRight, Scale, Download, Plus, ChevronDown, ArrowLeftRight, ClipboardCheck, Wallet, Banknote, CircleDollarSign, FileText, CreditCard, ArrowRight, Users, X, PiggyBank, Wrench, History, Lock } from "lucide-react";
+import { Landmark, ArrowDownLeft, ArrowUpRight, Scale, Download, Plus, ChevronDown, ArrowLeftRight, ClipboardCheck, Wallet, Banknote, CircleDollarSign, FileText, CreditCard, ArrowRight, Users, X, PiggyBank, Wrench, History, Lock, MinusCircle } from "lucide-react";
 import { BuscadorF3 } from "@/components/ui/BuscadorF3";
 import { DataTable } from "@/components/ui/DataTable";
 import { CuentaCard, CUENTAS, CUENTA_META } from "@/components/caja/CuentaCard";
@@ -55,6 +55,7 @@ const TIPO_META: Record<MovimientoCaja["tipo"], { label: string; variant: BadgeV
   devolucion:         { label: "Devolución",    variant: "destructive" },
   reversa_desembolso: { label: "Reversa",       variant: "primary" },
   ajuste:             { label: "Ajuste",        variant: "muted" },
+  gasto:              { label: "Gasto",         variant: "destructive" },
   transferencia:      { label: "Transferencia", variant: "primary" },
   entrega:            { label: "Entrega",       variant: "warning" },
   rendicion:          { label: "Rendición",     variant: "success" },
@@ -97,6 +98,7 @@ export function CajaView() {
   const [tipo, setTipo] = useState("all");
   const [cuenta, setCuenta] = useState<CuentaCaja | "all">("all");
   const [ajusteOpen, setAjusteOpen] = useState(false);
+  const [gastoOpen, setGastoOpen] = useState(false);
   const [transferOpen, setTransferOpen] = useState(false);
   const [arqueoOpen, setArqueoOpen] = useState(false);
   const [cierreOpen, setCierreOpen] = useState(false);
@@ -230,6 +232,13 @@ export function CajaView() {
             icon={<ArrowLeftRight className="h-4 w-4" strokeWidth={1.75} />}
             title="Transferir"
             onClick={() => setTransferOpen(true)}
+          />
+          {/* Un gasto del negocio (nafta, papelería). No es un ajuste —eso corrige una
+              diferencia— ni un retiro de capital. */}
+          <AccionCaja
+            icon={<MinusCircle className="h-4 w-4" strokeWidth={1.75} />}
+            title="Gasto"
+            onClick={() => setGastoOpen(true)}
           />
           <AccionCaja
             icon={<Scale className="h-4 w-4" strokeWidth={1.75} />}
@@ -407,6 +416,7 @@ export function CajaView() {
                         <option value="transferencia">Transferencias</option>
                         <option value="comision">Comisiones</option>
                         <option value="aporte_capital">Aportes de capital</option>
+                        <option value="gasto">Gastos</option>
                         <option value="retiro_utilidades">Retiros de utilidades</option>
                         <option value="cierre_turno">Retiros de cierre</option>
                         <option value="apertura_turno">Fondos de apertura</option>
@@ -503,6 +513,11 @@ export function CajaView() {
       />
 
       <AjusteDialog
+        modo="gasto"
+        open={gastoOpen}
+        onClose={(ok) => { setGastoOpen(false); if (ok) { mutate(); globalMutate("/api/dashboard"); } }}
+      />
+      <AjusteDialog
         open={ajusteOpen}
         onClose={(ok) => {
           setAjusteOpen(false);
@@ -557,27 +572,35 @@ export function CajaView() {
   );
 }
 
-function AjusteDialog({ open, onClose }: { open: boolean; onClose: (ok?: boolean) => void }) {
+/**
+ * Movimiento manual de la caja principal. Dos modos con la misma forma y distinto
+ * significado: `ajuste` corrige una diferencia (ingreso o egreso); `gasto` es un egreso
+ * del negocio (nafta, papelería, un flete) — resultado, con su tipo y su comprobante GAS.
+ */
+function AjusteDialog({ open, onClose, modo = "ajuste" }: { open: boolean; onClose: (ok?: boolean) => void; modo?: "ajuste" | "gasto" }) {
   const confirm = useConfirm();
   const toast = useToast();
+  const esGasto = modo === "gasto";
   const [monto, setMonto] = useState("");
-  const [sentido, setSentido] = useState<"ingreso" | "egreso">("ingreso");
+  const [sentido, setSentido] = useState<"ingreso" | "egreso">(esGasto ? "egreso" : "ingreso");
   const [descripcion, setDescripcion] = useState("");
   const [metodo, setMetodo] = useState("efectivo");
   const [cuenta, setCuenta] = useState<CuentaCaja>("efectivo");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const reset = () => { setMonto(""); setSentido("ingreso"); setDescripcion(""); setMetodo("efectivo"); setCuenta("efectivo"); setError(null); };
+  const reset = () => { setMonto(""); setSentido(esGasto ? "egreso" : "ingreso"); setDescripcion(""); setMetodo("efectivo"); setCuenta("efectivo"); setError(null); };
   const montoNum = parseMontoInput(monto);
   const simbolo = simboloCuenta(cuenta);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     const ok = await confirm({
-      title: "¿Registrar ajuste de caja?",
-      description: `Se registrará un ${sentido === "ingreso" ? "ingreso" : "egreso"} de ${simbolo} ${n2(montoNum)} en ${cuenta}.`,
-      confirmLabel: "Registrar ajuste",
+      title: esGasto ? "¿Registrar el gasto?" : "¿Registrar ajuste de caja?",
+      description: esGasto
+        ? `Sale ${simbolo} ${n2(montoNum)} de ${cuenta} como gasto del negocio.`
+        : `Se registrará un ${sentido === "ingreso" ? "ingreso" : "egreso"} de ${simbolo} ${n2(montoNum)} en ${cuenta}.`,
+      confirmLabel: esGasto ? "Registrar gasto" : "Registrar ajuste",
     });
     if (!ok) return;
     setLoading(true); setError(null);
@@ -585,13 +608,13 @@ function AjusteDialog({ open, onClose }: { open: boolean; onClose: (ok?: boolean
       const res = await fetch("/api/caja", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ monto: montoNum, sentido, descripcion, metodo, cuenta }),
+        body: JSON.stringify({ monto: montoNum, sentido, descripcion, metodo, cuenta, concepto: esGasto ? "gasto" : "ajuste" }),
       });
       const json = await res.json();
-      if (json.ok) { reset(); toast.success("Ajuste registrado"); refrescarNotificaciones(); onClose(true); }
+      if (json.ok) { reset(); toast.success(esGasto ? "Gasto registrado" : "Ajuste registrado"); refrescarNotificaciones(); onClose(true); }
       else setError(json.error);
     } catch {
-      setError("No se pudo registrar el ajuste");
+      setError(esGasto ? "No se pudo registrar el gasto" : "No se pudo registrar el ajuste");
     } finally {
       setLoading(false);
     }
@@ -603,11 +626,11 @@ function AjusteDialog({ open, onClose }: { open: boolean; onClose: (ok?: boolean
         <DialogHeader className="pr-8">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-primary">
-              <Emoji name="gear" className="h-5 w-5" />
+              <Emoji name={esGasto ? "money-with-wings" : "gear"} className="h-5 w-5" />
             </div>
             <div>
-              <DialogTitle>Ajuste manual de caja</DialogTitle>
-              <p className="mt-0.5 text-xs text-muted-foreground">Registrá un ingreso o egreso que no proviene de un crédito.</p>
+              <DialogTitle>{esGasto ? "Registrar gasto" : "Ajuste manual de caja"}</DialogTitle>
+              <p className="mt-0.5 text-xs text-muted-foreground">{esGasto ? "Un gasto del negocio: nafta, papelería, un flete. Sale de la caja y cuenta como resultado." : "Corregí una diferencia de la caja: un ingreso o egreso que no proviene de un crédito ni es un gasto."}</p>
             </div>
           </div>
         </DialogHeader>
@@ -617,8 +640,8 @@ function AjusteDialog({ open, onClose }: { open: boolean; onClose: (ok?: boolean
             <div className="rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-2.5 text-sm text-destructive">{error}</div>
           )}
 
-          {/* Sentido */}
-          <div className="flex flex-col gap-1.5">
+          {/* Sentido: un gasto siempre sale, no se elige. */}
+          {!esGasto && <div className="flex flex-col gap-1.5">
             <FieldLabel required>Sentido</FieldLabel>
             <Segmented
               value={sentido}
@@ -628,7 +651,7 @@ function AjusteDialog({ open, onClose }: { open: boolean; onClose: (ok?: boolean
                 { value: "egreso", label: "Egreso", icon: "outbox-tray" },
               ]}
             />
-          </div>
+          </div>}
 
           {/* Monto */}
           <div className="flex flex-col gap-1.5">
@@ -664,14 +687,14 @@ function AjusteDialog({ open, onClose }: { open: boolean; onClose: (ok?: boolean
           {/* Descripción */}
           <div className="flex flex-col gap-1.5">
             <FieldLabel required>Descripción</FieldLabel>
-            <IconTextarea icon="receipt" value={descripcion} onChange={(e) => setDescripcion(e.target.value)} rows={2} placeholder="Motivo del ajuste…" />
+            <IconTextarea icon="receipt" value={descripcion} onChange={(e) => setDescripcion(e.target.value)} rows={2} placeholder={esGasto ? "Qué se pagó (nafta, papelería, flete…)" : "Motivo del ajuste…"} />
           </div>
 
           <FormActions
             onCancel={() => { reset(); onClose(false); }}
             loading={loading}
             disabled={!montoNum || !descripcion.trim()}
-            submitLabel="Registrar ajuste"
+            submitLabel={esGasto ? "Registrar gasto" : "Registrar ajuste"}
             loadingLabel="Registrando…"
           />
         </form>

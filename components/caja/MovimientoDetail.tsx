@@ -69,6 +69,7 @@ const TIPO_META: Record<MovimientoCaja["tipo"], { label: string; variant: BadgeV
   devolucion:         { label: "Devolución",   variant: "destructive" },
   reversa_desembolso: { label: "Reversa de desembolso", variant: "primary" },
   ajuste:             { label: "Ajuste",       variant: "muted" },
+  gasto:              { label: "Gasto",         variant: "destructive" },
   transferencia:      { label: "Transferencia", variant: "primary" },
   entrega:            { label: "Entrega a vendedor", variant: "warning" },
   rendicion:          { label: "Rendición",    variant: "success" },

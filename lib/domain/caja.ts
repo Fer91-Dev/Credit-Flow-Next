@@ -22,7 +22,14 @@ export type TipoMovimiento =
   | "recupero"
   | "devolucion"        // egreso: devolución al cliente (p. ej. al anular)
   | "reversa_desembolso"// ingreso: se deshace el desembolso (al anular)
-  | "ajuste"            // manual (ingreso o egreso)
+  | "ajuste"            // manual (ingreso o egreso): CORRIGE una diferencia, no es un gasto
+  /**
+   * Egreso: un gasto del negocio (nafta, papelería, un flete). Es RESULTADO —a diferencia
+   * del ajuste, que corrige un error, y del retiro de utilidades, que es plata del dueño—.
+   * Hasta el 16/09/2026 el gasto de los agentes se grababa como `ajuste` (serie GAS) y la
+   * caja principal no tenía gasto: la nafta terminaba sumada con el ajuste de un arqueo.
+   */
+  | "gasto"
   | "transferencia"     // movimiento de saldo entre cuentas (signo explícito)
   | "entrega"           // caja principal → vendedor (signo explícito por cada pata del par)
   | "rendicion"         // vendedor → caja principal (signo explícito por cada pata del par)
@@ -92,7 +99,7 @@ export function cuentaDeMetodo(metodo: string | null | undefined): Cuenta {
 }
 
 /** Tipos cuyo signo natural es egreso (monto negativo). */
-const EGRESOS: ReadonlySet<TipoMovimiento> = new Set(["desembolso", "devolucion", "retiro_utilidades", "cierre_turno"]);
+const EGRESOS: ReadonlySet<TipoMovimiento> = new Set(["desembolso", "devolucion", "retiro_utilidades", "cierre_turno", "gasto"]);
 
 /**
  * Movimientos de CAPITAL del dueño: no son resultado del negocio.

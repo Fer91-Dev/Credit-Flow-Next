@@ -163,6 +163,14 @@ const CONCEPTOS = {
     etiqueta: "Retiro de utilidades",
     label: "Retiro de utilidades",
   },
+  // Un gasto del negocio. SIEMPRE egreso, y es resultado (no capital, no corrección).
+  gasto: {
+    tipo: "gasto" as const,
+    serie: "GAS" as const,
+    ingresoForzado: false,
+    etiqueta: "Gasto",
+    label: "Gasto",
+  },
   // La plata con la que se abre el turno después de un cierre (contraparte del CIE).
   apertura_turno: {
     tipo: "apertura_turno" as const,
@@ -196,7 +204,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
   }
 
   if (body.concepto !== undefined && !esConcepto(body.concepto)) {
-    return errorResponse("Concepto inválido (ajuste | aporte_capital | retiro_utilidades | apertura_turno)", "INVALID_INPUT", 400);
+    return errorResponse("Concepto inválido (ajuste | gasto | aporte_capital | retiro_utilidades | apertura_turno)", "INVALID_INPUT", 400);
   }
   const concepto = CONCEPTOS[(body.concepto ?? "ajuste") as Concepto];
 

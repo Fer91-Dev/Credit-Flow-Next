@@ -40,3 +40,9 @@ CREATE INDEX IF NOT EXISTS cierres_turno_tenant_caja_idx
 
 -- Como toda tabla public: RLS activo (Prisma entra con service role y filtra por tenant en la app).
 ALTER TABLE cierres_turno ENABLE ROW LEVEL SECURITY;
+
+-- ── Tipo `gasto` ──────────────────────────────────────────────────────────────────────
+-- Los gastos de los agentes se grababan como `ajuste` con comprobante GAS. Ahora tienen su
+-- tipo: un gasto es resultado del negocio; un ajuste corrige una diferencia. La columna es
+-- TEXT (sin enum): solo se reetiquetan las filas que ya eran gastos.
+UPDATE movimientos_caja SET tipo = 'gasto' WHERE serie = 'GAS' AND tipo = 'ajuste';

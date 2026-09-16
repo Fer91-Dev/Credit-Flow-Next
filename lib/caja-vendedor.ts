@@ -265,7 +265,7 @@ export async function registrarGastoCajaVendedor(opts: {
       data: {
         ...withTenant(tenantId),
         fecha: hoyComercial(),
-        tipo: "ajuste",
+        tipo: "gasto",
         monto: -abs, // egreso
         cuenta,
         vendedor_id: vendedorId,
