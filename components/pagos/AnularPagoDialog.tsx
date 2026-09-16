@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Field, Textarea } from "@/components/ui/field";
-import { ModalHeader, FormActions, MODAL_CONTENT, SIN_CIERRE_ACCIDENTAL } from "@/components/ui/form-kit";
+import { ModalHeader, FormActions, MODAL_CONTENT_WIDE, SIN_CIERRE_ACCIDENTAL } from "@/components/ui/form-kit";
 import { CreditoLink } from "@/components/ui/CreditoLink";
 import { useToast } from "@/components/ui/toast";
 import { refrescarNotificaciones } from "@/lib/swr";
@@ -78,7 +78,7 @@ export function AnularPagoDialog({ pago, onClose, onAnulado }: {
 
   return (
     <Dialog open={!!pago} onOpenChange={(o) => { if (!o) cerrar(); }}>
-      <DialogContent className={MODAL_CONTENT} {...SIN_CIERRE_ACCIDENTAL}>
+      <DialogContent className={MODAL_CONTENT_WIDE} {...SIN_CIERRE_ACCIDENTAL}>
         <ModalHeader
           icon="prohibited"
           accent="destructive"
@@ -88,10 +88,10 @@ export function AnularPagoDialog({ pago, onClose, onAnulado }: {
         {pago && (
           <form onSubmit={anular} className="space-y-5">
             {/* El cobro que se va a anular, dato por dato. */}
-            <dl className="grid grid-cols-2 gap-x-6 gap-y-3 rounded-xl border border-border bg-muted/20 p-4 sm:grid-cols-3">
+            <dl className="grid grid-cols-2 gap-x-6 gap-y-3 rounded-xl border border-border bg-muted/20 p-4 sm:grid-cols-5">
               <div>
                 <dt className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Importe</dt>
-                <dd className="mt-0.5 font-mono text-lg font-bold text-foreground">${formatMonto(pago.monto)}</dd>
+                <dd className="mt-0.5 font-mono text-lg font-bold text-foreground">{formatMonto(pago.monto)}</dd>
               </div>
               <div>
                 <dt className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Fecha</dt>
@@ -106,7 +106,7 @@ export function AnularPagoDialog({ pago, onClose, onAnulado }: {
                 <dd className="mt-0.5 text-sm"><CreditoLink id={pago.credito.id} numero={pago.credito.numero} numeroOrigen={pago.credito.refinancia_a_numero} /></dd>
               </div>
               {pago.cliente && (
-                <div className="col-span-2">
+                <div className="col-span-2 sm:col-span-1">
                   <dt className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Cliente</dt>
                   <dd className="mt-0.5 text-sm font-medium text-foreground">{pago.cliente}</dd>
                 </div>
@@ -119,11 +119,11 @@ export function AnularPagoDialog({ pago, onClose, onAnulado }: {
               <ul className="mt-2 space-y-1.5 text-sm text-foreground">
                 <li className="flex gap-2"><span className="text-destructive">1.</span><span>Se revierte la imputación {cuotasTexto ? <>en <strong>{cuotasTexto}</strong></> : "en las cuotas"}: vuelven a deber lo que este cobro había cubierto.</span></li>
                 <li className="flex gap-2"><span className="text-destructive">2.</span><span>Se recalculan el saldo y la mora del crédito a hoy.</span></li>
-                <li className="flex gap-2"><span className="text-destructive">3.</span><span>Se hace un <strong>contra-asiento en la caja</strong> por <span className="font-mono font-semibold">−${formatMonto(pago.monto)}</span> en la caja de quien cobró.</span></li>
+                <li className="flex gap-2"><span className="text-destructive">3.</span><span>Se hace un <strong>contra-asiento en la caja</strong> por <span className="font-mono font-semibold">−{formatMonto(pago.monto)}</span> en la caja de quien cobró.</span></li>
               </ul>
             </div>
 
-            <Field label="Motivo (opcional)" hint="Queda en la auditoría junto con quién anuló y cuándo.">
+            <Field label="Motivo (opcional) · queda en la auditoría junto con quién anuló y cuándo">
               <Textarea
                 rows={3}
                 value={motivo}
