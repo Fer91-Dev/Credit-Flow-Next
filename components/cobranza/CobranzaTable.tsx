@@ -9,7 +9,8 @@ import { WhatsAppIcon } from "@/components/ui/WhatsAppIcon";
 import { descargarCSV } from "@/lib/csv";
 import { useCreditos, useAccionesCobranza, type Credito, type AccionCobranza, type AgendaItem, useTramosMora } from "@/lib/swr";
 import { type Role } from "@/lib/auth/roles";
-import { formatFecha, nombreCompleto, formatDias, formatMonto } from "@/lib/utils";
+import { formatFecha, nombreCompleto, formatDias, formatMonto, formatCreditoNumero } from "@/lib/utils";
+import { CreditoLink } from "@/components/ui/CreditoLink";
 import { GestionForm, type CreditoCtx } from "./GestionForm";
 import { CobranzaDetail } from "./CobranzaDetail";
 import { guardarSeleccionCampana, leerSeleccionCampana, guardarTipoCampana } from "./seleccion-campana";
@@ -263,7 +264,8 @@ export function CobranzaTable({ role }: { role: Role }) {
     });
     const q = search.trim().toLowerCase();
     return q
-      ? bySeveridad.filter(c => nombreCompleto(c.cliente).toLowerCase().includes(q))
+      // Por nombre O por número de crédito: si la fila muestra CRD-000007, tiene que poder buscarse.
+      ? bySeveridad.filter(c => nombreCompleto(c.cliente).toLowerCase().includes(q) || formatCreditoNumero(c.numero, c.refinancia_a_numero).toLowerCase().includes(q))
       : bySeveridad;
   }, [creditos, filterMora, search, tramos]);
 
@@ -616,7 +618,7 @@ export function CobranzaTable({ role }: { role: Role }) {
           size="lg"
           value={search}
           onChange={setSearch}
-          placeholder="Buscar por cliente…"
+          placeholder="Buscar por cliente o N° (CRD-…)"
           onF3={limpiarTodo}
           className="w-full sm:w-[30rem]"
           accionDerecha={
@@ -817,6 +819,16 @@ export function CobranzaTable({ role }: { role: Role }) {
                       lo primero que hay que saber antes de levantar el teléfono.
                     */}
                     {c.cobro_bloqueado && <StatusBadge label="Refinanciar" variant="warning" />}
+                  </p>
+                  {/*
+                    🔴 QUÉ CRÉDITO SE RECLAMA, en la fila. La lista decía el nombre del cliente
+                    y nada más: para saber sobre qué crédito estaba el atraso había que salir a
+                    la ficha y buscarlo entre los que tenga. Fernando: "tuve que buscar cuál era
+                    el crédito de Emanuel" (16/09/2026). El número es el dato que se busca y el
+                    que se dicta por teléfono; va debajo del nombre, con su link.
+                  */}
+                  <p className="mt-0.5">
+                    <CreditoLink id={c.id} numero={c.numero} numeroOrigen={c.refinancia_a_numero} className="text-[11px]" />
                   </p>
                   {(() => {
                     const u = ultimaPorCredito.get(c.id);
