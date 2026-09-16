@@ -8,7 +8,7 @@ import { DataTable } from "@/components/ui/DataTable";
 import { Emoji } from "@/components/ui/Emoji";
 import { useConfirm } from "@/components/ui/confirm";
 import { useToast } from "@/components/ui/toast";
-import { ModalHeader, FormActions, MoneyInput, FieldLabel, IconTextarea, MODAL_CONTENT_WIDE, SIN_CIERRE_ACCIDENTAL } from "@/components/ui/form-kit";
+import { ModalHeader, FormActions, MoneyInput, FieldLabel, IconTextarea, SIN_CIERRE_ACCIDENTAL } from "@/components/ui/form-kit";
 import { refrescarNotificaciones, useCierresTurno, useFinanciera, type CierreTurno, type TurnoAbierto } from "@/lib/swr";
 import { formatFechaHora, formatMonto, parseMontoInput } from "@/lib/utils";
 import { TIPO_LABEL_ACTA, evaluarCierre, type TipoMovimiento } from "@/lib/domain";
@@ -98,7 +98,11 @@ export function CerrarTurnoDialog({ open, onClose, propia, nombreCaja }: {
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(false); }}>
-      <DialogContent className={MODAL_CONTENT_WIDE} {...SIN_CIERRE_ACCIDENTAL}>
+      {/* 700px de ancho (pedido de Fernando, 16/09/2026): con el ancho estándar de 672px la
+          columna del desglose quedaba angosta y "Aportes de capital × 2" se pisaba con
+          "+$3.350.000,00". El alto crece con el contenido: un mínimo fijo dejaba una franja
+          vacía debajo de los botones (medido: 140px a 1366×768). */}
+      <DialogContent className="w-[95vw] sm:max-w-[700px] sm:p-7 max-h-[92dvh] overflow-y-auto overscroll-contain" {...SIN_CIERRE_ACCIDENTAL}>
         <ModalHeader
           icon="locked-with-key"
           accent="primary"
@@ -108,7 +112,7 @@ export function CerrarTurnoDialog({ open, onClose, propia, nombreCaja }: {
         <form onSubmit={submit} className="space-y-5">
           {error && <div className="rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-2.5 text-sm text-destructive">{error}</div>}
 
-          <div className="grid gap-5 md:grid-cols-2">
+          <div className="grid gap-5 md:grid-cols-[minmax(310px,48%)_minmax(0,1fr)] md:gap-7">
             {/* La cuenta del turno, tal como va a quedar en el acta. */}
             <div className="rounded-xl border border-border bg-muted/20 p-4 text-sm">
               <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
@@ -116,10 +120,10 @@ export function CerrarTurnoDialog({ open, onClose, propia, nombreCaja }: {
               </p>
               {turno ? (
                 <dl className="mt-3 space-y-1.5">
-                  <div className="flex justify-between"><dt className="text-muted-foreground">Saldo de apertura</dt><dd className="font-mono text-foreground">{formatMonto(turno.apertura)}</dd></div>
-                  <div className="flex justify-between"><dt className="text-muted-foreground">+ Ingresos</dt><dd className="font-mono text-success">{formatMonto(turno.ingresos)}</dd></div>
-                  <div className="flex justify-between"><dt className="text-muted-foreground">− Egresos</dt><dd className="font-mono text-destructive">{formatMonto(turno.egresos)}</dd></div>
-                  <div className="flex justify-between border-t border-border pt-2 font-semibold"><dt className="text-foreground">Saldo de sistema</dt><dd className="font-mono text-foreground">{formatMonto(turno.saldoSistema)}</dd></div>
+                  <div className="flex items-baseline justify-between gap-3"><dt className="text-muted-foreground">Saldo de apertura</dt><dd className="whitespace-nowrap font-mono text-foreground">{formatMonto(turno.apertura)}</dd></div>
+                  <div className="flex items-baseline justify-between gap-3"><dt className="text-muted-foreground">+ Ingresos</dt><dd className="whitespace-nowrap font-mono text-success">{formatMonto(turno.ingresos)}</dd></div>
+                  <div className="flex items-baseline justify-between gap-3"><dt className="text-muted-foreground">− Egresos</dt><dd className="whitespace-nowrap font-mono text-destructive">{formatMonto(turno.egresos)}</dd></div>
+                  <div className="flex items-baseline justify-between gap-3 border-t border-border pt-2 font-semibold"><dt className="text-foreground">Saldo de sistema</dt><dd className="whitespace-nowrap font-mono text-foreground">{formatMonto(turno.saldoSistema)}</dd></div>
                 </dl>
               ) : (
                 <p className="mt-3 text-muted-foreground">Leyendo el turno…</p>
@@ -127,9 +131,9 @@ export function CerrarTurnoDialog({ open, onClose, propia, nombreCaja }: {
               {tipos.length > 0 && (
                 <ul className="mt-3 space-y-1 border-t border-border pt-2 text-xs text-muted-foreground">
                   {tipos.map(([t, d]) => (
-                    <li key={t} className="flex justify-between">
-                      <span>{etiquetaTipo(t)} <span className="text-muted-foreground/60">× {d.cantidad}</span></span>
-                      <span className={`font-mono ${d.monto < 0 ? "text-destructive" : "text-foreground"}`}>{d.monto < 0 ? "−" : "+"}{formatMonto(Math.abs(d.monto))}</span>
+                    <li key={t} className="flex items-baseline justify-between gap-3">
+                      <span className="min-w-0">{etiquetaTipo(t)} <span className="whitespace-nowrap text-muted-foreground/60">× {d.cantidad}</span></span>
+                      <span className={`shrink-0 whitespace-nowrap font-mono ${d.monto < 0 ? "text-destructive" : "text-foreground"}`}>{d.monto < 0 ? "−" : "+"}{formatMonto(Math.abs(d.monto))}</span>
                     </li>
                   ))}
                 </ul>
