@@ -1650,6 +1650,53 @@ export function useArqueos(estado?: string) {
   return { arqueos: data?.arqueos ?? [], pendientes: data?.pendientes ?? 0, error, isLoading, mutate };
 }
 
+/** Acta de cierre de turno, tal como la manda `/api/caja/cierre-turno`. */
+export interface CierreTurno {
+  id: string;
+  numero: number;
+  comprobante: string; // CIE-000001
+  fecha: string;
+  cerrado_at: string;
+  abierto_desde: string | null;
+  vendedor_id: string | null;
+  vendedor_nombre: string | null;
+  cuenta: string;
+  saldo_apertura: number;
+  ingresos: number;
+  egresos: number;
+  saldo_sistema: number;
+  saldo_fisico: number;
+  diferencia: number;
+  retiro: number;
+  fondo: number;
+  detalle: Record<string, { cantidad: number; monto: number }>;
+  arqueo_id: string | null;
+  retiro_id: string | null;
+  observacion: string | null;
+  cerrado_por_nombre: string | null;
+}
+
+/** El turno ABIERTO de una caja (desde el último cierre hasta ahora). */
+export interface TurnoAbierto {
+  cuenta: string;
+  abierto_desde: string | null;
+  fondo_anterior: number | null;
+  apertura: number;
+  ingresos: number;
+  egresos: number;
+  saldoSistema: number;
+  cantidad: number;
+  detalle: Record<string, { cantidad: number; monto: number }>;
+}
+
+/** `propia` = la caja del usuario (agente); si no, la principal (admin). */
+export function useCierresTurno(propia = false) {
+  const key = propia ? "/api/me/caja/cierre-turno" : "/api/caja/cierre-turno";
+  const { data, error, isLoading, mutate } = useSWR<{ turno: TurnoAbierto; cierres: CierreTurno[] }>(key, ARQUEOS_SWR);
+  return { turno: data?.turno ?? null, cierres: data?.cierres ?? [], error, isLoading, mutate, key };
+}
+
+
 /** Registro central de comprobantes (admin). Filtros opcionales por texto/serie/fechas/cuenta. */
 export function useComprobantes(filtros: { q?: string; serie?: string; cuenta?: string; desde?: string; hasta?: string }) {
   const params = new URLSearchParams();

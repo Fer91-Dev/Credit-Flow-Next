@@ -16,6 +16,7 @@ import { getConfiguracion, getCobranzaConfig } from "@/lib/config";
 import { assertPuedeCobrar } from "@/lib/recupero-server";
 import { registrarAuditoria } from "@/lib/audit";
 import type { NextRequest } from "next/server";
+import { fechaDeCajaTx } from "@/lib/cierre-turno";
 
 /**
  * GET /api/pagos
@@ -713,10 +714,13 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     const cajaDelCobro = role === "vendedor" ? vendedorId : null;
     await lockCuentaTx(tx, tenantId, cajaDelCobro, cuentaCobro);
     const numComp = await siguienteNumeroComprobante(tx, tenantId, "REC");
+    // El pago conserva su fecha (la mora se calculó con ella); a la caja entra HOY si ese
+    // día ya tiene el turno cerrado: el acta firmada no cambia.
+    const fechaCaja = await fechaDeCajaTx(tx, tenantId, cajaDelCobro, cuentaCobro, fechaPago);
     await tx.movimientos_caja.create({
       data: {
         ...withTenant(tenantId),
-        fecha: fechaPago,
+        fecha: fechaCaja,
         tipo: "cobro",
         monto: Math.abs(montoPago),
         metodo: body.metodo,

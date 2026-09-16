@@ -5,7 +5,7 @@ import { mutate as globalMutate } from "swr";
 import {
   Wallet, Banknote, CircleDollarSign, ArrowUpRight, ArrowDownLeft, Scale, Send, MinusCircle, FileText, ArrowRight, ArrowLeftRight,
 } from "lucide-react";
-import { refrescarNotificaciones, useMiCaja, useMisArqueos, type CuentaCaja, type MovimientoCaja } from "@/lib/swr";
+import { refrescarNotificaciones, useMiCaja, useMisArqueos, useCierresTurno, type CuentaCaja, type MovimientoCaja } from "@/lib/swr";
 import { formatFechaHora, parseMontoInput } from "@/lib/utils";
 import { MoneyInput, Segmented, IconSelect, IconTextarea, FieldLabel, FormActions, simboloCuenta, MODAL_CONTENT_WIDE, SIN_CIERRE_ACCIDENTAL } from "./caja-form";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -14,6 +14,8 @@ import { Emoji } from "@/components/ui/Emoji";
 import { StatusBadge, type BadgeVariant } from "@/components/ui/StatusBadge";
 import { DataTable } from "@/components/ui/DataTable";
 import { AccionCaja, AccionesCajaHeader } from "@/components/caja/AccionCaja";
+import { CerrarTurnoDialog, CierresTurnoPanel } from "@/components/caja/CierreTurno";
+import { Lock } from "lucide-react";
 import { CuentaCard, CUENTAS, CUENTA_META } from "@/components/caja/CuentaCard";
 import { ArqueosPanel } from "@/components/caja/ArqueosPanel";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -48,12 +50,16 @@ const TIPO_META: Record<MovimientoCaja["tipo"], { label: string; variant: BadgeV
   comision:           { label: "Comisión",      variant: "warning" },
   aporte_capital:     { label: "Aporte de capital",    variant: "primary" },
   retiro_utilidades:  { label: "Retiro de utilidades", variant: "warning" },
+  cierre_turno:       { label: "Retiro de cierre", variant: "warning" },
+  apertura_turno:     { label: "Fondo de apertura", variant: "primary" },
   comision_otorgamiento: { label: "Comisión de otorgamiento", variant: "success" },
 };
 
 export function MiCajaView() {
   const { caja, error, isLoading, mutate } = useMiCaja();
   const { arqueos, mutate: mutateArqueos } = useMisArqueos();
+  const { cierres, mutate: mutateCierres } = useCierresTurno(true);
+  const [cierreOpen, setCierreOpen] = useState(false);
   const [rendirOpen, setRendirOpen] = useState(false);
   const [gastoOpen, setGastoOpen] = useState(false);
   const [transferOpen, setTransferOpen] = useState(false);
@@ -129,8 +135,13 @@ export function MiCajaView() {
           />
           <AccionCaja
             icon={<Scale className="h-4 w-4" strokeWidth={1.75} />}
-            title="Cerrar caja"
+            title="Arqueo"
             onClick={() => setArqueoOpen(true)}
+          />
+          <AccionCaja
+            icon={<Lock className="h-4 w-4" strokeWidth={1.75} />}
+            title="Cerrar turno"
+            onClick={() => setCierreOpen(true)}
           />
         </div>
       </div>
@@ -217,14 +228,22 @@ export function MiCajaView() {
             ]}
           />
 
+          <CierresTurnoPanel cierres={cierres} nombreCajaDe={() => "Mi caja"} />
+
           <ArqueosPanel
             arqueos={arqueos}
-            titulo="Mis cierres de caja"
+            titulo="Mis arqueos"
             subtitulo="Cada vez que contás tu efectivo queda asentado acá, cuadre o no."
           />
         </div>
       )}
 
+      <CerrarTurnoDialog
+        open={cierreOpen}
+        propia
+        nombreCaja="Mi caja"
+        onClose={(cerrado) => { setCierreOpen(false); if (cerrado) { mutateCierres(); mutateArqueos(); } }}
+      />
       <ArqueoVendedorDialog
         open={arqueoOpen}
         saldos={caja?.saldos_por_cuenta}

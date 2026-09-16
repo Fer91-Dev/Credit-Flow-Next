@@ -2,14 +2,15 @@
 
 import { useMemo, useState } from "react";
 import { mutate as globalMutate } from "swr";
-import { Landmark, ArrowDownLeft, ArrowUpRight, Scale, Download, Plus, ChevronDown, ArrowLeftRight, ClipboardCheck, Wallet, Banknote, CircleDollarSign, FileText, CreditCard, ArrowRight, Users, X, PiggyBank, Wrench, History } from "lucide-react";
+import { Landmark, ArrowDownLeft, ArrowUpRight, Scale, Download, Plus, ChevronDown, ArrowLeftRight, ClipboardCheck, Wallet, Banknote, CircleDollarSign, FileText, CreditCard, ArrowRight, Users, X, PiggyBank, Wrench, History, Lock } from "lucide-react";
 import { BuscadorF3 } from "@/components/ui/BuscadorF3";
 import { DataTable } from "@/components/ui/DataTable";
 import { CuentaCard, CUENTAS, CUENTA_META } from "@/components/caja/CuentaCard";
 import { Emoji } from "@/components/ui/Emoji";
-import { refrescarNotificaciones, useCaja, useVendedores, useCotizacion, useArqueos, type CajaData, type MovimientoCaja, type CuentaCaja, type ArqueoCaja } from "@/lib/swr";
+import { refrescarNotificaciones, useCaja, useVendedores, useCotizacion, useArqueos, useCierresTurno, type CajaData, type MovimientoCaja, type CuentaCaja, type ArqueoCaja } from "@/lib/swr";
 import { AccionCaja, AccionesCajaHeader } from "@/components/caja/AccionCaja";
 import { ArqueosPanel } from "@/components/caja/ArqueosPanel";
+import { CerrarTurnoDialog, CierresTurnoPanel } from "@/components/caja/CierreTurno";
 import { descargarCSV } from "@/lib/csv";
 import { formatFechaHora, parseMontoInput } from "@/lib/utils";
 import { MoneyInput, Segmented, IconSelect, IconTextarea, FieldLabel, FormActions, simboloCuenta, MODAL_CONTENT_WIDE, SIN_CIERRE_ACCIDENTAL } from "./caja-form";
@@ -60,6 +61,8 @@ const TIPO_META: Record<MovimientoCaja["tipo"], { label: string; variant: BadgeV
   comision:           { label: "Comisión",      variant: "warning" },
   aporte_capital:     { label: "Aporte de capital",    variant: "primary" },
   retiro_utilidades:  { label: "Retiro de utilidades", variant: "warning" },
+  cierre_turno:       { label: "Retiro de cierre", variant: "warning" },
+  apertura_turno:     { label: "Fondo de apertura", variant: "primary" },
   comision_otorgamiento: { label: "Comisión de otorgamiento", variant: "success" },
 };
 
@@ -96,6 +99,8 @@ export function CajaView() {
   const [ajusteOpen, setAjusteOpen] = useState(false);
   const [transferOpen, setTransferOpen] = useState(false);
   const [arqueoOpen, setArqueoOpen] = useState(false);
+  const [cierreOpen, setCierreOpen] = useState(false);
+  const { cierres, mutate: mutateCierres } = useCierresTurno(false);
   const [vendedorOpen, setVendedorOpen] = useState(false);
   const [capitalOpen, setCapitalOpen] = useState(false);
   const [detalle, setDetalle] = useState<MovimientoCaja | null>(null);
@@ -230,6 +235,12 @@ export function CajaView() {
             icon={<Scale className="h-4 w-4" strokeWidth={1.75} />}
             title="Arqueo"
             onClick={() => setArqueoOpen(true)}
+          />
+          {/* El cierre del día: arqueo + retiro del sobrante + acta. Es lo último que se hace. */}
+          <AccionCaja
+            icon={<Lock className="h-4 w-4" strokeWidth={1.75} />}
+            title="Cerrar turno"
+            onClick={() => setCierreOpen(true)}
           />
           <AccionCaja
             tenue
@@ -397,6 +408,8 @@ export function CajaView() {
                         <option value="comision">Comisiones</option>
                         <option value="aporte_capital">Aportes de capital</option>
                         <option value="retiro_utilidades">Retiros de utilidades</option>
+                        <option value="cierre_turno">Retiros de cierre</option>
+                        <option value="apertura_turno">Fondos de apertura</option>
                       </select>
                       <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     </div>
@@ -458,6 +471,12 @@ export function CajaView() {
           {/* Cierres de caja: los propios y los que declararon los vendedores. Los
               pendientes son diferencias que todavía NO se ajustaron — el saldo de sistema
               de esa caja sigue como estaba hasta que alguien decida qué hacer. */}
+          <CierresTurnoPanel
+            cierres={cierres}
+            mostrarCaja
+            nombreCajaDe={(c) => (c.vendedor_nombre ? `Caja de ${c.vendedor_nombre}` : "Caja principal")}
+          />
+
           <ArqueosPanel
             arqueos={arqueos}
             mostrarCaja
@@ -501,6 +520,12 @@ export function CajaView() {
         }}
       />
 
+      <CerrarTurnoDialog
+        open={cierreOpen}
+        propia={false}
+        nombreCaja="Caja principal"
+        onClose={(cerrado) => { setCierreOpen(false); if (cerrado) { mutate(); mutateCierres(); mutateArqueos(); } }}
+      />
       <ArqueoDialog
         open={arqueoOpen}
         saldos={caja?.saldos_por_cuenta}
@@ -672,7 +697,7 @@ function CapitalDialog({
 }) {
   const confirm = useConfirm();
   const toast = useToast();
-  const [concepto, setConcepto] = useState<"aporte_capital" | "retiro_utilidades">("aporte_capital");
+  const [concepto, setConcepto] = useState<"aporte_capital" | "retiro_utilidades" | "apertura_turno">("aporte_capital");
   const [monto, setMonto] = useState("");
   const [cuenta, setCuenta] = useState<CuentaCaja>("efectivo");
   const [descripcion, setDescripcion] = useState("");
@@ -681,7 +706,7 @@ function CapitalDialog({
 
   const reset = () => { setConcepto("aporte_capital"); setMonto(""); setCuenta("efectivo"); setDescripcion(""); setError(null); };
 
-  const esAporte = concepto === "aporte_capital";
+  const esAporte = concepto !== "retiro_utilidades";
   const montoNum = parseMontoInput(monto);
   const simbolo = simboloCuenta(cuenta);
   const disponible = saldos?.[cuenta] ?? 0;
@@ -748,10 +773,13 @@ function CapitalDialog({
               options={[
                 { value: "aporte_capital", label: "Aporte", icon: "inbox-tray" },
                 { value: "retiro_utilidades", label: "Retiro", icon: "outbox-tray" },
+                { value: "apertura_turno", label: "Fondo de apertura", icon: "locked-with-key" },
               ]}
             />
             <p className="text-xs text-muted-foreground">
-              {esAporte
+              {concepto === "apertura_turno"
+                ? "La plata con la que abrís el turno después de un cierre. Suma a la caja; no es ganancia ni capital nuevo."
+                : esAporte
                 ? "Ponés plata para prestar. Suma a la caja, pero no es una ganancia."
                 : "Sacás plata del negocio. Resta de la caja, pero no es un gasto."}
             </p>

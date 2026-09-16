@@ -46,7 +46,15 @@ export type TipoMovimiento =
   // libro, un aporte de $10.000.000 y una corrección de $1.500 se leían igual. No son
   // resultado del negocio (ni ganancia ni gasto): son plata que entra y sale del dueño.
   | "aporte_capital"    // ingreso: el dueño pone plata para prestar
-  | "retiro_utilidades";// egreso: el dueño saca plata del negocio
+  | "retiro_utilidades" // egreso: el dueño saca plata del negocio
+  /**
+   * Cierre y apertura de TURNO de una caja física. `cierre_turno` es el retiro con el que
+   * el titular vacía la caja al cerrar (lo que hace con esos billetes es suyo: el sistema
+   * registra que salieron); `apertura_turno` es el fondo con el que la vuelve a abrir.
+   * Ninguno de los dos es resultado del negocio: van con los movimientos de capital.
+   */
+  | "cierre_turno"      // egreso: retiro de cierre
+  | "apertura_turno";   // ingreso: fondo de apertura
 
 /** Cuentas de tesorería disponibles. */
 export type Cuenta = "efectivo" | "banco" | "dolares";
@@ -84,7 +92,7 @@ export function cuentaDeMetodo(metodo: string | null | undefined): Cuenta {
 }
 
 /** Tipos cuyo signo natural es egreso (monto negativo). */
-const EGRESOS: ReadonlySet<TipoMovimiento> = new Set(["desembolso", "devolucion", "retiro_utilidades"]);
+const EGRESOS: ReadonlySet<TipoMovimiento> = new Set(["desembolso", "devolucion", "retiro_utilidades", "cierre_turno"]);
 
 /**
  * Movimientos de CAPITAL del dueño: no son resultado del negocio.
@@ -97,7 +105,7 @@ const EGRESOS: ReadonlySet<TipoMovimiento> = new Set(["desembolso", "devolucion"
  * (Hoy Reportes ni siquiera lee la caja — la rentabilidad sale de los pagos —, así que
  * esto no corrige ningún número: ordena el libro.)
  */
-export const TIPOS_CAPITAL: ReadonlySet<TipoMovimiento> = new Set(["aporte_capital", "retiro_utilidades"]);
+export const TIPOS_CAPITAL: ReadonlySet<TipoMovimiento> = new Set(["aporte_capital", "retiro_utilidades", "cierre_turno", "apertura_turno"]);
 
 /** True si el movimiento es plata del dueño entrando o saliendo, no operación del negocio. */
 export function esMovimientoDeCapital(tipo: string): boolean {

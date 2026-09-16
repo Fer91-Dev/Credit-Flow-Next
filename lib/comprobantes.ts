@@ -22,6 +22,8 @@ export const SERIE_LABEL = {
   COM: "Comisión de otorgamiento",
   APO: "Aporte de capital",
   RET: "Retiro de utilidades",
+  CIE: "Cierre de turno",
+  APE: "Fondo de apertura",
   /**
    * Cierre de un caso incobrable: lo que el cliente pagó para cancelar una deuda que ya se
    * había dado por perdida. Serie propia y no REC porque no es una cobranza del circuito

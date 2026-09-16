@@ -7,6 +7,7 @@ import { esCuentaValida, CUENTA_LABEL, round2, type Cuenta, formatPesos } from "
 import { siguienteNumeroComprobante } from "@/lib/comprobantes";
 import { assertFondosSuficientesTx } from "@/lib/caja-fondos";
 import { hoyComercial } from "@/lib/utils";
+import { assertTurnoAbierto } from "@/lib/cierre-turno";
 import type { NextRequest } from "next/server";
 
 /**
@@ -58,6 +59,9 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
   if (Number.isNaN(fecha.getTime())) {
     return errorResponse("Fecha inválida", "FECHA_INVALIDA", 400);
   }
+  // Período cerrado: no se puede mover plata con fecha dentro de un turno ya cerrado.
+  await assertTurnoAbierto(tenantId, null, origen, fecha);
+  await assertTurnoAbierto(tenantId, null, destino, fecha);
   const detalle = body.descripcion?.trim();
   const origenLbl = `Caja principal (${CUENTA_LABEL[origen]})`;
   const destinoLbl = `Caja principal (${CUENTA_LABEL[destino]})`;

@@ -43,6 +43,7 @@ import { conNumeroDeOrigen } from "@/lib/creditos-numero";
 import { registrarAuditoria } from "@/lib/audit";
 import { formatCreditoNumero, nombreCompleto, hoyComercial } from "@/lib/utils";
 import type { NextRequest } from "next/server";
+import { fechaDeCajaTx } from "@/lib/cierre-turno";
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -402,10 +403,11 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
       const [{ refinancia_a_numero: origenRefNum }] = await conNumeroDeOrigen(tenantId, [credito]);
       await lockCuentaTx(tx, tenantId, cajaDelCierre, cuentaCobro);
       const numComp = await siguienteNumeroComprobante(tx, tenantId, "RCP");
+      const fechaCaja = await fechaDeCajaTx(tx, tenantId, cajaDelCierre, cuentaCobro, fechaPago);
       await tx.movimientos_caja.create({
         data: {
           ...withTenant(tenantId),
-          fecha: fechaPago,
+          fecha: fechaCaja,
           // Tipo propio y no "cobro": esta plata ya estaba resignada. Con la misma etiqueta
           // que una cobranza normal, el mes en que entra un recupero se lee como un buen mes
           // de cobranza y la única métrica que dice si trabajar la cartera vieja sirve para

@@ -75,6 +75,8 @@ const TIPO_META: Record<MovimientoCaja["tipo"], { label: string; variant: BadgeV
   comision:           { label: "Liquidación de comisión", variant: "warning" },
   aporte_capital:     { label: "Aporte de capital",    variant: "primary" },
   retiro_utilidades:  { label: "Retiro de utilidades", variant: "warning" },
+  cierre_turno:       { label: "Retiro de cierre", variant: "warning" },
+  apertura_turno:     { label: "Fondo de apertura", variant: "primary" },
   comision_otorgamiento: { label: "Comisión de otorgamiento", variant: "success" },
 };
 

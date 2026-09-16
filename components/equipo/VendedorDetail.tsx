@@ -842,6 +842,8 @@ const CAJA_TIPO_META: Record<MovimientoCaja["tipo"], { label: string; variant: "
   comision:           { label: "Comisión",      variant: "warning" },
   aporte_capital:     { label: "Aporte de capital",    variant: "primary" },
   retiro_utilidades:  { label: "Retiro de utilidades", variant: "warning" },
+  cierre_turno:       { label: "Retiro de cierre", variant: "warning" },
+  apertura_turno:     { label: "Fondo de apertura", variant: "primary" },
   comision_otorgamiento: { label: "Comisión de otorgamiento", variant: "success" },
 };
 const CAJA_CUENTA_LABEL: Record<CuentaCaja, string> = { efectivo: "Efectivo", banco: "Banco", dolares: "Dólares" };

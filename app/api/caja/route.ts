@@ -9,6 +9,7 @@ import { assertFondosSuficientesTx } from "@/lib/caja-fondos";
 import { numerosRefinanciados } from "@/lib/creditos-numero";
 import { getDolarBlueVenta } from "@/lib/cotizacion";
 import { nombreCompleto, hoyComercial } from "@/lib/utils";
+import { assertTurnoAbierto } from "@/lib/cierre-turno";
 import type { NextRequest } from "next/server";
 
 /**
@@ -162,6 +163,14 @@ const CONCEPTOS = {
     etiqueta: "Retiro de utilidades",
     label: "Retiro de utilidades",
   },
+  // La plata con la que se abre el turno después de un cierre (contraparte del CIE).
+  apertura_turno: {
+    tipo: "apertura_turno" as const,
+    serie: "APE" as const,
+    ingresoForzado: true,
+    etiqueta: "Fondo de apertura",
+    label: "Fondo de apertura",
+  },
 } satisfies Record<string, { tipo: TipoMovimiento; serie: SerieComprobante; ingresoForzado: boolean | null; etiqueta: string; label: string }>;
 
 type Concepto = keyof typeof CONCEPTOS;
@@ -187,7 +196,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
   }
 
   if (body.concepto !== undefined && !esConcepto(body.concepto)) {
-    return errorResponse("Concepto inválido (ajuste | aporte_capital | retiro_utilidades)", "INVALID_INPUT", 400);
+    return errorResponse("Concepto inválido (ajuste | aporte_capital | retiro_utilidades | apertura_turno)", "INVALID_INPUT", 400);
   }
   const concepto = CONCEPTOS[(body.concepto ?? "ajuste") as Concepto];
 
@@ -210,6 +219,8 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
   if (Number.isNaN(fecha.getTime())) {
     return errorResponse("Fecha inválida", "FECHA_INVALIDA", 400);
   }
+  // Período cerrado: un asiento con fecha dentro de un turno ya cerrado cambiaría el acta.
+  await assertTurnoAbierto(tenantId, null, cuenta, fecha);
 
   const mov = await prisma.$transaction(async (tx) => {
     // Ningún egreso manual puede dejar la caja principal negativa (misma decisión de

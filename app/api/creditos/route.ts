@@ -17,6 +17,7 @@ import { evaluarClienteParaCredito, cuotaMensualParaRiesgo } from "@/lib/riesgo-
 import { formatCreditoNumero, nombreCompleto, hoyComercial } from "@/lib/utils";
 import type { NextRequest } from "next/server";
 import type { Prisma } from "@prisma/client";
+import { fechaDeCajaTx } from "@/lib/cierre-turno";
 
 /**
  * GET /api/creditos
@@ -984,10 +985,12 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
       });
       // Movimiento de caja: desembolso (egreso) al otorgar.
       const numComp = await siguienteNumeroComprobante(tx, tenantId, "DES");
+      // Un crédito con fecha atrasada no reabre un turno cerrado: el desembolso sale hoy.
+      const fechaCaja = await fechaDeCajaTx(tx, tenantId, vendedorId, cuentaDesembolso, fechaInicio);
       await tx.movimientos_caja.create({
         data: {
           ...withTenant(tenantId),
-          fecha: fechaInicio,
+          fecha: fechaCaja,
           tipo: "desembolso",
           monto: -Math.abs(c.monto_original),
           cuenta: cuentaDesembolso, // el desembolso sale de la cuenta elegida (coincide con el control de fondos)

@@ -460,6 +460,7 @@ model vendedores {
   metas            metas_vendedor[]
   movimientos_caja movimientos_caja[] // caja personal del vendedor (Fase caja por vendedor)
   arqueos          arqueos_caja[] // cierres de su caja
+  cierres_turno    cierres_turno[]
   liquidaciones    liquidaciones_comision[]
 
   @@index([tenant_id])
@@ -800,6 +801,48 @@ model arqueos_caja {
   @@index([tenant_id, created_at])
   @@index([tenant_id, vendedor_id])
   @@index([tenant_id, estado])
+}
+
+/// CIERRE DE TURNO — el acta de una caja física al terminar el día.
+///
+/// Un turno va desde el cierre anterior (`created_at` real, no la fecha editable del
+/// movimiento) hasta el momento del cierre. El acta se CONGELA acá: apertura, ingresos y
+/// egresos por tipo, saldo de sistema, lo contado, la diferencia (que se concilia con un
+/// ajuste ARQ, igual que un arqueo suelto), el retiro que sale del sistema (CIE, o una
+/// rendición REN si la caja es de un agente) y el fondo que queda para el turno siguiente.
+/// Después de firmada no se recalcula: por eso los totales son columnas y no una consulta.
+model cierres_turno {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  created_at  DateTime @default(now()) @db.Timestamptz(6)
+  tenant_id   String   @db.Uuid
+  fecha       DateTime @default(now()) @db.Date // día comercial del cierre
+  vendedor_id String?  @db.Uuid // caja cerrada: null = principal
+  cuenta      String   @default("efectivo")
+  numero      Int // correlativo de la serie CIE (comprobante del acta)
+
+  abierto_desde DateTime? @db.Timestamptz(6) // `created_at` del cierre anterior; null = desde el primer movimiento
+  cerrado_at    DateTime  @default(now()) @db.Timestamptz(6)
+
+  saldo_apertura Float // con lo que arrancó el turno
+  ingresos       Float // suma de ingresos del turno
+  egresos        Float // suma de egresos del turno (positivo)
+  saldo_sistema  Float // apertura + ingresos − egresos
+  saldo_fisico   Float // lo contado
+  diferencia     Float // fisico − sistema
+  retiro         Float // lo que salió de la caja al cerrar (contado − fondo)
+  fondo          Float // lo que quedó para el turno siguiente
+  detalle        Json  // por tipo: { cobro: { cantidad, monto }, desembolso: {...}, ... }
+
+  arqueo_id String? @db.Uuid // acta de arqueo emitida en el cierre
+  retiro_id String? @db.Uuid // movimiento CIE (o la pata REN del vendedor)
+  observacion String?
+
+  cerrado_por        String? @db.Uuid
+  cerrado_por_nombre String?
+
+  vendedor vendedores? @relation(fields: [vendedor_id], references: [id], onDelete: SetNull)
+
+  @@index([tenant_id, vendedor_id, cuenta, created_at])
 }
 
 /// Plan de cuotas PERSISTIDO de un crédito (Fase 6A). Tabla aditiva, multi-tenant.

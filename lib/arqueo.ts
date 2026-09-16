@@ -8,6 +8,7 @@
  * comentario del modelo `arqueos_caja` en el esquema.
  */
 import { prisma } from "@/lib/prisma";
+import type { Prisma } from "@prisma/client";
 import { withTenant } from "@/app/lib/db";
 import { ApiError } from "@/lib/auth";
 import { registrarAuditoria } from "@/lib/audit";
@@ -55,26 +56,15 @@ export interface RegistrarArqueoInput {
 }
 
 /**
- * Registra un arqueo. Devuelve el acta y, si el modo es `auto` y hubo diferencia, también
- * el movimiento de ajuste que la cerró.
- *
- * El acta se escribe SIEMPRE, cuadre o no: es lo que permite probar que la caja se cerró.
+ * El arqueo DENTRO de una transacción abierta por otro: lo usa `registrarArqueo` y también
+ * el cierre de turno, que arquea, retira y firma el acta en un solo commit.
  */
-export async function registrarArqueo(input: RegistrarArqueoInput) {
-  const { tenantId, vendedorId, cuenta, modo } = input;
-  const fecha = input.fecha ?? hoyComercial();
-  const observacion = input.observacion?.trim() || null;
-  const actor = getAuditActor();
-
+export async function arqueoEnTx(
+  tx: Prisma.TransactionClient,
+  input: Omit<RegistrarArqueoInput, "observacion"> & { fecha: Date; observacion: string | null; nombreCaja: string | null; actor: ReturnType<typeof getAuditActor> },
+) {
+  const { tenantId, vendedorId, cuenta, modo, fecha, observacion, nombreCaja, actor } = input;
   const esVendedor = vendedorId !== null;
-  const nombreCaja = esVendedor
-    ? (await prisma.vendedores.findFirst({
-        where: { ...withTenant(tenantId), id: vendedorId },
-        select: { nombre: true },
-      }))?.nombre ?? "vendedor"
-    : null;
-
-  const arqueo = await prisma.$transaction(async (tx) => {
     // Candado por (tenant, caja, cuenta) ANTES de leer, igual que toda operación de caja.
     // Leer dentro de la transacción no alcanza: sin el candado, un cobro puede commitear
     // entre la lectura y el asiento, y el ajuste queda cuadrando contra un saldo viejo —
@@ -138,7 +128,29 @@ export async function registrarArqueo(input: RegistrarArqueoInput) {
           : {}),
       },
     });
-  });
+}
+
+/**
+ * Registra un arqueo. Devuelve el acta y, si el modo es `auto` y hubo diferencia, también
+ * el movimiento de ajuste que la cerró.
+ *
+ * El acta se escribe SIEMPRE, cuadre o no: es lo que permite probar que la caja se cerró.
+ */
+export async function registrarArqueo(input: RegistrarArqueoInput) {
+  const { tenantId, vendedorId, cuenta, modo } = input;
+  const fecha = input.fecha ?? hoyComercial();
+  const observacion = input.observacion?.trim() || null;
+  const actor = getAuditActor();
+
+  const esVendedor = vendedorId !== null;
+  const nombreCaja = esVendedor
+    ? (await prisma.vendedores.findFirst({
+        where: { ...withTenant(tenantId), id: vendedorId },
+        select: { nombre: true },
+      }))?.nombre ?? "vendedor"
+    : null;
+
+  const arqueo = await prisma.$transaction((tx) => arqueoEnTx(tx, { ...input, fecha, observacion, nombreCaja, actor }));
 
   const quien = esVendedor ? `caja de ${nombreCaja}` : "caja principal";
   await registrarAuditoria({
