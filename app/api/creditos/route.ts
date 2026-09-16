@@ -2,7 +2,7 @@ import { requireAuth, requireRole, scopeCreditosVendedor, ApiError } from "@/lib
 import { successResponse, errorResponse, withErrorHandler, assertSameOrigin } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
-import { puedeDarsePorIncobrableManual, round2, normalizarFrecuencia, resolverFrecuencia, sumarPeriodos, construirPlanAmortizacion, planACuotas, estadoCoherente, etiquetaCaja, esCuentaValida, validarParametrosOtorgamiento, diasMoraActual, buscarPlan, nombrePlan, tasaDesdeCoeficiente, cargosConPlan, CUENTA_LABEL, type Cuenta, ESTADOS_VIVOS, ESTADOS_COBRABLES, esCreditoVivo, esCreditoCobrable, topeMoraPorIncobrable, esRecuperoPostCastigo, moraDelCredito, moraDesdeCronograma, moraPendienteTotal, calcularDeudaVencida, deudaEnRevision, esTipoCreditoValido, TIPOS_CREDITO, calcularDeudaConsolidada, puedeRefinanciar, cargosDeCuota, baseMoraDeCuota, pendienteSinMoraDeCuota } from "@/lib/domain";
+import { puedeDarsePorIncobrableManual, round2, normalizarFrecuencia, resolverFrecuencia, sumarPeriodos, construirPlanAmortizacion, planACuotas, estadoCoherente, etiquetaCaja, esCuentaValida, validarParametrosOtorgamiento, diasMoraActual, buscarPlan, nombrePlan, tasaDesdeCoeficiente, cargosConPlan, CUENTA_LABEL, type Cuenta, ESTADOS_VIVOS, ESTADOS_COBRABLES, esCreditoVivo, esCreditoCobrable, topeMoraPorIncobrable, esRecuperoPostCastigo, moraDelCredito, moraDesdeCronograma, moraPendienteTotal, calcularDeudaVencida, deudaEnRevision, esTipoCreditoValido, TIPOS_CREDITO, calcularDeudaConsolidada, puedeRefinanciar, cargosDeCuota, baseMoraDeCuota, pendienteSinMoraDeCuota, formatPesos } from "@/lib/domain";
 import { siguienteNumeroComprobante } from "@/lib/comprobantes";
 import { assertFondosSuficientesTx } from "@/lib/caja-fondos";
 import { lockNumeroCreditoTx, TX_PLATA } from "@/lib/locks";
@@ -617,7 +617,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     const limite = ficha?.limite_aprobacion;
     if (limite != null && body.monto_original > limite) {
       return errorResponse(
-        `El monto ($${Number(body.monto_original).toLocaleString("es-AR")}) supera tu límite de otorgamiento ($${limite.toLocaleString("es-AR")}). Requiere autorización de un administrador.`,
+        `El monto (${formatPesos(Number(body.monto_original))}) supera tu límite de otorgamiento (${formatPesos(limite)}). Requiere autorización de un administrador.`,
         "LIMIT_EXCEEDED",
         403,
       );
@@ -658,7 +658,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
         control de adentro. El que estaba fuera de línea era este.
       */
       return errorResponse(
-        `No hay saldo suficiente en ${dondeCaja} de ${CUENTA_LABEL[cuentaDesembolso]}. Disponible: $${disponible.toLocaleString("es-AR")} — necesitás $${Number(body.monto_original).toLocaleString("es-AR")}. ${sugerencia}`,
+        `No hay saldo suficiente en ${dondeCaja} de ${CUENTA_LABEL[cuentaDesembolso]}. Disponible: ${formatPesos(disponible)} — necesitás ${formatPesos(Number(body.monto_original))}. ${sugerencia}`,
         "INSUFFICIENT_FUNDS",
         400,
       );
@@ -980,7 +980,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
       // por si otra operación concurrente consumió el saldo tras el pre-chequeo de arriba.
       await assertFondosSuficientesTx(tx, {
         tenantId, vendedorId, cuenta: cuentaDesembolso, monto: Math.abs(c.monto_original),
-        mensaje: (disp) => `No hay saldo suficiente en ${vendedorId ? "tu caja" : "la caja principal"} de ${CUENTA_LABEL[cuentaDesembolso]}. Disponible: $${disp.toLocaleString("es-AR")} (otra operación consumió el saldo).`,
+        mensaje: (disp) => `No hay saldo suficiente en ${vendedorId ? "tu caja" : "la caja principal"} de ${CUENTA_LABEL[cuentaDesembolso]}. Disponible: ${formatPesos(disp)} (otra operación consumió el saldo).`,
       });
       // Movimiento de caja: desembolso (egreso) al otorgar.
       const numComp = await siguienteNumeroComprobante(tx, tenantId, "DES");
@@ -1048,8 +1048,8 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     entidadId: credito.id,
     accion: "crear",
     descripcion: esProducto
-      ? `Crédito ${formatCreditoNumero(credito.numero)} otorgado a ${nombreCompleto(cliente)} — ${producto!.nombre} ×${productoCantidad} ($${credito.monto_original.toLocaleString("es-AR")})`
-      : `Crédito ${formatCreditoNumero(credito.numero)} otorgado a ${nombreCompleto(cliente)} por $${credito.monto_original.toLocaleString("es-AR")}`,
+      ? `Crédito ${formatCreditoNumero(credito.numero)} otorgado a ${nombreCompleto(cliente)} — ${producto!.nombre} ×${productoCantidad} (${formatPesos(credito.monto_original)})`
+      : `Crédito ${formatCreditoNumero(credito.numero)} otorgado a ${nombreCompleto(cliente)} por ${formatPesos(credito.monto_original)}`,
     meta: {
       numero: credito.numero, monto: credito.monto_original, tasa: credito.tasa,
       plazo_meses: credito.plazo_meses, frecuencia: credito.frecuencia, tipo: credito.tipo_credito,

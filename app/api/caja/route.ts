@@ -3,7 +3,7 @@ import { successResponse, errorResponse, withErrorHandler, assertSameOrigin } fr
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { registrarAuditoria } from "@/lib/audit";
-import { montoConSigno, totalesCaja, saldosPorCuenta, esCuentaValida, etiquetaCaja, CUENTA_LABEL, type TipoMovimiento } from "@/lib/domain";
+import { montoConSigno, totalesCaja, saldosPorCuenta, esCuentaValida, etiquetaCaja, CUENTA_LABEL, type TipoMovimiento, formatPesos } from "@/lib/domain";
 import { siguienteNumeroComprobante, formatComprobante, type SerieComprobante } from "@/lib/comprobantes";
 import { assertFondosSuficientesTx } from "@/lib/caja-fondos";
 import { numerosRefinanciados } from "@/lib/creditos-numero";
@@ -218,7 +218,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     if (!ingreso) {
       await assertFondosSuficientesTx(tx, {
         tenantId, vendedorId: null, cuenta, monto,
-        mensaje: (disp) => `${concepto.label} de $${monto.toLocaleString("es-AR")} supera el saldo de ${CUENTA_LABEL[cuenta]} en la caja principal (disponible $${disp.toLocaleString("es-AR")}).`,
+        mensaje: (disp) => `${concepto.label} de ${formatPesos(monto)} supera el saldo de ${CUENTA_LABEL[cuenta]} en la caja principal (disponible ${formatPesos(disp)}).`,
       });
     }
     const numero = await siguienteNumeroComprobante(tx, tenantId, concepto.serie);
@@ -244,7 +244,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     entidad: "caja",
     entidadId: mov.id,
     accion: "crear",
-    descripcion: `${concepto.label} (${ingreso ? "ingreso" : "egreso"}) $${monto.toLocaleString("es-AR")} en ${cuenta} — ${mov.descripcion}`,
+    descripcion: `${concepto.label} (${ingreso ? "ingreso" : "egreso"}) ${formatPesos(monto)} en ${cuenta} — ${mov.descripcion}`,
     meta: { monto: mov.monto, tipo: concepto.tipo, cuenta },
   });
 

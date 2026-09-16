@@ -2,7 +2,7 @@ import { requireRole, scopeCreditosVendedor } from "@/lib/auth";
 import { successResponse, errorResponse, withErrorHandler, assertSameOrigin } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
-import { ESTADOS_CUOTA_CERRADA, calcularDeudaConsolidada, aplicarQuita, construirPlanAmortizacion, planACuotas, normalizarFrecuencia, resolverFrecuencia, round2, estadoCoherente, type CuotaParaImputar, type TipoQuita, esCreditoVivo, moraDelCredito, moraDesdeCronograma, diasMoraActual, validarParametrosOtorgamiento, deudaEnRevision, entregaMinimaRefinanciacion, sugerirRefinanciacion, cargosDeCuota, baseMoraDeCuota } from "@/lib/domain";
+import { ESTADOS_CUOTA_CERRADA, calcularDeudaConsolidada, aplicarQuita, construirPlanAmortizacion, planACuotas, normalizarFrecuencia, resolverFrecuencia, round2, estadoCoherente, type CuotaParaImputar, type TipoQuita, esCreditoVivo, moraDelCredito, moraDesdeCronograma, diasMoraActual, validarParametrosOtorgamiento, deudaEnRevision, entregaMinimaRefinanciacion, sugerirRefinanciacion, cargosDeCuota, baseMoraDeCuota, formatPesos } from "@/lib/domain";
 import { getConfiguracion, getCobranzaConfig, getRiesgoConfig } from "@/lib/config";
 import { quitaMaxima } from "@/lib/domain/acuerdos";
 import { lockNumeroCreditoTx, TX_PLATA } from "@/lib/locks";
@@ -570,7 +570,7 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
     return errorResponse(
       tope === 0
         ? "No podés descontar nada al refinanciar. Pedile a un administrador que lo haga."
-        : `El descuento máximo que podés otorgar es $${tope.toLocaleString("es-AR")} (sale de la mora y el interés, nunca del capital).`,
+        : `El descuento máximo que podés otorgar es ${formatPesos(tope)} (sale de la mora y el interés, nunca del capital).`,
       "QUITA_EXCEDIDA",
       403,
     );
@@ -878,7 +878,7 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
     entidad: "creditos",
     entidadId: credito.id,
     accion: "refinanciar",
-    descripcion: `Crédito ${numeroViejo} refinanciado en ${numeroNuevo(nuevo.numero)} — deuda consolidada $${deuda.total.toLocaleString("es-AR")}${quita.condonado > 0 ? `, quita $${quita.condonado.toLocaleString("es-AR")}` : ""}${honorarios > 0 ? `, honorarios de gestión $${honorarios.toLocaleString("es-AR")} (${honorariosPct}%)` : ""}${honorariosPct !== honorariosPctCfg ? ` [pactado por administrador; el configurado es ${honorariosPctCfg}%]` : ""}${motivo ? ` — ${motivo}` : ""}`,
+    descripcion: `Crédito ${numeroViejo} refinanciado en ${numeroNuevo(nuevo.numero)} — deuda consolidada ${formatPesos(deuda.total)}${quita.condonado > 0 ? `, quita ${formatPesos(quita.condonado)}` : ""}${honorarios > 0 ? `, honorarios de gestión ${formatPesos(honorarios)} (${honorariosPct}%)` : ""}${honorariosPct !== honorariosPctCfg ? ` [pactado por administrador; el configurado es ${honorariosPctCfg}%]` : ""}${motivo ? ` — ${motivo}` : ""}`,
     meta: {
       credito_origen: credito.numero,
       credito_nuevo: nuevo.numero,
@@ -907,7 +907,7 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
     entidad: "creditos",
     entidadId: nuevo.id,
     accion: "crear",
-    descripcion: `Crédito ${numeroNuevo(nuevo.numero)} creado por refinanciación de ${numeroViejo} — $${nuevoCapital.toLocaleString("es-AR")}`,
+    descripcion: `Crédito ${numeroNuevo(nuevo.numero)} creado por refinanciación de ${numeroViejo} — ${formatPesos(nuevoCapital)}`,
     meta: { refinancia_a: credito.numero, monto: nuevoCapital, tasa, plazo_meses: plazoMeses, frecuencia, es_refinanciacion: true,
       entrega: entregaMonto,
       // Un mínimo salteado por decisión del admin tiene que quedar dicho, no deducible.

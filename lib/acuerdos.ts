@@ -15,7 +15,7 @@ import { ApiError } from "@/lib/auth";
 import { registrarAuditoria } from "@/lib/audit";
 import { getAuditActor } from "@/lib/audit-context";
 import { getConfiguracion, getCobranzaConfig } from "@/lib/config";
-import { calcularDeudaVencida, planDeAcuerdo, evaluarAcuerdo, quitaMaxima, round2, noNegativo, tasaPeriodicaSegunConvencion, type CuotaParaImputar, type DeudaVencida, type AcuerdosConfig, moraDelCredito, moraDesdeCronograma, puedeAcordarPorEstado, cargosDeCuota, baseMoraDeCuota, cuotaCerradaSinPago, estadoTrasMoverLedger, cierreDeAcuerdoCumplido } from "@/lib/domain";
+import { calcularDeudaVencida, planDeAcuerdo, evaluarAcuerdo, quitaMaxima, round2, noNegativo, tasaPeriodicaSegunConvencion, type CuotaParaImputar, type DeudaVencida, type AcuerdosConfig, moraDelCredito, moraDesdeCronograma, puedeAcordarPorEstado, cargosDeCuota, baseMoraDeCuota, cuotaCerradaSinPago, estadoTrasMoverLedger, cierreDeAcuerdoCumplido, formatPesos } from "@/lib/domain";
 import { hoyComercial, formatCreditoNumero } from "@/lib/utils";
 import { numerosRefinanciados } from "@/lib/creditos-numero";
 import { formatComprobante } from "@/lib/comprobantes";
@@ -342,7 +342,7 @@ export async function crearAcuerdo(input: CrearAcuerdoInput) {
     throw new ApiError(
       tope === 0
         ? "No podés condonar nada en un acuerdo. Pedile a un administrador que lo arme."
-        : `La quita máxima que podés otorgar es $${tope.toLocaleString("es-AR")} (sale de la mora y el interés, nunca del capital).`,
+        : `La quita máxima que podés otorgar es ${formatPesos(tope)} (sale de la mora y el interés, nunca del capital).`,
       "QUITA_EXCEDIDA",
       403,
     );
@@ -436,9 +436,9 @@ export async function crearAcuerdo(input: CrearAcuerdoInput) {
       // Con el formateador del sistema, no armado a mano: un acuerdo sobre una refinanciación
       // tiene que decir REF- en la auditoría igual que en la pantalla.
       `Acuerdo de pago sobre ${credito.numero ? formatCreditoNumero(credito.numero, origenRefi) : "crédito"}: ` +
-      `$${deuda.total.toLocaleString("es-AR")} vencidos en ${cuotas} cuota(s)` +
-      (quita > 0 ? ` con quita de $${quita.toLocaleString("es-AR")}` : "") +
-      (entregaCobrada > 0 ? ` · entrega de $${entregaCobrada.toLocaleString("es-AR")} cobrada en el acto` : ""),
+      `${formatPesos(deuda.total)} vencidos en ${cuotas} cuota(s)` +
+      (quita > 0 ? ` con quita de ${formatPesos(quita)}` : "") +
+      (entregaCobrada > 0 ? ` · entrega de ${formatPesos(entregaCobrada)} cobrada en el acto` : ""),
     meta: { tipo: "acuerdo_pago", acuerdo_id: acuerdo.id, deuda: deuda.total, quita, entrega: entregaCobrada, monto_acordado: totalAcuerdo, tasa_mensual: tasaAcuerdoPct, cuotas },
   });
 
@@ -654,16 +654,16 @@ export async function sincronizarAcuerdos(opts: { tenantId?: string; creditoId?:
       accion: "actualizar",
       descripcion:
         ev.estado === "cumplido"
-          ? `Acuerdo de pago CUMPLIDO: se cobró la totalidad de $${a.monto_acordado.toLocaleString("es-AR")}` +
+          ? `Acuerdo de pago CUMPLIDO: se cobró la totalidad de ${formatPesos(a.monto_acordado)}` +
             /* La quita SE APLICA acá, así que acá se asienta: es una condonación de deuda y
                tiene que poder rastrearse sin reconstruirla de dos tablas. */
             (cierreOk && cierreOk.condonado > 0
-              ? ` · se condonaron $${cierreOk.condonado.toLocaleString("es-AR")} de quita en ${cierreOk.cuotas} cuota(s) y el crédito quedó ${cierreOk.cerro ? "cerrado" : "ABIERTO"}`
+              ? ` · se condonaron ${formatPesos(cierreOk.condonado)} de quita en ${cierreOk.cuotas} cuota(s) y el crédito quedó ${cierreOk.cerro ? "cerrado" : "ABIERTO"}`
               : "") +
             (cierreOk && cierreOk.sinCondonar > 0
-              ? ` · 🔴 quedaron $${cierreOk.sinCondonar.toLocaleString("es-AR")} sin cubrir por encima de la quita: NO se condonaron`
+              ? ` · 🔴 quedaron ${formatPesos(cierreOk.sinCondonar)} sin cubrir por encima de la quita: NO se condonaron`
               : "")
-          : `Acuerdo de pago ROTO: ${ev.cuotas_incumplidas} cuota(s) vencidas sin pagar (quedaba $${ev.pendiente.toLocaleString("es-AR")})`,
+          : `Acuerdo de pago ROTO: ${ev.cuotas_incumplidas} cuota(s) vencidas sin pagar (quedaba ${formatPesos(ev.pendiente)})`,
       meta: {
         tipo: "acuerdo_pago", acuerdo_id: a.id, estado: ev.estado, cobrado: ev.cobrado, pendiente: ev.pendiente,
         ...(cierreOk ? { quita_condonada: cierreOk.condonado, sin_condonar: cierreOk.sinCondonar, credito_cerrado: cierreOk.cerro } : {}),
@@ -760,7 +760,7 @@ export async function anularAcuerdo(tenantId: string, acuerdoId: string, motivo:
     entidadId: a.credito_id,
     accion: "cancelar",
     descripcion: devuelto > 0
-      ? `Acuerdo de pago ANULADO — ${nota}. Se le devolvieron $${devuelto.toLocaleString("es-AR")} de interés capitalizado al crédito.`
+      ? `Acuerdo de pago ANULADO — ${nota}. Se le devolvieron ${formatPesos(devuelto)} de interés capitalizado al crédito.`
       : `Acuerdo de pago ANULADO — ${nota}`,
     // Queda la traza de cuánto se capitalizó y cuánto se pudo devolver: si el cliente ya había
     // pagado parte de ese interés, los dos números no coinciden y hay que poder explicarlo.

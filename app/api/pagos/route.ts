@@ -8,7 +8,7 @@ import { sincronizarAcuerdos } from "@/lib/acuerdos";
 import { entregasDeRefinanciacion } from "@/lib/entrega-refinanciacion";
 import * as Sentry from "@sentry/nextjs";
 import { nombreCompleto, formatCreditoNumero, hoyComercial, ventanaDias, ventanaAR } from "@/lib/utils";
-import { imputarPagoEnCuotas, diasAtraso, round2, etiquetaCaja, cuentaDeMetodo, esCuentaValida, type CuotaParaImputar, moraDelCredito, moraDesdeCronograma, esCreditoCobrable, estadoTrasMoverLedger, topeMoraPorFallecimiento, topeMoraPorIncobrable, topeMoraMasTemprano, promoVigenteAl, cargosDeCuota, baseMoraDeCuota } from "@/lib/domain";
+import { imputarPagoEnCuotas, diasAtraso, round2, etiquetaCaja, cuentaDeMetodo, esCuentaValida, type CuotaParaImputar, moraDelCredito, moraDesdeCronograma, esCreditoCobrable, estadoTrasMoverLedger, topeMoraPorFallecimiento, topeMoraPorIncobrable, topeMoraMasTemprano, promoVigenteAl, cargosDeCuota, baseMoraDeCuota, formatPesos } from "@/lib/domain";
 import { lockCreditoTx, assertCuotasSinCambios, TX_PLATA } from "@/lib/locks";
 import { lockCuentaTx } from "@/lib/caja-fondos";
 import { siguienteNumeroComprobante } from "@/lib/comprobantes";
@@ -526,7 +526,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
   if (resultado.excedente > 0 && interesAcuerdoAparte === 0) {
     const cobrable = round2(montoPago - resultado.excedente);
     return errorResponse(
-      `El monto ($${montoPago.toLocaleString("es-AR")}) supera la deuda total del crédito. Cobrá hasta $${cobrable.toLocaleString("es-AR")}.`,
+      `El monto (${formatPesos(montoPago)}) supera la deuda total del crédito. Cobrá hasta ${formatPesos(cobrable)}.`,
       "SOBREPAGO",
       400,
     );
@@ -750,7 +750,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     entidad: "pagos",
     entidadId: pago.id,
     accion: "registrar_pago",
-    descripcion: `Pago de $${montoPago.toLocaleString("es-AR")} registrado para ${nombreCompleto(credito.cliente)}`,
+    descripcion: `Pago de ${formatPesos(montoPago)} registrado para ${nombreCompleto(credito.cliente)}`,
     meta: {
       monto: montoPago,
       metodo: body.metodo,

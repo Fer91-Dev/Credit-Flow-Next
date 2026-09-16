@@ -2,7 +2,7 @@ import { requireRole } from "@/lib/auth";
 import { successResponse, errorResponse, withErrorHandler, assertSameOrigin } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
-import { errorDePassword } from "@/lib/domain";
+import { errorDePassword, formatPesos } from "@/lib/domain";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { registrarAuditoria } from "@/lib/audit";
 import { esEmailValido, esUsernameValido, normalizarUsername } from "@/lib/utils";
@@ -316,7 +316,7 @@ export const DELETE = withErrorHandler(async (req: NextRequest, { params }: Rout
     const saldoCaja = Math.round((saldoAgg._sum.monto ?? 0) * 100) / 100;
     if (Math.abs(saldoCaja) > 0.01) {
       return errorResponse(
-        `Este usuario es un agente con un saldo de $${saldoCaja.toLocaleString("es-AR")} en su caja. Antes de eliminar la cuenta, ese saldo debe rendirse a la caja principal.`,
+        `Este usuario es un agente con un saldo de ${formatPesos(saldoCaja)} en su caja. Antes de eliminar la cuenta, ese saldo debe rendirse a la caja principal.`,
         "CAJA_CON_SALDO",
         409,
       );

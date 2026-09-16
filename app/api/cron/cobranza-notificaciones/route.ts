@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { sincronizarAcuerdos } from "@/lib/acuerdos";
 import { Prisma } from "@prisma/client";
-import { sinDeuda, ESTADOS_VIVOS, resolverPlantillasMeta, debeDarsePorIncobrable, resolverRecupero, diasMoraActual, type PlantillaMeta } from "@/lib/domain";
+import { sinDeuda, ESTADOS_VIVOS, resolverPlantillasMeta, debeDarsePorIncobrable, resolverRecupero, diasMoraActual, type PlantillaMeta, formatPesos } from "@/lib/domain";
 import { enviarWhatsappApi, whatsappApiDisponible, type WhatsappApiConfig } from "@/lib/whatsapp";
 import { hoyComercial, formatCreditoNumero } from "@/lib/utils";
 import { registrarAuditoria } from "@/lib/audit";
@@ -437,7 +437,7 @@ async function procesarPromesasVencidas(hoy: Date): Promise<{ rotas: number; res
 
     // Romper la promesa + registrar la alerta (gestión automática) en una transacción.
     const montoTxt = promesa.promesa_monto
-      ? ` por $${promesa.promesa_monto.toLocaleString("es-AR")}`
+      ? ` por ${formatPesos(promesa.promesa_monto)}`
       : "";
     await prisma.$transaction([
       prisma.acciones_cobranza.update({

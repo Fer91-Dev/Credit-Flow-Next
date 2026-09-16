@@ -8,6 +8,7 @@
 
 import type { ModoImputacionCargos } from "./payments";
 import type { FrecuenciaDef } from "./frequency";
+import { formatPesos } from "./money";
 
 /** Cómo se interpreta el campo `tasa` de un crédito. */
 export type ConvencionTasa = "nominal_anual" | "efectiva_anual" | "mensual";
@@ -435,10 +436,10 @@ export function validarParametrosOtorgamiento(
   // autoritativo (precio × cantidad) → no se validan contra el rango del simulador.
   if (!p.esProducto) {
     if (sim.montoMin > 0 && p.monto < sim.montoMin) {
-      return `El monto ($${p.monto.toLocaleString("es-AR")}) es menor al mínimo permitido ($${sim.montoMin.toLocaleString("es-AR")}).`;
+      return `El monto (${formatPesos(p.monto)}) es menor al mínimo permitido (${formatPesos(sim.montoMin)}).`;
     }
     if (sim.montoMax > 0 && p.monto > sim.montoMax) {
-      return `El monto ($${p.monto.toLocaleString("es-AR")}) supera el máximo permitido ($${sim.montoMax.toLocaleString("es-AR")}).`;
+      return `El monto (${formatPesos(p.monto)}) supera el máximo permitido (${formatPesos(sim.montoMax)}).`;
     }
   }
   return null;

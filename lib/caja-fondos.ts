@@ -1,7 +1,7 @@
 import type { Prisma } from "@prisma/client";
 import { withTenant } from "@/app/lib/db";
 import { ApiError } from "@/lib/auth";
-import { round2, CUENTA_LABEL, type Cuenta } from "@/lib/domain";
+import { round2, CUENTA_LABEL, type Cuenta, formatPesos } from "@/lib/domain";
 
 /**
  * Control de fondos de caja anti-race (TOCTOU).
@@ -60,7 +60,7 @@ export async function assertFondosSuficientesTx(
   if (round2(monto) > disp) {
     const texto = opts.mensaje
       ? opts.mensaje(disp)
-      : `Saldo insuficiente en ${CUENTA_LABEL[cuenta]} (disponible $${disp.toLocaleString("es-AR")}).`;
+      : `Saldo insuficiente en ${CUENTA_LABEL[cuenta]} (disponible ${formatPesos(disp)}).`;
     throw new ApiError(texto, "INSUFFICIENT_FUNDS", 400);
   }
   return disp;

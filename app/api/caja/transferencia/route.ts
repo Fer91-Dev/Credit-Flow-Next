@@ -3,7 +3,7 @@ import { successResponse, errorResponse, withErrorHandler, assertSameOrigin } fr
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { registrarAuditoria } from "@/lib/audit";
-import { esCuentaValida, CUENTA_LABEL, round2, type Cuenta } from "@/lib/domain";
+import { esCuentaValida, CUENTA_LABEL, round2, type Cuenta, formatPesos } from "@/lib/domain";
 import { siguienteNumeroComprobante } from "@/lib/comprobantes";
 import { assertFondosSuficientesTx } from "@/lib/caja-fondos";
 import { hoyComercial } from "@/lib/utils";
@@ -69,7 +69,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     const usd = vende ? montoOrigen : montoDestino;
     const ars = vende ? montoDestino : montoOrigen;
     const tc = usd > 0 ? round2(ars / usd) : 0;
-    glosa = `${vende ? "Venta" : "Compra"} de U$S ${usd.toLocaleString("es-AR")} a $${tc.toLocaleString("es-AR")}${detalle ? ` · ${detalle}` : ""}`;
+    glosa = `${vende ? "Venta" : "Compra"} de U$S ${usd.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} a ${formatPesos(tc)}${detalle ? ` · ${detalle}` : ""}`;
   } else {
     glosa = `Transferencia ${CUENTA_LABEL[origen]} → ${CUENTA_LABEL[destino]}${detalle ? ` · ${detalle}` : ""}`;
   }
@@ -80,7 +80,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     // lock de cuenta): la caja principal no queda negativa. `montoOrigen` es lo que sale.
     await assertFondosSuficientesTx(tx, {
       tenantId, vendedorId: null, cuenta: origen, monto: montoOrigen,
-      mensaje: (disp) => `La caja principal no tiene saldo suficiente en ${CUENTA_LABEL[origen]} (disponible $${disp.toLocaleString("es-AR")}, necesitás $${montoOrigen.toLocaleString("es-AR")}).`,
+      mensaje: (disp) => `La caja principal no tiene saldo suficiente en ${CUENTA_LABEL[origen]} (disponible ${formatPesos(disp)}, necesitás ${formatPesos(montoOrigen)}).`,
     });
     const s = await tx.movimientos_caja.create({
       data: {

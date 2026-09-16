@@ -39,7 +39,7 @@
  *
  * Dominio PURO: sin Prisma, sin HTTP.
  */
-import { round2 } from "./money";
+import { round2, formatPesos } from "./money";
 
 export interface EntradaCierreRecupero {
   /** Lo que el cliente paga para cerrar. Puede diferir de lo sugerido: se negoció. */
@@ -94,7 +94,7 @@ export function calcularCierreRecupero(e: EntradaCierreRecupero): CierreRecupero
   const deuda = round2(Math.max(0, e.deudaNominal));
   if (cobrado > deuda + 0.01) {
     throw new Error(
-      `El monto a cobrar ($${cobrado.toLocaleString("es-AR")}) supera la deuda del crédito ($${deuda.toLocaleString("es-AR")}).`,
+      `El monto a cobrar (${formatPesos(cobrado)}) supera la deuda del crédito (${formatPesos(deuda)}).`,
     );
   }
 

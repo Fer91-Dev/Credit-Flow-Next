@@ -3,7 +3,7 @@ import { successResponse, errorResponse, withErrorHandler, assertSameOrigin } fr
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { registrarAuditoria } from "@/lib/audit";
-import { esTipoMovProveedor, montoConSignoProveedor } from "@/lib/domain";
+import { esTipoMovProveedor, montoConSignoProveedor, formatPesos } from "@/lib/domain";
 import { hoyComercial } from "@/lib/utils";
 import type { NextRequest } from "next/server";
 
@@ -64,7 +64,7 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
     entidad: "proveedores",
     entidadId: id,
     accion: "actualizar",
-    descripcion: `${body.tipo === "pago" ? "Pago" : "Cargo"} en cuenta de ${proveedor.nombre}: $${monto.toLocaleString("es-AR")} — ${mov.concepto}`,
+    descripcion: `${body.tipo === "pago" ? "Pago" : "Cargo"} en cuenta de ${proveedor.nombre}: ${formatPesos(monto)} — ${mov.concepto}`,
     meta: { tipo: body.tipo, monto: mov.monto, proveedor_id: id },
   });
 

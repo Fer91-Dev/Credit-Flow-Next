@@ -4,8 +4,7 @@ import { ApiError } from "@/lib/auth";
 import { registrarAuditoria } from "@/lib/audit";
 import {
   calcularComisionTotal, comisionDeVenta, normalizarComisionConfig, pctParaCredito,
-  round2, etiquetaCaja, type Cuenta, type ComisionConfig,
-} from "@/lib/domain";
+  round2, etiquetaCaja, type Cuenta, type ComisionConfig, formatPesos } from "@/lib/domain";
 import { siguienteNumeroComprobante, formatComprobante } from "@/lib/comprobantes";
 import { assertFondosSuficientesTx, lockCuentaTx } from "@/lib/caja-fondos";
 import { nombreCompleto, hoyComercial } from "@/lib/utils";
@@ -283,7 +282,7 @@ export async function liquidarComision(opts: {
     await assertFondosSuficientesTx(tx, {
       tenantId, vendedorId: null, cuenta, monto: total,
       mensaje: (disp) =>
-        `No hay saldo en ${cuenta} para pagar la comisión de ${vendedor.nombre} (disponible $${disp.toLocaleString("es-AR")}, hacen falta $${total.toLocaleString("es-AR")}).`,
+        `No hay saldo en ${cuenta} para pagar la comisión de ${vendedor.nombre} (disponible ${formatPesos(disp)}, hacen falta ${formatPesos(total)}).`,
     });
 
     const numero = await siguienteNumeroComprobante(tx, tenantId, "LIQ");
@@ -335,7 +334,7 @@ export async function liquidarComision(opts: {
     entidad: "vendedores",
     entidadId: vendedorId,
     accion: "crear",
-    descripcion: `Comisión ${periodo} liquidada a ${vendedor.nombre}: $${total.toLocaleString("es-AR")}`,
+    descripcion: `Comisión ${periodo} liquidada a ${vendedor.nombre}: ${formatPesos(total)}`,
     meta: { liquidacion_id: creada.id, periodo, total, cuenta },
   });
 

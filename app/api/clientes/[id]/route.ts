@@ -7,7 +7,7 @@ import { conNumeroDeOrigen } from "@/lib/creditos-numero";
 import { registrarAuditoria } from "@/lib/audit";
 import { nombreCompleto, hoyComercial } from "@/lib/utils";
 import { normalizarCuit, validarDuplicadoCliente } from "@/lib/clientes-validacion";
-import { cuotaCerradaSinPago, calcularScore, diasMoraActual, cuotaMensualFrancesa, tasaPeriodicaSegunConvencion, convencionDelCredito, normalizarFrecuencia, interesMora, diasAtraso, round2, estadoCoherente, esCreditoVivo, moraDelCredito, moraDesdeCronograma, moraPendienteTotal, calcularDeudaVencida, esCreditoCobrable, topeMoraPorIncobrable, ESTADOS_CLIENTE, ESTADO_CLIENTE_LABEL, esEstadoClienteValido, normalizarEstadoCliente, type EstadoCliente, cargosDeCuota, baseMoraDeCuota, pendienteSinMoraDeCuota } from "@/lib/domain";
+import { cuotaCerradaSinPago, calcularScore, diasMoraActual, cuotaMensualFrancesa, tasaPeriodicaSegunConvencion, convencionDelCredito, normalizarFrecuencia, interesMora, diasAtraso, round2, estadoCoherente, esCreditoVivo, moraDelCredito, moraDesdeCronograma, moraPendienteTotal, calcularDeudaVencida, esCreditoCobrable, topeMoraPorIncobrable, ESTADOS_CLIENTE, ESTADO_CLIENTE_LABEL, esEstadoClienteValido, normalizarEstadoCliente, type EstadoCliente, cargosDeCuota, baseMoraDeCuota, pendienteSinMoraDeCuota, formatPesos } from "@/lib/domain";
 import { getConfiguracion, getRiesgoConfig, getCobranzaConfig } from "@/lib/config";
 import { situacionAcuerdoPorCredito } from "@/lib/acuerdos";
 import type { NextRequest } from "next/server";
@@ -719,7 +719,7 @@ export const PATCH = withErrorHandler(async (req: NextRequest, { params }: Route
       entidad: "clientes",
       entidadId: id,
       accion: "actualizar",
-      descripcion: `Sueldo de ${nombreCompleto(updated)}: $${(sueldoLog.anterior ?? 0).toLocaleString("es-AR")} → $${(sueldoLog.nuevo ?? 0).toLocaleString("es-AR")}${sueldoLog.motivo ? ` — ${sueldoLog.motivo}` : ""}`,
+      descripcion: `Sueldo de ${nombreCompleto(updated)}: ${formatPesos((sueldoLog.anterior ?? 0))} → ${formatPesos((sueldoLog.nuevo ?? 0))}${sueldoLog.motivo ? ` — ${sueldoLog.motivo}` : ""}`,
       meta: {
         ingreso_anterior: sueldoLog.anterior,
         ingreso_nuevo: sueldoLog.nuevo,

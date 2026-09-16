@@ -21,13 +21,12 @@ import {
   esCuentaValida,
   round2,
   type Cuenta,
-  type ModoArqueo,
-} from "@/lib/domain";
+  type ModoArqueo, formatPesos } from "@/lib/domain";
 import { siguienteNumeroComprobante } from "@/lib/comprobantes";
 import { lockCuentaTx } from "@/lib/caja-fondos";
 import { hoyComercial } from "@/lib/utils";
 
-const money = (n: number) => `$${n.toLocaleString("es-AR")}`;
+const money = (n: number) => `${formatPesos(n)}`;
 
 /** Saldo de SISTEMA de una cuenta, para la caja indicada (`vendedorId = null` → principal). */
 export async function saldoSistemaDeCuenta(

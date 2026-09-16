@@ -30,3 +30,12 @@ export function sum(values: number[]): number {
 export function noNegativo(n: number): number {
   return n < 0 ? 0 : round2(n);
 }
+
+/**
+ * Importe en pesos para un TEXTO (mensaje de error, descripción de auditoría, glosa de
+ * caja): "$1.500.000,00". Siempre con centavos — `toLocaleString("es-AR")` a secas escribe
+ * "$1.500.000" y así llegaba a la auditoría y a los toasts (16/09/2026).
+ */
+export function formatPesos(n: number): string {
+  return `$${Number(n).toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}

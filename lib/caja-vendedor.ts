@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { withTenant } from "@/app/lib/db";
 import { ApiError } from "@/lib/auth";
 import { registrarAuditoria } from "@/lib/audit";
-import { saldosPorCuenta, totalesCaja, round2, esCuentaValida, CUENTA_LABEL, etiquetaCaja, type Cuenta } from "@/lib/domain";
+import { saldosPorCuenta, totalesCaja, round2, esCuentaValida, CUENTA_LABEL, etiquetaCaja, type Cuenta, formatPesos } from "@/lib/domain";
 import { siguienteNumeroComprobante, formatComprobante, type SerieComprobante } from "@/lib/comprobantes";
 import { getDolarBlueVenta } from "@/lib/cotizacion";
 import { nombreCompleto, hoyComercial } from "@/lib/utils";
@@ -163,12 +163,12 @@ export async function registrarMovimientoCajaVendedor(opts: {
     if (accion === "rendicion") {
       await assertFondosSuficientesTx(tx, {
         tenantId, vendedorId, cuenta: cuentaVendedor, monto: abs,
-        mensaje: (disp) => `No podés rendir más de lo que tenés en ${CUENTA_LABEL[cuentaVendedor]} (disponible $${disp.toLocaleString("es-AR")}).`,
+        mensaje: (disp) => `No podés rendir más de lo que tenés en ${CUENTA_LABEL[cuentaVendedor]} (disponible ${formatPesos(disp)}).`,
       });
     } else {
       await assertFondosSuficientesTx(tx, {
         tenantId, vendedorId: null, cuenta: cuentaPrincipal, monto: abs,
-        mensaje: (disp) => `La caja principal no tiene saldo suficiente en ${CUENTA_LABEL[cuentaPrincipal]} (disponible $${disp.toLocaleString("es-AR")}).`,
+        mensaje: (disp) => `La caja principal no tiene saldo suficiente en ${CUENTA_LABEL[cuentaPrincipal]} (disponible ${formatPesos(disp)}).`,
       });
     }
     const mv = await tx.movimientos_caja.create({
@@ -209,7 +209,7 @@ export async function registrarMovimientoCajaVendedor(opts: {
     entidad: "caja",
     entidadId: movVendedor.id,
     accion: "crear",
-    descripcion: `${accion === "entrega" ? "Entrega" : "Rendición"} de $${abs.toLocaleString("es-AR")} — principal ${cuentaPrincipal} ↔ vendedor ${cuentaVendedor} (${vendedorId})`,
+    descripcion: `${accion === "entrega" ? "Entrega" : "Rendición"} de ${formatPesos(abs)} — principal ${cuentaPrincipal} ↔ vendedor ${cuentaVendedor} (${vendedorId})`,
     meta: { monto: abs, tipo: accion, cuenta_vendedor: cuentaVendedor, cuenta_principal: cuentaPrincipal, vendedor_id: vendedorId },
   });
 
@@ -249,7 +249,7 @@ export async function registrarGastoCajaVendedor(opts: {
     throw new ApiError(
       tope === 0
         ? "No podés registrar gastos de tu caja por tu cuenta. Pedile a un administrador que lo cargue."
-        : `El gasto máximo que podés registrar solo es de $${tope.toLocaleString("es-AR")}. Por encima de eso lo tiene que cargar un administrador.`,
+        : `El gasto máximo que podés registrar solo es de ${formatPesos(tope)}. Por encima de eso lo tiene que cargar un administrador.`,
       "GASTO_EXCEDIDO",
       403,
     );
@@ -258,7 +258,7 @@ export async function registrarGastoCajaVendedor(opts: {
   const mov = await prisma.$transaction(async (tx) => {
     await assertFondosSuficientesTx(tx, {
       tenantId, vendedorId, cuenta, monto: abs,
-      mensaje: (disp) => `No podés gastar más de lo que tenés en ${CUENTA_LABEL[cuenta]} (disponible $${disp.toLocaleString("es-AR")}).`,
+      mensaje: (disp) => `No podés gastar más de lo que tenés en ${CUENTA_LABEL[cuenta]} (disponible ${formatPesos(disp)}).`,
     });
     const numero = await siguienteNumeroComprobante(tx, tenantId, "GAS");
     return tx.movimientos_caja.create({
@@ -283,7 +283,7 @@ export async function registrarGastoCajaVendedor(opts: {
     entidad: "caja",
     entidadId: mov.id,
     accion: "crear",
-    descripcion: `Gasto de $${abs.toLocaleString("es-AR")} en ${cuenta} — vendedor ${vendedorId} — ${motivo}`,
+    descripcion: `Gasto de ${formatPesos(abs)} en ${cuenta} — vendedor ${vendedorId} — ${motivo}`,
     meta: { monto: -abs, tipo: "gasto", cuenta, vendedor_id: vendedorId },
   });
 
@@ -322,7 +322,7 @@ export async function registrarTransferenciaCajaVendedor(opts: {
   const movSalida = await prisma.$transaction(async (tx) => {
     await assertFondosSuficientesTx(tx, {
       tenantId, vendedorId, cuenta: origen, monto: abs,
-      mensaje: (disp) => `No podés transferir más de lo que tenés en ${CUENTA_LABEL[origen]} (disponible $${disp.toLocaleString("es-AR")}).`,
+      mensaje: (disp) => `No podés transferir más de lo que tenés en ${CUENTA_LABEL[origen]} (disponible ${formatPesos(disp)}).`,
     });
     const s = await tx.movimientos_caja.create({
       data: {
@@ -362,7 +362,7 @@ export async function registrarTransferenciaCajaVendedor(opts: {
     entidad: "caja",
     entidadId: movSalida.id,
     accion: "crear",
-    descripcion: `Transferencia interna de $${abs.toLocaleString("es-AR")} ${CUENTA_LABEL[origen]} → ${CUENTA_LABEL[destino]} — vendedor ${vendedorId}`,
+    descripcion: `Transferencia interna de ${formatPesos(abs)} ${CUENTA_LABEL[origen]} → ${CUENTA_LABEL[destino]} — vendedor ${vendedorId}`,
     meta: { monto: abs, tipo: "transferencia", origen, destino, vendedor_id: vendedorId },
   });
 

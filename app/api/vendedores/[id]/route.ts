@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
 import { registrarAuditoria } from "@/lib/audit";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { esRolValido, resumirVendedor, normalizarComisionPct, normalizarMonto, normalizarComisionConfig } from "@/lib/domain";
+import { esRolValido, resumirVendedor, normalizarComisionPct, normalizarMonto, normalizarComisionConfig, formatPesos } from "@/lib/domain";
 import type { NextRequest } from "next/server";
 
 interface RouteParams {
@@ -183,7 +183,7 @@ export const DELETE = withErrorHandler(async (req: NextRequest, { params }: Rout
   const saldoCaja = Math.round((saldoAgg._sum.monto ?? 0) * 100) / 100;
   if (Math.abs(saldoCaja) > 0.01) {
     return errorResponse(
-      `Este agente tiene un saldo de $${saldoCaja.toLocaleString("es-AR")} en su caja. Antes de eliminarlo, ese saldo debe rendirse a la caja principal (si no, se movería a la principal sin registro).`,
+      `Este agente tiene un saldo de ${formatPesos(saldoCaja)} en su caja. Antes de eliminarlo, ese saldo debe rendirse a la caja principal (si no, se movería a la principal sin registro).`,
       "CAJA_CON_SALDO",
       409,
     );

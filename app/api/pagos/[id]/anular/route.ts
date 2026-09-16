@@ -4,7 +4,7 @@ import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { conNumeroDeOrigen } from "@/lib/creditos-numero";
 import { registrarAuditoria } from "@/lib/audit";
-import { round2, etiquetaCaja, esCuentaValida, diasAtraso, type Cuenta } from "@/lib/domain";
+import { round2, etiquetaCaja, esCuentaValida, diasAtraso, type Cuenta, formatPesos } from "@/lib/domain";
 import { siguienteNumeroComprobante } from "@/lib/comprobantes";
 import { lockCreditoTx, TX_PLATA } from "@/lib/locks";
 import { lockCuentaTx } from "@/lib/caja-fondos";
@@ -222,7 +222,7 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
     entidad: "pagos",
     entidadId: id,
     accion: "anular",
-    descripcion: `Pago de $${pago.monto.toLocaleString("es-AR")} anulado — ${numeroFmt} · ${nombreCompleto(credito.cliente)}${motivo ? ` — ${motivo}` : ""}`,
+    descripcion: `Pago de ${formatPesos(pago.monto)} anulado — ${numeroFmt} · ${nombreCompleto(credito.cliente)}${motivo ? ` — ${motivo}` : ""}`,
     meta: { monto: pago.monto, credito_id: credito.id, motivo, contra_asientos: cobros.length },
     // Cómo quedó el crédito: anular un cobro le devuelve la deuda, y hay que poder ver de
     // cuánto venía y a cuánto volvió.
