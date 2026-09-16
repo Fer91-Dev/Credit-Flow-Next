@@ -262,8 +262,15 @@ export function FormActions({
      *
      * Los márgenes negativos compensan el padding del `DialogContent` para que la barra
      * llegue de borde a borde y no quede una franja transparente a los costados.
+     *
+     * 🔴 El offset del sticky tiene que compensar ESE margen negativo (`-bottom-7`, no
+     * `bottom-0`). Con `bottom-0` el navegador no deja que la barra pase del content box del
+     * diálogo, así que la sube 23px y pisa lo último del formulario AUNQUE NO HAYA SCROLL:
+     * en "Anular pago" tapaba el pie del cuadro "Al anular" y la ayuda del motivo (medido
+     * con Chrome a 1366×768, 16/09/2026). Pasaba en todos los modales; solo se notaba
+     * cuando el último campo no tenía aire de sobra.
      */
-    <div className="sticky bottom-0 z-10 -mx-6 -mb-6 flex flex-col-reverse gap-2 border-t border-border/60 bg-card px-6 py-4 sm:-mx-7 sm:-mb-7 sm:flex-row sm:items-center sm:px-7">
+    <div className="sticky -bottom-6 z-10 -mx-6 -mb-6 flex flex-col-reverse gap-2 border-t border-border/60 bg-card px-6 py-4 sm:-bottom-7 sm:-mx-7 sm:-mb-7 sm:flex-row sm:items-center sm:px-7">
       <button
         type="button"
         onClick={onCancel}
