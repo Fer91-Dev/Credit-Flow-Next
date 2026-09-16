@@ -6,6 +6,7 @@ import { Emoji } from "@/components/ui/Emoji";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatMonto, formatFecha, formatCreditoNumero } from "@/lib/utils";
 import type { LiquidacionDetallada } from "@/lib/swr";
+import { CreditoLink } from "@/components/ui/CreditoLink";
 
 /**
  * Lista de liquidaciones de comisión **de solo lectura**, con el detalle desplegable de
@@ -91,7 +92,7 @@ export function LiquidacionesLista({
                       <tbody>
                         {l.detalle.map((d) => (
                           <tr key={d.credito_id} className="border-t border-border/50">
-                            <td className="px-3 py-2 font-mono text-xs text-muted-foreground">{formatCreditoNumero(d.numero)}</td>
+                            <td className="px-3 py-2 text-xs"><CreditoLink id={d.credito_id} numero={d.numero} className="text-xs" /></td>
                             <td className="px-3 py-2 text-foreground">{d.cliente}</td>
                             <td className="px-3 py-2 text-right font-mono tabular-nums">{formatMonto(d.monto, 0)}</td>
                             <td className="px-3 py-2 text-right font-mono tabular-nums text-muted-foreground">{d.pct}%</td>

@@ -5,6 +5,7 @@ import { useFinanciera, type MovimientoCaja } from "@/lib/swr";
 import { StatusBadge, type BadgeVariant } from "@/components/ui/StatusBadge";
 import { DetailGrid } from "@/components/ui/DetailGrid";
 import { formatCreditoNumero, formatFechaHora } from "@/lib/utils";
+import { CreditoLink } from "@/components/ui/CreditoLink";
 
 function n2(x: number) {
   return new Intl.NumberFormat("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(x);
@@ -116,7 +117,7 @@ export function MovimientoDetail({ mov }: { mov: MovimientoCaja }) {
           ["Fecha y hora", formatFechaHora(mov.created_at ?? mov.fecha)],
           ["Método", mov.metodo || null],
           ["Descripción", mov.descripcion],
-          ["Crédito", mov.credito_numero != null ? <span className="font-mono">{formatCreditoNumero(mov.credito_numero, mov.credito_refinancia_a_numero)}</span> : null],
+          ["Crédito", mov.credito_numero != null && mov.credito_id ? <CreditoLink id={mov.credito_id} numero={mov.credito_numero} numeroOrigen={mov.credito_refinancia_a_numero} /> : mov.credito_numero != null ? <span className="font-mono">{formatCreditoNumero(mov.credito_numero, mov.credito_refinancia_a_numero)}</span> : null],
           ["Cliente", mov.cliente || null],
         ]}
       />

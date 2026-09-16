@@ -14,6 +14,7 @@ import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { ModalHeader, FormActions, MODAL_CONTENT } from "@/components/ui/form-kit";
 import { useToast } from "@/components/ui/toast";
 import { formatMonto, formatFecha, formatCreditoNumero } from "@/lib/utils";
+import { CreditoLink } from "@/components/ui/CreditoLink";
 
 /**
  * **Comisiones** — cuánto se le debe a cada agente por un período y el registro de lo
@@ -305,7 +306,7 @@ function DetalleComision({ fila }: { fila: FilaComision }) {
           <tbody>
             {fila.detalle.map((d) => (
               <tr key={d.credito_id} className="border-t border-border/50">
-                <td className="px-3 py-2 font-mono text-xs text-muted-foreground">{formatCreditoNumero(d.numero)}</td>
+                <td className="px-3 py-2 text-xs"><CreditoLink id={d.credito_id} numero={d.numero} className="text-xs" /></td>
                 <td className="px-3 py-2 text-foreground">{d.cliente}</td>
                 <td className="px-3 py-2 text-xs text-muted-foreground">{formatFecha(d.fecha)}</td>
                 <td className="px-3 py-2 text-right font-mono tabular-nums">{formatMonto(d.monto, 0)}</td>
@@ -461,7 +462,7 @@ function VerLiquidacionDialog({ liquidacion, onClose }: { liquidacion: Liquidaci
               <tbody>
                 {l.detalle.map((d) => (
                   <tr key={d.credito_id} className="border-t border-border/50">
-                    <td className="px-3 py-2 font-mono text-xs text-muted-foreground">{formatCreditoNumero(d.numero)}</td>
+                    <td className="px-3 py-2 text-xs"><CreditoLink id={d.credito_id} numero={d.numero} className="text-xs" /></td>
                     <td className="px-3 py-2 text-foreground">{d.cliente}</td>
                     <td className="px-3 py-2 text-right font-mono tabular-nums">{formatMonto(d.monto, 0)}</td>
                     <td className="px-3 py-2 text-right font-mono tabular-nums text-muted-foreground">{d.pct}%</td>

@@ -613,6 +613,7 @@ export interface MovimientoStockGlobal {
   producto_id: string;
   producto_nombre: string;
   producto_sku: string | null;
+  credito_id?: string | null;
   credito_numero: number | null;
   cliente: string | null;
   vendedor_atribuido: string | null; // vendedor que cobra comisión (en venta_credito)
@@ -903,6 +904,7 @@ export interface MovimientoCaja {
   /** N° de comprobante (serie + correlativo): REC-000123. null en movimientos viejos. */
   comprobante?: string | null;
   descripcion: string;
+  credito_id?: string | null;
   credito_numero: number | null;
   /** N° del crédito que la refinanciación reemplaza → el movimiento se muestra como REF-xxxxxx. */
   credito_refinancia_a_numero?: number | null;

@@ -119,6 +119,8 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
       destino: m.destino,
       comprobante: formatComprobante(m.serie, m.numero),
       descripcion: m.descripcion,
+      // El id viaja para que el número sea un LINK al crédito, no texto (regla de front).
+      credito_id: m.credito_id ?? null,
       credito_numero: m.credito?.numero ?? null,
       credito_refinancia_a_numero: m.credito?.es_refinanciacion && m.credito.refinancia_a ? origenesRefi.get(m.credito.refinancia_a) ?? null : null,
       cliente: m.credito?.cliente ? nombreCompleto(m.credito.cliente) : null,

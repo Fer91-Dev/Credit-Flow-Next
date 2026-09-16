@@ -11,6 +11,7 @@ import { BuscadorF3 } from "@/components/ui/BuscadorF3";
 import { guardarSeleccionCampana, guardarTipoCampana } from "./seleccion-campana";
 import { esCreditoVivo, contactoBloqueado } from "@/lib/domain";
 import { formatMonto, formatFecha, nombreCompleto, formatCreditoNumero, hoyComercial } from "@/lib/utils";
+import { CreditoLink } from "@/components/ui/CreditoLink";
 
 /** YYYY-MM-DD del día comercial argentino, corrido `n` días. */
 function diaISO(n = 0): string {
@@ -217,7 +218,7 @@ export function VencimientosTab() {
             cell: (c) => (
               <div>
                 <p className="font-medium text-foreground">{nombreCompleto(c.cliente)}</p>
-                <p className="font-mono text-[11px] text-muted-foreground">{formatCreditoNumero(c.numero, c.refinancia_a_numero)}</p>
+                <p><CreditoLink id={c.id} numero={c.numero} numeroOrigen={c.refinancia_a_numero} className="text-[11px]" /></p>
               </div>
             ),
           },

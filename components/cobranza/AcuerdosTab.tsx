@@ -16,6 +16,7 @@ import type { Role } from "@/lib/auth/roles";
 import { useFinanciera } from "@/lib/swr";
 import { imprimirAcuerdo } from "@/lib/acuerdo-print";
 import { MODAL_CONTENT, SIN_CIERRE_ACCIDENTAL } from "@/components/ui/form-kit";
+import { CreditoLink } from "@/components/ui/CreditoLink";
 
 /**
  * Acuerdos de pago: el arreglo informal en cuotas con un moroso.
@@ -173,7 +174,7 @@ export function AcuerdosTab({ role }: { role: Role }) {
         zebra
         pageSize={10}
         columns={[
-          { header: "Crédito", cell: (a) => <span className="font-mono text-xs text-muted-foreground whitespace-nowrap">{formatCreditoNumero(a.credito_numero ?? undefined, a.credito_refinancia_a_numero)}</span> },
+          { header: "Crédito", cell: (a) => <CreditoLink id={a.credito_id} numero={a.credito_numero} numeroOrigen={a.credito_refinancia_a_numero} className="text-xs" /> },
           { header: "Cliente", cell: (a) => <span className="text-foreground">{a.cliente ?? "—"}</span> },
           { header: "Acordado", cell: (a) => <span className="text-muted-foreground tabular-nums whitespace-nowrap">{formatFecha(a.fecha)}</span> },
           { header: "Monto", align: "right", mono: true, cell: (a) => <span className="text-foreground">{formatMonto(a.monto_acordado)}</span> },
@@ -228,7 +229,7 @@ export function AcuerdosTab({ role }: { role: Role }) {
               </div>
               <div className="min-w-0">
                 <h3 className="text-sm font-semibold text-foreground">
-                  {a.cliente} · {formatCreditoNumero(a.credito_numero ?? undefined, a.credito_refinancia_a_numero)}
+                  {a.cliente} · <CreditoLink id={a.credito_id} numero={a.credito_numero} numeroOrigen={a.credito_refinancia_a_numero} conIcono={false} />
                 </h3>
                 <p className="mt-0.5 text-xs text-muted-foreground">
                   Debía {formatMonto(a.deuda_original)} vencidos

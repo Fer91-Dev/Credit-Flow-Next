@@ -14,6 +14,7 @@ import { useToast } from "@/components/ui/toast";
 import { useConfirm } from "@/components/ui/confirm";
 import { PlanillaCalleDialog } from "./PlanillaCalleDialog";
 import type { Role } from "@/lib/auth/roles";
+import { CreditoLink } from "@/components/ui/CreditoLink";
 
 /**
  * PLANILLAS DE CALLE — el otro lado del papel.
@@ -294,7 +295,7 @@ function FilaCobro({ f, planillaId, cerrada, onCobrado }: {
         <div className="flex items-center gap-2">
           <p className="truncate text-sm font-medium text-foreground">{f.cliente}</p>
           <span className="shrink-0 font-mono text-[11px] text-primary/80">
-            {formatCreditoNumero(f.credito_numero, f.credito_refinancia_a_numero)}
+            <CreditoLink id={f.credito_id} numero={f.credito_numero} numeroOrigen={f.credito_refinancia_a_numero} className="text-[11px]" />
           </span>
           {saldado && <StatusBadge label="Cobrado" variant="success" />}
         </div>

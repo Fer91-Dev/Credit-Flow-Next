@@ -7,7 +7,7 @@ import { conNumeroDeOrigen } from "@/lib/creditos-numero";
 import { registrarAuditoria } from "@/lib/audit";
 import { nombreCompleto, hoyComercial } from "@/lib/utils";
 import { normalizarCuit, validarDuplicadoCliente } from "@/lib/clientes-validacion";
-import { cuotaCerradaSinPago, calcularScore, diasMoraActual, cuotaMensualFrancesa, tasaPeriodicaSegunConvencion, convencionDelCredito, normalizarFrecuencia, interesMora, diasAtraso, round2, estadoCoherente, esCreditoVivo, moraDelCredito, moraDesdeCronograma, moraPendienteTotal, calcularDeudaVencida, ESTADOS_CLIENTE, ESTADO_CLIENTE_LABEL, esEstadoClienteValido, normalizarEstadoCliente, type EstadoCliente, cargosDeCuota, baseMoraDeCuota, pendienteSinMoraDeCuota } from "@/lib/domain";
+import { cuotaCerradaSinPago, calcularScore, diasMoraActual, cuotaMensualFrancesa, tasaPeriodicaSegunConvencion, convencionDelCredito, normalizarFrecuencia, interesMora, diasAtraso, round2, estadoCoherente, esCreditoVivo, moraDelCredito, moraDesdeCronograma, moraPendienteTotal, calcularDeudaVencida, esCreditoCobrable, topeMoraPorIncobrable, ESTADOS_CLIENTE, ESTADO_CLIENTE_LABEL, esEstadoClienteValido, normalizarEstadoCliente, type EstadoCliente, cargosDeCuota, baseMoraDeCuota, pendienteSinMoraDeCuota } from "@/lib/domain";
 import { getConfiguracion, getRiesgoConfig, getCobranzaConfig } from "@/lib/config";
 import { situacionAcuerdoPorCredito } from "@/lib/acuerdos";
 import type { NextRequest } from "next/server";
@@ -139,9 +139,17 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
      * `calcularDeudaVencida` es lo que usa `/api/creditos`, lo que arma el acuerdo y lo que
      * cobra la caja: una sola definición.
      */
+    /*
+      🔴 `cobrable`, no `vivo`: un INCOBRABLE tiene deuda reclamable y hay que poder verla.
+      Con `enMora` (que exige vivo) la ficha decía "Vencido $0,00 · 3 cuotas vencidas" sobre
+      CRD-000011, que debe $480.880,48. Su mora no crece —`hoyCredito` la congela en el día
+      del castigo, igual que en la lista de créditos— pero la acumulada hasta ahí se reclama.
+      Fernando (16/09/2026): "sé que está marcado como incobrable, pero igual se debe aplicar".
+    */
     let vencido = 0;
     let cuotas_vencidas = 0;
-    if (enMora && c.cuotas.length > 0) {
+    const hoyCredito = topeMoraPorIncobrable(hoyComercial(), c) ?? hoyComercial();
+    if (diasMora > 0 && esCreditoCobrable(estadoReal) && c.cuotas.length > 0) {
       const mc = moraDelCredito(moraDesdeCronograma(c.cronograma), config);
       const graciaV = (c.cronograma as { diasGracia?: number } | null)?.diasGracia ?? config.simulador.diasGracia;
       const dv = calcularDeudaVencida(
@@ -153,7 +161,7 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
           pagadoMora: q.pagado_mora, pagadoCargos: q.pagado_cargos,
           condonadoMora: q.condonado_mora,
         })),
-        { moraActiva: mc.moraActiva, tasaMoraDiaria: mc.tasaMoraDiaria, topeMoraPct: mc.topeMoraPct, diasGracia: graciaV, hoy: hoyComercial() },
+        { moraActiva: mc.moraActiva, tasaMoraDiaria: mc.tasaMoraDiaria, topeMoraPct: mc.topeMoraPct, diasGracia: graciaV, hoy: hoyCredito },
       );
       vencido = round2(dv.total);
       cuotas_vencidas = dv.cuotas_vencidas;
