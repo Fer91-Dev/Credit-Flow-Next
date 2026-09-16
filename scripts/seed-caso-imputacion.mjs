@@ -109,6 +109,21 @@ if (cliente) {
   console.log(`  ✓ cliente creado: ${cliente.nombre} ${cliente.apellido} · DNI ${DNI}`);
 }
 
+// ── Primero la plata, después el préstamo ───────────────────────────────────
+// El desembolso queda fechado en `fecha_inicio` (para atrás). Si la cuenta no tenía
+// fondos ESE día, el libro muestra la caja en rojo desde entonces hasta el primer aporte
+// real: en dev, "Anterior -$700.000,00" en Banco (16/09/2026). Un aporte de capital el
+// día anterior, por la misma API que usa la financiera, deja la historia consistente.
+{
+  const fecha = (() => { const d = new Date(`${hace(DIAS_ATRAS)}T00:00:00.000Z`); d.setUTCDate(d.getUTCDate() - 1); return iso(d); })();
+  const ra = await api("POST", "/api/caja", {
+    monto: MONTO, concepto: "aporte_capital", sentido: "ingreso", cuenta: "banco", fecha,
+    descripcion: `Fondeo para el caso sembrado · Gustavo Ferreyra`,
+  });
+  if (!ra.ok) { console.error("aporte de capital:", ra.error); process.exit(1); }
+  console.log(`  ✓ aporte de capital $${MONTO.toLocaleString("es-AR")} en banco el ${fecha}`);
+}
+
 // ── El crédito, sin un solo pago ────────────────────────────────────────────
 const r = await api("POST", "/api/creditos", {
   cliente_id: cliente.id, tipo_credito: "personal",

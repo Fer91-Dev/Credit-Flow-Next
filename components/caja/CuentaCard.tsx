@@ -40,10 +40,12 @@ function n0(x: number) {
 
 export function CuentaCard({
   cuenta, detalle, activa, onToggle, onRefrescar, refrescando = false,
-  valorizacionDolares, dolarBlue,
+  valorizacionDolares, dolarBlue, desde,
 }: {
   cuenta: CuentaCaja;
   detalle: SaldoCuentaDetalle;
+  /** Inicio del período filtrado (YYYY-MM-DD): "Anterior" es el saldo del día previo. */
+  desde?: string;
   /** La tarjeta filtra la tabla; `activa` = ese filtro está puesto. */
   activa: boolean;
   onToggle: () => void;
@@ -94,7 +96,9 @@ export function CuentaCard({
 
       <div className="grid grid-cols-3 gap-2">
         <div>
-          <p className="text-[9px] font-semibold uppercase tracking-widest text-white/60">Anterior</p>
+          {/* "Anterior" sin fecha no dice contra qué se compara: es el saldo al cierre del
+              día previo al período que está filtrado. */}
+          <p className="text-[9px] font-semibold uppercase tracking-widest text-white/60">{desde ? `Al ${diaPrevio(desde)}` : "Anterior"}</p>
           <p className="mt-0.5 text-[11px] font-mono font-semibold text-white/90">{meta.prefix}{n2(detalle.anterior)}</p>
         </div>
         <div>
@@ -108,4 +112,11 @@ export function CuentaCard({
       </div>
     </div>
   );
+}
+
+/** "2026-09-01" → "31/08" (el día anterior, en dd/mm). */
+function diaPrevio(ymd: string): string {
+  const d = new Date(`${ymd}T00:00:00.000Z`);
+  d.setUTCDate(d.getUTCDate() - 1);
+  return `${String(d.getUTCDate()).padStart(2, "0")}/${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
 }

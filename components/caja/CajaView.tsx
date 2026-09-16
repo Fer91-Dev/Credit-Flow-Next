@@ -283,6 +283,7 @@ export function CajaView() {
                 refrescando={refreshing === c}
                 valorizacionDolares={caja.valorizacion_dolares}
                 dolarBlue={caja.dolar_blue}
+                desde={caja.periodo.desde}
               />
             ))}
           </div>
