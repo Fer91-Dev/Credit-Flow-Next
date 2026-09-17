@@ -248,6 +248,9 @@ export function CerrarTurnoDialog({ open, onClose, propia, nombreCaja }: {
   );
 }
 
+/** Un importe nunca se parte en dos renglones: es lo único de la fila que no puede envolver. */
+const NOWRAP = "whitespace-nowrap";
+
 /** Historial de actas. `mostrarCaja` para el admin (ve las de todas las cajas). */
 export function CierresTurnoPanel({ cierres, mostrarCaja = false, nombreCajaDe }: {
   cierres: CierreTurno[];
@@ -269,33 +272,59 @@ export function CierresTurnoPanel({ cierres, mostrarCaja = false, nombreCajaDe }
         </div>
       </div>
 
+      {/*
+        SIN SCROLL DE COSTADO. Fernando (16/09/2026): la tabla llevaba trece columnas y el
+        botón de imprimir quedaba escondido a la derecha. Ahora son diez: los siete importes
+        de la cuenta (apertura + ingresos − egresos; contado; diferencia; retiro; quedó) van
+        en su columna, y lo que es un dato de cada acta pero no un importe —la fecha, quién
+        cerró, los dólares contados— va en un renglón chico debajo del dato al que pertenece.
+        Los importes no se parten; el texto sí puede.
+      */}
       <DataTable<CierreTurno>
         rows={cierres}
         rowKey={(c) => c.id}
         onRowClick={(c) => setDetalle(detalle?.id === c.id ? null : c)}
         empty={{ icon: "locked-with-key", title: "Todavía no se cerró ningún turno" }}
         zebra
+        dense
         pageSize={8}
         columns={[
-          { header: "Acta", cell: (c) => <span className="font-mono text-xs text-muted-foreground">{c.comprobante}</span> },
-          { header: "Cerrado", cell: (c) => <span className="text-muted-foreground tabular-nums whitespace-nowrap">{formatFechaHora(c.cerrado_at)}</span> },
-          ...(mostrarCaja ? [{ header: "Caja", cell: (c: CierreTurno) => <span className="text-foreground">{nombreCajaDe(c)}</span> }] : []),
-          { header: "Apertura", align: "right", mono: true, cell: (c) => <span className="text-muted-foreground">{formatMonto(c.saldo_apertura)}</span> },
-          { header: "Ingresos", align: "right", mono: true, cell: (c) => <span className="text-success">{formatMonto(c.ingresos)}</span> },
-          { header: "Egresos", align: "right", mono: true, cell: (c) => <span className="text-destructive">{formatMonto(c.egresos)}</span> },
-          { header: "Contado", align: "right", mono: true, cell: (c) => <span className="text-foreground">{formatMonto(c.saldo_fisico)}</span> },
-          { header: "Diferencia", align: "right", mono: true, cell: (c) => <Diferencia valor={c.diferencia} /> },
-          { header: "Retiro", align: "right", mono: true, cell: (c) => <span className="text-foreground">{formatMonto(c.retiro)}</span> },
-          { header: "Quedó", align: "right", mono: true, cell: (c) => <span className="text-muted-foreground">{formatMonto(c.fondo)}</span> },
-          { header: "U$S", align: "right", mono: true, className: "hidden md:table-cell", cell: (c) => c.dolares ? <span className="text-foreground" title={`Contados ${usdFmt(c.dolares.fisico)} · retiro ${usdFmt(c.dolares.retiro)} · quedan ${usdFmt(c.dolares.fondo)}`}>{usdFmt(c.dolares.fisico)}</span> : <span className="text-muted-foreground/40">—</span> },
-          { header: "Cerró", className: "hidden lg:table-cell", cell: (c) => <span className="text-muted-foreground">{c.cerrado_por_nombre ?? "—"}</span> },
+          { header: "Acta", cell: (c) => (
+            <div className="leading-tight">
+              <span className="block font-mono text-xs text-foreground">{c.comprobante}</span>
+              <span className="block text-[11px] tabular-nums text-muted-foreground">{formatFechaHora(c.cerrado_at)}</span>
+            </div>
+          ) },
+          ...(mostrarCaja ? [{ header: "Caja", cell: (c: CierreTurno) => (
+            <div className="leading-tight">
+              <span className="block text-foreground">{nombreCajaDe(c)}</span>
+              {c.cerrado_por_nombre && <span className="block text-[11px] text-muted-foreground">Cerró {c.cerrado_por_nombre}</span>}
+            </div>
+          ) }] : [{ header: "Cerró", cell: (c: CierreTurno) => <span className="text-muted-foreground">{c.cerrado_por_nombre ?? "—"}</span> }]),
+          { header: "Apertura", mono: true, className: NOWRAP, cell: (c) => <span className="text-muted-foreground">{formatMonto(c.saldo_apertura)}</span> },
+          { header: "Ingresos", mono: true, className: NOWRAP, cell: (c) => <span className="text-success">{formatMonto(c.ingresos)}</span> },
+          { header: "Egresos", mono: true, className: NOWRAP, cell: (c) => <span className="text-destructive">{formatMonto(c.egresos)}</span> },
+          { header: "Contado", mono: true, className: NOWRAP, cell: (c) => (
+            <div className="leading-tight">
+              <span className="block text-foreground">{formatMonto(c.saldo_fisico)}</span>
+              {c.dolares && (
+                <span className="block text-[11px] text-muted-foreground" title={`Dólares: retiro ${usdFmt(c.dolares.retiro)} · quedan ${usdFmt(c.dolares.fondo)}`}>
+                  {usdFmt(c.dolares.fisico)}
+                </span>
+              )}
+            </div>
+          ) },
+          { header: "Diferencia", mono: true, className: NOWRAP, cell: (c) => <Diferencia valor={c.diferencia} /> },
+          { header: "Retiro", mono: true, className: NOWRAP, cell: (c) => <span className="text-foreground">{formatMonto(c.retiro)}</span> },
+          { header: "Quedó", mono: true, className: NOWRAP, cell: (c) => <span className="text-muted-foreground">{formatMonto(c.fondo)}</span> },
           {
-            header: "", align: "right" as const,
+            header: "", align: "right" as const, className: "w-10",
             cell: (c) => (
               <button
                 type="button"
                 onClick={(e) => { e.stopPropagation(); imprimirActaCierre({ cierre: c, caja: nombreCajaDe(c), financiera }); }}
                 title="Imprimir el acta"
+                aria-label="Imprimir el acta"
                 className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-border text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
               >
                 <Printer className="h-3.5 w-3.5" />
