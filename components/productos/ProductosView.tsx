@@ -166,7 +166,7 @@ export function ProductosView() {
           onF3={limpiarTodo}
           className="w-full sm:w-[30rem]"
           accionDerecha={
-            <FiltrosPanel
+            <FiltrosPanel embebido
               label="Filtrar"
               resumen={resumenFiltros}
               activos={filtrosActivos}

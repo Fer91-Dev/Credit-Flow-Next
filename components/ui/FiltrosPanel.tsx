@@ -35,6 +35,7 @@ export function FiltrosPanel({
   width = 340,
   label = "Filtros",
   resumen,
+  embebido = false,
 }: {
   /** Cantidad de filtros activos (alimenta el badge y el estado "activo" del botón). */
   activos: number;
@@ -54,6 +55,12 @@ export function FiltrosPanel({
    * Sin `resumen`, el botón conserva su etiqueta fija y muestra el contador como badge.
    */
   resumen?: string;
+  /**
+   * El botón vive ADENTRO de otro control (la `accionDerecha` de `BuscadorF3`): sin borde
+   * propio, porque un recuadro dentro del recuadro del buscador se veía como un parche
+   * (Fernando, 16/09/2026: "se ve el borde del botón"). Suelto en una barra, con borde.
+   */
+  embebido?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -72,8 +79,10 @@ export function FiltrosPanel({
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className={`flex items-center gap-1.5 h-9 px-3 rounded-lg border text-sm font-medium transition-colors ${
-          open || activos ? "border-primary/40 bg-primary/10 text-foreground" : "border-border text-muted-foreground hover:bg-muted/40 hover:text-foreground"
+        className={`flex items-center gap-1.5 rounded-lg text-sm font-medium transition-colors ${
+          embebido
+            ? `h-8 px-2.5 ${open || activos ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted/40 hover:text-foreground"}`
+            : `h-9 px-3 border ${open || activos ? "border-primary/40 bg-primary/10 text-foreground" : "border-border text-muted-foreground hover:bg-muted/40 hover:text-foreground"}`
         }`}
       >
         <SlidersHorizontal className="h-3.5 w-3.5" />

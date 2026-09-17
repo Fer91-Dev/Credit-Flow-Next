@@ -156,7 +156,7 @@ export function AuditoriaTable() {
             onF3={() => clearFilters()}
             className="w-full"
             accionDerecha={
-              <FiltrosPanel
+              <FiltrosPanel embebido
                 label="Filtrar"
                 resumen={resumenFiltros}
                 activos={etiquetasFiltro.length}

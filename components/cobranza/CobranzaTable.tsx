@@ -622,7 +622,7 @@ export function CobranzaTable({ role }: { role: Role }) {
           onF3={limpiarTodo}
           className="w-full sm:w-[30rem]"
           accionDerecha={
-            <FiltrosPanel
+            <FiltrosPanel embebido
               label="Filtrar"
               resumen={resumenFiltros}
               activos={filterMora === "todas" ? 0 : 1}

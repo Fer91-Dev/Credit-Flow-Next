@@ -264,7 +264,7 @@ export function CreditosTable({ role }: { role: Role }) {
                   // La caja carga adentro el botón de filtros, así que necesita aire.
                   className="w-full sm:w-[34rem]"
                   accionDerecha={
-                    <FiltrosPanel
+                    <FiltrosPanel embebido
                       // "Filtrar" y no "Filtros": el renglón es una fila de acciones
                       // (buscar, filtrar, dar de alta), y un sustantivo entre dos verbos se
                       // lee como un rótulo y no como algo que se puede apretar.

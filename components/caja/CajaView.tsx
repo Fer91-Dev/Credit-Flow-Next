@@ -273,14 +273,23 @@ export function CajaView() {
         </div>
       </div>
 
-      {isLoading || !caja ? (
-        <BodySkeleton />
-      ) : error ? (
+      {/*
+        SIN EL "PARPADEO" AL CAMBIAR EL PERÍODO. Fernando (16/09/2026): "cada vez que clickeo
+        en algún período es como si se refrescara toda la pantalla, muy duro visualmente".
+        Pasaba porque `isLoading` es true mientras llega el rango nuevo, y eso tiraba abajo
+        tarjetas, KPI y tabla para poner un esqueleto medio segundo. SWR ya conserva los
+        datos anteriores (`keepPreviousData`), así que el esqueleto queda solo para la primera
+        carga; mientras llega el rango nuevo lo que hay se atenúa apenas y después se
+        actualiza en su lugar.
+      */}
+      {error ? (
         <div className="rounded-xl bg-destructive/10 border border-destructive/30 p-4 text-destructive text-sm">
           Error al cargar la caja: {error.message}
         </div>
+      ) : !caja ? (
+        <BodySkeleton />
       ) : (
-        <div className="space-y-5">
+        <div className={`space-y-5 transition-opacity duration-300 ${isLoading ? "opacity-60" : "opacity-100"}`} aria-busy={isLoading}>
           {/* Un cierre de vendedor con diferencia es plata que falta (o sobra) y nadie
               revisó. Va arriba de todo: es lo primero que hay que ver al entrar. */}
           {pendientes > 0 && (
@@ -378,7 +387,7 @@ export function CajaView() {
                 /* Sin `onLimpiar`: el panel no dibuja SU botón de limpiar. Hay uno solo, el
                    del encabezado de la tabla, que además restablece el período. Dos botones
                    "Limpiar" con alcances distintos era una trampa. */
-                <FiltrosPanel
+                <FiltrosPanel embebido
                   label="Filtrar"
                   resumen={resumenFiltros}
                   activos={filtrosActivos}
