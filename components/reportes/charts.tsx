@@ -1,8 +1,17 @@
 "use client";
 
+import { useState } from "react";
+
 /**
  * Gráficos livianos para Reportes — CSS/SVG puro, sin dependencias. Estilo con tokens
  * semánticos (bg-primary/success/warning/destructive). Pensados para series mensuales.
+ *
+ * EL TOOLTIP ES DEL GRÁFICO, NO DEL NAVEGADOR. Fernando (17/09/2026): al pasar el mouse
+ * aparecía el cartelito nativo del `title` —gris, con demora, ajeno al diseño— y el tooltip
+ * propio nunca se veía porque asomaba por arriba del contenedor con scroll y quedaba
+ * recortado. Ahora: sin `title`; el gráfico reserva su franja de arriba para la tarjeta,
+ * que entra con una transición corta (opacidad + subida + escala), la barra señalada se
+ * enciende y las demás se apagan un poco. Con teclado se llega igual (`tabIndex`+focus).
  */
 
 type Accent = "primary" | "success" | "warning" | "destructive" | "muted";
@@ -41,48 +50,77 @@ export function BarChart({
   height?: number;
   format?: (v: number) => string;
 }) {
+  const [hov, setHov] = useState<number | null>(null);
   if (data.length === 0) return <EmptyChart />;
   const max = Math.max(1, ...data.map((d) => Math.abs(d.value)));
   const hasNeg = data.some((d) => d.value < 0);
   const semiH = hasNeg ? height / 2 : height;
 
   return (
-    <div className="w-full overflow-x-auto">
-      <div className="flex items-end gap-1.5 min-w-full" style={{ height }}>
+    <div className="w-full overflow-x-auto" onMouseLeave={() => setHov(null)}>
+      {/* `pt-12`: la franja donde vive la tarjeta, ADENTRO del contenedor con scroll. */}
+      <div className="flex items-end gap-1.5 min-w-full pt-12" style={{ height: height + 48 }}>
         {data.map((d, i) => {
           const barH = Math.max(2, (Math.abs(d.value) / max) * (semiH - 6));
           const neg = d.value < 0;
           const color = neg ? BAR.destructive : accent === "destructive" ? BAR.destructive : BAR[accent];
+          const activa = hov === i;
           return (
             <div
               key={i}
-              className="group/bar relative flex-1 min-w-[10px] flex flex-col items-center justify-end h-full"
-              title={`${d.label}: ${d.hint ?? format(d.value)}`}
+              tabIndex={0}
+              onMouseEnter={() => setHov(i)}
+              onFocus={() => setHov(i)}
+              onBlur={() => setHov(null)}
+              className={`relative flex-1 min-w-[10px] flex flex-col items-center justify-end h-full cursor-default outline-none transition-opacity duration-200 ${hov !== null && !activa ? "opacity-45" : "opacity-100"}`}
             >
               {/* mitad superior (positivos) */}
               <div className="flex-1 w-full flex flex-col justify-end">
-                {!neg && <div className={`w-full rounded-t ${color} transition-all`} style={{ height: barH }} />}
+                {!neg && <div className={`w-full rounded-t ${color} ${BARRA_HOVER} ${activa ? BARRA_ACTIVA : ""}`} style={{ height: barH }} />}
               </div>
               {hasNeg && <div className="w-full border-t border-border/60" />}
               {/* mitad inferior (negativos) */}
               {hasNeg && (
                 <div className="flex-1 w-full flex flex-col justify-start">
-                  {neg && <div className={`w-full rounded-b ${color} transition-all`} style={{ height: barH }} />}
+                  {neg && <div className={`w-full rounded-b ${color} ${BARRA_HOVER} ${activa ? BARRA_ACTIVA : ""}`} style={{ height: barH }} />}
                 </div>
               )}
-              {/* tooltip */}
-              <div className="pointer-events-none absolute -top-6 left-1/2 -translate-x-1/2 whitespace-nowrap rounded bg-foreground px-1.5 py-0.5 text-[10px] font-medium text-background opacity-0 group-hover/bar:opacity-100 transition-opacity z-10">
-                {d.hint ?? format(d.value)}
-              </div>
+              {/* Pegada a la barra: los positivos, arriba de su tope; los negativos, arriba de la línea cero. */}
+              <Tarjeta visible={activa} label={d.label} valor={d.hint ?? format(d.value)} pos={i === 0 ? "izq" : i === data.length - 1 ? "der" : "centro"} bottom={(hasNeg ? semiH : 0) + (neg ? 0 : barH) + 8} />
             </div>
           );
         })}
       </div>
       <div className="flex gap-1.5 mt-1.5 min-w-full">
         {data.map((d, i) => (
-          <div key={i} className="flex-1 min-w-[10px] text-center text-[9px] text-muted-foreground truncate">{d.label}</div>
+          <div key={i} className={`flex-1 min-w-[10px] text-center text-[9px] truncate transition-colors ${hov === i ? "text-foreground font-semibold" : "text-muted-foreground"}`}>{d.label}</div>
         ))}
       </div>
+    </div>
+  );
+}
+
+const BARRA_HOVER = "transition-[filter,box-shadow] duration-200";
+const BARRA_ACTIVA = "brightness-125 shadow-[0_0_0_1px_rgba(255,255,255,0.25)]";
+
+/**
+ * La tarjeta que acompaña al gráfico: período arriba, el valor grande en mono. Entra con
+ * opacidad + subida + escala en 150ms; pegada al borde en la primera y la última barra para
+ * que no la recorte el contenedor.
+ */
+function Tarjeta({ visible, label, valor, detalle, pos, bottom }: { visible: boolean; label: string; valor: string; detalle?: string; pos: "izq" | "centro" | "der"; bottom: number }) {
+  const ancla = pos === "izq" ? "left-0" : pos === "der" ? "right-0" : "left-1/2 -translate-x-1/2";
+  return (
+    <div
+      aria-hidden={!visible}
+      style={{ bottom }}
+      className={`pointer-events-none absolute ${ancla} z-10 whitespace-nowrap rounded-lg border border-border bg-card px-2.5 py-1.5 shadow-lg shadow-black/30 transition-all duration-150 ease-out ${
+        visible ? "opacity-100 translate-y-0 scale-100" : "opacity-0 translate-y-1.5 scale-95"
+      }`}
+    >
+      <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</p>
+      <p className="font-mono text-sm font-bold tabular-nums text-foreground">{valor}</p>
+      {detalle && <p className="text-[10px] text-muted-foreground">{detalle}</p>}
     </div>
   );
 }
@@ -96,25 +134,33 @@ export function StackedBarChart({
   height?: number;
   format?: (v: number) => string;
 }) {
+  const [hov, setHov] = useState<number | null>(null);
   if (data.length === 0) return <EmptyChart />;
   const max = Math.max(1, ...data.map((d) => d.a + d.b));
   return (
-    <div className="w-full overflow-x-auto">
-      <div className="flex items-end gap-1.5 min-w-full" style={{ height }}>
-        {data.map((d, i) => (
-          <div key={i} className="group/bar relative flex-1 min-w-[10px] flex flex-col justify-end h-full"
-            title={`${d.label}: ${d.hint ?? format(d.a + d.b)}`}>
-            <div className={`w-full ${BAR[accents[1]]}`} style={{ height: Math.max(0, (d.b / max) * (height - 6)) }} />
-            <div className={`w-full rounded-t ${BAR[accents[0]]}`} style={{ height: Math.max(2, (d.a / max) * (height - 6)) }} />
-            <div className="pointer-events-none absolute -top-6 left-1/2 -translate-x-1/2 whitespace-nowrap rounded bg-foreground px-1.5 py-0.5 text-[10px] font-medium text-background opacity-0 group-hover/bar:opacity-100 transition-opacity z-10">
-              {d.hint ?? format(d.a + d.b)}
+    <div className="w-full overflow-x-auto" onMouseLeave={() => setHov(null)}>
+      <div className="flex items-end gap-1.5 min-w-full pt-16" style={{ height: height + 64 }}>
+        {data.map((d, i) => {
+          const activa = hov === i;
+          return (
+            <div
+              key={i}
+              tabIndex={0}
+              onMouseEnter={() => setHov(i)}
+              onFocus={() => setHov(i)}
+              onBlur={() => setHov(null)}
+              className={`relative flex-1 min-w-[10px] flex flex-col justify-end h-full cursor-default outline-none transition-opacity duration-200 ${hov !== null && !activa ? "opacity-45" : "opacity-100"}`}
+            >
+              <div className={`w-full ${BAR[accents[1]]} ${BARRA_HOVER} ${activa ? BARRA_ACTIVA : ""}`} style={{ height: Math.max(0, (d.b / max) * (height - 6)) }} />
+              <div className={`w-full rounded-t ${BAR[accents[0]]} ${BARRA_HOVER} ${activa ? BARRA_ACTIVA : ""}`} style={{ height: Math.max(2, (d.a / max) * (height - 6)) }} />
+              <Tarjeta visible={activa} label={d.label} valor={format(d.a + d.b)} detalle={d.hint} pos={i === 0 ? "izq" : i === data.length - 1 ? "der" : "centro"} bottom={Math.max(2, ((d.a + d.b) / max) * (height - 6)) + 8} />
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
       <div className="flex gap-1.5 mt-1.5 min-w-full">
         {data.map((d, i) => (
-          <div key={i} className="flex-1 min-w-[10px] text-center text-[9px] text-muted-foreground truncate">{d.label}</div>
+          <div key={i} className={`flex-1 min-w-[10px] text-center text-[9px] truncate transition-colors ${hov === i ? "text-foreground font-semibold" : "text-muted-foreground"}`}>{d.label}</div>
         ))}
       </div>
     </div>

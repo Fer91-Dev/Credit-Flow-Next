@@ -408,7 +408,7 @@ function TabResumen({ r }: { r: Reporte }) {
 // ─── Tab: Operaciones ─────────────────────────────────────────────────────────
 
 function TabOperaciones({ r, s }: { r: Reporte; s?: ReporteSerie }) {
-  const barras: Punto[] = (s?.serie ?? []).map((p) => ({ label: mesCorto(p.mes), value: p.otorgado_monto, hint: `$${n0(p.otorgado_monto)} · ${p.otorgado_cantidad} op.` }));
+  const barras: Punto[] = (s?.serie ?? []).map((p) => ({ label: mesCorto(p.mes), value: p.otorgado_monto, hint: `$${n2(p.otorgado_monto)} · ${p.otorgado_cantidad} op.` }));
   const tickets = (s?.serie ?? []).map((p) => p.ticket_promedio);
   return (
     <div className="space-y-5">
@@ -419,7 +419,7 @@ function TabOperaciones({ r, s }: { r: Reporte; s?: ReporteSerie }) {
         <KpiCard icon="calendar" label="Plazo / tasa prom." value={`${n1(r.operaciones.plazo_promedio)} cuotas`} accent="muted" sub={`${n1(r.operaciones.tasa_promedio)}% tasa`} />
       </div>
       <Section title="Monto otorgado por mes" icon="chart-increasing">
-        <BarChart data={barras} accent="primary" format={(v) => `$${n0(v)}`} />
+        <BarChart data={barras} accent="primary" format={(v) => `$${n2(v)}`} />
       </Section>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <Section title="Evolución del ticket promedio" icon="bar-chart">
@@ -441,8 +441,8 @@ function TabOperaciones({ r, s }: { r: Reporte; s?: ReporteSerie }) {
 
 function TabRentabilidad({ r, s }: { r: Reporte; s?: ReporteSerie }) {
   const rent = r.rentabilidad;
-  const stack = (s?.serie ?? []).map((p) => ({ label: mesCorto(p.mes), a: p.rentabilidad_neta > 0 ? p.rentabilidad_neta : 0, b: round2(p.costo_fondeo + p.gastos), hint: `Ingreso $${n0(p.ingreso_financiero)} · Fondeo $${n0(p.costo_fondeo)} · Gastos $${n0(p.gastos)}` }));
-  const neta: Punto[] = (s?.serie ?? []).map((p) => ({ label: mesCorto(p.mes), value: p.rentabilidad_neta, hint: `$${n0(p.rentabilidad_neta)}` }));
+  const stack = (s?.serie ?? []).map((p) => ({ label: mesCorto(p.mes), a: p.rentabilidad_neta > 0 ? p.rentabilidad_neta : 0, b: round2(p.costo_fondeo + p.gastos), hint: `Ingreso $${n2(p.ingreso_financiero)} · Fondeo $${n2(p.costo_fondeo)} · Gastos $${n2(p.gastos)}` }));
+  const neta: Punto[] = (s?.serie ?? []).map((p) => ({ label: mesCorto(p.mes), value: p.rentabilidad_neta, hint: `$${n2(p.rentabilidad_neta)}` }));
   return (
     <div className="space-y-5">
       {!rent.habilitado && (
@@ -459,12 +459,12 @@ function TabRentabilidad({ r, s }: { r: Reporte; s?: ReporteSerie }) {
         <KpiCard icon="chart-increasing" label="Margen neto" value={`${n1(rent.margen_neto_pct)}%`} accent={rent.margen_neto_pct >= 0 ? "primary" : "destructive"} mono sub="sobre ingreso financiero" />
       </div>
       <Section title="Rentabilidad neta por mes" icon="chart-increasing">
-        <BarChart data={neta} accent="success" format={(v) => `$${n0(v)}`} />
+        <BarChart data={neta} accent="success" format={(v) => `$${n2(v)}`} />
         <p className="mt-2 text-[11px] text-muted-foreground">Ingreso financiero cobrado menos costo de fondeo y gastos registrados del mes. Rojo = negativa.</p>
       </Section>
       {rent.habilitado && (
         <Section title="Rentabilidad neta vs costo de fondeo" icon="bar-chart">
-          <StackedBarChart data={stack} accents={["success", "destructive"]} format={(v) => `$${n0(v)}`} />
+          <StackedBarChart data={stack} accents={["success", "destructive"]} format={(v) => `$${n2(v)}`} />
           <div className="mt-2 flex gap-4 text-[11px] text-muted-foreground">
             <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-success" /> Rentabilidad neta</span>
             <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-destructive" /> Costo de fondeo + gastos</span>
@@ -484,7 +484,7 @@ function TabRentabilidad({ r, s }: { r: Reporte; s?: ReporteSerie }) {
  */
 function TabGastos({ r, s }: { r: Reporte; s?: ReporteSerie }) {
   const g = r.gastos;
-  const porMes: Punto[] = (s?.serie ?? []).map((p) => ({ label: mesCorto(p.mes), value: p.gastos, hint: `$${n0(p.gastos)}` }));
+  const porMes: Punto[] = (s?.serie ?? []).map((p) => ({ label: mesCorto(p.mes), value: p.gastos, hint: `$${n2(p.gastos)}` }));
   const principal = g.por_caja.find((c) => c.caja === "Caja principal")?.total ?? 0;
   const agentes = round2(g.total - principal);
   return (
@@ -525,7 +525,7 @@ function TabGastos({ r, s }: { r: Reporte; s?: ReporteSerie }) {
               {porMes.length > 1 && (
                 <div className="mt-4">
                   <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Por mes</p>
-                  <BarChart data={porMes} accent="warning" format={(v) => `$${n0(v)}`} />
+                  <BarChart data={porMes} accent="warning" format={(v) => `$${n2(v)}`} />
                 </div>
               )}
             </Section>
@@ -560,8 +560,8 @@ function TabGastos({ r, s }: { r: Reporte; s?: ReporteSerie }) {
 // ─── Tab: Morosidad ───────────────────────────────────────────────────────────
 
 function TabMorosidad({ r, s }: { r: Reporte; s?: ReporteSerie }) {
-  const moraPct: Punto[] = (s?.serie ?? []).map((p) => ({ label: mesCorto(p.mes), value: p.mora_pct, hint: `${n1(p.mora_pct)}% · $${n0(p.mora_saldo_expuesto)}` }));
-  const expuesto: Punto[] = (s?.serie ?? []).map((p) => ({ label: mesCorto(p.mes), value: p.mora_saldo_expuesto, hint: `$${n0(p.mora_saldo_expuesto)}` }));
+  const moraPct: Punto[] = (s?.serie ?? []).map((p) => ({ label: mesCorto(p.mes), value: p.mora_pct, hint: `${n1(p.mora_pct)}% · $${n2(p.mora_saldo_expuesto)}` }));
+  const expuesto: Punto[] = (s?.serie ?? []).map((p) => ({ label: mesCorto(p.mes), value: p.mora_saldo_expuesto, hint: `$${n2(p.mora_saldo_expuesto)}` }));
   const sev = r.morosidad.por_severidad;
   // Los tramos son los que la financiera configuró; se escriben con la palabra "días".
   const tm = r.morosidad.tramos_mora ?? { media_hasta: 15, alta_hasta: 30 };
@@ -609,7 +609,7 @@ function TabMorosidad({ r, s }: { r: Reporte; s?: ReporteSerie }) {
       </Section>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <Section title="Saldo en mora por mes" icon="money-bag">
-          <BarChart data={expuesto} accent="destructive" format={(v) => `$${n0(v)}`} />
+          <BarChart data={expuesto} accent="destructive" format={(v) => `$${n2(v)}`} />
         </Section>
         <Section title="Severidad actual" icon="warning">
           <Donut segments={[
