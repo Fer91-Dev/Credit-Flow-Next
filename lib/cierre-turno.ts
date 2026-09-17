@@ -32,6 +32,18 @@ export interface CierreDolares {
   diferenciaPendiente?: boolean;
 }
 
+/**
+ * Correlativo del ACTA, serie propia "ACT", contado sobre `cierres_turno`. Numerarla con la
+ * serie CIE de los retiros (que vive en `movimientos_caja`) hacía que el acta saliera como
+ * CIE-000003 al lado de sus retiros CIE-000001/2, y que dos actas sin retiro repitieran
+ * número. Mismo candado por (tenant, serie) que `siguienteNumeroComprobante`.
+ */
+async function siguienteNumeroActa(tx: Prisma.TransactionClient, tenantId: string): Promise<number> {
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`comprobante:${tenantId}:ACT`}, 0))`;
+  const max = await tx.cierres_turno.aggregate({ where: { tenant_id: tenantId }, _max: { numero: true } });
+  return (max._max.numero ?? 0) + 1;
+}
+
 const usdTexto = (n: number) => `U$S ${Number(n).toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 /**
@@ -196,7 +208,7 @@ export async function cerrarTurno(input: CerrarTurnoInput) {
       data: {
         ...withTenant(tenantId),
         fecha, vendedor_id: vendedorId, cuenta: "efectivo",
-        numero: await siguienteNumeroComprobante(tx, tenantId, "CIE"),
+        numero: await siguienteNumeroActa(tx, tenantId),
         abierto_desde: previo?.created_at ?? null,
         cerrado_at: ahora,
         saldo_apertura: ef.apertura,
@@ -271,7 +283,7 @@ export function serializarCierre(c: {
   cerrado_por_nombre: string | null; vendedor?: { nombre: string } | null;
 }) {
   return {
-    id: c.id, numero: c.numero, comprobante: `CIE-${String(c.numero).padStart(6, "0")}`,
+    id: c.id, numero: c.numero, comprobante: `ACT-${String(c.numero).padStart(6, "0")}`,
     fecha: c.fecha.toISOString().slice(0, 10), cerrado_at: c.cerrado_at.toISOString(), abierto_desde: c.abierto_desde?.toISOString() ?? null,
     vendedor_id: c.vendedor_id, vendedor_nombre: c.vendedor?.nombre ?? null, cuenta: c.cuenta,
     saldo_apertura: c.saldo_apertura, ingresos: c.ingresos, egresos: c.egresos, saldo_sistema: c.saldo_sistema,

@@ -81,7 +81,7 @@ try {
   ok(c1.ok && c1.status === 201, "el agente cierra su turno", c1.error ?? c1.data?.comprobante);
   const A = c1.data ?? {};
   if (c1.ok) creados.cierres.push(A.id);
-  ok(/^CIE-\d{6}$/.test(A.comprobante ?? ""), "el acta tiene comprobante CIE-", A.comprobante);
+  ok(/^ACT-\d{6}$/.test(A.comprobante ?? ""), "el acta tiene comprobante ACT- (serie propia)", A.comprobante);
   ok(igual(A.saldo_apertura, T.apertura) && igual(A.ingresos, T.ingresos) && igual(A.egresos, T.egresos), "el acta congela lo que decía el turno abierto");
   ok(igual(A.saldo_sistema, sistemaReal), "acta: saldo de sistema", f(A.saldo_sistema));
   ok(igual(A.saldo_fisico, CONTADO), "acta: contado", f(A.saldo_fisico));
