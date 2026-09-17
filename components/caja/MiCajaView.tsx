@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import { refrescarNotificaciones, useMiCaja, useMisArqueos, useCierresTurno, type CuentaCaja, type MovimientoCaja } from "@/lib/swr";
 import { formatFechaHora, parseMontoInput } from "@/lib/utils";
+import { FechaMovimiento } from "@/components/caja/FechaMovimiento";
 import { MoneyInput, Segmented, IconSelect, IconTextarea, FieldLabel, FormActions, simboloCuenta, MODAL_CONTENT_WIDE, SIN_CIERRE_ACCIDENTAL } from "./caja-form";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { KpiCard } from "@/components/ui/KpiCard";
@@ -214,7 +215,7 @@ export function MiCajaView() {
             pageSize={12}
             columns={[
               { header: "Comprobante", cell: (m) => <span className="font-mono text-xs text-muted-foreground whitespace-nowrap">{m.comprobante ?? "—"}</span> },
-              { header: "Fecha y hora", cell: (m) => <span className="text-muted-foreground tabular-nums whitespace-nowrap">{formatFechaHora(m.created_at ?? m.fecha)}</span> },
+              { header: "Fecha y hora", cell: (m) => <FechaMovimiento m={m} className="text-muted-foreground" /> },
               { header: "Tipo", cell: (m) => <StatusBadge label={TIPO_META[m.tipo].label} variant={TIPO_META[m.tipo].variant} /> },
               { header: "Origen", cell: (m) => <span className="text-muted-foreground">{m.origen ?? "—"}</span> },
               { header: "Destino", cell: (m) => <span className="flex items-center gap-1.5 text-foreground"><ArrowRight className="h-3 w-3 shrink-0 text-muted-foreground/50" />{m.destino ?? "—"}</span> },

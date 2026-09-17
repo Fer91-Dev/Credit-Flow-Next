@@ -13,6 +13,7 @@ import { ArqueosPanel } from "@/components/caja/ArqueosPanel";
 import { CerrarTurnoDialog, CierresTurnoPanel } from "@/components/caja/CierreTurno";
 import { descargarCSV } from "@/lib/csv";
 import { formatFechaHora, parseMontoInput } from "@/lib/utils";
+import { FechaMovimiento, fechaMovimientoTexto } from "@/components/caja/FechaMovimiento";
 import { MoneyInput, Segmented, IconSelect, IconTextarea, FieldLabel, FormActions, simboloCuenta, MODAL_CONTENT_WIDE, SIN_CIERRE_ACCIDENTAL } from "./caja-form";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { KpiCard } from "@/components/ui/KpiCard";
@@ -69,9 +70,11 @@ const TIPO_META: Record<MovimientoCaja["tipo"], { label: string; variant: BadgeV
 
 
 const INPUT =
-  "h-10 rounded-lg border border-border bg-muted/40 px-3 text-sm text-foreground outline-none " +
-  "transition-all focus:border-primary focus:ring-2 focus:ring-primary/20";
+  "h-10 rounded-lg border border-border bg-input px-3 text-sm text-foreground shadow-[inset_0_1px_2px_0_rgba(0,0,0,0.22)] outline-none " +
+  "transition-all focus:border-primary focus:ring-2 focus:ring-primary/25";
 const SEL = INPUT + " pr-8 appearance-none cursor-pointer [&>option]:bg-card [&>option]:text-foreground";
+/** Los dos `<input type="date">` del período: el mismo pozo, más angostos, con los dígitos alineados. */
+const FECHA = INPUT + " w-auto px-2.5 text-xs tabular-nums";
 
 // Separador es-AR: Excel en español usa ";" (la "," es el decimal). Se quotea
 // cualquier celda que contenga el separador, comillas o saltos de línea.
@@ -80,7 +83,7 @@ function exportarCSV(caja: CajaData) {
   const head = ["Comprobante", "Fecha y hora", "Tipo", "Origen", "Destino", "Detalle", "Monto"];
   const rows = caja.movimientos.map((m) => [
     m.comprobante ?? "",
-    formatFechaHora(m.created_at ?? m.fecha),
+    fechaMovimientoTexto(m),
     TIPO_META[m.tipo]?.label ?? m.tipo,
     m.origen ?? "",
     m.destino ?? "",
@@ -324,79 +327,57 @@ export function CajaView() {
               justo encima de la tabla: así se lee "esta tabla, recortada así" en vez de
               filtros sueltos arriba de la pantalla, lejos de lo que filtran. */}
           <section className="space-y-3">
-          {/* Encabezado del libro: título + el conteo como píldora + de qué período sale.
-              Cuando hay un término escrito el conteo dice "12 de 340": la búsqueda recorta
-              la tabla, y callar cuántos quedaron afuera haría creer que eso es todo. */}
-          <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-border/60 pb-3">
-            <div className="flex flex-wrap items-center gap-2">
-              <History className="h-4 w-4 text-muted-foreground" />
-              <h2 className="text-sm font-semibold text-foreground">Movimientos de caja</h2>
-              <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-bold tabular-nums text-muted-foreground">
-                {!caja ? "…" : busq.trim() ? `${movimientosVisibles.length} de ${caja.movimientos.length}` : caja.movimientos.length}
-              </span>
-              <span className="font-mono text-[11px] text-muted-foreground/60">
-                {desde.split("-").reverse().join("/")} — {hasta.split("-").reverse().join("/")}
-              </span>
-            </div>
-          </div>
           {/* ── Filtros de la tabla ─────────────────────────────────────────────
-              Antes eran tres mecanismos sueltos en una fila (dos inputs de fecha, el
-              panel de Filtros y los presets al otro extremo) y ninguno decía qué estaba
-              aplicado: los presets no se marcaban y no había forma de volver atrás.
-              Ahora es UNA barra, pegada a la tabla, con jerarquía: el PERÍODO manda y se
-              queda a la vista —es el filtro principal de una caja, y además mueve los KPI de
-              ingresos y egresos, así que esconderlo sería tapar lo que más se toca—; buscar y
-              filtrar comparten un solo control a la derecha, y "Limpiar" deshace todo. */}
-          <div className="rounded-xl border border-border bg-card">
-            <div className="flex flex-col gap-3 p-3 lg:flex-row lg:items-center lg:justify-between">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Período</span>
-                {/* Segmentado: el preset aplicado queda marcado. Antes eran cuatro botones
-                    idénticos y no se sabía cuál estaba puesto. */}
-                <div className="flex items-center rounded-lg border border-border p-0.5">
-                  {presets.map((p) => {
-                    const activo = desde === p.desde && hasta === p.hasta;
-                    return (
-                      <button
-                        key={p.label}
-                        onClick={p.run}
-                        aria-pressed={activo}
-                        className={`rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors ${
-                          activo ? "bg-primary/10 text-foreground" : "text-muted-foreground hover:bg-muted/20 hover:text-foreground"
-                        }`}
-                      >
-                        {p.label}
-                      </button>
-                    );
-                  })}
-                </div>
-                <span className="hidden h-5 w-px bg-border sm:block" />
-                <div className="flex items-center gap-1.5">
-                  <input
-                    type="date" value={desde} max={hasta} onChange={(e) => setDesde(e.target.value)}
-                    aria-label="Desde"
-                    className="h-9 rounded-lg border border-border bg-muted/40 px-2.5 text-xs text-foreground outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/20"
-                  />
-                  <ArrowRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground/50" />
-                  <input
-                    type="date" value={hasta} min={desde} onChange={(e) => setHasta(e.target.value)}
-                    aria-label="Hasta"
-                    className="h-9 rounded-lg border border-border bg-muted/40 px-2.5 text-xs text-foreground outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/20"
-                  />
-                </div>
+              La forma aprobada en Créditos (buscador con "Filtrar" adentro + encabezado de
+              tabla con el conteo pegado al título y "Limpiar filtros F3" a la derecha), con
+              el criterio de la caja: el PERÍODO manda y se queda a la vista —es el filtro
+              principal de un libro de caja y además mueve los KPI de ingresos y egresos—.
+              Fernando (16/09/2026) pidió corregir lo que se veía: la barra iba en una caja
+              con borde adentro de la sección, el preset activo casi no se distinguía, las
+              fechas no tenían el pozo de los demás inputs, el buscador cortaba su propio
+              placeholder y el rango se repetía en gris al lado del título. */}
+          <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+            <div className="flex flex-wrap items-center gap-2.5">
+              <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Período</span>
+              {/* Segmentado: el preset aplicado se marca como el ítem activo del menú
+                  (relleno + anillo del acento), no con un gris apenas más claro. */}
+              <div role="group" aria-label="Período" className="flex h-10 items-center gap-0.5 rounded-lg border border-border bg-muted/20 p-1">
+                {presets.map((p) => {
+                  const activo = desde === p.desde && hasta === p.hasta;
+                  return (
+                    <button
+                      key={p.label}
+                      type="button"
+                      onClick={p.run}
+                      aria-pressed={activo}
+                      className={`h-full rounded-md px-2.5 text-xs font-medium whitespace-nowrap transition-colors ${
+                        activo ? "bg-primary/10 text-primary ring-1 ring-inset ring-primary/30" : "text-muted-foreground hover:bg-muted/40 hover:text-foreground"
+                      }`}
+                    >
+                      {p.label}
+                    </button>
+                  );
+                })}
               </div>
+              <div className="flex items-center gap-1.5">
+                <input type="date" value={desde} max={hasta} onChange={(e) => setDesde(e.target.value)} aria-label="Desde" className={FECHA} />
+                <ArrowRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground/50" />
+                <input type="date" value={hasta} min={desde} onChange={(e) => setHasta(e.target.value)} aria-label="Hasta" className={FECHA} />
+              </div>
+            </div>
 
-              <div className="flex flex-wrap items-center gap-2">
-                <BuscadorF3
-                  value={busq}
-                  onChange={setBusq}
-                  placeholder="Comprobante, cliente, detalle o monto…"
-                  onF3={limpiarTodo}
-                  className="w-full sm:w-[26rem]"
-                  /* Sin `onLimpiar`: el panel no dibuja SU botón de limpiar. Hay uno solo,
-                     el de la barra, que además restablece el período. Dos botones "Limpiar"
-                     con alcances distintos era una trampa. */
-                  accionDerecha={
+            <BuscadorF3
+              value={busq}
+              onChange={setBusq}
+              placeholder="Comprobante, cliente, detalle o monto…"
+              onF3={limpiarTodo}
+              // Crece hasta donde le deja el período y se frena en el ancho del buscador de
+              // Créditos: lo justo para que el placeholder se lea entero con "Filtrar" adentro.
+              className="w-full xl:w-auto xl:flex-1 xl:min-w-[26rem] xl:max-w-[34rem]"
+              accionDerecha={
+                /* Sin `onLimpiar`: el panel no dibuja SU botón de limpiar. Hay uno solo, el
+                   del encabezado de la tabla, que además restablece el período. Dos botones
+                   "Limpiar" con alcances distintos era una trampa. */
                 <FiltrosPanel
                   label="Filtrar"
                   resumen={resumenFiltros}
@@ -437,21 +418,34 @@ export function CajaView() {
                     </div>
                   </label>
                 </FiltrosPanel>
-                  }
-                />
+              }
+            />
+          </div>
 
-                {/* Aparece solo si hay algo que deshacer — incluido un período cambiado. */}
-                {haySucio && (
-                  <button
-                    onClick={limpiarTodo}
-                    className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/30 hover:text-foreground"
-                  >
-                    <X className="h-3.5 w-3.5" /> Limpiar
-                  </button>
-                )}
-              </div>
+          {/* Encabezado del libro: título + el conteo como píldora. Cuando hay un término
+              escrito el conteo dice "12 de 340": la búsqueda recorta la tabla, y callar
+              cuántos quedaron afuera haría creer que eso es todo. El rango ya está en las
+              fechas de arriba: no se repite acá. A la derecha, "Limpiar filtros" con la
+              tecla escrita al lado, solo cuando hay algo que limpiar (período incluido). */}
+          <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-border/60 pb-3">
+            <div className="flex items-center gap-2">
+              <History className="h-4 w-4 text-muted-foreground" />
+              <h2 className="text-sm font-semibold text-foreground">Movimientos de caja</h2>
+              <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-bold tabular-nums text-muted-foreground">
+                {!caja ? "…" : busq.trim() ? `${movimientosVisibles.length} de ${caja.movimientos.length}` : caja.movimientos.length}
+              </span>
             </div>
-
+            {haySucio && (
+              <button
+                type="button"
+                onClick={limpiarTodo}
+                title="Limpiar la búsqueda, los filtros y el período"
+                className="flex items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
+              >
+                <X className="h-3 w-3" /> Limpiar filtros
+                <kbd className="rounded border border-border bg-muted/50 px-1.5 py-0.5 font-mono text-[10px] font-semibold">F3</kbd>
+              </button>
+            )}
           </div>
           <DataTable<MovimientoCaja>
             rows={movimientosVisibles}
@@ -462,7 +456,7 @@ export function CajaView() {
             pageSize={12}
             columns={[
               { header: "Comprobante", cell: (m) => <span className="font-mono text-xs text-muted-foreground whitespace-nowrap">{m.comprobante ?? "—"}</span> },
-              { header: "Fecha y hora", cell: (m) => <span className="text-muted-foreground tabular-nums whitespace-nowrap">{formatFechaHora(m.created_at ?? m.fecha)}</span> },
+              { header: "Fecha y hora", cell: (m) => <FechaMovimiento m={m} className="text-muted-foreground" /> },
               { header: "Tipo", cell: (m) => <StatusBadge label={TIPO_META[m.tipo].label} variant={TIPO_META[m.tipo].variant} /> },
               { header: "Origen", cell: (m) => <span className="text-muted-foreground">{m.origen ?? "—"}</span> },
               { header: "Destino", cell: (m) => <span className="flex items-center gap-1.5 text-foreground"><ArrowRight className="h-3 w-3 shrink-0 text-muted-foreground/50" />{m.destino ?? "—"}</span> },

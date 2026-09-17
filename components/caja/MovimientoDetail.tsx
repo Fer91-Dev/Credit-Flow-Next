@@ -5,6 +5,7 @@ import { useFinanciera, type MovimientoCaja } from "@/lib/swr";
 import { StatusBadge, type BadgeVariant } from "@/components/ui/StatusBadge";
 import { DetailGrid } from "@/components/ui/DetailGrid";
 import { formatCreditoNumero, formatFechaHora } from "@/lib/utils";
+import { fechaMovimientoTexto } from "@/components/caja/FechaMovimiento";
 import { CreditoLink } from "@/components/ui/CreditoLink";
 
 function n2(x: number) {
@@ -20,7 +21,7 @@ function imprimirMovimiento(mov: MovimientoCaja, label: string, marcaDoc: string
   const ingreso = mov.monto >= 0;
   const filas: [string, string][] = [
     ["Comprobante", mov.comprobante ?? "—"],
-    ["Fecha y hora", formatFechaHora(mov.created_at ?? mov.fecha)],
+    ["Fecha y hora", fechaMovimientoTexto(mov)],
     ["Tipo", label],
     ["Sentido", ingreso ? "Ingreso" : "Egreso"],
     ["Origen", mov.origen ?? "—"],
@@ -51,7 +52,7 @@ function imprimirMovimiento(mov: MovimientoCaja, label: string, marcaDoc: string
       @media print { body { padding: 0; } }
     </style></head><body><div class="doc">
       <h1>${esc(marcaDoc)} · Comprobante ${esc(mov.comprobante ?? "de movimiento")}</h1>
-      <div class="sub">${esc(formatFechaHora(mov.created_at ?? mov.fecha))}</div>
+      <div class="sub">${esc(fechaMovimientoTexto(mov))}</div>
       <div class="monto">${esc(montoStr)}</div>
       <table>${filas.map(([k, v]) => `<tr><td class="k">${esc(k)}</td><td class="v">${esc(v)}</td></tr>`).join("")}</table>
       <div class="ft">Generado el ${esc(formatFechaHora(new Date()))} · ID ${esc(mov.id)}</div>
@@ -101,7 +102,7 @@ export function MovimientoDetail({ mov }: { mov: MovimientoCaja }) {
         <div>
           <StatusBadge label={meta.label} variant={meta.variant} />
           {mov.comprobante && <p className="font-mono text-sm font-semibold text-foreground mt-1.5">{mov.comprobante}</p>}
-          <p className="text-xs text-muted-foreground mt-0.5">{formatFechaHora(mov.created_at ?? mov.fecha)}</p>
+          <p className="text-xs text-muted-foreground mt-0.5">{fechaMovimientoTexto(mov)}</p>
         </div>
         <p className={`font-mono font-bold text-xl ${ingreso ? "text-success" : "text-destructive"}`}>
           {ingreso ? "+" : "−"}${n2(Math.abs(mov.monto))}
@@ -117,7 +118,7 @@ export function MovimientoDetail({ mov }: { mov: MovimientoCaja }) {
           ["Destino", mov.destino || null],
           ["Cuenta", CUENTA_LABEL[mov.cuenta] ?? mov.cuenta],
           ["Monto", <span key="m" className={`font-mono ${ingreso ? "text-success" : "text-destructive"}`}>{ingreso ? "+" : "−"}${n2(Math.abs(mov.monto))}</span>],
-          ["Fecha y hora", formatFechaHora(mov.created_at ?? mov.fecha)],
+          ["Fecha y hora", fechaMovimientoTexto(mov)],
           ["Método", mov.metodo || null],
           ["Descripción", mov.descripcion],
           ["Crédito", mov.credito_numero != null && mov.credito_id ? <CreditoLink id={mov.credito_id} numero={mov.credito_numero} numeroOrigen={mov.credito_refinancia_a_numero} /> : mov.credito_numero != null ? <span className="font-mono">{formatCreditoNumero(mov.credito_numero, mov.credito_refinancia_a_numero)}</span> : null],
