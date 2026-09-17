@@ -16,6 +16,10 @@ import { BarChart, StackedBarChart, Sparkline, Donut, type Punto } from "./chart
 function n0(x: number) {
   return new Intl.NumberFormat("es-AR", { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(x);
 }
+function n2(x: number) {
+  return new Intl.NumberFormat("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(x);
+}
+const round2 = (x: number) => Math.round(x * 100) / 100;
 function n1(x: number) {
   return new Intl.NumberFormat("es-AR", { minimumFractionDigits: 0, maximumFractionDigits: 1 }).format(x);
 }
@@ -49,6 +53,7 @@ const TABS = [
   { id: "resumen", label: "Resumen", emoji: "clipboard" },
   { id: "operaciones", label: "Operaciones", emoji: "handshake" },
   { id: "rentabilidad", label: "Rentabilidad", emoji: "money-bag" },
+  { id: "gastos", label: "Gastos", emoji: "receipt" },
   { id: "morosidad", label: "Morosidad", emoji: "warning" },
   { id: "cobranza", label: "Cobranza", emoji: "money-with-wings" },
   { id: "medios", label: "Medios de pago", emoji: "credit-card" },
@@ -61,6 +66,12 @@ type TabId = (typeof TABS)[number]["id"];
 // El armado del CSV vive en `lib/csv.ts`, compartido con Caja, Comprobantes y Stock.
 // Acá había una variante con coma como separador: correcta para un Excel en inglés y
 // equivocada para uno en español, donde la fila entera caía en una sola columna.
+function exportarGastos(r: Reporte) {
+  const head = ["Fecha", "Caja", "Descripción", "Cuenta", "Monto", "Comprobante"];
+  const rows = r.gastos.lista.map((g) => [formatFecha(g.fecha), g.caja, g.descripcion, g.cuenta, g.monto, g.comprobante ?? ""]);
+  descargarCSV(`gastos_${r.periodo.desde}_${r.periodo.hasta}.csv`, [head, ...rows]);
+}
+
 function exportarPagos(r: Reporte) {
   descargarCSV(`reporte-cobranzas_${r.periodo.desde}_${r.periodo.hasta}.csv`, [
     ["Fecha", "Cliente", "Monto", "Capital", "Interés", "Mora", "Excedente", "Método"],
@@ -234,12 +245,14 @@ export function ReportesView() {
   ];
 
   const puedeExportar =
-    tab === "resumen" ? !!reporte && reporte.detalle_pagos.length > 0
+    tab === "gastos" ? !!reporte && reporte.gastos.lista.length > 0
+    : tab === "resumen" ? !!reporte && reporte.detalle_pagos.length > 0
     : tab === "cobranza" ? !!cobranza && cobranza.por_vendedor.length > 0
     : tab === "medios" ? !!serie && serie.medios_pago.length > 0
     : !!serie && serie.serie.length > 0;
   const exportar = () => {
     if (tab === "resumen") { if (reporte) exportarPagos(reporte); }
+    else if (tab === "gastos") { if (reporte) exportarGastos(reporte); }
     else if (tab === "cobranza") { if (cobranza) exportarCobranza(cobranza); }
     else if (tab === "medios") { if (serie) exportarMedios(serie); }
     else if (serie) exportarSerie(serie);
@@ -316,6 +329,7 @@ export function ReportesView() {
           {tab === "resumen" && <TabResumen r={reporte} />}
           {tab === "operaciones" && <TabOperaciones r={reporte} s={serie} />}
           {tab === "rentabilidad" && <TabRentabilidad r={reporte} s={serie} />}
+          {tab === "gastos" && <TabGastos r={reporte} s={serie} />}
           {tab === "morosidad" && <TabMorosidad r={reporte} s={serie} />}
           {tab === "cobranza" && <TabCobranza c={cobranza} />}
           {tab === "medios" && <TabMedios s={serie} />}
@@ -334,12 +348,12 @@ function TabResumen({ r }: { r: Reporte }) {
     <div className="space-y-5">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <KpiCard icon="handshake" label="Operaciones" value={String(r.operaciones.cantidad)} accent="primary" sub={`ticket $${n0(r.operaciones.ticket_promedio)}`} />
-        <KpiCard icon="dollar-banknote" label="Monto otorgado" value={`$${n0(r.operaciones.monto_otorgado)}`} accent="primary" mono />
-        <KpiCard icon="chart-increasing" label="Cobrado" value={`$${n0(r.cobranzas.total_cobrado)}`} accent="success" mono sub={`${r.cobranzas.cantidad} pago${r.cobranzas.cantidad !== 1 ? "s" : ""}`} />
-        <KpiCard icon="money-bag" label="Ingreso financiero" value={`$${n0(r.rentabilidad.ingreso_financiero)}`} accent="warning" mono sub="interés + cargos + mora" />
-        <KpiCard icon="bar-chart" label={r.rentabilidad.habilitado ? "Rentabilidad neta" : "Rentab. (bruta)"} value={`$${n0(r.rentabilidad.rentabilidad_neta)}`} accent={r.rentabilidad.rentabilidad_neta >= 0 ? "success" : "destructive"} mono sub={r.rentabilidad.habilitado ? `${n1(r.rentabilidad.margen_neto_pct)}% margen` : "sin costo de fondeo"} />
-        <KpiCard icon="chart-increasing" label="Cartera activa" value={`$${n0(r.cartera.saldo_activo_total)}`} accent="primary" mono />
-        <KpiCard icon="warning" label="Saldo en mora" value={`$${n0(r.morosidad.saldo_expuesto)}`} accent={r.morosidad.en_mora > 0 ? "destructive" : "muted"} mono sub={`${r.morosidad.en_mora} en mora`} />
+        <KpiCard icon="dollar-banknote" label="Monto otorgado" value={`$${n2(r.operaciones.monto_otorgado)}`} accent="primary" mono />
+        <KpiCard icon="chart-increasing" label="Cobrado" value={`$${n2(r.cobranzas.total_cobrado)}`} accent="success" mono sub={`${r.cobranzas.cantidad} pago${r.cobranzas.cantidad !== 1 ? "s" : ""}`} />
+        <KpiCard icon="money-bag" label="Ingreso financiero" value={`$${n2(r.rentabilidad.ingreso_financiero)}`} accent="warning" mono sub="interés + cargos + mora" />
+        <KpiCard icon="bar-chart" label={r.rentabilidad.habilitado ? "Rentabilidad neta" : "Rentab. (bruta)"} value={`$${n2(r.rentabilidad.rentabilidad_neta)}`} accent={r.rentabilidad.rentabilidad_neta >= 0 ? "success" : "destructive"} mono sub={r.rentabilidad.habilitado ? `${n1(r.rentabilidad.margen_neto_pct)}% margen` : "sin costo de fondeo"} />
+        <KpiCard icon="chart-increasing" label="Cartera activa" value={`$${n2(r.cartera.saldo_activo_total)}`} accent="primary" mono />
+        <KpiCard icon="warning" label="Saldo en mora" value={`$${n2(r.morosidad.saldo_expuesto)}`} accent={r.morosidad.en_mora > 0 ? "destructive" : "muted"} mono sub={`${r.morosidad.en_mora} en mora`} />
         <KpiCard icon="warning" label="Morosidad" value={`${n1(moraPct)}%`} accent={moraPct > 10 ? "destructive" : moraPct > 0 ? "warning" : "success"} mono sub="del capital activo" />
       </div>
 
@@ -369,8 +383,8 @@ function TabOperaciones({ r, s }: { r: Reporte; s?: ReporteSerie }) {
     <div className="space-y-5">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <KpiCard icon="handshake" label="Operaciones (período)" value={String(r.operaciones.cantidad)} accent="primary" />
-        <KpiCard icon="dollar-banknote" label="Monto otorgado" value={`$${n0(r.operaciones.monto_otorgado)}`} accent="primary" mono />
-        <KpiCard icon="bar-chart" label="Ticket promedio" value={`$${n0(r.operaciones.ticket_promedio)}`} accent="success" mono />
+        <KpiCard icon="dollar-banknote" label="Monto otorgado" value={`$${n2(r.operaciones.monto_otorgado)}`} accent="primary" mono />
+        <KpiCard icon="bar-chart" label="Ticket promedio" value={`$${n2(r.operaciones.ticket_promedio)}`} accent="success" mono />
         <KpiCard icon="calendar" label="Plazo / tasa prom." value={`${n1(r.operaciones.plazo_promedio)} cuotas`} accent="muted" sub={`${n1(r.operaciones.tasa_promedio)}% tasa`} />
       </div>
       <Section title="Monto otorgado por mes" icon="chart-increasing">
@@ -396,7 +410,7 @@ function TabOperaciones({ r, s }: { r: Reporte; s?: ReporteSerie }) {
 
 function TabRentabilidad({ r, s }: { r: Reporte; s?: ReporteSerie }) {
   const rent = r.rentabilidad;
-  const stack = (s?.serie ?? []).map((p) => ({ label: mesCorto(p.mes), a: p.rentabilidad_neta > 0 ? p.rentabilidad_neta : 0, b: p.costo_fondeo, hint: `Ingreso $${n0(p.ingreso_financiero)} · Costo $${n0(p.costo_fondeo)}` }));
+  const stack = (s?.serie ?? []).map((p) => ({ label: mesCorto(p.mes), a: p.rentabilidad_neta > 0 ? p.rentabilidad_neta : 0, b: round2(p.costo_fondeo + p.gastos), hint: `Ingreso $${n0(p.ingreso_financiero)} · Fondeo $${n0(p.costo_fondeo)} · Gastos $${n0(p.gastos)}` }));
   const neta: Punto[] = (s?.serie ?? []).map((p) => ({ label: mesCorto(p.mes), value: p.rentabilidad_neta, hint: `$${n0(p.rentabilidad_neta)}` }));
   return (
     <div className="space-y-5">
@@ -406,24 +420,107 @@ function TabRentabilidad({ r, s }: { r: Reporte; s?: ReporteSerie }) {
           configurá el costo de fondeo en <strong>Configuración → Rentabilidad</strong>.
         </div>
       )}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <KpiCard icon="money-bag" label="Ingreso financiero" value={`$${n0(rent.ingreso_financiero)}`} accent="success" mono sub="interés + cargos + mora" />
-        <KpiCard icon="dollar-banknote" label="Costo de fondeo" value={`$${n0(rent.costo_total)}`} accent="destructive" mono sub={rent.habilitado ? "capital + operativo" : "sin configurar"} />
-        <KpiCard icon="bar-chart" label="Rentabilidad neta" value={`$${n0(rent.rentabilidad_neta)}`} accent={rent.rentabilidad_neta >= 0 ? "success" : "destructive"} mono />
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+        <KpiCard icon="money-bag" label="Ingreso financiero" value={`$${n2(rent.ingreso_financiero)}`} accent="success" mono sub="interés + cargos + mora" />
+        <KpiCard icon="dollar-banknote" label="Costo de fondeo" value={`$${n2(rent.costo_total)}`} accent="destructive" mono sub={rent.habilitado ? "capital + fuera de caja" : "sin configurar"} />
+        <KpiCard icon="receipt" label="Gastos registrados" value={`$${n2(rent.gastos_registrados)}`} accent={rent.gastos_registrados > 0 ? "warning" : "muted"} mono sub="los de la caja, del período" />
+        <KpiCard icon="bar-chart" label="Rentabilidad neta" value={`$${n2(rent.rentabilidad_neta)}`} accent={rent.rentabilidad_neta >= 0 ? "success" : "destructive"} mono sub="ingreso − fondeo − gastos" />
         <KpiCard icon="chart-increasing" label="Margen neto" value={`${n1(rent.margen_neto_pct)}%`} accent={rent.margen_neto_pct >= 0 ? "primary" : "destructive"} mono sub="sobre ingreso financiero" />
       </div>
       <Section title="Rentabilidad neta por mes" icon="chart-increasing">
         <BarChart data={neta} accent="success" format={(v) => `$${n0(v)}`} />
-        <p className="mt-2 text-[11px] text-muted-foreground">Ingreso financiero cobrado menos costo de fondeo del mes. Rojo = negativa.</p>
+        <p className="mt-2 text-[11px] text-muted-foreground">Ingreso financiero cobrado menos costo de fondeo y gastos registrados del mes. Rojo = negativa.</p>
       </Section>
       {rent.habilitado && (
         <Section title="Rentabilidad neta vs costo de fondeo" icon="bar-chart">
           <StackedBarChart data={stack} accents={["success", "destructive"]} format={(v) => `$${n0(v)}`} />
           <div className="mt-2 flex gap-4 text-[11px] text-muted-foreground">
             <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-success" /> Rentabilidad neta</span>
-            <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-destructive" /> Costo de fondeo</span>
+            <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-destructive" /> Costo de fondeo + gastos</span>
           </div>
         </Section>
+      )}
+    </div>
+  );
+}
+
+// ─── Tab: Gastos ──────────────────────────────────────────────────────────────
+
+/**
+ * EL CONTROL DE LOS GASTOS CHICOS. Fernando (16/09/2026): "saber cuáles fueron los gastos
+ * varios del mes o de la semana… los gastos hormiga". Lista completa del período, cuánto
+ * suman, de qué caja salieron y en qué se fueron (misma descripción = mismo concepto).
+ */
+function TabGastos({ r, s }: { r: Reporte; s?: ReporteSerie }) {
+  const g = r.gastos;
+  const porMes: Punto[] = (s?.serie ?? []).map((p) => ({ label: mesCorto(p.mes), value: p.gastos, hint: `$${n0(p.gastos)}` }));
+  const principal = g.por_caja.find((c) => c.caja === "Caja principal")?.total ?? 0;
+  const agentes = round2(g.total - principal);
+  return (
+    <div className="space-y-5">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <KpiCard icon="receipt" label="Gastos del período" value={`$${n2(g.total)}`} accent={g.total > 0 ? "warning" : "muted"} mono sub={g.total_usd > 0 ? `+ U$S ${n2(g.total_usd)} en dólares` : "todas las cajas"} />
+        <KpiCard icon="clipboard" label="Cantidad" value={String(g.cantidad)} accent="primary" sub={g.cantidad > 0 ? `promedio $${n2(g.promedio)}` : "sin gastos"} />
+        <KpiCard icon="bank" label="De la caja principal" value={`$${n2(principal)}`} accent="muted" mono />
+        <KpiCard icon="busts-in-silhouette" label="De las cajas de agentes" value={`$${n2(agentes)}`} accent="muted" mono />
+      </div>
+
+      {g.cantidad === 0 ? (
+        <div className="rounded-xl border border-dashed border-border/60 p-8 text-center text-sm text-muted-foreground">
+          No hay gastos registrados en el período. Se cargan desde Caja → Gasto (o Mi caja → Registrar gasto).
+        </div>
+      ) : (
+        <>
+          <div className="grid gap-5 lg:grid-cols-2">
+            <Section title="En qué se gastó" icon="receipt">
+              <table className="w-full text-sm">
+                <thead><tr className="text-left text-[11px] font-semibold uppercase tracking-wide text-muted-foreground"><th className="pb-2">Concepto</th><th className="pb-2 text-right">Veces</th><th className="pb-2 text-right">Total</th></tr></thead>
+                <tbody>
+                  {g.por_concepto.slice(0, 12).map((c) => (
+                    <tr key={c.concepto} className="border-t border-border/60"><td className="py-1.5 text-foreground">{c.concepto}</td><td className="py-1.5 text-right font-mono text-muted-foreground">{c.cantidad}</td><td className="py-1.5 text-right font-mono text-foreground">${n2(c.total)}</td></tr>
+                  ))}
+                </tbody>
+              </table>
+            </Section>
+            <Section title="Por caja" icon="bank">
+              <table className="w-full text-sm">
+                <thead><tr className="text-left text-[11px] font-semibold uppercase tracking-wide text-muted-foreground"><th className="pb-2">Caja</th><th className="pb-2 text-right">Gastos</th><th className="pb-2 text-right">Total</th></tr></thead>
+                <tbody>
+                  {g.por_caja.map((c) => (
+                    <tr key={c.caja} className="border-t border-border/60"><td className="py-1.5 text-foreground">{c.caja}</td><td className="py-1.5 text-right font-mono text-muted-foreground">{c.cantidad}</td><td className="py-1.5 text-right font-mono text-foreground">${n2(c.total)}</td></tr>
+                  ))}
+                </tbody>
+              </table>
+              {porMes.length > 1 && (
+                <div className="mt-4">
+                  <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Por mes</p>
+                  <BarChart data={porMes} accent="warning" format={(v) => `$${n0(v)}`} />
+                </div>
+              )}
+            </Section>
+          </div>
+
+          <Section title="Detalle, gasto por gasto" icon="clipboard">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead><tr className="text-left text-[11px] font-semibold uppercase tracking-wide text-muted-foreground"><th className="pb-2">Fecha</th><th className="pb-2">Caja</th><th className="pb-2">Descripción</th><th className="pb-2 hidden md:table-cell">Cuenta</th><th className="pb-2 text-right">Monto</th><th className="pb-2 hidden md:table-cell">Comprobante</th></tr></thead>
+                <tbody>
+                  {g.lista.map((x) => (
+                    <tr key={x.id} className="border-t border-border/60">
+                      <td className="py-1.5 whitespace-nowrap text-muted-foreground">{formatFecha(x.fecha)}</td>
+                      <td className="py-1.5 text-foreground">{x.caja}</td>
+                      <td className="py-1.5 text-foreground">{x.descripcion || <span className="text-muted-foreground/60">(sin detalle)</span>}</td>
+                      <td className="py-1.5 hidden md:table-cell text-muted-foreground">{x.cuenta}</td>
+                      <td className="py-1.5 text-right font-mono text-foreground whitespace-nowrap">{x.cuenta === "dolares" ? "U$S " : "$"}{n2(x.monto)}</td>
+                      <td className="py-1.5 hidden md:table-cell font-mono text-xs text-muted-foreground">{x.comprobante ?? "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot><tr className="border-t border-border"><td colSpan={4} className="pt-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Total en pesos</td><td className="pt-2 text-right font-mono font-semibold text-foreground">${n2(g.total)}</td><td className="hidden md:table-cell" /></tr></tfoot>
+              </table>
+            </div>
+          </Section>
+        </>
       )}
     </div>
   );
@@ -444,8 +541,8 @@ function TabMorosidad({ r, s }: { r: Reporte; s?: ReporteSerie }) {
     <div className="space-y-5">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <KpiCard icon="warning" label="Créditos en mora" value={String(r.morosidad.en_mora)} accent={r.morosidad.en_mora > 0 ? "destructive" : "success"} />
-        <KpiCard icon="money-bag" label="Saldo expuesto" value={`$${n0(r.morosidad.saldo_expuesto)}`} accent="destructive" mono />
-        <KpiCard icon="dollar-banknote" label="Interés de mora" value={`$${n0(r.morosidad.interes_mora_total)}`} accent="warning" mono />
+        <KpiCard icon="money-bag" label="Saldo expuesto" value={`$${n2(r.morosidad.saldo_expuesto)}`} accent="destructive" mono />
+        <KpiCard icon="dollar-banknote" label="Interés de mora" value={`$${n2(r.morosidad.interes_mora_total)}`} accent="warning" mono />
         <KpiCard icon="warning" label={`Mora crítica (${tramoCritica})`} value={String(sev.critica)} accent={sev.critica > 0 ? "destructive" : "muted"} />
       </div>
       {/*
@@ -718,7 +815,7 @@ function TabCobranza({ c }: { c?: ReporteCobranza }) {
         <KpiCard icon="bar-chart" label="Gestiones" value={String(e.gestiones)} accent="primary" sub={`${e.contactos} con contacto`} />
         <KpiCard icon="handshake" label="Tasa de contacto" value={`${n1(e.tasa_contacto)}%`} accent={e.tasa_contacto >= 50 ? "success" : e.tasa_contacto > 0 ? "warning" : "muted"} sub="contactos / gestiones" />
         <KpiCard icon="chart-increasing" label="Promesas" value={String(e.promesas)} accent="primary" sub={`${n1(e.tasa_cumplimiento)}% cumplidas`} />
-        <KpiCard icon="money-bag" label="Mora recuperada" value={`$${n0(c.recupero.mora_cobrada)}`} accent="success" mono sub={`cobrado $${n0(c.recupero.total_cobrado)}`} />
+        <KpiCard icon="money-bag" label="Mora recuperada" value={`$${n2(c.recupero.mora_cobrada)}`} accent="success" mono sub={`cobrado $${n0(c.recupero.total_cobrado)}`} />
       </div>
 
       {sinDatos ? (

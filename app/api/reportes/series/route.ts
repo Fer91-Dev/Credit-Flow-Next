@@ -28,6 +28,7 @@ interface PuntoMensual {
   cobrado_cargos: number;
   ingreso_financiero: number;
   costo_fondeo: number;
+  gastos: number;
   rentabilidad_neta: number;
   cartera_capital_fin: number;
   mora_creditos: number;
@@ -69,7 +70,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   let buckets = bucketsMensuales(desde, hasta);
   if (buckets.length > MAX_MESES) buckets = buckets.slice(-MAX_MESES); // acota a los últimos N meses
 
-  const [creditos, pagos, config, cfgRent] = await Promise.all([
+  const [creditos, pagos, config, cfgRent, gastosMov] = await Promise.all([
     prisma.creditos.findMany({
       where: { ...withTenant(tenantId) },
       select: {
@@ -106,6 +107,11 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     }),
     getConfiguracion(tenantId),
     getRentabilidadConfig(tenantId),
+    // Gastos reales por mes (pesos), para que la rentabilidad mensual los reste igual que la del rango.
+    prisma.movimientos_caja.findMany({
+      where: { ...withTenant(tenantId), tipo: "gasto", cuenta: { not: "dolares" }, fecha: { gte: desde, lte: hasta } },
+      select: { fecha: true, monto: true },
+    }),
   ]);
 
   const graciaDefault = config.simulador.diasGracia ?? 0;
@@ -143,6 +149,8 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     cur.cantidad += 1; cur.monto += c.monto_original;
     otorgadoPorMes.set(k, cur);
   }
+  const gastosPorMes = new Map<string, number>();
+  for (const g of gastosMov) { const k = mesKey(g.fecha); gastosPorMes.set(k, (gastosPorMes.get(k) ?? 0) + Math.abs(g.monto)); }
   const cobradoPorMes = new Map<string, { total: number; capital: number; interes: number; mora: number; cargos: number; excedente: number }>();
   for (const p of pagos) {
     const k = mesKey(p.fecha);
@@ -216,6 +224,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
      * MEJORE la rentabilidad del mes, que es exactamente al revés de lo que pasó.
      */
     const costo = costoFondeo(cartera.cartera_capital + cartera.cartera_castigada, cfgRent, b.dias, 1);
+    const gastos = round2(gastosPorMes.get(b.key) ?? 0);
     return {
       mes: b.key,
       otorgado_cantidad: ot.cantidad,
@@ -228,7 +237,8 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
       cobrado_cargos: round2(co.cargos),
       ingreso_financiero,
       costo_fondeo: costo,
-      rentabilidad_neta: round2(ingreso_financiero - costo),
+      gastos,
+      rentabilidad_neta: round2(ingreso_financiero - costo - gastos),
       cartera_capital_fin: cartera.cartera_capital,
       mora_creditos: cartera.mora_creditos,
       mora_saldo_expuesto: cartera.mora_saldo_expuesto,
@@ -256,6 +266,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     cobrado_total: round2(serie.reduce((s, p) => s + p.cobrado_total, 0)),
     ingreso_financiero: round2(serie.reduce((s, p) => s + p.ingreso_financiero, 0)),
     costo_fondeo: round2(serie.reduce((s, p) => s + p.costo_fondeo, 0)),
+    gastos: round2(serie.reduce((s, p) => s + p.gastos, 0)),
     rentabilidad_neta: round2(serie.reduce((s, p) => s + p.rentabilidad_neta, 0)),
     cartera_capital_fin: ult?.cartera_capital_fin ?? 0,
     mora_saldo_expuesto: ult?.mora_saldo_expuesto ?? 0,

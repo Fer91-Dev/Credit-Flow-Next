@@ -41,7 +41,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   const desdeTs = inicioDiaAR(desdeStr);
   const hastaTs = finDiaAR(hastaStr);
 
-  const [pagos, creditos, config, cfgRent, cobranzaCfg] = await Promise.all([
+  const [pagos, creditos, config, cfgRent, cobranzaCfg, gastosMov] = await Promise.all([
     prisma.pagos.findMany({
       where: { ...withTenant(tenantId), fecha: { gte: desde, lte: hasta }, anulado: false },
       include: { credito: { select: { cliente: { select: { nombre: true, apellido: true } } } } },
@@ -70,7 +70,17 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     getConfiguracion(tenantId),
     getRentabilidadConfig(tenantId),
     getCobranzaConfig(tenantId),
-  ]);
+    /**
+     * LOS GASTOS DEL PERÍODO, de todas las cajas (principal + la de cada agente). Son los
+     * "gastos hormiga" que Fernando quiere poder revisar por semana o por mes (16/09/2026):
+     * nafta, papelería, un flete. Tipo `gasto` (comprobante GAS); un ajuste o un retiro de
+     * utilidades NO son gastos y no entran.
+     */
+    prisma.movimientos_caja.findMany({
+      where: { ...withTenant(tenantId), tipo: "gasto", fecha: { gte: desde, lte: hasta } },
+      select: { id: true, fecha: true, monto: true, cuenta: true, descripcion: true, serie: true, numero: true, vendedor: { select: { nombre: true } } },
+      orderBy: { fecha: "desc" },
+    }),  ]);
   // Dónde corta cada tramo de mora, según lo definió la financiera.
   const tramos = cobranzaCfg.tramos_mora;
 
@@ -242,13 +252,47 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   const costo_total = costoFondeo(saldo_activo_total, cfgRent, diasPeriodo, mesesPeriodo);
   const otros_costos = cfgRent.habilitado ? round2(cfgRent.otros_costos_mensuales * mesesPeriodo) : 0;
   const costo_fondeo_capital = round2(costo_total - otros_costos);
-  const rentabilidad_neta = round2(ingreso_financiero - costo_total);
+
+  // ── Gastos registrados en la caja (en pesos; los de la cuenta dólares van aparte) ──
+  const gastosPesos = gastosMov.filter((g) => g.cuenta !== "dolares");
+  const gastos_total = round2(gastosPesos.reduce((t, g) => t + Math.abs(g.monto), 0));
+  const gastos_usd = round2(gastosMov.filter((g) => g.cuenta === "dolares").reduce((t, g) => t + Math.abs(g.monto), 0));
+  const porCaja = new Map<string, { caja: string; cantidad: number; total: number }>();
+  const porConcepto = new Map<string, { concepto: string; cantidad: number; total: number }>();
+  const limpiarConcepto = (d: string | null) => (d ?? "").replace(/^Gasto:\s*/i, "").trim();
+  for (const g of gastosPesos) {
+    const caja = g.vendedor?.nombre ? `Caja de ${g.vendedor.nombre}` : "Caja principal";
+    const c = porCaja.get(caja) ?? { caja, cantidad: 0, total: 0 };
+    c.cantidad++; c.total = round2(c.total + Math.abs(g.monto)); porCaja.set(caja, c);
+    // El "concepto" es la descripción normalizada: dos "Nafta" se juntan, "nafta" también.
+    const clave = limpiarConcepto(g.descripcion).toLowerCase().slice(0, 40) || "(sin detalle)";
+    const k = porConcepto.get(clave) ?? { concepto: limpiarConcepto(g.descripcion).slice(0, 40) || "(sin detalle)", cantidad: 0, total: 0 };
+    k.cantidad++; k.total = round2(k.total + Math.abs(g.monto)); porConcepto.set(clave, k);
+  }
+  const gastos = {
+    total: gastos_total,
+    total_usd: gastos_usd,
+    cantidad: gastosPesos.length,
+    promedio: gastosPesos.length > 0 ? round2(gastos_total / gastosPesos.length) : 0,
+    por_caja: [...porCaja.values()].sort((a, b) => b.total - a.total),
+    por_concepto: [...porConcepto.values()].sort((a, b) => b.total - a.total),
+    lista: gastosMov.map((g) => ({
+      id: g.id, fecha: g.fecha.toISOString().slice(0, 10), caja: g.vendedor?.nombre ? `Caja de ${g.vendedor.nombre}` : "Caja principal",
+      cuenta: g.cuenta, monto: Math.abs(g.monto), descripcion: limpiarConcepto(g.descripcion),
+      comprobante: g.serie && g.numero != null ? `${g.serie}-${String(g.numero).padStart(6, "0")}` : null,
+    })),
+  };
+
+  // La rentabilidad neta resta TAMBIÉN los gastos reales del período: la ganancia no puede
+  // ignorar la nafta. "Otros costos mensuales" queda para lo que NO pasa por la caja.
+  const rentabilidad_neta = round2(ingreso_financiero - costo_total - gastos_total);
   const rentabilidad = {
     habilitado: cfgRent.habilitado,
     ingreso_financiero,
     costo_fondeo: costo_fondeo_capital,
     otros_costos,
     costo_total,
+    gastos_registrados: gastos_total,
     rentabilidad_neta,
     margen_neto_pct: ingreso_financiero > 0 ? round2((rentabilidad_neta / ingreso_financiero) * 100) : 0,
   };
@@ -273,6 +317,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     operaciones,
     operaciones_por_tipo,
     rentabilidad,
+    gastos,
     cartera: { por_estado: cartera_por_estado, saldo_activo_total },
     morosidad,
     detalle_pagos,

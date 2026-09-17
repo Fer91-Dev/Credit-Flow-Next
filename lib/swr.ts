@@ -852,8 +852,20 @@ export interface Reporte {
     costo_fondeo: number;
     otros_costos: number;
     costo_total: number;
+    /** Gastos reales del período registrados en la caja (pesos), ya restados en la neta. */
+    gastos_registrados: number;
     rentabilidad_neta: number;
     margen_neto_pct: number;
+  };
+  /** Los gastos del período, de todas las cajas: el control de los "gastos hormiga". */
+  gastos: {
+    total: number;
+    total_usd: number;
+    cantidad: number;
+    promedio: number;
+    por_caja: { caja: string; cantidad: number; total: number }[];
+    por_concepto: { concepto: string; cantidad: number; total: number }[];
+    lista: { id: string; fecha: string; caja: string; cuenta: string; monto: number; descripcion: string; comprobante: string | null }[];
   };
   cartera: {
     por_estado: { estado: string; cantidad: number; monto_original: number; saldo_pendiente: number }[];
@@ -2350,6 +2362,7 @@ export interface PuntoMensual {
   cobrado_cargos: number;
   ingreso_financiero: number;
   costo_fondeo: number;
+  gastos: number;
   rentabilidad_neta: number;
   cartera_capital_fin: number;
   mora_creditos: number;

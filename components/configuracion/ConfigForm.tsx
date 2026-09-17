@@ -1767,7 +1767,7 @@ export function ConfigForm() {
                     onChange={e => setRent({ costo_fondeo_anual: parseFloat(e.target.value) || 0 })}
                     className="font-mono tabular-nums" />
                 </Field>
-                <Field label="Otros costos mensuales ($)" hint="Costo operativo fijo por mes (opcional)">
+                <Field label="Costos fuera de la caja ($ por mes)" hint="Lo que se paga sin pasar por la caja del sistema (un alquiler desde una cuenta personal). Los gastos registrados en Caja ya se restan solos: no los repitas acá.">
                   <Input type="number" min="0" step="1" value={rent.otros_costos_mensuales}
                     onChange={e => setRent({ otros_costos_mensuales: parseFloat(e.target.value) || 0 })}
                     className="font-mono tabular-nums" />
