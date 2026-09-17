@@ -474,20 +474,20 @@ function TabGastos({ r, s }: { r: Reporte; s?: ReporteSerie }) {
           <div className="grid gap-5 lg:grid-cols-2">
             <Section title="En qué se gastó" icon="receipt">
               <table className="w-full text-sm">
-                <thead><tr className="text-left text-[11px] font-semibold uppercase tracking-wide text-muted-foreground"><th className="pb-2">Concepto</th><th className="pb-2 text-right">Veces</th><th className="pb-2 text-right">Total</th></tr></thead>
+                <thead><tr className="text-left text-[11px] font-semibold uppercase tracking-wide text-muted-foreground"><th className="px-3 pb-2">Concepto</th><th className="px-3 pb-2 text-right">Veces</th><th className="px-3 pb-2 text-right">Total</th></tr></thead>
                 <tbody>
                   {g.por_concepto.slice(0, 12).map((c) => (
-                    <tr key={c.concepto} className="border-t border-border/60"><td className="py-1.5 text-foreground">{c.concepto}</td><td className="py-1.5 text-right font-mono text-muted-foreground">{c.cantidad}</td><td className="py-1.5 text-right font-mono text-foreground">${n2(c.total)}</td></tr>
+                    <tr key={c.concepto} className="border-t border-border/60"><td className="px-3 py-1.5 text-foreground">{c.concepto}</td><td className="px-3 py-1.5 text-right font-mono text-muted-foreground">{c.cantidad}</td><td className="px-3 py-1.5 text-right font-mono text-foreground">${n2(c.total)}</td></tr>
                   ))}
                 </tbody>
               </table>
             </Section>
             <Section title="Por caja" icon="bank">
               <table className="w-full text-sm">
-                <thead><tr className="text-left text-[11px] font-semibold uppercase tracking-wide text-muted-foreground"><th className="pb-2">Caja</th><th className="pb-2 text-right">Gastos</th><th className="pb-2 text-right">Total</th></tr></thead>
+                <thead><tr className="text-left text-[11px] font-semibold uppercase tracking-wide text-muted-foreground"><th className="px-3 pb-2">Caja</th><th className="px-3 pb-2 text-right">Gastos</th><th className="px-3 pb-2 text-right">Total</th></tr></thead>
                 <tbody>
                   {g.por_caja.map((c) => (
-                    <tr key={c.caja} className="border-t border-border/60"><td className="py-1.5 text-foreground">{c.caja}</td><td className="py-1.5 text-right font-mono text-muted-foreground">{c.cantidad}</td><td className="py-1.5 text-right font-mono text-foreground">${n2(c.total)}</td></tr>
+                    <tr key={c.caja} className="border-t border-border/60"><td className="px-3 py-1.5 text-foreground">{c.caja}</td><td className="px-3 py-1.5 text-right font-mono text-muted-foreground">{c.cantidad}</td><td className="px-3 py-1.5 text-right font-mono text-foreground">${n2(c.total)}</td></tr>
                   ))}
                 </tbody>
               </table>
@@ -503,20 +503,20 @@ function TabGastos({ r, s }: { r: Reporte; s?: ReporteSerie }) {
           <Section title="Detalle, gasto por gasto" icon="clipboard">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead><tr className="text-left text-[11px] font-semibold uppercase tracking-wide text-muted-foreground"><th className="pb-2">Fecha</th><th className="pb-2">Caja</th><th className="pb-2">Descripción</th><th className="pb-2 hidden md:table-cell">Cuenta</th><th className="pb-2 text-right">Monto</th><th className="pb-2 hidden md:table-cell">Comprobante</th></tr></thead>
+                <thead><tr className="text-left text-[11px] font-semibold uppercase tracking-wide text-muted-foreground"><th className="px-3 pb-2">Fecha</th><th className="px-3 pb-2">Caja</th><th className="px-3 pb-2">Descripción</th><th className="px-3 pb-2 hidden md:table-cell">Cuenta</th><th className="px-3 pb-2 text-right">Monto</th><th className="px-3 pb-2 hidden md:table-cell">Comprobante</th></tr></thead>
                 <tbody>
                   {g.lista.map((x) => (
                     <tr key={x.id} className="border-t border-border/60">
-                      <td className="py-1.5 whitespace-nowrap text-muted-foreground">{formatFecha(x.fecha)}</td>
-                      <td className="py-1.5 text-foreground">{x.caja}</td>
-                      <td className="py-1.5 text-foreground">{x.descripcion || <span className="text-muted-foreground/60">(sin detalle)</span>}</td>
-                      <td className="py-1.5 hidden md:table-cell text-muted-foreground">{x.cuenta}</td>
-                      <td className="py-1.5 text-right font-mono text-foreground whitespace-nowrap">{x.cuenta === "dolares" ? "U$S " : "$"}{n2(x.monto)}</td>
-                      <td className="py-1.5 hidden md:table-cell font-mono text-xs text-muted-foreground">{x.comprobante ?? "—"}</td>
+                      <td className="px-3 py-1.5 whitespace-nowrap text-muted-foreground">{formatFecha(x.fecha)}</td>
+                      <td className="px-3 py-1.5 text-foreground">{x.caja}</td>
+                      <td className="px-3 py-1.5 text-foreground">{x.descripcion || <span className="text-muted-foreground/60">(sin detalle)</span>}</td>
+                      <td className="px-3 py-1.5 hidden md:table-cell text-muted-foreground">{x.cuenta}</td>
+                      <td className="px-3 py-1.5 text-right font-mono text-foreground whitespace-nowrap">{x.cuenta === "dolares" ? "U$S " : "$"}{n2(x.monto)}</td>
+                      <td className="px-3 py-1.5 hidden md:table-cell whitespace-nowrap font-mono text-xs text-muted-foreground">{x.comprobante ?? "—"}</td>
                     </tr>
                   ))}
                 </tbody>
-                <tfoot><tr className="border-t border-border"><td colSpan={4} className="pt-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Total en pesos</td><td className="pt-2 text-right font-mono font-semibold text-foreground">${n2(g.total)}</td><td className="hidden md:table-cell" /></tr></tfoot>
+                <tfoot><tr className="border-t border-border"><td colSpan={4} className="px-3 pt-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Total en pesos</td><td className="px-3 pt-2 text-right font-mono font-semibold text-foreground">${n2(g.total)}</td><td className="hidden md:table-cell" /></tr></tfoot>
               </table>
             </div>
           </Section>
