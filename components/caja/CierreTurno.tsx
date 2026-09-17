@@ -8,7 +8,7 @@ import { DataTable } from "@/components/ui/DataTable";
 import { Emoji } from "@/components/ui/Emoji";
 import { useConfirm } from "@/components/ui/confirm";
 import { useToast } from "@/components/ui/toast";
-import { ModalHeader, FormActions, MoneyInput, FieldLabel, IconTextarea, SIN_CIERRE_ACCIDENTAL } from "@/components/ui/form-kit";
+import { ModalHeader, FormActions, MoneyInput, FieldLabel, IconTextarea, Segmented, SIN_CIERRE_ACCIDENTAL } from "@/components/ui/form-kit";
 import { refrescarNotificaciones, useCierresTurno, useFinanciera, type CierreTurno, type TurnoAbierto } from "@/lib/swr";
 import { formatFechaHora, formatMonto, parseMontoInput } from "@/lib/utils";
 import { TIPO_LABEL_ACTA, evaluarCierre, type TipoMovimiento } from "@/lib/domain";
@@ -46,6 +46,13 @@ export function CerrarTurnoDialog({ open, onClose, propia, nombreCaja }: {
   const { turno, mutate, key } = useCierresTurno(propia);
   const [contado, setContado] = useState("");
   const [fondo, setFondo] = useState("");
+  /**
+   * QUÉ QUEDA EN LA CAJA es una decisión, no un número más. Con un segundo campo de importe,
+   * Silvio escribió el mismo monto en "contado" y en "queda" dos veces seguidas (ACT-000002 y
+   * -000003, 16/09/2026): retiro $0,00 y la caja no bajó. Ahora se elige: retirar todo (lo
+   * normal al cerrar) o dejar un fondo, y solo entonces aparece el importe.
+   */
+  const [fondoModo, setFondoModo] = useState<"todo" | "fondo">("todo");
   const [usdContado, setUsdContado] = useState("");
   const [usdFondo, setUsdFondo] = useState("");
   const [observacion, setObservacion] = useState("");
@@ -53,10 +60,10 @@ export function CerrarTurnoDialog({ open, onClose, propia, nombreCaja }: {
   const [error, setError] = useState<string | null>(null);
 
   // Al abrir, el turno se relee: los cobros del día tienen que estar en la cuenta.
-  useEffect(() => { if (open) { mutate(); setContado(""); setFondo(""); setUsdContado(""); setUsdFondo(""); setObservacion(""); setError(null); } }, [open, mutate]);
+  useEffect(() => { if (open) { mutate(); setContado(""); setFondo(""); setFondoModo("todo"); setUsdContado(""); setUsdFondo(""); setObservacion(""); setError(null); } }, [open, mutate]);
 
   const contadoNum = contado.trim() === "" ? null : parseMontoInput(contado);
-  const fondoNum = fondo.trim() === "" ? 0 : parseMontoInput(fondo);
+  const fondoNum = fondoModo === "todo" || fondo.trim() === "" ? 0 : parseMontoInput(fondo);
   const ev = turno && contadoNum !== null ? evaluarCierre(turno.saldoSistema, contadoNum, fondoNum) : null;
   // Dólares: mismo esquema, en U$S. El bloque existe solo si la caja tiene dólares.
   const usd = turno?.dolares ?? null;
@@ -72,6 +79,7 @@ export function CerrarTurnoDialog({ open, onClose, propia, nombreCaja }: {
     const ok = await confirm({
       title: "¿Cerrar el turno?",
       description:
+        (turno.cantidad === 0 ? "Este turno no tiene ningún movimiento. " : "") +
         (ev.diferencia !== 0
           ? `Hay ${ev.diferencia > 0 ? "un sobrante" : "un faltante"} de ${formatMonto(Math.abs(ev.diferencia))}: se concilia con un ajuste. `
           : "El conteo cuadra con el sistema. ") +
@@ -159,8 +167,18 @@ export function CerrarTurnoDialog({ open, onClose, propia, nombreCaja }: {
                 <MoneyInput value={contado} onChange={setContado} placeholder="Lo que hay en la caja" autoFocus required />
               </div>
               <div className="flex flex-col gap-1.5">
-                <FieldLabel>Queda en caja para mañana</FieldLabel>
-                <MoneyInput value={fondo} onChange={setFondo} placeholder="0,00 = se retira todo" />
+                <FieldLabel>¿Qué queda en la caja para mañana?</FieldLabel>
+                <Segmented
+                  value={fondoModo}
+                  onChange={setFondoModo}
+                  options={[
+                    { value: "todo", label: "Nada: se retira todo", icon: "outbox-tray" },
+                    { value: "fondo", label: "Dejo un fondo", icon: "money-bag" },
+                  ]}
+                />
+                {fondoModo === "fondo" && (
+                  <MoneyInput value={fondo} onChange={setFondo} placeholder="Cuánto queda en la caja" autoFocus />
+                )}
               </div>
 
               {ev && (
