@@ -22,8 +22,8 @@ function n1(x: number) {
 }
 
 const INPUT =
-  "h-9 rounded-lg border border-border bg-muted/40 px-3 text-sm text-foreground outline-none " +
-  "transition-all focus:border-primary focus:ring-2 focus:ring-primary/20";
+  "h-9 rounded-lg border border-border bg-input px-3 text-sm text-foreground shadow-[inset_0_1px_2px_0_rgba(0,0,0,0.22)] outline-none " +
+  "transition-all focus:border-primary focus:ring-2 focus:ring-primary/25";
 const SEL = INPUT + " pr-8 appearance-none cursor-pointer [&>option]:bg-card [&>option]:text-foreground";
 
 export function HomeView({ role }: { role: Role }) {
@@ -95,35 +95,38 @@ export function HomeView({ role }: { role: Role }) {
           (lo marcó Fernando). Van con los números que gobiernan. Mientras carga o si falla,
           se muestran igual acá abajo: si desaparecieran, un filtro que no devuelve datos
           dejaría al usuario sin forma de sacarlo. */}
-      {isLoading ? (
+      {/* Cambiar un filtro NO tira el tablero a un esqueleto (skill front §8e): el esqueleto
+          es solo para la primera carga; con un recorte nuevo lo que hay se atenúa y se
+          actualiza en su lugar. Fernando (16/09/2026) lo marcó en Caja y "acá también". */}
+      {error ? (
+        <>
+          <div className="flex justify-end">{controlFiltros}</div>
+          <div className="rounded-xl bg-destructive/10 border border-destructive/30 p-4 text-destructive text-sm">
+            {error.message}
+          </div>
+        </>
+      ) : !data ? (
         <>
           <div className="flex justify-end">{controlFiltros}</div>
           <DashboardKpisSkeleton />
         </>
-      ) : error || !data ? (
-        <>
-          <div className="flex justify-end">{controlFiltros}</div>
-          <div className="rounded-xl bg-destructive/10 border border-destructive/30 p-4 text-destructive text-sm">
-            {error?.message || "Sin datos disponibles"}
-          </div>
-        </>
       ) : (
-        <>
+        <div className={`space-y-6 transition-opacity duration-300 ${isLoading ? "opacity-60" : "opacity-100"}`} aria-busy={isLoading}>
           <DashboardDinero data={data} acciones={controlFiltros} />
           {/* El pulso del día: lo único que cambia mientras el panel está abierto. */}
           <PulsoDelDia data={data} actualizado={actualizado} />
-        </>
+        </div>
       )}
 
       {/* ── 2 · Cotización del dólar: contexto, no protagonista. Nace contraída. ── */}
       <CotizacionDolar />
 
       {/* ── 3 · Conteos + avance de cobranzas (reaccionan a los filtros) ── */}
-      {!isLoading && data && (
-        <>
+      {data && (
+        <div className={`space-y-6 transition-opacity duration-300 ${isLoading ? "opacity-60" : "opacity-100"}`} aria-busy={isLoading}>
           <DashboardKpis data={data} />
           <DashboardCobranzaAvance data={data} />
-        </>
+        </div>
       )}
 
       {/* ── 4 · Lo accionable de hoy: agenda de cobranza (scopeada al vendedor; admin ve todo) ── */}
@@ -192,6 +195,9 @@ function FiltrosHome({
       activos={activos}
       onLimpiar={limpiar}
       align="right"
+      // Vive en la esquina de la tarjeta de dinero: sin borde propio, como adentro del
+      // buscador en las demás secciones (Fernando, 16/09/2026: "acá también").
+      embebido
     >
       <div className="grid grid-cols-2 gap-3">
         <label className="flex flex-col gap-1">
