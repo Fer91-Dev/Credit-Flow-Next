@@ -75,13 +75,15 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
       where: { ...withTenant(tenantId) },
       select: {
         estado: true, monto_original: true, es_refinanciacion: true,
-        created_at: true, fecha_inicio: true, cronograma: true,
+        created_at: true, fecha_inicio: true, cronograma: true, recupero_at: true,
         cuotas: {
           select: {
-            capital: true, fecha_vencimiento: true,
+            capital: true, fecha_vencimiento: true, condonado: true,
             aplicaciones: { select: { aplicado_capital: true, pago: { select: { fecha: true } } } },
           },
         },
+        // El último cobro vigente: es el que cerró el acuerdo (y por lo tanto fechó la quita).
+        pagos: { where: { anulado: false }, select: { fecha: true }, orderBy: { fecha: "desc" }, take: 1 },
       },
     }),
     prisma.pagos.findMany({
@@ -121,9 +123,12 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     estado: c.estado,
     inicio: c.fecha_inicio,
     dias_gracia: (c.cronograma as { diasGracia?: number } | null)?.diasGracia ?? graciaDefault,
+    // La quita se fecha con el pago que cerró el acuerdo; el cierre de recupero, con su marca.
+    condonado_en: c.pagos[0]?.fecha ?? c.recupero_at ?? null,
     cuotas: c.cuotas.map((q) => ({
       capital: q.capital,
       fecha_vencimiento: q.fecha_vencimiento,
+      condonado: q.condonado,
       aplicaciones: q.aplicaciones.map((a) => ({ aplicado_capital: a.aplicado_capital, fecha: a.pago.fecha })),
     })),
   }));

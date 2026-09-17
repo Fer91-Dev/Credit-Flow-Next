@@ -123,6 +123,11 @@ export interface CuotaLedger {
   capital: number;
   fecha_vencimiento: Date | string;
   aplicaciones: AplicacionLedger[];
+  /**
+   * Lo que se le perdonó a la cuota (quita de un acuerdo cumplido, cierre de recupero). Es la
+   * OTRA forma en que una cuota deja de deber capital, y no pasa por `aplicaciones`.
+   */
+  condonado?: number;
 }
 export interface CreditoLedger {
   estado: string;
@@ -131,6 +136,11 @@ export interface CreditoLedger {
   /** Días de gracia del crédito (snapshot de su cronograma). */
   dias_gracia: number;
   cuotas: CuotaLedger[];
+  /**
+   * Cuándo se condonó lo condonado: la fecha del pago que cerró el acuerdo o el recupero. La
+   * condonación no tiene fecha propia en la cuota; esta es la que la trae al corte correcto.
+   */
+  condonado_en?: Date | string | null;
 }
 
 /**
@@ -153,13 +163,26 @@ function toDate(d: Date | string): Date {
   return d instanceof Date ? d : new Date(d);
 }
 
-/** Capital aplicado a una cuota por pagos con fecha ≤ corte (reconstrucción a fecha). */
-export function capitalPagadoAFecha(cuota: CuotaLedger, corte: Date): number {
+/**
+ * Capital que la cuota YA NO DEBE al corte: lo aplicado por pagos con fecha ≤ corte MÁS lo
+ * condonado, si la condonación es anterior al corte (reconstrucción a fecha).
+ *
+ * 🔴 SIN LO CONDONADO, UN CRÉDITO CERRADO POR ACUERDO O POR RECUPERO QUEDABA EN MORA PARA
+ * SIEMPRE. La quita no pasa por `aplicaciones`, así que la cuota condonada seguía con capital
+ * "pendiente" y vencido en cada corte mensual: tres créditos cerrados (dos pagados por
+ * acuerdo, uno cancelado por recupero) sumaban $267.292,52 de mora y de cartera fantasma en
+ * el Histórico, y el KPI "Saldo expuesto" de la misma pestaña decía otro número (17/09/2026).
+ * Lo condonado no puede superar el capital: la condonación de una cuota incluye su interés.
+ */
+export function capitalPagadoAFecha(cuota: CuotaLedger, corte: Date, condonadoEn?: Date | string | null): number {
   let acc = 0;
   for (const a of cuota.aplicaciones) {
     if (toDate(a.fecha).getTime() <= corte.getTime()) acc += a.aplicado_capital;
   }
-  return round2(acc);
+  if ((cuota.condonado ?? 0) > 0 && condonadoEn && toDate(condonadoEn).getTime() <= corte.getTime()) {
+    acc += cuota.condonado ?? 0;
+  }
+  return round2(Math.min(acc, cuota.capital));
 }
 
 export interface EstadoCartera {
@@ -203,7 +226,7 @@ export function estadoCarteraAFecha(creditos: CreditoLedger[], corte: Date): Est
     let pendiente = 0;
     let enMora = false;
     for (const q of c.cuotas) {
-      const pagado = capitalPagadoAFecha(q, corte);
+      const pagado = capitalPagadoAFecha(q, corte, c.condonado_en);
       const restante = round2(q.capital - pagado);
       if (restante > 0.01) {
         pendiente += restante;
