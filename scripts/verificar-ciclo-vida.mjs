@@ -423,7 +423,9 @@ ok(igual(r2(deudaPrevia - deudaMia), minimoEntrega, 200),
 
 const refi = await api("POST", `/api/creditos/${ID2}/refinanciar`, {
   tasa: TASA_OK, plazo_meses: plazoValido(3), frecuencia: "mensual", quita_tipo: "ninguna", quita_valor: 0,
-  honorarios_pct: 0, motivo: "ciclo de vida",
+  // Sin `honorarios_pct`: van los sugeridos por Configuración. Desde el 15/09/2026 la banda
+  // (1%–5%) rige también para el admin, así que mandar 0% es pedir algo fuera de banda.
+  motivo: "ciclo de vida",
   ...(entregaRefiId ? { entrega_pago_id: entregaRefiId } : {}),
 });
 ok(refi.ok, "refinanciación aceptada", refi.error ?? "");

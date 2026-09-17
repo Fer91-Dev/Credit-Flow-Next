@@ -128,13 +128,16 @@ try {
   ok(c2.ok, "cierra el segundo turno rindiendo todo", c2.error ?? c2.data?.comprobante);
   if (c2.ok) { creados.cierres.push(c2.data.id); creados.arqueos.push(c2.data.arqueo_id); }
   ok(igual(c2.data?.diferencia ?? 1, 0) && igual(c2.data?.retiro ?? 0, FONDO) && igual(c2.data?.fondo ?? 1, 0), "acta 2: cuadra, retira el fondo, queda en cero");
-  ok(igual(await saldoDe(fichaQA.id), agenteAntes), "la caja del agente volvió a donde estaba", f(await saldoDe(fichaQA.id)));
+  // "Rindiendo todo" barre TODA la caja del agente, también lo que ya tenía antes de esta
+  // prueba (17/09/2026: el verificador de comisiones le deja $700.000,00 y no los borra).
+  // La cuenta correcta: el agente queda en cero y lo que tenía pasa a la principal.
+  ok(igual(await saldoDe(fichaQA.id), 0), "la caja del agente quedó en cero", f(await saldoDe(fichaQA.id)));
   const movs2 = await movsDesde(fichaQA.id, t0); creados.movs.push(...movs2.map((m) => m.id));
   const patas2 = await db.movimientos_caja.findMany({ where: { tenant_id: TENANT, vendedor_id: null, created_at: { gt: t0 }, OR: [{ serie: "REN" }, { serie: "ENT" }] }, select: { id: true } });
   creados.movs.push(...patas2.map((m) => m.id));
   const principalAhora = await saldoDe(null);
   // principal: −100.000 (entrega) + 89.000 (REN 1) + 10.000 (REN 2) = −1.000 = el faltante que se comió el agente
-  ok(igual(principalAhora, principalAntes - 1_000), "la principal quedó con $1.000,00 menos: exactamente el faltante del agente", `${f(principalAntes)} → ${f(principalAhora)}`);
+  ok(igual(principalAhora, principalAntes + agenteAntes - 1_000), "la principal recibió lo que tenía el agente menos el faltante de $1.000,00", `${f(principalAntes)} + ${f(agenteAntes)} − $1.000,00 → ${f(principalAhora)}`);
 
   // ═════════════════════════════════════════════════════════════════════════
   H1("FASE 2b · Dólares en la misma acta (y posición de las tres cuentas)");
