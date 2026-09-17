@@ -8,6 +8,7 @@ import { descargarCSV } from "@/lib/csv";
 import { formatFecha, formatDias } from "@/lib/utils";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { KpiCard } from "@/components/ui/KpiCard";
+import { FiltrosPanel } from "@/components/ui/FiltrosPanel";
 import { Emoji } from "@/components/ui/Emoji";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -237,12 +238,27 @@ export function ReportesView() {
   const { financiera } = useFinanciera();
 
   const preset = (d: Date, h: Date) => { setDesde(ymd(d)); setHasta(ymd(h)); };
-  const presets = [
-    { label: "Este mes", run: () => preset(new Date(today.getFullYear(), today.getMonth(), 1), today) },
-    { label: "Este año", run: () => preset(new Date(today.getFullYear(), 0, 1), today) },
-    { label: "Últimos 12 meses", run: () => preset(new Date(today.getFullYear() - 1, today.getMonth(), 1), today) },
-    { label: "Año pasado", run: () => preset(new Date(today.getFullYear() - 1, 0, 1), new Date(today.getFullYear() - 1, 11, 31)) },
+  /**
+   * EL PERÍODO ES EL FILTRO DE TODA LA SECCIÓN. Fernando (16/09/2026): "a todas las
+   * subsecciones les falta filtro por período". Existía —Desde/Hasta y cuatro presets—
+   * pero como una fila de inputs suelta, sin decir qué rango estaba activo ni que aplicaba a
+   * todas las pestañas. Ahora es el patrón del sistema (`FiltrosPanel`): el botón dice el
+   * período activo y adentro están los atajos y las fechas. Con "Hoy" y "Esta semana", que
+   * son los cortes de los gastos hormiga.
+   */
+  const lunes = (() => { const d = new Date(today); const dow = (d.getDay() + 6) % 7; d.setDate(d.getDate() - dow); return d; })();
+  const presets: { label: string; desde: Date; hasta: Date }[] = [
+    { label: "Hoy", desde: today, hasta: today },
+    { label: "Esta semana", desde: lunes, hasta: today },
+    { label: "Este mes", desde: new Date(today.getFullYear(), today.getMonth(), 1), hasta: today },
+    { label: "Mes pasado", desde: new Date(today.getFullYear(), today.getMonth() - 1, 1), hasta: new Date(today.getFullYear(), today.getMonth(), 0) },
+    { label: "Este año", desde: new Date(today.getFullYear(), 0, 1), hasta: today },
+    { label: "Últimos 12 meses", desde: new Date(today.getFullYear() - 1, today.getMonth(), 1), hasta: today },
+    { label: "Año pasado", desde: new Date(today.getFullYear() - 1, 0, 1), hasta: new Date(today.getFullYear() - 1, 11, 31) },
   ];
+  const presetActivo = presets.find((p) => ymd(p.desde) === desde && ymd(p.hasta) === hasta);
+  const ddmm = (v: string) => { const [y, m, d] = v.split("-"); return `${d}/${m}/${y.slice(2)}`; };
+  const resumenPeriodo = presetActivo ? presetActivo.label : `${ddmm(desde)} – ${ddmm(hasta)}`;
 
   const puedeExportar =
     tab === "gastos" ? !!reporte && reporte.gastos.lista.length > 0
@@ -262,25 +278,40 @@ export function ReportesView() {
     <div className="space-y-6">
       <PageHeader icon="bar-chart" title="Reportes" subtitle="Estadísticas, rentabilidad y evolución del negocio" accent="primary" />
 
-      {/* Toolbar: rango + presets + export */}
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-        <div className="flex flex-wrap items-end gap-3">
-          <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-muted-foreground">Desde</span>
-            <input type="date" value={desde} max={hasta} onChange={(e) => setDesde(e.target.value)} className={INPUT} />
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-muted-foreground">Hasta</span>
-            <input type="date" value={hasta} min={desde} onChange={(e) => setHasta(e.target.value)} className={INPUT} />
-          </label>
-          <div className="flex flex-wrap gap-2">
-            {presets.map((p) => (
-              <button key={p.label} onClick={p.run}
-                className="h-10 px-3 rounded-lg border border-border text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors">
-                {p.label}
-              </button>
-            ))}
-          </div>
+      {/* Toolbar: el período (filtro de TODAS las pestañas) + imprimir / exportar */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex flex-wrap items-center gap-3">
+          <FiltrosPanel
+            label="Período"
+            resumen={`Período: ${resumenPeriodo}`}
+            activos={1}
+            onLimpiar={presetActivo?.label === "Este año" ? undefined : () => preset(firstOfYear, today)}
+            width={400}
+          >
+            <div className="flex flex-wrap gap-1.5">
+              {presets.map((p) => (
+                <button key={p.label} type="button" onClick={() => preset(p.desde, p.hasta)}
+                  className={`rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors ${
+                    presetActivo?.label === p.label ? "bg-primary/10 text-primary ring-1 ring-inset ring-primary/30" : "border border-border text-muted-foreground hover:bg-muted hover:text-foreground"
+                  }`}>
+                  {p.label}
+                </button>
+              ))}
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <label className="flex flex-col gap-1">
+                <span className="text-[11px] font-medium text-muted-foreground">Desde</span>
+                <input type="date" value={desde} max={hasta} onChange={(e) => setDesde(e.target.value)} className={INPUT} />
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className="text-[11px] font-medium text-muted-foreground">Hasta</span>
+                <input type="date" value={hasta} min={desde} onChange={(e) => setHasta(e.target.value)} className={INPUT} />
+              </label>
+            </div>
+          </FiltrosPanel>
+          <p className="text-xs text-muted-foreground">
+            {formatFecha(desde)} al {formatFecha(hasta)} · aplica a todas las pestañas
+          </p>
         </div>
         <div className="flex gap-2">
           <button onClick={() => reporte && imprimirReporte(reporte, serie, financiera)} disabled={!reporte}
