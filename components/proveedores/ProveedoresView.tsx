@@ -137,7 +137,7 @@ export function ProveedoresView() {
               label="Filtrar"
               resumen={resumenFiltros}
               activos={recientes ? 1 : 0}
-              onLimpiar={() => setRecientes(null)}
+            // Sin `onLimpiar`: hay UN solo "Limpiar filtros", el del encabezado de la tabla (skill front §8e).> setRecientes(null)}
               align="right"
               width={280}
             >

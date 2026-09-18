@@ -51,7 +51,7 @@ export function MovimientosStockView() {
   const [desde, setDesde] = useState("");
   const [hasta, setHasta] = useState("");
 
-  const { movimientos, total, totales, isLoading, error } = useMovimientosStock({ q, tipo, desde, hasta });
+  const { movimientos, total, totales, isLoading, error, listo } = useMovimientosStock({ q, tipo, desde, hasta });
 
   /**
    * El criterio de ESTA sección: el TIPO de movimiento y el RANGO de fechas. Es lo que dice el
@@ -98,7 +98,7 @@ export function MovimientosStockView() {
               label="Filtrar"
               resumen={resumenFiltros}
               activos={filtrosActivos}
-              onLimpiar={limpiarTodo}
+            // Sin `onLimpiar`: hay UN solo "Limpiar filtros", el del encabezado de la tabla (skill front §8e).
               align="right"
             >
               <Field label="Tipo de movimiento">
@@ -148,10 +148,12 @@ export function MovimientosStockView() {
         )}
       </div>
 
+      {/* Esqueleto solo la primera vez; al filtrar, las filas anteriores se atenúan hasta que llegan las nuevas. */}
+      <div className={`transition-opacity duration-300 ${isLoading && listo ? "opacity-60" : "opacity-100"}`} aria-busy={isLoading}>
       <DataTable<MovimientoStockGlobal>
         rows={movimientos}
         rowKey={(m) => m.id}
-        loading={isLoading}
+        loading={!listo}
         error={error ? `Error al cargar los movimientos: ${error.message}` : null}
         empty={{ icon: "package", title: "Sin movimientos para los filtros seleccionados" }}
         zebra
@@ -196,6 +198,7 @@ export function MovimientosStockView() {
           },
         ]}
       />
+      </div>
     </div>
   );
 }

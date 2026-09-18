@@ -63,7 +63,7 @@ export function AuditoriaTable() {
     desde:   ventana === "hoy" ? r?.desde_hoy : ventana === "semana" ? r?.desde_semana : undefined,
   };
   const activo = useAuditoria(filtros);
-  const { eventos, total, error, isLoading } = activo;
+  const { eventos, total, error, isLoading, listo } = activo;
 
   // Solo el texto se filtra en el navegador: es una búsqueda dentro de lo que ya está a la
   // vista, no un recorte del universo. Todo lo demás lo recorta la base.
@@ -109,14 +109,16 @@ export function AuditoriaTable() {
         accent="primary"
       />
 
-      {isLoading ? (
-        <BodySkeleton />
-      ) : error ? (
+      {/* El esqueleto es solo para la primera carga: al cambiar un filtro lo que hay se
+          atenúa y se actualiza en su lugar (skill front §8e). */}
+      {error ? (
         <div className="rounded-xl bg-destructive/10 border border-destructive/30 p-4 text-destructive text-sm">
           Error al cargar la auditoría: {error.message}
         </div>
+      ) : !listo ? (
+        <BodySkeleton />
       ) : (
-        <div className="space-y-5">
+        <div className={`space-y-5 transition-opacity duration-300 ${isLoading ? "opacity-60" : "opacity-100"}`} aria-busy={isLoading}>
           {/* KPIs */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             {/*
@@ -162,7 +164,7 @@ export function AuditoriaTable() {
                 activos={etiquetasFiltro.length}
                 // Limpia también la ventana, que se prende desde los KPI: si no, "Limpiar"
                 // dejaba la lista recortada a los eventos de hoy.
-                onLimpiar={() => { setEntidad("all"); setVentana("todos"); }}
+            // Sin `onLimpiar`: hay UN solo "Limpiar filtros", el del encabezado de la tabla (skill front §8e).> { setEntidad("all"); setVentana("todos"); }}
                 align="right"
               >
                 <label className="flex flex-col gap-1">

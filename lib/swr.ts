@@ -1762,6 +1762,7 @@ export function useMovimientosStock(filtros: { q?: string; tipo?: string; produc
     total: data?.total ?? 0,
     totales: data?.totales ?? { movimientos: 0, entradas: 0, salidas: 0 },
     error, isLoading, mutate,
+    listo: data !== undefined,
   };
 }
 
@@ -2284,7 +2285,8 @@ export function useAuditoria(filtros?: { entidad?: string; accion?: string; desd
   const { data, error, isLoading, mutate } = useSWR<{
     eventos: EventoAuditoria[]; total: number; resumen: ResumenAuditoria;
   }>(`/api/auditoria?${qs.toString()}`);
-  return { eventos: data?.eventos ?? [], total: data?.total ?? 0, resumen: data?.resumen, error, isLoading, mutate };
+  // `listo`: hay datos (los de este filtro o los anteriores, que SWR conserva): la pantalla no vuelve al esqueleto al filtrar.
+  return { eventos: data?.eventos ?? [], total: data?.total ?? 0, resumen: data?.resumen, error, isLoading, listo: data !== undefined, mutate };
 }
 
 export function useAccionesCobranza() {

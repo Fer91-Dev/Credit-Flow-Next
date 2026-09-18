@@ -494,7 +494,7 @@ export function EquipoView() {
               label="Filtrar"
               resumen={resumenFiltros}
               activos={filtrosActivos}
-              onLimpiar={() => { setRol(""); setTipo(""); setRecientes(""); }}
+            // Sin `onLimpiar`: hay UN solo "Limpiar filtros", el del encabezado de la tabla (skill front §8e).> { setRol(""); setTipo(""); setRecientes(""); }}
               align="right"
             >
               <Field label="Rol de acceso">

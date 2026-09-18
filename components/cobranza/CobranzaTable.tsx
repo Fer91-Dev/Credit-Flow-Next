@@ -626,7 +626,7 @@ export function CobranzaTable({ role }: { role: Role }) {
               label="Filtrar"
               resumen={resumenFiltros}
               activos={filterMora === "todas" ? 0 : 1}
-              onLimpiar={() => setFilter("todas")}
+            // Sin `onLimpiar`: hay UN solo "Limpiar filtros", el del encabezado de la tabla (skill front §8e).> setFilter("todas")}
               align="right"
               width={280}
             >
