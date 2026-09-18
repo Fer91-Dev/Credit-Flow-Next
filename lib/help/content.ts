@@ -45,7 +45,7 @@ const HELP: Record<string, HelpDoc> = {
         kind: "pasos",
         titulo: "Cómo se usa",
         pasos: [
-          "Usá los filtros de arriba (fecha, zona y —si sos admin— empleado) para acotar el período que estás mirando.",
+          "El botón «Filtrar», en la esquina de la tarjeta de dinero, acota el período, la zona y —si sos admin— el empleado. Con algo puesto, el botón dice qué está filtrando; todo el tablero se recalcula.",
           "Revisá los KPIs: clientes, créditos, cartera activa y mora.",
           "Bajá al avance de cobranzas y a la exposición de mora para ver dónde poner el foco.",
           "Si sos admin, la tabla \"Rendimiento por vendedor\" compara la performance de cada uno.",
@@ -81,7 +81,7 @@ const HELP: Record<string, HelpDoc> = {
         kind: "pasos",
         titulo: "Cómo se usa",
         pasos: [
-          "Buscá un cliente por nombre o DNI (F3 muestra la lista completa).",
+          "Buscá un cliente por nombre o DNI. F3 (o el botón «lista completa» dentro del buscador) muestra a todos, en orden alfabético; F3 de nuevo la cierra. En notebooks puede hacer falta Fn + F3.",
           "Para uno nuevo, tocá \"Nuevo cliente\" y cargá sus datos: personales, domicilio y —obligatorio— el ingreso.",
           "Hacé clic en una fila para abrir su ficha 360: datos, créditos activos y pagos.",
           "Desde la ficha podés editar, otorgarle un crédito o registrarle un pago.",
@@ -195,6 +195,15 @@ const HELP: Record<string, HelpDoc> = {
           "Al dado por incobrable SE LE PUEDE COBRAR — salvo que esté dentro de una campaña de recupero: ahí ya se le ofreció un importe por escrito y el camino es cerrar el caso desde Incobrables.",
           "Un cobro parcial NO le levanta el castigo. Si lo levantara, los punitorios volverían a correr desde el vencimiento original y pagar le saldría más caro que no pagar.",
           "Un incobrable sale de ese estado por dos puertas: terminando de pagar, o cerrando el caso.",
+        ],
+      },
+      {
+        kind: "tips",
+        titulo: "Buscar y filtrar",
+        items: [
+          "El campo grande busca mientras escribís. El botón «Filtrar» que tiene adentro guarda el resto de los filtros y, con algo puesto, dice QUÉ está filtrando.",
+          "El conteo al lado del título es el de la tabla; si hay un recorte dice «12 de 340».",
+          "«Limpiar filtros» (o la tecla F3) vuelve a ver todo. Cambiar un filtro no recarga la pantalla: lo que hay se atenúa un instante y se actualiza en su lugar.",
         ],
       },
     ],
@@ -327,11 +336,23 @@ const HELP: Record<string, HelpDoc> = {
         kind: "definiciones",
         titulo: "Las pestañas",
         items: [
-          { term: "Hoy (agenda)", desc: "Cola priorizada de a quién contactar: promesas vencidas → agendados → morosos enfriados. Scopeada al vendedor." },
+          { term: "Hoy (agenda)", desc: "Cola priorizada de a quién contactar: promesas vencidas → agendados → morosos enfriados. Scopeada al vendedor. Cada renglón tiene «Gestionar» y dos íconos: WhatsApp y SMS." },
           { term: "Morosos", desc: "Créditos en mora con días e interés moratorio. Desde acá registrás gestiones (llamada, WhatsApp, visita…). Si el cliente promete pagar, la promesa queda anotada en esa misma gestión: se concilia sola al cobrar, el cron rompe las vencidas y la vas a ver en la agenda del día." },
           { term: "Acuerdos", desc: "Los planes de pago vigentes, cumplidos y rotos. El sistema los evalúa solo: no hay que marcarlos a mano." },
-          { term: "Campañas", desc: "Envíos masivos a un grupo de morosos (Email/WhatsApp) con descuento de interés opcional. Si entre los elegidos hay créditos cuyo plan ya venció, la pantalla separa dos audiencias: a unos se les reclama el pago y a los otros se los invita a refinanciar, porque a esos ya no se les puede cobrar." },
+          { term: "Campañas", desc: "Envíos masivos a un grupo de morosos (WhatsApp / Email / SMS) con descuento de interés opcional. Si entre los elegidos hay créditos cuyo plan ya venció, la pantalla separa dos audiencias: a unos se les reclama el pago y a los otros se los invita a refinanciar, porque a esos ya no se les puede cobrar." },
       { term: "No contactar", desc: "Si el cliente pide que no lo llamen, se registra desde su ficha. Deja de recibir mensajes y sale de la agenda, pero la deuda sigue viva y se le puede cobrar. Levantarlo solo lo puede hacer un admin." },
+        ],
+      },
+      {
+        // Los dos íconos de cada renglón, en la agenda y en la cola de morosos. Son distintos a
+        // propósito: uno se abre, el otro sale solo.
+        kind: "definiciones",
+        titulo: "WhatsApp y SMS desde el renglón",
+        items: [
+          { term: "WhatsApp", desc: "Arma el reclamo con la plantilla de mora de la financiera y los importes reales, lo registra como gestión en la ficha y ABRE WhatsApp para que lo mandes vos. Con la API de Meta configurada, sale solo." },
+          { term: "SMS", desc: "Mismo texto, mismo registro, pero SALE SOLO desde el celular de la financiera (Configuración → Comunicaciones → SMS). Por eso pide confirmación antes: dice a quién, a qué número y por qué crédito." },
+          { term: "El color del ícono", desc: "Es el tramo de mora (media / alta / crítica), no el del logo: en una cola larga, el rojo es el que hay que llamar hoy." },
+          { term: "Cuándo no aparecen", desc: "Sin teléfono cargado, o si el cliente pidió no ser contactado. Sin el canal de SMS configurado, el botón avisa el motivo y no registra nada." },
         ],
       },
       {
@@ -351,9 +372,10 @@ const HELP: Record<string, HelpDoc> = {
           "En Morosos, elegí a quién: filtrá por severidad (Crítica, Alta) o tildá clientes uno por uno.",
           "Botón «Nueva campaña»: el número que muestra es sobre cuántos va a trabajar. Sin nada tildado, toma los que estás viendo. Se abre en pantalla completa; si volvés, la selección queda como estaba.",
           "Elegí canal y escribí el mensaje. Los datos entre corchetes —[Nombre], [Monto]— se reemplazan por los de cada cliente; abajo del texto ves el mensaje ya armado con los datos del primero de la lista.",
-          "Opcional: descuento sobre el interés de mora, como incentivo para que paguen ahora.",
+          "Opcional: descuento sobre el interés de mora, como incentivo para que paguen ahora. Es un porcentaje de 0 a 100 de los punitorios; un vendedor no puede pasar su «Descuento máximo» de Configuración → Cobranza → Acuerdos, y nadie puede pasar el 100%.",
           "La tabla de la derecha discrimina, cliente por cliente, cuánto es de cuotas vencidas, cuánto de punitorios, cuánto se le descuenta y cuánto se le termina pidiendo. Se reclama lo VENCIDO, no el total del crédito.",
           "Enviar. Va por tandas y muestra el avance; si se corta, volvés a apretar y sigue por donde quedó, sin repetirle a nadie.",
+          "Los avisos AUTOMÁTICOS (3 días antes del vencimiento, el día, y a los 5, 15 y 30 días de atraso) no son una campaña: los manda el sistema cada mañana por el primer canal que salga —WhatsApp, SMS o email— y quedan como gestión automática en la ficha. Se activan en Configuración → Comunicaciones.",
         ],
       },
       {
@@ -475,7 +497,16 @@ const HELP: Record<string, HelpDoc> = {
           "Configuración → Cobranza → Refinanciaciones: si querés obligar a subir los escalones en orden (no refinanciar sin haber intentado un acuerdo antes). De fábrica está apagado.",
           "Configuración → Cobranza → Acuerdos de pago: cuántos acuerdos rotos se admiten antes de que la única salida sea refinanciar (de fábrica, 2). Sin tope, un deudor puede encadenar acuerdos rotos para siempre y no llegar nunca a la refinanciación. Alcanzado el tope, el mínimo de días para refinanciar deja de aplicar: si no, el crédito quedaría sin ninguna salida.",
           "Configuración → Cobranza → Refinanciaciones: los honorarios por gestión de cobranza (se configuran como banda: mínimo y máximo). Si están activos, el crédito que nace de una refinanciación lleva un cargo por ese % de la deuda que se consolidó. Se calcula DESPUÉS del descuento —así una quita no se lleva puesto el honorario— y va repartido en las cuotas, no sumado al capital: por eso no devenga interés.",
-          "Configuración → Cobranza → Refinanciaciones: los honorarios por gestión de cobranza (se configuran como banda: mínimo y máximo). Si están activos, el crédito que nace de una refinanciación lleva un cargo por ese % de la deuda que se consolidó. Se calcula DESPUÉS del descuento —así una quita no se lleva puesto el honorario— y va repartido en las cuotas, no sumado al capital: por eso no devenga interés.",
+          "Configuración → Cobranza → Acuerdos: el «Descuento máximo del vendedor» rige en acuerdos, en refinanciaciones Y en campañas: el mismo tope en los tres lugares. El admin no tiene tope (un límite que él mismo edita no limita a nadie), pero tampoco puede escribir más de 100%.",
+        ],
+      },
+      {
+        kind: "tips",
+        titulo: "Buscar y filtrar",
+        items: [
+          "El campo grande busca mientras escribís. El botón «Filtrar» que tiene adentro guarda el resto de los filtros y, con algo puesto, dice QUÉ está filtrando.",
+          "El conteo al lado del título es el de la tabla; si hay un recorte dice «12 de 340».",
+          "«Limpiar filtros» (o la tecla F3) vuelve a ver todo. Cambiar un filtro no recarga la pantalla: lo que hay se atenúa un instante y se actualiza en su lugar.",
         ],
       },
     ],
@@ -485,7 +516,7 @@ const HELP: Record<string, HelpDoc> = {
   "/caja": {
     titulo: "Caja",
     resumen:
-      "El libro de movimientos de dinero de la financiera. Se cuadra sola con cada otorgamiento, cobro y anulación. Muestra el saldo por cuenta y permite ajustes, transferencias y arqueos.",
+      "El libro de movimientos de dinero de la financiera. Se cuadra sola con cada otorgamiento, cobro y anulación. Muestra el saldo por cuenta, permite gastos, transferencias y arqueos, y cierra el turno con un acta.",
     bloques: [
       {
         kind: "definiciones",
@@ -494,6 +525,8 @@ const HELP: Record<string, HelpDoc> = {
           { term: "Cuentas", desc: "Efectivo, Banco y Dólares. El saldo total es solo pesos (efectivo + banco); los dólares van aparte, en USD, valorizados al blue." },
           { term: "Movimientos automáticos", desc: "Desembolso (al otorgar), cobro (al cobrar) y reversa (al anular) se registran solos." },
           { term: "Caja principal vs. del vendedor", desc: "Cada vendedor tiene su propia caja; la principal es la de tesorería (admin)." },
+          { term: "La fecha de un movimiento", desc: "Es la contable (la del cobro o del hecho), que es por la que filtra el período. Si se cargó otro día, debajo dice «cargado el …»: un cobro de agosto cargado en septiembre aparece en agosto." },
+          { term: "Un período cerrado no se toca", desc: "Después de cerrar el turno, ningún movimiento manual, transferencia ni arqueo puede caer en ese día: se registra con la fecha de hoy. Un cobro con fecha atrasada se acepta, pero su asiento de caja va al día de hoy." },
         ],
       },
       {
@@ -503,11 +536,13 @@ const HELP: Record<string, HelpDoc> = {
         kind: "definiciones",
         titulo: "Acciones de caja",
         items: [
-          { term: "Capital", desc: "La plata que el dueño pone o retira del negocio." },
+          { term: "Capital", desc: "La plata que el dueño pone o retira del negocio: aporte, retiro de utilidades y fondo de apertura (lo que se pone en la caja para arrancar un turno)." },
           { term: "Caja de vendedores", desc: "Entregar plata a un vendedor o recibir lo que rinde." },
           { term: "Transferir", desc: "Pasar saldo entre efectivo, banco y dólares. Entre pesos y dólares es compra/venta, con su tipo de cambio." },
-          { term: "Arqueo", desc: "Contar lo que hay y dejar constancia de cómo cerró." },
-          { term: "Ajuste", desc: "Corregir un error de registro. No sirve para cargar capital." },
+          { term: "Gasto", desc: "Un egreso real del negocio que no es un crédito: nafta, papelería, un flete. Lleva comprobante GAS y aparece en Reportes → Gastos. No es un ajuste: un gasto es plata que se fue; un ajuste corrige un número." },
+          { term: "Arqueo", desc: "Contar lo que hay y dejar constancia de cómo cerró, sin cerrar el turno." },
+          { term: "Cerrar turno", desc: "El cierre de caja de verdad, con acta: cuenta lo que hay, lo compara con el sistema, retira la plata y deja el fondo para mañana. Ver «Cierre de turno»." },
+          { term: "Ajuste", desc: "Corregir un error de registro. No sirve para cargar capital ni para anotar un gasto." },
         ],
       },
       {
@@ -518,8 +553,9 @@ const HELP: Record<string, HelpDoc> = {
         items: [
           { term: "Rendir efectivo", desc: "Entregarle a la caja principal la plata que cobraste. Es lo que más vas a usar." },
           { term: "Transferir", desc: "Pasar saldo entre tus propias cuentas: efectivo, banco y dólares." },
-          { term: "Registrar gasto", desc: "Un egreso de tu caja que no es un crédito ni una rendición." },
-          { term: "Cerrar caja", desc: "Contás lo que tenés y lo declarás. Si hay diferencia, tu saldo NO se toca: queda pendiente hasta que un administrador la revise." },
+          { term: "Registrar gasto", desc: "Un egreso de tu caja que no es un crédito ni una rendición. Tiene un techo por gasto que fija el administrador (Configuración → Cajas)." },
+          { term: "Arqueo", desc: "Contás lo que tenés y lo declarás, sin cerrar el turno. Si hay diferencia, tu saldo NO se toca: queda pendiente hasta que un administrador la revise." },
+          { term: "Cerrar turno", desc: "Contás, declarás la diferencia si la hay, rendís todo (o dejás un fondo) y queda el acta. Lo que rendís pasa a la caja principal." },
         ],
       },
       {
@@ -529,17 +565,48 @@ const HELP: Record<string, HelpDoc> = {
           { term: "Aporte de capital", desc: "Plata que ponés vos para prestar. Suma a la caja, pero NO es una ganancia del negocio: la financiera no ganó nada, solo tiene más con qué trabajar." },
           { term: "Retiro de utilidades", desc: "Plata que sacás del negocio. Resta de la caja, pero NO es un gasto. No podés retirar más de lo que hay disponible." },
           { term: "Por qué está separado del ajuste", desc: "El ajuste corrige un error de registro. Si un aporte se cargara como ajuste, en el libro un aporte de $10.000.000 se leería igual que una corrección de $1.500, y para distinguirlos habría que leer la descripción a mano." },
-          { term: "Comprobante propio", desc: "Los aportes llevan serie APO y los retiros RET, con su numeración. Sirven para respaldar el movimiento ante tu contador." },
+          { term: "Comprobante propio", desc: "Los aportes llevan serie APO, los retiros RET y el fondo de apertura APE, con su numeración. Sirven para respaldar el movimiento ante tu contador." },
+        ],
+      },
+      {
+        // El cierre de turno con criterio contable. Fernando (16/09/2026): "un botón de cerrar
+        // turno pero con toda la lógica de una caja real".
+        kind: "definiciones",
+        titulo: "Cierre de turno (el acta)",
+        items: [
+          { term: "Qué es un turno", desc: "Todo lo que pasó en la caja desde el cierre anterior hasta ahora. El primer turno arranca en el primer movimiento." },
+          { term: "La cuenta", desc: "Apertura + ingresos − egresos = lo que dice el sistema. Contado − sistema = diferencia. Contado − fondo = retiro." },
+          { term: "Contado", desc: "Lo que hay físicamente en la caja, contado a mano. Es el único número que escribís." },
+          { term: "¿Qué queda en la caja?", desc: "«Nada: se retira todo» deja la caja en $0,00 para mañana. «Dejo un fondo» retira el resto y deja ese importe como apertura del turno siguiente." },
+          { term: "Diferencia", desc: "Si el administrador cierra su caja, la diferencia se ajusta en el acto (ARQ). Si cierra un vendedor, queda DECLARADA y pendiente: la concilia el administrador desde los arqueos, y recién ahí impacta." },
+          { term: "Retiro", desc: "En la caja principal es un retiro de cierre (comprobante CIE): plata que sale del sistema, sin decir adónde va — eso es responsabilidad del dueño. En la caja de un vendedor es una rendición (REN) a la principal." },
+          { term: "Dólares", desc: "Si la caja tiene dólares o hubo movimientos en dólares, se cuentan en la misma acta, aparte de los pesos." },
+          { term: "Banco", desc: "No se cierra: no hay nada que contar. Se concilia con el extracto usando «Arqueo» sobre la cuenta Banco. El acta igual deja la posición de las tres cuentas al cierre." },
+          { term: "El acta", desc: "Comprobante ACT-000001, con apertura, movimientos por tipo, conteo, diferencia, retiro, fondo, dólares, posición y quién cerró. Se imprime desde el historial de cierres, con firmas «Cerró / Conforme»." },
+          { term: "Un turno sin movimientos", desc: "Se puede cerrar igual (avisa que no hubo nada): el acta deja constancia de que la caja se revisó ese día." },
+        ],
+      },
+      {
+        kind: "pasos",
+        titulo: "Cómo cerrar el día (caja principal)",
+        pasos: [
+          "Caja → «Cerrar turno». Arriba ves el turno: desde cuándo está abierto y cuántos movimientos tiene.",
+          "Contá la plata y escribí el «Contado». Al lado aparece la diferencia contra el sistema, en vivo.",
+          "Elegí qué queda: «Nada: se retira todo» (la caja queda en $0,00) o «Dejo un fondo» con el importe.",
+          "Si hay dólares en la caja, contalos también en su bloque.",
+          "Confirmá. Queda el acta ACT-… en «Cierres de turno», al pie de la pantalla; el ícono de impresora la imprime.",
+          "Al día siguiente, si arrancás con plata nueva, «Capital → Fondo de apertura» (APE) la pone en la caja con su comprobante.",
         ],
       },
       {
         kind: "definiciones",
-        titulo: "Cierres de caja (arqueos)",
+        titulo: "Arqueos (contar sin cerrar el turno)",
         items: [
-          { term: "Queda asentado siempre", desc: "Cada cierre se guarda aunque cuadre exacto: es el comprobante de que la caja se cerró ese día." },
+          { term: "Arqueo vs. cierre de turno", desc: "El arqueo solo cuenta y deja constancia; el cierre de turno además retira la plata y deja el fondo. Un arqueo a mitad de jornada no cierra nada." },
+          { term: "Queda asentado siempre", desc: "Cada arqueo se guarda aunque cuadre exacto: es el comprobante de que la caja se contó ese día." },
           { term: "Sobrante y faltante", desc: "Sobrante = hay más plata que la que dice el sistema. Faltante = hay menos. El faltante es el que conviene mirar de cerca." },
-          { term: "El vendedor cierra su caja", desc: "Con el botón «Cerrar caja» declara lo que contó. Si hay diferencia, el sistema NO la ajusta solo: queda pendiente y su saldo no se modifica. Si pudiera ajustarla él mismo, tendría un botón para hacer desaparecer la plata que falta." },
-          { term: "El administrador concilia", desc: "Al conciliar un cierre pendiente se registra el ajuste en la caja de esa persona y el saldo de sistema pasa a coincidir con lo contado. Pide un motivo obligatorio, que queda en el libro." },
+          { term: "El vendedor arquea su caja", desc: "Con el botón «Arqueo» declara lo que contó. Si hay diferencia, el sistema NO la ajusta solo: queda pendiente y su saldo no se modifica. Si pudiera ajustarla él mismo, tendría un botón para hacer desaparecer la plata que falta." },
+          { term: "El administrador concilia", desc: "Al conciliar un arqueo pendiente (o la diferencia declarada en un cierre de turno de un vendedor) se registra el ajuste en la caja de esa persona y el saldo de sistema pasa a coincidir con lo contado. Pide un motivo obligatorio, que queda en el libro." },
           { term: "Arqueo de la caja principal", desc: "El administrador arquea su propia tesorería y la diferencia se ajusta en el momento: es el dueño de esa caja." },
         ],
       },
@@ -549,6 +616,17 @@ const HELP: Record<string, HelpDoc> = {
         items: [
           "No se puede desembolsar, transferir ni ajustar en egreso por encima del saldo disponible: la caja nunca queda negativa.",
           "Un cierre con diferencia no bloquea a nadie: el vendedor sigue trabajando y la diferencia queda a la vista hasta que la resuelvas.",
+          "El saldo total es SOLO pesos (efectivo + banco). Los dólares van aparte, en U$S: no se suman 1 a 1.",
+        ],
+      },
+      {
+        kind: "tips",
+        titulo: "El libro de movimientos",
+        items: [
+          "El período manda: los atajos (este mes, mes pasado, últimos 30 días, este año) y las dos fechas recortan la tabla Y los KPI de ingresos y egresos del período.",
+          "El buscador encuentra por comprobante, cliente, detalle o monto; «Filtrar», adentro, recorta por tipo y cuenta y dice qué está filtrando. «Limpiar filtros» (F3) vuelve a este mes sin nada puesto.",
+          "Cada renglón abre su detalle: comprobante, fecha contable y de carga, origen, destino y el crédito (el número es un link). Desde ahí se imprime el comprobante.",
+          "Exportar CSV se lleva lo que estás viendo, con el período aplicado.",
         ],
       },
     ],
@@ -564,9 +642,20 @@ const HELP: Record<string, HelpDoc> = {
         kind: "pasos",
         titulo: "Cómo se usa",
         pasos: [
-          "Filtrá por tipo, cuenta o rango de fechas.",
-          "Cada comprobante tiene su número correlativo por serie (REC, DES, TRF…).",
-          "Exportá a CSV para tu contabilidad.",
+          "Buscá por número, cliente o detalle; «Filtrar», adentro del buscador, recorta por tipo, cuenta y fechas. «Limpiar filtros» (F3) vuelve a ver todo.",
+          "Cada comprobante tiene su número correlativo por serie.",
+          "Exportá a CSV para tu contabilidad: lleva la fecha contable y la de carga en columnas separadas.",
+        ],
+      },
+      {
+        kind: "definiciones",
+        titulo: "Las series",
+        items: [
+          { term: "REC · DES · REV · ANP", desc: "Recibo de cobro, desembolso, reversa de desembolso (anulación) y anulación de pago." },
+          { term: "APO · RET · APE", desc: "Aporte de capital, retiro de utilidades y fondo de apertura del turno." },
+          { term: "GAS · AJU · TRF", desc: "Gasto, ajuste y transferencia entre cuentas." },
+          { term: "ENT · REN · COM · LIQ", desc: "Entrega a un vendedor, rendición del vendedor, comisión y liquidación de comisiones." },
+          { term: "ARQ · CIE · ACT", desc: "Ajuste de arqueo, retiro de cierre de turno y el acta de cierre (que se numera aparte, en el historial de cierres)." },
         ],
       },
     ],
@@ -618,23 +707,31 @@ const HELP: Record<string, HelpDoc> = {
   "/reportes": {
     titulo: "Reportes",
     resumen:
-      "El tablero financiero por pestañas. Analiza operaciones, rentabilidad, morosidad y efectividad de cobranza sobre el período que elijas. Solo administradores.",
+      "El tablero financiero por pestañas. Analiza operaciones, rentabilidad, gastos, morosidad, efectividad de cobranza y medios de pago sobre el período que elijas. Solo administradores.",
     bloques: [
       {
         kind: "definiciones",
         titulo: "Las pestañas",
         items: [
-          { term: "Resumen", desc: "KPIs del período: otorgado, cobrado, ingreso financiero, cartera y morosidad." },
+          { term: "Resumen", desc: "KPIs del período: otorgado, cobrado, ingreso financiero, cartera y morosidad; cobranzas por método y cartera por estado." },
           { term: "Operaciones", desc: "Evolución mensual de lo otorgado y ticket promedio." },
-          { term: "Rentabilidad", desc: "Ingreso financiero − costo de fondeo = rentabilidad neta. Configurá el costo en Configuración → Rentabilidad." },
-          { term: "Morosidad", desc: "Evolución de la mora reconstruida a fin de cada mes." },
-          { term: "Cobranza", desc: "Efectividad de la gestión: embudo, recupero y desglose por canal y vendedor." },
+          { term: "Rentabilidad", desc: "Ingreso financiero − costo de fondeo − gastos registrados = rentabilidad neta. El costo de fondeo se configura en Configuración → Rentabilidad; los gastos son los que se cargaron en Caja." },
+          { term: "Gastos", desc: "El control de los gastos chicos: cuánto se gastó en el período, en qué (misma descripción = mismo concepto), desde qué caja, mes por mes y el detalle gasto por gasto con su comprobante GAS. Se cargan desde Caja → Gasto o Mi caja → Registrar gasto." },
+          { term: "Morosidad", desc: "Créditos en mora, saldo expuesto, interés de mora y severidad por tramos (los tramos se fijan en Configuración → Cobranza). La evolución mensual se reconstruye a fin de cada mes; el KPI y el gráfico muestran el mismo número. La cartera castigada (incobrables) va aparte." },
+          { term: "Cobranza", desc: "Efectividad de la gestión: embudo, recupero y desglose por canal (llamada, WhatsApp, SMS, email, visita) y por vendedor." },
+          { term: "Medios de pago", desc: "Por dónde entra la plata: efectivo, transferencia y demás, con monto, cantidad de pagos, clientes y ticket promedio." },
+          { term: "Histórico", desc: "La tabla mes a mes de todo el período, y los totales por año." },
         ],
       },
       {
         kind: "tips",
-        titulo: "Exportar",
-        items: ["Cada pestaña exporta a CSV su propio detalle."],
+        titulo: "El período y las salidas",
+        items: [
+          "El botón «Período» aplica a TODAS las pestañas: atajos (hoy, esta semana, este mes, mes pasado, este año, últimos 12 meses, año pasado) o dos fechas. La leyenda de al lado dice el rango exacto.",
+          "Los gráficos muestran su valor al pasar el mouse por cada barra (también con el teclado, con Tab).",
+          "«Imprimir» arma el reporte financiero del período (resumen, evolución mensual, cartera por estado y cobranzas por método). Cada pestaña exporta a CSV su propio detalle.",
+          "Todos los importes llevan centavos, también en el impreso.",
+        ],
       },
     ],
   },
@@ -662,6 +759,15 @@ const HELP: Record<string, HelpDoc> = {
           { term: "Entrada / Ajuste", desc: "Desde la ficha del producto: reponer (entrada) o corregir con motivo (ajuste)." },
         ],
       },
+      {
+        kind: "tips",
+        titulo: "Buscar y filtrar",
+        items: [
+          "El campo grande busca mientras escribís. El botón «Filtrar» que tiene adentro guarda el resto de los filtros y, con algo puesto, dice QUÉ está filtrando.",
+          "El conteo al lado del título es el de la tabla; si hay un recorte dice «12 de 340».",
+          "«Limpiar filtros» (o la tecla F3) vuelve a ver todo. Cambiar un filtro no recarga la pantalla: lo que hay se atenúa un instante y se actualiza en su lugar.",
+        ],
+      },
     ],
   },
   "/productos/movimientos": {
@@ -673,9 +779,18 @@ const HELP: Record<string, HelpDoc> = {
         kind: "pasos",
         titulo: "Cómo se usa",
         pasos: [
-          "Filtrá por tipo (alta, entrada, venta, devolución, ajuste), fecha o texto.",
-          "Cada fila muestra el producto, la cantidad con signo, el saldo resultante y el crédito vinculado si lo hay.",
+          "Buscá por producto, SKU o motivo; «Filtrar» recorta por tipo (alta, entrada, venta, devolución, ajuste) y fechas.",
+          "Cada fila muestra el producto, la cantidad con signo, el saldo resultante y el crédito vinculado si lo hay (el número es un link).",
           "Exportá a CSV.",
+        ],
+      },
+      {
+        kind: "tips",
+        titulo: "Buscar y filtrar",
+        items: [
+          "El campo grande busca mientras escribís. El botón «Filtrar» que tiene adentro guarda el resto de los filtros y, con algo puesto, dice QUÉ está filtrando.",
+          "El conteo al lado del título es el de la tabla; si hay un recorte dice «12 de 340».",
+          "«Limpiar filtros» (o la tecla F3) vuelve a ver todo. Cambiar un filtro no recarga la pantalla: lo que hay se atenúa un instante y se actualiza en su lugar.",
         ],
       },
     ],
@@ -693,6 +808,15 @@ const HELP: Record<string, HelpDoc> = {
         pasos: [
           "Dá de alta un proveedor con sus datos de contacto.",
           "Registrá sus movimientos (compras y pagos) para llevar el saldo.",
+        ],
+      },
+      {
+        kind: "tips",
+        titulo: "Buscar y filtrar",
+        items: [
+          "El campo grande busca mientras escribís. El botón «Filtrar» que tiene adentro guarda el resto de los filtros y, con algo puesto, dice QUÉ está filtrando.",
+          "El conteo al lado del título es el de la tabla; si hay un recorte dice «12 de 340».",
+          "«Limpiar filtros» (o la tecla F3) vuelve a ver todo. Cambiar un filtro no recarga la pantalla: lo que hay se atenúa un instante y se actualiza en su lugar.",
         ],
       },
     ],
@@ -763,6 +887,15 @@ const HELP: Record<string, HelpDoc> = {
           "No podés quitarte tu propio rol de admin, desactivarte ni eliminar al único admin (evita quedar afuera).",
         ],
       },
+      {
+        kind: "tips",
+        titulo: "Buscar y filtrar",
+        items: [
+          "El campo grande busca mientras escribís. El botón «Filtrar» que tiene adentro guarda el resto de los filtros y, con algo puesto, dice QUÉ está filtrando.",
+          "El conteo al lado del título es el de la tabla; si hay un recorte dice «12 de 340».",
+          "«Limpiar filtros» (o la tecla F3) vuelve a ver todo. Cambiar un filtro no recarga la pantalla: lo que hay se atenúa un instante y se actualiza en su lugar.",
+        ],
+      },
     ],
   },
 
@@ -776,12 +909,18 @@ const HELP: Record<string, HelpDoc> = {
         kind: "definiciones",
         titulo: "Las pestañas",
         items: [
-          { term: "Motor", desc: "Convención de tasa, mora (tasa diaria y base), orden de imputación y moneda. Además, el umbral de la agenda de cobranza." },
-          { term: "Simulador", desc: "Rango de monto, tasa base y mín/máx, plazos habilitados, frecuencias, redondeo, cronograma y cargos (comisión, IVA, seguro, gastos)." },
-          { term: "Comunicaciones", desc: "WhatsApp, SMS y Email: cada canal con su toggle y sus credenciales (los secretos nunca se muestran en claro)." },
+          { term: "Financiera", desc: "Nombre, logo, teléfono y domicilio: es lo que firma cada mensaje, recibo y acta." },
+          { term: "Motor", desc: "Convención de tasa, mora (tasa diaria, base y tope), orden de imputación y moneda." },
+          { term: "Simulador", desc: "Rango de monto, tasa base y mín/máx, planes, frecuencias, redondeo, cronograma y cargos (comisión, IVA, seguro, gastos)." },
+          { term: "Comunicaciones", desc: "WhatsApp (API de Meta), SMS (SMSChef: el celular de la financiera) y Email (Gmail/SMTP o Resend). Cada canal con su interruptor, sus credenciales y un botón «Enviar prueba». Los secretos nunca se muestran en claro. Con un canal activo, los avisos automáticos de cobranza salen solos cada mañana." },
+          { term: "Cobranza", desc: "Agenda del día, tramos de mora, escalera de recupero, acuerdos de pago (topes del vendedor), refinanciaciones (honorarios) y plantillas de contacto." },
+          { term: "Cajas", desc: "Gasto máximo del vendedor por su cuenta y días para anular un cobro." },
           { term: "Gamificación", desc: "Período, pesos y umbrales de las medallas del equipo." },
-          { term: "Rentabilidad", desc: "Costo de fondeo para calcular la rentabilidad neta de Reportes." },
+          { term: "Rentabilidad", desc: "Costo de fondeo y costos fuera de la caja, para la rentabilidad neta de Reportes. Los gastos registrados en Caja ya se restan solos." },
           { term: "Riesgo / Originación", desc: "Política de aprobación (ratio cuota/ingreso, tope de créditos, bloqueo por mora, candado del sueldo) y bureaus (plan Pro)." },
+          { term: "Documentos", desc: "Qué documentación se exige y cómo se imprime el plan de pagos." },
+          { term: "Notificaciones", desc: "Qué avisos aparecen en la campanita del sistema." },
+          { term: "Backups", desc: "El respaldo diario de la base y su estado." },
         ],
       },
       {
@@ -805,8 +944,19 @@ const HELP: Record<string, HelpDoc> = {
         kind: "pasos",
         titulo: "Cómo se usa",
         pasos: [
-          "Recorré los eventos (crear, actualizar, anular, registrar pago, cambiar config…).",
+          "Recorré los eventos (crear, actualizar, anular, registrar pago, contactar, cambiar config…).",
           "Cada evento registra el actor, la entidad afectada y un detalle. Nunca guarda contraseñas ni secretos.",
+          "Los KPI de arriba son filtros: «Hoy» y «Esta semana» recortan la traza a esa ventana; «Filtrar» recorta por entidad (clientes, créditos, pagos…).",
+          "La auditoría no se borra nunca: es la evidencia de lo que pasó. Crece alrededor de 1 KB por evento.",
+        ],
+      },
+      {
+        kind: "tips",
+        titulo: "Buscar y filtrar",
+        items: [
+          "El campo grande busca mientras escribís. El botón «Filtrar» que tiene adentro guarda el resto de los filtros y, con algo puesto, dice QUÉ está filtrando.",
+          "El conteo al lado del título es el de la tabla; si hay un recorte dice «12 de 340».",
+          "«Limpiar filtros» (o la tecla F3) vuelve a ver todo. Cambiar un filtro no recarga la pantalla: lo que hay se atenúa un instante y se actualiza en su lugar.",
         ],
       },
     ],

@@ -168,8 +168,9 @@ const AYUDA: Record<string, AyudaBloque> = {
       "Cada vendedor tiene su propia caja: ahí entra lo que cobra y de ahí sale lo que rinde. La tuya es la caja principal. " +
       "Estos dos números definen qué puede hacer alguien con la plata sin pedirte permiso.",
     puntos: [
-      "Gasto máximo del vendedor: cuánto puede descontar de su caja por su cuenta. En 0 no puede ninguno.",
+      "Gasto máximo del vendedor: cuánto puede descontar de su caja por su cuenta, por gasto. En 0 no puede ninguno.",
       "Días para anular un cobro: la ventana para deshacer un pago cargado por error. Después queda firme.",
+      "El cierre de turno no se configura: cada caja cierra con su acta (contado, diferencia, retiro y fondo). La diferencia de un vendedor queda declarada y la conciliás vos; la de la caja principal se ajusta en el acto.",
     ],
     ejemplo:
       "El gasto en 0 (como viene) es a propósito. Todas las noches el vendedor cierra su caja: cuenta la plata y el sistema " +
@@ -235,7 +236,7 @@ const AYUDA: Record<string, AyudaBloque> = {
       "Máximo de cuotas: hasta dónde puede estirar el vendedor sin consultar. No es lo que va a ofrecer siempre, es su techo.",
       "Días entre cuotas: cada cuánto vence una cuota DEL ACUERDO. Es independiente del crédito: podés acordar semanal aunque el crédito sea mensual.",
       "Cuotas impagas que lo rompen: con 1 sos estricto (falta a una y se cae); con 2 o 3 le das margen para un tropiezo.",
-      "Descuento máx. del vendedor: cuánto puede perdonar por su cuenta. En 0 no descuenta nada y todo descuento lo firma un admin, que no tiene tope.",
+      "Descuento máx. del vendedor: cuánto puede perdonar por su cuenta, en acuerdos, refinanciaciones Y campañas. En 0 no descuenta nada y todo descuento lo firma un admin, que no tiene tope (pero nunca más de 100%).",
       "La condonación sale de los punitorios y el interés, NUNCA del capital: la plata que se prestó de verdad no se regala.",
       "El acuerdo no toca el crédito: el cliente paga como siempre y el acuerdo se va cumpliendo solo con esos pagos.",
       "No hay botón para darlo por cumplido: se cumple cuando la plata entra, y eso lo detecta el sistema solo.",
@@ -409,14 +410,20 @@ const AYUDA: Record<string, AyudaBloque> = {
   },
   comunicaciones: {
     titulo: "Canales de comunicación",
-    texto: "Conectá WhatsApp, SMS y Email para que el sistema mande recordatorios y avisos de mora automáticamente. Cada canal se activa y guarda por separado.",
+    texto: "Conectá WhatsApp, SMS y Email para que el sistema mande los avisos de cobranza solo: 3 días antes del vencimiento, el día, y a los 5, 15 y 30 días de atraso, cada mañana. Cada canal se activa y guarda por separado, y tiene su «Enviar prueba».",
+    puntos: [
+      "El aviso sale por el primer canal que pueda: WhatsApp → SMS → Email. Si WhatsApp no tiene plantilla aprobada o el cliente no tiene teléfono, prueba el siguiente.",
+      "Cada aviso queda como gestión automática en la ficha del cliente, diciendo por dónde salió — o por qué no salió por ninguno.",
+      "Los mismos canales sirven para el contacto manual desde la ficha, la agenda y las campañas.",
+      "El aviso lo firma la financiera con su nombre y teléfono (Configuración → Financiera): al cliente le escribe quien le prestó, no el software.",
+    ],
   },
   "canal-whatsapp": {
     titulo: "WhatsApp (Meta)",
-    texto: "Conexión con WhatsApp Cloud API para enviar mensajes automáticos.",
+    texto: "Conexión con WhatsApp Cloud API para que los mensajes salgan solos. Sin esta API, el WhatsApp igual funciona: el sistema arma el mensaje y lo abre para que lo mande el operador.",
     puntos: [
       "Token y Phone Number ID: los provee Meta Business.",
-      "Plantillas: el nombre exacto de cada mensaje aprobado en Meta.",
+      "Plantillas: el nombre exacto de cada mensaje aprobado en Meta, uno por cada aviso automático. Fuera de las 24 h desde el último mensaje del cliente, Meta solo entrega plantillas aprobadas.",
     ],
   },
   "canal-sms": {
@@ -425,7 +432,12 @@ const AYUDA: Record<string, AyudaBloque> = {
   },
   "canal-email": {
     titulo: "Email",
-    texto: "Envío de correos. Elegí el proveedor (SMTP, Resend, SendGrid) y cargá sus credenciales.",
+    texto: "Envío de correos con la casilla de la financiera. Con SMTP se usa una casilla de Gmail y una «contraseña de aplicación» (gratis, desde el día uno); Resend requiere un dominio propio verificado. Es el canal de los avisos automáticos cuando WhatsApp y SMS no pueden.",
+    puntos: [
+      "Guardá primero y después «Enviar prueba» a la casilla que quieras: la prueba usa la configuración guardada.",
+      "Remitente: si queda vacío, sale de la misma casilla configurada.",
+      "El cliente tiene que tener el email cargado en su ficha; si no, el aviso automático lo dice y pasa de largo.",
+    ],
   },
   gamificacion: {
     titulo: "Gamificación",
@@ -438,11 +450,11 @@ const AYUDA: Record<string, AyudaBloque> = {
   },
   rentabilidad: {
     titulo: "Rentabilidad (costo de fondeo)",
-    texto: "Cuánto te cuesta el dinero que prestás, para calcular la ganancia NETA en Reportes.",
+    texto: "Cuánto te cuesta el dinero que prestás, para calcular la ganancia NETA en Reportes: ingreso financiero − costo de fondeo − gastos registrados.",
     puntos: [
       "Costo de fondeo anual: el interés que pagás por tu capital.",
-      "Otros costos mensuales: gastos fijos operativos.",
-      "Apagado: Reportes muestra el margen bruto (sin restar estos costos).",
+      "Costos fuera de la caja ($ por mes): lo que se paga sin pasar por la caja del sistema (un alquiler desde una cuenta personal). Los gastos que SÍ cargás en Caja → Gasto ya se restan solos: no los repitas acá.",
+      "Apagado: Reportes muestra el margen bruto (sin costo de fondeo), pero los gastos registrados se restan igual.",
     ],
   },
   riesgo: {

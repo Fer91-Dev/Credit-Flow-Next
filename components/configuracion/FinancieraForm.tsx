@@ -83,7 +83,8 @@ export function FinancieraForm() {
           titulo: "Datos de la financiera",
           texto: "La identidad de tu empresa. Estos datos aparecen en el sistema y en los comprobantes/PDFs que ve el cliente (co-branding).",
           puntos: [
-            "Nombre de fantasía: cómo se muestra tu financiera en la app.",
+            "Nombre de fantasía: cómo se muestra tu financiera en la app y quién firma cada mensaje al cliente (WhatsApp, SMS, email) y cada acta de cierre.",
+            "Teléfono: va al pie de los avisos automáticos de cobranza, para que el cliente sepa a dónde llamar.",
             "Logo, CUIT y contacto: se usan en los comprobantes y el pie de los PDFs.",
           ],
         }} />
