@@ -16,6 +16,7 @@ import { KpiCard } from "@/components/ui/KpiCard";
 import { IconBadge } from "@/components/ui/IconBadge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
+import { useConfirm } from "@/components/ui/confirm";
 import { mutate as globalMutate } from "swr";
 
 type BucketMeta = {
@@ -218,6 +219,7 @@ function AgendaRow({
   const severidad = severidadMora(it.dias_mora, tramos);
   const critica = severidad === "critica";
   const toast = useToast();
+  const confirm = useConfirm();
   const [enviando, setEnviando] = useState<"whatsapp" | "sms" | null>(null);
 
   /**
@@ -258,7 +260,16 @@ function AgendaRow({
   const reclamarWhatsapp = () => reclamar("whatsapp");
   // Fernando (18/09/2026): al lado del WhatsApp, el SMS — mismo texto, mismo registro,
   // sale por el celular de la financiera (SMSChef). Mismo color de tramo que el WhatsApp.
-  const reclamarSms = () => reclamar("sms");
+  // El SMS sale solo y al instante (no hay un "abrir y mandar" como en WhatsApp): se
+  // confirma antes, para que un clic de más no le escriba a un cliente (Fernando, 18/09/2026).
+  const reclamarSms = async () => {
+    const ok = await confirm({
+      title: "¿Mandar el SMS?",
+      description: `Le llega ahora a ${it.cliente} (${it.telefono}) desde el celular de la financiera, con el aviso de mora del crédito ${formatCreditoNumero(it.credito_numero, it.credito_refinancia_a_numero)}. Queda registrado en la ficha.`,
+      confirmLabel: "Mandar SMS",
+    });
+    if (ok) await reclamar("sms");
+  };
   const colorTramo = !it.telefono
     ? "text-muted-foreground/20 cursor-not-allowed"
     : severidad === "critica"

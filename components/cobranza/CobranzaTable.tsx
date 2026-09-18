@@ -32,6 +32,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { ModalHeader, MODAL_CONTENT_WIDE, SIN_CIERRE_ACCIDENTAL } from "@/components/ui/form-kit";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
+import { useConfirm } from "@/components/ui/confirm";
 import { esCreditoVivo, contactoBloqueado, severidadMora, normalizarTelefonoAR } from "@/lib/domain";
 
 function n0(x: number) {
@@ -103,6 +104,7 @@ export function CobranzaTable({ role }: { role: Role }) {
   const { acciones, mutate: mutateAcciones } = useAccionesCobranza();
   const { mutate: globalMutate } = useSWRConfig();
   const toast = useToast();
+  const confirm = useConfirm();
   const router = useRouter();
   const [tab, setTab]           = useState<Tab>("hoy");
   const [mounted, setMounted]   = useState(false);
@@ -343,7 +345,16 @@ export function CobranzaTable({ role }: { role: Role }) {
   };
   const reclamarWhatsapp = (c: Credito) => reclamar(c, "whatsapp");
   // Fernando (18/09/2026): al lado del WhatsApp, el SMS (SMSChef). Mismo texto, mismo registro.
-  const reclamarSms = (c: Credito) => reclamar(c, "sms");
+  // El SMS sale solo y al instante: se confirma antes, para que un clic de más no le
+  // escriba a un cliente (Fernando, 18/09/2026).
+  const reclamarSms = async (c: Credito) => {
+    const ok = await confirm({
+      title: "¿Mandar el SMS?",
+      description: `Le llega ahora a ${nombreCompleto(c.cliente)} (${c.cliente.telefono}) desde el celular de la financiera, con el aviso de mora del crédito ${formatCreditoNumero(c.numero, c.refinancia_a_numero)}. Queda registrado en la ficha.`,
+      confirmLabel: "Mandar SMS",
+    });
+    if (ok) await reclamar(c, "sms");
+  };
 
   const sortedFiltered = [...filtered].sort((a, b) => b.dias_mora - a.dias_mora);
 
