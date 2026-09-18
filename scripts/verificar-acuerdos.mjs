@@ -491,15 +491,32 @@ const acE0 = await leerAcuerdo(ID_E, "vigente");
   Si el "roto" lo escribiéramos nosotros no estaríamos probando nada.
 */
 const atras = (n) => { const d = new Date(); d.setUTCDate(d.getUTCDate() - n); return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())); };
-for (let k = 0; k < acE0.cuotas.length; k++) {
-  await db.acuerdo_cuota.update({ where: { id: acE0.cuotas[k].id }, data: { vencimiento: atras(30 - k * 15) } });
-}
 await db.acuerdos_pago.update({ where: { id: acE0.id }, data: { fecha: atras(45) } });
+
+/*
+  LA AGENDA DEL DÍA Y EL ACUERDO (Fernando, 18/09/2026): un acuerdo vigente con una cuota
+  vencida es el llamado más urgente, y un acuerdo roto sin gestionar tiene que volver a la
+  cola ese mismo día. Se tolera una cuota impaga (2 para romper) para poder ver la etapa
+  intermedia: vigente pero incumplido.
+*/
+H2("la agenda del día mientras el acuerdo se incumple");
+await db.acuerdos_pago.update({ where: { id: acE0.id }, data: { cuotas_para_romper: 2 } });
+await db.acuerdo_cuota.update({ where: { id: acE0.cuotas[0].id }, data: { vencimiento: atras(30) } });
+const enAgenda = async () => ((await api("GET", "/api/cobranza/agenda")).data?.items ?? []).find((i) => i.credito_id === ID_E) ?? null;
+const ag1 = await enAgenda();
+ok(ag1?.bucket === "acuerdo_vencido", "con UNA cuota del acuerdo vencida (todavía vigente) entra al grupo «Acuerdos con cuota vencida»", ag1 ? `${ag1.bucket} · ${ag1.motivo}` : "no está en la agenda");
+ok(!!ag1 && igual(ag1.acuerdo_monto, acE0.cuotas[0].monto), "y la fila muestra lo que falta de esa cuota del acuerdo", ag1 ? f(ag1.acuerdo_monto) : "-");
+const acE05 = await leerAcuerdo(ID_E);
+ok(acE05.estado === "vigente", "el acuerdo sigue vigente: tolera 1 impaga antes de romperse", acE05.estado);
+
+await db.acuerdo_cuota.update({ where: { id: acE0.cuotas[1].id }, data: { vencimiento: atras(15) } });
 ok(true, `vencimientos retrasados a mano (${acE0.cuotas.length} cuotas, impagas)`, "solo las fechas");
 
 await api("GET", "/api/cobranza/acuerdos"); // que lo evalúe el sistema
 const acE1 = await leerAcuerdo(ID_E);
-ok(acE1.estado === "roto", `el sistema lo marcó ROTO con ${acE0.cuotas_para_romper} incumplida(s)`, acE1.estado);
+ok(acE1.estado === "roto", "el sistema lo marcó ROTO con 2 incumplida(s)", acE1.estado);
+const ag2 = await enAgenda();
+ok(ag2?.bucket === "acuerdo_roto", "recién roto y sin gestionar, entra al grupo «Acuerdos rotos» el mismo día", ag2 ? `${ag2.bucket} · ${ag2.motivo}` : "no está en la agenda");
 
 const reArmar = await api("POST", "/api/cobranza/acuerdos", {
   credito_id: ID_E, cuotas: 2, quita: 0, primer_vencimiento: dentroDe(10),
@@ -507,6 +524,9 @@ const reArmar = await api("POST", "/api/cobranza/acuerdos", {
 ok(reArmar.ok, "tras romperse se puede volver a acordar", reArmar.error ?? "");
 const vivos = await db.acuerdos_pago.count({ where: { credito_id: ID_E, estado: "vigente" } });
 ok(vivos === 1, "y queda UN solo acuerdo vigente", `${vivos} vigente(s)`);
+const agResp = await api("GET", "/api/cobranza/agenda");
+ok(!(agResp.data?.items ?? []).some((i) => i.credito_id === ID_E), "con el acuerdo nuevo al día sale de la cola", "");
+ok((agResp.data?.totales?.con_acuerdo_al_dia ?? 0) >= 1, "y la agenda dice cuántos morosos con acuerdo al día no se llaman", String(agResp.data?.totales?.con_acuerdo_al_dia));
 
 // ════════════════════════════════════════════════════════════════════════════
 H1("FASE F — ANULAR: devuelve el interés capitalizado y deja el crédito como estaba");

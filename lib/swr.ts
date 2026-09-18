@@ -2159,14 +2159,16 @@ export interface AgendaItem {
    */
   cobro_bloqueado?: boolean;
   promesa_monto: number | null;
-  bucket: "promesa" | "agendado" | "enfriado";
+  /** Lo que falta pagar de la cuota del acuerdo que venció (solo `acuerdo_vencido`). */
+  acuerdo_monto: number | null;
+  bucket: "acuerdo_vencido" | "promesa" | "acuerdo_roto" | "agendado" | "enfriado";
   motivo: string;
   fecha: string | null;
 }
 export interface AgendaCobranza {
   items: AgendaItem[];
-  /** `vencido` = plata exigible que hay en toda la cola del día. */
-  totales: { promesa: number; agendado: number; enfriado: number; total: number; vencido: number };
+  /** `vencido` = plata exigible que hay en toda la cola del día; `con_acuerdo_al_dia` = morosos que no se llaman porque cumplen su acuerdo. */
+  totales: { acuerdo_vencido: number; promesa: number; acuerdo_roto: number; agendado: number; enfriado: number; total: number; vencido: number; con_acuerdo_al_dia: number };
   dias_sin_gestion: number;
   /** Con qué criterio vino ordenada la cola (parámetro de Configuración → Cobranza). */
   orden: OrdenAgenda;

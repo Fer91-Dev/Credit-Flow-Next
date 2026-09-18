@@ -22,8 +22,17 @@ import type { NextRequest } from "next/server";
  * Prioridad: promesa → agendado → enfriado; dentro de cada uno, según `cobranza.orden`
  * (días de atraso o plata vencida — parametrizable en Config).
  */
-type Bucket = "promesa" | "agendado" | "enfriado";
-const PRIORIDAD: Record<Bucket, number> = { promesa: 0, agendado: 1, enfriado: 2 };
+/**
+ * Los grupos de la cola, en orden de urgencia. Fernando (18/09/2026): "los créditos con
+ * acuerdo de pago vencido no los prioriza en Hoy". Antes un acuerdo VIGENTE sacaba al
+ * crédito de la agenda sin mirar si el cliente estaba pagando las cuotas del acuerdo, y un
+ * acuerdo recién ROTO volvía a la cola solo cuando pasaban los días de "sin gestión". Ahora:
+ *  - acuerdo_vencido: el acuerdo sigue vigente pero una cuota suya ya venció impaga. Es el
+ *    llamado más urgente que existe: todavía se puede salvar el arreglo.
+ *  - acuerdo_roto: se cayó y nadie lo gestionó desde entonces. Hay que llamar hoy.
+ */
+type Bucket = "acuerdo_vencido" | "promesa" | "acuerdo_roto" | "agendado" | "enfriado";
+const PRIORIDAD: Record<Bucket, number> = { acuerdo_vencido: 0, promesa: 1, acuerdo_roto: 2, agendado: 3, enfriado: 4 };
 
 interface AgendaItem {
   credito_id: string;
@@ -48,6 +57,8 @@ interface AgendaItem {
    */
   cobro_bloqueado: boolean;
   promesa_monto: number | null;
+  /** La cuota del acuerdo que venció impaga (lo que falta pagar de ella), solo en `acuerdo_vencido`. */
+  acuerdo_monto: number | null;
   bucket: Bucket;
   motivo: string;
   fecha: Date | null;
@@ -114,8 +125,31 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   });
 
   if (creditos.length === 0) {
-    return successResponse({ items: [], totales: { promesa: 0, agendado: 0, enfriado: 0, total: 0, vencido: 0 }, dias_sin_gestion, orden });
+    return successResponse({ items: [], totales: { acuerdo_vencido: 0, promesa: 0, acuerdo_roto: 0, agendado: 0, enfriado: 0, total: 0, vencido: 0, con_acuerdo_al_dia: 0 }, dias_sin_gestion, orden });
   }
+
+  /**
+   * Las cuotas de acuerdo VENCIDAS de acuerdos que siguen vigentes (todavía no se rompió:
+   * la financiera tolera N cuotas impagas antes de romper). Una por crédito, la más vieja.
+   */
+  const cuotasAcuerdoVencidas = await prisma.acuerdo_cuota.findMany({
+    where: { ...withTenant(tenantId), acuerdo: { estado: "vigente", credito_id: { in: creditos.map((c) => c.id) } }, vencimiento: { lt: hoy }, estado: { not: "pagada" } },
+    select: { numero: true, vencimiento: true, monto: true, pagado: true, acuerdo: { select: { credito_id: true } } },
+    orderBy: { vencimiento: "asc" },
+  });
+  const acuerdoVencidoDe = new Map<string, { numero: number; vencimiento: Date; falta: number }>();
+  for (const q of cuotasAcuerdoVencidas) {
+    if (!acuerdoVencidoDe.has(q.acuerdo.credito_id)) acuerdoVencidoDe.set(q.acuerdo.credito_id, { numero: q.numero, vencimiento: q.vencimiento, falta: round2(q.monto - q.pagado) });
+  }
+  // El último acuerdo ROTO de cada crédito (los rotos no impiden un acuerdo nuevo: si hay uno
+  // vigente después, manda el vigente).
+  const rotos = await prisma.acuerdos_pago.findMany({
+    where: { ...withTenant(tenantId), estado: "roto", credito_id: { in: creditos.map((c) => c.id) } },
+    select: { credito_id: true, cerrado_at: true, motivo_estado: true },
+    orderBy: { cerrado_at: "desc" },
+  });
+  const rotoDe = new Map<string, { cerrado_at: Date; motivo: string | null }>();
+  for (const r of rotos) if (r.cerrado_at && !rotoDe.has(r.credito_id)) rotoDe.set(r.credito_id, { cerrado_at: r.cerrado_at, motivo: r.motivo_estado });
 
   // Los que son refinanciación se muestran como REF-<origen>: una sola query para todo el lote.
   const origenes = await numerosRefinanciados(tenantId, creditos);
@@ -136,6 +170,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   }
 
   const items: AgendaItem[] = [];
+  let conAcuerdoAlDia = 0;
   for (const c of creditos) {
     /**
      * Acuerdo vigente = ya está gestionado… PERO solo por lo que entró al acuerdo.
@@ -152,18 +187,27 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
      *
      * La regla vive en `cubiertoPorAcuerdo` porque la planilla de calle decide lo mismo.
      */
-    if (cubiertoPorAcuerdo(conAcuerdo, c.id, c.proximo_pago)) continue;
+    const acuerdoVencido = acuerdoVencidoDe.get(c.id) ?? null;
+    // Cubierto por un acuerdo vigente Y al día: no se lo llama (contarlo, sí: la agenda dice
+    // cuántos hay para que no parezca que se los olvidó).
+    if (!acuerdoVencido && cubiertoPorAcuerdo(conAcuerdo, c.id, c.proximo_pago)) { conAcuerdoAlDia++; continue; }
     const accs = porCredito.get(c.id) ?? [];
     const promesaPend = accs.find((a) => a.promesa_estado === "pendiente" && a.promesa_fecha);
     const conProx = accs.find((a) => a.proximo_contacto);
     const ultimaHumana = accs.find((a) => !a.automatico);
+    const roto = acuerdosVigentes.has(c.id) ? null : rotoDe.get(c.id) ?? null;
+    const rotoSinGestionar = !!roto && (!ultimaHumana || ultimaHumana.created_at.getTime() < roto.cerrado_at.getTime());
 
     let bucket: Bucket | null = null;
     let fecha: Date | null = null;
     let motivo = "";
 
-    if (promesaPend?.promesa_fecha && promesaPend.promesa_fecha.getTime() <= finHoy) {
+    if (acuerdoVencido) {
+      bucket = "acuerdo_vencido"; fecha = acuerdoVencido.vencimiento; motivo = `Cuota ${acuerdoVencido.numero} del acuerdo vencida`;
+    } else if (promesaPend?.promesa_fecha && promesaPend.promesa_fecha.getTime() <= finHoy) {
       bucket = "promesa"; fecha = promesaPend.promesa_fecha; motivo = "Promesa de pago vencida";
+    } else if (rotoSinGestionar && roto) {
+      bucket = "acuerdo_roto"; fecha = roto.cerrado_at; motivo = roto.motivo ? `Acuerdo roto: ${roto.motivo.replace(/^Incumplió/, "incumplió")}` : "Acuerdo roto";
     } else if (conProx?.proximo_contacto && conProx.proximo_contacto.getTime() <= finHoy) {
       bucket = "agendado"; fecha = conProx.proximo_contacto; motivo = "Contacto agendado";
     } else {
@@ -210,6 +254,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
       dias_mora: diasMoraActual(c.proximo_pago, hoy),
       cobro_bloqueado: false, // se completa abajo, con una sola consulta para todo el lote
       promesa_monto: bucket === "promesa" ? (promesaPend?.promesa_monto ?? null) : null,
+      acuerdo_monto: bucket === "acuerdo_vencido" ? acuerdoVencido?.falta ?? null : null,
       bucket,
       motivo,
       fecha,
@@ -254,10 +299,14 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   );
 
   const totales = {
+    acuerdo_vencido: items.filter((i) => i.bucket === "acuerdo_vencido").length,
     promesa: items.filter((i) => i.bucket === "promesa").length,
+    acuerdo_roto: items.filter((i) => i.bucket === "acuerdo_roto").length,
     agendado: items.filter((i) => i.bucket === "agendado").length,
     enfriado: items.filter((i) => i.bucket === "enfriado").length,
     total: items.length,
+    /** Morosos con acuerdo vigente y al día: no están en la cola, y se dice cuántos son. */
+    con_acuerdo_al_dia: conAcuerdoAlDia,
     /** Plata exigible que hay en la cola del día, para saber qué está en juego. */
     vencido: round2(items.reduce((s, i) => s + i.vencido, 0)),
   };

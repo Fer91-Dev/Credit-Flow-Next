@@ -5,7 +5,7 @@ import { severidadMora } from "@/lib/domain";
 import { useMemo, useState } from "react";
 import {
   HandshakeIcon, CalendarClock, Snowflake, MessageSquarePlus,
-  Phone, CheckCheck, AlertCircle, MessageSquareText,
+  Phone, CheckCheck, AlertCircle, MessageSquareText, CalendarX, ShieldAlert,
 } from "lucide-react";
 import { WhatsAppIcon } from "@/components/ui/WhatsAppIcon";
 import { useAgendaCobranza, type AgendaItem, useTramosMora } from "@/lib/swr";
@@ -24,17 +24,21 @@ type BucketMeta = {
   titulo: string;
   ayuda: string;
   icon: typeof HandshakeIcon;
-  accent: "warning" | "primary" | "muted";
-  badge: "warning" | "primary" | "muted";
+  accent: "destructive" | "warning" | "primary" | "muted";
+  badge: "destructive" | "warning" | "primary" | "muted";
 };
 
+// En orden de urgencia: es el orden de la cola y el de las tarjetas.
 const BUCKETS: BucketMeta[] = [
-  { key: "promesa",  titulo: "Promesas por cobrar",   ayuda: "Prometieron pagar y la fecha ya llegó o venció.", icon: HandshakeIcon,  accent: "warning", badge: "warning" },
-  { key: "agendado", titulo: "Contactos agendados",   ayuda: "Quedó pactado volver a contactarlos hoy.",        icon: CalendarClock, accent: "primary", badge: "primary" },
-  { key: "enfriado", titulo: "Sin gestión reciente",  ayuda: "Morosos que hace días que nadie contacta.",       icon: Snowflake,     accent: "muted",   badge: "muted" },
+  { key: "acuerdo_vencido", titulo: "Acuerdos con cuota vencida", ayuda: "Tienen un acuerdo de pago y dejaron de cumplirlo: todavía se puede salvar.", icon: CalendarX,     accent: "destructive", badge: "destructive" },
+  { key: "promesa",         titulo: "Promesas por cobrar",        ayuda: "Prometieron pagar y la fecha ya llegó o venció.",                            icon: HandshakeIcon, accent: "warning",     badge: "warning" },
+  { key: "acuerdo_roto",    titulo: "Acuerdos rotos",             ayuda: "El acuerdo se cayó y nadie los contactó desde entonces.",                    icon: ShieldAlert,   accent: "warning",     badge: "warning" },
+  { key: "agendado",        titulo: "Contactos agendados",        ayuda: "Quedó pactado volver a contactarlos hoy.",                                   icon: CalendarClock, accent: "primary",     badge: "primary" },
+  { key: "enfriado",        titulo: "Sin gestión reciente",       ayuda: "Morosos que hace días que nadie contacta.",                                  icon: Snowflake,     accent: "muted",       badge: "muted" },
 ];
 
 const ACCENT_RING: Record<BucketMeta["accent"], string> = {
+  destructive: "text-destructive bg-destructive/10 border-destructive/20",
   warning: "text-warning bg-warning/10 border-warning/20",
   primary: "text-primary bg-primary/10 border-primary/20",
   muted:   "text-muted-foreground bg-muted/40 border-border",
@@ -103,8 +107,13 @@ export function AgendaHoy({
         <div className="space-y-1.5">
           <p className="text-sm font-semibold text-success">Agenda del día al día</p>
           <p className="text-xs text-muted-foreground/60 max-w-xs leading-relaxed">
-            No hay promesas por cobrar, contactos agendados ni morosos sin gestión reciente. Buen trabajo.
+            No hay acuerdos incumplidos, promesas por cobrar, contactos agendados ni morosos sin gestión reciente. Buen trabajo.
           </p>
+          {(agenda?.totales.con_acuerdo_al_dia ?? 0) > 0 && (
+            <p className="text-xs text-muted-foreground/60">
+              {agenda!.totales.con_acuerdo_al_dia} moroso{agenda!.totales.con_acuerdo_al_dia === 1 ? "" : "s"} con acuerdo de pago al día: no se {agenda!.totales.con_acuerdo_al_dia === 1 ? "lo llama" : "los llama"}.
+            </p>
+          )}
         </div>
       </div>
     );
@@ -132,10 +141,15 @@ export function AgendaHoy({
                 : `${total} cliente${total !== 1 ? "s" : ""} para contactar. Dentro de cada grupo, primero ${
                     agenda?.orden === "monto" ? "el que más plata debe" : "el que hace más días que no paga"
                   }.`}
+              {/* Los que NO están, y por qué: cumplen un acuerdo. Sin este dato la agenda
+                  parecía olvidarse de ellos (Fernando, 18/09/2026). */}
+              {!filtro && (agenda?.totales.con_acuerdo_al_dia ?? 0) > 0 && (
+                <> Además, {agenda!.totales.con_acuerdo_al_dia} con acuerdo de pago al día, que no se {agenda!.totales.con_acuerdo_al_dia === 1 ? "llama" : "llaman"}.</>
+              )}
             </p>
           </div>
         </div>
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-6">
           {BUCKETS.map((b) => {
             const n = agenda?.totales[b.key] ?? 0;
             return (
@@ -145,7 +159,7 @@ export function AgendaHoy({
                 label={b.titulo}
                 value={String(n)}
                 accent={n > 0 ? b.accent : "muted"}
-                pulse={b.key === "promesa" && n > 0}
+                pulse={(b.key === "promesa" || b.key === "acuerdo_vencido") && n > 0}
                 /**
                  * Apretar el grupo lo aísla; apretarlo de nuevo vuelve a la cola entera.
                  * Un grupo VACÍO no recibe onClick: no se apaga ni se atenúa, simplemente no
@@ -210,7 +224,7 @@ function AgendaRow({
   it, badge, onGestionar, onDetalle,
 }: {
   it: AgendaItem;
-  badge: "warning" | "primary" | "muted";
+  badge: "destructive" | "warning" | "primary" | "muted";
   onGestionar: () => void;
   onDetalle: () => void;
 }) {
@@ -315,7 +329,16 @@ function AgendaRow({
           Prometer $130.000 sobre $523.235,89 vencidos es cubrir el 25%; sin el segundo
           número, "prometió $130.000" no dice nada.
         */}
-        {it.promesa_monto != null ? (
+        {it.acuerdo_monto != null ? (
+          <>
+            {/* La cuota del acuerdo que venció: es lo que se le pide HOY para salvar el arreglo. */}
+            <p className="font-mono font-bold text-destructive">{formatMonto(it.acuerdo_monto)}</p>
+            <p className="text-[11px] text-muted-foreground">
+              <span className="uppercase tracking-wide text-muted-foreground/60">cuota del acuerdo · debe </span>
+              <span className="font-mono tabular-nums">{formatMonto(it.vencido)}</span>
+            </p>
+          </>
+        ) : it.promesa_monto != null ? (
           <>
             <p className="font-mono font-bold text-warning">{formatMonto(it.promesa_monto)}</p>
             {/*

@@ -336,7 +336,7 @@ const HELP: Record<string, HelpDoc> = {
         kind: "definiciones",
         titulo: "Las pestañas",
         items: [
-          { term: "Hoy (agenda)", desc: "Cola priorizada de a quién contactar: promesas vencidas → agendados → morosos enfriados. Scopeada al vendedor. Cada renglón tiene «Gestionar» y dos íconos: WhatsApp y SMS." },
+          { term: "Hoy (agenda)", desc: "Cola priorizada de a quién contactar, en cinco grupos por urgencia: acuerdos con cuota vencida (todavía vigentes: se pueden salvar) → promesas vencidas → acuerdos rotos sin gestionar → contactos agendados → morosos sin gestión reciente. Scopeada al vendedor. Arriba dice además cuántos morosos con acuerdo al día NO se llaman. Cada renglón tiene «Gestionar» y dos íconos: WhatsApp y SMS." },
           { term: "Morosos", desc: "Créditos en mora con días e interés moratorio. Desde acá registrás gestiones (llamada, WhatsApp, visita…). Si el cliente promete pagar, la promesa queda anotada en esa misma gestión: se concilia sola al cobrar, el cron rompe las vencidas y la vas a ver en la agenda del día." },
           { term: "Acuerdos", desc: "Los planes de pago vigentes, cumplidos y rotos. El sistema los evalúa solo: no hay que marcarlos a mano." },
           { term: "Campañas", desc: "Envíos masivos a un grupo de morosos (WhatsApp / Email / SMS) con descuento de interés opcional. Si entre los elegidos hay créditos cuyo plan ya venció, la pantalla separa dos audiencias: a unos se les reclama el pago y a los otros se los invita a refinanciar, porque a esos ya no se les puede cobrar." },

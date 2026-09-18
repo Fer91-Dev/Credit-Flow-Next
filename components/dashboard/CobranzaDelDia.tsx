@@ -3,7 +3,7 @@
 import { severidadMora } from "@/lib/domain";
 
 import Link from "next/link";
-import { HandshakeIcon, CalendarClock, Snowflake, ArrowRight, CheckCheck } from "lucide-react";
+import { HandshakeIcon, CalendarClock, Snowflake, ArrowRight, CheckCheck, CalendarX, ShieldAlert } from "lucide-react";
 import { useAgendaCobranza, type AgendaItem, useTramosMora } from "@/lib/swr";
 import { formatMonto, formatCreditoNumero, formatDias } from "@/lib/utils";
 import { StatusBadge } from "@/components/ui/StatusBadge";
@@ -11,7 +11,9 @@ import { IconBadge } from "@/components/ui/IconBadge";
 import { Skeleton } from "@/components/ui/skeleton";
 
 const BUCKET_ICON: Record<AgendaItem["bucket"], typeof HandshakeIcon> = {
+  acuerdo_vencido: CalendarX,
   promesa: HandshakeIcon,
+  acuerdo_roto: ShieldAlert,
   agendado: CalendarClock,
   enfriado: Snowflake,
 };
@@ -67,7 +69,9 @@ export function CobranzaDelDia() {
         <>
           {/* Chips de resumen por bucket */}
           <div className="flex flex-wrap gap-2 mb-4">
+            {totales.acuerdo_vencido > 0 && <ResumenChip icon={CalendarX} label="Acuerdos vencidos" n={totales.acuerdo_vencido} accent="destructive" />}
             <ResumenChip icon={HandshakeIcon} label="Promesas" n={totales.promesa} accent="warning" />
+            {totales.acuerdo_roto > 0 && <ResumenChip icon={ShieldAlert} label="Acuerdos rotos" n={totales.acuerdo_roto} accent="warning" />}
             <ResumenChip icon={CalendarClock} label="Agendados" n={totales.agendado} accent="primary" />
             <ResumenChip icon={Snowflake} label="Sin gestión" n={totales.enfriado} accent="muted" />
           </div>
@@ -120,10 +124,11 @@ function ResumenChip({
   icon: typeof HandshakeIcon;
   label: string;
   n: number;
-  accent: "warning" | "primary" | "muted";
+  accent: "destructive" | "warning" | "primary" | "muted";
 }) {
   const cls = n > 0
     ? {
+        destructive: "text-destructive bg-destructive/10 border-destructive/20",
         warning: "text-warning bg-warning/10 border-warning/20",
         primary: "text-primary bg-primary/10 border-primary/20",
         muted:   "text-muted-foreground bg-muted/40 border-border",
