@@ -224,13 +224,13 @@ async function ejecutarCron(req: NextRequest) {
           }
         }
 
-        // Registrar la gestión automática en acciones_cobranza (los tipos válidos son los de
-        // la agenda: el SMS va como "otro" y la nota dice por dónde salió).
+        // Registrar la gestión automática en acciones_cobranza, con el canal por el que salió
+        // (o el primero que se intentó, si no salió por ninguno).
         await prisma.acciones_cobranza.create({
           data: {
             tenant_id: config.tenant_id,
             credito_id: credito.id,
-            tipo: via === "whatsapp" ? "whatsapp" : via === "email" ? "email" : via === "sms" ? "otro" : whatsapp?.enabled ? "whatsapp" : email?.enabled ? "email" : "otro",
+            tipo: via ?? (whatsapp?.enabled ? "whatsapp" : sms?.enabled ? "sms" : "email"),
             resultado: via ? "contactado" : "no_contesta",
             nota: via
               ? `[AUTO] Notificación ${regla.evento} - Enviada por ${via === "sms" ? "SMS" : via}`

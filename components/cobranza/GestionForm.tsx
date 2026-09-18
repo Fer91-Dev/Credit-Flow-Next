@@ -147,6 +147,7 @@ export function GestionForm({ credito, onClose }: GestionFormProps) {
             <option value="llamada">Llamada</option>
             <option value="whatsapp">WhatsApp</option>
             <option value="email">Email</option>
+            <option value="sms">SMS</option>
             <option value="visita">Visita</option>
             <option value="otro">Otro</option>
           </Select>

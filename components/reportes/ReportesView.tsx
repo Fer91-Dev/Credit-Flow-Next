@@ -40,7 +40,7 @@ const tipoLabel: Record<string, string> = {
   personal: "Personal", productos: "Productos",
 };
 const canalLabel: Record<string, string> = {
-  llamada: "Llamada", whatsapp: "WhatsApp", email: "Email", visita: "Visita", otro: "Otro",
+  llamada: "Llamada", whatsapp: "WhatsApp", sms: "SMS", email: "Email", visita: "Visita", otro: "Otro",
 };
 
 const INPUT =

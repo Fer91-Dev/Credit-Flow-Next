@@ -13,7 +13,7 @@ import { linkWhatsapp, contactoBloqueado, type OfertaSugerida } from "@/lib/doma
 import { formatMonto, formatFecha, formatFechaHora, formatDias, nombreCompleto } from "@/lib/utils";
 
 const TIPO_LABEL: Record<AccionCobranza["tipo"], string> = {
-  llamada: "Llamada", whatsapp: "WhatsApp", email: "Email", visita: "Visita", otro: "Otro",
+  llamada: "Llamada", whatsapp: "WhatsApp", sms: "SMS", email: "Email", visita: "Visita", otro: "Otro",
 };
 
 const RESULTADO_LABEL: Record<AccionCobranza["resultado"], string> = {
@@ -243,6 +243,7 @@ export function GestionCasoDialog({
                   >
                     <option value="llamada">Llamada</option>
                     <option value="whatsapp">WhatsApp</option>
+                    <option value="sms">SMS</option>
                     <option value="visita">Visita</option>
                     <option value="email">Email</option>
                     <option value="otro">Otro</option>

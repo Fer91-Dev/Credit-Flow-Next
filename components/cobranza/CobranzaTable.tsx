@@ -6,6 +6,7 @@ import { motion } from "framer-motion";
 import { useSWRConfig } from "swr";
 import { AlertCircle, Phone, Mail, Clock, Copy, CheckCheck, Search, DollarSign, ShieldAlert, MessageSquarePlus, CalendarClock, Megaphone, X, Users, TrendingUp, Sun, Handshake, ChevronDown, History, Download } from "lucide-react";
 import { WhatsAppIcon } from "@/components/ui/WhatsAppIcon";
+import { MessageSquareText } from "lucide-react";
 import { descargarCSV } from "@/lib/csv";
 import { useCreditos, useAccionesCobranza, type Credito, type AccionCobranza, type AgendaItem, useTramosMora } from "@/lib/swr";
 import { type Role } from "@/lib/auth/roles";
@@ -317,28 +318,32 @@ export function CobranzaTable({ role }: { role: Role }) {
    * mensaje no se abre — antes el link se abría igual porque era un `<a href>` pelado.
    */
   const [reclamando, setReclamando] = useState<string | null>(null);
-  const reclamarWhatsapp = async (c: Credito) => {
+  const reclamar = async (c: Credito, canal: "whatsapp" | "sms") => {
     if (reclamando) return;
     setReclamando(c.id);
+    const etiqueta = canal === "sms" ? "el SMS" : "el WhatsApp";
     try {
       const res = await fetch(`/api/clientes/${c.cliente_id}/contactar`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ canal: "whatsapp", motivo: "mora" }),
+        body: JSON.stringify({ canal, motivo: "mora" }),
       });
       const json = await res.json();
-      if (!json.ok) { toast.error(json.error || "No se pudo preparar el WhatsApp"); return; }
+      if (!json.ok) { toast.error(json.error || `No se pudo mandar ${etiqueta}`); return; }
       if (json.data?.link) window.open(json.data.link, "_blank", "noopener");
-      toast.success("WhatsApp preparado y registrado en la ficha");
+      toast.success(canal === "sms" ? "SMS enviado y registrado en la ficha" : "WhatsApp preparado y registrado en la ficha");
       // El contacto ES una gestión: la lista de gestiones y la cola del día lo reflejan.
       mutateAcciones();
       globalMutate("/api/cobranza/agenda");
     } catch {
-      toast.error("No se pudo preparar el WhatsApp");
+      toast.error(`No se pudo mandar ${etiqueta}`);
     } finally {
       setReclamando(null);
     }
   };
+  const reclamarWhatsapp = (c: Credito) => reclamar(c, "whatsapp");
+  // Fernando (18/09/2026): al lado del WhatsApp, el SMS (SMSChef). Mismo texto, mismo registro.
+  const reclamarSms = (c: Credito) => reclamar(c, "sms");
 
   const sortedFiltered = [...filtered].sort((a, b) => b.dias_mora - a.dias_mora);
 
@@ -942,6 +947,23 @@ export function CobranzaTable({ role }: { role: Role }) {
                       </button>
                     );
                   })()}
+                  {(() => {
+                    const puede = !!c.cliente.telefono && !noContactable(c);
+                    return (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); reclamarSms(c); }}
+                        disabled={!puede || reclamando === c.id}
+                        title={
+                          !c.cliente.telefono ? "Sin teléfono cargado"
+                          : noContactable(c) ? (contactoBloqueado(c.cliente).motivo ?? "No se puede contactar")
+                          : "Reclamar por SMS (sale por el celular de la financiera)"
+                        }
+                        className={`flex items-center justify-center h-7 w-7 rounded-lg transition-colors ${puede ? "text-success enabled:hover:bg-success/10" : "text-muted-foreground/20 cursor-not-allowed"} disabled:opacity-60`}
+                      >
+                        <MessageSquareText className="h-3.5 w-3.5" />
+                      </button>
+                    );
+                  })()}
                   <button
                     onClick={(e) => { e.stopPropagation(); handleGestionar(c); }}
                     title="Copiar datos del cliente"
@@ -1023,6 +1045,16 @@ export function CobranzaTable({ role }: { role: Role }) {
                       className="flex items-center justify-center h-10 w-10 rounded-lg border border-success/30 bg-success/10 text-success transition-colors enabled:hover:bg-success/20 disabled:opacity-60"
                     >
                       <WhatsAppIcon className="h-4 w-4" />
+                    </button>
+                  )}
+                  {c.cliente.telefono && !noContactable(c) && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); reclamarSms(c); }}
+                      disabled={reclamando === c.id}
+                      title="Reclamar por SMS (sale por el celular de la financiera)"
+                      className="flex items-center justify-center h-10 w-10 rounded-lg border border-success/30 bg-success/10 text-success transition-colors enabled:hover:bg-success/20 disabled:opacity-60"
+                    >
+                      <MessageSquareText className="h-4 w-4" />
                     </button>
                   )}
                   <button onClick={(e) => { e.stopPropagation(); handleGestionar(c); }} title="Copiar datos" className="flex items-center justify-center h-10 w-10 rounded-lg border border-border text-muted-foreground hover:bg-muted transition-colors">

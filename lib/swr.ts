@@ -809,7 +809,7 @@ export interface AccionCobranza {
   id: string;
   created_at: string;
   credito_id: string;
-  tipo: "llamada" | "whatsapp" | "email" | "visita" | "otro";
+  tipo: "llamada" | "whatsapp" | "sms" | "email" | "visita" | "otro";
   resultado: "contactado" | "no_contesta" | "promesa_pago" | "renegociacion" | "ilocalizable" | "otro";
   nota: string | null;
   promesa_monto: number | null;

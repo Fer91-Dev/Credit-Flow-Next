@@ -37,7 +37,7 @@ function cuandoPromesa(fecha?: string | null): string {
 }
 
 const TIPO_LABEL: Record<AccionCobranza["tipo"], string> = {
-  llamada: "Llamada", whatsapp: "WhatsApp", email: "Email", visita: "Visita", otro: "Otro",
+  llamada: "Llamada", whatsapp: "WhatsApp", sms: "SMS", email: "Email", visita: "Visita", otro: "Otro",
 };
 const RESULTADO_LABEL: Record<AccionCobranza["resultado"], string> = {
   contactado: "Contactado", no_contesta: "No contesta", promesa_pago: "Promesa de pago",

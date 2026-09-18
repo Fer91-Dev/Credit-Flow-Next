@@ -214,7 +214,7 @@ export function plantillaDe(p: PlantillasContacto, motivo: MotivoContacto): { te
 }
 
 /** El tipo de `acciones_cobranza` que corresponde a cada canal (el enum de la tabla). */
-export function tipoGestionDeCanal(canal: "whatsapp" | "email"): string {
+export function tipoGestionDeCanal(canal: "whatsapp" | "email" | "sms"): string {
   return canal;
 }
 
@@ -495,7 +495,7 @@ export type RiesgoMeta = "info" | "alto" | null;
  * bloquea el envío — es una advertencia, no una regla de negocio.
  */
 export function riesgoEnvioMeta(opts: {
-  canal: "whatsapp" | "email";
+  canal: "whatsapp" | "email" | "sms";
   usaPlantillaMeta: boolean;
   /** A cuántos destinatarios va. 1 = contacto individual. */
   destinatarios: number;

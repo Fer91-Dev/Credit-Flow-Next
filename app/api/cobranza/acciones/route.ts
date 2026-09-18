@@ -10,7 +10,7 @@ import { veredictoCobro } from "@/lib/recupero-server";
 import { esCreditoIncobrable } from "@/lib/domain";
 import type { NextRequest } from "next/server";
 
-const TIPOS = ["llamada", "whatsapp", "email", "visita", "otro"];
+const TIPOS = ["llamada", "whatsapp", "sms", "email", "visita", "otro"];
 const RESULTADOS = ["contactado", "no_contesta", "promesa_pago", "renegociacion", "ilocalizable", "otro"];
 
 /**

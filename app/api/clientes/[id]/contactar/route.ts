@@ -15,6 +15,7 @@ import { nombreCompleto, hoyComercial, formatCreditoNumero } from "@/lib/utils";
 import { cobroBloqueadoPorCredito } from "@/lib/recupero-server";
 import { creditosConAcuerdoVigente } from "@/lib/acuerdos";
 import { enviarEmailTenant, motivoEmailNoDisponible, type EmailTenantConfig } from "@/lib/mailer-tenant";
+import { enviarSmsTenant, motivoSmsNoDisponible, type SmsConfig } from "@/lib/sms";
 import { enviarWhatsappApi, whatsappApiDisponible, type WhatsappApiConfig } from "@/lib/whatsapp";
 import type { NextRequest } from "next/server";
 
@@ -82,6 +83,8 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
       // "automatico" ahora mira si el canal PUEDE mandar de verdad, no solo si el
       // switch está prendido: la config podía estar activa y sin credenciales completas.
       email: { disponible: !!cliente.email, automatico: !motivoEmailNoDisponible(comm.email) },
+      // SMS: sale por SMSChef, siempre automático; sin la config del canal no hay forma manual.
+      sms: { disponible: !!cliente.telefono && !motivoSmsNoDisponible(comm.sms), automatico: true, impedimento: motivoSmsNoDisponible(comm.sms) },
     },
     mensajes,
     plantillas_meta: plantillasMeta,
@@ -106,7 +109,7 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
   const body = await req.json().catch(() => null);
   if (!body) return errorResponse("Body JSON inválido", "INVALID_JSON", 400);
 
-  const canal = body.canal === "email" ? "email" : "whatsapp";
+  const canal: "whatsapp" | "email" | "sms" = body.canal === "email" ? "email" : body.canal === "sms" ? "sms" : "whatsapp";
   const motivo: MotivoContacto = MOTIVOS.includes(body.motivo) ? body.motivo : "informacion";
 
   const cobranzaCfg = await getCobranzaConfig(ctx.tenantId);
@@ -192,6 +195,15 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
       // ficha tiene que poder contarlo.
       enviado = { metodo: "manual", link: linkWhatsapp(cliente.telefono, texto) };
     }
+  } else if (canal === "sms") {
+    // Fernando (18/09/2026): al lado del WhatsApp de cada renglón de cobranza, un SMS. Mismo
+    // texto, mismo registro; sale por el celular de la financiera (SMSChef), nunca a mano.
+    if (!cliente.telefono) return errorResponse("El cliente no tiene teléfono cargado.", "SIN_TELEFONO", 409);
+    const impedimento = motivoSmsNoDisponible(comm.sms);
+    if (impedimento) return errorResponse(impedimento, "SMS_NO_CONFIGURADO", 409);
+    const res = await enviarSmsTenant(comm.sms, { telefono: cliente.telefono, mensaje: texto });
+    if (!res.ok) return errorResponse(res.error ?? "No se pudo enviar el SMS", "ENVIO_FALLIDO", 502);
+    enviado = { metodo: "api" };
   } else {
     if (!cliente.email) return errorResponse("El cliente no tiene email cargado.", "SIN_EMAIL", 409);
     const impedimento = motivoEmailNoDisponible(comm.email);
@@ -237,7 +249,7 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
     entidad: "clientes",
     entidadId: cliente.id,
     accion: "contactar",
-    descripcion: `${MOTIVO_LABEL[motivo]} por ${canal === "email" ? "email" : "WhatsApp"} a ${datos.nombre}`,
+    descripcion: `${MOTIVO_LABEL[motivo]} por ${canal === "email" ? "email" : canal === "sms" ? "SMS" : "WhatsApp"} a ${datos.nombre}`,
     // Con qué plantilla se mandó queda registrado: si Meta después observa el número, hay
     // que poder decir qué salió aprobado y qué salió como texto libre.
     meta: {
@@ -346,6 +358,7 @@ async function cargarContactable(ctx: Ctx, id: string) {
   const comm = {
     whatsapp: (commRaw.whatsappConfig ?? null) as WhatsappApiConfig | null,
     email: (commRaw.emailConfig ?? null) as EmailTenantConfig | null,
+    sms: (commRaw.smsConfig ?? null) as SmsConfig | null,
   };
 
   /**

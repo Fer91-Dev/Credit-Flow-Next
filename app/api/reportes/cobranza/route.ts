@@ -98,7 +98,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   const recupero = recuperoCobranza(pagosRows);
 
   // ── Por canal (tipo de gestión) ──
-  const CANALES = ["llamada", "whatsapp", "email", "visita", "otro"] as const;
+  const CANALES = ["llamada", "whatsapp", "sms", "email", "visita", "otro"] as const;
   const por_canal = CANALES.map((canal) => {
     const e = resumenEmbudoCobranza(filas.filter((f) => f.tipo === canal).map((f) => f.gestion));
     return { canal, gestiones: e.gestiones, contactos: e.contactos, promesas: e.promesas, tasa_contacto: e.tasa_contacto };

@@ -5,7 +5,7 @@ import { severidadMora } from "@/lib/domain";
 import { useMemo, useState } from "react";
 import {
   HandshakeIcon, CalendarClock, Snowflake, MessageSquarePlus,
-  Phone, CheckCheck, AlertCircle,
+  Phone, CheckCheck, AlertCircle, MessageSquareText,
 } from "lucide-react";
 import { WhatsAppIcon } from "@/components/ui/WhatsAppIcon";
 import { useAgendaCobranza, type AgendaItem, useTramosMora } from "@/lib/swr";
@@ -218,7 +218,7 @@ function AgendaRow({
   const severidad = severidadMora(it.dias_mora, tramos);
   const critica = severidad === "critica";
   const toast = useToast();
-  const [enviando, setEnviando] = useState(false);
+  const [enviando, setEnviando] = useState<"whatsapp" | "sms" | null>(null);
 
   /**
    * 🔴 El reclamo por WhatsApp NO se arma acá.
@@ -233,27 +233,39 @@ function AgendaRow({
    * plantilla configurada y los importes reales, registra la gestión y devuelve el link de
    * wa.me para abrir. Un solo camino, un solo texto, un solo número.
    */
-  const reclamarWhatsapp = async () => {
+  const reclamar = async (canal: "whatsapp" | "sms") => {
     if (enviando) return;
-    setEnviando(true);
+    setEnviando(canal);
+    const etiqueta = canal === "sms" ? "el SMS" : "el WhatsApp";
     try {
       const res = await fetch(`/api/clientes/${it.cliente_id}/contactar`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ canal: "whatsapp", motivo: "mora" }),
+        body: JSON.stringify({ canal, motivo: "mora" }),
       });
       const json = await res.json();
-      if (!json.ok) { toast.error(json.error || "No se pudo preparar el WhatsApp"); return; }
+      if (!json.ok) { toast.error(json.error || `No se pudo mandar ${etiqueta}`); return; }
       if (json.data?.link) window.open(json.data.link, "_blank", "noopener");
-      toast.success("WhatsApp preparado y registrado en la ficha");
+      toast.success(canal === "sms" ? "SMS enviado y registrado en la ficha" : "WhatsApp preparado y registrado en la ficha");
       // El contacto es una gestión: el crédito sale del bucket "enfriado" de la cola.
       globalMutate("/api/cobranza/agenda");
     } catch {
-      toast.error("No se pudo preparar el WhatsApp");
+      toast.error(`No se pudo mandar ${etiqueta}`);
     } finally {
-      setEnviando(false);
+      setEnviando(null);
     }
   };
+  const reclamarWhatsapp = () => reclamar("whatsapp");
+  // Fernando (18/09/2026): al lado del WhatsApp, el SMS — mismo texto, mismo registro,
+  // sale por el celular de la financiera (SMSChef). Mismo color de tramo que el WhatsApp.
+  const reclamarSms = () => reclamar("sms");
+  const colorTramo = !it.telefono
+    ? "text-muted-foreground/20 cursor-not-allowed"
+    : severidad === "critica"
+      ? "text-destructive hover:bg-destructive/10 disabled:opacity-50"
+      : severidad === "alta"
+        ? "text-warning hover:bg-warning/10 disabled:opacity-50"
+        : "text-success hover:bg-success/10 disabled:opacity-50";
 
   return (
     <div
@@ -347,7 +359,7 @@ function AgendaRow({
         <button
           type="button"
           onClick={reclamarWhatsapp}
-          disabled={!it.telefono || enviando}
+          disabled={!it.telefono || !!enviando}
           title={
             !it.telefono
               ? "Sin teléfono cargado"
@@ -363,17 +375,18 @@ function AgendaRow({
             en rojo, el que hay que llamar hoy. Con el verde fijo de la marca, el de 120 días
             y el de 3 se veían idénticos y la cola se atendía en el orden en que caía.
           */
-          className={`hidden sm:flex items-center justify-center h-7 w-7 rounded-lg transition-colors ${
-            !it.telefono
-              ? "text-muted-foreground/20 cursor-not-allowed"
-              : severidad === "critica"
-                ? "text-destructive hover:bg-destructive/10 disabled:opacity-50"
-                : severidad === "alta"
-                  ? "text-warning hover:bg-warning/10 disabled:opacity-50"
-                  : "text-success hover:bg-success/10 disabled:opacity-50"
-          }`}
+          className={`hidden sm:flex items-center justify-center h-7 w-7 rounded-lg transition-colors ${colorTramo}`}
         >
           <WhatsAppIcon className="h-3.5 w-3.5" />
+        </button>
+        <button
+          type="button"
+          onClick={reclamarSms}
+          disabled={!it.telefono || !!enviando}
+          title={!it.telefono ? "Sin teléfono cargado" : "Reclamar por SMS (sale por el celular de la financiera y queda registrado en la ficha)"}
+          className={`hidden sm:flex items-center justify-center h-7 w-7 rounded-lg transition-colors ${colorTramo}`}
+        >
+          <MessageSquareText className="h-3.5 w-3.5" />
         </button>
       </div>
     </div>

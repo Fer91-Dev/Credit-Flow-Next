@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import useSWR from "swr";
-import { Mail, ShieldCheck, AlertTriangle, Info, Megaphone, AlertCircle, Lock } from "lucide-react";
+import { Mail, ShieldCheck, AlertTriangle, Info, Megaphone, AlertCircle, Lock, MessageSquareText } from "lucide-react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { ModalHeader, FieldLabel, Segmented, FormActions } from "@/components/ui/form-kit";
 import { Input } from "@/components/ui/field";
@@ -11,7 +11,7 @@ import { useToast } from "@/components/ui/toast";
 import { formatFecha, formatMonto } from "@/lib/utils";
 import { riesgoEnvioMeta, CATEGORIA_META_LABEL, MOTIVO_LABEL, type CategoriaMeta } from "@/lib/domain";
 
-type Canal = "whatsapp" | "email";
+type Canal = "whatsapp" | "sms" | "email";
 type Motivo = "mora" | "promocion" | "informacion";
 
 /** Una plantilla aprobada por Meta, ya completada por el server con los datos del cliente. */
@@ -37,7 +37,12 @@ interface PreviewContacto {
     dias: number;
     vencimiento: string | null;
   };
-  canales: { whatsapp: { disponible: boolean; automatico: boolean }; email: { disponible: boolean; automatico: boolean } };
+  canales: {
+    whatsapp: { disponible: boolean; automatico: boolean };
+    email: { disponible: boolean; automatico: boolean };
+    /** SMS por SMSChef: `impedimento` dice por qué no se puede (canal sin configurar, sin teléfono). */
+    sms: { disponible: boolean; automatico: boolean; impedimento: string | null };
+  };
   mensajes: Record<Motivo, { texto: string; asunto: string; label: string }>;
   plantillas_meta: PlantillaMetaPreview[];
 }
@@ -138,7 +143,7 @@ function Form({ clienteId, onClose }: { clienteId: string; onClose: () => void }
   }
 
   const c = data.canales[canal];
-  const destino = canal === "whatsapp" ? data.cliente.telefono : data.cliente.email;
+  const destino = canal === "email" ? data.cliente.email : data.cliente.telefono;
   const riesgo = riesgoEnvioMeta({
     canal,
     usaPlantillaMeta: !!metaElegida,
@@ -165,7 +170,7 @@ function Form({ clienteId, onClose }: { clienteId: string; onClose: () => void }
       // Sin API de Meta, WhatsApp sale por wa.me: el server ya registró el contacto y
       // devuelve el link para que lo abra el operador.
       if (json.data?.link) window.open(json.data.link, "_blank", "noopener");
-      toast.success(canal === "email" ? "Email enviado" : "WhatsApp preparado");
+      toast.success(canal === "email" ? "Email enviado" : canal === "sms" ? "SMS enviado" : "WhatsApp preparado");
       onClose();
     } catch {
       setError("No se pudo enviar el mensaje");
@@ -210,6 +215,7 @@ function Form({ clienteId, onClose }: { clienteId: string; onClose: () => void }
               // El logo real de WhatsApp, no un globo de diálogo genérico: es la marca por
               // la que el operador reconoce el botón sin leerlo.
               { value: "whatsapp", label: "WhatsApp", icon: WhatsAppIcon },
+              { value: "sms", label: "SMS", icon: MessageSquareText },
               { value: "email", label: "Email", icon: Mail },
             ]}
           />
@@ -232,7 +238,9 @@ function Form({ clienteId, onClose }: { clienteId: string; onClose: () => void }
 
       {!c.disponible ? (
         <div className="rounded-lg border border-warning/30 bg-warning/10 px-3 py-2.5 text-sm text-warning">
-          El cliente no tiene {canal === "whatsapp" ? "teléfono" : "email"} cargado. Completalo con Editar.
+          {canal === "sms" && data.canales.sms.impedimento && data.cliente.telefono
+            ? data.canales.sms.impedimento
+            : <>El cliente no tiene {canal === "email" ? "email" : "teléfono"} cargado. Completalo con Editar.</>}
         </div>
       ) : (
         <p className="text-xs text-muted-foreground">
