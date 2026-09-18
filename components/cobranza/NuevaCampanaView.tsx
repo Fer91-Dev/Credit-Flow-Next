@@ -316,7 +316,13 @@ function CampanaWorkspace({ role, creditos: todosCreditos, bloqueados, onCancela
    * pantalla y se corregía solo un instante después.
    */
   const topeConocido = role === "admin" || !!config?.cobranzaConfig;
-  const excedeTope = topeConocido && form.promoActiva && tipoCampana !== "refinanciacion" && descuentoPct > topeDescuento;
+  /**
+   * Se compara lo que el operador ESCRIBIÓ, no el valor ya recortado a 100: Fernando
+   * (18/09/2026) tipeó 10000 y el campo lo mostraba tranquilo mientras la vista previa
+   * descontaba el 100%. Un porcentaje va de 0 a 100, para el admin también.
+   */
+  const promoEscrito = parseFloat(form.promo_valor) || 0;
+  const excedeTope = topeConocido && form.promoActiva && tipoCampana !== "refinanciacion" && tipoCampana !== "recupero" && promoEscrito > topeDescuento;
   /** Hay descuento ofrecido y no hay hasta cuándo, o la fecha ya pasó. */
   /**
    * Una oferta sin plazo no apura a nadie y queda viva para siempre. Vale igual para el
@@ -578,7 +584,9 @@ function CampanaWorkspace({ role, creditos: todosCreditos, bloqueados, onCancela
       setError(
         topeDescuento === 0
           ? "No podés ofrecer descuento en una campaña. Pedile a un administrador que la arme."
-          : `El descuento máximo que podés ofrecer es ${topeDescuento}% de los punitorios.`,
+          : topeDescuento >= 100
+            ? "El descuento es un porcentaje de los punitorios: entre 0 y 100."
+            : `El descuento máximo que podés ofrecer es ${topeDescuento}% de los punitorios.`,
       );
       return;
     }
@@ -974,7 +982,9 @@ function CampanaWorkspace({ role, creditos: todosCreditos, bloqueados, onCancela
                       <p className="text-[11px] font-medium text-destructive">
                         {topeDescuento === 0
                           ? "No podés ofrecer descuento en una campaña. Pedile a un administrador que la arme."
-                          : `Te pasaste del tope: como máximo podés ofrecer ${topeDescuento}% de los punitorios.`}
+                          : topeDescuento >= 100
+                            ? "Un porcentaje va de 0 a 100: más de 100% de los punitorios no existe."
+                            : `Te pasaste del tope: como máximo podés ofrecer ${topeDescuento}% de los punitorios.`}
                       </p>
                     ) : promoSinFecha || promoVencida ? (
                       <p className="text-[11px] font-medium text-destructive">

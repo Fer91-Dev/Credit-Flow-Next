@@ -159,9 +159,13 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
    *                      del motor de recupero. 0 = usar lo que sugiere el motor para cada uno
    *                      (que es el caso normal: el motor ya pondera antigüedad y señales).
    */
-  const promoValor = promoEfectiva === "ninguna"
-    ? 0
-    : Math.min(100, Math.max(0, Number(body.promo_valor) || 0));
+  // Un porcentaje fuera de 0–100 se rechaza, no se recorta en silencio: recortar 10000 a 100
+  // convertía un error de tipeo en una condonación total sin que nadie lo dijera (18/09/2026).
+  const promoCrudo = promoEfectiva === "ninguna" ? 0 : Number(body.promo_valor) || 0;
+  if (promoCrudo < 0 || promoCrudo > 100) {
+    return errorResponse("El descuento es un porcentaje: tiene que estar entre 0 y 100.", "INVALID_INPUT", 400);
+  }
+  const promoValor = promoCrudo;
 
   const cobranzaCfg = await getCobranzaConfig(tenantId);
 
