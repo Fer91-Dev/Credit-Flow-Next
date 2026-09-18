@@ -669,11 +669,10 @@ export function ClienteDetail({
         // uno tan angosto que sus campos internos se apilan de a uno. Lo que sí cambia es
         // "Laboral e ingresos", que ya ocupaba el ancho entero para mostrar ocho campos
         // cortos en dos columnas — ahora los reparte en cuatro.
-        // Fernando (18/09/2026): Identidad quedaba estirada con un hueco vacío al lado de
-        // Contacto + Domicilio (que ahora trae el mapa). Cada columna apila lo suyo y no se
-        // estira: izquierda la persona (identidad, trabajo e ingresos), derecha cómo llegar a
-        // ella (contacto, domicilio y mapa).
-        <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
+        // Fernando (18/09/2026): a la izquierda Identidad, Contacto y Laboral e ingresos, en ese
+        // orden; a la derecha solo el Domicilio con su mapa. Así las dos columnas quedan a la
+        // misma altura y encuadradas. Las columnas no se estiran (`items-start`).
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           <div className="space-y-4">
           <InfoBlock icon="bust-in-silhouette" title="Identidad" accent="primary" emptyText="Sin datos de identidad cargados." items={[
             { label: "DNI / Documento", value: cliente.documento, mono: true, emphasis: true },
@@ -681,6 +680,10 @@ export function ClienteDetail({
             { label: "Nacimiento", value: cliente.fecha_nacimiento ? `${fmtDate(cliente.fecha_nacimiento)}${edad(cliente.fecha_nacimiento) ? ` · ${edad(cliente.fecha_nacimiento)}` : ""}` : null },
             { label: "Estado civil", value: cliente.estado_civil ? ESTADO_CIVIL[cliente.estado_civil] ?? cliente.estado_civil : null },
             { label: "Nacionalidad", value: cliente.nacionalidad },
+          ]} />
+          <InfoBlock icon="envelope" title="Contacto" accent="warning" emptyText="Sin datos de contacto cargados." onEditar={puedeEditar ? onEditar : undefined} items={[
+            { label: "Email", value: cliente.email, icon: Mail, href: cliente.email ? `mailto:${cliente.email}` : undefined, emphasis: true },
+            { label: "Teléfono", value: cliente.telefono, icon: Phone, href: cliente.telefono ? `tel:${cliente.telefono}` : undefined, emphasis: true },
           ]} />
           <InfoBlock icon="briefcase" title="Laboral e ingresos" accent="success" emptyText="Sin datos laborales cargados." onEditar={puedeEditar ? onEditar : undefined} items={[
             { label: "Situación", value: cliente.situacion_laboral ? SITUACION_LABORAL[cliente.situacion_laboral] ?? cliente.situacion_laboral : null },
@@ -694,12 +697,8 @@ export function ClienteDetail({
           ]} />
           </div>
 
-          <div className="space-y-4">
-            <InfoBlock icon="envelope" title="Contacto" accent="warning" emptyText="Sin datos de contacto cargados." onEditar={puedeEditar ? onEditar : undefined} items={[
-              { label: "Email", value: cliente.email, icon: Mail, href: cliente.email ? `mailto:${cliente.email}` : undefined, emphasis: true },
-              { label: "Teléfono", value: cliente.telefono, icon: Phone, href: cliente.telefono ? `tel:${cliente.telefono}` : undefined, emphasis: true },
-            ]} />
-            <InfoBlock icon="round-pushpin" title="Domicilio" accent="destructive" emptyText="Sin domicilio cargado." onEditar={puedeEditar ? onEditar : undefined} items={[
+          <div className="flex flex-col">
+            <InfoBlock estirar icon="round-pushpin" title="Domicilio" accent="destructive" emptyText="Sin domicilio cargado." onEditar={puedeEditar ? onEditar : undefined} items={[
               { label: "Dirección", value: cliente.direccion },
               { label: "Localidad", value: [cliente.localidad, cliente.provincia].filter(Boolean).join(", ") || null },
               { label: "Zona de cobranza", value: cliente.zona },
@@ -1960,7 +1959,7 @@ interface CampoItem {
  * (18/09/2026): "dale una mejor front a la ficha".
  */
 function InfoBlock({
-  icon, title, items, emptyText, onEditar, anchoCompleto, accion, pie, accent = "muted",
+  icon, title, items, emptyText, onEditar, anchoCompleto, accion, pie, accent = "muted", estirar,
 }: {
   icon: React.ComponentType<{ className?: string }> | string;
   title: string;
@@ -1975,12 +1974,14 @@ function InfoBlock({
   pie?: React.ReactNode;
   /** Acento del badge del ícono: cada bloque el suyo, para reconocerlos de un vistazo. */
   accent?: "muted" | "primary" | "success" | "warning" | "destructive";
+  /** Ocupa toda la altura de su columna y el `pie` (el mapa) llena lo que sobra: así las dos columnas quedan encuadradas. */
+  estirar?: boolean;
 }) {
   const isEmoji = typeof icon === "string";
   const Icon = isEmoji ? null : icon;
   const visibles = items.filter((it) => it.value != null && it.value !== "");
   return (
-    <section className="group relative overflow-hidden rounded-2xl border border-border/70 bg-card px-4 py-4 shadow-[0_1px_2px_rgba(0,0,0,0.3),0_12px_30px_-16px_rgba(0,0,0,0.7)] sm:px-5">
+    <section className={`group relative overflow-hidden rounded-2xl border border-border/70 bg-card px-4 py-4 shadow-[0_1px_2px_rgba(0,0,0,0.3),0_12px_30px_-16px_rgba(0,0,0,0.7)] sm:px-5 ${estirar ? "flex h-full flex-col" : ""}`}>
       <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-white/10" />
       <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-white/[0.04] via-transparent to-transparent" />
       <div className="relative mb-4 flex items-center gap-2.5">
@@ -2010,7 +2011,7 @@ function InfoBlock({
           {visibles.map((it) => <Campo key={it.label} {...it} />)}
         </div>
       )}
-      {pie && <div className="relative mt-4">{pie}</div>}
+      {pie && <div className={`relative mt-4 ${estirar ? "flex min-h-44 flex-1 flex-col" : ""}`}>{pie}</div>}
     </section>
   );
 }
@@ -2098,11 +2099,11 @@ function MiniMapa({ lat, lon, titulo }: { lat: number; lon: number; titulo: stri
   const bbox = `${lon - d},${lat - d * 0.6},${lon + d},${lat + d * 0.6}`;
   const src = `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${lat},${lon}`;
   return (
-    <div className="overflow-hidden rounded-lg border border-border/60">
+    <div className="flex h-full min-h-56 flex-col overflow-hidden rounded-lg border border-border/60">
       <iframe
         title={`Mapa: ${titulo}`}
         src={src}
-        className="block h-56 w-full"
+        className="block min-h-44 w-full flex-1"
         loading="lazy"
         referrerPolicy="no-referrer"
       />
