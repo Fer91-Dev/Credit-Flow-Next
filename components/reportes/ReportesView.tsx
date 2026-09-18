@@ -14,9 +14,6 @@ import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { BarChart, StackedBarChart, Sparkline, Donut, type Punto } from "./charts";
 
-function n0(x: number) {
-  return new Intl.NumberFormat("es-AR", { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(x);
-}
 function n2(x: number) {
   return new Intl.NumberFormat("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(x);
 }
@@ -32,7 +29,7 @@ const fmtDate = (s: string) => formatFecha(s);
 const mesCorto = (k: string) => `${k.slice(5)}/${k.slice(2, 4)}`;
 
 const estadoLabel: Record<string, string> = {
-  activo: "Activos", pagado: "Pagados", cancelado: "Cancelados", vencido: "Vencidos", refinanciado: "Refinanciados", anulado: "Anulados",
+  activo: "Activos", pagado: "Pagados", cancelado: "Cancelados", vencido: "Vencidos", refinanciado: "Refinanciados", anulado: "Anulados", incobrable: "Incobrables",
 };
 const metodoLabel: Record<string, string> = {
   efectivo: "Efectivo", transferencia: "Transferencia", cheque: "Cheque", otro: "Otro",
@@ -126,7 +123,7 @@ function imprimirReporte(
   financiera?: { nombre?: string | null; logo_url?: string | null } | null,
 ) {
   const esc = (v: string) => String(v).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c] as string));
-  const $ = (n: number) => "$" + n0(n);
+  const $ = (n: number) => "$" + n2(n);
   const moraPct = r.cartera.saldo_activo_total > 0 ? (r.morosidad.saldo_expuesto / r.cartera.saldo_activo_total) * 100 : 0;
   // Co-branding: el reporte sale con el nombre (y logo) de la financiera, no "CreditFlow".
   const marca = (financiera?.nombre ?? "").trim() || "CreditFlow";
@@ -378,7 +375,7 @@ function TabResumen({ r }: { r: Reporte }) {
   return (
     <div className="space-y-5">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <KpiCard icon="handshake" label="Operaciones" value={String(r.operaciones.cantidad)} accent="primary" sub={`ticket $${n0(r.operaciones.ticket_promedio)}`} />
+        <KpiCard icon="handshake" label="Operaciones" value={String(r.operaciones.cantidad)} accent="primary" sub={`ticket $${n2(r.operaciones.ticket_promedio)}`} />
         <KpiCard icon="dollar-banknote" label="Monto otorgado" value={`$${n2(r.operaciones.monto_otorgado)}`} accent="primary" mono />
         <KpiCard icon="chart-increasing" label="Cobrado" value={`$${n2(r.cobranzas.total_cobrado)}`} accent="success" mono sub={`${r.cobranzas.cantidad} pago${r.cobranzas.cantidad !== 1 ? "s" : ""}`} />
         <KpiCard icon="money-bag" label="Ingreso financiero" value={`$${n2(r.rentabilidad.ingreso_financiero)}`} accent="warning" mono sub="interés + cargos + mora" />
@@ -392,13 +389,13 @@ function TabResumen({ r }: { r: Reporte }) {
         <Section title="Cobranzas por método" icon="money-bag">
           {r.cobranzas_por_metodo.length === 0 ? <Empty>Sin pagos en el período.</Empty> : (
             <SimpleTable head={["Método", "Pagos", "Monto"]}
-              rows={r.cobranzas_por_metodo.map((m) => [<StatusBadge key="b" label={metodoLabel[m.metodo] ?? m.metodo} variant="muted" />, m.cantidad, <span key="m" className="font-mono font-semibold text-success">${n0(m.monto)}</span>])} />
+              rows={r.cobranzas_por_metodo.map((m) => [<StatusBadge key="b" label={metodoLabel[m.metodo] ?? m.metodo} variant="muted" />, m.cantidad, <span key="m" className="font-mono font-semibold text-success">${n2(m.monto)}</span>])} />
           )}
         </Section>
         <Section title="Cartera por estado" icon="chart-increasing">
           <SimpleTable head={["Estado", "Créditos", "Saldo"]}
-            rows={r.cartera.por_estado.map((e) => [<span key="e" className="capitalize">{estadoLabel[e.estado] ?? e.estado}</span>, e.cantidad, <span key="s" className="font-mono font-semibold text-foreground">${n0(e.saldo_pendiente)}</span>])}
-            foot={["Saldo activo", "", <span key="f" className="font-mono font-bold text-warning">${n0(r.cartera.saldo_activo_total)}</span>]} />
+            rows={r.cartera.por_estado.map((e) => [<span key="e" className="capitalize">{estadoLabel[e.estado] ?? e.estado}</span>, e.cantidad, <span key="s" className="font-mono font-semibold text-foreground">${n2(e.saldo_pendiente)}</span>])}
+            foot={["Saldo activo", "", <span key="f" className="font-mono font-bold text-warning">${n2(r.cartera.saldo_activo_total)}</span>]} />
         </Section>
       </div>
     </div>
@@ -429,7 +426,7 @@ function TabOperaciones({ r, s }: { r: Reporte; s?: ReporteSerie }) {
         <Section title="Otorgado por tipo de crédito" icon="money-bag">
           {r.operaciones_por_tipo.length === 0 ? <Empty>Sin otorgamientos en el período.</Empty> : (
             <SimpleTable head={["Tipo", "Operaciones", "Monto"]}
-              rows={r.operaciones_por_tipo.map((t) => [tipoLabel[t.tipo] ?? t.tipo, t.cantidad, <span key="m" className="font-mono font-semibold text-foreground">${n0(t.monto)}</span>])} />
+              rows={r.operaciones_por_tipo.map((t) => [tipoLabel[t.tipo] ?? t.tipo, t.cantidad, <span key="m" className="font-mono font-semibold text-foreground">${n2(t.monto)}</span>])} />
           )}
         </Section>
       </div>
@@ -593,7 +590,7 @@ function TabMorosidad({ r, s }: { r: Reporte; s?: ReporteSerie }) {
                 {s!.totales.castigados_creditos === 1 ? "" : "s"} por incobrable{s!.totales.castigados_creditos === 1 ? "" : "s"} — fuera de la cartera y de la morosidad de arriba.
               </p>
             </div>
-            <span className="font-mono text-xl font-bold tabular-nums text-destructive">${n0(s!.totales.cartera_castigada)}</span>
+            <span className="font-mono text-xl font-bold tabular-nums text-destructive">${n2(s!.totales.cartera_castigada)}</span>
           </div>
           <p className="mt-1.5 text-[11px] leading-relaxed text-muted-foreground/80">
             No se cuenta como cartera porque no es plata que se esté trabajando, y no se cuenta
@@ -651,10 +648,10 @@ function TabHistorico({ s }: { s?: ReporteSerie }) {
                 <tr className="border-t border-border font-semibold">
                   <td className="pt-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Total {a.anio}</td>
                   <td className="pt-2 text-right tabular-nums">{a.totales.otorgado_cantidad}</td>
-                  <td className="pt-2 text-right font-mono text-foreground">${n0(a.totales.otorgado_monto)}</td>
-                  <td className="pt-2 text-right font-mono text-success">${n0(a.totales.cobrado_total)}</td>
-                  <td className="pt-2 text-right font-mono text-warning">${n0(a.totales.ingreso_financiero)}</td>
-                  <td className={`pt-2 text-right font-mono ${a.totales.rentabilidad_neta >= 0 ? "text-success" : "text-destructive"}`}>${n0(a.totales.rentabilidad_neta)}</td>
+                  <td className="pt-2 text-right font-mono text-foreground">${n2(a.totales.otorgado_monto)}</td>
+                  <td className="pt-2 text-right font-mono text-success">${n2(a.totales.cobrado_total)}</td>
+                  <td className="pt-2 text-right font-mono text-warning">${n2(a.totales.ingreso_financiero)}</td>
+                  <td className={`pt-2 text-right font-mono ${a.totales.rentabilidad_neta >= 0 ? "text-success" : "text-destructive"}`}>${n2(a.totales.rentabilidad_neta)}</td>
                   <td className="pt-2 text-right font-mono text-muted-foreground">{n1(a.totales.mora_pct)}%</td>
                 </tr>
               </tfoot>
@@ -671,10 +668,10 @@ function FilaMes({ p }: { p: PuntoMensual }) {
     <tr className="border-t border-border/70">
       <td className="py-2 text-muted-foreground tabular-nums">{mesCorto(p.mes)}</td>
       <td className="py-2 text-right tabular-nums text-muted-foreground">{p.otorgado_cantidad}</td>
-      <td className="py-2 text-right font-mono text-foreground">${n0(p.otorgado_monto)}</td>
-      <td className="py-2 text-right font-mono text-success">${n0(p.cobrado_total)}</td>
-      <td className="py-2 text-right font-mono text-warning">${n0(p.ingreso_financiero)}</td>
-      <td className={`py-2 text-right font-mono ${p.rentabilidad_neta >= 0 ? "text-foreground" : "text-destructive"}`}>${n0(p.rentabilidad_neta)}</td>
+      <td className="py-2 text-right font-mono text-foreground">${n2(p.otorgado_monto)}</td>
+      <td className="py-2 text-right font-mono text-success">${n2(p.cobrado_total)}</td>
+      <td className="py-2 text-right font-mono text-warning">${n2(p.ingreso_financiero)}</td>
+      <td className={`py-2 text-right font-mono ${p.rentabilidad_neta >= 0 ? "text-foreground" : "text-destructive"}`}>${n2(p.rentabilidad_neta)}</td>
       <td className="py-2 text-right font-mono text-muted-foreground">{n1(p.mora_pct)}%</td>
     </tr>
   );
@@ -733,13 +730,13 @@ function TabMedios({ s }: { s?: ReporteSerie }) {
           icon="money-bag" label="El que más plata mueve"
           value={metodoLabel[masPlata.metodo] ?? masPlata.metodo}
           accent="success"
-          sub={`$${n0(masPlata.monto)} · ${n1(masPlata.pct_monto)}% de lo cobrado`}
+          sub={`$${n2(masPlata.monto)} · ${n1(masPlata.pct_monto)}% de lo cobrado`}
         />
         <KpiCard
           icon="chart-increasing" label="Medios en uso"
           value={String(medios.length)}
           accent="muted" mono
-          sub={`$${n0(totalMonto)} cobrados en ${totalPagos} pagos`}
+          sub={`$${n2(totalMonto)} cobrados en ${totalPagos} pagos`}
         />
       </div>
 
@@ -757,12 +754,12 @@ function TabMedios({ s }: { s?: ReporteSerie }) {
               <span key="pc" className="font-mono text-muted-foreground">{n1(m.pct_cantidad)}%</span>,
               // Clientes DISTINTOS: quien paga 12 cuotas en efectivo es UN cliente, no doce.
               <span key="cl" className="font-mono text-foreground">{m.clientes}</span>,
-              <span key="mo" className={`font-mono font-semibold ${c.texto}`}>${n0(m.monto)}</span>,
+              <span key="mo" className={`font-mono font-semibold ${c.texto}`}>${n2(m.monto)}</span>,
               <span key="pm" className="font-mono text-muted-foreground">{n1(m.pct_monto)}%</span>,
-              <span key="tp" className="font-mono text-foreground">${n0(m.ticket_promedio)}</span>,
+              <span key="tp" className="font-mono text-foreground">${n2(m.ticket_promedio)}</span>,
             ];
           })}
-          foot={["Total", totalPagos, "", "", <span key="f" className="font-mono font-bold text-success">${n0(totalMonto)}</span>, "", ""]}
+          foot={["Total", totalPagos, "", "", <span key="f" className="font-mono font-bold text-success">${n2(totalMonto)}</span>, "", ""]}
         />
       </Section>
 
@@ -804,12 +801,12 @@ function TabMedios({ s }: { s?: ReporteSerie }) {
                                 <span className={`h-2 w-2 rounded-sm ${colorMetodo(m).barra}`} />
                                 {metodoLabel[m] ?? m}
                               </span>
-                              <span className="font-mono text-foreground">${n0(v)}</span>
+                              <span className="font-mono text-foreground">${n2(v)}</span>
                             </p>
                           );
                         })}
                         <p className="mt-1 flex items-center justify-between gap-3 border-t border-border pt-1 font-semibold text-foreground">
-                          <span>Total</span><span className="font-mono">${n0(total)}</span>
+                          <span>Total</span><span className="font-mono">${n2(total)}</span>
                         </p>
                       </div>
                     </div>
@@ -846,7 +843,7 @@ function TabCobranza({ c }: { c?: ReporteCobranza }) {
         <KpiCard icon="bar-chart" label="Gestiones" value={String(e.gestiones)} accent="primary" sub={`${e.contactos} con contacto`} />
         <KpiCard icon="handshake" label="Tasa de contacto" value={`${n1(e.tasa_contacto)}%`} accent={e.tasa_contacto >= 50 ? "success" : e.tasa_contacto > 0 ? "warning" : "muted"} sub="contactos / gestiones" />
         <KpiCard icon="chart-increasing" label="Promesas" value={String(e.promesas)} accent="primary" sub={`${n1(e.tasa_cumplimiento)}% cumplidas`} />
-        <KpiCard icon="money-bag" label="Mora recuperada" value={`$${n2(c.recupero.mora_cobrada)}`} accent="success" mono sub={`cobrado $${n0(c.recupero.total_cobrado)}`} />
+        <KpiCard icon="money-bag" label="Mora recuperada" value={`$${n2(c.recupero.mora_cobrada)}`} accent="success" mono sub={`cobrado $${n2(c.recupero.total_cobrado)}`} />
       </div>
 
       {sinDatos ? (
@@ -878,7 +875,7 @@ function TabCobranza({ c }: { c?: ReporteCobranza }) {
                   [<span key="p" className="text-warning">Pendientes</span>, e.promesas_pendientes],
                   [<span key="r" className="text-destructive">Rotas</span>, e.promesas_rotas],
                 ]}
-                foot={["Monto cumplido", <span key="m" className="font-mono font-bold text-success">${n0(e.monto_prometido_cumplido)}</span>]} />
+                foot={["Monto cumplido", <span key="m" className="font-mono font-bold text-success">${n2(e.monto_prometido_cumplido)}</span>]} />
             </Section>
           </div>
 
@@ -889,7 +886,7 @@ function TabCobranza({ c }: { c?: ReporteCobranza }) {
                   <span key="n" className="font-medium text-foreground">{v.nombre}</span>,
                   v.gestiones, v.contactos, v.promesas,
                   <span key="cu" className="font-mono">{n1(v.tasa_cumplimiento)}%</span>,
-                  <span key="mo" className="font-mono font-semibold text-success">${n0(v.mora_cobrada)}</span>,
+                  <span key="mo" className="font-mono font-semibold text-success">${n2(v.mora_cobrada)}</span>,
                 ])} />
             )}
           </Section>
