@@ -1986,7 +1986,7 @@ function InfoBlock({
       <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-white/[0.04] via-transparent to-transparent" />
       <div className="relative mb-4 flex items-center gap-2.5">
         {isEmoji ? <IconBadge emoji={icon} accent={accent} hoverable /> : Icon && <Icon className="h-4 w-4 text-muted-foreground/70" />}
-        <h3 className="text-sm font-semibold text-foreground">{title}</h3>
+        <h3 className="text-[15px] font-semibold tracking-tight text-foreground">{title}</h3>
         <div className="ml-auto flex items-center gap-1">
           {accion}
           {onEditar && visibles.length > 0 && (
@@ -2118,13 +2118,19 @@ function MiniMapa({ lat, lon, titulo }: { lat: number; lon: number; titulo: stri
   );
 }
 
+/**
+ * Un dato de la ficha. Fernando (18/09/2026): "la fuente no se nota, no tiene presencia".
+ * El VALOR es lo que se lee: 15px y peso medio (17px y seminegrita cuando es el dato que
+ * importa —documento, teléfono, ingreso—), en el color del texto pleno; el rótulo queda
+ * chico y apagado para no competir. Antes valor y rótulo eran casi del mismo tamaño.
+ */
 function Campo({ label, value, mono, href, icon: Icon, emphasis }: CampoItem) {
-  const valueClass = `min-w-0 break-words text-foreground ${emphasis ? "text-[15px] font-medium" : "text-sm"} ${mono ? "font-mono" : ""}`;
+  const valueClass = `min-w-0 break-words text-foreground leading-snug ${emphasis ? "text-[17px] font-semibold tracking-tight" : "text-[15px] font-medium"} ${mono ? "font-mono tabular-nums" : ""}`;
   return (
     <div className="min-w-0">
-      <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">{label}</p>
-      <div className="mt-1.5 flex items-center gap-1.5">
-        {Icon && <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground/50" />}
+      <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/60">{label}</p>
+      <div className="mt-1 flex items-center gap-1.5">
+        {Icon && <Icon className="h-4 w-4 shrink-0 text-muted-foreground/50" />}
         {href ? (
           <a href={href} className={`${valueClass} hover:text-primary transition-colors`} {...(href.startsWith("http") ? { target: "_blank", rel: "noopener noreferrer" } : {})}>{value}</a>
         ) : (
