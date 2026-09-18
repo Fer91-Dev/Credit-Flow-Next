@@ -37,6 +37,8 @@ function armarCSP(nonce: string): string {
     `img-src 'self' data: blob: https://api.dicebear.com ${SUPA}`.trim(),
     "font-src 'self' data:",
     `connect-src 'self' ${SUPA} ${WSS}`.trim(),
+    // El mapa en miniatura de la ficha del cliente es un iframe de OpenStreetMap con el marcador.
+    "frame-src https://www.openstreetmap.org",
     "frame-ancestors 'none'",
     "base-uri 'self'",
     "form-action 'self'",

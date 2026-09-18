@@ -698,7 +698,8 @@ export function ClienteDetail({
                 mono: cliente.latitud != null,
                 href: cliente.latitud != null && cliente.longitud != null ? `https://www.google.com/maps?q=${cliente.latitud},${cliente.longitud}` : undefined,
               },
-            ]} accion={cliente.direccion && puedeEditar ? <BotonUbicar clienteId={cliente.id} onHecho={() => mutate()} ubicado={cliente.geo_estado === "ok"} /> : undefined} />
+            ]} accion={cliente.direccion && puedeEditar ? <BotonUbicar clienteId={cliente.id} onHecho={() => mutate()} ubicado={cliente.geo_estado === "ok"} /> : undefined}
+              pie={cliente.latitud != null && cliente.longitud != null ? <MiniMapa lat={cliente.latitud} lon={cliente.longitud} titulo={cliente.direccion ?? "Domicilio"} /> : undefined} />
           </div>
 
           <div className="lg:col-span-2">
@@ -1952,7 +1953,7 @@ interface CampoItem {
 
 /** Bloque editorial de datos: título con ícono + grilla de campos. Oculta vacíos. */
 function InfoBlock({
-  icon, title, items, emptyText, onEditar, anchoCompleto, accion,
+  icon, title, items, emptyText, onEditar, anchoCompleto, accion, pie,
 }: {
   icon: React.ComponentType<{ className?: string }> | string;
   title: string;
@@ -1963,6 +1964,8 @@ function InfoBlock({
   anchoCompleto?: boolean;
   /** Un control chico a la derecha del título (ej. «Ubicar» en Domicilio). */
   accion?: React.ReactNode;
+  /** Algo a todo el ancho debajo de los campos (ej. el mapa en miniatura). */
+  pie?: React.ReactNode;
 }) {
   const isEmoji = typeof icon === "string";
   const Icon = isEmoji ? null : icon;
@@ -1988,6 +1991,7 @@ function InfoBlock({
           {visibles.map((it) => <Campo key={it.label} {...it} />)}
         </div>
       )}
+      {pie && <div className="mt-4">{pie}</div>}
     </section>
   );
 }
@@ -2022,6 +2026,35 @@ function BotonUbicar({ clienteId, onHecho, ubicado }: { clienteId: string; onHec
       className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-medium text-primary/80 transition-colors hover:bg-primary/10 hover:text-primary disabled:opacity-50">
       <MapPin className="h-3 w-3" /> {cargando ? "Ubicando…" : ubicado ? "Reubicar" : "Ubicar"}
     </button>
+  );
+}
+
+/**
+ * El mapa en miniatura con el marcador del domicilio (Fernando, 18/09/2026: "que se vea
+ * marcado en el maps"). Es el embed de OpenStreetMap —sin librerías ni clave— centrado en
+ * las coordenadas de la ficha; clic en el pie para abrirlo grande.
+ */
+function MiniMapa({ lat, lon, titulo }: { lat: number; lon: number; titulo: string }) {
+  const d = 0.004; // ~400 m de ancho: se ve la manzana y las calles de alrededor
+  const bbox = `${lon - d},${lat - d * 0.6},${lon + d},${lat + d * 0.6}`;
+  const src = `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${lat},${lon}`;
+  return (
+    <div className="overflow-hidden rounded-lg border border-border/60">
+      <iframe
+        title={`Mapa: ${titulo}`}
+        src={src}
+        className="block h-56 w-full"
+        loading="lazy"
+        referrerPolicy="no-referrer"
+      />
+      <a
+        href={`https://www.openstreetmap.org/?mlat=${lat}&mlon=${lon}#map=17/${lat}/${lon}`}
+        target="_blank" rel="noopener noreferrer"
+        className="flex items-center justify-between bg-muted/30 px-3 py-1.5 text-[11px] text-muted-foreground transition-colors hover:text-primary"
+      >
+        <span>{titulo}</span><span>Abrir el mapa grande ↗</span>
+      </a>
+    </div>
   );
 }
 
