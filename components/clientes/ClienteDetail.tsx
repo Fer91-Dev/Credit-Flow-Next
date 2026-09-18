@@ -18,6 +18,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field } from "@/components/ui/field";
 import { useToast } from "@/components/ui/toast";
+import { IconBadge } from "@/components/ui/IconBadge";
 import { ObservacionesPanel } from "@/components/clientes/ObservacionesPanel";
 import { LibreDeudaDialog } from "@/components/creditos/LibreDeudaDialog";
 import { PagoForm } from "@/components/pagos/PagoForm";
@@ -42,9 +43,6 @@ function n2(x: number) {
   return new Intl.NumberFormat("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(x);
 }
 
-function n0(x: number) {
-  return new Intl.NumberFormat("es-AR", { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(x);
-}
 const fmtDate = (s?: string | null) => formatFecha(s);
 
 
@@ -433,18 +431,18 @@ export function ClienteDetail({
               icon="money-bag"
               label="Debe hoy"
               accent={ec.deuda_hoy > 0 ? "warning" : "success"}
-              value={`$${n0(ec.deuda_hoy)}`}
-              sub={`capital $${n0(ec.deuda_total)} + interés $${n0(ec.interes_pendiente_total)}${ec.interes_mora_total > 0 ? ` + mora $${n0(ec.interes_mora_total)}` : ""}`}
+              value={`${formatMonto(ec.deuda_hoy)}`}
+              sub={`capital ${formatMonto(ec.deuda_total)} + interés ${formatMonto(ec.interes_pendiente_total)}${ec.interes_mora_total > 0 ? ` + mora ${formatMonto(ec.interes_mora_total)}` : ""}`}
             />
             <Stat
               icon="warning"
               label={ec.en_mora ? "En mora" : "Situación"}
               accent={ec.dias_mora_max > 30 ? "destructive" : ec.en_mora ? "warning" : "success"}
               value={ec.en_mora ? formatDias(ec.dias_mora_max) : "Al día"}
-              sub={ec.en_mora ? `mora $${n0(ec.interes_mora_total)} · ${ec.creditos_en_mora} créd.` : "sin atrasos"}
+              sub={ec.en_mora ? `mora ${formatMonto(ec.interes_mora_total)} · ${ec.creditos_en_mora} créd.` : "sin atrasos"}
             />
             <Stat icon="credit-card" label="Créditos activos" accent="primary" value={String(ec.creditos_activos)} sub={`${ec.creditos_total} en total`} />
-            <Stat icon="chart-increasing" label="Total cobrado" accent="success" value={`$${n0(ec.total_cobrado)}`} sub="histórico" />
+            <Stat icon="chart-increasing" label="Total cobrado" accent="success" value={`${formatMonto(ec.total_cobrado)}`} sub="histórico" />
           </div>
         )}
 
@@ -590,8 +588,8 @@ export function ClienteDetail({
           };
           const tiles: [string, string, string][] = [
             ["Créditos previos", String(h.resumen.creditos), "text-foreground"],
-            ["Total prestado", `$${n0(h.resumen.total_prestado)}`, "text-foreground"],
-            ["Saldo pendiente", `$${n0(h.resumen.saldo_pendiente)}`, h.resumen.saldo_pendiente > 0 ? "text-warning" : "text-success"],
+            ["Total prestado", `${formatMonto(h.resumen.total_prestado)}`, "text-foreground"],
+            ["Saldo pendiente", `${formatMonto(h.resumen.saldo_pendiente)}`, h.resumen.saldo_pendiente > 0 ? "text-warning" : "text-success"],
             ["Ya pagados", String(h.resumen.terminados), "text-foreground"],
           ];
           return (
@@ -644,13 +642,13 @@ export function ClienteDetail({
                       return (
                         <tr key={i} className="border-b border-border/60">
                           <td className="py-1.5 pr-2 text-foreground">{c.descripcion}{c.revisar ? <span className="ml-1 text-[10px] text-warning">⚠ {c.revisar}</span> : null}</td>
-                          <td className="py-1.5 px-2 text-right font-mono text-foreground">${n0(c.monto)}</td>
-                          <td className="py-1.5 px-2 text-right font-mono text-muted-foreground">${n0(c.cuota)}</td>
+                          <td className="py-1.5 px-2 text-right font-mono text-foreground">{formatMonto(c.monto)}</td>
+                          <td className="py-1.5 px-2 text-right font-mono text-muted-foreground">{formatMonto(c.cuota)}</td>
                           <td className="py-1.5 px-2 text-center font-mono text-muted-foreground" title="pagadas / total">
                             <span className="text-foreground font-semibold">{c.cuotas_pagadas}</span>/{totalCuotas}
                           </td>
                           <td className="py-1.5 px-2"><StatusBadge label={b.l} variant={b.v} /></td>
-                          <td className={`py-1.5 pl-2 text-right font-mono ${c.saldo > 0 ? "text-warning font-semibold" : "text-success"}`}>${n0(c.saldo)}</td>
+                          <td className={`py-1.5 pl-2 text-right font-mono ${c.saldo > 0 ? "text-warning font-semibold" : "text-success"}`}>{formatMonto(c.saldo)}</td>
                         </tr>
                       );
                     })}
@@ -671,21 +669,37 @@ export function ClienteDetail({
         // uno tan angosto que sus campos internos se apilan de a uno. Lo que sí cambia es
         // "Laboral e ingresos", que ya ocupaba el ancho entero para mostrar ocho campos
         // cortos en dos columnas — ahora los reparte en cuatro.
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <InfoBlock icon="bust-in-silhouette" title="Identidad" emptyText="Sin datos de identidad cargados." items={[
+        // Fernando (18/09/2026): Identidad quedaba estirada con un hueco vacío al lado de
+        // Contacto + Domicilio (que ahora trae el mapa). Cada columna apila lo suyo y no se
+        // estira: izquierda la persona (identidad, trabajo e ingresos), derecha cómo llegar a
+        // ella (contacto, domicilio y mapa).
+        <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
+          <div className="space-y-4">
+          <InfoBlock icon="bust-in-silhouette" title="Identidad" accent="primary" emptyText="Sin datos de identidad cargados." items={[
             { label: "DNI / Documento", value: cliente.documento, mono: true, emphasis: true },
             { label: "CUIT / CUIL", value: cliente.cuit_cuil, mono: true, emphasis: true },
             { label: "Nacimiento", value: cliente.fecha_nacimiento ? `${fmtDate(cliente.fecha_nacimiento)}${edad(cliente.fecha_nacimiento) ? ` · ${edad(cliente.fecha_nacimiento)}` : ""}` : null },
             { label: "Estado civil", value: cliente.estado_civil ? ESTADO_CIVIL[cliente.estado_civil] ?? cliente.estado_civil : null },
             { label: "Nacionalidad", value: cliente.nacionalidad },
           ]} />
+          <InfoBlock icon="briefcase" title="Laboral e ingresos" accent="success" emptyText="Sin datos laborales cargados." onEditar={puedeEditar ? onEditar : undefined} items={[
+            { label: "Situación", value: cliente.situacion_laboral ? SITUACION_LABORAL[cliente.situacion_laboral] ?? cliente.situacion_laboral : null },
+            { label: "Ocupación", value: cliente.ocupacion },
+            { label: "Empleador", value: cliente.empleador },
+            { label: "Antigüedad", value: cliente.antiguedad_laboral_meses != null ? `${cliente.antiguedad_laboral_meses} meses` : null },
+            { label: "Ingreso mensual", value: cliente.ingreso_mensual != null ? formatMonto(cliente.ingreso_mensual) : null, mono: true, emphasis: true },
+            { label: "Otros ingresos", value: cliente.otros_ingresos != null ? formatMonto(cliente.otros_ingresos) : null, mono: true },
+            { label: "Teléfono laboral", value: cliente.telefono_laboral, icon: Phone, href: cliente.telefono_laboral ? `tel:${cliente.telefono_laboral}` : undefined },
+            { label: "Dirección laboral", value: cliente.direccion_laboral },
+          ]} />
+          </div>
 
           <div className="space-y-4">
-            <InfoBlock icon="envelope" title="Contacto" emptyText="Sin datos de contacto cargados." onEditar={puedeEditar ? onEditar : undefined} items={[
+            <InfoBlock icon="envelope" title="Contacto" accent="warning" emptyText="Sin datos de contacto cargados." onEditar={puedeEditar ? onEditar : undefined} items={[
               { label: "Email", value: cliente.email, icon: Mail, href: cliente.email ? `mailto:${cliente.email}` : undefined, emphasis: true },
               { label: "Teléfono", value: cliente.telefono, icon: Phone, href: cliente.telefono ? `tel:${cliente.telefono}` : undefined, emphasis: true },
             ]} />
-            <InfoBlock icon="round-pushpin" title="Domicilio" emptyText="Sin domicilio cargado." items={[
+            <InfoBlock icon="round-pushpin" title="Domicilio" accent="destructive" emptyText="Sin domicilio cargado." onEditar={puedeEditar ? onEditar : undefined} items={[
               { label: "Dirección", value: cliente.direccion },
               { label: "Localidad", value: [cliente.localidad, cliente.provincia].filter(Boolean).join(", ") || null },
               { label: "Zona de cobranza", value: cliente.zona },
@@ -700,19 +714,6 @@ export function ClienteDetail({
               },
             ]} accion={cliente.direccion && puedeEditar ? <BotonUbicar clienteId={cliente.id} onHecho={() => mutate()} ubicado={cliente.geo_estado === "ok" || cliente.geo_estado === "manual"} /> : undefined}
               pie={cliente.latitud != null && cliente.longitud != null ? <MiniMapa lat={cliente.latitud} lon={cliente.longitud} titulo={cliente.direccion ?? "Domicilio"} /> : undefined} />
-          </div>
-
-          <div className="lg:col-span-2">
-            <InfoBlock anchoCompleto icon="briefcase" title="Laboral e ingresos" emptyText="Sin datos laborales cargados." items={[
-              { label: "Situación", value: cliente.situacion_laboral ? SITUACION_LABORAL[cliente.situacion_laboral] ?? cliente.situacion_laboral : null },
-              { label: "Ocupación", value: cliente.ocupacion },
-              { label: "Empleador", value: cliente.empleador },
-              { label: "Antigüedad", value: cliente.antiguedad_laboral_meses != null ? `${cliente.antiguedad_laboral_meses} meses` : null },
-              { label: "Ingreso mensual", value: cliente.ingreso_mensual != null ? `$${n0(cliente.ingreso_mensual)}` : null, mono: true, emphasis: true },
-              { label: "Otros ingresos", value: cliente.otros_ingresos != null ? `$${n0(cliente.otros_ingresos)}` : null, mono: true },
-              { label: "Teléfono laboral", value: cliente.telefono_laboral, icon: Phone, href: cliente.telefono_laboral ? `tel:${cliente.telefono_laboral}` : undefined },
-              { label: "Dirección laboral", value: cliente.direccion_laboral },
-            ]} />
           </div>
         </div>
         )}
@@ -759,7 +760,7 @@ export function ClienteDetail({
                     </span>
                     <div className="flex items-center gap-2.5">
                       <span className="font-mono font-semibold text-foreground">
-                        {p.promesa_monto != null ? `$${n0(p.promesa_monto)}` : "—"}
+                        {p.promesa_monto != null ? `${formatMonto(p.promesa_monto)}` : "—"}
                       </span>
                       <StatusBadge label={b.label} variant={b.variant} />
                     </div>
@@ -1146,7 +1147,7 @@ function CreditosTabla({ creditos, mostrarProximo, onCobrar, onCobrarAcuerdo, cl
               {/* Las cifras que se miran. En `text-foreground`: el color se reserva para el estado. */}
               <div className="grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-4">
                 <CifraCredito label="Capital pendiente" valor={`$${n2(c.saldo_pendiente)}`}
-                  pie={`de $${n0(c.monto_original)} otorgados`} />
+                  pie={`de ${formatMonto(c.monto_original)} otorgados`} />
                 {/*
                   🔴 DOS COSAS LLAMADAS "CUOTA" EN LA MISMA FILA. Con un acuerdo vigente acá
                   decía "CUOTA $217.675,00" al lado de "CUOTA PACTADA $271.730,95", y nada
@@ -1899,7 +1900,7 @@ function CuotasInline({ credito, onCobrar, onCobrarAcuerdo }: {
             {resumen.vencidas > 0 && (
               <span className={acuerdoVigenteAca ? "" : "text-destructive"}> · {resumen.vencidas} vencida{resumen.vencidas !== 1 ? "s" : ""}</span>
             )}
-            {" · "}saldo <span className="font-mono">${n0(resumen.saldo_capital)}</span>
+            {" · "}saldo <span className="font-mono">{formatMonto(resumen.saldo_capital)}</span>
           </span>
         )}
       </div>
@@ -1952,8 +1953,14 @@ interface CampoItem {
 }
 
 /** Bloque editorial de datos: título con ícono + grilla de campos. Oculta vacíos. */
+/**
+ * Un bloque de la ficha. La misma card que el resto del sistema (borde, luz cenital y
+ * sombra de los KPI), el ícono en su badge con acento, el título como los encabezados de
+ * sección, y las acciones («Editar», «Ubicar») a la derecha del título. Fernando
+ * (18/09/2026): "dale una mejor front a la ficha".
+ */
 function InfoBlock({
-  icon, title, items, emptyText, onEditar, anchoCompleto, accion, pie,
+  icon, title, items, emptyText, onEditar, anchoCompleto, accion, pie, accent = "muted",
 }: {
   icon: React.ComponentType<{ className?: string }> | string;
   title: string;
@@ -1966,32 +1973,44 @@ function InfoBlock({
   accion?: React.ReactNode;
   /** Algo a todo el ancho debajo de los campos (ej. el mapa en miniatura). */
   pie?: React.ReactNode;
+  /** Acento del badge del ícono: cada bloque el suyo, para reconocerlos de un vistazo. */
+  accent?: "muted" | "primary" | "success" | "warning" | "destructive";
 }) {
   const isEmoji = typeof icon === "string";
   const Icon = isEmoji ? null : icon;
   const visibles = items.filter((it) => it.value != null && it.value !== "");
   return (
-    <section className="rounded-xl border border-border/60 bg-card/40 px-4 py-3.5 sm:px-5 sm:py-4">
-      <div className="mb-3 flex items-center gap-2 border-b border-border/40 pb-2.5">
-        {isEmoji ? <Emoji name={icon} className="h-4 w-4" /> : Icon && <Icon className="h-3.5 w-3.5 text-muted-foreground/70" />}
-        <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70">{title}</h3>
-        {accion && <div className="ml-auto">{accion}</div>}
+    <section className="group relative overflow-hidden rounded-2xl border border-border/70 bg-card px-4 py-4 shadow-[0_1px_2px_rgba(0,0,0,0.3),0_12px_30px_-16px_rgba(0,0,0,0.7)] sm:px-5">
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-white/10" />
+      <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-white/[0.04] via-transparent to-transparent" />
+      <div className="relative mb-4 flex items-center gap-2.5">
+        {isEmoji ? <IconBadge emoji={icon} accent={accent} hoverable /> : Icon && <Icon className="h-4 w-4 text-muted-foreground/70" />}
+        <h3 className="text-sm font-semibold text-foreground">{title}</h3>
+        <div className="ml-auto flex items-center gap-1">
+          {accion}
+          {onEditar && visibles.length > 0 && (
+            <button type="button" onClick={onEditar} title={`Editar ${title.toLowerCase()}`}
+              className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted/40 hover:text-foreground">
+              <Pencil className="h-3 w-3" /> Editar
+            </button>
+          )}
+        </div>
       </div>
       {visibles.length === 0 ? (
-        <div className="flex items-center justify-between gap-3">
-          <p className="text-xs text-muted-foreground/50">{emptyText}</p>
+        <div className="relative flex items-center justify-between gap-3 rounded-lg border border-dashed border-border/60 px-3 py-2.5">
+          <p className="text-xs text-muted-foreground/60">{emptyText}</p>
           {onEditar && (
-            <button onClick={onEditar} className="text-xs text-primary/80 hover:text-primary transition-colors whitespace-nowrap">
+            <button type="button" onClick={onEditar} className="whitespace-nowrap text-xs font-medium text-primary/80 transition-colors hover:text-primary">
               Completar
             </button>
           )}
         </div>
       ) : (
-        <div className={`grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2 ${anchoCompleto ? "lg:grid-cols-3 xl:grid-cols-4" : ""}`}>
+        <div className={`relative grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2 ${anchoCompleto ? "lg:grid-cols-3 xl:grid-cols-4" : ""}`}>
           {visibles.map((it) => <Campo key={it.label} {...it} />)}
         </div>
       )}
-      {pie && <div className="mt-4">{pie}</div>}
+      {pie && <div className="relative mt-4">{pie}</div>}
     </section>
   );
 }
