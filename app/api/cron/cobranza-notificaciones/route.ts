@@ -4,7 +4,12 @@ import { sincronizarAcuerdos } from "@/lib/acuerdos";
 import { Prisma } from "@prisma/client";
 import { sinDeuda, ESTADOS_VIVOS, resolverPlantillasMeta, debeDarsePorIncobrable, resolverRecupero, diasMoraActual, type PlantillaMeta, formatPesos } from "@/lib/domain";
 import { enviarWhatsappApi, whatsappApiDisponible, type WhatsappApiConfig } from "@/lib/whatsapp";
-import { hoyComercial, formatCreditoNumero } from "@/lib/utils";
+import { enviarSmsTenant, type SmsConfig } from "@/lib/sms";
+import { enviarEmailTenant, type EmailTenantConfig } from "@/lib/mailer-tenant";
+import { getFinanciera } from "@/lib/financiera";
+import { conNumeroDeOrigen } from "@/lib/creditos-numero";
+import { redactarAviso, cuerpoHtmlAviso, type EventoAviso, type DatosAviso } from "@/lib/domain/avisos-cobranza";
+import { hoyComercial, formatCreditoNumero, formatFecha } from "@/lib/utils";
 import { registrarAuditoria } from "@/lib/audit";
 
 // Reglas de mora para disparar notificaciones
@@ -113,6 +118,10 @@ async function ejecutarCron(req: NextRequest) {
     // Solo procesar si hay al menos un canal activo
     if (!whatsapp?.enabled && !sms?.enabled && !email?.enabled) continue;
 
+    // Quien firma el aviso: la financiera, con su teléfono. Una vez por tenant.
+    const financiera = await getFinanciera(config.tenant_id);
+    const marca = financiera.nombre || "Tu financiera";
+
     let enviados = 0;
     let errores = 0;
 
@@ -149,11 +158,19 @@ async function ejecutarCron(req: NextRequest) {
         },
         include: {
           cliente: { select: { nombre: true, apellido: true, telefono: true, email: true } },
+          // La cuota que vence ese día: el aviso dice su número y cuánto queda por pagar.
+          cuotas: {
+            where: { fecha_vencimiento: fechaObjetivo },
+            select: { nro: true, cuota_total: true, pagado_capital: true, pagado_interes: true, pagado_cargos: true },
+            take: 1,
+          },
         },
         take: 500, // límite de seguridad por regla/tenant
       });
+      // Una refinanciación se muestra (y se le nombra al cliente) como REF-<n° del original>.
+      const creditosConLabel = await conNumeroDeOrigen(config.tenant_id, creditos);
 
-      for (const credito of creditos) {
+      for (const credito of creditosConLabel) {
         // Evitar duplicar: no enviar si ya se notificó hoy con este evento
         const yaNotificado = await prisma.acciones_cobranza.findFirst({
           where: {
@@ -166,30 +183,63 @@ async function ejecutarCron(req: NextRequest) {
         });
         if (yaNotificado) continue;
 
-        let enviado = false;
+        /**
+         * LOS CANALES SE PRUEBAN EN ORDEN HASTA QUE UNO SALE: WhatsApp → SMS → email.
+         *
+         * 🔴 Antes eran excluyentes (`if / else if`): con WhatsApp prendido, un cliente sin
+         * plantilla aprobada o sin teléfono no recibía NADA aunque tuviera email y el email
+         * estuviera configurado. Y SMS y email eran stubs que devolvían `false` (18/09/2026):
+         * una financiera que los configuraba veía "Error de envío" un día tras otro.
+         *
+         * Cada intento deja su motivo; la gestión registra por dónde salió o por qué no.
+         */
+        const cuota = credito.cuotas[0] ?? null;
+        const datos: DatosAviso = {
+          nombre: credito.cliente.nombre,
+          credito: formatCreditoNumero(credito.numero, credito.refinancia_a_numero),
+          cuotaNro: cuota?.nro ?? null,
+          importe: cuota ? Math.max(0, Math.round((cuota.cuota_total - cuota.pagado_capital - cuota.pagado_interes - cuota.pagado_cargos) * 100) / 100) : 0,
+          vencimiento: formatFecha(fechaObjetivo),
+          diasAtraso: Math.max(0, regla.dias),
+          financiera: marca,
+          telefono: financiera.telefono,
+        };
+        const aviso = redactarAviso(regla.evento as EventoAviso, datos);
+        const motivos: string[] = [];
+        let via: "whatsapp" | "sms" | "email" | null = null;
 
-        // Intentar envío por canal disponible (WhatsApp > SMS > Email)
         if (whatsapp?.enabled) {
-          enviado = await enviarWhatsapp(whatsapp, credito, regla.evento, plantillasMeta);
-        } else if (sms?.enabled) {
-          enviado = await enviarSms(sms, credito, regla.evento);
-        } else if (email?.enabled) {
-          enviado = await enviarEmail(email, credito, regla.evento);
+          const r = await enviarWhatsapp(whatsapp, credito, regla.evento, plantillasMeta);
+          if (r.ok) via = "whatsapp"; else motivos.push(`WhatsApp: ${r.error}`);
+        }
+        if (!via && sms?.enabled) {
+          const r = await enviarSmsTenant(sms, { telefono: credito.cliente.telefono, mensaje: aviso.sms });
+          if (r.ok) via = "sms"; else motivos.push(`SMS: ${r.error}`);
+        }
+        if (!via && email?.enabled) {
+          if (!credito.cliente.email) motivos.push("Email: el cliente no tiene email.");
+          else {
+            const r = await enviarEmailTenant(email, { to: credito.cliente.email, subject: aviso.asunto, html: cuerpoHtmlAviso(aviso.texto, marca), marca });
+            if (r.ok) via = "email"; else motivos.push(`Email: ${r.error}`);
+          }
         }
 
-        // Registrar la gestión automática en acciones_cobranza
+        // Registrar la gestión automática en acciones_cobranza (los tipos válidos son los de
+        // la agenda: el SMS va como "otro" y la nota dice por dónde salió).
         await prisma.acciones_cobranza.create({
           data: {
             tenant_id: config.tenant_id,
             credito_id: credito.id,
-            tipo: whatsapp?.enabled ? "whatsapp" : sms?.enabled ? "otro" : "email",
-            resultado: enviado ? "contactado" : "no_contesta",
-            nota: `[AUTO] Notificación ${regla.evento} - ${enviado ? "Enviada" : "Error de envío"}`,
+            tipo: via === "whatsapp" ? "whatsapp" : via === "email" ? "email" : via === "sms" ? "otro" : whatsapp?.enabled ? "whatsapp" : email?.enabled ? "email" : "otro",
+            resultado: via ? "contactado" : "no_contesta",
+            nota: via
+              ? `[AUTO] Notificación ${regla.evento} - Enviada por ${via === "sms" ? "SMS" : via}`
+              : `[AUTO] Notificación ${regla.evento} - Error de envío · ${motivos.join(" · ") || "sin canal disponible"}`,
             automatico: true,
           },
         });
 
-        if (enviado) enviados++; else errores++;
+        if (via) enviados++; else errores++;
       }
     }
 
@@ -468,28 +518,15 @@ async function procesarPromesasVencidas(hoy: Date): Promise<{ rotas: number; res
 // plantilla registrada, que es la que sabe qué variables tiene.
 type WhatsappConfig = WhatsappApiConfig;
 
-type SmsConfig = {
-  enabled: boolean;
-  api_key: string;
-  provider: string;
-};
-
-type EmailConfig = {
-  enabled: boolean;
-  host?: string;
-  port?: number;
-  user?: string;
-  pass?: string;
-  api_key?: string;
-  provider?: string;
-};
+// SMS y email: la forma vive junto a cada emisor (`lib/sms`, `lib/mailer-tenant`).
+type EmailConfig = EmailTenantConfig;
 
 type CreditoConCliente = {
   id: string;
   cliente: { nombre: string; telefono: string | null; email: string | null };
 };
 
-// ─── Funciones de envío (stubs — implementar con SDK del proveedor) ───────────
+// ─── Funciones de envío ──────────────────────────────────────────────────────
 
 /**
  * Aviso automático por WhatsApp.
@@ -509,16 +546,16 @@ async function enviarWhatsapp(
   credito: CreditoConCliente,
   evento: string,
   plantillas: PlantillaMeta[],
-): Promise<boolean> {
-  if (!credito.cliente.telefono) return false;
-  if (!whatsappApiDisponible(config)) return false;
+): Promise<{ ok: boolean; error?: string }> {
+  if (!credito.cliente.telefono) return { ok: false, error: "el cliente no tiene teléfono" };
+  if (!whatsappApiDisponible(config)) return { ok: false, error: "falta el token o el número de la API de Meta" };
   const nombrePlantilla = config.templates?.[evento];
-  if (!nombrePlantilla) return false;
+  if (!nombrePlantilla) return { ok: false, error: `no hay plantilla asignada al evento ${evento}` };
 
   const plantilla = plantillas.find((p) => p.nombre === nombrePlantilla && p.activa) ?? null;
   // Sin la plantilla registrada no se puede completar sus variables; mandarla igual sería
   // repetir el error que se está corrigiendo.
-  if (!plantilla) return false;
+  if (!plantilla) return { ok: false, error: `la plantilla "${nombrePlantilla}" no está registrada o está inactiva` };
 
   const res = await enviarWhatsappApi(config, {
     telefono: credito.cliente.telefono,
@@ -527,23 +564,5 @@ async function enviarWhatsapp(
     // plantilla de aviso automático que pida importes no es para este camino.
     resolver: (clave) => (clave === "nombre" ? credito.cliente.nombre : ""),
   });
-  return res.ok;
-}
-
-async function enviarSms(
-  _config: SmsConfig,
-  _credito: CreditoConCliente,
-  _evento: string
-): Promise<boolean> {
-  // TODO: implementar con Twilio u otro gateway cuando se configure
-  return false;
-}
-
-async function enviarEmail(
-  _config: EmailConfig,
-  _credito: CreditoConCliente,
-  _evento: string
-): Promise<boolean> {
-  // TODO: implementar con Resend/SendGrid/SMTP cuando se configure
-  return false;
+  return res.ok ? { ok: true } : { ok: false, error: res.error ?? "Meta rechazó el envío" };
 }

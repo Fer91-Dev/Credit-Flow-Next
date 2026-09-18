@@ -11,7 +11,7 @@ import type { SimuladorConfig, CargosConfig, FrecuenciaOpcion, DocumentosConfig,
 import { MODOS_INTERES_ACUERDO, MODO_INTERES_LABEL, BUREAUS_CONFIGURABLES, BUREAU_LABEL, BUREAU_REQUIERE_CREDENCIALES, resolverProveedoresBureau, DOCUMENTOS_DEFAULT, PLANTILLAS_CONTACTO_DEFAULT, revisarDocumentos, punitorioMensualDesdeDiaria, ORDEN_IMPUTACION, tasaDesdeCoeficiente, textoCuotas, planDeAcuerdo, round2 } from "@/lib/domain";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Emoji } from "@/components/ui/Emoji";
-import { Field, Input, NumeroInput, Select, Textarea, SecretInput } from "@/components/ui/field";
+import { Field, Input, NumeroInput, Select, Textarea, SecretInput, TelInput } from "@/components/ui/field";
 import { anclaSeccion, buscarParametros, type ParametroIndexado } from "@/lib/config-indice";
 import { BuscadorF3 } from "@/components/ui/BuscadorF3";
 import {
@@ -421,7 +421,7 @@ const AYUDA: Record<string, AyudaBloque> = {
   },
   "canal-sms": {
     titulo: "SMS",
-    texto: "Envío de mensajes de texto vía un proveedor (Twilio, etc.). Cargá el proveedor y su API key.",
+    texto: "Los avisos automáticos de cobranza por mensaje de texto salen desde un celular de la financiera, con su propia SIM, a través de SMSChef (smschef.com): se instala la app en ese celular, se lo vincula a la cuenta y acá se cargan el API secret (Tools → API Keys) y el ID del dispositivo (Devices). El plan gratuito da 1.500 mensajes por mes. El celular tiene que estar prendido y con señal: si no, los avisos quedan en cola.",
   },
   "canal-email": {
     titulo: "Email",
@@ -1561,10 +1561,10 @@ export function ConfigForm() {
                 </div>
               </CanalesBlock>
 
-              {/* SMS */}
+              {/* SMS — SMSChef: el celular de la financiera es la pasarela (Fernando, 18/09/2026). */}
               <CanalesBlock
                 icon={<Phone className="w-4 h-4 text-warning" />}
-                title="SMS Gateway"
+                title="SMS"
                 ayuda={AYUDA["canal-sms"]}
                 enabled={!!form.smsConfig?.enabled}
                 onToggle={(v) => set("smsConfig", { ...(form.smsConfig ?? defaultSms()), enabled: v })}
@@ -1574,23 +1574,32 @@ export function ConfigForm() {
                 dirty={isDirty("canal-sms")}
               >
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
-                  <Field label="Proveedor">
-                    <Select
-                      value={(form.smsConfig as any)?.provider ?? "twilio"}
-                      onChange={e => set("smsConfig", { ...(form.smsConfig ?? defaultSms()), provider: e.target.value })}
-                    >
-                      <option value="twilio">Twilio</option>
-                      <option value="sms_masivos">SMS Masivos</option>
-                      <option value="otro">Otro</option>
-                    </Select>
-                  </Field>
-                  <Field label="API Key">
+                  <Field label="API secret" hint="SMSChef → Tools → API Keys.">
                     <SecretInput
-                      placeholder="SK..."
+                      placeholder="El secret de tu cuenta de SMSChef"
                       value={(form.smsConfig as any)?.api_key ?? ""}
-                      onChange={e => set("smsConfig", { ...(form.smsConfig ?? defaultSms()), api_key: e.target.value })}
+                      onChange={e => set("smsConfig", { ...(form.smsConfig ?? defaultSms()), provider: "smschef", api_key: e.target.value })}
                     />
                   </Field>
+                  <Field label="Celular vinculado (ID del dispositivo)" hint="SMSChef → Devices: el ID del celular que manda.">
+                    <Input
+                      placeholder="00000000-0000-0000-…"
+                      value={(form.smsConfig as any)?.device ?? ""}
+                      onChange={e => set("smsConfig", { ...(form.smsConfig ?? defaultSms()), provider: "smschef", device: e.target.value.trim() })}
+                    />
+                  </Field>
+                  <Field label="SIM que manda" hint="Si el celular tiene dos chips, cuál usa.">
+                    <Select
+                      value={String((form.smsConfig as any)?.sim ?? 1)}
+                      onChange={e => set("smsConfig", { ...(form.smsConfig ?? defaultSms()), provider: "smschef", sim: Number(e.target.value) })}
+                    >
+                      <option value="1">SIM 1</option>
+                      <option value="2">SIM 2</option>
+                    </Select>
+                  </Field>
+                  <div className="sm:col-span-2">
+                    <ProbarSms />
+                  </div>
                 </div>
               </CanalesBlock>
 
@@ -3147,7 +3156,7 @@ function eventoLabel(evento: string): string {
 }
 
 function defaultWhatsapp() { return { enabled: false, token: "", phone_number_id: "", business_account_id: "", templates: {} }; }
-function defaultSms()       { return { enabled: false, api_key: "", provider: "twilio" }; }
+function defaultSms()       { return { enabled: false, api_key: "", provider: "smschef", device: "", sim: 1 }; }
 function defaultEmail()     { return { enabled: false, provider: "smtp", host: "", port: 587, user: "", pass: "" }; }
 
 /**
@@ -3720,6 +3729,63 @@ function BodySkeleton() {
  * usuario en sesión y usa la config GUARDADA, no la del formulario — prueba lo que va a
  * correr, no lo que hay escrito en pantalla.
  */
+/** La prueba del SMS: al celular que se escriba, con la config guardada (igual que el email). */
+function ProbarSms() {
+  const [estado, setEstado] = useState<"idle" | "enviando" | "ok">("idle");
+  const [error, setError] = useState<string | null>(null);
+  const [destino, setDestino] = useState<string | null>(null);
+  const [para, setPara] = useState("");
+
+  const probar = async () => {
+    setEstado("enviando");
+    setError(null);
+    try {
+      const res = await fetch("/api/configuracion/sms-prueba", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ to: para.trim() }),
+      });
+      const json = await res.json();
+      if (!json.ok) { setError(json.error || "No se pudo enviar"); setEstado("idle"); return; }
+      setDestino(json.data?.enviado_a ?? null);
+      setEstado("ok");
+    } catch {
+      setError("No se pudo enviar el SMS de prueba");
+      setEstado("idle");
+    }
+  };
+
+  return (
+    <div className="rounded-lg border border-border bg-muted/20 px-3 py-2.5">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="text-xs text-muted-foreground">
+          {estado === "ok"
+            ? <>Encolado hacia <span className="font-mono text-foreground">{destino}</span> — el celular lo manda en segundos si está prendido y con señal.</>
+            : "Probá el envío antes de escribirle a un cliente."}
+        </span>
+        <TelInput
+          value={para}
+          onValueChange={setPara}
+          placeholder="Celular de prueba"
+          className="h-8 min-w-0 flex-1 text-xs"
+        />
+        <button
+          type="button"
+          onClick={probar}
+          disabled={estado === "enviando" || !para.trim()}
+          className="shrink-0 rounded-lg border border-primary/30 bg-primary/10 px-3 py-1.5 text-xs font-medium text-primary transition-colors hover:bg-primary/20 disabled:opacity-40"
+        >
+          {estado === "enviando" ? "Enviando…" : estado === "ok" ? "Enviar otro" : "Enviar prueba"}
+        </button>
+      </div>
+      {estado === "idle" && !error && (
+        <p className="mt-1 text-[11px] text-muted-foreground/60">Guardá los cambios antes de probar.</p>
+      )}
+      {error && <p className="mt-1.5 text-[11px] text-destructive">{error}</p>}
+    </div>
+  );
+}
+
 function ProbarEmail() {
   const [estado, setEstado] = useState<"idle" | "enviando" | "ok">("idle");
   const [error, setError] = useState<string | null>(null);

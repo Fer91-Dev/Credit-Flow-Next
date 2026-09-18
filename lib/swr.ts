@@ -1003,10 +1003,13 @@ export interface WhatsappConfig {
   };
 }
 
+/** SMS por SMSChef: el celular de la financiera es la pasarela (la forma real vive en `lib/sms`). */
 export interface SmsConfig {
   enabled: boolean;
   api_key: string;
   provider: string;
+  device?: string;
+  sim?: number;
 }
 
 export interface EmailConfig {
