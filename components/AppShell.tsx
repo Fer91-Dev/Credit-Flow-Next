@@ -121,6 +121,7 @@ function AlertaCobranzaBadge({ colapsado }: { colapsado?: boolean }) {
   const { alerta } = useAlertaCobranza();
   if (!alerta || (alerta.vencidas === 0 && alerta.por_vencer === 0)) return null;
   const rojo = alerta.vencidas > 0;
+  const n = rojo ? alerta.vencidas : alerta.por_vencer;
   const texto = rojo
     ? `${alerta.vencidas} con cuota vencida${alerta.por_vencer > 0 ? ` · ${alerta.por_vencer} por vencer` : ""}`
     : `${alerta.por_vencer} vence${alerta.por_vencer === 1 ? "" : "n"} en los próximos ${alerta.horizonte_dias} días`;
@@ -132,11 +133,11 @@ function AlertaCobranzaBadge({ colapsado }: { colapsado?: boolean }) {
     <span
       title={texto}
       aria-label={texto}
-      // Solo el «!»: con el número al lado, "Cobranzas y Recupero" se cortaba en el menú. Los
-      // conteos están en el rótulo (hover) y en las pestañas de Cobranzas.
-      className={`ml-auto inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[11px] font-black leading-none ${color} ${rojo ? "animate-pulse" : ""}`}
+      // El número y el color, sin el «!» (Fernando, 18/09/2026). Compacto para que
+      // "Cobranzas y Recupero" no se corte.
+      className={`ml-auto inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full px-1 text-[10px] font-bold leading-none tabular-nums ${color} ${rojo ? "animate-pulse" : ""}`}
     >
-      !
+      {n > 99 ? "99+" : n}
     </span>
   );
 }

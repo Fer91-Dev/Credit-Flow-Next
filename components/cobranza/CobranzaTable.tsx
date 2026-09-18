@@ -573,7 +573,7 @@ export function CobranzaTable({ role }: { role: Role }) {
                 <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-warning px-1 text-[10px] font-bold tabular-nums text-warning-foreground">{alerta!.por_vencer}</span>
               )}
               {key === "morosos" && (alerta?.vencidas ?? 0) > 0 && (
-                <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-bold tabular-nums text-destructive-foreground">!{alerta!.vencidas}</span>
+                <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-bold tabular-nums text-destructive-foreground">{alerta!.vencidas}</span>
               )}
             </span>
           </button>

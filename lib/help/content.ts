@@ -334,11 +334,11 @@ const HELP: Record<string, HelpDoc> = {
     bloques: [
       {
         kind: "definiciones",
-        titulo: "El «!» del menú",
+        titulo: "El número rojo del menú",
         items: [
-          { term: "Rojo, y late", desc: "Hay créditos con una cuota vencida e impaga. Está en el menú lateral, en todas las pantallas, para que no haga falta entrar acá a enterarse. Al pasar el mouse dice cuántos." },
+          { term: "Rojo, y late", desc: "Cuántos créditos tienen una cuota vencida e impaga. Está en el menú lateral, en todas las pantallas, para que no haga falta entrar acá a enterarse. Al pasar el mouse dice además cuántos están por vencer." },
           { term: "Ámbar", desc: "No hay vencidas, pero hay cuotas que vencen en los próximos 7 días: es el momento de avisar (pestaña Vencimientos) para que no lleguen a la lista de al lado." },
-          { term: "En las pestañas", desc: "Vencimientos lleva el número de los que vencen; Morosos, el «!» con los que ya vencieron. Cada uno ve lo suyo: el vendedor, su cartera; el administrador, toda la financiera." },
+          { term: "En las pestañas", desc: "Vencimientos lleva el número de los que vencen (ámbar); Morosos, el de los que ya vencieron (rojo). Cada uno ve lo suyo: el vendedor, su cartera; el administrador, toda la financiera." },
         ],
       },
       {
