@@ -8,6 +8,7 @@ import type { Role } from "@/lib/auth/roles";
 import { getCobranzaConfig, getConfiguracion } from "@/lib/config";
 import { sincronizarAcuerdos, creditosConAcuerdoVigente, cubiertoPorAcuerdo } from "@/lib/acuerdos";
 import { numerosRefinanciados } from "@/lib/creditos-numero";
+import { ordenarRecorrido, largoRecorridoMetros } from "@/lib/domain/recorrido";
 import { cobroBloqueadoPorCredito } from "@/lib/recupero-server";
 import {
   diasMoraActual, ESTADOS_VIVOS, calcularDeudaVencida, moraDelCredito, moraDesdeCronograma,
@@ -55,6 +56,9 @@ interface FilaPlanilla {
   cliente: string;
   documento: string | null;
   direccion: string | null;
+  /** Coordenadas del domicilio (geocodificador); null = sin ubicar, va al final del recorrido. */
+  latitud: number | null;
+  longitud: number | null;
   telefono: string | null;
   credito_numero: number | null;
   credito_refinancia_a_numero: number | null;
@@ -127,6 +131,7 @@ async function armarPlanilla(
         select: {
           nombre: true, apellido: true, documento: true, telefono: true,
           direccion: true, piso: true, depto: true, localidad: true, zona: true,
+          latitud: true, longitud: true, barrio: true,
         },
       },
       cuotas: { orderBy: { nro: "asc" } },
@@ -219,6 +224,8 @@ async function armarPlanilla(
       cliente: nombreCompleto(c.cliente),
       documento: c.cliente.documento ?? null,
       direccion: domicilio(c.cliente),
+      latitud: c.cliente.latitud ?? null,
+      longitud: c.cliente.longitud ?? null,
       telefono: c.cliente.telefono ?? null,
       credito_numero: c.numero,
       credito_refinancia_a_numero: c.es_refinanciacion && c.refinancia_a ? origenes.get(c.refinancia_a) ?? null : null,
@@ -238,22 +245,31 @@ async function armarPlanilla(
   }
 
   /**
-   * Dentro de cada zona, por DOMICILIO: la planilla la usa alguien que camina, y el orden
-   * útil es el que agrupa las puertas cercanas, no el que ordena por plata. Los que no
-   * tienen dirección cargada van al final — no se los puede visitar, pero sí llamar.
+   * Dentro de cada zona, EL RECORRIDO: puerta por puerta, cada una la más cercana a la
+   * anterior, con las coordenadas del geocodificador (`ordenarRecorrido`). El orden por
+   * domicilio queda como respaldo: decide por dónde se arranca y cómo van los que no tienen
+   * ubicación —al final, porque no se los puede visitar con criterio, pero sí llamar—.
+   * Fernando (18/09/2026): "que realmente coincida con la hoja de ruta del cobrador".
    */
   const zonas = [...porZona.entries()]
-    .map(([clave, filas]) => ({
-      zona: clave === "__sin__" ? null : clave,
-      filas: filas.sort((a, b) =>
+    .map(([clave, filas]) => {
+      const porDomicilio = filas.sort((a, b) =>
         (a.direccion ? 0 : 1) - (b.direccion ? 0 : 1) ||
         (a.direccion ?? "").localeCompare(b.direccion ?? "", "es") ||
         a.cliente.localeCompare(b.cliente, "es"),
-      ),
-      creditos: filas.length,
-      clientes: new Set(filas.map((f) => f.cliente_id)).size,
-      total: round2(filas.reduce((s, f) => s + f.a_cobrar, 0)),
-    }))
+      );
+      const recorrido = ordenarRecorrido(porDomicilio);
+      return {
+        zona: clave === "__sin__" ? null : clave,
+        filas: recorrido,
+        creditos: filas.length,
+        clientes: new Set(filas.map((f) => f.cliente_id)).size,
+        total: round2(filas.reduce((s, f) => s + f.a_cobrar, 0)),
+        /** Cuántas filas tienen ubicación y cuánto se camina entre ellas, para decirlo en la hoja. */
+        ubicadas: recorrido.filter((f) => f.latitud != null).length,
+        metros: largoRecorridoMetros(recorrido),
+      };
+    })
     // "Sin zona" siempre al final: es el grupo de los que hay que ir a completar la ficha.
     .sort((a, b) => (a.zona ? 0 : 1) - (b.zona ? 0 : 1) || (a.zona ?? "").localeCompare(b.zona ?? "", "es"));
 

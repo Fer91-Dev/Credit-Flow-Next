@@ -6,7 +6,8 @@ import { registrarAuditoria } from "@/lib/audit";
 import { nombreCompleto } from "@/lib/utils";
 import { enriquecerClientes, kpisClientes, type FiltroClientes } from "@/lib/clientes-agregado";
 import { normalizarCuit, validarDuplicadoCliente } from "@/lib/clientes-validacion";
-import type { NextRequest } from "next/server";
+import { after, type NextRequest } from "next/server";
+import { ubicarCliente } from "@/lib/geo-clientes";
 
 /**
  * GET /api/clientes
@@ -206,6 +207,14 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     accion: "crear",
     descripcion: `Cliente creado: ${nombreCompleto(cliente)}`,
   });
+
+  /**
+   * El domicilio se ubica DESPUÉS de responder: el mapa puede tardar o no contestar, y el
+   * alta no espera por eso. Lo que vuelve (coordenadas, barrio) completa la zona si estaba
+   * vacía; si el mapa no encuentra nada, la ficha queda "sin ubicar" y se puede reintentar
+   * con el botón «Ubicar». Ver `lib/geo-clientes`.
+   */
+  if (cliente.direccion) after(() => ubicarCliente(tenantId, cliente.id).catch(() => undefined));
 
   return successResponse(cliente, 201);
 });

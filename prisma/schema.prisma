@@ -140,6 +140,19 @@ model profiles {
   @@index([tenant_id])
 }
 
+/// Lo que la financiera enseñó: "este barrio del mapa es esta zona de cobranza". Se aprende
+/// solo cuando alguien corrige la zona de un cliente ubicado; después, cada cliente nuevo del
+/// mismo barrio nace con esa zona. `barrio` va normalizado en minúsculas.
+model barrio_zona {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  tenant_id  String   @db.Uuid
+  barrio     String
+  zona       String
+
+  @@unique([tenant_id, barrio])
+}
+
 model clientes {
   id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   created_at    DateTime  @default(now()) @db.Timestamptz(6)
@@ -233,6 +246,17 @@ model clientes {
   solicitudes      solicitudes[]
   consultas_bureau consultas_bureau[]
   observaciones    observaciones_cliente[]
+
+  /// Ubicación del domicilio, resuelta por el geocodificador (`lib/geocoder`) al guardar la
+  /// ficha o con el botón «Ubicar». `barrio` es lo que devuelve el mapa; la zona de cobranza
+  /// se completa con él, o con la equivalencia barrio → zona que la financiera enseñó
+  /// (`barrio_zona`). La planilla del cobrador ordena el recorrido con las coordenadas.
+  /// `geo_estado`: ok | sin_resultado | error | null (nunca se intentó).
+  latitud          Float?
+  longitud         Float?
+  barrio           String?
+  geo_estado       String?
+  geocodificado_en DateTime? @db.Timestamptz(6)
 
   // El identificador ÚNICO es el CUIT/CUIL (en AR puede haber DNI repetidos). Los
   // null se permiten (Postgres los trata como distintos): clientes sin CUIT cargado.

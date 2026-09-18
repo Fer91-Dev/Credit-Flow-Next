@@ -12,7 +12,8 @@
  * para que el cobrador sume lo que trae. Es un formulario, no un comprobante.
  *
  * Decisiones de diseño que vienen de que se usa caminando:
- *  - Se agrupa por ZONA y adentro por domicilio: el recorrido es geográfico.
+ *  - Se agrupa por ZONA y adentro va como RECORRIDO (de cada puerta a la más cercana, con
+ *    las coordenadas del mapa); los que no se pudieron ubicar cierran la zona.
  *  - Cada zona empieza en página nueva, así se puede repartir el recorrido entre dos personas.
  *  - Sin color de fondo ni grises fuertes: se fotocopia, se moja y se escribe encima.
  *  - La FECHA va en el encabezado de cada página, porque los importes son los de ese día:
@@ -44,6 +45,9 @@ export interface ZonaPlanillaPrint {
   clientes: number;
   creditos: number;
   total: number;
+  /** Cuántas filas tienen ubicación en el mapa y cuánto se camina entre ellas, en el orden de la hoja. */
+  ubicadas?: number;
+  metros?: number;
 }
 
 export interface PlanillaPrintData {
@@ -119,6 +123,10 @@ export function imprimirPlanillaCalle(d: PlanillaPrintData): void {
         <div class="k">A cobrar</div>
         <div class="zv mn">${esc(formatMonto(z.total))}</div>
       </div>
+      ${z.ubicadas && z.ubicadas > 1 && z.metros ? `<div class="zr">
+        <div class="k">Recorrido</div>
+        <div class="zv">${z.metros >= 1000 ? (z.metros / 1000).toLocaleString("es-AR", { maximumFractionDigits: 1 }) + " km" : z.metros + " m"}${z.ubicadas < z.filas.length ? ` <span style="font-size:10px;font-weight:600">(${z.filas.length - z.ubicadas} sin ubicar, al final)</span>` : ""}</div>
+      </div>` : ""}
     </div>
     <table>
       <thead><tr>

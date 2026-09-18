@@ -59,7 +59,15 @@ export interface Cliente {
   email?: string | null;
   telefono?: string | null;
   direccion?: string | null;
+  provincia?: string | null;
+  localidad?: string | null;
   zona?: string | null;
+  /** Ubicación del domicilio (geocodificador): coordenadas, barrio según el mapa y cómo fue. */
+  latitud?: number | null;
+  longitud?: number | null;
+  barrio?: string | null;
+  geo_estado?: "ok" | "sin_direccion" | "sin_resultado" | "error" | null;
+  geocodificado_en?: string | null;
   /** Estado de la PERSONA: activo | fallecido (ver lib/domain/cliente-estado.ts). */
   estado: string;
   /**
@@ -2197,6 +2205,8 @@ export interface FilaPlanilla {
   cliente: string;
   documento: string | null;
   direccion: string | null;
+  latitud?: number | null;
+  longitud?: number | null;
   telefono: string | null;
   credito_numero: number | null;
   credito_refinancia_a_numero: number | null;
@@ -2214,7 +2224,7 @@ export interface PlanillaCalle {
   fecha: string;
   dias_adelante: number;
   /** `creditos` = filas de la planilla; `clientes` = titulares distintos (no es lo mismo). */
-  zonas: { zona: string | null; filas: FilaPlanilla[]; clientes: number; creditos: number; total: number }[];
+  zonas: { zona: string | null; filas: FilaPlanilla[]; clientes: number; creditos: number; total: number; ubicadas?: number; metros?: number }[];
   totales: { clientes: number; creditos: number; total: number; zonas: number };
   /**
    * Los que quedaron FUERA del recorrido porque su plan ya venció y no se les puede cobrar.

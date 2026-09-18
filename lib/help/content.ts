@@ -93,7 +93,8 @@ const HELP: Record<string, HelpDoc> = {
         items: [
           { term: "Ingreso / sueldo", desc: "Es obligatorio: el motor de riesgo calcula con él la capacidad de pago y el monto máximo sugerido." },
           { term: "Candado del sueldo", desc: "Un vendedor puede editar el sueldo un número limitado de veces (se configura en Configuración → Riesgo). Agotado, solo un admin lo resetea." },
-          { term: "Domicilio", desc: "Provincia y localidad se eligen encadenadas; si es departamento aparecen piso y depto." },
+          { term: "Domicilio", desc: "Provincia y localidad se eligen encadenadas; si es departamento aparecen piso y depto. Al guardar, el domicilio se UBICA en el mapa (OpenStreetMap): la ficha muestra el barrio y las coordenadas, con un link al mapa y el botón «Ubicar» para volver a intentarlo si el mapa no lo encontró o se corrigió la dirección." },
+          { term: "Zona de cobranza", desc: "Si se deja vacía, se completa sola con el barrio del domicilio. Lo que se escribe vale más: y el sistema lo recuerda —«este barrio es esta zona»— para los próximos clientes del mismo barrio. Es la zona que arma la planilla del cobrador." },
           { term: "Baja", desc: "Dar de baja un cliente se bloquea si tiene créditos activos o vencidos: primero hay que resolverlos." },
         ],
       },
@@ -395,10 +396,10 @@ const HELP: Record<string, HelpDoc> = {
         titulo: "Salir a cobrar a la calle",
         pasos: [
           "Pestaña «Planillas» → «Nueva planilla»: arma el recorrido y lo imprime.",
-          "Elegí las zonas. La zona sale de la ficha del cliente; los que no la tienen cargada van juntos en un grupo aparte.",
+          "Elegí las zonas. La zona sale de la ficha del cliente (se completa sola con el barrio del domicilio); los que no la tienen cargada van juntos en un grupo aparte.",
           "«A quién visitar»: solo los vencidos, o también los que vencen dentro de 7, 15 o 30 días —el recorrido de rutina.",
           "Antes de imprimir ves cuántos clientes y cuánta plata tiene el recorrido, zona por zona.",
-          "Cada zona sale en una hoja, ordenada por domicilio, con dos casilleros vacíos por cliente: lo cobrado y la firma.",
+          "Cada zona sale en una hoja, ordenada como RECORRIDO: de cada puerta a la más cercana, con las coordenadas del mapa. Los que no se pudieron ubicar van al final de su zona. Dos casilleros vacíos por cliente: lo cobrado y la firma.",
           "Al pie hay una rendición para que el cobrador cierre lo que trae.",
         ],
       },

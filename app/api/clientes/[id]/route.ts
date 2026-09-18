@@ -10,7 +10,8 @@ import { normalizarCuit, validarDuplicadoCliente } from "@/lib/clientes-validaci
 import { cuotaCerradaSinPago, calcularScore, diasMoraActual, cuotaMensualFrancesa, tasaPeriodicaSegunConvencion, convencionDelCredito, normalizarFrecuencia, interesMora, diasAtraso, round2, estadoCoherente, esCreditoVivo, moraDelCredito, moraDesdeCronograma, moraPendienteTotal, calcularDeudaVencida, esCreditoCobrable, topeMoraPorIncobrable, ESTADOS_CLIENTE, ESTADO_CLIENTE_LABEL, esEstadoClienteValido, normalizarEstadoCliente, type EstadoCliente, cargosDeCuota, baseMoraDeCuota, pendienteSinMoraDeCuota, formatPesos } from "@/lib/domain";
 import { getConfiguracion, getRiesgoConfig, getCobranzaConfig } from "@/lib/config";
 import { situacionAcuerdoPorCredito } from "@/lib/acuerdos";
-import type { NextRequest } from "next/server";
+import { after, type NextRequest } from "next/server";
+import { ubicarCliente, aprenderZona, cambioDomicilio } from "@/lib/geo-clientes";
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -702,6 +703,18 @@ export const PATCH = withErrorHandler(async (req: NextRequest, { params }: Route
     updated = await prisma.clientes.findFirstOrThrow({ where: { ...withTenant(tenantId), id } });
   } else {
     updated = await prisma.clientes.update({ where: { id }, data: updateData });
+  }
+
+  /**
+   * La ubicación sigue al domicilio, y la zona escrita enseña. Si cambió la dirección, la
+   * localidad o la provincia, se vuelve al mapa después de responder. Si quien edita puso o
+   * corrigió la ZONA de un cliente que ya tiene barrio, eso es la financiera diciendo "este
+   * barrio es esta zona": se aprende para los próximos del mismo barrio.
+   */
+  if (cambioDomicilio(existing, updateData)) {
+    after(() => ubicarCliente(tenantId, id).catch(() => undefined));
+  } else if (typeof updateData.zona === "string" && updateData.zona !== existing.zona && existing.barrio) {
+    await aprenderZona(tenantId, existing.barrio, updateData.zona);
   }
 
   await registrarAuditoria({

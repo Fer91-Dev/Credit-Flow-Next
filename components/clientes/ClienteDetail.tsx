@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { useSWRConfig } from "swr";
 import {
-  Pencil, Trash2, CalendarClock, ChevronDown, Loader2, Mail, MessageCircle, Phone, Printer, ShieldCheck, Ban, Receipt, AlertTriangle, History, BellOff, Wallet, Sparkles, Handshake,
+  Pencil, Trash2, CalendarClock, ChevronDown, Loader2, Mail, MessageCircle, Phone, Printer, ShieldCheck, Ban, Receipt, AlertTriangle, History, BellOff, Wallet, Sparkles, Handshake, MapPin,
 } from "lucide-react";
 import { refrescarNotificaciones, useClienteDetalle, useAccionesCobranza, useCuotas, KEYS, type CreditoConFinanzas, type EstadoCuota, type CuotaPersistida, type CuotasCredito, type PagoImputado, useDiasLegales, useOrigenRefinanciacion, useFinanciera } from "@/lib/swr";
 import { StatusBadge, type BadgeVariant } from "@/components/ui/StatusBadge";
@@ -687,7 +687,18 @@ export function ClienteDetail({
             ]} />
             <InfoBlock icon="round-pushpin" title="Domicilio" emptyText="Sin domicilio cargado." items={[
               { label: "Dirección", value: cliente.direccion },
-            ]} />
+              { label: "Localidad", value: [cliente.localidad, cliente.provincia].filter(Boolean).join(", ") || null },
+              { label: "Zona de cobranza", value: cliente.zona },
+              // Lo que dijo el mapa. La zona se completa con esto (o con lo que la financiera
+              // enseñó para este barrio); acá se ve de dónde salió.
+              { label: "Barrio (mapa)", value: cliente.barrio },
+              {
+                label: "Ubicación",
+                value: cliente.latitud != null && cliente.longitud != null ? `${cliente.latitud.toFixed(5)}, ${cliente.longitud.toFixed(5)}` : cliente.geo_estado === "sin_resultado" ? "El mapa no encontró el domicilio" : cliente.geo_estado === "error" ? "No se pudo consultar el mapa" : null,
+                mono: cliente.latitud != null,
+                href: cliente.latitud != null && cliente.longitud != null ? `https://www.google.com/maps?q=${cliente.latitud},${cliente.longitud}` : undefined,
+              },
+            ]} accion={cliente.direccion && puedeEditar ? <BotonUbicar clienteId={cliente.id} onHecho={() => mutate()} ubicado={cliente.geo_estado === "ok"} /> : undefined} />
           </div>
 
           <div className="lg:col-span-2">
@@ -1941,7 +1952,7 @@ interface CampoItem {
 
 /** Bloque editorial de datos: título con ícono + grilla de campos. Oculta vacíos. */
 function InfoBlock({
-  icon, title, items, emptyText, onEditar, anchoCompleto,
+  icon, title, items, emptyText, onEditar, anchoCompleto, accion,
 }: {
   icon: React.ComponentType<{ className?: string }> | string;
   title: string;
@@ -1950,6 +1961,8 @@ function InfoBlock({
   onEditar?: () => void;
   /** El bloque ocupa el ancho de la ficha: sus campos se reparten en 4 columnas en vez de 2. */
   anchoCompleto?: boolean;
+  /** Un control chico a la derecha del título (ej. «Ubicar» en Domicilio). */
+  accion?: React.ReactNode;
 }) {
   const isEmoji = typeof icon === "string";
   const Icon = isEmoji ? null : icon;
@@ -1959,6 +1972,7 @@ function InfoBlock({
       <div className="mb-3 flex items-center gap-2 border-b border-border/40 pb-2.5">
         {isEmoji ? <Emoji name={icon} className="h-4 w-4" /> : Icon && <Icon className="h-3.5 w-3.5 text-muted-foreground/70" />}
         <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70">{title}</h3>
+        {accion && <div className="ml-auto">{accion}</div>}
       </div>
       {visibles.length === 0 ? (
         <div className="flex items-center justify-between gap-3">
@@ -1979,6 +1993,38 @@ function InfoBlock({
 }
 
 /** Campo individual: label chico arriba, valor destacado abajo (clicable si hay href). */
+/**
+ * «Ubicar»: vuelve al mapa ahora y muestra qué encontró. Existe porque el alta ubica en
+ * segundo plano y a veces el mapa no contesta o el domicilio se corrigió después.
+ */
+function BotonUbicar({ clienteId, onHecho, ubicado }: { clienteId: string; onHecho: () => void; ubicado: boolean }) {
+  const toast = useToast();
+  const [cargando, setCargando] = useState(false);
+  const ubicar = async () => {
+    setCargando(true);
+    try {
+      const res = await fetch(`/api/clientes/${clienteId}/ubicar`, { method: "POST" });
+      const json = await res.json();
+      if (!json.ok) { toast.error(json.error || "No se pudo ubicar"); return; }
+      const r = json.data as { estado: string; barrio?: string | null; zona?: string | null; zona_completada?: boolean };
+      if (r.estado === "ok") toast.success(`Ubicado${r.barrio ? ` en ${r.barrio}` : ""}${r.zona_completada && r.zona ? ` · zona: ${r.zona}` : ""}`);
+      else if (r.estado === "sin_resultado") toast.error("El mapa no encontró ese domicilio. Revisá calle, número y localidad.");
+      else if (r.estado === "sin_direccion") toast.error("El cliente no tiene dirección cargada.");
+      onHecho();
+    } catch {
+      toast.error("No se pudo consultar el mapa");
+    } finally {
+      setCargando(false);
+    }
+  };
+  return (
+    <button type="button" onClick={ubicar} disabled={cargando} title={ubicado ? "Volver a ubicar el domicilio en el mapa" : "Ubicar el domicilio en el mapa"}
+      className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-medium text-primary/80 transition-colors hover:bg-primary/10 hover:text-primary disabled:opacity-50">
+      <MapPin className="h-3 w-3" /> {cargando ? "Ubicando…" : ubicado ? "Reubicar" : "Ubicar"}
+    </button>
+  );
+}
+
 function Campo({ label, value, mono, href, icon: Icon, emphasis }: CampoItem) {
   const valueClass = `min-w-0 break-words text-foreground ${emphasis ? "text-[15px] font-medium" : "text-sm"} ${mono ? "font-mono" : ""}`;
   return (
@@ -1987,7 +2033,7 @@ function Campo({ label, value, mono, href, icon: Icon, emphasis }: CampoItem) {
       <div className="mt-1.5 flex items-center gap-1.5">
         {Icon && <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground/50" />}
         {href ? (
-          <a href={href} className={`${valueClass} hover:text-primary transition-colors`}>{value}</a>
+          <a href={href} className={`${valueClass} hover:text-primary transition-colors`} {...(href.startsWith("http") ? { target: "_blank", rel: "noopener noreferrer" } : {})}>{value}</a>
         ) : (
           <span className={valueClass}>{value}</span>
         )}

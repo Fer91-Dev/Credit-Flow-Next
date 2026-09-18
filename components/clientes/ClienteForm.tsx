@@ -453,8 +453,8 @@ export function ClienteForm({ clienteId, initialDocumento, onClose }: ClienteFor
               <option value="departamento">Departamento</option>
             </Select>
           </Field>
-          <Field label="Zona / Barrio">
-            <Input name="zona" type="text" placeholder="Ej: Centro, Norte…" value={formData.zona} onChange={set("zona")} />
+          <Field label="Zona de cobranza" hint="Si la dejás vacía, se completa sola con el barrio del domicilio (según el mapa). Lo que escribas acá vale más, y el sistema lo recuerda para los próximos clientes del mismo barrio.">
+            <Input name="zona" type="text" placeholder="Vacío = la completa el mapa" value={formData.zona} onChange={set("zona")} />
           </Field>
           {formData.tipo_domicilio === "departamento" && (
             <>
