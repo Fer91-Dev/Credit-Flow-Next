@@ -1194,6 +1194,9 @@ model auditoria {
   usuario_email  String? // email del actor (inmutable)
 
   @@index([tenant_id, created_at])
+  /// La pantalla filtra por entidad (Pagos, Créditos…) y ordena por fecha: sin este índice,
+  /// cada filtro recorre la tabla entera, que crece ~1 KB por evento y no se borra nunca.
+  @@index([tenant_id, entidad, created_at])
 }
 
 /// Proveedores / acreedores (Fase 6). Tabla aditiva, multi-tenant.
