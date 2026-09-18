@@ -729,21 +729,6 @@ export function ClienteDetail({
           </section>
         )}
 
-        {/*
-          Observaciones: lo que no entra en ningún campo. Va DESPUÉS del prontuario (que es lo
-          que el sistema deduce solo) y antes de las promesas: primero lo que se sabe, después
-          lo que alguien anotó a mano.
-
-          No se esconde detrás de `showCreditos`: un cliente sin créditos también necesita que
-          se le anote algo — de hecho es cuando más falta hace.
-        */}
-        {!esTerminal && (
-          <section className="space-y-2">
-            <SectionTitle icon="clipboard" text="Observaciones" />
-            <ObservacionesPanel clienteId={clienteId} />
-          </section>
-        )}
-
         {/* Historial de promesas de pago (vigentes / cumplidas / rotas) */}
         {showCreditos && !esTerminal && promesas.length > 0 && (
           <section className="space-y-2">
@@ -832,6 +817,21 @@ export function ClienteDetail({
               onRecibo={handleReciboPago}
               onAnular={(pago, credito) => setAnularPago({ id: pago.id, monto: pago.monto, fecha: pago.fecha, metodo: pago.metodo, cuotas: pago.aplicaciones?.map((a) => a.cuota.nro), credito: { id: credito.id, numero: credito.numero, refinancia_a_numero: credito.refinancia_a_numero }, cliente: nombreCompleto(cliente) })}
             />
+          </section>
+        )}
+
+        {/*
+          Observaciones: lo que no entra en ningún campo. Van AL FINAL de la ficha (Fernando,
+          18/09/2026): primero todo lo que el sistema sabe y deduce —datos, bureau, prontuario,
+          promesas, créditos—, y al cierre lo que alguien anotó a mano.
+
+          No se esconde detrás de `showCreditos`: un cliente sin créditos también necesita que
+          se le anote algo — de hecho es cuando más falta hace.
+        */}
+        {!esTerminal && (
+          <section className="space-y-2">
+            <SectionTitle icon="clipboard" text="Observaciones" />
+            <ObservacionesPanel clienteId={clienteId} />
           </section>
         )}
 
@@ -1936,7 +1936,7 @@ function SectionTitle({ icon, text }: { icon: React.ComponentType<{ className?: 
   return (
     <div className="flex items-center gap-2">
       {isEmoji ? <Emoji name={icon} className="h-4 w-4" /> : Icon && <Icon className="h-4 w-4 text-muted-foreground" />}
-      <h3 className="text-sm font-semibold text-foreground">{text}</h3>
+      <h3 className="text-[15px] font-semibold tracking-tight text-foreground">{text}</h3>
     </div>
   );
 }

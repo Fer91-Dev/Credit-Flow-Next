@@ -95,7 +95,7 @@ export function ProntuarioPanel({ clienteId }: { clienteId: string }) {
   if (!data || data.eventos.length === 0) {
     return (
       <div className="rounded-xl border border-border bg-card p-6 text-center">
-        <p className="text-sm text-muted-foreground">Todavía no hay historia registrada.</p>
+        <p className="text-[15px] font-medium text-muted-foreground">Todavía no hay historia registrada.</p>
         <p className="mt-1 text-xs text-muted-foreground/60">Se arma sola con los créditos, cobros y gestiones.</p>
       </div>
     );
@@ -146,7 +146,7 @@ export function ProntuarioPanel({ clienteId }: { clienteId: string }) {
               {c.valor}
             </p>
             {c.pie && (
-              <p className={cn("mt-1 truncate text-[11px]", c.alerta ? "text-destructive/70" : "text-muted-foreground/70")}>
+              <p className={cn("mt-1 truncate text-xs", c.alerta ? "text-destructive/70" : "text-muted-foreground/70")}>
                 {c.pie}
               </p>
             )}
@@ -185,7 +185,7 @@ export function ProntuarioPanel({ clienteId }: { clienteId: string }) {
                     <div className="flex min-w-0 flex-1 items-start justify-between gap-3">
                       <div className="min-w-0">
                         <p className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-                          <span className={cn("text-sm", tono === "malo" ? "font-semibold text-destructive" : "text-foreground")}>
+                          <span className={cn("text-[15px] font-medium leading-snug", tono === "malo" ? "font-semibold text-destructive" : "text-foreground")}>
                             {e.titulo}
                           </span>
                           {e.credito && (
@@ -195,9 +195,9 @@ export function ProntuarioPanel({ clienteId }: { clienteId: string }) {
                           )}
                         </p>
                         {e.detalle && (
-                          <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{e.detalle}</p>
+                          <p className="mt-0.5 line-clamp-2 text-sm text-muted-foreground">{e.detalle}</p>
                         )}
-                        <p className="mt-1 flex items-center gap-1.5 text-[11px] text-muted-foreground/60">
+                        <p className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground/60">
                           <span className={cn("uppercase tracking-wide", tono === "malo" && "text-destructive/70")}>
                             {LABEL_EVENTO[e.tipo]}
                           </span>
@@ -208,7 +208,7 @@ export function ProntuarioPanel({ clienteId }: { clienteId: string }) {
                       {/* El importe es el dato más pesado de la fila y se ve como tal. */}
                       {e.monto != null && (
                         <span className={cn(
-                          "shrink-0 font-mono text-base font-bold tabular-nums",
+                          "shrink-0 font-mono text-[17px] font-bold tabular-nums",
                           estiloMonto(e.tipo),
                         )}>
                           {formatMonto(e.monto)}

@@ -99,20 +99,20 @@ export function ObservacionesPanel({ clienteId }: { clienteId: string }) {
         ) : observaciones.length === 0 ? (
           <div className="flex flex-col items-center gap-1.5 py-6 text-center">
             <Emoji name="clipboard" className="h-7 w-7 opacity-30" />
-            <p className="text-xs text-muted-foreground">Sin observaciones</p>
+            <p className="text-[15px] font-medium text-muted-foreground">Sin observaciones</p>
           </div>
         ) : (
           <ul className="divide-y divide-border/50">
             {observaciones.map((o) => (
               <li key={o.id} className="group flex items-start gap-3 py-2.5">
                 {/* La fecha, en mono y tabular, para que la columna se lea derecha. */}
-                <span className="w-[5.5rem] shrink-0 pt-0.5 font-mono text-xs tabular-nums text-muted-foreground">
+                <span className="w-[6.5rem] shrink-0 pt-0.5 font-mono text-sm tabular-nums text-muted-foreground">
                   {formatFecha(o.fecha)}
                 </span>
                 <div className="min-w-0 flex-1">
-                  <p className="whitespace-pre-wrap break-words text-sm text-foreground">{o.texto}</p>
+                  <p className="whitespace-pre-wrap break-words text-[15px] font-medium leading-snug text-foreground">{o.texto}</p>
                   {o.autor_nombre && (
-                    <p className="mt-0.5 text-[11px] text-muted-foreground/60">{o.autor_nombre}</p>
+                    <p className="mt-0.5 text-xs text-muted-foreground/60">{o.autor_nombre}</p>
                   )}
                 </div>
                 <button

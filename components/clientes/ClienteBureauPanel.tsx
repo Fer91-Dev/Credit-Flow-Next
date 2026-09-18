@@ -187,11 +187,11 @@ export function ClienteBureauPanel({ clienteId }: { clienteId: string }) {
     <section className="space-y-2">
       <div className="flex items-center gap-2">
         <ShieldCheck className="h-4 w-4 text-primary" />
-        <h3 className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Perfil crediticio (bureau)</h3>
+        <h3 className="text-[15px] font-semibold tracking-tight text-foreground">Perfil crediticio (bureau)</h3>
       </div>
       <div className="rounded-xl border border-border bg-card p-4 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)]">
         <div className="flex items-center justify-between gap-3">
-          <p className="text-xs text-muted-foreground">
+          <p className="text-sm text-muted-foreground">
             {ultima
               ? <>Última consulta: <span className="font-medium text-foreground">{PROVEEDOR_LABEL[ultima.proveedor] ?? ultima.proveedor}</span> · {formatFechaHora(ultima.created_at)}</>
               : "Sin consultas registradas para este cliente."}
@@ -262,7 +262,7 @@ export function ClienteBureauPanel({ clienteId }: { clienteId: string }) {
             {/* Una consulta que SALIÓ BIEN pero sin registros no puede leerse igual que una
                 que falló: se marca en verde para que el operador sepa que el dato llegó. */}
             {ultima.mensaje && (
-              <p className={`mt-3 text-xs ${ultima.situacion_bcra == null && ultima.cheques_rechazados == null && /no figura/i.test(ultima.mensaje) ? "text-success" : "text-muted-foreground/80"}`}>
+              <p className={`mt-3 text-sm ${ultima.situacion_bcra == null && ultima.cheques_rechazados == null && /no figura/i.test(ultima.mensaje) ? "text-success" : "text-muted-foreground/80"}`}>
                 {ultima.mensaje}
               </p>
             )}
@@ -330,7 +330,7 @@ export function ClienteBureauPanel({ clienteId }: { clienteId: string }) {
               if (ents.length === 0) return null;
               return (
                 <div className="mt-4 overflow-x-auto rounded-xl border border-border">
-                  <table className="w-full text-xs">
+                  <table className="w-full text-sm">
                     <thead>
                       <tr className="bg-muted/30">
                         <th className="px-3 py-2 text-left text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Entidad</th>
@@ -379,8 +379,8 @@ export function ClienteBureauPanel({ clienteId }: { clienteId: string }) {
 function Dato({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="rounded-lg bg-muted/30 px-2.5 py-2">
-      <p className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</p>
-      <div className="mt-0.5 text-sm">{children}</div>
+      <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/60">{label}</p>
+      <div className="mt-1 text-[15px] font-medium leading-snug">{children}</div>
     </div>
   );
 }
