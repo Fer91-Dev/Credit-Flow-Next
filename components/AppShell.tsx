@@ -18,7 +18,7 @@ import { canAccess, type Role } from "@/lib/auth/roles";
 import { createClient } from "@/lib/supabase/client";
 import { HelpPanel } from "@/components/ui/HelpPanel";
 import { getHelpDoc } from "@/lib/help/content";
-import type { Financiera } from "@/lib/swr";
+import { useAlertaCobranza, type Financiera } from "@/lib/swr";
 
 /** Marca co-branded: logo + nombre de la financiera, con "powered by CreditFlow". Fallback
  *  a la marca CreditFlow si la financiera no cargó nombre/logo. */
@@ -110,6 +110,37 @@ const NAV_GROUPS: NavGroup[] = [
 /** Lo que el sidebar contraído le avisa al shell para dibujar el rótulo flotante. */
 type AvisoRotulo = (label: string, el: HTMLElement | null) => void;
 
+/**
+ * EL «!» DE COBRANZAS. Fernando (18/09/2026): "es importante que el usuario siempre vea el
+ * signo ! en rojo cuando haya cuotas vencidas o prontas a vencer": el menú es lo único que
+ * está en todas las pantallas. Rojo = hay créditos con cuota vencida (cuántos); ámbar = no
+ * hay vencidas pero vencen en los próximos días. Con el menú contraído queda el punto sobre
+ * el ícono y el rótulo flotante lo explica.
+ */
+function AlertaCobranzaBadge({ colapsado }: { colapsado?: boolean }) {
+  const { alerta } = useAlertaCobranza();
+  if (!alerta || (alerta.vencidas === 0 && alerta.por_vencer === 0)) return null;
+  const rojo = alerta.vencidas > 0;
+  const texto = rojo
+    ? `${alerta.vencidas} con cuota vencida${alerta.por_vencer > 0 ? ` · ${alerta.por_vencer} por vencer` : ""}`
+    : `${alerta.por_vencer} vence${alerta.por_vencer === 1 ? "" : "n"} en los próximos ${alerta.horizonte_dias} días`;
+  const color = rojo ? "bg-destructive text-destructive-foreground" : "bg-warning text-warning-foreground";
+  if (colapsado) {
+    return <span aria-label={texto} className={`absolute right-1.5 top-1 h-2.5 w-2.5 rounded-full ring-2 ring-sidebar ${color} ${rojo ? "animate-pulse" : ""}`} />;
+  }
+  return (
+    <span
+      title={texto}
+      aria-label={texto}
+      // Solo el «!»: con el número al lado, "Cobranzas y Recupero" se cortaba en el menú. Los
+      // conteos están en el rótulo (hover) y en las pestañas de Cobranzas.
+      className={`ml-auto inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[11px] font-black leading-none ${color} ${rojo ? "animate-pulse" : ""}`}
+    >
+      !
+    </span>
+  );
+}
+
 function SideNavLink({ icon: Icon, label, to, isActive, onClick, colapsado, onRotulo }: NavItem & {
   isActive: boolean; onClick?: () => void; colapsado?: boolean; onRotulo?: AvisoRotulo;
 }) {
@@ -151,6 +182,7 @@ function SideNavLink({ icon: Icon, label, to, isActive, onClick, colapsado, onRo
         strokeWidth={1.75}
       />
       {!colapsado && <span className="truncate">{label}</span>}
+      {to === "/cobranza" && <AlertaCobranzaBadge colapsado={colapsado} />}
     </Link>
   );
 }

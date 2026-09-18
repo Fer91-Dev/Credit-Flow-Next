@@ -2174,6 +2174,17 @@ export interface AgendaCobranza {
   orden: OrdenAgenda;
 }
 /** Agenda del día de cobranza (cola priorizada, scopeada al vendedor). */
+/**
+ * El semáforo de la cobranza (menú lateral y pestañas): créditos con la cuota más vieja
+ * VENCIDA y créditos que vencen en los próximos días. Se refresca cada 5 minutos: es un
+ * `count` scopeado, no una lista, y el usuario tiene que ver el «!» rojo sin recargar.
+ */
+export interface AlertaCobranza { vencidas: number; por_vencer: number; horizonte_dias: number }
+export function useAlertaCobranza() {
+  const { data, mutate } = useSWR<AlertaCobranza>("/api/cobranza/alerta", { refreshInterval: 5 * 60_000 });
+  return { alerta: data, mutate };
+}
+
 export function useAgendaCobranza() {
   const { data, error, isLoading, mutate } = useSWR<AgendaCobranza>("/api/cobranza/agenda");
   return { agenda: data, error, isLoading, mutate };

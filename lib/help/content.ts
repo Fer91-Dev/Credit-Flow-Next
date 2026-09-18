@@ -334,6 +334,15 @@ const HELP: Record<string, HelpDoc> = {
     bloques: [
       {
         kind: "definiciones",
+        titulo: "El «!» del menú",
+        items: [
+          { term: "Rojo, y late", desc: "Hay créditos con una cuota vencida e impaga. Está en el menú lateral, en todas las pantallas, para que no haga falta entrar acá a enterarse. Al pasar el mouse dice cuántos." },
+          { term: "Ámbar", desc: "No hay vencidas, pero hay cuotas que vencen en los próximos 7 días: es el momento de avisar (pestaña Vencimientos) para que no lleguen a la lista de al lado." },
+          { term: "En las pestañas", desc: "Vencimientos lleva el número de los que vencen; Morosos, el «!» con los que ya vencieron. Cada uno ve lo suyo: el vendedor, su cartera; el administrador, toda la financiera." },
+        ],
+      },
+      {
+        kind: "definiciones",
         titulo: "Las pestañas",
         items: [
           { term: "Hoy (agenda)", desc: "Cola priorizada de a quién contactar, en cinco grupos por urgencia: acuerdos con cuota vencida (todavía vigentes: se pueden salvar) → promesas vencidas → acuerdos rotos sin gestionar → contactos agendados → morosos sin gestión reciente. Scopeada al vendedor. Arriba dice además cuántos morosos con acuerdo al día NO se llaman. Cada renglón tiene «Gestionar» y dos íconos: WhatsApp y SMS." },

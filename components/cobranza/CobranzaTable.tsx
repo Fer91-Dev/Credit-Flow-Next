@@ -8,7 +8,7 @@ import { AlertCircle, Phone, Mail, Clock, Copy, CheckCheck, Search, DollarSign, 
 import { WhatsAppIcon } from "@/components/ui/WhatsAppIcon";
 import { MessageSquareText } from "lucide-react";
 import { descargarCSV } from "@/lib/csv";
-import { useCreditos, useAccionesCobranza, type Credito, type AccionCobranza, type AgendaItem, useTramosMora } from "@/lib/swr";
+import { useCreditos, useAccionesCobranza, type Credito, type AccionCobranza, type AgendaItem, useTramosMora, useAlertaCobranza } from "@/lib/swr";
 import { type Role } from "@/lib/auth/roles";
 import { formatFecha, nombreCompleto, formatDias, formatMonto, formatCreditoNumero } from "@/lib/utils";
 import { CreditoLink } from "@/components/ui/CreditoLink";
@@ -101,6 +101,7 @@ export function CobranzaTable({ role }: { role: Role }) {
   // vendedor (scopeado a SUS créditos, tanto en la selección como en el backend).
   const puedeCampanas = role === "admin" || role === "vendedor";
   const { creditos: allCreditos, error, isLoading } = useCreditos();
+  const { alerta } = useAlertaCobranza();
   const { acciones, mutate: mutateAcciones } = useAccionesCobranza();
   const { mutate: globalMutate } = useSWRConfig();
   const toast = useToast();
@@ -566,6 +567,14 @@ export function CobranzaTable({ role }: { role: Role }) {
             )}
             <span className="relative flex items-center gap-1.5">
               <Emoji name={emoji} className="h-4 w-4" /> {label}
+              {/* El semáforo también en las pestañas: cuántos vencen (ámbar) y cuántos ya
+                  vencieron (rojo). Sale de un `count` liviano, no de la lista de créditos. */}
+              {key === "vencimientos" && (alerta?.por_vencer ?? 0) > 0 && (
+                <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-warning px-1 text-[10px] font-bold tabular-nums text-warning-foreground">{alerta!.por_vencer}</span>
+              )}
+              {key === "morosos" && (alerta?.vencidas ?? 0) > 0 && (
+                <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-bold tabular-nums text-destructive-foreground">!{alerta!.vencidas}</span>
+              )}
             </span>
           </button>
         ))}
