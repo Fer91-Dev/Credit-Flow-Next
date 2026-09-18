@@ -349,9 +349,9 @@ export function ClienteDetail({
                     <button
                       type="button"
                       onClick={() => setContactar(true)}
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/10 px-2.5 py-1.5 text-xs font-medium text-primary hover:bg-primary/20 transition-colors"
+                      className="inline-flex h-9 items-center gap-2 rounded-lg px-3.5 text-sm font-medium transition-colors bg-primary text-primary-foreground shadow-[inset_0_1px_0_0_rgba(255,255,255,0.15)] hover:bg-primary/90"
                     >
-                      <MessageCircle className="h-3.5 w-3.5" /> Contactar
+                      <MessageCircle className="h-4 w-4" /> Contactar
                     </button>
                   )}
                   {/* El pedido del titular se registra desde acá, en el mismo lugar donde
@@ -362,13 +362,13 @@ export function ClienteDetail({
                       type="button"
                       onClick={() => setNoContactar(true)}
                       title={sinContacto ? "Volver a habilitar el contacto (solo admin)" : "El cliente pidió que no lo contacten"}
-                      className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors ${
+                      className={`inline-flex h-9 items-center gap-2 rounded-lg px-3.5 text-sm font-medium transition-colors ring-1 ring-inset ${
                         sinContacto
-                          ? "border-warning/30 bg-warning/10 text-warning hover:bg-warning/20"
-                          : "border-border text-muted-foreground hover:bg-muted hover:text-foreground"
+                          ? "bg-warning/10 text-warning ring-warning/30 hover:bg-warning/20"
+                          : "bg-muted/40 text-foreground ring-border hover:bg-muted hover:ring-primary/40"
                       }`}
                     >
-                      <BellOff className="h-3.5 w-3.5" /> {sinContacto ? "Rehabilitar" : "No contactar"}
+                      <BellOff className="h-4 w-4" /> {sinContacto ? "Rehabilitar" : "No contactar"}
                     </button>
                   )}
                   {/* Un vendedor solo modifica clientes con los que tiene al menos un crédito.
@@ -380,25 +380,25 @@ export function ClienteDetail({
                   {showCreditos && !puedeCobrarAca && (activos.length > 0 || incobrables.length > 0) && (
                     <Link
                       href={`/pagos?cliente=${cliente.id}`}
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-success/30 bg-success/10 px-2.5 py-1.5 text-xs font-medium text-success transition-colors hover:bg-success/20"
+                      className="inline-flex h-9 items-center gap-2 rounded-lg px-3.5 text-sm font-medium transition-colors bg-success/10 text-success ring-1 ring-inset ring-success/30 hover:bg-success/20"
                     >
-                      <Wallet className="h-3.5 w-3.5" /> Cobrar
+                      <Wallet className="h-4 w-4" /> Cobrar
                     </Link>
                   )}
                   {onEditar && puedeEditar && (
                     <button
                       onClick={onEditar}
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                      className="inline-flex h-9 items-center gap-2 rounded-lg px-3.5 text-sm font-medium transition-colors bg-muted/40 text-foreground ring-1 ring-inset ring-border hover:bg-muted hover:ring-primary/40"
                     >
-                      <Pencil className="h-3.5 w-3.5" /> Editar
+                      <Pencil className="h-4 w-4" /> Editar
                     </button>
                   )}
                   {onEliminar && puedeEditar && (
                     <button
                       onClick={onEliminar}
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-xs text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors"
+                      className="inline-flex h-9 items-center gap-2 rounded-lg px-3.5 text-sm font-medium transition-colors bg-destructive/[0.06] text-destructive ring-1 ring-inset ring-destructive/25 hover:bg-destructive/15"
                     >
-                      <Trash2 className="h-3.5 w-3.5" /> Eliminar
+                      <Trash2 className="h-4 w-4" /> Eliminar
                     </button>
                   )}
                 </div>
@@ -1987,12 +1987,12 @@ function InfoBlock({
       <div className="relative mb-4 flex items-center gap-2.5">
         {isEmoji ? <IconBadge emoji={icon} accent={accent} hoverable /> : Icon && <Icon className="h-4 w-4 text-muted-foreground/70" />}
         <h3 className="text-[15px] font-semibold tracking-tight text-foreground">{title}</h3>
-        <div className="ml-auto flex items-center gap-1">
+        <div className="ml-auto flex items-center gap-1.5">
           {accion}
           {onEditar && visibles.length > 0 && (
             <button type="button" onClick={onEditar} title={`Editar ${title.toLowerCase()}`}
-              className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted/40 hover:text-foreground">
-              <Pencil className="h-3 w-3" /> Editar
+              className="inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium ring-1 ring-inset transition-colors bg-muted/40 text-foreground ring-border hover:bg-muted hover:ring-primary/40">
+              <Pencil className="h-3.5 w-3.5" /> Editar
             </button>
           )}
         </div>
@@ -2070,20 +2070,20 @@ function BotonUbicar({ clienteId, onHecho, ubicado }: { clienteId: string; onHec
           autoFocus
           className="h-7 w-44 rounded-md border border-border bg-input px-2 font-mono text-[11px] text-foreground placeholder:text-muted-foreground/40 shadow-[inset_0_1px_2px_0_rgba(0,0,0,0.22)] outline-none focus:border-primary"
         />
-        <button type="submit" disabled={cargando || !coords.trim()} className="rounded-md bg-primary px-2 py-1 text-[11px] font-medium text-primary-foreground disabled:opacity-50">Guardar</button>
-        <button type="button" onClick={() => { setCorrigiendo(false); setCoords(""); }} className="rounded-md px-1.5 py-1 text-[11px] text-muted-foreground hover:text-foreground">Cancelar</button>
+        <button type="submit" disabled={cargando || !coords.trim()} className="h-7 rounded-md bg-primary px-2.5 text-xs font-medium text-primary-foreground disabled:opacity-50">Guardar</button>
+        <button type="button" onClick={() => { setCorrigiendo(false); setCoords(""); }} className="h-7 rounded-md px-2 text-xs font-medium text-muted-foreground hover:text-foreground">Cancelar</button>
       </form>
     );
   }
   return (
-    <div className="flex items-center gap-0.5">
+    <div className="flex items-center gap-1.5">
       <button type="button" onClick={ubicar} disabled={cargando} title={ubicado ? "Volver a ubicar el domicilio en el mapa" : "Ubicar el domicilio en el mapa"}
-        className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-medium text-primary/80 transition-colors hover:bg-primary/10 hover:text-primary disabled:opacity-50">
-        <MapPin className="h-3 w-3" /> {cargando ? "Ubicando…" : ubicado ? "Reubicar" : "Ubicar"}
+        className="inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium ring-1 ring-inset transition-colors bg-primary/[0.08] text-primary ring-primary/30 hover:bg-primary/15 disabled:opacity-50">
+        <MapPin className="h-3.5 w-3.5" /> {cargando ? "Ubicando…" : ubicado ? "Reubicar" : "Ubicar"}
       </button>
       <button type="button" onClick={() => setCorrigiendo(true)} title="El mapa la puso mal: pegar las coordenadas de Google Maps"
-        className="rounded-md px-2 py-0.5 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted/40 hover:text-foreground">
-        Corregir
+        className="inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium ring-1 ring-inset transition-colors bg-muted/40 text-foreground ring-border hover:bg-muted hover:ring-primary/40">
+        <Pencil className="h-3.5 w-3.5" /> Corregir
       </button>
     </div>
   );
