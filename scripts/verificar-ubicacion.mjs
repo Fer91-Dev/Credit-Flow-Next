@@ -36,6 +36,7 @@ console.log(`base: ${BASE}`);
 
 const sello = Date.now().toString().slice(-6);
 const creados = [];
+let previaGlobal = null;
 const enTucuman = (lat, lon) => lat > -27.2 && lat < -26.5 && lon > -65.6 && lon < -64.9;
 const esperar = async (id, tries = 12) => { for (let i = 0; i < tries; i++) { const c = (await api("GET", `/api/clientes/${id}`)).data; if (c?.geo_estado) return c; await new Promise((r) => setTimeout(r, 1000)); } return (await api("GET", `/api/clientes/${id}`)).data; };
 
@@ -55,7 +56,11 @@ try {
     ok(mapaOk, "unos segundos después el cliente está ubicado (geo_estado = ok)", A?.geo_estado ?? "-");
     ok(mapaOk && enTucuman(A.latitud, A.longitud), "las coordenadas caen en Tucumán", mapaOk ? `${A.latitud}, ${A.longitud}` : "-");
     ok(mapaOk && !!A.barrio, "el mapa devolvió el barrio", A?.barrio ?? "-");
-    ok(mapaOk && A.zona === A.barrio, "la zona se completó con el barrio (no la escribió nadie)", `zona: ${A?.zona ?? "—"}`);
+    // Si la financiera ya enseñó una zona para ese barrio (en dev pasa: la carga inicial la
+    // aprendió), la zona esperada es ESA; si no, el barrio tal cual.
+    const previa = mapaOk && A.barrio ? await db.barrio_zona.findUnique({ where: { tenant_id_barrio: { tenant_id: TENANT, barrio: A.barrio.toLowerCase() } } }) : null;
+    previaGlobal = previa;
+    ok(mapaOk && A.zona === (previa?.zona ?? A.barrio), previa ? "la zona se completó con la que la financiera enseñó para ese barrio" : "la zona se completó con el barrio (no la escribió nadie)", `zona: ${A?.zona ?? "—"}${previa ? ` (aprendida: ${previa.barrio} → ${previa.zona})` : ""}`);
   }
 
   // ═══════════ FASE B — la zona escrita vale más, y se aprende ═══════════
@@ -67,13 +72,15 @@ try {
   if (B?.geo_estado === "ok") {
     ok(B.zona === `Zona QA ${sello}`, "la zona escrita NO se pisa con el barrio", `zona: ${B.zona} · barrio: ${B.barrio}`);
     const aprendida = B.barrio ? await db.barrio_zona.findUnique({ where: { tenant_id_barrio: { tenant_id: TENANT, barrio: B.barrio.toLowerCase() } } }) : null;
-    ok(!!aprendida && aprendida.zona === `Zona QA ${sello}`, "y quedó aprendido: ese barrio es esa zona", aprendida ? `${aprendida.barrio} → ${aprendida.zona}` : "no se aprendió");
-    // El siguiente del mismo barrio, sin zona, la hereda.
+    // Se aprende solo si el barrio no tenía zona enseñada; si ya la tenía, esa se respeta.
+    const esperadaAprendida = previaGlobal?.zona ?? `Zona QA ${sello}`;
+    ok(!!aprendida && aprendida.zona === esperadaAprendida, previaGlobal ? "el barrio ya tenía zona enseñada y NO se reescribe por un alta" : "y quedó aprendido: ese barrio es esa zona", aprendida ? `${aprendida.barrio} → ${aprendida.zona}` : "no se aprendió");
+    // El siguiente del mismo barrio, sin zona, hereda lo aprendido.
     const c = await api("POST", "/api/clientes", { nombre: "Ubicacion", apellido: `Hereda ${sello}`, documento: `90${sello}3`, telefono: "3810000003", direccion: "San Martín 700", localidad: "San Miguel de Tucumán", provincia: "Tucumán", ingreso_mensual: 500000 });
     creados.push(c.data.id);
     const C = await esperar(c.data.id);
     ok(C?.barrio === B.barrio, "otro cliente del mismo barrio", `${C?.barrio ?? "-"}`);
-    ok(C?.zona === `Zona QA ${sello}`, "nace con la zona aprendida, no con el barrio del mapa", `zona: ${C?.zona ?? "—"}`);
+    ok(C?.zona === esperadaAprendida, "nace con la zona aprendida, no con el barrio del mapa", `zona: ${C?.zona ?? "—"}`);
     // Corregir la zona de un ubicado desde la edición también enseña.
     const pat = await api("PATCH", `/api/clientes/${a.data.id}`, { zona: `Zona QA2 ${sello}` });
     ok(pat.ok, "corregir la zona de un cliente ubicado (PATCH)", pat.error ?? "");
@@ -99,6 +106,21 @@ try {
   const ubSin = await api("POST", `/api/clientes/${sinDir.data.id}/ubicar`);
   ok(ubSin.ok && ubSin.data?.estado === "sin_direccion", "sin dirección cargada, «Ubicar» lo dice y no consulta nada", ubSin.data?.estado ?? ubSin.error);
 
+  // ═══════════ FASE C2 — la corrección a mano ═══════════
+  H1("FASE C2 — la ubicación corregida a mano vale más que el mapa");
+  const mal = await api("PATCH", `/api/clientes/${a.data.id}/ubicar`, { coordenadas: "hola" });
+  ok(mal.status === 400, "coordenadas ilegibles: 400 con la forma esperada", mal.error ?? "");
+  const man = await api("PATCH", `/api/clientes/${a.data.id}/ubicar`, { coordenadas: "-26,8199 -65,2593" });
+  ok(man.ok && man.data?.estado === "ok" && man.data.latitud === -26.8199, "se aceptan pegadas como las da Google Maps (coma decimal incluida)", man.ok ? `${man.data.latitud}, ${man.data.longitud}` : man.error);
+  const M = (await api("GET", `/api/clientes/${a.data.id}`)).data;
+  ok(M?.geo_estado === "manual", "queda marcada como manual", M?.geo_estado);
+  await api("PATCH", `/api/clientes/${a.data.id}`, { direccion: "San Martín 510" });
+  await new Promise((r) => setTimeout(r, 3500));
+  const M2 = (await api("GET", `/api/clientes/${a.data.id}`)).data;
+  ok(M2?.geo_estado === "manual" && M2.latitud === -26.8199, "cambiar el domicilio NO pisa la corrección a mano", `${M2?.geo_estado} · ${M2?.latitud}`);
+  const re2 = await api("POST", `/api/clientes/${a.data.id}/ubicar`);
+  ok(re2.ok && re2.data?.estado !== "manual", "«Reubicar» sí vuelve al mapa", re2.data?.estado ?? re2.error);
+
   // ═══════════ FASE D — el recorrido (puro) ═══════════
   H1("FASE D — el orden de la hoja de ruta");
   try { const out = execSync("npx tsx scripts/probar-recorrido.mts", { encoding: "utf8" }); const m = out.match(/(\d+)\/(\d+) verificaciones OK/); ok(!!m && m[1] === m[2], "probar-recorrido.mts", m ? `${m[1]}/${m[2]}` : out.slice(-120)); }
@@ -108,7 +130,10 @@ try {
   // El DELETE de la API es una baja (estado inactivo), no un borrado: los clientes de prueba
   // se sacan de verdad, directo, porque son de este verificador y no tienen créditos.
   await db.clientes.deleteMany({ where: { id: { in: creados } } });
+  // Lo aprendido por este verificador se borra; si el barrio ya tenía una zona enseñada antes
+  // (y el PATCH de la fase B la reescribió), se la restaura.
   await db.barrio_zona.deleteMany({ where: { tenant_id: TENANT, zona: { startsWith: "Zona QA" } } });
+  if (previaGlobal) await db.barrio_zona.upsert({ where: { tenant_id_barrio: { tenant_id: TENANT, barrio: previaGlobal.barrio } }, create: { tenant_id: TENANT, barrio: previaGlobal.barrio, zona: previaGlobal.zona }, update: { zona: previaGlobal.zona } });
   const quedan = await db.clientes.count({ where: { id: { in: creados } } });
   console.log(`\n  limpieza: ${creados.length} clientes de prueba borrados (${quedan} quedaron), aprendizajes «Zona QA» borrados`);
   await db.$disconnect();

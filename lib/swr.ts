@@ -66,7 +66,7 @@ export interface Cliente {
   latitud?: number | null;
   longitud?: number | null;
   barrio?: string | null;
-  geo_estado?: "ok" | "sin_direccion" | "sin_resultado" | "error" | null;
+  geo_estado?: "ok" | "manual" | "sin_direccion" | "sin_resultado" | "error" | null;
   geocodificado_en?: string | null;
   /** Estado de la PERSONA: activo | fallecido (ver lib/domain/cliente-estado.ts). */
   estado: string;

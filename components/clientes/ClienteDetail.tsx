@@ -694,11 +694,11 @@ export function ClienteDetail({
               { label: "Barrio (mapa)", value: cliente.barrio },
               {
                 label: "Ubicación",
-                value: cliente.latitud != null && cliente.longitud != null ? `${cliente.latitud.toFixed(5)}, ${cliente.longitud.toFixed(5)}` : cliente.geo_estado === "sin_resultado" ? "El mapa no encontró el domicilio" : cliente.geo_estado === "error" ? "No se pudo consultar el mapa" : null,
+                value: cliente.latitud != null && cliente.longitud != null ? `${cliente.latitud.toFixed(5)}, ${cliente.longitud.toFixed(5)}${cliente.geo_estado === "manual" ? " (corregida a mano)" : ""}` : cliente.geo_estado === "sin_resultado" ? "El mapa no encontró el domicilio" : cliente.geo_estado === "error" ? "No se pudo consultar el mapa" : null,
                 mono: cliente.latitud != null,
                 href: cliente.latitud != null && cliente.longitud != null ? `https://www.google.com/maps?q=${cliente.latitud},${cliente.longitud}` : undefined,
               },
-            ]} accion={cliente.direccion && puedeEditar ? <BotonUbicar clienteId={cliente.id} onHecho={() => mutate()} ubicado={cliente.geo_estado === "ok"} /> : undefined}
+            ]} accion={cliente.direccion && puedeEditar ? <BotonUbicar clienteId={cliente.id} onHecho={() => mutate()} ubicado={cliente.geo_estado === "ok" || cliente.geo_estado === "manual"} /> : undefined}
               pie={cliente.latitud != null && cliente.longitud != null ? <MiniMapa lat={cliente.latitud} lon={cliente.longitud} titulo={cliente.direccion ?? "Domicilio"} /> : undefined} />
           </div>
 
@@ -2004,6 +2004,24 @@ function InfoBlock({
 function BotonUbicar({ clienteId, onHecho, ubicado }: { clienteId: string; onHecho: () => void; ubicado: boolean }) {
   const toast = useToast();
   const [cargando, setCargando] = useState(false);
+  // «Corregir»: cuando el mapa de origen está mal, se pegan las coordenadas de Google Maps.
+  const [corrigiendo, setCorrigiendo] = useState(false);
+  const [coords, setCoords] = useState("");
+  const corregir = async () => {
+    setCargando(true);
+    try {
+      const res = await fetch(`/api/clientes/${clienteId}/ubicar`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ coordenadas: coords }) });
+      const json = await res.json();
+      if (!json.ok) { toast.error(json.error || "No se pudo corregir"); return; }
+      toast.success("Ubicación corregida a mano");
+      setCorrigiendo(false); setCoords("");
+      onHecho();
+    } catch {
+      toast.error("No se pudo corregir la ubicación");
+    } finally {
+      setCargando(false);
+    }
+  };
   const ubicar = async () => {
     setCargando(true);
     try {
@@ -2021,11 +2039,33 @@ function BotonUbicar({ clienteId, onHecho, ubicado }: { clienteId: string; onHec
       setCargando(false);
     }
   };
+  if (corrigiendo) {
+    return (
+      <form onSubmit={(e) => { e.preventDefault(); if (coords.trim()) void corregir(); }} className="flex items-center gap-1.5">
+        <input
+          value={coords}
+          onChange={(e) => setCoords(e.target.value)}
+          placeholder="-26.8199, -65.2593"
+          title="Pegá las coordenadas de Google Maps (clic derecho en el lugar → copiar)"
+          autoFocus
+          className="h-7 w-44 rounded-md border border-border bg-input px-2 font-mono text-[11px] text-foreground placeholder:text-muted-foreground/40 shadow-[inset_0_1px_2px_0_rgba(0,0,0,0.22)] outline-none focus:border-primary"
+        />
+        <button type="submit" disabled={cargando || !coords.trim()} className="rounded-md bg-primary px-2 py-1 text-[11px] font-medium text-primary-foreground disabled:opacity-50">Guardar</button>
+        <button type="button" onClick={() => { setCorrigiendo(false); setCoords(""); }} className="rounded-md px-1.5 py-1 text-[11px] text-muted-foreground hover:text-foreground">Cancelar</button>
+      </form>
+    );
+  }
   return (
-    <button type="button" onClick={ubicar} disabled={cargando} title={ubicado ? "Volver a ubicar el domicilio en el mapa" : "Ubicar el domicilio en el mapa"}
-      className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-medium text-primary/80 transition-colors hover:bg-primary/10 hover:text-primary disabled:opacity-50">
-      <MapPin className="h-3 w-3" /> {cargando ? "Ubicando…" : ubicado ? "Reubicar" : "Ubicar"}
-    </button>
+    <div className="flex items-center gap-0.5">
+      <button type="button" onClick={ubicar} disabled={cargando} title={ubicado ? "Volver a ubicar el domicilio en el mapa" : "Ubicar el domicilio en el mapa"}
+        className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-medium text-primary/80 transition-colors hover:bg-primary/10 hover:text-primary disabled:opacity-50">
+        <MapPin className="h-3 w-3" /> {cargando ? "Ubicando…" : ubicado ? "Reubicar" : "Ubicar"}
+      </button>
+      <button type="button" onClick={() => setCorrigiendo(true)} title="El mapa la puso mal: pegar las coordenadas de Google Maps"
+        className="rounded-md px-2 py-0.5 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted/40 hover:text-foreground">
+        Corregir
+      </button>
+    </div>
   );
 }
 

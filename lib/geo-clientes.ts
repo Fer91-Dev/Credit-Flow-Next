@@ -29,6 +29,28 @@ export interface ResultadoUbicar {
 
 export const normalizarBarrio = (b: string) => b.trim().toLowerCase();
 
+/**
+ * UBICACIÓN A MANO: coordenadas pegadas desde Google Maps. Existe porque el mapa de origen
+ * puede estar mal (18/09/2026: OpenStreetMap ubica "Mate de Luna 4500" donde va el 3500, y
+ * le pone un barrio que no es). Queda `geo_estado = "manual"`, y la re-geocodificación
+ * automática (al cambiar el domicilio) NO la pisa: solo «Reubicar» vuelve al mapa.
+ */
+export async function ubicarManual(tenantId: string, clienteId: string, lat: number, lon: number): Promise<ResultadoUbicar> {
+  const c = await prisma.clientes.findFirst({ where: { ...withTenant(tenantId), id: clienteId }, select: { zona: true, barrio: true } });
+  if (!c) return { estado: "error", detalle: "El cliente no existe." };
+  await prisma.clientes.update({ where: { id: clienteId }, data: { latitud: lat, longitud: lon, geo_estado: "manual", geocodificado_en: new Date() } });
+  return { estado: "ok", latitud: lat, longitud: lon, barrio: c.barrio, zona: c.zona, zona_completada: false };
+}
+
+/** "lat, lon" tal como lo copia Google Maps ("-26.8199, -65.2593"), o dos números sueltos. */
+export function parsearCoordenadas(texto: string): { lat: number; lon: number } | null {
+  const m = texto.trim().replace(/;/g, ",").match(/^(-?\d{1,2}(?:[.,]\d+)?)\s*[,\s]\s*(-?\d{1,3}(?:[.,]\d+)?)$/);
+  if (!m) return null;
+  const lat = Number(m[1].replace(",", ".")), lon = Number(m[2].replace(",", "."));
+  if (!Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) return null;
+  return { lat, lon };
+}
+
 export async function ubicarCliente(tenantId: string, clienteId: string): Promise<ResultadoUbicar> {
   const c = await prisma.clientes.findFirst({
     where: { ...withTenant(tenantId), id: clienteId },

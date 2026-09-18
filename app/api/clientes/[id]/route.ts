@@ -711,7 +711,7 @@ export const PATCH = withErrorHandler(async (req: NextRequest, { params }: Route
    * corrigió la ZONA de un cliente que ya tiene barrio, eso es la financiera diciendo "este
    * barrio es esta zona": se aprende para los próximos del mismo barrio.
    */
-  if (cambioDomicilio(existing, updateData)) {
+  if (cambioDomicilio(existing, updateData) && existing.geo_estado !== "manual") {
     after(() => ubicarCliente(tenantId, id).catch(() => undefined));
   } else if (typeof updateData.zona === "string" && updateData.zona !== existing.zona && existing.barrio) {
     await aprenderZona(tenantId, existing.barrio, updateData.zona);
