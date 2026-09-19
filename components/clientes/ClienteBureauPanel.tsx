@@ -380,7 +380,7 @@ function Dato({ label, children }: { label: string; children: React.ReactNode })
   return (
     <div className="rounded-lg bg-muted/30 px-2.5 py-2">
       <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/60">{label}</p>
-      <div className="mt-1 text-[15px] font-medium leading-snug">{children}</div>
+      <div className="mt-1 text-sm leading-snug">{children}</div>
     </div>
   );
 }

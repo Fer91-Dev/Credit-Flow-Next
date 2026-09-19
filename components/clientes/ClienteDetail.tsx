@@ -2120,12 +2120,13 @@ function MiniMapa({ lat, lon, titulo }: { lat: number; lon: number; titulo: stri
 
 /**
  * Un dato de la ficha. Fernando (18/09/2026): "la fuente no se nota, no tiene presencia".
- * El VALOR es lo que se lee: 15px y peso medio (17px y seminegrita cuando es el dato que
- * importa —documento, teléfono, ingreso—), en el color del texto pleno; el rótulo queda
- * chico y apagado para no competir. Antes valor y rótulo eran casi del mismo tamaño.
+ * El VALOR es lo que se lee: 14px normal (15px y peso medio cuando es el dato que importa
+ * —documento, teléfono, ingreso—), en el color del texto pleno; el rótulo queda chico y
+ * apagado para no competir. Se probó más grande y en negrita y "es muy grande": el
+ * contraste lo da el color pleno contra el rótulo apagado, no el tamaño.
  */
 function Campo({ label, value, mono, href, icon: Icon, emphasis }: CampoItem) {
-  const valueClass = `min-w-0 break-words text-foreground leading-snug ${emphasis ? "text-[17px] font-semibold tracking-tight" : "text-[15px] font-medium"} ${mono ? "font-mono tabular-nums" : ""}`;
+  const valueClass = `min-w-0 break-words text-foreground leading-snug ${emphasis ? "text-[15px] font-medium" : "text-sm font-normal"} ${mono ? "font-mono tabular-nums" : ""}`;
   return (
     <div className="min-w-0">
       <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/60">{label}</p>

@@ -86,7 +86,7 @@ export function ObservacionesPanel({ clienteId }: { clienteId: string }) {
               rows={2}
               maxLength={2000}
               placeholder="Qué pasó con este cliente"
-              className="w-full resize-y rounded-lg border border-border bg-input px-3 py-2 text-[15px] leading-snug text-foreground shadow-[inset_0_1px_2px_0_rgba(0,0,0,0.22)] outline-none transition-all placeholder:text-muted-foreground/40 focus:border-primary focus:ring-2 focus:ring-primary/20"
+              className="w-full resize-y rounded-lg border border-border bg-input px-3 py-2 text-sm leading-snug text-foreground shadow-[inset_0_1px_2px_0_rgba(0,0,0,0.22)] outline-none transition-all placeholder:text-muted-foreground/40 focus:border-primary focus:ring-2 focus:ring-primary/20"
             />
           </label>
           <button
@@ -108,7 +108,7 @@ export function ObservacionesPanel({ clienteId }: { clienteId: string }) {
         ) : observaciones.length === 0 ? (
           <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-border/60 py-7 text-center">
             <Emoji name="clipboard" className="h-8 w-8 opacity-40" />
-            <p className="text-[15px] font-medium text-muted-foreground">Sin observaciones</p>
+            <p className="text-sm text-muted-foreground">Sin observaciones</p>
             <p className="text-xs text-muted-foreground/60">Lo que no entra en ningún campo se anota acá, con su fecha.</p>
           </div>
         ) : (
@@ -123,7 +123,7 @@ export function ObservacionesPanel({ clienteId }: { clienteId: string }) {
                     {formatFecha(o.fecha)}
                   </span>
                   <div className="min-w-0 flex-1">
-                    <p className="whitespace-pre-wrap break-words text-[15px] font-medium leading-snug text-foreground">{o.texto}</p>
+                    <p className="whitespace-pre-wrap break-words text-sm leading-snug text-foreground">{o.texto}</p>
                     {o.autor_nombre && (
                       <p className="mt-1 text-xs text-muted-foreground/70">
                         <span className="text-muted-foreground/50">anotó</span> {o.autor_nombre}
