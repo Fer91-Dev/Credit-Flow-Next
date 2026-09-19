@@ -9,6 +9,7 @@ import { cobroBloqueadoPorCredito } from "@/lib/recupero-server";
 import {
   diasMoraActual, ESTADOS_VIVOS, calcularDeudaVencida, moraDelCredito, moraDesdeCronograma,
   round2, type CuotaParaImputar, cargosDeCuota, baseMoraDeCuota } from "@/lib/domain";
+import { decidirAgenda, cuentaComoContacto, PRIORIDAD_AGENDA, type BucketAgenda, type GestionParaAgenda } from "@/lib/domain";
 import { nombreCompleto, hoyComercial } from "@/lib/utils";
 import type { NextRequest } from "next/server";
 
@@ -23,16 +24,12 @@ import type { NextRequest } from "next/server";
  * (días de atraso o plata vencida — parametrizable en Config).
  */
 /**
- * Los grupos de la cola, en orden de urgencia. Fernando (18/09/2026): "los créditos con
- * acuerdo de pago vencido no los prioriza en Hoy". Antes un acuerdo VIGENTE sacaba al
- * crédito de la agenda sin mirar si el cliente estaba pagando las cuotas del acuerdo, y un
- * acuerdo recién ROTO volvía a la cola solo cuando pasaban los días de "sin gestión". Ahora:
- *  - acuerdo_vencido: el acuerdo sigue vigente pero una cuota suya ya venció impaga. Es el
- *    llamado más urgente que existe: todavía se puede salvar el arreglo.
- *  - acuerdo_roto: se cayó y nadie lo gestionó desde entonces. Hay que llamar hoy.
+ * Quién entra en la cola y en qué grupo lo decide `decidirAgenda` (lib/domain), la MISMA
+ * función que cuenta el aviso del menú: si vivieran separadas, el número del menú y esta
+ * pantalla dirían cosas distintas. Acá solo se juntan los datos y se le agrega la plata.
  */
-type Bucket = "acuerdo_vencido" | "promesa" | "acuerdo_roto" | "agendado" | "enfriado";
-const PRIORIDAD: Record<Bucket, number> = { acuerdo_vencido: 0, promesa: 1, acuerdo_roto: 2, agendado: 3, enfriado: 4 };
+type Bucket = BucketAgenda;
+const PRIORIDAD = PRIORIDAD_AGENDA;
 
 interface AgendaItem {
   credito_id: string;
@@ -125,7 +122,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   });
 
   if (creditos.length === 0) {
-    return successResponse({ items: [], totales: { acuerdo_vencido: 0, promesa: 0, acuerdo_roto: 0, agendado: 0, enfriado: 0, total: 0, vencido: 0, con_acuerdo_al_dia: 0 }, dias_sin_gestion, orden });
+    return successResponse({ items: [], totales: { acuerdo_vencido: 0, promesa: 0, acuerdo_roto: 0, agendado: 0, cuota_nueva: 0, enfriado: 0, total: 0, vencido: 0, con_acuerdo_al_dia: 0 }, dias_sin_gestion, orden });
   }
 
   /**
@@ -157,7 +154,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   const ids = creditos.map((c) => c.id);
   const acciones = await prisma.acciones_cobranza.findMany({
     where: { ...withTenant(tenantId), credito_id: { in: ids } },
-    select: { credito_id: true, created_at: true, proximo_contacto: true, promesa_estado: true, promesa_fecha: true, promesa_monto: true, automatico: true },
+    select: { credito_id: true, created_at: true, proximo_contacto: true, promesa_estado: true, promesa_fecha: true, promesa_monto: true, automatico: true, nota: true },
     orderBy: { created_at: "desc" },
   });
 
@@ -192,34 +189,34 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     // cuántos hay para que no parezca que se los olvidó).
     if (!acuerdoVencido && cubiertoPorAcuerdo(conAcuerdo, c.id, c.proximo_pago)) { conAcuerdoAlDia++; continue; }
     const accs = porCredito.get(c.id) ?? [];
-    const promesaPend = accs.find((a) => a.promesa_estado === "pendiente" && a.promesa_fecha);
-    const conProx = accs.find((a) => a.proximo_contacto);
-    const ultimaHumana = accs.find((a) => !a.automatico);
-    const roto = acuerdosVigentes.has(c.id) ? null : rotoDe.get(c.id) ?? null;
-    const rotoSinGestionar = !!roto && (!ultimaHumana || ultimaHumana.created_at.getTime() < roto.cerrado_at.getTime());
+    const gestiones: GestionParaAgenda[] = accs.map((a) => ({
+      created_at: a.created_at, proximo_contacto: a.proximo_contacto,
+      promesa_estado: a.promesa_estado, promesa_fecha: a.promesa_fecha,
+      cuentaComoContacto: cuentaComoContacto(a),
+    }));
+    const gracia = (c.cronograma as { diasGracia?: number } | null)?.diasGracia ?? config.simulador.diasGracia;
+    /**
+     * La última cuota que CAYÓ (ya con los días de gracia de ese crédito): con esto se
+     * detecta la cuota nueva que volvió a encender la alerta después de un contacto.
+     */
+    const vencidasImpagas = c.cuotas.filter((q) => q.pagado_capital < q.capital && q.fecha_vencimiento.getTime() + gracia * DIA < hoyMs);
+    const ultimoVencimiento = vencidasImpagas.length > 0
+      ? new Date(Math.max(...vencidasImpagas.map((q) => q.fecha_vencimiento.getTime() + gracia * DIA)))
+      : null;
 
-    let bucket: Bucket | null = null;
-    let fecha: Date | null = null;
-    let motivo = "";
-
-    if (acuerdoVencido) {
-      bucket = "acuerdo_vencido"; fecha = acuerdoVencido.vencimiento; motivo = `Cuota ${acuerdoVencido.numero} del acuerdo vencida`;
-    } else if (promesaPend?.promesa_fecha && promesaPend.promesa_fecha.getTime() <= finHoy) {
-      bucket = "promesa"; fecha = promesaPend.promesa_fecha; motivo = "Promesa de pago vencida";
-    } else if (rotoSinGestionar && roto) {
-      bucket = "acuerdo_roto"; fecha = roto.cerrado_at; motivo = roto.motivo ? `Acuerdo roto: ${roto.motivo.replace(/^Incumplió/, "incumplió")}` : "Acuerdo roto";
-    } else if (conProx?.proximo_contacto && conProx.proximo_contacto.getTime() <= finHoy) {
-      bucket = "agendado"; fecha = conProx.proximo_contacto; motivo = "Contacto agendado";
-    } else {
-      const dias = ultimaHumana ? Math.floor((hoyMs - ultimaHumana.created_at.getTime()) / DIA) : Infinity;
-      if (dias >= dias_sin_gestion) {
-        bucket = "enfriado";
-        fecha = ultimaHumana?.created_at ?? null;
-        motivo = ultimaHumana ? `Sin gestión hace ${dias} días` : "Nunca gestionado";
-      }
-    }
-
-    if (!bucket) continue;
+    const v = decidirAgenda(
+      {
+        acuerdoVencido: acuerdoVencido ? { numero: acuerdoVencido.numero, vencimiento: acuerdoVencido.vencimiento } : null,
+        acuerdoRoto: acuerdosVigentes.has(c.id) ? null : rotoDe.get(c.id) ?? null,
+        ultimoVencimiento,
+        cuotasVencidas: vencidasImpagas.length,
+        gestiones,
+      },
+      { hoy, finHoy, diasSinGestion: dias_sin_gestion },
+    );
+    if (!v) continue;
+    const { bucket, fecha, motivo } = v;
+    const promesaPend = v.promesa ? accs.find((a) => a.created_at.getTime() === v.promesa!.created_at.getTime() && a.promesa_estado === "pendiente") ?? null : null;
 
     /**
      * Lo exigible HOY. Se calcula con las condiciones de mora congeladas en el crédito
@@ -235,7 +232,6 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
       condonadoMora: q.condonado_mora,
     }));
     const mc = moraDelCredito(moraDesdeCronograma(c.cronograma), config);
-    const gracia = (c.cronograma as { diasGracia?: number } | null)?.diasGracia ?? config.simulador.diasGracia;
     const dv = calcularDeudaVencida(cuotasDom, {
       moraActiva: mc.moraActiva, tasaMoraDiaria: mc.tasaMoraDiaria, topeMoraPct: mc.topeMoraPct,
       diasGracia: gracia, hoy,
@@ -303,6 +299,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     promesa: items.filter((i) => i.bucket === "promesa").length,
     acuerdo_roto: items.filter((i) => i.bucket === "acuerdo_roto").length,
     agendado: items.filter((i) => i.bucket === "agendado").length,
+    cuota_nueva: items.filter((i) => i.bucket === "cuota_nueva").length,
     enfriado: items.filter((i) => i.bucket === "enfriado").length,
     total: items.length,
     /** Morosos con acuerdo vigente y al día: no están en la cola, y se dice cuántos son. */

@@ -337,16 +337,18 @@ const HELP: Record<string, HelpDoc> = {
         kind: "definiciones",
         titulo: "El número rojo del menú",
         items: [
-          { term: "Rojo, y late", desc: "Cuántos créditos tienen una cuota vencida e impaga. Está en el menú lateral, en todas las pantallas, para que no haga falta entrar acá a enterarse. Al pasar el mouse dice además cuántos están por vencer." },
+          { term: "Rojo, y late", desc: "Cuántos hay PARA CONTACTAR HOY: exactamente la cola de la pestaña Hoy. Está en el menú lateral, en todas las pantallas. Se apaga cuando se los contactó a todos, y al pasar el mouse dice además cuántos tienen cuota vencida y cuántos están por vencer." },
+          { term: "Cuándo vuelve a encenderse", desc: "Con cada hecho nuevo: le vence otra cuota, se rompe una promesa, se cae un acuerdo, llega el día que se pactó para volver a llamarlo, o pasan los días sin gestión que fija Configuración → Cobranza. Contactar a alguien no lo apaga para siempre." },
+          { term: "Qué cuenta como contactarlo", desc: "Una gestión (llamada, visita, el WhatsApp o el SMS del renglón) y también el envío de una campaña. NO cuenta el aviso automático del cron: al cliente le llegó, pero nadie lo trabajó." },
           { term: "Ámbar", desc: "No hay vencidas, pero hay cuotas que vencen en los próximos 7 días: es el momento de avisar (pestaña Vencimientos) para que no lleguen a la lista de al lado." },
-          { term: "En las pestañas", desc: "Vencimientos lleva el número de los que vencen (ámbar); Morosos, el de los que ya vencieron (rojo). Cada uno ve lo suyo: el vendedor, su cartera; el administrador, toda la financiera." },
+          { term: "En las pestañas", desc: "Hoy lleva los que hay para contactar; Vencimientos los que vencen en los próximos días (ámbar); Morosos, cuántos tienen cuota vencida (rojo) — ese número NO baja por contactar: baja al cobrar o al acordar. Cada uno ve lo suyo: el vendedor, su cartera; el administrador, toda la financiera." },
         ],
       },
       {
         kind: "definiciones",
         titulo: "Las pestañas",
         items: [
-          { term: "Hoy (agenda)", desc: "Cola priorizada de a quién contactar, en cinco grupos por urgencia: acuerdos con cuota vencida (todavía vigentes: se pueden salvar) → promesas vencidas → acuerdos rotos sin gestionar → contactos agendados → morosos sin gestión reciente. Scopeada al vendedor. Arriba dice además cuántos morosos con acuerdo al día NO se llaman. Cada renglón tiene «Gestionar» y dos íconos: WhatsApp y SMS." },
+          { term: "Hoy (agenda)", desc: "Cola priorizada de a quién contactar, en seis grupos por urgencia: acuerdos con cuota vencida (todavía vigentes: se pueden salvar) → promesas vencidas → acuerdos rotos sin gestionar → contactos agendados → «les venció otra cuota» (ya se los contactó, pero después les cayó una cuota nueva) → morosos sin gestión reciente. Scopeada al vendedor. Arriba dice además cuántos morosos con acuerdo al día NO se llaman. Cada renglón tiene «Gestionar» y dos íconos: WhatsApp y SMS." },
           { term: "Morosos", desc: "Créditos en mora con días e interés moratorio. Desde acá registrás gestiones (llamada, WhatsApp, visita…). Si el cliente promete pagar, la promesa queda anotada en esa misma gestión: se concilia sola al cobrar, el cron rompe las vencidas y la vas a ver en la agenda del día." },
           { term: "Acuerdos", desc: "Los planes de pago vigentes, cumplidos y rotos. El sistema los evalúa solo: no hay que marcarlos a mano." },
           { term: "Campañas", desc: "Envíos masivos a un grupo de morosos (WhatsApp / Email / SMS) con descuento de interés opcional. Si entre los elegidos hay créditos cuyo plan ya venció, la pantalla separa dos audiencias: a unos se les reclama el pago y a los otros se los invita a refinanciar, porque a esos ya no se les puede cobrar." },

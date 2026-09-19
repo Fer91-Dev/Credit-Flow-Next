@@ -2181,14 +2181,14 @@ export interface AgendaItem {
   promesa_monto: number | null;
   /** Lo que falta pagar de la cuota del acuerdo que venció (solo `acuerdo_vencido`). */
   acuerdo_monto: number | null;
-  bucket: "acuerdo_vencido" | "promesa" | "acuerdo_roto" | "agendado" | "enfriado";
+  bucket: "acuerdo_vencido" | "promesa" | "acuerdo_roto" | "agendado" | "cuota_nueva" | "enfriado";
   motivo: string;
   fecha: string | null;
 }
 export interface AgendaCobranza {
   items: AgendaItem[];
   /** `vencido` = plata exigible que hay en toda la cola del día; `con_acuerdo_al_dia` = morosos que no se llaman porque cumplen su acuerdo. */
-  totales: { acuerdo_vencido: number; promesa: number; acuerdo_roto: number; agendado: number; enfriado: number; total: number; vencido: number; con_acuerdo_al_dia: number };
+  totales: { acuerdo_vencido: number; promesa: number; acuerdo_roto: number; agendado: number; cuota_nueva: number; enfriado: number; total: number; vencido: number; con_acuerdo_al_dia: number };
   dias_sin_gestion: number;
   /** Con qué criterio vino ordenada la cola (parámetro de Configuración → Cobranza). */
   orden: OrdenAgenda;
@@ -2199,7 +2199,15 @@ export interface AgendaCobranza {
  * VENCIDA y créditos que vencen en los próximos días. Se refresca cada 5 minutos: es un
  * `count` scopeado, no una lista, y el usuario tiene que ver el «!» rojo sin recargar.
  */
-export interface AlertaCobranza { vencidas: number; por_vencer: number; horizonte_dias: number }
+export interface AlertaCobranza {
+  /** Trabajo pendiente HOY: la misma cola de la pestaña Hoy. Es lo que muestra el menú. */
+  pendientes: number;
+  /** Créditos con cuota vencida (la deuda). No baja por contactar: baja al cobrar. */
+  vencidas: number;
+  por_vencer: number;
+  horizonte_dias: number;
+  dias_sin_gestion?: number;
+}
 export function useAlertaCobranza() {
   const { data, mutate } = useSWR<AlertaCobranza>("/api/cobranza/alerta", { refreshInterval: 5 * 60_000 });
   return { alerta: data, mutate };

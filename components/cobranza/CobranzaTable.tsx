@@ -587,6 +587,9 @@ export function CobranzaTable({ role }: { role: Role }) {
               {key === "vencimientos" && (alerta?.por_vencer ?? 0) > 0 && (
                 <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-warning px-1 text-[10px] font-bold tabular-nums text-warning-foreground">{alerta!.por_vencer}</span>
               )}
+              {key === "hoy" && (alerta?.pendientes ?? 0) > 0 && (
+                <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-bold tabular-nums text-destructive-foreground">{alerta!.pendientes}</span>
+              )}
               {key === "morosos" && (alerta?.vencidas ?? 0) > 0 && (
                 <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-bold tabular-nums text-destructive-foreground">{alerta!.vencidas}</span>
               )}

@@ -3,7 +3,7 @@
 import { severidadMora } from "@/lib/domain";
 
 import Link from "next/link";
-import { HandshakeIcon, CalendarClock, Snowflake, ArrowRight, CheckCheck, CalendarX, ShieldAlert } from "lucide-react";
+import { HandshakeIcon, CalendarClock, Snowflake, ArrowRight, CheckCheck, CalendarX, ShieldAlert, BellRing } from "lucide-react";
 import { useAgendaCobranza, type AgendaItem, useTramosMora } from "@/lib/swr";
 import { formatMonto, formatCreditoNumero, formatDias } from "@/lib/utils";
 import { StatusBadge } from "@/components/ui/StatusBadge";
@@ -15,6 +15,7 @@ const BUCKET_ICON: Record<AgendaItem["bucket"], typeof HandshakeIcon> = {
   promesa: HandshakeIcon,
   acuerdo_roto: ShieldAlert,
   agendado: CalendarClock,
+  cuota_nueva: BellRing,
   enfriado: Snowflake,
 };
 

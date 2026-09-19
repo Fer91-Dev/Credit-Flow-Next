@@ -5,7 +5,7 @@ import { severidadMora } from "@/lib/domain";
 import { useMemo, useState } from "react";
 import {
   HandshakeIcon, CalendarClock, Snowflake, MessageSquarePlus,
-  Phone, CheckCheck, AlertCircle, MessageSquareText, CalendarX, ShieldAlert,
+  Phone, CheckCheck, AlertCircle, MessageSquareText, CalendarX, ShieldAlert, BellRing,
 } from "lucide-react";
 import { WhatsAppIcon } from "@/components/ui/WhatsAppIcon";
 import { useAgendaCobranza, type AgendaItem, useTramosMora } from "@/lib/swr";
@@ -34,6 +34,7 @@ const BUCKETS: BucketMeta[] = [
   { key: "promesa",         titulo: "Promesas por cobrar",        ayuda: "Prometieron pagar y la fecha ya llegó o venció.",                            icon: HandshakeIcon, accent: "warning",     badge: "warning" },
   { key: "acuerdo_roto",    titulo: "Acuerdos rotos",             ayuda: "El acuerdo se cayó y nadie los contactó desde entonces.",                    icon: ShieldAlert,   accent: "warning",     badge: "warning" },
   { key: "agendado",        titulo: "Contactos agendados",        ayuda: "Quedó pactado volver a contactarlos hoy.",                                   icon: CalendarClock, accent: "primary",     badge: "primary" },
+  { key: "cuota_nueva",     titulo: "Les venció otra cuota",      ayuda: "Ya se los contactó, pero desde entonces les venció otra cuota: hay novedad.", icon: BellRing,      accent: "warning",     badge: "warning" },
   { key: "enfriado",        titulo: "Sin gestión reciente",       ayuda: "Morosos que hace días que nadie contacta.",                                  icon: Snowflake,     accent: "muted",       badge: "muted" },
 ];
 
@@ -149,7 +150,7 @@ export function AgendaHoy({
             </p>
           </div>
         </div>
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-6">
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-4">
           {BUCKETS.map((b) => {
             const n = agenda?.totales[b.key] ?? 0;
             return (

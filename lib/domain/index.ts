@@ -45,3 +45,4 @@ export * from "./logros";
 export * from "./stock";
 export * from "./reportes";
 export * from "./cierre-turno";
+export * from "./agenda-cobranza";

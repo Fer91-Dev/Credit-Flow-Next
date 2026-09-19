@@ -111,19 +111,21 @@ const NAV_GROUPS: NavGroup[] = [
 type AvisoRotulo = (label: string, el: HTMLElement | null) => void;
 
 /**
- * EL «!» DE COBRANZAS. Fernando (18/09/2026): "es importante que el usuario siempre vea el
- * signo ! en rojo cuando haya cuotas vencidas o prontas a vencer": el menú es lo único que
- * está en todas las pantallas. Rojo = hay créditos con cuota vencida (cuántos); ámbar = no
- * hay vencidas pero vencen en los próximos días. Con el menú contraído queda el punto sobre
- * el ícono y el rótulo flotante lo explica.
+ * EL AVISO DE COBRANZAS. El menú es lo único que está en todas las pantallas, así que ahí
+ * va. Rojo = TRABAJO PENDIENTE: cuántos hay para contactar hoy (la cola de la pestaña Hoy).
+ * Se apaga cuando se los contactó y vuelve a encenderse con cada hecho nuevo —otra cuota
+ * vencida, una promesa rota, un acuerdo caído, o los días sin gestión—. Ámbar = no hay nada
+ * pendiente pero vencen cuotas en los próximos días. Fernando (19/09/2026): «la alerta sirve
+ * para organizar el trabajo del operador, para saber que ya se apagó porque los contactó».
+ * Cuántos DEBEN es otra cosa y vive en los KPI de la sección; acá va en el rótulo flotante.
  */
 function AlertaCobranzaBadge({ colapsado }: { colapsado?: boolean }) {
   const { alerta } = useAlertaCobranza();
-  if (!alerta || (alerta.vencidas === 0 && alerta.por_vencer === 0)) return null;
-  const rojo = alerta.vencidas > 0;
-  const n = rojo ? alerta.vencidas : alerta.por_vencer;
+  if (!alerta || (alerta.pendientes === 0 && alerta.por_vencer === 0)) return null;
+  const rojo = alerta.pendientes > 0;
+  const n = rojo ? alerta.pendientes : alerta.por_vencer;
   const texto = rojo
-    ? `${alerta.vencidas} con cuota vencida${alerta.por_vencer > 0 ? ` · ${alerta.por_vencer} por vencer` : ""}`
+    ? `${alerta.pendientes} para contactar hoy${alerta.vencidas > 0 ? ` · ${alerta.vencidas} con cuota vencida` : ""}${alerta.por_vencer > 0 ? ` · ${alerta.por_vencer} por vencer` : ""}`
     : `${alerta.por_vencer} vence${alerta.por_vencer === 1 ? "" : "n"} en los próximos ${alerta.horizonte_dias} días`;
   const color = rojo ? "bg-destructive text-destructive-foreground" : "bg-warning text-warning-foreground";
   if (colapsado) {
