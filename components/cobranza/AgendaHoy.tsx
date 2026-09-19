@@ -126,18 +126,22 @@ export function AgendaHoy({
       {/* Resumen del día: la nota que dice qué estás mirando + los KPIs. */}
       <div className="space-y-4">
         {/*
-          Fernando (19/09/2026): "estos textos quedan muy planos". El subtítulo de la agenda
-          era un renglón gris de 11px colgado del título; ahora es una `Nota` con forma —caja
-          teñida, ícono, título y la explicación debajo—, que es como se ven las aclaraciones
-          del resto del sistema.
+          El título arriba, como siempre; en la cajita va SOLO la frase que explica qué se
+          está mirando (Fernando, 19/09/2026). Antes era un renglón gris de 11px colgado del
+          título y se leía como relleno.
         */}
-        <Nota
-          emoji="dollar-banknote"
-          acento={total > 0 ? "primary" : "success"}
-          titulo={filtro
-            ? <>Tu agenda de hoy <span className="font-normal text-muted-foreground">· {BUCKETS.find((b) => b.key === filtro)?.titulo}</span></>
-            : "Tu agenda de hoy"}
-        >
+        <div className="group flex items-center gap-2.5">
+          <IconBadge emoji="dollar-banknote" accent="primary" pulse={total > 0} hoverable />
+          <h3 className="text-sm font-semibold text-foreground">
+            Tu agenda de hoy
+            {filtro && (
+              <span className="ml-2 text-xs font-normal text-primary">
+                · {BUCKETS.find((b) => b.key === filtro)?.titulo}
+              </span>
+            )}
+          </h3>
+        </div>
+        <Nota acento={total > 0 ? "primary" : "success"} compacta>
           {filtro
             ? <><span className="font-semibold text-foreground">{filtrados.length}</span> de {total} cliente{total !== 1 ? "s" : ""} en este grupo.</>
             : <>
