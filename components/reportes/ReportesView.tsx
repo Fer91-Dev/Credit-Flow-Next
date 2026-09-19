@@ -717,7 +717,7 @@ function CardMedio({ etiqueta, emoji, metodo, valor, contexto, pct, pctLabel, de
   const c = colorMetodo(metodo);
   return (
     <article
-      className="group animate-entrada relative flex h-full flex-col overflow-hidden rounded-2xl border border-border/70 bg-card p-5
+      className="group animate-entrada relative flex h-full flex-col overflow-hidden rounded-2xl border border-border/70 bg-card p-4
         shadow-[0_1px_2px_rgba(0,0,0,0.3),0_12px_30px_-16px_rgba(0,0,0,0.7)]
         transition-all duration-300 hover:-translate-y-0.5 hover:border-border
         hover:shadow-[0_1px_2px_rgba(0,0,0,0.3),0_22px_50px_-20px_rgba(0,0,0,0.85)]
@@ -739,18 +739,18 @@ function CardMedio({ etiqueta, emoji, metodo, valor, contexto, pct, pctLabel, de
 
       {/* El medio: segundo nivel. El cuadradito es el mismo color con el que sale en la tabla
           y en la evolución, así la tarjeta y el ranking se leen como una sola cosa. */}
-      <p className="relative mt-4 flex items-center gap-2 text-sm font-semibold text-foreground">
+      <p className="relative mt-3 flex items-center gap-2 text-sm font-semibold text-foreground">
         <span className={`h-2.5 w-2.5 shrink-0 rounded-sm ${c.barra}`} />
         {metodoLabel[metodo] ?? metodo}
       </p>
 
-      <p className="relative mt-2 font-mono text-[28px] font-bold leading-none tracking-tight tabular-nums text-foreground sm:text-[32px]">
+      <p className="relative mt-1.5 font-mono text-2xl font-bold leading-none tracking-tight tabular-nums text-foreground sm:text-[22px]">
         {valor}
       </p>
-      <p className="relative mt-2 text-[11px] leading-relaxed text-muted-foreground">{contexto}</p>
+      <p className="relative mt-1.5 text-[11px] leading-relaxed text-muted-foreground">{contexto}</p>
 
       {/* La barra, abajo de todo: con `mt-auto` las tres tarjetas cierran a la misma altura. */}
-      <div className="relative mt-auto flex items-center gap-3 pt-4">
+      <div className="relative mt-auto flex items-center gap-3 pt-3.5">
         <div className="min-w-0 flex-1">
           <BarraAvance pct={pct} tono={c.tono} alto="h-1.5" demora={demora + 120} />
         </div>
@@ -769,7 +769,7 @@ function CardMedio({ etiqueta, emoji, metodo, valor, contexto, pct, pctLabel, de
 function CardMediosEnUso({ cantidad, monto, pagos, demora }: { cantidad: number; monto: number; pagos: number; demora: number }) {
   return (
     <article
-      className="group animate-entrada relative flex h-full flex-col overflow-hidden rounded-2xl border border-border/70 bg-card p-5
+      className="group animate-entrada relative flex h-full flex-col overflow-hidden rounded-2xl border border-border/70 bg-card p-4
         shadow-[0_1px_2px_rgba(0,0,0,0.3),0_12px_30px_-16px_rgba(0,0,0,0.7)]
         transition-all duration-300 hover:-translate-y-0.5 hover:border-border
         hover:shadow-[0_1px_2px_rgba(0,0,0,0.3),0_22px_50px_-20px_rgba(0,0,0,0.85)]
@@ -790,12 +790,12 @@ function CardMediosEnUso({ cantidad, monto, pagos, demora }: { cantidad: number;
 
       {/* Dos bloques separados por el divisor. En pantalla angosta el divisor pasa a ser una
           línea horizontal: apilados sin nada en el medio, los dos números se tocan. */}
-      <div className="relative mt-auto flex flex-col gap-4 pt-4 sm:flex-row sm:items-stretch sm:gap-5">
+      <div className="relative mt-auto flex flex-col gap-3 pt-3.5 sm:flex-row sm:items-stretch sm:gap-4">
         <div className="min-w-0 sm:w-[34%] sm:shrink-0">
-          <p className="font-mono text-[32px] font-bold leading-none tabular-nums text-foreground sm:text-[36px]">
+          <p className="font-mono text-[26px] font-bold leading-none tabular-nums text-foreground">
             {cantidad}
           </p>
-          <p className="mt-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+          <p className="mt-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
             {cantidad === 1 ? "medio activo" : "medios activos"}
           </p>
         </div>
@@ -804,7 +804,7 @@ function CardMediosEnUso({ cantidad, monto, pagos, demora }: { cantidad: number;
         <span aria-hidden className="h-px w-full shrink-0 bg-border sm:h-auto sm:w-px sm:self-stretch sm:bg-gradient-to-b sm:from-transparent sm:via-border sm:to-transparent" />
         <div className="min-w-0">
           <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/70">Cobrado en el período</p>
-          <p className="mt-1.5 font-mono text-lg font-semibold tabular-nums text-foreground">
+          <p className="mt-1.5 font-mono text-[15px] font-semibold tabular-nums text-foreground">
             <NumeroAnimado valor={monto} decimales={2} prefijo="$" />
           </p>
           <p className="mt-1 text-[11px] text-muted-foreground">
@@ -850,7 +850,7 @@ function TabMedios({ s }: { s?: ReporteSerie }) {
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <CardMedio
           etiqueta="Más elegido" emoji="trophy" metodo={masElegido.metodo}
-          valor={<>{masElegido.cantidad}<span className="text-xl font-semibold text-muted-foreground/60"> / {totalPagos}</span></>}
+          valor={<>{masElegido.cantidad}<span className="text-base font-semibold text-muted-foreground/60"> / {totalPagos}</span></>}
           contexto="pagos del período hechos con este medio"
           pct={masElegido.pct_cantidad} pctLabel={`${n1(masElegido.pct_cantidad)}%`}
           demora={0}
