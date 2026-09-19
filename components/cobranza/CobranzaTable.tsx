@@ -10,7 +10,7 @@ import { MessageSquareText } from "lucide-react";
 import { descargarCSV } from "@/lib/csv";
 import { useCreditos, useAccionesCobranza, type Credito, type AccionCobranza, type AgendaItem, useTramosMora, useAlertaCobranza, useDiasSinGestion } from "@/lib/swr";
 import { type Role } from "@/lib/auth/roles";
-import { formatFecha, nombreCompleto, formatDias, formatMonto, formatCreditoNumero } from "@/lib/utils";
+import { formatFecha, nombreCompleto, formatDias, formatMonto, formatCreditoNumero, pctDe } from "@/lib/utils";
 import { CreditoLink } from "@/components/ui/CreditoLink";
 import { GestionForm, type CreditoCtx } from "./GestionForm";
 import { CobranzaDetail } from "./CobranzaDetail";
@@ -644,12 +644,16 @@ export function CobranzaTable({ role }: { role: Role }) {
         <KpiCard
           icon="shield" label="Mora crítica (+30d)" value={String(kpis.critica)}
           accent={kpis.critica > 0 ? "destructive" : "muted"}
+          sub={kpis.critica > 0 ? `de ${kpis.total} en gestión` : "ninguno"}
+          barra={kpis.critica > 0 ? { pct: pctDe(kpis.critica, kpis.total), label: `${Math.round(pctDe(kpis.critica, kpis.total))}%` } : undefined}
           onClick={kpis.critica > 0 ? () => setFilter("critica") : undefined}
           active={filterMora === "critica"}
         />
         <KpiCard
           icon="alarm-clock" label="Mora alta (15–30d)" value={String(kpis.alta)}
           accent={kpis.alta > 0 ? "warning" : "muted"}
+          sub={kpis.alta > 0 ? `de ${kpis.total} en gestión` : "ninguno"}
+          barra={kpis.alta > 0 ? { pct: pctDe(kpis.alta, kpis.total), label: `${Math.round(pctDe(kpis.alta, kpis.total))}%` } : undefined}
           onClick={kpis.alta > 0 ? () => setFilter("alta") : undefined}
           active={filterMora === "alta"}
         />

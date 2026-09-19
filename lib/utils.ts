@@ -187,6 +187,19 @@ export function formatDias(n: number): string {
   return `${n} ${Math.abs(n) === 1 ? "día" : "días"}`;
 }
 
+/**
+ * Qué porcentaje del total es la parte, para DIBUJAR (la barra de una KpiCard, el ancho de
+ * una franja). Sin total no hay proporción: devuelve 0 en vez de `NaN`, que en un `width`
+ * rompe el layout sin decir por qué.
+ *
+ * 🔴 Es un helper de presentación. Ningún importe ni ninguna regla de negocio sale de acá:
+ * los porcentajes que se MUESTRAN como dato los calcula el server.
+ */
+export function pctDe(parte: number, total: number): number {
+  if (!Number.isFinite(parte) || !Number.isFinite(total) || total <= 0) return 0;
+  return Math.max(0, Math.min(100, (parte / total) * 100));
+}
+
 /** "Hoy" · "En 3 días" · "Venció hace 2 días", a partir de una fecha `@db.Date`. */
 export function cuandoVence(fecha: string | Date | null | undefined): string {
   const d = diasHastaAR(fecha);

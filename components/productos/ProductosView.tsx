@@ -6,7 +6,7 @@ import { Plus, Pencil, Trash2, ImagePlus, Loader2, X, Link as LinkIcon, LayoutGr
 import { BuscadorF3 } from "@/components/ui/BuscadorF3";
 import { FiltrosPanel } from "@/components/ui/FiltrosPanel";
 import { useProductos, useProducto, KEYS, type Producto, type MovimientoStock } from "@/lib/swr";
-import { parseMontoInput, formatFecha, formatFechaHora, formatCreditoNumero, teclaDelContenedor } from "@/lib/utils";
+import { parseMontoInput, formatFecha, formatFechaHora, formatCreditoNumero, teclaDelContenedor, pctDe } from "@/lib/utils";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { KpiCard } from "@/components/ui/KpiCard";
 import { StatusBadge } from "@/components/ui/StatusBadge";
@@ -253,6 +253,8 @@ export function ProductosView() {
             <KpiCard
               icon="warning" label="Bajo / sin stock" value={String(bajoStock)}
               accent={bajoStock > 0 ? "warning" : "muted"}
+              sub={bajoStock > 0 ? `de ${productos.length} del catálogo` : undefined}
+              barra={bajoStock > 0 ? { pct: pctDe(bajoStock, productos.length), label: `${Math.round(pctDe(bajoStock, productos.length))}%` } : undefined}
               onClick={bajoStock > 0 ? () => setSoloBajoStock((v) => !v) : undefined}
               active={soloBajoStock}
             />

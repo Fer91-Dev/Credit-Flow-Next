@@ -13,7 +13,7 @@ import { Field, Input, Select, Textarea } from "@/components/ui/field";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { ModalHeader, FormActions, MODAL_CONTENT } from "@/components/ui/form-kit";
 import { useToast } from "@/components/ui/toast";
-import { formatMonto, formatFecha, formatCreditoNumero } from "@/lib/utils";
+import { formatMonto, formatFecha, formatCreditoNumero, pctDe } from "@/lib/utils";
 import { CreditoLink } from "@/components/ui/CreditoLink";
 
 /**
@@ -154,7 +154,13 @@ export function ComisionesView() {
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <KpiCard icon="money-bag" label="A liquidar" value={formatMonto(aPagar, 0)} sub={`${pendientes.filter((f) => f.comision_total > 0).length} agentes`} accent="warning" mono />
-        <KpiCard icon="check-mark-button" label="Ya liquidado" value={formatMonto(yaPagado, 0)} sub="en este período" accent="success" mono />
+        <KpiCard
+          icon="check-mark-button" label="Ya liquidado" value={formatMonto(yaPagado, 0)} accent="success" mono
+          sub={aPagar + yaPagado > 0 ? `de ${formatMonto(aPagar + yaPagado, 0)} de comisión del período` : "en este período"}
+          barra={aPagar + yaPagado > 0
+            ? { pct: pctDe(yaPagado, aPagar + yaPagado), label: `${Math.round(pctDe(yaPagado, aPagar + yaPagado))}%` }
+            : undefined}
+        />
         <KpiCard icon="credit-card" label="Otorgado" value={formatMonto(filas.reduce((s, f) => s + f.monto_otorgado, 0), 0)} sub="base del cálculo" mono />
         <KpiCard icon="busts-in-silhouette" label="Agentes" value={String(filas.length)} sub="activos" />
       </div>

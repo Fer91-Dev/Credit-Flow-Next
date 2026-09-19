@@ -8,7 +8,7 @@ import { KpiCard } from "@/components/ui/KpiCard";
 import { NumeroAnimado } from "@/components/ui/NumeroAnimado";
 import { IconBadge } from "@/components/ui/IconBadge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { formatMonto } from "@/lib/utils";
+import { formatMonto, pctDe } from "@/lib/utils";
 
 function n0(num: number) {
   return new Intl.NumberFormat("es-AR", { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(num);
@@ -87,6 +87,9 @@ export function DashboardKpis({ data }: { data: DashboardData }) {
           icon="busts-in-silhouette" label="Clientes activos" accent="primary"
           value={<NumeroAnimado valor={resumen.clientes_activos} />}
           sub={`${resumen.clientes_con_credito} con crédito vigente`}
+          barra={resumen.clientes_activos > 0
+            ? { pct: pctDe(resumen.clientes_con_credito, resumen.clientes_activos), label: `${Math.round(pctDe(resumen.clientes_con_credito, resumen.clientes_activos))}% prestando` }
+            : undefined}
         />
       </div>
       <div className="animate-entrada" style={{ animationDelay: "70ms" }}>
@@ -100,8 +103,11 @@ export function DashboardKpis({ data }: { data: DashboardData }) {
         <KpiCard
           icon="warning" label="Mora crítica"
           value={<NumeroAnimado valor={resumen.mora_critica_count} />}
-          sub={resumen.mora_critica_count > 0 ? "requieren gestión urgente" : "sin atrasos críticos"}
+          sub={resumen.mora_critica_count > 0 ? `de ${resumen.creditos_activos} activos, requieren gestión urgente` : "sin atrasos críticos"}
           accent={resumen.mora_critica_count > 0 ? "destructive" : "success"}
+          barra={resumen.mora_critica_count > 0
+            ? { pct: pctDe(resumen.mora_critica_count, resumen.creditos_activos), label: `${Math.round(pctDe(resumen.mora_critica_count, resumen.creditos_activos))}%` }
+            : undefined}
           pulse={resumen.mora_critica_count > 0}
         />
       </div>

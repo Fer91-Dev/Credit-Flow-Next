@@ -3,7 +3,7 @@
 import { useState } from "react";
 import useSWR, { mutate } from "swr";
 import { Handshake, Ban, DollarSign, Printer } from "lucide-react";
-import { formatMonto, formatFecha, formatCreditoNumero, cuandoVence } from "@/lib/utils";
+import { formatMonto, formatFecha, formatCreditoNumero, cuandoVence, pctDe } from "@/lib/utils";
 import { StatusBadge, type BadgeVariant } from "@/components/ui/StatusBadge";
 import { DataTable } from "@/components/ui/DataTable";
 import { KpiCard } from "@/components/ui/KpiCard";
@@ -148,7 +148,15 @@ export function AcuerdosTab({ role }: { role: Role }) {
           sub={data && data.total > acuerdos.length ? `de ${data.total} · los importes suman estas` : undefined}
         />
         <KpiCard icon="money-bag" label="Acordado" value={formatMonto(totalAcordado)} accent="warning" mono />
-        <KpiCard icon="inbox-tray" label="Recuperado" value={formatMonto(totalCobrado)} accent="success" mono sub="cobrado desde el acuerdo" />
+        {/* Lo cobrado contra lo acordado: es la pregunta de la pestaña —¿los acuerdos se
+            están cumpliendo?— y estaba en dos tarjetas separadas, sin relación visible. */}
+        <KpiCard
+          icon="inbox-tray" label="Recuperado" value={formatMonto(totalCobrado)} accent="success" mono
+          sub={totalAcordado > 0 ? `de ${formatMonto(totalAcordado)} acordados` : "cobrado desde el acuerdo"}
+          barra={totalAcordado > 0
+            ? { pct: pctDe(totalCobrado, totalAcordado), label: `${Math.round(pctDe(totalCobrado, totalAcordado))}%` }
+            : undefined}
+        />
       </div>
 
       <div className="flex flex-wrap gap-2">

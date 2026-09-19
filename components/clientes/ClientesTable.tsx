@@ -13,7 +13,7 @@ import { Avatar } from "@/components/ui/Avatar";
 import { BuscadorF3 } from "@/components/ui/BuscadorF3";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { ModalHeader } from "@/components/ui/form-kit";
-import { nombreCompleto, formatDias } from "@/lib/utils";
+import { nombreCompleto, formatDias, pctDe } from "@/lib/utils";
 import { useDebounce } from "@/lib/use-debounce";
 import type { Role } from "@/lib/auth/roles";
 import { useConfirm } from "@/components/ui/confirm";
@@ -265,6 +265,9 @@ export function ClientesTable({ role }: { role?: Role } = {}) {
           value={String(kpis?.enfriados ?? 0)}
           accent={(kpis?.enfriados ?? 0) > 0 ? "warning" : "muted"}
           sub={`más de ${formatDias(kpis?.dias_inactividad ?? 90)} sin pagar ni pedir`}
+          barra={(kpis?.enfriados ?? 0) > 0
+            ? { pct: pctDe(kpis!.enfriados, kpis!.total), label: `${Math.round(pctDe(kpis!.enfriados, kpis!.total))}% del padrón` }
+            : undefined}
           onClick={(kpis?.enfriados ?? 0) > 0 ? () => alternar("enfriados") : undefined}
           active={recorte === "enfriados"}
         />
@@ -274,6 +277,9 @@ export function ClientesTable({ role }: { role?: Role } = {}) {
           value={String(kpis?.riesgo ?? 0)}
           accent={(kpis?.riesgo ?? 0) > 0 ? "destructive" : "muted"}
           sub="mirar antes de prestarles"
+          barra={(kpis?.riesgo ?? 0) > 0
+            ? { pct: pctDe(kpis!.riesgo, kpis!.total), label: `${Math.round(pctDe(kpis!.riesgo, kpis!.total))}% del padrón` }
+            : undefined}
           onClick={(kpis?.riesgo ?? 0) > 0 ? () => alternar("riesgo") : undefined}
           active={recorte === "riesgo"}
         />

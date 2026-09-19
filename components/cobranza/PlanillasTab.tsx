@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { ClipboardList, CheckCircle2, AlertTriangle, Loader2, ArrowLeft, Wallet, Printer } from "lucide-react";
 import { usePlanillasEmitidas, usePlanillaDetalle, type PlanillaEmitida } from "@/lib/swr";
-import { formatMonto, formatFecha, formatFechaHora, formatCreditoNumero } from "@/lib/utils";
+import { formatMonto, formatFecha, formatFechaHora, formatCreditoNumero, pctDe } from "@/lib/utils";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { KpiCard } from "@/components/ui/KpiCard";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -37,6 +37,7 @@ export function PlanillasTab({ role }: { role: Role }) {
 
   const enCalle = planillas.filter((p) => p.estado === "emitida");
   const pendiente = enCalle.reduce((s, p) => s + p.pendiente, 0);
+  const rendidas = planillas.filter((p) => p.estado === "rendida").length;
   const conDiferencia = planillas.filter((p) => p.estado === "rendida" && (p.diferencia ?? 0) !== 0).length;
 
   return (
@@ -55,7 +56,7 @@ export function PlanillasTab({ role }: { role: Role }) {
         />
         <KpiCard icon={Wallet} label="Sin cobrar de esos recorridos" value={formatMonto(pendiente)} accent={pendiente > 0 ? "warning" : "muted"} mono />
         <KpiCard
-          icon={CheckCircle2} label="Rendidas" value={String(planillas.filter((p) => p.estado === "rendida").length)} accent="muted"
+          icon={CheckCircle2} label="Rendidas" value={String(rendidas)} accent="muted"
           onClick={() => setEstado("rendida")}
           active={estado === "rendida"}
         />
@@ -64,8 +65,11 @@ export function PlanillasTab({ role }: { role: Role }) {
           label="Rendidas con diferencia"
           value={String(conDiferencia)}
           accent={conDiferencia > 0 ? "destructive" : "muted"}
+          sub={conDiferencia > 0
+            ? `de ${rendidas} rendida${rendidas === 1 ? "" : "s"} · lo entregado no coincide con lo cargado`
+            : "lo entregado no coincide con lo cargado"}
+          barra={conDiferencia > 0 ? { pct: pctDe(conDiferencia, rendidas), label: `${Math.round(pctDe(conDiferencia, rendidas))}%` } : undefined}
           pulse={conDiferencia > 0}
-          sub="lo entregado no coincide con lo cargado"
           onClick={conDiferencia > 0 ? () => setEstado("rendida") : undefined}
         />
       </div>
@@ -197,7 +201,14 @@ function DetallePlanilla({ id, role, onVolver }: { id: string; role: Role; onVol
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <KpiCard icon={ClipboardList} label="Salió a cobrar" value={formatMonto(detalle.totales.esperado)} mono accent="muted" />
-        <KpiCard icon={Wallet} label="Cargado en el sistema" value={formatMonto(detalle.totales.cobrado)} mono accent="success" sub={`${detalle.totales.pagos} pago${detalle.totales.pagos === 1 ? "" : "s"}`} />
+        {/* La pregunta de la planilla: de lo que salió a cobrar, cuánto entró. */}
+        <KpiCard
+          icon={Wallet} label="Cargado en el sistema" value={formatMonto(detalle.totales.cobrado)} mono accent="success"
+          sub={`${detalle.totales.pagos} pago${detalle.totales.pagos === 1 ? "" : "s"} de ${formatMonto(detalle.totales.esperado)} que salieron`}
+          barra={detalle.totales.esperado > 0
+            ? { pct: pctDe(detalle.totales.cobrado, detalle.totales.esperado), label: `${Math.round(pctDe(detalle.totales.cobrado, detalle.totales.esperado))}%` }
+            : undefined}
+        />
         <KpiCard icon={AlertTriangle} label="Sin cobrar" value={formatMonto(detalle.totales.pendiente)} mono accent={detalle.totales.pendiente > 0 ? "warning" : "muted"} />
         {cerrada ? (
           <KpiCard

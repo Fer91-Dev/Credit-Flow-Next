@@ -16,7 +16,7 @@ import { GestionCasoDialog } from "./GestionCasoDialog";
 import { guardarSeleccionCampana, guardarTipoCampana } from "./seleccion-campana";
 import { descargarCSV } from "@/lib/csv";
 import { contactoBloqueado, normalizarTelefonoAR, sugerirOfertaCancelacion } from "@/lib/domain";
-import { formatMonto, formatFecha, formatDias, nombreCompleto, hoyComercial } from "@/lib/utils";
+import { formatMonto, formatFecha, formatDias, formatNumero, nombreCompleto, hoyComercial, pctDe } from "@/lib/utils";
 import { Nota } from "@/components/ui/Nota";
 
 /**
@@ -197,6 +197,9 @@ export function IncobrablesTab() {
           // Los que ya pagaron algo después del castigo son los que hay que trabajar primero:
           // demostraron voluntad de pago, que es lo más escaso en esta cartera.
           sub={kpis.conSenal > 0 ? `${kpis.conSenal} pagaron ya castigados` : undefined}
+          barra={kpis.conSenal > 0
+            ? { pct: pctDe(kpis.conSenal, kpis.casos), label: `${Math.round(pctDe(kpis.conSenal, kpis.casos))}% con señal`, tono: "success" }
+            : undefined}
           accent={kpis.casos > 0 ? "destructive" : "muted"}
         />
         <KpiCard icon="dollar-banknote" label="Capital prestado" value={formatMonto(kpis.prestado)} accent="muted" mono />
@@ -204,7 +207,12 @@ export function IncobrablesTab() {
           icon="money-bag"
           label="Ya recuperado"
           value={formatMonto(kpis.recuperado)}
-          sub={kpis.prestado > 0 ? `${((kpis.recuperado / kpis.prestado) * 100).toFixed(1)}% del capital prestado` : undefined}
+          sub={kpis.prestado > 0 ? `de ${formatMonto(kpis.prestado)} prestados` : undefined}
+          barra={kpis.prestado > 0
+            // `toFixed` escribe "27.3%" con punto: el separador decimal argentino es la coma,
+            // y es el único porcentaje del SaaS que salía distinto al resto.
+            ? { pct: pctDe(kpis.recuperado, kpis.prestado), label: `${formatNumero(pctDe(kpis.recuperado, kpis.prestado), 1)}%` }
+            : undefined}
           accent={kpis.recuperado > 0 ? "success" : "muted"}
           mono
         />

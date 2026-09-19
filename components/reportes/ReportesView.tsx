@@ -5,7 +5,7 @@ import { motion } from "framer-motion";
 import { Download, Printer } from "lucide-react";
 import { useReportes, useReporteSerie, useReporteCobranza, useFinanciera, type Reporte, type ReporteSerie, type PuntoMensual, type ReporteCobranza } from "@/lib/swr";
 import { descargarCSV } from "@/lib/csv";
-import { formatFecha, formatDias } from "@/lib/utils";
+import { formatFecha, formatDias, pctDe } from "@/lib/utils";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { KpiCard } from "@/components/ui/KpiCard";
 import { FiltrosPanel } from "@/components/ui/FiltrosPanel";
@@ -384,7 +384,11 @@ function TabResumen({ r }: { r: Reporte }) {
         <KpiCard icon="bar-chart" label={r.rentabilidad.habilitado ? "Rentabilidad neta" : "Rentab. (bruta)"} value={`$${n2(r.rentabilidad.rentabilidad_neta)}`} accent={r.rentabilidad.rentabilidad_neta >= 0 ? "success" : "destructive"} mono sub={r.rentabilidad.habilitado ? `${n1(r.rentabilidad.margen_neto_pct)}% margen` : "sin costo de fondeo"} />
         <KpiCard icon="chart-increasing" label="Cartera activa" value={`$${n2(r.cartera.saldo_activo_total)}`} accent="primary" mono />
         <KpiCard icon="warning" label="Saldo en mora" value={`$${n2(r.morosidad.saldo_expuesto)}`} accent={r.morosidad.en_mora > 0 ? "destructive" : "muted"} mono sub={`${r.morosidad.en_mora} en mora`} />
-        <KpiCard icon="warning" label="Morosidad" value={`${n1(moraPct)}%`} accent={moraPct > 10 ? "destructive" : moraPct > 0 ? "warning" : "success"} mono sub="del capital activo" />
+        <KpiCard
+          icon="warning" label="Morosidad" value={`${n1(moraPct)}%`} mono sub="del capital activo"
+          accent={moraPct > 10 ? "destructive" : moraPct > 0 ? "warning" : "success"}
+          barra={{ pct: moraPct }}
+        />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -455,7 +459,11 @@ function TabRentabilidad({ r, s }: { r: Reporte; s?: ReporteSerie }) {
         <KpiCard icon="dollar-banknote" label="Costo de fondeo" value={`$${n2(rent.costo_total)}`} accent="destructive" mono sub={rent.habilitado ? "capital + fuera de caja" : "sin configurar"} />
         <KpiCard icon="receipt" label="Gastos registrados" value={`$${n2(rent.gastos_registrados)}`} accent={rent.gastos_registrados > 0 ? "warning" : "muted"} mono sub="los de la caja, del período" />
         <KpiCard icon="bar-chart" label="Rentabilidad neta" value={`$${n2(rent.rentabilidad_neta)}`} accent={rent.rentabilidad_neta >= 0 ? "success" : "destructive"} mono sub="ingreso − fondeo − gastos" />
-        <KpiCard icon="chart-increasing" label="Margen neto" value={`${n1(rent.margen_neto_pct)}%`} accent={rent.margen_neto_pct >= 0 ? "primary" : "destructive"} mono sub="sobre ingreso financiero" />
+        <KpiCard
+          icon="chart-increasing" label="Margen neto" value={`${n1(rent.margen_neto_pct)}%`} mono sub="sobre ingreso financiero"
+          accent={rent.margen_neto_pct >= 0 ? "primary" : "destructive"}
+          barra={{ pct: rent.margen_neto_pct }}
+        />
       </div>
       <Section title="Rentabilidad neta por mes" icon="chart-increasing">
         <BarChart data={neta} accent="success" format={(v) => `$${n2(v)}`} />
@@ -573,7 +581,12 @@ function TabMorosidad({ r, s }: { r: Reporte; s?: ReporteSerie }) {
         <KpiCard icon="warning" label="Créditos en mora" value={String(r.morosidad.en_mora)} accent={r.morosidad.en_mora > 0 ? "destructive" : "success"} />
         <KpiCard icon="money-bag" label="Saldo expuesto" value={`$${n2(r.morosidad.saldo_expuesto)}`} accent="destructive" mono />
         <KpiCard icon="dollar-banknote" label="Interés de mora" value={`$${n2(r.morosidad.interes_mora_total)}`} accent="warning" mono />
-        <KpiCard icon="warning" label={`Mora crítica (${tramoCritica})`} value={String(sev.critica)} accent={sev.critica > 0 ? "destructive" : "muted"} />
+        <KpiCard
+          icon="warning" label={`Mora crítica (${tramoCritica})`} value={String(sev.critica)}
+          accent={sev.critica > 0 ? "destructive" : "muted"}
+          sub={sev.critica > 0 ? `de ${r.morosidad.en_mora} en mora` : undefined}
+          barra={sev.critica > 0 ? { pct: pctDe(sev.critica, r.morosidad.en_mora), label: `${Math.round(pctDe(sev.critica, r.morosidad.en_mora))}%` } : undefined}
+        />
       </div>
       {/*
         🔴 LA CARTERA CASTIGADA, APARTE DE LA MORA.
@@ -693,88 +706,24 @@ const colorMetodo = (m: string) => METODO_COLOR[m] ?? METODO_COLOR.otro;
 /**
  * LAS TRES TARJETAS DE ARRIBA DE "MEDIOS DE PAGO".
  *
- * Fernando (19/09/2026): las tres eran "un título y tres renglones de texto" — el `KpiCard`
- * genérico pone label, un valor y un subtítulo, y acá el valor de verdad no es el nombre del
- * medio sino cuánto mueve. Estas tarjetas NO cambian ningún número: leen exactamente lo que ya
- * calcula el server (`pct_cantidad`, `pct_monto`, `monto`, `cantidad`) y solo reordenan la
- * lectura: etiqueta → medio → dato dominante → contexto → barra.
- *
- * El `KpiCard` compartido queda intacto a propósito: lo usan todas las demás pestañas y
- * secciones del SaaS, y esta composición (dos métricas y una barra) es propia de acá.
+ * Las dos primeras son la `KpiCard` de siempre con `sujeto` (el medio, con el color que usa
+ * la tabla de abajo) y `barra` (el porcentaje que YA viene calculado del server). Acá no se
+ * recalcula nada: solo se ordena la lectura.
  */
-function CardMedio({ etiqueta, emoji, metodo, valor, contexto, pct, pctLabel, demora }: {
-  etiqueta: string;
-  emoji: string;
-  metodo: string;
-  /** El dato dominante ya formateado (nodo, para que el importe pueda contar). */
-  valor: React.ReactNode;
-  contexto: React.ReactNode;
-  /** El porcentaje que YA viene calculado del server: acá solo se dibuja. */
-  pct: number;
-  pctLabel: string;
-  demora: number;
-}) {
-  const c = colorMetodo(metodo);
-  return (
-    <article
-      className="group animate-entrada relative flex h-full flex-col overflow-hidden rounded-2xl border border-border/70 bg-card p-4
-        shadow-[0_1px_2px_rgba(0,0,0,0.3),0_12px_30px_-16px_rgba(0,0,0,0.7)]
-        transition-all duration-300 hover:-translate-y-0.5 hover:border-border
-        hover:shadow-[0_1px_2px_rgba(0,0,0,0.3),0_22px_50px_-20px_rgba(0,0,0,0.85)]
-        motion-reduce:transition-none motion-reduce:hover:translate-y-0"
-      style={{ animationDelay: `${demora}ms` }}
-    >
-      {/* La misma luz cenital de las tarjetas del Home: sin ella la superficie se ve plana. */}
-      <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-white/10" />
-      <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-white/[0.05] via-transparent to-transparent" />
-
-      <div className="relative flex items-start justify-between gap-3">
-        <span className="rounded-full border border-border/70 bg-muted/30 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-          {etiqueta}
-        </span>
-        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border bg-muted/40 transition-transform duration-300 group-hover:-translate-y-0.5 group-hover:scale-110">
-          <Emoji name={emoji} className="h-5 w-5" />
-        </span>
-      </div>
-
-      {/* El medio: segundo nivel. El cuadradito es el mismo color con el que sale en la tabla
-          y en la evolución, así la tarjeta y el ranking se leen como una sola cosa. */}
-      <p className="relative mt-3 flex items-center gap-2 text-sm font-semibold text-foreground">
-        <span className={`h-2.5 w-2.5 shrink-0 rounded-sm ${c.barra}`} />
-        {metodoLabel[metodo] ?? metodo}
-      </p>
-
-      <p className="relative mt-1.5 font-mono text-2xl font-bold leading-none tracking-tight tabular-nums text-foreground sm:text-[22px]">
-        {valor}
-      </p>
-      <p className="relative mt-1.5 text-[11px] leading-relaxed text-muted-foreground">{contexto}</p>
-
-      {/* La barra, abajo de todo: con `mt-auto` las tres tarjetas cierran a la misma altura. */}
-      <div className="relative mt-auto flex items-center gap-3 pt-3.5">
-        <div className="min-w-0 flex-1">
-          <BarraAvance pct={pct} tono={c.tono} alto="h-1.5" demora={demora + 120} />
-        </div>
-        <span className={`shrink-0 font-mono text-xs font-semibold tabular-nums ${c.texto}`}>{pctLabel}</span>
-      </div>
-    </article>
-  );
-}
-
 /**
  * La tercera tarjeta NO lleva barra: su dato es un conteo, no una parte de un todo. Poner un
  * porcentaje ahí sería inventarle una proporción que no existe, así que la plata se separa a
  * una segunda columna, detrás de un divisor, para que nadie lea "2" y "$7.192.438,85" como si
  * fueran el mismo número.
  */
-function CardMediosEnUso({ cantidad, monto, pagos, demora }: { cantidad: number; monto: number; pagos: number; demora: number }) {
+function CardMediosEnUso({ cantidad, monto, pagos }: { cantidad: number; monto: number; pagos: number }) {
   return (
     <article
-      className="group animate-entrada relative flex h-full flex-col overflow-hidden rounded-2xl border border-border/70 bg-card p-4
+      className="group relative flex h-full flex-col overflow-hidden rounded-2xl border border-border/70 bg-card p-4
         shadow-[0_1px_2px_rgba(0,0,0,0.3),0_12px_30px_-16px_rgba(0,0,0,0.7)]
-        transition-all duration-300 hover:-translate-y-0.5 hover:border-border
-        hover:shadow-[0_1px_2px_rgba(0,0,0,0.3),0_22px_50px_-20px_rgba(0,0,0,0.85)]
+        transition-all duration-300 hover:-translate-y-1 hover:border-border
+        hover:shadow-[0_1px_2px_rgba(0,0,0,0.3),0_20px_45px_-18px_rgba(0,0,0,0.8)]
         motion-reduce:transition-none motion-reduce:hover:translate-y-0"
-      style={{ animationDelay: `${demora}ms` }}
     >
       <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-white/10" />
       <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-white/[0.05] via-transparent to-transparent" />
@@ -848,21 +797,21 @@ function TabMedios({ s }: { s?: ReporteSerie }) {
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <CardMedio
-          etiqueta="Más elegido" emoji="trophy" metodo={masElegido.metodo}
-          valor={<>{masElegido.cantidad}<span className="text-base font-semibold text-muted-foreground/60"> / {totalPagos}</span></>}
-          contexto="pagos del período hechos con este medio"
-          pct={masElegido.pct_cantidad} pctLabel={`${n1(masElegido.pct_cantidad)}%`}
-          demora={0}
+        <KpiCard
+          icon="trophy" label="Más elegido" mono
+          sujeto={<><span className={`h-2.5 w-2.5 shrink-0 rounded-sm ${colorMetodo(masElegido.metodo).barra}`} />{metodoLabel[masElegido.metodo] ?? masElegido.metodo}</>}
+          value={<>{masElegido.cantidad}<span className="text-base font-semibold text-muted-foreground/60"> / {totalPagos}</span></>}
+          sub="pagos del período hechos con este medio"
+          barra={{ pct: masElegido.pct_cantidad, label: `${n1(masElegido.pct_cantidad)}%`, tono: colorMetodo(masElegido.metodo).tono }}
         />
-        <CardMedio
-          etiqueta="El que más plata mueve" emoji="money-bag" metodo={masPlata.metodo}
-          valor={<NumeroAnimado valor={masPlata.monto} decimales={2} prefijo="$" />}
-          contexto={<>de los <span className="font-mono font-semibold tabular-nums text-foreground">${n2(totalMonto)}</span> cobrados en el período</>}
-          pct={masPlata.pct_monto} pctLabel={`${n1(masPlata.pct_monto)}%`}
-          demora={60}
+        <KpiCard
+          icon="money-bag" label="El que más plata mueve" mono
+          sujeto={<><span className={`h-2.5 w-2.5 shrink-0 rounded-sm ${colorMetodo(masPlata.metodo).barra}`} />{metodoLabel[masPlata.metodo] ?? masPlata.metodo}</>}
+          value={<NumeroAnimado valor={masPlata.monto} decimales={2} prefijo="$" />}
+          sub={<>de los <span className="font-mono font-semibold tabular-nums text-foreground">${n2(totalMonto)}</span> cobrados en el período</>}
+          barra={{ pct: masPlata.pct_monto, label: `${n1(masPlata.pct_monto)}%`, tono: colorMetodo(masPlata.metodo).tono }}
         />
-        <CardMediosEnUso cantidad={medios.length} monto={totalMonto} pagos={totalPagos} demora={120} />
+        <CardMediosEnUso cantidad={medios.length} monto={totalMonto} pagos={totalPagos} />
       </div>
 
       <Section title="Ranking del período" icon="clipboard">
@@ -966,8 +915,16 @@ function TabCobranza({ c }: { c?: ReporteCobranza }) {
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <KpiCard icon="bar-chart" label="Gestiones" value={String(e.gestiones)} accent="primary" sub={`${e.contactos} con contacto`} />
-        <KpiCard icon="handshake" label="Tasa de contacto" value={`${n1(e.tasa_contacto)}%`} accent={e.tasa_contacto >= 50 ? "success" : e.tasa_contacto > 0 ? "warning" : "muted"} sub="contactos / gestiones" />
-        <KpiCard icon="chart-increasing" label="Promesas" value={String(e.promesas)} accent="primary" sub={`${n1(e.tasa_cumplimiento)}% cumplidas`} />
+        <KpiCard
+          icon="handshake" label="Tasa de contacto" value={`${n1(e.tasa_contacto)}%`} mono sub="contactos / gestiones"
+          accent={e.tasa_contacto >= 50 ? "success" : e.tasa_contacto > 0 ? "warning" : "muted"}
+          barra={{ pct: e.tasa_contacto }}
+        />
+        <KpiCard
+          icon="chart-increasing" label="Promesas" value={String(e.promesas)} accent="primary"
+          sub="de pago, en el período"
+          barra={e.promesas > 0 ? { pct: e.tasa_cumplimiento, label: `${n1(e.tasa_cumplimiento)}% cumplidas`, tono: "success" } : undefined}
+        />
         <KpiCard icon="money-bag" label="Mora recuperada" value={`$${n2(c.recupero.mora_cobrada)}`} accent="success" mono sub={`cobrado $${n2(c.recupero.total_cobrado)}`} />
       </div>
 

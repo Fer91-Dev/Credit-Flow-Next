@@ -10,7 +10,7 @@ import {
   useProveedores, useProveedor, KEYS,
   type Proveedor, type MovimientoProveedor,
 } from "@/lib/swr";
-import { formatFecha, parseMontoInput, eventoPropio, teclaDelContenedor } from "@/lib/utils";
+import { formatFecha, parseMontoInput, eventoPropio, teclaDelContenedor, pctDe } from "@/lib/utils";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { KpiCard } from "@/components/ui/KpiCard";
 import { StatusBadge } from "@/components/ui/StatusBadge";
@@ -177,7 +177,11 @@ export function ProveedoresView() {
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             <KpiCard icon="office-building" label="Proveedores" value={String(totales.total)} sub={`${totales.activos} activos`} accent="primary" />
             <KpiCard icon="money-bag" label="Deuda total" value={`$${n0(deudaTotal)}`} accent={deudaTotal > 0 ? "warning" : "success"} mono sub="saldo a pagar" />
-            <KpiCard icon="outbox-tray" label="Con saldo pendiente" value={String(totales.conDeuda)} accent={totales.conDeuda > 0 ? "warning" : "muted"} />
+            <KpiCard
+              icon="outbox-tray" label="Con saldo pendiente" value={String(totales.conDeuda)} accent={totales.conDeuda > 0 ? "warning" : "muted"}
+              sub={totales.conDeuda > 0 ? `de ${totales.total} proveedor${totales.total === 1 ? "" : "es"}` : undefined}
+              barra={totales.conDeuda > 0 ? { pct: pctDe(totales.conDeuda, totales.total), label: `${Math.round(pctDe(totales.conDeuda, totales.total))}%` } : undefined}
+            />
             <KpiCard icon="office-building" label="Activos" value={String(totales.activos)} accent="primary" />
           </div>
 

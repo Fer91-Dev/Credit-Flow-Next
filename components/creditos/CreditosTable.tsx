@@ -8,7 +8,7 @@ import { FileText, ChevronDown, X, RefreshCw, History } from "lucide-react";
 import { CompararRefiDialog } from "./CompararRefiDialog";
 import { useCreditos, KEYS, type Credito, useTramosMora, useDiasLegales } from "@/lib/swr";
 import { type Role } from "@/lib/auth/roles";
-import { formatCreditoNumero, nombreCompleto, formatFecha, formatFechaHora, eventoPropio, teclaDelContenedor, formatDias, formatMonto } from "@/lib/utils";
+import { formatCreditoNumero, nombreCompleto, formatFecha, formatFechaHora, eventoPropio, teclaDelContenedor, formatDias, formatMonto, pctDe } from "@/lib/utils";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { KpiCard } from "@/components/ui/KpiCard";
 import { StatusBadge } from "@/components/ui/StatusBadge";
@@ -379,6 +379,11 @@ export function CreditosTable({ role }: { role: Role }) {
             // Cuántos de esos activos vienen bien y cuántos no: el total solo no distingue
             // una cartera sana de una que está por explotar.
             sub={kpis.activos > 0 ? `${kpis.alDia} al día · ${kpis.enMora} en mora` : "ninguno vivo"}
+            // La barra es la parte SANA de lo vivo: es el número que dice si la cartera
+            // aguanta, y estaba escondido en el renglón de contexto.
+            barra={kpis.activos > 0
+              ? { pct: pctDe(kpis.alDia, kpis.activos), label: `${Math.round(pctDe(kpis.alDia, kpis.activos))}% al día`, tono: "success" }
+              : undefined}
             onClick={kpis.activos > 0 ? () => { setEstado("activo"); setMora("all"); } : undefined}
             active={estadoFilter === "activo" && moraFilter === "all"}
           />
@@ -413,6 +418,9 @@ export function CreditosTable({ role }: { role: Role }) {
             sub={kpis.pagados > 0
               ? `${formatMonto(kpis.montoPagado)} otorgados · ${kpis.pagados} de ${kpis.total}`
               : `ninguno de ${kpis.total}`}
+            barra={kpis.pagados > 0
+              ? { pct: pctDe(kpis.pagados, kpis.total), label: `${Math.round(pctDe(kpis.pagados, kpis.total))}%`, tono: "success" }
+              : undefined}
             onClick={kpis.pagados > 0 ? () => { setEstado("pagado"); setMora("all"); } : undefined}
             active={estadoFilter === "pagado"}
           />
@@ -679,6 +687,9 @@ function RefinanciadosView({ creditos, busq, setBusq, onOpen, onRefinanciar }: {
           <KpiCard
             icon="counterclockwise-arrows-button" label="Refinanciaciones" value={String(pares.length)} accent="warning"
             sub={`de ${creditos.length} créditos otorgados`}
+            barra={pares.length > 0
+              ? { pct: pctDe(pares.length, creditos.length), label: `${Math.round(pctDe(pares.length, creditos.length))}%` }
+              : undefined}
             onClick={() => setRecupero("todas")}
             active={recupero === "todas"}
           />
@@ -688,7 +699,10 @@ function RefinanciadosView({ creditos, busq, setBusq, onOpen, onRefinanciar }: {
           />
           <KpiCard
             icon="check-mark-button" label="Al día (recuperados)" value={String(alDia)} accent="success"
-            sub={alDia > 0 ? `${formatMonto(saldoAlDia)} por cobrar · ${tasaRecupero}% de recupero` : "ninguno todavía"}
+            sub={alDia > 0 ? `${formatMonto(saldoAlDia)} por cobrar` : "ninguno todavía"}
+            // `tasaRecupero` ya salía escrito en el subtítulo; acá es la barra, que es lo que
+            // el número quiere decir: qué proporción de lo refinanciado volvió a pagar.
+            barra={alDia > 0 ? { pct: Number(tasaRecupero), label: `${tasaRecupero}% de recupero`, tono: "success" } : undefined}
             onClick={alDia > 0 ? () => setRecupero("al_dia") : undefined}
             active={recupero === "al_dia"}
           />
@@ -696,6 +710,9 @@ function RefinanciadosView({ creditos, busq, setBusq, onOpen, onRefinanciar }: {
             icon="warning" label="Volvieron a mora" value={String(enMora)}
             accent={enMora > 0 ? "destructive" : "muted"}
             sub={enMora > 0 ? `${formatMonto(saldoEnMora)} otra vez en riesgo` : "ninguno"}
+            barra={enMora > 0
+              ? { pct: pctDe(enMora, pares.length), label: `${Math.round(pctDe(enMora, pares.length))}% de los refinanciados` }
+              : undefined}
             onClick={enMora > 0 ? () => setRecupero("en_mora") : undefined}
             active={recupero === "en_mora"}
           />

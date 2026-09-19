@@ -19,7 +19,7 @@ import { PersonalForm, CrearCuentaDialog } from "@/components/equipo/AgenteForm"
 import { UsuarioForm, CambiarPasswordDialog } from "@/components/equipo/CuentaForm";
 import { useConfirm } from "@/components/ui/confirm";
 import { useToast } from "@/components/ui/toast";
-import { formatMonto } from "@/lib/utils";
+import { formatMonto, pctDe } from "@/lib/utils";
 import { ROLE_LABEL } from "@/lib/auth/roles";
 
 /** Filtro por fecha de alta. "" = sin filtro. */
@@ -466,6 +466,9 @@ export function EquipoView() {
           label="Requieren atención"
           value={String(kpis.sinAcceso + kpis.inactivos)}
           accent={kpis.sinAcceso + kpis.inactivos > 0 ? "warning" : "muted"}
+          barra={kpis.sinAcceso + kpis.inactivos > 0
+            ? { pct: pctDe(kpis.sinAcceso + kpis.inactivos, kpis.total), label: `${Math.round(pctDe(kpis.sinAcceso + kpis.inactivos, kpis.total))}% del equipo` }
+            : undefined}
           sub={
             kpis.sinAcceso + kpis.inactivos === 0
               ? "todos con acceso activo"

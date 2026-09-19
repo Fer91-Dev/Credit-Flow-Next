@@ -14,7 +14,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { useToast } from "@/components/ui/toast";
 import { useConfirm } from "@/components/ui/confirm";
 import { PLANES, type PlanClave } from "@/lib/planes";
-import { formatFecha, formatFechaHora, formatMonto, parseMontoInput, numeroAInput, esEmailValido, formatDias } from "@/lib/utils";
+import { formatFecha, formatFechaHora, formatMonto, parseMontoInput, numeroAInput, esEmailValido, formatDias, pctDe } from "@/lib/utils";
 
 interface TenantRow {
   id: string;
@@ -90,9 +90,17 @@ export function PlataformaView() {
         <>
           <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
             <KpiCard icon="office-building" label="Financieras" value={String(total)} accent="primary" />
-            <KpiCard icon="sparkles" label="En plan Pro" value={String(enPro)} accent="success" />
+            <KpiCard
+              icon="sparkles" label="En plan Pro" value={String(enPro)} accent="success"
+              sub={total > 0 ? `de ${total} financiera${total === 1 ? "" : "s"}` : undefined}
+              barra={enPro > 0 ? { pct: pctDe(enPro, total), label: `${Math.round(pctDe(enPro, total))}%` } : undefined}
+            />
             <KpiCard icon="alarm-clock" label="Por vencer (≤7 días)" value={String(porVencer)} accent="warning" pulse={porVencer > 0} />
-            <KpiCard icon="warning" label="Suspendidas" value={String(suspendidas)} accent="destructive" />
+            <KpiCard
+              icon="warning" label="Suspendidas" value={String(suspendidas)} accent="destructive"
+              sub={suspendidas > 0 ? `de ${total}` : undefined}
+              barra={suspendidas > 0 ? { pct: pctDe(suspendidas, total), label: `${Math.round(pctDe(suspendidas, total))}%` } : undefined}
+            />
           </div>
 
           {crearOpen && (

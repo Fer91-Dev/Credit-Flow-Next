@@ -10,7 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { BuscadorF3 } from "@/components/ui/BuscadorF3";
 import { guardarSeleccionCampana, guardarTipoCampana } from "./seleccion-campana";
 import { esCreditoVivo, contactoBloqueado } from "@/lib/domain";
-import { formatMonto, formatFecha, nombreCompleto, formatCreditoNumero, hoyComercial } from "@/lib/utils";
+import { formatMonto, formatFecha, nombreCompleto, formatCreditoNumero, hoyComercial, pctDe } from "@/lib/utils";
 import { CreditoLink } from "@/components/ui/CreditoLink";
 
 /** YYYY-MM-DD del día comercial argentino, corrido `n` días. */
@@ -124,12 +124,17 @@ export function VencimientosTab() {
     <div className="space-y-5">
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <KpiCard icon="calendar" label="Vencen en el rango" value={String(filas.length)} accent="primary" />
-        <KpiCard icon="alarm-clock" label="Vencen hoy" value={String(venceHoy)} accent={venceHoy > 0 ? "warning" : "muted"} />
+        <KpiCard
+          icon="alarm-clock" label="Vencen hoy" value={String(venceHoy)} accent={venceHoy > 0 ? "warning" : "muted"}
+          sub={venceHoy > 0 ? `de ${filas.length} del rango` : "ninguna hoy"}
+          barra={venceHoy > 0 ? { pct: pctDe(venceHoy, filas.length), label: `${Math.round(pctDe(venceHoy, filas.length))}%` } : undefined}
+        />
         <KpiCard icon="money-bag" label="A cobrar en el rango" value={formatMonto(totalRango)} accent="success" mono />
         <KpiCard
           icon="telephone" label="Sin forma de contacto" value={String(sinContacto)}
           accent={sinContacto > 0 ? "destructive" : "muted"}
           sub={sinContacto > 0 ? "no les llega la campaña" : "todos contactables"}
+          barra={sinContacto > 0 ? { pct: pctDe(sinContacto, filas.length), label: `${Math.round(pctDe(sinContacto, filas.length))}%` } : undefined}
         />
       </div>
 
