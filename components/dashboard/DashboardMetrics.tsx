@@ -129,6 +129,13 @@ export function DashboardKpis({ data }: { data: DashboardData }) {
 export function DashboardDinero({ data, acciones }: { data: DashboardData; acciones?: React.ReactNode }) {
   const { resumen } = data;
   const prestado = resumen.capital_en_calle ?? resumen.cartera_total;
+  // El dato que acompaña a cada cifra, no una frase que la explique (regla: datos, no
+  // párrafos). Prestado: en cuántas operaciones y a cuánta gente está colocado. Deuda: en
+  // cuántas cuotas está repartida. Fernando (19/09/2026).
+  const nCreditos = resumen.creditos_activos ?? 0;
+  const nClientes = resumen.clientes_con_credito ?? 0;
+  const nCuotas = resumen.cuotas_por_cobrar ?? 0;
+  const plural = (n: number, uno: string, varios: string) => `${n} ${n === 1 ? uno : varios}`;
   const deuda = resumen.a_cobrar_total ?? 0;
   const ganancia = Math.max(0, deuda - prestado);
   const pctCapital = deuda > 0 ? Math.round((prestado / deuda) * 100) : 0;
@@ -148,7 +155,7 @@ export function DashboardDinero({ data, acciones }: { data: DashboardData; accio
   }, [pctCapital, reducir]);
 
   return (
-    <div className="group animate-entrada relative overflow-hidden rounded-2xl border border-border/70 bg-card px-6 py-7 sm:px-8 sm:py-9
+    <div className="group animate-entrada relative overflow-hidden rounded-2xl border border-border/70 bg-card px-5 py-5 sm:px-6 sm:py-6
       shadow-[0_1px_2px_rgba(0,0,0,0.3),0_12px_30px_-16px_rgba(0,0,0,0.7)]
       transition-all duration-300 hover:-translate-y-0.5 hover:border-border
       hover:shadow-[0_1px_2px_rgba(0,0,0,0.3),0_22px_50px_-20px_rgba(0,0,0,0.85)]
@@ -166,27 +173,34 @@ export function DashboardDinero({ data, acciones }: { data: DashboardData; accio
       */}
       {acciones && <div className="absolute right-4 top-4 z-10 sm:right-6 sm:top-6">{acciones}</div>}
 
-      <div className="relative grid gap-8 sm:grid-cols-2 sm:gap-10">
-        <div className="flex items-start gap-4">
+      <div className="relative grid gap-5 sm:grid-cols-2 sm:gap-8">
+        <div className="flex items-start gap-3">
           <IconBadge emoji="money-with-wings" accent="success" hoverable />
           <div className="min-w-0">
             <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Prestado</p>
-            <p className="mt-2 font-mono text-3xl font-bold tabular-nums text-success sm:text-4xl">
+            <p className="mt-1.5 font-mono text-2xl font-bold tabular-nums text-success sm:text-[28px]">
               <NumeroAnimado valor={prestado} decimales={2} prefijo="$" />
             </p>
-            <p className="mt-1.5 text-[11px] text-muted-foreground">capital en la calle</p>
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              <span className="font-mono font-semibold tabular-nums text-foreground">{plural(nCreditos, "crédito", "créditos")}</span>
+              <span className="px-1 text-muted-foreground/70">·</span>
+              <span className="font-mono font-semibold tabular-nums text-foreground">{plural(nClientes, "cliente", "clientes")}</span>
+            </p>
           </div>
         </div>
 
         {/* La línea divisoria solo en desktop: apilado, dos cifras seguidas ya se leen separadas. */}
-        <div className="flex items-start gap-4 sm:border-l sm:border-border/70 sm:pl-10">
+        <div className="flex items-start gap-3 sm:border-l sm:border-border/70 sm:pl-8">
           <IconBadge emoji="chart-increasing" accent="destructive" hoverable />
           <div className="min-w-0">
             <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Deuda total</p>
-            <p className="mt-2 font-mono text-3xl font-bold tabular-nums text-destructive sm:text-4xl">
+            <p className="mt-1.5 font-mono text-2xl font-bold tabular-nums text-destructive sm:text-[28px]">
               <NumeroAnimado valor={deuda} decimales={2} prefijo="$" />
             </p>
-            <p className="mt-1.5 text-[11px] text-muted-foreground">lo que deben los clientes</p>
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              <span className="font-mono font-semibold tabular-nums text-foreground">{plural(nCuotas, "cuota", "cuotas")}</span>
+              {" por cobrar"}
+            </p>
           </div>
         </div>
       </div>
@@ -196,8 +210,8 @@ export function DashboardDinero({ data, acciones }: { data: DashboardData; accio
         que se vea de un vistazo qué parte de lo que le deben es plata que puso la financiera
         y qué parte es lo que gana. Sin la barra habría que restar dos números de memoria.
       */}
-      <div className="relative mt-8 border-t border-border/50 pt-6">
-        <div className="relative flex h-3 w-full overflow-hidden rounded-full bg-muted/40">
+      <div className="relative mt-5 border-t border-border/50 pt-4">
+        <div className="relative flex h-2.5 w-full overflow-hidden rounded-full bg-muted/40">
           <div
             className="relative bg-success transition-[width] duration-[1100ms] ease-out motion-reduce:transition-none"
             style={{ width: `${anchoCapital}%` }}
@@ -208,7 +222,7 @@ export function DashboardDinero({ data, acciones }: { data: DashboardData; accio
             <div className="pointer-events-none absolute inset-y-0 left-0 w-1/4 animate-brillo-barra bg-gradient-to-r from-transparent via-white/25 to-transparent" />
           )}
         </div>
-        <div className="mt-3 flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2">
+        <div className="mt-2.5 flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2">
           <span className="flex items-baseline gap-1.5 text-[11px] text-muted-foreground">
             <span className="inline-block h-2 w-2 shrink-0 translate-y-px rounded-full bg-success" />
             Capital

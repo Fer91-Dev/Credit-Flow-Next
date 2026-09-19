@@ -1218,6 +1218,8 @@ export interface DashboardData {
     capital_en_calle: number;
     /** Lo que falta cobrar de los créditos vivos: capital + interés + cargos, SIN punitorios. */
     a_cobrar_total: number;
+    /** En cuántas cuotas vivas está repartida la deuda. */
+    cuotas_por_cobrar?: number;
     mora_critica_count: number;
   };
   /** Movimiento del día comercial argentino. Es el pulso "en vivo" del panel. */

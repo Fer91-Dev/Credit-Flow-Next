@@ -316,6 +316,8 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
       capital_en_calle: carteraTotal,
       /** Lo que falta cobrar de los créditos vivos (capital + interés + cargos, sin mora). */
       a_cobrar_total: aCobrarTotal,
+      /** En cuántas cuotas está repartida esa deuda: el dato que acompaña al importe. */
+      cuotas_por_cobrar: cuotasVivas.length,
       mora_critica_count: moraCritica,
     },
     hoy: {
