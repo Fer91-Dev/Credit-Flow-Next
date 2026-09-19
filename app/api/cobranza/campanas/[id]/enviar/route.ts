@@ -7,6 +7,7 @@ import { construirMensajeCampana, linkWhatsapp, contactoBloqueado, esCreditoVivo
 import { enviarWhatsappApi, whatsappApiDisponible, type WhatsappApiConfig } from "@/lib/whatsapp";
 import { nombreCompleto, formatFecha } from "@/lib/utils";
 import { enviarEmailTenant, motivoEmailNoDisponible, type EmailTenantConfig } from "@/lib/mailer-tenant";
+import { enviarSmsTenant, motivoSmsNoDisponible, type SmsConfig } from "@/lib/sms";
 import { getFinanciera } from "@/lib/financiera";
 import { registrarAuditoria } from "@/lib/audit";
 import type { NextRequest } from "next/server";
@@ -290,15 +291,37 @@ export const POST = withErrorHandler(async (
         // "enviado" —el sistema no lo mandó— pero sí como resuelto, para que no vuelva a
         // aparecer como pendiente en cada tanda.
         const link = linkWhatsapp(telefono, mensaje) ?? undefined;
+        /**
+         * 🔴 TAMBIÉN ES UNA GESTIÓN. Fernando (18/09/2026): "después de la campaña, Morosos
+         * sigue mostrando a los doce". El envío manual (que es el caso normal sin API de
+         * Meta) no dejaba rastro en la ficha: el operador abría wa.me, mandaba, y para el
+         * sistema nadie lo había contactado. Queda registrada como campaña, con el link.
+         */
+        if (link) {
+          await prisma.acciones_cobranza.create({
+            data: { tenant_id: tenantId, credito_id: objetivo.credito_id, tipo: "whatsapp", resultado: "contactado", nota: `[CAMPAÑA:${id}] ${campana.nombre} · WhatsApp abierto para mandar a mano`, automatico: true },
+          });
+        }
         await marcar(objetivo.id, "manual", link ? undefined : "Sin teléfono registrado");
         resultados.push({ cliente_id: clienteId, nombre, metodo: "manual", link });
       }
       continue;
     }
 
-    // ── SMS (stub) ────────────────────────────────────────────────────────────
-    await marcar(objetivo.id, "manual", "SMS no implementado aún");
-    resultados.push({ cliente_id: clienteId, nombre, metodo: "manual", error: "SMS no implementado aún" });
+    // ── SMS (SMSChef: el celular de la financiera) ────────────────────────────
+    const smsCfg = comm.smsConfig as SmsConfig | null;
+    const impedimentoSms = motivoSmsNoDisponible(smsCfg);
+    if (impedimentoSms) {
+      await marcar(objetivo.id, "error", impedimentoSms);
+      resultados.push({ cliente_id: clienteId, nombre, metodo: "api", ok: false, error: impedimentoSms });
+      continue;
+    }
+    const rs = await enviarSmsTenant(smsCfg, { telefono, mensaje });
+    await prisma.acciones_cobranza.create({
+      data: { tenant_id: tenantId, credito_id: objetivo.credito_id, tipo: "sms", resultado: rs.ok ? "contactado" : "no_contesta", nota: `[CAMPAÑA:${id}] ${campana.nombre} · SMS ${rs.ok ? "enviado" : `error: ${rs.error}`}`, automatico: true },
+    });
+    await marcar(objetivo.id, rs.ok ? "enviado" : "error", rs.error);
+    resultados.push({ cliente_id: clienteId, nombre, metodo: "api", ok: rs.ok, error: rs.error });
   }
 
   // Estado real después de esta tanda, leído de la base y no del contador en memoria: es lo

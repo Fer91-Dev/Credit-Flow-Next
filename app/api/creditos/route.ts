@@ -161,6 +161,18 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
       _count: { _all: true },
     })).map((r) => [r.credito_id, r._count._all]),
   );
+  /**
+   * ÚLTIMO CONTACTO por crédito (gestión humana o automática, campaña incluida). Fernando
+   * (18/09/2026): después de mandar una campaña, Morosos seguía mostrando a los doce como si
+   * nadie los hubiera tocado. Una consulta para toda la lista: la más reciente de cada uno.
+   */
+  const ultimoContacto = new Map<string, { fecha: Date; tipo: string; campana: boolean }>();
+  for (const a of await prisma.acciones_cobranza.findMany({
+    where: { ...withTenant(tenantId), credito_id: { in: creditos.map((c) => c.id) } },
+    select: { credito_id: true, created_at: true, tipo: true, nota: true },
+    orderBy: { created_at: "desc" },
+    distinct: ["credito_id"],
+  })) ultimoContacto.set(a.credito_id, { fecha: a.created_at, tipo: a.tipo, campana: (a.nota ?? "").startsWith("[CAMPAÑA") });
   const cobradoPostCastigo = new Map<string, number>();
   if (incobrables.length > 0) {
     const pagos = await prisma.pagos.findMany({
@@ -376,7 +388,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
       prestado_cadena: cadena?.prestado ?? null, recuperado_cadena: cadena?.recuperado ?? null,
       /** Lo que pagó DESPUÉS del castigo. 0 en todo lo que no es incobrable. */
       deuda_refinanciacion,
-      cobrado_post_castigo: cobradoPostCastigo.get(c.id) ?? 0, tiene_pagos: c.pagos.length > 0, cobros_vivos: c._count.pagos > 0, acuerdo: acuerdosVig.get(c.id) ?? null };
+      cobrado_post_castigo: cobradoPostCastigo.get(c.id) ?? 0, tiene_pagos: c.pagos.length > 0, cobros_vivos: c._count.pagos > 0, acuerdo: acuerdosVig.get(c.id) ?? null, ultimo_contacto: ultimoContacto.get(c.id) ?? null };
   });
 
   /**

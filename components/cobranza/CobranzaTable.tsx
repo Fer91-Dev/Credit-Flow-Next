@@ -8,7 +8,7 @@ import { AlertCircle, Phone, Mail, Clock, Copy, CheckCheck, Search, DollarSign, 
 import { WhatsAppIcon } from "@/components/ui/WhatsAppIcon";
 import { MessageSquareText } from "lucide-react";
 import { descargarCSV } from "@/lib/csv";
-import { useCreditos, useAccionesCobranza, type Credito, type AccionCobranza, type AgendaItem, useTramosMora, useAlertaCobranza } from "@/lib/swr";
+import { useCreditos, useAccionesCobranza, type Credito, type AccionCobranza, type AgendaItem, useTramosMora, useAlertaCobranza, useDiasSinGestion } from "@/lib/swr";
 import { type Role } from "@/lib/auth/roles";
 import { formatFecha, nombreCompleto, formatDias, formatMonto, formatCreditoNumero } from "@/lib/utils";
 import { CreditoLink } from "@/components/ui/CreditoLink";
@@ -35,9 +35,6 @@ import { useToast } from "@/components/ui/toast";
 import { useConfirm } from "@/components/ui/confirm";
 import { esCreditoVivo, contactoBloqueado, severidadMora, normalizarTelefonoAR } from "@/lib/domain";
 
-function n0(x: number) {
-  return new Intl.NumberFormat("es-AR", { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(x);
-}
 
 const fmtDate = (s: string) => formatFecha(s);
 
@@ -97,6 +94,7 @@ const TABS_VALIDOS: Tab[] = ["hoy", "vencimientos", "morosos", "acuerdos", "plan
 export function CobranzaTable({ role }: { role: Role }) {
   /** Los cortes media/alta/crítica que definió la financiera (Configuración → Cobranza). */
   const tramos = useTramosMora();
+  const diasSinGestion = useDiasSinGestion();
   // Campañas (selección masiva + ActionToolbar + pestaña): admin (toda la cartera) y
   // vendedor (scopeado a SUS créditos, tanto en la selección como en el backend).
   const puedeCampanas = role === "admin" || role === "vendedor";
@@ -116,6 +114,14 @@ export function CobranzaTable({ role }: { role: Role }) {
    * operador, a propósito.
    */
   const [filterMora, setFilter] = useState<Severidad>("todas");
+  /**
+   * CONTACTO: "todos" | "sin_reciente" (nadie lo tocó en los últimos N días) | "reciente".
+   * Fernando (18/09/2026): después de mandar una campaña, Morosos seguía mostrando a los
+   * doce igual; sin este filtro se les volvía a escribir a todos. Con "sin contacto
+   * reciente" la próxima campaña sale solo a los que faltan. N es `dias_sin_gestion` de
+   * Configuración → Cobranza, el mismo umbral con el que la agenda decide "enfriado".
+   */
+  const [filterContacto, setFilterContacto] = useState<"todos" | "sin_reciente" | "reciente">("todos");
   const [search, setSearch]     = useState("");
   /**
    * Los nombres de los tramos salen de la CONFIG del tenant, no escritos a mano: los cortes
@@ -126,8 +132,13 @@ export function CobranzaTable({ role }: { role: Role }) {
     alta: `Mora alta (${formatDias(tramos.media_hasta + 1)} a ${formatDias(tramos.alta_hasta)})`,
     critica: `Mora crítica (más de ${formatDias(tramos.alta_hasta)})`,
   } as const;
-  const resumenFiltros = filterMora === "todas" ? undefined : SEVERIDAD_LABEL[filterMora];
-  const limpiarTodo = () => { setSearch(""); setFilter("todas"); };
+  const etiquetasFiltro = [
+    filterMora !== "todas" ? SEVERIDAD_LABEL[filterMora] : null,
+    filterContacto === "sin_reciente" ? "Sin contacto reciente" : filterContacto === "reciente" ? "Contactados hace poco" : null,
+  ].filter((x): x is string => !!x);
+  const filtrosActivos = etiquetasFiltro.length;
+  const resumenFiltros = filtrosActivos === 1 ? etiquetasFiltro[0] : filtrosActivos > 1 ? `${filtrosActivos} filtros` : undefined;
+  const limpiarTodo = () => { setSearch(""); setFilter("todas"); setFilterContacto("todos"); };
   const [copiedId, setCopied]   = useState<string | null>(null);
   const [gestion, setGestion]   = useState<CreditoCtx | null>(null);
   /** Crédito sobre el que se está armando un acuerdo de pago (null = cerrado). */
@@ -265,13 +276,17 @@ export function CobranzaTable({ role }: { role: Role }) {
       if (filterMora === "critica") return severidadMora(c.dias_mora, tramos) === "critica";
       if (filterMora === "alta")    return severidadMora(c.dias_mora, tramos) === "alta";
       return true;
+    }).filter(c => {
+      if (filterContacto === "todos") return true;
+      const reciente = diasDesdeContacto(c) != null && diasDesdeContacto(c)! < diasSinGestion;
+      return filterContacto === "reciente" ? reciente : !reciente;
     });
     const q = search.trim().toLowerCase();
     return q
       // Por nombre O por número de crédito: si la fila muestra CRD-000007, tiene que poder buscarse.
       ? bySeveridad.filter(c => nombreCompleto(c.cliente).toLowerCase().includes(q) || formatCreditoNumero(c.numero, c.refinancia_a_numero).toLowerCase().includes(q))
       : bySeveridad;
-  }, [creditos, filterMora, search, tramos]);
+  }, [creditos, filterMora, filterContacto, search, tramos, diasSinGestion]);
 
   // KPIs from all mora data (portfolio picture)
   const kpis = useMemo(() => ({
@@ -622,7 +637,7 @@ export function CobranzaTable({ role }: { role: Role }) {
           active={filterMora === "todas"}
         />
         {/* Es una SUMA, no un subconjunto: no hay "los créditos del saldo expuesto". */}
-        <KpiCard icon="dollar-banknote" label="Saldo expuesto" value={`$${n0(kpis.saldo)}`} accent={kpis.saldo > 0 ? "warning" : "muted"} mono />
+        <KpiCard icon="dollar-banknote" label="Saldo expuesto" value={`${formatMonto(kpis.saldo)}`} accent={kpis.saldo > 0 ? "warning" : "muted"} mono />
         <KpiCard
           icon="shield" label="Mora crítica (+30d)" value={String(kpis.critica)}
           accent={kpis.critica > 0 ? "destructive" : "muted"}
@@ -650,8 +665,8 @@ export function CobranzaTable({ role }: { role: Role }) {
             <FiltrosPanel embebido
               label="Filtrar"
               resumen={resumenFiltros}
-              activos={filterMora === "todas" ? 0 : 1}
-            // Sin `onLimpiar`: hay UN solo "Limpiar filtros", el del encabezado de la tabla (skill front §8e).> setFilter("todas")}
+              activos={filtrosActivos}
+            // Sin `onLimpiar`: hay UN solo "Limpiar filtros", el del encabezado de la tabla (skill front §8e).
               align="right"
               width={280}
             >
@@ -669,6 +684,17 @@ export function CobranzaTable({ role }: { role: Role }) {
                     <option value="todas">Toda la mora</option>
                     <option value="alta">{SEVERIDAD_LABEL.alta}</option>
                     <option value="critica">{SEVERIDAD_LABEL.critica}</option>
+                  </select>
+                  <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                </div>
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className="text-[11px] font-medium text-muted-foreground">Contacto</span>
+                <div className="relative">
+                  <select value={filterContacto} onChange={(e) => setFilterContacto(e.target.value as typeof filterContacto)} className={SEL_FILTRO}>
+                    <option value="todos">Todos</option>
+                    <option value="sin_reciente">Sin contacto en los últimos {formatDias(diasSinGestion)}</option>
+                    <option value="reciente">Contactados en los últimos {formatDias(diasSinGestion)}</option>
                   </select>
                   <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 </div>
@@ -782,7 +808,7 @@ export function CobranzaTable({ role }: { role: Role }) {
                 </span>
               </td>
               <td className="px-4 py-3 text-right font-mono font-bold text-destructive border-t border-border">
-                ${n0(sortedFiltered.reduce((s, c) => s + (c.interes_mora ?? 0), 0))}
+                {formatMonto(sortedFiltered.reduce((s, c) => s + (c.interes_mora ?? 0), 0))}
               </td>
               <td colSpan={3} className="border-t border-border pr-5" />
             </tr>
@@ -914,12 +940,17 @@ export function CobranzaTable({ role }: { role: Role }) {
             {
               header: <span className="text-destructive">Interés mora</span>, align: "right", mono: true,
               cell: (c) => c.interes_mora && c.interes_mora > 0
-                ? <span className="text-destructive font-semibold">${n0(c.interes_mora)}</span>
+                ? <span className="text-destructive font-semibold">{formatMonto(c.interes_mora)}</span>
                 : <span className="text-muted-foreground/20">—</span>,
             },
             {
               header: "Días mora", align: "center",
               cell: (c) => <span className={`font-mono font-bold text-sm ${severidadMora(c.dias_mora, tramos) === "critica" ? "text-destructive" : "text-warning"}`}>{formatDias(c.dias_mora)}</span>,
+            },
+            {
+              // Cuándo se lo tocó por última vez y por dónde. "Campaña" si fue un envío masivo.
+              header: "Último contacto", className: "hidden lg:table-cell",
+              cell: (c) => <UltimoContacto c={c} umbral={diasSinGestion} />,
             },
             {
               header: "Severidad", align: "center",
@@ -1029,7 +1060,7 @@ export function CobranzaTable({ role }: { role: Role }) {
                 {c.interes_mora && c.interes_mora > 0 && (
                   <div className="flex items-center justify-between text-xs">
                     <span className="text-muted-foreground">Interés por mora</span>
-                    <span className="font-mono font-semibold text-destructive">${n0(c.interes_mora)}</span>
+                    <span className="font-mono font-semibold text-destructive">{formatMonto(c.interes_mora)}</span>
                   </div>
                 )}
                 {(c.cliente.email || c.cliente.telefono) && (
@@ -1229,15 +1260,15 @@ function EsperadoVsMora({
       <div className="grid grid-cols-3 gap-3 mt-4">
         <div>
           <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-1">Total esperado</p>
-          <p className="text-sm font-bold text-foreground font-mono">${n0(esperado)}</p>
+          <p className="text-sm font-bold text-foreground font-mono">{formatMonto(esperado)}</p>
         </div>
         <div>
           <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-1">Al día</p>
-          <p className="text-sm font-bold text-success font-mono">${n0(alDia)}</p>
+          <p className="text-sm font-bold text-success font-mono">{formatMonto(alDia)}</p>
         </div>
         <div>
           <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-1">En mora</p>
-          <p className="text-sm font-bold text-destructive font-mono">${n0(enMora)}</p>
+          <p className="text-sm font-bold text-destructive font-mono">{formatMonto(enMora)}</p>
         </div>
       </div>
     </div>
@@ -1296,5 +1327,25 @@ function BodySkeleton() {
         {[...Array(5)].map((_, i) => <Skeleton key={i} className="h-20 rounded-xl" />)}
       </div>
     </div>
+  );
+}
+
+/** Días desde la última gestión (humana o campaña); null si nunca se lo contactó. */
+function diasDesdeContacto(c: Credito): number | null {
+  if (!c.ultimo_contacto) return null;
+  return Math.floor((Date.now() - new Date(c.ultimo_contacto.fecha).getTime()) / 86_400_000);
+}
+
+const TIPO_CONTACTO: Record<string, string> = { llamada: "llamada", whatsapp: "WhatsApp", sms: "SMS", email: "email", visita: "visita", otro: "gestión" };
+
+function UltimoContacto({ c, umbral }: { c: Credito; umbral: number }) {
+  const d = diasDesdeContacto(c);
+  if (d == null) return <span className="text-xs text-muted-foreground/50">Nunca</span>;
+  const reciente = d < umbral;
+  const via = c.ultimo_contacto!.campana ? "campaña" : TIPO_CONTACTO[c.ultimo_contacto!.tipo] ?? c.ultimo_contacto!.tipo;
+  return (
+    <span className={`text-xs ${reciente ? "text-success" : "text-muted-foreground"}`}>
+      {d === 0 ? "Hoy" : d === 1 ? "Ayer" : `Hace ${formatDias(d)}`} <span className="text-muted-foreground/60">· {via}</span>
+    </span>
   );
 }

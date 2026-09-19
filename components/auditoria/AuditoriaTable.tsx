@@ -164,7 +164,7 @@ export function AuditoriaTable() {
                 activos={etiquetasFiltro.length}
                 // Limpia también la ventana, que se prende desde los KPI: si no, "Limpiar"
                 // dejaba la lista recortada a los eventos de hoy.
-            // Sin `onLimpiar`: hay UN solo "Limpiar filtros", el del encabezado de la tabla (skill front §8e).> { setEntidad("all"); setVentana("todos"); }}
+            // Sin `onLimpiar`: hay UN solo "Limpiar filtros", el del encabezado de la tabla (skill front §8e).
                 align="right"
               >
                 <label className="flex flex-col gap-1">

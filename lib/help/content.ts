@@ -379,7 +379,7 @@ const HELP: Record<string, HelpDoc> = {
         kind: "pasos",
         titulo: "Armar una campaña",
         pasos: [
-          "En Morosos, elegí a quién: filtrá por severidad (Crítica, Alta) o tildá clientes uno por uno.",
+          "En Morosos, elegí a quién: filtrá por severidad (Crítica, Alta) o tildá clientes uno por uno. La columna «Último contacto» dice cuándo se lo tocó por última vez y por dónde (campaña incluida); el filtro «Sin contacto en los últimos N días» deja afuera a los que ya recibieron algo, así la campaña siguiente sale solo a los que faltan. N es el umbral de la agenda (Configuración → Cobranza).",
           "Botón «Nueva campaña»: el número que muestra es sobre cuántos va a trabajar. Sin nada tildado, toma los que estás viendo. Se abre en pantalla completa; si volvés, la selección queda como estaba.",
           "Elegí canal y escribí el mensaje. Los datos entre corchetes —[Nombre], [Monto]— se reemplazan por los de cada cliente; abajo del texto ves el mensaje ya armado con los datos del primero de la lista.",
           "Opcional: descuento sobre el interés de mora, como incentivo para que paguen ahora. Es un porcentaje de 0 a 100 de los punitorios; un vendedor no puede pasar su «Descuento máximo» de Configuración → Cobranza → Acuerdos, y nadie puede pasar el 100%.",

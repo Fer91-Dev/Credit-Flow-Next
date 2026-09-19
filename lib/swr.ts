@@ -183,6 +183,8 @@ export interface CreditoConFinanzas {
    * dejó de ser el compromiso: lo que se cobra es la cuota pactada.
    */
   acuerdo?: AcuerdoDelCredito | null;
+  /** La gestión más reciente (humana o de campaña): cuándo, por qué canal y si fue una campaña. */
+  ultimo_contacto?: { fecha: string; tipo: string; campana: boolean } | null;
   numero?: number | null;
   tipo_credito: string;
   monto_original: number;
@@ -287,6 +289,8 @@ export interface ClienteDetalle extends Cliente {
 export interface Credito {
   /** Acuerdo de pago vigente (null = no tiene). Ver `AcuerdoDelCredito`. */
   acuerdo?: AcuerdoDelCredito | null;
+  /** La gestión más reciente (humana o de campaña): cuándo, por qué canal y si fue una campaña. */
+  ultimo_contacto?: { fecha: string; tipo: string; campana: boolean } | null;
   id: string;
   numero?: number | null;
   /** Número del crédito que esta refinanciación reemplaza: se muestra como REF-XXXXXX. */
@@ -2112,6 +2116,12 @@ export function useConfiguracion() {
  * Cae al default mientras la config carga, que es el valor con el que el sistema venía
  * funcionando: nunca clasifica con basura.
  */
+/** Cada cuántos días un moroso sin gestión vuelve a la cola (Configuración → Cobranza). */
+export function useDiasSinGestion(): number {
+  const { config } = useConfiguracion();
+  return Number(config?.cobranzaConfig?.dias_sin_gestion ?? 7);
+}
+
 export function useTramosMora(): TramosMora {
   const { config } = useConfiguracion();
   return config?.cobranzaConfig?.tramos_mora ?? TRAMOS_MORA_DEFAULT;

@@ -170,7 +170,7 @@ export function ProductosView() {
               label="Filtrar"
               resumen={resumenFiltros}
               activos={filtrosActivos}
-            // Sin `onLimpiar`: hay UN solo "Limpiar filtros", el del encabezado de la tabla (skill front §8e).> { setCatFiltro(""); setSoloActivos(false); setSoloBajoStock(false); }}
+            // Sin `onLimpiar`: hay UN solo "Limpiar filtros", el del encabezado de la tabla (skill front §8e).
               align="right"
             >
               {/* El criterio de ESTA sección: categoría, si se muestran los dados de baja y si
