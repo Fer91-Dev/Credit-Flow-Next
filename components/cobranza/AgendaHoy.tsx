@@ -10,6 +10,7 @@ import {
 import { WhatsAppIcon } from "@/components/ui/WhatsAppIcon";
 import { useAgendaCobranza, type AgendaItem, useTramosMora } from "@/lib/swr";
 import { CreditoLink } from "@/components/ui/CreditoLink";
+import { Nota } from "@/components/ui/Nota";
 import { formatMonto, formatFecha, formatCreditoNumero, teclaDelContenedor, formatDias } from "@/lib/utils";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { KpiCard } from "@/components/ui/KpiCard";
@@ -122,34 +123,33 @@ export function AgendaHoy({
 
   return (
     <div className="space-y-6">
-      {/* Resumen del día: título + KPIs (mismo estilo que el Home) */}
+      {/* Resumen del día: la nota que dice qué estás mirando + los KPIs. */}
       <div className="space-y-4">
-        <div className="group flex items-center gap-2.5">
-          <IconBadge emoji="dollar-banknote" accent="primary" pulse={total > 0} hoverable />
-          <div>
-            <h3 className="text-sm font-semibold text-foreground">
-              Tu agenda de hoy
-              {/* Qué se está mirando, cuando no es todo. */}
-              {filtro && (
-                <span className="ml-2 text-xs font-normal text-primary">
-                  · {BUCKETS.find((b) => b.key === filtro)?.titulo}
-                </span>
-              )}
-            </h3>
-            <p className="text-[11px] text-muted-foreground/70">
-              {filtro
-                ? `${filtrados.length} de ${total} cliente${total !== 1 ? "s" : ""}`
-                : `${total} cliente${total !== 1 ? "s" : ""} para contactar. Dentro de cada grupo, primero ${
-                    agenda?.orden === "monto" ? "el que más plata debe" : "el que hace más días que no paga"
-                  }.`}
-              {/* Los que NO están, y por qué: cumplen un acuerdo. Sin este dato la agenda
-                  parecía olvidarse de ellos (Fernando, 18/09/2026). */}
-              {!filtro && (agenda?.totales.con_acuerdo_al_dia ?? 0) > 0 && (
-                <> Además, {agenda!.totales.con_acuerdo_al_dia} con acuerdo de pago al día, que no se {agenda!.totales.con_acuerdo_al_dia === 1 ? "llama" : "llaman"}.</>
-              )}
-            </p>
-          </div>
-        </div>
+        {/*
+          Fernando (19/09/2026): "estos textos quedan muy planos". El subtítulo de la agenda
+          era un renglón gris de 11px colgado del título; ahora es una `Nota` con forma —caja
+          teñida, ícono, título y la explicación debajo—, que es como se ven las aclaraciones
+          del resto del sistema.
+        */}
+        <Nota
+          emoji="dollar-banknote"
+          acento={total > 0 ? "primary" : "success"}
+          titulo={filtro
+            ? <>Tu agenda de hoy <span className="font-normal text-muted-foreground">· {BUCKETS.find((b) => b.key === filtro)?.titulo}</span></>
+            : "Tu agenda de hoy"}
+        >
+          {filtro
+            ? <><span className="font-semibold text-foreground">{filtrados.length}</span> de {total} cliente{total !== 1 ? "s" : ""} en este grupo.</>
+            : <>
+                <span className="font-semibold text-foreground">{total}</span> cliente{total !== 1 ? "s" : ""} para contactar.
+                {" "}Dentro de cada grupo, primero {agenda?.orden === "monto" ? "el que más plata debe" : "el que hace más días que no paga"}.
+                {/* Los que NO están, y por qué: cumplen un acuerdo. Sin este dato la agenda
+                    parecía olvidarse de ellos (Fernando, 18/09/2026). */}
+                {(agenda?.totales.con_acuerdo_al_dia ?? 0) > 0 && (
+                  <> Además, <span className="font-semibold text-foreground">{agenda!.totales.con_acuerdo_al_dia}</span> con acuerdo de pago al día, que no se {agenda!.totales.con_acuerdo_al_dia === 1 ? "llama" : "llaman"}.</>
+                )}
+              </>}
+        </Nota>
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-4">
           {BUCKETS.map((b) => {
             const n = agenda?.totales[b.key] ?? 0;
@@ -194,13 +194,13 @@ export function AgendaHoy({
         if (items.length === 0) return null;
         return (
           <section key={b.key} className="space-y-3">
-            <div className="flex items-center gap-2">
-              <div className={`flex h-6 w-6 items-center justify-center rounded-lg border ${ACCENT_RING[b.accent]}`}>
-                <b.icon className="h-3.5 w-3.5" />
-              </div>
+            {/* El título del grupo y su ayuda, en una tira con el color del grupo: el
+                texto deja de estar colgado al lado del título y se lee como una nota. */}
+            <div className={`flex flex-wrap items-center gap-x-2.5 gap-y-1 rounded-lg border px-3 py-2 ${ACCENT_RING[b.accent]}`}>
+              <b.icon className="h-4 w-4 shrink-0" />
               <h4 className="text-sm font-semibold text-foreground">{b.titulo}</h4>
-              <span className="text-xs text-muted-foreground/60">· {items.length}</span>
-              <span className="hidden sm:inline text-[11px] text-muted-foreground/50">{b.ayuda}</span>
+              <span className="rounded-full bg-background/40 px-1.5 py-0.5 text-[11px] font-bold tabular-nums">{items.length}</span>
+              <span className="hidden text-xs text-muted-foreground sm:inline">{b.ayuda}</span>
             </div>
 
             <div className="space-y-2">
