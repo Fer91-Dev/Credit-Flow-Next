@@ -86,7 +86,7 @@ export function KpiCard({ icon, label, value, accent = "muted", mono, sub, sujet
   return (
     <Root
       {...(onClick ? { type: "button" as const, onClick, "aria-pressed": !!active } : {})}
-      className={`group relative flex h-full w-full flex-col overflow-hidden rounded-2xl border bg-card p-4 text-left transition-all duration-300
+      className={`group @container/kpi relative flex h-full w-full flex-col overflow-hidden rounded-2xl border bg-card p-4 text-left transition-all duration-300
       ${pulse ? "border-destructive/40" : active ? "border-transparent" : "border-border/70"}
       shadow-[0_1px_2px_rgba(0,0,0,0.3),0_12px_30px_-16px_rgba(0,0,0,0.7)]
       hover:-translate-y-1 hover:shadow-[0_1px_2px_rgba(0,0,0,0.3),0_20px_45px_-18px_rgba(0,0,0,0.8)]
@@ -117,7 +117,13 @@ export function KpiCard({ icon, label, value, accent = "muted", mono, sub, sujet
 
       {sujeto && <p className="relative mt-3 flex items-center gap-2 text-sm font-semibold text-foreground">{sujeto}</p>}
 
-      <p className={`relative ${sujeto ? "mt-1.5" : "mt-3"} text-2xl font-bold leading-none tracking-tight tabular-nums ${c.text} ${mono ? "font-mono" : ""}`}>
+      {/*
+        EL TAMAÑO DEPENDE DEL ANCHO DE LA TARJETA, no del de la pantalla (`@container`): la
+        misma card mide 330px sola en el celular y 170px cuando van de a dos. Con un tamaño
+        fijo, un importe largo —"$20.921.124,69"— se comía el aire del borde y uno más largo
+        directamente se cortaba, porque la tarjeta recorta lo que se sale.
+      */}
+      <p className={`relative ${sujeto ? "mt-1.5" : "mt-3"} text-lg font-bold leading-none tracking-tight tabular-nums @[13rem]/kpi:text-2xl ${c.text} ${mono ? "font-mono" : ""}`}>
         {value}
       </p>
       {sub && <p className="relative mt-1.5 text-[11px] leading-relaxed text-muted-foreground">{sub}</p>}

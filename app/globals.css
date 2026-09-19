@@ -242,6 +242,21 @@ button:not(:disabled),
   background: transparent;
 }
 
+/* ─── Fila que se DESLIZA de costado (barras de pestañas angostas) ───────────
+   Una barra de pestañas más ancha que la pantalla tiene que poder deslizarse, no
+   cortarse: en Cobranzas y Recupero, en el celular, la fila se cortaba en "Acuerdos"
+   y no había manera de llegar a Incobrables ni a Campañas (Fernando, 19/09/2026).
+   El scrollbar se oculta a propósito: justo abajo está el borde de la barra, y una
+   barra gris de 10px encima se lee como un desperfecto, no como un control. */
+.fila-deslizable {
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;                 /* Firefox */
+  -webkit-overflow-scrolling: touch;     /* inercia en iOS */
+  overscroll-behavior-x: contain;        /* no arrastra la página al llegar al final */
+}
+.fila-deslizable::-webkit-scrollbar { display: none; }
+
 /* ─── Foco accesible global (navegación por teclado) ─────────────────────────
    Anillo de foco consistente en TODO lo interactivo (botones, links, filas/cards
    con role="button" o tabindex). Solo aparece con teclado (:focus-visible), no al

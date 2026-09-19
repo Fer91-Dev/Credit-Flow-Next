@@ -93,15 +93,21 @@ function itemsDePagina(actual: number, total: number): (number | "dots")[] {
   return items;
 }
 
-/** Paginador estilo TailGrids: Previous · números con "…" · Next. */
+/**
+ * Paginador estilo TailGrids: Anterior · números con "…" · Siguiente.
+ *
+ * En el celular los dos botones quedan SOLO con la flecha: con la palabra al lado, la fila
+ * medía 13px más que la pantalla y "Siguiente" quedaba cortado contra el borde — el control
+ * para pasar de página era justamente el que no se alcanzaba (Fernando, 19/09/2026).
+ */
 function TablePagination({ page, totalPages, onChange }: { page: number; totalPages: number; onChange: (p: number) => void }) {
-  const nav = "inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent";
+  const nav = "inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 sm:px-3 text-sm font-medium text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent";
   return (
-    <div className="flex items-center justify-between gap-2 border-t border-border px-4 py-3">
-      <button type="button" className={nav} disabled={page <= 1} onClick={() => onChange(page - 1)}>
-        <ChevronLeft className="h-4 w-4" /> Previous
+    <div className="flex items-center justify-between gap-2 border-t border-border px-3 py-3 sm:px-4">
+      <button type="button" className={nav} disabled={page <= 1} onClick={() => onChange(page - 1)} aria-label="Página anterior">
+        <ChevronLeft className="h-4 w-4" /> <span className="hidden sm:inline">Anterior</span>
       </button>
-      <div className="flex items-center gap-1">
+      <div className="flex min-w-0 items-center gap-1">
         {itemsDePagina(page, totalPages).map((it, i) =>
           it === "dots" ? (
             <span key={`d${i}`} className="flex h-8 min-w-8 items-center justify-center text-sm text-muted-foreground select-none">…</span>
@@ -118,8 +124,8 @@ function TablePagination({ page, totalPages, onChange }: { page: number; totalPa
           ),
         )}
       </div>
-      <button type="button" className={nav} disabled={page >= totalPages} onClick={() => onChange(page + 1)}>
-        Next <ChevronRight className="h-4 w-4" />
+      <button type="button" className={nav} disabled={page >= totalPages} onClick={() => onChange(page + 1)} aria-label="Página siguiente">
+        <span className="hidden sm:inline">Siguiente</span> <ChevronRight className="h-4 w-4" />
       </button>
     </div>
   );

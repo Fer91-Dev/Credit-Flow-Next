@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { useSWRConfig } from "swr";
@@ -174,6 +174,14 @@ export function CobranzaTable({ role }: { role: Role }) {
    */
   const [recorte, setRecorte] = useState(false);
 
+  /**
+   * LAS PESTAÑAS SE DESLIZAN EN EL CELULAR. Son siete y no entran en 390px: la fila se
+   * cortaba en "Acuerdos" y a Incobrables y Campañas no se llegaba de ninguna manera
+   * (Fernando, 19/09/2026). Además, al cambiar de pestaña se trae la elegida a la vista —
+   * si no, se toca una que está medio tapada y queda medio tapada.
+   */
+  const barraTabs = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     setMounted(true);
     /**
@@ -189,6 +197,16 @@ export function CobranzaTable({ role }: { role: Role }) {
     const ids = leerSeleccionCampana();
     if (ids.length) { setSeleccion(new Set(ids)); setRecorte(true); }
   }, []);
+
+  /**
+   * La pestaña elegida, siempre a la vista. En el celular la fila se desliza, así que la
+   * que se acaba de tocar —o la que vino en la URL— puede estar fuera de cuadro.
+   * `block: "nearest"` para que traerla de costado no mueva la página hacia arriba.
+   */
+  useEffect(() => {
+    const el = barraTabs.current?.querySelector<HTMLElement>(`[data-tab="${tab}"]`);
+    el?.scrollIntoView({ inline: "center", block: "nearest", behavior: "smooth" });
+  }, [tab]);
 
   /**
    * 🔴 A un fallecido no se le manda una campaña, así que tampoco se lo puede tildar.
@@ -535,7 +553,7 @@ export function CobranzaTable({ role }: { role: Role }) {
       />
 
       {/* ── Tabs: Hoy | Morosos | Promesas | Acuerdos | Campañas ── */}
-      <div className="relative flex gap-1 border-b border-border -mt-2">
+      <div ref={barraTabs} className="fila-deslizable relative -mt-2 flex gap-1 border-b border-border">
         {([
           ["hoy",      "Hoy",      "calendar"],
           // Vencimientos va ANTES de Morosos: es el paso previo. Avisarle al que le vence el
@@ -565,8 +583,11 @@ export function CobranzaTable({ role }: { role: Role }) {
         ] as [Tab, string, string][]).map(([key, label, emoji]) => (
           <button
             key={key}
+            data-tab={key}
             onClick={() => setTab(key)}
-            className={`relative flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium transition-colors duration-200 ${
+            // `shrink-0`: sin eso el flex las APRIETA hasta que entren y las últimas quedan
+            // ilegibles en vez de esperar del otro lado del deslizamiento.
+            className={`relative flex shrink-0 items-center gap-1.5 whitespace-nowrap px-4 py-2.5 text-sm font-medium transition-colors duration-200 ${
               tab === key ? "text-foreground" : "text-muted-foreground hover:text-foreground"
             }`}
           >
