@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { mutate as globalMutate } from "swr";
-import { Plus, Pencil, Trash2, ImagePlus, Loader2, X, Link as LinkIcon, LayoutGrid, List, ArrowDownToLine, SlidersHorizontal, Image as ImageIcon, ChevronLeft, ChevronRight, Info, GripVertical, Star, ChevronDown, History } from "lucide-react";
+import { Plus, Pencil, Trash2, X, LayoutGrid, List, ArrowDownToLine, SlidersHorizontal, Image as ImageIcon, ChevronLeft, ChevronRight, ChevronDown, History } from "lucide-react";
 import { BuscadorF3 } from "@/components/ui/BuscadorF3";
 import { FiltrosPanel } from "@/components/ui/FiltrosPanel";
 import { useProductos, useProducto, KEYS, type Producto, type MovimientoStock } from "@/lib/swr";
-import { parseMontoInput, formatFecha, formatFechaHora, formatCreditoNumero, teclaDelContenedor, pctDe } from "@/lib/utils";
+import { formatFecha, formatFechaHora, formatCreditoNumero, teclaDelContenedor, pctDe } from "@/lib/utils";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { KpiCard } from "@/components/ui/KpiCard";
 import { StatusBadge } from "@/components/ui/StatusBadge";
@@ -14,9 +15,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Emoji } from "@/components/ui/Emoji";
 import { DataTable, type Column } from "@/components/ui/DataTable";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Field, Input, Select, Textarea } from "@/components/ui/field";
-import { ModalHeader, MoneyInput, FormActions, FieldLabel, SIN_CIERRE_ACCIDENTAL, MODAL_CONTENT } from "@/components/ui/form-kit";
-import { MAX_FOTOS_PRODUCTO } from "@/lib/productos";
+import { Field, Input, Select } from "@/components/ui/field";
+import { ModalHeader, FormActions, SIN_CIERRE_ACCIDENTAL, MODAL_CONTENT } from "@/components/ui/form-kit";
 import { useConfirm } from "@/components/ui/confirm";
 import { useToast } from "@/components/ui/toast";
 
@@ -62,11 +62,10 @@ function creditoEstadoBadge(estado: string): { label: string; variant: "success"
 }
 
 export function ProductosView() {
+  const router = useRouter();
   const { productos, categorias, unidadesStock, valorInventario, isLoading, error, mutate } = useProductos();
   const confirm = useConfirm();
   const toast = useToast();
-  const [formOpen, setFormOpen] = useState(false);
-  const [editing, setEditing] = useState<Producto | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
   // Tarjeta clickeada: muestra skeleton mientras la ficha carga (feedback inmediato).
   const [loadingId, setLoadingId] = useState<string | null>(null);
@@ -122,13 +121,13 @@ export function ProductosView() {
   const hayFiltros = !!(q || filtrosActivos > 0);
   const limpiarTodo = () => { setQ(""); setCatFiltro(""); setSoloActivos(false); setSoloBajoStock(false); };
 
-  const openNew = () => { setEditing(null); setFormOpen(true); };
-  const openEdit = (p: Producto) => { setEditing(p); setFormOpen(true); };
-
-  const handleFormClose = (ok?: boolean) => {
-    setFormOpen(false); setEditing(null);
-    if (ok) refrescar();
-  };
+  /**
+   * Alta y edición son PANTALLAS, no modales (Fernando, 19/09/2026). El formulario tiene la
+   * galería de fotos, ocho campos y el reordenamiento por arrastre: en una ventana de 560px
+   * las fotos quedaban del tamaño de una estampilla. Mismo camino que la campaña de recupero.
+   */
+  const openNew = () => router.push("/productos/nuevo");
+  const openEdit = (p: Producto) => router.push(`/productos/${p.id}/editar`);
 
   const handleDelete = async (p: Producto) => {
     const ok = await confirm({
@@ -316,7 +315,6 @@ export function ProductosView() {
         </div>
       )}
 
-      <ProductoForm open={formOpen} producto={editing} categorias={categorias} onClose={handleFormClose} />
       <ProductoDetailDialog
         id={detailId}
         onClose={() => { setDetailId(null); setLoadingId(null); }}
@@ -896,326 +894,8 @@ function DetailStat({ label, value, accent }: { label: string; value: string; ac
 
 /* ── Alta / edición de producto ───────────────────────────────────────────── */
 
-function ProductoForm({
-  open, producto, categorias, onClose,
-}: { open: boolean; producto: Producto | null; categorias: string[]; onClose: (ok?: boolean) => void }) {
-  const confirm = useConfirm();
-  const toast = useToast();
-  const editing = !!producto;
-  const fileRef = useRef<HTMLInputElement>(null);
-
-  // Al editar, avisar si el producto ya tiene créditos vivos: cambiar el precio afecta
-  // SOLO a créditos futuros (los otorgados usan su monto snapshot, no cambian).
-  const { producto: fichaEdit } = useProducto(editing ? (producto?.id ?? null) : null);
-  const creditosVivos = (fichaEdit?.creditos ?? []).filter((c) => c.estado === "activo" || c.estado === "vencido").length;
-
-  const [nombre, setNombre] = useState("");
-  const [categoria, setCategoria] = useState("");
-  const [sku, setSku] = useState("");
-  const [precio, setPrecio] = useState("");
-  const [stock, setStock] = useState("");
-  const [stockMin, setStockMin] = useState("");
-  const [descripcion, setDescripcion] = useState("");
-  const [imagenes, setImagenes] = useState<string[]>([]);
-  const [urlInput, setUrlInput] = useState("");
-  const [activo, setActivo] = useState(true);
-  const [uploading, setUploading] = useState(false);
-  const [dragIdx, setDragIdx] = useState<number | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const [syncKey, setSyncKey] = useState<string | null>(null);
-  const currentKey = open ? (producto?.id ?? "new") : null;
-  if (currentKey !== syncKey) {
-    setSyncKey(currentKey);
-    setNombre(producto?.nombre ?? "");
-    setCategoria(producto?.categoria ?? "");
-    setSku(producto?.sku ?? "");
-    setPrecio(producto ? new Intl.NumberFormat("es-AR", { minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(producto.precio) : "");
-    setStock(producto != null ? String(producto.stock) : "");
-    setStockMin(producto?.stock_minimo != null ? String(producto.stock_minimo) : "");
-    setDescripcion(producto?.descripcion ?? "");
-    // Galería: usa imagenes; fallback a la portada suelta (productos viejos).
-    setImagenes(producto?.imagenes?.length ? producto.imagenes : (producto?.imagen_url ? [producto.imagen_url] : []));
-    setUrlInput("");
-    setActivo(producto?.activo ?? true);
-    setUploading(false);
-    setError(null);
-  }
-
-  const precioNum = parseMontoInput(precio);
-  const stockNum = parseInt(stock || "0", 10);
-  const lleno = imagenes.length >= MAX_FOTOS_PRODUCTO;
-
-  const agregarImagen = (url: string) => {
-    const u = url.trim();
-    if (!u) return;
-    setImagenes((prev) => (prev.includes(u) || prev.length >= MAX_FOTOS_PRODUCTO ? prev : [...prev, u]));
-  };
-  const quitarImagen = (idx: number) => setImagenes((prev) => prev.filter((_, i) => i !== idx));
-  const hacerPortada = (idx: number) => setImagenes((prev) => (idx === 0 ? prev : [prev[idx], ...prev.filter((_, i) => i !== idx)]));
-  // Reordena moviendo el elemento `from` a la posición `to` (drag & drop). La posición 0 es la portada.
-  const moverImagen = (from: number, to: number) => setImagenes((prev) => {
-    if (from === to || from < 0 || to < 0 || from >= prev.length || to >= prev.length) return prev;
-    const next = [...prev];
-    const [item] = next.splice(from, 1);
-    next.splice(to, 0, item);
-    return next;
-  });
-
-  const handleFiles = async (files: FileList) => {
-    setError(null);
-    setUploading(true);
-    try {
-      for (const file of Array.from(files)) {
-        if (imagenes.length >= MAX_FOTOS_PRODUCTO) break;
-        const fd = new FormData();
-        fd.append("file", file);
-        const res = await fetch("/api/productos/upload", { method: "POST", body: fd });
-        const json = await res.json();
-        if (json.ok) agregarImagen(json.data.url);
-        else { setError(json.error || "No se pudo subir la imagen"); break; }
-      }
-    } catch {
-      setError("No se pudo subir la imagen");
-    } finally {
-      setUploading(false);
-    }
-  };
-
-  const submit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!nombre.trim()) { setError("El nombre es requerido"); return; }
-    /**
-     * El precio es el CAPITAL del crédito, así que 0 no sirve. El mensaje dice POR QUÉ:
-     * antes decía "ingresá un precio válido" y el operador no tenía forma de saber que el
-     * problema no era el formato sino que un producto en $0 no se puede financiar.
-     */
-    if (!Number.isFinite(precioNum) || precioNum <= 0) {
-      setError("El precio tiene que ser mayor a 0: es el capital que se financia.");
-      return;
-    }
-    const ok = await confirm({
-      title: editing ? "¿Guardar cambios?" : "¿Crear producto?",
-      description: editing ? `Se actualizará "${nombre.trim()}".` : `Se agregará "${nombre.trim()}" al inventario.`,
-      confirmLabel: editing ? "Guardar cambios" : "Crear producto",
-    });
-    if (!ok) return;
-    setLoading(true); setError(null);
-    try {
-      const body: Record<string, unknown> = {
-        nombre, categoria, sku, descripcion,
-        precio: precioNum,
-        stock_minimo: stockMin.trim() === "" ? null : parseInt(stockMin, 10),
-        imagenes,
-        activo,
-      };
-      // El stock solo se fija al CREAR (stock inicial). En edición cambia vía kardex.
-      if (!editing) body.stock = isNaN(stockNum) ? 0 : stockNum;
-      const res = await fetch(editing ? `/api/productos/${producto!.id}` : "/api/productos", {
-        method: editing ? "PATCH" : "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      const json = await res.json();
-      if (json.ok) { toast.success(editing ? `Producto "${nombre.trim()}" actualizado` : `Producto "${nombre.trim()}" creado`); onClose(true); }
-      else setError(json.error);
-    } catch {
-      setError("No se pudo guardar");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(false); }}>
-      <DialogContent className="w-[95vw] sm:max-w-2xl sm:p-7 max-h-[92dvh] flex flex-col overflow-hidden" {...SIN_CIERRE_ACCIDENTAL}>
-        <div className="shrink-0">
-          <ModalHeader
-            icon="package"
-            title={editing ? "Editar producto" : "Nuevo producto"}
-            subtitle={editing ? "Actualizá los datos del producto." : "Cargá un producto del inventario para venderlo a crédito."}
-          />
-        </div>
-        <form onSubmit={submit} className="space-y-4 overflow-y-auto pt-1">
-          {error && <div className="rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-2.5 text-sm text-destructive">{error}</div>}
-
-          {/* Fotos — galería de hasta 5 (la 1ª es la portada) */}
-          <div className="space-y-2.5">
-            <div className="flex items-center justify-between">
-              <FieldLabel>Fotos ({imagenes.length}/{MAX_FOTOS_PRODUCTO})</FieldLabel>
-              {imagenes.length > 1 && (
-                <span className="text-[11px] text-muted-foreground">Arrastrá para ordenar · ⭐ elige la portada</span>
-              )}
-            </div>
-            <div className="flex flex-wrap gap-2.5">
-              {imagenes.map((url, idx) => (
-                <div
-                  key={url}
-                  draggable
-                  onDragStart={(e) => { setDragIdx(idx); e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", String(idx)); }}
-                  onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; }}
-                  onDrop={(e) => { e.preventDefault(); const from = dragIdx ?? Number(e.dataTransfer.getData("text/plain")); moverImagen(from, idx); setDragIdx(null); }}
-                  onDragEnd={() => setDragIdx(null)}
-                  title="Arrastrá para reordenar"
-                  className={`group/foto relative h-24 w-24 rounded-lg border bg-muted/30 overflow-hidden cursor-grab active:cursor-grabbing transition-all ${
-                    dragIdx === idx ? "opacity-40 ring-2 ring-primary" : dragIdx !== null ? "ring-1 ring-primary/30" : ""
-                  } ${idx === 0 ? "border-primary/50 ring-1 ring-primary/40" : "border-border"}`}
-                >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={url} alt="" className="h-full w-full object-cover pointer-events-none select-none" />
-
-                  {/* Handle de arrastre (hint) */}
-                  <span className="absolute top-0.5 left-0.5 flex h-5 w-5 items-center justify-center rounded bg-background/70 text-muted-foreground opacity-0 group-hover/foto:opacity-100 transition-opacity">
-                    <GripVertical className="h-3 w-3" />
-                  </span>
-
-                  {/* Quitar */}
-                  <button
-                    type="button"
-                    onClick={() => quitarImagen(idx)}
-                    title="Quitar"
-                    className="absolute top-0.5 right-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-background/80 text-muted-foreground hover:text-destructive transition-colors"
-                  >
-                    <X className="h-3 w-3" />
-                  </button>
-
-                  {/* Portada (idx 0) o botón elegir portada (hover) */}
-                  {idx === 0 ? (
-                    <span className="absolute bottom-0 inset-x-0 flex items-center justify-center gap-1 bg-primary/85 text-[9px] font-semibold text-primary-foreground py-0.5">
-                      <Star className="h-2.5 w-2.5 fill-current" /> Portada
-                    </span>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => hacerPortada(idx)}
-                      title="Elegir como portada"
-                      className="absolute bottom-0 inset-x-0 flex items-center justify-center gap-1 bg-background/85 text-[9px] font-medium text-foreground py-0.5 opacity-0 group-hover/foto:opacity-100 transition-all hover:bg-primary/85 hover:text-primary-foreground"
-                    >
-                      <Star className="h-2.5 w-2.5" /> Portada
-                    </button>
-                  )}
-                </div>
-              ))}
-              {/* Botón agregar (subir archivo) */}
-              {!lleno && (
-                <button
-                  type="button"
-                  onClick={() => fileRef.current?.click()}
-                  disabled={uploading}
-                  className="flex h-24 w-24 flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-border text-muted-foreground hover:border-primary/40 hover:text-foreground transition-colors disabled:opacity-50"
-                >
-                  {uploading ? <Loader2 className="h-5 w-5 animate-spin text-primary" /> : <ImagePlus className="h-5 w-5" />}
-                  <span className="text-[10px]">Subir</span>
-                </button>
-              )}
-            </div>
-            <input
-              ref={fileRef}
-              type="file"
-              accept="image/png,image/jpeg,image/webp,image/gif"
-              multiple
-              className="hidden"
-              onChange={(e) => { if (e.target.files?.length) handleFiles(e.target.files); e.target.value = ""; }}
-            />
-            {/* Agregar por URL */}
-            {!lleno && (
-              <div className="flex gap-2">
-                <div className="relative flex-1">
-                  <LinkIcon className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-                  <input
-                    type="url"
-                    value={urlInput}
-                    onChange={(e) => setUrlInput(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); agregarImagen(urlInput); setUrlInput(""); } }}
-                    placeholder="…o pegá la URL de una imagen"
-                    className="h-10 w-full rounded-lg border border-border bg-muted/40 pl-9 pr-3 text-sm outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/20"
-                  />
-                </div>
-                <button
-                  type="button"
-                  onClick={() => { agregarImagen(urlInput); setUrlInput(""); }}
-                  className="rounded-lg border border-border px-3 text-sm text-foreground hover:bg-muted/20 transition-colors"
-                >
-                  Agregar
-                </button>
-              </div>
-            )}
-          </div>
-
-          <Field label="Nombre" required>
-            <Input value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Nombre del producto" required />
-          </Field>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <Field label="Categoría">
-              <Input
-                value={categoria}
-                onChange={(e) => setCategoria(e.target.value)}
-                placeholder="Electrodomésticos…"
-                list="prod-categorias"
-              />
-              <datalist id="prod-categorias">
-                {categorias.map((c) => <option key={c} value={c} />)}
-              </datalist>
-            </Field>
-            <Field label="SKU / código">
-              <Input value={sku} onChange={(e) => setSku(e.target.value)} placeholder="opcional" />
-            </Field>
-          </div>
-
-          <Field label="Precio ($)" required hint="Se toma como capital del crédito">
-            <MoneyInput value={precio} onChange={setPrecio} required />
-          </Field>
-          {editing && creditosVivos > 0 && (
-            <div className="flex items-start gap-2 rounded-lg border border-warning/20 bg-warning/10 px-3 py-2.5 text-xs text-warning">
-              <Info className="h-4 w-4 shrink-0 mt-px" />
-              <span>
-                Este producto tiene <strong>{creditosVivos}</strong> crédito{creditosVivos !== 1 ? "s" : ""} activo{creditosVivos !== 1 ? "s" : ""}.
-                Cambiar el precio aplica solo a créditos <strong>futuros</strong>; los ya otorgados conservan su monto.
-              </span>
-            </div>
-          )}
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {editing ? (
-              <Field label="Stock actual" hint="Se ajusta desde la ficha (entrada/ajuste)">
-                <div className="flex h-12 items-center rounded-lg border border-border bg-muted/20 px-3 font-mono tabular-nums text-foreground">
-                  {producto?.stock ?? 0} u.
-                </div>
-              </Field>
-            ) : (
-              <Field label="Stock inicial (unidades)" required>
-                <Input type="number" min="0" value={stock} onChange={(e) => setStock(e.target.value)} placeholder="0" className="font-mono tabular-nums" />
-              </Field>
-            )}
-            <Field label="Stock mínimo" hint="Alerta de bajo stock">
-              <Input type="number" min="0" value={stockMin} onChange={(e) => setStockMin(e.target.value)} placeholder="opcional" className="font-mono tabular-nums" />
-            </Field>
-          </div>
-
-          <Field label="Descripción">
-            <Textarea value={descripcion} onChange={(e) => setDescripcion(e.target.value)} rows={2} placeholder="Detalle, modelo, características…" />
-          </Field>
-
-          <Field label="Estado">
-            <Select value={activo ? "activo" : "inactivo"} onChange={(e) => setActivo(e.target.value === "activo")}>
-              <option value="activo">Activo</option>
-              <option value="inactivo">Inactivo</option>
-            </Select>
-          </Field>
-
-          <FormActions
-            onCancel={() => onClose(false)}
-            loading={loading}
-            disabled={!nombre.trim() || precioNum <= 0 || uploading}
-            submitLabel={editing ? "Guardar cambios" : "Crear"}
-          />
-        </form>
-      </DialogContent>
-    </Dialog>
-  );
-}
+/* El formulario de alta/edición vive en `ProductoFormView.tsx`: es una pantalla propia
+   (`/productos/nuevo` y `/productos/<id>/editar`), no un modal. */
 
 function BodySkeleton() {
   return (
