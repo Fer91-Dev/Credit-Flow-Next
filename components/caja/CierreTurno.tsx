@@ -13,6 +13,7 @@ import { refrescarNotificaciones, useCierresTurno, useFinanciera, type CierreTur
 import { formatFechaHora, formatMonto, parseMontoInput } from "@/lib/utils";
 import { TIPO_LABEL_ACTA, evaluarCierre, type TipoMovimiento } from "@/lib/domain";
 import { imprimirActaCierre } from "@/lib/cierre-turno-print";
+import { Nota } from "@/components/ui/Nota";
 
 /**
  * CIERRE DE TURNO — el mismo modal y el mismo historial para la caja principal (admin) y
@@ -262,14 +263,18 @@ export function CierresTurnoPanel({ cierres, mostrarCaja = false, nombreCajaDe }
   const [detalle, setDetalle] = useState<CierreTurno | null>(null);
   return (
     <div className="rounded-xl border border-border bg-card p-5 space-y-4">
-      <div className="flex items-start gap-3">
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-primary/20 bg-primary/10 text-primary">
-          <Emoji name="locked-with-key" className="h-[18px] w-[18px]" />
-        </div>
-        <div>
+      {/* Fernando (19/09/2026): "no quiero textos sueltos". El título arriba; la frase que
+          explica qué se está mirando, en su cajita. */}
+      <div className="space-y-3">
+        <div className="flex items-center gap-2.5">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-primary/20 bg-primary/10 text-primary">
+            <Emoji name="locked-with-key" className="h-[18px] w-[18px]" />
+          </div>
           <h3 className="text-sm font-semibold text-foreground">Cierres de turno</h3>
-          <p className="mt-0.5 text-xs text-muted-foreground">Cada acta congela la cuenta del turno: apertura, movimientos, conteo, diferencia y lo que quedó.</p>
         </div>
+        <Nota compacta>
+          Cada acta congela la cuenta del turno: apertura, movimientos, conteo, diferencia y lo que quedó.
+        </Nota>
       </div>
 
       {/*

@@ -12,6 +12,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { nombreCompleto, formatFecha, formatMonto, formatCreditoNumero } from "@/lib/utils";
 import { round2 } from "@/lib/domain";
+import { Nota } from "@/components/ui/Nota";
 
 /**
  * Terminal de pagos: flujo "buscar primero". No se lista nada hasta que el
@@ -271,10 +272,7 @@ function UltimosPagos({ pagos, loading, onRow, filtro, onLimpiarFiltro }: {
         }`}>
           <Clock className="h-4 w-4" />
         </div>
-        <div className="min-w-0 flex-1">
-          <h2 className="text-sm font-semibold text-foreground">{titulo}</h2>
-          <p className="text-xs text-muted-foreground">Tocá un pago para abrir la ficha del cliente y anularlo si hace falta.</p>
-        </div>
+        <h2 className="min-w-0 flex-1 text-sm font-semibold text-foreground">{titulo}</h2>
         {filtro && (
           <button
             type="button"
@@ -285,6 +283,11 @@ function UltimosPagos({ pagos, loading, onRow, filtro, onLimpiarFiltro }: {
           </button>
         )}
       </div>
+      {/* Fernando (19/09/2026): "no quiero textos sueltos". El título arriba; la frase que
+          explica qué se está mirando, en su cajita. */}
+      <Nota compacta>
+        Tocá un pago para abrir la ficha del cliente y anularlo si hace falta.
+      </Nota>
       {visibles.length === 0 ? (
         <p className="rounded-xl border border-dashed border-border/60 px-4 py-8 text-center text-xs text-muted-foreground/60">
           {filtro === "hoy" ? "Todavía no entró ningún cobro hoy." : "No hay pagos anulados entre los últimos ingresados."}

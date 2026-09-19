@@ -16,6 +16,7 @@ import { CobranzaDelDia } from "./CobranzaDelDia";
 import { CotizacionDolar } from "./CotizacionDolar";
 import { MedallaBadge, RangoBadge, InsigniaChip } from "@/components/ui/Medalla";
 import { Emoji } from "@/components/ui/Emoji";
+import { Nota } from "@/components/ui/Nota";
 
 function n1(x: number) {
   return new Intl.NumberFormat("es-AR", { minimumFractionDigits: 0, maximumFractionDigits: 1 }).format(x);
@@ -418,14 +419,18 @@ function MiConfiguracionVendedor({ perfil }: { perfil: MiPerfilVendedor }) {
 
   return (
     <div className="rounded-xl bg-card border border-border p-5 space-y-5">
-      <div className="flex items-center gap-2">
-        <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10 border border-primary/20">
-          <UserCog className="h-3.5 w-3.5 text-primary" />
-        </div>
-        <div>
+      {/* Fernando (19/09/2026): "no quiero textos sueltos". El título arriba; la frase que
+          explica qué se está mirando, en su cajita. */}
+      <div className="space-y-3">
+        <div className="flex items-center gap-2">
+          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10 border border-primary/20">
+            <UserCog className="h-3.5 w-3.5 text-primary" />
+          </div>
           <h3 className="text-sm font-semibold text-foreground">Mi configuración y rendimiento</h3>
-          <p className="text-[11px] text-muted-foreground">Parámetros definidos por la administración para {perfil.nombre}</p>
         </div>
+        <Nota compacta>
+          Los parámetros que la administración definió para {perfil.nombre}.
+        </Nota>
       </div>
 
       {/* Mi rango y medalla */}
@@ -558,10 +563,7 @@ function MiEfectividadCobranza() {
           <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10 border border-primary/20">
             <PhoneCall className="h-3.5 w-3.5 text-primary" />
           </div>
-          <div>
-            <h3 className="text-sm font-semibold text-foreground">Mi efectividad de cobranza</h3>
-            <p className="text-[11px] text-muted-foreground">Tu gestión sobre tus clientes en mora</p>
-          </div>
+          <h3 className="text-sm font-semibold text-foreground">Mi efectividad de cobranza</h3>
         </div>
         <div className="flex gap-1 bg-muted/30 rounded-lg p-0.5">
           {(["mes", "anio"] as const).map((r) => (
@@ -574,6 +576,11 @@ function MiEfectividadCobranza() {
           ))}
         </div>
       </div>
+      {/* Fernando (19/09/2026): "no quiero textos sueltos". El título arriba; la frase que
+          explica qué se está mirando, en su cajita. */}
+      <Nota compacta acento="muted">
+        Tu gestión sobre tus clientes en mora, {rango === "mes" ? "en este mes" : "en este año"}.
+      </Nota>
 
       {isLoading || !e ? (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">

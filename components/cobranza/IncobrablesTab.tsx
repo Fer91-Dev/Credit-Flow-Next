@@ -17,6 +17,7 @@ import { guardarSeleccionCampana, guardarTipoCampana } from "./seleccion-campana
 import { descargarCSV } from "@/lib/csv";
 import { contactoBloqueado, normalizarTelefonoAR, sugerirOfertaCancelacion } from "@/lib/domain";
 import { formatMonto, formatFecha, formatDias, nombreCompleto, hoyComercial } from "@/lib/utils";
+import { Nota } from "@/components/ui/Nota";
 
 /**
  * INCOBRABLES — la cartera castigada, y cómo se trabaja.
@@ -467,7 +468,7 @@ export function IncobrablesTab() {
         La regla del piso, dicha UNA vez y abajo de la tabla que la usa: es el criterio con el
         que se decide cuánto aceptar, y sin él las dos columnas de arriba son dos números más.
       */}
-      <p className="text-[11px] leading-relaxed text-muted-foreground/80">
+      <Nota titulo="Cómo se lee esta tabla" compacta>
         Lo que se reclama es la deuda nominal: el capital con el que nació la refinanciación,
         más el interés de ese plan y los punitorios acumulados hasta el día del castigo — por
         eso puede ser varias veces la plata que se prestó. "Prestado" es la
@@ -480,7 +481,7 @@ export function IncobrablesTab() {
         que hace más difícil el cobro —cuánto hace que está castigado— y por lo que lo hace más
         fácil —si apareció a pagar algo—. Es una sugerencia, no un límite: el criterio se
         configura en Cobranza → Refinanciaciones.
-      </p>
+      </Nota>
     </div>
   );
 }

@@ -8,14 +8,15 @@ import {
 } from "lucide-react";
 import { WhatsAppIcon } from "@/components/ui/WhatsAppIcon";
 import { useCampanas, useCampana, useConfiguracion, KEYS, type CampanaCobranza, type CampanaObjetivo, type CanalCampana, type EstadoCampana, useTramosMora } from "@/lib/swr";
-import { construirMensajeCampana, linkWhatsapp, TEMPLATE_DEFAULT, severidadMora } from "@/lib/domain";
-import { formatFecha, nombreCompleto, eventoPropio, teclaDelContenedor, formatDias } from "@/lib/utils";
+import { construirMensajeCampana, linkWhatsapp, TEMPLATE_DEFAULT, severidadMora, promoVigenteAl } from "@/lib/domain";
+import { formatFecha, nombreCompleto, eventoPropio, teclaDelContenedor, formatDias, hoyComercial } from "@/lib/utils";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { DataTable } from "@/components/ui/DataTable";
 import { SummaryStrip } from "@/components/ui/SummaryStrip";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useConfirm } from "@/components/ui/confirm";
 import { useToast } from "@/components/ui/toast";
+import { Nota } from "@/components/ui/Nota";
 
 function n0(x: number) {
   return new Intl.NumberFormat("es-AR", { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(x);
@@ -364,15 +365,12 @@ function CampanaDetalle({ id, onBack }: { id: string; onBack: () => void }) {
             </button>
           </div>
         ) : (
-          <div className="rounded-xl border border-warning/25 bg-warning/[0.06] px-4 py-3">
-            <p className="text-sm text-warning">Esta campaña se envía a mano</p>
-            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-              El envío automático por WhatsApp necesita la API de Meta cargada en
-              Configuración → Comunicaciones. Sin eso, usá el botón de cada fila para abrirle el
-              chat a cada cliente con el mensaje ya escrito.
-              {" "}Faltan <span className="text-foreground">{pendientesEnvio}</span> de {campana.objetivos.length}.
-            </p>
-          </div>
+          <Nota titulo="Esta campaña se envía a mano" acento="warning" compacta>
+            El envío automático por WhatsApp necesita la API de Meta cargada en
+            Configuración → Comunicaciones. Sin eso, usá el botón de cada fila para abrirle el
+            chat a cada cliente con el mensaje ya escrito.
+            {" "}Faltan <span className="font-semibold text-foreground">{pendientesEnvio}</span> de {campana.objetivos.length}.
+          </Nota>
         )
       )}
 
@@ -453,11 +451,24 @@ function CampanaDetalle({ id, onBack }: { id: string; onBack: () => void }) {
         )}
       />
 
+      {/*
+        La promo con fecha pasada NO se puede aplicar: el endpoint la rechaza con el mismo
+        `promoVigenteAl`. Decir "válida hasta el 18/09" el día 19 mandaba al cobrador a
+        ofrecer un descuento que el sistema le iba a negar.
+      */}
       {campana.promo_vence && (
-        <p className="text-xs text-muted-foreground">
-          Promoción válida hasta <span className="text-foreground">{fmtDate(campana.promo_vence)}</span>
-          {campana.promo_tipo === "quita_interes" && <span className="text-success"> · descuento {campana.promo_valor}% del interés de mora</span>}
-        </p>
+        promoVigenteAl(campana.promo_vence, hoyComercial()) ? (
+          <Nota compacta acento="primary">
+            Promoción válida hasta <span className="font-semibold text-foreground">{fmtDate(campana.promo_vence)}</span>
+            {campana.promo_tipo === "quita_interes" && <span className="text-success"> · descuento {campana.promo_valor}% del interés de mora</span>}
+          </Nota>
+        ) : (
+          <Nota compacta acento="warning" titulo="La promoción venció">
+            Venció el <span className="font-semibold text-foreground">{fmtDate(campana.promo_vence)}</span>, así que el descuento
+            {campana.promo_tipo === "quita_interes" ? ` del ${campana.promo_valor}% del interés de mora` : ""} ya no se aplica:
+            el acuerdo que se cargue desde acá va con la deuda completa. Para volver a ofrecerlo, armá una campaña nueva.
+          </Nota>
+        )
       )}
     </div>
   );

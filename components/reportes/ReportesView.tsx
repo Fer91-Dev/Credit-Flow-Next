@@ -13,6 +13,7 @@ import { Emoji } from "@/components/ui/Emoji";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { BarChart, StackedBarChart, Sparkline, Donut, type Punto } from "./charts";
+import { Nota } from "@/components/ui/Nota";
 
 function n2(x: number) {
   return new Intl.NumberFormat("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(x);
@@ -421,7 +422,7 @@ function TabOperaciones({ r, s }: { r: Reporte; s?: ReporteSerie }) {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <Section title="Evolución del ticket promedio" icon="bar-chart">
           <Sparkline values={tickets} accent="success" height={56} />
-          <p className="mt-2 text-[11px] text-muted-foreground">Promedio por operación, mes a mes.</p>
+          <Nota compacta className="mt-2">Promedio por operación, mes a mes.</Nota>
         </Section>
         <Section title="Otorgado por tipo de crédito" icon="money-bag">
           {r.operaciones_por_tipo.length === 0 ? <Empty>Sin otorgamientos en el período.</Empty> : (
@@ -457,7 +458,7 @@ function TabRentabilidad({ r, s }: { r: Reporte; s?: ReporteSerie }) {
       </div>
       <Section title="Rentabilidad neta por mes" icon="chart-increasing">
         <BarChart data={neta} accent="success" format={(v) => `$${n2(v)}`} />
-        <p className="mt-2 text-[11px] text-muted-foreground">Ingreso financiero cobrado menos costo de fondeo y gastos registrados del mes. Rojo = negativa.</p>
+        <Nota compacta className="mt-2">Ingreso financiero cobrado menos costo de fondeo y gastos registrados del mes. En rojo, los meses en negativo.</Nota>
       </Section>
       {rent.habilitado && (
         <Section title="Rentabilidad neta vs costo de fondeo" icon="bar-chart">
@@ -602,7 +603,7 @@ function TabMorosidad({ r, s }: { r: Reporte; s?: ReporteSerie }) {
       )}
       <Section title="Evolución de la morosidad (% del capital)" icon="warning">
         <BarChart data={moraPct} accent="warning" format={(v) => `${n1(v)}%`} />
-        <p className="mt-2 text-[11px] text-muted-foreground">Reconstruida a fin de cada mes desde el ledger de cuotas y pagos.</p>
+        <Nota compacta className="mt-2">Reconstruida a fin de cada mes desde el ledger de cuotas y pagos.</Nota>
       </Section>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <Section title="Saldo en mora por mes" icon="money-bag">
