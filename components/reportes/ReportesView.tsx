@@ -10,6 +10,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { KpiCard } from "@/components/ui/KpiCard";
 import { FiltrosPanel } from "@/components/ui/FiltrosPanel";
 import { Emoji } from "@/components/ui/Emoji";
+import { NumeroAnimado, BarraAvance } from "@/components/ui/NumeroAnimado";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { BarChart, StackedBarChart, Sparkline, Donut, type Punto } from "./charts";
@@ -681,13 +682,139 @@ function FilaMes({ p }: { p: PuntoMensual }) {
 // ─── Tab: Medios de pago ──────────────────────────────────────────────────────
 
 /** Un color por medio, estable en toda la pestaña (tabla, barras y leyenda). */
-const METODO_COLOR: Record<string, { barra: string; texto: string }> = {
-  efectivo:      { barra: "bg-success",     texto: "text-success" },
-  transferencia: { barra: "bg-primary",     texto: "text-primary" },
-  cheque:        { barra: "bg-warning",     texto: "text-warning" },
-  otro:          { barra: "bg-muted-foreground/50", texto: "text-muted-foreground" },
+const METODO_COLOR: Record<string, { barra: string; texto: string; tono: "primary" | "success" | "warning" | "destructive" }> = {
+  efectivo:      { barra: "bg-success",     texto: "text-success",     tono: "success" },
+  transferencia: { barra: "bg-primary",     texto: "text-primary",     tono: "primary" },
+  cheque:        { barra: "bg-warning",     texto: "text-warning",     tono: "warning" },
+  otro:          { barra: "bg-muted-foreground/50", texto: "text-muted-foreground", tono: "primary" },
 };
 const colorMetodo = (m: string) => METODO_COLOR[m] ?? METODO_COLOR.otro;
+
+/**
+ * LAS TRES TARJETAS DE ARRIBA DE "MEDIOS DE PAGO".
+ *
+ * Fernando (19/09/2026): las tres eran "un título y tres renglones de texto" — el `KpiCard`
+ * genérico pone label, un valor y un subtítulo, y acá el valor de verdad no es el nombre del
+ * medio sino cuánto mueve. Estas tarjetas NO cambian ningún número: leen exactamente lo que ya
+ * calcula el server (`pct_cantidad`, `pct_monto`, `monto`, `cantidad`) y solo reordenan la
+ * lectura: etiqueta → medio → dato dominante → contexto → barra.
+ *
+ * El `KpiCard` compartido queda intacto a propósito: lo usan todas las demás pestañas y
+ * secciones del SaaS, y esta composición (dos métricas y una barra) es propia de acá.
+ */
+function CardMedio({ etiqueta, emoji, metodo, valor, contexto, pct, pctLabel, demora }: {
+  etiqueta: string;
+  emoji: string;
+  metodo: string;
+  /** El dato dominante ya formateado (nodo, para que el importe pueda contar). */
+  valor: React.ReactNode;
+  contexto: React.ReactNode;
+  /** El porcentaje que YA viene calculado del server: acá solo se dibuja. */
+  pct: number;
+  pctLabel: string;
+  demora: number;
+}) {
+  const c = colorMetodo(metodo);
+  return (
+    <article
+      className="group animate-entrada relative flex h-full flex-col overflow-hidden rounded-2xl border border-border/70 bg-card p-5
+        shadow-[0_1px_2px_rgba(0,0,0,0.3),0_12px_30px_-16px_rgba(0,0,0,0.7)]
+        transition-all duration-300 hover:-translate-y-0.5 hover:border-border
+        hover:shadow-[0_1px_2px_rgba(0,0,0,0.3),0_22px_50px_-20px_rgba(0,0,0,0.85)]
+        motion-reduce:transition-none motion-reduce:hover:translate-y-0"
+      style={{ animationDelay: `${demora}ms` }}
+    >
+      {/* La misma luz cenital de las tarjetas del Home: sin ella la superficie se ve plana. */}
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-white/10" />
+      <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-white/[0.05] via-transparent to-transparent" />
+
+      <div className="relative flex items-start justify-between gap-3">
+        <span className="rounded-full border border-border/70 bg-muted/30 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+          {etiqueta}
+        </span>
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border bg-muted/40 transition-transform duration-300 group-hover:-translate-y-0.5 group-hover:scale-110">
+          <Emoji name={emoji} className="h-5 w-5" />
+        </span>
+      </div>
+
+      {/* El medio: segundo nivel. El cuadradito es el mismo color con el que sale en la tabla
+          y en la evolución, así la tarjeta y el ranking se leen como una sola cosa. */}
+      <p className="relative mt-4 flex items-center gap-2 text-sm font-semibold text-foreground">
+        <span className={`h-2.5 w-2.5 shrink-0 rounded-sm ${c.barra}`} />
+        {metodoLabel[metodo] ?? metodo}
+      </p>
+
+      <p className="relative mt-2 font-mono text-[28px] font-bold leading-none tracking-tight tabular-nums text-foreground sm:text-[32px]">
+        {valor}
+      </p>
+      <p className="relative mt-2 text-[11px] leading-relaxed text-muted-foreground">{contexto}</p>
+
+      {/* La barra, abajo de todo: con `mt-auto` las tres tarjetas cierran a la misma altura. */}
+      <div className="relative mt-auto flex items-center gap-3 pt-4">
+        <div className="min-w-0 flex-1">
+          <BarraAvance pct={pct} tono={c.tono} alto="h-1.5" demora={demora + 120} />
+        </div>
+        <span className={`shrink-0 font-mono text-xs font-semibold tabular-nums ${c.texto}`}>{pctLabel}</span>
+      </div>
+    </article>
+  );
+}
+
+/**
+ * La tercera tarjeta NO lleva barra: su dato es un conteo, no una parte de un todo. Poner un
+ * porcentaje ahí sería inventarle una proporción que no existe, así que la plata se separa a
+ * una segunda columna, detrás de un divisor, para que nadie lea "2" y "$7.192.438,85" como si
+ * fueran el mismo número.
+ */
+function CardMediosEnUso({ cantidad, monto, pagos, demora }: { cantidad: number; monto: number; pagos: number; demora: number }) {
+  return (
+    <article
+      className="group animate-entrada relative flex h-full flex-col overflow-hidden rounded-2xl border border-border/70 bg-card p-5
+        shadow-[0_1px_2px_rgba(0,0,0,0.3),0_12px_30px_-16px_rgba(0,0,0,0.7)]
+        transition-all duration-300 hover:-translate-y-0.5 hover:border-border
+        hover:shadow-[0_1px_2px_rgba(0,0,0,0.3),0_22px_50px_-20px_rgba(0,0,0,0.85)]
+        motion-reduce:transition-none motion-reduce:hover:translate-y-0"
+      style={{ animationDelay: `${demora}ms` }}
+    >
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-white/10" />
+      <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-white/[0.05] via-transparent to-transparent" />
+
+      <div className="relative flex items-start justify-between gap-3">
+        <span className="rounded-full border border-border/70 bg-muted/30 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+          Medios en uso
+        </span>
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border bg-muted/40 transition-transform duration-300 group-hover:-translate-y-0.5 group-hover:scale-110">
+          <Emoji name="chart-increasing" className="h-5 w-5" />
+        </span>
+      </div>
+
+      {/* Dos bloques separados por el divisor. En pantalla angosta el divisor pasa a ser una
+          línea horizontal: apilados sin nada en el medio, los dos números se tocan. */}
+      <div className="relative mt-auto flex flex-col gap-4 pt-4 sm:flex-row sm:items-stretch sm:gap-5">
+        <div className="min-w-0 sm:w-[34%] sm:shrink-0">
+          <p className="font-mono text-[32px] font-bold leading-none tabular-nums text-foreground sm:text-[36px]">
+            {cantidad}
+          </p>
+          <p className="mt-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+            {cantidad === 1 ? "medio activo" : "medios activos"}
+          </p>
+        </div>
+        {/* El divisor, explícito: un borde al 60% sobre fondo oscuro no se ve, y sin línea los
+            dos bloques vuelven a leerse como un solo dato. */}
+        <span aria-hidden className="h-px w-full shrink-0 bg-border sm:h-auto sm:w-px sm:self-stretch sm:bg-gradient-to-b sm:from-transparent sm:via-border sm:to-transparent" />
+        <div className="min-w-0">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/70">Cobrado en el período</p>
+          <p className="mt-1.5 font-mono text-lg font-semibold tabular-nums text-foreground">
+            <NumeroAnimado valor={monto} decimales={2} prefijo="$" />
+          </p>
+          <p className="mt-1 text-[11px] text-muted-foreground">
+            en <span className="font-mono font-semibold tabular-nums text-foreground">{pagos}</span> {pagos === 1 ? "pago" : "pagos"}
+          </p>
+        </div>
+      </div>
+    </article>
+  );
+}
 
 /**
  * CÓMO PAGA LA GENTE, y si eso está cambiando.
@@ -720,25 +847,22 @@ function TabMedios({ s }: { s?: ReporteSerie }) {
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <KpiCard
-          icon="trophy" label="El más elegido"
-          value={metodoLabel[masElegido.metodo] ?? masElegido.metodo}
-          accent="primary"
-          sub={`${masElegido.cantidad} de ${totalPagos} pagos · ${n1(masElegido.pct_cantidad)}%`}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <CardMedio
+          etiqueta="Más elegido" emoji="trophy" metodo={masElegido.metodo}
+          valor={<>{masElegido.cantidad}<span className="text-xl font-semibold text-muted-foreground/60"> / {totalPagos}</span></>}
+          contexto="pagos del período hechos con este medio"
+          pct={masElegido.pct_cantidad} pctLabel={`${n1(masElegido.pct_cantidad)}%`}
+          demora={0}
         />
-        <KpiCard
-          icon="money-bag" label="El que más plata mueve"
-          value={metodoLabel[masPlata.metodo] ?? masPlata.metodo}
-          accent="success"
-          sub={`$${n2(masPlata.monto)} · ${n1(masPlata.pct_monto)}% de lo cobrado`}
+        <CardMedio
+          etiqueta="El que más plata mueve" emoji="money-bag" metodo={masPlata.metodo}
+          valor={<NumeroAnimado valor={masPlata.monto} decimales={2} prefijo="$" />}
+          contexto={<>de los <span className="font-mono font-semibold tabular-nums text-foreground">${n2(totalMonto)}</span> cobrados en el período</>}
+          pct={masPlata.pct_monto} pctLabel={`${n1(masPlata.pct_monto)}%`}
+          demora={60}
         />
-        <KpiCard
-          icon="chart-increasing" label="Medios en uso"
-          value={String(medios.length)}
-          accent="muted" mono
-          sub={`$${n2(totalMonto)} cobrados en ${totalPagos} pagos`}
-        />
+        <CardMediosEnUso cantidad={medios.length} monto={totalMonto} pagos={totalPagos} demora={120} />
       </div>
 
       <Section title="Ranking del período" icon="clipboard">
