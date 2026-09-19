@@ -26,6 +26,7 @@ import {
 import { AvisoMeta } from "@/components/clientes/ContactarDialog";
 import { Field, Input, Select, Textarea } from "@/components/ui/field";
 import { SystemControls } from "@/components/ui/SystemControls";
+import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Emoji } from "@/components/ui/Emoji";
 import { Skeleton } from "@/components/ui/skeleton";
 import { nombreCompleto, formatMonto, formatDias , formatFecha, hoyComercial } from "@/lib/utils";
@@ -1472,7 +1473,7 @@ function TablaAudiencia({
   const th = "px-4 py-2.5 text-left text-[11px] font-bold uppercase tracking-wider text-muted-foreground";
   const thNum = `${th} text-right`;
   const td = "px-4 py-3 text-sm";
-  const tdNum = `${td} text-right font-mono tabular-nums`;
+  const tdNum = `${td} text-right font-mono tabular-nums whitespace-nowrap`;
 
   if (esRecupero) {
     return (
@@ -1587,7 +1588,15 @@ function TablaAudiencia({
               {/* Barra de acento: el fondo solo no alcanza para señalar cuál está alimentando
                   la vista previa cuando la lista es larga. */}
               {enFoco && <span className="absolute inset-y-1 left-0 w-0.5 rounded-r bg-primary" />}
-              <p className="truncate font-medium text-foreground">{nombreCompleto(o.credito.cliente)}</p>
+              <p className="flex items-center gap-2 truncate font-medium text-foreground">
+                <span className="truncate">{nombreCompleto(o.credito.cliente)}</span>
+                {/* Fernando (18/09/2026): que se vea que tiene un acuerdo en curso. Se le
+                    manda igual (decisión suya), pero quien arma la campaña tiene que saberlo:
+                    ese cliente ya tiene un arreglo y sus punitorios están congelados. */}
+                {o.credito.acuerdo && (
+                  <StatusBadge label={o.credito.acuerdo.al_dia ? "Acuerdo en curso" : "Acuerdo incumplido"} variant={o.credito.acuerdo.al_dia ? "primary" : "warning"} />
+                )}
+              </p>
               <p className="mt-0.5 text-xs text-muted-foreground">
                 {o.credito.numero ? `CRD-${String(o.credito.numero).padStart(6, "0")}` : "Crédito sin número"}
                 {" · "}
