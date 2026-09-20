@@ -44,6 +44,15 @@ const PESO_MAXIMO_MB = 5;
 /** Medidas reales de cada foto, para poder avisar cuando una es chica. */
 type Medida = { ancho: number; alto: number };
 
+/** El rótulo que separa los dos bloques de datos. Chico, para que no le pese a los campos. */
+function BloqueTitulo({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="border-b border-border/60 pb-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+      {children}
+    </p>
+  );
+}
+
 export function ProductoFormView({ productoId }: { productoId?: string }) {
   const router = useRouter();
   const confirm = useConfirm();
@@ -252,20 +261,26 @@ export function ProductoFormView({ productoId }: { productoId?: string }) {
       </div>
 
       {editando && isLoading && !producto ? (
-        <div className="mx-auto w-full max-w-6xl space-y-4 px-5 py-6">
+        <div className="w-full space-y-4 px-5 py-6">
           <Skeleton className="h-64 w-full rounded-xl" />
           <Skeleton className="h-96 w-full rounded-xl" />
         </div>
       ) : (
         <form onSubmit={submit} className="flex min-h-0 flex-1 flex-col">
-          <div className="mx-auto w-full max-w-6xl flex-1 px-5 py-6">
-            {error && (
-              <div className="mb-4 rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-2.5 text-sm text-destructive">{error}</div>
-            )}
+          {error && (
+            <div className="mx-5 mt-4 rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-2.5 text-sm text-destructive">{error}</div>
+          )}
 
-            <div className="grid gap-5 lg:grid-cols-[minmax(0,26rem)_minmax(0,1fr)] lg:gap-6">
-              {/* ═══════════ FOTOS ═══════════ */}
-              <section className="space-y-3 rounded-2xl border border-border/70 bg-card p-4">
+          {/*
+            DOS PANELES, NO DOS TARJETAS. Fernando (19/09/2026): «en modo ordenador parece un
+            modal dentro de esos espacios vacíos». Y era eso: el contenido estaba centrado en
+            900px con bordes redondeados, flotando sobre un fondo vacío a los costados — la
+            forma exacta de un modal. Ahora las fotos son un panel pegado al borde izquierdo,
+            separado de los datos por una línea, y los datos ocupan el ancho que sobra.
+          */}
+          <div className="flex w-full flex-1 flex-col lg:flex-row">
+            {/* ═══════════ FOTOS ═══════════ */}
+            <aside className="w-full shrink-0 space-y-3 border-b border-border/60 bg-card/40 px-5 py-5 lg:w-[24rem] lg:border-b-0 lg:border-r xl:w-[27rem] xl:px-6">
                 <div className="flex items-center justify-between gap-2">
                   <FieldLabel>Fotos ({imagenes.length}/{MAX_FOTOS_PRODUCTO})</FieldLabel>
                   {/* "Arrastrá" solo donde hay con qué arrastrar: el drag and drop de HTML no
@@ -476,81 +491,92 @@ export function ProductoFormView({ productoId }: { productoId?: string }) {
                     <span className="font-semibold text-success">{ahorro.fotos === 1 ? "Foto optimizada" : `${ahorro.fotos} fotos optimizadas`}</span>:{" "}
                     <span className="font-mono tabular-nums">{formatPeso(ahorro.antes)}</span> →{" "}
                     <span className="font-mono font-semibold tabular-nums text-foreground">{formatPeso(ahorro.despues)}</span>
-                  </p>
-                )}
-              </section>
+                </p>
+              )}
+            </aside>
 
-              {/* ═══════════ DATOS ═══════════ */}
-              <section className="space-y-4 rounded-2xl border border-border/70 bg-card p-4 sm:p-5">
-                <Field label="Nombre" required>
-                  <Input value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Nombre del producto" required />
-                </Field>
-
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <Field label="Categoría">
-                    <Input
-                      value={categoria}
-                      onChange={(e) => setCategoria(e.target.value)}
-                      placeholder="Electrodomésticos…"
-                      list="prod-categorias"
-                    />
-                    <datalist id="prod-categorias">
-                      {categorias.map((c) => <option key={c} value={c} />)}
-                    </datalist>
+            {/* ═══════════ DATOS ═══════════ */}
+            <section className="min-w-0 flex-1 px-5 py-5 xl:px-7">
+              {/*
+                En pantalla ancha los datos van en DOS bloques, no en una columna de 900px de
+                largo: qué es el producto a la izquierda, a cuánto se vende y cuánto hay a la
+                derecha. Apilados (mobile y tablet) el orden sigue siendo el de siempre.
+              */}
+              <div className="grid gap-x-8 gap-y-4 xl:grid-cols-2">
+                <div className="space-y-4">
+                  <BloqueTitulo>Qué es</BloqueTitulo>
+                  <Field label="Nombre" required>
+                    <Input value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Nombre del producto" required />
                   </Field>
-                  <Field label="SKU / código">
-                    <Input value={sku} onChange={(e) => setSku(e.target.value)} placeholder="opcional" />
-                  </Field>
-                </div>
-
-                <Field label="Precio ($)" required hint="Se toma como capital del crédito">
-                  <MoneyInput value={precio} onChange={setPrecio} required />
-                </Field>
-                {editando && creditosVivos > 0 && (
-                  <div className="flex items-start gap-2 rounded-lg border border-warning/20 bg-warning/10 px-3 py-2.5 text-xs text-warning">
-                    <Info className="mt-px h-4 w-4 shrink-0" />
-                    <span>
-                      Este producto tiene <strong>{creditosVivos}</strong> crédito{creditosVivos !== 1 ? "s" : ""} activo{creditosVivos !== 1 ? "s" : ""}.
-                      Cambiar el precio aplica solo a créditos <strong>futuros</strong>; los ya otorgados conservan su monto.
-                    </span>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <Field label="Categoría">
+                      <Input
+                        value={categoria}
+                        onChange={(e) => setCategoria(e.target.value)}
+                        placeholder="Electrodomésticos…"
+                        list="prod-categorias"
+                      />
+                      <datalist id="prod-categorias">
+                        {categorias.map((c) => <option key={c} value={c} />)}
+                      </datalist>
+                    </Field>
+                    <Field label="SKU / código">
+                      <Input value={sku} onChange={(e) => setSku(e.target.value)} placeholder="opcional" />
+                    </Field>
                   </div>
-                )}
+                </div>
 
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  {editando ? (
-                    <Field label="Stock actual" hint="Se ajusta desde la ficha (entrada/ajuste)">
-                      <div className="flex h-12 items-center rounded-lg border border-border bg-muted/20 px-3 font-mono tabular-nums text-foreground">
-                        {producto?.stock ?? 0} u.
-                      </div>
-                    </Field>
-                  ) : (
-                    <Field label="Stock inicial (unidades)" required>
-                      <Input type="number" inputMode="numeric" min="0" value={stock} onChange={(e) => setStock(e.target.value)} placeholder="0" className="font-mono tabular-nums" />
-                    </Field>
+                <div className="space-y-4">
+                  <BloqueTitulo>Venta e inventario</BloqueTitulo>
+                  <Field label="Precio ($)" required hint="Se toma como capital del crédito">
+                    <MoneyInput value={precio} onChange={setPrecio} required />
+                  </Field>
+                  {editando && creditosVivos > 0 && (
+                    <div className="flex items-start gap-2 rounded-lg border border-warning/20 bg-warning/10 px-3 py-2.5 text-xs text-warning">
+                      <Info className="mt-px h-4 w-4 shrink-0" />
+                      <span>
+                        Este producto tiene <strong>{creditosVivos}</strong> crédito{creditosVivos !== 1 ? "s" : ""} activo{creditosVivos !== 1 ? "s" : ""}.
+                        Cambiar el precio aplica solo a créditos <strong>futuros</strong>; los ya otorgados conservan su monto.
+                      </span>
+                    </div>
                   )}
-                  <Field label="Stock mínimo" hint="Alerta de bajo stock">
-                    <Input type="number" inputMode="numeric" min="0" value={stockMin} onChange={(e) => setStockMin(e.target.value)} placeholder="opcional" className="font-mono tabular-nums" />
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    {editando ? (
+                      <Field label="Stock actual" hint="Se ajusta desde la ficha (entrada/ajuste)">
+                        <div className="flex h-12 items-center rounded-lg border border-border bg-muted/20 px-3 font-mono tabular-nums text-foreground">
+                          {producto?.stock ?? 0} u.
+                        </div>
+                      </Field>
+                    ) : (
+                      <Field label="Stock inicial (unidades)" required>
+                        <Input type="number" inputMode="numeric" min="0" value={stock} onChange={(e) => setStock(e.target.value)} placeholder="0" className="font-mono tabular-nums" />
+                      </Field>
+                    )}
+                    <Field label="Stock mínimo" hint="Alerta de bajo stock">
+                      <Input type="number" inputMode="numeric" min="0" value={stockMin} onChange={(e) => setStockMin(e.target.value)} placeholder="opcional" className="font-mono tabular-nums" />
+                    </Field>
+                  </div>
+                  <Field label="Estado">
+                    <Select value={activo ? "activo" : "inactivo"} onChange={(e) => setActivo(e.target.value === "activo")}>
+                      <option value="activo">Activo</option>
+                      <option value="inactivo">Inactivo</option>
+                    </Select>
                   </Field>
                 </div>
 
-                <Field label="Descripción">
-                  <Textarea value={descripcion} onChange={(e) => setDescripcion(e.target.value)} rows={3} placeholder="Detalle, modelo, características…" />
-                </Field>
-
-                <Field label="Estado">
-                  <Select value={activo ? "activo" : "inactivo"} onChange={(e) => setActivo(e.target.value === "activo")}>
-                    <option value="activo">Activo</option>
-                    <option value="inactivo">Inactivo</option>
-                  </Select>
-                </Field>
-              </section>
-            </div>
+                <div className="xl:col-span-2">
+                  <Field label="Descripción">
+                    <Textarea value={descripcion} onChange={(e) => setDescripcion(e.target.value)} rows={3} placeholder="Detalle, modelo, características…" />
+                  </Field>
+                </div>
+              </div>
+            </section>
           </div>
 
           {/* Los botones, pegados abajo: el formulario es largo y la acción principal no puede
               depender de scrollear hasta el fondo. */}
           <div className="sticky bottom-0 z-10 border-t border-border/60 bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/80">
-            <div className="mx-auto flex w-full max-w-6xl flex-col-reverse gap-2 px-5 py-3 sm:flex-row sm:items-center sm:justify-end">
+            <div className="flex w-full flex-col-reverse gap-2 px-5 py-3 sm:flex-row sm:items-center sm:justify-end xl:px-7">
               <button
                 type="button"
                 onClick={volver}
