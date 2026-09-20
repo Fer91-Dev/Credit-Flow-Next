@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { mutate as globalMutate } from "swr";
-import { ArrowLeft, ImagePlus, Loader2, X, Link as LinkIcon, Info, GripVertical, Star, TriangleAlert } from "lucide-react";
+import { ArrowLeft, Camera, ImagePlus, Loader2, X, Link as LinkIcon, Info, GripVertical, Star, TriangleAlert } from "lucide-react";
 import { useProductos, useProducto, KEYS, type Producto } from "@/lib/swr";
 import { parseMontoInput } from "@/lib/utils";
 import { Emoji } from "@/components/ui/Emoji";
@@ -50,6 +50,12 @@ export function ProductoFormView({ productoId }: { productoId?: string }) {
   const toast = useToast();
   const editando = !!productoId;
   const fileRef = useRef<HTMLInputElement>(null);
+  /**
+   * EL BOTÓN DE CÁMARA DEL CELULAR. `capture="environment"` abre la cámara trasera DIRECTO,
+   * sin pasar por el explorador de archivos: cargar un producto desde el local es sacarle la
+   * foto al producto que está adelante, no buscarla en una galería.
+   */
+  const camaraRef = useRef<HTMLInputElement>(null);
 
   const { categorias } = useProductos();
   const { producto, isLoading } = useProducto(productoId ?? null);
@@ -262,8 +268,10 @@ export function ProductoFormView({ productoId }: { productoId?: string }) {
               <section className="space-y-3 rounded-2xl border border-border/70 bg-card p-4">
                 <div className="flex items-center justify-between gap-2">
                   <FieldLabel>Fotos ({imagenes.length}/{MAX_FOTOS_PRODUCTO})</FieldLabel>
+                  {/* "Arrastrá" solo donde hay con qué arrastrar: el drag and drop de HTML no
+                      existe en una pantalla táctil, y prometerlo ahí es mentir. */}
                   {imagenes.length > 1 && (
-                    <span className="text-[11px] text-muted-foreground">Arrastrá para ordenar</span>
+                    <span className="hidden text-[11px] text-muted-foreground sm:inline">Arrastrá para ordenar</span>
                   )}
                 </div>
 
@@ -297,16 +305,31 @@ export function ProductoFormView({ productoId }: { productoId?: string }) {
                       )}
                     </>
                   ) : (
-                    <button
-                      type="button"
-                      onClick={() => fileRef.current?.click()}
-                      disabled={uploading}
-                      className="flex h-full w-full flex-col items-center justify-center gap-2 text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
-                    >
-                      {uploading ? <Loader2 className="h-7 w-7 animate-spin text-primary" /> : <ImagePlus className="h-7 w-7" />}
-                      <span className="text-sm font-medium">Subir la foto del producto</span>
-                      <span className="text-xs">o arrastrala hasta acá</span>
-                    </button>
+                    <div className="flex h-full w-full flex-col items-center justify-center gap-3 p-4">
+                      {uploading ? <Loader2 className="h-7 w-7 animate-spin text-primary" /> : <ImagePlus className="h-7 w-7 text-muted-foreground" />}
+                      <div className="flex w-full max-w-xs flex-col gap-2">
+                        {/* En el celular la cámara va PRIMERA y como botón sólido: es lo que se
+                            hace nueve de cada diez veces parado frente al producto. */}
+                        <button
+                          type="button"
+                          onClick={() => camaraRef.current?.click()}
+                          disabled={uploading}
+                          className="flex h-11 items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50 sm:hidden"
+                        >
+                          <Camera className="h-4 w-4" /> Sacar la foto
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => fileRef.current?.click()}
+                          disabled={uploading}
+                          className="flex h-11 items-center justify-center gap-2 rounded-lg border border-border bg-card px-4 text-sm font-medium text-foreground transition-colors hover:bg-muted/30 disabled:opacity-50 sm:h-auto sm:border-0 sm:bg-transparent sm:text-muted-foreground sm:hover:bg-transparent sm:hover:text-foreground"
+                        >
+                          <span className="sm:hidden">Elegir de la galería</span>
+                          <span className="hidden sm:inline">Subir la foto del producto</span>
+                        </button>
+                      </div>
+                      <span className="hidden text-xs text-muted-foreground sm:block">o arrastrala hasta acá</span>
+                    </div>
                   )}
                 </div>
 
@@ -334,9 +357,9 @@ export function ProductoFormView({ productoId }: { productoId?: string }) {
                         type="button"
                         onClick={() => quitarImagen(idx)}
                         title="Quitar"
-                        className="absolute right-0.5 top-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-background/80 text-muted-foreground transition-colors hover:text-destructive"
+                        className="absolute right-0.5 top-0.5 flex h-7 w-7 items-center justify-center rounded-full bg-background/80 text-muted-foreground transition-colors hover:text-destructive sm:h-5 sm:w-5"
                       >
-                        <X className="h-3 w-3" />
+                        <X className="h-3.5 w-3.5 sm:h-3 sm:w-3" />
                       </button>
                       {/* La foto chica se marca acá mismo, no en un cartel aparte */}
                       {medidas[url] && medidas[url].ancho < FOTO_ANCHO_MINIMO && (
@@ -349,7 +372,10 @@ export function ProductoFormView({ productoId }: { productoId?: string }) {
                           type="button"
                           onClick={() => hacerPortada(idx)}
                           title="Elegir como portada"
-                          className="absolute inset-x-0 bottom-0 flex items-center justify-center gap-1 bg-background/85 py-0.5 text-[9px] font-medium text-foreground opacity-0 transition-all hover:bg-primary/85 hover:text-primary-foreground group-hover/foto:opacity-100"
+                          /* En táctil no hay hover: si la portada solo aparece al pasar el
+                             mouse, desde el celular NO SE PUEDE ELEGIR. Visible siempre abajo
+                             de `sm`, al hover de `sm` para arriba. */
+                          className="absolute inset-x-0 bottom-0 flex items-center justify-center gap-1 bg-background/85 py-1 text-[10px] font-medium text-foreground transition-all hover:bg-primary/85 hover:text-primary-foreground sm:py-0.5 sm:text-[9px] sm:opacity-0 sm:group-hover/foto:opacity-100"
                         >
                           <Star className="h-2.5 w-2.5" /> Portada
                         </button>
@@ -359,15 +385,26 @@ export function ProductoFormView({ productoId }: { productoId?: string }) {
                   {/* Sin ninguna foto, el único camino es el cuadro grande de arriba: dos
                       botones para lo mismo, uno al lado del otro, es una elección falsa. */}
                   {!lleno && imagenes.length > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => fileRef.current?.click()}
-                      disabled={uploading}
-                      className="flex h-20 w-20 flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-border text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground disabled:opacity-50"
-                    >
-                      {uploading ? <Loader2 className="h-5 w-5 animate-spin text-primary" /> : <ImagePlus className="h-5 w-5" />}
-                      <span className="text-[10px]">Subir</span>
-                    </button>
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => camaraRef.current?.click()}
+                        disabled={uploading}
+                        className="flex h-20 w-20 flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-border text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground disabled:opacity-50 sm:hidden"
+                      >
+                        {uploading ? <Loader2 className="h-5 w-5 animate-spin text-primary" /> : <Camera className="h-5 w-5" />}
+                        <span className="text-[10px]">Cámara</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => fileRef.current?.click()}
+                        disabled={uploading}
+                        className="flex h-20 w-20 flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-border text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground disabled:opacity-50"
+                      >
+                        {uploading ? <Loader2 className="h-5 w-5 animate-spin text-primary" /> : <ImagePlus className="h-5 w-5" />}
+                        <span className="text-[10px]">Subir</span>
+                      </button>
+                    </>
                   )}
                 </div>
 
@@ -376,6 +413,14 @@ export function ProductoFormView({ productoId }: { productoId?: string }) {
                   type="file"
                   accept="image/png,image/jpeg,image/webp,image/gif"
                   multiple
+                  className="hidden"
+                  onChange={(e) => { if (e.target.files?.length) handleFiles(e.target.files); e.target.value = ""; }}
+                />
+                <input
+                  ref={camaraRef}
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
                   className="hidden"
                   onChange={(e) => { if (e.target.files?.length) handleFiles(e.target.files); e.target.value = ""; }}
                 />
@@ -480,11 +525,11 @@ export function ProductoFormView({ productoId }: { productoId?: string }) {
                     </Field>
                   ) : (
                     <Field label="Stock inicial (unidades)" required>
-                      <Input type="number" min="0" value={stock} onChange={(e) => setStock(e.target.value)} placeholder="0" className="font-mono tabular-nums" />
+                      <Input type="number" inputMode="numeric" min="0" value={stock} onChange={(e) => setStock(e.target.value)} placeholder="0" className="font-mono tabular-nums" />
                     </Field>
                   )}
                   <Field label="Stock mínimo" hint="Alerta de bajo stock">
-                    <Input type="number" min="0" value={stockMin} onChange={(e) => setStockMin(e.target.value)} placeholder="opcional" className="font-mono tabular-nums" />
+                    <Input type="number" inputMode="numeric" min="0" value={stockMin} onChange={(e) => setStockMin(e.target.value)} placeholder="opcional" className="font-mono tabular-nums" />
                   </Field>
                 </div>
 

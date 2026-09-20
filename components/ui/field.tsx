@@ -58,8 +58,14 @@ function TrianguloAviso({ className }: { className?: string }) {
   return <AlertTriangle className={className} aria-hidden />;
 }
 
+/**
+ * 🔴 `text-[16px]` EN EL CELULAR. Por debajo de 16px, iOS hace zoom sobre el campo apenas se
+ * lo toca y deja la pantalla corrida: para seguir cargando hay que volver a acomodarla a mano
+ * en cada campo. Es el motivo por el que un formulario se siente "no apto para móvil" aunque
+ * entre perfecto. De `sm` para arriba sigue en `text-sm`, así que en escritorio no cambia nada.
+ */
 const inputBase =
-  "h-10 w-full rounded-lg border border-border bg-input px-3 text-sm text-foreground placeholder:text-muted-foreground/40 shadow-[inset_0_1px_2px_0_rgba(0,0,0,0.22)] outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/25";
+  "h-10 w-full rounded-lg border border-border bg-input px-3 text-[16px] sm:text-sm text-foreground placeholder:text-muted-foreground/40 shadow-[inset_0_1px_2px_0_rgba(0,0,0,0.22)] outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/25";
 
 export function Input({ className, ...props }: React.InputHTMLAttributes<HTMLInputElement>) {
   return <input className={cn(inputBase, className)} {...props} />;

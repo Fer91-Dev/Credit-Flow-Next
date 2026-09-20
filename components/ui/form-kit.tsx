@@ -102,7 +102,7 @@ export function MoneyInput({
         required={required}
         placeholder={placeholder}
         onChange={(e) => onChange(maskMontoInput(e.target.value))}
-        className="h-12 w-full rounded-lg border border-border bg-muted/40 pl-12 pr-3 text-right text-base font-mono font-semibold tabular-nums text-foreground placeholder:text-muted-foreground/40 outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/20"
+        className="h-12 w-full rounded-lg border border-border bg-muted/40 pl-12 pr-3 text-right text-[16px] font-mono sm:text-base font-semibold tabular-nums text-foreground placeholder:text-muted-foreground/40 outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/20"
       />
     </div>
   );
