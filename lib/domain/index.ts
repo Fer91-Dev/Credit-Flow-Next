@@ -44,5 +44,6 @@ export * from "./proveedores";
 export * from "./logros";
 export * from "./stock";
 export * from "./reportes";
+export * from "./productos-reporte";
 export * from "./cierre-turno";
 export * from "./agenda-cobranza";

@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { Download, Printer } from "lucide-react";
-import { useReportes, useReporteSerie, useReporteCobranza, useFinanciera, type Reporte, type ReporteSerie, type PuntoMensual, type ReporteCobranza } from "@/lib/swr";
+import { useReportes, useReporteSerie, useReporteCobranza, useReporteProductos, useFinanciera, type Reporte, type ReporteSerie, type PuntoMensual, type ReporteCobranza, type ReporteProductos } from "@/lib/swr";
 import { descargarCSV } from "@/lib/csv";
 import { formatFecha, formatDias, pctDe } from "@/lib/utils";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -20,6 +20,10 @@ function n2(x: number) {
   return new Intl.NumberFormat("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(x);
 }
 const round2 = (x: number) => Math.round(x * 100) / 100;
+/** Enteros (unidades, conteos): sin decimales, con separador de miles. */
+function n0(x: number) {
+  return new Intl.NumberFormat("es-AR", { maximumFractionDigits: 0 }).format(x);
+}
 function n1(x: number) {
   return new Intl.NumberFormat("es-AR", { minimumFractionDigits: 0, maximumFractionDigits: 1 }).format(x);
 }
@@ -52,6 +56,7 @@ const INPUT =
 const TABS = [
   { id: "resumen", label: "Resumen", emoji: "clipboard" },
   { id: "operaciones", label: "Operaciones", emoji: "handshake" },
+  { id: "productos", label: "Productos", emoji: "package" },
   { id: "rentabilidad", label: "Rentabilidad", emoji: "money-bag" },
   { id: "gastos", label: "Gastos", emoji: "receipt" },
   { id: "morosidad", label: "Morosidad", emoji: "warning" },
@@ -104,6 +109,21 @@ function exportarMedios(s: ReporteSerie) {
       ...metodos.map((m) => p.por_metodo?.[m] ?? 0),
       Object.values(p.por_metodo ?? {}).reduce((a, b) => a + b, 0),
     ]),
+  ]);
+}
+function exportarProductos(p: ReporteProductos) {
+  descargarCSV(`reporte-productos_${p.periodo.desde}_${p.periodo.hasta}.csv`, [
+    ["RANKING DEL PERIODO"],
+    ["Producto", "Categoria", "SKU", "Unidades", "Operaciones", "Monto financiado", "% del monto", "Ticket promedio", "Ultima venta"],
+    ...p.ranking.map((f) => [f.nombre, f.categoria ?? "", f.sku ?? "", f.unidades, f.operaciones, f.monto, f.pct_monto, f.ticket_promedio, f.ultima_venta ?? ""]),
+    [],
+    ["POR CATEGORIA"],
+    ["Categoria", "Unidades", "Operaciones", "Monto financiado", "% del monto"],
+    ...p.categorias.map((c) => [c.categoria, c.unidades, c.operaciones, c.monto, c.pct_monto]),
+    [],
+    ["EVOLUCION MENSUAL"],
+    ["Mes", "Unidades", "Operaciones", "Monto financiado"],
+    ...p.serie.map((m) => [m.mes, m.unidades, m.operaciones, m.monto]),
   ]);
 }
 function exportarCobranza(c: ReporteCobranza) {
@@ -234,6 +254,7 @@ export function ReportesView() {
   const { reporte, error, isLoading } = useReportes(desde, hasta);
   const { serie } = useReporteSerie(desde, hasta);
   const { cobranza } = useReporteCobranza(desde, hasta);
+  const { productos: repProductos } = useReporteProductos(desde, hasta);
   const { financiera } = useFinanciera();
 
   const preset = (d: Date, h: Date) => { setDesde(ymd(d)); setHasta(ymd(h)); };
@@ -264,12 +285,14 @@ export function ReportesView() {
     : tab === "resumen" ? !!reporte && reporte.detalle_pagos.length > 0
     : tab === "cobranza" ? !!cobranza && cobranza.por_vendedor.length > 0
     : tab === "medios" ? !!serie && serie.medios_pago.length > 0
+    : tab === "productos" ? !!repProductos && repProductos.ranking.length > 0
     : !!serie && serie.serie.length > 0;
   const exportar = () => {
     if (tab === "resumen") { if (reporte) exportarPagos(reporte); }
     else if (tab === "gastos") { if (reporte) exportarGastos(reporte); }
     else if (tab === "cobranza") { if (cobranza) exportarCobranza(cobranza); }
     else if (tab === "medios") { if (serie) exportarMedios(serie); }
+    else if (tab === "productos") { if (repProductos) exportarProductos(repProductos); }
     else if (serie) exportarSerie(serie);
   };
 
@@ -362,6 +385,7 @@ export function ReportesView() {
           {tab === "gastos" && <TabGastos r={reporte} s={serie} />}
           {tab === "morosidad" && <TabMorosidad r={reporte} s={serie} />}
           {tab === "cobranza" && <TabCobranza c={cobranza} />}
+          {tab === "productos" && <TabProductos p={repProductos} />}
           {tab === "medios" && <TabMedios s={serie} />}
           {tab === "historico" && <TabHistorico s={serie} />}
         </>
@@ -689,6 +713,152 @@ function FilaMes({ p }: { p: PuntoMensual }) {
       <td className={`py-2 text-right font-mono ${p.rentabilidad_neta >= 0 ? "text-foreground" : "text-destructive"}`}>${n2(p.rentabilidad_neta)}</td>
       <td className="py-2 text-right font-mono text-muted-foreground">{n1(p.mora_pct)}%</td>
     </tr>
+  );
+}
+
+// ─── Tab: Productos ───────────────────────────────────────────────────────────
+
+/**
+ * QUÉ SE VENDE DEL CATÁLOGO.
+ *
+ * Fernando (20/09/2026): «en reportes no tenemos nada relacionado a productos».
+ *
+ * 🔴 DOS LECTURAS DEL "TICKET", Y NO SON LA MISMA. El ticket por OPERACIÓN dice cuánto se
+ * financia por venta; el precio por UNIDAD, cuánto vale la cosa promedio. Si el ticket es
+ * $540.000 y la unidad $180.000, la gente se lleva tres cosas por vez — y eso cambia qué
+ * conviene tener en el depósito. Mostrar uno solo esconde esa diferencia.
+ *
+ * Y el ranking se puede ordenar por PLATA o por UNIDADES porque casi nunca es el mismo
+ * producto: el ventilador vende cuarenta y la heladera tres, y la heladera deja seis veces
+ * más capital colocado.
+ */
+function TabProductos({ p }: { p?: ReporteProductos }) {
+  const [orden, setOrden] = useState<"monto" | "unidades">("monto");
+  if (!p) return <BodySkeleton />;
+  const { resumen, ranking, categorias, serie } = p;
+  if (ranking.length === 0) {
+    return <Empty>Sin ventas de productos en el período. Se cuentan los créditos de producto otorgados entre las fechas elegidas.</Empty>;
+  }
+
+  const filas = [...ranking].sort((a, b) => (orden === "monto" ? b.monto - a.monto : b.unidades - a.unidades));
+  const maxCat = Math.max(1, ...categorias.map((c) => c.monto));
+  const porOperacion = resumen.operaciones > 0 ? resumen.unidades / resumen.operaciones : 0;
+  const mesesConVenta = serie.filter((m) => m.operaciones > 0);
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <KpiCard
+          icon="package" label="Unidades vendidas" value={n0(resumen.unidades)} accent="primary" mono
+          sub={`${resumen.operaciones} operaci${resumen.operaciones === 1 ? "ón" : "ones"} · ${resumen.productos_distintos} producto${resumen.productos_distintos === 1 ? "" : "s"} distinto${resumen.productos_distintos === 1 ? "" : "s"}`}
+        />
+        <KpiCard
+          icon="money-bag" label="Financiado en productos" value={`$${n2(resumen.financiado)}`} accent="success" mono
+          sub="capital colocado, sin salir de la caja"
+        />
+        <KpiCard
+          icon="handshake" label="Ticket por operación" value={`$${n2(resumen.ticket_operacion)}`} accent="primary" mono
+          sub={`${n1(porOperacion)} unidad${porOperacion === 1 ? "" : "es"} por venta`}
+        />
+        <KpiCard
+          icon="label" label="Precio por unidad" value={`$${n2(resumen.precio_unidad)}`} accent="muted" mono
+          sub={`$${n2(resumen.financiado)} entre ${n0(resumen.unidades)} unidad${resumen.unidades === 1 ? "" : "es"}`}
+        />
+      </div>
+
+      <div className="rounded-xl border border-border bg-card p-5">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <Emoji name="trophy" className="h-4 w-4" />
+            <h3 className="text-sm font-semibold text-foreground">Los más vendidos</h3>
+          </div>
+          {/* El orden no es un detalle: son dos rankings distintos. */}
+          <div className="flex gap-1 rounded-lg bg-muted/30 p-0.5">
+            {([["monto", "Por plata"], ["unidades", "Por unidades"]] as const).map(([k, l]) => (
+              <button
+                key={k}
+                type="button"
+                onClick={() => setOrden(k)}
+                className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+                  orden === k ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {l}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="overflow-x-auto">
+          <SimpleTable
+            head={["Producto", "Unidades", "Operaciones", "Financiado", "% del monto", "Ticket promedio", "Última venta"]}
+            rows={filas.map((f) => [
+              <span key="p" className="flex min-w-0 flex-col">
+                <span className="truncate font-medium text-foreground">{f.nombre}</span>
+                {(f.categoria || f.sku) && (
+                  <span className="truncate text-[11px] text-muted-foreground">
+                    {f.categoria ?? "sin categoría"}{f.sku ? ` · ${f.sku}` : ""}
+                  </span>
+                )}
+              </span>,
+              <span key="u" className="font-mono font-semibold text-foreground">{n0(f.unidades)}</span>,
+              <span key="o" className="font-mono text-muted-foreground">{n0(f.operaciones)}</span>,
+              <span key="m" className="font-mono font-semibold text-success">${n2(f.monto)}</span>,
+              <span key="pm" className="font-mono text-muted-foreground">{n1(f.pct_monto)}%</span>,
+              <span key="t" className="font-mono text-foreground">${n2(f.ticket_promedio)}</span>,
+              <span key="uv" className="text-muted-foreground">{f.ultima_venta ? fmtDate(f.ultima_venta) : "—"}</span>,
+            ])}
+            foot={[
+              "Total",
+              <span key="fu" className="font-mono font-bold text-foreground">{n0(resumen.unidades)}</span>,
+              <span key="fo" className="font-mono text-muted-foreground">{n0(resumen.operaciones)}</span>,
+              <span key="fm" className="font-mono font-bold text-success">${n2(resumen.financiado)}</span>,
+              "", "", "",
+            ]}
+          />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <Section title="Qué rubro mueve el negocio" icon="clipboard">
+          <div className="space-y-2.5">
+            {categorias.map((c) => (
+              <div key={c.categoria} className="space-y-1">
+                <div className="flex items-baseline justify-between gap-3 text-xs">
+                  <span className="truncate font-medium text-foreground">{c.categoria}</span>
+                  <span className="shrink-0 font-mono text-muted-foreground">
+                    <span className="font-semibold text-foreground">${n2(c.monto)}</span> · {n0(c.unidades)} u. · {n1(c.pct_monto)}%
+                  </span>
+                </div>
+                <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted/40">
+                  <div className="h-1.5 rounded-full bg-primary transition-[width] duration-700 ease-out" style={{ width: `${Math.max(2, (c.monto / maxCat) * 100)}%` }} />
+                </div>
+              </div>
+            ))}
+          </div>
+        </Section>
+
+        <Section title="Unidades vendidas por mes" icon="calendar">
+          {mesesConVenta.length === 0 ? <Empty>Sin ventas en los meses del rango.</Empty> : (
+            <BarChart
+              data={serie.map((m) => ({ label: mesCorto(m.mes), value: m.unidades, hint: `${n0(m.unidades)} u. · $${n2(m.monto)}` }))}
+              accent="primary"
+              format={(v) => n0(v)}
+            />
+          )}
+        </Section>
+      </div>
+
+      <Section title="Capital financiado en productos, mes a mes" icon="chart-increasing">
+        <BarChart
+          data={serie.map((m) => ({ label: mesCorto(m.mes), value: m.monto, hint: `${m.operaciones} operaci${m.operaciones === 1 ? "ón" : "ones"}` }))}
+          accent="success"
+          format={(v) => `$${n2(v)}`}
+        />
+        <Nota compacta className="mt-2">
+          Una venta cuenta el día en que se otorga el crédito, que es cuando el producto sale del depósito — no cuando el cliente termina de pagarlo.
+        </Nota>
+      </Section>
+    </div>
   );
 }
 

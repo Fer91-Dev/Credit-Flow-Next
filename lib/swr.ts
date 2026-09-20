@@ -2397,6 +2397,44 @@ export function useReporteCobranza(desde: string, hasta: string) {
   return { cobranza: data, error, isLoading };
 }
 
+// ─── Reporte de productos (qué se vende del catálogo) ────────────────────────
+
+export interface ReporteProductos {
+  periodo: { desde: string; hasta: string };
+  resumen: {
+    unidades: number;
+    financiado: number;
+    operaciones: number;
+    /** Lo que se financia por operación. */
+    ticket_operacion: number;
+    /** Lo que vale la unidad promedio: distinto del ticket cuando se llevan varias. */
+    precio_unidad: number;
+    productos_distintos: number;
+  };
+  ranking: {
+    producto_id: string;
+    nombre: string;
+    categoria: string | null;
+    sku: string | null;
+    unidades: number;
+    operaciones: number;
+    monto: number;
+    ticket_promedio: number;
+    pct_monto: number;
+    pct_unidades: number;
+    ultima_venta: string | null;
+  }[];
+  categorias: { categoria: string; unidades: number; operaciones: number; monto: number; pct_monto: number }[];
+  serie: { mes: string; unidades: number; operaciones: number; monto: number }[];
+}
+
+export function useReporteProductos(desde: string, hasta: string) {
+  const { data, error, isLoading } = useSWR<ReporteProductos>(
+    desde && hasta ? `/api/reportes/productos?desde=${desde}&hasta=${hasta}` : null,
+  );
+  return { productos: data, error, isLoading };
+}
+
 /** Punto de la serie mensual de Reportes (una fila = un mes). */
 export interface PuntoMensual {
   mes: string; // "YYYY-MM"
