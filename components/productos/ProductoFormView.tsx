@@ -13,6 +13,7 @@ import { Field, Input, Select, Textarea } from "@/components/ui/field";
 import { MoneyInput, FieldLabel } from "@/components/ui/form-kit";
 import { Nota } from "@/components/ui/Nota";
 import { MAX_FOTOS_PRODUCTO } from "@/lib/productos";
+import { optimizarImagen, formatPeso, LADO_MAXIMO } from "@/lib/imagen-cliente";
 import { useConfirm } from "@/components/ui/confirm";
 import { useToast } from "@/components/ui/toast";
 
@@ -71,6 +72,8 @@ export function ProductoFormView({ productoId }: { productoId?: string }) {
   const [uploading, setUploading] = useState(false);
   const [dragIdx, setDragIdx] = useState<number | null>(null);
   const [sobreZona, setSobreZona] = useState(false);
+  /** Lo que se le ahorró al catálogo al achicar las fotos, para poder decirlo con números. */
+  const [ahorro, setAhorro] = useState<{ fotos: number; antes: number; despues: number } | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -132,12 +135,27 @@ export function ProductoFormView({ productoId }: { productoId?: string }) {
       let cargadas = imagenes.length;
       for (const file of Array.from(files)) {
         if (cargadas >= MAX_FOTOS_PRODUCTO) break;
+        /**
+         * La foto se achica ACÁ, antes de salir. Una del celular son 4 MB que después se
+         * muestran en un recuadro de 300px: subirla entera hace lento el catálogo para todos
+         * los que lo abran, sin que se vea un poco mejor.
+         */
+        const opt = await optimizarImagen(file);
         const fd = new FormData();
-        fd.append("file", file);
+        fd.append("file", opt.archivo);
         const res = await fetch("/api/productos/upload", { method: "POST", body: fd });
         const json = await res.json();
-        if (json.ok) { agregarImagen(json.data.url); cargadas++; }
-        else { setError(json.error || "No se pudo subir la imagen"); break; }
+        if (json.ok) {
+          agregarImagen(json.data.url);
+          cargadas++;
+          if (opt.cambio) {
+            setAhorro((prev) => ({
+              fotos: (prev?.fotos ?? 0) + 1,
+              antes: (prev?.antes ?? 0) + opt.antes.bytes,
+              despues: (prev?.despues ?? 0) + opt.despues.bytes,
+            }));
+          }
+        } else { setError(json.error || "No se pudo subir la imagen"); break; }
       }
     } catch {
       setError("No se pudo subir la imagen");
@@ -400,10 +418,21 @@ export function ProductoFormView({ productoId }: { productoId?: string }) {
                       la misma con la que se recorta en el catálogo) · mínimo{" "}
                       <span className="font-semibold text-foreground">{FOTO_ANCHO_MINIMO} px</span> de ancho ·
                       JPG, PNG o WebP de hasta <span className="font-semibold text-foreground">{PESO_MAXIMO_MB} MB</span>.
-                      La primera foto es la portada.
+                      La primera foto es la portada. Las más grandes se achican solas a{" "}
+                      <span className="font-semibold text-foreground">{LADO_MAXIMO} px</span> antes de subirse.
                     </>
                   )}
                 </Nota>
+
+                {/* Lo que se achicó, con los números: es la diferencia entre que el catálogo
+                    abra rápido o tarde, y no se ve por ningún otro lado. */}
+                {ahorro && (
+                  <p className="text-[11px] text-muted-foreground">
+                    <span className="font-semibold text-success">{ahorro.fotos === 1 ? "Foto optimizada" : `${ahorro.fotos} fotos optimizadas`}</span>:{" "}
+                    <span className="font-mono tabular-nums">{formatPeso(ahorro.antes)}</span> →{" "}
+                    <span className="font-mono font-semibold tabular-nums text-foreground">{formatPeso(ahorro.despues)}</span>
+                  </p>
+                )}
               </section>
 
               {/* ═══════════ DATOS ═══════════ */}
