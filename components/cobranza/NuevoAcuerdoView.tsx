@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import useSWR, { mutate as globalMutate } from "swr";
 import { Handshake, ArrowLeft, Loader2 } from "lucide-react";
-import { formatMonto, formatFecha, formatCreditoNumero, formatNumero, formatDias, parseMontoInput, cn } from "@/lib/utils";
+import { formatMonto, formatFecha, formatFechaHora, formatCreditoNumero, formatNumero, formatDias, parseMontoInput, cn } from "@/lib/utils";
 import { SystemControls } from "@/components/ui/SystemControls";
 import { MoneyInput, FieldLabel, IconTextarea, IconSelect } from "@/components/caja/caja-form";
 import { useConfirm } from "@/components/ui/confirm";
@@ -90,10 +90,28 @@ export function NuevoAcuerdoView({ creditoId }: { creditoId: string | null }) {
   /** Vuelve a Cobranzas, a la pestaña que corresponda. */
   const volver = (tab?: string) => router.push(tab ? `/cobranza?tab=${tab}` : "/cobranza");
 
+  /**
+   * 🔴 ESTA PANTALLA MUESTRA UN NÚMERO QUE CORRE SOLO.
+   *
+   * Los punitorios se devengan por día: $302,71 por cuota por día en CRD-000086, o sea $908
+   * diarios con tres cuotas vencidas. El SaaS no revalida al volver a la pestaña
+   * (`revalidateOnFocus: false` global, pensado para un panel operativo), así que una
+   * pantalla de acuerdo abierta desde ayer arma el plan con la mora de ayer. Al firmar, el
+   * servidor recalcula con la deuda de HOY —eso está bien y es lo que evita que se firme de
+   * menos—, pero el operador ya le dijo otro número al cliente.
+   *
+   * Acá sí se revalida al volver y cada dos minutos: es una pantalla que se deja abierta
+   * mientras se habla por teléfono.
+   */
   const { data, error: errPreview, isLoading } = useSWR<Preview>(
     creditoId ? `/api/creditos/${creditoId}/acuerdo` : null,
     fetcher,
+    { revalidateOnFocus: true, refreshInterval: 120_000, dedupingInterval: 5_000 },
   );
+
+  /** Cuándo se calculó lo que se está viendo. La mora de mañana es otra. */
+  const [calculadoA, setCalculadoA] = useState<Date | null>(null);
+  useEffect(() => { if (data) setCalculadoA(new Date()); }, [data]);
 
   // Valores por defecto una vez que se sabe la política de la financiera.
   useEffect(() => {
@@ -446,6 +464,13 @@ export function NuevoAcuerdoView({ creditoId }: { creditoId: string | null }) {
                 </span>
                 <span className="font-mono font-bold text-foreground">{formatMonto(data.deuda.total)}</span>
               </div>
+              {/* El sello de la foto: sin esto, dos pantallas del mismo crédito abiertas en
+                  días distintos muestran dos totales y parecen contradecirse. */}
+              {calculadoA && (
+                <p className="px-3 pt-2 text-[11px] text-muted-foreground">
+                  Calculado {formatFechaHora(calculadoA)}. Los punitorios corren por día: mañana este total es otro.
+                </p>
+              )}
               {data.deuda.por_vencer > 0 && (
                 <p className="px-3 py-2 text-[11px] leading-relaxed text-muted-foreground">
                   El plan original se cae: el acuerdo se lleva las {data.deuda.cuotas_vencidas} cuota{data.deuda.cuotas_vencidas === 1 ? "" : "s"} vencida{data.deuda.cuotas_vencidas === 1 ? "" : "s"}
