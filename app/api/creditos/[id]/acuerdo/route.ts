@@ -147,7 +147,13 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
        * refinanciado — lo mandaba a pedir un permiso que nadie le puede dar.
        */
       autorizable: porEstado.permitido,
-      puede_autorizar: role === "admin" && porEstado.permitido,
+      /**
+       * `sin_gestion` la levanta CUALQUIER operador dejando constancia: el vendedor está con
+       * el cliente enfrente y el contacto existió aunque no esté tipeado. El resto de la
+       * escalera sigue siendo del admin.
+       */
+      clave: veredicto.permitido ? null : veredicto.clave ?? null,
+      puede_autorizar: porEstado.permitido && (role === "admin" || veredicto.clave === "sin_gestion"),
     },
     credito: {
       id: credito.id,

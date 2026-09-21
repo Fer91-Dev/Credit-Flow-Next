@@ -288,6 +288,8 @@ export interface CrearAcuerdoInput {
   esAdmin: boolean;
   /** Vendedor al que se le imputa la gestión (para el plus por recupero). */
   vendedorId: string | null;
+  /** Se armó sin gestión previa, con el operador dejando constancia. Va a la auditoría. */
+  sinContactoConsentido?: boolean;
 }
 
 /**
@@ -439,7 +441,16 @@ export async function crearAcuerdo(input: CrearAcuerdoInput) {
       `${formatPesos(deuda.total)} vencidos en ${cuotas} cuota(s)` +
       (quita > 0 ? ` con quita de ${formatPesos(quita)}` : "") +
       (entregaCobrada > 0 ? ` · entrega de ${formatPesos(entregaCobrada)} cobrada en el acto` : ""),
-    meta: { tipo: "acuerdo_pago", acuerdo_id: acuerdo.id, deuda: deuda.total, quita, entrega: entregaCobrada, monto_acordado: totalAcuerdo, tasa_mensual: tasaAcuerdoPct, cuotas },
+    meta: {
+      tipo: "acuerdo_pago", acuerdo_id: acuerdo.id, deuda: deuda.total, quita,
+      entrega: entregaCobrada, monto_acordado: totalAcuerdo, tasa_mensual: tasaAcuerdoPct, cuotas,
+      /**
+       * El acuerdo se armó SIN gestión previa, con el operador dejando constancia de que ya
+       * había contactado al cliente. Va a la auditoría porque es la única huella de esa
+       * excepción: el actor ya queda por `getAuditActor`, esto dice QUÉ se saltó.
+       */
+      ...(input.sinContactoConsentido ? { sin_contacto_consentido: true } : {}),
+    },
   });
 
   return acuerdo;

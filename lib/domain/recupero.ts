@@ -445,6 +445,17 @@ export function resolverRecupero(raw: unknown): RecuperoConfig {
 /** Resultado de una guarda de escalera: si no se puede, POR QUÉ y qué hacer en su lugar. */
 export interface VeredictoEscalera {
   permitido: boolean;
+  /**
+   * QUÉ regla bloquea, para poder tratarlas distinto. Hasta ahora el motivo era solo un
+   * texto y todas las negativas pesaban lo mismo: la única forma de pasar era ser admin.
+   *
+   * `sin_gestion` es la única que el operador puede levantar por su cuenta (Fernando,
+   * 21/09/2026): el vendedor está con el cliente enfrente, el contacto ocurrió aunque no
+   * esté tipeado, y hacerle abandonar el arreglo para ir a registrar una llamada es pedirle
+   * que documente el pasado antes de cerrar el presente. Tilda, queda a su nombre y sigue.
+   * Las demás —días mínimos, topes, cadena agotada— siguen siendo del admin.
+   */
+  clave?: "sin_gestion";
   motivo?: string;
   /** Qué corresponde hacer antes, para que el mensaje no sea solo una negativa. */
   sugerencia?: string;
@@ -470,8 +481,9 @@ export function puedeAcordar(s: SenalesRecupero, cfg: RecuperoConfig): Veredicto
   if (cfg.exigir_gestion_para_acuerdo && s.gestiones === 0) {
     return {
       permitido: false,
+      clave: "sin_gestion",
       motivo: "No se puede armar un acuerdo con alguien a quien nadie contactó todavía.",
-      sugerencia: "Llamalo y registrá la gestión; después armás el acuerdo.",
+      sugerencia: "Llamalo y registrá la gestión; o dejá constancia de que lo contactaste y seguí.",
     };
   }
   /**
@@ -786,6 +798,12 @@ export function puedeCobrar(
      * nada — si la escalera no admite el arreglo, tampoco admite su entrega.
      */
     entregaDe?: "acuerdo" | "refinanciacion";
+    /**
+     * El operador dejó constancia de que ya contactó al cliente. La entrega de un acuerdo
+     * se cobra ANTES de armarlo, así que sin esto el cobro se frenaba por la misma regla
+     * que el acuerdo ya tenía levantada: la plata quedaba afuera y el arreglo imposible.
+     */
+    sinGestionConsentida?: boolean;
   },
 ): VeredictoEscalera {
   if (!cfg.bloquear_cobro_sin_refinanciar) return PERMITIDO;
@@ -838,7 +856,13 @@ export function puedeCobrar(
    * agotó el tope de acuerdos rotos, la entrega de un acuerdo no entra; y la de una
    * refinanciación solo entra si refinanciar está efectivamente abierto.
    */
-  if (opts?.entregaDe === "acuerdo" && puedeAcordar(s, cfg).permitido) return PERMITIDO;
+  if (opts?.entregaDe === "acuerdo") {
+    const v = puedeAcordar(s, cfg);
+    if (v.permitido) return PERMITIDO;
+    // Lo ÚNICO que la constancia levanta es la falta de gestión: si el acuerdo está frenado
+    // por los días o por el tope de rotos, su entrega tampoco pasa.
+    if (v.clave === "sin_gestion" && opts.sinGestionConsentida) return PERMITIDO;
+  }
   if (opts?.entregaDe === "refinanciacion" && puedeRefinanciar(s, cfg).permitido) return PERMITIDO;
 
   /**

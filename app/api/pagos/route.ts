@@ -342,6 +342,9 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     { role, autorizacionAdmin: body.autorizacion_admin === true },
     {
       entregaDe: body.entrega_de === "acuerdo" || body.entrega_de === "refinanciacion" ? body.entrega_de : undefined,
+      // La misma constancia con la que se va a armar el acuerdo: si no viajara, el cobro de
+      // la entrega se frenaría por una regla que el acuerdo ya tiene levantada.
+      sinGestionConsentida: body.sin_contacto_consentido === true,
       // Habilita la regla de la campaña de recupero, que solo mira a los castigados.
       estadoCredito: credito.estado,
     },

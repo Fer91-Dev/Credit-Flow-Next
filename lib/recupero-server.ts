@@ -102,6 +102,14 @@ export interface ActorEscalera {
   role: string;
   /** El admin marcó explícitamente que quiere seguir igual. */
   autorizacionAdmin?: boolean;
+  /**
+   * El operador —cualquiera, no solo el admin— dejó constancia de que ya contactó al
+   * cliente aunque la gestión no esté registrada. Levanta SOLO la regla `sin_gestion`.
+   *
+   * 🔴 No es un permiso general: con esto no se saltean los días mínimos, ni el tope de
+   * acuerdos rotos, ni la cadena de refinanciaciones. Esas siguen necesitando al admin.
+   */
+  consentimientoSinGestion?: boolean;
 }
 
 /** `true` si este actor puede pasar por encima de la regla. */
@@ -235,7 +243,7 @@ export async function assertPuedeCobrar(
   creditoId: string,
   cfg: RecuperoConfig,
   actor?: ActorEscalera,
-  opts?: { entregaDe?: "acuerdo" | "refinanciacion"; estadoCredito?: string },
+  opts?: { entregaDe?: "acuerdo" | "refinanciacion"; estadoCredito?: string; sinGestionConsentida?: boolean },
 ): Promise<boolean> {
   /**
    * La campaña de recupero se evalúa ANTES del atajo de abajo: no depende de
@@ -372,6 +380,8 @@ export function assertPuedeUsarTasa(
 function lanzarSiBloquea(v: VeredictoEscalera, code: string, actor?: ActorEscalera): boolean {
   if (v.permitido) return false;
   if (autorizaAdmin(actor)) return true; // el admin asume la decisión (se audita en el caller)
+  // El vendedor puede levantar "nadie lo contactó" dejando constancia. Se audita igual.
+  if (v.clave === "sin_gestion" && actor?.consentimientoSinGestion === true) return true;
   // El mensaje lleva la sugerencia pegada: una negativa sin alternativa deja al operador
   // frente al cliente sin saber qué ofrecerle. Y si quien pregunta es admin, se le dice que
   // puede seguir igual — si no, el 409 parece un bug del sistema.

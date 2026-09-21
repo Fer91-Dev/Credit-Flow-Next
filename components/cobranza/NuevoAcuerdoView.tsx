@@ -25,7 +25,12 @@ interface Preview {
    * ¿La escalera de recupero deja armarlo? Se contesta en el PREVIEW y no al guardar: desde
    * que el acuerdo cobra una entrega, enterarse al guardar significa que la plata ya entró.
    */
-  escalera: { permitido: boolean; motivo: string | null; sugerencia: string | null; puede_autorizar: boolean; autorizable: boolean };
+  escalera: {
+    permitido: boolean; motivo: string | null; sugerencia: string | null;
+    puede_autorizar: boolean; autorizable: boolean;
+    /** Qué regla bloquea. `sin_gestion` la levanta el propio operador con el casillero. */
+    clave?: "sin_gestion" | null;
+  };
   credito: { id: string; numero: number | null; estado: string; cliente: string | null };
   deuda: {
     capital: number; interes: number; cargos: number; mora: number; total: number;
@@ -245,9 +250,10 @@ export function NuevoAcuerdoView({ creditoId }: { creditoId: string | null }) {
              * admite su entrega.
              */
             entrega_de: "acuerdo",
-            // Y si el admin ya autorizó el acuerdo por encima de la escalera, la misma
-            // autorización tiene que valer para su entrega, o se frena en el primer paso.
-            autorizacion_admin: autorizar || undefined,
+            // Y si ya se autorizó el acuerdo por encima de la escalera, lo mismo vale para
+            // su entrega, o se frena en el primer paso — con la plata ya en el mostrador.
+            autorizacion_admin: autorizar && data.escalera.clave !== "sin_gestion" ? true : undefined,
+            sin_contacto_consentido: autorizar && data.escalera.clave === "sin_gestion" ? true : undefined,
           }),
         });
         const jPago = await resPago.json();
@@ -267,7 +273,11 @@ export function NuevoAcuerdoView({ creditoId }: { creditoId: string | null }) {
           cuotas,
           quita: quitaNum || undefined,
           entrega: entregaNum || undefined,
-          autorizacion_admin: autorizar || undefined,
+          // Dos banderas distintas a propósito: una es "el admin fuerza la regla", la otra
+          // "el operador deja constancia de que ya lo contactó". El server acepta la segunda
+          // de cualquier rol, pero SOLO para levantar la falta de gestión.
+          autorizacion_admin: autorizar && data.escalera.clave !== "sin_gestion" ? true : undefined,
+          sin_contacto_consentido: autorizar && data.escalera.clave === "sin_gestion" ? true : undefined,
           entrega_pago_id: entregaPagoId ?? undefined,
           primer_vencimiento: primerVto || undefined,
           notas,
@@ -396,9 +406,16 @@ export function NuevoAcuerdoView({ creditoId }: { creditoId: string | null }) {
                   {escalera.motivo} {escalera.sugerencia}
                 </p>
                 {escalera.puede_autorizar && (
-                  /* Solo el admin. Y va como casillero explícito: forzar una regla de la
-                     financiera es una decisión que alguien toma, no un efecto secundario de
-                     apretar Guardar. Queda auditado. */
+                  /*
+                    Casillero explícito: saltear una regla de la financiera es una decisión
+                    que alguien toma, no un efecto secundario de apretar Guardar. Queda
+                    auditado con el nombre de quien lo tildó.
+
+                    El texto cambia según QUÉ se está salteando. "Nadie lo contactó" la
+                    levanta el propio vendedor —está con el cliente enfrente y el contacto
+                    existió aunque no esté tipeado—; el resto de la escalera sigue siendo del
+                    admin, y ahí el texto dice que la está autorizando como tal.
+                  */
                   <label className="mt-2.5 flex cursor-pointer items-start gap-2 text-xs text-foreground">
                     <input
                       type="checkbox" checked={autorizar}
@@ -406,8 +423,17 @@ export function NuevoAcuerdoView({ creditoId }: { creditoId: string | null }) {
                       className="mt-0.5 accent-warning"
                     />
                     <span>
-                      Autorizarlo igual como administrador.
-                      <span className="text-muted-foreground"> Queda registrado en la auditoría.</span>
+                      {escalera.clave === "sin_gestion" ? (
+                        <>
+                          Ya hablé con el cliente: armar el acuerdo igual.
+                          <span className="text-muted-foreground"> Queda registrado a tu nombre en la auditoría.</span>
+                        </>
+                      ) : (
+                        <>
+                          Autorizarlo igual como administrador.
+                          <span className="text-muted-foreground"> Queda registrado en la auditoría.</span>
+                        </>
+                      )}
                     </span>
                   </label>
                 )}

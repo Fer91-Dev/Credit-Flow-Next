@@ -93,7 +93,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
   assertSameOrigin(req);
   const { tenantId, role, vendedorId } = await requireRole(["admin", "vendedor"], req);
 
-  let body: { credito_id?: string; cuotas?: number; quita?: number; entrega?: number; entrega_pago_id?: string; primer_vencimiento?: string; notas?: string; autorizacion_admin?: boolean };
+  let body: { credito_id?: string; cuotas?: number; quita?: number; entrega?: number; entrega_pago_id?: string; primer_vencimiento?: string; notas?: string; autorizacion_admin?: boolean; sin_contacto_consentido?: boolean };
   try {
     body = await req.json();
   } catch {
@@ -125,7 +125,17 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
   // Escalera de recupero: si la financiera exige haber contactado antes, o un mínimo de
   // atraso, se corta acá. Con la política en sus defaults esto nunca bloquea.
   const { recupero } = await getCobranzaConfig(tenantId);
-  await assertPuedeAcordar(tenantId, body.credito_id, recupero, { role, autorizacionAdmin: body.autorizacion_admin === true });
+  /**
+   * `sin_contacto_consentido`: el operador deja constancia de que ya habló con el cliente
+   * aunque la gestión no esté cargada. Levanta esa regla y nada más — y queda en la
+   * auditoría a su nombre, que es lo que hace que sea una decisión y no un atajo.
+   */
+  const sinContacto = body.sin_contacto_consentido === true;
+  await assertPuedeAcordar(tenantId, body.credito_id, recupero, {
+    role,
+    autorizacionAdmin: body.autorizacion_admin === true,
+    consentimientoSinGestion: sinContacto,
+  });
 
   const acuerdo = await crearAcuerdo({
     tenantId,
@@ -134,6 +144,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     quita: body.quita,
     entrega: body.entrega,
     entregaPagoId: body.entrega_pago_id ?? null,
+    sinContactoConsentido: sinContacto,
     primerVencimiento,
     notas: body.notas,
     esAdmin: role === "admin",
