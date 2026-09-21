@@ -1745,7 +1745,18 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
         {aCobrarHoy > 0 && (
           <div className="border-t border-warning/25 bg-warning/[0.06]">
             <div className="flex items-baseline justify-between gap-3 border-b border-warning/20 px-4 py-2.5">
-              <span className="text-[10px] font-bold uppercase tracking-widest text-warning">A cobrar hoy</span>
+              {/*
+                🔴 CON UN ACUERDO VIGENTE ESTO NO ES LO QUE SE COBRA HOY.
+       
+                Lo que se cobra es la cuota pactada, que está arriba en índigo. Este número es
+                la deuda del plan que el acuerdo consolidó: sigue siendo cierto —es el libro
+                del crédito— pero llamarlo "a cobrar hoy" al lado del otro ponía dos importes
+                grandes diciendo lo mismo, y el que atiende podía pedir el que no era.
+                Fernando lo marcó el 21/09/2026.
+              */}
+              <span className="text-[10px] font-bold uppercase tracking-widest text-warning">
+                {acuerdoVigente ? "Deuda del plan original" : "A cobrar hoy"}
+              </span>
               <span className="font-mono text-lg font-bold tabular-nums text-foreground">${n2(aCobrarHoy)}</span>
             </div>
             <table className="w-full text-xs">
