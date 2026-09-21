@@ -27,6 +27,22 @@
 const pesos = (n: number) =>
   `$${n.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
+/**
+ * Un porcentaje escrito como se escribe acá: "0,5%", nunca "0.5%".
+ *
+ * Los montos ya pasaban por `pesos`, pero los porcentajes se interpolaban crudos y salían con
+ * punto decimal —el separador de miles del castellano—, en advertencias que se leen al lado de
+ * importes bien formateados. Sin decimales de relleno: 30 se escribe "30", no "30,0".
+ *
+ * 🔴 DOS DECIMALES, no uno. Con uno, una mora cargada al 0,75% diario se le devolvía al que la
+ * acababa de tipear como "0,8% por día": el sistema le corrige el número que él puso, en el
+ * mismo aviso que le pide revisarlo. Un valor que cargó una persona se muestra como lo cargó.
+ * Lo CALCULADO (el equivalente mensual, las veces) sí puede ir más corto, y lo pide por
+ * argumento.
+ */
+const porc = (n: number, decimales = 2) =>
+  n.toLocaleString("es-AR", { minimumFractionDigits: 0, maximumFractionDigits: decimales });
+
 /** Una advertencia sobre un parámetro. `null` = el valor no llama la atención. */
 export type Advertencia = string | null;
 
@@ -45,8 +61,8 @@ export function advertirTasaAcuerdo(tasaMensualPct: number | null | undefined): 
   const aTresMeses = base * Math.pow(1 + t, 3);
   const veces = aTresMeses / base;
   return (
-    `Al ${tasaMensualPct}% mensual, un acuerdo de ${pesos(base)} pasa a ${pesos(aTresMeses)} ` +
-    `en 3 meses (${veces.toFixed(1)} veces). El acuerdo es con alguien que ya no pudo pagar: ` +
+    `Al ${porc(tasaMensualPct)}% mensual, un acuerdo de ${pesos(base)} pasa a ${pesos(aTresMeses)} ` +
+    `en 3 meses (${porc(veces, 1)} veces). El acuerdo es con alguien que ya no pudo pagar: ` +
     `a esta tasa se rompe y el deudor vuelve a morosos con los punitorios corriendo de nuevo. ` +
     `Por encima del 10% mensual conviene revisarlo.`
   );
@@ -60,7 +76,7 @@ export function advertirMoraDiaria(tasaDiariaPct: number | null | undefined): Ad
   if (tasaDiariaPct == null || tasaDiariaPct <= 0.5) return null;
   const mensual = tasaDiariaPct * 30;
   return (
-    `${tasaDiariaPct}% por día son ${mensual.toFixed(1)}% al mes de punitorios. ` +
+    `${porc(tasaDiariaPct)}% por día son ${porc(mensual, 1)}% al mes de punitorios. ` +
     `Una cuota de ${pesos(100_000)} atrasada 30 días suma ${pesos(100_000 * (mensual / 100))} ` +
     `solo de mora. Por encima del 0,5% diario conviene mirar el techo de punitorios.`
   );
@@ -74,7 +90,7 @@ export function advertirMoraDiaria(tasaDiariaPct: number | null | undefined): Ad
 export function advertirTopeMora(topePct: number | null | undefined): Advertencia {
   if (topePct == null || topePct <= 50) return null;
   return (
-    `Con un techo del ${topePct}%, sobre una deuda de ${pesos(100_000)} los punitorios pueden ` +
+    `Con un techo del ${porc(topePct)}%, sobre una deuda de ${pesos(100_000)} los punitorios pueden ` +
     `llegar a ${pesos(100_000 * (topePct / 100))} — la deuda se ${topePct >= 100 ? "duplica" : "vuelve inalcanzable"}. ` +
     `Pasado cierto punto el deudor deja de intentar pagar porque no puede alcanzar el total.`
   );
@@ -140,7 +156,7 @@ export function advertirHonorariosGestion(pct: number | null | undefined): Adver
   if (pct == null || pct <= 15) return null;
   const base = 1_000_000;
   return (
-    `Al ${pct}%, refinanciar una deuda de ${pesos(base)} le suma ${pesos((base * pct) / 100)} ` +
+    `Al ${porc(pct)}%, refinanciar una deuda de ${pesos(base)} le suma ${pesos((base * pct) / 100)} ` +
     `de honorarios. La refinanciación es la última chance antes de ejecutar: encarecerla ` +
     `demasiado es lo que hace que se rompa otra vez. Por encima del 15% conviene revisarlo.`
   );

@@ -1329,7 +1329,7 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
                         </div>
                         {riesgoEval.ratioCuotaIngreso != null && (
                           <p className="mt-1.5 border-t border-border/60 pt-1.5 text-[10px] text-muted-foreground">
-                            Le compromete el <span className="font-semibold text-foreground">{(riesgoEval.ratioCuotaIngreso * 100).toFixed(1)}%</span> de su ingreso de {formatMonto(riesgoEval.ingresoNetoMensual)}
+                            Le compromete el <span className="font-semibold text-foreground">{formatNumero(riesgoEval.ratioCuotaIngreso * 100, 1)}%</span> de su ingreso de {formatMonto(riesgoEval.ingresoNetoMensual)}
                           </p>
                         )}
                       </div>

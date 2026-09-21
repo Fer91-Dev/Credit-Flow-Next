@@ -13,7 +13,7 @@
  * Mismo diseño que el plan de pagos (ver CLAUDE.md → PDF "Plan de pagos"): la marca es lo
  * único a color, texto en #111827, totales invertidos. Ningún rótulo interno.
  */
-import { formatMonto, formatFecha, formatFechaHora, formatDias } from "@/lib/utils";
+import { formatMonto, formatNumero, formatFecha, formatFechaHora, formatDias } from "@/lib/utils";
 import type { CuotasCredito } from "@/lib/swr";
 
 export interface EstadoCuentaData {
@@ -180,7 +180,7 @@ tfoot td.pg{background:#0B1220;border-left:1px solid #3A4356}
     </table>
   </div>
   <div class="footer">
-    <p class="ftxt">Estado al ${hoy}. Los punitorios están calculados hasta esa fecha${data.plan.mora?.activa ? ` (${(data.plan.mora.tasaDiaria * 100).toFixed(2)}% por día sobre el importe de la cuota${data.plan.mora.diasGracia > 0 ? `, a partir del día ${data.plan.mora.diasGracia + 1} de atraso` : ""}${data.plan.mora.topePct > 0 ? `, con un techo del ${data.plan.mora.topePct}% de la cuota` : ""})` : ""} y siguen corriendo sobre las cuotas vencidas. "Pagado" incluye los punitorios que se hayan cobrado. Cada cobro tiene su recibo, que es el comprobante válido del pago.</p>
+    <p class="ftxt">Estado al ${hoy}. Los punitorios están calculados hasta esa fecha${data.plan.mora?.activa ? ` (${formatNumero(data.plan.mora.tasaDiaria * 100, 2)}% por día sobre el importe de la cuota${data.plan.mora.diasGracia > 0 ? `, a partir del día ${data.plan.mora.diasGracia + 1} de atraso` : ""}${data.plan.mora.topePct > 0 ? `, con un techo del ${formatNumero(data.plan.mora.topePct, 0)}% de la cuota` : ""})` : ""} y siguen corriendo sobre las cuotas vencidas. "Pagado" incluye los punitorios que se hayan cobrado. Cada cobro tiene su recibo, que es el comprobante válido del pago.</p>
     ${data.financiera?.nombre?.trim() ? '<p class="pwr">powered by CreditFlow</p>' : ""}
   </div>
 </div>

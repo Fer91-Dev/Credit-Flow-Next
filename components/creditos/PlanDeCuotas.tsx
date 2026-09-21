@@ -306,7 +306,7 @@ export function PlanDeCuotas({
                 const dias = porDia > 0 ? Math.round(moraDev / porDia) : 0;
                 const reproduce = porDia > 0 && Math.abs(Math.round(baseCuota * mora.tasaDiaria * dias * 100) / 100 - moraDev) < 0.02;
                 return reproduce && dias > 0
-                  ? `${formatDias(dias)} × ${(mora.tasaDiaria * 100).toFixed(2)}% de $${n2(baseCuota)} = $${n2(moraDev)}` +
+                  ? `${formatDias(dias)} × ${formatNumero(mora.tasaDiaria * 100, 2)}% de $${n2(baseCuota)} = $${n2(moraDev)}` +
                     (atraso !== dias ? ` · ${formatDias(atraso)} de atraso, ${formatDias(atraso - dias)} sin devengar` : "")
                   : `${formatDias(atraso)} de atraso`;
               })();
@@ -687,7 +687,7 @@ export function PlanDeCuotas({
           <Formula>{cobroBloqueado ? "Le falta" : "A cobrar"} = cuota + mora − lo ya pagado</Formula>
           {moraTotal > 0 && mora && (
             <Formula acento>
-              Mora = días de atraso × {(mora.tasaDiaria * 100).toFixed(2)}% × importe de la cuota
+              Mora = días de atraso × {formatNumero(mora.tasaDiaria * 100, 2)}% × importe de la cuota
             </Formula>
           )}
         </div>

@@ -10,7 +10,7 @@ import { DetailSection } from "@/components/ui/DetailGrid";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CreditoLink } from "@/components/ui/CreditoLink";
 import { Emoji } from "@/components/ui/Emoji";
-import { formatFecha, formatFechaHora, formatMonto, nombreCompleto, formatDias, formatCreditoNumero, hoyComercial } from "@/lib/utils";
+import { formatFecha, formatFechaHora, formatMonto, formatNumero, nombreCompleto, formatDias, formatCreditoNumero, hoyComercial } from "@/lib/utils";
 
 const fmtDate = (s?: string | null) => formatFecha(s);
 
@@ -351,7 +351,7 @@ export function CobranzaDetail({ credito, acciones }: {
             */}
             {moraTotal > 0 && meta?.mora && (
               <p className="mt-3 text-[11px] text-muted-foreground">
-                Punitorios: {(meta.mora.tasaDiaria * 100).toFixed(2)}% por día sobre el importe de cada cuota
+                Punitorios: {formatNumero(meta.mora.tasaDiaria * 100, 2)}% por día sobre el importe de cada cuota
                 {meta.mora.diasGracia > 0 && <>, a partir del día {meta.mora.diasGracia + 1} de atraso</>}
                 {meta.mora.topePct > 0 && <>, con un techo del {meta.mora.topePct}% de la cuota</>}.
               </p>
