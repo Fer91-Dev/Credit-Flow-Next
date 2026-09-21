@@ -2,6 +2,8 @@ import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api"
 import { prisma } from "@/lib/prisma";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { enviarEmail, emailHabilitado } from "@/lib/mailer";
+import { enviarEmailTenant, type EmailTenantConfig } from "@/lib/mailer-tenant";
+import { getFinanciera } from "@/lib/financiera";
 import { esEmailValido } from "@/lib/utils";
 import { rateLimit, clientIp, sweepIfNeeded } from "@/lib/rate-limit";
 import type { NextRequest } from "next/server";
@@ -84,17 +86,11 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     return errorResponse("Demasiados intentos. Probá de nuevo en unos minutos.", "RATE_LIMITED", 429);
   }
 
-  if (!emailHabilitado()) {
-    // Config faltante: lo tratamos como error de servidor (no genérico) para que el admin lo note.
-    console.error("[recuperar] GMAIL_USER/GMAIL_APP_PASSWORD no configurados");
-    return errorResponse("El envío de emails no está configurado. Avisá al administrador.", "EMAIL_NOT_CONFIGURED", 503);
-  }
-
   // La cuenta debe existir y estar activa. Por decisión de producto se INFORMA si el email no
   // pertenece a ningún usuario (ver nota de OK_ENVIADO). El rate limit de arriba acota el abuso.
   const prof = await prisma.profiles.findFirst({
     where: { email },
-    select: { username: true, full_name: true, activo: true },
+    select: { username: true, full_name: true, activo: true, tenant_id: true },
   });
 
   if (!prof || !prof.activo) {
@@ -112,11 +108,44 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
       // Evita la ambigüedad hash/PKCE del redirect nativo de Supabase y no depende de la
       // allowlist de Redirect URLs.
       const link = `${getBaseUrl(req)}/auth/confirm?token_hash=${tokenHash}&type=recovery`;
-      await enviarEmail({
-        to: email,
-        subject: "Recuperá tu acceso a CreditFlow",
-        html: emailHtml(prof.username, prof.full_name, link),
-      });
+      const asunto = "Recuperá tu acceso a CreditFlow";
+      const html = emailHtml(prof.username, prof.full_name, link);
+
+      /**
+       * 🔴 EL CORREO SALE DE LA CASILLA DE LA FINANCIERA, no de una variable de entorno.
+       *
+       * Esta ruta era la ÚNICA del SaaS que mandaba por `GMAIL_USER`/`GMAIL_APP_PASSWORD`;
+       * todo lo demás —avisos de mora, campañas, recibos— usa la configuración que el tenant
+       * carga en Configuración → Comunicaciones. Dos sistemas de correo en paralelo, con dos
+       * casillas y dos lugares donde equivocarse, y uno de ellos solo editable desde el panel
+       * de Vercel y con un redeploy de por medio. El 21/09/2026 eso costó dos redeploys y
+       * varios `535 BadCredentials`: las variables tenían el usuario de una cuenta con la
+       * contraseña de la otra, y el error solo se veía en el log del servidor.
+       *
+       * Ahora se usa la misma configuración que ya manda el resto, que se edita desde la UI y
+       * se prueba con el botón que está al lado. Y es lo que corresponde cuando haya varias
+       * financieras: cada una recupera contraseñas desde SU casilla, no desde una global.
+       *
+       * Las variables de entorno quedan como respaldo, para un tenant que todavía no cargó
+       * sus datos de correo. Si no hay ninguna de las dos, se registra y el usuario recibe la
+       * misma respuesta: esta ruta nunca dice si el envío salió.
+       */
+      const cfg = prof.tenant_id
+        ? ((await prisma.configuraciones.findFirst({ where: { tenant_id: prof.tenant_id } }))?.email_config as EmailTenantConfig | null)
+        : null;
+
+      if (cfg?.enabled) {
+        const marca = prof.tenant_id ? (await getFinanciera(prof.tenant_id)).nombre || "CreditFlow" : "CreditFlow";
+        const r = await enviarEmailTenant(cfg, { to: email, subject: asunto, html, marca });
+        if (!r.ok) {
+          console.error("[recuperar] la casilla de la financiera rechazó el envío:", r.error);
+          if (emailHabilitado()) await enviarEmail({ to: email, subject: asunto, html });
+        }
+      } else if (emailHabilitado()) {
+        await enviarEmail({ to: email, subject: asunto, html });
+      } else {
+        console.error("[recuperar] el tenant no tiene correo configurado y tampoco hay variables de entorno");
+      }
     }
   } catch (e) {
     // El fallo de envío queda en el log del server (no se expone al cliente).
