@@ -357,7 +357,7 @@ export interface Credito {
    */
   refinanciar_bloqueo?: { motivo: string; sugerencia: string } | null;
   /** Por qué NO se puede armar un acuerdo (null = se puede). `clave` dice qué regla frena. */
-  acordar_bloqueo?: { motivo: string; sugerencia: string; clave?: "sin_gestion" | null } | null;
+  acordar_bloqueo?: { motivo: string; sugerencia: string; clave?: "sin_gestion" | "acuerdo_vigente" | null } | null;
   /**
    * Lo que pagó DESPUÉS de que se lo dio por incobrable. Es la señal más fuerte de la cartera
    * castigada y el motor de la oferta la usa para pedirle más: el que pagó y dejó de aparecer

@@ -455,7 +455,7 @@ export interface VeredictoEscalera {
    * que documente el pasado antes de cerrar el presente. Tilda, queda a su nombre y sigue.
    * Las demás —días mínimos, topes, cadena agotada— siguen siendo del admin.
    */
-  clave?: "sin_gestion";
+  clave?: "sin_gestion" | "acuerdo_vigente";
   motivo?: string;
   /** Qué corresponde hacer antes, para que el mensaje no sea solo una negativa. */
   sugerencia?: string;
@@ -471,6 +471,23 @@ const PERMITIDO: VeredictoEscalera = { permitido: true };
 
 /** ¿Se le puede armar un acuerdo de pago? (además de tener deuda vencida, que valida el server) */
 export function puedeAcordar(s: SenalesRecupero, cfg: RecuperoConfig): VeredictoEscalera {
+  /**
+   * 🔴 VA PRIMERO: con un acuerdo vigente no hay nada que decidir.
+   *
+   * `crearAcuerdo` ya lo rechazaba, pero recién al confirmar: el operador llegaba hasta la
+   * pantalla del arreglo —con el cliente esperando— para enterarse ahí. Fernando
+   * (21/09/2026): «que el botón de acordar se apague si ya hay un acuerdo vigente, y que ese
+   * mensaje se muestre sobre el botón inactivo». Estando en el veredicto, lo respetan las
+   * tres capas: el botón de la ficha, la previa y el POST.
+   */
+  if (s.acuerdoVigente) {
+    return {
+      permitido: false,
+      clave: "acuerdo_vigente",
+      motivo: "Este crédito ya tiene un acuerdo de pago vigente.",
+      sugerencia: "Anulá o cerrá el anterior antes de armar otro.",
+    };
+  }
   if (cfg.dias_min_mora_acuerdo > 0 && s.diasMora < cfg.dias_min_mora_acuerdo) {
     return {
       permitido: false,

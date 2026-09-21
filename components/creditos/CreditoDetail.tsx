@@ -1512,7 +1512,14 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
                   </Link>
                 ) : (
                   <span
-                    title={`${bloqueoAcuerdo.motivo} ${bloqueoAcuerdo.sugerencia}`}
+                    /* Con un acuerdo vigente el aviso dice CUÁL: el importe y la fecha del que
+                       ya está, que es lo que el operador necesita para decidir si lo anula.
+                       Los números salen del mismo acuerdo que muestra el panel de arriba. */
+                    title={
+                      bloqueoAcuerdo.clave === "acuerdo_vigente" && acuerdoVigente
+                        ? `Este crédito ya tiene un acuerdo vigente por ${formatMonto(acuerdoVigente.monto_acordado)}, armado el ${formatFecha(acuerdoVigente.fecha)}. Anulá ese antes de armar otro.`
+                        : `${bloqueoAcuerdo.motivo} ${bloqueoAcuerdo.sugerencia}`
+                    }
                     className="inline-flex cursor-not-allowed items-center gap-1.5 rounded-lg border border-border bg-muted/20 px-2.5 py-1 text-[11px] font-medium text-muted-foreground/70"
                   >
                     <Handshake className="h-3.5 w-3.5" /> Acordar
