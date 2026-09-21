@@ -36,7 +36,9 @@ const MOTIVOS: MotivoContacto[] = ["mora", "promocion", "informacion"];
 export const GET = withErrorHandler(async (req: NextRequest, { params }: RouteParams) => {
   const ctx = await requireRole(["admin", "vendedor"], req);
   const { id } = await params;
-  const r = await cargarContactable(ctx, id);
+  // `?credito_id=` cuando el reclamo es por UN crédito (la fila de Cobranzas); sin él, el
+  // mensaje habla de la situación del cliente (el botón «Contactar» de la ficha).
+  const r = await cargarContactable(ctx, id, new URL(req.url).searchParams.get("credito_id"));
   if ("error" in r && r.error) return r.error;
 
   const { cliente, datos, comm, refinanciar } = r as Extract<typeof r, { cliente: object }>;
@@ -102,12 +104,14 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
   assertSameOrigin(req);
   const ctx = await requireRole(["admin", "vendedor"], req);
   const { id } = await params;
-  const r = await cargarContactable(ctx, id);
-  if ("error" in r && r.error) return r.error;
-  const { cliente, datos, comm, creditoParaGestion, refinanciar } = r as Extract<typeof r, { cliente: object }>;
 
+  // El body se lee ANTES de cargar: puede traer el crédito del que habla el mensaje.
   const body = await req.json().catch(() => null);
   if (!body) return errorResponse("Body JSON inválido", "INVALID_JSON", 400);
+
+  const r = await cargarContactable(ctx, id, typeof body.credito_id === "string" ? body.credito_id : null);
+  if ("error" in r && r.error) return r.error;
+  const { cliente, datos, comm, creditoParaGestion, refinanciar } = r as Extract<typeof r, { cliente: object }>;
 
   const canal: "whatsapp" | "email" | "sms" = body.canal === "email" ? "email" : body.canal === "sms" ? "sms" : "whatsapp";
   const motivo: MotivoContacto = MOTIVOS.includes(body.motivo) ? body.motivo : "informacion";
@@ -115,6 +119,23 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
   const cobranzaCfg = await getCobranzaConfig(ctx.tenantId);
   const plantillas = resolverPlantillasContacto(cobranzaCfg.contacto);
   const base = plantillaDe(plantillas, motivo);
+
+  /**
+   * 🔴 UN AVISO DE MORA QUE PIDE $0,00 NO SALE.
+   *
+   * La plantilla de mora reclama lo vencido; si no hay nada vencido y tampoco hay un plan
+   * para reestructurar, el texto quedaría "la cuota —, vencida hace 0 días, abonar $0,00" y
+   * eso es lo que le llega al cliente. La pantalla ya no ofrece el motivo en ese caso, pero
+   * el corte va en el servidor porque el reclamo también se dispara desde la fila de
+   * Cobranzas, que manda "mora" sin preguntar.
+   */
+  if (motivo === "mora" && datos.vencido <= 0 && refinanciar.numeros.length === 0) {
+    return errorResponse(
+      "Este crédito no tiene nada vencido: no hay deuda que reclamar. Si querés escribirle igual, mandá un mensaje informativo.",
+      "SIN_DEUDA_VENCIDA",
+      409,
+    );
+  }
 
   /**
    * 🔴 UNA PLANTILLA DE META NO SE EDITA.
@@ -271,7 +292,7 @@ type Ctx = Awaited<ReturnType<typeof requireRole>>;
  * contactarlo. Un vendedor solo llega a los clientes con crédito propio: sin este chequeo,
  * la ficha sería una vía para escribirle a toda la cartera de la financiera.
  */
-async function cargarContactable(ctx: Ctx, id: string) {
+async function cargarContactable(ctx: Ctx, id: string, creditoId?: string | null) {
   const cliente = await prisma.clientes.findFirst({
     where: { ...withTenant(ctx.tenantId), id },
     include: {
@@ -315,7 +336,20 @@ async function cargarContactable(ctx: Ctx, id: string) {
   }
 
   const hoy = hoyComercial();
-  const vivos = cliente.creditos.filter((c) => esCreditoVivo(c.estado));
+  /**
+   * 🔴 EL MENSAJE ES SOBRE UN CRÉDITO, NO SOBRE "EL CLIENTE".
+   *
+   * Cuando el reclamo sale de una fila de Cobranzas, esa fila ES un crédito. Sin este corte,
+   * el mensaje se armaba con TODOS los créditos vivos de la persona y terminaba hablando de
+   * otro: a María Elena, reclamándole CRD-000086 (70 días de atraso), le salía "la cuota —
+   * vencida hace 0 días, abonar $0,00" porque el elegido terminaba siendo su otro crédito,
+   * que estaba al día (20/09/2026).
+   */
+  const soloEste = creditoId ? cliente.creditos.filter((c) => c.id === creditoId) : null;
+  if (creditoId && soloEste!.length === 0) {
+    return { error: errorResponse("Ese crédito no es de este cliente", "INVALID_INPUT", 400) } as const;
+  }
+  const vivos = (soloEste ?? cliente.creditos).filter((c) => esCreditoVivo(c.estado));
   // Mora EN VIVO, no el caché de `creditos.dias_mora`: nada lo avanza día a día, y un aviso
   // de mora que dice "0 días" es peor que no mandarlo.
   const conMora = vivos
@@ -347,9 +381,9 @@ async function cargarContactable(ctx: Ctx, id: string) {
   const numerosARefinanciar = aRefinanciar.map((c) => formatCreditoNumero(c.numero));
 
   /**
-   * El crédito del que HABLA el mensaje: el más atrasado de los que todavía se cobran. Si no
-   * queda ninguno, el más atrasado a secas — ahí el mensaje ya no reclama, invita a
-   * refinanciar, y los días que nombra tienen que ser los de ese crédito.
+   * Candidato al crédito del que habla el mensaje. La elección FINAL se hace más abajo, con
+   * `vencido` calculado: un crédito "cobrable" puede no tener nada vencido, y entonces el
+   * aviso de mora pediría cero pesos.
    */
   const peor = cobrables[0] ?? conMora[0];
 
@@ -421,10 +455,35 @@ async function cargarContactable(ctx: Ctx, id: string) {
   const deudaViva = round2(deudaTotal);
   const vencido = round2(venc.total);
 
-  const proximo = vivos
-    .map((c) => c.proximo_pago)
-    .filter((d): d is Date => d instanceof Date)
-    .sort((a, b) => a.getTime() - b.getTime())[0] ?? null;
+  /**
+   * 🔴 EL CRÉDITO DEL QUE HABLA EL MENSAJE, DECIDIDO CON `vencido` EN LA MANO.
+   *
+   * "Cobrable" quiere decir que el sistema todavía lo cobra en cuotas, no que haya algo
+   * vencido: un cliente con un crédito al día y otro pasado del umbral de refinanciación
+   * tenía las dos condiciones a la vez, y el aviso de mora salía reclamando $0,00 sobre "la
+   * cuota —, vencida hace 0 días". Si no hay nada vencido que reclamar, el mensaje pasa a
+   * hablar del crédito que hay que reestructurar, que es la situación real del cliente.
+   */
+  const habla = vencido > 0 ? (cobrables[0] ?? conMora[0]) : (aRefinanciar[0] ?? cobrables[0] ?? conMora[0]);
+
+  /**
+   * El vencimiento sale del MISMO crédito que la cuota. Salía del mínimo entre todos los
+   * créditos vivos, así que el mensaje podía decir el importe de uno y la fecha de otro —
+   * dos números de dos contratos distintos en la misma oración.
+   */
+  /**
+   * 🔴 "PRÓXIMA CUOTA" ES LA QUE TODAVÍA NO VENCIÓ.
+   *
+   * Salía de `proximo_pago`, que en un crédito en mora apunta a la cuota vencida más vieja:
+   * el mensaje decía "tenés la cuota 1 vencida hace 11 días" y dos renglones después "tu
+   * próxima cuota vence el 9/9", que era la misma cuota y una fecha ya pasada. Se toma la
+   * primera que aún no cayó; si ya vencieron todas, se nombra la más vieja impaga, que es de
+   * lo único que se puede hablar.
+   */
+  const cuotasDelCredito = habla?.cuotas ?? [];
+  const impagas = cuotasDelCredito.filter((q) => q.pagado_capital < q.capital);
+  const proximaCuota = impagas.find((q) => q.fecha_vencimiento > hoy) ?? impagas[0] ?? null;
+  const proximo = proximaCuota?.fecha_vencimiento ?? null;
 
   /**
    * 🔴 `cuota` estaba FIJO EN 0.
@@ -438,20 +497,22 @@ async function cargarContactable(ctx: Ctx, id: string) {
    * con punitorios: la cuota es un número del contrato, fijo, y el atraso ya viaja aparte en
    * `[deuda]` y `[dias]`.
    */
-  const creditoDelMensaje = peor ?? vivos[0] ?? null;
-  const proximaCuota = creditoDelMensaje?.cuotas?.find((q) => q.pagado_capital < q.capital) ?? null;
-
   return {
     cliente,
     comm,
     // La gestión se cuelga del crédito MÁS ATRASADO de los que se hablan en el mensaje.
-    creditoParaGestion: peor?.id ?? vivos[0]?.id ?? null,
+    creditoParaGestion: habla?.id ?? vivos[0]?.id ?? null,
     /**
      * Los créditos de este cliente cuyo plan ya venció. Con esto el mensaje puede nombrarlos
      * en vez de sumarlos, y saber si NO quedó nada cobrable (ahí el aviso de mora se
      * reemplaza entero por la invitación a refinanciar).
      */
-    refinanciar: { numeros: numerosARefinanciar, hayCobrable: cobrables.length > 0 },
+    /**
+     * `hayCobrable` es "hay algo VENCIDO que reclamar", no "hay algún crédito que el sistema
+     * todavía cobre". Con la definición vieja, el aviso de mora se mandaba igual aunque no
+     * hubiera un peso vencido, y pedía $0,00.
+     */
+    refinanciar: { numeros: numerosARefinanciar, hayCobrable: vencido > 0 },
     datos: {
       nombre: cliente.nombre,
       financiera: financiera?.nombre || "tu financiera",
@@ -459,7 +520,7 @@ async function cargarContactable(ctx: Ctx, id: string) {
       vencido,
       cuotas: venc.cuotas,
       nroCuota: nroCuotaVencida,
-      dias: peor?.dias ?? 0,
+      dias: habla?.dias ?? 0,
       cuota: round2(proximaCuota?.cuota_total ?? 0),
       vencimiento: proximo,
     },

@@ -362,7 +362,9 @@ export function CobranzaTable({ role }: { role: Role }) {
       const res = await fetch(`/api/clientes/${c.cliente_id}/contactar`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ canal, motivo: "mora" }),
+        // El crédito ES la fila: sin mandarlo, el servidor armaba el mensaje con todos los
+        // créditos del cliente y podía terminar hablando de otro.
+        body: JSON.stringify({ canal, motivo: "mora", credito_id: c.id }),
       });
       const json = await res.json();
       if (!json.ok) { toast.error(json.error || `No se pudo mandar ${etiqueta}`); return; }
