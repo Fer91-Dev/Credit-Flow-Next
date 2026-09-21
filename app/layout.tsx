@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { Geist, JetBrains_Mono } from "next/font/google";
 import { ThemeProvider } from "next-themes";
+import { TooltipsNativos } from "@/components/ui/TooltipsNativos";
 import "./globals.css";
 
 // Fuente UI: Geist (variable) — más geométrica/moderna que el default. La variable
@@ -35,6 +36,10 @@ export default async function RootLayout({
       <body className={`${geistSans.variable} ${jetbrainsMono.variable} antialiased`}>
         <ThemeProvider attribute="class" defaultTheme="dark" enableSystem={false} nonce={nonce}>
           {children}
+          {/* Los `title=` de todo el SaaS, dibujados con el globo del sistema en vez del
+              nativo del navegador. Va acá —una sola vez— y cubre todas las pantallas,
+              incluidas las de login. Ver `TooltipsNativos`. */}
+          <TooltipsNativos />
         </ThemeProvider>
       </body>
     </html>

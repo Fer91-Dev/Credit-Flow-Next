@@ -17,11 +17,63 @@ import { createPortal } from "react-dom";
  * accesible: un aviso que explica por qué un botón está apagado no puede ser solo para quien
  * usa mouse.
  *
- * 🔴 SE DIBUJA EN EL BODY (portal). Adentro del flujo lo recortaba el `overflow` de la
- * tarjeta o de la barra que se desliza — el globo aparecía cortado a la mitad, que es peor
- * que no tenerlo. Al ir al body, la posición se calcula con las coordenadas reales del
- * disparador y se recalcula al scrollear.
+ * Hay dos formas de usarlo, y las dos pintan el MISMO globo:
+ *
+ *  · `<Tooltip texto="…">` envolviendo al disparador — para contenido propio o cuando el
+ *    aviso se arma con datos.
+ *  · el `title=` de toda la vida, que `TooltipsNativos` intercepta y dibuja con este estilo.
+ *    Es lo que cubre las ~140 que ya existían sin tocar 66 archivos.
  */
+
+/** Cuánto se espera antes de mostrarlo. Sin demora, cruzar una fila dispara cuatro globos. */
+export const DEMORA_TOOLTIP = 120;
+
+/**
+ * 🔴 EL GLOBO SE DIBUJA EN EL BODY (portal). Adentro del flujo lo recortaba el `overflow` de
+ * la tarjeta o de la barra que se desliza — aparecía cortado a la mitad, que es peor que no
+ * tenerlo. Al ir al body, la posición se calcula con las coordenadas reales del disparador.
+ */
+export function BurbujaTooltip({ id, x, y, abajo, children }: {
+  id?: string; x: number; y: number; abajo: boolean; children: ReactNode;
+}) {
+  if (typeof document === "undefined") return null;
+  return createPortal(
+    <div
+      id={id}
+      role="tooltip"
+      style={{ left: x, top: y, transform: `translate(-50%, ${abajo ? "0" : "-100%"})` }}
+      className="pointer-events-none fixed z-[70] max-w-xs animate-entrada rounded-lg border border-border bg-card px-2.5 py-1.5 text-[11px] leading-relaxed text-foreground shadow-[0_8px_24px_-8px_rgba(0,0,0,0.6)]"
+    >
+      {children}
+    </div>,
+    document.body,
+  );
+}
+
+/**
+ * Dónde dibujarlo: centrado arriba del disparador, o abajo si no entra.
+ *
+ * 🔴 EL CENTRO SE ACOTA A LA PANTALLA. Centrado a secas, un botón pegado al borde derecho
+ * —los íconos de acción de cada fila— dejaba medio globo fuera y el navegador lo comprimía a
+ * una columna de dos palabras por renglón. `MITAD` es la mitad del ancho máximo (`max-w-xs`,
+ * 20rem sobre un root de 13px): con eso el globo entra entero aunque el disparador esté en la
+ * esquina.
+ */
+const MITAD = 130;
+const MARGEN = 8;
+
+export function ubicarTooltip(el: Element, preferirAbajo = false) {
+  const r = el.getBoundingClientRect();
+  const abajo = preferirAbajo || r.top < 90;
+  const centro = r.left + r.width / 2;
+  const limite = Math.max(MITAD + MARGEN, window.innerWidth - MITAD - MARGEN);
+  return {
+    x: Math.min(Math.max(centro, MITAD + MARGEN), limite),
+    y: abajo ? r.bottom + 8 : r.top - 8,
+    abajo,
+  };
+}
+
 export function Tooltip({
   texto,
   children,
@@ -41,18 +93,12 @@ export function Tooltip({
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const ubicar = useCallback(() => {
-    const el = ref.current;
-    if (!el) return;
-    const r = el.getBoundingClientRect();
-    // Si arriba no hay lugar (menos de 90px hasta el borde), se da vuelta.
-    const abajo = lado === "abajo" || r.top < 90;
-    setPos({ x: r.left + r.width / 2, y: abajo ? r.bottom + 8 : r.top - 8, abajo });
+    if (ref.current) setPos(ubicarTooltip(ref.current, lado === "abajo"));
   }, [lado]);
 
   const mostrar = useCallback(() => {
     if (timer.current) clearTimeout(timer.current);
-    // 120ms: sin la demora, pasar el mouse por una fila de botones dispara cuatro globos.
-    timer.current = setTimeout(ubicar, 120);
+    timer.current = setTimeout(ubicar, DEMORA_TOOLTIP);
   }, [ubicar]);
 
   const ocultar = useCallback(() => {
@@ -94,21 +140,7 @@ export function Tooltip({
       >
         {children}
       </span>
-      {pos && typeof document !== "undefined" && createPortal(
-        <div
-          id={id}
-          role="tooltip"
-          style={{
-            left: pos.x,
-            top: pos.y,
-            transform: `translate(-50%, ${pos.abajo ? "0" : "-100%"})`,
-          }}
-          className="pointer-events-none fixed z-[70] max-w-xs animate-entrada rounded-lg border border-border bg-card px-2.5 py-1.5 text-[11px] leading-relaxed text-foreground shadow-[0_8px_24px_-8px_rgba(0,0,0,0.6)]"
-        >
-          {texto}
-        </div>,
-        document.body,
-      )}
+      {pos && <BurbujaTooltip id={id} {...pos}>{texto}</BurbujaTooltip>}
     </>
   );
 }
