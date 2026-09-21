@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { sincronizarAcuerdos } from "@/lib/acuerdos";
+import { sincronizarAcuerdos, creditosConAcuerdoVigente, cubiertoPorAcuerdo } from "@/lib/acuerdos";
 import { Prisma } from "@prisma/client";
 import { sinDeuda, ESTADOS_VIVOS, resolverPlantillasMeta, debeDarsePorIncobrable, resolverRecupero, diasMoraActual, type PlantillaMeta, formatPesos } from "@/lib/domain";
 import { enviarWhatsappApi, whatsappApiDisponible, type WhatsappApiConfig } from "@/lib/whatsapp";
@@ -122,6 +122,24 @@ async function ejecutarCron(req: NextRequest) {
     const financiera = await getFinanciera(config.tenant_id);
     const marca = financiera.nombre || "Tu financiera";
 
+    /**
+     * 🔴 QUIÉN TIENE UN ACUERDO DE PAGO VIGENTE, Y POR ESO NO RECIBE EL AVISO DEL PLAN VIEJO.
+     *
+     * Acordar NO cierra el crédito: sus cuotas siguen impagas, porque lo que se pactó es otra
+     * forma de pagarlas. Y `proximo_pago` —por donde este cron decide a quién le escribe—
+     * sigue apuntando a la cuota vieja. Medido sobre la base de desarrollo: en los 5 créditos
+     * con acuerdo vigente, los 5 apuntaban al plan original. O sea que al único moroso que se
+     * sentó a arreglar le llegaban, a los 5, 15 y 30 días, reclamos por una cuota que ya no
+     * tiene que pagar y por un importe que no es el que pactó.
+     *
+     * El corte usa `cubiertoPorAcuerdo`, la MISMA función con la que la agenda del día y la
+     * planilla del cobrador deciden a quién no ir a visitar. Y es más fina que "tiene acuerdo,
+     * no le escribas": si el crédito arrastra una cuota que venció DESPUÉS de firmar, esa no
+     * entró al trato y se reclama igual. Copiar acá una regla propia sería exactamente cómo
+     * se llega a que el cobrador toque el timbre de alguien que está cumpliendo.
+     */
+    const conAcuerdo = await creditosConAcuerdoVigente(config.tenant_id);
+
     let enviados = 0;
     let errores = 0;
 
@@ -171,13 +189,20 @@ async function ejecutarCron(req: NextRequest) {
       const creditosConLabel = await conNumeroDeOrigen(config.tenant_id, creditos);
 
       for (const credito of creditosConLabel) {
-        // Evitar duplicar: no enviar si ya se notificó hoy con este evento
+        // Lo que se debe ya entró a un acuerdo: del vencimiento habla el acuerdo, más abajo.
+        if (cubiertoPorAcuerdo(conAcuerdo, credito.id, credito.proximo_pago)) continue;
+
+        /* Evitar duplicar: no enviar si ya se notificó hoy con este evento.
+           El `not contains "acuerdo"` es para no confundirse con el aviso de la cuota PACTADA:
+           un crédito que acordó y además arrastra una cuota posterior al trato recibe los dos
+           —son dos deudas distintas y las dos son ciertas—, y sin este corte el aviso del
+           acuerdo haría creer que el del plan ya salió. */
         const yaNotificado = await prisma.acciones_cobranza.findFirst({
           where: {
             tenant_id: config.tenant_id,
             credito_id: credito.id,
             automatico: true,
-            nota: { contains: regla.evento },
+            AND: [{ nota: { contains: regla.evento } }, { nota: { not: { contains: "acuerdo_" } } }],
             created_at: { gte: hoy },
           },
         });
@@ -235,6 +260,127 @@ async function ejecutarCron(req: NextRequest) {
             nota: via
               ? `[AUTO] Notificación ${regla.evento} - Enviada por ${via === "sms" ? "SMS" : via}`
               : `[AUTO] Notificación ${regla.evento} - Error de envío · ${motivos.join(" · ") || "sin canal disponible"}`,
+            automatico: true,
+          },
+        });
+
+        if (via) enviados++; else errores++;
+      }
+
+      /**
+       * ── LAS CUOTAS DE LOS ACUERDOS DE PAGO ───────────────────────────────────────────
+       *
+       * Un acuerdo no crea un crédito: vive en su propia tabla, con sus propias cuotas y sus
+       * propias fechas. Nada de eso pasa por `creditos.proximo_pago`, que es lo único que
+       * mira el bucle de arriba — así que hasta acá la cuota que el cliente SÍ tiene que
+       * pagar no la anunciaba nadie, mientras le seguían llegando avisos del plan que ya no
+       * corre. Se le reclamaba lo que no debe y se le callaba lo que debe.
+       *
+       * Mismas cinco reglas y misma fecha objetivo: lo único que cambia es de qué plan sale
+       * la cuota. Una refinanciación no necesita nada de esto, porque ahí la deuda sí se muda
+       * a un crédito nuevo, con cuotas normales, y entra por el camino de arriba.
+       */
+      const cuotasPactadas = await prisma.acuerdo_cuota.findMany({
+        where: {
+          tenant_id: config.tenant_id,
+          vencimiento: fechaObjetivo,
+          estado: { not: "pagada" },
+          acuerdo: { estado: "vigente" },
+        },
+        include: {
+          acuerdo: {
+            select: {
+              id: true,
+              credito: {
+                select: {
+                  id: true, numero: true, refinancia_a: true, es_refinanciacion: true,
+                  cliente: { select: { nombre: true, apellido: true, telefono: true, email: true, estado: true, no_contactar: true } },
+                },
+              },
+            },
+          },
+        },
+        take: 500, // mismo límite de seguridad que el bucle de créditos
+      });
+
+      const numeroOrigen = new Map(
+        (await conNumeroDeOrigen(config.tenant_id, cuotasPactadas.map((q) => q.acuerdo.credito)))
+          .map((c) => [c.id, c.refinancia_a_numero]),
+      );
+
+      for (const pactada of cuotasPactadas) {
+        const credito = pactada.acuerdo.credito;
+        const cli = credito.cliente;
+        /* A un fallecido no se le manda nada, y a quien pidió no ser contactado tampoco. Es el
+           mismo corte que aplican las campañas; acá hay que repetirlo porque este bucle no
+           pasa por ellas. */
+        if (cli.estado === "fallecido" || cli.no_contactar) continue;
+
+        const yaNotificado = await prisma.acciones_cobranza.findFirst({
+          where: {
+            tenant_id: config.tenant_id,
+            credito_id: credito.id,
+            automatico: true,
+            nota: { contains: `acuerdo_${regla.evento}` },
+            created_at: { gte: hoy },
+          },
+        });
+        if (yaNotificado) continue;
+
+        const datos: DatosAviso = {
+          nombre: cli.nombre,
+          credito: formatCreditoNumero(credito.numero, numeroOrigen.get(credito.id) ?? null),
+          cuotaNro: pactada.numero,
+          // Lo que falta de ESA cuota pactada. Una cuota parcial no se reclama entera: el
+          // cliente que pagó la mitad y recibe el importe completo entiende que no le
+          // registraron el pago, y deja de creerle al próximo aviso.
+          importe: Math.max(0, Math.round((pactada.monto - pactada.pagado) * 100) / 100),
+          vencimiento: formatFecha(fechaObjetivo),
+          diasAtraso: Math.max(0, regla.dias),
+          financiera: marca,
+          telefono: financiera.telefono,
+          acuerdo: true,
+        };
+        const aviso = redactarAviso(regla.evento as EventoAviso, datos);
+        const motivos: string[] = [];
+        let via: "whatsapp" | "sms" | "email" | null = null;
+
+        /**
+         * 🔴 WHATSAPP SOLO CON UNA PLANTILLA PROPIA DEL ACUERDO.
+         *
+         * Por este canal el texto NO lo escribimos nosotros: Meta exige plantillas aprobadas y
+         * el cron solo completa el nombre. La plantilla del evento habla del crédito —la de
+         * mora crítica dice que "pasa a gestión de cobranza"—, que es falso para alguien con
+         * un acuerdo vigente: lo que está en juego es el acuerdo, no el crédito. Si el tenant
+         * registró una plantilla `acuerdo_<evento>`, se usa; si no, salen SMS y email, donde
+         * el texto sí es el nuestro.
+         */
+        const plantillaAcuerdo = whatsapp?.templates?.[`acuerdo_${regla.evento}`];
+        if (whatsapp?.enabled && plantillaAcuerdo) {
+          const r = await enviarWhatsapp(whatsapp, { ...credito, cliente: cli }, `acuerdo_${regla.evento}`, plantillasMeta);
+          if (r.ok) via = "whatsapp"; else motivos.push(`WhatsApp: ${r.error}`);
+        }
+        if (!via && sms?.enabled) {
+          const r = await enviarSmsTenant(sms, { telefono: cli.telefono, mensaje: aviso.sms });
+          if (r.ok) via = "sms"; else motivos.push(`SMS: ${r.error}`);
+        }
+        if (!via && email?.enabled) {
+          if (!cli.email) motivos.push("Email: el cliente no tiene email.");
+          else {
+            const r = await enviarEmailTenant(email, { to: cli.email, subject: aviso.asunto, html: cuerpoHtmlAviso(aviso.texto, marca), marca });
+            if (r.ok) via = "email"; else motivos.push(`Email: ${r.error}`);
+          }
+        }
+
+        await prisma.acciones_cobranza.create({
+          data: {
+            tenant_id: config.tenant_id,
+            credito_id: credito.id,
+            tipo: via ?? (sms?.enabled ? "sms" : email?.enabled ? "email" : "whatsapp"),
+            resultado: via ? "contactado" : "no_contesta",
+            nota: via
+              ? `[AUTO] Notificación acuerdo_${regla.evento} (cuota ${pactada.numero} del acuerdo) - Enviada por ${via === "sms" ? "SMS" : via}`
+              : `[AUTO] Notificación acuerdo_${regla.evento} (cuota ${pactada.numero} del acuerdo) - Error de envío · ${motivos.join(" · ") || "sin canal disponible"}`,
             automatico: true,
           },
         });

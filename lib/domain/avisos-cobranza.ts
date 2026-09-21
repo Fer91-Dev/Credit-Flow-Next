@@ -33,6 +33,16 @@ export interface DatosAviso {
   /** Nombre de la financiera y su teléfono de contacto (puede faltar). */
   financiera: string;
   telefono: string | null;
+  /**
+   * El aviso habla de la cuota de un ACUERDO DE PAGO, no del plan original.
+   *
+   * Cuando alguien acuerda, el crédito viejo NO se cierra: sus cuotas siguen ahí, impagas,
+   * porque lo que se pactó es otra forma de pagarlas. Si el aviso saliera del plan original,
+   * el que está cumpliendo el acuerdo recibiría un reclamo por una cuota que ya no tiene que
+   * pagar y por un importe que no es el que pactó — el peor mensaje posible, justo al único
+   * moroso que se sentó a arreglar.
+   */
+  acuerdo?: boolean;
 }
 
 export interface AvisoRedactado {
@@ -50,6 +60,10 @@ const dias = (n: number) => `${n} ${n === 1 ? "día" : "días"}`;
 const diasSms = (n: number) => `${n} ${n === 1 ? "dia" : "dias"}`;
 
 export function redactarAviso(evento: EventoAviso, d: DatosAviso): AvisoRedactado {
+  /* Con acuerdo vigente el mensaje es OTRO, no el mismo con una palabra cambiada: lo que
+     está en juego no es una cuota del plan sino el acuerdo entero. Va como función aparte
+     para que el texto de siempre quede intacto. */
+  if (d.acuerdo) return avisoDeAcuerdo(evento, d);
   const cuota = d.cuotaNro != null ? `la cuota ${d.cuotaNro}` : "la cuota";
   const contacto = d.telefono ? `${d.financiera} · ${d.telefono}` : d.financiera;
   const firma = `\n\n${contacto}`;
@@ -84,6 +98,61 @@ export function redactarAviso(evento: EventoAviso, d: DatosAviso): AvisoRedactad
         asunto: `Tu crédito ${d.credito} lleva ${dias(d.diasAtraso)} de atraso: comunicate hoy`,
         texto: `Hola ${d.nombre}.\n\nTu crédito ${d.credito} lleva ${dias(d.diasAtraso)} de atraso: ${cuota}, por ${pesos(d.importe)}, venció el ${d.vencimiento} y sigue impaga. El atraso genera interés por mora y el crédito pasa a gestión de cobranza.\n\nComunicate hoy con nosotros para acordar una solución.${firma}`,
         sms: `${d.financiera}: ${d.nombre}, tu credito ${d.credito} lleva ${diasSms(d.diasAtraso)} de atraso (${cuota}, ${pesos(d.importe)}). Comunicate hoy con nosotros.`,
+      };
+  }
+}
+
+/**
+ * LOS AVISOS DE UN ACUERDO DE PAGO.
+ *
+ * Mismos cinco momentos que el plan original, pero con dos diferencias que importan:
+ *
+ *  · Nombran al ACUERDO. El cliente sabe que renegoció; si le hablan del crédito a secas
+ *    piensa que el arreglo no se registró.
+ *  · La consecuencia es distinta. Al plan original atrasado le corresponde "pasa a gestión de
+ *    cobranza"; acá lo que se pierde es el acuerdo, y con él la quita y las fechas que se
+ *    pactaron. Decirlo es lo único que puede hacer que la persona pague hoy.
+ *
+ * No se le nombra la deuda original en números: si el acuerdo todavía está en pie, ese número
+ * no es lo que debe, y mezclarlo es lo que hace que un deudor deje de creerle a los avisos.
+ */
+function avisoDeAcuerdo(evento: EventoAviso, d: DatosAviso): AvisoRedactado {
+  const cuota = d.cuotaNro != null ? `la cuota ${d.cuotaNro} de tu acuerdo de pago` : "la cuota de tu acuerdo de pago";
+  const cuotaSms = d.cuotaNro != null ? `la cuota ${d.cuotaNro} de tu acuerdo` : "la cuota de tu acuerdo";
+  const contacto = d.telefono ? `${d.financiera} · ${d.telefono}` : d.financiera;
+  const firma = `\n\n${contacto}`;
+  const mayus = (t: string) => t[0].toUpperCase() + t.slice(1);
+
+  switch (evento) {
+    case "recordatorio":
+      return {
+        asunto: `Recordatorio: ${cuota} del crédito ${d.credito} vence el ${d.vencimiento}`,
+        texto: `Hola ${d.nombre}.\n\nTe recordamos que ${cuota} del crédito ${d.credito}, por ${pesos(d.importe)}, vence el ${d.vencimiento}.\n\nSi ya la pagaste, ignorá este mensaje.${firma}`,
+        sms: `${d.financiera}: hola ${d.nombre}, ${cuotaSms} (${d.credito}) por ${pesos(d.importe)} vence el ${d.vencimiento}.`,
+      };
+    case "vencimiento":
+      return {
+        asunto: `Hoy vence ${cuota} del crédito ${d.credito}`,
+        texto: `Hola ${d.nombre}.\n\nHoy, ${d.vencimiento}, vence ${cuota} del crédito ${d.credito}, por ${pesos(d.importe)}.\n\nSi ya la pagaste, ignorá este mensaje.${firma}`,
+        sms: `${d.financiera}: hola ${d.nombre}, hoy vence ${cuotaSms} (${d.credito}) por ${pesos(d.importe)}.`,
+      };
+    case "mora_temprana":
+      return {
+        asunto: `${mayus(cuota)} del crédito ${d.credito} venció el ${d.vencimiento}`,
+        texto: `Hola ${d.nombre}.\n\n${mayus(cuota)} del crédito ${d.credito}, por ${pesos(d.importe)}, venció el ${d.vencimiento} y lleva ${dias(d.diasAtraso)} de atraso.\n\nComunicate con nosotros para mantener el acuerdo vigente.${firma}`,
+        sms: `${d.financiera}: ${d.nombre}, ${cuotaSms} (${d.credito}, ${pesos(d.importe)}) vencio el ${d.vencimiento}, ${diasSms(d.diasAtraso)} de atraso. Comunicate para no perderlo.`,
+      };
+    case "mora_media":
+      return {
+        asunto: `Tu acuerdo de pago del crédito ${d.credito} lleva ${dias(d.diasAtraso)} de atraso`,
+        texto: `Hola ${d.nombre}.\n\n${mayus(cuota)} del crédito ${d.credito}, por ${pesos(d.importe)}, venció el ${d.vencimiento} y lleva ${dias(d.diasAtraso)} de atraso.\n\nEl acuerdo sigue en pie mientras las cuotas se paguen. Comunicate con nosotros para regularizarla.${firma}`,
+        sms: `${d.financiera}: ${d.nombre}, ${cuotaSms} (${d.credito}) lleva ${diasSms(d.diasAtraso)} de atraso. El acuerdo sigue en pie si la regularizas. Comunicate.`,
+      };
+    case "mora_critica":
+      return {
+        asunto: `Tu acuerdo de pago del crédito ${d.credito} está por quedar sin efecto`,
+        texto: `Hola ${d.nombre}.\n\n${mayus(cuota)} del crédito ${d.credito}, por ${pesos(d.importe)}, venció el ${d.vencimiento} y lleva ${dias(d.diasAtraso)} de atraso.\n\nSi no se regulariza, el acuerdo queda sin efecto y vuelve a reclamarse la deuda original del crédito, con los intereses por mora que se habían frenado.\n\nComunicate hoy con nosotros.${firma}`,
+        sms: `${d.financiera}: ${d.nombre}, ${cuotaSms} (${d.credito}) lleva ${diasSms(d.diasAtraso)} de atraso. Si no se regulariza queda sin efecto. Comunicate hoy.`,
       };
   }
 }
