@@ -2,7 +2,7 @@ import { requireAuth, requireRole, scopeCreditosVendedor, ApiError } from "@/lib
 import { successResponse, errorResponse, withErrorHandler, assertSameOrigin } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
-import { puedeDarsePorIncobrableManual, round2, normalizarFrecuencia, resolverFrecuencia, sumarPeriodos, construirPlanAmortizacion, planACuotas, estadoCoherente, etiquetaCaja, esCuentaValida, validarParametrosOtorgamiento, diasMoraActual, buscarPlan, nombrePlan, tasaDesdeCoeficiente, cargosConPlan, CUENTA_LABEL, type Cuenta, ESTADOS_VIVOS, ESTADOS_COBRABLES, esCreditoVivo, esCreditoCobrable, topeMoraPorIncobrable, esRecuperoPostCastigo, moraDelCredito, moraDesdeCronograma, moraPendienteTotal, calcularDeudaVencida, deudaEnRevision, esTipoCreditoValido, TIPOS_CREDITO, calcularDeudaConsolidada, puedeRefinanciar, cargosDeCuota, baseMoraDeCuota, pendienteSinMoraDeCuota, formatPesos } from "@/lib/domain";
+import { puedeDarsePorIncobrableManual, round2, normalizarFrecuencia, resolverFrecuencia, sumarPeriodos, construirPlanAmortizacion, planACuotas, estadoCoherente, etiquetaCaja, esCuentaValida, validarParametrosOtorgamiento, diasMoraActual, buscarPlan, nombrePlan, tasaDesdeCoeficiente, cargosConPlan, CUENTA_LABEL, type Cuenta, ESTADOS_VIVOS, ESTADOS_COBRABLES, esCreditoVivo, esCreditoCobrable, topeMoraPorIncobrable, esRecuperoPostCastigo, moraDelCredito, moraDesdeCronograma, moraPendienteTotal, calcularDeudaVencida, deudaEnRevision, esTipoCreditoValido, TIPOS_CREDITO, calcularDeudaConsolidada, puedeRefinanciar, puedeAcordar, cargosDeCuota, baseMoraDeCuota, pendienteSinMoraDeCuota, formatPesos } from "@/lib/domain";
 import { siguienteNumeroComprobante } from "@/lib/comprobantes";
 import { assertFondosSuficientesTx } from "@/lib/caja-fondos";
 import { lockNumeroCreditoTx, TX_PLATA } from "@/lib/locks";
@@ -154,6 +154,24 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
    * intentado un acuerdo antes de reestructurar. Una consulta agrupada para toda la lista, no
    * una por credito.
    */
+  /**
+   * GESTIONES HUMANAS por crédito, en UNA consulta para todo el lote.
+   *
+   * Hace falta desde que la lista también contesta si se puede ACORDAR: la escalera exige
+   * haber contactado al deudor, así que con el conteo en cero —como estaba— el botón habría
+   * dicho "nadie lo contactó" hasta en los créditos con diez llamadas encima.
+   *
+   * `automatico: false` es la MISMA definición que usa `senalesRecupero` al hacer cumplir la
+   * regla: los envíos de campaña y las alertas del cron no son un contacto con el deudor.
+   */
+  const gestionesPorCredito = new Map<string, number>(
+    (await prisma.acciones_cobranza.groupBy({
+      by: ["credito_id"],
+      where: { ...withTenant(tenantId), automatico: false, credito_id: { in: creditos.map((c) => c.id) } },
+      _count: { _all: true },
+    })).map((r) => [r.credito_id, r._count._all]),
+  );
+
   const rotosPorCredito = new Map<string, number>(
     (await prisma.acuerdos_pago.groupBy({
       by: ["credito_id"],
@@ -357,7 +375,8 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     */
     const senales = {
       diasMora: dmora,
-      gestiones: 0, promesaPendiente: false, promesasIncumplidas: 0,
+      gestiones: gestionesPorCredito.get(c.id) ?? 0,
+      promesaPendiente: false, promesasIncumplidas: 0,
       acuerdoVigente: !!acuerdosVig.get(c.id),
       acuerdosRotos: rotosPorCredito.get(c.id) ?? 0,
       refinanciado: estado === "refinanciado",
@@ -375,6 +394,15 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
      * lista no puede opinar distinto del endpoint.
      */
     const veredRefi = esCreditoVivo(estado) && dmora > 0 ? puedeRefinanciar(senales, cfgRecupero) : null;
+    /**
+     * 🔴 ¿SE PUEDE ACORDAR HOY? Mismo criterio que el de refinanciar, con la función que
+     * después hace cumplir `assertPuedeAcordar`.
+     *
+     * Fernando (21/09/2026): «si el crédito cuenta con los requisitos para acordar, que el
+     * botón aparezca acá también». Sin este veredicto la ficha del crédito no tenía cómo
+     * saberlo: el acuerdo solo se ofrecía desde Cobranzas.
+     */
+    const veredAcu = esCreditoVivo(estado) && dmora > 0 ? puedeAcordar(senales, cfgRecupero) : null;
 
     return { ...credito, estado, dias_mora: dmora, interes_mora, vencido, cuotas_vencidas, cuota_proxima, cobrado, capital_en_riesgo,
       /** Por qué NO se puede dar por incobrable (null = se puede). Ver `puedeDarsePorIncobrableManual`. */
@@ -384,6 +412,13 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
       /** Por qué NO se puede refinanciar (null = se puede). Ver `puedeRefinanciar`. */
       refinanciar_bloqueo: veredRefi && !veredRefi.permitido
         ? { motivo: veredRefi.motivo ?? "", sugerencia: veredRefi.sugerencia ?? "" } : null,
+      /**
+       * Por qué NO se puede acordar (null = se puede). `clave` dice QUÉ regla bloquea: con
+       * `sin_gestion`, el propio operador la levanta dejando constancia, así que la pantalla
+       * no lo manda a buscar un administrador.
+       */
+      acordar_bloqueo: veredAcu && !veredAcu.permitido
+        ? { motivo: veredAcu.motivo ?? "", sugerencia: veredAcu.sugerencia ?? "", clave: veredAcu.clave ?? null } : null,
       /** Lo prestado y lo recuperado de TODA la cadena. Solo en los castigados. */
       prestado_cadena: cadena?.prestado ?? null, recuperado_cadena: cadena?.recuperado ?? null,
       /** Lo que pagó DESPUÉS del castigo. 0 en todo lo que no es incobrable. */

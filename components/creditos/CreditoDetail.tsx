@@ -5,7 +5,7 @@ import { estadoBadgeCredito } from "./estado-badge";
 import Link from "next/link";
 import { useState, useRef } from "react";
 import { useSWRConfig } from "swr";
-import { CalendarDays, Wallet, Info, ArrowUpRight, Receipt, Loader2, Printer, RefreshCw, ArrowRight, ShieldCheck, Ban, Trash2, ExternalLink, ChevronDown } from "lucide-react";
+import { CalendarDays, Wallet, Info, ArrowUpRight, Receipt, Loader2, Printer, RefreshCw, ArrowRight, ShieldCheck, Ban, Trash2, ExternalLink, ChevronDown, Handshake } from "lucide-react";
 import { refrescarNotificaciones, useAmortizacion, useCuotas, usePagosByCredito, useCreditos, KEYS, type Credito, type EstadoCuota, type Pago, type CuotaPersistida, useFinanciera, useDiasLegales, useOrigenRefinanciacion } from "@/lib/swr";
 import { type Role } from "@/lib/auth/roles";
 import { abrirRecibo } from "@/lib/recibo";
@@ -279,6 +279,17 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
    */
   const bloqueoRefi = credito.refinanciar_bloqueo ?? null;
   const refinanciable = esCreditoVivo(credito.estado) && diasMora > 0 && !bloqueoRefi;
+  /**
+   * 🔴 ACORDAR TAMBIÉN SE DECIDE ACÁ. Fernando (21/09/2026): «si el crédito cuenta con los
+   * requisitos para acordar, que el botón aparezca acá también».
+   *
+   * El acuerdo solo se ofrecía desde Cobranzas, así que estando en la ficha del crédito —que
+   * es donde se mira la deuda con el cliente al teléfono— había que salir, buscarlo en otra
+   * pantalla y volver. El veredicto lo resuelve el server con la misma función que después
+   * hace cumplir el POST (`puedeAcordar`), igual que con refinanciar.
+   */
+  const bloqueoAcuerdo = credito.acordar_bloqueo ?? null;
+  const acordable = esCreditoVivo(credito.estado) && diasMora > 0 && !bloqueoAcuerdo;
   const { pagos, isLoading: loadingPagos } = usePagosByCredito(credito.id);
   // Trazabilidad de refinanciación: resuelve el N° del crédito vinculado (origen/destino)
   // desde la lista ya cargada, sin pedir nada extra al server.
@@ -1469,6 +1480,45 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
                 juntas en la barra fija --que ahora acompana el scroll-- es lo que evita el
                 viaje de ida y vuelta hasta el final de la pantalla.
               */}
+              {/*
+                ACORDAR VA ANTES QUE REFINANCIAR, que es el orden de la escalera: primero se
+                arregla lo vencido en cuotas y recién si eso se cae se consolida todo en un
+                crédito nuevo. El botón en verde-índigo del acuerdo y el ámbar de la
+                refinanciación dicen lo mismo con el color.
+              */}
+              {acordable && (
+                <Link
+                  href={`/cobranza/acuerdos/nuevo?credito=${credito.id}`}
+                  title="Armar un plan de pago sobre lo vencido (el crédito sigue vivo)"
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/10 px-2.5 py-1 text-[11px] font-medium text-primary transition-colors hover:bg-primary/20"
+                >
+                  <Handshake className="h-3.5 w-3.5" /> Acordar
+                </Link>
+              )}
+              {/*
+                Bloqueado: se queda en gris con el motivo, igual que refinanciar. Sacarlo
+                dejaría al operador buscando una acción que existe. Y si lo único que falta es
+                haber contactado al cliente, el título lo dice: esa la levanta él mismo con la
+                constancia, desde la pantalla del acuerdo.
+              */}
+              {bloqueoAcuerdo && esCreditoVivo(credito.estado) && diasMora > 0 && (
+                bloqueoAcuerdo.clave === "sin_gestion" ? (
+                  <Link
+                    href={`/cobranza/acuerdos/nuevo?credito=${credito.id}`}
+                    title={`${bloqueoAcuerdo.motivo} ${bloqueoAcuerdo.sugerencia}`}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-muted/20 px-2.5 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                  >
+                    <Handshake className="h-3.5 w-3.5" /> Acordar
+                  </Link>
+                ) : (
+                  <span
+                    title={`${bloqueoAcuerdo.motivo} ${bloqueoAcuerdo.sugerencia}`}
+                    className="inline-flex cursor-not-allowed items-center gap-1.5 rounded-lg border border-border bg-muted/20 px-2.5 py-1 text-[11px] font-medium text-muted-foreground/70"
+                  >
+                    <Handshake className="h-3.5 w-3.5" /> Acordar
+                  </span>
+                )
+              )}
               {refinanciable && onRefinanciar && (
                 <button
                   onClick={() => onRefinanciar(credito)}
