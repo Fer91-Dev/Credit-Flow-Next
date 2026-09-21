@@ -79,6 +79,28 @@ const BTN_ACCION =
   "text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-40";
 
 /**
+ * Las acciones del crédito viven en la barra del plan, así que usan su medida (11px, más
+ * chicas que las de un pie de página) para no pelearse con «Cobrar», que es la que importa.
+ */
+const BTN_BARRA =
+  "inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1 text-[11px] font-medium " +
+  "text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-40";
+
+/**
+ * 🔴 UN BOTÓN DENTRO DE UN `<summary>` TAMBIÉN PLIEGA EL BLOQUE.
+ *
+ * Es el comportamiento por defecto del navegador: cualquier clic adentro del resumen abre o
+ * cierra el `<details>`. Con los botones de imprimir ya pasaba —se abría el PDF y el plan se
+ * plegaba solo detrás—, y con «Anular crédito» sería peor: el diálogo aparece y la pantalla
+ * de atrás se mueve. `preventDefault` cancela ese plegado sin tocar el clic del botón.
+ */
+const sinPlegar = (fn: () => void) => (e: React.MouseEvent) => {
+  e.preventDefault();
+  e.stopPropagation();
+  fn();
+};
+
+/**
  * Detalle de un crédito ya otorgado, y el ÚNICO lugar donde se opera sobre él.
  *
  * Reúne tres fuentes existentes: el crédito (de la lista), su plan de amortización
@@ -335,7 +357,9 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
    * hay que scrollear a buscarlo. La tarjeta que dice qué cuota toca ahora lleva hasta ahí y
    * deja la fila resaltada unos segundos, para no perderla entre doce renglones iguales.
    */
-  const planRef = useRef<HTMLDetailsElement>(null);
+  // Apunta a la TARJETA del plan (el envoltorio), no al `<details>`: es lo que se trae a la
+  // vista, y adentro viven el plan plegable y el recuadro de "a cobrar hoy".
+  const planRef = useRef<HTMLDivElement>(null);
   /**
    * Mismo recurso para el acuerdo: el KPI de la cuota pactada baja hasta su panel.
    *
@@ -1357,11 +1381,27 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
           reparten la atención; dos colores distintos dicen que son dos cosas distintas, y
           cada una remite al color con el que la pantalla ya viene hablando de ella.
         */}
-        <details open={planAbierto} onToggle={(e) => setPlanAbierto((e.target as HTMLDetailsElement).open)}
+        {/*
+          🔴 LA TARJETA ES EL ENVOLTORIO, NO EL `<details>`.
+
+          Fernando (21/09/2026): «quiero que esto que se muestra en la parte inferior del
+          crédito se muestre dentro del crédito». Se refería al recuadro de "a cobrar hoy",
+          que vivía suelto al final de la página, debajo de Pagos registrados — el número más
+          importante de la pantalla, flotando fuera de cualquier caja.
+
+          Ahora la caja contiene las dos cosas: el plan, que se pliega, y el "a cobrar hoy",
+          que NO se pliega. Por eso hizo falta separar el envoltorio del `<details>`: metiendo
+          el recuadro adentro del plegable, desaparecía al cerrarlo — y el plan arranca
+          cerrado, así que se perdía justo lo que hay que mirar.
+        */}
+        <div
           style={{ "--cf-luz": acuerdoVigente ? "var(--warning)" : "var(--primary)" } as React.CSSProperties}
-          className={`group/plan relative overflow-hidden rounded-xl border bg-card ${
+          className={`relative overflow-hidden rounded-xl border bg-card ${
             acuerdoVigente ? "border-warning/25" : "border-border"
-          } ${!planAbierto ? "borde-luz" : ""}`} ref={planRef}>
+          } ${!planAbierto ? "borde-luz" : ""}`} ref={planRef}
+        >
+        <details open={planAbierto} onToggle={(e) => setPlanAbierto((e.target as HTMLDetailsElement).open)}
+          className="group/plan block">
           <summary className="flex cursor-pointer flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3 list-none transition-colors hover:bg-muted/20 [&::-webkit-details-marker]:hidden">
             <div className="flex items-center gap-2">
               <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform duration-200 group-open/plan:rotate-180" />
@@ -1412,36 +1452,43 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
                 Vive en el bloque de la derecha, con las acciones.
               */}
             </div>
-            {/* Los controles no disparan el plegado: cada uno hace lo suyo. */}
+            {/*
+              Los controles no disparan el plegado: cada uno hace lo suyo.
+
+              🔴 EN EL CELULAR LA FILA SE DESLIZA. Son ocho controles y en 390px no entran:
+              se partían en renglones de dos palabras y los últimos se cortaban contra el
+              borde de la tarjeta. Abajo de `sm` ocupan una línea propia y se arrastran de
+              costado, con el mismo `.fila-deslizable` de las pestañas de Cobranzas.
+            */}
             <div
-              className="flex items-center gap-3"
+              className="fila-deslizable flex w-full items-center gap-3 sm:w-auto sm:overflow-visible"
               onClick={(e) => e.stopPropagation()}
               role="presentation"
             >
               {resumen && (
-                <span className="text-[11px] text-muted-foreground/70 tabular-nums">
+                <span className="shrink-0 whitespace-nowrap text-[11px] text-muted-foreground/70 tabular-nums">
                   {resumen.pagadas}/{resumen.total} pagadas
                   {resumen.vencidas > 0 && <span className="text-destructive"> · {resumen.vencidas} vencida{resumen.vencidas !== 1 ? "s" : ""}</span>}
                 </span>
               )}
               {/* Las dos vistas del plan, a un clic. La de operador estaba escondida en el
                   formulario de edición, que la imprimía con fechas recalculadas desde hoy. */}
-              <div className="inline-flex items-center gap-1">
+              <div className="inline-flex shrink-0 items-center gap-1">
                 <Printer className="h-3.5 w-3.5 text-muted-foreground" />
                 <Tooltip texto="Plan de cuotas para entregarle al cliente (PDF)">
                 <button
-                  onClick={() => imprimirPlan("cliente")}
+                  onClick={sinPlegar(() => imprimirPlan("cliente"))}
                   disabled={!amortizacion}
-                  className="rounded-lg border border-border px-2.5 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-40"
+                  className="shrink-0 rounded-lg border border-border px-2.5 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-40"
                 >
                   Cliente
                 </button>
                 </Tooltip>
                 <Tooltip texto="Cronograma completo con interés, capital, cargos y saldo (PDF)">
                 <button
-                  onClick={() => imprimirPlan("operador")}
+                  onClick={sinPlegar(() => imprimirPlan("operador"))}
                   disabled={!amortizacion}
-                  className="rounded-lg border border-border px-2.5 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-40"
+                  className="shrink-0 rounded-lg border border-border px-2.5 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-40"
                 >
                   Operador
                 </button>
@@ -1461,11 +1508,66 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
                   })}
                   disabled={!metaCuotas || cuotas.length === 0}
                   title="Estado de cuenta: qué está pagado y qué falta, cuota por cuota (PDF)"
-                  className="rounded-lg border border-border px-2.5 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-40"
+                  className="shrink-0 rounded-lg border border-border px-2.5 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-40"
                 >
                   Estado de cuenta
                 </button>
               </div>
+
+              {/*
+                LAS ACCIONES DEL CRÉDITO, ACÁ. Fernando (21/09/2026): «a los botones de dar por
+                incobrable y anular crédito subilos a donde están los botones de impresión».
+                Estaban clavados en una barra al pie de la pantalla, lejos del crédito del que
+                hablan y separados de las otras acciones: para anular había que scrollear hasta
+                el fondo. Son de admin, y siguen siendo secundarias —bordeadas, el color lo
+                pone recién el hover según lo que hace cada una—.
+              */}
+              {esAdmin && (role === "admin" || puedeEliminar) && (
+                <span className="mx-0.5 hidden h-4 w-px bg-border sm:inline-block" aria-hidden />
+              )}
+              {esAdmin && role === "admin" && esCreditoVivo(credito.estado) && (
+                <button
+                  onClick={sinPlegar(() => { setIncobrableMotivo(""); setIncobrableOpen(true); })}
+                  disabled={!!credito.incobrable_bloqueo}
+                  title={
+                    credito.incobrable_bloqueo
+                      ? `${credito.incobrable_bloqueo.motivo} ${credito.incobrable_bloqueo.sugerencia}`.trim()
+                      : "Sacar la deuda de la cartera y darla por perdida"
+                  }
+                  className={`${BTN_BARRA} shrink-0 hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive disabled:cursor-not-allowed disabled:hover:border-border disabled:hover:bg-transparent disabled:hover:text-muted-foreground`}
+                >
+                  <Ban className="h-3.5 w-3.5" /> Dar por incobrable
+                </button>
+              )}
+              {esAdmin && role === "admin" && credito.estado === "incobrable" && (
+                <button
+                  onClick={sinPlegar(() => handleIncobrable(false))}
+                  disabled={incobrableBusy}
+                  title="Sacarlo de incobrables y volver a gestionarlo como cualquier crédito"
+                  className={`${BTN_BARRA} shrink-0 hover:border-success/40 hover:bg-success/10 hover:text-success`}
+                >
+                  {incobrableBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />} Devolver al circuito
+                </button>
+              )}
+              {esAdmin && credito.estado !== "anulado" && credito.estado !== "incobrable" && (
+                <button
+                  onClick={sinPlegar(() => { setAnularCreditoMotivo(""); setAccionPagos("devolver"); setAnularCreditoOpen(true); })}
+                  title="Deshacer el crédito: revierte el desembolso en la caja y queda el motivo registrado"
+                  className={`${BTN_BARRA} shrink-0 hover:border-warning/40 hover:bg-warning/10 hover:text-warning`}
+                >
+                  <Ban className="h-3.5 w-3.5" /> Anular crédito
+                </button>
+              )}
+              {esAdmin && puedeEliminar && (
+                <button
+                  onClick={sinPlegar(handleEliminarCredito)}
+                  disabled={eliminarBusy}
+                  title="Borrarlo del sistema. Solo se puede si nunca movió plata."
+                  className={`${BTN_BARRA} shrink-0 hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive`}
+                >
+                  {eliminarBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />} Eliminar
+                </button>
+              )}
               {/*
                 🔴 NO SE COBRA DESDE ACÁ. Lleva a la terminal con este cliente ya cargado.
 
@@ -1634,6 +1736,51 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
           )}
           </div>
         </details>
+
+        {/*
+          LO QUE HAY QUE COBRARLE HOY, discriminado. El plan de arriba dice lo pactado; esto
+          dice cuánto pedirle al que está en el mostrador y de qué se compone. Va pegado al
+          plan y SIEMPRE visible: es lo que se lee con el cliente enfrente.
+        */}
+        {aCobrarHoy > 0 && (
+          <div className="border-t border-warning/25 bg-warning/[0.06]">
+            <div className="flex items-baseline justify-between gap-3 border-b border-warning/20 px-4 py-2.5">
+              <span className="text-[10px] font-bold uppercase tracking-widest text-warning">A cobrar hoy</span>
+              <span className="font-mono text-lg font-bold tabular-nums text-foreground">${n2(aCobrarHoy)}</span>
+            </div>
+            <table className="w-full text-xs">
+              <tbody className="font-mono tabular-nums">
+                <tr>
+                  <td className="px-4 py-1.5 font-sans text-muted-foreground">Capital</td>
+                  <td className="px-4 py-1.5 text-right text-primary">${n2(capitalVencido)}</td>
+                </tr>
+                <tr>
+                  <td className="px-4 py-1.5 font-sans text-muted-foreground">Interés</td>
+                  <td className="px-4 py-1.5 text-right text-warning">${n2(interesVencido)}</td>
+                </tr>
+                {cargosVencidos > 0 && (
+                  <tr>
+                    <td className="px-4 py-1.5 font-sans text-muted-foreground">Cargos</td>
+                    <td className="px-4 py-1.5 text-right text-muted-foreground">${n2(cargosVencidos)}</td>
+                  </tr>
+                )}
+                {moraHoy > 0 && (
+                  <tr>
+                    <td className="px-4 py-1.5 font-sans text-muted-foreground">
+                      Mora <span className="text-muted-foreground/50">· {formatDias(diasMora)}</span>
+                    </td>
+                    <td className="px-4 py-1.5 text-right text-destructive">${n2(moraHoy)}</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+            <p className="border-t border-warning/20 px-4 py-2 font-mono text-[11px] tabular-nums text-muted-foreground/70">
+              {cuotasVencidas} cuota{cuotasVencidas === 1 ? "" : "s"} vencida{cuotasVencidas === 1 ? "" : "s"}
+              {cuotasVencidasArr[0] && <> · desde {fmtDate(cuotasVencidasArr[0].fecha_vencimiento)}</>}
+            </p>
+          </div>
+        )}
+        </div>
 
         {/* Trazabilidad de refinanciación (origen ↔ destino) */}
         {(credito.es_refinanciacion || credito.refinanciado_en) && (
@@ -1952,136 +2099,16 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
             </div>
           )}
 
-          {/* Lo que hay que cobrarle HOY, discriminado. El plan de arriba dice lo pactado;
-              esto dice cuánto pedirle al que está en el mostrador y de qué se compone. */}
-          {aCobrarHoy > 0 && (
-            <div className="rounded-xl border border-warning/30 bg-warning/[0.06] overflow-hidden">
-              <div className="flex items-baseline justify-between gap-3 px-4 py-2.5 border-b border-warning/20">
-                <span className="text-[10px] font-bold uppercase tracking-widest text-warning">A cobrar hoy</span>
-                <span className="font-mono tabular-nums text-lg font-bold text-foreground">${n2(aCobrarHoy)}</span>
-              </div>
-              <table className="w-full text-xs">
-                <tbody className="font-mono tabular-nums">
-                  <tr>
-                    <td className="px-4 py-1.5 font-sans text-muted-foreground">Capital</td>
-                    <td className="px-4 py-1.5 text-right text-primary">${n2(capitalVencido)}</td>
-                  </tr>
-                  <tr>
-                    <td className="px-4 py-1.5 font-sans text-muted-foreground">Interés</td>
-                    <td className="px-4 py-1.5 text-right text-warning">${n2(interesVencido)}</td>
-                  </tr>
-                  {cargosVencidos > 0 && (
-                    <tr>
-                      <td className="px-4 py-1.5 font-sans text-muted-foreground">Cargos</td>
-                      <td className="px-4 py-1.5 text-right text-muted-foreground">${n2(cargosVencidos)}</td>
-                    </tr>
-                  )}
-                  {moraHoy > 0 && (
-                    <tr>
-                      <td className="px-4 py-1.5 font-sans text-muted-foreground">
-                        Mora <span className="text-muted-foreground/50">· {formatDias(diasMora)}</span>
-                      </td>
-                      <td className="px-4 py-1.5 text-right text-destructive">${n2(moraHoy)}</td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-              <p className="px-4 py-2 text-[11px] text-muted-foreground/70 border-t border-warning/20 font-mono tabular-nums">
-                {cuotasVencidas} cuota{cuotasVencidas === 1 ? "" : "s"} vencida{cuotasVencidas === 1 ? "" : "s"}
-                {cuotasVencidasArr[0] && <> · desde {fmtDate(cuotasVencidasArr[0].fecha_vencimiento)}</>}
-              </p>
-            </div>
-          )}
         </section>
 
       </div>
 
-      {/* ── Barra de acciones del crédito ──
-          Fija al pie: no se scrollea con el contenido, así que están siempre a mano sin
-          competir con la acción principal (cobrar la cuota, que son los botones verdes del
-          cronograma). Secundarias a propósito: bordeadas, y el color lo pone recién el hover
-          según lo que hace cada una. */}
       {/*
-        Las acciones destructivas cierran el documento en vez de quedar clavadas abajo. Son
-        las tres cosas que casi nunca se hacen —anular, eliminar, dar por incobrable— y
-        tenerlas siempre a un centímetro del pulgar no era una ventaja.
+        Las acciones del crédito —anular, eliminar, dar por incobrable, devolver al circuito—
+        vivían en una barra fija al pie de la pantalla. Fernando las mandó a la barra del plan
+        (21/09/2026): hablan del crédito, así que van con el crédito, y no a un centímetro del
+        pulgar en el borde de la ventana, lejos de lo que nombran.
       */}
-      {esAdmin && (
-        <div className="mt-2 flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-border px-7 py-3">
-          {/*
-            Sin "Editar". Las condiciones de un crédito otorgado son FIRMES desde el 15/08
-            (capital, tasa, cuotas, frecuencia, cliente y vendedor los rechaza el PATCH con
-            409 CONDICIONES_FIRMES), así que lo único que la pantalla podía cambiar era el
-            `tipo_credito` — una etiqueta. A cambio abría el simulador entero sobre un crédito
-            vivo, mostraba un plan recalculado desde hoy y ofrecía imprimirlo.
-
-            Para cambiar algo de verdad están ANULAR (revierte la caja) y REFINANCIAR
-            (consolida la deuda en un crédito nuevo). Los dos cuadran los libros y se auditan.
-          */}
-          {/*
-            DAR POR INCOBRABLE. Solo sobre un crédito vivo y solo para el admin: sacar una
-            deuda de la cartera no es una decisión de mostrador. Y si YA está incobrable, el
-            mismo lugar ofrece la vuelta — un estado del que no se puede salir sería una
-            trampa, y el cliente que aparece a pagar todo tiene que poder volver al circuito.
-          */}
-          {/*
-            🔴 Y NO SOBRE CUALQUIER CRÉDITO.
-            
-            El botón solo pedía ser admin, así que se podía marcar como perdido un crédito
-            otorgado el mismo día. Marcar plata como perdida lo saca de la cartera, lo borra de
-            morosos y de la agenda y FRENA LOS PUNITORIOS: sobre un crédito recién otorgado eso
-            no es una decisión contable, es un error con consecuencias en los reportes.
-
-            El veredicto lo calcula el server (`puedeDarsePorIncobrableManual`) y viaja en la
-            lista; el PATCH lo vuelve a chequear. Acá el botón queda deshabilitado con el
-            motivo en el título, para que se vea ANTES de apretar y no como un 409 después.
-          */}
-          {role === "admin" && esCreditoVivo(credito.estado) && (
-            <button
-              onClick={() => { setIncobrableMotivo(""); setIncobrableOpen(true); }}
-              disabled={!!credito.incobrable_bloqueo}
-              title={
-                credito.incobrable_bloqueo
-                  ? `${credito.incobrable_bloqueo.motivo} ${credito.incobrable_bloqueo.sugerencia}`.trim()
-                  : "Sacar la deuda de la cartera y darla por perdida"
-              }
-              className={`${BTN_ACCION} hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-border disabled:hover:bg-transparent disabled:hover:text-muted-foreground`}
-            >
-              <Ban className="h-3.5 w-3.5" /> Dar por incobrable
-            </button>
-          )}
-          {role === "admin" && credito.estado === "incobrable" && (
-            <button
-              onClick={() => handleIncobrable(false)}
-              disabled={incobrableBusy}
-              className={`${BTN_ACCION} hover:border-success/40 hover:bg-success/10 hover:text-success`}
-            >
-              {incobrableBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />} Devolver al circuito
-            </button>
-          )}
-          {credito.estado !== "anulado" && credito.estado !== "incobrable" && (
-            <button
-              onClick={() => { setAnularCreditoMotivo(""); setAccionPagos("devolver"); setAnularCreditoOpen(true); }}
-              className={`${BTN_ACCION} hover:border-warning/40 hover:bg-warning/10 hover:text-warning`}
-            >
-              <Ban className="h-3.5 w-3.5" /> Anular crédito
-            </button>
-          )}
-          {/* El server rechaza el DELETE si el crédito tiene pagos, si ya desembolsó plata o
-              si arrastra cuotas vencidas impagas. En vez de dejar un botón apagado que solo
-              se explica al pasar el mouse, no se muestra — la salida es anularlo, que está
-              justo al lado. */}
-          {puedeEliminar && (
-            <button
-              onClick={handleEliminarCredito}
-              disabled={eliminarBusy}
-              className={`${BTN_ACCION} hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive`}
-            >
-              {eliminarBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />} Eliminar
-            </button>
-          )}
-        </div>
-      )}
 
       {/* Cobro del crédito — formulario de pago preseleccionado a este crédito */}
 
