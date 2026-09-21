@@ -882,10 +882,11 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
             tag={DEL_CREDITO}
             // "41 días", no "41d": el usuario pidió la palabra entera — la abreviatura
             // obliga a traducirla mentalmente cada vez, y esta tarjeta es de las que se
-            // miran de reojo.
+            // miran de reojo. Va por `formatDias`, que es donde vive esa regla: acá había
+            // quedado una copia a mano que hacía lo mismo hasta que alguna de las dos cambie.
             value={
               diasMora > 0
-                ? `${diasMora} ${diasMora === 1 ? "día" : "días"}`
+                ? formatDias(diasMora)
                 : credito.proximo_pago ? fmtDate(credito.proximo_pago) : "—"
             }
             sub={
