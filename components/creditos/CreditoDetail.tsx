@@ -3,6 +3,7 @@
 import { estadoBadgeCredito } from "./estado-badge";
 
 import Link from "next/link";
+import { Tooltip } from "@/components/ui/Tooltip";
 import { useState, useRef } from "react";
 import { useSWRConfig } from "swr";
 import { CalendarDays, Wallet, Info, ArrowUpRight, Receipt, Loader2, Printer, RefreshCw, ArrowRight, ShieldCheck, Ban, Trash2, ExternalLink, ChevronDown, Handshake } from "lucide-react";
@@ -1427,22 +1428,24 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
                   formulario de edición, que la imprimía con fechas recalculadas desde hoy. */}
               <div className="inline-flex items-center gap-1">
                 <Printer className="h-3.5 w-3.5 text-muted-foreground" />
+                <Tooltip texto="Plan de cuotas para entregarle al cliente (PDF)">
                 <button
                   onClick={() => imprimirPlan("cliente")}
                   disabled={!amortizacion}
-                  title="Plan de cuotas para entregarle al cliente (PDF)"
                   className="rounded-lg border border-border px-2.5 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-40"
                 >
                   Cliente
                 </button>
+                </Tooltip>
+                <Tooltip texto="Cronograma completo con interés, capital, cargos y saldo (PDF)">
                 <button
                   onClick={() => imprimirPlan("operador")}
                   disabled={!amortizacion}
-                  title="Cronograma completo con interés, capital, cargos y saldo (PDF)"
                   className="rounded-lg border border-border px-2.5 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-40"
                 >
                   Operador
                 </button>
+                </Tooltip>
                 {/* El ESTADO DE CUENTA no es el plan: es lo pagado y lo que falta, hoy, cuota
                     por cuota. Sale de las mismas cuotas que dibuja la tabla de abajo. */}
                 <button
@@ -1487,13 +1490,14 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
                 refinanciación dicen lo mismo con el color.
               */}
               {acordable && (
-                <Link
-                  href={`/cobranza/acuerdos/nuevo?credito=${credito.id}`}
-                  title="Armar un plan de pago sobre lo vencido (el crédito sigue vivo)"
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/10 px-2.5 py-1 text-[11px] font-medium text-primary transition-colors hover:bg-primary/20"
-                >
-                  <Handshake className="h-3.5 w-3.5" /> Acordar
-                </Link>
+                <Tooltip texto="Armar un plan de pago sobre lo vencido (el crédito sigue vivo)">
+                  <Link
+                    href={`/cobranza/acuerdos/nuevo?credito=${credito.id}`}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/10 px-2.5 py-1 text-[11px] font-medium text-primary transition-colors hover:bg-primary/20"
+                  >
+                    <Handshake className="h-3.5 w-3.5" /> Acordar
+                  </Link>
+                </Tooltip>
               )}
               {/*
                 Bloqueado: se queda en gris con el motivo, igual que refinanciar. Sacarlo
@@ -1503,42 +1507,47 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
               */}
               {bloqueoAcuerdo && esCreditoVivo(credito.estado) && diasMora > 0 && (
                 bloqueoAcuerdo.clave === "sin_gestion" ? (
-                  <Link
-                    href={`/cobranza/acuerdos/nuevo?credito=${credito.id}`}
-                    title={`${bloqueoAcuerdo.motivo} ${bloqueoAcuerdo.sugerencia}`}
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-muted/20 px-2.5 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                  >
-                    <Handshake className="h-3.5 w-3.5" /> Acordar
-                  </Link>
+                  <Tooltip texto={`${bloqueoAcuerdo.motivo} ${bloqueoAcuerdo.sugerencia}`}>
+                    <Link
+                      href={`/cobranza/acuerdos/nuevo?credito=${credito.id}`}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-muted/20 px-2.5 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                    >
+                      <Handshake className="h-3.5 w-3.5" /> Acordar
+                    </Link>
+                  </Tooltip>
                 ) : (
-                  <span
-                    /* Con un acuerdo vigente el aviso dice CUÁL: el importe y la fecha del que
-                       ya está, que es lo que el operador necesita para decidir si lo anula.
-                       Los números salen del mismo acuerdo que muestra el panel de arriba. */
-                    title={
+                  /* Con un acuerdo vigente el aviso dice CUÁL: el importe y la fecha del que
+                     ya está, que es lo que el operador necesita para decidir si lo anula. Los
+                     números salen del mismo acuerdo que muestra el panel de arriba. */
+                  <Tooltip
+                    texto={
                       bloqueoAcuerdo.clave === "acuerdo_vigente" && acuerdoVigente
                         ? `Este crédito ya tiene un acuerdo vigente por ${formatMonto(acuerdoVigente.monto_acordado)}, armado el ${formatFecha(acuerdoVigente.fecha)}. Anulá ese antes de armar otro.`
                         : `${bloqueoAcuerdo.motivo} ${bloqueoAcuerdo.sugerencia}`
                     }
-                    className="inline-flex cursor-not-allowed items-center gap-1.5 rounded-lg border border-border bg-muted/20 px-2.5 py-1 text-[11px] font-medium text-muted-foreground/70"
                   >
-                    <Handshake className="h-3.5 w-3.5" /> Acordar
-                  </span>
+                    <span className="inline-flex cursor-not-allowed items-center gap-1.5 rounded-lg border border-border bg-muted/20 px-2.5 py-1 text-[11px] font-medium text-muted-foreground/70">
+                      <Handshake className="h-3.5 w-3.5" /> Acordar
+                    </span>
+                  </Tooltip>
                 )
               )}
               {refinanciable && onRefinanciar && (
-                <button
-                  onClick={() => onRefinanciar(credito)}
-                  title={
+                <Tooltip
+                  texto={
                     credito.es_refinanciacion
-                      ? "Consolidar la deuda vencida en un credito nuevo. Ojo: este credito YA proviene de otra refinanciacion."
-                      : "Consolidar la deuda vencida en un credito nuevo (no mueve caja)"
+                      ? "Consolidar la deuda vencida en un crédito nuevo. Ojo: este crédito YA proviene de otra refinanciación."
+                      : "Consolidar la deuda vencida en un crédito nuevo (no mueve caja)"
                   }
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-warning/30 bg-warning/10 px-2.5 py-1 text-[11px] font-medium text-warning transition-colors hover:bg-warning/20"
                 >
-                  <RefreshCw className="h-3.5 w-3.5" /> Refinanciar
-                  {credito.es_refinanciacion && <span className="text-warning/70">*</span>}
-                </button>
+                  <button
+                    onClick={() => onRefinanciar(credito)}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-warning/30 bg-warning/10 px-2.5 py-1 text-[11px] font-medium text-warning transition-colors hover:bg-warning/20"
+                  >
+                    <RefreshCw className="h-3.5 w-3.5" /> Refinanciar
+                    {credito.es_refinanciacion && <span className="text-warning/70">*</span>}
+                  </button>
+                </Tooltip>
               )}
               {/*
                 🔴 EL BOTÓN BLOQUEADO SE QUEDA, EN GRIS Y CON EL MOTIVO.
@@ -1549,21 +1558,21 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
                 POST, así que la pantalla no inventa una explicación propia.
               */}
               {bloqueoRefi && esCreditoVivo(credito.estado) && diasMora > 0 && onRefinanciar && (
-                <span
-                  title={`${bloqueoRefi.motivo} ${bloqueoRefi.sugerencia}`}
-                  className="inline-flex cursor-not-allowed items-center gap-1.5 rounded-lg border border-border bg-muted/20 px-2.5 py-1 text-[11px] font-medium text-muted-foreground/70"
-                >
-                  <RefreshCw className="h-3.5 w-3.5" /> Refinanciar
-                </span>
+                <Tooltip texto={`${bloqueoRefi.motivo} ${bloqueoRefi.sugerencia}`}>
+                  <span className="inline-flex cursor-not-allowed items-center gap-1.5 rounded-lg border border-border bg-muted/20 px-2.5 py-1 text-[11px] font-medium text-muted-foreground/70">
+                    <RefreshCw className="h-3.5 w-3.5" /> Refinanciar
+                  </span>
+                </Tooltip>
               )}
               {puedeCobrar && (
-                <Link
-                  href={`/pagos?cliente=${credito.cliente_id}`}
-                  title="Ir a la terminal de cobro con este cliente cargado"
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-success/30 bg-success/10 px-2.5 py-1 text-[11px] font-medium text-success transition-colors hover:bg-success/20"
-                >
-                  <Wallet className="h-3.5 w-3.5" /> Cobrar
-                </Link>
+                <Tooltip texto="Ir a la terminal de cobro con este cliente cargado">
+                  <Link
+                    href={`/pagos?cliente=${credito.cliente_id}`}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-success/30 bg-success/10 px-2.5 py-1 text-[11px] font-medium text-success transition-colors hover:bg-success/20"
+                  >
+                    <Wallet className="h-3.5 w-3.5" /> Cobrar
+                  </Link>
+                </Tooltip>
               )}
             </div>
           </summary>
