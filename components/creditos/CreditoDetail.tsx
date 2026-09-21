@@ -1791,6 +1791,153 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
             </p>
           </div>
         )}
+
+        {/*
+          LOS PAGOS DE ESTE CRÉDITO, TAMBIÉN ADENTRO. Fernando (21/09/2026): «¿por qué lo
+          dejaste afuera a Pagos registrados?». Tenía razón: quedó donde estaba de antes, pero
+          si la tarjeta es el crédito, sus cobros son parte del crédito y no una sección
+          suelta de la página. La tarjeta pasa a ser el documento entero: lo pactado (el
+          plan), lo que se debe (el recuadro) y lo que entró (esto).
+        */}
+        <section className="space-y-2 border-t border-border px-4 py-3">
+          {/* El N° al lado del título: la ficha del cliente lista TODOS sus pagos, así que
+              acá hay que poder ver de un vistazo que estos son los de ESTE crédito. Va el
+              número, no una frase que lo explique. */}
+          <div className="flex items-center gap-2">
+            <ArrowUpRight className="h-4 w-4 text-success" />
+            <h3 className="text-sm font-semibold text-foreground">Pagos registrados</h3>
+            <span className="font-mono text-[11px] text-muted-foreground">
+              {formatCreditoNumero(credito.numero, credito.refinancia_a_numero)}
+            </span>
+          </div>
+          {loadingPagos ? (
+            <Skeleton className="h-24 rounded-xl" />
+          ) : pagos.length === 0 ? (
+            <p className="text-xs text-muted-foreground/60 rounded-lg border border-dashed border-border/60 px-4 py-6 text-center">
+              Sin pagos registrados todavía.
+            </p>
+          ) : (
+            <div className="rounded-xl border border-border overflow-x-auto">
+              <table className="w-full text-xs border-separate border-spacing-0">
+                <thead>
+                  <tr className="bg-muted/30">
+                    <th className="px-3 py-2.5 text-left  font-semibold text-muted-foreground border-b border-border">Fecha</th>
+                    <th className="px-3 py-2.5 text-right font-semibold text-success      border-b border-border">Monto</th>
+                    <th className="px-3 py-2.5 text-right font-semibold text-destructive  border-b border-border">Mora</th>
+                    <th className="px-3 py-2.5 text-right font-semibold text-warning      border-b border-border">Interés</th>
+                    {hayCargos && <th className="px-3 py-2.5 text-right font-semibold text-muted-foreground border-b border-border">Cargos</th>}
+                    <th className="px-3 py-2.5 text-right font-semibold text-primary      border-b border-border">Capital</th>
+                    <th className="px-3 py-2.5 text-left  font-semibold text-muted-foreground border-b border-border">Método</th>
+                    <th className="px-3 py-2.5 text-right font-semibold text-muted-foreground border-b border-border pr-4">Recibo</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pagos.map((p, idx) => (
+                    <tr key={p.id} className={`${idx % 2 === 1 ? "bg-muted/5" : ""} ${p.anulado ? "opacity-50" : ""}`}>
+                      {/* Un cobro de acuerdo se marca: su importe no coincide con ninguna
+                          cuota del crédito, así que sin la etiqueta parece un pago mal
+                          cargado. Y el número es el DEL ACUERDO, no el del crédito. */}
+                      <td className="px-3 py-2 text-muted-foreground tabular-nums border-b border-border/70">
+                        {fmtDate(p.fecha)}
+                        {/* La entrega de una refinanciación se llama por su nombre: no es "un
+                            pago más" ni "a cuenta de la cuota 2". */}
+                        {p.entrega_refinanciacion && (
+                          <span className="ml-1.5 inline-flex items-center rounded-full bg-warning/10 px-1.5 py-0.5 align-middle text-[9px] font-semibold uppercase tracking-wide text-warning">
+                            Entrega · refinanciación
+                          </span>
+                        )}
+                        {p.acuerdo_cuota && (
+                          <span className="ml-1.5 inline-flex items-center rounded-full bg-primary/10 px-1.5 py-0.5 align-middle text-[9px] font-semibold uppercase tracking-wide text-primary">
+                            {/*
+                              🔴 EL RANGO, CUANDO EL COBRO ADELANTÓ VARIAS CUOTAS PACTADAS.
+
+                              Decía "Acuerdo 2/3" sobre un cobro de $301.354,55 que pagó la 2
+                              Y la 3, así que la 3 parecía faltar — y el importe, que es el
+                              doble de una cuota, quedaba sin explicación. El recibo en PDF ya
+                              decía "Cuotas 2 a 3 de 3": el papel y la pantalla contaban
+                              historias distintas del mismo cobro.
+                            */}
+                            Acuerdo{" "}
+                            {p.acuerdo_cuota_hasta && p.acuerdo_cuota_hasta > p.acuerdo_cuota.numero
+                              ? `${p.acuerdo_cuota.numero} a ${p.acuerdo_cuota_hasta}/${p.acuerdo_cuota.acuerdo._count.cuotas}`
+                              : `${p.acuerdo_cuota.numero}/${p.acuerdo_cuota.acuerdo._count.cuotas}`}
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2 text-right font-mono font-semibold border-b border-border/70">
+                        {p.anulado
+                          ? <span className="inline-flex items-center gap-1.5"><StatusBadge label="Anulado" variant="destructive" /><span className="text-muted-foreground line-through">${n2(p.monto)}</span></span>
+                          : <span className="text-success">+${n2(p.monto)}</span>}
+                      </td>
+                      <td className="px-3 py-2 text-right font-mono border-b border-border/70">
+                        {p.aplicado_mora > 0 ? <span className="text-destructive">${n2(p.aplicado_mora)}</span> : <span className="text-muted-foreground/20">—</span>}
+                      </td>
+                      <td className="px-3 py-2 text-right font-mono border-b border-border/70">
+                        {p.aplicado_interes > 0 ? <span className="text-warning">${n2(p.aplicado_interes)}</span> : <span className="text-muted-foreground/20">—</span>}
+                      </td>
+                      {hayCargos && (
+                        <td className="px-3 py-2 text-right font-mono border-b border-border/70">
+                          {p.aplicado_cargos > 0 ? <span className="text-muted-foreground">${n2(p.aplicado_cargos)}</span> : <span className="text-muted-foreground/20">—</span>}
+                        </td>
+                      )}
+                      <td className="px-3 py-2 text-right font-mono border-b border-border/70">
+                        {p.aplicado_capital > 0 ? <span className="text-primary">${n2(p.aplicado_capital)}</span> : <span className="text-muted-foreground/20">—</span>}
+                      </td>
+                      <td className="px-3 py-2 text-muted-foreground border-b border-border/70">
+                        {metodoLabel[p.metodo] ?? p.metodo}
+                      </td>
+                      <td className="px-3 py-2 pr-4 text-right border-b border-border/70">
+                        <div className="inline-flex items-center gap-1.5">
+                          <button
+                            onClick={() => handleRecibo(p.id)}
+                            disabled={reciboBusy === p.id}
+                            title="Descargar comprobante PDF"
+                            className="inline-flex items-center justify-center h-7 w-7 rounded-md border border-border text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50 transition-colors"
+                          >
+                            {reciboBusy === p.id
+                              ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              : <Receipt className="h-3.5 w-3.5" />}
+                          </button>
+                          {puedeAnular && !p.anulado && (
+                            <button
+                              onClick={() => setAnularPago(p)}
+                              title="Anular pago (contra-asiento en caja)"
+                              className="inline-flex items-center justify-center h-7 w-7 rounded-md border border-border text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors"
+                            >
+                              <Ban className="h-3.5 w-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* Libre deuda — pegado a los recibos porque es el cierre de la misma historia: el
+              último comprobante de la lista es el que canceló el crédito, y el certificado es
+              el papel que lo dice. Aparece solo con el crédito cancelado (el endpoint lo exige
+              igual: con saldo devuelve error). */}
+          {cancelado && (
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-success/30 bg-success/[0.06] px-4 py-3">
+              <div className="min-w-0">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-success">Crédito cancelado</p>
+                <p className="font-mono text-xs tabular-nums text-muted-foreground">
+                  {pagosVivos} pago{pagosVivos !== 1 ? "s" : ""} · ${n2(totalCobrado)}
+                </p>
+              </div>
+              <button
+                onClick={() => setLibreDeudaOpen(true)}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-success/40 bg-success/10 px-3 py-1.5 text-xs font-semibold text-success transition-colors hover:bg-success/20"
+              >
+                <ShieldCheck className="h-3.5 w-3.5" /> Libre deuda
+              </button>
+            </div>
+          )}
+
+        </section>
         </div>
 
         {/* Trazabilidad de refinanciación (origen ↔ destino) */}
@@ -1971,146 +2118,6 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
           </div>
         )}
 
-        {/* Pagos registrados */}
-        <section className="space-y-2">
-          {/* El N° al lado del título: la ficha del cliente lista TODOS sus pagos, así que
-              acá hay que poder ver de un vistazo que estos son los de ESTE crédito. Va el
-              número, no una frase que lo explique. */}
-          <div className="flex items-center gap-2">
-            <ArrowUpRight className="h-4 w-4 text-success" />
-            <h3 className="text-sm font-semibold text-foreground">Pagos registrados</h3>
-            <span className="font-mono text-[11px] text-muted-foreground">
-              {formatCreditoNumero(credito.numero, credito.refinancia_a_numero)}
-            </span>
-          </div>
-          {loadingPagos ? (
-            <Skeleton className="h-24 rounded-xl" />
-          ) : pagos.length === 0 ? (
-            <p className="text-xs text-muted-foreground/60 rounded-lg border border-dashed border-border/60 px-4 py-6 text-center">
-              Sin pagos registrados todavía.
-            </p>
-          ) : (
-            <div className="rounded-xl border border-border overflow-x-auto">
-              <table className="w-full text-xs border-separate border-spacing-0">
-                <thead>
-                  <tr className="bg-muted/30">
-                    <th className="px-3 py-2.5 text-left  font-semibold text-muted-foreground border-b border-border">Fecha</th>
-                    <th className="px-3 py-2.5 text-right font-semibold text-success      border-b border-border">Monto</th>
-                    <th className="px-3 py-2.5 text-right font-semibold text-destructive  border-b border-border">Mora</th>
-                    <th className="px-3 py-2.5 text-right font-semibold text-warning      border-b border-border">Interés</th>
-                    {hayCargos && <th className="px-3 py-2.5 text-right font-semibold text-muted-foreground border-b border-border">Cargos</th>}
-                    <th className="px-3 py-2.5 text-right font-semibold text-primary      border-b border-border">Capital</th>
-                    <th className="px-3 py-2.5 text-left  font-semibold text-muted-foreground border-b border-border">Método</th>
-                    <th className="px-3 py-2.5 text-right font-semibold text-muted-foreground border-b border-border pr-4">Recibo</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {pagos.map((p, idx) => (
-                    <tr key={p.id} className={`${idx % 2 === 1 ? "bg-muted/5" : ""} ${p.anulado ? "opacity-50" : ""}`}>
-                      {/* Un cobro de acuerdo se marca: su importe no coincide con ninguna
-                          cuota del crédito, así que sin la etiqueta parece un pago mal
-                          cargado. Y el número es el DEL ACUERDO, no el del crédito. */}
-                      <td className="px-3 py-2 text-muted-foreground tabular-nums border-b border-border/70">
-                        {fmtDate(p.fecha)}
-                        {/* La entrega de una refinanciación se llama por su nombre: no es "un
-                            pago más" ni "a cuenta de la cuota 2". */}
-                        {p.entrega_refinanciacion && (
-                          <span className="ml-1.5 inline-flex items-center rounded-full bg-warning/10 px-1.5 py-0.5 align-middle text-[9px] font-semibold uppercase tracking-wide text-warning">
-                            Entrega · refinanciación
-                          </span>
-                        )}
-                        {p.acuerdo_cuota && (
-                          <span className="ml-1.5 inline-flex items-center rounded-full bg-primary/10 px-1.5 py-0.5 align-middle text-[9px] font-semibold uppercase tracking-wide text-primary">
-                            {/*
-                              🔴 EL RANGO, CUANDO EL COBRO ADELANTÓ VARIAS CUOTAS PACTADAS.
-
-                              Decía "Acuerdo 2/3" sobre un cobro de $301.354,55 que pagó la 2
-                              Y la 3, así que la 3 parecía faltar — y el importe, que es el
-                              doble de una cuota, quedaba sin explicación. El recibo en PDF ya
-                              decía "Cuotas 2 a 3 de 3": el papel y la pantalla contaban
-                              historias distintas del mismo cobro.
-                            */}
-                            Acuerdo{" "}
-                            {p.acuerdo_cuota_hasta && p.acuerdo_cuota_hasta > p.acuerdo_cuota.numero
-                              ? `${p.acuerdo_cuota.numero} a ${p.acuerdo_cuota_hasta}/${p.acuerdo_cuota.acuerdo._count.cuotas}`
-                              : `${p.acuerdo_cuota.numero}/${p.acuerdo_cuota.acuerdo._count.cuotas}`}
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-3 py-2 text-right font-mono font-semibold border-b border-border/70">
-                        {p.anulado
-                          ? <span className="inline-flex items-center gap-1.5"><StatusBadge label="Anulado" variant="destructive" /><span className="text-muted-foreground line-through">${n2(p.monto)}</span></span>
-                          : <span className="text-success">+${n2(p.monto)}</span>}
-                      </td>
-                      <td className="px-3 py-2 text-right font-mono border-b border-border/70">
-                        {p.aplicado_mora > 0 ? <span className="text-destructive">${n2(p.aplicado_mora)}</span> : <span className="text-muted-foreground/20">—</span>}
-                      </td>
-                      <td className="px-3 py-2 text-right font-mono border-b border-border/70">
-                        {p.aplicado_interes > 0 ? <span className="text-warning">${n2(p.aplicado_interes)}</span> : <span className="text-muted-foreground/20">—</span>}
-                      </td>
-                      {hayCargos && (
-                        <td className="px-3 py-2 text-right font-mono border-b border-border/70">
-                          {p.aplicado_cargos > 0 ? <span className="text-muted-foreground">${n2(p.aplicado_cargos)}</span> : <span className="text-muted-foreground/20">—</span>}
-                        </td>
-                      )}
-                      <td className="px-3 py-2 text-right font-mono border-b border-border/70">
-                        {p.aplicado_capital > 0 ? <span className="text-primary">${n2(p.aplicado_capital)}</span> : <span className="text-muted-foreground/20">—</span>}
-                      </td>
-                      <td className="px-3 py-2 text-muted-foreground border-b border-border/70">
-                        {metodoLabel[p.metodo] ?? p.metodo}
-                      </td>
-                      <td className="px-3 py-2 pr-4 text-right border-b border-border/70">
-                        <div className="inline-flex items-center gap-1.5">
-                          <button
-                            onClick={() => handleRecibo(p.id)}
-                            disabled={reciboBusy === p.id}
-                            title="Descargar comprobante PDF"
-                            className="inline-flex items-center justify-center h-7 w-7 rounded-md border border-border text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50 transition-colors"
-                          >
-                            {reciboBusy === p.id
-                              ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                              : <Receipt className="h-3.5 w-3.5" />}
-                          </button>
-                          {puedeAnular && !p.anulado && (
-                            <button
-                              onClick={() => setAnularPago(p)}
-                              title="Anular pago (contra-asiento en caja)"
-                              className="inline-flex items-center justify-center h-7 w-7 rounded-md border border-border text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors"
-                            >
-                              <Ban className="h-3.5 w-3.5" />
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-
-          {/* Libre deuda — pegado a los recibos porque es el cierre de la misma historia: el
-              último comprobante de la lista es el que canceló el crédito, y el certificado es
-              el papel que lo dice. Aparece solo con el crédito cancelado (el endpoint lo exige
-              igual: con saldo devuelve error). */}
-          {cancelado && (
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-success/30 bg-success/[0.06] px-4 py-3">
-              <div className="min-w-0">
-                <p className="text-[10px] font-bold uppercase tracking-widest text-success">Crédito cancelado</p>
-                <p className="font-mono text-xs tabular-nums text-muted-foreground">
-                  {pagosVivos} pago{pagosVivos !== 1 ? "s" : ""} · ${n2(totalCobrado)}
-                </p>
-              </div>
-              <button
-                onClick={() => setLibreDeudaOpen(true)}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-success/40 bg-success/10 px-3 py-1.5 text-xs font-semibold text-success transition-colors hover:bg-success/20"
-              >
-                <ShieldCheck className="h-3.5 w-3.5" /> Libre deuda
-              </button>
-            </div>
-          )}
-
-        </section>
 
       </div>
 
