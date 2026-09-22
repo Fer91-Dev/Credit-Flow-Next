@@ -19,6 +19,7 @@ import {
   advertirCuotasAcuerdo, advertirMaxCreditosActivos, advertirRatioCuotaIngreso, advertirPisoTasaRefinanciacion,
 } from "@/lib/domain/config-advertencias";
 import { StatusBadge } from "@/components/ui/StatusBadge";
+import { Toggle } from "@/components/ui/Toggle";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
 import useSWR from "swr";
@@ -3693,34 +3694,6 @@ function CargoBlock({ title, desc, activo, onToggle, children, onSave, saving, s
  * El apagado usa `bg-muted` y no un blanco translúcido: el translúcido se veía bien en
  * oscuro y desaparecía sobre las tarjetas del modo claro.
  */
-function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={checked}
-      onClick={() => onChange(!checked)}
-      className="inline-flex shrink-0 items-center gap-2 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-    >
-      {/*
-        Ancho fijo a propósito: "Activo" e "Inactivo" no miden lo mismo, y sin fijarlo los
-        controles que van a la derecha (la X de borrar en la lista de frecuencias) se corren
-        de fila en fila según el estado de cada una.
-      */}
-      <span className={`w-16 text-right text-[11px] font-semibold uppercase tracking-wide transition-colors ${checked ? "text-primary" : "text-muted-foreground"}`}>
-        {checked ? "Activo" : "Inactivo"}
-      </span>
-      <span
-        className={`relative inline-flex h-6 w-11 items-center rounded-full px-0.5 transition-colors ${checked ? "bg-primary" : "bg-muted ring-1 ring-inset ring-border"}`}
-      >
-        <span
-          className={`inline-block h-5 w-5 rounded-full shadow-sm transition-transform duration-200 ${checked ? "translate-x-5 bg-white" : "translate-x-0 bg-muted-foreground/60"}`}
-        />
-      </span>
-    </button>
-  );
-}
-
 function BodySkeleton() {
   return (
     <div className="grid w-full grid-cols-1 gap-5 md:grid-cols-[190px_1fr]">

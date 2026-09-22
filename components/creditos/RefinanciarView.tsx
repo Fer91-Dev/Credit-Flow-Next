@@ -9,11 +9,12 @@ import { MoneyInput, Segmented, IconInput, IconSelect, FieldLabel } from "@/comp
 import { SystemControls } from "@/components/ui/SystemControls";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
+import { Toggle } from "@/components/ui/Toggle";
 import { IconBadge } from "@/components/ui/IconBadge";
 import { Emoji } from "@/components/ui/Emoji";
 import { useConfirm } from "@/components/ui/confirm";
 import { KEYS, useRefinanciacionPreview, refrescarNotificaciones } from "@/lib/swr";
-import { formatCreditoNumero, formatFecha, formatMonto, formatDias, parseMontoInput, hoyComercial } from "@/lib/utils";
+import { formatCreditoNumero, formatFecha, formatMonto, formatDias, formatNumero, parseMontoInput, hoyComercial } from "@/lib/utils";
 import { construirPlanAmortizacion, diagnosticarRefinanciacion } from "@/lib/domain";
 
 /**
@@ -98,8 +99,22 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
   const [quitaTipo, setQuitaTipo] = useState<QuitaTipo>("ninguna");
   const [quitaPct, setQuitaPct] = useState("");
   const [quitaMonto, setQuitaMonto] = useState("");
-  /** Que el descuento sugerido ya se cargó. Después de eso, lo que manda es el operador. */
-  const quitaPrellenada = useRef(false);
+  /**
+   * 🔴 SI LA PANTALLA ESTÁ SIGUIENDO LA PROPUESTA DEL MOTOR.
+   *
+   * Fernando (22/09/2026): "me gustaría ponerle un switch para apagarlo o encenderlo, en el
+   * caso de que el usuario desee crear la refinanciación con lo que propone el sistema".
+   *
+   * Encendido, la tasa, el plazo y el descuento son los que calculó el motor, y se actualizan
+   * si la propuesta cambia. Apagado, los tres quedan en manos del operador.
+   *
+   * Y se apaga SOLO en cuanto el operador toca cualquiera de los tres: el switch no es una
+   * preferencia que hay que acordarse de mover, es el estado real de la pantalla. Dejarlo
+   * encendido mientras los valores ya son otros sería mentirle al que lo mira.
+   */
+  const [usarPropuesta, setUsarPropuesta] = useState(true);
+  /** Que la propuesta ya se aplicó al menos una vez, para no repetirla en cada revalidación. */
+  const propuestaAplicada = useRef(false);
   const [honPct, setHonPct] = useState("");
   const [motivo, setMotivo] = useState("");
   /** El admin decidió pactar una tasa fuera de la banda. Viaja al POST y queda auditado. */
@@ -151,17 +166,40 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
      * decimales y sobre una deuda de siete cifras eso mueve la cuota. Arranca en cero cuando
      * no hace falta descuento, que es lo normal.
      */
-    /* 🔴 UNA SOLA VEZ, y por eso el ref. Para la tasa y el plazo alcanza con "si está vacío":
-       son campos de texto y el vacío es inequívoco. El descuento no: «Sin descuento» es una
-       DECISIÓN del operador, no un campo sin llenar, y este efecto vuelve a correr cada vez
-       que el preview se revalida —la mora cambia todos los días—. Sin el ref, al operador que
-       eligió no descontar nada el sistema le volvía a poner el descuento sugerido encima. */
-    if (mejor && mejor.quita > 0 && !quitaPrellenada.current) {
-      quitaPrellenada.current = true;
-      setQuitaTipo("monto");
-      setQuitaMonto(mejor.quita.toFixed(2).replace(".", ","));
+    /* El descuento solo mientras la pantalla siga al motor, y una sola vez: este efecto vuelve
+       a correr en cada revalidación del preview —la mora cambia todos los días— y «Sin
+       descuento» es una DECISIÓN del operador, no un campo sin llenar. */
+    if (mejor && usarPropuesta && !propuestaAplicada.current) {
+      propuestaAplicada.current = true;
+      if (mejor.quita > 0) {
+        setQuitaTipo("monto");
+        setQuitaMonto(mejor.quita.toFixed(2).replace(".", ","));
+      }
     }
   }, [preview]);
+
+  /**
+   * Volver a encender el switch re-aplica la propuesta ENTERA: tasa, plazo y descuento. Es lo
+   * que el operador espera de un botón que dice "usar lo que propone el sistema" — si solo
+   * volviera una parte, quedaría un híbrido que no es ni lo suyo ni lo del motor.
+   */
+  const aplicarPropuesta = () => {
+    const m = preview?.sugerencia?.mejor;
+    if (!m) return;
+    setTasa(String(m.tasaAnual));
+    setPlazo(String(m.plazoMeses));
+    if (m.quita > 0) {
+      setQuitaTipo("monto");
+      setQuitaMonto(m.quita.toFixed(2).replace(".", ","));
+    } else {
+      setQuitaTipo("ninguna");
+      setQuitaMonto("");
+    }
+    setUsarPropuesta(true);
+  };
+
+  /** Lo que llama cualquier control que el operador toca a mano: la pantalla deja de seguir al motor. */
+  const aMano = () => setUsarPropuesta(false);
 
   const honCfg = preview?.honorarios;
   // Arranca en el TECHO de la banda: la financiera propone su máximo y de ahí se negocia
@@ -799,7 +837,14 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
                       {excedeEntrega
                         ? <>La entrega se lleva toda la deuda: eso ya no es refinanciar, es cancelar el crédito. Cobralo desde Pagos.</>
                         : faltaEntrega
-                          ? <>Esta financiera pide una entrega de al menos <strong className="text-foreground">${n2(entregaMin)}</strong> ({entregaMinPct}% de la deuda) para refinanciar
+                          /* 🔴 SIN CENTAVOS, Y A PROPÓSITO. La regla del SaaS es escribir todo
+                             importe con centavos, pero este piso ahora se redondea al siguiente
+                             múltiplo de 100 —Fernando lo pidió así: es plata que el cliente pone
+                             en billetes sobre el mostrador—, con lo cual los centavos son
+                             SIEMPRE ",00": dos caracteres que no informan nada y le restan
+                             claridad al único número que el operador tiene que decir en voz
+                             alta. El resto de los importes de la pantalla no cambia. */
+                          ? <>Esta financiera pide una entrega de al menos <strong className="text-foreground">${formatNumero(entregaMin, 0)}</strong> ({entregaMinPct}% de la deuda) para refinanciar
                             {entregaNum > 0 ? <> — faltan <strong className="text-foreground">${n2(r2(entregaMin - entregaNum))}</strong></> : null}.
                             Si no puede juntarla, lo que corresponde es un <strong className="text-foreground">acuerdo de pago</strong>: la cuota queda parecida a la que ya tenía.</>
                           : entregaNum > 0
@@ -818,7 +863,7 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
                     <div className={PAR}>
                       <Segmented<QuitaTipo>
                         value={quitaTipo}
-                        onChange={setQuitaTipo}
+                        onChange={(v) => { aMano(); setQuitaTipo(v); }}
                         options={[
                           { value: "ninguna", label: "Sin descuento", icon: Ban },
                           { value: "porcentaje", label: "% sobre la deuda", icon: Percent },
@@ -855,11 +900,11 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
                                 inputMode="decimal"
                                 placeholder="Ej: 10"
                                 value={quitaPct}
-                                onChange={(e) => setQuitaPct(e.target.value.replace(/[^0-9.,]/g, "").replace(",", "."))}
+                                onChange={(e) => { aMano(); setQuitaPct(e.target.value.replace(/[^0-9.,]/g, "").replace(",", ".")); }}
                               />
                             </div>
                           ) : (
-                            <div className={CAMPO}><MoneyInput value={quitaMonto} onChange={setQuitaMonto} /></div>
+                            <div className={CAMPO}><MoneyInput value={quitaMonto} onChange={(v) => { aMano(); setQuitaMonto(v); }} /></div>
                           )}
                           {/* La traducción a la otra unidad: el operador negocia en una y el
                               cliente entiende la otra. */}
@@ -1009,11 +1054,31 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
                         ? "border-l-primary border-y-primary/25 border-r-primary/25 bg-primary/[0.08]"
                         : "border-l-warning border-y-warning/25 border-r-warning/25 bg-warning/[0.08]"
                     }`}>
-                      <div className="flex items-center gap-1.5">
-                        <Emoji name={preview.sugerencia.veredicto === "refinanciar" ? "sparkles" : "warning"} className="h-3.5 w-3.5" />
-                        <p className={`text-[10px] font-bold uppercase tracking-widest ${preview.sugerencia.veredicto === "refinanciar" ? "text-primary" : "text-warning"}`}>
-                          {preview.sugerencia.veredicto === "refinanciar" ? "Lo que propone el sistema" : "El sistema no recomienda refinanciar"}
-                        </p>
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-1.5">
+                          <Emoji name={preview.sugerencia.veredicto === "refinanciar" ? "sparkles" : "warning"} className="h-3.5 w-3.5" />
+                          <p className={`text-[10px] font-bold uppercase tracking-widest ${preview.sugerencia.veredicto === "refinanciar" ? "text-primary" : "text-warning"}`}>
+                            {preview.sugerencia.veredicto === "refinanciar" ? "Lo que propone el sistema" : "El sistema no recomienda refinanciar"}
+                          </p>
+                        </div>
+                        {/*
+                          EL INTERRUPTOR. Encendido, la pantalla usa la tasa, el plazo y el
+                          descuento del motor; apagado, los maneja el operador. Se apaga solo en
+                          cuanto se toca cualquiera de los tres —no es una preferencia que haya
+                          que acordarse de mover, es el estado real de la pantalla—, y volver a
+                          encenderlo re-aplica la propuesta entera.
+
+                          Solo aparece si hay propuesta: cuando el motor manda al acuerdo no hay
+                          nada que encender, y un switch muerto es peor que ninguno.
+                        */}
+                        {preview.sugerencia.mejor && (
+                          <Toggle
+                            checked={usarPropuesta}
+                            onChange={(v) => (v ? aplicarPropuesta() : setUsarPropuesta(false))}
+                            etiquetaOn="Usando"
+                            etiquetaOff="A mano"
+                          />
+                        )}
                       </div>
                       {/* La cuota propuesta, en grande: es el número que se dice en voz alta. */}
                       {preview.sugerencia.mejor && (
@@ -1051,7 +1116,11 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
                               onClick={() => {
                                 setTasa(String(o.tasaAnual));
                                 setPlazo(String(o.plazoMeses));
-                                quitaPrellenada.current = true;
+                                propuestaAplicada.current = true;
+                                /* Elegir OTRO plazo de la lista es una decisión del operador:
+                                   el switch se apaga salvo que sea justo el que propone el
+                                   motor, donde la pantalla y la propuesta vuelven a coincidir. */
+                                setUsarPropuesta(o.plazoMeses === preview?.sugerencia?.mejor?.plazoMeses);
                                 if (o.quita > 0) {
                                   setQuitaTipo("monto");
                                   setQuitaMonto(o.quita.toFixed(2).replace(".", ","));
@@ -1086,7 +1155,7 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
                         inputMode="decimal"
                         value={tasa}
                         aria-invalid={tasaFueraDeBanda}
-                        onChange={(e) => setTasa(e.target.value.replace(/[^0-9.,]/g, "").replace(",", "."))}
+                        onChange={(e) => { aMano(); setTasa(e.target.value.replace(/[^0-9.,]/g, "").replace(",", ".")); }}
                       />
                     </div>
                     <div className="space-y-1.5">
@@ -1099,7 +1168,7 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
                         Refinanciaciones.
                       */}
                       {plazosPermitidos.length > 0 ? (
-                        <IconSelect icon={Hash} value={plazo} onChange={(e) => setPlazo(e.target.value)}>
+                        <IconSelect icon={Hash} value={plazo} onChange={(e) => { aMano(); setPlazo(e.target.value); }}>
                           {plazosPermitidos.map((n) => (
                             <option key={n} value={String(n)}>
                               {n} {n === 1 ? "cuota" : "cuotas"}
@@ -1111,7 +1180,7 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
                           icon={Hash}
                           inputMode="numeric"
                           value={plazo}
-                          onChange={(e) => setPlazo(e.target.value.replace(/[^0-9]/g, ""))}
+                          onChange={(e) => { aMano(); setPlazo(e.target.value.replace(/[^0-9]/g, "")); }}
                         />
                       )}
                     </div>

@@ -986,7 +986,21 @@ export function entregaMinimaRefinanciacion(
   if (!(pct > 0) || !(deudaConsolidada > 0)) {
     return { exigida: false, minimo: 0, alcanza: true, falta: 0 };
   }
-  const minimo = Math.round(deudaConsolidada * (pct / 100) * 100) / 100;
+  /**
+   * 🔴 UN MONTO REDONDO, Y SIEMPRE HACIA ARRIBA.
+   *
+   * Fernando (22/09/2026): "en la entrega quiero que sea un monto redondo sin centavos". El
+   * 10% de $1.380.376,04 da $138.037,60 y eso es lo que la pantalla le pedía al cliente: un
+   * número que nadie junta ni dice en voz alta. La entrega se paga en efectivo sobre el
+   * mostrador, así que el piso tiene que estar en billetes.
+   *
+   * Hacia ARRIBA al siguiente múltiplo de 100, nunca hacia abajo: redondear para abajo dejaría
+   * el piso por debajo del porcentaje que la financiera configuró, y el mínimo dejaría de
+   * cumplir su propia regla. Lo que se pide de más es despreciable —en el caso real, $62,40
+   * sobre $138.037,60— y del lado correcto.
+   */
+  const exacto = deudaConsolidada * (pct / 100);
+  const minimo = Math.ceil(exacto / 100) * 100;
   // Un centavo de tolerancia: el mínimo sale de un porcentaje y el operador tipea el importe.
   const alcanza = entrega >= minimo - 0.01;
   return { exigida: true, minimo, alcanza, falta: alcanza ? 0 : Math.round((minimo - entrega) * 100) / 100 };
