@@ -17,6 +17,7 @@ import { FechaMovimiento, fechaMovimientoTexto } from "@/components/caja/FechaMo
 import { MoneyInput, Segmented, IconSelect, IconTextarea, FieldLabel, FormActions, simboloCuenta, MODAL_CONTENT_WIDE, SIN_CIERRE_ACCIDENTAL } from "./caja-form";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { KpiCard } from "@/components/ui/KpiCard";
+import { IconBadge } from "@/components/ui/IconBadge";
 import { StatusBadge, type BadgeVariant } from "@/components/ui/StatusBadge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { FiltrosPanel } from "@/components/ui/FiltrosPanel";
@@ -302,12 +303,94 @@ export function CajaView() {
             </div>
           )}
 
-          {/* Saldos por cuenta (clickeables: filtran la tabla) */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          {/*
+            ── EL ORDEN DE ESTA PANTALLA ─────────────────────────────────────────────
+
+            Fernando (21/09/2026): "la que más imponencia debe tener es Caja Principal, al
+            lado las cajas de los vendedores, y a efectivo, banco y dólares dales menor
+            tamaño".
+
+            Tenía razón y el motivo es de lectura, no de gusto: lo primero que se pregunta
+            quien abre Caja es CUÁNTA PLATA HAY y CUÁNTA ESTÁ EN LA CALLE. El reparto entre
+            efectivo, banco y dólares es el detalle de la primera —de hecho la suma exacta de
+            las dos primeras—, y estaba dibujado tres veces más grande que el total que
+            explica. La jerarquía decía lo contrario de lo que importa.
+          */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {/* ── Lo que hay en la tesorería ── */}
+            <div className="flex h-full flex-col rounded-2xl border border-border bg-card p-5">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Saldo caja principal</span>
+                <IconBadge emoji="balance-scale" accent="success" />
+              </div>
+              <p className={`mt-2 font-mono text-3xl font-bold tabular-nums tracking-tight sm:text-4xl ${caja.saldo_total >= 0 ? "text-success" : "text-destructive"}`}>
+                ${n2(caja.saldo_total)}
+              </p>
+              {/* De dónde sale el número, con las partes que lo forman: es la misma cuenta
+                  que hacen las tarjetas de abajo, dicha en una línea. */}
+              <div className="mt-auto space-y-1 border-t border-border pt-3">
+                <p className="flex items-baseline justify-between gap-3 text-xs">
+                  <span className="text-muted-foreground">Efectivo</span>
+                  <span className="font-mono tabular-nums text-foreground">${n2(caja.saldos_por_cuenta.efectivo ?? 0)}</span>
+                </p>
+                <p className="flex items-baseline justify-between gap-3 text-xs">
+                  <span className="text-muted-foreground">Banco</span>
+                  <span className="font-mono tabular-nums text-foreground">${n2(caja.saldos_por_cuenta.banco ?? 0)}</span>
+                </p>
+              </div>
+            </div>
+
+            {/* ── Lo que está en la calle, y en manos de quién ── */}
+            <div className="flex h-full flex-col rounded-2xl border border-border bg-card p-5">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">En poder de agentes</span>
+                <IconBadge emoji="busts-in-silhouette" accent="primary" />
+              </div>
+              <p className="mt-2 font-mono text-3xl font-bold tabular-nums tracking-tight text-primary sm:text-4xl">
+                ${n2(caja.en_vendedores ?? 0)}
+              </p>
+
+              {/*
+                EL TOTAL ABIERTO POR PERSONA. Un agregado dice que hay plata en la calle pero
+                no a quién pedírsela, y la rendición de una caja se hace persona por persona.
+                Los que están en cero se muestran igual: "no tiene nada" es información —no
+                salió a cobrar—, y esconderlos no se distingue de que falten de la lista.
+              */}
+              {(caja.cajas_vendedores?.length ?? 0) > 0 ? (
+                <ul className="mt-auto space-y-1.5 border-t border-border pt-3">
+                  {caja.cajas_vendedores!.map((v) => (
+                    <li key={v.id} className="flex items-baseline justify-between gap-3 text-xs">
+                      <span className="truncate text-muted-foreground">{v.nombre}</span>
+                      <span className={`shrink-0 font-mono tabular-nums ${v.saldo > 0 ? "font-semibold text-foreground" : "text-muted-foreground/50"}`}>
+                        ${n2(v.saldo)}
+                      </span>
+                    </li>
+                  ))}
+                  {(caja.en_vendedores_sin_ficha ?? 0) !== 0 && (
+                    <li className="flex items-baseline justify-between gap-3 border-t border-border pt-1.5 text-xs">
+                      <span className="truncate text-warning">Agentes dados de baja</span>
+                      <span className="shrink-0 font-mono font-semibold tabular-nums text-warning">${n2(caja.en_vendedores_sin_ficha ?? 0)}</span>
+                    </li>
+                  )}
+                </ul>
+              ) : (
+                <p className="mt-auto border-t border-border pt-3 text-xs text-muted-foreground">
+                  Ningún agente tiene plata en su caja.
+                </p>
+              )}
+            </div>
+          </div>
+
+          {/* La franja del detalle: en qué está la plata (las tres cuentas, que además
+              filtran la tabla) y cuánto se movió en el período. Todo del mismo tamaño,
+              porque todo esto explica los dos números de arriba en vez de competir con
+              ellos — que era el problema del orden anterior. */}
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 lg:grid-cols-5">
             {CUENTAS.map((c) => (
               <CuentaCard
                 key={c}
                 cuenta={c}
+                compacta
                 detalle={caja.saldos_detalle?.[c] ?? { saldo: caja.saldos_por_cuenta[c] ?? 0, anterior: 0, ingresos: 0, egresos: 0 }}
                 activa={cuenta === c}
                 onToggle={() => setCuenta(cuenta === c ? "all" : c)}
@@ -318,19 +401,13 @@ export function CajaView() {
                 desde={caja.periodo.desde}
               />
             ))}
-          </div>
-
-          {/* KPIs. Los dos primeros son saldos (no dependen del rango); los dos últimos SÍ
-              se mueven con el filtro, que vive abajo, pegado a la tabla. Como el filtro
-              quedó fuera de la vista de estas tarjetas, cada una dice a qué período
-              corresponde: si no, al cambiar el rango cambian números que ni se están
-              mirando y no hay forma de saber qué recorte reflejan. */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <KpiCard icon="balance-scale" label="Saldo caja principal" value={`$${n2(caja.saldo_total)}`} accent={caja.saldo_total >= 0 ? "success" : "destructive"} mono sub="tesorería (sin vendedores)" />
-            <KpiCard icon="busts-in-silhouette" label="En poder de vendedores" value={`$${n2(caja.en_vendedores ?? 0)}`} accent="primary" mono sub="suma de sus cajas" />
+            {/* A diferencia de los saldos, estos dos SÍ se mueven con el filtro que vive
+                abajo, pegado a la tabla; por eso cada uno dice a qué recorte corresponde. */}
             <KpiCard icon="inbox-tray" label="Ingresos del período" value={`$${n2(caja.ingresos)}`} accent="success" mono sub={rangoLegible} />
             <KpiCard icon="outbox-tray" label="Egresos del período" value={`$${n2(caja.egresos)}`} accent="warning" mono sub={rangoLegible} />
           </div>
+
+
 
           {/* Tabla de movimientos — el título y los filtros van en el MISMO bloque,
               justo encima de la tabla: así se lee "esta tabla, recortada así" en vez de

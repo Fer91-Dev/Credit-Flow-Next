@@ -982,6 +982,10 @@ export interface CajaData {
   valorizacion_dolares?: number | null;
   /** Total en poder de los vendedores (suma de sus cajas personales). */
   en_vendedores?: number;
+  /** El total de arriba, abierto por persona: a quién hay que pedirle esa plata. */
+  cajas_vendedores?: { id: string; nombre: string; saldo: number }[];
+  /** Plata que quedó en la caja de un agente ya dado de baja. Entra en el total igual. */
+  en_vendedores_sin_ficha?: number;
   saldos_por_cuenta: Record<CuentaCaja, number>;
   saldos_detalle: Record<CuentaCaja, SaldoCuentaDetalle>;
   ingresos: number;

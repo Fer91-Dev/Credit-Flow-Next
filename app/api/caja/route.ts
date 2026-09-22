@@ -43,7 +43,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   if (tipo && tipo !== "all") whereRango.tipo = tipo;
   if (esCuentaValida(cuentaParam)) whereRango.cuenta = cuentaParam;
 
-  const [movimientos, saldoMovs, enVendedores] = await Promise.all([
+  const [movimientos, saldoMovs, porVendedor, fichas] = await Promise.all([
     prisma.movimientos_caja.findMany({
       where: whereRango,
       include: { credito: { select: { numero: true, es_refinanciacion: true, refinancia_a: true, cliente: { select: { nombre: true, apellido: true } } } } },
@@ -55,10 +55,25 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
       where: { ...withTenant(tenantId), vendedor_id: null },
       select: { monto: true, cuenta: true, fecha: true },
     }),
-    // Total en poder de vendedores (suma de las cajas personales).
-    prisma.movimientos_caja.aggregate({
+    /**
+     * En poder de vendedores, ABIERTO POR PERSONA y no como un total solo.
+     *
+     * Fernando (21/09/2026): "que muestre el total y discrimine cuánto tiene cada vendedor
+     * en sus cajas". Un número agregado dice que faltan tres millones en la calle pero no a
+     * quién pedírselos, que es lo único accionable: la plata de la caja de un agente se
+     * rinde persona por persona.
+     */
+    prisma.movimientos_caja.groupBy({
+      by: ["vendedor_id"],
       where: { ...withTenant(tenantId), vendedor_id: { not: null } },
       _sum: { monto: true },
+    }),
+    // Los nombres. Se traen los ACTIVOS aunque no tengan movimientos: un agente con la caja
+    // en cero es información (no salió a cobrar), y su ausencia de la lista no se distingue
+    // de un error.
+    prisma.vendedores.findMany({
+      where: { ...withTenant(tenantId), activo: true },
+      select: { id: true, nombre: true },
     }),
   ]);
 
@@ -71,13 +86,31 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   // pesos (efectivo + banco); los dólares van aparte, con su valorización al blue (referencia).
   const saldoTotal = Math.round((saldosCuenta.efectivo + saldosCuenta.banco) * 100) / 100;
   const saldoDolares = saldosCuenta.dolares; // en USD
+  const r2 = (n: number) => Math.round(n * 100) / 100;
   const dolarBlue = await getDolarBlueVenta();
   const valorizacionDolares = dolarBlue != null ? Math.round(saldoDolares * dolarBlue * 100) / 100 : null;
-  const enPoderVendedores = Math.round((enVendedores._sum.monto ?? 0) * 100) / 100;
+  /* El saldo de cada caja personal, con su nombre. El TOTAL se calcula sumando estas partes
+     y no con una consulta aparte: dos consultas distintas para el mismo número es cómo se
+     llega a que la tarjeta diga 3.000.000 y el detalle sume 2.999.999,98. */
+  const saldoPorId = new Map(porVendedor.map((g) => [g.vendedor_id as string, r2(g._sum.monto ?? 0)]));
+  const cajasVendedores = fichas
+    .map((v) => ({
+      id: v.id,
+      nombre: v.nombre?.trim() || "Sin nombre",
+      saldo: saldoPorId.get(v.id) ?? 0,
+    }))
+    .sort((a, b) => b.saldo - a.saldo);
+  /* Un vendedor dado de baja con plata todavía en su caja no puede desaparecer del total:
+     la deuda con la financiera no se borra al desactivar la ficha. */
+  const huerfanos = r2(
+    [...saldoPorId.entries()]
+      .filter(([id]) => !fichas.some((v) => v.id === id))
+      .reduce((acc, [, m]) => acc + m, 0),
+  );
+  const enPoderVendedores = r2(cajasVendedores.reduce((acc, v) => acc + v.saldo, 0) + huerfanos);
 
   // Desglose por cuenta: saldo actual, ingresos/egresos del período y saldo anterior.
   type Detalle = { saldo: number; anterior: number; ingresos: number; egresos: number };
-  const r2 = (n: number) => Math.round(n * 100) / 100;
   const saldosDetalle: Record<"efectivo" | "banco" | "dolares", Detalle> = {
     efectivo: { saldo: saldosCuenta.efectivo, anterior: 0, ingresos: 0, egresos: 0 },
     banco:    { saldo: saldosCuenta.banco,    anterior: 0, ingresos: 0, egresos: 0 },
@@ -103,6 +136,8 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     dolar_blue: dolarBlue, // cotización usada para valorizar (venta), null si no disponible
     valorizacion_dolares: valorizacionDolares, // dólares × blue, en pesos (referencia)
     en_vendedores: enPoderVendedores,
+    cajas_vendedores: cajasVendedores,
+    en_vendedores_sin_ficha: huerfanos,
     saldos_por_cuenta: saldosCuenta,
     saldos_detalle: saldosDetalle,
     ingresos: periodo.ingresos,

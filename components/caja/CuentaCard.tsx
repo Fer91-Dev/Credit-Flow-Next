@@ -40,7 +40,7 @@ function n0(x: number) {
 
 export function CuentaCard({
   cuenta, detalle, activa, onToggle, onRefrescar, refrescando = false,
-  valorizacionDolares, dolarBlue, desde,
+  valorizacionDolares, dolarBlue, desde, compacta = false,
 }: {
   cuenta: CuentaCaja;
   detalle: SaldoCuentaDetalle;
@@ -53,6 +53,19 @@ export function CuentaCard({
   refrescando?: boolean;
   valorizacionDolares?: number | null;
   dolarBlue?: number | null;
+  /**
+   * Versión chica, para cuando la cuenta NO es el dato principal de la pantalla.
+   *
+   * En la caja del administrador estas tres tarjetas eran lo más grande, y lo que de verdad
+   * se mira ahí es cuánta plata hay en total y cuánta está en la calle; el reparto entre
+   * efectivo, banco y dólares es el detalle de eso. Fernando (21/09/2026): "a las cajas
+   * efectivo, banco y dólares dales menor tamaño". Conservan su color, su refresh y el
+   * filtro —siguen siendo el mismo control—, pero ocupan la mitad y el desglose del
+   * período pasa a una sola línea.
+   *
+   * En la caja del VENDEDOR siguen grandes: ahí sí son el dato principal de la pantalla.
+   */
+  compacta?: boolean;
 }) {
   const meta = CUENTA_META[cuenta];
   return (
@@ -63,9 +76,9 @@ export function CuentaCard({
       onKeyDown={(e) => { if (teclaDelContenedor(e) && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); onToggle(); } }}
       title={activa ? "Quitar filtro" : `Ver solo ${meta.label}`}
       style={{ backgroundImage: CUENTA_GRADIENTE[cuenta] }}
-      className={`group relative overflow-hidden text-left rounded-2xl p-5 text-white shadow-lg shadow-black/20 transition-all cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70 ${
-        activa ? "ring-2 ring-white/80 ring-offset-2 ring-offset-background" : "hover:brightness-105"
-      }`}
+      className={`group relative overflow-hidden text-left text-white shadow-lg shadow-black/20 transition-all cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70 ${
+        compacta ? "rounded-xl p-3.5" : "rounded-2xl p-5"
+      } ${activa ? "ring-2 ring-white/80 ring-offset-2 ring-offset-background" : "hover:brightness-105"}`}
     >
       <div className="flex items-center justify-between">
         <span className="text-xs font-bold uppercase tracking-widest text-white/80">{meta.label}</span>
@@ -82,7 +95,7 @@ export function CuentaCard({
         </div>
       </div>
 
-      <p className="mt-3 text-2xl font-bold font-mono tabular-nums tracking-tight">
+      <p className={`font-bold font-mono tabular-nums tracking-tight ${compacta ? "mt-1.5 text-lg" : "mt-3 text-2xl"}`}>
         {meta.prefix} {n2(detalle.saldo)}
       </p>
       {cuenta === "dolares" && valorizacionDolares != null && (
@@ -92,8 +105,24 @@ export function CuentaCard({
         </p>
       )}
 
-      <div className="my-4 h-px w-full bg-white/20" />
+      <div className={`h-px w-full bg-white/20 ${compacta ? "my-2.5" : "my-4"}`} />
 
+      {compacta ? (
+        /* Una línea: el saldo con el que se arrancó y el movimiento del período. Los tres
+           datos siguen estando —no se esconde ninguno—, pero ocupan un renglón. */
+        /* Dos renglones y no uno: en la franja de cinco tarjetas cada una queda angosta, y
+           tres importes de nueve cifras en una sola línea se parten donde caiga. */
+        <div className="space-y-1 font-mono text-[10px] tabular-nums">
+          <div className="flex items-baseline justify-between gap-2 text-white/70">
+            <span>{desde ? `Al ${diaPrevio(desde)}` : "Anterior"}</span>
+            <span>{meta.prefix}{n2(detalle.anterior)}</span>
+          </div>
+          <div className="flex items-baseline justify-between gap-2 text-white/90">
+            <span>↑ {n2(detalle.ingresos)}</span>
+            <span>↓ {n2(detalle.egresos)}</span>
+          </div>
+        </div>
+      ) : (
       <div className="grid grid-cols-3 gap-2">
         <div>
           {/* "Anterior" sin fecha no dice contra qué se compara: es el saldo al cierre del
@@ -110,6 +139,7 @@ export function CuentaCard({
           <p className="mt-0.5 text-[11px] font-mono font-semibold text-white/90">↓ {n2(detalle.egresos)}</p>
         </div>
       </div>
+      )}
     </div>
   );
 }
