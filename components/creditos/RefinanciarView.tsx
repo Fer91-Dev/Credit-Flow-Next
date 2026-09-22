@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { mutate as globalMutate } from "swr";
@@ -97,6 +97,8 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
   const [quitaTipo, setQuitaTipo] = useState<QuitaTipo>("ninguna");
   const [quitaPct, setQuitaPct] = useState("");
   const [quitaMonto, setQuitaMonto] = useState("");
+  /** Que el descuento sugerido ya se cargó. Después de eso, lo que manda es el operador. */
+  const quitaPrellenada = useRef(false);
   const [honPct, setHonPct] = useState("");
   const [motivo, setMotivo] = useState("");
   /** El admin decidió pactar una tasa fuera de la banda. Viaja al POST y queda auditado. */
@@ -148,9 +150,15 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
      * decimales y sobre una deuda de siete cifras eso mueve la cuota. Arranca en cero cuando
      * no hace falta descuento, que es lo normal.
      */
-    if (mejor && mejor.quita > 0) {
-      setQuitaTipo((t) => (t === "ninguna" ? "monto" : t));
-      setQuitaMonto((m) => (m === "" ? mejor.quita.toFixed(2).replace(".", ",") : m));
+    /* 🔴 UNA SOLA VEZ, y por eso el ref. Para la tasa y el plazo alcanza con "si está vacío":
+       son campos de texto y el vacío es inequívoco. El descuento no: «Sin descuento» es una
+       DECISIÓN del operador, no un campo sin llenar, y este efecto vuelve a correr cada vez
+       que el preview se revalida —la mora cambia todos los días—. Sin el ref, al operador que
+       eligió no descontar nada el sistema le volvía a poner el descuento sugerido encima. */
+    if (mejor && mejor.quita > 0 && !quitaPrellenada.current) {
+      quitaPrellenada.current = true;
+      setQuitaTipo("monto");
+      setQuitaMonto(mejor.quita.toFixed(2).replace(".", ","));
     }
   }, [preview]);
 
