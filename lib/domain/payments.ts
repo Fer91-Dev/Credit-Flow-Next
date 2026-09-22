@@ -138,6 +138,16 @@ export interface CuotaParaImputar {
   /** Cargos del período = iva + seguro + gastos (congelados). */
   cargos: number;
   /**
+   * CUÁNTO DE ESOS CARGOS ES INTERÉS DE UN ACUERDO, no un gasto.
+   *
+   * Cuando un acuerdo se arma en modo «capitaliza», su interés se reparte en las cuotas del
+   * crédito como un cargo más — está INCLUIDO en `cargos`, no se suma aparte—. Pero no es un
+   * gasto que la financiera desembolsó: es precio del tiempo, igual que el interés del plan,
+   * y al consolidar una deuda se devenga igual que él. Sin distinguirlo, refinanciar cobra
+   * meses que no transcurrieron. Ver `calcularDeudaConsolidada`.
+   */
+  capitalizado?: number;
+  /**
    * Base sobre la que corre el punitorio de esta cuota.
    *
    * 🔴 NO es `cuota_total` a secas: hay que restarle lo que se capitalizó después de

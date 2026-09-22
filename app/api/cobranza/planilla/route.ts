@@ -190,7 +190,7 @@ async function armarPlanilla(
 
     const cuotasDom: CuotaParaImputar[] = c.cuotas.map((q) => ({
       id: q.id, nro: q.nro, fechaVencimiento: q.fecha_vencimiento,
-      capital: q.capital, interes: q.interes, cargos: cargosDeCuota(q),
+      capital: q.capital, interes: q.interes, cargos: cargosDeCuota(q), capitalizado: q.capitalizado ?? 0,
       baseMora: baseMoraDeCuota(q),
       pagadoCapital: q.pagado_capital, pagadoInteres: q.pagado_interes,
       pagadoMora: q.pagado_mora, pagadoCargos: q.pagado_cargos,

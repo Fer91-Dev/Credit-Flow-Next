@@ -110,7 +110,27 @@ export function calcularDeudaConsolidada(
     // Lo que se dejó de cobrar por no haber transcurrido: viaja para poder mostrarlo.
     interesNoDevengado = round2(interesNoDevengado + noNegativo(round2(c.interes - interesDevengado)));
     const interesPend = noNegativo(round2(interesDevengado - c.pagadoInteres));
-    const cargosPend = noNegativo(round2(c.cargos - c.pagadoCargos));
+    /**
+     * 🔴 LA PARTE CAPITALIZADA DE LOS CARGOS SE DEVENGA COMO EL INTERÉS.
+     *
+     * "Cargos" junta dos cosas distintas: gastos que la financiera desembolsó una vez —sellado,
+     * administrativos, comisión— y el interés de un acuerdo que se capitalizó y se repartió en
+     * las cuotas. Los primeros se cobran enteros: ya se gastaron. El segundo es precio del
+     * tiempo, y cobrarlo por meses que no corrieron es lo mismo que cobrar el interés futuro
+     * del plan, que este módulo ya se ocupa de no cobrar.
+     *
+     * Sobre CRD-000008 eran $62.153,40 de los $116.537,65 de "cargos", y encima se consolidaban
+     * como capital del crédito nuevo, generando interés propio. Fernando lo decidió el
+     * 22/09/2026: prorratear solo lo capitalizado, dejar los gastos reales enteros.
+     *
+     * `capitalizado` viene INCLUIDO en `cargos` (así lo guarda el plan), así que se resta, se
+     * devenga a prorrata y se vuelve a sumar.
+     */
+    const capitalizado = c.capitalizado ?? 0;
+    const capitalizadoDevengado = round2(capitalizado * proporcion);
+    const cargosDevengados = round2(c.cargos - capitalizado + capitalizadoDevengado);
+    interesNoDevengado = round2(interesNoDevengado + noNegativo(round2(capitalizado - capitalizadoDevengado)));
+    const cargosPend = noNegativo(round2(cargosDevengados - c.pagadoCargos));
     const capitalPend = noNegativo(round2(c.capital - c.pagadoCapital));
 
     const dias = diasAtraso(c.fechaVencimiento, hoy);

@@ -388,6 +388,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     capital: c.capital,
     interes: c.interes,
     cargos: cargosDeCuota(c),
+    capitalizado: c.capitalizado ?? 0,
     baseMora: baseMoraDeCuota(c),
     pagadoCapital: c.pagado_capital,
     pagadoInteres: c.pagado_interes,
