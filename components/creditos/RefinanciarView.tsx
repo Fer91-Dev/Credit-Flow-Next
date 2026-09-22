@@ -119,6 +119,20 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
   const [motivo, setMotivo] = useState("");
   /** El admin decidió pactar una tasa fuera de la banda. Viaja al POST y queda auditado. */
   const [autorizarTasa, setAutorizarTasa] = useState(false);
+  /**
+   * 🔴 REFINANCIAR SIN LA ENTREGA MÍNIMA, autorizado por un administrador.
+   *
+   * Fernando (22/09/2026): "hay clientes que no tienen dinero para dar el anticipo y aun así
+   * necesitan refinanciar; ¿podemos hacer que dar entrega sea optativo?".
+   *
+   * El servidor ya lo permitía —un admin con `autorizacion_admin` pasa la guarda y queda
+   * registrado— pero la pantalla no daba forma de pedirlo: el botón quedaba deshabilitado sin
+   * salida. Es el mismo trato que ya tiene la tasa fuera de banda.
+   *
+   * No se cambia la política: la entrega se sigue pidiendo. Lo que se agrega es la excepción,
+   * con nombre y apellido, para el caso que Fernando describe.
+   */
+  const [autorizarSinEntrega, setAutorizarSinEntrega] = useState(false);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
@@ -316,7 +330,9 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
 
   const entregaMinPct = preview?.limites?.entrega_minima_pct ?? 0;
   const entregaMin = preview?.limites?.entrega_minima ?? 0;
-  const faltaEntrega = entregaMinPct > 0 && entregaNum < r2(entregaMin - 0.01);
+  const faltaEntrega =
+    entregaMinPct > 0 && entregaNum < r2(entregaMin - 0.01) &&
+    !(preview?.puede_autorizar && autorizarSinEntrega);
 
   /**
    * EL PLAN DEL CRÉDITO NUEVO. Se arma con `construirPlanAmortizacion`, la MISMA función que
@@ -490,7 +506,10 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
           honorarios_pct: honPct.trim() === "" ? 0 : honPctNum,
           motivo: motivo.trim() || null,
           // El admin asume pactar fuera de la banda de tasa. El server revalida el rol.
-          ...(tasaFueraDeBanda && autorizarTasa ? { autorizacion_admin: true } : {}),
+          /* La MISMA bandera cubre las dos excepciones: el servidor la lee para la tasa fuera
+             de banda y para la entrega mínima, y en los dos casos deja registrado quién la
+             autorizó. */
+          ...((tasaFueraDeBanda && autorizarTasa) || autorizarSinEntrega ? { autorizacion_admin: true } : {}),
           // Con qué pago se cobró la entrega. El server lo valida y, si es de esta operación,
           // no le exige al crédito seguir en mora: la entrega pudo haberlo puesto al día.
           entrega_pago_id: entregaPagoId ?? undefined,
@@ -887,6 +906,36 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
                             ? <>Se cobran <strong className="text-foreground">${n2(entregaNum)}</strong> en el acto, con su recibo y su movimiento de caja. Se consolidan <strong className="text-foreground">${n2(baseNeta)}</strong>.</>
                             : <>Si el cliente pone algo ahora, se cobra primero y el crédito nuevo nace por lo que quede.</>}
                     </p>
+
+                    {/*
+                      🔴 LA SALIDA PARA EL QUE NO TIENE PARA EL ANTICIPO.
+                      Fernando (22/09/2026): "hay clientes que no tienen dinero para dar el
+                      anticipo y aun así necesitan refinanciar". Sin esto el botón quedaba
+                      deshabilitado y la pantalla no ofrecía ninguna salida — el operador tenía
+                      que adivinar que existía el acuerdo de pago, o irse.
+
+                      Solo la ve un administrador, y solo cuando de verdad falta la entrega: es
+                      una excepción a una regla que la financiera puso, no un campo más. El
+                      servidor la registra a nombre de quien la autorizó.
+                    */}
+                    {entregaMinPct > 0 && entregaNum < r2(entregaMin - 0.01) && preview?.puede_autorizar && (
+                      <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-warning/25 bg-warning/[0.05] px-3 py-2">
+                        <input
+                          type="checkbox"
+                          checked={autorizarSinEntrega}
+                          onChange={(e) => setAutorizarSinEntrega(e.target.checked)}
+                          className="mt-0.5 accent-warning"
+                        />
+                        <span className="text-[11px] leading-relaxed text-muted-foreground">
+                          <span className="font-semibold text-foreground">Refinanciar sin la entrega</span> — para el cliente
+                          que no puede juntarla. Queda registrado a mi nombre.
+                          <span className="block text-muted-foreground/70">
+                            Sin entrega se consolida toda la deuda, así que la cuota sube o hace falta un descuento
+                            mayor.
+                          </span>
+                        </span>
+                      </label>
+                    )}
                   </div>
 
                   {/*
