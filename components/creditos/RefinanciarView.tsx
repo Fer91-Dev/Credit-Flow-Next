@@ -1104,6 +1104,14 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
                               key={o.plazoMeses}
                               type="button"
                               /**
+                               * 🔴 SE APAGA CON EL SWITCH. Fernando (22/09/2026), viendo que en
+                               * «A mano» los atajos seguían funcionando: si dijo que el plan lo
+                               * maneja él, el motor no le ofrece nada hasta que lo vuelva a
+                               * encender. El switch deja de ser una etiqueta y pasa a tener un
+                               * efecto visible, que era lo que le faltaba.
+                               */
+                              disabled={!usarPropuesta}
+                              /**
                                * 🔴 EL CHIP TAMBIÉN CARGA SU DESCUENTO.
                                *
                                * La cuota que muestra el chip es la de ESA opción, que puede
@@ -1130,11 +1138,15 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
                                 }
                               }}
                               className={`rounded-lg border px-2.5 py-1.5 font-mono text-[11px] transition-all ${
-                                plazoNum === o.plazoMeses
-                                  ? "border-primary bg-primary/20 text-primary shadow-[0_0_0_1px_var(--color-primary)]"
-                                  : "border-border bg-card text-muted-foreground hover:-translate-y-0.5 hover:border-primary/40 hover:text-foreground"
+                                !usarPropuesta
+                                  ? "cursor-not-allowed border-border/60 bg-card/50 text-muted-foreground/40"
+                                  : plazoNum === o.plazoMeses
+                                    ? "border-primary bg-primary/20 text-primary shadow-[0_0_0_1px_var(--color-primary)]"
+                                    : "border-border bg-card text-muted-foreground hover:-translate-y-0.5 hover:border-primary/40 hover:text-foreground"
                               }`}
-                              title={`${o.plazoMeses} cuotas de $${n2(o.cuota)}${o.quita > 0 ? ` con un descuento de $${n2(o.quita)}` : " sin descuento"} · total $${n2(o.total)} · devuelve ${o.multiplo.toFixed(2)}× lo prestado`}
+                              title={!usarPropuesta
+                                ? "El plan lo estás armando a mano. Encendé el switch para volver a usar lo que propone el sistema."
+                                : `${o.plazoMeses} cuotas de $${n2(o.cuota)}${o.quita > 0 ? ` con un descuento de $${n2(o.quita)}` : " sin descuento"} · total $${n2(o.total)} · devuelve ${o.multiplo.toFixed(2)}× lo prestado`}
                             >
                               {o.plazoMeses}c · {o.tasaAnual}% · ${n2(o.cuota)}
                               {o.quita > 0 && <span className="text-success"> · −${n2(o.quita)}</span>}
