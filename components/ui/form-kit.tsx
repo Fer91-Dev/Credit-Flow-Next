@@ -79,7 +79,7 @@ export function simboloCuenta(cuenta: string): string {
 
 /** Input de monto con máscara es-AR en vivo y prefijo de moneda. */
 export function MoneyInput({
-  value, onChange, currency = "$", placeholder = "0,00", autoFocus, required, id,
+  value, onChange, currency = "$", placeholder = "0,00", autoFocus, required, id, disabled,
 }: {
   value: string;
   onChange: (display: string) => void;
@@ -88,6 +88,11 @@ export function MoneyInput({
   autoFocus?: boolean;
   required?: boolean;
   id?: string;
+  /**
+   * Bloqueado. Hace falta cuando otra cosa de la pantalla está decidiendo el importe —en la
+   * refinanciación, el plan que propone el sistema— y editarlo a mano lo rompería en silencio.
+   */
+  disabled?: boolean;
 }) {
   return (
     <div className="relative">
@@ -102,7 +107,11 @@ export function MoneyInput({
         required={required}
         placeholder={placeholder}
         onChange={(e) => onChange(maskMontoInput(e.target.value))}
-        className="h-12 w-full rounded-lg border border-border bg-muted/40 pl-12 pr-3 text-right text-[16px] font-mono sm:text-base font-semibold tabular-nums text-foreground placeholder:text-muted-foreground/40 outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/20"
+        disabled={disabled}
+        className={cn(
+          "h-12 w-full rounded-lg border border-border bg-muted/40 pl-12 pr-3 text-right text-[16px] font-mono sm:text-base font-semibold tabular-nums text-foreground placeholder:text-muted-foreground/40 outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/20",
+          disabled && "cursor-not-allowed opacity-50",
+        )}
       />
     </div>
   );
@@ -110,10 +119,12 @@ export function MoneyInput({
 
 /** Control segmentado (1 fila de botones con ícono). Ideal para sentido/cuenta. */
 export function Segmented<T extends string>({
-  value, onChange, options,
+  value, onChange, options, disabled,
 }: {
   value: T;
   onChange: (v: T) => void;
+  /** Bloqueado: la elección la está tomando otra cosa de la pantalla. */
+  disabled?: boolean;
   /**
    * `icon` acepta cualquier componente que reciba `className`, no solo un `LucideIcon`: hace
    * falta para los logos de marca que lucide no trae (WhatsApp), que si no habría que
@@ -132,12 +143,18 @@ export function Segmented<T extends string>({
             key={o.value}
             type="button"
             onClick={() => onChange(o.value)}
+            disabled={disabled}
             className={cn(
               // `group` para que el ícono reaccione al hover del botón entero, no solo al suyo.
-              "group flex items-center justify-center gap-1.5 rounded-lg border px-3 py-2.5 text-sm font-medium transition-all duration-200 active:scale-[0.97]",
+              "group flex items-center justify-center gap-1.5 rounded-lg border px-3 py-2.5 text-sm font-medium transition-all duration-200",
+              disabled
+                ? "cursor-not-allowed opacity-50"
+                : "active:scale-[0.97]",
               active
                 ? "border-primary/40 bg-primary/10 text-primary shadow-sm shadow-primary/10"
-                : "border-border bg-muted/30 text-muted-foreground hover:-translate-y-0.5 hover:border-primary/30 hover:bg-muted/50 hover:text-foreground hover:shadow-md",
+                : disabled
+                  ? "border-border bg-muted/30 text-muted-foreground"
+                  : "border-border bg-muted/30 text-muted-foreground hover:-translate-y-0.5 hover:border-primary/30 hover:bg-muted/50 hover:text-foreground hover:shadow-md",
             )}
           >
             {/* El ícono crece y se inclina apenas al pasar el mouse, y late mientras la

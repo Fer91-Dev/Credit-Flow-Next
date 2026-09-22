@@ -825,6 +825,31 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
                   </div>
 
                   {/*
+                    🔴 UNO U OTRO, NUNCA LOS DOS. Fernando (22/09/2026): "mientras esté activo
+                    lo que propone el sistema, la refinanciación creada a mano debe
+                    desactivarse; si no, rompe el plan armado por el sistema".
+
+                    Tenía razón y el riesgo era real: con la propuesta activa y los campos
+                    editables, tocar un número dejaba la pantalla mostrando un plan que ya no
+                    era el que el motor calculó, pero el panel de al lado seguía diciendo que
+                    sí. Ahora los campos se bloquean, y para tocarlos hay que apagar el switch
+                    —que es exactamente la decisión que se está tomando—.
+
+                    El aviso NO es una instrucción de las que sobran ("hacé clic acá"): un
+                    formulario entero deshabilitado sin decir por qué se lee como un error del
+                    sistema, y lo primero que hace el operador es recargar la página.
+                  */}
+                  {usarPropuesta && preview?.sugerencia?.mejor && (
+                    <div className="relative flex items-start gap-2 rounded-lg border border-primary/20 bg-primary/[0.05] px-3 py-2">
+                      <Emoji name="sparkles" className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                      <p className="text-[11px] leading-relaxed text-muted-foreground">
+                        Estos valores los puso el sistema. Para cambiarlos a mano, apagá
+                        <span className="font-semibold text-foreground"> «Lo que propone el sistema»</span>, más abajo.
+                      </p>
+                    </div>
+                  )}
+
+                  {/*
                     ENTREGA. Va primero porque es lo primero que cambia la deuda: el cliente
                     pone plata ahora y lo que se consolida es lo que queda.
                   */}
@@ -832,8 +857,8 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
                     <FieldLabel>Entrega ahora (opcional)</FieldLabel>
                     {/* Importe y método pegados: son una sola cosa, no dos campos sueltos. */}
                     <div className={`grid grid-cols-2 gap-2 ${PAR}`}>
-                      <MoneyInput value={entrega} onChange={(v) => { aMano(); setEntrega(v); }} />
-                      <IconSelect icon="dollar-banknote" value={entregaMetodo} onChange={(e) => setEntregaMetodo(e.target.value)}>
+                      <MoneyInput value={entrega} onChange={(v) => { aMano(); setEntrega(v); }} disabled={usarPropuesta} />
+                      <IconSelect icon="dollar-banknote" value={entregaMetodo} onChange={(e) => setEntregaMetodo(e.target.value)} disabled={usarPropuesta}>
                         <option value="efectivo">Efectivo</option>
                         <option value="transferencia">Transferencia</option>
                         <option value="cheque">Cheque</option>
@@ -874,6 +899,7 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
                     <div className={PAR}>
                       <Segmented<QuitaTipo>
                         value={quitaTipo}
+                        disabled={usarPropuesta}
                         onChange={(v) => { aMano(); setQuitaTipo(v); }}
                         options={[
                           { value: "ninguna", label: "Sin descuento", icon: Ban },
@@ -911,11 +937,12 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
                                 inputMode="decimal"
                                 placeholder="Ej: 10"
                                 value={quitaPct}
+                                disabled={usarPropuesta}
                                 onChange={(e) => { aMano(); setQuitaPct(e.target.value.replace(/[^0-9.,]/g, "").replace(",", ".")); }}
                               />
                             </div>
                           ) : (
-                            <div className={CAMPO}><MoneyInput value={quitaMonto} onChange={(v) => { aMano(); setQuitaMonto(v); }} /></div>
+                            <div className={CAMPO}><MoneyInput value={quitaMonto} onChange={(v) => { aMano(); setQuitaMonto(v); }} disabled={usarPropuesta} /></div>
                           )}
                           {/* La traducción a la otra unidad: el operador negocia en una y el
                               cliente entiende la otra. */}
@@ -1003,7 +1030,8 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
                             value={honPct}
                             placeholder={String(honCfg.max)}
                             aria-invalid={honFueraDeBanda}
-                            onChange={(e) => setHonPct(e.target.value.replace(/[^0-9.,]/g, "").replace(",", "."))}
+                            disabled={usarPropuesta}
+                            onChange={(e) => { aMano(); setHonPct(e.target.value.replace(/[^0-9.,]/g, "").replace(",", ".")); }}
                           />
                         ) : (
                           <div className="flex h-12 items-center rounded-lg border border-border bg-muted/20 px-3 text-sm text-muted-foreground">
@@ -1052,6 +1080,7 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
                         inputMode="decimal"
                         value={tasa}
                         aria-invalid={tasaFueraDeBanda}
+                        disabled={usarPropuesta}
                         onChange={(e) => { aMano(); setTasa(e.target.value.replace(/[^0-9.,]/g, "").replace(",", ".")); }}
                       />
                     </div>
@@ -1065,7 +1094,7 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
                         Refinanciaciones.
                       */}
                       {plazosPermitidos.length > 0 ? (
-                        <IconSelect icon={Hash} value={plazo} onChange={(e) => { aMano(); setPlazo(e.target.value); }}>
+                        <IconSelect icon={Hash} value={plazo} disabled={usarPropuesta} onChange={(e) => { aMano(); setPlazo(e.target.value); }}>
                           {plazosPermitidos.map((n) => (
                             <option key={n} value={String(n)}>
                               {n} {n === 1 ? "cuota" : "cuotas"}
@@ -1077,6 +1106,7 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
                           icon={Hash}
                           inputMode="numeric"
                           value={plazo}
+                          disabled={usarPropuesta}
                           onChange={(e) => { aMano(); setPlazo(e.target.value.replace(/[^0-9]/g, "")); }}
                         />
                       )}
