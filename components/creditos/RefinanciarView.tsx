@@ -9,6 +9,7 @@ import { MoneyInput, Segmented, IconInput, IconSelect, FieldLabel } from "@/comp
 import { SystemControls } from "@/components/ui/SystemControls";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
+import { IconBadge } from "@/components/ui/IconBadge";
 import { Emoji } from "@/components/ui/Emoji";
 import { useConfirm } from "@/components/ui/confirm";
 import { KEYS, useRefinanciacionPreview, refrescarNotificaciones } from "@/lib/swr";
@@ -607,9 +608,27 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
                   </div>
                 )}
 
-                {/* Desglose de la deuda viva a consolidar */}
-                <div className="rounded-xl border border-border bg-muted/20 p-4 space-y-2">
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Deuda del plan que se da de baja</p>
+                {/*
+                  🔴 TRES PANELES, TRES MOMENTOS — y que se note cuál es cuál.
+
+                  Fernando (22/09/2026): "esos bordes casi invisibles… el texto es como una
+                  tabla básica, no parece un panel de refinanciación". Tenía razón: los tres
+                  bloques usaban el mismo gris tenue y la misma tipografía, así que la pantalla
+                  se leía como una planilla larga en vez de como tres decisiones distintas —lo
+                  que se da de baja, lo que se arregla con el cliente, lo que nace—.
+
+                  El lenguaje es el mismo que ya usan las tarjetas de Caja: superficie de card
+                  sobre el lienzo, elevación, luz cenital y un acento de color por panel. Acá
+                  el acento es ÁMBAR, que es el color con el que todo el SaaS nombra lo que se
+                  está dando de baja.
+                */}
+                <div className="relative overflow-hidden rounded-xl border border-warning/25 bg-card p-4 space-y-2
+                  shadow-[0_1px_2px_rgba(0,0,0,0.3),0_12px_30px_-18px_rgba(0,0,0,0.6)]">
+                  <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-warning/[0.05] via-transparent to-transparent" />
+                  <div className="relative flex items-center justify-between gap-3 pb-1">
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-warning">Deuda del plan que se da de baja</p>
+                    <IconBadge emoji="receipt" accent="warning" />
+                  </div>
                   {preview.composicion && (
                     <div className="space-y-1 border-b border-border pb-2">
                       <div className="flex items-center justify-between text-xs">
@@ -704,11 +723,11 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
                   )}
                   {preview.deuda.cargos > 0 && <Row label="Cargos pendientes" value={preview.deuda.cargos} signo="+" />}
                   <Row label="Mora acumulada" value={preview.deuda.mora} accent="warning" signo="+" />
-                  <div className="flex items-center justify-between border-t border-border pt-2">
+                  <div className="relative -mx-4 mt-1 flex items-center justify-between border-t border-warning/20 bg-warning/[0.04] px-4 pb-1 pt-2.5">
                     <span className="text-sm font-semibold text-foreground">Total que se consolida</span>
                     <span className="flex items-baseline gap-1.5">
                       <span className="w-2 text-right font-mono text-xs font-bold text-muted-foreground">=</span>
-                      <span className="font-mono text-base font-bold tabular-nums text-foreground">${n2(base)}</span>
+                      <span className="font-mono text-lg font-bold tabular-nums text-foreground">${n2(base)}</span>
                     </span>
                   </div>
                   {/*
@@ -746,10 +765,15 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
                 */}
                 {/* Aire entre los tres tratos (entrega · descuento · honorarios): pegados, se
                     leían como un solo formulario largo y no como tres decisiones distintas. */}
-                <section className="space-y-5 rounded-xl border border-border bg-muted/[0.06] p-4 sm:p-5">
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-                    El arreglo con el cliente
-                  </p>
+                <section className="relative space-y-5 overflow-hidden rounded-xl border border-border bg-card p-4 sm:p-5
+                  shadow-[0_1px_2px_rgba(0,0,0,0.3),0_12px_30px_-18px_rgba(0,0,0,0.6)]">
+                  <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-white/[0.04] via-transparent to-transparent" />
+                  <div className="relative flex items-center justify-between gap-3">
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                      El arreglo con el cliente
+                    </p>
+                    <IconBadge emoji="handshake" accent="primary" />
+                  </div>
 
                   {/*
                     ENTREGA. Va primero porque es lo primero que cambia la deuda: el cliente
@@ -947,10 +971,13 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
                   )}
                 </section>
 
-                <section className="space-y-4 rounded-xl border border-border bg-muted/[0.06] p-4">
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-                    El plan nuevo
-                  </p>
+                <section className="relative space-y-4 overflow-hidden rounded-xl border border-success/25 bg-card p-4
+                  shadow-[0_1px_2px_rgba(0,0,0,0.3),0_12px_30px_-18px_rgba(0,0,0,0.6)]">
+                  <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-success/[0.05] via-transparent to-transparent" />
+                  <div className="relative flex items-center justify-between gap-3">
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-success">El plan nuevo</p>
+                    <IconBadge emoji="chart-increasing" accent="success" />
+                  </div>
 
                   {/*
                     🔴 LO QUE PROPONE EL SISTEMA, ANTES DE LOS CAMPOS.
@@ -961,15 +988,42 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
                     sugerencia, porque es el caso donde refinanciar sólo agranda la deuda que
                     después se va a castigar.
                   */}
+                  {/*
+                    🔴 LA PROPUESTA SE DISTINGUE DEL RESTO POR COLOR Y POR PESO.
+
+                    Fernando: "me gustaría resaltar lo que propone el motor con una diferencia
+                    de color". Antes era otro recuadro gris con un párrafo adentro, del mismo
+                    tamaño que los avisos de al lado: lo único que el sistema APORTA a la
+                    decisión se leía como una nota al pie.
+
+                    Ahora lleva el índigo del acento —el color con el que el SaaS marca lo que
+                    el sistema propone—, una barra de acento a la izquierda que lo separa de la
+                    columna, y la CUOTA en grande: es el número del que va a hablar el
+                    operador. El resto del texto queda como explicación de ese número, que es
+                    lo que en realidad es. Cuando el veredicto es negativo el mismo bloque se
+                    pinta de ámbar: misma jerarquía, otro significado.
+                  */}
                   {preview?.sugerencia && preview.sugerencia.veredicto !== "sin_datos" && (
-                    <div className={`rounded-lg border px-3 py-2.5 ${
+                    <div className={`relative overflow-hidden rounded-lg border-l-[3px] border-y border-r px-3.5 py-3 ${
                       preview.sugerencia.veredicto === "refinanciar"
-                        ? "border-primary/25 bg-primary/[0.06]"
-                        : "border-warning/30 bg-warning/[0.07]"
+                        ? "border-l-primary border-y-primary/25 border-r-primary/25 bg-primary/[0.08]"
+                        : "border-l-warning border-y-warning/25 border-r-warning/25 bg-warning/[0.08]"
                     }`}>
-                      <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-                        {preview.sugerencia.veredicto === "refinanciar" ? "Lo que propone el sistema" : "El sistema no recomienda refinanciar"}
-                      </p>
+                      <div className="flex items-center gap-1.5">
+                        <Emoji name={preview.sugerencia.veredicto === "refinanciar" ? "sparkles" : "warning"} className="h-3.5 w-3.5" />
+                        <p className={`text-[10px] font-bold uppercase tracking-widest ${preview.sugerencia.veredicto === "refinanciar" ? "text-primary" : "text-warning"}`}>
+                          {preview.sugerencia.veredicto === "refinanciar" ? "Lo que propone el sistema" : "El sistema no recomienda refinanciar"}
+                        </p>
+                      </div>
+                      {/* La cuota propuesta, en grande: es el número que se dice en voz alta. */}
+                      {preview.sugerencia.mejor && (
+                        <p className="mt-1.5 flex items-baseline gap-2">
+                          <span className="font-mono text-xl font-bold tabular-nums text-foreground">${n2(preview.sugerencia.mejor.cuota)}</span>
+                          <span className="text-xs text-muted-foreground">
+                            × {preview.sugerencia.mejor.plazoMeses} cuota{preview.sugerencia.mejor.plazoMeses === 1 ? "" : "s"} al {preview.sugerencia.mejor.tasaAnual}%
+                          </span>
+                        </p>
+                      )}
                       <p className="mt-1 text-xs leading-relaxed text-foreground">{preview.sugerencia.motivo}</p>
                       <p className="mt-1.5 text-[11px] text-muted-foreground">
                         Capacidad de pago estimada: <span className="font-mono text-foreground">${n2(preview.sugerencia.capacidad.cuota)}</span> por cuota
@@ -984,15 +1038,37 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
                             <button
                               key={o.plazoMeses}
                               type="button"
-                              onClick={() => { setTasa(String(o.tasaAnual)); setPlazo(String(o.plazoMeses)); }}
-                              className={`rounded-md border px-2 py-1 font-mono text-[11px] transition-colors ${
+                              /**
+                               * 🔴 EL CHIP TAMBIÉN CARGA SU DESCUENTO.
+                               *
+                               * La cuota que muestra el chip es la de ESA opción, que puede
+                               * incluir un descuento; al apretarlo solo se cargaban la tasa y
+                               * el plazo. Resultado: el chip prometía "6c · 120% · $178.566,31"
+                               * y el plan salía en $281.867,29, porque el descuento de esa
+                               * opción se quedaba sin aplicar. Un botón tiene que dejar la
+                               * pantalla en el estado que anuncia.
+                               */
+                              onClick={() => {
+                                setTasa(String(o.tasaAnual));
+                                setPlazo(String(o.plazoMeses));
+                                quitaPrellenada.current = true;
+                                if (o.quita > 0) {
+                                  setQuitaTipo("monto");
+                                  setQuitaMonto(o.quita.toFixed(2).replace(".", ","));
+                                } else {
+                                  setQuitaTipo("ninguna");
+                                  setQuitaMonto("");
+                                }
+                              }}
+                              className={`rounded-lg border px-2.5 py-1.5 font-mono text-[11px] transition-all ${
                                 plazoNum === o.plazoMeses
-                                  ? "border-primary/50 bg-primary/15 text-primary"
-                                  : "border-border bg-card text-muted-foreground hover:border-primary/30 hover:text-foreground"
+                                  ? "border-primary bg-primary/20 text-primary shadow-[0_0_0_1px_var(--color-primary)]"
+                                  : "border-border bg-card text-muted-foreground hover:-translate-y-0.5 hover:border-primary/40 hover:text-foreground"
                               }`}
-                              title={`${o.plazoMeses} cuotas de $${n2(o.cuota)} · total $${n2(o.total)} · devuelve ${o.multiplo.toFixed(2)}× lo prestado`}
+                              title={`${o.plazoMeses} cuotas de $${n2(o.cuota)}${o.quita > 0 ? ` con un descuento de $${n2(o.quita)}` : " sin descuento"} · total $${n2(o.total)} · devuelve ${o.multiplo.toFixed(2)}× lo prestado`}
                             >
                               {o.plazoMeses}c · {o.tasaAnual}% · ${n2(o.cuota)}
+                              {o.quita > 0 && <span className="text-success"> · −${n2(o.quita)}</span>}
                             </button>
                           ))}
                         </div>
