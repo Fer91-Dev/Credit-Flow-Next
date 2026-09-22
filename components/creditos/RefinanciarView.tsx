@@ -569,8 +569,30 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
                         </span>
                         <span className="font-mono tabular-nums text-muted-foreground">${n2(preview.composicion.monto_por_vencer)}</span>
                       </div>
+                      {/*
+                        🔴 LA SUMA DE LOS DOS RENGLONES, ESCRITA.
+
+                        Fernando (21/09/2026), sobre CRD-000008: "no entiendo cómo se calcula
+                        la deuda al final". Y tenía razón: arriba estaban las dos partes del
+                        plan viejo ($880.711,00 y $892.831,58) y abajo un total DISTINTO
+                        ($1.373.029,96), sin que ninguna línea dijera que la diferencia entre
+                        los dos es exactamente el interés que todavía no corrió. Había que
+                        sumar a mano dos números y restar un tercero para comprobarlo — y si
+                        el dueño del sistema no pudo, el que atiende el mostrador tampoco.
+
+                        Este renglón es además el número que el cliente tiene en el papel: el
+                        "= A cobrar" del pie del plan de pagos. Que aparezca acá con el mismo
+                        nombre es lo que permite cruzar la pantalla con la hoja impresa.
+                      */}
+                      <div className="flex items-center justify-between border-t border-border/60 pt-1.5 text-xs">
+                        <span className="font-medium text-foreground">Total del plan</span>
+                        <span className="font-mono font-semibold tabular-nums text-foreground">
+                          ${n2(preview.composicion.monto_vencido + preview.composicion.mora + preview.composicion.monto_por_vencer)}
+                        </span>
+                      </div>
                       <p className="pt-0.5 text-[11px] text-muted-foreground/70">
-                        En la ficha del crédito, «A cobrar hoy» es solo la primera línea. Refinanciar se lleva las dos.
+                        Es el «= A cobrar» del plan de pagos. En la ficha del crédito, «A cobrar hoy» es solo la
+                        primera línea; refinanciar se lleva las dos.
                       </p>
 
                     </div>
@@ -624,6 +646,20 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
                     <span className="text-sm font-semibold text-foreground">Total que se consolida</span>
                     <span className="font-mono text-base font-bold text-foreground tabular-nums">${n2(base)}</span>
                   </div>
+                  {/*
+                    Y EL PUENTE ENTRE LOS DOS TOTALES, en una línea. El desglose de arriba dice
+                    DE QUÉ está hecha la deuda (capital, interés, cargos, mora); esto dice por
+                    qué el número final no es el del plan. Son las dos preguntas distintas que
+                    se hace quien mira esto, y antes solo estaba contestada la primera.
+                  */}
+                  {(preview.composicion?.interes_no_devengado ?? 0) > 0.005 && (
+                    <p className="pt-1 font-mono text-[11px] leading-relaxed tabular-nums text-muted-foreground/70">
+                      ${n2(preview.composicion!.monto_vencido + preview.composicion!.mora + preview.composicion!.monto_por_vencer)}
+                      {" del plan − "}
+                      ${n2(preview.composicion!.interes_no_devengado ?? 0)}
+                      {" de interés que no corrió"}
+                    </p>
+                  )}
                 </div>
 
                 {/*
