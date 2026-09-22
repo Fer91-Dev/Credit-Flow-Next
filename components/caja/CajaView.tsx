@@ -318,17 +318,35 @@ export function CajaView() {
           */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             {/* ── Lo que hay en la tesorería ── */}
-            <div className="flex h-full flex-col rounded-2xl border border-border bg-card p-5">
-              <div className="flex items-center justify-between gap-3">
+            {/*
+              🔴 EL RELIEVE ES DECORATIVO, NO PROMETE UN CLIC.
+              Fernando (21/09/2026): "dale algún efecto al pasar el mouse, están muy planas".
+              Se usa el MISMO lenguaje que los KPI del resto del SaaS —elevación, luz cenital
+              y un resplandor del color de la tarjeta— y NO el de los ítems clickeables (barra
+              de acento, `cursor-pointer`, desplazamiento lateral). La diferencia importa: estas
+              dos no filtran nada, y un hover de botón en algo que no responde al clic es la
+              forma más rápida de que alguien lo toque tres veces creyendo que está roto.
+            */}
+            <div className="group relative flex h-full flex-col overflow-hidden rounded-2xl border border-border bg-card p-5
+              shadow-[0_1px_2px_rgba(0,0,0,0.3),0_12px_30px_-16px_rgba(0,0,0,0.7)]
+              transition-all duration-300 hover:-translate-y-1 hover:border-success/30
+              hover:shadow-[0_1px_2px_rgba(0,0,0,0.3),0_20px_45px_-18px_rgba(0,0,0,0.8)] hover:shadow-success/10
+              motion-reduce:transition-none motion-reduce:hover:translate-y-0">
+              {/* Luz cenital: la que hace que la tarjeta flote sobre el lienzo. */}
+              <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-white/[0.05] via-transparent to-transparent" />
+              {/* El resplandor del acento, solo al pasar por encima. */}
+              <div className="pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-500 group-hover:opacity-100
+                bg-[radial-gradient(ellipse_80%_50%_at_50%_-20%,rgba(16,185,129,0.10),transparent)]" />
+              <div className="relative flex items-center justify-between gap-3">
                 <span className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Saldo caja principal</span>
-                <IconBadge emoji="balance-scale" accent="success" />
+                <IconBadge emoji="balance-scale" accent="success" hoverable />
               </div>
-              <p className={`mt-2 font-mono text-3xl font-bold tabular-nums tracking-tight sm:text-4xl ${caja.saldo_total >= 0 ? "text-success" : "text-destructive"}`}>
+              <p className={`relative mt-2 font-mono text-3xl font-bold tabular-nums tracking-tight sm:text-4xl ${caja.saldo_total >= 0 ? "text-success" : "text-destructive"}`}>
                 ${n2(caja.saldo_total)}
               </p>
               {/* De dónde sale el número, con las partes que lo forman: es la misma cuenta
                   que hacen las tarjetas de abajo, dicha en una línea. */}
-              <div className="mt-auto space-y-1 border-t border-border pt-3">
+              <div className="relative mt-auto space-y-1 border-t border-border pt-3">
                 <p className="flex items-baseline justify-between gap-3 text-xs">
                   <span className="text-muted-foreground">Efectivo</span>
                   <span className="font-mono tabular-nums text-foreground">${n2(caja.saldos_por_cuenta.efectivo ?? 0)}</span>
@@ -341,12 +359,19 @@ export function CajaView() {
             </div>
 
             {/* ── Lo que está en la calle, y en manos de quién ── */}
-            <div className="flex h-full flex-col rounded-2xl border border-border bg-card p-5">
-              <div className="flex items-center justify-between gap-3">
+            <div className="group relative flex h-full flex-col overflow-hidden rounded-2xl border border-border bg-card p-5
+              shadow-[0_1px_2px_rgba(0,0,0,0.3),0_12px_30px_-16px_rgba(0,0,0,0.7)]
+              transition-all duration-300 hover:-translate-y-1 hover:border-primary/30
+              hover:shadow-[0_1px_2px_rgba(0,0,0,0.3),0_20px_45px_-18px_rgba(0,0,0,0.8)] hover:shadow-primary/10
+              motion-reduce:transition-none motion-reduce:hover:translate-y-0">
+              <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-white/[0.05] via-transparent to-transparent" />
+              <div className="pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-500 group-hover:opacity-100
+                bg-[radial-gradient(ellipse_80%_50%_at_50%_-20%,rgba(99,102,241,0.10),transparent)]" />
+              <div className="relative flex items-center justify-between gap-3">
                 <span className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">En poder de agentes</span>
-                <IconBadge emoji="busts-in-silhouette" accent="primary" />
+                <IconBadge emoji="busts-in-silhouette" accent="primary" hoverable />
               </div>
-              <p className="mt-2 font-mono text-3xl font-bold tabular-nums tracking-tight text-primary sm:text-4xl">
+              <p className="relative mt-2 font-mono text-3xl font-bold tabular-nums tracking-tight text-primary sm:text-4xl">
                 ${n2(caja.en_vendedores ?? 0)}
               </p>
 
@@ -357,9 +382,9 @@ export function CajaView() {
                 salió a cobrar—, y esconderlos no se distingue de que falten de la lista.
               */}
               {(caja.cajas_vendedores?.length ?? 0) > 0 ? (
-                <ul className="mt-auto space-y-1.5 border-t border-border pt-3">
+                <ul className="relative mt-auto space-y-1.5 border-t border-border pt-3">
                   {caja.cajas_vendedores!.map((v) => (
-                    <li key={v.id} className="flex items-baseline justify-between gap-3 text-xs">
+                    <li key={v.id} className="-mx-1.5 flex items-baseline justify-between gap-3 rounded-md px-1.5 py-0.5 text-xs transition-colors hover:bg-muted/40">
                       <span className="truncate text-muted-foreground">{v.nombre}</span>
                       <span className={`shrink-0 font-mono tabular-nums ${v.saldo > 0 ? "font-semibold text-foreground" : "text-muted-foreground/50"}`}>
                         ${n2(v.saldo)}
@@ -374,7 +399,7 @@ export function CajaView() {
                   )}
                 </ul>
               ) : (
-                <p className="mt-auto border-t border-border pt-3 text-xs text-muted-foreground">
+                <p className="relative mt-auto border-t border-border pt-3 text-xs text-muted-foreground">
                   Ningún agente tiene plata en su caja.
                 </p>
               )}
