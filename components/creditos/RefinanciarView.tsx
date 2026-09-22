@@ -331,8 +331,7 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
   const entregaMinPct = preview?.limites?.entrega_minima_pct ?? 0;
   const entregaMin = preview?.limites?.entrega_minima ?? 0;
   const faltaEntrega =
-    entregaMinPct > 0 && entregaNum < r2(entregaMin - 0.01) &&
-    !(preview?.puede_autorizar && autorizarSinEntrega);
+    entregaMinPct > 0 && entregaNum < r2(entregaMin - 0.01) && !autorizarSinEntrega;
 
   /**
    * EL PLAN DEL CRÉDITO NUEVO. Se arma con `construirPlanAmortizacion`, la MISMA función que
@@ -506,10 +505,12 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
           honorarios_pct: honPct.trim() === "" ? 0 : honPctNum,
           motivo: motivo.trim() || null,
           // El admin asume pactar fuera de la banda de tasa. El server revalida el rol.
-          /* La MISMA bandera cubre las dos excepciones: el servidor la lee para la tasa fuera
-             de banda y para la entrega mínima, y en los dos casos deja registrado quién la
-             autorizó. */
-          ...((tasaFueraDeBanda && autorizarTasa) || autorizarSinEntrega ? { autorizacion_admin: true } : {}),
+          /* Dos banderas distintas a propósito: `autorizacion_admin` habilita la tasa fuera de
+             banda y sigue siendo de administradores; `sin_entrega` omite el anticipo y la puede
+             usar cualquier rol. Mezclarlas le habría dado al vendedor la excepción de la tasa
+             sin que nadie lo decidiera. */
+          ...(tasaFueraDeBanda && autorizarTasa ? { autorizacion_admin: true } : {}),
+          ...(autorizarSinEntrega ? { sin_entrega: true } : {}),
           // Con qué pago se cobró la entrega. El server lo valida y, si es de esta operación,
           // no le exige al crédito seguir en mora: la entrega pudo haberlo puesto al día.
           entrega_pago_id: entregaPagoId ?? undefined,
@@ -918,7 +919,7 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
                       una excepción a una regla que la financiera puso, no un campo más. El
                       servidor la registra a nombre de quien la autorizó.
                     */}
-                    {entregaMinPct > 0 && entregaNum < r2(entregaMin - 0.01) && preview?.puede_autorizar && (
+                    {entregaMinPct > 0 && entregaNum < r2(entregaMin - 0.01) && (
                       <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-warning/25 bg-warning/[0.05] px-3 py-2">
                         <input
                           type="checkbox"
@@ -928,7 +929,7 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
                         />
                         <span className="text-[11px] leading-relaxed text-muted-foreground">
                           <span className="font-semibold text-foreground">Refinanciar sin la entrega</span> — para el cliente
-                          que no puede juntarla. Queda registrado a mi nombre.
+                          que no puede juntarla. Queda registrado quién la omitió.
                           <span className="block text-muted-foreground/70">
                             Sin entrega se consolida toda la deuda, así que la cuota sube o hace falta un descuento
                             mayor.

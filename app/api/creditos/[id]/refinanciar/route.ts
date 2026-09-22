@@ -555,8 +555,22 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
     cobranzaCfg.recupero,
   );
   if (entregaMin.exigida && !entregaMin.alcanza) {
+    /**
+     * 🔴 BANDERA PROPIA, Y NO LA DE LA AUTORIZACIÓN DE ADMIN.
+     *
+     * Fernando (22/09/2026): "un vendedor también puede crear la refinanciación sin entrega".
+     *
+     * La tentación era reutilizar `autorizacion_admin` y dejar de mirar el rol, pero esa misma
+     * bandera es la que habilita pactar una tasa FUERA DE BANDA, que sigue siendo cosa de
+     * administradores. Con una sola bandera, darle al vendedor la excepción de la entrega le
+     * habría abierto también la de la tasa — un agujero de permisos por comodidad.
+     *
+     * `sin_entrega` hace una cosa sola y la hace para cualquier rol. Quién la usó queda en la
+     * auditoría igual, con `entrega_minima_omitida`.
+     */
+    const omitidaAProposito = body.sin_entrega === true;
     const permitidoPorAdmin = role === "admin" && body.autorizacion_admin === true;
-    if (!permitidoPorAdmin) {
+    if (!omitidaAProposito && !permitidoPorAdmin) {
       return errorResponse(
         `Para refinanciar hace falta una entrega de al menos $${entregaMin.minimo.toLocaleString("es-AR", { minimumFractionDigits: 2 })} ` +
         `(${cobranzaCfg.recupero.entrega_minima_pct}% de la deuda). ` +
@@ -564,7 +578,7 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
           ? `Trajo $${entregaMonto.toLocaleString("es-AR", { minimumFractionDigits: 2 })}: faltan $${entregaMin.falta.toLocaleString("es-AR", { minimumFractionDigits: 2 })}. `
           : "No se registró ninguna entrega. ") +
         `Si no puede juntarla, lo que corresponde es un acuerdo de pago: la cuota queda parecida a la que ya tenía.` +
-        (role === "admin" ? " Como administrador podés autorizarlo igual, y queda registrado." : ""),
+        " Si aun así hay que refinanciar, se puede hacer sin la entrega y queda registrado.",
         "ENTREGA_MINIMA_REFINANCIACION",
         409,
       );
