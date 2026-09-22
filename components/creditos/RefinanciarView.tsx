@@ -1341,10 +1341,20 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
                                 setTasa(String(o.tasaAnual));
                                 setPlazo(String(o.plazoMeses));
                                 propuestaAplicada.current = true;
-                                /* Elegir OTRO plazo de la lista es una decisión del operador:
-                                   el switch se apaga salvo que sea justo el que propone el
-                                   motor, donde la pantalla y la propuesta vuelven a coincidir. */
-                                setUsarPropuesta(o.plazoMeses === preview?.sugerencia?.mejor?.plazoMeses);
+                                /**
+                                 * 🔴 EL SWITCH SE QUEDA ENCENDIDO. Fernando (22/09/2026): "cuando
+                                 * pulso cualquiera de las 3 opciones que me recomienda el sistema,
+                                 * el switch se apaga".
+                                 *
+                                 * Estaba mal y el error era de criterio: se apagaba salvo que el
+                                 * plazo fuera justo el propuesto, dando por sentado que elegir otro
+                                 * era una decisión manual. No lo es. LAS TRES OPCIONES LAS CALCULÓ
+                                 * EL MOTOR —con su tasa, su descuento y su cuota— así que tomar
+                                 * cualquiera sigue siendo usar el plan del sistema, solo que otra de
+                                 * sus variantes. «A mano» es escribir un número propio, no elegir
+                                 * entre lo que el sistema ofrece.
+                                 */
+                                setUsarPropuesta(true);
                                 if (o.quita > 0) {
                                   setQuitaTipo("monto");
                                   setQuitaMonto(o.quita.toFixed(2).replace(".", ","));
