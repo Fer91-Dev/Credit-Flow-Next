@@ -66,6 +66,19 @@ export interface EntradaSugerenciaRefi {
    * de gestionar y tiene una cuota más pagable.
    */
   margenMinimo: number;
+  /**
+   * 🔴 CUÁNTO SE PUEDE PERDONAR, en % de la deuda consolidada.
+   *
+   * Fernando (22/09/2026): "lo bueno que tenemos en refinanciación es que podemos negociar
+   * para que el cliente pague un poco menos; lo ideal sería que el motor sugiera un descuento
+   * y el plazo adecuado para que sea pagable, sin que la financiera tenga pérdidas".
+   *
+   * Es el MONTO que sale de `quitaMaxima`, la misma función que ya rige los acuerdos: lo
+   * condonable es mora + interés (nunca el capital, que es plata que salió de la caja), y
+   * para un vendedor eso además se acota por el porcentaje que la financiera le permite. No
+   * es un parámetro nuevo ni un criterio propio de esta pantalla.
+   */
+  quitaMaxima: number;
 }
 
 export interface OpcionRefi {
@@ -80,6 +93,13 @@ export interface OpcionRefi {
   multiplo: number;
   pagable: boolean;
   rentable: boolean;
+  /**
+   * El descuento que hace falta para que la cuota entre en lo que el cliente puede pagar.
+   * 0 = no hace falta ninguno. El capital del plan es `deudaConsolidada − quita`.
+   */
+  quita: number;
+  /** El mismo descuento en % de la deuda, que es como se carga en la pantalla. */
+  quitaPct: number;
 }
 
 export interface SugerenciaRefi {
@@ -202,24 +222,108 @@ export function sugerirRefinanciacion(e: EntradaSugerenciaRefi): SugerenciaRefi 
     const tasaAnual = tasaIdeal == null
       ? e.banda.min
       : Math.min(e.banda.max, Math.max(e.banda.min, tasaIdeal));
-    const cuota = cuotaDe(e.deudaConsolidada, tasaAnual, n, e.periodosAnio, e.honorariosPct);
+    const cuotaSinQuita = cuotaDe(e.deudaConsolidada, tasaAnual, n, e.periodosAnio, e.honorariosPct);
+    const objetivo = round2(cap.cuota) + 0.01; // el centavo es tolerancia de redondeo
+
+    /**
+     * 🔴 SI NI CON EL PISO DE LA BANDA ENTRA, SE CALCULA EL DESCUENTO QUE FALTA.
+     *
+     * El orden lo decidió Fernando y es el que menos cuesta: PRIMERO la tasa, DESPUÉS el
+     * descuento. Bajar la tasa resigna interés que todavía no salió de la caja; una quita
+     * borra deuda que ya está contabilizada. Por eso el descuento sale solo por lo que la
+     * tasa no pudo arreglar, y siempre el MÍNIMO necesario.
+     *
+     * La cuota es `capital × (factor francés + honorarios por cuota)`, y los honorarios se
+     * calculan sobre el capital nuevo, así que la relación es lineal: despejando el capital
+     * que produce exactamente la cuota objetivo sale el tope, y lo que sobra es la quita.
+     *
+     * Se redondea la quita HACIA ARRIBA: un centavo de más deja la cuota un centavo por
+     * debajo del objetivo, que es el lado correcto del que equivocarse — al revés, el plan
+     * propuesto se pasaría de lo que el cliente puede pagar y rompería la única promesa que
+     * hace este módulo.
+     */
+    let quita = 0;
+    let capitalPlan = e.deudaConsolidada;
+    let tasaFinal = tasaAnual;
+    if (cuotaSinQuita > objetivo && e.quitaMaxima > 0) {
+      const factor = factorFrances(e.banda.min / 100 / e.periodosAnio, n);
+      /**
+       * 🔴 LOS HONORARIOS NO BAJAN CON EL DESCUENTO, así que son un monto FIJO en esta cuenta.
+       *
+       * Se calculan sobre la deuda consolidada —la que se gestionó— y no sobre el capital que
+       * queda después de perdonar: es plata por el trabajo de recuperar, no un porcentaje de
+       * lo que el cliente termina debiendo. La pantalla ya los calculaba así.
+       *
+       * Al despejar el capital hay que tratarlos como constante y no como proporción, o el
+       * motor promete una cuota que el plan no da: con el capital descontado la parte de
+       * honorarios salía más chica, y sobre CRD-000008 la propuesta decía $178.566,31 cuando
+       * el plan emitía $179.388,27 — $821,96 por cuota de diferencia, justo por encima de lo
+       * que el cliente puede pagar. Es la misma trampa que ya había costado el caso de
+       * CRD-000007, con los honorarios ignorados por completo.
+       */
+      const honFijoPorCuota = honorariosPorCuota(e.deudaConsolidada, e.honorariosPct, n);
+      if (factor > 0) {
+        const capitalMax = (cap.cuota - honFijoPorCuota) / factor;
+        const necesaria = Math.ceil((e.deudaConsolidada - capitalMax) * 100) / 100;
+        if (necesaria > 0 && necesaria <= round2(e.quitaMaxima)) {
+          quita = necesaria;
+          capitalPlan = round2(e.deudaConsolidada - quita);
+          // Con descuento, la tasa queda en el piso: es el orden que se eligió.
+          tasaFinal = e.banda.min;
+        }
+      }
+    }
+
+    /* Con descuento: la cuota francesa sale del capital REDUCIDO, y los honorarios de la
+       deuda consolidada, que es sobre lo que la financiera los cobra. */
+    const cuota = quita > 0
+      ? round2(capitalPlan * factorFrances(tasaFinal / 100 / e.periodosAnio, n)
+               + honorariosPorCuota(e.deudaConsolidada, e.honorariosPct, n))
+      : cuotaSinQuita;
     const total = round2(cuota * n);
     const multiplo = e.prestadoCadena > 0 ? round2((e.recuperadoCadena + total) / e.prestadoCadena) : 0;
     return {
-      plazoMeses: n, tasaAnual, tasaIdeal, cuota, total, multiplo,
-      // Un centavo de tolerancia: la cuota sale de un redondeo y la capacidad de otro.
-      pagable: cuota <= round2(cap.cuota) + 0.01,
+      plazoMeses: n, tasaAnual: tasaFinal, tasaIdeal, cuota, total, multiplo,
+      pagable: cuota <= objetivo,
       rentable: multiplo >= e.margenMinimo,
+      quita,
+      quitaPct: quita > 0 ? Math.round((quita / e.deudaConsolidada) * 10000) / 100 : 0,
     };
   });
 
   const sirven = opciones.filter((o) => o.pagable && o.rentable);
   if (sirven.length > 0) {
-    // El más corto: ya están ordenados por plazo ascendente.
-    const mejor = sirven[0];
+    /**
+     * 🔴 SIN DESCUENTO, EL MÁS CORTO. CON DESCUENTO, EL QUE MENOS PERDONE.
+     *
+     * La regla de "el plazo más corto" se escribió cuando el descuento no existía: con la
+     * cuota fija en la capacidad, el total es `cuota × n`, así que estirar el plazo siempre
+     * cobraba más y elegir el más corto protegía del riesgo sin resignar plata.
+     *
+     * Con descuento se da vuelta, y no por poco. En CRD-000008 las tres opciones viables dan
+     * la MISMA cuota para el cliente ($178.566,31), pero:
+     *
+     *    6 cuotas → perdona $629.910,49 y recupera $1.071.397,85 (2,14x)
+     *   12 cuotas → perdona $197.269,10 y recupera $2.142.795,71 (4,29x)
+     *
+     * El plazo corto obliga a bajar más el capital, así que cuesta $432.641,39 de descuento
+     * extra y recupera un millón menos. Y las dos cosas que el plazo corto protege no son
+     * comparables con eso: el descuento es plata perdida CIERTA, el riesgo de una cuota más
+     * es probable. Fernando lo decidió así el 22/09/2026.
+     *
+     * Entonces: si alguna opción entra SIN perdonar nada, gana la más corta de esas —la regla
+     * vieja, intacta, para el caso en que se escribió—. Si todas necesitan descuento, gana la
+     * que menos perdone, y a igual descuento la más corta.
+     */
+    const sinQuita = sirven.filter((o) => o.quita <= 0);
+    const mejor = sinQuita.length > 0
+      ? sinQuita[0]
+      : [...sirven].sort((x, y) => (x.quita - y.quita) || (x.plazoMeses - y.plazoMeses))[0];
     return {
       capacidad: cap, opciones, mejor, veredicto: "refinanciar",
-      motivo: `${mejor.plazoMeses} cuota${mejor.plazoMeses === 1 ? "" : "s"} de $${mejor.cuota.toLocaleString("es-AR", { minimumFractionDigits: 2 })} al ${mejor.tasaAnual}%: entra en lo que el cliente puede pagar y recupera ${mejor.multiplo.toFixed(2)} veces lo prestado.`,
+      motivo: mejor.quita > 0
+        ? `${mejor.plazoMeses} cuota${mejor.plazoMeses === 1 ? "" : "s"} de $${mejor.cuota.toLocaleString("es-AR", { minimumFractionDigits: 2 })} al ${mejor.tasaAnual}%, con un descuento de $${mejor.quita.toLocaleString("es-AR", { minimumFractionDigits: 2 })} (${mejor.quitaPct}% de la deuda): sin ese descuento no hay plan que el cliente pueda pagar, y con él igual recupera ${mejor.multiplo.toFixed(2)} veces lo prestado.`
+        : `${mejor.plazoMeses} cuota${mejor.plazoMeses === 1 ? "" : "s"} de $${mejor.cuota.toLocaleString("es-AR", { minimumFractionDigits: 2 })} al ${mejor.tasaAnual}%: entra en lo que el cliente puede pagar y recupera ${mejor.multiplo.toFixed(2)} veces lo prestado.`,
     };
   }
 
@@ -229,14 +333,17 @@ export function sugerirRefinanciacion(e: EntradaSugerenciaRefi): SugerenciaRefi 
    * queda mucho más baja). Si el problema es el margen, refinanciar no paga el trabajo.
    */
   const hayPagable = opciones.some((o) => o.pagable);
+  /* Que el descuento se haya intentado y no alcance es OTRA cosa que no haberlo intentado:
+     el operador tiene que saber que ya se probó con el tope que tiene permitido perdonar. */
+  const seProboQuita = e.quitaMaxima > 0;
   return {
     capacidad: cap,
     opciones,
     mejor: null,
     veredicto: "acuerdo",
     motivo: hayPagable
-      ? `Ningún plan de la banda devuelve al menos ${e.margenMinimo} veces lo prestado. Refinanciar no paga la gestión: conviene un acuerdo de pago.`
-      : `Con una capacidad de $${cap.cuota.toLocaleString("es-AR", { minimumFractionDigits: 2 })} por cuota no hay plazo ni tasa de la banda que dé un plan pagable. Lo que corresponde es un acuerdo de pago, que reparte la deuda sin volver a cobrarle interés.`,
+      ? `Ningún plan devuelve al menos ${e.margenMinimo} veces lo prestado, ni con el descuento máximo. Refinanciar no paga la gestión: conviene un acuerdo de pago.`
+      : `Con una capacidad de $${cap.cuota.toLocaleString("es-AR", { minimumFractionDigits: 2 })} por cuota no hay plan pagable${seProboQuita ? `, ni bajando la tasa al ${e.banda.min}% y perdonando los $${e.quitaMaxima.toLocaleString("es-AR", { minimumFractionDigits: 2 })} que se pueden condonar` : ""}. Lo que corresponde es un acuerdo de pago, que reparte la deuda sin volver a cobrarle interés.`,
   };
 }
 

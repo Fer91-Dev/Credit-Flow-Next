@@ -9,6 +9,7 @@ import { MoneyInput, Segmented, IconInput, IconSelect, FieldLabel } from "@/comp
 import { SystemControls } from "@/components/ui/SystemControls";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
+import { Emoji } from "@/components/ui/Emoji";
 import { useConfirm } from "@/components/ui/confirm";
 import { KEYS, useRefinanciacionPreview, refrescarNotificaciones } from "@/lib/swr";
 import { formatCreditoNumero, formatFecha, formatMonto, formatDias, parseMontoInput, hoyComercial } from "@/lib/utils";
@@ -134,6 +135,23 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
       if (lista.length === 0) return String(sug);
       return String(lista.includes(sug) ? sug : (lista.find((n) => n >= sug) ?? lista[lista.length - 1]));
     });
+    /**
+     * 🔴 Y EL DESCUENTO, SI EL PLAN PROPUESTO LO NECESITA.
+     *
+     * Fernando (22/09/2026): "lo ideal sería que el motor sugiera un descuento y el plazo
+     * adecuado para que sea pagable, sin que la financiera tenga pérdidas". Prellenarlo es la
+     * mitad de eso: el motor puede calcular el descuento mínimo, pero si el operador tiene que
+     * tipearlo a mano el plan que la pantalla muestra no es el que el sistema propuso — y la
+     * cuota que ve arriba no coincide con la que armaría al confirmar.
+     *
+     * Va como MONTO y no como porcentaje: el monto es exacto, el porcentaje se redondea a dos
+     * decimales y sobre una deuda de siete cifras eso mueve la cuota. Arranca en cero cuando
+     * no hace falta descuento, que es lo normal.
+     */
+    if (mejor && mejor.quita > 0) {
+      setQuitaTipo((t) => (t === "ninguna" ? "monto" : t));
+      setQuitaMonto((m) => (m === "" ? mejor.quita.toFixed(2).replace(".", ",") : m));
+    }
   }, [preview]);
 
   const honCfg = preview?.honorarios;
@@ -514,6 +532,37 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
                 </div>
               </div>
             )}
+            {/*
+              🔴 «NO CONVIENE REFINANCIAR» VA ARRIBA, NO AL FINAL DEL FORMULARIO.
+
+              El veredicto del motor ya existía, pero vivía dentro del bloque del plan nuevo,
+              al final de la pantalla: el operador lo leía DESPUÉS de haber completado la
+              entrega, el descuento, la tasa y el plazo, y con el cliente enfrente escuchando
+              números que no había que decirle. Fernando (22/09/2026): "subilo igualmente,
+              refinanciar es caro y eso tiene que saberlo el cliente".
+
+              Y es el aviso más caro de la pantalla. En CRD-000008 el plan sugerido daba una
+              cuota de $464.898,12 contra los $178.566,31 que el cliente ya demostró que no
+              podía pagar: refinanciar ahí no recupera nada, garantiza el próximo default con
+              la deuda más grande. El detalle con las alternativas queda abajo, donde están
+              los controles que se tocan; acá va el titular.
+            */}
+            {preview?.sugerencia && preview.sugerencia.veredicto === "acuerdo" && (
+              <div className="rounded-xl border border-warning/40 bg-warning/[0.06] px-4 py-3">
+                <div className="flex items-start gap-2">
+                  <Emoji name="warning" className="mt-0.5 h-4 w-4 shrink-0" />
+                  <div className="space-y-1">
+                    <p className="text-xs font-semibold text-warning">El sistema no recomienda refinanciar este crédito</p>
+                    <p className="text-xs leading-relaxed text-foreground">{preview.sugerencia.motivo}</p>
+                    <p className="text-[11px] leading-relaxed text-muted-foreground">
+                      Podés hacerlo igual —la pantalla sigue abajo—, pero conviene decirle al cliente lo que va a
+                      pagar antes de armarlo.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/*
               🔴 EL PLAN VIEJO SE DA DE BAJA, Y ESO SE LEE ANTES QUE CUALQUIER NÚMERO.
               Refinanciar no es cobrar: mata el plan actual y arma otro. Si la pantalla

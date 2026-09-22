@@ -238,6 +238,7 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
     : 0;
   const cadena = await plataDeLaCadena(tenantId, id);
   const riesgoCfg = await getRiesgoConfig(tenantId);
+  const quitaMax = quitaMaxima({ ...deuda, cuotas_vencidas: 0, cuotas_incluidas: 0, por_vencer: 0 }, role === "admin", cobranzaCfg.acuerdos);
   const entradaSugerencia = {
     deudaConsolidada: deuda.total,
     prestadoCadena: cadena.prestado,
@@ -261,8 +262,10 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
      * pagable y se gestiona mas barato.
      */
     margenMinimo: 1.5,
+    /* Lo que se PUEDE perdonar, del mismo tope que rige los acuerdos: mora + interés, acotado
+       por el porcentaje del rol. El motor usa el mínimo que haga falta, no el tope. */
+    quitaMaxima: quitaMax,
   };
-  const quitaMax = quitaMaxima({ ...deuda, cuotas_vencidas: 0, cuotas_incluidas: 0, por_vencer: 0 }, role === "admin", cobranzaCfg.acuerdos);
 
   /**
    * 🔴 EL CORTE VENCIDO / POR VENCER — sin esto el diálogo confunde.
