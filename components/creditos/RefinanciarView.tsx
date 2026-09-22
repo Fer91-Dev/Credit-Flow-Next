@@ -389,8 +389,11 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
   const diagnostico = useMemo(() => {
     const ctx = preview?.contexto_sugerencia;
     if (!ctx || nuevoCapital <= 0 || !isFinite(tasaNum) || !isFinite(plazoNum)) return null;
-    return diagnosticarRefinanciacion(tasaNum, plazoNum, { ...ctx, deudaConsolidada: nuevoCapital });
-  }, [preview, nuevoCapital, tasaNum, plazoNum]);
+    /* `baseNeta` es la deuda sobre la que se cobran los honorarios —la gestionada, antes del
+       descuento—; `nuevoCapital` es lo que el cliente termina debiendo. Son dos montos
+       distintos y el plan real usa cada uno para lo suyo. */
+    return diagnosticarRefinanciacion(tasaNum, plazoNum, { ...ctx, deudaConsolidada: nuevoCapital, baseHonorarios: baseNeta });
+  }, [preview, nuevoCapital, baseNeta, tasaNum, plazoNum]);
 
   const totalNuevo = plan ? r2(plan.cuotas.reduce((s, c) => s + c.cuotaTotal, 0)) : 0;
   /**
@@ -1014,149 +1017,23 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
                       </p>
                     </div>
                   )}
-                </section>
-
-                <section className="relative space-y-4 overflow-hidden rounded-xl border border-success/25 bg-card p-4
-                  shadow-[0_1px_2px_rgba(0,0,0,0.3),0_12px_30px_-18px_rgba(0,0,0,0.6)]">
-                  <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-success/[0.05] via-transparent to-transparent" />
-                  <div className="relative flex items-center justify-between gap-3">
-                    <p className="text-[10px] font-bold uppercase tracking-widest text-success">El plan nuevo</p>
-                    <IconBadge emoji="chart-increasing" accent="success" />
-                  </div>
 
                   {/*
-                    🔴 LO QUE PROPONE EL SISTEMA, ANTES DE LOS CAMPOS.
+                    🔴 LA TASA Y EL PLAZO SON PARTE DEL ARREGLO, NO DE LA PROPUESTA.
 
-                    La tasa y el plazo ya vienen cargados con esto; el bloque existe para que el
-                    operador sepa DE DÓNDE salen y pueda volver si los movió. Y cuando el motor
-                    no encuentra un plan pagable, lo dice: esa negativa vale más que cualquier
-                    sugerencia, porque es el caso donde refinanciar sólo agranda la deuda que
-                    después se va a castigar.
+                    Fernando (22/09/2026): «TNA y cuotas deberían estar fuera de la
+                    refinanciación propuesta por el sistema; colocalos dentro del recuadro
+                    El arreglo con el cliente».
+
+                    Vivían dentro del panel de la sugerencia, y eso mezclaba dos cosas
+                    distintas: lo que el sistema PROPONE —informativo, que se puede apagar—
+                    y lo que el operador PACTA —los controles con los que arma el plan—. Con
+                    los campos adentro, apagar el switch dejaba medio panel apagado y medio
+                    editable, que es la peor mezcla posible.
+
+                    Acá al lado de la entrega, el descuento y los honorarios se lee como lo
+                    que es: los cinco términos del trato, en un solo lugar.
                   */}
-                  {/*
-                    🔴 LA PROPUESTA SE DISTINGUE DEL RESTO POR COLOR Y POR PESO.
-
-                    Fernando: "me gustaría resaltar lo que propone el motor con una diferencia
-                    de color". Antes era otro recuadro gris con un párrafo adentro, del mismo
-                    tamaño que los avisos de al lado: lo único que el sistema APORTA a la
-                    decisión se leía como una nota al pie.
-
-                    Ahora lleva el índigo del acento —el color con el que el SaaS marca lo que
-                    el sistema propone—, una barra de acento a la izquierda que lo separa de la
-                    columna, y la CUOTA en grande: es el número del que va a hablar el
-                    operador. El resto del texto queda como explicación de ese número, que es
-                    lo que en realidad es. Cuando el veredicto es negativo el mismo bloque se
-                    pinta de ámbar: misma jerarquía, otro significado.
-                  */}
-                  {preview?.sugerencia && preview.sugerencia.veredicto !== "sin_datos" && (
-                    <div className={`relative overflow-hidden rounded-lg border-l-[3px] border-y border-r px-3.5 py-3 ${
-                      preview.sugerencia.veredicto === "refinanciar"
-                        ? "border-l-primary border-y-primary/25 border-r-primary/25 bg-primary/[0.08]"
-                        : "border-l-warning border-y-warning/25 border-r-warning/25 bg-warning/[0.08]"
-                    }`}>
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="flex items-center gap-1.5">
-                          <Emoji name={preview.sugerencia.veredicto === "refinanciar" ? "sparkles" : "warning"} className="h-3.5 w-3.5" />
-                          <p className={`text-[10px] font-bold uppercase tracking-widest ${preview.sugerencia.veredicto === "refinanciar" ? "text-primary" : "text-warning"}`}>
-                            {preview.sugerencia.veredicto === "refinanciar" ? "Lo que propone el sistema" : "El sistema no recomienda refinanciar"}
-                          </p>
-                        </div>
-                        {/*
-                          EL INTERRUPTOR. Encendido, la pantalla usa la tasa, el plazo y el
-                          descuento del motor; apagado, los maneja el operador. Se apaga solo en
-                          cuanto se toca cualquiera de los tres —no es una preferencia que haya
-                          que acordarse de mover, es el estado real de la pantalla—, y volver a
-                          encenderlo re-aplica la propuesta entera.
-
-                          Solo aparece si hay propuesta: cuando el motor manda al acuerdo no hay
-                          nada que encender, y un switch muerto es peor que ninguno.
-                        */}
-                        {preview.sugerencia.mejor && (
-                          <Toggle
-                            checked={usarPropuesta}
-                            onChange={(v) => (v ? aplicarPropuesta() : setUsarPropuesta(false))}
-                            etiquetaOn="Usando"
-                            etiquetaOff="A mano"
-                          />
-                        )}
-                      </div>
-                      {/* La cuota propuesta, en grande: es el número que se dice en voz alta. */}
-                      {preview.sugerencia.mejor && (
-                        <p className="mt-1.5 flex items-baseline gap-2">
-                          <span className="font-mono text-xl font-bold tabular-nums text-foreground">${n2(preview.sugerencia.mejor.cuota)}</span>
-                          <span className="text-xs text-muted-foreground">
-                            × {preview.sugerencia.mejor.plazoMeses} cuota{preview.sugerencia.mejor.plazoMeses === 1 ? "" : "s"} al {preview.sugerencia.mejor.tasaAnual}%
-                          </span>
-                        </p>
-                      )}
-                      <p className="mt-1 text-xs leading-relaxed text-foreground">{preview.sugerencia.motivo}</p>
-                      <p className="mt-1.5 text-[11px] text-muted-foreground">
-                        Capacidad de pago estimada: <span className="font-mono text-foreground">${n2(preview.sugerencia.capacidad.cuota)}</span> por cuota
-                        {preview.sugerencia.capacidad.origen === "cuota_anterior"
-                          ? " — la cuota mensual que ya no pudo sostener, sin contar punitorios"
-                          : " — del ingreso declarado en su ficha"}.
-                      </p>
-                      {/* Las alternativas: el operador puede estirar el plazo si el cliente lo pide. */}
-                      {preview.sugerencia.opciones.some((o) => o.pagable) && (
-                        <div className="mt-2 flex flex-wrap gap-1.5">
-                          {preview.sugerencia.opciones.filter((o) => o.pagable).map((o) => (
-                            <button
-                              key={o.plazoMeses}
-                              type="button"
-                              /**
-                               * 🔴 SE APAGA CON EL SWITCH. Fernando (22/09/2026), viendo que en
-                               * «A mano» los atajos seguían funcionando: si dijo que el plan lo
-                               * maneja él, el motor no le ofrece nada hasta que lo vuelva a
-                               * encender. El switch deja de ser una etiqueta y pasa a tener un
-                               * efecto visible, que era lo que le faltaba.
-                               */
-                              disabled={!usarPropuesta}
-                              /**
-                               * 🔴 EL CHIP TAMBIÉN CARGA SU DESCUENTO.
-                               *
-                               * La cuota que muestra el chip es la de ESA opción, que puede
-                               * incluir un descuento; al apretarlo solo se cargaban la tasa y
-                               * el plazo. Resultado: el chip prometía "6c · 120% · $178.566,31"
-                               * y el plan salía en $281.867,29, porque el descuento de esa
-                               * opción se quedaba sin aplicar. Un botón tiene que dejar la
-                               * pantalla en el estado que anuncia.
-                               */
-                              onClick={() => {
-                                setTasa(String(o.tasaAnual));
-                                setPlazo(String(o.plazoMeses));
-                                propuestaAplicada.current = true;
-                                /* Elegir OTRO plazo de la lista es una decisión del operador:
-                                   el switch se apaga salvo que sea justo el que propone el
-                                   motor, donde la pantalla y la propuesta vuelven a coincidir. */
-                                setUsarPropuesta(o.plazoMeses === preview?.sugerencia?.mejor?.plazoMeses);
-                                if (o.quita > 0) {
-                                  setQuitaTipo("monto");
-                                  setQuitaMonto(o.quita.toFixed(2).replace(".", ","));
-                                } else {
-                                  setQuitaTipo("ninguna");
-                                  setQuitaMonto("");
-                                }
-                              }}
-                              className={`rounded-lg border px-2.5 py-1.5 font-mono text-[11px] transition-all ${
-                                !usarPropuesta
-                                  ? "cursor-not-allowed border-border/60 bg-card/50 text-muted-foreground/40"
-                                  : plazoNum === o.plazoMeses
-                                    ? "border-primary bg-primary/20 text-primary shadow-[0_0_0_1px_var(--color-primary)]"
-                                    : "border-border bg-card text-muted-foreground hover:-translate-y-0.5 hover:border-primary/40 hover:text-foreground"
-                              }`}
-                              title={!usarPropuesta
-                                ? "El plan lo estás armando a mano. Encendé el switch para volver a usar lo que propone el sistema."
-                                : `${o.plazoMeses} cuotas de $${n2(o.cuota)}${o.quita > 0 ? ` con un descuento de $${n2(o.quita)}` : " sin descuento"} · total $${n2(o.total)} · devuelve ${o.multiplo.toFixed(2)}× lo prestado`}
-                            >
-                              {o.plazoMeses}c · {o.tasaAnual}% · ${n2(o.cuota)}
-                              {o.quita > 0 && <span className="text-success"> · −${n2(o.quita)}</span>}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  )}
-
                   <div className={`grid grid-cols-2 gap-2 ${PAR}`}>
                     <div className="space-y-1.5">
                       {/* La convención, igual que en el simulador: con T.N.A. estos números
@@ -1276,6 +1153,166 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
                       className={`h-12 w-full rounded-lg border border-border bg-muted/40 px-3 text-sm text-foreground placeholder:text-muted-foreground/40 outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/20 ${PAR}`}
                     />
                   </div>
+                </section>
+
+                {/*
+                  🔴 EL PANEL SE APAGA ENTERO, ahora que adentro solo vive la propuesta.
+                  Fernando: "eso hará que todo ese recuadro quede en un color desactivado
+                  cuando se apaga el switch". Antes no se podía: los campos de tasa y plazo
+                  estaban acá adentro, así que atenuar el panel habría atenuado controles que
+                  siguen funcionando. Movidos al arreglo, el panel es puramente informativo y
+                  apagarlo no esconde nada que el operador necesite tocar.
+
+                  🔴 La opacidad NO va en la sección. En CSS `opacity` afecta a TODO el
+                  subárbol y un hijo no puede recuperarla, así que el switch —lo único usable
+                  con el panel apagado— quedaría atenuado con el resto, y atenuar el botón que
+                  revive el panel sería una trampa. Va en un envoltorio del contenido, con el
+                  encabezado afuera.
+                */}
+                <section className="space-y-4">
+
+                  {/*
+                    🔴 LO QUE PROPONE EL SISTEMA, ANTES DE LOS CAMPOS.
+
+                    La tasa y el plazo ya vienen cargados con esto; el bloque existe para que el
+                    operador sepa DE DÓNDE salen y pueda volver si los movió. Y cuando el motor
+                    no encuentra un plan pagable, lo dice: esa negativa vale más que cualquier
+                    sugerencia, porque es el caso donde refinanciar sólo agranda la deuda que
+                    después se va a castigar.
+                  */}
+                  {/*
+                    🔴 LA PROPUESTA SE DISTINGUE DEL RESTO POR COLOR Y POR PESO.
+
+                    Fernando: "me gustaría resaltar lo que propone el motor con una diferencia
+                    de color". Antes era otro recuadro gris con un párrafo adentro, del mismo
+                    tamaño que los avisos de al lado: lo único que el sistema APORTA a la
+                    decisión se leía como una nota al pie.
+
+                    Ahora lleva el índigo del acento —el color con el que el SaaS marca lo que
+                    el sistema propone—, una barra de acento a la izquierda que lo separa de la
+                    columna, y la CUOTA en grande: es el número del que va a hablar el
+                    operador. El resto del texto queda como explicación de ese número, que es
+                    lo que en realidad es. Cuando el veredicto es negativo el mismo bloque se
+                    pinta de ámbar: misma jerarquía, otro significado.
+                  */}
+                  {preview?.sugerencia && preview.sugerencia.veredicto !== "sin_datos" && (
+                    <div className={`relative overflow-hidden rounded-xl border-l-[3px] border-y border-r px-4 py-3.5 transition-all duration-300
+                      shadow-[0_1px_2px_rgba(0,0,0,0.3),0_12px_30px_-18px_rgba(0,0,0,0.6)] ${
+                      !usarPropuesta
+                        ? "border-l-border border-y-border/50 border-r-border/50 bg-card"
+                        : preview.sugerencia.veredicto === "refinanciar"
+                          ? "border-l-primary border-y-primary/25 border-r-primary/25 bg-primary/[0.08]"
+                          : "border-l-warning border-y-warning/25 border-r-warning/25 bg-warning/[0.08]"
+                    }`}>
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-1.5">
+                          <Emoji name={preview.sugerencia.veredicto === "refinanciar" ? "sparkles" : "warning"} className={`h-3.5 w-3.5 transition-opacity ${usarPropuesta ? "" : "opacity-40"}`} />
+                          <p className={`text-[10px] font-bold uppercase tracking-widest transition-colors ${!usarPropuesta ? "text-muted-foreground/60" : preview.sugerencia.veredicto === "refinanciar" ? "text-primary" : "text-warning"}`}>
+                            {preview.sugerencia.veredicto === "refinanciar" ? "Lo que propone el sistema" : "El sistema no recomienda refinanciar"}
+                          </p>
+                        </div>
+                        {/*
+                          EL INTERRUPTOR. Encendido, la pantalla usa la tasa, el plazo y el
+                          descuento del motor; apagado, los maneja el operador. Se apaga solo en
+                          cuanto se toca cualquiera de los tres —no es una preferencia que haya
+                          que acordarse de mover, es el estado real de la pantalla—, y volver a
+                          encenderlo re-aplica la propuesta entera.
+
+                          Solo aparece si hay propuesta: cuando el motor manda al acuerdo no hay
+                          nada que encender, y un switch muerto es peor que ninguno.
+                        */}
+                        {preview.sugerencia.mejor && (
+                          <Toggle
+                            checked={usarPropuesta}
+                            onChange={(v) => (v ? aplicarPropuesta() : setUsarPropuesta(false))}
+                            etiquetaOn="Usando"
+                            etiquetaOff="A mano"
+                          />
+                        )}
+                      </div>
+                      {/* 🔴 EL CONTENIDO, ENVUELTO PARA APAGARLO DE UNA. `opacity` afecta a todo
+                          el subárbol y un hijo no puede recuperarla, así que el switch tiene que
+                          quedar AFUERA de este div — es lo único que se puede usar con el panel
+                          apagado, y atenuar el botón que lo revive sería una trampa. */}
+                      <div className={`transition-opacity duration-300 ${usarPropuesta ? "" : "opacity-45"}`}>
+                      {/* La cuota propuesta, en grande: es el número que se dice en voz alta. */}
+                      {preview.sugerencia.mejor && (
+                        <p className="mt-1.5 flex items-baseline gap-2">
+                          <span className="font-mono text-xl font-bold tabular-nums text-foreground">${n2(preview.sugerencia.mejor.cuota)}</span>
+                          <span className="text-xs text-muted-foreground">
+                            × {preview.sugerencia.mejor.plazoMeses} cuota{preview.sugerencia.mejor.plazoMeses === 1 ? "" : "s"} al {preview.sugerencia.mejor.tasaAnual}%
+                          </span>
+                        </p>
+                      )}
+                      <p className="mt-1 text-xs leading-relaxed text-foreground">{preview.sugerencia.motivo}</p>
+                      <p className="mt-1.5 text-[11px] text-muted-foreground">
+                        Capacidad de pago estimada: <span className="font-mono text-foreground">${n2(preview.sugerencia.capacidad.cuota)}</span> por cuota
+                        {preview.sugerencia.capacidad.origen === "cuota_anterior"
+                          ? " — la cuota mensual que ya no pudo sostener, sin contar punitorios"
+                          : " — del ingreso declarado en su ficha"}.
+                      </p>
+                      {/* Las alternativas: el operador puede estirar el plazo si el cliente lo pide. */}
+                      {preview.sugerencia.opciones.some((o) => o.pagable) && (
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          {preview.sugerencia.opciones.filter((o) => o.pagable).map((o) => (
+                            <button
+                              key={o.plazoMeses}
+                              type="button"
+                              /**
+                               * 🔴 SE APAGA CON EL SWITCH. Fernando (22/09/2026), viendo que en
+                               * «A mano» los atajos seguían funcionando: si dijo que el plan lo
+                               * maneja él, el motor no le ofrece nada hasta que lo vuelva a
+                               * encender. El switch deja de ser una etiqueta y pasa a tener un
+                               * efecto visible, que era lo que le faltaba.
+                               */
+                              disabled={!usarPropuesta}
+                              /**
+                               * 🔴 EL CHIP TAMBIÉN CARGA SU DESCUENTO.
+                               *
+                               * La cuota que muestra el chip es la de ESA opción, que puede
+                               * incluir un descuento; al apretarlo solo se cargaban la tasa y
+                               * el plazo. Resultado: el chip prometía "6c · 120% · $178.566,31"
+                               * y el plan salía en $281.867,29, porque el descuento de esa
+                               * opción se quedaba sin aplicar. Un botón tiene que dejar la
+                               * pantalla en el estado que anuncia.
+                               */
+                              onClick={() => {
+                                setTasa(String(o.tasaAnual));
+                                setPlazo(String(o.plazoMeses));
+                                propuestaAplicada.current = true;
+                                /* Elegir OTRO plazo de la lista es una decisión del operador:
+                                   el switch se apaga salvo que sea justo el que propone el
+                                   motor, donde la pantalla y la propuesta vuelven a coincidir. */
+                                setUsarPropuesta(o.plazoMeses === preview?.sugerencia?.mejor?.plazoMeses);
+                                if (o.quita > 0) {
+                                  setQuitaTipo("monto");
+                                  setQuitaMonto(o.quita.toFixed(2).replace(".", ","));
+                                } else {
+                                  setQuitaTipo("ninguna");
+                                  setQuitaMonto("");
+                                }
+                              }}
+                              className={`rounded-lg border px-2.5 py-1.5 font-mono text-[11px] transition-all ${
+                                !usarPropuesta
+                                  ? "cursor-not-allowed border-border/60 bg-card/50 text-muted-foreground/40"
+                                  : plazoNum === o.plazoMeses
+                                    ? "border-primary bg-primary/20 text-primary shadow-[0_0_0_1px_var(--color-primary)]"
+                                    : "border-border bg-card text-muted-foreground hover:-translate-y-0.5 hover:border-primary/40 hover:text-foreground"
+                              }`}
+                              title={!usarPropuesta
+                                ? "El plan lo estás armando a mano. Encendé el switch para volver a usar lo que propone el sistema."
+                                : `${o.plazoMeses} cuotas de $${n2(o.cuota)}${o.quita > 0 ? ` con un descuento de $${n2(o.quita)}` : " sin descuento"} · total $${n2(o.total)} · devuelve ${o.multiplo.toFixed(2)}× lo prestado`}
+                            >
+                              {o.plazoMeses}c · {o.tasaAnual}% · ${n2(o.cuota)}
+                              {o.quita > 0 && <span className="text-success"> · −${n2(o.quita)}</span>}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                      </div>
+                    </div>
+                  )}
+
                 </section>
               </div>
 

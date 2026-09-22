@@ -79,6 +79,14 @@ export interface EntradaSugerenciaRefi {
    * es un parámetro nuevo ni un criterio propio de esta pantalla.
    */
   quitaMaxima: number;
+  /**
+   * Sobre qué monto se calculan los honorarios, cuando NO es el capital del plan.
+   *
+   * Al diagnosticar lo que el operador escribió, `deudaConsolidada` ya viene neta del
+   * descuento; los honorarios, en cambio, se cobran sobre la deuda gestionada. Sin esto el
+   * diagnóstico prometía una cuota más baja que la que el plan emite.
+   */
+  baseHonorarios?: number;
 }
 
 export interface OpcionRefi {
@@ -379,7 +387,23 @@ export function diagnosticarRefinanciacion(
   if (e.deudaConsolidada <= 0) return null;
 
   const cap = capacidadDePago(e);
-  const cuota = cuotaDe(e.deudaConsolidada, tasaAnual, plazoMeses, e.periodosAnio, e.honorariosPct);
+  /**
+   * 🔴 LOS HONORARIOS SALEN DE LA DEUDA GESTIONADA, NO DEL CAPITAL CON DESCUENTO.
+   *
+   * Es el mismo defecto que tenía el cálculo del descuento y se arregló horas antes: acá la
+   * pantalla pasa `deudaConsolidada` = el capital YA neto de la quita, y los honorarios se
+   * calculaban sobre él. Pero se cobran sobre la deuda que se gestionó —así los emite el plan
+   * real— y no bajan porque al cliente se le perdone una parte.
+   *
+   * Sobre CRD-000008 con un descuento cargado, el aviso decía "cuota $177.985,50" mientras el
+   * pie de la pantalla emitía $178.566,31: $580,81 de diferencia en el número que el operador
+   * le lee al cliente.
+   */
+  const capitalHon = e.baseHonorarios ?? e.deudaConsolidada;
+  const cuota = round2(
+    e.deudaConsolidada * factorFrances(tasaAnual / 100 / e.periodosAnio, plazoMeses)
+    + honorariosPorCuota(capitalHon, e.honorariosPct, plazoMeses),
+  );
   const total = round2(cuota * plazoMeses);
   const multiplo = e.prestadoCadena > 0 ? round2((e.recuperadoCadena + total) / e.prestadoCadena) : 0;
   const recuperaCapital = e.prestadoCadena <= 0 || round2(e.recuperadoCadena + total) >= e.prestadoCadena;
