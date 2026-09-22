@@ -63,7 +63,11 @@ try {
     const d = r.data ?? r;
     if (!d?.sugerencia) continue;
     const etiqueta = `CRD-${String(c.numero ?? 0).padStart(6, "0")}`;
-    const s = d.sugerencia, cap = s.capacidad.cuota, deuda = d.deuda.total;
+    /* 🔴 LA BASE DEL MOTOR ES NETA DE LA ENTREGA QUE ÉL MISMO PROPONE. La entrega se cobra
+       ANTES de consolidar, así que el plan se calcula sobre lo que queda; comparar contra la
+       deuda bruta daría cuotas que no son las que el sistema emite. */
+    const s = d.sugerencia, cap = s.capacidad.cuota;
+    const deuda = Math.round((d.deuda.total - (s.entrega ?? 0)) * 100) / 100;
     const honPct = d.honorarios?.activo ? (d.honorarios.pct ?? 0) : 0;
     const tope = d.limites?.quita_maxima ?? 0;
 

@@ -240,8 +240,26 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
   const cadena = await plataDeLaCadena(tenantId, id);
   const riesgoCfg = await getRiesgoConfig(tenantId);
   const quitaMax = quitaMaxima({ ...deuda, cuotas_vencidas: 0, cuotas_incluidas: 0, por_vencer: 0 }, role === "admin", cobranzaCfg.acuerdos);
+  /**
+   * 🔴 LA ENTREGA QUE HAY QUE PEDIRLE, Y EL MOTOR CUENTA CON ELLA.
+   *
+   * Fernando (22/09/2026): "lo que propone el sistema debe traer monto de entrega recomendado,
+   * honorarios, descuento si es necesario y la TNA; debe dejar todo listo para presionar
+   * refinanciar".
+   *
+   * Sin esto la propuesta estaba incompleta de una forma que se notaba: con una entrega mínima
+   * exigida y el campo en cero, el botón «Refinanciar» quedaba DESHABILITADO aunque el switch
+   * dijera «Usando». El sistema proponía un plan que él mismo no dejaba confirmar.
+   *
+   * Y la entrega no es un campo más: baja la deuda que se consolida, así que el plan se calcula
+   * sobre lo que queda DESPUÉS de cobrarla. Proponer la tasa sobre la deuda bruta y después
+   * cobrar la entrega daría una cuota distinta de la prometida.
+   *
+   * Cuando la financiera no exige entrega, esto es 0 y nada cambia.
+   */
+  const entregaSugerida = entregaMinimaRefinanciacion(deuda.total, 0, cobranzaCfg.recupero).minimo;
   const entradaSugerencia = {
-    deudaConsolidada: deuda.total,
+    deudaConsolidada: round2(Math.max(0, deuda.total - entregaSugerida)),
     prestadoCadena: cadena.prestado,
     recuperadoCadena: cadena.recuperado,
     cuotaFallida: credito.cuotas[0]?.cuota_total ?? 0,
@@ -370,7 +388,9 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
       enfrente y puede querer estirar el plazo. Y con la capacidad, para que la pantalla pueda
       decir de donde sale el numero en vez de mostrar una cifra sin origen.
     */
-    sugerencia: sugerirRefinanciacion(entradaSugerencia),
+    /* La propuesta completa: además de tasa, plazo y descuento, la entrega con la que se
+       calculó y los honorarios con los que se prellenó. La pantalla los carga de una. */
+    sugerencia: { ...sugerirRefinanciacion(entradaSugerencia), entrega: entregaSugerida, honorariosPct: honorariosPropuesto },
     /*
       El CONTEXTO con el que se arma la sugerencia, sin la deuda: la pantalla la recalcula sola
       porque la entrega y el descuento la mueven en vivo. Con esto puede diagnosticar CUALQUIER

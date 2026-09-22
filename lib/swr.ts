@@ -1957,7 +1957,12 @@ export interface RefinanciacionPreview {
    */
   bloqueo?: { permitido: boolean; motivo: string | null; sugerencia: string | null; puede_autorizar: boolean };
   /** Qué tasa y plazo propone el sistema, y con qué datos lo calculó. Ver `sugerirRefinanciacion`. */
-  sugerencia?: SugerenciaRefi;
+  /**
+   * La propuesta del motor, COMPLETA: además de tasa, plazo y descuento, la entrega con la que
+   * se calculó y los honorarios con los que se prellena. Con los cinco valores la pantalla
+   * queda lista para confirmar; sin la entrega, el botón se quedaba deshabilitado.
+   */
+  sugerencia?: SugerenciaRefi & { entrega?: number; honorariosPct?: number };
   /** El contexto para diagnosticar en vivo lo que escriba el operador (la deuda la pone la pantalla). */
   contexto_sugerencia?: Omit<EntradaSugerenciaRefi, "deudaConsolidada">;
   limites?: {

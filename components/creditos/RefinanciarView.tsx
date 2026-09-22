@@ -171,6 +171,8 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
        descuento» es una DECISIÓN del operador, no un campo sin llenar. */
     if (mejor && usarPropuesta && !propuestaAplicada.current) {
       propuestaAplicada.current = true;
+      const ent = preview.sugerencia?.entrega ?? 0;
+      if (ent > 0) setEntrega((e) => (e === "" || e === "0,00" ? String(ent.toFixed(2)).replace(".", ",") : e));
       if (mejor.quita > 0) {
         setQuitaTipo("monto");
         setQuitaMonto(mejor.quita.toFixed(2).replace(".", ","));
@@ -184,8 +186,14 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
    * volviera una parte, quedaría un híbrido que no es ni lo suyo ni lo del motor.
    */
   const aplicarPropuesta = () => {
-    const m = preview?.sugerencia?.mejor;
+    const sug = preview?.sugerencia;
+    const m = sug?.mejor;
     if (!m) return;
+    /* LOS CINCO VALORES, no tres. Fernando: "debe dejar todo listo para presionar refinanciar".
+       Faltando la entrega, el botón quedaba deshabilitado por la entrega mínima exigida: el
+       sistema proponía un plan que él mismo no dejaba confirmar. */
+    if ((sug?.entrega ?? 0) > 0) setEntrega(String(sug!.entrega!.toFixed(2)).replace(".", ","));
+    if ((sug?.honorariosPct ?? 0) > 0) setHonPct(String(sug!.honorariosPct));
     setTasa(String(m.tasaAnual));
     setPlazo(String(m.plazoMeses));
     if (m.quita > 0) {
@@ -824,7 +832,7 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
                     <FieldLabel>Entrega ahora (opcional)</FieldLabel>
                     {/* Importe y método pegados: son una sola cosa, no dos campos sueltos. */}
                     <div className={`grid grid-cols-2 gap-2 ${PAR}`}>
-                      <MoneyInput value={entrega} onChange={setEntrega} />
+                      <MoneyInput value={entrega} onChange={(v) => { aMano(); setEntrega(v); }} />
                       <IconSelect icon="dollar-banknote" value={entregaMetodo} onChange={(e) => setEntregaMetodo(e.target.value)}>
                         <option value="efectivo">Efectivo</option>
                         <option value="transferencia">Transferencia</option>
@@ -1245,6 +1253,29 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
                         </p>
                       )}
                       <p className="mt-1 text-xs leading-relaxed text-foreground">{preview.sugerencia.motivo}</p>
+                      {/*
+                        LOS TÉRMINOS, UNO POR UNO. Fernando (22/09/2026): "debe traer monto de
+                        entrega recomendado, honorarios, descuento si es necesario y la TNA".
+                        El párrafo de arriba explica POR QUÉ este plan; esto es QUÉ hay que
+                        cargar, y es lo que el switch deja puesto de una. Se lee como la
+                        receta del plan, no como prosa — es lo que el operador va a ir
+                        marcando mientras habla con el cliente.
+                      */}
+                      {preview.sugerencia.mejor && (
+                        <div className="mt-2.5 grid grid-cols-2 gap-x-4 gap-y-1 border-t border-border/40 pt-2.5 text-[11px] sm:grid-cols-4">
+                          {[
+                            ["Entrega", (preview.sugerencia.entrega ?? 0) > 0 ? `$${n2(preview.sugerencia.entrega!)}` : "sin entrega"],
+                            ["Descuento", preview.sugerencia.mejor.quita > 0 ? `$${n2(preview.sugerencia.mejor.quita)}` : "sin descuento"],
+                            ["Tasa", `${preview.sugerencia.mejor.tasaAnual}%`],
+                            ["Honorarios", (preview.sugerencia.honorariosPct ?? 0) > 0 ? `${preview.sugerencia.honorariosPct}%` : "sin honorarios"],
+                          ].map(([k, v]) => (
+                            <div key={k as string} className="min-w-0">
+                              <p className="truncate text-muted-foreground">{k}</p>
+                              <p className="truncate font-mono tabular-nums text-foreground">{v}</p>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                       <p className="mt-1.5 text-[11px] text-muted-foreground">
                         Capacidad de pago estimada: <span className="font-mono text-foreground">${n2(preview.sugerencia.capacidad.cuota)}</span> por cuota
                         {preview.sugerencia.capacidad.origen === "cuota_anterior"
