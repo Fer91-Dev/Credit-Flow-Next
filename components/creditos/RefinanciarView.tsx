@@ -597,7 +597,7 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
 
                     </div>
                   )}
-                  <Row label="Capital pendiente" value={preview.deuda.capital} />
+                  <Row label="Capital pendiente" value={preview.deuda.capital} signo="+" />
                   {/*
                     🔴 LA RESTA A LA VISTA, no un neto que aparece hecho.
 
@@ -609,18 +609,23 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
                   */}
                   {(preview.composicion?.interes_no_devengado ?? 0) > 0.005 ? (
                     <>
-                      <Row label="Interés del plan" value={r2(preview.deuda.interes + (preview.composicion!.interes_no_devengado ?? 0))} />
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="text-muted-foreground">
+                      {/* Estos dos son la cuenta interna del interés: van sangrados y sin
+                          signo de suma, porque lo que entra al total es su RESULTADO. */}
+                      <Row label="Interés del plan" value={r2(preview.deuda.interes + (preview.composicion!.interes_no_devengado ?? 0))} sangrado />
+                      <div className="flex items-center justify-between pl-4 text-sm">
+                        <span className="text-muted-foreground/70">
                           Interés que todavía no corrió
-                          <span className="text-muted-foreground/60"> · de la cuota que aún no venció</span>
+                          <span className="text-muted-foreground/50"> · de la cuota que aún no venció</span>
                         </span>
-                        <span className="font-mono tabular-nums text-success">− ${n2(preview.composicion!.interes_no_devengado ?? 0)}</span>
+                        <span className="flex items-baseline gap-1.5">
+                          <span className="w-2 text-right font-mono text-xs font-bold text-destructive">−</span>
+                          <span className="font-mono tabular-nums text-muted-foreground">${n2(preview.composicion!.interes_no_devengado ?? 0)}</span>
+                        </span>
                       </div>
-                      <Row label="Interés pendiente" value={preview.deuda.interes} />
+                      <Row label="Interés pendiente" value={preview.deuda.interes} signo="+" />
                     </>
                   ) : (
-                    <Row label="Interés pendiente" value={preview.deuda.interes} />
+                    <Row label="Interés pendiente" value={preview.deuda.interes} signo="+" />
                   )}
                   {/*
                     🔴 PEGADO AL NÚMERO QUE MODIFICA, Y DICIENDO "YA DESCONTADO".
@@ -640,11 +645,14 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
                       No se le cobra el tiempo que todavía no usó de esa cuota.
                     </p>
                   )}
-                  {preview.deuda.cargos > 0 && <Row label="Cargos pendientes" value={preview.deuda.cargos} />}
-                  <Row label="Mora acumulada" value={preview.deuda.mora} accent="warning" />
+                  {preview.deuda.cargos > 0 && <Row label="Cargos pendientes" value={preview.deuda.cargos} signo="+" />}
+                  <Row label="Mora acumulada" value={preview.deuda.mora} accent="warning" signo="+" />
                   <div className="flex items-center justify-between border-t border-border pt-2">
                     <span className="text-sm font-semibold text-foreground">Total que se consolida</span>
-                    <span className="font-mono text-base font-bold text-foreground tabular-nums">${n2(base)}</span>
+                    <span className="flex items-baseline gap-1.5">
+                      <span className="w-2 text-right font-mono text-xs font-bold text-muted-foreground">=</span>
+                      <span className="font-mono text-base font-bold tabular-nums text-foreground">${n2(base)}</span>
+                    </span>
                   </div>
                   {/*
                     Y EL PUENTE ENTRE LOS DOS TOTALES, en una línea. El desglose de arriba dice
@@ -1272,12 +1280,37 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
   );
 }
 
-function Row({ label, value, accent }: { label: string; value: number; accent?: "warning" }) {
+/**
+ * UN RENGLÓN DEL DESGLOSE, CON EL SIGNO DE LO QUE HACE.
+ *
+ * Fernando (21/09/2026): "esta es la parte que no entiendo, qué se suma y qué se resta;
+ * poneles símbolos". El pedido destapó algo peor que la falta de símbolos: la lista NO era una
+ * suma lineal. Sumando todo lo que se veía —capital, interés del plan, menos el no corrido,
+ * más el interés pendiente, cargos y mora— daba $1.963.589,13 en vez de $1.373.029,96,
+ * porque el interés estaba contado DOS VECES: «Interés del plan» menos «el que todavía no
+ * corrió» PRODUCEN «Interés pendiente», y solo ese último entra al total.
+ *
+ * Por eso el signo no es decoración: es la única forma de que la cuenta se pueda comprobar a
+ * mano. `signo="+"` marca lo que entra al total, `"-"` lo que se descuenta, y los renglones
+ * SIN signo son la cuenta interna que produce otro renglón — van sangrados para que se lea
+ * que pertenecen al de abajo y no a la suma.
+ */
+function Row({ label, value, accent, signo, sangrado }: {
+  label: string; value: number; accent?: "warning"; signo?: "+" | "-"; sangrado?: boolean;
+}) {
   return (
-    <div className="flex items-center justify-between text-sm">
-      <span className="text-muted-foreground">{label}</span>
-      <span className={`font-mono tabular-nums ${accent === "warning" && value > 0 ? "text-warning" : "text-foreground"}`}>
-        ${n2(value)}
+    <div className={`flex items-center justify-between text-sm ${sangrado ? "pl-4" : ""}`}>
+      <span className={sangrado ? "text-muted-foreground/70" : "text-muted-foreground"}>{label}</span>
+      <span className="flex items-baseline gap-1.5">
+        {/* El signo en su propia columna de ancho fijo: así los importes quedan alineados
+            aunque un renglón no tenga signo, y la columna se lee de arriba abajo como una
+            cuenta y no como una lista de valores sueltos. */}
+        <span className={`w-2 text-right font-mono text-xs font-bold ${signo === "+" ? "text-success" : signo === "-" ? "text-destructive" : "text-transparent"}`}>
+          {signo === "+" ? "+" : signo === "-" ? "−" : "·"}
+        </span>
+        <span className={`font-mono tabular-nums ${accent === "warning" && value > 0 ? "text-warning" : sangrado ? "text-muted-foreground" : "text-foreground"}`}>
+          ${n2(value)}
+        </span>
       </span>
     </div>
   );
