@@ -13,7 +13,7 @@ import {
   avisoCreditosARefinanciar, PLANTILLA_SOLO_REFINANCIAR, cargosDeCuota, baseMoraDeCuota } from "@/lib/domain";
 import { nombreCompleto, hoyComercial, formatCreditoNumero } from "@/lib/utils";
 import { cobroBloqueadoPorCredito } from "@/lib/recupero-server";
-import { creditosConAcuerdoVigente } from "@/lib/acuerdos";
+import { creditosConAcuerdoVigente, congelamientoPorCredito } from "@/lib/acuerdos";
 import { enviarEmailTenant, motivoEmailNoDisponible, type EmailTenantConfig } from "@/lib/mailer-tenant";
 import { enviarSmsTenant, motivoSmsNoDisponible, type SmsConfig } from "@/lib/sms";
 import { enviarWhatsappApi, whatsappApiDisponible, type WhatsappApiConfig } from "@/lib/whatsapp";
@@ -369,6 +369,7 @@ async function cargarContactable(ctx: Ctx, id: string, creditoId?: string | null
    * quedó al día.
    */
   const acuerdosVigentes = await creditosConAcuerdoVigente(ctx.tenantId);
+  const congelan = await congelamientoPorCredito(ctx.tenantId);
   const bloqueadosMap = await cobroBloqueadoPorCredito(
     ctx.tenantId,
     conMora.map((c) => ({ id: c.id, diasMora: c.dias, acuerdoVigente: acuerdosVigentes.has(c.id),
@@ -435,7 +436,12 @@ async function cargarContactable(ctx: Ctx, id: string, creditoId?: string | null
     const gracia = (c.cronograma as { diasGracia?: number } | null)?.diasGracia ?? config.simulador.diasGracia;
     // Dia comercial argentino: con el ahora en UTC, entre las 21:00 y la medianoche de
     // Argentina se le cobra —y se le INFORMA— un dia de mora de mas.
-    const opts = { moraActiva: mc.moraActiva, tasaMoraDiaria: mc.tasaMoraDiaria, topeMoraPct: mc.topeMoraPct, diasGracia: gracia, hoy };
+    /* Con un acuerdo vigente que congela, la mora de lo que entró al trato se detuvo el día
+       que se firmó. Sin esto el WhatsApp le pedía más de lo que la caja le iba a cobrar. */
+    const opts = {
+      moraActiva: mc.moraActiva, tasaMoraDiaria: mc.tasaMoraDiaria, topeMoraPct: mc.topeMoraPct, diasGracia: gracia, hoy,
+      moraCongeladaAl: congelan.get(c.id) ?? null,
+    };
 
     /**
      * `deudaViva` es "lo que debe si cancela HOY", así que el interés va DEVENGADO: cobrarle

@@ -21,6 +21,9 @@ import {
   TEMPLATE_MORA_SIN_PROMO,
   TEMPLATE_RECUPERO_DEFAULT,
   sugerirOfertaCancelacion,
+  acuerdoCubreElAtraso,
+  reclamoDeCampana,
+  plantillaDeAcuerdo,
   type CanalCampana,
 } from "@/lib/domain";
 import { AvisoMeta } from "@/components/clientes/ContactarDialog";
@@ -551,19 +554,47 @@ function CampanaWorkspace({ role, creditos: todosCreditos, bloqueados, onCancela
   const set = (field: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
     setForm((p) => ({ ...p, [field]: e.target.value }));
 
-  const mensajePara = (o: (typeof objetivos)[number]) =>
-    construirMensajeCampana(form.mensaje_template, {
+  /**
+   * ¿A este destinatario se le habla de su ACUERDO DE PAGO en vez del plan original?
+   *
+   * Misma regla que el servidor (`acuerdoCubreElAtraso` + `reclamoDeCampana`): solo si todo
+   * lo que debe entró al arreglo. La vista previa tiene que decidirlo igual, o el operador
+   * lee un texto y al cliente le llega otro.
+   */
+  const acuerdoQueCubre = (o: (typeof objetivos)[number]) =>
+    !esRecupero && !esRecordatorio &&
+    o.credito.acuerdo && acuerdoCubreElAtraso(o.credito.acuerdo.fecha, o.credito.proximo_pago)
+      ? o.credito.acuerdo
+      : null;
+
+  const reclamoPara = (o: (typeof objetivos)[number]) => {
+    const a = acuerdoQueCubre(o);
+    return reclamoDeCampana(
+      o.oferta.montoConDescuento,
+      o.credito.dias_mora,
+      a ? { proxima: a.proxima ? { ...a.proxima, vencimiento: new Date(a.proxima.vencimiento) } : null, total_cuotas: a.total_cuotas } : null,
+      new Date(),
+    );
+  };
+
+  const mensajePara = (o: (typeof objetivos)[number]) => {
+    const r = reclamoPara(o);
+    /* Con acuerdo, el texto NO es el que escribió el operador: ese habla de regularizar un
+       atraso que el arreglo ya dejó atrás. Es la misma sustitución que hace el envío. */
+    const plantilla = r.porAcuerdo ? plantillaDeAcuerdo(r) : form.mensaje_template;
+    return construirMensajeCampana(plantilla, {
       nombre: nombreCompleto(o.credito.cliente),
       // En un recupero [Monto] es lo que se le OFRECE para cancelar, no lo que se le reclama.
-      monto: o.recupero ? o.recupero.monto : o.oferta.montoConDescuento,
+      monto: o.recupero ? o.recupero.monto : r.porAcuerdo ? r.monto : o.oferta.montoConDescuento,
       saldo: o.credito.saldo_pendiente,
       deuda: o.recupero?.deuda,
-      dias: o.credito.dias_mora,
-      descuento: o.recupero ? o.recupero.condona : o.oferta.ahorro,
-      vence: o.credito.proximo_pago ? formatFecha(o.credito.proximo_pago) : null,
+      dias: r.dias,
+      descuento: o.recupero ? o.recupero.condona : r.porAcuerdo ? 0 : o.oferta.ahorro,
+      vence: r.vence ? formatFecha(r.vence) : o.credito.proximo_pago ? formatFecha(o.credito.proximo_pago) : null,
       // La vista previa tiene que mostrar EXACTAMENTE lo que va a salir, plazo incluido.
-      promoVence: descuentoPct > 0 && form.promo_vence ? formatFecha(form.promo_vence) : null,
+      promoVence: !r.porAcuerdo && descuentoPct > 0 && form.promo_vence ? formatFecha(form.promo_vence) : null,
     });
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

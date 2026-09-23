@@ -2,13 +2,13 @@ import { requireRole, scopeCreditosVendedor } from "@/lib/auth";
 import { successResponse, errorResponse, withErrorHandler, assertSameOrigin } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
-import { cuotaMensualFrancesa, tasaPeriodicaSegunConvencion, convencionDelCredito, interesMora, normalizarFrecuencia, calculateRecoveryOffer, diasMoraActual, type FrecuenciaDef, type ConfiguracionFinanciera, moraDelCredito, moraDesdeCronograma, esCreditoVivo, esCreditoIncobrable, topeMoraPorIncobrable, calcularDeudaConsolidada, sugerirOfertaCancelacion, resolverOfertaRecupero, calcularDeudaVencida, round2, deudaEnRevision, contactoBloqueado, resolverPlantillasMeta, promoVigenteAl, type CuotaParaImputar, cargosDeCuota, baseMoraDeCuota } from "@/lib/domain";
+import { cuotaMensualFrancesa, tasaPeriodicaSegunConvencion, convencionDelCredito, interesMora, normalizarFrecuencia, calculateRecoveryOffer, diasMoraActual, type FrecuenciaDef, type ConfiguracionFinanciera, moraDelCredito, moraDesdeCronograma, esCreditoVivo, esCreditoIncobrable, topeMoraPorIncobrable, calcularDeudaConsolidada, sugerirOfertaCancelacion, resolverOfertaRecupero, calcularDeudaVencida, round2, deudaEnRevision, contactoBloqueado, resolverPlantillasMeta, promoVigenteAl, type CuotaParaImputar, cargosDeCuota, baseMoraDeCuota, reclamoDeCampana } from "@/lib/domain";
 import { getConfiguracion, getCobranzaConfig } from "@/lib/config";
 import { registrarAuditoria } from "@/lib/audit";
 import { hoyComercial, formatCreditoNumero } from "@/lib/utils";
 import { numerosRefinanciados } from "@/lib/creditos-numero";
 import { cobroBloqueadoPorCredito, plataDeLaCadenaLote } from "@/lib/recupero-server";
-import { creditosConAcuerdoVigente } from "@/lib/acuerdos";
+import { creditosConAcuerdoVigente, cubiertoPorAcuerdo, situacionAcuerdoPorCredito } from "@/lib/acuerdos";
 import type { NextRequest } from "next/server";
 
 const CANALES = ["whatsapp", "email", "sms"];
@@ -447,6 +447,23 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
    * pestaña Incobrables y el cierre del caso, así que el importe del WhatsApp es exactamente
    * el que el operador va a ver cuando el cliente se presente.
    */
+  /**
+   * EL ACUERDO DE PAGO DE CADA DESTINATARIO, con su próxima cuota pactada.
+   *
+   * Dos usos distintos y no se pueden mezclar:
+   *  · `congelaPunitorios` — la fecha del acuerdo que frena la mora de lo que entró al trato.
+   *    Vale para CUALQUIER crédito con acuerdo vigente, esté cubierto o no.
+   *  · `situacionAcuerdo` + `cubiertoPorAcuerdo` — de qué habla el mensaje. Solo cuando TODO
+   *    lo que debe entró al arreglo; si arrastra una cuota posterior, esa no era parte del
+   *    trato y el reclamo del plan sigue siendo el correcto.
+   */
+  const situacionAcuerdo = await situacionAcuerdoPorCredito(tenantId, creditos.map((c) => c.id));
+  /** La fecha en la que el acuerdo frenó los punitorios, o null si no los frena. */
+  const congelaDe = (creditoId: string): Date | null => {
+    const a = situacionAcuerdo.get(creditoId);
+    return a && a.congela ? a.fecha : null;
+  };
+
   const esRecupero = tipoCampana === "recupero";
   const cadenas = esRecupero
     ? await plataDeLaCadenaLote(tenantId, creditos.map((c) => c.id))
@@ -505,8 +522,17 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
      * dos fórmulas, que en este sistema ya mordió tres veces.
      */
     const corteCredito = topeMoraPorIncobrable(hoyCamp, c) ?? hoyCamp;
+    /**
+     * 🔴 LOS PUNITORIOS CONGELADOS POR UN ACUERDO, TAMBIÉN ACÁ.
+     *
+     * Faltaba, y era el error de las dos fórmulas: la pantalla del moroso mostraba
+     * $649.656,24 y la campaña le habría reclamado $652.140,51 al mismo cliente el mismo día
+     * (CRD-000007, 23/09/2026). El importe que se comunica tiene que ser exactamente el que
+     * la caja va a cobrar.
+     */
     const dv = calcularDeudaVencida(cuotasDom, {
       moraActiva: mc.moraActiva, tasaMoraDiaria: mc.tasaMoraDiaria, topeMoraPct: mc.topeMoraPct, diasGracia: gracia, hoy: corteCredito,
+      moraCongeladaAl: congelaDe(c.id),
     });
     /**
      * Y se extingue el crédito ENTERO, no solo lo vencido: la oferta de recupero cancela la
@@ -575,26 +601,51 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
      */
     const montoRecupero = ofertaRecupero?.monto ?? deudaTotal;
 
+    /**
+     * 🔴 SI EL CRÉDITO ESTÁ CUBIERTO POR UN ACUERDO, EL MENSAJE HABLA DE LA CUOTA PACTADA.
+     *
+     * Fernando (23/09/2026): el cron ya lo hacía —es el arreglo del 22/09— pero las campañas
+     * arman el texto por otro camino (`construirMensajeCampana`) y no pasaban por ahí. A
+     * Silvana Noemí Ledesma (CRD-000007), que firmó su acuerdo el 22/09 y cuya primera cuota
+     * pactada recién vence el 07/10, la campaña le habría reclamado $652.140,51 "con 76 días
+     * de atraso". Es el peor mensaje posible, y justo al único moroso que se sentó a arreglar.
+     *
+     * Se congela en `cuota_monto`/`vence_el` —los mismos campos del recordatorio, con el
+     * mismo significado: qué cuota se le avisa y para cuándo— así el texto que salga dentro
+     * de tres días dice lo mismo que la vista previa de hoy.
+     *
+     * Un recupero queda afuera: ahí el destinatario es un castigado y no hay acuerdo vigente
+     * que valga.
+     */
+    const acuerdoCubre = !esRecupero && cubiertoPorAcuerdo(acuerdosVigentes, c.id, c.proximo_pago)
+      ? situacionAcuerdo.get(c.id) ?? null
+      : null;
+    const reclamo = reclamoDeCampana(round2(dv.total), dm, acuerdoCubre, hoyCamp);
+
     return {
       credito_id: c.id,
       saldo: c.saldo_pendiente,     // capital, se conserva como referencia
       // En un recupero, lo que se extingue es TODA la deuda, no solo lo vencido.
       vencido: esRecupero ? deudaTotal : round2(dv.total),
-      cuota_monto: tipoCampana === "vencimiento" ? cuotaProxima : null,
-      vence_el: tipoCampana === "vencimiento" ? (proxima?.fecha_vencimiento ?? null) : null,
+      cuota_monto: reclamo.porAcuerdo ? reclamo.monto : tipoCampana === "vencimiento" ? cuotaProxima : null,
+      vence_el: reclamo.porAcuerdo ? reclamo.vence : tipoCampana === "vencimiento" ? (proxima?.fecha_vencimiento ?? null) : null,
       cuotas_vencidas: dv.cuotas_vencidas,
       dias_mora: dm,
       interes_mora: dv.mora,
       // En un recordatorio no hay descuento posible (no hay punitorios): lo que se le
       // comunica es la cuota, tal cual.
+      /* Con acuerdo cubriendo, lo que se pide es la cuota pactada. Y sin descuento: los
+         punitorios ya se negociaron al firmar el acuerdo, ofrecerle otra quita encima sería
+         pagarle dos veces por el mismo atraso. */
       oferta_monto: esRecupero
         ? montoRecupero
+        : reclamo.porAcuerdo ? reclamo.monto
         : tipoCampana === "vencimiento" ? cuotaProxima : oferta.montoConDescuento,
       // Lo CONDONADO: en un recupero es todo lo que excede la oferta —punitorios, interés del
       // plan y capital—, no solo el recargo. Es el número que dice cuánta plata se resigna.
       oferta_descuento: esRecupero
         ? round2(Math.max(0, deudaTotal - montoRecupero))
-        : tipoCampana === "vencimiento" ? 0 : oferta.descuento,
+        : reclamo.porAcuerdo || tipoCampana === "vencimiento" ? 0 : oferta.descuento,
       envio_estado: "pendiente",
     };
   });

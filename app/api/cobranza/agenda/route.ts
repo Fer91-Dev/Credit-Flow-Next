@@ -3,7 +3,7 @@ import { successResponse, withErrorHandler } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { getCobranzaConfig, getConfiguracion } from "@/lib/config";
-import { sincronizarAcuerdos, creditosConAcuerdoVigente, cubiertoPorAcuerdo } from "@/lib/acuerdos";
+import { sincronizarAcuerdos, creditosConAcuerdoVigente, cubiertoPorAcuerdo, congelamientoPorCredito } from "@/lib/acuerdos";
 import { numerosRefinanciados } from "@/lib/creditos-numero";
 import { cobroBloqueadoPorCredito } from "@/lib/recupero-server";
 import {
@@ -77,6 +77,8 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
    * acuerdo vigente lo mantiene cobrable por más días de atraso que arrastre.
    */
   const acuerdosVigentes = await creditosConAcuerdoVigente(tenantId);
+  // Hasta qué día devenga la mora de cada crédito (≠ estar cubierto por el acuerdo).
+  const congelan = await congelamientoPorCredito(tenantId);
   const conAcuerdo = acuerdos.saca_de_agenda ? acuerdosVigentes : new Map<string, Date>();
 
   const hoy = hoyComercial();
@@ -235,6 +237,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     const dv = calcularDeudaVencida(cuotasDom, {
       moraActiva: mc.moraActiva, tasaMoraDiaria: mc.tasaMoraDiaria, topeMoraPct: mc.topeMoraPct,
       diasGracia: gracia, hoy,
+      moraCongeladaAl: congelan.get(c.id) ?? null,
     });
 
     items.push({

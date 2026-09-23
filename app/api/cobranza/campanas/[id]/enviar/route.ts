@@ -3,7 +3,7 @@ import { successResponse, errorResponse, withErrorHandler, assertSameOrigin } fr
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { getComunicacionConfig, getCobranzaConfig } from "@/lib/config";
-import { construirMensajeCampana, linkWhatsapp, contactoBloqueado, esCreditoVivo, esCreditoIncobrable, resolverPlantillasMeta } from "@/lib/domain";
+import { construirMensajeCampana, linkWhatsapp, contactoBloqueado, esCreditoVivo, esCreditoIncobrable, resolverPlantillasMeta, TEMPLATE_ACUERDO_DEFAULT, TEMPLATE_ACUERDO_ATRASADO } from "@/lib/domain";
 import { enviarWhatsappApi, whatsappApiDisponible, type WhatsappApiConfig } from "@/lib/whatsapp";
 import { nombreCompleto, formatFecha } from "@/lib/utils";
 import { enviarEmailTenant, motivoEmailNoDisponible, type EmailTenantConfig } from "@/lib/mailer-tenant";
@@ -189,14 +189,50 @@ export const POST = withErrorHandler(async (
       continue;
     }
 
-    const mensaje = construirMensajeCampana(template, {
+    /**
+     * 🔴 EL DESTINATARIO QUE TIENE UN ACUERDO DE PAGO RECIBE OTRO TEXTO.
+     *
+     * Al armar la campaña se congeló en `cuota_monto`/`vence_el` la cuota PACTADA de los
+     * créditos cubiertos por un acuerdo vigente (ver el POST de campañas). Acá se usa: la
+     * plantilla del operador habla de "regularizar tu situación" con el atraso del plan
+     * viejo, y a este cliente —que está CUMPLIENDO— eso lo trata de moroso por una cuota que
+     * ya no tiene que pagar. Es el mismo criterio con el que el cron manda `acuerdo_<evento>`
+     * en vez del aviso del plan.
+     *
+     * Se reconoce por el snapshot y no por una columna nueva: en una campaña de mora o de
+     * refinanciación `cuota_monto` solo se llena en este caso (en un recordatorio es la cuota
+     * del plan, y en un recupero no hay acuerdo que valga).
+     */
+    const porAcuerdo =
+      campana.tipo !== "vencimiento" && campana.tipo !== "recupero" &&
+      objetivo.cuota_monto != null && objetivo.vence_el != null;
+    /* Días de atraso de LO QUE SE RECLAMA. Con acuerdo son los de la cuota pactada —0 si
+       todavía no venció—, no los del plan original, que es justamente el número que hacía
+       decir "76 días de atraso" a alguien que firmó ayer. */
+    const diasReclamo = porAcuerdo
+      ? Math.max(0, Math.floor((Date.now() - (objetivo.vence_el as Date).getTime()) / 86_400_000))
+      : objetivo.dias_mora;
+    const textoFinal = porAcuerdo
+      ? (diasReclamo > 0 ? TEMPLATE_ACUERDO_ATRASADO : TEMPLATE_ACUERDO_DEFAULT)
+      : template;
+
+    const mensaje = construirMensajeCampana(textoFinal, {
       nombre,
       monto:    objetivo.oferta_monto,
       saldo:    objetivo.saldo,
-      dias:     objetivo.dias_mora,
+      dias:     diasReclamo,
       descuento: objetivo.oferta_descuento,
       // La deuda nominal congelada al armar la campaña, por si el texto la nombra.
       deuda:    objetivo.vencido ?? undefined,
+      /**
+       * 🔴 `[Vence]` NO SE PASABA, Y LA VISTA PREVIA SÍ LO MOSTRABA.
+       *
+       * El recordatorio de vencimiento por defecto dice "el [Vence] vence tu cuota de
+       * $[Monto]": en pantalla salía con la fecha y el mensaje que de verdad se mandaba salía
+       * "el  vence tu cuota de $181.819,43", con un hueco en el medio. La fecha estaba
+       * congelada en `vence_el` desde el primer día; nadie la leía acá.
+       */
+      vence: objetivo.vence_el ? formatFecha(objetivo.vence_el) : null,
       // Hasta cuándo vale el descuento. Es el dato que convierte la oferta en oferta: sin
       // plazo el cliente la lee sin apuro y paga la semana que viene, ya sin la quita.
       promoVence: campana.promo_vence ? formatFecha(campana.promo_vence) : null,

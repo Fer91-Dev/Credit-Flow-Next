@@ -168,6 +168,10 @@ export interface PagoImputado {
 /** Acuerdo de pago VIGENTE de un crédito, tal como lo mandan los endpoints. */
 export interface AcuerdoDelCredito {
   id: string;
+  /** Cuándo se firmó. Decide si el atraso que se ve ENTRÓ al acuerdo (`acuerdoCubreElAtraso`). */
+  fecha: string;
+  /** ¿Frena los punitorios de lo que entró al trato? Término congelado al firmar. */
+  congela: boolean;
   /** ¿Cumple con las cuotas PACTADAS? Es lo que decide si se lo trata como moroso o no. */
   al_dia: boolean;
   proxima: { numero: number; total: number; vencimiento: string; pendiente: number } | null;

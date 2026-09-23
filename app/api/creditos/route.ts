@@ -113,6 +113,11 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   // `situacionAcuerdoPorCredito`). Sin esto, la lista mostraba "Legales" a alguien que está
   // cumpliendo su arreglo.
   const acuerdosVig = await situacionAcuerdoPorCredito(tenantId, creditos.map((c) => c.id));
+  /** La fecha en la que un acuerdo vigente frenó los punitorios de este crédito, o null. */
+  const acuerdoVigenteDe = (creditoId: string): Date | null => {
+    const a = acuerdosVig.get(creditoId);
+    return a && a.congela ? a.fecha : null;
+  };
 
   /**
    * 🔴 CUÁNTO PAGÓ DESPUÉS DE QUE SE LO DIO POR PERDIDO.
@@ -264,7 +269,13 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
           pagadoMora: q.pagado_mora, pagadoCargos: q.pagado_cargos,
       condonadoMora: q.condonado_mora,
         })),
-        { moraActiva: mc.moraActiva, tasaMoraDiaria: mc.tasaMoraDiaria, topeMoraPct: mc.topeMoraPct, diasGracia: graciaV, hoy: hoyCredito },
+        {
+          moraActiva: mc.moraActiva, tasaMoraDiaria: mc.tasaMoraDiaria, topeMoraPct: mc.topeMoraPct, diasGracia: graciaV, hoy: hoyCredito,
+          /* Los punitorios que un acuerdo vigente frenó. Este `vencido` es la fuente de la
+             pantalla del moroso Y de la vista previa de las campañas: sin el freno, las dos
+             mostraban más de lo que la caja iba a cobrar (CRD-000007: $2.484,27 de más). */
+          moraCongeladaAl: acuerdoVigenteDe(c.id),
+        },
       );
       vencido = round2(dv.total);
       cuotas_vencidas = dv.cuotas_vencidas;

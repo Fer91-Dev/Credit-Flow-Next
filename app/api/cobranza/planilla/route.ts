@@ -6,7 +6,7 @@ import { registrarAuditoria } from "@/lib/audit";
 import { Prisma } from "@prisma/client";
 import type { Role } from "@/lib/auth/roles";
 import { getCobranzaConfig, getConfiguracion } from "@/lib/config";
-import { sincronizarAcuerdos, creditosConAcuerdoVigente, cubiertoPorAcuerdo } from "@/lib/acuerdos";
+import { sincronizarAcuerdos, creditosConAcuerdoVigente, cubiertoPorAcuerdo, congelamientoPorCredito } from "@/lib/acuerdos";
 import { numerosRefinanciados } from "@/lib/creditos-numero";
 import { ordenarRecorrido, largoRecorridoMetros } from "@/lib/domain/recorrido";
 import { cobroBloqueadoPorCredito } from "@/lib/recupero-server";
@@ -102,6 +102,8 @@ async function armarPlanilla(
    * crédito con acuerdo vigente SÍ se cobra por más días de atraso que arrastre.
    */
   const acuerdosVigentes = await creditosConAcuerdoVigente(tenantId);
+  // El importe que el cobrador lleva escrito en la planilla tiene que ser el que va a cobrar.
+  const congelan = await congelamientoPorCredito(tenantId);
   const conAcuerdo = acuerdos.saca_de_agenda ? acuerdosVigentes : new Map<string, Date>();
 
   const hoy = hoyComercial();
@@ -203,6 +205,7 @@ async function armarPlanilla(
     const dv = calcularDeudaVencida(cuotasDom, {
       moraActiva: mc.moraActiva, tasaMoraDiaria: mc.tasaMoraDiaria, topeMoraPct: mc.topeMoraPct,
       diasGracia: gracia, hoy,
+      moraCongeladaAl: congelan.get(c.id) ?? null,
     });
 
     // Primera cuota impaga del plan: la vencida más vieja si hay atraso, o la que viene.

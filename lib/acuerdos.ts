@@ -15,7 +15,7 @@ import { ApiError } from "@/lib/auth";
 import { registrarAuditoria } from "@/lib/audit";
 import { getAuditActor } from "@/lib/audit-context";
 import { getConfiguracion, getCobranzaConfig } from "@/lib/config";
-import { calcularDeudaVencida, planDeAcuerdo, evaluarAcuerdo, quitaMaxima, round2, noNegativo, tasaPeriodicaSegunConvencion, type CuotaParaImputar, type DeudaVencida, type AcuerdosConfig, moraDelCredito, moraDesdeCronograma, puedeAcordarPorEstado, cargosDeCuota, baseMoraDeCuota, cuotaCerradaSinPago, estadoTrasMoverLedger, cierreDeAcuerdoCumplido, formatPesos } from "@/lib/domain";
+import { calcularDeudaVencida, planDeAcuerdo, evaluarAcuerdo, quitaMaxima, round2, noNegativo, tasaPeriodicaSegunConvencion, type CuotaParaImputar, type DeudaVencida, type AcuerdosConfig, moraDelCredito, moraDesdeCronograma, puedeAcordarPorEstado, cargosDeCuota, baseMoraDeCuota, cuotaCerradaSinPago, estadoTrasMoverLedger, cierreDeAcuerdoCumplido, formatPesos, acuerdoCubreElAtraso } from "@/lib/domain";
 import { hoyComercial, formatCreditoNumero } from "@/lib/utils";
 import { numerosRefinanciados } from "@/lib/creditos-numero";
 import { formatComprobante } from "@/lib/comprobantes";
@@ -837,6 +837,18 @@ export async function recibosPorCuotaDeAcuerdo(
 /** Lo que las pantallas necesitan saber del acuerdo vigente de un crédito. */
 export interface AcuerdoEnPantalla {
   id: string;
+  /**
+   * Cuándo se firmó. Viaja porque la pantalla necesita saber si el atraso que se ve ENTRÓ al
+   * acuerdo (`acuerdoCubreElAtraso`): sin este dato, la vista previa de una campaña no puede
+   * decidir lo mismo que el servidor y mostraría un texto distinto del que se manda.
+   */
+  fecha: Date;
+  /**
+   * ¿Este acuerdo FRENA los punitorios? Es un término congelado al firmar, no la política de
+   * hoy. Con él, la mora de lo que entró al trato se detiene en `fecha` — y todo lo que
+   * informe un importe tiene que usarlo, o la pantalla dice un número y la caja cobra otro.
+   */
+  congela: boolean;
   /** ¿Está al día con las cuotas PACTADAS? (ninguna vencida sin cubrir). */
   al_dia: boolean;
   /** Cuota pactada que toca cobrar, con lo que le falta. `null` = ya se pagaron todas. */
@@ -876,7 +888,7 @@ export async function situacionAcuerdoPorCredito(
       ...(creditoIds ? { credito_id: { in: creditoIds } } : {}),
     },
     select: {
-      id: true, credito_id: true,
+      id: true, credito_id: true, fecha: true, congela_punitorios: true,
       cuotas: { orderBy: { numero: "asc" }, select: { numero: true, vencimiento: true, monto: true, pagado: true, estado: true } },
     },
   });
@@ -891,6 +903,8 @@ export async function situacionAcuerdoPorCredito(
     const alDia = !impagas.some((c) => c.vencimiento < hoy);
     out.set(a.credito_id, {
       id: a.id,
+      fecha: a.fecha,
+      congela: a.congela_punitorios,
       al_dia: alDia,
       total_cuotas: a.cuotas.length,
       pendiente_total: round2(a.cuotas.reduce((s, c) => s + noNegativo(c.monto - c.pagado), 0)),
@@ -918,6 +932,34 @@ export async function creditosConAcuerdoVigente(tenantId: string): Promise<Map<s
 }
 
 /**
+ * Los acuerdos vigentes que FRENAN los punitorios, por crédito.
+ *
+ * 🔴 No es lo mismo que `creditosConAcuerdoVigente`, y mezclarlos rompe dos cosas distintas:
+ * aquel dice a quién NO hay que ir a visitar (cubierto por el arreglo, congele o no), y este
+ * dice hasta qué día devenga la mora. Una financiera puede acordar sin frenar los punitorios
+ * —es un parámetro, `acuerdos.congela_punitorios`— y en ese caso el reloj sigue corriendo.
+ *
+ * Se usa donde se INFORMA un importe: campañas, contacto individual, agenda, planilla y la
+ * ficha. Hasta el 23/09/2026 solo lo miraban el cobro y el plan de cuotas, así que todo lo
+ * demás mostraba punitorios que la caja no iba a cobrar.
+ */
+export async function congelamientoPorCredito(
+  tenantId: string,
+  creditoIds?: string[],
+): Promise<Map<string, Date>> {
+  const filas = await prisma.acuerdos_pago.findMany({
+    where: {
+      ...withTenant(tenantId),
+      estado: "vigente",
+      congela_punitorios: true,
+      ...(creditoIds ? { credito_id: { in: creditoIds } } : {}),
+    },
+    select: { credito_id: true, fecha: true },
+  });
+  return new Map(filas.map((f) => [f.credito_id, f.fecha]));
+}
+
+/**
  * ¿Este crédito está cubierto por un acuerdo vigente y por eso no hay que ir a golpearle
  * la puerta ni llamarlo?
  *
@@ -935,9 +977,8 @@ export function cubiertoPorAcuerdo(
   creditoId: string,
   proximoPago: Date | null,
 ): boolean {
-  const acordadoEl = conAcuerdo.get(creditoId);
-  if (!acordadoEl) return false;
-  return !!proximoPago && proximoPago.getTime() <= acordadoEl.getTime();
+  // Una sola definición de "entró al acuerdo", compartida con la pantalla.
+  return acuerdoCubreElAtraso(conAcuerdo.get(creditoId) ?? null, proximoPago);
 }
 
 /** Forma con la que viaja un acuerdo a la UI. */

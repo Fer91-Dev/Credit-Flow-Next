@@ -79,6 +79,100 @@ export const TEMPLATE_RECUPERO_DEFAULT =
   "abonando $[Monto] hasta el [Promo_vence] queda cancelada y no debés nada más. " +
   "Es por única vez. Escribinos y lo coordinamos.";
 
+/**
+ * Plantilla por defecto del RECORDATORIO DE CUOTA PACTADA — el destinatario tiene un acuerdo
+ * de pago VIGENTE.
+ *
+ * 🔴 POR QUÉ NO ALCANZA LA DE MORA.
+ *
+ * Con un acuerdo vigente el plan original se cayó, pero sus cuotas conservan la fecha: el
+ * crédito sigue figurando con meses de atraso. Si el mensaje sale de ahí, al ÚNICO moroso que
+ * se sentó a arreglar le llega un reclamo por una cuota que ya no tiene que pagar, por un
+ * importe que no es el que pactó y con un atraso que el arreglo dejó atrás.
+ *
+ * Medido sobre CRD-000007 (Silvana Noemí Ledesma, acuerdo del 22/09/2026): la campaña le
+ * habría reclamado $652.140,51 con "76 días de atraso", cuando lo que debe es la cuota 1 del
+ * acuerdo, $525.351,91, que recién vence el 07/10/2026.
+ *
+ * El cron de notificaciones ya resolvía esto (`avisoDeAcuerdo`), pero las campañas arman el
+ * texto por otro camino y no pasaban por ahí. Fernando lo encontró el 23/09/2026.
+ *
+ * No habla de "regularizar" ni de descuentos: este cliente está CUMPLIENDO.
+ */
+export const TEMPLATE_ACUERDO_DEFAULT =
+  "Hola [Nombre], te recordamos que el [Vence] vence la cuota de $[Monto] de tu acuerdo de pago. " +
+  "Manteniendo el acuerdo al día conservás las condiciones que arreglamos. ¡Gracias!";
+
+/**
+ * Plantilla del acuerdo cuando la cuota pactada YA SE ATRASÓ. El acuerdo todavía está vigente
+ * —no llegó a romperse— así que lo que está en juego es el acuerdo entero, no una cuota del
+ * plan viejo: es lo que hay que decirle, y es la última oportunidad de que no se caiga.
+ */
+export const TEMPLATE_ACUERDO_ATRASADO =
+  "Hola [Nombre], la cuota de $[Monto] de tu acuerdo de pago venció el [Vence] y lleva [Dias] dias de atraso. " +
+  "El acuerdo sigue en pie mientras las cuotas se paguen: comunicate con nosotros para regularizarla.";
+
+/**
+ * QUÉ SE LE RECLAMA A UN DESTINATARIO DE CAMPAÑA, en una sola definición.
+ *
+ * 🔴 EXISTE PARA QUE NO HAYA DOS CUENTAS. El importe lo necesitan tres lugares —la vista
+ * previa del navegador, el snapshot que se congela al armar la campaña y el texto que sale al
+ * enviar— y en este sistema cada vez que un número se calculó dos veces terminó separándose.
+ *
+ * La regla: si el crédito está CUBIERTO por un acuerdo vigente (todo lo que debe ya entró al
+ * arreglo), se le habla de la cuota PACTADA. Si arrastra una cuota que venció DESPUÉS de
+ * firmar, esa no era parte del trato y el reclamo del plan sigue siendo el correcto — la
+ * misma distinción que hace `cubiertoPorAcuerdo` para la agenda y el cron.
+ *
+ * Dominio PURO: recibe el acuerdo ya resuelto, no lo va a buscar.
+ */
+export interface ReclamoCampana {
+  /** Lo que se le pide en el mensaje. */
+  monto: number;
+  /** Fecha del vencimiento del que habla el mensaje, o null. */
+  vence: Date | null;
+  /** Días de atraso de ESO que se reclama (0 si todavía no venció). */
+  dias: number;
+  /** true = el mensaje habla de la cuota del acuerdo, no del plan original. */
+  porAcuerdo: boolean;
+  /** Número de la cuota pactada, para poder decir "cuota 2 de 3". Null si no es por acuerdo. */
+  cuotaNro: number | null;
+  totalCuotas: number | null;
+}
+
+export function reclamoDeCampana(
+  /** Lo vencido del plan original, con la mora ya congelada si correspondía. */
+  vencidoDelPlan: number,
+  /** Días de mora del plan original (en vivo). */
+  diasDelPlan: number,
+  /**
+   * El acuerdo vigente que CUBRE a este crédito, con su próxima cuota pactada. `null` cuando
+   * no hay acuerdo o cuando el crédito arrastra una cuota posterior al arreglo.
+   */
+  acuerdo: { proxima: { numero: number; vencimiento: Date; pendiente: number } | null; total_cuotas: number } | null,
+  hoy: Date,
+): ReclamoCampana {
+  const pactada = acuerdo?.proxima ?? null;
+  if (!pactada) {
+    return { monto: round2(vencidoDelPlan), vence: null, dias: diasDelPlan, porAcuerdo: false, cuotaNro: null, totalCuotas: null };
+  }
+  const ms = hoy.getTime() - pactada.vencimiento.getTime();
+  const dias = ms > 0 ? Math.floor(ms / 86400000) : 0;
+  return {
+    monto: round2(pactada.pendiente),
+    vence: pactada.vencimiento,
+    dias,
+    porAcuerdo: true,
+    cuotaNro: pactada.numero,
+    totalCuotas: acuerdo ? acuerdo.total_cuotas : null,
+  };
+}
+
+/** La plantilla que le corresponde a un reclamo por acuerdo, según esté al día o atrasado. */
+export function plantillaDeAcuerdo(r: ReclamoCampana): string {
+  return r.dias > 0 ? TEMPLATE_ACUERDO_ATRASADO : TEMPLATE_ACUERDO_DEFAULT;
+}
+
 export const TEMPLATE_REFINANCIACION_DEFAULT =
   "Hola [Nombre], tu plan de pagos venció: llevás [Dias] días de atraso. " +
   "Podemos reestructurar toda tu deuda en un plan nuevo, con cuotas que puedas pagar. " +

@@ -14,7 +14,7 @@
  */
 
 import { round2, noNegativo } from "./money";
-import { diasAtraso, moraRestanteDeCuota } from "./mora";
+import { diasAtraso, moraRestanteDeCuota, topeMoraDeCuota } from "./mora";
 import type { CuotaParaImputar } from "./payments";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -325,6 +325,24 @@ export interface OpcionesDeudaVencida {
   hoy?: Date;
   diasGracia?: number;
   /**
+   * Fecha del acuerdo de pago VIGENTE que congela los punitorios, o null si no hay.
+   *
+   * 🔴 FALTABA, Y ERA EL ERROR DE LAS DOS FÓRMULAS OTRA VEZ.
+   *
+   * `POST /pagos` y el plan de cuotas ya frenaban la mora en la fecha del acuerdo; esta
+   * función —la que alimenta las campañas, el contacto individual, la agenda, la planilla y
+   * la ficha del cliente— la seguía corriendo hasta hoy. Sobre CRD-000007 (Silvana Noemí
+   * Ledesma, acuerdo del 22/09/2026) la pantalla decía $649.656,24 y la campaña le habría
+   * reclamado $652.140,51: $2.484,27 de punitorios que la caja no le iba a cobrar.
+   *
+   * Lo detectó Fernando el 23/09/2026 comparando el número de la pantalla con el mío.
+   *
+   * Se congela SOLO lo que entró al acuerdo —las cuotas ya vencidas cuando se firmó—, que es
+   * lo que decide `topeMoraDeCuota`. Una cuota posterior no era parte del trato y devenga
+   * normal. Sin acuerdo vigente se pasa null y no cambia un peso.
+   */
+  moraCongeladaAl?: Date | null;
+  /**
    * Incluir también las cuotas que TODAVÍA NO VENCIERON.
    *
    * 🔴 Es la decisión de qué ES un acuerdo, y por eso va como parámetro de la financiera.
@@ -363,6 +381,7 @@ export function calcularDeudaVencida(
   const gracia = opts.diasGracia;
 
   const incluirNoVencidas = opts.incluirNoVencidas ?? false;
+  const congeladaAl = opts.moraCongeladaAl ?? null;
   let capital = 0, interes = 0, cargos = 0, mora = 0, vencidas = 0, incluidas = 0, porVencer = 0;
 
   for (const c of cuotas) {
@@ -396,7 +415,9 @@ export function calcularDeudaVencida(
         condonadoMora: c.condonadoMora,
         pendienteSinMora: round2(capPend + intPend + carPend),
       },
-      atraso,
+      /* Los días que DEVENGAN, que no son los de atraso cuando un acuerdo los congeló.
+         `atraso` se sigue informando entero: el cliente lleva los días que lleva. */
+      diasAtraso(c.fechaVencimiento, topeMoraDeCuota(c.fechaVencimiento, hoy, congeladaAl)),
       { moraActiva, tasaDiaria: tasa, diasGracia: gracia, topePct: opts.topeMoraPct },
     );
 
@@ -526,6 +547,28 @@ export interface EvaluacionAcuerdo {
   cuotas_pagas: number;
   /** Fecha de la próxima cuota impaga (null si no queda ninguna). */
   proximo_vencimiento: Date | null;
+}
+
+/**
+ * ¿El atraso que arrastra este crédito ENTRÓ al acuerdo?
+ *
+ * Solo si lo más viejo que debe ya estaba vencido cuando se firmó. Si arrastra una cuota que
+ * venció DESPUÉS, esa no era parte del trato: vuelve a la cola y el reclamo del plan es el
+ * correcto.
+ *
+ * 🔴 Dominio PURO para que lo use también el NAVEGADOR. La versión de servidor
+ * (`cubiertoPorAcuerdo`, en lib/acuerdos.ts) delega acá: la vista previa de una campaña tiene
+ * que decidir lo MISMO que el endpoint que arma los objetivos, o el operador ve un texto y el
+ * cliente recibe otro.
+ */
+export function acuerdoCubreElAtraso(
+  fechaAcuerdo: Date | string | null | undefined,
+  proximoPago: Date | string | null | undefined,
+): boolean {
+  if (!fechaAcuerdo || !proximoPago) return false;
+  const a = fechaAcuerdo instanceof Date ? fechaAcuerdo : new Date(fechaAcuerdo);
+  const p = proximoPago instanceof Date ? proximoPago : new Date(proximoPago);
+  return p.getTime() <= a.getTime();
 }
 
 /**

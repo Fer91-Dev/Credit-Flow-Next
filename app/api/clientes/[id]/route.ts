@@ -162,7 +162,12 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
           pagadoMora: q.pagado_mora, pagadoCargos: q.pagado_cargos,
           condonadoMora: q.condonado_mora,
         })),
-        { moraActiva: mc.moraActiva, tasaMoraDiaria: mc.tasaMoraDiaria, topeMoraPct: mc.topeMoraPct, diasGracia: graciaV, hoy: hoyCredito },
+        {
+          moraActiva: mc.moraActiva, tasaMoraDiaria: mc.tasaMoraDiaria, topeMoraPct: mc.topeMoraPct, diasGracia: graciaV, hoy: hoyCredito,
+          /* El "Debe hoy" de la ficha tiene que ser el importe que la caja va a cobrar: con un
+             acuerdo que congela, los punitorios de lo que entró al trato se detuvieron. */
+          moraCongeladaAl: (() => { const a = acuerdos.get(c.id); return a && a.congela ? a.fecha : null; })(),
+        },
       );
       vencido = round2(dv.total);
       cuotas_vencidas = dv.cuotas_vencidas;
