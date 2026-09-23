@@ -1,7 +1,7 @@
 /**
  * VERIFICA LO QUE SE HIZO PARA QUE EL SISTEMA AGUANTE VOLUMEN (23/09/2026).
  *
- * Tres cosas, y ninguna cambia un número de la cartera:
+ * Cinco cosas, y ninguna cambia un número de la cartera:
  *
  *  1. Los ÍNDICES que faltaban. `creditos` no tenía índice por `estado` ni por
  *     `proximo_pago` —las dos columnas por las que filtra toda la cobranza— y `pagos` solo
@@ -13,12 +13,24 @@
  *     (`/api/cobranza/kpis`). Se comparan contra una cuenta independiente hecha acá desde la
  *     base: si el endpoint y la base no coinciden, el número de la pantalla es falso.
  *
- *  3. Que el `total` viaje en las listas topeadas, que es lo que hace posible avisar cuando
+ *  3. Los KPI de Créditos, por la misma razón y con el mismo criterio.
+ *
+ *  4. La PURGA de auditoría. Se siembran filas con 400 días de antigüedad, se comprueba que
+ *     el piso de 90 días rechaza un valor chico, que el modo en seco no toca nada, y que con
+ *     `--borrar` se van exactamente esas y ni una más. Las filas de la prueba las crea y las
+ *     borra este script: no se toca una sola fila real.
+ *
+ *  5. Que el `total` viaje en las listas topeadas, que es lo que hace posible avisar cuando
  *     una lista está recortada.
+ *
+ * Lo que NO prueba, y hay que decirlo: que Reportes y el Home lean menos. Eso se midió aparte
+ * (Reportes −50% de filas sobre la base de desarrollo, el Home −98%) y lo que sí se verifica
+ * acá y en `verificar-reportes.mjs` es que los números salgan IGUALES que antes.
  *
  *   QA_PASSWORD="$(cat qa.pass)" node --env-file=.env.local scripts/verificar-escala.mjs
  */
 import { PrismaClient } from "@prisma/client";
+import { execFileSync } from "node:child_process";
 
 const REF_PROD = "ilrvvfctzlcbhelxbsar";
 if ((process.env.DATABASE_URL ?? "").includes(REF_PROD)) {
@@ -110,7 +122,65 @@ try {
     ok(k.creditos_vivos === vivos.length, "mira TODOS los creditos vivos", `${k.creditos_vivos}`);
   }
 
-  // ── 3. El total viaja, que es lo que permite avisar ──────────────────────
+  // ── 3. Los KPI de Creditos, tambien del servidor ─────────────────────────
+  H2("Los KPI de Creditos salen del servidor y cuadran");
+  {
+    const k = await get("/api/creditos/kpis");
+    ok(k.ok, "el endpoint responde", k.error ?? "");
+    if (k.ok) {
+      const todos = await db.creditos.findMany({ select: { estado: true, saldo_pendiente: true, monto_original: true } });
+      const vivos = todos.filter((c) => ["activo", "vencido"].includes(c.estado));
+      const pagados = todos.filter((c) => c.estado === "pagado");
+      ok(k.data.total === todos.length, "mira TODOS los creditos", `${k.data.total}`);
+      ok(k.data.activos === vivos.length, "cartera activa", `endpoint ${k.data.activos} · base ${vivos.length}`);
+      ok(Math.abs(k.data.cartera - vivos.reduce((s, c) => s + c.saldo_pendiente, 0)) <= 0.02, "saldo de la cartera viva");
+      ok(k.data.pagados === pagados.length, "creditos pagados", `endpoint ${k.data.pagados} · base ${pagados.length}`);
+      ok(k.data.alDia + k.data.enMora === k.data.activos, "al dia + en mora = activos");
+    }
+  }
+
+  // ── 4. La purga de auditoria: se prueba con filas propias ────────────────
+  H2("Purga de auditoria (se crean filas viejas de prueba y se borran)");
+  {
+    const tenant = (await db.creditos.findFirst({ select: { tenant_id: true } }))?.tenant_id;
+    const antes = await db.auditoria.count();
+    const viejo = new Date(Date.now() - 400 * 86400000);
+    await db.auditoria.createMany({
+      data: Array.from({ length: 7 }, (_, i) => ({
+        tenant_id: tenant, entidad: "qa_purga", accion: "prueba",
+        descripcion: `fila de prueba ${i}`, created_at: viejo,
+      })),
+    });
+    const conPrueba = await db.auditoria.count();
+    ok(conPrueba === antes + 7, "se sembraron 7 filas con 400 dias de antiguedad");
+
+    // Piso de seguridad: por debajo de 90 dias no hace nada.
+    let rechazo = "";
+    try {
+      /* stdio en "pipe" tambien para stderr: por defecto execFileSync lo manda a la consola
+         del padre en vez de capturarlo, y el mensaje del rechazo se perdia. */
+      execFileSync("node", ["--env-file=.env.local", "scripts/purgar-auditoria.mjs", "--dias=30", "--borrar"],
+        { encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] });
+    } catch (e) {
+      rechazo = String(e.stderr ?? e.stdout ?? e.message);
+    }
+    const sinAcentos = (t) => t.normalize("NFD").replace(/[̀-ͯ]/g, "");
+    ok(/ABORTADO.*minimo es 90/i.test(sinAcentos(rechazo)), "con 30 dias se niega: el piso es 90", rechazo.trim().slice(0, 55));
+    ok((await db.auditoria.count()) === conPrueba, "y no borro nada");
+
+    // En seco: informa pero no toca.
+    const seco = execFileSync("node", ["--env-file=.env.local", "scripts/purgar-auditoria.mjs", "--dias=365"], { encoding: "utf8" });
+    ok(/se borrarian\s*:\s*7/i.test(seco.normalize("NFD").replace(/[̀-ͯ]/g, "")), "en seco anuncia las 7");
+    ok((await db.auditoria.count()) === conPrueba, "en seco no borra nada");
+
+    // De verdad.
+    execFileSync("node", ["--env-file=.env.local", "scripts/purgar-auditoria.mjs", "--dias=365", "--borrar"], { encoding: "utf8" });
+    const despues = await db.auditoria.count();
+    ok(despues === antes, "con --borrar se van las 7 y no una mas", `antes ${antes} · despues ${despues}`);
+    ok((await db.auditoria.count({ where: { entidad: "qa_purga" } })) === 0, "no queda ninguna fila de prueba");
+  }
+
+  // ── 5. El total viaja, que es lo que permite avisar ──────────────────────
   H2("Las listas topeadas dicen cuantos hay en total");
   for (const [ruta, clave, sustantivo] of [
     ["/api/creditos?limit=2", "creditos", "créditos"],

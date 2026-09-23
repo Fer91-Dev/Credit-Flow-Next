@@ -61,7 +61,16 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   // El desglose por vendedor (rendimiento + morosidad) es solo para admin.
   const esAdmin = role === "admin";
 
-  const [clientes, creditos, pagosTotal, cuotasPeriodo, cuotasVivas, pagosHoy, personal, cobranzaCfg] = await Promise.all([
+  /**
+   * El MISMO `where` para los dos agregados de abajo, escrito una sola vez: si el filtro de
+   * vendedor o de zona quedara distinto entre ellos, la resta daría un número que no existe.
+   */
+  const whereCuotasVivas = {
+    ...withTenant(tenantId),
+    credito: { ...creditoRel, estado: { in: [...ESTADOS_VIVOS] } } as never,
+  };
+
+  const [clientes, creditos, pagosTotal, cuotasPeriodo, cuotasVivas, excedenteVivas, pagosHoy, personal, cobranzaCfg] = await Promise.all([
     // Clientes activos (filtra por zona si corresponde)
     prisma.clientes.count({
       where: { ...withTenant(tenantId), estado: { in: [...ESTADOS_VIVOS] }, ...(zona ? { zona } : {}) },
@@ -117,12 +126,30 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
      * ("Exposición en mora"). Meterla acá haría que el número se moviera solo cada noche sin
      * que nadie hubiera prestado ni cobrado nada.
      */
-    prisma.cuotas.findMany({
-      where: {
-        ...withTenant(tenantId),
-        credito: { ...creditoRel, estado: { in: [...ESTADOS_VIVOS] } } as never,
-      },
-      select: { cuota_total: true, pagado: true },
+    /**
+     * 🔴 DOS AGREGADOS, NO LA TABLA ENTERA.
+     *
+     * Antes traía TODAS las cuotas de TODOS los créditos vivos —a 5.000 créditos son ~38.000
+     * filas— para hacer una sola suma. Ahora la hace Postgres y vuelve una fila.
+     *
+     * La cuenta exacta es `Σ max(0, cuota_total − pagado)`, y eso NO es `Σcuota_total −
+     * Σpagado`: una cuota pagada tarde tiene `pagado` por encima de su total, porque `pagado`
+     * incluye los punitorios. Ese excedente se sumaría como deuda negativa y bajaría lo que
+     * falta cobrar. Por eso el segundo agregado: mide exactamente ese sobrante y lo devuelve.
+     *
+     *   Σ max(0, ct − p) = (Σct − Σp) + Σ_{p>ct}(p − ct)
+     *
+     * Medido el 23/09/2026 sobre la base de desarrollo: 123 filas leídas contra 2, mismo
+     * resultado ($23.894.765,50).
+     */
+    prisma.cuotas.aggregate({
+      where: whereCuotasVivas,
+      _count: true,
+      _sum: { cuota_total: true, pagado: true },
+    }),
+    prisma.cuotas.aggregate({
+      where: { ...whereCuotasVivas, pagado: { gt: prisma.cuotas.fields.cuota_total } },
+      _sum: { cuota_total: true, pagado: true },
     }),
 
     // Movimiento de HOY (día comercial argentino): lo que entró y lo que se colocó.
@@ -219,7 +246,9 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
    * Lo que falta cobrar de los créditos vivos. `Math.max(0, …)` porque un cobro con excedente
    * deja `pagado` por encima de la cuota y, sin el corte, esa cuota restaría del total.
    */
-  const aCobrarTotal = cuotasVivas.reduce((s, c) => s + Math.max(0, c.cuota_total - c.pagado), 0);
+  const aCobrarTotal =
+    (cuotasVivas._sum.cuota_total ?? 0) - (cuotasVivas._sum.pagado ?? 0) +
+    ((excedenteVivas._sum.pagado ?? 0) - (excedenteVivas._sum.cuota_total ?? 0));
 
   const montosMora = {
     // Misma cartera viva que el conteo: el importe y la cantidad tienen que hablar de los
@@ -317,7 +346,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
       /** Lo que falta cobrar de los créditos vivos (capital + interés + cargos, sin mora). */
       a_cobrar_total: aCobrarTotal,
       /** En cuántas cuotas está repartida esa deuda: el dato que acompaña al importe. */
-      cuotas_por_cobrar: cuotasVivas.length,
+      cuotas_por_cobrar: cuotasVivas._count,
       mora_critica_count: moraCritica,
     },
     hoy: {

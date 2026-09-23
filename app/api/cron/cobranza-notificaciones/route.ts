@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { sincronizarAcuerdos, creditosConAcuerdoVigente, cubiertoPorAcuerdo } from "@/lib/acuerdos";
+import { purgarAuditoria } from "@/lib/mantenimiento";
 import { Prisma } from "@prisma/client";
 import { sinDeuda, ESTADOS_VIVOS, resolverPlantillasMeta, debeDarsePorIncobrable, resolverRecupero, diasMoraActual, type PlantillaMeta, formatPesos } from "@/lib/domain";
 import { enviarWhatsappApi, whatsappApiDisponible, type WhatsappApiConfig } from "@/lib/whatsapp";
@@ -91,6 +92,12 @@ async function ejecutarCron(req: NextRequest) {
   const incobrables = await pasarRefinanciacionesCaidasAIncobrable(hoyComercial());
 
   const sinPlan = await detectarCreditosSinPlan(hoy);
+
+  /**
+   * Mantenimiento: la traza de auditoría no se borraba nunca. Apagado salvo que alguien fije
+   * `AUDITORIA_RETENCION_DIAS` — borrar auditoría no se deshace. Ver lib/mantenimiento.ts.
+   */
+  const purga = await purgarAuditoria();
 
   // Obtener todos los tenants con configuración de canales activa
   const configs = await prisma.configuraciones.findMany({
@@ -392,7 +399,7 @@ async function ejecutarCron(req: NextRequest) {
     resultados.push({ tenant_id: config.tenant_id, enviados, errores });
   }
 
-  return NextResponse.json({ ok: true, promesas, acuerdos, reconciliacion, incobrables, sinPlan, procesados: configs.length, resultados });
+  return NextResponse.json({ ok: true, promesas, acuerdos, reconciliacion, incobrables, sinPlan, purga, procesados: configs.length, resultados });
 }
 
 /**

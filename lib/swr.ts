@@ -1481,6 +1481,18 @@ export function useCreditos() {
   return { creditos, total, truncado: total > creditos.length, error, isLoading, mutate };
 }
 
+/** Los KPI de Créditos, calculados por el servidor sobre TODA la cartera. */
+export interface CreditosKpis {
+  activos: number; alDia: number; enMora: number; cartera: number; promedio: number;
+  moraCritica: number; montoCritico: number; pagados: number; montoPagado: number; total: number;
+}
+
+/** Ver `/api/creditos/kpis`: no salen de la lista, que está topeada en 1.000. */
+export function useCreditosKpis() {
+  const { data, mutate } = useSWR<CreditosKpis>("/api/creditos/kpis", { refreshInterval: 120_000 });
+  return { kpis: data ?? null, mutate };
+}
+
 /** Los KPI de Cobranzas, calculados por el servidor sobre TODA la cartera viva. */
 export interface CobranzaKpis {
   cartera: { esperado: number; enMora: number; alDia: number };

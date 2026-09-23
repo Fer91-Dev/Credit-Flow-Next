@@ -48,24 +48,25 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
       include: { credito: { select: { cliente: { select: { nombre: true, apellido: true } } } } },
       orderBy: { fecha: "desc" },
     }),
+    /**
+     * 🔴 LA CARTERA ENTERA, PERO SIN LAS CUOTAS.
+     *
+     * Antes esta consulta traía TODOS los créditos con TODAS sus cuotas, y las cuotas solo
+     * hacen falta para calcular los punitorios de los que están EN MORA. Con una cartera al
+     * día, eso es traer decenas de miles de filas para no usar ninguna: a 5.000 créditos son
+     * ~38.000 cuotas por cada vez que alguien abre Reportes.
+     *
+     * Ahora se hacen dos consultas: esta, liviana, para los snapshots de cartera y para
+     * saber QUIÉNES están en mora; y una segunda, más abajo, que pide las cuotas únicamente
+     * de esos. Ningún número cambia — cambia cuánto se lee para llegar al mismo resultado.
+     */
     prisma.creditos.findMany({
       where: { ...withTenant(tenantId) },
       select: {
         id: true, estado: true, monto_original: true, saldo_pendiente: true,
-        tasa: true, plazo_meses: true, frecuencia: true, frecuencia_def: true, dias_mora: true, proximo_pago: true,
+        dias_mora: true, proximo_pago: true, tasa: true, plazo_meses: true,
         cronograma: true, // trae la mora congelada del crédito
-        created_at: true, fecha_inicio: true, es_refinanciacion: true, tipo_credito: true,
-        // Sin las cuotas no se puede calcular la mora real: se devenga POR CUOTA vencida.
-        cuotas: {
-          select: {
-            fecha_vencimiento: true, cuota_total: true, capitalizado: true, pagado_mora: true,
-            // Los componentes y lo cobrado de cada uno: hacen falta para saber si la cuota ya
-            // esta SALDADA. Una cuota saldada deja de devengar punitorios, y sin este dato el
-            // reporte seguia sumando mora de cuotas que el cliente ya pago.
-            capital: true, interes: true, iva: true, seguro: true, gastos: true, honorarios: true,
-            pagado_capital: true, pagado_interes: true, pagado_cargos: true, condonado_mora: true,
-          },
-        },
+        fecha_inicio: true, es_refinanciacion: true, tipo_credito: true,
       },
     }),
     getConfiguracion(tenantId),
@@ -196,26 +197,57 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
    * Reportes volvía a contar punitorios que la caja no cobra.
    */
   const congelan = await congelamientoPorCredito(tenantId, enMora.map((c) => c.id));
+  /**
+   * Las cuotas, AHORA SÍ, y solo de los créditos en mora. Es la única parte del reporte que
+   * las necesita: un crédito al día no devenga punitorios, así que leer su plan no aporta un
+   * peso al resultado.
+   *
+   * Se piden por lotes para que la cantidad de morosos no decida cuánta memoria usa la
+   * función. Con 500 por vuelta, una cartera de 5.000 morosos entra en diez consultas de
+   * tamaño conocido en vez de en una sola que puede no entrar.
+   */
   let interesMoraTotal = 0;
-  for (const c of enMora) {
-    // Cada crédito con SU mora pactada. Usar la config de hoy para todos hacía que cambiarla
-    // reescribiera la mora histórica de la cartera entera en los reportes.
-    const mc = moraDelCredito(moraDesdeCronograma(c.cronograma), config);
-    if (!mc.moraActiva) continue;
-    const gracia = (c.cronograma as { diasGracia?: number } | null)?.diasGracia ?? config.simulador.diasGracia;
-    interesMoraTotal += moraPendienteTotal(
-      c.cuotas.map((q) => ({
-        fechaVencimiento: q.fecha_vencimiento,
-        baseMora: baseMoraDeCuota(q),
-        pagadoMora: q.pagado_mora,
-        condonadoMora: q.condonado_mora,
-        pendienteSinMora: pendienteSinMoraDeCuota(q),
-      })),
-      {
-        tasaDiaria: mc.tasaMoraDiaria, diasGracia: gracia, topePct: mc.topeMoraPct, hoy: hoyMora,
-        moraCongeladaAl: congelan.get(c.id) ?? null,
+  const LOTE = 500;
+  for (let i = 0; i < enMora.length; i += LOTE) {
+    const ids = enMora.slice(i, i + LOTE).map((c) => c.id);
+    const conCuotas = await prisma.cuotas.findMany({
+      where: { ...withTenant(tenantId), credito_id: { in: ids } },
+      select: {
+        credito_id: true,
+        fecha_vencimiento: true, cuota_total: true, capitalizado: true, pagado_mora: true,
+        // Los componentes y lo cobrado de cada uno: hacen falta para saber si la cuota ya
+        // esta SALDADA. Una cuota saldada deja de devengar punitorios, y sin este dato el
+        // reporte seguia sumando mora de cuotas que el cliente ya pago.
+        capital: true, interes: true, iva: true, seguro: true, gastos: true, honorarios: true,
+        pagado_capital: true, pagado_interes: true, pagado_cargos: true, condonado_mora: true,
       },
-    );
+    });
+    const porCredito = new Map<string, typeof conCuotas>();
+    for (const q of conCuotas) {
+      const lista = porCredito.get(q.credito_id) ?? [];
+      lista.push(q);
+      porCredito.set(q.credito_id, lista);
+    }
+    for (const c of enMora.slice(i, i + LOTE)) {
+      // Cada crédito con SU mora pactada. Usar la config de hoy para todos hacía que cambiarla
+      // reescribiera la mora histórica de la cartera entera en los reportes.
+      const mc = moraDelCredito(moraDesdeCronograma(c.cronograma), config);
+      if (!mc.moraActiva) continue;
+      const gracia = (c.cronograma as { diasGracia?: number } | null)?.diasGracia ?? config.simulador.diasGracia;
+      interesMoraTotal += moraPendienteTotal(
+        (porCredito.get(c.id) ?? []).map((q) => ({
+          fechaVencimiento: q.fecha_vencimiento,
+          baseMora: baseMoraDeCuota(q),
+          pagadoMora: q.pagado_mora,
+          condonadoMora: q.condonado_mora,
+          pendienteSinMora: pendienteSinMoraDeCuota(q),
+        })),
+        {
+          tasaDiaria: mc.tasaMoraDiaria, diasGracia: gracia, topePct: mc.topeMoraPct, hoy: hoyMora,
+          moraCongeladaAl: congelan.get(c.id) ?? null,
+        },
+      );
+    }
   }
   const morosidad = {
     en_mora: enMora.length,

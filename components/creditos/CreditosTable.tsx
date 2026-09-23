@@ -6,7 +6,7 @@ import { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { FileText, ChevronDown, X, RefreshCw, History } from "lucide-react";
 import { CompararRefiDialog } from "./CompararRefiDialog";
-import { useCreditos, KEYS, type Credito, useTramosMora, useDiasLegales } from "@/lib/swr";
+import { useCreditos, useCreditosKpis, KEYS, type Credito, useTramosMora, useDiasLegales } from "@/lib/swr";
 import { type Role } from "@/lib/auth/roles";
 import { formatCreditoNumero, nombreCompleto, formatFecha, formatFechaHora, eventoPropio, teclaDelContenedor, formatDias, formatMonto, pctDe } from "@/lib/utils";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -46,6 +46,8 @@ export function CreditosTable({ role }: { role: Role }) {
   const tramos = useTramosMora();
   const router = useRouter();
   const { creditos, total: totalCreditos, error, isLoading } = useCreditos();
+  /* Los KPI los calcula el servidor sobre toda la cartera: la lista de acá está topeada. */
+  const { kpis: kpisServer } = useCreditosKpis();
   /**
    * 🔴 EL DETALLE ES UNA PANTALLA, NO UN DIÁLOGO DE ESTA LISTA.
    *
@@ -134,7 +136,7 @@ export function CreditosTable({ role }: { role: Role }) {
    * hay parada en la mora crítica. Un número solo dice "5" y no dice si eso son $50.000 o
    * $5.000.000 — que es lo que cambia qué se hace el lunes.
    */
-  const kpis = useMemo(() => {
+  const kpisLocales = useMemo(() => {
     // Cartera VIVA: incluye los vencidos, que siguen siendo plata en la calle.
     const vivos = creditos.filter(c => esCreditoVivo(c.estado));
     const criticos = creditos.filter(c => severidadMora(c.dias_mora, tramos) === "critica");
@@ -156,6 +158,9 @@ export function CreditosTable({ role }: { role: Role }) {
       total:         creditos.length,
     };
   }, [creditos, tramos]);
+  /* Manda el servidor. La cuenta local queda de respaldo para el primer render y por si la
+     consulta falla: es la misma fórmula, solo que sobre la lista cargada. */
+  const kpis = kpisServer ?? kpisLocales;
 
   const totals = useMemo(() => ({
     monto:  filtered.reduce((s, c) => s + c.monto_original, 0),
