@@ -243,7 +243,11 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
       // de la más vieja, que con varias vencidas mostraba menos de la mitad de lo real.
       interes_mora = moraPendienteTotal(
         c.cuotas.map((q) => ({ fechaVencimiento: q.fecha_vencimiento, baseMora: baseMoraDeCuota(q), pagadoMora: q.pagado_mora, condonadoMora: q.condonado_mora, pendienteSinMora: pendienteSinMoraDeCuota(q) })),
-        { tasaDiaria: mc.tasaMoraDiaria, diasGracia: graciaCred, hoy: hoyCredito, topePct: mc.topeMoraPct },
+        {
+          tasaDiaria: mc.tasaMoraDiaria, diasGracia: graciaCred, hoy: hoyCredito, topePct: mc.topeMoraPct,
+          // El mismo freno que `vencido`, o la fila mostraría punitorios que no suman a su deuda.
+          moraCongeladaAl: acuerdoVigenteDe(c.id),
+        },
       );
     }
     /**

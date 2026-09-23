@@ -23,7 +23,7 @@ import {
   sugerirOfertaCancelacion,
   acuerdoCubreElAtraso,
   reclamoDeCampana,
-  plantillaDeAcuerdo,
+  TEMPLATE_ACUERDO_DEFAULT,
   audienciaDeCampana,
   type CanalCampana,
 } from "@/lib/domain";
@@ -386,7 +386,11 @@ function CampanaWorkspace({ role, creditos: todosCreditos, bloqueados, onCancela
    * otros tres grupos lo excluyen explícitamente además de por descarte.
    */
   /**
-   * EL ACUERDO QUE CUBRE EL ATRASO DE UN CRÉDITO, o null.
+   * EL ACUERDO QUE PROTEGE A UN CRÉDITO, o null.
+   *
+   * Dos condiciones, las dos necesarias: que CUBRA su atraso (todo lo que debe entró al
+   * arreglo) y que la cuota pactada esté AL DÍA. Si dejó de pagarla, el arreglo se cayó y el
+   * crédito vuelve a ser un moroso del plan original — Fernando, 23/09/2026.
    *
    * Una sola definición para la pantalla entera —las cuatro pestañas, la fila de la tabla, los
    * totales y la vista previa—, y la misma regla que el servidor. Si la fila mostrara la cuota
@@ -394,7 +398,7 @@ function CampanaWorkspace({ role, creditos: todosCreditos, bloqueados, onCancela
    * cliente le llegaría $525.351,91.
    */
   const acuerdoDe = (c: Credito) =>
-    c.acuerdo && acuerdoCubreElAtraso(c.acuerdo.fecha, c.proximo_pago) ? c.acuerdo : null;
+    c.acuerdo && c.acuerdo.al_dia && acuerdoCubreElAtraso(c.acuerdo.fecha, c.proximo_pago) ? c.acuerdo : null;
 
   /**
    * 🔴 EL QUE CUMPLE UN ACUERDO SE CUENTA EN "RECORDAR", NO EN "RECLAMAR".
@@ -600,17 +604,14 @@ function CampanaWorkspace({ role, creditos: todosCreditos, bloqueados, onCancela
    * lee un texto y al cliente le llega otro.
    */
   const acuerdoQueCubre = (o: (typeof objetivos)[number]) =>
-    !esRecupero &&
-    o.credito.acuerdo && acuerdoCubreElAtraso(o.credito.acuerdo.fecha, o.credito.proximo_pago)
-      ? o.credito.acuerdo
-      : null;
+    !esRecupero ? acuerdoDe(o.credito) : null;
 
   const reclamoPara = (o: (typeof objetivos)[number]) => {
     const a = acuerdoQueCubre(o);
     return reclamoDeCampana(
       o.oferta.montoConDescuento,
       o.credito.dias_mora,
-      a ? { proxima: a.proxima ? { ...a.proxima, vencimiento: new Date(a.proxima.vencimiento) } : null, total_cuotas: a.total_cuotas } : null,
+      a ? { proxima: a.proxima ? { ...a.proxima, vencimiento: new Date(a.proxima.vencimiento) } : null, total_cuotas: a.total_cuotas, al_dia: a.al_dia } : null,
       new Date(),
     );
   };
@@ -619,7 +620,7 @@ function CampanaWorkspace({ role, creditos: todosCreditos, bloqueados, onCancela
     const r = reclamoPara(o);
     /* Con acuerdo, el texto NO es el que escribió el operador: ese habla de regularizar un
        atraso que el arreglo ya dejó atrás. Es la misma sustitución que hace el envío. */
-    const plantilla = r.porAcuerdo ? plantillaDeAcuerdo(r) : form.mensaje_template;
+    const plantilla = r.porAcuerdo ? TEMPLATE_ACUERDO_DEFAULT : form.mensaje_template;
     return construirMensajeCampana(plantilla, {
       nombre: nombreCompleto(o.credito.cliente),
       // En un recupero [Monto] es lo que se le OFRECE para cancelar, no lo que se le reclama.
@@ -1696,9 +1697,7 @@ function TablaAudiencia({
               {/* Lo mismo con la fecha: "vence el 10/08/2026" sobre algo que venció hace 28
                   días es el mismo error escrito de otra forma. */}
               {o.acuerdoCubre
-                ? o.acuerdoCubre.al_dia
-                  ? formatFecha(o.acuerdoCubre.proxima?.vencimiento ?? null)
-                  : formatDias(Math.max(0, Math.floor((Date.now() - new Date(o.acuerdoCubre.proxima?.vencimiento ?? Date.now()).getTime()) / 86_400_000)))
+                ? formatFecha(o.acuerdoCubre.proxima?.vencimiento ?? null)
                 : esRecordatorio && o.credito.dias_mora <= 0
                 ? formatFecha(o.credito.proximo_pago)
                 : formatDias(o.credito.dias_mora)}

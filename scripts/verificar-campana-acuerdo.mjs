@@ -172,8 +172,8 @@ try {
     ok(!/\d+ dias de atraso/.test(texto), "no se le habla de dias de atraso: la cuota pactada todavia no vencio");
   }
 
-  // -- 3b. Y si la cuota PACTADA ya se atraso, el texto es el otro ----------
-  H2("La cuota pactada atrasada: el acuerdo todavia se puede salvar");
+  // -- 3b. Si la pactada se atraso, el arreglo se cayo: vuelve el plan viejo -
+  H2("La cuota pactada atrasada: vuelve a regir el plan original");
   {
     /* Se corre el vencimiento de la cuota pactada cinco dias hacia atras para poder ver el
        mensaje que sale en ese caso, y se devuelve a su fecha en el finally. El acuerdo NO se
@@ -194,13 +194,15 @@ try {
     ok(camp3.ok, "con la pactada vencida SI entra en la campana de morosos", camp3.error ?? "");
     if (camp3.ok) {
       creadas.push(camp3.data.id);
+      const o3 = await db.campana_objetivo.findFirst({ where: { campana_id: camp3.data.id } });
+      ok(o3.cuota_monto === null, "ya no se le congela la cuota pactada: el arreglo se cayo");
       const envio3 = await api("POST", `/api/cobranza/campanas/${camp3.data.id}/enviar`);
       const texto3 = decodeURIComponent((envio3.data?.resultados?.[0]?.link ?? "").split("text=")[1] ?? "");
       console.log(`     "${texto3}"`);
-      ok(/acuerdo de pago/i.test(texto3), "sigue hablando del acuerdo, no del plan viejo");
-      ok(/sigue en pie/i.test(texto3), "le avisa que el acuerdo todavia se puede sostener");
-      ok(/5 dias de atraso/.test(texto3), "cuenta los dias de la cuota PACTADA, no los del plan", "5 dias");
-      ok(texto3.includes(miles(pendPactada)), "con el importe de la cuota pactada", miles(pendPactada));
+      ok(!/acuerdo de pago/i.test(texto3), "NO le habla del acuerdo: dejo de pagarlo");
+      ok(/regularizas tu situacion/i.test(texto3), "recibe el reclamo del plan original que escribio el operador");
+      ok(texto3.includes(miles(o3.oferta_monto)), "con el importe del plan", miles(o3.oferta_monto));
+      ok(!texto3.includes(miles(pendPactada)), "y no con el de la cuota pactada", miles(pendPactada));
     }
     await db.acuerdo_cuota.update({ where: { id: pactada.id }, data: { vencimiento: original } });
     restaurarPactada = null;

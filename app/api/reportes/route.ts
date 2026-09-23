@@ -2,6 +2,7 @@ import { requireRole } from "@/lib/auth";
 import { successResponse, withErrorHandler } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
+import { congelamientoPorCredito } from "@/lib/acuerdos";
 import { nombreCompleto, hoyComercial, inicioDiaAR, finDiaAR } from "@/lib/utils";
 import { round2, costoFondeo, ingresoFinanciero, resumenOperaciones, esOperacionColocada, diasMoraActual, esCreditoVivo, moraDelCredito, moraDesdeCronograma, moraPendienteTotal, severidadMora, baseMoraDeCuota, pendienteSinMoraDeCuota } from "@/lib/domain";
 import { getConfiguracion, getRentabilidadConfig, getCobranzaConfig } from "@/lib/config";
@@ -50,7 +51,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     prisma.creditos.findMany({
       where: { ...withTenant(tenantId) },
       select: {
-        estado: true, monto_original: true, saldo_pendiente: true,
+        id: true, estado: true, monto_original: true, saldo_pendiente: true,
         tasa: true, plazo_meses: true, frecuencia: true, frecuencia_def: true, dias_mora: true, proximo_pago: true,
         cronograma: true, // trae la mora congelada del crédito
         created_at: true, fecha_inicio: true, es_refinanciacion: true, tipo_credito: true,
@@ -189,6 +190,12 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
    * `moraPendienteTotal` es exactamente lo que usa `/api/creditos` y lo que descuenta un
    * cobro: una sola definición para lo que se informa y para lo que se cobra.
    */
+  /**
+   * Los acuerdos que frenaron los punitorios. El comentario de arriba dice que este número
+   * tiene que ser el mismo que informa Morosos y el que descuenta un cobro: sin el freno,
+   * Reportes volvía a contar punitorios que la caja no cobra.
+   */
+  const congelan = await congelamientoPorCredito(tenantId, enMora.map((c) => c.id));
   let interesMoraTotal = 0;
   for (const c of enMora) {
     // Cada crédito con SU mora pactada. Usar la config de hoy para todos hacía que cambiarla
@@ -204,7 +211,10 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
         condonadoMora: q.condonado_mora,
         pendienteSinMora: pendienteSinMoraDeCuota(q),
       })),
-      { tasaDiaria: mc.tasaMoraDiaria, diasGracia: gracia, topePct: mc.topeMoraPct, hoy: hoyMora },
+      {
+        tasaDiaria: mc.tasaMoraDiaria, diasGracia: gracia, topePct: mc.topeMoraPct, hoy: hoyMora,
+        moraCongeladaAl: congelan.get(c.id) ?? null,
+      },
     );
   }
   const morosidad = {

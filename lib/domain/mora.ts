@@ -157,13 +157,28 @@ export function moraRestanteDeCuota(
  */
 export function moraPendienteTotal(
   cuotas: CuotaParaMora[],
-  opciones: { tasaDiaria?: number; diasGracia?: number; hoy?: Date; hasta?: Date | null; topePct?: number } = {},
+  opciones: {
+    tasaDiaria?: number; diasGracia?: number; hoy?: Date; hasta?: Date | null; topePct?: number;
+    /**
+     * Fecha del acuerdo de pago vigente que congela los punitorios, o null.
+     *
+     * 🔴 Distinto de `hasta`, y por eso son dos. `hasta` recorta TODAS las cuotas —sirve para
+     * un freno absoluto, como el fallecimiento—; un acuerdo congela solo lo que ya estaba
+     * vencido cuando se firmó, que es lo que entró al trato (`topeMoraDeCuota`).
+     *
+     * Faltaba: la lista de morosos mostraba $649.656,24 de deuda —ya con el freno— y al lado
+     * $106.823,40 de punitorios sin frenar, que no suman a esa deuda. Dos cuentas para el
+     * mismo peso en la MISMA fila (CRD-000007, 23/09/2026).
+     */
+    moraCongeladaAl?: Date | null;
+  } = {},
 ): number {
   const hoy = opciones.hoy ?? new Date();
   const tope = fechaTopeMora(hoy, opciones.hasta);
+  const congeladaAl = opciones.moraCongeladaAl ?? null;
   let total = 0;
   for (const c of cuotas) {
-    const dias = diasAtraso(c.fechaVencimiento, tope);
+    const dias = diasAtraso(c.fechaVencimiento, topeMoraDeCuota(c.fechaVencimiento, tope, congeladaAl));
     if (dias <= 0) continue;
     // Misma cuenta que hace el cobro, cuota por cuota (incluida la regla de la cuota saldada:
     // sin ella, los KPI seguían contando punitorios de cuotas que el cliente ya pagó).

@@ -104,15 +104,6 @@ export const TEMPLATE_ACUERDO_DEFAULT =
   "Manteniendo el acuerdo al día conservás las condiciones que arreglamos. ¡Gracias!";
 
 /**
- * Plantilla del acuerdo cuando la cuota pactada YA SE ATRASÓ. El acuerdo todavía está vigente
- * —no llegó a romperse— así que lo que está en juego es el acuerdo entero, no una cuota del
- * plan viejo: es lo que hay que decirle, y es la última oportunidad de que no se caiga.
- */
-export const TEMPLATE_ACUERDO_ATRASADO =
-  "Hola [Nombre], la cuota de $[Monto] de tu acuerdo de pago venció el [Vence] y lleva [Dias] dias de atraso. " +
-  "El acuerdo sigue en pie mientras las cuotas se paguen: comunicate con nosotros para regularizarla.";
-
-/**
  * A QUÉ CAMPAÑA PERTENECE UN CRÉDITO. Una sola definición para la pantalla y el servidor.
  *
  * 🔴 EL QUE CUMPLE UN ACUERDO NO ES UN MOROSO.
@@ -132,10 +123,12 @@ export const TEMPLATE_ACUERDO_ATRASADO =
  *
  *  1. **castigado** → `recupero`. Ya salió del circuito; no se le reclama el nominal.
  *  2. **cobro bloqueado** → `refinanciacion`. Su plan venció y la terminal rechaza el cobro.
- *  3. **cubierto por un acuerdo vigente** → depende de la CUOTA PACTADA, no del plan:
- *     · pactada al día  → `vencimiento`, que es el recordatorio que pidió Fernando.
- *     · pactada vencida → `mora`, porque ahí sí está incumpliendo — pero el mensaje habla del
- *       acuerdo (`TEMPLATE_ACUERDO_ATRASADO`), que es lo que está en juego.
+ *  3. **cubierto por un acuerdo vigente, con la cuota pactada AL DÍA** → `vencimiento`, que
+ *     es el recordatorio que pidió Fernando. Y solo ahí: si la pactada no se pagó, el arreglo
+ *     se cae y vuelve a regir el plan original, así que ese crédito es un moroso como
+ *     cualquier otro y recibe el reclamo del plan. Fernando (23/09/2026): "si la cuota del
+ *     acuerdo no está pagada el plan se cae y automáticamente le debe comunicar la cuota del
+ *     plan original".
  *  4. el resto, por su atraso del plan.
  */
 export type AudienciaCampana = "vencimiento" | "mora" | "refinanciacion" | "recupero";
@@ -148,12 +141,13 @@ export function audienciaDeCampana(c: {
   /**
    * El acuerdo vigente que CUBRE el atraso de este crédito. `null` si no tiene, o si arrastra
    * una cuota que venció después de firmarlo (esa no entró al trato y se reclama normal).
+   * Con la pactada ya vencida el acuerdo deja de proteger: cae en el reclamo del plan.
    */
   acuerdo: { pactadaAlDia: boolean } | null;
 }): AudienciaCampana {
   if (c.castigado) return "recupero";
   if (c.cobroBloqueado) return "refinanciacion";
-  if (c.acuerdo) return c.acuerdo.pactadaAlDia ? "vencimiento" : "mora";
+  if (c.acuerdo?.pactadaAlDia) return "vencimiento";
   return c.diasMora > 0 ? "mora" : "vencimiento";
 }
 
@@ -194,10 +188,12 @@ export function reclamoDeCampana(
    * El acuerdo vigente que CUBRE a este crédito, con su próxima cuota pactada. `null` cuando
    * no hay acuerdo o cuando el crédito arrastra una cuota posterior al arreglo.
    */
-  acuerdo: { proxima: { numero: number; vencimiento: Date; pendiente: number } | null; total_cuotas: number } | null,
+  acuerdo: { proxima: { numero: number; vencimiento: Date; pendiente: number } | null; total_cuotas: number; al_dia: boolean } | null,
   hoy: Date,
 ): ReclamoCampana {
-  const pactada = acuerdo?.proxima ?? null;
+  /* 🔴 Solo mientras CUMPLE. Con la pactada vencida el arreglo se cayó y lo que se le
+     comunica es la cuota del plan original — ver `audienciaDeCampana`. */
+  const pactada = acuerdo?.al_dia ? acuerdo.proxima : null;
   if (!pactada) {
     return { monto: round2(vencidoDelPlan), vence: null, dias: diasDelPlan, porAcuerdo: false, cuotaNro: null, totalCuotas: null };
   }
@@ -211,11 +207,6 @@ export function reclamoDeCampana(
     cuotaNro: pactada.numero,
     totalCuotas: acuerdo ? acuerdo.total_cuotas : null,
   };
-}
-
-/** La plantilla que le corresponde a un reclamo por acuerdo, según esté al día o atrasado. */
-export function plantillaDeAcuerdo(r: ReclamoCampana): string {
-  return r.dias > 0 ? TEMPLATE_ACUERDO_ATRASADO : TEMPLATE_ACUERDO_DEFAULT;
 }
 
 export const TEMPLATE_REFINANCIACION_DEFAULT =

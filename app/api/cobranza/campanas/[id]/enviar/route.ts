@@ -3,7 +3,7 @@ import { successResponse, errorResponse, withErrorHandler, assertSameOrigin } fr
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { getComunicacionConfig, getCobranzaConfig } from "@/lib/config";
-import { construirMensajeCampana, linkWhatsapp, contactoBloqueado, esCreditoVivo, esCreditoIncobrable, resolverPlantillasMeta, TEMPLATE_ACUERDO_DEFAULT, TEMPLATE_ACUERDO_ATRASADO } from "@/lib/domain";
+import { construirMensajeCampana, linkWhatsapp, contactoBloqueado, esCreditoVivo, esCreditoIncobrable, resolverPlantillasMeta, TEMPLATE_ACUERDO_DEFAULT } from "@/lib/domain";
 import { enviarWhatsappApi, whatsappApiDisponible, type WhatsappApiConfig } from "@/lib/whatsapp";
 import { nombreCompleto, formatFecha } from "@/lib/utils";
 import { enviarEmailTenant, motivoEmailNoDisponible, type EmailTenantConfig } from "@/lib/mailer-tenant";
@@ -217,10 +217,13 @@ export const POST = withErrorHandler(async (
      * refinanciación `cuota_monto` solo se llena en este caso (en un recordatorio es la cuota
      * del plan, y en un recupero no hay acuerdo que valga).
      */
+    /* Y con la cuota pactada AL DÍA: si dejó de pagarla, el arreglo se cayó y lo que
+       corresponde es el reclamo del plan original, no un recordatorio del acuerdo. */
     const cubierto = campana.tipo !== "recupero"
       && cubiertoPorAcuerdo(acuerdosVigentes, objetivo.credito_id, objetivo.credito.proximo_pago)
       ? situacionAcuerdo.get(objetivo.credito_id) ?? null
       : null;
+    const cumpliendo = cubierto?.al_dia ? cubierto : null;
     /**
      * El acuerdo se CAYÓ después de armar la campaña. El objetivo se congeló sobre la cuota
      * pactada, así que mandar lo que dice el snapshot sería hablarle de un arreglo que ya no
@@ -236,22 +239,22 @@ export const POST = withErrorHandler(async (
      */
     const eraPorAcuerdo = objetivo.cuota_monto != null && objetivo.vence_el != null
       && (campana.tipo !== "vencimiento" || objetivo.dias_mora > 0);
-    if (eraPorAcuerdo && !cubierto) {
-      const motivo = "Su acuerdo de pago dejó de estar vigente después de armar la campaña";
+    if (eraPorAcuerdo && !cumpliendo) {
+      const motivo = cubierto
+        ? "Dejó de pagar la cuota de su acuerdo después de armar la campaña: ya no corresponde un recordatorio"
+        : "Su acuerdo de pago dejó de estar vigente después de armar la campaña";
       await marcar(objetivo.id, "manual", motivo);
       resultados.push({ cliente_id: clienteId, nombre, metodo: "manual", error: motivo });
       continue;
     }
-    const porAcuerdo = !!cubierto && eraPorAcuerdo;
+    const porAcuerdo = !!cumpliendo && eraPorAcuerdo;
     /* Días de atraso de LO QUE SE RECLAMA. Con acuerdo son los de la cuota pactada —0 si
        todavía no venció—, no los del plan original, que es justamente el número que hacía
        decir "76 días de atraso" a alguien que firmó ayer. */
     const diasReclamo = porAcuerdo
       ? Math.max(0, Math.floor((Date.now() - (objetivo.vence_el as Date).getTime()) / 86_400_000))
       : objetivo.dias_mora;
-    const textoFinal = porAcuerdo
-      ? (diasReclamo > 0 ? TEMPLATE_ACUERDO_ATRASADO : TEMPLATE_ACUERDO_DEFAULT)
-      : template;
+    const textoFinal = porAcuerdo ? TEMPLATE_ACUERDO_DEFAULT : template;
 
     const mensaje = construirMensajeCampana(textoFinal, {
       nombre,

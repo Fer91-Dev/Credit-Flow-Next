@@ -33,7 +33,7 @@ import { ModalHeader, MODAL_CONTENT_WIDE, SIN_CIERRE_ACCIDENTAL } from "@/compon
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
 import { useConfirm } from "@/components/ui/confirm";
-import { esCreditoVivo, contactoBloqueado, severidadMora, normalizarTelefonoAR } from "@/lib/domain";
+import { esCreditoVivo, contactoBloqueado, severidadMora, normalizarTelefonoAR, acuerdoCubreElAtraso } from "@/lib/domain";
 
 
 const fmtDate = (s: string) => formatFecha(s);
@@ -221,13 +221,37 @@ export function CobranzaTable({ role }: { role: Role }) {
   const motivoCorto = (c: Credito) => (c.cliente?.no_contactar ? "No contactar" : "Fallecido");
 
   /**
+   * 🔴 EL QUE ESTÁ CUMPLIENDO SU ACUERDO TAMPOCO SE PUEDE TILDAR ACÁ.
+   *
+   * Fernando (23/09/2026): "si me deja insertar en morosos a Silvana Noemí Ledesma, CRD-000007,
+   * y esto no debería pasar; si dice acuerdo vigente, que no me deje incluirlo a una campaña
+   * de Morosos si la cuota del acuerdo no está vencida".
+   *
+   * El servidor ya lo rechazaba y la pantalla de campaña ya lo mandaba a Vencimientos, pero
+   * el tilde seguía disponible acá: el operador marcaba 10 y se enteraba después. Es el mismo
+   * trato que el fallecido — el crédito se sigue VIENDO, con su badge "Acuerdo en curso" y su
+   * deuda, pero con el casillero apagado y el motivo en el `title`.
+   *
+   * 🔴 Y SOLO MIENTRAS CUMPLE. Si dejó de pagar la cuota pactada, el arreglo se cae y vuelve a
+   * regir el plan original: ahí es un moroso como cualquier otro y se lo puede reclamar.
+   */
+  const cumpliendoAcuerdo = (c: Credito) =>
+    !!c.acuerdo && c.acuerdo.al_dia && acuerdoCubreElAtraso(c.acuerdo.fecha, c.proximo_pago);
+  /** ¿Se lo puede meter en una campaña desde ESTA pestaña? */
+  const noCampanable = (c: Credito) => noContactable(c) || (tab === "morosos" && cumpliendoAcuerdo(c));
+  const motivoNoCampanable = (c: Credito) =>
+    noContactable(c)
+      ? `${contactoBloqueado(c.cliente).motivo}: no entra en campañas`
+      : "Está cumpliendo su acuerdo de pago: le corresponde un recordatorio de su cuota pactada, no un reclamo";
+
+  /**
    * Destildar el primero no borra a los demás: parte de la lista completa y saca ese, que es
    * lo que la pantalla venía mostrando. Y volver a tenerlos a todos vuelve al estado inicial,
    * para que el conteo siga al filtro de severidad si el operador lo mueve.
    */
   const toggleSel = (id: string) => {
     const cred = allCreditos.find(c => c.id === id);
-    if (cred && noContactable(cred)) return;
+    if (cred && noCampanable(cred)) return;
     const base = recorte ? new Set(seleccion) : new Set(visiblesIds);
     base.has(id) ? base.delete(id) : base.add(id);
     const todos = visiblesIds.length > 0 && visiblesIds.every(x => base.has(x));
@@ -397,7 +421,7 @@ export function CobranzaTable({ role }: { role: Role }) {
   // ── Audiencia de la campaña ──
   // "Todos" son todos los CONTACTABLES: si arrastrara a los fallecidos, el tilde de la
   // cabecera volvería a prometer un número que la campaña después no cumple.
-  const visiblesIds = sortedFiltered.filter(c => !noContactable(c)).map(c => c.id);
+  const visiblesIds = sortedFiltered.filter(c => !noCampanable(c)).map(c => c.id);
   /**
    * Los que van a recibir la campaña. Sin recorte, los que se están viendo.
    *
@@ -407,7 +431,7 @@ export function CobranzaTable({ role }: { role: Role }) {
    * con lo visible, esa segunda campaña —la de refinanciación, casi siempre— se perdía.
    */
   const destinatariosIds = recorte
-    ? creditos.filter(c => seleccion.has(c.id) && !noContactable(c)).map(c => c.id)
+    ? creditos.filter(c => seleccion.has(c.id) && !noCampanable(c)).map(c => c.id)
     : visiblesIds;
   const clave = destinatariosIds.join(",");
   const seleccionados = useMemo(
@@ -417,7 +441,18 @@ export function CobranzaTable({ role }: { role: Role }) {
   /** ¿Está incluido en el envío? Sin recorte, todo lo visible lo está. */
   const incluido = (id: string) => (recorte ? seleccion.has(id) : visiblesIds.includes(id));
   const todasVisiblesSel = visiblesIds.length > 0 && destinatariosIds.length === visiblesIds.length;
-  const bloqueadosVisibles = sortedFiltered.filter(noContactable).length;
+  const bloqueadosVisibles = sortedFiltered.filter(noCampanable).length;
+  /**
+   * Los dos motivos por los que un crédito visible no entra, contados por separado: decir
+   * "3 sin contactar (fallecido)" sobre alguien que está cumpliendo su acuerdo mandaría al
+   * operador a revisar una ficha que no tiene nada raro.
+   */
+  const sinContactar = sortedFiltered.filter(noContactable).length;
+  const enAcuerdo = bloqueadosVisibles - sinContactar;
+  const motivosAfuera = [
+    sinContactar > 0 ? `${sinContactar} sin contactar` : null,
+    enAcuerdo > 0 ? `${enAcuerdo} cumpliendo su acuerdo` : null,
+  ].filter(Boolean).join(" · ");
 
   /**
    * La selección viaja a la pantalla de campaña por `sessionStorage` (ver
@@ -798,7 +833,7 @@ export function CobranzaTable({ role }: { role: Role }) {
           </span>
           {/* A quién NO se le puede mandar nada, aunque esté en la lista. */}
           {bloqueadosVisibles > 0 && (
-            <span className="text-[11px] text-muted-foreground/60">{bloqueadosVisibles} sin contactar (fallecido)</span>
+            <span className="text-[11px] text-muted-foreground/60">{motivosAfuera}, fuera de la campaña</span>
           )}
         </div>
         {(search || filterMora !== "todas") && (
@@ -851,7 +886,7 @@ export function CobranzaTable({ role }: { role: Role }) {
                   checked={todasVisiblesSel}
                   onChange={toggleTodasVisibles}
                   title={bloqueadosVisibles > 0
-                    ? `Seleccionar todos los contactables (${bloqueadosVisibles} quedan afuera: fallecidos o con pedido de no contactar)`
+                    ? `Seleccionar todos los que pueden recibir la campaña (${motivosAfuera} quedan afuera)`
                     : "Seleccionar todos los visibles"}
                   className="h-4 w-4 rounded border-border accent-primary cursor-pointer"
                 />
@@ -861,8 +896,8 @@ export function CobranzaTable({ role }: { role: Role }) {
                 <input
                   type="checkbox"
                   checked={incluido(c.id)}
-                  disabled={noContactable(c)}
-                  title={noContactable(c) ? `${contactoBloqueado(c.cliente).motivo}: no entra en campañas` : undefined}
+                  disabled={noCampanable(c)}
+                  title={noCampanable(c) ? motivoNoCampanable(c) : undefined}
                   onChange={() => toggleSel(c.id)}
                   onClick={(e) => e.stopPropagation()}
                   className="h-4 w-4 rounded border-border accent-primary cursor-pointer disabled:cursor-not-allowed disabled:opacity-30"
