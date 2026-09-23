@@ -8,12 +8,11 @@ import { AlertCircle, Phone, Mail, Clock, Copy, CheckCheck, Search, DollarSign, 
 import { WhatsAppIcon } from "@/components/ui/WhatsAppIcon";
 import { MessageSquareText } from "lucide-react";
 import { descargarCSV } from "@/lib/csv";
-import { useCreditos, useAccionesCobranza, type Credito, type AccionCobranza, type AgendaItem, useTramosMora, useAlertaCobranza, useDiasSinGestion, useCobranzaKpis } from "@/lib/swr";
+import { useCreditos, useAccionesCobranza, type Credito, type AccionCobranza, type AgendaItem, useTramosMora, useAlertaCobranza, useDiasSinGestion, useCobranzaKpis, useCreditosIds } from "@/lib/swr";
 import { useDebounce } from "@/lib/use-debounce";
 import { type Role } from "@/lib/auth/roles";
 import { formatFecha, nombreCompleto, formatDias, formatMonto, formatCreditoNumero, pctDe } from "@/lib/utils";
 import { CreditoLink } from "@/components/ui/CreditoLink";
-import { ListaTruncada } from "@/components/ui/ListaTruncada";
 import { GestionForm, type CreditoCtx } from "./GestionForm";
 import { CobranzaDetail } from "./CobranzaDetail";
 import { guardarSeleccionCampana, leerSeleccionCampana, guardarTipoCampana } from "./seleccion-campana";
@@ -142,12 +141,33 @@ export function CobranzaTable({ role }: { role: Role }) {
    * `estado: "vivos"` evita traer lo que la pantalla iba a descartar de todos modos.
    */
   const qServidor = useDebounce(search.trim(), 250);
-  const { creditos: allCreditos, total: totalCreditos, truncado, error, isLoading } = useCreditos({
+  /** Filas por página. Las trae el servidor; la tabla ya no corta nada. */
+  const POR_PAGINA = 12;
+  const [pagina, setPagina] = useState(1);
+  /** Todo lo que recorta la lista viaja junto: es también la clave de "seleccionar todos". */
+  const filtrosServidor = {
     q: qServidor,
     mora: filterMora === "todas" ? "en_mora" : filterMora,
-    orden: "mora",
+    orden: "mora" as const,
     estado: "vivos",
+    contacto: filterContacto,
+  };
+  /* Cambiar un filtro vuelve a la página 1: quedarse en la 7 de una lista que ahora tiene 2
+     dejaba la tabla vacía con el paginador diciendo que hay páginas. */
+  useEffect(() => { setPagina(1); }, [qServidor, filterMora, filterContacto]);
+
+  const { creditos: allCreditos, total: totalCreditos, error, isLoading } = useCreditos({
+    ...filtrosServidor,
+    limit: POR_PAGINA,
+    offset: (pagina - 1) * POR_PAGINA,
   });
+  /**
+   * Los ids de TODOS los que cumplen el filtro, no los de la página. Es la audiencia de la
+   * campaña: con la lista paginada de a doce, "seleccionar todos" habría pasado a significar
+   * "estos doce" — y una campaña que sale a doce en vez de a doscientos no da error, sale
+   * corta. Es una consulta de una sola columna.
+   */
+  const { ids: idsDelFiltro } = useCreditosIds(filtrosServidor, puedeCampanas);
   /**
    * Los nombres de los tramos salen de la CONFIG del tenant, no escritos a mano: los cortes
    * (15–30, +30) son parámetros de la financiera y estaban puestos a dedo en los botones, así
@@ -336,18 +356,17 @@ export function CobranzaTable({ role }: { role: Role }) {
     [allCreditos],
   );
 
+  /**
+   * 🔴 YA NO SE FILTRA ACÁ. NADA.
+   *
+   * La búsqueda, el tramo de mora y el contacto reciente los resuelve el servidor, y la lista
+   * llega paginada de a doce. Volver a filtrar sobre esas doce filas dejaría, por ejemplo,
+   * dos — con el paginador diciendo "página 1 de 40". Un filtro aplicado sobre una página es
+   * un filtro que miente sobre el total.
+   *
+   * Lo que llega ES lo que se muestra.
+   */
   const filtered = useMemo(() => {
-    // Los cortes de la financiera, no 30 y 15 escritos acá: el chip dice "Crítica" y tiene
-    // que filtrar lo mismo que el Home y Reportes llaman crítico.
-    const bySeveridad = creditos.filter(c => {
-      if (filterMora === "critica") return severidadMora(c.dias_mora, tramos) === "critica";
-      if (filterMora === "alta")    return severidadMora(c.dias_mora, tramos) === "alta";
-      return true;
-    }).filter(c => {
-      if (filterContacto === "todos") return true;
-      const reciente = diasDesdeContacto(c) != null && diasDesdeContacto(c)! < diasSinGestion;
-      return filterContacto === "reciente" ? reciente : !reciente;
-    });
     /**
      * 🔴 LA BÚSQUEDA YA NO SE REPITE ACÁ, y sacarla fue necesario, no una simplificación.
      *
@@ -362,8 +381,8 @@ export function CobranzaTable({ role }: { role: Role }) {
      * no hace: la severidad —que también viaja, y esto es la red— y el contacto reciente,
      * que depende de las gestiones y se resuelve con datos de otra consulta.
      */
-    return bySeveridad;
-  }, [creditos, filterMora, filterContacto, tramos, diasSinGestion]);
+    return creditos;
+  }, [creditos]);
 
   /**
    * Los KPI de la cartera en mora.
@@ -469,7 +488,16 @@ export function CobranzaTable({ role }: { role: Role }) {
   // ── Audiencia de la campaña ──
   // "Todos" son todos los CONTACTABLES: si arrastrara a los fallecidos, el tilde de la
   // cabecera volvería a prometer un número que la campaña después no cumple.
-  const visiblesIds = sortedFiltered.filter(c => !noCampanable(c)).map(c => c.id);
+  /**
+   * 🔴 "TODOS" SON TODOS LOS QUE CUMPLEN EL FILTRO, no los de la página.
+   *
+   * Y vienen ya sin los que no pueden recibir una campaña: eso lo descarta el SERVIDOR
+   * (`campanables=1`), no esta pantalla. Cuando lo hacía acá solo podía juzgar a los que
+   * tenía a la vista, así que el contador del botón decía 8 en la página 1 y 9 en la 2 —los
+   * mismos créditos, dos números—. Un número que depende de dónde estás parado no sirve para
+   * decidir a quién le escribís.
+   */
+  const visiblesIds: string[] = idsDelFiltro;
   /**
    * Los que van a recibir la campaña. Sin recorte, los que se están viendo.
    *
@@ -871,13 +899,10 @@ export function CobranzaTable({ role }: { role: Role }) {
         )}
       </div>
 
-      <ListaTruncada
-        mostrados={allCreditos.length}
-        total={totalCreditos}
-        sustantivo="créditos"
-        nota="Los números de arriba sí están calculados sobre la cartera entera."
-      />
-
+      {/* 🔴 SIN AVISO DE LISTA RECORTADA: esta lista ya no se recorta, se PAGINA. El aviso
+          decía "el resto queda afuera de lo que se seleccione desde acá", y con el paginador
+          eso dejó de ser cierto —la selección es sobre todos los que cumplen el filtro—. Un
+          cartel que avisa de un problema que ya no existe enseña a ignorar los carteles. */}
       {/* Encabezado de la lista: el conteo va pegado al título, no suelto arriba de la tabla. */}
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-border/60 pb-3">
         <div className="flex flex-wrap items-center gap-2">
@@ -915,7 +940,9 @@ export function CobranzaTable({ role }: { role: Role }) {
           onRowClick={(c) => setDetalle(c)}
           rowClassName={(c) => (incluido(c.id) ? "bg-primary/5" : "")}
           zebra
-          pageSize={12}
+          /* La página la corta el SERVIDOR: la tabla recibe doce filas y las muestra. El
+             total es el de la cartera filtrada, no el de lo que llegó. */
+          paginacion={{ pagina, porPagina: POR_PAGINA, total: totalCreditos, onPagina: setPagina }}
           footer={
             <tr className="bg-muted/20">
               <td colSpan={puedeCampanas ? 3 : 2} className="px-4 py-3 text-[10px] font-bold text-muted-foreground uppercase tracking-widest border-t border-border">

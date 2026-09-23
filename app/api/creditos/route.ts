@@ -2,14 +2,14 @@ import { requireAuth, requireRole, scopeCreditosVendedor, ApiError } from "@/lib
 import { successResponse, errorResponse, withErrorHandler, assertSameOrigin } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
-import { puedeDarsePorIncobrableManual, round2, normalizarFrecuencia, resolverFrecuencia, sumarPeriodos, construirPlanAmortizacion, planACuotas, estadoCoherente, etiquetaCaja, esCuentaValida, validarParametrosOtorgamiento, diasMoraActual, buscarPlan, nombrePlan, tasaDesdeCoeficiente, cargosConPlan, CUENTA_LABEL, type Cuenta, ESTADOS_VIVOS, ESTADOS_COBRABLES, esCreditoVivo, esCreditoCobrable, topeMoraPorIncobrable, esRecuperoPostCastigo, moraDelCredito, moraDesdeCronograma, moraPendienteTotal, calcularDeudaVencida, deudaEnRevision, esTipoCreditoValido, TIPOS_CREDITO, calcularDeudaConsolidada, puedeRefinanciar, puedeAcordar, cargosDeCuota, baseMoraDeCuota, pendienteSinMoraDeCuota, formatPesos } from "@/lib/domain";
+import { puedeDarsePorIncobrableManual, round2, normalizarFrecuencia, resolverFrecuencia, sumarPeriodos, construirPlanAmortizacion, planACuotas, estadoCoherente, etiquetaCaja, esCuentaValida, validarParametrosOtorgamiento, diasMoraActual, buscarPlan, nombrePlan, tasaDesdeCoeficiente, cargosConPlan, CUENTA_LABEL, type Cuenta, ESTADOS_VIVOS, ESTADOS_COBRABLES, esCreditoVivo, esCreditoCobrable, topeMoraPorIncobrable, esRecuperoPostCastigo, moraDelCredito, moraDesdeCronograma, moraPendienteTotal, calcularDeudaVencida, deudaEnRevision, esTipoCreditoValido, TIPOS_CREDITO, calcularDeudaConsolidada, puedeRefinanciar, puedeAcordar, cargosDeCuota, baseMoraDeCuota, pendienteSinMoraDeCuota, formatPesos, contactoBloqueado} from "@/lib/domain";
 import { siguienteNumeroComprobante } from "@/lib/comprobantes";
 import { assertFondosSuficientesTx } from "@/lib/caja-fondos";
 import { lockNumeroCreditoTx, TX_PLATA } from "@/lib/locks";
 import { getConfiguracion, getCobranzaConfig } from "@/lib/config";
 import { plataDeLaCadenaLote } from "@/lib/recupero-server";
 import { cobroBloqueadoPorCredito } from "@/lib/recupero-server";
-import { situacionAcuerdoPorCredito } from "@/lib/acuerdos";
+import { situacionAcuerdoPorCredito, creditosConAcuerdoVigente, cubiertoPorAcuerdo } from "@/lib/acuerdos";
 import { conNumeroDeOrigen } from "@/lib/creditos-numero";
 import { registrarAuditoria } from "@/lib/audit";
 import { registrarMovimientoStock } from "@/lib/stock";
@@ -41,6 +41,14 @@ import { rangoDeSeveridad, rangoEnMora, type SeveridadMora } from "@/lib/domain"
  * - ?solo_ids=1   — devuelve únicamente los ids que cumplen el filtro, sin los datos. Es lo
  *                   que necesita "seleccionar todos" cuando la lista está paginada: la
  *                   audiencia de una campaña no puede ser "lo que entró en la página".
+ * - ?tipo=…       — tipo de crédito (el de la ficha: efectivo, producto…).
+ * - ?refi=solo|sin — solo las refinanciaciones, o solo las que no lo son. Es la pestaña de
+ *                   la pantalla de Créditos.
+ * - ?contacto=reciente|sin_reciente — si alguien lo gestionó en los últimos `dias_sin_gestion`
+ *                   días. Antes se resolvía en el navegador cruzando la lista de gestiones.
+ * - ?ids=a,b,c    — trae exactamente esos créditos. Con la lista paginada de a 12, abrir un
+ *                   crédito desde la Agenda no puede depender de que esté en la página que se
+ *                   está mirando.
  *
  * 🔴 TODOS SON OPCIONALES Y NO CAMBIAN EL COMPORTAMIENTO DE ANTES. Sin ellos, la respuesta es
  * exactamente la misma que venía dando.
@@ -57,6 +65,10 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   const mora = url.searchParams.get("mora");
   const orden = url.searchParams.get("orden");
   const soloIds = url.searchParams.get("solo_ids") === "1";
+  const tipo = url.searchParams.get("tipo");
+  const refi = url.searchParams.get("refi");
+  const contacto = url.searchParams.get("contacto");
+  const idsPedidos = (url.searchParams.get("ids") ?? "").split(",").map((x) => x.trim()).filter(Boolean);
 
   // Anti-IDOR: el vendedor solo ve SUS créditos; admin/cobrador ven todo el tenant.
   const where: Record<string, any> = { ...withTenant(tenantId), ...scopeCreditosVendedor({ role, vendedorId }) };
@@ -146,6 +158,31 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     );
   }
 
+  if (tipo && tipo !== "all") where.tipo_credito = tipo;
+  if (refi === "solo") where.es_refinanciacion = true;
+  if (refi === "sin") where.es_refinanciacion = false;
+
+  /**
+   * CONTACTO RECIENTE. Lo mismo que hacía la pantalla cruzando la lista de gestiones, pero
+   * exacto: la pantalla solo tenía las últimas 500 acciones cargadas, así que un crédito
+   * gestionado hace tiempo podía contarse como "nunca contactado" por no estar en esa tanda.
+   *
+   * El corte es el mismo que usa la agenda: `dias_sin_gestion` de Configuración → Cobranza.
+   */
+  if (contacto === "reciente" || contacto === "sin_reciente") {
+    const { dias_sin_gestion } = await getCobranzaConfig(tenantId);
+    const corte = new Date(Date.now() - dias_sin_gestion * 86_400_000);
+    condiciones.push(
+      contacto === "reciente"
+        ? { acciones: { some: { created_at: { gte: corte } } } }
+        : { acciones: { none: { created_at: { gte: corte } } } },
+    );
+  }
+
+  /* Ids explícitos: gana sobre cualquier filtro. Se usa para abrir UN crédito que no está en
+     la página actual, así que filtrarlo además por mora o por búsqueda lo escondería. */
+  if (idsPedidos.length > 0) where.id = { in: idsPedidos };
+
   if (condiciones.length > 0) where.AND = condiciones;
 
   /**
@@ -154,8 +191,42 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
    * 5.000 créditos completos.
    */
   if (soloIds) {
-    const ids = await prisma.creditos.findMany({ where, select: { id: true }, orderBy: { created_at: "desc" } });
-    return successResponse({ ids: ids.map((c) => c.id), total: ids.length });
+    const filas = await prisma.creditos.findMany({
+      where,
+      select: {
+        id: true, proximo_pago: true,
+        cliente: { select: { estado: true, no_contactar: true } },
+      },
+      orderBy: { created_at: "desc" },
+    });
+
+    /**
+     * 🔴 `campanables=1`: SACA A LOS QUE NO PUEDEN RECIBIR UNA CAMPAÑA.
+     *
+     * Sin esto, el número del botón "Nueva campaña" cambiaba según la página que se estuviera
+     * mirando: la pantalla podía descartar al fallecido o al que cumple su acuerdo solo si lo
+     * tenía a la vista, así que en la página 1 decía 8 y en la 2 decía 9 — los mismos créditos,
+     * dos números. Un contador que depende de dónde estás parado no sirve para decidir.
+     *
+     * Los dos cortes son los MISMOS que aplica el POST de campañas al armarla: quien no se
+     * puede contactar (`contactoBloqueado`) y quien está cumpliendo un acuerdo que cubre su
+     * atraso (`cubiertoPorAcuerdo` + la pactada al día). Acá se adelantan para poder contarlos
+     * bien; la barrera real sigue siendo el POST.
+     */
+    if (url.searchParams.get("campanables") === "1") {
+      const { fallecidos } = await getCobranzaConfig(tenantId);
+      const vigentes = await creditosConAcuerdoVigente(tenantId);
+      const situacion = await situacionAcuerdoPorCredito(tenantId, filas.map((c) => c.id));
+      const ok = filas.filter((c) => {
+        if (contactoBloqueado(c.cliente, { bloqueaFallecidos: fallecidos.bloquea_contacto }).bloqueado) return false;
+        const a = situacion.get(c.id);
+        const cumpliendo = !!a && a.al_dia && cubiertoPorAcuerdo(vigentes, c.id, c.proximo_pago);
+        return !cumpliendo;
+      });
+      return successResponse({ ids: ok.map((c) => c.id), total: ok.length });
+    }
+
+    return successResponse({ ids: filas.map((c) => c.id), total: filas.length });
   }
 
   const [creditos, total] = await Promise.all([

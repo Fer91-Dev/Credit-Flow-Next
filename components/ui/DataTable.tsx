@@ -59,6 +59,28 @@ interface DataTableProps<T> {
   /** Filas por página. Si se indica, activa la paginación (cliente) estilo TailGrids. */
   pageSize?: number;
   /**
+   * PAGINACIÓN DEL SERVIDOR. Con esto, la tabla deja de cortar las filas que recibe —ya vienen
+   * cortadas— y el paginador pasa a pedirle la página al que la usa.
+   *
+   * 🔴 Existe porque paginar en el navegador solo alcanza mientras la lista entre entera en
+   * memoria. Las listas de créditos y clientes están topeadas en 1.000, así que con una
+   * cartera más grande el paginador de acá mostraba "página 1 de 84" sobre una porción, y las
+   * páginas que faltaban no existían en ningún lado. Cuando se pasa `paginacion`, quien manda
+   * es el servidor: `total` es el de verdad y cada clic trae la página siguiente.
+   *
+   * Es EXCLUYENTE con `pageSize`: o corta la tabla, o corta la base. Las dos a la vez
+   * paginarían una página.
+   */
+  paginacion?: {
+    /** Página actual, empezando en 1. */
+    pagina: number;
+    /** Cuántas filas por página pide el que la usa. */
+    porPagina: number;
+    /** Cuántas filas hay EN TOTAL (no cuántas llegaron). */
+    total: number;
+    onPagina: (p: number) => void;
+  };
+  /**
    * Celdas apretadas (`px-2.5 py-2` en vez de `px-4 py-3`). Para tablas de MUCHAS columnas
    * numéricas —el historial de actas de cierre tiene diez— donde el padding normal, solo,
    * ya son 320px y obliga a scrollear de costado para llegar al botón de la última columna.
@@ -141,19 +163,28 @@ const TD_BASE = "border-b border-border/50 align-middle";
 
 export function DataTable<T>({
   columns, rows, rowKey, onRowClick, rowClassName, loading, skeletonRows = 6, loadingRowKey,
-  error, empty, zebra, stickyHeader, footer, renderMobileCard, pageSize, dense,
+  error, empty, zebra, stickyHeader, footer, renderMobileCard, pageSize, paginacion, dense,
 }: DataTableProps<T>) {
   const shell = "rounded-xl border border-border bg-card overflow-hidden";
   const pad = dense ? "px-2.5 py-2" : "px-4 py-3";
   const TH = `${pad} ${TH_BASE}`;
   const TD = `${pad} ${TD_BASE}`;
 
-  // Paginación cliente (opcional). Los hooks van antes de los early returns.
-  const [page, setPage] = useState(1);
-  const totalPages = pageSize ? Math.max(1, Math.ceil(rows.length / pageSize)) : 1;
-  useEffect(() => { if (page > totalPages) setPage(totalPages); }, [totalPages, page]);
-  const pagedRows = pageSize ? rows.slice((page - 1) * pageSize, page * pageSize) : rows;
-  const showPager = !!pageSize && totalPages > 1;
+  // Paginación. Los hooks van antes de los early returns.
+  const [pageLocal, setPageLocal] = useState(1);
+  const servidor = !!paginacion;
+  const page = servidor ? paginacion.pagina : pageLocal;
+  const totalPages = servidor
+    ? Math.max(1, Math.ceil(paginacion.total / Math.max(1, paginacion.porPagina)))
+    : pageSize ? Math.max(1, Math.ceil(rows.length / pageSize)) : 1;
+  // Solo para la paginación local: con la del servidor, el que manda corrige su propia página.
+  useEffect(() => { if (!servidor && pageLocal > totalPages) setPageLocal(totalPages); }, [servidor, totalPages, pageLocal]);
+  // Con paginación de servidor las filas YA vienen cortadas: volver a cortarlas mostraría
+  // doce de doce en la página uno y nada en las demás.
+  const pagedRows = servidor ? rows : pageSize ? rows.slice((page - 1) * pageSize, page * pageSize) : rows;
+  const cambiarPagina = servidor ? paginacion.onPagina : setPageLocal;
+  const showPager = totalPages > 1 && (servidor || !!pageSize);
+  const altoFijo = servidor ? paginacion.porPagina : pageSize;
 
   // Altura mínima = la de una página LLENA (medida). Se aplica al contenedor de la tabla para
   // que las páginas cortas (última página, menos filas) se rellenen hasta esa altura y el
@@ -161,10 +192,10 @@ export function DataTable<T>({
   const tableRef = useRef<HTMLTableElement>(null);
   const [minBodyH, setMinBodyH] = useState(0);
   useEffect(() => {
-    if (!pageSize) return;
+    if (!altoFijo) return;
     const h = tableRef.current?.offsetHeight ?? 0;
     setMinBodyH((prev) => (h > prev ? h : prev)); // guarda la mayor altura vista (= página llena)
-  }, [pagedRows, pageSize]);
+  }, [pagedRows, altoFijo]);
 
   // ── Error ──────────────────────────────────────────────────────────────
   if (error) {
@@ -268,7 +299,7 @@ export function DataTable<T>({
             {footer && <tfoot>{footer}</tfoot>}
           </table>
         </div>
-        {showPager && <TablePagination page={page} totalPages={totalPages} onChange={setPage} />}
+        {showPager && <TablePagination page={page} totalPages={totalPages} onChange={cambiarPagina} />}
       </div>
 
       {/* Mobile (tarjetas) */}
@@ -279,7 +310,7 @@ export function DataTable<T>({
           </div>
           {showPager && (
             <div className="mt-3 rounded-xl border border-border bg-card">
-              <TablePagination page={page} totalPages={totalPages} onChange={setPage} />
+              <TablePagination page={page} totalPages={totalPages} onChange={cambiarPagina} />
             </div>
           )}
         </div>

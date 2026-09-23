@@ -1483,6 +1483,22 @@ export interface FiltrosCreditos {
   orden?: "mora" | null;
   /** `vivos` = activo + vencido. Recorta en la base lo que la pantalla iba a descartar igual. */
   estado?: string | null;
+  /** Tipo de crédito de la ficha. */
+  tipo?: string | null;
+  /** `solo` = únicamente refinanciaciones · `sin` = todo lo que no lo es. */
+  refi?: "solo" | "sin" | null;
+  /** `reciente` | `sin_reciente`: si alguien lo gestionó en los últimos `dias_sin_gestion`. */
+  contacto?: string | null;
+  /** Cuántas filas por página. Sin esto, hasta 1.000. */
+  limit?: number;
+  /** Desde qué fila. Es `(página − 1) × limit`. */
+  offset?: number;
+  /**
+   * Trae EXACTAMENTE estos créditos, sin importar los demás filtros. Lo usan la pantalla de
+   * campaña —que recibe una selección y tiene que rehidratarla— y abrir un crédito desde la
+   * Agenda, que puede no estar en la página que se está mirando.
+   */
+  ids?: string[] | null;
 }
 
 /**
@@ -1501,11 +1517,16 @@ export interface FiltrosCreditos {
  * corresponde es afinar la búsqueda, y la pantalla lo dice.
  */
 export function useCreditos(filtros?: FiltrosCreditos) {
-  const params = new URLSearchParams({ limit: "1000" });
+  const params = new URLSearchParams({ limit: String(filtros?.limit ?? 1000) });
+  if (filtros?.offset) params.set("offset", String(filtros.offset));
   if (filtros?.q) params.set("q", filtros.q);
   if (filtros?.mora && filtros.mora !== "todas") params.set("mora", filtros.mora);
   if (filtros?.orden) params.set("orden", filtros.orden);
   if (filtros?.estado) params.set("estado", filtros.estado);
+  if (filtros?.tipo && filtros.tipo !== "all") params.set("tipo", filtros.tipo);
+  if (filtros?.refi) params.set("refi", filtros.refi);
+  if (filtros?.contacto && filtros.contacto !== "todos") params.set("contacto", filtros.contacto);
+  if (filtros?.ids) params.set("ids", filtros.ids.join(","));
   const key = `/api/creditos?${params.toString()}`;
 
   const { data, error, isLoading, mutate } = useSWR<{ creditos: Credito[]; total?: number }>(key, {
@@ -1515,6 +1536,31 @@ export function useCreditos(filtros?: FiltrosCreditos) {
   const creditos = data?.creditos ?? [];
   const total = data?.total ?? creditos.length;
   return { creditos, total, truncado: total > creditos.length, error, isLoading, mutate };
+}
+
+/**
+ * Los IDS de todos los créditos que cumplen un filtro, sin traer los datos.
+ *
+ * 🔴 Es lo que hace que "seleccionar todos" siga queriendo decir TODOS cuando la lista está
+ * paginada. Sin esto, la audiencia de una campaña habría pasado a ser "los doce que estoy
+ * viendo" sin que nada lo dijera — y una campaña que sale a doce en vez de a doscientos no
+ * falla: simplemente no le llega al resto.
+ */
+export function useCreditosIds(filtros?: FiltrosCreditos, activo = true) {
+  // `campanables=1`: el servidor ya descarta a quien no puede recibir una campaña, para que
+  // el contador no dependa de la página que se esté mirando.
+  const params = new URLSearchParams({ solo_ids: "1", campanables: "1" });
+  if (filtros?.q) params.set("q", filtros.q);
+  if (filtros?.mora && filtros.mora !== "todas") params.set("mora", filtros.mora);
+  if (filtros?.estado) params.set("estado", filtros.estado);
+  if (filtros?.tipo && filtros.tipo !== "all") params.set("tipo", filtros.tipo);
+  if (filtros?.refi) params.set("refi", filtros.refi);
+  if (filtros?.contacto && filtros.contacto !== "todos") params.set("contacto", filtros.contacto);
+  const { data } = useSWR<{ ids: string[]; total: number }>(
+    activo ? `/api/creditos?${params.toString()}` : null,
+    { keepPreviousData: true },
+  );
+  return { ids: data?.ids ?? [], total: data?.total ?? 0 };
 }
 
 /**

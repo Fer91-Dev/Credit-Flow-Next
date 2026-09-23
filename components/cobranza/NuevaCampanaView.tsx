@@ -62,11 +62,18 @@ const CANAL_META: Record<CanalCampana, { label: string; icon: ComponentType<{ cl
  */
 export function NuevaCampanaView({ role }: { role: Role }) {
   const router = useRouter();
-  const { creditos: todos, isLoading } = useCreditos();
-
   /** Ids traídos de la lista de Cobranzas. `null` = todavía no se leyó el storage. */
   const [ids, setIds] = useState<string[] | null>(null);
   useEffect(() => setIds(leerSeleccionCampana()), []);
+
+  /**
+   * 🔴 SE PIDEN LOS CRÉDITOS DE LA SELECCIÓN, no la lista entera.
+   *
+   * Antes traía los primeros 1.000 y cruzaba contra los ids seleccionados: con una cartera
+   * más grande, un destinatario fuera de esa página desaparecía de la campaña sin aviso. Se
+   * arma con la selección y la campaña sale a quien tiene que salir.
+   */
+  const { creditos: todos, isLoading } = useCreditos(ids && ids.length > 0 ? { ids } : undefined);
 
   const volver = (tab?: string) => router.push(tab ? `/cobranza?tab=${tab}` : "/cobranza");
 

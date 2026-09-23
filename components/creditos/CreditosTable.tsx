@@ -2,7 +2,7 @@
 
 import { estadoBadgeCredito } from "./estado-badge";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect} from "react";
 import { useRouter } from "next/navigation";
 import { FileText, ChevronDown, X, RefreshCw, History } from "lucide-react";
 import { CompararRefiDialog } from "./CompararRefiDialog";
@@ -70,18 +70,41 @@ export function CreditosTable({ role }: { role: Role }) {
   const irARefinanciar = (c: Credito) => router.push(`/creditos/${c.id}/refinanciar`);
   const [search, setSearch]       = useState("");
 
-  /**
-   * La búsqueda viaja al SERVIDOR: antes filtraba dentro de los primeros 1.000 créditos
-   * cargados, así que un crédito fuera de esa página no se podía encontrar y la pantalla
-   * decía "sin resultados" como si no existiera. El resto de los filtros de esta pantalla
-   * (pestaña, estado) siguen igual, ahora sobre un conjunto ya correcto.
-   */
-  const qServidor = useDebounce(search.trim(), 250);
-  const { creditos, total: totalCreditos, error, isLoading } = useCreditos({ q: qServidor });
   const [estadoFilter, setEstado] = useState("all");
   const [tipoFilter, setTipo]     = useState("all");
   const [moraFilter, setMora]     = useState("all");
   const [tab, setTab]             = useState<"creditos" | "refinanciados">("creditos");
+
+  /**
+   * 🔴 LOS FILTROS Y LA PÁGINA, EN EL SERVIDOR — pero solo en la pestaña Créditos.
+   *
+   * La pestaña REFINANCIADOS arma pares "origen → crédito nuevo" cruzando la lista consigo
+   * misma, y sus KPI cuentan sobre el historial entero. Paginarla del lado del servidor le
+   * sacaría justamente los orígenes: el par quedaría a medias y el KPI contaría una página.
+   * Así que esa pestaña sigue pidiendo la ventana completa —con su aviso si se recorta— y la
+   * que se pagina es la principal, que es la que crece con la cartera.
+   */
+  const qServidor = useDebounce(search.trim(), 250);
+  const POR_PAGINA = 12;
+  const [pagina, setPagina] = useState(1);
+  const esListaPrincipal = tab === "creditos";
+  /* Cualquier cambio de filtro vuelve a la página 1: quedarse en la 7 de una lista que ahora
+     tiene 2 páginas deja la tabla vacía con el paginador prometiendo filas. */
+  useEffect(() => { setPagina(1); }, [qServidor, estadoFilter, tipoFilter, moraFilter, tab]);
+
+  const { creditos, total: totalCreditos, error, isLoading } = useCreditos(
+    esListaPrincipal
+      ? {
+          q: qServidor,
+          refi: "sin",
+          estado: estadoFilter === "all" ? null : estadoFilter,
+          tipo: tipoFilter,
+          mora: moraFilter === "all" ? null : moraFilter,
+          limit: POR_PAGINA,
+          offset: (pagina - 1) * POR_PAGINA,
+        }
+      : { q: qServidor },
+  );
   /**
    * Buscador de la pestaña Refinanciados. El estado vive ACÁ, en el padre, porque la caja se
    * dibuja en el renglón de arriba —el que comparten las dos pestañas— y la lista que filtra
@@ -115,10 +138,9 @@ export function CreditosTable({ role }: { role: Role }) {
    * El crédito ORIGEN sí se queda acá, con su estado "Refinanciado": fue plata que la
    * financiera desembolsó de verdad, y sacarlo borraría de la lista un desembolso real.
    */
-  const deLaPestana = useMemo(
-    () => (tab === "creditos" ? creditos.filter((c) => !c.es_refinanciacion) : creditos),
-    [creditos, tab],
-  );
+  /* En la pestaña principal el servidor ya excluyó las refinanciaciones (`refi=sin`); en la
+     otra se necesita la lista entera para armar los pares. */
+  const deLaPestana = creditos;
 
   /**
    * 🔴 SIN EL FILTRO DE TEXTO: lo resuelve el servidor (`?q=`).
@@ -128,16 +150,12 @@ export function CreditosTable({ role }: { role: Role }) {
    * búsqueda ya hecha en la base, el efecto pasaba a ser que la pantalla descartara justo lo
    * que había ido a buscar.
    */
-  const filtered = useMemo(() => {
-    return deLaPestana.filter(c =>
-      (estadoFilter === "all" || c.estado === estadoFilter) &&
-      (tipoFilter === "all" || c.tipo_credito === tipoFilter) &&
-      (moraFilter === "all"
-        || (moraFilter === "al_dia" && c.dias_mora === 0)
-        || (moraFilter === "en_mora" && c.dias_mora > 0)
-        || (moraFilter === "critica" && severidadMora(c.dias_mora, tramos) === "critica"))
-    );
-  }, [deLaPestana, estadoFilter, tipoFilter, moraFilter]);
+  /**
+   * 🔴 YA NO SE FILTRA ACÁ. Estado, tipo, mora y búsqueda los resuelve el servidor, y la lista
+   * llega de a doce. Filtrar esas doce filas otra vez dejaría dos, con el paginador diciendo
+   * "página 1 de 40": un filtro aplicado sobre una página miente sobre el total.
+   */
+  const filtered = deLaPestana;
 
   /**
    * KPIs de TODA la cartera (foto del negocio, no dependen del filtro puesto).
@@ -219,7 +237,11 @@ export function CreditosTable({ role }: { role: Role }) {
           accent="primary"
         />
 
-        <ListaTruncada mostrados={creditos.length} total={totalCreditos} sustantivo="créditos" />
+        {/* Solo en la pestaña Refinanciados, que es la que sigue trayendo la ventana entera:
+            la lista principal se pagina y el paginador ya dice cuántos hay. */}
+        {!esListaPrincipal && (
+          <ListaTruncada mostrados={creditos.length} total={totalCreditos} sustantivo="créditos" />
+        )}
 
         {/*
           ── Pestañas (Créditos / Refinanciados) + CTA ──
@@ -498,7 +520,8 @@ export function CreditosTable({ role }: { role: Role }) {
           <DataTable
             rows={filtered}
             rowKey={(c) => c.id}
-            pageSize={12}
+            /* La página la corta el servidor; el total es el de la cartera filtrada. */
+            paginacion={{ pagina, porPagina: POR_PAGINA, total: totalCreditos, onPagina: setPagina }}
             onRowClick={(c) => irACredito(c)}
             zebra
             columns={[
