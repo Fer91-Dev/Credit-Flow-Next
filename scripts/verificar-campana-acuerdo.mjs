@@ -62,6 +62,12 @@ H = { Cookie: login.headers.getSetCookie().map((c) => c.split(";")[0]).join("; "
 
 const creadas = [];
 const accionesAntes = new Set();
+
+/** El texto que armaria el boton de WhatsApp/SMS de la fila de Morosos, sin mandar nada. */
+async function mensajeDeMora(clienteId, creditoId) {
+  const r = await api("GET", `/api/clientes/${clienteId}/contactar?credito_id=${creditoId}`);
+  return r.ok ? { texto: r.data.mensajes.mora.texto, datos: r.data.datos } : { error: r.error };
+}
 /** Lo que esta prueba movio y hay que devolver a su lugar, pase lo que pase. */
 let restaurarPactada = null;
 
@@ -208,6 +214,32 @@ try {
     restaurarPactada = null;
   }
 
+  // -- 3c. El boton de WhatsApp/SMS de la fila de Morosos --------------------
+  H2("El boton de la fila: WhatsApp y SMS");
+  {
+    const m = await mensajeDeMora(credito.cliente_id, credito.id);
+    ok(!m.error, "el mensaje se arma sin error", m.error ?? "");
+    if (!m.error) {
+      console.log(`     "${m.texto}"`);
+      ok(/acuerdo de pago/i.test(m.texto), "habla del ACUERDO DE PAGO, no del plan original");
+      ok(!/vencida hace/i.test(m.texto), "no le dice que tiene una cuota vencida: esta cumpliendo");
+      ok(m.texto.includes(miles(pendPactada)), "con el importe de la cuota pactada", miles(pendPactada));
+      ok(m.datos.vencido === 0, "no hay nada exigible que reclamarle", `vencido $${m.datos.vencido}`);
+      ok(m.datos.dias === 0, "y cero dias de atraso");
+    }
+
+    // Con la pactada vencida, el arreglo se cae y vuelve el reclamo del plan.
+    const original = pactada.vencimiento;
+    restaurarPactada = { id: pactada.id, vencimiento: original };
+    await db.acuerdo_cuota.update({ where: { id: pactada.id }, data: { vencimiento: new Date(Date.now() - 5 * 86400000) } });
+    const m2 = await mensajeDeMora(credito.cliente_id, credito.id);
+    console.log(`     "${m2.texto ?? m2.error}"`);
+    ok(!m2.error && !/acuerdo de pago/i.test(m2.texto), "con la pactada vencida vuelve el reclamo del plan");
+    ok(!m2.error && m2.datos.vencido > 0, "y vuelve a haber algo exigible", `vencido $${m2.datos?.vencido}`);
+    await db.acuerdo_cuota.update({ where: { id: pactada.id }, data: { vencimiento: original } });
+    restaurarPactada = null;
+  }
+
   // -- 4. Un moroso SIN acuerdo sigue recibiendo su reclamo -----------------
   H2("Sin acuerdo, nada cambia (no regresion)");
   const conAcuerdo = new Set(
@@ -236,6 +268,10 @@ try {
       console.log(`     "${texto2}"`);
       ok(/regularizas tu situacion/i.test(texto2), "recibe el texto que escribio el operador, intacto");
       ok(texto2.includes(String(moroso.dias_mora)), "con sus dias de atraso reales", `${moroso.dias_mora} dias`);
+      const m3 = await mensajeDeMora(moroso.cliente_id, moroso.id);
+      console.log(`     "${m3.texto ?? m3.error}"`);
+      ok(!m3.error && /vencida hace/i.test(m3.texto), "y su boton de la fila sigue reclamando el plan");
+      ok(!m3.error && !/acuerdo de pago/i.test(m3.texto), "sin nombrar ningun acuerdo");
     }
   }
 } finally {

@@ -10,10 +10,11 @@ import {
   calcularDeudaConsolidada, calcularDeudaVencida, diasAtraso, moraDelCredito, moraDesdeCronograma, type CuotaParaImputar,
   plantillaDe, cuentaComoGestion, MOTIVO_LABEL, tipoGestionDeCanal, resolverPlantillasContacto, type MotivoContacto,
   deudaEnRevision, contactoBloqueado, resolverPlantillasMeta, renderPlantillaMeta,
-  avisoCreditosARefinanciar, PLANTILLA_SOLO_REFINANCIAR, cargosDeCuota, baseMoraDeCuota } from "@/lib/domain";
+  avisoCreditosARefinanciar, PLANTILLA_SOLO_REFINANCIAR, PLANTILLA_ACUERDO_AL_DIA, acuerdoCubreElAtraso,
+  cargosDeCuota, baseMoraDeCuota } from "@/lib/domain";
 import { nombreCompleto, hoyComercial, formatCreditoNumero } from "@/lib/utils";
 import { cobroBloqueadoPorCredito } from "@/lib/recupero-server";
-import { creditosConAcuerdoVigente, congelamientoPorCredito } from "@/lib/acuerdos";
+import { creditosConAcuerdoVigente, congelamientoPorCredito, situacionAcuerdoPorCredito } from "@/lib/acuerdos";
 import { enviarEmailTenant, motivoEmailNoDisponible, type EmailTenantConfig } from "@/lib/mailer-tenant";
 import { enviarSmsTenant, motivoSmsNoDisponible, type SmsConfig } from "@/lib/sms";
 import { enviarWhatsappApi, whatsappApiDisponible, type WhatsappApiConfig } from "@/lib/whatsapp";
@@ -41,7 +42,7 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
   const r = await cargarContactable(ctx, id, new URL(req.url).searchParams.get("credito_id"));
   if ("error" in r && r.error) return r.error;
 
-  const { cliente, datos, comm, refinanciar } = r as Extract<typeof r, { cliente: object }>;
+  const { cliente, datos, comm, refinanciar, acuerdo } = r as Extract<typeof r, { cliente: object }>;
   // Una config guardada ANTES de que existiera este bloque no trae `contacto`: se resuelve
   // sobre los defaults en vez de romper.
   const cobranzaCfg = await getCobranzaConfig(ctx.tenantId);
@@ -66,7 +67,7 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
   const mensajes = Object.fromEntries(
     MOTIVOS.map((m) => {
       const { texto, asunto } = plantillaDe(plantillas, m);
-      return [m, { texto: textoMotivo(m, texto, datos, refinanciar), asunto: render(asunto, datos), label: MOTIVO_LABEL[m] }];
+      return [m, { texto: textoMotivo(m, texto, datos, refinanciar, acuerdo), asunto: render(asunto, datos), label: MOTIVO_LABEL[m] }];
     }),
   );
 
@@ -111,7 +112,7 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
 
   const r = await cargarContactable(ctx, id, typeof body.credito_id === "string" ? body.credito_id : null);
   if ("error" in r && r.error) return r.error;
-  const { cliente, datos, comm, creditoParaGestion, refinanciar } = r as Extract<typeof r, { cliente: object }>;
+  const { cliente, datos, comm, creditoParaGestion, refinanciar, acuerdo } = r as Extract<typeof r, { cliente: object }>;
 
   const canal: "whatsapp" | "email" | "sms" = body.canal === "email" ? "email" : body.canal === "sms" ? "sms" : "whatsapp";
   const motivo: MotivoContacto = MOTIVOS.includes(body.motivo) ? body.motivo : "informacion";
@@ -129,7 +130,9 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
    * el corte va en el servidor porque el reclamo también se dispara desde la fila de
    * Cobranzas, que manda "mora" sin preguntar.
    */
-  if (motivo === "mora" && datos.vencido <= 0 && refinanciar.numeros.length === 0) {
+  /* `acuerdo` es la excepción: no hay nada vencido PORQUE está cumpliendo un arreglo, y lo
+     que se manda no es un reclamo sino el recordatorio de su cuota pactada. */
+  if (motivo === "mora" && datos.vencido <= 0 && refinanciar.numeros.length === 0 && !acuerdo) {
     return errorResponse(
       "Este crédito no tiene nada vencido: no hay deuda que reclamar. Si querés escribirle igual, mandá un mensaje informativo.",
       "SIN_DEUDA_VENCIDA",
@@ -178,7 +181,7 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
   // Sin plantilla de Meta, el operador puede editar el texto; si no lo toca, va la del tenant.
   const texto = plantillaMeta
     ? renderPlantillaMeta(plantillaMeta, datos)
-    : typeof body.mensaje === "string" && body.mensaje.trim() ? body.mensaje.trim() : textoMotivo(motivo, base.texto, datos, refinanciar);
+    : typeof body.mensaje === "string" && body.mensaje.trim() ? body.mensaje.trim() : textoMotivo(motivo, base.texto, datos, refinanciar, acuerdo);
   const asunto = typeof body.asunto === "string" && body.asunto.trim() ? body.asunto.trim() : render(base.asunto, datos);
   if (!texto) return errorResponse("El mensaje está vacío.", "INVALID_INPUT", 400);
 
@@ -377,8 +380,37 @@ async function cargarContactable(ctx: Ctx, id: string, creditoId?: string | null
       incobrable: c.estado === "incobrable" })),
     (await getCobranzaConfig(ctx.tenantId)).recupero,
   );
-  const cobrables = conMora.filter((c) => !bloqueadosMap.get(c.id));
-  const aRefinanciar = conMora.filter((c) => bloqueadosMap.get(c.id));
+  /**
+   * 🔴 AL QUE ESTÁ CUMPLIENDO SU ACUERDO NO SE LE RECLAMA EL PLAN VIEJO.
+   *
+   * Fernando (23/09/2026): "en Morosos, si pulso el WhatsApp y el SMS, el mensaje me lleva al
+   * reclamo de la cuota del crédito original". Su crédito figura en mora porque el plan
+   * original conserva las fechas —eso es un hecho contable, no deuda exigible—, así que el
+   * aviso salía "tenés la cuota 1 vencida hace 76 días, abonás $649.656,24" sobre alguien que
+   * arregló y cuya primera cuota pactada vence el 07/10.
+   *
+   * Sale de `cobrables` como sale un bloqueado: no hay nada que reclamarle. Lo que le
+   * corresponde es el recordatorio de su cuota PACTADA, que se arma más abajo.
+   *
+   * Las dos condiciones de siempre: que el acuerdo CUBRA lo que debe y que la pactada esté al
+   * día. Si dejó de pagarla, el arreglo se cayó y vuelve a ser un moroso como cualquier otro.
+   */
+  const situacion = await situacionAcuerdoPorCredito(ctx.tenantId, conMora.map((c) => c.id));
+  const cumpliendoAcuerdo = (c: (typeof conMora)[number]) => {
+    const a = situacion.get(c.id);
+    return !!a && a.al_dia && !!a.proxima && acuerdoCubreElAtraso(a.fecha, c.proximo_pago);
+  };
+  const cobrables = conMora.filter((c) => !bloqueadosMap.get(c.id) && !cumpliendoAcuerdo(c));
+  const aRefinanciar = conMora.filter((c) => bloqueadosMap.get(c.id) && !cumpliendoAcuerdo(c));
+  /**
+   * La cuota pactada más próxima entre los créditos que están cumpliendo. Es de lo único que
+   * se le puede hablar a este cliente: no tiene nada exigible hoy.
+   */
+  const enAcuerdo = conMora
+    .filter(cumpliendoAcuerdo)
+    .map((c) => ({ credito: c, pactada: situacion.get(c.id)!.proxima! }))
+    .sort((a, b) => a.pactada.vencimiento.getTime() - b.pactada.vencimiento.getTime());
+  const avisoAcuerdo = enAcuerdo[0] ?? null;
   const numerosARefinanciar = aRefinanciar.map((c) => formatCreditoNumero(c.numero));
 
   /**
@@ -470,7 +502,11 @@ async function cargarContactable(ctx: Ctx, id: string, creditoId?: string | null
    * cuota —, vencida hace 0 días". Si no hay nada vencido que reclamar, el mensaje pasa a
    * hablar del crédito que hay que reestructurar, que es la situación real del cliente.
    */
-  const habla = vencido > 0 ? (cobrables[0] ?? conMora[0]) : (aRefinanciar[0] ?? cobrables[0] ?? conMora[0]);
+  const habla = vencido > 0
+    ? (cobrables[0] ?? conMora[0])
+    : (aRefinanciar[0] ?? avisoAcuerdo?.credito ?? cobrables[0] ?? conMora[0]);
+  /** ¿El mensaje de mora se reemplaza por el recordatorio del acuerdo? */
+  const soloAcuerdo = vencido <= 0 && aRefinanciar.length === 0 && !!avisoAcuerdo;
 
   /**
    * El vencimiento sale del MISMO crédito que la cuota. Salía del mínimo entre todos los
@@ -519,16 +555,27 @@ async function cargarContactable(ctx: Ctx, id: string, creditoId?: string | null
      * hubiera un peso vencido, y pedía $0,00.
      */
     refinanciar: { numeros: numerosARefinanciar, hayCobrable: vencido > 0 },
+    /**
+     * El recordatorio del acuerdo reemplaza al aviso de mora cuando no quedó nada exigible:
+     * es el mismo trato que `PLANTILLA_SOLO_REFINANCIAR`. Viaja para que el POST no lo corte
+     * por "no tiene nada vencido" y para que la vista previa muestre el texto que va a salir.
+     */
+    acuerdo: soloAcuerdo
+      ? { cuotaNro: avisoAcuerdo!.pactada.numero, monto: avisoAcuerdo!.pactada.pendiente, vencimiento: avisoAcuerdo!.pactada.vencimiento }
+      : null,
     datos: {
       nombre: cliente.nombre,
       financiera: financiera?.nombre || "tu financiera",
       deuda: deudaViva,
       vencido,
       cuotas: venc.cuotas,
-      nroCuota: nroCuotaVencida,
-      dias: habla?.dias ?? 0,
-      cuota: round2(proximaCuota?.cuota_total ?? 0),
-      vencimiento: proximo,
+      /* Con el recordatorio del acuerdo, la cuota, el importe y la fecha son los de la
+         PACTADA: el cliente tiene que poder cotejarlos contra el papel que firmó. Y `dias` es
+         0 — está al día con lo que pactó. */
+      nroCuota: soloAcuerdo ? avisoAcuerdo!.pactada.numero : nroCuotaVencida,
+      dias: soloAcuerdo ? 0 : (habla?.dias ?? 0),
+      cuota: soloAcuerdo ? round2(avisoAcuerdo!.pactada.pendiente) : round2(proximaCuota?.cuota_total ?? 0),
+      vencimiento: soloAcuerdo ? avisoAcuerdo!.pactada.vencimiento : proximo,
     },
   } as const;
 }
@@ -554,8 +601,14 @@ function textoMotivo(
   base: string,
   d: DatosPlantillaContacto,
   refi: { numeros: string[]; hayCobrable: boolean },
+  /** Si el cliente está CUMPLIENDO un acuerdo y no le quedó nada exigible. */
+  acuerdo?: { cuotaNro: number; monto: number; vencimiento: Date } | null,
 ): string {
   if (motivo !== "mora") return render(base, d);
+  /* Está cumpliendo su acuerdo: no hay reclamo que hacerle. El aviso de mora se reemplaza
+     entero —como con la invitación a refinanciar— por el recordatorio de su cuota pactada,
+     cuyos datos ya vienen en `d` (nro_cuota, cuota y vencimiento son los de la pactada). */
+  if (acuerdo && !refi.hayCobrable) return render(PLANTILLA_ACUERDO_AL_DIA, d);
   // Nada cobrable: el aviso de mora pediría $0,00. Se reemplaza entero por la invitación.
   if (!refi.hayCobrable && refi.numeros.length > 0) return render(PLANTILLA_SOLO_REFINANCIAR, d);
   // Hay algo que reclamar: se reclama eso, y se nombran aparte los que ya no se cobran.

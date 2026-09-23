@@ -158,6 +158,25 @@ export const PLANTILLA_SOLO_REFINANCIAR =
   "Podemos reestructurar toda tu deuda en un plan nuevo, con cuotas que puedas pagar. Acercate o respondé este mensaje y lo armamos.";
 
 /**
+ * El mensaje cuando el cliente está CUMPLIENDO un acuerdo de pago.
+ *
+ * 🔴 Reemplaza al aviso de mora entero, igual que `PLANTILLA_SOLO_REFINANCIAR`.
+ *
+ * Fernando (23/09/2026): "en Morosos, si pulso el WhatsApp y el SMS, el mensaje me lleva al
+ * reclamo de la cuota del crédito original". Y su crédito figura en mora porque el plan viejo
+ * conserva las fechas: con la plantilla de mora le llegaba "tenés la cuota 1 vencida hace 76
+ * días, abonás $649.656,24" a alguien que arregló ayer y cuya primera cuota pactada vence
+ * recién el 07/10.
+ *
+ * No reclama ni habla de días de atraso: este cliente está al día con lo que pactó. Nombra la
+ * cuota del ACUERDO —`[nro_cuota]`, `[cuota]` y `[vencimiento]` vienen de la pactada, no del
+ * plan— para que pueda cotejarla contra el papel que firmó.
+ */
+export const PLANTILLA_ACUERDO_AL_DIA =
+  "Hola [nombre], te escribimos de [financiera]. Te recordamos que la cuota [nro_cuota] de tu acuerdo de pago, de $[cuota], vence el [vencimiento]. " +
+  "Manteniendo el acuerdo al día conservás las condiciones que arreglamos. ¡Gracias!";
+
+/**
  * Textos por defecto. Neutros a propósito: los escribe cada financiera desde Configuración.
  */
 export const PLANTILLAS_CONTACTO_DEFAULT: PlantillasContacto = {
