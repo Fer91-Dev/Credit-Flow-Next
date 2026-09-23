@@ -572,6 +572,46 @@ export function acuerdoCubreElAtraso(
 }
 
 /**
+ * LO PRÓXIMO QUE ESTE CRÉDITO TIENE QUE PAGAR: qué fecha y cuánto.
+ *
+ * 🔴 CON UN ACUERDO ENCIMA NO ES `proximo_pago`.
+ *
+ * Fernando (23/09/2026): filtró la pestaña Vencimientos "hasta el 07/10/2026, que es la fecha
+ * en la que vence la cuota del acuerdo, y no lo trae al CRD-000007". Y no lo traía porque esa
+ * pestaña miraba `proximo_pago`, que apunta a la cuota más vieja del PLAN ORIGINAL —el 09/07,
+ * ya pasado—: el crédito quedaba fuera de cualquier rango futuro. Su próximo vencimiento real
+ * es el de la cuota PACTADA.
+ *
+ * Es el mismo dato que necesita la campaña de recordatorio, así que sale de una sola función:
+ * si la pestaña lo listara por una fecha y la campaña mandara otra, el cliente recibiría un
+ * aviso con un día que nadie vio en pantalla.
+ *
+ * Dominio PURO: recibe el acuerdo ya resuelto, con fechas como vinieron (Date o ISO).
+ */
+export function proximoVencimiento(c: {
+  proximoPago: Date | string | null | undefined;
+  /** Lo que falta de la próxima cuota del plan original. */
+  cuotaProxima: number;
+  /** El acuerdo vigente del crédito, tal como lo manda el server (`AcuerdoEnPantalla`). */
+  acuerdo?: {
+    fecha: Date | string;
+    al_dia: boolean;
+    proxima: { numero: number; vencimiento: Date | string; pendiente: number } | null;
+  } | null;
+}): { fecha: string | null; monto: number; porAcuerdo: boolean; cuotaNro: number | null } {
+  const iso = (d: Date | string | null | undefined) =>
+    !d ? null : (d instanceof Date ? d.toISOString() : String(d)).slice(0, 10);
+
+  const a = c.acuerdo;
+  /* Las dos condiciones de siempre: que el acuerdo CUBRA lo que debe, y que la cuota pactada
+     esté al día. Si dejó de pagarla el arreglo se cayó y vuelve a mandar el plan original. */
+  if (a && a.al_dia && a.proxima && acuerdoCubreElAtraso(a.fecha, c.proximoPago ?? null)) {
+    return { fecha: iso(a.proxima.vencimiento), monto: a.proxima.pendiente, porAcuerdo: true, cuotaNro: a.proxima.numero };
+  }
+  return { fecha: iso(c.proximoPago), monto: c.cuotaProxima, porAcuerdo: false, cuotaNro: null };
+}
+
+/**
  * Estado real del acuerdo a partir de lo efectivamente cobrado desde que se firmó.
  *
  * Lo cobrado se imputa a las cuotas del acuerdo **en orden**, igual que un pago se imputa a

@@ -9,7 +9,8 @@ import { Emoji } from "@/components/ui/Emoji";
 import { Skeleton } from "@/components/ui/skeleton";
 import { BuscadorF3 } from "@/components/ui/BuscadorF3";
 import { guardarSeleccionCampana, guardarTipoCampana } from "./seleccion-campana";
-import { esCreditoVivo, contactoBloqueado } from "@/lib/domain";
+import { esCreditoVivo, contactoBloqueado, proximoVencimiento } from "@/lib/domain";
+import { StatusBadge } from "@/components/ui/StatusBadge";
 import { formatMonto, formatFecha, nombreCompleto, formatCreditoNumero, hoyComercial, pctDe } from "@/lib/utils";
 import { CreditoLink } from "@/components/ui/CreditoLink";
 
@@ -31,8 +32,14 @@ function diaISO(n = 0): string {
  * en una lista terminaría mandándole a alguien que está al día un mensaje que le habla de
  * una deuda vencida que no tiene.
  *
- * El corte va por `proximo_pago`, que es la fecha de la cuota impaga más vieja y el sistema
- * la mantiene al día. Para alguien al día, esa fecha ES su próximo vencimiento.
+ * El corte va por el PRÓXIMO VENCIMIENTO REAL, que sale de `proximoVencimiento()`: casi
+ * siempre es `proximo_pago` —la cuota impaga más vieja del plan—, pero con un acuerdo de pago
+ * vigente y al día es la cuota PACTADA.
+ *
+ * 🔴 Antes miraba `proximo_pago` a secas y por eso CRD-000007 no aparecía nunca: su plan
+ * original quedó con fecha 09/07, así que un rango futuro no lo alcanzaba, y su cuota real
+ * —la 1 del acuerdo, del 07/10— no estaba en ninguna lista. Fernando lo encontró filtrando
+ * justo hasta esa fecha (23/09/2026).
  */
 export function VencimientosTab() {
   const router = useRouter();
@@ -58,22 +65,29 @@ export function VencimientosTab() {
 
   const hoy = diaISO(0);
 
+  /** Lo próximo a pagar de cada crédito: del plan, o del acuerdo si lo está cumpliendo. */
+  const vencimientoDe = (c: Credito) =>
+    proximoVencimiento({ proximoPago: c.proximo_pago, cuotaProxima: c.cuota_proxima ?? 0, acuerdo: c.acuerdo });
+
   const filas = useMemo(() => {
     const texto = q.trim().toLowerCase();
     return creditos
-      .filter((c) => {
-        if (!esCreditoVivo(c.estado) || !c.proximo_pago) return false;
-        const f = c.proximo_pago.slice(0, 10);
+      .map((c) => ({ c, v: vencimientoDe(c) }))
+      .filter(({ c, v }) => {
+        if (!esCreditoVivo(c.estado) || !v.fecha) return false;
         // 🔴 Solo lo que NO venció todavía. Un crédito con la cuota vencida ya es un moroso y
         // tiene su propia pestaña, con su propio mensaje: mandarle un "te vence el jueves" a
         // alguien que debe hace dos meses es tratarlo de al día.
-        if (f < hoy) return false;
-        if (f < desde || f > hasta) return false;
+        if (v.fecha < hoy) return false;
+        if (v.fecha < desde || v.fecha > hasta) return false;
         if (!texto) return true;
         const nom = nombreCompleto(c.cliente).toLowerCase();
         return nom.includes(texto) || (c.cliente?.documento ?? "").includes(texto);
       })
-      .sort((a, b) => (a.proximo_pago ?? "").localeCompare(b.proximo_pago ?? ""));
+      .sort((a, b) => (a.v.fecha ?? "").localeCompare(b.v.fecha ?? ""))
+      .map(({ c }) => c);
+    // `vencimientoDe` es puro y solo depende de `creditos`: no hace falta en las dependencias.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [creditos, desde, hasta, q, hoy]);
 
   /**
@@ -83,9 +97,9 @@ export function VencimientosTab() {
   const contactables = filas.filter((c) => !contactoBloqueado(c.cliente).bloqueado);
   /** Los que van a recibir el aviso: los que se están viendo, menos los que se sacaron. */
   const destinatarios = contactables.filter((c) => !excluidos.has(c.id));
-  const montoSeleccionado = destinatarios.reduce((s, c) => s + (c.cuota_proxima ?? 0), 0);
-  const totalRango = filas.reduce((s, c) => s + (c.cuota_proxima ?? 0), 0);
-  const venceHoy = filas.filter((c) => c.proximo_pago?.slice(0, 10) === hoy).length;
+  const montoSeleccionado = destinatarios.reduce((s, c) => s + vencimientoDe(c).monto, 0);
+  const totalRango = filas.reduce((s, c) => s + vencimientoDe(c).monto, 0);
+  const venceHoy = filas.filter((c) => vencimientoDe(c).fecha === hoy).length;
   const sinContacto = filas.filter((c) => !c.cliente?.telefono && !c.cliente?.email).length;
 
   const incluido = (id: string) => !excluidos.has(id);
@@ -222,8 +236,20 @@ export function VencimientosTab() {
             header: "Cliente",
             cell: (c) => (
               <div>
-                <p className="font-medium text-foreground">{nombreCompleto(c.cliente)}</p>
-                <p><CreditoLink id={c.id} numero={c.numero} numeroOrigen={c.refinancia_a_numero} className="text-[11px]" /></p>
+                <p className="flex items-center gap-1.5 font-medium text-foreground">
+                  {nombreCompleto(c.cliente)}
+                  {/* Sin esto, la fila muestra una fecha y un importe que no están en el plan
+                      de cuotas del crédito y no hay forma de saber de dónde salieron. */}
+                  {vencimientoDe(c).porAcuerdo && <StatusBadge label="Acuerdo de pago" variant="primary" />}
+                </p>
+                <p className="flex items-center gap-1.5">
+                  <CreditoLink id={c.id} numero={c.numero} numeroOrigen={c.refinancia_a_numero} className="text-[11px]" />
+                  {vencimientoDe(c).porAcuerdo && (
+                    <span className="text-[11px] text-muted-foreground">
+                      cuota {vencimientoDe(c).cuotaNro} de {c.acuerdo?.total_cuotas} del acuerdo
+                    </span>
+                  )}
+                </p>
               </div>
             ),
           },
@@ -238,16 +264,25 @@ export function VencimientosTab() {
           {
             header: "Vence",
             cell: (c) => {
-              const f = c.proximo_pago?.slice(0, 10) ?? "";
-              const esHoy = f === hoy;
+              const v = vencimientoDe(c);
+              const esHoy = v.fecha === hoy;
               return (
                 <span className={`tabular-nums ${esHoy ? "font-semibold text-warning" : "text-foreground"}`}>
-                  {formatFecha(c.proximo_pago)}{esHoy && " · hoy"}
+                  {formatFecha(v.fecha)}{esHoy && " · hoy"}
                 </span>
               );
             },
           },
-          { header: "Cuota", mono: true, cell: (c) => <span className="font-semibold text-foreground">{formatMonto(c.cuota_proxima ?? 0)}</span> },
+          {
+            header: "Cuota",
+            mono: true,
+            cell: (c) => {
+              const v = vencimientoDe(c);
+              return (
+                <span className="font-semibold text-foreground">{formatMonto(v.monto)}</span>
+              );
+            },
+          },
         ]}
       />
     </div>

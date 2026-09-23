@@ -52,7 +52,28 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     cliente: { no_contactar: false, ...(fallecidos.saca_de_agenda ? { estado: { not: "fallecido" } } : {}) },
   };
 
-  const [enMora, por_vencer, vencidas] = await Promise.all([
+  /**
+   * 🔴 EL QUE CUMPLE UN ACUERDO TAMBIÉN TIENE UN VENCIMIENTO POR DELANTE.
+   *
+   * `proximo_pago` le quedó apuntando a la cuota más vieja del plan original —una fecha ya
+   * pasada—, así que el conteo de "por vencer" nunca lo alcanzaba y la pestaña Vencimientos
+   * decía 1 cuando eran 2. Su vencimiento real es el de la cuota PACTADA, y es la misma
+   * cuenta que hace la pestaña con `proximoVencimiento()`.
+   *
+   * Se cuentan solo los que NO entran ya en el conteo normal (su `proximo_pago` es pasado),
+   * para no sumarlos dos veces.
+   */
+  const porVencerDeAcuerdo = prisma.acuerdo_cuota.findMany({
+    where: {
+      ...withTenant(tenantId),
+      vencimiento: { gte: hoy, lte: limite },
+      estado: { not: "pagada" },
+      acuerdo: { estado: "vigente", credito: { ...base, proximo_pago: { lt: hoy } } },
+    },
+    select: { acuerdo: { select: { credito_id: true } } },
+  });
+
+  const [enMora, por_vencer_plan, vencidas, cuotasPorVencerAcuerdo] = await Promise.all([
     prisma.creditos.findMany({
       where: { ...contactables, proximo_pago: { lt: hoy } },
       select: {
@@ -62,7 +83,12 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     }),
     prisma.creditos.count({ where: { ...base, proximo_pago: { gte: hoy, lte: limite } } }),
     prisma.creditos.count({ where: { ...base, proximo_pago: { lt: hoy } } }),
+    porVencerDeAcuerdo,
   ]);
+
+  /* Un crédito cuenta UNA vez aunque tenga varias cuotas pactadas en el rango: lo que se
+     cuenta son destinatarios de un aviso, no cuotas. */
+  const por_vencer = por_vencer_plan + new Set(cuotasPorVencerAcuerdo.map((q) => q.acuerdo.credito_id)).size;
 
   if (enMora.length === 0) {
     return successResponse({ pendientes: 0, vencidas, por_vencer, horizonte_dias: HORIZONTE_DIAS, dias_sin_gestion });
