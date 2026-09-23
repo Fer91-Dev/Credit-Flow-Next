@@ -2,7 +2,7 @@ import { requireRole, scopeCreditosVendedor } from "@/lib/auth";
 import { successResponse, errorResponse, withErrorHandler, assertSameOrigin } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
-import { cuotaMensualFrancesa, tasaPeriodicaSegunConvencion, convencionDelCredito, interesMora, normalizarFrecuencia, calculateRecoveryOffer, diasMoraActual, type FrecuenciaDef, type ConfiguracionFinanciera, moraDelCredito, moraDesdeCronograma, esCreditoVivo, esCreditoIncobrable, topeMoraPorIncobrable, calcularDeudaConsolidada, sugerirOfertaCancelacion, resolverOfertaRecupero, calcularDeudaVencida, round2, deudaEnRevision, contactoBloqueado, resolverPlantillasMeta, promoVigenteAl, type CuotaParaImputar, cargosDeCuota, baseMoraDeCuota, reclamoDeCampana } from "@/lib/domain";
+import { cuotaMensualFrancesa, tasaPeriodicaSegunConvencion, convencionDelCredito, interesMora, normalizarFrecuencia, calculateRecoveryOffer, diasMoraActual, type FrecuenciaDef, type ConfiguracionFinanciera, moraDelCredito, moraDesdeCronograma, esCreditoVivo, esCreditoIncobrable, topeMoraPorIncobrable, calcularDeudaConsolidada, sugerirOfertaCancelacion, resolverOfertaRecupero, calcularDeudaVencida, round2, deudaEnRevision, contactoBloqueado, resolverPlantillasMeta, promoVigenteAl, type CuotaParaImputar, cargosDeCuota, baseMoraDeCuota, reclamoDeCampana, audienciaDeCampana, type AudienciaCampana } from "@/lib/domain";
 import { getConfiguracion, getCobranzaConfig } from "@/lib/config";
 import { registrarAuditoria } from "@/lib/audit";
 import { hoyComercial, formatCreditoNumero } from "@/lib/utils";
@@ -333,6 +333,15 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
    */
   const hoyCorte = hoyComercial();
   const acuerdosVigentes = await creditosConAcuerdoVigente(tenantId);
+  /**
+   * La situación del acuerdo hace falta ACÁ, antes de repartir a los candidatos por tipo de
+   * campaña: el que cumple su arreglo no va a la lista de morosos sino a la de vencimientos
+   * (ver `audienciaDeCampana`).
+   */
+  const situacionAcuerdo = await situacionAcuerdoPorCredito(tenantId, candidatos.map((c) => c.id));
+  /** El acuerdo que CUBRE el atraso de este crédito, o null. */
+  const acuerdoQueCubre = (c: { id: string; proximo_pago: Date | null }) =>
+    cubiertoPorAcuerdo(acuerdosVigentes, c.id, c.proximo_pago) ? situacionAcuerdo.get(c.id) ?? null : null;
   const bloqueados = await cobroBloqueadoPorCredito(
     tenantId,
     candidatos.map((c) => ({
@@ -363,20 +372,21 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
   const diasDe = (c: (typeof candidatos)[number]) =>
     c.proximo_pago ? diasMoraActual(c.proximo_pago, hoyCorte) : c.dias_mora;
 
-  const delTipo = (c: (typeof candidatos)[number]) => {
-    const bloqueado = bloqueados.get(c.id) ?? false;
-    // El recupero se define por el ESTADO, no por la escalera: un castigado ya salió del
-    // circuito y `cobro_bloqueado` no dice nada útil sobre él.
-    if (tipoCampana === "recupero") return esCreditoIncobrable(c.estado);
-    // Y al revés: un castigado nunca entra en los otros tres tipos, aunque su atraso lo
-    // hiciera parecer un moroso más. Lo cubre `enCartera`; esto lo deja dicho acá también.
-    if (esCreditoIncobrable(c.estado)) return false;
-    if (tipoCampana === "refinanciacion") return bloqueado;
-    if (bloqueado) return false;
-    // Un reclamo sin nada vencido pediría $0,00; un recordatorio con atraso trataría de al
-    // día a un moroso. Ninguno de los dos es un envío que se pueda mandar.
-    return tipoCampana === "vencimiento" ? diasDe(c) <= 0 : diasDe(c) > 0;
+  /**
+   * A qué campaña pertenece cada candidato. La regla vive en el dominio
+   * (`audienciaDeCampana`) porque la pantalla arma sus cuatro pestañas con la MISMA: si una
+   * lo cuenta como moroso y la otra lo manda a vencimientos, el operador elige 10 y salen 9.
+   */
+  const audienciaDe = (c: (typeof candidatos)[number]): AudienciaCampana => {
+    const a = acuerdoQueCubre(c);
+    return audienciaDeCampana({
+      castigado: esCreditoIncobrable(c.estado),
+      cobroBloqueado: bloqueados.get(c.id) ?? false,
+      diasMora: diasDe(c),
+      acuerdo: a ? { pactadaAlDia: a.al_dia } : null,
+    });
   };
+  const delTipo = (c: (typeof candidatos)[number]) => audienciaDe(c) === tipoCampana;
 
   const creditos = candidatos.filter((c) => cobrable(c) && delTipo(c));
   const excluidos = candidatos.filter((c) => !(cobrable(c) && delTipo(c)));
@@ -413,6 +423,20 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
         return "Todavía se le puede cobrar: va en una campaña de reclamo, no en una de refinanciación";
       }
       if (bloqueado) return "Su plan ya venció y no se le puede cobrar: corresponde invitarlo a refinanciar";
+      /**
+       * 🔴 EL ACUERDO SE EXPLICA ANTES QUE EL ATRASO.
+       *
+       * Sin esta rama, a quien está cumpliendo un acuerdo le salía "Está al día: no hay nada
+       * vencido" o "Ya está en mora", que son las dos cosas a la vez y ninguna: su plan viejo
+       * figura vencido y su cuota pactada todavía no venció. El operador necesita leer por
+       * qué ese crédito no entra en SU campaña y a cuál va.
+       */
+      const acu = acuerdoQueCubre(c);
+      if (acu) {
+        return acu.al_dia
+          ? "Tiene un acuerdo de pago al día: le corresponde un recordatorio de su cuota pactada, no un reclamo del plan viejo"
+          : "Tiene un acuerdo de pago con una cuota pactada vencida: le corresponde un reclamo, no un recordatorio";
+      }
       return tipoCampana === "vencimiento"
         ? "Ya está en mora: le corresponde un reclamo con los punitorios, no un recordatorio"
         : "Está al día: no hay nada vencido que reclamarle, le corresponde un recordatorio";
@@ -457,7 +481,6 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
    *    lo que debe entró al arreglo; si arrastra una cuota posterior, esa no era parte del
    *    trato y el reclamo del plan sigue siendo el correcto.
    */
-  const situacionAcuerdo = await situacionAcuerdoPorCredito(tenantId, creditos.map((c) => c.id));
   /** La fecha en la que el acuerdo frenó los punitorios, o null si no los frena. */
   const congelaDe = (creditoId: string): Date | null => {
     const a = situacionAcuerdo.get(creditoId);
@@ -617,9 +640,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
      * Un recupero queda afuera: ahí el destinatario es un castigado y no hay acuerdo vigente
      * que valga.
      */
-    const acuerdoCubre = !esRecupero && cubiertoPorAcuerdo(acuerdosVigentes, c.id, c.proximo_pago)
-      ? situacionAcuerdo.get(c.id) ?? null
-      : null;
+    const acuerdoCubre = esRecupero ? null : acuerdoQueCubre(c);
     const reclamo = reclamoDeCampana(round2(dv.total), dm, acuerdoCubre, hoyCamp);
 
     return {

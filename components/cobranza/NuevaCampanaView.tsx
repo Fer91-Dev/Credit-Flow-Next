@@ -6,7 +6,7 @@ import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { mutate as globalMutate } from "swr";
 import { ArrowLeft, Mail, Smartphone, Sparkles, Check, Loader2, Users } from "lucide-react";
 import { WhatsAppIcon } from "@/components/ui/WhatsAppIcon";
-import { useCreditos, useConfiguracion, useFinanciera, useOfertaRecupero, KEYS, type Credito } from "@/lib/swr";
+import { useCreditos, useConfiguracion, useFinanciera, useOfertaRecupero, KEYS, type Credito, type AcuerdoDelCredito } from "@/lib/swr";
 import {
   calculateRecoveryOffer,
   construirMensajeCampana,
@@ -24,6 +24,7 @@ import {
   acuerdoCubreElAtraso,
   reclamoDeCampana,
   plantillaDeAcuerdo,
+  audienciaDeCampana,
   type CanalCampana,
 } from "@/lib/domain";
 import { AvisoMeta } from "@/components/clientes/ContactarDialog";
@@ -384,13 +385,39 @@ function CampanaWorkspace({ role, creditos: todosCreditos, bloqueados, onCancela
    * es justo lo contrario de lo que corresponde: a un incobrable ya no se lo refinancia. Los
    * otros tres grupos lo excluyen explícitamente además de por descarte.
    */
+  /**
+   * EL ACUERDO QUE CUBRE EL ATRASO DE UN CRÉDITO, o null.
+   *
+   * Una sola definición para la pantalla entera —las cuatro pestañas, la fila de la tabla, los
+   * totales y la vista previa—, y la misma regla que el servidor. Si la fila mostrara la cuota
+   * del plan viejo mientras el mensaje manda la pactada, el operador leería $181.772,37 y al
+   * cliente le llegaría $525.351,91.
+   */
+  const acuerdoDe = (c: Credito) =>
+    c.acuerdo && acuerdoCubreElAtraso(c.acuerdo.fecha, c.proximo_pago) ? c.acuerdo : null;
+
+  /**
+   * 🔴 EL QUE CUMPLE UN ACUERDO SE CUENTA EN "RECORDAR", NO EN "RECLAMAR".
+   *
+   * La regla la decide `audienciaDeCampana` en el dominio, la MISMA que usa el servidor al
+   * armar la campaña. Si la pantalla contara distinto, el operador seleccionaría 10 créditos
+   * y el server le devolvería 9 sin que nada lo explicara antes de apretar.
+   */
   const { paraRecordar, paraCobrar, paraRefinanciar, paraRecuperar } = useMemo(() => {
-    const castigado = (c: Credito) => c.estado === "incobrable";
+    const audiencia = (c: Credito) => {
+      const cubre = acuerdoDe(c);
+      return audienciaDeCampana({
+        castigado: c.estado === "incobrable",
+        cobroBloqueado: !!c.cobro_bloqueado,
+        diasMora: c.dias_mora,
+        acuerdo: cubre ? { pactadaAlDia: cubre.al_dia } : null,
+      });
+    };
     return {
-      paraRecordar:    todosCreditos.filter((c) => !castigado(c) && !c.cobro_bloqueado && c.dias_mora <= 0),
-      paraCobrar:      todosCreditos.filter((c) => !castigado(c) && !c.cobro_bloqueado && c.dias_mora > 0),
-      paraRefinanciar: todosCreditos.filter((c) => !castigado(c) && !!c.cobro_bloqueado),
-      paraRecuperar:   todosCreditos.filter(castigado),
+      paraRecordar:    todosCreditos.filter((c) => audiencia(c) === "vencimiento"),
+      paraCobrar:      todosCreditos.filter((c) => audiencia(c) === "mora"),
+      paraRefinanciar: todosCreditos.filter((c) => audiencia(c) === "refinanciacion"),
+      paraRecuperar:   todosCreditos.filter((c) => audiencia(c) === "recupero"),
     };
   }, [todosCreditos]);
 
@@ -460,16 +487,27 @@ function CampanaWorkspace({ role, creditos: todosCreditos, bloqueados, onCancela
          *
          * `vencido` viene de `/api/creditos`, que es donde vive la única definición.
          */
+        /**
+         * 🔴 CON UN ACUERDO ENCIMA, LA FILA HABLA DE LA CUOTA PACTADA.
+         *
+         * Es lo que el servidor congela en el objetivo y lo que sale en el mensaje. Sin esto
+         * la tabla mostraba la cuota del plan caído —sobre CRD-000007, $181.772,37 y "76 días"
+         * en la columna del vencimiento— mientras el WhatsApp decía $525.351,91 con fecha
+         * 07/10. Y sin descuento: los punitorios ya se negociaron al firmar el acuerdo.
+         */
+        const acu = esRecupero ? null : acuerdoDe(c);
         // En un recordatorio no hay mora: la base es la cuota que está por vencer.
-        const mora = esRecordatorio ? 0 : (c.interes_mora ?? 0);
-        const vencidoSinMora = esRecordatorio
+        const mora = esRecordatorio || acu ? 0 : (c.interes_mora ?? 0);
+        const vencidoSinMora = acu
+          ? (acu.proxima?.pendiente ?? 0)
+          : esRecordatorio
           ? (c.cuota_proxima ?? 0)
           : Math.max(0, (c.vencido ?? 0) - mora);
         const oferta = calculateRecoveryOffer({
           saldo: vencidoSinMora,
           interesMora: mora,
           diasMora: c.dias_mora,
-          descuentoPct,
+          descuentoPct: acu ? 0 : descuentoPct,
         });
 
         /**
@@ -508,7 +546,7 @@ function CampanaWorkspace({ role, creditos: todosCreditos, bloqueados, onCancela
         const condonaRecupero = esRecupero ? Math.round(Math.max(0, deudaCastigo - montoRecupero) * 100) / 100 : 0;
 
         return {
-          credito: c, oferta, vencidoSinMora, mora,
+          credito: c, oferta, vencidoSinMora, mora, acuerdoCubre: acu,
           recupero: esRecupero
             ? { deuda: deudaCastigo, riesgo, monto: montoRecupero, condona: condonaRecupero, sugerida }
             : null,
@@ -562,7 +600,7 @@ function CampanaWorkspace({ role, creditos: todosCreditos, bloqueados, onCancela
    * lee un texto y al cliente le llega otro.
    */
   const acuerdoQueCubre = (o: (typeof objetivos)[number]) =>
-    !esRecupero && !esRecordatorio &&
+    !esRecupero &&
     o.credito.acuerdo && acuerdoCubreElAtraso(o.credito.acuerdo.fecha, o.credito.proximo_pago)
       ? o.credito.acuerdo
       : null;
@@ -1478,6 +1516,12 @@ function TablaAudiencia({
     oferta: { montoConDescuento: number; ahorro: number };
     vencidoSinMora: number;
     mora: number;
+    /**
+     * El acuerdo de pago que CUBRE el atraso de este crédito, si lo hay. Con uno encima la
+     * fila habla de la cuota PACTADA —importe, vencimiento y "cuota 1 de 3"— y no del plan
+     * original, que con el acuerdo dejó de ser el compromiso.
+     */
+    acuerdoCubre: AcuerdoDelCredito | null;
     /** Solo en las campañas de recupero: la propuesta de cancelación de ese castigado. */
     recupero: { deuda: number; riesgo: number; monto: number; condona: number } | null;
   }[];
@@ -1637,7 +1681,11 @@ function TablaAudiencia({
                   días figuraba como al día. Ahora, si la fila trae atraso, lo dice — aunque
                   la campaña se haya armado como recordatorio.
                 */}
-                {esRecordatorio && o.credito.dias_mora <= 0
+                {/* Con acuerdo, lo que importa es cómo va el ARREGLO: decir "3 cuotas impagas"
+                    del plan caído manda al operador a mirar el crédito equivocado. */}
+                {o.acuerdoCubre
+                  ? `cuota ${o.acuerdoCubre.proxima?.numero ?? 1} de ${o.acuerdoCubre.total_cuotas} del acuerdo`
+                  : esRecordatorio && o.credito.dias_mora <= 0
                   ? "al día"
                   : o.credito.cuotas_vencidas
                   ? `${o.credito.cuotas_vencidas} ${o.credito.cuotas_vencidas === 1 ? "cuota impaga" : "cuotas impagas"}`
@@ -1647,7 +1695,11 @@ function TablaAudiencia({
             <td className={`${td} whitespace-nowrap text-muted-foreground`}>
               {/* Lo mismo con la fecha: "vence el 10/08/2026" sobre algo que venció hace 28
                   días es el mismo error escrito de otra forma. */}
-              {esRecordatorio && o.credito.dias_mora <= 0
+              {o.acuerdoCubre
+                ? o.acuerdoCubre.al_dia
+                  ? formatFecha(o.acuerdoCubre.proxima?.vencimiento ?? null)
+                  : formatDias(Math.max(0, Math.floor((Date.now() - new Date(o.acuerdoCubre.proxima?.vencimiento ?? Date.now()).getTime()) / 86_400_000)))
+                : esRecordatorio && o.credito.dias_mora <= 0
                 ? formatFecha(o.credito.proximo_pago)
                 : formatDias(o.credito.dias_mora)}
             </td>

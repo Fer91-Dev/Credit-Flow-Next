@@ -10,6 +10,7 @@ import { enviarEmailTenant, motivoEmailNoDisponible, type EmailTenantConfig } fr
 import { enviarSmsTenant, motivoSmsNoDisponible, type SmsConfig } from "@/lib/sms";
 import { getFinanciera } from "@/lib/financiera";
 import { registrarAuditoria } from "@/lib/audit";
+import { creditosConAcuerdoVigente, cubiertoPorAcuerdo, situacionAcuerdoPorCredito } from "@/lib/acuerdos";
 import type { NextRequest } from "next/server";
 
 /**
@@ -124,6 +125,19 @@ export const POST = withErrorHandler(async (
   const resultados: Resultado[] = [];
   const { fallecidos } = await getCobranzaConfig(tenantId);
 
+  /**
+   * 🔴 QUIÉN SIGUE CUBIERTO POR SU ACUERDO, AL MOMENTO DE MANDAR.
+   *
+   * Se vuelve a resolver acá y no se confía solo en el snapshot, por la misma razón que el
+   * corte del fallecido y el del refinanciado: entre que se armó la campaña y el envío pueden
+   * pasar días, y en el medio el acuerdo pudo romperse. Mandarle "tu acuerdo de pago sigue en
+   * pie" a alguien a quien el sistema ya le dio el acuerdo por caído sería prometerle algo que
+   * la terminal va a negar cuando se presente.
+   */
+  const idsCreditos = campana.objetivos.map((o) => o.credito_id);
+  const acuerdosVigentes = await creditosConAcuerdoVigente(tenantId);
+  const situacionAcuerdo = await situacionAcuerdoPorCredito(tenantId, idsCreditos);
+
   /** Deja asentado qué pasó con ESTE destinatario, para poder retomar y para poder mostrarlo. */
   const marcar = (objetivoId: string, estado: "enviado" | "error" | "manual", error?: string) =>
     prisma.campana_objetivo.updateMany({
@@ -203,9 +217,32 @@ export const POST = withErrorHandler(async (
      * refinanciación `cuota_monto` solo se llena en este caso (en un recordatorio es la cuota
      * del plan, y en un recupero no hay acuerdo que valga).
      */
-    const porAcuerdo =
-      campana.tipo !== "vencimiento" && campana.tipo !== "recupero" &&
-      objetivo.cuota_monto != null && objetivo.vence_el != null;
+    const cubierto = campana.tipo !== "recupero"
+      && cubiertoPorAcuerdo(acuerdosVigentes, objetivo.credito_id, objetivo.credito.proximo_pago)
+      ? situacionAcuerdo.get(objetivo.credito_id) ?? null
+      : null;
+    /**
+     * El acuerdo se CAYÓ después de armar la campaña. El objetivo se congeló sobre la cuota
+     * pactada, así que mandar lo que dice el snapshot sería hablarle de un arreglo que ya no
+     * existe, y mandarle el texto del operador sería reclamarle una deuda que no es la que el
+     * sistema calcularía hoy. Queda para que una persona lo mire.
+     */
+    /**
+     * ¿ESTE OBJETIVO SE ARMÓ SOBRE UNA CUOTA PACTADA? Se deduce del snapshot, sin una columna
+     * nueva: `audienciaDeCampana` manda a un recordatorio solo a quien no debe nada del plan
+     * O a quien está cumpliendo un acuerdo, así que en una campaña de vencimientos un
+     * destinatario con atraso del plan encima es, necesariamente, uno con acuerdo. En los
+     * otros tipos, `cuota_monto` solo se llena en este caso.
+     */
+    const eraPorAcuerdo = objetivo.cuota_monto != null && objetivo.vence_el != null
+      && (campana.tipo !== "vencimiento" || objetivo.dias_mora > 0);
+    if (eraPorAcuerdo && !cubierto) {
+      const motivo = "Su acuerdo de pago dejó de estar vigente después de armar la campaña";
+      await marcar(objetivo.id, "manual", motivo);
+      resultados.push({ cliente_id: clienteId, nombre, metodo: "manual", error: motivo });
+      continue;
+    }
+    const porAcuerdo = !!cubierto && eraPorAcuerdo;
     /* Días de atraso de LO QUE SE RECLAMA. Con acuerdo son los de la cuota pactada —0 si
        todavía no venció—, no los del plan original, que es justamente el número que hacía
        decir "76 días de atraso" a alguien que firmó ayer. */

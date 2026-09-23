@@ -106,19 +106,33 @@ try {
     `lista ${pesos(enLista?.vencido ?? 0)} · pantalla ${pesos(exigiblePantalla)}`,
   );
 
-  // -- 2. La campaña arma el objetivo sobre la CUOTA PACTADA ----------------
-  H2("La campana: que se congela en el objetivo");
+  // -- 2a. El que CUMPLE su acuerdo no entra en una campana de MOROSOS ------
+  H2("Campana de MOROSOS: lo rechaza");
   const prev = await db.acciones_cobranza.findMany({ where: { credito_id: credito.id }, select: { id: true } });
   prev.forEach((a) => accionesAntes.add(a.id));
 
-  const camp = await api("POST", "/api/cobranza/campanas", {
-    nombre: `QA acuerdo ${Date.now()}`,
+  const rechazo = await api("POST", "/api/cobranza/campanas", {
+    nombre: `QA rechazo ${Date.now()}`,
     canal: "whatsapp",
     tipo: "mora",
     credito_ids: [credito.id],
-    mensaje_template: "Hola [Nombre], cancelando $[Monto] regularizas tu situacion. Llevas [Dias] dias de atraso.",
+    mensaje_template: "Hola [Nombre], cancelando $[Monto] regularizas tu situacion.",
   });
-  ok(camp.ok, "la campana de mora se crea con el credito adentro", camp.error ?? "");
+  if (rechazo.ok) creadas.push(rechazo.data.id);
+  ok(!rechazo.ok, "NO se lo deja armar como moroso: esta cumpliendo su acuerdo");
+  console.log(`     motivo: ${rechazo.error ?? "(se armo igual)"}`);
+  ok(/acuerdo de pago al dia|acuerdo de pago al día/i.test(rechazo.error ?? ""), "y el motivo nombra el acuerdo y a que campana va");
+
+  // -- 2b. Y SI entra en la de VENCIMIENTOS, sobre la cuota pactada ---------
+  H2("Campana de VENCIMIENTOS: lo acepta y congela la cuota pactada");
+  const camp = await api("POST", "/api/cobranza/campanas", {
+    nombre: `QA acuerdo ${Date.now()}`,
+    canal: "whatsapp",
+    tipo: "vencimiento",
+    credito_ids: [credito.id],
+    mensaje_template: "Hola [Nombre], el [Vence] vence tu cuota de $[Monto]. Gracias!",
+  });
+  ok(camp.ok, "la campana de vencimientos se crea con el credito adentro", camp.error ?? "");
   if (!camp.ok) throw new Error("no se pudo armar la campana");
   creadas.push(camp.data.id);
 
@@ -177,7 +191,7 @@ try {
       credito_ids: [credito.id],
       mensaje_template: "Hola [Nombre], cancelando $[Monto] regularizas tu situacion. Llevas [Dias] dias de atraso.",
     });
-    ok(camp3.ok, "la campana se crea con la cuota pactada ya vencida", camp3.error ?? "");
+    ok(camp3.ok, "con la pactada vencida SI entra en la campana de morosos", camp3.error ?? "");
     if (camp3.ok) {
       creadas.push(camp3.data.id);
       const envio3 = await api("POST", `/api/cobranza/campanas/${camp3.data.id}/enviar`);

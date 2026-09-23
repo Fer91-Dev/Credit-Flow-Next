@@ -113,6 +113,51 @@ export const TEMPLATE_ACUERDO_ATRASADO =
   "El acuerdo sigue en pie mientras las cuotas se paguen: comunicate con nosotros para regularizarla.";
 
 /**
+ * A QUÉ CAMPAÑA PERTENECE UN CRÉDITO. Una sola definición para la pantalla y el servidor.
+ *
+ * 🔴 EL QUE CUMPLE UN ACUERDO NO ES UN MOROSO.
+ *
+ * Fernando (23/09/2026), sobre CRD-000007: "está vencido por eso entró en la campaña de
+ * morosos, porque debe las cuotas del plan original, pero no se debería incluir ahí ya que
+ * está en acuerdo; la cuota 1 del acuerdo recién vence el 07/10. En todo caso se debería
+ * enviar el mensaje en la campaña de Vencimientos, para recordarle que tiene próxima a vencer
+ * la cuota 1".
+ *
+ * Y es exacto: con un acuerdo vigente el plan original SE CAYÓ. Que sus cuotas sigan con la
+ * fecha vieja es un hecho contable, no una deuda exigible — lo exigible es la cuota pactada.
+ * Mandarlo a la lista de morosos hacía que el operador tuviera que acordarse, uno por uno, de
+ * quién había arreglado y quién no.
+ *
+ * Los cuatro destinos son EXCLUYENTES y se resuelven en este orden:
+ *
+ *  1. **castigado** → `recupero`. Ya salió del circuito; no se le reclama el nominal.
+ *  2. **cobro bloqueado** → `refinanciacion`. Su plan venció y la terminal rechaza el cobro.
+ *  3. **cubierto por un acuerdo vigente** → depende de la CUOTA PACTADA, no del plan:
+ *     · pactada al día  → `vencimiento`, que es el recordatorio que pidió Fernando.
+ *     · pactada vencida → `mora`, porque ahí sí está incumpliendo — pero el mensaje habla del
+ *       acuerdo (`TEMPLATE_ACUERDO_ATRASADO`), que es lo que está en juego.
+ *  4. el resto, por su atraso del plan.
+ */
+export type AudienciaCampana = "vencimiento" | "mora" | "refinanciacion" | "recupero";
+
+export function audienciaDeCampana(c: {
+  castigado: boolean;
+  cobroBloqueado: boolean;
+  /** Días de atraso del PLAN ORIGINAL (en vivo). */
+  diasMora: number;
+  /**
+   * El acuerdo vigente que CUBRE el atraso de este crédito. `null` si no tiene, o si arrastra
+   * una cuota que venció después de firmarlo (esa no entró al trato y se reclama normal).
+   */
+  acuerdo: { pactadaAlDia: boolean } | null;
+}): AudienciaCampana {
+  if (c.castigado) return "recupero";
+  if (c.cobroBloqueado) return "refinanciacion";
+  if (c.acuerdo) return c.acuerdo.pactadaAlDia ? "vencimiento" : "mora";
+  return c.diasMora > 0 ? "mora" : "vencimiento";
+}
+
+/**
  * QUÉ SE LE RECLAMA A UN DESTINATARIO DE CAMPAÑA, en una sola definición.
  *
  * 🔴 EXISTE PARA QUE NO HAYA DOS CUENTAS. El importe lo necesitan tres lugares —la vista
