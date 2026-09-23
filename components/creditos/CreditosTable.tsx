@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { FileText, ChevronDown, X, RefreshCw, History } from "lucide-react";
 import { CompararRefiDialog } from "./CompararRefiDialog";
 import { useCreditos, useCreditosKpis, KEYS, type Credito, useTramosMora, useDiasLegales } from "@/lib/swr";
+import { useDebounce } from "@/lib/use-debounce";
 import { type Role } from "@/lib/auth/roles";
 import { formatCreditoNumero, nombreCompleto, formatFecha, formatFechaHora, eventoPropio, teclaDelContenedor, formatDias, formatMonto, pctDe } from "@/lib/utils";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -45,7 +46,6 @@ export function CreditosTable({ role }: { role: Role }) {
   /** Los cortes media/alta/crítica que definió la financiera (Configuración → Cobranza). */
   const tramos = useTramosMora();
   const router = useRouter();
-  const { creditos, total: totalCreditos, error, isLoading } = useCreditos();
   /* Los KPI los calcula el servidor sobre toda la cartera: la lista de acá está topeada. */
   const { kpis: kpisServer } = useCreditosKpis();
   /**
@@ -69,6 +69,15 @@ export function CreditosTable({ role }: { role: Role }) {
    */
   const irARefinanciar = (c: Credito) => router.push(`/creditos/${c.id}/refinanciar`);
   const [search, setSearch]       = useState("");
+
+  /**
+   * La búsqueda viaja al SERVIDOR: antes filtraba dentro de los primeros 1.000 créditos
+   * cargados, así que un crédito fuera de esa página no se podía encontrar y la pantalla
+   * decía "sin resultados" como si no existiera. El resto de los filtros de esta pantalla
+   * (pestaña, estado) siguen igual, ahora sobre un conjunto ya correcto.
+   */
+  const qServidor = useDebounce(search.trim(), 250);
+  const { creditos, total: totalCreditos, error, isLoading } = useCreditos({ q: qServidor });
   const [estadoFilter, setEstado] = useState("all");
   const [tipoFilter, setTipo]     = useState("all");
   const [moraFilter, setMora]     = useState("all");
@@ -111,14 +120,16 @@ export function CreditosTable({ role }: { role: Role }) {
     [creditos, tab],
   );
 
+  /**
+   * 🔴 SIN EL FILTRO DE TEXTO: lo resuelve el servidor (`?q=`).
+   *
+   * Repetirlo acá no solo era redundante: era más estricto. Comparaba contra el nombre
+   * pegado, así que "Silvana Ledesma" no encontraba a "Silvana Noemí Ledesma" — y con la
+   * búsqueda ya hecha en la base, el efecto pasaba a ser que la pantalla descartara justo lo
+   * que había ido a buscar.
+   */
   const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    const qNum = q.replace(/[^0-9]/g, ""); // dígitos del término (para buscar por número)
     return deLaPestana.filter(c =>
-      (!q
-        || nombreCompleto(c.cliente).toLowerCase().includes(q)
-        || formatCreditoNumero(c.numero, c.refinancia_a_numero).toLowerCase().includes(q)
-        || (!!qNum && c.numero != null && String(c.numero).includes(qNum))) &&
       (estadoFilter === "all" || c.estado === estadoFilter) &&
       (tipoFilter === "all" || c.tipo_credito === tipoFilter) &&
       (moraFilter === "all"
@@ -126,7 +137,7 @@ export function CreditosTable({ role }: { role: Role }) {
         || (moraFilter === "en_mora" && c.dias_mora > 0)
         || (moraFilter === "critica" && severidadMora(c.dias_mora, tramos) === "critica"))
     );
-  }, [deLaPestana, search, estadoFilter, tipoFilter, moraFilter]);
+  }, [deLaPestana, estadoFilter, tipoFilter, moraFilter]);
 
   /**
    * KPIs de TODA la cartera (foto del negocio, no dependen del filtro puesto).

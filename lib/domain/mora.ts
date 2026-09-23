@@ -348,6 +348,65 @@ export function severidadMora(dias: number, tramos: TramosMora = TRAMOS_MORA_DEF
   return "critica";
 }
 
+/**
+ * LA MISMA SEVERIDAD, PERO COMO RANGO DE FECHAS — para poder filtrar en la base.
+ *
+ * 🔴 POR QUÉ EXISTE Y POR QUÉ ES PELIGROSA.
+ *
+ * `severidadMora` contesta "este crédito, ¿en qué tramo está?" a partir de los DÍAS. Para
+ * pedirle a Postgres "traeme solo los críticos" hace falta la pregunta al revés: "¿entre qué
+ * fechas de vencimiento cae un crítico?". Es la misma regla mirada del otro lado, y escribirla
+ * suelta en un endpoint sería exactamente la clase de duplicación que este sistema ya pagó
+ * cuatro veces —el Dashboard cortaba en 30/60 y Reportes en 15/30, y un crédito de 45 días
+ * era "crítico" en una pantalla y "31 a 60" en la otra—.
+ *
+ * Por eso vive acá, al lado de la función que traduce, y `scripts/verificar-escala.mjs`
+ * comprueba día por día (0 a 400) que las dos coincidan. Si alguien cambia una sin la otra,
+ * el verificador lo dice antes de que lo diga un cliente.
+ *
+ * La equivalencia es directa: `diasAtraso` cuenta días calendario desde el vencimiento, así
+ * que `dias = D` es lo mismo que `vencimiento = hoy − D días`.
+ *
+ *   al_dia   dias ≤ 0       →  vencimiento ≥ hoy   (o sin fecha)
+ *   media    1 ≤ dias ≤ M   →  hoy − M ≤ vencimiento < hoy
+ *   alta     M < dias ≤ A   →  hoy − A ≤ vencimiento < hoy − M
+ *   critica  dias > A       →  vencimiento < hoy − A
+ */
+export interface RangoSeveridad {
+  /** Vencimiento mínimo (inclusive). `null` = sin piso. */
+  desde: Date | null;
+  /** Vencimiento máximo (EXCLUSIVO). `null` = sin techo. */
+  hasta: Date | null;
+  /** Un crédito sin `proximo_pago` no tiene atraso: solo entra en `al_dia`. */
+  incluyeSinFecha: boolean;
+}
+
+export function rangoDeSeveridad(
+  severidad: SeveridadMora,
+  tramos: TramosMora = TRAMOS_MORA_DEFAULT,
+  hoy: Date = new Date(),
+): RangoSeveridad {
+  // Medianoche UTC del día de referencia: la misma normalización que hace `diasAtraso`.
+  const base = Date.UTC(hoy.getUTCFullYear(), hoy.getUTCMonth(), hoy.getUTCDate());
+  const menos = (d: number) => new Date(base - d * 86_400_000);
+  switch (severidad) {
+    case "al_dia":
+      return { desde: menos(0), hasta: null, incluyeSinFecha: true };
+    case "media":
+      return { desde: menos(tramos.media_hasta), hasta: menos(0), incluyeSinFecha: false };
+    case "alta":
+      return { desde: menos(tramos.alta_hasta), hasta: menos(tramos.media_hasta), incluyeSinFecha: false };
+    case "critica":
+      return { desde: null, hasta: menos(tramos.alta_hasta), incluyeSinFecha: false };
+  }
+}
+
+/** El rango de TODO lo que está en mora (cualquier severidad menos `al_dia`). */
+export function rangoEnMora(hoy: Date = new Date()): RangoSeveridad {
+  const base = Date.UTC(hoy.getUTCFullYear(), hoy.getUTCMonth(), hoy.getUTCDate());
+  return { desde: null, hasta: new Date(base), incluyeSinFecha: false };
+}
+
 export interface EstadoMora {
   dias: number;
   severidad: SeveridadMora;

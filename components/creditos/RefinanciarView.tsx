@@ -13,7 +13,7 @@ import { Toggle } from "@/components/ui/Toggle";
 import { IconBadge } from "@/components/ui/IconBadge";
 import { Emoji } from "@/components/ui/Emoji";
 import { useConfirm } from "@/components/ui/confirm";
-import { KEYS, useRefinanciacionPreview, refrescarNotificaciones } from "@/lib/swr";
+import { KEYS, useRefinanciacionPreview, refrescarNotificaciones, mutarCreditos } from "@/lib/swr";
 import { formatCreditoNumero, formatFecha, formatMonto, formatDias, formatNumero, parseMontoInput, hoyComercial } from "@/lib/utils";
 import { construirPlanAmortizacion, diagnosticarRefinanciacion } from "@/lib/domain";
 
@@ -526,7 +526,7 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
         setSaving(false);
         return;
       }
-      globalMutate(KEYS.creditos);
+      mutarCreditos();
       globalMutate(KEYS.dashboard);
       globalMutate(KEYS.vendedores);
       // La entrega es un cobro: entró a la caja y tiene su comprobante.

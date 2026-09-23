@@ -18,6 +18,7 @@ import { formatCreditoNumero, nombreCompleto, hoyComercial } from "@/lib/utils";
 import type { NextRequest } from "next/server";
 import type { Prisma } from "@prisma/client";
 import { fechaDeCajaTx } from "@/lib/cierre-turno";
+import { rangoDeSeveridad, rangoEnMora, type SeveridadMora } from "@/lib/domain";
 
 /**
  * GET /api/creditos
@@ -27,6 +28,22 @@ import { fechaDeCajaTx } from "@/lib/cierre-turno";
  * - ?cliente_id=uuid — filtrar por cliente específico
  * - ?limit=100
  * - ?offset=0
+ *
+ * Y los que agregó la auditoría de volumen (23/09/2026), para que las pantallas dejen de
+ * traerse la cartera entera y filtrar en el navegador:
+ *
+ * - ?q=texto      — busca por nombre, apellido o documento del cliente, o por número de
+ *                   crédito. El mismo criterio que tenía el buscador del navegador.
+ * - ?mora=…       — `en_mora` | `al_dia` | `media` | `alta` | `critica`. Sale de
+ *                   `rangoDeSeveridad`, la MISMA regla que `severidadMora`, mirada como rango
+ *                   de fechas para que la pueda resolver la base.
+ * - ?orden=…      — `reciente` (default, como siempre) | `mora` (el más atrasado primero).
+ * - ?solo_ids=1   — devuelve únicamente los ids que cumplen el filtro, sin los datos. Es lo
+ *                   que necesita "seleccionar todos" cuando la lista está paginada: la
+ *                   audiencia de una campaña no puede ser "lo que entró en la página".
+ *
+ * 🔴 TODOS SON OPCIONALES Y NO CAMBIAN EL COMPORTAMIENTO DE ANTES. Sin ellos, la respuesta es
+ * exactamente la misma que venía dando.
  */
 export const GET = withErrorHandler(async (req: NextRequest) => {
   const { tenantId, role, vendedorId } = await requireAuth(req);
@@ -36,6 +53,10 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   const clienteId = url.searchParams.get("cliente_id");
   const limit = Math.min(parseInt(url.searchParams.get("limit") || "100"), 1000);
   const offset = parseInt(url.searchParams.get("offset") || "0");
+  const q = (url.searchParams.get("q") ?? "").trim();
+  const mora = url.searchParams.get("mora");
+  const orden = url.searchParams.get("orden");
+  const soloIds = url.searchParams.get("solo_ids") === "1";
 
   // Anti-IDOR: el vendedor solo ve SUS créditos; admin/cobrador ven todo el tenant.
   const where: Record<string, any> = { ...withTenant(tenantId), ...scopeCreditosVendedor({ role, vendedorId }) };
@@ -53,6 +74,89 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   else if (estado === "cobrables") where.estado = { in: [...ESTADOS_COBRABLES] };
   else if (estado) where.estado = estado;
   if (clienteId) where.cliente_id = clienteId;
+
+  /**
+   * BÚSQUEDA. Lo mismo que hacían los buscadores en el navegador: nombre, apellido, documento
+   * o número de crédito. `mode: "insensitive"` para que "PEREZ" encuentre a "Pérez"… no: eso
+   * es acentos, que Postgres no ignora; ignora mayúsculas, que es lo que el operador tipea mal.
+   *
+   * El número se acepta como lo escribe la gente: "7", "000007" o "CRD-000007".
+   */
+  /**
+   * Las condiciones se acumulan en `AND` y no en claves sueltas: la búsqueda es un `OR` y el
+   * filtro de "al día" es otro, y dos `OR` de primer nivel no se pueden escribir en el mismo
+   * objeto — el segundo pisa al primero en silencio y el filtro deja de aplicarse.
+   */
+  const condiciones: Record<string, unknown>[] = [];
+
+  if (q) {
+    /**
+     * 🔴 SE BUSCA PALABRA POR PALABRA, y no la frase entera contra cada columna.
+     *
+     * El buscador que estaba en el navegador comparaba contra el nombre COMPLETO
+     * (`nombreCompleto(cliente).includes(q)`), así que "Juan Pérez" encontraba al cliente.
+     * Mandando esa misma frase a la base, `nombre contains "Juan Pérez"` no matchea nada
+     * —el nombre es "Juan" y el apellido "Pérez", en dos columnas— y la pantalla habría
+     * dicho "sin coincidencias" sobre un cliente que existe. Es el defecto más fácil de
+     * cometer al mudar una búsqueda al servidor y el más difícil de notar: no falla, miente.
+     *
+     * Con una palabra por vez y todas obligatorias, "Juan Pérez" y "Pérez Juan" encuentran
+     * lo mismo, y cada palabra puede estar en el nombre, en el apellido o en el documento.
+     */
+    const palabras = q.split(/\s+/).filter(Boolean);
+    const soloDigitos = q.replace(/[^0-9]/g, "");
+    const numero = soloDigitos ? parseInt(soloDigitos, 10) : NaN;
+    const porPalabra = palabras.map((w) => ({
+      OR: [
+        { cliente: { nombre: { contains: w, mode: "insensitive" } } },
+        { cliente: { apellido: { contains: w, mode: "insensitive" } } },
+        { cliente: { documento: { contains: w.replace(/[^0-9]/g, "") || w } } },
+      ],
+    }));
+    condiciones.push({
+      OR: [
+        // Todas las palabras tienen que aparecer en alguna parte del cliente…
+        { AND: porPalabra },
+        // …o el texto es el número del crédito ("7", "000007", "CRD-000007").
+        ...(Number.isFinite(numero) ? [{ numero }] : []),
+      ],
+    });
+  }
+
+  /**
+   * SEVERIDAD DE LA MORA, como rango de fechas de `proximo_pago`.
+   *
+   * La traducción vive en el dominio (`rangoDeSeveridad`), al lado de `severidadMora`, y el
+   * verificador comprueba día por día que las dos digan lo mismo. Acá solo se arma el filtro.
+   */
+  if (mora && mora !== "todas") {
+    const { tramos_mora } = await getCobranzaConfig(tenantId);
+    const hoy = hoyComercial();
+    const rango = mora === "en_mora"
+      ? rangoEnMora(hoy)
+      : rangoDeSeveridad(mora as SeveridadMora, tramos_mora, hoy);
+    const porFecha: Record<string, Date> = {};
+    if (rango.desde) porFecha.gte = rango.desde;
+    if (rango.hasta) porFecha.lt = rango.hasta;
+    condiciones.push(
+      rango.incluyeSinFecha
+        // Un crédito sin `proximo_pago` no tiene atraso: cuenta como al día.
+        ? { OR: [{ proximo_pago: porFecha }, { proximo_pago: null }] }
+        : { proximo_pago: porFecha },
+    );
+  }
+
+  if (condiciones.length > 0) where.AND = condiciones;
+
+  /**
+   * SOLO LOS IDS: para "seleccionar todos" con la lista paginada. Una columna, sin `include`
+   * ni cuotas — es lo que hace que pedir 5.000 destinatarios cueste una fracción de pedir
+   * 5.000 créditos completos.
+   */
+  if (soloIds) {
+    const ids = await prisma.creditos.findMany({ where, select: { id: true }, orderBy: { created_at: "desc" } });
+    return successResponse({ ids: ids.map((c) => c.id), total: ids.length });
+  }
 
   const [creditos, total] = await Promise.all([
     prisma.creditos.findMany({
@@ -97,7 +201,10 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
         _count: { select: { pagos: { where: { anulado: false } } } },
         producto: { select: { id: true, nombre: true, categoria: true, imagen_url: true } },
       },
-      orderBy: { created_at: "desc" },
+      /* `mora` ordena por el más atrasado primero, que es el orden con el que se trabaja la
+         cobranza. `proximo_pago` ascendente = el vencimiento más viejo arriba. Los que no
+         tienen fecha van al final. */
+      orderBy: orden === "mora" ? [{ proximo_pago: { sort: "asc", nulls: "last" } }] : [{ created_at: "desc" }],
       take: limit,
       skip: offset,
     }),

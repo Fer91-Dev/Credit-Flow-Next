@@ -1474,11 +1474,58 @@ export function useZonas() {
  * `truncado` es la señal para que la pantalla lo diga. Los KPI ya no dependen de esto: los
  * calcula el servidor sobre toda la tabla (`useCobranzaKpis`).
  */
-export function useCreditos() {
-  const { data, error, isLoading, mutate } = useSWR<{ creditos: Credito[]; total?: number }>(KEYS.creditos);
+export interface FiltrosCreditos {
+  /** Texto libre: nombre, apellido, documento o número de crédito. Lo resuelve el servidor. */
+  q?: string;
+  /** `en_mora` | `al_dia` | `media` | `alta` | `critica`. Lo resuelve el servidor. */
+  mora?: string | null;
+  /** `mora` = el más atrasado primero. Sin esto, el más reciente primero (como siempre). */
+  orden?: "mora" | null;
+  /** `vivos` = activo + vencido. Recorta en la base lo que la pantalla iba a descartar igual. */
+  estado?: string | null;
+}
+
+/**
+ * 🔴 LOS FILTROS VIAJAN AL SERVIDOR.
+ *
+ * Antes esta llamada traía los primeros 1.000 créditos y cada pantalla filtraba y buscaba
+ * sobre ESO. Con una cartera más grande, un cliente que cayera en el puesto 1.001 era
+ * inalcanzable: no aparecía en la lista y el buscador tampoco lo encontraba, porque buscaba
+ * dentro de lo ya cargado.
+ *
+ * Pasando `q` y `mora`, el recorte lo hace la base sobre la tabla ENTERA y lo que llega son
+ * hasta 1.000 créditos **que cumplen el filtro**. La pantalla sigue haciendo lo mismo que
+ * hacía con lo que recibe; lo que cambió es que ahora recibe lo correcto.
+ *
+ * Y `truncado` sigue avisando si ni siquiera el resultado filtrado entra: ahí lo que
+ * corresponde es afinar la búsqueda, y la pantalla lo dice.
+ */
+export function useCreditos(filtros?: FiltrosCreditos) {
+  const params = new URLSearchParams({ limit: "1000" });
+  if (filtros?.q) params.set("q", filtros.q);
+  if (filtros?.mora && filtros.mora !== "todas") params.set("mora", filtros.mora);
+  if (filtros?.orden) params.set("orden", filtros.orden);
+  if (filtros?.estado) params.set("estado", filtros.estado);
+  const key = `/api/creditos?${params.toString()}`;
+
+  const { data, error, isLoading, mutate } = useSWR<{ creditos: Credito[]; total?: number }>(key, {
+    // Al tipear, la lista anterior se queda a la vista en vez de parpadear en vacío.
+    keepPreviousData: true,
+  });
   const creditos = data?.creditos ?? [];
   const total = data?.total ?? creditos.length;
   return { creditos, total, truncado: total > creditos.length, error, isLoading, mutate };
+}
+
+/**
+ * Revalida TODAS las listas de créditos, con cualquier combinación de filtros.
+ *
+ * 🔴 `globalMutate(KEYS.creditos)` ya no alcanza: la clave ahora incluye la búsqueda y el
+ * filtro, así que refrescar la clave "pelada" dejaba la pantalla con datos viejos después de
+ * cobrar o de otorgar. Se refrescan por PREFIJO.
+ */
+export function mutarCreditos() {
+  return globalMutate((k: unknown) => typeof k === "string" && k.startsWith("/api/creditos?"));
 }
 
 /** Los KPI de Créditos, calculados por el servidor sobre TODA la cartera. */

@@ -9,6 +9,7 @@ import { WhatsAppIcon } from "@/components/ui/WhatsAppIcon";
 import { MessageSquareText } from "lucide-react";
 import { descargarCSV } from "@/lib/csv";
 import { useCreditos, useAccionesCobranza, type Credito, type AccionCobranza, type AgendaItem, useTramosMora, useAlertaCobranza, useDiasSinGestion, useCobranzaKpis } from "@/lib/swr";
+import { useDebounce } from "@/lib/use-debounce";
 import { type Role } from "@/lib/auth/roles";
 import { formatFecha, nombreCompleto, formatDias, formatMonto, formatCreditoNumero, pctDe } from "@/lib/utils";
 import { CreditoLink } from "@/components/ui/CreditoLink";
@@ -99,7 +100,6 @@ export function CobranzaTable({ role }: { role: Role }) {
   // Campañas (selección masiva + ActionToolbar + pestaña): admin (toda la cartera) y
   // vendedor (scopeado a SUS créditos, tanto en la selección como en el backend).
   const puedeCampanas = role === "admin" || role === "vendedor";
-  const { creditos: allCreditos, total: totalCreditos, truncado, error, isLoading } = useCreditos();
   /* Los KPI salen del SERVIDOR, sobre toda la cartera: la lista de acá está topeada en 1.000
      y con más créditos que eso los números se habrían quedado cortos sin avisar. */
   const { kpis: kpisServer } = useCobranzaKpis();
@@ -127,6 +127,27 @@ export function CobranzaTable({ role }: { role: Role }) {
    */
   const [filterContacto, setFilterContacto] = useState<"todos" | "sin_reciente" | "reciente">("todos");
   const [search, setSearch]     = useState("");
+
+  /**
+   * 🔴 EL RECORTE LO HACE LA BASE, NO EL NAVEGADOR.
+   *
+   * Esta pantalla se traía los primeros 1.000 créditos de la cartera y filtraba ahí adentro:
+   * buscar a alguien que cayera en el puesto 1.001 era imposible —no salía en la lista y el
+   * buscador tampoco lo encontraba, porque buscaba dentro de lo ya cargado—.
+   *
+   * Ahora viajan la búsqueda y el tramo de mora, y lo que llega son hasta 1.000 créditos QUE
+   * CUMPLEN el filtro, sobre la tabla entera. Los filtros locales de abajo quedan igual: sobre
+   * un conjunto ya correcto son un refinamiento, no el recorte.
+   *
+   * `estado: "vivos"` evita traer lo que la pantalla iba a descartar de todos modos.
+   */
+  const qServidor = useDebounce(search.trim(), 250);
+  const { creditos: allCreditos, total: totalCreditos, truncado, error, isLoading } = useCreditos({
+    q: qServidor,
+    mora: filterMora === "todas" ? "en_mora" : filterMora,
+    orden: "mora",
+    estado: "vivos",
+  });
   /**
    * Los nombres de los tramos salen de la CONFIG del tenant, no escritos a mano: los cortes
    * (15–30, +30) son parámetros de la financiera y estaban puestos a dedo en los botones, así
@@ -327,12 +348,22 @@ export function CobranzaTable({ role }: { role: Role }) {
       const reciente = diasDesdeContacto(c) != null && diasDesdeContacto(c)! < diasSinGestion;
       return filterContacto === "reciente" ? reciente : !reciente;
     });
-    const q = search.trim().toLowerCase();
-    return q
-      // Por nombre O por número de crédito: si la fila muestra CRD-000007, tiene que poder buscarse.
-      ? bySeveridad.filter(c => nombreCompleto(c.cliente).toLowerCase().includes(q) || formatCreditoNumero(c.numero, c.refinancia_a_numero).toLowerCase().includes(q))
-      : bySeveridad;
-  }, [creditos, filterMora, filterContacto, search, tramos, diasSinGestion]);
+    /**
+     * 🔴 LA BÚSQUEDA YA NO SE REPITE ACÁ, y sacarla fue necesario, no una simplificación.
+     *
+     * El filtro local comparaba contra el nombre pegado (`"Silvana Noemí Ledesma"`), así que
+     * escribir "Silvana Ledesma" —sin el segundo nombre— no matcheaba nada. Mientras la
+     * búsqueda era local eso pasaba desapercibido; ahora que el servidor SÍ la encuentra
+     * (busca palabra por palabra), dejar el filtro viejo encima significaba que la base
+     * devolvía el crédito correcto y la pantalla lo tiraba a la basura: cero resultados sobre
+     * un cliente que existe.
+     *
+     * Una sola búsqueda, la del servidor. Lo que queda acá son los recortes que el servidor
+     * no hace: la severidad —que también viaja, y esto es la red— y el contacto reciente,
+     * que depende de las gestiones y se resuelve con datos de otra consulta.
+     */
+    return bySeveridad;
+  }, [creditos, filterMora, filterContacto, tramos, diasSinGestion]);
 
   /**
    * Los KPI de la cartera en mora.

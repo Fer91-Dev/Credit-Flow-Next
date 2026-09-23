@@ -7,7 +7,7 @@ import { Tooltip } from "@/components/ui/Tooltip";
 import { useState, useRef } from "react";
 import { useSWRConfig } from "swr";
 import { CalendarDays, Wallet, Info, ArrowUpRight, Receipt, Loader2, Printer, RefreshCw, ArrowRight, ShieldCheck, Ban, Trash2, ExternalLink, ChevronDown, Handshake } from "lucide-react";
-import { refrescarNotificaciones, useAmortizacion, useCuotas, usePagosByCredito, useCreditos, KEYS, type Credito, type EstadoCuota, type Pago, type CuotaPersistida, useFinanciera, useDiasLegales, useOrigenRefinanciacion } from "@/lib/swr";
+import { refrescarNotificaciones, useAmortizacion, useCuotas, usePagosByCredito, useCreditos, KEYS, type Credito, type EstadoCuota, type Pago, type CuotaPersistida, useFinanciera, useDiasLegales, useOrigenRefinanciacion, mutarCreditos } from "@/lib/swr";
 import { type Role } from "@/lib/auth/roles";
 import { abrirRecibo } from "@/lib/recibo";
 import { moraDevengadaDeCuota } from "@/lib/recibo-cuota";
@@ -387,7 +387,7 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
     globalMutate(`/api/creditos/${credito.id}/cuotas`);
     globalMutate(`/api/creditos/${credito.id}/amortizacion`);
     globalMutate(`/api/pagos?credito_id=${credito.id}&limit=1000`);
-    globalMutate(KEYS.creditos);
+    mutarCreditos();
     globalMutate(KEYS.pagos);
     globalMutate(KEYS.dashboard);
     globalMutate("/api/caja");

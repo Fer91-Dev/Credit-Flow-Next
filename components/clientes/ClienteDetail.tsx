@@ -8,7 +8,7 @@ import { useSWRConfig } from "swr";
 import {
   Pencil, Trash2, CalendarClock, ChevronDown, Loader2, Mail, MessageCircle, Phone, Printer, ShieldCheck, Ban, Receipt, AlertTriangle, History, BellOff, Wallet, Sparkles, Handshake, MapPin,
 } from "lucide-react";
-import { refrescarNotificaciones, useClienteDetalle, useAccionesCobranza, useCuotas, KEYS, type CreditoConFinanzas, type EstadoCuota, type CuotaPersistida, type CuotasCredito, type PagoImputado, useDiasLegales, useOrigenRefinanciacion, useFinanciera } from "@/lib/swr";
+import { refrescarNotificaciones, useClienteDetalle, useAccionesCobranza, useCuotas, KEYS, type CreditoConFinanzas, type EstadoCuota, type CuotaPersistida, type CuotasCredito, type PagoImputado, useDiasLegales, useOrigenRefinanciacion, useFinanciera, mutarCreditos } from "@/lib/swr";
 import { StatusBadge, type BadgeVariant } from "@/components/ui/StatusBadge";
 import { ScoreBadge } from "@/components/ui/ScoreBadge";
 import { Stat } from "@/components/ui/Stat";
@@ -866,7 +866,7 @@ export function ClienteDetail({
                   // los movimientos de caja en vivo.
                   mutate();
                   globalMutate(`/api/creditos/${creditoId}/cuotas`);
-                  globalMutate(KEYS.creditos); globalMutate(KEYS.pagos);
+                  mutarCreditos(); globalMutate(KEYS.pagos);
                   globalMutate(KEYS.dashboard); globalMutate("/api/caja");
                   refrescarNotificaciones();
                   toast.success("Pago registrado");
@@ -912,7 +912,7 @@ export function ClienteDetail({
                     // avanza el plan pactado y esa pantalla lo tiene que reflejar.
                     mutate();
                     globalMutate(`/api/creditos/${creditoId}/cuotas`);
-                    globalMutate(KEYS.creditos); globalMutate(KEYS.pagos);
+                    mutarCreditos(); globalMutate(KEYS.pagos);
                     globalMutate(KEYS.dashboard); globalMutate("/api/caja");
                     globalMutate((k) => typeof k === "string" && k.startsWith("/api/cobranza/acuerdos"));
                     refrescarNotificaciones();
@@ -931,7 +931,7 @@ export function ClienteDetail({
         onAnulado={() => {
           setAnularPago(null);
           mutate(); // revalida la ficha del cliente
-          globalMutate(KEYS.creditos); globalMutate(KEYS.pagos); globalMutate(KEYS.dashboard); globalMutate("/api/caja");
+          mutarCreditos(); globalMutate(KEYS.pagos); globalMutate(KEYS.dashboard); globalMutate("/api/caja");
         }}
       />
 

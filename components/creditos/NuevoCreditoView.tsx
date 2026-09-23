@@ -6,7 +6,7 @@ import { ArrowLeft } from "lucide-react";
 import { CreditoForm } from "./CreditoForm";
 import { SystemControls } from "@/components/ui/SystemControls";
 import { Emoji } from "@/components/ui/Emoji";
-import { KEYS } from "@/lib/swr";
+import { KEYS, mutarCreditos } from "@/lib/swr";
 
 /**
  * Vista dedicada del Simulador de crédito (ruta /creditos/nuevo).
@@ -19,7 +19,7 @@ export function NuevoCreditoView() {
 
   const handleClose = (success?: boolean) => {
     if (success) {
-      globalMutate(KEYS.creditos);
+      mutarCreditos();
       globalMutate(KEYS.dashboard);
     }
     router.push("/creditos");
