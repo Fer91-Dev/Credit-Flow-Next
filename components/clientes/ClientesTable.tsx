@@ -7,6 +7,7 @@ import { ClienteForm } from "./ClienteForm";
 import { ClienteDetail } from "./ClienteDetail";
 import { useClientes, useKpisClientes, KEYS, type Cliente, useDiasLegales } from "@/lib/swr";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { ListaTruncada } from "@/components/ui/ListaTruncada";
 import { KpiCard } from "@/components/ui/KpiCard";
 import { ScoreBadge } from "@/components/ui/ScoreBadge";
 import { Avatar } from "@/components/ui/Avatar";
@@ -55,6 +56,7 @@ export function ClientesTable({ role }: { role?: Role } = {}) {
    */
   const [recorte, setRecorte] = useState<"enfriados" | "riesgo" | "nuevos" | null>(null);
   const { clientes, total, isLoading, mutate } = useClientes({ scored: true, q: qServidor, limit: 1000, filtro: recorte });
+  /* El tope es 1.000: pasado eso la lista muestra una parte y hay que decirlo. */
   const { kpis } = useKpisClientes();
   /** Un KPI prendido se apaga al volver a clickearlo. */
   const alternar = (r: "enfriados" | "riesgo" | "nuevos") => setRecorte((prev) => (prev === r ? null : r));
@@ -226,6 +228,8 @@ export function ClientesTable({ role }: { role?: Role } = {}) {
         subtitle="Buscá un cliente por DNI o nombre para ver su ficha, o creá uno nuevo."
         accent="primary"
       />
+
+      <ListaTruncada mostrados={clientes.length} total={total} sustantivo="clientes" />
 
       {/*
         Mismo aspecto que el buscador de Pagos, a pedido del usuario. No es cosmética: los dos

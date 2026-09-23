@@ -8,10 +8,11 @@ import { AlertCircle, Phone, Mail, Clock, Copy, CheckCheck, Search, DollarSign, 
 import { WhatsAppIcon } from "@/components/ui/WhatsAppIcon";
 import { MessageSquareText } from "lucide-react";
 import { descargarCSV } from "@/lib/csv";
-import { useCreditos, useAccionesCobranza, type Credito, type AccionCobranza, type AgendaItem, useTramosMora, useAlertaCobranza, useDiasSinGestion } from "@/lib/swr";
+import { useCreditos, useAccionesCobranza, type Credito, type AccionCobranza, type AgendaItem, useTramosMora, useAlertaCobranza, useDiasSinGestion, useCobranzaKpis } from "@/lib/swr";
 import { type Role } from "@/lib/auth/roles";
 import { formatFecha, nombreCompleto, formatDias, formatMonto, formatCreditoNumero, pctDe } from "@/lib/utils";
 import { CreditoLink } from "@/components/ui/CreditoLink";
+import { ListaTruncada } from "@/components/ui/ListaTruncada";
 import { GestionForm, type CreditoCtx } from "./GestionForm";
 import { CobranzaDetail } from "./CobranzaDetail";
 import { guardarSeleccionCampana, leerSeleccionCampana, guardarTipoCampana } from "./seleccion-campana";
@@ -98,7 +99,10 @@ export function CobranzaTable({ role }: { role: Role }) {
   // Campañas (selección masiva + ActionToolbar + pestaña): admin (toda la cartera) y
   // vendedor (scopeado a SUS créditos, tanto en la selección como en el backend).
   const puedeCampanas = role === "admin" || role === "vendedor";
-  const { creditos: allCreditos, error, isLoading } = useCreditos();
+  const { creditos: allCreditos, total: totalCreditos, truncado, error, isLoading } = useCreditos();
+  /* Los KPI salen del SERVIDOR, sobre toda la cartera: la lista de acá está topeada en 1.000
+     y con más créditos que eso los números se habrían quedado cortos sin avisar. */
+  const { kpis: kpisServer } = useCobranzaKpis();
   const { alerta } = useAlertaCobranza();
   const { acciones, mutate: mutateAcciones } = useAccionesCobranza();
   const { mutate: globalMutate } = useSWRConfig();
@@ -330,13 +334,24 @@ export function CobranzaTable({ role }: { role: Role }) {
       : bySeveridad;
   }, [creditos, filterMora, filterContacto, search, tramos, diasSinGestion]);
 
-  // KPIs from all mora data (portfolio picture)
-  const kpis = useMemo(() => ({
+  /**
+   * Los KPI de la cartera en mora.
+   *
+   * 🔴 MANDA EL SERVIDOR (`/api/cobranza/kpis`), que los calcula sobre TODA la cartera viva.
+   * La cuenta local queda como respaldo para el primer render —mientras la consulta viaja—
+   * y para el caso de que falle: es la misma fórmula (`severidadMora` con los tramos del
+   * tenant), solo que sobre la lista cargada. Con menos de 1.000 créditos dan idéntico; con
+   * más, la del servidor es la correcta y la local se queda corta.
+   */
+  const kpisLocales = useMemo(() => ({
     total:       creditos.length,
     saldo:       creditos.reduce((s, c) => s + c.saldo_pendiente, 0),
     critica:     creditos.filter(c => severidadMora(c.dias_mora, tramos) === "critica").length,
     alta:        creditos.filter(c => severidadMora(c.dias_mora, tramos) === "alta").length,
   }), [creditos, tramos]);
+  const kpis = kpisServer
+    ? { total: kpisServer.mora.total, saldo: kpisServer.mora.saldo, critica: kpisServer.mora.critica, alta: kpisServer.mora.alta }
+    : kpisLocales;
 
   /**
    * Partición de la CARTERA por saldo: esperado = al día + en mora. Los tres son
@@ -344,12 +359,14 @@ export function CobranzaTable({ role }: { role: Role }) {
    * fuera lo vencido, las tres barras dejarían de sumar y el gráfico mentiría. La deuda
    * exigible tiene su lugar en la columna "Vencido" de la lista.
    */
-  const panel = useMemo(() => {
+  const panelLocal = useMemo(() => {
     const activos = allCreditos.filter(c => esCreditoVivo(c.estado));
     const esperado = activos.reduce((s, c) => s + c.saldo_pendiente, 0);
     const enMora = creditos.reduce((s, c) => s + c.saldo_pendiente, 0);
     return { esperado, enMora, alDia: Math.max(0, esperado - enMora) };
   }, [allCreditos, creditos]);
+  // Misma regla que los KPI: manda el servidor, la cuenta local es el respaldo.
+  const panel = kpisServer?.cartera ?? panelLocal;
 
   /**
    * Datos del cliente al portapapeles, para pegarlos en donde el operador los necesite.
@@ -822,6 +839,13 @@ export function CobranzaTable({ role }: { role: Role }) {
           </button>
         )}
       </div>
+
+      <ListaTruncada
+        mostrados={allCreditos.length}
+        total={totalCreditos}
+        sustantivo="créditos"
+        nota="Los números de arriba sí están calculados sobre la cartera entera."
+      />
 
       {/* Encabezado de la lista: el conteo va pegado al título, no suelto arriba de la tabla. */}
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-border/60 pb-3">

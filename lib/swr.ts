@@ -1462,9 +1462,39 @@ export function useZonas() {
   return { zonas: data?.zonas ?? [], error, isLoading };
 }
 
+/**
+ * 🔴 `total` Y `truncado` VIAJAN, no se descartan.
+ *
+ * El endpoint devuelve cuántos créditos hay en total, y este hook lo tiraba: la pantalla
+ * recibía los primeros 1.000 sin manera de saber que había más. Medido el 23/09/2026 — el
+ * techo está en `KEYS.creditos` y en el propio endpoint, y a partir del crédito 1.001 la
+ * lista, los filtros y la selección de campañas trabajaban sobre una cartera incompleta sin
+ * que nada lo dijera.
+ *
+ * `truncado` es la señal para que la pantalla lo diga. Los KPI ya no dependen de esto: los
+ * calcula el servidor sobre toda la tabla (`useCobranzaKpis`).
+ */
 export function useCreditos() {
-  const { data, error, isLoading, mutate } = useSWR<{ creditos: Credito[] }>(KEYS.creditos);
-  return { creditos: data?.creditos ?? [], error, isLoading, mutate };
+  const { data, error, isLoading, mutate } = useSWR<{ creditos: Credito[]; total?: number }>(KEYS.creditos);
+  const creditos = data?.creditos ?? [];
+  const total = data?.total ?? creditos.length;
+  return { creditos, total, truncado: total > creditos.length, error, isLoading, mutate };
+}
+
+/** Los KPI de Cobranzas, calculados por el servidor sobre TODA la cartera viva. */
+export interface CobranzaKpis {
+  cartera: { esperado: number; enMora: number; alDia: number };
+  mora: { total: number; saldo: number; critica: number; alta: number; media: number };
+  creditos_vivos: number;
+}
+
+/**
+ * Los números de arriba de Cobranzas. No salen de la lista cargada —que está topeada en
+ * 1.000— sino de una consulta propia sobre toda la cartera: ver `/api/cobranza/kpis`.
+ */
+export function useCobranzaKpis() {
+  const { data, mutate } = useSWR<CobranzaKpis>("/api/cobranza/kpis", { refreshInterval: 120_000 });
+  return { kpis: data ?? null, mutate };
 }
 
 /**
@@ -1486,8 +1516,11 @@ export interface ResumenPagos {
 }
 
 export function usePagos() {
-  const { data, error, isLoading, mutate } = useSWR<{ pagos: Pago[]; resumen?: ResumenPagos }>(KEYS.pagos);
-  return { pagos: data?.pagos ?? [], resumen: data?.resumen, error, isLoading, mutate };
+  const { data, error, isLoading, mutate } = useSWR<{ pagos: Pago[]; total?: number; resumen?: ResumenPagos }>(KEYS.pagos);
+  const pagos = data?.pagos ?? [];
+  // El endpoint topea en 500 y el total ya venía en la respuesta: sin leerlo, una lista
+  // recortada se presentaba como el historial completo.
+  return { pagos, total: data?.total ?? pagos.length, resumen: data?.resumen, error, isLoading, mutate };
 }
 
 export function useVendedores() {

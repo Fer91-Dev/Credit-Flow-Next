@@ -9,6 +9,7 @@ import { Avatar } from "@/components/ui/Avatar";
 import { DataTable } from "@/components/ui/DataTable";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { ListaTruncada } from "@/components/ui/ListaTruncada";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { nombreCompleto, formatFecha, formatMonto, formatCreditoNumero } from "@/lib/utils";
 import { round2 } from "@/lib/domain";
@@ -21,7 +22,7 @@ import { Nota } from "@/components/ui/Nota";
  */
 export function PagosTable({ clienteInicial = null }: { clienteInicial?: string | null }) {
   const { clientes, isLoading } = useClientes();
-  const { pagos, resumen, isLoading: pagosLoading } = usePagos();
+  const { pagos, total: totalPagos, resumen, isLoading: pagosLoading } = usePagos();
 
   const [query, setQuery] = useState("");
   const [verTodos, setVerTodos] = useState(false); // F3: lista completa de clientes A→Z
@@ -149,6 +150,10 @@ export function PagosTable({ clienteInicial = null }: { clienteInicial?: string 
         subtitle="Buscá un cliente por DNI o nombre para ver su estado de cuenta y registrar el cobro."
         accent="primary"
       />
+
+      {/* Los KPI de la terminal (cobrado hoy, ayer) los agrega el server sobre toda la tabla,
+          así que el tope solo afecta al historial de abajo. */}
+      <ListaTruncada mostrados={pagos.length} total={totalPagos} sustantivo="pagos" />
 
       {/*
         El buscador ES la pantalla: en la terminal de cobro lo primero que pasa es que llega

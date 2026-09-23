@@ -10,6 +10,7 @@ import { useCreditos, KEYS, type Credito, useTramosMora, useDiasLegales } from "
 import { type Role } from "@/lib/auth/roles";
 import { formatCreditoNumero, nombreCompleto, formatFecha, formatFechaHora, eventoPropio, teclaDelContenedor, formatDias, formatMonto, pctDe } from "@/lib/utils";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { ListaTruncada } from "@/components/ui/ListaTruncada";
 import { KpiCard } from "@/components/ui/KpiCard";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { DataTable } from "@/components/ui/DataTable";
@@ -44,7 +45,7 @@ export function CreditosTable({ role }: { role: Role }) {
   /** Los cortes media/alta/crítica que definió la financiera (Configuración → Cobranza). */
   const tramos = useTramosMora();
   const router = useRouter();
-  const { creditos, error, isLoading } = useCreditos();
+  const { creditos, total: totalCreditos, error, isLoading } = useCreditos();
   /**
    * 🔴 EL DETALLE ES UNA PANTALLA, NO UN DIÁLOGO DE ESTA LISTA.
    *
@@ -201,6 +202,8 @@ export function CreditosTable({ role }: { role: Role }) {
           subtitle="Créditos otorgados y seguimiento de saldos"
           accent="primary"
         />
+
+        <ListaTruncada mostrados={creditos.length} total={totalCreditos} sustantivo="créditos" />
 
         {/*
           ── Pestañas (Créditos / Refinanciados) + CTA ──
