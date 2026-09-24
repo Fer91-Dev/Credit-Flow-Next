@@ -14,7 +14,7 @@
  */
 
 import { round2, noNegativo } from "./money";
-import { diasAtraso, moraRestanteDeCuota, topeMoraDeCuota } from "./mora";
+import { diasAtraso, moraRestanteDeCuota, topeMoraDeCuota, fechaTopeMora } from "./mora";
 import type { CuotaParaImputar } from "./payments";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -343,6 +343,26 @@ export interface OpcionesDeudaVencida {
    */
   moraCongeladaAl?: Date | null;
   /**
+   * FRENO ABSOLUTO de los punitorios: fallecimiento del titular, declaración de incobrable.
+   *
+   * 🔴 DISTINTO DE `hoy`, Y ESA DISTINCIÓN ERA EL DEFECTO.
+   *
+   * `hoy` decide DOS cosas a la vez: qué cuotas ya vencieron y hasta cuándo devengan mora.
+   * Quien quería frenar solo los punitorios de un castigado no tenía dónde decirlo, así que
+   * pasaba la fecha del castigo como `hoy` — y de paso le borraba al crédito las cuotas que
+   * vencieron DESPUÉS. La lista de Incobrables mostraba tres cuotas menos de las que el
+   * cliente debe: $567.591,44 de menos en los dos casos de la demo (CRD-000011 y CRD-000012,
+   * 24/09/2026), y ese número es el que alimenta las campañas de recupero.
+   *
+   * Un castigo no borra deuda: frena el reloj de los punitorios. Las cuotas siguen venciendo
+   * y siguen siendo exigibles — de hecho la terminal de cobro las cobra.
+   *
+   * Es el mismo parámetro que `moraPendienteTotal.hasta`, con el mismo nombre a propósito.
+   * Y es distinto de `moraCongeladaAl`: aquel congela SOLO lo que ya estaba vencido cuando se
+   * firmó un acuerdo; este recorta todas las cuotas por igual.
+   */
+  hasta?: Date | null;
+  /**
    * Incluir también las cuotas que TODAVÍA NO VENCIERON.
    *
    * 🔴 Es la decisión de qué ES un acuerdo, y por eso va como parámetro de la financiera.
@@ -382,6 +402,9 @@ export function calcularDeudaVencida(
 
   const incluirNoVencidas = opts.incluirNoVencidas ?? false;
   const congeladaAl = opts.moraCongeladaAl ?? null;
+  /* El freno absoluto recorta SOLO la mora. `hoy` sigue decidiendo qué venció, que es otra
+     pregunta: un castigado no deja de deber las cuotas posteriores al castigo. */
+  const topeMora = fechaTopeMora(hoy, opts.hasta);
   let capital = 0, interes = 0, cargos = 0, mora = 0, vencidas = 0, incluidas = 0, porVencer = 0;
 
   for (const c of cuotas) {
@@ -417,7 +440,7 @@ export function calcularDeudaVencida(
       },
       /* Los días que DEVENGAN, que no son los de atraso cuando un acuerdo los congeló.
          `atraso` se sigue informando entero: el cliente lleva los días que lleva. */
-      diasAtraso(c.fechaVencimiento, topeMoraDeCuota(c.fechaVencimiento, hoy, congeladaAl)),
+      diasAtraso(c.fechaVencimiento, topeMoraDeCuota(c.fechaVencimiento, topeMora, congeladaAl)),
       { moraActiva, tasaDiaria: tasa, diasGracia: gracia, topePct: opts.topeMoraPct },
     );
 

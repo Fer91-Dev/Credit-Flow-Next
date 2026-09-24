@@ -2,7 +2,7 @@ import { requireAuth, requireRole, scopeCreditosVendedor, ApiError } from "@/lib
 import { successResponse, errorResponse, withErrorHandler, assertSameOrigin } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
-import { puedeDarsePorIncobrableManual, round2, normalizarFrecuencia, resolverFrecuencia, sumarPeriodos, construirPlanAmortizacion, planACuotas, estadoCoherente, etiquetaCaja, esCuentaValida, validarParametrosOtorgamiento, diasMoraActual, buscarPlan, nombrePlan, tasaDesdeCoeficiente, cargosConPlan, CUENTA_LABEL, type Cuenta, ESTADOS_VIVOS, ESTADOS_COBRABLES, esCreditoVivo, esCreditoCobrable, topeMoraPorIncobrable, esRecuperoPostCastigo, moraDelCredito, moraDesdeCronograma, moraPendienteTotal, calcularDeudaVencida, deudaEnRevision, esTipoCreditoValido, TIPOS_CREDITO, calcularDeudaConsolidada, puedeRefinanciar, puedeAcordar, cargosDeCuota, baseMoraDeCuota, pendienteSinMoraDeCuota, formatPesos, contactoBloqueado} from "@/lib/domain";
+import { puedeDarsePorIncobrableManual, round2, normalizarFrecuencia, resolverFrecuencia, sumarPeriodos, construirPlanAmortizacion, planACuotas, estadoCoherente, etiquetaCaja, esCuentaValida, validarParametrosOtorgamiento, diasMoraActual, buscarPlan, nombrePlan, tasaDesdeCoeficiente, cargosConPlan, CUENTA_LABEL, type Cuenta, ESTADOS_VIVOS, ESTADOS_COBRABLES, esCreditoVivo, esCreditoCobrable, topeMoraPorIncobrable, topeMoraPorFallecimiento, topeMoraMasTemprano, esRecuperoPostCastigo, moraDelCredito, moraDesdeCronograma, moraPendienteTotal, calcularDeudaVencida, deudaEnRevision, esTipoCreditoValido, TIPOS_CREDITO, calcularDeudaConsolidada, puedeRefinanciar, puedeAcordar, cargosDeCuota, baseMoraDeCuota, pendienteSinMoraDeCuota, formatPesos, contactoBloqueado} from "@/lib/domain";
 import { siguienteNumeroComprobante } from "@/lib/comprobantes";
 import { assertFondosSuficientesTx } from "@/lib/caja-fondos";
 import { lockNumeroCreditoTx, TX_PLATA } from "@/lib/locks";
@@ -419,7 +419,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
    */
   const refis = creditos.filter((c) => c.es_refinanciacion && c.refinancia_a);
   const cadenasRefi = refis.length > 0 ? await plataDeLaCadenaLote(tenantId, refis.map((c) => c.id)) : new Map();
-  const cfgRecupero = (await getCobranzaConfig(tenantId)).recupero;
+  const { recupero: cfgRecupero, fallecidos: fallecidosCfg } = await getCobranzaConfig(tenantId);
   /**
    * Acuerdos ROTOS por credito. Los mira `puedeRefinanciar` cuando la financiera exige haber
    * intentado un acuerdo antes de reestructurar. Una consulta agrupada para toda la lista, no
@@ -482,13 +482,31 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     // misma fórmula con la que se persiste, pero evaluada hoy → independiente del cron.
     const dmora = c.proximo_pago ? diasMoraActual(c.proximo_pago, hoy) : c.dias_mora;
     /**
-     * 🔴 HASTA QUÉ DÍA SE EVALÚA ESTE CRÉDITO.
+     * 🔴 HASTA QUÉ DÍA DEVENGAN LOS PUNITORIOS — Y SOLO ESO.
      *
-     * Para uno vivo es hoy. Para uno dado por INCOBRABLE es el día en que se lo declaró: los
-     * punitorios se frenaron ahí, así que calcular su deuda con la fecha de hoy mostraría una
-     * mora que el cobro no le va a cobrar — el error de las dos fórmulas otra vez.
+     * El freno absoluto: el día del castigo, o el del fallecimiento del titular, el que haya
+     * llegado primero. Sale igual que en `POST /pagos` y que en el plan de cuotas, o la
+     * pantalla diría un importe y la caja tomaría otro.
+     *
+     * 🔴 ACÁ HUBO UN DEFECTO Y VALE LA PENA QUE QUEDE ESCRITO. Esta fecha se pasaba como
+     * `hoy` a `calcularDeudaVencida`, y ese parámetro decide DOS cosas: hasta cuándo devenga
+     * la mora y QUÉ CUOTAS YA VENCIERON. Frenar el reloj de los punitorios de un castigado
+     * está bien; borrarle las cuotas que vencieron después, no. La lista de Incobrables
+     * mostraba tres cuotas menos de las que el cliente debe —$567.591,44 de menos en cada uno
+     * de los dos casos de la demo, medido el 24/09/2026— mientras la ficha, que sí separa los
+     * dos conceptos, mostraba el número correcto. Y ese `vencido` es el que alimenta las
+     * campañas de recupero.
+     *
+     * Un castigo no borra deuda: frena el reloj. Por eso ahora va como `hasta`, que recorta
+     * la mora y nada más, y `hoy` vuelve a ser hoy.
+     *
+     * Faltaba además el tope por FALLECIMIENTO, que el cobro sí aplica: sin él, la fila de un
+     * titular fallecido mostraba punitorios que la caja no iba a tomar.
      */
-    const hoyCredito = topeMoraPorIncobrable(hoy, c) ?? hoy;
+    const topeAbsoluto = topeMoraMasTemprano(
+      topeMoraPorFallecimiento(hoy, c.cliente, fallecidosCfg),
+      topeMoraPorIncobrable(hoy, c),
+    );
     let interes_mora = 0;
     // Manda lo CONGELADO en el crédito, no la config de hoy. Tener `config.moraActiva` en
     // esta condición hacía que apagar la mora de la financiera mostrara $0 en la lista de
@@ -499,7 +517,8 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
       mc.moraActiva &&
       dmora > 0 &&
       // `cobrable` y no `vivo`: un INCOBRABLE tiene deuda reclamable y hay que poder verla.
-      // Su mora no crece —`hoyCredito` la congela— pero la acumulada hasta ahí se reclama.
+      // Su mora no crece —`topeAbsoluto` la congela— pero la acumulada hasta ahí se reclama,
+      // y las cuotas que vencieron después del castigo se siguen debiendo.
       esCreditoCobrable(c.estado) &&
       c.monto_original > 0 &&
       c.plazo_meses >= 1
@@ -510,7 +529,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
       interes_mora = moraPendienteTotal(
         c.cuotas.map((q) => ({ fechaVencimiento: q.fecha_vencimiento, baseMora: baseMoraDeCuota(q), pagadoMora: q.pagado_mora, condonadoMora: q.condonado_mora, pendienteSinMora: pendienteSinMoraDeCuota(q) })),
         {
-          tasaDiaria: mc.tasaMoraDiaria, diasGracia: graciaCred, hoy: hoyCredito, topePct: mc.topeMoraPct,
+          tasaDiaria: mc.tasaMoraDiaria, diasGracia: graciaCred, hoy, hasta: topeAbsoluto, topePct: mc.topeMoraPct,
           // El mismo freno que `vencido`, o la fila mostraría punitorios que no suman a su deuda.
           moraCongeladaAl: acuerdoVigenteDe(c.id),
         },
@@ -540,7 +559,10 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
       condonadoMora: q.condonado_mora,
         })),
         {
-          moraActiva: mc.moraActiva, tasaMoraDiaria: mc.tasaMoraDiaria, topeMoraPct: mc.topeMoraPct, diasGracia: graciaV, hoy: hoyCredito,
+          moraActiva: mc.moraActiva, tasaMoraDiaria: mc.tasaMoraDiaria, topeMoraPct: mc.topeMoraPct, diasGracia: graciaV,
+          /* `hoy` decide qué venció; `hasta` frena la mora. Eran lo mismo y por eso la lista
+             le borraba al castigado las cuotas posteriores al castigo. */
+          hoy, hasta: topeAbsoluto,
           /* Los punitorios que un acuerdo vigente frenó. Este `vencido` es la fuente de la
              pantalla del moroso Y de la vista previa de las campañas: sin el freno, las dos
              mostraban más de lo que la caja iba a cobrar (CRD-000007: $2.484,27 de más). */
@@ -585,7 +607,10 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
         })),
         {
           moraActiva: mc.moraActiva, tasaMoraDiaria: mc.tasaMoraDiaria, topeMoraPct: mc.topeMoraPct,
-          diasGracia: graciaR, hoy: hoyCredito, fechaInicio: c.fecha_inicio,
+          /* Solo corre sobre créditos VIVOS (ver la guarda de arriba), así que el freno por
+             castigo no aplica; y el de fallecimiento no va acá: `hoy` también gobierna el
+             interés devengado de las cuotas por vencer, que no se frena por eso. */
+          diasGracia: graciaR, hoy, fechaInicio: c.fecha_inicio,
         },
       );
       deuda_refinanciacion = round2(dc.total);
