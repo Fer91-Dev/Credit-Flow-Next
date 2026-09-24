@@ -263,6 +263,19 @@ model clientes {
   // El DNI repetido se admite si el CUIT lo diferencia (validado en la API).
   @@unique([tenant_id, cuit_cuil])
   @@index([tenant_id])
+  /// La lista completa del padrón, en orden alfabético (el F3 del buscador de Clientes).
+  ///
+  /// Sin este índice, cada vez que alguien pide la lista Postgres lee TODOS los clientes de
+  /// la financiera y los ordena en memoria para devolver los primeros mil. Medido sobre una
+  /// tabla de prueba con 6.667 clientes en una financiera: 9,40 ms ordenando contra 1,84 ms
+  /// leyendo el índice ya ordenado (−80%), y la diferencia crece con el padrón porque el
+  /// recorrido ordena todo mientras el índice camina y frena.
+  ///
+  /// El orden es `nombre, apellido` y no al revés a propósito: es el mismo con el que la
+  /// pantalla arma el nombre completo (`nombreCompleto` = "Nombre Apellido"). Con el otro
+  /// orden, el recorte que llega sería el principio del abecedario de APELLIDOS y la pantalla
+  /// lo mostraría ordenado por NOMBRE: dos criterios para una sola lista.
+  @@index([tenant_id, nombre, apellido])
 }
 
 /// Consultas a bureaus de crédito (BCRA/Nosis/Veraz/manual) de un cliente. Snapshot +
