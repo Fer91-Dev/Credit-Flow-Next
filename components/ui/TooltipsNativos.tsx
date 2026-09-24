@@ -99,6 +99,49 @@ export function TooltipsNativos() {
 
     const alTeclear = (e: KeyboardEvent) => { if (e.key === "Escape") ocultar(); };
 
+    /**
+     * 🔴 RED DE SEGURIDAD: `mouseout` NO SIEMPRE LLEGA, Y SIN ÉL EL GLOBO SE QUEDA PEGADO.
+     *
+     * Fernando (24/09/2026): «al pasar el mouse aparece la ayuda pero no se va y me tapa los
+     * botones; ese comportamiento lo noté en todo el SaaS».
+     *
+     * El motivo: ocultar dependía de que el navegador avisara la salida del elemento. Si ese
+     * elemento deja de existir mientras el mouse está encima —React redibuja la fila porque
+     * los datos se refrescaron, la lista se filtra, el crédito cambia de página—, el nodo se
+     * desconecta del documento y el `mouseout` no ocurre nunca. El globo queda anclado a algo
+     * que ya no está, y encima suele quedar justo arriba de la acción que se iba a apretar.
+     *
+     * Las dos salidas no dependen del evento que falla:
+     *  · cualquier movimiento del mouse fuera del ancla lo cierra —y de paso detecta el ancla
+     *    desconectada, que es el caso que lo dejaba pegado—;
+     *  · un ronda periódica, para cuando el nodo se va y el mouse se queda quieto (ahí no hay
+     *    ningún evento del que colgarse).
+     *
+     * El globo tiene `pointer-events-none`, así que cuando tapa al propio disparador el
+     * movimiento sigue llegando al elemento de abajo y no se cierra solo: se cierra recién al
+     * salir de verdad, que es lo que corresponde.
+     */
+    const vigilar = (e: MouseEvent) => {
+      const el = actual.current;
+      if (!el) return;
+      if (!el.isConnected) { ocultar(); return; }
+      const destino = e.target;
+      if (destino instanceof Node && el.contains(destino)) return;
+      ocultar();
+    };
+
+    /** El ancla se fue del documento y el mouse no se movió: no hay evento que lo cuente. */
+    const ronda = setInterval(() => {
+      const el = actual.current;
+      if (el && !el.isConnected) ocultar();
+    }, 400);
+
+    /* Al apretar cualquier cosa, el globo sobra: o se abre un diálogo, o se navega, o se
+       ejecuta la acción que el globo estaba explicando. */
+    const alApretar = () => ocultar();
+
+    document.addEventListener("mousemove", vigilar, true);
+    document.addEventListener("pointerdown", alApretar, true);
     document.addEventListener("mouseover", entrar, true);
     document.addEventListener("mouseout", salir, true);
     document.addEventListener("focusin", entrar, true);
@@ -108,6 +151,9 @@ export function TooltipsNativos() {
     window.addEventListener("scroll", ocultar, true);
     window.addEventListener("resize", ocultar);
     return () => {
+      clearInterval(ronda);
+      document.removeEventListener("mousemove", vigilar, true);
+      document.removeEventListener("pointerdown", alApretar, true);
       document.removeEventListener("mouseover", entrar, true);
       document.removeEventListener("mouseout", salir, true);
       document.removeEventListener("focusin", entrar, true);
