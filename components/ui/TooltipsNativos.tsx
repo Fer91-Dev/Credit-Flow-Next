@@ -37,6 +37,25 @@ export function TooltipsNativos() {
   const [tip, setTip] = useState<{ texto: string; x: number; y: number; abajo: boolean } | null>(null);
   const actual = useRef<HTMLElement | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /**
+   * 🔴 EL GLOBO SE VA SOLO, AUNQUE EL CURSOR SIGA AHÍ.
+   *
+   * Fernando (24/09/2026): «si dejo el cursor sobre el botón el globo sigue ahí». Y tenía que
+   * irse: el del navegador se esconde a los pocos segundos y el nuestro se quedaba para
+   * siempre, tapando la acción de al lado justo cuando el operador iba a apretarla.
+   *
+   * Un globo es una pista, no un panel: una vez leído, estorba.
+   */
+  const cierre = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /**
+   * El elemento cuyo globo YA se mostro y se cerro solo por tiempo.
+   *
+   * Sin esto el arreglo se muerde la cola: al cerrarse, el `title` vuelve al elemento, y el
+   * menor movimiento adentro del mismo boton dispara otro `mouseover` que lo reabre. Queda
+   * marcado hasta que el cursor salga de verdad; ahi la marca se borra y volver a entrar
+   * vuelve a mostrarlo, que es lo que uno espera.
+   */
+  const yaMostrado = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     /** Devuelve el `title` al elemento y limpia lo que se le agregó. */
@@ -55,11 +74,20 @@ export function TooltipsNativos() {
 
     const ocultar = () => {
       if (timer.current) clearTimeout(timer.current);
+      if (cierre.current) clearTimeout(cierre.current);
       restaurar();
       setTip(null);
     };
 
+    /**
+     * Cuánto se queda a la vista. Proporcional a lo que hay para leer: "Editar" no necesita
+     * los mismos segundos que la explicación de por qué un botón está apagado. Unos 250
+     * caracteres por minuto, con piso y techo para que ningún caso quede absurdo.
+     */
+    const duracion = (texto: string) => Math.min(9000, Math.max(3500, 1200 + texto.length * 55));
+
     const preparar = (el: HTMLElement) => {
+      if (yaMostrado.current === el) return; // ya se mostro y se cerro solo: no insistir
       const texto = (el.getAttribute("title") ?? "").trim();
       if (!texto) return;
       // El `title` se va mientras dura el hover: es lo único que calla al nativo.
@@ -68,9 +96,12 @@ export function TooltipsNativos() {
       el.setAttribute("aria-describedby", ID_GLOBO);
       actual.current = el;
       if (timer.current) clearTimeout(timer.current);
+      if (cierre.current) clearTimeout(cierre.current);
       timer.current = setTimeout(() => {
         if (actual.current !== el || !el.isConnected) return;
         setTip({ texto, ...ubicarTooltip(el) });
+        // Se va solo, siga o no el cursor encima.
+        cierre.current = setTimeout(() => { yaMostrado.current = el; ocultar(); }, duracion(texto));
       }, DEMORA_TOOLTIP);
     };
 
@@ -122,6 +153,12 @@ export function TooltipsNativos() {
      * salir de verdad, que es lo que corresponde.
      */
     const vigilar = (e: MouseEvent) => {
+      const marcado = yaMostrado.current;
+      if (marcado) {
+        const d = e.target;
+        const sigueEncima = d instanceof Node && marcado.isConnected && marcado.contains(d);
+        if (!sigueEncima) yaMostrado.current = null;
+      }
       const el = actual.current;
       if (!el) return;
       if (!el.isConnected) { ocultar(); return; }
@@ -152,6 +189,7 @@ export function TooltipsNativos() {
     window.addEventListener("resize", ocultar);
     return () => {
       clearInterval(ronda);
+      if (cierre.current) clearTimeout(cierre.current);
       document.removeEventListener("mousemove", vigilar, true);
       document.removeEventListener("pointerdown", alApretar, true);
       document.removeEventListener("mouseover", entrar, true);
