@@ -11,7 +11,6 @@ import { useDebounce } from "@/lib/use-debounce";
 import { type Role } from "@/lib/auth/roles";
 import { formatCreditoNumero, nombreCompleto, formatFecha, formatFechaHora, eventoPropio, teclaDelContenedor, formatDias, formatMonto, pctDe } from "@/lib/utils";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { ListaTruncada } from "@/components/ui/ListaTruncada";
 import { KpiCard } from "@/components/ui/KpiCard";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { DataTable } from "@/components/ui/DataTable";
@@ -103,7 +102,11 @@ export function CreditosTable({ role }: { role: Role }) {
           limit: POR_PAGINA,
           offset: (pagina - 1) * POR_PAGINA,
         }
-      : { q: qServidor },
+      : /* La pestaña Refinanciados ya NO se sirve de esta lista: pide lo suyo adentro de
+           `RefinanciadosView`, que son dos cosas distintas (el historial de operaciones y
+           los candidatos a refinanciar) y ninguna de las dos es "la cartera". Acá se pide
+           una sola fila para no dejar el hook sin clave. */
+        { limit: 1, refi: "sin" },
   );
   /**
    * Buscador de la pestaña Refinanciados. El estado vive ACÁ, en el padre, porque la caja se
@@ -196,10 +199,18 @@ export function CreditosTable({ role }: { role: Role }) {
     saldo:  filtered.reduce((s, c) => s + c.saldo_pendiente, 0),
   }), [filtered]);
 
-  // Cantidad de créditos nacidos de una refinanciación (badge de la pestaña).
-  const refiCount = useMemo(() => creditos.filter((c) => c.es_refinanciacion).length, [creditos]);
-  /* Y los que son créditos a secas: el badge tiene que contar lo que la lista muestra. */
-  const creditosCount = creditos.length - refiCount;
+  /**
+   * 🔴 LOS BADGES DE LAS PESTAÑAS CUENTAN LA CARTERA, NO LAS FILAS CARGADAS.
+   *
+   * Se calculaban sobre `creditos`, que desde que la lista se pagina son DOCE. O sea que el
+   * badge decía "12" tuviera la financiera doce créditos o dos mil, y el de Refinanciados
+   * decía "0" porque la página principal pide `refi=sin` y ahí no hay ninguna. Un número al
+   * lado del nombre de una pestaña se lee como "cuántos hay", no como "cuántos entraron".
+   *
+   * Los dos salen del mismo agregado del servidor que ya alimenta los KPI.
+   */
+  const refiCount = kpisServer?.refi.total ?? 0;
+  const creditosCount = Math.max(0, (kpisServer?.total ?? 0) - refiCount);
 
   const hasFilters = !!(search || estadoFilter !== "all" || tipoFilter !== "all" || moraFilter !== "all");
   /** Los filtros puestos, con el nombre que ve el usuario (el texto de búsqueda no cuenta: tiene su propia X). */
@@ -237,11 +248,8 @@ export function CreditosTable({ role }: { role: Role }) {
           accent="primary"
         />
 
-        {/* Solo en la pestaña Refinanciados, que es la que sigue trayendo la ventana entera:
-            la lista principal se pagina y el paginador ya dice cuántos hay. */}
-        {!esListaPrincipal && (
-          <ListaTruncada mostrados={creditos.length} total={totalCreditos} sustantivo="créditos" />
-        )}
+        {/* Ya NO hace falta en ninguna de las dos pestañas: las dos piden su página al
+            servidor y el paginador dice cuántos hay en total. */}
 
         {/*
           ── Pestañas (Créditos / Refinanciados) + CTA ──
@@ -403,7 +411,7 @@ export function CreditosTable({ role }: { role: Role }) {
             Error al cargar créditos: {error.message}
           </div>
         ) : tab === "refinanciados" ? (
-          <RefinanciadosView creditos={creditos} busq={busqRefi} setBusq={setBusqRefi} onOpen={irACredito} onRefinanciar={irARefinanciar} />
+          <RefinanciadosView busq={busqRefi} setBusq={setBusqRefi} onOpen={irACredito} onRefinanciar={irARefinanciar} />
         ) : (
         <div className="space-y-5">
 
@@ -656,65 +664,87 @@ export function CreditosTable({ role }: { role: Role }) {
  * Cada fila es una refinanciación: el crédito nuevo (es_refinanciacion) y su crédito
  * origen resuelto desde la misma lista. Click → abre el detalle del crédito nuevo.
  */
-function RefinanciadosView({ creditos, busq, setBusq, onOpen, onRefinanciar }: { creditos: Credito[]; busq: string; setBusq: (v: string) => void; onOpen: (c: Credito) => void; onRefinanciar: (c: Credito) => void }) {
+function RefinanciadosView({ busq, setBusq, onOpen, onRefinanciar }: { busq: string; setBusq: (v: string) => void; onOpen: (c: Credito) => void; onRefinanciar: (c: Credito) => void }) {
   /** Los cortes media/alta/crítica que definió la financiera (Configuración → Cobranza). */
   const tramos = useTramosMora();
-  const porId = useMemo(() => new Map(creditos.map((c) => [c.id, c])), [creditos]);
-  const pares = useMemo(
-    () =>
-      creditos
-        .filter((c) => c.es_refinanciacion)
-        .map((nuevo) => ({ nuevo, origen: nuevo.refinancia_a ? porId.get(nuevo.refinancia_a) : undefined }))
-        .sort((a, b) => new Date(b.nuevo.created_at).getTime() - new Date(a.nuevo.created_at).getTime()),
-    [creditos, porId],
-  );
 
-  // Candidatos a refinanciar = créditos activos en mora (lo que el server permite reestructurar).
-  const candidatos = useMemo(
-    () => creditos.filter((c) => esCreditoVivo(c.estado) && c.dias_mora > 0).sort((a, b) => b.dias_mora - a.dias_mora),
-    [creditos],
-  );
   /**
    * Recorte del historial: todas / las que se están pagando / las que volvieron a mora.
    *
    * No existía. Los KPI decían "12 al día, 5 volvieron a mora" y para saber CUÁLES eran esos
    * 5 —que es la pregunta que importa, porque son los que se reestructuraron y siguen sin
    * pagar— había que recorrer la tabla a ojo.
+   *
+   * 🔴 Y ahora lo aplica LA BASE, no la pantalla: recortar una página de doce la dejaba en
+   * dos. Es el mismo criterio que se siguió en Cobranzas y en Créditos.
    */
   const [recupero, setRecupero] = useState<"todas" | "al_dia" | "en_mora">("todas");
+  const POR_PAGINA = 12;
+  const [pagina, setPagina] = useState(1);
+  useEffect(() => { setPagina(1); }, [recupero]);
+
+  /**
+   * EL HISTORIAL, paginado por OPERACIÓN.
+   *
+   * `refi: "pares"` hace que el servidor mande cada refinanciación JUNTO a su crédito origen.
+   * Antes esta vista pedía la cartera entera y cruzaba la lista consigo misma para encontrar
+   * el origen; como la ventana venía topeada en 1.000 y traía los créditos MÁS NUEVOS, los
+   * orígenes —que por definición son los viejos— eran justo los que se caían. Pares a medias,
+   * y ningún cartel que lo dijera.
+   */
+  const { creditos: filasPar, total: totalPares, isLoading: cargandoPares } = useCreditos({
+    refi: "pares",
+    mora: recupero === "todas" ? null : recupero === "al_dia" ? "al_dia" : "en_mora",
+    limit: POR_PAGINA,
+    offset: (pagina - 1) * POR_PAGINA,
+  });
+  const porId = useMemo(() => new Map(filasPar.map((c) => [c.id, c])), [filasPar]);
+  const pares = useMemo(
+    () =>
+      filasPar
+        .filter((c) => c.es_refinanciacion)
+        .map((nuevo) => ({ nuevo, origen: nuevo.refinancia_a ? porId.get(nuevo.refinancia_a) : undefined }))
+        .sort((a, b) => new Date(b.nuevo.created_at).getTime() - new Date(a.nuevo.created_at).getTime()),
+    [filasPar, porId],
+  );
+
+  /**
+   * LOS CANDIDATOS A REFINANCIAR: su propia consulta, y su búsqueda también en la base.
+   *
+   * Es otra pregunta que el historial —"¿a quién le conviene reestructurar hoy?"— y salía de
+   * la misma lista topeada, así que con la cartera grande faltaban morosos sin aviso.
+   */
+  const qCand = useDebounce(busq.trim(), 250);
+  const { creditos: candidatos, total: totalCandidatos, isLoading: cargandoCand } = useCreditos({
+    estado: "vivos", mora: "en_mora", orden: "mora", q: qCand, limit: 50,
+  });
+
+  /** Los números, del servidor y sobre el historial ENTERO (ver `/api/creditos/kpis`). */
+  const { kpis } = useCreditosKpis();
+  const r = kpis?.refi;
+
   // Comparación original ↔ refinanciación (plan de cuotas + TNA de otorgamiento).
   const [comparar, setComparar] = useState<{ origen: Credito; nuevo: Credito } | null>(null);
-  const candFiltrados = useMemo(() => {
-    const q = busq.trim().toLowerCase();
-    if (!q) return candidatos;
-    const qDigits = q.replace(/\D/g, "");
-    return candidatos.filter((c) => {
-      const num = formatCreditoNumero(c.numero, c.refinancia_a_numero).toLowerCase();
-      const nombre = nombreCompleto(c.cliente).toLowerCase();
-      const doc = (c.cliente.documento ?? "").replace(/\D/g, "");
-      if (num.includes(q) || nombre.includes(q)) return true;
-      if (qDigits.length >= 2 && (doc.includes(qDigits) || String(c.numero ?? "") === qDigits)) return true;
-      return false;
-    });
-  }, [candidatos, busq]);
 
-  // KPIs de recupero: ¿las refinanciaciones se pagan (al día) o vuelven a mora?
-  // Los KPI cuentan SIEMPRE sobre `pares` (el historial completo): un KPI que se mueve con
-  // el filtro deja de ser un KPI.
-  const paresVisibles = useMemo(
-    () => pares.filter((p) =>
-      recupero === "todas" || (recupero === "al_dia" ? p.nuevo.dias_mora === 0 : p.nuevo.dias_mora > 0)),
-    [pares, recupero],
-  );
-  const totalConsolidado = pares.reduce((s, p) => s + p.nuevo.monto_original, 0);
-  const alDia = pares.filter((p) => p.nuevo.dias_mora === 0).length;
-  const enMora = pares.filter((p) => p.nuevo.dias_mora > 0).length;
-  const tasaRecupero = pares.length > 0 ? Math.round((alDia / pares.length) * 100) : 0;
-  // La PLATA detrás de cada conteo, igual que en la pestaña Créditos: "5 volvieron a mora" no
-  // dice si eso es un problema chico o la mitad de la cartera reestructurada.
-  const saldoAlDia = pares.filter((p) => p.nuevo.dias_mora === 0).reduce((s, p) => s + p.nuevo.saldo_pendiente, 0);
-  const saldoEnMora = pares.filter((p) => p.nuevo.dias_mora > 0).reduce((s, p) => s + p.nuevo.saldo_pendiente, 0);
-  const promedioConsolidado = pares.length > 0 ? totalConsolidado / pares.length : 0;
+  /*
+   * 🔴 LOS NÚMEROS SALEN DEL SERVIDOR, NO DE LA PÁGINA.
+   *
+   * Se calculaban acá sobre los créditos cargados. Mientras la cartera entraba en la ventana
+   * daban bien; pasadas las 1.000 filas, la "tasa de recupero" y el "capital consolidado"
+   * pasaban a contar sobre un pedazo y seguían presentándose como el historial completo. El
+   * aviso de lista recortada hablaba de la TABLA: de estos números no decía nada.
+   *
+   * Y el recorte por recupero ya lo aplicó la base, así que lo que llega ES lo que se muestra.
+   */
+  const totalOperaciones = r?.total ?? 0;
+  const totalConsolidado = r?.consolidado ?? 0;
+  const alDia = r?.alDia ?? 0;
+  const enMora = r?.enMora ?? 0;
+  const tasaRecupero = r?.tasaRecupero ?? 0;
+  const saldoAlDia = r?.saldoAlDia ?? 0;
+  const saldoEnMora = r?.saldoEnMora ?? 0;
+  const promedioConsolidado = r?.promedio ?? 0;
+  const carteraTotal = kpis?.total ?? 0;
 
   /** El filtro propio de ESTA sección: cómo viene el recupero. Es su criterio, no el de Créditos. */
   const resumenRecupero = recupero === "al_dia" ? "Al día" : recupero === "en_mora" ? "Volvieron a mora" : undefined;
@@ -723,21 +753,21 @@ function RefinanciadosView({ creditos, busq, setBusq, onOpen, onRefinanciar }: {
   return (
     <div className="space-y-6">
       {/* KPIs de la sección (solo si ya hay historial) */}
-      {pares.length > 0 && (
+      {totalOperaciones > 0 && (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           {/* "Capital consolidado" es una suma: no hay un subconjunto que le corresponda. */}
           <KpiCard
-            icon="counterclockwise-arrows-button" label="Refinanciaciones" value={String(pares.length)} accent="warning"
-            sub={`de ${creditos.length} créditos otorgados`}
-            barra={pares.length > 0
-              ? { pct: pctDe(pares.length, creditos.length), label: `${Math.round(pctDe(pares.length, creditos.length))}%` }
+            icon="counterclockwise-arrows-button" label="Refinanciaciones" value={String(totalOperaciones)} accent="warning"
+            sub={`de ${carteraTotal} créditos otorgados`}
+            barra={carteraTotal > 0
+              ? { pct: pctDe(totalOperaciones, carteraTotal), label: `${Math.round(pctDe(totalOperaciones, carteraTotal))}%` }
               : undefined}
             onClick={() => setRecupero("todas")}
             active={recupero === "todas"}
           />
           <KpiCard
             icon="money-bag" label="Capital consolidado" value={formatMonto(totalConsolidado)} accent="primary" mono
-            sub={`${pares.length} operaci${pares.length !== 1 ? "ones" : "ón"} · promedio ${formatMonto(promedioConsolidado)}`}
+            sub={`${totalOperaciones} operaci${totalOperaciones !== 1 ? "ones" : "ón"} · promedio ${formatMonto(promedioConsolidado)}`}
           />
           <KpiCard
             icon="check-mark-button" label="Al día (recuperados)" value={String(alDia)} accent="success"
@@ -753,7 +783,7 @@ function RefinanciadosView({ creditos, busq, setBusq, onOpen, onRefinanciar }: {
             accent={enMora > 0 ? "destructive" : "muted"}
             sub={enMora > 0 ? `${formatMonto(saldoEnMora)} otra vez en riesgo` : "ninguno"}
             barra={enMora > 0
-              ? { pct: pctDe(enMora, pares.length), label: `${Math.round(pctDe(enMora, pares.length))}% de los refinanciados` }
+              ? { pct: pctDe(enMora, totalOperaciones), label: `${Math.round(pctDe(enMora, totalOperaciones))}% de los refinanciados` }
               : undefined}
             onClick={enMora > 0 ? () => setRecupero("en_mora") : undefined}
             active={recupero === "en_mora"}
@@ -771,7 +801,16 @@ function RefinanciadosView({ creditos, busq, setBusq, onOpen, onRefinanciar }: {
           Elegí un crédito <strong className="text-foreground">en mora</strong> para consolidar su deuda viva en un crédito nuevo (con descuento opcional; no mueve caja).
         </p>
 
-        {candidatos.length === 0 ? (
+        {/* 🔴 TRES estados distintos, y antes los tres mostraban lo mismo:
+            · todavía CARGANDO — decir "no hay morosos" mientras la consulta viaja es afirmar
+              algo falso, y con la lista del lado del servidor esa espera se nota;
+            · "no hay a quién refinanciar" (el 🎉), que es una buena noticia;
+            · "tu búsqueda no encontró nada", que no lo es. */}
+        {cargandoCand ? (
+          <p className="rounded-lg border border-dashed border-border/60 px-4 py-6 text-center text-xs text-muted-foreground/60">
+            Buscando créditos en mora…
+          </p>
+        ) : candidatos.length === 0 && !busq.trim() ? (
           <p className="rounded-lg border border-dashed border-border/60 px-4 py-6 text-center text-xs text-muted-foreground/60">
             No hay créditos en mora para refinanciar. 🎉
           </p>
@@ -783,14 +822,14 @@ function RefinanciadosView({ creditos, busq, setBusq, onOpen, onRefinanciar }: {
                 golpe hay tres candidatos en vez de veinte. */}
             <p className="text-xs text-muted-foreground">
               {busq.trim()
-                ? <>{candFiltrados.length} de {candidatos.length} en mora · filtrado por “{busq.trim()}”</>
-                : <>{candidatos.length} crédito{candidatos.length === 1 ? "" : "s"} en mora</>}
+                ? <>{candidatos.length} de {totalCandidatos} en mora · filtrado por “{busq.trim()}”</>
+                : <>{totalCandidatos} crédito{totalCandidatos === 1 ? "" : "s"} en mora{candidatos.length < totalCandidatos ? <> · se muestran los {candidatos.length} más atrasados</> : null}</>}
             </p>
-            {candFiltrados.length === 0 ? (
+            {candidatos.length === 0 ? (
               <p className="px-1 py-4 text-center text-xs text-muted-foreground/60">Sin resultados para “{busq}”.</p>
             ) : (
               <div className="max-h-[42vh] space-y-2 overflow-auto pr-1">
-                {candFiltrados.map((c) => {
+                {candidatos.map((c) => {
                   /*
                     🔴 EL NÚMERO QUE VA ACÁ ES LA DEUDA A CONSOLIDAR, NO EL SALDO.
 
@@ -894,7 +933,7 @@ function RefinanciadosView({ creditos, busq, setBusq, onOpen, onRefinanciar }: {
             <h3 className="text-sm font-semibold text-foreground">Historial de refinanciaciones</h3>
             {pares.length > 0 && (
               <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-bold tabular-nums text-muted-foreground">
-                {recupero === "todas" ? pares.length : `${paresVisibles.length} de ${pares.length}`}
+                {recupero === "todas" ? totalOperaciones : `${totalPares} de ${totalOperaciones}`}
               </span>
             )}
           </div>
@@ -935,7 +974,13 @@ function RefinanciadosView({ creditos, busq, setBusq, onOpen, onRefinanciar }: {
           )}
         </div>
 
-        {pares.length === 0 ? (
+        {/* Cargando NO es "no hay ninguna": mientras la página viaja, el cartel de vacío le
+            estaría diciendo al operador que nunca refinanció nada. */}
+        {cargandoPares ? (
+          <div className="rounded-xl border border-dashed border-border/60 p-10 text-center text-xs text-muted-foreground/60">
+            Cargando el historial…
+          </div>
+        ) : pares.length === 0 ? (
           <div className="rounded-xl border border-dashed border-border/60 p-10 flex flex-col items-center gap-3 text-center">
             <div className="h-14 w-14 rounded-2xl bg-muted/20 border border-border/70 flex items-center justify-center">
               <RefreshCw className="h-6 w-6 text-muted-foreground/20" />
@@ -946,9 +991,11 @@ function RefinanciadosView({ creditos, busq, setBusq, onOpen, onRefinanciar }: {
           </div>
         ) : (
       <DataTable
-        rows={paresVisibles}
+        rows={pares}
         rowKey={(p) => p.nuevo.id}
-        pageSize={12}
+        /* Paginación de SERVIDOR: `total` son OPERACIONES, no filas — cada página trae el
+           crédito nuevo y su origen, así que viajan hasta el doble de registros. */
+        paginacion={{ pagina, porPagina: POR_PAGINA, total: totalPares, onPagina: setPagina }}
         onRowClick={(p) => onOpen(p.nuevo)}
         zebra
         columns={[

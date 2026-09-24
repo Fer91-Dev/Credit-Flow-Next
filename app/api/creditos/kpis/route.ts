@@ -31,12 +31,28 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
 
   const filas = await prisma.creditos.findMany({
     where: { ...withTenant(tenantId), ...scopeCreditosVendedor(ctx) },
-    select: { estado: true, proximo_pago: true, saldo_pendiente: true, monto_original: true },
+    select: {
+      estado: true, proximo_pago: true, saldo_pendiente: true, monto_original: true,
+      // Una columna más, ninguna consulta más: con esto salen también los KPI de la pestaña
+      // Refinanciados en la misma pasada.
+      es_refinanciacion: true,
+    },
   });
 
   let activos = 0, alDia = 0, enMora = 0, cartera = 0;
   let moraCritica = 0, montoCritico = 0;
   let pagados = 0, montoPagado = 0;
+
+  /**
+   * 🔴 LOS NÚMEROS DE LA PESTAÑA REFINANCIADOS, SOBRE EL HISTORIAL ENTERO.
+   *
+   * Se calculaban en el navegador sobre la ventana de 1.000 créditos: la "tasa de recupero"
+   * y el "total consolidado" contaban sobre lo que hubiera entrado y se mostraban como el
+   * historial completo. El aviso de lista recortada hablaba de la TABLA, no de estos
+   * números, así que nada decía que estuvieran cortos.
+   */
+  let refiTotal = 0, refiAlDia = 0, refiEnMora = 0;
+  let refiConsolidado = 0, refiSaldoAlDia = 0, refiSaldoEnMora = 0;
 
   for (const c of filas) {
     if (c.estado === "pagado") {
@@ -50,6 +66,15 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
       moraCritica++;
       montoCritico += c.saldo_pendiente;
     }
+    /* Las refinanciaciones cuentan venga de donde venga el crédito —una ya cancelada es
+       justamente el caso de éxito del recupero—, así que va ANTES del corte por vivos. */
+    if (c.es_refinanciacion) {
+      refiTotal++;
+      refiConsolidado += c.monto_original;
+      if (dias > 0) { refiEnMora++; refiSaldoEnMora += c.saldo_pendiente; }
+      else { refiAlDia++; refiSaldoAlDia += c.saldo_pendiente; }
+    }
+
     // Cartera VIVA: incluye los vencidos, que siguen siendo plata en la calle.
     if (!esCreditoVivo(c.estado)) continue;
     activos++;
@@ -72,5 +97,17 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     // Capital que se prestó y volvió completo (los ya cancelados).
     montoPagado: round2(montoPagado),
     total: filas.length,
+    /* Pestaña Refinanciados. `tasaRecupero` es el número que decide si reestructurar sirve o
+       solo patea el problema: de cada 100 refinanciaciones, cuántas se están pagando. */
+    refi: {
+      total: refiTotal,
+      alDia: refiAlDia,
+      enMora: refiEnMora,
+      consolidado: round2(refiConsolidado),
+      promedio: refiTotal > 0 ? round2(refiConsolidado / refiTotal) : 0,
+      saldoAlDia: round2(refiSaldoAlDia),
+      saldoEnMora: round2(refiSaldoEnMora),
+      tasaRecupero: refiTotal > 0 ? Math.round((refiAlDia / refiTotal) * 100) : 0,
+    },
   });
 });

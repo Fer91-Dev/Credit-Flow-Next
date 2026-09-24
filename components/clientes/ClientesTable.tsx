@@ -55,7 +55,13 @@ export function ClientesTable({ role }: { role?: Role } = {}) {
    * a hacer algo.
    */
   const [recorte, setRecorte] = useState<"enfriados" | "riesgo" | "nuevos" | null>(null);
-  const { clientes, total, isLoading, mutate } = useClientes({ scored: true, q: qServidor, limit: 1000, filtro: recorte });
+  const [verTodos, setVerTodos] = useState(false); // F3 en el buscador: lista completa A→Z
+  /* `orden: "alfabetico"` cuando se pide la lista completa (F3): así el recorte que llega es
+     de verdad el principio del abecedario y no los clientes más nuevos ordenados entre sí. */
+  const { clientes, total, isLoading, mutate } = useClientes({
+    scored: true, q: qServidor, limit: 1000, filtro: recorte,
+    orden: verTodos && !qServidor && !recorte ? "alfabetico" : null,
+  });
   /* El tope es 1.000: pasado eso la lista muestra una parte y hay que decirlo. */
   const { kpis } = useKpisClientes();
   /** Un KPI prendido se apaga al volver a clickearlo. */
@@ -66,7 +72,6 @@ export function ClientesTable({ role }: { role?: Role } = {}) {
   const confirm = useConfirm();
   const toast = useToast();
 
-  const [verTodos, setVerTodos] = useState(false); // F3 en el buscador: lista completa A→Z
   const [selected, setSelected] = useState<Sel | null>(null);
   const [dialogOpen, setDialog] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);

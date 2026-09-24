@@ -221,6 +221,50 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   if (condiciones.length > 0) where.AND = condiciones;
 
   /**
+   * 🔴 MODO PARES: la pestaña Refinanciados se pagina por OPERACIÓN, no por crédito.
+   *
+   * Esa pestaña muestra pares "origen → crédito nuevo", y hasta ahora los armaba cruzando la
+   * lista consigo misma en el navegador. Con la ventana topeada en 1.000 eso fallaba de la
+   * peor manera: la ventana trae los créditos MÁS NUEVOS, las refinanciaciones son nuevas y
+   * sus orígenes son viejos — o sea que los orígenes eran justo los que se quedaban afuera.
+   * Se veían pares a medias, y los KPI de recupero contaban sobre lo que hubiera entrado.
+   *
+   * Tampoco alcanza con paginar `es_refinanciacion = true`: eso trae los nuevos sin sus
+   * orígenes. Así que se pagina sobre las refinanciaciones y después se piden LOS DOS
+   * miembros de cada par por el camino normal, para que el origen llegue con el mismo
+   * enriquecido que cualquier fila (el comparador lo necesita completo).
+   *
+   * `total` pasa a ser la cantidad de OPERACIONES, que es lo que el paginador cuenta.
+   */
+  let totalPares: number | null = null;
+  if (refi === "pares") {
+    const wherePares = { ...where, es_refinanciacion: true };
+    const [pagina, cuenta] = await Promise.all([
+      prisma.creditos.findMany({
+        where: wherePares,
+        select: { id: true, refinancia_a: true },
+        orderBy: [{ created_at: "desc" }, { id: "desc" }],
+        take: limit,
+        skip: offset,
+      }),
+      prisma.creditos.count({ where: wherePares }),
+    ]);
+    totalPares = cuenta;
+
+    const delPar = [
+      ...new Set(pagina.flatMap((p) => [p.id, p.refinancia_a]).filter((x): x is string => !!x)),
+    ];
+    /* Se limpian los filtros: ya se aplicaron al elegir la página. Si quedaran puestos, un
+       origen que no matchea la búsqueda se caería y el par volvería a quedar a medias — que
+       es exactamente el defecto que esto viene a cerrar. El tenant y el scope del vendedor
+       se vuelven a poner porque esos NO son un filtro de pantalla: son la barrera. */
+    for (const k of Object.keys(where)) delete where[k];
+    Object.assign(where, withTenant(tenantId), scopeCreditosVendedor({ role, vendedorId }), {
+      id: { in: delPar },
+    });
+  }
+
+  /**
    * SOLO LOS IDS: para "seleccionar todos" con la lista paginada. Una columna, sin `include`
    * ni cuotas — es lo que hace que pedir 5.000 destinatarios cueste una fracción de pedir
    * 5.000 créditos completos.
@@ -318,8 +362,10 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
         orden === "mora"
           ? [{ proximo_pago: { sort: "asc", nulls: "last" } }, { id: "asc" }]
           : [{ created_at: "desc" }, { id: "desc" }],
-      take: limit,
-      skip: offset,
+      /* En modo pares la página YA se eligió arriba y `where` trae exactamente los créditos
+         de esa página (nuevos + orígenes). Volver a recortar acá partiría los pares al medio. */
+      take: totalPares === null ? limit : undefined,
+      skip: totalPares === null ? offset : 0,
     }),
     prisma.creditos.count({ where }),
   ]);
@@ -687,7 +733,10 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
 
   return successResponse({
     creditos: creditosConOrigen,
-    total,
+    /* En modo pares, `total` es la cantidad de OPERACIONES de refinanciación —no de filas—,
+       porque es lo que cuenta el paginador de esa pestaña: cada página son N operaciones y
+       viajan hasta 2N créditos (el nuevo y su origen). */
+    total: totalPares ?? total,
     limit,
     offset,
   });

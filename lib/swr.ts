@@ -1444,12 +1444,14 @@ export function useKpisClientes() {
   return { kpis: data, error, isLoading, mutate };
 }
 
-export function useClientes(opts?: { scored?: boolean; q?: string; limit?: number; filtro?: string | null }) {
+export function useClientes(opts?: { scored?: boolean; q?: string; limit?: number; filtro?: string | null; orden?: "alfabetico" | null }) {
   const params = new URLSearchParams();
   if (opts?.scored) params.set("scored", "true");
   if (opts?.q) params.set("q", opts.q);
   if (opts?.limit) params.set("limit", String(opts.limit));
   if (opts?.filtro) params.set("filtro", opts.filtro);
+  /** `alfabetico` lo ordena la BASE: ordenarlo acá ordenaría solo la página. */
+  if (opts?.orden) params.set("orden", opts.orden);
   const qs = params.toString();
   const key = qs ? `${KEYS.clientes}&${qs}` : KEYS.clientes;
   const { data, error, isLoading, mutate } = useSWR<{ clientes: Cliente[]; total: number }>(key);
@@ -1488,8 +1490,12 @@ export interface FiltrosCreditos {
   /** Rango de vencimiento (YYYY-MM-DD). Incluye la cuota pactada de un acuerdo vigente. */
   venceDesde?: string | null;
   venceHasta?: string | null;
-  /** `solo` = únicamente refinanciaciones · `sin` = todo lo que no lo es. */
-  refi?: "solo" | "sin" | null;
+  /**
+   * `solo` = únicamente refinanciaciones · `sin` = todo lo que no lo es ·
+   * `pares` = pagina por OPERACIÓN y trae el crédito nuevo JUNTO a su origen, para que la
+   * pestaña Refinanciados no tenga que cruzar la lista consigo misma (ver `/api/creditos`).
+   */
+  refi?: "solo" | "sin" | "pares" | null;
   /** `reciente` | `sin_reciente`: si alguien lo gestionó en los últimos `dias_sin_gestion`. */
   contacto?: string | null;
   /** Cuántas filas por página. Sin esto, hasta 1.000. */
@@ -1585,6 +1591,12 @@ export function mutarCreditos() {
 export interface CreditosKpis {
   activos: number; alDia: number; enMora: number; cartera: number; promedio: number;
   moraCritica: number; montoCritico: number; pagados: number; montoPagado: number; total: number;
+  /** Pestaña Refinanciados: sobre el historial ENTERO, no sobre la página que se esté viendo. */
+  refi: {
+    total: number; alDia: number; enMora: number;
+    consolidado: number; promedio: number;
+    saldoAlDia: number; saldoEnMora: number; tasaRecupero: number;
+  };
 }
 
 /** Ver `/api/creditos/kpis`: no salen de la lista, que está topeada en 1.000. */

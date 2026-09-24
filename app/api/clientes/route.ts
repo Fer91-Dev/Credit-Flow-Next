@@ -72,10 +72,30 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     where.id = { in: ids[filtro] };
   }
 
+  /**
+   * 🔴 EL ORDEN ALFABÉTICO TIENE QUE HACERLO LA BASE.
+   *
+   * La pantalla pedía una página ordenada por fecha de alta y la ordenaba alfabéticamente en
+   * el navegador, rotulándola "orden alfabético". Mientras el padrón entraba en la página
+   * daba igual; pasado el tope, lo que se ordenaba eran los clientes MÁS NUEVOS, así que un
+   * apellido con A cargado hace dos años no aparecía al principio de la lista "alfabética".
+   * Ordenado acá, lo que llega es de verdad el principio del abecedario.
+   *
+   * El `id` al final, como en toda lista paginada: sin un desempate único el motor no promete
+   * ningún orden entre dos homónimos y la página siguiente puede repetir o saltear.
+   */
+  const orden = url.searchParams.get("orden");
   const [clientesRows, total] = await Promise.all([
     prisma.clientes.findMany({
       where,
-      orderBy: [{ created_at: "desc" }, { id: "desc" }],
+      /* Por NOMBRE y después apellido, que es como la pantalla arma y muestra el nombre
+         completo (`nombreCompleto` = "Nombre Apellido"). Si acá se ordenara por apellido, el
+         recorte que llega sería el principio del abecedario de apellidos y la pantalla lo
+         mostraría ordenado por nombre: dos criterios para una sola lista. */
+      orderBy:
+        orden === "alfabetico"
+          ? [{ nombre: "asc" }, { apellido: "asc" }, { id: "asc" }]
+          : [{ created_at: "desc" }, { id: "desc" }],
       take: limit,
       skip: offset,
     }),
