@@ -757,9 +757,22 @@ function RefinanciadosView({ busq, buscado, limpiarBusq, onOpen, onRefinanciar }
   const { creditos: candidatos, total: totalCandidatos, isLoading: cargandoCand, isValidating: buscandoCand } = useCreditos({
     estado: "vivos", mora: "en_mora", orden: "mora", q: buscado, limit: CANDIDATOS_A_LA_VISTA,
   });
-  /** ¿Lo que está en pantalla corresponde a lo que se pidió buscar? Mientras no, no se rotula. */
-  const candEnSincro = !buscandoCand;
-  const hayBusqueda = !!buscado;
+  /**
+   * 🔴 EL RÓTULO HABLA DEL ÚLTIMO TÉRMINO QUE YA TRAJO RESULTADOS, NO DEL RECIÉN APRETADO.
+   *
+   * Fernando no quiso el cartel "Buscando …": si el resultado llega en un segundo, avisar que
+   * se está buscando es ruido. Pero sacarlo a secas devuelve el defecto original: `buscado`
+   * cambia apenas se aprieta Enter y los datos tardan, así que el renglón diría "23 en mora
+   * para «patricio»" sobre las filas del término anterior.
+   *
+   * `mostrado` solo avanza cuando la consulta ya se resolvió. Mientras viaja, el renglón y las
+   * filas siguen siendo los de antes —coherentes entre sí— y cambian juntos al llegar.
+   */
+  const [mostrado, setMostrado] = useState("");
+  useEffect(() => {
+    if (!buscandoCand && !cargandoCand) setMostrado(buscado);
+  }, [buscandoCand, cargandoCand, buscado]);
+  const hayBusqueda = !!mostrado;
 
   /** Los números, del servidor y sobre el historial ENTERO (ver `/api/creditos/kpis`). */
   const { kpis } = useCreditosKpis();
@@ -854,9 +867,9 @@ function RefinanciadosView({ busq, buscado, limpiarBusq, onOpen, onRefinanciar }
             a la vista, lo que corresponde es dejarla y decir arriba que se está buscando. */}
         {cargandoCand && candidatos.length === 0 ? (
           <p className="rounded-lg border border-dashed border-border/60 px-4 py-6 text-center text-xs text-muted-foreground/60">
-            Buscando créditos en mora…
+            Cargando…
           </p>
-        ) : candidatos.length === 0 && !busq.trim() ? (
+        ) : candidatos.length === 0 && !mostrado ? (
           <p className="rounded-lg border border-dashed border-border/60 px-4 py-6 text-center text-xs text-muted-foreground/60">
             No hay créditos en mora para refinanciar. 🎉
           </p>
@@ -890,12 +903,10 @@ function RefinanciadosView({ busq, buscado, limpiarBusq, onOpen, onRefinanciar }
                 encima de la otra (lo vio Fernando en preview el 24/09/2026). Con resultados
                 el conteo sirve —dice cuántos son y si la lista se cortó—; sin resultados
                 alcanza con decirlo una vez. */}
-            {!(candEnSincro && hayBusqueda && candidatos.length === 0) && (
+            {!(hayBusqueda && candidatos.length === 0) && (
               <p className="text-xs text-muted-foreground">
-                {!candEnSincro ? (
-                  <>Buscando “{busq.trim()}”…</>
-                ) : hayBusqueda ? (
-                  <>{totalCandidatos} en mora para “{buscado}”{totalCandidatos > candidatos.length ? <> · se muestran los {candidatos.length} más atrasados</> : null}</>
+                {hayBusqueda ? (
+                  <>{totalCandidatos} en mora para “{mostrado}”{totalCandidatos > candidatos.length ? <> · se muestran los {candidatos.length} más atrasados</> : null}</>
                 ) : (
                   <>{totalCandidatos} crédito{totalCandidatos === 1 ? "" : "s"} en mora{totalCandidatos > candidatos.length ? <> · se muestran los {candidatos.length} más atrasados</> : null}</>
                 )}
@@ -920,7 +931,7 @@ function RefinanciadosView({ busq, buscado, limpiarBusq, onOpen, onRefinanciar }
                 </div>
                 <div className="space-y-1">
                   <p className="text-sm font-semibold text-foreground">
-                    Ningún crédito en mora coincide con “{buscado}”
+                    Ningún crédito en mora coincide con “{mostrado}”
                   </p>
                   <p className="mx-auto max-w-sm text-xs leading-relaxed text-muted-foreground">
                     {totalCandidatos === 0 && !hayBusqueda
