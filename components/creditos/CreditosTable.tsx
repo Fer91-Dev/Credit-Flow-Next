@@ -715,9 +715,11 @@ function RefinanciadosView({ busq, setBusq, onOpen, onRefinanciar }: { busq: str
    * la misma lista topeada, así que con la cartera grande faltaban morosos sin aviso.
    */
   const qCand = useDebounce(busq.trim(), 250);
-  const { creditos: candidatos, total: totalCandidatos, isLoading: cargandoCand } = useCreditos({
+  const { creditos: candidatos, total: totalCandidatos, isLoading: cargandoCand, isValidating: buscandoCand } = useCreditos({
     estado: "vivos", mora: "en_mora", orden: "mora", q: qCand, limit: 50,
   });
+  /** ¿Lo que está en pantalla corresponde a lo que hay escrito? Mientras no, no se rotula. */
+  const candEnSincro = busq.trim() === qCand && !buscandoCand;
 
   /** Los números, del servidor y sobre el historial ENTERO (ver `/api/creditos/kpis`). */
   const { kpis } = useCreditosKpis();
@@ -806,7 +808,11 @@ function RefinanciadosView({ busq, setBusq, onOpen, onRefinanciar }: { busq: str
               algo falso, y con la lista del lado del servidor esa espera se nota;
             · "no hay a quién refinanciar" (el 🎉), que es una buena noticia;
             · "tu búsqueda no encontró nada", que no lo es. */}
-        {cargandoCand ? (
+        {/* 🔴 Solo la PRIMERA carga vacía el panel. SWR marca "cargando" en cada cambio de
+            término aunque siga teniendo a la vista la lista anterior, así que preguntar solo
+            por `cargandoCand` hacía desaparecer los candidatos en cada tecla. Con lista vieja
+            a la vista, lo que corresponde es dejarla y decir arriba que se está buscando. */}
+        {cargandoCand && candidatos.length === 0 ? (
           <p className="rounded-lg border border-dashed border-border/60 px-4 py-6 text-center text-xs text-muted-foreground/60">
             Buscando créditos en mora…
           </p>
@@ -820,13 +826,36 @@ function RefinanciadosView({ busq, setBusq, onOpen, onRefinanciar }: { busq: str
                 (mismo lugar que en Créditos). Acá queda el conteo de lo que dejó a la vista:
                 con la caja lejos de la lista, sin este renglón no se entendería por qué de
                 golpe hay tres candidatos en vez de veinte. */}
+            {/*
+              🔴 EL ROTULO TIENE QUE DESCRIBIR LO QUE SE ESTA VIENDO.
+
+              Dos errores que se vieron juntos en una captura (Fernando, 24/09/2026): escribió
+              "as" y el renglón decía «23 de 23 en mora · filtrado por "as"» con Héctor Ramón
+              Coronel primero, que no tiene "as" en ninguna parte.
+
+              · El rótulo iba adelantado. Salía de `busq` —lo tipeado— mientras la lista sale
+                de `qCand`, que espera 250 ms antes de consultar y además mantiene la lista
+                anterior a la vista para no parpadear. En ese hueco el cartel anunciaba un
+                filtro que todavía no se había aplicado. Ahora habla de `qCand`, que es el
+                término con el que se trajo lo que está en pantalla, y mientras los dos
+                difieren dice que está buscando.
+
+              · "N de M" ya no significaba nada. Comparaba filtrados contra el total cuando el
+                filtro era local; ahora filtra la base y los dos números son el mismo. Lo que
+                sí falta decir es cuándo la lista se corta en 50, que es el único caso en el
+                que lo mostrado no es todo lo que hay.
+            */}
             <p className="text-xs text-muted-foreground">
-              {busq.trim()
-                ? <>{candidatos.length} de {totalCandidatos} en mora · filtrado por “{busq.trim()}”</>
-                : <>{totalCandidatos} crédito{totalCandidatos === 1 ? "" : "s"} en mora{candidatos.length < totalCandidatos ? <> · se muestran los {candidatos.length} más atrasados</> : null}</>}
+              {!candEnSincro && busq.trim() ? (
+                <>Buscando “{busq.trim()}”…</>
+              ) : qCand ? (
+                <>{totalCandidatos} en mora para “{qCand}”{totalCandidatos > candidatos.length ? <> · se muestran los {candidatos.length} más atrasados</> : null}</>
+              ) : (
+                <>{totalCandidatos} crédito{totalCandidatos === 1 ? "" : "s"} en mora{totalCandidatos > candidatos.length ? <> · se muestran los {candidatos.length} más atrasados</> : null}</>
+              )}
             </p>
             {candidatos.length === 0 ? (
-              <p className="px-1 py-4 text-center text-xs text-muted-foreground/60">Sin resultados para “{busq}”.</p>
+              <p className="px-1 py-4 text-center text-xs text-muted-foreground/60">Sin resultados para “{qCand}”.</p>
             ) : (
               <div className="max-h-[42vh] space-y-2 overflow-auto pr-1">
                 {candidatos.map((c) => {

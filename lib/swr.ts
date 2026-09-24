@@ -1542,13 +1542,19 @@ export function useCreditos(filtros?: FiltrosCreditos) {
   if (filtros?.ids) params.set("ids", filtros.ids.join(","));
   const key = `/api/creditos?${params.toString()}`;
 
-  const { data, error, isLoading, mutate } = useSWR<{ creditos: Credito[]; total?: number }>(key, {
+  const { data, error, isLoading, isValidating, mutate } = useSWR<{ creditos: Credito[]; total?: number }>(key, {
     // Al tipear, la lista anterior se queda a la vista en vez de parpadear en vacío.
     keepPreviousData: true,
   });
   const creditos = data?.creditos ?? [];
   const total = data?.total ?? creditos.length;
-  return { creditos, total, truncado: total > creditos.length, error, isLoading, mutate };
+  /**
+   * 🔴 `isValidating` hace falta JUSTO por `keepPreviousData`. Con él, `isLoading` es false
+   * en cuanto hay datos viejos a la vista, así que una pantalla que solo mire `isLoading`
+   * cree que lo que muestra corresponde al filtro nuevo cuando todavía es lo del anterior —
+   * y si encima rotula el filtro nuevo encima de esos datos, miente.
+   */
+  return { creditos, total, truncado: total > creditos.length, error, isLoading, isValidating, mutate };
 }
 
 /**
