@@ -1485,6 +1485,9 @@ export interface FiltrosCreditos {
   estado?: string | null;
   /** Tipo de crédito de la ficha. */
   tipo?: string | null;
+  /** Rango de vencimiento (YYYY-MM-DD). Incluye la cuota pactada de un acuerdo vigente. */
+  venceDesde?: string | null;
+  venceHasta?: string | null;
   /** `solo` = únicamente refinanciaciones · `sin` = todo lo que no lo es. */
   refi?: "solo" | "sin" | null;
   /** `reciente` | `sin_reciente`: si alguien lo gestionó en los últimos `dias_sin_gestion`. */
@@ -1524,6 +1527,10 @@ export function useCreditos(filtros?: FiltrosCreditos) {
   if (filtros?.orden) params.set("orden", filtros.orden);
   if (filtros?.estado) params.set("estado", filtros.estado);
   if (filtros?.tipo && filtros.tipo !== "all") params.set("tipo", filtros.tipo);
+  if (filtros?.venceDesde && filtros?.venceHasta) {
+    params.set("vence_desde", filtros.venceDesde);
+    params.set("vence_hasta", filtros.venceHasta);
+  }
   if (filtros?.refi) params.set("refi", filtros.refi);
   if (filtros?.contacto && filtros.contacto !== "todos") params.set("contacto", filtros.contacto);
   if (filtros?.ids) params.set("ids", filtros.ids.join(","));
@@ -1620,12 +1627,40 @@ export interface ResumenPagos {
   anulados_30d_monto: number;
 }
 
-export function usePagos() {
-  const { data, error, isLoading, mutate } = useSWR<{ pagos: Pago[]; total?: number; resumen?: ResumenPagos }>(KEYS.pagos);
+export interface FiltrosPagos {
+  /** `anulados` | `hoy` | null. El filtro que prenden los KPI de la terminal. */
+  filtro?: "anulados" | "hoy" | null;
+  /** El día de hoy en formato YYYY-MM-DD, para el filtro "cobros de hoy". */
+  hoy?: string;
+  limit?: number;
+  offset?: number;
+}
+
+/**
+ * 🔴 EL HISTORIAL SE FILTRA Y SE PAGINA EN LA BASE.
+ *
+ * `pagos` crece un renglón por cobro: unos 2.400 al año en una financiera chica, así que el
+ * tope de 500 se pasa en dos o tres meses. Filtrando en el navegador, "pagos anulados"
+ * mostraba los anulados que hubiera entre los últimos 500 y se presentaba como el historial
+ * completo. El `resumen` (cobrado hoy, ayer) siempre lo agregó el servidor sobre toda la
+ * tabla, así que esos números nunca estuvieron mal — el que mentía era el listado.
+ */
+export function usePagos(filtros?: FiltrosPagos) {
+  const params = new URLSearchParams({ limit: String(filtros?.limit ?? 500) });
+  if (filtros?.offset) params.set("offset", String(filtros.offset));
+  if (filtros?.filtro === "anulados") params.set("anulado", "1");
+  if (filtros?.filtro === "hoy") { params.set("anulado", "0"); if (filtros.hoy) params.set("fecha", filtros.hoy); }
+  const { data, error, isLoading, mutate } = useSWR<{ pagos: Pago[]; total?: number; resumen?: ResumenPagos }>(
+    `/api/pagos?${params.toString()}`,
+    { keepPreviousData: true },
+  );
   const pagos = data?.pagos ?? [];
-  // El endpoint topea en 500 y el total ya venía en la respuesta: sin leerlo, una lista
-  // recortada se presentaba como el historial completo.
   return { pagos, total: data?.total ?? pagos.length, resumen: data?.resumen, error, isLoading, mutate };
+}
+
+/** Revalida el historial de pagos con cualquier filtro. Ver `mutarCreditos`. */
+export function mutarPagos() {
+  return globalMutate((k: unknown) => typeof k === "string" && k.startsWith("/api/pagos?"));
 }
 
 export function useVendedores() {
@@ -1894,8 +1929,15 @@ export function useCierresTurno(propia = false) {
 
 
 /** Registro central de comprobantes (admin). Filtros opcionales por texto/serie/fechas/cuenta. */
-export function useComprobantes(filtros: { q?: string; serie?: string; cuenta?: string; desde?: string; hasta?: string }) {
+/**
+ * Los comprobantes ya se filtraban en la base; lo que faltaba era PAGINAR. La lista crece un
+ * renglón por movimiento de caja, así que el tope de 500 se alcanza con el uso normal y la
+ * página siguiente no existía en ningún lado.
+ */
+export function useComprobantes(filtros: { q?: string; serie?: string; cuenta?: string; desde?: string; hasta?: string; limit?: number; offset?: number }) {
   const params = new URLSearchParams();
+  if (filtros.limit) params.set("limit", String(filtros.limit));
+  if (filtros.offset) params.set("offset", String(filtros.offset));
   if (filtros.q) params.set("q", filtros.q);
   if (filtros.serie && filtros.serie !== "all") params.set("serie", filtros.serie);
   if (filtros.cuenta && filtros.cuenta !== "all") params.set("cuenta", filtros.cuenta);
@@ -1904,13 +1946,17 @@ export function useComprobantes(filtros: { q?: string; serie?: string; cuenta?: 
   const qs = params.toString();
   const { data, error, isLoading, mutate } = useSWR<{ comprobantes: Comprobante[]; total: number }>(
     `/api/comprobantes${qs ? `?${qs}` : ""}`,
+    { keepPreviousData: true },
   );
   return { comprobantes: data?.comprobantes ?? [], total: data?.total ?? 0, error, isLoading, mutate };
 }
 
 /** Registro central del kardex de stock (admin). Filtros opcionales por texto/tipo/producto/fechas. */
-export function useMovimientosStock(filtros: { q?: string; tipo?: string; producto_id?: string; desde?: string; hasta?: string }) {
+/** Mismo caso que los comprobantes: filtraba en la base, pero paginaba en el navegador. */
+export function useMovimientosStock(filtros: { q?: string; tipo?: string; producto_id?: string; desde?: string; hasta?: string; limit?: number; offset?: number }) {
   const params = new URLSearchParams();
+  if (filtros.limit) params.set("limit", String(filtros.limit));
+  if (filtros.offset) params.set("offset", String(filtros.offset));
   if (filtros.q) params.set("q", filtros.q);
   if (filtros.tipo && filtros.tipo !== "all") params.set("tipo", filtros.tipo);
   if (filtros.producto_id) params.set("producto_id", filtros.producto_id);
@@ -1921,7 +1967,7 @@ export function useMovimientosStock(filtros: { q?: string; tipo?: string; produc
     movimientos: MovimientoStockGlobal[];
     total: number;
     totales: { movimientos: number; entradas: number; salidas: number };
-  }>(`/api/productos/movimientos${qs ? `?${qs}` : ""}`);
+  }>(`/api/productos/movimientos${qs ? `?${qs}` : ""}`, { keepPreviousData: true });
   return {
     movimientos: data?.movimientos ?? [],
     total: data?.total ?? 0,

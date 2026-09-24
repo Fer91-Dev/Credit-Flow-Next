@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect} from "react";
 import useSWR, { mutate } from "swr";
 import { Handshake, Ban, DollarSign, Printer } from "lucide-react";
 import { formatMonto, formatFecha, formatCreditoNumero, cuandoVence, pctDe } from "@/lib/utils";
@@ -122,12 +122,29 @@ export function AcuerdosTab({ role }: { role: Role }) {
   /** Acuerdo cuya próxima cuota se está cobrando. */
   const [cobrando, setCobrando] = useState<Acuerdo | null>(null);
 
-  const key = `/api/cobranza/acuerdos${estado ? `?estado=${estado}` : ""}`;
-  const { data, isLoading } = useSWR<{ acuerdos: Acuerdo[]; vigentes: number; total: number }>(key, fetcher);
+  /** Filas por página. La corta la base; la tabla ya no corta nada. */
+  const POR_PAGINA = 10;
+  const [pagina, setPagina] = useState(1);
+  useEffect(() => { setPagina(1); }, [estado]);
+
+  const params = new URLSearchParams({ limit: String(POR_PAGINA), offset: String((pagina - 1) * POR_PAGINA) });
+  if (estado) params.set("estado", estado);
+  const key = `/api/cobranza/acuerdos?${params.toString()}`;
+  const { data, isLoading } = useSWR<{
+    acuerdos: Acuerdo[]; vigentes: number; total: number; total_acordado: number; total_cobrado: number;
+  }>(key, fetcher, { keepPreviousData: true });
   const acuerdos = data?.acuerdos ?? [];
 
-  const totalAcordado = acuerdos.reduce((s, a) => s + a.monto_acordado, 0);
-  const totalCobrado = acuerdos.reduce((s, a) => s + a.cobrado, 0);
+  /**
+   * 🔴 LOS IMPORTES LOS SUMA LA BASE, no esta pantalla.
+   *
+   * Se sumaban sobre los acuerdos cargados —hasta 200— y se presentaban como el total: un
+   * acuerdo fuera de esa tanda no entraba en el número de arriba. Ahora los agrega Postgres
+   * sobre el mismo filtro que la lista, así que el selector de estado los mueve igual pero
+   * la página no.
+   */
+  const totalAcordado = data?.total_acordado ?? 0;
+  const totalCobrado = data?.total_cobrado ?? 0;
 
   return (
     <div className="space-y-5">
@@ -180,7 +197,8 @@ export function AcuerdosTab({ role }: { role: Role }) {
         onRowClick={(a) => setAbierto(abierto === a.id ? null : a.id)}
         empty={{ icon: "handshake", title: "No hay acuerdos de pago", hint: "Se arman desde la ficha de un moroso." }}
         zebra
-        pageSize={10}
+        /* La página la corta la base; el total es el de los acuerdos que cumplen el filtro. */
+        paginacion={{ pagina, porPagina: POR_PAGINA, total: data?.total ?? 0, onPagina: setPagina }}
         columns={[
           { header: "Crédito", cell: (a) => <CreditoLink id={a.credito_id} numero={a.credito_numero} numeroOrigen={a.credito_refinancia_a_numero} className="text-xs" /> },
           { header: "Cliente", cell: (a) => <span className="text-foreground">{a.cliente ?? "—"}</span> },

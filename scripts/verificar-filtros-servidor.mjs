@@ -146,8 +146,19 @@ try {
     restaurar = { id: cobaya.id, proximo_pago: original };
     const M = tramos.media_hasta, A = tramos.alta_hasta;
     const bordes = [...new Set([0, 1, M - 1, M, M + 1, A - 1, A, A + 1])].filter((d) => d >= 0).sort((a, b) => a - b);
-    const hoyUTC = new Date();
-    const base = Date.UTC(hoyUTC.getUTCFullYear(), hoyUTC.getUTCMonth(), hoyUTC.getUTCDate());
+    /**
+     * 🔴 EL DÍA COMERCIAL ARGENTINO, no el UTC.
+     *
+     * Esta prueba calculaba su "hoy" con `Date.UTC(...)` y el sistema usa `hoyComercial()`,
+     * que es el día en Buenos Aires. Entre las 21:00 y la medianoche de Argentina los dos no
+     * son el mismo día, y las ocho comprobaciones de los bordes se corrían 24 horas: el
+     * verificador acusaba un defecto que no existía (y, peor, podría tapar uno real el resto
+     * del día). Se calcula igual que en el resto del sistema.
+     */
+    const hoyAR = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "America/Argentina/Buenos_Aires", year: "numeric", month: "2-digit", day: "2-digit",
+    }).format(new Date());
+    const base = new Date(`${hoyAR}T00:00:00.000Z`).getTime();
 
     for (const d of bordes) {
       await db.creditos.update({

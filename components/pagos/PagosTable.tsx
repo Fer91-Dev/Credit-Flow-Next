@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useDebounce } from "@/lib/use-debounce";
 import { Wallet, Search, User, Phone, IdCard, ArrowLeft, ChevronRight, X, Clock, TrendingUp, TrendingDown } from "lucide-react";
 import { useClientes, usePagos, KEYS, type Cliente, type Pago, type ResumenPagos } from "@/lib/swr";
 import { ClienteDetail } from "@/components/clientes/ClienteDetail";
@@ -9,7 +10,6 @@ import { Avatar } from "@/components/ui/Avatar";
 import { DataTable } from "@/components/ui/DataTable";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { ListaTruncada } from "@/components/ui/ListaTruncada";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { nombreCompleto, formatFecha, formatMonto, formatCreditoNumero } from "@/lib/utils";
 import { round2 } from "@/lib/domain";
@@ -21,9 +21,6 @@ import { Nota } from "@/components/ui/Nota";
  * 360 a pantalla completa, desde donde se registra el cobro.
  */
 export function PagosTable({ clienteInicial = null }: { clienteInicial?: string | null }) {
-  const { clientes, isLoading } = useClientes();
-  const { pagos, total: totalPagos, resumen, isLoading: pagosLoading } = usePagos();
-
   const [query, setQuery] = useState("");
   const [verTodos, setVerTodos] = useState(false); // F3: lista completa de clientes A→Z
   /**
@@ -46,6 +43,28 @@ export function PagosTable({ clienteInicial = null }: { clienteInicial?: string 
    * agregado en la base, y no cambia con el filtro.
    */
   const [filtro, setFiltro] = useState<"hoy" | "anulados" | null>(null);
+
+  /**
+   * 🔴 EL BUSCADOR DE LA TERMINAL PREGUNTA A LA BASE.
+   *
+   * Traía los primeros 1.000 clientes y filtraba entre ellos: el cliente 1.001 no se podía
+   * cobrar: se paraba en el mostrador, el operador tipeaba su DNI y la pantalla contestaba
+   * "sin coincidencias". En la acción que más se repite del día.
+   */
+  const qServidor = useDebounce(query.trim(), 250);
+  const { clientes, isLoading } = useClientes({ q: qServidor, limit: 1000 });
+
+  /** Día comercial argentino: es el que usa el filtro "cobros de hoy". */
+  const hoyYmd = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Argentina/Buenos_Aires", year: "numeric", month: "2-digit", day: "2-digit",
+  }).format(new Date());
+  /* El historial: el filtro y la página los resuelve la base. Ver `usePagos`. */
+  const POR_PAGINA = 10;
+  const [pagina, setPagina] = useState(1);
+  useEffect(() => { setPagina(1); }, [filtro]);
+  const { pagos, total: totalPagos, resumen, isLoading: pagosLoading } = usePagos({
+    filtro, hoy: hoyYmd, limit: POR_PAGINA, offset: (pagina - 1) * POR_PAGINA,
+  });
 
   // Búsqueda DNI-aware: matchea por nombre o por documento (también en su forma
   // "solo dígitos", para que 20.123.456 encuentre al guardado como 20123456).
@@ -151,9 +170,6 @@ export function PagosTable({ clienteInicial = null }: { clienteInicial?: string 
         accent="primary"
       />
 
-      {/* Los KPI de la terminal (cobrado hoy, ayer) los agrega el server sobre toda la tabla,
-          así que el tope solo afecta al historial de abajo. */}
-      <ListaTruncada mostrados={pagos.length} total={totalPagos} sustantivo="pagos" />
 
       {/*
         El buscador ES la pantalla: en la terminal de cobro lo primero que pasa es que llega
@@ -195,7 +211,14 @@ export function PagosTable({ clienteInicial = null }: { clienteInicial?: string 
 
       {/* Estados */}
       {!q && !verTodos ? (
-        <UltimosPagos pagos={pagos} loading={pagosLoading} onRow={abrirPorPago} filtro={filtro} onLimpiarFiltro={() => setFiltro(null)} />
+        <UltimosPagos
+          pagos={pagos}
+          loading={pagosLoading}
+          onRow={abrirPorPago}
+          filtro={filtro}
+          onLimpiarFiltro={() => setFiltro(null)}
+          paginacion={{ pagina, porPagina: POR_PAGINA, total: totalPagos, onPagina: setPagina }}
+        />
       ) : isLoading ? (
         <p className="text-sm text-muted-foreground">Buscando…</p>
       ) : lista.length === 0 ? (
@@ -240,27 +263,25 @@ export function PagosTable({ clienteInicial = null }: { clienteInicial?: string 
  * activa) para dar acceso rápido: tocar una fila abre la ficha del cliente, desde donde
  * se puede anular el cobro. Si no hay pagos aún, cae al hero de "buscá un cliente".
  */
-function UltimosPagos({ pagos, loading, onRow, filtro, onLimpiarFiltro }: {
+function UltimosPagos({ pagos, loading, onRow, filtro, onLimpiarFiltro, paginacion }: {
   pagos: Pago[];
   loading: boolean;
   onRow: (p: Pago) => void;
   filtro: "hoy" | "anulados" | null;
   onLimpiarFiltro: () => void;
+  paginacion: { pagina: number; porPagina: number; total: number; onPagina: (p: number) => void };
 }) {
-  const hoyYmd = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "America/Argentina/Buenos_Aires", year: "numeric", month: "2-digit", day: "2-digit",
-  }).format(new Date());
-
   /**
-   * El filtro acota lo que se MUESTRA de esta lista; no redefine el número de la tarjeta.
-   * `fecha` es un `@db.Date`, así que se compara el día pelado del string ISO — pasarlo por
-   * `new Date()` en zona argentina lo correría al día anterior.
+   * 🔴 SIN FILTRO LOCAL: lo aplica la base.
+   *
+   * Filtraba sobre los últimos 500 cobros que hubiera cargados, así que "pagos anulados"
+   * mostraba los anulados que estuvieran entre esos 500 y se presentaba como el historial
+   * completo. Y `pagos` crece un renglón por cobro: el tope se pasa en meses de uso real.
+   *
+   * El filtro acota lo que se MUESTRA; el número de la tarjeta sigue siendo el del período,
+   * agregado en la base, y no cambia con el filtro.
    */
-  const visibles = !filtro
-    ? pagos
-    : filtro === "anulados"
-      ? pagos.filter((p) => p.anulado)
-      : pagos.filter((p) => !p.anulado && String(p.fecha).slice(0, 10) === hoyYmd);
+  const visibles = pagos;
 
   if (loading) {
     return <div className="space-y-2">{[...Array(5)].map((_, i) => <Skeleton key={i} className="h-12 rounded-lg" />)}</div>;
@@ -301,7 +322,9 @@ function UltimosPagos({ pagos, loading, onRow, filtro, onLimpiarFiltro }: {
       <DataTable
         rows={visibles}
         rowKey={(p) => p.id}
-        pageSize={10}
+        /* La página la corta la base; el total es el del historial filtrado, no el de lo
+           que llegó. */
+        paginacion={paginacion}
         onRowClick={onRow}
         zebra
         columns={[

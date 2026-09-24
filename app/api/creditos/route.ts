@@ -46,6 +46,8 @@ import { rangoDeSeveridad, rangoEnMora, type SeveridadMora } from "@/lib/domain"
  *                   la pantalla de Créditos.
  * - ?contacto=reciente|sin_reciente — si alguien lo gestionó en los últimos `dias_sin_gestion`
  *                   días. Antes se resolvía en el navegador cruzando la lista de gestiones.
+ * - ?vence_desde / ?vence_hasta — los que tienen un vencimiento en ese rango. Incluye el de
+ *                   la cuota PACTADA de un acuerdo vigente, no solo el del plan.
  * - ?ids=a,b,c    — trae exactamente esos créditos. Con la lista paginada de a 12, abrir un
  *                   crédito desde la Agenda no puede depender de que esté en la página que se
  *                   está mirando.
@@ -181,6 +183,39 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
 
   /* Ids explícitos: gana sobre cualquier filtro. Se usa para abrir UN crédito que no está en
      la página actual, así que filtrarlo además por mora o por búsqueda lo escondería. */
+  /**
+   * VENCIMIENTOS EN UN RANGO. La pestaña de Vencimientos filtraba por fecha en el navegador
+   * sobre los primeros 1.000 créditos: con una cartera más grande, a alguien fuera de esa
+   * página no se le avisaba nunca.
+   *
+   * 🔴 NO ALCANZA CON `proximo_pago`. Un crédito con acuerdo de pago vigente conserva la
+   * fecha vieja del plan —eso es un hecho contable, no su próximo vencimiento— y lo que
+   * realmente vence es la cuota PACTADA. Por eso el filtro es un OR con las dos cosas, igual
+   * que el badge de la pestaña.
+   *
+   * Lo que devuelve es un SUPERCONJUNTO a propósito: incluye acuerdos que quizá no estén al
+   * día. La pantalla afina con `proximoVencimiento()`, que es la regla exacta — y afinar solo
+   * puede sacar filas, nunca inventarlas.
+   */
+  const venceDesde = url.searchParams.get("vence_desde");
+  const venceHasta = url.searchParams.get("vence_hasta");
+  if (venceDesde && venceHasta) {
+    const rango = { gte: new Date(`${venceDesde}T00:00:00.000Z`), lte: new Date(`${venceHasta}T00:00:00.000Z`) };
+    condiciones.push({
+      OR: [
+        { proximo_pago: rango },
+        {
+          acuerdos: {
+            some: {
+              estado: "vigente",
+              cuotas: { some: { vencimiento: rango, estado: { not: "pagada" } } },
+            },
+          },
+        },
+      ],
+    });
+  }
+
   if (idsPedidos.length > 0) where.id = { in: idsPedidos };
 
   if (condiciones.length > 0) where.AND = condiciones;

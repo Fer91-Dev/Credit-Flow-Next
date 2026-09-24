@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect} from "react";
 import { ChevronDown, Download, Users, Landmark, X, History } from "lucide-react";
 import { useComprobantes, type Comprobante, type MovimientoCaja } from "@/lib/swr";
 import { descargarCSV } from "@/lib/csv";
@@ -80,7 +80,13 @@ export function ComprobantesView() {
   const [hasta, setHasta] = useState("");
   const [detalle, setDetalle] = useState<Comprobante | null>(null);
 
-  const { comprobantes, total, isLoading, error } = useComprobantes({ q, serie, cuenta, desde, hasta });
+  /** La página la corta la base: la lista crece un renglón por movimiento de caja. */
+  const POR_PAGINA = 12;
+  const [pagina, setPagina] = useState(1);
+  useEffect(() => { setPagina(1); }, [q, serie, cuenta, desde, hasta]);
+  const { comprobantes, total, isLoading, error } = useComprobantes({
+    q, serie, cuenta, desde, hasta, limit: POR_PAGINA, offset: (pagina - 1) * POR_PAGINA,
+  });
 
   /**
    * El criterio de ESTA sección: la SERIE del comprobante, la CUENTA y el rango de fechas
@@ -215,7 +221,7 @@ export function ComprobantesView() {
           error={error ? `Error al cargar los comprobantes: ${error.message}` : null}
           empty={{ icon: "receipt", title: "Sin comprobantes", hint: "No hay comprobantes para los filtros seleccionados." }}
           zebra
-          pageSize={12}
+          paginacion={{ pagina, porPagina: POR_PAGINA, total, onPagina: setPagina }}
           columns={[
             { header: "Comprobante", cell: (m) => <span className="font-mono text-xs font-semibold text-foreground whitespace-nowrap">{m.comprobante ?? "—"}</span> },
             {

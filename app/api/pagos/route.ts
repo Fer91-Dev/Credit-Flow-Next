@@ -25,6 +25,17 @@ import { fechaDeCajaTx } from "@/lib/cierre-turno";
  * - ?credito_id=uuid — filtrar por crédito
  * - ?limit=100
  * - ?offset=0
+ *
+ * Y los que agregó la auditoría de volumen (23/09/2026), para que el historial deje de
+ * filtrarse en el navegador sobre los últimos 500:
+ *
+ * - ?anulado=1|0  — solo los anulados, o solo los vivos.
+ * - ?fecha=YYYY-MM-DD — los cobros de UN día (el filtro "cobros de hoy" de la terminal).
+ *
+ * 🔴 POR QUÉ IMPORTA MÁS ACÁ QUE EN NINGUNA OTRA PANTALLA. `pagos` crece un renglón por
+ * cobro: una financiera con 200 créditos de 12 cuotas hace ~2.400 al año, así que el tope de
+ * 500 se pasa en dos o tres meses de operación real. Filtrando en el navegador, "pagos
+ * anulados" mostraba los anulados que hubiera entre los últimos 500 y decía que eran todos.
  */
 export const GET = withErrorHandler(async (req: NextRequest) => {
   // Terminal de cobros: admin, cobrador y vendedor (este último, solo SUS créditos).
@@ -34,9 +45,16 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   const creditoId = url.searchParams.get("credito_id");
   const limit = Math.min(parseInt(url.searchParams.get("limit") || "100"), 1000);
   const offset = parseInt(url.searchParams.get("offset") || "0");
+  const anulado = url.searchParams.get("anulado");
+  const fecha = url.searchParams.get("fecha");
 
   const where: Record<string, any> = { ...withTenant(tenantId) };
   if (creditoId) where.credito_id = creditoId;
+  if (anulado === "1") where.anulado = true;
+  if (anulado === "0") where.anulado = false;
+  /* `fecha` es `@db.Date` —un día pelado a medianoche UTC—, así que se compara contra ese
+     día exacto. Pasarlo por un rango con horas argentinas lo correría al día anterior. */
+  if (fecha && /^\d{4}-\d{2}-\d{2}$/.test(fecha)) where.fecha = new Date(`${fecha}T00:00:00.000Z`);
   // Anti-IDOR: el vendedor solo ve los pagos de los créditos que él otorgó.
   const scope = scopeCreditosVendedor({ role, vendedorId });
   if (scope.vendedor_id) where.credito = { vendedor_id: scope.vendedor_id };

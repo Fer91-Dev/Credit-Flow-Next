@@ -58,7 +58,15 @@ import { Nota } from "@/components/ui/Nota";
 export function IncobrablesTab() {
   const router = useRouter();
   const toast = useToast();
-  const { creditos, isLoading, mutate } = useCreditos();
+  /**
+   * 🔴 SOLO LOS CASTIGADOS, Y LOS PIDE LA BASE.
+   *
+   * Traía la cartera entera —topeada en 1.000— y buscaba los incobrables ahí adentro. Con una
+   * cartera más grande que eso, un caso castigado que quedara afuera de la página no existía
+   * para esta pantalla: ni en la lista, ni en los totales de arriba, ni en la campaña de
+   * recupero. Y son justamente los casos donde hay plata resignada.
+   */
+  const { creditos, isLoading, mutate } = useCreditos({ estado: "incobrable" });
   /** Con qué criterio sugerir la cancelación. Lo fija la financiera en Configuración. */
   const cfgOferta = useOfertaRecupero();
   const [q, setQ] = useState("");
@@ -69,15 +77,18 @@ export function IncobrablesTab() {
 
   const hoy = hoyComercial();
 
-  const filas = useMemo(() => {
-    const texto = q.trim().toLowerCase();
+  /**
+   * TODOS los castigados, sin el recorte del buscador. De acá salen los KPI.
+   *
+   * 🔴 Estaban calculados sobre `filas`, que YA tenía aplicado el buscador: escribir un
+   * nombre hacía bajar "capital en riesgo" y "casos", como si la cartera castigada se
+   * encogiera al buscar. Va contra la regla de la casa —los KPI cuentan sobre el total, el
+   * recorte se dice en el conteo de al lado— y acá además el número que se achicaba era el
+   * de la plata resignada.
+   */
+  const todosLosCasos = useMemo(() => {
     return creditos
       .filter((c) => c.estado === "incobrable")
-      .filter((c) => {
-        if (!texto) return true;
-        const nom = nombreCompleto(c.cliente).toLowerCase();
-        return nom.includes(texto) || (c.cliente?.documento ?? "").includes(texto);
-      })
       .map((c) => {
         const desde = c.incobrable_at ? new Date(c.incobrable_at) : null;
         const diasCastigado = desde ? Math.max(0, Math.floor((hoy.getTime() - desde.getTime()) / 86_400_000)) : 0;
@@ -116,20 +127,31 @@ export function IncobrablesTab() {
        * más que uno reciente por dos pesos, pero pierde lugar contra uno de ayer parecido.
        */
       .sort((a, b) => b.riesgo / (1 + b.diasCastigado / 90) - a.riesgo / (1 + a.diasCastigado / 90));
-  }, [creditos, q, hoy]);
+  }, [creditos, hoy, cfgOferta]);
 
+  /** Lo que se MUESTRA: los casos, recortados por el buscador. */
+  const filas = useMemo(() => {
+    const texto = q.trim().toLowerCase();
+    if (!texto) return todosLosCasos;
+    return todosLosCasos.filter(({ c }) => {
+      const nom = nombreCompleto(c.cliente).toLowerCase();
+      return nom.includes(texto) || (c.cliente?.documento ?? "").includes(texto);
+    });
+  }, [todosLosCasos, q]);
+
+  /* Sobre TODOS los castigados, no sobre lo que quedó del buscador. */
   const kpis = useMemo(() => {
-    const prestado = filas.reduce((s, f) => s + f.prestado, 0);
-    const recuperado = filas.reduce((s, f) => s + f.cobrado, 0);
+    const prestado = todosLosCasos.reduce((s, f) => s + f.prestado, 0);
+    const recuperado = todosLosCasos.reduce((s, f) => s + f.cobrado, 0);
     return {
-      casos: filas.length,
+      casos: todosLosCasos.length,
       prestado,
       recuperado,
-      riesgo: filas.reduce((s, f) => s + f.riesgo, 0),
+      riesgo: todosLosCasos.reduce((s, f) => s + f.riesgo, 0),
       // Los que pagaron algo DESPUÉS de darse por perdidos: la mejor señal de la lista.
-      conSenal: filas.filter((f) => (f.c.cobrado_post_castigo ?? 0) > 0).length,
+      conSenal: todosLosCasos.filter((f) => (f.c.cobrado_post_castigo ?? 0) > 0).length,
     };
-  }, [filas]);
+  }, [todosLosCasos]);
 
   const contactables = filas.filter((f) => !contactoBloqueado(f.c.cliente).bloqueado);
 

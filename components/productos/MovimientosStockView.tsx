@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect} from "react";
 import { BuscadorF3 } from "@/components/ui/BuscadorF3";
 import { FiltrosPanel } from "@/components/ui/FiltrosPanel";
 import { Field, Input, Select } from "@/components/ui/field";
@@ -51,7 +51,13 @@ export function MovimientosStockView() {
   const [desde, setDesde] = useState("");
   const [hasta, setHasta] = useState("");
 
-  const { movimientos, total, totales, isLoading, error, listo } = useMovimientosStock({ q, tipo, desde, hasta });
+  /** La página la corta la base; los totales de arriba los agrega el servidor. */
+  const POR_PAGINA = 12;
+  const [pagina, setPagina] = useState(1);
+  useEffect(() => { setPagina(1); }, [q, tipo, desde, hasta]);
+  const { movimientos, total, totales, isLoading, error, listo } = useMovimientosStock({
+    q, tipo, desde, hasta, limit: POR_PAGINA, offset: (pagina - 1) * POR_PAGINA,
+  });
 
   /**
    * El criterio de ESTA sección: el TIPO de movimiento y el RANGO de fechas. Es lo que dice el
@@ -157,7 +163,7 @@ export function MovimientosStockView() {
         error={error ? `Error al cargar los movimientos: ${error.message}` : null}
         empty={{ icon: "package", title: "Sin movimientos para los filtros seleccionados" }}
         zebra
-        pageSize={12}
+        paginacion={{ pagina, porPagina: POR_PAGINA, total, onPagina: setPagina }}
         columns={[
           { header: "Fecha y hora", cell: (m) => <span className="text-muted-foreground tabular-nums whitespace-nowrap">{formatFechaHora(m.created_at)}</span> },
           {

@@ -43,10 +43,22 @@ function diaISO(n = 0): string {
  */
 export function VencimientosTab() {
   const router = useRouter();
-  const { creditos, isLoading } = useCreditos();
 
   const [desde, setDesde] = useState(diaISO(0));
   const [hasta, setHasta] = useState(diaISO(7));
+
+  /**
+   * 🔴 EL RANGO LO RESUELVE LA BASE.
+   *
+   * Esta pestaña pedía los primeros 1.000 créditos y filtraba por fecha en el navegador: con
+   * una cartera más grande, a alguien fuera de esa página no se le avisaba nunca su
+   * vencimiento — y avisar antes es justamente lo que evita que termine en Morosos.
+   *
+   * El servidor devuelve un SUPERCONJUNTO a propósito: el `OR` incluye la cuota pactada de
+   * cualquier acuerdo vigente, esté al día o no. `proximoVencimiento()` afina abajo con la
+   * regla exacta, y afinar solo puede sacar filas, nunca inventarlas.
+   */
+  const { creditos, isLoading } = useCreditos({ venceDesde: desde, venceHasta: hasta, estado: "vivos" });
   const [q, setQ] = useState("");
   /**
    * 🔴 QUIÉNES QUEDAN AFUERA, no quiénes están adentro.

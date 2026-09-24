@@ -6,7 +6,7 @@ import { assertPuedeAcordar } from "@/lib/recupero-server";
 import { getCobranzaConfig } from "@/lib/config";
 import { crearAcuerdo, anularAcuerdo, evaluarAcuerdoPersistido, serializarAcuerdo, sincronizarAcuerdos } from "@/lib/acuerdos";
 import { numerosRefinanciados } from "@/lib/creditos-numero";
-import { ESTADOS_ACUERDO } from "@/lib/domain";
+import { ESTADOS_ACUERDO, round2 } from "@/lib/domain";
 import { hoyComercial } from "@/lib/utils";
 import type { Prisma } from "@prisma/client";
 import type { NextRequest } from "next/server";
@@ -32,10 +32,14 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   const scope = scopeCreditosVendedor({ role, vendedorId });
   if (scope.vendedor_id) where.credito = { vendedor_id: scope.vendedor_id };
 
+  const limit = Math.min(parseInt(url.searchParams.get("limit") || "200"), 200);
+  const offset = parseInt(url.searchParams.get("offset") || "0");
+
   const acuerdos = await prisma.acuerdos_pago.findMany({
     where,
     orderBy: { created_at: "desc" },
-    take: 200,
+    take: limit,
+    skip: offset,
     include: {
       cuotas: { orderBy: { numero: "asc" } },
       // `es_refinanciacion`/`refinancia_a`: el acuerdo impreso tiene que nombrar al crédito
@@ -78,7 +82,31 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   // sumas quedarían cortas sin que nada lo diga, que es la peor forma de estar mal.
   const total = await prisma.acuerdos_pago.count({ where });
 
-  return successResponse({ acuerdos: salida, vigentes, total });
+  /**
+   * 🔴 LOS DOS IMPORTES, SUMADOS EN LA BASE.
+   *
+   * La pantalla los sumaba sobre los acuerdos que hubiera cargados —hasta 200— y los
+   * presentaba como el total. Un acuerdo que quedara fuera de esa tanda no existía para el
+   * número de arriba. Ahora los suma Postgres sobre el MISMO `where` que la lista, así que
+   * el filtro de estado los mueve igual pero la página no.
+   *
+   * `monto_acordado` es una columna del acuerdo; lo cobrado sale de `acuerdo_cuota.pagado`,
+   * que es donde la conciliación asienta lo que entró contra cada cuota pactada.
+   */
+  const [sumaAcordado, sumaCobrado] = await Promise.all([
+    prisma.acuerdos_pago.aggregate({ where, _sum: { monto_acordado: true } }),
+    prisma.acuerdo_cuota.aggregate({ where: { ...withTenant(tenantId), acuerdo: where }, _sum: { pagado: true } }),
+  ]);
+
+  return successResponse({
+    acuerdos: salida,
+    vigentes,
+    total,
+    limit,
+    offset,
+    total_acordado: round2(sumaAcordado._sum.monto_acordado ?? 0),
+    total_cobrado: round2(sumaCobrado._sum.pagado ?? 0),
+  });
 });
 
 /**
