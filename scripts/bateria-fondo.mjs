@@ -61,6 +61,22 @@ async function saldoEfectivo(tid) {
 }
 
 if (accion === "poner") {
+  /*
+    🔴 LA BATERÍA NO CORRE SOBRE LA DEMO. Siembra clientes y créditos de prueba (zonas
+    PRUEBA-*) que quedan mezclados con lo que Fernando está mirando. Pasó el 24/09/2026: 21
+    clientes de prueba adentro de la demo recién sembrada. El orden es batería → reset →
+    siembra, y la regla escrita no alcanzó para frenarlo; esto sí. La marca es el aporte de
+    capital que registra `sembrar-demo.mjs` (su `TEXTOS_CAJA`).
+  */
+  const demo = await db.movimientos_caja.findFirst({
+    where: { descripcion: { in: ["Aporte de capital del dueño", "Aporte de capital — cuenta bancaria"] } },
+    select: { id: true },
+  });
+  if (demo) {
+    console.error("ABORTADO: esta base tiene la DEMO sembrada. La batería va ANTES: batería → reset → siembra.");
+    await db.$disconnect();
+    process.exit(1);
+  }
   const previo = await db.movimientos_caja.findFirst({ where: whereFondo });
   if (previo) { console.error(`Ya hay un fondo puesto (${f(previo.monto)}); corré "sacar" primero.`); await db.$disconnect(); process.exit(1); }
   const r = await api("POST", "/api/caja", { concepto: "aporte_capital", monto: MONTO, cuenta: "efectivo", metodo: "efectivo", descripcion: GLOSA });
