@@ -845,17 +845,26 @@ function RefinanciadosView({ busq, setBusq, onOpen, onRefinanciar }: { busq: str
                 sí falta decir es cuándo la lista se corta en 50, que es el único caso en el
                 que lo mostrado no es todo lo que hay.
             */}
-            <p className="text-xs text-muted-foreground">
-              {!candEnSincro && busq.trim() ? (
-                <>Buscando “{busq.trim()}”…</>
-              ) : qCand ? (
-                <>{totalCandidatos} en mora para “{qCand}”{totalCandidatos > candidatos.length ? <> · se muestran los {candidatos.length} más atrasados</> : null}</>
-              ) : (
-                <>{totalCandidatos} crédito{totalCandidatos === 1 ? "" : "s"} en mora{totalCandidatos > candidatos.length ? <> · se muestran los {candidatos.length} más atrasados</> : null}</>
-              )}
-            </p>
+            {/* 🔴 El conteo se calla cuando es CERO: «0 en mora para "silvio"» arriba y
+                «Sin resultados para "silvio"» abajo decían el mismo hecho dos veces, una
+                encima de la otra (lo vio Fernando en preview el 24/09/2026). Con resultados
+                el conteo sirve —dice cuántos son y si la lista se cortó—; sin resultados
+                alcanza con decirlo una vez. */}
+            {!(candEnSincro && qCand && candidatos.length === 0) && (
+              <p className="text-xs text-muted-foreground">
+                {!candEnSincro && busq.trim() ? (
+                  <>Buscando “{busq.trim()}”…</>
+                ) : qCand ? (
+                  <>{totalCandidatos} en mora para “{qCand}”{totalCandidatos > candidatos.length ? <> · se muestran los {candidatos.length} más atrasados</> : null}</>
+                ) : (
+                  <>{totalCandidatos} crédito{totalCandidatos === 1 ? "" : "s"} en mora{totalCandidatos > candidatos.length ? <> · se muestran los {candidatos.length} más atrasados</> : null}</>
+                )}
+              </p>
+            )}
             {candidatos.length === 0 ? (
-              <p className="px-1 py-4 text-center text-xs text-muted-foreground/60">Sin resultados para “{qCand}”.</p>
+              <p className="px-1 py-4 text-center text-xs text-muted-foreground/60">
+                Ningún crédito en mora coincide con “{qCand}”.
+              </p>
             ) : (
               <div className="max-h-[42vh] space-y-2 overflow-auto pr-1">
                 {candidatos.map((c) => {
