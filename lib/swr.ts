@@ -359,7 +359,7 @@ export interface Credito {
    * veredicto del dominio que hace cumplir el POST, así que la lista no puede ofrecer algo
    * que el server vaya a rechazar.
    */
-  refinanciar_bloqueo?: { motivo: string; sugerencia: string; etiqueta?: string } | null;
+  refinanciar_bloqueo?: { motivo: string; sugerencia: string; etiqueta?: string; tono?: "bien" | "espera" | "cerrado" | null } | null;
   /** Por qué NO se puede armar un acuerdo (null = se puede). `clave` dice qué regla frena. */
   acordar_bloqueo?: { motivo: string; sugerencia: string; clave?: "sin_gestion" | "acuerdo_vigente" | null } | null;
   /**

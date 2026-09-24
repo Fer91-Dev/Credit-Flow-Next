@@ -470,6 +470,18 @@ export interface VeredictoEscalera {
    * separarse. Si mañana cambia la regla, cambian los dos juntos o no compila.
    */
   etiqueta?: string;
+  /**
+   * QUÉ CLASE de "no" es. No es un color: es información.
+   *
+   * Las negativas de la escalera no pesan lo mismo y mostrarlas todas iguales las aplana.
+   *   · `bien`    — el crédito está en un arreglo que se está cumpliendo. Que no se pueda
+   *                 refinanciar NO es un problema: es la consecuencia de que el cliente paga.
+   *   · `espera`  — "todavía no". Se destraba solo con el tiempo o dando el paso anterior.
+   *   · `cerrado` — "ya no". Ningún día de espera lo cambia; hay que buscar otra salida.
+   *
+   * El dominio no conoce colores (es puro): dice el estado y la pantalla lo traduce.
+   */
+  tono?: "bien" | "espera" | "cerrado";
   /** Qué corresponde hacer antes, para que el mensaje no sea solo una negativa. */
   sugerencia?: string;
   /**
@@ -748,6 +760,7 @@ export function puedeRefinanciar(s: SenalesRecupero, cfg: RecuperoConfig): Vered
       permitido: false,
       motivo: `Todavía no se puede refinanciar: lleva ${s.diasMora} día${s.diasMora === 1 ? "" : "s"} de atraso y la financiera pide al menos ${cfg.dias_min_mora_refinanciar}.`,
       etiqueta: `Desde ${cfg.dias_min_mora_refinanciar} días de mora`,
+      tono: "espera",
       sugerencia: "Mientras tanto, ofrecele un acuerdo de pago sobre lo vencido.",
     };
   }
@@ -768,6 +781,7 @@ export function puedeRefinanciar(s: SenalesRecupero, cfg: RecuperoConfig): Vered
           ? "Este crédito ya es una refinanciación, y la financiera admite una sola: no se puede volver a refinanciar la misma deuda."
           : `Esta deuda ya se refinanció ${encadenadas} ${encadenadas === 1 ? "vez" : "veces"} y la financiera admite ${cfg.max_refinanciaciones_encadenadas}.`,
       etiqueta: "Refinanciaciones agotadas",
+      tono: "cerrado",
       sugerencia: "Armale un acuerdo de pago sobre lo vencido, o pasalo a legales.",
     };
   }
@@ -793,6 +807,8 @@ export function puedeRefinanciar(s: SenalesRecupero, cfg: RecuperoConfig): Vered
       permitido: false,
       motivo: "Este crédito tiene un acuerdo de pago vigente: mientras lo esté cumpliendo no corresponde refinanciarlo.",
       etiqueta: "En acuerdo vigente",
+      // No es una falla: el cliente esta cumpliendo lo que pacto.
+      tono: "bien",
       sugerencia: "Cobrale la cuota pactada. Si rompe el acuerdo, la refinanciación se habilita sola.",
     };
   }
@@ -801,6 +817,7 @@ export function puedeRefinanciar(s: SenalesRecupero, cfg: RecuperoConfig): Vered
       permitido: false,
       motivo: "La financiera pide agotar el acuerdo de pago antes de refinanciar.",
       etiqueta: "Falta el acuerdo de pago",
+      tono: "espera",
       sugerencia: "Armale un acuerdo sobre lo vencido; si lo rompe, ahí sí se refinancia.",
     };
   }

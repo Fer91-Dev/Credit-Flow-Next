@@ -1011,11 +1011,27 @@ function RefinanciadosView({ busq, buscado, limpiarBusq, onOpen, onRefinanciar }
                           `title` (y en la pantalla de refinanciar, que es donde se decide).
                         */}
                         {bloqueo && (
-                          <span
-                            className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-muted-foreground"
-                            title={`${bloqueo.motivo ?? ""} ${bloqueo.sugerencia ?? ""}`.trim()}
-                          >
-                            {bloqueo.etiqueta ?? "No se puede refinanciar"}
+                          <span title={`${bloqueo.motivo ?? ""} ${bloqueo.sugerencia ?? ""}`.trim()}>
+                            <StatusBadge
+                              label={bloqueo.etiqueta ?? "No se puede refinanciar"}
+                              /*
+                                🔴 EL COLOR DICE QUÉ CLASE DE "NO" ES, y eso no es decoración.
+                                En gris, las cuatro negativas pesaban lo mismo al lado de un
+                                badge rojo de mora — y no pesan lo mismo:
+                                  verde  el cliente ESTÁ cumpliendo su acuerdo. Que no se pueda
+                                         refinanciar es la consecuencia de que paga, no una falla;
+                                  azul   "todavía no": se destraba solo con el tiempo o dando el
+                                         paso anterior;
+                                  rojo   "ya no": ningún día de espera lo cambia.
+                                El tono lo decide el dominio junto al motivo, no esta pantalla.
+                              */
+                              variant={
+                                bloqueo.tono === "bien" ? "success"
+                                : bloqueo.tono === "cerrado" ? "destructive"
+                                : "info"
+                              }
+                              className="text-[10px]"
+                            />
                           </span>
                         )}
                       </div>
