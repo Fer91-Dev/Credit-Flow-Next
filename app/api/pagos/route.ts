@@ -103,7 +103,12 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
           orderBy: { cuota: { nro: "asc" } },
         },
       },
-      orderBy: { fecha: "desc" },
+      /* 🔴 EL DESEMPATE NO ES DECORATIVO. `fecha` es una fecha de DÍA, y una financiera cobra
+         diez o quince veces en el mismo día: con `fecha desc` a secas, entre las filas
+         empatadas Postgres no promete ningún orden, y `skip`/`take` sobre un orden que no es
+         total hace que el MISMO cobro salga en dos páginas y otro no salga nunca. El `id` es
+         único, así que el orden pasa a ser total y la página 2 sigue donde terminó la 1. */
+      orderBy: [{ fecha: "desc" }, { id: "desc" }],
       take: limit,
       skip: offset,
     }),

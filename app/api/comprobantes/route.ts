@@ -60,7 +60,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
         credito: { select: { numero: true, es_refinanciacion: true, refinancia_a: true, cliente: { select: { nombre: true, apellido: true } } } },
         vendedor: { select: { nombre: true } },
       },
-      orderBy: [{ created_at: "desc" }],
+      orderBy: [{ created_at: "desc" }, { id: "desc" }],
       take: limit,
       skip: offset,
     }),

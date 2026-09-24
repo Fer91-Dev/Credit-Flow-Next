@@ -75,7 +75,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   const [clientesRows, total] = await Promise.all([
     prisma.clientes.findMany({
       where,
-      orderBy: { created_at: "desc" },
+      orderBy: [{ created_at: "desc" }, { id: "desc" }],
       take: limit,
       skip: offset,
     }),

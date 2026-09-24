@@ -51,7 +51,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     prisma.acciones_cobranza.findMany({
       where,
       include: { credito: { select: { id: true, cliente: { select: { nombre: true, apellido: true } } } } },
-      orderBy: { created_at: "desc" },
+      orderBy: [{ created_at: "desc" }, { id: "desc" }],
       take: limit,
       skip: offset,
     }),

@@ -310,7 +310,14 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
       /* `mora` ordena por el más atrasado primero, que es el orden con el que se trabaja la
          cobranza. `proximo_pago` ascendente = el vencimiento más viejo arriba. Los que no
          tienen fecha van al final. */
-      orderBy: orden === "mora" ? [{ proximo_pago: { sort: "asc", nulls: "last" } }] : [{ created_at: "desc" }],
+      /* 🔴 Y el `id` al final SIEMPRE, porque el orden tiene que ser TOTAL para poder paginar.
+         `proximo_pago` es fecha de día y los créditos de una misma tanda vencen todos el mismo
+         día: sin desempate, entre los empatados el motor no promete orden alguno y `skip`/`take`
+         repite un crédito en una página y se saltea otro. */
+      orderBy:
+        orden === "mora"
+          ? [{ proximo_pago: { sort: "asc", nulls: "last" } }, { id: "asc" }]
+          : [{ created_at: "desc" }, { id: "desc" }],
       take: limit,
       skip: offset,
     }),

@@ -59,7 +59,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   const [eventos, total, totalTenant, hoyCount, semanaCount, pagosCount] = await Promise.all([
     prisma.auditoria.findMany({
       where,
-      orderBy: { created_at: "desc" },
+      orderBy: [{ created_at: "desc" }, { id: "desc" }],
       take: limit,
       skip: offset,
     }),

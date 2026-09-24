@@ -68,7 +68,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
           },
         },
       },
-      orderBy: [{ created_at: "desc" }],
+      orderBy: [{ created_at: "desc" }, { id: "desc" }],
       take: limit,
       skip: offset,
     }),
