@@ -4,7 +4,7 @@ import { estadoBadgeCredito } from "./estado-badge";
 
 import { useState, useMemo, useEffect} from "react";
 import { useRouter } from "next/navigation";
-import { FileText, ChevronDown, X, RefreshCw, History } from "lucide-react";
+import { FileText, ChevronDown, X, RefreshCw, History, Search } from "lucide-react";
 import { CompararRefiDialog } from "./CompararRefiDialog";
 import { useCreditos, useCreditosKpis, KEYS, type Credito, useTramosMora, useDiasLegales } from "@/lib/swr";
 import { useDebounce } from "@/lib/use-debounce";
@@ -114,6 +114,21 @@ export function CreditosTable({ role }: { role: Role }) {
    * está adentro de `RefinanciadosView`.
    */
   const [busqRefi, setBusqRefi]   = useState("");
+  /**
+   * 🔴 ACÁ LA BÚSQUEDA SE CONFIRMA, NO SE ADIVINA.
+   *
+   * `busqRefi` es lo tipeado; `refiBuscado` es lo que de verdad se fue a buscar. Son dos
+   * porque en este panel la lista NO se mueve mientras se escribe: se consulta al apretar
+   * Enter o el botón (pedido de Fernando, 24/09/2026). Buscando al vuelo, la lista saltaba
+   * con cada tecla debajo de un cartel que iba cambiando, y para elegir un crédito —que es
+   * lo único que se hace acá— eso estorba más de lo que ayuda.
+   *
+   * Vaciar la caja SÍ restablece la lista al toque: para volver a verlos a todos no tiene
+   * sentido exigir un Enter sobre un campo vacío.
+   */
+  const [refiBuscado, setRefiBuscado] = useState("");
+  const buscarRefi = () => setRefiBuscado(busqRefi.trim());
+  const limpiarBusqRefi = () => { setBusqRefi(""); setRefiBuscado(""); };
 
 
   /**
@@ -290,9 +305,24 @@ export function CreditosTable({ role }: { role: Role }) {
               <BuscadorF3
                 size="lg"
                 value={busqRefi}
-                onChange={setBusqRefi}
-                placeholder="Buscar un crédito en mora para refinanciar…"
-                onF3={() => setBusqRefi("")}
+                /* Vaciar la caja restablece la lista sola; escribir NO la mueve hasta
+                   confirmar. Ver `refiBuscado`. */
+                onChange={(v) => { setBusqRefi(v); if (!v.trim()) setRefiBuscado(""); }}
+                placeholder="Buscar un crédito en mora y apretar Enter…"
+                onEnter={buscarRefi}
+                onEscape={limpiarBusqRefi}
+                onF3={limpiarBusqRefi}
+                accionDerecha={
+                  /* El atajo Enter solo existe con teclado. El mismo acto, a un clic. */
+                  <button
+                    type="button"
+                    onClick={buscarRefi}
+                    disabled={!busqRefi.trim() || busqRefi.trim() === refiBuscado}
+                    className="rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground shadow-[inset_0_1px_0_0_rgba(255,255,255,0.15)] transition-colors hover:bg-primary/90 disabled:cursor-default disabled:bg-primary/25 disabled:text-primary-foreground/50"
+                  >
+                    Buscar
+                  </button>
+                }
                 className="w-full sm:w-[34rem]"
               />
             )}
@@ -411,7 +441,7 @@ export function CreditosTable({ role }: { role: Role }) {
             Error al cargar créditos: {error.message}
           </div>
         ) : tab === "refinanciados" ? (
-          <RefinanciadosView busq={busqRefi} setBusq={setBusqRefi} onOpen={irACredito} onRefinanciar={irARefinanciar} />
+          <RefinanciadosView busq={busqRefi} buscado={refiBuscado} limpiarBusq={limpiarBusqRefi} onOpen={irACredito} onRefinanciar={irARefinanciar} />
         ) : (
         <div className="space-y-5">
 
@@ -664,7 +694,7 @@ export function CreditosTable({ role }: { role: Role }) {
  * Cada fila es una refinanciación: el crédito nuevo (es_refinanciacion) y su crédito
  * origen resuelto desde la misma lista. Click → abre el detalle del crédito nuevo.
  */
-function RefinanciadosView({ busq, setBusq, onOpen, onRefinanciar }: { busq: string; setBusq: (v: string) => void; onOpen: (c: Credito) => void; onRefinanciar: (c: Credito) => void }) {
+function RefinanciadosView({ busq, buscado, limpiarBusq, onOpen, onRefinanciar }: { busq: string; buscado: string; limpiarBusq: () => void; onOpen: (c: Credito) => void; onRefinanciar: (c: Credito) => void }) {
   /** Los cortes media/alta/crítica que definió la financiera (Configuración → Cobranza). */
   const tramos = useTramosMora();
 
@@ -714,12 +744,22 @@ function RefinanciadosView({ busq, setBusq, onOpen, onRefinanciar }: { busq: str
    * Es otra pregunta que el historial —"¿a quién le conviene reestructurar hoy?"— y salía de
    * la misma lista topeada, así que con la cartera grande faltaban morosos sin aviso.
    */
-  const qCand = useDebounce(busq.trim(), 250);
+  /**
+   * 🔴 ALTO FIJO, SIN SCROLL: se piden SEIS, no cincuenta.
+   *
+   * El panel tenía una ventana con scroll propio adentro de una página que ya scrollea, y eso
+   * esconde: no se ve dónde termina la lista ni cuántos quedan abajo. Acá no hace falta
+   * recorrer a nadie — se elige UNO para refinanciar—, así que se muestran los más atrasados,
+   * que son los que primero hay que reestructurar, y al resto se llega buscando. Cuántos hay
+   * en total lo dice el renglón de arriba, siempre.
+   */
+  const CANDIDATOS_A_LA_VISTA = 6;
   const { creditos: candidatos, total: totalCandidatos, isLoading: cargandoCand, isValidating: buscandoCand } = useCreditos({
-    estado: "vivos", mora: "en_mora", orden: "mora", q: qCand, limit: 50,
+    estado: "vivos", mora: "en_mora", orden: "mora", q: buscado, limit: CANDIDATOS_A_LA_VISTA,
   });
-  /** ¿Lo que está en pantalla corresponde a lo que hay escrito? Mientras no, no se rotula. */
-  const candEnSincro = busq.trim() === qCand && !buscandoCand;
+  /** ¿Lo que está en pantalla corresponde a lo que se pidió buscar? Mientras no, no se rotula. */
+  const candEnSincro = !buscandoCand;
+  const hayBusqueda = !!buscado;
 
   /** Los números, del servidor y sobre el historial ENTERO (ver `/api/creditos/kpis`). */
   const { kpis } = useCreditosKpis();
@@ -750,7 +790,7 @@ function RefinanciadosView({ busq, setBusq, onOpen, onRefinanciar }: { busq: str
 
   /** El filtro propio de ESTA sección: cómo viene el recupero. Es su criterio, no el de Créditos. */
   const resumenRecupero = recupero === "al_dia" ? "Al día" : recupero === "en_mora" ? "Volvieron a mora" : undefined;
-  const limpiarRecupero = () => { setRecupero("todas"); setBusq(""); };
+  const limpiarRecupero = () => { setRecupero("todas"); limpiarBusq(); };
 
   return (
     <div className="space-y-6">
@@ -850,23 +890,55 @@ function RefinanciadosView({ busq, setBusq, onOpen, onRefinanciar }: { busq: str
                 encima de la otra (lo vio Fernando en preview el 24/09/2026). Con resultados
                 el conteo sirve —dice cuántos son y si la lista se cortó—; sin resultados
                 alcanza con decirlo una vez. */}
-            {!(candEnSincro && qCand && candidatos.length === 0) && (
+            {!(candEnSincro && hayBusqueda && candidatos.length === 0) && (
               <p className="text-xs text-muted-foreground">
-                {!candEnSincro && busq.trim() ? (
+                {!candEnSincro ? (
                   <>Buscando “{busq.trim()}”…</>
-                ) : qCand ? (
-                  <>{totalCandidatos} en mora para “{qCand}”{totalCandidatos > candidatos.length ? <> · se muestran los {candidatos.length} más atrasados</> : null}</>
+                ) : hayBusqueda ? (
+                  <>{totalCandidatos} en mora para “{buscado}”{totalCandidatos > candidatos.length ? <> · se muestran los {candidatos.length} más atrasados</> : null}</>
                 ) : (
                   <>{totalCandidatos} crédito{totalCandidatos === 1 ? "" : "s"} en mora{totalCandidatos > candidatos.length ? <> · se muestran los {candidatos.length} más atrasados</> : null}</>
                 )}
               </p>
             )}
             {candidatos.length === 0 ? (
-              <p className="px-1 py-4 text-center text-xs text-muted-foreground/60">
-                Ningún crédito en mora coincide con “{qCand}”.
-              </p>
+              /*
+                🔴 "NO ENCONTRÉ NADA" TIENE QUE VERSE.
+
+                Era un renglón gris chico, del mismo tamaño que el resto, en una caja que
+                acababa de quedar vacía: Fernando lo dijo derecho — "apenas es visible". Un
+                resultado vacío es el momento en que el operador MÁS necesita entender qué
+                pasó, porque acaba de escribir algo y la pantalla se le vació.
+
+                Lleva las tres cosas de un estado vacío: qué pasó, por qué puede haber pasado,
+                y la salida — el botón que devuelve la lista entera, para no tener que
+                descubrir que hay que borrar la caja a mano.
+              */
+              <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-border/70 bg-muted/10 px-6 py-10 text-center">
+                <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-border/70 bg-muted/20">
+                  <Search className="h-6 w-6 text-muted-foreground/40" />
+                </div>
+                <div className="space-y-1">
+                  <p className="text-sm font-semibold text-foreground">
+                    Ningún crédito en mora coincide con “{buscado}”
+                  </p>
+                  <p className="mx-auto max-w-sm text-xs leading-relaxed text-muted-foreground">
+                    {totalCandidatos === 0 && !hayBusqueda
+                      ? "No hay créditos en mora para refinanciar."
+                      : "Podés buscar por nombre, apellido, documento o número de crédito. Acá solo aparecen los créditos EN MORA: si el que buscás está al día, no se puede refinanciar."}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={limpiarBusq}
+                  className="rounded-lg bg-primary/[0.08] px-4 py-2 text-xs font-semibold text-primary ring-1 ring-inset ring-primary/25 transition-colors hover:bg-primary/15 hover:ring-primary/40"
+                >
+                  Ver todos los créditos en mora
+                </button>
+              </div>
             ) : (
-              <div className="max-h-[42vh] space-y-2 overflow-auto pr-1">
+              /* Alto fijo y sin scroll propio: la página entera es la que scrollea. */
+              <div className="space-y-2">
                 {candidatos.map((c) => {
                   /*
                     🔴 EL NÚMERO QUE VA ACÁ ES LA DEUDA A CONSOLIDAR, NO EL SALDO.
