@@ -18,6 +18,7 @@ import { BuscadorF3 } from "@/components/ui/BuscadorF3";
 import { AccionPrimaria } from "@/components/ui/AccionPrimaria";
 import { Emoji } from "@/components/ui/Emoji";
 import { FiltrosPanel } from "@/components/ui/FiltrosPanel";
+import { HelpHint, type AyudaBloque } from "@/components/configuracion/ConfigForm";
 import { Skeleton } from "@/components/ui/skeleton";
 import { esCreditoVivo, severidadMora } from "@/lib/domain";
 
@@ -308,7 +309,9 @@ export function CreditosTable({ role }: { role: Role }) {
                 /* Vaciar la caja restablece la lista sola; escribir NO la mueve hasta
                    confirmar. Ver `refiBuscado`. */
                 onChange={(v) => { setBusqRefi(v); if (!v.trim()) setRefiBuscado(""); }}
-                placeholder="Buscar un crédito en mora y apretar Enter…"
+                /* Sin "y apretá Enter": el botón que está al lado ya lo dice, y con él puesto
+                   la frase no entraba y se cortaba a la mitad. */
+                placeholder="Buscar un crédito en mora…"
                 onEnter={buscarRefi}
                 onEscape={limpiarBusqRefi}
                 onF3={limpiarBusqRefi}
@@ -690,6 +693,27 @@ export function CreditosTable({ role }: { role: Role }) {
 }
 
 /**
+ * La ayuda del panel "Refinanciar un credito".
+ *
+ * Esto era un parrafo colgando bajo el titulo, y Fernando ya habia marcado que no: informativo
+ * no es explicativo, y explicarle a un prestamista que es refinanciar es ruido que empuja hacia
+ * abajo lo que si importa. La prosa tiene su lugar y es el globo del "?" — de ahi no molesta a
+ * quien ya sabe, y sigue estando para quien recien entra al sistema.
+ */
+const AYUDA_REFINANCIAR: AyudaBloque = {
+  titulo: "Refinanciar un credito",
+  texto:
+    "Consolida la deuda viva de un credito en mora —capital, interes y punitorios— en un credito nuevo, " +
+    "con la posibilidad de hacer una quita. No mueve caja: no hay desembolso, se reemplaza una deuda por otra.",
+  puntos: [
+    "Solo aparecen creditos EN MORA: uno al dia no se refinancia.",
+    "El credito viejo queda saldado y vinculado al nuevo, en los dos sentidos.",
+    "El credito nuevo no cuenta para comision ni para meta (no es plata nueva otorgada), pero si cuenta en cartera y en mora.",
+    "Quien esta cumpliendo un acuerdo de pago vigente no se refinancia mientras lo cumpla.",
+  ],
+};
+
+/**
  * Vista "Refinanciados": registro de las reestructuraciones (operaciones origen → nuevo).
  * Cada fila es una refinanciación: el crédito nuevo (es_refinanciacion) y su crédito
  * origen resuelto desde la misma lista. Click → abre el detalle del crédito nuevo.
@@ -848,13 +872,31 @@ function RefinanciadosView({ busq, buscado, limpiarBusq, onOpen, onRefinanciar }
 
       {/* ── Refinanciar un crédito: buscador + candidatos con acción directa ── */}
       <div className="rounded-xl border border-border bg-card p-5 space-y-3">
-        <div className="flex items-center gap-2">
-          <RefreshCw className="h-4 w-4 text-warning" />
-          <h3 className="text-sm font-semibold text-foreground">Refinanciar un crédito</h3>
+        {/*
+          🔴 NI EL PÁRRAFO NI EL CONTEO SUELTO. Acá había dos renglones de texto colgando bajo
+          el título: uno explicando qué es refinanciar —a un prestamista, que vive de esto— y
+          otro con el conteo tirado como frase gris. Los dos los marcó Fernando (24/09/2026),
+          y los dos rompían reglas que ya había dado:
+
+          · la prosa va al globo de ayuda ("?"), que para eso existe. Informativo no es
+            explicativo: lo que falta casi nunca es una aclaración;
+          · el conteo es un DATO, y un dato se muestra con estructura, no con una oración. El
+            badge al lado del título es el patrón que esta misma pantalla ya usa dos renglones
+            más abajo, en "Historial de refinanciaciones".
+        */}
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <RefreshCw className="h-4 w-4 text-warning" />
+            <h3 className="text-sm font-semibold text-foreground">Refinanciar un crédito</h3>
+            {candidatos.length > 0 && (
+              <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-bold tabular-nums text-muted-foreground">
+                {/* "6 de 23" solo cuando la lista se corta; si entran todos, el total solo. */}
+                {totalCandidatos > candidatos.length ? `${candidatos.length} de ${totalCandidatos}` : totalCandidatos}
+              </span>
+            )}
+          </div>
+          <HelpHint ayuda={AYUDA_REFINANCIAR} />
         </div>
-        <p className="text-xs text-muted-foreground">
-          Elegí un crédito <strong className="text-foreground">en mora</strong> para consolidar su deuda viva en un crédito nuevo (con descuento opcional; no mueve caja).
-        </p>
 
         {/* 🔴 TRES estados distintos, y antes los tres mostraban lo mismo:
             · todavía CARGANDO — decir "no hay morosos" mientras la consulta viaja es afirmar
@@ -875,43 +917,8 @@ function RefinanciadosView({ busq, buscado, limpiarBusq, onOpen, onRefinanciar }
           </p>
         ) : (
           <>
-            {/* La caja de búsqueda vive ARRIBA, en el renglón que comparten las dos pestañas
-                (mismo lugar que en Créditos). Acá queda el conteo de lo que dejó a la vista:
-                con la caja lejos de la lista, sin este renglón no se entendería por qué de
-                golpe hay tres candidatos en vez de veinte. */}
-            {/*
-              🔴 EL ROTULO TIENE QUE DESCRIBIR LO QUE SE ESTA VIENDO.
-
-              Dos errores que se vieron juntos en una captura (Fernando, 24/09/2026): escribió
-              "as" y el renglón decía «23 de 23 en mora · filtrado por "as"» con Héctor Ramón
-              Coronel primero, que no tiene "as" en ninguna parte.
-
-              · El rótulo iba adelantado. Salía de `busq` —lo tipeado— mientras la lista sale
-                de `qCand`, que espera 250 ms antes de consultar y además mantiene la lista
-                anterior a la vista para no parpadear. En ese hueco el cartel anunciaba un
-                filtro que todavía no se había aplicado. Ahora habla de `qCand`, que es el
-                término con el que se trajo lo que está en pantalla, y mientras los dos
-                difieren dice que está buscando.
-
-              · "N de M" ya no significaba nada. Comparaba filtrados contra el total cuando el
-                filtro era local; ahora filtra la base y los dos números son el mismo. Lo que
-                sí falta decir es cuándo la lista se corta en 50, que es el único caso en el
-                que lo mostrado no es todo lo que hay.
-            */}
-            {/* 🔴 El conteo se calla cuando es CERO: «0 en mora para "silvio"» arriba y
-                «Sin resultados para "silvio"» abajo decían el mismo hecho dos veces, una
-                encima de la otra (lo vio Fernando en preview el 24/09/2026). Con resultados
-                el conteo sirve —dice cuántos son y si la lista se cortó—; sin resultados
-                alcanza con decirlo una vez. */}
-            {!(hayBusqueda && candidatos.length === 0) && (
-              <p className="text-xs text-muted-foreground">
-                {hayBusqueda ? (
-                  <>{totalCandidatos} en mora para “{mostrado}”{totalCandidatos > candidatos.length ? <> · se muestran los {candidatos.length} más atrasados</> : null}</>
-                ) : (
-                  <>{totalCandidatos} crédito{totalCandidatos === 1 ? "" : "s"} en mora{totalCandidatos > candidatos.length ? <> · se muestran los {candidatos.length} más atrasados</> : null}</>
-                )}
-              </p>
-            )}
+            {/* El conteo vive en el badge del titulo, no en un renglon suelto: es un
+               DATO, y un dato se muestra con estructura. Ver el comentario de arriba. */}
             {candidatos.length === 0 ? (
               /*
                 🔴 "NO ENCONTRÉ NADA" TIENE QUE VERSE.
