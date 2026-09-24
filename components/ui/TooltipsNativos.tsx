@@ -80,6 +80,26 @@ export function TooltipsNativos() {
     };
 
     /**
+     * 🔴 ESCONDER EL GLOBO NO ES DEVOLVER EL `title`.
+     *
+     * Fernando (24/09/2026): «cuando desaparece el globito, al toque aparece el nativo». Era
+     * consecuencia directa del auto-cierre: al esconderse se le devolvía el `title` al
+     * elemento, y como el cursor seguía encima, el navegador mostraba el suyo. O sea que se
+     * había cambiado un globo pegado por el globo del sistema operativo — justo lo que este
+     * componente vino a reemplazar.
+     *
+     * El `title` queda guardado en `data-tip` hasta que el cursor salga DE VERDAD; recién ahí
+     * `restaurar()` lo devuelve. `aria-describedby` sí se saca ya, porque el globo al que
+     * apunta dejó de existir y una referencia colgada confunde a un lector de pantalla.
+     * `actual.current` se conserva: es lo que permite devolver el atributo al salir.
+     */
+    const esconderSinDevolver = (el: HTMLElement) => {
+      if (cierre.current) clearTimeout(cierre.current);
+      if (el.getAttribute("aria-describedby") === ID_GLOBO) el.removeAttribute("aria-describedby");
+      setTip(null);
+    };
+
+    /**
      * Cuánto se queda a la vista. Proporcional a lo que hay para leer: "Editar" no necesita
      * los mismos segundos que la explicación de por qué un botón está apagado. Unos 250
      * caracteres por minuto, con piso y techo para que ningún caso quede absurdo.
@@ -101,7 +121,7 @@ export function TooltipsNativos() {
         if (actual.current !== el || !el.isConnected) return;
         setTip({ texto, ...ubicarTooltip(el) });
         // Se va solo, siga o no el cursor encima.
-        cierre.current = setTimeout(() => { yaMostrado.current = el; ocultar(); }, duracion(texto));
+        cierre.current = setTimeout(() => { yaMostrado.current = el; esconderSinDevolver(el); }, duracion(texto));
       }, DEMORA_TOOLTIP);
     };
 
@@ -120,11 +140,15 @@ export function TooltipsNativos() {
     };
 
     const salir = (e: Event) => {
-      const el = actual.current;
+      /* `yaMostrado` entra en la cuenta: con el globo ya auto-cerrado, el elemento sigue sin
+         su `title` y es ESTE evento el que tiene que devolvérselo. */
+      const el = actual.current ?? yaMostrado.current;
       if (!el) return;
       const hacia = (e as MouseEvent | FocusEvent).relatedTarget;
       // Moverse DENTRO del mismo botón (al ícono, al texto) no es salir.
       if (hacia instanceof Node && el.contains(hacia)) return;
+      yaMostrado.current = null;
+      actual.current = el; // para que `restaurar()` sepa a quién devolvérselo
       ocultar();
     };
 
