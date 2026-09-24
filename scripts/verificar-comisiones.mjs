@@ -283,7 +283,7 @@ const liqDb = await db.liquidaciones_comision.findFirst({
   where: { tenant_id: TENANT, vendedor_id: ficha.id },
   orderBy: { created_at: "desc" },
   select: {
-    comision_total: true, comision_base: true, comision_bonus: true, periodo: true,
+    comision_total: true, comision_base: true, comision_bonus: true, comision_recupero: true, periodo: true,
     monto_otorgado: true, creditos_cantidad: true, meta_monto: true, meta_cumplida: true,
     anulada_en: true, movimiento_caja_id: true, liquidado_por_nombre: true,
     comision_pct_snapshot: true,
@@ -306,9 +306,9 @@ ok(liqDb && igual(liqDb.monto_otorgado, r2(A + B)) && liqDb.creditos_cantidad ==
   `${f(liqDb?.monto_otorgado)} en ${liqDb?.creditos_cantidad} créditos`);
 ok(liqDb && igual(liqDb.comision_pct_snapshot ?? 0, PCT),
   "y con el % que regía ese día, no el de hoy", `${liqDb?.comision_pct_snapshot}%`);
-ok(liqDb && igual(r2((liqDb.comision_base ?? 0) + (liqDb.comision_bonus ?? 0)), liqDb.comision_total),
-  "el total se desglosa en base + bonus, y la suma cierra",
-  `${f(liqDb?.comision_base)} + ${f(liqDb?.comision_bonus)} = ${f(liqDb?.comision_total)}`);
+ok(liqDb && igual(r2((liqDb.comision_base ?? 0) + (liqDb.comision_bonus ?? 0) + (liqDb.comision_recupero ?? 0)), liqDb.comision_total),
+  "el total se desglosa en base + bonus + recupero, y la suma cierra",
+  `${f(liqDb?.comision_base)} + ${f(liqDb?.comision_bonus)} + ${f(liqDb?.comision_recupero)} = ${f(liqDb?.comision_total)}`);
 
 const cajaDespues = Number((await api("GET", "/api/caja")).data?.saldo_total ?? 0);
 ok(igual(r2(cajaAntes - cajaDespues), esperada),

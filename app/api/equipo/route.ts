@@ -3,7 +3,8 @@ import { successResponse, withErrorHandler } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { esTenantPlataforma } from "@/lib/saas-owner";
-import { resumirVendedor, normalizarComisionConfig } from "@/lib/domain";
+import { resumirVendedor, normalizarComisionConfig, RECUPERO_VACIO } from "@/lib/domain";
+import { recuperoPorAgente } from "@/lib/comision-recupero";
 import type { NextRequest } from "next/server";
 
 /**
@@ -74,6 +75,15 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   const metaPorVendedor = new Map<string, (typeof metasVigentes)[number]>();
   for (const m of metasVigentes) if (!metaPorVendedor.has(m.vendedor_id)) metaPorVendedor.set(m.vendedor_id, m);
 
+  // El plus por recupero de cada legajo, del MISMO período que el resto de su comisión.
+  const recuperoPorVendedor = await recuperoPorAgente(
+    tenantId,
+    vendedores.map((v) => {
+      const mv = metaPorVendedor.get(v.id);
+      return { id: v.id, rango: mv ? { desde: mv.fecha_desde, hasta: mv.fecha_hasta } : null };
+    }),
+  );
+
   const perfilPorVendedor = new Map(
     profiles.filter((p) => p.vendedor_id).map((p) => [p.vendedor_id as string, p])
   );
@@ -115,6 +125,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
         v.meta_venta,
         normalizarComisionConfig(v.comision_config, v.comision_pct),
         mv ? { desde: mv.fecha_desde, hasta: mv.fecha_hasta } : null,
+        recuperoPorVendedor.get(v.id) ?? RECUPERO_VACIO,
       ),
       created_at: v.created_at,
     });

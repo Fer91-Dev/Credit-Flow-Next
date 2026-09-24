@@ -27,6 +27,7 @@ export * from "./prontuario";
 // Documentos legales (contrato de mutuo / pagaré)
 export * from "./numero-a-letras";
 export * from "./recupero";
+export * from "./comision-recupero";
 export * from "./recupero-oferta";
 export * from "./recupero-cierre";
 export * from "./contrato-requisitos";

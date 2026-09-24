@@ -422,8 +422,12 @@ export interface ResumenVendedor {
   creditos_otorgados: number;
   /** Monto otorgado ACUMULADO (toda la historia). */
   monto_vendido: number;
-  /** Comisión del PERÍODO de la meta vigente (o acumulada si no hay meta). */
+  /** Comisión del PERÍODO de la meta vigente (o acumulada si no hay meta). Incluye el plus. */
   comision_total: number;
+  /** Plus por recupero, ya incluido en `comision_total`. */
+  comision_recupero: number;
+  /** Lo cobrado de deuda caída sobre lo que se calculó el plus. */
+  cobrado_recupero: number;
   /** true si `comision_total` es histórica (sin meta vigente) en vez de del período. */
   comision_es_acumulada: boolean;
   /** % de la meta vigente cubierto por lo otorgado DENTRO de su período. */
@@ -1337,6 +1341,19 @@ export interface LiquidacionResumen {
   liquidado_por_nombre: string | null;
 }
 
+/** Un cobro que pagó plus por recupero. */
+export interface DetalleRecuperoComision {
+  pago_id: string;
+  credito_id: string;
+  numero: number | null;
+  cliente: string;
+  fecha: string;
+  cobrado: number;
+  dias_atraso: number;
+  motivo: "atraso" | "refinanciacion";
+  comision: number;
+}
+
 /** Lo que se le debe a un agente por el período consultado. */
 export interface FilaComision {
   vendedor_id: string;
@@ -1348,7 +1365,14 @@ export interface FilaComision {
   creditos_cantidad: number;
   comision_base: number;
   comision_bonus: number;
+  /** Ventas (base + bonus) + recupero. */
   comision_total: number;
+  comision_recupero: number;
+  cobrado_recupero: number;
+  detalle_recupero: DetalleRecuperoComision[];
+  /** % y umbral del plus. 0 = apagado. */
+  recupero_pct: number;
+  recupero_umbral_dias: number;
   meta_monto: number;
   meta_cumplida: boolean;
   meta_periodo: string | null;
@@ -1371,6 +1395,11 @@ export interface LiquidacionDetallada {
   comision_base: number;
   comision_bonus: number;
   comision_total: number;
+  cobrado_recupero: number;
+  comision_recupero: number;
+  recupero_pct_snapshot: number;
+  recupero_umbral_dias: number;
+  detalle_recupero: DetalleRecuperoComision[];
   meta_monto: number;
   meta_cumplida: boolean;
   comision_pct_snapshot: number;

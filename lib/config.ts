@@ -29,6 +29,9 @@ import {
   resolverOfertaRecupero,
   OFERTA_RECUPERO_DEFAULT,
   type OfertaRecuperoConfig,
+  resolverComisionRecupero,
+  COMISION_RECUPERO_DEFAULT,
+  type ComisionRecuperoConfig,
   type RecuperoConfig,
   resolverFallecidos,
   FALLECIDOS_DEFAULT,
@@ -276,6 +279,13 @@ export interface CobranzaConfig {
    */
   oferta_recupero: OfertaRecuperoConfig;
   /**
+   * PLUS DE COMISIÓN POR RECUPERO: el % extra que cobra el agente sobre lo que recupera de
+   * una deuda caída. Vive en la cobranza y no en la ficha de cada agente porque es una regla
+   * de la casa, igual para todos; y "caída" es el mismo umbral de `recupero`, no uno propio.
+   * Ver `lib/domain/comision-recupero.ts`.
+   */
+  comision_recupero: ComisionRecuperoConfig;
+  /**
    * Qué hace el sistema con la deuda de un cliente FALLECIDO. Va como parámetro y no fijo en
    * el código: hay financieras que frenan todo y esperan la sucesión, y otras que siguen
    * gestionando con los herederos. Ver `lib/domain/cliente-estado.ts`.
@@ -318,6 +328,7 @@ export const COBRANZA_DEFAULT: CobranzaConfig = {
   acuerdos: ACUERDOS_DEFAULT,
   recupero: RECUPERO_DEFAULT,
   oferta_recupero: OFERTA_RECUPERO_DEFAULT,
+  comision_recupero: COMISION_RECUPERO_DEFAULT,
   fallecidos: FALLECIDOS_DEFAULT,
   cobranza_abierta: true,
 };
@@ -336,6 +347,7 @@ export function resolverCobranza(raw: unknown): CobranzaConfig {
     acuerdos: resolverAcuerdos(r.acuerdos),
     recupero: resolverRecupero(r.recupero),
     oferta_recupero: resolverOfertaRecupero(r.oferta_recupero),
+    comision_recupero: resolverComisionRecupero(r.comision_recupero),
     // Plantillas del contacto individual desde la ficha del cliente. Viven acá y no en una
     // columna nueva porque son textos de gestión del cliente, del mismo orden que el resto
     // de este bloque; `resolverPlantillasContacto` completa con los defaults del dominio.

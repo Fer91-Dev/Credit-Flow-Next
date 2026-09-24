@@ -205,6 +205,23 @@ const AYUDA: Record<string, AyudaBloque> = {
       "Una refinanciación no se deshace: el crédito viejo muere, nace uno nuevo con toda la deuda adentro " +
       "y al cliente se le descuentan 25 puntos de score. Por eso conviene que sea el último recurso y no el primero.",
   },
+  plus_recupero: {
+    titulo: "Plus por recupero",
+    texto:
+      "Un extra de comisión para el agente que vuelve a cobrarle a quien había dejado de pagar. La comisión de "
+      + "venta premia otorgar; esto premia el trabajo más ingrato de la financiera. Se suma a su comisión del "
+      + "mismo período y se paga en la misma liquidación, en una línea aparte.",
+    puntos: [
+      "Cuenta el COBRO entero cuando la cuota más vieja que alcanzó llevaba el umbral de recupero o más de atraso. Ese umbral no se configura acá: es el mismo «Entra en recupero a los…» de Acuerdos de pago.",
+      "El atraso se mide con la fecha del pago contra el vencimiento de la cuota, que no cambian nunca: el plus de un mes cerrado no se mueve.",
+      "La base es lo que se imputó a deuda (capital, interés, punitorios y cargos). Lo que el cliente dejó de más no cuenta, y un pago anulado tampoco.",
+      "Se le acredita al DUEÑO del crédito aunque lo haya cobrado un compañero, igual que el resto del recupero. La plata sigue entrando a la caja de quien cobra.",
+      "Con 0% no hay plus y el sistema se comporta como antes.",
+    ],
+    ejemplo:
+      "Con 5%: un cliente con 72 días de atraso paga $180.000,00 y se imputan todos a deuda. Al dueño del crédito "
+      + "se le suman $9.000,00 a la comisión del mes, aunque el cobro lo haya hecho otro agente.",
+  },
   cobranza: {
     titulo: "Agenda de cobranza",
     texto:
@@ -625,6 +642,9 @@ export function ConfigForm() {
   /** Patch anidado de la oferta de cancelación sobre incobrables. */
   const setOferta = (patch: Partial<CobranzaConfig["oferta_recupero"]>) =>
     setCobranza({ oferta_recupero: { ...cobranza.oferta_recupero, ...patch } });
+  /** Patch anidado del plus de comisión por recupero. */
+  const setPlusRecupero = (patch: Partial<CobranzaConfig["comision_recupero"]>) =>
+    setCobranza({ comision_recupero: { ...cobranza.comision_recupero, ...patch } });
   /** Patch anidado de la política de clientes fallecidos. */
   const setFallecidos = (patch: Partial<CobranzaConfig["fallecidos"]>) =>
     setCobranza({ fallecidos: { ...cobranza.fallecidos, ...patch } });
@@ -2653,6 +2673,40 @@ export function ConfigForm() {
               />
             </div>
           </Section>
+
+          {/*
+            PLUS POR RECUPERO. El umbral de días no se edita acá, por la misma razón que en
+            Refinanciaciones: es el de "Entra en recupero a los…", y un segundo número para lo
+            mismo termina separándose del primero.
+          */}
+          <Section
+            title="Plus por recupero"
+            desc="Un extra de comisión por volver a cobrarle a quien había dejado de pagar."
+            ayuda={AYUDA.plus_recupero}
+            onSave={() => save("cobranza", { cobranzaConfig: cobranza })}
+            saving={savingKey === "cobranza"} saved={savedKey === "cobranza"} dirty={isDirty("cobranza")}
+          >
+            <div className="space-y-3">
+              <div className="max-w-xs">
+                <Field label="Plus sobre lo recuperado (%)" hint="0 = sin plus.">
+                  <NumeroInput min="0" max="100"
+                    value={cobranza.comision_recupero.pct}
+                    onValueChange={v => setPlusRecupero({ pct: Math.max(0, Math.min(100, v)) })}
+                  />
+                </Field>
+              </div>
+              <p className="max-w-xl rounded-lg border border-border/60 bg-muted/20 px-3 py-2 text-xs leading-relaxed text-muted-foreground">
+                Cuenta desde los <strong className="font-mono text-foreground">{cobranza.recupero.dias_min_mora_acuerdo} días</strong> de
+                atraso, el umbral de <strong className="text-foreground">Entra en recupero a los…</strong>
+              </p>
+              <SwitchRow
+                title="Cobrar una refinanciación cuenta como recupero"
+                desc="Una refinanciación es la deuda caída en un plan nuevo. Apagado, al agente le conviene no refinanciar y cobrar el crédito viejo por acuerdo, que sí paga el plus."
+                checked={cobranza.comision_recupero.incluir_refinanciaciones}
+                onChange={v => setPlusRecupero({ incluir_refinanciaciones: v })}
+              />
+            </div>
+          </Section>
           </>}
 
           {activeTab === "cajas" && (
@@ -2852,6 +2906,7 @@ function defaultCobranza(): CobranzaConfig {
       tasa_refinanciacion_min: 0, tasa_refinanciacion_max: 0, cuotas_refinanciacion: [],
     },
     oferta_recupero: { merma_mensual_pct: 8, piso_recupero_pct: 40, bonus_pago_post_castigo_pct: 15 },
+    comision_recupero: { pct: 0, incluir_refinanciaciones: true },
     fallecidos: { frena_punitorios: true, bloquea_contacto: true, saca_de_agenda: true },
   };
 }

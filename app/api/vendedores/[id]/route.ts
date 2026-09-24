@@ -6,6 +6,7 @@ import { Prisma } from "@prisma/client";
 import { registrarAuditoria } from "@/lib/audit";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { esRolValido, resumirVendedor, normalizarComisionPct, normalizarMonto, normalizarComisionConfig, formatPesos } from "@/lib/domain";
+import { recuperoDeAgente } from "@/lib/comision-recupero";
 import type { NextRequest } from "next/server";
 
 interface RouteParams {
@@ -54,12 +55,14 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
     select: { periodo: true, fecha_desde: true, fecha_hasta: true },
   });
 
+  const periodo = metaVigente ? { desde: metaVigente.fecha_desde, hasta: metaVigente.fecha_hasta } : null;
   const resumen = resumirVendedor(
     creditos.map((c) => ({ monto_original: c.monto_original, tipo_credito: c.tipo_credito, created_at: c.created_at })),
     ficha.comision_pct,
     ficha.meta_venta,
     normalizarComisionConfig(ficha.comision_config, ficha.comision_pct),
-    metaVigente ? { desde: metaVigente.fecha_desde, hasta: metaVigente.fecha_hasta } : null,
+    periodo,
+    await recuperoDeAgente(tenantId, id, periodo),
   );
 
   return successResponse({

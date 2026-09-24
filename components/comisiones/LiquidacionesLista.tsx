@@ -7,6 +7,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { formatMonto, formatFecha, formatCreditoNumero } from "@/lib/utils";
 import type { LiquidacionDetallada } from "@/lib/swr";
 import { CreditoLink } from "@/components/ui/CreditoLink";
+import { TablaRecupero } from "@/components/comisiones/TablaRecupero";
 
 /**
  * Lista de liquidaciones de comisión **de solo lectura**, con el detalle desplegable de
@@ -64,10 +65,10 @@ export function LiquidacionesLista({
                   {l.comprobante && <span className="font-mono text-[11px] text-muted-foreground">{l.comprobante}</span>}
                 </div>
                 <p className="mt-0.5 text-[11px] text-muted-foreground">
-                  {formatFecha(l.fecha_desde)} al {formatFecha(l.fecha_hasta)} · {l.creditos_cantidad} créditos · {formatMonto(l.monto_otorgado, 0)} otorgado
+                  {formatFecha(l.fecha_desde)} al {formatFecha(l.fecha_hasta)} · {l.creditos_cantidad} créditos · {formatMonto(l.monto_otorgado)} otorgado
                 </p>
               </div>
-              <span className="font-mono text-sm font-semibold text-warning">{formatMonto(l.comision_total, 0)}</span>
+              <span className="font-mono text-sm font-semibold text-warning">{formatMonto(l.comision_total)}</span>
             </button>
 
             {abierto && (
@@ -94,25 +95,35 @@ export function LiquidacionesLista({
                           <tr key={d.credito_id} className="border-t border-border/50">
                             <td className="px-3 py-2 text-xs"><CreditoLink id={d.credito_id} numero={d.numero} className="text-xs" /></td>
                             <td className="px-3 py-2 text-foreground">{d.cliente}</td>
-                            <td className="px-3 py-2 text-right font-mono tabular-nums">{formatMonto(d.monto, 0)}</td>
+                            <td className="px-3 py-2 text-right font-mono tabular-nums">{formatMonto(d.monto)}</td>
                             <td className="px-3 py-2 text-right font-mono tabular-nums text-muted-foreground">{d.pct}%</td>
-                            <td className="px-3 py-2 text-right font-mono tabular-nums text-warning">{formatMonto(d.comision, 0)}</td>
+                            <td className="px-3 py-2 text-right font-mono tabular-nums text-warning">{formatMonto(d.comision)}</td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
                   </div>
-                ) : (
+                ) : l.detalle_recupero.length === 0 ? (
                   <p className="text-xs text-muted-foreground">Sin créditos en el detalle.</p>
-                )}
+                ) : null}
+                {l.detalle_recupero.length > 0 && <TablaRecupero lineas={l.detalle_recupero} />}
                 <div className="flex flex-col gap-1 text-xs">
-                  <div className="flex justify-between"><span className="text-muted-foreground">Comisión por créditos</span><span className="font-mono">{formatMonto(l.comision_base, 0)}</span></div>
+                  <div className="flex justify-between"><span className="text-muted-foreground">Comisión por créditos</span><span className="font-mono">{formatMonto(l.comision_base)}</span></div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Bonus por meta {l.meta_cumplida ? "(cumplida)" : "(no alcanzada)"}</span>
-                    <span className="font-mono">{formatMonto(l.comision_bonus, 0)}</span>
+                    <span className="font-mono">{formatMonto(l.comision_bonus)}</span>
                   </div>
+                  {l.recupero_pct_snapshot > 0 && (
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">
+                        Plus por recupero
+                        <span className="ml-1 text-muted-foreground/60">({l.recupero_pct_snapshot}% de {formatMonto(l.cobrado_recupero)})</span>
+                      </span>
+                      <span className="font-mono">{formatMonto(l.comision_recupero)}</span>
+                    </div>
+                  )}
                   <div className="flex justify-between border-t border-border pt-1 font-semibold text-foreground">
-                    <span>Total</span><span className="font-mono text-warning">{formatMonto(l.comision_total, 0)}</span>
+                    <span>Total</span><span className="font-mono text-warning">{formatMonto(l.comision_total)}</span>
                   </div>
                 </div>
                 {l.notas && <p className="text-[11px] text-muted-foreground">Nota: {l.notas}</p>}

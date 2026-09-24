@@ -3,6 +3,7 @@ import { successResponse, withErrorHandler } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { resumirVendedor, normalizarComisionConfig, cumplimientoMeta } from "@/lib/domain";
+import { recuperoDeAgente } from "@/lib/comision-recupero";
 import type { NextRequest } from "next/server";
 
 /**
@@ -61,12 +62,14 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   // El bonus por meta lo deriva `resumirVendedor` del mismo período — ya no lo decide
   // cada endpoint por su cuenta (era la causa de que la comisión de acá no coincidiera
   // con la que el admin veía en la lista).
+  const periodo = metaVigente ? { desde: metaVigente.fecha_desde, hasta: metaVigente.fecha_hasta } : null;
   const resumen = resumirVendedor(
     creditos,
     vendedor.comision_pct,
     vendedor.meta_venta,
     config,
-    metaVigente ? { desde: metaVigente.fecha_desde, hasta: metaVigente.fecha_hasta } : null,
+    periodo,
+    await recuperoDeAgente(tenantId, vendedorId, periodo),
   );
 
   return successResponse({

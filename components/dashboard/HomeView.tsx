@@ -466,6 +466,7 @@ function MiConfiguracionVendedor({ perfil }: { perfil: MiPerfilVendedor }) {
           label={r.comision_es_acumulada ? "Comisión acumulada" : "Comisión del período"}
           value={formatMonto(r.comision_total)}
           accent="warning"
+          sub={r.comision_recupero > 0 ? `${formatMonto(r.comision_recupero)} de recupero` : undefined}
         />
         <MiStat icon="bullseye" label="Avance meta" value={`${perfil.meta_vigente?.cumplimiento.avance_monto ?? 0}%`} accent="primary" />
       </div>
@@ -618,7 +619,7 @@ function MiEfectividadCobranza() {
   );
 }
 
-function MiStat({ icon, label, value, accent }: { icon: typeof Target | string; label: string; value: string; accent?: "success" | "warning" | "primary" }) {
+function MiStat({ icon, label, value, accent, sub }: { icon: typeof Target | string; label: string; value: string; accent?: "success" | "warning" | "primary"; sub?: string }) {
   const isEmoji = typeof icon === "string";
   const Icon = isEmoji ? null : icon;
   const color = accent === "success" ? "text-success" : accent === "warning" ? "text-warning" : accent === "primary" ? "text-primary" : "text-foreground";
@@ -628,6 +629,7 @@ function MiStat({ icon, label, value, accent }: { icon: typeof Target | string; 
         {isEmoji ? <Emoji name={icon} className="h-3.5 w-3.5" /> : Icon && <Icon className="h-3 w-3" />} {label}
       </div>
       <p className={`mt-1 font-mono font-bold text-lg ${color}`}>{value}</p>
+      {sub && <p className="mt-0.5 font-mono text-[11px] tabular-nums text-muted-foreground">{sub}</p>}
     </div>
   );
 }

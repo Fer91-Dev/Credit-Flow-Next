@@ -7,6 +7,7 @@
  */
 import { round2 } from "./money";
 import { ventanaAR } from "./fechas";
+import type { ResumenRecupero } from "./comision-recupero";
 
 export const ROLES = ["vendedor", "supervisor", "cobrador", "admin"] as const;
 export type RolVendedor = (typeof ROLES)[number];
@@ -185,6 +186,13 @@ export interface ResumenVendedor {
    * acumulado histórico (`comision_es_acumulada: true`).
    */
   comision_total: number;
+  /**
+   * El plus por recupero que está DENTRO de `comision_total`, del mismo período. Viaja
+   * aparte para que la pantalla pueda decir de dónde sale cada peso: "ventas $X + recupero $Y".
+   */
+  comision_recupero: number;
+  /** Lo cobrado en recupero sobre lo que se calculó ese plus. */
+  cobrado_recupero: number;
   /** true si `comision_total` es histórica (sin meta vigente) en vez de del período. */
   comision_es_acumulada: boolean;
   /** % de la meta vigente cubierto por lo otorgado DENTRO de su período. */
@@ -238,6 +246,11 @@ function enPeriodo<T extends { created_at: Date }>(creditos: T[], p: PeriodoMeta
  * Sin meta vigente no hay período que recortar: se paga sobre el acumulado (base, por
  * tipo y tramos siguen corriendo) y el bonus por meta no aplica, porque no hay meta
  * que cumplir.
+ *
+ * **`recupero` también es obligatorio, por la misma razón que `periodoMeta`.** Es el plus por
+ * recupero del MISMO período (lo arma `recuperoPorAgente` con el mismo rango). Si fuera
+ * opcional, el endpoint que se olvida de pasarlo mostraría una comisión menor que la que se
+ * liquida, y es exactamente el bug del bonus que ya pasó una vez. Sin plus: `RECUPERO_VACIO`.
  */
 export function resumirVendedor(
   creditos: { monto_original: number; tipo_credito?: string | null; created_at: Date }[],
@@ -245,6 +258,7 @@ export function resumirVendedor(
   meta: number,
   config: ComisionConfig | null,
   periodoMeta: PeriodoMeta | null,
+  recupero: ResumenRecupero,
 ): ResumenVendedor {
   const monto_vendido = round2(creditos.reduce((s, c) => s + (c.monto_original || 0), 0));
 
@@ -257,17 +271,20 @@ export function resumirVendedor(
   // Sin meta vigente `metaCumplida` es false: no hay objetivo, no hay bonus.
   const metaCumplida = !!periodoMeta && meta > 0 && monto_meta >= meta;
 
-  const comision_total = config
+  const comision_ventas = config
     ? calcularComisionTotal(delPeriodo, { ...config, base_pct: config.base_pct ?? comisionPct }, { metaCumplida })
     : comisionDeVenta(
         periodoMeta ? monto_meta : monto_vendido,
         comisionPct,
       );
+  const comision_total = round2(comision_ventas + recupero.comision);
 
   return {
     creditos_otorgados: creditos.length,
     monto_vendido,
     comision_total,
+    comision_recupero: recupero.comision,
+    cobrado_recupero: recupero.cobrado,
     comision_es_acumulada: !periodoMeta,
     avance_meta: avanceMeta(monto_meta, meta),
     monto_meta,

@@ -8,6 +8,8 @@ import {
 import { siguienteNumeroComprobante, formatComprobante } from "@/lib/comprobantes";
 import { assertFondosSuficientesTx, lockCuentaTx } from "@/lib/caja-fondos";
 import { nombreCompleto, hoyComercial } from "@/lib/utils";
+import { recuperoPorAgente } from "@/lib/comision-recupero";
+import type { LineaRecupero } from "@/lib/domain";
 
 /**
  * **Liquidación de comisiones** — calcular lo que se le debe a cada agente por un
@@ -31,6 +33,12 @@ export interface DetalleCreditoComision {
   comision: number;
 }
 
+/** Una línea del plus por recupero, con lo que hace falta para leerla en pantalla. */
+export interface DetalleRecuperoComision extends LineaRecupero {
+  numero: number | null;
+  cliente: string;
+}
+
 /** Lo que se le debe a un agente por el período consultado. */
 export interface FilaComision {
   vendedor_id: string;
@@ -42,7 +50,17 @@ export interface FilaComision {
   creditos_cantidad: number;
   comision_base: number;
   comision_bonus: number;
+  /** Ventas (base + bonus) + recupero. Es lo que se paga. */
   comision_total: number;
+  /** Plus por recupero, ya incluido en `comision_total`. */
+  comision_recupero: number;
+  /** Lo cobrado de deuda caída sobre lo que se calculó el plus. */
+  cobrado_recupero: number;
+  /** Cobros de recupero, uno por línea. */
+  detalle_recupero: DetalleRecuperoComision[];
+  /** % y umbral con que se midió (se congelan al liquidar). 0 = plus apagado. */
+  recupero_pct: number;
+  recupero_umbral_dias: number;
   meta_monto: number;
   meta_cumplida: boolean;
   /** Período de la meta vigente, si la hay (para explicar por qué el bonus es 0). */
@@ -129,6 +147,19 @@ export async function comisionesDelPeriodo(
 
   const liqDe = new Map(liquidaciones.map((l) => [l.vendedor_id, l]));
 
+  /* El plus por recupero, con el MISMO rango para todos: acá se liquida un período fijo, no
+     la meta de cada uno. Los créditos de los cobros se traen en lote para poder nombrarlos
+     (número y cliente) en el detalle — un cobro sin nombre no se puede discutir. */
+  const recupero = await recuperoPorAgente(tenantId, vendedores.map((v) => ({ id: v.id, rango })));
+  const idsRecupero = [...new Set([...recupero.values()].flatMap((r) => r.lineas.map((l) => l.credito_id)))];
+  const credRecupero = idsRecupero.length
+    ? await prisma.creditos.findMany({
+        where: { ...withTenant(tenantId), id: { in: idsRecupero } },
+        select: { id: true, numero: true, cliente: { select: { nombre: true, apellido: true } } },
+      })
+    : [];
+  const credDe = new Map(credRecupero.map((c) => [c.id, c]));
+
   // El número de comprobante vive en el movimiento de caja, no en la liquidación: se
   // trae en lote (si no, esta fila mostraría siempre "sin comprobante").
   const movIds = liquidaciones.map((l) => l.movimiento_caja_id).filter(Boolean) as string[];
@@ -156,9 +187,12 @@ export async function comisionesDelPeriodo(
     const comision_base = config
       ? calcularComisionTotal(paraMotor, { ...config, base_pct: config.base_pct ?? v.comision_pct }, { metaCumplida: false })
       : comisionDeVenta(monto_otorgado, v.comision_pct);
-    const comision_total = config
+    const comision_ventas = config
       ? calcularComisionTotal(paraMotor, { ...config, base_pct: config.base_pct ?? v.comision_pct }, { metaCumplida: meta_cumplida })
       : comision_base;
+    const rec = recupero.get(v.id);
+    const comision_recupero = rec?.comision ?? 0;
+    const comision_total = round2(comision_ventas + comision_recupero);
 
     const detalle: DetalleCreditoComision[] = creds.map((c) => {
       const pct = config
@@ -182,12 +216,20 @@ export async function comisionesDelPeriodo(
       vendedor_id: v.id,
       nombre: v.nombre,
       comision_pct: v.comision_pct,
-      comision_configurada: v.comision_pct > 0 || config != null,
+      comision_configurada: v.comision_pct > 0 || config != null || (rec?.pct ?? 0) > 0,
       monto_otorgado,
       creditos_cantidad: creds.length,
       comision_base,
-      comision_bonus: round2(comision_total - comision_base),
+      comision_bonus: round2(comision_ventas - comision_base),
       comision_total,
+      comision_recupero,
+      cobrado_recupero: rec?.cobrado ?? 0,
+      recupero_pct: rec?.pct ?? 0,
+      recupero_umbral_dias: rec?.umbral_dias ?? 0,
+      detalle_recupero: (rec?.lineas ?? []).map((l) => {
+        const c = credDe.get(l.credito_id);
+        return { ...l, numero: c?.numero ?? null, cliente: c?.cliente ? nombreCompleto(c.cliente) : "—" };
+      }),
       meta_monto,
       meta_cumplida,
       meta_periodo: meta?.periodo ?? null,
@@ -314,6 +356,12 @@ export async function liquidarComision(opts: {
         comision_base: fila.comision_base,
         comision_bonus: fila.comision_bonus,
         comision_total: total,
+        cobrado_recupero: fila.cobrado_recupero,
+        comision_recupero: fila.comision_recupero,
+        // El % y el umbral salen de la MISMA lectura que calculó el número, no de otra.
+        recupero_pct_snapshot: fila.recupero_pct,
+        recupero_umbral_dias: fila.recupero_umbral_dias,
+        detalle_recupero: fila.detalle_recupero.length ? (fila.detalle_recupero as never) : undefined,
         meta_monto: fila.meta_monto,
         meta_cumplida: fila.meta_cumplida,
         comision_pct_snapshot: vendedor.comision_pct,
@@ -335,7 +383,7 @@ export async function liquidarComision(opts: {
     entidadId: vendedorId,
     accion: "crear",
     descripcion: `Comisión ${periodo} liquidada a ${vendedor.nombre}: ${formatPesos(total)}`,
-    meta: { liquidacion_id: creada.id, periodo, total, cuenta },
+    meta: { liquidacion_id: creada.id, periodo, total, cuenta, comision_recupero: fila.comision_recupero },
   });
 
   return creada;
@@ -443,6 +491,11 @@ export async function historialLiquidaciones(tenantId: string, vendedorId: strin
     comision_base: l.comision_base,
     comision_bonus: l.comision_bonus,
     comision_total: l.comision_total,
+    cobrado_recupero: l.cobrado_recupero,
+    comision_recupero: l.comision_recupero,
+    recupero_pct_snapshot: l.recupero_pct_snapshot,
+    recupero_umbral_dias: l.recupero_umbral_dias,
+    detalle_recupero: (l.detalle_recupero ?? []) as unknown as DetalleRecuperoComision[],
     meta_monto: l.meta_monto,
     meta_cumplida: l.meta_cumplida,
     comision_pct_snapshot: l.comision_pct_snapshot,

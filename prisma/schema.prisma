@@ -545,7 +545,17 @@ model liquidaciones_comision {
   // El número que se paga (congelado)
   comision_base  Float @default(0) // base + por tipo + tramos
   comision_bonus Float @default(0) // bonus por meta (0 si no llegó)
-  comision_total Float @default(0)
+  comision_total Float @default(0) // ventas (base + bonus) + recupero
+
+  /// PLUS POR RECUPERO, congelado igual que el resto: lo cobrado de deuda caída en el
+  /// período, el % y el umbral de días con que se midió, y el detalle cobro por cobro. El %
+  /// y el umbral son de la configuración de cobranza, que se puede cambiar mañana: sin
+  /// guardarlos acá, una liquidación vieja no podría explicar su propio número.
+  cobrado_recupero      Float @default(0)
+  comision_recupero     Float @default(0)
+  recupero_pct_snapshot Float @default(0)
+  recupero_umbral_dias  Int   @default(0)
+  detalle_recupero      Json? // [{ pago_id, credito_id, numero, cliente, fecha, cobrado, dias_atraso, motivo, comision }]
 
   // Por qué dio eso (congelado)
   meta_monto               Float   @default(0)

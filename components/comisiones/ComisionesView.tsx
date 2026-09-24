@@ -13,8 +13,9 @@ import { Field, Input, Select, Textarea } from "@/components/ui/field";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { ModalHeader, FormActions, MODAL_CONTENT } from "@/components/ui/form-kit";
 import { useToast } from "@/components/ui/toast";
-import { formatMonto, formatFecha, formatCreditoNumero, pctDe } from "@/lib/utils";
+import { formatMonto, formatFecha, formatCreditoNumero, formatDias, pctDe } from "@/lib/utils";
 import { CreditoLink } from "@/components/ui/CreditoLink";
+import { TablaRecupero } from "@/components/comisiones/TablaRecupero";
 
 /**
  * **Comisiones** — cuánto se le debe a cada agente por un período y el registro de lo
@@ -57,6 +58,10 @@ export function ComisionesView() {
 
   const [aAnular, setAAnular] = useState<LiquidacionDetallada | null>(null);
 
+  /* El plus es una regla de la casa: o está prendido para todos o para nadie. Con 0% la
+     columna no aparece — sería una columna de guiones que promete algo que no existe. */
+  const plusActivo = filas.some((f) => f.recupero_pct > 0);
+
   const columns: Column<FilaComision>[] = [
     {
       header: "Agente",
@@ -74,7 +79,7 @@ export function ComisionesView() {
       header: "Otorgado",
       mono: true,
       className: "hidden md:table-cell",
-      cell: (f) => formatMonto(f.monto_otorgado, 0),
+      cell: (f) => formatMonto(f.monto_otorgado),
     },
     {
       header: "Créditos",
@@ -88,15 +93,26 @@ export function ComisionesView() {
       className: "hidden xl:table-cell",
       cell: (f) =>
         f.comision_bonus > 0 ? (
-          <span className="text-success">{formatMonto(f.comision_bonus, 0)}</span>
+          <span className="text-success">{formatMonto(f.comision_bonus)}</span>
         ) : (
           <span className="text-muted-foreground/50">—</span>
         ),
     },
+    ...(plusActivo ? [{
+      header: "Recupero",
+      mono: true,
+      className: "hidden xl:table-cell",
+      cell: (f: FilaComision) =>
+        f.comision_recupero > 0 ? (
+          <span className="text-success">{formatMonto(f.comision_recupero)}</span>
+        ) : (
+          <span className="text-muted-foreground/50">—</span>
+        ),
+    }] : []),
     {
       header: "A pagar",
       mono: true,
-      cell: (f) => <span className="font-semibold text-warning">{formatMonto(f.comision_total, 0)}</span>,
+      cell: (f) => <span className="font-semibold text-warning">{formatMonto(f.comision_total)}</span>,
     },
     {
       header: "Estado",
@@ -153,15 +169,15 @@ export function ComisionesView() {
       />
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <KpiCard icon="money-bag" label="A liquidar" value={formatMonto(aPagar, 0)} sub={`${pendientes.filter((f) => f.comision_total > 0).length} agentes`} accent="warning" mono />
+        <KpiCard icon="money-bag" label="A liquidar" value={formatMonto(aPagar)} sub={`${pendientes.filter((f) => f.comision_total > 0).length} agentes`} accent="warning" mono />
         <KpiCard
-          icon="check-mark-button" label="Ya liquidado" value={formatMonto(yaPagado, 0)} accent="success" mono
-          sub={aPagar + yaPagado > 0 ? `de ${formatMonto(aPagar + yaPagado, 0)} de comisión del período` : "en este período"}
+          icon="check-mark-button" label="Ya liquidado" value={formatMonto(yaPagado)} accent="success" mono
+          sub={aPagar + yaPagado > 0 ? `de ${formatMonto(aPagar + yaPagado)} de comisión del período` : "en este período"}
           barra={aPagar + yaPagado > 0
             ? { pct: pctDe(yaPagado, aPagar + yaPagado), label: `${Math.round(pctDe(yaPagado, aPagar + yaPagado))}%` }
             : undefined}
         />
-        <KpiCard icon="credit-card" label="Otorgado" value={formatMonto(filas.reduce((s, f) => s + f.monto_otorgado, 0), 0)} sub="base del cálculo" mono />
+        <KpiCard icon="credit-card" label="Otorgado" value={formatMonto(filas.reduce((s, f) => s + f.monto_otorgado, 0))} sub="base del cálculo" mono />
         <KpiCard icon="busts-in-silhouette" label="Agentes" value={String(filas.length)} sub="activos" />
       </div>
 
@@ -199,7 +215,7 @@ export function ComisionesView() {
         )}
         {data && (
           <p className="ml-auto text-xs text-muted-foreground">
-            Cuenta lo otorgado del <span className="font-mono text-foreground">{formatFecha(data.periodo.desde)}</span> al{" "}
+            Cuenta lo {plusActivo ? "otorgado y lo cobrado" : "otorgado"} del <span className="font-mono text-foreground">{formatFecha(data.periodo.desde)}</span> al{" "}
             <span className="font-mono text-foreground">{formatFecha(data.periodo.hasta)}</span>
           </p>
         )}
@@ -262,7 +278,7 @@ export function ComisionesView() {
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="font-mono text-sm font-semibold text-warning">{formatMonto(l.comision_total, 0)}</span>
+                  <span className="font-mono text-sm font-semibold text-warning">{formatMonto(l.comision_total)}</span>
                   <button onClick={() => setVerLiquidacion(l)} className="rounded-lg px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted/30 hover:text-foreground">Ver</button>
                   {l.estado !== "anulada" && (
                     <button onClick={() => setAAnular(l)} title="Anular" className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive">
@@ -292,11 +308,12 @@ export function ComisionesView() {
 
 /** Tabla del detalle crédito por crédito, con el % que se le aplicó a cada uno. */
 function DetalleComision({ fila }: { fila: FilaComision }) {
-  if (fila.detalle.length === 0) {
-    return <p className="text-xs text-muted-foreground">Sin créditos otorgados en este período.</p>;
+  if (fila.detalle.length === 0 && fila.detalle_recupero.length === 0) {
+    return <p className="text-xs text-muted-foreground">Sin créditos otorgados ni cobros de recupero en este período.</p>;
   }
   return (
     <div className="space-y-3">
+      {fila.detalle.length > 0 && (
       <div className="overflow-x-auto rounded-lg border border-border">
         <table className="w-full text-sm">
           <thead>
@@ -315,28 +332,39 @@ function DetalleComision({ fila }: { fila: FilaComision }) {
                 <td className="px-3 py-2 text-xs"><CreditoLink id={d.credito_id} numero={d.numero} className="text-xs" /></td>
                 <td className="px-3 py-2 text-foreground">{d.cliente}</td>
                 <td className="px-3 py-2 text-xs text-muted-foreground">{formatFecha(d.fecha)}</td>
-                <td className="px-3 py-2 text-right font-mono tabular-nums">{formatMonto(d.monto, 0)}</td>
+                <td className="px-3 py-2 text-right font-mono tabular-nums">{formatMonto(d.monto)}</td>
                 <td className="px-3 py-2 text-right font-mono tabular-nums text-muted-foreground">{d.pct}%</td>
-                <td className="px-3 py-2 text-right font-mono tabular-nums font-semibold text-warning">{formatMonto(d.comision, 0)}</td>
+                <td className="px-3 py-2 text-right font-mono tabular-nums font-semibold text-warning">{formatMonto(d.comision)}</td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+      )}
+      {fila.detalle_recupero.length > 0 && <TablaRecupero lineas={fila.detalle_recupero} />}
       <div className="flex flex-col gap-1 text-xs">
-        <div className="flex justify-between"><span className="text-muted-foreground">Comisión por créditos</span><span className="font-mono">{formatMonto(fila.comision_base, 0)}</span></div>
+        <div className="flex justify-between"><span className="text-muted-foreground">Comisión por créditos</span><span className="font-mono">{formatMonto(fila.comision_base)}</span></div>
         <div className="flex justify-between">
           <span className="text-muted-foreground">
             Bonus por meta
             {/* El monto de la meta solo se muestra si esa meta ES la de este período;
                 si no, se estaría poniendo al lado un objetivo que no aplica acá. */}
             {fila.meta_coincide && fila.meta_monto > 0 && (
-              <span className="ml-1 text-muted-foreground/60">(meta {formatMonto(fila.meta_monto, 0)})</span>
+              <span className="ml-1 text-muted-foreground/60">(meta {formatMonto(fila.meta_monto)})</span>
             )}
           </span>
-          <span className="font-mono">{formatMonto(fila.comision_bonus, 0)}</span>
+          <span className="font-mono">{formatMonto(fila.comision_bonus)}</span>
         </div>
-        <div className="flex justify-between border-t border-border pt-1 font-semibold text-foreground"><span>Total</span><span className="font-mono text-warning">{formatMonto(fila.comision_total, 0)}</span></div>
+        {fila.recupero_pct > 0 && (
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">
+              Plus por recupero
+              <span className="ml-1 text-muted-foreground/60">({fila.recupero_pct}% de {formatMonto(fila.cobrado_recupero)})</span>
+            </span>
+            <span className="font-mono">{formatMonto(fila.comision_recupero)}</span>
+          </div>
+        )}
+        <div className="flex justify-between border-t border-border pt-1 font-semibold text-foreground"><span>Total</span><span className="font-mono text-warning">{formatMonto(fila.comision_total)}</span></div>
       </div>
       {/* Explicación del bonus en 0: sin esto parece un error de cálculo. */}
       {fila.meta_periodo && !fila.meta_coincide && (
@@ -400,8 +428,9 @@ function LiquidarDialog({
             <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Total a pagar</p>
             <p className="mt-1 font-mono text-2xl font-bold text-warning">{formatMonto(fila.comision_total)}</p>
             <p className="mt-1 text-[11px] text-muted-foreground">
-              {formatMonto(fila.comision_base, 0)} por créditos
-              {fila.comision_bonus > 0 && ` + ${formatMonto(fila.comision_bonus, 0)} de bonus por meta`}
+              {formatMonto(fila.comision_base)} por créditos
+              {fila.comision_bonus > 0 && ` + ${formatMonto(fila.comision_bonus)} de bonus por meta`}
+              {fila.comision_recupero > 0 && ` + ${formatMonto(fila.comision_recupero)} de plus por recupero`}
             </p>
           </div>
 
@@ -450,10 +479,11 @@ function VerLiquidacionDialog({ liquidacion, onClose }: { liquidacion: Liquidaci
           )}
           <div className="grid grid-cols-2 gap-3 text-xs sm:grid-cols-4">
             <Dato label="Rango" valor={`${formatFecha(l.fecha_desde)} — ${formatFecha(l.fecha_hasta)}`} />
-            <Dato label="Otorgado" valor={formatMonto(l.monto_otorgado, 0)} mono />
+            <Dato label="Otorgado" valor={formatMonto(l.monto_otorgado)} mono />
             <Dato label="Créditos" valor={String(l.creditos_cantidad)} mono />
             <Dato label="% al liquidar" valor={`${l.comision_pct_snapshot}%`} mono />
           </div>
+          {l.detalle.length > 0 && (
           <div className="overflow-x-auto rounded-lg border border-border">
             <table className="w-full text-sm">
               <thead>
@@ -470,17 +500,28 @@ function VerLiquidacionDialog({ liquidacion, onClose }: { liquidacion: Liquidaci
                   <tr key={d.credito_id} className="border-t border-border/50">
                     <td className="px-3 py-2 text-xs"><CreditoLink id={d.credito_id} numero={d.numero} className="text-xs" /></td>
                     <td className="px-3 py-2 text-foreground">{d.cliente}</td>
-                    <td className="px-3 py-2 text-right font-mono tabular-nums">{formatMonto(d.monto, 0)}</td>
+                    <td className="px-3 py-2 text-right font-mono tabular-nums">{formatMonto(d.monto)}</td>
                     <td className="px-3 py-2 text-right font-mono tabular-nums text-muted-foreground">{d.pct}%</td>
-                    <td className="px-3 py-2 text-right font-mono tabular-nums text-warning">{formatMonto(d.comision, 0)}</td>
+                    <td className="px-3 py-2 text-right font-mono tabular-nums text-warning">{formatMonto(d.comision)}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
+          )}
+          {l.detalle_recupero.length > 0 && <TablaRecupero lineas={l.detalle_recupero} />}
           <div className="flex flex-col gap-1 text-xs">
-            <div className="flex justify-between"><span className="text-muted-foreground">Comisión por créditos</span><span className="font-mono">{formatMonto(l.comision_base, 0)}</span></div>
-            <div className="flex justify-between"><span className="text-muted-foreground">Bonus por meta {l.meta_cumplida ? "(cumplida)" : "(no alcanzada)"}</span><span className="font-mono">{formatMonto(l.comision_bonus, 0)}</span></div>
+            <div className="flex justify-between"><span className="text-muted-foreground">Comisión por créditos</span><span className="font-mono">{formatMonto(l.comision_base)}</span></div>
+            <div className="flex justify-between"><span className="text-muted-foreground">Bonus por meta {l.meta_cumplida ? "(cumplida)" : "(no alcanzada)"}</span><span className="font-mono">{formatMonto(l.comision_bonus)}</span></div>
+            {l.recupero_pct_snapshot > 0 && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">
+                  Plus por recupero
+                  <span className="ml-1 text-muted-foreground/60">({l.recupero_pct_snapshot}% de {formatMonto(l.cobrado_recupero)} · desde {formatDias(l.recupero_umbral_dias)})</span>
+                </span>
+                <span className="font-mono">{formatMonto(l.comision_recupero)}</span>
+              </div>
+            )}
             <div className="flex justify-between border-t border-border pt-1 text-sm font-semibold"><span>Total pagado</span><span className="font-mono text-warning">{formatMonto(l.comision_total)}</span></div>
           </div>
           {l.notas && <p className="text-[11px] text-muted-foreground">Nota: {l.notas}</p>}

@@ -118,6 +118,8 @@ export const PARAMETROS: ParametroIndexado[] = [
   { label: "Exigir haberlo contactado antes de armar un acuerdo", tab: "cobranza", seccion: "Acuerdos de pago" },
   { label: "No refinanciar por debajo de la tasa original", tab: "cobranza", seccion: "Refinanciaciones" },
   { label: "Exigir un acuerdo roto antes de refinanciar", tab: "cobranza", seccion: "Refinanciaciones" },
+  { label: "Plus sobre lo recuperado (%)", tab: "cobranza", seccion: "Plus por recupero" },
+  { label: "Cobrar una refinanciación cuenta como recupero", tab: "cobranza", seccion: "Plus por recupero" },
   { label: "Jurisdicción", tab: "documentos", seccion: "Documentos del crédito" },
   { label: "Pagaré", tab: "documentos", seccion: "Documentos del crédito" },
   { label: "Caducidad de plazos", tab: "documentos", seccion: "Documentos del crédito" },

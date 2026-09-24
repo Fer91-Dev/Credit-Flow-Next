@@ -214,6 +214,7 @@ export function EquipoView() {
     // equipo y cuánto hay que liquidar".
     vendido: equipo.reduce((s, m) => s + (m.resumen?.monto_vendido ?? 0), 0),
     comision: equipo.reduce((s, m) => s + (m.resumen?.comision_total ?? 0), 0),
+    recupero: equipo.reduce((s, m) => s + (m.resumen?.comision_recupero ?? 0), 0),
   }), [equipo]);
 
   /**
@@ -392,11 +393,12 @@ export function EquipoView() {
         m.resumen ? (
           <span
             className="font-semibold text-warning"
-            title={m.resumen.comision_es_acumulada
+            title={(m.resumen.comision_es_acumulada
               ? "Comisión acumulada (el agente no tiene meta vigente)"
-              : `Comisión del período ${m.meta_periodo ?? "vigente"}`}
+              : `Comisión del período ${m.meta_periodo ?? "vigente"}`)
+              + (m.resumen.comision_recupero > 0 ? ` · incluye ${formatMonto(m.resumen.comision_recupero)} de recupero` : "")}
           >
-            {formatMonto(m.resumen.comision_total, 0)}
+            {formatMonto(m.resumen.comision_total)}
             {m.resumen.comision_es_acumulada && (
               <span className="ml-1 font-sans text-[10px] font-normal text-muted-foreground/60">acum.</span>
             )}
@@ -448,7 +450,7 @@ export function EquipoView() {
         <KpiCard
           icon="dollar-banknote"
           label="Otorgado (total)"
-          value={formatMonto(kpis.vendido, 0)}
+          value={formatMonto(kpis.vendido)}
           sub="acumulado del equipo"
           accent="success"
           mono
@@ -456,8 +458,8 @@ export function EquipoView() {
         <KpiCard
           icon="bar-chart"
           label="Comisiones"
-          value={formatMonto(kpis.comision, 0)}
-          sub="a liquidar del período"
+          value={formatMonto(kpis.comision)}
+          sub={kpis.recupero > 0 ? `a liquidar del período · ${formatMonto(kpis.recupero)} de recupero` : "a liquidar del período"}
           accent="warning"
           mono
         />
@@ -759,14 +761,14 @@ function EquipoCards({
                   </div>
                   <div>
                     <p className="text-[10px] uppercase text-muted-foreground">Otorgado</p>
-                    <p className="font-mono text-sm">{formatMonto(m.resumen?.monto_vendido ?? 0, 0)}</p>
+                    <p className="font-mono text-sm">{formatMonto(m.resumen?.monto_vendido ?? 0)}</p>
                   </div>
                   <div>
                     <p className="text-[10px] uppercase text-muted-foreground">
                       {m.resumen?.comision_es_acumulada ? "Comisión acum." : "Comisión"}
                     </p>
                     <p className="font-mono text-sm font-semibold text-warning">
-                      {formatMonto(m.resumen?.comision_total ?? 0, 0)}
+                      {formatMonto(m.resumen?.comision_total ?? 0)}
                     </p>
                   </div>
                 </div>

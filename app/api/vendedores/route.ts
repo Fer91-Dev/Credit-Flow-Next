@@ -4,7 +4,8 @@ import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
 import { registrarAuditoria } from "@/lib/audit";
-import { esRolValido, resumirVendedor, normalizarComisionPct, normalizarMonto, normalizarComisionConfig, errorDePassword } from "@/lib/domain";
+import { esRolValido, resumirVendedor, normalizarComisionPct, normalizarMonto, normalizarComisionConfig, errorDePassword, RECUPERO_VACIO } from "@/lib/domain";
+import { recuperoPorAgente } from "@/lib/comision-recupero";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { esUsernameValido, normalizarUsername } from "@/lib/utils";
 import type { NextRequest } from "next/server";
@@ -63,6 +64,15 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   });
   const conCuenta = new Set(cuentas.map((c) => c.vendedor_id));
 
+  // El plus por recupero de cada agente, del MISMO período que el resto de su comisión.
+  const recuperoPorVendedor = await recuperoPorAgente(
+    tenantId,
+    vendedores.map((v) => {
+      const mv = metaPorVendedor.get(v.id);
+      return { id: v.id, rango: mv ? { desde: mv.fecha_desde, hasta: mv.fecha_hasta } : null };
+    }),
+  );
+
   const enriquecidos = vendedores.map((v) => {
     const mv = metaPorVendedor.get(v.id) ?? null;
     return {
@@ -75,6 +85,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
         v.meta_venta,
         normalizarComisionConfig(v.comision_config, v.comision_pct),
         mv ? { desde: mv.fecha_desde, hasta: mv.fecha_hasta } : null,
+        recuperoPorVendedor.get(v.id) ?? RECUPERO_VACIO,
       ),
     };
   });
