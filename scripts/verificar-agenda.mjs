@@ -41,7 +41,12 @@ const TENANT = lj.data?.tenant_id ?? (await db.profiles.findFirst({ where: { ema
 console.log(`base: ${BASE}`);
 
 // El plazo tiene que ser uno de los habilitados por la financiera, no un número inventado.
-const CFG = (await api("GET", "/api/configuracion")).data ?? {};
+const CFGRes = await api("GET", "/api/configuracion");
+if (!CFGRes.data) {
+  console.error("ABORTADO: no se pudo leer la configuracion del motor:", CFGRes.error ?? ("HTTP " + CFGRes.status));
+  process.exit(1);
+}
+const CFG = CFGRes.data;
 const PLAZOS = (CFG.simulador?.plazos ?? CFG.plazos ?? [3, 6, 12]).map(Number).filter(Boolean).sort((a, b) => a - b);
 const PLAZO = PLAZOS.find((p) => p >= 3) ?? PLAZOS[0] ?? 3;
 

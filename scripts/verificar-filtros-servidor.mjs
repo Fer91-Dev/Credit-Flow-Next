@@ -54,7 +54,12 @@ let restaurar = null;
 try {
   H1("FILTRAR EN EL SERVIDOR");
 
-  const cfg = (await get("/api/configuracion")).data ?? {};
+  const cfgRes = await get("/api/configuracion");
+  if (!cfgRes.data) {
+    console.error("ABORTADO: no se pudo leer la configuracion del motor:", cfgRes.error ?? ("HTTP " + cfgRes.status));
+    process.exit(1);
+  }
+  const cfg = cfgRes.data;
   const tramos = cfg.cobranzaConfig?.tramos_mora ?? { media_hasta: 15, alta_hasta: 30 };
   console.log(`\n  tramos de la financiera: media hasta ${tramos.media_hasta} días · alta hasta ${tramos.alta_hasta}`);
 
@@ -108,16 +113,39 @@ try {
     ok(vacio.length === 0, "algo que no existe devuelve vacio, no todo", `${vacio.length}`);
 
     /* Y que NO devuelva de mas: dos palabras que existen pero en clientes DISTINTOS no
-       pueden traer a ninguno de los dos. */
-    const otro = todos.find((c) => c.cliente?.apellido && c.cliente.apellido !== uno.cliente.apellido);
-    if (otro) {
-      const cruzado = `${uno.cliente.nombre} ${otro.cliente.apellido}`;
-      const porCruzado = await lista(`q=${encodeURIComponent(cruzado)}`);
-      ok(
-        !porCruzado.some((c) => c.id === uno.id || c.id === otro.id),
-        "palabras de dos clientes distintos no traen a ninguno",
-        `"${cruzado}" → ${porCruzado.length}`,
-      );
+       pueden traer a ninguno de los dos.
+
+       🔴 EL CRUCE TIENE QUE SER IMPOSIBLE DE VERDAD. Antes se tomaba el nombre de uno y el
+       apellido de otro con solo pedir que el APELLIDO fuera distinto, dando por sentado que
+       esa combinacion no le corresponde a nadie. Es falso en cuanto dos clientes comparten
+       el nombre: la base tiene decenas sembrados que se llaman todos "Comision Refi …", asi
+       que el cruce armaba el nombre completo de un cliente real y la busqueda —que funciona
+       bien— lo encontraba. Ahora se exige que las dos palabras difieran Y que ningun cliente
+       de la base las tenga juntas; si no hay un par asi, la comprobacion se saltea. */
+    const distintoNombre = todos.find(
+      (c) =>
+        c.cliente?.apellido &&
+        c.cliente.apellido !== uno.cliente.apellido &&
+        c.cliente.nombre !== uno.cliente.nombre,
+    );
+    if (distintoNombre) {
+      const cruzado = `${uno.cliente.nombre} ${distintoNombre.cliente.apellido}`;
+      const a = uno.cliente.nombre.toLowerCase();
+      const b = distintoNombre.cliente.apellido.toLowerCase();
+      const alguienLoTiene = todos.some((c) => {
+        const completo = `${c.cliente?.nombre ?? ""} ${c.cliente?.apellido ?? ""}`.toLowerCase();
+        return completo.includes(a) && completo.includes(b);
+      });
+      if (alguienLoTiene) {
+        console.log(`     (el cruce "${cruzado}" le corresponde a un cliente real: se saltea)`);
+      } else {
+        const porCruzado = await lista(`q=${encodeURIComponent(cruzado)}`);
+        ok(
+          porCruzado.length === 0,
+          "palabras de dos clientes distintos no traen a ninguno",
+          `"${cruzado}" → ${porCruzado.length}`,
+        );
+      }
     }
   }
 

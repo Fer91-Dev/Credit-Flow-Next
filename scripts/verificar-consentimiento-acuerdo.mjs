@@ -54,7 +54,12 @@ if (!admin) { console.error("🔴 falta el admin de QA: scripts/qa-usuario-tempo
 const vendedor = await sesion("qa-vendedor@creditflow.local");
 if (!vendedor) { console.error("🔴 falta el vendedor de QA: scripts/qa-usuario-temporal.mjs crear-vendedor"); process.exit(1); }
 
-const CFG = (await admin("GET", "/api/configuracion")).data ?? {};
+const CFGRes = await admin("GET", "/api/configuracion");
+if (!CFGRes.data) {
+  console.error("ABORTADO: no se pudo leer la configuracion del motor:", CFGRes.error ?? ("HTTP " + CFGRes.status));
+  process.exit(1);
+}
+const CFG = CFGRes.data;
 const TASA = Number(CFG.simulador?.tasaBase ?? 360);
 const TOPE = Number(CFG.simulador?.montoMax ?? 0);
 const PLAZOS = (CFG.simulador?.plazos ?? []).filter((p) => p.activo).map((p) => p.cuotas).sort((a, b) => a - b);

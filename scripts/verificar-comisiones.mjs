@@ -80,7 +80,12 @@ const ficha = await db.vendedores.findFirst({
 if (!ficha) { console.error("falta el vendedor temporal: corré `qa-usuario-temporal.mjs crear-vendedor`"); process.exit(1); }
 const TENANT = ficha.tenant_id;
 
-const CFG = (await api("GET", "/api/configuracion")).data ?? {};
+const CFGRes = await api("GET", "/api/configuracion");
+if (!CFGRes.data) {
+  console.error("ABORTADO: no se pudo leer la configuracion del motor:", CFGRes.error ?? ("HTTP " + CFGRes.status));
+  process.exit(1);
+}
+const CFG = CFGRes.data;
 const TASA = Number(CFG.simulador?.tasaBase ?? 360);
 /*
   Los importes salen del TOPE que tiene puesto la financiera, no de constantes lindas. Con

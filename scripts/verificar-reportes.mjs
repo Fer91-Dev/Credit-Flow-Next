@@ -75,7 +75,12 @@ if (!lj.ok) { console.error("login:", lj.error); process.exit(1); }
 H = { Cookie: login.headers.getSetCookie().map((c) => c.split(";")[0]).join("; ") };
 console.log(`base: ${BASE}`);
 
-const CFG = (await api("GET", "/api/configuracion")).data ?? {};
+const CFGRes = await api("GET", "/api/configuracion");
+if (!CFGRes.data) {
+  console.error("ABORTADO: no se pudo leer la configuracion del motor:", CFGRes.error ?? ("HTTP " + CFGRes.status));
+  process.exit(1);
+}
+const CFG = CFGRes.data;
 const TRAMOS = CFG.cobranzaConfig?.tramos_mora ?? CFG.tramos_mora ?? { media: 15, alta: 30 };
 const HOY = diaAR();
 const VIVOS = ["activo", "vencido"];

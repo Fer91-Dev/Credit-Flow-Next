@@ -122,7 +122,12 @@ const iso = (d) => new Date(d).toISOString().slice(0, 10);
 const hace = (n) => { const d = diaAR(); d.setUTCDate(d.getUTCDate() - n); return iso(d); };
 
 await entrar();
-const CFG = (await api("GET", "/api/configuracion")).data ?? {};
+const CFGRes = await api("GET", "/api/configuracion");
+if (!CFGRes.data) {
+  console.error("ABORTADO: no se pudo leer la configuracion del motor:", CFGRes.error ?? ("HTTP " + CFGRes.status));
+  process.exit(1);
+}
+const CFG = CFGRes.data;
 const TASA = Number(CFG.simulador?.tasaBase ?? 360);
 const GRACIA = Number(CFG.simulador?.diasGracia ?? 0);
 const TASA_MORA = Number(CFG.tasaMoraDiaria ?? 0.005);

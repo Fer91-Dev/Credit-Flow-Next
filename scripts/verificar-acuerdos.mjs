@@ -518,10 +518,33 @@ ok(acE1.estado === "roto", "el sistema lo marcó ROTO con 2 incumplida(s)", acE1
 const ag2 = await enAgenda();
 ok(ag2?.bucket === "acuerdo_roto", "recién roto y sin gestionar, entra al grupo «Acuerdos rotos» el mismo día", ag2 ? `${ag2.bucket} · ${ag2.motivo}` : "no está en la agenda");
 
+/*
+  🔴 ROTO EL ACUERDO, NO SE REARMA SOLO: SE REFINANCIA.
+
+  Esta prueba afirmaba lo contrario —"tras romperse se puede volver a acordar"— y quedó
+  vieja el 23/09/2026, cuando la financiera fijó `max_acuerdos_rotos: 1`: caído el acuerdo,
+  el camino es recalcular toda la deuda en un crédito nuevo, no seguir prometiendo. Una
+  prueba que afirma una regla derogada no cuida nada; peor, la contradice.
+
+  Se verifican las DOS mitades de la regla, porque la excepción es parte de la regla: el
+  pedido común se rechaza, y el administrador puede autorizarlo igual dejando rastro.
+*/
 const reArmar = await api("POST", "/api/cobranza/acuerdos", {
   credito_id: ID_E, cuotas: 2, quita: 0, primer_vencimiento: dentroDe(10),
 });
-ok(reArmar.ok, "tras romperse se puede volver a acordar", reArmar.error ?? "");
+ok(!reArmar.ok, "roto el acuerdo, NO se puede armar otro sin autorizar", reArmar.error ?? "lo dejó pasar");
+ok(
+  (reArmar.error ?? "").toLowerCase().includes("refinanciar"),
+  "y el mensaje dice cuál es el paso siguiente, no solo que no",
+  reArmar.error ?? "",
+);
+const sinAutorizar = await db.acuerdos_pago.count({ where: { credito_id: ID_E, estado: "vigente" } });
+ok(sinAutorizar === 0, "no quedó ninguno vigente por el intento rechazado", `${sinAutorizar} vigente(s)`);
+
+const reArmarAdmin = await api("POST", "/api/cobranza/acuerdos", {
+  credito_id: ID_E, cuotas: 2, quita: 0, primer_vencimiento: dentroDe(10), autorizacion_admin: true,
+});
+ok(reArmarAdmin.ok, "pero el administrador SÍ puede autorizarlo", reArmarAdmin.error ?? "");
 const vivos = await db.acuerdos_pago.count({ where: { credito_id: ID_E, estado: "vigente" } });
 ok(vivos === 1, "y queda UN solo acuerdo vigente", `${vivos} vigente(s)`);
 const agResp = await api("GET", "/api/cobranza/agenda");

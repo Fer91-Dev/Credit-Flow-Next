@@ -84,7 +84,12 @@ if (!lj.ok) { console.error("login:", lj.error); process.exit(1); }
 H = { Cookie: login.headers.getSetCookie().map((c) => c.split(";")[0]).join("; ") };
 
 // ── Parámetros de la financiera ─────────────────────────────────────────────
-const CFG = (await api("GET", "/api/configuracion")).data ?? {};
+const CFGRes = await api("GET", "/api/configuracion");
+if (!CFGRes.data) {
+  console.error("ABORTADO: no se pudo leer la configuracion del motor:", CFGRes.error ?? ("HTTP " + CFGRes.status));
+  process.exit(1);
+}
+const CFG = CFGRes.data;
 const moraCfg = {
   tasaDiaria: Number(CFG.tasaMoraDiaria ?? 0),
   diasGracia: Number(CFG.simulador?.diasGracia ?? 0),

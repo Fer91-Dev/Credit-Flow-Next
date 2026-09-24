@@ -93,7 +93,12 @@ try {
   const r = await get("/api/cobranza/kpis");
   ok(r.ok, "el endpoint responde", r.error ?? "");
   if (r.ok) {
-    const cfg = (await get("/api/configuracion")).data ?? {};
+    const cfgRes = await get("/api/configuracion");
+    if (!cfgRes.data) {
+      console.error("ABORTADO: no se pudo leer la configuracion del motor:", cfgRes.error ?? ("HTTP " + cfgRes.status));
+      process.exit(1);
+    }
+    const cfg = cfgRes.data;
     const tramos = cfg.cobranzaConfig?.tramos_mora ?? { media_hasta: 15, alta_hasta: 30 };
 
     // Cuenta propia, desde la base, sin pasar por el endpoint.

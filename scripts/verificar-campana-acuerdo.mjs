@@ -245,7 +245,23 @@ try {
   const conAcuerdo = new Set(
     (await db.acuerdos_pago.findMany({ where: { estado: "vigente" }, select: { credito_id: true } })).map((a) => a.credito_id),
   );
-  const moroso = lista.find((c) => !conAcuerdo.has(c.id) && (c.vencido ?? 0) > 0 && (c.dias_mora ?? 0) > 0 && (c.estado === "vencido" || c.estado === "activo"));
+  /*
+    🔴 TIENE QUE SER UN MOROSO AL QUE TODAVÍA SE LE PUEDA COBRAR.
+
+    Antes se agarraba cualquiera con atraso, y en una base con casos viejos sembrados caía uno
+    pasado de los 60 días: ahí la financiera ya no reclama el plan, lo invita a refinanciar, y
+    la campaña de mora se rechaza con razón. La prueba leía ese rechazo correcto como una falla
+    del sistema. `cobro_bloqueado` lo dice el servidor en esta misma lista.
+  */
+  const moroso = lista.find(
+    (c) =>
+      !conAcuerdo.has(c.id) &&
+      !c.cobro_bloqueado &&
+      c.estado !== "incobrable" &&
+      (c.vencido ?? 0) > 0 &&
+      (c.dias_mora ?? 0) > 0 &&
+      (c.estado === "vencido" || c.estado === "activo"),
+  );
   if (!moroso) {
     console.log("     (no hay un moroso sin acuerdo en la base: se saltea)");
   } else {
