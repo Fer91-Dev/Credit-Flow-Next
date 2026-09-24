@@ -999,6 +999,25 @@ function RefinanciadosView({ busq, buscado, limpiarBusq, onOpen, onRefinanciar }
                             <RefreshCw className="h-2.5 w-2.5" /> re-refi
                           </span>
                         )}
+                        {/*
+                          🔴 POR QUÉ NO SE PUEDE, EN UN CHIP Y NO EN UNA ORACIÓN.
+
+                          Acá colgaba el motivo entero —"Este crédito tiene un acuerdo de pago
+                          vigente: mientras lo esté cumpliendo no corresponde refinanciarlo"—
+                          repetido renglón por renglón. Fernando lo marcó el 24/09/2026 y eligió
+                          el chip: en una lista lo que hace falta es el estado de un vistazo.
+
+                          No se pierde nada: la oración completa con su sugerencia sigue en el
+                          `title` (y en la pantalla de refinanciar, que es donde se decide).
+                        */}
+                        {bloqueo && (
+                          <span
+                            className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-muted-foreground"
+                            title={`${bloqueo.motivo ?? ""} ${bloqueo.sugerencia ?? ""}`.trim()}
+                          >
+                            {bloqueo.etiqueta ?? "No se puede refinanciar"}
+                          </span>
+                        )}
                       </div>
                       {/*
                         EL CLIENTE, con cara de persona y no de subtítulo gris: inicial en un
@@ -1015,13 +1034,6 @@ function RefinanciadosView({ busq, buscado, limpiarBusq, onOpen, onRefinanciar }
                           <span className="shrink-0 font-mono text-[11px] text-muted-foreground/70">DNI {c.cliente.documento}</span>
                         )}
                       </div>
-                      {/*
-                        El motivo del bloqueo, en la fila. Sin esto el operador aprieta y se
-                        entera al confirmar, con el cliente enfrente y el plan ya armado.
-                      */}
-                      {bloqueo && (
-                        <p className="mt-1.5 text-[11px] leading-snug text-muted-foreground">{bloqueo.motivo}</p>
-                      )}
                     </button>
                     <div className="shrink-0 text-right">
                       <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/70">A consolidar</p>

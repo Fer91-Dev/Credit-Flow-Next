@@ -691,8 +691,10 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
       /** Se puede, pero conviene saber esto antes de apretar. */
       incobrable_advertencia: vered?.advertencia ?? null,
       /** Por qué NO se puede refinanciar (null = se puede). Ver `puedeRefinanciar`. */
+      /* `etiqueta` es el MISMO veredicto en dos palabras, para la fila de una lista:
+         el motivo entero repetido renglon por renglon tapa lo que se fue a mirar. */
       refinanciar_bloqueo: veredRefi && !veredRefi.permitido
-        ? { motivo: veredRefi.motivo ?? "", sugerencia: veredRefi.sugerencia ?? "" } : null,
+        ? { motivo: veredRefi.motivo ?? "", sugerencia: veredRefi.sugerencia ?? "", etiqueta: veredRefi.etiqueta ?? "" } : null,
       /**
        * Por qué NO se puede acordar (null = se puede). `clave` dice QUÉ regla bloquea: con
        * `sin_gestion`, el propio operador la levanta dejando constancia, así que la pantalla

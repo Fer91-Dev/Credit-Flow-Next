@@ -457,6 +457,19 @@ export interface VeredictoEscalera {
    */
   clave?: "sin_gestion" | "acuerdo_vigente";
   motivo?: string;
+  /**
+   * El mismo veredicto en DOS O TRES PALABRAS, para una fila de lista.
+   *
+   * 🔴 Por qué existe además de `motivo`: son dos lugares con necesidades distintas y una
+   * sola verdad. En la pantalla de refinanciar, el operador está decidiendo sobre ESE crédito
+   * y la oración entera con su sugerencia es lo que corresponde. En una lista de candidatos,
+   * esa misma oración se repite renglón por renglón y empuja hacia abajo lo que se fue a
+   * mirar; ahí lo que hace falta es el estado de un vistazo (Fernando, 24/09/2026).
+   *
+   * No es un segundo criterio: sale del MISMO veredicto, al lado del motivo, así no pueden
+   * separarse. Si mañana cambia la regla, cambian los dos juntos o no compila.
+   */
+  etiqueta?: string;
   /** Qué corresponde hacer antes, para que el mensaje no sea solo una negativa. */
   sugerencia?: string;
   /**
@@ -734,6 +747,7 @@ export function puedeRefinanciar(s: SenalesRecupero, cfg: RecuperoConfig): Vered
     return {
       permitido: false,
       motivo: `Todavía no se puede refinanciar: lleva ${s.diasMora} día${s.diasMora === 1 ? "" : "s"} de atraso y la financiera pide al menos ${cfg.dias_min_mora_refinanciar}.`,
+      etiqueta: `Desde ${cfg.dias_min_mora_refinanciar} días de mora`,
       sugerencia: "Mientras tanto, ofrecele un acuerdo de pago sobre lo vencido.",
     };
   }
@@ -753,6 +767,7 @@ export function puedeRefinanciar(s: SenalesRecupero, cfg: RecuperoConfig): Vered
         cfg.max_refinanciaciones_encadenadas === 1
           ? "Este crédito ya es una refinanciación, y la financiera admite una sola: no se puede volver a refinanciar la misma deuda."
           : `Esta deuda ya se refinanció ${encadenadas} ${encadenadas === 1 ? "vez" : "veces"} y la financiera admite ${cfg.max_refinanciaciones_encadenadas}.`,
+      etiqueta: "Refinanciaciones agotadas",
       sugerencia: "Armale un acuerdo de pago sobre lo vencido, o pasalo a legales.",
     };
   }
@@ -777,6 +792,7 @@ export function puedeRefinanciar(s: SenalesRecupero, cfg: RecuperoConfig): Vered
     return {
       permitido: false,
       motivo: "Este crédito tiene un acuerdo de pago vigente: mientras lo esté cumpliendo no corresponde refinanciarlo.",
+      etiqueta: "En acuerdo vigente",
       sugerencia: "Cobrale la cuota pactada. Si rompe el acuerdo, la refinanciación se habilita sola.",
     };
   }
@@ -784,6 +800,7 @@ export function puedeRefinanciar(s: SenalesRecupero, cfg: RecuperoConfig): Vered
     return {
       permitido: false,
       motivo: "La financiera pide agotar el acuerdo de pago antes de refinanciar.",
+      etiqueta: "Falta el acuerdo de pago",
       sugerencia: "Armale un acuerdo sobre lo vencido; si lo rompe, ahí sí se refinancia.",
     };
   }
