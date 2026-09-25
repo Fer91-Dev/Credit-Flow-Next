@@ -45,10 +45,21 @@ const TIPOS_CAMPANA = ["mora", "vencimiento", "refinanciacion", "recupero"];
 
 /** Métricas agregadas de una campaña a partir de sus objetivos. */
 function metricasDe(
-  objetivos: { promesa_generada: boolean; monto_recuperado: number; credito?: { estado: string } | null }[],
+  objetivos: {
+    promesa_generada: boolean; monto_recuperado: number; credito?: { estado: string } | null;
+    vencido?: number | null; saldo?: number; envio_estado?: string | null;
+  }[],
 ) {
   return {
     alcance: objetivos.length,
+    /**
+     * La DEUDA que la campaña salió a buscar: lo vencido de cada objetivo al armarla (lo que
+     * reclama), o su saldo si es un recordatorio sin nada vencido. Es la base contra la que se
+     * lee lo recuperado — "recuperamos $400.000" no dice nada sin saber de cuánto.
+     */
+    deuda: objetivos.reduce((s, o) => s + (o.vencido ?? o.saldo ?? 0), 0),
+    /** Cuántos mensajes salieron de verdad (el resto está pendiente de envío). */
+    enviados: objetivos.filter((o) => o.envio_estado === "enviado").length,
     promesas: objetivos.filter((o) => o.promesa_generada).length,
     recuperado: objetivos.reduce((s, o) => s + o.monto_recuperado, 0),
     /**
@@ -79,7 +90,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
 
   const campanas = await prisma.campanas_cobranza.findMany({
     where: { ...withTenant(tenantId), ...scopeCreditosVendedor(ctx) },
-    include: { objetivos: { select: { promesa_generada: true, monto_recuperado: true, credito: { select: { estado: true } } } } },
+    include: { objetivos: { select: { promesa_generada: true, monto_recuperado: true, vencido: true, saldo: true, envio_estado: true, credito: { select: { estado: true } } } } },
     orderBy: { created_at: "desc" },
   });
 
@@ -677,6 +688,9 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
         ...withTenant(tenantId),
         // Dueño de la campaña: el vendedor que la crea (admin → null = toda la financiera).
         vendedor_id: ctx.role === "vendedor" ? ctx.vendedorId : null,
+        // Quién la arma, congelado (migración 018): el dueño de la cartera no es el autor.
+        creado_por: ctx.userId,
+        creado_por_nombre: ctx.nombre || ctx.email || null,
         nombre: body.nombre.trim(),
         descripcion: body.descripcion?.trim() || null,
         canal,

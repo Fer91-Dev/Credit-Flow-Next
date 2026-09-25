@@ -1168,6 +1168,10 @@ export interface CampanaMetricas {
   alcance: number;
   promesas: number;
   recuperado: number;
+  /** Deuda que la campaña salió a buscar (lo vencido de cada objetivo al armarla). */
+  deuda?: number;
+  /** Mensajes efectivamente enviados. */
+  enviados?: number;
   /**
    * Objetivos que terminaron REFINANCIADOS. Es el resultado de una campaña de invitación a
    * refinanciar, donde `recuperado` siempre da $0: el cliente no paga el crédito viejo —a ese
@@ -1192,6 +1196,8 @@ export interface CampanaCobranza {
   promo_valor: number;
   promo_vence: string | null;
   mensaje_template: string | null;
+  /** Quién la armó (migración 018). Null solo en campañas viejas sin rastro en la auditoría. */
+  creado_por_nombre?: string | null;
   metricas: CampanaMetricas;
 }
 

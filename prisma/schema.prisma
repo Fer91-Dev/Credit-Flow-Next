@@ -648,6 +648,11 @@ model campanas_cobranza {
    */
   plantilla_meta   String?
 
+  /// QUIÉN la armó, congelado al crearla (migración 018). El `vendedor_id` es el DUEÑO de la
+  /// cartera que trabaja, no el autor. Va en la campaña y no se lee de la auditoría porque la
+  /// auditoría se purga a los dos años, y quién ofreció una quita tiene que quedar siempre.
+  creado_por        String? @db.Uuid
+  creado_por_nombre String?
   objetivos campana_objetivo[]
 
   @@index([tenant_id, created_at])

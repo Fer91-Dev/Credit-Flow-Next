@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState, type ComponentType } from "react";
 import { useSWRConfig } from "swr";
@@ -9,8 +9,9 @@ import {
 import { WhatsAppIcon } from "@/components/ui/WhatsAppIcon";
 import { useCampanas, useCampana, useConfiguracion, KEYS, type CampanaCobranza, type CampanaObjetivo, type CanalCampana, type EstadoCampana, useTramosMora } from "@/lib/swr";
 import { construirMensajeCampana, linkWhatsapp, TEMPLATE_DEFAULT, severidadMora, promoVigenteAl } from "@/lib/domain";
-import { formatFecha, nombreCompleto, eventoPropio, teclaDelContenedor, formatDias, hoyComercial } from "@/lib/utils";
+import { formatFecha, formatMonto, nombreCompleto, eventoPropio, teclaDelContenedor, formatDias, hoyComercial, diasHastaAR } from "@/lib/utils";
 import { StatusBadge } from "@/components/ui/StatusBadge";
+import { KpiCard } from "@/components/ui/KpiCard";
 import { DataTable } from "@/components/ui/DataTable";
 import { SummaryStrip } from "@/components/ui/SummaryStrip";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -18,9 +19,6 @@ import { useConfirm } from "@/components/ui/confirm";
 import { useToast } from "@/components/ui/toast";
 import { Nota } from "@/components/ui/Nota";
 
-function n0(x: number) {
-  return new Intl.NumberFormat("es-AR", { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(x);
-}
 const fmtDate = (s?: string | null) => formatFecha(s);
 
 const ESTADO_META: Record<EstadoCampana, { label: string; variant: "muted" | "success" | "primary" }> = {
@@ -35,13 +33,23 @@ const CANAL_ICON: Record<CanalCampana, ComponentType<{ className?: string }>> = 
 export function CampanasView({ onArmar }: { onArmar?: () => void } = {}) {
   const { campanas, isLoading } = useCampanas();
   const [abierta, setAbierta] = useState<string | null>(null);
+  /*
+    Los KPI de estado SON el filtro (regla del SaaS: un KPI que es un subconjunto de la lista
+    se toca y filtra). Sin filtro se ven todas, y nada se atenúa.
+  */
+  const [filtro, setFiltro] = useState<EstadoCampana | null>(null);
 
   if (abierta) return <CampanaDetalle id={abierta} onBack={() => setAbierta(null)} />;
 
   if (isLoading) {
     return (
-      <div className="space-y-3">
-        {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-24 rounded-xl" />)}
+      <div className="space-y-4">
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-24 rounded-2xl" />)}
+        </div>
+        <div className="grid gap-3 lg:grid-cols-2">
+          {[...Array(2)].map((_, i) => <Skeleton key={i} className="h-44 rounded-xl" />)}
+        </div>
       </div>
     );
   }
@@ -69,23 +77,75 @@ export function CampanasView({ onArmar }: { onArmar?: () => void } = {}) {
     );
   }
 
+  // Los KPI cuentan SIEMPRE sobre el total, nunca sobre lo filtrado.
+  const cuenta = (e: EstadoCampana) => campanas.filter((c) => c.estado === e).length;
+  const recuperadoTotal = campanas.reduce((s, c) => s + (c.tipo === "refinanciacion" ? 0 : c.metricas.recuperado), 0);
+  const deudaTotal = campanas.reduce((s, c) => s + (c.tipo === "refinanciacion" ? 0 : c.metricas.deuda ?? 0), 0);
+  const visibles = filtro ? campanas.filter((c) => c.estado === filtro) : campanas;
+  const alternar = (e: EstadoCampana) => setFiltro((f) => (f === e ? null : e));
+
   return (
-    <div className="space-y-3">
-      {/* La acción también arriba: con campañas ya creadas, el botón de Morosos queda a dos
-          pestañas de distancia y no hay ninguna pista de que exista. */}
-      {onArmar && (
-        <div className="flex justify-end">
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <KpiCard
+          icon="megaphone" label="Activas" value={String(cuenta("activa"))} accent="success"
+          sub="salieron o están saliendo"
+          onClick={cuenta("activa") > 0 ? () => alternar("activa") : undefined} active={filtro === "activa"}
+        />
+        <KpiCard
+          icon="pencil" label="En borrador" value={String(cuenta("borrador"))}
+          sub="armadas, sin activar"
+          onClick={cuenta("borrador") > 0 ? () => alternar("borrador") : undefined} active={filtro === "borrador"}
+        />
+        <KpiCard
+          icon="check-mark-button" label="Finalizadas" value={String(cuenta("finalizada"))} accent="primary"
+          sub="cerradas"
+          onClick={cuenta("finalizada") > 0 ? () => alternar("finalizada") : undefined} active={filtro === "finalizada"}
+        />
+        <KpiCard
+          icon="money-bag" label="Recuperado" value={formatMonto(recuperadoTotal)} accent="warning" mono
+          sub={deudaTotal > 0 ? `de ${formatMonto(deudaTotal)} reclamados` : "entre todas las campañas"}
+          barra={deudaTotal > 0 ? { pct: Math.min(100, (recuperadoTotal / deudaTotal) * 100), label: `${Math.round((recuperadoTotal / deudaTotal) * 100)}%` } : undefined}
+        />
+      </div>
+
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs text-muted-foreground">
+          {filtro ? `${visibles.length} de ${campanas.length} campañas` : `${campanas.length} campaña${campanas.length === 1 ? "" : "s"}`}
+        </p>
+        {/* La acción también arriba: con campañas ya creadas, el botón de Morosos queda a dos
+            pestañas de distancia y no hay ninguna pista de que exista. */}
+        {onArmar && (
           <button
             onClick={onArmar}
             className="flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/10 px-3.5 py-2 text-sm font-medium text-primary transition-colors hover:bg-primary/20"
           >
             <Megaphone className="h-4 w-4" /> Nueva campaña
           </button>
-        </div>
-      )}
-      {campanas.map((c) => <CampanaCard key={c.id} campana={c} onOpen={() => setAbierta(c.id)} />)}
+        )}
+      </div>
+
+      <div className="grid gap-3 lg:grid-cols-2">
+        {visibles.map((c) => <CampanaCard key={c.id} campana={c} onOpen={() => setAbierta(c.id)} />)}
+      </div>
     </div>
   );
+}
+
+const TIPO_LABEL: Record<NonNullable<CampanaCobranza["tipo"]>, string> = {
+  mora: "Reclamo de mora",
+  vencimiento: "Recordatorio de vencimiento",
+  refinanciacion: "Invitación a refinanciar",
+};
+
+/** "vence en 5 días" / "vence hoy" / "venció el 20/09/2026" — la oferta dice hasta cuándo. */
+function vigenciaOferta(vence: string | null): { texto: string; vigente: boolean } {
+  if (!vence) return { texto: "sin fecha de corte", vigente: true };
+  const dias = diasHastaAR(vence);
+  if (dias == null) return { texto: `vence el ${fmtDate(vence)}`, vigente: true };
+  if (dias < 0) return { texto: `venció el ${fmtDate(vence)}`, vigente: false };
+  if (dias === 0) return { texto: "vence hoy", vigente: true };
+  return { texto: `vence en ${formatDias(dias)} (${fmtDate(vence)})`, vigente: true };
 }
 
 function CampanaCard({ campana: c, onOpen }: { campana: CampanaCobranza; onOpen: () => void }) {
@@ -124,21 +184,34 @@ function CampanaCard({ campana: c, onOpen }: { campana: CampanaCobranza; onOpen:
     }
   };
 
+  const m = c.metricas;
+  const esRefi = c.tipo === "refinanciacion";
+  const deuda = m.deuda ?? 0;
+  const pctRecuperado = deuda > 0 ? Math.min(100, (m.recuperado / deuda) * 100) : 0;
+  const oferta = c.promo_tipo === "quita_interes" ? vigenciaOferta(c.promo_vence) : null;
+
   return (
     <div
       role="button"
       tabIndex={0}
       onClick={(e) => { if (eventoPropio(e)) onOpen(); }}
       onKeyDown={(e) => { if (teclaDelContenedor(e) && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); onOpen(); } }}
-      className="w-full cursor-pointer text-left rounded-xl bg-card border border-border p-4 hover:bg-muted/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+      className="group relative flex cursor-pointer flex-col gap-3 rounded-xl border border-border bg-card p-4 text-left transition-all duration-150 hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
     >
+      {/* Encabezado: canal, nombre, estado, borrar */}
       <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <Canal className="h-4 w-4 text-muted-foreground shrink-0" />
-            <p className="font-medium text-foreground truncate">{c.nombre}</p>
+        <div className="flex min-w-0 items-start gap-2.5">
+          <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 ring-1 ring-inset ring-primary/20">
+            <Canal className="h-4 w-4 text-primary" />
+          </span>
+          <div className="min-w-0">
+            <p className="truncate font-semibold text-foreground">{c.nombre}</p>
+            {/* Quién la armó y cuándo: una quita ofrecida tiene que tener nombre y fecha. */}
+            <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
+              {c.creado_por_nombre ? <>Creada por <span className="font-medium text-foreground/80">{c.creado_por_nombre}</span></> : "Autor no registrado"}
+              {" · "}{fmtDate(c.created_at)}
+            </p>
           </div>
-          {c.descripcion && <p className="text-xs text-muted-foreground mt-0.5 truncate">{c.descripcion}</p>}
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <StatusBadge label={est.label} variant={est.variant} />
@@ -154,35 +227,62 @@ function CampanaCard({ campana: c, onOpen }: { campana: CampanaCobranza; onOpen:
           </button>
         </div>
       </div>
-      <div className="flex items-center gap-5 mt-3 text-xs">
-        <span className="flex items-center gap-1.5 text-muted-foreground"><Users className="h-3.5 w-3.5" /> {c.metricas.alcance}</span>
-        <span className="flex items-center gap-1.5 text-muted-foreground"><HandCoins className="h-3.5 w-3.5" /> {c.metricas.promesas} promesas</span>
+
+      {/* Qué reclama y qué ofrece, con la vigencia de la oferta */}
+      <div className="flex flex-wrap items-center gap-1.5">
+        <StatusBadge label={TIPO_LABEL[c.tipo ?? "mora"]} variant={esRefi ? "warning" : "muted"} />
+        {oferta && (
+          <StatusBadge
+            label={`−${c.promo_valor}% punitorios · ${oferta.texto}`}
+            variant={oferta.vigente ? "success" : "muted"}
+          />
+        )}
+      </div>
+
+      {/* Los números: a cuántos, cuántos mensajes salieron, promesas, resultado */}
+      <div className="grid grid-cols-4 gap-2 rounded-lg bg-muted/20 p-2.5">
+        <div>
+          <p className="flex items-center gap-1 text-[10px] uppercase tracking-wide text-muted-foreground"><Users className="h-3 w-3" /> Créditos</p>
+          <p className="mt-0.5 font-mono text-sm font-bold text-foreground tabular-nums">{m.alcance}</p>
+        </div>
+        <div>
+          <p className="flex items-center gap-1 text-[10px] uppercase tracking-wide text-muted-foreground"><Send className="h-3 w-3" /> Enviados</p>
+          <p className="mt-0.5 font-mono text-sm font-bold text-foreground tabular-nums">{m.enviados ?? 0}<span className="text-muted-foreground/60">/{m.alcance}</span></p>
+        </div>
+        <div>
+          <p className="flex items-center gap-1 text-[10px] uppercase tracking-wide text-muted-foreground"><HandCoins className="h-3 w-3" /> Promesas</p>
+          <p className="mt-0.5 font-mono text-sm font-bold text-foreground tabular-nums">{m.promesas}</p>
+        </div>
         {/*
           🔴 En una campaña de REFINANCIACIÓN lo recuperado siempre da $0 y no significa nada:
           el cliente no paga el crédito viejo —a ese ya no se le cobra—, refinancia y paga el
-          NUEVO, que es otro crédito y no es objetivo de esta campaña. Mostrar ese cero al lado
-          de las promesas la haría leer como un fracaso. Atribuir la refinanciación a la
-          campaña que la provocó está pendiente.
+          NUEVO. Su resultado es cuántos terminaron reestructurados.
         */}
-        {c.tipo !== "refinanciacion" && (
-          <span className="flex items-center gap-1.5 font-mono text-success"><TrendingUp className="h-3.5 w-3.5" /> ${n0(c.metricas.recuperado)}</span>
-        )}
-        {/* El resultado de una campaña de refinanciación: cuántos terminaron reestructurados.
-            Se deriva del estado del crédito, así que aparece solo si de verdad pasó. */}
-        {(c.metricas.refinanciados ?? 0) > 0 && (
-          <span className="flex items-center gap-1.5 text-warning">
-            <RefreshCcw className="h-3.5 w-3.5" /> {c.metricas.refinanciados} refinanciado{c.metricas.refinanciados === 1 ? "" : "s"}
-          </span>
-        )}
-        {c.tipo === "refinanciacion" && (
-          <span className="flex items-center gap-1 text-[11px] text-warning ml-auto">
-            <RefreshCcw className="h-3 w-3" /> invitación a refinanciar
-          </span>
-        )}
-        {c.promo_tipo === "quita_interes" && (
-          <span className="flex items-center gap-1 text-[11px] text-success ml-auto"><Sparkles className="h-3 w-3" /> −{c.promo_valor}% mora</span>
+        {esRefi ? (
+          <div>
+            <p className="flex items-center gap-1 text-[10px] uppercase tracking-wide text-muted-foreground"><RefreshCcw className="h-3 w-3" /> Refinanc.</p>
+            <p className="mt-0.5 font-mono text-sm font-bold text-warning tabular-nums">{m.refinanciados ?? 0}</p>
+          </div>
+        ) : (
+          <div>
+            <p className="flex items-center gap-1 text-[10px] uppercase tracking-wide text-muted-foreground"><TrendingUp className="h-3 w-3" /> Recuperado</p>
+            <p className="mt-0.5 truncate font-mono text-sm font-bold text-success tabular-nums">{formatMonto(m.recuperado)}</p>
+          </div>
         )}
       </div>
+
+      {/* Recuperado sobre lo que salió a buscar */}
+      {!esRefi && deuda > 0 && (
+        <div>
+          <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+            <span>de {formatMonto(deuda)} reclamados</span>
+            <span className="font-mono font-semibold text-foreground tabular-nums">{Math.round(pctRecuperado)}%</span>
+          </div>
+          <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-muted/50">
+            <div className="h-full rounded-full bg-success transition-all duration-500" style={{ width: `${pctRecuperado}%` }} />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -331,7 +431,15 @@ function CampanaDetalle({ id, onBack }: { id: string; onBack: () => void }) {
 
       <div>
         <h2 className="text-lg font-semibold text-foreground">{campana.nombre}</h2>
-        {campana.descripcion && <p className="text-sm text-muted-foreground">{campana.descripcion}</p>}
+        {/* Quién la armó y cuándo (pedido de Fernando, 25/09/2026): una quita ofrecida a un grupo
+            de clientes tiene que tener nombre y fecha a la vista, no solo en la auditoría. */}
+        <p className="mt-0.5 text-xs text-muted-foreground">
+          {campana.creado_por_nombre
+            ? <>Creada por <span className="font-medium text-foreground">{campana.creado_por_nombre}</span></>
+            : "Autor no registrado"}
+          {" · "}{fmtDate(campana.created_at)}
+        </p>
+        {campana.descripcion && <p className="mt-1 text-sm text-muted-foreground">{campana.descripcion}</p>}
       </div>
 
       {/*
@@ -378,7 +486,7 @@ function CampanaDetalle({ id, onBack }: { id: string; onBack: () => void }) {
         items={[
           { label: "Alcance", value: String(campana.metricas.alcance), icon: Users, accent: "primary" },
           { label: "Promesas generadas", value: String(campana.metricas.promesas), icon: HandCoins, accent: "warning" },
-          { label: "Monto recuperado", value: `$${n0(campana.metricas.recuperado)}`, icon: TrendingUp, accent: "success", mono: true },
+          { label: "Monto recuperado", value: `${formatMonto(campana.metricas.recuperado)}`, icon: TrendingUp, accent: "success", mono: true },
         ]}
       />
 
@@ -400,10 +508,10 @@ function CampanaDetalle({ id, onBack }: { id: string; onBack: () => void }) {
             ),
           },
           { header: "Mora", align: "center", cell: (o) => <span className={`font-mono text-sm font-bold ${severidadMora(o.dias_mora, tramos) === "critica" ? "text-destructive" : "text-warning"}`}>{formatDias(o.dias_mora)}</span> },
-          { header: "Oferta", align: "right", mono: true, cell: (o) => <span className="font-bold text-foreground">${n0(o.oferta_monto)}</span> },
+          { header: "Oferta", align: "right", mono: true, cell: (o) => <span className="font-bold text-foreground">{formatMonto(o.oferta_monto)}</span> },
           {
             header: <span className="text-success">Ahorro</span>, align: "right", mono: true,
-            cell: (o) => o.oferta_descuento > 0 ? <span className="text-success">−${n0(o.oferta_descuento)}</span> : <span className="text-muted-foreground/20">—</span>,
+            cell: (o) => o.oferta_descuento > 0 ? <span className="text-success">−{formatMonto(o.oferta_descuento)}</span> : <span className="text-muted-foreground/20">—</span>,
           },
           {
             header: "Promesa", align: "center",
@@ -435,7 +543,7 @@ function CampanaDetalle({ id, onBack }: { id: string; onBack: () => void }) {
             </div>
             <div className="flex items-center justify-between text-xs">
               <span className="text-muted-foreground">Oferta</span>
-              <span className="font-mono font-bold text-foreground">${n0(o.oferta_monto)}{o.oferta_descuento > 0 && <span className="text-success font-normal"> (−${n0(o.oferta_descuento)})</span>}</span>
+              <span className="font-mono font-bold text-foreground">{formatMonto(o.oferta_monto)}{o.oferta_descuento > 0 && <span className="text-success font-normal"> (−{formatMonto(o.oferta_descuento)})</span>}</span>
             </div>
             <div className="flex gap-2 pt-1">
               <button onClick={() => togglePromesa(o)}
