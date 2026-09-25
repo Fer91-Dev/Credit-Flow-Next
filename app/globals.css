@@ -341,9 +341,22 @@ summary:focus-visible,
 }
 .animate-latido-vivo { animation: latido-vivo 2s ease-out infinite; }
 
+/* Filas del plan de pagos: entran en cascada cada vez que el plan se recalcula (la fila se
+   vuelve a montar porque su `key` lleva el importe). La demora la pone cada fila en línea. */
+@keyframes fila-plan {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.animate-fila-plan { animation: fila-plan 0.38s cubic-bezier(0.22, 1, 0.36, 1) both; }
+
+/* Brillo del número que se paga: una luz del color de marca alrededor de la cifra, no un
+   subrayado. Es la columna que el cliente mira primero. */
+.brillo-cuota { text-shadow: 0 0 14px color-mix(in oklab, var(--primary) 55%, transparent); }
+
 @media (prefers-reduced-motion: reduce) {
   .animate-heartbeat, .animate-pulse-ring,
-  .animate-brillo-barra, .animate-entrada, .animate-latido-vivo { animation: none; }
+  .animate-brillo-barra, .animate-entrada, .animate-latido-vivo, .animate-fila-plan { animation: none; }
+  .animate-fila-plan { opacity: 1; transform: none; }
   /* Sin la entrada animada la tarjeta tiene que quedar VISIBLE, no en su estado inicial. */
   .animate-entrada { opacity: 1; transform: none; }
 }

@@ -50,9 +50,26 @@ import {
  * (la parte pura, sin cargos). Se resalta con fondo y peso, no con un color de texto nuevo:
  * indigo ya significa "capital" y ámbar "interés" en esta misma tabla.
  */
-const COL_PAGA_TH = "px-2.5 py-2.5 text-right text-[11px] font-bold uppercase tracking-wider text-primary bg-primary/10 border-b border-border border-l border-primary/25";
-const COL_PAGA_TD = "px-2.5 py-2.5 text-right font-mono font-bold text-[14px] text-foreground bg-primary/[0.07] border-l border-primary/25 tabular-nums";
-const COL_PAGA_TF = "px-2.5 py-3.5 text-right font-bold font-mono text-sm text-foreground bg-primary/[0.15] border-l border-primary/25 tabular-nums";
+/**
+ * Un destello que cruza el encabezado de la columna que se paga cada pocos segundos. Es la ÚNICA
+ * luz animada de la pantalla: dos cosas latiendo a la vez no llaman la atención, la reparten.
+ * Se apaga sola con "reducir movimiento" (`animate-brillo-barra` está en esa regla).
+ */
+function LuzEncabezado() {
+  return (
+    <span
+      aria-hidden
+      className="pointer-events-none absolute inset-y-0 left-0 w-1/3 bg-gradient-to-r from-transparent via-white/25 to-transparent animate-brillo-barra"
+    />
+  );
+}
+
+/* La columna que SE PAGA (la cuota, o "A pagar" si hay cargos) es la que el cliente mira
+   primero: franja del color de marca arriba, fondo en degradé, bordes a los dos lados y la
+   cifra con un brillo leve (`brillo-cuota`, globals.css). */
+const COL_PAGA_TH = "relative overflow-hidden px-3 py-2.5 text-right text-[11px] font-bold uppercase tracking-wider text-primary bg-gradient-to-b from-primary/30 to-primary/10 border-b border-border border-x border-x-primary/30 shadow-[inset_0_2px_0_0_var(--primary)]";
+const COL_PAGA_TD = "px-3 py-2.5 text-right font-mono font-bold text-[15px] text-foreground bg-primary/[0.1] border-x border-primary/30 tabular-nums brillo-cuota";
+const COL_PAGA_TF = "px-3 py-3.5 text-right font-bold font-mono text-sm text-foreground bg-primary/[0.2] border-x border-primary/30 tabular-nums brillo-cuota";
 
 const CUENTA_DESEMBOLSO_LABEL: Record<CuentaCaja, string> = {
   efectivo: "Efectivo",
@@ -1535,22 +1552,28 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
             <div className={`h-full overflow-auto transition-opacity duration-200 ${calculando ? "opacity-50" : "opacity-100"}`}>
             {vista === "operador" ? (
               /* ── Vista operador: desglose completo ── */
-              /* El canal lateral sale de una regla sola: la primera y la última celda toman
+              <div className="relative isolate">
+              {/* Halo de luz detrás de la tabla: le da profundidad sin competir con los números. */}
+              <div aria-hidden className="pointer-events-none absolute left-1/2 top-0 -z-10 h-72 w-[42rem] max-w-full -translate-x-1/2 -translate-y-1/3 rounded-full bg-primary/15 blur-3xl" />
+              {/* El canal lateral sale de una regla sola: la primera y la última celda toman
                  el mismo `px-4` que el encabezado del panel, así la tabla queda alineada con
                  "Plan de pagos" y con el botón Imprimir. Va sobre la tabla y no celda por
-                 celda porque las columnas de cargos aparecen y desaparecen según la config. */
-              /* 🔴 EL ANCHO SIGUE A LAS COLUMNAS (pedido de Fernando, 25/09/2026). Con `w-full`
+                 celda porque las columnas de cargos aparecen y desaparecen según la config. */}
+              {/* 🔴 EL ANCHO SIGUE A LAS COLUMNAS (pedido de Fernando, 25/09/2026). Con `w-full`
                  siempre, sin cargos las 6 columnas ocupaban 504 px de contenido estiradas a 832:
                  más de 300 px de huecos entre números que se leen juntos. Sin cargos la tabla se
                  topa en 48rem; con cargos usa todo el ancho con celdas más angostas, y `min-w-max`
                  impide que se aplasten (si igual no entran —pantalla chica— el panel scrollea de
-                 costado en vez de montar un número sobre otro). */
-              <table className={`${hayCargoCols ? "w-full min-w-max [&_th]:px-2 [&_td]:px-2" : "w-full max-w-[48rem]"} text-xs border-separate border-spacing-0 [&_th:first-child]:pl-4 [&_td:first-child]:pl-4 [&_th:last-child]:pr-4 [&_td:last-child]:pr-4`}>
+                 costado en vez de montar un número sobre otro). */}
+              <table className={`relative z-10 ${hayCargoCols ? "w-full min-w-max [&_th]:px-2 [&_td]:px-2" : "mx-auto w-full max-w-[48rem]"} text-xs border-separate border-spacing-0 [&_th:first-child]:pl-4 [&_td:first-child]:pl-4 [&_th:last-child]:pr-4 [&_td:last-child]:pr-4`}>
                 <thead className="sticky top-0 z-10 bg-muted">
                   <tr>
                     <th className="px-2.5 py-2.5 text-left text-[11px] font-bold uppercase tracking-wider text-muted-foreground border-b border-border w-9">#</th>
                     <th className="px-2.5 py-2.5 text-left text-[11px] font-bold uppercase tracking-wider text-muted-foreground border-b border-border">{hayCargoCols ? "Vence" : "Vencimiento"}</th>
-                    <th className={hayCargoCols ? "px-2.5 py-2.5 text-right text-[11px] font-bold uppercase tracking-wider text-muted-foreground border-b border-border" : COL_PAGA_TH}>Cuota</th>
+                    <th className={hayCargoCols ? "px-2.5 py-2.5 text-right text-[11px] font-bold uppercase tracking-wider text-muted-foreground border-b border-border" : COL_PAGA_TH}>
+                      {!hayCargoCols && <LuzEncabezado />}
+                      Cuota
+                    </th>
                     <th className="px-2.5 py-2.5 text-right text-[11px] font-bold uppercase tracking-wider text-warning border-b border-border">Interés</th>
                     <th className="px-2.5 py-2.5 text-right text-[11px] font-bold uppercase tracking-wider text-primary border-b border-border">Capital</th>
                     {cargoCols.map(col => (
@@ -1568,13 +1591,17 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
                       </th>
                     ))}
                     {/* Mismo nombre que en la vista cliente: es literalmente el mismo número. */}
-                    {hayCargoCols && <th className={COL_PAGA_TH}>A pagar</th>}
+                    {hayCargoCols && <th className={COL_PAGA_TH}><LuzEncabezado />A pagar</th>}
                     <th className="px-2.5 py-2.5 text-right text-[11px] font-bold uppercase tracking-wider text-muted-foreground border-b border-border">Saldo</th>
                   </tr>
                 </thead>
                 <tbody>
                   {plan.cuotas.map((row, idx) => (
-                    <tr key={row.nro} className={`hover:bg-muted/20 transition-colors ${idx % 2 === 1 ? "bg-muted/5" : ""}`}>
+                    <tr
+                      key={`${row.nro}-${row.cuotaTotal}-${row.saldo}`}
+                      style={{ animationDelay: `${Math.min(idx, 24) * 35}ms` }}
+                      className={`animate-fila-plan hover:bg-muted/20 transition-colors ${idx % 2 === 1 ? "bg-muted/5" : ""}`}
+                    >
                       <td className="px-2.5 py-2.5 text-muted-foreground/50 font-mono tabular-nums">{row.nro}</td>
                       <td className="px-2.5 py-2.5 text-muted-foreground tabular-nums">{fmtDate(row.fecha)}</td>
                       <td className={hayCargoCols ? "px-2.5 py-2.5 text-right font-mono text-foreground tabular-nums" : COL_PAGA_TD}>${n2(row.cuota)}</td>
@@ -1620,6 +1647,7 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
                   )}
                 </tfoot>
               </table>
+              </div>
             ) : (
               /* ── Vista cliente: solo cuotas a cubrir ── */
               <PlanCliente
