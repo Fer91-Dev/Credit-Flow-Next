@@ -18,8 +18,14 @@ const nextConfig: NextConfig = {
   async headers() {
     return [{ source: "/:path*", headers: SECURITY_HEADERS }];
   },
-  typescript: { ignoreBuildErrors: true },
-  eslint: { ignoreDuringBuilds: true },
+  // 🔴 El build ES un control (auditoría 25/09/2026): antes ignoraba errores de tipos y de lint,
+  // así que Vercel publicaba código roto sin avisar. `tsc` y `lint` están en cero: que sigan así.
+  typescript: { ignoreBuildErrors: false },
+  eslint: { ignoreDuringBuilds: false },
+  // No se usa `next/image`: el optimizador queda apagado (tuvo un RCE con AVIF, CVE de 2026).
+  images: { unoptimized: true },
+  // Sin `X-Powered-By: Next.js`: no se le cuenta a nadie con qué está hecho.
+  poweredByHeader: false,
   reactStrictMode: false,
   devIndicators: {
     position: "bottom-right",

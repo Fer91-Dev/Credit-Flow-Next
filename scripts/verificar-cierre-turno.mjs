@@ -217,6 +217,12 @@ try {
   ok(cli.ok, "cliente de laboratorio", cli.error ?? "");
   const cliId = cli.data?.cliente?.id ?? cli.data?.id; if (cliId) creados.clientes.push(cliId);
   const hace = new Date(diaAR()); hace.setUTCDate(hace.getUTCDate() - 40);
+  /* El desembolso sale de BANCO, y el control de fondos (el mismo que frena a Silvio) lo
+     rechaza si esa cuenta está en $0,00 — que es como queda después de un reset. Antes pasaba
+     solo porque la demo había cargado plata en banco. Se aporta lo justo, con la glosa del
+     sello, y la limpieza de abajo lo borra junto con todo lo demás. */
+  const fondoBanco = await admin("POST", "/api/caja", { concepto: "aporte_capital", monto: 50_000, cuenta: "banco", descripcion: `Verificador ${sello}: banco para el crédito de laboratorio` });
+  ok(fondoBanco.ok, "fondos en banco para el crédito de laboratorio", fondoBanco.error ?? "");
   const cr = await admin("POST", "/api/creditos", { cliente_id: cliId, tipo_credito: "personal", monto_original: 50_000, tasa: 360, plazo_meses: 3, frecuencia: "mensual", cuenta_desembolso: "banco", fecha_inicio: iso(hace) });
   ok(cr.ok, "crédito de laboratorio con fecha atrasada (desembolso por banco)", cr.error ?? "");
   const crId = cr.data?.credito?.id ?? cr.data?.id;

@@ -258,25 +258,29 @@ export function PerfilForm({
     setSavingPass(true);
     setSavedPass(false);
     try {
-      // 1) Re-autenticación con la contraseña actual.
-      const reauthError = await verificarPassword(currentPass);
-      if (reauthError) { setErrorPass(reauthError); toast.error(reauthError); return; }
-
-      // 2) Cambio de contraseña. La sesión actual sigue válida tras el cambio.
-      const { error } = await supabase.auth.updateUser({ password: newPass });
-      if (error) {
-        const msg = traducirError(error.message);
+      /* Todo pasa por el SERVIDOR (auditoría 25/09/2026, H-A3): ahí se verifica la clave actual
+         y se aplica la política. Antes las dos cosas se hacían acá, en el navegador, y con una
+         sesión robada alcanzaba con saltearlas. La sesión actual sigue abierta; las otras se cierran. */
+      const res = await fetch("/api/perfil/password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ actual: currentPass, nueva: newPass }),
+      });
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json?.ok) {
+        const msg = json?.error ?? "No se pudo cambiar la contraseña";
         setErrorPass(msg);
         toast.error(msg);
         return;
       }
 
+      /* Cambiar la clave cierra TODAS las sesiones, incluida esta (lo hace Supabase: cualquiera
+         que tuviera la cuenta abierta queda afuera en el acto). Se avisa y se va al login, en vez
+         de dejar que la persona se encuentre expulsada en el próximo clic sin saber por qué. */
       setSavedPass(true);
-      toast.success("Contraseña actualizada");
-      setCurrentPass("");
-      setNewPass("");
-      setConfirmPass("");
-      setTimeout(() => setSavedPass(false), 3000);
+      toast.success("Contraseña actualizada. Iniciá sesión con la nueva.");
+      await supabase.auth.signOut({ scope: "local" }).catch(() => {});
+      setTimeout(() => { router.push("/auth"); router.refresh(); }, 1500);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "No se pudo cambiar la contraseña";
       setErrorPass(msg);

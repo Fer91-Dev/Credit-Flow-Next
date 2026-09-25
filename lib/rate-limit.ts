@@ -38,6 +38,17 @@ export function rateLimit(key: string, max: number, windowMs: number): { ok: boo
   return { ok: true, retryAfter: 0 };
 }
 
+/**
+ * ¿`key` ya pasó `max` golpes en su ventana? Mira SIN sumar: sirve para contar solo los
+ * FALLOS (se consulta antes de intentar y se suma con `rateLimit` cuando el intento falla).
+ */
+export function excedido(key: string, max: number): { excedido: boolean; retryAfter: number } {
+  const b = store.get(key);
+  const now = Date.now();
+  if (!b || now > b.resetAt) return { excedido: false, retryAfter: 0 };
+  return { excedido: b.count >= max, retryAfter: Math.max(1, Math.ceil((b.resetAt - now) / 1000)) };
+}
+
 /** IP del cliente a partir de los headers de proxy (best-effort). */
 export function clientIp(req: Request): string {
   const xff = req.headers.get("x-forwarded-for");

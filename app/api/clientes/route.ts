@@ -88,6 +88,22 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   const [clientesRows, total] = await Promise.all([
     prisma.clientes.findMany({
       where,
+      /*
+        🔴 LA LISTA NO MANDA LA FICHA ENTERA (auditoría 25/09/2026, H-M3 · Ley 25.326 art. 4).
+        Viajaban ingresos, CUIT, fecha de nacimiento, empleador y el historial migrado de cada
+        cliente de la página —hasta mil— para una tabla que muestra nombre, documento y
+        contacto. Ninguna de las tres pantallas que la usan (Clientes, Pagos, el formulario de
+        crédito) lee estos campos: la ficha y la edición traen los suyos por `/api/clientes/[id]`.
+        Si una pantalla nueva los necesita, que los pida al detalle, no que los vuelva a sumar acá.
+      */
+      omit: {
+        historial_migrado: true, fecha_nacimiento: true, estado_civil: true, nacionalidad: true,
+        cuit_cuil: true, ingreso_mensual: true, otros_ingresos: true, ingreso_ediciones: true,
+        situacion_laboral: true, ocupacion: true, empleador: true, antiguedad_laboral_meses: true,
+        telefono_laboral: true, direccion_laboral: true, consentimiento_bureau: true,
+        codigo_postal: true, piso: true, depto: true, latitud: true, longitud: true,
+        geo_estado: true, geocodificado_en: true,
+      },
       /* Por NOMBRE y después apellido, que es como la pantalla arma y muestra el nombre
          completo (`nombreCompleto` = "Nombre Apellido"). Si acá se ordenara por apellido, el
          recorte que llega sería el principio del abecedario de apellidos y la pantalla lo

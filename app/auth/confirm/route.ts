@@ -4,6 +4,8 @@ import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
 import { registrarAuditoria } from "@/lib/audit";
 import type { NextRequest } from "next/server";
+import { cookies } from "next/headers";
+import { COOKIE_RECUPERACION, firmarRecuperacion, opcionesCookieRecuperacion } from "@/lib/recuperacion-sesion";
 
 export const runtime = "nodejs";
 
@@ -29,6 +31,11 @@ export async function GET(request: NextRequest) {
       ok = true;
       // Auditoría: dejar traza de que se usó un enlace de recuperación para esta cuenta.
       const userId = data.user?.id;
+      /* La prueba de que ESTE link se validó recién: es lo único que deja cambiar la clave sin
+         conocer la actual (ver lib/recuperacion-sesion.ts). Solo para el tipo recuperación. */
+      if (userId && type === "recovery") {
+        (await cookies()).set(COOKIE_RECUPERACION, firmarRecuperacion(userId), opcionesCookieRecuperacion);
+      }
       if (userId) {
         const prof = await prisma.profiles.findUnique({ where: { id: userId }, select: { tenant_id: true, email: true } });
         if (prof?.tenant_id) {

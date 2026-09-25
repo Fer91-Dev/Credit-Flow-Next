@@ -30,8 +30,26 @@ const SEP = ";";
  * en español los lee como número, con la coma decimal incluida.
  */
 function celda(v: string | number | null | undefined): string {
-  const s = String(v ?? "");
+  const s = neutralizarFormula(String(v ?? ""));
   return new RegExp(`["${SEP}\\r\\n]`).test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+/** Un número como lo escribe es-AR o JS: "-2.000.000,00", "1500", "-3,5", "12.5". */
+const ES_NUMERO = /^-?[\d.]+(,\d+)?$/;
+
+/**
+ * 🔴 INYECCIÓN DE FÓRMULAS (auditoría 25/09/2026, H-M7).
+ *
+ * Excel ejecuta como fórmula cualquier celda que empiece con `=`, `+`, `-` o `@`. Un cliente
+ * cargado como `=HYPERLINK("http://…";"ver")` —o cualquier texto libre: una glosa de caja, una
+ * nota— se ejecutaba en la computadora del admin el día que abría la exportación. Se le antepone
+ * un apóstrofo, que Excel muestra como texto y no imprime.
+ *
+ * Los NÚMEROS no se tocan: un importe negativo empieza con `-` y tiene que seguir siendo número.
+ */
+export function neutralizarFormula(s: string): string {
+  if (!/^[=+\-@\t\r]/.test(s) || ES_NUMERO.test(s)) return s;
+  return "'" + s;
 }
 
 /**

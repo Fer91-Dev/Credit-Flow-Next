@@ -393,6 +393,12 @@ export function resolverSimulador(
 }
 
 /**
+ * Techo de cuotas cuando no hay planes para la frecuencia y el plazo se escribe a mano. Es el
+ * mismo `max` que tiene ese campo en `CreditoForm`: diez años de cuotas diarias.
+ */
+export const PLAZO_MAXIMO_CUOTAS = 3650;
+
+/**
  * Valida que los parámetros de un otorgamiento respeten lo configurado por el tenant.
  * Defensa en profundidad: el simulador ya acota en la UI, pero la API es la barrera real
  * (un cliente/script podría mandar tasa 0, un plazo deshabilitado o una frecuencia inválida).
@@ -422,8 +428,21 @@ export function validarParametrosOtorgamiento(
     if (!habilitado) {
       return `El plazo de ${p.plazoMeses} cuotas no está habilitado en la configuración.`;
     }
-  } else if (p.plazoMeses < 1) {
-    return `El plazo debe ser de al menos 1 cuota.`;
+  } else {
+    /*
+      🔴 FRECUENCIAS NO MENSUALES (auditoría 25/09/2026, H-M2). Solo se exigía `>= 1`: por la API,
+      un usuario podía otorgar un crédito semanal de 50.000 cuotas — un plazo que ningún plan
+      ofrece y decenas de miles de filas de un golpe. Ahora rige la MISMA regla que la pantalla
+      (`CreditoForm`): si hay planes para esta frecuencia, el plazo es uno de ellos; si no hay
+      ninguno, se escribe a mano con el mismo techo que tiene ese campo.
+    */
+    const planes = sim.plazos.filter((pl) => pl.activo && (!pl.frecuencia || pl.frecuencia === p.frecuencia));
+    if (planes.length > 0 && !planes.some((pl) => pl.cuotas === p.plazoMeses)) {
+      return `El plazo de ${p.plazoMeses} cuotas no está habilitado para la frecuencia "${frec.label}".`;
+    }
+    if (p.plazoMeses < 1 || p.plazoMeses > PLAZO_MAXIMO_CUOTAS) {
+      return `El plazo tiene que estar entre 1 y ${PLAZO_MAXIMO_CUOTAS} cuotas.`;
+    }
   }
   // Tasa dentro del rango configurado (0 = sin límite en cada extremo).
   if (sim.tasaMin > 0 && p.tasa < sim.tasaMin) {

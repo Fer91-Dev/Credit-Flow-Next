@@ -23,11 +23,18 @@ const OK_ENVIADO = {
  * Base URL de CONFIANZA para el link del email. NO se usa el header `Origin` (lo controla el
  * cliente: un atacante podría pedir el recovery con `Origin: https://evil.com` y hacer que el
  * correo de la víctima lleve un token VÁLIDO hacia su dominio → robo de cuenta). Se prefiere el
- * env configurado; si no, el origin real del servidor (Host), no un header arbitrario.
+ * env configurado.
+ *
+ * 🔴 Y TAMPOCO EL `Host` (auditoría 25/09/2026, H-A2). El respaldo era `req.nextUrl.origin`,
+ * que sale del encabezado `Host` — y ese también lo escribe quien hace el pedido. Es el mismo
+ * ataque que el de `Origin`, por otra puerta. Vercel lo neutraliza porque solo entrega pedidos
+ * con sus dominios; detrás de un nginx no. En producción la URL es la configurada o ninguna:
+ * sin ella el mail no sale (y queda en el log), que es mejor que mandarlo con un link ajeno.
  */
-function getBaseUrl(req: NextRequest): string {
+function getBaseUrl(req: NextRequest): string | null {
   const configured = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/+$/, "");
-  return configured || req.nextUrl.origin;
+  if (configured) return configured;
+  return process.env.NODE_ENV === "production" ? null : req.nextUrl.origin;
 }
 
 /** Escapa texto para interpolar seguro en el HTML del email (evita inyección/XSS en el correo). */
@@ -61,7 +68,7 @@ function emailHtml(username: string | null, nombre: string | null, link: string)
  * Recuperación de acceso por email: manda UN correo con el nombre de usuario + un link
  * para crear una contraseña nueva. El link se genera con la Admin API de Supabase
  * (`generateLink type=recovery`) y el correo lo envía la app por Gmail (nodemailer).
- * Siempre responde genérico (no revela si el email existe).
+ * Si el email no existe LO DICE, por decisión de producto (ver la nota de OK_ENVIADO).
  *
  * Body: { email }
  */
@@ -101,13 +108,16 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     const admin = createAdminClient();
     const { data, error } = await admin.auth.admin.generateLink({ type: "recovery", email });
     const tokenHash = data?.properties?.hashed_token;
+    const base = getBaseUrl(req);
     if (error || !tokenHash) {
       console.error("[recuperar] generateLink:", error?.message);
+    } else if (!base) {
+      console.error("[recuperar] falta NEXT_PUBLIC_APP_URL en producción: no se manda el link");
     } else {
       // Link a NUESTRO endpoint de confirmación (valida el token con verifyOtp server-side).
       // Evita la ambigüedad hash/PKCE del redirect nativo de Supabase y no depende de la
       // allowlist de Redirect URLs.
-      const link = `${getBaseUrl(req)}/auth/confirm?token_hash=${tokenHash}&type=recovery`;
+      const link = `${base}/auth/confirm?token_hash=${tokenHash}&type=recovery`;
       const asunto = "Recuperá tu acceso a CreditFlow";
       const html = emailHtml(prof.username, prof.full_name, link);
 

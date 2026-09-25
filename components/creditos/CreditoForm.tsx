@@ -27,6 +27,7 @@ import {
   resolverFrecuencia,
   cargoColumnasActivas,
   planesParaFrecuencia,
+  PLAZO_MAXIMO_CUOTAS,
   planId,
   etiquetaPlan,
   tasaDesdeCoeficiente,
@@ -1100,7 +1101,7 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
                   <Input
                     name="plazo_meses" type="number" placeholder="—"
                     value={formData.plazo_meses} onChange={set("plazo_meses")}
-                    min="1" max="3650" required
+                    min="1" max={PLAZO_MAXIMO_CUOTAS} required
                     className="text-center font-mono tabular-nums px-1"
                   />
                 )}

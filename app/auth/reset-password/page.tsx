@@ -41,8 +41,16 @@ export default function ResetPasswordPage() {
     if (password.length < 8) { setError("La contraseña debe tener al menos 8 caracteres"); return; }
     if (password !== confirm) { setError("Las contraseñas no coinciden"); return; }
     setEstado("guardando");
-    const { error: updErr } = await supabase.auth.updateUser({ password });
-    if (updErr) { setError(updErr.message); setEstado("listo"); return; }
+    /* Por el SERVIDOR (auditoría 25/09/2026, H-A3): ahí se aplica la política de contraseñas y
+       se exige la marca que dejó /auth/confirm al validar el link. Sin esa marca, una sesión
+       cualquiera no puede cambiar la clave sin conocer la actual. */
+    const res = await fetch("/api/perfil/password", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ nueva: password }),
+    });
+    const json = await res.json().catch(() => null);
+    if (!res.ok || !json?.ok) { setError(json?.error ?? "No se pudo cambiar la contraseña"); setEstado("listo"); return; }
     // Seguridad: al cambiar la clave cerramos la sesión (scope global: también las otras
     // sesiones/dispositivos). Así el usuario vuelve a entrar con la clave nueva (confirma que la
     // recuerda) y se expulsa a cualquier atacante que tuviera una sesión abierta.
