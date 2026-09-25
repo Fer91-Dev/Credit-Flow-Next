@@ -9,6 +9,7 @@ import {
   costoFondeo,
   type CreditoLedger,
   ingresoFinanciero,
+  comisionesDeCaja,
 } from "@/lib/domain";
 import { getConfiguracion, getRentabilidadConfig } from "@/lib/config";
 import { inicioDiaAR, finDiaAR, mesAR, mesDeFecha, hoyComercial } from "@/lib/utils";
@@ -29,6 +30,10 @@ interface PuntoMensual {
   ingreso_financiero: number;
   costo_fondeo: number;
   gastos: number;
+  /** Comisión de otorgamiento cobrada (neta de devoluciones). Suma a la rentabilidad. */
+  comisiones_cobradas: number;
+  /** Comisiones liquidadas a los agentes (netas de anulaciones). Resta. */
+  comisiones_pagadas: number;
   rentabilidad_neta: number;
   cartera_capital_fin: number;
   mora_creditos: number;
@@ -70,7 +75,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   let buckets = bucketsMensuales(desde, hasta);
   if (buckets.length > MAX_MESES) buckets = buckets.slice(-MAX_MESES); // acota a los últimos N meses
 
-  const [creditos, pagos, config, cfgRent, gastosMov] = await Promise.all([
+  const [creditos, pagos, config, cfgRent, gastosMov, comisionesMov] = await Promise.all([
     prisma.creditos.findMany({
       where: { ...withTenant(tenantId) },
       select: {
@@ -114,6 +119,11 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
       where: { ...withTenant(tenantId), tipo: "gasto", cuenta: { not: "dolares" }, fecha: { gte: desde, lte: hasta } },
       select: { fecha: true, monto: true },
     }),
+    // Comisiones de caja por mes, con la MISMA regla que la rentabilidad del rango.
+    prisma.movimientos_caja.findMany({
+      where: { ...withTenant(tenantId), tipo: { in: ["comision_otorgamiento", "comision", "devolucion"] }, fecha: { gte: desde, lte: hasta } },
+      select: { fecha: true, tipo: true, monto: true, pago_id: true, descripcion: true },
+    }),
   ]);
 
   const graciaDefault = config.simulador.diasGracia ?? 0;
@@ -156,6 +166,8 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   }
   const gastosPorMes = new Map<string, number>();
   for (const g of gastosMov) { const k = mesKey(g.fecha); gastosPorMes.set(k, (gastosPorMes.get(k) ?? 0) + Math.abs(g.monto)); }
+  const comisionesPorMes = new Map<string, typeof comisionesMov>();
+  for (const m of comisionesMov) { const k = mesKey(m.fecha); comisionesPorMes.set(k, [...(comisionesPorMes.get(k) ?? []), m]); }
   const cobradoPorMes = new Map<string, { total: number; capital: number; interes: number; mora: number; cargos: number; excedente: number }>();
   for (const p of pagos) {
     const k = mesKey(p.fecha);
@@ -230,6 +242,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
      */
     const costo = costoFondeo(cartera.cartera_capital + cartera.cartera_castigada, cfgRent, b.dias, 1);
     const gastos = round2(gastosPorMes.get(b.key) ?? 0);
+    const com = comisionesDeCaja(comisionesPorMes.get(b.key) ?? []);
     return {
       mes: b.key,
       otorgado_cantidad: ot.cantidad,
@@ -243,7 +256,9 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
       ingreso_financiero,
       costo_fondeo: costo,
       gastos,
-      rentabilidad_neta: round2(ingreso_financiero - costo - gastos),
+      comisiones_cobradas: com.cobradas,
+      comisiones_pagadas: com.pagadas,
+      rentabilidad_neta: round2(ingreso_financiero + com.cobradas - costo - gastos - com.pagadas),
       cartera_capital_fin: cartera.cartera_capital,
       mora_creditos: cartera.mora_creditos,
       mora_saldo_expuesto: cartera.mora_saldo_expuesto,
@@ -272,6 +287,8 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     ingreso_financiero: round2(serie.reduce((s, p) => s + p.ingreso_financiero, 0)),
     costo_fondeo: round2(serie.reduce((s, p) => s + p.costo_fondeo, 0)),
     gastos: round2(serie.reduce((s, p) => s + p.gastos, 0)),
+    comisiones_cobradas: round2(serie.reduce((s, p) => s + p.comisiones_cobradas, 0)),
+    comisiones_pagadas: round2(serie.reduce((s, p) => s + p.comisiones_pagadas, 0)),
     rentabilidad_neta: round2(serie.reduce((s, p) => s + p.rentabilidad_neta, 0)),
     cartera_capital_fin: ult?.cartera_capital_fin ?? 0,
     mora_saldo_expuesto: ult?.mora_saldo_expuesto ?? 0,

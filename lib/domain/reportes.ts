@@ -76,6 +76,43 @@ export function ingresoFinanciero(pagos: PagoImputado[]): number {
   return round2(pagos.reduce((s, p) => s + p.aplicado_interes + p.aplicado_mora + p.aplicado_cargos + (p.excedente ?? 0), 0));
 }
 
+/** Un movimiento de caja, con lo justo para ubicarlo en el resultado. */
+export interface MovimientoResultado {
+  tipo: string;
+  monto: number;
+  pago_id?: string | null;
+  descripcion?: string | null;
+}
+
+/** Así empieza la glosa de la devolución de una comisión al anular un crédito. */
+export const GLOSA_DEVOLUCION_COMISION = "Devolución comisión de otorgamiento";
+
+/**
+ * Las dos comisiones que pasan por la CAJA y no por los pagos, y que la rentabilidad no veía:
+ *
+ *  - COBRADAS: la comisión de otorgamiento que paga el cliente al firmar (`comision_otorgamiento`).
+ *    Entraba a la caja y no aparecía como ganancia. Se le resta la que se devolvió al anular
+ *    el crédito: es la devolución SIN cobro atado (las de cobros llevan `pago_id`) y con la
+ *    glosa que escribe la anulación.
+ *  - PAGADAS: lo que se les liquidó a los agentes (`comision`, egreso), neto de liquidaciones
+ *    anuladas (que vuelven como ingreso del mismo tipo). Es un costo como la nafta, y no se
+ *    restaba — con el plus por recupero, además, crece justo cuando más se cobra.
+ *
+ * Van en TODAS las cuentas, incluida dólares: los dos números se calculan en pesos (una
+ * comisión es un % de un monto en pesos), así que la cuenta por la que salieron no cambia
+ * cuánto valen. Criterio de CAJA, como el resto del reporte: cuentan el día que se movieron.
+ */
+export function comisionesDeCaja(movs: MovimientoResultado[]): { cobradas: number; pagadas: number } {
+  let cobradas = 0;
+  let pagadas = 0;
+  for (const m of movs) {
+    if (m.tipo === "comision_otorgamiento") cobradas += m.monto;
+    else if (m.tipo === "devolucion" && !m.pago_id && (m.descripcion ?? "").startsWith(GLOSA_DEVOLUCION_COMISION)) cobradas += m.monto;
+    else if (m.tipo === "comision") pagadas -= m.monto;
+  }
+  return { cobradas: round2(cobradas), pagadas: round2(pagadas) };
+}
+
 // ─── Buckets mensuales ──────────────────────────────────────────────────────
 
 export interface BucketMes {

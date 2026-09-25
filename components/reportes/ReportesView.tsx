@@ -156,7 +156,7 @@ function imprimirReporte(
     ["Monto otorgado", $(r.operaciones.monto_otorgado)],
     ["Ticket promedio", $(r.operaciones.ticket_promedio)],
     ["Cobrado", $(r.cobranzas.total_cobrado)],
-    ["Ingreso financiero", $(r.rentabilidad.ingreso_financiero)],
+    ["Ingreso financiero", $(r.rentabilidad.ingreso_total)],
     [r.rentabilidad.habilitado ? "Rentabilidad neta" : "Rentab. (bruta)", $(r.rentabilidad.rentabilidad_neta)],
     ["Cartera activa", $(r.cartera.saldo_activo_total)],
     ["Morosidad", n1(moraPct) + "%"],
@@ -404,7 +404,7 @@ function TabResumen({ r }: { r: Reporte }) {
         <KpiCard icon="handshake" label="Operaciones" value={String(r.operaciones.cantidad)} accent="primary" sub={`ticket $${n2(r.operaciones.ticket_promedio)}`} />
         <KpiCard icon="dollar-banknote" label="Monto otorgado" value={`$${n2(r.operaciones.monto_otorgado)}`} accent="primary" mono />
         <KpiCard icon="chart-increasing" label="Cobrado" value={`$${n2(r.cobranzas.total_cobrado)}`} accent="success" mono sub={`${r.cobranzas.cantidad} pago${r.cobranzas.cantidad !== 1 ? "s" : ""}`} />
-        <KpiCard icon="money-bag" label="Ingreso financiero" value={`$${n2(r.rentabilidad.ingreso_financiero)}`} accent="warning" mono sub="interés + cargos + mora" />
+        <KpiCard icon="money-bag" label="Ingreso financiero" value={`$${n2(r.rentabilidad.ingreso_total)}`} accent="warning" mono sub={r.rentabilidad.comisiones_cobradas !== 0 ? `incluye $${n2(r.rentabilidad.comisiones_cobradas)} de comisión de otorgamiento` : "interés + cargos + mora"} />
         <KpiCard icon="bar-chart" label={r.rentabilidad.habilitado ? "Rentabilidad neta" : "Rentab. (bruta)"} value={`$${n2(r.rentabilidad.rentabilidad_neta)}`} accent={r.rentabilidad.rentabilidad_neta >= 0 ? "success" : "destructive"} mono sub={r.rentabilidad.habilitado ? `${n1(r.rentabilidad.margen_neto_pct)}% margen` : "sin costo de fondeo"} />
         <KpiCard icon="chart-increasing" label="Cartera activa" value={`$${n2(r.cartera.saldo_activo_total)}`} accent="primary" mono />
         <KpiCard icon="warning" label="Saldo en mora" value={`$${n2(r.morosidad.saldo_expuesto)}`} accent={r.morosidad.en_mora > 0 ? "destructive" : "muted"} mono sub={`${r.morosidad.en_mora} en mora`} />
@@ -468,7 +468,7 @@ function TabOperaciones({ r, s }: { r: Reporte; s?: ReporteSerie }) {
 
 function TabRentabilidad({ r, s }: { r: Reporte; s?: ReporteSerie }) {
   const rent = r.rentabilidad;
-  const stack = (s?.serie ?? []).map((p) => ({ label: mesCorto(p.mes), a: p.rentabilidad_neta > 0 ? p.rentabilidad_neta : 0, b: round2(p.costo_fondeo + p.gastos), hint: `Ingreso $${n2(p.ingreso_financiero)} · Fondeo $${n2(p.costo_fondeo)} · Gastos $${n2(p.gastos)}` }));
+  const stack = (s?.serie ?? []).map((p) => ({ label: mesCorto(p.mes), a: p.rentabilidad_neta > 0 ? p.rentabilidad_neta : 0, b: round2(p.costo_fondeo + p.gastos + p.comisiones_pagadas), hint: `Ingreso $${n2(p.ingreso_financiero + p.comisiones_cobradas)} · Fondeo $${n2(p.costo_fondeo)} · Gastos $${n2(p.gastos)} · Comisiones $${n2(p.comisiones_pagadas)}` }));
   const neta: Punto[] = (s?.serie ?? []).map((p) => ({ label: mesCorto(p.mes), value: p.rentabilidad_neta, hint: `$${n2(p.rentabilidad_neta)}` }));
   return (
     <div className="space-y-5">
@@ -479,19 +479,21 @@ function TabRentabilidad({ r, s }: { r: Reporte; s?: ReporteSerie }) {
         </div>
       )}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
-        <KpiCard icon="money-bag" label="Ingreso financiero" value={`$${n2(rent.ingreso_financiero)}`} accent="success" mono sub="interés + cargos + mora" />
+        <KpiCard icon="money-bag" label="Ingreso financiero" value={`$${n2(rent.ingreso_total)}`} accent="success" mono
+          sub={rent.comisiones_cobradas !== 0 ? `$${n2(rent.ingreso_financiero)} cobrado + $${n2(rent.comisiones_cobradas)} comisión de otorgamiento` : "interés + cargos + mora"} />
         <KpiCard icon="dollar-banknote" label="Costo de fondeo" value={`$${n2(rent.costo_total)}`} accent="destructive" mono sub={rent.habilitado ? "capital + fuera de caja" : "sin configurar"} />
-        <KpiCard icon="receipt" label="Gastos registrados" value={`$${n2(rent.gastos_registrados)}`} accent={rent.gastos_registrados > 0 ? "warning" : "muted"} mono sub="los de la caja, del período" />
-        <KpiCard icon="bar-chart" label="Rentabilidad neta" value={`$${n2(rent.rentabilidad_neta)}`} accent={rent.rentabilidad_neta >= 0 ? "success" : "destructive"} mono sub="ingreso − fondeo − gastos" />
+        <KpiCard icon="receipt" label="Gastos y comisiones" value={`$${n2(rent.gastos_registrados + rent.comisiones_pagadas)}`} accent={rent.gastos_registrados + rent.comisiones_pagadas > 0 ? "warning" : "muted"} mono
+          sub={rent.comisiones_pagadas !== 0 ? `$${n2(rent.gastos_registrados)} gastos + $${n2(rent.comisiones_pagadas)} comisiones pagadas` : "los de la caja, del período"} />
+        <KpiCard icon="bar-chart" label="Rentabilidad neta" value={`$${n2(rent.rentabilidad_neta)}`} accent={rent.rentabilidad_neta >= 0 ? "success" : "destructive"} mono sub="ingreso − fondeo − gastos − comisiones" />
         <KpiCard
-          icon="chart-increasing" label="Margen neto" value={`${n1(rent.margen_neto_pct)}%`} mono sub="sobre ingreso financiero"
+          icon="chart-increasing" label="Margen neto" value={`${n1(rent.margen_neto_pct)}%`} mono sub="sobre el ingreso total"
           accent={rent.margen_neto_pct >= 0 ? "primary" : "destructive"}
           barra={{ pct: rent.margen_neto_pct }}
         />
       </div>
       <Section title="Rentabilidad neta por mes" icon="chart-increasing">
         <BarChart data={neta} accent="success" format={(v) => `$${n2(v)}`} />
-        <Nota compacta className="mt-2">Ingreso financiero cobrado menos costo de fondeo y gastos registrados del mes. En rojo, los meses en negativo.</Nota>
+        <Nota compacta className="mt-2">Ingreso cobrado (cuotas + comisión de otorgamiento) menos fondeo, gastos y comisiones pagadas del mes. En rojo, los meses en negativo.</Nota>
       </Section>
       {rent.habilitado && (
         <Section title="Rentabilidad neta vs costo de fondeo" icon="bar-chart">

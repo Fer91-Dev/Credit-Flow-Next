@@ -4,7 +4,7 @@ import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { congelamientoPorCredito } from "@/lib/acuerdos";
 import { nombreCompleto, hoyComercial, inicioDiaAR, finDiaAR } from "@/lib/utils";
-import { round2, costoFondeo, ingresoFinanciero, resumenOperaciones, esOperacionColocada, diasMoraActual, esCreditoVivo, moraDelCredito, moraDesdeCronograma, moraPendienteTotal, severidadMora, baseMoraDeCuota, pendienteSinMoraDeCuota } from "@/lib/domain";
+import { round2, costoFondeo, ingresoFinanciero, comisionesDeCaja, resumenOperaciones, esOperacionColocada, diasMoraActual, esCreditoVivo, moraDelCredito, moraDesdeCronograma, moraPendienteTotal, severidadMora, baseMoraDeCuota, pendienteSinMoraDeCuota } from "@/lib/domain";
 import { getConfiguracion, getRentabilidadConfig, getCobranzaConfig } from "@/lib/config";
 import type { NextRequest } from "next/server";
 
@@ -42,7 +42,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   const desdeTs = inicioDiaAR(desdeStr);
   const hastaTs = finDiaAR(hastaStr);
 
-  const [pagos, creditos, config, cfgRent, cobranzaCfg, gastosMov] = await Promise.all([
+  const [pagos, creditos, config, cfgRent, cobranzaCfg, gastosMov, comisionesMov] = await Promise.all([
     prisma.pagos.findMany({
       where: { ...withTenant(tenantId), fecha: { gte: desde, lte: hasta }, anulado: false },
       include: { credito: { select: { cliente: { select: { nombre: true, apellido: true } } } } },
@@ -82,6 +82,12 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
       where: { ...withTenant(tenantId), tipo: "gasto", fecha: { gte: desde, lte: hasta } },
       select: { id: true, fecha: true, monto: true, cuenta: true, descripcion: true, serie: true, numero: true, vendedor: { select: { nombre: true } } },
       orderBy: { fecha: "desc" },
+    }),
+    // Las comisiones que pasan por la caja y no por los pagos: la de otorgamiento (y su
+    // devolución al anular) y las liquidadas a los agentes. Ver `comisionesDeCaja`.
+    prisma.movimientos_caja.findMany({
+      where: { ...withTenant(tenantId), tipo: { in: ["comision_otorgamiento", "comision", "devolucion"] }, fecha: { gte: desde, lte: hasta } },
+      select: { tipo: true, monto: true, pago_id: true, descripcion: true },
     }),  ]);
   // Dónde corta cada tramo de mora, según lo definió la financiera.
   const tramos = cobranzaCfg.tramos_mora;
@@ -327,16 +333,22 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
 
   // La rentabilidad neta resta TAMBIÉN los gastos reales del período: la ganancia no puede
   // ignorar la nafta. "Otros costos mensuales" queda para lo que NO pasa por la caja.
-  const rentabilidad_neta = round2(ingreso_financiero - costo_total - gastos_total);
+  // Y las comisiones de caja: la de otorgamiento es ganancia, la de los agentes es costo.
+  const comisiones = comisionesDeCaja(comisionesMov);
+  const ingreso_total = round2(ingreso_financiero + comisiones.cobradas);
+  const rentabilidad_neta = round2(ingreso_total - costo_total - gastos_total - comisiones.pagadas);
   const rentabilidad = {
     habilitado: cfgRent.habilitado,
     ingreso_financiero,
+    comisiones_cobradas: comisiones.cobradas,
+    comisiones_pagadas: comisiones.pagadas,
+    ingreso_total,
     costo_fondeo: costo_fondeo_capital,
     otros_costos,
     costo_total,
     gastos_registrados: gastos_total,
     rentabilidad_neta,
-    margen_neto_pct: ingreso_financiero > 0 ? round2((rentabilidad_neta / ingreso_financiero) * 100) : 0,
+    margen_neto_pct: ingreso_total > 0 ? round2((rentabilidad_neta / ingreso_total) * 100) : 0,
   };
 
   // ── Detalle de pagos (para exportar) ────────────────────────────────────

@@ -870,7 +870,14 @@ export interface Reporte {
   operaciones_por_tipo: { tipo: string; cantidad: number; monto: number }[];
   rentabilidad: {
     habilitado: boolean;
+    /** Lo cobrado en cuotas: interés + cargos + mora (+ interés de acuerdo aparte). */
     ingreso_financiero: number;
+    /** Comisión de otorgamiento cobrada al firmar, neta de devoluciones. */
+    comisiones_cobradas: number;
+    /** Comisiones liquidadas a los agentes, netas de anulaciones. Ya restadas en la neta. */
+    comisiones_pagadas: number;
+    /** ingreso_financiero + comisiones_cobradas. Base del margen. */
+    ingreso_total: number;
     costo_fondeo: number;
     otros_costos: number;
     costo_total: number;
@@ -2695,6 +2702,8 @@ export interface PuntoMensual {
   ingreso_financiero: number;
   costo_fondeo: number;
   gastos: number;
+  comisiones_cobradas: number;
+  comisiones_pagadas: number;
   rentabilidad_neta: number;
   cartera_capital_fin: number;
   mora_creditos: number;
