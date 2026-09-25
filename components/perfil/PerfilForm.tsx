@@ -6,7 +6,8 @@ import { useRouter } from "next/navigation";
 // Los íconos de presencia de cada sección son Fluent Emoji vía IconBadge.
 import { Check, Loader2, ShieldAlert, AtSign } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { Field, Input, PasswordInput, TelInput } from "@/components/ui/field";
+import { Field, Input, PasswordInput, TelInput, ReglasPassword } from "@/components/ui/field";
+import { passwordValida, MENSAJE_PASSWORD_INSEGURA } from "@/lib/domain";
 import { DomicilioFields } from "@/components/ui/DomicilioFields";
 import { IconBadge } from "@/components/ui/IconBadge";
 import { Emoji } from "@/components/ui/Emoji";
@@ -246,12 +247,16 @@ export function PerfilForm({
     }
   };
 
+  /** Con quién se compara la clave nueva: no puede contener el email ni el nombre. */
+  const identidadPass = { email: initialEmail, nombre: nombreCompleto };
+
   const handlePassword = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorPass(null);
     if (!currentPass) { setErrorPass("Ingresá tu contraseña actual."); return; }
     if (!newPass) { setErrorPass("Ingresá la nueva contraseña."); return; }
-    if (newPass.length < 8) { setErrorPass("La nueva contraseña debe tener al menos 8 caracteres."); return; }
+    // La misma política que aplica el servidor; el detalle ya está a la vista en la lista de reglas.
+    if (!passwordValida(newPass, identidadPass)) { setErrorPass(MENSAJE_PASSWORD_INSEGURA); toast.error(MENSAJE_PASSWORD_INSEGURA); return; }
     if (newPass === currentPass) { setErrorPass("La nueva contraseña debe ser distinta de la actual."); return; }
     if (newPass !== confirmPass) { setErrorPass("Las contraseñas no coinciden."); return; }
 
@@ -489,9 +494,10 @@ export function PerfilForm({
             <PasswordInput
               value={newPass}
               onChange={e => { setNewPass(e.target.value); setSavedPass(false); setErrorPass(null); }}
-              placeholder="Mínimo 8 caracteres"
+              placeholder="••••••••"
             />
           </Field>
+          <ReglasPassword password={newPass} identidad={identidadPass} />
           <Field label="Confirmar nueva contraseña">
             <PasswordInput
               value={confirmPass}

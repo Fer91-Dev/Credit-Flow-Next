@@ -9,6 +9,7 @@
  */
 
 import { useState } from "react";
+import { passwordValida, MENSAJE_PASSWORD_INSEGURA } from "@/lib/domain";
 import { useVendedores, KEYS, type Usuario, type RolUsuario } from "@/lib/swr";
 import { esEmailValido, esUsernameValido, normalizarUsername } from "@/lib/utils";
 import { mutate as globalMutate } from "swr";
@@ -78,7 +79,7 @@ export function UsuarioForm({
     if (!email.trim()) { setError("El email es requerido"); return; }
     if (!esEmailValido(email)) { setError("Email inválido (ej. nombre@correo.com)"); return; }
     if (!editing) {
-      if (password.length < 8) { setError("La contraseña debe tener al menos 8 caracteres"); return; }
+      if (!passwordValida(password)) { setError(MENSAJE_PASSWORD_INSEGURA); return; }
       if (password !== passwordConfirm) { setError("Las contraseñas no coinciden"); return; }
     }
     if (!username.trim()) { setError("El nombre de usuario es requerido"); return; }
@@ -259,7 +260,7 @@ export function CambiarPasswordDialog({ usuario, onClose }: { usuario: Usuario |
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!usuario) return;
-    if (password.length < 8) { setError("La contraseña debe tener al menos 8 caracteres"); return; }
+    if (!passwordValida(password)) { setError(MENSAJE_PASSWORD_INSEGURA); return; }
     if (password !== passwordConfirm) { setError("Las contraseñas no coinciden"); return; }
     const ok = await confirm({
       title: "¿Cambiar contraseña?",

@@ -30,7 +30,27 @@ const PROHIBIDAS = new Set([
 /** Secuencias que, encontradas dentro de la clave, la vuelven trivial de adivinar. */
 const SECUENCIAS = ["12345", "abcde", "qwerty", "asdfg", "98765"];
 
+/** Las reglas, en el orden en que se muestran. */
+export type ReglaPassword = "largo" | "comun" | "repetido" | "secuencia" | "identidad";
+
+/**
+ * El MODELO de contraseña, tal como se le muestra a la persona debajo del campo. Es la misma
+ * lista que aplica `revisarPassword`: un texto corto por regla, lo que tiene que cumplir.
+ */
+export const REGLAS_PASSWORD: { id: ReglaPassword; texto: string }[] = [
+  { id: "largo", texto: `Al menos ${LARGO_MINIMO} caracteres` },
+  { id: "comun", texto: "Que no sea una contraseña común" },
+  { id: "secuencia", texto: "Sin secuencias como 12345 o qwerty" },
+  { id: "repetido", texto: "Sin un mismo carácter repetido" },
+  { id: "identidad", texto: "Sin tu nombre, usuario ni email" },
+];
+
+/** El aviso, corto: el detalle lo da la lista de reglas. */
+export const MENSAJE_PASSWORD_INSEGURA = "Contraseña insegura.";
+
 export interface ProblemaPassword {
+  /** Qué regla no cumple. */
+  regla: ReglaPassword;
   /** Mensaje en las palabras del usuario: qué pasa y qué hacer. */
   mensaje: string;
 }
@@ -69,13 +89,25 @@ function trozosDeIdentidad(ctx: ContextoPassword): string[] {
  * largo, reintentaría, y recién ahí se enteraría de que además contiene su nombre.
  */
 export function revisarPassword(password: string, ctx: ContextoPassword = {}): ProblemaPassword[] {
-  const problemas: ProblemaPassword[] = [];
   const p = password ?? "";
+  // Sin largo mínimo el resto de los avisos sobra: primero que llegue a 8.
+  if (p.length < LARGO_MINIMO) return evaluar(p, ctx).filter((x) => x.regla === "largo");
+  return evaluar(p, ctx);
+}
 
+/**
+ * Cada regla del modelo con si se cumple o no. Evalúa TODAS aunque la clave todavía sea corta:
+ * es la lista que se va tildando mientras se escribe.
+ */
+export function cumplimientoPassword(password: string, ctx: ContextoPassword = {}): { id: ReglaPassword; texto: string; cumple: boolean }[] {
+  const fallan = new Set(evaluar(password ?? "", ctx).map((x) => x.regla));
+  return REGLAS_PASSWORD.map((r) => ({ ...r, cumple: !fallan.has(r.id) }));
+}
+
+function evaluar(p: string, ctx: ContextoPassword): ProblemaPassword[] {
+  const problemas: ProblemaPassword[] = [];
   if (p.length < LARGO_MINIMO) {
-    problemas.push({ mensaje: `Tiene que tener al menos ${LARGO_MINIMO} caracteres (llevás ${p.length}).` });
-    // Sin largo mínimo el resto de los avisos sobra: primero que llegue a 8.
-    return problemas;
+    problemas.push({ regla: "largo", mensaje: `Tiene que tener al menos ${LARGO_MINIMO} caracteres (llevás ${p.length}).` });
   }
 
   const n = normalizar(p);
@@ -85,19 +117,19 @@ export function revisarPassword(password: string, ctx: ContextoPassword = {}): P
   // misma contraseña débil. El recorte solo cuenta si queda una palabra de verdad.
   const sinSufijo = n.replace(/\d+$/, "");
   if (PROHIBIDAS.has(n) || (sinSufijo.length >= 4 && PROHIBIDAS.has(sinSufijo))) {
-    problemas.push({ mensaje: "Es una de las contraseñas más usadas del mundo: se prueba en los primeros intentos." });
+    problemas.push({ regla: "comun", mensaje: "Es una de las contraseñas más usadas del mundo: se prueba en los primeros intentos." });
   }
 
   // Un solo carácter repetido ("aaaaaaaa") o dos alternados ("ababab").
-  if (/^(.)\1+$/.test(p)) {
-    problemas.push({ mensaje: "Es un mismo carácter repetido. Usá algo menos previsible." });
-  } else if (new Set(p).size <= 2) {
-    problemas.push({ mensaje: "Usa solo dos caracteres distintos. Agregá variedad." });
+  if (p.length > 0 && /^(.)\1+$/.test(p)) {
+    problemas.push({ regla: "repetido", mensaje: "Es un mismo carácter repetido. Usá algo menos previsible." });
+  } else if (p.length > 0 && new Set(p).size <= 2) {
+    problemas.push({ regla: "repetido", mensaje: "Usa solo dos caracteres distintos. Agregá variedad." });
   }
 
   for (const s of SECUENCIAS) {
     if (n.includes(s)) {
-      problemas.push({ mensaje: `Contiene la secuencia "${s}", de las primeras que se prueban.` });
+      problemas.push({ regla: "secuencia", mensaje: `Contiene la secuencia "${s}", de las primeras que se prueban.` });
       break;
     }
   }
@@ -105,6 +137,7 @@ export function revisarPassword(password: string, ctx: ContextoPassword = {}): P
   for (const trozo of trozosDeIdentidad(ctx)) {
     if (n.includes(trozo)) {
       problemas.push({
+        regla: "identidad",
         mensaje: "No puede contener tu nombre, tu usuario ni tu email: es lo primero que prueba quien te conoce.",
       });
       break;
@@ -120,11 +153,11 @@ export function passwordValida(password: string, ctx: ContextoPassword = {}): bo
 }
 
 /**
- * Un solo mensaje para las respuestas de la API, que no tienen dónde mostrar una lista.
- * Devuelve null si la contraseña es válida.
+ * El aviso de las respuestas de la API: corto y directo ("Contraseña insegura."). El detalle de
+ * QUÉ falta lo muestra la pantalla con la lista de reglas (`cumplimientoPassword`), que sale de
+ * la misma política. Pedido de Fernando (25/09/2026): el párrafo que explicaba cada falla tapaba
+ * lo importante. Devuelve null si la contraseña es válida.
  */
 export function errorDePassword(password: string, ctx: ContextoPassword = {}): string | null {
-  const problemas = revisarPassword(password, ctx);
-  if (problemas.length === 0) return null;
-  return problemas.map((x) => x.mensaje).join(" ");
+  return revisarPassword(password, ctx).length === 0 ? null : MENSAJE_PASSWORD_INSEGURA;
 }

@@ -11,6 +11,7 @@
  */
 
 import { useState } from "react";
+import { passwordValida, MENSAJE_PASSWORD_INSEGURA } from "@/lib/domain";
 import { type Vendedor } from "@/lib/swr";
 import { Emoji } from "@/components/ui/Emoji";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
@@ -84,7 +85,7 @@ export function PersonalForm({
     if (!editing) {
       if (!email.trim()) { setError("El email es requerido: es el usuario de acceso del agente"); return; }
       if (!esEmailValido(email)) { setError("Email inválido (ej. nombre@correo.com)"); return; }
-      if (cuentaPassword.length < 8) { setError("La contraseña de acceso debe tener al menos 8 caracteres"); return; }
+      if (!passwordValida(cuentaPassword)) { setError(MENSAJE_PASSWORD_INSEGURA); return; }
       if (cuentaPassword !== cuentaPasswordConfirm) { setError("Las contraseñas no coinciden"); return; }
       if (!cuentaUsername.trim()) { setError("El nombre de usuario es requerido"); return; }
       if (!esUsernameValido(cuentaUsername)) {
@@ -325,7 +326,7 @@ export function CrearCuentaDialog({ vendedor, onClose }: { vendedor: Vendedor | 
     if (!vendedor) return;
     if (!email.trim()) { setError("El email es requerido"); return; }
     if (!esEmailValido(email)) { setError("Email inválido (ej. nombre@correo.com)"); return; }
-    if (password.length < 8) { setError("La contraseña debe tener al menos 8 caracteres"); return; }
+    if (!passwordValida(password)) { setError(MENSAJE_PASSWORD_INSEGURA); return; }
     if (password !== passwordConfirm) { setError("Las contraseñas no coinciden"); return; }
     if (!username.trim()) { setError("El nombre de usuario es requerido"); return; }
     if (!esUsernameValido(username)) {

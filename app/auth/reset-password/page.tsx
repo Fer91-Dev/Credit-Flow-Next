@@ -6,6 +6,8 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { Eye, EyeOff, Loader2, AlertCircle, CheckCircle2, ArrowLeft } from "lucide-react";
 import { AuthShell } from "@/components/auth/AuthShell";
+import { ReglasPassword } from "@/components/ui/field";
+import { passwordValida, MENSAJE_PASSWORD_INSEGURA } from "@/lib/domain";
 
 type Estado = "cargando" | "listo" | "invalido" | "guardando" | "hecho";
 
@@ -17,6 +19,10 @@ export default function ResetPasswordPage() {
   const [confirm, setConfirm] = useState("");
   const [show, setShow] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /* El email de la cuenta, para la regla "sin tu nombre, usuario ni email". El nombre no se
+     conoce acá; si la clave lo contiene, la frena igual el servidor, que sí lo tiene. */
+  const [emailCuenta, setEmailCuenta] = useState<string | null>(null);
+  const identidad = { email: emailCuenta };
 
   // La sesión de recuperación ya viene en cookies (la estableció /auth/confirm con verifyOtp).
   useEffect(() => {
@@ -26,9 +32,9 @@ export default function ResetPasswordPage() {
     let resuelto = false;
     const marcarListo = () => { if (!resuelto) { resuelto = true; setEstado("listo"); } };
 
-    supabase.auth.getSession().then(({ data }) => { if (data.session) marcarListo(); });
+    supabase.auth.getSession().then(({ data }) => { if (data.session) { setEmailCuenta(data.session.user.email ?? null); marcarListo(); } });
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session) marcarListo();
+      if (session) { setEmailCuenta(session.user.email ?? null); marcarListo(); }
     });
 
     const t = setTimeout(() => { if (!resuelto) setEstado("invalido"); }, 4000);
@@ -38,7 +44,7 @@ export default function ResetPasswordPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    if (password.length < 8) { setError("La contraseña debe tener al menos 8 caracteres"); return; }
+    if (!passwordValida(password, identidad)) { setError(MENSAJE_PASSWORD_INSEGURA); return; }
     if (password !== confirm) { setError("Las contraseñas no coinciden"); return; }
     setEstado("guardando");
     /* Por el SERVIDOR (auditoría 25/09/2026, H-A3): ahí se aplica la política de contraseñas y
@@ -113,6 +119,9 @@ export default function ResetPasswordPage() {
                   {show ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
               </div>
+              <div className="pt-1">
+                <ReglasPassword password={password} identidad={identidad} />
+              </div>
             </div>
 
             <div className="space-y-1.5">
@@ -141,7 +150,7 @@ export default function ResetPasswordPage() {
 
             <button
               type="submit"
-              disabled={estado === "guardando" || password.length < 8 || password !== confirm}
+              disabled={estado === "guardando" || !passwordValida(password, identidad) || password !== confirm}
               className="flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-primary text-sm font-medium text-primary-foreground shadow-[inset_0_1px_0_0_rgba(255,255,255,0.15)] transition-colors hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-primary/30 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {estado === "guardando" ? (<><Loader2 className="h-4 w-4 animate-spin" /> Guardando…</>) : "Guardar contraseña"}

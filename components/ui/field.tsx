@@ -1,7 +1,7 @@
 import * as React from "react";
-import { AlertTriangle, ChevronDown } from "lucide-react";
+import { AlertTriangle, Check, ChevronDown, X } from "lucide-react";
 import { cn, soloDigitos, formatCuit } from "@/lib/utils";
-import { revisarPassword, type ContextoPassword } from "@/lib/domain";
+import { revisarPassword, cumplimientoPassword, MENSAJE_PASSWORD_INSEGURA, type ContextoPassword } from "@/lib/domain";
 
 interface FieldProps {
   label: string;
@@ -233,6 +233,40 @@ export function SecretInput({ className, ...props }: React.InputHTMLAttributes<H
 }
 
 /**
+ * El MODELO de contraseña debajo del campo: cada regla, tildada en verde cuando se cumple y en
+ * rojo cuando no. Sin nada escrito se muestra neutra — es la guía de qué escribir, no un error.
+ * Sale de `cumplimientoPassword`, la MISMA política que aplica el servidor.
+ */
+export function ReglasPassword({ password, identidad }: { password: string; identidad?: ContextoPassword }) {
+  const escrita = password.length > 0;
+  const reglas = cumplimientoPassword(password, identidad ?? {});
+  return (
+    <ul className="grid grid-cols-1 gap-x-4 gap-y-1 sm:grid-cols-2" aria-label="Requisitos de la contraseña">
+      {reglas.map((r) => {
+        const estado = !escrita ? "neutra" : r.cumple ? "ok" : "falla";
+        return (
+          <li
+            key={r.id}
+            className={cn(
+              "flex items-center gap-1.5 text-[11px]",
+              estado === "ok" && "text-success",
+              estado === "falla" && "text-destructive",
+              estado === "neutra" && "text-muted-foreground",
+            )}
+          >
+            {estado === "falla"
+              ? <X className="h-3 w-3 shrink-0" aria-hidden />
+              : <Check className={cn("h-3 w-3 shrink-0", estado === "neutra" && "opacity-40")} aria-hidden />}
+            <span>{r.texto}</span>
+            <span className="sr-only">{estado === "ok" ? "(cumple)" : estado === "falla" ? "(no cumple)" : ""}</span>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+/**
  * Par de campos "contraseña" + "repetir contraseña" para SETEAR una clave nueva.
  * Ambos enmascarados y sin copiar/pegar; muestra en vivo si no coinciden. La validación
  * final (largo mínimo + coincidencia) la hace el submit del formulario que lo usa.
@@ -255,20 +289,21 @@ export function PasswordFields({
   // MISMA función que la barrera del servidor: si divergieran, el formulario aceptaría
   // algo que el backend rechaza (o marcaría error sobre algo que sí se guardaría).
   const problemas = password.length > 0 ? revisarPassword(password, identidad ?? {}) : [];
-  const muyCorta = password.length > 0 && password.length < minLength;
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
       <Field
         label={label}
         required={required}
-        error={problemas.length > 0 ? problemas[0].mensaje : undefined}
-        hint={problemas.length > 0 ? undefined : `mínimo ${minLength} caracteres`}
+        error={problemas.length > 0 ? MENSAJE_PASSWORD_INSEGURA : undefined}
       >
         <PasswordInput value={password} onChange={(e) => onPassword(e.target.value)} placeholder="••••••••" required={required} />
       </Field>
       <Field label={`Repetir ${label.toLowerCase()}`} required={required} error={noCoincide ? "Las contraseñas no coinciden" : undefined}>
         <PasswordInput value={confirm} onChange={(e) => onConfirm(e.target.value)} placeholder="••••••••" required={required} />
       </Field>
+      <div className="sm:col-span-2">
+        <ReglasPassword password={password} identidad={identidad} />
+      </div>
     </div>
   );
 }
